@@ -103,10 +103,10 @@ It is used as an element, with props as attributes:
 <TodoItem todo={todo} />
 ```
 
-Children are passed through a `children` field of type `List (Html Msg)`:
+Children are passed through a `children` field of type `List (Html a)`:
 
 ```alder
-Layout : { title: Text, children: List (Html Msg) } -> Html Msg
+Layout : { title: Text, children: List (Html a) } -> Html a
 Layout props =
   <html>
     <head><title>{props.title}</title></head>
@@ -117,6 +117,10 @@ Layout props =
   <h1>Todos</h1>
 </Layout>
 ```
+
+A component in a page module may be typed `Html Msg` and send that page's
+messages. A component in any other module has no `Msg`; it is typed `Html a`
+and can send only app-level messages (`App.Logout`), which fit any `Html a`.
 
 Components are plain functions. They have no state and no lifecycle.
 

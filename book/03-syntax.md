@@ -17,10 +17,15 @@ import Layout
 renaming. Modules from the standard library (`List`, `Text`, `Db`, ...) are
 always in scope and never imported.
 
-A type whose name equals the last segment of its module's name is referred
-to by the module name alone: module `Todo` defining `type Todo` (or `table
-Todo`) is used as `Todo`, not `Todo.Todo`. Page modules are imported like any
-other module, and a page value is written `Todos.Show { id: id }`.
+A declaration whose name equals the last segment of its module's name is
+referred to by the module name alone: module `Todo` defining `type Todo` (or
+`table Todo`) is used as `Todo`, not `Todo.Todo`; module `Layout` defining a
+component `Layout` is used as `<Layout>`.
+
+**Pages and app-level messages are global.** A page value (`Todos.Show { id:
+id }`) and an app-level message (`App.Logout`) can be used from any module
+without an import. Everything else a module uses must be imported, and
+imports may not form a cycle.
 
 **Constructors are never qualified.** If `Todo` defines `type Priority = Low
 | Normal | High`, a module that imports `Todo` writes `Normal`, not

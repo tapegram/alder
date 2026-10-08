@@ -3,8 +3,6 @@ module Todos.Index
 import Todo
 import User
 import Layout
-import Todos.Show
-import App
 
 page "/" { filter: Todo.Filter = All } requires user
 
@@ -48,9 +46,9 @@ update msg model session = match msg {
   },
 }
 
-view : Model -> Html Msg
-view model =
-  <Layout.Page title="Todos">
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Todos" theme={session.theme}>
     <h1>Todos</h1>
 
     <form submit={Submit}>

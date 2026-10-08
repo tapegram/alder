@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run one task against one Ollama model and save the raw output.
 
-Usage: run_ollama.py <experiment-dir> <model> <task-file>
+Usage: run_ollama.py <experiment-dir> <model> <task-file> [prompt-file] [run-suffix]
 Writes <experiment-dir>/runs/<model-safe>/<task>.md
 """
 import json
@@ -14,7 +14,9 @@ import urllib.request
 exp = pathlib.Path(sys.argv[1])
 model = sys.argv[2]
 task = pathlib.Path(sys.argv[3])
-prompt = (exp / "prompt.md").read_text()
+prompt_file = pathlib.Path(sys.argv[4]) if len(sys.argv) > 4 else exp / "prompt.md"
+suffix = sys.argv[5] if len(sys.argv) > 5 else ""
+prompt = prompt_file.read_text()
 task_text = task.read_text()
 
 body = {
@@ -38,7 +40,7 @@ dt = time.time() - t0
 text = resp["message"]["content"]
 text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.S)
 
-out_dir = exp / "runs" / model.replace(":", "-").replace("/", "-")
+out_dir = exp / "runs" / (model.replace(":", "-").replace("/", "-") + suffix)
 out_dir.mkdir(parents=True, exist_ok=True)
 out = out_dir / (task.stem + ".md")
 meta = (

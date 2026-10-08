@@ -18,8 +18,8 @@ load params session = {
   Query.succeed { filter: params.filter, todos: todos }
 }
 
-view : Model -> Html Msg
-view model = ...
+view : Model -> Session -> Html Msg
+view model session = ...
 
 msg Toggle = "/todos/{id}/toggle" { id: TodoId }
 
@@ -32,8 +32,10 @@ update msg model session = match msg {
 The compiler checks that each page module has exactly: one `page`, one
 `Model`, one `load`, one `view`, and, if it has any `msg`, one `update`.
 `Params` and `Msg` are generated from the declarations and must not be
-written by hand. `view` is always `Model -> Html Msg`, even on a page with
-no `msg` (its `Msg` is then empty; `Html Never` is not used for pages).
+written by hand. `view` is always `Model -> Session -> Html Msg`, even on
+a page with no `msg` (its `Msg` is then empty; `Html Never` is not used for
+pages). `view` receives the session so that per-user presentation (theme,
+"logged in as") needs no Model field.
 
 ## `page`
 
@@ -107,7 +109,8 @@ cannot send another page's message.
 
 Actions that belong to no page (log out, switch theme) are declared as `msg`
 in the `App` module. Any page can send them, and `App.update` handles them.
-It has no `Model`, and must end in a `Redirect`:
+It has no `Model`. `Rerender` from `App.update` re-renders the page that sent
+the message:
 
 ```alder
 -- in App
@@ -121,9 +124,12 @@ update msg session = match msg {
   },
 }
 
--- in any page
+-- in any page, or any component
 <button click={App.Logout}>Log out</button>
 ```
+
+An app-level message value is accepted in `Html a` for every `a`, so a
+layout component typed `Html a` can contain `click={App.Logout}`.
 
 ## `form`
 
@@ -172,7 +178,7 @@ GET  /path
   1. decode route parameters      → 404 on failure
   2. check `requires`             → redirect to App.login on failure
   3. load                         → Query, run by the runtime
-  4. view                         → HTML
+  4. view (with the session)      → HTML
 
 POST /path
   1. decode route parameters and form   → 404 / re-render with form errors

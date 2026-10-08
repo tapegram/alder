@@ -2,7 +2,6 @@ module Todos.Show
 
 import Todo
 import Layout
-import Todos.Index
 
 page "/todos/{id}" { id: Todo.TodoId } requires user
 
@@ -37,9 +36,9 @@ update msg model session = match msg {
   },
 }
 
-view : Model -> Html Msg
-view model =
-  <Layout.Page title={model.todo.title}>
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.todo.title} theme={session.theme}>
     <h1>{model.todo.title}</h1>
     <form submit={Save { id: model.todo.id }}>
       <Input field="title" label="Title" value={model.todo.title} />

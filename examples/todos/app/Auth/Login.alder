@@ -2,7 +2,6 @@ module Auth.Login
 
 import User
 import Layout
-import Todos.Index
 
 -- Password checking is outside the language: a capability implemented in Go.
 capability Password {
@@ -37,9 +36,9 @@ update msg model session = match msg {
   },
 }
 
-view : Model -> Html Msg
-view model =
-  <Layout.Page title="Log in">
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Log in" theme={session.theme}>
     <h1>Log in</h1>
     <form submit={Submit}>
       <Errors form />

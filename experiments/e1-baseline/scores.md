@@ -18,7 +18,9 @@ Verdicts: **PASS** = compiles as written. **PARTIAL** = 1–2 errors, each a one
 | qwen3-coder:30b | T1 modify | 2 TYP | PARTIAL | `Db.orderBy Todo.priority.desc` on a union column (unspecified). `Todo.filterLabel props.todo.priority` — wrong union. `<Select value={model.todo.priority}>` passes the union value (sensible). |
 | qwen3-coder:30b | T2 new page | 1 TYP, 2 ROUTE, 1 STRUCT | FAIL | `user.name` on a `Maybe User` without matching. `href={App.login}` (not a page value). `Profile {}` without import. `/logout` collision. |
 | qwen3-coder:30b | T3 new app | 4 TYP, 1 LIB, 1 STRUCT | FAIL | Invents `AuthorId` separate from `UserId` and `@ref`s with it. `id: Text @id` (must be a brand). `Db.get Post params.slug` (get by slug). `Date.format` on a `Time`. Test calls nonexistent `Post.comments`. Uses `Comment` type unqualified from `Post` module. Also `requires user` on the public post page (logic). |
-| qwen3:8b | — | — | — | pending |
+| qwen3:8b | T1 modify | 4 TYP, 2 LIB, 1 STRUCT, 1 HTML, 1 SYN | FAIL | Tuple in `sortBy`, negates a `Time`, invents `Todo.prioritySortKey` and `Text.fromEnum`, qualifies constructors (`Todo.Normal`), `Maybe.map` on a non-Maybe, `<Input>` for a union, breaks a line inside `Task.succeed`. 188s, 6.4k output tokens (thinking). |
+| qwen3:8b | T2 new page | 1 TYP, 1 STRUCT, 1 ROUTE | FAIL | `user.name` on a `Maybe User`. `Db.from Todo` without `import Todo`. `click={Auth.Login.Logout}` (another page's msg). |
+| qwen3:8b | T3 new app | 3 SYN, 4 STRUCT, 3 TYP, 1 ROUTE | FAIL | `params` used inside `update`; `let <-` inside `if` without a block; `</Layout</Layout.Page>`; `Slug`, `User.UserId`, `CommentId` unqualified or undefined; `msg Submit = "/posts/{slug}/comment"` with no `{ slug }` params; `Db.delete Comment params.slug`; `<Errors field="" />`. |
 
 ## Totals
 
@@ -28,5 +30,6 @@ Verdicts: **PASS** = compiles as written. **PARTIAL** = 1–2 errors, each a one
 | claude-sonnet | 2 | 1 | 0 | 2 |
 | claude-haiku | 0 | 3 | 0 | 4 |
 | qwen3-coder:30b | 0 | 1 | 2 | 12 |
+| qwen3:8b | 0 | 0 | 3 | 23 |
 
-Error classes across all runs: TYP 7, ROUTE 4, STRUCT 3, HTML 3, SYN 1, LIB 1, EFF 0, ANN 0.
+Error classes across all runs: TYP 15, STRUCT 9, ROUTE 6, SYN 5, HTML 4, LIB 3, EFF 0, ANN 0.

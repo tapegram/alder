@@ -49,7 +49,6 @@ module Todos.Index
 
 import Todo
 import Layout
-import Todos.Show
 
 page "/" { filter: Todo.Filter = All } requires user
 ```
@@ -119,9 +118,9 @@ next. `Rerender` re-runs `load` and `view` and patches the page in place.
 resubmit. The `match` must handle every `msg`, or the module won't compile.
 
 ```alder
-view : Model -> Html Msg
-view model =
-  <Layout.Page title="Todos">
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Todos" theme={session.theme}>
     <h1>Todos</h1>
 
     <form submit={Submit}>
@@ -145,7 +144,7 @@ view model =
   </Layout.Page>
 ```
 
-`view` is HTML with expressions in braces. `href` takes a page value, never
+`view` is HTML with expressions in braces. It also receives the session, used here for the theme. `href` takes a page value, never
 a string, so a link to a page that doesn't exist, or with the wrong
 parameters, is a compile error. `submit={Submit}` ties the form to its
 message, and `<Input field="title">` is checked against `NewTodo`. If the

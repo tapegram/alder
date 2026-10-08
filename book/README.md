@@ -25,6 +25,7 @@ changes, this book changes first.
 | [11. Tooling](11-tooling.md) | The compiler and its outputs |
 | [12. Design rationale](12-rationale.md) | Why each decision was made, with experiment results |
 | [A. Grammar](A-grammar.md) | The formal grammar |
+| [B. Common mistakes](B-pitfalls.md) | The errors seen most often in experiments |
 
 Chapters 3–9 are the **reference**: together they are what an agent is given
 as context when writing Alder. They are kept short on purpose.

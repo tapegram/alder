@@ -58,7 +58,11 @@ exception: actions that belong to no page, like logging out. Every model
 hit this and each worked around it differently (a raw HTML form, a link to
 the login page, a duplicated msg that collided on its route). App-level
 `msg` in `App` with a Model-less `App.update` closes the gap without
-letting pages send each other's messages.
+letting pages send each other's messages. E2 confirmed the fix (Haiku,
+which had collided on `/logout` in E1, used `App.Logout` correctly) and
+added two refinements: `App.update` may `Rerender` the sending page (a
+theme switch should not redirect), and app-level messages type-check
+inside any `Html a`, so a shared layout can carry the buttons.
 
 ### Form state is in the request, not the Model **(untested)**
 
@@ -82,6 +86,14 @@ Every model, and the hand-written example, wrote `Normal` and `[All,
 Active, Completed]` without a module prefix, while qualifying the *types*
 (`Todo.Priority`). The book now says so. Constructor names must be unique
 across a module's imports.
+
+### `view` receives the session **(tested: E2)**
+
+In E2-T4 (a per-user theme), every model wanted the session in `view`:
+Sonnet copied `theme` into every Model, Haiku hard-coded `theme={Light}`,
+and Qwen3-Coder wrote `session.theme` inside `view`, which did not
+type-check. `view : Model -> Session -> Html Msg` removes the boilerplate
+and the error.
 
 ### Brands with implicit widening **(untested)**
 
@@ -161,9 +173,31 @@ What it showed:
 
 ### E2: Revised book, reference-only variant, app-level messages
 
-*Status: next.* Re-run T1–T3 on the revised book with Qwen3-Coder and Haiku;
-add T4 (an app-level message); run a reference-only variant without the
-example app to measure how much the example carries.
+*Done 2026-10-08.* Same tasks on the E1-revised book, plus T4 (a theme
+switch and logout on every page), with and without the example app.
+
+| Model | Full prompt, T1–T3 errors (E1 → E2) | Reference-only |
+|---|---|---|
+| Claude Sonnet | — (T4 only: 1 error) | T4: 2 errors |
+| Claude Haiku | 4 → 1 | T3, T4: ~11 errors |
+| Qwen3-Coder 30B | 12 → 9 | structural failures, first `case ... of` |
+
+What it showed:
+
+- The E1 fixes held: no route collisions, `App.Logout` used correctly by
+  every model, union ordering and `<Select>` used as specified.
+- The example app is load-bearing for anything below Sonnet. Without it
+  Haiku's errors went up tenfold and Qwen produced Elm syntax. The prompt
+  always includes an example.
+- T4 found three gaps, each now closed: `view` receives the session;
+  `App.update` may `Rerender`; shared components are `Html a` and pages and
+  app-level messages need no import.
+
+### E3: Does a "common mistakes" appendix help?
+
+*Status: next.* The E2 book plus a ~200-token appendix listing the ten most
+frequent E1/E2 errors, versus the same book without it. Qwen3-Coder and
+Haiku, T2–T4.
 
 ## Open questions
 
@@ -171,6 +205,11 @@ example app to measure how much the example carries.
   the submitted values on a different page)?
 - Should string interpolation accept `Int` and `Float` automatically?
   One-way says no; ergonomics says yes.
+- Should payload-less unions get a derived `toText`? Three models wrote a
+  label function by hand and one invented `Priority.toText`.
+- Should a function body allow `let` without a `{ }` block? Haiku did this
+  twice; it reads naturally but adds a second way.
+- Should `Db.insert` accept a user-chosen `@id` (slug as primary key)?
 - Should `Task.succeed` be implicit for a final non-effect expression in
   an effect block?
 - Is `Query.notFound` the right way to 404 from `load`?
