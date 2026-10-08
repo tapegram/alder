@@ -8,6 +8,16 @@ session { user: Maybe User.UserId }
 
 login = Auth.Login
 
+msg Logout = "/logout" { }
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing })
+    Task.succeed (Redirect (Auth.Login {}))
+  },
+}
+
 error : Error -> Html Never
 error err =
   <Layout.Page title="Error">

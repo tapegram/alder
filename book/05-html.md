@@ -35,9 +35,9 @@ An embedded expression must have one of these types:
 Nothing else is inserted implicitly. An `Int` must be converted with
 `Text.fromInt`. A `Maybe Text` must be matched or defaulted with `??`.
 
-Text is **always escaped**. To insert trusted markup, use `Html.raw`, which
-takes a `Text` and returns `Html Never`. It is the only way to produce
-unescaped output.
+Text is **always escaped**. To insert trusted markup, use `Html.unsafe`,
+which takes a `Text` and returns `Html Never`. It is the only way to produce
+unescaped output, and it must never be applied to text a user entered.
 
 ## Control flow in HTML
 
@@ -54,6 +54,9 @@ unescaped output.
 
 `for x in list -> html` produces a `List (Html Msg)`. There is no index
 variable; use `List.indexed` first if an index is needed.
+
+A line that begins with `--` between elements is a comment, as elsewhere.
+`--` inside element text is text.
 
 ## Attributes
 
@@ -133,6 +136,22 @@ Inside `<form submit={Msg}>`, the `<Input>`, `<Select>`, `<Textarea>`, and
 
 `<Errors field="x" />` shows the errors for one field; `<Errors form />`
 shows form-level errors (from `Reject`).
+
+Which component to use depends on the field's type:
+
+| Field type | Component | Renders |
+|---|---|---|
+| `Text`, brands of `Text`, `Int`, `Float`, `Date` | `<Input>` | `<input>` with a matching `type` |
+| `Text` meant to be long | `<Textarea>` | `<textarea>` |
+| `Bool` | `<Input>` | checkbox |
+| union with no payloads | `<Select>` | `<select>` with one option per constructor, labeled by its name |
+| `Maybe` of any of these | same as the inner type | not `required` |
+
+`value={...}` on any of them takes the field's own type (`value={model.todo.priority}`
+for a `Select` over `Priority`), or `Maybe` of it.
+
+A `<form submit={M}>` where `M` has no `form` type is allowed; it contains
+no bound inputs, only a button.
 
 `field` must name a field of the form type. The input's `name`, `type`,
 `required`, and current value are derived from the field's type and the

@@ -22,6 +22,12 @@ to by the module name alone: module `Todo` defining `type Todo` (or `table
 Todo`) is used as `Todo`, not `Todo.Todo`. Page modules are imported like any
 other module, and a page value is written `Todos.Show { id: id }`.
 
+**Constructors are never qualified.** If `Todo` defines `type Priority = Low
+| Normal | High`, a module that imports `Todo` writes `Normal`, not
+`Todo.Normal`, while the type is still `Todo.Priority`. Constructor names
+must therefore be unique across a module's imports and the standard library;
+a clash is a compile error.
+
 Everything a module defines is visible to other modules, with one exception:
 a brand's constructor (see chapter 4). There is no `export` list.
 
@@ -106,7 +112,7 @@ There is no `<|`, no `<<`, no `>>`.
 | `%` | `Int` | remainder |
 | `++` | `Text` or `List a` | concatenation |
 | `== !=` | any type without functions (both sides identical) | equality |
-| `< <= > >=` | `Int`, `Float`, `Text` | comparison |
+| `< <= > >=` | `Int`, `Float`, `Text`, `Date`, `Time`, payload-less unions | comparison |
 | `&& \|\|` | `Bool` | logic, short-circuit |
 | `not` | `Bool` | negation (a function, not an operator) |
 | `??` | `Maybe a` and `a` | default: `m ?? d` is `d` when `m` is `Nothing` |

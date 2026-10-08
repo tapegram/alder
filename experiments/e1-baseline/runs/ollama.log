@@ -1,0 +1,5 @@
+qwen3-coder:30b t1-modify: 44s, 1458 tokens -> e1-baseline/runs/qwen3-coder-30b/t1-modify.md
+qwen3-coder:30b t2-newpage: 22s, 1261 tokens -> e1-baseline/runs/qwen3-coder-30b/t2-newpage.md
+qwen3-coder:30b t3-newapp: 37s, 2131 tokens -> e1-baseline/runs/qwen3-coder-30b/t3-newapp.md
+qwen3:8b t1-modify: 188s, 6414 tokens -> e1-baseline/runs/qwen3-8b/t1-modify.md
+qwen3:8b t2-newpage: 137s, 5219 tokens -> e1-baseline/runs/qwen3-8b/t2-newpage.md

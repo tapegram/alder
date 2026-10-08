@@ -67,6 +67,10 @@ Constructors are functions: `Circle : Float -> Shape`.
 
 `Maybe` and `Result` are ordinary unions defined in the standard library.
 
+A union whose constructors all take no argument is **ordered by declaration**:
+for `type Priority = Low | Normal | High`, `Low < Normal < High`. The
+comparison operators work on such unions, and so does `Db.orderBy`.
+
 ## Brands
 
 A brand is a type that has the same runtime representation as its base type

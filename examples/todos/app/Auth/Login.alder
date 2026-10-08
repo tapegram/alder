@@ -22,7 +22,6 @@ form Credentials = {
 }
 
 msg Submit = "/login" form Credentials
-msg Logout = "/logout" { }
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
@@ -35,10 +34,6 @@ update msg model session = match msg {
       },
       Nothing -> Task.succeed (Reject "Email or password is incorrect."),
     }
-  },
-  Logout p -> {
-    let _ <- Session.put (\s -> { s | user: Nothing })
-    Task.succeed (Redirect (Auth.Login {}))
   },
 }
 

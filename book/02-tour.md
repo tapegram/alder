@@ -183,5 +183,7 @@ that needed a test.
   capability, implemented in Go, and uses `Session.put` to sign the user
   in. A wrong password returns `Reject`, which re-renders the form with a
   message.
-- `app/User.alder`, `app/Layout.alder`, `app/App.alder`: the user table, a
-  page layout component, and the app-level session and error pages.
+- `app/App.alder`: the session record, the error pages, and the app-level
+  `Logout` message, which any page can send with `click={App.Logout}`.
+- `app/User.alder`, `app/Layout.alder`: the user table and a page layout
+  component.

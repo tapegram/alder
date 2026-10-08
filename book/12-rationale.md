@@ -47,11 +47,18 @@ right parameters, every form posts to a real message, every message is
 handled, and every page has `load` and `view`. In a library these would be
 runtime failures.
 
-### Messages belong to pages **(untested)**
+### Messages belong to pages, plus app-level messages **(tested: E1)**
 
 A `msg` is declared in the page module whose `update` handles it, and the
 page's parameters travel with it. This gives `update` the same Model that
 `view` had, which is what makes `Rerender` work with no extra state.
+
+E1 showed that "a page can only send its own messages" has one common
+exception: actions that belong to no page, like logging out. Every model
+hit this and each worked around it differently (a raw HTML form, a link to
+the login page, a duplicated msg that collided on its route). App-level
+`msg` in `App` with a Model-less `App.update` closes the gap without
+letting pages send each other's messages.
 
 ### Form state is in the request, not the Model **(untested)**
 
@@ -68,6 +75,13 @@ turn out to be too restrictive.
 `let x <-` was chosen because it reads top-to-bottom, needs no new
 operator, and models know `<-` from Haskell. `andThen` is deliberately
 absent so there is one way.
+
+### Constructors are unqualified **(tested: E1)**
+
+Every model, and the hand-written example, wrote `Normal` and `[All,
+Active, Completed]` without a module prefix, while qualifying the *types*
+(`Todo.Priority`). The book now says so. Constructor names must be unique
+across a module's imports.
 
 ### Brands with implicit widening **(untested)**
 
@@ -117,10 +131,39 @@ raw outputs, and scores. Summaries are recorded here.
 
 ### E1: Baseline — can agents write Alder from the reference alone?
 
-*Status: planned.* Give each model (Claude Haiku/Sonnet/Opus, Qwen3 8B,
-Qwen3-Coder 30B) the reference chapters and the to-do example, then ask
-for (a) a small modification, (b) a new page, (c) a new app. Score
-outputs by hand against the error list in `experiments/README.md`.
+*Done 2026-10-08.* Each model got chapters 3–10 plus the to-do example
+(~11k tokens) and one of three tasks: a cross-cutting modification, a new
+page, a new app. One shot, no compiler. Full scores in
+`experiments/e1-baseline/scores.md`.
+
+| Model | PASS / PARTIAL / FAIL | Errors in 3 tasks |
+|---|---|---|
+| Claude Opus | 2 / 1 / 0 | 1 |
+| Claude Sonnet | 2 / 1 / 0 | 2 |
+| Claude Haiku | 0 / 3 / 0 | 4 |
+| Qwen3-Coder 30B | 0 / 1 / 2 | 12 |
+
+What it showed:
+
+- **Syntax was not a problem for any model.** One syntax error in twelve
+  outputs. The syntax-variant experiments are deferred.
+- **The Claude errors were book gaps, not model errors.** Every one was a
+  case the reference didn't cover, and the models guessed. Those gaps are
+  now closed: app-level messages (`App.Logout`), `<Select>` semantics,
+  unqualified constructors, `Html Msg` on msg-less pages, union ordering,
+  sort stability, comments in HTML, `Html.unsafe`.
+- **Qwen3-Coder's errors are type errors** (unwrapped `Maybe`, `Db.get` by a
+  non-id, wrong union to a function, missing import, route collision).
+  These are exactly what a checker reports with a one-line fix, which is
+  the argument for building the checker next. Qwen3-Coder is the model to
+  measure iterations against, since the Claude models are near the ceiling
+  on these tasks.
+
+### E2: Revised book, reference-only variant, app-level messages
+
+*Status: next.* Re-run T1–T3 on the revised book with Qwen3-Coder and Haiku;
+add T4 (an app-level message); run a reference-only variant without the
+example app to measure how much the example carries.
 
 ## Open questions
 

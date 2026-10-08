@@ -4,6 +4,7 @@ import Todo
 import User
 import Layout
 import Todos.Show
+import App
 
 page "/" { filter: Todo.Filter = All } requires user
 
@@ -72,6 +73,8 @@ view model =
     </ul>
 
     <p id="summary">{Text.fromInt (Todo.countOpen model.todos)} open</p>
+
+    <button click={App.Logout}>Log out</button>
   </Layout.Page>
 
 Item : { todo: Todo } -> Html Msg

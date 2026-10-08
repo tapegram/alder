@@ -68,7 +68,7 @@ Todo.created.lt : Time -> Condition Todo         -- also .le .gt .ge
 Todo.title.contains : Text -> Condition Todo     -- substring, case-insensitive
 Todo.owner.in   : List UserId -> Condition Todo
 Todo.due.isNothing : Condition Todo              -- for Maybe fields; also .isJust
-Todo.created.asc, Todo.created.desc : Order Todo
+Todo.created.asc, Todo.created.desc : Order Todo   -- unions order by declaration
 
 Db.and : List (Condition t) -> Condition t
 Db.or  : List (Condition t) -> Condition t
@@ -99,7 +99,9 @@ let _ <- Db.delete Todo id
 ```
 
 Writes in one `update` run in a single transaction. If the task fails,
-nothing is written.
+nothing is written. Inserting or updating a row that violates `@unique`
+fails the task; check first with a query and `Reject` if the user should
+see a message.
 
 ## Migrations
 

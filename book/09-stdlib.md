@@ -23,8 +23,8 @@ List.member   : a -> List a -> Bool
 List.foldl    : (a -> b -> b) -> b -> List a -> b
 List.sum      : List Int -> Int
 List.sumFloat : List Float -> Float
-List.sortBy   : (a -> Int) -> List a -> List a
-List.sortByText : (a -> Text) -> List a -> List a
+List.sortBy   : (a -> Int) -> List a -> List a      -- stable
+List.sortByText : (a -> Text) -> List a -> List a   -- stable
 List.indexed  : List a -> List { index: Int, item: a }
 List.range    : Int -> Int -> List Int        -- inclusive
 List.concat   : List (List a) -> List a
@@ -136,7 +136,7 @@ Time.ago       : Time -> Time -> Text           -- Time.ago now then = "3 hours 
 ## Html
 
 ```alder
-Html.raw   : Text -> Html Never                 -- unescaped, trusted markup
+Html.unsafe : Text -> Html Never                -- unescaped markup; never for user text
 Html.none  : Html a                             -- renders nothing
 Html.text  : Text -> Html a
 Url.external : Text -> Page                     -- external link for href

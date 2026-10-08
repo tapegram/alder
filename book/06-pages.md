@@ -32,7 +32,8 @@ update msg model session = match msg {
 The compiler checks that each page module has exactly: one `page`, one
 `Model`, one `load`, one `view`, and, if it has any `msg`, one `update`.
 `Params` and `Msg` are generated from the declarations and must not be
-written by hand.
+written by hand. `view` is always `Model -> Html Msg`, even on a page with
+no `msg` (its `Msg` is then empty; `Html Never` is not used for pages).
 
 ## `page`
 
@@ -98,6 +99,31 @@ update msg model session = match msg {
 
 The page's own parameters travel with every message it sends, so `update`
 always has the same `Model` that `view` had.
+
+A page can only send its own messages and the app-level messages below. It
+cannot send another page's message.
+
+## App-level messages
+
+Actions that belong to no page (log out, switch theme) are declared as `msg`
+in the `App` module. Any page can send them, and `App.update` handles them.
+It has no `Model`, and must end in a `Redirect`:
+
+```alder
+-- in App
+msg Logout = "/logout" { }
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing })
+    Task.succeed (Redirect (Auth.Login {}))
+  },
+}
+
+-- in any page
+<button click={App.Logout}>Log out</button>
+```
 
 ## `form`
 
@@ -180,3 +206,4 @@ notFound = <h1>Not found</h1>
   (chapter 7) changes it.
 - `login` names the page to redirect to when `requires` fails.
 - `error` and `notFound` render failure pages.
+- `msg` and `update` declare app-level messages (above). They are optional.
