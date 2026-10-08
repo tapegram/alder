@@ -1,0 +1,22 @@
+module App
+
+import User
+import Layout
+import Auth.Login
+
+session { user: Maybe User.UserId }
+
+login = Auth.Login
+
+error : Error -> Html Never
+error err =
+  <Layout.Page title="Error">
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html Never
+notFound =
+  <Layout.Page title="Not found">
+    <h1>Not found</h1>
+  </Layout.Page>
