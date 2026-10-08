@@ -1,0 +1,6 @@
+qwen3-coder:30b t2-newpage: 39s, 1337 tokens -> e3-pitfalls/runs/qwen3-coder-30b/t2-newpage.md
+qwen3-coder:30b t2-newpage: 30s, 1323 tokens -> e3-pitfalls/runs/qwen3-coder-30b-pitfalls/t2-newpage.md
+qwen3-coder:30b t3-newapp: 47s, 2249 tokens -> e3-pitfalls/runs/qwen3-coder-30b/t3-newapp.md
+qwen3-coder:30b t3-newapp: 46s, 2187 tokens -> e3-pitfalls/runs/qwen3-coder-30b-pitfalls/t3-newapp.md
+qwen3-coder:30b t4-appmsg: 36s, 1699 tokens -> e3-pitfalls/runs/qwen3-coder-30b/t4-appmsg.md
+qwen3-coder:30b t4-appmsg: 38s, 1719 tokens -> e3-pitfalls/runs/qwen3-coder-30b-pitfalls/t4-appmsg.md

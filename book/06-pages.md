@@ -21,7 +21,7 @@ load params session = {
 view : Model -> Session -> Html Msg
 view model session = ...
 
-msg Toggle = "/todos/{id}/toggle" { id: TodoId }
+msg Toggle { id: TodoId }
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
@@ -66,15 +66,18 @@ only thing `href` accepts:
 
 ## `msg`
 
-A message is a POST route belonging to the page that declares it.
+A message belongs to the page that declares it. It has no path: the
+compiler generates the POST URL from the page and message name, so two
+messages can never collide.
 
 ```alder
-msg Toggle = "/todos/{id}/toggle" { id: TodoId }
-msg Submit = "/todos" form NewTodo
-msg Comment = "/posts/{post}/comments" { post: PostId } form NewComment
+msg Toggle { id: TodoId }
+msg Submit form NewTodo
+msg Comment { post: PostId } form NewComment
 ```
 
-- Path and parameters follow the same rules as `page`.
+- Parameter types follow the same rules as `page` parameters. A message
+  with no parameters is declared bare: `msg Logout`.
 - `form F` means the request body is decoded as form type `F`.
 - `Msg` is the union of the module's messages. Each constructor takes its
   parameter record. If the message has a form, the record has an extra
@@ -114,7 +117,7 @@ the message:
 
 ```alder
 -- in App
-msg Logout = "/logout" { }
+msg Logout
 
 update : Msg -> Session -> Task Nav
 update msg session = match msg {
@@ -180,8 +183,8 @@ GET  /path
   3. load                         → Query, run by the runtime
   4. view (with the session)      → HTML
 
-POST /path
-  1. decode route parameters and form   → 404 / re-render with form errors
+POST (generated message URL)
+  1. decode message parameters and form → 404 / re-render with form errors
   2. check `requires`
   3. load                         → Model
   4. update                       → Task, run by the runtime

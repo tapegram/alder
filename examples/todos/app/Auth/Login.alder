@@ -20,7 +20,7 @@ form Credentials = {
   password: Text.Secret,
 }
 
-msg Submit = "/login" form Credentials
+msg Submit form Credentials
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {

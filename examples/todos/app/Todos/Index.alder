@@ -26,9 +26,9 @@ form NewTodo = {
   due: Maybe Date,
 }
 
-msg Submit = "/todos" form NewTodo
-msg Toggle = "/todos/{id}/toggle" { id: Todo.TodoId }
-msg Delete = "/todos/{id}/delete" { id: Todo.TodoId }
+msg Submit form NewTodo
+msg Toggle { id: Todo.TodoId }
+msg Delete { id: Todo.TodoId }
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {

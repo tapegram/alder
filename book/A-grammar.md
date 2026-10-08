@@ -17,7 +17,7 @@ ctor        = uname [atype] ;
 brandType   = "brand" uname ["where" expr] ;
 
 pageDecl    = "page" string recordType ["requires" lname] ;
-msgDecl     = "msg" uname "=" string [recordType] ["form" uname] ;
+msgDecl     = "msg" uname [recordType] ["form" uname] ;
 formDecl    = "form" uname "=" "{" {fieldDef ","} [fieldDef] "}" ;
 tableDecl   = "table" uname "{" {fieldDef {attr} ","} [fieldDef {attr}] "}" ;
 fieldDef    = lname ":" type ["=" expr] ;

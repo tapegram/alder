@@ -86,13 +86,13 @@ form NewTodo = {
   due: Maybe Date,
 }
 
-msg Submit = "/todos" form NewTodo
-msg Toggle = "/todos/{id}/toggle" { id: Todo.TodoId }
-msg Delete = "/todos/{id}/delete" { id: Todo.TodoId }
+msg Submit form NewTodo
+msg Toggle { id: Todo.TodoId }
+msg Delete { id: Todo.TodoId }
 ```
 
-Each `msg` is a POST route. `Submit` carries a form; the other two carry a
-path parameter. Together they make up this page's `Msg` type.
+Each `msg` is an action this page can receive; the compiler gives it a POST
+URL. `Submit` carries a form; the other two carry an id. Together they make up this page's `Msg` type.
 
 ```alder
 update : Msg -> Model -> Session -> Task Nav

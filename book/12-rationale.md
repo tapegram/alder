@@ -47,6 +47,15 @@ right parameters, every form posts to a real message, every message is
 handled, and every page has `load` and `view`. In a library these would be
 runtime failures.
 
+### Messages have no path **(tested: E3)**
+
+Six runs across E1–E3 declared the same POST path on two pages (`/logout`,
+`/theme`, `/notes/{id}/delete`). A POST URL is never typed, bookmarked, or
+shared, so letting the author choose it is a decision with no benefit and
+a collision risk. `msg Delete { id: NoteId }` declares a message; the
+compiler derives its URL from the page and message name. Pages keep their
+paths, because GET URLs are part of the product.
+
 ### Messages belong to pages, plus app-level messages **(tested: E1)**
 
 A `msg` is declared in the page module whose `update` handles it, and the
@@ -195,9 +204,21 @@ What it showed:
 
 ### E3: Does a "common mistakes" appendix help?
 
-*Status: next.* The E2 book plus a ~200-token appendix listing the ten most
-frequent E1/E2 errors, versus the same book without it. Qwen3-Coder and
-Haiku, T2–T4.
+*Done 2026-10-08.* The E2 book with and without appendix B. Haiku: 0 errors
+either way (T3, T4). Qwen3-Coder: 5 errors without, 6 with (T2–T4), and it
+made two of the appendix's listed mistakes verbatim. **A list of don'ts
+does not change a model's habits in one shot; a checker will.** The
+appendix stays for human readers and is not part of the prompt.
+
+The E2 revisions themselves held up: like-for-like, Haiku went 4 → 0 and
+Qwen 11 → 5. Qwen's remaining errors: `Db.get` by a non-id column, a field
+read on a `Maybe`, and the same `msg` path on two pages. The last one is
+the language's fault and is fixed below.
+
+### E4: Path-less messages
+
+*Status: next.* `msg` no longer carries a path. Re-run T3, T4 on Haiku and
+Qwen3-Coder to confirm the syntax is picked up and collisions disappear.
 
 ## Open questions
 

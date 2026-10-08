@@ -16,7 +16,7 @@ in chapter 12. Each is a compile error.
    `submit={Comment { post: id }}`. Only a message declared with `{ }` is
    written bare.
 6. Actions shared by every page (log out, theme) are declared once, in
-   `App`. Declaring the same route on two pages is a collision.
+   `App`, and sent as `App.Logout` from any page.
 7. A shared component outside a page module is typed `Html a`, never
    `Html Msg`.
 8. `Date.format` takes a `Date`; `Time.format` takes a `Time`. Convert with

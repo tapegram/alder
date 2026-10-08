@@ -21,8 +21,8 @@ form EditTodo = {
   due: Maybe Date,
 }
 
-msg Save = "/todos/{id}/save" { id: Todo.TodoId } form EditTodo
-msg Delete = "/todos/{id}/delete" { id: Todo.TodoId }
+msg Save { id: Todo.TodoId } form EditTodo
+msg Delete { id: Todo.TodoId }
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
