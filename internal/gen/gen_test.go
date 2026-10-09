@@ -741,3 +741,97 @@ m = Maybe.isJust (nada 1)
 	)
 	vet(t, files)
 }
+
+// runGo writes the emitted files and a Go test file (package app) into a temporary module and
+// runs `go test` there: the generated code must not only vet but compute the right values.
+func runGo(t *testing.T, files map[string][]byte, test string) {
+	t.Helper()
+	dir := t.TempDir()
+	for name, b := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "run_test.go"), []byte(test), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "test", "-count=1", "./...")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "GOPROXY=off", "GOTOOLCHAIN=local")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		var src strings.Builder
+		for _, name := range mapsKeys(files) {
+			fmt.Fprintf(&src, "==== %s\n%s\n", name, files[name])
+		}
+		t.Fatalf("go test of the generated code failed: %v\n%s\n%s", err, out, src.String())
+	}
+}
+
+// Arithmetic on constants is evaluated at run time with Alder's semantics (C8): Int wraps on
+// overflow, `/` truncates toward zero, `%` takes the dividend's sign, Int division by zero
+// panics, Float division by zero is infinite.
+func TestGen_RunArithmetic(t *testing.T) {
+	files := emitSource(t, map[string]string{"M.alder": `module M
+
+big : Int
+big = 9223372036854775807 + 1
+
+prod : Int
+prod = 4611686018427387904 * 2 + 0
+
+quot : Int
+quot = -7 / 2
+
+rem : Int
+rem = -7 % 2
+
+nested : Int
+nested = 1 + 2 * 3
+
+crash : Int -> Int
+crash n = n + 1 / 0
+
+crashMod : Int -> Int
+crashMod n = n % 0
+
+inf : Float
+inf = 1.0 / 0.0
+`})
+	contains(t, files["M.go"],
+		"var M__big int64 = rt.Int(9223372036854775807) + 1",
+		"return n + rt.Int(1)/rt.Int(0)",
+		"return n % rt.Int(0)",
+		"var M__inf float64 = rt.Float(1.0) / rt.Float(0.0)",
+	)
+	runGo(t, files, `package app
+
+import (
+	"math"
+	"testing"
+)
+
+func panics(f func()) (p bool) {
+	defer func() { p = recover() != nil }()
+	f()
+	return false
+}
+
+func TestArithmetic(t *testing.T) {
+	if M__big != math.MinInt64 {
+		t.Errorf("big = %d", M__big)
+	}
+	if M__prod != math.MinInt64 {
+		t.Errorf("prod = %d", M__prod)
+	}
+	if M__quot != -3 || M__rem != -1 || M__nested != 7 {
+		t.Errorf("quot, rem, nested = %d, %d, %d", M__quot, M__rem, M__nested)
+	}
+	if !math.IsInf(M__inf, 1) {
+		t.Errorf("inf = %v", M__inf)
+	}
+	if !panics(func() { M__crash(1) }) || !panics(func() { M__crashMod(1) }) {
+		t.Error("Int division by zero did not panic")
+	}
+}
+`)
+}

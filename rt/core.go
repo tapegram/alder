@@ -305,3 +305,12 @@ func DateCmp(a, b Date) int {
 
 // TimeCmp orders instants like DateCmp: the emitter uses it for ordered comparisons on Time.
 func TimeCmp(a, b time.Time) int { return a.Compare(b) }
+
+// Int is the identity on Int. The emitter routes a literal through it where Go would otherwise
+// evaluate an operator at compile time (`9223372036854775807 + 1`, `1 / 0`): Alder's Int
+// arithmetic wraps on overflow and fails at run time on division by zero, and Go only does that
+// for values, not constants.
+func Int(n int64) int64 { return n }
+
+// Float is the identity on Float, for the same purpose as Int (`1.0 / 0.0` is +Inf at run time).
+func Float(f float64) float64 { return f }

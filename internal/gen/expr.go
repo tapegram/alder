@@ -201,16 +201,11 @@ func (f *fn) typedExpr(e ir.Expr, s *scope) string {
 	return c
 }
 
-// untypedInt reports whether e is emitted as an untyped Go integer constant.
+// untypedInt reports whether e is emitted as an untyped Go integer constant: an Int literal.
+// (An operator on two literals routes one through rt.Int, so it is typed: see binary.)
 func untypedInt(e ir.Expr) bool {
-	switch x := e.(type) {
-	case *ir.Lit:
-		return x.Kind == ir.LitInt
-	case *ir.Op:
-		_, arith := map[string]bool{"+": true, "-": true, "*": true, "/": true, "%": true}[x.Kind]
-		return arith && untypedInt(x.L) && untypedInt(x.R)
-	}
-	return false
+	x, ok := e.(*ir.Lit)
+	return ok && x.Kind == ir.LitInt
 }
 
 // expr is e as a Go expression and its precedence.
@@ -629,9 +624,53 @@ func (f *fn) op(x *ir.Op, s *scope) (string, int) {
 	return f.binary(x.Kind, x, s)
 }
 
+// binary emits a Go binary operator.
+//
+// Go evaluates an operator on constants at compile time and rejects what Alder defines at run
+// time: `9223372036854775807 + 1` overflows (Alder wraps) and `1 / 0` divides by zero (Alder
+// fails when it runs). So the emitter keeps Go from folding: when both operands of an arithmetic
+// operator are constant expressions, its left literal goes through the identity rt.Int (or
+// rt.Float), which makes it a value; and the literal divisor of `/` or `%` always does.
 func (f *fn) binary(op string, x *ir.Op, s *scope) (string, int) {
 	p := binPrec[op]
-	return f.operand(x.L, s, p) + " " + op + " " + f.operand(x.R, s, p+1), p
+	l, r := f.operand(x.L, s, p), f.operand(x.R, s, p+1)
+	if arith[op] {
+		if constExpr(x.L) && constExpr(x.R) {
+			l = numValue(x.L, l)
+		}
+		if op == "/" || op == "%" {
+			r = numValue(x.R, r)
+		}
+	}
+	return l + " " + op + " " + r, p
+}
+
+var arith = map[string]bool{"+": true, "-": true, "*": true, "/": true, "%": true}
+
+// constExpr reports whether e is an Alder constant expression: a number literal, or an arithmetic
+// operator on two of them.
+func constExpr(e ir.Expr) bool {
+	switch x := e.(type) {
+	case *ir.Lit:
+		return x.Kind == ir.LitInt || x.Kind == ir.LitFloat
+	case *ir.Op:
+		return arith[x.Kind] && constExpr(x.L) && constExpr(x.R)
+	}
+	return false
+}
+
+// numValue is code c of e routed through rt.Int or rt.Float when e is a number literal.
+func numValue(e ir.Expr, c string) string {
+	if l, ok := e.(*ir.Lit); ok {
+		v, _ := lit(l)
+		switch l.Kind {
+		case ir.LitInt:
+			return "rt.Int(" + v + ")"
+		case ir.LitFloat:
+			return "rt.Float(" + v + ")"
+		}
+	}
+	return c
 }
 
 const (

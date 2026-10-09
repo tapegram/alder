@@ -18,6 +18,18 @@
 There is no `Char` and no `String`: text is `Text`. There is no tuple: use
 a record.
 
+## Int
+
+`Int` is a 64-bit two's-complement integer. Arithmetic that goes past the
+largest or smallest `Int` wraps around: `9223372036854775807 + 1` is
+`-9223372036854775808`. `/` truncates toward zero (`-7 / 2` is `-3`), and
+`%` has the sign of the dividend (`-7 % 2` is `-1`). Dividing an `Int` by
+zero, with `/` or `%`, is a runtime failure: the program stops where it
+happens (later milestones turn it into a failed task). This holds for
+constants too; `1 / 0` compiles and fails when it runs.
+
+`Float` is a 64-bit IEEE float: `1.0 / 0.0` is infinity, not a failure.
+
 ## Type signatures
 
 Every top-level value and function has a signature on the line before it.

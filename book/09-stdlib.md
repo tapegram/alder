@@ -93,6 +93,10 @@ Float.min, Float.max, Float.abs
 Float.format : { decimals: Int } -> Float -> Text
 ```
 
+`Int` arithmetic wraps on overflow; `/` truncates toward zero and `%` has
+the dividend's sign; an `Int` division or remainder by zero is a runtime
+failure (chapter 4). `Float` division by zero gives infinity or NaN.
+
 ## Bool
 
 ```alder
