@@ -43,6 +43,7 @@ view model session =
         <Input field="name" label="Name" />
         <Errors field="name" />
         <button>Add</button>
+        <button click={App.Reset}>Reset</button>
       </form>
       <ul id="names">{for n in model.names -> <li>{n.name}</li>}</ul>
       <p id="adds">{Text.fromInt session.n}</p>

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"alder/rt"
 	"alder/rt/datastar"
 	"alder/rt/html"
 )
@@ -28,10 +29,11 @@ func sessionCookie(t *testing.T, w *httptest.ResponseRecorder) *http.Cookie {
 
 func TestResponse_PageFullHTML(t *testing.T) {
 	key := []byte("test-secret-test-secret")
-	st := &html.FormState{Form: "f", Values: map[string]string{"title": "kept"}}
+	add := rt.MsgRef{Module: "M", Msg: "Add"}
+	st := &html.FormState{Form: "f", Msg: add.Key(), Values: map[string]string{"title": "kept"}}
 	page := html.El("html", nil,
 		html.El("head", []html.Attr{html.A("lang", "en")}, html.El("title", nil, html.Text("T"))),
-		html.El("body", nil, html.Input(html.Control{Kind: "input", Form: "f", Name: "title", Type: "text"})))
+		html.El("body", nil, html.FormTo(add, nil, html.Input(html.Control{Kind: "input", Form: "f", Name: "title", Type: "text"}))))
 	h := NewRouter(one("GET", "/", func(rq *Request) Response {
 		return PageResponse(page, st, testSession{User: "ada"}, false)
 	}), testOpts(func(o *Options) { o.Now = func() time.Time { return time.Unix(1000, 0) } }))

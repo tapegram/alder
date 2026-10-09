@@ -3,15 +3,19 @@ package html
 import "alder/rt"
 
 // FormState is what a re-render after a failed form decode or a Reject carries. Form is the
-// Alder form's name ("NewTodo"); Values are the submitted raw strings by field name (an
-// unchecked checkbox is simply absent, as browsers do not submit it); Errors are the messages by
-// field name; FormError is the form-level message (the Reject text, or ""). rt/web must never
-// put a Secret field's value in Values; the renderer ignores it anyway.
+// Alder form's name ("Todos.Index.NewTodo") and Msg the key of the message that posted it
+// (rt.MsgKey: its path and its own parameters, as sent); Values are the submitted raw strings by
+// field name (an unchecked checkbox is simply absent, as browsers do not submit it); Errors are
+// the messages by field name; FormError is the form-level message (the Reject text, or "").
+// rt/web must never put a Secret field's value in Values; the renderer ignores it anyway.
 //
-// A FormState applies only to controls whose Control.Form equals its Form: every other form on
-// the page renders its initial values and empty error lists, exactly as Render does.
+// A FormState applies only to the controls of form Form inside the <form> that posts message
+// Msg (FormTo, whose MsgRef.Key equals it): every other form on the page — another form type, or
+// a per-row form of the same type posting another row's message — renders its initial values
+// and empty error lists, exactly as Render does. A state without Form or Msg matches no control.
 type FormState struct {
 	Form      string
+	Msg       string
 	Values    map[string]string
 	Errors    map[string][]string
 	FormError string
@@ -39,14 +43,13 @@ type Control struct {
 
 // Input is a deferred form control: it is built when rendered. Without a matching FormState it
 // renders a <label> holding the label text and the control with its initial Value, or for
-// "errors" an empty <ul class="errors" data-errors="field|form">. With a FormState whose Form
-// equals c.Form, the control's value is the submitted one (st.Values[Name]; for a checkbox,
+// "errors" an empty <ul class="errors" data-errors="field|form">. With a FormState that matches
+// it (FormState: its Form equals c.Form, its Msg the enclosing form's), the control's value is the submitted one (st.Values[Name]; for a checkbox,
 // "True" checks it) and the error list holds one <li> per message (st.Errors[Name], or
 // st.FormError for `<Errors form />`). Submitted values and messages are escaped like any text.
 func Input(c Control) Node { return Node{kind: kCtrl, control: &c} }
 
-func (c *Control) build(st *FormState) Node {
-	active := st != nil && st.Form == c.Form
+func (c *Control) build(st *FormState, active bool) Node {
 	if c.Kind == "errors" {
 		scope := "form"
 		var msgs []string

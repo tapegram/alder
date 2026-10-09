@@ -88,16 +88,17 @@ func TestHTML_Form(t *testing.T) {
 }
 
 // A message attribute resolves to its URL at render time, carrying the rendered page's
-// parameters under the _p. prefix; without a state it has none.
+// parameters under the _p. prefix; without a state it has none. (A <button> with a click
+// renders as a click button: TestRender_ClickButtons.)
 func TestMsgAttr(t *testing.T) {
 	m := rt.MsgRef{Module: "M", Msg: "Save", Params: []rt.KV{{Key: "id", Value: "1"}}}
-	n := FormTo(m, []Attr{A("class", "f")}, El("button", []Attr{MsgAttr("data-on:click", rt.MsgRef{Module: "App", Msg: "Logout"})}))
-	want := `<form method="post" action="/_m/M/Save?id=1" data-on:submit="@post(&#39;/_m/M/Save?id=1&#39;, {contentType: &#39;form&#39;})" class="f"><button data-on:click="@post(&#39;/_m/App/Logout&#39;)"></button></form>`
+	n := FormTo(m, []Attr{A("class", "f")}, El("span", []Attr{MsgAttr("data-on:click", rt.MsgRef{Module: "App", Msg: "Logout"})}))
+	want := `<form method="post" action="/_m/M/Save?id=1" data-on:submit="@post(&#39;/_m/M/Save?id=1&#39;, {contentType: &#39;form&#39;})" class="f"><span data-on:click="@post(&#39;/_m/App/Logout&#39;)"></span></form>`
 	if got := Render(n); got != want {
 		t.Errorf("Render =\n%s\nwant\n%s", got, want)
 	}
 	st := &FormState{PageParams: []rt.KV{{Key: "filter", Value: "Active"}, rt.QueryKV("q", "", "")}}
-	want = `<form method="post" action="/_m/M/Save?id=1&amp;_p.filter=Active" data-on:submit="@post(&#39;/_m/M/Save?id=1&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;})" class="f"><button data-on:click="@post(&#39;/_m/App/Logout?_p.filter=Active&#39;)"></button></form>`
+	want = `<form method="post" action="/_m/M/Save?id=1&amp;_p.filter=Active" data-on:submit="@post(&#39;/_m/M/Save?id=1&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;})" class="f"><span data-on:click="@post(&#39;/_m/App/Logout?_p.filter=Active&#39;)"></span></form>`
 	if got := RenderWith(n, st); got != want {
 		t.Errorf("RenderWith =\n%s\nwant\n%s", got, want)
 	}

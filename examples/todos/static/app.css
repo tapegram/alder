@@ -35,6 +35,12 @@ select {
   margin-left: 0.5rem;
 }
 
+/* A `click` button is wrapped in a form of its own (so it works without JavaScript); keep it in
+   line with the text around it. */
+form._alder-click {
+  display: inline;
+}
+
 button {
   font: inherit;
   margin: 0.25rem 0.5rem 0.25rem 0;

@@ -21,9 +21,10 @@ import (
 //	                                URL the page renders (rt.MsgRef.URL: "_p.<name>" keys)
 //	page__M(rq, params, keep)       `requires` (a 303 to App.login storing keep), then load (a
 //	                                failure's response also stores keep)
-//	update__M(rq, params, msg, st)  load, update, and the Nav: Rerender → load, view, patched
-//	                                under Datastar; Redirect p → 303; Reject t → as Rerender with
-//	                                t on the form state st
+//	update__M(rq, params, msg, st)  load, update, and the Nav: Rerender → under Datastar load,
+//	                                view, patched; else a 303 to the page (rt.PageAt: PRG);
+//	                                Redirect p → 303; Reject t → load, view with t on the form
+//	                                state st (patched under Datastar)
 //	Route__M__page()                GET <path>: decode (404), page__M, view
 //	Route__M__<Msg>()               POST /_m/M/<Msg>: decode the page's parameters (the query's
 //	                                "_p." keys: rt.PageParams; 404 without them) and the message's
@@ -31,7 +32,8 @@ import (
 //
 // and for App's messages update__App (Rerender and Reject redirect back to the Referer) and
 // Route__App__<Msg>. Routes lists every route: pages, then messages. The book's request
-// lifecycle (chapter 6) is the order of these steps.
+// lifecycle (chapter 6) is the order of these steps. Under Datastar rt/web turns every 303 into
+// an SSE event navigating the browser (datastar.Navigate).
 //
 // A decoder reads each field with the rt/web helpers (web.Text, Int, Float, Date, Bool, Enum)
 // and collects web.FieldErrors:
@@ -153,7 +155,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	keep := func(k string) string { return ", " + k }
 	g.paramsKVs(b, pg)
 	if hasUpdate {
-		b.WriteString(comment(fmt.Sprintf("%s runs page %s's update for msg and answers its Nav (book 06): load, update (a Task, whose session is stored when it succeeds), then for Rerender load and view again (patched into the page under Datastar), for Redirect p a 303 to p, for Reject t the same as Rerender with t on the form that sent the message (st, nil for a message without one). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound.", updateFunc(m), m)))
+		b.WriteString(comment(fmt.Sprintf("%s runs page %s's update for msg and answers its Nav (book 06): load, update (a Task, whose session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on a form (st, the state of the form that sent the message; nil for a message without one) load and view again with t on the form (patched into the page under Datastar); for Rerender (and a Reject without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh does not post again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound.", updateFunc(m), m)))
 		fmt.Fprintf(b, `func %[1]s(rq *web.Request, params %[2]s, msg %[3]s, st *html.FormState) web.Response {
 	model, session, stop := %[4]s(rq, params%[5]s)
 	if stop != nil {
@@ -168,6 +170,8 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
 	case nav.Tag == rt.NavReject && st != nil:
 		st.FormError = nav.Text
+	case !rq.Datastar:
+		return web.RedirectResponse(rt.PageAt(%[10]s, %[9]s(params)), rq.Env.Session)
 	default:
 		st = &html.FormState{}
 	}
@@ -179,7 +183,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	return web.PageResponse(%[8]s(model, session), st, rq.Env.Session, true)
 }
 
-`, updateFunc(m), GoName(m, "Params"), GoName(m, "Msg"), pageFunc(m), keep("nil"), GoName(m, "update"), keep("rq.Env.Session"), GoName(m, "view"), paramsFunc(m))
+`, updateFunc(m), GoName(m, "Params"), GoName(m, "Msg"), pageFunc(m), keep("nil"), GoName(m, "update"), keep("rq.Env.Session"), GoName(m, "view"), paramsFunc(m), strconv.Quote(pg.Path))
 	}
 
 	// the GET route
@@ -278,6 +282,7 @@ if errs != nil {
 	if msg.Form != nil {
 		f := msg.Form
 		formName := strconv.Quote(f.Module + "." + f.Name)
+		key := "rt.MsgKey(" + strconv.Quote(msgPath(m, msg.Name)) + ", rq.Query)"
 		args := []string{"rq.Form"}
 		for _, fd := range f.Record.Fields {
 			if isSecret(fd.Brand) {
@@ -286,8 +291,8 @@ if errs != nil {
 		}
 		fmt.Fprintf(b, "values := route__values(%s)\nform, errs := %s(rq.Form)\nif errs != nil {\n%s}\np.Form = form\n",
 			strings.Join(args, ", "), decodeName(f.Module, f.Name),
-			formErr(formName, "&html.FormState{Form: "+formName+", Values: values, Errors: route__errors(errs), PageParams: "+paramsFunc(m)+"(params)}"))
-		st = "&html.FormState{Form: " + formName + ", Values: values}"
+			formErr(formName, "&html.FormState{Form: "+formName+", Msg: "+key+", Values: values, Errors: route__errors(errs), PageParams: "+paramsFunc(m)+"(params)}"))
+		st = "&html.FormState{Form: " + formName + ", Msg: " + key + ", Values: values}"
 	}
 	b.WriteString(run(value, st))
 }

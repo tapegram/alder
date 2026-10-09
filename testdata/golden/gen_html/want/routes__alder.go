@@ -119,10 +119,11 @@ func params__M(p M__Params) []rt.KV {
 }
 
 // update__M runs page M's update for msg and answers its Nav (book 06): load, update (a Task, whose
-// session is stored when it succeeds), then for Rerender load and view again (patched into the page
-// under Datastar), for Redirect p a 303 to p, for Reject t the same as Rerender with t on the form
-// that sent the message (st, nil for a message without one). A failed Task changes nothing: 500
-// (App.error), or 404 for Query.notFound.
+// session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on a form (st,
+// the state of the form that sent the message; nil for a message without one) load and view again
+// with t on the form (patched into the page under Datastar); for Rerender (and a Reject without a
+// form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh does not post
+// again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound.
 func update__M(rq *web.Request, params M__Params, msg M__Msg, st *html.FormState) web.Response {
 	model, session, stop := page__M(rq, params, nil)
 	if stop != nil {
@@ -137,6 +138,8 @@ func update__M(rq *web.Request, params M__Params, msg M__Msg, st *html.FormState
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
 	case nav.Tag == rt.NavReject && st != nil:
 		st.FormError = nav.Text
+	case !rq.Datastar:
+		return web.RedirectResponse(rt.PageAt("/m/{id}", params__M(params)), rq.Env.Session)
 	default:
 		st = &html.FormState{}
 	}
@@ -186,10 +189,10 @@ func Route__M__Save() web.Route {
 			if stop != nil {
 				return *stop
 			}
-			return web.PageResponse(M__view(model, session), &html.FormState{Form: "M.Note", Values: values, Errors: route__errors(errs), PageParams: params__M(params)}, nil, true)
+			return web.PageResponse(M__view(model, session), &html.FormState{Form: "M.Note", Msg: rt.MsgKey("/_m/M/Save", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__M(params)}, nil, true)
 		}
 		p.Form = form
-		return update__M(rq, params, M__Msg__Save__(p), &html.FormState{Form: "M.Note", Values: values})
+		return update__M(rq, params, M__Msg__Save__(p), &html.FormState{Form: "M.Note", Msg: rt.MsgKey("/_m/M/Save", rq.Query), Values: values})
 	}}
 }
 

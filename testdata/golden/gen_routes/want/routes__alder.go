@@ -92,10 +92,11 @@ func params__Edit(p Edit__Params) []rt.KV {
 }
 
 // update__Edit runs page Edit's update for msg and answers its Nav (book 06): load, update (a Task,
-// whose session is stored when it succeeds), then for Rerender load and view again (patched into
-// the page under Datastar), for Redirect p a 303 to p, for Reject t the same as Rerender with t on
-// the form that sent the message (st, nil for a message without one). A failed Task changes
-// nothing: 500 (App.error), or 404 for Query.notFound.
+// whose session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on a form
+// (st, the state of the form that sent the message; nil for a message without one) load and view
+// again with t on the form (patched into the page under Datastar); for Rerender (and a Reject
+// without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh
+// does not post again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound.
 func update__Edit(rq *web.Request, params Edit__Params, msg Edit__Msg, st *html.FormState) web.Response {
 	model, session, stop := page__Edit(rq, params, nil)
 	if stop != nil {
@@ -110,6 +111,8 @@ func update__Edit(rq *web.Request, params Edit__Params, msg Edit__Msg, st *html.
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
 	case nav.Tag == rt.NavReject && st != nil:
 		st.FormError = nav.Text
+	case !rq.Datastar:
+		return web.RedirectResponse(rt.PageAt("/edit/{n}", params__Edit(params)), rq.Env.Session)
 	default:
 		st = &html.FormState{}
 	}
@@ -159,10 +162,10 @@ func Route__Edit__Save() web.Route {
 			if stop != nil {
 				return *stop
 			}
-			return web.PageResponse(Edit__view(model, session), &html.FormState{Form: "Edit.Note", Values: values, Errors: route__errors(errs), PageParams: params__Edit(params)}, nil, true)
+			return web.PageResponse(Edit__view(model, session), &html.FormState{Form: "Edit.Note", Msg: rt.MsgKey("/_m/Edit/Save", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Edit(params)}, nil, true)
 		}
 		p.Form = form
-		return update__Edit(rq, params, Edit__Msg__Save__(p), &html.FormState{Form: "Edit.Note", Values: values})
+		return update__Edit(rq, params, Edit__Msg__Save__(p), &html.FormState{Form: "Edit.Note", Msg: rt.MsgKey("/_m/Edit/Save", rq.Query), Values: values})
 	}}
 }
 

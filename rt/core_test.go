@@ -300,3 +300,36 @@ func TestBackURL(t *testing.T) {
 		}
 	}
 }
+
+// PageAt rebuilds a page's URL from its pattern and its parameters as text: path parameters
+// escaped into their segments, the others as the query, defaults left out (I2's PRG target).
+func TestPageAt(t *testing.T) {
+	for _, c := range []struct {
+		pattern string
+		params  []KV
+		want    string
+	}{
+		{"/", nil, "/"},
+		{"/", []KV{QueryKV("filter", "All", "All")}, "/"},
+		{"/", []KV{QueryKV("filter", "Active", "All")}, "/?filter=Active"},
+		{"/todos/{id}", []KV{{Key: "id", Value: "a/b c"}}, "/todos/a%2Fb%20c"},
+		{"/u/{u}/p/{p}", Queries([]KV{{Key: "p", Value: "2"}, {Key: "u", Value: "x"}}, QueryKVs("tag", []string{"a", "b"})), "/u/x/p/2?tag=a&tag=b"},
+	} {
+		if got := PageAt(c.pattern, c.params); got != c.want {
+			t.Errorf("PageAt(%q, %v) = %q, want %q", c.pattern, c.params, got, c.want)
+		}
+	}
+}
+
+// MsgRef.Key and MsgKey agree: the form as rendered and the message as its route receives it
+// (page parameters ignored, keys in any order).
+func TestMsgKey(t *testing.T) {
+	m := MsgRef{Module: "Items", Msg: "Rename", Params: Queries([]KV{{Key: "id", Value: "a b"}, QueryKV("n", "", "")}, QueryKVs("t", []string{"x", "y"}))}
+	q, _ := url.ParseQuery(strings.SplitN(m.URL([]KV{{Key: "filter", Value: "All"}}), "?", 2)[1])
+	if got, want := MsgKey("/_m/Items/Rename", q), m.Key(); got != want || want != "/_m/Items/Rename?id=a+b&t=x&t=y" {
+		t.Fatalf("MsgKey %q, Key %q", got, want)
+	}
+	if (MsgRef{Module: "A", Msg: "B"}).Key() != "/_m/A/B" || MsgKey("/_m/A/B", url.Values{"_p.x": {"1"}}) != "/_m/A/B" {
+		t.Fatal("a message without parameters")
+	}
+}

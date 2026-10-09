@@ -440,14 +440,18 @@ func TestE2E_Todos(t *testing.T) {
 	}
 	id := m[0][1]
 	toggle := msgURL(t, r.body, "/_m/Todos.Index/Toggle", id)
-	r.want(t, 200, `<li class=""><button data-on:click="@post(&#39;/_m/Todos.Index/Toggle?id=`+url.QueryEscape(id))
+	// a click button works without JavaScript: a form of its own posting the message, which
+	// Datastar posts on submit
+	q := url.QueryEscape(id)
+	r.want(t, 200, `<li class=""><form method="post" action="/_m/Todos.Index/Toggle?id=`+q+`" class="_alder-click" data-on:submit="@post(&#39;/_m/Todos.Index/Toggle?id=`+q+`&#39;, {contentType: &#39;form&#39;})"><button type="submit">Done</button></form>`)
 
-	// 7. Toggle under Datastar: an SSE patch of <body> with the toggled row; without: the page
+	// 7. Toggle under Datastar: an SSE patch of <body> with the toggled row; without: a 303 to the
+	// page
 	r = e.do("POST", toggle, nil, datastarHdr)
 	r.sse(t)
 	for _, f := range []string{
-		`<ul id="todos"><li class="done"><button data-on:click="@post(&#39;/_m/Todos.Index/Toggle?id=` + url.QueryEscape(id),
-		`>Undo</button><a href="/todos/` + id + `">Milk</a>`,
+		`<ul id="todos"><li class="done"><form method="post" action="/_m/Todos.Index/Toggle?id=` + q + `" class="_alder-click"`,
+		`>Undo</button></form><a href="/todos/` + id + `">Milk</a>`,
 		`<p id="summary">0 open</p>`,
 	} {
 		if !strings.Contains(r.body, f) {
@@ -458,22 +462,24 @@ func TestE2E_Todos(t *testing.T) {
 		t.Fatalf("patch carries the document:\n%s", r.body)
 	}
 	r.cookieSet(t)
-	// from the Completed view (the todo is done): a full page re-render
+	// from the Completed view (the todo is done), without JavaScript: the browser posts the
+	// click button's form; the Rerender is a 303 back to the page (Post/Redirect/Get), which
+	// shows the toggle
 	r = e.do("GET", "/?filter=Completed", nil)
 	r.want(t, 200, `>Undo</button>`)
 	toggle = msgURL(t, r.body, "/_m/Todos.Index/Toggle", id)
-	r = e.do("POST", toggle, nil)
-	r.want(t, 200, `<h1>Todos</h1>`)
-	r.html(t)
+	r = e.do("POST", toggle, url.Values{})
+	r.redirect(t, "/?filter=Completed")
 	r.cookieSet(t)
 	t.Run("RerenderKeepsFilter", func(t *testing.T) {
 		if !strings.Contains(toggle, "_p.filter=Completed") {
 			t.Fatalf("the Toggle URL does not carry the page's filter: %s", toggle)
 		}
+		r := e.do("GET", "/?filter=Completed", nil)
 		r.want(t, 200, `<a href="/?filter=Completed" aria-current="page">Completed</a>`, `<ul id="todos"></ul>`, `<p id="summary">0 open</p>`)
 	})
 	r = e.do("GET", "/", nil)
-	r.want(t, 200, `<li class=""><button`, `>Done</button><a href="/todos/`+id+`">Milk</a>`, `<p id="summary">1 open</p>`)
+	r.want(t, 200, `<li class=""><form`, `>Done</button></form><a href="/todos/`+id+`">Milk</a>`, `<p id="summary">1 open</p>`)
 	r = e.do("GET", "/?filter=Completed", nil)
 	r.want(t, 200, `<ul id="todos"></ul>`)
 
@@ -485,12 +491,12 @@ func TestE2E_Todos(t *testing.T) {
 	r.want(t, 404, `<title>Not found</title>`, `<h1>Not found</h1>`)
 	r.html(t)
 
-	// 9. Delete (from the list): the re-rendered list is empty, and stays empty
+	// 9. Delete (from the list, under Datastar): the patched list is empty, and stays empty
 	r = e.do("GET", "/", nil)
 	del := msgURL(t, r.body, "/_m/Todos.Index/Delete", id)
-	r = e.do("POST", del, nil)
+	r = e.do("POST", del, nil, datastarHdr)
+	r.sse(t)
 	r.want(t, 200, `<ul id="todos"></ul>`, `<p id="summary">0 open</p>`)
-	r.html(t)
 	r.lacks(t, "Milk")
 	r = e.do("GET", "/", nil)
 	r.want(t, 200, `<ul id="todos"></ul>`)

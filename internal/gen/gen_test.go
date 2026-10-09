@@ -2064,8 +2064,8 @@ func TestGen_Routes(t *testing.T) {
 // the page's from those only, the message's from the other keys, the form from the body — so
 // a page id, a message id and a form field id decode independently, a re-render keeps the
 // page's query parameters, and a URL without the page's path parameter is a 404. A List
-// message parameter is one key per element and round-trips. A Rerender whose re-load fails
-// still stores the session the Task left. The session cookie stores unions by name.
+// message parameter is one key per element and round-trips. Without Datastar a Rerender is a
+// 303 to the page (PRG). A Rerender whose re-load fails still stores the session the Task left. The session cookie stores unions by name.
 func TestDecode_ParamsAndFormDontMix(t *testing.T) {
 	files := emitSource(t, map[string]string{
 		"App.alder": `module App
@@ -2163,8 +2163,8 @@ func TestMix(t *testing.T) {
 	w := do("GET", "/m/p0?filter=x", "")
 	for _, want := range []string{
 		"<p>p0 x</p>",
-		"@post(&#39;/_m/M/Ping?_p.id=p0&amp;_p.filter=x&#39;)",
-		"@post(&#39;/_m/M/Pick?ids=1&amp;ids=2&amp;_p.id=p0&amp;_p.filter=x&#39;)",
+		`+"`"+`<form method="post" action="/_m/M/Ping?_p.id=p0&amp;_p.filter=x" class="_alder-click"`+"`"+`,
+		`+"`"+`<form method="post" action="/_m/M/Pick?ids=1&amp;ids=2&amp;_p.id=p0&amp;_p.filter=x" class="_alder-click"`+"`"+`,
 		`+"`"+`action="/_m/M/Save?id=m1&amp;_p.id=p0&amp;_p.filter=x"`+"`"+`,
 	} {
 		if w.Code != 200 || !strings.Contains(w.Body.String(), want) {
@@ -2172,7 +2172,7 @@ func TestMix(t *testing.T) {
 		}
 	}
 	// at its default a page parameter is left out
-	if w := do("GET", "/m/p0", ""); !strings.Contains(w.Body.String(), "@post(&#39;/_m/M/Ping?_p.id=p0&#39;)") {
+	if w := do("GET", "/m/p0", ""); !strings.Contains(w.Body.String(), `+"`"+`action="/_m/M/Ping?_p.id=p0"`+"`"+`) {
 		t.Fatalf("GET at the default filter: %s", w.Body.String())
 	}
 	// page id, message id and form id are three values
@@ -2190,6 +2190,11 @@ func TestMix(t *testing.T) {
 		!strings.Contains(w.Body.String(), "/_m/M/Ping?_p.id=p0&amp;_p.filter=x") {
 		t.Fatalf("Ping: %d %s", w.Code, w.Body.String())
 	}
+	// without Datastar a Rerender is a 303 back to the page, its parameters kept (PRG)
+	w = do("POST", "/_m/M/Ping?_p.id=p%2F0&_p.filter=x", "")
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/m/p%2F0?filter=x" {
+		t.Fatalf("Ping without Datastar: %d %q", w.Code, w.Header().Get("Location"))
+	}
 	// no page path parameter: 404 (the Referer is not consulted)
 	if w := do("POST", "/_m/M/Ping?id=p0", "", "Referer: http://h/m/p0"); w.Code != http.StatusNotFound {
 		t.Fatalf("Ping without _p.id: %d", w.Code)
@@ -2198,10 +2203,16 @@ func TestMix(t *testing.T) {
 	if w := do("POST", "/_m/M/Pick?ids=1&ids=2&_p.id=p0", ""); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/o?a=1%2C2&b=p0" {
 		t.Fatalf("Pick: %d %q", w.Code, w.Header().Get("Location"))
 	}
-	// the Task stored n = 1, then the re-load is Query.notFound: 404, and the session is stored
+	// without Datastar the Task stores n = 1 on its 303 (the page then 404s)
 	w = do("POST", "/_m/M/Vanish?_p.id=p0", "")
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/m/p0" || !strings.HasPrefix(w.Header().Get("Set-Cookie"), web.CookieName+"=") {
+		t.Fatalf("Vanish without Datastar: %d %q %q", w.Code, w.Header().Get("Location"), w.Header().Get("Set-Cookie"))
+	}
+	// under Datastar the Task stored n = 1, then the re-load is Query.notFound: 404 (patched),
+	// and the session is stored
+	w = do("POST", "/_m/M/Vanish?_p.id=p0", "", "Datastar-Request: true")
 	sc := w.Header().Get("Set-Cookie")
-	if w.Code != http.StatusNotFound || !strings.HasPrefix(sc, web.CookieName+"=") {
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "not found") || !strings.HasPrefix(sc, web.CookieName+"=") {
 		t.Fatalf("Vanish: %d, Set-Cookie %q", w.Code, sc)
 	}
 	v, _, _ := strings.Cut(strings.TrimPrefix(sc, web.CookieName+"="), ";")
@@ -2327,7 +2338,7 @@ func TestBrands(t *testing.T) {
 	if _, errs := decode__M__F(url.Values{"slug": {"abc"}, "age": {"x"}, "email": {"a@b.c"}, "name": {"x"}, "pw": {"p"}, "n": {"1"}, "plain": {""}}); !reflect.DeepEqual(errs, []web.FieldError{{Field: "age", Message: web.MsgInt}}) {
 		t.Fatalf("malformed Int: %v", errs)
 	}
-	page := html.RenderWith(M__view(M__Model{}, App__Session{}), &html.FormState{Form: "M.F", Values: map[string]string{"slug": "A1"}, Errors: map[string][]string{}})
+	page := html.RenderWith(M__view(M__Model{}, App__Session{}), &html.FormState{Form: "M.F", Msg: "/_m/M/Save", Values: map[string]string{"slug": "A1"}, Errors: map[string][]string{}})
 	if !strings.Contains(page, `+"`"+`<input name="pw" type="password" required />`+"`"+`) || !strings.Contains(page, `+"`"+`value="A1"`+"`"+`) {
 		t.Fatalf("view: %s", page)
 	}
@@ -2414,6 +2425,100 @@ func TestLinks(t *testing.T) {
 	page := html.Render(I__view(I__Model{}, App__Session{}))
 	if !strings.Contains(page, `+"`"+`<a href="/">x</a><a href="/?filter=Active">x</a>`+"`"+`) {
 		t.Fatalf("links: %s", page)
+	}
+}
+`)
+}
+
+// Per-row forms of one form type (I1, the reviewer's adv3): a Reject (or a form error) shows on
+// the row whose form posted the message, not on every form of that type; a plain GET shows the
+// state nowhere.
+func TestGen_FormStatePerRow(t *testing.T) {
+	files := emitSource(t, map[string]string{
+		"App.alder": `module App
+
+session { user: Maybe Text }
+
+login = P
+
+error : Error -> Html Never
+error err = <html><head><title>E</title></head><body><p>error</p></body></html>
+
+notFound : Html Never
+notFound = <html><head><title>NF</title></head><body><p>nf</p></body></html>
+`,
+		"P.alder": `module P
+
+page "/" { }
+
+type Model = { rows: List Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { rows: ["a", "b", "c"] }
+
+form Rename = { title: Text.NonEmpty }
+
+msg Save { row: Text } form Rename
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> Task.succeed (Reject ("bad " ++ p.row))
+}
+
+view : Model -> Session -> Html Msg
+view model session = <html><head><title>P</title></head><body>
+  {for r in model.rows -> <form submit={Save { row: r }}><Errors form /><Input field="title" label={r} /><Errors field="title" /><button>s</button></form>}
+</body></html>
+`,
+	})
+	runGo(t, files, `package app
+
+import (
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestRows(t *testing.T) {
+	h, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	post := func(target, body string) string {
+		r := httptest.NewRequest("POST", target, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != 200 {
+			t.Fatalf("POST %s: %d", target, w.Code)
+		}
+		return w.Body.String()
+	}
+	// the row of each form, then what follows it up to the next form
+	rows := func(body string) []string {
+		parts := strings.Split(body, "<form ")[1:]
+		if len(parts) != 3 {
+			t.Fatalf("%d forms:\n%s", len(parts), body)
+		}
+		return parts
+	}
+	body := post("/_m/P/Save?row=b", "title=typed")
+	for i, row := range rows(body) {
+		shows := strings.Contains(row, "<li>bad b</li>") && strings.Contains(row, `+"`"+`value="typed"`+"`"+`)
+		if (i == 1) != shows || strings.Count(body, "typed") != 1 {
+			t.Fatalf("Reject: row %d shows the state: %v\n%s", i, shows, body)
+		}
+	}
+	body = post("/_m/P/Save?row=c", "title=")
+	for i, row := range rows(body) {
+		if (i == 2) != strings.Contains(row, "<li>must not be empty</li>") || strings.Count(body, "must not be empty") != 1 {
+			t.Fatalf("form error: row %d\n%s", i, body)
+		}
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
+	if strings.Contains(w.Body.String(), "<li>") {
+		t.Fatalf("GET shows a state:\n%s", w.Body.String())
 	}
 }
 `)

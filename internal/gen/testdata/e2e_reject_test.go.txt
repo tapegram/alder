@@ -143,4 +143,23 @@ func TestE2E_RejectKeepsWrites(t *testing.T) {
 		t.Fatalf("GET / = %d", res.StatusCode)
 	}
 	has(body, `<ul id="names"><li>ann</li><li>bob</li></ul>`, `<p id="adds">2</p>`, `<ul class="errors" data-errors="form"></ul>`)
+
+	// a click button inside the form (I3): a submit button posting to its own formaction, which
+	// Datastar posts on click (preventing the form's submission). Without JavaScript the browser
+	// posts the form's fields there; App.Reset has no form and ignores them: a 303 back to the
+	// page, the session reset
+	has(body, `<button type="submit" formaction="/_m/App/Reset" formmethod="post" formnovalidate data-on:click__prevent="@post(&#39;/_m/App/Reset&#39;)">Reset</button></form>`)
+	fm := regexp.MustCompile(`formaction="([^"]*)"`).FindStringSubmatch(body)
+	if fm == nil {
+		t.Fatalf("no formaction:\n%s", body)
+	}
+	res, body = do("POST", html.UnescapeString(fm[1]), url.Values{"name": {"ignored"}}, "Referer: "+srv.URL+"/")
+	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/" || body != "" {
+		t.Fatalf("Reset = %d %q:\n%s", res.StatusCode, res.Header.Get("Location"), body)
+	}
+	if s := session(res); s.N != 0 {
+		t.Fatalf("n after Reset = %d, want 0", s.N)
+	}
+	_, body = do("GET", "/", nil)
+	has(body, `<ul id="names"><li>ann</li><li>bob</li></ul>`, `<p id="adds">0</p>`)
 }

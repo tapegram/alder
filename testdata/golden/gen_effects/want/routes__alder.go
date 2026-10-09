@@ -103,10 +103,11 @@ func params__Index(p Index__Params) []rt.KV {
 }
 
 // update__Index runs page Index's update for msg and answers its Nav (book 06): load, update (a
-// Task, whose session is stored when it succeeds), then for Rerender load and view again (patched
-// into the page under Datastar), for Redirect p a 303 to p, for Reject t the same as Rerender with
-// t on the form that sent the message (st, nil for a message without one). A failed Task changes
-// nothing: 500 (App.error), or 404 for Query.notFound.
+// Task, whose session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on
+// a form (st, the state of the form that sent the message; nil for a message without one) load and
+// view again with t on the form (patched into the page under Datastar); for Rerender (and a Reject
+// without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh
+// does not post again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound.
 func update__Index(rq *web.Request, params Index__Params, msg Index__Msg, st *html.FormState) web.Response {
 	model, session, stop := page__Index(rq, params, nil)
 	if stop != nil {
@@ -121,6 +122,8 @@ func update__Index(rq *web.Request, params Index__Params, msg Index__Msg, st *ht
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
 	case nav.Tag == rt.NavReject && st != nil:
 		st.FormError = nav.Text
+	case !rq.Datastar:
+		return web.RedirectResponse(rt.PageAt("/pair/{a}/{b}", params__Index(params)), rq.Env.Session)
 	default:
 		st = &html.FormState{}
 	}

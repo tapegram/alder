@@ -391,6 +391,28 @@ type Page struct {
 // ("/?filter=Active").
 func PageURL(p Page) string { return p.Path + queryString(p.Query) }
 
+// PageAt is the URL of a page from its path pattern ("/todos/{id}") and its parameters as text
+// (the generated params__M, in declaration order): each {name} segment is the parameter of that
+// name, escaped (PathSegment); the others, but those left out (Omit), are the query, in order.
+// A message route answers a Rerender without JavaScript with a 303 to it (Post/Redirect/Get).
+func PageAt(pattern string, params []KV) string {
+	segs := strings.Split(pattern, "/")
+	var query []KV
+	for _, p := range params {
+		filled := false
+		for i, s := range segs {
+			if s == "{"+p.Key+"}" {
+				segs[i], filled = PathSegment(p.Value), true
+				break
+			}
+		}
+		if !filled {
+			query = append(query, p)
+		}
+	}
+	return PageURL(Page{Path: strings.Join(segs, "/"), Query: query})
+}
+
 // KV is one URL parameter: its name and its value as text. Omit leaves it out of the URL: a
 // page parameter at its default (QueryKV), which the page decodes back when it is absent.
 type KV struct {
@@ -469,6 +491,36 @@ func (m MsgRef) URL(page []KV) string {
 		}
 	}
 	return "/_m/" + m.Module + "/" + m.Msg + queryString(kvs)
+}
+
+// Key identifies m as a form posting it is rendered (FormState.Msg): MsgKey of its path and its
+// own parameters.
+func (m MsgRef) Key() string {
+	q := url.Values{}
+	for _, p := range m.Params {
+		if !p.Omit {
+			q[p.Key] = append(q[p.Key], p.Value)
+		}
+	}
+	return MsgKey("/_m/"+m.Module+"/"+m.Msg, q)
+}
+
+// MsgKey identifies a message as it was sent: its path, then its own parameters — the query's
+// keys without the PagePrefix ones — URL-encoded in key order. A message route puts it on the
+// form state of a re-render (FormState.Msg), so only the form that posted that very message (a
+// per-row form's row id included) shows the submitted values and errors; MsgRef.Key is the same
+// for the form as rendered.
+func MsgKey(path string, query url.Values) string {
+	own := url.Values{}
+	for k, vs := range query {
+		if !strings.HasPrefix(k, PagePrefix) {
+			own[k] = vs
+		}
+	}
+	if len(own) == 0 {
+		return path
+	}
+	return path + "?" + own.Encode()
 }
 
 // PageParams are the parameters of the page a message was sent from, for the message's route
