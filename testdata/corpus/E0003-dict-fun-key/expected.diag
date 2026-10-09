@@ -1,0 +1,2 @@
+app/M.alder:6:5 E0003 a `Dict` key cannot be a function, got `Int -> Int`: keys are compared with `==`, and functions cannot be compared
+app/M.alder:9:10 E0003 a `Dict` key cannot be a function, got `{ f: Int -> Int }`: keys are compared with `==`, and functions cannot be compared

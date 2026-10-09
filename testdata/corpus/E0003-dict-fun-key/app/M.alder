@@ -1,0 +1,13 @@
+module M
+
+inc : Int -> Int
+inc n = n + 1
+
+d : Dict (Int -> Int) Text
+d = Dict.insert inc "a" Dict.empty
+
+nested : Dict { f: Int -> Int } Text -> Int
+nested x = Dict.size x
+
+ok : Dict Int (Int -> Int)
+ok = Dict.insert 1 inc Dict.empty

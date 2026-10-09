@@ -141,6 +141,10 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 				c.errorf(diag.Arity, t.Span, "`%s` takes %d type argument%s, got %d", t.Name, n, plural, len(args))
 				return types.Err
 			}
+			if app, ok := decl.(*types.App); ok && app.Con == "Dict" && len(args) == 2 && containsFun(args[0]) {
+				c.errorf(diag.TypeMismatch, t.Span, "a `Dict` key cannot be a function, got `%s`: keys are compared with `==`, and functions cannot be compared", types.StringIn(args[0], mc.m.Name))
+				return types.Err
+			}
 			out := applyArgs(decl, args)
 			if r, ok := out.(*types.Record); ok && r.Def != nil && !c.typesDefined {
 				c.early = append(c.early, r) // its declaration may not have its fields yet
