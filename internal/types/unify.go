@@ -145,6 +145,12 @@ func (u *Unifier) Check(actual, expected Type) error { return u.unify(actual, ex
 
 func (u *Unifier) unify(a, b Type, widen bool) error {
 	a, b = u.Apply(a), u.Apply(b)
+	// Never fits anywhere; return before the variable cases so it never binds a variable.
+	if widen {
+		if c, ok := a.(*Con); ok && c.Name == "Never" {
+			return nil
+		}
+	}
 	if va, ok := a.(*Var); ok {
 		if vb, ok := b.(*Var); ok && vb.ID == va.ID {
 			return nil
@@ -163,9 +169,6 @@ func (u *Unifier) unify(a, b Type, widen bool) error {
 		return nil
 	}
 	if widen {
-		if c, ok := a.(*Con); ok && c.Name == "Never" {
-			return nil
-		}
 		if br, ok := a.(*Brand); ok {
 			if _, bIsBrand := b.(*Brand); !bIsBrand {
 				return u.unify(br.Base, b, true)

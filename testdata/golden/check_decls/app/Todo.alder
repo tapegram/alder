@@ -1,0 +1,20 @@
+module Todo
+
+import User
+
+type TodoId = brand Text
+
+table Todo {
+  id: TodoId @id,
+  title: Text.NonEmpty,
+  done: Bool = False,
+  owner: User.UserId @ref User,
+  bad: Text @ref User,
+  created: Time @created,
+  nested: List Int,
+}
+
+table Broken {
+  id: Int @id,
+  name: Text,
+}

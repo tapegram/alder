@@ -95,3 +95,14 @@ func TestLoadStd(t *testing.T) {
 		}
 	}
 }
+
+func TestCheck_NeverDoesNotBindVar(t *testing.T) {
+	u := &Unifier{Subst: Subst{}}
+	v := u.Fresh()
+	if err := u.Check(Never, v); err != nil {
+		t.Fatal(err)
+	}
+	if err := u.Unify(v, Int); err != nil {
+		t.Fatalf("var should still be free: %v", err)
+	}
+}
