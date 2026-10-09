@@ -246,11 +246,15 @@ func typeDecl(w *strings.Builder, d *ir.TypeDecl) {
 	}
 }
 
-// payloadType is the Go type of constructor c's payload inside union u, with type arguments
-// args: the generated payload struct for an anonymous record, else the named record.
+// payloadType is the Go type of constructor c's payload inside union u, with u's type arguments
+// args: the generated payload struct for an anonymous record, else the named record at the
+// arguments the union declares it with (`Boxed (Box a)` → M__Box[A]).
 func payloadType(u *ir.UnionType, c ir.CtorT, args string) string {
 	if c.Payload.Name == "" {
 		return payloadName(u.Module, u.Name, c.Name) + args
+	}
+	if c.PayloadType != nil {
+		return GoType(c.PayloadType)
 	}
 	return GoName(c.Payload.Module, c.Payload.Name)
 }

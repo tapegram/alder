@@ -80,9 +80,14 @@ type UnionType struct {
 // CtorT is a constructor. Payload is nil for none; a record payload is that record (anonymous, or
 // named for a message's generated `<Msg>Params`); any other payload T is wrapped as the anonymous
 // record { value: T }.
+//
+// PayloadType is the payload's type as declared in the union, in terms of the union's type
+// parameters: for a named record payload it is the record instance (`Boxed (Box a)` → Box a),
+// whose type arguments Payload, the declaration, does not carry. Nil when Payload is nil.
 type CtorT struct {
-	Name    string
-	Payload *RecordType
+	Name        string
+	Payload     *RecordType
+	PayloadType types.Type
 }
 
 // Value is a top-level value or function. Params are the named parameters (fewer than the

@@ -525,7 +525,11 @@ func (f *fn) ctor(x *ir.Ctor, s *scope) string {
 	}
 	var p string
 	if r, ok := x.Payload.(*ir.Record); ok && r.T == ct.Payload {
-		p = f.record(r, payloadType(u, ct, ta), s)
+		typ := payloadType(u, ct, ta)
+		if ct.Payload.Name != "" { // a named record: at this use's type arguments
+			typ = recordTypeName(r)
+		}
+		p = f.record(r, typ, s)
 	} else {
 		p = f.code(x.Payload, s)
 	}

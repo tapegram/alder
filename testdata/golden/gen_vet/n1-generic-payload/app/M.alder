@@ -1,0 +1,40 @@
+module M
+
+type Box a = { item: a, label: Text }
+
+type S = B (Box Int) | N
+
+type Shape a = Boxed (Box a) | Plain a
+
+type Node a = { value: a, next: Chain a }
+type Chain a = End | Link (Node a)
+
+get : S -> Int
+get s = match s {
+  B b -> b.item,
+  N -> 0,
+}
+
+unbox : Shape a -> a
+unbox s = match s {
+  Boxed b -> b.item,
+  Plain x -> x,
+}
+
+len : Chain a -> Int
+len c = match c {
+  End -> 0,
+  Link n -> 1 + len n.next,
+}
+
+got : Int
+got = get (B { item: 7, label: "b" })
+
+boxedText : Text
+boxedText = unbox (Boxed { item: "t", label: "l" })
+
+plain : Int
+plain = unbox (Plain 4)
+
+chain : Int
+chain = len (Link { value: "a", next: Link { value: "b", next: End } })

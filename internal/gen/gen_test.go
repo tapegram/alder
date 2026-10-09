@@ -1305,3 +1305,21 @@ func TestPatterns(t *testing.T) {
 }
 `)
 }
+
+// A generic record as a whole constructor payload keeps its type arguments: at a concrete
+// instance (`B (Box Int)`), at the union's parameter (`Boxed (Box a)`), and through a generic
+// record and union that refer to each other (N1).
+func TestGen_RunGenericPayload(t *testing.T) {
+	files := emit(t, "../../testdata/golden/gen_vet/n1-generic-payload")
+	contains(t, files["M.go"], "B   *M__Box[int64]", "Boxed *M__Box[A]", "Link *M__Node[A]")
+	runGo(t, files, `package app
+
+import "testing"
+
+func TestPayload(t *testing.T) {
+	if M__got != 7 || M__boxedText != "t" || M__plain != 4 || M__chain != 2 {
+		t.Errorf("got, boxedText, plain, chain = %d, %q, %d, %d", M__got, M__boxedText, M__plain, M__chain)
+	}
+}
+`)
+}

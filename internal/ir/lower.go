@@ -278,10 +278,12 @@ func (l *lowerer) fillUnion(ut *UnionType, decl *types.Union, isMsg bool) {
 		if c.Arg != nil {
 			if rec, ok := c.Arg.(*types.Record); ok {
 				if !(isMsg && len(rec.Fields) == 0) {
-					ct.Payload = l.recordType(l.erase(rec))
+					ct.PayloadType = l.erase(rec)
+					ct.Payload = l.recordType(ct.PayloadType)
 				}
 			} else {
 				ct.Payload = &RecordType{Fields: []FieldT{{Name: "value", Type: l.erase(c.Arg)}}}
+				ct.PayloadType = &types.Record{Anonymous: true, Fields: []types.Field{{Name: "value", Type: ct.Payload.Fields[0].Type}}}
 				l.wrappers[ct.Payload] = true
 			}
 		}
