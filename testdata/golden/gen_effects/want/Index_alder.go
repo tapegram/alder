@@ -72,11 +72,17 @@ type Index__Session struct {
 	Theme string
 }
 
-type cap__Index__Mailer interface {
-	Send(ctx context.Context, args struct {
-		To   string
-		Body string
-	}) (bool, error)
+// Cap__Index__Mailer is capability Mailer of module Index, implemented by the app's adapters
+// package (adapters.Caps): one method per entry, called with the running request's context
+// (db.TxFrom(ctx) is the running Task's transaction).
+type Cap__Index__Mailer interface {
+	Send(ctx context.Context, args Args__Index__Mailer__Send) (bool, error)
+}
+
+// Args__Index__Mailer__Send are the arguments of Mailer.send.
+type Args__Index__Mailer__Send struct {
+	To   string
+	Body string
 }
 
 func widen__Index__Session(s Index__Session) App__Session {
@@ -118,7 +124,7 @@ func Index__update(msg Index__Msg, model Index__Model, session Index__Session) e
 			return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Todo__Todo, insertvals__Todo__Todo(insert__Todo__Todo{Title: p.Title, Done: false, Due: rt.Nothing[rt.Date](), Owner: session.User}), _e1.Now())
 		}), func(id string) eff.Task[rt.Nav] {
 			return eff.Bind(std.LogInfo(rt.Concat("added ", id)), func(_ struct{}) eff.Task[rt.Nav] {
-				return eff.Pure(rt.Redirect(rt.Page{Path: rt.Concat("/pair/", id, "/", id)}))
+				return eff.Pure(rt.Redirect(rt.Page{Path: rt.Concat("/pair/", rt.PathSegment(id), "/", rt.PathSegment(id))}))
 			})
 		})
 	case is__Index__Msg__Toggle:
@@ -148,7 +154,7 @@ func Index__update(msg Index__Msg, model Index__Model, session Index__Session) e
 	case is__Index__Msg__Notify:
 		return eff.Bind(std.RandomId(), func(token string) eff.Task[rt.Nav] {
 			return eff.Bind(eff.All([]eff.Task[bool]{eff.Call("Mailer.send", true, func(_e5 *eff.Env) (bool, error) {
-				_c6, _ok7 := _e5.Caps["Index.Mailer"].(cap__Index__Mailer)
+				_c6, _ok7 := _e5.Caps["Index.Mailer"].(Cap__Index__Mailer)
 				if !_ok7 {
 					panic("alder: capability \"Index.Mailer\" is not wired")
 				}

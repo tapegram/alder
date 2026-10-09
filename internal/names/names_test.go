@@ -217,3 +217,25 @@ func TestBuild_ModuleCaseCollision(t *testing.T) {
 		t.Fatalf("got %q, want [%q]", got, want)
 	}
 }
+
+// A module named Route, Cap or Args, or under one of them, is E0015: the generated exported
+// names Route__…, Cap__… and Args__… would be its GoNames.
+func TestBuild_ReservedModuleNames(t *testing.T) {
+	var mods []*syntax.Module
+	for _, n := range []string{"Route", "Cap.Mail", "Args", "Routes", "Capx.Y", "My.Cap"} {
+		mods = append(mods, parse(t, "app/"+strings.ReplaceAll(n, ".", "/")+".alder", "module "+n+"\n\nx : Int\nx = 1\n"))
+	}
+	_, bag := Build(mods, std(t))
+	var got []string
+	for _, d := range bag.Items {
+		got = append(got, d.Code+" "+d.Message)
+	}
+	want := []string{
+		"E0015 module name `Route` is reserved: the compiled program's names `Route__…` are taken; rename the module",
+		"E0015 module name `Cap.Mail` is reserved: the compiled program's names `Cap__…` are taken; rename the module",
+		"E0015 module name `Args` is reserved: the compiled program's names `Args__…` are taken; rename the module",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}

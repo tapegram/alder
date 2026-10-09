@@ -17,7 +17,9 @@ import (
 //	HIf      an immediately-invoked closure with a Go if (ret mode)
 //	HMatch   an immediately-invoked closure with the match's switch (ret mode)
 //	Comp     M__Card(struct{…}{Title: …, Children: []html.Node{…}})
-//	Input    html.Input(html.Control{…}), derived from the bound form field's type
+//	Input    html.Input(html.Control{…}), derived from the bound form field's type, with Form
+//	         "<Module>.<Form>" (matched by the request's html.FormState) and Secret for a
+//	         Text.Secret field
 //	FormEl   html.Form(url, []html.Attr{…}, children...)
 //
 // Attributes:
@@ -27,7 +29,8 @@ import (
 //	Maybe    html.M("name", e)
 //	Href     html.A("href", rt.PageURL(e))
 //	Click    html.A("data-on:click", "@post('"+url+"')")
-//	Submit   method="post", action=url and data-on:submit (html.Form adds them itself)
+//	Submit   method="post", action=url and data-on:submit=html.SubmitPost(url), which posts the
+//	         form url-encoded (html.Form adds them itself)
 //
 // where url is rt.MsgURL("<Module>", "<Msg>", rt.KV{Key: "<param>", Value: <text>}, …): the
 // message's parameters in declaration order, as text (see text), without the submitted form.
@@ -128,7 +131,7 @@ func (f *fn) attrs(as []ir.HAttr, s *scope) string {
 		case ir.AttrSubmit: // on an element Lower did not make a FormEl
 			url := f.msgURL(a.Value, s)
 			out = append(out, `html.A("method", "post")`, `html.A("action", `+url+`)`,
-				`html.A("data-on:submit", "@post('"+`+url+`+"')")`)
+				`html.A("data-on:submit", html.SubmitPost(`+url+`))`)
 		}
 	}
 	return "[]html.Attr{" + strings.Join(out, ", ") + "}"
@@ -320,6 +323,9 @@ func (f *fn) comp(x *ir.Comp, s *scope) string {
 func (f *fn) input(x *ir.Input, s *scope) string {
 	kind := map[ir.InputKind]string{ir.InputInput: "input", ir.InputTextarea: "textarea", ir.InputSelect: "select", ir.InputErrors: "errors"}[x.Kind]
 	out := []string{"Kind: " + strconv.Quote(kind)}
+	if x.Form != nil {
+		out = append(out, "Form: "+strconv.Quote(x.Form.Module+"."+x.Form.Name))
+	}
 	if x.Field != "" {
 		out = append(out, "Name: "+strconv.Quote(x.Field))
 	}
@@ -327,10 +333,11 @@ func (f *fn) input(x *ir.Input, s *scope) string {
 		return "html.Input(html.Control{" + strings.Join(out, ", ") + "})"
 	}
 	var ft types.Type
+	secret := false
 	if x.Form != nil {
 		for _, fd := range x.Form.Record.Fields {
 			if fd.Name == x.Field {
-				ft = fd.Type
+				ft, secret = fd.Type, isSecret(fd.Brand)
 			}
 		}
 	}
@@ -366,6 +373,9 @@ func (f *fn) input(x *ir.Input, s *scope) string {
 		if names := ctorNames(ft); names != nil {
 			out = append(out, "Options: []string{"+strings.Join(names, ", ")+"}")
 		}
+	}
+	if secret {
+		out = append(out, "Secret: true")
 	}
 	return "html.Input(html.Control{" + strings.Join(out, ", ") + "})"
 }

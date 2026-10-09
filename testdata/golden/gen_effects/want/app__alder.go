@@ -2,11 +2,106 @@
 
 package app
 
-import "alder/rt/db"
+import (
+	"alder/rt/db"
+	"alder/rt/html"
+	"alder/rt/web"
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+)
 
 // Tables describes every table of the app, in module order then declaration order, for db.Ensure.
 var Tables = []db.TableDesc{table__Todo__Todo.Desc()}
 
-// Capabilities are the keys of eff.Env.Caps the app's capability calls look up: each needs an
-// implementation of its cap__ interface.
+// Capabilities are the keys of eff.Env.Caps the app's capability calls look up: Caps.registry
+// fills them.
 var Capabilities = []string{"Todo.Stats", "Index.Mailer"}
+
+// Caps are the app's capability implementations, one field per capability, named by its
+// module and name: the adapters package's Caps function returns them, and Serve refuses a
+// field left nil.
+type Caps struct {
+	Todo__Stats   Cap__Todo__Stats
+	Index__Mailer Cap__Index__Mailer
+}
+
+// registry is c as eff.Env.Caps: each implementation by its key in Capabilities (nil when the
+// field is).
+func (c Caps) registry() map[string]any {
+	return map[string]any{
+		"Todo.Stats":   c.Todo__Stats,
+		"Index.Mailer": c.Index__Mailer,
+	}
+}
+
+// Options configure Serve. The generated cmd/main.go fills them from the environment.
+type Options struct {
+	DB        string                  // the SQLite database file; ":memory:" or "" for a database in memory
+	Dev       bool                    // development mode: a changed schema recreates the tables; error pages show the error
+	Secret    []byte                  // the session cookie key; shorter than 16 bytes: the public development key (logged)
+	StaticDir string                  // the directory served under /static/; "" for none
+	Log       func(level, msg string) // nil: no log
+}
+
+// Serve is the app's HTTP handler. It checks that caps implements every capability (an error
+// names each field left nil), opens the database o.DB and creates its tables (db.Ensure), and
+// routes Routes (web.NewRouter) with the session codec, App.error, App.notFound and the page
+// App.login names.
+func Serve(caps Caps, o Options) (http.Handler, error) {
+	reg := caps.registry()
+	var missing []string
+	for _, k := range Capabilities {
+		if reg[k] == nil {
+			missing = append(missing, "capability "+k+" is not wired: set Caps."+strings.ReplaceAll(k, ".", "__"))
+		}
+	}
+	if len(missing) > 0 {
+		return nil, errors.New(strings.Join(missing, "; "))
+	}
+	path := o.DB
+	if path == "" {
+		path = ":memory:"
+	}
+	store, err := db.OpenSQLite(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := store.Ensure(context.Background(), Tables, o.Dev); err != nil {
+		store.Close()
+		return nil, err
+	}
+	return web.NewRouter(Routes, web.Options{
+		Store:       store,
+		Caps:        reg,
+		Log:         o.Log,
+		Dev:         o.Dev,
+		Secret:      o.Secret,
+		Session:     session__codec{},
+		StaticDir:   o.StaticDir,
+		ErrorDoc:    App__error,
+		NotFoundDoc: func() html.Node { return App__notFound },
+		Login:       "/pair/{a}/{b}",
+	}), nil
+}
+
+// session__codec stores App's session in the signed cookie as JSON (web.SessionCodec).
+type session__codec struct{}
+
+// Default is the session of a request without a valid cookie: every field at its default.
+func (session__codec) Default() any {
+	return App__Session{Theme: "light"}
+}
+
+func (session__codec) Encode(s any) ([]byte, error) { return json.Marshal(s.(App__Session)) }
+
+// Decode starts from Default, so a field the cookie lacks (one added since) has its default.
+func (c session__codec) Decode(b []byte) (any, error) {
+	s := c.Default().(App__Session)
+	if err := json.Unmarshal(b, &s); err != nil {
+		return nil, err
+	}
+	return s, nil
+}

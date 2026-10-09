@@ -99,6 +99,7 @@ const (
 	MissingDecl    = "E0010"
 	InvalidDecl    = "E0011"
 	ModuleCase     = "E0014"
+	ReservedModule = "E0015"
 	UnreachableArm = "E0310"
 	UnusedImport   = "W0001"
 )

@@ -572,12 +572,13 @@ func (f *fn) ctor(x *ir.Ctor, s *scope) string {
 	return ctorName(u.Module, u.Name, x.Name) + ta + "(" + p + ")"
 }
 
-// pageRef is a link to a page: its path with the path parameters filled in from Params.
+// pageRef is a link to a page: its path with the path parameters filled in from Params (each
+// as text, escaped as one segment), and the other parameters as the query, in declaration
+// order: rt.KV for a required one; rt.QueryKV, which leaves it out at its default (a Maybe
+// without one: at Nothing), for the others; rt.QueryKVs for a List (one key per element).
 func (f *fn) pageRef(x *ir.PageRef, s *scope) string {
 	path := x.Page.Path
-	if x.Params == nil || !strings.Contains(path, "{") {
-		return "rt.Page{Path: " + strconv.Quote(path) + "}"
-	}
+	inPath := map[string]bool{}
 	var parts []string
 	for path != "" {
 		i := strings.Index(path, "{")
@@ -589,43 +590,89 @@ func (f *fn) pageRef(x *ir.PageRef, s *scope) string {
 		if i > 0 {
 			parts = append(parts, strconv.Quote(path[:i]))
 		}
-		parts = append(parts, f.pathParam(x.Params, path[i+1:j], s))
+		name := path[i+1 : j]
+		inPath[name] = true
+		v := `""`
+		if x.Params != nil {
+			v = "rt.PathSegment(" + f.text(f.pageParam(x.Params, name), s) + ")"
+		}
+		parts = append(parts, v)
 		path = path[j+1:]
 	}
-	return "rt.Page{Path: rt.Concat(" + strings.Join(parts, ", ") + ")}"
+	p := strconv.Quote(x.Page.Path)
+	if len(parts) > 1 || (len(parts) == 1 && parts[0] != p) {
+		p = "rt.Concat(" + strings.Join(parts, ", ") + ")"
+	}
+	if x.Params == nil {
+		return "rt.Page{Path: " + p + "}"
+	}
+	var groups []string // []rt.KV literals and rt.QueryKVs calls, in order
+	var kvs []string
+	flush := func() {
+		if len(kvs) > 0 {
+			groups = append(groups, "[]rt.KV{"+strings.Join(kvs, ", ")+"}")
+			kvs = nil
+		}
+	}
+	lists := false
+	for _, fd := range x.Page.Params.Fields {
+		if inPath[fd.Name] {
+			continue
+		}
+		v := f.pageParam(x.Params, fd.Name)
+		key := strconv.Quote(fd.Name)
+		switch {
+		case listArg(fd.Type) != nil:
+			flush()
+			groups = append(groups, "rt.QueryKVs("+key+", "+f.texts(v, listArg(fd.Type), s)+")")
+			lists = true
+		case fd.Default != nil:
+			kvs = append(kvs, "rt.QueryKV("+key+", "+f.text(v, s)+", "+f.text(fd.Default, s)+")")
+		case maybeArg(fd.Type) != nil:
+			kvs = append(kvs, "rt.QueryKV("+key+", "+f.text(v, s)+`, "")`)
+		default:
+			kvs = append(kvs, "rt.KV{Key: "+key+", Value: "+f.text(v, s)+"}")
+		}
+	}
+	flush()
+	switch {
+	case len(groups) == 0:
+		return "rt.Page{Path: " + p + "}"
+	case !lists && len(groups) == 1:
+		return "rt.Page{Path: " + p + ", Query: " + groups[0] + "}"
+	}
+	return "rt.Page{Path: " + p + ", Query: rt.Queries(" + strings.Join(groups, ", ") + ")}"
 }
 
-// pathParam is page parameter name of params rendered as text.
-func (f *fn) pathParam(params ir.Expr, name string, s *scope) string {
-	var v ir.Expr
+// pageParam is page parameter name of params: the field's value when params is a record
+// literal, else the field of params.
+func (f *fn) pageParam(params ir.Expr, name string) ir.Expr {
 	if r, ok := params.(*ir.Record); ok {
 		for _, fi := range r.Fields {
 			if fi.Name == name {
-				v = fi.Value
+				return fi.Value
 			}
 		}
 	}
-	var t types.Type
-	if v != nil {
-		t = v.Type()
-	} else if rec, ok := params.Type().(*types.Record); ok {
+	if rec, ok := params.Type().(*types.Record); ok {
 		for _, fd := range rec.Fields {
 			if fd.Name == name {
-				t = fd.Type
+				return &ir.Field{Typed: ir.Typed{Ty: fd.Type}, Expr: params, Name: name}
 			}
 		}
-		v = &ir.Field{Typed: ir.Typed{Ty: t}, Expr: params, Name: name}
 	}
-	if v == nil {
-		return `""`
+	panic(fmt.Sprintf("gen: a page link has no parameter %s", name))
+}
+
+// texts is list (of element type elem) as a Go []string of the elements' text.
+func (f *fn) texts(list ir.Expr, elem types.Type, s *scope) string {
+	if GoType(elem) == "string" {
+		return f.code(list, s)
 	}
-	switch GoType(t) {
-	case "int64":
-		return "std.TextFromInt(" + f.code(v, s) + ")"
-	case "float64":
-		return "std.TextFromFloat(" + f.code(v, s) + ")"
-	}
-	return f.code(v, s)
+	c := s.child()
+	key, v := f.tempVar(c, "_v")
+	body := f.text(&ir.Var{Typed: ir.Typed{Ty: elem}, Kind: ir.VarLocal, Name: key}, c)
+	return "std.ListMap(func(" + v + " " + GoType(elem) + ") string {\nreturn " + body + "\n}, " + f.code(list, s) + ")"
 }
 
 // op emits a binary operator.

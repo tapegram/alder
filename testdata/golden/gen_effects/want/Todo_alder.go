@@ -78,7 +78,10 @@ var table__Todo__Todo = &db.Table[Todo__Todo]{
 	},
 }
 
-type cap__Todo__Stats interface {
+// Cap__Todo__Stats is capability Stats of module Todo, implemented by the app's adapters package
+// (adapters.Caps): one method per entry, called with the running request's context (db.TxFrom(ctx)
+// is the running Task's transaction).
+type Cap__Todo__Stats interface {
 	Total(ctx context.Context) (int64, error)
 	ForOwner(ctx context.Context, a1 string, a2 bool) (int64, error)
 }
@@ -115,13 +118,13 @@ func Todo__countOf(q db.Select[Todo__Todo]) eff.Query[int64] {
 
 func Todo__totals(u string) eff.Query[[]int64] {
 	return eff.Q(eff.All([]eff.Task[int64]{eff.Call("Stats.total", false, func(_e1 *eff.Env) (int64, error) {
-		_c2, _ok3 := _e1.Caps["Todo.Stats"].(cap__Todo__Stats)
+		_c2, _ok3 := _e1.Caps["Todo.Stats"].(Cap__Todo__Stats)
 		if !_ok3 {
 			panic("alder: capability \"Todo.Stats\" is not wired")
 		}
 		return _c2.Total(_e1.Ctx)
 	}), eff.Call("Stats.forOwner", false, func(_e4 *eff.Env) (int64, error) {
-		_c5, _ok6 := _e4.Caps["Todo.Stats"].(cap__Todo__Stats)
+		_c5, _ok6 := _e4.Caps["Todo.Stats"].(Cap__Todo__Stats)
 		if !_ok6 {
 			panic("alder: capability \"Todo.Stats\" is not wired")
 		}
@@ -133,7 +136,7 @@ func Todo__totals(u string) eff.Query[[]int64] {
 
 var Todo__counters []func(string) eff.Query[int64] = []func(string) eff.Query[int64]{func(u string) eff.Query[int64] {
 	return eff.Q(eff.Call("Stats.forOwner", false, func(_e1 *eff.Env) (int64, error) {
-		_c2, _ok3 := _e1.Caps["Todo.Stats"].(cap__Todo__Stats)
+		_c2, _ok3 := _e1.Caps["Todo.Stats"].(Cap__Todo__Stats)
 		if !_ok3 {
 			panic("alder: capability \"Todo.Stats\" is not wired")
 		}
@@ -143,7 +146,7 @@ var Todo__counters []func(string) eff.Query[int64] = []func(string) eff.Query[in
 
 func Todo__byOwner(_m1 string, _m2 bool) eff.Query[int64] {
 	return eff.Q(eff.Call("Stats.forOwner", false, func(_e1 *eff.Env) (int64, error) {
-		_c2, _ok3 := _e1.Caps["Todo.Stats"].(cap__Todo__Stats)
+		_c2, _ok3 := _e1.Caps["Todo.Stats"].(Cap__Todo__Stats)
 		if !_ok3 {
 			panic("alder: capability \"Todo.Stats\" is not wired")
 		}

@@ -17,7 +17,7 @@ import (
 func Lower(prog *names.Program, res *check.Result) *Program {
 	l := &lowerer{prog: prog, res: res, out: &Program{},
 		records: map[string]*RecordType{}, unions: map[string]*UnionType{}, values: map[string]*Value{},
-		pages: map[string]*Page{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, tables: map[string]*Table{}, caps: map[string]*Capability{}, inserts: map[*types.Record]string{}, insertRTs: map[*Table]*RecordType{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
+		pages: map[string]*Page{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, tables: map[string]*Table{}, caps: map[string]*Capability{}, inserts: map[*types.Record]string{}, insertRTs: map[*Table]*RecordType{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, brands: map[string]*Brand{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
 	l.declareTypes()
 	l.declareValues()
 	l.declareCaps() // before bodies: a body's CapCall points at its Capability
@@ -28,6 +28,10 @@ func Lower(prog *names.Program, res *check.Result) *Program {
 	for _, b := range l.bodies {
 		l.enter(b.value.Module)
 		b.value.Body = l.expr(b.decl.Body)
+	}
+	for _, c := range l.checks {
+		l.enter(c.brand.Module)
+		c.brand.Check = l.expr(c.expr)
 	}
 	return l.out
 }
@@ -58,8 +62,12 @@ type lowerer struct {
 	// anonDefaults are the lowered defaults of anonymous record fields (anonDefault)
 	anonDefaults map[syntax.Expr]Expr
 
+	// brands are the brands of the app and of the stdlib met so far, by "Module.Name"
+	brands map[string]*Brand
+
 	defaults []pendingDefault
 	bodies   []pendingBody
+	checks   []pendingCheck
 
 	// per-module state while lowering bodies
 	module string
@@ -78,6 +86,12 @@ type pendingDefault struct {
 type pendingBody struct {
 	value *Value
 	decl  *syntax.ValueDecl
+}
+
+// pendingCheck is a brand's `where` function, lowered once every value exists.
+type pendingCheck struct {
+	brand *Brand
+	expr  syntax.Expr
 }
 
 func key(module, name string) string { return module + "." + name }
@@ -368,6 +382,14 @@ func (l *lowerer) declareTypes() {
 			switch d := d.(type) {
 			case *syntax.TypeDecl:
 				switch {
+				case d.Brand != nil:
+					if bt, ok := l.res.Decls[key(name, d.Name)].(*types.Brand); ok {
+						b := l.brand(bt)
+						l.out.Brands = append(l.out.Brands, b)
+						if d.Brand.Check != nil {
+							l.checks = append(l.checks, pendingCheck{b, d.Brand.Check})
+						}
+					}
 				case d.Record != nil:
 					addRecord(d.Name, l.res.Decls[key(name, d.Name)], d.Record.Fields)
 				case d.Union != nil:
@@ -425,6 +447,13 @@ func (l *lowerer) declareTypes() {
 		}
 	}
 	l.declarePageSessions()
+	if app := l.prog.Modules["App"]; app != nil {
+		for _, d := range app.Decls {
+			if ld, ok := d.(*syntax.LoginDecl); ok && l.pages[ld.Page] != nil {
+				l.out.Login = l.pages[ld.Page].Path
+			}
+		}
+	}
 	for _, r := range refs {
 		cands := []string{r.m.Name}
 		for _, im := range r.m.Imports {
@@ -480,11 +509,40 @@ func (l *lowerer) recordFields(module string, rt *RecordType, t types.Type, fiel
 		panic(fmt.Sprintf("ir: %s.%s has no record type", rt.Module, rt.Name))
 	}
 	for i, f := range rec.Fields {
-		rt.Fields = append(rt.Fields, FieldT{Name: f.Name, Type: l.erase(f.Type)})
+		rt.Fields = append(rt.Fields, FieldT{Name: f.Name, Type: l.erase(f.Type), Brand: l.fieldBrand(f.Type)})
 		if i < len(fields) && fields[i].Name == f.Name && fields[i].Default != nil {
 			l.defaults = append(l.defaults, pendingDefault{module, rt, i, fields[i]})
 		}
 	}
+}
+
+// brand is the Brand of brand type b, made on first use.
+func (l *lowerer) brand(b *types.Brand) *Brand {
+	k := key(b.Module, b.Name)
+	if br, ok := l.brands[k]; ok {
+		return br
+	}
+	br := &Brand{Module: b.Module, Name: b.Name, Base: l.erase(b.Base)}
+	l.brands[k] = br
+	return br
+}
+
+// fieldBrand is the brand a field of declared type t is: t itself, or the element of a Maybe
+// or a List (recursively); nil for none.
+func (l *lowerer) fieldBrand(t types.Type) *Brand {
+	switch t := l.res.U.Apply(t).(type) {
+	case *types.Brand:
+		return l.brand(t)
+	case *types.Union:
+		if t.Module == "Prelude" && t.Name == "Maybe" && len(t.Args) == 1 {
+			return l.fieldBrand(t.Args[0])
+		}
+	case *types.App:
+		if t.Con == "List" && len(t.Args) == 1 {
+			return l.fieldBrand(t.Args[0])
+		}
+	}
+	return nil
 }
 
 // declareMsgs declares the message payload records and the Msg union of a page module or App.

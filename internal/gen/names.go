@@ -20,11 +20,24 @@ import (
 //	tableName   table__M__Table             a table's descriptor (*db.Table)
 //	insertName  insert__M__Table            a table's insert record type (Db.insert's row)
 //	insertVals  insertvals__M__Table        the column values of an insert record
-//	capName     cap__M__Capability          a capability's Go interface
 //	enumName    name__M__Union              the constructor name of a payload-less union value
 //	                                        stored in a table column
-//	Tables, Capabilities                    the app's table descriptors and capability keys
-//	                                        (app__alder.go)
+//	checkName   check__M__Brand             a brand's `where` check (func(v Base) bool)
+//	decodeName  decode__M__Record           the decoder of a page's Params, a message's
+//	                                        <Msg>Params or a form (routes__alder.go)
+//	pageFunc    page__M                     page M's `requires` check and load (routes)
+//	updateFunc  update__M                   page M's (or App's) update and its Nav (routes)
+//	routeFunc   Route__M__page              page M's GET route (routes)
+//	            Route__M__Msg               message Msg of page M or of App (M = App)
+//	capName     Cap__M__Capability          a capability's Go interface (exported: the adapters
+//	                                        package implements it)
+//	argsName    Args__M__Capability__Entry  the arguments record of a capability entry
+//	route__fail, route__values, route__errors, session__codec
+//	                                        fixed helpers of routes__alder.go and app__alder.go
+//	Tables, Capabilities, Caps, Options, Serve, Routes
+//	                                        the app's table descriptors, capability keys,
+//	                                        capability implementations, Serve and its options,
+//	                                        and its routes (app__alder.go, routes__alder.go)
 //
 // where "M__…" is the module path with every '.' replaced by "__" ("Todos.Index", "view" →
 // "Todos__Index__view"). A local is its Alder name, with "__" appended when that is reserved
@@ -46,18 +59,31 @@ import (
 //  2. ctorName is GoName(M, Union) + "__" + Ctor + "__": it ends in "__", which no GoName does
 //     (an identifier never ends in "__"). Stripping that "__", Ctor is the text after the last
 //     "__" (Ctor has no "__" and does not start with '_'), and the rest is a GoName (1).
-//  3. payloadName, tagType, tagConst, widenName, tableName, insertName, insertVals, capName and
-//     enumName start with a lower-case word and "__". No GoName or ctorName does (they start
-//     with an upper-case module segment); no local does (a local contains "__" only at its end,
-//     or followed by its "_N" renaming suffix); the nine words differ, so the kinds cannot
-//     collide with each other; within a kind the rest is decoded as in 1 and 2. Tables and
-//     Capabilities contain no "__" and start upper-case, which no GoName (it has "__"), no local
-//     (lower-case or '_') and none of the others is. app__alder.go is no module's file, even
-//     ignoring case (on a case-insensitive file system such as macOS's, app_alder.go would be
-//     App's file): it would be the file of a module segment "app_", which never ends a segment.
+//  3. payloadName, tagType, tagConst, widenName, tableName, insertName, insertVals, enumName,
+//     checkName, decodeName, pageFunc, updateFunc and the route__/session__ helpers start with a
+//     lower-case word and "__". No GoName or ctorName does (they start with an upper-case module
+//     segment); no local does (a local contains "__" only at its end, or followed by its "_N"
+//     renaming suffix); the words differ, so the kinds cannot collide with each other; within a
+//     kind the rest is decoded as in 1 and 2 (decodeName's record is a page's Params, a
+//     <Msg>Params or a form of M: type names of one module, distinct). Tables, Capabilities,
+//     Caps, Options, Serve and Routes contain no "__" and start upper-case, which no GoName (it
+//     has "__"), no local (lower-case or '_') and none of the others is. app__alder.go and
+//     routes__alder.go are no module's file, even ignoring case (on a case-insensitive file
+//     system such as macOS's, app_alder.go would be App's file): they would be files of a
+//     module segment "app_" or "routes_", which never ends a segment.
 //  4. Record fields and union fields live in their struct's own namespace: Field is injective
 //     (only the first letter changes, and Alder fields start lower-case or with '_'), and union
 //     fields are constructor names (upper-case) plus Tag and Tag__.
+//  5. routeFunc, capName and argsName are exported (the adapters package and cmd/main.go use
+//     them), so they start with an upper-case word: Route, Cap or Args, then "__". They are
+//     GoNames of a module whose first segment is Route, Cap or Args, so no module may be named
+//     so (E0015, names.ReservedModules); then no GoName or ctorName starts with those
+//     words, and within a kind the rest decodes as in 1: Route__M__page (a page is a module, so
+//     M names it and "page" is lower-case, no message), Route__M__Msg (M a page module or App,
+//     Msg upper-case), Cap__M__C, Args__M__C__Entry. In the last, Entry never starts with '_'
+//     (the entry capitalized, or "x" + an entry starting with '_') and contains no "__", while C
+//     may end with '_': so Entry is the text after the last "__", and the rest decodes as in 1
+//     (C is its name).
 //
 // The per-page generated types (Params, Msg, Session, <Msg>Params) are GoNames of names the
 // checker reserves in page modules and App (E0012), so no user declaration can take them. Two
@@ -91,7 +117,7 @@ func init() {
 		any append bool byte cap clear close comparable complex complex64 complex128 copy delete
 		error false float32 float64 imag int int8 int16 int32 int64 iota len make max min new nil
 		panic print println real recover rune string true uint uint8 uint16 uint32 uint64 uintptr
-		rt html std time math eff db context fmt`) {
+		rt html std time math eff db context fmt url web http json errors strings`) {
 		reserved[s] = true
 	}
 }
@@ -156,15 +182,50 @@ func insertName(module, table string) string { return "insert__" + GoName(module
 // insertVals is the function giving an insert record's column values ("insertvals__Todo__Todo").
 func insertVals(module, table string) string { return "insertvals__" + GoName(module, table) }
 
-// capName is capability M.C's interface ("cap__Auth__Login__Password").
-func capName(module, capability string) string { return "cap__" + GoName(module, capability) }
+// capName is capability M.C's interface ("Cap__Auth__Login__Password").
+func capName(module, capability string) string { return "Cap__" + GoName(module, capability) }
+
+// argsName is the arguments record of entry e of capability M.C
+// ("Args__Auth__Login__Password__Verify"): the entry capitalized, or prefixed with "x" when it
+// starts with '_' ("_raw" → "x_raw"), so that it never starts with '_' (naming rule 5).
+func argsName(module, capability, entry string) string {
+	e := Field(entry)
+	if strings.HasPrefix(entry, "_") {
+		e = "x" + entry
+	}
+	return "Args__" + GoName(module, capability) + "__" + e
+}
+
+// checkName is brand M.B's `where` check ("check__Todo__Slug").
+func checkName(module, brand string) string { return "check__" + GoName(module, brand) }
+
+// decodeName is the decoder of record R of module M: a page's Params, a message's <Msg>Params
+// or a form ("decode__Todos__Index__NewTodo").
+func decodeName(module, record string) string { return "decode__" + GoName(module, record) }
+
+// pageFunc runs page M's requires check and load ("page__Todos__Index").
+func pageFunc(module string) string { return "page__" + strings.ReplaceAll(module, ".", "__") }
+
+// updateFunc runs page M's update, or App's, and answers its Nav ("update__Todos__Index").
+func updateFunc(module string) string { return "update__" + strings.ReplaceAll(module, ".", "__") }
+
+// routeFunc is the route of page M (msg "") or of its message msg ("Route__Todos__Index__page",
+// "Route__Todos__Index__Toggle", "Route__App__Logout").
+func routeFunc(module, msg string) string {
+	if msg == "" {
+		msg = "page"
+	}
+	return "Route__" + GoName(module, msg)
+}
 
 // enumName is the function naming a value of payload-less union M.U ("name__Todo__Filter").
 func enumName(module, union string) string { return "name__" + GoName(module, union) }
 
-// appFile holds the app-wide variables tablesVar (table descriptors) and capsVar (capability keys).
+// appFile holds the app-wide declarations: tablesVar (table descriptors), capsVar (capability
+// keys), and with an App module Caps, Options and Serve. routesFile holds the routes.
 const (
-	appFile   = "app__alder.go"
-	tablesVar = "Tables"
-	capsVar   = "Capabilities"
+	appFile    = "app__alder.go"
+	routesFile = "routes__alder.go"
+	tablesVar  = "Tables"
+	capsVar    = "Capabilities"
 )

@@ -129,7 +129,7 @@ func M__view(model M__Model, session App__Session) html.Node {
 		html.El("button", []html.Attr{html.A("class", "go"), html.B("disabled", model.Busy), html.M("aria-current", model.Current), html.A("data-on:click", "@post('"+rt.MsgURL("M", "Ping")+"')")}, html.Text("ping")),
 		html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Page{Path: "/other"}))}, html.Text("other")),
 		html.El("button", []html.Attr{html.A("data-on:click", "@post('"+rt.MsgURL("App", "Logout")+"')")}, html.Text("log out")),
-		html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Page{Path: rt.Concat("/m/", std.TextFromInt(model.Id+1))}))}, html.Text("next")),
+		html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Page{Path: rt.Concat("/m/", rt.PathSegment(std.TextFromInt(model.Id+1)))}))}, html.Text("next")),
 		html.El("ul", nil, html.Nodes(std.ListMap(func(item string) html.Node {
 			return html.El("li", []html.Attr{html.A("data-on:click", "@post('"+rt.MsgURL("M", "Pick", rt.KV{Key: "name", Value: item}, rt.KV{Key: "n", Value: std.TextFromInt(model.Id)})+"')")}, html.Text(item))
 		}, model.Items)...)),
@@ -153,12 +153,12 @@ func M__view(model M__Model, session App__Session) html.Node {
 			panic("unreachable")
 		}(),
 		html.Form(rt.MsgURL("M", "Save", rt.KV{Key: "id", Value: std.TextFromInt(model.Id)}), []html.Attr{html.A("class", "note")},
-			html.Input(html.Control{Kind: "errors"}),
-			html.Input(html.Control{Kind: "textarea", Name: "body", Label: "Body", Required: true}),
-			html.Input(html.Control{Kind: "select", Name: "color", Label: "Color " + std.TextFromInt(model.Id), Required: true, Value: "Red", Options: []string{"Red", "Green"}}),
-			html.Input(html.Control{Kind: "input", Name: "count", Type: "number", Label: "Count"}),
-			html.Input(html.Control{Kind: "input", Name: "urgent", Type: "checkbox", Label: "Urgent", Value: "True"}),
-			html.Input(html.Control{Kind: "errors", Name: "body"}),
+			html.Input(html.Control{Kind: "errors", Form: "M.Note"}),
+			html.Input(html.Control{Kind: "textarea", Form: "M.Note", Name: "body", Label: "Body", Required: true}),
+			html.Input(html.Control{Kind: "select", Form: "M.Note", Name: "color", Label: "Color " + std.TextFromInt(model.Id), Required: true, Value: "Red", Options: []string{"Red", "Green"}}),
+			html.Input(html.Control{Kind: "input", Form: "M.Note", Name: "count", Type: "number", Label: "Count"}),
+			html.Input(html.Control{Kind: "input", Form: "M.Note", Name: "urgent", Type: "checkbox", Label: "Urgent", Value: "True"}),
+			html.Input(html.Control{Kind: "errors", Form: "M.Note", Name: "body"}),
 			html.El("button", nil, html.Text("Save")),
 		),
 	}})

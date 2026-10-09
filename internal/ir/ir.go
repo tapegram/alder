@@ -29,6 +29,22 @@ type Program struct {
 	AppUpdate *Value      // App's `update` (a Task effect); nil when App declares none
 	Session   *RecordType // App's `session` record (empty when App declares none); nil without an App module
 	Caps      []*Capability
+	Brands    []*Brand // the app's brands, in module order then declaration order
+	Login     string   // the path of the page App's `login` names; "" when App has none
+}
+
+// Brand is a brand type (`type Slug = brand Text where …`). Types in the IR are brand-erased;
+// a brand survives where the runtime must check it: Brands lists the app's, and a record field
+// declared with a brand (directly, or as the element of a Maybe or List) points at it
+// (FieldT.Brand), for the decoders of forms and URL parameters. Check is the lowered `where`
+// function (of type Base -> Bool), nil when the brand has none. The stdlib's refinement brands
+// (Text.NonEmpty, Text.Email, Text.Url, Text.Secret, Int.Positive, Int.NonNegative) are Brands of
+// module Text or Int with no Check: the runtime implements them; they are not in
+// Program.Brands.
+type Brand struct {
+	Module, Name string
+	Base         types.Type
+	Check        Expr
 }
 
 // Module holds a module's declarations.
@@ -64,10 +80,14 @@ type RecordType struct {
 
 // FieldT is a record field. Default is the lowered default expression (`done: Bool = False`), nil
 // when the field has none; Lower already fills defaults into record literals that omit them.
+// Brand is the brand the field's declared type is, or the brand of its Maybe's or List's
+// element (`email: Maybe Text.Email`), nil for none; it is set on the fields of nominal records
+// (forms, page and message parameters, the session, tables, records).
 type FieldT struct {
 	Name    string
 	Type    types.Type
 	Default Expr
+	Brand   *Brand
 }
 
 // UnionType is a union's declaration. Params are its type parameter names (`Maybe a` → ["a"]).

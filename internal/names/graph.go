@@ -4,6 +4,7 @@ package names
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"alder/internal/diag"
@@ -55,6 +56,11 @@ func Load(dir string, std map[string]*syntax.Module) (*Program, *diag.Bag, []err
 	return prog, bag, ioErrs
 }
 
+// ReservedModules are the first module segments no app module may have (E0015): the compiled
+// program's exported names Route__…, Cap__… and Args__… start with them (internal/gen, names.go
+// rule 5).
+var ReservedModules = []string{"Args", "Cap", "Route"}
+
 func Build(mods []*syntax.Module, std map[string]*syntax.Module) (*Program, *diag.Bag) {
 	bag := &diag.Bag{}
 	p := &Program{Modules: map[string]*syntax.Module{}, Pages: map[string]*syntax.PageDecl{}, AppMsgs: map[string]*syntax.MsgDecl{}, Std: std, scopes: map[string]*moduleScope{}}
@@ -70,6 +76,9 @@ func Build(mods []*syntax.Module, std map[string]*syntax.Module) (*Program, *dia
 			bag.Error(diag.ModuleCase, m.Span, "module names `%s` and `%s` differ only in case (%s, %s); rename one of them", prev.Name, m.Name, prev.File, m.File)
 		} else {
 			folded[strings.ToLower(m.Name)] = m
+		}
+		if first, _, _ := strings.Cut(m.Name, "."); slices.Contains(ReservedModules, first) {
+			bag.Error(diag.ReservedModule, m.Span, "module name `%s` is reserved: the compiled program's names `%s__…` are taken; rename the module", m.Name, first)
 		}
 		p.Modules[m.Name] = m
 		if want := expectedName(m.File); want != "" && want != m.Name {

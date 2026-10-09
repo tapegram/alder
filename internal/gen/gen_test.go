@@ -1556,13 +1556,14 @@ func TestGen_EffectsLoad(t *testing.T) {
 	contains(t, files["Index_alder.go"], effectsLoad)
 	contains(t, files["Todo_alder.go"],
 		"var table__Todo__Todo = &db.Table[Todo__Todo]{",
-		"type cap__Todo__Stats interface {",
+		"type Cap__Todo__Stats interface {",
 		"Total(ctx context.Context) (int64, error)",
 		"ForOwner(ctx context.Context, a1 string, a2 bool) (int64, error)",
 	)
 	contains(t, files["Index_alder.go"],
-		"Send(ctx context.Context, args struct {",
-		`.Caps["Index.Mailer"].(cap__Index__Mailer)`,
+		"Send(ctx context.Context, args Args__Index__Mailer__Send) (bool, error)",
+		"type Args__Index__Mailer__Send struct {\n\tTo   string\n\tBody string\n}",
+		`.Caps["Index.Mailer"].(Cap__Index__Mailer)`,
 		`panic("alder: capability \"Index.Mailer\" is not wired")`,
 		".Send(_e5.Ctx, struct {",
 	)
@@ -1578,7 +1579,7 @@ func TestGen_RunTodos(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "zz_run_test.go"), []byte(runTodosTest), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	goRun(t, dir, "test", "-count=1", "-v", "-run", "TestTodos", "./...")
+	goRun(t, dir, "test", "-count=1", "-v", "-run", "TestTodos|TestServe", "./...")
 }
 
 const runTodosTest = `package app
@@ -1598,17 +1599,14 @@ import (
 // password is a stub Auth.Login.Password: a@b.c with "pw" is the user id it was made with.
 type password struct{ user string }
 
-func (p password) Verify(ctx context.Context, args struct {
-	Email    string
-	Password string
-}) (rt.Maybe[string], error) {
+func (p password) Verify(ctx context.Context, args Args__Auth__Login__Password__Verify) (rt.Maybe[string], error) {
 	if args.Email == "a@b.c" && args.Password == "pw" {
 		return rt.Just(p.user), nil
 	}
 	return rt.Nothing[string](), nil
 }
 
-var _ cap__Auth__Login__Password = password{}
+var _ Cap__Auth__Login__Password = password{}
 
 func TestTodos(t *testing.T) {
 	ctx := context.Background()
@@ -1803,6 +1801,35 @@ func TestTodos(t *testing.T) {
 	t.Logf("trace: %v", env.Trace)
 	t.Logf("log: %d lines", len(logs))
 }
+
+// Serve refuses a capability left unset, naming the Caps field; the session codec round-trips
+// App's session as JSON and starts a cookie that lacks a field from the field's default.
+func TestServe(t *testing.T) {
+	if _, err := Serve(Caps{}, Options{DB: ":memory:"}); err == nil || err.Error() != "capability Auth.Login.Password is not wired: set Caps.Auth__Login__Password" {
+		t.Fatalf("Serve without the capability: %v", err)
+	}
+	if h, err := Serve(Caps{Auth__Login__Password: password{}}, Options{}); err != nil || h == nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	c := session__codec{}
+	if d := c.Default().(App__Session); d.User.Ok || d.Theme.Tag != is__Theme__Theme__Light {
+		t.Fatalf("Default = %+v", d)
+	}
+	s := App__Session{User: rt.Just("u"), Theme: Theme__Theme__Dark__}
+	b, err := c.Encode(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := c.Decode(b); err != nil || got.(App__Session) != s {
+		t.Fatalf("Decode(Encode(s)) = %+v, %v", got, err)
+	}
+	if got, err := c.Decode([]byte(` + "`" + `{"User":{"Ok":true,"Val":"v"}}` + "`" + `)); err != nil || got.(App__Session).User.Val != "v" || got.(App__Session).Theme.Tag != is__Theme__Theme__Light {
+		t.Fatalf("Decode of a partial session = %+v, %v", got, err)
+	}
+	if _, err := c.Decode([]byte("nope")); err == nil {
+		t.Fatal("Decode of garbage: no error")
+	}
+}
 `
 
 // The conditions of the M3b corpus program run against SQLite: every column kind is encoded
@@ -1835,10 +1862,7 @@ type pay struct{}
 
 // Charge writes a row through the running Task's transaction (I3): it commits or rolls back
 // with the Task.
-func (pay) Charge(ctx context.Context, args struct {
-	Amount float64
-	Card   string
-}) (rt.Maybe[string], error) {
+func (pay) Charge(ctx context.Context, args Args__Shop__Pay__Charge) (rt.Maybe[string], error) {
 	row := insertvals__Shop__Customer(insert__Shop__Customer{Email: args.Card + "@pay", Seen: rt.Nothing[time.Time]()})
 	_, err := db.InsertRow(ctx, db.StoreFrom(ctx), db.TxFrom(ctx), table__Shop__Customer, row, time.Now())
 	return rt.Just(args.Card), err
@@ -1854,7 +1878,7 @@ func (pay) Limit(ctx context.Context, a1 string, a2 int64) (int64, error) {
 	return a2 * 10, nil
 }
 
-var _ cap__Shop__Pay = pay{}
+var _ Cap__Shop__Pay = pay{}
 
 func TestShop(t *testing.T) {
 	ctx := context.Background()
@@ -2004,3 +2028,290 @@ func TestShop(t *testing.T) {
 	}
 }
 `
+
+// TestGen_Routes: the routes of the ir_page app, against a golden written by hand before the
+// emitter (the spec of route emission): decoders, page__/update__ functions, the GET and POST
+// routes and their helpers. The whole app vets.
+func TestGen_Routes(t *testing.T) {
+	files := emit(t, "../../testdata/golden/ir_page")
+	want := "../../testdata/golden/gen_routes/want/routes__alder.go"
+	if *update {
+		if err := os.WriteFile(want, files["routes__alder.go"], 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w, err := os.ReadFile(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(files["routes__alder.go"]); got != string(w) {
+		t.Errorf("routes__alder.go mismatch\n got:\n%s\nwant:\n%s", got, w)
+	}
+	vet(t, files)
+}
+
+// A message parameter and a form field of the same name do not mix: the parameter comes from
+// the message URL's query, the field from the body. The page's own parameters come from the
+// query too when the message has one of that name, else from the Referer (the page that sent
+// the message); a POST without either is a 404.
+func TestDecode_ParamsAndFormDontMix(t *testing.T) {
+	files := emitSource(t, map[string]string{
+		"App.alder": appModule,
+		"M.alder": `module M
+
+page "/m/{id}" { id: Text }
+
+type Model = { id: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { id: params.id }
+
+form F = { id: Text, title: Text }
+
+msg Save { id: Text } form F
+msg Ping
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> Task.succeed (Redirect (O { a: p.id, b: p.form.id ++ "/" ++ p.form.title ++ "/" ++ model.id })),
+  Ping p -> Task.succeed (Redirect (O { a: model.id, b: "ping" })),
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{model.id}</p>
+`,
+		"O.alder": `module O
+
+page "/o" { a: Text, b: Text }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session = <p>o</p>
+`,
+	})
+	runGo(t, files, `package app
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestMix(t *testing.T) {
+	h, err := Serve(Caps{}, Options{DB: ":memory:"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	post := func(target, body, referer string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", target, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if referer != "" {
+			r.Header.Set("Referer", referer)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	w := post("/_m/M/Save?id=p1", "id=f1&title=x", "http://h/m/r0")
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/o?a=p1&b=f1%2Fx%2Fp1" {
+		t.Fatalf("Save: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := post("/_m/M/Ping", "", "http://h/m/r%2F1"); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/o?a=r%2F1&b=ping" {
+		t.Fatalf("Ping: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := post("/_m/M/Ping", "", ""); w.Code != http.StatusNotFound {
+		t.Fatalf("Ping without the page's id: %d", w.Code)
+	}
+	// a form error re-renders the page (its id is the message's, which shares the name)
+	if w := post("/_m/M/Save?id=p1", "title=x", "http://h/m/r0"); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "<p>p1</p>") {
+		t.Fatalf("Save without the form's id: %d %s", w.Code, w.Body.String())
+	}
+}
+`)
+}
+
+// appModule is a minimal App for the emitted-app tests.
+const appModule = `module App
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>not found</p>
+`
+
+// A brand's `where` check runs where a form or URL decodes it: an app brand's by its check__
+// function ("is not valid"), the stdlib refinements by rt/web's helpers; inside a Maybe only
+// when present. A Text.Secret field renders as a password input bound to its form.
+func TestGen_BrandChecks(t *testing.T) {
+	files := emitSource(t, map[string]string{
+		"App.alder": appModule,
+		"M.alder": `module M
+
+type Slug = brand Text where Text.matches "^[a-z]+$"
+type Age = brand Int where (\n -> n >= 0 && n < 150)
+type Plain = brand Text
+
+page "/m" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+form F = {
+  slug: Slug,
+  alias: Maybe Slug,
+  age: Age,
+  email: Text.Email,
+  name: Text.NonEmpty,
+  pw: Text.Secret,
+  site: Maybe Text.Url,
+  n: Int.Positive,
+  plain: Plain,
+}
+
+msg Save form F
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = Task.succeed Rerender
+
+view : Model -> Session -> Html Msg
+view model session = <form submit={Save}><Input field="pw" /><Input field="slug" /></form>
+`,
+	})
+	contains(t, files["M_alder.go"], "func check__M__Slug(v string) bool {\n\treturn std.TextMatches(\"^[a-z]+$\", v)\n}",
+		`html.Input(html.Control{Kind: "input", Form: "M.F", Name: "pw", Type: "text", Required: true, Secret: true})`)
+	runGo(t, files, `package app
+
+import (
+	"net/url"
+	"reflect"
+	"strings"
+	"testing"
+
+	"alder/rt/html"
+	"alder/rt/web"
+)
+
+func TestBrands(t *testing.T) {
+	good := url.Values{"slug": {"abc"}, "alias": {""}, "age": {"30"}, "email": {"a@b.c"}, "name": {"x"}, "pw": {" "}, "site": {""}, "n": {"1"}, "plain": {""}}
+	f, errs := decode__M__F(good)
+	if errs != nil || f.Slug != "abc" || f.Alias.Ok || f.Age != 30 || f.Email != "a@b.c" || f.Pw != " " || f.Site.Ok || f.N != 1 {
+		t.Fatalf("good: %+v %v", f, errs)
+	}
+	if f, errs := decode__M__F(url.Values{"slug": {"abc"}, "alias": {"de"}, "age": {"0"}, "email": {"a@b.c"}, "name": {"x"}, "pw": {"p"}, "site": {"http://x.y"}, "n": {"1"}, "plain": {"p"}}); errs != nil || f.Alias.Val != "de" || f.Site.Val != "http://x.y" {
+		t.Fatalf("present Maybes: %+v %v", f, errs)
+	}
+	bad := url.Values{"slug": {"A1"}, "alias": {"B"}, "age": {"200"}, "email": {"x"}, "name": {"  "}, "pw": {""}, "site": {"nope"}, "n": {"0"}, "plain": {""}}
+	_, errs = decode__M__F(bad)
+	want := []web.FieldError{{Field: "slug", Message: "is not valid"}, {Field: "alias", Message: "is not valid"}, {Field: "age", Message: "is not valid"},
+		{Field: "email", Message: web.MsgEmail}, {Field: "name", Message: web.MsgNonEmpty}, {Field: "pw", Message: web.MsgSecret},
+		{Field: "site", Message: web.MsgURL}, {Field: "n", Message: "must be positive"}}
+	if !reflect.DeepEqual(errs, want) {
+		t.Fatalf("bad:\n got %v\nwant %v", errs, want)
+	}
+	_, errs = decode__M__F(url.Values{"age": {" "}, "n": {""}})
+	want = []web.FieldError{web.Missing("slug"), web.Missing("age"), web.Missing("email"), web.Missing("name"), web.Missing("pw"), web.Missing("n"), web.Missing("plain")}
+	if !reflect.DeepEqual(errs, want) {
+		t.Fatalf("missing:\n got %v\nwant %v", errs, want)
+	}
+	if _, errs := decode__M__F(url.Values{"slug": {"abc"}, "age": {"x"}, "email": {"a@b.c"}, "name": {"x"}, "pw": {"p"}, "n": {"1"}, "plain": {""}}); !reflect.DeepEqual(errs, []web.FieldError{{Field: "age", Message: web.MsgInt}}) {
+		t.Fatalf("malformed Int: %v", errs)
+	}
+	page := html.RenderWith(M__view(M__Model{}, App__Session{}), &html.FormState{Form: "M.F", Values: map[string]string{"slug": "A1"}, Errors: map[string][]string{}})
+	if !strings.Contains(page, `+"`"+`<input name="pw" type="password" required />`+"`"+`) || !strings.Contains(page, `+"`"+`value="A1"`+"`"+`) {
+		t.Fatalf("view: %s", page)
+	}
+}
+`)
+}
+
+// A link to a page carries its path parameters in the path (each escaped as one segment) and
+// the others as the query, in declaration order, rendered as text; a parameter at its default
+// and a Maybe at Nothing are left out. The page's decoder reads the link back.
+func TestGen_PageURLQuery(t *testing.T) {
+	files := emitSource(t, map[string]string{
+		"App.alder": appModule,
+		"T.alder": `module T
+
+type Filter = All | Active | Done
+
+page "/t/{id}/x" { id: Text, filter: Filter = All, q: Maybe Text, n: Int, b: Bool = False, tags: List Text, m: Maybe Int = Just 3 }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session = <p>t</p>
+
+link1 : Page
+link1 = T { id: "a/b c", filter: Active, q: Just "x&y", n: 2, b: True, tags: ["p", "q r"], m: Nothing }
+
+link2 : Text -> Page
+link2 id = T { id: id, q: Nothing, n: -1, tags: [] }
+`,
+		"I.alder": `module I
+
+import T
+
+page "/" { filter: T.Filter = All }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session =
+  <nav>
+    {for f in [All, Active] -> <a href={I { filter: f }}>x</a>}
+  </nav>
+`,
+	})
+	runGo(t, files, `package app
+
+import (
+	"net/url"
+	"strings"
+	"testing"
+
+	"alder/rt"
+	"alder/rt/html"
+)
+
+func TestLinks(t *testing.T) {
+	for got, want := range map[string]string{
+		rt.PageURL(T__link1):   "/t/a%2Fb%20c/x?filter=Active&q=x%26y&n=2&b=True&tags=p&tags=q+r&m=",
+		rt.PageURL(T__link2("c")): "/t/c/x?n=-1",
+	} {
+		if got != want {
+			t.Errorf("PageURL = %q, want %q", got, want)
+		}
+	}
+	u, _ := url.Parse(rt.PageURL(T__link1))
+	p, errs := decode__T__Params(map[string]string{"id": "a/b c"}, u.Query())
+	if errs != nil || p.Id != "a/b c" || p.Filter.Tag != is__T__Filter__Active || p.Q.Val != "x&y" || p.N != 2 || !p.B || strings.Join(p.Tags, ",") != "p,q r" || p.M.Ok {
+		t.Fatalf("decoded link1: %+v %v", p, errs)
+	}
+	p, errs = decode__T__Params(map[string]string{"id": "c"}, url.Values{"n": {"-1"}})
+	if errs != nil || p.Filter.Tag != is__T__Filter__All || p.Q.Ok || p.B || len(p.Tags) != 0 || p.M.Val != 3 {
+		t.Fatalf("decoded link2: %+v %v", p, errs)
+	}
+	if _, errs := decode__T__Params(map[string]string{"id": "c"}, url.Values{"n": {"x"}, "filter": {"Nope"}}); len(errs) != 2 {
+		t.Fatalf("bad params: %v", errs)
+	}
+	page := html.Render(I__view(I__Model{}, App__Session{}))
+	if !strings.Contains(page, `+"`"+`<a href="/">x</a><a href="/?filter=Active">x</a>`+"`"+`) {
+		t.Fatalf("links: %s", page)
+	}
+}
+`)
+}
