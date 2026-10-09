@@ -456,10 +456,16 @@ func queryString(kvs []KV) string {
 // SafeURL reports whether u may be a link or a navigation target: a path of this site (it
 // starts with "/" but not "//" or "/\\", which browsers read as another host), a fragment
 // ("#…"), or an absolute http: or https: URL with a host (the scheme in any case). Anything else
-// — javascript:, data:, other schemes, protocol-relative URLs, leading whitespace or control
-// characters — is refused. Url.external turns a refused URL into "#"; html renders such an href
+// — javascript:, data:, other schemes, protocol-relative URLs, leading whitespace, or any
+// control character (< 0x20 or 0x7f) anywhere — is refused. Url.external turns a refused URL into "#"; html renders such an href
 // as "#", and rt/web refuses to redirect to one.
 func SafeURL(u string) bool {
+	// browsers drop tabs and newlines inside a URL ("/\t/evil" is "//evil"): no control byte
+	for i := 0; i < len(u); i++ {
+		if u[i] < 0x20 || u[i] == 0x7f {
+			return false
+		}
+	}
 	switch {
 	case strings.HasPrefix(u, "#"):
 		return true

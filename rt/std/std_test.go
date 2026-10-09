@@ -575,7 +575,7 @@ func TestEffects_Http(t *testing.T) {
 	eq(t, "trace", env.Trace, []string{"Http.get", "Http.post", "Http.get", "Http.get"})
 }
 
-// Url.external keeps only absolute http(s) URLs and paths of this site; every other URL is "#"
+// Url.external keeps only absolute http(s) URLs, paths of this site and fragments; every other URL is "#"
 // (a script URL can be neither a link nor a redirect).
 func TestUrlExternalSanitizes(t *testing.T) {
 	for in, want := range map[string]string{
@@ -598,7 +598,13 @@ func TestUrlExternalSanitizes(t *testing.T) {
 		"https:evil":              "#",
 		"http://":                 "#",
 		"relative/path":           "#",
-		"#top":                    "#",
+		"#top":                    "#top",
+		"/\t/evil":                "#",
+		"/\n/evil":                "#",
+		"/\r/evil":                "#",
+		"/a\x7fb":                 "#",
+		"https://ok\t":            "#",
+		"#a\nb":                   "#",
 		"":                        "#",
 	} {
 		if got := UrlExternal(in).Path; got != want {

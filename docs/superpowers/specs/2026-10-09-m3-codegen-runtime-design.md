@@ -457,9 +457,10 @@ Each milestone gets its own implementation plan.
   router decides.
 - Navigation targets are sanitized (re-review residual). `rt.SafeURL`
   accepts a site path (`/…`, not `//…` or `/\…`), a fragment (`#…`) and an
-  absolute `http:`/`https:` URL with a host (scheme in any case);
-  `Url.external` (`std.UrlExternal`) maps anything else, and fragments, to
-  `#` (pure code: nothing is logged). Defense in depth: `datastar.Navigate`
+  absolute `http:`/`https:` URL with a host (scheme in any case), and
+  refuses any URL containing a byte < 0x20 or 0x7f (browsers strip them:
+  `/\t/evil` is `//evil`); `Url.external` (`std.UrlExternal`) maps anything
+  it refuses to `#` (pure code: nothing is logged). Defense in depth: `datastar.Navigate`
   refuses an unsafe URL with an error and writes nothing; `rt/web`'s
   redirect path answers one with a 500 (`eff.ErrInternal`: "refusing to
   navigate to <scheme>:"; under Datastar the usual 200 patch of the error

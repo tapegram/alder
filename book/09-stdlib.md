@@ -177,11 +177,13 @@ Url.external : Text -> Page                     -- external link for href or Red
 ```
 
 `Url.external` keeps a URL only when it is an absolute `http:` or `https:`
-URL (`https://example.com/a`) or a path of this site (`/static/app.css`,
-but not `//host/…` or `/\host`, which browsers read as another site).
-Anything else becomes `#`, a link and a redirect that go nowhere:
-`javascript:` and `data:` URLs in any case (`JavaScript:`), other schemes
-(`mailto:`), URLs with leading spaces, and relative paths. So a link or a
+URL (`https://example.com/a`), a path of this site (`/static/app.css`,
+but not `//host/…` or `/\host`, which browsers read as another site), or a
+fragment (`#top`). Anything else becomes `#`, a link and a redirect that go
+nowhere: `javascript:` and `data:` URLs in any case (`JavaScript:`), other
+schemes (`mailto:`), URLs with leading spaces, relative paths, and any URL
+holding a control character (browsers drop tabs and newlines, so `/\t/evil`
+would be `//evil`). So a link or a
 `Redirect` built from user input can never run script. The runtime checks
 again: an `href` that is not such a URL renders as `#`, and a redirect to
 one is answered with a 500 (`refusing to navigate to javascript:`).

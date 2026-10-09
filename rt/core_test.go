@@ -333,3 +333,18 @@ func TestMsgKey(t *testing.T) {
 		t.Fatal("a message without parameters")
 	}
 }
+
+// SafeURL: site paths, fragments and absolute http(s) URLs; never a control byte anywhere
+// (browsers strip tabs and newlines, so "/\t/evil" would be "//evil").
+func TestSafeURL(t *testing.T) {
+	for u, want := range map[string]bool{
+		"/": true, "/a?b=1": true, "#top": true, "#": true, "https://ex.com": true, "HTTP://ex.com/x": true,
+		"//evil": false, "/\\evil": false, "/\t/evil": false, "/\n/evil": false, "/\r/evil": false,
+		"/a\x7f": false, "https://ok\t": false, "#a\x00": false, "javascript:x": false, "JaVaScRiPt:x": false,
+		"data:x": false, " https://ex.com": false, "https:evil": false, "": false, "rel": false,
+	} {
+		if got := SafeURL(u); got != want {
+			t.Errorf("SafeURL(%q) = %v, want %v", u, got, want)
+		}
+	}
+}

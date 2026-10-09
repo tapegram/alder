@@ -102,11 +102,12 @@ func TextToFloat(s string) rt.Maybe[float64] {
 }
 
 // UrlExternal is `Url.external`: a link to a URL outside the app. Only an absolute http: or
-// https: URL or a path of this site ("/…", not "//…") is kept (rt.SafeURL); anything else —
+// https: URL, a path of this site ("/…", not "//…") or a fragment ("#top") is kept
+// (rt.SafeURL); anything else —
 // javascript:, data:, other schemes, protocol-relative or whitespace-prefixed URLs — becomes
 // "#", a link and a redirect that go nowhere.
 func UrlExternal(u string) rt.Page {
-	if !rt.SafeURL(u) || u != "" && u[0] == '#' {
+	if !rt.SafeURL(u) {
 		return rt.Page{Path: "#"}
 	}
 	return rt.Page{Path: u}
