@@ -41,12 +41,12 @@ when possible, a fix. With `--json`, diagnostics are emitted as JSON lines:
 {"code":"E0301","severity":"error","file":"app/Todos/Index.alder","line":28,"col":52,"endLine":28,"endCol":58,"message":"message `Toggle` needs its parameters: `Toggle { id: ?id }`","fix":{"line":28,"col":52,"endLine":28,"endCol":58,"replace":"Toggle { id: ?id }"}}
 ```
 
-A fix replaces the half-open span from `line:col` to `endLine:endCol` with `replace`; when the two positions are equal it is an insertion. Fixes never overlap.
+A fix replaces the half-open span from `line:col` to `endLine:endCol` with `replace`; when the two positions are equal it is an insertion. A diagnostic carries at most one fix; two diagnostics may propose the same insertion (for example two E0201s for one missing import), and a tool applying fixes must dedupe identical zero-width fixes.
 
 `?name` in a fix is a hole for the agent to fill.
 
 `alder check` exits 0 when there are no errors, 1 when there are errors, and
-2 on a usage or I/O failure. A file that does not parse stops the compiler. After that, every module is checked except those whose names could not be resolved: a cycle or a missing import in one module never hides type errors in another. `alder explain <code>` prints a paragraph for any code below.
+2 on a usage or I/O failure. A file that does not parse stops the compiler. After that, every module's declarations are checked; the bodies of a module whose names could not be resolved are skipped, so a missing import never hides type errors in another module. `alder explain <code>` prints a paragraph for any code below.
 
 ### Diagnostic codes
 

@@ -72,9 +72,9 @@ python3 experiments/report_loop.py experiments/e5-loop > experiments/e5-loop/sco
 Summary shape:
 
 ```json
-{"model": "ollama:qwen3-coder:30b", "task": "t3-newapp", "retries": 1, "base": null, "error": null,
- "rounds": [{"n": 0, "files": 9, "exit": 1, "errors": 3, "warnings": 0, "codes": {"E0101": 1, "E0003": 2}, "seconds": 41.2, "stderr": ""},
-            {"n": 1, "files": 9, "exit": 0, "errors": 0, "warnings": 0, "codes": {}, "seconds": 38.0, "stderr": ""}],
+{"model": "ollama-qwen3-coder-30b", "task": "t3-newapp", "retries": 1, "base": null, "error": null,
+ "rounds": [{"n": 0, "files": 9, "exit": 1, "errors": 3, "warnings": 0, "codes": {"E0101": 1, "E0003": 2}, "rejected": [], "seconds": 41.2, "tokens": 2138, "stderr": ""},
+            {"n": 1, "files": 9, "exit": 0, "errors": 0, "warnings": 0, "codes": {}, "rejected": [], "seconds": 38.0, "tokens": 2191, "stderr": ""}],
  "final_pass": true}
 ```
 
