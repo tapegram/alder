@@ -1725,7 +1725,7 @@ func TestTodos(t *testing.T) {
 	if err != nil || nav.Tag != rt.NavRerender {
 		t.Fatalf("toggle: %+v, %v", nav, err)
 	}
-	calls("toggle", "Db.update Todo")
+	calls("toggle", "Db.get Todo", "Db.update Todo") // the ownership check, then the write
 	if todos = load(Todo__Filter__All__); len(todos) != 1 || !todos[0].Done {
 		t.Fatalf("after toggle: %+v", todos)
 	}
@@ -1747,9 +1747,13 @@ func TestTodos(t *testing.T) {
 		t.Fatalf("show other's: err = %v, want ErrNotFound", err)
 	}
 
-	// toggling a todo that does not exist fails the Task
-	if _, err := update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: "nope"})); err == nil {
-		t.Fatal("toggle missing: no error")
+	// toggling a todo that does not exist, or another user's, is Task.notFound (a 404)
+	if _, err := update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: "nope"})); err != eff.ErrNotFound {
+		t.Fatalf("toggle missing: err = %v, want ErrNotFound", err)
+	}
+	other := Todos__Index__Session{User: "someone else", Theme: session.Theme}
+	if _, err := eff.Run(env, eff.KTask, Todos__Index__update(Todos__Index__Msg__Delete__(Todos__Index__DeleteParams{Id: td.Id}), model, other)); err != eff.ErrNotFound {
+		t.Fatalf("delete other's: err = %v, want ErrNotFound", err)
 	}
 
 	// rollback: an add followed by a failure leaves no row
@@ -1768,7 +1772,7 @@ func TestTodos(t *testing.T) {
 	if err != nil || nav.Tag != rt.NavRerender {
 		t.Fatalf("delete: %+v, %v", nav, err)
 	}
-	calls("delete", "Db.delete Todo")
+	calls("delete", "Db.get Todo", "Db.delete Todo")
 	if n := len(load(Todo__Filter__All__)); n != 0 {
 		t.Fatalf("after delete: %d todos", n)
 	}

@@ -82,7 +82,7 @@ func (g *gen) routesSource(p *ir.Program) string {
 		g.appRoutes(&b, p)
 	}
 	b.WriteString(`// route__fail answers a load or update that did not succeed: 404 (App.notFound) for
-// Query.notFound, else 500 (App.error).
+// Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
 	if errors.Is(err, eff.ErrNotFound) {
 		return web.NotFoundResponse(html.None())
@@ -155,7 +155,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	keep := func(k string) string { return ", " + k }
 	g.paramsKVs(b, pg)
 	if hasUpdate {
-		b.WriteString(comment(fmt.Sprintf("%s runs page %s's update for msg and answers its Nav (book 06): load, update (a Task, whose session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on a form (st, the state of the form that sent the message; nil for a message without one) load and view again with t on the form (patched into the page under Datastar); for Rerender (and a Reject without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh does not post again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound.", updateFunc(m), m)))
+		b.WriteString(comment(fmt.Sprintf("%s runs page %s's update for msg and answers its Nav (book 06): load, update (a Task, whose session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on a form (st, the state of the form that sent the message; nil for a message without one) load and view again with t on the form (patched into the page under Datastar); for Rerender (and a Reject without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh does not post again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound or Task.notFound.", updateFunc(m), m)))
 		fmt.Fprintf(b, `func %[1]s(rq *web.Request, params %[2]s, msg %[3]s, st *html.FormState) web.Response {
 	model, session, stop := %[4]s(rq, params%[5]s)
 	if stop != nil {
@@ -377,7 +377,7 @@ func (g *gen) appRoutes(b *strings.Builder, p *ir.Program) {
 		g.msgDecoders(b, "App", msg, forms)
 	}
 	app := GoName(p.Session.Module, p.Session.Name)
-	b.WriteString(comment(fmt.Sprintf("%s runs App's update for msg and answers its Nav: Redirect p is a 303 to p; Rerender and Reject t are a 303 back to the page that sent the message (the Referer, else /), as App has no page of its own to render (a Reject's text is not shown). The session the Task leaves is stored; a failed Task changes nothing: 500 (App.error), or 404 for Query.notFound.", updateFunc("App"))))
+	b.WriteString(comment(fmt.Sprintf("%s runs App's update for msg and answers its Nav: Redirect p is a 303 to p; Rerender and Reject t are a 303 back to the page that sent the message (the Referer, else /), as App has no page of its own to render (a Reject's text is not shown). The session the Task leaves is stored; a failed Task changes nothing: 500 (App.error), or 404 for Query.notFound or Task.notFound.", updateFunc("App"))))
 	fmt.Fprintf(b, `func %s(rq *web.Request, msg %s) web.Response {
 	nav, err := eff.Run(rq.Env, eff.KTask, %s(msg, rq.Env.Session.(%s)))
 	if err != nil {

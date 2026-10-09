@@ -46,6 +46,10 @@ func TaskAll[A any](ts []eff.Task[A]) eff.Task[[]A] { return eff.All(ts) }
 // QueryNotFound is Query.notFound.
 func QueryNotFound[T any]() eff.Query[T] { return eff.Q(eff.NotFound[T]()) }
 
+// TaskNotFound is Task.notFound: the Task fails with eff.ErrNotFound (a route answers 404), its
+// writes rolled back like any failed Task's.
+func TaskNotFound[T any]() eff.Task[T] { return eff.NotFound[T]() }
+
 // TaskFail is Task.fail.
 func TaskFail[T any](msg string) eff.Task[T] { return eff.Fail[T](msg) }
 

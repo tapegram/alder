@@ -2,5 +2,6 @@ module Task
 
 succeed : a -> Task a
 fail : Text -> Task a
+notFound : Task a
 map : (a -> b) -> Task a -> Task b
 all : List (Task a) -> Task (List a)

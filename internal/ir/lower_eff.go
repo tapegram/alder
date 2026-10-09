@@ -124,7 +124,7 @@ func (l *lowerer) build(h *effHead, args []Expr, t types.Type) Expr {
 		return &EffAll{Typed: Typed{t}, Kind: l.effKind(t, h.at), Effects: args[0]}
 	case "Task.fail":
 		return &EffFail{Typed: Typed{t}, Message: args[0]}
-	case "Query.notFound":
+	case "Query.notFound", "Task.notFound":
 		return &EffNotFound{Typed: Typed{t}}
 	case "Db.get":
 		return &DbGet{Typed: Typed{t}, Table: table(0), ID: args[1]}

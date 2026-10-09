@@ -36,13 +36,27 @@ update msg model session = match msg {
     Task.succeed (Redirect (Todos.Index { filter: model.filter }))
   },
   Toggle p -> {
-    let _ <- Db.update Todo p.id (\t -> { t | done: not t.done })
+    let todo <- owned p.id session
+    let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
     Task.succeed Rerender
   },
   Delete p -> {
-    let _ <- Db.delete Todo p.id
+    let todo <- owned p.id session
+    let _ <- Db.delete Todo todo.id
     Task.succeed Rerender
   },
+}
+
+-- owned is the todo a message names, when the session's user owns it; otherwise the message is
+-- a 404. `load` only lists the user's todos, but a message's id comes from the request: anyone
+-- can post `Toggle` with another user's id, so `update` checks it again.
+owned : Todo.TodoId -> Session -> Task Todo
+owned id session = {
+  let found <- Db.get Todo id
+  match found {
+    Just todo -> if todo.owner == session.user then Task.succeed todo else Task.notFound,
+    Nothing -> Task.notFound,
+  }
 }
 
 view : Model -> Session -> Html Msg

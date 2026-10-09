@@ -566,7 +566,8 @@ type EffFail struct {
 	Message Expr
 }
 
-// EffNotFound is Query.notFound.
+// EffNotFound is Query.notFound or Task.notFound: the effect fails with eff.ErrNotFound, which a
+// route answers with 404 (App.notFound).
 type EffNotFound struct{ Typed }
 
 // ---- Database operations: the Db.* functions, resolved to the table they act on.

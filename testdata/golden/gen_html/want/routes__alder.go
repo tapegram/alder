@@ -158,7 +158,8 @@ func params__M(p M__Params) []rt.KV {
 // the state of the form that sent the message; nil for a message without one) load and view again
 // with t on the form (patched into the page under Datastar); for Rerender (and a Reject without a
 // form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh does not post
-// again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound.
+// again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound or
+// Task.notFound.
 func update__M(rq *web.Request, params M__Params, msg M__Msg, st *html.FormState) web.Response {
 	model, session, stop := page__M(rq, params, nil)
 	if stop != nil {
@@ -306,7 +307,7 @@ func Route__Other__page() web.Route {
 // update__App runs App's update for msg and answers its Nav: Redirect p is a 303 to p; Rerender and
 // Reject t are a 303 back to the page that sent the message (the Referer, else /), as App has no
 // page of its own to render (a Reject's text is not shown). The session the Task leaves is stored;
-// a failed Task changes nothing: 500 (App.error), or 404 for Query.notFound.
+// a failed Task changes nothing: 500 (App.error), or 404 for Query.notFound or Task.notFound.
 func update__App(rq *web.Request, msg App__Msg) web.Response {
 	nav, err := eff.Run(rq.Env, eff.KTask, App__update(msg, rq.Env.Session.(App__Session)))
 	if err != nil {
@@ -326,7 +327,7 @@ func Route__App__Logout() web.Route {
 }
 
 // route__fail answers a load or update that did not succeed: 404 (App.notFound) for
-// Query.notFound, else 500 (App.error).
+// Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
 	if errors.Is(err, eff.ErrNotFound) {
 		return web.NotFoundResponse(html.None())

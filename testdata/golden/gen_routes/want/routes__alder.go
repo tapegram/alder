@@ -96,7 +96,8 @@ func params__Edit(p Edit__Params) []rt.KV {
 // (st, the state of the form that sent the message; nil for a message without one) load and view
 // again with t on the form (patched into the page under Datastar); for Rerender (and a Reject
 // without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh
-// does not post again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound.
+// does not post again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound
+// or Task.notFound.
 func update__Edit(rq *web.Request, params Edit__Params, msg Edit__Msg, st *html.FormState) web.Response {
 	model, session, stop := page__Edit(rq, params, nil)
 	if stop != nil {
@@ -275,7 +276,7 @@ func Route__Secret__page() web.Route {
 }
 
 // route__fail answers a load or update that did not succeed: 404 (App.notFound) for
-// Query.notFound, else 500 (App.error).
+// Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
 	if errors.Is(err, eff.ErrNotFound) {
 		return web.NotFoundResponse(html.None())

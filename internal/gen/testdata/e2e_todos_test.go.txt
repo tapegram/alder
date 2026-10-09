@@ -27,8 +27,8 @@ import (
 )
 
 // e2ePassword is a stub Auth.Login.Password that mirrors the dev adapter
-// (examples/todos/adapters): a@b.c with "pw" is the id of a User row it finds or creates in the
-// running Task's transaction. boom@b.c inserts a User row in that transaction and then fails
+// (examples/todos/adapters): a@b.c (and a second user, b@b.c) with "pw" is the id of a User row
+// it finds or creates in the running Task's transaction. boom@b.c inserts a User row in that transaction and then fails
 // (the row must be rolled back); probe@b.c counts the boom@b.c rows and records the count.
 // Every call is recorded.
 type e2ePassword struct {
@@ -44,7 +44,7 @@ func (p *e2ePassword) Verify(ctx context.Context, args Args__Auth__Login__Passwo
 	p.calls = append(p.calls, args.Email)
 	p.mu.Unlock()
 	switch {
-	case args.Email == "a@b.c" && args.Password == "pw":
+	case (args.Email == "a@b.c" || args.Email == "b@b.c") && args.Password == "pw":
 		id, err := e2eUser(ctx, args.Email)
 		if err != nil {
 			return rt.Nothing[string](), err
@@ -113,6 +113,16 @@ type e2eResp struct {
 	status int
 	header http.Header
 	body   string
+}
+
+// browser is another browser (its own cookie jar) on the same running app.
+func (e *e2e) browser() *e2e {
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	c := &http.Client{Jar: jar, Timeout: e.c.Timeout, CheckRedirect: e.c.CheckRedirect}
+	return &e2e{t: e.t, srv: e.srv, c: c, caps: e.caps}
 }
 
 func newE2E(t *testing.T, dev bool) *e2e {
@@ -337,8 +347,14 @@ func msgURL(t *testing.T, body, path, id string) string {
 // cookie holds.
 func (e *e2e) login(t *testing.T) string {
 	t.Helper()
+	return e.loginAs(t, "a@b.c")
+}
+
+// loginAs logs email in through the login page's form and returns the user id the cookie holds.
+func (e *e2e) loginAs(t *testing.T, email string) string {
+	t.Helper()
 	submit := msgURL(t, e.do("GET", "/login", nil).body, "/_m/Auth.Login/Submit", "")
-	r := e.do("POST", submit, url.Values{"email": {"a@b.c"}, "password": {"pw"}})
+	r := e.do("POST", submit, url.Values{"email": {email}, "password": {"pw"}})
 	r.redirect(t, "/")
 	s, raw := r.cookieSet(t)
 	if !s.User.Ok || s.User.Val == "" {
@@ -507,7 +523,49 @@ func TestE2E_Todos(t *testing.T) {
 	// 10. a create without Datastar: the 303 (step 6 sent the header)
 	r = e.do("POST", submit, url.Values{"title": {"Bread"}})
 	r.redirect(t, "/")
-	e.do("GET", "/", nil).want(t, 200, `>Bread</a>`, `<p id="summary">1 open</p>`)
+	r = e.do("GET", "/", nil)
+	r.want(t, 200, `>Bread</a>`, `<p id="summary">1 open</p>`)
+	bread := regexp.MustCompile(`<a href="/todos/([^"]+)">Bread</a>`).FindStringSubmatch(r.body)
+	if bread == nil {
+		t.Fatalf("no Bread row:\n%s", r.body)
+	}
+	breadID := bread[1]
+
+	// 10b. another user cannot act on a@b.c's todo (C4): `load` checks the page, `update` checks
+	// the ids a message carries. b@b.c posts the messages with a@b.c's id: every one is a 404 (a
+	// patched not-found page under Datastar), and the row is unchanged.
+	b := e.browser()
+	if bid := b.loginAs(t, "b@b.c"); bid == uid {
+		t.Fatalf("b@b.c has a@b.c's id %q", bid)
+	}
+	b.do("GET", "/", nil).want(t, 200, `<ul id="todos"></ul>`)
+	b.do("GET", "/todos/"+url.PathEscape(breadID), nil).want(t, 404, `<h1>Not found</h1>`)
+	q = url.QueryEscape(breadID)
+	for _, attack := range []struct {
+		path string
+		form url.Values
+	}{
+		{"/_m/Todos.Index/Toggle?id=" + q, nil},
+		{"/_m/Todos.Index/Delete?id=" + q, nil},
+		{"/_m/Todos.Show/Save?_p.id=" + q, url.Values{"title": {"pwned"}}},
+		{"/_m/Todos.Show/Delete?_p.id=" + q, nil},
+	} {
+		b.do("POST", attack.path, attack.form).want(t, 404, `<h1>Not found</h1>`)
+		r = b.do("POST", attack.path, attack.form, datastarHdr)
+		r.sse(t)
+		r.want(t, 200, `<h1>Not found</h1>`)
+	}
+	r = e.do("GET", "/", nil)
+	r.want(t, 200, `>Done</button></form><a href="/todos/`+breadID+`">Bread</a>`, `<p id="summary">1 open</p>`)
+	r.lacks(t, "pwned")
+	// the owner can: Show's messages act on the page's todo (no id of their own)
+	r = e.do("GET", "/todos/"+url.PathEscape(breadID), nil)
+	save := msgURL(t, r.body, "/_m/Todos.Show/Save", "")
+	if save != "/_m/Todos.Show/Save?_p.id="+q {
+		t.Fatalf("Show's Save URL %q", save)
+	}
+	e.do("POST", save, url.Values{"title": {"Rye"}}).redirect(t, "/")
+	e.do("GET", "/", nil).want(t, 200, `">Rye</a>`)
 
 	// 11. a tampered cookie (a forged payload under the old signature) is no session
 	sess, _ := e.session()

@@ -521,6 +521,9 @@ func TestEffects_Combinators(t *testing.T) {
 		t.Errorf("Query.notFound: %v", err)
 	}
 	var fail *eff.ErrFail
+	if _, err := eff.Run(env, eff.KTask, TaskNotFound[int64]()); err != eff.ErrNotFound {
+		t.Fatalf("TaskNotFound: %v", err)
+	}
 	if _, err := eff.Run(env, eff.KTask, TaskFail[int64]("boom")); !errors.As(err, &fail) || fail.Msg != "boom" {
 		t.Errorf("Task.fail: %v", err)
 	}
