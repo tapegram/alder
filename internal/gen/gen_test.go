@@ -2133,6 +2133,7 @@ view model session = <p>o</p>
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -2206,7 +2207,9 @@ func TestMix(t *testing.T) {
 	v, _, _ := strings.Cut(strings.TrimPrefix(sc, web.CookieName+"="), ";")
 	payload, _, _ := strings.Cut(v, ".")
 	raw, _ := base64.RawURLEncoding.DecodeString(payload)
-	if s, err := (session__codec{}).Decode(raw); err != nil || s.(App__Session).N != 1 {
+	var env struct{ Session json.RawMessage }
+	_ = json.Unmarshal(raw, &env) // the signed payload: {"exp": …, "session": …}
+	if s, err := (session__codec{}).Decode(env.Session); err != nil || s.(App__Session).N != 1 {
 		t.Fatalf("session after Vanish: %s %v", raw, err)
 	}
 }

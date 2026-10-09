@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -52,7 +53,8 @@ type router struct {
 	bigCookie sync.Once // the oversized-cookie warning is logged once per router
 }
 
-// sessionMaxAge is the session cookie's lifetime: 30 days, renewed whenever it is stored.
+// sessionMaxAge is the session cookie's lifetime in seconds: 30 days, renewed whenever it is
+// stored. It is both the cookie's Max-Age and the expiry signed into it (sessionEnvelope).
 const sessionMaxAge = 30 * 24 * 60 * 60
 
 // tracker records whether anything has been written to the client, so a panic after the
@@ -297,8 +299,8 @@ func readForm(w http.ResponseWriter, r *http.Request) (url.Values, int) {
 }
 
 // decodeSession is the session in r's cookie, or the codec's Default when it is missing, not
-// signed with the key, or not decodable. When the request carries several alder_session
-// cookies, only the first is considered.
+// signed with the key, expired, without an expiry, or not decodable. When the request carries
+// several alder_session cookies, only the first is considered.
 func (rt *router) decodeSession(r *http.Request) any {
 	codec := rt.opts.Session
 	if codec == nil {
@@ -306,21 +308,39 @@ func (rt *router) decodeSession(r *http.Request) any {
 	}
 	if c, err := r.Cookie(CookieName); err == nil {
 		if payload, ok := Verify(rt.key, c.Value); ok {
-			if s, err := codec.Decode(payload); err == nil {
-				return s
+			var env sessionEnvelope
+			if json.Unmarshal(payload, &env) == nil && env.Exp != nil && rt.now().Unix() < *env.Exp && env.Session != nil {
+				if s, err := codec.Decode(env.Session); err == nil {
+					return s
+				}
 			}
 		}
 	}
 	return codec.Default()
 }
 
-// setSession adds the Set-Cookie header storing s. It returns an error when s cannot be
-// encoded (a bug in the generated codec).
+// sessionEnvelope is the signed cookie payload: the codec's encoding of the session and its
+// expiry (unix seconds, sessionMaxAge after it was stored). The router refuses a cookie past
+// its expiry, or without one, whatever the browser does with the cookie's Max-Age: a copied
+// cookie stops working 30 days after the session was last stored.
+type sessionEnvelope struct {
+	Exp     *int64          `json:"exp"`
+	Session json.RawMessage `json:"session"`
+}
+
+// setSession adds the Set-Cookie header storing s, valid for sessionMaxAge from now. It returns
+// an error when s cannot be encoded (a bug in the generated codec).
 func (rt *router) setSession(w http.ResponseWriter, r *http.Request, s any) error {
 	if s == nil || rt.opts.Session == nil {
 		return nil
 	}
-	payload, err := rt.opts.Session.Encode(s)
+	enc, err := rt.opts.Session.Encode(s)
+	if err != nil {
+		return fmt.Errorf("encoding the session: %w", err)
+	}
+	now := rt.now()
+	exp := now.Unix() + sessionMaxAge
+	payload, err := json.Marshal(sessionEnvelope{Exp: &exp, Session: enc})
 	if err != nil {
 		return fmt.Errorf("encoding the session: %w", err)
 	}
@@ -332,7 +352,7 @@ func (rt *router) setSession(w http.ResponseWriter, r *http.Request, s any) erro
 		Value:    Sign(rt.key, payload),
 		Path:     "/",
 		MaxAge:   sessionMaxAge,
-		Expires:  rt.now().Add(sessionMaxAge * time.Second),
+		Expires:  now.Add(sessionMaxAge * time.Second),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",

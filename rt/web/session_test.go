@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSession_RoundTrip(t *testing.T) {
@@ -24,9 +25,15 @@ func TestSession_RoundTrip(t *testing.T) {
 	}
 }
 
+// sessionPayload is the signed payload the router stores for the session JSON s, expiring at
+// exp (unix seconds).
+func sessionPayload(s string, exp int64) []byte {
+	return []byte(fmt.Sprintf(`{"exp":%d,"session":%s}`, exp, s))
+}
+
 func TestSession_TamperedCookieIsDefault(t *testing.T) {
 	key := []byte("0123456789abcdef0123")
-	c := Sign(key, []byte(`{"User":"ada"}`))
+	c := Sign(key, sessionPayload(`{"User":"ada"}`, time.Now().Unix()+60))
 	// Flip one byte of the payload part.
 	b := []byte(c)
 	if b[0] == 'A' {
@@ -44,7 +51,7 @@ func TestSession_TamperedCookieIsDefault(t *testing.T) {
 		return PageResponse(doc("home"), nil, nil, false)
 	}}}
 	h := NewRouter(routes, testOpts(func(o *Options) { o.Secret = key }))
-	for _, cookie := range []string{string(b), "garbage", Sign(key, []byte("not json"))} {
+	for _, cookie := range []string{string(b), "garbage", Sign(key, sessionPayload("not json", time.Now().Unix()+60))} {
 		req := httptest.NewRequest("GET", "/", nil)
 		req.AddCookie(&http.Cookie{Name: CookieName, Value: cookie})
 		w := httptest.NewRecorder()
@@ -176,5 +183,62 @@ func TestSession_ProdNeedsSecret(t *testing.T) {
 	}
 	if ErrNoSecret.Error() != "ALDER_SECRET must be set to at least 16 bytes outside dev mode (ALDER_DEV=1)" {
 		t.Fatal(ErrNoSecret)
+	}
+}
+
+// The signed payload carries an expiry, 30 days after the session was last stored (I6): past
+// it, or without one, the cookie is no session, whatever the browser keeps.
+func TestSession_Expiry(t *testing.T) {
+	now := time.Unix(1_000_000, 0)
+	var seen any
+	routes := []Route{
+		{Method: "GET", Pattern: "/login", Handle: func(rq *Request) Response {
+			return PageResponse(doc("in"), nil, testSession{User: "ada"}, false)
+		}},
+		{Method: "GET", Pattern: "/who", Handle: func(rq *Request) Response {
+			seen = rq.Session
+			return PageResponse(doc("who"), nil, rq.Session, false) // a page stores the session it saw
+		}},
+	}
+	key := []byte("test-secret-test-secret")
+	h := NewRouter(routes, testOpts(func(o *Options) { o.Now = func() time.Time { return now } }))
+	who := func(c *http.Cookie) (any, *http.Cookie) {
+		req := httptest.NewRequest("GET", "/who", nil)
+		req.AddCookie(c)
+		w := serve(h, req)
+		return seen, sessionCookie(t, w)
+	}
+	c := sessionCookie(t, serve(h, httptest.NewRequest("GET", "/login", nil)))
+	if p, ok := Verify(key, c.Value); !ok || string(p) != string(sessionPayload(`{"User":"ada"}`, 1_000_000+sessionMaxAge)) {
+		t.Fatalf("payload %s", p)
+	}
+	ada := testSession{User: "ada"}
+	now = now.Add(29 * 24 * time.Hour)
+	s, fresh := who(c)
+	if s != ada {
+		t.Fatalf("after 29 days: %#v", s)
+	}
+	// storing renews the expiry: the fresh cookie outlives the first one
+	now = now.Add(2 * 24 * time.Hour)
+	if s, _ := who(c); s != (testSession{}) {
+		t.Fatalf("31 days after it was stored, the first cookie is still %#v", s)
+	}
+	if s, _ := who(fresh); s != ada {
+		t.Fatalf("the renewed cookie: %#v", s)
+	}
+	// exactly at the expiry: expired
+	exp := now.Unix()
+	for _, payload := range [][]byte{
+		sessionPayload(`{"User":"ada"}`, exp),
+		[]byte(`{"session":{"User":"ada"}}`), // no exp
+		[]byte(`{"User":"ada"}`),             // the cookie of a build before expiries
+		[]byte(`{"exp":"soon","session":{"User":"ada"}}`),
+	} {
+		if s, _ := who(&http.Cookie{Name: CookieName, Value: Sign(key, payload)}); s != (testSession{}) {
+			t.Fatalf("payload %s: %#v", payload, s)
+		}
+	}
+	if s, _ := who(&http.Cookie{Name: CookieName, Value: Sign(key, sessionPayload(`{"User":"ada"}`, exp+1))}); s != ada {
+		t.Fatalf("one second before the expiry: %#v", s)
 	}
 }

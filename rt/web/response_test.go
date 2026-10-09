@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"alder/rt/datastar"
 	"alder/rt/html"
@@ -33,7 +34,7 @@ func TestResponse_PageFullHTML(t *testing.T) {
 		html.El("body", nil, html.Input(html.Control{Kind: "input", Form: "f", Name: "title", Type: "text"})))
 	h := NewRouter(one("GET", "/", func(rq *Request) Response {
 		return PageResponse(page, st, testSession{User: "ada"}, false)
-	}), testOpts(nil))
+	}), testOpts(func(o *Options) { o.Now = func() time.Time { return time.Unix(1000, 0) } }))
 	w := serve(h, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
 	if w.Code != 200 || w.Header().Get("Content-Type") != "text/html; charset=utf-8" {
@@ -52,7 +53,7 @@ func TestResponse_PageFullHTML(t *testing.T) {
 		t.Fatalf("cookie %+v", c)
 	}
 	payload, ok := Verify(key, c.Value)
-	if !ok || string(payload) != `{"User":"ada"}` {
+	if !ok || string(payload) != `{"exp":2593000,"session":{"User":"ada"}}` {
 		t.Fatalf("cookie payload %q %v", payload, ok)
 	}
 
