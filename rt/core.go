@@ -370,6 +370,14 @@ func DateOf(t time.Time) Date {
 // Format renders a date with a Go layout string, e.g. "Jan 2, 2006".
 func Format(layout string, d Date) string { return d.Time().Format(layout) }
 
+// HttpError is the stdlib `Http.HttpError`: why an Http.get or Http.post did not produce a 2xx
+// response. Status is the response's status code, or 0 when there was no response (a transport
+// failure or timeout); Message is the response body, or the error.
+type HttpError struct {
+	Status  int64
+	Message string
+}
+
 // Page is a link target. M3c fills it in; M3a needs only the type.
 type Page struct {
 	Path string

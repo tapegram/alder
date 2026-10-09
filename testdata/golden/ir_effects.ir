@@ -1,0 +1,196 @@
+(module Todo)
+(record Todo.Todo
+  (id Text)
+  (title Text)
+  (done Bool = False)
+  (due Maybe Date)
+  (owner Text)
+  (created Time))
+(value Todo.pending : Select Todo ()
+  (db-select Todo.Todo
+    (where
+      (cond and
+        (cond eq (col Todo.Todo done) False)
+        (cond not (cond isNothing (col Todo.Todo due)))))
+    (order (ord (col Todo.Todo title) asc))
+    select))
+(value Todo.byOwners : List Text -> Select Todo (owners)
+  (db-select Todo.Todo
+    (where (cond in (col Todo.Todo owner) (var owners)))
+    select))
+(value Todo.getAll : List Text -> Query (List (Maybe Todo)) (ids)
+  (all query
+    (call (std List.map)
+      (lambda (_m1 : Text) (db-get Todo.Todo (var _m1)))
+      (var ids))))
+(value Todo.anyOwner : List Text -> Condition Todo (owners)
+  (cond or
+    (value
+      (call (std List.map)
+        (lambda (_m1 : Text) (cond eq (col Todo.Todo owner) (var _m1)))
+        (var owners)))))
+(value Todo.recent : Select Todo -> Select Todo (q)
+  (db-select Todo.Todo
+    (base (var q))
+    (where (cond isJust (col Todo.Todo due)))
+    (order (ord (col Todo.Todo created) desc))
+    (limit 3)
+    select))
+(value Todo.countOf : Select Todo -> Query Int (q)
+  (db-run count (call (global Todo.recent) (var q))))
+(value Todo.totals : Text -> Query (List Int) (u)
+  (all query
+    (list
+      (cap Todo.Stats total)
+      (cap Todo.Stats forOwner (var u) True)
+      (map query (lambda (n : Int) (* (var n) 2)) (not-found)))))
+(value Todo.counters : List (Text -> Query Int) ()
+  (list (lambda (u : Text) (cap Todo.Stats forOwner (var u) False))))
+(value Todo.byOwner : Text -> Bool -> Query Int ()
+  (lambda (_m1 : Text, _m2 : Bool)
+    (cap Todo.Stats forOwner (var _m1) (var _m2))))
+(value Todo.eqs : List Text -> List (Condition Todo) (owners)
+  (call (std List.map)
+    (lambda (_m1 : Text) (cond eq (col Todo.Todo owner) (var _m1)))
+    (var owners)))
+(module App)
+(record App.Session (user Maybe Text) (theme Text = "light"))
+(union App.Msg (Logout))
+(value App.update : Msg -> Session -> Task Nav (msg session)
+  (match union (var msg)
+    (case Logout
+      (bind task _
+        (call (std Session.put)
+          (lambda (s : Session)
+            (update (var s) (user (ctor Prelude.Maybe.Nothing)))))
+        (pure task (ctor Prelude.Nav.Rerender))))))
+(value App.error : Error -> Html Never (err) (elem p (htext "error")))
+(value App.notFound : Html Never () (elem p (htext "not found")))
+(module Index)
+(record Index.Model
+  (todos List Todo)
+  (pair List (Maybe Todo))
+  (now Time)
+  (count Int)
+  (first Maybe Todo))
+(record Index.Params (a Text) (b Text))
+(record Index.AddParams (title Text))
+(record Index.ToggleParams (id Text))
+(record Index.RemoveParams (id Text))
+(union Index.Msg
+  (Add AddParams)
+  (Toggle ToggleParams)
+  (Remove RemoveParams)
+  (Notify))
+(record Index.Session (user Text) (theme Text))
+(value Index.load : Params -> Session -> Query Model (params session)
+  (bind query todos : List Todo
+    (db-select Todo.Todo
+      (where (cond eq (col Todo.Todo owner) (field user (var session))))
+      (order (ord (col Todo.Todo created) desc))
+      (limit 10)
+      all)
+    (bind query pair : List (Maybe Todo)
+      (all query
+        (list
+          (db-get Todo.Todo (field a (var params)))
+          (db-get Todo.Todo (field b (var params)))))
+      (bind query now : Time
+        (std Time.now)
+        (let q : Select Todo
+          (db-select Todo.Todo
+            (where
+              (cond or
+                (cond contains (col Todo.Todo title) "x")
+                (cond eq (col Todo.Todo done) True)))
+            (offset 5)
+            select)
+          (bind query count : Int
+            (map query (lambda (n : Int) (+ (var n) 1)) (db-run count (var q)))
+            (bind query first : Maybe Todo
+              (db-run first (global Todo.pending))
+              (pure query
+                (record Model
+                  (todos (var todos))
+                  (pair (var pair))
+                  (now (var now))
+                  (count (var count))
+                  (first (var first)))))))))))
+(value Index.update : Msg -> Model -> Session -> Task Nav (msg model session)
+  (match union (var msg)
+    (case Add (bind _m2 : AddParams)
+      (let p : AddParams
+        (var _m2)
+        (bind task id : Text
+          (db-insert Todo.Todo
+            (record
+              (title (field title (var p)))
+              (done False)
+              (due (ctor Prelude.Maybe.Nothing))
+              (owner (field user (var session)))))
+          (bind task _
+            (call (std Log.info) (str "added " (var id)))
+            (pure task
+              (ctor Prelude.Nav.Redirect
+                (record
+                  (value
+                    (page-ref Index (record Params (a (var id)) (b (var id))))))))))))
+    (case Toggle (bind _m3 : ToggleParams)
+      (let p : ToggleParams
+        (var _m3)
+        (bind task _
+          (db-update Todo.Todo
+            (field id (var p))
+            (lambda (t : Todo)
+              (update (var t)
+                (done (call (std Prelude.not) (field done (var t)))))))
+          (pure task (ctor Prelude.Nav.Rerender)))))
+    (case Remove (bind _m4 : RemoveParams)
+      (let p : RemoveParams
+        (var _m4)
+        (bind task found : Maybe Todo
+          (db-get Todo.Todo (field id (var p)))
+          (match union (var found)
+            (case Just (bind _m1 value : Todo)
+              (let t : Todo
+                (var _m1)
+                (bind task _
+                  (db-delete Todo.Todo (field id (var t)))
+                  (pure task (ctor Prelude.Nav.Rerender)))))
+            (case Nothing (fail "no such todo"))))))
+    (case Notify
+      (bind task token : Text
+        (std Random.id)
+        (bind task sent : List Bool
+          (all task
+            (list
+              (cap Index.Mailer send (record (to "a@b.c") (body (var token))))))
+          (bind task n : Int
+            (map task (std List.length) (pure task (var sent)))
+            (bind task _
+              (call (std Session.put)
+                (lambda (s : App.Session) (update (var s) (theme "dark"))))
+              (pure task
+                (if (> : Int (var n) 0)
+                  (ctor Prelude.Nav.Rerender)
+                  (ctor Prelude.Nav.Reject (record (value "not sent"))))))))))))
+(value Index.view : Model -> Session -> Html Msg (model session)
+  (elem p (hexpr text (call (std Text.fromInt) (field count (var model))))))
+(table Todo.Todo (id id) (insert title done due owner))
+(page Index "/pair/{a}/{b}"
+  (params Params)
+  (requires user)
+  (session Session)
+  (model Model)
+  (msg Add (params AddParams))
+  (msg Toggle (params ToggleParams))
+  (msg Remove (params RemoveParams))
+  (msg Notify)
+  (view Index.view)
+  (load Index.load)
+  (update Index.update))
+(app-msg Logout)
+(app-update App.update)
+(session App.Session)
+(capability Todo.Stats (total Query Int) (forOwner Text -> Bool -> Query Int))
+(capability Index.Mailer (send { to: Text, body: Text } -> Task Bool))

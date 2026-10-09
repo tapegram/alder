@@ -1,12 +1,19 @@
 package std
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 	"time"
 
 	"alder/rt"
+	"alder/rt/eff"
 	"alder/rt/html"
 )
 
@@ -411,4 +418,148 @@ func TestBookSemantics(t *testing.T) {
 	mon, wed := rt.Date{Y: 2026, M: 10, D: 5}, rt.Date{Y: 2026, M: 10, D: 7}
 	eq(t, "diffDays forward", DateDiffDays(mon, wed), int64(2))
 	eq(t, "diffDays backward", DateDiffDays(wed, mon), int64(-2))
+}
+
+// ---- effects
+
+type fakeTx struct{ commits, rollbacks *int }
+
+func (t fakeTx) Commit() error   { *t.commits++; return nil }
+func (t fakeTx) Rollback() error { *t.rollbacks++; return nil }
+
+type fakeStore struct{ commits, rollbacks int }
+
+func (s *fakeStore) Begin(context.Context) (eff.Tx, error) {
+	return fakeTx{&s.commits, &s.rollbacks}, nil
+}
+
+type sess struct {
+	User  rt.Maybe[string]
+	Theme string
+}
+
+func TestEffects_SessionPut(t *testing.T) {
+	st := &fakeStore{}
+	env := &eff.Env{Store: st, Session: sess{Theme: "light"}}
+	task := eff.Bind(SessionPut(func(s sess) sess { s.Theme = "dark"; return s }), func(struct{}) eff.Task[struct{}] {
+		return SessionPut(func(s sess) sess { s.User = rt.Just("u"); return s })
+	})
+	if _, err := eff.Run(env, eff.KTask, task); err != nil {
+		t.Fatal(err)
+	}
+	eq(t, "session", env.Session, sess{User: rt.Just("u"), Theme: "dark"})
+	eq(t, "trace", env.Trace, []string{"Session.put", "Session.put"})
+	eq(t, "commits", st.commits, 1)
+	// Session.put writes: it cannot run as a Query
+	if _, err := eff.RunQuery(&eff.Env{Session: sess{}}, eff.Q(SessionPut(func(s sess) sess { return s }))); err == nil {
+		t.Error("Session.put ran inside a Query")
+	}
+}
+
+func TestEffects_TimeNowUsesEnvClock(t *testing.T) {
+	at := time.Date(2026, 10, 9, 23, 30, 0, 0, time.UTC)
+	env := &eff.Env{Now: func() time.Time { return at }}
+	got, err := eff.RunQuery(env, TimeNow())
+	if err != nil || !got.Equal(at) {
+		t.Fatalf("Time.now = %v, %v; want %v", got, err, at)
+	}
+	d, err := eff.RunQuery(env, DateToday())
+	eq(t, "Date.today", d, rt.Date{Y: 2026, M: 10, D: 9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// no clock in the Env: the wall clock
+	got, _ = eff.RunQuery(&eff.Env{}, TimeNow())
+	if time.Since(got) > time.Minute || got.IsZero() {
+		t.Errorf("Time.now without Env.Now = %v", got)
+	}
+}
+
+func TestEffects_RandomIdLength(t *testing.T) {
+	env := &eff.Env{}
+	a, err := eff.Run(env, eff.KTask, RandomId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := eff.Run(env, eff.KTask, RandomId())
+	if len(a) != 20 || len(b) != 20 || a == b {
+		t.Errorf("Random.id: %q %q; want two different 20-character ids", a, b)
+	}
+	for i := 0; i < 200; i++ {
+		n, err := eff.Run(env, eff.KTask, RandomInt(struct{ Min, Max int64 }{-2, 3}))
+		if err != nil || n < -2 || n > 3 {
+			t.Fatalf("Random.int {-2, 3} = %d, %v", n, err)
+		}
+	}
+	if n, _ := eff.Run(env, eff.KTask, RandomInt(struct{ Min, Max int64 }{5, 5})); n != 5 {
+		t.Errorf("Random.int {5, 5} = %d", n)
+	}
+	if n, _ := eff.Run(env, eff.KTask, RandomInt(struct{ Min, Max int64 }{7, 1})); n != 7 {
+		t.Errorf("Random.int {7, 1} = %d; want min when max < min", n)
+	}
+}
+
+func TestEffects_Combinators(t *testing.T) {
+	env := &eff.Env{}
+	q := QueryMap(func(xs []int64) int64 { return ListSum(xs) }, QueryAll([]eff.Query[int64]{QuerySucceed[int64](1), QuerySucceed[int64](2)}))
+	if n, err := eff.RunQuery(env, q); n != 3 || err != nil {
+		t.Errorf("Query.map sum (Query.all [1, 2]) = %d, %v", n, err)
+	}
+	tk := TaskMap(func(xs []string) int64 { return int64(len(xs)) }, TaskAll([]eff.Task[string]{TaskSucceed("a"), TaskSucceed("b"), TaskSucceed("c")}))
+	if n, err := eff.Run(env, eff.KTask, tk); n != 3 || err != nil {
+		t.Errorf("Task.map length (Task.all …) = %d, %v", n, err)
+	}
+	if _, err := eff.RunQuery(env, QueryNotFound[int64]()); err != eff.ErrNotFound {
+		t.Errorf("Query.notFound: %v", err)
+	}
+	var fail *eff.ErrFail
+	if _, err := eff.Run(env, eff.KTask, TaskFail[int64]("boom")); !errors.As(err, &fail) || fail.Msg != "boom" {
+		t.Errorf("Task.fail: %v", err)
+	}
+}
+
+func TestEffects_Log(t *testing.T) {
+	var lines []string
+	env := &eff.Env{Log: func(level, msg string) {
+		if level != "effect" {
+			lines = append(lines, level+": "+msg)
+		}
+	}}
+	task := eff.Bind(LogInfo("one"), func(struct{}) eff.Task[struct{}] { return LogWarn("two") })
+	if _, err := eff.Run(env, eff.KTask, task); err != nil {
+		t.Fatal(err)
+	}
+	eq(t, "log", lines, []string{"info: one", "warn: two"})
+	if _, err := eff.Run(&eff.Env{}, eff.KTask, LogInfo("no logger")); err != nil {
+		t.Errorf("Log.info without Env.Log: %v", err)
+	}
+}
+
+func TestEffects_Http(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		switch r.URL.Path {
+		case "/ok":
+			fmt.Fprintf(w, "%s %s", r.Method, body)
+		default:
+			w.WriteHeader(http.StatusTeapot)
+			io.WriteString(w, "short and stout")
+		}
+	}))
+	defer srv.Close()
+	env := &eff.Env{}
+	got, err := eff.Run(env, eff.KTask, HttpGet(struct{ Url string }{srv.URL + "/ok"}))
+	eq(t, "get", got, rt.Ok[rt.HttpError]("GET "))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ = eff.Run(env, eff.KTask, HttpPost(struct{ Url, Body string }{srv.URL + "/ok", "hello"}))
+	eq(t, "post", got, rt.Ok[rt.HttpError]("POST hello"))
+	got, _ = eff.Run(env, eff.KTask, HttpGet(struct{ Url string }{srv.URL + "/teapot"}))
+	eq(t, "non-2xx", got, rt.Err[rt.HttpError, string](rt.HttpError{Status: 418, Message: "short and stout"}))
+	got, err = eff.Run(env, eff.KTask, HttpGet(struct{ Url string }{"http://127.0.0.1:0/unreachable"}))
+	if err != nil || got.IsOk || got.Err.Status != 0 || got.Err.Message == "" {
+		t.Errorf("transport failure: %+v, %v; want Err with status 0 and a message", got, err)
+	}
+	eq(t, "trace", env.Trace, []string{"Http.get", "Http.post", "Http.get", "Http.get"})
 }

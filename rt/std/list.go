@@ -1,4 +1,4 @@
-// Package std implements the pure Alder standard library. Each Alder
+// Package std implements the Alder standard library (effects.go: the effectful part). Each Alder
 // function `Module.name` is the Go function `<Module><Name>`, taking the
 // Alder parameters in order with mapped types. Zero-parameter Alder values
 // (Dict.empty, Time.epoch, Html.none) are Go functions of no arguments.

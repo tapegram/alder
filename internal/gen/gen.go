@@ -132,7 +132,7 @@ func newGen(p *ir.Program) *gen {
 	}
 	var all []*ir.Value
 	for _, m := range p.Modules {
-		all = append(append(all, m.Values...), m.Components...)
+		all = append(append(all, emitted(m.Values)...), emitted(m.Components)...)
 	}
 	refs := map[*ir.Value][]*ir.Value{}
 	for _, v := range all {
@@ -266,10 +266,10 @@ func (g *gen) module(m *ir.Module) ([]byte, error) {
 	if pg := g.pages[m.Name]; pg != nil && pg.Requires != "" && pg.Session != g.session {
 		widenFunc(&body, pg, g.session, g.boxed)
 	}
-	for _, v := range m.Values {
+	for _, v := range emitted(m.Values) {
 		g.value(&body, v)
 	}
-	for _, v := range m.Components {
+	for _, v := range emitted(m.Components) {
 		g.value(&body, v)
 	}
 	var head strings.Builder
@@ -407,4 +407,42 @@ func widenFunc(w *strings.Builder, pg *ir.Page, app *ir.RecordType, boxed boxedS
 	}
 	fmt.Fprintf(w, "func %s(s %s) %s {\nreturn %s{%s}\n}\n\n", widenName(pg.Module), GoName(pg.Module, "Session"),
 		GoName(app.Module, app.Name), GoName(app.Module, app.Name), strings.Join(fs, ", "))
+}
+
+// M3b Task 6 replaces this: until effects are emitted, a value that is an effect or whose type
+// mentions an effect or a database description (Page.Load/Update and Program.AppUpdate among
+// them) is not emitted.
+func emitted(vs []*ir.Value) []*ir.Value {
+	var out []*ir.Value
+	for _, v := range vs {
+		if !v.IsEffect && !mentionsEffect(v.Type) {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// M3b Task 6 replaces this.
+func mentionsEffect(t types.Type) bool {
+	switch t := t.(type) {
+	case *types.App:
+		switch t.Con {
+		case "Query", "Task", "Table", "Select", "Condition", "Order", "Column", "Insert":
+			return true
+		}
+		return slices.ContainsFunc(t.Args, mentionsEffect)
+	case *types.Union:
+		return slices.ContainsFunc(t.Args, mentionsEffect)
+	case *types.Fun:
+		return slices.ContainsFunc(t.Params, mentionsEffect) || mentionsEffect(t.Result)
+	case *types.Record:
+		if t.Anonymous || t.Name == "" {
+			for _, f := range t.Fields {
+				if mentionsEffect(f.Type) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

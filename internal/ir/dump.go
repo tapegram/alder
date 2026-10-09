@@ -14,8 +14,8 @@ import (
 //
 // Forms: (module M); (record M.T fields…) with fields (name Type) or (name Type = default);
 // (union M.T params… (Ctor payload?)…); (value|component M.name : Type (params) body);
-// (skipped-effect M.name); then (table …), (form …), (page …), (app-msg …), (session …),
-// (capability …). Expressions: literals bare (1, 3.14, "s", True, ()), (var x), (global M.f),
+// then (table …), (form …), (page …) with (view|load|update M.name), (app-msg …),
+// (app-update App.update), (session …), (capability …). Expressions: literals bare (1, 3.14, "s", True, ()), (var x), (global M.f),
 // (std List.map), (call f args…), (partial f given… (missing n)), (lambda (x : T) body),
 // (record M.T? (field value)…), (update base (field value)…), (field name expr),
 // (ctor M.Union.Ctor payload?), (list elems…), (page-ref M params?), (hole name),
@@ -24,6 +24,13 @@ import (
 // `??`, (str parts…); HTML: (elem tag (attr name kind value)… children…), (comp M.C props children…),
 // (htext "…"), (hexpr kind expr), (hfor x : T list body), (hif c t e), (hmatch …),
 // (input Kind Form field=f label="…" [label-expr] [(value e)] [form]), (form-el M.Msg attrs… children…).
+// Effects (kind is query or task): (pure kind v), (bind kind x : T effect body) or
+// (bind kind _ effect body), (map kind fn effect), (all kind effects), (fail msg), (not-found),
+// (cap M.Cap entry args…). Database: (db-get M.T id), (db-select M.T [(base e)] (where c)…
+// (order o)… [(limit n)] [(offset n)] select|all|first|count), (db-run all|first|count sel),
+// (db-insert M.T row), (db-update M.T id fn), (db-delete M.T id), (col M.T field),
+// (cond kind [col] [value] subs…) with (cond and|or (value e)) for a list that is no literal,
+// (ord col asc|desc).
 func Dump(p *Program) string {
 	var sb strings.Builder
 	form := func(x *sx) {
@@ -38,9 +45,6 @@ func Dump(p *Program) string {
 		}
 		for _, v := range m.Values {
 			form(d.value("value", v))
-		}
-		for _, n := range m.Skipped {
-			form(atoms("skipped-effect", m.Name+"."+n))
 		}
 		for _, v := range m.Components {
 			form(d.value("component", v))
@@ -67,13 +71,21 @@ func Dump(p *Program) string {
 		for _, m := range pg.Msgs {
 			x.items = append(x.items, d.msg("msg", m))
 		}
-		if pg.View != nil {
-			x.items = append(x.items, atoms("view", pg.View.Module+"."+pg.View.Name))
+		for _, v := range []struct {
+			kind string
+			v    *Value
+		}{{"view", pg.View}, {"load", pg.Load}, {"update", pg.Update}} {
+			if v.v != nil {
+				x.items = append(x.items, atoms(v.kind, v.v.Module+"."+v.v.Name))
+			}
 		}
 		form(x)
 	}
 	for _, m := range p.AppMsgs {
 		form((&dumper{home: "App"}).msg("app-msg", m))
+	}
+	if p.AppUpdate != nil {
+		form(atoms("app-update", p.AppUpdate.Module+"."+p.AppUpdate.Name))
 	}
 	if p.Session != nil {
 		form(atoms("session", p.Session.Module+"."+p.Session.Name))
@@ -376,6 +388,74 @@ func (d *dumper) expr(e Expr) *sx {
 			items = append(items, list(1, atom("value"), d.expr(x.Value)))
 		}
 		return list(head, items...)
+	case *EffPure:
+		return list(2, atom("pure"), atom(effKinds[x.Kind]), d.expr(x.Value))
+	case *EffBind:
+		name := "_"
+		if x.Param != nil {
+			name = x.Param.Name + " : " + d.ty(x.Param.Type)
+		}
+		return list(3, atom("bind"), atom(effKinds[x.Kind]), atom(name), d.expr(x.Effect), d.expr(x.Body))
+	case *EffMap:
+		return list(2, atom("map"), atom(effKinds[x.Kind]), d.expr(x.Fn), d.expr(x.Effect))
+	case *EffAll:
+		return list(2, atom("all"), atom(effKinds[x.Kind]), d.expr(x.Effects))
+	case *EffFail:
+		return list(1, atom("fail"), d.expr(x.Message))
+	case *EffNotFound:
+		return atoms("not-found")
+	case *CapCall:
+		items := []*sx{atom("cap"), atom(x.Cap.Module + "." + x.Cap.Name), atom(x.Entry)}
+		return list(3, append(items, d.exprs(x.Args)...)...)
+	case *DbGet:
+		return list(2, atom("db-get"), atom(tableName(x.Table)), d.expr(x.ID))
+	case *DbSelect:
+		items := []*sx{atom("db-select"), atom(tableName(x.Table))}
+		if x.Base != nil {
+			items = append(items, list(1, atom("base"), d.expr(x.Base)))
+		}
+		for _, w := range x.Where {
+			items = append(items, list(1, atom("where"), d.expr(w)))
+		}
+		for _, o := range x.Order {
+			items = append(items, list(1, atom("order"), d.expr(o)))
+		}
+		if x.Limit != nil {
+			items = append(items, list(1, atom("limit"), d.expr(x.Limit)))
+		}
+		if x.Offset != nil {
+			items = append(items, list(1, atom("offset"), d.expr(x.Offset)))
+		}
+		return list(2, append(items, atom(selTerminals[x.Terminal]))...)
+	case *DbRun:
+		return list(2, atom("db-run"), atom(selTerminals[x.Terminal]), d.expr(x.Select))
+	case *DbInsert:
+		return list(2, atom("db-insert"), atom(tableName(x.Table)), d.expr(x.Row))
+	case *DbUpdate:
+		return list(2, atom("db-update"), atom(tableName(x.Table)), d.expr(x.ID), d.expr(x.Fn))
+	case *DbDelete:
+		return list(2, atom("db-delete"), atom(tableName(x.Table)), d.expr(x.ID))
+	case *ColumnRef:
+		return atoms("col", tableName(x.Table), x.Field)
+	case *Cond:
+		items := []*sx{atom("cond"), atom(x.Kind)}
+		if x.Col != nil {
+			items = append(items, d.expr(x.Col))
+		}
+		if x.Value != nil {
+			if x.Col == nil { // and/or of a list that is no literal
+				items = append(items, list(1, atom("value"), d.expr(x.Value)))
+			} else {
+				items = append(items, d.expr(x.Value))
+			}
+		}
+		return list(2, append(items, d.exprs(x.Subs)...)...)
+	case *Ord:
+		dir := "asc"
+		if x.Desc {
+			dir = "desc"
+		}
+		return list(1, atom("ord"), d.expr(x.Col), atom(dir))
 	case *FormEl:
 		msg := "nil"
 		if x.Msg != nil {
@@ -427,3 +507,9 @@ func (d *dumper) match(head string, m *Match) *sx {
 	}
 	return x
 }
+
+var effKinds = []string{"query", "task"}
+
+var selTerminals = []string{"select", "all", "first", "count"}
+
+func tableName(t *Table) string { return t.Module + "." + t.Name }

@@ -44,10 +44,19 @@ func (l *lowerer) exprOf(e syntax.Expr) Expr {
 		}
 		return out
 	case *syntax.Var:
+		if h := l.effHead(x); h != nil {
+			return l.special(h, nil, h.ft)
+		}
+		if x.Ref.Kind == syntax.RefColumn {
+			return l.column(x)
+		}
 		return l.variable(x)
 	case *syntax.CtorRef:
 		return l.ctorRef(x)
 	case *syntax.Access:
+		if h := l.effHead(x); h != nil {
+			return l.special(h, nil, h.ft)
+		}
 		return &Field{Typed: Typed{l.typeOf(x)}, Expr: l.expr(x.Expr), Name: x.Field}
 	case *syntax.App:
 		return l.app(x.Fn, x.Args, nil, l.typeOf(x))
@@ -141,7 +150,7 @@ func (l *lowerer) variable(x *syntax.Var) Expr {
 	case syntax.RefStd:
 		return &Var{Typed: Typed{t}, Kind: VarStd, Module: x.Ref.Module, Name: x.Ref.Name}
 	}
-	panic(fmt.Sprintf("ir: %s.%s at %s is a database or capability reference, not lowered in M3a", x.Module, x.Name, pos(x.Span)))
+	panic(fmt.Sprintf("ir: cannot lower reference %s.%s at %s", x.Module, x.Name, pos(x.Span)))
 }
 
 // ctorRef lowers a constructor, page or brand name used as a value (not applied).
@@ -171,7 +180,7 @@ func (l *lowerer) ctorRef(x *syntax.CtorRef) Expr {
 		}
 		return out
 	}
-	panic(fmt.Sprintf("ir: %s at %s is a table reference, not lowered in M3a", x.Name, pos(x.Span)))
+	panic(fmt.Sprintf("ir: table %s at %s used as a value outside a Db function (not supported)", x.Name, pos(x.Span)))
 }
 
 // eta wraps a one-parameter operation as a function value: \v -> body(v).
@@ -229,6 +238,9 @@ func (l *lowerer) app(fn syntax.Expr, args []syntax.Expr, piped Expr, t types.Ty
 		}
 		return all
 	}
+	if h := l.effHead(fn); h != nil {
+		return l.special(h, l.lowerArgs(args, piped), t)
+	}
 	if ct, ok := fn.(*syntax.CtorRef); ok {
 		switch ct.Ref.Kind {
 		case syntax.RefPage:
@@ -245,7 +257,7 @@ func (l *lowerer) app(fn syntax.Expr, args []syntax.Expr, piped Expr, t types.Ty
 			}
 			return l.ctor(t, ct.Ref.Name, lower()[0], nil)
 		}
-		panic(fmt.Sprintf("ir: %s at %s is a table reference, not lowered in M3a", ct.Name, pos(ct.Span)))
+		panic(fmt.Sprintf("ir: table %s at %s applied as a function", ct.Name, pos(ct.Span)))
 	}
 	callee := l.expr(fn)
 	all := lower()
@@ -277,14 +289,20 @@ func (l *lowerer) pipe(x *syntax.BinOp) Expr {
 	return l.app(x.R, nil, arg, l.typeOf(x))
 }
 
-// block lowers a block's `let`s to nested Lets around its result.
+// block lowers a block's statements around its result: a `let x = v` is a Let, a `let x <- e`
+// an EffBind (of the block's kind; with no Param for `let _ <-`).
 func (l *lowerer) block(stmts []*syntax.LetStmt, result syntax.Expr, t types.Type) Expr {
 	if len(stmts) == 0 {
 		return l.expr(result)
 	}
 	s := stmts[0]
 	if s.Bind {
-		panic(fmt.Sprintf("ir: `let %s <-` at %s is an effect, not lowered in M3a", s.Name, pos(s.Span)))
+		b := &EffBind{Typed: Typed{t}, Kind: l.effKind(t, pos(s.Span)), Effect: l.expr(s.Expr)}
+		if s.Name != "_" {
+			b.Param = &Param{Name: s.Name, Type: l.bindType(s)}
+		}
+		b.Body = l.block(stmts[1:], result, t)
+		return b
 	}
 	return &Let{Typed: Typed{t}, Name: s.Name, T: l.bindType(s), Value: l.expr(s.Expr), Body: l.block(stmts[1:], result, t)}
 }

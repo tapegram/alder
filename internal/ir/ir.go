@@ -7,8 +7,13 @@
 //     contains the poison type (types.Err): Lower panics with an internal error if one reaches it.
 //   - Every name is resolved: a Var says whether it is a local, a top-level value or a stdlib
 //     value; a Ctor points at its UnionType; a Comp at its component Value.
-//   - There is no `|>`, no block, no pattern: pipes are calls, blocks are Lets, and matches are
-//     decision trees over one tag at a time (see Match).
+//   - There is no `|>`, no block, no pattern: pipes are calls, blocks are Lets and effect Binds
+//     (see EffBind), and matches are decision trees over one tag at a time (see Match).
+//   - Effects and database descriptions are data: the Query.*/Task.* combinators are the Eff*
+//     nodes, the Db.* functions the Db* nodes (with Cond, Ord and ColumnRef for conditions and
+//     orders), capability entries CapCall. The other effectful stdlib values (Session.put,
+//     Log.*, Random.*, Time.now, Date.today, Http.*) stay ordinary Var/Call/Partial of VarStd.
+//     The Prelude union Nav (Rerender | Redirect Page | Reject Text) is built with Ctor.
 //   - Nothing here is Go-specific.
 package ir
 
@@ -21,7 +26,7 @@ type Program struct {
 	Forms     []*Form
 	Pages     []*Page
 	AppMsgs   []*Msg      // App's `msg` declarations, in order
-	AppUpdate *Value      // nil in M3a: App.update is an effect
+	AppUpdate *Value      // App's `update` (a Task effect); nil when App declares none
 	Session   *RecordType // App's `session` record (empty when App declares none); nil without an App module
 	Caps      []*Capability
 }
@@ -38,9 +43,6 @@ type Module struct {
 	Types      []*TypeDecl
 	Values     []*Value // lowercase top-level values, in declaration order
 	Components []*Value // capitalized top-level values (used as elements), in declaration order
-	// Skipped names the values not lowered because their type involves an effect (Query, Task)
-	// or a database description (Table, Select, Condition, Order, Column); M3b lowers them.
-	Skipped []string
 }
 
 // TypeDecl is one nominal type: exactly one of Record and Union is set.
@@ -92,12 +94,18 @@ type CtorT struct {
 
 // Value is a top-level value or function. Params are the named parameters (fewer than the
 // signature's when the body is itself a function value). Type is the declared signature.
+//
+// IsEffect is set when the signature's final result (after every parameter) is a Query or a
+// Task; Effect then says which. A value that only mentions effects or database descriptions
+// elsewhere in its type (`Select Todo`, `List (Task Unit)`) is not IsEffect.
 type Value struct {
 	Module, Name string
 	Type         types.Type
 	Params       []*Param
 	Body         Expr
 	IsComponent  bool
+	IsEffect     bool
+	Effect       EffKind
 }
 
 // Param is a named parameter of a Value or Lambda.
@@ -121,7 +129,8 @@ type Form struct {
 }
 
 // Page is a page module. Params and the Msg union are in the module's Types. Model is the
-// module's `Model` record (nil when Model is a union). Load and Update are nil in M3a.
+// module's `Model` record (nil when Model is a union). Load is the page's `load` (a Query
+// effect); Update its `update` (a Task effect), nil when the page declares none.
 //
 // Session is the session the page's code sees: App's Session record, or for a `requires f`
 // page a record named Session in the page module (also in its Types, without field defaults)
@@ -471,4 +480,183 @@ type FormEl struct {
 	Page     *Page
 	Attrs    []HAttr
 	Children []Expr
+}
+
+// ---- Effects
+//
+// A Query or Task is a value describing effects; the emitter builds it with the runtime's effect
+// constructors and never runs anything while building. Kind fields come from the checked type of
+// the node (an EffBind's from its block's type): EffQuery for `Query a`, EffTask for `Task a`.
+// Every effect expression's type agrees with where it is used, with one exception: the Effect
+// of a Task EffBind may be a Query (a Query run inside a Task block), which the emitter
+// converts. Nowhere is a Task used where a Query is expected.
+
+type EffKind int
+
+const (
+	EffQuery EffKind = iota
+	EffTask
+)
+
+// EffPure is Query.succeed / Task.succeed: an effect producing Value and doing nothing.
+type EffPure struct {
+	Typed
+	Kind  EffKind
+	Value Expr
+}
+
+// EffBind runs Effect, binds its result to Param and continues with Body, an effect of the same
+// Kind (the type of the whole node). It is the lowering of a block's `let x <- e`: the block
+// `{ let a <- e1; let b = v; let c <- e2; r }` is EffBind(e1, a, Let(b, v, EffBind(e2, c, r))).
+// Param is nil for `let _ <- e` (the result is discarded); otherwise Param.Type is the bound
+// type (the annotation of `let x : T <- e` when written, which is the effect's result type).
+// Effect's type is `Query T` or `Task T` for Param's T; it may be a Query in a Task bind.
+type EffBind struct {
+	Typed
+	Kind   EffKind
+	Effect Expr
+	Param  *Param
+	Body   Expr
+}
+
+// EffMap is Query.map / Task.map: Fn (a function a -> b) applied to the result of Effect.
+type EffMap struct {
+	Typed
+	Kind       EffKind
+	Fn, Effect Expr
+}
+
+// EffAll is Query.all / Task.all: Effects is an expression of type List (Query a) or
+// List (Task a) (a List literal when written as one); the effects run in order.
+type EffAll struct {
+	Typed
+	Kind    EffKind
+	Effects Expr
+}
+
+// EffFail is Task.fail: a Task that fails with Message (of type Text).
+type EffFail struct {
+	Typed
+	Message Expr
+}
+
+// EffNotFound is Query.notFound.
+type EffNotFound struct{ Typed }
+
+// ---- Database operations: the Db.* functions, resolved to the table they act on.
+//
+// The table always comes from the checked type (Table t, Select t, …), so it is known
+// statically: the table argument itself (`Todo` in `Db.get Todo id`) is not kept. A Db function
+// used as a value or partially applied is wrapped in a Lambda whose body is the node.
+
+// DbGet is `Db.get Table ID`: a Query (Maybe t).
+type DbGet struct {
+	Typed
+	Table *Table
+	ID    Expr
+}
+
+// SelTerminal says what a DbSelect is: a Select value, or the Query running it.
+type SelTerminal int
+
+const (
+	SelNone  SelTerminal = iota // a Select t value, not run (`Db.from T |> Db.where c`)
+	SelAll                      // Db.all: Query (List t)
+	SelFirst                    // Db.first: Query (Maybe t)
+	SelCount                    // Db.count: Query Int
+)
+
+// DbSelect is a pipeline `Db.from T |> Db.where c… |> Db.orderBy o… |> Db.limit n |> Db.offset m`
+// folded into one node, optionally run by Db.all/first/count (Terminal).
+//
+// Base is nil when the pipeline starts at `Db.from Table`; otherwise it is an expression of type
+// Select t (a variable, a call) that this node extends: Base's own conditions and orders come
+// first, then these. Where are expressions of type Condition t (Cond nodes, or any expression
+// producing a condition) combined with and, in application order; Order are expressions of
+// type Order t (usually Ord nodes) in application order (the first is the primary sort key).
+// Limit and Offset are Int expressions, nil when not applied; when applied several times the
+// last application is kept.
+type DbSelect struct {
+	Typed
+	Table         *Table
+	Base          Expr
+	Where         []Expr
+	Order         []Expr
+	Limit, Offset Expr
+	Terminal      SelTerminal
+}
+
+// DbRun is Db.all/first/count applied to a Select value that is not a pipeline written in place
+// (a variable, a call): Select has type Select t; Terminal is never SelNone.
+type DbRun struct {
+	Typed
+	Select   Expr
+	Terminal SelTerminal
+}
+
+// DbInsert is `Db.insert Table Row`, a Task of the new row's id. Row is a record of the table's
+// InsertFields (an anonymous record type; a record literal has every field, defaults filled).
+type DbInsert struct {
+	Typed
+	Table *Table
+	Row   Expr
+}
+
+// DbUpdate is `Db.update Table ID Fn`, a Task Unit; Fn has type t -> t.
+type DbUpdate struct {
+	Typed
+	Table *Table
+	ID    Expr
+	Fn    Expr
+}
+
+// DbDelete is `Db.delete Table ID`, a Task Unit.
+type DbDelete struct {
+	Typed
+	Table *Table
+	ID    Expr
+}
+
+// ColumnRef is a column `Todo.owner` of Table (Field is one of its record's fields), of type
+// Column t a.
+type ColumnRef struct {
+	Typed
+	Table *Table
+	Field string
+}
+
+// Cond is a condition (type Condition t). Kind is one of:
+//
+//	eq ne lt le gt ge contains in   Col compared with Value (for in, Value is a List of the
+//	                                column's type; for contains, Text)
+//	isNothing isJust                Col is a Maybe column; Value is nil
+//	and or                          Subs are the conditions when written as a list literal;
+//	                                otherwise Subs is nil and Value is the List (Condition t)
+//	not                             Subs has exactly one condition
+//
+// Col is nil exactly for and, or and not. A column method used as a value or partially applied
+// (`List.map Todo.owner.eq ids`) is wrapped in a Lambda whose body is the Cond.
+type Cond struct {
+	Typed
+	Kind  string
+	Col   *ColumnRef
+	Value Expr
+	Subs  []Expr
+}
+
+// Ord is `Todo.created.asc` / `.desc` (type Order t).
+type Ord struct {
+	Typed
+	Col  *ColumnRef
+	Desc bool
+}
+
+// CapCall is a call of a capability entry: Entry of Cap applied to Args, the entry's parameters
+// in order (none for an entry that is itself a Query or Task). Its type is the entry's result,
+// a Query or Task. An entry used as a value or partially applied is wrapped in a Lambda.
+type CapCall struct {
+	Typed
+	Cap   *Capability
+	Entry string
+	Args  []Expr
 }

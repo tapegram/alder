@@ -17,9 +17,10 @@ import (
 func Lower(prog *names.Program, res *check.Result) *Program {
 	l := &lowerer{prog: prog, res: res, out: &Program{},
 		records: map[string]*RecordType{}, unions: map[string]*UnionType{}, values: map[string]*Value{},
-		pages: map[string]*Page{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
+		pages: map[string]*Page{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, tables: map[string]*Table{}, caps: map[string]*Capability{}, inserts: map[*types.Record]string{}, insertRTs: map[*Table]*RecordType{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
 	l.declareTypes()
 	l.declareValues()
+	l.declareCaps() // before bodies: a body's CapCall points at its Capability
 	for _, d := range l.defaults {
 		l.enter(d.module)
 		d.rt.Fields[d.index].Default = l.expr(d.field.Default)
@@ -28,7 +29,6 @@ func Lower(prog *names.Program, res *check.Result) *Program {
 		l.enter(b.value.Module)
 		b.value.Body = l.expr(b.decl.Body)
 	}
-	l.declareCaps()
 	return l.out
 }
 
@@ -43,8 +43,14 @@ type lowerer struct {
 	pages   map[string]*Page       // page module name
 	forms   map[string]*Form       // "Module.Form"
 	msgs    map[string]*Msg        // "Owner.Msg": owner is the page module or App
-	erased  map[*types.Record]*types.Record
-	erasedU map[*types.Union]*types.Union
+	tables  map[string]*Table      // "Module.Table"
+	caps    map[string]*Capability // "Module.Capability"
+	// inserts maps the erased (anonymous) record of a table's `Insert t` to the table;
+	// insertRTs holds the RecordType of each, made on first use (insertRecord)
+	inserts   map[*types.Record]string // → "Module.Table"
+	insertRTs map[*Table]*RecordType
+	erased    map[*types.Record]*types.Record
+	erasedU   map[*types.Union]*types.Union
 	// wrappers are the { value: T } payload records made for non-record constructor arguments
 	wrappers map[*RecordType]bool
 	// msgPayloads are the generated `<Msg>Params` records, whose `form` field a literal omits
@@ -126,6 +132,11 @@ func (l *lowerer) eraseT(t types.Type) types.Type {
 			return r
 		}
 		r := &types.Record{Module: t.Module, Name: t.Name, Anonymous: t.Anonymous, Params: t.Params}
+		if tb := l.insertTable(t); tb != "" {
+			// `Insert t` (the checker's record "Insert T") is the anonymous record of its fields
+			r = &types.Record{Anonymous: true}
+			l.inserts[r] = tb
+		}
 		l.erased[t] = r
 		for _, f := range t.Fields {
 			r.Fields = append(r.Fields, types.Field{Name: f.Name, Type: l.eraseT(f.Type), HasDefault: f.HasDefault, Default: f.Default})
@@ -167,42 +178,59 @@ func (l *lowerer) eraseList(ts []types.Type) []types.Type {
 	return out
 }
 
-// effectful reports whether t mentions a type M3a does not lower: an effect or a database description.
-func effectful(t types.Type) bool {
-	switch t := t.(type) {
-	case *types.App:
-		switch t.Con {
-		case "Query", "Task", "Table", "Select", "Condition", "Order", "Column", "Insert":
-			return true
-		}
-		for _, a := range t.Args {
-			if effectful(a) {
-				return true
-			}
-		}
-	case *types.Union:
-		for _, a := range t.Args {
-			if effectful(a) {
-				return true
-			}
-		}
-	case *types.Fun:
-		for _, p := range t.Params {
-			if effectful(p) {
-				return true
-			}
-		}
-		return effectful(t.Result)
-	case *types.Record:
-		if t.Anonymous || t.Name == "" {
-			for _, f := range t.Fields {
-				if effectful(f.Type) {
-					return true
-				}
+// insertTable is the key of the table whose `Insert t` record rec is (the checker names it
+// "Insert T"), or "".
+func (l *lowerer) insertTable(rec *types.Record) string {
+	if rec.Anonymous || !strings.HasPrefix(rec.Name, "Insert ") {
+		return ""
+	}
+	k := key(rec.Module, strings.TrimPrefix(rec.Name, "Insert "))
+	if info := l.res.Tables[k]; info == nil || info.Insert != rec {
+		return ""
+	}
+	return k
+}
+
+// insertRecord is the RecordType of table tb's insert record: its InsertFields, with the
+// table's field defaults, so a literal that omits a defaulted field gets its default.
+func (l *lowerer) insertRecord(tb *Table) *RecordType {
+	if rt, ok := l.insertRTs[tb]; ok {
+		return rt
+	}
+	rt := &RecordType{}
+	for _, n := range tb.InsertFields {
+		for _, f := range tb.Record.Fields {
+			if f.Name == n {
+				rt.Fields = append(rt.Fields, f)
 			}
 		}
 	}
-	return false
+	l.insertRTs[tb] = rt
+	return rt
+}
+
+// effectKind reports whether t is `Query a` or `Task a`, and which.
+func effectKind(t types.Type) (EffKind, bool) {
+	if app, ok := t.(*types.App); ok && len(app.Args) == 1 {
+		switch app.Con {
+		case "Query":
+			return EffQuery, true
+		case "Task":
+			return EffTask, true
+		}
+	}
+	return 0, false
+}
+
+// finalResult is t's result after every parameter (t itself when it is no function).
+func finalResult(t types.Type) types.Type {
+	for {
+		fn, ok := t.(*types.Fun)
+		if !ok {
+			return t
+		}
+		t = fn.Result
+	}
 }
 
 // recordType returns the RecordType for a record type: the declared one for a nominal record,
@@ -211,6 +239,9 @@ func (l *lowerer) recordType(t types.Type) *RecordType {
 	rec, ok := t.(*types.Record)
 	if !ok {
 		panic(fmt.Sprintf("ir: record value of non-record type %s", types.String(t)))
+	}
+	if k, ok := l.inserts[rec]; ok {
+		return l.insertRecord(l.tables[k])
 	}
 	if !rec.Anonymous && rec.Name != "" {
 		if rt, ok := l.records[key(rec.Module, rec.Name)]; ok {
@@ -344,6 +375,7 @@ func (l *lowerer) declareTypes() {
 				for _, f := range info.Insert.Fields {
 					t.InsertFields = append(t.InsertFields, f.Name)
 				}
+				l.tables[key(name, d.Name)] = t
 				l.out.Tables = append(l.out.Tables, t)
 			case *syntax.FormDecl:
 				f := &Form{Module: name, Name: d.Name, Record: addRecord(d.Name, l.res.Decls[key(name, d.Name)], d.Fields)}
@@ -467,11 +499,8 @@ func (l *lowerer) declareValues() {
 			if sig == nil {
 				panic(fmt.Sprintf("ir: no signature recorded for %s.%s at %s", name, vd.Name, pos(vd.Span)))
 			}
-			if effectful(sig) {
-				mod.Skipped = append(mod.Skipped, vd.Name)
-				continue
-			}
 			v := &Value{Module: name, Name: vd.Name, Type: sig, IsComponent: isUpper(vd.Name)}
+			v.Effect, v.IsEffect = effectKind(finalResult(sig))
 			for _, p := range vd.Params {
 				v.Params = append(v.Params, &Param{Name: p.Name, Type: l.bindType(p)})
 			}
@@ -482,8 +511,18 @@ func (l *lowerer) declareValues() {
 				mod.Values = append(mod.Values, v)
 			}
 			l.bodies = append(l.bodies, pendingBody{v, vd})
-			if pg := l.pages[name]; pg != nil && vd.Name == "view" {
-				pg.View = v
+			if pg := l.pages[name]; pg != nil {
+				switch vd.Name {
+				case "view":
+					pg.View = v
+				case "load":
+					pg.Load = v
+				case "update":
+					pg.Update = v
+				}
+			}
+			if name == "App" && vd.Name == "update" {
+				l.out.AppUpdate = v
 			}
 		}
 	}
@@ -501,6 +540,7 @@ func (l *lowerer) declareCaps() {
 			for _, e := range cd.Entries {
 				c.Entries = append(c.Entries, FieldT{Name: e.Name, Type: l.erase(entries[e.Name])})
 			}
+			l.caps[key(name, cd.Name)] = c
 			l.out.Caps = append(l.out.Caps, c)
 		}
 	}

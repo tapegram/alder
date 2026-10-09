@@ -256,6 +256,9 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 		return f.closure(e, s), precAtom
 	case *ir.Elem, *ir.Comp, *ir.HText, *ir.HExpr, *ir.HFor, *ir.HIf, *ir.HMatch, *ir.Input, *ir.FormEl:
 		return f.html(e, s), precAtom // html.go
+	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.CapCall,
+		*ir.DbGet, *ir.DbSelect, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete, *ir.ColumnRef, *ir.Cond, *ir.Ord:
+		panic("effects not yet emitted") // M3b Task 6 replaces this
 	}
 	panic(fmt.Sprintf("gen: cannot emit %T", e))
 }

@@ -34,6 +34,23 @@
 (module App)
 (record App.Session (user Maybe Text) (theme Theme = (ctor Theme.Theme.Light)))
 (union App.Msg (Logout) (SwitchTheme))
+(value App.update : Msg -> Session -> Task Nav (msg session)
+  (match union (var msg)
+    (case Logout
+      (bind task _
+        (call (std Session.put)
+          (lambda (s : Session)
+            (update (var s) (user (ctor Prelude.Maybe.Nothing)))))
+        (pure task
+          (ctor Prelude.Nav.Redirect
+            (record (value (page-ref Auth.Login (record Auth.Login.Params))))))))
+    (case SwitchTheme
+      (bind task _
+        (call (std Session.put)
+          (lambda (s : Session)
+            (update (var s)
+              (theme (call (global Theme.flip) (field theme (var s)))))))
+        (pure task (ctor Prelude.Nav.Rerender))))))
 (value App.error : Error -> Html Never (err)
   (comp Layout.Page
     (record (title "Error") (theme (ctor Theme.Theme.Light)))
@@ -43,13 +60,45 @@
   (comp Layout.Page
     (record (title "Not found") (theme (ctor Theme.Theme.Light)))
     (elem h1 (htext "Not found"))))
-(skipped-effect App.update)
 (module Auth.Login)
 (record Auth.Login.Model)
 (record Auth.Login.Credentials (email Text) (password Text))
 (record Auth.Login.Params)
 (record Auth.Login.SubmitParams (form Credentials))
 (union Auth.Login.Msg (Submit SubmitParams))
+(value Auth.Login.load : Params -> App.Session -> Query Model (params session)
+  (pure query (record Model)))
+(value Auth.Login.update : Msg -> Model -> App.Session -> Task Nav (msg model session)
+  (match union (var msg)
+    (case Submit (bind _m2 : SubmitParams)
+      (let p : SubmitParams
+        (var _m2)
+        (bind task found : Maybe Text
+          (cap Auth.Login.Password verify
+            (record
+              (email (field email (field form (var p))))
+              (password (field password (field form (var p))))))
+          (match union (var found)
+            (case Just (bind _m1 value : Text)
+              (let id : Text
+                (var _m1)
+                (bind task _
+                  (call (std Session.put)
+                    (lambda (s : App.Session)
+                      (update (var s)
+                        (user
+                          (ctor Prelude.Maybe.Just (record (value (var id))))))))
+                  (pure task
+                    (ctor Prelude.Nav.Redirect
+                      (record
+                        (value
+                          (page-ref Todos.Index
+                            (record Todos.Index.Params
+                              (filter (ctor Todo.Filter.All)))))))))))
+            (case Nothing
+              (pure task
+                (ctor Prelude.Nav.Reject
+                  (record (value "Email or password is incorrect.")))))))))))
 (value Auth.Login.view : Model -> App.Session -> Html Msg (model session)
   (comp Layout.Page
     (record (title "Log in") (theme (field theme (var session))))
@@ -62,8 +111,6 @@
       (input Input Credentials field=password label="Password")
       (input Errors Credentials field=password)
       (elem button (htext "Log in")))))
-(skipped-effect Auth.Login.load)
-(skipped-effect Auth.Login.update)
 (module Todo)
 (union Todo.Filter (All) (Active) (Completed))
 (record Todo.Todo
@@ -100,6 +147,55 @@
   (Toggle ToggleParams)
   (Delete DeleteParams))
 (record Todos.Index.Session (user Text) (theme Theme))
+(value Todos.Index.load : Params -> Session -> Query Model (params session)
+  (bind query todos : List Todo
+    (db-select Todo.Todo
+      (where (cond eq (col Todo.Todo owner) (field user (var session))))
+      (order (ord (col Todo.Todo created) desc))
+      all)
+    (pure query
+      (record Model
+        (filter (field filter (var params)))
+        (todos
+          (call (std List.filter)
+            (partial (global Todo.matches)
+              (field filter (var params))
+              (missing 1))
+            (var todos)))))))
+(value Todos.Index.update : Msg -> Model -> Session -> Task Nav (msg model session)
+  (match union (var msg)
+    (case Submit (bind _m1 : SubmitParams)
+      (let p : SubmitParams
+        (var _m1)
+        (bind task _
+          (db-insert Todo.Todo
+            (record
+              (title (field title (field form (var p))))
+              (done False)
+              (due (field due (field form (var p))))
+              (owner (field user (var session)))))
+          (pure task
+            (ctor Prelude.Nav.Redirect
+              (record
+                (value
+                  (page-ref Todos.Index
+                    (record Params (filter (field filter (var model))))))))))))
+    (case Toggle (bind _m2 : ToggleParams)
+      (let p : ToggleParams
+        (var _m2)
+        (bind task _
+          (db-update Todo.Todo
+            (field id (var p))
+            (lambda (t : Todo)
+              (update (var t)
+                (done (call (std Prelude.not) (field done (var t)))))))
+          (pure task (ctor Prelude.Nav.Rerender)))))
+    (case Delete (bind _m3 : DeleteParams)
+      (let p : DeleteParams
+        (var _m3)
+        (bind task _
+          (db-delete Todo.Todo (field id (var p)))
+          (pure task (ctor Prelude.Nav.Rerender)))))))
 (value Todos.Index.view : Model -> Session -> Html Msg (model session)
   (comp Layout.Page
     (record (title "Todos") (theme (field theme (var session))))
@@ -135,8 +231,6 @@
           (call (global Todo.countOpen) (field todos (var model)))))
       (htext " open"))
     (elem button (attr click click (ctor App.Msg.Logout)) (htext "Log out"))))
-(skipped-effect Todos.Index.load)
-(skipped-effect Todos.Index.update)
 (component Todos.Index.Item : { todo: Todo } -> Html Msg (props)
   (elem li
     (attr class text (if (field done (field todo (var props))) "done" ""))
@@ -172,6 +266,46 @@
 (record Todos.Show.DeleteParams (id Text))
 (union Todos.Show.Msg (Save SaveParams) (Delete DeleteParams))
 (record Todos.Show.Session (user Text) (theme Theme))
+(value Todos.Show.load : Params -> Session -> Query Model (params session)
+  (bind query found : Maybe Todo
+    (db-get Todo.Todo (field id (var params)))
+    (match union (var found)
+      (case Just (bind _m1 value : Todo)
+        (let todo : Todo
+          (var _m1)
+          (if (== : Text (field owner (var todo)) (field user (var session)))
+            (pure query (record Model (todo (var todo))))
+            (not-found))))
+      (case Nothing (not-found)))))
+(value Todos.Show.update : Msg -> Model -> Session -> Task Nav (msg model session)
+  (match union (var msg)
+    (case Save (bind _m1 : SaveParams)
+      (let p : SaveParams
+        (var _m1)
+        (bind task _
+          (db-update Todo.Todo
+            (field id (var p))
+            (lambda (t : Todo)
+              (update (var t)
+                (title (field title (field form (var p))))
+                (due (field due (field form (var p)))))))
+          (pure task
+            (ctor Prelude.Nav.Redirect
+              (record
+                (value
+                  (page-ref Todos.Index
+                    (record Todos.Index.Params (filter (ctor Todo.Filter.All)))))))))))
+    (case Delete (bind _m2 : DeleteParams)
+      (let p : DeleteParams
+        (var _m2)
+        (bind task _
+          (db-delete Todo.Todo (field id (var p)))
+          (pure task
+            (ctor Prelude.Nav.Redirect
+              (record
+                (value
+                  (page-ref Todos.Index
+                    (record Todos.Index.Params (filter (ctor Todo.Filter.All)))))))))))))
 (value Todos.Show.view : Model -> Session -> Html Msg (model session)
   (comp Layout.Page
     (record
@@ -199,8 +333,6 @@
         (page-ref Todos.Index
           (record Todos.Index.Params (filter (ctor Todo.Filter.All)))))
       (htext "Back"))))
-(skipped-effect Todos.Show.load)
-(skipped-effect Todos.Show.update)
 (table User.User (id id) (insert email name passwordHash))
 (table Todo.Todo (id id) (insert title done due owner))
 (form Auth.Login.Credentials)
@@ -210,7 +342,9 @@
   (params Params)
   (model Model)
   (msg Submit (params SubmitParams) (form Credentials))
-  (view Auth.Login.view))
+  (view Auth.Login.view)
+  (load Auth.Login.load)
+  (update Auth.Login.update))
 (page Todos.Index "/"
   (params Params)
   (requires user)
@@ -219,7 +353,9 @@
   (msg Submit (params SubmitParams) (form NewTodo))
   (msg Toggle (params ToggleParams))
   (msg Delete (params DeleteParams))
-  (view Todos.Index.view))
+  (view Todos.Index.view)
+  (load Todos.Index.load)
+  (update Todos.Index.update))
 (page Todos.Show "/todos/{id}"
   (params Params)
   (requires user)
@@ -227,9 +363,12 @@
   (model Model)
   (msg Save (params SaveParams) (form EditTodo))
   (msg Delete (params DeleteParams))
-  (view Todos.Show.view))
+  (view Todos.Show.view)
+  (load Todos.Show.load)
+  (update Todos.Show.update))
 (app-msg Logout)
 (app-msg SwitchTheme)
+(app-update App.update)
 (session App.Session)
 (capability Auth.Login.Password
   (verify { email: Text, password: Text } -> Task (Maybe Text)))

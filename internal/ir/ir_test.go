@@ -92,15 +92,53 @@ func TestIR_Todos(t *testing.T) {
 	got := Dump(p)
 	compareGolden(t, "../../testdata/golden/ir_todos.ir", got)
 	for _, want := range []string{"(value Todos.Index.view ", "(component Todos.Index.Item ", "(component Layout.Page ",
-		"(skipped-effect Todos.Index.load)", "(skipped-effect Todos.Index.update)", "(skipped-effect App.update)"} {
+		"(value Todos.Index.load ", "(value Todos.Index.update ", "(value App.update ", "(app-update App.update)"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("todos dump lacks %q", want)
 		}
 	}
+	if strings.Contains(got, "(skipped-effect") {
+		t.Errorf("todos dump still skips an effect")
+	}
 	for _, pg := range p.Pages {
-		if pg.View == nil || pg.Load != nil || pg.Update != nil {
-			t.Errorf("page %s: view %v, load %v, update %v; want only a view in M3a", pg.Module, pg.View != nil, pg.Load != nil, pg.Update != nil)
+		if pg.View == nil || pg.Load == nil || pg.Update == nil {
+			t.Errorf("page %s: view %v, load %v, update %v", pg.Module, pg.View != nil, pg.Load != nil, pg.Update != nil)
 		}
+		if pg.Load != nil && (!pg.Load.IsEffect || pg.Load.Effect != EffQuery) {
+			t.Errorf("page %s: load is not a Query effect", pg.Module)
+		}
+		if pg.Update != nil && (!pg.Update.IsEffect || pg.Update.Effect != EffTask) {
+			t.Errorf("page %s: update is not a Task effect", pg.Module)
+		}
+	}
+	if p.AppUpdate == nil || !p.AppUpdate.IsEffect || p.AppUpdate.Effect != EffTask {
+		t.Errorf("App.update: %+v; want a Task effect", p.AppUpdate)
+	}
+}
+
+// TestIR_NoSkipped: nothing is skipped any more; every value of every module of every IR
+// golden, the gen corpus and the todos app is lowered (Lower panics on a shape it cannot lower).
+func TestIR_NoSkipped(t *testing.T) {
+	dirs, _ := filepath.Glob("../../testdata/golden/ir_*")
+	vet, _ := filepath.Glob("../../testdata/golden/gen_vet/*")
+	dirs = append(append(dirs, vet...), "../../examples/todos")
+	for _, dir := range dirs {
+		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+			continue
+		}
+		t.Run(filepath.Base(dir), func(t *testing.T) {
+			p := lowerDir(t, dir)
+			if d := Dump(p); strings.Contains(d, "skipped") {
+				t.Errorf("dump mentions a skipped value")
+			}
+			for _, m := range p.Modules {
+				for _, v := range m.Values {
+					if v.Body == nil {
+						t.Errorf("%s.%s has no body", v.Module, v.Name)
+					}
+				}
+			}
+		})
 	}
 }
 
