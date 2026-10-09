@@ -1,0 +1,117 @@
+// internal/names/names_test.go
+package names
+
+import (
+	"strings"
+	"testing"
+
+	"alder/internal/diag"
+	"alder/internal/syntax"
+)
+
+func parse(t *testing.T, file, src string) *syntax.Module {
+	m, ds := syntax.ParseFile(file, []byte(src))
+	if len(ds) > 0 {
+		t.Fatalf("parse %s: %+v", file, ds)
+	}
+	return m
+}
+
+func codes(b *diag.Bag) string {
+	var s []string
+	for _, d := range b.Items {
+		s = append(s, d.Code+":"+d.Message)
+	}
+	return strings.Join(s, "\n")
+}
+
+var prelude = map[string]*syntax.Module{} // filled by Task 7; tests here use syntax.ParseSignatures directly
+
+func std(t *testing.T) map[string]*syntax.Module {
+	m, _ := syntax.ParseSignatures("Prelude.alder", []byte("module Prelude\ntype Int\ntype Text\ntype Bool = True | False\ntype List a\ntype Maybe a = Just a | Nothing\ntype Html a\ntype Query a\ntype Task a\ntype Nav = Rerender | Redirect Text\nnot : Bool -> Bool\n"))
+	l, _ := syntax.ParseSignatures("List.alder", []byte("module List\nmap : (a -> b) -> List a -> List b\n"))
+	q, _ := syntax.ParseSignatures("Query.alder", []byte("module Query\nsucceed : a -> Query a\n"))
+	tk, _ := syntax.ParseSignatures("Task.alder", []byte("module Task\nsucceed : a -> Task a\n"))
+	return map[string]*syntax.Module{"Prelude": m, "List": l, "Query": q, "Task": tk}
+}
+
+func TestResolve_Basics(t *testing.T) {
+	todo := parse(t, "app/Todo.alder", "module Todo\n\ntype TodoId = brand Text\n\ntype Filter = All | Active\n\ntable Todo {\n  id: TodoId @id,\n  done: Bool = False,\n}\n")
+	idx := parse(t, "app/Todos/Index.alder", "module Todos.Index\n\nimport Todo\n\npage \"/\" { filter: Todo.Filter = All }\n\ntype Model = { todos: List Todo }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { todos: [] }\n\nview : Model -> Session -> Html Msg\nview model session = <ul>{for t in model.todos -> <li>{Todo.filterLabel All}</li>}</ul>\n\nf : Todo.Filter -> Bool\nf x = match x { All -> True, Active -> not False }\n")
+	prog, bag := Build([]*syntax.Module{todo, idx}, std(t))
+	prog.Resolve(bag)
+	for _, d := range bag.Items {
+		if d.Severity == "error" && d.Code != "E0002" {
+			t.Fatalf("unexpected: %s", codes(bag))
+		}
+	}
+	// Todo.filterLabel is unknown: must be reported
+	if !strings.Contains(codes(bag), "E0002") {
+		t.Fatalf("expected E0002 for Todo.filterLabel, got: %s", codes(bag))
+	}
+}
+
+func TestResolve_QualificationErrors(t *testing.T) {
+	todo := parse(t, "app/Todo.alder", "module Todo\n\ntype Priority = Low | High\n")
+	idx := parse(t, "app/Todos/Index.alder", "module Todos.Index\n\nimport Todo\n\npage \"/\" { }\n\ntype Model = { p: Priority }\n\nx : Todo.Priority\nx = Todo.Low\n\ny : User.UserId\ny = ?y\n")
+	prog, bag := Build([]*syntax.Module{todo, idx}, std(t))
+	prog.Resolve(bag)
+	got := codes(bag)
+	for _, want := range []string{"E0202:type `Priority` belongs to module `Todo`; write `Todo.Priority`", "E0203:constructors are not qualified; write `Low`", "E0201:module `User` is not imported"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+	var fixes []string
+	for _, d := range bag.Items {
+		if d.Fix != nil {
+			fixes = append(fixes, d.Fix.Replace)
+		}
+	}
+	if strings.Join(fixes, "|") != "Todo.Priority|Low|import User" {
+		t.Fatalf("fixes: %v", fixes)
+	}
+}
+
+func TestResolve_ImportCycle(t *testing.T) {
+	a := parse(t, "app/A.alder", "module A\n\nimport B\n\nx : Int\nx = 1\n")
+	b := parse(t, "app/B.alder", "module B\n\nimport A\n\ny : Int\ny = A.x\n")
+	c := parse(t, "app/C.alder", "module C\n\nz : Int\nz = 1\n")
+	prog, bag := Build([]*syntax.Module{a, b, c}, std(t))
+	prog.Resolve(bag)
+	n := 0
+	for _, d := range bag.Items {
+		if d.Code == "E0006" {
+			n++
+			if !strings.Contains(d.Message, "A -> B -> A") && !strings.Contains(d.Message, "B -> A -> B") {
+				t.Fatalf("cycle message: %s", d.Message)
+			}
+		}
+	}
+	if n != 1 {
+		t.Fatalf("expected exactly one E0006, got %d: %s", n, codes(bag))
+	}
+	if _, ok := prog.Modules["C"]; !ok || len(prog.Order) == 0 {
+		t.Fatal("other modules must still be processed")
+	}
+}
+
+func TestResolve_GlobalsAndModulePath(t *testing.T) {
+	app := parse(t, "app/App.alder", "module App\n\nsession { user: Maybe Text }\n\nlogin = Auth.Login\n\nmsg Logout\n\nupdate : Msg -> Session -> Task Nav\nupdate msg session = Task.succeed Rerender\n")
+	login := parse(t, "app/Auth/Login.alder", "module Auth.Login\n\npage \"/login\" { }\n\ntype Model = { }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { }\n\nview : Model -> Session -> Html Msg\nview model session = <a href={Auth.Login {}}><button click={App.Logout}>x</button></a>\n")
+	wrong := parse(t, "app/Misc/Wrong.alder", "module Wrong\n\nx : Int\nx = 1\n")
+	prog, bag := Build([]*syntax.Module{app, login, wrong}, std(t))
+	prog.Resolve(bag)
+	got := codes(bag)
+	if !strings.Contains(got, "E0005") {
+		t.Fatalf("expected E0005 for module/path mismatch: %s", got)
+	}
+	for _, d := range bag.Items {
+		if d.Code != "E0005" && d.Severity == "error" {
+			t.Fatalf("unexpected error: %s", codes(bag))
+		}
+	}
+	if prog.AppMsgs["Logout"] == nil || prog.Pages["Auth.Login"] == nil {
+		t.Fatal("globals not collected")
+	}
+}
