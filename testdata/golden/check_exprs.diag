@@ -17,3 +17,5 @@ app/Todo.alder:71:12 E0004 missing cases: `[x, ..rest]`
 app/Todo.alder:94:17 E0002 no field `nope` on `Todo`
 app/Todo.alder:99:31 E0310 unreachable arm: `All` is already handled
 app/Todo.alder:102:28 E0501 `Db.insert` never takes `id`; it is generated
+app/Todo.alder:108:11 E0004 missing cases: `Active`, `Completed`
+  fix 108:30-108:30  Active -> ?todo, Completed -> ?todo,

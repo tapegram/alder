@@ -16,6 +16,8 @@ type Parser struct {
 	lines   []string
 	// noBrace stops application arguments at `{`, so `match s { ... }` is not read as `s {...}`.
 	noBrace bool
+	// prevEnd is the end of the last consumed non-newline token; spans end there, not at the next token.
+	prevEnd diag.Pos
 }
 
 func newParser(file string, src []byte, sigMode bool) *Parser {
@@ -51,6 +53,10 @@ func (p *Parser) finish() []diag.Diagnostic {
 
 func (p *Parser) advance() Token {
 	prev := p.tok
+	// The lexer sits right after p.tok (one token of lookahead), so its position is p.tok's end.
+	if prev.Kind != NL && prev.Kind != EOF {
+		p.prevEnd = diag.Pos{Line: p.lx.line, Col: p.lx.col}
+	}
 	p.tok = p.lx.Next()
 	// Declaration-head keywords are keywords only in column 1; elsewhere they are ordinary
 	// names (`update msg model session = ...`, `{ form: 1 }`).
@@ -68,7 +74,11 @@ func (p *Parser) skipNL() {
 }
 func (p *Parser) posOf(t Token) diag.Pos { return diag.Pos{Line: t.Line, Col: t.Col} }
 func (p *Parser) spanFrom(start Token) diag.Span {
-	return diag.Span{File: p.file, Start: p.posOf(start), End: diag.Pos{Line: p.tok.Line, Col: p.tok.Col}}
+	end := p.prevEnd
+	if end.Line < start.Line || (end.Line == start.Line && end.Col < start.Col) {
+		end = p.posOf(start) // nothing consumed since start
+	}
+	return diag.Span{File: p.file, Start: p.posOf(start), End: end}
 }
 func (p *Parser) spanTok(t Token) diag.Span {
 	return diag.Span{File: p.file, Start: p.posOf(t), End: diag.Pos{Line: t.Line, Col: t.Col + max(1, len(t.Text))}}
@@ -92,10 +102,15 @@ func (p *Parser) peekIsColon() bool {
 	return p.at(Colon)
 }
 
-func (p *Parser) mark() (LexState, Token) { return p.lx.Mark(), p.tok }
+func (p *Parser) mark() (LexState, Token) {
+	t := p.tok
+	t.prevEnd = p.prevEnd
+	return p.lx.Mark(), t
+}
 func (p *Parser) restore(st LexState, tok Token) {
 	p.lx.Restore(st)
 	p.tok = tok
+	p.prevEnd = tok.prevEnd
 }
 
 var declKeywords = map[string]bool{"module": true, "import": true, "type": true, "page": true, "msg": true,

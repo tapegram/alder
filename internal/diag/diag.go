@@ -59,7 +59,12 @@ func Apply(src string, fixes []Fix) (string, error) {
 		}
 		spans = append(spans, span{s, e, f.Replace})
 	}
-	sort.Slice(spans, func(i, j int) bool { return spans[i].s > spans[j].s })
+	sort.SliceStable(spans, func(i, j int) bool {
+		if spans[i].s != spans[j].s {
+			return spans[i].s > spans[j].s
+		}
+		return spans[i].e > spans[j].e
+	})
 	for i := 1; i < len(spans); i++ {
 		if spans[i].e > spans[i-1].s {
 			return "", fmt.Errorf("overlapping fixes")

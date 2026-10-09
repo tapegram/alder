@@ -251,5 +251,14 @@ func (ex *exhaustiveness) report(m *syntax.Match) {
 		}
 		arms = append(arms, fmt.Sprintf("  %s -> ?todo,", name))
 	}
-	d.Fix = diag.InsertAt(m.Span.End.Line, 1, strings.Join(arms, "\n")+"\n")
+	if m.Span.Start.Line == m.Span.End.Line {
+		// single-line match: insert before the closing `}`
+		trimmed := make([]string, len(arms))
+		for i, a := range arms {
+			trimmed[i] = strings.TrimSpace(a)
+		}
+		d.Fix = diag.InsertAt(m.Span.End.Line, m.Span.End.Col-1, " "+strings.Join(trimmed, " "))
+	} else {
+		d.Fix = diag.InsertAt(m.Span.End.Line, 1, strings.Join(arms, "\n")+"\n")
+	}
 }

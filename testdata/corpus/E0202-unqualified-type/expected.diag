@@ -1,2 +1,2 @@
 app/Index.alder:7:26 E0202 type `Priority` belongs to module `Todo`; write `Todo.Priority`
-  fix 7:26-7:35 Todo.Priority
+  fix 7:26-7:34 Todo.Priority

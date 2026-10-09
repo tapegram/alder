@@ -78,7 +78,9 @@ func TestCorpus(t *testing.T) {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
 			got := render(runDir(t, dir))
 			if *update {
-				os.WriteFile(filepath.Join(dir, "expected.diag"), []byte(got), 0o644)
+				if err := os.WriteFile(filepath.Join(dir, "expected.diag"), []byte(got), 0o644); err != nil {
+					t.Fatal(err)
+				}
 				return
 			}
 			want, err := os.ReadFile(filepath.Join(dir, "expected.diag"))
@@ -104,6 +106,17 @@ func TestExamplesCheckClean(t *testing.T) {
 // and must change the file.
 func TestFixesApply(t *testing.T) {
 	dirs, _ := filepath.Glob("../../testdata/corpus/*")
+	golden, _ := filepath.Glob("../../testdata/golden/check_*")
+	for _, g := range golden {
+		if st, err := os.Stat(g); err == nil && st.IsDir() {
+			dirs = append(dirs, g)
+		}
+	}
+	// outputs that must contain a given text after applying the case's fix
+	want := map[string]string{
+		"E0102-maybe-field": "(match user { Just x -> x.name, Nothing -> ?default }) }",
+		"E0101-get-by-slug": "Db.from Post |> Db.where (Post.slug.eq params.slug) |> Db.first\n",
+	}
 	for _, dir := range dirs {
 		bag := runDir(t, dir)
 		for _, d := range bag.Items {
@@ -119,6 +132,8 @@ func TestFixesApply(t *testing.T) {
 				t.Errorf("%s %s: fix does not apply: %v", dir, d.Code, err)
 			} else if out == string(src) {
 				t.Errorf("%s %s: fix changes nothing", dir, d.Code)
+			} else if w, ok := want[filepath.Base(dir)]; ok && !strings.Contains(out, w) {
+				t.Errorf("%s %s: applied output lacks %q:\n%s", dir, d.Code, w, out)
 			}
 		}
 	}

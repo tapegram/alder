@@ -103,3 +103,6 @@ bad13 t = Db.insert Todo { id: TodoId "x", title: t.title, due: Nothing, price: 
 
 bad14 : Int
 bad14 = (\m -> match m { Just x -> x, Nothing -> 0 }) (Just 1)
+
+bad15 : Filter -> Int
+bad15 f = match f { All -> 1 }
