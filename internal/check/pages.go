@@ -102,7 +102,10 @@ func (mc *modCtx) checkApp() {
 		mc.requireSig("update", &types.Fun{Params: []types.Type{c.appMsg, c.session}, Result: &types.App{Con: "Task", Args: []types.Type{c.navType()}}}, "`update` must have type `Msg -> Session -> Task Nav`")
 	}
 	anyRequires := false
-	for _, p := range c.pages {
+	for name, p := range c.pages {
+		if c.prog.Failed[name] {
+			continue
+		}
 		if p.Requires != "" {
 			anyRequires = true
 		}

@@ -43,5 +43,6 @@ or new app, T4 notes + theme).
 | `E0003-slug-vs-nothing` | `Slug "Hello" == Nothing` in a `test` (a brand compared with a `Maybe`): E2 qwen3-coder T3 (full) |
 | `E0602-alias-unit` | `type Model = Unit`, an alias in disguise: E2 claude-haiku T4 (refonly) |
 | `E0602-alias-keyword` | `type alias Point = { … }` (Elm): spec rule (chapter 4, "No type aliases"); no scored run wrote it; written from the book |
+| `E0301-positional-arg` | `Toggle todo.id`, a message applied positionally instead of to a record: observed in M1's final review; shape from E1 qwen3-coder T1 (`Toggle todo.id` style) |
 
 Cases marked "written from the book" or "nearest observed" have no one-to-one scored error; they cover a diagnostic the spec requires and the experiments only approached.

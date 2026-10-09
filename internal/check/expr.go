@@ -654,6 +654,27 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 			}
 		}
 	}
+	// E0301: a message constructor applied to anything but a record literal
+	if ct, ok := x.Fn.(*syntax.CtorRef); ok && pipe == nil && ct.Ref.Kind == syntax.RefCtor && len(x.Args) > 0 {
+		if info, found := c.ctors[c.key(ct.Ref.Module, ct.Ref.Name)]; found && info.Union.Name == "Msg" {
+			if _, isLit := x.Args[0].(*syntax.RecordLit); !isLit {
+				if rec, isRec := info.Arg.(*types.Record); isRec {
+					var parts []string
+					for _, f := range rec.Fields {
+						if f.Name != "form" {
+							parts = append(parts, f.Name+": ?"+f.Name)
+						}
+					}
+					full := ct.Name + " { " + strings.Join(parts, ", ") + " }"
+					c.errorf("E0301", x.Span, "message `%s` takes a record: `%s`", ct.Name, full).Fix = diag.ReplaceSpan(x.Span, full)
+					for _, a := range x.Args {
+						mc.infer(a, env, eff)
+					}
+					return info.Union
+				}
+			}
+		}
+	}
 	// E0101: Db.get T x with x not an id
 	if v, ok := x.Fn.(*syntax.Var); ok && v.Module == "Db" && v.Name == "get" && len(x.Args) == 2 && pipe == nil {
 		if r := mc.checkDbGet(x, env, eff); r != nil {

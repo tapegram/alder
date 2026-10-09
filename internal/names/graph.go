@@ -17,6 +17,9 @@ type Program struct {
 	AppMsgs map[string]*syntax.MsgDecl
 	Std     map[string]*syntax.Module
 	scopes  map[string]*moduleScope
+	Failed  map[string]bool // module name -> resolution produced errors
+	// ParseFailed is set by Load when any file had a syntax error; such a program must not be checked.
+	ParseFailed bool
 }
 
 // Load parses every .alder file under dir/app. I/O failures (unreadable directory or file) are
@@ -45,7 +48,9 @@ func Load(dir string, std map[string]*syntax.Module) (*Program, *diag.Bag, []err
 		mods = append(mods, m)
 		return nil
 	})
+	parseFailed := bag.HasErrors()
 	prog, b2 := Build(mods, std)
+	prog.ParseFailed = parseFailed
 	bag.Items = append(bag.Items, b2.Items...)
 	return prog, bag, ioErrs
 }
@@ -155,6 +160,25 @@ func sortStrings(s []string) {
 	for i := 1; i < len(s); i++ {
 		for j := i; j > 0 && s[j] < s[j-1]; j-- {
 			s[j], s[j-1] = s[j-1], s[j]
+		}
+	}
+}
+
+// MarkFailed records which modules produced resolution errors, by diagnostic file.
+func (p *Program) MarkFailed(bag *diag.Bag) {
+	if p.Failed == nil {
+		p.Failed = map[string]bool{}
+	}
+	byFile := map[string]string{}
+	for name, m := range p.Modules {
+		byFile[m.File] = name
+	}
+	for _, d := range bag.Items {
+		if d.Severity != "error" {
+			continue
+		}
+		if name, ok := byFile[d.Span.File]; ok {
+			p.Failed[name] = true
 		}
 	}
 }

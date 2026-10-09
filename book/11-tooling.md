@@ -46,10 +46,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 `?name` in a fix is a hole for the agent to fill.
 
 `alder check` exits 0 when there are no errors, 1 when there are errors, and
-2 on a usage or I/O failure. The compiler stops after the first phase that
-reports errors (parse, then names, then types), so a syntax error never
-produces a flood of resolution errors; within a phase it reports everything
-it finds. `alder explain <code>` prints a paragraph for any code below.
+2 on a usage or I/O failure. A file that does not parse stops the compiler. After that, every module is checked except those whose names could not be resolved: a cycle or a missing import in one module never hides type errors in another. `alder explain <code>` prints a paragraph for any code below.
 
 ### Diagnostic codes
 

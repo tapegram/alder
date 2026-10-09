@@ -1,0 +1,4 @@
+module C
+
+z : Int
+z = "not an int"

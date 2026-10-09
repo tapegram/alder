@@ -189,3 +189,14 @@ func TestResolve_AppQualifierNeverE0201(t *testing.T) {
 		t.Errorf("want exactly 4 diagnostics (App.Msg resolves), got %d:\n%s", n, got)
 	}
 }
+
+func TestMarkFailed(t *testing.T) {
+	a := parse(t, "app/A.alder", "module A\n\nx : Int\nx = nope\n")
+	b := parse(t, "app/B.alder", "module B\n\ny : Int\ny = 1\n")
+	prog, bag := Build([]*syntax.Module{a, b}, std(t))
+	prog.Resolve(bag)
+	prog.MarkFailed(bag)
+	if !prog.Failed["A"] || prog.Failed["B"] {
+		t.Fatalf("Failed = %v", prog.Failed)
+	}
+}

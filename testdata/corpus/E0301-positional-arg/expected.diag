@@ -1,0 +1,2 @@
+app/Index.alder:28:52 E0301 message `Toggle` takes a record: `Toggle { id: ?id }`
+  fix 28:52-28:66 Toggle { id: ?id }

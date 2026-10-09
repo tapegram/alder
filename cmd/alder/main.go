@@ -97,10 +97,9 @@ func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {
 		}
 		return 2
 	}
-	if !bag.HasErrors() {
+	if !prog.ParseFailed { // Load's bag also holds module-graph errors (cycles), which only gate their modules
 		prog.Resolve(bag)
-	}
-	if !bag.HasErrors() {
+		prog.MarkFailed(bag)
 		check.Program(prog, bag)
 	}
 	bag.Sort()

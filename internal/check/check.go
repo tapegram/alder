@@ -106,6 +106,9 @@ func Program(prog *names.Program, bag *diag.Bag) {
 	c.checkDefaults()
 	// pass 4: bodies (Tasks 9-11)
 	for _, name := range prog.Order {
+		if prog.Failed[name] {
+			continue // resolution failed: its bodies would only cascade
+		}
 		c.ctx(prog.Modules[name]).checkBodies()
 	}
 	// App rules need every module's bodies checked first (Session.put usage)

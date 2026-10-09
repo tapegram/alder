@@ -25,10 +25,9 @@ func runDir(t *testing.T, dir string) *diag.Bag {
 	for _, e := range ioErrs {
 		t.Fatal(e)
 	}
-	if !bag.HasErrors() {
+	if !prog.ParseFailed { // Load's bag also holds module-graph errors (cycles), which only gate their modules
 		prog.Resolve(bag)
-	}
-	if !bag.HasErrors() {
+		prog.MarkFailed(bag)
 		Program(prog, bag)
 	}
 	bag.Sort()
