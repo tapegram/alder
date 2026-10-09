@@ -298,7 +298,7 @@ func (p *Parser) parsePrimary() Expr {
 			e.Span = p.spanFrom(start)
 			return e
 		case "let":
-			p.errorCodeAt(start, "E0602", "`let ... in` is not Alder; use a block: `{ let y = 1  ...  }`")
+			p.errorCodeAt(start, "E0602", "`let ... in` is not Alder; use a block: `{ let y = 1 … y }`")
 			p.skipToDeclStayingOnLine()
 			return p.unit(start)
 		}

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"alder/internal/check"
 	"alder/internal/diag"
@@ -37,21 +40,40 @@ func main() {
 	}
 }
 
-func usage() { fmt.Fprintln(os.Stderr, "usage: alder check [dir] [--json] | alder explain <code>") }
+func usage() { usageTo(os.Stderr) }
+
+func usageTo(w io.Writer) {
+	fmt.Fprintln(w, "usage: alder check [dir] [--json] | alder explain <code>")
+}
 
 func runCheckTo(args []string, stdout, stderr io.Writer) int {
-	dir, jsonOut := ".", false
+	dir, jsonOut, haveDir := ".", false, false
 	for _, a := range args {
-		if a == "--json" {
+		switch {
+		case a == "--json":
 			jsonOut = true
-		} else {
-			dir = a
+		case strings.HasPrefix(a, "-") || haveDir:
+			usageTo(stderr)
+			return 2
+		default:
+			dir, haveDir = a, true
 		}
 	}
-	matches, _ := filepath.Glob(filepath.Join(dir, "app", "*.alder"))
-	more, _ := filepath.Glob(filepath.Join(dir, "app", "*", "*.alder"))
-	deeper, _ := filepath.Glob(filepath.Join(dir, "app", "*", "*", "*.alder"))
-	if len(matches)+len(more)+len(deeper) == 0 {
+	count := 0
+	werr := filepath.WalkDir(filepath.Join(dir, "app"), func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.HasSuffix(path, ".alder") {
+			count++
+		}
+		return nil
+	})
+	if werr != nil && !errors.Is(werr, fs.ErrNotExist) {
+		fmt.Fprintf(stderr, "alder check: %v\n", werr)
+		return 2
+	}
+	if count == 0 {
 		fmt.Fprintf(stderr, "alder check: no .alder files under %s/app\n", dir)
 		return 2
 	}
@@ -61,7 +83,13 @@ func runCheckTo(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	// The pipeline stops after the first phase that produced errors (parse, names, check).
-	prog, bag := names.Load(dir, std)
+	prog, bag, ioErrs := names.Load(dir, std)
+	if len(ioErrs) > 0 {
+		for _, e := range ioErrs {
+			fmt.Fprintf(stderr, "alder check: %v\n", e)
+		}
+		return 2
+	}
 	if !bag.HasErrors() {
 		prog.Resolve(bag)
 	}

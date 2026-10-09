@@ -20,7 +20,10 @@ func runDir(t *testing.T, dir string) *diag.Bag {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prog, bag := names.Load(dir, std)
+	prog, bag, ioErrs := names.Load(dir, std)
+	for _, e := range ioErrs {
+		t.Fatal(e)
+	}
 	if !bag.HasErrors() {
 		prog.Resolve(bag)
 	}

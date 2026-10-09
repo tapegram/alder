@@ -19,16 +19,24 @@ type Program struct {
 	scopes  map[string]*moduleScope
 }
 
-func Load(dir string, std map[string]*syntax.Module) (*Program, *diag.Bag) {
+// Load parses every .alder file under dir/app. I/O failures (unreadable directory or file) are
+// returned separately as ioErrs; the caller must not check a program that failed to load.
+func Load(dir string, std map[string]*syntax.Module) (*Program, *diag.Bag, []error) {
+	var ioErrs []error
 	bag := &diag.Bag{}
 	var mods []*syntax.Module
 	root := filepath.Join(dir, "app")
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".alder") {
+		if err != nil {
+			ioErrs = append(ioErrs, err)
+			return nil
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".alder") {
 			return nil
 		}
 		src, err := os.ReadFile(path)
 		if err != nil {
+			ioErrs = append(ioErrs, err)
 			return nil
 		}
 		rel, _ := filepath.Rel(dir, path)
@@ -39,7 +47,7 @@ func Load(dir string, std map[string]*syntax.Module) (*Program, *diag.Bag) {
 	})
 	prog, b2 := Build(mods, std)
 	bag.Items = append(bag.Items, b2.Items...)
-	return prog, bag
+	return prog, bag, ioErrs
 }
 
 func Build(mods []*syntax.Module, std map[string]*syntax.Module) (*Program, *diag.Bag) {

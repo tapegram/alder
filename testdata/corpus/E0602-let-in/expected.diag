@@ -1,1 +1,1 @@
-app/Util.alder:4:7 E0602 `let ... in` is not Alder; use a block: `{ let y = 1  ...  }`
+app/Util.alder:4:7 E0602 `let ... in` is not Alder; use a block: `{ let y = 1 … y }`

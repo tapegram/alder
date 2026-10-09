@@ -1,7 +1,5 @@
 module Index
 
-import Todo
-
 page "/" { }
 
 type Model = { n: Int }
