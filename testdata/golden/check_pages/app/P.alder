@@ -1,0 +1,31 @@
+module P
+
+import T
+
+page "/p/{id}" { id: T.TId } requires user
+
+type Model = { t: T }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let _ <- Db.delete T params.id
+  let found <- Db.get T params.id
+  match found {
+    Just t -> Query.succeed { t: t },
+    Nothing -> Query.notFound,
+  }
+}
+
+msg Inc { id: T.TId }
+msg Dec { id: T.TId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Inc p -> {
+    let _ <- Db.update T p.id (\t -> { t | n: t.n + 1 })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Never
+view model session = <p>{Text.fromInt model.t.n}</p>

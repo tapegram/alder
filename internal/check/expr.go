@@ -56,6 +56,7 @@ func (mc *modCtx) checkBodies() {
 			if mc.page != nil && d.Name == "load" {
 				eff.inLoad = true
 			}
+			mc.inUpdate = (mc.page != nil && d.Name == "update") || (mc.isApp && d.Name == "update")
 			body := sig
 			if fn, isFn := sig.(*types.Fun); isFn {
 				if len(d.Params) > len(fn.Params) {
@@ -75,10 +76,13 @@ func (mc *modCtx) checkBodies() {
 				continue
 			}
 			mc.check(d.Body, body, env, eff)
+			mc.inUpdate = false
 			mc.reportHoles()
 		case *syntax.TestDecl:
 			mc.holes = nil
+			mc.inTest = true
 			mc.check(d.Body, types.Bool, newEnv(), effect{})
+			mc.inTest = false
 			mc.reportHoles()
 		case *syntax.TypeDecl:
 			if d.Brand != nil && d.Brand.Check != nil {
@@ -221,8 +225,7 @@ func (mc *modCtx) checkRecordLit(x *syntax.RecordLit, rec *types.Record, env *en
 			if strings.HasPrefix(rec.Name, "Insert ") {
 				if info := c.tables[c.key(rec.Module, strings.TrimPrefix(rec.Name, "Insert "))]; info != nil {
 					if _, isCol := info.Columns[fi.Name]; isCol {
-						c.errorf("E0501", fi.Span, "`Db.insert` never takes `%s`; it is generated", fi.Name).Fix =
-							&diag.Fix{Line: fi.Span.Start.Line, Col: fi.Span.Start.Col, Replace: ""}
+						c.errorf("E0501", fi.Span, "`Db.insert` never takes `%s`; it is generated", fi.Name)
 						mc.infer(fi.Value, env, eff)
 						continue
 					}
@@ -258,6 +261,7 @@ func (mc *modCtx) checkMatch(x *syntax.Match, expected types.Type, env *env, eff
 			mc.c.errorf(diag.UnreachableArm, a.Span, "unreachable arm: every case is already handled")
 		}
 		mc.checkPattern(a.Pat, subj, child)
+		ex.refresh(subj)
 		ex.cover(a.Pat)
 		mc.check(a.Body, expected, child, eff)
 	}
@@ -448,6 +452,9 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			return t
 		}
 	case syntax.RefValue, syntax.RefStd:
+		if x.Ref.Module == "Session" && x.Ref.Name == "put" {
+			c.usesSessionPut = true
+		}
 		if t, ok := c.values[c.key(x.Ref.Module, x.Ref.Name)]; ok {
 			return c.u.Instantiate(t)
 		}
@@ -497,6 +504,9 @@ func (mc *modCtx) inferCtor(x *syntax.CtorRef, applied bool) types.Type {
 		info, ok := c.ctors[c.key(x.Ref.Module, x.Ref.Name)]
 		if !ok {
 			if b, isBrand := c.types[c.key(x.Ref.Module, x.Ref.Name)].(*types.Brand); isBrand {
+				if x.Ref.Module != mc.m.Name && !mc.inTest {
+					c.errorf(diag.InvalidDecl, x.Span, "brand constructor `%s` can only be used in module `%s` or inside a `test`", x.Name, x.Ref.Module)
+				}
 				return &types.Fun{Params: []types.Type{b.Base}, Result: b}
 			}
 			return c.u.Fresh()

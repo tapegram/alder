@@ -1,0 +1,8 @@
+module T
+
+type TId = brand Text
+
+table T {
+  id: TId @id,
+  n: Int,
+}

@@ -1,0 +1,8 @@
+module V
+
+import U
+
+x : U.UId
+x = U.UId "a"
+
+test "ok" = U.UId "a" == U.UId "a"

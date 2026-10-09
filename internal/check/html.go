@@ -82,6 +82,7 @@ func (mc *modCtx) htmlNode(e syntax.Expr, m types.Type, env *env, eff effect) {
 				c.errorf(diag.UnreachableArm, a.Span, "unreachable arm: every case is already handled")
 			}
 			mc.checkPattern(a.Pat, subj, child)
+			exh.refresh(subj)
 			exh.cover(a.Pat)
 			mc.htmlNode(a.Body, m, child, eff)
 		}

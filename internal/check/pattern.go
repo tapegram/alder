@@ -131,6 +131,14 @@ func newExhaustiveness(mc *modCtx, subject types.Type) *exhaustiveness {
 	return ex
 }
 
+// refresh re-derives the kind once pattern checking has refined an initially unbound subject type.
+func (ex *exhaustiveness) refresh(subject types.Type) {
+	if ex.kind != "other" || ex.closed {
+		return
+	}
+	*ex = *newExhaustiveness(ex.mc, ex.mc.c.u.Apply(subject))
+}
+
 func (ex *exhaustiveness) cover(p syntax.Pattern) {
 	switch p := p.(type) {
 	case *syntax.PWild, *syntax.PVar:
@@ -141,7 +149,7 @@ func (ex *exhaustiveness) cover(p syntax.Pattern) {
 		}
 	case *syntax.PCtor:
 		if ex.kind == "union" {
-			if ex.ctors[p.Name] && irrefutable(p.Arg) {
+			if !ex.closed && ex.ctors[p.Name] && irrefutable(p.Arg) {
 				ex.mc.c.errorf(diag.UnreachableArm, p.Span, "unreachable arm: `%s` is already handled", p.Name)
 			}
 			if irrefutable(p.Arg) {
@@ -222,12 +230,23 @@ func (ex *exhaustiveness) report(m *syntax.Match) {
 	for i, n := range missing {
 		quoted[i] = "`" + n + "`"
 	}
-	d := ex.mc.c.errorf(diag.NonExhaustive, m.Span, "missing cases: %s", strings.Join(quoted, ", "))
+	var d *diag.Diagnostic
+	isUpdate := false
+	if un, ok := ex.subject.(*types.Union); ok && ex.mc.inUpdate && un.Name == "Msg" {
+		isUpdate = true
+		d = ex.mc.c.errorf("E0302", m.Span, "`update` does not handle %s", strings.Join(quoted, ", "))
+	} else {
+		d = ex.mc.c.errorf(diag.NonExhaustive, m.Span, "missing cases: %s", strings.Join(quoted, ", "))
+	}
 	var arms []string
 	for _, name := range missing {
 		if ex.kind == "union" {
 			if arg, _ := types.CtorArg(ex.subject.(*types.Union), name); arg != nil {
-				name += " x"
+				if isUpdate {
+					name += " p"
+				} else {
+					name += " x"
+				}
 			}
 		}
 		arms = append(arms, fmt.Sprintf("  %s -> ?todo,", name))

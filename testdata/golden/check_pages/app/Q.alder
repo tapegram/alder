@@ -1,0 +1,11 @@
+module Q
+
+page "/q" { }
+
+type Model = { }
+
+load : Params -> Query Model
+load params = Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session = <p>q</p>

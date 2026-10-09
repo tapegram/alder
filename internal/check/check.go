@@ -34,6 +34,8 @@ type Checker struct {
 	pages   map[string]*pageInfo
 	session *types.Record
 	appMsg  *types.Union
+
+	usesSessionPut bool // some module calls Session.put
 }
 
 // holeNote records a `?name` typed hole to be reported once its type is known.
@@ -58,6 +60,7 @@ type modCtx struct {
 	holes    []holeNote
 	form     *formCtx
 	inUpdate bool
+	inTest   bool
 }
 
 func Program(prog *names.Program, bag *diag.Bag) {
@@ -100,6 +103,10 @@ func Program(prog *names.Program, bag *diag.Bag) {
 	// pass 4: bodies (Tasks 9-11)
 	for _, name := range prog.Order {
 		c.ctx(prog.Modules[name]).checkBodies()
+	}
+	// App rules need every module's bodies checked first (Session.put usage)
+	if app := prog.Modules["App"]; app != nil {
+		c.ctx(app).checkApp()
 	}
 }
 

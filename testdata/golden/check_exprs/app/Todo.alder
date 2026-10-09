@@ -100,3 +100,6 @@ bad12 f = match f { All -> 1, All -> 2, _ -> 3 }
 
 bad13 : Todo -> Task Todo.TodoId
 bad13 t = Db.insert Todo { id: TodoId "x", title: t.title, due: Nothing, price: Cents 1 }
+
+bad14 : Int
+bad14 = (\m -> match m { Just x -> x, Nothing -> 0 }) (Just 1)

@@ -477,7 +477,7 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 		}
 		var found []string
 		for _, x := range r.importNames() {
-			if _, ok := r.p.scopes[x].ctors[c.Name]; ok {
+			if _, ok := r.p.scopes[x].ctors[c.Name]; ok || r.p.scopes[x].brands[c.Name] {
 				found = append(found, x)
 			}
 		}
@@ -516,6 +516,10 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 		}
 	}
 	if s, ok := r.importedScope(c.Module); ok {
+		if s.brands[c.Name] {
+			c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: c.Module, Name: c.Name}
+			return
+		}
 		if _, isCtor := s.ctors[c.Name]; isCtor {
 			d := r.bag.Error("E0203", c.Span, "constructors are not qualified; write `%s`", c.Name)
 			d.Fix = &diag.Fix{Line: c.Span.Start.Line, Col: c.Span.Start.Col, Replace: c.Name}
