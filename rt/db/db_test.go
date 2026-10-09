@@ -551,9 +551,43 @@ func TestStore_EnsureRefs(t *testing.T) {
 	if err := s.Ensure(ctx, []TableDesc{note, user}, true); err != nil {
 		t.Fatal(err)
 	}
+	failMsg := func(what string, err error, want string) {
+		t.Helper()
+		var ef *eff.ErrFail
+		if !errors.As(err, &ef) || ef.Msg != want {
+			t.Fatalf("%s: err = %v, want ErrFail %q", what, err, want)
+		}
+	}
 	_, err = s.Insert(ctx, nil, "Note.Note", note.Columns, "id", "", "", []any{nil, "ghost"}, clock)
-	if err == nil {
-		t.Fatal("dangling @ref: want foreign key error")
+	failMsg("dangling insert", err, "Note.owner: no User with that id")
+	uid, err := s.Insert(ctx, nil, "User.User", user.Columns, "id", "", "", []any{nil}, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nid, err := s.Insert(ctx, nil, "Note.Note", note.Columns, "id", "", "", []any{nil, uid}, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failMsg("dangling update", s.Update(ctx, nil, "Note.Note", note.Columns, "id", "", nid, []any{nid, "ghost"}, clock),
+		"Note.owner: no User with that id")
+	failMsg("delete referenced", s.Delete(ctx, nil, "User.User", "id", uid), "User "+uid+" is referenced by another row")
+	// Inside a Task the failure rolls back the Task's earlier writes.
+	_, err = eff.Run(newEnv(s), eff.KTask, eff.Bind(
+		eff.Call("Db.insert User", true, func(e *eff.Env) (string, error) {
+			return s.Insert(e.Ctx, TxOf(e), "User.User", user.Columns, "id", "", "", []any{nil}, clock)
+		}),
+		func(string) eff.Task[string] {
+			return eff.Call("Db.insert Note", true, func(e *eff.Env) (string, error) {
+				return s.Insert(e.Ctx, TxOf(e), "Note.Note", note.Columns, "id", "", "", []any{nil, "ghost"}, clock)
+			})
+		}))
+	failMsg("dangling insert in a Task", err, "Note.owner: no User with that id")
+	var users int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM "User__User"`).Scan(&users); err != nil || users != 1 {
+		t.Fatalf("users after rolled-back Task: %d %v", users, err)
+	}
+	if _, err := s.db.Exec(`DELETE FROM "Note__Note"`); err != nil {
+		t.Fatal(err)
 	}
 	// Dev recreate with refs in place drops cleanly.
 	note.Columns = append(note.Columns, Column{Name: "x", Type: CInt, Nullable: true})

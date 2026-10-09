@@ -211,7 +211,7 @@ func (s *SQLite) Insert(ctx context.Context, tx Tx, table string, cols []Column,
 	stmt := "INSERT INTO " + quote(SQLName(table)) + " (" + colList(cols) + ") VALUES (" +
 		strings.TrimSuffix(strings.Repeat("?, ", len(cols)), ", ") + ")"
 	if _, err := q.ExecContext(ctx, stmt, args...); err != nil {
-		return "", uniqueErr(table, err)
+		return "", s.refErr(ctx, q, table, cols, args, uniqueErr(table, err))
 	}
 	return id, nil
 }
@@ -249,7 +249,7 @@ func (s *SQLite) Update(ctx context.Context, tx Tx, table string, cols []Column,
 	args = append(args, id)
 	stmt := "UPDATE " + quote(SQLName(table)) + " SET " + strings.Join(sets, ", ") + " WHERE " + quote(idCol) + " = ?"
 	if _, err := q.ExecContext(ctx, stmt, args...); err != nil {
-		return uniqueErr(table, err)
+		return s.refErr(ctx, q, table, cols, vals, uniqueErr(table, err))
 	}
 	return nil
 }
@@ -261,7 +261,46 @@ func (s *SQLite) Delete(ctx context.Context, tx Tx, table string, idCol, id stri
 		return err
 	}
 	_, err = q.ExecContext(ctx, "DELETE FROM "+quote(SQLName(table))+" WHERE "+quote(idCol)+" = ?", id)
+	if isForeignKey(err) {
+		return &eff.ErrFail{Msg: shortName(table) + " " + id + " is referenced by another row"}
+	}
 	return err
+}
+
+// isForeignKey reports whether err is SQLite's foreign-key constraint failure.
+func isForeignKey(err error) bool {
+	if err == nil {
+		return false
+	}
+	var se *sqlite.Error
+	if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY {
+		return true
+	}
+	return strings.Contains(err.Error(), "FOREIGN KEY constraint failed")
+}
+
+// refErr turns a foreign-key failure of an insert or update of vals (cols order) into
+// &eff.ErrFail{Msg: "<Table>.<col>: no <RefTable> with that id"}, naming the first @ref column
+// whose value is not an id of its table (SQLite does not say which); other errors pass through.
+func (s *SQLite) refErr(ctx context.Context, q querier, table string, cols []Column, vals []any, err error) error {
+	if !isForeignKey(err) {
+		return err
+	}
+	for i, c := range cols {
+		if c.Ref == "" || i >= len(vals) || vals[i] == nil {
+			continue
+		}
+		ref, derr := s.desc(c.Ref)
+		if derr != nil {
+			continue
+		}
+		var one int
+		qerr := q.QueryRowContext(ctx, "SELECT 1 FROM "+quote(SQLName(ref.Name))+" WHERE "+quote(ref.ID)+" = ?", vals[i]).Scan(&one)
+		if errors.Is(qerr, sql.ErrNoRows) {
+			return &eff.ErrFail{Msg: shortName(table) + "." + c.Name + ": no " + shortName(c.Ref) + " with that id"}
+		}
+	}
+	return &eff.ErrFail{Msg: shortName(table) + ": a @ref column names a row that does not exist"}
 }
 
 // uniqueErr turns SQLite's "UNIQUE constraint failed: Todo__Todo.title" into
