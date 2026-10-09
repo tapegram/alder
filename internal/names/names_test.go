@@ -115,3 +115,52 @@ func TestResolve_GlobalsAndModulePath(t *testing.T) {
 		t.Fatal("globals not collected")
 	}
 }
+
+func TestResolve_UnknownImport(t *testing.T) {
+	m := parse(t, "app/X.alder", "module X\n\nimport Nope\n\nx : Int\nx = match Just 1 { Just n -> n, Nothing -> 0 }\n")
+	prog, bag := Build([]*syntax.Module{m}, std(t))
+	prog.Resolve(bag)
+	n := 0
+	for _, d := range bag.Items {
+		if d.Code == "E0002" && strings.Contains(d.Message, "Nope") {
+			n++
+		}
+	}
+	if n != 1 || len(bag.Items) != 1 {
+		t.Fatalf("expected exactly one E0002 for Nope, got: %s", codes(bag))
+	}
+}
+
+func TestResolve_DeterministicOrder(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		a := parse(t, "app/A.alder", "module A\n\nx : Int\nx = 1\n")
+		b := parse(t, "app/B.alder", "module B\n\ny : Int\ny = 1\n")
+		c := parse(t, "app/C.alder", "module C\n\nimport B\nimport A\n\nz : Int\nz = 1\n")
+		prog, bag := Build([]*syntax.Module{a, b, c}, std(t))
+		prog.Resolve(bag)
+		if got := codes(bag); got != "W0001:import `B` is unused\nW0001:import `A` is unused" {
+			t.Fatalf("run %d: %s", i, got)
+		}
+	}
+}
+
+func TestResolve_ModuleNameRuleBeatsPrelude(t *testing.T) {
+	o := parse(t, "app/Order.alder", "module Order\n\ntype OrderId = brand Text\n\ntable Order {\n  id: OrderId @id,\n}\n")
+	p := parse(t, "app/P.alder", "module P\n\nimport Order\n\nx : List Order\nx = []\n")
+	prog, bag := Build([]*syntax.Module{o, p}, std(t))
+	prog.Resolve(bag)
+	if len(bag.Items) != 0 {
+		t.Fatalf("unexpected: %s", codes(bag))
+	}
+	var vd *syntax.ValueDecl
+	for _, d := range p.Decls {
+		if v, ok := d.(*syntax.ValueDecl); ok {
+			vd = v
+		}
+	}
+	tn := vd.Sig.(*syntax.TypeName).Args[0].(*syntax.TypeName)
+	want := syntax.Ref{Kind: syntax.RefType, Module: "Order", Name: "Order"}
+	if tn.Ref != want {
+		t.Fatalf("ref = %+v", tn.Ref)
+	}
+}

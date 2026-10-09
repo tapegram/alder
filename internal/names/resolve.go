@@ -2,6 +2,8 @@
 package names
 
 import (
+	"sort"
+
 	"alder/internal/diag"
 	"alder/internal/syntax"
 )
@@ -102,7 +104,28 @@ func (p *Program) Resolve(bag *diag.Bag) {
 	}
 }
 
+// importNames lists the valid imported module names in declaration order.
+func (r *resolver) importNames() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, im := range r.m.Imports {
+		if _, ok := r.ms.imports[im.Module]; ok && !seen[im.Module] {
+			seen[im.Module] = true
+			out = append(out, im.Module)
+		}
+	}
+	return out
+}
+
 func (r *resolver) module() {
+	for _, im := range r.m.Imports {
+		_, inApp := r.p.Modules[im.Module]
+		_, inStd := r.p.Std[im.Module]
+		if !inApp && !inStd {
+			r.bag.Error(diag.UnknownName, im.Span, "unknown module `%s`", im.Module)
+			delete(r.ms.imports, im.Module)
+		}
+	}
 	for _, d := range r.m.Decls {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
@@ -153,9 +176,9 @@ func (r *resolver) module() {
 			r.expr(d.Body, &Scope{names: map[string]bool{}})
 		}
 	}
-	for name, im := range r.ms.imports {
+	for _, name := range r.importNames() {
 		if !r.ms.used[name] {
-			r.bag.Warn(diag.UnusedImport, im.Span, "import `%s` is unused", name)
+			r.bag.Warn(diag.UnusedImport, r.ms.imports[name].Span, "import `%s` is unused", name)
 		}
 	}
 }
@@ -177,11 +200,16 @@ func (r *resolver) recordType(rt *syntax.RecordType) {
 // importedScope returns the scope of X if X is imported or std, marking it used.
 func (r *resolver) importedScope(x string) (*moduleScope, bool) {
 	if _, ok := r.ms.imports[x]; ok {
-		r.ms.used[x] = true
-		return r.p.scopes[x], true
+		if s := r.p.scopes[x]; s != nil {
+			r.ms.used[x] = true
+			return s, true
+		}
+		return nil, false
 	}
 	if _, ok := r.p.Std[x]; ok {
-		return r.p.scopes[x], true
+		if s := r.p.scopes[x]; s != nil {
+			return s, true
+		}
 	}
 	return nil, false
 }
@@ -219,9 +247,16 @@ func (r *resolver) typ(t syntax.Type) {
 			r.notImported(t.Span, t.Module)
 			return
 		}
-		switch {
-		case r.ms.types[t.Name]:
+		if r.ms.types[t.Name] {
 			t.Ref = syntax.Ref{Kind: syntax.RefType, Module: r.m.Name, Name: t.Name}
+			return
+		}
+		// module-name rule: imported module X declaring type X
+		if s, ok := r.importedScope(t.Name); ok && s.types[t.Name] {
+			t.Ref = syntax.Ref{Kind: syntax.RefType, Module: t.Name, Name: t.Name}
+			return
+		}
+		switch {
 		case generatedTypes[t.Name]:
 			mod := r.m.Name
 			if t.Name == "Session" {
@@ -233,13 +268,8 @@ func (r *resolver) typ(t syntax.Type) {
 		case r.p.IsPageModule(t.Name):
 			t.Ref = syntax.Ref{Kind: syntax.RefPage, Module: t.Name}
 		default:
-			// module-name rule: imported module X declaring type X
-			if s, ok := r.importedScope(t.Name); ok && s.types[t.Name] {
-				t.Ref = syntax.Ref{Kind: syntax.RefType, Module: t.Name, Name: t.Name}
-				return
-			}
 			// unqualified type that lives in an imported module → E0202 with fix
-			for x := range r.ms.imports {
+			for _, x := range r.importNames() {
 				if r.p.scopes[x] != nil && r.p.scopes[x].types[t.Name] {
 					r.ms.used[x] = true
 					d := r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`; write `%s.%s`", t.Name, x, x, t.Name)
@@ -247,12 +277,17 @@ func (r *resolver) typ(t syntax.Type) {
 					return
 				}
 			}
-			// any module at all declaring it → not imported
+			// any app module declaring it → not imported
+			var cands []string
 			for x, s := range r.p.scopes {
-				if s.types[t.Name] && x != "Prelude" {
-					r.notImported(t.Span, x)
-					return
+				if _, isStd := r.p.Std[x]; !isStd && s.types[t.Name] {
+					cands = append(cands, x)
 				}
+			}
+			sort.Strings(cands)
+			if len(cands) > 0 {
+				r.notImported(t.Span, cands[0])
+				return
 			}
 			r.bag.Error(diag.UnknownName, t.Span, "unknown type `%s`", t.Name)
 		}
@@ -391,7 +426,7 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 		v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: r.m.Name, Name: v.Module + "." + v.Name}
 		return
 	}
-	for x := range r.ms.imports {
+	for _, x := range r.importNames() {
 		if r.p.scopes[x].caps[v.Module] {
 			r.ms.used[x] = true
 			v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: x, Name: v.Module + "." + v.Name}
@@ -423,7 +458,7 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 			}
 		}
 		var found []string
-		for x := range r.ms.imports {
+		for _, x := range r.importNames() {
 			if _, ok := r.p.scopes[x].ctors[c.Name]; ok {
 				found = append(found, x)
 			}
