@@ -94,8 +94,7 @@ func TestLoadStd(t *testing.T) {
 			t.Errorf("missing stdlib module %s", m)
 		}
 	}
-	// Form is a prelude type, not a module: a decoded form is the message's form field, and
-	// there is no Form.values.
+	// Form is a prelude type, not a module: a decoded form is the message's form field.
 	if std["Form"] != nil {
 		t.Error("stdlib has a Form module")
 	}
