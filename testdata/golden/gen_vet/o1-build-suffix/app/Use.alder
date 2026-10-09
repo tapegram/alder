@@ -1,0 +1,12 @@
+module Use
+
+-- Modules named like Go test files (Foo_test) and build-constrained files (Bar_linux,
+-- Zed_darwin, Qux_windows_amd64_test): each must stay an ordinary file of the package on every
+-- host, so `go build` sees all their declarations (O1).
+import Foo_test
+import Bar_linux
+import Zed_darwin
+import Qux_windows_amd64_test
+
+total : Int
+total = Foo_test.x + Bar_linux.y + Zed_darwin.z + Qux_windows_amd64_test.q

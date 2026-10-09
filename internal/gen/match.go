@@ -125,7 +125,7 @@ func litTag(t types.Type, tag string) string {
 func (f *fn) caseBody(w *strings.Builder, x *ir.Match, c ir.Case, subj string, s *scope) {
 	access := map[string]string{}
 	for _, b := range c.Binds {
-		access[b.Name] = partAccess(x, c.Tag, b.Field, subj)
+		access[b.Name] = f.partAccess(x, c.Tag, b.Field, subj)
 	}
 	// The body starts with Lower's renamings `let user = part`: a part used only by its renaming
 	// is bound to the user name directly.
@@ -166,7 +166,7 @@ func (f *fn) caseBody(w *strings.Builder, x *ir.Match, c ir.Case, subj string, s
 }
 
 // partAccess is the Go expression for part field of the value subj matched by tag.
-func partAccess(x *ir.Match, tag, field, subj string) string {
+func (f *fn) partAccess(x *ir.Match, tag, field, subj string) string {
 	switch x.Kind {
 	case ir.MatchList:
 		if field == "head" {
@@ -183,7 +183,13 @@ func partAccess(x *ir.Match, tag, field, subj string) string {
 		if field == "" { // the whole payload record: the union holds it by pointer
 			return "*" + subj + "." + ctorField(tag)
 		}
-		return subj + "." + ctorField(tag) + "." + Field(field)
+		v := subj + "." + ctorField(tag) + "." + Field(field)
+		if u, ok := x.Subject.Type().(*types.Union); ok {
+			if p := f.g.payloads[u.Module+"."+u.Name+"."+tag]; p != nil && f.g.boxed.has(p.Module, p.Name, field) {
+				return "(*" + v + ")"
+			}
+		}
+		return v
 	}
 	panic(fmt.Sprintf("gen: a %v match binds no parts", x.Kind))
 }

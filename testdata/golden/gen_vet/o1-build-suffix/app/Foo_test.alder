@@ -1,0 +1,4 @@
+module Foo_test
+
+x : Int
+x = 1

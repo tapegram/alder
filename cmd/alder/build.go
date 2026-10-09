@@ -123,8 +123,10 @@ func runBuildTo(args []string, stdout, stderr io.Writer) (code int) {
 	return 0
 }
 
-// writeGenerated replaces the generated files in dir with files: it deletes every Go file there
-// that starts with the generated-code header and go.mod, then writes files. Other files are kept.
+// writeGenerated replaces the generated files in dir with files: it deletes go.mod and every Go
+// file there that starts with the generated-code header, then writes files. Other files are kept.
+// Gen names its files <Module>_alder.go; matching every *.go by its header also deletes the
+// <Module>.go files of builds before that naming (M3a), so an old build/ directory is cleaned up.
 func writeGenerated(dir string, files map[string][]byte) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err

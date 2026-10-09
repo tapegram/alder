@@ -56,9 +56,14 @@ func GoName(module, name string) string {
 	return strings.ReplaceAll(module, ".", "__") + "__" + name
 }
 
-// fileName is the Go file a module is emitted to: its segments joined by "__" ("Todos.Index" →
-// "Todos__Index.go"), as injective as GoName.
-func fileName(module string) string { return strings.ReplaceAll(module, ".", "__") + ".go" }
+// fileName is the Go file a module is emitted to: its segments joined by "__", then "_alder.go"
+// ("Todos.Index" → "Todos__Index_alder.go"), injective as the suffix is fixed. The suffix keeps
+// every module an ordinary file of the package whatever its name: Go treats a file ending in
+// "_test.go" as a test, and one whose name up to its first '.' ends in "_<GOOS>", "_<GOARCH>" or
+// "_<GOOS>_<GOARCH>" (optionally followed by "_test") as built only there, so a module named
+// Foo_test or Bar_linux needs a last "_" element that is neither; "alder" is not. (A double
+// extension, "Bar_linux.alder.go", would not do: Go cuts the name at the first '.'.)
+func fileName(module string) string { return strings.ReplaceAll(module, ".", "__") + "_alder.go" }
 
 // reserved are the identifiers a local Alder name must not become: Go keywords, Go's predeclared
 // identifiers (the emitted code calls panic, len, int64, …) and the packages generated code

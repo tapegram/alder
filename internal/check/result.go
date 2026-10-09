@@ -58,6 +58,7 @@ type pageInfo = PageInfo
 // record notes e's type and returns it, so a walker can record on its return path.
 func (c *Checker) record(e syntax.Expr, t types.Type) types.Type {
 	c.res.Types[e] = t
+	c.bodyExprs = append(c.bodyExprs, e)
 	return t
 }
 

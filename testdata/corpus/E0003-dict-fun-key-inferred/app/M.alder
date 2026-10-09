@@ -1,0 +1,11 @@
+module M
+
+inc : Int -> Int
+inc n = n + 1
+
+size : Int
+size = Dict.size (Dict.insert inc "a" Dict.empty)
+
+-- a function as a value is fine
+values : Int
+values = Dict.size (Dict.insert 1 inc Dict.empty)

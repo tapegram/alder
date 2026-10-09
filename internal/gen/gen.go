@@ -23,7 +23,7 @@ type Options struct {
 	Dev      bool
 }
 
-// Emit returns the generated files: one "<Module>.go" per module ('.' → "__") and "go.mod".
+// Emit returns the generated files: one "<Module>_alder.go" per module ('.' → "__") and "go.mod".
 // Its error is for a bug in gen: output go/format cannot parse, or a program gen cannot emit
 // (such as a stdlib function with no Go implementation), or two modules or declarations that
 // would get the same file or Go name.
@@ -103,6 +103,9 @@ type gen struct {
 	values  map[string]*ir.Value // "Module.name" → value or component
 	thunks  map[*ir.Value]bool   // constants emitted as functions (see newGen)
 	tparams map[*ir.Value][]string
+	boxed   boxedSet // record fields held by pointer (types.go)
+	// payloads are the nominal record payloads of constructors, by "Module.Union.Ctor"
+	payloads map[string]*ir.RecordType
 }
 
 // newGen indexes the program's values. A constant (a value with no parameters and a non-function
@@ -111,7 +114,19 @@ type gen struct {
 // through other values (Go rejects initialization cycles).
 func newGen(p *ir.Program) *gen {
 	g := &gen{values: map[string]*ir.Value{}, thunks: map[*ir.Value]bool{}, tparams: map[*ir.Value][]string{},
-		pages: map[string]*ir.Page{}, session: p.Session}
+		pages: map[string]*ir.Page{}, session: p.Session, boxed: boxedFields(p), payloads: map[string]*ir.RecordType{}}
+	for _, m := range p.Modules {
+		for _, d := range m.Types {
+			if d.Union == nil {
+				continue
+			}
+			for _, c := range d.Union.Ctors {
+				if c.Payload != nil && c.Payload.Name != "" {
+					g.payloads[d.Union.Module+"."+d.Union.Name+"."+c.Name] = c.Payload
+				}
+			}
+		}
+	}
 	for _, pg := range p.Pages {
 		g.pages[pg.Module] = pg
 	}
@@ -246,10 +261,10 @@ func bindParams(decl, inst types.Type, m map[string]types.Type) {
 func (g *gen) module(m *ir.Module) ([]byte, error) {
 	var body strings.Builder
 	for _, d := range m.Types {
-		typeDecl(&body, d)
+		typeDecl(&body, d, g.boxed)
 	}
 	if pg := g.pages[m.Name]; pg != nil && pg.Requires != "" && pg.Session != g.session {
-		widenFunc(&body, pg, g.session)
+		widenFunc(&body, pg, g.session, g.boxed)
 	}
 	for _, v := range m.Values {
 		g.value(&body, v)
@@ -375,12 +390,18 @@ func (g *gen) value(w *strings.Builder, v *ir.Value) {
 //	func widen__Home__Session(s Home__Session) App__Session {
 //		return App__Session{User: rt.Just(s.User), N: s.N}
 //	}
-func widenFunc(w *strings.Builder, pg *ir.Page, app *ir.RecordType) {
+func widenFunc(w *strings.Builder, pg *ir.Page, app *ir.RecordType, boxed boxedSet) {
 	var fs []string
 	for _, f := range app.Fields {
 		v := "s." + Field(f.Name)
+		if boxed.has(pg.Session.Module, pg.Session.Name, f.Name) {
+			v = "(*" + v + ")"
+		}
 		if f.Name == pg.Requires {
 			v = "rt.Just(" + v + ")"
+		}
+		if boxed.has(app.Module, app.Name, f.Name) {
+			v = "new(" + v + ")"
 		}
 		fs = append(fs, Field(f.Name)+": "+v)
 	}

@@ -2,6 +2,7 @@ package gen
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"alder/internal/ir"
@@ -190,15 +191,15 @@ func unionParams(u *ir.UnionType) (decl, use string) {
 	return typeParamDecl(u.Params), typeParamUse(u.Params)
 }
 
-// typeDecl writes the Go declarations of one nominal type.
-func typeDecl(w *strings.Builder, d *ir.TypeDecl) {
+// typeDecl writes the Go declarations of one nominal type; boxed are the boxed record fields.
+func typeDecl(w *strings.Builder, d *ir.TypeDecl, boxed boxedSet) {
 	if d.Record != nil && len(d.Record.Fields) == 0 {
 		fmt.Fprintf(w, "type %s%s struct{}\n\n", GoName(d.Module, d.Name), typeParamDecl(d.Record.Params))
 		return
 	}
 	if d.Record != nil {
 		fmt.Fprintf(w, "type %s%s struct {\n", GoName(d.Module, d.Name), typeParamDecl(d.Record.Params))
-		fields(w, d.Record.Fields)
+		fields(w, d.Record.Fields, boxed[d.Record.Module+"."+d.Record.Name])
 		w.WriteString("}\n\n")
 		return
 	}
@@ -224,7 +225,7 @@ func typeDecl(w *strings.Builder, d *ir.TypeDecl) {
 	for _, c := range u.Ctors {
 		if c.Payload != nil && c.Payload.Name == "" {
 			fmt.Fprintf(w, "type %s%s struct {\n", payloadName(u.Module, u.Name, c.Name), decl)
-			fields(w, c.Payload.Fields)
+			fields(w, c.Payload.Fields, nil)
 			w.WriteString("}\n\n")
 		}
 	}
@@ -259,8 +260,133 @@ func payloadType(u *ir.UnionType, c ir.CtorT, args string) string {
 	return GoName(c.Payload.Module, c.Payload.Name)
 }
 
-func fields(w *strings.Builder, fs []ir.FieldT) {
+func fields(w *strings.Builder, fs []ir.FieldT, boxed map[string]bool) {
 	for _, f := range fs {
-		fmt.Fprintf(w, "%s %s\n", Field(f.Name), GoType(f.Type))
+		star := ""
+		if boxed[f.Name] {
+			star = "*"
+		}
+		fmt.Fprintf(w, "%s %s%s\n", Field(f.Name), star, GoType(f.Type))
 	}
+}
+
+// Boxed fields. A Go struct may not contain itself by value, but an Alder record may reach
+// itself through a field held by value: `type Node = { v: Int, next: Maybe Node }` would be
+// `struct { Next rt.Maybe[M__Node] }`, and rt.Maybe holds its value directly ("invalid
+// recursive type"). Such a field is boxed: its Go type is a pointer (`Next *rt.Maybe[M__Node]`),
+// reads dereference it (`(*n.Next)`), and record literals, updates and component props box the
+// new value (`new(v)`). The pointer is never nil and its target never changes, so an update
+// shares it, and rt.Eq and rt.Key follow it.
+//
+// The rule: field f of nominal record R is boxed when f's type is not a nominal record without
+// type arguments and f's type reaches R by value. Reaching by value follows Maybe and Result
+// arguments, anonymous records' fields, and nominal records: their declared fields and their
+// type arguments (conservatively: a parameter may be held by value). List, Dict, functions and
+// other unions (whose payloads are behind pointers) stop it. So mutual recursion through Maybe
+// boxes the Maybe field of each record on the cycle; a record held directly (`b: B`) is never
+// boxed, as a cycle of such fields alone is an infinite type and any other cycle has a boxed
+// field on it.
+type boxedSet map[string]map[string]bool // "Module.Name" → field names
+
+func (b boxedSet) has(module, name, field string) bool { return b[module+"."+name][field] }
+
+// of reports whether field of the record type t is boxed (t a nominal record).
+func (b boxedSet) of(t types.Type, field string) bool {
+	if r, ok := unbrand(t).(*types.Record); ok && r.Name != "" && !r.Anonymous {
+		return b.has(r.Module, r.Name, field)
+	}
+	return false
+}
+
+// boxedFields computes the boxed fields of every nominal record of p.
+func boxedFields(p *ir.Program) boxedSet {
+	decls := map[string]*ir.RecordType{}
+	for _, m := range p.Modules {
+		for _, d := range m.Types {
+			if d.Record != nil {
+				decls[d.Record.Module+"."+d.Record.Name] = d.Record
+			}
+		}
+	}
+	if p.Session != nil {
+		decls[p.Session.Module+"."+p.Session.Name] = p.Session
+	}
+	// direct[R]: the nominal records R's fields hold by value, one step
+	direct := map[string][]string{}
+	for k, d := range decls {
+		for _, f := range d.Fields {
+			direct[k] = append(direct[k], byValue(f.Type)...)
+		}
+	}
+	reaches := func(from []string, target string) bool {
+		seen := map[string]bool{}
+		stack := slices.Clone(from)
+		for len(stack) > 0 {
+			k := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if k == target {
+				return true
+			}
+			if !seen[k] {
+				seen[k] = true
+				stack = append(stack, direct[k]...)
+			}
+		}
+		return false
+	}
+	out := boxedSet{}
+	for k, d := range decls {
+		for _, f := range d.Fields {
+			if r, ok := unbrand(f.Type).(*types.Record); ok && r.Name != "" && !r.Anonymous && len(r.Args) == 0 {
+				continue
+			}
+			if reaches(byValue(f.Type), k) {
+				if out[k] == nil {
+					out[k] = map[string]bool{}
+				}
+				out[k][f.Name] = true
+			}
+		}
+	}
+	return out
+}
+
+func unbrand(t types.Type) types.Type {
+	for {
+		b, ok := t.(*types.Brand)
+		if !ok {
+			return t
+		}
+		t = b.Base
+	}
+}
+
+// byValue lists the nominal records ("Module.Name") a value of type t holds by value without
+// going through another nominal record.
+func byValue(t types.Type) []string {
+	var out []string
+	var walk func(t types.Type)
+	walk = func(t types.Type) {
+		switch t := unbrand(t).(type) {
+		case *types.Record:
+			if t.Name != "" && !t.Anonymous {
+				out = append(out, t.Module+"."+t.Name)
+				for _, a := range t.Args {
+					walk(a)
+				}
+				return
+			}
+			for _, f := range t.Fields {
+				walk(f.Type)
+			}
+		case *types.Union:
+			if t.Module == "Prelude" && (t.Name == "Maybe" || t.Name == "Result") {
+				for _, a := range t.Args {
+					walk(a)
+				}
+			}
+		}
+	}
+	walk(t)
+	return out
 }

@@ -298,7 +298,11 @@ func (f *fn) comp(x *ir.Comp, s *scope) string {
 			if ps := typeParams(fd.Type); len(ps) > 0 {
 				t = GoType(v.Type())
 			}
-			inits = append(inits, Field(fd.Name)+": "+f.code(v, s))
+			val := f.code(v, s)
+			if f.g.boxed.of(rec, fd.Name) { // a nominal props record's boxed field (types.go)
+				val = "new(" + val + ")"
+			}
+			inits = append(inits, Field(fd.Name)+": "+val)
 		}
 		fields = append(fields, Field(fd.Name)+" "+t)
 	}

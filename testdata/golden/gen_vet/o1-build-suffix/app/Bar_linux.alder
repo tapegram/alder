@@ -1,0 +1,4 @@
+module Bar_linux
+
+y : Int
+y = 2

@@ -110,7 +110,7 @@ func TestEmit_RejectsDuplicates(t *testing.T) {
 		return &ir.Value{Module: module, Name: name, Type: types.Int, Body: &ir.Lit{Typed: ir.Typed{Ty: types.Int}, Kind: ir.LitInt, Int: 1}}
 	}
 	_, err := Emit(&ir.Program{Modules: []*ir.Module{{Name: "A", Values: []*ir.Value{val("A", "x")}}, {Name: "A", Values: []*ir.Value{val("A", "y")}}}}, Options{RepoPath: "/r"})
-	if err == nil || !strings.Contains(err.Error(), "two modules are emitted to A.go") {
+	if err == nil || !strings.Contains(err.Error(), "two modules are emitted to A_alder.go") {
 		t.Errorf("duplicate file: err = %v", err)
 	}
 	_, err = Emit(&ir.Program{Modules: []*ir.Module{{Name: "A", Values: []*ir.Value{val("A", "x"), val("A", "x")}}}}, Options{RepoPath: "/r"})

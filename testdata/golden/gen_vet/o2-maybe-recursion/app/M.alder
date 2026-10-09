@@ -1,0 +1,117 @@
+module M
+
+-- A record that refers to itself through Maybe: its Go struct holds the field by pointer
+-- (*rt.Maybe[M__Node]); reads dereference it and construction and update box it.
+type Node = { v: Int, next: Maybe Node }
+
+-- Mutual recursion through Maybe, and recursion through a Result and an anonymous record.
+type Ping = { n: Int, pong: Maybe Pong }
+type Pong = { m: Int, ping: Maybe Ping }
+type Res = { r: Result Text Res }
+type Deep = { d: Int, more: { next: Maybe Deep } }
+
+-- A generic record, and a union whose payload is a boxed record.
+type Chain a = { item: a, rest: Maybe (Chain a) }
+type Tree = Leaf | Branch Node
+
+sum : Node -> Int
+sum n = match n.next {
+  Just m -> n.v + sum m,
+  Nothing -> n.v,
+}
+
+list : Node
+list = { v: 1, next: Just { v: 2, next: Nothing } }
+
+-- record update of a boxed field, and of another field (the boxed one is copied)
+push : Int -> Node -> Node
+push x n = { v: x, next: Just { n | v: n.v } }
+
+relink : Node -> Node
+relink n = { n | next: Nothing }
+
+renum : Node -> Node
+renum n = { (push 0 n) | v: 9 }
+
+-- record patterns read the boxed field
+second : Node -> Int
+second n = match n {
+  { v: _, next: (Just { v: v, next: _ }) } -> v,
+  { v: v, next: Nothing } -> v,
+}
+
+pingSum : Ping -> Int
+pingSum p = match p.pong {
+  Just q -> p.n + q.m + (match q.ping {
+    Just p2 -> pingSum p2,
+    Nothing -> 0,
+  }),
+  Nothing -> p.n,
+}
+
+pings : Int
+pings = pingSum { n: 1, pong: Just { m: 2, ping: Just { n: 3, pong: Nothing } } }
+
+depth : Res -> Int
+depth x = match x.r {
+  Ok y -> 1 + depth y,
+  Err _ -> 0,
+}
+
+res : Int
+res = depth { r: Ok { r: Ok { r: Err "end" } } }
+
+deep : Deep -> Int
+deep x = match x.more.next {
+  Just y -> x.d + deep y,
+  Nothing -> x.d,
+}
+
+deeps : Int
+deeps = deep { d: 1, more: { next: Just { d: 10, more: { next: Nothing } } } }
+
+count : Chain a -> Int
+count c = match c.rest {
+  Just r -> 1 + count r,
+  Nothing -> 1,
+}
+
+chain : Int
+chain = count { item: "a", rest: Just { item: "b", rest: Just { item: "c", rest: Nothing } } }
+
+tree : Tree -> Int
+tree t = match t {
+  Leaf -> 0,
+  Branch { v: v, next: nx } -> v + (match nx {
+    Just y -> y.v,
+    Nothing -> 100,
+  }),
+}
+
+trees : Int
+trees = tree (Branch list)
+
+list2 : Node
+list2 = { v: 1, next: Just { v: 2, next: Nothing } }
+
+same : Bool
+same = list == list2 && list != relink list
+
+keyed : Int
+keyed = Dict.size (Dict.insert list "x" (Dict.insert (relink list) "y" (Dict.insert list "z" Dict.empty)))
+
+-- an update through a temporary that replaces the boxed field
+cut : Node -> Node
+cut n = { (push 0 n) | next: Nothing }
+
+-- a component whose props are a record with a boxed field
+type Crumb = { label: Text, parent: Maybe Crumb }
+
+Trail : Crumb -> Html a
+Trail c = <span>{c.label}{match c.parent {
+  Just p -> <Trail label={p.label} parent={p.parent} />,
+  Nothing -> <b>root</b>,
+}}</span>
+
+trail : Html a
+trail = <Trail label="c" parent={Just { label: "b", parent: Just { label: "a", parent: Nothing } }} />

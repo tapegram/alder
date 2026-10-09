@@ -1,0 +1,14 @@
+module App
+
+session { n: Int = 0 }
+
+msg Noop
+
+update : Msg -> Session -> Task Nav
+update msg session = Task.succeed Rerender
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>nf</p>

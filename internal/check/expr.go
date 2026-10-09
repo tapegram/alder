@@ -125,12 +125,88 @@ func (mc *modCtx) missingSig(d *syntax.ValueDecl, sig string) {
 		diag.InsertAt(d.Span.Start.Line, 1, d.Name+" : "+sig+"\n")
 }
 
+// reportHoles ends a body: it reports its holes and the Dict keys it infers to hold a function.
 func (mc *modCtx) reportHoles() {
 	for _, h := range mc.holes {
 		mc.c.res.Holes++
 		mc.c.bag.Warn("W0002", h.span, "hole ?%s has type %s", h.name, types.String(mc.c.u.Apply(h.t)))
 	}
 	mc.holes = nil
+	mc.c.checkInferredDictKeys()
+}
+
+// checkInferredDictKeys reports E0003 for a Dict whose key type holds a function when no written
+// type says so (`Dict.insert inc "a" Dict.empty`): typeOf rejects such a Dict where its type is
+// written, but an inferred one would only fail at run time (rt.Key cannot encode a function). It
+// looks at the expressions recorded since the last body ended and reports once per body, at the
+// first expression (the outermost when several start there) whose type holds such a Dict. A
+// function type is not looked into: a Dict built by calling it has a type of its own. A body
+// with a poisoned type is skipped: its error is reported already, and may be this one, written
+// (`d : Dict (Int -> Int) Text` poisons the body checked against it).
+func (c *Checker) checkInferredDictKeys() {
+	exprs := c.bodyExprs
+	c.bodyExprs = nil
+	var at syntax.Expr
+	var key types.Type
+	for _, e := range exprs {
+		t := c.u.Apply(c.res.Types[e])
+		if poisoned(t) {
+			return
+		}
+		k := funKeyDict(t, map[*types.Record]bool{})
+		if k == nil {
+			continue
+		}
+		if at == nil || before(e.GetSpan(), at.GetSpan()) {
+			at, key = e, k
+		}
+	}
+	if at != nil {
+		c.errorf(diag.TypeMismatch, at.GetSpan(), "a `Dict` key cannot be a function, got `%s`: keys are compared with `==`, and functions cannot be compared", types.String(key))
+	}
+}
+
+// before orders spans by start, the longer first among equal starts.
+func before(a, b diag.Span) bool {
+	if a.Start != b.Start {
+		return a.Start.Line < b.Start.Line || a.Start.Line == b.Start.Line && a.Start.Col < b.Start.Col
+	}
+	return a.End.Line > b.End.Line || a.End.Line == b.End.Line && a.End.Col > b.End.Col
+}
+
+// funKeyDict is the key type of a `Dict k v` in t, outside function types, whose k contains a
+// function; nil when there is none.
+func funKeyDict(t types.Type, seen map[*types.Record]bool) types.Type {
+	switch t := t.(type) {
+	case *types.App:
+		if t.Con == "Dict" && len(t.Args) == 2 && containsFun(t.Args[0]) {
+			return t.Args[0]
+		}
+		for _, a := range t.Args {
+			if k := funKeyDict(a, seen); k != nil {
+				return k
+			}
+		}
+	case *types.Union:
+		for _, a := range t.Args {
+			if k := funKeyDict(a, seen); k != nil {
+				return k
+			}
+		}
+	case *types.Record:
+		if seen[t] {
+			return nil
+		}
+		seen[t] = true
+		for _, f := range t.Fields {
+			if k := funKeyDict(f.Type, seen); k != nil {
+				return k
+			}
+		}
+	case *types.Brand:
+		return funKeyDict(t.Base, seen)
+	}
+	return nil
 }
 
 // maybeOf builds `Maybe inner` from the declared Prelude union.

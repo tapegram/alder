@@ -37,6 +37,9 @@ type Checker struct {
 
 	usesSessionPut bool // some module calls Session.put
 	res            *Result
+	// bodyExprs are the expressions recorded since the last body ended (reportHoles), for
+	// checkInferredDictKeys
+	bodyExprs []syntax.Expr
 }
 
 // holeNote records a `?name` typed hole to be reported once its type is known.
@@ -125,6 +128,7 @@ func Program(prog *names.Program, bag *diag.Bag) *Result {
 	if app := prog.Modules["App"]; app != nil && !prog.Failed["App"] {
 		c.ctx(app).checkApp()
 	}
+	c.checkInferredDictKeys() // anything recorded after the last body
 	return c.result()
 }
 

@@ -1,0 +1,4 @@
+module Zed_darwin
+
+z : Int
+z = 3

@@ -1,0 +1,4 @@
+module Qux_windows_amd64_test
+
+q : Int
+q = 4

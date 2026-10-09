@@ -227,7 +227,11 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 	case *ir.Update:
 		return f.update(x, s), precAtom
 	case *ir.Field:
-		return f.operand(x.Expr, s, precAtom) + "." + Field(x.Name), precAtom
+		v := f.operand(x.Expr, s, precAtom) + "." + Field(x.Name)
+		if f.g.boxed.of(x.Expr.Type(), x.Name) {
+			return "(*" + v + ")", precAtom
+		}
+		return v, precAtom
 	case *ir.Ctor:
 		return f.ctor(x, s), precAtom
 	case *ir.List:
@@ -426,7 +430,11 @@ func recordTypeName(x *ir.Record) string {
 func (f *fn) record(x *ir.Record, typ string, s *scope) string {
 	var fs []string
 	for _, fi := range x.Fields {
-		fs = append(fs, Field(fi.Name)+": "+f.code(fi.Value, s))
+		v := f.code(fi.Value, s)
+		if x.T != nil && f.g.boxed.has(x.T.Module, x.T.Name, fi.Name) {
+			v = "new(" + v + ")"
+		}
+		fs = append(fs, Field(fi.Name)+": "+v)
 	}
 	return typ + "{" + strings.Join(fs, ", ") + "}"
 }
@@ -443,10 +451,18 @@ func isPath(e ir.Expr) bool {
 }
 
 // update copies the base with fields replaced: a full literal when the base is a path, else a
-// closure that copies it into a temporary and assigns the new fields.
+// closure that copies it into a temporary and assigns the new fields. A boxed field (types.go)
+// left alone shares the base's pointer; a replaced one is boxed anew.
 func (f *fn) update(x *ir.Update, s *scope) string {
 	rec, _ := x.Ty.(*types.Record)
 	typ := GoType(x.Ty)
+	value := func(fi ir.FieldInit) string {
+		v := f.code(fi.Value, s)
+		if f.g.boxed.of(x.Ty, fi.Name) {
+			v = "new(" + v + ")"
+		}
+		return v
+	}
 	if isPath(x.Base) && rec != nil {
 		base := f.code(x.Base, s)
 		var fs []string
@@ -454,7 +470,7 @@ func (f *fn) update(x *ir.Update, s *scope) string {
 			v := base + "." + Field(fd.Name)
 			for _, fi := range x.Fields {
 				if fi.Name == fd.Name {
-					v = f.code(fi.Value, s)
+					v = value(fi)
 				}
 			}
 			fs = append(fs, Field(fd.Name)+": "+v)
@@ -466,7 +482,7 @@ func (f *fn) update(x *ir.Update, s *scope) string {
 	var w strings.Builder
 	fmt.Fprintf(&w, "func() %s {\n%s := %s\n", typ, t, base)
 	for _, fi := range x.Fields {
-		fmt.Fprintf(&w, "%s.%s = %s\n", t, Field(fi.Name), f.code(fi.Value, s))
+		fmt.Fprintf(&w, "%s.%s = %s\n", t, Field(fi.Name), value(fi))
 	}
 	fmt.Fprintf(&w, "return %s\n}()", t)
 	return w.String()
