@@ -89,10 +89,15 @@ func TestLoadStd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, m := range []string{"Prelude", "List", "Maybe", "Result", "Text", "Int", "Float", "Bool", "Dict", "Date", "Time", "Html", "Url", "Query", "Task", "Db", "Session", "Log", "Random", "Http", "Form"} {
+	for _, m := range []string{"Prelude", "List", "Maybe", "Result", "Text", "Int", "Float", "Bool", "Dict", "Date", "Time", "Html", "Url", "Query", "Task", "Db", "Session", "Log", "Random", "Http"} {
 		if std[m] == nil {
 			t.Errorf("missing stdlib module %s", m)
 		}
+	}
+	// Form is a prelude type, not a module: a decoded form is the message's form field, and
+	// there is no Form.values.
+	if std["Form"] != nil {
+		t.Error("stdlib has a Form module")
 	}
 }
 

@@ -133,11 +133,10 @@ var StdCalls = map[string]string{
 }
 
 // Effectful lists the stdlib modules and functions that have no StdCalls entry: Query.*, Task.*
-// and Db.*, which Lower turns into effect and database nodes (effects.go emits them), and
-// Form.values, bound to a request (M3c). A key is a module name (all of its functions) or
-// "Module.name".
+// and Db.*, which Lower turns into effect and database nodes (effects.go emits them). A key is a
+// module name (all of its functions) or "Module.name".
 var Effectful = map[string]bool{
-	"Query": true, "Task": true, "Db": true, "Form.values": true,
+	"Query": true, "Task": true, "Db": true,
 }
 
 func isEffectful(module, name string) bool {

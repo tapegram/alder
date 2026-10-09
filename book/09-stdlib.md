@@ -179,9 +179,3 @@ Url.external : Text -> Page                     -- external link for href
 ## Query, Task, Db, Session, Log, Time, Random, Http
 
 See chapters 7 and 8.
-
-## Form
-
-```alder
-Form.values : Form f -> f            -- for use in tests only
-```

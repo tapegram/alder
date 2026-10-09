@@ -616,7 +616,7 @@ note = <p title="x & y">{"a < b"} & é</p>
 	vet(t, files)
 }
 
-// Every stdlib signature has an entry in StdCalls or (Query.*, Task.*, Db.*, Form.values) in Effectful.
+// Every stdlib signature has an entry in StdCalls or (Query.*, Task.*, Db.*) in Effectful.
 func TestStdCallsCoverStdlib(t *testing.T) {
 	std, err := types.LoadStd()
 	if err != nil {
