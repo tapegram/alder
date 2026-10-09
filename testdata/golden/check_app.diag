@@ -1,0 +1,4 @@
+app/App.alder:1:1 E0010 `App` has no `error : Error -> Html Never`
+app/App.alder:1:1 E0010 `App` has no `notFound : Html Never`
+app/App.alder:1:1 E0010 `App` declares messages but has no `update`
+app/App.alder:1:1 E0010 `Session.put` is used, but `App` has no `session`

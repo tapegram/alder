@@ -56,7 +56,6 @@ func (mc *modCtx) checkBodies() {
 			if mc.page != nil && d.Name == "load" {
 				eff.inLoad = true
 			}
-			mc.inUpdate = (mc.page != nil && d.Name == "update") || (mc.isApp && d.Name == "update")
 			body := sig
 			if fn, isFn := sig.(*types.Fun); isFn {
 				if len(d.Params) > len(fn.Params) {
@@ -75,6 +74,7 @@ func (mc *modCtx) checkBodies() {
 				c.errorf(diag.Arity, d.Span, "`%s` has type `%s`, which takes no parameters", d.Name, types.String(sig))
 				continue
 			}
+			mc.inUpdate = (mc.page != nil && d.Name == "update") || (mc.isApp && d.Name == "update")
 			mc.check(d.Body, body, env, eff)
 			mc.inUpdate = false
 			mc.reportHoles()

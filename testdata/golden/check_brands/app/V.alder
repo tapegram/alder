@@ -6,3 +6,6 @@ x : U.UId
 x = U.UId "a"
 
 test "ok" = U.UId "a" == U.UId "a"
+
+y : U.UId
+y = UId "b"

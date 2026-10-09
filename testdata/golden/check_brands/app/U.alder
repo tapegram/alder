@@ -1,3 +1,6 @@
 module U
 
 type UId = brand Text
+
+mk : Text -> UId
+mk t = UId t

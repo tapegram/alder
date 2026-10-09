@@ -1,0 +1,7 @@
+module X
+
+import U
+import W
+
+z : U.UId
+z = UId "c"
