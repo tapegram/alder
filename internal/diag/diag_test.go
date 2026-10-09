@@ -21,9 +21,9 @@ func TestBag_ErrorAndSort(t *testing.T) {
 func TestRenderJSON(t *testing.T) {
 	d := Diagnostic{Code: "E0101", Severity: "error",
 		Span:    Span{File: "app/X.alder", Start: Pos{3, 7}, End: Pos{3, 12}},
-		Message: "Db.get takes an id", Fix: &Fix{Line: 3, Col: 7, Replace: "Db.first"}}
+		Message: "Db.get takes an id", Fix: InsertAt(3, 7, "Db.first")}
 	got := RenderJSON(d)
-	want := `{"code":"E0101","severity":"error","file":"app/X.alder","line":3,"col":7,"endLine":3,"endCol":12,"message":"Db.get takes an id","fix":{"line":3,"col":7,"replace":"Db.first"}}`
+	want := `{"code":"E0101","severity":"error","file":"app/X.alder","line":3,"col":7,"endLine":3,"endCol":12,"message":"Db.get takes an id","fix":{"line":3,"col":7,"endLine":3,"endCol":7,"replace":"Db.first"}}`
 	if got != want {
 		t.Fatalf("\n got %s\nwant %s", got, want)
 	}
@@ -36,7 +36,7 @@ func TestRenderJSON(t *testing.T) {
 func TestRenderText(t *testing.T) {
 	d := Diagnostic{Code: "E0003", Severity: "error",
 		Span:    Span{File: "app/X.alder", Start: Pos{2, 5}, End: Pos{2, 8}},
-		Message: "expected Int, got Text", Fix: &Fix{Line: 2, Col: 5, Replace: "Text.fromInt n"}}
+		Message: "expected Int, got Text", Fix: ReplaceSpan(Span{Start: Pos{2, 5}, End: Pos{2, 8}}, "Text.fromInt n")}
 	lines := []string{"module X", "x = foo + 1"}
 	got := RenderText(d, lines)
 	want := "app/X.alder:2:5: error[E0003]: expected Int, got Text\n" +
@@ -86,5 +86,53 @@ func TestExplainCoversEveryCode(t *testing.T) {
 	}
 	if len(Explain) != len(codes) {
 		t.Errorf("Explain has %d entries, want %d", len(Explain), len(codes))
+	}
+}
+
+func TestFixHelpers(t *testing.T) {
+	sp := Span{File: "f", Start: Pos{3, 7}, End: Pos{3, 12}}
+	f := ReplaceSpan(sp, "X")
+	if f.Line != 3 || f.Col != 7 || f.EndLine != 3 || f.EndCol != 12 || f.Replace != "X" {
+		t.Fatalf("ReplaceSpan: %+v", f)
+	}
+	i := InsertAt(5, 1, "import Todo\n")
+	if i.Line != 5 || i.Col != 1 || i.EndLine != 5 || i.EndCol != 1 {
+		t.Fatalf("InsertAt must be a zero-width span: %+v", i)
+	}
+}
+
+func TestRenderJSON_FixHasEnd(t *testing.T) {
+	d := Diagnostic{Code: "E0101", Severity: "error",
+		Span: Span{File: "a.alder", Start: Pos{2, 3}, End: Pos{2, 9}}, Message: "m",
+		Fix: ReplaceSpan(Span{Start: Pos{2, 3}, End: Pos{2, 9}}, "Db.first")}
+	got := RenderJSON(d)
+	want := `{"code":"E0101","severity":"error","file":"a.alder","line":2,"col":3,"endLine":2,"endCol":9,"message":"m","fix":{"line":2,"col":3,"endLine":2,"endCol":9,"replace":"Db.first"}}`
+	if got != want {
+		t.Fatalf("\n got %s\nwant %s", got, want)
+	}
+}
+
+func TestApply(t *testing.T) {
+	src := "module M\n\nx : Int\nx = Db.get Todo slug\n"
+	// replace `Db.get Todo slug` (line 4, cols 5..21) and insert an import on line 2
+	out, err := Apply(src, []Fix{
+		*ReplaceSpan(Span{Start: Pos{4, 5}, End: Pos{4, 21}}, "Db.first"),
+		*InsertAt(2, 1, "import Todo\n"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "module M\nimport Todo\n\nx : Int\nx = Db.first\n"
+	if out != want {
+		t.Fatalf("\n got %q\nwant %q", out, want)
+	}
+	if _, err := Apply(src, []Fix{*ReplaceSpan(Span{Start: Pos{9, 1}, End: Pos{9, 2}}, "x")}); err == nil {
+		t.Fatal("out-of-range fix must error")
+	}
+	if _, err := Apply(src, []Fix{
+		*ReplaceSpan(Span{Start: Pos{4, 5}, End: Pos{4, 21}}, "a"),
+		*ReplaceSpan(Span{Start: Pos{4, 8}, End: Pos{4, 10}}, "b"),
+	}); err == nil {
+		t.Fatal("overlapping fixes must error")
 	}
 }

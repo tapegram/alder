@@ -1,2 +1,2 @@
 app/Layout.alder:3:33 E0601 `Msg` is only defined in page modules; a shared component is typed `Html a`
-  fix 3:33 a
+  fix 3:33-3:36 a

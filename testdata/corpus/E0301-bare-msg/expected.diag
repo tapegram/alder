@@ -1,2 +1,2 @@
 app/Index.alder:28:52 E0301 message `Toggle` needs its parameters: `Toggle { id: ?id }`
-  fix 28:52 Toggle { id: ?id }
+  fix 28:52-28:58 Toggle { id: ?id }

@@ -1,2 +1,2 @@
 app/Todo.alder:21:23 E0004 missing cases: `Completed`
-  fix 24:1   Completed -> ?todo,
+  fix 24:1-24:1   Completed -> ?todo,⏎

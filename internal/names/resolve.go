@@ -234,7 +234,7 @@ func (r *resolver) notImported(span diag.Span, x string) {
 	if n := len(r.m.Imports); n > 0 {
 		line = r.m.Imports[n-1].Span.End.Line + 1
 	}
-	d.Fix = &diag.Fix{Line: line, Col: 1, Replace: "import " + x}
+	d.Fix = diag.InsertAt(line, 1, "import "+x+"\n")
 }
 
 // ---- types
@@ -268,7 +268,7 @@ func (r *resolver) typ(t syntax.Type) {
 					t.Ref = syntax.Ref{Kind: syntax.RefType, Module: "App", Name: "Msg"}
 				case "Session":
 					d := r.bag.Error(diag.UnknownName, t.Span, "`Session` is not qualified; write `Session`")
-					d.Fix = &diag.Fix{Line: t.Span.Start.Line, Col: t.Span.Start.Col, Replace: "Session"}
+					d.Fix = diag.ReplaceSpan(t.Span, "Session")
 				default:
 					r.bag.Error(diag.UnknownName, t.Span, "`App` has no type `%s` other modules can use; only `App.Msg` is global", t.Name)
 				}
@@ -303,7 +303,7 @@ func (r *resolver) typ(t syntax.Type) {
 				if r.p.scopes[x] != nil && r.p.scopes[x].types[t.Name] {
 					r.ms.used[x] = true
 					d := r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`; write `%s.%s`", t.Name, x, x, t.Name)
-					d.Fix = &diag.Fix{Line: t.Span.Start.Line, Col: t.Span.Start.Col, Replace: x + "." + t.Name}
+					d.Fix = diag.ReplaceSpan(t.Span, x+"."+t.Name)
 					return
 				}
 			}
@@ -565,7 +565,7 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 		}
 		if _, isCtor := s.ctors[c.Name]; isCtor {
 			d := r.bag.Error("E0203", c.Span, "constructors are not qualified; write `%s`", c.Name)
-			d.Fix = &diag.Fix{Line: c.Span.Start.Line, Col: c.Span.Start.Col, Replace: c.Name}
+			d.Fix = diag.ReplaceSpan(c.Span, c.Name)
 			c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: c.Module, Name: c.Name}
 			return
 		}

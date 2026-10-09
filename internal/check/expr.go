@@ -186,9 +186,9 @@ func (mc *modCtx) annotateMismatch(d *diag.Diagnostic, e syntax.Expr, got, expec
 		src := mc.source(sp)
 		switch {
 		case isCon(g, "Int"):
-			d.Fix = &diag.Fix{Line: sp.Start.Line, Col: sp.Start.Col, Replace: "Text.fromInt (" + src + ")"}
+			d.Fix = diag.ReplaceSpan(sp, "Text.fromInt ("+src+")")
 		case isCon(g, "Float"):
-			d.Fix = &diag.Fix{Line: sp.Start.Line, Col: sp.Start.Col, Replace: "Text.fromFloat (" + src + ")"}
+			d.Fix = diag.ReplaceSpan(sp, "Text.fromFloat ("+src+")")
 		}
 	}
 }
@@ -526,7 +526,7 @@ func (mc *modCtx) inferCtor(x *syntax.CtorRef, applied bool) types.Type {
 			}
 			full := fmt.Sprintf("%s { %s }", x.Name, strings.Join(parts, ", "))
 			c.errorf("E0301", x.Span, "message `%s` needs its parameters: `%s`", x.Name, full).Fix =
-				&diag.Fix{Line: x.Span.Start.Line, Col: x.Span.Start.Col, Replace: full}
+				diag.ReplaceSpan(x.Span, full)
 			return un
 		}
 		arg := info.Arg
@@ -571,7 +571,7 @@ func (mc *modCtx) inferAccess(x *syntax.Access, env *env, eff effect) types.Type
 		if inner, ok := maybeOf(b); ok {
 			src := mc.source(x.Expr.GetSpan())
 			c.errorf("E0102", x.Span, "`.%s` on a `Maybe %s`; match it first", x.Field, types.String(inner)).Fix =
-				&diag.Fix{Line: x.Span.Start.Line, Col: x.Span.Start.Col, Replace: fmt.Sprintf("(match %s { Just x -> x.%s, Nothing -> ?default })", src, x.Field)}
+				diag.ReplaceSpan(x.Span, fmt.Sprintf("(match %s { Just x -> x.%s, Nothing -> ?default })", src, x.Field))
 			return c.u.Fresh()
 		}
 		c.errorf(diag.TypeMismatch, x.Span, "`%s` has no fields; it is a union", types.String(b))
@@ -913,8 +913,8 @@ func (mc *modCtx) checkDbGet(x *syntax.App, env *env, eff effect) types.Type {
 	}
 	sort.Strings(cols)
 	if len(cols) == 1 {
-		d.Fix = &diag.Fix{Line: x.Span.Start.Line, Col: x.Span.Start.Col,
-			Replace: fmt.Sprintf("Db.from %s |> Db.where (%s.%s.eq %s) |> Db.first", rec.Name, rec.Name, cols[0], mc.source(x.Args[1].GetSpan()))}
+		d.Fix = diag.ReplaceSpan(x.Span,
+			fmt.Sprintf("Db.from %s |> Db.where (%s.%s.eq %s) |> Db.first", rec.Name, rec.Name, cols[0], mc.source(x.Args[1].GetSpan())))
 	}
 	return res
 }

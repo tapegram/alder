@@ -251,5 +251,5 @@ func (ex *exhaustiveness) report(m *syntax.Match) {
 		}
 		arms = append(arms, fmt.Sprintf("  %s -> ?todo,", name))
 	}
-	d.Fix = &diag.Fix{Line: m.Span.End.Line, Col: 1, Replace: strings.Join(arms, "\n")}
+	d.Fix = diag.InsertAt(m.Span.End.Line, 1, strings.Join(arms, "\n")+"\n")
 }

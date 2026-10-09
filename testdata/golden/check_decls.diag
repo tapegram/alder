@@ -6,6 +6,5 @@ app/Todos/Index.alder:5:29 E0011 page parameter `todos` has type `List Todo`, wh
 app/Todos/Index.alder:5:48 E0011 `requires missing`: the session has no field `missing`
 app/Todos/Index.alder:14:3 E0011 form field `items` has type `List Int`, which cannot come from a form
 app/Todos/Index.alder:23:1 E0007 `noSig` has no type signature; write `noSig : Int` on the line before it
-  fix 23:1 noSig : Int
-
+  fix 23:1-23:1 noSig : Int⏎
 app/Todos/Index.alder:23:1 E0010 page module `Todos.Index` declares messages but has no `update`

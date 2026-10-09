@@ -27,6 +27,8 @@ func RenderText(d Diagnostic, lines []string) string {
 type jsonFix struct {
 	Line    int    `json:"line"`
 	Col     int    `json:"col"`
+	EndLine int    `json:"endLine"`
+	EndCol  int    `json:"endCol"`
 	Replace string `json:"replace"`
 }
 type jsonDiag struct {
@@ -44,7 +46,7 @@ type jsonDiag struct {
 func RenderJSON(d Diagnostic) string {
 	j := jsonDiag{d.Code, d.Severity, d.Span.File, d.Span.Start.Line, d.Span.Start.Col, d.Span.End.Line, d.Span.End.Col, d.Message, nil}
 	if d.Fix != nil {
-		j.Fix = &jsonFix{d.Fix.Line, d.Fix.Col, d.Fix.Replace}
+		j.Fix = &jsonFix{d.Fix.Line, d.Fix.Col, d.Fix.EndLine, d.Fix.EndCol, d.Fix.Replace}
 	}
 	// SetEscapeHTML(false): messages quote code such as `|>` and `<Input>`, which must stay readable.
 	var sb strings.Builder

@@ -2,6 +2,6 @@ app/App.alder:1:1 E0010 `App` has no `error : Error -> Html Never`
 app/App.alder:1:1 E0010 a page uses `requires`, but `App` has no `login`
 app/P.alder:11:12 E0401 `Task` cannot run inside a `Query`; `load` and `Query` blocks can only read
 app/P.alder:23:28 E0302 `update` does not handle `Dec`
-  fix 28:1   Dec p -> ?todo,
+  fix 28:1-28:1   Dec p -> ?todo,⏎
 app/P.alder:30:8 E0003 `view` must have type `Model -> Session -> Html Msg`; it is `Html Msg` even when the page has no messages
 app/Q.alder:7:8 E0003 `load` must have type `Params -> Session -> Query Model`

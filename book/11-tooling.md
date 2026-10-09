@@ -38,8 +38,10 @@ Every diagnostic has a stable code, a location, a one-line message, and,
 when possible, a fix. With `--json`, diagnostics are emitted as JSON lines:
 
 ```json
-{"code":"E0301","severity":"error","file":"app/Todos/Index.alder","line":28,"col":52,"endLine":28,"endCol":58,"message":"message `Toggle` needs its parameters: `Toggle { id: ?id }`","fix":{"line":28,"col":52,"replace":"Toggle { id: ?id }"}}
+{"code":"E0301","severity":"error","file":"app/Todos/Index.alder","line":28,"col":52,"endLine":28,"endCol":58,"message":"message `Toggle` needs its parameters: `Toggle { id: ?id }`","fix":{"line":28,"col":52,"endLine":28,"endCol":58,"replace":"Toggle { id: ?id }"}}
 ```
+
+A fix replaces the half-open span from `line:col` to `endLine:endCol` with `replace`; when the two positions are equal it is an insertion. Fixes never overlap.
 
 `?name` in a fix is a hole for the agent to fill.
 

@@ -68,7 +68,7 @@ func TestResolve_QualificationErrors(t *testing.T) {
 			fixes = append(fixes, d.Fix.Replace)
 		}
 	}
-	if strings.Join(fixes, "|") != "Todo.Priority|Low|import User" {
+	if strings.Join(fixes, "|") != "Todo.Priority|Low|import User\n" {
 		t.Fatalf("fixes: %v", fixes)
 	}
 }

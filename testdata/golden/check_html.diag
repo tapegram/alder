@@ -1,16 +1,16 @@
 app/Layout.alder:6:26 E0601 `Msg` is only defined in page modules; a shared component is typed `Html a`
-  fix 6:26 a
+  fix 6:26-6:29 a
 app/Layout.alder:7:20 E0003 expected Text, Html or List Html in `{…}`, got Int
-  fix 7:20 Text.fromInt (props.x)
+  fix 7:20-7:27 Text.fromInt (props.x)
 app/Pg.alder:28:9 E0003 expected Text, Html or List Html in `{…}`, got Int
-  fix 28:9 Text.fromInt (model.n)
+  fix 28:9-28:16 Text.fromInt (model.n)
 app/Pg.alder:29:8 E0303 `href` takes a page value, not a string; write `href={Module.Page { … }}` or `Url.external "…"`
 app/Pg.alder:30:13 E0001 `onclick` is not Alder; use `click={Msg}`
 app/Pg.alder:31:20 E0301 message `Toggle` needs its parameters: `Toggle { id: ?id }`
-  fix 31:20 Toggle { id: ?id }
+  fix 31:20-31:26 Toggle { id: ?id }
 app/Pg.alder:33:5 E0002 unknown element `<blink>`
 app/Pg.alder:34:19 E0003 expected Text, got Int
-  fix 34:19 Text.fromInt (model.n)
+  fix 34:19-34:26 Text.fromInt (model.n)
 app/Pg.alder:36:5 E0304 `<Input>` must be inside `<form submit={…}>`
 app/Pg.alder:38:7 E0304 form `F` has no field `nope`; fields: title, kind
 app/Pg.alder:39:7 E0304 field `kind` is a union; use `<Select>` for `Pg.Kind`
@@ -19,4 +19,4 @@ app/Pg.alder:42:28 E0304 `<Input>` attribute `label` needs a value
 app/Pg.alder:43:7 E0304 `<Select>` needs a union field; `title` has type `Text.NonEmpty`
 app/Pg.alder:44:45 E0003 expected Text.NonEmpty, got Int
 app/Pg.alder:55:25 E0003 expected Text, got Int
-  fix 55:25 Text.fromInt (model.n)
+  fix 55:25-55:32 Text.fromInt (model.n)

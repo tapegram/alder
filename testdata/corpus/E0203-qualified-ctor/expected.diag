@@ -1,2 +1,2 @@
 app/Index.alder:10:49 E0203 constructors are not qualified; write `Normal`
-  fix 10:49 Normal
+  fix 10:49-10:61 Normal

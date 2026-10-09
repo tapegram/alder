@@ -42,7 +42,7 @@ func render(bag *diag.Bag) string {
 		}
 		fmt.Fprintf(&sb, "%s:%d:%d %s %s\n", d.Span.File, d.Span.Start.Line, d.Span.Start.Col, d.Code, d.Message)
 		if d.Fix != nil {
-			fmt.Fprintf(&sb, "  fix %d:%d %s\n", d.Fix.Line, d.Fix.Col, d.Fix.Replace)
+			fmt.Fprintf(&sb, "  fix %d:%d-%d:%d %s\n", d.Fix.Line, d.Fix.Col, d.Fix.EndLine, d.Fix.EndCol, strings.ReplaceAll(d.Fix.Replace, "\n", "⏎"))
 		}
 	}
 	return sb.String()
@@ -77,6 +77,10 @@ func TestCorpus(t *testing.T) {
 	for _, dir := range dirs {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
 			got := render(runDir(t, dir))
+			if *update {
+				os.WriteFile(filepath.Join(dir, "expected.diag"), []byte(got), 0o644)
+				return
+			}
 			want, err := os.ReadFile(filepath.Join(dir, "expected.diag"))
 			if err != nil {
 				t.Fatal(err)
@@ -92,6 +96,30 @@ func TestExamplesCheckClean(t *testing.T) {
 	for _, ex := range []string{"../../examples/todos"} {
 		if got := render(runDir(t, ex)); got != "" {
 			t.Fatalf("%s should check clean:\n%s", ex, got)
+		}
+	}
+}
+
+// TestFixesApply proves every corpus fix is well-formed: applying it to the source must not error
+// and must change the file.
+func TestFixesApply(t *testing.T) {
+	dirs, _ := filepath.Glob("../../testdata/corpus/*")
+	for _, dir := range dirs {
+		bag := runDir(t, dir)
+		for _, d := range bag.Items {
+			if d.Fix == nil {
+				continue
+			}
+			src, err := os.ReadFile(filepath.Join(dir, d.Span.File))
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err := diag.Apply(string(src), []diag.Fix{*d.Fix})
+			if err != nil {
+				t.Errorf("%s %s: fix does not apply: %v", dir, d.Code, err)
+			} else if out == string(src) {
+				t.Errorf("%s %s: fix changes nothing", dir, d.Code)
+			}
 		}
 	}
 }

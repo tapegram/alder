@@ -123,7 +123,7 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 					if mc.isApp {
 						return c.appMsg
 					}
-					c.errorf("E0601", t.Span, "`Msg` is only defined in page modules; a shared component is typed `Html a`").Fix = &diag.Fix{Line: t.Span.Start.Line, Col: t.Span.Start.Col, Replace: "a"}
+					c.errorf("E0601", t.Span, "`Msg` is only defined in page modules; a shared component is typed `Html a`").Fix = diag.ReplaceSpan(t.Span, "a")
 					return c.u.Fresh()
 				case "Session":
 					return mc.session
@@ -615,7 +615,7 @@ func (mc *modCtx) declareValues() {
 				ty = "Float"
 			}
 			c.errorf(diag.MissingSig, vd.Span, "`%s` has no type signature; write `%s : %s` on the line before it", vd.Name, vd.Name, ty).Fix =
-				&diag.Fix{Line: vd.Span.Start.Line, Col: 1, Replace: vd.Name + " : " + ty + "\n"}
+				diag.InsertAt(vd.Span.Start.Line, 1, vd.Name+" : "+ty+"\n")
 			continue
 		}
 		params := map[string]bool{}

@@ -3,6 +3,7 @@ package diag
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 type Pos struct{ Line, Col int }
@@ -11,9 +12,66 @@ type Span struct {
 	Start, End Pos
 }
 type Fix struct {
-	Line, Col int
-	Replace   string
+	Line, Col       int
+	EndLine, EndCol int
+	Replace         string
 }
+
+// ReplaceSpan is a fix that replaces the half-open span [sp.Start, sp.End) with text.
+func ReplaceSpan(sp Span, text string) *Fix {
+	return &Fix{Line: sp.Start.Line, Col: sp.Start.Col, EndLine: sp.End.Line, EndCol: sp.End.Col, Replace: text}
+}
+
+// InsertAt is a zero-width fix: text is inserted before (line, col).
+func InsertAt(line, col int, text string) *Fix {
+	return &Fix{Line: line, Col: col, EndLine: line, EndCol: col, Replace: text}
+}
+
+// Apply applies fixes to src (lines joined by "\n"). Fixes must not overlap and must lie within src.
+func Apply(src string, fixes []Fix) (string, error) {
+	lines := strings.Split(src, "\n")
+	offset := func(line, col int) (int, error) {
+		if line < 1 || line > len(lines) || col < 1 || col > len(lines[line-1])+1 {
+			return 0, fmt.Errorf("fix position %d:%d is outside the source", line, col)
+		}
+		n := 0
+		for i := 0; i < line-1; i++ {
+			n += len(lines[i]) + 1
+		}
+		return n + col - 1, nil
+	}
+	type span struct {
+		s, e int
+		text string
+	}
+	spans := make([]span, 0, len(fixes))
+	for _, f := range fixes {
+		s, err := offset(f.Line, f.Col)
+		if err != nil {
+			return "", err
+		}
+		e, err := offset(f.EndLine, f.EndCol)
+		if err != nil {
+			return "", err
+		}
+		if e < s {
+			return "", fmt.Errorf("fix end before start at %d:%d", f.Line, f.Col)
+		}
+		spans = append(spans, span{s, e, f.Replace})
+	}
+	sort.Slice(spans, func(i, j int) bool { return spans[i].s > spans[j].s })
+	for i := 1; i < len(spans); i++ {
+		if spans[i].e > spans[i-1].s {
+			return "", fmt.Errorf("overlapping fixes")
+		}
+	}
+	out := src
+	for _, sp := range spans {
+		out = out[:sp.s] + sp.text + out[sp.e:]
+	}
+	return out, nil
+}
+
 type Diagnostic struct {
 	Code     string
 	Severity string // "error" | "warning"
