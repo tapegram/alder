@@ -1,0 +1,117 @@
+module P
+
+type Count = brand Int
+
+type Tree a = Leaf | Node { value: a, size: Int }
+
+type Opts = { name: Text, loud: Bool = False }
+
+type Shape = Circle Float | Rect { w: Int, h: Int }
+
+zero : Count
+zero = Count 0
+
+describe : Maybe Int -> Text
+describe m = match m {
+  Just 0 -> "zero",
+  Just n -> "n = {Text.fromInt n}",
+  Nothing -> "none",
+}
+
+firstTwo : List Int -> Int
+firstTwo xs = match xs {
+  [] -> 0,
+  [x] -> x,
+  [a, b, ..rest] -> a + b + List.length rest,
+  [x, ..more] -> x,
+}
+
+word : Int -> Text
+word n = match n {
+  1 -> "one",
+  2 -> "two",
+  _ -> "many",
+}
+
+greet : Text -> Text
+greet name = match name {
+  "" -> "nobody",
+  other -> "hi " ++ other,
+}
+
+flag : Bool -> Int
+flag b = match b {
+  True -> 1,
+  False -> 0,
+}
+
+clamp : Int -> Int
+clamp n = match n + 1 {
+  0 -> 0,
+  k -> k * 2,
+}
+
+width : Shape -> Int
+width s = match s {
+  Rect { w: 0, h: h } -> h,
+  Rect { w: w } -> w,
+  Circle _ -> 1,
+}
+
+point : { x: Int, y: Int } -> Int
+point p = match p {
+  { x: x, y: y } -> x + y,
+}
+
+size : Tree Text -> Int
+size t = match t {
+  Node n -> n.size,
+  Leaf -> 0,
+}
+
+circles : List Float -> List Shape
+circles rs = List.map Circle rs
+
+adder : Int -> Int -> Int
+adder a b = a + b
+
+addAll : List Int -> List Int
+addAll xs = xs |> List.map (adder 1) |> List.append [0]
+
+joiner : List Text -> Text
+joiner = Text.join ", "
+
+opts : Opts
+opts = { name: "x" }
+
+compute : Int -> Int
+compute n = {
+  let a = n * 2
+  let b = a + 1
+  if a < b && not (a == 0) then a else b
+}
+
+shout : Opts -> Opts
+shout o = { o | loud: True }
+
+both : List Text -> List Text -> List Text
+both a b = a ++ b
+
+later : Int -> Int
+later n = ?todo
+
+nodeOf : Text -> Tree Text
+nodeOf v = Node { value: v, size: 1 }
+
+View : { items: List (Maybe Int) } -> Html a
+View props =
+  <ul>
+    {for item in props.items ->
+      <li>
+        {match item {
+          Just 0 -> <b>zero</b>,
+          Just n -> Text.fromInt n,
+          Nothing -> Html.none,
+        }}
+      </li>}
+  </ul>

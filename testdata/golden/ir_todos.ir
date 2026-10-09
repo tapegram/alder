@@ -1,0 +1,229 @@
+(module User)
+(record User.User
+  (id Text)
+  (email Text)
+  (name Text)
+  (passwordHash Text)
+  (created Time))
+(module Theme)
+(union Theme.Theme (Light) (Dark))
+(value Theme.flip : Theme -> Theme (theme)
+  (match union (var theme)
+    (case Light (ctor Theme.Theme.Dark))
+    (case Dark (ctor Theme.Theme.Light))))
+(module Layout)
+(component Layout.Page : { title: Text, theme: Theme, children: List (Html a) } -> Html a (props)
+  (elem html
+    (attr class text
+      (if (== : Theme (field theme (var props)) (ctor Theme.Theme.Dark))
+        "dark"
+        ""))
+    (elem head
+      (elem meta (attr charset text "utf-8"))
+      (elem title (hexpr text (field title (var props))))
+      (elem link
+        (attr rel text "stylesheet")
+        (attr href href (call (std Url.external) "/static/app.css"))))
+    (elem body
+      (elem nav
+        (elem button (attr click click (ctor App.Msg.SwitchTheme))
+          (hif (== : Theme (field theme (var props)) (ctor Theme.Theme.Dark))
+            (hexpr text "Light mode")
+            (hexpr text "Dark mode"))))
+      (elem main (hexpr list (field children (var props)))))))
+(module App)
+(record App.Session (user Maybe Text) (theme Theme = (ctor Theme.Theme.Light)))
+(union App.Msg (Logout) (SwitchTheme))
+(value App.error : Error -> Html Never (err)
+  (comp Layout.Page
+    (record (title "Error") (theme (ctor Theme.Theme.Light)))
+    (elem h1 (htext "Something went wrong"))
+    (elem p (htext "Please try again."))))
+(value App.notFound : Html Never ()
+  (comp Layout.Page
+    (record (title "Not found") (theme (ctor Theme.Theme.Light)))
+    (elem h1 (htext "Not found"))))
+(skipped-effect App.update)
+(module Auth.Login)
+(record Auth.Login.Model)
+(record Auth.Login.Credentials (email Text) (password Text))
+(record Auth.Login.Params)
+(record Auth.Login.SubmitParams (form Credentials))
+(union Auth.Login.Msg (Submit SubmitParams))
+(value Auth.Login.view : Model -> App.Session -> Html Msg (model session)
+  (comp Layout.Page
+    (record (title "Log in") (theme (field theme (var session))))
+    (elem h1 (htext "Log in"))
+    (form-el Auth.Login.Submit
+      (attr submit submit (ctor Auth.Login.Msg.Submit (record SubmitParams)))
+      (input Errors Credentials form)
+      (input Input Credentials field=email label="Email")
+      (input Errors Credentials field=email)
+      (input Input Credentials field=password label="Password")
+      (input Errors Credentials field=password)
+      (elem button (htext "Log in")))))
+(skipped-effect Auth.Login.load)
+(skipped-effect Auth.Login.update)
+(module Todo)
+(union Todo.Filter (All) (Active) (Completed))
+(record Todo.Todo
+  (id Text)
+  (title Text)
+  (done Bool = False)
+  (due Maybe Date)
+  (owner Text)
+  (created Time))
+(value Todo.matches : Filter -> Todo -> Bool (filter todo)
+  (match union (var filter)
+    (case All True)
+    (case Active (call (std Prelude.not) (field done (var todo))))
+    (case Completed (field done (var todo)))))
+(value Todo.filterLabel : Filter -> Text (filter)
+  (match union (var filter)
+    (case All "All")
+    (case Active "Active")
+    (case Completed "Completed")))
+(value Todo.countOpen : List Todo -> Int (todos)
+  (call (std List.length)
+    (call (std List.filter)
+      (lambda (t : Todo) (call (std Prelude.not) (field done (var t))))
+      (var todos))))
+(module Todos.Index)
+(record Todos.Index.Model (filter Todo.Filter) (todos List Todo))
+(record Todos.Index.NewTodo (title Text) (due Maybe Date))
+(record Todos.Index.Params (filter Todo.Filter = (ctor Todo.Filter.All)))
+(record Todos.Index.SubmitParams (form NewTodo))
+(record Todos.Index.ToggleParams (id Text))
+(record Todos.Index.DeleteParams (id Text))
+(union Todos.Index.Msg
+  (Submit SubmitParams)
+  (Toggle ToggleParams)
+  (Delete DeleteParams))
+(value Todos.Index.view : Model -> App.Session -> Html Msg (model session)
+  (comp Layout.Page
+    (record (title "Todos") (theme (field theme (var session))))
+    (elem h1 (htext "Todos"))
+    (form-el Todos.Index.Submit
+      (attr submit submit (ctor Todos.Index.Msg.Submit (record SubmitParams)))
+      (input Input NewTodo field=title label="What needs doing?")
+      (input Errors NewTodo field=title)
+      (input Input NewTodo field=due label="Due")
+      (input Errors NewTodo field=due)
+      (elem button (htext "Add")))
+    (elem nav
+      (hfor f : Todo.Filter
+        (list
+          (ctor Todo.Filter.All)
+          (ctor Todo.Filter.Active)
+          (ctor Todo.Filter.Completed))
+        (elem a
+          (attr href href
+            (page-ref Todos.Index (record Params (filter (var f)))))
+          (attr aria-current maybe
+            (if (== : Todo.Filter (field filter (var model)) (var f))
+              (ctor Prelude.Maybe.Just (record (value "page")))
+              (ctor Prelude.Maybe.Nothing)))
+          (hexpr text (call (global Todo.filterLabel) (var f))))))
+    (elem ul (attr id text "todos")
+      (hfor todo : Todo
+        (field todos (var model))
+        (comp Todos.Index.Item (record (todo (var todo))))))
+    (elem p (attr id text "summary")
+      (hexpr text
+        (call (std Text.fromInt)
+          (call (global Todo.countOpen) (field todos (var model)))))
+      (htext " open"))
+    (elem button (attr click click (ctor App.Msg.Logout)) (htext "Log out"))))
+(skipped-effect Todos.Index.load)
+(skipped-effect Todos.Index.update)
+(component Todos.Index.Item : { todo: Todo } -> Html Msg (props)
+  (elem li
+    (attr class text (if (field done (field todo (var props))) "done" ""))
+    (elem button
+      (attr click click
+        (ctor Todos.Index.Msg.Toggle
+          (record ToggleParams (id (field id (field todo (var props)))))))
+      (hif (field done (field todo (var props)))
+        (hexpr text "Undo")
+        (hexpr text "Done")))
+    (elem a
+      (attr href href
+        (page-ref Todos.Show
+          (record Todos.Show.Params (id (field id (field todo (var props)))))))
+      (hexpr text (field title (field todo (var props)))))
+    (hmatch union (field due (field todo (var props)))
+      (case Just (bind d value : Date)
+        (elem span (attr class text "due")
+          (hexpr text (call (std Date.format) "Jan 2" (var d)))))
+      (case Nothing (hexpr html (std Html.none))))
+    (elem button
+      (attr click click
+        (ctor Todos.Index.Msg.Delete
+          (record DeleteParams (id (field id (field todo (var props)))))))
+      (htext "Delete"))))
+(module Todos.Show)
+(record Todos.Show.Model (todo Todo))
+(record Todos.Show.EditTodo (title Text) (due Maybe Date))
+(record Todos.Show.Params (id Text))
+(record Todos.Show.SaveParams (id Text) (form EditTodo))
+(record Todos.Show.DeleteParams (id Text))
+(union Todos.Show.Msg (Save SaveParams) (Delete DeleteParams))
+(value Todos.Show.view : Model -> App.Session -> Html Msg (model session)
+  (comp Layout.Page
+    (record
+      (title (field title (field todo (var model))))
+      (theme (field theme (var session))))
+    (elem h1 (hexpr text (field title (field todo (var model)))))
+    (form-el Todos.Show.Save
+      (attr submit submit
+        (ctor Todos.Show.Msg.Save
+          (record SaveParams (id (field id (field todo (var model)))))))
+      (input Input EditTodo field=title label="Title"
+        (value (field title (field todo (var model)))))
+      (input Errors EditTodo field=title)
+      (input Input EditTodo field=due label="Due"
+        (value (field due (field todo (var model)))))
+      (input Errors EditTodo field=due)
+      (elem button (htext "Save")))
+    (elem button
+      (attr click click
+        (ctor Todos.Show.Msg.Delete
+          (record DeleteParams (id (field id (field todo (var model)))))))
+      (htext "Delete"))
+    (elem a
+      (attr href href
+        (page-ref Todos.Index
+          (record Todos.Index.Params (filter (ctor Todo.Filter.All)))))
+      (htext "Back"))))
+(skipped-effect Todos.Show.load)
+(skipped-effect Todos.Show.update)
+(table User.User (id id) (insert email name passwordHash))
+(table Todo.Todo (id id) (insert title done due owner))
+(form Auth.Login.Credentials)
+(form Todos.Index.NewTodo)
+(form Todos.Show.EditTodo)
+(page Auth.Login "/login"
+  (params Params)
+  (model Model)
+  (msg Submit (params SubmitParams) (form Credentials))
+  (view Auth.Login.view))
+(page Todos.Index "/"
+  (params Params)
+  (requires user)
+  (model Model)
+  (msg Submit (params SubmitParams) (form NewTodo))
+  (msg Toggle (params ToggleParams))
+  (msg Delete (params DeleteParams))
+  (view Todos.Index.view))
+(page Todos.Show "/todos/{id}"
+  (params Params)
+  (requires user)
+  (model Model)
+  (msg Save (params SaveParams) (form EditTodo))
+  (msg Delete (params DeleteParams))
+  (view Todos.Show.view))
+(app-msg Logout)
+(app-msg SwitchTheme)
+(session App.Session)
+(capability Auth.Login.Password
+  (verify { email: Text, password: Text } -> Task (Maybe Text)))

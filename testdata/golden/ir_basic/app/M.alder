@@ -1,0 +1,22 @@
+module M
+
+type Shape = Circle Float | Rect { w: Float, h: Float }
+type Point = { x: Float, y: Float }
+
+area : Shape -> Float
+area s = match s {
+  Circle r -> 3.14 * r * r,
+  Rect { w: w, h: h } -> w * h,
+}
+
+shift : Point -> Point
+shift p = { p | x: p.x + 1.0 }
+
+names : List Text -> Text
+names xs = xs |> List.map Text.toUpper |> Text.join ", "
+
+label : Maybe Int -> Text
+label m = "n = {Text.fromInt (m ?? 0)}"
+
+Card : { title: Text, children: List (Html a) } -> Html a
+Card props = <div class="card"><h2>{props.title}</h2>{props.children}</div>

@@ -1,0 +1,33 @@
+module Edit
+
+page "/edit/{n}" { n: Int }
+
+type Color = Red | Green
+
+type Model = { n: Int, busy: Bool }
+
+form Note = {
+  body: Text,
+  color: Color,
+}
+
+msg Save { n: Int } form Note
+msg Ping
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: params.n, busy: False }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = Task.succeed Rerender
+
+view : Model -> Session -> Html Msg
+view model session =
+  <div>
+    <a href={Other}>other</a>
+    <button click={Ping} disabled={model.busy}>ping</button>
+    <form submit={Save { n: model.n }}>
+      <Textarea field="body" label={"Body of " ++ Text.fromInt model.n} />
+      <Select field="color" label="Color" value={Red} />
+    </form>
+    <details open><summary>more</summary></details>
+  </div>

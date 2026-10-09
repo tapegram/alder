@@ -1,0 +1,11 @@
+module Other
+
+page "/other" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session = <a href={Edit { n: 1 }}>edit</a>

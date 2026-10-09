@@ -1,0 +1,47 @@
+(module App)
+(record App.Session)
+(union App.Msg)
+(value App.error : Error -> Html Never (err) (elem p (htext "error")))
+(value App.notFound : Html Never () (elem p (htext "not found")))
+(module Edit)
+(union Edit.Color (Red) (Green))
+(record Edit.Model (n Int) (busy Bool))
+(record Edit.Note (body Text) (color Color))
+(record Edit.Params (n Int))
+(record Edit.SaveParams (n Int) (form Note))
+(union Edit.Msg (Save SaveParams) (Ping))
+(value Edit.view : Model -> App.Session -> Html Msg (model session)
+  (elem div
+    (elem a (attr href href (page-ref Other)) (htext "other"))
+    (elem button
+      (attr click click (ctor Edit.Msg.Ping))
+      (attr disabled bool (field busy (var model)))
+      (htext "ping"))
+    (form-el Edit.Save
+      (attr submit submit
+        (ctor Edit.Msg.Save (record SaveParams (n (field n (var model))))))
+      (input Textarea Note field=body
+        (label
+          (++ : Text "Body of " (call (std Text.fromInt) (field n (var model))))))
+      (input Select Note field=color label="Color"
+        (value (ctor Edit.Color.Red))))
+    (elem details (attr open bool True) (elem summary (htext "more")))))
+(skipped-effect Edit.load)
+(skipped-effect Edit.update)
+(module Other)
+(record Other.Model)
+(record Other.Params)
+(union Other.Msg)
+(value Other.view : Model -> App.Session -> Html Msg (model session)
+  (elem a (attr href href (page-ref Edit (record Edit.Params (n 1))))
+    (htext "edit")))
+(skipped-effect Other.load)
+(form Edit.Note)
+(page Edit "/edit/{n}"
+  (params Params)
+  (model Model)
+  (msg Save (params SaveParams) (form Note))
+  (msg Ping)
+  (view Edit.view))
+(page Other "/other" (params Params) (model Model) (view Other.view))
+(session App.Session)
