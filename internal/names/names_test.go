@@ -200,3 +200,20 @@ func TestMarkFailed(t *testing.T) {
 		t.Fatalf("Failed = %v", prog.Failed)
 	}
 }
+
+// Module names that differ only in case are E0014: their generated files (and source files)
+// would be one file on a case-insensitive file system.
+func TestBuild_ModuleCaseCollision(t *testing.T) {
+	a := parse(t, "app/Ab.alder", "module Ab\n\nx : Int\nx = 1\n")
+	b := parse(t, "app/Shop/AB.alder", "module Shop.AB\n\ny : Int\ny = 1\n")
+	c := parse(t, "app/AB.alder", "module AB\n\nz : Int\nz = 1\n")
+	_, bag := Build([]*syntax.Module{a, b, c}, std(t))
+	var got []string
+	for _, d := range bag.Items {
+		got = append(got, d.Code+" "+d.Message)
+	}
+	want := "E0014 module names `Ab` and `AB` differ only in case (app/Ab.alder, app/AB.alder); rename one of them"
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("got %q, want [%q]", got, want)
+	}
+}

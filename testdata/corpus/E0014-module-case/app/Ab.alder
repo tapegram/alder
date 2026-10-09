@@ -1,0 +1,4 @@
+module Ab
+
+x : Int
+x = 1

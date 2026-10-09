@@ -1,0 +1,4 @@
+module AB
+
+y : Int
+y = 2

@@ -58,10 +58,18 @@ func Load(dir string, std map[string]*syntax.Module) (*Program, *diag.Bag, []err
 func Build(mods []*syntax.Module, std map[string]*syntax.Module) (*Program, *diag.Bag) {
 	bag := &diag.Bag{}
 	p := &Program{Modules: map[string]*syntax.Module{}, Pages: map[string]*syntax.PageDecl{}, AppMsgs: map[string]*syntax.MsgDecl{}, Std: std, scopes: map[string]*moduleScope{}}
+	folded := map[string]*syntax.Module{} // by lower-cased name
 	for _, m := range mods {
 		if prev, dup := p.Modules[m.Name]; dup {
 			bag.Error(diag.Duplicate, m.Span, "module `%s` is also defined in %s", m.Name, prev.File)
 			continue
+		}
+		// Each module becomes a file named after it (<Module>_alder.go); on a case-insensitive
+		// file system two names that differ only in case would be one file.
+		if prev, clash := folded[strings.ToLower(m.Name)]; clash {
+			bag.Error(diag.ModuleCase, m.Span, "module names `%s` and `%s` differ only in case (%s, %s); rename one of them", prev.Name, m.Name, prev.File, m.File)
+		} else {
+			folded[strings.ToLower(m.Name)] = m
 		}
 		p.Modules[m.Name] = m
 		if want := expectedName(m.File); want != "" && want != m.Name {

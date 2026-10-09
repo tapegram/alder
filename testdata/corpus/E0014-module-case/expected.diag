@@ -1,0 +1,2 @@
+app/Other.alder:1:1 E0014 module names `Ab` and `AB` differ only in case (app/Ab.alder, app/Other.alder); rename one of them
+app/Other.alder:1:1 E0005 module `AB` is in file app/Other.alder; expected `module Other`
