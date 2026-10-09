@@ -470,8 +470,14 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 }
 
 // isMsgUnion reports whether u is App.Msg or a page's Msg.
-func (mc *modCtx) isMsgUnion(u *types.Union) bool {
-	c := mc.c
+func (mc *modCtx) isMsgUnion(u *types.Union) bool { return mc.c.isMessageUnion(u) }
+
+// isMessageUnion reports whether u is the generated App.Msg or a page's generated Msg, by identity;
+// a user-declared union that happens to be named Msg is not one.
+func (c *Checker) isMessageUnion(u *types.Union) bool {
+	if u == nil {
+		return false
+	}
 	if u == c.appMsg {
 		return true
 	}
@@ -656,7 +662,7 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 	}
 	// E0301: a message constructor applied to anything but a record literal
 	if ct, ok := x.Fn.(*syntax.CtorRef); ok && pipe == nil && ct.Ref.Kind == syntax.RefCtor && len(x.Args) > 0 {
-		if info, found := c.ctors[c.key(ct.Ref.Module, ct.Ref.Name)]; found && info.Union.Name == "Msg" {
+		if info, found := c.ctors[c.key(ct.Ref.Module, ct.Ref.Name)]; found && c.isMessageUnion(info.Union) {
 			if _, isLit := x.Args[0].(*syntax.RecordLit); !isLit {
 				if rec, isRec := info.Arg.(*types.Record); isRec {
 					var parts []string

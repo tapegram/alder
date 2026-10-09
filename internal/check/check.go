@@ -112,7 +112,7 @@ func Program(prog *names.Program, bag *diag.Bag) {
 		c.ctx(prog.Modules[name]).checkBodies()
 	}
 	// App rules need every module's bodies checked first (Session.put usage)
-	if app := prog.Modules["App"]; app != nil {
+	if app := prog.Modules["App"]; app != nil && !prog.Failed["App"] {
 		c.ctx(app).checkApp()
 	}
 }

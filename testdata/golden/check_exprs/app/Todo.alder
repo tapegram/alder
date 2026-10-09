@@ -106,3 +106,11 @@ bad14 = (\m -> match m { Just x -> x, Nothing -> 0 }) (Just 1)
 
 bad15 : Filter -> Int
 bad15 f = match f { All -> 1 }
+
+ok7 : Maybe Int
+ok7 = Just 1
+
+type Msgish = Wrap Int
+
+ok8 : Msgish
+ok8 = Wrap 1

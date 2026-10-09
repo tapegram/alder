@@ -89,7 +89,7 @@ func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {
 		fmt.Fprintf(stderr, "alder: internal error loading stdlib: %v\n", err)
 		return 2
 	}
-	// The pipeline stops after the first phase that produced errors (parse, names, check).
+	// A parse error stops the pipeline; after that each module is checked unless its own name resolution failed.
 	prog, bag, ioErrs := names.Load(dir, std)
 	if len(ioErrs) > 0 {
 		for _, e := range ioErrs {

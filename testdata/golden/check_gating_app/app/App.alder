@@ -1,0 +1,8 @@
+module App
+
+msg Go
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Go -> Task.succeed Nowhere,
+}

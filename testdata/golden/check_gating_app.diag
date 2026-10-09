@@ -1,0 +1,2 @@
+app/App.alder:7:22 E0002 unknown constructor `Nowhere`
+app/P.alder:11:27 E0003 expected Int, got Text; `++` joins Text, `+` is for numbers
