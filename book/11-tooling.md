@@ -38,6 +38,9 @@ to compile `adapters/`, whose `import "app"` resolves only in
 own, which the outer one skips. `examples/todos/go.mod` is just that:
 
 ```
+// This go.mod only keeps the example app out of the alder module: `go vet ./...` and
+// `go test ./...` at the repository root would otherwise compile adapters/, whose import of
+// "app" (the generated package) resolves only in build/todos, where `alder build` copies it.
 module todos
 
 go 1.27
@@ -68,7 +71,8 @@ wrote build/todos/todos
 ```
 
 `build/` is relative to where you run the command, and `<app>` is the last
-part of `dir`. The steps are:
+part of `dir` once it is made absolute (so `alder build .` inside
+`myapp/` writes `build/myapp/`). The steps are:
 
 1. Check the program. With errors or holes, print them and exit 1, as
    `alder check` would.
@@ -92,6 +96,13 @@ prints Go's errors as they are, with a line naming the adapters
 directory, and exits 1. If `Caps` is missing, it says the package must
 declare `func Caps() app.Caps`.
 
+Exit 2 means the problem is not in your program: a usage error (an
+unknown flag, two directories), a file that cannot be read or written, or
+generated Go that fails `go vet` or `go build`, which is an internal
+error of the compiler and is reported as one, with Go's output. (If
+`build/<app>/` holds Go files alder did not write, the message names them
+instead.)
+
 The executable reads four environment variables
 (`build/<app>/cmd/main.go`):
 
@@ -99,7 +110,7 @@ The executable reads four environment variables
 |---|---|---|
 | `ALDER_ADDR` | the address to listen on | `:8080` |
 | `ALDER_DB` | the SQLite database file (`:memory:` for none on disk) | `<app>.db` in the working directory |
-| `ALDER_SECRET` | the session cookie key, at least 16 bytes | a public development key, with a warning |
+| `ALDER_SECRET` | the session cookie key, at least 16 bytes | unset or shorter: a public development key, with a warning |
 | `ALDER_DEV` | `1` turns on development mode | off |
 
 Development mode shows a failed request's error text in the page (as an
@@ -115,7 +126,8 @@ listening on 127.0.0.1:8080
 ```
 
 (The `warn:` line is logged with a date and time in front.) In production,
-set `ALDER_SECRET` to a long random string, and keep it: changing it logs
+set `ALDER_SECRET` to a long random string (at least 16 bytes; a shorter
+one is ignored with the same warning), and keep it: changing it logs
 everyone out.
 
 `build/<app>/` then holds the generated package (one

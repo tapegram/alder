@@ -807,7 +807,7 @@ packages the generated code imports. There are seven.
 
 The generated program is small because the runtime is the library. All of
 `examples/todos` emits about 1,450 lines of Go across ten files, plus the
-60-line `cmd/main.go`, and those lines mostly call into `rt`. The largest
+58-line `cmd/main.go`, and those lines mostly call into `rt`. The largest
 file, `routes__alder.go` (580 lines), is the request handlers of the last
 part of this section.
 

@@ -203,6 +203,10 @@ Which component to use depends on the field's type:
 | union with no payloads | `<Select>` | `<select>` with one option per constructor, labeled by its name |
 | `Maybe` of any of these | same as the inner type | not `required` |
 
+A `Text.Email` field currently renders `type="text"`, like any other
+`Text`; the decoder still refuses a value that is not an email address.
+(Rendering `type="email"` is a planned follow-up.)
+
 `value={...}` on any of them takes the field's own type (`value={model.todo.priority}`
 for a `Select` over `Priority`), or `Maybe` of it.
 

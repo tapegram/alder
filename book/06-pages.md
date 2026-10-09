@@ -50,6 +50,8 @@ page "/admin" { } requires user
 - Parameter types must be one of: `Int`, `Text`, `Bool`, a brand of those,
   a union with no payloads, `Maybe` of those, or `List` of those.
 - A parameter with a default is optional in links and in the URL.
+- A `List` parameter repeats its key in the URL: `{ tag: List Text }` with
+  `["a", "b"]` is `?tag=a&tag=b`, and `[]` is no key at all.
 - `Params` is the parameter record type for this module.
 - `requires` names a field of `Session` whose type is `Maybe a`. The page is
   served only when that field is `Just`; otherwise the runtime redirects to
@@ -246,7 +248,7 @@ the server that `alder build` makes (chapter 11) does with each request, so
 that nothing in the lifecycle above is a mystery. Chapter 13 follows one
 request through it byte by byte.
 
-Three pieces of Go do the work. `rt/web` is the router and the session
+Four pieces of Go do the work. `rt/web` is the router and the session
 cookie. `build/<app>/routes__alder.go`, which the compiler writes for your
 app, holds one handler for each page and one for each message. `rt/html`
 renders the page, and `rt/datastar` writes the answer a Datastar request
@@ -300,7 +302,9 @@ func Route__Todos__Index__Toggle() web.Route {
 ```
 
 It decodes the page's parameters, then the message's, and answers 404 if
-either fails. Then `update__Todos__Index` does the rest of the lifecycle:
+either fails. (`rt.PageParams` picks the page's parameters out of the URL,
+as the next part explains; `html.None()` is an empty document, which the
+router replaces with `App.notFound`.) Then `update__Todos__Index` does the rest of the lifecycle:
 `requires`, `load`, `update`, and the answer to the `Nav`. Every page gets
 one `update__<Page>` and one handler per message. A page's `GET` has its
 own handler, `Route__<Page>__page`, which decodes the path and query,
@@ -323,6 +327,11 @@ parameter can never be mistaken for a message parameter of the same name.
 A parameter at its default is left out, as in links: on `/`, the same
 button posts to `/_m/Todos.Index/Toggle?id=DJ92YHT4U9KYifXwI_Tz`, and the
 handler decodes `filter` as `All`.
+
+A `List` parameter repeats its key, as in links (`rt.QueryKVs` in
+`rt/core.go`): a page parameter `tag` holding `["a", "b"]` is
+`_p.tag=a&_p.tag=b` in a message URL, and a message parameter is
+`tag=a&tag=b`. The handler collects every value of the key.
 
 The handler reads the page's parameters only from the `_p.` keys
 (`rt.PageParams` in `rt/core.go`). It does not look at the `Referer`
@@ -356,9 +365,10 @@ whose signature doesn't match is ignored, and the request sees the default
 session: every field at its default, so `user` is `Nothing`.
 
 The signing key comes from the environment variable `ALDER_SECRET`, which
-must be at least 16 bytes. Without it, the server uses a fixed development
-key that is public (it is in `rt/web/session.go`), and logs this once at
-startup:
+must be at least 16 bytes. When it is unset, **or shorter than 16 bytes**,
+the server uses a fixed development key that is public (it is in
+`rt/web/session.go`), and logs this once at startup (the message is the
+same in both cases):
 
 ```
 warn: warning: ALDER_SECRET not set; using the development cookie key
@@ -369,7 +379,8 @@ Anyone can forge a session signed with that key, so always set
 
 The cookie is `HttpOnly` (page scripts cannot read it), `SameSite=Lax`,
 `Path=/`, and lasts 30 days from the last time it was stored. It is
-`Secure` when the request came over HTTPS. It is stored:
+`Secure` when the request came over HTTPS, or carries the header
+`X-Forwarded-Proto: https` (set by a proxy in front of the server). It is stored:
 
 - on every page a `GET` renders;
 - on every answer to a message whose `update` succeeded, whether a page or
@@ -410,7 +421,14 @@ status 200 with one server-sent event that replaces the page's `<body>`
 (`datastar.PatchBody` in `rt/datastar/datastar.go`). Datastar morphs the
 new body into the old one, so only what changed is touched. A 404 or 500
 is sent that way too, because Datastar ignores answers that are not 2xx.
-`Redirect` is a 303 for both kinds of request.
+`Redirect` is a 303 for both kinds of request, and the browser follows
+the 303.
+
+The two kinds of message travel differently under Datastar. A form posts
+with `data-on:submit="@post('<url>', {contentType: 'form'})"`, so its
+fields arrive url-encoded and are decoded as the form. A `click` button's
+`@post('<url>')` sends a JSON body that Alder ignores; that is why a
+button's message carries its parameters in the URL.
 
 Without JavaScript, only forms send messages: a `<form>` has
 `method="post"` and an `action` with the message URL, but a `click` button
