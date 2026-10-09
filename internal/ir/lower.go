@@ -114,6 +114,11 @@ func (l *lowerer) eraseT(t types.Type) types.Type {
 	switch t := t.(type) {
 	case nil:
 		return nil
+	case *types.Con:
+		if types.IsErr(t) {
+			panic("ir: the poison type reached Lower: the program has type errors and must not be lowered")
+		}
+		return t
 	case *types.Brand:
 		return l.eraseT(t.Base)
 	case *types.Record:
@@ -507,7 +512,53 @@ func (l *lowerer) typeOf(e syntax.Expr) types.Type {
 	if !ok {
 		panic(fmt.Sprintf("ir: no type recorded for %T at %s (checker bug)", e, pos(e.GetSpan())))
 	}
+	l.unpoisoned(t, e.GetSpan())
 	return l.erase(t)
+}
+
+// unpoisoned panics when t is or contains the poison type: the checker reported an error there,
+// and Lower only takes programs that check without errors (an internal error of the caller).
+// erase also refuses the poison type; this check names the place.
+func (l *lowerer) unpoisoned(t types.Type, at diag.Span) {
+	if containsPoison(l.res.U.Apply(t), map[*types.Record]bool{}) {
+		panic(fmt.Sprintf("ir: the poison type reached Lower at %s: the program has type errors and must not be lowered", pos(at)))
+	}
+}
+
+func containsPoison(t types.Type, seen map[*types.Record]bool) bool {
+	switch t := t.(type) {
+	case *types.Con:
+		return types.IsErr(t)
+	case *types.Brand:
+		return containsPoison(t.Base, seen)
+	case *types.App:
+		return anyPoison(t.Args, seen)
+	case *types.Union:
+		return anyPoison(t.Args, seen)
+	case *types.Fun:
+		return anyPoison(t.Params, seen) || containsPoison(t.Result, seen)
+	case *types.Record:
+		if seen[t] {
+			return false
+		}
+		seen[t] = true
+		for _, f := range t.Fields {
+			if containsPoison(f.Type, seen) {
+				return true
+			}
+		}
+		return anyPoison(t.Args, seen)
+	}
+	return false
+}
+
+func anyPoison(ts []types.Type, seen map[*types.Record]bool) bool {
+	for _, t := range ts {
+		if containsPoison(t, seen) {
+			return true
+		}
+	}
+	return false
 }
 
 // bindType is the recorded type of the variable a binding site introduces, brand-erased.
@@ -516,6 +567,7 @@ func (l *lowerer) bindType(site interface{ GetSpan() diag.Span }) types.Type {
 	if !ok {
 		panic(fmt.Sprintf("ir: no binding type recorded for %T at %s (checker bug)", site, pos(site.GetSpan())))
 	}
+	l.unpoisoned(t, site.GetSpan())
 	return l.erase(t)
 }
 

@@ -3,7 +3,8 @@
 //
 // What a consumer may assume everywhere:
 //   - Every type is the checker's types.Type with brands erased to their base type (also inside
-//     App, Fun, Record and Union arguments). Type parameters stay types.Param.
+//     App, Fun, Record and Union arguments). Type parameters stay types.Param. No type is or
+//     contains the poison type (types.Err): Lower panics with an internal error if one reaches it.
 //   - Every name is resolved: a Var says whether it is a local, a top-level value or a stdlib
 //     value; a Ctor points at its UnionType; a Comp at its component Value.
 //   - There is no `|>`, no block, no pattern: pipes are calls, blocks are Lets, and matches are

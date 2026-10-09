@@ -193,3 +193,35 @@ func TestIR_CtorPayloadShared(t *testing.T) {
 		t.Fatalf("Save payload: %+v; want only field n, of the message's Params record", save)
 	}
 }
+
+// Lower refuses the poison type with an internal error naming the place (I3): it must only see
+// programs that check without errors. The checker never records poison in a clean program, so
+// the test plants it.
+func TestLower_RefusesPoison(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "app"), 0o755)
+	os.WriteFile(filepath.Join(dir, "app", "M.alder"), []byte("module M\n\nx : List Int\nx = [1]\n"), 0o644)
+	std, err := types.LoadStd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog, bag, _ := names.Load(dir, std)
+	prog.Resolve(bag)
+	prog.MarkFailed(bag)
+	res := check.Program(prog, bag)
+	if bag.HasErrors() {
+		t.Fatal(errors(bag))
+	}
+	for e, ty := range res.Types {
+		if _, ok := ty.(*types.App); ok {
+			res.Types[e] = &types.App{Con: "List", Args: []types.Type{types.Err}}
+		}
+	}
+	defer func() {
+		r := recover()
+		if r == nil || !strings.Contains(fmt.Sprint(r), "poison type reached Lower at app/M.alder:4:5") {
+			t.Fatalf("Lower did not refuse the poison type: %v", r)
+		}
+	}()
+	Lower(prog, res)
+}

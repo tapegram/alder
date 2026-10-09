@@ -19,9 +19,9 @@ import (
 //	a -> b -> c                      func(A, B) C
 //	type parameter a                 A
 //
-// A brand is its base type (the IR has none left); an unsolved inference variable, the poison
-// type and the effect and database types (Query, Task, Table, …), which never reach M3a code,
-// are `any`.
+// A brand is its base type (the IR has none left); an unsolved inference variable (an
+// unconstrained type) and the effect and database types (Query, Task, Table, …), which never
+// reach M3a code, are `any`. The poison type never reaches gen: ir.Lower refuses it.
 func GoType(t types.Type) string {
 	switch t := t.(type) {
 	case *types.Con:
