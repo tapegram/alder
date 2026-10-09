@@ -616,7 +616,7 @@ note = <p title="x & y">{"a < b"} & é</p>
 	vet(t, files)
 }
 
-// Every pure stdlib signature has an entry in StdCalls; every effectful one is in Effectful.
+// Every stdlib signature has an entry in StdCalls or (Query.*, Task.*, Db.*, Form.values) in Effectful.
 func TestStdCallsCoverStdlib(t *testing.T) {
 	std, err := types.LoadStd()
 	if err != nil {
@@ -1424,3 +1424,360 @@ func TestMaybeRecursion(t *testing.T) {
 }
 `)
 }
+
+// The Go for ir_effects' Index.load, written by hand from the emission rules before the emitter
+// (the spec of effect emission): a Query block is Binds on Tasks wrapped in eff.Q once, each Db
+// operation an eff.Call over rt/db with the transaction of the running effect, a Query run as
+// a Task step (Time.now) converted with eff.T, and a Bool column's value encoded.
+const effectsLoad = `func Index__load(params Index__Params, session Index__Session) eff.Query[Index__Model] {
+	return eff.Q(eff.Bind(eff.Call("Db.all Todo", false, func(_e1 *eff.Env) ([]Todo__Todo, error) {
+		return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.Limit(10, db.OrderBy(db.Desc("created"), db.Where(db.CEq("owner", session.User), db.From(table__Todo__Todo)))))
+	}), func(todos []Todo__Todo) eff.Task[Index__Model] {
+		return eff.Bind(eff.All([]eff.Task[rt.Maybe[Todo__Todo]]{eff.Call("Db.get Todo", false, func(_e2 *eff.Env) (rt.Maybe[Todo__Todo], error) {
+			return db.GetRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Todo__Todo, params.A)
+		}), eff.Call("Db.get Todo", false, func(_e3 *eff.Env) (rt.Maybe[Todo__Todo], error) {
+			return db.GetRow(_e3.Ctx, _e3.Store.(db.Store), db.TxOf(_e3), table__Todo__Todo, params.B)
+		})}), func(pair []rt.Maybe[Todo__Todo]) eff.Task[Index__Model] {
+			return eff.Bind(eff.T(std.TimeNow()), func(now time.Time) eff.Task[Index__Model] {
+				q := db.Offset(5, db.Where(db.COr([]db.Cond{db.CContains("title", "x"), db.CEq("done", db.EncodeBool(true))}), db.From(table__Todo__Todo)))
+				return eff.Bind(eff.Map(func(n int64) int64 {
+					return n + 1
+				}, eff.Call("Db.count Todo", false, func(_e4 *eff.Env) (int64, error) {
+					return db.CountRows(_e4.Ctx, _e4.Store.(db.Store), db.TxOf(_e4), q)
+				})), func(count int64) eff.Task[Index__Model] {
+					return eff.Bind(eff.Call("Db.first Todo", false, func(_e5 *eff.Env) (rt.Maybe[Todo__Todo], error) {
+						return db.First(_e5.Ctx, _e5.Store.(db.Store), db.TxOf(_e5), Todo__pending)
+					}), func(first rt.Maybe[Todo__Todo]) eff.Task[Index__Model] {
+						return eff.Pure(Index__Model{Todos: todos, Pair: pair, Now: now, Count: count, First: first})
+					})
+				})
+			})
+		})
+	}))
+}
+`
+
+func TestGen_EffectsLoad(t *testing.T) {
+	files := emit(t, "../../testdata/golden/gen_effects")
+	contains(t, files["Index_alder.go"], effectsLoad)
+	contains(t, files["Todo_alder.go"],
+		"var table__Todo__Todo = &db.Table[Todo__Todo]{",
+		"type cap__Todo__Stats interface {",
+		"Total(ctx context.Context) (int64, error)",
+		"ForOwner(ctx context.Context, a1 string, a2 bool) (int64, error)",
+	)
+	contains(t, files["Index_alder.go"],
+		"Send(ctx context.Context, args struct {",
+		`.Caps["Index.Mailer"].(cap__Index__Mailer).Send(`,
+	)
+	contains(t, files["tables_alder.go"], "var Tables = []db.TableDesc{table__Todo__Todo.Desc()}")
+}
+
+// TestGen_RunTodos runs the todos example end to end: its generated load and update functions,
+// built as effect trees, run with eff.Run against an in-memory SQLite store created from the
+// generated table descriptors, with a stub for the Auth.Login.Password capability.
+func TestGen_RunTodos(t *testing.T) {
+	dir := emitApp(t, "../../examples/todos")
+	if err := os.WriteFile(filepath.Join(dir, "zz_run_test.go"), []byte(runTodosTest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	goRun(t, dir, "test", "-count=1", "-v", "-run", "TestTodos", "./...")
+}
+
+const runTodosTest = `package app
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"alder/rt"
+	"alder/rt/db"
+	"alder/rt/eff"
+)
+
+// password is a stub Auth.Login.Password: a@b.c with "pw" is the user id it was made with.
+type password struct{ user string }
+
+func (p password) Verify(ctx context.Context, args struct {
+	Email    string
+	Password string
+}) (rt.Maybe[string], error) {
+	if args.Email == "a@b.c" && args.Password == "pw" {
+		return rt.Just(p.user), nil
+	}
+	return rt.Nothing[string](), nil
+}
+
+var _ cap__Auth__Login__Password = password{}
+
+func TestTodos(t *testing.T) {
+	ctx := context.Background()
+	store, err := db.OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Ensure(ctx, Tables, true); err != nil {
+		t.Fatal(err)
+	}
+	clock := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	var logs []string
+	env := &eff.Env{Ctx: ctx, Store: store, Caps: map[string]any{}, Now: func() time.Time { return clock },
+		Log: func(level, msg string) { logs = append(logs, level+": "+msg) }}
+
+	// a user to own the todos (Todo.owner is @ref User)
+	uid, err := eff.Run(env, eff.KTask, eff.Call("Db.insert User", true, func(e *eff.Env) (string, error) {
+		return db.InsertRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__User__User,
+			insertvals__User__User(insert__User__User{Email: "a@b.c", Name: "Ann", PasswordHash: "x"}), e.Now())
+	}))
+	if err != nil || uid == "" {
+		t.Fatalf("insert user: %q, %v", uid, err)
+	}
+	env.Caps["Auth.Login.Password"] = password{user: uid}
+	env.Session = App__Session{User: rt.Nothing[string](), Theme: Theme__Theme__Light__}
+
+	// log in: a wrong password is rejected, the right one redirects to / and sets the session
+	login := func(pw string) rt.Nav {
+		t.Helper()
+		msg := Auth__Login__Msg__Submit__(Auth__Login__SubmitParams{Form: Auth__Login__Credentials{Email: "a@b.c", Password: pw}})
+		nav, err := eff.Run(env, eff.KTask, Auth__Login__update(msg, Auth__Login__Model{}, env.Session.(App__Session)))
+		if err != nil {
+			t.Fatalf("login: %v", err)
+		}
+		return nav
+	}
+	if nav := login("nope"); nav.Tag != rt.NavReject || nav.Text != "Email or password is incorrect." {
+		t.Fatalf("bad login: %+v", nav)
+	}
+	if s := env.Session.(App__Session); s.User.Ok {
+		t.Fatalf("bad login set the user: %+v", s)
+	}
+	if nav := login("pw"); nav.Tag != rt.NavRedirect || nav.Page.Path != "/" {
+		t.Fatalf("login: %+v", nav)
+	}
+	app := env.Session.(App__Session)
+	if !app.User.Ok || app.User.Val != uid {
+		t.Fatalf("login did not set the session user: %+v", app)
+	}
+	session := Todos__Index__Session{User: app.User.Val, Theme: app.Theme}
+	model := Todos__Index__Model{Filter: Todo__Filter__All__}
+
+	update := func(msg Todos__Index__Msg) (rt.Nav, error) {
+		t.Helper()
+		return eff.Run(env, eff.KTask, Todos__Index__update(msg, model, session))
+	}
+	load := func(f Todo__Filter) []Todo__Todo {
+		t.Helper()
+		m, err := eff.RunQuery(env, Todos__Index__load(Todos__Index__Params{Filter: f}, session))
+		if err != nil {
+			t.Fatalf("load: %v", err)
+		}
+		return m.Todos
+	}
+
+	// add
+	add := Todos__Index__Msg__Submit__(Todos__Index__SubmitParams{Form: Todos__Index__NewTodo{Title: "Buy milk", Due: rt.Just(rt.Date{Y: 2026, M: 10, D: 31})}})
+	nav, err := update(add)
+	if err != nil || nav.Tag != rt.NavRedirect || nav.Page.Path != "/" {
+		t.Fatalf("add: %+v, %v", nav, err)
+	}
+	todos := load(Todo__Filter__All__)
+	if len(todos) != 1 {
+		t.Fatalf("after add: %d todos", len(todos))
+	}
+	td := todos[0]
+	if td.Title != "Buy milk" || td.Done || td.Owner != uid || !td.Created.Equal(clock) || !td.Due.Ok || td.Due.Val != (rt.Date{Y: 2026, M: 10, D: 31}) {
+		t.Fatalf("added todo: %+v", td)
+	}
+	if n := len(load(Todo__Filter__Completed__)); n != 0 {
+		t.Fatalf("completed before toggle: %d", n)
+	}
+
+	// toggle
+	nav, err = update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: td.Id}))
+	if err != nil || nav.Tag != rt.NavRerender {
+		t.Fatalf("toggle: %+v, %v", nav, err)
+	}
+	if todos = load(Todo__Filter__All__); len(todos) != 1 || !todos[0].Done {
+		t.Fatalf("after toggle: %+v", todos)
+	}
+	if n := len(load(Todo__Filter__Active__)); n != 0 {
+		t.Fatalf("active after toggle: %d", n)
+	}
+
+	// the show page loads the user's own todo, and not one that does not exist
+	shown, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: td.Id}, Todos__Show__Session{User: uid, Theme: app.Theme}))
+	if err != nil || shown.Todo.Title != "Buy milk" {
+		t.Fatalf("show: %+v, %v", shown, err)
+	}
+	if _, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: "nope"}, Todos__Show__Session{User: uid})); err != eff.ErrNotFound {
+		t.Fatalf("show missing: err = %v, want ErrNotFound", err)
+	}
+	if _, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: td.Id}, Todos__Show__Session{User: "someone else"})); err != eff.ErrNotFound {
+		t.Fatalf("show other's: err = %v, want ErrNotFound", err)
+	}
+
+	// toggling a todo that does not exist fails the Task
+	if _, err := update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: "nope"})); err == nil {
+		t.Fatal("toggle missing: no error")
+	}
+
+	// rollback: an add followed by a failure leaves no row
+	failing := eff.Bind(Todos__Index__update(add, model, session), func(rt.Nav) eff.Task[rt.Nav] { return eff.Fail[rt.Nav]("boom") })
+	var fail *eff.ErrFail
+	if _, err := eff.Run(env, eff.KTask, failing); !errors.As(err, &fail) || fail.Msg != "boom" {
+		t.Fatalf("failing add: err = %v", err)
+	}
+	if n := len(load(Todo__Filter__All__)); n != 1 {
+		t.Fatalf("after rolled-back add: %d todos, want 1", n)
+	}
+
+	// delete
+	nav, err = update(Todos__Index__Msg__Delete__(Todos__Index__DeleteParams{Id: td.Id}))
+	if err != nil || nav.Tag != rt.NavRerender {
+		t.Fatalf("delete: %+v, %v", nav, err)
+	}
+	if n := len(load(Todo__Filter__All__)); n != 0 {
+		t.Fatalf("after delete: %d todos", n)
+	}
+
+	// App's update: switch the theme, then log out
+	if nav, err := eff.Run(env, eff.KTask, App__update(App__Msg__SwitchTheme__, env.Session.(App__Session))); err != nil || nav.Tag != rt.NavRerender {
+		t.Fatalf("switch theme: %+v, %v", nav, err)
+	}
+	if s := env.Session.(App__Session); s.Theme.Tag != is__Theme__Theme__Dark {
+		t.Fatalf("theme not switched: %+v", s)
+	}
+	if nav, err := eff.Run(env, eff.KTask, App__update(App__Msg__Logout__, env.Session.(App__Session))); err != nil || nav.Tag != rt.NavRedirect || nav.Page.Path != "/login" {
+		t.Fatalf("logout: %+v, %v", nav, err)
+	}
+	if s := env.Session.(App__Session); s.User.Ok {
+		t.Fatalf("logout kept the user: %+v", s)
+	}
+	t.Logf("trace: %v", env.Trace)
+	t.Logf("log: %d lines", len(logs))
+}
+`
+
+// The conditions of the M3b corpus program run against SQLite: every column kind is encoded
+// with its column's encoder (enum, Maybe enum, Date, Maybe Date, Time, Bool, Int, Text, Maybe
+// Text), an enum compares by declaration order, `in` takes encoded lists, Db.and of none is
+// true and Db.or of none false, a table passed as a value, and Query capability entries.
+func TestGen_RunEffectsCorpus(t *testing.T) {
+	dir := emitApp(t, "../../testdata/golden/gen_vet/m3b-effects")
+	if err := os.WriteFile(filepath.Join(dir, "zz_run_test.go"), []byte(runShopTest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	goRun(t, dir, "test", "-count=1", "-run", "TestShop", "./...")
+}
+
+const runShopTest = `package app
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"alder/rt"
+	"alder/rt/db"
+	"alder/rt/eff"
+)
+
+type pay struct{}
+
+func (pay) Charge(ctx context.Context, args struct {
+	Amount float64
+	Card   string
+}) (rt.Maybe[string], error) {
+	return rt.Just(args.Card), nil
+}
+func (pay) Balance(ctx context.Context) (float64, error)                { return 2.5, nil }
+func (pay) Limit(ctx context.Context, a1 string, a2 int64) (int64, error) { return a2 * 10, nil }
+
+var _ cap__Shop__Pay = pay{}
+
+func TestShop(t *testing.T) {
+	ctx := context.Background()
+	store, err := db.OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Ensure(ctx, Tables, true); err != nil {
+		t.Fatal(err)
+	}
+	clock := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	env := &eff.Env{Ctx: ctx, Store: store, Caps: map[string]any{"Shop.Pay": pay{}}, Now: func() time.Time { return clock }}
+	uid, err := eff.Run(env, eff.KTask, Shop__register("a@b.c"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	day := rt.Date{Y: 2026, M: 1, D: 1}
+	open, paid, shipped := Shop__Status__Open__, Shop__Status__Paid__, Shop__Status__Shipped__
+	add := func(code string, st Shop__Status, late rt.Maybe[Shop__Status], qty int64, gift bool, note rt.Maybe[string]) {
+		t.Helper()
+		_, err := eff.Run(env, eff.KTask, eff.Call("add", true, func(e *eff.Env) (string, error) {
+			return db.InsertRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__Shop__Order, insertvals__Shop__Order(insert__Shop__Order{
+				Buyer: uid, Status: st, Late: late, Total: 2, Qty: qty, Gift: gift, Day: day, ShipDay: rt.Nothing[rt.Date](), Code: code, Note: note}), e.Now())
+		}))
+		if err != nil {
+			t.Fatalf("add %s: %v", code, err)
+		}
+	}
+	add("x1", open, rt.Just(open), 1, false, rt.Just("n"))     // matches search open
+	add("x2", paid, rt.Just(paid), 2, false, rt.Just("n"))     // matches search paid
+	add("x3", shipped, rt.Just(shipped), 3, false, rt.Just("n")) // shipped: not < Shipped
+	add("y4", open, rt.Just(open), 1, false, rt.Just("n"))     // code lacks x
+	add("x5", open, rt.Nothing[Shop__Status](), 1, true, rt.Nothing[string]())
+
+	all := func(s db.Select[Shop__Order]) []Shop__Order {
+		t.Helper()
+		rows, err := eff.RunQuery(env, eff.Q(eff.Call("all", false, func(e *eff.Env) ([]Shop__Order, error) {
+			return db.All(e.Ctx, e.Store.(db.Store), db.TxOf(e), s)
+		})))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rows
+	}
+	later := clock.Add(time.Hour)
+	if got := all(Shop__search(open, day, later, []Shop__Status{open, paid})); len(got) != 1 || got[0].Code != "x1" || got[0].Late.Val.Tag != is__Shop__Status__Open {
+		t.Errorf("search open: %+v", got)
+	}
+	if got := all(Shop__search(paid, day, later, []Shop__Status{paid})); len(got) != 1 || got[0].Code != "x2" {
+		t.Errorf("search paid: %+v", got)
+	}
+	if got := all(Shop__search(shipped, day, later, []Shop__Status{shipped})); len(got) != 0 {
+		t.Errorf("search shipped (not < Shipped): %+v", got)
+	}
+	if got := all(Shop__search(open, day, clock, []Shop__Status{open})); len(got) != 0 {
+		t.Errorf("search created before the clock: %+v", got)
+	}
+	if got := all(Shop__either(nil)); len(got) != 0 {
+		t.Errorf("Db.or [] matched %d rows", len(got))
+	}
+	if got := all(Shop__either([]db.Cond{Shop__conds(nil)})); len(got) != 0 {
+		t.Errorf("Db.not (Db.and []) matched %d rows", len(got))
+	}
+	if got := all(db.Where(Shop__conds(nil), db.From(table__Shop__Order))); len(got) != 5 {
+		t.Errorf("Db.or [Db.and [], Db.not (Db.or [])] matched %d rows, want 5", len(got))
+	}
+	if n, err := eff.RunQuery(env, Shop__allOrders); err != nil || n != 5 {
+		t.Errorf("allOrders = %d, %v", n, err)
+	}
+	if ls, err := eff.RunQuery(env, Shop__allLimits(uid)); err != nil || len(ls) != 2 || ls[1] != 20 {
+		t.Errorf("allLimits = %v, %v", ls, err)
+	}
+	if cs, err := eff.RunQuery(env, Shop__seenBefore(clock)); err != nil || len(cs) != 0 {
+		t.Errorf("seenBefore = %v, %v", cs, err)
+	}
+	if k, err := eff.Run(env, eff.KTask, Shop__runJob(Shop__job)); err != nil || k != 1 {
+		t.Errorf("runJob = %d, %v", k, err)
+	}
+	if nav := Shop__after(rt.Reject("no")); nav.Tag != rt.NavReject || nav.Text != "no!" || !Shop__isRedirect(rt.Redirect(rt.Page{Path: "/"})) {
+		t.Errorf("after = %+v", nav)
+	}
+}
+`

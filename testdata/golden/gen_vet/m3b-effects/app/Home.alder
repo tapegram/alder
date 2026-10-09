@@ -1,0 +1,28 @@
+module Home
+
+import Shop
+
+page "/home" { } requires user
+
+type Model = { n: Int, orders: List Shop.Order }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let n <- Shop.allOrders
+  let os <- Db.all (Shop.search Open (Time.toDate Time.epoch) Time.epoch [Paid])
+  Query.succeed { n: n, orders: os }
+}
+
+msg Buy { code: Text }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Buy p -> {
+    let id <- Shop.buy session.user p.code
+    let k <- Shop.runJob Shop.job
+    Task.succeed (if k > 0 then Redirect (Home {}) else Reject "no")
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Text.fromInt model.n}</p>

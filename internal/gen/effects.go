@@ -1,0 +1,570 @@
+package gen
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	"alder/internal/ir"
+	"alder/internal/types"
+)
+
+// Effect and database emission.
+//
+// A Query or Task is a Go value of type eff.Query[T] or eff.Task[T] built with the constructors of
+// alder/rt/eff; nothing runs while it is built. The combinators (eff.Bind, Map, All, …) take and
+// return Tasks, so an effect node is first rendered in its natural form (effNode: usually a
+// Task), then:
+//   - where a Query is expected (the node's own type is Query) a Task form is wrapped once,
+//     eff.Q(…);
+//   - where a Task is needed (an operand of Bind, Map or All, a Bind's continuation result) a
+//     Query-typed expression that is not a node is converted, eff.T(…) (task).
+//
+//	EffPure            eff.Pure(v)
+//	EffBind            eff.Bind(task(e), func(x A) eff.Task[B] { …; return task(body) })
+//	EffMap             eff.Map(fn, task(e))
+//	EffAll             eff.All([]eff.Task[A]{task(e1), …}); a list that is no literal:
+//	                   eff.All(list) for Tasks, std.QueryAll(list) for Queries
+//	EffFail/NotFound   eff.Fail[T](msg), eff.NotFound[T]()
+//	DbGet, DbSelect    eff.Call("Db.get Todo", false, func(_e *eff.Env) (R, error) {
+//	  (run), DbRun,      return db.GetRow(_e.Ctx, _e.Store.(db.Store), db.TxOf(_e), …) })
+//	  DbInsert, …      (write is true for insert, update, delete); Db.insert passes the row's
+//	                   column values (insertvals__M__T) and _e.Now(), which eff.Run never
+//	                   leaves nil; Db.update and Db.delete produce struct{}{}
+//	DbSelect (a value) db.Offset(n, db.Limit(n, db.OrderBy(o, db.Where(c, db.From(table)))))
+//	                   built on Base when set
+//	Cond               db.CEq("col", enc(v)), …; and/or of a literal list: db.CAnd([]db.Cond{…}),
+//	                   of a list value: db.CAnd(list) (CAnd of none is true, COr of none false)
+//	Ord                db.Asc("col") / db.Desc("col")
+//	CapCall            eff.Call("Cap.entry", write, func(_e) { return
+//	                   _e.Caps["M.Cap"].(cap__M__Cap).Entry(_e.Ctx, args…) }), write true for a
+//	                   Task entry, false for a Query entry
+//	TableRef           table__M__T
+//
+// Values compared with a column are encoded with the column's encoder (encode): Bool, Date, Time
+// and payload-less unions (name__M__U) have one, Maybe goes through db.EncodeMaybe, Text, Int and
+// Float are stored as they are. Calls read the transaction of the running effect (db.TxOf):
+// inside a Task every read sees the Task's writes.
+
+// effect is an effect, database or condition node as a Go expression of its own type.
+func (f *fn) effect(e ir.Expr, s *scope) string {
+	switch x := e.(type) {
+	case *ir.DbSelect:
+		if x.Terminal == ir.SelNone {
+			return f.selectExpr(x, s)
+		}
+	case *ir.Cond:
+		return f.cond(x, s)
+	case *ir.Ord:
+		if x.Desc {
+			return "db.Desc(" + strconv.Quote(x.Col.Field) + ")"
+		}
+		return "db.Asc(" + strconv.Quote(x.Col.Field) + ")"
+	case *ir.ColumnRef: // Column t a is the column's name
+		return strconv.Quote(x.Field)
+	case *ir.TableRef:
+		return tableName(x.Table.Module, x.Table.Name)
+	}
+	c, isTask := f.effNode(e, s)
+	if isQuery(e.Type()) && isTask {
+		return "eff.Q(" + c + ")"
+	}
+	return c
+}
+
+// isQuery reports whether t is `Query a`.
+func isQuery(t types.Type) bool {
+	app, ok := t.(*types.App)
+	return ok && app.Con == "Query"
+}
+
+// effResult is the result type a of an effect type `Query a` or `Task a`.
+func effResult(t types.Type) types.Type {
+	if app, ok := t.(*types.App); ok && (app.Con == "Query" || app.Con == "Task") && len(app.Args) == 1 {
+		return app.Args[0]
+	}
+	panic(fmt.Sprintf("gen: %s is not an effect type", types.String(t)))
+}
+
+// isEffNode reports whether e is an effect node effNode renders.
+func isEffNode(e ir.Expr) bool {
+	switch x := e.(type) {
+	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.CapCall,
+		*ir.DbGet, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete:
+		return true
+	case *ir.DbSelect:
+		return x.Terminal != ir.SelNone
+	}
+	return false
+}
+
+// task is effect expression e (of type Query a or Task a) as a Go eff.Task[A].
+func (f *fn) task(e ir.Expr, s *scope) string {
+	if isEffNode(e) {
+		c, isTask := f.effNode(e, s)
+		if !isTask {
+			return "eff.T(" + c + ")"
+		}
+		return c
+	}
+	c := f.code(e, s)
+	if isQuery(e.Type()) {
+		return "eff.T(" + c + ")"
+	}
+	return c
+}
+
+// effNode renders effect node e in its natural form, and whether that is an eff.Task (else it
+// is an eff.Query).
+func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
+	switch x := e.(type) {
+	case *ir.EffPure:
+		v := f.typedExpr(x.Value, s)
+		if vr, ok := x.Value.(*ir.Var); ok && vr.Kind == ir.VarStd {
+			if _, isFun := vr.Ty.(*types.Fun); isFun { // a generic Go function: say its type
+				return "eff.Pure[" + GoType(x.Value.Type()) + "](" + v + ")", true
+			}
+		}
+		return "eff.Pure(" + v + ")", true
+	case *ir.EffBind:
+		return f.bind(x, s), true
+	case *ir.EffMap:
+		fn := f.code(x.Fn, s)
+		return "eff.Map(" + fn + ", " + f.task(x.Effect, s) + ")", true
+	case *ir.EffAll:
+		elem := effResult(x.Ty).(*types.App).Args[0] // x is Query (List a) or Task (List a)
+		if l, ok := x.Effects.(*ir.List); ok {
+			var es []string
+			for _, el := range l.Elems {
+				es = append(es, f.task(el, s))
+			}
+			return "eff.All([]eff.Task[" + GoType(elem) + "]{" + strings.Join(es, ", ") + "})", true
+		}
+		if x.Kind == ir.EffQuery {
+			return "std.QueryAll(" + f.code(x.Effects, s) + ")", false
+		}
+		return "eff.All(" + f.code(x.Effects, s) + ")", true
+	case *ir.EffFail:
+		return "eff.Fail[" + GoType(effResult(x.Ty)) + "](" + f.code(x.Message, s) + ")", true
+	case *ir.EffNotFound:
+		return "eff.NotFound[" + GoType(effResult(x.Ty)) + "]()", true
+	case *ir.DbGet:
+		tb := x.Table
+		return f.dbCall("Db.get "+tb.Name, false, x.Ty, s, func(env string, c *scope) string {
+			return "db.GetRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " + f.code(x.ID, c) + ")"
+		}), true
+	case *ir.DbSelect:
+		return f.run(x.Table.Name, x.Terminal, x.Ty, s, func(c *scope) string { return f.selectExpr(x, c) }), true
+	case *ir.DbRun:
+		return f.run(selectTable(x.Select.Type()), x.Terminal, x.Ty, s, func(c *scope) string { return f.code(x.Select, c) }), true
+	case *ir.DbInsert:
+		tb := x.Table
+		return f.dbCall("Db.insert "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
+			row := ""
+			if r, ok := x.Row.(*ir.Record); ok { // a literal: name its type by the alias
+				row = f.record(r, insertName(tb.Module, tb.Name), c)
+			} else {
+				row = f.code(x.Row, c)
+			}
+			return "db.InsertRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " +
+				insertVals(tb.Module, tb.Name) + "(" + row + "), " + env + ".Now())"
+		}), true
+	case *ir.DbUpdate:
+		tb := x.Table
+		return f.dbCall("Db.update "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
+			return "struct{}{}, db.UpdateRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " +
+				f.code(x.ID, c) + ", " + f.code(x.Fn, c) + ", " + env + ".Now())"
+		}), true
+	case *ir.DbDelete:
+		tb := x.Table
+		return f.dbCall("Db.delete "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
+			return "struct{}{}, db.DeleteRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " + f.code(x.ID, c) + ")"
+		}), true
+	case *ir.CapCall:
+		cp := x.Cap
+		return f.dbCall(cp.Name+"."+x.Entry, !isQuery(x.Ty), x.Ty, s, func(env string, c *scope) string {
+			args := []string{env + ".Ctx"}
+			for _, a := range x.Args {
+				args = append(args, f.code(a, c))
+			}
+			return env + ".Caps[" + strconv.Quote(cp.Module+"."+cp.Name) + "].(" + capName(cp.Module, cp.Name) + ")." +
+				Field(x.Entry) + "(" + strings.Join(args, ", ") + ")"
+		}), true
+	}
+	panic(fmt.Sprintf("gen: %T is not an effect node", e))
+}
+
+// bind is eff.Bind(effect, continuation): the continuation returns its body as a Task.
+func (f *fn) bind(x *ir.EffBind, s *scope) string {
+	eff := f.task(x.Effect, s)
+	c := s.child()
+	param := "_"
+	var pt types.Type
+	if x.Param != nil {
+		param, pt = c.declare(x.Param.Name), x.Param.Type
+	} else {
+		pt = effResult(x.Effect.Type())
+	}
+	var w strings.Builder
+	f.retK(&w, x.Body, c, f.task)
+	return "eff.Bind(" + eff + ", func(" + param + " " + GoType(pt) + ") eff.Task[" + GoType(effResult(x.Ty)) + "] {\n" + w.String() + "})"
+}
+
+// dbArgs are the leading arguments of every rt/db operation inside a Call over env.
+func dbArgs(env string) string {
+	return env + ".Ctx, " + env + ".Store.(db.Store), db.TxOf(" + env + ")"
+}
+
+// dbCall is an eff.Call step named name whose function, over a fresh Env variable, returns
+// body's result; t is the effect type of the step (its result type is the Call's).
+func (f *fn) dbCall(name string, write bool, t types.Type, s *scope, body func(env string, c *scope) string) string {
+	c := s.child()
+	env := f.temp(c, "_e")
+	return "eff.Call(" + strconv.Quote(name) + ", " + strconv.FormatBool(write) + ", func(" + env + " *eff.Env) (" +
+		GoType(effResult(t)) + ", error) {\nreturn " + body(env, c) + "\n})"
+}
+
+// run is the Call running a select (Db.all, Db.first, Db.count) of the table named table.
+func (f *fn) run(table string, term ir.SelTerminal, t types.Type, s *scope, sel func(c *scope) string) string {
+	ops := map[ir.SelTerminal][2]string{
+		ir.SelAll: {"db.All", "Db.all"}, ir.SelFirst: {"db.First", "Db.first"}, ir.SelCount: {"db.CountRows", "Db.count"},
+	}
+	op, name := ops[term][0], ops[term][1]
+	if op == "" {
+		panic("gen: a select run with no terminal")
+	}
+	return f.dbCall(name+" "+table, false, t, s, func(env string, c *scope) string {
+		return op + "(" + dbArgs(env) + ", " + sel(c) + ")"
+	})
+}
+
+// selectTable is the (unqualified) name of the table of a `Select t` type.
+func selectTable(t types.Type) string {
+	if app, ok := t.(*types.App); ok && len(app.Args) == 1 {
+		if r, ok := app.Args[0].(*types.Record); ok {
+			return r.Name
+		}
+	}
+	panic(fmt.Sprintf("gen: %s is not a Select of a table", types.String(t)))
+}
+
+// selectExpr is the db.Select a DbSelect pipeline builds (without its terminal).
+func (f *fn) selectExpr(x *ir.DbSelect, s *scope) string {
+	sel := "db.From(" + tableName(x.Table.Module, x.Table.Name) + ")"
+	if x.Base != nil {
+		sel = f.code(x.Base, s)
+	}
+	for _, w := range x.Where {
+		sel = "db.Where(" + f.code(w, s) + ", " + sel + ")"
+	}
+	for _, o := range x.Order {
+		sel = "db.OrderBy(" + f.code(o, s) + ", " + sel + ")"
+	}
+	if x.Limit != nil {
+		sel = "db.Limit(" + f.code(x.Limit, s) + ", " + sel + ")"
+	}
+	if x.Offset != nil {
+		sel = "db.Offset(" + f.code(x.Offset, s) + ", " + sel + ")"
+	}
+	return sel
+}
+
+var condFuncs = map[string]string{
+	"eq": "db.CEq", "ne": "db.CNe", "lt": "db.CLt", "le": "db.CLe", "gt": "db.CGt", "ge": "db.CGe",
+	"contains": "db.CContains", "isNothing": "db.CIsNull", "isJust": "db.CIsNotNull",
+	"and": "db.CAnd", "or": "db.COr", "not": "db.CNot",
+}
+
+// cond is a condition as a db.Cond.
+func (f *fn) cond(x *ir.Cond, s *scope) string {
+	fn := condFuncs[x.Kind]
+	switch x.Kind {
+	case "and", "or":
+		if x.Subs == nil && x.Value != nil {
+			return fn + "(" + f.code(x.Value, s) + ")"
+		}
+		var cs []string
+		for _, c := range x.Subs {
+			cs = append(cs, f.code(c, s))
+		}
+		return fn + "([]db.Cond{" + strings.Join(cs, ", ") + "})"
+	case "not":
+		return fn + "(" + f.code(x.Subs[0], s) + ")"
+	case "isNothing", "isJust":
+		return fn + "(" + strconv.Quote(x.Col.Field) + ")"
+	case "in":
+		ct := columnType(x.Col)
+		return "db.CIn(" + strconv.Quote(x.Col.Field) + ", db.EncodeList(" + f.code(x.Value, s) + ", " + encodeFunc(ct) + "))"
+	}
+	if fn == "" {
+		panic("gen: unknown condition " + x.Kind)
+	}
+	// typed: an Int literal passed as `any` would be a Go int
+	return fn + "(" + strconv.Quote(x.Col.Field) + ", " + encode(columnType(x.Col), f.typedExpr(x.Value, s)) + ")"
+}
+
+// columnType is the type of a column's field.
+func columnType(c *ir.ColumnRef) types.Type {
+	for _, fd := range c.Table.Record.Fields {
+		if fd.Name == c.Field {
+			return fd.Type
+		}
+	}
+	panic(fmt.Sprintf("gen: table %s.%s has no column %s", c.Table.Module, c.Table.Name, c.Field))
+}
+
+// ---- column encoding (the storage mapping of rt/db)
+
+// maybeArg is the a of `Maybe a`, or nil.
+func maybeArg(t types.Type) types.Type {
+	if u, ok := t.(*types.Union); ok && u.Module == "Prelude" && u.Name == "Maybe" && len(u.Args) == 1 {
+		return u.Args[0]
+	}
+	return nil
+}
+
+// enumUnion is t as a payload-less union of the app (a CEnum column), or nil.
+func enumUnion(t types.Type) *types.Union {
+	if u, ok := t.(*types.Union); ok && u.Module != "Prelude" {
+		return u
+	}
+	return nil
+}
+
+// encode is Go value v of column type t as the store keeps it.
+func encode(t types.Type, v string) string {
+	if a := maybeArg(t); a != nil {
+		return "db.EncodeMaybe(" + v + ", " + encodeFunc(a) + ")"
+	}
+	if u := enumUnion(t); u != nil {
+		return enumName(u.Module, u.Name) + "(" + v + ")"
+	}
+	switch GoType(t) {
+	case "bool":
+		return "db.EncodeBool(" + v + ")"
+	case "rt.Date":
+		return "db.EncodeDate(" + v + ")"
+	case "time.Time":
+		return "db.EncodeTime(" + v + ")"
+	}
+	return v
+}
+
+// encodeFunc is encode as a Go function of type func(T) any. Its parameter x shadows nothing it
+// uses: its body refers to x alone.
+func encodeFunc(t types.Type) string {
+	return "func(x " + GoType(t) + ") any { return " + encode(t, "x") + " }"
+}
+
+// decodeFunc is a Go function of type func(any) (T, error) decoding a stored value of column
+// type t (not a Maybe).
+func decodeFunc(t types.Type) string {
+	if u := enumUnion(t); u != nil {
+		names, values := enumLists(u)
+		return "func(v any) (" + GoType(t) + ", error) { return db.DecodeEnum(v, " + names + ", " + values + ") }"
+	}
+	switch GoType(t) {
+	case "string":
+		return "db.DecodeText"
+	case "int64":
+		return "db.DecodeInt"
+	case "float64":
+		return "db.DecodeFloat"
+	case "bool":
+		return "db.DecodeBool"
+	case "rt.Date":
+		return "db.DecodeDate"
+	case "time.Time":
+		return "db.DecodeTime"
+	}
+	panic(fmt.Sprintf("gen: type %s cannot be stored in a table", types.String(t)))
+}
+
+// enumLists are a payload-less union's constructor names and values, as Go slices.
+func enumLists(u *types.Union) (names, values string) {
+	var ns, vs []string
+	for _, c := range u.Constructors() {
+		ns = append(ns, strconv.Quote(c.Name))
+		vs = append(vs, "{Tag: "+tagConst(u.Module, u.Name, c.Name)+"}")
+	}
+	return "[]string{" + strings.Join(ns, ", ") + "}", "[]" + GoType(u) + "{" + strings.Join(vs, ", ") + "}"
+}
+
+// columnKind is the db.Column fields Type, Nullable and Enum of a column of type t.
+func columnKind(t types.Type) string {
+	null := ""
+	if a := maybeArg(t); a != nil {
+		t, null = a, ", Nullable: true"
+	}
+	if u := enumUnion(t); u != nil {
+		names, _ := enumLists(u)
+		return "Type: db.CEnum" + null + ", Enum: " + names
+	}
+	k := map[string]string{"string": "db.CText", "int64": "db.CInt", "float64": "db.CFloat", "bool": "db.CBool",
+		"rt.Date": "db.CDate", "time.Time": "db.CTime"}[GoType(t)]
+	if k == "" {
+		panic(fmt.Sprintf("gen: type %s cannot be stored in a table", types.String(t)))
+	}
+	return "Type: " + k + null
+}
+
+// ---- declarations: table descriptors, insert records, capability interfaces, enum names
+
+// tableDecl writes table tb's insert record type, its insert-values function and its descriptor.
+// A table's fields are scalars or Maybe scalars (the checker's storable), so no field is boxed
+// (types.go): a boxed field would be a pointer, which Encode/Decode below do not handle.
+func (g *gen) tableDecl(w *strings.Builder, tb *ir.Table) {
+	rec := GoName(tb.Module, tb.Name)
+	for _, fd := range tb.Record.Fields {
+		if g.boxed.has(tb.Module, tb.Name, fd.Name) {
+			panic(fmt.Sprintf("gen: table field %s.%s.%s is boxed", tb.Module, tb.Name, fd.Name))
+		}
+	}
+	field := func(name string) ir.FieldT {
+		for _, fd := range tb.Record.Fields {
+			if fd.Name == name {
+				return fd
+			}
+		}
+		panic(fmt.Sprintf("gen: table %s.%s has no field %s", tb.Module, tb.Name, name))
+	}
+
+	// the insert record: an alias of the anonymous struct Lower gives `Insert t`
+	ins := insertName(tb.Module, tb.Name)
+	var fs []string
+	inserted := map[string]bool{}
+	for _, n := range tb.InsertFields {
+		fs = append(fs, Field(n)+" "+GoType(field(n).Type))
+		inserted[n] = true
+	}
+	if len(fs) == 0 {
+		fmt.Fprintf(w, "type %s = struct{}\n\n", ins)
+	} else {
+		fmt.Fprintf(w, "type %s = struct {\n%s\n}\n\n", ins, strings.Join(fs, "\n"))
+	}
+	var vals []string
+	for _, fd := range tb.Record.Fields {
+		if inserted[fd.Name] {
+			vals = append(vals, encode(fd.Type, "r."+Field(fd.Name)))
+		} else {
+			vals = append(vals, "nil")
+		}
+	}
+	r := "r"
+	if len(tb.InsertFields) == 0 {
+		r = "_"
+	}
+	fmt.Fprintf(w, "func %s(%s %s) []any {\nreturn []any{%s}\n}\n\n", insertVals(tb.Module, tb.Name), r, ins, strings.Join(vals, ", "))
+
+	// the descriptor
+	fmt.Fprintf(w, "var %s = &db.Table[%s]{\nName: %s,\nColumns: []db.Column{\n", tableName(tb.Module, tb.Name), rec, strconv.Quote(tb.Module+"."+tb.Name))
+	unique := map[string]bool{}
+	for _, u := range tb.Unique {
+		unique[u] = true
+	}
+	var enc []string
+	var dec strings.Builder
+	for i, fd := range tb.Record.Fields {
+		col := "{Name: " + strconv.Quote(fd.Name) + ", " + columnKind(fd.Type)
+		if unique[fd.Name] {
+			col += ", Unique: true"
+		}
+		if ref := tb.Refs[fd.Name]; ref != "" {
+			col += ", Ref: " + strconv.Quote(ref)
+		}
+		fmt.Fprintf(w, "%s},\n", col)
+		enc = append(enc, encode(fd.Type, "r."+Field(fd.Name)))
+		d := ""
+		if a := maybeArg(fd.Type); a != nil {
+			d = "db.DecodeMaybe(row[" + strconv.Itoa(i) + "], " + decodeFunc(a) + ")"
+		} else if enumUnion(fd.Type) != nil {
+			names, values := enumLists(enumUnion(fd.Type))
+			d = "db.DecodeEnum(row[" + strconv.Itoa(i) + "], " + names + ", " + values + ")"
+		} else {
+			d = decodeFunc(fd.Type) + "(row[" + strconv.Itoa(i) + "])"
+		}
+		fmt.Fprintf(&dec, "if r.%s, err = %s; err != nil {\nreturn r, fmt.Errorf(\"column %s: %%w\", err)\n}\n", Field(fd.Name), d, fd.Name)
+	}
+	w.WriteString("},\n")
+	fmt.Fprintf(w, "ID: %s,\n", strconv.Quote(tb.IDField))
+	if tb.Created != "" {
+		fmt.Fprintf(w, "Created: %s,\n", strconv.Quote(tb.Created))
+	}
+	if tb.Updated != "" {
+		fmt.Fprintf(w, "Updated: %s,\n", strconv.Quote(tb.Updated))
+	}
+	n := len(tb.Record.Fields)
+	fmt.Fprintf(w, "Encode: func(r %s) []any {\nreturn []any{%s}\n},\n", rec, strings.Join(enc, ", "))
+	fmt.Fprintf(w, "Decode: func(row []any) (r %s, err error) {\nif len(row) != %d {\nreturn r, fmt.Errorf(\"%%d columns, want %d\", len(row))\n}\n%sreturn r, nil\n},\n",
+		rec, n, n, dec.String())
+	id := Field(tb.IDField)
+	fmt.Fprintf(w, "ReadID: func(r %s) string { return r.%s },\n", rec, id)
+	fmt.Fprintf(w, "SetID: func(r %s, id string) %s {\nr.%s = id\nreturn r\n},\n}\n\n", rec, rec, id)
+}
+
+// capDecl writes capability c's Go interface: per entry a method named by the entry, taking a
+// context and the entry's parameters, returning the entry's result.
+//
+//	type cap__Auth__Login__Password interface {
+//		Verify(ctx context.Context, args struct{ … }) (rt.Maybe[string], error)
+//	}
+func capDecl(w *strings.Builder, c *ir.Capability) {
+	fmt.Fprintf(w, "type %s interface {\n", capName(c.Module, c.Name))
+	for _, e := range c.Entries {
+		params := []string{"ctx context.Context"}
+		res := e.Type
+		if ft, ok := e.Type.(*types.Fun); ok {
+			for i, p := range ft.Params {
+				name := "args"
+				if len(ft.Params) > 1 {
+					name = "a" + strconv.Itoa(i+1)
+				}
+				params = append(params, name+" "+GoType(p))
+			}
+			res = ft.Result
+		}
+		fmt.Fprintf(w, "%s(%s) (%s, error)\n", Field(e.Name), strings.Join(params, ", "), GoType(effResult(res)))
+	}
+	w.WriteString("}\n\n")
+}
+
+// enumDecl writes the function naming a value of payload-less union u (stored in a table).
+func enumDecl(w *strings.Builder, u *ir.UnionType) {
+	decl, use := unionParams(u)
+	var ns []string
+	for _, c := range u.Ctors {
+		ns = append(ns, strconv.Quote(c.Name))
+	}
+	fmt.Fprintf(w, "func %s%s(v %s%s) string {\nreturn [...]string{%s}[v.Tag]\n}\n\n",
+		enumName(u.Module, u.Name), decl, GoName(u.Module, u.Name), use, strings.Join(ns, ", "))
+}
+
+// storedEnums are the unions ("Module.Name") some table column holds (directly or in a Maybe):
+// they get an enumDecl.
+func storedEnums(p *ir.Program) map[string]bool {
+	out := map[string]bool{}
+	for _, tb := range p.Tables {
+		for _, fd := range tb.Record.Fields {
+			t := fd.Type
+			if a := maybeArg(t); a != nil {
+				t = a
+			}
+			if u := enumUnion(t); u != nil {
+				out[u.Module+"."+u.Name] = true
+			}
+		}
+	}
+	return out
+}
+
+// tablesSource is tables_alder.go: the descriptors of every table, in module order then
+// declaration order (db.Ensure's schema hash depends on it).
+func tablesSource(p *ir.Program) string {
+	var ds []string
+	for _, tb := range p.Tables {
+		ds = append(ds, tableName(tb.Module, tb.Name)+".Desc()")
+	}
+	return "// Code generated by alder; DO NOT EDIT.\n\npackage app\n\nimport \"alder/rt/db\"\n\n" +
+		"// Tables describes every table of the app, in module order then declaration order, for db.Ensure.\n" +
+		"var " + tablesVar + " = []db.TableDesc{" + strings.Join(ds, ", ") + "}\n"
+}

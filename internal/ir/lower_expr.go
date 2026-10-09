@@ -180,7 +180,14 @@ func (l *lowerer) ctorRef(x *syntax.CtorRef) Expr {
 		}
 		return out
 	}
-	panic(fmt.Sprintf("ir: table %s at %s used as a value outside a Db function (not supported)", x.Name, pos(x.Span)))
+	if x.Ref.Kind == syntax.RefTable {
+		tb := l.tables[key(x.Ref.Module, x.Ref.Name)]
+		if tb == nil {
+			panic(fmt.Sprintf("ir: unknown table %s.%s at %s", x.Ref.Module, x.Ref.Name, pos(x.Span)))
+		}
+		return &TableRef{Typed: Typed{t}, Table: tb}
+	}
+	panic(fmt.Sprintf("ir: cannot lower %s at %s", x.Name, pos(x.Span)))
 }
 
 // eta wraps a one-parameter operation as a function value: \v -> body(v).

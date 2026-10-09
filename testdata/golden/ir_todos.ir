@@ -333,8 +333,16 @@
         (page-ref Todos.Index
           (record Todos.Index.Params (filter (ctor Todo.Filter.All)))))
       (htext "Back"))))
-(table User.User (id id) (insert email name passwordHash))
-(table Todo.Todo (id id) (insert title done due owner))
+(table User.User
+  (id id)
+  (created created)
+  (unique email)
+  (insert email name passwordHash))
+(table Todo.Todo
+  (id id)
+  (created created)
+  (ref owner User.User)
+  (insert title done due owner))
 (form Auth.Login.Credentials)
 (form Todos.Index.NewTodo)
 (form Todos.Show.EditTodo)

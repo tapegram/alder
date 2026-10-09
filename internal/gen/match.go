@@ -14,6 +14,7 @@ import (
 //	union of the app  switch s.Tag { case is__M__T__C: … }, panic("unreachable") after it when
 //	                  there is no default
 //	Maybe, Result     if s.Ok { … } / if s.IsOk { … } then the other case or the default
+//	Nav               switch s.Tag { case rt.NavRedirect: … } (payloads s.Page, s.Text)
 //	Bool              if s { … } (or if !s) then the other case or the default
 //	List              if len(s) == 0 { … } (or len(s) > 0) then the other case or the default
 //	literal           switch s { case 1: … default: … }
@@ -23,7 +24,8 @@ import (
 // `let r = _m1`, the only use of _m1), the part is bound to the user name directly
 // (`r := s.Circle.Value`).
 
-func (f *fn) match(w *strings.Builder, x *ir.Match, s *scope) {
+// k renders each returned value (see retK; nil is f.code).
+func (f *fn) match(w *strings.Builder, x *ir.Match, s *scope, k func(ir.Expr, *scope) string) {
 	subj, p := f.expr(x.Subject, s)
 	if !isPath(x.Subject) && hasBinds(x) { // binds would re-evaluate the subject
 		t := f.temp(s, "_s")
@@ -36,12 +38,28 @@ func (f *fn) match(w *strings.Builder, x *ir.Match, s *scope) {
 	switch x.Kind {
 	case ir.MatchUnion:
 		u, _ := x.Subject.Type().(*types.Union)
+		if u != nil && u.Module == "Prelude" && u.Name == "Nav" {
+			fmt.Fprintf(w, "switch %s.Tag {\n", subj)
+			for _, c := range x.Cases {
+				fmt.Fprintf(w, "case rt.Nav%s:\n", c.Tag)
+				f.caseBody(w, x, c, subj, s.child(), k)
+			}
+			if x.Default != nil {
+				w.WriteString("default:\n")
+				f.retK(w, x.Default, s.child(), k)
+			}
+			w.WriteString("}\n")
+			if x.Default == nil {
+				w.WriteString("panic(\"unreachable\")\n")
+			}
+			return
+		}
 		if u != nil && u.Module == "Prelude" {
 			field := "Ok"
 			if u.Name == "Result" {
 				field = "IsOk"
 			}
-			f.twoWay(w, x, s, subj, func(tag string) string {
+			f.twoWay(w, x, s, k, subj, func(tag string) string {
 				if tag == "Just" || tag == "Ok" {
 					return subj + "." + field
 				}
@@ -52,25 +70,25 @@ func (f *fn) match(w *strings.Builder, x *ir.Match, s *scope) {
 		fmt.Fprintf(w, "switch %s.Tag {\n", subj)
 		for _, c := range x.Cases {
 			fmt.Fprintf(w, "case %s:\n", tagConst(u.Module, u.Name, c.Tag))
-			f.caseBody(w, x, c, subj, s.child())
+			f.caseBody(w, x, c, subj, s.child(), k)
 		}
 		if x.Default != nil {
 			w.WriteString("default:\n")
-			f.ret(w, x.Default, s.child())
+			f.retK(w, x.Default, s.child(), k)
 		}
 		w.WriteString("}\n")
 		if x.Default == nil {
 			w.WriteString("panic(\"unreachable\")\n")
 		}
 	case ir.MatchBool:
-		f.twoWay(w, x, s, subj, func(tag string) string {
+		f.twoWay(w, x, s, k, subj, func(tag string) string {
 			if tag == "True" {
 				return subj
 			}
 			return "!" + subj
 		})
 	case ir.MatchList:
-		f.twoWay(w, x, s, subj, func(tag string) string {
+		f.twoWay(w, x, s, k, subj, func(tag string) string {
 			if tag == "nil" {
 				return "len(" + subj + ") == 0"
 			}
@@ -80,29 +98,29 @@ func (f *fn) match(w *strings.Builder, x *ir.Match, s *scope) {
 		fmt.Fprintf(w, "switch %s {\n", cond(subj))
 		for _, c := range x.Cases {
 			fmt.Fprintf(w, "case %s:\n", litTag(x.Subject.Type(), c.Tag))
-			f.caseBody(w, x, c, subj, s.child())
+			f.caseBody(w, x, c, subj, s.child(), k)
 		}
 		w.WriteString("default:\n")
-		f.ret(w, x.Default, s.child())
+		f.retK(w, x.Default, s.child(), k)
 		w.WriteString("}\n")
 	}
 }
 
 // twoWay emits a match over a two-tag kind: an `if` for the first case, then the second case (the
 // tags are then covered) or the default.
-func (f *fn) twoWay(w *strings.Builder, x *ir.Match, s *scope, subj string, test func(tag string) string) {
+func (f *fn) twoWay(w *strings.Builder, x *ir.Match, s *scope, k func(ir.Expr, *scope) string, subj string, test func(tag string) string) {
 	if len(x.Cases) == 0 {
-		f.ret(w, x.Default, s)
+		f.retK(w, x.Default, s, k)
 		return
 	}
 	fmt.Fprintf(w, "if %s {\n", cond(test(x.Cases[0].Tag)))
-	f.caseBody(w, x, x.Cases[0], subj, s.child())
+	f.caseBody(w, x, x.Cases[0], subj, s.child(), k)
 	w.WriteString("}\n")
 	switch {
 	case len(x.Cases) > 1:
-		f.caseBody(w, x, x.Cases[1], subj, s)
+		f.caseBody(w, x, x.Cases[1], subj, s, k)
 	case x.Default != nil:
-		f.ret(w, x.Default, s)
+		f.retK(w, x.Default, s, k)
 	default:
 		w.WriteString("panic(\"unreachable\")\n")
 	}
@@ -122,7 +140,7 @@ func litTag(t types.Type, tag string) string {
 }
 
 // caseBody binds the case's parts and returns its body.
-func (f *fn) caseBody(w *strings.Builder, x *ir.Match, c ir.Case, subj string, s *scope) {
+func (f *fn) caseBody(w *strings.Builder, x *ir.Match, c ir.Case, subj string, s *scope, k func(ir.Expr, *scope) string) {
 	access := map[string]string{}
 	for _, b := range c.Binds {
 		access[b.Name] = f.partAccess(x, c.Tag, b.Field, subj)
@@ -162,7 +180,7 @@ func (f *fn) caseBody(w *strings.Builder, x *ir.Match, c ir.Case, subj string, s
 		}
 		fmt.Fprintf(w, "%s := %s\n", s.declare(r.user), from)
 	}
-	f.ret(w, body, s)
+	f.retK(w, body, s, k)
 }
 
 // partAccess is the Go expression for part field of the value subj matched by tag.
@@ -175,6 +193,12 @@ func (f *fn) partAccess(x *ir.Match, tag, field, subj string) string {
 		return subj + "[1:]"
 	case ir.MatchUnion:
 		if u, ok := x.Subject.Type().(*types.Union); ok && u.Module == "Prelude" {
+			switch tag {
+			case "Redirect":
+				return subj + ".Page"
+			case "Reject":
+				return subj + ".Text"
+			}
 			if tag == "Err" {
 				return subj + ".Err"
 			}

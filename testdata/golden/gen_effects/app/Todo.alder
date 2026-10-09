@@ -1,0 +1,52 @@
+module Todo
+
+type TodoId = brand Text
+
+type UserId = brand Text
+
+table Todo {
+  id: TodoId @id,
+  title: Text,
+  done: Bool = False,
+  due: Maybe Date,
+  owner: UserId,
+  created: Time @created,
+}
+
+pending : Select Todo
+pending =
+  Db.from Todo
+    |> Db.where (Db.and [Todo.done.eq False, Db.not Todo.due.isNothing])
+    |> Db.orderBy Todo.title.asc
+
+byOwners : List UserId -> Select Todo
+byOwners owners = Db.from Todo |> Db.where (Todo.owner.in owners)
+
+getAll : List TodoId -> Query (List (Maybe Todo))
+getAll ids = Query.all (List.map (Db.get Todo) ids)
+
+capability Stats {
+  total : Query Int,
+  forOwner : UserId -> Bool -> Query Int,
+}
+
+anyOwner : List UserId -> Condition Todo
+anyOwner owners = Db.or (List.map Todo.owner.eq owners)
+
+recent : Select Todo -> Select Todo
+recent q = q |> Db.where Todo.due.isJust |> Db.orderBy Todo.created.desc |> Db.limit 5 |> Db.limit 3
+
+countOf : Select Todo -> Query Int
+countOf q = Db.count (recent q)
+
+totals : UserId -> Query (List Int)
+totals u = Query.all [Stats.total, Stats.forOwner u True, Query.map (\n -> n * 2) Query.notFound]
+
+counters : List (UserId -> Query Int)
+counters = [\u -> Stats.forOwner u False]
+
+byOwner : UserId -> Bool -> Query Int
+byOwner = Stats.forOwner
+
+eqs : List UserId -> List (Condition Todo)
+eqs owners = List.map Todo.owner.eq owners

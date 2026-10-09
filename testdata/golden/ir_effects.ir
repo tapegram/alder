@@ -176,7 +176,7 @@
                   (ctor Prelude.Nav.Reject (record (value "not sent"))))))))))))
 (value Index.view : Model -> Session -> Html Msg (model session)
   (elem p (hexpr text (call (std Text.fromInt) (field count (var model))))))
-(table Todo.Todo (id id) (insert title done due owner))
+(table Todo.Todo (id id) (created created) (insert title done due owner))
 (page Index "/pair/{a}/{b}"
   (params Params)
   (requires user)

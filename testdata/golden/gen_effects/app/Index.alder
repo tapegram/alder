@@ -1,0 +1,71 @@
+module Index
+
+import Todo
+
+page "/pair/{a}/{b}" { a: Todo.TodoId, b: Todo.TodoId } requires user
+
+capability Mailer {
+  send : { to: Text, body: Text } -> Task Bool,
+}
+
+type Model = {
+  todos: List Todo,
+  pair: List (Maybe Todo),
+  now: Time,
+  count: Int,
+  first: Maybe Todo,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todos <-
+    Db.from Todo
+      |> Db.where (Todo.owner.eq session.user)
+      |> Db.orderBy Todo.created.desc
+      |> Db.limit 10
+      |> Db.all
+  let pair <- Query.all [Db.get Todo params.a, Db.get Todo params.b]
+  let now <- Time.now
+  let q = Db.from Todo |> Db.where (Db.or [Todo.title.contains "x", Todo.done.eq True]) |> Db.offset 5
+  let count <- Query.map (\n -> n + 1) (Db.count q)
+  let first <- Db.first Todo.pending
+  Query.succeed { todos: todos, pair: pair, now: now, count: count, first: first }
+}
+
+msg Add { title: Text }
+msg Toggle { id: Todo.TodoId }
+msg Remove { id: Todo.TodoId }
+msg Notify
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let id <- Db.insert Todo { title: p.title, due: Nothing, owner: session.user }
+    let _ <- Log.info "added {id}"
+    Task.succeed (Redirect (Index { a: id, b: id }))
+  },
+  Toggle p -> {
+    let _ <- Db.update Todo p.id (\t -> { t | done: not t.done })
+    Task.succeed Rerender
+  },
+  Remove p -> {
+    let found <- Db.get Todo p.id
+    match found {
+      Just t -> {
+        let _ <- Db.delete Todo t.id
+        Task.succeed Rerender
+      },
+      Nothing -> Task.fail "no such todo",
+    }
+  },
+  Notify p -> {
+    let token : Text <- Random.id
+    let sent <- Task.all [Mailer.send { to: "a@b.c", body: token }]
+    let n <- Task.map List.length (Task.succeed sent)
+    let _ <- Session.put (\s -> { s | theme: "dark" })
+    Task.succeed (if n > 0 then Rerender else Reject "not sent")
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Text.fromInt model.count}</p>

@@ -2,7 +2,11 @@
 
 package app
 
-import "alder/rt/html"
+import (
+	"alder/rt"
+	"alder/rt/eff"
+	"alder/rt/html"
+)
 
 type App__Session struct {
 	Visits int64
@@ -19,6 +23,10 @@ const (
 )
 
 var App__Msg__Logout__ = App__Msg{Tag: is__App__Msg__Logout}
+
+func App__update(msg App__Msg, session App__Session) eff.Task[rt.Nav] {
+	return eff.Pure(rt.Rerender())
+}
 
 func App__error(err error) html.Node {
 	return html.El("p", nil, html.Text("error"))

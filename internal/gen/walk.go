@@ -37,6 +37,12 @@ func uses(e ir.Expr, name string) int {
 			n += uses(x.Body, name)
 		}
 		return n
+	case *ir.EffBind:
+		n := uses(x.Effect, name)
+		if x.Param == nil || x.Param.Name != name {
+			n += uses(x.Body, name)
+		}
+		return n
 	}
 	n := 0
 	for _, c := range children(e) {
@@ -112,8 +118,35 @@ func children(e ir.Expr) []ir.Expr {
 		return []ir.Expr{x.LabelExpr, x.Value}
 	case *ir.FormEl:
 		return append(attrValues(x.Attrs), x.Children...)
+	case *ir.EffPure:
+		return []ir.Expr{x.Value}
+	case *ir.EffBind:
+		return []ir.Expr{x.Effect, x.Body}
+	case *ir.EffMap:
+		return []ir.Expr{x.Fn, x.Effect}
+	case *ir.EffAll:
+		return []ir.Expr{x.Effects}
+	case *ir.EffFail:
+		return []ir.Expr{x.Message}
+	case *ir.DbGet:
+		return []ir.Expr{x.ID}
+	case *ir.DbSelect:
+		out := append([]ir.Expr{x.Base}, x.Where...)
+		return append(append(out, x.Order...), x.Limit, x.Offset)
+	case *ir.DbRun:
+		return []ir.Expr{x.Select}
+	case *ir.DbInsert:
+		return []ir.Expr{x.Row}
+	case *ir.DbUpdate:
+		return []ir.Expr{x.ID, x.Fn}
+	case *ir.DbDelete:
+		return []ir.Expr{x.ID}
+	case *ir.Cond:
+		return append([]ir.Expr{x.Value}, x.Subs...)
+	case *ir.CapCall:
+		return x.Args
 	}
-	return nil // Lit, Var, Hole, HText
+	return nil // Lit, Var, Hole, HText, EffNotFound, ColumnRef, TableRef, Ord
 }
 
 func matchChildren(x *ir.Match) []ir.Expr {

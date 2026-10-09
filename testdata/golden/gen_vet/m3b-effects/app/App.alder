@@ -1,0 +1,23 @@
+module App
+
+import Shop
+
+session { user: Maybe Shop.UserId, cart: Int = 0 }
+
+login = Home
+
+msg Clear
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Clear p -> {
+    let _ <- Session.put (\s -> { s | cart: 0 })
+    Task.succeed (Shop.after Rerender)
+  },
+}
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>nf</p>

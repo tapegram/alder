@@ -1,0 +1,146 @@
+module Shop
+
+-- M3b emission corpus: every column kind in conditions, @unique/@ref/@updated, a table passed
+-- as a value, an effect in a record field, Nav built and matched in pure code, capabilities with
+-- zero, one and two parameters, and the effectful stdlib.
+
+type UserId = brand Text
+
+type OrderId = brand Text
+
+type Status = Open | Paid | Shipped
+
+table Order {
+  id: OrderId @id,
+  buyer: UserId @ref Customer,
+  status: Status = Open,
+  late: Maybe Status,
+  total: Float,
+  qty: Int,
+  gift: Bool,
+  day: Date,
+  shipDay: Maybe Date,
+  code: Text @unique,
+  note: Maybe Text,
+  created: Time @created,
+  updated: Time @updated,
+}
+
+table Customer {
+  id: UserId @id,
+  email: Text @unique,
+  seen: Maybe Time,
+}
+
+capability Pay {
+  charge : { amount: Float, card: Text } -> Task (Maybe Text),
+  balance : Query Float,
+  limit : UserId -> Int -> Query Int,
+}
+
+type Job = { run: Task Int, label: Text }
+
+job : Job
+job = { run: Task.succeed 1, label: "one" }
+
+runJob : Job -> Task Int
+runJob j = j.run
+
+after : Nav -> Nav
+after n = match n {
+  Redirect p -> Redirect p,
+  Reject t -> Reject "{t}!",
+  Rerender -> Rerender,
+}
+
+isRedirect : Nav -> Bool
+isRedirect n = match n {
+  Redirect p -> True,
+  _ -> False,
+}
+
+countIn : Table Order -> Query Int
+countIn t = Db.count (Db.from t)
+
+allOrders : Query Int
+allOrders = countIn Order
+
+search : Status -> Date -> Time -> List Status -> Select Order
+search s d t ss =
+  Db.from Order
+    |> Db.where (Db.and [
+      Order.status.eq s,
+      Order.status.lt Shipped,
+      Order.late.eq (Just s),
+      Order.late.isJust,
+      Order.total.gt 1.5,
+      Order.qty.le 3,
+      Order.gift.ne True,
+      Order.day.ge d,
+      Order.shipDay.eq Nothing,
+      Order.code.contains "x",
+      Order.note.eq (Just "n"),
+      Order.created.lt t,
+      Order.status.in ss,
+      Order.day.in [d],
+      Order.late.in [Just s, Nothing],
+    ])
+    |> Db.orderBy Order.status.asc
+    |> Db.orderBy Order.updated.desc
+    |> Db.offset 0
+
+conds : List (Condition Order) -> Condition Order
+conds cs = Db.or [Db.and cs, Db.not (Db.or cs)]
+
+either : List (Condition Order) -> Select Order
+either cs = Db.from Order |> Db.where (Db.or cs) |> Db.where (Db.not (Db.and []))
+
+seenBefore : Time -> Query (List Customer)
+seenBefore t = Db.all (Db.from Customer |> Db.where (Customer.seen.eq (Just t)))
+
+buy : UserId -> Text -> Task OrderId
+buy u code = {
+  let today <- Date.today
+  let n <- Random.int { min: 1, max: 9 }
+  let _ <- Log.warn "buying {code}"
+  let paid <- Pay.charge { amount: 2.5, card: "c" }
+  let bal <- Pay.balance
+  let lim <- Pay.limit u n
+  let r <- Http.post { url: "http://x", body: "b" }
+  let id <- Db.insert Order { buyer: u, late: Nothing, total: bal, qty: lim, gift: False, day: today, shipDay: Nothing, code: code, note: paid }
+  let _ <- Db.update Order id (\o -> { o | status: Paid })
+  let found <- Db.get Order id
+  match found {
+    Just o -> Task.succeed o.id,
+    Nothing -> Task.fail "lost",
+  }
+}
+
+register : Text -> Task UserId
+register email = Db.insert Customer { email: email, seen: Nothing }
+
+charges : List (Task (Maybe Text))
+charges = [Pay.charge { amount: 1.0, card: "a" }]
+
+limits : UserId -> List (Query Int)
+limits u = List.map (Pay.limit u) [1, 2]
+
+allLimits : UserId -> Query (List Int)
+allLimits u = Query.all (limits u)
+
+firstQ : Query (Maybe Order)
+firstQ = Db.first (search Open (Date.fromText "2026-01-01" |> Maybe.withDefault (Time.toDate Time.epoch)) Time.epoch [])
+
+remove : OrderId -> Task Unit
+remove id = Db.delete Order id
+
+fetch : Text -> Task Text
+fetch url = {
+  let r <- Http.get { url: url }
+  let i <- Random.id
+  let n <- Time.now
+  match r {
+    Ok body -> Task.succeed body,
+    Err e -> Task.fail i,
+  }
+}

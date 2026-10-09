@@ -4,6 +4,7 @@ package app
 
 import (
 	"alder/rt"
+	"alder/rt/eff"
 	"alder/rt/html"
 	"alder/rt/std"
 )
@@ -104,6 +105,14 @@ func M__Msg__Pick__(v M__PickParams) M__Msg {
 }
 
 var M__Msg__Ping__ = M__Msg{Tag: is__M__Msg__Ping}
+
+func M__load(params M__Params, session App__Session) eff.Query[M__Model] {
+	return eff.Q(eff.Pure(M__Model{Id: params.Id, Busy: false, Current: rt.Nothing[string](), Items: []string{}, Shape: M__Shape__Circle__(1.0)}))
+}
+
+func M__update(msg M__Msg, model M__Model, session App__Session) eff.Task[rt.Nav] {
+	return eff.Pure(rt.Rerender())
+}
 
 func M__view(model M__Model, session App__Session) html.Node {
 	return Layout__Page(struct {

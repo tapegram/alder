@@ -342,6 +342,14 @@ func (l *lowerer) declareTypes() {
 		decl *types.Union
 	}
 	var unions []pendingUnion
+	// a @ref names a table of the module itself or of an import, maybe declared later
+	type pendingRef struct {
+		t     *Table
+		field string
+		m     *syntax.Module
+		arg   string
+	}
+	var refs []pendingRef
 	for _, name := range l.prog.Order {
 		m := l.prog.Modules[name]
 		mod := &Module{Name: name}
@@ -375,6 +383,20 @@ func (l *lowerer) declareTypes() {
 				for _, f := range info.Insert.Fields {
 					t.InsertFields = append(t.InsertFields, f.Name)
 				}
+				for _, f := range d.Fields {
+					for _, a := range f.Attrs {
+						switch a.Name {
+						case "created":
+							t.Created = f.Name
+						case "updated":
+							t.Updated = f.Name
+						case "unique":
+							t.Unique = append(t.Unique, f.Name)
+						case "ref":
+							refs = append(refs, pendingRef{t, f.Name, m, a.Arg})
+						}
+					}
+				}
 				l.tables[key(name, d.Name)] = t
 				l.out.Tables = append(l.out.Tables, t)
 			case *syntax.FormDecl:
@@ -403,6 +425,24 @@ func (l *lowerer) declareTypes() {
 		}
 	}
 	l.declarePageSessions()
+	for _, r := range refs {
+		cands := []string{r.m.Name}
+		for _, im := range r.m.Imports {
+			cands = append(cands, im.Module)
+		}
+		for _, c := range cands {
+			if tb := l.tables[key(c, r.arg)]; tb != nil {
+				if r.t.Refs == nil {
+					r.t.Refs = map[string]string{}
+				}
+				r.t.Refs[r.field] = tb.Module + "." + tb.Name
+				break
+			}
+		}
+		if r.t.Refs[r.field] == "" {
+			panic(fmt.Sprintf("ir: @ref %s of %s.%s.%s names no table in scope", r.arg, r.t.Module, r.t.Name, r.field))
+		}
+	}
 	// constructors last: a payload may name a record of any module
 	for _, u := range unions {
 		l.fillUnion(u.ut, u.decl, false)

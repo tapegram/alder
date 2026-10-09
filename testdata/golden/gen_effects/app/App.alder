@@ -1,0 +1,23 @@
+module App
+
+import Todo
+
+session { user: Maybe Todo.UserId, theme: Text = "light" }
+
+login = Index
+
+msg Logout
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing })
+    Task.succeed Rerender
+  },
+}
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>not found</p>

@@ -7,10 +7,13 @@ import (
 	"alder/internal/types"
 )
 
-// StdCalls maps every pure stdlib function, named "Module.name" as in its stdlib file, to the Go
-// function of alder/rt/std that implements it. A stdlib constant (Html.none, Time.epoch,
-// Dict.empty) is a Go function of no parameters, called at each use. Emitting a stdlib reference
-// that is not here is an internal error of gen (TestStdCallsCoverStdlib keeps the table complete).
+// StdCalls maps every stdlib function emitted as a call, named "Module.name" as in its stdlib
+// file, to the Go function of alder/rt/std that implements it: the pure ones, and the effectful
+// ones that stay calls in the IR (Session.put, Log.*, Random.*, Time.now, Date.today, Http.*),
+// whose Go functions build effect values. A stdlib constant (Html.none, Time.epoch, Dict.empty,
+// Random.id, Time.now) is a Go function of no parameters, called at each use. Emitting a stdlib
+// reference that is not here is an internal error of gen (TestStdCallsCoverStdlib keeps the
+// table complete).
 var StdCalls = map[string]string{
 	// Bool
 	"Bool.toText": "std.BoolToText",
@@ -116,15 +119,24 @@ var StdCalls = map[string]string{
 	"Time.ago":    "std.TimeAgo",
 	// Url
 	"Url.external": "std.UrlExternal",
+	// effects
+	"Session.put": "std.SessionPut",
+	"Log.info":    "std.LogInfo",
+	"Log.warn":    "std.LogWarn",
+	"Random.int":  "std.RandomInt",
+	"Random.id":   "std.RandomId",
+	"Time.now":    "std.TimeNow",
+	"Date.today":  "std.DateToday",
+	"Http.get":    "std.HttpGet",
+	"Http.post":   "std.HttpPost",
 }
 
-// Effectful lists the stdlib modules and functions that have no StdCalls entry because they are
-// effects or database descriptions, lowered in M3b (Lower skips the values that use them), or
-// bound to a request (Form.values, M3c). A key is a module name (all of its functions) or
+// Effectful lists the stdlib modules and functions that have no StdCalls entry: Query.*, Task.*
+// and Db.*, which Lower turns into effect and database nodes (effects.go emits them), and
+// Form.values, bound to a request (M3c). A key is a module name (all of its functions) or
 // "Module.name".
 var Effectful = map[string]bool{
-	"Query": true, "Task": true, "Db": true, "Session": true, "Log": true, "Random": true, "Http": true,
-	"Time.now": true, "Date.today": true, "Form.values": true,
+	"Query": true, "Task": true, "Db": true, "Form.values": true,
 }
 
 func isEffectful(module, name string) bool {

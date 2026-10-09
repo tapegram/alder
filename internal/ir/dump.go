@@ -51,7 +51,22 @@ func Dump(p *Program) string {
 		}
 	}
 	for _, t := range p.Tables {
-		form(list(2, atom("table"), atom(t.Module+"."+t.Name), atoms("id", t.IDField), atoms(append([]string{"insert"}, t.InsertFields...)...)))
+		items := []*sx{atom("table"), atom(t.Module + "." + t.Name), atoms("id", t.IDField)}
+		if t.Created != "" {
+			items = append(items, atoms("created", t.Created))
+		}
+		if t.Updated != "" {
+			items = append(items, atoms("updated", t.Updated))
+		}
+		if len(t.Unique) > 0 {
+			items = append(items, atoms(append([]string{"unique"}, t.Unique...)...))
+		}
+		for _, f := range t.Record.Fields {
+			if r := t.Refs[f.Name]; r != "" {
+				items = append(items, atoms("ref", f.Name, r))
+			}
+		}
+		form(list(2, append(items, atoms(append([]string{"insert"}, t.InsertFields...)...))...))
 	}
 	for _, f := range p.Forms {
 		form(atoms("form", f.Module+"."+f.Name))
@@ -437,6 +452,8 @@ func (d *dumper) expr(e Expr) *sx {
 		return list(2, atom("db-delete"), atom(tableName(x.Table)), d.expr(x.ID))
 	case *ColumnRef:
 		return atoms("col", tableName(x.Table), x.Field)
+	case *TableRef:
+		return atoms("table", tableName(x.Table))
 	case *Cond:
 		items := []*sx{atom("cond"), atom(x.Kind)}
 		if x.Col != nil {

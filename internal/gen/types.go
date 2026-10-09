@@ -13,16 +13,22 @@ import (
 //
 //	Int Float Bool Text Unit         int64 float64 bool string struct{}
 //	Date Time Page Error Never       rt.Date time.Time rt.Page error struct{}
+//	HttpError, Nav                   rt.HttpError, rt.Nav
 //	List a, Dict k v, Html a         []A, rt.Dict[K, V], html.Node (whatever a is)
 //	Maybe a, Result e a              rt.Maybe[A], rt.Result[E, A]
+//	Query a, Task a                  eff.Query[A], eff.Task[A]
+//	Table t, Select t                *db.Table[T], db.Select[T]
+//	Condition t, Order t             db.Cond, db.Order
+//	Column t a, Id t                 string (a column is named by its field; an id is Text)
+//	Insert t                         insert__M__T, the table's insert record (an anonymous
+//	                                 struct of its InsertFields; Lower erases most uses to it)
 //	nominal record or union M.T      M__T, with type arguments when generic (M__T[A])
 //	anonymous record                 struct{ F1 T1; F2 T2 } (fields PascalCase, in order)
 //	a -> b -> c                      func(A, B) C
 //	type parameter a                 A
 //
 // A brand is its base type (the IR has none left); an unsolved inference variable (an
-// unconstrained type) and the effect and database types (Query, Task, Table, …), which never
-// reach M3a code, are `any`. The poison type never reaches gen: ir.Lower refuses it.
+// unconstrained type) is `any`. The poison type never reaches gen: ir.Lower refuses it.
 func GoType(t types.Type) string {
 	switch t := t.(type) {
 	case *types.Con:
@@ -45,6 +51,8 @@ func GoType(t types.Type) string {
 			return "rt.Page"
 		case "Error":
 			return "error"
+		case "HttpError":
+			return "rt.HttpError"
 		}
 		return "any"
 	case *types.Param:
@@ -59,6 +67,22 @@ func GoType(t types.Type) string {
 			return "rt.Dict[" + GoType(t.Args[0]) + ", " + GoType(t.Args[1]) + "]"
 		case "Html":
 			return "html.Node"
+		case "Query", "Task":
+			return "eff." + t.Con + "[" + GoType(t.Args[0]) + "]"
+		case "Table":
+			return "*db.Table[" + GoType(t.Args[0]) + "]"
+		case "Select":
+			return "db.Select[" + GoType(t.Args[0]) + "]"
+		case "Condition":
+			return "db.Cond"
+		case "Order":
+			return "db.Order"
+		case "Column", "Id":
+			return "string"
+		case "Insert":
+			if r, ok := t.Args[0].(*types.Record); ok && r.Name != "" && !r.Anonymous {
+				return insertName(r.Module, r.Name)
+			}
 		}
 		return "any"
 	case *types.Record:
@@ -80,6 +104,8 @@ func GoType(t types.Type) string {
 				return "rt.Maybe[" + GoType(t.Args[0]) + "]"
 			case "Result":
 				return "rt.Result[" + GoType(t.Args[0]) + ", " + GoType(t.Args[1]) + "]"
+			case "Nav":
+				return "rt.Nav"
 			}
 		}
 		return GoName(t.Module, t.Name) + typeArgs(t.Args)

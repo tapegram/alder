@@ -114,12 +114,18 @@ type Param struct {
 	Type types.Type
 }
 
-// Table is a `table` declaration; Record is also in its module's Types.
+// Table is a `table` declaration; Record is also in its module's Types. Its fields' attributes:
+// IDField is the @id field; Created and Updated the @created and @updated fields ("" when
+// absent); Unique the @unique fields in declaration order; Refs maps each @ref field to the
+// referenced table, module-qualified ("User.User").
 type Table struct {
-	Module, Name string
-	Record       *RecordType
-	IDField      string
-	InsertFields []string // the fields `Db.insert` takes: all but @id, @created, @updated
+	Module, Name     string
+	Record           *RecordType
+	IDField          string
+	Created, Updated string
+	Unique           []string
+	Refs             map[string]string
+	InsertFields     []string // the fields `Db.insert` takes: all but @id, @created, @updated
 }
 
 // Form is a `form` declaration; Record is also in its module's Types.
@@ -546,7 +552,8 @@ type EffNotFound struct{ Typed }
 // ---- Database operations: the Db.* functions, resolved to the table they act on.
 //
 // The table always comes from the checked type (Table t, Select t, …), so it is known
-// statically: the table argument itself (`Todo` in `Db.get Todo id`) is not kept. A Db function
+// statically: the table argument itself (`Todo` in `Db.get Todo id`) is not kept (a table
+// elsewhere is a TableRef). A Db function
 // used as a value or partially applied is wrapped in a Lambda whose body is the node.
 
 // DbGet is `Db.get Table ID`: a Query (Maybe t).
@@ -615,6 +622,13 @@ type DbDelete struct {
 	Typed
 	Table *Table
 	ID    Expr
+}
+
+// TableRef is a table used as a value other than as the table argument of a Db function
+// (`countIn Todo`, passed to a function taking `Table Todo`). Its type is Table t.
+type TableRef struct {
+	Typed
+	Table *Table
 }
 
 // ColumnRef is a column `Todo.owner` of Table (Field is one of its record's fields), of type

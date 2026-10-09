@@ -17,6 +17,13 @@ import (
 //	tagType     tag__M__Union               a union's tag type
 //	tagConst    is__M__Union__Ctor          a constructor's tag constant
 //	widenName   widen__Page__Session        a `requires` page's session widened to App's
+//	tableName   table__M__Table             a table's descriptor (*db.Table)
+//	insertName  insert__M__Table            a table's insert record type (Db.insert's row)
+//	insertVals  insertvals__M__Table        the column values of an insert record
+//	capName     cap__M__Capability          a capability's Go interface
+//	enumName    name__M__Union              the constructor name of a payload-less union value
+//	                                        stored in a table column
+//	Tables                                  the app's table descriptors (tables_alder.go)
 //
 // where "M__…" is the module path with every '.' replaced by "__" ("Todos.Index", "view" →
 // "Todos__Index__view"). A local is its Alder name, with "__" appended when that is reserved
@@ -38,11 +45,13 @@ import (
 //  2. ctorName is GoName(M, Union) + "__" + Ctor + "__": it ends in "__", which no GoName does
 //     (an identifier never ends in "__"). Stripping that "__", Ctor is the text after the last
 //     "__" (Ctor has no "__" and does not start with '_'), and the rest is a GoName (1).
-//  3. payloadName, tagType, tagConst and widenName start with a lower-case word and "__". No
-//     GoName or ctorName does (they start with an upper-case module segment); no local does (a
-//     local contains "__" only at its end, or followed by its "_N" renaming suffix); the four
-//     words differ, so the kinds cannot collide with each other; within a kind the rest is
-//     decoded as in 1 and 2.
+//  3. payloadName, tagType, tagConst, widenName, tableName, insertName, insertVals, capName and
+//     enumName start with a lower-case word and "__". No GoName or ctorName does (they start
+//     with an upper-case module segment); no local does (a local contains "__" only at its end,
+//     or followed by its "_N" renaming suffix); the nine words differ, so the kinds cannot
+//     collide with each other; within a kind the rest is decoded as in 1 and 2. Tables contains
+//     no "__" and starts upper-case, which no GoName (it has "__"), no local (lower-case or '_')
+//     and none of the others is.
 //  4. Record fields and union fields live in their struct's own namespace: Field is injective
 //     (only the first letter changes, and Alder fields start lower-case or with '_'), and union
 //     fields are constructor names (upper-case) plus Tag and Tag__.
@@ -77,7 +86,7 @@ func init() {
 		any append bool byte cap clear close comparable complex complex64 complex128 copy delete
 		error false float32 float64 imag int int8 int16 int32 int64 iota len make max min new nil
 		panic print println real recover rune string true uint uint8 uint16 uint32 uint64 uintptr
-		rt html std time math`) {
+		rt html std time math eff db context fmt`) {
 		reserved[s] = true
 	}
 }
@@ -132,3 +141,24 @@ func ctorField(ctor string) string {
 	}
 	return ctor
 }
+
+// tableName is table M.T's descriptor ("table__Todo__Todo").
+func tableName(module, table string) string { return "table__" + GoName(module, table) }
+
+// insertName is table M.T's insert record type ("insert__Todo__Todo").
+func insertName(module, table string) string { return "insert__" + GoName(module, table) }
+
+// insertVals is the function giving an insert record's column values ("insertvals__Todo__Todo").
+func insertVals(module, table string) string { return "insertvals__" + GoName(module, table) }
+
+// capName is capability M.C's interface ("cap__Auth__Login__Password").
+func capName(module, capability string) string { return "cap__" + GoName(module, capability) }
+
+// enumName is the function naming a value of payload-less union M.U ("name__Todo__Filter").
+func enumName(module, union string) string { return "name__" + GoName(module, union) }
+
+// tablesFile and tablesVar: the file holding the app's table descriptors and its variable.
+const (
+	tablesFile = "tables_alder.go"
+	tablesVar  = "Tables"
+)

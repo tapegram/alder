@@ -23,7 +23,8 @@ type Options struct {
 	Dev      bool
 }
 
-// Emit returns the generated files: one "<Module>_alder.go" per module ('.' → "__") and "go.mod".
+// Emit returns the generated files: one "<Module>_alder.go" per module ('.' → "__"),
+// "tables_alder.go" (the Tables variable: every table's descriptor) and "go.mod".
 // Its error is for a bug in gen: output go/format cannot parse, or a program gen cannot emit
 // (such as a stdlib function with no Go implementation), or two modules or declarations that
 // would get the same file or Go name.
@@ -58,6 +59,14 @@ func Emit(p *ir.Program, opts Options) (files map[string][]byte, err error) {
 			declared[n] = m.Name
 		}
 	}
+	tables, err := format.Source([]byte(tablesSource(p)))
+	if err != nil {
+		return nil, fmt.Errorf("gen: %s: %v", tablesFile, err)
+	}
+	if _, dup := files[tablesFile]; dup {
+		return nil, fmt.Errorf("gen: a module is emitted to %s", tablesFile)
+	}
+	files[tablesFile] = tables
 	return files, nil
 }
 
@@ -106,6 +115,9 @@ type gen struct {
 	boxed   boxedSet // record fields held by pointer (types.go)
 	// payloads are the nominal record payloads of constructors, by "Module.Union.Ctor"
 	payloads map[string]*ir.RecordType
+	tables   map[string][]*ir.Table      // by module, in declaration order
+	caps     map[string][]*ir.Capability // by module, in declaration order
+	enums    map[string]bool             // unions stored in a table column (storedEnums)
 }
 
 // newGen indexes the program's values. A constant (a value with no parameters and a non-function
@@ -114,7 +126,14 @@ type gen struct {
 // through other values (Go rejects initialization cycles).
 func newGen(p *ir.Program) *gen {
 	g := &gen{values: map[string]*ir.Value{}, thunks: map[*ir.Value]bool{}, tparams: map[*ir.Value][]string{},
-		pages: map[string]*ir.Page{}, session: p.Session, boxed: boxedFields(p), payloads: map[string]*ir.RecordType{}}
+		pages: map[string]*ir.Page{}, session: p.Session, boxed: boxedFields(p), payloads: map[string]*ir.RecordType{},
+		tables: map[string][]*ir.Table{}, caps: map[string][]*ir.Capability{}, enums: storedEnums(p)}
+	for _, tb := range p.Tables {
+		g.tables[tb.Module] = append(g.tables[tb.Module], tb)
+	}
+	for _, c := range p.Caps {
+		g.caps[c.Module] = append(g.caps[c.Module], c)
+	}
 	for _, m := range p.Modules {
 		for _, d := range m.Types {
 			if d.Union == nil {
@@ -132,7 +151,7 @@ func newGen(p *ir.Program) *gen {
 	}
 	var all []*ir.Value
 	for _, m := range p.Modules {
-		all = append(append(all, emitted(m.Values)...), emitted(m.Components)...)
+		all = append(append(all, m.Values...), m.Components...)
 	}
 	refs := map[*ir.Value][]*ir.Value{}
 	for _, v := range all {
@@ -262,14 +281,23 @@ func (g *gen) module(m *ir.Module) ([]byte, error) {
 	var body strings.Builder
 	for _, d := range m.Types {
 		typeDecl(&body, d, g.boxed)
+		if d.Union != nil && g.enums[d.Module+"."+d.Name] {
+			enumDecl(&body, d.Union)
+		}
+	}
+	for _, tb := range g.tables[m.Name] {
+		g.tableDecl(&body, tb)
+	}
+	for _, c := range g.caps[m.Name] {
+		capDecl(&body, c)
 	}
 	if pg := g.pages[m.Name]; pg != nil && pg.Requires != "" && pg.Session != g.session {
 		widenFunc(&body, pg, g.session, g.boxed)
 	}
-	for _, v := range emitted(m.Values) {
+	for _, v := range m.Values {
 		g.value(&body, v)
 	}
-	for _, v := range emitted(m.Components) {
+	for _, v := range m.Components {
 		g.value(&body, v)
 	}
 	var head strings.Builder
@@ -304,6 +332,7 @@ func (g *gen) module(m *ir.Module) ([]byte, error) {
 // packages are the imports generated code may need, by package name.
 var packages = map[string]string{
 	"rt": "alder/rt", "html": "alder/rt/html", "std": "alder/rt/std", "time": "time", "math": "math",
+	"eff": "alder/rt/eff", "db": "alder/rt/db", "context": "context", "fmt": "fmt",
 }
 
 // importsOf lists the import paths body refers to. Locals never take a package's name (see
@@ -407,42 +436,4 @@ func widenFunc(w *strings.Builder, pg *ir.Page, app *ir.RecordType, boxed boxedS
 	}
 	fmt.Fprintf(w, "func %s(s %s) %s {\nreturn %s{%s}\n}\n\n", widenName(pg.Module), GoName(pg.Module, "Session"),
 		GoName(app.Module, app.Name), GoName(app.Module, app.Name), strings.Join(fs, ", "))
-}
-
-// M3b Task 6 replaces this: until effects are emitted, a value that is an effect or whose type
-// mentions an effect or a database description (Page.Load/Update and Program.AppUpdate among
-// them) is not emitted.
-func emitted(vs []*ir.Value) []*ir.Value {
-	var out []*ir.Value
-	for _, v := range vs {
-		if !v.IsEffect && !mentionsEffect(v.Type) {
-			out = append(out, v)
-		}
-	}
-	return out
-}
-
-// M3b Task 6 replaces this.
-func mentionsEffect(t types.Type) bool {
-	switch t := t.(type) {
-	case *types.App:
-		switch t.Con {
-		case "Query", "Task", "Table", "Select", "Condition", "Order", "Column", "Insert":
-			return true
-		}
-		return slices.ContainsFunc(t.Args, mentionsEffect)
-	case *types.Union:
-		return slices.ContainsFunc(t.Args, mentionsEffect)
-	case *types.Fun:
-		return slices.ContainsFunc(t.Params, mentionsEffect) || mentionsEffect(t.Result)
-	case *types.Record:
-		if t.Anonymous || t.Name == "" {
-			for _, f := range t.Fields {
-				if mentionsEffect(f.Type) {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }

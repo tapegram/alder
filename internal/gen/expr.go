@@ -128,36 +128,45 @@ func (s *scope) lookup(name string) string {
 // ---- ret mode
 
 // ret writes statements that return e's value.
-func (f *fn) ret(w *strings.Builder, e ir.Expr, s *scope) {
+func (f *fn) ret(w *strings.Builder, e ir.Expr, s *scope) { f.retK(w, e, s, nil) }
+
+// retK writes statements that return e's value as k renders it: k is applied to each value
+// returned (the body of a Let, each branch of a Match or If), nil meaning f.code. An effect
+// Bind's continuation uses it to return its body as a Task (effects.go).
+func (f *fn) retK(w *strings.Builder, e ir.Expr, s *scope, k func(ir.Expr, *scope) string) {
 	switch x := e.(type) {
 	case *ir.Let:
 		if x.Name == "_" || uses(x.Body, x.Name) == 0 {
-			f.ret(w, x.Body, s)
+			f.retK(w, x.Body, s, k)
 			return
 		}
 		v := f.typedExpr(x.Value, s)
 		fmt.Fprintf(w, "%s := %s\n", s.declare(x.Name), v)
-		f.ret(w, x.Body, s)
+		f.retK(w, x.Body, s, k)
 	case *ir.Match:
-		f.match(w, x, s)
+		f.match(w, x, s, k)
 	case *ir.HMatch:
-		f.match(w, (*ir.Match)(x), s)
+		f.match(w, (*ir.Match)(x), s, k)
 	case *ir.If:
-		f.ifElse(w, x.Cond, x.Then, x.Else, s)
+		f.ifElse(w, x.Cond, x.Then, x.Else, s, k)
 	case *ir.HIf:
-		f.ifElse(w, x.Cond, x.Then, x.Else, s)
+		f.ifElse(w, x.Cond, x.Then, x.Else, s, k)
 	case *ir.Hole:
 		fmt.Fprintf(w, "panic(%s)\n", strconv.Quote("alder: hole ?"+x.Name))
 	default:
-		fmt.Fprintf(w, "return %s\n", f.code(e, s))
+		if k == nil {
+			fmt.Fprintf(w, "return %s\n", f.code(e, s))
+		} else {
+			fmt.Fprintf(w, "return %s\n", k(e, s))
+		}
 	}
 }
 
-func (f *fn) ifElse(w *strings.Builder, c, then, els ir.Expr, s *scope) {
+func (f *fn) ifElse(w *strings.Builder, c, then, els ir.Expr, s *scope, k func(ir.Expr, *scope) string) {
 	fmt.Fprintf(w, "if %s {\n", cond(f.code(c, s)))
-	f.ret(w, then, s.child())
+	f.retK(w, then, s.child(), k)
 	w.WriteString("}\n")
-	f.ret(w, els, s)
+	f.retK(w, els, s, k)
 }
 
 // cond guards a Go `if`/`switch` header: a composite literal there must be parenthesized.
@@ -257,8 +266,9 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 	case *ir.Elem, *ir.Comp, *ir.HText, *ir.HExpr, *ir.HFor, *ir.HIf, *ir.HMatch, *ir.Input, *ir.FormEl:
 		return f.html(e, s), precAtom // html.go
 	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.CapCall,
-		*ir.DbGet, *ir.DbSelect, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete, *ir.ColumnRef, *ir.Cond, *ir.Ord:
-		panic("effects not yet emitted") // M3b Task 6 replaces this
+		*ir.DbGet, *ir.DbSelect, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete,
+		*ir.ColumnRef, *ir.TableRef, *ir.Cond, *ir.Ord:
+		return f.effect(e, s), precAtom // effects.go
 	}
 	panic(fmt.Sprintf("gen: cannot emit %T", e))
 }
@@ -524,9 +534,14 @@ func (f *fn) ctor(x *ir.Ctor, s *scope) string {
 			return "rt.Ok" + typeArgs(args) + "(" + inner() + ")"
 		case "Err":
 			return "rt.Err" + typeArgs(args) + "(" + inner() + ")"
+		case "Rerender":
+			return "rt.Rerender()"
+		case "Redirect":
+			return "rt.Redirect(" + inner() + ")"
+		case "Reject":
+			return "rt.Reject(" + inner() + ")"
 		}
-		// Nav is only built by `update`, an effect lowered in M3b.
-		panic(fmt.Sprintf("gen: Prelude constructor %s is not emitted in M3a", x.Name))
+		panic(fmt.Sprintf("gen: unknown Prelude constructor %s", x.Name))
 	}
 	u := x.U
 	ta := ""

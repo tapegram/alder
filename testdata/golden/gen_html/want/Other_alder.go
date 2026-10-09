@@ -2,7 +2,10 @@
 
 package app
 
-import "alder/rt/html"
+import (
+	"alder/rt/eff"
+	"alder/rt/html"
+)
 
 type Other__Model struct{}
 
@@ -13,6 +16,10 @@ type Other__Msg struct {
 }
 
 type tag__Other__Msg uint8
+
+func Other__load(params Other__Params, session App__Session) eff.Query[Other__Model] {
+	return eff.Q(eff.Pure(Other__Model{}))
+}
 
 func Other__view(model Other__Model, session App__Session) html.Node {
 	return html.El("p", nil, html.Text("other"))
