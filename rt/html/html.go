@@ -116,3 +116,65 @@ func render(b *strings.Builder, n Node) {
 		b.WriteByte('>')
 	}
 }
+
+// Control is a form control bound to a form field: what `<Input>`, `<Textarea>`, `<Select>` and
+// `<Errors>` render. The generated code derives it from the field's type; M3c adds the request
+// state (submitted values, errors).
+type Control struct {
+	Kind     string   // "input", "textarea", "select" or "errors"
+	Name     string   // the field; "" for `<Errors form />`
+	Type     string   // an input's type: "text", "number", "date" or "checkbox"
+	Label    string   // "" for none
+	Required bool     // the field is not a Maybe (never set for a checkbox)
+	Value    string   // the initial value as text ("True" checks a checkbox), "" for none
+	Options  []string // a select's options: the union's constructor names
+}
+
+// Input renders a form control: a <label> holding the label text and the control, or for
+// "errors" the (in M3a always empty) error list of the field or, without a name, of the form.
+func Input(c Control) Node {
+	if c.Kind == "errors" {
+		scope := "form"
+		if c.Name != "" {
+			scope = c.Name
+		}
+		return El("ul", []Attr{A("class", "errors"), A("data-errors", scope)})
+	}
+	var control Node
+	switch c.Kind {
+	case "textarea":
+		control = El("textarea", []Attr{A("name", c.Name), B("required", c.Required)}, Text(c.Value))
+	case "select":
+		var opts []Node
+		if !c.Required {
+			opts = append(opts, El("option", []Attr{A("value", "")}))
+		}
+		for _, o := range c.Options {
+			opts = append(opts, El("option", []Attr{A("value", o), B("selected", o == c.Value)}, Text(o)))
+		}
+		control = El("select", []Attr{A("name", c.Name), B("required", c.Required)}, opts...)
+	default:
+		typ := c.Type
+		if typ == "" {
+			typ = "text"
+		}
+		attrs := []Attr{A("name", c.Name), A("type", typ)}
+		if typ == "checkbox" {
+			attrs = append(attrs, A("value", "True"), B("checked", c.Value == "True"))
+		} else {
+			attrs = append(attrs, Attr{Name: "value", Value: c.Value, Omit: c.Value == ""}, B("required", c.Required))
+		}
+		control = El("input", attrs)
+	}
+	if c.Label == "" {
+		return El("label", nil, control)
+	}
+	return El("label", nil, Text(c.Label), control)
+}
+
+// Form is a `<form submit={…}>` posting to action: with JavaScript Datastar posts it, without
+// it the browser does (method="post"). attrs are the element's other attributes.
+func Form(action string, attrs []Attr, children ...Node) Node {
+	all := append([]Attr{A("method", "post"), A("action", action), A("data-on:submit", "@post('"+action+"')")}, attrs...)
+	return El("form", all, children...)
+}

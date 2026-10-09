@@ -1,0 +1,11 @@
+module Layout
+
+Page : { title: Text, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head><title>{props.title}</title></head>
+    <body>{props.children}</body>
+  </html>
+
+Card : { title: Text, children: List (Html a) } -> Html a
+Card props = <div class="card"><h2>{props.title}</h2>{props.children}</div>

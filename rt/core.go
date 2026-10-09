@@ -4,6 +4,8 @@
 package rt
 
 import (
+	"fmt"
+	"net/url"
 	"reflect"
 	"strings"
 	"time"
@@ -232,6 +234,41 @@ func Format(layout string, d Date) string { return d.Time().Format(layout) }
 type Page struct {
 	Path string
 }
+
+// PageURL is the URL a link to p points at: `href={…}` renders it. In M3a it is p's path (with
+// path parameters already filled in by the generated code); M3c adds the query parameters.
+func PageURL(p Page) string { return p.Path }
+
+// KV is one message parameter: its name and its value as text.
+type KV struct{ Key, Value string }
+
+// MsgURL is the URL a message is posted to: /_m/<module>/<msg>, then the message's parameters
+// (in declaration order) as an URL-encoded query string. `click` and `submit` attributes post to
+// it; M3c routes it to the page's update.
+func MsgURL(module, msg string, params ...KV) string {
+	u := "/_m/" + module + "/" + msg
+	for i, p := range params {
+		sep := "&"
+		if i == 0 {
+			sep = "?"
+		}
+		u += sep + url.QueryEscape(p.Key) + "=" + url.QueryEscape(p.Value)
+	}
+	return u
+}
+
+// MaybeText is a Maybe's value as text, "" for Nothing. The generated code uses it for message
+// parameters and form values of a Maybe type.
+func MaybeText[T any](m Maybe[T], text func(T) string) string {
+	if !m.Ok {
+		return ""
+	}
+	return text(m.Val)
+}
+
+// TextOf is any other value as text (fmt's %v), for message parameters of a type with no text
+// form of its own (records, lists, unions with payloads).
+func TextOf(v any) string { return fmt.Sprint(v) }
 
 // Concat joins the pieces of an interpolated string.
 func Concat(parts ...string) string { return strings.Join(parts, "") }

@@ -1,0 +1,16 @@
+module App
+
+import Layout
+
+session { visits: Int = 0 }
+
+msg Logout
+
+update : Msg -> Session -> Task Nav
+update msg session = Task.succeed Rerender
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>

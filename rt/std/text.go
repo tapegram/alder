@@ -100,3 +100,6 @@ func TextToFloat(s string) rt.Maybe[float64] {
 	}
 	return rt.Just(f)
 }
+
+// UrlExternal is `Url.external`: a link to a URL outside the app.
+func UrlExternal(u string) rt.Page { return rt.Page{Path: u} }

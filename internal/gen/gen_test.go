@@ -3,6 +3,9 @@ package gen
 import (
 	"flag"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +17,7 @@ import (
 	"alder/internal/diag"
 	"alder/internal/ir"
 	"alder/internal/names"
+	"alder/internal/syntax"
 	"alder/internal/types"
 )
 
@@ -564,6 +568,153 @@ adder _a1 = add _a1
 		"return n_3 + n_2",
 		"type__2 := x * 2",
 		"return type__2 + type_",
+	)
+	vet(t, files)
+}
+
+// HTML text is emitted raw: rt/html escapes it exactly once, when rendering.
+func TestGen_HTMLTextNotPreEscaped(t *testing.T) {
+	files := emitSource(t, map[string]string{"H.alder": `module H
+
+note : Html a
+note = <p title="x & y">{"a < b"} & é</p>
+`})
+	src := string(files["H.go"])
+	contains(t, files["H.go"], `html.Text("a < b")`, `html.Text(" & é")`, `html.A("title", "x & y")`)
+	for _, bad := range []string{"&lt;", "&amp;"} {
+		if strings.Contains(src, bad) {
+			t.Errorf("emitted Go pre-escapes text (%s):\n%s", bad, src)
+		}
+	}
+	vet(t, files)
+}
+
+// Every pure stdlib signature has an entry in StdCalls; every effectful one is in Effectful.
+func TestStdCallsCoverStdlib(t *testing.T) {
+	std, err := types.LoadStd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, m := range std {
+		for _, d := range m.Decls {
+			v, ok := d.(*syntax.ValueDecl)
+			if !ok {
+				continue
+			}
+			n++
+			key := m.Name + "." + v.Name
+			_, call := StdCalls[key]
+			eff := isEffectful(m.Name, v.Name)
+			switch {
+			case call && eff:
+				t.Errorf("%s is both in StdCalls and Effectful", key)
+			case !call && !eff:
+				t.Errorf("pure stdlib function %s has no StdCalls entry", key)
+			}
+		}
+	}
+	if n < 100 {
+		t.Fatalf("only %d stdlib signatures found", n)
+	}
+	// every entry names a real stdlib function
+	for key := range StdCalls {
+		mod, name, _ := strings.Cut(key, ".")
+		found := false
+		if m := std[mod]; m != nil {
+			for _, d := range m.Decls {
+				if v, ok := d.(*syntax.ValueDecl); ok && v.Name == name {
+					found = true
+				}
+			}
+		}
+		if !found {
+			t.Errorf("StdCalls entry %s is not a stdlib function", key)
+		}
+	}
+}
+
+// Each StdCalls target is a function of rt/std.
+func TestStdCallsExist(t *testing.T) {
+	fset := token.NewFileSet()
+	pkgs, err := filepath.Glob("../../rt/std/*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	funcs := map[string]bool{}
+	for _, file := range pkgs {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, file, nil, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range f.Decls {
+			if fd, ok := d.(*ast.FuncDecl); ok && fd.Recv == nil {
+				funcs["std."+fd.Name.Name] = true
+			}
+		}
+	}
+	for key, target := range StdCalls {
+		if !funcs[target] {
+			t.Errorf("StdCalls[%q] = %s, which rt/std does not define", key, target)
+		}
+	}
+}
+
+// A message that is not a constructor written in place is switched on at run time for its URL;
+// a generic component takes its props at the instance's types; a Let around HTML is used.
+func TestGen_HTMLDynamic(t *testing.T) {
+	files := emitSource(t, map[string]string{
+		"App.alder": `module App
+
+session { }
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>not found</p>
+`,
+		"P.alder": `module P
+
+page "/p" { }
+
+type Model = { names: List Text }
+
+msg Pick { name: Text, at: Maybe Int }
+msg Clear
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { names: [] }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = Task.succeed Rerender
+
+Btn : { msg: Msg, label: Text } -> Html Msg
+Btn props = <button click={props.msg}>{props.label}</button>
+
+Each : { items: List a, render: a -> Html m } -> Html m
+Each props = <ul>{List.map props.render props.items}</ul>
+
+view : Model -> Session -> Html Msg
+view model session = {
+  let first = List.head model.names ?? "none"
+  <div>
+    <Btn msg={Clear} label={first} />
+    <Each items={model.names} render={\n -> <li>{n}</li>} />
+  </div>
+}
+`})
+	contains(t, files["P.go"],
+		"switch _m1.Tag {",
+		`return rt.MsgURL("P", "Pick", rt.KV{Key: "name", Value: _m1.Pick.Name}, rt.KV{Key: "at", Value: rt.MaybeText(_m1.Pick.At, std.TextFromInt)})`,
+		`return rt.MsgURL("P", "Clear")`,
+		"P__Btn(struct {",
+		"P__Each(struct {",
+		"Items  []string",
+		"first := rt.OrElse(",
 	)
 	vet(t, files)
 }

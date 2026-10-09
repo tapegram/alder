@@ -52,3 +52,37 @@ func TestHTML_ZeroNodeRendersNothing(t *testing.T) {
 		t.Fatalf("zero Node = %q", got)
 	}
 }
+
+func TestHTML_Controls(t *testing.T) {
+	for _, tc := range []struct {
+		c    Control
+		want string
+	}{
+		{Control{Kind: "input", Name: "title", Type: "text", Label: "Title", Required: true},
+			`<label>Title<input name="title" type="text" required /></label>`},
+		{Control{Kind: "input", Name: "due", Type: "date", Value: "2026-01-02"},
+			`<label><input name="due" type="date" value="2026-01-02" /></label>`},
+		{Control{Kind: "input", Name: "done", Type: "checkbox", Label: "Done", Value: "True"},
+			`<label>Done<input name="done" type="checkbox" value="True" checked /></label>`},
+		{Control{Kind: "textarea", Name: "body", Label: "a<b", Value: "x&y"},
+			`<label>a&lt;b<textarea name="body">x&amp;y</textarea></label>`},
+		{Control{Kind: "select", Name: "color", Required: true, Value: "Green", Options: []string{"Red", "Green"}},
+			`<label><select name="color" required><option value="Red">Red</option><option value="Green" selected>Green</option></select></label>`},
+		{Control{Kind: "select", Name: "color", Options: []string{"Red"}},
+			`<label><select name="color"><option value=""></option><option value="Red">Red</option></select></label>`},
+		{Control{Kind: "errors", Name: "title"}, `<ul class="errors" data-errors="title"></ul>`},
+		{Control{Kind: "errors"}, `<ul class="errors" data-errors="form"></ul>`},
+	} {
+		if got := Render(Input(tc.c)); got != tc.want {
+			t.Errorf("Input(%+v)\n got %s\nwant %s", tc.c, got, tc.want)
+		}
+	}
+}
+
+func TestHTML_Form(t *testing.T) {
+	got := Render(Form("/_m/M/Save?id=1", []Attr{A("class", "f")}, El("button", nil, Text("Go"))))
+	want := `<form method="post" action="/_m/M/Save?id=1" data-on:submit="@post(&#39;/_m/M/Save?id=1&#39;)" class="f"><button>Go</button></form>`
+	if got != want {
+		t.Fatalf("got %s", got)
+	}
+}

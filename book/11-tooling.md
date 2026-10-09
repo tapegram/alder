@@ -1,6 +1,7 @@
 # 11. Tooling
 
 `alder check` exists as of M1; `build`, `run`, `test`, `fmt`, holes and `query` are planned.
+`alder build --emit` generates and vets Go for the pure parts of an app (M3a); effects, pages and `alder run` arrive in M3b–M3d.
 
 ## Project layout
 

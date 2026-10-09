@@ -8,8 +8,6 @@ import (
 	"alder/rt/std"
 )
 
-// TODO: HTML is not emitted yet; these nodes are stubbed as html.None(): Elem.
-
 type M__Shape struct {
 	Tag    M__Shape__Tag
 	Circle M__Shape_Circle
@@ -74,5 +72,8 @@ func M__Card(props struct {
 	Title    string
 	Children []html.Node
 }) html.Node {
-	return html.None()
+	return html.El("div", []html.Attr{html.A("class", "card")},
+		html.El("h2", nil, html.Text(props.Title)),
+		html.Nodes(props.Children...),
+	)
 }

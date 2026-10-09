@@ -168,3 +168,22 @@ func sign(n int) int {
 	}
 	return 0
 }
+
+func TestURLs(t *testing.T) {
+	if got := PageURL(Page{Path: "/todos/3"}); got != "/todos/3" {
+		t.Errorf("PageURL = %q", got)
+	}
+	if got := MsgURL("Todos.Index", "Ping"); got != "/_m/Todos.Index/Ping" {
+		t.Errorf("MsgURL no params = %q", got)
+	}
+	got := MsgURL("M", "Pick", KV{"name", "a b&c"}, KV{"n", "2"})
+	if want := "/_m/M/Pick?name=a+b%26c&n=2"; got != want {
+		t.Errorf("MsgURL = %q, want %q", got, want)
+	}
+	if got := MaybeText(Just(int64(3)), func(n int64) string { return "n" }); got != "n" {
+		t.Errorf("MaybeText Just = %q", got)
+	}
+	if got := MaybeText(Nothing[int64](), func(n int64) string { return "n" }); got != "" {
+		t.Errorf("MaybeText Nothing = %q", got)
+	}
+}

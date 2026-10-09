@@ -24,10 +24,16 @@ type Options struct {
 }
 
 // Emit returns the generated files: one "<Module>.go" per module ('.' → '_') and "go.mod".
-// Its error is only for output go/format cannot parse, which is a bug in gen.
-func Emit(p *ir.Program, opts Options) (map[string][]byte, error) {
+// Its error is for a bug in gen: output go/format cannot parse, or a program gen cannot emit
+// (such as a stdlib function with no Go implementation).
+func Emit(p *ir.Program, opts Options) (files map[string][]byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			files, err = nil, fmt.Errorf("%v", r)
+		}
+	}()
 	g := newGen(p)
-	files := map[string][]byte{"go.mod": []byte(goMod(opts.RepoPath))}
+	files = map[string][]byte{"go.mod": []byte(goMod(opts.RepoPath))}
 	for _, m := range p.Modules {
 		src, err := g.module(m)
 		if err != nil {
@@ -47,7 +53,6 @@ type gen struct {
 	values  map[string]*ir.Value // "Module.name" → value or component
 	thunks  map[*ir.Value]bool   // constants emitted as functions (see newGen)
 	tparams map[*ir.Value][]string
-	stubbed map[string]bool // HTML node kinds stubbed in the current file
 }
 
 // newGen indexes the program's values. A constant (a value with no parameters and a non-function
@@ -207,7 +212,6 @@ func all(ts []types.Type) bool {
 
 // module emits one module's file.
 func (g *gen) module(m *ir.Module) ([]byte, error) {
-	g.stubbed = map[string]bool{}
 	var body strings.Builder
 	for _, d := range m.Types {
 		typeDecl(&body, d)
@@ -232,16 +236,6 @@ func (g *gen) module(m *ir.Module) ([]byte, error) {
 			head.WriteString(strconv.Quote(imp) + "\n")
 		}
 		head.WriteString(")\n\n")
-	}
-	if len(g.stubbed) > 0 {
-		kinds := slices.Sorted(func(yield func(string) bool) {
-			for k := range g.stubbed {
-				if !yield(k) {
-					return
-				}
-			}
-		})
-		fmt.Fprintf(&head, "// TODO: HTML is not emitted yet; these nodes are stubbed as html.None(): %s.\n\n", strings.Join(kinds, ", "))
 	}
 	src := head.String() + body.String()
 	out, err := format.Source([]byte(src))

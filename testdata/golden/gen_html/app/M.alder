@@ -1,0 +1,58 @@
+module M
+
+import Layout
+
+page "/m/{id}" { id: Int }
+
+type Color = Red | Green
+
+type Shape = Circle Float | Square Float
+
+type Model = { id: Int, busy: Bool, current: Maybe Text, items: List Text, shape: Shape }
+
+form Note = {
+  body: Text,
+  color: Color,
+  count: Maybe Int,
+  urgent: Bool,
+}
+
+msg Save { id: Int } form Note
+msg Pick { name: Text, n: Int }
+msg Ping
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { id: params.id, busy: False, current: Nothing, items: [], shape: Circle 1.0 }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = Task.succeed Rerender
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="M">
+    <Layout.Card title={"Item " ++ Text.fromInt model.id}>
+      <p class="intro">Tom & Jerry é</p>
+      <p>{"a < b"}</p>
+    </Layout.Card>
+    <button class="go" disabled={model.busy} aria-current={model.current} click={Ping}>ping</button>
+    <a href={Other}>other</a>
+    <button click={App.Logout}>log out</button>
+    <a href={M { id: model.id + 1 }}>next</a>
+    <ul>
+      {for item in model.items -> <li click={Pick { name: item, n: model.id }}>{item}</li>}
+    </ul>
+    {if model.busy then <p>busy</p> else Html.none}
+    {match model.shape {
+      Circle r -> <span>circle {Text.fromFloat r}</span>,
+      Square s -> <span>square</span>,
+    }}
+    <form submit={Save { id: model.id }} class="note">
+      <Errors form />
+      <Textarea field="body" label="Body" />
+      <Select field="color" label={"Color " ++ Text.fromInt model.id} value={Red} />
+      <Input field="count" label="Count" />
+      <Input field="urgent" label="Urgent" value={True} />
+      <Errors field="body" />
+      <button>Save</button>
+    </form>
+  </Layout.Page>

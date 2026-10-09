@@ -17,7 +17,7 @@ import (
 //   - ret: Go statements that end by returning the expression's value (a function or closure
 //     body). Let, Match, If and Hole are naturally statements: in ret mode they become `x := …`,
 //     `switch`/`if` with a return in each branch, and `panic`; in expr mode they are wrapped in an
-//     immediately-invoked closure `func() T { … }()`.
+//     immediately-invoked closure `func() T { … }()`. HIf and HMatch are If and Match in HTML.
 //
 // Go rejects unused variables, so a Let or match binding whose name the body never uses is not
 // emitted (the language is pure, so nothing is lost).
@@ -139,16 +139,24 @@ func (f *fn) ret(w *strings.Builder, e ir.Expr, s *scope) {
 		f.ret(w, x.Body, s)
 	case *ir.Match:
 		f.match(w, x, s)
+	case *ir.HMatch:
+		f.match(w, (*ir.Match)(x), s)
 	case *ir.If:
-		fmt.Fprintf(w, "if %s {\n", cond(f.code(x.Cond, s)))
-		f.ret(w, x.Then, s.child())
-		w.WriteString("}\n")
-		f.ret(w, x.Else, s)
+		f.ifElse(w, x.Cond, x.Then, x.Else, s)
+	case *ir.HIf:
+		f.ifElse(w, x.Cond, x.Then, x.Else, s)
 	case *ir.Hole:
 		fmt.Fprintf(w, "panic(%s)\n", strconv.Quote("alder: hole ?"+x.Name))
 	default:
 		fmt.Fprintf(w, "return %s\n", f.code(e, s))
 	}
+}
+
+func (f *fn) ifElse(w *strings.Builder, c, then, els ir.Expr, s *scope) {
+	fmt.Fprintf(w, "if %s {\n", cond(f.code(c, s)))
+	f.ret(w, then, s.child())
+	w.WriteString("}\n")
+	f.ret(w, els, s)
 }
 
 // cond guards a Go `if`/`switch` header: a composite literal there must be parenthesized.
@@ -245,9 +253,7 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 	case *ir.Let, *ir.Match, *ir.If, *ir.Hole:
 		return f.closure(e, s), precAtom
 	case *ir.Elem, *ir.Comp, *ir.HText, *ir.HExpr, *ir.HFor, *ir.HIf, *ir.HMatch, *ir.Input, *ir.FormEl:
-		// HTML: emitted by Task 6. Until then each node is a stub, listed in the file header.
-		f.g.stubbed[strings.TrimPrefix(fmt.Sprintf("%T", e), "*ir.")] = true
-		return "html.None()", precAtom
+		return f.html(e, s), precAtom // html.go
 	}
 	panic(fmt.Sprintf("gen: cannot emit %T", e))
 }
@@ -289,7 +295,7 @@ func (f *fn) variable(x *ir.Var, s *scope) string {
 	case ir.VarLocal:
 		return s.lookup(x.Name)
 	case ir.VarStd:
-		name := stdName(x.Module, x.Name)
+		name := stdGoName(x.Module, x.Name)
 		if _, isFun := x.Ty.(*types.Fun); isFun {
 			return name
 		}
@@ -321,8 +327,8 @@ func (f *fn) call(x *ir.Call, s *scope) (string, int) {
 		return "!" + f.operand(x.Args[0], s, precUnary), precUnary
 	}
 	var args []string
-	for _, a := range x.Args[:n] {
-		args = append(args, f.argument(x.Fn, a, s))
+	for i, a := range x.Args[:n] {
+		args = append(args, f.argument(x.Fn, i, a, s))
 	}
 	c, p := f.apply(x.Fn, args, s)
 	for rest := x.Args[n:]; len(rest) > 0; {
@@ -344,13 +350,21 @@ func (f *fn) call(x *ir.Call, s *scope) (string, int) {
 	return c, p
 }
 
-// argument is an argument of a call of callee: typed when the callee is a generic value of the
-// app called without explicit type arguments, whose type parameter Go would otherwise infer from
-// an untyped constant as int.
-func (f *fn) argument(callee, a ir.Expr, s *scope) string {
-	if v, ok := callee.(*ir.Var); ok && v.Kind == ir.VarGlobal {
-		if val := f.g.values[v.Module+"."+v.Name]; val != nil && len(f.g.params(val)) > 0 && f.g.instantiate(val, v.Ty) == "" {
-			return f.typedExpr(a, s)
+// argument is argument i of a call of callee: typed where Go would otherwise infer a type
+// parameter from an untyped constant as int — when the callee is a generic value of the app
+// called without explicit type arguments, or when the parameter of a stdlib callee is a bare type
+// variable.
+func (f *fn) argument(callee ir.Expr, i int, a ir.Expr, s *scope) string {
+	if v, ok := callee.(*ir.Var); ok {
+		switch v.Kind {
+		case ir.VarGlobal:
+			if val := f.g.values[v.Module+"."+v.Name]; val != nil && len(f.g.params(val)) > 0 && f.g.instantiate(val, v.Ty) == "" {
+				return f.typedExpr(a, s)
+			}
+		case ir.VarStd:
+			if stdVarParam(v.Module, v.Name, i) {
+				return f.typedExpr(a, s)
+			}
 		}
 	}
 	return f.code(a, s)
@@ -380,8 +394,8 @@ func (f *fn) apply(callee ir.Expr, args []string, s *scope) (string, int) {
 func (f *fn) partial(x *ir.Partial, s *scope) string {
 	ft := x.Fn.Type().(*types.Fun)
 	var args, params []string
-	for _, g := range x.Given {
-		args = append(args, f.argument(x.Fn, g, s))
+	for i, g := range x.Given {
+		args = append(args, f.argument(x.Fn, i, g, s))
 	}
 	c := s.child()
 	for _, t := range ft.Params[len(x.Given):] {

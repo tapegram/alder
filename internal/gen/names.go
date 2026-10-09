@@ -76,7 +76,3 @@ func ctorField(ctor string) string {
 	}
 	return ctor
 }
-
-// stdName is the Go name of stdlib value Module.name: std.<Module><Name> ("List", "map" →
-// "std.ListMap"). Task 6 replaces this mechanical rule with the stdlib call table.
-func stdName(module, name string) string { return "std." + module + Field(name) }
