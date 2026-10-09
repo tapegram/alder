@@ -121,6 +121,7 @@ Layout props =
 A component in a page module may be typed `Html Msg` and send that page's
 messages. A component in any other module has no `Msg`; it is typed `Html a`
 and can send only app-level messages (`App.Logout`), which fit any `Html a`.
+`Html Never` (markup that sends nothing) also fits any `Html a`.
 
 Components are plain functions. They have no state and no lifecycle.
 

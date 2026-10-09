@@ -217,8 +217,18 @@ the language's fault and is fixed below.
 
 ### E4: Path-less messages
 
-*Status: next.* `msg` no longer carries a path. Re-run T3, T4 on Haiku and
-Qwen3-Coder to confirm the syntax is picked up and collisions disappear.
+*Done 2026-10-08.* `msg` without a path. Sonnet, Haiku and Qwen3-Coder all
+used the new forms correctly on the first try; no collisions; Qwen's first
+clean pass (T4). Haiku found that a message can often take no parameters
+at all, since the page's params travel with it.
+
+### Where the spike ended
+
+46 scored runs across five models. Final from-scratch error counts (T3+T4):
+Haiku 4 → 0, Qwen3-Coder 9 → 3 between E2 and E4. The remaining Qwen errors
+are two habits (`Db.get` with a non-id, `.field` on a `Maybe`) that a
+checker reports with a fix and that prose does not change (E3). The next
+phase is the compiler, starting with `alder check`.
 
 ## Open questions
 

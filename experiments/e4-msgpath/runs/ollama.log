@@ -1,0 +1,2 @@
+qwen3-coder:30b t3-newapp: 52s, 2187 tokens -> e4-msgpath/runs/qwen3-coder-30b/t3-newapp.md
+qwen3-coder:30b t4-appmsg: 31s, 1693 tokens -> e4-msgpath/runs/qwen3-coder-30b/t4-appmsg.md
