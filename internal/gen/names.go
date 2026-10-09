@@ -55,6 +55,14 @@ import (
 //     (lower-case or '_') and none of the others is. app__alder.go is no module's file, even
 //     ignoring case (on a case-insensitive file system such as macOS's, app_alder.go would be
 //     App's file): it would be the file of a module segment "app_", which never ends a segment.
+//  4. Record fields and union fields live in their struct's own namespace: Field is injective
+//     (only the first letter changes, and Alder fields start lower-case or with '_'), and union
+//     fields are constructor names (upper-case) plus Tag and Tag__.
+//
+// The per-page generated types (Params, Msg, Session, <Msg>Params) are GoNames of names the
+// checker reserves in page modules and App (E0012), so no user declaration can take them. Two
+// modules whose names differ only in case (their files would be one on a case-insensitive file
+// system) are rejected by the names graph (E0014).
 
 // GoName is the package-level Go name of top-level Alder name in module: the module's segments,
 // then the name, joined by "__" ("Todos.Index", "view" → "Todos__Index__view").

@@ -84,6 +84,28 @@ func TestBuildEmit_Todos(t *testing.T) {
 	}
 }
 
+// A Go file of the user's in build/<app> that does not vet is named as the cause, not reported
+// as an internal error of the compiler (M8).
+func TestBuildEmit_ForeignFileDoesNotVet(t *testing.T) {
+	src, err := filepath.Abs("../../examples/todos")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := t.TempDir()
+	copyDir(t, src, filepath.Join(tmp, "todos"))
+	t.Chdir(tmp)
+	out := filepath.Join("build", "todos")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(out, "stale_test.go"), []byte("package app\n\nvar _ = Gone__value\n"), 0o644)
+	code, stdout, stderr := runBuild(t, "--emit", "todos")
+	if code != 2 || strings.Contains(stderr, "internal error") ||
+		!strings.Contains(stderr, "holds Go files alder did not generate: stale_test.go; build/<app> must contain only generated files") {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+}
+
 func TestBuild_WithoutEmit(t *testing.T) {
 	code, _, stderr := runBuild(t, "../../examples/todos")
 	if code != 2 || !strings.Contains(stderr, "alder build` without --emit arrives in M3c") {

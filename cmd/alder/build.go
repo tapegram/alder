@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"alder/internal/check"
@@ -116,7 +118,12 @@ func runBuildTo(args []string, stdout, stderr io.Writer) (code int) {
 	cmd.Dir = out
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod")
 	if vetOut, err := cmd.CombinedOutput(); err != nil {
-		fmt.Fprintf(stderr, "alder build: internal error: the generated Go in %s does not vet: %v\n%s", out, err, vetOut)
+		if mine := foreignGoFiles(out, files); len(mine) > 0 {
+			fmt.Fprintf(stderr, "alder build: the Go in %s does not vet, and %s holds Go files alder did not generate: %s; build/<app> must contain only generated files, so move them out and build again: %v\n%s",
+				out, out, strings.Join(mine, ", "), err, vetOut)
+			return 2
+		}
+		fmt.Fprintf(stderr, "alder build: internal error: the generated Go in %s (%s) does not vet: %v\n%s", out, strings.Join(slices.Sorted(maps.Keys(files)), ", "), err, vetOut)
 		return 2
 	}
 	fmt.Fprintf(stdout, "wrote %s\n", out)
@@ -158,6 +165,24 @@ func writeGenerated(dir string, files map[string][]byte) error {
 		}
 	}
 	return nil
+}
+
+// foreignGoFiles lists the Go files under dir (relative to it, sorted) that are not among the
+// generated files: go vet ./... sees them too, so they can make a correct build fail.
+func foreignGoFiles(dir string, files map[string][]byte) []string {
+	var out []string
+	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		rel, _ := filepath.Rel(dir, path)
+		if _, ok := files[filepath.ToSlash(rel)]; !ok {
+			out = append(out, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	slices.Sort(out)
+	return out
 }
 
 func isGenerated(path string) (bool, error) {

@@ -39,7 +39,9 @@ func TestDump_IR(t *testing.T) {
 func TestDump_Tokens(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "V.alder")
-	os.WriteFile(f, []byte("module V\nv = <p>hi {x}</p>\n"), 0o644)
+	if err := os.WriteFile(f, []byte("module V\nv = <p>hi {x}</p>\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	code, out, errs := runDump("--tokens", f)
 	if code != 0 || errs != "" {
 		t.Fatalf("code %d err %s", code, errs)
@@ -53,7 +55,9 @@ func TestDump_Tokens(t *testing.T) {
 func TestDump_ParseErrorExits1(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "B.alder")
-	os.WriteFile(f, []byte("module B\nx = (1\n"), 0o644)
+	if err := os.WriteFile(f, []byte("module B\nx = (1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	code, out, errs := runDump(f)
 	if code != 1 || !strings.Contains(errs, "E0001") || !strings.Contains(out, "(module B") {
 		t.Fatalf("code %d out %s err %s", code, out, errs)
@@ -62,8 +66,12 @@ func TestDump_ParseErrorExits1(t *testing.T) {
 
 func TestDump_IRCheckErrorExits1(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "app"), 0o755)
-	os.WriteFile(filepath.Join(dir, "app", "X.alder"), []byte("module X\n\nx : Int\nx = \"s\"\n"), 0o644)
+	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "app", "X.alder"), []byte("module X\n\nx : Int\nx = \"s\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	code, out, errs := runDump("--ir", dir)
 	if code != 1 || out != "" || !strings.Contains(errs, "E0003") {
 		t.Fatalf("code %d out %s err %s", code, out, errs)

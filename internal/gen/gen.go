@@ -422,10 +422,7 @@ func (g *gen) value(w *strings.Builder, v *ir.Value) {
 func widenFunc(w *strings.Builder, pg *ir.Page, app *ir.RecordType, boxed boxedSet) {
 	var fs []string
 	for _, f := range app.Fields {
-		v := "s." + Field(f.Name)
-		if boxed.has(pg.Session.Module, pg.Session.Name, f.Name) {
-			v = "(*" + v + ")"
-		}
+		v := "s." + Field(f.Name) // a page's narrowed Session never reaches itself: no field is boxed
 		if f.Name == pg.Requires {
 			v = "rt.Just(" + v + ")"
 		}
