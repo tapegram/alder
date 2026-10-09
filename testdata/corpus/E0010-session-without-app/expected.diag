@@ -1,0 +1,1 @@
+app/Ui.alder:3:20 E0010 `Session` is the app's session, declared in `App.alder` (`session { … }`); this app has no `App` module

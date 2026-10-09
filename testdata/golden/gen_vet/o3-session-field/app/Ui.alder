@@ -1,0 +1,9 @@
+module Ui
+
+type Holder = { s: Session, label: Text }
+
+get : Holder -> Int
+get h = h.s.n
+
+who : Holder -> Text
+who h = h.s.user ?? "anon"

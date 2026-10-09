@@ -1,0 +1,6 @@
+module Ui
+
+type Holder = { s: Session }
+
+get : Holder -> Int
+get h = 1

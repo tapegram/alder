@@ -126,6 +126,10 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 					c.errorf("E0601", t.Span, "`Msg` is only defined in page modules; a shared component is typed `Html a`").Fix = diag.ReplaceSpan(t.Span, "a")
 					return types.Err
 				case "Session":
+					if c.prog.Modules["App"] == nil && c.prog.Std[mc.m.Name] == nil {
+						c.errorf(diag.MissingDecl, t.Span, "`Session` is the app's session, declared in `App.alder` (`session { … }`); this app has no `App` module")
+						return types.Err
+					}
 					return mc.session
 				}
 			}
@@ -523,7 +527,8 @@ func (mc *modCtx) defineApp() {
 	for _, d := range c.live(mc.m) {
 		switch d := d.(type) {
 		case *syntax.SessionDecl:
-			rec := &types.Record{Module: "App", Name: "Session"}
+			rec := c.session // the record types declared in pass 2 already point at
+			rec.Fields = nil
 			for _, f := range d.Fields {
 				ft := mc.typeOf(f.Type, nil)
 				if !formRepresentable(ft) {
