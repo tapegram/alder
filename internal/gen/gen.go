@@ -277,6 +277,12 @@ func (g *gen) module(m *ir.Module) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gen: module %s: %v\n%s", m.Name, err, src)
 	}
+	// Once more: go/printer lays a function literal out by its source lines, which the first pass
+	// changes (a struct parameter type grows to several lines), so only the second output is one
+	// gofmt leaves alone.
+	if out, err = format.Source(out); err != nil {
+		return nil, fmt.Errorf("gen: module %s: %v", m.Name, err)
+	}
 	return out, nil
 }
 

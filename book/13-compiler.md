@@ -846,7 +846,7 @@ So to find a page's view, search for it:
 
 ```
 $ grep -n "func Todos__Index__view" build/todos/*.go
-build/todos/Todos__Index.go:69:func Todos__Index__view(model Todos__Index__Model, session Todos__Index__Session) html.Node {
+build/todos/Todos__Index.go:73:func Todos__Index__view(model Todos__Index__Model, session Todos__Index__Session) html.Node {
 ```
 
 Its first lines show the `<Layout.Page>` component call and the `<form>`

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"os"
@@ -102,6 +103,11 @@ func vet(t *testing.T, files map[string][]byte) {
 	for name, b := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), b, 0o644); err != nil {
 			t.Fatal(err)
+		}
+		if strings.HasSuffix(name, ".go") {
+			if f, err := format.Source(b); err != nil || string(f) != string(b) {
+				t.Errorf("%s is not gofmt-formatted (%v)", name, err)
+			}
 		}
 	}
 	cmd := exec.Command("go", "vet", "-mod=mod", "./...")
