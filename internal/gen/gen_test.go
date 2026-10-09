@@ -185,10 +185,31 @@ func TestGen_GoMod(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "module app\n\ngo 1.27\n\nrequire alder v0.0.0\n\nreplace alder => /r/alder\n"
+	want := "module app\n\ngo 1.27\n\nrequire alder v0.0.0\n\nreplace alder => \"/r/alder\"\n"
 	if got := string(files["go.mod"]); got != want {
 		t.Fatalf("go.mod:\n%s\nwant:\n%s", got, want)
 	}
+}
+
+// The replace path is quoted (M2): a repository path with a space still builds.
+func TestGen_GoModPathWithSpace(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "my repo")
+	// the runtime is all the generated code needs of the repository
+	if err := os.CopyFS(filepath.Join(dir, "rt"), os.DirFS(filepath.Join(repoPath(t), "rt"))); err != nil {
+		t.Fatal(err)
+	}
+	gomod, err := os.ReadFile(filepath.Join(repoPath(t), "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), gomod, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files, err := Emit(lowerDir(t, "../../testdata/golden/gen_basic"), Options{RepoPath: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	vet(t, files)
 }
 
 func contains(t *testing.T, src []byte, wants ...string) {

@@ -90,8 +90,10 @@ func topLevelNames(src []byte) ([]string, error) {
 	return out, nil
 }
 
+// goMod is the generated module's go.mod. The repository path is quoted, so a path with spaces
+// or quotes still parses.
 func goMod(repo string) string {
-	return "module app\n\ngo 1.27\n\nrequire alder v0.0.0\n\nreplace alder => " + repo + "\n"
+	return "module app\n\ngo 1.27\n\nrequire alder v0.0.0\n\nreplace alder => " + strconv.Quote(repo) + "\n"
 }
 
 // gen holds what emission needs across modules.

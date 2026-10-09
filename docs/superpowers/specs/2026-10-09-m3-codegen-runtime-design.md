@@ -109,7 +109,7 @@ Generics: `rt` uses Go generics for containers and effect constructors; no
 monomorphization.
 
 The generated module: `build/<app>/go.mod` with `module app`, `require
-alder v0.0.0`, `replace alder => <absolute repo path>`; `go build` runs
+alder v0.0.0`, `replace alder => "<absolute repo path>"` (quoted); `go build` runs
 with `-mod=mod` so the `replace` resolves offline. `modernc.org/sqlite` is
 required by `rt/db` and therefore by the generated module; `go.sum` is
 written by the first build.
