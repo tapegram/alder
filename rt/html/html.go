@@ -129,8 +129,14 @@ func render(b *strings.Builder, n Node, st *FormState) {
 }
 
 // Form is a `<form submit={…}>` posting to action: with JavaScript Datastar posts it, without
-// it the browser does (method="post"). attrs are the element's other attributes.
+// it the browser does (method="post"). Datastar sends the form's fields url-encoded, as the
+// browser would ({contentType: 'form'}; its default is the page's signals as JSON). attrs are
+// the element's other attributes.
 func Form(action string, attrs []Attr, children ...Node) Node {
-	all := append([]Attr{A("method", "post"), A("action", action), A("data-on:submit", "@post('"+action+"')")}, attrs...)
+	all := append([]Attr{A("method", "post"), A("action", action), A("data-on:submit", SubmitPost(action))}, attrs...)
 	return El("form", all, children...)
 }
+
+// SubmitPost is the Datastar action of a form's data-on:submit: post the form's fields
+// url-encoded to action.
+func SubmitPost(action string) string { return "@post('" + action + "', {contentType: 'form'})" }

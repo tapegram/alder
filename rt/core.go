@@ -378,31 +378,142 @@ type HttpError struct {
 	Message string
 }
 
-// Page is a link target. M3c fills it in; M3a needs only the type.
+// Page is a link target: a page's path with its path parameters filled in (each segment
+// escaped), and its other parameters as Query, in declaration order. Url.external is a Page
+// with the URL as Path and no Query.
 type Page struct {
-	Path string
+	Path  string
+	Query []KV
 }
 
-// PageURL is the URL a link to p points at: `href={…}` renders it. In M3a it is p's path (with
-// path parameters already filled in by the generated code); M3c adds the query parameters.
-func PageURL(p Page) string { return p.Path }
+// PageURL is the URL a link to p points at: `href={…}` and `Redirect` render it. It is p's
+// Path, then the Query parameters that are not Omit as an URL-encoded query string
+// ("/?filter=Active").
+func PageURL(p Page) string { return p.Path + queryString(p.Query) }
 
-// KV is one message parameter: its name and its value as text.
-type KV struct{ Key, Value string }
+// KV is one URL parameter: its name and its value as text. Omit leaves it out of the URL: a
+// page parameter at its default (QueryKV), which the page decodes back when it is absent.
+type KV struct {
+	Key, Value string
+	Omit       bool
+}
+
+// QueryKV is the URL parameter key of a link, left out (Omit) when value is def, the text of
+// the parameter's default ("" for a Maybe without one: Nothing).
+func QueryKV(key, value, def string) KV { return KV{Key: key, Value: value, Omit: value == def} }
+
+// QueryKVs are the URL parameters of a List page parameter: key once per element, in order.
+func QueryKVs(key string, values []string) []KV {
+	out := make([]KV, len(values))
+	for i, v := range values {
+		out[i] = KV{Key: key, Value: v}
+	}
+	return out
+}
+
+// Queries joins groups of URL parameters, in order (a link whose page has List parameters).
+func Queries(groups ...[]KV) []KV { return slices.Concat(groups...) }
+
+// queryString is "?k=v&…" for the parameters of kvs that are not Omit, "" for none.
+func queryString(kvs []KV) string {
+	var b strings.Builder
+	for _, p := range kvs {
+		if p.Omit {
+			continue
+		}
+		if b.Len() == 0 {
+			b.WriteByte('?')
+		} else {
+			b.WriteByte('&')
+		}
+		b.WriteString(url.QueryEscape(p.Key) + "=" + url.QueryEscape(p.Value))
+	}
+	return b.String()
+}
+
+// PathSegment is a path parameter's text escaped as one segment of a URL path ("a/b" →
+// "a%2Fb").
+func PathSegment(s string) string { return url.PathEscape(s) }
 
 // MsgURL is the URL a message is posted to: /_m/<module>/<msg>, then the message's parameters
 // (in declaration order) as an URL-encoded query string. `click` and `submit` attributes post to
-// it; M3c routes it to the page's update.
+// it; the generated route for it decodes them.
 func MsgURL(module, msg string, params ...KV) string {
-	u := "/_m/" + module + "/" + msg
-	for i, p := range params {
-		sep := "&"
-		if i == 0 {
-			sep = "?"
+	return "/_m/" + module + "/" + msg + queryString(params)
+}
+
+// PageParams are the parameters of the page that sent a message, for the message's route to
+// decode: pattern is the page's path ("/todos/{id}"), referer the URL of the page that sent it
+// (the Referer header) and query the message URL's query. A path parameter is query's value of
+// that name when query has one, else the referer's segment when the referer's path matches
+// pattern; the query is the referer's (when its path matches) with every key of query replacing
+// it. A message URL carries the message's parameters only, so the page's own travel in the
+// referer; a parameter named like one of the message's is the message's.
+func PageParams(pattern, referer string, query url.Values) (map[string]string, url.Values) {
+	params := map[string]string{}
+	q := url.Values{}
+	if u, err := url.Parse(referer); err == nil && referer != "" {
+		if ps, ok := matchPath(pattern, u.EscapedPath()); ok {
+			params = ps
+			q = u.Query()
 		}
-		u += sep + url.QueryEscape(p.Key) + "=" + url.QueryEscape(p.Value)
 	}
-	return u
+	for k, vs := range query {
+		q[k] = vs
+	}
+	for _, s := range strings.Split(strings.Trim(pattern, "/"), "/") {
+		if strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}") {
+			name := s[1 : len(s)-1]
+			if vs := query[name]; len(vs) > 0 {
+				params[name] = vs[0]
+			}
+		}
+	}
+	return params, q
+}
+
+// matchPath matches an escaped URL path against a page pattern ("/todos/{id}"), as rt/web's
+// router does (one trailing slash ignored), and returns its unescaped parameters.
+func matchPath(pattern, path string) (map[string]string, bool) {
+	pat := strings.Split(strings.TrimSuffix(strings.TrimPrefix(pattern, "/"), "/"), "/")
+	segs := strings.Split(strings.TrimSuffix(strings.TrimPrefix(path, "/"), "/"), "/")
+	if len(pat) != len(segs) {
+		return nil, false
+	}
+	params := map[string]string{}
+	for i, p := range pat {
+		s, err := url.PathUnescape(segs[i])
+		if err != nil {
+			return nil, false
+		}
+		if strings.HasPrefix(p, "{") && strings.HasSuffix(p, "}") && len(p) > 2 {
+			if s == "" {
+				return nil, false
+			}
+			params[p[1:len(p)-1]] = s
+		} else if p != s {
+			return nil, false
+		}
+	}
+	return params, true
+}
+
+// BackURL is where a redirect back to the page that sent a request goes: the path and query of
+// referer (the Referer header), or "/" when there is none. Scheme and host are dropped, so it
+// never leads out of the app.
+func BackURL(referer string) string {
+	u, err := url.Parse(referer)
+	if err != nil || referer == "" {
+		return "/"
+	}
+	p := u.EscapedPath()
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.HasPrefix(p, "/\\") {
+		return "/"
+	}
+	if u.RawQuery != "" {
+		p += "?" + u.RawQuery
+	}
+	return p
 }
 
 // MaybeText is a Maybe's value as text, "" for Nothing. The generated code uses it for message

@@ -81,7 +81,7 @@ func TestHTML_Controls(t *testing.T) {
 
 func TestHTML_Form(t *testing.T) {
 	got := Render(Form("/_m/M/Save?id=1", []Attr{A("class", "f")}, El("button", nil, Text("Go"))))
-	want := `<form method="post" action="/_m/M/Save?id=1" data-on:submit="@post(&#39;/_m/M/Save?id=1&#39;)" class="f"><button>Go</button></form>`
+	want := `<form method="post" action="/_m/M/Save?id=1" data-on:submit="@post(&#39;/_m/M/Save?id=1&#39;, {contentType: &#39;form&#39;})" class="f"><button>Go</button></form>`
 	if got != want {
 		t.Fatalf("got %s", got)
 	}
