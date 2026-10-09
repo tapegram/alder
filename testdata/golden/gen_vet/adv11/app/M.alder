@@ -1,0 +1,19 @@
+module M
+
+-- A let-bound value is not generalized (each use fixes its type), so the original program, which
+-- used `id`, `e` and `n` at two types each, is an E0003; here every let is used at one type.
+poly : Text
+poly = {
+  let id = \x -> x
+  let idInt = \x -> x
+  let s = id "a"
+  let e = []
+  let eText = []
+  let n = Nothing
+  let nText = Nothing
+  let a = List.length (e ++ [1])
+  let b = List.length (eText ++ ["x"])
+  let c = (n ?? 1) + 1
+  let d = nText ?? "z"
+  "{s}{Text.fromInt (idInt 1)}{Text.fromInt (a + b + c)}{d}"
+}

@@ -1,0 +1,45 @@
+module B
+
+type Box a = { item: a, label: Text }
+
+type Tree a = { value: a, kids: List (Tree a) }
+
+type Pair a b = { first: a, second: b }
+
+type Holder = { ints: Box Int, texts: Box Text }
+
+unwrap : Box a -> Text
+unwrap b = b.label
+
+item : Box a -> a
+item b = b.item
+
+mk : a -> Box a
+mk x = { item: x, label: "made" }
+
+relabel : Box a -> Box a
+relabel b = { b | label: "re" }
+
+swap : Pair a b -> Pair b a
+swap p = { first: p.second, second: p.first }
+
+size : Tree a -> Int
+size t = 1 + List.foldl (\k acc -> acc + size k) 0 t.kids
+
+h : Holder
+h = { ints: { item: 1, label: "i" }, texts: mk "t" }
+
+n : Int
+n = item h.ints + size { value: "x", kids: [{ value: "y", kids: [] }] }
+
+s : Text
+s = unwrap { item: 1, label: "x" } ++ item h.texts ++ (swap { first: 1, second: "two" }).first
+
+same : Bool
+same = h.ints == mk 1
+
+byMatch : Box Int -> Int
+byMatch b = match b {
+  { item: 0, label: l } -> 0,
+  { item: i, label: _ } -> i,
+}

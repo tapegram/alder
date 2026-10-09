@@ -1,0 +1,17 @@
+module M
+
+type Shape = Circle Float | Rect { w: Float, h: Float }
+
+type Holder = { shape: Shape }
+
+area : Holder -> Float
+area p = match p.shape {
+  Rect { w: p, h: h } -> p * h,
+  Circle r -> r,
+}
+
+area2 : Holder -> Float
+area2 p = match p.shape {
+  Rect { h: h, w: p } -> p * h,
+  Circle p -> p,
+}

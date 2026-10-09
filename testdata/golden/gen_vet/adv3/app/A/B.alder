@@ -1,0 +1,7 @@
+module A.B
+
+x : Int
+x = 2
+
+y : Int
+y = 3

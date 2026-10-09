@@ -1,0 +1,9 @@
+module M
+
+type Index k = Index (Dict k Int) | NoIndex
+
+count : Index k -> Int
+count i = match i {
+  Index d -> Dict.size d,
+  NoIndex -> 0,
+}

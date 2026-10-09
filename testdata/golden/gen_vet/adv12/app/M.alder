@@ -1,0 +1,22 @@
+module M
+
+type Color = Red | Green
+
+-- the original left out these signatures (E0007)
+inc : List Int -> List Int
+inc xs = List.map (\x -> x + 1) xs
+
+ident : a -> a
+ident x = x
+
+rec : { a: Int, b: Text }
+rec = { a: 1, b: "x" }
+
+col : Color -> Color
+col c = match c {
+  Red -> Green,
+  Green -> Red,
+}
+
+use : Int
+use = List.length (inc [1])

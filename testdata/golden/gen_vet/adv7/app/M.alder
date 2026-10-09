@@ -1,0 +1,38 @@
+module M
+
+z : Int
+z = 1 / 1
+
+e : Bool
+e = [] == []
+
+n : Bool
+n = Nothing == Nothing
+
+u : Bool
+u = () == ()
+
+neg : Int -> Int
+neg x = 0 - x - -1
+
+fl : Float
+fl = 1.0 / 3.0
+
+modf : Float
+modf = 5.5 % 2.0
+
+mx : Int
+mx = 7 % -2
+
+-- constants Go would fold at compile time (C8)
+big : Int
+big = 9223372036854775807 + 1
+
+divz : Int -> Int
+divz n = n + 1 / 0
+
+modz : Int -> Int
+modz n = n % 0
+
+inf : Float
+inf = 1.0 / 0.0

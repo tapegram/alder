@@ -1,0 +1,58 @@
+module Home
+
+import Ui
+
+page "/home/{n}" { n: Int } requires user
+
+type Model = { items: List Int, names: List Text, flag: Bool }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { items: [1, 2], names: ["a"], flag: True }
+
+msg Pick { n: Int, who: Text }
+msg Go
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = Task.succeed Rerender
+
+cell : Int -> Html Msg
+cell n = <td click={Pick { n: n, who: "x" }}>{Text.fromInt n}</td>
+
+greet : Session -> Text
+greet s = "hi {s.user}"
+
+view : Model -> Session -> Html Msg
+view model session = {
+  let n = List.length model.items
+  let x = <b>{greet session}</b>
+  <div>
+    {x}
+    <Ui.Each items={model.items} render={cell}>
+      <li>{Text.fromInt n}</li>
+    </Ui.Each>
+    <Ui.Each items={model.names} render={\s -> <li>{s}</li>}><i>e</i></Ui.Each>
+    <Ui.Opt label="l" hint={Nothing}><i>o</i></Ui.Opt>
+    <Ui.Raw html="<b>x</b>" />
+    <Ui.Pair a={1} b={"two"} show={\a b -> "{Text.fromInt a}{b}"} />
+    {for n in model.items -> {
+      let m = n + 1
+      <p click={Pick { n: m, who: session.user }}>{Text.fromInt n}{for n in [m] -> <i>{Text.fromInt n}</i>}</p>
+    }}
+    {match model.names {
+      [] -> <p>none</p>,
+      [first, ..rest] -> <p>{first}{Text.fromInt (List.length rest)}</p>,
+    }}
+    {if model.flag then <a href={Home { n: n }}>self</a> else Html.none}
+    <a href={Login {}}>login</a>
+    <button click={if model.flag then Go else Pick { n: 1, who: "y" }}>x</button>
+  </div>
+}
+
+other : Session -> Text
+other session = Ui.who session
+
+-- was `type PickParams`, which E0012 now reserves for `msg Pick`'s parameters
+type PickArgs = { z: Int }
+
+pz : PickArgs -> Int
+pz p = p.z

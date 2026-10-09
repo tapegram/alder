@@ -1,0 +1,44 @@
+module Std
+
+type Rt = Html | Std | Tag
+
+type Maybe2 a = None2 | Some2 a
+
+none : Maybe2 a
+none = None2
+
+rt : Int -> Int
+rt html = html + 1
+
+std : Text -> Text
+std time = "{time}\{x} \"q\" \\ \n\t {Text.fromInt (rt 1)} é ✓"
+
+string : Int -> Int
+string int64 = {
+  let math = int64 * 2
+  let panic = math
+  let len = panic
+  let func = len
+  let _a1 = func
+  let _s1 = _a1
+  let _m1 = _s1
+  let x_2 = _m1
+  let x = x_2
+  match Some2 x {
+    Some2 v -> v + x + _m1,
+    None2 -> 0,
+  }
+}
+
+go : Rt -> Text
+go type_ = match type_ {
+  Html -> "h",
+  Std -> "s",
+  Tag -> "t",
+}
+
+isNone : Maybe2 Int -> Bool
+isNone m = m == none
+
+tagOrder : Rt -> Rt -> Bool
+tagOrder a b = a < b

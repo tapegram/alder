@@ -1,0 +1,8 @@
+module M
+
+type Shape = Rect { w: Float } | Dot
+
+type Shape_Rect = { a: Int }
+
+mk : Shape_Rect
+mk = { a: 1 }

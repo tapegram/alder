@@ -1,0 +1,16 @@
+module App
+
+session { user: Maybe Text, n: Int = 0 }
+
+login = Login
+
+msg Logout
+
+update : Msg -> Session -> Task Nav
+update msg session = Task.succeed Rerender
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>nf</p>

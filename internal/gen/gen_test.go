@@ -129,8 +129,8 @@ func TestGenGolden(t *testing.T) {
 	dirs, _ := filepath.Glob("../../testdata/golden/gen_*")
 	n := 0
 	for _, dir := range dirs {
-		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
-			continue
+		if st, err := os.Stat(filepath.Join(dir, "app")); err != nil || !st.IsDir() {
+			continue // not an app (gen_vet holds a corpus of apps: TestGenVetCorpus)
 		}
 		n++
 		t.Run(filepath.Base(dir), func(t *testing.T) {
@@ -1105,6 +1105,176 @@ func TestWiden(t *testing.T) {
 	if got := Home__name(s); got != "u1" {
 		t.Errorf("name = %q", got)
 	}
+}
+`)
+}
+
+// TestGenVetCorpus: every program in testdata/golden/gen_vet checks clean, so its emitted Go must
+// vet. The corpus starts with the final M3a review's adversarial programs (adjusted where the
+// language changed, see the comments in them) and grows with M3b and M3c.
+func TestGenVetCorpus(t *testing.T) {
+	dirs, _ := filepath.Glob("../../testdata/golden/gen_vet/*")
+	if len(dirs) < 16 {
+		t.Fatalf("only %d programs in the gen_vet corpus", len(dirs))
+	}
+	for _, dir := range dirs {
+		t.Run(filepath.Base(dir), func(t *testing.T) {
+			t.Parallel()
+			vet(t, emit(t, dir))
+		})
+	}
+}
+
+// TestGen_Run runs the code emitted for the ir_patterns golden and the match cases of the
+// gen_vet corpus's adv8 (one app): every match kind, nested patterns, captures, partial
+// application, defaults and HTML compute the right values, not just compile (I1).
+func TestGen_Run(t *testing.T) {
+	srcs := map[string]string{}
+	for _, f := range []string{"ir_patterns/app/P.alder", "gen_vet/adv8/app/M.alder"} {
+		b, err := os.ReadFile("../../testdata/golden/" + f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		srcs[filepath.Base(f)] = string(b)
+	}
+	runGo(t, emitSource(t, srcs), `package app
+
+import (
+	"slices"
+	"testing"
+
+	"alder/rt"
+	"alder/rt/html"
+)
+
+func just(n int64) rt.Maybe[int64] { return rt.Just(n) }
+
+var none = rt.Nothing[int64]()
+
+func rect(w, h int64) P__Shape { return P__Shape__Rect__(payload__P__Shape__Rect{W: w, H: h}) }
+
+func pair(a, b rt.Maybe[int64]) M__Pair { return M__Pair__P__(payload__M__Pair__P{A: a, B: b}) }
+
+func col(c M__Color, n int64) int64 {
+	return M__col(struct {
+		C M__Color
+		N int64
+	}{C: c, N: n})
+}
+
+func TestPatterns(t *testing.T) {
+	ints := func(name string, got, want int64) {
+		t.Helper()
+		if got != want {
+			t.Errorf("%s = %d, want %d", name, got, want)
+		}
+	}
+	texts := func(name, got, want string) {
+		t.Helper()
+		if got != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+	texts("describe Just 0", P__describe(just(0)), "zero")
+	texts("describe Just 5", P__describe(just(5)), "n = 5")
+	texts("describe Nothing", P__describe(none), "none")
+	ints("firstTwo []", P__firstTwo(nil), 0)
+	ints("firstTwo [7]", P__firstTwo([]int64{7}), 7)
+	ints("firstTwo [1 2 3 4]", P__firstTwo([]int64{1, 2, 3, 4}), 5)
+	texts("word 1", P__word(1), "one")
+	texts("word 2", P__word(2), "two")
+	texts("word 9", P__word(9), "many")
+	texts("greet empty", P__greet(""), "nobody")
+	texts("greet bo", P__greet("bo"), "hi bo")
+	ints("flag", P__flag(true)*10+P__flag(false), 10)
+	ints("clamp -1", P__clamp(-1), 0)
+	ints("clamp 3", P__clamp(3), 8)
+	ints("width Rect 0 5", P__width(rect(0, 5)), 5)
+	ints("width Rect 3 5", P__width(rect(3, 5)), 3)
+	ints("width Circle", P__width(P__Shape__Circle__(1.0)), 1)
+	ints("point", P__point(struct {
+		X int64
+		Y int64
+	}{X: 2, Y: 3}), 5)
+	ints("size Node", P__size(P__Tree__Node__(payload__P__Tree__Node[string]{Value: "a", Size: 4})), 4)
+	ints("size Leaf", P__size(P__Tree[string]{Tag: is__P__Tree__Leaf}), 0)
+	if cs := P__circles([]float64{1.5}); len(cs) != 1 || cs[0].Tag != is__P__Shape__Circle || cs[0].Circle.Value != 1.5 {
+		t.Errorf("circles = %+v", cs)
+	}
+	if got := P__addAll([]int64{1, 2}); !slices.Equal(got, []int64{0, 2, 3}) {
+		t.Errorf("addAll = %v", got)
+	}
+	texts("joiner", P__joiner([]string{"a", "b"}), "a, b")
+	if P__opts.Name != "x" || P__opts.Loud || !P__shout(P__opts).Loud {
+		t.Errorf("opts = %+v", P__opts)
+	}
+	ints("compute 0", P__compute(0), 1)
+	ints("compute 3", P__compute(3), 6)
+	if got := P__both([]string{"a"}, []string{"b"}); !slices.Equal(got, []string{"a", "b"}) {
+		t.Errorf("both = %v", got)
+	}
+	func() {
+		defer func() {
+			if r := recover(); r != "alder: hole ?todo" {
+				t.Errorf("later: recovered %v", r)
+			}
+		}()
+		P__later(1)
+	}()
+	if n := P__nodeOf("v"); n.Tag != is__P__Tree__Node || n.Node.Value != "v" || n.Node.Size != 1 {
+		t.Errorf("nodeOf = %+v", n)
+	}
+	texts("View", html.Render(P__View(struct{ Items []rt.Maybe[int64] }{Items: []rt.Maybe[int64]{just(0), just(5), none}})),
+		"<ul><li><b>zero</b></li><li>5</li><li></li></ul>")
+	ints("capture Rect 4 0", P__capture(9, rect(4, 0)), 4)
+	ints("capture Rect 4 1", P__capture(9, rect(4, 1)), 9)
+	ints("captureList [5]", P__captureList(1, []int64{5}), 5)
+	ints("captureList [5 6]", P__captureList(1, []int64{5, 6}), 1)
+	if P__boxed.Tag != is__P__Shape__Rect || P__boxed.Rect.W != 1 || P__boxed.Rect.H != 2 {
+		t.Errorf("boxed = %+v", P__boxed)
+	}
+	capRec := func(a rt.Maybe[int64], b int64) int64 {
+		return P__capRec(1, struct {
+			A rt.Maybe[int64]
+			B int64
+		}{A: a, B: b})
+	}
+	ints("capRec Just 7, 0", capRec(just(7), 0), 7)
+	ints("capRec Just 7, 1", capRec(just(7), 1), 1)
+	ints("capRec Nothing, 0", capRec(none, 0), 1)
+	ints("capList [Just 4, Nothing]", P__capList(1, []rt.Maybe[int64]{just(4), none}), 4)
+	ints("capList [Just 4]", P__capList(1, []rt.Maybe[int64]{just(4)}), 1)
+
+	// adv8
+	ints("both Just 1, Nothing", M__both(just(1), none), 1)
+	ints("both Nothing, Nothing", M__both(none, none), 7)
+	ints("both Nothing, Just 3", M__both(none, just(3)), 3)
+	ints("both Just 1, Just 3", M__both(just(1), just(3)), 4)
+	ints("lits a\"b", M__lits("a\"b", 0), 1)
+	ints("lits é{", M__lits("é{", 0), 2)
+	ints("lits z -1", M__lits("z", -1), 5)
+	ints("lits z 0", M__lits("z", 0), 6)
+	ints("lits z 9", M__lits("z", 9), 9)
+	ints("col Red 0", col(M__Color__Red__, 0), 0)
+	ints("col Red 4", col(M__Color__Red__, 4), 4)
+	ints("col Green 1", col(M__Color__Green__, 1), 1)
+	ints("col Blue 1", col(M__Color__Blue__, 1), 1)
+	ints("col Green 5", col(M__Color__Green__, 5), 7)
+	ints("col Blue 5", col(M__Color__Blue__, 5), 9)
+	ints("lst [1 2 3]", M__lst([]int64{1, 2, 3}), 3)
+	ints("lst [5]", M__lst([]int64{5}), 5)
+	ints("lst []", M__lst(nil), 0)
+	texts("res Ok 0", M__res(rt.Ok[string](int64(0))), "zero")
+	texts("res Ok 7", M__res(rt.Ok[string](int64(7))), "7")
+	texts("res Err empty", M__res(rt.Err[string, int64]("")), "empty")
+	texts("res Err e", M__res(rt.Err[string, int64]("bad")), "bad")
+	ints("bools", M__bools(true, true)*1000+M__bools(false, true)*100+M__bools(false, false)*10+M__bools(true, false), 1234)
+	ints("subj 4", M__subj(4), 5)
+	ints("pp Nothing, Just 2", M__pp(pair(none, just(2))), 2)
+	ints("pp Nothing, Nothing", M__pp(pair(none, none)), 0)
+	ints("pp Just 5, Nothing", M__pp(pair(just(5), none)), 5)
+	ints("pp Just 5, Just 6", M__pp(pair(just(5), just(6))), 3)
+	ints("swap Just 1, Just 5", M__swap(pair(just(1), just(5))), 4)
 }
 `)
 }

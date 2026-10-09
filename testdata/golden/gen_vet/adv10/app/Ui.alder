@@ -1,0 +1,16 @@
+module Ui
+
+Each : { items: List a, render: a -> Html m, children: List (Html m) } -> Html m
+Each props = <ul>{List.map props.render props.items}{props.children}</ul>
+
+Opt : { label: Text, hint: Maybe Text, children: List (Html a) } -> Html a
+Opt props = <span title={props.hint}>{props.label}{props.children}</span>
+
+Raw : { html: Text } -> Html a
+Raw props = Html.unsafe props.html
+
+Pair : { a: x, b: y, show: x -> y -> Text } -> Html m
+Pair props = <i>{props.show props.a props.b}</i>
+
+who : Session -> Text
+who s = s.user ?? "anon"

@@ -1,0 +1,43 @@
+module M
+
+
+type Event = Created { at: Time, tags: Dict Text Int } | Dated Date | Gone
+
+type Box = { d: Dict Text (List Int), when: Date, at: Time, ev: Maybe Event }
+
+sameBox : Box -> Box -> Bool
+sameBox a b = a == b && a.when < b.when && a.at <= b.at && a.ev != b.ev
+
+events : List (Maybe Event) -> Int
+events es = List.length (List.filterMap (\e -> e) es)
+
+firstTag : Event -> Maybe Int
+firstTag e = match e {
+  Created c -> Dict.get "x" c.tags,
+  Dated _ -> Nothing,
+  Gone -> Nothing,
+}
+
+
+uniq : List (List Int) -> List (List Int)
+uniq xs = List.unique xs
+
+member : List { a: Int } -> Bool
+member xs = List.member { a: 1 } xs
+
+emptyD : Dict Int Text
+emptyD = Dict.empty
+
+look : k -> Dict k v -> Maybe v
+look k d = Dict.get k d
+
+
+-- keys that are not Go-comparable (C2)
+byPath : Dict (List Int) Text
+byPath = Dict.fromList [{ key: [1, 2], value: "a" }]
+
+single : k -> Dict k Int
+single k = Dict.insert k 1 Dict.empty
+
+whenKeys : Dict Time Int -> Dict Time Int
+whenKeys d = d

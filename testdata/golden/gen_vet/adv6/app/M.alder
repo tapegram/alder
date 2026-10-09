@@ -1,0 +1,7 @@
+module M
+
+Btn : { label: Text, kind: Text = "a" } -> Html m
+Btn props = <b class={props.kind}>{props.label}</b>
+
+use : Html m
+use = <div><Btn label="x" /><Btn label="y" kind="z" /></div>

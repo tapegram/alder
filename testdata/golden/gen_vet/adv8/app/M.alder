@@ -1,0 +1,73 @@
+module M
+
+type Color = Red | Green | Blue
+
+type Pair = P { a: Maybe Int, b: Maybe Int }
+
+both : Maybe Int -> Maybe Int -> Int
+both a b = match { a: a, b: b } {
+  { a: a, b: Nothing } -> a ?? 7,
+  { a: Nothing, b: b } -> b ?? 8,
+  { a: b, b: a } -> (a ?? 1) + (b ?? 2),
+}
+
+lits : Text -> Int -> Int
+lits t i = match t {
+  "a\"b" -> 1,
+  "é\{" -> 2,
+  _ -> match i {
+    -1 -> 5,
+    0 -> 6,
+    x -> x,
+  },
+}
+
+col : { c: Color, n: Int } -> Int
+col r = match r {
+  { c: Red, n: 0 } -> 0,
+  { c: Red, n: n } -> n,
+  { c: c, n: 1 } -> 1,
+  { c: Green, n: n } -> n + 2,
+  _ -> 9,
+}
+
+lst : List Int -> Int
+lst xs = match xs {
+  [x, y, ..rest] -> x + y,
+  [x] -> x,
+  [x, ..rest] -> 100,
+  [] -> 0,
+}
+
+res : Result Text Int -> Text
+res r = match r {
+  Ok 0 -> "zero",
+  Ok n -> Text.fromInt n,
+  Err "" -> "empty",
+  Err e -> e,
+}
+
+bools : Bool -> Bool -> Int
+bools a b = match { x: a, y: b } {
+  { x: True, y: True } -> 1,
+  { x: False, y: y } -> if y then 2 else 3,
+  { x: True, y: False } -> 4,
+}
+
+subj : Int -> Int
+subj n = match Just (n + 1) {
+  Just n -> n,
+  Nothing -> n,
+}
+
+pp : Pair -> Int
+pp p = match p {
+  P { a: Nothing, b: b } -> b ?? 0,
+  P { a: a, b: Nothing } -> a ?? 1,
+  P q -> 3,
+}
+
+swap : Pair -> Int
+swap p = match p {
+  P { a: b, b: a } -> (a ?? 0) - (b ?? 0),
+}

@@ -1,0 +1,59 @@
+module M
+
+type Shape = Circle Float | Rect { w: Float, h: Float }
+
+f : Int -> Int
+f x = {
+  let y = x + 1
+  let x = y * 2
+  match Just x {
+    Just x -> (\x -> x + y) x,
+    Nothing -> x,
+  }
+}
+
+g : Maybe Int -> Int
+g m = match m {
+  Just m -> m,
+  Nothing -> 0,
+}
+
+h : List Int -> Int
+h xs = match xs {
+  [] -> 0,
+  [x] -> x,
+  [x, ..xs] -> x + h xs,
+}
+
+notv : List Bool -> List Bool
+notv bs = List.map not bs
+
+notp : Bool -> Bool
+notp = not
+
+add3 : Int -> Int -> Int -> Int
+add3 a b c = a + b + c
+
+partials : Int
+partials = {
+  let p1 = add3 1
+  let p2 = p1 2
+  p2 3 + (add3 1 2) 3 + List.foldl (add3 1) 0 [1, 2]
+}
+
+lam : Int -> Int
+lam x = { let k : Int -> Int -> Int = \x y -> x + y
+  let k2 = k x
+  k2 1 }
+
+sh : Shape -> Float
+sh s = match s {
+  Rect r -> r.w,
+  Circle s -> s,
+}
+
+nested : Maybe (Maybe Int) -> Int
+nested m = match m {
+  Just inner -> inner ?? 1,
+  Nothing -> 2,
+}

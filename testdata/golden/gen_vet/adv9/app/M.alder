@@ -1,0 +1,53 @@
+module M
+
+
+identity : a -> a
+identity x = x
+
+ids : List Int -> List Int
+ids xs = List.map identity xs
+
+ids2 : List a -> List a
+ids2 xs = List.map identity xs
+
+reps : List Text -> List Text
+reps xs = List.map (Text.replace "a" "b") xs
+
+takes : List (List Int) -> List (List Int)
+takes xss = List.map (List.take 2) xss
+
+mem : List Int -> Bool
+mem xs = List.any (\x -> List.member x [1, 2]) xs
+
+wd : List (Maybe Int) -> List Int
+wd ms = List.map (Maybe.withDefault 0) ms
+
+flt : List Float -> Float
+flt xs = List.foldl (\x acc -> x + acc) 0.0 xs
+
+compose : (b -> c) -> (a -> b) -> a -> c
+compose f g x = f (g x)
+
+c2 : Int -> Text
+c2 = compose Text.fromInt (\n -> n + 1)
+
+c3 : List Int -> List Text
+c3 xs = List.map (compose Text.fromInt identity) xs
+
+pick : Bool -> (Int -> Int)
+pick b = if b then identity else (\x -> x * 2)
+
+usePick : Int
+usePick = pick True 3
+
+kv : Dict Text Int -> List Text
+kv d = List.map (\e -> "{e.key}={Text.fromInt e.value}") (Dict.toList d)
+
+rng : List { index: Int, item: Text }
+rng = List.indexed ["a"]
+
+clamp : Int -> Int
+clamp n = Int.clamp { min: 0, max: 10 } n
+
+fmt : Float -> Text
+fmt f = Float.format { decimals: 2 } f

@@ -1,0 +1,13 @@
+module M
+
+empty : List a
+empty = []
+
+nada : a -> Maybe b
+nada x = Nothing
+
+n : Int
+n = List.length empty
+
+m : Bool
+m = Maybe.isJust (nada 1)

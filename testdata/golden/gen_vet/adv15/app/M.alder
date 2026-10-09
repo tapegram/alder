@@ -1,0 +1,4 @@
+module M
+
+hello : Text -> Html m
+hello name = <p class="greet {name}">Hello {name}! You have <b>3</b> items.</p>
