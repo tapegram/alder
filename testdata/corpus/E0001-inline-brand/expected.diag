@@ -1,0 +1,1 @@
+app/Index.alder:5:20 E0001 in a type: `brand` is only allowed as the whole body of a `type` declaration (`type TodoId = brand Text`)

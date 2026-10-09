@@ -5,6 +5,6 @@ app/Todo.alder:19:3 E0011 `@id` field must be a `brand Text`, got `Int`
 app/Todos/Index.alder:5:29 E0011 page parameter `todos` has type `List Todo`, which cannot appear in a URL
 app/Todos/Index.alder:5:48 E0011 `requires missing`: the session has no field `missing`
 app/Todos/Index.alder:14:3 E0011 form field `items` has type `List Int`, which cannot come from a form
+app/Todos/Index.alder:23:1 E0010 page module `Todos.Index` declares messages but has no `update`
 app/Todos/Index.alder:23:1 E0007 `noSig` has no type signature; write `noSig : Int` on the line before it
   fix 23:1-23:1 noSig : Int⏎
-app/Todos/Index.alder:23:1 E0010 page module `Todos.Index` declares messages but has no `update`

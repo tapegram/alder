@@ -57,7 +57,7 @@ func TestParse_UnclosedElement(t *testing.T) {
 		}
 		msgs = append(msgs, d.Message)
 	}
-	want := []string{"closing tag </div> does not match <p>", "unclosed element <div>"}
+	want := []string{"in <p>: closing tag </div> does not match <p>", "in <div>: unclosed element <div>"}
 	if strings.Join(msgs, "|") != strings.Join(want, "|") {
 		t.Fatalf("got %q want %q", msgs, want)
 	}

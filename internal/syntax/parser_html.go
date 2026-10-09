@@ -34,6 +34,7 @@ func (p *Parser) parseElement() *Element {
 	} else {
 		p.errorAt(p.tok, "expected tag name, got "+describe(p.tok))
 	}
+	defer p.in("<" + qual(el.Module, el.Tag) + ">")()
 	// attributes
 	for p.at(LIdent) || p.at(Keyword) {
 		at := p.advance()

@@ -30,7 +30,9 @@ func (mc *modCtx) checkHTML(e syntax.Expr, expected types.Type, env *env, eff ef
 			mc.htmlNode(e, m, env, eff)
 			return
 		}
-		c.errorf(diag.TypeMismatch, e.GetSpan(), "expected %s, got Html", types.String(ex))
+		if !types.IsErr(ex) {
+			c.errorf(diag.TypeMismatch, e.GetSpan(), "expected %s, got Html", types.String(ex))
+		}
 		mc.htmlNode(e, c.u.Fresh(), env, eff)
 		return
 	}
@@ -257,6 +259,10 @@ func (mc *modCtx) component(x *syntax.Element, m types.Type, env *env, eff effec
 		return
 	}
 	fn, isFn := c.u.Instantiate(sig).(*types.Fun)
+	if types.IsErr(sig) || (isFn && types.IsErr(c.u.Apply(fn.Params[0]))) {
+		mc.walkUnchecked(x, m, env, eff) // its signature names an unresolved type, already reported
+		return
+	}
 	if !isFn || len(fn.Params) != 1 {
 		c.errorf(diag.TypeMismatch, x.Span, "component `%s` must take exactly one record argument", x.Tag)
 		return

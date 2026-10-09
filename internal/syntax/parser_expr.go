@@ -685,7 +685,7 @@ func (p *Parser) parseString(t Token) Expr {
 			}
 			flush()
 			inner := raw[i+1 : j-1]
-			sub := &Parser{lx: NewLexer(p.file, []byte(inner)), file: p.file, sigMode: p.sigMode}
+			sub := &Parser{lx: NewLexer(p.file, []byte(inner)), file: p.file, sigMode: p.sigMode, ctx: append([]string(nil), p.ctx...)}
 			// position the sub-lexer at the interpolation inside the string literal
 			sub.lx.line, sub.lx.col = t.Line, t.Col+1+i+1
 			sub.advance()

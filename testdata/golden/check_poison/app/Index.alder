@@ -1,0 +1,19 @@
+module Index
+
+page "/" { }
+
+type Model = { todos: List Todo, titles: List Text }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todos <- Db.from Todo |> Db.orderBy Todo.title.asc |> Db.all
+  Query.succeed { todos: todos, titles: List.map (\t -> t.title) todos }
+}
+
+form Filter = {
+  priority: Todo.Priority,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <ul>{for t in model.todos -> <li>{t.title}</li>}</ul>

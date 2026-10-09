@@ -45,6 +45,10 @@ func (mc *modCtx) checkBodies() {
 	for _, d := range c.live(mc.m) {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
+			if d.Sig == nil && d.Body != nil {
+				mc.inferSig(d)
+				continue
+			}
 			sig, ok := c.values[c.key(mc.m.Name, d.Name)]
 			if !ok || d.Body == nil {
 				continue
@@ -91,6 +95,36 @@ func (mc *modCtx) checkBodies() {
 	mc.checkPage() // Task 11; no-op for non-page modules
 }
 
+// inferSig checks the body of a value that has no signature and reports E0007 with the inferred
+// signature as the fix, or `?type` when the type is not fully known (an unsolved variable or an error).
+func (mc *modCtx) inferSig(d *syntax.ValueDecl) {
+	c := mc.c
+	mc.holes = nil
+	env := newEnv()
+	var params []types.Type
+	for _, p := range d.Params {
+		v := c.u.Fresh()
+		env.bind(p.Name, v)
+		params = append(params, v)
+	}
+	var sig types.Type = mc.infer(d.Body, env, effect{})
+	if len(params) > 0 {
+		sig = &types.Fun{Params: params, Result: sig}
+	}
+	mc.reportHoles()
+	s := types.StringIn(c.u.Apply(sig), mc.m.Name)
+	if strings.ContainsAny(s, "_?") {
+		s = "?type"
+	}
+	mc.missingSig(d, s)
+}
+
+// missingSig reports E0007 for d with a fix that inserts `name : sig` on the line before it.
+func (mc *modCtx) missingSig(d *syntax.ValueDecl, sig string) {
+	mc.c.errorf(diag.MissingSig, d.Span, "`%s` has no type signature; write `%s : %s` on the line before it", d.Name, d.Name, sig).Fix =
+		diag.InsertAt(d.Span.Start.Line, 1, d.Name+" : "+sig+"\n")
+}
+
 func (mc *modCtx) reportHoles() {
 	for _, h := range mc.holes {
 		mc.c.bag.Warn("W0002", h.span, "hole ?%s has type %s", h.name, types.String(mc.c.u.Apply(h.t)))
@@ -103,9 +137,14 @@ func (mc *modCtx) maybeOf(inner types.Type) types.Type {
 	return mc.c.types["Prelude.Maybe"].(*types.Union).WithArgs([]types.Type{inner})
 }
 
+// mismatch reports E0003. When either side involves the poison type the real error is already
+// reported, so it reports nothing and returns a detached diagnostic the caller may still annotate.
 func (mc *modCtx) mismatch(span diag.Span, got, expected types.Type) *diag.Diagnostic {
 	c := mc.c
 	g, e := c.u.Apply(got), c.u.Apply(expected)
+	if poisoned(g) || poisoned(e) {
+		return &diag.Diagnostic{}
+	}
 	msg := fmt.Sprintf("expected %s, got %s", types.String(e), types.String(g))
 	if inner, ok := maybeOf(g); ok && c.u.Check(inner, e) == nil {
 		msg += "; match it: match m { Just x -> …, Nothing -> … }"
@@ -261,7 +300,7 @@ func (mc *modCtx) checkMatch(x *syntax.Match, expected types.Type, env *env, eff
 	ex := newExhaustiveness(mc, subj)
 	for _, a := range x.Arms {
 		child := env.child()
-		if ex.closed {
+		if ex.closed && ex.kind != "error" {
 			mc.c.errorf(diag.UnreachableArm, a.Span, "unreachable arm: every case is already handled")
 		}
 		mc.checkPattern(a.Pat, subj, child)
@@ -382,6 +421,12 @@ func (mc *modCtx) infer(e syntax.Expr, env *env, eff effect) types.Type {
 	case *syntax.RecordUpdate:
 		base := c.u.Apply(mc.infer(x.Base, env, eff))
 		rec, ok := base.(*types.Record)
+		if !ok && types.IsErr(base) {
+			for _, fi := range x.Fields {
+				mc.infer(fi.Value, env, eff)
+			}
+			return base
+		}
 		if !ok {
 			c.errorf(diag.TypeMismatch, x.Span, "record update on a non-record `%s`", types.String(base))
 			for _, fi := range x.Fields {
@@ -474,7 +519,7 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			c.errorf(diag.UnknownName, x.Span, "capability `%s` has no `%s`", x.Module, x.Name)
 		}
 	}
-	return c.u.Fresh()
+	return types.Err // unresolved, or a value whose signature is missing: already reported
 }
 
 // isMsgUnion reports whether u is App.Msg or a page's Msg.
@@ -519,7 +564,7 @@ func (mc *modCtx) inferCtor(x *syntax.CtorRef, applied bool) types.Type {
 				}
 				return &types.Fun{Params: []types.Type{b.Base}, Result: b}
 			}
-			return c.u.Fresh()
+			return types.Err
 		}
 		un := info.Union.WithArgs(paramsOf(info.Union.Params))
 		if len(info.Union.Params) == 0 {
@@ -549,7 +594,7 @@ func (mc *modCtx) inferCtor(x *syntax.CtorRef, applied bool) types.Type {
 		}
 		return c.u.Instantiate(&types.Fun{Params: []types.Type{arg}, Result: un})
 	}
-	return c.u.Fresh()
+	return types.Err // unresolved: already reported
 }
 
 func paramsOf(names []string) []types.Type {
@@ -573,6 +618,9 @@ func messageLike(rec *types.Record) bool {
 func (mc *modCtx) inferAccess(x *syntax.Access, env *env, eff effect) types.Type {
 	c := mc.c
 	base := c.u.Apply(mc.infer(x.Expr, env, eff))
+	if types.IsErr(base) {
+		return types.Err
+	}
 	switch b := base.(type) {
 	case *types.Record:
 		for _, f := range b.Fields {
@@ -708,6 +756,12 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 func (mc *modCtx) applyFn(fnExpr syntax.Expr, fnT types.Type, args []syntax.Expr, pipe *pipeArg, want types.Type, span diag.Span, env *env, eff effect) types.Type {
 	c := mc.c
 	fn, ok := fnT.(*types.Fun)
+	if !ok && types.IsErr(fnT) {
+		for _, a := range args {
+			mc.infer(a, env, eff)
+		}
+		return types.Err
+	}
 	if !ok {
 		if v, isVar := fnT.(*types.Var); isVar {
 			// unknown function type: build one from the args
@@ -783,6 +837,9 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 			return mc.inferApp(app, env, eff, p, nil)
 		}
 		fnT := c.u.Apply(mc.infer(x.R, env, eff))
+		if types.IsErr(fnT) {
+			return types.Err
+		}
 		if _, ok := fnT.(*types.Fun); !ok {
 			c.errorf(diag.TypeMismatch, x.R.GetSpan(), "right side of `|>` must be a function, got `%s`", types.String(fnT))
 			return c.u.Fresh()
@@ -840,6 +897,42 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 	return c.u.Fresh()
 }
 
+// poisoned reports whether t is or contains the poison type.
+func poisoned(t types.Type) bool {
+	switch t := t.(type) {
+	case *types.Con:
+		return types.IsErr(t)
+	case *types.App:
+		for _, a := range t.Args {
+			if poisoned(a) {
+				return true
+			}
+		}
+	case *types.Union:
+		for _, a := range t.Args {
+			if poisoned(a) {
+				return true
+			}
+		}
+	case *types.Fun:
+		for _, p := range t.Params {
+			if poisoned(p) {
+				return true
+			}
+		}
+		return poisoned(t.Result)
+	case *types.Record:
+		if t.Anonymous {
+			for _, f := range t.Fields {
+				if poisoned(f.Type) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func containsFun(t types.Type) bool {
 	switch t := t.(type) {
 	case *types.Fun:
@@ -882,6 +975,9 @@ func numericBase(t types.Type) (types.Type, bool) {
 
 func (mc *modCtx) arith(x *syntax.BinOp, l, r types.Type) types.Type {
 	c := mc.c
+	if types.IsErr(l) || types.IsErr(r) {
+		return types.Err
+	}
 	if v, ok := l.(*types.Var); ok {
 		c.u.Unify(v, r)
 		l = c.u.Apply(l)

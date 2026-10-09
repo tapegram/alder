@@ -44,5 +44,11 @@ or new app, T4 notes + theme).
 | `E0602-alias-unit` | `type Model = Unit`, an alias in disguise: E2 claude-haiku T4 (refonly) |
 | `E0602-alias-keyword` | `type alias Point = { … }` (Elm): spec rule (chapter 4, "No type aliases"); no scored run wrote it; written from the book |
 | `E0301-positional-arg` | `Toggle todo.id`, a message applied positionally instead of to a record: observed in M1's final review; shape from E1 qwen3-coder T1 (`Toggle todo.id` style) |
+| `E0001-form-attr` | `title: Text.NonEmpty @unique` in a `form`: E5 qwen3-coder T3 rounds 0 and 1 (Problem 4, `experiments/e5-loop/repros/problem-4/`); the reasonless parse error led qwen to change the type instead |
+| `E0001-inline-brand` | `id: brand Text` inside a record or table: E5 qwen3-coder T3 rounds 0 and 1 (Problem 4, `experiments/e5-loop/repros/problem-4/`) |
+| `E0201-dedupe` | One missing import reported once per use: E5 qwen3-coder T3 (Problem 3, `experiments/e5-loop/repros/problem-3/`: two E0201 for `Theme` in one file) |
+| `E0007-inferred` | Spec rule (chapter 3) with the fix the M1 final review asked for: the inferred signature instead of `?type` (M3 spec, "Compiler items (from E5)"); `E0007-no-signature` now gets the inferred fix too |
+
+The golden `testdata/golden/check_poison` covers the rest of E5 Problem 3: an unresolved type cascading into E0011 (``has type `_` ``) and further errors; it must produce the one E0201 only.
 
 Cases marked "written from the book" or "nearest observed" have no one-to-one scored error; they cover a diagnostic the spec requires and the experiments only approached.

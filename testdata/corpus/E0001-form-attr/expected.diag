@@ -1,0 +1,1 @@
+app/Index.alder:11:24 E0001 in a form field: attributes such as `@unique` are only allowed on table fields

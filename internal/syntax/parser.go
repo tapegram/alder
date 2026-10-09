@@ -18,6 +18,8 @@ type Parser struct {
 	noBrace bool
 	// prevEnd is the end of the last consumed non-newline token; spans end there, not at the next token.
 	prevEnd diag.Pos
+	// ctx names what is being parsed, innermost last; errorAt prefixes messages with it.
+	ctx []string
 }
 
 func newParser(file string, src []byte, sigMode bool) *Parser {
@@ -83,14 +85,24 @@ func (p *Parser) spanFrom(start Token) diag.Span {
 func (p *Parser) spanTok(t Token) diag.Span {
 	return diag.Span{File: p.file, Start: p.posOf(t), End: diag.Pos{Line: t.Line, Col: t.Col + max(1, len(t.Text))}}
 }
+
+// in pushes a parse context ("a form field", "the definition of `x`") and returns its pop.
+func (p *Parser) in(what string) func() {
+	p.ctx = append(p.ctx, what)
+	return func() { p.ctx = p.ctx[:len(p.ctx)-1] }
+}
+
 func (p *Parser) errorAt(t Token, msg string) {
+	if n := len(p.ctx); n > 0 {
+		msg = "in " + p.ctx[n-1] + ": " + msg
+	}
 	p.diags = append(p.diags, diag.Diagnostic{Code: diag.ParseError, Severity: "error", Span: p.spanTok(t), Message: msg})
 }
 
-// errorCodeAt reports an error with a specific diagnostic code.
+// errorCodeAt reports an error with a specific diagnostic code. Its message already names the
+// construct (`case ... of`, a tuple), so it carries no parse context.
 func (p *Parser) errorCodeAt(t Token, code, msg string) {
-	p.errorAt(t, msg)
-	p.diags[len(p.diags)-1].Code = code
+	p.diags = append(p.diags, diag.Diagnostic{Code: code, Severity: "error", Span: p.spanTok(t), Message: msg})
 }
 
 // mark and restore save and rewind the parser (token and lexer) for speculative lookahead.
@@ -209,7 +221,9 @@ func (p *Parser) parseDecl() Decl {
 	case p.atKeyword("page"):
 		p.advance()
 		d := &PageDecl{Path: p.parseStringText()}
+		pop := p.in("page parameters")
 		d.Params = p.parseRecordType()
+		pop()
 		if p.atKeyword("requires") {
 			rt := p.advance()
 			d.Requires = p.expect(LIdent, "session field").Text
@@ -221,7 +235,9 @@ func (p *Parser) parseDecl() Decl {
 		p.advance()
 		d := &MsgDecl{Name: p.expect(UIdent, "message name").Text}
 		if p.at(LBrace) {
+			pop := p.in("message parameters")
 			d.Params = p.parseRecordType()
+			pop()
 		}
 		if p.at(LIdent) && p.tok.Text == "form" {
 			p.advance()
@@ -234,28 +250,36 @@ func (p *Parser) parseDecl() Decl {
 		d := &FormDecl{Name: p.expect(UIdent, "form name").Text}
 		p.expect(Equal, "`=`")
 		p.expect(LBrace, "`{`")
+		pop := p.in("a form field")
 		d.Fields = p.parseFieldList(RBrace, false)
+		pop()
 		d.Span = p.spanFrom(start)
 		return d
 	case p.atKeyword("table"):
 		p.advance()
 		d := &TableDecl{Name: p.expect(UIdent, "table name").Text}
 		p.expect(LBrace, "`{`")
+		pop := p.in("a table field")
 		d.Fields = p.parseFieldList(RBrace, true)
+		pop()
 		d.Span = p.spanFrom(start)
 		return d
 	case p.atKeyword("capability"):
 		p.advance()
 		d := &CapDecl{Name: p.expect(UIdent, "capability name").Text}
 		p.expect(LBrace, "`{`")
+		pop := p.in("a capability entry")
 		d.Entries = p.parseFieldList(RBrace, false)
+		pop()
 		d.Span = p.spanFrom(start)
 		return d
 	case p.atKeyword("session"):
 		p.advance()
 		d := &SessionDecl{}
 		p.expect(LBrace, "`{`")
+		pop := p.in("the session")
 		d.Fields = p.parseFieldList(RBrace, false)
+		pop()
 		d.Span = p.spanFrom(start)
 		return d
 	case p.atKeyword("login"):
@@ -289,6 +313,7 @@ func (p *Parser) parseValueDecl() Decl {
 	start := p.tok
 	nameTok := p.advance()
 	d := &ValueDecl{Name: nameTok.Text}
+	defer p.in("the definition of `" + nameTok.Text + "`")()
 	if p.at(Colon) {
 		p.advance()
 		d.Sig = p.parseType()
@@ -359,7 +384,9 @@ func (p *Parser) parseTypeDecl() Decl {
 		b.Span = p.spanFrom(bt)
 		d.Brand = b
 	case p.at(LBrace):
+		pop := p.in("a record type")
 		d.Record = p.parseRecordType()
+		pop()
 	default:
 		if p.at(Pipe) {
 			p.advance()
@@ -421,6 +448,18 @@ func (p *Parser) parseFieldList(closing Kind, attrs bool) []*Field {
 			p.advance()
 			f.Default = p.parseExpr()
 		}
+		for !attrs && p.at(At) {
+			// `title: Text @unique` in a form: report the rule, skip `@name [Table]`, and go on
+			atTok := p.advance()
+			name := "name"
+			if p.at(LIdent) {
+				name = p.advance().Text
+			}
+			if p.at(UIdent) {
+				p.advance()
+			}
+			p.errorAt(atTok, "attributes such as `@"+name+"` are only allowed on table fields")
+		}
 		for attrs && p.at(At) {
 			at := p.advance()
 			a := &Attr{Name: p.expect(LIdent, "attribute name").Text}
@@ -458,6 +497,7 @@ func (p *Parser) parseStringText() string {
 
 // parseType: atype {atype} ["->" type]
 func (p *Parser) parseType() Type {
+	defer p.in("a type")()
 	start := p.tok
 	first := p.parseAType()
 	var args []Type
@@ -508,6 +548,11 @@ func (p *Parser) parseAType() Type {
 		return tv
 	case p.at(LBrace):
 		return p.parseRecordType()
+	case p.atKeyword("brand"):
+		// `id: brand Text` inline: report it, then read the base type so parsing continues
+		p.errorAt(p.tok, "`brand` is only allowed as the whole body of a `type` declaration (`type TodoId = brand Text`)")
+		p.advance()
+		return p.parseAType()
 	case p.at(LParen):
 		p.advance()
 		if p.at(RParen) {

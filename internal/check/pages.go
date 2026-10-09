@@ -27,7 +27,7 @@ func (mc *modCtx) modelType() types.Type {
 	if t, ok := mc.c.types[mc.c.key(mc.m.Name, "Model")]; ok {
 		return t
 	}
-	return mc.c.u.Fresh()
+	return types.Err // a page without `Model` is reported as E0010
 }
 
 func (c *Checker) navType() types.Type {

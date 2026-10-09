@@ -1,0 +1,2 @@
+app/Index.alder:15:1 E0007 `rank` has no type signature; write `rank : Priority -> Int` on the line before it
+  fix 15:1-15:1 rank : Priority -> Int⏎

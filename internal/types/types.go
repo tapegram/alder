@@ -70,11 +70,32 @@ var (
 	Page  = &Con{"Page"}
 )
 
-func String(t Type) string { return str(t, false) }
+// Err is the poison type: the type of a reference that could not be resolved. An error has
+// already been reported for it, so it unifies with everything and never reaches a message.
+var Err = &Con{Name: "<error>"}
 
-func str(t Type, paren bool) string {
+// IsErr reports whether t is the poison type.
+func IsErr(t Type) bool { c, ok := t.(*Con); return ok && c == Err }
+
+func String(t Type) string { return str(t, false, "") }
+
+// StringIn prints t as written inside module mod: mod's own types are not qualified.
+func StringIn(t Type, mod string) string { return str(t, false, mod) }
+
+// qualify writes name with its module, unless the module is home (the module the text is for).
+func qualify(module, name, home string) string {
+	if module == "" || module == home {
+		return name
+	}
+	return module + "." + name
+}
+
+func str(t Type, paren bool, home string) string {
 	switch t := t.(type) {
 	case *Con:
+		if t == Err {
+			return "_"
+		}
 		return t.Name
 	case *Var:
 		if t.Name != "" {
@@ -84,29 +105,29 @@ func str(t Type, paren bool) string {
 	case *Param:
 		return t.Name
 	case *Brand:
-		return t.Module + "." + t.Name
+		return qualify(t.Module, t.Name, home)
 	case *Record:
 		if !t.Anonymous && t.Name != "" {
-			if t.Module != "" && t.Module != t.Name {
-				return t.Module + "." + t.Name
+			if t.Module == t.Name {
+				return t.Name
 			}
-			return t.Name
+			return qualify(t.Module, t.Name, home)
 		}
 		var parts []string
 		for _, f := range t.Fields {
-			parts = append(parts, f.Name+": "+str(f.Type, false))
+			parts = append(parts, f.Name+": "+str(f.Type, false, home))
 		}
 		return "{ " + strings.Join(parts, ", ") + " }"
 	case *Union:
 		s := t.Name
-		if t.Module != "" && t.Module != "Prelude" && t.Module != t.Name {
-			s = t.Module + "." + t.Name
+		if t.Module != "Prelude" && t.Module != t.Name {
+			s = qualify(t.Module, t.Name, home)
 		}
 		if len(t.Args) == 0 {
 			return s
 		}
 		for _, a := range t.Args {
-			s += " " + str(a, true)
+			s += " " + str(a, true, home)
 		}
 		if paren {
 			return "(" + s + ")"
@@ -115,7 +136,7 @@ func str(t Type, paren bool) string {
 	case *App:
 		s := t.Con
 		for _, a := range t.Args {
-			s += " " + str(a, true)
+			s += " " + str(a, true, home)
 		}
 		if paren && len(t.Args) > 0 {
 			return "(" + s + ")"
@@ -125,9 +146,9 @@ func str(t Type, paren bool) string {
 		var parts []string
 		for _, p := range t.Params {
 			_, isFun := p.(*Fun)
-			parts = append(parts, str(p, isFun))
+			parts = append(parts, str(p, isFun, home))
 		}
-		s := strings.Join(parts, " -> ") + " -> " + str(t.Result, false)
+		s := strings.Join(parts, " -> ") + " -> " + str(t.Result, false, home)
 		if paren {
 			return "(" + s + ")"
 		}

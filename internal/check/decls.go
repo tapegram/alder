@@ -124,18 +124,18 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 						return c.appMsg
 					}
 					c.errorf("E0601", t.Span, "`Msg` is only defined in page modules; a shared component is typed `Html a`").Fix = diag.ReplaceSpan(t.Span, "a")
-					return c.u.Fresh()
+					return types.Err
 				case "Session":
 					return mc.session
 				}
 			}
 			decl, ok := c.types[c.key(t.Ref.Module, t.Name)]
 			if !ok {
-				return c.u.Fresh()
+				return types.Err
 			}
 			return applyArgs(decl, args)
 		}
-		return c.u.Fresh()
+		return types.Err // unresolved: the resolver reported it
 	case *syntax.TypeVar:
 		if params != nil && params[t.Name] {
 			return &types.Param{Name: t.Name}
@@ -145,6 +145,8 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 			params[t.Name] = true
 			return &types.Param{Name: t.Name}
 		}
+		// a type variable in a field (table, form, session, parameters): nothing has reported it,
+		// so it stays a variable and the field's representability check rejects it
 		return c.u.Fresh()
 	case *syntax.RecordType:
 		r := &types.Record{Anonymous: true}
@@ -160,7 +162,7 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 		fn.Result = mc.typeOf(t.Result, params)
 		return fn
 	}
-	return c.u.Fresh()
+	return types.Err
 }
 
 // applyArgs instantiates a declared type with arguments: unions get Args; opaque Apps substitute their Params.
@@ -271,12 +273,12 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 				idCount++
 				generated = true
 				info.IDField, info.IDType = f.Name, ft
-				if b, ok := ft.(*types.Brand); !ok || !isCon(b.Base, "Text") {
+				if b, ok := ft.(*types.Brand); !types.IsErr(ft) && (!ok || !isCon(b.Base, "Text")) {
 					c.errorf(diag.InvalidDecl, f.Span, "`@id` field must be a `brand Text`, got `%s`", types.String(ft))
 				}
 			case "created", "updated":
 				generated = true
-				if !isCon(ft, "Time") {
+				if !isCon(ft, "Time") && !types.IsErr(ft) {
 					c.errorf(diag.InvalidDecl, f.Span, "`@%s` field must have type `Time`", a.Name)
 				}
 			case "ref":
@@ -345,6 +347,9 @@ func imports(m *syntax.Module, name string) bool {
 func isScalar(t types.Type) bool {
 	switch t := t.(type) {
 	case *types.Con:
+		if types.IsErr(t) { // unresolved: already reported, so every representability check accepts it
+			return true
+		}
 		switch t.Name {
 		case "Int", "Float", "Bool", "Text", "Date", "Time":
 			return true
@@ -580,7 +585,7 @@ func (mc *modCtx) defineCapabilities() {
 			if fn, isFn := et.(*types.Fun); isFn {
 				res = fn.Result
 			}
-			if app, isApp := res.(*types.App); !isApp || (app.Con != "Query" && app.Con != "Task") {
+			if app, isApp := res.(*types.App); !types.IsErr(res) && (!isApp || (app.Con != "Query" && app.Con != "Task")) {
 				c.errorf(diag.InvalidDecl, e.Span, "capability entry `%s` must return a `Query` or `Task`", e.Name)
 			}
 			entries[e.Name] = et
@@ -589,7 +594,8 @@ func (mc *modCtx) defineCapabilities() {
 	}
 }
 
-// declareValues records every value signature (E0007 when missing) and checks page/App shape (E0010).
+// declareValues records every value signature and checks page/App shape (E0010). A value with no
+// signature records nothing: checkBodies infers its type for E0007.
 func (mc *modCtx) declareValues() {
 	c := mc.c
 	has := map[string]bool{}
@@ -600,22 +606,9 @@ func (mc *modCtx) declareValues() {
 		}
 		has[vd.Name] = true
 		if vd.Sig == nil {
-			if mc.m.Name == "Prelude" || c.prog.Std[mc.m.Name] != nil {
-				continue
+			if c.prog.Failed[mc.m.Name] && c.prog.Std[mc.m.Name] == nil {
+				mc.missingSig(vd, "?type") // bodies of this module are not checked, so nothing is inferred
 			}
-			ty := "?type"
-			switch vd.Body.(type) {
-			case *syntax.IntLit:
-				ty = "Int"
-			case *syntax.StrLit:
-				ty = "Text"
-			case *syntax.BoolLit:
-				ty = "Bool"
-			case *syntax.FloatLit:
-				ty = "Float"
-			}
-			c.errorf(diag.MissingSig, vd.Span, "`%s` has no type signature; write `%s : %s` on the line before it", vd.Name, vd.Name, ty).Fix =
-				diag.InsertAt(vd.Span.Start.Line, 1, vd.Name+" : "+ty+"\n")
 			continue
 		}
 		params := map[string]bool{}

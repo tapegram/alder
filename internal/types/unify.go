@@ -145,6 +145,10 @@ func (u *Unifier) Check(actual, expected Type) error { return u.unify(actual, ex
 
 func (u *Unifier) unify(a, b Type, widen bool) error {
 	a, b = u.Apply(a), u.Apply(b)
+	// The poison type fits anything without binding: its error is already reported.
+	if IsErr(a) || IsErr(b) {
+		return nil
+	}
 	// Never fits anywhere; return before the variable cases so it never binds a variable.
 	if widen {
 		if c, ok := a.(*Con); ok && c.Name == "Never" {

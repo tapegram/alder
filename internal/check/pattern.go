@@ -14,6 +14,10 @@ import (
 func (mc *modCtx) checkPattern(p syntax.Pattern, t types.Type, env *env) {
 	c := mc.c
 	t = c.u.Apply(t)
+	if types.IsErr(t) {
+		mc.bindPoison(p, env)
+		return
+	}
 	switch p := p.(type) {
 	case *syntax.PWild:
 	case *syntax.PVar:
@@ -95,6 +99,30 @@ func (mc *modCtx) checkPattern(p syntax.Pattern, t types.Type, env *env) {
 	}
 }
 
+// bindPoison binds every variable of p to the poison type: the value's type is unknown
+// because of an error already reported, so nothing about the pattern can be checked.
+func (mc *modCtx) bindPoison(p syntax.Pattern, env *env) {
+	switch p := p.(type) {
+	case *syntax.PVar:
+		env.bind(p.Name, types.Err)
+	case *syntax.PCtor:
+		if p.Arg != nil {
+			mc.bindPoison(p.Arg, env)
+		}
+	case *syntax.PRecord:
+		for _, f := range p.Fields {
+			mc.bindPoison(f.Pat, env)
+		}
+	case *syntax.PList:
+		for _, e := range p.Elems {
+			mc.bindPoison(e, env)
+		}
+		if p.Rest != "" {
+			env.bind(p.Rest, types.Err)
+		}
+	}
+}
+
 // ---- exhaustiveness
 
 type exhaustiveness struct {
@@ -105,12 +133,16 @@ type exhaustiveness struct {
 	listNil  bool
 	listCons bool
 	closed   bool   // a wildcard/var arm has been seen, or every case is covered
-	kind     string // "union" | "bool" | "list" | "record" | "other"
+	kind     string // "union" | "bool" | "list" | "record" | "error" (poison subject) | "other"
 	all      []string
 }
 
 func newExhaustiveness(mc *modCtx, subject types.Type) *exhaustiveness {
 	ex := &exhaustiveness{mc: mc, subject: subject, ctors: map[string]bool{}, bools: map[bool]bool{}, kind: "other"}
+	if types.IsErr(subject) { // its error is already reported; no arm is missing or unreachable
+		ex.kind, ex.closed = "error", true
+		return ex
+	}
 	switch t := subject.(type) {
 	case *types.Union:
 		ex.kind = "union"

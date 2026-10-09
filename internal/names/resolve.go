@@ -93,6 +93,8 @@ type resolver struct {
 	bag *diag.Bag
 	m   *syntax.Module
 	ms  *moduleScope
+	// reported holds the modules already reported as not imported (E0201), so each is reported once.
+	reported map[string]bool
 }
 
 func (p *Program) Resolve(bag *diag.Bag) {
@@ -229,6 +231,13 @@ func (r *resolver) importedScope(x string) (*moduleScope, bool) {
 }
 
 func (r *resolver) notImported(span diag.Span, x string) {
+	if r.reported[x] {
+		return
+	}
+	if r.reported == nil {
+		r.reported = map[string]bool{}
+	}
+	r.reported[x] = true
 	d := r.bag.Error("E0201", span, "module `%s` is not imported", x)
 	line := 2
 	if n := len(r.m.Imports); n > 0 {

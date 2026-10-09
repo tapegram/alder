@@ -1,0 +1,15 @@
+module Index
+
+page "/" { }
+
+type Model = { count: Int, done: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todos <- Db.from Todo |> Db.all
+  let done <- Db.from Todo |> Db.where (Todo.done.eq True) |> Db.all
+  Query.succeed { count: List.length todos, done: List.length done }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Text.fromInt model.count}</p>

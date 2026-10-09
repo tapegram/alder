@@ -128,3 +128,26 @@ func TestString_UnboundVarHidesID(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, "Id _")
 	}
 }
+
+func TestUnify_PoisonFitsWithoutBinding(t *testing.T) {
+	u := &Unifier{Subst: Subst{}}
+	if err := u.Unify(Err, tInt); err != nil {
+		t.Fatal("Err must unify with Int:", err)
+	}
+	if err := u.Check(&App{Con: "List", Args: []Type{tText}}, Err); err != nil {
+		t.Fatal("anything must check against Err:", err)
+	}
+	v := u.Fresh()
+	if err := u.Unify(v, Err); err != nil {
+		t.Fatal(err)
+	}
+	if _, bound := u.Subst[v.ID]; bound {
+		t.Fatal("Err must not bind a variable")
+	}
+	if !IsErr(Err) || IsErr(&Con{Name: "<error>"}) {
+		t.Fatal("IsErr compares by identity")
+	}
+	if String(Err) != "_" {
+		t.Fatalf("String(Err) = %q", String(Err))
+	}
+}

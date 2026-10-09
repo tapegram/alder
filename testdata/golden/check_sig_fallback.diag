@@ -1,0 +1,4 @@
+app/Util.alder:4:1 E0007 `ident` has no type signature; write `ident : ?type` on the line before it
+  fix 4:1-4:1 ident : ?type⏎
+app/Util.alder:7:1 E0007 `wrapped` has no type signature; write `wrapped : ?type` on the line before it
+  fix 7:1-7:1 wrapped : ?type⏎

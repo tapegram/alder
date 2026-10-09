@@ -1,0 +1,19 @@
+module Index
+
+page "/" { }
+
+type Priority = Low | Normal | High
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: rank High }
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Text.fromInt model.n}</p>
+
+rank p = match p {
+  Low -> 0,
+  Normal -> 1,
+  High -> 2,
+}
