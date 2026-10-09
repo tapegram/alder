@@ -8,6 +8,7 @@ package app
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"html"
 	"io"
@@ -226,6 +227,19 @@ func (r e2eResp) redirect(t *testing.T, loc string) {
 	}
 }
 
+// navigate checks a Datastar redirect (C1): status 200 and one datastar-patch-elements event
+// appending a self-removing script that assigns window.location to loc (a JSON string), and no
+// Location header (the client's fetch would follow it).
+func (r e2eResp) navigate(t *testing.T, loc string) {
+	t.Helper()
+	j, _ := json.Marshal(loc)
+	want := "event: datastar-patch-elements\ndata: selector body\ndata: mode append\n" +
+		`data: elements <script data-effect="el.remove()">window.location.assign(` + string(j) + `)</script>` + "\n\n"
+	if r.status != http.StatusOK || r.header.Get("Content-Type") != "text/event-stream" || r.header.Get("Location") != "" || r.body != want {
+		t.Fatalf("got %d %q Location %q body:\n%q\nwant a navigation to %s:\n%q", r.status, r.header.Get("Content-Type"), r.header.Get("Location"), r.body, loc, want)
+	}
+}
+
 func (r e2eResp) html(t *testing.T) {
 	t.Helper()
 	if ct := r.header.Get("Content-Type"); ct != "text/html; charset=utf-8" {
@@ -317,15 +331,15 @@ var todoHref = regexp.MustCompile(`<a href="/todos/([^"]+)">Milk</a>`)
 
 func TestE2E_RequiresUnderDatastar(t *testing.T) {
 	e := newE2E(t, true)
-	// requires user, logged out, under Datastar: a plain 303 to the login page, not a patch
+	// requires user, logged out, under Datastar: an event navigating to the login page (a 303
+	// would be followed inside the client's fetch, leaving the address bar at /)
 	r := e.do("GET", "/", nil, datastarHdr)
-	r.redirect(t, "/login")
-	if ct := r.header.Get("Content-Type"); strings.Contains(ct, "event-stream") {
-		t.Fatalf("Content-Type %q", ct)
-	}
+	r.navigate(t, "/login")
 	// a message of a requires page too
 	r = e.do("POST", "/_m/Todos.Index/Toggle?id=x", nil, datastarHdr)
-	r.redirect(t, "/login")
+	r.navigate(t, "/login")
+	// without Datastar: the 303
+	e.do("POST", "/_m/Todos.Index/Toggle?id=x", nil).redirect(t, "/login")
 }
 
 func TestE2E_Todos(t *testing.T) {
@@ -365,7 +379,12 @@ func TestE2E_Todos(t *testing.T) {
 		t.Fatalf("Verify called %d times after a form error, want 1 (update must not run)", n)
 	}
 
-	// 4. login: 303 / with the session cookie
+	// 4. login: under Datastar an event navigating to / with the session cookie; without, a 303
+	r = e.do("POST", loginSubmit, url.Values{"email": {"a@b.c"}, "password": {"pw"}}, datastarHdr)
+	r.navigate(t, "/")
+	if s, raw := r.cookieSet(t); !s.User.Ok {
+		t.Fatalf("session after a Datastar login: %s", raw)
+	}
 	uid := e.login(t)
 
 	// 5. the empty list; the filter link marked current
@@ -390,8 +409,8 @@ func TestE2E_Todos(t *testing.T) {
 	r = e.do("POST", submit, url.Values{"title": {"Milk"}, "due": {"2026-13-01"}})
 	r.want(t, 200, `<ul class="errors" data-errors="due"><li>must be a date (YYYY-MM-DD)</li></ul>`, `value="Milk"`, `value="2026-13-01"`, `<ul id="todos"></ul>`)
 	r.lacks(t, `data-errors="title"><li>`)
-	r = e.do("POST", submit, url.Values{"title": {"Milk"}, "due": {"2026-10-12"}})
-	r.redirect(t, "/")
+	r = e.do("POST", submit, url.Values{"title": {"Milk"}, "due": {"2026-10-12"}}, datastarHdr)
+	r.navigate(t, "/")
 	r.cookieSet(t)
 	r = e.do("GET", "/", nil)
 	r.want(t, 200, `<span class="due">Oct 12</span>`, `<p id="summary">1 open</p>`)
@@ -458,6 +477,11 @@ func TestE2E_Todos(t *testing.T) {
 	r.lacks(t, "Milk")
 	r = e.do("GET", "/todos/"+url.PathEscape(id), nil)
 	r.want(t, 404, `<h1>Not found</h1>`)
+
+	// 10. a create without Datastar: the 303 (step 6 sent the header)
+	r = e.do("POST", submit, url.Values{"title": {"Bread"}})
+	r.redirect(t, "/")
+	e.do("GET", "/", nil).want(t, 200, `>Bread</a>`, `<p id="summary">1 open</p>`)
 
 	// 11. a tampered cookie (a forged payload under the old signature) is no session
 	sess, _ := e.session()
@@ -536,9 +560,18 @@ func TestE2E_Todos(t *testing.T) {
 	r = e.do("GET", "/", nil)
 	r.want(t, 200, `<html class="dark">`, `>Light mode</button>`)
 	r = e.do("POST", switchTheme, nil, "Referer: "+e.srv.URL+"/?filter=Active", datastarHdr)
-	r.redirect(t, "/?filter=Active")
+	r.navigate(t, "/?filter=Active")
 	if s, raw := r.cookieSet(t); s.Theme.Tag != is__Theme__Theme__Light {
 		t.Fatalf("session after the second SwitchTheme: %s", raw)
+	}
+	r = e.do("POST", logout, nil, datastarHdr)
+	r.navigate(t, "/login")
+	if s, raw := r.cookieSet(t); s.User.Ok {
+		t.Fatalf("session after a Datastar Logout: %s", raw)
+	}
+	uid2 := e.login(t)
+	if uid2 != uid {
+		t.Fatalf("logged in again as %q, want %q", uid2, uid)
 	}
 	r = e.do("POST", logout, nil)
 	r.redirect(t, "/login")

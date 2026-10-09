@@ -5,6 +5,7 @@ package datastar
 
 import (
 	_ "embed"
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -39,7 +40,8 @@ func ScriptTag() html.Node {
 }
 
 // IsDatastar reports whether r was sent by the Datastar client (header Datastar-Request: true),
-// i.e. whether it should be answered with PatchBody rather than a full page or a redirect.
+// i.e. whether it should be answered with PatchBody or Navigate rather than a full page or a
+// redirect.
 func IsDatastar(r *http.Request) bool {
 	return r.Header.Get("Datastar-Request") == "true"
 }
@@ -52,6 +54,21 @@ func IsDatastar(r *http.Request) bool {
 // and flushes if w can.
 func PatchBody(w http.ResponseWriter, body string) error {
 	return patch(w, "body", "outer", body)
+}
+
+// Navigate answers a Datastar request with a navigation to url: one `datastar-patch-elements`
+// event appending (selector body, mode append) a script that removes itself and calls
+// window.location.assign(url), with url as a JSON string (so "<", ">", "&", U+2028 and U+2029
+// are escaped and the URL cannot end the script). This is how the official Datastar SDKs
+// redirect: a 303 would be followed inside the client's fetch, and the page at the new URL
+// patched into the old one, leaving the address bar and history behind. It sets Content-Type
+// text/event-stream, writes the event and flushes if w can.
+func Navigate(w http.ResponseWriter, url string) error {
+	u, err := json.Marshal(url)
+	if err != nil {
+		return err
+	}
+	return patch(w, "body", "append", `<script data-effect="el.remove()">window.location.assign(`+string(u)+`)</script>`)
 }
 
 // patch writes one `datastar-patch-elements` event patching elements at selector in mode.

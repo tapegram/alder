@@ -103,3 +103,20 @@ func TestPatchBody_CarriageReturnCannotInjectFields(t *testing.T) {
 		}
 	}
 }
+
+// Navigate is the SDKs' redirect: a self-removing script appended to <body> that assigns
+// window.location; the URL is a JSON string with HTML-significant characters escaped.
+func TestNavigate_EventFormat(t *testing.T) {
+	rec := httptest.NewRecorder()
+	if err := Navigate(rec, "/?filter=Active&q=</script>\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	want := "event: datastar-patch-elements\ndata: selector body\ndata: mode append\n" +
+		`data: elements <script data-effect="el.remove()">window.location.assign("/?filter=Active\u0026q=\u003c/script\u003e\r\n")</script>` + "\n\n"
+	if got := rec.Body.String(); got != want {
+		t.Fatalf("got  %q\nwant %q", got, want)
+	}
+	if rec.Code != 200 || rec.Header().Get("Content-Type") != "text/event-stream" || !rec.Flushed {
+		t.Fatalf("%d %q flushed=%v", rec.Code, rec.Header().Get("Content-Type"), rec.Flushed)
+	}
+}

@@ -102,7 +102,9 @@ type segment struct {
 //
 // Under Datastar (header Datastar-Request: true) a 404 or 500 is answered like a re-rendered
 // page: status 200 and an SSE patch of the NotFound/Error document's <body>, because the
-// Datastar client ignores other answers.
+// Datastar client ignores other answers; and a Redirect is a 200 SSE event that navigates the
+// browser to its Location (datastar.Navigate), because the client's fetch would follow a 303
+// itself and leave the address bar and history at the old URL.
 //
 // The router's only mutable state is a once-only warning: it is safe for concurrent requests.
 func NewRouter(routes []Route, opts Options) http.Handler {
@@ -353,6 +355,14 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, rq *Request, res
 			return
 		}
 		if resp.Status == http.StatusSeeOther {
+			if rq.Datastar {
+				// the client's fetch would follow a 303 itself and patch the new page into the
+				// old URL: navigate the browser instead
+				if err := datastar.Navigate(w, resp.Location); err != nil {
+					rt.log("error", fmt.Sprintf("%s %s: writing the navigation: %v", r.Method, r.URL.Path, err))
+				}
+				return
+			}
 			w.Header().Set("Location", resp.Location)
 			w.WriteHeader(http.StatusSeeOther)
 			return

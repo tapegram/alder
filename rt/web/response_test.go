@@ -129,25 +129,35 @@ func TestResponse_PageNoPatchWithoutFlag(t *testing.T) {
 
 func TestResponse_Redirect303(t *testing.T) {
 	h := NewRouter(one("POST", "/_m/Auth/Login", func(rq *Request) Response {
-		return RedirectResponse("/todos", testSession{User: "ada"})
+		return RedirectResponse("/todos?f=a&b", testSession{User: "ada"})
 	}), testOpts(nil))
-	for _, ds := range []bool{false, true} {
-		req := httptest.NewRequest("POST", "/_m/Auth/Login", nil)
-		if ds {
-			req.Header.Set("Datastar-Request", "true")
-		}
-		w := serve(h, req)
-		if w.Code != 303 || w.Header().Get("Location") != "/todos" || sessionCookie(t, w) == nil {
-			t.Fatalf("datastar=%v: %d %q", ds, w.Code, w.Header().Get("Location"))
-		}
+	w := serve(h, httptest.NewRequest("POST", "/_m/Auth/Login", nil))
+	if w.Code != 303 || w.Header().Get("Location") != "/todos?f=a&b" || sessionCookie(t, w) == nil || w.Body.Len() != 0 {
+		t.Fatalf("%d %q %q", w.Code, w.Header().Get("Location"), w.Body.String())
+	}
+	// Under Datastar (C1): a 200 SSE event navigating the browser, the session stored all the
+	// same; no Location (the client's fetch would follow it and patch the new page in place).
+	req := httptest.NewRequest("POST", "/_m/Auth/Login", nil)
+	req.Header.Set("Datastar-Request", "true")
+	w = serve(h, req)
+	want := "event: datastar-patch-elements\ndata: selector body\ndata: mode append\n" +
+		`data: elements <script data-effect="el.remove()">window.location.assign("/todos?f=a\u0026b")</script>` + "\n\n"
+	if w.Code != 200 || w.Header().Get("Content-Type") != "text/event-stream" || w.Header().Get("Location") != "" || w.Body.String() != want || sessionCookie(t, w) == nil {
+		t.Fatalf("datastar: %d %q %q\n%q", w.Code, w.Header().Get("Content-Type"), w.Header().Get("Location"), w.Body.String())
 	}
 	// requires: the handler redirects to rq.Login with the session unchanged.
 	h = NewRouter(one("GET", "/secret", func(rq *Request) Response {
 		return RedirectResponse(rq.Login, nil)
 	}), testOpts(nil))
-	w := serve(h, httptest.NewRequest("GET", "/secret", nil))
+	w = serve(h, httptest.NewRequest("GET", "/secret", nil))
 	if w.Code != 303 || w.Header().Get("Location") != "/login" || sessionCookie(t, w) != nil {
 		t.Fatalf("login redirect %d %q", w.Code, w.Header().Get("Location"))
+	}
+	req = httptest.NewRequest("GET", "/secret", nil)
+	req.Header.Set("Datastar-Request", "true")
+	w = serve(h, req)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `window.location.assign("/login")`) || sessionCookie(t, w) != nil {
+		t.Fatalf("login redirect under Datastar %d %q", w.Code, w.Body.String())
 	}
 }
 
