@@ -8,11 +8,13 @@ package app
 
 import (
 	"encoding/base64"
+	"html"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -88,8 +90,16 @@ func TestE2E_RejectKeepsWrites(t *testing.T) {
 		t.Fatalf("n = %d", s.N)
 	}
 
-	ref := "Referer: " + srv.URL + "/"
-	res, body = do("POST", "/_m/Names/Add", url.Values{"name": {"ann"}}, ref)
+	// post to the URL the form renders (no Referer: a page message carries its page's params)
+	m := regexp.MustCompile(`action="([^"]*)"`).FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("no form action:\n%s", body)
+	}
+	add := html.UnescapeString(m[1])
+	if !strings.HasPrefix(add, "/_m/Names/Add") {
+		t.Fatalf("form action %q", add)
+	}
+	res, body = do("POST", add, url.Values{"name": {"ann"}})
 	if res.StatusCode != 200 || res.Header.Get("Content-Type") != "text/html; charset=utf-8" {
 		t.Fatalf("Add = %d %q:\n%s", res.StatusCode, res.Header.Get("Content-Type"), body)
 	}
@@ -100,7 +110,7 @@ func TestE2E_RejectKeepsWrites(t *testing.T) {
 	}
 
 	// under Datastar: the same, as a body patch
-	res, body = do("POST", "/_m/Names/Add", url.Values{"name": {"bob"}}, ref, "Datastar-Request: true")
+	res, body = do("POST", add, url.Values{"name": {"bob"}}, "Datastar-Request: true")
 	if res.StatusCode != 200 || res.Header.Get("Content-Type") != "text/event-stream" {
 		t.Fatalf("Add (Datastar) = %d %q:\n%s", res.StatusCode, res.Header.Get("Content-Type"), body)
 	}
@@ -110,7 +120,7 @@ func TestE2E_RejectKeepsWrites(t *testing.T) {
 	}
 
 	// a form error: update does not run, nothing is written, the session is not stored
-	res, body = do("POST", "/_m/Names/Add", url.Values{"name": {""}}, ref)
+	res, body = do("POST", add, url.Values{"name": {""}})
 	if res.StatusCode != 200 {
 		t.Fatalf("Add with an empty name = %d:\n%s", res.StatusCode, body)
 	}
