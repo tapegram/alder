@@ -357,6 +357,24 @@ files, moving migrations out of the deferred list.
 
 Each milestone gets its own implementation plan.
 
+## Decisions recorded after M1
+
+- **Fix contract.** A diagnostic's `fix` is `{line, col, endLine, endCol,
+  replace}`: replace the half-open span `[start, end)` with `replace`. An
+  insertion has `start == end`. Text output prints `fix: <replace>` as
+  before. Every producer states its end explicitly (M1 fixes had no end).
+- **Phase gating is per module.** Parse errors still stop the pipeline
+  (there is nothing to resolve). After the names pass, modules whose
+  resolution produced errors are excluded from the body-checking pass;
+  all other modules are checked. The declaration pass still runs for every
+  module, because other modules depend on their types.
+- **Positional message arguments** (`click={Toggle todo.id}`) are E0301
+  with the record-form fix, the same shape as a bare constructor.
+- **The harness drives Claude through the local `claude -p` CLI** (headless
+  prompt mode under the user's own login) and local models through Ollama.
+  Scoring is automatic: error counts and codes come from `alder check
+  --json`.
+
 ## Decisions recorded
 
 - `@unique` violations fail the task (book chapter 8). Revisit with data.
