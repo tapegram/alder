@@ -1,6 +1,7 @@
 package gen
 
 import (
+	"strings"
 	"sync"
 
 	"alder/internal/syntax"
@@ -186,4 +187,144 @@ var stdVarParams = sync.OnceValue(func() map[string][]bool {
 func stdVarParam(module, name string, i int) bool {
 	vs := stdVarParams()[module+"."+name]
 	return i < len(vs) && vs[i]
+}
+
+// stdSigs is every stdlib function's declared signature, by "Module.name".
+var stdSigs = sync.OnceValue(func() map[string]syntax.Type {
+	out := map[string]syntax.Type{}
+	std, err := types.LoadStd()
+	if err != nil {
+		panic("gen: loading stdlib signatures: " + err.Error())
+	}
+	for _, m := range std {
+		for _, d := range m.Decls {
+			if v, ok := d.(*syntax.ValueDecl); ok && v.Sig != nil {
+				out[m.Name+"."+v.Name] = v.Sig
+			}
+		}
+	}
+	return out
+})
+
+// stdTypeParamOrder overrides, for the stdlib functions whose Go type parameters are not in the
+// order their type variables first occur in the Alder signature, the Go order (as Alder type
+// variable names). "Session" stands for the app's Session type (Session.put's Go S).
+// TestStdTypeParamOrder checks every generic function of rt/std against stdTypeParams.
+var stdTypeParamOrder = map[string][]string{
+	"Result.map":         {"e", "a", "b"},
+	"Result.andThen":     {"e", "a", "b"},
+	"Result.withDefault": {"e", "a"},
+	"Session.put":        {"Session"},
+}
+
+// stdTypeParams lists the type parameters of the Go function implementing stdlib function
+// module.name, in Go order, as the Alder type variables they stand for: by default the
+// signature's type variables in order of first occurrence, leaving out one that occurs only
+// inside Html (Html a is html.Node whatever a is).
+func stdTypeParams(module, name string) []string {
+	key := module + "." + name
+	if ps, ok := stdTypeParamOrder[key]; ok {
+		return ps
+	}
+	var ps []string
+	seen := map[string]bool{}
+	var walk func(t syntax.Type)
+	walk = func(t syntax.Type) {
+		switch t := t.(type) {
+		case *syntax.TypeVar:
+			if !seen[t.Name] {
+				seen[t.Name] = true
+				ps = append(ps, t.Name)
+			}
+		case *syntax.TypeName:
+			if t.Name == "Html" && (t.Module == "" || t.Module == "Html") {
+				return
+			}
+			for _, a := range t.Args {
+				walk(a)
+			}
+		case *syntax.RecordType:
+			for _, f := range t.Fields {
+				walk(f.Type)
+			}
+		case *syntax.FunType:
+			for _, p := range t.Params {
+				walk(p)
+			}
+			walk(t.Result)
+		}
+	}
+	walk(stdSigs()[key])
+	return ps
+}
+
+// stdInstance is the explicit type argument list ("[int64, string]") of a reference to generic
+// stdlib function module.name at type t (its solved type at this use), for a use that does not
+// call it (`let r = List.reverse`): Go cannot infer type arguments there. A type variable left
+// unsolved is `any`. A function that is not generic gets "".
+func stdInstance(module, name string, t types.Type) string {
+	ps := stdTypeParams(module, name)
+	if len(ps) == 0 {
+		return ""
+	}
+	m := map[string]types.Type{}
+	bindSig(stdSigs()[module+"."+name], t, m)
+	args := make([]string, len(ps))
+	for i, p := range ps {
+		if a := m[p]; a != nil {
+			args[i] = GoType(a)
+		} else {
+			args[i] = "any"
+		}
+	}
+	return "[" + strings.Join(args, ", ") + "]"
+}
+
+// bindSig matches the declared stdlib signature sig against its instance inst, recording what
+// each type variable (and `Session`) stands for.
+func bindSig(sig syntax.Type, inst types.Type, m map[string]types.Type) {
+	switch d := sig.(type) {
+	case *syntax.TypeVar:
+		if m[d.Name] == nil {
+			m[d.Name] = inst
+		}
+	case *syntax.TypeName:
+		if d.Name == "Session" && d.Module == "" && len(d.Args) == 0 {
+			if m["Session"] == nil {
+				m["Session"] = inst
+			}
+			return
+		}
+		var args []types.Type
+		switch i := inst.(type) {
+		case *types.App:
+			args = i.Args
+		case *types.Union:
+			args = i.Args
+		case *types.Record:
+			args = i.Args
+		}
+		if len(args) == len(d.Args) {
+			for k := range d.Args {
+				bindSig(d.Args[k], args[k], m)
+			}
+		}
+	case *syntax.RecordType:
+		if i, ok := inst.(*types.Record); ok {
+			for _, f := range d.Fields {
+				for _, g := range i.Fields {
+					if g.Name == f.Name {
+						bindSig(f.Type, g.Type, m)
+					}
+				}
+			}
+		}
+	case *syntax.FunType:
+		if i, ok := inst.(*types.Fun); ok && len(i.Params) == len(d.Params) {
+			for k := range d.Params {
+				bindSig(d.Params[k], i.Params[k], m)
+			}
+			bindSig(d.Result, i.Result, m)
+		}
+	}
 }

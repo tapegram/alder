@@ -157,7 +157,7 @@ func Index__update(msg Index__Msg, model Index__Model, session Index__Session) e
 					Body string
 				}{To: "a@b.c", Body: token})
 			})}), func(sent []bool) eff.Task[rt.Nav] {
-				return eff.Bind(eff.Map(std.ListLength, eff.Pure(sent)), func(n int64) eff.Task[rt.Nav] {
+				return eff.Bind(eff.Map(std.ListLength[bool], eff.Pure(sent)), func(n int64) eff.Task[rt.Nav] {
 					return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
 						return App__Session{User: s.User, Theme: "dark"}
 					}), func(_ struct{}) eff.Task[rt.Nav] {

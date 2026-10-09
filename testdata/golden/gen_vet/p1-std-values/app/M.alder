@@ -1,0 +1,54 @@
+module M
+
+-- Generic stdlib functions used as values, not called: each is emitted with explicit Go type
+-- arguments derived from its type at the use (C3), including the functions whose Go type
+-- parameters are not in first-occurrence order (Result.map, Result.andThen, Result.withDefault)
+-- and Session.put (its Go parameter is the app's Session).
+
+revd : List Int -> List Int
+revd xs = {
+  let r = List.reverse
+  r xs
+}
+
+lengths : List Text -> List Int
+lengths ts = {
+  let m = List.map
+  m Text.length ts
+}
+
+bump : Task Unit
+bump = {
+  let put = Session.put
+  put (\s -> { s | n: s.n + 1 })
+}
+
+positive : Int -> Result Text Int
+positive x = if x > 0 then Ok x else Err "neg"
+
+chain : Result Text Int -> Bool
+chain r = {
+  let andThen = Result.andThen
+  let mp = Result.map
+  let wd = Result.withDefault
+  wd False (mp (\x -> x > 1) (andThen positive r))
+}
+
+firstOr : Maybe Text -> Text
+firstOr m = {
+  let w = Maybe.withDefault
+  w "none" m
+}
+
+counts : Dict Text Int -> List Int
+counts d = {
+  let vs = Dict.values
+  vs d
+}
+
+applyAll : List (List Int -> List Int)
+applyAll = [List.reverse, List.unique]
+
+-- the element type of List.reverse here is never solved: its type argument is `any`
+unsolved : Int
+unsolved = List.length [List.reverse]

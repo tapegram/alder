@@ -311,8 +311,8 @@ func (f *fn) variable(x *ir.Var, s *scope) string {
 		return s.lookup(x.Name)
 	case ir.VarStd:
 		name := stdGoName(x.Module, x.Name)
-		if _, isFun := x.Ty.(*types.Fun); isFun {
-			return name
+		if _, isFun := x.Ty.(*types.Fun); isFun { // a function value, not called: instantiate it
+			return name + stdInstance(x.Module, x.Name, x.Ty)
 		}
 		// a stdlib constant is a Go function; Dict.empty needs its type arguments
 		if app, ok := x.Ty.(*types.App); ok && app.Con == "Dict" {
@@ -387,7 +387,9 @@ func (f *fn) apply(callee ir.Expr, args []string, s *scope) (string, int) {
 		return "!" + args[0], precUnary
 	}
 	var c string
-	if v, ok := callee.(*ir.Var); ok {
+	if v, ok := callee.(*ir.Var); ok && v.Kind == ir.VarStd {
+		c = stdGoName(v.Module, v.Name) // called: Go infers its type arguments
+	} else if ok {
 		c = f.variable(v, s)
 	} else {
 		c = f.operand(callee, s, precAtom)

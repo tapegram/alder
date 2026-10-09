@@ -690,6 +690,100 @@ func TestStdCallsExist(t *testing.T) {
 	}
 }
 
+// The Go type parameters of each generic StdCalls target, read from rt/std's source, are the
+// Alder type variables stdTypeParams lists, in the same order: the Go names are the variables
+// upper-cased (A ↔ a), and Session.put's S is the app's Session (C3).
+func TestStdTypeParamOrder(t *testing.T) {
+	fset := token.NewFileSet()
+	files, err := filepath.Glob("../../rt/std/*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tparams := map[string][]string{}
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, file, nil, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range f.Decls {
+			fd, ok := d.(*ast.FuncDecl)
+			if !ok || fd.Recv != nil || fd.Type.TypeParams == nil {
+				continue
+			}
+			var names []string
+			for _, fl := range fd.Type.TypeParams.List {
+				for _, n := range fl.Names {
+					names = append(names, n.Name)
+				}
+			}
+			tparams["std."+fd.Name.Name] = names
+		}
+	}
+	for key, target := range StdCalls {
+		mod, name, _ := strings.Cut(key, ".")
+		var want []string
+		for _, n := range tparams[target] {
+			if key == "Session.put" && n == "S" {
+				want = append(want, "Session")
+			} else {
+				want = append(want, strings.ToLower(n))
+			}
+		}
+		if got := stdTypeParams(mod, name); !slices.Equal(got, want) {
+			t.Errorf("%s (%s): stdTypeParams = %v, Go type parameters %v", key, target, got, tparams[target])
+		}
+	}
+}
+
+// Generic stdlib functions used as values run (C3): see gen_vet/p1-std-values.
+func TestGen_RunStdValues(t *testing.T) {
+	files := emit(t, "../../testdata/golden/gen_vet/p1-std-values")
+	contains(t, files["M_alder.go"], "std.ListReverse[int64]", "std.ListMap[string, int64]", "std.SessionPut[App__Session]",
+		"std.ResultAndThen[string, int64, int64]", "std.ResultMap[string, int64, bool]", "std.ResultWithDefault[string, bool]",
+		"std.ListReverse[any]")
+	runGo(t, files, `package app
+
+import (
+	"slices"
+	"testing"
+
+	"alder/rt"
+	"alder/rt/eff"
+)
+
+func TestStdValues(t *testing.T) {
+	if got := M__revd([]int64{1, 2, 3}); !slices.Equal(got, []int64{3, 2, 1}) {
+		t.Errorf("revd = %v", got)
+	}
+	if got := M__lengths([]string{"a", "bcd"}); !slices.Equal(got, []int64{1, 3}) {
+		t.Errorf("lengths = %v", got)
+	}
+	if !M__chain(rt.Ok[string](int64(5))) || M__chain(rt.Ok[string](int64(-1))) || M__chain(rt.Err[string, int64]("x")) {
+		t.Error("chain")
+	}
+	if M__firstOr(rt.Nothing[string]()) != "none" || M__firstOr(rt.Just("a")) != "a" {
+		t.Error("firstOr")
+	}
+	if got := M__counts(rt.Dict[string, int64]{}.Insert("a", 1)); !slices.Equal(got, []int64{1}) {
+		t.Errorf("counts = %v", got)
+	}
+	if M__unsolved != 1 {
+		t.Error("unsolved")
+	}
+	if fs := M__applyAll; len(fs) != 2 || !slices.Equal(fs[0]([]int64{1, 2}), []int64{2, 1}) {
+		t.Error("applyAll")
+	}
+	env := &eff.Env{Session: App__Session{N: 1}}
+	if _, err := eff.Run(env, eff.KTask, M__bump); err != nil || env.Session.(App__Session).N != 2 {
+		t.Errorf("bump: %v %+v", err, env.Session)
+	}
+}
+`)
+}
+
 // A message that is not a constructor written in place is switched on at run time for its URL;
 // a generic component takes its props at the instance's types; a Let around HTML is used.
 func TestGen_HTMLDynamic(t *testing.T) {
