@@ -127,11 +127,11 @@ JSX whitespace rule (write it in book 05 "Whitespace" and in the parser comment)
 ### Task 2: Emitter and checker fixes deferred from M3a
 
 **Files:**
-- Modify: `internal/gen/gen.go` (file names), `internal/gen/types.go` (boxed recursive `Maybe` fields), `internal/gen/names.go` (comment), `internal/check/expr.go` or `check.go` (inferred Dict key check), `cmd/alder/build.go` (stale-file deletion matches `*.alder.go`), `book/13-compiler.md` §9, `internal/diag/explain.go` (E0003 text)
+- Modify: `internal/gen/gen.go` (file names), `internal/gen/types.go` (boxed recursive `Maybe` fields), `internal/gen/names.go` (comment), `internal/check/expr.go` or `check.go` (inferred Dict key check), `cmd/alder/build.go` (stale-file deletion matches `*_alder.go`), `book/13-compiler.md` §9, `internal/diag/explain.go` (E0003 text)
 - Test: `internal/gen/gen_test.go`, `testdata/golden/gen_vet/o1-build-suffix/`, `testdata/golden/gen_vet/o2-maybe-recursion/`, `testdata/corpus/E0003-dict-fun-key-inferred/`
 
 **Interfaces:**
-- Produces: generated file `<Module>.alder.go`; `GoType` of a record field whose type reaches the enclosing record through `Maybe`/`List`/`Dict`-free paths — i.e. directly through `Maybe` — becomes `*rt.Maybe[T]` with the emitter dereferencing on read (`*r.Next`) and boxing on construction (`&m`); `rt.Eq`/`rt.Key` already follow pointers.
+- Produces: generated file `<Module>_alder.go`; `GoType` of a record field whose type reaches the enclosing record through `Maybe`/`List`/`Dict`-free paths — i.e. directly through `Maybe` — becomes `*rt.Maybe[T]` with the emitter dereferencing on read (`*r.Next`) and boxing on construction (`&m`); `rt.Eq`/`rt.Key` already follow pointers.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -139,7 +139,7 @@ JSX whitespace rule (write it in book 05 "Whitespace" and in the parser comment)
 ```go
 func TestGen_BuildSuffixModules(t *testing.T) {
 	dir := emitApp(t, "../../testdata/golden/gen_vet/o1-build-suffix")
-	for _, f := range []string{"Foo_test.alder.go", "Bar_linux.alder.go"} {
+	for _, f := range []string{"Foo_test_alder.go", "Bar_linux_alder.go"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil { t.Fatal(err) }
 	}
 	goRun(t, dir, "build", "./...") // helper: runs `go build` in dir, fails the test on error
@@ -160,11 +160,11 @@ size = Dict.size (Dict.insert inc "a" Dict.empty)
 
 - [ ] **Step 2: Run to verify failure.**
 
-- [ ] **Step 3: Implement** — `gen.go`: file name `strings.ReplaceAll(mod, ".", "__") + ".alder.go"`; `build.go` deletes stale `*.alder.go` with the header. `types.go`: compute, per record, the set of fields whose type is `Maybe R` where R is the record itself (or reaches it through nested records' `Maybe` fields — a small reachability over `Maybe`-of-record edges); emit those as `*rt.Maybe[…]`; in `expr.go`, `Field` access on such a field emits `(*x.Next)` and record literals/updates box with `&`. Checker: after a body is checked, walk `Result.Types` entries for that body for `App{Dict, [k, v]}` where `k` contains `*types.Fun`; report E0003 at the expression. Update explain text and book 13 §9 (file-name rule).
+- [ ] **Step 3: Implement** — `gen.go`: file name `strings.ReplaceAll(mod, ".", "__") + "_alder.go"`; `build.go` deletes stale `*_alder.go` with the header. `types.go`: compute, per record, the set of fields whose type is `Maybe R` where R is the record itself (or reaches it through nested records' `Maybe` fields — a small reachability over `Maybe`-of-record edges); emit those as `*rt.Maybe[…]`; in `expr.go`, `Field` access on such a field emits `(*x.Next)` and record literals/updates box with `&`. Checker: after a body is checked, walk `Result.Types` entries for that body for `App{Dict, [k, v]}` where `k` contains `*types.Fun`; report E0003 at the expression. Update explain text and book 13 §9 (file-name rule).
 
 - [ ] **Step 4: Run** — full suite; `go run ./cmd/alder build --emit examples/todos`.
 
-- [ ] **Step 5: Commit** — `git add -A && git commit -m "m3b: .alder.go file names, boxed recursive Maybe fields, inferred Dict key check"`
+- [ ] **Step 5: Commit** — `git add -A && git commit -m "m3b: _alder.go file names, boxed recursive Maybe fields, inferred Dict key check"`
 
 ---
 
@@ -516,7 +516,7 @@ func TestStore_QueryWithoutTx(t *testing.T)           // Get/All with tx=nil wor
 
 - [ ] **Step 2: Run to verify failure** — the panic stubs from Task 5 fire / goldens differ.
 
-- [ ] **Step 3: Implement** `effects.go`, the type mappings, descriptors, capability interfaces, `InsertValues`, `Tables` var; `stdcall.go` effectful entries; `dbTx` helper in a generated `rt.alder.go`? — no: put `func dbTx(e *eff.Env) db.Tx` in `rt/db` as `db.TxOf(e)` instead (exported helper, no generated boilerplate).
+- [ ] **Step 3: Implement** `effects.go`, the type mappings, descriptors, capability interfaces, `InsertValues`, `Tables` var; `stdcall.go` effectful entries; `dbTx` helper in a generated `rt_alder.go`? — no: put `func dbTx(e *eff.Env) db.Tx` in `rt/db` as `db.TxOf(e)` instead (exported helper, no generated boilerplate).
 
 - [ ] **Step 4: Run** — full suite; `go run ./cmd/alder build --emit examples/todos`; `TestGen_RunTodos` green; all `gen_vet` programs build.
 
