@@ -1,0 +1,4 @@
+app/Tag.alder:11:8 E0003 effect values cannot be compared: a `Query` or `Task` is a description of work, not its result; run it with `let x <-` and compare the results
+app/Tag.alder:14:9 E0003 effect values cannot be compared: a `Query` or `Task` is a description of work, not its result; run it with `let x <-` and compare the results
+app/Tag.alder:19:15 E0003 effect values cannot be compared: a `Query` or `Task` is a description of work, not its result; run it with `let x <-` and compare the results
+app/Tag.alder:21:9 E0003 a `Dict` key cannot be an effect value, got `Query Int`: keys are compared with `==`, and effect values cannot be compared

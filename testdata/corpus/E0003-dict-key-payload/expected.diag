@@ -1,0 +1,3 @@
+app/R.alder:5:5 E0003 a `Dict` key cannot be a function, got `Op`: keys are compared with `==`, and functions cannot be compared
+app/R.alder:9:16 E0003 a `Dict` key cannot be a function, got `R.Op`: keys are compared with `==`, and functions cannot be compared
+app/R.alder:17:14 E0003 functions cannot be compared

@@ -1,0 +1,17 @@
+module R
+
+type Op = Op (Int -> Int)
+
+d : Dict Op Int
+d = Dict.empty
+
+k : Int
+k = Dict.size (Dict.insert (Op (\x -> x)) 1 Dict.empty)
+
+type Shape = Circle Float | Square Float
+
+ok : Dict Shape Int
+ok = Dict.empty
+
+sameOp : Op -> Op -> Bool
+sameOp a b = a == b

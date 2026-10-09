@@ -1,0 +1,25 @@
+module Tag
+
+type TagId = brand Text
+
+table Tag {
+  id: TagId @id,
+  label: Text,
+}
+
+same : Bool
+same = Db.count (Db.from Tag) == Db.count (Db.from Tag)
+
+sameT : Bool
+sameT = Task.succeed 1 != Task.succeed 1
+
+type Job = { run: Task Int }
+
+sameJob : Job -> Job -> Bool
+sameJob a b = a == b
+
+keyed : Dict (Query Int) Int
+keyed = Dict.empty
+
+ok : Bool
+ok = [1] == [1]

@@ -1,0 +1,4 @@
+app/M.alder:3:12 E0011 `R` contains itself through field `r`; wrap the field in `Maybe` or a union
+app/M.alder:5:12 E0011 `A` contains itself through field `b`; wrap the field in `Maybe` or a union
+app/M.alder:7:12 E0011 `B` contains itself through field `inner`; wrap the field in `Maybe` or a union
+app/M.alder:11:12 E0011 `C` contains itself through field `box`; wrap the field in `Maybe` or a union

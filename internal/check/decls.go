@@ -146,7 +146,7 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 				return types.Err
 			}
 			if app, ok := decl.(*types.App); ok && app.Con == "Dict" && len(args) == 2 && containsFun(args[0]) {
-				c.errorf(diag.TypeMismatch, t.Span, "a `Dict` key cannot be a function, got `%s`: keys are compared with `==`, and functions cannot be compared", types.StringIn(args[0], mc.m.Name))
+				c.errorf(diag.TypeMismatch, t.Span, "%s", dictKeyMessage(args[0], types.StringIn(args[0], mc.m.Name)))
 				return types.Err
 			}
 			out := applyArgs(decl, args)
@@ -498,12 +498,49 @@ func urlRepresentable(t types.Type) bool {
 	return isScalar(t)
 }
 
+// checkFinite reports E0011 when record decl contains itself by value (`type R = { r: R }`),
+// directly or through other records, anonymous records and generic record instances: no value
+// of it can ever be built, and its Go struct would be infinite. Maybe, Result, List, Dict, other
+// unions and functions hold their contents indirectly, so a field through one of them is fine.
+func (mc *modCtx) checkFinite(decl *types.Record, d *syntax.TypeDecl) {
+	var reaches func(t types.Type, seen map[*types.Record]bool) bool
+	reaches = func(t types.Type, seen map[*types.Record]bool) bool {
+		r, ok := t.(*types.Record)
+		if !ok {
+			return false
+		}
+		if r == decl || r.Def == decl {
+			return true
+		}
+		if seen[r] {
+			return false
+		}
+		seen[r] = true
+		for _, f := range r.Fields {
+			if reaches(f.Type, seen) {
+				return true
+			}
+		}
+		return false
+	}
+	for i, f := range decl.Fields {
+		if i < len(d.Record.Fields) && reaches(f.Type, map[*types.Record]bool{}) {
+			mc.c.errorf(diag.InvalidDecl, d.Record.Fields[i].Span, "`%s` contains itself through field `%s`; wrap the field in `Maybe` or a union", decl.Name, f.Name)
+			return
+		}
+	}
+}
+
 // checkRepresentable runs after every module's types are defined, so payload unions
 // declared later in a file (or in another module) are seen with their constructors.
 func (mc *modCtx) checkRepresentable() {
 	c := mc.c
 	for _, d := range c.live(mc.m) {
 		switch d := d.(type) {
+		case *syntax.TypeDecl:
+			if rec, ok := c.types[c.key(mc.m.Name, d.Name)].(*types.Record); ok && d.Record != nil {
+				mc.checkFinite(rec, d)
+			}
 		case *syntax.TableDecl:
 			for _, f := range d.Fields {
 				if ft := mc.typeOf(f.Type, nil); !storable(ft) {

@@ -1,0 +1,19 @@
+module M
+
+type R = { r: R }
+
+type A = { b: B, n: Int }
+
+type B = { inner: { a: A } }
+
+type Box a = { item: a }
+
+type C = { box: Box C }
+
+type Ok1 = { next: Maybe Ok1 }
+
+type Ok2 = { kids: List Ok2 }
+
+type T = Leaf | Node { l: T, r: T }
+
+type Ok3 = { t: T, d: Dict Text Ok3, f: Int -> Ok3 }

@@ -204,8 +204,17 @@ func (c *Checker) checkInferredDictKeys() {
 		}
 	}
 	if at != nil {
-		c.errorf(diag.TypeMismatch, at.GetSpan(), "a `Dict` key cannot be a function, got `%s`: keys are compared with `==`, and functions cannot be compared", types.String(key))
+		c.errorf(diag.TypeMismatch, at.GetSpan(), "%s", dictKeyMessage(key, types.String(key)))
 	}
+}
+
+// dictKeyMessage is the E0003 message for Dict key type key (written as shown), which holds a
+// function or an effect value.
+func dictKeyMessage(key types.Type, shown string) string {
+	if containsEffect(key) {
+		return fmt.Sprintf("a `Dict` key cannot be an effect value, got `%s`: keys are compared with `==`, and effect values cannot be compared", shown)
+	}
+	return fmt.Sprintf("a `Dict` key cannot be a function, got `%s`: keys are compared with `==`, and functions cannot be compared", shown)
 }
 
 // before orders spans by start, the longer first among equal starts.
@@ -1066,8 +1075,12 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 		r := c.u.Apply(mc.infer(x.R, env, eff))
 		if err := c.u.Unify(l, r); err != nil {
 			c.errorf(diag.TypeMismatch, x.Span, "cannot compare `%s` with `%s`: `==` needs both sides to have the same type", types.String(l), types.String(r))
-		} else if containsFun(c.u.Apply(l)) {
-			c.errorf(diag.TypeMismatch, x.Span, "functions cannot be compared")
+		} else if lt := c.u.Apply(l); containsFun(lt) {
+			if containsEffect(lt) {
+				c.errorf(diag.TypeMismatch, x.Span, "effect values cannot be compared: a `Query` or `Task` is a description of work, not its result; run it with `let x <-` and compare the results")
+			} else {
+				c.errorf(diag.TypeMismatch, x.Span, "functions cannot be compared")
+			}
 		}
 		return types.Bool
 	case "<", "<=", ">", ">=":
@@ -1189,14 +1202,21 @@ func poisoned(t types.Type) bool {
 	return false
 }
 
-func containsFun(t types.Type) bool { return containsFunIn(t, map[*types.Record]bool{}) }
+// containsFun reports whether a value of type t can hold a function or an effect value (`Query
+// a`, `Task a`): such values have no `==` and cannot be Dict keys. It looks through records,
+// type arguments and union constructor payloads (`type Op = Op (Int -> Int)`).
+func containsFun(t types.Type) bool { return containsFunIn(t, map[any]bool{}) }
 
-// containsFunIn is containsFun that visits each record once: a record may be recursive.
-func containsFunIn(t types.Type, seen map[*types.Record]bool) bool {
+// containsFunIn is containsFun that visits each record and union declaration once: they may be
+// recursive.
+func containsFunIn(t types.Type, seen map[any]bool) bool {
 	switch t := t.(type) {
 	case *types.Fun:
 		return true
 	case *types.App:
+		if t.Con == "Query" || t.Con == "Task" {
+			return true
+		}
 		for _, a := range t.Args {
 			if containsFunIn(a, seen) {
 				return true
@@ -1208,6 +1228,19 @@ func containsFunIn(t types.Type, seen map[*types.Record]bool) bool {
 				return true
 			}
 		}
+		def := t
+		if t.Def != nil {
+			def = t.Def
+		}
+		if seen[def] {
+			return false
+		}
+		seen[def] = true
+		for _, ct := range def.Ctors { // a parameter in a payload is covered by Args above
+			if ct.Arg != nil && containsFunIn(ct.Arg, seen) {
+				return true
+			}
+		}
 	case *types.Record:
 		if seen[t] {
 			return false
@@ -1215,6 +1248,54 @@ func containsFunIn(t types.Type, seen map[*types.Record]bool) bool {
 		seen[t] = true
 		for _, f := range t.Fields {
 			if containsFunIn(f.Type, seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// containsEffect reports whether a value of type t can hold an effect value (`Query a`, `Task
+// a`), looking where containsFun looks; it picks the wording of containsFun's errors.
+func containsEffect(t types.Type) bool { return containsEffectIn(t, map[any]bool{}) }
+
+func containsEffectIn(t types.Type, seen map[any]bool) bool {
+	switch t := t.(type) {
+	case *types.App:
+		if t.Con == "Query" || t.Con == "Task" {
+			return true
+		}
+		for _, a := range t.Args {
+			if containsEffectIn(a, seen) {
+				return true
+			}
+		}
+	case *types.Union:
+		for _, a := range t.Args {
+			if containsEffectIn(a, seen) {
+				return true
+			}
+		}
+		def := t
+		if t.Def != nil {
+			def = t.Def
+		}
+		if seen[def] {
+			return false
+		}
+		seen[def] = true
+		for _, ct := range def.Ctors {
+			if ct.Arg != nil && containsEffectIn(ct.Arg, seen) {
+				return true
+			}
+		}
+	case *types.Record:
+		if seen[t] {
+			return false
+		}
+		seen[t] = true
+		for _, f := range t.Fields {
+			if containsEffectIn(f.Type, seen) {
 				return true
 			}
 		}
