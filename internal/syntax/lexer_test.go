@@ -105,3 +105,31 @@ func TestLexer_UnterminatedString(t *testing.T) {
 		t.Fatalf("errors: %+v", errs)
 	}
 }
+
+func TestLexer_ResetDropsErrors(t *testing.T) {
+	l := NewLexer("t.alder", []byte("x = \"abc\ny = 1"))
+	for l.Next().Kind != EOF {
+	}
+	errs := l.Errors()
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 error before reset, got %d: %+v", len(errs), errs)
+	}
+	// Reset to beginning should drop the error
+	l.Reset(0)
+	for l.Next().Kind != EOF {
+	}
+	errs = l.Errors()
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 error after reset and re-lex, got %d: %+v", len(errs), errs)
+	}
+}
+
+func TestLexer_ResetClampsOffset(t *testing.T) {
+	l := NewLexer("t.alder", []byte("hello"))
+	// Reset with offset beyond source length should not panic
+	l.Reset(1000)
+	tok := l.Next()
+	if tok.Kind != EOF {
+		t.Fatalf("expected EOF after clamped reset, got %+v", tok)
+	}
+}

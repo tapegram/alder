@@ -4,8 +4,8 @@ package syntax
 import "bytes"
 
 type LexError struct {
-	Line, Col int
-	Msg       string
+	Line, Col, Offset int
+	Msg               string
 }
 
 type Lexer struct {
@@ -28,6 +28,20 @@ func (l *Lexer) Errors() []LexError   { return l.errs }
 func (l *Lexer) Pos() int             { return l.pos }
 func (l *Lexer) SetHTMLTag(on bool)   { l.htmlTag = on }
 func (l *Lexer) Reset(offset int) {
+	// Clamp offset to source length
+	if offset > len(l.src) {
+		offset = len(l.src)
+	}
+	// Drop errors at or after the offset
+	keep := 0
+	for _, e := range l.errs {
+		if e.Offset < offset {
+			l.errs[keep] = e
+			keep++
+		}
+	}
+	l.errs = l.errs[:keep]
+	// Rewind to the offset
 	l.pos, l.line, l.col = 0, 1, 1
 	for l.pos < offset {
 		l.advance()
@@ -127,7 +141,7 @@ func (l *Lexer) Next() Token {
 	case c == '"':
 		for {
 			if l.pos >= len(l.src) || l.peek() == '\n' {
-				l.errs = append(l.errs, LexError{line, col, "unterminated string"})
+				l.errs = append(l.errs, LexError{line, col, off, "unterminated string"})
 				return l.tok(String, string(l.src[off:l.pos]), line, col, off)
 			}
 			d := l.advance()
@@ -227,7 +241,7 @@ func (l *Lexer) Next() Token {
 			return two(AndAnd, "&&")
 		}
 	}
-	l.errs = append(l.errs, LexError{line, col, "unexpected character " + string(c)})
+	l.errs = append(l.errs, LexError{line, col, off, "unexpected character " + string(c)})
 	return l.tok(Invalid, string(c), line, col, off)
 }
 
