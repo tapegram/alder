@@ -4,6 +4,7 @@
 package rt
 
 import (
+	"reflect"
 	"strings"
 	"time"
 )
@@ -103,6 +104,23 @@ func (d *Dict[K, V]) Put(k K, v V) {
 	d.m[k] = v
 }
 
+// Equal reports whether both dicts hold the same keys with Eq values.
+// Insertion order is ignored.
+func (d Dict[K, V]) Equal(o Dict[K, V]) bool {
+	if len(d.m) != len(o.m) {
+		return false
+	}
+	for k, v := range d.m {
+		ov, ok := o.m[k]
+		if !ok || !Eq(v, ov) {
+			return false
+		}
+	}
+	return true
+}
+
+func (d Dict[K, V]) eqAny(o any) bool { return d.Equal(o.(Dict[K, V])) }
+
 func (d Dict[K, V]) clone() Dict[K, V] {
 	c := Dict[K, V]{m: make(map[K]V, len(d.m)+1), keys: make([]K, len(d.keys), len(d.keys)+1)}
 	copy(c.keys, d.keys)
@@ -110,6 +128,87 @@ func (d Dict[K, V]) clone() Dict[K, V] {
 		c.m[k] = v
 	}
 	return c
+}
+
+// Eq is Alder's one structural equality. The emitter uses it for `==` and
+// `!=` on every non-primitive type, and rt/std uses it wherever it compares
+// values. Time is compared as an instant (Time.Equal); a Dict by its key set
+// and Eq on each value, ignoring insertion order; structs (records, unions,
+// Maybe, Result, Date) field by field; slices element-wise, with nil and
+// empty equal; everything else by ==.
+func Eq[T any](a, b T) bool {
+	switch x := any(a).(type) {
+	case string:
+		return x == any(b).(string)
+	case int64:
+		return x == any(b).(int64)
+	case float64:
+		return x == any(b).(float64)
+	case bool:
+		return x == any(b).(bool)
+	}
+	return eqValue(reflect.ValueOf(&a).Elem(), reflect.ValueOf(&b).Elem())
+}
+
+// dictEq is implemented by every Dict instantiation.
+type dictEq interface{ eqAny(o any) bool }
+
+var timeType = reflect.TypeFor[time.Time]()
+
+func eqValue(a, b reflect.Value) bool {
+	if a.Type() != b.Type() {
+		return false
+	}
+	if a.Type() == timeType && a.CanInterface() {
+		return a.Interface().(time.Time).Equal(b.Interface().(time.Time))
+	}
+	if a.CanInterface() {
+		if d, ok := a.Interface().(dictEq); ok && a.Kind() == reflect.Struct {
+			return d.eqAny(b.Interface())
+		}
+	}
+	switch a.Kind() {
+	case reflect.Struct:
+		for i := range a.NumField() {
+			if !eqValue(a.Field(i), b.Field(i)) {
+				return false
+			}
+		}
+		return true
+	case reflect.Slice, reflect.Array:
+		if a.Len() != b.Len() {
+			return false
+		}
+		for i := range a.Len() {
+			if !eqValue(a.Index(i), b.Index(i)) {
+				return false
+			}
+		}
+		return true
+	case reflect.Map:
+		if a.Len() != b.Len() {
+			return false
+		}
+		for it := a.MapRange(); it.Next(); {
+			bv := b.MapIndex(it.Key())
+			if !bv.IsValid() || !eqValue(it.Value(), bv) {
+				return false
+			}
+		}
+		return true
+	case reflect.Pointer, reflect.Interface:
+		if a.IsNil() || b.IsNil() {
+			return a.IsNil() && b.IsNil()
+		}
+		if a.Kind() == reflect.Pointer && a.Pointer() == b.Pointer() {
+			return true
+		}
+		return eqValue(a.Elem(), b.Elem())
+	case reflect.Func:
+		return false // functions have no equality
+	default:
+		return a.Equal(b)
+	}
 }
 
 // Date is Alder's calendar `Date` (no time zone).

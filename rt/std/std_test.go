@@ -102,6 +102,14 @@ func TestList_IndexedRangeUnique(t *testing.T) {
 	eq(t, "range single", ListRange(3, 3), []int64{3})
 	eq(t, "range empty", ListRange(5, 2), []int64{})
 	eq(t, "unique", ListUnique([]int64{3, 1, 3, 2, 1}), []int64{3, 1, 2})
+	empty := DictEmpty[string, int64]()
+	emptied := DictRemove("a", DictInsert("a", 1, empty))
+	eq(t, "member emptied dict", ListMember(emptied, []rt.Dict[string, int64]{empty}), true)
+	now := time.Now()
+	eq(t, "member time", ListMember(now, []time.Time{now.Round(0)}), true)
+	ab := DictInsert("b", 2, DictInsert("a", 1, empty))
+	ba := DictInsert("a", 1, DictInsert("b", 2, empty))
+	eq(t, "unique dicts order-insensitive", len(ListUnique([]rt.Dict[string, int64]{ab, ba})), 1)
 	eq(t, "unique lists", ListUnique([][]int64{{1}, {1}, {2}}), [][]int64{{1}, {2}})
 }
 
@@ -251,6 +259,11 @@ func TestIntFloat(t *testing.T) {
 	for _, c := range []struct{ in, want int64 }{{-5, 1}, {1, 1}, {5, 5}, {10, 10}, {11, 10}} {
 		eq(t, "clamp", IntClamp(r, c.in), c.want)
 	}
+	// Elm's clamp: low checked first, then high (min > max gives max for big n).
+	eq(t, "clamp inverted", IntClamp(struct {
+		Min int64
+		Max int64
+	}{Min: 10, Max: 1}, 20), int64(1))
 	eq(t, "toFloat", IntToFloat(3), 3.0)
 	eq(t, "min", IntMin(3, 2), int64(2))
 	eq(t, "max", IntMax(3, 2), int64(3))
@@ -272,14 +285,24 @@ func TestIntFloat(t *testing.T) {
 		want string
 	}{
 		{2, 3.14159, "3.14"},
-		{0, 2.5, "2"}, // round-half-even, as strconv does
+		{0, 2.5, "3"}, // half away from zero, like Float.round
+		{0, 0.5, "1"},
+		{0, -2.5, "-3"},
+		{2, 0.125, "0.13"},
+		{2, 1.005, "1.01"}, // rounds the shortest decimal, not the binary value
+		{2, 9.999, "10.00"},
+		{0, -0.4, "0"}, // never "-0"
+		{2, -0.001, "0.00"},
 		{1, 2, "2.0"},
 		{3, -0.5, "-0.500"},
+		{0, 1234567, "1234567"},
 		{-1, 7.6, "8"}, // negative decimals treated as 0
 	}
 	for _, c := range cases {
 		eq(t, "format", FloatFormat(struct{ Decimals int64 }{c.dec}, c.f), c.want)
 	}
+	eq(t, "not", PreludeNot(true), false)
+	eq(t, "not as a value", ListFilter(PreludeNot, []bool{true, false, false}), []bool{false, false})
 	eq(t, "bool toText", BoolToText(true)+BoolToText(false), "TrueFalse")
 }
 

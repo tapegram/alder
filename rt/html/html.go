@@ -70,7 +70,8 @@ var void = map[string]bool{
 	"input": true, "link": true, "meta": true, "source": true, "track": true, "wbr": true,
 }
 
-// Render serialises a node, escaping text and attribute values.
+// Render serialises a node, escaping text and attribute values. Tag and
+// attribute names are trusted literals supplied by the emitter, never escaped.
 func Render(n Node) string {
 	var b strings.Builder
 	render(&b, n)

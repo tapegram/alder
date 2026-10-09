@@ -3,6 +3,7 @@ package rt
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestMaybe_OrElse(t *testing.T) {
@@ -79,5 +80,57 @@ func TestDate_Format(t *testing.T) {
 	}
 	if got := Format("2006-01-02", Date{2026, 1, 5}); got != "2026-01-05" {
 		t.Fatalf("Format ISO = %q", got)
+	}
+}
+
+func TestEq(t *testing.T) {
+	type rec struct {
+		Name string
+		At   Maybe[time.Time]
+		Tags []string
+	}
+	now := time.Now()
+	stripped := now.Round(0) // same instant, no monotonic reading
+	other := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	empty := Dict[string, int64]{}
+	emptied := empty.Insert("a", 1).Remove("a")
+	ab := empty.Insert("a", 1).Insert("b", 2)
+	ba := empty.Insert("b", 2).Insert("a", 1)
+	cases := []struct {
+		name string
+		got  bool
+		want bool
+	}{
+		{"emptied dict == empty dict", Eq(emptied, empty), true},
+		{"time monotonic stripped", Eq(now, stripped), true},
+		{"time in another zone", Eq(other, other.In(time.FixedZone("X", 3600))), true},
+		{"different times", Eq(now, other), false},
+		{"dict order ignored", Eq(ab, ba), true},
+		{"dict different value", Eq(ab, ba.Insert("a", 9)), false},
+		{"dict different keys", Eq(ab, ab.Remove("b").Insert("c", 2)), false},
+		{"nested record with Maybe Time", Eq(rec{"x", Just(now), nil}, rec{"x", Just(stripped), []string{}}), true},
+		{"nested record differs", Eq(rec{"x", Just(now), nil}, rec{"x", Nothing[time.Time](), nil}), false},
+		{"slices", Eq([]int64{1, 2}, []int64{1, 2}), true},
+		{"slices differ", Eq([]int64{1, 2}, []int64{1}), false},
+		{"dates", Eq(Date{2026, 1, 2}, Date{2026, 1, 2}), true},
+		{"strings", Eq("a", "b"), false},
+		{"results", Eq(Ok[string, int64](1), Ok[string, int64](1)), true},
+		{"dict of dicts", Eq(Dict[string, Dict[string, int64]]{}.Insert("k", ab), Dict[string, Dict[string, int64]]{}.Insert("k", ba)), true},
+		{"plain map nil vs empty", Eq(map[string]int64(nil), map[string]int64{}), true},
+	}
+	for _, c := range cases {
+		if c.got != c.want {
+			t.Errorf("%s: got %v", c.name, c.got)
+		}
+	}
+	if !ab.Equal(ba) {
+		t.Error("Dict.Equal")
+	}
+}
+
+func TestDict_RemoveThenInsertMovesToEnd(t *testing.T) {
+	d := Dict[string, int64]{}.Insert("a", 1).Insert("b", 2).Remove("a").Insert("a", 3)
+	if got := d.Keys(); !reflect.DeepEqual(got, []string{"b", "a"}) {
+		t.Fatalf("Keys = %v", got)
 	}
 }

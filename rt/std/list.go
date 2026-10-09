@@ -8,14 +8,10 @@ package std
 
 import (
 	"cmp"
-	"reflect"
 	"slices"
 
 	"alder/rt"
 )
-
-// equal is Alder's structural `==` for any type.
-func equal[A any](a, b A) bool { return reflect.DeepEqual(a, b) }
 
 func ListLength[A any](xs []A) int64 { return int64(len(xs)) }
 
@@ -105,7 +101,7 @@ func ListAll[A any](f func(A) bool, xs []A) bool {
 }
 
 func ListMember[A any](x A, xs []A) bool {
-	return slices.ContainsFunc(xs, func(y A) bool { return equal(x, y) })
+	return slices.ContainsFunc(xs, func(y A) bool { return rt.Eq(x, y) })
 }
 
 // ListFoldl folds from the left: f x1 acc, then f x2 that, ...
