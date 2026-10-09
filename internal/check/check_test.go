@@ -17,6 +17,12 @@ import (
 var update = flag.Bool("update", false, "rewrite golden files")
 
 func runDir(t *testing.T, dir string) *diag.Bag {
+	_, bag := runDirResult(t, dir)
+	return bag
+}
+
+// runDirResult checks dir and returns the checker's Result (nil when parsing failed) with the diagnostics.
+func runDirResult(t *testing.T, dir string) (*Result, *diag.Bag) {
 	std, err := types.LoadStd()
 	if err != nil {
 		t.Fatal(err)
@@ -25,13 +31,14 @@ func runDir(t *testing.T, dir string) *diag.Bag {
 	for _, e := range ioErrs {
 		t.Fatal(e)
 	}
+	var res *Result
 	if !prog.ParseFailed { // Load's bag also holds module-graph errors (cycles), which only gate their modules
 		prog.Resolve(bag)
 		prog.MarkFailed(bag)
-		Program(prog, bag)
+		res = Program(prog, bag)
 	}
 	bag.Sort()
-	return bag
+	return res, bag
 }
 
 func render(bag *diag.Bag) string {

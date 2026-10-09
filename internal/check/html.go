@@ -42,7 +42,7 @@ func (mc *modCtx) checkHTML(e syntax.Expr, expected types.Type, env *env, eff ef
 // htmlNode checks one HTML child against message type m.
 func (mc *modCtx) htmlNode(e syntax.Expr, m types.Type, env *env, eff effect) {
 	c := mc.c
-	htmlT := &types.App{Con: "Html", Args: []types.Type{m}}
+	htmlT := c.record(e, &types.App{Con: "Html", Args: []types.Type{m}})
 	switch x := e.(type) {
 	case *syntax.HtmlText:
 	case *syntax.Element:
@@ -58,7 +58,7 @@ func (mc *modCtx) htmlNode(e syntax.Expr, m types.Type, env *env, eff effect) {
 		elem := c.u.Fresh()
 		mc.check(x.List, &types.App{Con: "List", Args: []types.Type{elem}}, env, eff)
 		child := env.child()
-		child.bind(x.Var, elem)
+		c.bind(child, x, x.Var, elem)
 		mc.htmlNode(x.Body, m, child, eff)
 	case *syntax.HtmlIf:
 		mc.check(x.Cond, types.Bool, env, eff)
@@ -243,7 +243,7 @@ func (mc *modCtx) checkMessage(e syntax.Expr, m types.Type, env *env, eff effect
 	if applied {
 		got = mc.infer(e, env, eff)
 	} else {
-		got = mc.inferCtor(ct, false) // reports E0301 for messages that need parameters
+		got = c.record(ct, mc.inferCtor(ct, false)) // reports E0301 for messages that need parameters
 	}
 	if err := c.u.Unify(got, target); err != nil {
 		c.errorf(diag.TypeMismatch, e.GetSpan(), "`%s` is not a message of this page", ct.Name)
@@ -316,6 +316,7 @@ func (mc *modCtx) formComponent(x *syntax.Element, env *env, eff effect) {
 		}
 		switch a.Name {
 		case "field":
+			c.record(a.Value, types.Text)
 			if s, ok := a.Value.(*syntax.StrLit); ok && len(s.Parts) == 1 && s.Parts[0].Expr == nil {
 				fieldName = s.Parts[0].Text
 			} else {

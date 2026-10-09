@@ -8,19 +8,6 @@ import (
 	"alder/internal/types"
 )
 
-type ctorInfo struct {
-	Union *types.Union
-	Arg   types.Type
-}
-type pageInfo struct {
-	Params   *types.Record
-	Msg      *types.Union
-	Requires string
-	Decl     *syntax.PageDecl
-	Msgs     map[string]*syntax.MsgDecl
-	Module   string
-}
-
 type Checker struct {
 	prog     *names.Program
 	bag      *diag.Bag
@@ -38,6 +25,7 @@ type Checker struct {
 	defaults []pendingDefault // field defaults, checked after value signatures // duplicate declarations (E0009), skipped after declareTypeNames
 
 	usesSessionPut bool // some module calls Session.put
+	res            *Result
 }
 
 // holeNote records a `?name` typed hole to be reported once its type is known.
@@ -66,10 +54,12 @@ type modCtx struct {
 	inTest   bool
 }
 
-func Program(prog *names.Program, bag *diag.Bag) {
+// Program checks prog, reporting into bag, and returns the types it learned.
+func Program(prog *names.Program, bag *diag.Bag) *Result {
 	c := &Checker{prog: prog, bag: bag, u: &types.Unifier{Subst: types.Subst{}},
 		types: map[string]types.Type{}, values: map[string]types.Type{}, ctors: map[string]*ctorInfo{},
-		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, caps: map[string]map[string]types.Type{}, pages: map[string]*pageInfo{}, losers: map[syntax.Decl]bool{}}
+		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, caps: map[string]map[string]types.Type{}, pages: map[string]*pageInfo{}, losers: map[syntax.Decl]bool{},
+		res: &Result{Types: map[syntax.Expr]types.Type{}, Binds: map[any]types.Type{}}}
 	c.declareStd()
 	// pass 1: placeholders for every declared type in every module (app + std)
 	for _, m := range c.allModules() {
@@ -115,6 +105,7 @@ func Program(prog *names.Program, bag *diag.Bag) {
 	if app := prog.Modules["App"]; app != nil && !prog.Failed["App"] {
 		c.ctx(app).checkApp()
 	}
+	return c.result()
 }
 
 func (c *Checker) allModules() []*syntax.Module {

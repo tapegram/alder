@@ -21,7 +21,7 @@ func (mc *modCtx) checkPattern(p syntax.Pattern, t types.Type, env *env) {
 	switch p := p.(type) {
 	case *syntax.PWild:
 	case *syntax.PVar:
-		env.bind(p.Name, t)
+		c.bind(env, p, p.Name, t)
 	case *syntax.PLit:
 		lt := mc.infer(p.Lit, env, effect{})
 		if err := c.u.Check(t, lt); err != nil {
@@ -94,7 +94,7 @@ func (mc *modCtx) checkPattern(p syntax.Pattern, t types.Type, env *env) {
 			mc.checkPattern(e, elem, env)
 		}
 		if p.Rest != "" {
-			env.bind(p.Rest, list)
+			c.bind(env, p, p.Rest, list)
 		}
 	}
 }
@@ -104,7 +104,7 @@ func (mc *modCtx) checkPattern(p syntax.Pattern, t types.Type, env *env) {
 func (mc *modCtx) bindPoison(p syntax.Pattern, env *env) {
 	switch p := p.(type) {
 	case *syntax.PVar:
-		env.bind(p.Name, types.Err)
+		mc.c.bind(env, p, p.Name, types.Err)
 	case *syntax.PCtor:
 		if p.Arg != nil {
 			mc.bindPoison(p.Arg, env)
@@ -118,7 +118,7 @@ func (mc *modCtx) bindPoison(p syntax.Pattern, env *env) {
 			mc.bindPoison(e, env)
 		}
 		if p.Rest != "" {
-			env.bind(p.Rest, types.Err)
+			mc.c.bind(env, p, p.Rest, types.Err)
 		}
 	}
 }

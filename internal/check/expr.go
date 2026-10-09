@@ -63,7 +63,7 @@ func (mc *modCtx) checkBodies() {
 					continue
 				}
 				for i, p := range d.Params {
-					env.bind(p.Name, fn.Params[i])
+					c.bind(env, p, p.Name, fn.Params[i])
 				}
 				if len(d.Params) < len(fn.Params) {
 					body = &types.Fun{Params: fn.Params[len(d.Params):], Result: fn.Result}
@@ -104,7 +104,7 @@ func (mc *modCtx) inferSig(d *syntax.ValueDecl) {
 	var params []types.Type
 	for _, p := range d.Params {
 		v := c.u.Fresh()
-		env.bind(p.Name, v)
+		c.bind(env, p, p.Name, v)
 		params = append(params, v)
 	}
 	var sig types.Type = mc.infer(d.Body, env, effect{})
@@ -127,6 +127,7 @@ func (mc *modCtx) missingSig(d *syntax.ValueDecl, sig string) {
 
 func (mc *modCtx) reportHoles() {
 	for _, h := range mc.holes {
+		mc.c.res.Holes++
 		mc.c.bag.Warn("W0002", h.span, "hole ?%s has type %s", h.name, types.String(mc.c.u.Apply(h.t)))
 	}
 	mc.holes = nil
@@ -153,7 +154,13 @@ func (mc *modCtx) mismatch(span diag.Span, got, expected types.Type) *diag.Diagn
 }
 
 // check verifies e against expected, pushing the expectation into literals, lambdas, branches and blocks.
+// It records expected as e's type even on a mismatch, so lowering never finds an untyped node.
 func (mc *modCtx) check(e syntax.Expr, expected types.Type, env *env, eff effect) {
+	mc.checkExpr(e, expected, env, eff)
+	mc.c.record(e, expected)
+}
+
+func (mc *modCtx) checkExpr(e syntax.Expr, expected types.Type, env *env, eff effect) {
 	c := mc.c
 	expected = c.u.Apply(expected)
 	switch x := e.(type) {
@@ -177,7 +184,7 @@ func (mc *modCtx) check(e syntax.Expr, expected types.Type, env *env, eff effect
 			}
 			child := env.child()
 			for i, p := range x.Params {
-				child.bind(p.Name, fn.Params[i])
+				c.bind(child, p, p.Name, fn.Params[i])
 			}
 			body := fn.Result
 			if len(x.Params) < len(fn.Params) {
@@ -339,7 +346,7 @@ func (mc *modCtx) checkBlock(x *syntax.Block, expected types.Type, env *env, eff
 			} else {
 				t = mc.infer(s.Expr, child, sub())
 			}
-			child.bind(s.Name, t)
+			c.bind(child, s, s.Name, t)
 			continue
 		}
 		var got types.Type
@@ -364,7 +371,7 @@ func (mc *modCtx) checkBlock(x *syntax.Block, expected types.Type, env *env, eff
 			if got == nil {
 				mc.infer(s.Expr, child, sub())
 			}
-			child.bind(s.Name, types.Err)
+			c.bind(child, s, s.Name, types.Err)
 			continue
 		}
 		if kind == "" {
@@ -372,7 +379,7 @@ func (mc *modCtx) checkBlock(x *syntax.Block, expected types.Type, env *env, eff
 			if got == nil {
 				mc.infer(s.Expr, child, sub())
 			}
-			child.bind(s.Name, inner)
+			c.bind(child, s, s.Name, inner)
 			continue
 		}
 		if got == nil {
@@ -393,15 +400,19 @@ func (mc *modCtx) checkBlock(x *syntax.Block, expected types.Type, env *env, eff
 				mc.mismatch(s.Expr.GetSpan(), got, &types.App{Con: kind, Args: []types.Type{inner}})
 			}
 		}
-		child.bind(s.Name, inner)
+		c.bind(child, s, s.Name, inner)
 	}
 	if x.Result != nil {
 		mc.check(x.Result, expected, child, sub())
 	}
 }
 
-// infer returns e's type, reporting errors inside e.
+// infer returns e's type, reporting errors inside e, and records it.
 func (mc *modCtx) infer(e syntax.Expr, env *env, eff effect) types.Type {
+	return mc.c.record(e, mc.inferExpr(e, env, eff))
+}
+
+func (mc *modCtx) inferExpr(e syntax.Expr, env *env, eff effect) types.Type {
 	c := mc.c
 	switch x := e.(type) {
 	case *syntax.IntLit:
@@ -474,7 +485,7 @@ func (mc *modCtx) infer(e syntax.Expr, env *env, eff effect) types.Type {
 		fn := &types.Fun{}
 		for _, p := range x.Params {
 			v := c.u.Fresh()
-			child.bind(p.Name, v)
+			c.bind(child, p, p.Name, v)
 			fn.Params = append(fn.Params, v)
 		}
 		fn.Result = mc.infer(x.Body, child, eff)
@@ -720,10 +731,11 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 	// constructor applied to a record literal: check against the payload (form field implicit)
 	if ct, ok := x.Fn.(*syntax.CtorRef); ok && len(x.Args) == 1 && pipe == nil {
 		if lit, isLit := x.Args[0].(*syntax.RecordLit); isLit {
-			fnT := c.u.Apply(mc.inferCtor(ct, true))
+			fnT := c.u.Apply(c.record(ct, mc.inferCtor(ct, true)))
 			if fn, isFn := fnT.(*types.Fun); isFn && len(fn.Params) == 1 {
 				if rec, isRec := c.u.Apply(fn.Params[0]).(*types.Record); isRec {
 					mc.checkRecordLit(lit, rec, env, eff)
+					c.record(lit, rec)
 					return fn.Result
 				}
 			}
@@ -758,7 +770,7 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 	}
 	var fnT types.Type
 	if ct, ok := x.Fn.(*syntax.CtorRef); ok {
-		fnT = mc.inferCtor(ct, true)
+		fnT = c.record(ct, mc.inferCtor(ct, true))
 	} else {
 		fnT = mc.infer(x.Fn, env, eff)
 	}
@@ -847,7 +859,9 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 		l := c.u.Apply(mc.infer(x.L, env, eff))
 		p := &pipeArg{t: l, span: x.L.GetSpan()}
 		if app, ok := x.R.(*syntax.App); ok {
-			return mc.inferApp(app, env, eff, p, nil)
+			res := mc.inferApp(app, env, eff, p, nil)
+			c.record(app, &types.Fun{Params: []types.Type{l}, Result: res}) // the application before the piped value
+			return res
 		}
 		fnT := c.u.Apply(mc.infer(x.R, env, eff))
 		if types.IsErr(fnT) {
@@ -1083,6 +1097,8 @@ func (mc *modCtx) checkDbGet(x *syntax.App, env *env, eff effect) types.Type {
 	rec := info.Record
 	argT := c.u.Apply(mc.infer(x.Args[1], env, eff))
 	res := &types.App{Con: "Query", Args: []types.Type{mc.maybeOf(rec)}}
+	tableT := c.record(tref, &types.App{Con: "Table", Args: []types.Type{rec}})
+	c.record(x.Fn, &types.Fun{Params: []types.Type{tableT, info.IDType}, Result: res})
 	if err := c.u.Check(argT, info.IDType); err == nil {
 		return res
 	}
