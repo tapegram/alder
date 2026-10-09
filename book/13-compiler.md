@@ -531,7 +531,7 @@ The emitter (`internal/gen`) walks the IR and prints Go, formatted with
 | `Html a` | `html.Node` |
 | `Page` | `rt.Page` |
 | a record | a `struct` (named for a declared record, anonymous otherwise) |
-| a union | a `struct` with a `Tag` and one field per payload |
+| a union | a `struct` with a `Tag` and one pointer field per payload |
 
 Every snippet below is from `testdata/golden/gen_basic/want/M.go`, which is
 byte-for-byte what `alder build --emit` writes for `gen_basic`.
@@ -765,7 +765,13 @@ packages the generated code imports. There are three.
 
 - **`rt`** (`rt/core.go`) holds the types the mapping table names: `Maybe`,
   `Result`, `Dict`, `Date`, `Page`. It also holds the helpers the emitter
-  calls: `Concat`, `OrElse`, `Append`, `Eq`, `DateCmp`, `TimeCmp`.
+  calls: `Concat`, `OrElse`, `Append`, `Eq`, `DateCmp`, `TimeCmp`, and
+  `Int` and `Float`, which return their argument unchanged: a literal goes
+  through one when Go would otherwise compute an operation on constants
+  while compiling, and reject `1 / 0` or an `Int` that overflows, which
+  Alder defines to happen when the program runs (chapter 4). A `Dict` takes
+  keys of any type: it files each under `Key(k)`, a text that is the same
+  for two keys exactly when they are `==`.
 - **`rt/html`** (`rt/html/html.go`) builds HTML trees (`El`, `Text`,
   `Raw`, `A`, `Nodes`) and renders them. `Render` is where escaping
   happens: a text node goes through `html.EscapeString`, and so does every
@@ -869,7 +875,10 @@ func Todos__Index__view(model Todos__Index__Model, session Todos__Index__Session
 Compare it with the `view` in chapter 2. `session` has type
 `Todos__Index__Session`, not the app's session: the page `requires user`, so
 it gets its own session record in which `user` is a `UserId`, not a
-`Maybe UserId`.
+`Maybe UserId`. Where the page passes `session` to code that expects the
+app's session, the call goes through `widen__Todos__Index__Session`, which
+the emitter writes into `Todos__Index.go`: it copies the fields and wraps
+`user` back in `rt.Just`.
 
 ## 10. Exercises
 

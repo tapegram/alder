@@ -121,7 +121,8 @@ type Form struct {
 // Session is the session the page's code sees: App's Session record, or for a `requires f`
 // page a record named Session in the page module (also in its Types, without field defaults)
 // whose field f is narrowed from `Maybe T` to `T`; every type in the page's code that is the
-// session names that record. The runtime builds it after the requires check.
+// session names that record, and where App's Session is expected a Widen converts it. The
+// runtime builds it after the requires check.
 type Page struct {
 	Module, Path string
 	Params       *RecordType
