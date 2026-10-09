@@ -4,10 +4,10 @@ A test is a declaration whose body is a `Bool`:
 
 ```alder
 test "summary counts open todos" =
-  summary [{ id: TodoId "a", title: "x", done: False, owner: UserId "u", created: Time.epoch }] == "1 open"
+  summary [{ id: TodoId "a", title: Text.NonEmpty "x", done: False, due: Nothing, owner: UserId "u", created: Time.epoch }] == "1 open"
 
 test "matches Active excludes done" =
-  not (matches Active { id: TodoId "a", title: "x", done: True, owner: UserId "u", created: Time.epoch })
+  not (matches Active { id: TodoId "a", title: Text.NonEmpty "x", done: True, due: Nothing, owner: UserId "u", created: Time.epoch })
 ```
 
 Tests live in the module they test, after the code. `alder test` runs every

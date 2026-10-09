@@ -1,0 +1,1 @@
+app/Notes.alder:5:1 E0602 `type Model = Unit` is an alias; a new name is always a new type; write `type Model = { }` or a union with its own constructors

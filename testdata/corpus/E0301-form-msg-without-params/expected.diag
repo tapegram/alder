@@ -1,0 +1,2 @@
+app/Posts/Show.alder:26:17 E0301 message `AddComment` needs its parameters: `AddComment { slug: ?slug }`
+  fix 26:17 AddComment { slug: ?slug }

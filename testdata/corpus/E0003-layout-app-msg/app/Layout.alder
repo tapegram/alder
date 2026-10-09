@@ -1,0 +1,11 @@
+module Layout
+
+Page : { title: Text, children: List (Html App.Msg) } -> Html App.Msg
+Page props =
+  <html>
+    <head><title>{props.title}</title></head>
+    <body>
+      <button click={App.Logout}>Log out</button>
+      <main>{props.children}</main>
+    </body>
+  </html>

@@ -1,0 +1,30 @@
+module Posts.Show
+
+import Post
+
+page "/posts/{slug}" { slug: Post.Slug }
+
+type Model = { slug: Post.Slug }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { slug: params.slug }
+
+form AddCommentForm = {
+  author: Text.NonEmpty,
+  body: Text.NonEmpty,
+}
+
+msg AddComment { slug: Post.Slug } form AddCommentForm
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddComment p -> Task.succeed Rerender,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <form submit={AddComment}>
+    <Input field="author" label="Your name" />
+    <Input field="body" label="Comment" />
+    <button>Post comment</button>
+  </form>

@@ -1,0 +1,6 @@
+module Post
+
+type Slug = brand Text where Text.matches "^[a-z0-9-]+$"
+
+test "slug validation rejects uppercase letters" =
+  Slug "Hello" == Nothing

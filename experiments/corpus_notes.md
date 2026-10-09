@@ -35,5 +35,13 @@ or new app, T4 notes + theme).
 | `E0010-no-update` | `msg` declared with no `update`: spec rule (chapter 6); nearest observed: E1 claude-haiku T2/T3 and E2 claude-haiku T4 declaring and sending messages the page could not handle |
 | `E0002-undeclared-app-msg` | `App.Logout` used without declaring it in `App`: E2 claude-haiku T4 (full) |
 | `E0011-list-param` | `List` page parameter: spec rule (chapter 6); written from the book |
+| `E0011-id-text` | `id: Text @id` (must be a `brand Text`): E1 qwen3-coder T3; also E3 qwen3-coder T3 (pitfalls) on `Comment` |
+| `E0002-other-page-msg` | `click={Auth.Login.Logout}`, sending another page's message: E1 qwen3:8b T2 |
+| `E0002-app-login-value` | `href={App.login}` (`login` is a declaration, not a value): E1 qwen3-coder T2 |
+| `E0301-form-msg-without-params` | `<form submit={AddComment}>` for a message with `{ slug }` params: E2 claude-haiku T3 (refonly) |
+| `E0003-layout-app-msg` | Layout typed `Html App.Msg` (valid: it names the app message union), so a page's `Html Msg` children do not fit: E2 claude-haiku T4 (full) |
+| `E0003-slug-vs-nothing` | `Slug "Hello" == Nothing` in a `test` (a brand compared with a `Maybe`): E2 qwen3-coder T3 (full) |
+| `E0602-alias-unit` | `type Model = Unit`, an alias in disguise: E2 claude-haiku T4 (refonly) |
+| `E0602-alias-keyword` | `type alias Point = { … }` (Elm): spec rule (chapter 4, "No type aliases"); no scored run wrote it; written from the book |
 
 Cases marked "written from the book" or "nearest observed" have no one-to-one scored error; they cover a diagnostic the spec requires and the experiments only approached.

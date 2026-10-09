@@ -1,0 +1,1 @@
+app/Geo.alder:3:1 E0602 `type alias` is not Alder: a new name is always a new type; write `type Point = { … }`

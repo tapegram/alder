@@ -1,0 +1,7 @@
+module Post
+
+table Post {
+  id: Text @id,
+  title: Text.NonEmpty,
+  created: Time @created,
+}

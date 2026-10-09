@@ -1,0 +1,3 @@
+module Post
+
+type Slug = brand Text

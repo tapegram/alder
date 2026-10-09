@@ -72,28 +72,27 @@ it finds. `alder explain <code>` prints a paragraph for any code below.
 | E0301 | message sent without its parameters | `M { field: ?field }` |
 | E0302 | `update` missing an arm | arm skeleton |
 | E0303 | `href` with a `Text` | — |
-| E0304 | form field not in the form type, or wrong input component | list of fields |
+| E0304 | form field not in the form type, or wrong input component | list of fields (in message) |
 | E0310 | unreachable `match` arm | — |
 | E0401 | `Task` inside `load` or a `Query` block | — |
 | E0402 | `let x <-` outside an effect block | — |
 | E0501 | `@id`, `@created`, `@updated` supplied on insert | — |
 | E0502 | `@ref` with the wrong id type | — |
 | E0601 | `Html Msg` in a non-page module | `Html a` |
-| E0602 | `case ... of`, `let ... in`, tuple, alias | the Alder form |
+| E0602 | `case ... of`, `let ... in`, tuple, alias | the Alder form (in message) |
 | W0001 | unused import | — |
 | W0002 | typed hole (`?name`) with its expected type | — |
 
 ## Holes
 
 `?name` is a typed hole. The program compiles with holes, and `alder check`
-reports each one with its expected type and the values in scope that could
-fill it:
+reports each one as warning W0002 with its expected type:
 
 ```
-app/Todos/Index.alder:40:18: hole ?count has type Int
-  in scope: List.length model.todos : Int
-            model.page : Int
+app/Todos/Index.alder:40:18: warning[W0002]: hole ?count has type Int
 ```
+
+Listing the values in scope that could fill a hole is planned.
 
 ## Queries
 
