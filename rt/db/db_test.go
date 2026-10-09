@@ -749,3 +749,105 @@ func TestEncodeTimeFixedWidth(t *testing.T) {
 		}
 	}
 }
+
+// I3: a capability implementation reaches the running Task's transaction through its ctx
+// (TxFrom, StoreFrom), so its writes commit and roll back with the Task's — and on ":memory:",
+// held on one connection, it does not deadlock against the Task's open transaction.
+func TestStore_CapabilityWritesInTaskTx(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	// record is what a Go capability method looks like: it has only ctx and its arguments.
+	record := func(ctx context.Context, title string) (string, error) {
+		return InsertRow(ctx, StoreFrom(ctx), TxFrom(ctx), todoTable, insertVals(title, false, rt.Nothing[rt.Date](), "Low"), clock)
+	}
+	capCall := func(title string) eff.Task[string] {
+		return eff.Call("Audit.record", true, func(e *eff.Env) (string, error) { return record(e.Ctx, title) })
+	}
+	env := newEnv(s)
+	_, err := eff.Run(env, eff.KTask, eff.Bind(insertTask(todoTable, insertVals("mine", false, rt.Nothing[rt.Date](), "Low")),
+		func(string) eff.Task[string] {
+			return eff.Bind(capCall("cap"), func(string) eff.Task[string] { return eff.Fail[string]("boom") })
+		}))
+	if err == nil || err.Error() != "boom" {
+		t.Fatalf("failing Task: %v", err)
+	}
+	if n := count(t, s, From(todoTable)); n != 0 {
+		t.Fatalf("rolled-back Task left %d rows", n)
+	}
+	if _, err := eff.Run(env, eff.KTask, capCall("cap")); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, s, Where(CEq("title", "cap"), From(todoTable))); n != 1 {
+		t.Fatalf("committed capability write: %d rows", n)
+	}
+	if TxFrom(ctx) != nil || StoreFrom(ctx) != nil {
+		t.Fatal("TxFrom/StoreFrom of a context with no Env")
+	}
+}
+
+// I2: a Task begins its transaction (and, on a file database, takes SQLite's write lock) only
+// when it first touches the store. A Task waiting in a slow non-database step does not block
+// other Tasks; Tasks that do write serialize correctly.
+func TestStore_ConcurrentTasksOnFile(t *testing.T) {
+	ctx := context.Background()
+	s, err := OpenSQLite(t.TempDir() + "/app.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.Ensure(ctx, []TableDesc{todoTable.Desc()}, true); err != nil {
+		t.Fatal(err)
+	}
+	ins := func(title string) eff.Task[string] {
+		return insertTask(todoTable, insertVals(title, false, rt.Nothing[rt.Date](), "Low"))
+	}
+	slow := eff.Bind(eff.Call("Slow.wait", true, func(*eff.Env) (struct{}, error) {
+		time.Sleep(time.Second)
+		return struct{}{}, nil
+	}), func(struct{}) eff.Task[string] { return ins("slow") })
+	slowDone := make(chan error, 1)
+	go func() {
+		_, err := eff.Run(newEnv(s), eff.KTask, slow)
+		slowDone <- err
+	}()
+	time.Sleep(100 * time.Millisecond)
+	start := time.Now()
+	env := newEnv(s)
+	env.Session = 1
+	if _, err := eff.Run(env, eff.KTask, eff.Call("Session.put", true, func(e *eff.Env) (struct{}, error) { e.Session = 2; return struct{}{}, nil })); err != nil || env.Session != 2 {
+		t.Fatalf("session-only Task: %v %v", err, env.Session)
+	}
+	if _, err := eff.Run(newEnv(s), eff.KTask, ins("fast")); err != nil {
+		t.Fatalf("db Task beside a slow one: %v", err)
+	}
+	if d := time.Since(start); d > 500*time.Millisecond {
+		t.Fatalf("Tasks beside a slow non-db step took %v (blocked by it)", d)
+	}
+	if err := <-slowDone; err != nil {
+		t.Fatal(err)
+	}
+
+	// Two writers, each Task reading the count then inserting "n=<count>" (@unique): only if
+	// the Tasks serialize does every insert see a fresh count.
+	const per = 15
+	countThenInsert := eff.Bind(eff.Call("Db.count Todo", false, func(e *eff.Env) (int64, error) {
+		return CountRows(e.Ctx, e.Store.(Store), TxOf(e), From(todoTable))
+	}), func(n int64) eff.Task[string] { return ins("n=" + strconv.FormatInt(n, 10)) })
+	errs := make(chan error, 2*per)
+	for range 2 {
+		go func() {
+			for range per {
+				_, err := eff.Run(newEnv(s), eff.KTask, countThenInsert)
+				errs <- err
+			}
+		}()
+	}
+	for range 2 * per {
+		if err := <-errs; err != nil {
+			t.Fatalf("serialized writer: %v", err)
+		}
+	}
+	if n := count(t, s, From(todoTable)); n != 2+2*per {
+		t.Fatalf("rows %d, want %d", n, 2+2*per)
+	}
+}

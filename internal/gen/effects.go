@@ -44,8 +44,9 @@ import (
 //
 // Values compared with a column are encoded with the column's encoder (encode): Bool, Date, Time
 // and payload-less unions (name__M__U) have one, Maybe goes through db.EncodeMaybe, Text, Int and
-// Float are stored as they are. Calls read the transaction of the running effect (db.TxOf):
-// inside a Task every read sees the Task's writes.
+// Float are stored as they are. Calls read the transaction of the running effect (db.TxOf, which
+// begins a Task's transaction on its first store access): inside a Task every read sees the
+// Task's writes. A capability gets _e.Ctx, which carries the Env (eff.EnvFrom, db.TxFrom).
 
 // effect is an effect, database or condition node as a Go expression of its own type.
 func (f *fn) effect(e ir.Expr, s *scope) string {

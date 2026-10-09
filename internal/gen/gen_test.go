@@ -1695,6 +1695,17 @@ func TestTodos(t *testing.T) {
 	if s := env.Session.(App__Session); s.User.Ok {
 		t.Fatalf("logout kept the user: %+v", s)
 	}
+	// a Task that fails after Session.put leaves the session as it was (I1); a successful one
+	// that touches no table begins no transaction (I2: the in-memory store's single connection
+	// would otherwise be held)
+	before := env.Session.(App__Session)
+	switchThenFail := eff.Bind(App__update(App__Msg__SwitchTheme__, before), func(rt.Nav) eff.Task[rt.Nav] { return eff.Fail[rt.Nav]("boom") })
+	if _, err := eff.Run(env, eff.KTask, switchThenFail); !errors.As(err, &fail) || fail.Msg != "boom" {
+		t.Fatalf("switch then fail: err = %v", err)
+	}
+	if s := env.Session.(App__Session); s != before {
+		t.Fatalf("failed Task kept its session change: %+v, want %+v", s, before)
+	}
 	t.Logf("trace: %v", env.Trace)
 	t.Logf("log: %d lines", len(logs))
 }
@@ -1716,6 +1727,7 @@ const runShopTest = `package app
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -1733,8 +1745,16 @@ func (pay) Charge(ctx context.Context, args struct {
 }) (rt.Maybe[string], error) {
 	return rt.Just(args.Card), nil
 }
-func (pay) Balance(ctx context.Context) (float64, error)                { return 2.5, nil }
-func (pay) Limit(ctx context.Context, a1 string, a2 int64) (int64, error) { return a2 * 10, nil }
+func (pay) Balance(ctx context.Context) (float64, error) { return 2.5, nil }
+
+// Limit checks that a capability's ctx carries the running effect (I3): in a Query there is
+// no transaction to reach.
+func (pay) Limit(ctx context.Context, a1 string, a2 int64) (int64, error) {
+	if eff.EnvFrom(ctx) == nil || db.StoreFrom(ctx) == nil || db.TxFrom(ctx) != nil {
+		return 0, errors.New("capability ctx does not carry the Query's Env")
+	}
+	return a2 * 10, nil
+}
 
 var _ cap__Shop__Pay = pay{}
 

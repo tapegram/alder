@@ -449,7 +449,15 @@ func TestEffects_SessionPut(t *testing.T) {
 	}
 	eq(t, "session", env.Session, sess{User: rt.Just("u"), Theme: "dark"})
 	eq(t, "trace", env.Trace, []string{"Session.put", "Session.put"})
-	eq(t, "commits", st.commits, 1)
+	eq(t, "commits (a session-only Task begins no transaction)", st.commits, 0)
+	// a Task that fails after Session.put leaves the session as it was
+	failing := eff.Bind(SessionPut(func(s sess) sess { s.Theme = "x"; return s }), func(struct{}) eff.Task[struct{}] {
+		return eff.Fail[struct{}]("no")
+	})
+	if _, err := eff.Run(env, eff.KTask, failing); err == nil {
+		t.Fatal("failing Task succeeded")
+	}
+	eq(t, "session after a failed Task", env.Session, sess{User: rt.Just("u"), Theme: "dark"})
 	// Session.put writes: it cannot run as a Query
 	if _, err := eff.RunQuery(&eff.Env{Session: sess{}}, eff.Q(SessionPut(func(s sess) sess { return s }))); err == nil {
 		t.Error("Session.put ran inside a Query")

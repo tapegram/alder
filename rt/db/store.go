@@ -32,12 +32,60 @@ type Store interface {
 // Tx is a Store's transaction.
 type Tx interface{ eff.Tx }
 
-// TxOf is e.Tx as a Tx, or nil when e.Tx is nil (in a Query).
+// TxOf is the running Task's transaction as a Tx, begun on first use
+// (eff.Env.Transaction), or nil in a Query. If beginning it fails, TxOf
+// returns a Tx that carries the error: every operation of this package (and
+// of the SQLite store) given it returns that error, which fails the Task.
 func TxOf(e *eff.Env) Tx {
-	if e.Tx == nil {
+	tx, err := e.Transaction()
+	if err != nil {
+		return beginFailed{err}
+	}
+	if tx == nil {
 		return nil
 	}
-	return e.Tx.(Tx)
+	return tx.(Tx)
+}
+
+// TxFrom is TxOf of the Env running with ctx (eff.EnvFrom), or nil when
+// ctx carries none. A capability implementation passes it, with StoreFrom,
+// to the store to write inside the running Task's transaction:
+//
+//	func (a audit) Record(ctx context.Context, msg string) (struct{}, error) {
+//		st := db.StoreFrom(ctx)
+//		_, err := st.Insert(ctx, db.TxFrom(ctx), "Audit.Entry", cols, "id", "", "", []any{nil, msg}, time.Now())
+//		return struct{}{}, err
+//	}
+func TxFrom(ctx context.Context) Tx {
+	e := eff.EnvFrom(ctx)
+	if e == nil {
+		return nil
+	}
+	return TxOf(e)
+}
+
+// StoreFrom is the Store of the Env running with ctx (eff.EnvFrom), or nil.
+func StoreFrom(ctx context.Context) Store {
+	e := eff.EnvFrom(ctx)
+	if e == nil {
+		return nil
+	}
+	st, _ := e.Store.(Store)
+	return st
+}
+
+// beginFailed is the Tx TxOf returns when beginning the transaction failed.
+type beginFailed struct{ err error }
+
+func (b beginFailed) Commit() error   { return b.err }
+func (b beginFailed) Rollback() error { return b.err }
+
+// txErr is the begin error tx carries, or nil.
+func txErr(tx Tx) error {
+	if b, ok := tx.(beginFailed); ok {
+		return b.err
+	}
+	return nil
 }
 
 // NewID is a fresh 20-character URL-safe id from crypto/rand.
@@ -51,6 +99,9 @@ func NewID() string {
 
 // GetRow is Db.get.
 func GetRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string) (rt.Maybe[T], error) {
+	if err := txErr(tx); err != nil {
+		return rt.Nothing[T](), err
+	}
 	row, found, err := st.Get(ctx, tx, t.Name, id)
 	if err != nil || !found {
 		return rt.Nothing[T](), err
@@ -64,6 +115,9 @@ func GetRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string)
 
 // All is Db.all. No rows is an empty, non-nil slice.
 func All[T any](ctx context.Context, st Store, tx Tx, s Select[T]) ([]T, error) {
+	if err := txErr(tx); err != nil {
+		return nil, err
+	}
 	rows, err := st.Query(ctx, tx, s.Table.Name, s.Table.Columns, s.SQL())
 	if err != nil {
 		return nil, err
@@ -96,12 +150,18 @@ func First[T any](ctx context.Context, st Store, tx Tx, s Select[T]) (rt.Maybe[T
 // CountRows is Db.count: the number of rows s yields (honouring its limit
 // and offset).
 func CountRows[T any](ctx context.Context, st Store, tx Tx, s Select[T]) (int64, error) {
+	if err := txErr(tx); err != nil {
+		return 0, err
+	}
 	return st.Count(ctx, tx, s.Table.Name, s.SQL())
 }
 
 // InsertRow is Db.insert; vals is the Insert record's columns in Columns
 // order with nil at the id/created/updated positions. It returns the new id.
 func InsertRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], vals []any, now time.Time) (string, error) {
+	if err := txErr(tx); err != nil {
+		return "", err
+	}
 	return st.Insert(ctx, tx, t.Name, t.Columns, t.ID, t.Created, t.Updated, vals, now)
 }
 
@@ -125,5 +185,8 @@ func UpdateRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id stri
 
 // DeleteRow is Db.delete. Deleting a missing row is not an error.
 func DeleteRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string) error {
+	if err := txErr(tx); err != nil {
+		return err
+	}
 	return st.Delete(ctx, tx, t.Name, t.ID, id)
 }

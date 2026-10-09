@@ -15,21 +15,30 @@ var ErrInternal = errors.New("internal error")
 // (value, nil) | (zero, *ErrFail) | (zero, ErrNotFound) | (zero, another
 // error from the context, the store or a Call).
 //
-// kind KTask: Begin a transaction on env.Store before the first step and
-// set env.Tx; Commit after the result; Rollback instead on any error or
-// panic (a panic keeps unwinding after the rollback, with its original
-// stack). env.Tx is restored when Run returns. If env.Store is nil the
-// Task runs with no transaction.
+// kind KTask: the transaction is begun lazily. Run begins none itself; the
+// first Call that asks for one (env.Transaction, which db.TxOf and
+// db.TxFrom use) begins it on env.Store and records it in env.Tx, so a Task
+// that never touches the database holds no database lock. After the result
+// Run commits that transaction if one was begun; on any error or panic it
+// rolls it back instead (a panic keeps unwinding after the rollback, with
+// its original stack) and also restores env.Session to its value when Run
+// started, so a failed Task leaves neither rows nor session changes behind.
+// A Task that succeeds — including one producing Reject — keeps both. env.Tx
+// is restored when Run returns. If env.Store is nil no transaction is ever
+// begun.
 //
-// kind KQuery: no transaction; a Call with write=true is not run and Run
-// returns an internal error.
+// kind KQuery: no transaction (env.Tx is nil and env.Transaction gives nil);
+// a Call with write=true is not run and Run returns an internal error.
 //
 // Every Call is logged at level "effect" with its name and appended to
 // env.Trace before it runs.
 //
 // Run first fills a nil env.Ctx with context.Background() and a nil env.Now
 // with time.Now, so Call functions (generated code passes e.Ctx to the store
-// and e.Now() to Db.insert/update) may use both unchecked.
+// and to capabilities, and e.Now() to Db.insert/update) may use both
+// unchecked. While Run runs, env.Ctx carries env (EnvFrom), so a capability
+// implementation can reach the running effect's transaction
+// (db.TxFrom(ctx)); env.Ctx is restored when Run returns.
 //
 // Depth guarantee: Run is a loop over an explicit continuation stack kept
 // on the heap, so Bind, Map and All chains of any length or nesting depth
@@ -43,36 +52,42 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 	if env.Now == nil {
 		env.Now = time.Now
 	}
-	if kind != KTask || env.Store == nil {
-		v, err := interpret(env, kind, t.node)
-		if err != nil {
-			return zero, err
-		}
-		return as[T](v), nil
+	prevCtx, prevTx, prevBegin := env.Ctx, env.Tx, env.beginTx
+	if EnvFrom(env.Ctx) != env {
+		env.Ctx = context.WithValue(env.Ctx, envKey{}, env)
 	}
-
-	tx, err := env.Store.Begin(ctx(env))
-	if err != nil {
-		return zero, err
+	env.Tx, env.beginTx = nil, nil
+	if kind == KTask && env.Store != nil {
+		store := env.Store
+		env.beginTx = func() (Tx, error) { return store.Begin(ctx(env)) }
 	}
-	prev := env.Tx
-	env.Tx = tx
+	session := env.Session
 	done := false
 	defer func() {
-		env.Tx = prev
-		if !done { // a panic is unwinding through us
-			rollback(env, tx)
+		tx := env.Tx
+		env.Ctx, env.Tx, env.beginTx = prevCtx, prevTx, prevBegin
+		if !done && kind == KTask { // a panic is unwinding through us
+			if tx != nil {
+				rollback(env, tx)
+			}
+			env.Session = session
 		}
 	}()
 
 	v, err := interpret(env, kind, t.node)
-	if err != nil {
-		done = true
-		rollback(env, tx)
-		return zero, err
+	tx := env.Tx
+	if err == nil && tx != nil && kind == KTask {
+		err = tx.Commit()
+		tx = nil // a failed commit is not rolled back again
 	}
 	done = true
-	if err := tx.Commit(); err != nil {
+	if err != nil {
+		if kind == KTask {
+			if tx != nil {
+				rollback(env, tx)
+			}
+			env.Session = session
+		}
 		return zero, err
 	}
 	return as[T](v), nil

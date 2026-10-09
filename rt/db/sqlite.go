@@ -86,6 +86,9 @@ func (s *SQLite) on(tx Tx) (querier, error) {
 	if tx == nil {
 		return s.db, nil
 	}
+	if err := txErr(tx); err != nil {
+		return nil, err
+	}
 	t, ok := tx.(*sqliteTx)
 	if !ok {
 		return nil, fmt.Errorf("db: transaction %T does not belong to the SQLite store", tx)

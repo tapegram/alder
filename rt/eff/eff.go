@@ -21,7 +21,7 @@ type Kind int
 const (
 	// KQuery runs with no transaction; a write Call is an internal error.
 	KQuery Kind = iota
-	// KTask runs inside exactly one transaction.
+	// KTask runs inside at most one transaction, begun when first needed.
 	KTask
 )
 
@@ -131,10 +131,10 @@ func Fail[T any](msg string) Task[T] { return Task[T]{fail{msg}} }
 func NotFound[T any]() Task[T] { return Task[T]{notFound{}} }
 
 // Call is one effect step. name is for the log and Env.Trace ("Db.get
-// Todo", "Password.verify"); write says whether it needs a transaction (a
-// write Call reached while running a Query is an internal error); fn runs
-// with the Env (and, in a Task, Env.Tx set) and returns the value or an
-// error. fn may return *ErrFail or ErrNotFound to fail the way Fail and
+// Todo", "Password.verify"); write says whether it may write (a write Call
+// reached while running a Query is an internal error); fn runs with the Env
+// — whose Ctx carries the Env (EnvFrom) and whose Transaction begins the
+// Task's transaction on first use — and returns the value or an error. fn may return *ErrFail or ErrNotFound to fail the way Fail and
 // NotFound do; any other error is passed through unchanged. fn may replace
 // Env.Session. fn must not keep the Env after it returns.
 func Call[T any](name string, write bool, fn func(*Env) (T, error)) Task[T] {
@@ -148,17 +148,50 @@ func Call[T any](name string, write bool, fn func(*Env) (T, error)) Task[T] {
 }
 
 // Env is what effects run against. Run reads Ctx, Store and Log, sets Tx
-// for the length of a Task, and appends to Trace; everything else is for
-// Call functions.
+// when a Task's transaction is begun, and appends to Trace; everything else
+// is for Call functions.
 type Env struct {
-	Ctx     context.Context         // checked before each Call; nil means never cancelled
+	Ctx     context.Context         // checked before each Call; nil means never cancelled; carries the Env while Run runs
 	Store   Store                   // nil: Tasks run with no transaction (Tx stays nil)
-	Tx      Tx                      // non-nil while a Task runs against a Store
+	Tx      Tx                      // the running Task's transaction once begun (Transaction); nil in a Query
 	Session any                     // the app's session value; SessionPut replaces it
 	Caps    map[string]any          // "Auth.Login.Password" → implementation
 	Now     func() time.Time        // the clock
 	Log     func(level, msg string) // level is "info", "warn" or "effect"; nil: no log
 	Trace   []string                // every Call name in order (dev log / tests)
+
+	beginTx func() (Tx, error) // set by Run for a Task with a Store: begins Tx
+}
+
+// Transaction is the running Task's transaction, begun on first use: the
+// first call inside a Task run against a Store begins it and records it in
+// e.Tx; later calls return the same one. In a Query, with no Store, or
+// outside Run it is e.Tx (nil in a Query). A Begin error is returned and
+// nothing is recorded.
+func (e *Env) Transaction() (Tx, error) {
+	if e.Tx != nil || e.beginTx == nil {
+		return e.Tx, nil
+	}
+	tx, err := e.beginTx()
+	if err != nil {
+		return nil, err
+	}
+	e.Tx = tx
+	return tx, nil
+}
+
+type envKey struct{}
+
+// EnvFrom is the Env of the effect running with ctx, or nil. Run puts its
+// Env in env.Ctx, which generated code passes to every store operation and
+// capability method, so a capability implementation can reach the running
+// Task (db.TxFrom(ctx) is its transaction).
+func EnvFrom(ctx context.Context) *Env {
+	if ctx == nil {
+		return nil
+	}
+	e, _ := ctx.Value(envKey{}).(*Env)
+	return e
 }
 
 // Store begins transactions. It is independent of any particular database.
