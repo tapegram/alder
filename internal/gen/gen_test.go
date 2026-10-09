@@ -2536,3 +2536,69 @@ func TestRows(t *testing.T) {
 }
 `)
 }
+
+// The re-review's fresh1 probe: a Redirect to `Url.external` of user input cannot run script
+// under Datastar, and an `href={Url.external …}` of it is "#".
+func TestGen_UrlExternalIsSanitized(t *testing.T) {
+	files := emitSource(t, map[string]string{
+		"App.alder": appModule,
+		"F.alder": `module F
+
+page "/" { q: Text = "" }
+
+type Model = { q: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { q: params.q }
+
+msg Go { to: Text }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Go p -> Task.succeed (Redirect (Url.external p.to)),
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p><a id="lnk" href={Url.external model.q}>x</a></p>
+`,
+	})
+	runGo(t, files, `package app
+
+import (
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+)
+
+func TestProbe(t *testing.T) {
+	h, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	do := func(method, target string, ds bool) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, target, nil)
+		if ds {
+			r.Header.Set("Datastar-Request", "true")
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	evil := url.QueryEscape("javascript:alert(document.cookie)")
+	w := do("POST", "/_m/F/Go?to="+evil, true)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `+"`"+`window.location.assign("#")`+"`"+`) || strings.Contains(w.Body.String(), "javascript") {
+		t.Fatalf("Datastar Go: %d %s", w.Code, w.Body.String())
+	}
+	if w := do("POST", "/_m/F/Go?to="+evil, false); w.Code != 303 || w.Header().Get("Location") != "#" {
+		t.Fatalf("Go: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := do("POST", "/_m/F/Go?to="+url.QueryEscape("https://ex.com/x"), false); w.Code != 303 || w.Header().Get("Location") != "https://ex.com/x" {
+		t.Fatalf("Go https: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := do("GET", "/?q="+url.QueryEscape("JavaScript:alert(1)"), false); !strings.Contains(w.Body.String(), `+"`"+`<a id="lnk" href="#">`+"`"+`) {
+		t.Fatalf("href: %s", w.Body.String())
+	}
+}
+`)
+}

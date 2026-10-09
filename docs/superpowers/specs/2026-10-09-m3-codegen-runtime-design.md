@@ -455,6 +455,15 @@ Each milestone gets its own implementation plan.
   bundle, and appended scripts are executed). The session is stored on
   that response as on the 303. The generated handlers are unchanged: the
   router decides.
+- Navigation targets are sanitized (re-review residual). `rt.SafeURL`
+  accepts a site path (`/…`, not `//…` or `/\…`), a fragment (`#…`) and an
+  absolute `http:`/`https:` URL with a host (scheme in any case);
+  `Url.external` (`std.UrlExternal`) maps anything else, and fragments, to
+  `#` (pure code: nothing is logged). Defense in depth: `datastar.Navigate`
+  refuses an unsafe URL with an error and writes nothing; `rt/web`'s
+  redirect path answers one with a 500 (`eff.ErrInternal`: "refusing to
+  navigate to <scheme>:"; under Datastar the usual 200 patch of the error
+  page); `rt/html` renders an unsafe `href` as `#`.
 - SSE line ends (C3). `PatchBody`/`Navigate` turn `\r\n` and a lone `\r`
   into `\n` before splitting the elements into `data:` lines, and the HTML
   renderer writes `\r` in text and attribute values as `&#13;`, so no user

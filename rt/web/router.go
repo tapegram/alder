@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	rtpkg "alder/rt"
 	"alder/rt/datastar"
 	"alder/rt/eff"
 	"alder/rt/html"
@@ -394,6 +395,11 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, rq *Request, res
 			return
 		}
 		if resp.Status == http.StatusSeeOther {
+			if !rtpkg.SafeURL(resp.Location) {
+				// defense in depth: Url.external already turns such a URL into "#"
+				rt.fail(w, r, html.None(), fmt.Errorf("%w: refusing to navigate to %s", eff.ErrInternal, rtpkg.URLScheme(resp.Location)), nil)
+				return
+			}
 			if rq.Datastar {
 				// the client's fetch would follow a 303 itself and patch the new page into the
 				// old URL: navigate the browser instead

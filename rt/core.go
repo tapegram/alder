@@ -453,6 +453,36 @@ func queryString(kvs []KV) string {
 	return b.String()
 }
 
+// SafeURL reports whether u may be a link or a navigation target: a path of this site (it
+// starts with "/" but not "//" or "/\\", which browsers read as another host), a fragment
+// ("#…"), or an absolute http: or https: URL with a host (the scheme in any case). Anything else
+// — javascript:, data:, other schemes, protocol-relative URLs, leading whitespace or control
+// characters — is refused. Url.external turns a refused URL into "#"; html renders such an href
+// as "#", and rt/web refuses to redirect to one.
+func SafeURL(u string) bool {
+	switch {
+	case strings.HasPrefix(u, "#"):
+		return true
+	case strings.HasPrefix(u, "/"):
+		return !strings.HasPrefix(u, "//") && !strings.HasPrefix(u, "/\\")
+	}
+	l := strings.ToLower(u)
+	if !strings.HasPrefix(l, "http://") && !strings.HasPrefix(l, "https://") {
+		return false
+	}
+	p, err := url.Parse(u)
+	return err == nil && p.Host != ""
+}
+
+// URLScheme is the scheme of u as an error message names it ("javascript:"), or u quoted when
+// it has none.
+func URLScheme(u string) string {
+	if i := strings.IndexByte(u, ':'); i > 0 && !strings.ContainsAny(u[:i], "/?#") {
+		return strings.ToLower(u[:i]) + ":"
+	}
+	return strconv.Quote(u)
+}
+
 // PathSegment is a path parameter's text escaped as one segment of a URL path ("a/b" →
 // "a%2Fb").
 func PathSegment(s string) string { return url.PathEscape(s) }

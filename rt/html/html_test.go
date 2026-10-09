@@ -113,3 +113,11 @@ func TestHTML_CarriageReturnEscaped(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// An href that rt.SafeURL refuses renders as "#".
+func TestHTML_UnsafeHrefIsHash(t *testing.T) {
+	got := Render(Nodes(El("a", []Attr{A("href", "javascript:alert(1)")}), El("a", []Attr{A("href", "https://ex.com/?a=1&b")}), El("a", []Attr{A("href", "//evil")})))
+	if got != `<a href="#"></a><a href="https://ex.com/?a=1&amp;b"></a><a href="#"></a>` {
+		t.Fatal(got)
+	}
+}

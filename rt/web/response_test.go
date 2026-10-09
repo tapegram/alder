@@ -266,3 +266,29 @@ func TestResponse_FailureKeepsSetSession(t *testing.T) {
 		t.Errorf("/plain: %d, Set-Cookie %q", w.Code, w.Header().Get("Set-Cookie"))
 	}
 }
+
+// A redirect to a URL rt.SafeURL refuses is a 500, with and without Datastar (defense in depth:
+// Url.external already makes such a URL "#").
+func TestResponse_RedirectRefusesScriptURL(t *testing.T) {
+	var logs []string
+	h := NewRouter(one("POST", "/_m/F/Go", func(rq *Request) Response {
+		return RedirectResponse("javascript:alert(document.cookie)", nil)
+	}), testOpts(func(o *Options) { o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) } }))
+	for _, ds := range []bool{false, true} {
+		req := httptest.NewRequest("POST", "/_m/F/Go", nil)
+		if ds {
+			req.Header.Set("Datastar-Request", "true")
+		}
+		w := serve(h, req)
+		body := w.Body.String()
+		if strings.Contains(body, "javascript:") || w.Header().Get("Location") != "" {
+			t.Fatalf("datastar=%v: %d %q", ds, w.Code, body)
+		}
+		if ds && (w.Code != 200 || !strings.Contains(body, "Something went wrong")) || !ds && w.Code != 500 {
+			t.Fatalf("datastar=%v: %d %q", ds, w.Code, body)
+		}
+	}
+	if len(logs) != 2 || !strings.Contains(logs[0], "internal error: refusing to navigate to javascript:") {
+		t.Fatalf("logs %q", logs)
+	}
+}

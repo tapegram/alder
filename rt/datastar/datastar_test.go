@@ -120,3 +120,18 @@ func TestNavigate_EventFormat(t *testing.T) {
 		t.Fatalf("%d %q flushed=%v", rec.Code, rec.Header().Get("Content-Type"), rec.Flushed)
 	}
 }
+
+// Navigate refuses a URL rt.SafeURL refuses and writes nothing.
+func TestNavigate_RefusesScriptURLs(t *testing.T) {
+	for _, u := range []string{"javascript:alert(document.cookie)", "JavaScript:x", "//evil.com", "data:text/html,x"} {
+		rec := httptest.NewRecorder()
+		err := Navigate(rec, u)
+		if err == nil || !strings.HasPrefix(err.Error(), "refusing to navigate to ") || rec.Body.Len() != 0 || rec.Header().Get("Content-Type") != "" {
+			t.Fatalf("Navigate(%q): %v, %q", u, err, rec.Body.String())
+		}
+	}
+	rec := httptest.NewRecorder()
+	if err := Navigate(rec, "#"); err != nil || !strings.Contains(rec.Body.String(), `window.location.assign("#")`) {
+		t.Fatalf("Navigate(#): %v %q", err, rec.Body.String())
+	}
+}

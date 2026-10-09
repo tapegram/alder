@@ -574,3 +574,35 @@ func TestEffects_Http(t *testing.T) {
 	}
 	eq(t, "trace", env.Trace, []string{"Http.get", "Http.post", "Http.get", "Http.get"})
 }
+
+// Url.external keeps only absolute http(s) URLs and paths of this site; every other URL is "#"
+// (a script URL can be neither a link nor a redirect).
+func TestUrlExternalSanitizes(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://ex.com/a?b=1":    "https://ex.com/a?b=1",
+		"http://ex.com":           "http://ex.com",
+		"HTTPS://Ex.com/x":        "HTTPS://Ex.com/x",
+		"/static/app.css":         "/static/app.css",
+		"/":                       "/",
+		"javascript:alert(1)":     "#",
+		"JavaScript:alert(1)":     "#",
+		"  javascript:alert(1)":   "#",
+		"\tjavascript:alert(1)":   "#",
+		"java\tscript:alert(1)":   "#",
+		"data:text/html,<script>": "#",
+		"vbscript:x":              "#",
+		"mailto:a@b.c":            "#",
+		"//evil.com/x":            "#",
+		"/\\evil.com":             "#",
+		" https://ex.com":         "#",
+		"https:evil":              "#",
+		"http://":                 "#",
+		"relative/path":           "#",
+		"#top":                    "#",
+		"":                        "#",
+	} {
+		if got := UrlExternal(in).Path; got != want {
+			t.Errorf("UrlExternal(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

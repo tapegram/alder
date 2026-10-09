@@ -6,9 +6,11 @@ package datastar
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
+	"alder/rt"
 	"alder/rt/html"
 )
 
@@ -63,7 +65,13 @@ func PatchBody(w http.ResponseWriter, body string) error {
 // redirect: a 303 would be followed inside the client's fetch, and the page at the new URL
 // patched into the old one, leaving the address bar and history behind. It sets Content-Type
 // text/event-stream, writes the event and flushes if w can.
+//
+// A url that rt.SafeURL refuses (javascript:, data:, a protocol-relative URL, …) is not written:
+// Navigate returns an error and writes nothing, so a script URL can never run.
 func Navigate(w http.ResponseWriter, url string) error {
+	if !rt.SafeURL(url) {
+		return fmt.Errorf("refusing to navigate to %s", rt.URLScheme(url))
+	}
 	u, err := json.Marshal(url)
 	if err != nil {
 		return err

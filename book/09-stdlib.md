@@ -173,8 +173,18 @@ first.
 Html.unsafe : Text -> Html Never                -- unescaped markup; never for user text
 Html.none  : Html a                             -- renders nothing
 Html.text  : Text -> Html a
-Url.external : Text -> Page                     -- external link for href
+Url.external : Text -> Page                     -- external link for href or Redirect
 ```
+
+`Url.external` keeps a URL only when it is an absolute `http:` or `https:`
+URL (`https://example.com/a`) or a path of this site (`/static/app.css`,
+but not `//host/…` or `/\host`, which browsers read as another site).
+Anything else becomes `#`, a link and a redirect that go nowhere:
+`javascript:` and `data:` URLs in any case (`JavaScript:`), other schemes
+(`mailto:`), URLs with leading spaces, and relative paths. So a link or a
+`Redirect` built from user input can never run script. The runtime checks
+again: an `href` that is not such a URL renders as `#`, and a redirect to
+one is answered with a 500 (`refusing to navigate to javascript:`).
 
 ## Query, Task, Db, Session, Log, Time, Random, Http
 

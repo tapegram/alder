@@ -196,8 +196,12 @@ func (r *renderer) open(tag string, attrs []Attr) {
 		b.WriteByte(' ')
 		b.WriteString(a.Name)
 		if !a.Bool {
+			v := a.value(r.st)
+			if a.Name == "href" && !rt.SafeURL(v) {
+				v = "#" // no javascript:, data: or protocol-relative link (rt.SafeURL)
+			}
 			b.WriteString(`="`)
-			b.WriteString(escape(a.value(r.st)))
+			b.WriteString(escape(v))
 			b.WriteByte('"')
 		}
 	}

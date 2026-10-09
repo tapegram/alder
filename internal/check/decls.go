@@ -747,7 +747,6 @@ func lineOf(m *syntax.Module, line int) string {
 	return ""
 }
 
-// pathParams extracts {name} segments.
 // checkPagePaths reports E0016 for a page whose path answers the same requests as an earlier
 // page's (in module order): the same segments, with any parameter names, ignoring a trailing
 // slash, as rt/web matches them.
@@ -779,6 +778,7 @@ func pathShape(path string) string {
 	return strings.Join(segs, "/")
 }
 
+// pathParams extracts {name} segments.
 func pathParams(path string) []string {
 	var out []string
 	for i := 0; i < len(path); i++ {

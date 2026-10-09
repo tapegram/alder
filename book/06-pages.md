@@ -509,7 +509,11 @@ data: elements <script data-effect="el.remove()">window.location.assign("/")</sc
 ```
 
 The URL is a JSON string, so `<`, `>` and `&` in it are escaped and it can
-never end the script. Without Datastar, `Redirect` is a plain 303.
+never end the script. Without Datastar, `Redirect` is a plain 303. Either
+way the target must be a path of this site or an `http:`/`https:` URL:
+`Url.external` turns anything else (a `javascript:` URL from user input,
+say) into `#` (chapter 9), and the router answers a redirect to such a URL
+with a 500 rather than send it.
 
 Every line of an event's elements is a `data: elements` line, and an event
 ends at a blank line. A carriage return in your data could end a line
