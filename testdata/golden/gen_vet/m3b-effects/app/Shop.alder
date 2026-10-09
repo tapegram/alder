@@ -144,3 +144,9 @@ fetch url = {
     Err e -> Task.fail i,
   }
 }
+
+createdBefore : Time -> Select Order
+createdBefore t = Db.from Order |> Db.where (Order.created.lt t) |> Db.orderBy Order.created.desc
+
+newestFirst : Select Order
+newestFirst = Db.from Order |> Db.orderBy Order.created.desc

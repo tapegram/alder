@@ -72,6 +72,7 @@ func TestGoNameInjective(t *testing.T) {
 		}
 	}
 	add(tablesVar, "the Tables variable")
+	add(capsVar, "the Capabilities variable")
 	ctors := uppers
 	if len(ctors) > 20 {
 		ctors = append(ctors[:10:10], "Rect", "Rect_", "Tag", "Circle", "A_x", "Ax_")
@@ -98,13 +99,23 @@ func TestGoNameInjective(t *testing.T) {
 		}
 	}
 	// file names
-	files := map[string]string{tablesFile: "the tables file"}
+	files := map[string]string{appFile: "the app file"}
 	for _, m := range modules {
 		f := fileName(m)
 		if prev, ok := files[f]; ok && prev != m {
 			t.Fatalf("modules %s and %s are both emitted to %s", prev, m, f)
 		}
 		files[f] = m
+		// app__alder.go must differ from every module's file also on a case-insensitive file
+		// system (macOS): App_alder.go and app_alder.go would be one file there
+		if strings.EqualFold(f, appFile) {
+			t.Fatalf("module %s's file %s is the app file %s on a case-insensitive file system", m, f, appFile)
+		}
+	}
+	for _, m := range []string{"App", "APP", "App.App"} {
+		if strings.EqualFold(fileName(m), appFile) {
+			t.Fatalf("module %s's file is the app file", m)
+		}
 	}
 	if len(seen) < 100000 {
 		t.Fatalf("only %d names generated", len(seen))

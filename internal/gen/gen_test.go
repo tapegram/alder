@@ -1468,9 +1468,12 @@ func TestGen_EffectsLoad(t *testing.T) {
 	)
 	contains(t, files["Index_alder.go"],
 		"Send(ctx context.Context, args struct {",
-		`.Caps["Index.Mailer"].(cap__Index__Mailer).Send(`,
+		`.Caps["Index.Mailer"].(cap__Index__Mailer)`,
+		`panic("alder: capability \"Index.Mailer\" is not wired")`,
+		".Send(_e5.Ctx, struct {",
 	)
-	contains(t, files["tables_alder.go"], "var Tables = []db.TableDesc{table__Todo__Todo.Desc()}")
+	contains(t, files["app__alder.go"], "var Tables = []db.TableDesc{table__Todo__Todo.Desc()}",
+		`var Capabilities = []string{"Todo.Stats", "Index.Mailer"}`)
 }
 
 // TestGen_RunTodos runs the todos example end to end: its generated load and update functions,
@@ -1489,6 +1492,7 @@ const runTodosTest = `package app
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -1535,8 +1539,34 @@ func TestTodos(t *testing.T) {
 	if err != nil || uid == "" {
 		t.Fatalf("insert user: %q, %v", uid, err)
 	}
-	env.Caps["Auth.Login.Password"] = password{user: uid}
 	env.Session = App__Session{User: rt.Nothing[string](), Theme: Theme__Theme__Light__}
+	if len(Capabilities) != 1 || Capabilities[0] != "Auth.Login.Password" {
+		t.Fatalf("Capabilities = %v", Capabilities)
+	}
+
+	// a capability that is not wired panics with its registry key (and the Task rolls back)
+	func() {
+		defer func() {
+			if r := recover(); r != "alder: capability \"Auth.Login.Password\" is not wired" {
+				t.Errorf("unwired capability: recovered %v", r)
+			}
+		}()
+		msg := Auth__Login__Msg__Submit__(Auth__Login__SubmitParams{Form: Auth__Login__Credentials{Email: "a@b.c", Password: "pw"}})
+		eff.Run(env, eff.KTask, Auth__Login__update(msg, Auth__Login__Model{}, env.Session.(App__Session)))
+	}()
+	env.Caps["Auth.Login.Password"] = password{user: uid}
+
+	// calls asserts the Call steps run since mark
+	mark := 0
+	calls := func(what string, want ...string) {
+		t.Helper()
+		got := env.Trace[mark:]
+		mark = len(env.Trace)
+		if strings.Join(got, ", ") != strings.Join(want, ", ") {
+			t.Errorf("%s ran %v, want %v", what, got, want)
+		}
+	}
+	calls("setup", "Db.insert User", "Password.verify")
 
 	// log in: a wrong password is rejected, the right one redirects to / and sets the session
 	login := func(pw string) rt.Nav {
@@ -1557,6 +1587,7 @@ func TestTodos(t *testing.T) {
 	if nav := login("pw"); nav.Tag != rt.NavRedirect || nav.Page.Path != "/" {
 		t.Fatalf("login: %+v", nav)
 	}
+	calls("login", "Password.verify", "Password.verify", "Session.put")
 	app := env.Session.(App__Session)
 	if !app.User.Ok || app.User.Val != uid {
 		t.Fatalf("login did not set the session user: %+v", app)
@@ -1583,6 +1614,7 @@ func TestTodos(t *testing.T) {
 	if err != nil || nav.Tag != rt.NavRedirect || nav.Page.Path != "/" {
 		t.Fatalf("add: %+v, %v", nav, err)
 	}
+	calls("add", "Db.insert Todo")
 	todos := load(Todo__Filter__All__)
 	if len(todos) != 1 {
 		t.Fatalf("after add: %d todos", len(todos))
@@ -1596,10 +1628,12 @@ func TestTodos(t *testing.T) {
 	}
 
 	// toggle
+	mark = len(env.Trace)
 	nav, err = update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: td.Id}))
 	if err != nil || nav.Tag != rt.NavRerender {
 		t.Fatalf("toggle: %+v, %v", nav, err)
 	}
+	calls("toggle", "Db.update Todo")
 	if todos = load(Todo__Filter__All__); len(todos) != 1 || !todos[0].Done {
 		t.Fatalf("after toggle: %+v", todos)
 	}
@@ -1608,10 +1642,12 @@ func TestTodos(t *testing.T) {
 	}
 
 	// the show page loads the user's own todo, and not one that does not exist
+	mark = len(env.Trace)
 	shown, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: td.Id}, Todos__Show__Session{User: uid, Theme: app.Theme}))
 	if err != nil || shown.Todo.Title != "Buy milk" {
 		t.Fatalf("show: %+v, %v", shown, err)
 	}
+	calls("Show.load", "Db.get Todo")
 	if _, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: "nope"}, Todos__Show__Session{User: uid})); err != eff.ErrNotFound {
 		t.Fatalf("show missing: err = %v, want ErrNotFound", err)
 	}
@@ -1635,13 +1671,16 @@ func TestTodos(t *testing.T) {
 	}
 
 	// delete
+	mark = len(env.Trace)
 	nav, err = update(Todos__Index__Msg__Delete__(Todos__Index__DeleteParams{Id: td.Id}))
 	if err != nil || nav.Tag != rt.NavRerender {
 		t.Fatalf("delete: %+v, %v", nav, err)
 	}
+	calls("delete", "Db.delete Todo")
 	if n := len(load(Todo__Filter__All__)); n != 0 {
 		t.Fatalf("after delete: %d todos", n)
 	}
+	calls("load", "Db.all Todo")
 
 	// App's update: switch the theme, then log out
 	if nav, err := eff.Run(env, eff.KTask, App__update(App__Msg__SwitchTheme__, env.Session.(App__Session))); err != nil || nav.Tag != rt.NavRerender {
@@ -1778,6 +1817,20 @@ func TestShop(t *testing.T) {
 	}
 	if nav := Shop__after(rt.Reject("no")); nav.Tag != rt.NavReject || nav.Text != "no!" || !Shop__isRedirect(rt.Redirect(rt.Page{Path: "/"})) {
 		t.Errorf("after = %+v", nav)
+	}
+
+	// Time columns compare and order correctly below a second: x6 is created half a second
+	// after the others (whole-second clock)
+	clock = clock.Add(500 * time.Millisecond)
+	add("x6", open, rt.Just(open), 1, false, rt.Just("n"))
+	if got := all(Shop__createdBefore(clock)); len(got) != 5 {
+		t.Errorf("created < clock+0.5s: %d rows, want 5", len(got))
+	}
+	if got := all(Shop__createdBefore(clock.Add(time.Nanosecond))); len(got) != 6 || got[0].Code != "x6" {
+		t.Errorf("created < clock+0.5s+1ns, newest first: %d rows, first %+v", len(got), got)
+	}
+	if got := all(Shop__newestFirst); len(got) != 6 || got[0].Code != "x6" || !got[0].Created.Equal(clock) {
+		t.Errorf("newest first: %+v", got[:1])
 	}
 }
 `

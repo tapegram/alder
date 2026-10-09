@@ -23,7 +23,8 @@ import (
 //	capName     cap__M__Capability          a capability's Go interface
 //	enumName    name__M__Union              the constructor name of a payload-less union value
 //	                                        stored in a table column
-//	Tables                                  the app's table descriptors (tables_alder.go)
+//	Tables, Capabilities                    the app's table descriptors and capability keys
+//	                                        (app__alder.go)
 //
 // where "M__…" is the module path with every '.' replaced by "__" ("Todos.Index", "view" →
 // "Todos__Index__view"). A local is its Alder name, with "__" appended when that is reserved
@@ -49,15 +50,11 @@ import (
 //     enumName start with a lower-case word and "__". No GoName or ctorName does (they start
 //     with an upper-case module segment); no local does (a local contains "__" only at its end,
 //     or followed by its "_N" renaming suffix); the nine words differ, so the kinds cannot
-//     collide with each other; within a kind the rest is decoded as in 1 and 2. Tables contains
-//     no "__" and starts upper-case, which no GoName (it has "__"), no local (lower-case or '_')
-//     and none of the others is.
-//  4. Record fields and union fields live in their struct's own namespace: Field is injective
-//     (only the first letter changes, and Alder fields start lower-case or with '_'), and union
-//     fields are constructor names (upper-case) plus Tag and Tag__.
-//
-// The per-page generated types (Params, Msg, Session, <Msg>Params) are GoNames of names the
-// checker reserves in page modules and App (E0012), so no user declaration can take them.
+//     collide with each other; within a kind the rest is decoded as in 1 and 2. Tables and
+//     Capabilities contain no "__" and start upper-case, which no GoName (it has "__"), no local
+//     (lower-case or '_') and none of the others is. app__alder.go is no module's file, even
+//     ignoring case (on a case-insensitive file system such as macOS's, app_alder.go would be
+//     App's file): it would be the file of a module segment "app_", which never ends a segment.
 
 // GoName is the package-level Go name of top-level Alder name in module: the module's segments,
 // then the name, joined by "__" ("Todos.Index", "view" → "Todos__Index__view").
@@ -157,8 +154,9 @@ func capName(module, capability string) string { return "cap__" + GoName(module,
 // enumName is the function naming a value of payload-less union M.U ("name__Todo__Filter").
 func enumName(module, union string) string { return "name__" + GoName(module, union) }
 
-// tablesFile and tablesVar: the file holding the app's table descriptors and its variable.
+// appFile holds the app-wide variables tablesVar (table descriptors) and capsVar (capability keys).
 const (
-	tablesFile = "tables_alder.go"
-	tablesVar  = "Tables"
+	appFile   = "app__alder.go"
+	tablesVar = "Tables"
+	capsVar   = "Capabilities"
 )

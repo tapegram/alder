@@ -63,8 +63,11 @@ func TestBuildEmit_Todos(t *testing.T) {
 	if b, err := os.ReadFile(filepath.Join(out, "App_alder.go")); err != nil || !strings.Contains(string(b), "func App__update(") {
 		t.Errorf("App_alder.go lacks App__update (%v)", err)
 	}
-	if b, err := os.ReadFile(filepath.Join(out, "tables_alder.go")); err != nil || !strings.Contains(string(b), "var Tables = []db.TableDesc{table__User__User.Desc(), table__Todo__Todo.Desc()}") {
-		t.Errorf("tables_alder.go: %v\n%s", err, b)
+	if b, err := os.ReadFile(filepath.Join(out, "app__alder.go")); err != nil || !strings.Contains(string(b), "var Tables = []db.TableDesc{table__User__User.Desc(), table__Todo__Todo.Desc()}") {
+		t.Errorf("app__alder.go: %v\n%s", err, b)
+	}
+	if b, err := os.ReadFile(filepath.Join(out, "app__alder.go")); err != nil || !strings.Contains(string(b), `var Capabilities = []string{"Auth.Login.Password"}`) {
+		t.Errorf("app__alder.go lacks Capabilities: %v\n%s", err, b)
 	}
 	for _, stale := range []string{"Gone_alder.go", "Todos__Index.go"} {
 		if _, err := os.Stat(filepath.Join(out, stale)); !os.IsNotExist(err) {

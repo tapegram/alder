@@ -10,7 +10,7 @@
 //	Float                  REAL
 //	Bool                   INTEGER 0 or 1
 //	Date                   TEXT "YYYY-MM-DD"
-//	Time                   TEXT, RFC 3339 with nanoseconds, always UTC ("…Z")
+//	Time                   TEXT, RFC 3339, fixed 9-digit fraction, UTC (EncodeTime)
 //	payload-less union     TEXT, the constructor name
 //	Maybe T                T's column, NULL for Nothing
 //
@@ -34,7 +34,7 @@ const (
 	CFloat                // REAL
 	CBool                 // INTEGER 0/1
 	CDate                 // TEXT YYYY-MM-DD
-	CTime                 // TEXT RFC 3339 nanoseconds, UTC
+	CTime                 // TEXT RFC 3339, fixed 9-digit fraction, UTC
 	CEnum                 // TEXT constructor name; orders by declaration
 )
 

@@ -24,7 +24,7 @@ type Options struct {
 }
 
 // Emit returns the generated files: one "<Module>_alder.go" per module ('.' → "__"),
-// "tables_alder.go" (the Tables variable: every table's descriptor) and "go.mod".
+// "app__alder.go" (the Tables and Capabilities variables) and "go.mod".
 // Its error is for a bug in gen: output go/format cannot parse, or a program gen cannot emit
 // (such as a stdlib function with no Go implementation), or two modules or declarations that
 // would get the same file or Go name.
@@ -59,14 +59,14 @@ func Emit(p *ir.Program, opts Options) (files map[string][]byte, err error) {
 			declared[n] = m.Name
 		}
 	}
-	tables, err := format.Source([]byte(tablesSource(p)))
+	app, err := format.Source([]byte(appSource(p)))
 	if err != nil {
-		return nil, fmt.Errorf("gen: %s: %v", tablesFile, err)
+		return nil, fmt.Errorf("gen: %s: %v", appFile, err)
 	}
-	if _, dup := files[tablesFile]; dup {
-		return nil, fmt.Errorf("gen: a module is emitted to %s", tablesFile)
+	if _, dup := files[appFile]; dup {
+		return nil, fmt.Errorf("gen: a module is emitted to %s", appFile)
 	}
-	files[tablesFile] = tables
+	files[appFile] = app
 	return files, nil
 }
 

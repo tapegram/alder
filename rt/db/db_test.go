@@ -557,3 +557,49 @@ func TestEncodeListAndDecodeEnum(t *testing.T) {
 		}
 	}
 }
+
+// Stored times compare and order as the times do, also when they differ by less than a second
+// (RFC3339Nano text would put "…12:00:00.5Z" before "…12:00:00Z").
+func TestStore_SubSecondTimeOrder(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	whole := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	half := whole.Add(500 * time.Millisecond)
+	for _, c := range []struct {
+		title string
+		at    time.Time
+	}{{"half", half}, {"whole", whole}} {
+		if _, err := InsertRow(ctx, s, nil, todoTable, insertVals(c.title, false, rt.Nothing[rt.Date](), "Low"), c.at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before, err := All(ctx, s, nil, Where(CLt("created", EncodeTime(half)), From(todoTable)))
+	if err != nil || len(before) != 1 || before[0].Title != "whole" {
+		t.Fatalf("created < 12:00:00.5: %+v, %v", before, err)
+	}
+	after, err := All(ctx, s, nil, Where(CGt("created", EncodeTime(whole)), From(todoTable)))
+	if err != nil || len(after) != 1 || after[0].Title != "half" {
+		t.Fatalf("created > 12:00:00: %+v, %v", after, err)
+	}
+	desc, err := All(ctx, s, nil, OrderBy(Desc("created"), From(todoTable)))
+	if err != nil || len(desc) != 2 || desc[0].Title != "half" || !desc[0].Created.Equal(half) {
+		t.Fatalf("order by created desc: %+v, %v", desc, err)
+	}
+}
+
+func TestEncodeTimeFixedWidth(t *testing.T) {
+	at := time.Date(2026, 10, 9, 21, 0, 0, 500000000, time.FixedZone("x", 9*3600))
+	if got := EncodeTime(at); got != "2026-10-09T12:00:00.500000000Z" {
+		t.Fatalf("EncodeTime = %q", got)
+	}
+	if got := EncodeTime(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)); got != "2026-01-02T03:04:05.000000000Z" {
+		t.Fatalf("EncodeTime whole second = %q", got)
+	}
+	// both the fixed form and the shorter RFC3339Nano form of earlier databases decode
+	for _, s := range []string{"2026-10-09T12:00:00.500000000Z", "2026-10-09T12:00:00.5Z", "2026-10-09T12:00:00Z"} {
+		got, err := DecodeTime(s)
+		if err != nil || got.Location() != time.UTC || got.Truncate(time.Second) != time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC) {
+			t.Errorf("DecodeTime(%q) = %v, %v", s, got, err)
+		}
+	}
+}

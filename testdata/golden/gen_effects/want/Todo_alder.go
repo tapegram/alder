@@ -115,9 +115,17 @@ func Todo__countOf(q db.Select[Todo__Todo]) eff.Query[int64] {
 
 func Todo__totals(u string) eff.Query[[]int64] {
 	return eff.Q(eff.All([]eff.Task[int64]{eff.Call("Stats.total", false, func(_e1 *eff.Env) (int64, error) {
-		return _e1.Caps["Todo.Stats"].(cap__Todo__Stats).Total(_e1.Ctx)
-	}), eff.Call("Stats.forOwner", false, func(_e2 *eff.Env) (int64, error) {
-		return _e2.Caps["Todo.Stats"].(cap__Todo__Stats).ForOwner(_e2.Ctx, u, true)
+		_c2, _ok3 := _e1.Caps["Todo.Stats"].(cap__Todo__Stats)
+		if !_ok3 {
+			panic("alder: capability \"Todo.Stats\" is not wired")
+		}
+		return _c2.Total(_e1.Ctx)
+	}), eff.Call("Stats.forOwner", false, func(_e4 *eff.Env) (int64, error) {
+		_c5, _ok6 := _e4.Caps["Todo.Stats"].(cap__Todo__Stats)
+		if !_ok6 {
+			panic("alder: capability \"Todo.Stats\" is not wired")
+		}
+		return _c5.ForOwner(_e4.Ctx, u, true)
 	}), eff.Map(func(n int64) int64 {
 		return n * 2
 	}, eff.NotFound[int64]())}))
@@ -125,13 +133,21 @@ func Todo__totals(u string) eff.Query[[]int64] {
 
 var Todo__counters []func(string) eff.Query[int64] = []func(string) eff.Query[int64]{func(u string) eff.Query[int64] {
 	return eff.Q(eff.Call("Stats.forOwner", false, func(_e1 *eff.Env) (int64, error) {
-		return _e1.Caps["Todo.Stats"].(cap__Todo__Stats).ForOwner(_e1.Ctx, u, false)
+		_c2, _ok3 := _e1.Caps["Todo.Stats"].(cap__Todo__Stats)
+		if !_ok3 {
+			panic("alder: capability \"Todo.Stats\" is not wired")
+		}
+		return _c2.ForOwner(_e1.Ctx, u, false)
 	}))
 }}
 
 func Todo__byOwner(_m1 string, _m2 bool) eff.Query[int64] {
 	return eff.Q(eff.Call("Stats.forOwner", false, func(_e1 *eff.Env) (int64, error) {
-		return _e1.Caps["Todo.Stats"].(cap__Todo__Stats).ForOwner(_e1.Ctx, _m1, _m2)
+		_c2, _ok3 := _e1.Caps["Todo.Stats"].(cap__Todo__Stats)
+		if !_ok3 {
+			panic("alder: capability \"Todo.Stats\" is not wired")
+		}
+		return _c2.ForOwner(_e1.Ctx, _m1, _m2)
 	}))
 }
 

@@ -148,7 +148,11 @@ func Index__update(msg Index__Msg, model Index__Model, session Index__Session) e
 	case is__Index__Msg__Notify:
 		return eff.Bind(std.RandomId(), func(token string) eff.Task[rt.Nav] {
 			return eff.Bind(eff.All([]eff.Task[bool]{eff.Call("Mailer.send", true, func(_e5 *eff.Env) (bool, error) {
-				return _e5.Caps["Index.Mailer"].(cap__Index__Mailer).Send(_e5.Ctx, struct {
+				_c6, _ok7 := _e5.Caps["Index.Mailer"].(cap__Index__Mailer)
+				if !_ok7 {
+					panic("alder: capability \"Index.Mailer\" is not wired")
+				}
+				return _c6.Send(_e5.Ctx, struct {
 					To   string
 					Body string
 				}{To: "a@b.c", Body: token})

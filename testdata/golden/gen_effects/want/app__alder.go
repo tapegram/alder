@@ -6,3 +6,7 @@ import "alder/rt/db"
 
 // Tables describes every table of the app, in module order then declaration order, for db.Ensure.
 var Tables = []db.TableDesc{table__Todo__Todo.Desc()}
+
+// Capabilities are the keys of eff.Env.Caps the app's capability calls look up: each needs an
+// implementation of its cap__ interface.
+var Capabilities = []string{"Todo.Stats", "Index.Mailer"}

@@ -12,10 +12,17 @@ import (
 // store returns (string, int64, float64, []byte or nil) back, returning an
 // error — never panicking — when the stored value has the wrong type.
 
-// EncodeTime is t in UTC as RFC 3339 with nanoseconds ("…Z").
-func EncodeTime(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
+// timeLayout is RFC 3339 with a fixed 9-digit fraction. time.RFC3339Nano drops trailing zeros,
+// so its text does not sort as the times do ("…12:00:00.5Z" < "…12:00:00Z"); this one does.
+const timeLayout = "2006-01-02T15:04:05.000000000Z07:00"
 
-// DecodeTime parses an EncodeTime value; the result is in UTC.
+// EncodeTime is t as stored: RFC 3339, fixed 9-digit fraction, UTC
+// ("2026-10-09T12:00:00.500000000Z"). Every stored time has the same width and the same zone,
+// so comparing and ordering the text (Time conditions, Db.orderBy) compares the times.
+func EncodeTime(t time.Time) string { return t.UTC().Format(timeLayout) }
+
+// DecodeTime parses an EncodeTime value, or any RFC 3339 time (such as the shorter
+// time.RFC3339Nano text that earlier databases stored); the result is in UTC.
 func DecodeTime(v any) (time.Time, error) {
 	s, err := DecodeText(v)
 	if err != nil {
