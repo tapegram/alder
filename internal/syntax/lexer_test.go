@@ -4,6 +4,8 @@ package syntax
 import (
 	"strings"
 	"testing"
+
+	"alder/internal/diag"
 )
 
 func kinds(src string) string {
@@ -166,5 +168,61 @@ func TestLexer_KeywordAfterDot(t *testing.T) {
 	}
 	if got := kinds("where x"); got != "Keyword(where) LIdent(x)" {
 		t.Fatalf("plain where must stay a keyword, got %s", got)
+	}
+}
+
+// ParseString is a test convenience wrapping ParseFile for string sources.
+func ParseString(file, src string) (*Module, []diag.Diagnostic) { return ParseFile(file, []byte(src)) }
+
+func TestLex_QuoteInsideInterpolation(t *testing.T) {
+	src := "module M\n\nx : Text\nx = \"a {Text.join \"-\" [\"b\", \"c\"]} \\\"d\\\"\"\n"
+	m, diags := ParseString("M.alder", src)
+	if len(diags) != 0 {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	got := Dump(m.Decls[len(m.Decls)-1])
+	want := `(val x : Text = (str "a " (app (var Text.join) (str "-") (list (str "b") (str "c"))) " \"d\""))`
+	if got != want {
+		t.Fatalf("\n got %s\nwant %s", got, want)
+	}
+}
+
+// Braces nested inside an interpolation, and inside a nested string's own interpolation,
+// are matched with the string rule: `}` inside a nested literal does not close the outer `{`.
+func TestLex_NestedBracesInInterpolation(t *testing.T) {
+	for _, s := range []string{
+		`"x {f { a = "}" }} y"`,
+		`"x {g "in {h "deep"} er"} y"`,
+		`"a \{ b"`,
+	} {
+		l := NewLexer("t.alder", []byte(s+" z"))
+		tok := l.Next()
+		if tok.Kind != String || tok.Text != s || len(l.Errors()) != 0 {
+			t.Errorf("%s: got %+v errs %v", s, tok, l.Errors())
+		}
+	}
+}
+
+// An unbalanced `{` still lexes as a string, so the parser reports it precisely.
+func TestLex_UnbalancedBraceInString(t *testing.T) {
+	_, diags := ParseString("M.alder", "module M\nx : Text\nx = \"a { b\"\n")
+	if len(diags) != 1 || diags[0].Code != "E0001" || !strings.Contains(diags[0].Message, "unterminated `{` in string") {
+		t.Fatalf("diags: %v", diags)
+	}
+}
+
+// Tokens reports the stream the parser consumed: HTML text runs as Text tokens, lookahead once.
+func TestTokens_ParserDriven(t *testing.T) {
+	toks, diags := Tokens("V.alder", []byte("module V\nv = <p>it's {x}</p>\n"))
+	if len(diags) != 0 {
+		t.Fatalf("diags: %v", diags)
+	}
+	var got []string
+	for _, tk := range toks {
+		got = append(got, tk.Kind.String()+"("+tk.Text+")")
+	}
+	want := "Keyword(module) UIdent(V) NL(\n) LIdent(v) Equal(=) Lt(<) LIdent(p) Gt(>) Text(it's ) LBrace({) LIdent(x) RBrace(}) Text() Lt(<) Slash(/) LIdent(p) Gt(>) NL(\n) EOF()"
+	if s := strings.Join(got, " "); s != want {
+		t.Fatalf("\n got %s\nwant %s", s, want)
 	}
 }

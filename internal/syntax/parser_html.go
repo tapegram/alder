@@ -121,33 +121,36 @@ func (p *Parser) parseElement() *Element {
 	}
 }
 
-// addText splits raw text into lines, drops `--` comment lines, collapses whitespace, and appends an HtmlText if non-empty.
+// addText applies the JSX whitespace rule to one raw text run (the text between two nodes) and
+// appends an HtmlText if anything is left:
+//   - a run with no newline is kept as-is, so `<b>a</b> <i>b</i>` keeps its single space;
+//   - a run containing a newline is split at its newlines; each line loses the whitespace that
+//     touches a newline, empty lines and lines that begin with `--` (comments) are dropped,
+//     and the rest are joined with one space. Leading/trailing same-line whitespace stays, so
+//     the run "\n  hello " before `{name}` becomes "hello ".
+//
+// The rule is book chapter 5, "Whitespace".
 func (p *Parser) addText(el *Element, tx Token) {
-	lines := strings.Split(tx.Text, "\n")
-	var kept []string
-	for _, ln := range lines {
-		if strings.HasPrefix(strings.TrimSpace(ln), "--") {
-			continue
+	text := tx.Text
+	if strings.Contains(text, "\n") {
+		lines := strings.Split(text, "\n")
+		var kept []string
+		for i, ln := range lines {
+			if i > 0 {
+				ln = strings.TrimLeft(ln, " \t")
+			}
+			if i < len(lines)-1 {
+				ln = strings.TrimRight(ln, " \t")
+			}
+			if ln == "" || i > 0 && strings.HasPrefix(ln, "--") { // a line that begins with `--` is a comment
+				continue
+			}
+			kept = append(kept, ln)
 		}
-		kept = append(kept, ln)
+		text = strings.Join(kept, " ")
 	}
-	text := strings.Join(kept, "\n")
-	if strings.TrimSpace(text) == "" {
+	if text == "" {
 		return
-	}
-	// trim whitespace that touches a newline at either end; collapse inner whitespace runs
-	if i := strings.IndexByte(text, '\n'); i >= 0 && strings.TrimSpace(text[:i]) == "" {
-		text = strings.TrimLeft(text, " \t\n")
-	}
-	if i := strings.LastIndexByte(text, '\n'); i >= 0 && strings.TrimSpace(text[i:]) == "" {
-		text = strings.TrimRight(text, " \t\n")
-	}
-	text = strings.Join(strings.Fields(text), " ")
-	if strings.HasPrefix(tx.Text, " ") && !strings.HasPrefix(text, " ") {
-		text = " " + text
-	}
-	if strings.HasSuffix(tx.Text, " ") && !strings.HasSuffix(text, " ") {
-		text = text + " "
 	}
 	t := &HtmlText{Text: text}
 	t.Span = p.spanTok(tx)

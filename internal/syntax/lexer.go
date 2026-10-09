@@ -20,6 +20,9 @@ type Lexer struct {
 	col     int
 	htmlTag bool
 	errs    []LexError
+	// trace, when non-nil, records every token produced, in order; Restore and Reset drop the
+	// tokens they rewind past, so it ends up as the stream the parser consumed.
+	trace *[]Token
 }
 
 func NewLexer(file string, src []byte) *Lexer {
@@ -41,6 +44,26 @@ func (l *Lexer) Mark() LexState { return LexState{l.pos, l.line, l.col, len(l.er
 func (l *Lexer) Restore(s LexState) {
 	l.pos, l.line, l.col = s.pos, s.line, s.col
 	l.errs = l.errs[:s.nerrs]
+	l.dropTrace(s.pos)
+}
+
+// dropTrace forgets traced tokens that start at or after offset.
+func (l *Lexer) dropTrace(offset int) {
+	if l.trace == nil {
+		return
+	}
+	t := *l.trace
+	for len(t) > 0 && t[len(t)-1].Offset >= offset {
+		t = t[:len(t)-1]
+	}
+	*l.trace = t
+}
+
+func (l *Lexer) record(t Token) Token {
+	if l.trace != nil {
+		*l.trace = append(*l.trace, t)
+	}
+	return t
 }
 
 func (l *Lexer) Reset(offset int) {
@@ -57,6 +80,7 @@ func (l *Lexer) Reset(offset int) {
 		}
 	}
 	l.errs = l.errs[:keep]
+	l.dropTrace(offset)
 	// Rewind to the offset
 	l.pos, l.line, l.col = 0, 1, 1
 	for l.pos < offset {
@@ -109,7 +133,9 @@ func (l *Lexer) checkIdent(text string, line, col, off int) {
 }
 
 // Next returns the next code-mode token.
-func (l *Lexer) Next() Token {
+func (l *Lexer) Next() Token { return l.record(l.next()) }
+
+func (l *Lexer) next() Token {
 	for l.pos < len(l.src) {
 		c := l.peek()
 		if c == ' ' || c == '\t' {
@@ -170,20 +196,14 @@ func (l *Lexer) Next() Token {
 		}
 		return l.tok(Int, string(l.src[off:l.pos]), line, col, off)
 	case c == '"':
-		for {
-			if l.pos >= len(l.src) || l.peek() == '\n' {
-				l.errs = append(l.errs, LexError{Line: line, Col: col, Offset: off, Msg: "unterminated string"})
-				return l.tok(String, string(l.src[off:l.pos]), line, col, off)
-			}
-			d := l.advance()
-			if d == '\\' && l.pos < len(l.src) {
-				l.advance()
-				continue
-			}
-			if d == '"' {
-				return l.tok(String, string(l.src[off:l.pos]), line, col, off)
-			}
+		end, ok := scanString(l.src, l.pos)
+		for l.pos < end {
+			l.advance()
 		}
+		if !ok {
+			l.errs = append(l.errs, LexError{Line: line, Col: col, Offset: off, Msg: "unterminated string"})
+		}
+		return l.tok(String, string(l.src[off:l.pos]), line, col, off)
 	case c == '?':
 		if l.peek() == '?' {
 			l.advance()
@@ -283,7 +303,67 @@ func (l *Lexer) ScanText() Token {
 	for l.pos < len(l.src) && l.peek() != '{' && !(l.peek() == '<' && isTagStart(l.peek2())) {
 		l.advance()
 	}
-	return l.tok(Text, string(l.src[off:l.pos]), line, col, off)
+	return l.record(l.tok(Text, string(l.src[off:l.pos]), line, col, off))
 }
 
 func isTagStart(c byte) bool { return isLower(c) || isUpper(c) || c == '/' || c == '!' }
+
+// scanString scans a string literal's body starting at i, just after the opening quote. It returns
+// the index just past the closing quote, or, when the line or source ends first, the index of
+// that newline (or len(s)) and false. Inside an interpolation `{…}` a `"` opens a nested string
+// scanned by this same rule, so `"a {f "-" x} b"` is one literal. A `{` with no matching `}`
+// before the line ends is ordinary text here; the parser reports it.
+func scanString(s []byte, i int) (int, bool) {
+	for i < len(s) {
+		switch s[i] {
+		case '\n':
+			return i, false
+		case '\\':
+			if i+1 < len(s) && s[i+1] != '\n' {
+				i += 2
+			} else {
+				i++
+			}
+		case '"':
+			return i + 1, true
+		case '{':
+			if j, ok := scanInterp(s, i+1); ok {
+				i = j
+			} else {
+				i++
+			}
+		default:
+			i++
+		}
+	}
+	return i, false
+}
+
+// scanInterp scans an interpolation body starting at i, just after its `{`, tracking nested braces
+// and skipping nested string literals. It returns the index just past the matching `}`, or false
+// when the line or source ends first.
+func scanInterp(s []byte, i int) (int, bool) {
+	depth := 1
+	for i < len(s) {
+		switch s[i] {
+		case '\n':
+			return i, false
+		case '"':
+			j, ok := scanString(s, i+1)
+			if !ok {
+				return j, false
+			}
+			i = j
+			continue
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i + 1, true
+			}
+		}
+		i++
+	}
+	return i, false
+}

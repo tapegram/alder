@@ -670,16 +670,8 @@ func (p *Parser) parseString(t Token) Expr {
 				p.errorAt(t, "unknown escape \\"+string(raw[i]))
 			}
 		case c == '{':
-			depth, j := 1, i+1
-			for j < len(raw) && depth > 0 {
-				if raw[j] == '{' {
-					depth++
-				} else if raw[j] == '}' {
-					depth--
-				}
-				j++
-			}
-			if depth != 0 {
+			j, ok := scanInterp([]byte(raw), i+1) // j is just past the matching `}`
+			if !ok {
 				p.errorAt(t, "unterminated `{` in string")
 				return s
 			}

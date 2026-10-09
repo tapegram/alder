@@ -22,8 +22,9 @@ type Parser struct {
 	ctx []string
 }
 
-func newParser(file string, src []byte, sigMode bool) *Parser {
+func newParser(file string, src []byte, sigMode bool, trace *[]Token) *Parser {
 	p := &Parser{lx: NewLexer(file, src), file: file, sigMode: sigMode}
+	p.lx.trace = trace
 	p.lines = strings.Split(string(p.lx.src), "\n")
 	p.advance()
 	return p
@@ -31,14 +32,24 @@ func newParser(file string, src []byte, sigMode bool) *Parser {
 
 // ParseFile parses a source file. It never panics and recovers at declaration boundaries.
 func ParseFile(file string, src []byte) (*Module, []diag.Diagnostic) {
-	p := newParser(file, src, false)
+	p := newParser(file, src, false, nil)
 	m := p.parseModule()
 	return m, p.finish()
 }
 
+// Tokens parses a source file and returns the tokens the parser consumed, in source order: the
+// lexer is driven by the parser, so HTML text runs appear as Text tokens and speculative
+// lookahead is not repeated. String literals are single tokens (interpolations included).
+func Tokens(file string, src []byte) ([]Token, []diag.Diagnostic) {
+	var trace []Token
+	p := newParser(file, src, false, &trace)
+	p.parseModule()
+	return trace, p.finish()
+}
+
 // ParseSignatures parses stdlib signature files: bodies are optional and `type X a` may be opaque.
 func ParseSignatures(file string, src []byte) (*Module, []diag.Diagnostic) {
-	p := newParser(file, src, true)
+	p := newParser(file, src, true, nil)
 	m := p.parseModule()
 	return m, p.finish()
 }

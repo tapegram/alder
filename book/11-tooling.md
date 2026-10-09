@@ -1,9 +1,10 @@
 # 11. Tooling
 
-`alder check` exists as of M1, and `alder build --emit` as of M3a: it
-generates and vets Go for the pure parts of an app. A full `alder build`
-(effects, pages, a server you can run) and `alder run` arrive in M3b–M3d;
-`test`, `fmt`, holes and `query` are planned.
+`alder check` exists as of M1, `alder build --emit` as of M3a (it
+generates and vets Go for the pure parts of an app), and `alder dump` as
+of M3b. A full `alder build` (effects, pages, a server you can run) and
+`alder run` arrive in M3b–M3d; `test`, `fmt`, holes and `query` are
+planned.
 
 ## Project layout
 
@@ -32,10 +33,29 @@ alder build          check, generate Go, go build → ./build/myapp
 alder run            build and run with the dev database, reloading on change
 alder test           run every `test`
 alder fmt            rewrite every file in canonical format
+alder dump <path>    print a file's tokens, AST, or an app's IR
 alder explain <id>   explain a diagnostic code
 ```
 
 `alder build --emit` writes the generated Go to `build/<app>/` and vets it. Chapter 13 walks through what it generates and why: see [How the compiler works](13-compiler.md).
+
+`alder dump` shows what the compiler sees:
+
+```
+alder dump <file.alder | dir>            the AST, as syntax.Dump prints it (also --ast)
+alder dump --tokens <file.alder | dir>   the tokens, one per line: L:C KIND "text"
+alder dump --ir <dir>                    the app's IR, after a clean check
+```
+
+Given a directory, `--ast` and `--tokens` cover every `.alder` file under
+its `app/`, in path order; `--tokens` heads each file's listing with
+`-- <path>`. The tokens are the ones the parser consumed, so HTML text
+appears as `Text` tokens. `--ir` needs an app directory: it checks the app
+like `alder check` and prints the IR only when there are no errors and no
+holes. The dump goes to stdout and diagnostics to stderr. `alder dump`
+exits 0 when clean, 1 when there are errors (the AST and tokens are still
+printed, the IR is not), and 2 on a usage or I/O failure, including
+`--ir` given a file. Chapter 13 reads these dumps.
 
 The generated `go.mod` points at the alder repository, which holds the
 runtime the code imports (`replace alder => "<path>"`). The `alder` binary

@@ -129,3 +129,35 @@ func slicesContains(xs []string, s string) bool {
 	}
 	return false
 }
+
+// dumpHTML parses `v = <src>` and dumps the body.
+func dumpHTML(t *testing.T, src string) string {
+	t.Helper()
+	m, diags := ParseString("V.alder", "module V\nv : Html a\nv = "+src+"\n")
+	if len(diags) != 0 {
+		t.Fatalf("%q: unexpected diagnostics: %v", src, diags)
+	}
+	return Dump(m.Decls[len(m.Decls)-1].(*ValueDecl).Body)
+}
+
+// The JSX whitespace rule: a text run containing a newline is trimmed where it touches a newline
+// and dropped if empty; a run with no newline is kept as-is.
+func TestParse_InlineWhitespaceJSXRule(t *testing.T) {
+	cases := []struct{ src, want string }{
+		{`<p><b>a</b> <i>b</i></p>`, `(el p (el b (text "a")) (text " ") (el i (text "b")))`},
+		{"<p>\n  <b>a</b>\n  <i>b</i>\n</p>", `(el p (el b (text "a")) (el i (text "b")))`},
+		{`<p>{k} {v}</p>`, `(el p (expr (var k)) (text " ") (expr (var v)))`},
+		{"<p>\n  hello {name}\n</p>", `(el p (text "hello ") (expr (var name)))`},
+		{"<p><b>a</b>\n<i>b</i></p>", `(el p (el b (text "a")) (el i (text "b")))`},
+		{"<p>\n  one\n  two  \n  three {x}</p>", `(el p (text "one two three ") (expr (var x)))`},
+		{"<p>\n  a\n  -- a comment\n  b\n</p>", `(el p (text "a b"))`},
+		{`<p>-- not a comment</p>`, `(el p (text "-- not a comment"))`},
+		{"<p><b>a</b> -- text\n</p>", `(el p (el b (text "a")) (text " -- text"))`},
+	}
+	for _, c := range cases {
+		got := dumpHTML(t, c.src)
+		if got != c.want {
+			t.Errorf("%q:\n got %s\nwant %s", c.src, got, c.want)
+		}
+	}
+}

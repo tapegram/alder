@@ -1,0 +1,38 @@
+module W
+
+-- JSX whitespace rule: a run with no newline is kept as-is; a run containing a newline is
+-- trimmed where it touches a newline and dropped if empty.
+inline : Html a
+inline = <p><b>a</b> <i>b</i></p>
+
+stacked : Html a
+stacked =
+  <p>
+    <b>a</b>
+    <i>b</i>
+  </p>
+
+adjacent : Html a
+adjacent = <p><b>a</b>
+<i>b</i></p>
+
+exprs : Html a
+exprs = <p>{k} {v}</p>
+
+lead : Html a
+lead =
+  <p>
+    hello {name}
+  </p>
+
+wrapped : Html a
+wrapped =
+  <p>
+    one   two
+    three {x} four
+    -- a comment line
+    five
+  </p>
+
+quoted : Text
+quoted = "a {Text.join "-" ["b", "c"]} \"d\" {f { a: "}" }}"

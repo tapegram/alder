@@ -80,7 +80,7 @@ kind, its text, and where it started: line, column and byte offset
 Here is what the lexer produces for a file holding just two lines,
 `session { user: Maybe User.UserId }` and `update msg session = 1`, which
 are shaped like lines in `examples/todos/app/App.alder`. The listing was
-printed by the `TestLexFile` test shown in section 3:
+printed by `alder dump --tokens` (section 3 shows how to run it):
 
 ```
 1:1 Keyword "session"
@@ -148,80 +148,50 @@ AST: a tree of Go structs, defined in `internal/syntax/ast.go`, where each
 node is one construct of the language. "Abstract" means the punctuation is
 gone: there is no node for a comma or a brace, only for what they meant.
 
-`syntax.Dump` prints an AST as nested parentheses. `alder` has no command
-for this yet (an `alder dump` command is a planned convenience), so you
-print it from a small Go test. Go only lets code inside the repository
-call `internal/syntax`, but `go test -overlay` can add a test file to a
-package without changing the repository: the overlay file maps a path
-inside the package to a file kept somewhere else.
+`syntax.Dump` prints an AST as nested parentheses, and `alder dump`
+prints it for a file. From the repository root:
 
-Make a directory outside the repository, say `~/alder-dump`, and save this
-as `~/alder-dump/dump_test.go`:
+```
+$ alder dump testdata/golden/gen_basic/app/M.alder
+$ alder dump --tokens testdata/golden/gen_basic/app/M.alder
+$ alder dump --ir testdata/golden/gen_basic
+```
+
+The first prints the AST, one module per line. The second prints the
+tokens of section 2, and the third prints the IR of section 6; `--ir`
+takes the app directory, because lowering needs the whole checked
+program. (If `alder` is not installed, `go run ./cmd/alder dump …` does
+the same.) Chapter 11 lists the options under
+[Commands](11-tooling.md#commands).
+
+Under the hood the command is short, and reading it is a first taste of
+the compiler's Go. The AST case of `runDumpTo` in `cmd/alder/dump.go` is, trimmed a
+little:
 
 ```go
-package syntax
-
-import (
-	"fmt"
-	"os"
-	"testing"
-)
-
-func TestDumpFile(t *testing.T) {
-	src, err := os.ReadFile(os.Getenv("ALDER_FILE"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, diags := ParseFile("M.alder", src)
-	for _, d := range diags {
-		fmt.Println(d.Code, d.Message)
-	}
-	for _, d := range m.Decls {
-		fmt.Println(Dump(d))
-	}
+src, err := os.ReadFile(f)
+if err != nil {
+	fmt.Fprintf(stderr, "alder dump: %v\n", err)
+	return 2
 }
+m, diags := syntax.ParseFile(f, src)
+fmt.Fprintln(stdout, syntax.Dump(m))
 ```
 
-It reads the file named by the `ALDER_FILE` environment variable, parses
-it, prints any parse errors, and prints each declaration's dump. If you
-have never read Go: `package syntax` says which package the file belongs
-to, and `import` names the packages it uses. `func TestDumpFile(t
-*testing.T)` declares a function; `go test` runs every function whose name
-starts with `Test`. `:=` declares a variable and gives it its first value,
-`if err != nil` checks whether reading the file failed, and
-`for _, d := range m.Decls` loops over each declaration. From the
-repository root, write the overlay file and run the test:
+If you have never read Go: `:=` declares a variable and gives it its first
+value, a function can return two values (`m, diags`), and `if err != nil`
+checks whether reading the file failed. `syntax.ParseFile` is the parser's
+entry point; it returns the module's AST and any parse errors, which the
+command then prints to stderr. `--tokens` calls `syntax.Tokens`, which
+runs the same parser but records each token it takes from the lexer, so
+HTML text shows up as the `Text` runs the parser asked for. `--ir` runs the
+pipeline `alder check` runs (load, resolve, check) and then `ir.Lower` and
+`ir.Dump`. The golden tests do the same thing in bulk: `TestParseGolden`
+in `internal/syntax/parser_test.go` parses every
+`testdata/golden/parse_*.alder` and compares its dump with the `.dump` file
+beside it.
 
-```
-$ printf '{"Replace":{"%s/internal/syntax/dump_file_test.go":"%s/alder-dump/dump_test.go"}}\n' "$PWD" "$HOME" > ~/alder-dump/overlay.json
-$ ALDER_FILE=$PWD/testdata/golden/gen_basic/app/M.alder go test -overlay ~/alder-dump/overlay.json ./internal/syntax -run TestDumpFile -v
-```
-
-The file name must be an absolute path, because Go runs a test inside the
-package's own directory. Two variations of the same recipe print the other
-dumps in this chapter. Each needs one more entry in `overlay.json`'s
-`Replace` map. For tokens, add a test `TestLexFile` to `internal/syntax`
-(as `lex_file_test.go`, same imports) whose body is:
-
-```go
-	src, err := os.ReadFile(os.Getenv("ALDER_FILE"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	l := NewLexer("M.alder", src)
-	for tk := l.Next(); tk.Kind != EOF; tk = l.Next() {
-		fmt.Printf("%d:%d %s %q\n", tk.Line, tk.Col, tk.Kind, tk.Text)
-	}
-```
-
-For the IR (section 6), add a test `TestDumpDir` to `internal/ir` (as
-`dump_dir_test.go`, with `package ir` and the same imports) whose body is
-`fmt.Print(Dump(lowerDir(t, os.Getenv("ALDER_DIR"))))`, and set
-`ALDER_DIR` to an app directory such as `$PWD/testdata/golden/gen_basic`.
-`lowerDir`, a helper in `internal/ir/ir_test.go`, parses, resolves, checks
-and lowers the app.
-
-This is the dump of `area`, from `TestDumpFile` on `gen_basic` (wrapped
+This is the dump of `area`, from `alder dump` on `gen_basic` (wrapped
 here for width):
 
 ```
@@ -501,7 +471,7 @@ parts, and `??` records the `Maybe Int` it works on:
 
 Brand erasure is easiest to see in a small module with
 `type UserId = brand Text` and `greet : UserId -> Text`,
-`greet id = "hello {id}"`. Its IR dump (from `TestDumpDir`) shows the signature with the brand
+`greet id = "hello {id}"`. Its IR dump (from `alder dump --ir`) shows the signature with the brand
 already gone:
 
 ```
@@ -883,9 +853,8 @@ the emitter writes into `Todos__Index.go`: it copies the fields and wraps
 ## 10. Exercises
 
 1. **Dump an AST.** Write `module X` and `x : Int` / `x = 1 + 2 * 3` in a
-   file, and print its dump with the `TestDumpFile` recipe from section 3
-   (set `ALDER_FILE` to your file's absolute path). Before you run it,
-   predict where the parentheses go.
+   file, and print its dump with `alder dump` (section 3). Before you run
+   it, predict where the parentheses go.
 2. **One error for three uses.** Write a module that uses another module
    three times without importing it, and confirm `alder check` prints one
    E0201. `testdata/corpus/E0201-dedupe/` is one answer; explain which of

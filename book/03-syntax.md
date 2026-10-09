@@ -97,6 +97,10 @@ True  False   -- Bool
 String interpolation inserts a `Text` only. To insert an `Int`, write
 `"Total: {Text.fromInt n}"`.
 
+Inside `{…}` is an ordinary expression, so it may contain string literals
+of its own, written as usual without escaping:
+`"tags: {Text.join ", " tags}"`.
+
 ## Function application
 
 Functions are applied by juxtaposition and are curried:

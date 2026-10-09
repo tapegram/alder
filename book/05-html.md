@@ -58,6 +58,45 @@ variable; use `List.indexed` first if an index is needed.
 A line that begins with `--` between elements is a comment, as elsewhere.
 `--` inside element text is text.
 
+## Whitespace
+
+Whitespace in element content follows the JSX rule, so a view can be
+indented freely without adding spaces to the page, and a space written on
+one line is never lost.
+
+The text between two nodes (elements, `{…}` expressions, the start or end
+of the parent) is one **run**.
+
+- A run with no newline is kept as-is. In `<p><b>a</b> <i>b</i></p>` and
+  `<p>{first} {last}</p>` the single space survives.
+- A run that contains a newline is split at its newlines. Each line loses
+  the whitespace that touches a newline; empty lines and comment lines are
+  dropped; the lines left are joined with one space. A run that is only
+  indentation disappears.
+- Whitespace between text and a node on the same line stays: in
+  `Hello {name}` the space after `Hello` is kept.
+
+```alder
+<p>
+  <b>a</b>
+  <i>b</i>
+</p>                       -- <p><b>a</b><i>b</i></p>: no space
+
+<p><b>a</b> <i>b</i></p>   -- <p><b>a</b> <i>b</i></p>: one space
+
+<p>
+  Hello {name}
+</p>                       -- "Hello " then the name
+
+<p>
+  one
+  two
+</p>                       -- "one two"
+```
+
+A space at the end of a line touches the newline, so it is dropped too. To
+put a space between elements on separate lines, insert it with `{" "}`.
+
 ## Attributes
 
 ```alder

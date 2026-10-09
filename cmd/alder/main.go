@@ -25,6 +25,8 @@ func main() {
 		os.Exit(runCheckTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "build":
 		os.Exit(runBuildTo(os.Args[2:], os.Stdout, os.Stderr))
+	case "dump":
+		os.Exit(runDumpTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "explain":
 		if len(os.Args) < 3 {
 			usage()
@@ -45,7 +47,7 @@ func main() {
 func usage() { usageTo(os.Stderr) }
 
 func usageTo(w io.Writer) {
-	fmt.Fprintln(w, "usage: alder check [dir] [--json] | alder build --emit [dir] | alder explain <code>")
+	fmt.Fprintln(w, "usage: alder check [dir] [--json] | alder build --emit [dir] | alder dump [--tokens|--ast|--ir] <file.alder | dir> | alder explain <code>")
 }
 
 func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {
