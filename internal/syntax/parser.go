@@ -1,0 +1,481 @@
+// internal/syntax/parser.go
+package syntax
+
+import (
+	"strings"
+
+	"alder/internal/diag"
+)
+
+type Parser struct {
+	lx      *Lexer
+	file    string
+	tok     Token
+	diags   []diag.Diagnostic
+	sigMode bool
+	lines   []string
+	// noBrace stops application arguments at `{`, so `match s { ... }` is not read as `s {...}`.
+	noBrace bool
+}
+
+func newParser(file string, src []byte, sigMode bool) *Parser {
+	p := &Parser{lx: NewLexer(file, src), file: file, sigMode: sigMode}
+	p.lines = strings.Split(string(p.lx.src), "\n")
+	p.advance()
+	return p
+}
+
+// ParseFile parses a source file. It never panics and recovers at declaration boundaries.
+func ParseFile(file string, src []byte) (*Module, []diag.Diagnostic) {
+	p := newParser(file, src, false)
+	m := p.parseModule()
+	return m, p.finish()
+}
+
+// ParseSignatures parses stdlib signature files: bodies are optional and `type X a` may be opaque.
+func ParseSignatures(file string, src []byte) (*Module, []diag.Diagnostic) {
+	p := newParser(file, src, true)
+	m := p.parseModule()
+	return m, p.finish()
+}
+
+func (p *Parser) finish() []diag.Diagnostic {
+	for _, e := range p.lx.Errors() {
+		p.diags = append(p.diags, diag.Diagnostic{Code: diag.ParseError, Severity: "error",
+			Span: diag.Span{File: p.file, Start: diag.Pos{Line: e.Line, Col: e.Col}, End: diag.Pos{Line: e.Line, Col: e.Col + 1}}, Message: e.Msg})
+	}
+	return p.diags
+}
+
+// ---- token helpers
+
+func (p *Parser) advance() Token {
+	prev := p.tok
+	p.tok = p.lx.Next()
+	// `session` is a keyword only as a declaration head (always in column 1); elsewhere it is the
+	// ordinary name of the session parameter, as in `view model session =`.
+	if p.tok.Kind == Keyword && p.tok.Text == "session" && p.tok.Col > 1 {
+		p.tok.Kind = LIdent
+	}
+	return prev
+}
+func (p *Parser) at(k Kind) bool          { return p.tok.Kind == k }
+func (p *Parser) atKeyword(s string) bool { return p.tok.Kind == Keyword && p.tok.Text == s }
+func (p *Parser) skipNL() {
+	for p.tok.Kind == NL {
+		p.advance()
+	}
+}
+func (p *Parser) posOf(t Token) diag.Pos { return diag.Pos{Line: t.Line, Col: t.Col} }
+func (p *Parser) spanFrom(start Token) diag.Span {
+	return diag.Span{File: p.file, Start: p.posOf(start), End: diag.Pos{Line: p.tok.Line, Col: p.tok.Col}}
+}
+func (p *Parser) spanTok(t Token) diag.Span {
+	return diag.Span{File: p.file, Start: p.posOf(t), End: diag.Pos{Line: t.Line, Col: t.Col + max(1, len(t.Text))}}
+}
+func (p *Parser) errorAt(t Token, msg string) {
+	p.diags = append(p.diags, diag.Diagnostic{Code: diag.ParseError, Severity: "error", Span: p.spanTok(t), Message: msg})
+}
+
+// errorCodeAt reports an error with a specific diagnostic code.
+func (p *Parser) errorCodeAt(t Token, code, msg string) {
+	p.errorAt(t, msg)
+	p.diags[len(p.diags)-1].Code = code
+}
+
+// mark and restore save and rewind the parser (token and lexer) for speculative lookahead.
+func (p *Parser) mark() (int, Token) { return p.lx.Pos(), p.tok }
+func (p *Parser) restore(pos int, tok Token) {
+	p.lx.Reset(pos)
+	p.tok = tok
+}
+
+func (p *Parser) expect(k Kind, what string) Token {
+	if p.tok.Kind != k {
+		p.errorAt(p.tok, "expected "+what+", got "+describe(p.tok))
+		return p.tok
+	}
+	return p.advance()
+}
+func (p *Parser) expectKeyword(s string) Token {
+	if !p.atKeyword(s) {
+		p.errorAt(p.tok, "expected `"+s+"`, got "+describe(p.tok))
+		return p.tok
+	}
+	return p.advance()
+}
+func describe(t Token) string {
+	switch t.Kind {
+	case EOF:
+		return "end of file"
+	case NL:
+		return "end of line"
+	default:
+		return "`" + t.Text + "`"
+	}
+}
+
+// skipToDecl recovers after a parse error: advance to the next line that starts a declaration.
+func (p *Parser) skipToDecl() {
+	for !p.at(EOF) {
+		if p.at(NL) {
+			p.advance()
+			if p.tok.Col == 1 && (p.tok.Kind == Keyword || p.tok.Kind == LIdent || p.tok.Kind == UIdent) {
+				return
+			}
+			continue
+		}
+		p.advance()
+	}
+}
+
+// ---- module
+
+func (p *Parser) parseModule() *Module {
+	start := p.tok
+	m := &Module{Lines: p.lines, File: p.file}
+	p.skipNL()
+	p.expectKeyword("module")
+	m.Name = p.parseModName()
+	for !p.at(EOF) {
+		p.skipNL()
+		if p.at(EOF) {
+			break
+		}
+		before := p.tok
+		if p.atKeyword("import") {
+			t := p.advance()
+			im := &Import{Module: p.parseModName()}
+			im.Span = p.spanFrom(t)
+			m.Imports = append(m.Imports, im)
+		} else if d := p.parseDecl(); d != nil {
+			m.Decls = append(m.Decls, d)
+		}
+		if !p.at(NL) && !p.at(EOF) {
+			p.errorAt(p.tok, "expected end of line after declaration, got "+describe(p.tok))
+			p.skipToDecl()
+		}
+		if p.tok == before { // no progress: avoid an infinite loop
+			p.advance()
+		}
+	}
+	m.Span = p.spanFrom(start)
+	return m
+}
+
+func (p *Parser) parseModName() string {
+	t := p.expect(UIdent, "module name")
+	name := t.Text
+	for p.at(Dot) {
+		p.advance()
+		name += "." + p.expect(UIdent, "module name segment").Text
+	}
+	return name
+}
+
+// ---- declarations
+
+func (p *Parser) parseDecl() Decl {
+	start := p.tok
+	switch {
+	case p.atKeyword("type"):
+		return p.parseTypeDecl()
+	case p.atKeyword("page"):
+		p.advance()
+		d := &PageDecl{Path: p.parseStringText()}
+		d.Params = p.parseRecordType()
+		if p.atKeyword("requires") {
+			p.advance()
+			d.Requires = p.expect(LIdent, "session field").Text
+		}
+		d.Span = p.spanFrom(start)
+		return d
+	case p.atKeyword("msg"):
+		p.advance()
+		d := &MsgDecl{Name: p.expect(UIdent, "message name").Text}
+		if p.at(LBrace) {
+			d.Params = p.parseRecordType()
+		}
+		if p.atKeyword("form") {
+			p.advance()
+			d.Form = p.expect(UIdent, "form name").Text
+		}
+		d.Span = p.spanFrom(start)
+		return d
+	case p.atKeyword("form"):
+		p.advance()
+		d := &FormDecl{Name: p.expect(UIdent, "form name").Text}
+		p.expect(Equal, "`=`")
+		p.expect(LBrace, "`{`")
+		d.Fields = p.parseFieldList(RBrace, false)
+		d.Span = p.spanFrom(start)
+		return d
+	case p.atKeyword("table"):
+		p.advance()
+		d := &TableDecl{Name: p.expect(UIdent, "table name").Text}
+		p.expect(LBrace, "`{`")
+		d.Fields = p.parseFieldList(RBrace, true)
+		d.Span = p.spanFrom(start)
+		return d
+	case p.atKeyword("capability"):
+		p.advance()
+		d := &CapDecl{Name: p.expect(UIdent, "capability name").Text}
+		p.expect(LBrace, "`{`")
+		d.Entries = p.parseFieldList(RBrace, false)
+		d.Span = p.spanFrom(start)
+		return d
+	case p.atKeyword("session"):
+		p.advance()
+		d := &SessionDecl{}
+		p.expect(LBrace, "`{`")
+		d.Fields = p.parseFieldList(RBrace, false)
+		d.Span = p.spanFrom(start)
+		return d
+	case p.atKeyword("login"):
+		p.advance()
+		p.expect(Equal, "`=`")
+		d := &LoginDecl{Page: p.parseModName()}
+		d.Span = p.spanFrom(start)
+		return d
+	case p.atKeyword("test"):
+		p.advance()
+		d := &TestDecl{Name: p.parseStringText()}
+		p.expect(Equal, "`=`")
+		p.skipNL()
+		d.Body = p.parseExpr()
+		d.Span = p.spanFrom(start)
+		return d
+	case p.at(LIdent) || p.at(UIdent):
+		return p.parseValueDecl()
+	}
+	p.errorAt(p.tok, "expected a declaration, got "+describe(p.tok))
+	p.skipToDecl()
+	return nil
+}
+
+// parseValueDecl handles `name : Type NL name params = expr`, and in sigMode a bare signature.
+func (p *Parser) parseValueDecl() Decl {
+	start := p.tok
+	nameTok := p.advance()
+	d := &ValueDecl{Name: nameTok.Text}
+	if p.at(Colon) {
+		p.advance()
+		d.Sig = p.parseType()
+		if p.sigMode && (p.at(NL) || p.at(EOF)) {
+			// peek: is the next non-blank line this name's definition?
+			save, saveTok := p.mark()
+			p.skipNL()
+			if !(p.tok.Kind == nameTok.Kind && p.tok.Text == nameTok.Text) {
+				p.restore(save, saveTok)
+				d.Span = p.spanFrom(start)
+				return d
+			}
+			p.advance()
+		} else {
+			p.skipNL()
+			if !(p.tok.Kind == nameTok.Kind && p.tok.Text == nameTok.Text) {
+				p.errorAt(p.tok, "expected definition of `"+nameTok.Text+"` after its signature")
+				d.Span = p.spanFrom(start)
+				return d
+			}
+			p.advance()
+		}
+	}
+	for p.at(LIdent) {
+		t := p.advance()
+		id := &Ident{Name: t.Text}
+		id.Span = p.spanTok(t)
+		d.Params = append(d.Params, id)
+	}
+	p.expect(Equal, "`=`")
+	p.skipNL()
+	d.Body = p.parseExpr()
+	d.Span = p.spanFrom(start)
+	return d
+}
+
+func (p *Parser) parseTypeDecl() Decl {
+	start := p.tok
+	p.advance()
+	d := &TypeDecl{Name: p.expect(UIdent, "type name").Text}
+	for p.at(LIdent) {
+		d.Params = append(d.Params, p.advance().Text)
+	}
+	if p.sigMode && (p.at(NL) || p.at(EOF)) { // opaque
+		d.Span = p.spanFrom(start)
+		return d
+	}
+	p.expect(Equal, "`=`")
+	p.skipNL()
+	switch {
+	case p.atKeyword("brand"):
+		bt := p.tok
+		p.advance()
+		b := &BrandType{Base: p.expect(UIdent, "base type").Text}
+		if p.atKeyword("where") {
+			p.advance()
+			b.Check = p.parseExpr()
+		}
+		b.Span = p.spanFrom(bt)
+		d.Brand = b
+	case p.at(LBrace):
+		d.Record = p.parseRecordType()
+	default:
+		if p.at(Pipe) {
+			p.advance()
+		}
+		for {
+			ct := p.expect(UIdent, "constructor")
+			c := &Ctor{Name: ct.Text}
+			if p.at(UIdent) || p.at(LIdent) || p.at(LBrace) || p.at(LParen) {
+				c.Arg = p.parseAType()
+			}
+			c.Span = p.spanFrom(ct)
+			d.Union = append(d.Union, c)
+			save, saveTok := p.mark()
+			p.skipNL()
+			if p.at(Pipe) {
+				p.advance()
+				continue
+			}
+			p.restore(save, saveTok)
+			break
+		}
+	}
+	d.Span = p.spanFrom(start)
+	return d
+}
+
+// parseFieldList parses `name: Type [= default] [@attr…] ,` … up to `closing`; the opening brace is consumed.
+func (p *Parser) parseFieldList(closing Kind, attrs bool) []*Field {
+	var fields []*Field
+	for {
+		p.skipNL()
+		if p.at(closing) {
+			p.advance()
+			return fields
+		}
+		if p.at(EOF) {
+			p.errorAt(p.tok, "unterminated field list")
+			return fields
+		}
+		ft := p.expect(LIdent, "field name")
+		f := &Field{Name: ft.Text}
+		p.expect(Colon, "`:`")
+		f.Type = p.parseType()
+		if p.at(Equal) {
+			p.advance()
+			f.Default = p.parseExpr()
+		}
+		for attrs && p.at(At) {
+			at := p.advance()
+			a := &Attr{Name: p.expect(LIdent, "attribute name").Text}
+			if a.Name == "ref" {
+				a.Arg = p.expect(UIdent, "table name").Text
+			}
+			a.Span = p.spanFrom(at)
+			f.Attrs = append(f.Attrs, a)
+		}
+		f.Span = p.spanFrom(ft)
+		fields = append(fields, f)
+		p.skipNL()
+		if p.at(Comma) {
+			p.advance()
+			continue
+		}
+		p.skipNL()
+		if !p.at(closing) {
+			p.errorAt(p.tok, "expected `,` or closing brace")
+			return fields
+		}
+	}
+}
+
+func (p *Parser) parseStringText() string {
+	t := p.expect(String, "string literal")
+	s := t.Text
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
+// ---- types
+
+// parseType: atype {atype} ["->" type]
+func (p *Parser) parseType() Type {
+	start := p.tok
+	first := p.parseAType()
+	var args []Type
+	for p.at(UIdent) || p.at(LIdent) || p.at(LBrace) || p.at(LParen) {
+		args = append(args, p.parseAType())
+	}
+	var head Type = first
+	if len(args) > 0 {
+		tn, ok := first.(*TypeName)
+		if !ok {
+			p.errorAt(start, "only a named type can take type arguments")
+		} else {
+			tn.Args = args
+			tn.Span = p.spanFrom(start)
+		}
+	}
+	if p.at(Arrow) {
+		p.advance()
+		res := p.parseType()
+		ft := &FunType{Params: []Type{head}, Result: res}
+		if inner, ok := res.(*FunType); ok { // a -> b -> c flattens to params [a, b]
+			ft.Params = append(ft.Params, inner.Params...)
+			ft.Result = inner.Result
+		}
+		ft.Span = p.spanFrom(start)
+		return ft
+	}
+	return head
+}
+
+func (p *Parser) parseAType() Type {
+	start := p.tok
+	switch {
+	case p.at(UIdent):
+		t := p.advance()
+		tn := &TypeName{Name: t.Text}
+		for p.at(Dot) {
+			p.advance()
+			tn.Module = qual(tn.Module, tn.Name)
+			tn.Name = p.expect(UIdent, "type name").Text
+		}
+		tn.Span = p.spanFrom(start)
+		return tn
+	case p.at(LIdent):
+		t := p.advance()
+		tv := &TypeVar{Name: t.Text}
+		tv.Span = p.spanTok(t)
+		return tv
+	case p.at(LBrace):
+		return p.parseRecordType()
+	case p.at(LParen):
+		p.advance()
+		if p.at(RParen) {
+			p.advance()
+			tn := &TypeName{Name: "Unit"}
+			tn.Span = p.spanFrom(start)
+			return tn
+		}
+		inner := p.parseType()
+		p.expect(RParen, "`)`")
+		return inner
+	}
+	p.errorAt(p.tok, "expected a type, got "+describe(p.tok))
+	tn := &TypeName{Name: "?"}
+	tn.Span = p.spanTok(p.tok)
+	return tn
+}
+
+func (p *Parser) parseRecordType() *RecordType {
+	start := p.tok
+	p.expect(LBrace, "`{`")
+	rt := &RecordType{Fields: p.parseFieldList(RBrace, false)}
+	rt.Span = p.spanFrom(start)
+	return rt
+}

@@ -1,0 +1,52 @@
+module Todos.Index
+
+import Todo
+import Layout
+
+page "/" { filter: Todo.Filter = All } requires user
+
+type Model = { filter: Todo.Filter, todos: List Todo }
+
+type Shape = Circle Float | Rect { w: Float, h: Float }
+
+type TodoId = brand Text
+
+type Slug = brand Text where Text.matches "^[a-z0-9-]+$"
+
+type Tree a = Leaf | Node { left: Tree a, value: a, right: Tree a }
+
+table Todo {
+  id: TodoId @id,
+  title: Text.NonEmpty,
+  done: Bool = False,
+  owner: User.UserId @ref User,
+  created: Time @created,
+}
+
+form NewTodo = {
+  title: Text.NonEmpty,
+  due: Maybe Date,
+}
+
+msg Submit form NewTodo
+msg Toggle { id: Todo.TodoId }
+msg Logout
+
+capability Password {
+  verify : { email: Text.Email, password: Text } -> Task (Maybe User.UserId),
+}
+
+session { user: Maybe User.UserId, theme: Theme = Light }
+
+login = Auth.Login
+
+add : Int -> Int -> Int
+add a b = a
+
+first : List a -> Maybe a
+first xs = Nothing
+
+area : { w: Float, h: Float } -> Float
+area r = 1.5
+
+test "adds" = True
