@@ -147,9 +147,10 @@ func Call[T any](name string, write bool, fn func(*Env) (T, error)) Task[T] {
 	}}}
 }
 
-// Env is what effects run against. Run reads Ctx, Store and Log, sets Tx
-// when a Task's transaction is begun, and appends to Trace; everything else
-// is for Call functions.
+// Env is what effects run against. Run reads Ctx, Store and Log, makes Ctx
+// carry the Env while it runs, restores Tx and Ctx when it returns, and
+// appends to Trace; Transaction sets Tx when a Task's transaction is begun;
+// everything else is for Call functions.
 type Env struct {
 	Ctx     context.Context         // checked before each Call; nil means never cancelled; carries the Env while Run runs
 	Store   Store                   // nil: Tasks run with no transaction (Tx stays nil)
