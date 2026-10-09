@@ -102,6 +102,7 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 		return
 	}
 	if isUpperName(x.Tag) { // unresolved component: names already reported
+		mc.walkUnchecked(x, m, env, eff)
 		return
 	}
 	if !htmlTags[x.Tag] {
@@ -112,7 +113,7 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 	}
 	var pushed *formCtx
 	for _, a := range x.Attrs {
-		mc.attribute(x, a, m, env, eff)
+		mc.attribute(a, m, env, eff)
 		if x.Tag == "form" && a.Name == "submit" && a.Value != nil {
 			if f := mc.formOf(a.Value); f != nil {
 				pushed = f
@@ -164,7 +165,7 @@ func (mc *modCtx) formOf(e syntax.Expr) *formCtx {
 	return &formCtx{name: "", rec: &types.Record{Anonymous: true}}
 }
 
-func (mc *modCtx) attribute(el *syntax.Element, a *syntax.HtmlAttr, m types.Type, env *env, eff effect) {
+func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effect) {
 	c := mc.c
 	if strings.HasPrefix(a.Name, "on") && len(a.Name) > 2 {
 		c.errorf(diag.ParseError, a.Span, "`%s` is not Alder; use `click={Msg}`", a.Name)
@@ -238,6 +239,7 @@ func (mc *modCtx) component(x *syntax.Element, m types.Type, env *env, eff effec
 	c := mc.c
 	sig, ok := c.values[c.key(x.Ref.Module, x.Ref.Name)]
 	if !ok {
+		mc.walkUnchecked(x, m, env, eff)
 		return
 	}
 	fn, isFn := c.u.Instantiate(sig).(*types.Fun)
@@ -288,6 +290,10 @@ func (mc *modCtx) formComponent(x *syntax.Element, env *env, eff effect) {
 	var value syntax.Expr
 	bareForm := false
 	for _, a := range x.Attrs {
+		if a.Value == nil && a.Name != "form" {
+			c.errorf("E0304", a.Span, "`<%s>` attribute `%s` needs a value", x.Tag, a.Name)
+			continue
+		}
 		switch a.Name {
 		case "field":
 			if s, ok := a.Value.(*syntax.StrLit); ok && len(s.Parts) == 1 && s.Parts[0].Expr == nil {
@@ -344,5 +350,17 @@ func (mc *modCtx) formComponent(x *syntax.Element, env *env, eff effect) {
 		if c.u.Check(got, ft) != nil && c.u.Check(got, mc.maybeOf(ft)) != nil {
 			mc.mismatch(value.GetSpan(), got, ft)
 		}
+	}
+}
+
+// walkUnchecked still visits the attribute values and children of an element whose own check cannot run.
+func (mc *modCtx) walkUnchecked(x *syntax.Element, m types.Type, env *env, eff effect) {
+	for _, a := range x.Attrs {
+		if a.Value != nil {
+			mc.infer(a.Value, env, eff)
+		}
+	}
+	for _, ch := range x.Children {
+		mc.htmlNode(ch, m, env, eff)
 	}
 }

@@ -5,3 +5,6 @@ Page props = <html><head><title>{props.title}</title></head><body>{props.childre
 
 Bad : { x: Int } -> Html Msg
 Bad props = <span>{props.x}</span>
+
+Never1 : { } -> Html Never
+Never1 props = <hr />

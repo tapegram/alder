@@ -31,12 +31,17 @@ view model session =
     <button click={Toggle}>x</button>
     <button click={Toggle { id: 1 }} disabled={model.saving}>ok</button>
     <blink>x</blink>
+    <span data-x={model.n}>x</span>
+    <Layout.Never1 />
     <Input field="title" label="T" />
     <form submit={Submit}>
       <Input field="nope" label="N" />
       <Input field="kind" label="K" />
       <Select field="kind" label="K" value={A} />
       <input name="raw" />
+      <Input field="title" label />
+      <Select field="title" label="T" />
+      <Input field="title" label="T" value={model.n} />
       <Errors form />
       <Errors field="title" />
       <button>Go</button>
