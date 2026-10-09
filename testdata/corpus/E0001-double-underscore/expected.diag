@@ -1,0 +1,3 @@
+app/Index.alder:8:42 E0001 identifiers may not contain two underscores in a row: `max__len`
+app/Index.alder:10:1 E0001 identifiers may not contain two underscores in a row: `max__len`
+app/Index.alder:11:1 E0001 identifiers may not contain two underscores in a row: `max__len`

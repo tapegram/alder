@@ -9,33 +9,33 @@ import (
 )
 
 type M__Shape struct {
-	Tag    M__Shape__Tag
-	Circle *M__Shape_Circle
-	Rect   *M__Shape_Rect
+	Tag    tag__M__Shape
+	Circle *payload__M__Shape__Circle
+	Rect   *payload__M__Shape__Rect
 }
 
-type M__Shape__Tag uint8
+type tag__M__Shape uint8
 
 const (
-	M__Shape__Tag_Circle M__Shape__Tag = 0
-	M__Shape__Tag_Rect   M__Shape__Tag = 1
+	is__M__Shape__Circle tag__M__Shape = 0
+	is__M__Shape__Rect   tag__M__Shape = 1
 )
 
-type M__Shape_Circle struct {
+type payload__M__Shape__Circle struct {
 	Value float64
 }
 
-type M__Shape_Rect struct {
+type payload__M__Shape__Rect struct {
 	W float64
 	H float64
 }
 
-func M__Shape_Circle_(v float64) M__Shape {
-	return M__Shape{Tag: M__Shape__Tag_Circle, Circle: &M__Shape_Circle{Value: v}}
+func M__Shape__Circle__(v float64) M__Shape {
+	return M__Shape{Tag: is__M__Shape__Circle, Circle: &payload__M__Shape__Circle{Value: v}}
 }
 
-func M__Shape_Rect_(v M__Shape_Rect) M__Shape {
-	return M__Shape{Tag: M__Shape__Tag_Rect, Rect: &v}
+func M__Shape__Rect__(v payload__M__Shape__Rect) M__Shape {
+	return M__Shape{Tag: is__M__Shape__Rect, Rect: &v}
 }
 
 type M__Point struct {
@@ -45,10 +45,10 @@ type M__Point struct {
 
 func M__area(s M__Shape) float64 {
 	switch s.Tag {
-	case M__Shape__Tag_Circle:
+	case is__M__Shape__Circle:
 		r := s.Circle.Value
 		return 3.14 * r * r
-	case M__Shape__Tag_Rect:
+	case is__M__Shape__Rect:
 		w := s.Rect.W
 		h := s.Rect.H
 		return w * h

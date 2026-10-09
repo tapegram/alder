@@ -1,0 +1,14 @@
+module Index
+
+page "/" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: max__len }
+
+max__len : Int
+max__len = 3
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Text.fromInt model.n}</p>

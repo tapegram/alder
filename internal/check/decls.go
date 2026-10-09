@@ -448,6 +448,7 @@ func (mc *modCtx) defineApp() {
 		}
 	}
 	mc.session = c.session
+	mc.reserveGenerated("the App module", map[string]string{"Msg": "App's messages", "Session": "the session"})
 }
 
 // addMsg appends a constructor for a msg declaration to union u; payload is a record of params (+ form).
@@ -524,7 +525,46 @@ func (mc *modCtx) definePage() {
 			mc.addMsg(info.Msg, md, mc.m.Name)
 		}
 	}
+	mc.reserveGenerated("a page module", map[string]string{
+		"Params": "the page's parameters", "Msg": "the page's messages", "Session": "the page's session"})
 }
+
+// reserveGenerated reports E0012 for a type, table, form or component that takes the name of a
+// type the compiler generates in this module (a page module or App): Params, Msg, Session, or
+// `<Msg>Params` for a declared `msg`. The generated type and the user's declaration would get
+// the same Go name (internal/gen/names.go). fixed names the fixed reserved names and what each
+// is generated for.
+func (mc *modCtx) reserveGenerated(where string, fixed map[string]string) {
+	c := mc.c
+	reserved := map[string]string{}
+	for name, what := range fixed {
+		reserved[name] = what
+	}
+	for _, d := range c.live(mc.m) {
+		if md, ok := d.(*syntax.MsgDecl); ok {
+			reserved[md.Name+"Params"] = "`msg " + md.Name + "`"
+		}
+	}
+	for _, d := range c.live(mc.m) {
+		var name string
+		switch d := d.(type) {
+		case *syntax.TypeDecl:
+			name = d.Name
+		case *syntax.TableDecl:
+			name = d.Name
+		case *syntax.FormDecl:
+			name = d.Name
+		case *syntax.ValueDecl: // a component: a capitalized value
+			name = d.Name
+		}
+		if what, ok := reserved[name]; ok && name != "" {
+			c.errorf(ReservedName, d.GetSpan(), "`%s` is reserved in %s (generated for %s); rename it", name, where, what)
+		}
+	}
+}
+
+// ReservedName is E0012: a declaration takes the name of a type the compiler generates.
+const ReservedName = "E0012"
 
 // pendingDefault is a field default (`x: Int = 0`), checked against its field's type once
 // every constructor and value signature is known.

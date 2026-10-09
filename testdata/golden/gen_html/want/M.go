@@ -9,47 +9,47 @@ import (
 )
 
 type M__Color struct {
-	Tag M__Color__Tag
+	Tag tag__M__Color
 }
 
-type M__Color__Tag uint8
+type tag__M__Color uint8
 
 const (
-	M__Color__Tag_Red   M__Color__Tag = 0
-	M__Color__Tag_Green M__Color__Tag = 1
+	is__M__Color__Red   tag__M__Color = 0
+	is__M__Color__Green tag__M__Color = 1
 )
 
-var M__Color_Red = M__Color{Tag: M__Color__Tag_Red}
+var M__Color__Red__ = M__Color{Tag: is__M__Color__Red}
 
-var M__Color_Green = M__Color{Tag: M__Color__Tag_Green}
+var M__Color__Green__ = M__Color{Tag: is__M__Color__Green}
 
 type M__Shape struct {
-	Tag    M__Shape__Tag
-	Circle *M__Shape_Circle
-	Square *M__Shape_Square
+	Tag    tag__M__Shape
+	Circle *payload__M__Shape__Circle
+	Square *payload__M__Shape__Square
 }
 
-type M__Shape__Tag uint8
+type tag__M__Shape uint8
 
 const (
-	M__Shape__Tag_Circle M__Shape__Tag = 0
-	M__Shape__Tag_Square M__Shape__Tag = 1
+	is__M__Shape__Circle tag__M__Shape = 0
+	is__M__Shape__Square tag__M__Shape = 1
 )
 
-type M__Shape_Circle struct {
+type payload__M__Shape__Circle struct {
 	Value float64
 }
 
-type M__Shape_Square struct {
+type payload__M__Shape__Square struct {
 	Value float64
 }
 
-func M__Shape_Circle_(v float64) M__Shape {
-	return M__Shape{Tag: M__Shape__Tag_Circle, Circle: &M__Shape_Circle{Value: v}}
+func M__Shape__Circle__(v float64) M__Shape {
+	return M__Shape{Tag: is__M__Shape__Circle, Circle: &payload__M__Shape__Circle{Value: v}}
 }
 
-func M__Shape_Square_(v float64) M__Shape {
-	return M__Shape{Tag: M__Shape__Tag_Square, Square: &M__Shape_Square{Value: v}}
+func M__Shape__Square__(v float64) M__Shape {
+	return M__Shape{Tag: is__M__Shape__Square, Square: &payload__M__Shape__Square{Value: v}}
 }
 
 type M__Model struct {
@@ -82,28 +82,28 @@ type M__PickParams struct {
 }
 
 type M__Msg struct {
-	Tag  M__Msg__Tag
+	Tag  tag__M__Msg
 	Save *M__SaveParams
 	Pick *M__PickParams
 }
 
-type M__Msg__Tag uint8
+type tag__M__Msg uint8
 
 const (
-	M__Msg__Tag_Save M__Msg__Tag = 0
-	M__Msg__Tag_Pick M__Msg__Tag = 1
-	M__Msg__Tag_Ping M__Msg__Tag = 2
+	is__M__Msg__Save tag__M__Msg = 0
+	is__M__Msg__Pick tag__M__Msg = 1
+	is__M__Msg__Ping tag__M__Msg = 2
 )
 
-func M__Msg_Save_(v M__SaveParams) M__Msg {
-	return M__Msg{Tag: M__Msg__Tag_Save, Save: &v}
+func M__Msg__Save__(v M__SaveParams) M__Msg {
+	return M__Msg{Tag: is__M__Msg__Save, Save: &v}
 }
 
-func M__Msg_Pick_(v M__PickParams) M__Msg {
-	return M__Msg{Tag: M__Msg__Tag_Pick, Pick: &v}
+func M__Msg__Pick__(v M__PickParams) M__Msg {
+	return M__Msg{Tag: is__M__Msg__Pick, Pick: &v}
 }
 
-var M__Msg_Ping = M__Msg{Tag: M__Msg__Tag_Ping}
+var M__Msg__Ping__ = M__Msg{Tag: is__M__Msg__Ping}
 
 func M__view(model M__Model, session App__Session) html.Node {
 	return Layout__Page(struct {
@@ -132,13 +132,13 @@ func M__view(model M__Model, session App__Session) html.Node {
 		}(),
 		func() html.Node {
 			switch model.Shape.Tag {
-			case M__Shape__Tag_Circle:
+			case is__M__Shape__Circle:
 				r := model.Shape.Circle.Value
 				return html.El("span", nil,
 					html.Text("circle "),
 					html.Text(std.TextFromFloat(r)),
 				)
-			case M__Shape__Tag_Square:
+			case is__M__Shape__Square:
 				return html.El("span", nil, html.Text("square"))
 			}
 			panic("unreachable")

@@ -229,15 +229,15 @@ func typeDecl(w *strings.Builder, d *ir.TypeDecl) {
 		tc := tagConst(u.Module, u.Name, c.Name)
 		switch {
 		case c.Payload == nil && decl == "":
-			fmt.Fprintf(w, "var %s = %s{Tag: %s}\n\n", ctorVar(u.Module, u.Name, c.Name), name, tc)
+			fmt.Fprintf(w, "var %s = %s{Tag: %s}\n\n", ctorName(u.Module, u.Name, c.Name), name, tc)
 		case c.Payload == nil: // a generic union's payload-less value is built where it is used
 		case wrapped(c.Payload):
 			fmt.Fprintf(w, "func %s%s(v %s) %s%s {\nreturn %s%s{Tag: %s, %s: &%s{Value: v}}\n}\n\n",
-				ctorFunc(u.Module, u.Name, c.Name), decl, GoType(c.Payload.Fields[0].Type), name, use,
+				ctorName(u.Module, u.Name, c.Name), decl, GoType(c.Payload.Fields[0].Type), name, use,
 				name, use, tc, ctorField(c.Name), payloadType(u, c, use))
 		default:
 			fmt.Fprintf(w, "func %s%s(v %s) %s%s {\nreturn %s%s{Tag: %s, %s: &v}\n}\n\n",
-				ctorFunc(u.Module, u.Name, c.Name), decl, payloadType(u, c, use), name, use,
+				ctorName(u.Module, u.Name, c.Name), decl, payloadType(u, c, use), name, use,
 				name, use, tc, ctorField(c.Name))
 		}
 	}

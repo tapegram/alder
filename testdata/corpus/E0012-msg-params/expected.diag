@@ -1,0 +1,2 @@
+app/Index.alder:7:1 E0012 `PickParams` is reserved in a page module (generated for `msg Pick`); rename it
+app/Index.alder:19:1 E0012 `Session` is reserved in a page module (generated for the page's session); rename it

@@ -36,6 +36,20 @@ a clash is a compile error.
 Everything a module defines is visible to other modules, with one exception:
 a brand's constructor (see chapter 4). There is no `export` list.
 
+## Names
+
+Names are letters, digits and `_`. A name that starts with a lowercase
+letter or `_` is a value, a field or a type parameter; one that starts with
+an uppercase letter is a type, a constructor, a module or a component. A
+name may not contain two underscores in a row (`max__len` is an error), and
+a module name segment may not end with `_`: the compiler joins the parts of
+the Go names it generates with `__` (chapter 13), so these are the names it
+keeps for itself.
+
+In a page module and in `App`, the compiler also generates the types
+`Params`, `Msg`, `Session` and, for each `msg Pick`, `PickParams`. A type,
+table, form or component of yours may not take one of those names (E0012).
+
 ## Comments
 
 ```alder

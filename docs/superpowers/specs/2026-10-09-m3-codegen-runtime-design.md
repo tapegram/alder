@@ -91,7 +91,7 @@ for I/O. Output is formatted with `go/format`. Mapping:
 | Alder | Go |
 |---|---|
 | record type | `struct` (value semantics) |
-| union | `struct{ Tag Tag__<M>__<Union>; <Ctor> *<payload struct> … }`: one pointer field per constructor with a payload (nil unless that constructor built the value), tag constants, constructor funcs that allocate the payload |
+| union | `struct{ Tag tag__<M>__<Union>; <Ctor> *<payload> … }` with `<payload>` the named record or the generated `payload__<M>__<Union>__<Ctor>`: one pointer field per constructor with a payload (nil unless that constructor built the value), tag constants `is__<M>__<Union>__<Ctor>`, constructors `<M>__<Union>__<Ctor>__` (a function that allocates the payload, or a value) |
 | brand | erased to its base type |
 | `Maybe a`, `Result e a`, `List a`, `Dict k v` | `rt.Maybe[T]`, `rt.Result[E, T]`, `[]T`, `rt.Dict[K, V]` |
 | function | `func` with all parameters; `Partial` and `Lambda` → closures |
@@ -267,10 +267,24 @@ Each milestone gets its own implementation plan.
   operands of an arithmetic operator are constant expressions, and always
   for the literal divisor of `/` or `%` (M3a fix wave, C8).
 - Every union constructor payload is held by pointer (M3a fix wave, C1):
-  `type M__Tree[A any] struct{ Tag …; Node *M__Tree__Node[A] }`. Without
+  `type M__Tree[A any] struct{ Tag …; Node *payload__M__Tree__Node[A] }`. Without
   the pointer a recursive union (`Node { left: Tree a, … }`) is an invalid
   recursive Go type. The rule is uniform (every payload, recursive or not)
   so the emitter needs no recursion analysis; the constructor function
   allocates, a match reads through the pointer, and `rt.Eq`/`rt.Key`
   follow pointers. Prelude's `Maybe` and `Result` keep their value
   representation.
+- Generated Go names are injective (M3a fix wave, C3). Alder identifiers
+  may not contain `__` and module name segments may not end with `_`
+  (E0001). A top-level declaration is `<segments joined by __>__<name>`
+  (`Todos__Index__view`); a constructor is `<M>__<Union>__<Ctor>__`; the
+  other generated names start with a lowercase kind word that no module
+  segment can be: `payload__…`, `tag__…`, `is__…`, `widen__…`; a reserved
+  local gets `__` appended (`type__`); files are `<segments joined by
+  __>.go`. The proof is in `internal/gen/names.go`, checked by
+  `TestGoNameInjective`; `gen.Emit` also rejects a duplicate file or
+  top-level name. Page modules and App reserve `Params`, `Msg`, `Session`
+  and `<Msg>Params` for the generated types (E0012). The final review's
+  suggested `M__Shape__Rect` payload and `Tag__M__Shape` tag forms were not
+  used: module `M.Shape` declaring `Rect`, or module `Tag.M` declaring
+  `Shape`, produces the same strings.

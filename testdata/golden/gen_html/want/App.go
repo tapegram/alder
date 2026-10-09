@@ -9,16 +9,16 @@ type App__Session struct {
 }
 
 type App__Msg struct {
-	Tag App__Msg__Tag
+	Tag tag__App__Msg
 }
 
-type App__Msg__Tag uint8
+type tag__App__Msg uint8
 
 const (
-	App__Msg__Tag_Logout App__Msg__Tag = 0
+	is__App__Msg__Logout tag__App__Msg = 0
 )
 
-var App__Msg_Logout = App__Msg{Tag: App__Msg__Tag_Logout}
+var App__Msg__Logout__ = App__Msg{Tag: is__App__Msg__Logout}
 
 func App__error(err error) html.Node {
 	return html.El("p", nil, html.Text("error"))

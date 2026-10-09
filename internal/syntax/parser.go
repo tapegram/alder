@@ -46,7 +46,7 @@ func ParseSignatures(file string, src []byte) (*Module, []diag.Diagnostic) {
 func (p *Parser) finish() []diag.Diagnostic {
 	for _, e := range p.lx.Errors() {
 		p.diags = append(p.diags, diag.Diagnostic{Code: diag.ParseError, Severity: "error",
-			Span: diag.Span{File: p.file, Start: diag.Pos{Line: e.Line, Col: e.Col}, End: diag.Pos{Line: e.Line, Col: e.Col + 1}}, Message: e.Msg})
+			Span: diag.Span{File: p.file, Start: diag.Pos{Line: e.Line, Col: e.Col}, End: diag.Pos{Line: e.Line, Col: e.Col + max(e.Len, 1)}}, Message: e.Msg})
 	}
 	return p.diags
 }
@@ -203,12 +203,24 @@ func (p *Parser) parseModule() *Module {
 
 func (p *Parser) parseModName() string {
 	t := p.expect(UIdent, "module name")
+	p.checkModSegment(t)
 	name := t.Text
 	for p.at(Dot) {
 		p.advance()
-		name += "." + p.expect(UIdent, "module name segment").Text
+		seg := p.expect(UIdent, "module name segment")
+		p.checkModSegment(seg)
+		name += "." + seg.Text
 	}
 	return name
+}
+
+// checkModSegment rejects a module name segment ending in '_': generated Go names join a module's
+// segments and a declaration's name with "__", and a name may start with '_' (`A_` then `x`
+// would read as `A` then `_x`; see internal/gen/names.go).
+func (p *Parser) checkModSegment(t Token) {
+	if t.Kind == UIdent && strings.HasSuffix(t.Text, "_") {
+		p.errorAt(t, "module name segments may not end with an underscore: `"+t.Text+"`")
+	}
 }
 
 // ---- declarations

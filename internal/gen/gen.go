@@ -23,9 +23,10 @@ type Options struct {
 	Dev      bool
 }
 
-// Emit returns the generated files: one "<Module>.go" per module ('.' → '_') and "go.mod".
+// Emit returns the generated files: one "<Module>.go" per module ('.' → "__") and "go.mod".
 // Its error is for a bug in gen: output go/format cannot parse, or a program gen cannot emit
-// (such as a stdlib function with no Go implementation).
+// (such as a stdlib function with no Go implementation), or two modules or declarations that
+// would get the same file or Go name.
 func Emit(p *ir.Program, opts Options) (files map[string][]byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -34,14 +35,59 @@ func Emit(p *ir.Program, opts Options) (files map[string][]byte, err error) {
 	}()
 	g := newGen(p)
 	files = map[string][]byte{"go.mod": []byte(goMod(opts.RepoPath))}
+	declared := map[string]string{} // Go name → module declaring it
 	for _, m := range p.Modules {
 		src, err := g.module(m)
 		if err != nil {
 			return nil, err
 		}
-		files[fileName(m.Name)] = src
+		name := fileName(m.Name)
+		if _, dup := files[name]; dup {
+			return nil, fmt.Errorf("gen: two modules are emitted to %s", name)
+		}
+		files[name] = src
+		// Defense in depth: the naming scheme is injective (names.go), so this never fires.
+		names, err := topLevelNames(src)
+		if err != nil {
+			return nil, fmt.Errorf("gen: module %s: %v", m.Name, err)
+		}
+		for _, n := range names {
+			if prev, dup := declared[n]; dup {
+				return nil, fmt.Errorf("gen: %s is declared twice (by module %s and by module %s)", n, prev, m.Name)
+			}
+			declared[n] = m.Name
+		}
 	}
 	return files, nil
+}
+
+// topLevelNames lists the package-level names a generated file declares, with repeats.
+func topLevelNames(src []byte) ([]string, error) {
+	f, err := parser.ParseFile(token.NewFileSet(), "", src, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, d := range f.Decls {
+		switch d := d.(type) {
+		case *ast.FuncDecl:
+			if d.Recv == nil {
+				out = append(out, d.Name.Name)
+			}
+		case *ast.GenDecl:
+			for _, sp := range d.Specs {
+				switch sp := sp.(type) {
+				case *ast.TypeSpec:
+					out = append(out, sp.Name.Name)
+				case *ast.ValueSpec:
+					for _, n := range sp.Names {
+						out = append(out, n.Name)
+					}
+				}
+			}
+		}
+	}
+	return out, nil
 }
 
 func goMod(repo string) string {

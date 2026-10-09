@@ -43,17 +43,17 @@ func TestBuildEmit_Todos(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	b, err := os.ReadFile(filepath.Join(out, "Todos_Index.go"))
+	b, err := os.ReadFile(filepath.Join(out, "Todos__Index.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	src2 := string(b)
-	if !strings.Contains(src2, "func Todos_Index__view(") {
-		t.Errorf("Todos_Index.go lacks the view:\n%s", src2)
+	if !strings.Contains(src2, "func Todos__Index__view(") {
+		t.Errorf("Todos__Index.go lacks the view:\n%s", src2)
 	}
-	for _, absent := range []string{"func Todos_Index__load(", "func Todos_Index__update("} {
+	for _, absent := range []string{"func Todos__Index__load(", "func Todos__Index__update("} {
 		if strings.Contains(src2, absent) {
-			t.Errorf("Todos_Index.go has %s, an effect lowered only in M3b", absent)
+			t.Errorf("Todos__Index.go has %s, an effect lowered only in M3b", absent)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(out, "Gone.go")); !os.IsNotExist(err) {

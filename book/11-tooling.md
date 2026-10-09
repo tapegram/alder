@@ -55,7 +55,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 
 | Code | Meaning | Fix offered |
 |---|---|---|
-| E0001 | parse error | — |
+| E0001 | parse error (also: an identifier with `__` in it, a module name segment ending in `_`) | — |
 | E0002 | unknown name | — |
 | E0003 | type mismatch | conversion such as `Text.fromInt (…)` where one exists |
 | E0004 | non-exhaustive `match` | arm skeleton |
@@ -66,6 +66,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0009 | duplicate definition, or a constructor declared in two imported modules | — |
 | E0010 | required declaration missing (page `load`/`view`/`update`, `App` `error`/`notFound`/`login`/`session`) | — |
 | E0011 | invalid declaration (unstorable table field, unusable page or form field, bad `@id`, brand constructor used outside its module) | — |
+| E0012 | a type, table, form or component in a page module or `App` named like a generated type: `Params`, `Msg`, `Session`, or `<Msg>Params` for a declared `msg` | — |
 | E0101 | `Db.get T x` where `x` is not `Id T` | `Db.from T \|> Db.where (T.<col>.eq x) \|> Db.first` when a column of `x`'s type exists |
 | E0102 | field access on a `Maybe` | `match` skeleton |
 | E0201 | name from a module that isn't imported | `import M` |

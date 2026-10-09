@@ -64,8 +64,9 @@ func (f *fn) tempVar(s *scope, prefix string) (key, g string) {
 // scope maps Alder locals to their Go names and tracks the Go names declared in the current Go
 // block.
 //
-// Alder identifiers are ASCII letters, digits and '_' (and may start with '_'), so every Go name
-// the emitter derives — "type_", "n_2", "_a1" — is also an Alder name a user could write. A name
+// Alder identifiers are ASCII letters, digits and '_' (and may start with '_'), so the Go names
+// the emitter derives — "n_2", "_a1" — are also Alder names a user could write (only the reserved
+// escape "type__" is not: Alder names never contain "__"). A name
 // is therefore never chosen by its spelling alone: declare picks the first candidate that is
 // neither declared in the current Go block nor the Go name of another visible binding, so no
 // declaration can shadow a variable the code still refers to.
@@ -510,11 +511,11 @@ func (f *fn) ctor(x *ir.Ctor, s *scope) string {
 	ct := ctorT(u, x.Name)
 	switch {
 	case ct.Payload == nil && ta == "":
-		return ctorVar(u.Module, u.Name, x.Name)
+		return ctorName(u.Module, u.Name, x.Name)
 	case ct.Payload == nil:
 		return GoName(u.Module, u.Name) + ta + "{Tag: " + tagConst(u.Module, u.Name, x.Name) + "}"
 	case wrapped(ct.Payload):
-		return ctorFunc(u.Module, u.Name, x.Name) + ta + "(" + inner() + ")"
+		return ctorName(u.Module, u.Name, x.Name) + ta + "(" + inner() + ")"
 	}
 	var p string
 	if r, ok := x.Payload.(*ir.Record); ok && r.T == ct.Payload {
@@ -522,7 +523,7 @@ func (f *fn) ctor(x *ir.Ctor, s *scope) string {
 	} else {
 		p = f.code(x.Payload, s)
 	}
-	return ctorFunc(u.Module, u.Name, x.Name) + ta + "(" + p + ")"
+	return ctorName(u.Module, u.Name, x.Name) + ta + "(" + p + ")"
 }
 
 // pageRef is a link to a page: its path with the path parameters filled in from Params.

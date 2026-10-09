@@ -1,11 +1,15 @@
 // internal/syntax/lexer.go
 package syntax
 
-import "bytes"
+import (
+	"bytes"
+	"strings"
+)
 
 type LexError struct {
 	Line, Col, Offset int
 	Msg               string
+	Len               int // length of the offending text; 0 reports one column
 }
 
 type Lexer struct {
@@ -94,6 +98,14 @@ func (l *Lexer) isIdent(c byte) bool {
 	return isLower(c) || isUpper(c) || isDigit(c) || c == '_' || (l.htmlTag && c == '-')
 }
 
+// checkIdent reports an identifier with "__" in it. The compiler joins the parts of a generated
+// Go name with "__", so no Alder name may contain it (internal/gen/names.go).
+func (l *Lexer) checkIdent(text string, line, col, off int) {
+	if strings.Contains(text, "__") {
+		l.errs = append(l.errs, LexError{line, col, off, "identifiers may not contain two underscores in a row: `" + text + "`", len(text)})
+	}
+}
+
 // Next returns the next code-mode token.
 func (l *Lexer) Next() Token {
 	for l.pos < len(l.src) {
@@ -123,6 +135,7 @@ func (l *Lexer) Next() Token {
 			l.advance()
 		}
 		text := string(l.src[off:l.pos])
+		l.checkIdent(text, line, col, off)
 		// The name after a `.` (Db.where) is never a keyword. Stateless, so Mark/Restore stay valid.
 		afterDot := off >= 2 && l.src[off-1] == '.' && l.src[off-2] != '.'
 		if keywords[text] && !afterDot {
@@ -137,7 +150,9 @@ func (l *Lexer) Next() Token {
 			for l.pos < len(l.src) && l.isIdent(l.peek()) {
 				l.advance()
 			}
-			return l.tok(LIdent, string(l.src[off:l.pos]), line, col, off)
+			text := string(l.src[off:l.pos])
+			l.checkIdent(text, line, col, off)
+			return l.tok(LIdent, text, line, col, off)
 		}
 		return l.tok(Underscore, "_", line, col, off)
 	case isDigit(c):
@@ -155,7 +170,7 @@ func (l *Lexer) Next() Token {
 	case c == '"':
 		for {
 			if l.pos >= len(l.src) || l.peek() == '\n' {
-				l.errs = append(l.errs, LexError{line, col, off, "unterminated string"})
+				l.errs = append(l.errs, LexError{Line: line, Col: col, Offset: off, Msg: "unterminated string"})
 				return l.tok(String, string(l.src[off:l.pos]), line, col, off)
 			}
 			d := l.advance()
@@ -255,7 +270,7 @@ func (l *Lexer) Next() Token {
 			return two(AndAnd, "&&")
 		}
 	}
-	l.errs = append(l.errs, LexError{line, col, off, "unexpected character " + string(c)})
+	l.errs = append(l.errs, LexError{Line: line, Col: col, Offset: off, Msg: "unexpected character " + string(c)})
 	return l.tok(Invalid, string(c), line, col, off)
 }
 

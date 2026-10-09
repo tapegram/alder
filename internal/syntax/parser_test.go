@@ -87,3 +87,40 @@ func TestParseSignatures_KeywordNamedValue(t *testing.T) {
 		t.Fatalf("got %#v", m.Decls[0])
 	}
 }
+
+// Generated Go names join parts with "__": no identifier may contain it, and no module name
+// segment may end with '_' (internal/gen/names.go).
+func TestParse_ReservedUnderscores(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{"module M\n\nmax__len : Int\nmax__len = 1\n", "3:1 identifiers may not contain two underscores in a row: `max__len`"},
+		{"module M\n\ntype T__U = A\n", "3:6 identifiers may not contain two underscores in a row: `T__U`"},
+		{"module M\n\nf : Int -> Int\nf __ = 1\n", "4:3 identifiers may not contain two underscores in a row: `__`"},
+		{"module A__B\n", "1:8 identifiers may not contain two underscores in a row: `A__B`"},
+		{"module A_\n", "1:8 module name segments may not end with an underscore: `A_`"},
+		{"module A.B_\n", "1:10 module name segments may not end with an underscore: `B_`"},
+		{"module M\n\nimport X_\n", "3:8 module name segments may not end with an underscore: `X_`"},
+	} {
+		_, diags := ParseFile("t.alder", []byte(tc.src))
+		var got []string
+		for _, d := range diags {
+			got = append(got, fmt.Sprintf("%d:%d %s", d.Span.Start.Line, d.Span.Start.Col, d.Message))
+		}
+		if !slicesContains(got, tc.want) {
+			t.Errorf("%q: diagnostics %q lack %q", tc.src, got, tc.want)
+		}
+	}
+	// single underscores, also leading and trailing, are fine
+	_, diags := ParseFile("t.alder", []byte("module A_b.C\n\n_x_ : Int\n_x_ = 1\n\ntype T_ = A_ | B_c\n"))
+	if len(diags) != 0 {
+		t.Errorf("unexpected diagnostics: %v", diags)
+	}
+}
+
+func slicesContains(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}

@@ -9,10 +9,10 @@ type Other__Model struct{}
 type Other__Params struct{}
 
 type Other__Msg struct {
-	Tag Other__Msg__Tag
+	Tag tag__Other__Msg
 }
 
-type Other__Msg__Tag uint8
+type tag__Other__Msg uint8
 
 func Other__view(model Other__Model, session App__Session) html.Node {
 	return html.El("p", nil, html.Text("other"))
