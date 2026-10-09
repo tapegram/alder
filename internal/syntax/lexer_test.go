@@ -157,3 +157,14 @@ func TestLexer_MarkRestore(t *testing.T) {
 		t.Fatalf("state not restored: %+v vs %+v, %d errors", l.Mark(), m, len(l.Errors()))
 	}
 }
+
+func TestLexer_KeywordAfterDot(t *testing.T) {
+	got := kinds("Db.where x")
+	want := "UIdent(Db) Dot LIdent(where) LIdent(x)"
+	if got != want {
+		t.Fatalf("\n got %s\nwant %s", got, want)
+	}
+	if got := kinds("where x"); got != "Keyword(where) LIdent(x)" {
+		t.Fatalf("plain where must stay a keyword, got %s", got)
+	}
+}

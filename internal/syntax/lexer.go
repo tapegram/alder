@@ -122,7 +122,9 @@ func (l *Lexer) Next() Token {
 			l.advance()
 		}
 		text := string(l.src[off:l.pos])
-		if keywords[text] {
+		// The name after a `.` (Db.where) is never a keyword. Stateless, so Mark/Restore stay valid.
+		afterDot := off >= 2 && l.src[off-1] == '.' && l.src[off-2] != '.'
+		if keywords[text] && !afterDot {
 			return l.tok(Keyword, text, line, col, off)
 		}
 		if isUpper(c) {

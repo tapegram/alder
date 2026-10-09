@@ -1,0 +1,3 @@
+module Form
+
+values : Form f -> f

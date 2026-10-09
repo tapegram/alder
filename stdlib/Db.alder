@@ -1,0 +1,17 @@
+module Db
+
+get : Table t -> Id t -> Query (Maybe t)
+from : Table t -> Select t
+where : Condition t -> Select t -> Select t
+orderBy : Order t -> Select t -> Select t
+limit : Int -> Select t -> Select t
+offset : Int -> Select t -> Select t
+all : Select t -> Query (List t)
+first : Select t -> Query (Maybe t)
+count : Select t -> Query Int
+and : List (Condition t) -> Condition t
+or : List (Condition t) -> Condition t
+not : Condition t -> Condition t
+insert : Table t -> Insert t -> Task (Id t)
+update : Table t -> Id t -> (t -> t) -> Task Unit
+delete : Table t -> Id t -> Task Unit

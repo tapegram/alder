@@ -1,0 +1,3 @@
+module Url
+
+external : Text -> Page

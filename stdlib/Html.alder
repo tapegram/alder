@@ -1,0 +1,5 @@
+module Html
+
+unsafe : Text -> Html Never
+none : Html a
+text : Text -> Html a

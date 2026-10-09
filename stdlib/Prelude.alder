@@ -1,0 +1,31 @@
+module Prelude
+
+type Int
+type Float
+type Text
+type Unit
+type Date
+type Time
+type Never
+type Error
+type Page
+type List a
+type Dict k v
+type Html a
+type Query a
+type Task a
+type Form f
+type Table t
+type Id t
+type Insert t
+type Select t
+type Condition t
+type Order t
+type Column t a
+
+type Bool = True | False
+type Maybe a = Just a | Nothing
+type Result e a = Ok a | Err e
+type Nav = Rerender | Redirect Page | Reject Text
+
+not : Bool -> Bool

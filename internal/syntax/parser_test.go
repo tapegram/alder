@@ -74,3 +74,16 @@ func TestParse_KeywordsAsIdentifiers(t *testing.T) {
 		t.Fatalf("dump %s does not contain %s", got, want)
 	}
 }
+
+func TestParseSignatures_KeywordNamedValue(t *testing.T) {
+	m, ds := ParseSignatures("Db.alder", []byte("module Db\n\nwhere : Condition t -> Select t -> Select t\nfrom : Table t -> Select t\n"))
+	if len(ds) > 0 {
+		t.Fatal(ds[0].Message)
+	}
+	if len(m.Decls) != 2 {
+		t.Fatalf("decls = %d", len(m.Decls))
+	}
+	if v, ok := m.Decls[0].(*ValueDecl); !ok || v.Name != "where" || v.Sig == nil {
+		t.Fatalf("got %#v", m.Decls[0])
+	}
+}

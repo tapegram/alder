@@ -84,6 +84,14 @@ func (p *Parser) errorCodeAt(t Token, code, msg string) {
 }
 
 // mark and restore save and rewind the parser (token and lexer) for speculative lookahead.
+// peekIsColon reports whether the token after the current one is `:`.
+func (p *Parser) peekIsColon() bool {
+	st, tok := p.mark()
+	defer p.restore(st, tok)
+	p.advance()
+	return p.at(Colon)
+}
+
 func (p *Parser) mark() (LexState, Token) { return p.lx.Mark(), p.tok }
 func (p *Parser) restore(st LexState, tok Token) {
 	p.lx.Restore(st)
@@ -249,6 +257,10 @@ func (p *Parser) parseDecl() Decl {
 		d.Span = p.spanFrom(start)
 		return d
 	case p.at(LIdent) || p.at(UIdent):
+		return p.parseValueDecl()
+	case p.sigMode && p.at(Keyword) && p.peekIsColon():
+		// stdlib signature files may name a value after a keyword (`where : …`)
+		p.tok.Kind = LIdent
 		return p.parseValueDecl()
 	}
 	p.errorAt(p.tok, "expected a declaration, got "+describe(p.tok))

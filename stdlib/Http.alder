@@ -1,0 +1,6 @@
+module Http
+
+type HttpError
+
+get : { url: Text } -> Task (Result HttpError Text)
+post : { url: Text, body: Text } -> Task (Result HttpError Text)

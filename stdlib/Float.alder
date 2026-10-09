@@ -1,0 +1,9 @@
+module Float
+
+round : Float -> Int
+floor : Float -> Int
+ceil : Float -> Int
+min : Float -> Float -> Float
+max : Float -> Float -> Float
+abs : Float -> Float
+format : { decimals: Int } -> Float -> Text
