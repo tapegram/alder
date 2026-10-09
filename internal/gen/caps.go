@@ -194,6 +194,7 @@ type Options struct {
 	Dev       bool                    // development mode: a changed schema recreates the tables; error pages show the error
 	Secret    []byte                  // the session cookie key: at least 16 bytes (in dev mode, shorter means the public development key)
 	StaticDir string                  // the directory served under /static/; "" for none
+	Reload    bool                    // under alder run: pages subscribe to the dev server's reloads and error overlay
 	Log       func(level, msg string) // nil: no log
 }
 
@@ -235,6 +236,7 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 		Secret:      o.Secret,
 		Session:     session__codec{},
 		StaticDir:   o.StaticDir,
+		Reload:      o.Reload,
 		ErrorDoc:    App__error,
 		NotFoundDoc: ` + notFound + `,
 		Login:       ` + strconv.Quote(login) + `,
@@ -279,7 +281,8 @@ func Main(name string, withAdapters bool) []byte {
 // Command ` + name + ` serves the app. ALDER_ADDR is the address to listen on (default :8080),
 // ALDER_DB the SQLite database file (default ` + name + `.db), ALDER_SECRET the session cookie key
 // (at least 16 bytes; required outside development mode, where without it a public development
-// key is used) and ALDER_DEV=1 turns on development mode. Static files are served under /static/
+// key is used) and ALDER_DEV=1 turns on development mode; ALDER_RELOAD=1 (set by alder run) makes
+// pages subscribe to the dev server's reloads. Static files are served under /static/
 // from ALDER_STATIC, by default the static directory next to the executable. SIGINT or SIGTERM
 // shuts the server down gracefully: requests in flight get 5 s to finish.
 package main
@@ -312,6 +315,7 @@ func main() {
 		Dev:       dev,
 		Secret:    []byte(os.Getenv("ALDER_SECRET")),
 		StaticDir: static,
+		Reload:    os.Getenv("ALDER_RELOAD") == "1",
 		Log: func(level, msg string) {
 			if level != "effect" || dev { // every effect step is logged in development mode only
 				log.Printf("%s: %s", level, msg)

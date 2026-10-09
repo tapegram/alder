@@ -429,3 +429,28 @@ func TestRouter_Head(t *testing.T) {
 		}
 	}
 }
+
+// With Options.Reload (alder run) every page, full or patched, carries the dev server's overlay
+// target and reload subscriber right after its <body> start tag; without it, neither.
+func TestRouter_Reload(t *testing.T) {
+	const dev = `<div id="_alder_errors"></div><div data-init="@get('/_dev/reload')"></div>`
+	routes := []Route{{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response {
+		return PageResponse(doc("home"), nil, testSession{}, true)
+	}}}
+	for _, reload := range []bool{false, true} {
+		h := NewRouter(routes, testOpts(func(o *Options) { o.Reload = reload }))
+		page := serve(h, httptest.NewRequest("GET", "/", nil)).Body.String()
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("Datastar-Request", "true")
+		patch := serve(h, req).Body.String()
+		missing := serve(h, httptest.NewRequest("GET", "/nope", nil)).Body.String()
+		for name, got := range map[string]string{"page": page, "patch": patch, "404": missing} {
+			if want := "<body>" + dev + "<p>"; strings.Contains(got, want) != reload || strings.Count(got, "_alder_errors") != map[bool]int{false: 0, true: 1}[reload] {
+				t.Errorf("Reload=%v: %s:\n%s", reload, name, got)
+			}
+		}
+	}
+	if got := withReload(`<p>bare</p>`); got != `<div id="_alder_errors"></div><div data-init="@get('/_dev/reload')"></div><p>bare</p>` {
+		t.Errorf("withReload without <body>: %s", got)
+	}
+}

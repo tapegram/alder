@@ -6,8 +6,10 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"alder/internal/check"
 	"alder/internal/diag"
@@ -25,6 +27,16 @@ func main() {
 		os.Exit(runCheckTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "build":
 		os.Exit(runBuildTo(os.Args[2:], os.Stdout, os.Stderr))
+	case "run":
+		stop := make(chan struct{})
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-sig
+			signal.Stop(sig) // a second Ctrl-C kills alder run outright
+			close(stop)
+		}()
+		os.Exit(runRunTo(os.Args[2:], os.Stdout, os.Stderr, stop))
 	case "dump":
 		os.Exit(runDumpTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "explain":
@@ -47,7 +59,7 @@ func main() {
 func usage() { usageTo(os.Stderr) }
 
 func usageTo(w io.Writer) {
-	fmt.Fprintln(w, "usage: alder check [dir] [--json] | alder build [--emit] [dir] | alder dump [--tokens|--ast|--ir] <file.alder | dir> | alder explain <code>")
+	fmt.Fprintln(w, "usage: alder check [dir] [--json] | alder build [--emit] [dir] | alder run [dir] | alder dump [--tokens|--ast|--ir] <file.alder | dir> | alder explain <code>")
 }
 
 func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {

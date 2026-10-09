@@ -79,11 +79,27 @@ func Navigate(w http.ResponseWriter, url string) error {
 	return patch(w, "body", "append", `<script data-effect="el.remove()">window.location.assign(`+string(u)+`)</script>`)
 }
 
-// patch writes one `datastar-patch-elements` event patching elements at selector in mode.
+// patch writes one `datastar-patch-elements` event (PatchEvent) patching elements at selector
+// in mode.
 func patch(w http.ResponseWriter, selector, mode, elements string) error {
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-cache")
+	if _, err := w.Write(PatchEvent(selector, mode, elements)); err != nil {
+		return err
+	}
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	return nil
+}
+
+// PatchEvent is one `datastar-patch-elements` event, ending in its blank line, that patches
+// elements at selector in mode: one `elements` data line per line of elements, line ends
+// normalised as in PatchBody (an empty elements is one empty data line, which patches nothing
+// in: in mode inner it clears the target). The dev server (alder run) streams these to its
+// reload subscribers.
+func PatchEvent(selector, mode, elements string) []byte {
 	var b strings.Builder
 	b.WriteString("event: datastar-patch-elements\ndata: selector " + selector + "\ndata: mode " + mode + "\n")
 	for _, line := range lines(elements) {
@@ -92,13 +108,7 @@ func patch(w http.ResponseWriter, selector, mode, elements string) error {
 		b.WriteByte('\n')
 	}
 	b.WriteByte('\n')
-	if _, err := w.Write([]byte(b.String())); err != nil {
-		return err
-	}
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
-	}
-	return nil
+	return []byte(b.String())
 }
 
 // lines splits s into the lines of SSE data lines: "\r\n", a lone "\r" and "\n" all end a line

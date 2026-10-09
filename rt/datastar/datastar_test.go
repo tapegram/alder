@@ -135,3 +135,14 @@ func TestNavigate_RefusesScriptURLs(t *testing.T) {
 		t.Fatalf("Navigate(#): %v %q", err, rec.Body.String())
 	}
 }
+
+// PatchEvent is the event patch writes; an empty elements is one empty data line (clears in
+// mode inner).
+func TestPatchEvent(t *testing.T) {
+	if got, want := string(PatchEvent("#x", "inner", "a\r\nb")), "event: datastar-patch-elements\ndata: selector #x\ndata: mode inner\ndata: elements a\ndata: elements b\n\n"; got != want {
+		t.Errorf("PatchEvent = %q, want %q", got, want)
+	}
+	if got, want := string(PatchEvent("#x", "inner", "")), "event: datastar-patch-elements\ndata: selector #x\ndata: mode inner\ndata: elements \n\n"; got != want {
+		t.Errorf("PatchEvent empty = %q, want %q", got, want)
+	}
+}

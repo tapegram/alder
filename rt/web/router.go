@@ -35,6 +35,7 @@ type Options struct {
 	ErrorDoc    func(err error) html.Node
 	NotFoundDoc func() html.Node
 	Login       string // App.login page path, copied to Request.Login
+	Reload      bool   // under `alder run`: every page carries the dev server's overlay and reload subscriber (withReload)
 }
 
 // maxBody is the largest POST body the router reads.
@@ -414,7 +415,7 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, rq *Request, res
 		}
 		page := html.RenderWith(resp.Node, resp.State)
 		if resp.Patch && rq.Datastar {
-			if err := datastar.PatchBody(w, bodyOf(page)); err != nil {
+			if err := datastar.PatchBody(w, rt.dev(bodyOf(page))); err != nil {
 				rt.log("error", fmt.Sprintf("%s %s: writing the patch: %v", r.Method, r.URL.Path, err))
 			}
 			return
@@ -440,7 +441,7 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, rq *Request, res
 func (rt *router) document(w http.ResponseWriter, status int, page string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_, _ = w.Write([]byte("<!doctype html>\n" + withScript(page)))
+	_, _ = w.Write([]byte("<!doctype html>\n" + withScript(rt.dev(page))))
 }
 
 // notFound writes doc (or, when it renders empty, Options.NotFoundDoc) with status 404, or as
@@ -482,7 +483,7 @@ func (rt *router) fail(w http.ResponseWriter, r *http.Request, doc html.Node, er
 // request, a 200 SSE patch of its body (the Datastar client ignores non-2xx answers).
 func (rt *router) failure(w http.ResponseWriter, r *http.Request, status int, page string) {
 	if datastar.IsDatastar(r) {
-		if err := datastar.PatchBody(w, bodyOf(page)); err != nil {
+		if err := datastar.PatchBody(w, rt.dev(bodyOf(page))); err != nil {
 			rt.log("error", fmt.Sprintf("%s %s: writing the patch: %v", r.Method, r.URL.Path, err))
 		}
 		return
@@ -523,6 +524,32 @@ func withScript(page string) string {
 		return page[:i] + tag + page[i:]
 	}
 	return tag + page
+}
+
+// reloadTags are what withReload inserts: the element `alder run` patches its error overlay
+// into, and one that subscribes to the dev server's reload events when Datastar initialises it
+// (data-init: Datastar v1.0.0 has no data-on-load plugin, and a div fires no load event).
+const reloadTags = `<div id="_alder_errors"></div><div data-init="@get('/_dev/reload')"></div>`
+
+// withReload inserts reloadTags right after the first <body> start tag, or at the start of a
+// page without one.
+func withReload(page string) string {
+	if i := startTag(page, "body"); i >= 0 {
+		if j := strings.IndexByte(page[i:], '>'); j >= 0 {
+			k := i + j + 1
+			return page[:k] + reloadTags + page[k:]
+		}
+	}
+	return reloadTags + page
+}
+
+// dev is page with reloadTags (withReload) when Options.Reload is set, else page. It applies to
+// full documents and body patches alike, so a patched <body> keeps the overlay and subscriber.
+func (rt *router) dev(page string) string {
+	if rt.opts.Reload {
+		return withReload(page)
+	}
+	return page
 }
 
 // startTag is the index of the first <name> or <name …> start tag in page, or -1.
