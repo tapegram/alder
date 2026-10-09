@@ -1,17 +1,15 @@
 # 11. Tooling
 
 `alder check` exists as of M1, `alder build --emit` as of M3a, and
-`alder dump` as of M3b. Since M3b, `alder build --emit` generates and vets
-Go for every module of an app, effects and database included: `load` and `update`
-run against SQLite (chapter 7, "How effects run"). Serving the app over
-HTTP arrives in M3c and `alder run` in M3d; `test`, `fmt`, holes and
-`query` are planned.
+`alder dump` as of M3b. As of M3c, `alder build` makes a server: one
+executable that serves the app over HTTP, with its database, sessions and
+forms (chapter 6, "How a request runs"). `alder run` arrives in M3d;
+`test`, `fmt`, holes and `query` are planned.
 
 ## Project layout
 
 ```
 myapp/
-  alder.toml          -- name, database adapter, Go module path
   app/
     App.alder         -- session, error pages, login page
     Todo.alder        -- table Todo, TodoId, helpers
@@ -19,15 +17,39 @@ myapp/
       Index.alder     -- page "/"
       Show.alder      -- page "/todos/{id}"
     Layout.alder      -- shared components
-  adapters/           -- Go implementations of capabilities (optional)
-  build/              -- generated Go, never edited
+  adapters/           -- Go implementations of capabilities (package adapters)
+  static/             -- files served under /static/ (stylesheets, images)
+  go.mod              -- needed only inside another Go module (below)
+  build/              -- generated, never edited
 ```
+
+`examples/todos/` has this shape. `adapters/` is needed only when the app
+declares a capability (chapter 7, "Implementing a capability"). `static/`
+is optional: `examples/todos/static/app.css` is served at
+`/static/app.css`, and the layout links it with
+`<link rel="stylesheet" href={Url.external "/static/app.css"} />`.
+
+The `go.mod` is there for Go, not for Alder. Go treats a directory that
+holds `.go` files as part of the nearest Go module above it. If your app
+sits inside another Go module (as `examples/todos/` sits inside this
+repository), `go vet ./...` and `go test ./...` in that module would try
+to compile `adapters/`, whose `import "app"` resolves only in
+`build/<app>/`. A `go.mod` in the app's directory makes it a module of its
+own, which the outer one skips. `examples/todos/go.mod` is just that:
+
+```
+module todos
+
+go 1.27
+```
+
+An app that is not inside a Go module doesn't need one.
 
 ## Commands
 
 ```
 alder check          type-check everything; milliseconds; no output on success
-alder build          check, generate Go, go build → ./build/myapp
+alder build          check, generate Go, go build → ./build/myapp/myapp
 alder run            build and run with the dev database, reloading on change
 alder test           run every `test`
 alder fmt            rewrite every file in canonical format
@@ -35,7 +57,77 @@ alder dump <path>    print a file's tokens, AST, or an app's IR
 alder explain <id>   explain a diagnostic code
 ```
 
-`alder build --emit` writes the generated Go to `build/<app>/` and vets it. Chapter 13 walks through what it generates and why: see [How the compiler works](13-compiler.md).
+### `alder build`
+
+`alder build [dir]` turns the app in `dir` (default `.`) into one
+executable:
+
+```
+$ go run ./cmd/alder build examples/todos
+wrote build/todos/todos
+```
+
+`build/` is relative to where you run the command, and `<app>` is the last
+part of `dir`. The steps are:
+
+1. Check the program. With errors or holes, print them and exit 1, as
+   `alder check` would.
+2. Generate the Go into `build/<app>/`, as `--emit` does (below).
+3. Replace `build/<app>/adapters/` with copies of the `.go` files in
+   `<dir>/adapters/`, and `build/<app>/static/` with a copy of
+   `<dir>/static/`.
+4. Write `build/<app>/cmd/main.go`, the program's `main`.
+5. Run `go vet` on the whole module, then `go build`, which writes
+   `build/<app>/<app>`.
+
+If the app declares capabilities and has no `adapters/` directory, nothing
+is written, and the build exits 1 naming each interface to implement:
+
+```
+examples/todos needs an adapters package: create adapters/caps.go with `func Caps() app.Caps` implementing: Auth.Login.Password (interface app.Cap__Auth__Login__Password)
+```
+
+If your adapters don't compile against the generated package, the build
+prints Go's errors as they are, with a line naming the adapters
+directory, and exits 1. If `Caps` is missing, it says the package must
+declare `func Caps() app.Caps`.
+
+The executable reads four environment variables
+(`build/<app>/cmd/main.go`):
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `ALDER_ADDR` | the address to listen on | `:8080` |
+| `ALDER_DB` | the SQLite database file (`:memory:` for none on disk) | `<app>.db` in the working directory |
+| `ALDER_SECRET` | the session cookie key, at least 16 bytes | a public development key, with a warning |
+| `ALDER_DEV` | `1` turns on development mode | off |
+
+Development mode shows a failed request's error text in the page (as an
+HTML comment), logs every effect step, and lets a changed schema drop and
+recreate the tables (chapter 8). Static files are served from the
+`static/` directory next to the executable. Once it is listening, the
+server prints the address:
+
+```
+$ ALDER_ADDR=127.0.0.1:8080 ./build/todos/todos
+warn: warning: ALDER_SECRET not set; using the development cookie key
+listening on 127.0.0.1:8080
+```
+
+(The `warn:` line is logged with a date and time in front.) In production,
+set `ALDER_SECRET` to a long random string, and keep it: changing it logs
+everyone out.
+
+`build/<app>/` then holds the generated package (one
+`<Module>_alder.go` per module, `app__alder.go`, `routes__alder.go`,
+`go.mod`), `cmd/main.go`, `adapters/`, `static/` and the executable.
+Chapter 13, section 9, reads them.
+
+### `alder build --emit`
+
+`alder build --emit` writes the generated Go to `build/<app>/` and vets it,
+and stops there: it copies nothing and builds no executable, so it needs
+no adapters. Chapter 13 walks through what it generates and why: see [How the compiler works](13-compiler.md).
 It replaces only the files it generated; anything else in `build/<app>/` is
 kept, and vetted with the rest. `build/<app>/` must contain only generated
 files: if the vet fails and the directory holds Go files alder did not
@@ -100,6 +192,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0011 | invalid declaration (unstorable table field, unusable page or form field, bad `@id`, brand constructor used outside its module, a record that contains itself by value) | — |
 | E0012 | a type, table, form or component in a page module or `App` named like a generated type: `Params`, `Msg`, `Session`, or `<Msg>Params` for a declared `msg` | — |
 | E0014 | two module names that differ only in case (`Ab` and `AB`): their files would be one on a case-insensitive file system | — |
+| E0015 | a module whose first name segment is exactly `Route`, `Cap` or `Args` (`Cap.Mail` is refused, `Caps.Mail` and `My.Cap` are fine): the generated Go uses those prefixes for exported names | — |
 | E0101 | `Db.get T x` where `x` is not `Id T` | `Db.from T \|> Db.where (T.<col>.eq x) \|> Db.first` when a column of `x`'s type exists |
 | E0102 | field access on a `Maybe` | `match` skeleton |
 | E0201 | name from a module that isn't imported | `import M` |

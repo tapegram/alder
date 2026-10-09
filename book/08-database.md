@@ -202,9 +202,9 @@ so no input can change what a query does.
 ## Schema changes
 
 When an app starts, the runtime creates the tables (`Ensure` in
-`rt/db/sqlite.go`). Today a test calls `Ensure` (`TestGen_RunTodos` in
-`internal/gen/gen_test.go`); from M3c the generated server calls it at
-startup. It keeps two things in a table of its own, `_alder_meta`: a
+`rt/db/sqlite.go`): the generated `Serve` calls it before it serves the
+first request, and so do tests (`TestGen_RunTodos` in
+`internal/gen/gen_test.go`). It keeps two things in a table of its own, `_alder_meta`: a
 hash of the `CREATE TABLE` statements, sorted so that the order of your
 `table` declarations does not matter, and the storage format version of
 the runtime that created the database (`db.Format`, now `1`, raised

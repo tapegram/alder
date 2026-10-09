@@ -33,6 +33,6 @@ as context when writing Alder. They are kept short on purpose.
 
 ## Status
 
-Alder is a design in progress. `alder check`, `alder dump` and `alder build --emit` exist, and the generated code's effects run against SQLite; serving an app arrives with M3c and the dev loop with M3d. The reference
+Alder is a design in progress. `alder check`, `alder dump` and `alder build` exist: the to-do app serves, and `alder build` produces a binary that runs it over HTTP against SQLite (chapter 11). The dev loop, `alder run`, arrives with M3d. The reference
 describes the language as currently specified; the rationale chapter records
 what experiments have shown and what is still open.

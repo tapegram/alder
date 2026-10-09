@@ -372,3 +372,57 @@ Each milestone gets its own implementation plan.
 - `Nav` lives in `rt` (`rt/nav.go`: `rt.Rerender()`, `rt.Redirect(page)`,
   `rt.Reject(text)`), not in generated code, so `rt/web` (M3c) can act on
   an `update`'s result without importing the app.
+- Capabilities are implemented by an adapters package (M3c, option B).
+  `<app>/adapters/` is one Go package, `package adapters`, importing the
+  generated package as `"app"` and declaring `func Caps() app.Caps`;
+  `alder build` copies its `.go` files into `build/<app>/adapters/` and
+  writes `build/<app>/cmd/main.go`, which calls `app.Serve(adapters.Caps(),
+  …)`. The generated surface is exported: `Cap__<M>__<C>` (one method per
+  entry, `(ctx, args Args__<M>__<C>__<Entry>)` for one argument, one Go
+  parameter per curried argument, `ctx` only for an entry that is itself a
+  `Query`/`Task`), `Args__…`, `Route__…`, and the fixed `Caps`, `Serve`,
+  `Options`, `Routes`, `Tables`, `Capabilities`. E0015 refuses a module
+  whose first segment is exactly `Route`, `Cap` or `Args`. `Serve` refuses
+  to start when a `Caps` field is nil (before opening the database); a build
+  of an app with capabilities and no `adapters/` exits 1 naming each
+  interface. An app inside another Go module carries its own `go.mod`
+  (`examples/todos/go.mod`), so the outer module's `./...` skips
+  `adapters/`, whose `import "app"` resolves only in `build/<app>/`.
+- Page parameters travel in message URLs (M3c fix round). The renderer
+  appends the rendering page's parameters to every message URL as
+  `_p.<name>` keys (`rt.MsgRef.URL`, deferred `html.MsgAttr` values
+  resolved with `FormState.PageParams`); a parameter at its default is left
+  out, as in links. A message route decodes the page's parameters only from
+  the `_p.` keys (`rt.PageParams`): no `Referer` dependence, and message
+  and page parameters never shadow each other (an Alder name contains no
+  `.`). A missing required page parameter is a 404. `List` parameters
+  repeat the key.
+- `Rerender` (and `Reject`) from `App.update` is a 303 back to the
+  `Referer`'s path and query (`rt.BackURL`, `/` without one); App has no
+  page to render. A `Reject` text and the errors of a form on an App
+  message are not shown. `Redirect` is a 303 to its page.
+- The server's address is `ALDER_ADDR` (default `:8080`; it supersedes
+  `ALDER_PORT` in "Dev loop" above); with `ALDER_DB` (default `<app>.db`), `ALDER_SECRET` and
+  `ALDER_DEV=1` these are the environment of the generated `cmd/main.go`,
+  which prints `listening on <addr>` once bound.
+- Session cookie format: `alder_session` = base64url(JSON) "." base64url(
+  HMAC-SHA256(key, JSON)), unpadded; signed, not encrypted (a `Text.Secret`
+  must never be stored in the session). The JSON is an object keyed by Go
+  field name; a payload-less union is stored by constructor name; decode
+  starts from the defaults and a missing or undecodable field keeps its
+  default; a cookie that does not verify is the default session. Key:
+  `ALDER_SECRET` of at least 16 bytes, else the public dev key and a
+  warning logged once at startup. Attributes: `HttpOnly`, `SameSite=Lax`,
+  `Path=/`, `Max-Age` 30 days, `Secure` under TLS or
+  `X-Forwarded-Proto: https`. Stored on every rendered `GET` and every
+  answer after a successful `update`; on a 404/500 only when a successful
+  `Task` left a session before the re-load failed; never after a form
+  decode error or a failed `Task`.
+- Datastar error patches: under `Datastar-Request: true`, a 404 or 500
+  (including an unknown route and a recovered panic) is answered like a
+  `Rerender`, status 200 with one `datastar-patch-elements` event of the
+  failure page's `<body>`, because the Datastar client ignores non-2xx
+  answers. A `Redirect` stays a 303. The router injects the Datastar
+  script tag after the first `<head>` of every document it writes, so
+  layouts stay plain Alder. A no-JS `Rerender` answers 200 at the message
+  URL, so a refresh resubmits (book chapter 6 says so).

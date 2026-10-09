@@ -54,7 +54,7 @@ page "/" { filter: Todo.Filter = All } requires user
 ```
 
 `page` declares the route. `filter` is a query parameter with a default, so
-both `/` and `/?filter=active` work and `filter` is never missing.
+both `/` and `/?filter=Active` work and `filter` is never missing.
 `requires user` means the `user` field of the session must be `Just`;
 otherwise the runtime sends the visitor to the login page, and inside this
 module `session.user` is a `UserId`, not a `Maybe UserId`.
@@ -163,7 +163,7 @@ Item props =
 
 `Item` is a component: a function from a record to HTML. `click={Toggle
 { id: ... }}` sends a message; it compiles to a POST (and, with Datastar, an
-in-place patch of `#todos`).
+in-place patch of the page; chapter 6, "How a request runs").
 
 ## What the compiler checked
 

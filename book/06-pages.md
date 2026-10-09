@@ -107,7 +107,8 @@ update msg model session = match msg {
 ```
 
 The page's own parameters travel with every message it sends, so `update`
-always has the same `Model` that `view` had.
+always has the same `Model` that `view` had. They ride in the message's URL
+under keys that start with `_p.` ("How a request runs", below).
 
 A page can only send its own messages and the app-level messages below. It
 cannot send another page's message.
@@ -116,8 +117,14 @@ cannot send another page's message.
 
 Actions that belong to no page (log out, switch theme) are declared as `msg`
 in the `App` module. Any page can send them, and `App.update` handles them.
-It has no `Model`. `Rerender` from `App.update` re-renders the page that sent
-the message:
+It has no `Model`, and no page of its own to render, so its `Nav` is
+answered differently: `Redirect p` is a 303 to `p`, and `Rerender` and
+`Reject` are a 303 back to the page that sent the message (its address,
+from the browser's `Referer` header, or `/` without one). The page is then
+loaded again with the new session. A `Reject` text from `App.update` is not
+shown anywhere, and neither are the errors of a form on an App message that
+fails to decode: both answer with the same 303 back. ("How a request runs",
+below, shows the code.)
 
 ```alder
 -- in App
@@ -195,12 +202,16 @@ GET  /path
   4. view (with the session)      → HTML
 
 POST (generated message URL)
-  1. decode message parameters and form → 404 / re-render with form errors
-  2. check `requires`
-  3. load                         → Model
-  4. update                       → Task, run by the runtime
-  5. Rerender: load → view → patch     Redirect: 303
-     Task failure: App.error → HTML, status 500
+  1. decode the page's parameters (`_p.` keys) → 404 on failure
+  2. decode the message's parameters           → 404 on failure
+  3. decode the form, if any → on failure: requires, load, view with the
+     errors, and stop (update is not called)
+  4. check `requires`             → redirect to App.login on failure
+  5. load                         → Model
+  6. update                       → Task, run by the runtime
+  7. Rerender: load → view → patch     Redirect: 303
+     Reject: load → view with the text on the form → patch
+     Task failure: App.error → HTML, status 500 (404 for Query.notFound)
 ```
 
 ## The `App` module
@@ -227,3 +238,210 @@ notFound = <h1>Not found</h1>
 - `login` names the page to redirect to when `requires` fails.
 - `error` and `notFound` render failure pages.
 - `msg` and `update` declare app-level messages (above). They are optional.
+
+## How a request runs
+
+You can write a whole app without reading this section. It explains what
+the server that `alder build` makes (chapter 11) does with each request, so
+that nothing in the lifecycle above is a mystery. Chapter 13 follows one
+request through it byte by byte.
+
+Three pieces of Go do the work. `rt/web` is the router and the session
+cookie. `build/<app>/routes__alder.go`, which the compiler writes for your
+app, holds one handler for each page and one for each message. `rt/html`
+renders the page, and `rt/datastar` writes the answer a Datastar request
+gets.
+
+### The router
+
+`web.NewRouter` in `rt/web/router.go` is the app's HTTP handler. For each
+request it does these things, in order:
+
+1. `GET /_alder/datastar.js` is answered with the Datastar script, which
+   is built into the binary (`rt/datastar/datastar.js`, version in
+   `rt/datastar/VERSION`).
+2. `GET /static/<file>` is answered with that file from your app's
+   `static/` directory. Directories are never listed, and a path with `..`
+   in it is refused.
+3. The method and path are matched against the generated list `Routes`. A
+   page is a `GET` of its pattern; a message is a `POST` to
+   `/_m/<Module>/<Msg>`, such as `/_m/Todos.Index/Toggle`. Anything else
+   is a 404 rendered with `App.notFound`.
+4. For a `POST`, the body is read: a url-encoded form is parsed (at most
+   1 MiB, else status 413), a multipart body is refused (415), and any
+   other body is an empty form. Datastar sends a button's message with a
+   JSON body, which Alder ignores.
+5. The session cookie is decoded (below).
+6. The route's handler runs, and its answer is written.
+
+A Go panic anywhere in the request becomes a 500 page rendered with
+`App.error`. The router also puts the Datastar script tag,
+`<script type="module" src="/_alder/datastar.js"></script>`, right after
+the `<head>` of every page it writes, so your layout stays plain Alder.
+
+### One handler per message
+
+This is the handler for `Toggle`, from `build/todos/routes__alder.go`:
+
+```go
+func Route__Todos__Index__Toggle() web.Route {
+	return web.Route{Method: "POST", Pattern: "/_m/Todos.Index/Toggle", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Todos__Index__Params(rt.PageParams(rq.Query))
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		p, errs := decode__Todos__Index__ToggleParams(rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		return update__Todos__Index(rq, params, Todos__Index__Msg__Toggle__(p), nil)
+	}}
+}
+```
+
+It decodes the page's parameters, then the message's, and answers 404 if
+either fails. Then `update__Todos__Index` does the rest of the lifecycle:
+`requires`, `load`, `update`, and the answer to the `Nav`. Every page gets
+one `update__<Page>` and one handler per message. A page's `GET` has its
+own handler, `Route__<Page>__page`, which decodes the path and query,
+checks `requires`, runs `load` and renders `view`.
+
+### Page parameters travel in the message URL
+
+A message must know which page sent it. `Toggle` on `/?filter=Active` has
+to load the Active list again, not the full list. So the renderer adds the
+page's parameters to every message URL it writes. This is the Done button
+of `GET /?filter=Active`, as the running app sends it:
+
+```html
+<button data-on:click="@post(&#39;/_m/Todos.Index/Toggle?id=DJ92YHT4U9KYifXwI_Tz&amp;_p.filter=Active&#39;)">Done</button>
+```
+
+`id` is the message's own parameter. `_p.filter` is the page's parameter
+`filter`, with `_p.` in front. Your names never contain a `.`, so a page
+parameter can never be mistaken for a message parameter of the same name.
+A parameter at its default is left out, as in links: on `/`, the same
+button posts to `/_m/Todos.Index/Toggle?id=DJ92YHT4U9KYifXwI_Tz`, and the
+handler decodes `filter` as `All`.
+
+The handler reads the page's parameters only from the `_p.` keys
+(`rt.PageParams` in `rt/core.go`). It does not look at the `Referer`
+header. A message URL without the keys a page needs, such as a `Save` for
+`/todos/{id}` without `_p.id`, gets a 404.
+
+The URLs of App messages carry the `_p.` keys too
+(`/_m/App/SwitchTheme?_p.filter=Active`), but `App.update` has no page, so
+its handler ignores them.
+
+### The session cookie
+
+The session lives in one cookie, `alder_session`. Its value is two parts
+joined by a dot: the session as JSON, then an HMAC-SHA256 signature of that
+JSON, both in unpadded base64url (`Sign` in `rt/web/session.go`). After
+logging in to the to-do app, the first part decodes to
+
+```json
+{"Theme":"Light","User":{"Ok":true,"Val":"W9CiZnDHB01lToXBlVSH"}}
+```
+
+A union without payloads, such as `Theme`, is stored by its constructor's
+name, so reordering the constructors doesn't change what an old cookie
+means. A field the cookie lacks, or whose value no longer decodes, gets its
+default.
+
+The cookie is **signed, not encrypted**. Anyone holding it can read it, so
+never put a `Text.Secret`, or anything the user must not see, in the
+session. What the signature does is stop anyone from changing it. A cookie
+whose signature doesn't match is ignored, and the request sees the default
+session: every field at its default, so `user` is `Nothing`.
+
+The signing key comes from the environment variable `ALDER_SECRET`, which
+must be at least 16 bytes. Without it, the server uses a fixed development
+key that is public (it is in `rt/web/session.go`), and logs this once at
+startup:
+
+```
+warn: warning: ALDER_SECRET not set; using the development cookie key
+```
+
+Anyone can forge a session signed with that key, so always set
+`ALDER_SECRET` in production.
+
+The cookie is `HttpOnly` (page scripts cannot read it), `SameSite=Lax`,
+`Path=/`, and lasts 30 days from the last time it was stored. It is
+`Secure` when the request came over HTTPS. It is stored:
+
+- on every page a `GET` renders;
+- on every answer to a message whose `update` succeeded, whether a page or
+  a 303;
+- on a 404 or 500 only when an `update` succeeded and the page then failed
+  to load again: what the `update` committed is kept.
+
+It is not stored when a form fails to decode or a `Task` fails, since
+neither changed the session.
+
+### Form errors
+
+When a form fails to decode, the handler does not call `update`. It runs
+`requires` and `load`, and renders `view` with the form's state: what was
+submitted, and a list of messages per field. The status is 200. Posting
+`title=` to the to-do page renders
+
+```html
+<ul class="errors" data-errors="title"><li>must not be empty</li></ul>
+```
+
+where `<Errors field="title" />` stands. The value of a `Text.Secret` field
+is never sent back: its input is a password input, and it comes back empty.
+
+`Reject t` renders the same way, with `t` in `<Errors form />` of the form
+that sent the message. Unlike a form error, the `update` that rejected ran
+and committed. A message without a form that ends in `Reject` is answered
+like `Rerender`, and the text is not shown.
+
+### With and without JavaScript
+
+The browser either runs Datastar (the usual case) or does not. The answers
+differ.
+
+With Datastar, a message is sent with the header `Datastar-Request: true`.
+For `Rerender`, `Reject`, a form error, a 404 or a 500, the answer is
+status 200 with one server-sent event that replaces the page's `<body>`
+(`datastar.PatchBody` in `rt/datastar/datastar.go`). Datastar morphs the
+new body into the old one, so only what changed is touched. A 404 or 500
+is sent that way too, because Datastar ignores answers that are not 2xx.
+`Redirect` is a 303 for both kinds of request.
+
+Without JavaScript, only forms send messages: a `<form>` has
+`method="post"` and an `action` with the message URL, but a `click` button
+works only through Datastar. The answer to a form is a whole page, or a
+303 for `Redirect`. After a whole-page `Rerender`, the browser's address bar
+shows the message URL, and refreshing the page sends the `POST` again (the
+browser asks first). That is one more reason to end a create with
+`Redirect`.
+
+### App messages
+
+The handler for an App message runs `App.update` with the session and
+answers with a 303 (`update__App` in `build/todos/routes__alder.go`):
+
+```go
+	if nav.Tag == rt.NavRedirect {
+		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
+	}
+	return web.RedirectResponse(rt.BackURL(rq.HTTP.Referer()), rq.Env.Session)
+```
+
+`rt.BackURL` keeps only the path and query of the `Referer`, so the 303
+never leads to another site. Clicking "Dark mode" on `/?filter=Active`
+answers `303 /?filter=Active` and a cookie whose `Theme` is `"Dark"`.
+
+### Failure pages
+
+A path no route matches, a page parameter that doesn't decode, and
+`Query.notFound` are answered with `App.notFound`, status 404. A failed
+`Task` is answered with `App.error`, status 500, and logged as an `error`
+line naming the request. With `ALDER_DEV=1` (chapter 11), the error's text
+is added at the end of the page's `<body>` as an HTML comment, such as
+`<!-- error: Db.update Todo: no row with id "nope" -->`. Without it, the
+page never shows the text.

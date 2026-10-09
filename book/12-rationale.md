@@ -70,7 +70,8 @@ the login page, a duplicated msg that collided on its route). App-level
 letting pages send each other's messages. E2 confirmed the fix (Haiku,
 which had collided on `/logout` in E1, used `App.Logout` correctly) and
 added two refinements: `App.update` may `Rerender` the sending page (a
-theme switch should not redirect), and app-level messages type-check
+theme switch should stay on the page it was clicked on; the server
+answers it with a 303 back to that page, chapter 6), and app-level messages type-check
 inside any `Html a`, so a shared layout can carry the buttons.
 
 ### Form state is in the request, not the Model **(untested)**

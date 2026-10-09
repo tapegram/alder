@@ -113,7 +113,8 @@ capability Weather {
 Each entry is a function whose result is a `Query` or `Task`. Using
 `Email.send { ... }` in `update` is then an ordinary effect. The compiler
 generates a Go interface for each capability, and the app will not build
-until every capability is implemented and wired in.
+or start until every capability is implemented and wired in ("Implementing
+a capability", below).
 
 Capabilities are declared in any module and used by their name. The
 standard library provides these; they need no declaration:
@@ -226,7 +227,7 @@ above leaves the trace `["Db.update Todo"]`; the `Add` arm of
 then logs, leaves `["Db.insert Todo" "Log.info"]`. The trace is the dev
 log of what a request did, and it is what tests will compare (chapter 10).
 
-**What a capability implementation looks like.** The to-do app checks
+**What a capability looks like in Go.** The to-do app checks
 passwords outside the language
 (`examples/todos/app/Auth/Login.alder`):
 
@@ -236,27 +237,38 @@ capability Password {
 }
 ```
 
-`alder build --emit` turns it into a Go interface
-(`build/todos/Auth__Login_alder.go`). Each entry becomes a method that
-takes a `context.Context` first, then one parameter per argument of the
-entry, and returns the result and an `error`:
+The compiler turns it into a Go interface and a record for its argument,
+in the module's file (`build/todos/Auth__Login_alder.go`):
 
 ```go
-type cap__Auth__Login__Password interface {
-	Verify(ctx context.Context, args struct {
-		Email    string
-		Password string
-	}) (rt.Maybe[string], error)
+type Cap__Auth__Login__Password interface {
+	Verify(ctx context.Context, args Args__Auth__Login__Password__Verify) (rt.Maybe[string], error)
+}
+
+// Args__Auth__Login__Password__Verify are the arguments of Password.verify.
+type Args__Auth__Login__Password__Verify struct {
+	Email    string
+	Password string
 }
 ```
 
-An entry with several arguments gets one parameter for each, and an entry
-that is itself a `Query` or `Task` gets only `ctx`. From
-`capability Stats { total : Query Int, forOwner : UserId -> Bool -> Query Int }`
+Each entry becomes one method, named after the entry with a capital first
+letter. It takes a `context.Context` first and returns the entry's result
+and an `error`. What comes between depends on the entry's arguments:
+
+- One argument: a parameter `args` of type `Args__<Module>__<Capability>__<Entry>`.
+  For an anonymous record like `{ email, password }`, that is a struct with
+  the same fields. For a named record type, it is that type. For anything
+  else, it is `struct{ Value T }`.
+- Several arguments (a curried entry such as `UserId -> Bool -> Query Int`):
+  one Go parameter each, `a1`, `a2`, ….
+- No argument (an entry that is itself a `Query` or `Task`): only `ctx`.
+
+From `capability Stats { total : Query Int, forOwner : UserId -> Bool -> Query Int }`
 in `testdata/golden/gen_effects/app/Todo.alder`:
 
 ```go
-type cap__Todo__Stats interface {
+type Cap__Todo__Stats interface {
 	Total(ctx context.Context) (int64, error)
 	ForOwner(ctx context.Context, a1 string, a2 bool) (int64, error)
 }
@@ -266,18 +278,17 @@ An implementation is any Go type with those methods. This stub is from
 `TestGen_RunTodos` in `internal/gen/gen_test.go`:
 
 ```go
-type password struct{ user string }
-
-func (p password) Verify(ctx context.Context, args struct {
-	Email    string
-	Password string
-}) (rt.Maybe[string], error) {
+func (p password) Verify(ctx context.Context, args Args__Auth__Login__Password__Verify) (rt.Maybe[string], error) {
 	if args.Email == "a@b.c" && args.Password == "pw" {
 		return rt.Just(p.user), nil
 	}
 	return rt.Nothing[string](), nil
 }
 ```
+
+Returning a non-nil `error` fails the task, which rolls it back. The
+brands are gone in Go (`User.UserId` is a `string`), so the Go side must
+keep the brand's promise itself.
 
 **A capability can write in the task's transaction.** While `Run` runs,
 the `ctx` it passes to a capability carries the running effect
@@ -290,10 +301,7 @@ implementation of `Pay.charge` (from `TestGen_RunEffectsCorpus` in
 inserts a `Customer` row in the running task's transaction:
 
 ```go
-func (pay) Charge(ctx context.Context, args struct {
-	Amount float64
-	Card   string
-}) (rt.Maybe[string], error) {
+func (pay) Charge(ctx context.Context, args Args__Shop__Pay__Charge) (rt.Maybe[string], error) {
 	row := insertvals__Shop__Customer(insert__Shop__Customer{Email: args.Card + "@pay", Seen: rt.Nothing[time.Time]()})
 	_, err := db.InsertRow(ctx, db.StoreFrom(ctx), db.TxFrom(ctx), table__Shop__Customer, row, time.Now())
 	return rt.Just(args.Card), err
@@ -311,13 +319,109 @@ without a transaction, and its `Insert`, `Update`, `Delete` and `Begin`
 return an internal error (`eff.ErrInternal`, "write from a Query") and
 write nothing.
 
-It is registered in the `Env` under the capability's module-qualified
-name, `env.Caps["Auth.Login.Password"] = password{user: uid}`, and the
-generated code finds it there. The generated list `Capabilities` (in
-`app__alder.go`) names every key an app needs; a call to a capability
-with nothing registered is a Go `panic`,
+Inside the program, an implementation is found by the capability's
+module-qualified name, `Env.Caps["Auth.Login.Password"]`. The generated
+list `Capabilities` (in `app__alder.go`) names every key an app needs. A
+call to a capability with nothing registered is a Go `panic`,
 `alder: capability "Auth.Login.Password" is not wired`, which rolls the
-task back like any other failure. Returning a non-nil `error` fails the task,
-which rolls it back. The brands are gone in Go (`User.UserId` is a
-`string`), so the Go side must keep the brand's promise itself. Wiring
-capabilities into a running server arrives with `main.go` in M3c.
+task back like any other failure; a server never gets that far, because
+it checks every capability when it starts (below).
+
+## Implementing a capability
+
+Your Go code goes in the app's `adapters/` directory, next to `app/`. It
+is one Go package, `package adapters`, and it must declare one function:
+
+```go
+func Caps() app.Caps
+```
+
+`alder build` (chapter 11) copies the `.go` files of `adapters/` into
+`build/<app>/adapters/`, inside the generated Go module. There, the
+generated package is called `app`, so your code imports it as `"app"`, and
+the runtime as `"alder/rt"`, `"alder/rt/db"` and so on. The generated
+`cmd/main.go` calls `adapters.Caps()` and serves the app with what it
+returns.
+
+`app.Caps` is a struct with one field per capability, named
+`<Module>__<Capability>` (`app__alder.go`):
+
+```go
+type Caps struct {
+	Auth__Login__Password Cap__Auth__Login__Password
+}
+```
+
+Every name your adapters use from `app` is exported and has a fixed
+shape: `Caps`, `Cap__<Module>__<Capability>` (the interface),
+`Args__<Module>__<Capability>__<Entry>` (an argument record), and `Tables`
+(every table's descriptor, for `db`). The `.` in a module name becomes
+`__`. That is why a module may not be named `Cap`, `Args` or `Route`
+(E0015, chapter 11): its names would start the same way.
+
+This is the to-do app's adapter, `examples/todos/adapters/password.go`,
+without its last function:
+
+```go
+package adapters
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"alder/rt"
+	"alder/rt/db"
+	"app"
+)
+
+// Caps are the implementations of the app's capabilities.
+func Caps() app.Caps {
+	return app.Caps{Auth__Login__Password: password{}}
+}
+
+// The one account the development stub accepts.
+const (
+	devEmail    = "a@b.c"
+	devPassword = "password"
+)
+
+// password is a development stub of Auth.Login.Password: it accepts a@b.c with the password
+// "password" and nobody else. Replace it before deploying the app.
+type password struct{}
+
+// Verify returns the id of the development account's User row for a@b.c and "password", and
+// Nothing for anything else.
+func (password) Verify(ctx context.Context, args app.Args__Auth__Login__Password__Verify) (rt.Maybe[string], error) {
+	if args.Email != devEmail || args.Password != devPassword {
+		return rt.Nothing[string](), nil
+	}
+	id, err := devUser(ctx)
+	if err != nil {
+		return rt.Nothing[string](), err
+	}
+	return rt.Just(id), nil
+}
+```
+
+`Verify` cannot return a made-up id: a todo's `owner` is
+`User.UserId @ref User`, so the id must name a real `User` row. The
+missing function, `devUser`, looks the row up with `db.StoreFrom(ctx)`
+and `db.TxFrom(ctx)` and inserts it the first time, inside the transaction
+of the `Task` that called `Password.verify`. If that task fails, the new
+row is rolled back with it.
+
+The server refuses to start when a field of `Caps` is `nil`. `Serve`, in
+`app__alder.go`, checks every capability before it opens the database,
+and the binary prints the reason and exits 1:
+
+```
+alder: capability Auth.Login.Password is not wired: set Caps.Auth__Login__Password
+```
+
+An app with capabilities and no `adapters/` directory does not build at
+all; chapter 11 shows the message.
+
+Your editor will not resolve `import "app"` inside `adapters/`: that
+package only exists in `build/<app>/`. For the same reason, an app inside
+another Go module needs a `go.mod` of its own (chapter 11).

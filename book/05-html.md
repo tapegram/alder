@@ -179,7 +179,19 @@ Inside `<form submit={Msg}>`, the `<Input>`, `<Select>`, `<Textarea>`, and
 ```
 
 `<Errors field="x" />` shows the errors for one field; `<Errors form />`
-shows form-level errors (from `Reject`).
+shows form-level errors (from `Reject`). Each renders a list, empty until
+there is something to show, with one item per message:
+
+```html
+<ul class="errors" data-errors="title"></ul>
+<ul class="errors" data-errors="title"><li>must not be empty</li></ul>
+<ul class="errors" data-errors="form"><li>Email or password is incorrect.</li></ul>
+```
+
+The first is the page as `GET` renders it; the other two are the same
+pages after a failed submission (chapter 6, "Form errors"). `data-errors`
+names the field, or `form`, so a stylesheet can hide an empty list with
+`ul.errors:empty`.
 
 Which component to use depends on the field's type:
 
@@ -201,13 +213,26 @@ no bound inputs, only a button.
 `required`, and current value are derived from the field's type and the
 submitted values. `value={...}` (the field's own type, or `Maybe` of it) sets the initial
 value for an edit form; a submitted value takes precedence over it. A field
-of type `Text.Secret` renders as a password input and is never echoed back.
+of type `Text.Secret` renders as a password input and is never echoed back:
+after a failed login, the email comes back filled in and the password
+empty.
+
+```html
+<label>Password<input name="password" type="password" required /></label>
+```
+
+Each `<Input>` is wrapped in a `<label>` holding its `label` text.
 A plain `<input>` inside a `<form submit={...}>` is a compile error; use
 `<Input>`.
 
 ## Partial updates
 
-Add `id` attributes to the regions that change. After a message, the
-runtime re-renders the page and sends the elements whose `id` is present on
-both the old and new page; Datastar morphs them in place. Without Datastar,
-the whole page is replaced. Nothing else is needed.
+After a message, the runtime renders the whole page again and sends its
+`<body>` to the browser, where Datastar morphs it into the page that is
+there: elements that did not change are left alone. Without Datastar
+(JavaScript off), the browser gets the whole new page. Nothing in your
+code changes between the two (chapter 6, "With and without JavaScript").
+
+`id` attributes are not required for this. They help the morph match an
+old element with its new self when a list changes, so give the regions
+that change (`<ul id="todos">`) a stable `id`.

@@ -764,7 +764,7 @@ out as `&amp;amp;`. One place does it, so it happens exactly once.
 ## 8. The runtime
 
 The generated code is short because most of the work is in the runtime: Go
-packages the generated code imports. There are five.
+packages the generated code imports. There are seven.
 
 - **`rt`** (`rt/core.go`) holds the types the mapping table names: `Maybe`,
   `Result`, `Dict`, `Date`, `Page`. It also holds the helpers the emitter
@@ -795,10 +795,21 @@ packages the generated code imports. There are five.
   is the database: a descriptor for each table, `Select` values, the
   `Store` interface that the effect steps call, and its SQLite
   implementation.
+- **`rt/web`** (`rt/web/router.go`, `request.go`, `session.go`,
+  `decode.go`) is the web server: the router, the `Request` a handler gets
+  and the `Response` it returns, the signed session cookie, and the
+  helpers the generated form decoders call (`web.Text`, `web.Date`,
+  `web.NonEmpty`, …). Chapter 6, "How a request runs", describes it from
+  the outside.
+- **`rt/datastar`** (`rt/datastar/datastar.go`) serves the Datastar
+  script, which is built into the binary, and writes the one kind of
+  server-sent event Alder uses, `PatchBody`.
 
-The generated program is tiny because the runtime is the library. All of
-`examples/todos` emits about 700 lines of Go across nine files, and those
-lines mostly call into `rt`.
+The generated program is small because the runtime is the library. All of
+`examples/todos` emits about 1,450 lines of Go across ten files, plus the
+60-line `cmd/main.go`, and those lines mostly call into `rt`. The largest
+file, `routes__alder.go` (580 lines), is the request handlers of the last
+part of this section.
 
 The rest of this section follows one `load` from source to SQL, then one
 `update` arm through a transaction. The program is
@@ -982,23 +993,24 @@ list is `Tables`, in a file of its own, `app__alder.go`:
 // Tables describes every table of the app, in module order then declaration order, for db.Ensure.
 var Tables = []db.TableDesc{table__Todo__Todo.Desc()}
 
-// Capabilities are the keys of eff.Env.Caps the app's capability calls look up: each needs an
-// implementation of its cap__ interface.
+// Capabilities are the keys of eff.Env.Caps the app's capability calls look up: Caps.registry
+// fills them.
 var Capabilities = []string{"Todo.Stats", "Index.Mailer"}
 ```
 
-`Capabilities` names every capability the app calls, so the server (M3c)
-can check at startup that each has an implementation; until then, a call
-to one that isn't wired stops with `alder: capability "Index.Mailer" is
-not wired`. The file's name can't clash with a module's: only a module named `app_` would
+`Capabilities` names every capability the app calls, so `Serve` (in the
+same file) can check at startup that each has an implementation and
+refuse to start otherwise (chapter 7, "Implementing a capability"). A call
+to one that isn't wired, which only a test that skips `Serve` can reach,
+stops with `alder: capability "Index.Mailer" is not wired`. The file's name can't clash with a module's: only a module named `app_` would
 produce `app__alder.go`, and a module name segment may not end in `_`
 (E0001, section 9).
 
 ### What `Run` does
 
 Calling `Index__load(params, session)` performs nothing. It returns the
-tree. The caller (the router, in M3c; a test, today) hands it to
-`eff.RunQuery(env, …)`, which calls `eff.Run` with kind `KQuery`. Here is
+tree. The caller (a request handler, as the last part of this section
+shows, or a test) hands it to `eff.RunQuery(env, …)`, which calls `eff.Run` with kind `KQuery`. Here is
 what happens, following `interpret` in `rt/eff/run.go`. `interpret` is a
 loop holding the current node and a stack of continuations: the "rest of
 the block" functions it has yet to call.
@@ -1135,17 +1147,217 @@ by a later `Task.fail`. After each one it checks the database and the
 trace of the steps that ran, `calls("toggle", "Db.update Todo")`: exactly
 the kind of check chapter 10 promises `alder test` will make.
 
+### A request: `GET` and `POST`
+
+The last two parts ran `load` and `update` by hand. In the server, a
+request handler runs them. This part follows two requests through the
+to-do app (chapter 2): a `GET` of the list, then a `POST` of the Done
+button, sent by Datastar. Build the app and run it with the commands in
+chapter 11, log in as `a@b.c` with the password `password`, and add a
+todo called Milk. The bytes below are what that server sent; the id
+`DJ92YHT4U9KYifXwI_Tz` is random and differs every run.
+
+**`GET /?filter=Active`.** The router's `ServeHTTP` (`rt/web/router.go`)
+sees that the path is neither the Datastar script nor under `/static/`. It
+splits the path into segments (none, for `/`) and finds the first route
+with method `GET` whose pattern fits: `/`, the list page. It builds a
+`web.Request` with no path parameters, the query `filter=Active`,
+`Datastar: false`, and the session from the cookie, and gives the request
+a fresh `eff.Env` holding the store, the capabilities, the clock and the
+session. Then it calls the handler (`build/todos/routes__alder.go`):
+
+```go
+func Route__Todos__Index__page() web.Route {
+	return web.Route{Method: "GET", Pattern: "/", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Todos__Index__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		model, session, stop := page__Todos__Index(rq, params, nil)
+		if stop != nil {
+			return *stop
+		}
+		return web.PageResponse(Todos__Index__view(model, session), &html.FormState{PageParams: params__Todos__Index(params)}, rq.Session, false)
+	}}
+}
+```
+
+`decode__Todos__Index__Params` turns the text `Active` into the
+constructor `Active` of `Todo.Filter`, through `web.Enum`. Any other text
+(`?filter=Nope`) is a decode error, and the answer is a 404. A missing
+`filter` is `All`, its default.
+
+`page__Todos__Index` is the part of the lifecycle that every handler of
+the page shares:
+
+```go
+func page__Todos__Index(rq *web.Request, params Todos__Index__Params, keep any) (Todos__Index__Model, Todos__Index__Session, *web.Response) {
+	var model Todos__Index__Model
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, keep)
+		return model, Todos__Index__Session{}, &r
+	}
+	session := Todos__Index__Session{User: app.User.Val, Theme: app.Theme}
+	model, err := eff.RunQuery(rq.Env, Todos__Index__load(params, session))
+	if err != nil {
+		r := route__fail(err)
+		r.Session = keep
+		return model, session, &r
+	}
+	return model, session, nil
+}
+```
+
+The first four lines are `requires user`. `app.User.Ok` is false when
+`user` is `Nothing`, and the answer is then a 303 to `rq.Login`, which is
+`/login` because `App.login` is `Auth.Login`. Otherwise the session is
+narrowed: `session.User` is `app.User.Val`, a plain `string`, as section
+9 explains. Then `load` builds its tree and `eff.RunQuery` runs it, as
+"What `Run` does" showed. When the query stops with `Query.notFound` or
+fails, `route__fail` makes a 404 or a 500. `keep` is `nil` here; the
+`POST` below shows why it exists.
+
+`view` turns the model into an `html.Node`. The handler returns it with a
+`FormState` that holds only the page's parameters as text:
+
+```go
+func params__Todos__Index(p Todos__Index__Params) []rt.KV {
+	return []rt.KV{rt.QueryKV("filter", []string{"All", "Active", "Completed"}[p.Filter.Tag], "All")}
+}
+```
+
+`rt.QueryKV` marks the pair to be left out when the value is the default,
+`All`. Back in the router, `write` signs the session and sets the cookie,
+then calls `html.RenderWith(node, state)`. Every message attribute in the
+tree is an `html.MsgAttr`, a value that is only turned into text now: its
+`rt.MsgRef` (module, message, the message's own parameters) is given the
+page's parameters with `_p.` in front (`MsgRef.URL` in `rt/core.go`).
+Last, `document` writes `<!doctype html>` and the page, with the Datastar
+script tag put after `<head>`. The answer begins like this (without the
+`Date` and `Content-Length` headers, and with the page cut after
+`</title>`):
+
+```
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+Set-Cookie: alder_session=eyJUaGVtZSI6IkxpZ2h0IiwiVXNlciI6eyJPayI6dHJ1ZSwiVmFsIjoiVzlDaVpuREhCMDFsVG9YQmxWU0gifX0.ZTyy0P6_3amBrnNmm1GAAGdTIVNh6tlqxc4knveyJvs; Path=/; Expires=Sun, 08 Nov 2026 18:18:53 GMT; Max-Age=2592000; HttpOnly; SameSite=Lax
+
+<!doctype html>
+<html class=""><head><script type="module" src="/_alder/datastar.js"></script><meta charset="utf-8" /><title>Todos</title>
+```
+
+and has the Done button with its message URL:
+
+```html
+<button data-on:click="@post(&#39;/_m/Todos.Index/Toggle?id=DJ92YHT4U9KYifXwI_Tz&amp;_p.filter=Active&#39;)">Done</button>
+```
+
+The `&#39;` and `&amp;` are the escaping of section 8's first part: the
+attribute holds `@post('/_m/Todos.Index/Toggle?id=…&_p.filter=Active')`.
+
+**`POST /_m/Todos.Index/Toggle?id=DJ92YHT4U9KYifXwI_Tz&_p.filter=Active`.**
+Click Done, and Datastar runs that `@post`. It sends the header
+`Datastar-Request: true` and a small JSON body. The router matches the
+`POST` route with pattern `/_m/Todos.Index/Toggle`. The JSON body is not a
+form, so `rq.Form` is empty. `rq.Datastar` is true. The handler,
+`Route__Todos__Index__Toggle`, is the one quoted in chapter 6. It calls
+`rt.PageParams(rq.Query)`, which keeps only the `_p.` keys with the prefix
+cut off, so `filter=Active`, and decodes them with the same
+`decode__Todos__Index__Params` the `GET` used. It decodes `id` from the
+rest of the query. Then it calls:
+
+```go
+func update__Todos__Index(rq *web.Request, params Todos__Index__Params, msg Todos__Index__Msg, st *html.FormState) web.Response {
+	model, session, stop := page__Todos__Index(rq, params, nil)
+	if stop != nil {
+		return *stop
+	}
+	nav, err := eff.Run(rq.Env, eff.KTask, Todos__Index__update(msg, model, session))
+	if err != nil {
+		return route__fail(err)
+	}
+	switch {
+	case nav.Tag == rt.NavRedirect:
+		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
+	case nav.Tag == rt.NavReject && st != nil:
+		st.FormError = nav.Text
+	default:
+		st = &html.FormState{}
+	}
+	st.PageParams = params__Todos__Index(params)
+	model, session, stop = page__Todos__Index(rq, params, rq.Env.Session)
+	if stop != nil {
+		return *stop
+	}
+	return web.PageResponse(Todos__Index__view(model, session), st, rq.Env.Session, true)
+}
+```
+
+This is chapter 6's lifecycle, line by line:
+
+1. `page__Todos__Index` checks `requires` and runs `load`, so `update`
+   gets the same `Model` the page showed.
+2. `eff.Run` with `eff.KTask` runs the `Toggle` arm exactly as "A `Task`:
+   `Toggle`" did: one transaction, one `UPDATE`, a commit, and `Nav`
+   `Rerender`. If the task failed, `route__fail` answers 500 (or 404) and
+   nothing is stored, since `Run` already rolled back the writes and the
+   session.
+3. `Rerender` takes the `default` branch: an empty `FormState`, then the
+   page's parameters, so the re-rendered buttons carry `_p.filter=Active`
+   again.
+4. `page__Todos__Index` runs a second time, now with `keep` set to the
+   session the task left. `load` reads the database after the commit, so
+   the new model has Milk done. If this second load fails, the 404 or 500
+   still stores that session: what the task committed is not lost.
+5. `PageResponse(…, true)` asks for a patch.
+
+The router's `write` sees a 200 with `Patch` set and `rq.Datastar` true.
+It sets the cookie, renders the page, cuts out its `<body>…</body>`
+(`bodyOf`), and calls `datastar.PatchBody`, which writes one server-sent
+event: the event name, two lines that say what to replace and how, and one
+`data: elements` line for each line of the body. The answer is
+
+```
+HTTP/1.1 200 OK
+Cache-Control: no-cache
+Content-Type: text/event-stream
+Set-Cookie: alder_session=…; Path=/; Expires=…; Max-Age=2592000; HttpOnly; SameSite=Lax
+
+event: datastar-patch-elements
+data: selector body
+data: mode outer
+data: elements <body><nav><button data-on:click="@post(&#39;/_m/App/SwitchTheme?_p.filter=Active&#39;)">Dark mode</button></nav><main><h1>Todos</h1>…<ul id="todos"></ul><p id="summary">0 open</p>…</main></body>
+
+```
+
+(without the `Date` and `Transfer-Encoding` headers, and shortened at each
+`…`). The rendered page has no line breaks, so the body
+is one `elements` line, and a blank line ends the event. Datastar finds
+`body` in the page and morphs it into the new one: Milk is done, so it
+leaves the Active list, and the summary says `0 open`. No `<head>` and no
+doctype are sent.
+
+The same `POST` without the `Datastar-Request` header goes through the
+same handler. Only `write` differs: it sends the whole document, as for
+the `GET`. If the id names no row, `Db.update` fails the task, and under
+Datastar the 500 page's body arrives the same way, as a 200 event (in dev
+mode with `<!-- error: Db.update Todo: no row with id "nope" -->` before
+`</body>`).
+
+`TestE2E_Todos` in `internal/gen/e2e_test.go` runs this whole scenario
+against the generated app on every `go test ./...`. Its program,
+`internal/gen/testdata/e2e_todos_test.go.txt`, checks that a Datastar
+answer starts with exactly
+`event: datastar-patch-elements\ndata: selector body\ndata: mode outer\ndata: elements <body>`
+and ends with `</body>\n\n`, and that the re-render after a `Toggle`
+sent from `/?filter=Completed` keeps that filter.
+
 ### What is still to come
 
-These are planned and described in the design spec,
-[`docs/superpowers/specs/2026-10-09-m3-codegen-runtime-design.md`](../docs/superpowers/specs/2026-10-09-m3-codegen-runtime-design.md):
-
-- **M3c:** the router, sessions, form decoding, and Datastar patching,
-  plus `main.go`, which opens the database, calls `Ensure`, fills the
-  `Env` (store, session, capabilities) and runs `load` and `update` for
-  each request, so `alder build` makes a server you can run.
-- **M3d:** `alder run`, the dev loop that rebuilds and reloads on every
-  save.
+M3d adds `alder run`, the dev loop that rebuilds and reloads on every
+save. It is described in the design spec,
+[`docs/superpowers/specs/2026-10-09-m3-codegen-runtime-design.md`](../docs/superpowers/specs/2026-10-09-m3-codegen-runtime-design.md).
 
 ## 9. Reading generated code
 
@@ -1166,8 +1378,15 @@ hand, and git ignores it.
 
 `build/todos/` has one Go file per module, named after the module with `.`
 replaced by `__` and `_alder.go` added (`Todos__Index_alder.go` for
-`Todos.Index`), plus `app__alder.go` with the app-wide lists of section 8,
-and a `go.mod` that points back at this repository for `rt`.
+`Todos.Index`), plus two app-wide files and a `go.mod` that points back at
+this repository for `rt`. `app__alder.go` holds the lists of section 8
+(`Tables`, `Capabilities`), the `Caps` struct the adapters fill, `Options`,
+`Serve` (which checks the capabilities, opens the database, creates the
+tables and returns `web.NewRouter(Routes, …)`), and `session__codec`, the
+cookie's JSON. `routes__alder.go` holds `Routes` and every handler of
+section 8's last part. A full `alder build` (without `--emit`) adds
+`cmd/main.go`, which reads the environment and calls `Serve`;
+`adapters/` and `static/`, copies of the app's own; and the executable.
 The fixed ending is there because Go reads meaning into file names: a file
 ending in `_test.go` is a test, and one whose name ends in `_linux` or
 `_amd64` (before the first `.`) is compiled only on Linux or only on that
@@ -1190,6 +1409,13 @@ parts are always joined by a double underscore, `__`:
 | `tag__M__Union` | a union's tag type | `tag__M__Shape` |
 | `is__M__Union__Ctor` | a constructor's tag | `is__M__Shape__Circle` |
 | `widen__Page__Session` | a `requires` page's session turned into the app's | `widen__Home__Session` |
+| `Route__M__page`, `Route__M__Msg` | the route of a page's `GET`, of a message's `POST` | `Route__Todos__Index__Toggle` |
+| `page__M`, `update__M`, `params__M` | a page's `requires` and `load`; its message lifecycle; its parameters as text | `page__Todos__Index` |
+| `decode__M__X` | the decoder of a page's `Params`, a message's parameters or a form | `decode__Todos__Index__NewTodo` |
+| `check__M__Brand` | the check of a brand with a `where` refinement, run on decoded input | `check__Todo__Slug` |
+| `route__…`, `session__…` | helpers shared by every route, and the session codec | `route__fail`, `session__codec` |
+| `Cap__M__Cap` | a capability's Go interface | `Cap__Auth__Login__Password` |
+| `Args__M__Cap__Entry` | the argument record of a capability entry | `Args__Auth__Login__Password__Verify` |
 | `title` → `Title` | a record field, with a capital first letter so Go exports it | |
 | `type` → `type__` | a local whose name Go reserves, or that names `rt`, `html`, `std` | |
 
@@ -1200,8 +1426,19 @@ be a joint, and a generated name can be read back into its parts:
 `Todos` and a name `Index__view`. Modules `A.B` and `A_B` become
 `A__B_alder.go` and `A_B_alder.go`, so they cannot overwrite each other's
 file. Names the compiler adds
-start with a lowercase word (`tag__`, `is__`, `payload__`, `widen__`),
-which no module name does, so they never clash with yours either. The one
+start with a lowercase word (`tag__`, `is__`, `payload__`, `widen__`,
+`page__`, `decode__`, …), which no module name does, so they never clash
+with yours either. The names your adapters use must be exported, so they
+start with a capital: `Cap__`, `Args__` and `Route__`, and the fixed
+`Caps`, `Serve`, `Options`, `Routes`, `Tables` and `Capabilities`. A
+type `Password` in a module `Cap.Auth.Login` would be
+`Cap__Auth__Login__Password`, the interface of capability `Password` in
+`Auth.Login`, so a module whose first segment is exactly `Route`, `Cap` or
+`Args` is refused (E0015). The fixed names contain no `__`, so no
+declaration of yours can produce them. One more rule keeps `Args__` names
+apart: an entry whose name starts with `_` gets an `x` in front
+(`_raw` → `Args__M__C__x_raw`), so the part after the last `__` never
+starts with `_`. The one
 place your names and generated ones share a module is a page module (and
 `App`): the compiler generates `Params`, `Msg`, `Session` and `PickParams`
 for `msg Pick`, so a type or component of yours may not use those names
@@ -1212,11 +1449,12 @@ So to find a page's view, search for it:
 
 ```
 $ grep -n "func Todos__Index__view" build/todos/*.go
-build/todos/Todos__Index_alder.go:73:func Todos__Index__view(model Todos__Index__Model, session Todos__Index__Session) html.Node {
+build/todos/Todos__Index_alder.go:114:func Todos__Index__view(model Todos__Index__Model, session Todos__Index__Session) html.Node {
 ```
 
 Its first lines show the `<Layout.Page>` component call and the `<form>`
-with its message URL. The props are an anonymous struct type followed
+with its message, an `rt.MsgRef` that becomes a URL only when the page is
+rendered (section 8). The props are an anonymous struct type followed
 directly by its value, `struct { … }{Title: "Todos", …}`, and the children
 are a slice:
 
@@ -1228,8 +1466,8 @@ func Todos__Index__view(model Todos__Index__Model, session Todos__Index__Session
 		Children []html.Node
 	}{Title: "Todos", Theme: session.Theme, Children: []html.Node{
 		html.El("h1", nil, html.Text("Todos")),
-		html.Form(rt.MsgURL("Todos.Index", "Submit"), nil,
-			html.Input(html.Control{Kind: "input", Name: "title", Type: "text", Label: "What needs doing?", Required: true}),
+		html.FormTo(rt.MsgRef{Module: "Todos.Index", Msg: "Submit"}, nil,
+			html.Input(html.Control{Kind: "input", Form: "Todos.Index.NewTodo", Name: "title", Type: "text", Label: "What needs doing?", Required: true}),
 ```
 
 Compare it with the `view` in chapter 2. `session` has type
