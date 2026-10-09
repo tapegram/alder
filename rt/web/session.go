@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"strings"
 )
 
@@ -54,15 +55,30 @@ func mac(key, payload []byte) []byte {
 	return h.Sum(nil)
 }
 
-// minSecret is the shortest Options.Secret the router accepts; a shorter one (or none) means
-// the development key.
+// minSecret is the shortest Options.Secret the router accepts outside dev mode; in dev mode a
+// shorter one (or none) means the development key.
 const minSecret = 16
 
 // devWarning is logged (level "warn") once by NewRouter when it falls back to DevKey.
-const devWarning = "warning: ALDER_SECRET not set; using the development cookie key"
+const devWarning = "ALDER_SECRET is not set (or shorter than 16 bytes); dev mode signs sessions with the public development cookie key"
 
-// DevKey is the fixed, public cookie key used when no secret (or one shorter than 16 bytes) is
-// configured. Anyone can forge sessions signed with it: it is for development only.
+// ErrNoSecret is CheckSecret's error: outside dev mode the cookie key must be a real secret.
+var ErrNoSecret = errors.New("ALDER_SECRET must be set to at least 16 bytes outside dev mode (ALDER_DEV=1)")
+
+// CheckSecret is nil when secret can sign the session cookie: at least 16 bytes, or anything in
+// dev mode (where a shorter one means DevKey); else ErrNoSecret. The generated Serve calls it
+// before anything else, so a production app without ALDER_SECRET refuses to start instead of
+// signing sessions with a public key.
+func CheckSecret(secret []byte, dev bool) error {
+	if !dev && len(secret) < minSecret {
+		return ErrNoSecret
+	}
+	return nil
+}
+
+// DevKey is the fixed, public cookie key dev mode uses when no secret (or one shorter than 16
+// bytes) is configured. Anyone can forge sessions signed with it: it is for development only,
+// and outside dev mode NewRouter refuses to use it (CheckSecret).
 func DevKey() []byte {
 	return []byte("alder-development-cookie-key; not secret, never use in production")
 }

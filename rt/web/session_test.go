@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -82,6 +83,7 @@ func TestSession_DevKeyWarnsOnce(t *testing.T) {
 		var logs []string
 		opts := testOpts(func(o *Options) {
 			o.Secret = secret
+			o.Dev = true
 			o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) }
 		})
 		var got any
@@ -102,7 +104,7 @@ func TestSession_DevKeyWarnsOnce(t *testing.T) {
 			req.AddCookie(c)
 		}
 		h.ServeHTTP(httptest.NewRecorder(), req)
-		if len(logs) != 1 || logs[0] != "warn: warning: ALDER_SECRET not set; using the development cookie key" {
+		if len(logs) != 1 || logs[0] != "warn: "+devWarning {
 			t.Fatalf("secret %q: logs %q", secret, logs)
 		}
 		// The cookie was signed with the dev key.
@@ -147,5 +149,32 @@ func TestSession_BigCookieWarnsOnce(t *testing.T) {
 	req.Header.Set("X-Forwarded-Proto", "https")
 	if c := sessionCookie(t, serve(h, req)); c == nil || !c.Secure {
 		t.Fatalf("cookie %+v", c)
+	}
+}
+
+// Outside dev mode a missing or short secret is refused (C2): CheckSecret reports it, and
+// NewRouter panics rather than sign sessions with the public development key.
+func TestSession_ProdNeedsSecret(t *testing.T) {
+	for _, secret := range [][]byte{nil, []byte("short"), []byte("fifteen-bytes!!")} {
+		if err := CheckSecret(secret, false); err != ErrNoSecret {
+			t.Fatalf("CheckSecret(%q, prod) = %v", secret, err)
+		}
+		if err := CheckSecret(secret, true); err != nil {
+			t.Fatalf("CheckSecret(%q, dev) = %v", secret, err)
+		}
+		func() {
+			defer func() {
+				if v := recover(); v == nil || !strings.Contains(fmt.Sprint(v), ErrNoSecret.Error()) {
+					t.Fatalf("NewRouter with secret %q outside dev: panic %v", secret, v)
+				}
+			}()
+			NewRouter(nil, testOpts(func(o *Options) { o.Secret = secret }))
+		}()
+	}
+	if err := CheckSecret([]byte("sixteen-bytes!!!"), false); err != nil {
+		t.Fatal(err)
+	}
+	if ErrNoSecret.Error() != "ALDER_SECRET must be set to at least 16 bytes outside dev mode (ALDER_DEV=1)" {
+		t.Fatal(ErrNoSecret)
 	}
 }

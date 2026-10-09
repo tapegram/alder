@@ -26,7 +26,7 @@ type Options struct {
 	Now         func() time.Time        // nil: time.Now
 	Log         func(level, msg string) // nil: no log
 	Dev         bool                    // dev mode: error text is appended to error pages
-	Secret      []byte                  // cookie key; nil or shorter than 16 bytes → DevKey + a warning
+	Secret      []byte                  // cookie key, at least 16 bytes; in dev mode a shorter one → DevKey + a warning
 	Session     SessionCodec            // generated JSON codec of the App session type
 	StaticDir   string                  // served under /static/; "" → none
 	ErrorDoc    func(err error) html.Node
@@ -97,7 +97,8 @@ type segment struct {
 // including a GET to a POST-only path, is a 404 rendered with NotFoundDoc); reads a POST body
 // (at most 1 MiB, else 413; url-encoded forms are parsed, multipart is refused with 415);
 // decodes the session cookie; builds the Request and its Env; calls the route's Handle; and
-// writes the Response. Patterns are compiled here; a malformed one panics.
+// writes the Response. Patterns are compiled here; a malformed one panics, as does a Secret
+// shorter than 16 bytes outside dev mode (CheckSecret: the generated Serve reports it first).
 //
 // Under Datastar (header Datastar-Request: true) a 404 or 500 is answered like a re-rendered
 // page: status 200 and an SSE patch of the NotFound/Error document's <body>, because the
@@ -111,6 +112,9 @@ func NewRouter(routes []Route, opts Options) http.Handler {
 	}
 	if rt.now == nil {
 		rt.now = time.Now
+	}
+	if err := CheckSecret(opts.Secret, opts.Dev); err != nil {
+		panic("web: " + err.Error())
 	}
 	if len(rt.key) < minSecret {
 		rt.key = DevKey()

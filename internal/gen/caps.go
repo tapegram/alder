@@ -192,16 +192,19 @@ func (g *gen) serve(b *strings.Builder, p *ir.Program) {
 type Options struct {
 	DB        string                  // the SQLite database file; ":memory:" or "" for a database in memory
 	Dev       bool                    // development mode: a changed schema recreates the tables; error pages show the error
-	Secret    []byte                  // the session cookie key; shorter than 16 bytes: the public development key (logged)
+	Secret    []byte                  // the session cookie key: at least 16 bytes (in dev mode, shorter means the public development key)
 	StaticDir string                  // the directory served under /static/; "" for none
 	Log       func(level, msg string) // nil: no log
 }
 
-// Serve is the app's HTTP handler. It checks that caps implements every capability (an error
-// names each field left nil), opens the database o.DB and creates its tables (db.Ensure), and
-// routes Routes (web.NewRouter) with the session codec, App.error, App.notFound and the page
-// App.login names.
+// Serve is the app's HTTP handler. It checks that o.Secret is at least 16 bytes outside dev
+// mode (web.CheckSecret) and that caps implements every capability (an error names each field
+// left nil), opens the database o.DB and creates its tables (db.Ensure), and routes Routes
+// (web.NewRouter) with the session codec, App.error, App.notFound and the page App.login names.
 func Serve(caps Caps, o Options) (http.Handler, error) {
+	if err := web.CheckSecret(o.Secret, o.Dev); err != nil {
+		return nil, err
+	}
 	reg := caps.registry()
 	var missing []string
 	for _, k := range Capabilities {
@@ -273,8 +276,8 @@ func Main(name string, withAdapters bool) []byte {
 
 // Command ` + name + ` serves the app. ALDER_ADDR is the address to listen on (default :8080),
 // ALDER_DB the SQLite database file (default ` + name + `.db), ALDER_SECRET the session cookie key
-// (at least 16 bytes; without it a public development key is used) and ALDER_DEV=1 turns on
-// development mode. Static files are served under /static/ from the static directory next to
+// (at least 16 bytes; required outside development mode, where without it a public development
+// key is used) and ALDER_DEV=1 turns on development mode. Static files are served under /static/ from the static directory next to
 // the executable.
 package main
 

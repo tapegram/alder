@@ -1805,11 +1805,20 @@ func TestTodos(t *testing.T) {
 // Serve refuses a capability left unset, naming the Caps field; the session codec round-trips
 // App's session as JSON and starts a cookie that lacks a field from the field's default.
 func TestServe(t *testing.T) {
-	if _, err := Serve(Caps{}, Options{DB: ":memory:"}); err == nil || err.Error() != "capability Auth.Login.Password is not wired: set Caps.Auth__Login__Password" {
+	if _, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true}); err == nil || err.Error() != "capability Auth.Login.Password is not wired: set Caps.Auth__Login__Password" {
 		t.Fatalf("Serve without the capability: %v", err)
 	}
-	if h, err := Serve(Caps{Auth__Login__Password: password{}}, Options{}); err != nil || h == nil {
+	if h, err := Serve(Caps{Auth__Login__Password: password{}}, Options{Dev: true}); err != nil || h == nil {
 		t.Fatalf("Serve: %v", err)
+	}
+	// outside dev mode the cookie key must be a real secret
+	for _, secret := range []string{"", "fifteen-bytes!!"} {
+		if _, err := Serve(Caps{Auth__Login__Password: password{}}, Options{Secret: []byte(secret)}); err == nil || err.Error() != "ALDER_SECRET must be set to at least 16 bytes outside dev mode (ALDER_DEV=1)" {
+			t.Fatalf("Serve in production with secret %q: %v", secret, err)
+		}
+	}
+	if h, err := Serve(Caps{Auth__Login__Password: password{}}, Options{Secret: []byte("sixteen-bytes!!!")}); err != nil || h == nil {
+		t.Fatalf("Serve in production with a secret: %v", err)
 	}
 	c := session__codec{}
 	if d := c.Default().(App__Session); d.User.Ok || d.Theme.Tag != is__Theme__Theme__Light {
@@ -2134,7 +2143,7 @@ import (
 )
 
 func TestMix(t *testing.T) {
-	h, err := Serve(Caps{}, Options{DB: ":memory:"})
+	h, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true})
 	if err != nil {
 		t.Fatal(err)
 	}

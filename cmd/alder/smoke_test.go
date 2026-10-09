@@ -31,6 +31,15 @@ func TestBuild_BinarySmoke(t *testing.T) {
 		t.Fatalf("alder build: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 
+	// production without ALDER_SECRET refuses to start (C2): exit 1, the reason on stderr
+	prod := exec.Command(filepath.Join(tmp, "build", "todos", "todos"))
+	prod.Dir = tmp
+	prod.Env = append(os.Environ(), "ALDER_ADDR=127.0.0.1:0", "ALDER_DB=:memory:", "ALDER_DEV=", "ALDER_SECRET=short")
+	out, err := prod.CombinedOutput()
+	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 1 || string(out) != "alder: ALDER_SECRET must be set to at least 16 bytes outside dev mode (ALDER_DEV=1)\n" {
+		t.Fatalf("production start without a secret: %v\n%s", err, out)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, filepath.Join(tmp, "build", "todos", "todos"))
