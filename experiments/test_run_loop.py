@@ -152,6 +152,144 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(s["rounds"][0]["rejected"], ["app/../../evil.alder"])
         self.assertFalse(list(pathlib.Path(self.tmp).rglob("evil.alder")))
 
+class FakeAlder:
+    """A fake `alder` honoring the real contract: `check DIR --json` prints diagnostics (exit 0/1/2);
+    `build --emit DIR` writes build/<base of DIR>/ under the current directory and exits 0, 1 or 2."""
+    def __init__(self, tmp, checks, builds):
+        tmp = pathlib.Path(tmp)
+        self.path = tmp / "alder"
+        self.calls = tmp / "calls"
+        self.calls.write_text("")
+        lines = ["#!/bin/sh", f'echo "$PWD|$*" >> {self.calls}',
+                 'if [ "$1" = check ]; then',
+                 '  [ "$3" = --json ] || exit 2',
+                 f'  n=$(grep -c "|check " {self.calls}); n=$((n-1))']
+        for i, (exit_code, stdout, stderr) in enumerate(checks):
+            lines.append(f'  if [ "$n" = "{i}" ]; then printf %b {json.dumps(stdout)}; printf %b {json.dumps(stderr)} 1>&2; exit {exit_code}; fi')
+        lines += ["  exit 2", "fi",
+                  'if [ "$1" = build ]; then',
+                  '  [ "$2" = --emit ] || exit 2',
+                  f'  n=$(grep -c "|build " {self.calls}); n=$((n-1))']
+        for i, (exit_code, stderr) in enumerate(builds):
+            lines.append(f'  if [ "$n" = "{i}" ]; then printf %b {json.dumps(stderr)} 1>&2; '
+                         f'if [ {exit_code} = 0 ]; then mkdir -p "build/$(basename "$3")" && echo "package app" > "build/$(basename "$3")/app.go"; fi; exit {exit_code}; fi')
+        lines += ["  exit 2", "fi", "exit 2"]
+        self.path.write_text("\n".join(lines) + "\n")
+        self.path.chmod(0o755)
+
+    def log(self):
+        return [l.split("|", 1) for l in self.calls.read_text().splitlines()]
+
+class BuildTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.exp = pathlib.Path(self.tmp) / "exp"
+        (self.exp / "tasks").mkdir(parents=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def test_build_runs_after_clean_check(self):
+        fa = FakeAlder(self.tmp, [(0, "", "")], [(0, "")])
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", fa.path, retries=1, build=True)
+        rd = (self.exp / "runs/fake/t/round0").resolve()
+        self.assertEqual(s["rounds"][0]["build"], {"ok": True, "exit": 0, "stderr": ""})
+        self.assertTrue(s["final_pass"])
+        self.assertFalse(s.get("compiler_bug"))
+        self.assertEqual(s["harness"], {"build": True, "retries": 1})
+        cwd, args = fa.log()[1]
+        self.assertEqual(pathlib.Path(cwd).resolve(), rd)
+        self.assertEqual(args, f"build --emit {rd}")
+        self.assertTrue((rd / "build/round0/app.go").exists())
+
+    def test_build_failure_recorded(self):
+        fa = FakeAlder(self.tmp, [(0, "", ""), (0, "", "")], [(2, "alder build: internal error: generated Go does not vet\n")])
+        model = rl.FakeModel([GOOD, GOOD])
+        s = rl.run_one(self.exp, model, "fake", "t", "task", "sys", fa.path, retries=2, build=True)
+        b = s["rounds"][0]["build"]
+        self.assertFalse(b["ok"])
+        self.assertEqual(b["exit"], 2)
+        self.assertIn("does not vet", b["stderr"])
+        self.assertFalse(s["final_pass"])
+        self.assertTrue(s["compiler_bug"])
+        self.assertEqual(len(model.prompts), 1)   # no retry: the program was fine, the compiler was not
+        self.assertEqual(len(s["rounds"]), 1)
+        self.assertIn("does not vet", (self.exp / "runs/fake/t/round0/build.stderr.txt").read_text())
+        self.assertTrue(json.loads((self.exp / "runs/fake/t/summary.json").read_text())["compiler_bug"])
+
+    def test_build_skipped_when_check_fails(self):
+        fa = FakeAlder(self.tmp, [(1, ERR, "")], [])
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", fa.path, retries=0, build=True)
+        self.assertNotIn("build", s["rounds"][0])
+        self.assertFalse(s["final_pass"])
+        self.assertEqual([a.split()[0] for _, a in fa.log()], ["check"])
+
+    def test_no_build_without_flag(self):
+        fa = FakeAlder(self.tmp, [(0, "", "")], [])
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", fa.path, retries=0)
+        self.assertNotIn("build", s["rounds"][0])
+        self.assertTrue(s["final_pass"])
+        self.assertEqual(s["harness"], {"build": False, "retries": 0})
+
+class ModelTests(unittest.TestCase):
+    def test_claude_isolated_cwd_and_system_prompt(self):
+        calls = []
+        def fake_run(argv, **kw):
+            calls.append((argv, kw))
+            out = "2.5.0 (Claude Code)\n" if "--version" in argv else "--- file: app/A.alder ---\nmodule A\n"
+            return subprocess.CompletedProcess(argv, 0, stdout=out, stderr="")
+        saved = (rl.subprocess.run, rl.shutil.which)
+        rl.subprocess.run, rl.shutil.which = fake_run, (lambda name: "/usr/bin/claude")
+        rl.ClaudeModel._version = None
+        try:
+            m = rl.ClaudeModel("sonnet")
+            text, meta = m.generate("SYSTEM TEXT", "THE TASK")
+            m.generate("SYSTEM TEXT", "THE TASK")
+        finally:
+            rl.subprocess.run, rl.shutil.which = saved
+            rl.ClaudeModel._version = None
+        self.assertIn("module A", text)
+        self.assertEqual(meta["claude_version"], "2.5.0 (Claude Code)")
+        self.assertEqual(meta["model"], "sonnet")
+        self.assertIn("seconds", meta)
+        self.assertEqual(sum(1 for a, _ in calls if "--version" in a), 1)   # cached per process
+        gen = [(a, kw) for a, kw in calls if "-p" in a]
+        self.assertEqual(len(gen), 2)
+        argv, kw = gen[0]
+        self.assertEqual(argv[argv.index("--system-prompt") + 1], "SYSTEM TEXT")
+        self.assertIn("--no-session-persistence", argv)
+        self.assertEqual(argv[argv.index("--disallowedTools") + 1], rl.ClaudeModel.TOOLS_OFF)
+        self.assertEqual(kw["input"], "THE TASK")
+        cwd = pathlib.Path(kw["cwd"])
+        self.assertTrue(str(cwd.resolve()).startswith(str(pathlib.Path(tempfile.gettempdir()).resolve())))
+        self.assertTrue(cwd.name.startswith("alder-claude-"))
+        self.assertNotEqual(cwd.resolve(), pathlib.Path.cwd().resolve())
+
+    def _ollama(self, resp, prompt):
+        import io
+        sent = []
+        def fake_urlopen(req, timeout=None):
+            sent.append(json.loads(req.data))
+            return io.BytesIO(json.dumps(resp).encode())
+        saved = rl.urllib.request.urlopen
+        rl.urllib.request.urlopen = fake_urlopen
+        try:
+            return rl.OllamaModel("qwen").generate(prompt[:2000], prompt[2000:])
+        finally:
+            rl.urllib.request.urlopen = saved
+
+    def test_ollama_prompt_truncation_warning(self):
+        prompt = "x" * 4000   # ≈ 1000 tokens
+        _, meta = self._ollama({"message": {"content": "hi"}, "prompt_eval_count": 10, "eval_count": 5}, prompt)
+        self.assertEqual(meta["prompt_eval_count"], 10)
+        self.assertEqual(meta["eval_count"], 5)
+        self.assertIn("truncated", meta["warning"])
+        self.assertIn("prompt_eval_count=10", meta["warning"])
+        _, meta = self._ollama({"message": {"content": "hi"}, "eval_count": 5}, prompt)
+        self.assertIn("warning", meta)                                 # absent count: warn too
+        _, meta = self._ollama({"message": {"content": "hi"}, "prompt_eval_count": 1000, "eval_count": 5}, prompt)
+        self.assertNotIn("warning", meta)
+
 class ReportTests(unittest.TestCase):
     def test_report_table(self):
         import report_loop as rp
@@ -162,6 +300,35 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(rows[0]["r1"], 0)
         md = rp.markdown(rows)
         self.assertIn("| m | t | 3 | 0 | pass |", md)
+
+    def test_report_multi_round_and_build(self):
+        import report_loop as rp
+        def rd(n, errors, codes, build=None):
+            r = {"n": n, "errors": errors, "codes": codes, "files": 5, "exit": 1 if errors else 0, "seconds": 1.0, "warnings": 0, "stderr": ""}
+            if build is not None:
+                r["build"] = {"ok": build, "exit": 0 if build else 2, "stderr": ""}
+            return r
+        ss = [{"model": "m", "task": "t", "error": None, "final_pass": True, "harness": {"build": True, "retries": 2},
+               "rounds": [rd(0, 3, {"E0003": 2, "E0101": 1}), rd(1, 1, {"E0003": 1}), rd(2, 0, {}, build=True)]},
+              {"model": "m", "task": "u", "error": None, "final_pass": False, "compiler_bug": True, "harness": {"build": True, "retries": 2},
+               "rounds": [rd(0, 0, {}, build=False)]},
+              {"model": "m", "task": "v", "error": None, "final_pass": False, "harness": {"build": True, "retries": 2},
+               "rounds": [rd(0, 2, {"E0003": 2}), rd(1, 2, {"E0003": 2}), rd(2, 1, {"E0003": 1})]}]
+        md = rp.markdown(rp.rows(ss))
+        header = md.splitlines()[0]
+        for col in ("r0", "r1", "r2", "Result"):
+            self.assertIn(f"| {col} |", header)
+        self.assertIn("| m | t | 3 | 1 | 0 (build ✓) | pass |", md)
+        self.assertIn("| m | u | 0 (build ✗) | — | — | compiler-bug |", md)
+        self.assertIn("| m | v | 2 | 2 | 1 | fail |", md)
+
+    def test_report_e5_summaries_unchanged(self):
+        import report_loop as rp
+        here = pathlib.Path(__file__).resolve().parent / "e5-loop"
+        ss = [json.loads(p.read_text()) for p in sorted(here.glob("runs/*/*/summary.json"))]
+        if not ss:
+            self.skipTest("no E5 runs")
+        self.assertEqual(rp.markdown(rp.rows(ss)), (here / "scores.md").read_text())
 
 if __name__ == "__main__":
     unittest.main()

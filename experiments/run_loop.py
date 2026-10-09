@@ -2,11 +2,12 @@
 """Generate → alder check → feed diagnostics back → retry.
 
 Usage:
-  run_loop.py --exp DIR --model ollama:NAME|claude:NAME --task NAME [--retries 1] [--prompt prompt.md] [--alder BIN] [--base APPDIR]
+  run_loop.py --exp DIR --model ollama:NAME|claude:NAME --task NAME [--retries 1] [--prompt prompt.md] [--alder BIN] [--base APPDIR] [--build]
 
 Writes DIR/runs/<model>/<task>/round<N>/{output.md,check.json,app/...} and DIR/runs/<model>/<task>/summary.json.
+With --build, a round whose check is clean also runs `alder build --emit` (output in round<N>/build/).
 """
-import argparse, json, pathlib, posixpath, re, shutil, subprocess, sys, time, urllib.request
+import argparse, json, pathlib, posixpath, re, shutil, subprocess, sys, tempfile, time, urllib.request
 
 MAX_OUTPUT = 200_000
 
@@ -48,29 +49,52 @@ class OllamaModel(Model):
         except Exception as e:  # connection refused, timeout, bad JSON
             raise ModelError(f"ollama {self.name}: {e}")
         text = re.sub(r"<think>.*?</think>\s*", "", resp["message"]["content"], flags=re.S)
-        return text, {"seconds": round(time.time() - t0, 1), "tokens": resp.get("eval_count")}
+        meta = {"seconds": round(time.time() - t0, 1), "tokens": resp.get("eval_count"),
+                "prompt_eval_count": resp.get("prompt_eval_count"), "eval_count": resp.get("eval_count")}
+        # Ollama silently drops the start of a prompt longer than num_ctx; the count it evaluated tells.
+        estimated = (len(system) + len(user)) // 4
+        pec = resp.get("prompt_eval_count")
+        if not isinstance(pec, int) or pec < 0.9 * estimated:
+            meta["warning"] = f"prompt may have been truncated (prompt_eval_count={pec}, estimated={estimated})"
+        return text, meta
 
 
 class ClaudeModel(Model):
     TOOLS_OFF = "Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Agent,NotebookEdit"
 
+    _version = None   # `claude --version`, once per process
+
     def __init__(self, name):
         self.name = name
+
+    @classmethod
+    def version(cls):
+        if cls._version is None:
+            try:
+                p = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=60)
+                cls._version = p.stdout.strip() if p.returncode == 0 else f"unknown (exit {p.returncode})"
+            except (OSError, subprocess.TimeoutExpired) as e:
+                cls._version = f"unknown ({e})"
+        return cls._version
 
     def generate(self, system, user):
         if shutil.which("claude") is None:
             raise ModelError("claude CLI not found")
-        prompt = system + "\n\n====================  TASK  ====================\n" + user
+        # An empty temp cwd: no CLAUDE.md, no project settings or memory leak into the run.
+        cwd = tempfile.mkdtemp(prefix="alder-claude-")
         t0 = time.time()
         try:
             p = subprocess.run(["claude", "-p", "--model", self.name, "--output-format", "text",
+                                "--system-prompt", system,
                                 "--no-session-persistence", "--disallowedTools", self.TOOLS_OFF],
-                               input=prompt, capture_output=True, text=True, timeout=1800)
+                               input=user, capture_output=True, text=True, timeout=1800, cwd=cwd)
         except subprocess.TimeoutExpired:
             raise ModelError(f"claude {self.name}: timeout")
+        finally:
+            shutil.rmtree(cwd, ignore_errors=True)
         if p.returncode != 0:
             raise ModelError(f"claude {self.name}: exit {p.returncode}: {p.stderr.strip()[:500]}")
-        return p.stdout, {"seconds": round(time.time() - t0, 1)}
+        return p.stdout, {"seconds": round(time.time() - t0, 1), "claude_version": self.version(), "model": self.name}
 
 
 def make_model(spec: str) -> Model:
@@ -141,6 +165,21 @@ def run_check(alder: pathlib.Path, app_root: pathlib.Path):
     return p.returncode, diags, p.stderr
 
 
+def run_build(alder: pathlib.Path, round_dir: pathlib.Path):
+    """`alder build --emit` in round_dir, so the generated Go lands in round_dir/build/.
+
+    Returns (exit, stderr, stdout); exit 2 for a timeout or a missing binary, like `alder` itself."""
+    rd = round_dir.resolve()
+    try:
+        p = subprocess.run([str(pathlib.Path(alder).resolve()), "build", "--emit", str(rd)],
+                           cwd=rd, capture_output=True, text=True, timeout=900)
+    except subprocess.TimeoutExpired:
+        return 2, f"{alder}: build timed out after 900s", ""
+    except OSError as e:
+        return 2, f"{alder}: {e}", ""
+    return p.returncode, p.stderr, p.stdout
+
+
 def render_diags(diags, sources):
     out = []
     for d in diags:
@@ -195,12 +234,17 @@ def write_round(round_dir: pathlib.Path, prev_dir, text: str, files: dict):
 
 
 def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, task_text: str,
-            system: str, alder: pathlib.Path, retries: int = 1, base=None) -> dict:
-    """`base`, if given, is a directory whose `app/` seeds round 0 (for tasks that modify an existing app)."""
+            system: str, alder: pathlib.Path, retries: int = 1, base=None, build: bool = False) -> dict:
+    """`base`, if given, is a directory whose `app/` seeds round 0 (for tasks that modify an existing app).
+
+    With `build`, a clean round also runs `alder build --emit`; the run passes only if that succeeds.
+    A build failure after a clean check is a compiler bug, not the model's: it is recorded
+    (`compiler_bug`, round<N>/build.stderr.txt) and the task stops there, with no retry."""
     run_dir = exp / "runs" / model_label / task_name
     if run_dir.exists():
         shutil.rmtree(run_dir)
-    summary = {"model": model_label, "task": task_name, "retries": retries, "base": str(base) if base else None, "error": None, "rounds": [], "final_pass": False}
+    summary = {"model": model_label, "task": task_name, "retries": retries, "base": str(base) if base else None,
+               "harness": {"build": build, "retries": retries}, "error": None, "rounds": [], "final_pass": False}
     user = task_text
     prev = pathlib.Path(base) if base else None
     for n in range(retries + 1):
@@ -219,10 +263,22 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
         for d in diags:
             if d["severity"] == "error":
                 codes[d["code"]] = codes.get(d["code"], 0) + 1
-        summary["rounds"].append({"n": n, "files": nfiles, "exit": exit_code,
-                                  "errors": sum(codes.values()), "warnings": sum(1 for d in diags if d["severity"] == "warning"),
-                                  "codes": codes, "rejected": rejected, "seconds": meta.get("seconds", 0.0), "tokens": meta.get("tokens"), "stderr": stderr[:2000]})
-        if exit_code == 0:
+        rnd = {"n": n, "files": nfiles, "exit": exit_code,
+               "errors": sum(codes.values()), "warnings": sum(1 for d in diags if d["severity"] == "warning"),
+               "codes": codes, "rejected": rejected, "seconds": meta.get("seconds", 0.0), "tokens": meta.get("tokens"), "stderr": stderr[:2000]}
+        for k in ("prompt_eval_count", "eval_count", "warning", "claude_version", "model"):
+            if k in meta:
+                rnd[k] = meta[k]
+        summary["rounds"].append(rnd)
+        clean = exit_code == 0 and rnd["errors"] == 0
+        if clean and build:
+            bexit, bstderr, bstdout = run_build(alder, round_dir)
+            rnd["build"] = {"ok": bexit == 0, "exit": bexit, "stderr": bstderr[-4000:]}
+            if bexit != 0:
+                (round_dir / "build.stderr.txt").write_text(bstderr + (("\n--- stdout ---\n" + bstdout) if bstdout.strip() else ""))
+                summary["compiler_bug"] = True
+                break
+        if clean:
             summary["final_pass"] = True
             break
         user = retry_prompt(task_text, round_dir, diags, stderr, nfiles, rejected)
@@ -241,6 +297,7 @@ def main(argv=None):
     ap.add_argument("--prompt", default="prompt.md")
     ap.add_argument("--alder", default=None, help="path to the alder binary (default: build it)")
     ap.add_argument("--base", default=None, help="directory whose app/ seeds round 0 (modification tasks, e.g. examples/todos for t2)")
+    ap.add_argument("--build", action="store_true", help="after a clean check, run `alder build --emit`; the run passes only if it succeeds")
     a = ap.parse_args(argv)
     exp = pathlib.Path(a.exp)
     system = (exp / a.prompt).read_text()
@@ -251,9 +308,14 @@ def main(argv=None):
         label = spec.replace(":", "-").replace("/", "-")
         for task in a.task:
             task_text = (exp / "tasks" / f"{task}.md").read_text()
-            s = run_one(exp, model, label, task, task_text, system, alder, a.retries, base=a.base)
-            status = "ERROR " + s["error"] if s["error"] else ("pass" if s["final_pass"] else "fail")
-            counts = " → ".join(str(r["errors"]) for r in s["rounds"])
+            s = run_one(exp, model, label, task, task_text, system, alder, a.retries, base=a.base, build=a.build)
+            status = ("ERROR " + s["error"] if s["error"] else "compiler-bug" if s.get("compiler_bug")
+                      else "pass" if s["final_pass"] else "fail")
+            counts = " → ".join(str(r["errors"]) + ("" if "build" not in r else " (build ok)" if r["build"]["ok"] else " (build FAILED)")
+                                for r in s["rounds"])
+            for r in s["rounds"]:
+                if r.get("warning"):
+                    print(f"  warning: round {r['n']}: {r['warning']}", file=sys.stderr)
             print(f"{label} {task}: {status} ({counts} errors)")
             if s["error"]:
                 failed += 1
