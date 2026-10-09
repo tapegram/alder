@@ -170,13 +170,15 @@ is no longer required for correctness.
 
 As built in M3d (`cmd/alder/run.go`; book chapter 11 "`alder run`" and
 chapter 13 "The dev server"). `alder run [dir]` is a dev server on
-`ALDER_ADDR` (default `:8080`) that reverse-proxies (`httputil.ReverseProxy`,
+`ALDER_ADDR` (default `localhost:8080`: the app behind it is in dev mode) that reverse-proxies (`httputil.ReverseProxy`,
 `FlushInterval: -1`, `Host` kept) every request except `/_dev/reload` to a
 child process: the executable `buildApp` produces (the `alder build`
 pipeline: check → lower → emit → copy adapters/static → `go vet` → `go
-build`), started with `ALDER_ADDR=127.0.0.1:0 ALDER_DEV=1 ALDER_RELOAD=1
+build`), started with `ALDER_ADDR=127.0.0.1:0 ALDER_DEV=1 ALDER_RELOAD=<gen>
 ALDER_DB=<abs build/<app>/dev.db> ALDER_STATIC=<abs dir/static>` and the
 rest of the environment; its `listening on <addr>` line gives the port.
+`<gen>`, the build generation, is `<nonce>-<n>`: 8 random hex digits per
+dev server, and the count of children started.
 
 - Watcher: polls every 300 ms the (mtime, size) of `app/**/*.alder`,
   `adapters/*.go` and `static/**`; a burst is coalesced and reported once
@@ -186,14 +188,17 @@ rest of the environment; its `listening on <addr>` line gives the port.
   single-flight; changes queued during a rebuild are merged into one.
 - `rebuild`: `alder check` (errors → overlay + stderr, old child kept) →
   `buildApp` (errors → overlay, old child kept) → start the new child
-  beside the old one (10 s for `listening on`, else its stderr → overlay,
+  beside the old one (10 s for `listening on`, else the last 40 lines of its stderr → overlay,
   old child kept) → swap the proxy target → SIGTERM the old child → clear
   the overlay, then reload. The old child answers until the new one is up.
-- A child that exits unasked is reported in the overlay; the proxy answers
+- A child that exits unasked is reported in the overlay (its exit status,
+  "save a source file to rebuild it", its last 40 stderr lines); the proxy answers
   502 with a page holding the overlay and subscriber (and the dev server
   serves the Datastar script itself) until the next good build.
-- `/_dev/reload`: SSE, `: ready`, the current overlay if any, every
-  broadcast, `: ping` every 15 s. Events are `datastar-patch-elements`
+- `/_dev/reload?b=<gen>`: SSE, `: ready`, then the reload at once when
+  `<gen>` is not the generation of the last child that came up (a page that
+  missed a broadcast, or one of an earlier dev server), else the current
+  overlay if any; then every broadcast, `: ping` every 15 s. Events are `datastar-patch-elements`
   (`datastar.PatchEvent`): the overlay (`#_alder_errors`, mode `inner`, the
   message HTML-escaped in `<pre class="_alder-errors">`), the clear (same
   target, empty elements), and the reload (`body`, mode `append`, `<script
@@ -222,12 +227,21 @@ rest of the environment; its `listening on <addr>` line gives the port.
 
 ### Harness
 
-`run_loop.py --build`: a round passes only if `alder check --json` has no
-errors **and** `alder build` succeeds; a Go build failure is recorded as a
-new round field `build: {ok, stderr}` and is a compiler bug by definition
-(the checker accepted the program), filed as such in the experiment's
-findings. The deferred harness items (multi-retry report, `claude -p`
-isolation, `prompt_eval_count`) are done in M3d before E6.
+`run_loop.py --build`: after a round whose `alder check --json` is clean,
+the harness runs `alder build --emit` (lower, emit, `go vet` the generated
+app package; adapters are not copied and nothing is linked), and the round
+passes only if that exits 0. The result is the round field
+`build: {ok, exit, stderr}` (the full output also in
+`round<N>/build.stderr.txt`). Exit 1 (holes, or anything else the build
+refuses with diagnostics) is an ordinary failed round: the retry prompt
+carries the build output. Exit 2 (an internal error, or generated Go that
+does not vet) after a clean check is a compiler bug: the summary gets
+`compiler_bug: true`, the task stops with no retry, and the bug is filed in
+the experiment's findings. A build timeout is also exit 2 for now (a
+separate `harness_error` outcome is deferred to M4). The deferred harness
+items (multi-retry report, `claude -p` isolation, `prompt_eval_count`) are
+done in M3d before E6; `claude -p` isolation was tightened after E6 (see
+`experiments/README.md`, "Models").
 
 ## Error handling
 
@@ -255,8 +269,10 @@ until the next successful rebuild.
   re-render, Datastar-header POST returns an SSE body patch, no-JS POST
   returns a full page or 303.
 - Dev loop: a test that edits a file, waits for the rebuild, and sees the
-  reload event on `/_dev/reload`.
-- E6: the harness with `--build` on T2–T4; results in chapter 12.
+  reload event on `/_dev/reload`; plus a check error and its fix, coalesced
+  saves, a build failure, a child that does not start, a child that is
+  killed and the recovery, a stale-generation subscriber, and stop.
+- E6: the harness with `--build` on T2–T5; results in chapter 12.
 
 ## Milestones
 
@@ -564,15 +580,22 @@ Each milestone gets its own implementation plan.
   child starts while the old one still serves and the swap is atomic for
   the browser.
 - The reload subscriber is injected by the router, not by the proxy:
-  `ALDER_RELOAD=1` (set only by `alder run`) → generated `main` sets
-  `web.Options.Reload` → `withReload` inserts `<div
-  id="_alder_errors"></div><div data-init="@get('/_dev/reload')"></div>`
+  `ALDER_RELOAD=<gen>` (set only by `alder run`) → generated `main` sets
+  `web.Options.Reload` (the generation; "" = off) → `withReload` inserts
+  `<div id="_alder_errors" data-ignore-morph></div><div
+  data-init="@get('/_dev/reload?b=<gen>', {openWhenHidden: true})"></div>`
   right after `<body…>` in full documents, 404/500 pages and Datastar body
   patches (so a morphed body keeps them). The proxy stays a pass-through:
   it would otherwise have to buffer and rewrite HTML and SSE answers.
 - The subscriber attribute is `data-init`, not `data-on-load` as first
   specified: Datastar v1.0.0 has no `on-load` plugin and a `<div>` fires no
   `load` event.
+- No reload is lost (M3d final review): the box carries `data-ignore-morph`
+  (Datastar 1.0.0 skips an element when old and new both carry it, so an
+  app `Rerender` keeps the error; the dev server's `inner` patches still
+  apply); `@get` gets `openWhenHidden: true` (its default for GET is to
+  close the stream while the tab is hidden); and the generation in `?b=`
+  makes a reconnecting page of an older build or dev server reload at once.
 - The dev database is `build/<app>/dev.db` (absolute `ALDER_DB`); dev mode
   recreates the tables on a schema change, and old and new child briefly
   share the file during a swap.

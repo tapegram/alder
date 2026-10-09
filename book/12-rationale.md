@@ -288,8 +288,8 @@ literals.
 passes only if `alder check` is clean and `alder build --emit` then
 succeeds, with up to two retries. Qwen3-Coder 30B, Haiku and Sonnet on
 T2–T4 and a new T5 (shared notes; deleting another user's note by id must
-answer 404), on the book at `3415cf8`. Full data in
-`experiments/e6-build/` (`scores.md`, `findings.md`).
+answer 404), on the book at `3415cf8`, one sample per Claude cell. Full
+data in `experiments/e6-build/` (`scores.md`, `findings.md`).
 
 | Model | Round 0 errors (T2–T5) | Final errors | Pass | E5 pass (T2–T4) |
 |---|---|---|---|---|
@@ -297,8 +297,9 @@ answer 404), on the book at `3415cf8`. Full data in
 | Claude Haiku | 5 | 0 | 4 / 4 | 3 / 3 |
 | Qwen3-Coder 30B | 22 | 8 | 2 / 4 | 2 / 3 |
 
-What it showed: every program that checked clean also built (10 / 10), so
-the build found no compiler bug. Each Claude slip (a trailing comma, a
+What it showed: every program that checked clean also lowered to Go that
+vets (10 / 10); adapters and linking were not exercised (`--emit` stops
+before them). So the build found no compiler bug. Each Claude slip (a trailing comma, a
 missing `Just`) took one retry. Both of Qwen's failures trace to messages
 E5 had already named: a table declared in another table's module, whose
 `fix: import Post.Comment` cannot work, cost both T3 retries, and a parse
@@ -306,10 +307,11 @@ error hid seven errors in T5, after which an `unknown constructor` with no
 reason led Qwen to qualify constructors. On ownership, every T5 app checks
 the owner in `update`, and every T4 app now acts on the note `load`
 checked, where in E5 two of three T4 apps updated and deleted any id they
-were sent. The models copied the example's `owned` helper, though, so this
-shows the example sets the pattern, not that agents authorize `update`
-unprompted; the open question on row ownership below needs a task the
-example does not answer.
+were sent. The models copied the example's `owned` helper, though. What
+set the pattern is the example, now backed by chapter 6's "Authorize in
+`update` too"; both changed since E5, so E6 cannot separate the two, and
+it does not show that agents authorize `update` unprompted. The open
+question on row ownership below needs a task the example does not answer.
 
 ## Open questions
 
@@ -333,6 +335,12 @@ example does not answer.
   with an `owned` helper and `Task.notFound`, chapter 6, "Authorize in
   `update` too"). A language-level helper, such as a table marked as
   owned by a session field so that `Db.get`/`Db.update` on it check the
-  owner, would make the safe way the short way. Experiment E6 should show
-  whether agents make this mistake, before a feature is added for it.
+  owner, would make the safe way the short way. E6 found that agents
+  make this mistake when the example does (two of three T4 apps in E5)
+  and stop when the example and chapter 6 show the fix (none of three in
+  E6, and every T5 app checks the owner in `update`), but they copied the
+  example's `owned` helper. The next probe is harder: a message whose
+  authorization the example does not show (an `Edit { id }` on the list
+  page, or a second owned table reached through the first), before a
+  feature is added for it.
 - Do agents need `List.map` with index, or is `List.indexed` enough?
