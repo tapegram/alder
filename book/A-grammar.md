@@ -77,7 +77,8 @@ ModName     = uname {"." uname} ;
 ```
 
 Lexical: `lname` is `[a-z_][A-Za-z0-9_]*` other than `_` alone, `uname` is
-`[A-Z][A-Za-z0-9_]*`, and `hname` additionally allows `-`. No identifier
-contains two underscores in a row (`a__b` is an error), and no segment of a
-`ModName` ends with `_`: the compiler uses `__` to join the parts of the
-names it generates (chapter 13). Comments run from `--` to end of line.
+`[A-Z][A-Za-z0-9_]*`, and `hname` additionally allows `-`. No `lname` or
+`uname` contains two underscores in a row (`a__b` is an error), and no
+segment of a `ModName` ends with `_`: the compiler uses `__` to join the
+parts of the names it generates (chapter 13). An `hname` (an HTML tag or
+attribute name such as `data-x__y`) may contain `__`. Comments run from `--` to end of line.

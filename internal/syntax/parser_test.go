@@ -109,6 +109,11 @@ func TestParse_ReservedUnderscores(t *testing.T) {
 			t.Errorf("%q: diagnostics %q lack %q", tc.src, got, tc.want)
 		}
 	}
+	// HTML attribute names are not identifiers of the language: `__` is allowed there
+	_, diags0 := ParseFile("t.alder", []byte("module M\n\nv : Html a\nv = <div data-x__y=\"1\" aria-a__b=\"2\">x</div>\n"))
+	if len(diags0) != 0 {
+		t.Errorf("attribute names with __ rejected: %v", diags0)
+	}
 	// single underscores, also leading and trailing, are fine
 	_, diags := ParseFile("t.alder", []byte("module A_b.C\n\n_x_ : Int\n_x_ = 1\n\ntype T_ = A_ | B_c\n"))
 	if len(diags) != 0 {

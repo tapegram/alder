@@ -99,9 +99,11 @@ func (l *Lexer) isIdent(c byte) bool {
 }
 
 // checkIdent reports an identifier with "__" in it. The compiler joins the parts of a generated
-// Go name with "__", so no Alder name may contain it (internal/gen/names.go).
+// Go name with "__", so no Alder name may contain it (internal/gen/names.go). Inside an HTML tag
+// (tag and attribute names, `data-x__y`) it does not apply: those never become Go names, and a
+// component named there with "__" cannot have been declared.
 func (l *Lexer) checkIdent(text string, line, col, off int) {
-	if strings.Contains(text, "__") {
+	if !l.htmlTag && strings.Contains(text, "__") {
 		l.errs = append(l.errs, LexError{line, col, off, "identifiers may not contain two underscores in a row: `" + text + "`", len(text)})
 	}
 }
