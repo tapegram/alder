@@ -89,6 +89,31 @@ turn out to be too restrictive.
 operator, and models know `<-` from Haskell. `andThen` is deliberately
 absent so there is one way.
 
+### Effects are data, interpreted eagerly **(untested)**
+
+`load` and `update` return a description of effects, and only the runtime
+performs them (chapter 7). The reasons: a page view provably cannot write,
+because a `Query` has no write steps and the runtime refuses one if it
+ever appears; every effect of a request goes through one place, so one
+transaction per `Task` and one trace of every step come for free; and the
+same `update` can be run against a test database, or a stub capability,
+without changing a line.
+
+The description is a tree of Go values (`rt/eff/eff.go`), and the
+interpreter `eff.Run` walks it **eagerly**, node by node: each step runs
+as soon as it is reached, and the rest of the block is built from its
+result. The alternatives were a fully static plan (every step known before
+anything runs) and a batching or parallel interpreter. A static plan
+cannot express `let found <- Db.get Todo id` followed by a `match found`
+that decides the next step, which is the most common shape of an
+`update`. Batching and parallelism would make the order of steps, and so
+the trace, depend on the scheduler. Eager, one-at-a-time interpretation is
+the simplest model that keeps the trace deterministic and the order of
+effects the order in the source.
+
+The cost is that an effect value contains Go closures, so two effects
+can't be compared with `==`. Tests compare traces instead (chapter 10).
+
 ### Constructors are unqualified **(tested: E1)**
 
 Every model, and the hand-written example, wrote `Normal` and `[All,

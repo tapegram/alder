@@ -297,3 +297,41 @@ Each milestone gets its own implementation plan.
   `widen__<Page>__Session(s) App__Session` that re-wraps `f` in `rt.Just`.
   A function type is not widened (`App.Session -> X` does not stand for
   `<Page>.Session -> X`), so no closure conversion is ever needed.
+- Effects are interpreted eagerly, node by node (M3b). `rt/eff` represents
+  an effect as `Pure | Bind | Call | Fail | NotFound` (the "Op" above is
+  `Call`: a name for the trace, a write flag, and a Go function of the
+  `Env`); `eff.Run` is a loop over a heap continuation stack, runs one step
+  at a time in source order, never batches or parallelises, and starts no
+  goroutines. A `Task` runs in exactly one transaction, rolled back on
+  `Fail`, `NotFound`, any error or a panic; a `Query` runs with no
+  transaction and a write `Call` reached from one is `ErrInternal`. Every
+  `Call` name is appended to `Env.Trace` and logged at level `effect`;
+  tests will compare traces (book chapter 10 now says so; `alder test`
+  stays deferred). Book chapter 12 records the reasoning.
+- Storage mapping (M3b, `rt/db`): SQL table = module-qualified name with
+  `.` → `__`; Text and brands TEXT, Int INTEGER, Float REAL, Bool INTEGER
+  0/1, Date TEXT `YYYY-MM-DD`, Time TEXT RFC 3339 UTC with a fixed nine-digit
+  fraction (text order is time order), payload-less unions
+  TEXT constructor name (ordered and compared by declaration), `Maybe` →
+  NULL; ids are 20-char URL-safe random strings; `STRICT` tables with
+  `CHECK`s for Bool and unions. `Db.and []` is true, `Db.or []` and
+  `.in []` are false. `Db.update` that changes the id fails the task
+  (`UpdateRow`). Without dev mode a schema-hash mismatch refuses to start
+  and names the changed tables.
+- Generated files are `<Module segments joined by __>_alder.go` (M3b,
+  superseding "files are `<…>.go`" above and the plan's `.alder.go`). Go
+  truncates a file name at its first `.` before looking for a `_GOOS` or
+  `_GOARCH` suffix, so module `Bar_linux` as `Bar_linux.alder.go` would
+  build only on Linux; `Bar_linux_alder.go` (and `Foo_test_alder.go`,
+  which does not end in `_test.go`) are ordinary files. The app-wide lists, `Tables` (for `db.Ensure`) and
+  `Capabilities` (the `Env.Caps` keys that must be wired), are in
+  `app__alder.go`: no module can produce that name, and `app_alder.go`
+  would clash with `App_alder.go` on a case-insensitive file system.
+- A record field whose type leads back to its own record through `Maybe`,
+  `Result` or an anonymous record is held by pointer in Go
+  (`Next *rt.Maybe[M__Node]`); lists need no box (M3b). Every record
+  construction site, including hand-written Go in capability adapters,
+  must allocate the box.
+- `Nav` lives in `rt` (`rt/nav.go`: `rt.Rerender()`, `rt.Redirect(page)`,
+  `rt.Reject(text)`), not in generated code, so `rt/web` (M3c) can act on
+  an `update`'s result without importing the app.

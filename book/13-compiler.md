@@ -756,7 +756,7 @@ out as `&amp;amp;`. One place does it, so it happens exactly once.
 ## 8. The runtime
 
 The generated code is short because most of the work is in the runtime: Go
-packages the generated code imports. There are three.
+packages the generated code imports. There are five.
 
 - **`rt`** (`rt/core.go`) holds the types the mapping table names: `Maybe`,
   `Result`, `Dict`, `Date`, `Page`. It also holds the helpers the emitter
@@ -766,31 +766,350 @@ packages the generated code imports. There are three.
   while compiling, and reject `1 / 0` or an `Int` that overflows, which
   Alder defines to happen when the program runs (chapter 4). A `Dict` takes
   keys of any type: it files each under `Key(k)`, a text that is the same
-  for two keys exactly when they are `==`.
+  for two keys exactly when they are `==`. `rt/nav.go` holds `Nav`, the
+  result of an `update`: `rt.Rerender()`, `rt.Redirect(page)` or
+  `rt.Reject(text)`.
 - **`rt/html`** (`rt/html/html.go`) builds HTML trees (`El`, `Text`,
   `Raw`, `A`, `Nodes`) and renders them. `Render` is where escaping
   happens: a text node goes through `html.EscapeString`, and so does every
   attribute value. A `Raw` node is written as is.
-- **`rt/std`** (`rt/std/*.go`) has one Go function per pure stdlib
-  function: `std.ListMap` is `List.map`, `std.TextToUpper` is
-  `Text.toUpper`.
+- **`rt/std`** (`rt/std/*.go`) has one Go function per stdlib function:
+  `std.ListMap` is `List.map`, `std.TextToUpper` is `Text.toUpper`. The
+  effectful ones, in `rt/std/effects.go`, don't do anything: `std.TimeNow`
+  returns a one-step effect tree that reads the clock when it is run.
+- **`rt/eff`** (`rt/eff/eff.go`, `run.go`) is the effect runtime: the tree
+  that a `Query` or `Task` is, and `Run`, which performs it. Chapter 7's
+  "How effects run" introduces it.
+- **`rt/db`** (`rt/db/table.go`, `store.go`, `sqlite.go`, `encode.go`)
+  is the database: a descriptor for each table, `Select` values, the
+  `Store` interface that the effect steps call, and its SQLite
+  implementation.
 
 The generated program is tiny because the runtime is the library. All of
-`examples/todos` emits about 450 lines of Go across eight files, and those
+`examples/todos` emits about 700 lines of Go across nine files, and those
 lines mostly call into `rt`.
 
-This is where M3a ends. What follows is planned, not built, and described
-in the design spec,
+The rest of this section follows one `load` from source to SQL, then one
+`update` arm through a transaction. The program is
+`testdata/golden/ir_effects/app/`, whose page module `Index` has a `Todo`
+table and a page `"/pair/{a}/{b}"`. (`testdata/golden/gen_effects/app/`
+holds the same three files, and `gen_effects/want/` the Go they become.)
+
+### The source
+
+```alder
+load : Params -> Session -> Query Model
+load params session = {
+  let todos <-
+    Db.from Todo
+      |> Db.where (Todo.owner.eq session.user)
+      |> Db.orderBy Todo.created.desc
+      |> Db.limit 10
+      |> Db.all
+  let pair <- Query.all [Db.get Todo params.a, Db.get Todo params.b]
+  let now <- Time.now
+  let q = Db.from Todo |> Db.where (Db.or [Todo.title.contains "x", Todo.done.eq True]) |> Db.offset 5
+  let count <- Query.map (\n -> n + 1) (Db.count q)
+  let first <- Db.first Todo.pending
+  Query.succeed { todos: todos, pair: pair, now: now, count: count, first: first }
+}
+```
+
+Five `let x <-` lines run effects (six steps in all, since `Query.all`
+runs two `Db.get`s), one `let q =` builds a `Select` without running it,
+and the last line wraps the result.
+`Todo.pending` is a `Select Todo` declared in `Todo.alder`.
+
+### The IR
+
+`alder dump --ir testdata/golden/ir_effects` prints this for `load`
+(`testdata/golden/ir_effects.ir` is the same text):
+
+```
+(value Index.load : Params -> Session -> Query Model (params session)
+  (bind query todos : List Todo
+    (db-select Todo.Todo
+      (where (cond eq (col Todo.Todo owner) (field user (var session))))
+      (order (ord (col Todo.Todo created) desc))
+      (limit 10)
+      all)
+    (bind query pair : List (Maybe Todo)
+      (all query
+        (list
+          (db-get Todo.Todo (field a (var params)))
+          (db-get Todo.Todo (field b (var params)))))
+      (bind query now : Time
+        (std Time.now)
+        (let q : Select Todo
+          (db-select Todo.Todo
+            (where
+              (cond or
+                (cond contains (col Todo.Todo title) "x")
+                (cond eq (col Todo.Todo done) True)))
+            (offset 5)
+            select)
+          (bind query count : Int
+            (map query (lambda (n : Int) (+ (var n) 1)) (db-run count (var q)))
+            (bind query first : Maybe Todo
+              (db-run first (global Todo.pending))
+              (pure query
+                (record Model
+                  (todos (var todos))
+                  (pair (var pair))
+                  (now (var now))
+                  (count (var count))
+                  (first (var first)))))))))))
+```
+
+The block is gone. Each `let x <- e` became a `bind` whose body is the
+rest of the block, so the five binds nest one inside the next, and the
+plain `let q =` became an ordinary `let` between two of them. The nodes
+are defined in `internal/ir/ir.go` and produced by
+`internal/ir/lower_eff.go`:
+
+- `bind query todos : List Todo` is `EffBind`: run the effect, call the
+  result `todos`, continue. `query` is its kind; in an `update` it says
+  `task`.
+- `db-select Todo.Todo … all` is `DbSelect`. The whole pipeline,
+  `Db.from` through `Db.all`, is folded into one node that knows its
+  table, its conditions, its orders, its limit, and what to do with it:
+  `all`, `first`, `count`, or `select` for a pipeline that is only a value,
+  like `q`.
+- `cond eq (col Todo.Todo owner) …` is a `Cond` on a `ColumnRef`: the
+  column `owner` of table `Todo.Todo`, compared with `session.user`.
+- `all query (list …)` is `EffAll` (`Query.all`), `map query` is `EffMap`,
+  and `pure query` is `EffPure` (`Query.succeed`).
+- `db-run count (var q)` is `DbRun`: running a `Select` that is not
+  written in place but held in a variable or, for `Db.first
+  Todo.pending`, declared elsewhere (`global Todo.pending`).
+
+### The Go
+
+`alder build --emit` writes this (`gen_effects/want/Index_alder.go`):
+
+```go
+func Index__load(params Index__Params, session Index__Session) eff.Query[Index__Model] {
+	return eff.Q(eff.Bind(eff.Call("Db.all Todo", false, func(_e1 *eff.Env) ([]Todo__Todo, error) {
+		return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.Limit(10, db.OrderBy(db.Desc("created"), db.Where(db.CEq("owner", session.User), db.From(table__Todo__Todo)))))
+	}), func(todos []Todo__Todo) eff.Task[Index__Model] {
+		return eff.Bind(eff.All([]eff.Task[rt.Maybe[Todo__Todo]]{eff.Call("Db.get Todo", false, func(_e2 *eff.Env) (rt.Maybe[Todo__Todo], error) {
+			return db.GetRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Todo__Todo, params.A)
+		}), eff.Call("Db.get Todo", false, func(_e3 *eff.Env) (rt.Maybe[Todo__Todo], error) {
+			return db.GetRow(_e3.Ctx, _e3.Store.(db.Store), db.TxOf(_e3), table__Todo__Todo, params.B)
+		})}), func(pair []rt.Maybe[Todo__Todo]) eff.Task[Index__Model] {
+			return eff.Bind(eff.T(std.TimeNow()), func(now time.Time) eff.Task[Index__Model] {
+				q := db.Offset(5, db.Where(db.COr([]db.Cond{db.CContains("title", "x"), db.CEq("done", db.EncodeBool(true))}), db.From(table__Todo__Todo)))
+				return eff.Bind(eff.Map(func(n int64) int64 {
+					return n + 1
+				}, eff.Call("Db.count Todo", false, func(_e4 *eff.Env) (int64, error) {
+					return db.CountRows(_e4.Ctx, _e4.Store.(db.Store), db.TxOf(_e4), q)
+				})), func(count int64) eff.Task[Index__Model] {
+					return eff.Bind(eff.Call("Db.first Todo", false, func(_e5 *eff.Env) (rt.Maybe[Todo__Todo], error) {
+						return db.First(_e5.Ctx, _e5.Store.(db.Store), db.TxOf(_e5), Todo__pending)
+					}), func(first rt.Maybe[Todo__Todo]) eff.Task[Index__Model] {
+						return eff.Pure(Index__Model{Todos: todos, Pair: pair, Now: now, Count: count, First: first})
+					})
+				})
+			})
+		})
+	}))
+}
+```
+
+It is long, but it is the IR printed with Go spelling, one node at a time
+(the table at the top of `internal/gen/effects.go` lists every rule):
+
+- Each `bind` is `eff.Bind(first, func(x T) eff.Task[…] { return rest })`.
+  The rest of the block is a Go function literal that receives the bound
+  value, so the nesting is the same as in the IR.
+- Each database node is `eff.Call(name, write, fn)`: a step named
+  `"Db.all Todo"`, marked `false` because it doesn't write, whose `fn`
+  receives the `Env` and calls a typed helper in `rt/db` (`db.All`,
+  `db.GetRow`, `db.CountRows`, `db.First`) with the context, the store
+  and the transaction from it. `db.TxOf(_e1)` is the running `Task`'s
+  transaction, or `nil` in a `Query`.
+- A `Select` is data. `db.Limit(10, db.OrderBy(db.Desc("created"),
+  db.Where(db.CEq("owner", session.User), db.From(table__Todo__Todo))))`
+  reads inside out: start from every row of `Todo`, keep `owner = …`,
+  order by `created` descending, keep 10. `q :=` is a plain Go variable
+  for the same reason: building a `Select` runs nothing.
+- Values compared with a column are encoded the way the column stores
+  them: `Todo.done.eq True` is `db.CEq("done", db.EncodeBool(true))`,
+  because a `Bool` is stored as `1` (chapter 8).
+- `eff.Bind`, `eff.Map` and `eff.All` work on `Task`s, so the emitter
+  wraps the whole tree once in `eff.Q(…)` to make it a `Query` again, and
+  turns the `Query` from `std.TimeNow()` into a `Task` with `eff.T(…)`.
+  Neither changes the tree: they only change its Go type.
+
+`table__Todo__Todo` is the table's **descriptor**, a package variable
+the emitter writes into `Todo_alder.go`. It is what turns an Alder record
+into a row and back:
+
+```go
+var table__Todo__Todo = &db.Table[Todo__Todo]{
+	Name: "Todo.Todo",
+	Columns: []db.Column{
+		{Name: "id", Type: db.CText},
+		{Name: "title", Type: db.CText},
+		{Name: "done", Type: db.CBool},
+		{Name: "due", Type: db.CDate, Nullable: true},
+		{Name: "owner", Type: db.CText},
+		{Name: "created", Type: db.CTime},
+	},
+	ID:      "id",
+	Created: "created",
+```
+
+It goes on with `Encode` and `Decode`, which convert each field with the
+helpers in `rt/db/encode.go` (`db.EncodeBool`, `db.DecodeDate`, …), and
+`ReadID`. When the app starts, the list of every descriptor is passed to
+`Ensure`, which creates the SQL tables (chapter 8, "Schema changes"). The
+list is `Tables`, in a file of its own, `app__alder.go`:
+
+```go
+// Tables describes every table of the app, in module order then declaration order, for db.Ensure.
+var Tables = []db.TableDesc{table__Todo__Todo.Desc()}
+
+// Capabilities are the keys of eff.Env.Caps the app's capability calls look up: each needs an
+// implementation of its cap__ interface.
+var Capabilities = []string{"Todo.Stats", "Index.Mailer"}
+```
+
+`Capabilities` names every capability the app calls, so the server (M3c)
+can check at startup that each has an implementation; until then, a call
+to one that isn't wired stops with `alder: capability "Index.Mailer" is
+not wired`. The file's name can't clash with a module's, because a module
+name starts with a capital letter.
+
+### What `Run` does
+
+Calling `Index__load(params, session)` performs nothing. It returns the
+tree. The caller (the router, in M3c; a test, today) hands it to
+`eff.RunQuery(env, …)`, which calls `eff.Run` with kind `KQuery`. Here is
+what happens, following `interpret` in `rt/eff/run.go`. `interpret` is a
+loop holding the current node and a stack of continuations: the "rest of
+the block" functions it has yet to call.
+
+1. A `Query` gets no transaction, so `env.Tx` stays `nil`.
+2. The node is a `bind`. Its continuation (the function that takes
+   `todos`) goes on the stack, and the loop moves to its first part.
+3. The node is the `call` named `Db.all Todo`. It isn't a write, so it may
+   run in a `Query`. `Run` checks that the request hasn't been cancelled,
+   logs `effect: Db.all Todo`, appends the name to `env.Trace`, and calls
+   `fn`.
+4. `fn` calls `db.All`, which renders the `Select` (`Select.SQL` in
+   `rt/db/table.go`) and asks the store for the rows. The SQLite store
+   runs
+
+   ```
+   SELECT "id", "title", "done", "due", "owner", "created" FROM "Todo__Todo" WHERE "owner" = ? ORDER BY "created" DESC LIMIT ?
+   ```
+
+   with the arguments `session.User` and `10`. Every name comes from the
+   descriptor and every value is a `?`, so nothing from the request is
+   ever pasted into SQL. Each row is turned into a `Todo__Todo` by the
+   descriptor's `Decode`.
+5. The result becomes a `pure` node. The loop pops the continuation and
+   calls it with the list. That Go function now builds the *next* part of
+   the tree, the `bind` around `eff.All`, and the loop carries on with
+   it.
+6. The two `Db.get` steps run in order, then `Time.now` reads
+   `env.Now()`, then `q` is built and `Db.count` runs it, then
+   `Db.first` runs `Todo.pending` with a limit of 1.
+7. The last continuation returns `pure` of the `Model`. The stack is
+   empty, so that is the result.
+
+Run against a database holding one todo, the trace is
+
+```
+["Db.all Todo" "Db.get Todo" "Db.get Todo" "Time.now" "Db.count Todo" "Db.first Todo"]
+```
+
+one name per step, in source order. Step 5 is why the interpreter is
+called **eager**: a continuation is a Go function that is called only once
+the value it needs exists, so the tree after a step isn't built until the
+step has run. That is what lets a `match` on a result decide what happens
+next, and it is why two effect values can't be compared with `==`
+(chapter 12, "Effects are data, interpreted eagerly"). The stack is a Go
+slice, not Go's call stack, so a block of any length runs in constant
+stack space.
+
+### A `Task`: `Toggle`
+
+The `Toggle` arm of `Index.update` lowers to
+
+```
+    (case Toggle (bind _m3 : ToggleParams)
+      (let p : ToggleParams
+        (var _m3)
+        (bind task _
+          (db-update Todo.Todo
+            (field id (var p))
+            (lambda (t : Todo)
+              (update (var t)
+                (done (call (std Prelude.not) (field done (var t)))))))
+          (pure task (ctor Prelude.Nav.Rerender)))))
+```
+
+and is emitted as
+
+```go
+	case is__Index__Msg__Toggle:
+		p := *msg.Toggle
+		return eff.Bind(eff.Call("Db.update Todo", true, func(_e2 *eff.Env) (struct{}, error) {
+			return struct{}{}, db.UpdateRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Todo__Todo, p.Id, func(t Todo__Todo) Todo__Todo {
+				return Todo__Todo{Id: t.Id, Title: t.Title, Done: !t.Done, Due: t.Due, Owner: t.Owner, Created: t.Created}
+			}, _e2.Now())
+		}), func(_ struct{}) eff.Task[rt.Nav] {
+			return eff.Pure(rt.Rerender())
+		})
+```
+
+This time the step is marked `true`, a write, and the caller runs it with
+`eff.Run(env, eff.KTask, …)`:
+
+1. `Run` calls `env.Store.Begin` and puts the transaction in `env.Tx`.
+2. The `call` named `Db.update Todo` is traced and run. `db.UpdateRow`
+   (`rt/db/store.go`) reads the row inside the transaction,
+   `SELECT "id", "title", "done", "due", "owner", "created" FROM "Todo__Todo" WHERE "id" = ?`,
+   decodes it, and applies the function, which flips `Done`. It checks
+   that the id didn't change, encodes the record, and writes it back:
+
+   ```
+   UPDATE "Todo__Todo" SET "title" = ?, "done" = ?, "due" = ?, "owner" = ? WHERE "id" = ?
+   ```
+
+   `id` and `created` are not in the `SET` list: neither can change.
+3. The continuation returns `pure` of `rt.Rerender()`, a `Nav`.
+4. The task succeeded, so `Run` commits and returns the `Nav`. The trace
+   is `["Db.update Todo"]`.
+
+If `p.Id` names no row, step 2 fails with
+`Db.update Todo: no row with id "nope"`, an `*eff.ErrFail`. The loop
+stops at once, the continuation is never called, and `Run` rolls the
+transaction back instead of committing. The `Remove` arm shows the same
+for `Task.fail`: when `Db.get` finds nothing, `match found` picks
+`Task.fail "no such todo"`, a `fail` node, and the transaction is rolled
+back with nothing written.
+
+You can watch this happen. `TestGen_RunTodos` in
+`internal/gen/gen_test.go` emits the to-do example, opens an in-memory
+SQLite store, calls `Ensure`, and runs its `load` and `update` with
+`eff.Run`: log in, add, toggle, delete, an add that is rolled back by a
+later `Task.fail`, log out. It checks the database after each step and
+logs `env.Trace` at the end.
+
+### What is still to come
+
+These are planned and described in the design spec,
 [`docs/superpowers/specs/2026-10-09-m3-codegen-runtime-design.md`](../docs/superpowers/specs/2026-10-09-m3-codegen-runtime-design.md):
 
-- **M3b (future):** an interpreter for `Query` and `Task` effects, and a
-  SQLite database store. Until then, values whose types involve effects or
-  the database (`load`, `update`) are not lowered; `ir.Module.Skipped`
-  lists them.
-- **M3c (future):** the router, sessions, form decoding, and Datastar
-  patching, plus `main.go`, so `alder build` makes a server you can run.
-- **M3d (future):** `alder run`, the dev loop that rebuilds and reloads on
-  every save.
+- **M3c:** the router, sessions, form decoding, and Datastar patching,
+  plus `main.go`, which opens the database, calls `Ensure`, fills the
+  `Env` (store, session, capabilities) and runs `load` and `update` for
+  each request, so `alder build` makes a server you can run.
+- **M3d:** `alder run`, the dev loop that rebuilds and reloads on every
+  save.
 
 ## 9. Reading generated code
 
@@ -811,7 +1130,8 @@ hand, and git ignores it.
 
 `build/todos/` has one Go file per module, named after the module with `.`
 replaced by `__` and `_alder.go` added (`Todos__Index_alder.go` for
-`Todos.Index`), and a `go.mod` that points back at this repository for `rt`.
+`Todos.Index`), plus `app__alder.go` with the app-wide lists of section 8,
+and a `go.mod` that points back at this repository for `rt`.
 The fixed ending is there because Go reads meaning into file names: a file
 ending in `_test.go` is a test, and one whose name ends in `_linux` or
 `_amd64` (before the first `.`) is compiled only on Linux or only on that

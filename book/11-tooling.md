@@ -1,10 +1,11 @@
 # 11. Tooling
 
-`alder check` exists as of M1, `alder build --emit` as of M3a (it
-generates and vets Go for the pure parts of an app), and `alder dump` as
-of M3b. A full `alder build` (effects, pages, a server you can run) and
-`alder run` arrive in M3b–M3d; `test`, `fmt`, holes and `query` are
-planned.
+`alder check` exists as of M1, `alder build --emit` as of M3a, and
+`alder dump` as of M3b. Since M3b, `alder build --emit` generates and vets
+Go for every module of an app, effects and database included: `load` and `update`
+run against SQLite (chapter 7, "How effects run"). Serving the app over
+HTTP arrives in M3c and `alder run` in M3d; `test`, `fmt`, holes and
+`query` are planned.
 
 ## Project layout
 

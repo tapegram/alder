@@ -90,7 +90,11 @@ Db.delete : Table t -> Id t -> Task Unit
 `Insert t` is the table record without `@id`, `@created`, and `@updated`
 fields, and with defaulted fields optional. `Db.update` reads the row,
 applies the function, and writes it back; updating a row that doesn't exist
-fails the task. The function may not change the `@id` field.
+fails the task. The function may not change the `@id` field: if it
+returns a record with a different id, the task fails with
+`Db.update Todo: update may not change the id` and nothing is written
+(`UpdateRow` in `rt/db/store.go`). Deleting a row that doesn't exist is
+not an error.
 
 ```alder
 let id <- Db.insert Todo { title: p.form.title, owner: session.user }
@@ -100,17 +104,84 @@ let _ <- Db.delete Todo id
 
 Writes in one `update` run in a single transaction. If the task fails,
 nothing is written. Inserting or updating a row that violates `@unique`
-fails the task; check first with a query and `Reject` if the user should
-see a message.
+fails the task with a message such as `User.email must be unique`, and
+everything the task wrote before is rolled back; check first with a query
+and `Reject` if the user should see a message.
 
-## Migrations
+## How tables are stored
 
-The compiler keeps a snapshot of the schema in `db/schema.snapshot`. When
-the tables change, `alder build` writes a migration to `db/migrations/` with
-the SQL to go from the snapshot to the new schema, and updates the snapshot.
-Migrations run on startup. A change the compiler cannot migrate safely
-(changing a column's type, removing a `Maybe`) is a build error until the
-migration is edited by hand.
+The database is SQLite (`rt/db/sqlite.go`). Each `table` is one SQL
+table, named by its module-qualified name with `.` replaced by `__`:
+`table Todo` in module `Todo` is `Todo__Todo`. Each field is one column
+with the field's name, in declaration order. Values are stored like this
+(the package comment of `rt/db/table.go`):
+
+| Alder | SQL column |
+|---|---|
+| `Text`, a brand of `Text` | `TEXT` |
+| `Int` | `INTEGER` |
+| `Float` | `REAL` |
+| `Bool` | `INTEGER`, `0` or `1` |
+| `Date` | `TEXT`, `YYYY-MM-DD` |
+| `Time` | `TEXT`, RFC 3339 in UTC with a fixed nine-digit fraction (`2026-10-09T12:00:00.000000000Z`), so text order equals time order |
+| a union with no payloads | `TEXT`, the constructor's name (`Active`) |
+| `Maybe a` | `a`'s column, `NULL` for `Nothing` |
+
+A `Time` is always written with nine digits after the second, so every
+stored time has the same width, and comparing the text compares the
+times. `EncodeTime` in `rt/db/encode.go` does it:
+
+```go
+// EncodeTime is t as stored: RFC 3339, fixed 9-digit fraction, UTC
+// ("2026-10-09T12:00:00.500000000Z"). Every stored time has the same width and the same zone,
+// so comparing and ordering the text (Time conditions, Db.orderBy) compares the times.
+func EncodeTime(t time.Time) string { return t.UTC().Format(timeLayout) }
+```
+
+Every column except a `Maybe` is `NOT NULL`. The `@id` is the primary key,
+`@unique` adds `UNIQUE`, `@ref` adds `REFERENCES`, and a `Bool` or union
+column gets a `CHECK` listing its allowed values. For the to-do example's
+`Todo` table the runtime creates:
+
+```
+CREATE TABLE "Todo__Todo" ("id" TEXT NOT NULL PRIMARY KEY, "title" TEXT NOT NULL, "done" INTEGER NOT NULL CHECK ("done" IN (0, 1)), "due" TEXT, "owner" TEXT NOT NULL REFERENCES "User__User"("id"), "created" TEXT NOT NULL) STRICT
+```
+
+A few rules follow from the mapping:
+
+- **Ids** are 20 random characters from `A–Z a–z 0–9 - _`, safe in a URL
+  (`NewID` in `rt/db/store.go`), such as `QXZMRYnkC2vuE_TefkuR`.
+- **`@created` and `@updated`** are set from the runtime's clock when the
+  row is written. `Db.update` never rewrites the id or `@created`.
+- **Unions order by declaration.** `orderBy` and `.lt`/`.gt` on a union
+  column follow the order the constructors are declared in, not
+  alphabetical order.
+- **`.contains`** ignores case for the letters A–Z only; `É` and `é`
+  differ.
+- **Empty lists.** `Db.and []` matches every row, `Db.or []` matches no
+  row, and `.in []` matches no row.
+
+Every value reaches SQLite as a parameter, never as part of the SQL text,
+so no input can change what a query does.
+
+## Schema changes
+
+When an app starts, the runtime creates the tables (`Ensure` in
+`rt/db/sqlite.go`). It keeps a hash of the `CREATE TABLE` statements in a
+table of its own, `_alder_meta`. If the hash matches, nothing happens. If
+your tables changed since the database was created:
+
+- **In dev mode** every app table is dropped and created again, empty.
+  Your dev data is lost on every schema change; that is the price of not
+  writing migrations while the schema is still moving.
+- **Otherwise** the app refuses to start and touches nothing. The error
+  names the tables that changed:
+
+```
+db: schema mismatch: the database's schema (hash 5de59b25abca) differs from the app's (hash 40d037c4462a); changed tables: Todo.Todo; run in dev mode to recreate the database
+```
+
+Migrations, which would keep the data across a change, are planned.
 
 ## Beyond CRUD
 
