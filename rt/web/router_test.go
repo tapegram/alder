@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -404,6 +405,27 @@ func TestWithScript(t *testing.T) {
 	} {
 		if got := withScript(page); got != want {
 			t.Errorf("withScript(%s)\n got %s\nwant %s", page, got, want)
+		}
+	}
+}
+
+// HEAD is served like GET, without a body (I7): through a real server, which drops the body.
+func TestRouter_Head(t *testing.T) {
+	h := NewRouter([]Route{{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response {
+		return PageResponse(doc("home"), nil, testSession{User: "ada"}, false)
+	}}}, testOpts(nil))
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	for path, want := range map[string]int{"/": 200, "/nope": 404} {
+		req, _ := http.NewRequest("HEAD", srv.URL+path, nil)
+		res, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode != want || len(body) != 0 || res.Header.Get("Content-Type") != "text/html; charset=utf-8" {
+			t.Fatalf("HEAD %s: %d %q, %d body bytes", path, res.StatusCode, res.Header.Get("Content-Type"), len(body))
 		}
 	}
 }
