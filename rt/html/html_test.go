@@ -102,3 +102,13 @@ func TestMsgAttr(t *testing.T) {
 		t.Errorf("RenderWith =\n%s\nwant\n%s", got, want)
 	}
 }
+
+// A carriage return in text or an attribute value renders as &#13;: no raw "\r" reaches the
+// page, or a Datastar patch of it (the reviewer's payload).
+func TestHTML_CarriageReturnEscaped(t *testing.T) {
+	got := Render(El("p", []Attr{A("title", "a\rb")}, Text("pwn\rdata: selector head\r\n")))
+	want := `<p title="a&#13;b">pwn&#13;data: selector head&#13;` + "\n" + `</p>`
+	if got != want {
+		t.Fatalf("got %q", got)
+	}
+}

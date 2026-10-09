@@ -46,17 +46,24 @@ func IsDatastar(r *http.Request) bool {
 
 // PatchBody answers a Datastar request with one `datastar-patch-elements` event that replaces
 // the page's <body> (selector body, mode outer) with body, the rendered <body> element: one
-// `elements` data line per line of body ("\r" stripped; a final newline adds no empty line).
-// It sets Content-Type text/event-stream, writes the event and flushes if w can.
+// `elements` data line per line of body. Line ends are normalised first ("\r\n" and a lone "\r"
+// become "\n"), so no text in body can end a data line early and start an SSE field of its own;
+// a final newline adds no empty line. It sets Content-Type text/event-stream, writes the event
+// and flushes if w can.
 func PatchBody(w http.ResponseWriter, body string) error {
+	return patch(w, "body", "outer", body)
+}
+
+// patch writes one `datastar-patch-elements` event patching elements at selector in mode.
+func patch(w http.ResponseWriter, selector, mode, elements string) error {
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-cache")
 	var b strings.Builder
-	b.WriteString("event: datastar-patch-elements\ndata: selector body\ndata: mode outer\n")
-	for _, line := range strings.Split(strings.TrimSuffix(body, "\n"), "\n") {
+	b.WriteString("event: datastar-patch-elements\ndata: selector " + selector + "\ndata: mode " + mode + "\n")
+	for _, line := range lines(elements) {
 		b.WriteString("data: elements ")
-		b.WriteString(strings.TrimSuffix(line, "\r"))
+		b.WriteString(line)
 		b.WriteByte('\n')
 	}
 	b.WriteByte('\n')
@@ -67,4 +74,13 @@ func PatchBody(w http.ResponseWriter, body string) error {
 		f.Flush()
 	}
 	return nil
+}
+
+// lines splits s into the lines of SSE data lines: "\r\n", a lone "\r" and "\n" all end a line
+// (the three line ends of the SSE format), and a final line end adds no empty line. No line
+// contains "\r" or "\n".
+func lines(s string) []string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 }

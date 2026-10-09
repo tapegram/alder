@@ -80,3 +80,26 @@ func TestIsDatastar(t *testing.T) {
 	}
 	var _ http.Handler = Handler()
 }
+
+// A lone "\r" (or "\r\n") in user text must not end a data line early: the reviewer's payload
+// "pwn\rdata: selector head" would otherwise start an SSE field of its own.
+func TestPatchBody_CarriageReturnCannotInjectFields(t *testing.T) {
+	rec := httptest.NewRecorder()
+	if err := PatchBody(rec, "<body><p>pwn\rdata: selector head</p>\r\n<p>b</p>\r</body>\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	got := rec.Body.String()
+	want := "event: datastar-patch-elements\ndata: selector body\ndata: mode outer\n" +
+		"data: elements <body><p>pwn\ndata: elements data: selector head</p>\ndata: elements <p>b</p>\ndata: elements </body>\n\n"
+	if got != want {
+		t.Fatalf("got %q\nwant %q", got, want)
+	}
+	if strings.Contains(got, "\r") {
+		t.Fatalf("a carriage return reached the stream: %q", got)
+	}
+	for _, line := range strings.Split(strings.TrimSuffix(got, "\n\n"), "\n") {
+		if line != "event: datastar-patch-elements" && !strings.HasPrefix(line, "data: ") {
+			t.Fatalf("line %q is not a data line", line)
+		}
+	}
+}

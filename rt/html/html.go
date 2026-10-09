@@ -119,7 +119,7 @@ func render(b *strings.Builder, n Node, st *FormState) {
 	case kCtrl:
 		render(b, n.control.build(st), st)
 	case kText:
-		b.WriteString(html.EscapeString(n.text))
+		b.WriteString(escape(n.text))
 	case kRaw:
 		b.WriteString(n.text)
 	case kFrag:
@@ -137,7 +137,7 @@ func render(b *strings.Builder, n Node, st *FormState) {
 			b.WriteString(a.Name)
 			if !a.Bool {
 				b.WriteString(`="`)
-				b.WriteString(html.EscapeString(a.value(st)))
+				b.WriteString(escape(a.value(st)))
 				b.WriteByte('"')
 			}
 		}
@@ -153,6 +153,17 @@ func render(b *strings.Builder, n Node, st *FormState) {
 		b.WriteString(n.tag)
 		b.WriteByte('>')
 	}
+}
+
+// escape escapes text or an attribute value: html.EscapeString's five characters, and "\r" as
+// "&#13;", so no rendered page carries a raw carriage return (a Datastar patch splits its lines
+// on it; rt/datastar normalises line ends too).
+func escape(s string) string {
+	e := html.EscapeString(s)
+	if strings.IndexByte(e, '\r') >= 0 {
+		e = strings.ReplaceAll(e, "\r", "&#13;")
+	}
+	return e
 }
 
 // Form is a `<form submit={…}>` posting to action: with JavaScript Datastar posts it, without
