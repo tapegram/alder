@@ -10,6 +10,7 @@ import (
 
 	"alder/internal/diag"
 	"alder/internal/names"
+	"alder/internal/syntax"
 	"alder/internal/types"
 )
 
@@ -132,6 +133,8 @@ func TestFixesApply(t *testing.T) {
 				t.Errorf("%s %s: fix does not apply: %v", dir, d.Code, err)
 			} else if out == string(src) {
 				t.Errorf("%s %s: fix changes nothing", dir, d.Code)
+			} else if _, pd := syntax.ParseFile(d.Span.File, []byte(out)); len(pd) > 0 && !strings.Contains(d.Fix.Replace, "?type") { // `?type` is a hole in type position, which the parser rejects by design
+				t.Errorf("%s %s: fix must leave the file parseable: %v\n%s", dir, d.Code, pd[0].Message, out)
 			} else if w, ok := want[filepath.Base(dir)]; ok && !strings.Contains(out, w) {
 				t.Errorf("%s %s: applied output lacks %q:\n%s", dir, d.Code, w, out)
 			}

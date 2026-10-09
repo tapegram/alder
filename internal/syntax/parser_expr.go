@@ -294,7 +294,7 @@ func (p *Parser) parsePrimary() Expr {
 			p.withBraces(false, func() { e.Subject = p.parseExpr() })
 			p.skipNL()
 			p.expect(LBrace, "`{`")
-			p.withBraces(true, func() { e.Arms = p.parseArms() })
+			p.withBraces(true, func() { e.Arms = p.parseArms(); e.TrailingComma = p.armsTrailingComma })
 			e.Span = p.spanFrom(start)
 			return e
 		case "let":
@@ -490,9 +490,12 @@ func (p *Parser) parseArms() []*Arm {
 // parseArmsWith parses `pattern -> body, …}` (the opening brace is consumed) and consumes the closing brace.
 func (p *Parser) parseArmsWith(body func() Expr) []*Arm {
 	var arms []*Arm
+	trailing := false
+	defer func() { p.armsTrailingComma = trailing }()
 	for {
 		p.skipNL()
 		if p.at(RBrace) {
+			trailing = len(arms) > 0
 			p.advance()
 			return arms
 		}

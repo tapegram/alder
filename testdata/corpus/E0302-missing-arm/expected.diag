@@ -1,2 +1,2 @@
 app/Index.alder:19:28 E0302 `update` does not handle `Delete`
-  fix 24:1-24:1   Delete p -> ?todo,⏎
+  fix 23:4-24:1 ,⏎  Delete p -> ?todo,⏎

@@ -251,14 +251,28 @@ func (ex *exhaustiveness) report(m *syntax.Match) {
 		}
 		arms = append(arms, fmt.Sprintf("  %s -> ?todo,", name))
 	}
-	if m.Span.Start.Line == m.Span.End.Line {
-		// single-line match: insert before the closing `}`
-		trimmed := make([]string, len(arms))
-		for i, a := range arms {
-			trimmed[i] = strings.TrimSpace(a)
+	brace := diag.Pos{Line: m.Span.End.Line, Col: m.Span.End.Col - 1} // the closing `}`
+	trimmed := make([]string, len(arms))
+	for i, a := range arms {
+		trimmed[i] = strings.TrimSpace(a)
+	}
+	switch {
+	case len(m.Arms) == 0 && m.Span.Start.Line == m.Span.End.Line:
+		d.Fix = diag.InsertAt(brace.Line, brace.Col, " "+strings.Join(trimmed, " "))
+	case len(m.Arms) == 0:
+		d.Fix = diag.InsertAt(brace.Line, 1, strings.Join(arms, "\n")+"\n")
+	default:
+		// Replace everything from the end of the last arm to the `}`, so the separating comma is
+		// always present whether or not the source had a trailing one.
+		last := m.Arms[len(m.Arms)-1]
+		text := ", " + strings.Join(trimmed, " ") + " "
+		if last.Span.End.Line < brace.Line {
+			indent := ""
+			if line := lineOf(ex.mc.m, brace.Line); brace.Col-1 <= len(line) && strings.TrimSpace(line[:brace.Col-1]) == "" {
+				indent = line[:brace.Col-1]
+			}
+			text = ",\n" + strings.Join(arms, "\n") + "\n" + indent
 		}
-		d.Fix = diag.InsertAt(m.Span.End.Line, m.Span.End.Col-1, " "+strings.Join(trimmed, " "))
-	} else {
-		d.Fix = diag.InsertAt(m.Span.End.Line, 1, strings.Join(arms, "\n")+"\n")
+		d.Fix = diag.ReplaceSpan(diag.Span{Start: last.Span.End, End: brace}, text)
 	}
 }
