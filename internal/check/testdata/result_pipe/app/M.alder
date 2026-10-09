@@ -1,0 +1,17 @@
+module M
+
+type Name = brand Text
+
+add3 : Int -> Int -> Int -> Int
+add3 a b c = a + b + c
+
+greet : Int -> Text -> Text
+greet n t = t
+
+-- a partial pipe: the application still lacks its last parameter
+partial : Int -> Int
+partial x = (1 |> add3 2) x
+
+-- a widening pipe: a `Name` flows into a `Text` parameter
+widen : Name -> Text
+widen n = n |> greet 1

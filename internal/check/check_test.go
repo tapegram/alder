@@ -23,6 +23,12 @@ func runDir(t *testing.T, dir string) *diag.Bag {
 
 // runDirResult checks dir and returns the checker's Result (nil when parsing failed) with the diagnostics.
 func runDirResult(t *testing.T, dir string) (*Result, *diag.Bag) {
+	_, res, bag := runDirProg(t, dir)
+	return res, bag
+}
+
+// runDirProg is runDirResult that also returns the loaded program.
+func runDirProg(t *testing.T, dir string) (*names.Program, *Result, *diag.Bag) {
 	std, err := types.LoadStd()
 	if err != nil {
 		t.Fatal(err)
@@ -38,7 +44,7 @@ func runDirResult(t *testing.T, dir string) (*Result, *diag.Bag) {
 		res = Program(prog, bag)
 	}
 	bag.Sort()
-	return res, bag
+	return prog, res, bag
 }
 
 func render(bag *diag.Bag) string {

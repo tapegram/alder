@@ -154,7 +154,7 @@ func (mc *modCtx) mismatch(span diag.Span, got, expected types.Type) *diag.Diagn
 }
 
 // check verifies e against expected, pushing the expectation into literals, lambdas, branches and blocks.
-// It records expected as e's type even on a mismatch, so lowering never finds an untyped node.
+// It records expected as e's type even on a mismatch, so on a program without errors every node has a type.
 func (mc *modCtx) check(e syntax.Expr, expected types.Type, env *env, eff effect) {
 	mc.checkExpr(e, expected, env, eff)
 	mc.c.record(e, expected)
@@ -777,6 +777,15 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 	return mc.applyFn(x.Fn, c.u.Apply(fnT), x.Args, pipe, want, x.Span, env, eff)
 }
 
+// pipedApp is the type of `f a…` on the right of `|>`: the callee's parameters after its explicit
+// arguments (the piped one first) to the callee's own result, as one multi-parameter Fun.
+func (mc *modCtx) pipedApp(app *syntax.App) types.Type {
+	if fn, ok := mc.c.u.Apply(mc.c.res.Types[app.Fn]).(*types.Fun); ok && len(app.Args) < len(fn.Params) {
+		return &types.Fun{Params: fn.Params[len(app.Args):], Result: fn.Result}
+	}
+	return types.Err // the callee is not a function taking the piped value, already reported
+}
+
 // applyFn checks args (and the piped value, which comes last) against fnT's parameters.
 func (mc *modCtx) applyFn(fnExpr syntax.Expr, fnT types.Type, args []syntax.Expr, pipe *pipeArg, want types.Type, span diag.Span, env *env, eff effect) types.Type {
 	c := mc.c
@@ -860,7 +869,7 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 		p := &pipeArg{t: l, span: x.L.GetSpan()}
 		if app, ok := x.R.(*syntax.App); ok {
 			res := mc.inferApp(app, env, eff, p, nil)
-			c.record(app, &types.Fun{Params: []types.Type{l}, Result: res}) // the application before the piped value
+			c.record(app, mc.pipedApp(app))
 			return res
 		}
 		fnT := c.u.Apply(mc.infer(x.R, env, eff))
