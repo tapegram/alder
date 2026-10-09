@@ -44,8 +44,26 @@ update msg model session = match msg {
 }
 ```
 
-A `Query` can be used inside a `Task` block directly. A `Task` cannot be
-used inside a `Query` block.
+A `Query` can be run inside a `Task` block with `let x <-`. That is the
+only place a `Query` stands for a `Task`: as the block's last expression,
+in a `match` arm or an `if` branch, as the whole body of a `Task` value,
+or as an element of `Task.all`, a `Query` is a type error (E0003,
+`expected Task Int, got Query Int`). Bind it and finish with
+`Task.succeed`:
+
+```alder
+recount : Task Int
+recount = {
+  let n <- Db.count (Db.from Todo)
+  Task.succeed n
+}
+```
+
+A `Task` cannot be used inside a `Query` block.
+
+Effect values are descriptions, not results, so they cannot be compared:
+`==` and `!=` on a `Query` or `Task` (or on a record or union holding one)
+are E0003, and neither can be a `Dict` key.
 
 ## Functions on effects
 
@@ -67,7 +85,10 @@ There is no `andThen`; use `let x <-` in a block.
 
 A `Task` can fail. `Task.fail "message"` fails explicitly; a capability may
 fail on its own (database down, email rejected). A failed task stops
-`update`, and the runtime renders `App.error`. There is no `try`/`catch`:
+`update`, undoes everything it did (its database writes and its
+`Session.put` changes), and the runtime renders `App.error`. A task that
+ends in `Reject` has not failed: its writes and session changes are kept
+(chapter 6). There is no `try`/`catch`:
 if a failure should be handled, the capability returns a `Result` instead
 of failing.
 
@@ -170,14 +191,26 @@ then calls the continuation, then returns `Rerender`. Nothing is batched,
 reordered or run in parallel: steps run in the order the block lists
 them, one at a time.
 
-**One transaction per `Task`.** Before the first step of a `Task`, `Run`
-begins a database transaction. If the task produces its result, `Run`
-commits. If it fails in any way (`Task.fail`, `Db.update` on a row
-that doesn't exist, `Query.notFound`, an error from the database or a
-capability, or a Go panic), `Run` rolls back instead. `Db.get` finding
-nothing is not a failure: it produces `Nothing`. Either every write of an `update`
-happens or none does. Reads inside a `Task` go through the same
-transaction, so they see the task's own earlier writes.
+**One transaction per `Task`, begun when needed.** `Run` does not begin
+a transaction up front. The first step of a `Task` that touches the
+database begins one (`db.TxOf`, through `Env.Transaction`), and every
+later step uses the same one, so reads inside a `Task` see the task's own
+earlier writes. A `Task` that never touches the database (it only calls
+`Session.put`, a capability or `Http.get`) begins none, and a slow
+capability or HTTP call made before the first database step holds no
+database lock: other requests' tasks run meanwhile. If the task produces
+its result, `Run` commits the transaction, if one was begun. If it fails
+in any way (`Task.fail`, `Db.update` on a row that doesn't exist,
+`Query.notFound`, an error from the database or a capability, or a Go
+panic), `Run` rolls the transaction back instead. `Db.get` finding
+nothing is not a failure: it produces `Nothing`. Either every write of an
+`update` happens or none does.
+
+**The session is part of the same promise.** `Run` remembers the session
+a `Task` starts with. If the task fails, `Run` puts that session back, so
+a `Session.put` before a `Task.fail` is undone like a write. A task that
+succeeds keeps its session changes, and so does one producing `Reject`
+(chapter 6): it is a successful result.
 
 **A `Query` has no transaction and cannot write.** `Run` runs a `Query`
 directly against the database. A step marked as a write (`Db.insert`,
@@ -245,6 +278,35 @@ func (p password) Verify(ctx context.Context, args struct {
 	return rt.Nothing[string](), nil
 }
 ```
+
+**A capability can write in the task's transaction.** While `Run` runs,
+the `ctx` it passes to a capability carries the running effect
+(`eff.EnvFrom(ctx)`), so a Go implementation reaches the task's store and
+transaction with `db.StoreFrom(ctx)` and `db.TxFrom(ctx)`; the
+transaction is begun on first use, as for a `Db.*` step. What it writes
+that way commits or rolls back with the rest of the task. This
+implementation of `Pay.charge` (from `TestGen_RunEffectsCorpus` in
+`internal/gen/gen_test.go`, over `testdata/golden/gen_vet/m3b-effects`)
+inserts a `Customer` row in the running task's transaction:
+
+```go
+func (pay) Charge(ctx context.Context, args struct {
+	Amount float64
+	Card   string
+}) (rt.Maybe[string], error) {
+	row := insertvals__Shop__Customer(insert__Shop__Customer{Email: args.Card + "@pay", Seen: rt.Nothing[time.Time]()})
+	_, err := db.InsertRow(ctx, db.StoreFrom(ctx), db.TxFrom(ctx), table__Shop__Customer, row, time.Now())
+	return rt.Just(args.Card), err
+}
+```
+
+When the task that called `Pay.charge` then fails, the row is gone.
+A capability that writes through the store without `db.TxFrom(ctx)` (with
+a `nil` transaction) is outside the task: its writes survive a rollback,
+and once the task has begun its transaction the write waits for it,
+forever on `:memory:` (one connection) and up to SQLite's five-second busy
+timeout on a file. In a `Query`, `db.TxFrom(ctx)` is `nil` and the store
+reads without a transaction.
 
 It is registered in the `Env` under the capability's module-qualified
 name, `env.Caps["Auth.Login.Password"] = password{user: uid}`, and the

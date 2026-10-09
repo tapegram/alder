@@ -121,7 +121,8 @@ written by the first build.
   `Html.unsafe`.
 - `rt/eff`: `Query[T]` and `Task[T]` as `Pure | Bind | Op`; `Run(ctx,
   store, q)` interprets: reads for `Query`, reads+writes for `Task`; one
-  transaction per `Task` run; `NotFound` → `ErrNotFound`; `Fail` → `ErrFail`;
+  transaction per `Task` run, begun lazily (see "Decisions recorded");
+  `NotFound` → `ErrNotFound`; `Fail` → `ErrFail`;
   every op is logged in dev mode.
 - `rt/db`: `Store` interface (`Get`, `Select`, `Count`, `Insert`, `Update`,
   `Delete`, `Begin/Commit/Rollback`) and its SQLite implementation; schema
@@ -302,7 +303,7 @@ Each milestone gets its own implementation plan.
   `Call`: a name for the trace, a write flag, and a Go function of the
   `Env`); `eff.Run` is a loop over a heap continuation stack, runs one step
   at a time in source order, never batches or parallelises, and starts no
-  goroutines. A `Task` runs in exactly one transaction, rolled back on
+  goroutines. A `Task` runs in at most one transaction, rolled back on
   `Fail`, `NotFound`, any error or a panic; a `Query` runs with no
   transaction and a write `Call` reached from one is `ErrInternal`. Every
   `Call` name is appended to `Env.Trace` and logged at level `effect`;
@@ -318,6 +319,42 @@ Each milestone gets its own implementation plan.
   `.in []` are false. `Db.update` that changes the id fails the task
   (`UpdateRow`). Without dev mode a schema-hash mismatch refuses to start
   and names the changed tables.
+- Transactions are lazy (M3b final fix wave, I2). `Run` begins none up
+  front: `Env.Transaction` (used by `db.TxOf`/`db.TxFrom`) begins the
+  `Task`'s transaction on its first store access and records it in
+  `Env.Tx`; `Run` commits or rolls back only a transaction that was begun.
+  So a `Task` that calls a capability or `Http` before touching the
+  database (or never touches it) holds no SQLite write lock (file
+  databases use `BEGIN IMMEDIATE`), and a session-only `Task` begins
+  nothing. A `Begin` error fails the `Task` at that first store step.
+- A failed `Task` restores the session (I1). `Run` snapshots `Env.Session`
+  at start and restores it on every failure path (`Fail`, `NotFound`, an
+  error, a panic, a failed commit); a successful `Task`, including one that
+  produces `Reject`, keeps its `Session.put` changes and its writes.
+- The context carries the `Env` (I3). While `Run` runs, `Env.Ctx` carries
+  the `*eff.Env` (`eff.EnvFrom(ctx)`), and generated code passes that `Ctx`
+  to every store operation and capability method; `rt/db` adds
+  `TxFrom(ctx)` (lazy, as `TxOf`) and `StoreFrom(ctx)`, so a Go capability
+  writes in the running `Task`'s transaction. Capability method signatures
+  stay `(ctx, args) (T, error)`.
+- Constraint failures are `Task` failures (I4): `@unique` →
+  `"<Table>.<col> must be unique"`; a dangling `@ref` on insert or update
+  (`SQLITE_CONSTRAINT_FOREIGNKEY`) → `"<Table>.<col>: no <RefTable> with
+  that id"` (the column found by looking each `@ref` value up); deleting a
+  referenced row → `"<Table> <id> is referenced by another row"`; all
+  `*eff.ErrFail`.
+- Schema identity (I5): `Ensure` hashes the sorted `CREATE TABLE`
+  statements (declaration order is no change) and records a separate
+  storage format version, `db.Format` (`"1"`), under `format` in
+  `_alder_meta`; rt/db bumps it whenever `createStmt` changes. A different
+  format recreates in dev and, otherwise, refuses with "database format v0
+  is older than this runtime (v1)".
+- Conditions on `Maybe` columns are two-valued (C1): `Eq`/`Ne` render as
+  `IS`/`IS NOT`, `In` with `Nothing` in the list adds `OR col IS NULL`,
+  and every leaf SQL could make NULL (`<`, `<=`, `>`, `>=`, `.contains`,
+  `IN`) is `COALESCE((leaf), 0)` (an `IS`/`IS NULL` form never is NULL),
+  so `Db.not` matches exactly the rows its operand does not. Ordering by a
+  `Maybe` column puts `Nothing` first ascending.
 - Generated files are `<Module segments joined by __>_alder.go` (M3b,
   superseding "files are `<…>.go`" above and the plan's `.alder.go`). Go
   truncates a file name at its first `.` before looking for a `_GOOS` or

@@ -178,6 +178,13 @@ creating something, so a browser refresh doesn't resubmit. Use `Reject` when
 a well-formed submission is refused for a reason only `update` can know
 (wrong password, name already taken); `<Errors form />` shows the text.
 
+`Reject` is a successful result, not a failure: the `Task` that produced it
+commits, so anything it wrote and any `Session.put` it ran are kept. To
+refuse without changing anything, decide before writing (`let taken <-` a
+query, then `Reject` or the writes). Only a failed `Task` (`Task.fail`, a
+`@unique` violation, a capability error) undoes its writes and its session
+changes (chapter 7).
+
 ## The request lifecycle
 
 ```
@@ -216,7 +223,7 @@ notFound = <h1>Not found</h1>
 
 - `session` declares the session record. The runtime stores it in a signed
   cookie. Field types follow the same rules as form fields. `Session.put`
-  (chapter 7) changes it.
+  (chapter 7) changes it; a `Task` that fails leaves it as it was.
 - `login` names the page to redirect to when `requires` fails.
 - `error` and `notFound` render failure pages.
 - `msg` and `update` declare app-level messages (above). They are optional.

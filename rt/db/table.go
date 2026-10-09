@@ -259,8 +259,9 @@ func column(cols []Column, name string) *Column {
 // renderCond renders c; cols (nil when unknown) lets Lt/Le/Gt/Ge on an enum column compare
 // declaration order, as ORDER BY does, rather than the constructor names' spelling, and makes
 // every condition on a nullable (Maybe) column two-valued, so NOT, AND and OR never see SQL's
-// NULL: Eq/Ne render as IS / IS NOT; In whose list holds nil (Nothing) adds `OR col IS NULL`;
-// and every other leaf on such a column is wrapped as COALESCE((leaf), 0).
+// NULL: Eq/Ne render as IS / IS NOT; In whose list holds nil (Nothing) adds `OR col IS NULL`
+// (`col IS NULL` alone when it holds only nil); and every leaf SQL could make NULL (Lt, Le, Gt,
+// Ge, Contains, In) is wrapped as COALESCE((leaf), 0). IS forms are never NULL.
 func renderCond(c Cond, cols []Column, args *[]any) string {
 	col := quote(c.Col)
 	nullable := false

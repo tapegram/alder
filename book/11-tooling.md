@@ -36,6 +36,11 @@ alder explain <id>   explain a diagnostic code
 ```
 
 `alder build --emit` writes the generated Go to `build/<app>/` and vets it. Chapter 13 walks through what it generates and why: see [How the compiler works](13-compiler.md).
+It replaces only the files it generated; anything else in `build/<app>/` is
+kept, and vetted with the rest. `build/<app>/` must contain only generated
+files: if the vet fails and the directory holds Go files alder did not
+write (a test file left there, say), the error names them; move them out
+and build again.
 
 `alder dump` shows what the compiler sees:
 
@@ -51,9 +56,10 @@ its `app/`, in path order; `--tokens` heads each file's listing with
 appears as `Text` tokens. `--ir` needs an app directory: it checks the app
 like `alder check` and prints the IR only when there are no errors and no
 holes. The dump goes to stdout and diagnostics to stderr. `alder dump`
-exits 0 when clean, 1 when there are errors (the AST and tokens are still
-printed, the IR is not), and 2 on a usage or I/O failure, including
-`--ir` given a file. Chapter 13 reads these dumps.
+exits 0 when clean; 1 when there are errors, which for the AST and the
+tokens means parse errors (they are still printed) and with `--ir` means
+any check error or a hole (the IR is not printed); and 2 on a usage or I/O
+failure, including `--ir` given a file. Chapter 13 reads these dumps.
 
 The generated `go.mod` points at the alder repository, which holds the
 runtime the code imports (`replace alder => "<path>"`). The `alder` binary
@@ -83,7 +89,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 |---|---|---|
 | E0001 | parse error (also: an identifier with `__` in it, a module name segment ending in `_`) | — |
 | E0002 | unknown name | — |
-| E0003 | type mismatch | conversion such as `Text.fromInt (…)` where one exists |
+| E0003 | type mismatch (also: `==` or a `Dict` key on a function or an effect value, a column method on a column held in a variable, a `Db` function over a type parameter) | conversion such as `Text.fromInt (…)` where one exists |
 | E0004 | non-exhaustive `match` | arm skeleton |
 | E0005 | module name does not match its file path | — |
 | E0006 | import cycle | — |
@@ -91,8 +97,9 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0008 | wrong number of parameters or arguments, or of type arguments (`Box Int Text` for `type Box a`) | — |
 | E0009 | duplicate definition, or a constructor declared in two imported modules | — |
 | E0010 | required declaration missing (page `load`/`view`/`update`, `App` `error`/`notFound`/`login`/`session`) | — |
-| E0011 | invalid declaration (unstorable table field, unusable page or form field, bad `@id`, brand constructor used outside its module) | — |
+| E0011 | invalid declaration (unstorable table field, unusable page or form field, bad `@id`, brand constructor used outside its module, a record that contains itself by value) | — |
 | E0012 | a type, table, form or component in a page module or `App` named like a generated type: `Params`, `Msg`, `Session`, or `<Msg>Params` for a declared `msg` | — |
+| E0014 | two module names that differ only in case (`Ab` and `AB`): their files would be one on a case-insensitive file system | — |
 | E0101 | `Db.get T x` where `x` is not `Id T` | `Db.from T \|> Db.where (T.<col>.eq x) \|> Db.first` when a column of `x`'s type exists |
 | E0102 | field access on a `Maybe` | `match` skeleton |
 | E0201 | name from a module that isn't imported | `import M` |

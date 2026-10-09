@@ -75,7 +75,33 @@ Db.or  : List (Condition t) -> Condition t
 Db.not : Condition t -> Condition t
 ```
 
-Several `Db.where` calls are combined with `and`.
+A `Select` is a description that the steps add to, not a pipeline that
+runs in order: where a step sits does not change what it means.
+
+- Several `Db.where` calls are combined with `and`.
+- `Db.orderBy` keys accumulate in the order written: the first is the
+  primary sort key, a later one breaks its ties.
+- `Db.limit` and `Db.offset` are settings: the last one written wins, and
+  they apply after every condition and ordering wherever they appear, so
+  `Db.limit 10 |> Db.where c` is ten rows that satisfy `c`.
+- `Db.first` is the first row: a `Select` with limit 1, or with its own
+  limit when that is smaller (`Db.limit 0 |> Db.first` is `Nothing`).
+
+A column must be written in place, `Todo.done.eq False`: a column
+method on a variable or record field holding a column (`let c = Todo.done`,
+then `c.eq False`) is E0003. And the database functions need to know their
+table where they are used: `countAll : Table t -> Query Int` calling
+`Db.count (Db.from t)` is E0003 (`` `Db.count` needs a concrete table; `t`
+is a type parameter``); write one function per table, `Table Todo`.
+
+**`Maybe` columns.** A condition on a `Maybe` column is true or false for
+every row, never unknown. `Nothing` is matched by `.isNothing`,
+`.eq Nothing` and an `.in` list that contains `Nothing`
+(`Todo.due.in [Just d, Nothing]`), and `.eq (Just d)` and `.ne Nothing`
+never match it. `Db.not c` matches exactly the rows `c`
+does not, so `Db.not (Todo.due.eq (Just d))` includes the rows with no due
+date. Ordering by a `Maybe` column puts `Nothing` first with `.asc` and
+last with `.desc`.
 
 ## Writing
 
@@ -106,7 +132,16 @@ Writes in one `update` run in a single transaction. If the task fails,
 nothing is written. Inserting or updating a row that violates `@unique`
 fails the task with a message such as `User.email must be unique`, and
 everything the task wrote before is rolled back; check first with a query
-and `Reject` if the user should see a message.
+and `Reject` if the user should see a message. `Reject` is a successful
+result, so writes made before it are kept (chapter 6): decide first, then
+write.
+
+`@ref` is checked the same way. Inserting or updating a row whose `@ref`
+field names a row that does not exist fails the task with
+`Todo.owner: no User with that id`; deleting a row that another row still
+refers to fails with `User QXZMRYnkC2vuE_TefkuR is referenced by another
+row` (the table and the id). Either way the task's earlier writes are
+rolled back.
 
 ## How tables are stored
 
@@ -169,9 +204,13 @@ so no input can change what a query does.
 When an app starts, the runtime creates the tables (`Ensure` in
 `rt/db/sqlite.go`). Today a test calls `Ensure` (`TestGen_RunTodos` in
 `internal/gen/gen_test.go`); from M3c the generated server calls it at
-startup. It keeps a hash of the `CREATE TABLE` statements in a
-table of its own, `_alder_meta`. If the hash matches, nothing happens. If
-your tables changed since the database was created:
+startup. It keeps two things in a table of its own, `_alder_meta`: a
+hash of the `CREATE TABLE` statements, sorted so that the order of your
+`table` declarations does not matter, and the storage format version of
+the runtime that created the database (`db.Format`, now `1`, raised
+whenever the runtime changes how a table is laid out). If both match,
+nothing happens. If your tables changed since the database was created, or
+it was created by a runtime with another format:
 
 - **In dev mode** every table in the database is dropped, except
   SQLite's own (`sqlite_*`) and `_alder_meta`, and the app's tables are
@@ -186,12 +225,20 @@ your tables changed since the database was created:
 db: schema mismatch: the database's schema (hash 5de59b25abca) differs from the app's (hash 40d037c4462a); changed tables: Todo.Todo; run in dev mode to recreate the database
 ```
 
+or, for a database from a runtime with an older format:
+
+```
+db: database format v0 is older than this runtime (v1); run in dev mode to recreate the database
+```
+
 Migrations, which would keep the data across a change, are planned.
 
 ## Beyond CRUD
 
 Joins, aggregates, and full-text search are not in the language. Declare a
-capability and implement it in Go against the same database:
+capability and implement it in Go against the same database, through
+`db.StoreFrom(ctx)` and `db.TxFrom(ctx)` so that it reads and writes in
+the running task's transaction (chapter 7):
 
 ```alder
 capability Reports {

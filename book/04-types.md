@@ -12,7 +12,7 @@
 | `List a` | `[1, 2, 3]` |
 | `Maybe a` | `Just x`, `Nothing` |
 | `Result e a` | `Ok x`, `Err e` |
-| `Dict k v` | built with `Dict.fromList`; `k` may be any type that can be compared with `==` (no functions in it), and two keys are the same key when they are `==` |
+| `Dict k v` | built with `Dict.fromList`; `k` may be any type that can be compared with `==` (no functions or effect values in it, including inside a union's payloads), and two keys are the same key when they are `==` |
 | `Date`, `Time` | calendar date; instant (chapter 9) |
 
 There is no `Char` and no `String`: text is `Text`. There is no tuple: use
@@ -145,6 +145,8 @@ type Page a = { items: List a, total: Int }
 - No type aliases. A new name is always a new type.
 - No typeclasses, interfaces, or traits.
 - No tuples.
-- No recursive record types without going through a union.
+- No record that contains itself by value (`type R = { r: R }`, directly
+  or through other records, is E0011): a record may refer to itself only
+  through `Maybe`, `List`, `Dict` or another union.
 - No subtyping other than brand-to-base, and a `requires` page's `Session`
   to the app's (chapter 6).

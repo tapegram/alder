@@ -1833,11 +1833,15 @@ import (
 
 type pay struct{}
 
+// Charge writes a row through the running Task's transaction (I3): it commits or rolls back
+// with the Task.
 func (pay) Charge(ctx context.Context, args struct {
 	Amount float64
 	Card   string
 }) (rt.Maybe[string], error) {
-	return rt.Just(args.Card), nil
+	row := insertvals__Shop__Customer(insert__Shop__Customer{Email: args.Card + "@pay", Seen: rt.Nothing[time.Time]()})
+	_, err := db.InsertRow(ctx, db.StoreFrom(ctx), db.TxFrom(ctx), table__Shop__Customer, row, time.Now())
+	return rt.Just(args.Card), err
 }
 func (pay) Balance(ctx context.Context) (float64, error) { return 2.5, nil }
 
@@ -1932,6 +1936,33 @@ func TestShop(t *testing.T) {
 	}
 	if nav := Shop__after(rt.Reject("no")); nav.Tag != rt.NavReject || nav.Text != "no!" || !Shop__isRedirect(rt.Redirect(rt.Page{Path: "/"})) {
 		t.Errorf("after = %+v", nav)
+	}
+
+	// a capability's write is part of the Task: rolled back when the Task fails, kept when it
+	// succeeds (I3)
+	customers := func() int64 {
+		t.Helper()
+		n, err := eff.RunQuery(env, eff.Q(eff.Call("count", false, func(e *eff.Env) (int64, error) {
+			return db.CountRows(e.Ctx, e.Store.(db.Store), db.TxOf(e), db.From(table__Shop__Customer))
+		})))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before := customers()
+	chargeThenFail := eff.Bind(Shop__charges[0], func(rt.Maybe[string]) eff.Task[int64] { return eff.Fail[int64]("declined") })
+	if _, err := eff.Run(env, eff.KTask, chargeThenFail); err == nil || err.Error() != "declined" {
+		t.Fatalf("charge then fail: %v", err)
+	}
+	if n := customers(); n != before {
+		t.Errorf("customers after a rolled-back charge: %d, want %d", n, before)
+	}
+	if card, err := eff.Run(env, eff.KTask, Shop__charges[0]); err != nil || card.Val != "a" {
+		t.Fatalf("charge: %+v %v", card, err)
+	}
+	if n := customers(); n != before+1 {
+		t.Errorf("customers after a charge: %d, want %d", n, before+1)
 	}
 
 	// conditions on Maybe columns are two-valued (C1)

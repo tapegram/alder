@@ -432,6 +432,23 @@ func TestStore_NullableConditions(t *testing.T) {
 			t.Errorf("%s: got %v, want %s", c.name, got, c.want)
 		}
 	}
+	// ordering by a Maybe column: Nothing first ascending, last descending (book chapter 8)
+	for _, o := range []struct {
+		ord  Order
+		want string
+	}{{Asc("due"), "t2 t0 t1"}, {Desc("due"), "t1 t0 t2"}} {
+		rows, err := All(ctx, s, nil, OrderBy(o.ord, From(todoTable)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, r := range rows {
+			got = append(got, r.Title)
+		}
+		if strings.Join(got, " ") != o.want {
+			t.Errorf("order %+v: got %v, want %s", o.ord, got, o.want)
+		}
+	}
 }
 
 func TestStore_AllFirstCount(t *testing.T) {

@@ -77,32 +77,37 @@ into **tokens**: a name, a number, a `{`, a `->`. Each token remembers its
 kind, its text, and where it started: line, column and byte offset
 (`Token` in `internal/syntax/token.go`).
 
-Here is what the lexer produces for a file holding just two lines,
-`session { user: Maybe User.UserId }` and `update msg session = 1`, which
-are shaped like lines in `examples/todos/app/App.alder`. The listing was
-printed by `alder dump --tokens` (section 3 shows how to run it):
+Here is what the lexer produces for a file holding a `module App` line, a
+blank line, and two lines, `session { user: Maybe User.UserId }` and
+`update msg session = 1`, which are shaped like lines in
+`examples/todos/app/App.alder`. The listing was printed by
+`alder dump --tokens` (section 3 shows how to run it):
 
 ```
-1:1 Keyword "session"
-1:9 LBrace "{"
-1:11 LIdent "user"
-1:15 Colon ":"
-1:17 UIdent "Maybe"
-1:23 UIdent "User"
-1:27 Dot "."
-1:28 UIdent "UserId"
-1:35 RBrace "}"
-1:36 NL "\n"
-2:1 LIdent "update"
-2:8 Keyword "msg"
-2:12 Keyword "session"
-2:20 Equal "="
-2:22 Int "1"
-2:23 NL "\n"
+1:1 Keyword "module"
+1:8 UIdent "App"
+1:11 NL "\n"
+2:1 NL "\n"
+3:1 Keyword "session"
+3:9 LBrace "{"
+3:11 LIdent "user"
+3:15 Colon ":"
+3:17 UIdent "Maybe"
+3:23 UIdent "User"
+3:27 Dot "."
+3:28 UIdent "UserId"
+3:35 RBrace "}"
+3:36 NL "\n"
+4:1 LIdent "update"
+4:8 Keyword "msg"
+4:12 Keyword "session"
+4:20 Equal "="
+4:22 Int "1"
+4:23 NL "\n"
 ```
 
-Notice that `session` and `msg` are `Keyword` tokens on both lines. On the
-first line `session` starts a declaration. On the second, `msg` and
+Notice that `session` and `msg` are `Keyword` tokens on lines 3 and 4. On
+line 3 `session` starts a declaration. On line 4, `msg` and
 `session` are just parameter names, which is exactly how
 `examples/todos/app/App.alder` uses them in `update msg session = match msg { … }`.
 
@@ -262,7 +267,10 @@ E0005. That rule lets the compiler find a module from its name alone.
 
 Each `import` is an edge in the **module graph** (`internal/names/graph.go`).
 The graph must have no cycles: if `A` imports `B` and `B` imports `A`,
-neither can be understood first, and you get E0006. With no cycles, the
+neither can be understood first, and you get E0006. Two module names may
+not differ only in case either (`Ab` and `AB`, E0014): each module becomes
+a file named after it, and on a case-insensitive file system the two would
+be one file. With no cycles, the
 modules can be put in an order where every module comes after the modules
 it imports (`Program.Order`). Every later stage walks modules in that order.
 
@@ -774,8 +782,11 @@ packages the generated code imports. There are five.
   happens: a text node goes through `html.EscapeString`, and so does every
   attribute value. A `Raw` node is written as is.
 - **`rt/std`** (`rt/std/*.go`) has one Go function per stdlib function:
-  `std.ListMap` is `List.map`, `std.TextToUpper` is `Text.toUpper`. The
-  effectful ones, in `rt/std/effects.go`, don't do anything: `std.TimeNow`
+  `std.ListMap` is `List.map`, `std.TextToUpper` is `Text.toUpper`. A call
+  lets Go infer a generic one's type arguments; a stdlib function used as
+  a value instead (`let r = List.reverse`) is written with them,
+  `std.ListReverse[int64]`, worked out from its type at that use
+  (`stdInstance` in `internal/gen/stdcall.go`). The effectful ones, in `rt/std/effects.go`, don't do anything: `std.TimeNow`
   returns a one-step effect tree that reads the clock when it is run.
 - **`rt/eff`** (`rt/eff/eff.go`, `run.go`) is the effect runtime: the tree
   that a `Query` or `Task` is, and `Run`, which performs it. Chapter 7's
@@ -927,7 +938,8 @@ It is long, but it is the IR printed with Go spelling, one node at a time
   receives the `Env` and calls a typed helper in `rt/db` (`db.All`,
   `db.GetRow`, `db.CountRows`, `db.First`) with the context, the store
   and the transaction from it. `db.TxOf(_e1)` is the running `Task`'s
-  transaction, or `nil` in a `Query`.
+  transaction, which the first such step of a `Task` begins, or `nil` in
+  a `Query`.
 - A `Select` is data. `db.Limit(10, db.OrderBy(db.Desc("created"),
   db.Where(db.CEq("owner", session.User), db.From(table__Todo__Todo))))`
   reads inside out: start from every row of `Todo`, keep `owner = …`,
@@ -991,7 +1003,9 @@ what happens, following `interpret` in `rt/eff/run.go`. `interpret` is a
 loop holding the current node and a stack of continuations: the "rest of
 the block" functions it has yet to call.
 
-1. A `Query` gets no transaction, so `env.Tx` stays `nil`.
+1. A `Query` gets no transaction: `env.Tx` is `nil`, and `db.TxOf` gives
+   `nil` too. `Run` also puts `env` itself in `env.Ctx` for as long as it
+   runs, so a capability can find it (chapter 7).
 2. The node is a `bind`. Its continuation (the function that takes
    `todos`) goes on the stack, and the loop moves to its first part.
 3. The node is the `call` named `Db.all Todo`. It isn't a write, so it may
@@ -1085,8 +1099,10 @@ unused, but the call looks the same for every table.
 This time the step is marked `true`, a write, and the caller runs it with
 `eff.Run(env, eff.KTask, …)`:
 
-1. `Run` calls `env.Store.Begin` and puts the transaction in `env.Tx`.
-2. The `call` named `Db.update Todo` is traced and run. `db.UpdateRow`
+1. `Run` remembers `env.Session` and begins no transaction yet.
+2. The `call` named `Db.update Todo` is traced and run. Its `db.TxOf(_e2)`
+   finds no transaction, so it begins one (`env.Store.Begin`, through
+   `env.Transaction`) and records it in `env.Tx`. `db.UpdateRow`
    (`rt/db/store.go`) reads the row inside the transaction,
    `SELECT "id", "title", "done", "due", "owner", "created" FROM "Todo__Todo" WHERE "id" = ?`,
    decodes it, and applies the function, which flips `Done`. It checks
@@ -1098,13 +1114,14 @@ This time the step is marked `true`, a write, and the caller runs it with
 
    `id` and `created` are not in the `SET` list: neither can change.
 3. The continuation returns `pure` of `rt.Rerender()`, a `Nav`.
-4. The task succeeded, so `Run` commits and returns the `Nav`. The trace
-   is `["Db.update Todo"]`.
+4. The task succeeded, so `Run` commits the transaction step 2 began and
+   returns the `Nav`. The trace is `["Db.update Todo"]`.
 
 If `p.Id` names no row, step 2 fails with
 `Db.update Todo: no row with id "nope"`, an `*eff.ErrFail`. The loop
 stops at once, the continuation is never called, and `Run` rolls the
-transaction back instead of committing. The `Remove` arm shows the same
+transaction back instead of committing, and puts back the session it
+remembered. The `Remove` arm shows the same
 for `Task.fail`: when `Db.get` finds nothing, `match found` picks
 `Task.fail "no such todo"`, a `fail` node, and the transaction is rolled
 back with nothing written.
@@ -1113,7 +1130,8 @@ You can watch this happen. `TestGen_RunTodos` in
 `internal/gen/gen_test.go` emits the to-do example, opens an in-memory
 SQLite store, calls `Ensure`, and runs its `load` and `update` with
 `eff.Run`: log in, add, toggle, delete, an add that is rolled back by a
-later `Task.fail`, log out. After each one it checks the database and the
+later `Task.fail`, log out, a theme switch whose session change is undone
+by a later `Task.fail`. After each one it checks the database and the
 trace of the steps that ran, `calls("toggle", "Db.update Todo")`: exactly
 the kind of check chapter 10 promises `alder test` will make.
 
