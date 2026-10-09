@@ -59,6 +59,7 @@ internal/gen/html.go              Task 6: HTML and components
 internal/gen/stdcall.go           Task 6: stdlib call mapping table
 cmd/alder/main.go                 Task 6: `alder build --emit` (emit + vet, no main.go yet)
 book/11-tooling.md                Task 6: build status
+book/13-compiler.md               Task 7: beginner chapter on the compiler pipeline, IR, emitter, runtime
 ```
 
 ---
@@ -464,3 +465,35 @@ func M__area(s M__Shape) float64 {
 **Type consistency.** `check.Result` field names (Task 2) are the ones `ir.Lower` reads (Task 4: `res.Types`, `res.Binds`, `res.Values`, `res.Decls`, `res.Tables`, `res.Forms`, `res.Pages`, `res.Ctors`, `res.Session`, `res.AppMsg`, `res.U`). `ir` node names (Task 4) are the ones `gen` switches on (Tasks 5–6). `rt`/`rt/html`/`rt/std` function names (Task 3) are the ones `gen` emits (`rt.Maybe`, `rt.Concat`, `rt.OrElse`, `rt.Append`, `html.El/A/B/M/Text/Raw/Nodes/None`, `std.<Module><Name>`, `rt.PageURL`, `rt.MsgURL`).
 
 **Review Focus coverage.** (1) Task 5 `TestGen_UnionAnonymousPayload`; (2) Task 5 `TestGen_KeywordNames`; (3) Task 5 `TestGen_StringEscapes`; (4) Task 5 `TestGen_TypesOnlyModule`; (5) Task 3 `TestHTML_EscapeOnce` + Task 6 `TestGen_HTMLTextNotPreEscaped`.
+
+---
+
+### Task 7: Book chapter 13 — how the compiler works (for beginners)
+
+**Files:**
+- Create: `book/13-compiler.md`
+- Modify: `book/README.md` (table row), `book/11-tooling.md` (link from "Commands" to chapter 13)
+
+**Interfaces:**
+- Consumes: the real code from Tasks 1–6 (`internal/syntax`, `internal/names`, `internal/types`, `internal/check`, `internal/ir`, `internal/gen`, `rt`, `rt/html`, `rt/std`). Every code example in the chapter is either real Alder from `examples/todos`/`gen_basic` or real generated Go copied from `build/` or `testdata/golden/gen_*/want/`.
+
+The user's requirement: the book is the single source of truth and must teach *everything* about Alder to a beginner, including how the compiler and runtime work. This chapter does that for the pipeline M3a completes.
+
+- [ ] **Step 1: Write the chapter** with these sections, each with one worked example followed through the pipeline (use `area` and `Card` from `testdata/golden/gen_basic/app/M.alder`):
+  1. **What a compiler is, in Alder's case** — source text in, a Go program out; why there are stages; the one-line map `lex → parse → resolve names → check types → lower to IR → emit Go → go build`; what "the checker is the only thing that rejects programs" means and why that is the design (link chapter 12).
+  2. **Lexing** — tokens with positions; the column-1 keyword rule with an example of `session` as a field name vs a declaration; HTML mode (`ScanText`); why errors carry a span.
+  3. **Parsing** — the AST, with the `syntax.Dump` of `area` printed and explained node by node; what a parse error looks like and why it stops everything (chapter 11's gating paragraph, restated for a beginner); the "in a form field: …" context from Task 1.
+  4. **Names** — modules, imports, the module graph and cycles; the module-name rule; what "unresolved" means and the poison type (Task 1): show a program with one missing import and the single diagnostic it gets, then explain why there is only one.
+  5. **Types and checking** — what a type is to the checker; unification in two paragraphs with a worked example (`m ?? 0` where `m : Maybe Int`); brands as "the checker remembers, the runtime forgets"; bidirectional check/infer in plain words; exhaustiveness; what `check.Result` records (Task 2) and why the next stage needs it.
+  6. **The IR** — why a second tree; what is erased (brands, pipes, interpolation, sugar) and what is added (types on every node, resolved references, decision trees for `match`); print the `ir.Dump` of `area` next to its AST dump and point at each difference.
+  7. **Emitting Go** — the mapping table from the plan's Global Constraints, then the generated Go for `Shape`, `area`, `shift`, `names`, `label`, `Card` from `want/M.go`, each annotated: tagged union structs and why (no sum types in Go), the `switch` for `match`, `rt.Maybe`, `rt.Concat`, closures for partial application, `html.El` calls and where escaping happens (in the runtime, at render — Review Focus 5).
+  8. **The runtime** — what `rt`, `rt/html`, `rt/std` are; "the generated program is tiny because the runtime is the library"; what M3b–M3d add (effects interpreter, SQLite, router, Datastar, dev loop) with a pointer to the spec.
+  9. **Reading generated code** — where `build/` is, how to run `alder build --emit`, how to find `Todos_Index__view` in it, and the naming scheme.
+  10. **Exercises** — five: dump the AST of a one-line value; make a program that produces exactly one E0201 for three uses; predict the Go for a two-constructor union then check; find the line in `rt/html` that escapes `<`; explain why `Html.unsafe` is the only way to get `html.Raw`.
+  Length: 2,500–4,000 words. Voice: chapter 2 (the tour) — second person, one idea per paragraph, every claim backed by a snippet or a file path. No forward references to things that don't exist yet except in section 8, which labels them as future.
+
+- [ ] **Step 2: Verify every example** — run `go run ./cmd/alder build --emit` on a temp app containing `M.alder` and diff each Go snippet in the chapter against the output; run `alder check` on the E0201 example and paste the real diagnostic; dump the AST/IR with the test harness `-update` or a tiny `go test -run` helper and paste verbatim.
+
+- [ ] **Step 3: Index and links** — add `| [13. How the compiler works](13-compiler.md) | Lexer to generated Go, with the to-do app followed through every stage |` to `book/README.md`; in `book/11-tooling.md` "Commands", after `alder build --emit`, add "Chapter 13 walks through what it generates and why."
+
+- [ ] **Step 4: Commit** — `git add book && git commit -m "book: chapter 13, how the compiler works"`
