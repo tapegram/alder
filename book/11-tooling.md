@@ -20,9 +20,6 @@ myapp/
       Show.alder      -- page "/todos/{id}"
     Layout.alder      -- shared components
   adapters/           -- Go implementations of capabilities (optional)
-  db/
-    schema.snapshot
-    migrations/
   build/              -- generated Go, never edited
 ```
 

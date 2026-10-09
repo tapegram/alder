@@ -19,7 +19,7 @@ changes, this book changes first.
 | [5. HTML](05-html.md) | Markup, components, attributes, events |
 | [6. Pages, messages, forms](06-pages.md) | Routes and the request lifecycle |
 | [7. Effects](07-effects.md) | `Query`, `Task`, capabilities |
-| [8. Database](08-database.md) | Tables, reads, writes, migrations |
+| [8. Database](08-database.md) | Tables, reads, writes, how tables are stored, schema changes |
 | [9. Standard library](09-stdlib.md) | Module-by-module reference |
 | [10. Testing](10-testing.md) | Pure tests |
 | [11. Tooling](11-tooling.md) | The compiler and its outputs |

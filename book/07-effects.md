@@ -152,7 +152,9 @@ log, whether it writes, and the Go function that does the work. `fail` is
 
 **Run is eager.** `eff.Run` (`rt/eff/run.go`) walks the tree node by node:
 at a `call` it runs the step right away, at a `bind` it remembers the
-continuation, and when a value comes out it passes the value on. The
+**continuation** (the function that builds the rest of the block once it
+is given the bound value), and when a value comes out it passes the value
+on. The
 `Toggle` arm of the to-do page,
 
 ```alder
@@ -170,9 +172,10 @@ them, one at a time.
 
 **One transaction per `Task`.** Before the first step of a `Task`, `Run`
 begins a database transaction. If the task produces its result, `Run`
-commits. If it fails in any way (`Task.fail`, a missing row,
-`Query.notFound`, an error from the database or a capability, or a Go
-panic), `Run` rolls back instead. Either every write of an `update`
+commits. If it fails in any way (`Task.fail`, `Db.update` on a row
+that doesn't exist, `Query.notFound`, an error from the database or a
+capability, or a Go panic), `Run` rolls back instead. `Db.get` finding
+nothing is not a failure: it produces `Nothing`. Either every write of an `update`
 happens or none does. Reads inside a `Task` go through the same
 transaction, so they see the task's own earlier writes.
 
@@ -202,8 +205,8 @@ capability Password {
 
 `alder build --emit` turns it into a Go interface
 (`build/todos/Auth__Login_alder.go`). Each entry becomes a method that
-takes a `context.Context` first, then the entry's argument, and returns
-the result and an `error`:
+takes a `context.Context` first, then one parameter per argument of the
+entry, and returns the result and an `error`:
 
 ```go
 type cap__Auth__Login__Password interface {
@@ -214,7 +217,19 @@ type cap__Auth__Login__Password interface {
 }
 ```
 
-An implementation is any Go type with that method. This stub is from
+An entry with several arguments gets one parameter for each, and an entry
+that is itself a `Query` or `Task` gets only `ctx`. From
+`capability Stats { total : Query Int, forOwner : UserId -> Bool -> Query Int }`
+in `testdata/golden/gen_effects/app/Todo.alder`:
+
+```go
+type cap__Todo__Stats interface {
+	Total(ctx context.Context) (int64, error)
+	ForOwner(ctx context.Context, a1 string, a2 bool) (int64, error)
+}
+```
+
+An implementation is any Go type with those methods. This stub is from
 `TestGen_RunTodos` in `internal/gen/gen_test.go`:
 
 ```go
@@ -235,8 +250,9 @@ It is registered in the `Env` under the capability's module-qualified
 name, `env.Caps["Auth.Login.Password"] = password{user: uid}`, and the
 generated code finds it there. The generated list `Capabilities` (in
 `app__alder.go`) names every key an app needs; a call to a capability
-with nothing registered stops with
-`alder: capability "Auth.Login.Password" is not wired`. Returning a non-nil `error` fails the task,
+with nothing registered is a Go `panic`,
+`alder: capability "Auth.Login.Password" is not wired`, which rolls the
+task back like any other failure. Returning a non-nil `error` fails the task,
 which rolls it back. The brands are gone in Go (`User.UserId` is a
 `string`), so the Go side must keep the brand's promise itself. Wiring
 capabilities into a running server arrives with `main.go` in M3c.

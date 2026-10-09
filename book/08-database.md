@@ -167,15 +167,20 @@ so no input can change what a query does.
 ## Schema changes
 
 When an app starts, the runtime creates the tables (`Ensure` in
-`rt/db/sqlite.go`). It keeps a hash of the `CREATE TABLE` statements in a
+`rt/db/sqlite.go`). Today a test calls `Ensure` (`TestGen_RunTodos` in
+`internal/gen/gen_test.go`); from M3c the generated server calls it at
+startup. It keeps a hash of the `CREATE TABLE` statements in a
 table of its own, `_alder_meta`. If the hash matches, nothing happens. If
 your tables changed since the database was created:
 
-- **In dev mode** every app table is dropped and created again, empty.
-  Your dev data is lost on every schema change; that is the price of not
-  writing migrations while the schema is still moving.
-- **Otherwise** the app refuses to start and touches nothing. The error
-  names the tables that changed:
+- **In dev mode** every table in the database is dropped, except
+  SQLite's own (`sqlite_*`) and `_alder_meta`, and the app's tables are
+  created again, empty. That includes tables your Go capability code
+  created itself. Your dev data is lost on every schema change; that is
+  the price of not writing migrations while the schema is still moving.
+- **Otherwise** the app refuses to start and changes none of your tables
+  (only `_alder_meta` is created, if it was missing). The error names the
+  tables that changed:
 
 ```
 db: schema mismatch: the database's schema (hash 5de59b25abca) differs from the app's (hash 40d037c4462a); changed tables: Todo.Todo; run in dev mode to recreate the database

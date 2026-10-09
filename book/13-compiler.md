@@ -978,8 +978,9 @@ var Capabilities = []string{"Todo.Stats", "Index.Mailer"}
 `Capabilities` names every capability the app calls, so the server (M3c)
 can check at startup that each has an implementation; until then, a call
 to one that isn't wired stops with `alder: capability "Index.Mailer" is
-not wired`. The file's name can't clash with a module's, because a module
-name starts with a capital letter.
+not wired`. The file's name can't clash with a module's: only a module named `app_` would
+produce `app__alder.go`, and a module name segment may not end in `_`
+(E0001, section 9).
 
 ### What `Run` does
 
@@ -1065,6 +1066,22 @@ and is emitted as
 		})
 ```
 
+Two different `bind`s appear here. The first, `(bind _m3 : ToggleParams)`
+right after `case Toggle`, is section 6's pattern bind: `match msg` binds
+the message's payload to a temporary, and `(let p … (var _m3) …)` gives it
+your name `p`. The second, `(bind task _ …)`, is an `EffBind` from this
+section: run the `db-update`, discard its result (`_`), continue with
+`pure task`. The kind word `task` (not `query`) tells them apart.
+
+The Go follows section 7's `match` rules. `case is__Index__Msg__Toggle:`
+tests the tag, and `p := *msg.Toggle` reads the payload: `msg.Toggle` is
+a pointer to the payload struct (every payload is held by pointer), and
+`*` reads the struct it points to. Here the temporary `_m3` is gone, as
+`_m1` was in `area`. The last argument to `db.UpdateRow`, `_e2.Now()`, is
+the time from the `Env`'s clock: the store writes it into the table's
+`@updated` column, if it has one. This `Todo` has none, so it goes
+unused, but the call looks the same for every table.
+
 This time the step is marked `true`, a write, and the caller runs it with
 `eff.Run(env, eff.KTask, …)`:
 
@@ -1096,8 +1113,9 @@ You can watch this happen. `TestGen_RunTodos` in
 `internal/gen/gen_test.go` emits the to-do example, opens an in-memory
 SQLite store, calls `Ensure`, and runs its `load` and `update` with
 `eff.Run`: log in, add, toggle, delete, an add that is rolled back by a
-later `Task.fail`, log out. It checks the database after each step and
-logs `env.Trace` at the end.
+later `Task.fail`, log out. After each one it checks the database and the
+trace of the steps that ran, `calls("toggle", "Db.update Todo")`: exactly
+the kind of check chapter 10 promises `alder test` will make.
 
 ### What is still to come
 

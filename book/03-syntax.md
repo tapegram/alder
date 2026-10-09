@@ -134,7 +134,7 @@ There is no `<|`, no `<<`, no `>>`.
 | `+ - * /` | `Int` or `Float` (both sides the same) | arithmetic; `/` on `Int` truncates |
 | `%` | `Int` | remainder |
 | `++` | `Text` or `List a` | concatenation |
-| `== !=` | any type without functions (both sides identical) | equality |
+| `== !=` | any type without functions or effects (both sides identical) | equality |
 | `< <= > >=` | `Int`, `Float`, `Text`, `Date`, `Time`, payload-less unions | comparison |
 | `&& \|\|` | `Bool` | logic, short-circuit |
 | `not` | `Bool` | negation (a function, not an operator) |
