@@ -33,13 +33,13 @@ dedupe per module, an E0007 fix that writes the inferred type.
 Out: migrations (the dev database is recreated from the schema), `alder
 test`, `fmt`, holes beyond W0002, `query`, non-SQLite stores, production
 configuration (TLS, secrets management beyond `ALDER_SECRET`), the blog
-example (M4).
+example (formerly M4; see Milestones).
 
 ## Architecture
 
 ```
 alder check  → (no errors) → ir.Lower → gen.Emit → build/<app>/*.go → go build → binary
-alder run    → the above in a loop: watch app/ → rebuild → restart child → push reload
+alder run    → the above in a loop: watch → rebuild → start new child, swap proxy → push reload
 binary       → rt: router, session, forms, effect interpreter, SQLite, Datastar
 ```
 
@@ -168,16 +168,42 @@ is no longer required for correctness.
 
 ### Dev loop (`alder run`)
 
-`alder run [dir]`: check → lower → emit → `go build` → start the child on
-`:8080` (`ALDER_PORT`); then poll `app/**/*.alder` mtimes every 300 ms. On
-change: re-run check; on errors, push them to the browser; on success,
-rebuild, restart the child (graceful: new child starts on the port after the
-old one exits), then push a reload. Live reload: the dev server proxies the
-child and adds `/_dev/reload` (SSE, held open); pages in dev mode include
-`<div data-on-load="@get('/_dev/reload')"></div>`; a reload is a
-`datastar-execute-script` event `location.reload()`; errors are a
-`datastar-patch-elements` event replacing `#_alder_errors` (a fixed overlay
-the dev server injects into every page) with the rendered diagnostics.
+As built in M3d (`cmd/alder/run.go`; book chapter 11 "`alder run`" and
+chapter 13 "The dev server"). `alder run [dir]` is a dev server on
+`ALDER_ADDR` (default `:8080`) that reverse-proxies (`httputil.ReverseProxy`,
+`FlushInterval: -1`, `Host` kept) every request except `/_dev/reload` to a
+child process: the executable `buildApp` produces (the `alder build`
+pipeline: check → lower → emit → copy adapters/static → `go vet` → `go
+build`), started with `ALDER_ADDR=127.0.0.1:0 ALDER_DEV=1 ALDER_RELOAD=1
+ALDER_DB=<abs build/<app>/dev.db> ALDER_STATIC=<abs dir/static>` and the
+rest of the environment; its `listening on <addr>` line gives the port.
+
+- Watcher: polls every 300 ms the (mtime, size) of `app/**/*.alder`,
+  `adapters/*.go` and `static/**`; a burst is coalesced and reported once
+  a poll finds nothing new. A source change rebuilds; a `static/`-only
+  change only reloads.
+- Worker: one goroutine is the only caller of `rebuild`, so rebuilds are
+  single-flight; changes queued during a rebuild are merged into one.
+- `rebuild`: `alder check` (errors → overlay + stderr, old child kept) →
+  `buildApp` (errors → overlay, old child kept) → start the new child
+  beside the old one (10 s for `listening on`, else its stderr → overlay,
+  old child kept) → swap the proxy target → SIGTERM the old child → clear
+  the overlay, then reload. The old child answers until the new one is up.
+- A child that exits unasked is reported in the overlay; the proxy answers
+  502 with a page holding the overlay and subscriber (and the dev server
+  serves the Datastar script itself) until the next good build.
+- `/_dev/reload`: SSE, `: ready`, the current overlay if any, every
+  broadcast, `: ping` every 15 s. Events are `datastar-patch-elements`
+  (`datastar.PatchEvent`): the overlay (`#_alder_errors`, mode `inner`, the
+  message HTML-escaped in `<pre class="_alder-errors">`), the clear (same
+  target, empty elements), and the reload (`body`, mode `append`, `<script
+  data-effect="el.remove()">location.reload()</script>`; Datastar 1.0 has
+  no `datastar-execute-script`).
+- Stop (SIGINT/SIGTERM): end the watcher, worker, monitors and streams,
+  shut the server down (5 s), let a rebuild in progress finish, stop the
+  child (SIGTERM, SIGKILL after 5 s), exit 0. Exit 2 on a usage error, a
+  missing `app/`, or an address that cannot be bound.
+
 `alder build` is the same pipeline without the loop.
 
 ### Compiler items (from E5)
@@ -208,9 +234,10 @@ isolation, `prompt_eval_count`) are done in M3d before E6.
 Compiler: `lower` and `gen` have no user-facing errors; a `go build`
 failure is an internal error with the Go output. Runtime: as the
 vertical-slice spec, plus dev-mode error pages show the message and the
-effect log. Dev loop: a crashed child is reported in the terminal and the
-overlay; the server keeps serving the last good binary until the next
-successful rebuild.
+effect log. Dev loop: a failed check, build or child start is reported in
+the terminal and the overlay, and the last good child keeps serving; a
+child that crashes is reported the same way and the proxy answers 502
+until the next successful rebuild.
 
 ## Testing
 
@@ -246,6 +273,14 @@ serves; the end-to-end test.
 
 **M3d — dev loop and E6.** `alder run` with live reload; harness
 `--build` and the three deferred harness items; E6 recorded.
+
+**M4 — `alder test`, the REPL, `alder eval`, book verification.**
+`alder test`; the REPL (`alder repl`: compile-and-run through the real
+pipeline with a persistent scratch module); `alder eval` for agents; and
+automatic verification of every book example. Shared machinery: the
+`rt.Show` pretty-printer and the scratch-module runner. This replaces the
+vertical-slice spec's M4 (the blog example and migrations), which is not
+rescheduled here.
 
 Each milestone gets its own implementation plan.
 
@@ -410,7 +445,7 @@ Each milestone gets its own implementation plan.
   its page. Under Datastar each of these 303s is the navigation event
   below.
 - The server's address is `ALDER_ADDR` (default `:8080`; it supersedes
-  `ALDER_PORT` in "Dev loop" above); with `ALDER_DB` (default `<app>.db`), `ALDER_SECRET`,
+  the `ALDER_PORT` of the first "Dev loop" draft); with `ALDER_DB` (default `<app>.db`), `ALDER_SECRET`,
   `ALDER_DEV=1` and `ALDER_STATIC` (default: `static/` beside the
   executable) these are the environment of the generated `cmd/main.go`,
   which prints `listening on <addr>` once bound. It serves with an
@@ -519,3 +554,21 @@ Each milestone gets its own implementation plan.
   keeps the lenient `web.Bool`.
 - `alder build` treats an `adapters/` without top-level `.go` files as
   absent (M1); only top-level `.go` files are copied.
+- Dev loop as a proxy (M3d), superseding the restart-on-the-same-port
+  design: the dev server owns `ALDER_ADDR` and each child listens on
+  `127.0.0.1:0` (the port read from its `listening on` line), so the new
+  child starts while the old one still serves and the swap is atomic for
+  the browser.
+- The reload subscriber is injected by the router, not by the proxy:
+  `ALDER_RELOAD=1` (set only by `alder run`) → generated `main` sets
+  `web.Options.Reload` → `withReload` inserts `<div
+  id="_alder_errors"></div><div data-init="@get('/_dev/reload')"></div>`
+  right after `<body…>` in full documents, 404/500 pages and Datastar body
+  patches (so a morphed body keeps them). The proxy stays a pass-through:
+  it would otherwise have to buffer and rewrite HTML and SSE answers.
+- The subscriber attribute is `data-init`, not `data-on-load` as first
+  specified: Datastar v1.0.0 has no `on-load` plugin and a `<div>` fires no
+  `load` event.
+- The dev database is `build/<app>/dev.db` (absolute `ALDER_DB`); dev mode
+  recreates the tables on a schema change, and old and new child briefly
+  share the file during a swap.

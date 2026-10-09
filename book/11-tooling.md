@@ -3,8 +3,9 @@
 `alder check` exists as of M1, `alder build --emit` as of M3a, and
 `alder dump` as of M3b. As of M3c, `alder build` makes a server: one
 executable that serves the app over HTTP, with its database, sessions and
-forms (chapter 6, "How a request runs"). `alder run` arrives in M3d;
-`test`, `fmt`, holes and `query` are planned.
+forms (chapter 6, "How a request runs"). As of M3d, `alder run` rebuilds
+the app every time you save a file and reloads the browser. `alder test`
+arrives in M4; `fmt`, holes beyond W0002 and `query` are planned.
 
 ## Project layout
 
@@ -146,6 +147,125 @@ in flight up to 5 seconds to finish, and exits 0.
 `<Module>_alder.go` per module, `app__alder.go`, `routes__alder.go`,
 `go.mod`), `cmd/main.go`, `adapters/`, `static/` and the executable.
 Chapter 13, section 9, reads them.
+
+### `alder run`
+
+`alder run [dir]` is what you use while you write an app. It builds the
+app in `dir` (default `.`) the way `alder build` does, starts the
+executable, and then watches your files. Every time you save, it builds
+again and reloads the page in your browser. If the new code has an error,
+the error appears at the top of the page and in the terminal, and the app
+you had before keeps running until you fix it.
+
+```
+$ go run ./cmd/alder run examples/todos
+alder run: building todos
+warn: ALDER_SECRET is not set (or shorter than 16 bytes); dev mode signs sessions with the public development cookie key
+dev server on localhost:8080 → app on 127.0.0.1:65295
+```
+
+(The `warn:` line comes from the app, with a date and time in front, as
+in "`alder build`" above.) Open the first address,
+`http://localhost:8080/`. Two programs are now running:
+
+- **The dev server** is `alder run` itself. It listens on `ALDER_ADDR`
+  (default `:8080`), the address you open in the browser.
+- **The app** is the executable `alder run` built,
+  `build/<app>/<app>`. It runs as a *child process* of the dev server
+  (a program the dev server started and will stop). The dev server
+  starts it with `ALDER_ADDR=127.0.0.1:0`, and port 0 means "any free
+  port", so the app gets a different port each time it starts
+  (`65295` above). You never open that address yourself.
+
+The dev server is a *proxy*: it passes every request from the browser on
+to the app, and the app's answer back to the browser, unchanged (cookies,
+redirects and Datastar's streamed answers included). Because the browser
+only ever talks to the dev server, the app can be replaced by a new one
+without the address in your browser changing.
+
+The app runs in development mode (`ALDER_DEV=1`, see the table above),
+with its database at `build/<app>/dev.db` (`ALDER_DB`) and the static
+files straight from your `<dir>/static/` (`ALDER_STATIC`). `ALDER_SECRET`
+and the rest of your environment are passed on to it. Because it is in
+development mode, a change to your tables drops every table and creates
+them again, empty (chapter 8, "Schema changes"). To start from an empty database,
+stop `alder run` and delete `build/<app>/dev.db`.
+
+The dev server checks your files every 300 milliseconds. What it does
+depends on what changed:
+
+| You change | What happens |
+|---|---|
+| a `.alder` file under `app/` (or add or delete one) | check, build, start the new app, reload the browser |
+| a `.go` file at the top level of `adapters/` | the same |
+| any file under `static/` | reload the browser only: the app reads those files as it serves them, so nothing is rebuilt |
+| anything else | nothing |
+
+Several saves close together (a "save all" in your editor, say) count as
+one change, and a change made while a build is running is picked up by the
+next build, so builds never overlap. Each build prints
+`alder run: rebuilding <app>` on stderr; a good one ends with
+`alder run: rebuilt; app on <address>`, the new app's port.
+
+**The old app keeps answering until the new one is up.** The new
+executable is started next to the old one, on its own port. Only once it
+prints `listening on` does the dev server send requests to it instead and
+stop the old one. So a page you load in the middle of a build is answered
+by the old app, never by an error. (For that moment the two apps share
+`dev.db`.)
+
+The browser learns what happened through three messages. Every page the
+app serves under `alder run` gets two extra elements right after
+`<body>`, which `alder run` asks the app to add (`ALDER_RELOAD=1`):
+
+```html
+<div id="_alder_errors"></div><div data-init="@get('/_dev/reload')"></div>
+```
+
+The first is an empty box for errors. The second opens a connection to
+the dev server's `/_dev/reload` as soon as Datastar starts (`data-init`
+runs its expression once, when Datastar sets the element up) and keeps it
+open. Over that connection the dev server sends:
+
+1. **The errors.** When `alder check` or the build fails, the box is
+   filled with the same text the terminal shows, in a `<pre>`. A page
+   opened while there is an error gets the error as soon as it connects.
+2. **Clear.** After a good build, the box is emptied.
+3. **Reload.** Then the page reloads itself, and you see the new app.
+
+A change under `static/` sends only the reload.
+
+If a check fails, you see something like this at the top of the page
+(and on stderr), and the old app goes on serving:
+
+```
+app/Layout.alder:10:15: error[E0003]: expected Text, Html or List Html in `{…}`, got Int
+        <title>{1}</title>
+                ^
+  fix: Text.fromInt (1)
+```
+
+The error box has no styling yet: it is plain preformatted text above your
+page. Fix the file and save; the box clears and the page reloads.
+
+If the new app does not start (it exits, or doesn't print
+`listening on` within 10 seconds), what it printed on stderr goes to the
+error box and the old app is kept. If the app stops while it runs (it
+crashes), the box says `alder run: the app exited (…); save a file to
+rebuild it`, and until the next good build the dev server answers every
+request with 502 (Bad Gateway) and a page that shows the error and
+reloads itself once the app is back. The same page, saying `alder run:
+the app is building…`, is what you get if you open the address before the
+first build is done. Everything the app prints goes to `alder run`'s
+stderr.
+
+Ctrl-C (or `SIGTERM`) stops the dev server: a build in progress finishes,
+the app is stopped (`SIGTERM`, then killed if it hasn't exited after 5
+seconds), and `alder run` exits 0. A second Ctrl-C kills it at once.
+`alder run` exits 2 when its arguments are wrong, when `dir` has no
+`app/` directory, or when it cannot listen on `ALDER_ADDR` (another
+program already uses the port, say). Chapter 13, "The dev server", shows
+the exact messages and the code.
 
 ### `alder build --emit`
 

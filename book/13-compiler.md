@@ -1401,11 +1401,274 @@ the navigation event above, that a `Toggle` sent without JavaScript from
 `/?filter=Completed` is a 303 back to that filter, and that another user
 posting the messages with a@b.c's id gets 404 every time.
 
+### The dev server
+
+`alder run` (chapter 11) is the last piece: the program that sits between
+your editor, the compiler and the browser. All of it is in
+`cmd/alder/run.go`. Here is what happens between saving a file and the
+browser showing the change.
+
+```
+browser ──HTTP──▶ dev server (alder run, ALDER_ADDR) ──proxy──▶ app (child, 127.0.0.1:<free port>)
+   ▲                 │  watcher: polls app/, adapters/, static/
+   └──/_dev/reload───┘  worker: check → build → start child → swap → clear + reload
+```
+
+**The proxy.** The dev server's handler, `devServer.ServeHTTP`, answers
+`/_dev/reload` itself and hands every other request to Go's
+`httputil.ReverseProxy`, aimed at the current child's address. The
+address is read once per request, under a lock, so a request that started
+before a swap finishes on the child it started on. `FlushInterval: -1`
+makes the proxy pass each piece of an answer on as soon as the app writes
+it, which a Datastar answer (a stream of server-sent events, "A request"
+above) needs. Cookies and `303`s are passed on untouched, and the
+`Host` header is kept, so the app sees the address the browser used.
+
+**The watcher.** `watch` polls rather than asking the operating system
+for change notifications, so the compiler needs no dependency beyond Go's
+standard library. Every 300 ms, `snapshot` records the modification time
+and size of every `.alder` file under `app/`, every `.go` file at the top
+level of `adapters/` and every file under `static/`; `diff` compares two
+snapshots and says which kinds changed, `sourceChange`, `staticChange` or
+both (a `change` is a set of bits). The watcher does not report a change
+at once. It waits for a poll that finds nothing new:
+
+```go
+		cur := snapshot(dir)
+		if k := diff(prev, cur); k != 0 {
+			pending |= k
+			prev = cur
+			continue
+		}
+		if pending != 0 {
+			select {
+			case changed <- pending:
+			case <-stop:
+				return
+			}
+			pending = 0
+		}
+```
+
+So an editor that writes five files in a row produces one change, sent
+300 ms after the last write. This is *coalescing*: merging a burst of
+events into one.
+
+**The worker.** One goroutine, `work`, receives the changes and is the
+only caller of `rebuild`. Because there is one worker, two rebuilds can
+never run at the same time (the rebuild is *single-flight*). While it
+rebuilds, the watcher waits on its send, and when the worker comes back it
+merges everything queued into one change (`k |= k2`) before building
+again. A change that is only `staticChange` skips the rebuild: the child
+serves `static/` straight from your directory (`ALDER_STATIC`), so the
+browser just has to reload.
+
+**`rebuild`.** It runs `alder check`, then the build, then starts the new
+child. Each step that fails calls `fail` and returns, and returning early
+is what keeps the old child serving:
+
+```go
+func (d *devServer) rebuild() {
+	var out bytes.Buffer
+	if code := runCheckTo([]string{d.dir}, &out, &out); code != 0 {
+		d.fail(out.String())
+		return
+	}
+	d.stderr.Write(out.Bytes()) // warnings
+	out.Reset()
+	binary, code := buildApp(d.dir, &out)
+	if code != 0 {
+		d.fail(out.String())
+		return
+	}
+	dir := filepath.Dir(binary)
+	static, err := filepath.Abs(filepath.Join(d.dir, "static"))
+	if err != nil {
+		d.fail("alder run: " + err.Error())
+		return
+	}
+	c, err := startChild(binary, filepath.Join(dir, "dev.db"), static, d.stderr)
+	if err != nil {
+		d.fail("alder run: " + err.Error())
+		return
+	}
+```
+
+`buildApp` (`cmd/alder/build.go`) is `alder build` itself, the steps of
+chapter 11, returning the executable's path. `startChild` runs it with
+`ALDER_ADDR=127.0.0.1:0 ALDER_DEV=1 ALDER_RELOAD=1`, the database
+`build/<app>/dev.db` and your `static/`, and reads the child's stdout
+until the line `listening on <addr>` that every generated `main` prints
+once it has its port (chapter 11, "`alder build`"). That line is how the dev server learns
+the free port the operating system picked. If the line doesn't come
+within 10 seconds, or the child exits first, the error carries the
+child's stderr. Only after all that does the swap happen:
+
+```go
+	d.mu.Lock()
+	old := d.child
+	d.child = c
+	announce := !d.announced
+	d.announced = true
+	d.mu.Unlock()
+```
+
+From this point new requests go to the new child; then `old.stop()` sends
+the old one `SIGTERM` and waits for it to exit, and the last lines clear
+the overlay and tell every browser to reload:
+
+```go
+	d.mu.Lock()
+	d.lastErr = ""
+	d.broadcast(clearEvent, reloadEvent) // the clear first
+	d.mu.Unlock()
+```
+
+A separate goroutine per child, `monitor`, waits for it to exit. If it
+exits without having been stopped, it was a crash: the monitor sets the
+current child to none (so the proxy answers 502) and calls `fail` with
+the exit status and the end of the child's stderr.
+
+**The subscriber.** Every page the child renders carries two elements
+right after `<body>`. They come from the router, not the dev server
+(`rt/web/router.go`):
+
+```go
+const reloadTags = `<div id="_alder_errors"></div><div data-init="@get('/_dev/reload')"></div>`
+```
+
+`withReload` inserts them, and the router's `dev` method applies it only when
+`Options.Reload` is set, which the generated `cmd/main.go` does when the
+environment says `ALDER_RELOAD=1`:
+
+```go
+		Reload:    os.Getenv("ALDER_RELOAD") == "1",
+```
+
+`data-init` is Datastar's "run this when the element is set up";
+`@get('/_dev/reload')` opens the event stream and applies each event that
+arrives on it. (A `<div>` never fires a `load` event, so an
+attribute that waited for one would never run; `data-init` runs as soon
+as Datastar sets the element up.)
+
+Why does the router add these, and not the proxy, which sees every
+answer? To add them, the proxy would have to hold back each HTML answer,
+find `<body>` in it, and fix up `Content-Length`; and it would also have
+to rewrite inside Datastar's event streams, because a `Rerender` replaces
+the whole `<body>` ("A request" above) and would wipe out a box that
+only the first page load had. The router already knows which answers are
+pages and which are body patches, and it passes both through `dev`, so
+a patched body keeps the box and the subscriber. The proxy stays a plain
+pass-through. Run the executable without `alder run` and nothing sets
+`ALDER_RELOAD`, so its pages are exactly as before.
+
+**The events.** `/_dev/reload` (`serveReload`) is a server-sent event
+stream that stays open. It starts with a comment line, `: ready` (a line
+starting with `:` is a comment in the format, ignored by the browser),
+then the overlay if there is an error right now, then whatever is
+broadcast, and a `: ping` comment every 15 seconds so idle connections
+are not dropped. Every event is made by one function in
+`rt/datastar/datastar.go`, the same one the router's `PatchBody` uses:
+
+```go
+func PatchEvent(selector, mode, elements string) []byte {
+	var b strings.Builder
+	b.WriteString("event: datastar-patch-elements\ndata: selector " + selector + "\ndata: mode " + mode + "\n")
+	for _, line := range lines(elements) {
+		b.WriteString("data: elements ")
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	b.WriteByte('\n')
+	return []byte(b.String())
+}
+```
+
+and `run.go` defines the three:
+
+```go
+var (
+	clearEvent  = datastar.PatchEvent("#_alder_errors", "inner", "")
+	reloadEvent = datastar.PatchEvent("body", "append", `<script data-effect="el.remove()">location.reload()</script>`)
+)
+
+func overlayEvent(msg string) []byte {
+	return datastar.PatchEvent("#_alder_errors", "inner", overlayHTML(msg))
+}
+```
+
+Here are the real bytes, captured with `curl -N` on `/_dev/reload` while
+`alder run examples/todos` ran. Introducing an error in
+`app/Layout.alder` (`<title>{1}</title>`, an `Int` where text belongs)
+sent:
+
+```
+: ready
+
+event: datastar-patch-elements
+data: selector #_alder_errors
+data: mode inner
+data: elements <pre class="_alder-errors">app/Layout.alder:10:15: error[E0003]: expected Text, Html or List Html in `{…}`, got Int
+data: elements         &lt;title&gt;{1}&lt;/title&gt;
+data: elements                 ^
+data: elements   fix: Text.fromInt (1)</pre>
+
+```
+
+`mode inner` replaces what is inside `#_alder_errors`, the empty box,
+with the `<pre>`. The diagnostic is the one `alder check` prints, run
+through `html.EscapeString` (`overlayHTML`), which is why `<title>`
+arrives as `&lt;title&gt;`: your source is shown as text, never run as
+HTML. Each line of it is its own `data: elements` line, because a line
+end inside a data line would end it. A second `curl` opened while the
+error stood got the same event straight after `: ready`, and the page
+itself still answered 200 from the old child. Fixing the file then sent
+these two events, one right after the other:
+
+```
+event: datastar-patch-elements
+data: selector #_alder_errors
+data: mode inner
+data: elements 
+
+event: datastar-patch-elements
+data: selector body
+data: mode append
+data: elements <script data-effect="el.remove()">location.reload()</script>
+
+```
+
+The first event is the clear: `data: elements ` followed by nothing (the
+line ends in a space) replaces the box's content with nothing. The second
+appends a `<script>` to `<body>`. Datastar runs a script it patches in, so
+the browser executes `location.reload()` and asks the dev server for the
+page again, which the new child now answers. (`data-effect="el.remove()"`
+removes the element once Datastar has seen it.) Datastar 1.0's events
+patch elements or signals; it has no "run this script" event, so a
+patched-in script is how a server makes the browser do something. The
+clear goes first, so even a page that misses the reload stops showing the
+old error. An edit with no
+error, and a change under `static/`, send the same reload event; the
+first also sends the clear before it.
+
+The 502 page the dev server serves while there is no child carries the
+same two elements, with the error already in the box, so it too reloads
+by itself once a build succeeds. Since there is then no app to serve the
+Datastar script it loads, the dev server serves `/_alder/datastar.js`
+itself in that state.
+
+**Stopping.** On Ctrl-C, `runRunTo` closes `done`, which ends the
+watcher, the worker's wait, the monitors and every open `/_dev/reload`
+stream; shuts down the HTTP server (5 seconds for requests in flight);
+waits for a rebuild in progress to finish, so the child it may have
+started is not left behind; and then stops the current child.
+
 ### What is still to come
 
-M3d adds `alder run`, the dev loop that rebuilds and reloads on every
-save. It is described in the design spec,
-[`docs/superpowers/specs/2026-10-09-m3-codegen-runtime-design.md`](../docs/superpowers/specs/2026-10-09-m3-codegen-runtime-design.md).
+M4 adds `alder test`, a REPL (`alder repl`) and `alder eval`, and checks
+every example in this book automatically. See the design spec,
+[`docs/superpowers/specs/2026-10-09-m3-codegen-runtime-design.md`](../docs/superpowers/specs/2026-10-09-m3-codegen-runtime-design.md),
+"Milestones".
 
 ## 9. Reading generated code
 
