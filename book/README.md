@@ -24,7 +24,7 @@ changes, this book changes first.
 | [10. Testing](10-testing.md) | Pure tests |
 | [11. Tooling](11-tooling.md) | The compiler and its outputs |
 | [12. Design rationale](12-rationale.md) | Why each decision was made, with experiment results |
-| [13. How the compiler works](13-compiler.md) | Lexer to generated Go, with the to-do app followed through every stage |
+| [13. How the compiler works](13-compiler.md) | Lexer to generated Go, with one small program followed through every stage |
 | [A. Grammar](A-grammar.md) | The formal grammar |
 | [B. Common mistakes](B-pitfalls.md) | The errors seen most often in experiments |
 
@@ -33,6 +33,6 @@ as context when writing Alder. They are kept short on purpose.
 
 ## Status
 
-Alder is a design in progress. There is no compiler yet. The reference
+Alder is a design in progress. `alder check` and `alder build --emit` exist; running apps arrive with M3b–M3d. The reference
 describes the language as currently specified; the rationale chapter records
 what experiments have shown and what is still open.

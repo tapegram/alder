@@ -11,7 +11,7 @@ import (
 
 // Match emission (ret mode; a match in expression position is wrapped in a closure first).
 //
-//	union of the app  switch s.Tag { case M__T_Tag_C: … }, panic("unreachable") after it when
+//	union of the app  switch s.Tag { case M__T__Tag_C: … }, panic("unreachable") after it when
 //	                  there is no default
 //	Maybe, Result     if s.Ok { … } / if s.IsOk { … } then the other case or the default
 //	Bool              if s { … } (or if !s) then the other case or the default

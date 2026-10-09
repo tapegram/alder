@@ -77,10 +77,10 @@ into **tokens**: a name, a number, a `{`, a `->`. Each token remembers its
 kind, its text, and where it started: line, column and byte offset
 (`Token` in `internal/syntax/token.go`).
 
-Here is what the lexer produces for two lines shaped like ones in
-`examples/todos/app/App.alder`, `session { user: Maybe User.UserId }` and
-`update msg session = 1` (printed with a throwaway test that calls
-`NewLexer` and `Next`):
+Here is what the lexer produces for a file holding just two lines,
+`session { user: Maybe User.UserId }` and `update msg session = 1`, which
+are shaped like lines in `examples/todos/app/App.alder`. The listing was
+printed by the `TestLexFile` test shown in section 3:
 
 ```
 1:1 Keyword "session"
@@ -99,7 +99,6 @@ Here is what the lexer produces for two lines shaped like ones in
 2:20 Equal "="
 2:22 Int "1"
 2:23 NL "\n"
-3:1 EOF ""
 ```
 
 Notice that `session` and `msg` are `Keyword` tokens on both lines. On the
@@ -113,7 +112,7 @@ The **column-1 rule** settles this. Words that start a declaration
 on a line. Anywhere else they are ordinary names. The rule is applied as
 the parser takes each token (`advance` in `internal/syntax/parser.go`),
 which turns a declaration keyword with `Col > 1` back into a name. Parsing
-both lines gives:
+the same two lines, with `module App` above them, gives:
 
 ```
 (session (field user (Maybe User.UserId)))
@@ -149,9 +148,81 @@ AST: a tree of Go structs, defined in `internal/syntax/ast.go`, where each
 node is one construct of the language. "Abstract" means the punctuation is
 gone: there is no node for a comma or a brace, only for what they meant.
 
-`syntax.Dump` prints an AST as nested parentheses. This is the dump of
-`area` (from a throwaway test calling `ParseFile` on `gen_basic/app/M.alder`
-and `Dump` on each declaration; wrapped here for width):
+`syntax.Dump` prints an AST as nested parentheses. `alder` has no command
+for this yet (an `alder dump` command is a planned convenience), so you
+print it from a small Go test. Go only lets code inside the repository
+call `internal/syntax`, but `go test -overlay` can add a test file to a
+package without changing the repository: the overlay file maps a path
+inside the package to a file kept somewhere else.
+
+Make a directory outside the repository, say `~/alder-dump`, and save this
+as `~/alder-dump/dump_test.go`:
+
+```go
+package syntax
+
+import (
+	"fmt"
+	"os"
+	"testing"
+)
+
+func TestDumpFile(t *testing.T) {
+	src, err := os.ReadFile(os.Getenv("ALDER_FILE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, diags := ParseFile("M.alder", src)
+	for _, d := range diags {
+		fmt.Println(d.Code, d.Message)
+	}
+	for _, d := range m.Decls {
+		fmt.Println(Dump(d))
+	}
+}
+```
+
+It reads the file named by the `ALDER_FILE` environment variable, parses
+it, prints any parse errors, and prints each declaration's dump. If you
+have never read Go: `package syntax` says which package the file belongs
+to, and `import` names the packages it uses. `func TestDumpFile(t
+*testing.T)` declares a function; `go test` runs every function whose name
+starts with `Test`. `:=` declares a variable and gives it its first value,
+`if err != nil` checks whether reading the file failed, and
+`for _, d := range m.Decls` loops over each declaration. From the
+repository root, write the overlay file and run the test:
+
+```
+$ printf '{"Replace":{"%s/internal/syntax/dump_file_test.go":"%s/alder-dump/dump_test.go"}}\n' "$PWD" "$HOME" > ~/alder-dump/overlay.json
+$ ALDER_FILE=$PWD/testdata/golden/gen_basic/app/M.alder go test -overlay ~/alder-dump/overlay.json ./internal/syntax -run TestDumpFile -v
+```
+
+The file name must be an absolute path, because Go runs a test inside the
+package's own directory. Two variations of the same recipe print the other
+dumps in this chapter. Each needs one more entry in `overlay.json`'s
+`Replace` map. For tokens, add a test `TestLexFile` to `internal/syntax`
+(as `lex_file_test.go`, same imports) whose body is:
+
+```go
+	src, err := os.ReadFile(os.Getenv("ALDER_FILE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := NewLexer("M.alder", src)
+	for tk := l.Next(); tk.Kind != EOF; tk = l.Next() {
+		fmt.Printf("%d:%d %s %q\n", tk.Line, tk.Col, tk.Kind, tk.Text)
+	}
+```
+
+For the IR (section 6), add a test `TestDumpDir` to `internal/ir` (as
+`dump_dir_test.go`, with `package ir` and the same imports) whose body is
+`fmt.Print(Dump(lowerDir(t, os.Getenv("ALDER_DIR"))))`, and set
+`ALDER_DIR` to an app directory such as `$PWD/testdata/golden/gen_basic`.
+`lowerDir`, a helper in `internal/ir/ir_test.go`, parses, resolves, checks
+and lowers the app.
+
+This is the dump of `area`, from `TestDumpFile` on `gen_basic` (wrapped
+here for width):
 
 ```
 (val area : (fn Shape -> Float) s =
@@ -198,6 +269,11 @@ app/A.alder:4:5: error[E0602]: tuples are not Alder; use a record `{ a: 1, b: 2 
   x = (1, 2)
       ^
 ```
+
+This one is E0602, not E0001. It is still a parse error, but the parser
+recognised a construct from another language and names the Alder form
+instead (the E06xx rows in chapter 11's
+[diagnostic codes](11-tooling.md#diagnostic-codes)).
 
 The type error in `C.alder` is real, but it isn't reported. A program that
 doesn't parse has no reliable tree, and checking a guessed tree produces
@@ -265,7 +341,9 @@ don't.
 To the checker, a **type** is a Go value from `internal/types/types.go`: a
 `Con` for a built-in like `Int` or `Float`, a `Record` or `Union` for your
 declarations, a `Fun` for a function, an `App` for things like `List Text`,
-a `Brand` for a brand, or a `Var` for a type not yet known.
+a `Brand` for a brand, a `Param` for a type parameter (the `a` in
+`Card`'s `Html a`, which can be any message type), or a `Var` for a type
+not yet known.
 
 That last kind is what makes **unification** work. When the checker meets
 something whose type it can't know yet, it invents a fresh variable, say
@@ -315,15 +393,22 @@ app/Index.alder:15:1: error[E0007]: `rank` has no type signature; write `rank : 
 **Exhaustiveness** is checked per `match` (`internal/check/pattern.go`).
 The checker lists the constructors of the subject's type, marks each one
 an arm covers, and reports any left over. Delete the `Rect` arm from
-`area` and `alder check` says:
+`gen_basic`'s `area` and `alder check` says:
 
 ```
-app/M.alder:6:10: error[E0004]: missing cases: `Rect`
+app/M.alder:7:10: error[E0004]: missing cases: `Rect`
   area s = match s {
            ^
   fix: ,
   Rect x -> ?todo,
 ```
+
+The fix replaces the last arm's trailing comma and line end with `,`, a
+new line and the missing arm, so it works whether or not the last arm
+ended in a comma. `Rect x` binds the whole payload to `x` because the
+checker can't guess which fields you need, and `?todo` is a typed hole.
+Applying the fix leaves you with a warning that tells you what to write:
+`warning[W0002]: hole ?todo has type Float`.
 
 The checker's output is a `check.Result` (`internal/check/result.go`). It
 records the type of every expression (`Types`, keyed by AST node), the type
@@ -351,7 +436,12 @@ what a consumer can assume:
   top-level value of the app, or a stdlib value.
 - **There is no `|>`, no block, no pattern.** Pipes are calls, blocks are
   `Let`s, and matches are decision trees.
-- **Every node has a type**, taken from `check.Result`.
+
+One more property holds by construction: every expression node embeds
+`Typed` (`ir.go`), so every node has a type, copied from `check.Result`.
+The dump prints types only where something is bound or where the type
+decides the Go (`: Float` on a `bind` or `let`, `: Maybe Int` on `??`), to
+keep it readable.
 
 Here is `area` as AST and as IR. The IR is from
 `testdata/golden/ir_basic.ir`, written by `ir.Dump`:
@@ -381,7 +471,7 @@ The differences, one at a time:
   one tag, plus `(bind _m1 value : Float)`, which binds the payload to a
   fresh temporary `_m1`, plus `(let r : Float (var _m1) …)`, which gives it
   your name. `Rect`'s record pattern became one bind per field.
-- Every binding carries its type (`: Float`), from `check.Result.Binds`.
+- Every binding shows its type (`: Float`), from `check.Result.Binds`.
 - `(float 3.14)` became `3.14`: a literal's kind is now in its type.
 
 Why the temporaries, when `Circle r` could just bind `r`? Because an arm
@@ -411,7 +501,7 @@ parts, and `??` records the `Maybe Int` it works on:
 
 Brand erasure is easiest to see in a small module with
 `type UserId = brand Text` and `greet : UserId -> Text`,
-`greet id = "hello {id}"`. Its IR dump shows the signature with the brand
+`greet id = "hello {id}"`. Its IR dump (from `TestDumpDir`) shows the signature with the brand
 already gone:
 
 ```
@@ -449,7 +539,9 @@ byte-for-byte what `alder build --emit` writes for `gen_basic`.
 **`Shape`.** Go has no sum types: there is no way to say "a value that is
 either a `Circle` with a float or a `Rect` with two". So a union becomes a
 struct holding a tag, which says which constructor built it, and one field
-per constructor's payload:
+per constructor's payload. A Go `struct` is a record type with named
+fields, `type … uint8` declares a small number type, and `const ( … )`
+gives names to fixed values:
 
 ```go
 type M__Shape struct {
@@ -480,10 +572,20 @@ func M__Shape_Circle_(v float64) M__Shape {
 ```
 
 Only the field matching `Tag` is meaningful; the other stays at its zero
-value. `Circle`'s `Float` payload is wrapped in a struct with one field,
-`Value`, as the IR said: `ir_basic.ir` declares the union as
+value (Go's default: `0`, `""`, `false`, or a struct of those).
+`Circle`'s `Float` payload is wrapped in a struct with one field, `Value`,
+as the IR said: `ir_basic.ir` declares the union as
 `(union M.Shape (Circle { value: Float }) (Rect { w: Float, h: Float }))`.
-Constructors that take a payload become functions with a trailing `_`.
+
+The constructor `Circle` becomes a function, `func M__Shape_Circle_(v
+float64) M__Shape { … }`: it takes a `float64` named `v` and returns a
+`M__Shape`. Inside, `M__Shape{Tag: …, Circle: …}` builds a struct value,
+naming the fields it sets. Note the underscores. A single `_` joins the
+union to a constructor (`M__Shape_Circle` is `Circle`'s payload struct),
+and a trailing `_` marks the constructor function (`M__Shape_Circle_`), so
+the two never share a name. The double `__` is kept for the module
+boundary (`M__`) and the tag (`__Tag`); section 9 lists the whole
+scheme.
 
 **`area`.** The IR's `match union` becomes a `switch` on the tag:
 
@@ -502,14 +604,19 @@ func M__area(s M__Shape) float64 {
 }
 ```
 
+`switch s.Tag { case …: }` compares `s.Tag` with each `case` in turn and
+runs the first that matches. `r := s.Circle.Value` declares `r` and sets
+it to the payload's field.
+
 The temp `_m1` from the IR is gone: when a temp's only use is to be renamed
 to your name, the emitter binds your name directly (the comment at the top
-of `internal/gen/match.go`). The `panic` after the switch is never reached,
-because the checker proved the match exhaustive, but Go requires a function
-to end in a `return` or a `panic`.
+of `internal/gen/match.go`). `panic("unreachable")` stops the program with
+that message if it ever runs. It never does, because the checker proved
+the match exhaustive, but Go requires a function that returns a value to
+end in a `return` or a `panic`.
 
-**`shift`.** A record update copies every field, replacing the one you
-named:
+**`shift`.** A record update builds a new struct, copying every field
+except the one you replaced. `p.X` reads field `X` of `p`:
 
 ```go
 func M__shift(p M__Point) M__Point {
@@ -518,7 +625,10 @@ func M__shift(p M__Point) M__Point {
 ```
 
 **`names`.** Stdlib calls become calls into `rt/std`, one Go function per
-Alder function, chosen from the table in `internal/gen/stdcall.go`:
+Alder function, chosen from the table in `internal/gen/stdcall.go`.
+`[]string` is a Go slice, a list of strings, and `std.TextToUpper` is
+passed as a value, without calling it, for `ListMap` to call on each
+element:
 
 ```go
 func M__names(xs []string) string {
@@ -527,7 +637,22 @@ func M__names(xs []string) string {
 ```
 
 **`label`.** `Maybe Int` is `rt.Maybe[int64]`, `??` is `rt.OrElse`, and
-interpolation is `rt.Concat`:
+interpolation is `rt.Concat`. `rt.Maybe` is defined in `rt/core.go`:
+
+```go
+// Maybe is Alder's `Maybe a`. The zero value is Nothing.
+type Maybe[T any] struct {
+	Ok  bool
+	Val T
+}
+```
+
+`Maybe[T any]` is a *generic* type: `T` stands for any type, and
+`rt.Maybe[int64]` is the version where `T` is `int64`, just as Alder's
+`Maybe a` becomes `Maybe Int`. `Ok` is `true` for `Just` and `false` for
+`Nothing`, and `Val` holds the value when there is one. `rt.OrElse(m, 0)`
+returns `m.Val` when `m.Ok` is true and `0` otherwise, which is exactly
+`m ?? 0`:
 
 ```go
 func M__label(m rt.Maybe[int64]) string {
@@ -548,7 +673,8 @@ addAll xs = xs |> List.map (adder 1)
 ```
 
 and the emitter writes a closure that waits for the missing argument
-(from `build/partial/P.go`, after `alder build --emit partial`):
+(from `build/partial/P.go`, after `alder build --emit partial`, where
+`partial/app/P.alder` holds `module P` and the lines above):
 
 ```go
 func P__addAll(xs []int64) []int64 {
@@ -557,6 +683,13 @@ func P__addAll(xs []int64) []int64 {
 	}, xs)
 }
 ```
+
+`func(_a1 int64) int64 { … }` is a function literal: a function with no
+name, written where it is used. It takes the one argument `adder 1` is
+still missing, under a fresh name the emitter picks, `_a1`, that nothing
+else in scope uses, and calls `P__adder` with the `1`
+it already has. A function literal that uses values from around it is
+called a closure.
 
 **Equality and ordering.** Go's `==` doesn't work on every struct, and
 wouldn't mean the right thing if it did (two `Dict`s with the same entries
@@ -584,7 +717,11 @@ func F__greet(id string) string {
 section 6.
 
 **`Card`.** A component becomes a function from its props to an
-`html.Node`, and markup becomes calls to the `rt/html` builder:
+`html.Node`, and markup becomes calls to the `rt/html` builder. The props
+type is an anonymous `struct { … }` written in place, because `Card`'s
+props record has no name. `[]html.Attr{ … }` is a slice literal, `nil`
+means "no attributes", and `props.Children...` passes each element of the
+slice as a separate argument:
 
 ```go
 func M__Card(props struct {
@@ -670,8 +807,12 @@ the package before saying `wrote`.
 Every top-level name follows one scheme (`internal/gen/names.go`): the
 module with `.` replaced by `_`, then `__`, then the Alder name. The
 `view` of `Todos.Index` is `Todos_Index__view`. Union tags add `__Tag`
-(`M__Shape__Tag`), and record fields get a capital first letter so Go
-exports them (`title` → `Title`). The `__` means a generated name can never
+(`M__Shape__Tag`, constants `M__Shape__Tag_Circle`). A single `_` joins a
+union and a constructor: `M__Shape_Circle` is the payload struct, or the
+value of a constructor with no payload, and `M__Shape_Circle_`, with a
+trailing `_`, is the function for a constructor that takes one. Record
+fields get a capital first letter so Go exports them (`title` →
+`Title`). The `__` means a generated name can never
 be a Go keyword or clash with `rt`, `html` or `std`.
 
 So to find a page's view, search for it:
@@ -681,8 +822,10 @@ $ grep -n "func Todos_Index__view" build/todos/*.go
 build/todos/Todos_Index.go:69:func Todos_Index__view(model Todos_Index__Model, session Todos_Index__Session) html.Node {
 ```
 
-Its first lines show the `<Layout.Page>` component call, with props as a
-struct and children as a slice, and the `<form>` with its message URL:
+Its first lines show the `<Layout.Page>` component call and the `<form>`
+with its message URL. The props are an anonymous struct type followed
+directly by its value, `struct { … }{Title: "Todos", …}`, and the children
+are a slice:
 
 ```go
 func Todos_Index__view(model Todos_Index__Model, session Todos_Index__Session) html.Node {
@@ -704,11 +847,9 @@ it gets its own session record in which `user` is a `UserId`, not a
 ## 10. Exercises
 
 1. **Dump an AST.** Write `module X` and `x : Int` / `x = 1 + 2 * 3` in a
-   file. Parse it with `syntax.ParseFile` and print the declaration with
-   `syntax.Dump`. A throwaway test file kept outside the repository and
-   mapped into `internal/syntax` with `go test -overlay` does this without
-   touching the repository. Before you run it, predict where the
-   parentheses go.
+   file, and print its dump with the `TestDumpFile` recipe from section 3
+   (set `ALDER_FILE` to your file's absolute path). Before you run it,
+   predict where the parentheses go.
 2. **One error for three uses.** Write a module that uses another module
    three times without importing it, and confirm `alder check` prints one
    E0201. `testdata/corpus/E0201-dedupe/` is one answer; explain which of
