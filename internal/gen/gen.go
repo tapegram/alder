@@ -123,7 +123,9 @@ func (g *gen) params(v *ir.Value) []string {
 }
 
 // instantiate is the explicit type argument list for a reference to generic value v at type t,
-// "" when v is not generic or when some argument is not fully known (Go then infers it).
+// "" when v is not generic. A type argument the checker left unsolved (`List.length empty` with
+// `empty : List a`) is unconstrained, so any type will do: it is `any` (GoType of an inference
+// variable), here and in every other type that mentions the same variable.
 func (g *gen) instantiate(v *ir.Value, t types.Type) string {
 	ps := g.params(v)
 	if len(ps) == 0 {
@@ -131,15 +133,15 @@ func (g *gen) instantiate(v *ir.Value, t types.Type) string {
 	}
 	m := map[string]types.Type{}
 	bindParams(v.Type, t, m)
-	var args []types.Type
+	var args []string
 	for _, p := range ps {
-		a := m[p]
-		if a == nil || !solved(a) {
-			return ""
+		if a := m[p]; a != nil {
+			args = append(args, GoType(a))
+		} else {
+			args = append(args, "any")
 		}
-		args = append(args, a)
 	}
-	return typeArgs(args)
+	return "[" + strings.Join(args, ", ") + "]"
 }
 
 // bindParams matches declared type decl against its instance inst, recording what each type
@@ -176,38 +178,6 @@ func bindParams(decl, inst types.Type, m map[string]types.Type) {
 			bindParams(d.Result, i.Result, m)
 		}
 	}
-}
-
-// solved reports whether t has no unsolved inference variable.
-func solved(t types.Type) bool {
-	switch t := t.(type) {
-	case *types.Var:
-		return false
-	case *types.Con:
-		return !types.IsErr(t)
-	case *types.App:
-		return all(t.Args)
-	case *types.Union:
-		return all(t.Args)
-	case *types.Record:
-		for _, f := range t.Fields {
-			if !solved(f.Type) {
-				return false
-			}
-		}
-	case *types.Fun:
-		return all(t.Params) && solved(t.Result)
-	}
-	return true
-}
-
-func all(ts []types.Type) bool {
-	for _, t := range ts {
-		if !solved(t) {
-			return false
-		}
-	}
-	return true
 }
 
 // module emits one module's file.

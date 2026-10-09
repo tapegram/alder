@@ -718,3 +718,26 @@ view model session = {
 	)
 	vet(t, files)
 }
+
+// A type argument the checker leaves unsolved is unconstrained: it is instantiated as any (C7).
+func TestGen_UnsolvedTypeArgs(t *testing.T) {
+	files := emitSource(t, map[string]string{"M.alder": `module M
+
+empty : List a
+empty = []
+
+nada : a -> Maybe b
+nada x = Nothing
+
+n : Int
+n = List.length empty
+
+m : Bool
+m = Maybe.isJust (nada 1)
+`})
+	contains(t, files["M.go"],
+		"var M__n int64 = std.ListLength(M__empty[any]())",
+		"var M__m bool = std.MaybeIsJust(M__nada[int64, any](1))",
+	)
+	vet(t, files)
+}

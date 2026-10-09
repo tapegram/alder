@@ -351,21 +351,11 @@ func (f *fn) call(x *ir.Call, s *scope) (string, int) {
 }
 
 // argument is argument i of a call of callee: typed where Go would otherwise infer a type
-// parameter from an untyped constant as int — when the callee is a generic value of the app
-// called without explicit type arguments, or when the parameter of a stdlib callee is a bare type
-// variable.
+// parameter from an untyped constant as int — when the parameter of a stdlib callee is a bare
+// type variable. (A generic value of the app is always called with explicit type arguments.)
 func (f *fn) argument(callee ir.Expr, i int, a ir.Expr, s *scope) string {
-	if v, ok := callee.(*ir.Var); ok {
-		switch v.Kind {
-		case ir.VarGlobal:
-			if val := f.g.values[v.Module+"."+v.Name]; val != nil && len(f.g.params(val)) > 0 && f.g.instantiate(val, v.Ty) == "" {
-				return f.typedExpr(a, s)
-			}
-		case ir.VarStd:
-			if stdVarParam(v.Module, v.Name, i) {
-				return f.typedExpr(a, s)
-			}
-		}
+	if v, ok := callee.(*ir.Var); ok && v.Kind == ir.VarStd && stdVarParam(v.Module, v.Name, i) {
+		return f.typedExpr(a, s)
 	}
 	return f.code(a, s)
 }
