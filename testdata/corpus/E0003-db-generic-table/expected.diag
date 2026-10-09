@@ -1,0 +1,2 @@
+app/Tag.alder:11:14 E0003 `Db.count` needs a concrete table; `t` is a type parameter: write the table's own type (`Table Todo`, `Select Todo`) in the signature, one function per table
+app/Tag.alder:14:16 E0003 `Db.offset` needs a concrete table; `t` is a type parameter: write the table's own type (`Table Todo`, `Select Todo`) in the signature, one function per table

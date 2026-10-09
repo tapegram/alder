@@ -132,7 +132,49 @@ func (mc *modCtx) reportHoles() {
 		mc.c.bag.Warn("W0002", h.span, "hole ?%s has type %s", h.name, types.String(mc.c.u.Apply(h.t)))
 	}
 	mc.holes = nil
+	mc.c.checkDbTables()
 	mc.c.checkInferredDictKeys()
+}
+
+// checkDbTables reports E0003, once per body at its first such use, for a Db function taking a
+// `Table t` or `Select t` whose t is not a table at that use (`countAny : Table t -> Query Int`
+// calling `Db.from t`): the generated code names the table, so it must be known where the
+// function is used — the checker accepts the polymorphic type, Lower cannot build it. It reads
+// the expressions recorded since the last body ended (checkInferredDictKeys clears them).
+func (c *Checker) checkDbTables() {
+	var at *syntax.Var
+	var what string
+	for _, e := range c.bodyExprs {
+		v, ok := e.(*syntax.Var)
+		if !ok || v.Ref.Kind != syntax.RefStd || v.Ref.Module != "Db" {
+			continue
+		}
+		fn, ok := c.u.Apply(c.res.Types[e]).(*types.Fun)
+		if !ok {
+			continue
+		}
+		for _, p := range fn.Params {
+			app, ok := c.u.Apply(p).(*types.App)
+			if !ok || (app.Con != "Table" && app.Con != "Select") || len(app.Args) != 1 {
+				continue
+			}
+			var w string
+			switch t := c.u.Apply(app.Args[0]).(type) {
+			case *types.Param:
+				w = fmt.Sprintf("`%s` is a type parameter", t.Name)
+			case *types.Var:
+				w = "its table is not known here"
+			default:
+				continue
+			}
+			if at == nil || before(v.Span, at.Span) {
+				at, what = v, w
+			}
+		}
+	}
+	if at != nil {
+		c.errorf(diag.TypeMismatch, at.Span, "`Db.%s` needs a concrete table; %s: write the table's own type (`Table Todo`, `Select Todo`) in the signature, one function per table", at.Ref.Name, what)
+	}
 }
 
 // checkInferredDictKeys reports E0003 for a Dict whose key type holds a function when no written
@@ -780,6 +822,17 @@ func (mc *modCtx) inferAccess(x *syntax.Access, env *env, eff effect) types.Type
 		c.errorf(diag.TypeMismatch, x.Span, "`%s` has no fields; it is a union", types.String(b))
 	case *types.App:
 		if b.Con == "Column" && len(b.Args) == 2 {
+			// Lower resolves a column method's column from its receiver's syntax, so the
+			// receiver must be the column itself, not a value holding it.
+			if v, ok := x.Expr.(*syntax.Var); !ok || v.Ref.Kind != syntax.RefColumn {
+				tbl := "Table"
+				if r, ok := c.u.Apply(b.Args[0]).(*types.Record); ok && r.Name != "" {
+					tbl = r.Name
+				}
+				c.errorf(diag.TypeMismatch, x.Span, "a column method (`.eq .lt .asc …`) needs its column written in place as `Table.field`; write `%s.field.%s …` instead of `%s.%s`: a column cannot be stored in a variable or passed as an argument",
+					tbl, x.Field, mc.source(x.Expr.GetSpan()), x.Field)
+				return c.u.Fresh()
+			}
 			return mc.columnMethod(x, b.Args[0], b.Args[1])
 		}
 		c.errorf(diag.TypeMismatch, x.Span, "`%s` has no field `%s`", types.String(b), x.Field)

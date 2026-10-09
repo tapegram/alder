@@ -1,0 +1,2 @@
+app/Tag.alder:14:3 E0003 a column method (`.eq .lt .asc …`) needs its column written in place as `Table.field`; write `Tag.field.gt …` instead of `c.gt`: a column cannot be stored in a variable or passed as an argument
+app/Tag.alder:20:3 E0003 a column method (`.eq .lt .asc …`) needs its column written in place as `Table.field`; write `Tag.field.eq …` instead of `r.col.eq`: a column cannot be stored in a variable or passed as an argument

@@ -1,0 +1,24 @@
+module Tag
+
+type TagId = brand Text
+
+table Tag {
+  id: TagId @id,
+  label: Text,
+  n: Int = 0,
+}
+
+big : Condition Tag
+big = {
+  let c = Tag.n
+  c.gt 1
+}
+
+viaRecord : Condition Tag
+viaRecord = {
+  let r = { col: Tag.n }
+  r.col.eq 3
+}
+
+ok : Condition Tag
+ok = Tag.n.gt 1

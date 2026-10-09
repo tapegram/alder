@@ -1,0 +1,20 @@
+module Tag
+
+type TagId = brand Text
+
+table Tag {
+  id: TagId @id,
+  label: Text,
+}
+
+countAny : Table t -> Query Int
+countAny t = Db.count (Db.from t)
+
+page2 : Select t -> Select t
+page2 s = s |> Db.offset 10 |> Db.limit 10
+
+k : Query Int
+k = countAny Tag
+
+ok : Table Tag -> Query Int
+ok t = Db.count (Db.from t)
