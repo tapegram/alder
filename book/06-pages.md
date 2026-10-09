@@ -537,8 +537,9 @@ button with its own target instead:
 Datastar posts the message on click and stops the form's own submission.
 Without JavaScript the browser posts the enclosing form's fields to the
 button's URL; a message without a form ignores them. (`formnovalidate`
-keeps the form's `required` fields from blocking a button that does not
-submit them.) A `click` on another element, such as a `<li>`, needs
+keeps an empty `required` field of the form from blocking the button,
+and so does leaving the fields out of the Datastar post: the browser would
+otherwise refuse to send a form with an empty required field.) A `click` on another element, such as a `<li>`, needs
 JavaScript.
 
 Without JavaScript, the answer to a message is a whole page for a form
