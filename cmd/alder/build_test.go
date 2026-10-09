@@ -106,10 +106,70 @@ func TestBuildEmit_ForeignFileDoesNotVet(t *testing.T) {
 	}
 }
 
-func TestBuild_WithoutEmit(t *testing.T) {
-	code, _, stderr := runBuild(t, "../../examples/todos")
-	if code != 2 || !strings.Contains(stderr, "alder build` without --emit arrives in M3c") {
-		t.Fatalf("exit %d, stderr: %s", code, stderr)
+// `alder build` (no --emit) builds the app's executable: the generated package, the app's
+// adapters package and static files copied next to it, and the generated command.
+func TestBuild_Todos(t *testing.T) {
+	src, err := filepath.Abs("../../examples/todos")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := t.TempDir()
+	copyDir(t, src, filepath.Join(tmp, "todos"))
+	t.Chdir(tmp)
+	out := filepath.Join("build", "todos")
+	// a stale copy of an adapter since deleted, and a stale static file
+	os.MkdirAll(filepath.Join(out, "adapters"), 0o755)
+	os.WriteFile(filepath.Join(out, "adapters", "gone.go"), []byte("package adapters\n\nvar _ = undefined\n"), 0o644)
+	os.MkdirAll(filepath.Join(out, "static"), 0o755)
+	os.WriteFile(filepath.Join(out, "static", "gone.css"), []byte("x"), 0o644)
+
+	code, stdout, stderr := runBuild(t, "todos")
+	if code != 0 {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	if stdout != "wrote build/todos/todos\n" {
+		t.Errorf("stdout = %q", stdout)
+	}
+	st, err := os.Stat(filepath.Join(out, "todos"))
+	if err != nil || st.Mode()&0o111 == 0 {
+		t.Fatalf("no executable build/todos/todos: %v", err)
+	}
+	for _, f := range []string{"adapters/password.go", "static/app.css", "cmd/main.go", "routes__alder.go"} {
+		if _, err := os.Stat(filepath.Join(out, f)); err != nil {
+			t.Errorf("build/todos/%s: %v", f, err)
+		}
+	}
+	for _, f := range []string{"adapters/gone.go", "static/gone.css"} {
+		if _, err := os.Stat(filepath.Join(out, f)); !os.IsNotExist(err) {
+			t.Errorf("stale build/todos/%s kept: %v", f, err)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(out, "cmd", "main.go")); !strings.Contains(string(b), "app.Serve(adapters.Caps(), app.Options{") {
+		t.Errorf("cmd/main.go:\n%s", b)
+	}
+
+	// adapters that do not compile are the app's error, shown as Go reports it
+	os.WriteFile(filepath.Join("todos", "adapters", "broken.go"), []byte("package adapters\n\nvar _ int = \"x\"\n"), 0o644)
+	code, stdout, stderr = runBuild(t, "todos")
+	if code != 1 || strings.Contains(stderr, "internal error") || !strings.Contains(stderr, "adapters/broken.go:3:") ||
+		!strings.Contains(stderr, "the adapters package (todos/adapters, copied to build/todos/adapters) does not compile") {
+		t.Fatalf("broken adapters: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	// adapters without Caps
+	os.Remove(filepath.Join("todos", "adapters", "broken.go"))
+	b, _ := os.ReadFile(filepath.Join("todos", "adapters", "password.go"))
+	os.WriteFile(filepath.Join("todos", "adapters", "password.go"), []byte(strings.Replace(string(b), "func Caps()", "func caps()", 1)), 0o644)
+	code, _, stderr = runBuild(t, "todos")
+	if code != 1 || !strings.Contains(stderr, "the adapters package must declare `func Caps() app.Caps`") {
+		t.Fatalf("adapters without Caps: exit %d\nstderr: %s", code, stderr)
+	}
+
+	// an app with capabilities needs an adapters package
+	os.RemoveAll(filepath.Join("todos", "adapters"))
+	code, stdout, stderr = runBuild(t, "todos")
+	want := "todos needs an adapters package: create adapters/caps.go with `func Caps() app.Caps` implementing: Auth.Login.Password (interface app.Cap__Auth__Login__Password)\n"
+	if code != 1 || stderr != want {
+		t.Fatalf("no adapters: exit %d\nstdout: %s\nstderr: %q\nwant %q", code, stdout, stderr, want)
 	}
 }
 

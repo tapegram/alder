@@ -1,0 +1,76 @@
+/* The to-do app's stylesheet, served at /static/app.css. */
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+  max-width: 40rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  color: #1f2328;
+  background: #ffffff;
+}
+
+html.dark body {
+  color: #e6edf3;
+  background: #0d1117;
+}
+
+a {
+  color: #0969da;
+}
+
+html.dark a {
+  color: #58a6ff;
+}
+
+label {
+  display: block;
+  margin: 0.5rem 0;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  margin-left: 0.5rem;
+}
+
+button {
+  font: inherit;
+  margin: 0.25rem 0.5rem 0.25rem 0;
+  padding: 0.25rem 0.75rem;
+  cursor: pointer;
+}
+
+nav a {
+  margin-right: 0.75rem;
+}
+
+nav a[aria-current="page"] {
+  font-weight: bold;
+}
+
+ul#todos {
+  list-style: none;
+  padding: 0;
+}
+
+li.done a {
+  text-decoration: line-through;
+  color: #6e7781;
+}
+
+.due {
+  margin-left: 0.5rem;
+  color: #6e7781;
+}
+
+.errors {
+  color: #cf222e;
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+
+.errors:empty {
+  display: none;
+}
