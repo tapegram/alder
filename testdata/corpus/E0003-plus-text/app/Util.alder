@@ -1,0 +1,4 @@
+module Util
+
+joined : Text
+joined = "a" + "b"

@@ -1,0 +1,13 @@
+module Index
+
+import Todo
+
+page "/" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 1 }
+
+view : Model -> Session -> Html Msg
+view model session = <a href="/profile">Profile</a>

@@ -1,0 +1,29 @@
+module Index
+
+import Todo
+
+page "/" { }
+
+type Model = { todos: List Todo }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todos <- Db.from Todo |> Db.all
+  Query.succeed { todos: todos }
+}
+
+msg Toggle { id: Todo.TodoId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Toggle p -> {
+    let _ <- Db.update Todo p.id (\t -> { t | done: not t.done })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <ul>
+    {for todo in model.todos -> <li><button click={Toggle}>{todo.title}</button></li>}
+  </ul>

@@ -1,0 +1,4 @@
+module Util
+
+label : List Int -> Text
+label xs = "n = {List.length xs}"

@@ -1,0 +1,13 @@
+module Index
+
+import Todo
+
+page "/" { }
+
+type Model = { priority: Todo.Priority }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { priority: Todo.Normal }
+
+view : Model -> Session -> Html Msg
+view model session = <p>ok</p>

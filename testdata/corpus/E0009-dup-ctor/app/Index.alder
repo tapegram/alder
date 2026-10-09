@@ -1,0 +1,14 @@
+module Index
+
+import Theme
+import Theme2
+
+page "/" { }
+
+type Model = { theme: Theme.Theme }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { theme: Light }
+
+view : Model -> Session -> Html Msg
+view model session = <p>ok</p>

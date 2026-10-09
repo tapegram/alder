@@ -1,0 +1,28 @@
+module Index
+
+import Todo
+
+page "/" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 1 }
+
+form NewTodo = {
+  title: Text.NonEmpty,
+}
+
+msg Submit form NewTodo
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> Task.succeed Rerender,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <form submit={Submit}>
+    <Input field="nope" label="Title" />
+    <button>Add</button>
+  </form>

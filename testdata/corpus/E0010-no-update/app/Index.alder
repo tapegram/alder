@@ -1,0 +1,15 @@
+module Index
+
+import Todo
+
+page "/" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 1 }
+
+msg Bump
+
+view : Model -> Session -> Html Msg
+view model session = <button click={Bump}>Bump</button>

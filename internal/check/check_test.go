@@ -86,7 +86,6 @@ func TestCorpus(t *testing.T) {
 }
 
 func TestExamplesCheckClean(t *testing.T) {
-	t.Skip("enabled in Task 11")
 	for _, ex := range []string{"../../examples/todos"} {
 		if got := render(runDir(t, ex)); got != "" {
 			t.Fatalf("%s should check clean:\n%s", ex, got)

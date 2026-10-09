@@ -34,6 +34,6 @@ countOpen todos = todos |> List.filter (\t -> not t.done) |> List.length
 
 test "countOpen ignores done todos" =
   countOpen [
-    { id: TodoId "a", title: "x", done: False, due: Nothing, owner: User.UserId "u", created: Time.epoch },
-    { id: TodoId "b", title: "y", done: True, due: Nothing, owner: User.UserId "u", created: Time.epoch },
+    { id: TodoId "a", title: Text.NonEmpty "x", done: False, due: Nothing, owner: User.UserId "u", created: Time.epoch },
+    { id: TodoId "b", title: Text.NonEmpty "y", done: True, due: Nothing, owner: User.UserId "u", created: Time.epoch },
   ] == 1

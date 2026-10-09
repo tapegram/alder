@@ -1,0 +1,7 @@
+module Util
+
+five : Int
+five = {
+  let x <- Query.succeed 1
+  x
+}

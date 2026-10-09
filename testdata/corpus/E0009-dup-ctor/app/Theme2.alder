@@ -1,0 +1,3 @@
+module Theme2
+
+type Theme2 = Light | Dim

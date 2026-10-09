@@ -1,0 +1,1 @@
+app/Comment.alder:9:3 E0502 `@ref Post` field `post` must have type `Post.PostId` or `Maybe Post.PostId`, got `Post.Slug`

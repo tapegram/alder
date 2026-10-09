@@ -1,0 +1,13 @@
+module Index
+
+import Todo
+
+page "/" { todos: List Todo }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 1 }
+
+view : Model -> Session -> Html Msg
+view model session = <p>ok</p>

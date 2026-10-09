@@ -1,0 +1,1 @@
+app/Util.alder:4:14 E0602 `case ... of` is not Alder; use `match x { ... }`

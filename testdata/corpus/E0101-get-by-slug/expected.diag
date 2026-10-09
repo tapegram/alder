@@ -1,0 +1,2 @@
+app/Show.alder:11:28 E0101 `Db.get Post` takes a `Post.PostId`, got `Post.Slug`
+  fix 11:16 Db.from Post |> Db.where (Post.slug.eq params.slug) |> Db.first

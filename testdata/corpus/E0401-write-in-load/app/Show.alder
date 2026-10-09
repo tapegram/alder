@@ -1,0 +1,16 @@
+module Show
+
+import Todo
+
+page "/todos/{id}" { id: Todo.TodoId }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let _ <- Db.delete Todo params.id
+  Query.succeed { n: 0 }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Text.fromInt model.n}</p>

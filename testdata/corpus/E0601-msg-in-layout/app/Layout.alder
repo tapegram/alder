@@ -1,0 +1,4 @@
+module Layout
+
+Shell : { title: Text } -> Html Msg
+Shell props = <h1>{props.title}</h1>

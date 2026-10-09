@@ -1,0 +1,4 @@
+module Util
+
+one : Int
+one = let y = 1 in y

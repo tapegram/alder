@@ -1,0 +1,9 @@
+module User
+
+type UserId = brand Text
+
+table User {
+  id: UserId @id,
+  name: Text.NonEmpty,
+  email: Text.Email @unique,
+}

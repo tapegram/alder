@@ -49,3 +49,17 @@ func TestRenderText(t *testing.T) {
 }
 
 func contains(s, sub string) bool { return len(s) >= len(sub) && (func() bool { for i := 0; i+len(sub) <= len(s); i++ { if s[i:i+len(sub)] == sub { return true } }; return false })() }
+
+func TestExplainCoversEveryCode(t *testing.T) {
+	codes := []string{"E0001", "E0002", "E0003", "E0004", "E0005", "E0006", "E0007", "E0008", "E0009", "E0010", "E0011",
+		"E0101", "E0102", "E0201", "E0202", "E0203", "E0301", "E0302", "E0303", "E0304", "E0310", "E0401", "E0402",
+		"E0501", "E0502", "E0601", "E0602", "W0001", "W0002"}
+	for _, c := range codes {
+		if len(Explain[c]) < 80 {
+			t.Errorf("Explain[%s] missing or too short", c)
+		}
+	}
+	if len(Explain) != len(codes) {
+		t.Errorf("Explain has %d entries, want %d", len(Explain), len(codes))
+	}
+}

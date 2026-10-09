@@ -232,6 +232,11 @@ an operator, or is inside unclosed brackets.
 ## Reserved words
 
 ```
-module import type brand where page msg form table capability session
+module import type brand where page msg form table capability session login
 test let match if then else for in requires
 ```
+
+The declaration-head words (`module import type page msg form table
+capability session login test`) are reserved only at the start of a line
+(column 1). Elsewhere they are ordinary names, so `load params session = …`
+and `{ form: 1 }` are valid. The remaining words are reserved everywhere.

@@ -502,6 +502,10 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 			c.Ref = syntax.Ref{Kind: syntax.RefTable, Module: c.Name, Name: c.Name}
 			return
 		}
+		if s := r.p.scopes[c.Name]; s != nil && s.tables[c.Name] {
+			r.notImported(c.Span, c.Name) // `Db.from Todo` without `import Todo`
+			return
+		}
 		r.bag.Error(diag.UnknownName, c.Span, "unknown constructor `%s`", c.Name)
 		return
 	}

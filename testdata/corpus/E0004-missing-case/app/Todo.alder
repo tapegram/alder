@@ -1,0 +1,24 @@
+module Todo
+
+import User
+
+type TodoId = brand Text
+
+type Priority = Low | Normal | High
+
+type Filter = All | Active | Completed
+
+table Todo {
+  id: TodoId @id,
+  title: Text.NonEmpty,
+  priority: Priority = Normal,
+  done: Bool = False,
+  owner: User.UserId @ref User,
+  created: Time @created,
+}
+
+matches : Filter -> Todo -> Bool
+matches filter todo = match filter {
+  All -> True,
+  Active -> not todo.done,
+}

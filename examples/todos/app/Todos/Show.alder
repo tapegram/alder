@@ -43,7 +43,7 @@ view model session =
     <form submit={Save { id: model.todo.id }}>
       <Input field="title" label="Title" value={model.todo.title} />
       <Errors field="title" />
-      <Input field="due" label="Due" value={Maybe.map Date.toText model.todo.due} />
+      <Input field="due" label="Due" value={model.todo.due} />
       <Errors field="due" />
       <button>Save</button>
     </form>

@@ -1,6 +1,6 @@
 # 11. Tooling
 
-This chapter describes the compiler as designed. None of it exists yet.
+`alder check` exists as of M1; `build`, `run`, `test`, `fmt`, holes and `query` are planned.
 
 ## Project layout
 
@@ -38,12 +38,50 @@ Every diagnostic has a stable code, a location, a one-line message, and,
 when possible, a fix. With `--json`, diagnostics are emitted as JSON lines:
 
 ```json
-{"code":"E0412","severity":"error","file":"app/Todos/Index.alder","line":31,"col":12,
- "message":"page Todos.Show needs field `id: TodoId`, got `{ }`",
- "fix":{"line":31,"col":12,"replace":"Todos.Show { id: ?id }"}}
+{"code":"E0301","severity":"error","file":"app/Todos/Index.alder","line":28,"col":52,"endLine":28,"endCol":58,"message":"message `Toggle` needs its parameters: `Toggle { id: ?id }`","fix":{"line":28,"col":52,"replace":"Toggle { id: ?id }"}}
 ```
 
 `?name` in a fix is a hole for the agent to fill.
+
+`alder check` exits 0 when there are no errors, 1 when there are errors, and
+2 on a usage or I/O failure. The compiler stops after the first phase that
+reports errors (parse, then names, then types), so a syntax error never
+produces a flood of resolution errors; within a phase it reports everything
+it finds. `alder explain <code>` prints a paragraph for any code below.
+
+### Diagnostic codes
+
+| Code | Meaning | Fix offered |
+|---|---|---|
+| E0001 | parse error | — |
+| E0002 | unknown name | — |
+| E0003 | type mismatch | conversion such as `Text.fromInt (…)` where one exists |
+| E0004 | non-exhaustive `match` | arm skeleton |
+| E0005 | module name does not match its file path | — |
+| E0006 | import cycle | — |
+| E0007 | top-level value without a type signature | signature line |
+| E0008 | wrong number of parameters or arguments | — |
+| E0009 | duplicate definition, or a constructor declared in two imported modules | — |
+| E0010 | required declaration missing (page `load`/`view`/`update`, `App` `error`/`notFound`/`login`/`session`) | — |
+| E0011 | invalid declaration (unstorable table field, unusable page or form field, bad `@id`, brand constructor used outside its module) | — |
+| E0101 | `Db.get T x` where `x` is not `Id T` | `Db.from T \|> Db.where (T.<col>.eq x) \|> Db.first` when a column of `x`'s type exists |
+| E0102 | field access on a `Maybe` | `match` skeleton |
+| E0201 | name from a module that isn't imported | `import M` |
+| E0202 | unqualified type from another module | `M.T` |
+| E0203 | qualified constructor | unqualified name |
+| E0301 | message sent without its parameters | `M { field: ?field }` |
+| E0302 | `update` missing an arm | arm skeleton |
+| E0303 | `href` with a `Text` | — |
+| E0304 | form field not in the form type, or wrong input component | list of fields |
+| E0310 | unreachable `match` arm | — |
+| E0401 | `Task` inside `load` or a `Query` block | — |
+| E0402 | `let x <-` outside an effect block | — |
+| E0501 | `@id`, `@created`, `@updated` supplied on insert | — |
+| E0502 | `@ref` with the wrong id type | — |
+| E0601 | `Html Msg` in a non-page module | `Html a` |
+| E0602 | `case ... of`, `let ... in`, tuple, alias | the Alder form |
+| W0001 | unused import | — |
+| W0002 | typed hole (`?name`) with its expected type | — |
 
 ## Holes
 

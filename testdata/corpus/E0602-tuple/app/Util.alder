@@ -1,0 +1,4 @@
+module Util
+
+pair : Int -> Int -> { a: Int, b: Int }
+pair a b = (a, b)

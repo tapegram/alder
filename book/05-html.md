@@ -160,7 +160,7 @@ no bound inputs, only a button.
 
 `field` must name a field of the form type. The input's `name`, `type`,
 `required`, and current value are derived from the field's type and the
-submitted values. `value={...}` (a `Text` or `Maybe Text`) sets the initial
+submitted values. `value={...}` (the field's own type, or `Maybe` of it) sets the initial
 value for an edit form; a submitted value takes precedence over it. A field
 of type `Text.Secret` renders as a password input and is never echoed back.
 A plain `<input>` inside a `<form submit={...}>` is a compile error; use

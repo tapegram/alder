@@ -1,0 +1,2 @@
+app/Profile.alder:12:25 E0102 `.name` on a `Maybe User`; match it first
+  fix 12:25 (match user { Just x -> x.name, Nothing -> ?default })

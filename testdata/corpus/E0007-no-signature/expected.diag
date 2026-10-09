@@ -1,0 +1,3 @@
+app/Todo.alder:20:1 E0007 `priorityRank` has no type signature; write `priorityRank : ?type` on the line before it
+  fix 20:1 priorityRank : ?type
+
