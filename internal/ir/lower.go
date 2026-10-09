@@ -17,7 +17,7 @@ import (
 func Lower(prog *names.Program, res *check.Result) *Program {
 	l := &lowerer{prog: prog, res: res, out: &Program{},
 		records: map[string]*RecordType{}, unions: map[string]*UnionType{}, values: map[string]*Value{},
-		pages: map[string]*Page{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, wrappers: map[*RecordType]bool{}}
+		pages: map[string]*Page{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, pageSessions: map[string]*types.Record{}}
 	l.declareTypes()
 	l.declareValues()
 	for _, d := range l.defaults {
@@ -47,6 +47,10 @@ type lowerer struct {
 	erasedU map[*types.Union]*types.Union
 	// wrappers are the { value: T } payload records made for non-record constructor arguments
 	wrappers map[*RecordType]bool
+	// msgPayloads are the generated `<Msg>Params` records, whose `form` field a literal omits
+	msgPayloads map[*RecordType]bool
+	// pageSessions are the narrowed session records of `requires` pages, by page module
+	pageSessions map[string]*types.Record
 
 	defaults []pendingDefault
 	bodies   []pendingBody
@@ -113,6 +117,9 @@ func (l *lowerer) eraseT(t types.Type) types.Type {
 	case *types.Brand:
 		return l.eraseT(t.Base)
 	case *types.Record:
+		if t.Module == "App" && t.Name == "Session" && t != l.res.Session && l.pageSessions[l.module] != nil {
+			return l.pageSessions[l.module] // the checker's narrowed session of a `requires` page
+		}
 		if r, ok := l.erased[t]; ok {
 			return r
 		}
@@ -325,9 +332,41 @@ func (l *lowerer) declareTypes() {
 			l.out.Pages = append(l.out.Pages, pg)
 		}
 	}
+	l.declarePageSessions()
 	// constructors last: a payload may name a record of any module
 	for _, u := range unions {
 		l.fillUnion(u.ut, u.decl, false)
+	}
+}
+
+// declarePageSessions gives each page its Session: App's record, or for a `requires f` page a
+// record `Session` of the page module with field f narrowed from `Maybe T` to `T`, exactly as the
+// checker narrows it. The checker's narrowed copies of App.Session erase to that record (see
+// eraseT), so the page's signatures and field accesses name it.
+func (l *lowerer) declarePageSessions() {
+	for i, name := range l.prog.Order {
+		pg := l.pages[name]
+		if pg == nil {
+			continue
+		}
+		pg.Session = l.out.Session
+		if pg.Requires == "" || l.out.Session == nil {
+			continue
+		}
+		rec := &types.Record{Module: name, Name: "Session"}
+		for _, f := range l.res.Session.Fields {
+			if u, ok := f.Type.(*types.Union); ok && f.Name == pg.Requires && u.Name == "Maybe" && len(u.Args) == 1 {
+				f = types.Field{Name: f.Name, Type: u.Args[0], HasDefault: f.HasDefault}
+			}
+			rec.Fields = append(rec.Fields, f)
+		}
+		rt := &RecordType{Module: name, Name: "Session"}
+		l.recordFields(name, rt, rec, nil)
+		l.records[key(name, "Session")] = rt
+		mod := l.out.Modules[i]
+		mod.Types = append(mod.Types, &TypeDecl{Module: name, Name: "Session", Record: rt})
+		pg.Session = rt
+		l.pageSessions[name] = l.erase(rec).(*types.Record)
 	}
 }
 
@@ -369,6 +408,7 @@ func (l *lowerer) declareMsgs(mod *Module, owner string, u *types.Union, m *synt
 				fields = md.Params.Fields
 			}
 			msg.Params = &RecordType{Module: owner, Name: rec.Name}
+			l.msgPayloads[msg.Params] = true
 			l.records[key(owner, rec.Name)] = msg.Params
 			mod.Types = append(mod.Types, &TypeDecl{Module: owner, Name: rec.Name, Record: msg.Params})
 			l.recordFields(owner, msg.Params, rec, fields)
@@ -386,6 +426,7 @@ func (l *lowerer) declareMsgs(mod *Module, owner string, u *types.Union, m *synt
 func (l *lowerer) declareValues() {
 	for i, name := range l.prog.Order {
 		mod := l.out.Modules[i]
+		l.enter(name) // signatures of a `requires` page name its narrowed Session
 		for _, d := range l.prog.Modules[name].Decls {
 			vd, ok := d.(*syntax.ValueDecl)
 			if !ok || vd.Body == nil {

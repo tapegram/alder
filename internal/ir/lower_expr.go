@@ -116,7 +116,7 @@ func (l *lowerer) recordOf(rt *RecordType, t types.Type, given map[string]syntax
 			out.Fields = append(out.Fields, FieldInit{Name: f.Name, Value: l.expr(v)})
 		case f.Default != nil:
 			out.Fields = append(out.Fields, FieldInit{Name: f.Name, Value: f.Default})
-		case f.Name == "form":
+		case f.Name == "form" && l.msgPayloads[rt]: // the runtime supplies the submitted form
 		default:
 			panic(fmt.Sprintf("ir: record at %s has no field %s and no default for it", at, f.Name))
 		}
@@ -254,6 +254,15 @@ func (l *lowerer) app(fn syntax.Expr, args []syntax.Expr, piped Expr, t types.Ty
 
 // pipe lowers `l |> f a…` to the application of f to a… and then l.
 func (l *lowerer) pipe(x *syntax.BinOp) Expr {
+	// `{ … } |> C`: the literal is the constructor's payload, sharing its RecordType
+	if ct, ok := x.R.(*syntax.CtorRef); ok && ct.Ref.Kind == syntax.RefCtor && l.res.Ctors[key(ct.Ref.Module, ct.Ref.Name)] != nil {
+		if lit, isLit := x.L.(*syntax.RecordLit); isLit {
+			t := l.typeOf(x)
+			if payload := l.union(t.(*types.Union)).ctorT(ct.Ref.Name).Payload; payload != nil && !l.wrappers[payload] {
+				return l.ctor(t, ct.Ref.Name, nil, lit)
+			}
+		}
+	}
 	arg := l.expr(x.L)
 	if app, ok := x.R.(*syntax.App); ok {
 		return l.app(app.Fn, app.Args, arg, l.typeOf(x))

@@ -112,10 +112,16 @@ type Form struct {
 
 // Page is a page module. Params and the Msg union are in the module's Types. Model is the
 // module's `Model` record (nil when Model is a union). Load and Update are nil in M3a.
+//
+// Session is the session the page's code sees: App's Session record, or for a `requires f`
+// page a record named Session in the page module (also in its Types, without field defaults)
+// whose field f is narrowed from `Maybe T` to `T`; every type in the page's code that is the
+// session names that record. The runtime builds it after the requires check.
 type Page struct {
 	Module, Path string
 	Params       *RecordType
 	Requires     string // session field the page requires, "" for none
+	Session      *RecordType
 	Model        *RecordType
 	Msgs         []*Msg
 	View         *Value
@@ -269,7 +275,7 @@ const (
 	MatchUnion MatchKind = iota // Case.Tag is a constructor name; Binds name payload fields
 	MatchBool                   // Case.Tag is "True" or "False"; no Binds
 	MatchList                   // Case.Tag is "nil" or "cons"; cons Binds name "head" and "rest"
-	MatchLit                    // Case.Tag is an Int literal in decimal or a Text literal's raw text
+	MatchLit                    // Case.Tag is an Int literal in decimal, a Text literal's raw text, or a Float literal formatted with strconv 'g' (shortest round-trip)
 )
 
 // Match is one level of a decision tree: Subject is tested once, the first Case whose Tag matches
@@ -332,6 +338,9 @@ type Str struct {
 }
 
 // ---- HTML (every node has type Html m)
+//
+// An HTML child, branch or arm body is one of the nodes below, or a Let whose Body is one (a
+// variable arm of an HMatch binds its name with a Let around the arm's HTML).
 
 type AttrKind int
 

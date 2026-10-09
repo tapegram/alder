@@ -13,27 +13,30 @@ import (
 // The checker has proved every match exhaustive and patterns nest at most one level below a
 // constructor (records and lists may nest further). Arms are compiled in order, first match wins:
 //
-//   - A wildcard arm is its body; a variable arm is `Let x = subject` around its body; a record
-//     pattern tests its fields left to right (a variable field is a Let of the Field access).
+//   - When the first arm is irrefutable (wildcard, variable, record of such) it is the result.
+//     A refutable record pattern tests its fields left to right; when one fails, the next arm runs.
 //   - Otherwise the arms switch on the subject's tag (Match.Kind from the subject's type): one
 //     Case per tag, in order of first appearance. A tag's Case holds the arms with that tag plus
 //     the wildcard and variable arms, in their original order ("specialization").
-//   - The payload of a union Case is bound by Binds and the inner patterns are matched against
-//     those names: an irrefutable record payload pattern binds each named field directly
-//     (`Rect { w: w, h: h }` → Bind w w, Bind h h); a variable binds the whole payload (Field "",
-//     or "value" for a wrapped non-record payload); anything else binds the payload or each field
-//     to a name (the arm's own variable if it has one, else a temporary) and continues with an
-//     inner Match on it. A list `cons` Case binds "head" and "rest" the same way.
-//   - When an arm's inner pattern fails, matching continues with the next arm of the same tag,
-//     then with the enclosing fallback. The fallback expression may therefore appear in more than
-//     one place of the tree (the same node, shared).
+//   - A Case binds the parts of the matched value with Binds: a union payload (Field "value" when
+//     wrapped, Field "" for the whole record, or one Bind per record field the arms look at) or a
+//     list cons ("head", "rest"). Each part is bound to a fresh temporary, except when the Case's
+//     first arm matches every value of the tag and names the part with a plain variable: then
+//     that arm is the whole Case body and the part is bound to the arm's own name
+//     (`Rect { w: w, h: h }` → Bind w w, Bind h h; `Circle r` → Bind r value).
+//   - The arms of a Case are tried one after another on those parts; a failing arm continues
+//     with the next, then with the enclosing fallback. The fallback node may appear in more than
+//     one place of the tree (shared).
+//   - Variables an arm binds become Lets wrapped directly around that arm's body, after every
+//     test of the arm has passed. No failure branch is ever inside a user's binding, so a later
+//     arm or the fallback always sees the outer meaning of a name.
 //   - Default is the compilation of the wildcard/variable arms (then the fallback). It is omitted
 //     when the Cases cover every tag of the Kind (all constructors, True and False, nil and cons):
 //     the checker proved it unreachable. A Default that is still nil after this is unreachable too,
 //     by the checker's exhaustiveness proof of the enclosing match.
 //
-// A subject that is not already a local variable is bound to a temporary first when an arm needs
-// to name it (a variable or record pattern at the top).
+// The subject is bound to a temporary first when it is not a local variable and an arm needs to
+// name it, or when a pattern variable has the subject variable's own name.
 
 type row struct {
 	pat  syntax.Pattern // nil is a wildcard
@@ -45,6 +48,24 @@ type row struct {
 type listTail struct {
 	*syntax.PList
 	from int
+}
+
+// binding is a user variable bound by an arm, waiting for the arm's tests to pass.
+type binding struct {
+	name  string
+	t     types.Type
+	value Expr
+}
+
+// cont builds the rest of an arm once its tests so far have passed, given its bindings.
+type cont func(lets []binding) Expr
+
+// specRow is one arm inside a Case: its pattern for the Case's parts (pat; for a list cons a
+// listTail standing for head and tail), the bindings made so far, and what follows.
+type specRow struct {
+	pat  syntax.Pattern
+	lets []binding
+	k    cont
 }
 
 type matcher struct {
@@ -60,6 +81,7 @@ func (l *lowerer) match(subject syntax.Expr, arms []*syntax.Arm, t types.Type, h
 	st := l.typeOf(subject)
 	var rows []row
 	named := false
+	vars := map[string]bool{}
 	for _, a := range arms {
 		var body Expr
 		if html {
@@ -72,15 +94,58 @@ func (l *lowerer) match(subject syntax.Expr, arms []*syntax.Arm, t types.Type, h
 		case *syntax.PVar, *syntax.PRecord, *syntax.PList:
 			named = true
 		}
+		patternVars(a.Pat, vars)
 	}
-	if v, ok := subj.(*Var); (ok && v.Kind == VarLocal) || !named {
+	v, isLocal := subj.(*Var)
+	isLocal = isLocal && v.Kind == VarLocal
+	if (isLocal && !vars[v.Name]) || (!isLocal && !named) {
 		return m.compile(subj, st, rows, nil)
 	}
 	tmp := l.temp()
 	return &Let{Typed: Typed{t}, Name: tmp, T: st, Value: subj, Body: m.compile(local(tmp, st), st, rows, nil)}
 }
 
+// patternVars adds the names p binds to vars.
+func patternVars(p syntax.Pattern, vars map[string]bool) {
+	switch p := p.(type) {
+	case *syntax.PVar:
+		vars[p.Name] = true
+	case *syntax.PCtor:
+		patternVars(p.Arg, vars)
+	case *syntax.PRecord:
+		for _, f := range p.Fields {
+			patternVars(f.Pat, vars)
+		}
+	case *syntax.PList:
+		for _, e := range p.Elems {
+			patternVars(e, vars)
+		}
+		if p.Rest != "" {
+			vars[p.Rest] = true
+		}
+	}
+}
+
 func local(name string, t types.Type) *Var { return &Var{Typed: Typed{t}, Kind: VarLocal, Name: name} }
+
+// leaf is the continuation that ends an arm: its bindings as Lets around its body.
+func (m *matcher) leaf(body Expr) cont {
+	return func(lets []binding) Expr {
+		for i := len(lets) - 1; i >= 0; i-- {
+			b := lets[i]
+			if v, ok := b.value.(*Var); ok && v.Kind == VarLocal && v.Name == b.name {
+				continue // the part was bound under the arm's own name already
+			}
+			body = &Let{Typed: Typed{m.t}, Name: b.name, T: b.t, Value: b.value, Body: body}
+		}
+		return body
+	}
+}
+
+// with returns lets plus b, never sharing the backing array between branches.
+func with(lets []binding, b binding) []binding {
+	return append(lets[:len(lets):len(lets)], b)
+}
 
 // compile matches subj (of type st) against rows in order; fallback runs when none matches.
 func (m *matcher) compile(subj Expr, st types.Type, rows []row, fallback Expr) Expr {
@@ -88,40 +153,67 @@ func (m *matcher) compile(subj Expr, st types.Type, rows []row, fallback Expr) E
 		return fallback
 	}
 	r := rows[0]
-	switch p := r.pat.(type) {
-	case nil, *syntax.PWild:
-		return r.body
-	case *syntax.PVar:
-		return m.let(subj, p.Name, m.l.bindType(p), r.body)
-	case *syntax.PList:
-		return m.compile(subj, st, append([]row{{listTail{p, 0}, r.body}}, rows[1:]...), fallback)
-	case listTail:
-		if p.from == len(p.Elems) && p.Rest != "" { // `[..rest]`: any list
-			return m.let(subj, p.Rest, m.l.bindType(p.PList), r.body)
-		}
-	case *syntax.PRecord:
-		var rest Expr
-		if !irrefutable(p) {
-			rest = m.compile(subj, st, rows[1:], fallback)
-		}
-		rec := st.(*types.Record)
-		e := r.body
-		for i := len(p.Fields) - 1; i >= 0; i-- {
-			f := p.Fields[i]
-			ft := fieldType(rec, f.Name)
-			e = m.compile(&Field{Typed: Typed{ft}, Expr: subj, Name: f.Name}, ft, []row{{f.Pat, e}}, rest)
-		}
-		return e
+	if irrefutable(r.pat) {
+		return m.pattern(subj, st, r.pat, nil, m.leaf(r.body), nil)
+	}
+	if _, isRec := r.pat.(*syntax.PRecord); isRec {
+		return m.pattern(subj, st, r.pat, nil, m.leaf(r.body), m.compile(subj, st, rows[1:], fallback))
 	}
 	return m.switchOn(subj, st, rows, fallback)
 }
 
-// let binds name to subj around body, unless subj already is that variable.
-func (m *matcher) let(subj Expr, name string, t types.Type, body Expr) Expr {
-	if v, ok := subj.(*Var); ok && v.Kind == VarLocal && v.Name == name {
-		return body
+// pattern tests subj against one pattern: on success it continues with k (adding the
+// pattern's variables to lets), on failure it is fail.
+func (m *matcher) pattern(subj Expr, st types.Type, pat syntax.Pattern, lets []binding, k cont, fail Expr) Expr {
+	switch p := pat.(type) {
+	case nil, *syntax.PWild:
+		return k(lets)
+	case *syntax.PVar:
+		return k(with(lets, binding{p.Name, m.l.bindType(p), subj}))
+	case *syntax.PList:
+		return m.pattern(subj, st, listTail{p, 0}, lets, k, fail)
+	case listTail:
+		if p.from == len(p.Elems) && p.Rest != "" { // `[..rest]`: any list
+			return k(with(lets, binding{p.Rest, m.l.bindType(p.PList), subj}))
+		}
+	case *syntax.PRecord:
+		rec := st.(*types.Record)
+		var field func(i int, lets []binding) Expr
+		field = func(i int, lets []binding) Expr {
+			if i == len(p.Fields) {
+				return k(lets)
+			}
+			f := p.Fields[i]
+			ft := fieldType(rec, f.Name)
+			return m.pattern(&Field{Typed: Typed{ft}, Expr: subj, Name: f.Name}, ft, f.Pat, lets,
+				func(l2 []binding) Expr { return field(i+1, l2) }, fail)
+		}
+		return field(0, lets)
 	}
-	return &Let{Typed: Typed{m.t}, Name: name, T: t, Value: subj, Body: body}
+	// one refutable tag: a Match with a single Case, failing to fail
+	tag, _ := tagOf(pat)
+	kind := matchKind(st)
+	return m.build(subj, st, kind, []Case{m.caseFor(kind, tag, st, []specRow{{inner(pat), lets, k}}, fail)}, fail)
+}
+
+// build makes the Match (or HMatch) on subj with cases; dflt is used unless cases cover every tag.
+func (m *matcher) build(subj Expr, st types.Type, kind MatchKind, cases []Case, dflt Expr) Expr {
+	out := &Match{Typed: Typed{m.t}, Kind: kind, Subject: subj, Cases: cases}
+	complete := false
+	switch kind {
+	case MatchUnion:
+		complete = len(cases) == len(m.l.union(st.(*types.Union)).Ctors)
+	case MatchBool, MatchList:
+		complete = len(cases) == 2
+	}
+	if !complete {
+		out.Default = dflt
+	}
+	if m.html {
+		h := HMatch(*out)
+		return &h
+	}
+	return out
 }
 
 func fieldType(rec *types.Record, name string) types.Type {
@@ -173,6 +265,8 @@ func tagOf(p syntax.Pattern) (tag string, ok bool) {
 			text, _ := literalText(lit)
 			return text, true
 		}
+	case *syntax.PList:
+		return tagOf(listTail{p, 0})
 	case listTail:
 		if p.from < len(p.Elems) {
 			return "cons", true
@@ -200,13 +294,8 @@ func matchKind(t types.Type) MatchKind {
 	return MatchLit
 }
 
-// switchOn builds one Match on subj's tag (see the package comment above).
+// switchOn builds one Match on subj's tag (see the comment at the top of this file).
 func (m *matcher) switchOn(subj Expr, st types.Type, rows []row, fallback Expr) Expr {
-	for i, r := range rows {
-		if p, ok := r.pat.(*syntax.PList); ok {
-			rows[i].pat = listTail{p, 0}
-		}
-	}
 	kind := matchKind(st)
 	var tags []string
 	seen := map[string]bool{}
@@ -219,42 +308,35 @@ func (m *matcher) switchOn(subj Expr, st types.Type, rows []row, fallback Expr) 
 			tags = append(tags, t)
 		}
 	}
-	out := &Match{Typed: Typed{m.t}, Kind: kind, Subject: subj}
+	var cases []Case
 	for _, tag := range tags {
-		var spec []row // the rows that can match tag: inner pattern + body
+		var spec []specRow // the rows that can match tag
 		for _, r := range rows {
 			switch t, ok := tagOf(r.pat); {
 			case !ok:
-				spec = append(spec, row{nil, m.compile(subj, st, []row{r}, nil)})
+				spec = append(spec, specRow{nil, nil, m.whole(subj, st, r)})
 			case t == tag:
-				spec = append(spec, row{inner(r.pat), r.body})
+				spec = append(spec, specRow{inner(r.pat), nil, m.leaf(r.body)})
 			}
 		}
-		out.Cases = append(out.Cases, m.caseFor(kind, tag, st, spec, fallback))
+		cases = append(cases, m.caseFor(kind, tag, st, spec, fallback))
 	}
-	complete := false
-	switch kind {
-	case MatchUnion:
-		complete = len(tags) == len(m.l.union(st.(*types.Union)).Ctors)
-	case MatchBool, MatchList:
-		complete = len(tags) == 2
-	}
-	if !complete {
-		out.Default = m.compile(subj, st, defaults, fallback)
-	}
-	if m.html {
-		h := HMatch(*out)
-		return &h
-	}
-	return out
+	return m.build(subj, st, kind, cases, m.compile(subj, st, defaults, fallback))
 }
 
-// inner is what a tagged pattern says about the value's parts: a constructor's argument pattern,
-// or for a list cons the pair (head, tail) as a listTail with from+1 (head is p.Elems[from]).
+// whole continues an irrefutable arm inside a Case: its pattern applies to the whole subject.
+func (m *matcher) whole(subj Expr, st types.Type, r row) cont {
+	return func(lets []binding) Expr { return m.pattern(subj, st, r.pat, lets, m.leaf(r.body), nil) }
+}
+
+// inner is what a tagged pattern says about the value's parts: a constructor's argument
+// pattern, or for a list cons the listTail itself (head is Elems[from], the tail from+1).
 func inner(p syntax.Pattern) syntax.Pattern {
 	switch p := p.(type) {
 	case *syntax.PCtor:
 		return p.Arg
+	case *syntax.PList:
+		return inner(listTail{p, 0})
 	case listTail:
 		if p.from < len(p.Elems) {
 			return p
@@ -263,147 +345,123 @@ func inner(p syntax.Pattern) syntax.Pattern {
 	return nil
 }
 
-// caseFor builds the Case for tag from its specialized rows.
-func (m *matcher) caseFor(kind MatchKind, tag string, st types.Type, spec []row, fallback Expr) Case {
-	c := Case{Tag: tag}
+// part is one piece of the matched value a Case binds.
+type part struct {
+	field string
+	t     types.Type
+}
+
+// caseFor builds the Case for tag from its rows.
+func (m *matcher) caseFor(kind MatchKind, tag string, st types.Type, spec []specRow, fallback Expr) Case {
+	var parts []part
+	pats := make([][]syntax.Pattern, len(spec)) // per row, one pattern per part
 	switch {
 	case kind == MatchUnion:
-		u := m.l.union(st.(*types.Union))
-		ct := u.ctorT(tag)
+		ct := m.l.union(st.(*types.Union)).ctorT(tag)
 		if ct.Payload == nil {
-			c.Body = spec[0].body
-			return c
+			break
 		}
 		pt := m.l.payloadType(st, tag)
-		if m.l.wrappers[ct.Payload] {
-			c.Binds, c.Body = m.bindWhole("value", pt, spec, fallback)
-		} else {
-			c.Binds, c.Body = m.bindRecord(pt.(*types.Record), spec, fallback)
-		}
-	case kind == MatchList && tag == "cons":
-		elem := st.(*types.App).Args[0]
-		var heads, tails []syntax.Pattern
+		rec, isRec := pt.(*types.Record)
+		perField := isRec && !m.l.wrappers[ct.Payload]
 		for _, r := range spec {
-			if lt, ok := r.pat.(listTail); ok {
-				heads = append(heads, lt.Elems[lt.from])
-				tails = append(tails, listTail{lt.PList, lt.from + 1})
-			} else {
-				heads, tails = append(heads, nil), append(tails, nil)
+			if _, ok := r.pat.(*syntax.PRecord); !ok && r.pat != nil && !isWild(r.pat) {
+				perField = false // an arm names the whole payload
 			}
 		}
-		head, hb := m.binder(heads, elem, "head")
-		rest, rb := m.binder(tails, st, "rest")
-		c.Binds = append(hb, rb...)
-		var rows [][]syntax.Pattern
-		for i := range spec {
-			rows = append(rows, []syntax.Pattern{heads[i], tails[i]})
+		if !perField {
+			field := ""
+			if m.l.wrappers[ct.Payload] {
+				field = "value"
+			}
+			parts = []part{{field, pt}}
+			for i, r := range spec {
+				pats[i] = []syntax.Pattern{r.pat}
+			}
+			break
 		}
-		c.Body = m.columns([]column{{head, elem}, {rest, st}}, rows, spec, fallback)
-	default: // Bool, Lit, list nil: no parts to bind
-		c.Body = spec[0].body
-	}
-	return c
-}
-
-// bindWhole binds the whole payload (Field "value" for a wrapped one, "" for a record) and
-// matches the inner patterns against it.
-func (m *matcher) bindWhole(field string, pt types.Type, spec []row, fallback Expr) ([]Bind, Expr) {
-	pats := make([]syntax.Pattern, len(spec))
-	for i, r := range spec {
-		pats[i] = r.pat
-	}
-	v, binds := m.binder(pats, pt, field)
-	if v == nil {
-		return nil, spec[0].body
-	}
-	return binds, m.compile(v, pt, spec, fallback)
-}
-
-// bindRecord binds a record payload: field by field when the arms only use record patterns,
-// else as a whole.
-func (m *matcher) bindRecord(rec *types.Record, spec []row, fallback Expr) ([]Bind, Expr) {
-	for _, r := range spec {
-		if _, isRec := r.pat.(*syntax.PRecord); !isRec && r.pat != nil && !isWild(r.pat) {
-			return m.bindWhole("", rec, spec, fallback)
-		}
-	}
-	var cols []column
-	var binds []Bind
-	rows := make([][]syntax.Pattern, len(spec))
-	for _, f := range rec.Fields {
-		pats := make([]syntax.Pattern, len(spec))
-		for i, r := range spec {
-			if pr, ok := r.pat.(*syntax.PRecord); ok {
-				for _, pf := range pr.Fields {
-					if pf.Name == f.Name {
-						pats[i] = pf.Pat
+		for _, f := range rec.Fields {
+			parts = append(parts, part{f.Name, f.Type})
+			for i, r := range spec {
+				var fp syntax.Pattern
+				if pr, ok := r.pat.(*syntax.PRecord); ok {
+					for _, pf := range pr.Fields {
+						if pf.Name == f.Name {
+							fp = pf.Pat
+						}
 					}
 				}
+				pats[i] = append(pats[i], fp)
 			}
 		}
-		v, b := m.binder(pats, f.Type, f.Name)
-		if v == nil {
-			continue
-		}
-		binds = append(binds, b...)
-		cols = append(cols, column{v, f.Type})
-		for i := range spec {
-			rows[i] = append(rows[i], pats[i])
+	case kind == MatchList && tag == "cons":
+		parts = []part{{"head", st.(*types.App).Args[0]}, {"rest", st}}
+		for i, r := range spec {
+			if lt, ok := r.pat.(listTail); ok {
+				pats[i] = []syntax.Pattern{lt.Elems[lt.from], listTail{lt.PList, lt.from + 1}}
+			} else {
+				pats[i] = []syntax.Pattern{nil, nil}
+			}
 		}
 	}
-	return binds, m.columns(cols, rows, spec, fallback)
+	// name each part a pattern needs; drop the others
+	first := true // the first row matches every value of the tag
+	for _, p := range pats[0] {
+		first = first && irrefutable(p)
+	}
+	c := Case{Tag: tag}
+	var subjs []Expr
+	var used []int
+	for j, p := range parts {
+		needed := false
+		for i := range spec {
+			needed = needed || (pats[i][j] != nil && !isWild(pats[i][j]))
+		}
+		if !needed {
+			continue
+		}
+		name := ""
+		if first {
+			switch v := pats[0][j].(type) {
+			case *syntax.PVar:
+				name = v.Name
+			case listTail: // `..rest`, irrefutable since first holds
+				name = v.Rest
+			}
+		}
+		if name == "" {
+			name = m.l.temp()
+		}
+		c.Binds = append(c.Binds, Bind{Name: name, Field: p.field, Type: p.t})
+		subjs = append(subjs, local(name, p.t))
+		used = append(used, j)
+	}
+	c.Body = m.rows(subjs, used, pats, spec, fallback)
+	return c
 }
 
 func isWild(p syntax.Pattern) bool { _, ok := p.(*syntax.PWild); return ok }
 
-// binder names the part `field` that pats are matched against: the first arm's variable when it
-// is one, else a temporary; nil when no pattern needs the part at all.
-func (m *matcher) binder(pats []syntax.Pattern, t types.Type, field string) (Expr, []Bind) {
-	needed := false
-	for _, p := range pats {
-		if p != nil && !isWild(p) {
-			needed = true
-		}
-	}
-	if !needed {
-		return nil, nil
-	}
-	var name string
-	switch p := pats[0].(type) {
-	case *syntax.PVar:
-		name = p.Name
-	case listTail:
-		if p.from == len(p.Elems) && p.Rest != "" {
-			name = p.Rest
-		}
-	}
-	if name == "" {
-		name = m.l.temp()
-	}
-	return local(name, t), []Bind{{Name: name, Field: field, Type: t}}
-}
-
-type column struct {
-	subj Expr
-	t    types.Type
-}
-
-// columns matches rows of patterns (one per column) in order: the first row whose every
-// column matches runs its body; a failing row continues with the next, then fallback.
-func (m *matcher) columns(cols []column, rows [][]syntax.Pattern, spec []row, fallback Expr) Expr {
+// rows tries spec's rows in order on the bound parts (subjs, at part indexes used): the first
+// whose every part matches runs; a failing row continues with the next, then with fallback.
+func (m *matcher) rows(subjs []Expr, used []int, pats [][]syntax.Pattern, spec []specRow, fallback Expr) Expr {
 	if len(spec) == 0 {
 		return fallback
 	}
 	var fail Expr
-	for _, p := range rows[0] {
-		if !irrefutable(p) {
-			fail = m.columns(cols, rows[1:], spec[1:], fallback)
+	for _, j := range used {
+		if !irrefutable(pats[0][j]) {
+			fail = m.rows(subjs, used, pats[1:], spec[1:], fallback)
 			break
 		}
 	}
-	e := spec[0].body
-	for j := len(cols) - 1; j >= 0; j-- {
-		e = m.compile(cols[j].subj, cols[j].t, []row{{rows[0][j], e}}, fail)
+	var step func(i int, lets []binding) Expr
+	step = func(i int, lets []binding) Expr {
+		if i == len(used) {
+			return spec[0].k(lets)
+		}
+		j := used[i]
+		return m.pattern(subjs[i], subjs[i].Type(), pats[0][j], lets, func(l2 []binding) Expr { return step(i+1, l2) }, fail)
 	}
-	return e
+	return step(0, spec[0].lets)
 }

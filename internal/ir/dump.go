@@ -58,6 +58,9 @@ func Dump(p *Program) string {
 		if pg.Requires != "" {
 			x.items = append(x.items, atoms("requires", pg.Requires))
 		}
+		if pg.Session != nil && pg.Session != p.Session {
+			x.items = append(x.items, atoms("session", d.rt(pg.Session)))
+		}
 		if pg.Model != nil {
 			x.items = append(x.items, atoms("model", d.rt(pg.Model)))
 		}

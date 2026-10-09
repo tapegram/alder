@@ -115,3 +115,18 @@ View props =
         }}
       </li>}
   </ul>
+
+capture : Int -> Shape -> Int
+capture w s = match s {
+  Rect { w: w, h: 0 } -> w,
+  _ -> w,
+}
+
+captureList : Int -> List Int -> Int
+captureList x xs = match xs {
+  [x] -> x,
+  _ -> x,
+}
+
+boxed : Shape
+boxed = { w: 1, h: 2 } |> Rect

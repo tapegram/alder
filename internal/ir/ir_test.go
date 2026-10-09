@@ -104,12 +104,25 @@ func TestIR_Todos(t *testing.T) {
 	}
 }
 
-// TestIR_NoBrands walks every node and type of the lowered todos app (which uses brands in
-// tables, messages, page parameters and the session) and requires that none survives.
+// TestIR_NoBrands walks every node, type and map of the lowered todos app and of every IR golden
+// (brands appear in tables, messages, page parameters, the session and values) and requires that
+// none survives.
 func TestIR_NoBrands(t *testing.T) {
-	p := lowerDir(t, "../../examples/todos")
+	dirs, _ := filepath.Glob("../../testdata/golden/ir_*")
+	dirs = append(dirs, "../../examples/todos")
+	for _, dir := range dirs {
+		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+			continue
+		}
+		t.Run(filepath.Base(dir), func(t *testing.T) { noBrands(t, lowerDir(t, dir)) })
+	}
+	if !reflect.TypeFor[*types.Brand]().Implements(reflect.TypeFor[types.Type]()) {
+		t.Fatal("types.Brand is no longer a types.Type; update this test")
+	}
+}
+
+func noBrands(t *testing.T, p *Program) {
 	seen := map[uintptr]bool{}
-	typeT := reflect.TypeFor[types.Type]()
 	var walk func(v reflect.Value, path string)
 	walk = func(v reflect.Value, path string) {
 		switch v.Kind() {
@@ -137,10 +150,46 @@ func TestIR_NoBrands(t *testing.T) {
 			for i := range v.Len() {
 				walk(v.Index(i), fmt.Sprintf("%s[%d]", path, i))
 			}
+		case reflect.Map:
+			for _, k := range v.MapKeys() {
+				walk(v.MapIndex(k), fmt.Sprintf("%s[%v]", path, k))
+			}
 		}
 	}
 	walk(reflect.ValueOf(p), "Program")
-	if !reflect.TypeFor[*types.Brand]().Implements(typeT) {
-		t.Fatal("types.Brand is no longer a types.Type; update this test")
+}
+
+// TestIR_CtorPayloadShared: a record literal given to a constructor, directly or through `|>`,
+// is a Record of the constructor's own payload RecordType, and a message payload omits `form`.
+func TestIR_CtorPayloadShared(t *testing.T) {
+	p := lowerDir(t, "../../testdata/golden/ir_patterns")
+	var boxed *Value
+	for _, v := range p.Modules[0].Values {
+		if v.Name == "boxed" || v.Name == "nodeOf" {
+			c := v.Body.(*Ctor)
+			rec, ok := c.Payload.(*Record)
+			if !ok || rec.T != c.U.ctorT(c.Name).Payload {
+				t.Errorf("%s: payload is %T with RecordType %p, want the ctor's %p", v.Name, c.Payload, rec.T, c.U.ctorT(c.Name).Payload)
+			}
+			if v.Name == "boxed" {
+				boxed = v
+			}
+		}
+	}
+	if boxed == nil {
+		t.Fatal("ir_patterns has no `boxed`")
+	}
+	pg := lowerDir(t, "../../testdata/golden/ir_page")
+	var save *Record
+	for _, m := range pg.Modules {
+		for _, v := range m.Values {
+			if v.Module == "Edit" && v.Name == "view" {
+				form := v.Body.(*Elem).Children[2].(*FormEl)
+				save = form.Attrs[0].Value.(*Ctor).Payload.(*Record)
+			}
+		}
+	}
+	if save == nil || len(save.Fields) != 1 || save.Fields[0].Name != "n" || save.T != pg.Pages[0].Msgs[0].Params {
+		t.Fatalf("Save payload: %+v; want only field n, of the message's Params record", save)
 	}
 }

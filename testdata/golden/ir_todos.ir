@@ -99,7 +99,8 @@
   (Submit SubmitParams)
   (Toggle ToggleParams)
   (Delete DeleteParams))
-(value Todos.Index.view : Model -> App.Session -> Html Msg (model session)
+(record Todos.Index.Session (user Text) (theme Theme))
+(value Todos.Index.view : Model -> Session -> Html Msg (model session)
   (comp Layout.Page
     (record (title "Todos") (theme (field theme (var session))))
     (elem h1 (htext "Todos"))
@@ -168,7 +169,8 @@
 (record Todos.Show.SaveParams (id Text) (form EditTodo))
 (record Todos.Show.DeleteParams (id Text))
 (union Todos.Show.Msg (Save SaveParams) (Delete DeleteParams))
-(value Todos.Show.view : Model -> App.Session -> Html Msg (model session)
+(record Todos.Show.Session (user Text) (theme Theme))
+(value Todos.Show.view : Model -> Session -> Html Msg (model session)
   (comp Layout.Page
     (record
       (title (field title (field todo (var model))))
@@ -210,6 +212,7 @@
 (page Todos.Index "/"
   (params Params)
   (requires user)
+  (session Session)
   (model Model)
   (msg Submit (params SubmitParams) (form NewTodo))
   (msg Toggle (params ToggleParams))
@@ -218,6 +221,7 @@
 (page Todos.Show "/todos/{id}"
   (params Params)
   (requires user)
+  (session Session)
   (model Model)
   (msg Save (params SaveParams) (form EditTodo))
   (msg Delete (params DeleteParams))
