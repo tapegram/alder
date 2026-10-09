@@ -1,0 +1,15 @@
+module Ui
+
+type Kind = Primary | Plain
+
+Btn : { label: Text, kind: Kind = Plain, size: Int = 1 + 2 } -> Html m
+Btn props = <button class={cls props.kind} title={Text.fromInt props.size}>{props.label}</button>
+
+cls : Kind -> Text
+cls k = match k {
+  Primary -> "primary",
+  Plain -> "plain",
+}
+
+describe : { name: Text, loud: Bool = False } -> Text
+describe o = if o.loud then Text.toUpper o.name else o.name

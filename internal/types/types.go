@@ -4,6 +4,8 @@ package types
 import (
 	"fmt"
 	"strings"
+
+	"alder/internal/syntax"
 )
 
 type Type interface{ isType() }
@@ -22,6 +24,9 @@ type Field struct {
 	Name       string
 	Type       Type
 	HasDefault bool
+	// Default is the default's expression (`kind: Text = "a"`), nil when the field has none or
+	// the record was not written in source (a generated record). The checker types it against Type.
+	Default syntax.Expr
 }
 
 // Record is a record type: anonymous (structural) when Anonymous, else nominal Module.Name. A
@@ -241,7 +246,7 @@ func instantiateRecord(r *Record, args []Type, inProgress map[string]*Record) *R
 		}
 	}
 	for _, f := range def.Fields {
-		inst.Fields = append(inst.Fields, Field{f.Name, subst(f.Type, idx, inProgress), f.HasDefault})
+		inst.Fields = append(inst.Fields, Field{Name: f.Name, Type: subst(f.Type, idx, inProgress), HasDefault: f.HasDefault, Default: f.Default})
 	}
 	return inst
 }

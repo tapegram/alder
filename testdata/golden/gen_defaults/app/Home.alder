@@ -1,0 +1,15 @@
+module Home
+
+import Ui
+
+bar : Html a
+bar = <div>
+  <Ui.Btn label="save" />
+  <Ui.Btn label="go" kind={Primary} size={9} />
+</div>
+
+quiet : Text
+quiet = Ui.describe { name: "ann" }
+
+loud : Text
+loud = Ui.describe { name: "bob", loud: True }

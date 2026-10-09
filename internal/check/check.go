@@ -28,6 +28,10 @@ type Checker struct {
 	// record instances made before, refreshed then.
 	typesDefined bool
 	early        []*types.Record
+	// anonDefaults are the anonymous-record field defaults already registered (anonDefault);
+	// defaultsChecked is set once checkDefaults has run.
+	anonDefaults    map[*syntax.Field]bool
+	defaultsChecked bool
 
 	usesSessionPut bool // some module calls Session.put
 	res            *Result
@@ -64,7 +68,8 @@ func Program(prog *names.Program, bag *diag.Bag) *Result {
 	c := &Checker{prog: prog, bag: bag, u: &types.Unifier{Subst: types.Subst{}},
 		types: map[string]types.Type{}, values: map[string]types.Type{}, ctors: map[string]*ctorInfo{},
 		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, caps: map[string]map[string]types.Type{}, pages: map[string]*pageInfo{}, losers: map[syntax.Decl]bool{},
-		res: &Result{Types: map[syntax.Expr]types.Type{}, Binds: map[any]types.Type{}}}
+		anonDefaults: map[*syntax.Field]bool{},
+		res:          &Result{Types: map[syntax.Expr]types.Type{}, Binds: map[any]types.Type{}, DefaultModules: map[syntax.Expr]string{}}}
 	c.declareStd()
 	// pass 1: placeholders for every declared type in every module (app + std)
 	for _, m := range c.allModules() {

@@ -991,3 +991,26 @@ func TestGeneric(t *testing.T) {
 }
 `)
 }
+
+// An omitted field of a signature's anonymous record takes its default (C5).
+func TestGen_RunSignatureDefaults(t *testing.T) {
+	files := emit(t, "../../testdata/golden/gen_defaults")
+	runGo(t, files, `package app
+
+import (
+	"testing"
+
+	"alder/rt/html"
+)
+
+func TestDefaults(t *testing.T) {
+	if Home__quiet != "ann" || Home__loud != "BOB" {
+		t.Errorf("quiet, loud = %q, %q", Home__quiet, Home__loud)
+	}
+	want := "<div><button class=\"plain\" title=\"3\">save</button><button class=\"primary\" title=\"9\">go</button></div>"
+	if got := html.Render(Home__bar); got != want {
+		t.Errorf("bar = %s, want %s", got, want)
+	}
+}
+`)
+}

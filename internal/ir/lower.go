@@ -17,7 +17,7 @@ import (
 func Lower(prog *names.Program, res *check.Result) *Program {
 	l := &lowerer{prog: prog, res: res, out: &Program{},
 		records: map[string]*RecordType{}, unions: map[string]*UnionType{}, values: map[string]*Value{},
-		pages: map[string]*Page{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, pageSessions: map[string]*types.Record{}}
+		pages: map[string]*Page{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, pageSessions: map[string]*types.Record{}, anonDefaults: map[syntax.Expr]Expr{}}
 	l.declareTypes()
 	l.declareValues()
 	for _, d := range l.defaults {
@@ -51,6 +51,8 @@ type lowerer struct {
 	msgPayloads map[*RecordType]bool
 	// pageSessions are the narrowed session records of `requires` pages, by page module
 	pageSessions map[string]*types.Record
+	// anonDefaults are the lowered defaults of anonymous record fields (anonDefault)
+	anonDefaults map[syntax.Expr]Expr
 
 	defaults []pendingDefault
 	bodies   []pendingBody
@@ -126,7 +128,7 @@ func (l *lowerer) eraseT(t types.Type) types.Type {
 		r := &types.Record{Module: t.Module, Name: t.Name, Anonymous: t.Anonymous, Params: t.Params}
 		l.erased[t] = r
 		for _, f := range t.Fields {
-			r.Fields = append(r.Fields, types.Field{Name: f.Name, Type: l.eraseT(f.Type), HasDefault: f.HasDefault})
+			r.Fields = append(r.Fields, types.Field{Name: f.Name, Type: l.eraseT(f.Type), HasDefault: f.HasDefault, Default: f.Default})
 		}
 		if len(t.Args) > 0 {
 			r.Args = l.eraseList(t.Args)
@@ -219,12 +221,37 @@ func (l *lowerer) recordType(t types.Type) *RecordType {
 	return l.anonRecord(rec)
 }
 
+// anonRecord is the RecordType of an anonymous record type, with its fields' defaults lowered
+// (a signature's `{ label: Text, kind: Text = "a" }`), so a literal that omits kind gets "a".
 func (l *lowerer) anonRecord(rec *types.Record) *RecordType {
 	rt := &RecordType{}
 	for _, f := range rec.Fields {
-		rt.Fields = append(rt.Fields, FieldT{Name: f.Name, Type: l.erase(f.Type)})
+		ft := FieldT{Name: f.Name, Type: l.erase(f.Type)}
+		if f.Default != nil {
+			ft.Default = l.anonDefault(f.Default)
+		}
+		rt.Fields = append(rt.Fields, ft)
 	}
 	return rt
+}
+
+// anonDefault lowers the default expression of an anonymous record's field once, in the module
+// it is written in, keeping the state of the code being lowered meanwhile.
+func (l *lowerer) anonDefault(e syntax.Expr) Expr {
+	if x, ok := l.anonDefaults[e]; ok {
+		return x
+	}
+	module, ok := l.res.DefaultModules[e]
+	if !ok {
+		panic(fmt.Sprintf("ir: default at %s was not checked", pos(e.GetSpan())))
+	}
+	saved := *l
+	l.module = "" // so that enter switches to module and reads its source
+	l.enter(module)
+	x := l.expr(e)
+	l.module, l.source, l.temps, l.form = saved.module, saved.source, saved.temps, saved.form
+	l.anonDefaults[e] = x
+	return x
 }
 
 // union returns the UnionType of u's declaration, creating it for a Prelude union on first use.

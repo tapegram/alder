@@ -155,7 +155,11 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 	case *syntax.RecordType:
 		r := &types.Record{Anonymous: true}
 		for _, f := range t.Fields {
-			r.Fields = append(r.Fields, types.Field{Name: f.Name, Type: mc.typeOf(f.Type, params), HasDefault: f.Default != nil})
+			ft := mc.typeOf(f.Type, params)
+			if f.Default != nil {
+				mc.anonDefault(f, ft)
+			}
+			r.Fields = append(r.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil, Default: f.Default})
 		}
 		return r
 	case *syntax.FunType:
@@ -596,6 +600,25 @@ func (c *Checker) checkDefaults() {
 		mc.check(d.f.Default, d.t, newEnv(), effect{})
 		mc.reportHoles()
 	}
+	c.defaultsChecked = true
+}
+
+// anonDefault checks the default of a field of an anonymous record type written in source (a
+// signature's `{ label: Text, kind: Text = "a" }`), once however often the type is converted:
+// with the other defaults when they have not been checked yet, else at once (a type written in
+// a body, such as a `let` annotation).
+func (mc *modCtx) anonDefault(f *syntax.Field, ft types.Type) {
+	c := mc.c
+	if c.anonDefaults[f] || c.prog.Std[mc.m.Name] != nil {
+		return
+	}
+	c.anonDefaults[f] = true
+	c.res.DefaultModules[f.Default] = mc.m.Name
+	if !c.defaultsChecked {
+		c.defaults = append(c.defaults, pendingDefault{mc.m, f, ft})
+		return
+	}
+	mc.check(f.Default, ft, newEnv(), effect{})
 }
 
 func lineOf(m *syntax.Module, line int) string {

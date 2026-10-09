@@ -1,0 +1,3 @@
+app/M.alder:3:35 E0003 expected Text, got Int
+  fix 3:35-3:36 Text.fromInt (3)
+app/M.alder:6:39 E0003 expected Bool, got Text

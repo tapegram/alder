@@ -22,8 +22,11 @@ type Result struct {
 	Caps    map[string]map[string]types.Type // capability module → name → type
 	Session *types.Record
 	AppMsg  *types.Union
-	Holes   int            // count of W0002 reported
-	U       *types.Unifier // for Apply on stored types
+	// DefaultModules maps the default expression of every anonymous-record field written in
+	// source (types.Field.Default) to the module it is written in, where it is lowered.
+	DefaultModules map[syntax.Expr]string
+	Holes          int            // count of W0002 reported
+	U              *types.Unifier // for Apply on stored types
 }
 
 // CtorInfo is a union constructor: the union it builds and its payload type (nil for none).

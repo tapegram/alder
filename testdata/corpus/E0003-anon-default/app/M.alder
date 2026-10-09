@@ -1,0 +1,10 @@
+module M
+
+Btn : { label: Text, kind: Text = 3 } -> Html m
+Btn props = <b class={props.kind}>{props.label}</b>
+
+describe : { name: Text, loud: Bool = "no" } -> Text
+describe o = o.name
+
+use : Html m
+use = <Btn label="x" />

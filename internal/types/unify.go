@@ -101,7 +101,7 @@ func (u *Unifier) Apply(t Type) Type {
 		}
 		fs := make([]Field, len(t.Fields))
 		for i, f := range t.Fields {
-			fs[i] = Field{f.Name, u.Apply(f.Type), f.HasDefault}
+			fs[i] = Field{Name: f.Name, Type: u.Apply(f.Type), HasDefault: f.HasDefault, Default: f.Default}
 		}
 		return &Record{Fields: fs, Anonymous: true}
 	}
@@ -321,7 +321,7 @@ func (u *Unifier) Instantiate(t Type) Type {
 			}
 			fs := make([]Field, len(t.Fields))
 			for i, f := range t.Fields {
-				fs[i] = Field{f.Name, inst(f.Type), f.HasDefault}
+				fs[i] = Field{Name: f.Name, Type: inst(f.Type), HasDefault: f.HasDefault, Default: f.Default}
 			}
 			return &Record{Fields: fs, Anonymous: true}
 		}
@@ -396,7 +396,7 @@ func subst(t Type, idx map[string]Type, inProgress map[string]*Record) Type {
 		}
 		fs := make([]Field, len(t.Fields))
 		for i, f := range t.Fields {
-			fs[i] = Field{f.Name, subst(f.Type, idx, inProgress), f.HasDefault}
+			fs[i] = Field{Name: f.Name, Type: subst(f.Type, idx, inProgress), HasDefault: f.HasDefault, Default: f.Default}
 		}
 		return &Record{Module: t.Module, Name: t.Name, Fields: fs, Anonymous: t.Anonymous}
 	}
