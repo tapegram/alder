@@ -17,6 +17,7 @@ type moduleScope struct {
 	values  map[string]bool
 	types   map[string]bool   // type, table, form, brand names
 	ctors   map[string]string // ctor → owning type name
+	brands  map[string]bool   // brand names; the constructor is usable only in the declaring module
 	tables  map[string]bool
 	caps    map[string]bool
 	comps   map[string]bool            // capitalized value names
@@ -26,7 +27,7 @@ type moduleScope struct {
 }
 
 func (p *Program) index(m *syntax.Module) *moduleScope {
-	s := &moduleScope{name: m.Name, values: map[string]bool{}, types: map[string]bool{}, ctors: map[string]string{}, tables: map[string]bool{}, caps: map[string]bool{}, comps: map[string]bool{}, columns: map[string]map[string]bool{}, imports: map[string]*syntax.Import{}, used: map[string]bool{}}
+	s := &moduleScope{name: m.Name, values: map[string]bool{}, types: map[string]bool{}, ctors: map[string]string{}, brands: map[string]bool{}, tables: map[string]bool{}, caps: map[string]bool{}, comps: map[string]bool{}, columns: map[string]map[string]bool{}, imports: map[string]*syntax.Import{}, used: map[string]bool{}}
 	for _, im := range m.Imports {
 		s.imports[im.Module] = im
 	}
@@ -39,6 +40,9 @@ func (p *Program) index(m *syntax.Module) *moduleScope {
 			s.values[d.Name] = true
 		case *syntax.TypeDecl:
 			s.types[d.Name] = true
+			if d.Brand != nil {
+				s.brands[d.Name] = true
+			}
 			for _, c := range d.Union {
 				s.ctors[c.Name] = d.Name
 			}
@@ -100,6 +104,16 @@ func (p *Program) Resolve(bag *diag.Bag) {
 	}
 	for _, name := range p.Order {
 		r := &resolver{p: p, bag: bag, m: p.Modules[name], ms: p.scopes[name]}
+		r.module()
+	}
+	// stdlib signatures: resolve their type names so the checker can read them
+	var std []string
+	for name := range p.Std {
+		std = append(std, name)
+	}
+	sort.Strings(std)
+	for _, name := range std {
+		r := &resolver{p: p, bag: bag, m: p.Std[name], ms: p.scopes[name]}
 		r.module()
 	}
 }
@@ -232,6 +246,10 @@ func (r *resolver) typ(t syntax.Type) {
 			r.typ(a)
 		}
 		if t.Module != "" {
+			if t.Module == r.m.Name && r.ms.types[t.Name] {
+				t.Ref = syntax.Ref{Kind: syntax.RefType, Module: t.Module, Name: t.Name}
+				return
+			}
 			if s, ok := r.importedScope(t.Module); ok {
 				if s.types[t.Name] {
 					t.Ref = syntax.Ref{Kind: syntax.RefType, Module: t.Module, Name: t.Name}
@@ -447,7 +465,7 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 		full = c.Module + "." + c.Name
 	}
 	if c.Module == "" {
-		if _, ok := r.ms.ctors[c.Name]; ok {
+		if _, ok := r.ms.ctors[c.Name]; ok || r.ms.brands[c.Name] {
 			c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: r.m.Name, Name: c.Name}
 			return
 		}

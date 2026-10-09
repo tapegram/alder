@@ -1,0 +1,20 @@
+app/Todo.alder:16:23 E0004 missing cases: `Completed`
+  fix 19:1   Completed -> ?todo,
+app/Todo.alder:26:3 E0310 unreachable arm: every case is already handled
+app/Todo.alder:33:8 E0003 expected Int, got Text; `++` joins Text, `+` is for numbers
+app/Todo.alder:36:14 E0003 expected Text, got Int
+  fix 36:14 Text.fromInt (List.length [])
+app/Todo.alder:42:8 E0003 cannot compare `Todo.TodoId` with `Text`: `==` needs both sides to have the same type
+app/Todo.alder:45:10 E0102 `.year` on a `Maybe Date`; match it first
+  fix 45:10 (match t.due { Just x -> x.year, Nothing -> ?default })
+app/Todo.alder:49:28 E0101 `Db.get Todo` takes a `Todo.TodoId`, got `Text`
+app/Todo.alder:55:12 E0401 `Task` cannot run inside a `Query`; `load` and `Query` blocks can only read
+app/Todo.alder:61:3 E0402 `let x <-` is only allowed in a block that returns `Query` or `Task`
+app/Todo.alder:66:10 E0004 missing cases: `Nothing`
+  fix 68:1   Nothing -> ?todo,
+app/Todo.alder:71:12 E0004 missing cases: `[x, ..rest]`
+  fix 73:1   [x, ..rest] -> ?todo,
+app/Todo.alder:94:17 E0002 no field `nope` on `Todo`
+app/Todo.alder:99:31 E0310 unreachable arm: `All` is already handled
+app/Todo.alder:102:28 E0501 `Db.insert` never takes `id`; it is generated
+  fix 102:28 

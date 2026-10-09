@@ -590,6 +590,3 @@ func lastDeclLine(m *syntax.Module) int {
 	}
 	return line
 }
-
-// checkBodies is completed in Tasks 9–11.
-func (mc *modCtx) checkBodies() {}

@@ -1,0 +1,102 @@
+module Todo
+
+type TodoId = brand Text
+type Cents = brand Int
+type Filter = All | Active | Completed
+
+table Todo {
+  id: TodoId @id,
+  title: Text.NonEmpty,
+  done: Bool = False,
+  due: Maybe Date,
+  price: Cents,
+}
+
+matches : Filter -> Todo -> Bool
+matches filter todo = match filter {
+  All -> True,
+  Active -> not todo.done,
+}
+
+label : Filter -> Text
+label f = match f {
+  All -> "all",
+  Active -> "active",
+  Completed -> "done",
+  _ -> "never",
+}
+
+total : List Todo -> Cents
+total todos = List.foldl (\t acc -> t.price + acc) (Cents 0) todos
+
+bad1 : Int
+bad1 = "x" + 1
+
+bad2 : Text
+bad2 = "n = {List.length []}"
+
+bad3 : Text
+bad3 = Text.trim (TodoId "a") ++ (TodoId "b")
+
+bad4 : Bool
+bad4 = (TodoId "a") == "a"
+
+bad5 : Todo -> Text
+bad5 t = t.due.year
+
+bad6 : Query (Maybe Todo)
+bad6 = {
+  let found <- Db.get Todo "not-an-id"
+  Query.succeed found
+}
+
+bad7 : Query Unit
+bad7 = {
+  let _ <- Db.delete Todo (TodoId "a")
+  Query.succeed ()
+}
+
+bad8 : Int
+bad8 = {
+  let x <- Query.succeed 1
+  x
+}
+
+bad9 : Maybe Int -> Int
+bad9 m = match m {
+  Just x -> x,
+}
+
+bad10 : List Int -> Int
+bad10 xs = match xs {
+  [] -> 0,
+}
+
+ok1 : Maybe Int -> Int
+ok1 m = m ?? 0
+
+ok2 : Todo -> Text
+ok2 t = t.title
+
+ok3 : Filter -> Bool
+ok3 f = f < Completed
+
+ok4 : List Int -> List Int
+ok4 xs = xs |> List.map (\x -> x + 1) |> List.filter (\x -> x > 2)
+
+ok5 : { w: Float, h: Float } -> Float
+ok5 r = r.w * r.h
+
+ok6 : Todo -> Todo
+ok6 t = { t | done: True }
+
+bad11 : Todo -> Todo
+bad11 t = { t | nope: True }
+
+test "label all" = label All == "all"
+
+bad12 : Filter -> Int
+bad12 f = match f { All -> 1, All -> 2, _ -> 3 }
+
+bad13 : Todo -> Task Todo.TodoId
+bad13 t = Db.insert Todo { id: TodoId "x", title: t.title, due: Nothing, price: Cents 1 }
