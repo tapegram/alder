@@ -144,3 +144,16 @@ func TestLexer_ScanTextLessThan(t *testing.T) {
 		t.Fatalf("expected Lt after text, got %+v", next)
 	}
 }
+
+func TestLexer_MarkRestore(t *testing.T) {
+	l := NewLexer("t.alder", []byte("a \"abc\nb"))
+	l.Next()
+	m := l.Mark()
+	if tok := l.Next(); tok.Kind != String || len(l.Errors()) != 1 {
+		t.Fatalf("expected unterminated string with 1 error, got %+v, %d errors", tok, len(l.Errors()))
+	}
+	l.Restore(m)
+	if l.Mark() != m || len(l.Errors()) != 0 {
+		t.Fatalf("state not restored: %+v vs %+v, %d errors", l.Mark(), m, len(l.Errors()))
+	}
+}

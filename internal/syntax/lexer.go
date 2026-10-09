@@ -27,6 +27,17 @@ func NewLexer(file string, src []byte) *Lexer {
 func (l *Lexer) Errors() []LexError   { return l.errs }
 func (l *Lexer) Pos() int             { return l.pos }
 func (l *Lexer) SetHTMLTag(on bool)   { l.htmlTag = on }
+// LexState is a cheap snapshot of the lexer position, for speculative lookahead.
+type LexState struct{ pos, line, col, nerrs int }
+
+func (l *Lexer) Mark() LexState { return LexState{l.pos, l.line, l.col, len(l.errs)} }
+
+// Restore rewinds to a state from Mark and drops errors recorded since.
+func (l *Lexer) Restore(s LexState) {
+	l.pos, l.line, l.col = s.pos, s.line, s.col
+	l.errs = l.errs[:s.nerrs]
+}
+
 func (l *Lexer) Reset(offset int) {
 	// Clamp offset to source length
 	if offset > len(l.src) {

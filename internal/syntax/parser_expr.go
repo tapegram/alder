@@ -221,11 +221,14 @@ func (p *Parser) parsePrimary() Expr {
 		})
 		if p.at(Comma) {
 			p.errorCodeAt(start, "E0602", "tuples are not Alder; use a record `{ a: 1, b: 2 }`")
-			for !p.at(RParen) && !p.at(EOF) && !p.at(NL) {
-				p.advance()
-			}
-			if p.at(RParen) {
-				p.advance()
+			// skip to the matching `)`, tracking nested parens
+			for depth := 1; depth > 0 && !p.at(EOF) && !p.at(NL); p.advance() {
+				switch p.tok.Kind {
+				case LParen:
+					depth++
+				case RParen:
+					depth--
+				}
 			}
 			return p.unit(start)
 		}

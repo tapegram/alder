@@ -52,9 +52,9 @@ func (p *Parser) finish() []diag.Diagnostic {
 func (p *Parser) advance() Token {
 	prev := p.tok
 	p.tok = p.lx.Next()
-	// `session` is a keyword only as a declaration head (always in column 1); elsewhere it is the
-	// ordinary name of the session parameter, as in `view model session =`.
-	if p.tok.Kind == Keyword && p.tok.Text == "session" && p.tok.Col > 1 {
+	// Declaration-head keywords are keywords only in column 1; elsewhere they are ordinary
+	// names (`update msg model session = ...`, `{ form: 1 }`).
+	if p.tok.Kind == Keyword && declKeywords[p.tok.Text] && p.tok.Col > 1 {
 		p.tok.Kind = LIdent
 	}
 	return prev
@@ -84,11 +84,14 @@ func (p *Parser) errorCodeAt(t Token, code, msg string) {
 }
 
 // mark and restore save and rewind the parser (token and lexer) for speculative lookahead.
-func (p *Parser) mark() (int, Token) { return p.lx.Pos(), p.tok }
-func (p *Parser) restore(pos int, tok Token) {
-	p.lx.Reset(pos)
+func (p *Parser) mark() (LexState, Token) { return p.lx.Mark(), p.tok }
+func (p *Parser) restore(st LexState, tok Token) {
+	p.lx.Restore(st)
 	p.tok = tok
 }
+
+var declKeywords = map[string]bool{"module": true, "import": true, "type": true, "page": true, "msg": true,
+	"form": true, "table": true, "capability": true, "session": true, "login": true, "test": true}
 
 func (p *Parser) expect(k Kind, what string) Token {
 	if p.tok.Kind != k {
@@ -196,7 +199,7 @@ func (p *Parser) parseDecl() Decl {
 		if p.at(LBrace) {
 			d.Params = p.parseRecordType()
 		}
-		if p.atKeyword("form") {
+		if p.at(LIdent) && p.tok.Text == "form" {
 			p.advance()
 			d.Form = p.expect(UIdent, "form name").Text
 		}

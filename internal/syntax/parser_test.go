@@ -62,3 +62,15 @@ func TestParse_UnclosedElement(t *testing.T) {
 		t.Fatalf("got %q want %q", msgs, want)
 	}
 }
+
+func TestParse_KeywordsAsIdentifiers(t *testing.T) {
+	src := "module K\n\nupdate : Msg -> Model -> Session -> Task Nav\nupdate msg model session = f msg { form: 1, page: 2 }\n"
+	m, diags := ParseFile("k.alder", []byte(src))
+	if len(diags) != 0 {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	want := "(app (var f) (var msg) (record (form (int 1)) (page (int 2))))"
+	if got := Dump(m); !strings.Contains(got, want) {
+		t.Fatalf("dump %s does not contain %s", got, want)
+	}
+}
