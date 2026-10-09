@@ -261,10 +261,12 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 // app (Serve) with the capabilities of the adapters package (adapters.Caps) when withAdapters
 // is set, else with none. name is the app's name, the default database file's base name.
 // Configuration comes from the environment: ALDER_ADDR (default ":8080"), ALDER_DB (default
-// "<name>.db", in the working directory), ALDER_SECRET and ALDER_DEV=1; static files are
-// served from the static directory next to the executable (alder build copies the app's
-// static/ there). Before serving it prints "listening on <address>" with the bound address, so
-// ALDER_ADDR=127.0.0.1:0 picks a free port that a caller can read.
+// "<name>.db", in the working directory), ALDER_SECRET, ALDER_DEV=1 and ALDER_STATIC; static
+// files are served from ALDER_STATIC, by default the static directory next to the executable
+// (alder build copies the app's static/ there). Before serving it prints "listening on
+// <address>" with the bound address, so ALDER_ADDR=127.0.0.1:0 picks a free port that a caller
+// can read. Its http.Server waits at most 10 s for a request's headers, and on SIGINT or SIGTERM
+// it stops accepting connections and lets the requests in flight finish (5 s at most).
 func Main(name string, withAdapters bool) []byte {
 	imports := "\t\"app\"\n"
 	caps := "app.Caps{}"
@@ -277,25 +279,33 @@ func Main(name string, withAdapters bool) []byte {
 // Command ` + name + ` serves the app. ALDER_ADDR is the address to listen on (default :8080),
 // ALDER_DB the SQLite database file (default ` + name + `.db), ALDER_SECRET the session cookie key
 // (at least 16 bytes; required outside development mode, where without it a public development
-// key is used) and ALDER_DEV=1 turns on development mode. Static files are served under /static/ from the static directory next to
-// the executable.
+// key is used) and ALDER_DEV=1 turns on development mode. Static files are served under /static/
+// from ALDER_STATIC, by default the static directory next to the executable. SIGINT or SIGTERM
+// shuts the server down gracefully: requests in flight get 5 s to finish.
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 
 ` + imports + `)
 
 func main() {
 	dev := os.Getenv("ALDER_DEV") == "1"
-	static := "static"
-	if exe, err := os.Executable(); err == nil {
-		static = filepath.Join(filepath.Dir(exe), "static")
+	static := os.Getenv("ALDER_STATIC")
+	if static == "" {
+		static = "static"
+		if exe, err := os.Executable(); err == nil {
+			static = filepath.Join(filepath.Dir(exe), "static")
+		}
 	}
 	h, err := app.Serve(` + caps + `, app.Options{
 		DB:        env("ALDER_DB", ` + strconv.Quote(name+".db") + `),
@@ -318,7 +328,22 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println("listening on " + ln.Addr().String())
-	log.Fatal(http.Serve(ln, h))
+	srv := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	served := make(chan error, 1)
+	go func() { served <- srv.Serve(ln) }()
+	select {
+	case err := <-served:
+		fmt.Fprintln(os.Stderr, "alder:", err)
+		os.Exit(1)
+	case <-ctx.Done():
+	}
+	stop()
+	grace, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(grace); err != nil {
+		fmt.Fprintln(os.Stderr, "alder: shutting down:", err)
+	}
 }
 
 // env is the environment variable name, or def when it is unset or empty.

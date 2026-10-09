@@ -123,6 +123,13 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 		mc.htmlNode(ch, m, env, eff)
 	}
 	mc.form = saved
+	if pushed != nil && pushed.name != "" && !pushed.formErrors {
+		for _, f := range pushed.rec.Fields {
+			if !pushed.shown[f.Name] && !isCon(f.Type, "Bool") {
+				c.bag.Warn(diag.UnshownErrors, x.Span, "form field `%s` has no `<Errors field=\"%s\">` and the form no `<Errors form />`: its decoding errors would not be shown", f.Name, f.Name)
+			}
+		}
+	}
 }
 
 // submitText abbreviates a submit value for messages: `Toggle` or `Toggle …`.
@@ -337,7 +344,14 @@ func (mc *modCtx) formComponent(x *syntax.Element, env *env, eff effect) {
 		return
 	}
 	if x.Tag == "Errors" && bareForm {
+		mc.form.formErrors = true
 		return
+	}
+	if x.Tag == "Errors" && fieldName != "" {
+		if mc.form.shown == nil {
+			mc.form.shown = map[string]bool{}
+		}
+		mc.form.shown[fieldName] = true
 	}
 	if fieldName == "" {
 		c.errorf("E0304", x.Span, "`<%s>` needs `field=\"…\"`", x.Tag)

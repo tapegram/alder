@@ -209,9 +209,10 @@ type kvItem struct {
 	omitBlank bool
 }
 
-// kvList is items as a Go []rt.KV: rt.KV for a parameter always given, rt.QueryKV for one left
-// out at its default (or at Nothing), rt.QueryKVs for a List (one key per element); groups
-// joined with rt.Queries when there is a List.
+// kvList is items as a Go []rt.KV: an rt.KV literal (written {Key: …}, as gofmt -s would) for a
+// parameter always given, rt.QueryKV for one left out at its default (or at Nothing),
+// rt.QueryKVs for a List (one key per element); groups joined with rt.Queries when there is a
+// List.
 func (f *fn) kvList(items []kvItem, s *scope) string {
 	var groups, kvs []string
 	lists := false
@@ -233,7 +234,7 @@ func (f *fn) kvList(items []kvItem, s *scope) string {
 		case it.omitBlank && maybeArg(it.t) != nil:
 			kvs = append(kvs, "rt.QueryKV("+key+", "+f.text(it.v, s)+`, "")`)
 		default:
-			kvs = append(kvs, "rt.KV{Key: "+key+", Value: "+f.text(it.v, s)+"}")
+			kvs = append(kvs, "{Key: "+key+", Value: "+f.text(it.v, s)+"}")
 		}
 	}
 	flush()

@@ -830,7 +830,7 @@ view model session = {
 `})
 	contains(t, files["P_alder.go"],
 		"switch _m1.Tag {",
-		`return rt.MsgRef{Module: "P", Msg: "Pick", Params: []rt.KV{rt.KV{Key: "name", Value: _m1.Pick.Name}, rt.KV{Key: "at", Value: rt.MaybeText(_m1.Pick.At, std.TextFromInt)}}}`,
+		`return rt.MsgRef{Module: "P", Msg: "Pick", Params: []rt.KV{{Key: "name", Value: _m1.Pick.Name}, {Key: "at", Value: rt.MaybeText(_m1.Pick.At, std.TextFromInt)}}}`,
 		`return rt.MsgRef{Module: "P", Msg: "Clear"}`,
 		"P__Btn(struct {",
 		"P__Each(struct {",
@@ -2425,6 +2425,15 @@ func TestLinks(t *testing.T) {
 	}
 	if _, errs := decode__T__Params(map[string]string{"id": "c"}, url.Values{"n": {"x"}, "filter": {"Nope"}}); len(errs) != 2 {
 		t.Fatalf("bad params: %v", errs)
+	}
+	// a Bool URL parameter is strict (web.BoolParam): ?b=maybe is an error, not True
+	if _, errs := decode__T__Params(map[string]string{"id": "c"}, url.Values{"n": {"1"}, "b": {"maybe"}}); len(errs) != 1 || errs[0].Field != "b" {
+		t.Fatalf("b=maybe: %v", errs)
+	}
+	for raw, want := range map[string]bool{"True": true, "1": true, "false": false} {
+		if p, errs := decode__T__Params(map[string]string{"id": "c"}, url.Values{"n": {"1"}, "b": {raw}}); errs != nil || p.B != want {
+			t.Fatalf("b=%s: %+v %v", raw, p, errs)
+		}
 	}
 	page := html.Render(I__view(I__Model{}, App__Session{}))
 	if !strings.Contains(page, `+"`"+`<a href="/">x</a><a href="/?filter=Active">x</a>`+"`"+`) {

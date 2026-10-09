@@ -43,7 +43,9 @@ import (
 //   - a field with a default takes it when absent;
 //   - a Maybe is Nothing when absent or "" (blank for Int, Float, Date and unions; with a
 //     default: the default when absent, Nothing when blank), else Just the decoded value;
-//   - a Bool is a checkbox: absent is False (in a URL, absent is its default when it has one);
+//   - a Bool is a checkbox: absent is False, any value but "" and "false" True (web.Bool); in a URL
+//     it is strict (web.BoolParam: True/False, true/false, 1/0; absent is its default when it has
+//     one, else False; anything else is a 404);
 //   - a List (URL parameters only) is every value of the key, each decoded as its element;
 //   - a brand's check runs on the decoded value (inside a Maybe or List, on each present one):
 //     Text.NonEmpty, Email, Url, Secret and Int.Positive, NonNegative by rt/web's helpers, an app
@@ -599,7 +601,12 @@ func (d *decoder) parse(t types.Type, b *ir.Brand, src, name, text string, assig
 	case "text":
 		v = text
 	case "bool":
-		v = "web.Bool(" + src + ", " + name + ")"
+		if d.url { // an app-made URL: strict (web.BoolParam)
+			cs = append(cs, clause{"x, msg := web.BoolParam(" + src + ", " + name + "); msg != \"\"", fieldErr})
+			v = "x"
+		} else {
+			v = "web.Bool(" + src + ", " + name + ")"
+		}
 	case "enum":
 		u := t.(*types.Union)
 		names, _ := enumLists(u)

@@ -29,7 +29,8 @@ import (
 // e2ePassword is a stub Auth.Login.Password that mirrors the dev adapter
 // (examples/todos/adapters): a@b.c (and a second user, b@b.c) with "pw" is the id of a User row
 // it finds or creates in the running Task's transaction. boom@b.c inserts a User row in that transaction and then fails
-// (the row must be rolled back); probe@b.c counts the boom@b.c rows and records the count.
+// (the row must be rolled back); probe@b.c counts the boom@b.c rows and, as a positive control,
+// the a@b.c rows, and records both counts.
 // Every call is recorded.
 type e2ePassword struct {
 	mu     sync.Mutex
@@ -60,8 +61,13 @@ func (p *e2ePassword) Verify(ctx context.Context, args Args__Auth__Login__Passwo
 		if err != nil {
 			return rt.Nothing[string](), err
 		}
+		// the positive control: a@b.c's committed row must be seen the same way
+		control, err := e2eUsers(ctx, "a@b.c")
+		if err != nil {
+			return rt.Nothing[string](), err
+		}
 		p.mu.Lock()
-		p.probes = append(p.probes, len(rows))
+		p.probes = append(p.probes, len(rows), len(control))
 		p.mu.Unlock()
 	}
 	return rt.Nothing[string](), nil
@@ -586,7 +592,7 @@ func TestE2E_Todos(t *testing.T) {
 	for _, v := range []string{forged, good + "x", "garbage"} {
 		req, _ := http.NewRequest("GET", e.srv.URL+"/", nil)
 		req.AddCookie(&http.Cookie{Name: "alder_session", Value: v})
-		res, err := (&http.Client{CheckRedirect: e.c.CheckRedirect}).Do(req)
+		res, err := (&http.Client{Timeout: e.c.Timeout, CheckRedirect: e.c.CheckRedirect}).Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -617,8 +623,8 @@ func TestE2E_Todos(t *testing.T) {
 	e.caps.mu.Lock()
 	probes := append([]int(nil), e.caps.probes...)
 	e.caps.mu.Unlock()
-	if len(probes) != 1 || probes[0] != 0 {
-		t.Fatalf("boom@b.c rows after two failed Tasks = %v, want [0] (rolled back)", probes)
+	if len(probes) != 2 || probes[0] != 0 || probes[1] != 1 {
+		t.Fatalf("boom@b.c and a@b.c rows after two failed Tasks = %v, want [0 1] (rolled back; the probe sees committed rows)", probes)
 	}
 	// the user is still logged in: the failed Task stored no session
 	if s, raw := e.session(); s.User.Val != uid {

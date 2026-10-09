@@ -84,6 +84,27 @@ func Bool(v url.Values, name string) bool {
 	return s[0] != "" && !strings.EqualFold(s[0], "false")
 }
 
+// MsgBool is BoolParam's error: a URL parameter of type Bool that is not one of its spellings.
+const MsgBool = "must be True or False"
+
+// BoolParam decodes a Bool URL parameter, which the app's own links write (True/False): absent
+// is false; "true", "True", "1" are true and "false", "False", "0" false; anything else
+// (including "") gives (false, MsgBool), which makes the route a 404. A checkbox in a form is
+// decoded by Bool, leniently.
+func BoolParam(v url.Values, name string) (bool, string) {
+	s, ok := v[name]
+	if !ok || len(s) == 0 {
+		return false, ""
+	}
+	switch s[0] {
+	case "true", "True", "1":
+		return true, ""
+	case "false", "False", "0":
+		return false, ""
+	}
+	return false, MsgBool
+}
+
 // Date parses name as YYYY-MM-DD (surrounding spaces trimmed). Absent or blank gives
 // (Date{}, ""); malformed or impossible dates ("2026-02-30", "2026-1-5") give MsgDate.
 func Date(v url.Values, name string) (rt.Date, string) {

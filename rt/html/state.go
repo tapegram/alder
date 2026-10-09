@@ -47,10 +47,12 @@ type Control struct {
 // "errors" an empty <ul class="errors" data-errors="field|form">. With a FormState that matches
 // it (FormState: its Form equals c.Form, its Msg the enclosing form's), the control's value is the submitted one (st.Values[Name]; for a checkbox,
 // "True" checks it) and the error list holds one <li> per message (st.Errors[Name], or
-// st.FormError for `<Errors form />`). Submitted values and messages are escaped like any text.
+// st.FormError for `<Errors form />`, then the errors of every field that has no `<Errors field>`
+// in that form, prefixed with the field's name). Submitted values and messages are escaped like
+// any text.
 func Input(c Control) Node { return Node{kind: kCtrl, control: &c} }
 
-func (c *Control) build(st *FormState, active bool) Node {
+func (c *Control) build(st *FormState, active bool, orphan []string) Node {
 	if c.Kind == "errors" {
 		scope := "form"
 		var msgs []string
@@ -59,8 +61,11 @@ func (c *Control) build(st *FormState, active bool) Node {
 			if active {
 				msgs = st.Errors[c.Name]
 			}
-		} else if active && st.FormError != "" {
-			msgs = []string{st.FormError}
+		} else if active {
+			if st.FormError != "" {
+				msgs = []string{st.FormError}
+			}
+			msgs = append(msgs, orphan...)
 		}
 		items := make([]Node, len(msgs))
 		for i, m := range msgs {

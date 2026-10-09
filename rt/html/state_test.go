@@ -186,3 +186,26 @@ func TestRender_ControlTypes(t *testing.T) {
 		}
 	}
 }
+
+// A field without an <Errors field> of its own does not lose its errors (M2): <Errors form />
+// lists them after the form's error, prefixed with the field's name, in field-name order.
+func TestRenderWith_OrphanFieldErrorsOnTheFormList(t *testing.T) {
+	n := FormTo(newTodo, nil,
+		Input(Control{Kind: "errors", Form: "F"}),
+		Input(Control{Kind: "input", Form: "F", Name: "title"}),
+		Nodes(Input(Control{Kind: "errors", Form: "F", Name: "title"})),
+		Input(Control{Kind: "input", Form: "F", Name: "due"}),
+		Input(Control{Kind: "input", Form: "F", Name: "size"}),
+	)
+	st := posted("F", newTodo, FormState{FormError: "taken", Errors: map[string][]string{
+		"title": {"must not be empty"}, "size": {"must be a whole number"}, "due": {"must be a date (YYYY-MM-DD)"}}})
+	got := RenderWith(n, st)
+	want := `<ul class="errors" data-errors="form"><li>taken</li><li>due must be a date (YYYY-MM-DD)</li><li>size must be a whole number</li></ul>`
+	if !strings.Contains(got, want) || strings.Count(got, "must not be empty") != 1 {
+		t.Fatalf("got %s", got)
+	}
+	// no state, or another form's: nothing
+	if got := Render(n); strings.Contains(got, "<li>") {
+		t.Fatal(got)
+	}
+}

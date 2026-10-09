@@ -185,3 +185,24 @@ func TestPredicates(t *testing.T) {
 		t.Error("message constants changed")
 	}
 }
+
+// A Bool URL parameter is strict (M3): the app's links write True/False; anything else is an
+// error (the route answers 404). A checkbox stays lenient (Bool).
+func TestBoolParam(t *testing.T) {
+	for raw, want := range map[string]bool{"true": true, "True": true, "1": true, "false": false, "False": false, "0": false} {
+		if got, msg := BoolParam(url.Values{"on": {raw}}, "on"); got != want || msg != "" {
+			t.Errorf("BoolParam(%q) = %v, %q", raw, got, msg)
+		}
+	}
+	for _, raw := range []string{"maybe", "", "on", "TRUE", "yes"} {
+		if got, msg := BoolParam(url.Values{"on": {raw}}, "on"); got || msg != MsgBool {
+			t.Errorf("BoolParam(%q) = %v, %q", raw, got, msg)
+		}
+	}
+	if got, msg := BoolParam(url.Values{}, "on"); got || msg != "" {
+		t.Errorf("absent: %v, %q", got, msg)
+	}
+	if !Bool(url.Values{"on": {"on"}}, "on") {
+		t.Error("a checkbox's on is true")
+	}
+}

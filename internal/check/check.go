@@ -54,6 +54,9 @@ type formCtx struct {
 	name   string // "" when the submit message declares no `form`
 	rec    *types.Record
 	submit string // the submit value, abbreviated, for messages
+	// shown are the fields with an <Errors field>; formErrors is set by an <Errors form />
+	shown      map[string]bool
+	formErrors bool
 }
 
 type modCtx struct {

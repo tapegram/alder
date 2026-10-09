@@ -136,7 +136,7 @@ func M__view(model M__Model, session App__Session) html.Node {
 		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "App", Msg: "Logout"})}, html.Text("log out")),
 		html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Page{Path: rt.Concat("/m/", rt.PathSegment(std.TextFromInt(model.Id+1)))}))}, html.Text("next")),
 		html.El("ul", nil, html.Nodes(std.ListMap(func(item string) html.Node {
-			return html.El("li", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "M", Msg: "Pick", Params: []rt.KV{rt.KV{Key: "name", Value: item}, rt.KV{Key: "n", Value: std.TextFromInt(model.Id)}}})}, html.Text(item))
+			return html.El("li", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "M", Msg: "Pick", Params: []rt.KV{{Key: "name", Value: item}, {Key: "n", Value: std.TextFromInt(model.Id)}}})}, html.Text(item))
 		}, model.Items)...)),
 		func() html.Node {
 			if model.Busy {
@@ -157,7 +157,7 @@ func M__view(model M__Model, session App__Session) html.Node {
 			}
 			panic("unreachable")
 		}(),
-		html.FormTo(rt.MsgRef{Module: "M", Msg: "Save", Params: []rt.KV{rt.KV{Key: "id", Value: std.TextFromInt(model.Id)}}}, []html.Attr{html.A("class", "note")},
+		html.FormTo(rt.MsgRef{Module: "M", Msg: "Save", Params: []rt.KV{{Key: "id", Value: std.TextFromInt(model.Id)}}}, []html.Attr{html.A("class", "note")},
 			html.Input(html.Control{Kind: "errors", Form: "M.Note"}),
 			html.Input(html.Control{Kind: "textarea", Form: "M.Note", Name: "body", Label: "Body"}),
 			html.Input(html.Control{Kind: "select", Form: "M.Note", Name: "color", Label: "Color " + std.TextFromInt(model.Id), Required: true, Value: "Red", Options: []string{"Red", "Green"}}),

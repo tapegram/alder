@@ -150,7 +150,7 @@ func page__M(rq *web.Request, params M__Params, keep any) (M__Model, App__Sessio
 // params__M are page M's parameters as text for its message URLs (html.FormState.PageParams): each
 // message route decodes them back from the URL's _p. keys.
 func params__M(p M__Params) []rt.KV {
-	return []rt.KV{rt.KV{Key: "id", Value: std.TextFromInt(p.Id)}}
+	return []rt.KV{{Key: "id", Value: std.TextFromInt(p.Id)}}
 }
 
 // update__M runs page M's update for msg and answers its Nav (book 06): load, update (a Task, whose

@@ -500,15 +500,21 @@ func commentSafe(s string) string {
 	return s
 }
 
-// withScript inserts the Datastar script tag right after the first <head> start tag, or at
-// the start of the page when there is none.
+// withScript inserts the Datastar script tag right after the first <head> start tag; without
+// one, right after the <html> start tag; without that, just before the last </body>; else at
+// the start of the page.
 func withScript(page string) string {
 	tag := html.Render(datastar.ScriptTag())
-	if i := startTag(page, "head"); i >= 0 {
-		if j := strings.IndexByte(page[i:], '>'); j >= 0 {
-			k := i + j + 1
-			return page[:k] + tag + page[k:]
+	for _, name := range []string{"head", "html"} {
+		if i := startTag(page, name); i >= 0 {
+			if j := strings.IndexByte(page[i:], '>'); j >= 0 {
+				k := i + j + 1
+				return page[:k] + tag + page[k:]
+			}
 		}
+	}
+	if i := strings.LastIndex(page, "</body>"); i >= 0 {
+		return page[:i] + tag + page[i:]
 	}
 	return tag + page
 }

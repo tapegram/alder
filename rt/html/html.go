@@ -6,7 +6,9 @@ package html
 
 import (
 	"html"
+	"maps"
 	"net/url"
+	"slices"
 	"strings"
 
 	"alder/rt"
@@ -135,15 +137,16 @@ func RenderWith(n Node, st *FormState) string {
 type renderer struct {
 	b      *strings.Builder
 	st     *FormState
-	inForm bool   // inside a <form> element
-	form   string // the message key (rt.MsgRef.Key) of the enclosing <form>, "" for none
+	inForm bool     // inside a <form> element
+	form   string   // the message key (rt.MsgRef.Key) of the enclosing <form>, "" for none
+	orphan []string // the posting form's field errors no <Errors field> of it shows ("title must …")
 }
 
 func (r *renderer) render(n Node) {
 	b := r.b
 	switch n.kind {
 	case kCtrl:
-		r.render(n.control.build(r.st, r.active(n.control)))
+		r.render(n.control.build(r.st, r.active(n.control), r.orphan))
 	case kText:
 		b.WriteString(escape(n.text))
 	case kRaw:
@@ -161,7 +164,10 @@ func (r *renderer) render(n Node) {
 		}
 		saved := *r
 		if n.tag == "form" {
-			r.inForm, r.form = true, formKey(n.attrs)
+			r.inForm, r.form, r.orphan = true, formKey(n.attrs), nil
+			if st := r.st; st != nil && st.Form != "" && st.Msg != "" && st.Msg == r.form {
+				r.orphan = orphanErrors(n, st)
+			}
 		}
 		r.open(n.tag, n.attrs)
 		if void[n.tag] {
@@ -232,6 +238,36 @@ func (r *renderer) url(m *rt.MsgRef) string {
 		page = r.st.PageParams
 	}
 	return m.URL(page)
+}
+
+// orphanErrors are the field errors of st that no <Errors field="…"> of its form inside form
+// shows, each prefixed with its field's name, fields in name order: `<Errors form />` lists
+// them after the form's own error, so no decoding error is dropped silently.
+func orphanErrors(form Node, st *FormState) []string {
+	shown := map[string]bool{}
+	var walk func(Node)
+	walk = func(n Node) {
+		switch n.kind {
+		case kCtrl:
+			if c := n.control; c.Kind == "errors" && c.Name != "" && c.Form == st.Form {
+				shown[c.Name] = true
+			}
+		case kElem, kFrag:
+			for _, c := range n.children {
+				walk(c)
+			}
+		}
+	}
+	walk(form)
+	var out []string
+	for _, name := range slices.Sorted(maps.Keys(st.Errors)) {
+		if !shown[name] {
+			for _, m := range st.Errors[name] {
+				out = append(out, name+" "+m)
+			}
+		}
+	}
+	return out
 }
 
 // clickMsg is the message of attrs' "data-on:click" MsgAttr, or nil.

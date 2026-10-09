@@ -164,10 +164,19 @@ func TestBuild_Todos(t *testing.T) {
 		t.Fatalf("adapters without Caps: exit %d\nstderr: %s", code, stderr)
 	}
 
-	// an app with capabilities needs an adapters package
+	// an app with capabilities needs an adapters package; a directory without Go files (only
+	// subdirectories, notes) is none
+	want := "todos needs an adapters package: create adapters/caps.go with `func Caps() app.Caps` implementing: Auth.Login.Password (interface app.Cap__Auth__Login__Password)\n"
+	os.RemoveAll(filepath.Join("todos", "adapters"))
+	os.MkdirAll(filepath.Join("todos", "adapters", "sub"), 0o755)
+	os.WriteFile(filepath.Join("todos", "adapters", "sub", "x.go"), []byte("package sub\n"), 0o644)
+	os.WriteFile(filepath.Join("todos", "adapters", "README"), []byte("todo\n"), 0o644)
+	code, stdout, stderr = runBuild(t, "todos")
+	if code != 1 || stderr != want {
+		t.Fatalf("adapters without Go files: exit %d\nstdout: %s\nstderr: %q\nwant %q", code, stdout, stderr, want)
+	}
 	os.RemoveAll(filepath.Join("todos", "adapters"))
 	code, stdout, stderr = runBuild(t, "todos")
-	want := "todos needs an adapters package: create adapters/caps.go with `func Caps() app.Caps` implementing: Auth.Login.Password (interface app.Cap__Auth__Login__Password)\n"
 	if code != 1 || stderr != want {
 		t.Fatalf("no adapters: exit %d\nstdout: %s\nstderr: %q\nwant %q", code, stdout, stderr, want)
 	}

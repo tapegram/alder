@@ -88,7 +88,7 @@ func page__Edit(rq *web.Request, params Edit__Params, keep any) (Edit__Model, Ap
 // params__Edit are page Edit's parameters as text for its message URLs (html.FormState.PageParams):
 // each message route decodes them back from the URL's _p. keys.
 func params__Edit(p Edit__Params) []rt.KV {
-	return []rt.KV{rt.KV{Key: "n", Value: std.TextFromInt(p.N)}}
+	return []rt.KV{{Key: "n", Value: std.TextFromInt(p.N)}}
 }
 
 // update__Edit runs page Edit's update for msg and answers its Nav (book 06): load, update (a Task,

@@ -99,7 +99,7 @@ func page__Index(rq *web.Request, params Index__Params, keep any) (Index__Model,
 // params__Index are page Index's parameters as text for its message URLs
 // (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
 func params__Index(p Index__Params) []rt.KV {
-	return []rt.KV{rt.KV{Key: "a", Value: p.A}, rt.KV{Key: "b", Value: p.B}}
+	return []rt.KV{{Key: "a", Value: p.A}, {Key: "b", Value: p.B}}
 }
 
 // update__Index runs page Index's update for msg and answers its Nav (book 06): load, update (a

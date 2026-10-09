@@ -154,3 +154,52 @@ func TestFixesApply(t *testing.T) {
 		}
 	}
 }
+
+// W0003: a form field whose decoding errors no <Errors> of its form would show (M2). A field
+// with <Errors field>, a form with <Errors form />, or a Bool field is not reported.
+func TestUnshownErrorsWarning(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"App.alder": "module App\n\nerror : Error -> Html Never\nerror err = <p>e</p>\n\nnotFound : Html Never\nnotFound = <p>nf</p>\n",
+		"P.alder": `module P
+
+page "/" { }
+
+type Model = { }
+
+form F = { title: Text, size: Int, done: Bool }
+
+msg Add form F
+msg Keep form F
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = Task.succeed Rerender
+
+view : Model -> Session -> Html Msg
+view model session =
+  <div>
+    <form submit={Add}><Input field="title" /><Errors field="title" /><Input field="size" /><Input field="done" /></form>
+    <form submit={Keep}><Errors form /><Input field="size" /></form>
+  </div>
+`,
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, src := range files {
+		if err := os.WriteFile(filepath.Join(dir, "app", name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var got []string
+	for _, d := range runDir(t, dir).Items {
+		got = append(got, fmt.Sprintf("%s %d:%d %s %s", d.Severity, d.Span.Start.Line, d.Span.Start.Col, d.Code, d.Message))
+	}
+	want := []string{"warning 21:5 W0003 form field `size` has no `<Errors field=\"size\">` and the form no `<Errors form />`: its decoding errors would not be shown"}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}

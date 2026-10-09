@@ -103,6 +103,7 @@ const (
 	DuplicatePage  = "E0016"
 	UnreachableArm = "E0310"
 	UnusedImport   = "W0001"
+	UnshownErrors  = "W0003"
 )
 
 type Bag struct{ Items []Diagnostic }
