@@ -1,0 +1,611 @@
+package gen
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	"alder/internal/ir"
+	"alder/internal/types"
+)
+
+// Expression emission.
+//
+// An expression is emitted in one of two modes:
+//   - expr: a Go expression, returned with its precedence (see prec*) so that operands are
+//     parenthesized only where Go needs it;
+//   - ret: Go statements that end by returning the expression's value (a function or closure
+//     body). Let, Match, If and Hole are naturally statements: in ret mode they become `x := …`,
+//     `switch`/`if` with a return in each branch, and `panic`; in expr mode they are wrapped in an
+//     immediately-invoked closure `func() T { … }()`.
+//
+// Go rejects unused variables, so a Let or match binding whose name the body never uses is not
+// emitted (the language is pure, so nothing is lost).
+
+// Go operator precedence, plus levels for unary and primary expressions.
+const (
+	precOr      = 1
+	precAnd     = 2
+	precCompare = 3
+	precAdd     = 4
+	precMul     = 5
+	precUnary   = 6
+	precAtom    = 7
+)
+
+var binPrec = map[string]int{
+	"||": precOr, "&&": precAnd,
+	"==": precCompare, "!=": precCompare, "<": precCompare, "<=": precCompare, ">": precCompare, ">=": precCompare,
+	"+": precAdd, "-": precAdd, "++": precAdd,
+	"*": precMul, "/": precMul, "%": precMul,
+}
+
+// fn emits one top-level value: it numbers the temporaries the emitter introduces.
+type fn struct {
+	g     *gen
+	temps int
+}
+
+func (f *fn) temp(prefix string) string {
+	f.temps++
+	return fmt.Sprintf("%s%d", prefix, f.temps)
+}
+
+// scope maps Alder locals to their Go names and tracks the Go names declared in the current Go
+// block, so that a Let re-binding a name already declared in the same block gets a fresh one.
+type scope struct {
+	vars  map[string]string
+	block map[string]bool
+}
+
+func newScope() *scope { return &scope{vars: map[string]string{}, block: map[string]bool{}} }
+
+// child is a scope for a nested Go block.
+func (s *scope) child() *scope { return &scope{vars: s.vars, block: map[string]bool{}} }
+
+// declare binds Alder name in the current block and returns its Go name.
+func (s *scope) declare(name string) string {
+	g := local(name)
+	if name == "_" {
+		return g
+	}
+	for i := 2; s.block[g]; i++ {
+		g = fmt.Sprintf("%s_%d", local(name), i)
+	}
+	s.block[g] = true
+	vars := make(map[string]string, len(s.vars)+1)
+	for k, v := range s.vars {
+		vars[k] = v
+	}
+	vars[name] = g
+	s.vars = vars
+	return g
+}
+
+func (s *scope) lookup(name string) string {
+	if g, ok := s.vars[name]; ok {
+		return g
+	}
+	return local(name)
+}
+
+// ---- ret mode
+
+// ret writes statements that return e's value.
+func (f *fn) ret(w *strings.Builder, e ir.Expr, s *scope) {
+	switch x := e.(type) {
+	case *ir.Let:
+		if x.Name == "_" || uses(x.Body, x.Name) == 0 {
+			f.ret(w, x.Body, s)
+			return
+		}
+		v := f.typedExpr(x.Value, s)
+		fmt.Fprintf(w, "%s := %s\n", s.declare(x.Name), v)
+		f.ret(w, x.Body, s)
+	case *ir.Match:
+		f.match(w, x, s)
+	case *ir.If:
+		fmt.Fprintf(w, "if %s {\n", cond(f.code(x.Cond, s)))
+		f.ret(w, x.Then, s.child())
+		w.WriteString("}\n")
+		f.ret(w, x.Else, s)
+	case *ir.Hole:
+		fmt.Fprintf(w, "panic(%s)\n", strconv.Quote("alder: hole ?"+x.Name))
+	default:
+		fmt.Fprintf(w, "return %s\n", f.code(e, s))
+	}
+}
+
+// cond guards a Go `if`/`switch` header: a composite literal there must be parenthesized.
+func cond(c string) string {
+	if strings.Contains(c, "{") {
+		return "(" + c + ")"
+	}
+	return c
+}
+
+// closure is e as an immediately-invoked closure returning its value.
+func (f *fn) closure(e ir.Expr, s *scope) string {
+	var w strings.Builder
+	f.ret(&w, e, s.child())
+	return "func() " + GoType(e.Type()) + " {\n" + w.String() + "}()"
+}
+
+// ---- expr mode
+
+// code is e as a Go expression.
+func (f *fn) code(e ir.Expr, s *scope) string {
+	c, _ := f.expr(e, s)
+	return c
+}
+
+// operand is e as a Go expression of at least precedence p, parenthesized when needed.
+func (f *fn) operand(e ir.Expr, s *scope, p int) string {
+	c, cp := f.expr(e, s)
+	if cp < p {
+		return "(" + c + ")"
+	}
+	return c
+}
+
+// typedExpr is e as a Go expression whose type is e's type even where Go infers the type from
+// the expression (`x := …`, a generic argument): an untyped integer constant becomes int64.
+func (f *fn) typedExpr(e ir.Expr, s *scope) string {
+	c := f.code(e, s)
+	if untypedInt(e) {
+		return "int64(" + c + ")"
+	}
+	return c
+}
+
+// untypedInt reports whether e is emitted as an untyped Go integer constant.
+func untypedInt(e ir.Expr) bool {
+	switch x := e.(type) {
+	case *ir.Lit:
+		return x.Kind == ir.LitInt
+	case *ir.Op:
+		_, arith := map[string]bool{"+": true, "-": true, "*": true, "/": true, "%": true}[x.Kind]
+		return arith && untypedInt(x.L) && untypedInt(x.R)
+	}
+	return false
+}
+
+// expr is e as a Go expression and its precedence.
+func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
+	switch x := e.(type) {
+	case *ir.Lit:
+		return lit(x)
+	case *ir.Var:
+		return f.variable(x, s), precAtom
+	case *ir.Call:
+		return f.call(x, s)
+	case *ir.Partial:
+		return f.partial(x, s), precAtom
+	case *ir.Lambda:
+		return f.lambda(x, s), precAtom
+	case *ir.Record:
+		return f.record(x, recordTypeName(x), s), precAtom
+	case *ir.Update:
+		return f.update(x, s), precAtom
+	case *ir.Field:
+		return f.operand(x.Expr, s, precAtom) + "." + Field(x.Name), precAtom
+	case *ir.Ctor:
+		return f.ctor(x, s), precAtom
+	case *ir.List:
+		var es []string
+		for _, el := range x.Elems {
+			es = append(es, f.code(el, s))
+		}
+		return GoType(x.Ty) + "{" + strings.Join(es, ", ") + "}", precAtom
+	case *ir.PageRef:
+		return f.pageRef(x, s), precAtom
+	case *ir.Op:
+		return f.op(x, s)
+	case *ir.Str:
+		var ps []string
+		for _, p := range x.Parts {
+			ps = append(ps, f.code(p, s))
+		}
+		return "rt.Concat(" + strings.Join(ps, ", ") + ")", precAtom
+	case *ir.Let, *ir.Match, *ir.If, *ir.Hole:
+		return f.closure(e, s), precAtom
+	case *ir.Elem, *ir.Comp, *ir.HText, *ir.HExpr, *ir.HFor, *ir.HIf, *ir.HMatch, *ir.Input, *ir.FormEl:
+		// HTML: emitted by Task 6. Until then each node is a stub, listed in the file header.
+		f.g.stubbed[strings.TrimPrefix(fmt.Sprintf("%T", e), "*ir.")] = true
+		return "html.None()", precAtom
+	}
+	panic(fmt.Sprintf("gen: cannot emit %T", e))
+}
+
+func lit(x *ir.Lit) (string, int) {
+	switch x.Kind {
+	case ir.LitInt:
+		s := strconv.FormatInt(x.Int, 10)
+		if x.Int < 0 {
+			return s, precUnary
+		}
+		return s, precAtom
+	case ir.LitFloat:
+		s := floatLit(x.Float)
+		if strings.HasPrefix(s, "-") {
+			return s, precUnary
+		}
+		return s, precAtom
+	case ir.LitBool:
+		return strconv.FormatBool(x.Bool), precAtom
+	case ir.LitText:
+		return strconv.Quote(x.Text), precAtom
+	}
+	return "struct{}{}", precAtom
+}
+
+// floatLit formats f so that Go reads it as a float constant ("1.0", not "1").
+func floatLit(f float64) string {
+	s := strconv.FormatFloat(f, 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eEIN") {
+		s += ".0"
+	}
+	return s
+}
+
+// variable is a reference to a named value.
+func (f *fn) variable(x *ir.Var, s *scope) string {
+	switch x.Kind {
+	case ir.VarLocal:
+		return s.lookup(x.Name)
+	case ir.VarStd:
+		name := stdName(x.Module, x.Name)
+		if _, isFun := x.Ty.(*types.Fun); isFun {
+			return name
+		}
+		// a stdlib constant is a Go function; Dict.empty needs its type arguments
+		if app, ok := x.Ty.(*types.App); ok && app.Con == "Dict" {
+			return name + typeArgs(app.Args) + "()"
+		}
+		return name + "()"
+	}
+	name := GoName(x.Module, x.Name)
+	v := f.g.values[x.Module+"."+x.Name]
+	if v != nil {
+		name += f.g.instantiate(v, x.Ty)
+		if f.g.thunks[v] {
+			name += "()"
+		}
+	}
+	return name
+}
+
+// call emits a saturated call; arguments beyond the callee's parameters apply its result.
+func (f *fn) call(x *ir.Call, s *scope) (string, int) {
+	ft, _ := x.Fn.Type().(*types.Fun)
+	n := len(x.Args)
+	if ft != nil && len(ft.Params) < n {
+		n = len(ft.Params)
+	}
+	if isNot(x.Fn) && n == 1 {
+		return "!" + f.operand(x.Args[0], s, precUnary), precUnary
+	}
+	var args []string
+	for _, a := range x.Args[:n] {
+		args = append(args, f.argument(x.Fn, a, s))
+	}
+	c, p := f.apply(x.Fn, args, s)
+	for rest := x.Args[n:]; len(rest) > 0; {
+		rt, _ := ft.Result.(*types.Fun)
+		k := len(rest)
+		if rt != nil && len(rt.Params) < k {
+			k = len(rt.Params)
+		}
+		var as []string
+		for _, a := range rest[:k] {
+			as = append(as, f.code(a, s))
+		}
+		if p < precAtom {
+			c = "(" + c + ")"
+		}
+		c, p = c+"("+strings.Join(as, ", ")+")", precAtom
+		rest, ft = rest[k:], rt
+	}
+	return c, p
+}
+
+// argument is an argument of a call of callee: typed when the callee is a generic value of the
+// app called without explicit type arguments, whose type parameter Go would otherwise infer from
+// an untyped constant as int.
+func (f *fn) argument(callee, a ir.Expr, s *scope) string {
+	if v, ok := callee.(*ir.Var); ok && v.Kind == ir.VarGlobal {
+		if val := f.g.values[v.Module+"."+v.Name]; val != nil && len(f.g.params(val)) > 0 && f.g.instantiate(val, v.Ty) == "" {
+			return f.typedExpr(a, s)
+		}
+	}
+	return f.code(a, s)
+}
+
+// isNot reports whether e is Prelude.not, emitted as Go's `!`.
+func isNot(e ir.Expr) bool {
+	v, ok := e.(*ir.Var)
+	return ok && v.Kind == ir.VarStd && v.Module == "Prelude" && v.Name == "not"
+}
+
+// apply calls callee with already emitted arguments.
+func (f *fn) apply(callee ir.Expr, args []string, s *scope) (string, int) {
+	if isNot(callee) && len(args) == 1 { // only from a partial: the argument is a parameter
+		return "!" + args[0], precUnary
+	}
+	var c string
+	if v, ok := callee.(*ir.Var); ok {
+		c = f.variable(v, s)
+	} else {
+		c = f.operand(callee, s, precAtom)
+	}
+	return c + "(" + strings.Join(args, ", ") + ")", precAtom
+}
+
+// partial is a closure over the missing parameters.
+func (f *fn) partial(x *ir.Partial, s *scope) string {
+	ft := x.Fn.Type().(*types.Fun)
+	var args, params []string
+	for _, g := range x.Given {
+		args = append(args, f.argument(x.Fn, g, s))
+	}
+	for _, t := range ft.Params[len(x.Given):] {
+		p := f.temp("_a")
+		params = append(params, p+" "+GoType(t))
+		args = append(args, p)
+	}
+	body, _ := f.apply(x.Fn, args, s)
+	return "func(" + strings.Join(params, ", ") + ") " + GoType(ft.Result) + " {\nreturn " + body + "\n}"
+}
+
+func (f *fn) lambda(x *ir.Lambda, s *scope) string {
+	c := s.child()
+	var params []string
+	for _, p := range x.Params {
+		params = append(params, c.declare(p.Name)+" "+GoType(p.Type))
+	}
+	var w strings.Builder
+	f.ret(&w, x.Body, c)
+	res := "any"
+	if ft, ok := x.Ty.(*types.Fun); ok {
+		res = GoType(ft.Result)
+	}
+	return "func(" + strings.Join(params, ", ") + ") " + res + " {\n" + w.String() + "}"
+}
+
+// recordTypeName is the Go type a record literal builds: its named record, else the anonymous
+// struct of its type.
+func recordTypeName(x *ir.Record) string {
+	if x.T != nil && x.T.Name != "" {
+		return GoName(x.T.Module, x.T.Name)
+	}
+	return GoType(x.Ty)
+}
+
+func (f *fn) record(x *ir.Record, typ string, s *scope) string {
+	var fs []string
+	for _, fi := range x.Fields {
+		fs = append(fs, Field(fi.Name)+": "+f.code(fi.Value, s))
+	}
+	return typ + "{" + strings.Join(fs, ", ") + "}"
+}
+
+// isPath reports whether e is a local variable or a field path from one: cheap to repeat.
+func isPath(e ir.Expr) bool {
+	switch x := e.(type) {
+	case *ir.Var:
+		return x.Kind == ir.VarLocal
+	case *ir.Field:
+		return isPath(x.Expr)
+	}
+	return false
+}
+
+// update copies the base with fields replaced: a full literal when the base is a path, else a
+// closure that copies it into a temporary and assigns the new fields.
+func (f *fn) update(x *ir.Update, s *scope) string {
+	rec, _ := x.Ty.(*types.Record)
+	typ := GoType(x.Ty)
+	if isPath(x.Base) && rec != nil {
+		base := f.code(x.Base, s)
+		var fs []string
+		for _, fd := range rec.Fields {
+			v := base + "." + Field(fd.Name)
+			for _, fi := range x.Fields {
+				if fi.Name == fd.Name {
+					v = f.code(fi.Value, s)
+				}
+			}
+			fs = append(fs, Field(fd.Name)+": "+v)
+		}
+		return typ + "{" + strings.Join(fs, ", ") + "}"
+	}
+	t := f.temp("_u")
+	var w strings.Builder
+	fmt.Fprintf(&w, "func() %s {\n%s := %s\n", typ, t, f.code(x.Base, s))
+	for _, fi := range x.Fields {
+		fmt.Fprintf(&w, "%s.%s = %s\n", t, Field(fi.Name), f.code(fi.Value, s))
+	}
+	fmt.Fprintf(&w, "return %s\n}()", t)
+	return w.String()
+}
+
+func ctorT(u *ir.UnionType, name string) ir.CtorT {
+	for _, c := range u.Ctors {
+		if c.Name == name {
+			return c
+		}
+	}
+	panic(fmt.Sprintf("gen: union %s.%s has no constructor %s", u.Module, u.Name, name))
+}
+
+// ctor builds a union value.
+func (f *fn) ctor(x *ir.Ctor, s *scope) string {
+	ut, _ := x.Ty.(*types.Union)
+	var args []types.Type
+	if ut != nil {
+		args = ut.Args
+	}
+	// inner is the payload a constructor function takes: the T of a wrapped { value: T }.
+	inner := func() string {
+		if r, ok := x.Payload.(*ir.Record); ok && len(r.Fields) == 1 {
+			return f.code(r.Fields[0].Value, s)
+		}
+		return f.operand(x.Payload, s, precAtom) + ".Value"
+	}
+	if x.U.Module == "Prelude" {
+		switch x.Name {
+		case "Just":
+			return "rt.Just" + typeArgs(args) + "(" + inner() + ")"
+		case "Nothing":
+			return "rt.Nothing" + typeArgs(args) + "()"
+		case "Ok":
+			return "rt.Ok" + typeArgs(args) + "(" + inner() + ")"
+		case "Err":
+			return "rt.Err" + typeArgs(args) + "(" + inner() + ")"
+		}
+		// Nav is only built by `update`, an effect lowered in M3b.
+		panic(fmt.Sprintf("gen: Prelude constructor %s is not emitted in M3a", x.Name))
+	}
+	u := x.U
+	ta := ""
+	if len(u.Params) > 0 {
+		ta = typeArgs(args)
+	}
+	ct := ctorT(u, x.Name)
+	switch {
+	case ct.Payload == nil && ta == "":
+		return ctorVar(u.Module, u.Name, x.Name)
+	case ct.Payload == nil:
+		return GoName(u.Module, u.Name) + ta + "{Tag: " + tagConst(u.Module, u.Name, x.Name) + "}"
+	case wrapped(ct.Payload):
+		return ctorFunc(u.Module, u.Name, x.Name) + ta + "(" + inner() + ")"
+	}
+	var p string
+	if r, ok := x.Payload.(*ir.Record); ok && r.T == ct.Payload {
+		p = f.record(r, payloadType(u, ct, ta), s)
+	} else {
+		p = f.code(x.Payload, s)
+	}
+	return ctorFunc(u.Module, u.Name, x.Name) + ta + "(" + p + ")"
+}
+
+// pageRef is a link to a page: its path with the path parameters filled in from Params.
+func (f *fn) pageRef(x *ir.PageRef, s *scope) string {
+	path := x.Page.Path
+	if x.Params == nil || !strings.Contains(path, "{") {
+		return "rt.Page{Path: " + strconv.Quote(path) + "}"
+	}
+	var parts []string
+	for path != "" {
+		i := strings.Index(path, "{")
+		j := strings.Index(path, "}")
+		if i < 0 || j < i {
+			parts = append(parts, strconv.Quote(path))
+			break
+		}
+		if i > 0 {
+			parts = append(parts, strconv.Quote(path[:i]))
+		}
+		parts = append(parts, f.pathParam(x.Params, path[i+1:j], s))
+		path = path[j+1:]
+	}
+	return "rt.Page{Path: rt.Concat(" + strings.Join(parts, ", ") + ")}"
+}
+
+// pathParam is page parameter name of params rendered as text.
+func (f *fn) pathParam(params ir.Expr, name string, s *scope) string {
+	var v ir.Expr
+	if r, ok := params.(*ir.Record); ok {
+		for _, fi := range r.Fields {
+			if fi.Name == name {
+				v = fi.Value
+			}
+		}
+	}
+	var t types.Type
+	if v != nil {
+		t = v.Type()
+	} else if rec, ok := params.Type().(*types.Record); ok {
+		for _, fd := range rec.Fields {
+			if fd.Name == name {
+				t = fd.Type
+			}
+		}
+		v = &ir.Field{Typed: ir.Typed{Ty: t}, Expr: params, Name: name}
+	}
+	if v == nil {
+		return `""`
+	}
+	switch GoType(t) {
+	case "int64":
+		return "std.TextFromInt(" + f.code(v, s) + ")"
+	case "float64":
+		return "std.TextFromFloat(" + f.code(v, s) + ")"
+	}
+	return f.code(v, s)
+}
+
+// op emits a binary operator.
+func (f *fn) op(x *ir.Op, s *scope) (string, int) {
+	call := func(fn string) (string, int) {
+		return fn + "(" + f.code(x.L, s) + ", " + f.code(x.R, s) + ")", precAtom
+	}
+	switch x.Kind {
+	case "??":
+		return call("rt.OrElse")
+	case "++":
+		if app, ok := x.OperandT.(*types.App); ok && app.Con == "List" {
+			return call("rt.Append")
+		}
+		return f.binary("+", x, s)
+	case "==", "!=":
+		switch eqKind(x.OperandT) {
+		case eqPrim:
+			return f.binary(x.Kind, x, s)
+		case eqTag:
+			return f.operand(x.L, s, precAtom) + ".Tag " + x.Kind + " " + f.operand(x.R, s, precAtom) + ".Tag", precCompare
+		}
+		c, _ := call("rt.Eq")
+		if x.Kind == "!=" {
+			return "!" + c, precUnary
+		}
+		return c, precAtom
+	case "%":
+		if GoType(x.OperandT) == "float64" {
+			return call("math.Mod")
+		}
+	}
+	return f.binary(x.Kind, x, s)
+}
+
+func (f *fn) binary(op string, x *ir.Op, s *scope) (string, int) {
+	p := binPrec[op]
+	return f.operand(x.L, s, p) + " " + op + " " + f.operand(x.R, s, p+1), p
+}
+
+const (
+	eqPrim = iota // Go ==
+	eqTag         // a union without payloads: compare tags
+	eqDeep        // rt.Eq
+)
+
+func eqKind(t types.Type) int {
+	switch t := t.(type) {
+	case *types.Con:
+		switch t.Name {
+		case "Int", "Float", "Bool", "Text", "Unit":
+			return eqPrim
+		}
+	case *types.Union:
+		if t.Module == "Prelude" {
+			return eqDeep
+		}
+		for _, c := range t.Constructors() {
+			if c.Arg != nil {
+				return eqDeep
+			}
+		}
+		return eqTag
+	}
+	return eqDeep
+}
