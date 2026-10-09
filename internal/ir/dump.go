@@ -333,6 +333,8 @@ func (d *dumper) expr(e Expr) *sx {
 		return list(1, atom(x.Kind), d.expr(x.L), d.expr(x.R))
 	case *Str:
 		return list(1, append([]*sx{atom("str")}, d.exprs(x.Parts)...)...)
+	case *Widen:
+		return list(2, atom("widen"), atom(d.ty(x.Ty)), d.expr(x.Expr))
 	case *Elem:
 		items := []*sx{atom("elem"), atom(x.Tag)}
 		items = append(items, d.attrs(x.Attrs)...)

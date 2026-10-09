@@ -1,0 +1,1 @@
+app/Home.alder:16:32 E0003 expected this page's `Session`, got `App.Session`: the page `requires user`, so its session has `user` for certain, and App's session may not; a page's session widens to App's, never the other way

@@ -32,6 +32,8 @@ type Checker struct {
 	// defaultsChecked is set once checkDefaults has run.
 	anonDefaults    map[*syntax.Field]bool
 	defaultsChecked bool
+	// widenedFrom is the narrowed session type of each expression in Result.Widened
+	widenedFrom map[syntax.Expr]types.Type
 
 	usesSessionPut bool // some module calls Session.put
 	res            *Result
@@ -69,7 +71,8 @@ func Program(prog *names.Program, bag *diag.Bag) *Result {
 		types: map[string]types.Type{}, values: map[string]types.Type{}, ctors: map[string]*ctorInfo{},
 		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, caps: map[string]map[string]types.Type{}, pages: map[string]*pageInfo{}, losers: map[syntax.Decl]bool{},
 		anonDefaults: map[*syntax.Field]bool{},
-		res:          &Result{Types: map[syntax.Expr]types.Type{}, Binds: map[any]types.Type{}, DefaultModules: map[syntax.Expr]string{}}}
+		res:          &Result{Types: map[syntax.Expr]types.Type{}, Binds: map[any]types.Type{}, DefaultModules: map[syntax.Expr]string{}, Widened: map[syntax.Expr]*types.Record{}},
+		widenedFrom:  map[syntax.Expr]types.Type{}}
 	c.declareStd()
 	// pass 1: placeholders for every declared type in every module (app + std)
 	for _, m := range c.allModules() {
@@ -137,16 +140,18 @@ func (c *Checker) ctx(m *syntax.Module) *modCtx {
 	mc := &modCtx{c: c, m: m, session: c.session, isApp: m.Name == "App"}
 	if p, ok := c.pages[m.Name]; ok {
 		mc.page = p
-		if p.Requires != "" && c.session != nil {
-			mc.session = narrow(c.session, p.Requires)
+		if p.Session != nil {
+			mc.session = p.Session
 		}
 	}
 	return mc
 }
 
-// narrow returns a copy of the session record with field f's `Maybe a` replaced by `a`.
-func narrow(s *types.Record, f string) *types.Record {
-	out := &types.Record{Module: s.Module, Name: s.Name}
+// narrow returns the session of `requires f` page module page: a record of its own,
+// <page>.Session, with App's session fields but f's `Maybe a` replaced by `a`. It is a distinct
+// nominal type that widens implicitly to App.Session (see widen) and never narrows back.
+func narrow(s *types.Record, f, page string) *types.Record {
+	out := &types.Record{Module: page, Name: "Session"}
 	for _, fl := range s.Fields {
 		if fl.Name == f {
 			if un, ok := fl.Type.(*types.Union); ok && un.Name == "Maybe" && len(un.Args) == 1 {

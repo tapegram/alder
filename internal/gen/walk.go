@@ -92,6 +92,8 @@ func children(e ir.Expr) []ir.Expr {
 		return []ir.Expr{x.L, x.R}
 	case *ir.Str:
 		return x.Parts
+	case *ir.Widen:
+		return []ir.Expr{x.Expr}
 	case *ir.Elem:
 		return append(attrValues(x.Attrs), x.Children...)
 	case *ir.Comp:

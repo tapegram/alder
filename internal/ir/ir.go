@@ -335,6 +335,16 @@ type Op struct {
 	OperandT types.Type
 }
 
+// Widen converts Expr, a `requires` page's Session (of the page's narrowed record Page.Session),
+// to App's Session (its Type): the field Page.Requires becomes `Just` of its value, every other
+// field is copied. The checker accepts a page's session where App's is expected, never the
+// reverse.
+type Widen struct {
+	Typed
+	Expr Expr
+	Page *Page
+}
+
 // Str is string interpolation: the concatenation of Parts, each of type Text.
 type Str struct {
 	Typed

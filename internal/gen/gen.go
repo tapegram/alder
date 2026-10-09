@@ -96,6 +96,8 @@ func goMod(repo string) string {
 
 // gen holds what emission needs across modules.
 type gen struct {
+	pages   map[string]*ir.Page  // by module
+	session *ir.RecordType       // App's Session
 	values  map[string]*ir.Value // "Module.name" → value or component
 	thunks  map[*ir.Value]bool   // constants emitted as functions (see newGen)
 	tparams map[*ir.Value][]string
@@ -106,7 +108,11 @@ type gen struct {
 // it is generic (Go has no generic variables) or when its initializer refers back to itself
 // through other values (Go rejects initialization cycles).
 func newGen(p *ir.Program) *gen {
-	g := &gen{values: map[string]*ir.Value{}, thunks: map[*ir.Value]bool{}, tparams: map[*ir.Value][]string{}}
+	g := &gen{values: map[string]*ir.Value{}, thunks: map[*ir.Value]bool{}, tparams: map[*ir.Value][]string{},
+		pages: map[string]*ir.Page{}, session: p.Session}
+	for _, pg := range p.Pages {
+		g.pages[pg.Module] = pg
+	}
 	var all []*ir.Value
 	for _, m := range p.Modules {
 		all = append(append(all, m.Values...), m.Components...)
@@ -240,6 +246,9 @@ func (g *gen) module(m *ir.Module) ([]byte, error) {
 	for _, d := range m.Types {
 		typeDecl(&body, d)
 	}
+	if pg := g.pages[m.Name]; pg != nil && pg.Requires != "" && pg.Session != g.session {
+		widenFunc(&body, pg, g.session)
+	}
 	for _, v := range m.Values {
 		g.value(&body, v)
 	}
@@ -350,4 +359,23 @@ func (g *gen) value(w *strings.Builder, v *ir.Value) {
 	var b strings.Builder
 	f.ret(&b, body, s)
 	fmt.Fprintf(w, "func %s%s(%s) %s {\n%s}\n\n", name, tps, strings.Join(params, ", "), GoType(ft.Result), b.String())
+}
+
+// widenFunc emits the function that widens `requires` page pg's Session to App's: the required
+// field becomes Just of its value, the others are copied.
+//
+//	func widen__Home__Session(s Home__Session) App__Session {
+//		return App__Session{User: rt.Just(s.User), N: s.N}
+//	}
+func widenFunc(w *strings.Builder, pg *ir.Page, app *ir.RecordType) {
+	var fs []string
+	for _, f := range app.Fields {
+		v := "s." + Field(f.Name)
+		if f.Name == pg.Requires {
+			v = "rt.Just(" + v + ")"
+		}
+		fs = append(fs, Field(f.Name)+": "+v)
+	}
+	fmt.Fprintf(w, "func %s(s %s) %s {\nreturn %s{%s}\n}\n\n", widenName(pg.Module), GoName(pg.Module, "Session"),
+		GoName(app.Module, app.Name), GoName(app.Module, app.Name), strings.Join(fs, ", "))
 }

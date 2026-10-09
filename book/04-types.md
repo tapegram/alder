@@ -146,4 +146,5 @@ type Page a = { items: List a, total: Int }
 - No typeclasses, interfaces, or traits.
 - No tuples.
 - No recursive record types without going through a union.
-- No subtyping other than brand-to-base.
+- No subtyping other than brand-to-base, and a `requires` page's `Session`
+  to the app's (chapter 6).

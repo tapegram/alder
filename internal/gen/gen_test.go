@@ -1014,3 +1014,97 @@ func TestDefaults(t *testing.T) {
 }
 `)
 }
+
+// A `requires` page's narrowed Session widens to App's where shared code expects it (C4): the
+// required field is wrapped back in Just.
+func TestGen_RunSessionWiden(t *testing.T) {
+	files := emitSource(t, map[string]string{
+		"App.alder": `module App
+
+session { user: Maybe Text, n: Int = 0 }
+
+login = Login
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>nf</p>
+`,
+		"Login.alder": `module Login
+
+import Ui
+
+page "/login" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Ui.who session}</p>
+`,
+		"Ui.alder": `module Ui
+
+who : Session -> Text
+who s = match s.user {
+  Just u -> "user " ++ u,
+  Nothing -> "anon",
+}
+
+count : Session -> Int
+count s = s.n
+`,
+		"Home.alder": `module Home
+
+import Ui
+
+page "/home" { } requires user
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+name : Session -> Text
+name session = session.user
+
+other : Session -> Text
+other session = Ui.who session
+
+piped : Session -> Text
+piped session = session |> Ui.who
+
+both : Session -> Text
+both session = "{Ui.who (if True then session else session)}{Text.fromInt (Ui.count { session | n: 2 })}"
+
+view : Model -> Session -> Html Msg
+view model session = <p>{name session}{other session}</p>
+`,
+	})
+	contains(t, files["Home.go"],
+		"func widen__Home__Session(s Home__Session) App__Session {\n\treturn App__Session{User: rt.Just(s.User), N: s.N}\n}",
+		"return Ui__who(widen__Home__Session(session))",
+	)
+	runGo(t, files, `package app
+
+import "testing"
+
+func TestWiden(t *testing.T) {
+	s := Home__Session{User: "u1", N: 1}
+	if got := Home__other(s); got != "user u1" {
+		t.Errorf("other = %q", got)
+	}
+	if got := Home__both(s); got != "user u12" {
+		t.Errorf("both = %q", got)
+	}
+	if got := Home__piped(s); got != "user u1" {
+		t.Errorf("piped = %q", got)
+	}
+	if got := Home__name(s); got != "u1" {
+		t.Errorf("name = %q", got)
+	}
+}
+`)
+}

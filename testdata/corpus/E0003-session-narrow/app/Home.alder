@@ -1,0 +1,16 @@
+module Home
+
+import Ui
+
+page "/home" { } requires user
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+name : Session -> Text
+name session = session.user
+
+view : Model -> Session -> Html Msg
+view model session = <p>{name (Ui.same session)}</p>

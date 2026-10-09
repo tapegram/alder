@@ -10,6 +10,13 @@ import (
 
 // expr lowers an expression.
 func (l *lowerer) expr(e syntax.Expr) Expr {
+	if to, ok := l.res.Widened[e]; ok {
+		return &Widen{Typed: Typed{l.erase(to)}, Expr: l.exprOf(e), Page: l.pages[l.typeOf(e).(*types.Record).Module]}
+	}
+	return l.exprOf(e)
+}
+
+func (l *lowerer) exprOf(e syntax.Expr) Expr {
 	switch x := e.(type) {
 	case *syntax.IntLit:
 		return &Lit{Typed: Typed{l.typeOf(x)}, Kind: LitInt, Int: x.Value}

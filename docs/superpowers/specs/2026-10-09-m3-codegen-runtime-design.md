@@ -288,3 +288,12 @@ Each milestone gets its own implementation plan.
   suggested `M__Shape__Rect` payload and `Tag__M__Shape` tag forms were not
   used: module `M.Shape` declaring `Rect`, or module `Tag.M` declaring
   `Shape`, produces the same strings.
+- A `requires f` page's session is a distinct nominal type in the checker,
+  `<Page>.Session`, with `f : T` instead of `Maybe T` (M3a fix wave, C4). It
+  widens implicitly to `App.Session` where that is expected, at the top of
+  a checked expression or a piped value (as a brand widens to its base),
+  and never narrows back (E0003). `check.Result.Widened` records each widened expression;
+  `ir.Lower` wraps it in `ir.Widen`, and gen emits a per-page
+  `widen__<Page>__Session(s) App__Session` that re-wraps `f` in `rt.Just`.
+  A function type is not widened (`App.Session -> X` does not stand for
+  `<Page>.Session -> X`), so no closure conversion is ever needed.

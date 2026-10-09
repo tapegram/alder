@@ -25,8 +25,12 @@ type Result struct {
 	// DefaultModules maps the default expression of every anonymous-record field written in
 	// source (types.Field.Default) to the module it is written in, where it is lowered.
 	DefaultModules map[syntax.Expr]string
-	Holes          int            // count of W0002 reported
-	U              *types.Unifier // for Apply on stored types
+	// Widened maps each expression whose value is a `requires` page's narrowed Session used
+	// where App's Session is expected to App's Session record: the expression's own recorded
+	// type is the narrowed record, and Lower wraps it in a widening conversion.
+	Widened map[syntax.Expr]*types.Record
+	Holes   int            // count of W0002 reported
+	U       *types.Unifier // for Apply on stored types
 }
 
 // CtorInfo is a union constructor: the union it builds and its payload type (nil for none).
@@ -40,9 +44,12 @@ type PageInfo struct {
 	Params   *types.Record
 	Msg      *types.Union
 	Requires string
-	Decl     *syntax.PageDecl
-	Msgs     map[string]*syntax.MsgDecl
-	Module   string
+	// Session is the narrowed session of a `requires` page (<page>.Session, see narrow), nil
+	// for a page without `requires`, whose code sees App's session.
+	Session *types.Record
+	Decl    *syntax.PageDecl
+	Msgs    map[string]*syntax.MsgDecl
+	Module  string
 }
 
 type ctorInfo = CtorInfo

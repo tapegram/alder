@@ -54,7 +54,11 @@ page "/admin" { } requires user
 - `requires` names a field of `Session` whose type is `Maybe a`. The page is
   served only when that field is `Just`; otherwise the runtime redirects to
   the page named in `App.login`. Inside this module `session.<field>` has type
-  `a`, not `Maybe a`.
+  `a`, not `Maybe a`. The page's `Session` is then a type of its own, and it
+  can be passed wherever the app's `Session` is expected (to a function in a
+  shared module, say), where the field is `Just` its value again. The other
+  direction is a type error (E0003): a function of the page that takes its
+  `Session` cannot be given the app's, whose field may be `Nothing`.
 
 A page value is the module name applied to its parameter record. It is the
 only thing `href` accepts:

@@ -531,7 +531,8 @@ func (mc *modCtx) definePage() {
 			}
 			c.errorf(diag.InvalidDecl, sp, "`requires %s`: the session has no field `%s`", pd.Requires, pd.Requires)
 		}
-		mc.session = narrow(c.session, pd.Requires)
+		info.Session = narrow(c.session, pd.Requires, mc.m.Name)
+		mc.session = info.Session
 	}
 	for _, d := range c.live(mc.m) {
 		if md, ok := d.(*syntax.MsgDecl); ok {

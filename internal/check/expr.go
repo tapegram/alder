@@ -157,7 +157,40 @@ func (mc *modCtx) mismatch(span diag.Span, got, expected types.Type) *diag.Diagn
 // It records expected as e's type even on a mismatch, so on a program without errors every node has a type.
 func (mc *modCtx) check(e syntax.Expr, expected types.Type, env *env, eff effect) {
 	mc.checkExpr(e, expected, env, eff)
+	if from, ok := mc.c.widenedFrom[e]; ok {
+		mc.c.record(e, from) // the value is the narrowed session; Lower widens it
+		return
+	}
 	mc.c.record(e, expected)
+}
+
+// narrowedSession reports whether t is the narrowed Session of a `requires` page.
+func (c *Checker) narrowedSession(t types.Type) bool {
+	r, ok := t.(*types.Record)
+	if !ok || r.Anonymous || r.Name != "Session" {
+		return false
+	}
+	p := c.pages[r.Module]
+	return p != nil && p.Session != nil
+}
+
+// appSession reports whether t is App's Session record.
+func appSession(t types.Type) bool {
+	r, ok := t.(*types.Record)
+	return ok && !r.Anonymous && r.Module == "App" && r.Name == "Session"
+}
+
+// widen accepts a `requires` page's narrowed Session where App's Session is expected (as a brand
+// widens to its base), recording the place so the value is converted. It never narrows back.
+func (mc *modCtx) widen(e syntax.Expr, got, expected types.Type) bool {
+	c := mc.c
+	g, ex := c.u.Apply(got), c.u.Apply(expected)
+	if !c.narrowedSession(g) || !appSession(ex) {
+		return false
+	}
+	c.res.Widened[e] = ex.(*types.Record)
+	c.widenedFrom[e] = g
+	return true
 }
 
 func (mc *modCtx) checkExpr(e syntax.Expr, expected types.Type, env *env, eff effect) {
@@ -217,7 +250,15 @@ func (mc *modCtx) checkExpr(e syntax.Expr, expected types.Type, env *env, eff ef
 	} else {
 		got = mc.infer(e, env, eff)
 	}
+	if mc.widen(e, got, expected) {
+		return
+	}
 	if err := c.u.Check(got, expected); err != nil {
+		if g, ex := c.u.Apply(got), c.u.Apply(expected); appSession(g) && c.narrowedSession(ex) {
+			r := ex.(*types.Record)
+			c.errorf(diag.TypeMismatch, e.GetSpan(), "expected this page's `Session`, got `App.Session`: the page `requires %s`, so its session has `%s` for certain, and App's session may not; a page's session widens to App's, never the other way", c.pages[r.Module].Requires, c.pages[r.Module].Requires)
+			return
+		}
 		d := mc.mismatch(e.GetSpan(), got, expected)
 		mc.annotateMismatch(d, e, got, expected)
 	}
@@ -723,6 +764,7 @@ func comparable(t types.Type) bool {
 type pipeArg struct {
 	t    types.Type
 	span diag.Span
+	expr syntax.Expr
 }
 
 // inferApp types an application; want, when non-nil, is the type the context expects and is pushed into the result.
@@ -849,7 +891,7 @@ func (mc *modCtx) applyFn(fnExpr syntax.Expr, fnT types.Type, args []syntax.Expr
 		}
 	}
 	checkArgs(false)
-	if pipe != nil && len(args) < len(fn.Params) {
+	if pipe != nil && len(args) < len(fn.Params) && !mc.widen(pipe.expr, pipe.t, fn.Params[len(args)]) {
 		if err := c.u.Check(pipe.t, fn.Params[len(args)]); err != nil {
 			mc.mismatch(pipe.span, pipe.t, fn.Params[len(args)])
 		}
@@ -866,7 +908,7 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 	switch x.Op {
 	case "|>":
 		l := c.u.Apply(mc.infer(x.L, env, eff))
-		p := &pipeArg{t: l, span: x.L.GetSpan()}
+		p := &pipeArg{t: l, span: x.L.GetSpan(), expr: x.L}
 		if app, ok := x.R.(*syntax.App); ok {
 			res := mc.inferApp(app, env, eff, p, nil)
 			c.record(app, mc.pipedApp(app))

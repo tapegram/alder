@@ -1,0 +1,4 @@
+module Ui
+
+same : Session -> Session
+same s = s
