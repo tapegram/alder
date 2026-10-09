@@ -7,13 +7,25 @@ GOOD = "--- file: app/App.alder ---\nmodule App\n\nsession { }\n\nerror : Error 
 class SplitTests(unittest.TestCase):
     def test_split_tolerates_fences_and_preamble(self):
         text = "Here is the app:\n```alder\n--- file: app/A.alder ---\nmodule A\n```\n\n```\n--- file: app/B/C.alder ---\nmodule B.C\n```\n"
-        files = rl.split_files(text)
+        files, rejected = rl.split_files(text)
+        self.assertEqual(rejected, [])
         self.assertEqual(sorted(files), ["app/A.alder", "app/B/C.alder"])
         self.assertEqual(files["app/A.alder"].strip(), "module A")
         self.assertEqual(files["app/B/C.alder"].strip(), "module B.C")
 
     def test_no_markers(self):
-        self.assertEqual(rl.split_files("I cannot do this."), {})
+        self.assertEqual(rl.split_files("I cannot do this."), ({}, []))
+
+    def test_split_rejects_traversal(self):
+        text = "--- file: app/../../x.alder ---\nmodule X\n--- file: /etc/x.alder ---\nmodule Y\n--- file: app/A/../B.alder ---\nmodule B\n--- file: app/n.txt ---\nhi\n"
+        files, rejected = rl.split_files(text)
+        self.assertEqual(sorted(files), ["app/B.alder"])
+        self.assertEqual(rejected, ["app/../../x.alder", "/etc/x.alder", "app/n.txt"])
+
+    def test_split_normalizes_bare_and_dot_paths(self):
+        files, rejected = rl.split_files("--- file: App.alder ---\nmodule App\n--- file: ./app/B.alder ---\nmodule B\n--- file: Posts/Index.alder ---\nmodule Posts.Index\n")
+        self.assertEqual(sorted(files), ["app/App.alder", "app/B.alder", "app/Posts/Index.alder"])
+        self.assertEqual(rejected, [])
 
 class FakeChecker:
     """Writes a fake `alder` script whose exit code and JSON are scripted per call."""
@@ -84,6 +96,26 @@ class LoopTests(unittest.TestCase):
         self.assertIsNotNone(s["error"])
         self.assertFalse(s["final_pass"])
         self.assertEqual(s["rounds"], [])
+
+    def test_run_check_ignores_non_diagnostic_json(self):
+        chk = FakeChecker(self.tmp, [(1, '{"ok":true}\n' + ERR, "")])
+        code, diags, _ = rl.run_check(chk.path, pathlib.Path(self.tmp))
+        self.assertEqual(code, 1)
+        self.assertEqual(len(diags), 1)
+        self.assertEqual(diags[0]["code"], "E0003")
+
+    def test_run_check_missing_binary(self):
+        missing = pathlib.Path(self.tmp) / "nope"
+        code, diags, err = rl.run_check(missing, pathlib.Path(self.tmp))
+        self.assertEqual((code, diags), (2, []))
+        self.assertIn(str(missing), err)
+
+    def test_traversal_not_written_and_recorded(self):
+        chk = FakeChecker(self.tmp, [(0, "", "")])
+        model = rl.FakeModel([GOOD + "--- file: app/../../evil.alder ---\nmodule E\n"])
+        s = rl.run_one(self.exp, model, "fake", "t", "task", "sys", chk.path, retries=0)
+        self.assertEqual(s["rounds"][0]["rejected"], ["app/../../evil.alder"])
+        self.assertFalse(list(pathlib.Path(self.tmp).rglob("evil.alder")))
 
 class ReportTests(unittest.TestCase):
     def test_report_table(self):

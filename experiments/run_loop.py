@@ -2,11 +2,11 @@
 """Generate → alder check → feed diagnostics back → retry.
 
 Usage:
-  run_loop.py --exp DIR --model ollama:NAME|claude:NAME|fake --task NAME [--retries 1] [--prompt prompt.md] [--alder BIN]
+  run_loop.py --exp DIR --model ollama:NAME|claude:NAME --task NAME [--retries 1] [--prompt prompt.md] [--alder BIN]
 
 Writes DIR/runs/<model>/<task>/round<N>/{output.md,check.json,app/...} and DIR/runs/<model>/<task>/summary.json.
 """
-import argparse, json, pathlib, re, shutil, subprocess, sys, time, urllib.request
+import argparse, json, pathlib, posixpath, re, shutil, subprocess, sys, time, urllib.request
 
 MAX_OUTPUT = 200_000
 
@@ -85,29 +85,59 @@ def make_model(spec: str) -> Model:
 FILE_RE = re.compile(r"^-{3,}\s*file:\s*(\S+?)\s*-{3,}\s*$", re.M)
 
 
-def split_files(text: str) -> dict:
-    """Split `--- file: path ---` sections; strip surrounding ``` fences; ignore any preamble."""
+def normalize_path(path: str):
+    """Return a safe `app/...alder` path, or None if the path must be rejected."""
+    if not path or path.startswith("/") or "\\" in path:
+        return None
+    p = posixpath.normpath(path)
+    if p.startswith("/") or p == ".." or p.startswith("../") or ".." in p.split("/"):
+        return None
+    if not p.endswith(".alder"):
+        return None
+    if not p.startswith("app/"):
+        p = "app/" + p
+    return p
+
+
+def split_files(text: str):
+    """Split `--- file: path ---` sections; strip surrounding ``` fences; ignore any preamble.
+
+    Returns (files, rejected): files maps safe `app/...alder` paths to contents;
+    rejected lists the raw paths that were refused (traversal, absolute, non-.alder)."""
     parts = FILE_RE.split(text)
-    out = {}
+    out, rejected = {}, []
     for i in range(1, len(parts), 2):
-        path, body = parts[i], parts[i + 1]
+        raw, body = parts[i], parts[i + 1]
         body = re.sub(r"^\s*```\w*\n", "", body)         # opening fence right after the marker
         body = re.sub(r"\n```\s*(\n|$)[\s\S]*$", "\n", body)  # closing fence and anything after it
-        if path.startswith("app/") and path.endswith(".alder"):
+        path = normalize_path(raw)
+        if path is None:
+            rejected.append(raw)
+        else:
             out[path] = body.strip("\n") + "\n"
-    return out
+    return out, rejected
+
+
+DIAG_KEYS = ("code", "severity", "file", "line", "col")
 
 
 def run_check(alder: pathlib.Path, app_root: pathlib.Path):
-    p = subprocess.run([str(alder), "check", str(app_root), "--json"], capture_output=True, text=True)
+    try:
+        p = subprocess.run([str(alder), "check", str(app_root), "--json"], capture_output=True, text=True, timeout=600)
+    except subprocess.TimeoutExpired:
+        return 2, [], f"{alder}: check timed out after 600s"
+    except OSError as e:
+        return 2, [], f"{alder}: {e}"
     diags = []
     for line in p.stdout.splitlines():
         line = line.strip()
         if line.startswith("{"):
             try:
-                diags.append(json.loads(line))
+                d = json.loads(line)
             except json.JSONDecodeError:
-                pass
+                continue
+            if isinstance(d, dict) and all(k in d for k in DIAG_KEYS):
+                diags.append(d)
     return p.returncode, diags, p.stderr
 
 
@@ -118,15 +148,15 @@ def render_diags(diags, sources):
         lines = sources.get(d["file"], "").split("\n")
         if 1 <= d["line"] <= len(lines):
             src = lines[d["line"] - 1]
-            width = max(1, d["endCol"] - d["col"]) if d.get("endLine") == d["line"] else 1
+            width = max(1, d.get("endCol", d["col"]) - d["col"]) if d.get("endLine") == d["line"] else 1
             out.append("  " + src)
             out.append("  " + " " * max(0, d["col"] - 1) + "^" * width)
-        if d.get("fix"):
-            out.append("  fix: " + d["fix"]["replace"].replace("\n", "⏎"))
+        if isinstance(d.get("fix"), dict):
+            out.append("  fix: " + str(d["fix"].get("replace", "")).replace("\n", "⏎"))
     return "\n".join(out)
 
 
-def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles: int) -> str:
+def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles: int, rejected=()) -> str:
     sources = {}
     for f in (round_dir / "app").rglob("*.alder"):
         sources[str(f.relative_to(round_dir))] = f.read_text()
@@ -136,6 +166,9 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
         feedback = "The compiler reported these errors in your previous answer:\n\n" + render_diags(diags, sources)
     else:
         feedback = "The compiler could not check your previous answer:\n\n" + stderr.strip()
+    if rejected:
+        feedback += ("\n\nThese paths were rejected: " + ", ".join(rejected) +
+                     "; files must be `app/<Module>.alder`.")
     return (task + "\n\n====================  COMPILER FEEDBACK  ====================\n" + feedback +
             "\n\nFix every error. Output every file again, in full, each preceded by `--- file: app/<path> ---`. No explanation, only files.")
 
@@ -145,11 +178,16 @@ def write_round(round_dir: pathlib.Path, prev_dir, text: str, files: dict):
     if prev_dir is not None and (prev_dir / "app").exists():
         shutil.copytree(prev_dir / "app", round_dir / "app", dirs_exist_ok=True)
     (round_dir / "output.md").write_text(text[:MAX_OUTPUT])
+    app_root = (round_dir / "app").resolve()
+    skipped = []
     for path, body in files.items():
-        p = round_dir / path
+        p = (round_dir / path).resolve()
+        if not p.is_relative_to(app_root):
+            skipped.append(path)
+            continue
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(body)
-    return sum(1 for _ in (round_dir / "app").rglob("*.alder"))
+    return sum(1 for _ in (round_dir / "app").rglob("*.alder")), skipped
 
 
 def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, task_text: str,
@@ -167,8 +205,9 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             summary["error"] = str(e)
             break
         round_dir = run_dir / f"round{n}"
-        files = split_files(text)
-        nfiles = write_round(round_dir, prev, text, files)
+        files, rejected = split_files(text)
+        nfiles, skipped = write_round(round_dir, prev, text, files)
+        rejected = rejected + skipped
         exit_code, diags, stderr = run_check(alder, round_dir)
         (round_dir / "check.json").write_text("\n".join(json.dumps(d) for d in diags) + ("\n" if diags else ""))
         codes = {}
@@ -177,11 +216,11 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                 codes[d["code"]] = codes.get(d["code"], 0) + 1
         summary["rounds"].append({"n": n, "files": nfiles, "exit": exit_code,
                                   "errors": sum(codes.values()), "warnings": sum(1 for d in diags if d["severity"] == "warning"),
-                                  "codes": codes, "seconds": meta.get("seconds", 0.0), "tokens": meta.get("tokens"), "stderr": stderr[:2000]})
+                                  "codes": codes, "rejected": rejected, "seconds": meta.get("seconds", 0.0), "tokens": meta.get("tokens"), "stderr": stderr[:2000]})
         if exit_code == 0:
             summary["final_pass"] = True
             break
-        user = retry_prompt(task_text, round_dir, diags, stderr, nfiles)
+        user = retry_prompt(task_text, round_dir, diags, stderr, nfiles, rejected)
         prev = round_dir
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=1) + "\n")
