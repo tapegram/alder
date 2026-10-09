@@ -329,7 +329,7 @@ effect, so there is no application-level error path besides `Task.fail`.
   every distinct error scored in E1–E4, each with its expected code. The
   checker must flag all of them. This is the acceptance test for M1.
 - **Example apps** must check and build in CI: `examples/todos` from M1,
-  the blog from M4.
+  the blog from M4 (now M5; see the M3 spec).
 - **Runtime tests** use `net/http/httptest` against the generated to-do
   app: GET renders, POST toggles, invalid form re-renders with errors,
   `requires` redirects, Datastar request gets an SSE patch.
@@ -351,7 +351,7 @@ Haiku with one retry. Acceptance: results recorded in chapter 12 as E5.
 **M3 — Codegen and runtime.** IR, emitter, `rt`, SQLite, Datastar.
 Acceptance: `alder run examples/todos` serves the app; runtime tests pass.
 
-**M4 — Second app and migrations.** The blog from task T3 as
+**M4 — Second app and migrations** (now M5; see the M3 spec). The blog from task T3 as
 `examples/blog`, built end to end; then schema diffing and migration
 files, moving migrations out of the deferred list.
 

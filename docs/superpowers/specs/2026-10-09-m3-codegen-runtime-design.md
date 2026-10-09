@@ -33,7 +33,7 @@ dedupe per module, an E0007 fix that writes the inferred type.
 Out: migrations (the dev database is recreated from the schema), `alder
 test`, `fmt`, holes beyond W0002, `query`, non-SQLite stores, production
 configuration (TLS, secrets management beyond `ALDER_SECRET`), the blog
-example (formerly M4; see Milestones).
+example (M5; see Milestones).
 
 ## Architecture
 
@@ -279,8 +279,12 @@ serves; the end-to-end test.
 pipeline with a persistent scratch module); `alder eval` for agents; and
 automatic verification of every book example. Shared machinery: the
 `rt.Show` pretty-printer and the scratch-module runner. This replaces the
-vertical-slice spec's M4 (the blog example and migrations), which is not
-rescheduled here.
+vertical-slice spec's M4 (the blog example and migrations), which moves to
+M5.
+
+**M5 — blog example and migrations** (formerly the vertical-slice spec's
+M4): the blog example app end to end; schema migrations replacing
+dev-mode recreate.
 
 Each milestone gets its own implementation plan.
 
