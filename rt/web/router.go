@@ -35,7 +35,7 @@ type Options struct {
 	ErrorDoc    func(err error) html.Node
 	NotFoundDoc func() html.Node
 	Login       string // App.login page path, copied to Request.Login
-	Reload      bool   // under `alder run`: every page carries the dev server's overlay and reload subscriber (withReload)
+	Reload      string // under `alder run`, the build generation (ALDER_RELOAD); non-empty: every page carries the dev server's overlay and reload subscriber (withReload)
 }
 
 // maxBody is the largest POST body the router reads.
@@ -526,28 +526,41 @@ func withScript(page string) string {
 	return tag + page
 }
 
-// reloadTags are what withReload inserts: the element `alder run` patches its error overlay
-// into, and one that subscribes to the dev server's reload events when Datastar initialises it
-// (data-init: Datastar v1.0.0 has no data-on-load plugin, and a div fires no load event).
-const reloadTags = `<div id="_alder_errors"></div><div data-init="@get('/_dev/reload')"></div>`
+// reloadTags is what withReload inserts for the build generation gen: the element `alder run`
+// patches its error overlay into, and one that subscribes to the dev server's reload events
+// when Datastar initialises it (data-init: Datastar v1.0.0 has no data-on-load plugin, and a div
+// fires no load event).
+//
+// The overlay box carries data-ignore-morph, so a body patch from the app (a Rerender) keeps the
+// error in it: Datastar leaves an element alone when the old and the new one both carry the
+// attribute, while the dev server's own `inner` patches of the box still apply. The subscriber
+// names gen (?b=), so the dev server can tell a page of an older build, and keeps its stream
+// open while the tab is hidden (openWhenHidden: @get closes it by default), so a reload sent
+// meanwhile is not lost; a page that reconnects anyway (after a network blip, or a restarted
+// `alder run`) is reloaded at once when its generation is not the current one.
+func reloadTags(gen string) string {
+	return `<div id="_alder_errors" data-ignore-morph></div><div data-init="@get('/_dev/reload?b=` +
+		url.QueryEscape(gen) + `', {openWhenHidden: true})"></div>`
+}
 
-// withReload inserts reloadTags right after the first <body> start tag, or at the start of a
-// page without one.
-func withReload(page string) string {
+// withReload inserts reloadTags(gen) right after the first <body> start tag, or at the start of
+// a page without one.
+func withReload(page, gen string) string {
+	tags := reloadTags(gen)
 	if i := startTag(page, "body"); i >= 0 {
 		if j := strings.IndexByte(page[i:], '>'); j >= 0 {
 			k := i + j + 1
-			return page[:k] + reloadTags + page[k:]
+			return page[:k] + tags + page[k:]
 		}
 	}
-	return reloadTags + page
+	return tags + page
 }
 
 // dev is page with reloadTags (withReload) when Options.Reload is set, else page. It applies to
 // full documents and body patches alike, so a patched <body> keeps the overlay and subscriber.
 func (rt *router) dev(page string) string {
-	if rt.opts.Reload {
-		return withReload(page)
+	if rt.opts.Reload != "" {
+		return withReload(page, rt.opts.Reload)
 	}
 	return page
 }

@@ -37,7 +37,7 @@ type Options struct {
 	Dev       bool                    // development mode: a changed schema recreates the tables; error pages show the error
 	Secret    []byte                  // the session cookie key: at least 16 bytes (in dev mode, shorter means the public development key)
 	StaticDir string                  // the directory served under /static/; "" for none
-	Reload    bool                    // under alder run: pages subscribe to the dev server's reloads and error overlay
+	Reload    string                  // under alder run, the build generation; non-empty: pages subscribe to the dev server's reloads and error overlay
 	Log       func(level, msg string) // nil: no log
 }
 

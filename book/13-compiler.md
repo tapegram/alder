@@ -1487,7 +1487,9 @@ func (d *devServer) rebuild() {
 		d.fail("alder run: " + err.Error())
 		return
 	}
-	c, err := startChild(binary, filepath.Join(dir, "dev.db"), static, d.stderr)
+	d.started++
+	gen := fmt.Sprintf("%s-%d", d.nonce, d.started)
+	c, err := startChild(binary, filepath.Join(dir, "dev.db"), static, gen, d.stderr)
 	if err != nil {
 		d.fail("alder run: " + err.Error())
 		return
@@ -1495,25 +1497,31 @@ func (d *devServer) rebuild() {
 ```
 
 `buildApp` (`cmd/alder/build.go`) is `alder build` itself, the steps of
-chapter 11, returning the executable's path. `startChild` runs it with
-`ALDER_ADDR=127.0.0.1:0 ALDER_DEV=1 ALDER_RELOAD=1`, the database
+chapter 11, returning the executable's path. `gen` is the new child's
+*build generation*: `d.nonce`, eight random hex digits picked when the dev
+server starts, then a dash and a count of the children started so far
+(`afcb2a7d-1`, `afcb2a7d-2`, …). "The subscriber" below is what it is for.
+`startChild` runs the executable with
+`ALDER_ADDR=127.0.0.1:0 ALDER_DEV=1 ALDER_RELOAD=<gen>`, the database
 `build/<app>/dev.db` and your `static/`, and reads the child's stdout
 until the line `listening on <addr>` that every generated `main` prints
 once it has its port (chapter 11, "`alder build`"). That line is how the dev server learns
 the free port the operating system picked. If the line doesn't come
-within 10 seconds, or the child exits first, the error carries the
-child's stderr. Only after all that does the swap happen:
+within 10 seconds, or the child exits first, the error carries the last
+40 lines of the child's stderr. Only after all that does the swap happen:
 
 ```go
 	d.mu.Lock()
 	old := d.child
 	d.child = c
+	d.gen = gen
 	announce := !d.announced
 	d.announced = true
 	d.mu.Unlock()
 ```
 
-From this point new requests go to the new child; then `old.stop()` sends
+From this point new requests go to the new child, and `d.gen` is the
+current generation; then `old.stop()` sends
 the old one `SIGTERM` and waits for it to exit, and the last lines clear
 the overlay and tell every browser to reload:
 
@@ -1527,29 +1535,63 @@ the overlay and tell every browser to reload:
 A separate goroutine per child, `monitor`, waits for it to exit. If it
 exits without having been stopped, it was a crash: the monitor sets the
 current child to none (so the proxy answers 502) and calls `fail` with
-the exit status and the end of the child's stderr.
+the exit status, `save a source file to rebuild it`, and the last 40
+lines of the child's stderr. It leaves `d.gen` alone: the generation
+stays that of the app that crashed until a new one comes up.
 
 **The subscriber.** Every page the child renders carries two elements
 right after `<body>`. They come from the router, not the dev server
 (`rt/web/router.go`):
 
 ```go
-const reloadTags = `<div id="_alder_errors"></div><div data-init="@get('/_dev/reload')"></div>`
+func reloadTags(gen string) string {
+	return `<div id="_alder_errors" data-ignore-morph></div><div data-init="@get('/_dev/reload?b=` +
+		url.QueryEscape(gen) + `', {openWhenHidden: true})"></div>`
+}
 ```
 
 `withReload` inserts them, and the router's `dev` method applies it only when
-`Options.Reload` is set, which the generated `cmd/main.go` does when the
-environment says `ALDER_RELOAD=1`:
+`Options.Reload`, the generation, is not empty. The generated `cmd/main.go`
+sets it from the environment:
 
 ```go
-		Reload:    os.Getenv("ALDER_RELOAD") == "1",
+		Reload:    os.Getenv("ALDER_RELOAD"),
+```
+
+So the first page `alder run examples/todos` served began
+
+```html
+<body><div id="_alder_errors" data-ignore-morph></div><div data-init="@get('/_dev/reload?b=afcb2a7d-1', {openWhenHidden: true})"></div><nav>
 ```
 
 `data-init` is Datastar's "run this when the element is set up";
-`@get('/_dev/reload')` opens the event stream and applies each event that
-arrives on it. (A `<div>` never fires a `load` event, so an
+`@get('/_dev/reload?b=afcb2a7d-1', …)` opens the event stream and applies
+each event that arrives on it. (A `<div>` never fires a `load` event, so an
 attribute that waited for one would never run; `data-init` runs as soon
-as Datastar sets the element up.)
+as Datastar sets the element up.) Three details of these two elements
+each fix a way the browser could miss a message:
+
+- `data-ignore-morph`. When a `Rerender` patches the whole `<body>`
+  ("A request" above), Datastar *morphs* the old body into the new one:
+  it walks both and changes only what differs. The new body's box is
+  empty, so without this attribute every click would wipe an error off
+  the page. Datastar 1.0.0 leaves an element alone when the old and the
+  new element both carry `data-ignore-morph`, which the box always does.
+  The dev server's own patches still reach it: they patch the box's
+  *inside* (`mode inner`, below), and the check compares only the box
+  and the element that replaces it, not what goes inside.
+- `openWhenHidden: true`. By default Datastar's `@get` closes its stream
+  while the tab is hidden and opens it again when you come back, so a
+  reload sent meanwhile would be lost. With this option the stream stays
+  open.
+- `?b=afcb2a7d-1`, the generation of the app that rendered the page. A
+  stream can still close: the network drops for a moment (Datastar
+  then retries), or you restart `alder run`. When a page reconnects,
+  `serveReload` compares its generation with `d.gen` and, when they
+  differ, sends the reload straight away; the page belongs to an older
+  build or an earlier dev server, so whatever it missed, reloading is
+  the answer. The nonce is what tells two dev servers apart: a restarted
+  one counts from 1 again.
 
 Why does the router add these, and not the proxy, which sees every
 answer? To add them, the proxy would have to hold back each HTML answer,
@@ -1565,7 +1607,8 @@ pass-through. Run the executable without `alder run` and nothing sets
 **The events.** `/_dev/reload` (`serveReload`) is a server-sent event
 stream that stays open. It starts with a comment line, `: ready` (a line
 starting with `:` is a comment in the format, ignored by the browser),
-then the overlay if there is an error right now, then whatever is
+then the reload if the page's generation is not the current one, or else
+the overlay if there is an error right now, then whatever is
 broadcast, and a `: ping` comment every 15 seconds so idle connections
 are not dropped. Every event is made by one function in
 `rt/datastar/datastar.go`, the same one the router's `PatchBody` uses:
@@ -1597,7 +1640,8 @@ func overlayEvent(msg string) []byte {
 }
 ```
 
-Here are the real bytes, captured with `curl -N` on `/_dev/reload` while
+Here are the real bytes, captured with `curl -N` on
+`/_dev/reload?b=afcb2a7d-1` (the generation of the page above) while
 `alder run examples/todos` ran. Introducing an error in
 `app/Layout.alder` (`<title>{1}</title>`, an `Int` where text belongs)
 sent:
@@ -1649,11 +1693,26 @@ patched-in script is how a server makes the browser do something. The
 clear goes first, so even a page that misses the reload stops showing the
 old error. An edit with no
 error, and a change under `static/`, send the same reload event; the
-first also sends the clear before it.
+first also sends the clear before it. The new app is generation
+`afcb2a7d-2`, so a third `curl` on `/_dev/reload?b=afcb2a7d-1`, opened
+after the fix, the way a page that missed all this would reconnect, got
+the reload at once:
+
+```
+: ready
+
+event: datastar-patch-elements
+data: selector body
+data: mode append
+data: elements <script data-effect="el.remove()">location.reload()</script>
+
+```
 
 The 502 page the dev server serves while there is no child carries the
-same two elements, with the error already in the box, so it too reloads
-by itself once a build succeeds. Since there is then no app to serve the
+same two elements, with the error already in the box and `b` set to the
+current generation (empty before the first build), so it too reloads
+by itself once a build succeeds, whether it hears the broadcast or
+reconnects after it. Since there is then no app to serve the
 Datastar script it loads, the dev server serves `/_alder/datastar.js`
 itself in that state.
 

@@ -431,14 +431,20 @@ func TestRouter_Head(t *testing.T) {
 }
 
 // With Options.Reload (alder run) every page, full or patched, carries the dev server's overlay
-// target and reload subscriber right after its <body> start tag; without it, neither.
+// target (kept by Datastar's morph: data-ignore-morph) and reload subscriber (naming the build
+// generation, open while the tab is hidden) right after its <body> start tag; without it,
+// neither.
 func TestRouter_Reload(t *testing.T) {
-	const dev = `<div id="_alder_errors"></div><div data-init="@get('/_dev/reload')"></div>`
+	const dev = `<div id="_alder_errors" data-ignore-morph></div><div data-init="@get('/_dev/reload?b=a1b2-3', {openWhenHidden: true})"></div>`
 	routes := []Route{{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response {
 		return PageResponse(doc("home"), nil, testSession{}, true)
 	}}}
 	for _, reload := range []bool{false, true} {
-		h := NewRouter(routes, testOpts(func(o *Options) { o.Reload = reload }))
+		h := NewRouter(routes, testOpts(func(o *Options) {
+			if reload {
+				o.Reload = "a1b2-3"
+			}
+		}))
 		page := serve(h, httptest.NewRequest("GET", "/", nil)).Body.String()
 		req := httptest.NewRequest("GET", "/", nil)
 		req.Header.Set("Datastar-Request", "true")
@@ -450,7 +456,11 @@ func TestRouter_Reload(t *testing.T) {
 			}
 		}
 	}
-	if got := withReload(`<p>bare</p>`); got != `<div id="_alder_errors"></div><div data-init="@get('/_dev/reload')"></div><p>bare</p>` {
+	if got := withReload(`<p>bare</p>`, "a1b2-3"); got != dev+`<p>bare</p>` {
 		t.Errorf("withReload without <body>: %s", got)
+	}
+	// the generation is query-escaped: it cannot end the JavaScript string or the attribute
+	if got := reloadTags(`x'" &y`); !strings.Contains(got, `?b=x%27%22+%26y'`) {
+		t.Errorf("reloadTags with a quote: %s", got)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +21,7 @@ type devRun struct {
 	dir    string        // the app's directory (a copy of examples/todos)
 	base   string        // http://<dev server address>
 	child  string        // the first child's address
+	d      *devServer    // runRunTo's dev server
 	out    *syncBuffer   // runRunTo's stdout
 	errs   *syncBuffer   // runRunTo's stderr
 	done   chan struct{} // closed when runRunTo has returned
@@ -76,6 +78,9 @@ func startRun(t *testing.T) *devRun {
 	t.Setenv("ALDER_ADDR", "127.0.0.1:0")
 	r := &devRun{dir: filepath.Join(tmp, "todos"), out: &syncBuffer{}, errs: &syncBuffer{},
 		done: make(chan struct{}), stopCh: make(chan struct{})}
+	devs := make(chan *devServer, 1)
+	onDevServer = func(d *devServer) { devs <- d }
+	t.Cleanup(func() { onDevServer = nil })
 	go func() {
 		defer close(r.done)
 		r.code = runRunTo([]string{"todos"}, r.out, r.errs, r.stopCh)
@@ -89,7 +94,7 @@ func startRun(t *testing.T) *devRun {
 				if !ok {
 					t.Fatalf("malformed line %q", line)
 				}
-				r.base, r.child = "http://"+dev, child
+				r.base, r.child, r.d = "http://"+dev, child, <-devs
 				return r
 			}
 		}
@@ -107,6 +112,13 @@ func startRun(t *testing.T) *devRun {
 // get GETs url (without following redirects) and returns the body, failing unless 200.
 func get(t *testing.T, url string) string {
 	t.Helper()
+	return getStatus(t, url, http.StatusOK)
+}
+
+// getStatus GETs url (without following redirects) and returns the body, failing unless the
+// status is want.
+func getStatus(t *testing.T, url string, want int) string {
+	t.Helper()
 	c := &http.Client{Timeout: 10 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	res, err := c.Get(url)
@@ -118,10 +130,39 @@ func get(t *testing.T, url string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("GET %s = %d:\n%s", url, res.StatusCode, b)
+	if res.StatusCode != want {
+		t.Fatalf("GET %s = %d, want %d:\n%s", url, res.StatusCode, want, b)
 	}
 	return string(b)
+}
+
+// subscriberRE is the reload subscriber the router injects; it captures the build generation.
+var subscriberRE = regexp.MustCompile(`<div data-init="@get\('/_dev/reload\?b=([0-9a-f]{8}-[0-9]+)', \{openWhenHidden: true\}\)"></div>`)
+
+// generation is the build generation of the page body, failing when it has no subscriber.
+func generation(t *testing.T, body string) string {
+	t.Helper()
+	m := subscriberRE.FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("no reload subscriber in:\n%s", body)
+	}
+	return m[1]
+}
+
+// subscribe subscribes to /_dev/reload as a page of the build now serving /login does.
+func (r *devRun) subscribe(t *testing.T) <-chan string {
+	t.Helper()
+	return sse(t, r.base+"/_dev/reload?b="+generation(t, get(t, r.base+"/login")))
+}
+
+// quiet fails when an event arrives within d.
+func quiet(t *testing.T, events <-chan string, d time.Duration) {
+	t.Helper()
+	select {
+	case e := <-events:
+		t.Fatalf("an unexpected event: %q", e)
+	case <-time.After(d):
+	}
 }
 
 // sse subscribes to url and yields each event block (its lines, without the blank line that
@@ -216,15 +257,19 @@ func edit(t *testing.T, dir, rel, old, new string) {
 
 const wantReload = "event: datastar-patch-elements\ndata: selector body\ndata: mode append\ndata: elements <script data-effect=\"el.remove()\">location.reload()</script>"
 
-// The dev server proxies the app, whose pages carry the overlay target and the reload
-// subscriber; /_dev/reload is an event stream.
+// The dev server proxies the app, whose pages carry the overlay target (kept by Datastar's
+// morph) and the reload subscriber (naming the build generation, open while the tab is hidden);
+// /_dev/reload is an event stream.
 func TestRun_ServesAndInjectsSubscriber(t *testing.T) {
 	r := startRun(t)
 	body := get(t, r.base+"/login")
-	for _, want := range []string{`id="_alder_errors"`, `data-init="@get('/_dev/reload')"`, "/_alder/datastar.js", `type="password"`} {
+	for _, want := range []string{`<body><div id="_alder_errors" data-ignore-morph></div><div data-init=`, "/_alder/datastar.js", `type="password"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("GET /login lacks %q:\n%s", want, body)
 		}
+	}
+	if gen := generation(t, body); gen != r.d.nonce+"-1" {
+		t.Fatalf("the first child's generation is %q, want %q", gen, r.d.nonce+"-1")
 	}
 	// redirects and cookies pass through unchanged
 	c := &http.Client{Timeout: 10 * time.Second,
@@ -253,28 +298,42 @@ func TestRun_ServesAndInjectsSubscriber(t *testing.T) {
 	b, _ := io.ReadAll(res.Body)
 	res.Body.Close()
 	if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "text/event-stream" ||
-		!strings.HasPrefix(string(b), "event: datastar-patch-elements\ndata: selector body\ndata: mode outer\n") || !strings.Contains(string(b), `<div id="_alder_errors"></div>`) {
+		!strings.HasPrefix(string(b), "event: datastar-patch-elements\ndata: selector body\ndata: mode outer\n") || !strings.Contains(string(b), `<div id="_alder_errors" data-ignore-morph></div>`) {
 		t.Fatalf("Datastar GET /nope = %d %q:\n%s", res.StatusCode, res.Header.Get("Content-Type"), b)
 	}
-	sse(t, r.base+"/_dev/reload")
+	quiet(t, r.subscribe(t), time.Second) // the current generation: no reload
 }
 
-// Saving a source file rebuilds the app, pushes a reload, and the new build serves.
+// Saving a source file rebuilds the app, pushes a reload, and the new build serves, under a
+// new generation. A page of the old build that subscribes only now (its stream was closed while
+// the reload was sent) is reloaded at once, as is one of an earlier dev server.
 func TestRun_EditReloads(t *testing.T) {
 	r := startRun(t)
-	events := sse(t, r.base+"/_dev/reload")
+	old := generation(t, get(t, r.base+"/login"))
+	events := sse(t, r.base+"/_dev/reload?b="+old)
 	edit(t, r.dir, "app/Layout.alder", `"Dark mode"`, `"Dark mode!"`)
 	waitFor(t, events, wantReload, 60*time.Second)
-	if body := get(t, r.base+"/login"); !strings.Contains(body, "Dark mode!") {
+	body := get(t, r.base+"/login")
+	if !strings.Contains(body, "Dark mode!") {
 		t.Fatalf("the new build is not serving:\n%s", body)
 	}
+	if gen := generation(t, body); gen == old {
+		t.Fatalf("the new build has the old generation %q", gen)
+	}
+	for _, stale := range []string{old, "0badf00d-1", ""} {
+		seen := waitFor(t, sse(t, r.base+"/_dev/reload?b="+stale), "location.reload()", 10*time.Second)
+		if len(seen) != 1 || seen[0] != wantReload {
+			t.Fatalf("a subscriber of generation %q got %q, want the reload at once", stale, seen)
+		}
+	}
+	quiet(t, r.subscribe(t), time.Second)
 }
 
 // A type error is overlaid (escaped) while the old build keeps serving; fixing it clears the
 // overlay, then reloads.
 func TestRun_ErrorThenFixReloads(t *testing.T) {
 	r := startRun(t)
-	events := sse(t, r.base+"/_dev/reload")
+	events := r.subscribe(t)
 	edit(t, r.dir, "app/Todo.alder", "|> List.length\n", "|> List.length |> Text.length\n")
 	seen := waitFor(t, events, "selector #_alder_errors", 60*time.Second)
 	overlay := seen[len(seen)-1]
@@ -288,7 +347,7 @@ func TestRun_ErrorThenFixReloads(t *testing.T) {
 	}
 	get(t, r.base+"/login") // the old child still serves
 	// a page opened now gets the overlay at once
-	if later := waitFor(t, sse(t, r.base+"/_dev/reload"), "E0003", 10*time.Second); len(later) != 1 {
+	if later := waitFor(t, r.subscribe(t), "E0003", 10*time.Second); len(later) != 1 {
 		t.Fatalf("a new subscriber's events: %q", later)
 	}
 
@@ -302,7 +361,7 @@ func TestRun_ErrorThenFixReloads(t *testing.T) {
 // Two saves in quick succession make one rebuild and one reload.
 func TestRun_CoalescesSaves(t *testing.T) {
 	r := startRun(t)
-	events := sse(t, r.base+"/_dev/reload")
+	events := r.subscribe(t)
 	edit(t, r.dir, "app/Layout.alder", `"Dark mode"`, `"Dark mode!"`)
 	time.Sleep(50 * time.Millisecond)
 	edit(t, r.dir, "app/Layout.alder", `"Light mode"`, `"Light mode!"`)
@@ -319,9 +378,9 @@ func TestRun_CoalescesSaves(t *testing.T) {
 
 // A build failure after the check (here: the adapters are gone) is overlaid and the old child
 // keeps serving.
-func TestRun_ChildCrashKeepsOld(t *testing.T) {
+func TestRun_BuildFailureKeepsOld(t *testing.T) {
 	r := startRun(t)
-	events := sse(t, r.base+"/_dev/reload")
+	events := r.subscribe(t)
 	if err := os.Remove(filepath.Join(r.dir, "adapters", "password.go")); err != nil {
 		t.Fatal(err)
 	}
@@ -331,6 +390,104 @@ func TestRun_ChildCrashKeepsOld(t *testing.T) {
 	}
 	if body := get(t, r.base+"/login"); !strings.Contains(body, `type="password"`) {
 		t.Fatalf("the old child does not serve /login:\n%s", body)
+	}
+}
+
+// A new child that does not start (here: its database path is a directory) is overlaid with
+// its stderr, and the old child keeps serving.
+func TestRun_StartupCrashKeepsOld(t *testing.T) {
+	r := startRun(t)
+	events := r.subscribe(t)
+	gen := generation(t, get(t, r.base+"/login"))
+	db := filepath.Join("build", "todos", "dev.db") // the test's working directory is the copy's parent
+	for _, f := range []string{db, db + "-wal", db + "-shm", db + "-journal"} {
+		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	edit(t, r.dir, "app/Layout.alder", `"Dark mode"`, `"Dark mode!"`)
+	seen := waitFor(t, events, "selector #_alder_errors", 120*time.Second)
+	overlay := seen[len(seen)-1]
+	for _, want := range []string{"alder run: the app did not start (exit status 1):", "data: elements alder: "} {
+		if !strings.Contains(overlay, want) {
+			t.Fatalf("overlay lacks %q:\n%s", want, overlay)
+		}
+	}
+	body := get(t, r.base+"/login") // the old child still serves, as the same generation
+	if strings.Contains(body, "Dark mode!") || generation(t, body) != gen {
+		t.Fatalf("the old child is not the one serving /login:\n%s", body)
+	}
+	quiet(t, events, time.Second) // no reload
+}
+
+// A child that dies while it serves (SIGKILL) is overlaid, the dev server answers 502 with the
+// overlay and a subscriber until the next good build, and saving a source file recovers.
+func TestRun_RuntimeCrashThenRecovers(t *testing.T) {
+	r := startRun(t)
+	events := r.subscribe(t)
+	gen := generation(t, get(t, r.base+"/login"))
+	r.d.mu.Lock()
+	c := r.d.child
+	r.d.mu.Unlock()
+	if err := c.cmd.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	seen := waitFor(t, events, "selector #_alder_errors", 30*time.Second)
+	if overlay := seen[len(seen)-1]; !strings.Contains(overlay, "alder run: the app exited (signal: killed); save a source file to rebuild it") {
+		t.Fatalf("overlay lacks the crash message:\n%s", overlay)
+	}
+	body := getStatus(t, r.base+"/login", http.StatusBadGateway)
+	for _, want := range []string{`<div id="_alder_errors" data-ignore-morph><pre class="_alder-errors">alder run: the app exited (signal: killed)`, "/_alder/datastar.js"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the 502 page lacks %q:\n%s", want, body)
+		}
+	}
+	if g := generation(t, body); g != gen { // the 502 page waits for a generation after the crashed one
+		t.Fatalf("the 502 page's generation is %q, want %q", g, gen)
+	}
+	edit(t, r.dir, "app/Layout.alder", `"Dark mode"`, `"Dark mode!"`)
+	waitFor(t, events, wantReload, 120*time.Second)
+	if body := get(t, r.base+"/login"); !strings.Contains(body, "Dark mode!") {
+		t.Fatalf("the new build is not serving:\n%s", body)
+	}
+}
+
+func TestRunAddr(t *testing.T) {
+	t.Setenv("ALDER_ADDR", "")
+	if got := runAddr(); got != "localhost:8080" {
+		t.Errorf("default ALDER_ADDR = %q, want localhost:8080", got)
+	}
+	t.Setenv("ALDER_ADDR", "127.0.0.1:0")
+	if got := runAddr(); got != "127.0.0.1:0" {
+		t.Errorf("ALDER_ADDR = %q", got)
+	}
+}
+
+func TestLastLines(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		n    int
+		want string
+	}{
+		{"", 2, ""},
+		{"a\n", 2, "a"},
+		{"a\nb\nc\n", 2, "b\nc"},
+		{"a\nb\nc", 3, "a\nb\nc"},
+		{"a\nb\nc", 1, "c"},
+	} {
+		if got := lastLines(tc.in, tc.n); got != tc.want {
+			t.Errorf("lastLines(%q, %d) = %q, want %q", tc.in, tc.n, got, tc.want)
+		}
+	}
+	var b strings.Builder
+	for i := range 100 {
+		b.WriteString(strings.Repeat("x", i%7) + "\n")
+	}
+	if got := strings.Count(lastLines(b.String(), overlayLines), "\n"); got != overlayLines-1 {
+		t.Errorf("%d lines kept, want %d", got+1, overlayLines)
 	}
 }
 

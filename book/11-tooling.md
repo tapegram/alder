@@ -169,7 +169,10 @@ in "`alder build`" above.) Open the first address,
 `http://localhost:8080/`. Two programs are now running:
 
 - **The dev server** is `alder run` itself. It listens on `ALDER_ADDR`
-  (default `:8080`), the address you open in the browser.
+  (default `localhost:8080`), the address you open in the browser. Only
+  your own computer can reach that default, because the app behind it
+  runs in development mode, which shows error details on its pages; set
+  `ALDER_ADDR=:8080` to let other machines in.
 - **The app** is the executable `alder run` built,
   `build/<app>/<app>`. It runs as a *child process* of the dev server
   (a program the dev server started and will stop). The dev server
@@ -189,7 +192,10 @@ files straight from your `<dir>/static/` (`ALDER_STATIC`). `ALDER_SECRET`
 and the rest of your environment are passed on to it. Because it is in
 development mode, a change to your tables drops every table and creates
 them again, empty (chapter 8, "Schema changes"). To start from an empty database,
-stop `alder run` and delete `build/<app>/dev.db`.
+stop `alder run` and delete `build/<app>/dev.db`. Two `alder run`s of the
+same app started from the same directory (or an `alder run` and an
+`alder build`) share `build/<app>/` and `dev.db`, and each overwrites what
+the other builds, so run one at a time.
 
 The dev server checks your files every 300 milliseconds. What it does
 depends on what changed:
@@ -216,16 +222,20 @@ by the old app, never by an error. (For that moment the two apps share
 
 The browser learns what happened through three messages. Every page the
 app serves under `alder run` gets two extra elements right after
-`<body>`, which `alder run` asks the app to add (`ALDER_RELOAD=1`):
+`<body>`, which `alder run` asks the app to add (`ALDER_RELOAD`):
 
 ```html
-<div id="_alder_errors"></div><div data-init="@get('/_dev/reload')"></div>
+<div id="_alder_errors" data-ignore-morph></div><div data-init="@get('/_dev/reload?b=afcb2a7d-1', {openWhenHidden: true})"></div>
 ```
 
-The first is an empty box for errors. The second opens a connection to
+The first is an empty box for errors; `data-ignore-morph` keeps an error
+in it when your app updates the page. The second opens a connection to
 the dev server's `/_dev/reload` as soon as Datastar starts (`data-init`
 runs its expression once, when Datastar sets the element up) and keeps it
-open. Over that connection the dev server sends:
+open, even while the tab is in the background (`openWhenHidden`).
+`afcb2a7d-1` names the build that made the page (`-2` is the next one,
+and a restarted `alder run` picks new hex digits). Over that connection
+the dev server sends:
 
 1. **The errors.** When `alder check` or the build fails, the box is
    filled with the same text the terminal shows, in a `<pre>`. A page
@@ -233,7 +243,13 @@ open. Over that connection the dev server sends:
 2. **Clear.** After a good build, the box is emptied.
 3. **Reload.** Then the page reloads itself, and you see the new app.
 
-A change under `static/` sends only the reload.
+A change under `static/` sends only the reload. A page whose connection
+was cut (the network dropped, or you restarted `alder run`) connects
+again by itself; if it is from an older build by then, it is told to
+reload at once. Each open tab of the app holds one such connection the
+whole time, and a browser keeps at most six connections open to one
+address over plain HTTP, so with six tabs open, requests from a seventh
+(and the others' own clicks) wait; close the tabs you don't need.
 
 If a check fails, you see something like this at the top of the page
 (and on stderr), and the old app goes on serving:
@@ -248,16 +264,16 @@ app/Layout.alder:10:15: error[E0003]: expected Text, Html or List Html in `{…}
 The error box has no styling yet: it is plain preformatted text above your
 page. Fix the file and save; the box clears and the page reloads.
 
-If the new app does not start (it exits, or doesn't print
-`listening on` within 10 seconds), what it printed on stderr goes to the
+If the new app does not start (it exits, or doesn't print `listening on`
+within 10 seconds), the last 40 lines it printed on stderr go to the
 error box and the old app is kept. If the app stops while it runs (it
-crashes), the box says `alder run: the app exited (…); save a file to
-rebuild it`, and until the next good build the dev server answers every
-request with 502 (Bad Gateway) and a page that shows the error and
-reloads itself once the app is back. The same page, saying `alder run:
-the app is building…`, is what you get if you open the address before the
-first build is done. Everything the app prints goes to `alder run`'s
-stderr.
+crashes), the box says `alder run: the app exited (…); save a source
+file to rebuild it`, with the last 40 lines the app printed on stderr,
+and until the next good build the dev server answers every request with
+502 (Bad Gateway) and a page that shows the error and reloads itself
+once the app is back. The same page, saying `alder run: the app is
+building…`, is what you get if you open the address before the first
+build is done. Everything the app prints goes to `alder run`'s stderr.
 
 Ctrl-C (or `SIGTERM`) stops the dev server: a build in progress finishes,
 the app is stopped (`SIGTERM`, then killed if it hasn't exited after 5
