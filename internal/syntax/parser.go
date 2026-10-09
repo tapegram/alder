@@ -181,9 +181,11 @@ func (p *Parser) skipToDecl() {
 // ---- module
 
 func (p *Parser) parseModule() *Module {
-	start := p.tok
 	m := &Module{Lines: p.lines, File: p.file}
+	// The module starts at `module`: comments and blank lines before it lex as newlines, and
+	// the first of those would otherwise be the start (at the end of the first comment line).
 	p.skipNL()
+	start := p.tok
 	p.expectKeyword("module")
 	m.Name = p.parseModName()
 	for !p.at(EOF) {

@@ -1,0 +1,9 @@
+-- A comment line before the module declaration: the module starts at `module`, on line 4,
+-- not at the end of this first line.
+
+module Notes
+
+import Todo
+
+count : Int
+count = 1

@@ -239,3 +239,42 @@ func TestBuild_ReservedModuleNames(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
+
+// The import fix lands right after the module line also when comments come before it, and
+// applying it gives a module that resolves.
+func TestResolve_ImportFixAfterLeadingComment(t *testing.T) {
+	user := parse(t, "app/User.alder", "module User\n\ntype UserId = brand Text\n")
+	src := "-- The account page.\n-- Second comment line.\nmodule Account\n\ny : User.UserId\ny = ?y\n"
+	acct := parse(t, "app/Account.alder", src)
+	if acct.Span.Start.Line != 3 || acct.Span.Start.Col != 1 {
+		t.Fatalf("module span starts at %d:%d, want 3:1", acct.Span.Start.Line, acct.Span.Start.Col)
+	}
+	prog, bag := Build([]*syntax.Module{user, acct}, std(t))
+	prog.Resolve(bag)
+	var fix *diag.Fix
+	for _, d := range bag.Items {
+		if d.Code == "E0201" {
+			fix = d.Fix
+		}
+	}
+	if fix == nil {
+		t.Fatalf("no E0201 fix: %s", codes(bag))
+	}
+	if fix.Line != 4 || fix.Col != 1 {
+		t.Fatalf("import fix at %d:%d, want 4:1 (after the module line)", fix.Line, fix.Col)
+	}
+	fixed, err := diag.Apply(src, []diag.Fix{*fix})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "-- The account page.\n-- Second comment line.\nmodule Account\nimport User\n\ny : User.UserId\ny = ?y\n"; fixed != want {
+		t.Fatalf("fixed source:\n%s", fixed)
+	}
+	prog, bag = Build([]*syntax.Module{user, parse(t, "app/Account.alder", fixed)}, std(t))
+	prog.Resolve(bag)
+	for _, d := range bag.Items {
+		if d.Code == "E0201" {
+			t.Fatalf("still not imported after the fix: %s", codes(bag))
+		}
+	}
+}

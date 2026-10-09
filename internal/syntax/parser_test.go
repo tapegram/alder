@@ -27,6 +27,8 @@ func TestParseGolden(t *testing.T) {
 			var sb strings.Builder
 			sb.WriteString(Dump(m))
 			sb.WriteString("\n")
+			sp := m.Span // the dump has no spans; the module's is checked here
+			fmt.Fprintf(&sb, "@ module %d:%d-%d:%d\n", sp.Start.Line, sp.Start.Col, sp.End.Line, sp.End.Col)
 			for _, d := range diags {
 				fmt.Fprintf(&sb, "! %s %d:%d %s\n", d.Code, d.Span.Start.Line, d.Span.Start.Col, d.Message)
 			}

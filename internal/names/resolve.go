@@ -239,7 +239,7 @@ func (r *resolver) notImported(span diag.Span, x string) {
 	}
 	r.reported[x] = true
 	d := r.bag.Error("E0201", span, "module `%s` is not imported", x)
-	line := 2
+	line := r.m.Span.Start.Line + 1 // after the module line (comments may come before it)
 	if n := len(r.m.Imports); n > 0 {
 		line = r.m.Imports[n-1].Span.End.Line + 1
 	}
