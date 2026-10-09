@@ -313,6 +313,15 @@ func (p *Parser) parseValueDecl() Decl {
 func (p *Parser) parseTypeDecl() Decl {
 	start := p.tok
 	p.advance()
+	if p.at(LIdent) && p.tok.Text == "alias" {
+		// `type alias X = …` (Elm): report it, then parse the rest as an ordinary type declaration
+		p.advance()
+		name := "Point"
+		if p.at(UIdent) {
+			name = p.tok.Text
+		}
+		p.errorCodeAt(start, "E0602", "`type alias` is not Alder: a new name is always a new type; write `type "+name+" = { … }`")
+	}
 	d := &TypeDecl{Name: p.expect(UIdent, "type name").Text}
 	for p.at(LIdent) {
 		d.Params = append(d.Params, p.advance().Text)
@@ -342,6 +351,20 @@ func (p *Parser) parseTypeDecl() Decl {
 		}
 		for {
 			ct := p.expect(UIdent, "constructor")
+			if p.at(Dot) && len(d.Union) == 0 {
+				// `type Model = Todo.Todo`: a qualified type name, i.e. an alias
+				qual := ct.Text
+				for p.at(Dot) {
+					p.advance()
+					qual += "." + p.expect(UIdent, "type name").Text
+				}
+				for p.at(UIdent) || p.at(LIdent) || p.at(LBrace) || p.at(LParen) {
+					p.parseAType()
+				}
+				p.errorCodeAt(start, "E0602", "`type "+d.Name+" = "+qual+"` is an alias; a new name is always a new type; write `type "+d.Name+" = { }` or a union with its own constructors")
+				d.Span = p.spanFrom(start)
+				return d
+			}
 			c := &Ctor{Name: ct.Text}
 			if p.at(UIdent) || p.at(LIdent) || p.at(LBrace) || p.at(LParen) {
 				c.Arg = p.parseAType()

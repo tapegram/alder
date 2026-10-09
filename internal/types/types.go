@@ -80,7 +80,7 @@ func str(t Type, paren bool) string {
 		if t.Name != "" {
 			return t.Name
 		}
-		return "?" + itoa(t.ID)
+		return "_" // an unsolved inference variable; its internal id never reaches a message
 	case *Param:
 		return t.Name
 	case *Brand:

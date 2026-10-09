@@ -19,17 +19,6 @@ func init() {
 
 var boolAttrs = map[string]bool{"disabled": true, "checked": true, "required": true, "hidden": true, "selected": true, "readonly": true, "autofocus": true, "multiple": true, "open": true}
 
-// msgParam is the message type HTML in this module may send.
-func (mc *modCtx) msgParam() types.Type {
-	if mc.page != nil {
-		return mc.page.Msg
-	}
-	if mc.isApp {
-		return mc.c.appMsg
-	}
-	return mc.c.u.Fresh()
-}
-
 func (mc *modCtx) checkHTML(e syntax.Expr, expected types.Type, env *env, eff effect) {
 	c := mc.c
 	ex := c.u.Apply(expected)
@@ -121,6 +110,7 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 			} else {
 				pushed = &formCtx{name: "", rec: &types.Record{Anonymous: true}}
 			}
+			pushed.submit = submitText(a.Value, mc.source(a.Value.GetSpan()))
 		}
 	}
 	saved := mc.form
@@ -131,6 +121,19 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 		mc.htmlNode(ch, m, env, eff)
 	}
 	mc.form = saved
+}
+
+// submitText abbreviates a submit value for messages: `Toggle` or `Toggle …`.
+func submitText(e syntax.Expr, src string) string {
+	switch v := e.(type) {
+	case *syntax.CtorRef:
+		return v.Name
+	case *syntax.App:
+		if r, ok := v.Fn.(*syntax.CtorRef); ok {
+			return r.Name + " …"
+		}
+	}
+	return src
 }
 
 func isUpperName(s string) bool { return len(s) > 0 && s[0] >= 'A' && s[0] <= 'Z' }
@@ -180,11 +183,21 @@ func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effe
 	}
 	switch {
 	case a.Name == "href":
-		if _, isStr := a.Value.(*syntax.StrLit); isStr {
+		hrefText := func() {
 			c.errorf("E0303", a.Span, "`href` takes a page value, not a string; write `href={Module.Page { … }}` or `Url.external \"…\"`")
+		}
+		if _, isStr := a.Value.(*syntax.StrLit); isStr {
+			hrefText()
 			return
 		}
-		mc.check(a.Value, types.Page, env, eff)
+		got := c.u.Apply(mc.infer(a.Value, env, eff))
+		if b, isBrand := got.(*types.Brand); isCon(got, "Text") || (isBrand && isCon(b.Base, "Text")) {
+			hrefText() // a computed string such as `"/todos/" ++ x`
+			return
+		}
+		if err := c.u.Check(got, types.Page); err != nil {
+			mc.mismatch(a.Value.GetSpan(), got, types.Page)
+		}
 	case a.Name == "click" || a.Name == "submit":
 		mc.checkMessage(a.Value, m, env, eff)
 	case boolAttrs[a.Name]:
@@ -311,6 +324,10 @@ func (mc *modCtx) formComponent(x *syntax.Element, env *env, eff effect) {
 		default:
 			c.errorf("E0304", a.Span, "`<%s>` has no attribute `%s`", x.Tag, a.Name)
 		}
+	}
+	if mc.form.name == "" {
+		c.errorf("E0304", x.Span, "`<form submit={%s}>` has no form type; `<%s>` needs a message declared with `form F`", mc.form.submit, x.Tag)
+		return
 	}
 	if x.Tag == "Errors" && bareForm {
 		return

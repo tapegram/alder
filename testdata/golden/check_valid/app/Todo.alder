@@ -1,0 +1,19 @@
+module Todo
+
+type TodoId = brand Text
+
+type Cents = brand Int
+
+table Todo {
+  id: TodoId @id,
+  title: Text,
+}
+
+cheap : Cents -> Bool
+cheap c = c < 500
+
+cheapFlipped : Cents -> Bool
+cheapFlipped c = 500 > c
+
+between : Cents -> Cents -> Bool
+between a b = a <= b && b >= a

@@ -49,8 +49,9 @@ type holeNote struct {
 
 // formCtx is the form being built by the enclosing `Form.*` expression.
 type formCtx struct {
-	name string
-	rec  *types.Record
+	name   string // "" when the submit message declares no `form`
+	rec    *types.Record
+	submit string // the submit value, abbreviated, for messages
 }
 
 type modCtx struct {

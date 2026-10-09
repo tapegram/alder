@@ -1,5 +1,7 @@
-(module Err (val a : Int = (unit)) (val b : Int = (unit)) (val c : Int = (int 2)) (val d : Int = (unit)) (val e : Int = (unit)))
+(module Err (val a : Int = (unit)) (val b : Int = (unit)) (val c : Int = (int 2)) (val d : Int = (unit)) (val e : Int = (unit)) (type Point {x: Int}) (type Model opaque) (val f : Int = (int 1)))
 ! E0602 4:5 `case ... of` is not Alder; use `match x { ... }`
 ! E0602 7:5 `let ... in` is not Alder; use a block: `{ let y = 1 … y }`
 ! E0602 13:5 tuples are not Alder; use a record `{ a: 1, b: 2 }`
 ! E0602 16:5 tuples are not Alder; use a record `{ a: 1, b: 2 }`
+! E0602 18:1 `type alias` is not Alder: a new name is always a new type; write `type Point = { … }`
+! E0602 20:1 `type Model = Todo.Todo` is an alias; a new name is always a new type; write `type Model = { }` or a union with its own constructors

@@ -191,6 +191,10 @@ func (mc *modCtx) defineTypes() {
 				params[p] = true
 			}
 			k := c.key(mc.m.Name, d.Name)
+			if aliased := mc.checkAlias(d, params); aliased != nil {
+				c.types[k] = aliased // recovery: read the alias as its target so uses do not cascade
+				continue
+			}
 			switch tt := c.types[k].(type) {
 			case *types.Union:
 				for _, ct := range d.Union {
@@ -225,6 +229,29 @@ func (mc *modCtx) defineTypes() {
 		delete(c.ctors, "Prelude.True")
 		delete(c.ctors, "Prelude.False")
 	}
+}
+
+// checkAlias reports E0602 for `type Model = Unit`: a one-constructor union whose constructor
+// is named after a Prelude type is an alias in disguise, which Alder does not have. It returns
+// the aliased type (for error recovery), or nil when d is not an alias.
+func (mc *modCtx) checkAlias(d *syntax.TypeDecl, params map[string]bool) types.Type {
+	c := mc.c
+	if len(d.Union) != 1 || c.prog.Std[mc.m.Name] != nil || d.Union[0].Name == d.Name {
+		return nil
+	}
+	target, isType := c.types[c.key("Prelude", d.Union[0].Name)]
+	if !isType {
+		return nil
+	}
+	rhs := mc.source(d.Union[0].Span)
+	if rhs == "" {
+		rhs = d.Union[0].Name
+	}
+	c.errorf("E0602", d.Span, "`type %s = %s` is an alias; a new name is always a new type; write `type %s = { }` or a union with its own constructors", d.Name, rhs, d.Name)
+	if arg := d.Union[0].Arg; arg != nil {
+		return applyArgs(target, []types.Type{mc.typeOf(arg, params)})
+	}
+	return target
 }
 
 func (mc *modCtx) defineTable(d *syntax.TableDecl) {

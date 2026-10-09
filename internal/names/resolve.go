@@ -262,6 +262,18 @@ func (r *resolver) typ(t syntax.Type) {
 				t.Ref = syntax.Ref{Kind: syntax.RefPage, Module: t.Module + "." + t.Name}
 				return
 			}
+			if t.Module == "App" { // App needs no import; only App.Msg is a usable type
+				switch t.Name {
+				case "Msg": // the type of app-level messages
+					t.Ref = syntax.Ref{Kind: syntax.RefType, Module: "App", Name: "Msg"}
+				case "Session":
+					d := r.bag.Error(diag.UnknownName, t.Span, "`Session` is not qualified; write `Session`")
+					d.Fix = &diag.Fix{Line: t.Span.Start.Line, Col: t.Span.Start.Col, Replace: "Session"}
+				default:
+					r.bag.Error(diag.UnknownName, t.Span, "`App` has no type `%s` other modules can use; only `App.Msg` is global", t.Name)
+				}
+				return
+			}
 			r.notImported(t.Span, t.Module)
 			return
 		}
@@ -456,7 +468,27 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 		v.Ref = syntax.Ref{Kind: syntax.RefColumn, Module: r.m.Name, Name: v.Name}
 		return
 	}
+	if v.Module == "App" { // App needs no import; only its messages are usable values
+		if v.Name == "login" {
+			r.bag.Error(diag.UnknownName, v.Span, "`App` has no `login`; `login` is a declaration, not a value — link to the page with `href={%s {}}`", r.loginPage())
+			return
+		}
+		r.bag.Error(diag.UnknownName, v.Span, "`App` has no `%s`; only app-level messages such as `App.Logout` can be used from other modules", v.Name)
+		return
+	}
 	r.notImported(v.Span, v.Module)
+}
+
+// loginPage is the page named by App's `login` declaration (Auth.Login when there is none).
+func (r *resolver) loginPage() string {
+	if app := r.p.Modules["App"]; app != nil {
+		for _, d := range app.Decls {
+			if l, ok := d.(*syntax.LoginDecl); ok && l.Page != "" {
+				return l.Page
+			}
+		}
+	}
+	return "Auth.Login"
 }
 
 func (r *resolver) ctor(c *syntax.CtorRef) {
@@ -516,6 +548,13 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 	if c.Module == "App" {
 		if _, ok := r.p.AppMsgs[c.Name]; ok {
 			c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: "App", Name: c.Name}
+			return
+		}
+	}
+	// another page's message: `click={Auth.Login.Logout}`
+	if r.p.IsPageModule(c.Module) && c.Module != r.m.Name {
+		if s := r.p.scopes[c.Module]; s != nil && s.ctors[c.Name] == "Msg" {
+			r.bag.Error(diag.UnknownName, c.Span, "`%s` belongs to page `%s`; a page can only send its own messages and `App` messages", c.Name, c.Module)
 			return
 		}
 	}

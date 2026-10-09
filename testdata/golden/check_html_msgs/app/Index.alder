@@ -1,0 +1,34 @@
+module Index
+
+import Todo
+
+page "/" { }
+
+type Model = { todos: List Todo }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todos <- Db.from Todo |> Db.all
+  Query.succeed { todos: todos }
+}
+
+msg Toggle { id: Todo.TodoId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Toggle p -> Task.succeed Rerender,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <ul>
+    {for todo in model.todos ->
+      <li>
+        <form submit={Toggle { id: todo.id }}>
+          <Input field="title" />
+        </form>
+        <a href={"/todos/" ++ todo.title}>open</a>
+        <a href={todo.slug}>slug</a>
+        <a href={Index}>home</a>
+      </li>}
+  </ul>

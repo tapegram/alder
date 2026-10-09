@@ -1,0 +1,3 @@
+app/Index.alder:28:11 E0304 `<form submit={Toggle …}>` has no form type; `<Input>` needs a message declared with `form F`
+app/Index.alder:30:12 E0303 `href` takes a page value, not a string; write `href={Module.Page { … }}` or `Url.external "…"`
+app/Index.alder:31:12 E0303 `href` takes a page value, not a string; write `href={Module.Page { … }}` or `Url.external "…"`

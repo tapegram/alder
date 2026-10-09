@@ -164,3 +164,28 @@ func TestResolve_ModuleNameRuleBeatsPrelude(t *testing.T) {
 		t.Fatalf("ref = %+v", tn.Ref)
 	}
 }
+
+// `App` is global and never imported: no App-qualified name is reported as E0201.
+func TestResolve_AppQualifierNeverE0201(t *testing.T) {
+	app := parse(t, "app/App.alder", "module App\n\nmsg Logout\n")
+	lay := parse(t, "app/Layout.alder", "module Layout\n\nPage : { children: List (Html App.Msg) } -> Html App.Msg\nPage props = <main>{props.children}</main>\n\nx : App.Session\nx = ?x\n\ny : App.Theme\ny = ?y\n\nz : Int\nz = App.login\n\nw : Int\nw = App.update\n")
+	prog, bag := Build([]*syntax.Module{app, lay}, std(t))
+	prog.Resolve(bag)
+	got := codes(bag)
+	if strings.Contains(got, "E0201") {
+		t.Fatalf("App must never be reported as not imported:\n%s", got)
+	}
+	for _, want := range []string{
+		"E0002:`Session` is not qualified; write `Session`",
+		"E0002:`App` has no type `Theme` other modules can use; only `App.Msg` is global",
+		"E0002:`App` has no `login`; `login` is a declaration, not a value — link to the page with `href={Auth.Login {}}`",
+		"E0002:`App` has no `update`; only app-level messages such as `App.Logout` can be used from other modules",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+	if n := strings.Count(got, "\n") + 1; n != 4 {
+		t.Errorf("want exactly 4 diagnostics (App.Msg resolves), got %d:\n%s", n, got)
+	}
+}

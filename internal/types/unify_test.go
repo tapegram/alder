@@ -119,3 +119,12 @@ func TestInstantiate_SeesLaterCtors(t *testing.T) {
 		t.Fatal("instantiated copy should find it")
 	}
 }
+
+// An unsolved inference variable never prints its internal id in a user-facing message.
+func TestString_UnboundVarHidesID(t *testing.T) {
+	u := &Unifier{Subst: Subst{}}
+	got := String(&App{Con: "Id", Args: []Type{u.Fresh()}})
+	if got != "Id _" {
+		t.Fatalf("got %q, want %q", got, "Id _")
+	}
+}

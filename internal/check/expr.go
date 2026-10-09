@@ -33,8 +33,7 @@ func (e *env) lookup(n string) (types.Type, bool) {
 }
 
 type effect struct {
-	kind   string // "", "Query", "Task"
-	inLoad bool
+	kind string // "", "Query", "Task"
 }
 
 // checkBodies checks every value, test and brand check in the module (page/HTML rules hook in from Tasks 10-11).
@@ -53,9 +52,6 @@ func (mc *modCtx) checkBodies() {
 			mc.holes = nil
 			env := newEnv()
 			eff := effect{}
-			if mc.page != nil && d.Name == "load" {
-				eff.inLoad = true
-			}
 			body := sig
 			if fn, isFn := sig.(*types.Fun); isFn {
 				if len(d.Params) > len(fn.Params) {
@@ -281,7 +277,7 @@ func (mc *modCtx) checkBlock(x *syntax.Block, expected types.Type, env *env, eff
 	kind, _ := queryOrTask(expected)
 	_, expectedUnknown := expected.(*types.Var)
 	child := env.child()
-	sub := func() effect { return effect{kind: kind, inLoad: eff.inLoad} }
+	sub := func() effect { return effect{kind: kind} }
 	for _, s := range x.Stmts {
 		var t types.Type
 		if s.Type != nil {
@@ -708,20 +704,18 @@ func (mc *modCtx) applyFn(fnExpr syntax.Expr, fnT types.Type, args []syntax.Expr
 	if total > len(fn.Params) {
 		c.errorf(diag.Arity, span, "too many arguments: `%s` takes %d, got %d", mc.source(fnExpr.GetSpan()), len(fn.Params), total)
 	}
-	if pipe != nil && len(args) < len(fn.Params) {
-		if err := c.u.Check(pipe.t, fn.Params[len(args)]); err != nil {
-			mc.mismatch(pipe.span, pipe.t, fn.Params[len(args)])
-		}
-	}
 	if want != nil && total == len(fn.Params) {
 		if _, isVar := c.u.Apply(want).(*types.Var); !isVar {
 			c.u.Check(fn.Result, want) // an error here is reported by the caller's own check
 		}
 	}
-	// lambdas last, so the other arguments can fix the types their parameters take
-	for pass := 0; pass < 2; pass++ {
+	// Order: explicit non-lambda arguments, then the piped value, then lambdas. The explicit
+	// arguments fix type variables the piped value's parameter mentions (`p.id |> Db.delete Todo`
+	// needs `Table t` bound before `Id t` can normalize), and lambdas go last so their parameter
+	// types are known.
+	checkArgs := func(lambdas bool) {
 		for i, a := range args {
-			if _, isLam := a.(*syntax.Lambda); isLam != (pass == 1) {
+			if _, isLam := a.(*syntax.Lambda); isLam != lambdas {
 				continue
 			}
 			if i < len(fn.Params) {
@@ -731,6 +725,13 @@ func (mc *modCtx) applyFn(fnExpr syntax.Expr, fnT types.Type, args []syntax.Expr
 			}
 		}
 	}
+	checkArgs(false)
+	if pipe != nil && len(args) < len(fn.Params) {
+		if err := c.u.Check(pipe.t, fn.Params[len(args)]); err != nil {
+			mc.mismatch(pipe.span, pipe.t, fn.Params[len(args)])
+		}
+	}
+	checkArgs(true)
 	if total < len(fn.Params) {
 		return &types.Fun{Params: fn.Params[total:], Result: fn.Result}
 	}
@@ -771,8 +772,14 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 		}
 		return types.Bool
 	case "<", "<=", ">", ">=":
+		// symmetric: either side may widen to the other (`c < 500` and `500 > c` for a brand of Int)
 		l := c.u.Apply(mc.infer(x.L, env, eff))
-		mc.check(x.R, l, env, eff)
+		r := c.u.Apply(mc.infer(x.R, env, eff))
+		if c.u.Check(l, r) == nil {
+			l = r
+		} else if c.u.Check(r, l) != nil {
+			mc.mismatch(x.R.GetSpan(), r, l)
+		}
 		if l2 := c.u.Apply(l); !comparable(l2) {
 			if _, isVar := l2.(*types.Var); !isVar {
 				c.errorf(diag.TypeMismatch, x.Span, "`%s` is not ordered; comparison needs Int, Float, Text, Date, Time or a union without payloads", types.String(l2))

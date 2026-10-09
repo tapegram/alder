@@ -1,0 +1,11 @@
+module Todo
+
+type TodoId = brand Text
+
+type Slug = brand Text
+
+table Todo {
+  id: TodoId @id,
+  title: Text,
+  slug: Slug,
+}
