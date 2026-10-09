@@ -23,5 +23,5 @@ table Comment {
   created: Time @created,
 }
 
-test "slug allows lowercase letters digits and hyphens" =
+test "slug validation allows lowercase letters digits and hyphens" =
   Slug "hello-world-123" == Slug "hello-world-123"

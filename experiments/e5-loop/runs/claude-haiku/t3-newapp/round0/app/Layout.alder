@@ -1,8 +1,10 @@
 module Layout
 
-Page : { title: Text, loggedIn: Bool, children: List (Html a) } -> Html a
+import Theme
+
+Page : { title: Text, theme: Theme, loggedIn: Bool, children: List (Html a) } -> Html a
 Page props =
-  <html>
+  <html class={if props.theme == Dark then "dark" else ""}>
     <head>
       <meta charset="utf-8" />
       <title>{props.title}</title>
@@ -11,8 +13,9 @@ Page props =
     <body>
       <nav>
         <a href={Home {}}>Blog</a>
-        {if props.loggedIn then <a href={Admin {}}>Admin</a> else <a href={Auth.Login {}}>Log in</a>}
-        {if props.loggedIn then <button click={App.Logout}>Log out</button> else Html.none}
+        {if props.loggedIn then <a href={Admin {}}>Admin</a> else Html.none}
+        <button click={App.SwitchTheme}>{if props.theme == Dark then "Light mode" else "Dark mode"}</button>
+        {if props.loggedIn then <button click={App.Logout}>Log out</button> else <a href={Auth.Login {}}>Log in</a>}
       </nav>
       <main>{props.children}</main>
     </body>

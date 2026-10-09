@@ -8,59 +8,54 @@ page "/profile" { } requires user
 
 type Model = {
   user: User,
-  todos: List Todo,
+  total: Int,
+  done: Int,
 }
 
 load : Params -> Session -> Query Model
 load params session = {
   let found <- Db.get User session.user
-  let todos <-
-    Db.from Todo
-      |> Db.where (Todo.owner.eq session.user)
-      |> Db.all
+  let todos <- Db.from Todo |> Db.where (Todo.owner.eq session.user) |> Db.all
   match found {
-    Just user -> Query.succeed { user: user, todos: todos },
+    Just user -> Query.succeed {
+      user: user,
+      total: List.length todos,
+      done: todos |> List.filter (\t -> t.done) |> List.length,
+    },
     Nothing -> Query.notFound,
   }
 }
 
-form NewName = {
+form Rename = {
   name: Text.NonEmpty,
 }
 
-msg Save form NewName
+msg ChangeName form Rename
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
-  Save p -> {
+  ChangeName p -> {
     let _ <- Db.update User session.user (\u -> { u | name: p.form.name })
     Task.succeed Rerender
   },
 }
 
-doneCount : List Todo -> Int
-doneCount todos = todos |> List.filter (\t -> t.done) |> List.length
-
 view : Model -> Session -> Html Msg
 view model session =
   <Layout.Page title="Profile" theme={session.theme}>
     <h1>Profile</h1>
+    <p id="name">Name: {model.user.name}</p>
+    <p id="email">Email: {model.user.email}</p>
+    <p id="counts">{Text.fromInt model.total} todos, {Text.fromInt model.done} done</p>
 
-    <p id="identity">
-      <span>{model.user.name}</span>
-      <span>{model.user.email}</span>
-    </p>
-
-    <p id="counts">{Text.fromInt (List.length model.todos)} todos, {Text.fromInt (doneCount model.todos)} done</p>
-
-    <form submit={Save}>
+    <form submit={ChangeName}>
       <Errors form />
       <Input field="name" label="Name" value={model.user.name} />
       <Errors field="name" />
-      <button>Save</button>
+      <button>Change name</button>
     </form>
 
-    -- Logout is an app-level msg (App.Logout), not a Login-page msg, and any page may send it.
+    -- Logout is the app-level message App.Logout, sendable from any page.
     <button click={App.Logout}>Log out</button>
     <a href={Todos.Index {}}>Back</a>
   </Layout.Page>

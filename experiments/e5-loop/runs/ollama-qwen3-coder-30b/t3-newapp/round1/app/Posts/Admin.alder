@@ -15,17 +15,17 @@ load params session = {
 
 form NewPost = {
   title: Text.NonEmpty,
-  slug: Post.Slug,
+  slug: Slug @unique,
   body: Text,
   published: Bool = False,
 }
 
-msg CreatePost form NewPost
+msg Create form NewPost
 msg TogglePublished { id: Post.PostId }
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
-  CreatePost p -> {
+  Create p -> {
     let _ <- Db.insert Post { title: p.form.title, slug: p.form.slug, body: p.form.body, published: p.form.published, author: session.user }
     Task.succeed Rerender
   },
@@ -46,8 +46,8 @@ view model session =
   <Layout.Page title="Admin" theme={session.theme}>
     <h1>Admin</h1>
 
-    <h2>Create a new post</h2>
-    <form submit={CreatePost}>
+    <h2>Create a post</h2>
+    <form submit={Create}>
       <Errors form />
       <Input field="title" label="Title" />
       <Errors field="title" />
@@ -55,20 +55,20 @@ view model session =
       <Errors field="slug" />
       <Textarea field="body" label="Body" />
       <Errors field="body" />
-      <Input field="published" label="Published" type="checkbox" />
+      <label>
+        <Input field="published" type="checkbox" />
+        Published
+      </label>
       <Errors field="published" />
-      <button>Create post</button>
+      <button>Create</button>
     </form>
 
     <h2>Posts</h2>
     {for post in model.posts ->
-      <article class="post-row">
+      <article>
         <h3>{post.title}</h3>
         <p>Slug: {post.slug}</p>
-        <p>Status: {if post.published then "Published" else "Draft"}</p>
+        <p>Published: {Bool.toText post.published}</p>
         <button click={TogglePublished { id: post.id }}>{if post.published then "Unpublish" else "Publish"}</button>
-        <a href={Posts.Show { slug: post.slug }}>View</a>
       </article>}
-
-    <button click={App.Logout}>Log out</button>
   </Layout.Page>

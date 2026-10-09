@@ -67,7 +67,7 @@ python3 experiments/run_loop.py --exp experiments/e5-loop --model ollama:qwen3-c
 python3 experiments/report_loop.py experiments/e5-loop > experiments/e5-loop/scores.md
 ```
 
-`--model` (`ollama:NAME` or `claude:NAME`) and `--task` are repeatable. Each run writes `runs/<model>/<task>/round<N>/{output.md,check.json,app/...}` and `runs/<model>/<task>/summary.json`. Round N+1 starts from round N's files, overlaid with whatever the model re-emits. `--base DIR` seeds round 0 with `DIR/app`, for tasks that modify an existing app (T2 uses `--base examples/todos`). The retry prompt carries the task and the diagnostics, not the previous files (see E5 findings).
+`--model` (`ollama:NAME` or `claude:NAME`) and `--task` are repeatable. Each run writes `runs/<model>/<task>/round<N>/{output.md,check.json,app/...}` and `runs/<model>/<task>/summary.json`. Round N+1 starts from round N's files, overlaid with whatever the model re-emits. `--base DIR` seeds round 0 with `DIR/app`, for tasks that modify an existing app (T2 uses `--base examples/todos`). The retry prompt carries the task, the previous round's files in full (`YOUR PREVIOUS ANSWER`), and the diagnostics; every model call is a fresh process, so without the files a retry is a re-roll (E5's first run).
 
 Summary shape:
 

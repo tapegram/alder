@@ -1,5 +1,7 @@
 module Post
 
+import User
+
 type PostId = brand Text
 
 type Slug = brand Text where Text.matches "^[a-z0-9-]+$"
@@ -10,11 +12,12 @@ table Post {
   slug: Slug @unique,
   body: Text.NonEmpty,
   published: Bool = False,
+  author: User.UserId @ref User,
   created: Time @created,
 }
 
-canView : Bool -> Post -> Bool
-canView loggedIn post = post.published || loggedIn
+status : Post -> Text
+status post = if post.published then "Published" else "Draft"
 
-statusLabel : Post -> Text
-statusLabel post = if post.published then "Published" else "Draft"
+test "status of a draft" =
+  status { id: PostId "a", title: Text.NonEmpty "t", slug: Slug "t", body: Text.NonEmpty "b", published: False, author: User.UserId "u", created: Time.epoch } == "Draft"

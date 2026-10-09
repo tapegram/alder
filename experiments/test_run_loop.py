@@ -76,6 +76,22 @@ class LoopTests(unittest.TestCase):
         self.assertIn("new", (self.exp / "runs/fake/t/round0/app/Todos/Index.alder").read_text())
         self.assertEqual((base / "app" / "Todos" / "Index.alder").read_text(), "module Todos.Index\n-- old\n")
 
+    def test_retry_prompt_includes_previous_files(self):
+        # Every model call is a fresh process: the retry must carry the files it asks the model to fix.
+        chk = FakeChecker(self.tmp, [(1, ERR, ""), (0, "", "")])
+        model = rl.FakeModel(["--- file: app/App.alder ---\nmodule App\n\nvalueA : Int\nvalueA = \"a\"\n"
+                              "--- file: app/Pages/Home.alder ---\nmodule Pages.Home\n\nvalueB : Int\nvalueB = 2\n",
+                              GOOD])
+        rl.run_one(self.exp, model, "fake", "t", "TASK TEXT", "sys", chk.path, retries=1)
+        p = model.prompts[1]
+        self.assertIn("--- file: app/App.alder ---\nmodule App\n\nvalueA : Int\nvalueA = \"a\"\n", p)
+        self.assertIn("--- file: app/Pages/Home.alder ---\nmodule Pages.Home\n\nvalueB : Int\nvalueB = 2\n", p)
+        prev = p.index("====================  YOUR PREVIOUS ANSWER  ====================")
+        self.assertTrue(p.startswith("TASK TEXT"))
+        self.assertLess(prev, p.index("COMPILER FEEDBACK"))
+        self.assertLess(p.index("app/App.alder ---"), p.index("app/Pages/Home.alder ---"))   # sorted by path
+        self.assertTrue(p.rstrip().endswith("No explanation, only files."))
+
     def test_check_exit2_recorded_not_raised(self):
         chk = FakeChecker(self.tmp, [(2, "", "alder check: internal error: boom\n"), (2, "", "alder check: internal error: boom\n")])
         s = rl.run_one(self.exp, rl.FakeModel([GOOD, GOOD]), "fake", "t", "task", "sys", chk.path, retries=1)

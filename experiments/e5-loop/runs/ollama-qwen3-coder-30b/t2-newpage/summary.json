@@ -21,17 +21,15 @@
   {
    "n": 1,
    "files": 9,
-   "exit": 1,
-   "errors": 1,
+   "exit": 0,
+   "errors": 0,
    "warnings": 0,
-   "codes": {
-    "E0003": 1
-   },
+   "codes": {},
    "rejected": [],
-   "seconds": 22.3,
-   "tokens": 1238,
+   "seconds": 56.3,
+   "tokens": 2540,
    "stderr": ""
   }
  ],
- "final_pass": false
+ "final_pass": true
 }

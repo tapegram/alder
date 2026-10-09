@@ -3,7 +3,6 @@ module Auth.Login
 import User
 import Layout
 
--- Password checking is outside the language: a capability implemented in Go.
 capability Password {
   verify : { email: Text.Email, password: Text } -> Task (Maybe User.UserId),
 }

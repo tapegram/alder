@@ -1,6 +1,5 @@
 {"code": "E0001", "severity": "error", "file": "app/Post.alder", "line": 19, "col": 7, "endLine": 19, "endCol": 12, "message": "expected a type, got `brand`"}
 {"code": "E0001", "severity": "error", "file": "app/Post.alder", "line": 19, "col": 7, "endLine": 19, "endCol": 12, "message": "expected `,` or closing brace"}
 {"code": "E0001", "severity": "error", "file": "app/Post.alder", "line": 19, "col": 7, "endLine": 19, "endCol": 12, "message": "expected end of line after declaration, got `brand`"}
-{"code": "E0001", "severity": "error", "file": "app/Posts/Show.alder", "line": 64, "col": 43, "endLine": 64, "endCol": 45, "message": "expected `then`, got `->`"}
-{"code": "E0001", "severity": "error", "file": "app/Posts/Show.alder", "line": 64, "col": 43, "endLine": 64, "endCol": 45, "message": "expected an expression, got `->`"}
-{"code": "E0001", "severity": "error", "file": "app/Posts/Show.alder", "line": 65, "col": 7, "endLine": 65, "endCol": 8, "message": "expected `else`, got `<`"}
+{"code": "E0001", "severity": "error", "file": "app/Posts/Admin.alder", "line": 18, "col": 14, "endLine": 18, "endCol": 15, "message": "expected `,` or closing brace"}
+{"code": "E0001", "severity": "error", "file": "app/Posts/Admin.alder", "line": 18, "col": 14, "endLine": 18, "endCol": 15, "message": "expected end of line after declaration, got `@`"}

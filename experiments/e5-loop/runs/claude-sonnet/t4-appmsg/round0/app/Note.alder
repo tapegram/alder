@@ -7,7 +7,7 @@ type NoteId = brand Text
 table Note {
   id: NoteId @id,
   title: Text.NonEmpty,
-  body: Text = "",
+  body: Text,
   owner: User.UserId @ref User,
   created: Time @created,
 }

@@ -28,7 +28,7 @@ update msg model session = match msg {
     match found {
       Just id -> {
         let _ <- Session.put (\s -> { s | user: Just id })
-        Task.succeed (Redirect (Admin.Index {}))
+        Task.succeed (Redirect (Admin {}))
       },
       Nothing -> Task.succeed (Reject "Email or password is incorrect."),
     }
@@ -37,7 +37,7 @@ update msg model session = match msg {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Layout.Page title="Log in" loggedIn={Maybe.isJust session.user}>
+  <Layout.Page title="Log in">
     <h1>Log in</h1>
     <form submit={Submit}>
       <Errors form />

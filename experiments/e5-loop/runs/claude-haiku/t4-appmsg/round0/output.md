@@ -1,5 +1,4 @@
 --- file: app/App.alder ---
-```alder
 module App
 
 import User
@@ -37,10 +36,8 @@ notFound =
   <Layout.Page title="Not found" theme={Light}>
     <h1>Not found</h1>
   </Layout.Page>
-```
 
 --- file: app/Auth/Login.alder ---
-```alder
 module Auth.Login
 
 import User
@@ -92,10 +89,8 @@ view model session =
       <button>Log in</button>
     </form>
   </Layout.Page>
-```
 
 --- file: app/Layout.alder ---
-```alder
 module Layout
 
 import Theme
@@ -116,10 +111,8 @@ Page props =
       <main>{props.children}</main>
     </body>
   </html>
-```
 
 --- file: app/Theme.alder ---
-```alder
 module Theme
 
 type Theme = Light | Dark
@@ -131,10 +124,8 @@ flip theme = match theme {
 }
 
 test "flip alternates" = flip (flip Light) == Light
-```
 
 --- file: app/User.alder ---
-```alder
 module User
 
 type UserId = brand Text
@@ -146,10 +137,8 @@ table User {
   passwordHash: Text,
   created: Time @created,
 }
-```
 
 --- file: app/Note.alder ---
-```alder
 module Note
 
 import User
@@ -163,10 +152,8 @@ table Note {
   owner: User.UserId @ref User,
   created: Time @created,
 }
-```
 
 --- file: app/Notes/Index.alder ---
-```alder
 module Notes.Index
 
 import Note
@@ -174,9 +161,7 @@ import Layout
 
 page "/" { } requires user
 
-type Model = {
-  notes: List Note,
-}
+type Model = { notes: List Note }
 
 load : Params -> Session -> Query Model
 load params session = {
@@ -198,8 +183,8 @@ msg Submit form NewNote
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Submit p -> {
-    let id <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
-    Task.succeed (Redirect (Notes.Show { id: id }))
+    let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+    Task.succeed (Redirect (Notes.Index {}))
   },
 }
 
@@ -216,14 +201,13 @@ view model session =
       <button>Add note</button>
     </form>
 
+    {if List.isEmpty model.notes then <p>No notes yet.</p> else Html.none}
     <ul id="notes">
       {for note in model.notes -> <li><a href={Notes.Show { id: note.id }}>{note.title}</a></li>}
     </ul>
   </Layout.Page>
-```
 
 --- file: app/Notes/Show.alder ---
-```alder
 module Notes.Show
 
 import Note
@@ -247,53 +231,34 @@ form EditNote = {
   body: Text,
 }
 
-msg Save { id: Note.NoteId } form EditNote
-msg Delete { id: Note.NoteId }
+msg Save form EditNote
+msg Delete
 
--- Runs the task only when the note exists and belongs to the session user.
--- Otherwise the page is re-run through load, which answers 404.
-ifOwned : Note.NoteId -> Session -> Task Nav -> Task Nav
-ifOwned id session next = {
-  let found <- Db.get Note id
-  match found {
-    Just note -> if note.owner == session.user then next else Task.succeed Rerender,
-    Nothing -> Task.succeed Rerender,
-  }
-}
-
-save : Note.NoteId -> EditNote -> Task Nav
-save id form = {
-  let _ <- Db.update Note id (\n -> { n | title: form.title, body: form.body })
-  Task.succeed (Redirect (Notes.Index {}))
-}
-
-remove : Note.NoteId -> Task Nav
-remove id = {
-  let _ <- Db.delete Note id
-  Task.succeed (Redirect (Notes.Index {}))
-}
-
+-- The load above has already checked that the note belongs to the session user,
+-- so updates use the loaded note's id rather than any id sent by the client.
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
-  Save p -> ifOwned p.id session (save p.id p.form),
-  Delete p -> ifOwned p.id session (remove p.id),
+  Save p -> {
+    let _ <- Db.update Note model.note.id (\n -> { n | title: p.form.title, body: p.form.body })
+    Task.succeed Rerender
+  },
+  Delete p -> {
+    let _ <- Db.delete Note model.note.id
+    Task.succeed (Redirect (Notes.Index {}))
+  },
 }
 
 view : Model -> Session -> Html Msg
 view model session =
   <Layout.Page title={model.note.title} theme={session.theme}>
     <h1>{model.note.title}</h1>
-    <p class="body">{model.note.body}</p>
-
-    <form submit={Save { id: model.note.id }}>
+    <form submit={Save}>
       <Input field="title" label="Title" value={model.note.title} />
       <Errors field="title" />
       <Textarea field="body" label="Body" value={model.note.body} />
       <Errors field="body" />
       <button>Save</button>
     </form>
-
-    <button click={Delete { id: model.note.id }}>Delete</button>
+    <button click={Delete}>Delete</button>
     <a href={Notes.Index {}}>Back</a>
   </Layout.Page>
-```

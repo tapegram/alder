@@ -27,8 +27,8 @@ msg Submit form NewNote
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Submit p -> {
-    let id <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
-    Task.succeed (Redirect (Notes.Show { id: id }))
+    let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+    Task.succeed (Redirect (Notes.Index {}))
   },
 }
 
@@ -38,13 +38,14 @@ view model session =
     <h1>Notes</h1>
 
     <form submit={Submit}>
-      <Errors form />
       <Input field="title" label="Title" />
       <Errors field="title" />
       <Textarea field="body" label="Body" />
       <Errors field="body" />
       <button>Add note</button>
     </form>
+
+    {if model.notes == [] then <p>No notes yet.</p> else Html.none}
 
     <ul id="notes">
       {for note in model.notes -> <Item note={note} />}
@@ -55,4 +56,5 @@ Item : { note: Note } -> Html Msg
 Item props =
   <li>
     <a href={Notes.Show { id: props.note.id }}>{props.note.title}</a>
+    <span class="created">{Time.format "Jan 2, 2006" props.note.created}</span>
   </li>

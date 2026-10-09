@@ -19,10 +19,13 @@ load params session = {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Layout.Page title="Blog" user={session.user}>
+  <Layout.Page title="Blog">
     <h1>Blog</h1>
-    {if List.isEmpty model.posts then <p>No posts yet.</p> else <ul id="posts">{for post in model.posts ->
-      <li>
-        <a href={Posts.Show { slug: post.slug }}>{post.title}</a>
-      </li>}</ul>}
+    {if List.isEmpty model.posts then <p>No posts yet.</p> else <ul id="posts">
+      {for post in model.posts ->
+        <li>
+          <a href={Posts.Show { slug: post.slug }}>{post.title}</a>
+          <span class="date">{Time.format "Jan 2, 2006" post.created}</span>
+        </li>}
+    </ul>}
   </Layout.Page>

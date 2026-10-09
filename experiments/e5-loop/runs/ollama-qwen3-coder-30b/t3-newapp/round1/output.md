@@ -43,7 +43,6 @@ module Auth.Login
 import User
 import Layout
 
--- Password checking is outside the language: a capability implemented in Go.
 capability Password {
   verify : { email: Text.Email, password: Text } -> Task (Maybe User.UserId),
 }
@@ -137,8 +136,84 @@ table Comment {
   created: Time @created,
 }
 
-test "slug allows lowercase letters digits and hyphens" =
+test "slug validation allows lowercase letters digits and hyphens" =
   Slug "hello-world-123" == Slug "hello-world-123"
+
+--- file: app/Posts/Admin.alder ---
+module Posts.Admin
+
+import Post
+import Layout
+
+page "/admin" { } requires user
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Slug @unique,
+  body: Text,
+  published: Bool = False,
+}
+
+msg Create form NewPost
+msg TogglePublished { id: Post.PostId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let _ <- Db.insert Post { title: p.form.title, slug: p.form.slug, body: p.form.body, published: p.form.published, author: session.user }
+    Task.succeed Rerender
+  },
+  TogglePublished p -> {
+    let post <- Db.get Post p.id
+    match post {
+      Just p -> {
+        let _ <- Db.update Post p.id (\t -> { t | published: not t.published })
+        Task.succeed Rerender
+      },
+      Nothing -> Task.fail "Post not found",
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Admin" theme={session.theme}>
+    <h1>Admin</h1>
+
+    <h2>Create a post</h2>
+    <form submit={Create}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Input field="slug" label="Slug" />
+      <Errors field="slug" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <label>
+        <Input field="published" type="checkbox" />
+        Published
+      </label>
+      <Errors field="published" />
+      <button>Create</button>
+    </form>
+
+    <h2>Posts</h2>
+    {for post in model.posts ->
+      <article>
+        <h3>{post.title}</h3>
+        <p>Slug: {post.slug}</p>
+        <p>Published: {Bool.toText post.published}</p>
+        <button click={TogglePublished { id: post.id }}>{if post.published then "Unpublish" else "Publish"}</button>
+      </article>}
+  </Layout.Page>
 
 --- file: app/Posts/Index.alder ---
 module Posts.Index
@@ -174,7 +249,7 @@ module Posts.Show
 import Post
 import Layout
 
-page "/posts/{slug}" { slug: Post.Slug } requires user
+page "/posts/{slug}" { slug: Slug } requires user
 
 type Model = { post: Post, comments: List Comment }
 
@@ -195,11 +270,11 @@ form NewComment = {
   body: Text.NonEmpty,
 }
 
-msg AddComment { slug: Post.Slug } form NewComment
+msg Submit form NewComment
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
-  AddComment p -> {
+  Submit p -> {
     let _ <- Db.insert Comment { post: model.post.id, authorName: p.form.authorName, body: p.form.body }
     Task.succeed Rerender
   },
@@ -216,14 +291,13 @@ view model session =
 
     <h2>Comments</h2>
     {for comment in model.comments ->
-      <article class="comment">
-        <p class="comment-author">{comment.authorName}</p>
-        <p class="comment-body">{comment.body}</p>
-        <p class="comment-meta">Posted {Date.format "Jan 2, 2006 at 3:04 PM" (Time.toDate comment.created)}</p>
+      <article>
+        <p class="meta">By {comment.authorName} on {Date.format "Jan 2, 2006" (Time.toDate comment.created)}</p>
+        <p>{comment.body}</p>
       </article>}
 
     <h2>Add a comment</h2>
-    <form submit={AddComment { slug: model.post.slug }}>
+    <form submit={Submit}>
       <Errors form />
       <Input field="authorName" label="Your name" />
       <Errors field="authorName" />
@@ -231,85 +305,6 @@ view model session =
       <Errors field="body" />
       <button>Post comment</button>
     </form>
-
-    {if model.post.author == session.user ->
-      <a href={Posts.Admin {}}>Back to admin</a>}
-  </Layout.Page>
-
---- file: app/Posts/Admin.alder ---
-module Posts.Admin
-
-import Post
-import Layout
-
-page "/admin" { } requires user
-
-type Model = { posts: List Post }
-
-load : Params -> Session -> Query Model
-load params session = {
-  let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.all
-  Query.succeed { posts: posts }
-}
-
-form NewPost = {
-  title: Text.NonEmpty,
-  slug: Post.Slug,
-  body: Text,
-  published: Bool = False,
-}
-
-msg CreatePost form NewPost
-msg TogglePublished { id: Post.PostId }
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  CreatePost p -> {
-    let _ <- Db.insert Post { title: p.form.title, slug: p.form.slug, body: p.form.body, published: p.form.published, author: session.user }
-    Task.succeed Rerender
-  },
-  TogglePublished p -> {
-    let post <- Db.get Post p.id
-    match post {
-      Just p -> {
-        let _ <- Db.update Post p.id (\t -> { t | published: not t.published })
-        Task.succeed Rerender
-      },
-      Nothing -> Task.fail "Post not found",
-    }
-  },
-}
-
-view : Model -> Session -> Html Msg
-view model session =
-  <Layout.Page title="Admin" theme={session.theme}>
-    <h1>Admin</h1>
-
-    <h2>Create a new post</h2>
-    <form submit={CreatePost}>
-      <Errors form />
-      <Input field="title" label="Title" />
-      <Errors field="title" />
-      <Input field="slug" label="Slug" />
-      <Errors field="slug" />
-      <Textarea field="body" label="Body" />
-      <Errors field="body" />
-      <Input field="published" label="Published" type="checkbox" />
-      <Errors field="published" />
-      <button>Create post</button>
-    </form>
-
-    <h2>Posts</h2>
-    {for post in model.posts ->
-      <article class="post-row">
-        <h3>{post.title}</h3>
-        <p>Slug: {post.slug}</p>
-        <p>Status: {if post.published then "Published" else "Draft"}</p>
-        <button click={TogglePublished { id: post.id }}>{if post.published then "Unpublish" else "Publish"}</button>
-        <a href={Posts.Show { slug: post.slug }}>View</a>
-      </article>}
-
-    <button click={App.Logout}>Log out</button>
   </Layout.Page>
 
 --- file: app/Theme.alder ---

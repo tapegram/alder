@@ -9,10 +9,7 @@ type Model = { posts: List Post }
 
 load : Params -> Session -> Query Model
 load params session = {
-  let posts <-
-    Db.from Post
-      |> Db.orderBy Post.created.desc
-      |> Db.all
+  let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.all
   Query.succeed { posts: posts }
 }
 
@@ -22,25 +19,22 @@ form NewPost = {
   body: Text.NonEmpty,
 }
 
-msg CreatePost form NewPost
-msg TogglePublished { id: Post.PostId }
+msg Submit form NewPost
+msg Toggle { id: Post.PostId }
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
-  CreatePost p -> {
-    let existing <-
-      Db.from Post
-        |> Db.where (Post.slug.eq p.form.slug)
-        |> Db.first
+  Submit p -> {
+    let existing <- Db.from Post |> Db.where (Post.slug.eq p.form.slug) |> Db.first
     match existing {
       Just _ -> Task.succeed (Reject "That slug is already in use."),
       Nothing -> {
         let _ <- Db.insert Post { title: p.form.title, slug: p.form.slug, body: p.form.body, author: session.user }
-        Task.succeed Rerender
+        Task.succeed (Redirect (Admin {}))
       },
     }
   },
-  TogglePublished p -> {
+  Toggle p -> {
     let _ <- Db.update Post p.id (\t -> { t | published: not t.published })
     Task.succeed Rerender
   },
@@ -48,10 +42,11 @@ update msg model session = match msg {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Layout.Page title="Admin" loggedIn={True}>
-    <h1>Posts</h1>
+  <Layout.Page title="Admin" theme={session.theme} loggedIn={True}>
+    <h1>Admin</h1>
 
-    <form submit={CreatePost}>
+    <h2>New post</h2>
+    <form submit={Submit}>
       <Errors form />
       <Input field="title" label="Title" />
       <Errors field="title" />
@@ -62,15 +57,16 @@ view model session =
       <button>Create post</button>
     </form>
 
+    <h2>All posts</h2>
     <ul id="posts">
-      {for post in model.posts -> <AdminRow post={post} />}
+      {for post in model.posts -> <PostRow post={post} />}
     </ul>
   </Layout.Page>
 
-AdminRow : { post: Post } -> Html Msg
-AdminRow props =
+PostRow : { post: Post } -> Html Msg
+PostRow props =
   <li>
     <a href={Posts.Show { slug: props.post.slug }}>{props.post.title}</a>
-    <span>{if props.post.published then "Published" else "Draft"}</span>
-    <button click={TogglePublished { id: props.post.id }}>{if props.post.published then "Unpublish" else "Publish"}</button>
+    {if props.post.published then <span>Published</span> else <span>Draft</span>}
+    <button click={Toggle { id: props.post.id }}>{if props.post.published then "Unpublish" else "Publish"}</button>
   </li>

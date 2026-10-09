@@ -232,28 +232,28 @@ checker reports with a fix and that prose does not change (E3).
 ### E5: Checker in the loop
 
 *Done 2026-10-08.* The first run with the compiler: `alder check --json`
-after each generation, and one retry with the diagnostics.
-Qwen3-Coder 30B, Haiku and Sonnet on T2–T4, E4's prompt; errors are
-counted by the checker, not by hand. Full data in
+after each generation, and one retry that carries the previous answer and
+the diagnostics. Qwen3-Coder 30B, Haiku and Sonnet on T2–T4, E4's prompt;
+errors are counted by the checker, not by hand. Full data in
 `experiments/e5-loop/` (`scores.md`, `findings.md`).
 
 | Model | Round 0 errors (T2+T3+T4) | After retry | Pass | E4 (T3+T4, hand) |
 |---|---|---|---|---|
 | Claude Sonnet | 0 | 0 | 3 / 3 | 0 (T3) |
-| Claude Haiku | 1 | 3 | 2 / 3 | 0 |
-| Qwen3-Coder 30B | 6 | 7 | 1 / 3 | 3 |
+| Claude Haiku | 0 | 0 | 3 / 3 | 0 |
+| Qwen3-Coder 30B | 6 | 5 | 2 / 3 | 3 |
 
-What it showed: the checker confirms E4's one-shot picture and made no
-false positives, but no failing run was rescued by one retry, because the
-retry sees only diagnostics, not the model's previous files, so the model
-re-rolls (Haiku T3 went 1 → 3) or repeats itself (Qwen kept its `Maybe User`
-error). Qwen's real T3 distance is larger than either count, since a parse
-error stops the compiler and 12 more errors sat behind it. Three messages
-misled (a table declared in another table's module is accepted and then
-gets `fix: import Note` for a module that does not exist; one missing
-import yields six errors; a `let`-bound record literal gets no annotation
-hint), which with feeding back the previous files and checking past parse
-errors is the M3 work.
+What it showed: the checker confirms E4's one-shot picture, with no false
+positives, and one retry fixed Qwen's `Maybe` habit on T2 with a one-hunk
+edit, but only once the retry carried the model's previous files. The
+first run of this matrix fed back diagnostics alone, and the models
+re-rolled instead of fixing (Haiku 1 → 3, Qwen unchanged). Qwen's T3
+failure is two parse mistakes whose messages give no reason, with 15 more
+errors hidden behind them because a parse error stops the compiler. So
+the M3 work is reporting past parse errors, plus four message fixes:
+reasons for parse errors, a table declared in another table's module,
+missing-import cascades, and an annotation hint for `let`-bound record
+literals.
 
 ## Open questions
 

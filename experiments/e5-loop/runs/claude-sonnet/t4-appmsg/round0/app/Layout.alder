@@ -8,7 +8,6 @@ Page props =
     <head>
       <meta charset="utf-8" />
       <title>{props.title}</title>
-      <link rel="stylesheet" href={Url.external "/static/app.css"} />
     </head>
     <body class={if props.theme == Dark then "dark" else ""}>
       <nav>

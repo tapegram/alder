@@ -1,5 +1,6 @@
 module Posts.Show
 
+import User
 import Post
 import Comment
 import Layout
@@ -11,12 +12,16 @@ type Model = {
   comments: List Comment,
 }
 
+-- Drafts are visible only to their author.
+visible : Post -> Maybe User.UserId -> Bool
+visible post user = match user {
+  Just u -> post.published || u == post.author,
+  Nothing -> post.published,
+}
+
 load : Params -> Session -> Query Model
 load params session = {
-  let found <-
-    Db.from Post
-      |> Db.where (Post.slug.eq params.slug)
-      |> Db.first
+  let found <- Db.from Post |> Db.where (Post.slug.eq params.slug) |> Db.first
   match found {
     Nothing -> Query.notFound,
     Just post -> {
@@ -25,7 +30,7 @@ load params session = {
           |> Db.where (Comment.post.eq post.id)
           |> Db.orderBy Comment.created.asc
           |> Db.all
-      if Post.canView post session.user then Query.succeed { post: post, comments: comments } else Query.notFound
+      if visible post session.user then Query.succeed { post: post, comments: comments } else Query.notFound
     },
   }
 }
@@ -47,29 +52,33 @@ update msg model session = match msg {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Layout.Page title={model.post.title} loggedIn={Maybe.isJust session.user}>
+  <Layout.Page title={model.post.title} theme={session.theme} loggedIn={Maybe.isJust session.user}>
     <article>
       <h1>{model.post.title}</h1>
+      <p class="meta">{Time.format "Jan 2, 2006" model.post.created}</p>
+      {if model.post.published then Html.none else <p class="draft">Draft: only the author can see this.</p>}
       <p>{model.post.body}</p>
     </article>
 
     <section id="comments">
       <h2>Comments</h2>
+      {if List.isEmpty model.comments then <p>No comments yet.</p> else Html.none}
       <ul>
         {for c in model.comments -> <CommentItem comment={c} />}
       </ul>
     </section>
 
+    <h2>Leave a comment</h2>
     <form submit={AddComment}>
       <Errors form />
-      <Input field="author" label="Your name" />
+      <Input field="author" label="Name" />
       <Errors field="author" />
       <Textarea field="body" label="Comment" />
       <Errors field="body" />
       <button>Post comment</button>
     </form>
 
-    <a href={Home {}}>All posts</a>
+    <a href={Home {}}>Back to posts</a>
   </Layout.Page>
 
 CommentItem : { comment: Comment } -> Html Msg
@@ -77,4 +86,5 @@ CommentItem props =
   <li>
     <strong>{props.comment.author}</strong>
     <p>{props.comment.body}</p>
+    <time>{Time.format "Jan 2, 2006" props.comment.created}</time>
   </li>

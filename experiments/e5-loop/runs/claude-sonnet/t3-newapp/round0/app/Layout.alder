@@ -1,6 +1,6 @@
 module Layout
 
-Page : { title: Text, loggedIn: Bool, children: List (Html a) } -> Html a
+Page : { title: Text, children: List (Html a) } -> Html a
 Page props =
   <html>
     <head>
@@ -10,9 +10,8 @@ Page props =
     </head>
     <body>
       <nav>
-        <a href={Posts.Index {}}>Blog</a>
-        {if props.loggedIn then <a href={Admin.Index {}}>Admin</a> else Html.none}
-        {if props.loggedIn then <button click={App.Logout}>Log out</button> else <a href={Auth.Login {}}>Log in</a>}
+        <a href={Home {}}>Blog</a>
+        <a href={Admin {}}>Admin</a>
       </nav>
       <main>{props.children}</main>
     </body>

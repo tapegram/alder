@@ -1,8 +1,8 @@
 module Profile
 
 import Todo
-import User
 import Layout
+import User
 
 page "/profile" { } requires user
 
@@ -14,21 +14,29 @@ type Model = {
 load : Params -> Session -> Query Model
 load params session = {
   let user <- Db.get User session.user
-  let todos <- Db.from Todo |> Db.where (Todo.owner.eq session.user) |> Db.all
-  let total = List.length todos
-  let done = List.length (List.filter (\t -> t.done) todos)
-  Query.succeed { user: user, todoStats: { total: total, done: done } }
+  match user {
+    Just u -> {
+      let todos <-
+        Db.from Todo
+          |> Db.where (Todo.owner.eq session.user)
+          |> Db.all
+      let total = List.length todos
+      let done = List.length (List.filter (\t -> t.done) todos)
+      Query.succeed { user: u, todoStats: { total: total, done: done } }
+    },
+    Nothing -> Query.notFound,
+  }
 }
 
 form UpdateName = {
   name: Text.NonEmpty,
 }
 
-msg Save form UpdateName
+msg SaveName form UpdateName
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
-  Save p -> {
+  SaveName p -> {
     let _ <- Db.update User session.user (\u -> { u | name: p.form.name })
     Task.succeed Rerender
   },
@@ -41,9 +49,12 @@ view model session =
     <p>Name: {model.user.name}</p>
     <p>Email: {model.user.email}</p>
     <p>Todos: {Text.fromInt model.todoStats.total} ({Text.fromInt model.todoStats.done} done)</p>
-    <form submit={Save}>
-      <Input field="name" label="Name" />
+
+    <form submit={SaveName}>
+      <Input field="name" label="Name" value={model.user.name} />
       <Errors field="name" />
-      <button>Update</button>
+      <button>Update Name</button>
     </form>
+
+    <button click={App.Logout}>Log out</button>
   </Layout.Page>

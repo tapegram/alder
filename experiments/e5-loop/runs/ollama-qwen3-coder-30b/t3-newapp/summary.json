@@ -22,14 +22,14 @@
    "n": 1,
    "files": 9,
    "exit": 1,
-   "errors": 6,
+   "errors": 5,
    "warnings": 0,
    "codes": {
-    "E0001": 6
+    "E0001": 5
    },
    "rejected": [],
-   "seconds": 42.6,
-   "tokens": 2309,
+   "seconds": 49.4,
+   "tokens": 2191,
    "stderr": ""
   }
  ],

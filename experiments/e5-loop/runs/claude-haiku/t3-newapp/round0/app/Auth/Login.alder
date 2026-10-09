@@ -38,7 +38,7 @@ update msg model session = match msg {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Layout.Page title="Log in" loggedIn={False}>
+  <Layout.Page title="Log in" theme={session.theme} loggedIn={Maybe.isJust session.user}>
     <h1>Log in</h1>
     <form submit={Submit}>
       <Errors form />

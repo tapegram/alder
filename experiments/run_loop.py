@@ -169,7 +169,11 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
     if rejected:
         feedback += ("\n\nThese paths were rejected: " + ", ".join(rejected) +
                      "; files must be `app/<Module>.alder`.")
-    return (task + "\n\n====================  COMPILER FEEDBACK  ====================\n" + feedback +
+    previous = ""
+    if sources:  # every model call is a fresh process: the retry must carry the files it asks to fix
+        previous = ("\n\n====================  YOUR PREVIOUS ANSWER  ====================\n" +
+                    "\n".join(f"--- file: {path} ---\n{sources[path].rstrip(chr(10))}\n" for path in sorted(sources)))
+    return (task + previous + "\n\n====================  COMPILER FEEDBACK  ====================\n" + feedback +
             "\n\nFix every error. Output every file again, in full, each preceded by `--- file: app/<path> ---`. No explanation, only files.")
 
 

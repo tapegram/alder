@@ -1,3 +1,65 @@
+--- file: app/User.alder ---
+module User
+
+type UserId = brand Text
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  created: Time @created,
+}
+
+--- file: app/Theme.alder ---
+module Theme
+
+type Theme = Light | Dark
+
+flip : Theme -> Theme
+flip theme = match theme {
+  Light -> Dark,
+  Dark -> Light,
+}
+
+test "flip alternates" = flip (flip Light) == Light
+
+--- file: app/Note.alder ---
+module Note
+
+import User
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  title: Text.NonEmpty,
+  body: Text,
+  owner: User.UserId @ref User,
+  created: Time @created,
+}
+
+--- file: app/Layout.alder ---
+module Layout
+
+import Theme
+
+Page : { title: Text, theme: Theme, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+    </head>
+    <body class={if props.theme == Dark then "dark" else ""}>
+      <nav>
+        <button click={App.SwitchTheme}>{if props.theme == Dark then "Switch to light" else "Switch to dark"}</button>
+        <button click={App.Logout}>Log out</button>
+      </nav>
+      <main>{props.children}</main>
+    </body>
+  </html>
+
 --- file: app/App.alder ---
 module App
 
@@ -36,69 +98,6 @@ notFound =
   <Layout.Page title="Not found" theme={Light}>
     <h1>Not found</h1>
   </Layout.Page>
-
---- file: app/Theme.alder ---
-module Theme
-
-type Theme = Light | Dark
-
-flip : Theme -> Theme
-flip theme = match theme {
-  Light -> Dark,
-  Dark -> Light,
-}
-
-test "flip alternates" = flip (flip Light) == Light
-
---- file: app/User.alder ---
-module User
-
-type UserId = brand Text
-
-table User {
-  id: UserId @id,
-  email: Text.Email @unique,
-  name: Text.NonEmpty,
-  passwordHash: Text,
-  created: Time @created,
-}
-
---- file: app/Layout.alder ---
-module Layout
-
-import Theme
-
-Page : { title: Text, theme: Theme, children: List (Html a) } -> Html a
-Page props =
-  <html>
-    <head>
-      <meta charset="utf-8" />
-      <title>{props.title}</title>
-      <link rel="stylesheet" href={Url.external "/static/app.css"} />
-    </head>
-    <body class={if props.theme == Dark then "dark" else ""}>
-      <nav>
-        <button click={App.SwitchTheme}>{if props.theme == Dark then "Switch to light" else "Switch to dark"}</button>
-        <button click={App.Logout}>Log out</button>
-      </nav>
-      <main>{props.children}</main>
-    </body>
-  </html>
-
---- file: app/Note.alder ---
-module Note
-
-import User
-
-type NoteId = brand Text
-
-table Note {
-  id: NoteId @id,
-  title: Text.NonEmpty,
-  body: Text = "",
-  owner: User.UserId @ref User,
-  created: Time @created,
-}
 
 --- file: app/Auth/Login.alder ---
 module Auth.Login
@@ -182,8 +181,8 @@ msg Submit form NewNote
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Submit p -> {
-    let id <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
-    Task.succeed (Redirect (Notes.Show { id: id }))
+    let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+    Task.succeed (Redirect (Notes.Index {}))
   },
 }
 
@@ -193,13 +192,14 @@ view model session =
     <h1>Notes</h1>
 
     <form submit={Submit}>
-      <Errors form />
       <Input field="title" label="Title" />
       <Errors field="title" />
       <Textarea field="body" label="Body" />
       <Errors field="body" />
       <button>Add note</button>
     </form>
+
+    {if model.notes == [] then <p>No notes yet.</p> else Html.none}
 
     <ul id="notes">
       {for note in model.notes -> <Item note={note} />}
@@ -210,6 +210,7 @@ Item : { note: Note } -> Html Msg
 Item props =
   <li>
     <a href={Notes.Show { id: props.note.id }}>{props.note.title}</a>
+    <span class="created">{Time.format "Jan 2, 2006" props.note.created}</span>
   </li>
 
 --- file: app/Notes/Show.alder ---

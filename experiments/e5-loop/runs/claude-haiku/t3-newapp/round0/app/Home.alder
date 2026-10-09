@@ -19,15 +19,17 @@ load params session = {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Layout.Page title="Blog" loggedIn={Maybe.isJust session.user}>
+  <Layout.Page title="Blog" theme={session.theme} loggedIn={Maybe.isJust session.user}>
     <h1>Blog</h1>
+    {if List.isEmpty model.posts then <p>No posts yet.</p> else Html.none}
     <ul id="posts">
-      {for post in model.posts -> <PostItem post={post} />}
+      {for p in model.posts -> <PostCard post={p} />}
     </ul>
   </Layout.Page>
 
-PostItem : { post: Post } -> Html Msg
-PostItem props =
+PostCard : { post: Post } -> Html Msg
+PostCard props =
   <li>
     <a href={Posts.Show { slug: props.post.slug }}>{props.post.title}</a>
+    <span class="meta">{Time.format "Jan 2, 2006" props.post.created}</span>
   </li>

@@ -8,19 +8,12 @@ type Slug = brand Text where Text.matches "^[a-z0-9-]+$"
 
 table Post {
   id: PostId @id,
-  title: Text.NonEmpty,
   slug: Slug @unique,
+  title: Text.NonEmpty,
   body: Text.NonEmpty,
   published: Bool = False,
   author: User.UserId @ref User,
   created: Time @created,
 }
 
--- Unpublished posts are visible only to their author.
-canView : Post -> Maybe User.UserId -> Bool
-canView post viewer = post.published || viewer == Just post.author
-
-test "unpublished posts are hidden from visitors" = {
-  let post = { id: PostId "a", title: Text.NonEmpty "x", slug: Slug "x", body: Text.NonEmpty "x", published: False, author: User.UserId "u", created: Time.epoch }
-  not (canView post Nothing)
-}
+test "slug pattern rejects uppercase" = Text.matches "^[a-z0-9-]+$" "Hello" == False

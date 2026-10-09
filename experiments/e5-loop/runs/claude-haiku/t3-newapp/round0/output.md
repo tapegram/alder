@@ -1,15 +1,16 @@
 --- file: app/App.alder ---
-```alder
 module App
 
 import User
 import Layout
+import Theme
 
-session { user: Maybe User.UserId }
+session { user: Maybe User.UserId, theme: Theme = Light }
 
 login = Auth.Login
 
 msg Logout
+msg SwitchTheme
 
 update : Msg -> Session -> Task Nav
 update msg session = match msg {
@@ -17,29 +18,33 @@ update msg session = match msg {
     let _ <- Session.put (\s -> { s | user: Nothing })
     Task.succeed (Redirect (Home {}))
   },
+  SwitchTheme p -> {
+    let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
+    Task.succeed Rerender
+  },
 }
 
 error : Error -> Html Never
 error err =
-  <Layout.Page title="Error" loggedIn={False}>
+  <Layout.Page title="Error" theme={Light} loggedIn={False}>
     <h1>Something went wrong</h1>
     <p>Please try again.</p>
   </Layout.Page>
 
 notFound : Html Never
 notFound =
-  <Layout.Page title="Not found" loggedIn={False}>
+  <Layout.Page title="Not found" theme={Light} loggedIn={False}>
     <h1>Not found</h1>
   </Layout.Page>
-```
 
 --- file: app/Layout.alder ---
-```alder
 module Layout
 
-Page : { title: Text, loggedIn: Bool, children: List (Html a) } -> Html a
+import Theme
+
+Page : { title: Text, theme: Theme, loggedIn: Bool, children: List (Html a) } -> Html a
 Page props =
-  <html>
+  <html class={if props.theme == Dark then "dark" else ""}>
     <head>
       <meta charset="utf-8" />
       <title>{props.title}</title>
@@ -48,16 +53,28 @@ Page props =
     <body>
       <nav>
         <a href={Home {}}>Blog</a>
-        {if props.loggedIn then <a href={Admin {}}>Admin</a> else <a href={Auth.Login {}}>Log in</a>}
-        {if props.loggedIn then <button click={App.Logout}>Log out</button> else Html.none}
+        {if props.loggedIn then <a href={Admin {}}>Admin</a> else Html.none}
+        <button click={App.SwitchTheme}>{if props.theme == Dark then "Light mode" else "Dark mode"}</button>
+        {if props.loggedIn then <button click={App.Logout}>Log out</button> else <a href={Auth.Login {}}>Log in</a>}
       </nav>
       <main>{props.children}</main>
     </body>
   </html>
-```
+
+--- file: app/Theme.alder ---
+module Theme
+
+type Theme = Light | Dark
+
+flip : Theme -> Theme
+flip theme = match theme {
+  Light -> Dark,
+  Dark -> Light,
+}
+
+test "flip alternates" = flip (flip Light) == Light
 
 --- file: app/User.alder ---
-```alder
 module User
 
 type UserId = brand Text
@@ -69,10 +86,8 @@ table User {
   passwordHash: Text,
   created: Time @created,
 }
-```
 
 --- file: app/Post.alder ---
-```alder
 module Post
 
 import User
@@ -83,26 +98,17 @@ type Slug = brand Text where Text.matches "^[a-z0-9-]+$"
 
 table Post {
   id: PostId @id,
-  title: Text.NonEmpty,
   slug: Slug @unique,
+  title: Text.NonEmpty,
   body: Text.NonEmpty,
   published: Bool = False,
   author: User.UserId @ref User,
   created: Time @created,
 }
 
--- Unpublished posts are visible only to their author.
-canView : Post -> Maybe User.UserId -> Bool
-canView post viewer = post.published || viewer == Just post.author
-
-test "unpublished posts are hidden from visitors" = {
-  let post = { id: PostId "a", title: Text.NonEmpty "x", slug: Slug "x", body: Text.NonEmpty "x", published: False, author: User.UserId "u", created: Time.epoch }
-  not (canView post Nothing)
-}
-```
+test "slug pattern rejects uppercase" = Text.matches "^[a-z0-9-]+$" "Hello" == False
 
 --- file: app/Comment.alder ---
-```alder
 module Comment
 
 import Post
@@ -116,10 +122,8 @@ table Comment {
   body: Text.NonEmpty,
   created: Time @created,
 }
-```
 
 --- file: app/Home.alder ---
-```alder
 module Home
 
 import Post
@@ -141,24 +145,25 @@ load params session = {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Layout.Page title="Blog" loggedIn={Maybe.isJust session.user}>
+  <Layout.Page title="Blog" theme={session.theme} loggedIn={Maybe.isJust session.user}>
     <h1>Blog</h1>
+    {if List.isEmpty model.posts then <p>No posts yet.</p> else Html.none}
     <ul id="posts">
-      {for post in model.posts -> <PostItem post={post} />}
+      {for p in model.posts -> <PostCard post={p} />}
     </ul>
   </Layout.Page>
 
-PostItem : { post: Post } -> Html Msg
-PostItem props =
+PostCard : { post: Post } -> Html Msg
+PostCard props =
   <li>
     <a href={Posts.Show { slug: props.post.slug }}>{props.post.title}</a>
+    <span class="meta">{Time.format "Jan 2, 2006" props.post.created}</span>
   </li>
-```
 
 --- file: app/Posts/Show.alder ---
-```alder
 module Posts.Show
 
+import User
 import Post
 import Comment
 import Layout
@@ -170,12 +175,16 @@ type Model = {
   comments: List Comment,
 }
 
+-- Drafts are visible only to their author.
+visible : Post -> Maybe User.UserId -> Bool
+visible post user = match user {
+  Just u -> post.published || u == post.author,
+  Nothing -> post.published,
+}
+
 load : Params -> Session -> Query Model
 load params session = {
-  let found <-
-    Db.from Post
-      |> Db.where (Post.slug.eq params.slug)
-      |> Db.first
+  let found <- Db.from Post |> Db.where (Post.slug.eq params.slug) |> Db.first
   match found {
     Nothing -> Query.notFound,
     Just post -> {
@@ -184,7 +193,7 @@ load params session = {
           |> Db.where (Comment.post.eq post.id)
           |> Db.orderBy Comment.created.asc
           |> Db.all
-      if Post.canView post session.user then Query.succeed { post: post, comments: comments } else Query.notFound
+      if visible post session.user then Query.succeed { post: post, comments: comments } else Query.notFound
     },
   }
 }
@@ -206,29 +215,33 @@ update msg model session = match msg {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Layout.Page title={model.post.title} loggedIn={Maybe.isJust session.user}>
+  <Layout.Page title={model.post.title} theme={session.theme} loggedIn={Maybe.isJust session.user}>
     <article>
       <h1>{model.post.title}</h1>
+      <p class="meta">{Time.format "Jan 2, 2006" model.post.created}</p>
+      {if model.post.published then Html.none else <p class="draft">Draft: only the author can see this.</p>}
       <p>{model.post.body}</p>
     </article>
 
     <section id="comments">
       <h2>Comments</h2>
+      {if List.isEmpty model.comments then <p>No comments yet.</p> else Html.none}
       <ul>
         {for c in model.comments -> <CommentItem comment={c} />}
       </ul>
     </section>
 
+    <h2>Leave a comment</h2>
     <form submit={AddComment}>
       <Errors form />
-      <Input field="author" label="Your name" />
+      <Input field="author" label="Name" />
       <Errors field="author" />
       <Textarea field="body" label="Comment" />
       <Errors field="body" />
       <button>Post comment</button>
     </form>
 
-    <a href={Home {}}>All posts</a>
+    <a href={Home {}}>Back to posts</a>
   </Layout.Page>
 
 CommentItem : { comment: Comment } -> Html Msg
@@ -236,11 +249,10 @@ CommentItem props =
   <li>
     <strong>{props.comment.author}</strong>
     <p>{props.comment.body}</p>
+    <time>{Time.format "Jan 2, 2006" props.comment.created}</time>
   </li>
-```
 
 --- file: app/Admin.alder ---
-```alder
 module Admin
 
 import Post
@@ -252,10 +264,7 @@ type Model = { posts: List Post }
 
 load : Params -> Session -> Query Model
 load params session = {
-  let posts <-
-    Db.from Post
-      |> Db.orderBy Post.created.desc
-      |> Db.all
+  let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.all
   Query.succeed { posts: posts }
 }
 
@@ -265,25 +274,22 @@ form NewPost = {
   body: Text.NonEmpty,
 }
 
-msg CreatePost form NewPost
-msg TogglePublished { id: Post.PostId }
+msg Submit form NewPost
+msg Toggle { id: Post.PostId }
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
-  CreatePost p -> {
-    let existing <-
-      Db.from Post
-        |> Db.where (Post.slug.eq p.form.slug)
-        |> Db.first
+  Submit p -> {
+    let existing <- Db.from Post |> Db.where (Post.slug.eq p.form.slug) |> Db.first
     match existing {
       Just _ -> Task.succeed (Reject "That slug is already in use."),
       Nothing -> {
         let _ <- Db.insert Post { title: p.form.title, slug: p.form.slug, body: p.form.body, author: session.user }
-        Task.succeed Rerender
+        Task.succeed (Redirect (Admin {}))
       },
     }
   },
-  TogglePublished p -> {
+  Toggle p -> {
     let _ <- Db.update Post p.id (\t -> { t | published: not t.published })
     Task.succeed Rerender
   },
@@ -291,10 +297,11 @@ update msg model session = match msg {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Layout.Page title="Admin" loggedIn={True}>
-    <h1>Posts</h1>
+  <Layout.Page title="Admin" theme={session.theme} loggedIn={True}>
+    <h1>Admin</h1>
 
-    <form submit={CreatePost}>
+    <h2>New post</h2>
+    <form submit={Submit}>
       <Errors form />
       <Input field="title" label="Title" />
       <Errors field="title" />
@@ -305,22 +312,21 @@ view model session =
       <button>Create post</button>
     </form>
 
+    <h2>All posts</h2>
     <ul id="posts">
-      {for post in model.posts -> <AdminRow post={post} />}
+      {for post in model.posts -> <PostRow post={post} />}
     </ul>
   </Layout.Page>
 
-AdminRow : { post: Post } -> Html Msg
-AdminRow props =
+PostRow : { post: Post } -> Html Msg
+PostRow props =
   <li>
     <a href={Posts.Show { slug: props.post.slug }}>{props.post.title}</a>
-    <span>{if props.post.published then "Published" else "Draft"}</span>
-    <button click={TogglePublished { id: props.post.id }}>{if props.post.published then "Unpublish" else "Publish"}</button>
+    {if props.post.published then <span>Published</span> else <span>Draft</span>}
+    <button click={Toggle { id: props.post.id }}>{if props.post.published then "Unpublish" else "Publish"}</button>
   </li>
-```
 
 --- file: app/Auth/Login.alder ---
-```alder
 module Auth.Login
 
 import User
@@ -361,7 +367,7 @@ update msg model session = match msg {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Layout.Page title="Log in" loggedIn={False}>
+  <Layout.Page title="Log in" theme={session.theme} loggedIn={Maybe.isJust session.user}>
     <h1>Log in</h1>
     <form submit={Submit}>
       <Errors form />
@@ -372,4 +378,3 @@ view model session =
       <button>Log in</button>
     </form>
   </Layout.Page>
-```
