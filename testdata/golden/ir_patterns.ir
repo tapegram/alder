@@ -19,10 +19,14 @@
         (case nil (let x : Int (var _m1) (var x)))
         (default
           (match list (var _m2)
-            (case cons (bind b head : Int) (bind rest rest : List Int)
+            (case cons (bind _m3 head : Int) (bind _m4 rest : List Int)
               (let a : Int
                 (var _m1)
-                (+ (+ (var a) (var b)) (call (std List.length) (var rest)))))
+                (let b : Int
+                  (var _m3)
+                  (let rest : List Int
+                    (var _m4)
+                    (+ (+ (var a) (var b)) (call (std List.length) (var rest)))))))
             (default
               (let x : Int (var _m1) (let more : List Int (var _m2) (var x))))))))))
 (value P.word : Int -> Text (n)
@@ -52,7 +56,8 @@
     (let y : Int (field y (var p)) (+ (var x) (var y)))))
 (value P.size : Tree Text -> Int (t)
   (match union (var t)
-    (case Node (bind n : { value: Text, size: Int }) (field size (var n)))
+    (case Node (bind _m1 : { value: Text, size: Int })
+      (let n : { value: Text, size: Int } (var _m1) (field size (var n))))
     (case Leaf 0)))
 (value P.circles : List Float -> List Shape (rs)
   (call (std List.map)
@@ -95,6 +100,29 @@
         (default (var x))))
     (default (var x))))
 (value P.boxed : Shape () (ctor P.Shape.Rect (record (w 1) (h 2))))
+(value P.capRec : Int -> { a: Maybe Int, b: Int } -> Int (x r)
+  (match union (field a (var r))
+    (case Just (bind _m1 value : Int)
+      (match lit (field b (var r))
+        (case 0 (let x : Int (var _m1) (var x)))
+        (default (var x))))
+    (default (var x))))
+(value P.capList : Int -> List (Maybe Int) -> Int (x xs)
+  (match list (var xs)
+    (case cons (bind _m1 head : Maybe Int) (bind _m2 rest : List (Maybe Int))
+      (match union (var _m1)
+        (case Just (bind _m3 value : Int)
+          (match list (var _m2)
+            (case cons (bind _m4 head : Maybe Int) (bind _m5 rest : List (Maybe Int))
+              (match union (var _m4)
+                (case Nothing
+                  (match list (var _m5)
+                    (case nil (let x : Int (var _m3) (var x)))
+                    (default (var x))))
+                (default (var x))))
+            (default (var x))))
+        (default (var x))))
+    (default (var x))))
 (component P.View : { items: List (Maybe Int) } -> Html a (props)
   (elem ul
     (hfor item : Maybe Int

@@ -153,9 +153,11 @@
           (record Todos.Show.Params (id (field id (field todo (var props)))))))
       (hexpr text (field title (field todo (var props)))))
     (hmatch union (field due (field todo (var props)))
-      (case Just (bind d value : Date)
-        (elem span (attr class text "due")
-          (hexpr text (call (std Date.format) "Jan 2" (var d)))))
+      (case Just (bind _m1 value : Date)
+        (let d : Date
+          (var _m1)
+          (elem span (attr class text "due")
+            (hexpr text (call (std Date.format) "Jan 2" (var d))))))
       (case Nothing (hexpr html (std Html.none))))
     (elem button
       (attr click click

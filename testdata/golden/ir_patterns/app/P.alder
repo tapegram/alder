@@ -130,3 +130,15 @@ captureList x xs = match xs {
 
 boxed : Shape
 boxed = { w: 1, h: 2 } |> Rect
+
+capRec : Int -> { a: Maybe Int, b: Int } -> Int
+capRec x r = match r {
+  { a: (Just x), b: 0 } -> x,
+  _ -> x,
+}
+
+capList : Int -> List (Maybe Int) -> Int
+capList x xs = match xs {
+  [(Just x), Nothing] -> x,
+  _ -> x,
+}

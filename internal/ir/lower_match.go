@@ -20,10 +20,8 @@ import (
 //     the wildcard and variable arms, in their original order ("specialization").
 //   - A Case binds the parts of the matched value with Binds: a union payload (Field "value" when
 //     wrapped, Field "" for the whole record, or one Bind per record field the arms look at) or a
-//     list cons ("head", "rest"). Each part is bound to a fresh temporary, except when the Case's
-//     first arm matches every value of the tag and names the part with a plain variable: then
-//     that arm is the whole Case body and the part is bound to the arm's own name
-//     (`Rect { w: w, h: h }` → Bind w w, Bind h h; `Circle r` → Bind r value).
+//     list cons ("head", "rest"). Each part is always bound to a fresh temporary; a user's name
+//     is only ever introduced by a Let (`Circle r` → Bind _m1 value, then Let r = _m1).
 //   - The arms of a Case are tried one after another on those parts; a failing arm continues
 //     with the next, then with the enclosing fallback. The fallback node may appear in more than
 //     one place of the tree (shared).
@@ -404,11 +402,7 @@ func (m *matcher) caseFor(kind MatchKind, tag string, st types.Type, spec []spec
 			}
 		}
 	}
-	// name each part a pattern needs; drop the others
-	first := true // the first row matches every value of the tag
-	for _, p := range pats[0] {
-		first = first && irrefutable(p)
-	}
+	// bind each part a pattern needs to a temporary; drop the others
 	c := Case{Tag: tag}
 	var subjs []Expr
 	var used []int
@@ -420,18 +414,7 @@ func (m *matcher) caseFor(kind MatchKind, tag string, st types.Type, spec []spec
 		if !needed {
 			continue
 		}
-		name := ""
-		if first {
-			switch v := pats[0][j].(type) {
-			case *syntax.PVar:
-				name = v.Name
-			case listTail: // `..rest`, irrefutable since first holds
-				name = v.Rest
-			}
-		}
-		if name == "" {
-			name = m.l.temp()
-		}
+		name := m.l.temp()
 		c.Binds = append(c.Binds, Bind{Name: name, Field: p.field, Type: p.t})
 		subjs = append(subjs, local(name, p.t))
 		used = append(used, j)
