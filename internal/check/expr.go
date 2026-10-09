@@ -193,19 +193,27 @@ func (mc *modCtx) annotateMismatch(d *diag.Diagnostic, e syntax.Expr, got, expec
 	}
 }
 
-// source returns the text of a span (the rest of the first line when it spans lines).
+// source returns the exact text of a span, across lines when it spans several (trimmed at both ends).
 func (mc *modCtx) source(sp diag.Span) string {
-	line := lineOf(mc.m, sp.Start.Line)
-	if sp.Start.Line != sp.End.Line {
-		if sp.Start.Col-1 <= len(line) {
-			return strings.TrimSpace(line[sp.Start.Col-1:])
+	if sp.Start.Line < 1 || sp.End.Line > len(mc.m.Lines) || sp.End.Line < sp.Start.Line {
+		return ""
+	}
+	if sp.Start.Line == sp.End.Line {
+		line := lineOf(mc.m, sp.Start.Line)
+		if sp.End.Col-1 > len(line) || sp.Start.Col-1 > len(line) || sp.End.Col < sp.Start.Col {
+			return ""
 		}
+		return strings.TrimSpace(line[sp.Start.Col-1 : sp.End.Col-1])
+	}
+	first := lineOf(mc.m, sp.Start.Line)
+	last := lineOf(mc.m, sp.End.Line)
+	if sp.Start.Col-1 > len(first) || sp.End.Col-1 > len(last) {
 		return ""
 	}
-	if sp.End.Col-1 > len(line) || sp.Start.Col-1 > len(line) || sp.End.Col < sp.Start.Col {
-		return ""
-	}
-	return strings.TrimSpace(line[sp.Start.Col-1 : sp.End.Col-1])
+	parts := []string{first[sp.Start.Col-1:]}
+	parts = append(parts, mc.m.Lines[sp.Start.Line:sp.End.Line-1]...)
+	parts = append(parts, last[:sp.End.Col-1])
+	return strings.TrimSpace(strings.Join(parts, "\n"))
 }
 
 func (mc *modCtx) checkRecordLit(x *syntax.RecordLit, rec *types.Record, env *env, eff effect) {

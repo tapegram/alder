@@ -1,0 +1,4 @@
+module A
+
+x : Int
+x = (1, 2)

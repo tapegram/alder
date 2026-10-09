@@ -233,8 +233,6 @@ type Match struct {
 	Node
 	Subject Expr
 	Arms    []*Arm
-	// TrailingComma: the arm list ended with `,` before the closing `}` (false when there are no arms).
-	TrailingComma bool
 }
 type Arm struct {
 	Node

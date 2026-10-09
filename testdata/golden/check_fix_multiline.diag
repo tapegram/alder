@@ -1,0 +1,4 @@
+app/A.alder:4:5 E0003 expected Text, got Int
+  fix 4:5-5:17 Text.fromInt ([1, 2, 3]⏎  |> List.length)
+app/B.alder:12:25 E0102 `.name` on a `Maybe User`; match it first
+  fix 12:25-13:9 (match user { Just x -> x.name, Nothing -> ?default })

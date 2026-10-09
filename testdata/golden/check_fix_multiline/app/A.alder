@@ -1,0 +1,5 @@
+module A
+
+n : Text
+n = [1, 2, 3]
+  |> List.length

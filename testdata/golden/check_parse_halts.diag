@@ -1,0 +1,1 @@
+app/A.alder:4:5 E0602 tuples are not Alder; use a record `{ a: 1, b: 2 }`

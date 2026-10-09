@@ -18,8 +18,6 @@ type Parser struct {
 	noBrace bool
 	// prevEnd is the end of the last consumed non-newline token; spans end there, not at the next token.
 	prevEnd diag.Pos
-	// armsTrailingComma: the last parseArmsWith list ended with `,` before `}`.
-	armsTrailingComma bool
 }
 
 func newParser(file string, src []byte, sigMode bool) *Parser {

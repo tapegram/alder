@@ -114,8 +114,9 @@ func TestFixesApply(t *testing.T) {
 	}
 	// outputs that must contain a given text after applying the case's fix
 	want := map[string]string{
-		"E0102-maybe-field": "(match user { Just x -> x.name, Nothing -> ?default }) }",
-		"E0101-get-by-slug": "Db.from Post |> Db.where (Post.slug.eq params.slug) |> Db.first\n",
+		"E0102-maybe-field/E0102":   "(match user { Just x -> x.name, Nothing -> ?default }) }",
+		"check_fix_multiline/E0003": "|> List.length", // a multi-line span's fix must keep the whole expression
+		"E0101-get-by-slug/E0101":   "Db.from Post |> Db.where (Post.slug.eq params.slug) |> Db.first\n",
 	}
 	for _, dir := range dirs {
 		bag := runDir(t, dir)
@@ -134,7 +135,7 @@ func TestFixesApply(t *testing.T) {
 				t.Errorf("%s %s: fix changes nothing", dir, d.Code)
 			} else if _, pd := syntax.ParseFile(d.Span.File, []byte(out)); len(pd) > 0 && !strings.Contains(d.Fix.Replace, "?type") { // `?type` is a hole in type position, which the parser rejects by design
 				t.Errorf("%s %s: fix must leave the file parseable: %v\n%s", dir, d.Code, pd[0].Message, out)
-			} else if w, ok := want[filepath.Base(dir)]; ok && !strings.Contains(out, w) {
+			} else if w, ok := want[filepath.Base(dir)+"/"+d.Code]; ok && !strings.Contains(out, w) {
 				t.Errorf("%s %s: applied output lacks %q:\n%s", dir, d.Code, w, out)
 			}
 		}
