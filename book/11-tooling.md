@@ -33,6 +33,8 @@ alder fmt            rewrite every file in canonical format
 alder explain <id>   explain a diagnostic code
 ```
 
+`alder build --emit` writes the generated Go to `build/<app>/` and vets it. Chapter 13 walks through what it generates and why: see [How the compiler works](13-compiler.md).
+
 ## Diagnostics
 
 Every diagnostic has a stable code, a location, a one-line message, and,

@@ -24,6 +24,7 @@ changes, this book changes first.
 | [10. Testing](10-testing.md) | Pure tests |
 | [11. Tooling](11-tooling.md) | The compiler and its outputs |
 | [12. Design rationale](12-rationale.md) | Why each decision was made, with experiment results |
+| [13. How the compiler works](13-compiler.md) | Lexer to generated Go, with the to-do app followed through every stage |
 | [A. Grammar](A-grammar.md) | The formal grammar |
 | [B. Common mistakes](B-pitfalls.md) | The errors seen most often in experiments |
 
