@@ -259,7 +259,7 @@ func (mc *modCtx) component(x *syntax.Element, m types.Type, env *env, eff effec
 		return
 	}
 	fn, isFn := c.u.Instantiate(sig).(*types.Fun)
-	if types.IsErr(sig) || (isFn && types.IsErr(c.u.Apply(fn.Params[0]))) {
+	if types.IsErr(sig) || (isFn && len(fn.Params) == 1 && types.IsErr(c.u.Apply(fn.Params[0]))) {
 		mc.walkUnchecked(x, m, env, eff) // its signature names an unresolved type, already reported
 		return
 	}

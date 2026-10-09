@@ -2,3 +2,9 @@ app/Util.alder:4:1 E0007 `ident` has no type signature; write `ident : ?type` on
   fix 4:1-4:1 ident : ?type⏎
 app/Util.alder:7:1 E0007 `wrapped` has no type signature; write `wrapped : ?type` on the line before it
   fix 7:1-7:1 wrapped : ?type⏎
+app/Util.alder:13:1 E0007 `base` has no type signature; write `base : Query Int` on the line before it
+  fix 13:1-13:1 base : Query Int⏎
+app/Util.alder:15:1 E0007 `two` has no type signature; write `two : ?type` on the line before it
+  fix 15:1-15:1 two : ?type⏎
+app/Util.alder:30:1 E0007 `pair` has no type signature; write `pair : { first_n: Int }` on the line before it
+  fix 30:1-30:1 pair : { first_n: Int }⏎

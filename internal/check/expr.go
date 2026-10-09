@@ -112,9 +112,9 @@ func (mc *modCtx) inferSig(d *syntax.ValueDecl) {
 		sig = &types.Fun{Params: params, Result: sig}
 	}
 	mc.reportHoles()
-	s := types.StringIn(c.u.Apply(sig), mc.m.Name)
-	if strings.ContainsAny(s, "_?") {
-		s = "?type"
+	s := "?type"
+	if t := c.u.Apply(sig); !unknownIn(t) {
+		s = types.StringIn(t, mc.m.Name)
 	}
 	mc.missingSig(d, s)
 }
@@ -325,6 +325,9 @@ func (mc *modCtx) checkBlock(x *syntax.Block, expected types.Type, env *env, eff
 	_, expectedUnknown := expected.(*types.Var)
 	child := env.child()
 	sub := func() effect { return effect{kind: kind} }
+	// poisoned: the bound expression that should decide the block's kind has the poison type,
+	// so the kind is unknown because of an error already reported; its binds are not E0402.
+	poisoned := false
 	for _, s := range x.Stmts {
 		var t types.Type
 		if s.Type != nil {
@@ -343,6 +346,9 @@ func (mc *modCtx) checkBlock(x *syntax.Block, expected types.Type, env *env, eff
 		if kind == "" && expectedUnknown {
 			// no expectation: the first bound expression decides what kind of block this is
 			got = c.u.Apply(mc.infer(s.Expr, child, sub()))
+			if types.IsErr(got) {
+				poisoned = true
+			}
 			if k, _ := queryOrTask(got); k != "" {
 				kind = k
 				c.u.Unify(expected, &types.App{Con: k, Args: []types.Type{c.u.Fresh()}})
@@ -353,6 +359,13 @@ func (mc *modCtx) checkBlock(x *syntax.Block, expected types.Type, env *env, eff
 		inner := t
 		if inner == nil {
 			inner = c.u.Fresh()
+		}
+		if kind == "" && poisoned {
+			if got == nil {
+				mc.infer(s.Expr, child, sub())
+			}
+			child.bind(s.Name, types.Err)
+			continue
 		}
 		if kind == "" {
 			c.errorf("E0402", s.Span, "`let %s <-` is only allowed in a block that returns `Query` or `Task`", s.Name)
@@ -895,6 +908,45 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 		return mc.arith(x, l, r)
 	}
 	return c.u.Fresh()
+}
+
+// unknownIn reports whether the applied type t is not fully known: it contains an unsolved
+// variable or the poison type, so it cannot be written as a signature.
+func unknownIn(t types.Type) bool {
+	switch t := t.(type) {
+	case *types.Var:
+		return true
+	case *types.Con:
+		return types.IsErr(t)
+	case *types.App:
+		for _, a := range t.Args {
+			if unknownIn(a) {
+				return true
+			}
+		}
+	case *types.Union:
+		for _, a := range t.Args {
+			if unknownIn(a) {
+				return true
+			}
+		}
+	case *types.Fun:
+		for _, p := range t.Params {
+			if unknownIn(p) {
+				return true
+			}
+		}
+		return unknownIn(t.Result)
+	case *types.Record:
+		if t.Anonymous {
+			for _, f := range t.Fields {
+				if unknownIn(f.Type) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // poisoned reports whether t is or contains the poison type.

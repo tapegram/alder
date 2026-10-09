@@ -8,3 +8,23 @@ wrapped = { a: ident 1 }
 
 double : Int -> Int
 double n = n * 2
+
+-- binds a value with no signature: the block's kind is unknown, not an error
+base = Query.succeed 1
+
+two = {
+  let x <- base
+  Query.succeed x
+}
+
+three : Query Int
+three = {
+  let y = {
+    let z <- base
+    Query.succeed z
+  }
+  y
+}
+
+-- a `_` in a field name is not an unknown type
+pair = { first_n: 1 }
