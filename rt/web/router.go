@@ -1,0 +1,432 @@
+package web
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"mime"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"time"
+
+	"alder/rt/datastar"
+	"alder/rt/eff"
+	"alder/rt/html"
+)
+
+// Options configures NewRouter. The generated main fills it from the App module and the
+// environment.
+type Options struct {
+	Store       eff.Store               // db store (db.Store); nil only for apps without tables
+	Caps        map[string]any          // capability implementations, copied into every Env
+	Now         func() time.Time        // nil: time.Now
+	Log         func(level, msg string) // nil: no log
+	Dev         bool                    // dev mode: error text is appended to error pages
+	Secret      []byte                  // cookie key; nil or shorter than 16 bytes → DevKey + a warning
+	Session     SessionCodec            // generated JSON codec of the App session type
+	StaticDir   string                  // served under /static/; "" → none
+	ErrorDoc    func(err error) html.Node
+	NotFoundDoc func() html.Node
+	Login       string // App.login page path, copied to Request.Login
+}
+
+// maxBody is the largest POST body the router reads.
+const maxBody = 1 << 20
+
+// staticPrefix is where Options.StaticDir is served.
+const staticPrefix = "/static/"
+
+type router struct {
+	routes []route
+	opts   Options
+	key    []byte
+	log    func(level, msg string)
+	now    func() time.Time
+	static http.Handler // nil without a StaticDir
+	script http.Handler
+}
+
+type route struct {
+	method string
+	segs   []segment
+	handle func(*Request) Response
+}
+
+// segment is a literal path segment, or a parameter when param is set.
+type segment struct {
+	lit   string
+	param string
+}
+
+// NewRouter returns the app's http.Handler. For each request it: recovers panics (→ 500 via
+// ErrorDoc); serves the Datastar script at datastar.ScriptPath and Options.StaticDir under
+// /static/; matches method and pattern (a trailing slash is tolerated; anything unmatched,
+// including a GET to a POST-only path, is a 404 rendered with NotFoundDoc); reads a POST body
+// (at most 1 MiB, else 413; url-encoded forms are parsed, multipart is refused with 415);
+// decodes the session cookie; builds the Request and its Env; calls the route's Handle; and
+// writes the Response. Patterns are compiled here; a malformed one panics.
+//
+// The router keeps no mutable state: it is safe for concurrent requests.
+func NewRouter(routes []Route, opts Options) http.Handler {
+	rt := &router{opts: opts, key: opts.Secret, log: opts.Log, now: opts.Now, script: datastar.Handler()}
+	if rt.log == nil {
+		rt.log = func(string, string) {}
+	}
+	if rt.now == nil {
+		rt.now = time.Now
+	}
+	if len(rt.key) < minSecret {
+		rt.key = DevKey()
+		rt.log("warn", devWarning)
+	}
+	if opts.StaticDir != "" {
+		rt.static = http.StripPrefix(strings.TrimSuffix(staticPrefix, "/"), http.FileServer(filesOnly{http.Dir(opts.StaticDir)}))
+	}
+	for _, r := range routes {
+		if r.Method != http.MethodGet && r.Method != http.MethodPost {
+			panic(fmt.Sprintf("web: route %q: method %q is not GET or POST", r.Pattern, r.Method))
+		}
+		rt.routes = append(rt.routes, route{method: r.Method, segs: compile(r.Pattern), handle: r.Handle})
+	}
+	return rt
+}
+
+func compile(pattern string) []segment {
+	if !strings.HasPrefix(pattern, "/") {
+		panic(fmt.Sprintf("web: pattern %q does not start with /", pattern))
+	}
+	p := strings.TrimSuffix(pattern[1:], "/")
+	if p == "" {
+		return nil
+	}
+	var segs []segment
+	for _, s := range strings.Split(p, "/") {
+		switch {
+		case s == "":
+			panic(fmt.Sprintf("web: pattern %q has an empty segment", pattern))
+		case strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}") && len(s) > 2:
+			segs = append(segs, segment{param: s[1 : len(s)-1]})
+		default:
+			segs = append(segs, segment{lit: s})
+		}
+	}
+	return segs
+}
+
+// match reports whether the path segments fit the pattern, and its params.
+func (r *route) match(segs []string) (map[string]string, bool) {
+	if len(segs) != len(r.segs) {
+		return nil, false
+	}
+	params := map[string]string{}
+	for i, s := range r.segs {
+		switch {
+		case s.param != "":
+			if segs[i] == "" {
+				return nil, false
+			}
+			params[s.param] = segs[i]
+		case s.lit != segs[i]:
+			return nil, false
+		}
+	}
+	return params, true
+}
+
+// pathSegments splits the request path into unescaped segments, ignoring one trailing slash.
+// ok is false for a path that cannot be unescaped.
+func pathSegments(r *http.Request) ([]string, bool) {
+	p := strings.TrimSuffix(strings.TrimPrefix(r.URL.EscapedPath(), "/"), "/")
+	if p == "" {
+		return nil, true
+	}
+	raw := strings.Split(p, "/")
+	segs := make([]string, len(raw))
+	for i, s := range raw {
+		u, err := url.PathUnescape(s)
+		if err != nil {
+			return nil, false
+		}
+		segs[i] = u
+	}
+	return segs, true
+}
+
+func (rt *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if v := recover(); v != nil {
+			if v == http.ErrAbortHandler {
+				panic(v)
+			}
+			rt.fail(w, r, html.None(), fmt.Errorf("panic: %v", v))
+		}
+	}()
+
+	get := r.Method == http.MethodGet || r.Method == http.MethodHead
+	if get && r.URL.Path == datastar.ScriptPath {
+		rt.script.ServeHTTP(w, r)
+		return
+	}
+	if get && rt.static != nil && strings.HasPrefix(r.URL.Path, staticPrefix) {
+		rt.serveStatic(w, r)
+		return
+	}
+
+	method := r.Method
+	if method == http.MethodHead {
+		method = http.MethodGet
+	}
+	var hit *route
+	var params map[string]string
+	if segs, ok := pathSegments(r); ok {
+		for i := range rt.routes {
+			if rt.routes[i].method != method {
+				continue
+			}
+			if p, ok := rt.routes[i].match(segs); ok {
+				hit, params = &rt.routes[i], p
+				break
+			}
+		}
+	}
+	if hit == nil {
+		rt.notFound(w, html.None())
+		return
+	}
+
+	rq := &Request{
+		Ctx:      r.Context(),
+		HTTP:     r,
+		Params:   params,
+		Query:    r.URL.Query(),
+		Datastar: datastar.IsDatastar(r),
+		Dev:      rt.opts.Dev,
+		Login:    rt.opts.Login,
+	}
+	if method == http.MethodPost {
+		form, status := readForm(w, r)
+		if status != 0 {
+			http.Error(w, http.StatusText(status), status)
+			return
+		}
+		rq.Form = form
+	}
+	rq.Session = rt.decodeSession(r)
+	rq.Env = &eff.Env{
+		Ctx:     r.Context(),
+		Store:   rt.opts.Store,
+		Caps:    rt.opts.Caps,
+		Now:     rt.now,
+		Log:     rt.log,
+		Session: rq.Session,
+	}
+	rt.write(w, r, rq, hit.handle(rq))
+}
+
+// readForm reads a POST body: url-encoded forms are parsed, any other body except multipart
+// gives an empty form (a Datastar post without a form sends its signals as JSON). status is
+// non-zero on failure: 413 too large, 415 multipart, 400 malformed.
+func readForm(w http.ResponseWriter, r *http.Request) (url.Values, int) {
+	ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	switch {
+	case ct == "application/x-www-form-urlencoded":
+		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+		if err := r.ParseForm(); err != nil {
+			var tooBig *http.MaxBytesError
+			if errors.As(err, &tooBig) {
+				return nil, http.StatusRequestEntityTooLarge
+			}
+			return nil, http.StatusBadRequest
+		}
+		return r.PostForm, 0
+	case strings.HasPrefix(ct, "multipart/"):
+		return nil, http.StatusUnsupportedMediaType
+	default:
+		return url.Values{}, 0
+	}
+}
+
+// decodeSession is the session in r's cookie, or the codec's Default when it is missing, not
+// signed with the key, or not decodable.
+func (rt *router) decodeSession(r *http.Request) any {
+	codec := rt.opts.Session
+	if codec == nil {
+		return nil
+	}
+	if c, err := r.Cookie(CookieName); err == nil {
+		if payload, ok := Verify(rt.key, c.Value); ok {
+			if s, err := codec.Decode(payload); err == nil {
+				return s
+			}
+		}
+	}
+	return codec.Default()
+}
+
+// setSession adds the Set-Cookie header storing s. It returns an error when s cannot be
+// encoded (a bug in the generated codec).
+func (rt *router) setSession(w http.ResponseWriter, r *http.Request, s any) error {
+	if s == nil || rt.opts.Session == nil {
+		return nil
+	}
+	payload, err := rt.opts.Session.Encode(s)
+	if err != nil {
+		return fmt.Errorf("encoding the session: %w", err)
+	}
+	c := &http.Cookie{
+		Name:     CookieName,
+		Value:    Sign(rt.key, payload),
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+	}
+	if len(c.Value) > 4000 {
+		rt.log("warn", fmt.Sprintf("the session cookie is %d bytes; browsers may drop cookies over 4096", len(c.Value)))
+	}
+	http.SetCookie(w, c)
+	return nil
+}
+
+func (rt *router) write(w http.ResponseWriter, r *http.Request, rq *Request, resp Response) {
+	switch resp.Status {
+	case http.StatusOK, http.StatusSeeOther:
+		if err := rt.setSession(w, r, resp.Session); err != nil {
+			rt.fail(w, r, html.None(), err)
+			return
+		}
+		if resp.Status == http.StatusSeeOther {
+			w.Header().Set("Location", resp.Location)
+			w.WriteHeader(http.StatusSeeOther)
+			return
+		}
+		page := html.RenderWith(resp.Node, resp.State)
+		if resp.Patch && rq.Datastar {
+			if err := datastar.PatchBody(w, bodyOf(page)); err != nil {
+				rt.log("error", fmt.Sprintf("%s %s: writing the patch: %v", r.Method, r.URL.Path, err))
+			}
+			return
+		}
+		rt.document(w, http.StatusOK, page)
+	case http.StatusNotFound:
+		rt.notFound(w, resp.Node)
+	case http.StatusInternalServerError:
+		rt.fail(w, r, resp.Node, resp.Err)
+	default:
+		rt.fail(w, r, html.None(), fmt.Errorf("handler returned a response with status %d", resp.Status))
+	}
+}
+
+// document writes "<!doctype html>\n" + page, with the Datastar script tag injected, as HTML.
+func (rt *router) document(w http.ResponseWriter, status int, page string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte("<!doctype html>\n" + withScript(page)))
+}
+
+// notFound writes doc (or, when it renders empty, Options.NotFoundDoc) with status 404.
+func (rt *router) notFound(w http.ResponseWriter, doc html.Node) {
+	page := html.Render(doc)
+	if page == "" && rt.opts.NotFoundDoc != nil {
+		page = html.Render(rt.opts.NotFoundDoc())
+	}
+	if page == "" {
+		http.Error(w, "404 page not found", http.StatusNotFound)
+		return
+	}
+	rt.document(w, http.StatusNotFound, page)
+}
+
+// fail logs err and writes doc (or, when it renders empty, Options.ErrorDoc(err)) with status
+// 500; in dev the error text is appended as an HTML comment.
+func (rt *router) fail(w http.ResponseWriter, r *http.Request, doc html.Node, err error) {
+	rt.log("error", fmt.Sprintf("%s %s: %v", r.Method, r.URL.Path, err))
+	page := html.Render(doc)
+	if page == "" && rt.opts.ErrorDoc != nil {
+		page = html.Render(rt.opts.ErrorDoc(err))
+	}
+	if page == "" {
+		page = "<p>Internal Server Error</p>"
+	}
+	if rt.opts.Dev {
+		page += "<!-- error: " + commentSafe(fmt.Sprint(err)) + " -->"
+	}
+	rt.document(w, http.StatusInternalServerError, page)
+}
+
+// commentSafe makes s safe inside an HTML comment: no "--" (which could end it).
+func commentSafe(s string) string {
+	for strings.Contains(s, "--") {
+		s = strings.ReplaceAll(s, "--", "- -")
+	}
+	return s
+}
+
+// withScript inserts the Datastar script tag right after the first <head> start tag, or at
+// the start of the page when there is none.
+func withScript(page string) string {
+	tag := html.Render(datastar.ScriptTag())
+	if i := startTag(page, "head"); i >= 0 {
+		if j := strings.IndexByte(page[i:], '>'); j >= 0 {
+			k := i + j + 1
+			return page[:k] + tag + page[k:]
+		}
+	}
+	return tag + page
+}
+
+// startTag is the index of the first <name> or <name …> start tag in page, or -1.
+func startTag(page, name string) int {
+	open := "<" + name
+	for i := 0; ; {
+		j := strings.Index(page[i:], open)
+		if j < 0 {
+			return -1
+		}
+		k := i + j + len(open)
+		if k < len(page) && (page[k] == '>' || page[k] == ' ') {
+			return i + j
+		}
+		i = k
+	}
+}
+
+// bodyOf is the <body>…</body> of a rendered page, inclusive, or the page wrapped in <body>
+// when it has none.
+func bodyOf(page string) string {
+	i := startTag(page, "body")
+	j := strings.LastIndex(page, "</body>")
+	if i < 0 || j < i {
+		return "<body>" + page + "</body>"
+	}
+	return page[i : j+len("</body>")]
+}
+
+func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {
+	// http.FileServer cleans the path already; refusing ".." outright makes that explicit.
+	for _, s := range strings.Split(r.URL.Path, "/") {
+		if s == ".." {
+			http.NotFound(w, r)
+			return
+		}
+	}
+	rt.static.ServeHTTP(w, r)
+}
+
+// filesOnly is a FileSystem in which directories do not exist: no listings, no index pages.
+type filesOnly struct{ fs http.FileSystem }
+
+func (f filesOnly) Open(name string) (http.File, error) {
+	file, err := f.fs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	st, err := file.Stat()
+	if err != nil || st.IsDir() {
+		file.Close()
+		return nil, &fs.PathError{Op: "open", Path: name, Err: os.ErrNotExist}
+	}
+	return file, nil
+}
