@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"alder/rt/datastar"
@@ -46,6 +48,35 @@ type router struct {
 	now    func() time.Time
 	static http.Handler // nil without a StaticDir
 	script http.Handler
+
+	bigCookie sync.Once // the oversized-cookie warning is logged once per router
+}
+
+// sessionMaxAge is the session cookie's lifetime: 30 days, renewed whenever it is stored.
+const sessionMaxAge = 30 * 24 * 60 * 60
+
+// tracker records whether anything has been written to the client, so a panic after the
+// response has started is only logged (writing an error page then would corrupt it).
+type tracker struct {
+	http.ResponseWriter
+	started bool
+}
+
+func (t *tracker) WriteHeader(code int) {
+	t.started = true
+	t.ResponseWriter.WriteHeader(code)
+}
+
+func (t *tracker) Write(b []byte) (int, error) {
+	t.started = true
+	return t.ResponseWriter.Write(b)
+}
+
+// Flush lets datastar.PatchBody flush through the tracker.
+func (t *tracker) Flush() {
+	if f, ok := t.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 type route struct {
@@ -68,7 +99,11 @@ type segment struct {
 // decodes the session cookie; builds the Request and its Env; calls the route's Handle; and
 // writes the Response. Patterns are compiled here; a malformed one panics.
 //
-// The router keeps no mutable state: it is safe for concurrent requests.
+// Under Datastar (header Datastar-Request: true) a 404 or 500 is answered like a re-rendered
+// page: status 200 and an SSE patch of the NotFound/Error document's <body>, because the
+// Datastar client ignores other answers.
+//
+// The router's only mutable state is a once-only warning: it is safe for concurrent requests.
 func NewRouter(routes []Route, opts Options) http.Handler {
 	rt := &router{opts: opts, key: opts.Secret, log: opts.Log, now: opts.Now, script: datastar.Handler()}
 	if rt.log == nil {
@@ -154,13 +189,20 @@ func pathSegments(r *http.Request) ([]string, bool) {
 	return segs, true
 }
 
-func (rt *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	w := &tracker{ResponseWriter: rw}
 	defer func() {
 		if v := recover(); v != nil {
 			if v == http.ErrAbortHandler {
 				panic(v)
 			}
-			rt.fail(w, r, html.None(), fmt.Errorf("panic: %v", v))
+			err := fmt.Errorf("panic: %v", v)
+			// The stack goes to the log only, never to the page.
+			if w.started {
+				rt.log("error", fmt.Sprintf("%s %s: %v (after the response started)\n%s", r.Method, r.URL.Path, err, debug.Stack()))
+				return
+			}
+			rt.fail(w, r, html.None(), err, debug.Stack())
 		}
 	}()
 
@@ -192,7 +234,7 @@ func (rt *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if hit == nil {
-		rt.notFound(w, html.None())
+		rt.notFound(w, r, html.None())
 		return
 	}
 
@@ -249,7 +291,8 @@ func readForm(w http.ResponseWriter, r *http.Request) (url.Values, int) {
 }
 
 // decodeSession is the session in r's cookie, or the codec's Default when it is missing, not
-// signed with the key, or not decodable.
+// signed with the key, or not decodable. When the request carries several alder_session
+// cookies, only the first is considered.
 func (rt *router) decodeSession(r *http.Request) any {
 	codec := rt.opts.Session
 	if codec == nil {
@@ -275,16 +318,24 @@ func (rt *router) setSession(w http.ResponseWriter, r *http.Request, s any) erro
 	if err != nil {
 		return fmt.Errorf("encoding the session: %w", err)
 	}
+	// Secure is set for TLS requests and behind a proxy that says https. X-Forwarded-Proto
+	// is client-supplied, but it can only add the flag (making the cookie stricter), never
+	// remove it.
 	c := &http.Cookie{
 		Name:     CookieName,
 		Value:    Sign(rt.key, payload),
 		Path:     "/",
+		MaxAge:   sessionMaxAge,
+		Expires:  rt.now().Add(sessionMaxAge * time.Second),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
 	}
 	if len(c.Value) > 4000 {
-		rt.log("warn", fmt.Sprintf("the session cookie is %d bytes; browsers may drop cookies over 4096", len(c.Value)))
+		n := len(c.Value)
+		rt.bigCookie.Do(func() {
+			rt.log("warn", fmt.Sprintf("the session cookie is %d bytes; browsers may drop cookies over 4096", n))
+		})
 	}
 	http.SetCookie(w, c)
 	return nil
@@ -294,7 +345,7 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, rq *Request, res
 	switch resp.Status {
 	case http.StatusOK, http.StatusSeeOther:
 		if err := rt.setSession(w, r, resp.Session); err != nil {
-			rt.fail(w, r, html.None(), err)
+			rt.fail(w, r, html.None(), err, nil)
 			return
 		}
 		if resp.Status == http.StatusSeeOther {
@@ -311,11 +362,11 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, rq *Request, res
 		}
 		rt.document(w, http.StatusOK, page)
 	case http.StatusNotFound:
-		rt.notFound(w, resp.Node)
+		rt.notFound(w, r, resp.Node)
 	case http.StatusInternalServerError:
-		rt.fail(w, r, resp.Node, resp.Err)
+		rt.fail(w, r, resp.Node, resp.Err, nil)
 	default:
-		rt.fail(w, r, html.None(), fmt.Errorf("handler returned a response with status %d", resp.Status))
+		rt.fail(w, r, html.None(), fmt.Errorf("handler returned a response with status %d", resp.Status), nil)
 	}
 }
 
@@ -326,23 +377,28 @@ func (rt *router) document(w http.ResponseWriter, status int, page string) {
 	_, _ = w.Write([]byte("<!doctype html>\n" + withScript(page)))
 }
 
-// notFound writes doc (or, when it renders empty, Options.NotFoundDoc) with status 404.
-func (rt *router) notFound(w http.ResponseWriter, doc html.Node) {
+// notFound writes doc (or, when it renders empty, Options.NotFoundDoc) with status 404, or as
+// a body patch for a Datastar request.
+func (rt *router) notFound(w http.ResponseWriter, r *http.Request, doc html.Node) {
 	page := html.Render(doc)
 	if page == "" && rt.opts.NotFoundDoc != nil {
 		page = html.Render(rt.opts.NotFoundDoc())
 	}
 	if page == "" {
-		http.Error(w, "404 page not found", http.StatusNotFound)
-		return
+		page = "<p>404 page not found</p>"
 	}
-	rt.document(w, http.StatusNotFound, page)
+	rt.failure(w, r, http.StatusNotFound, page)
 }
 
-// fail logs err and writes doc (or, when it renders empty, Options.ErrorDoc(err)) with status
-// 500; in dev the error text is appended as an HTML comment.
-func (rt *router) fail(w http.ResponseWriter, r *http.Request, doc html.Node, err error) {
-	rt.log("error", fmt.Sprintf("%s %s: %v", r.Method, r.URL.Path, err))
+// fail logs err (with stack, when given) and writes doc (or, when it renders empty,
+// Options.ErrorDoc(err)) with status 500, or as a body patch for a Datastar request. In dev
+// the error text is added as an HTML comment at the end of the <body>.
+func (rt *router) fail(w http.ResponseWriter, r *http.Request, doc html.Node, err error, stack []byte) {
+	msg := fmt.Sprintf("%s %s: %v", r.Method, r.URL.Path, err)
+	if stack != nil {
+		msg += "\n" + string(stack)
+	}
+	rt.log("error", msg)
 	page := html.Render(doc)
 	if page == "" && rt.opts.ErrorDoc != nil {
 		page = html.Render(rt.opts.ErrorDoc(err))
@@ -351,9 +407,29 @@ func (rt *router) fail(w http.ResponseWriter, r *http.Request, doc html.Node, er
 		page = "<p>Internal Server Error</p>"
 	}
 	if rt.opts.Dev {
-		page += "<!-- error: " + commentSafe(fmt.Sprint(err)) + " -->"
+		page = endOfBody(page, "<!-- error: "+commentSafe(fmt.Sprint(err))+" -->")
 	}
-	rt.document(w, http.StatusInternalServerError, page)
+	rt.failure(w, r, http.StatusInternalServerError, page)
+}
+
+// failure writes a 404/500 page: a full document with that status, or, for a Datastar
+// request, a 200 SSE patch of its body (the Datastar client ignores non-2xx answers).
+func (rt *router) failure(w http.ResponseWriter, r *http.Request, status int, page string) {
+	if datastar.IsDatastar(r) {
+		if err := datastar.PatchBody(w, bodyOf(page)); err != nil {
+			rt.log("error", fmt.Sprintf("%s %s: writing the patch: %v", r.Method, r.URL.Path, err))
+		}
+		return
+	}
+	rt.document(w, status, page)
+}
+
+// endOfBody inserts s just before the last </body> of page, or appends it when there is none.
+func endOfBody(page, s string) string {
+	if i := strings.LastIndex(page, "</body>"); i >= 0 {
+		return page[:i] + s + page[i:]
+	}
+	return page + s
 }
 
 // commentSafe makes s safe inside an HTML comment: no "--" (which could end it).

@@ -48,7 +48,7 @@ func TestResponse_PageFullHTML(t *testing.T) {
 		t.Fatalf("form state not rendered: %q", body)
 	}
 	c := sessionCookie(t, w)
-	if c == nil || !c.HttpOnly || c.Path != "/" || c.SameSite != http.SameSiteLaxMode {
+	if c == nil || !c.HttpOnly || c.Path != "/" || c.SameSite != http.SameSiteLaxMode || c.MaxAge != 30*24*60*60 || c.Expires.IsZero() || c.Secure {
 		t.Fatalf("cookie %+v", c)
 	}
 	payload, ok := Verify(key, c.Value)
@@ -152,33 +152,43 @@ func TestResponse_Redirect303(t *testing.T) {
 }
 
 func TestResponse_ErrorHidesTextInProd(t *testing.T) {
-	for _, dev := range []bool{false, true} {
-		var logs []string
-		h := NewRouter(one("POST", "/_m/A/B", func(rq *Request) Response {
-			return ErrorResponse(doc("Something went wrong"), errors.New("db is -- down"))
-		}), testOpts(func(o *Options) {
-			o.Dev = dev
-			o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) }
-		}))
-		req := httptest.NewRequest("POST", "/_m/A/B", nil)
-		req.Header.Set("Datastar-Request", "true")
-		w := serve(h, req)
-		body := w.Body.String()
-		if w.Code != 500 || w.Header().Get("Content-Type") != "text/html; charset=utf-8" || !strings.Contains(body, "<p>Something went wrong</p>") {
-			t.Fatalf("dev=%v: %d %q", dev, w.Code, body)
-		}
-		if sessionCookie(t, w) != nil {
-			t.Fatalf("dev=%v: error set the cookie", dev)
-		}
-		if dev {
-			if !strings.HasSuffix(body, "</html><!-- error: db is - - down -->") {
-				t.Fatalf("dev body %q", body)
+	for _, ds := range []bool{false, true} {
+		for _, dev := range []bool{false, true} {
+			var logs []string
+			h := NewRouter(one("POST", "/_m/A/B", func(rq *Request) Response {
+				return ErrorResponse(doc("Something went wrong"), errors.New("db is -- down"))
+			}), testOpts(func(o *Options) {
+				o.Dev = dev
+				o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) }
+			}))
+			req := httptest.NewRequest("POST", "/_m/A/B", nil)
+			if ds {
+				req.Header.Set("Datastar-Request", "true")
 			}
-		} else if strings.Contains(body, "down") || strings.Contains(body, "<!--") {
-			t.Fatalf("prod body leaks the error: %q", body)
-		}
-		if len(logs) != 1 || logs[0] != "error: POST /_m/A/B: db is -- down" {
-			t.Fatalf("dev=%v: logs %q", dev, logs)
+			w := serve(h, req)
+			body := w.Body.String()
+			if ds {
+				// Under Datastar: a 200 SSE patch of the error document's body.
+				if w.Code != 200 || w.Header().Get("Content-Type") != "text/event-stream" || !strings.Contains(body, "data: elements <body><p>Something went wrong</p>") {
+					t.Fatalf("ds dev=%v: %d %q", dev, w.Code, body)
+				}
+			} else if w.Code != 500 || w.Header().Get("Content-Type") != "text/html; charset=utf-8" || !strings.Contains(body, "<p>Something went wrong</p>") {
+				t.Fatalf("dev=%v: %d %q", dev, w.Code, body)
+			}
+			if sessionCookie(t, w) != nil {
+				t.Fatalf("dev=%v: error set the cookie", dev)
+			}
+			if dev {
+				// The comment goes at the end of the <body>, for pages and patches alike.
+				if !strings.Contains(body, "<p>Something went wrong</p><!-- error: db is - - down --></body>") {
+					t.Fatalf("ds=%v dev body %q", ds, body)
+				}
+			} else if strings.Contains(body, "down") || strings.Contains(body, "<!--") {
+				t.Fatalf("ds=%v prod body leaks the error: %q", ds, body)
+			}
+			if len(logs) != 1 || logs[0] != "error: POST /_m/A/B: db is -- down" {
+				t.Fatalf("ds=%v dev=%v: logs %q", ds, dev, logs)
+			}
 		}
 	}
 
@@ -192,5 +202,27 @@ func TestResponse_ErrorHidesTextInProd(t *testing.T) {
 	}
 	if w := serve(h, httptest.NewRequest("GET", "/n", nil)); w.Code != 404 || !strings.Contains(w.Body.String(), "<p>No such todo</p>") {
 		t.Fatalf("not found response: %d %q", w.Code, w.Body.String())
+	}
+}
+
+func TestResponse_NotFoundPatchedUnderDatastar(t *testing.T) {
+	h := NewRouter(one("POST", "/_m/Todos/Remove", func(rq *Request) Response {
+		return NotFoundResponse(doc("No such todo"))
+	}), testOpts(nil))
+	for path, want := range map[string]string{
+		"/_m/Todos/Remove": "data: elements <body><p>No such todo</p></body>\n", // handler-returned
+		"/_m/Todos/Nope":   "data: elements <body><p>Not found</p></body>\n",    // no such message
+	} {
+		req := httptest.NewRequest("POST", path, nil)
+		req.Header.Set("Datastar-Request", "true")
+		w := serve(h, req)
+		if w.Code != 200 || w.Header().Get("Content-Type") != "text/event-stream" || !strings.Contains(w.Body.String(), want) {
+			t.Fatalf("%s: %d %q %q", path, w.Code, w.Header().Get("Content-Type"), w.Body.String())
+		}
+		// Without Datastar: the 404 page.
+		w = serve(h, httptest.NewRequest("POST", path, nil))
+		if w.Code != 404 || w.Header().Get("Content-Type") != "text/html; charset=utf-8" {
+			t.Fatalf("%s without datastar: %d", path, w.Code)
+		}
 	}
 }

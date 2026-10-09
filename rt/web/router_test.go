@@ -221,8 +221,19 @@ func TestRouter_PanicRecovered(t *testing.T) {
 	if docErr == nil || !strings.Contains(docErr.Error(), "kaboom") {
 		t.Fatalf("ErrorDoc got %v", docErr)
 	}
-	if len(logs) != 1 || !strings.HasPrefix(logs[0], "error: GET /boom: ") || !strings.Contains(logs[0], "kaboom") {
+	if len(logs) != 1 || !strings.HasPrefix(logs[0], "error: GET /boom: ") || !strings.Contains(logs[0], "kaboom") || !strings.Contains(logs[0], "goroutine") {
 		t.Fatalf("logs %q", logs)
+	}
+	if strings.Contains(w.Body.String(), "goroutine") {
+		t.Fatal("stack reached the page")
+	}
+
+	// Under Datastar: a 200 patch of the error document's body.
+	req := httptest.NewRequest("GET", "/boom", nil)
+	req.Header.Set("Datastar-Request", "true")
+	w = serve(h, req)
+	if w.Code != 200 || w.Header().Get("Content-Type") != "text/event-stream" || !strings.Contains(w.Body.String(), "data: elements <body><p>Something went wrong</p></body>") {
+		t.Fatalf("datastar panic: %d %q", w.Code, w.Body.String())
 	}
 	// The router keeps serving.
 	if w := serve(h, httptest.NewRequest("GET", "/boom", nil)); w.Code != 500 {
@@ -322,5 +333,30 @@ func TestRouter_ConcurrentRequests(t *testing.T) {
 		if msg := <-done; msg != "" {
 			t.Error(msg)
 		}
+	}
+}
+
+// flushPanics is a ResponseWriter whose Flush panics, i.e. a panic after the response started.
+type flushPanics struct{ *httptest.ResponseRecorder }
+
+func (f flushPanics) Flush() { panic("flush failed") }
+
+func TestRouter_PanicAfterWriteOnlyLogged(t *testing.T) {
+	var logs []string
+	h := NewRouter(one("POST", "/_m/A/B", func(rq *Request) Response {
+		return PageResponse(doc("patched"), nil, nil, true)
+	}), testOpts(func(o *Options) {
+		o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) }
+	}))
+	req := httptest.NewRequest("POST", "/_m/A/B", nil)
+	req.Header.Set("Datastar-Request", "true")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(flushPanics{rec}, req)
+	body := rec.Body.String()
+	if strings.Count(body, "event: ") != 1 || strings.Contains(body, "went wrong") {
+		t.Fatalf("written twice: %q", body)
+	}
+	if len(logs) != 1 || !strings.Contains(logs[0], "flush failed") || !strings.Contains(logs[0], "after the response started") {
+		t.Fatalf("logs %q", logs)
 	}
 }

@@ -126,3 +126,26 @@ func TestSession_DevKeyWarnsOnce(t *testing.T) {
 		}
 	}
 }
+
+func TestSession_BigCookieWarnsOnce(t *testing.T) {
+	var logs []string
+	h := NewRouter(one("GET", "/", func(rq *Request) Response {
+		return PageResponse(doc("x"), nil, testSession{User: strings.Repeat("u", 4000)}, false)
+	}), testOpts(func(o *Options) {
+		o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) }
+	}))
+	for i := 0; i < 3; i++ {
+		if c := sessionCookie(t, serve(h, httptest.NewRequest("GET", "/", nil))); c == nil {
+			t.Fatal("no cookie")
+		}
+	}
+	if len(logs) != 1 || !strings.HasPrefix(logs[0], "warn: the session cookie is ") {
+		t.Fatalf("logs %q", logs)
+	}
+	// Secure behind a TLS-terminating proxy.
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	if c := sessionCookie(t, serve(h, req)); c == nil || !c.Secure {
+		t.Fatalf("cookie %+v", c)
+	}
+}
