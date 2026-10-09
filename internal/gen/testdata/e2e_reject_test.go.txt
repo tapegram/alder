@@ -1,0 +1,128 @@
+package app
+
+// TestE2E_RejectKeepsWrites (M3c Task 5): gen_vet/m3c-reject's Names.Add inserts a row, stores
+// the session and answers Reject "taken". Reject is a successful Task: the insert is committed,
+// the session stored, and the page re-rendered (200) with the rejection on the form that sent
+// the message. internal/gen's TestE2E_RejectKeepsWrites writes this file into the module the
+// app is emitted to and runs it.
+
+import (
+	"encoding/base64"
+	"io"
+	"net/http"
+	"net/http/cookiejar"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestE2E_RejectKeepsWrites(t *testing.T) {
+	h, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true, Secret: []byte("test-secret-0123456789")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	jar, _ := cookiejar.New(nil)
+	c := &http.Client{Jar: jar, Timeout: 10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	do := func(method, path string, form url.Values, hdr ...string) (*http.Response, string) {
+		t.Helper()
+		var body io.Reader
+		if form != nil {
+			body = strings.NewReader(form.Encode())
+		}
+		req, _ := http.NewRequest(method, srv.URL+path, body)
+		if form != nil {
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
+		for _, h := range hdr {
+			k, v, _ := strings.Cut(h, ": ")
+			req.Header.Set(k, v)
+		}
+		res, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		t.Logf("%s %s → %d %s Set-Cookie=%q", method, path, res.StatusCode, res.Header.Get("Content-Type"), res.Header.Get("Set-Cookie"))
+		return res, string(b)
+	}
+	session := func(res *http.Response) App__Session {
+		t.Helper()
+		sc := res.Header.Get("Set-Cookie")
+		if !strings.HasPrefix(sc, "alder_session=") || !strings.Contains(sc, "; HttpOnly") || !strings.Contains(sc, "; SameSite=Lax") {
+			t.Fatalf("Set-Cookie %q", sc)
+		}
+		v, _, _ := strings.Cut(strings.TrimPrefix(sc, "alder_session="), ";")
+		p, _, _ := strings.Cut(v, ".")
+		raw, err := base64.RawURLEncoding.DecodeString(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, err := session__codec{}.Decode(raw)
+		if err != nil {
+			t.Fatalf("%s: %v", raw, err)
+		}
+		t.Logf("session %s", raw)
+		return s.(App__Session)
+	}
+	has := func(body string, frags ...string) {
+		t.Helper()
+		for _, f := range frags {
+			if !strings.Contains(body, f) {
+				t.Fatalf("body lacks %q:\n%s", f, body)
+			}
+		}
+	}
+
+	res, body := do("GET", "/", nil)
+	if res.StatusCode != 200 {
+		t.Fatalf("GET / = %d:\n%s", res.StatusCode, body)
+	}
+	has(body, `<ul id="names"></ul>`, `<p id="adds">0</p>`, `<ul class="errors" data-errors="form"></ul>`)
+	if s := session(res); s.N != 0 {
+		t.Fatalf("n = %d", s.N)
+	}
+
+	ref := "Referer: " + srv.URL + "/"
+	res, body = do("POST", "/_m/Names/Add", url.Values{"name": {"ann"}}, ref)
+	if res.StatusCode != 200 || res.Header.Get("Content-Type") != "text/html; charset=utf-8" {
+		t.Fatalf("Add = %d %q:\n%s", res.StatusCode, res.Header.Get("Content-Type"), body)
+	}
+	// the rejection on the form, the submitted value kept, the row inserted by the same Task
+	has(body, `<ul class="errors" data-errors="form"><li>taken</li></ul>`, `value="ann"`, `<ul id="names"><li>ann</li></ul>`, `<p id="adds">1</p>`)
+	if s := session(res); s.N != 1 {
+		t.Fatalf("n after Add = %d, want 1", s.N)
+	}
+
+	// under Datastar: the same, as a body patch
+	res, body = do("POST", "/_m/Names/Add", url.Values{"name": {"bob"}}, ref, "Datastar-Request: true")
+	if res.StatusCode != 200 || res.Header.Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("Add (Datastar) = %d %q:\n%s", res.StatusCode, res.Header.Get("Content-Type"), body)
+	}
+	has(body, "event: datastar-patch-elements\ndata: selector body\ndata: mode outer\n", `<li>taken</li>`, `<li>ann</li><li>bob</li>`)
+	if s := session(res); s.N != 2 {
+		t.Fatalf("n after the second Add = %d, want 2", s.N)
+	}
+
+	// a form error: update does not run, nothing is written, the session is not stored
+	res, body = do("POST", "/_m/Names/Add", url.Values{"name": {""}}, ref)
+	if res.StatusCode != 200 {
+		t.Fatalf("Add with an empty name = %d:\n%s", res.StatusCode, body)
+	}
+	has(body, `<ul class="errors" data-errors="name"><li>must not be empty</li></ul>`, `<ul class="errors" data-errors="form"></ul>`, `<ul id="names"><li>ann</li><li>bob</li></ul>`, `<p id="adds">2</p>`)
+	if sc := res.Header.Get("Set-Cookie"); sc != "" {
+		t.Fatalf("a form error stored the session: %q", sc)
+	}
+
+	// the rows are committed: a fresh GET lists both
+	res, body = do("GET", "/", nil)
+	if res.StatusCode != 200 {
+		t.Fatalf("GET / = %d", res.StatusCode)
+	}
+	has(body, `<ul id="names"><li>ann</li><li>bob</li></ul>`, `<p id="adds">2</p>`, `<ul class="errors" data-errors="form"></ul>`)
+}

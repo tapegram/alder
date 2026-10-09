@@ -1,0 +1,24 @@
+module App
+
+-- M3c: a message whose update writes, then Rejects. The write is kept (Reject is a successful
+-- Task), the session is stored, and the form shows the rejection (Task 5, TestE2E_RejectKeepsWrites).
+
+session { n: Int = 0 }
+
+login = Names
+
+msg Reset
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Reset p -> {
+    let _ <- Session.put (\s -> { s | n: 0 })
+    Task.succeed Rerender
+  },
+}
+
+error : Error -> Html Never
+error err = <html><body><p>error</p></body></html>
+
+notFound : Html Never
+notFound = <html><body><p>nf</p></body></html>

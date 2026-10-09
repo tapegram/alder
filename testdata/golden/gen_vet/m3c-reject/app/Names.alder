@@ -1,0 +1,50 @@
+module Names
+
+type NameId = brand Text
+
+table Name {
+  id: NameId @id,
+  name: Text,
+  created: Time @created,
+}
+
+page "/" { }
+
+type Model = { names: List Name }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let names <- Db.from Name |> Db.orderBy Name.created.asc |> Db.all
+  Query.succeed { names: names }
+}
+
+form NewName = {
+  name: Text.NonEmpty,
+}
+
+msg Add form NewName
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Name { name: p.form.name }
+    let _ <- Session.put (\s -> { s | n: s.n + 1 })
+    Task.succeed (Reject "taken")
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html>
+    <head><title>Names</title></head>
+    <body>
+      <form submit={Add}>
+        <Errors form />
+        <Input field="name" label="Name" />
+        <Errors field="name" />
+        <button>Add</button>
+      </form>
+      <ul id="names">{for n in model.names -> <li>{n.name}</li>}</ul>
+      <p id="adds">{Text.fromInt session.n}</p>
+    </body>
+  </html>

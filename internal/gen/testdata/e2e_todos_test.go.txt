@@ -1,0 +1,500 @@
+package app
+
+// The M3c end-to-end scenario (Task 5): the generated to-do app served in-process by Serve
+// through httptest, driven by an http.Client with a cookie jar that does not follow redirects,
+// so every 303 is observed. internal/gen's TestE2E_Todos writes this file into the module the
+// app is emitted to and runs it.
+
+import (
+	"context"
+	"encoding/base64"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/cookiejar"
+	"net/http/httptest"
+	"net/url"
+	"regexp"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"alder/rt"
+	"alder/rt/db"
+)
+
+// e2ePassword is a stub Auth.Login.Password that mirrors the dev adapter
+// (examples/todos/adapters): a@b.c with "pw" is the id of a User row it finds or creates in the
+// running Task's transaction. boom@b.c inserts a User row in that transaction and then fails
+// (the row must be rolled back); probe@b.c counts the boom@b.c rows and records the count.
+// Every call is recorded.
+type e2ePassword struct {
+	mu     sync.Mutex
+	calls  []string
+	probes []int
+}
+
+var _ Cap__Auth__Login__Password = (*e2ePassword)(nil)
+
+func (p *e2ePassword) Verify(ctx context.Context, args Args__Auth__Login__Password__Verify) (rt.Maybe[string], error) {
+	p.mu.Lock()
+	p.calls = append(p.calls, args.Email)
+	p.mu.Unlock()
+	switch {
+	case args.Email == "a@b.c" && args.Password == "pw":
+		id, err := e2eUser(ctx, args.Email)
+		if err != nil {
+			return rt.Nothing[string](), err
+		}
+		return rt.Just(id), nil
+	case args.Email == "boom@b.c":
+		if _, err := e2eUser(ctx, args.Email); err != nil {
+			return rt.Nothing[string](), err
+		}
+		return rt.Nothing[string](), errors.New("password service down")
+	case args.Email == "probe@b.c":
+		rows, err := e2eUsers(ctx, "boom@b.c")
+		if err != nil {
+			return rt.Nothing[string](), err
+		}
+		p.mu.Lock()
+		p.probes = append(p.probes, len(rows))
+		p.mu.Unlock()
+	}
+	return rt.Nothing[string](), nil
+}
+
+func (p *e2ePassword) callCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.calls)
+}
+
+// e2eUsers are the User rows with email, read in the running Task's transaction.
+func e2eUsers(ctx context.Context, email string) ([][]any, error) {
+	st, tx := db.StoreFrom(ctx), db.TxFrom(ctx)
+	if st == nil {
+		return nil, errors.New("e2e: the context carries no store")
+	}
+	users := table__User__User.Desc()
+	return st.Query(ctx, tx, users.Name, users.Columns, db.Where(db.CEq("email", email), db.From(table__User__User)).SQL())
+}
+
+// e2eUser finds or creates the User row with email (as the dev adapter's devUser does).
+func e2eUser(ctx context.Context, email string) (string, error) {
+	rows, err := e2eUsers(ctx, email)
+	if err != nil {
+		return "", err
+	}
+	users := table__User__User.Desc()
+	if len(rows) > 0 {
+		for i, c := range users.Columns {
+			if c.Name == users.ID {
+				return db.DecodeText(rows[0][i])
+			}
+		}
+	}
+	vals := insertvals__User__User(insert__User__User{Email: email, Name: "Ann", PasswordHash: ""})
+	return db.InsertRow(ctx, db.StoreFrom(ctx), db.TxFrom(ctx), table__User__User, vals, time.Now())
+}
+
+// e2e is a running app and a browser-like client (cookie jar, no redirect following).
+type e2e struct {
+	t    *testing.T
+	srv  *httptest.Server
+	c    *http.Client
+	caps *e2ePassword
+}
+
+type e2eResp struct {
+	status int
+	header http.Header
+	body   string
+}
+
+func newE2E(t *testing.T, dev bool) *e2e {
+	t.Helper()
+	caps := &e2ePassword{}
+	h, err := Serve(Caps{Auth__Login__Password: caps}, Options{DB: ":memory:", Dev: dev, Secret: []byte("test-secret-0123456789")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &http.Client{Jar: jar, Timeout: 10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	return &e2e{t: t, srv: srv, c: c, caps: caps}
+}
+
+// do sends a request; form (when not nil) is the url-encoded body; hdr are "Name: value" pairs.
+func (e *e2e) do(method, path string, form url.Values, hdr ...string) e2eResp {
+	e.t.Helper()
+	var body io.Reader
+	if form != nil {
+		body = strings.NewReader(form.Encode())
+	}
+	req, err := http.NewRequest(method, e.srv.URL+path, body)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if form != nil {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	for _, h := range hdr {
+		k, v, _ := strings.Cut(h, ": ")
+		req.Header.Set(k, v)
+	}
+	res, err := e.c.Do(req)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer res.Body.Close()
+	b, err := io.ReadAll(res.Body)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	r := e2eResp{status: res.StatusCode, header: res.Header, body: string(b)}
+	e.t.Logf("%s %s → %d %s Location=%q Set-Cookie=%q body[%d]", method, path, r.status, r.header.Get("Content-Type"), r.header.Get("Location"), r.header.Get("Set-Cookie"), len(r.body))
+	return r
+}
+
+// session is the session stored in the jar's alder_session cookie (its payload: base64url
+// JSON before the "."), decoded with the app's codec, and the raw JSON.
+func (e *e2e) session() (App__Session, string) {
+	e.t.Helper()
+	u, _ := url.Parse(e.srv.URL)
+	for _, c := range e.c.Jar.Cookies(u) {
+		if c.Name == "alder_session" {
+			return decodeCookie(e.t, c.Value)
+		}
+	}
+	e.t.Fatal("no alder_session cookie in the jar")
+	return App__Session{}, ""
+}
+
+func decodeCookie(t *testing.T, v string) (App__Session, string) {
+	t.Helper()
+	p, _, ok := strings.Cut(v, ".")
+	if !ok {
+		t.Fatalf("cookie %q has no signature", v)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(p)
+	if err != nil {
+		t.Fatalf("cookie payload %q: %v", p, err)
+	}
+	s, err := session__codec{}.Decode(raw)
+	if err != nil {
+		t.Fatalf("cookie payload %s: %v", raw, err)
+	}
+	return s.(App__Session), string(raw)
+}
+
+func (r e2eResp) want(t *testing.T, status int, frags ...string) {
+	t.Helper()
+	if r.status != status {
+		t.Fatalf("status %d, want %d; body:\n%s", r.status, status, r.body)
+	}
+	for _, f := range frags {
+		if !strings.Contains(r.body, f) {
+			t.Fatalf("body lacks %q:\n%s", f, r.body)
+		}
+	}
+}
+
+func (r e2eResp) lacks(t *testing.T, frags ...string) {
+	t.Helper()
+	for _, f := range frags {
+		if strings.Contains(r.body, f) {
+			t.Fatalf("body has %q:\n%s", f, r.body)
+		}
+	}
+}
+
+func (r e2eResp) redirect(t *testing.T, loc string) {
+	t.Helper()
+	if r.status != http.StatusSeeOther || r.header.Get("Location") != loc {
+		t.Fatalf("got %d Location %q, want 303 %q; body:\n%s", r.status, r.header.Get("Location"), loc, r.body)
+	}
+	if r.body != "" {
+		t.Fatalf("303 with a body: %q", r.body)
+	}
+}
+
+func (r e2eResp) html(t *testing.T) {
+	t.Helper()
+	if ct := r.header.Get("Content-Type"); ct != "text/html; charset=utf-8" {
+		t.Fatalf("Content-Type %q, want text/html; charset=utf-8", ct)
+	}
+	if !strings.HasPrefix(r.body, "<!doctype html>\n<html") {
+		t.Fatalf("not a full document: %.80q", r.body)
+	}
+}
+
+// sse checks a Datastar body patch: status 200, an event stream of one
+// datastar-patch-elements event replacing <body>.
+func (r e2eResp) sse(t *testing.T) {
+	t.Helper()
+	if r.status != http.StatusOK {
+		t.Fatalf("status %d, want 200; body:\n%s", r.status, r.body)
+	}
+	if ct := r.header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("Content-Type %q, want text/event-stream", ct)
+	}
+	if !strings.HasPrefix(r.body, "event: datastar-patch-elements\ndata: selector body\ndata: mode outer\ndata: elements <body>") || !strings.HasSuffix(r.body, "</body>\n\n") {
+		t.Fatalf("not a body patch:\n%s", r.body)
+	}
+}
+
+// cookieSet checks r stores the session: Set-Cookie alder_session=…; Path=/; HttpOnly;
+// SameSite=Lax, and returns its decoded session.
+func (r e2eResp) cookieSet(t *testing.T) (App__Session, string) {
+	t.Helper()
+	sc := r.header.Get("Set-Cookie")
+	if !strings.HasPrefix(sc, "alder_session=") {
+		t.Fatalf("Set-Cookie %q, want alder_session", sc)
+	}
+	for _, a := range []string{"; Path=/", "; HttpOnly", "; SameSite=Lax", "; Max-Age=2592000"} {
+		if !strings.Contains(sc, a) {
+			t.Fatalf("Set-Cookie %q lacks %q", sc, a)
+		}
+	}
+	v, _, _ := strings.Cut(strings.TrimPrefix(sc, "alder_session="), ";")
+	return decodeCookie(t, v)
+}
+
+func (r e2eResp) noCookie(t *testing.T) {
+	t.Helper()
+	if sc := r.header.Get("Set-Cookie"); sc != "" {
+		t.Fatalf("Set-Cookie %q, want none", sc)
+	}
+}
+
+const datastarHdr = "Datastar-Request: true"
+
+// login logs a@b.c in (step 4) and returns the user id the cookie holds.
+func (e *e2e) login(t *testing.T) string {
+	t.Helper()
+	r := e.do("POST", "/_m/Auth.Login/Submit", url.Values{"email": {"a@b.c"}, "password": {"pw"}}, "Referer: "+e.srv.URL+"/login")
+	r.redirect(t, "/")
+	s, raw := r.cookieSet(t)
+	if !s.User.Ok || s.User.Val == "" {
+		t.Fatalf("session after login: %s", raw)
+	}
+	return s.User.Val
+}
+
+var todoHref = regexp.MustCompile(`<a href="/todos/([^"]+)">Milk</a>`)
+
+func TestE2E_RequiresUnderDatastar(t *testing.T) {
+	e := newE2E(t, true)
+	// requires user, logged out, under Datastar: a plain 303 to the login page, not a patch
+	r := e.do("GET", "/", nil, datastarHdr)
+	r.redirect(t, "/login")
+	if ct := r.header.Get("Content-Type"); strings.Contains(ct, "event-stream") {
+		t.Fatalf("Content-Type %q", ct)
+	}
+	// a message of a requires page too
+	r = e.do("POST", "/_m/Todos.Index/Toggle?id=x", nil, datastarHdr, "Referer: "+e.srv.URL+"/")
+	r.redirect(t, "/login")
+}
+
+func TestE2E_Todos(t *testing.T) {
+	e := newE2E(t, true)
+	ref := "Referer: " + e.srv.URL + "/"
+
+	// 1. logged out: / → 303 /login (also under Datastar: TestE2E_RequiresUnderDatastar)
+	r := e.do("GET", "/", nil)
+	r.redirect(t, "/login")
+
+	// 2. the login page
+	r = e.do("GET", "/login", nil)
+	r.want(t, 200,
+		`<form method="post" action="/_m/Auth.Login/Submit"`,
+		`type="password"`, `name="password"`, `<input name="email" type="text" required />`,
+		`<script type="module" src="/_alder/datastar.js"></script>`,
+		`<title>Log in</title>`, `<ul class="errors" data-errors="form"></ul>`)
+	r.html(t)
+	if s, raw := r.cookieSet(t); s.User.Ok {
+		t.Fatalf("anonymous session %s", raw)
+	}
+
+	// 3. wrong password: Reject on the form, the password not echoed
+	r = e.do("POST", "/_m/Auth.Login/Submit", url.Values{"email": {"a@b.c"}, "password": {"hunter2"}}, "Referer: "+e.srv.URL+"/login")
+	r.want(t, 200, `<ul class="errors" data-errors="form"><li>Email or password is incorrect.</li></ul>`, `value="a@b.c"`)
+	r.html(t)
+	r.lacks(t, "hunter2")
+	if n := e.caps.callCount(); n != 1 {
+		t.Fatalf("Verify called %d times, want 1", n)
+	}
+	// an invalid email: a field error, update (and so Verify) not called
+	r = e.do("POST", "/_m/Auth.Login/Submit", url.Values{"email": {"x"}, "password": {"hunter2"}}, "Referer: "+e.srv.URL+"/login")
+	r.want(t, 200, `<ul class="errors" data-errors="email"><li>must be an email address</li></ul>`, `value="x"`, `<ul class="errors" data-errors="form"></ul>`)
+	r.lacks(t, "hunter2")
+	if n := e.caps.callCount(); n != 1 {
+		t.Fatalf("Verify called %d times after a form error, want 1 (update must not run)", n)
+	}
+
+	// 4. login: 303 / with the session cookie
+	uid := e.login(t)
+
+	// 5. the empty list; the filter link marked current
+	r = e.do("GET", "/", nil)
+	r.want(t, 200, `<h1>Todos</h1>`, `<form method="post" action="/_m/Todos.Index/Submit"`, `name="title"`, `<ul id="todos"></ul>`, `<p id="summary">0 open</p>`,
+		`<a href="/" aria-current="page">All</a>`, `<a href="/?filter=Active">Active</a>`)
+	r.html(t)
+	if s, _ := r.cookieSet(t); s.User.Val != uid {
+		t.Fatalf("GET / stored user %q, want %q", s.User.Val, uid)
+	}
+	r = e.do("GET", "/?filter=Active", nil)
+	r.want(t, 200, `<a href="/?filter=Active" aria-current="page">Active</a>`, `<a href="/">All</a>`)
+	r = e.do("GET", "/?filter=Nope", nil)
+	r.want(t, 404, `<h1>Not found</h1>`)
+
+	// 6. form errors re-render with the values; a valid todo redirects
+	r = e.do("POST", "/_m/Todos.Index/Submit", url.Values{"title": {""}}, ref)
+	r.want(t, 200, `<ul class="errors" data-errors="title"><li>must not be empty</li></ul>`, `<ul id="todos"></ul>`)
+	r.html(t)
+	r = e.do("POST", "/_m/Todos.Index/Submit", url.Values{"title": {"Milk"}, "due": {"2026-13-01"}}, ref)
+	r.want(t, 200, `<ul class="errors" data-errors="due"><li>must be a date (YYYY-MM-DD)</li></ul>`, `value="Milk"`, `value="2026-13-01"`, `<ul id="todos"></ul>`)
+	r.lacks(t, `data-errors="title"><li>`)
+	r = e.do("POST", "/_m/Todos.Index/Submit", url.Values{"title": {"Milk"}, "due": {"2026-10-12"}}, ref)
+	r.redirect(t, "/")
+	r.cookieSet(t)
+	r = e.do("GET", "/", nil)
+	r.want(t, 200, `<span class="due">Oct 12</span>`, `<p id="summary">1 open</p>`)
+	m := todoHref.FindAllStringSubmatch(r.body, -1)
+	if len(m) != 1 {
+		t.Fatalf("%d Milk rows, want 1:\n%s", len(m), r.body)
+	}
+	id := m[0][1]
+	r.want(t, 200, `<button data-on:click="@post(&#39;/_m/Todos.Index/Toggle?id=`+url.QueryEscape(id)+`&#39;)">Done</button>`)
+
+	// 7. Toggle under Datastar: an SSE patch of <body> with the toggled row; without: the page
+	r = e.do("POST", "/_m/Todos.Index/Toggle?id="+url.QueryEscape(id), nil, datastarHdr, ref)
+	r.sse(t)
+	for _, f := range []string{
+		`<ul id="todos"><li class="done"><button data-on:click="@post(&#39;/_m/Todos.Index/Toggle?id=` + url.QueryEscape(id) + `&#39;)">Undo</button>`,
+		`<p id="summary">0 open</p>`,
+	} {
+		if !strings.Contains(r.body, f) {
+			t.Fatalf("patch lacks %q:\n%s", f, r.body)
+		}
+	}
+	if strings.Contains(r.body, "<head>") || strings.Contains(r.body, "<!doctype") {
+		t.Fatalf("patch carries the document:\n%s", r.body)
+	}
+	r.cookieSet(t)
+	// a Rerender keeps the page's params from the Referer
+	r = e.do("POST", "/_m/Todos.Index/Toggle?id="+url.QueryEscape(id), nil, "Referer: "+e.srv.URL+"/?filter=Active")
+	r.want(t, 200, `>Done</button>`, `<p id="summary">1 open</p>`, `<a href="/?filter=Active" aria-current="page">Active</a>`, `<li class="">`)
+	r.html(t)
+	r = e.do("GET", "/?filter=Completed", nil)
+	r.want(t, 200, `<ul id="todos"></ul>`)
+
+	// 8. the todo's page; an unknown id is 404
+	r = e.do("GET", "/todos/"+url.PathEscape(id), nil)
+	r.want(t, 200, `<title>Milk</title>`, `<h1>Milk</h1>`, `value="Milk"`, `value="2026-10-12"`, `<a href="/">Back</a>`)
+	r.html(t)
+	r = e.do("GET", "/todos/nope", nil)
+	r.want(t, 404, `<title>Not found</title>`, `<h1>Not found</h1>`)
+	r.html(t)
+
+	// 9. Delete: the re-rendered list is empty, and stays empty
+	r = e.do("POST", "/_m/Todos.Index/Delete?id="+url.QueryEscape(id), nil, ref)
+	r.want(t, 200, `<ul id="todos"></ul>`, `<p id="summary">0 open</p>`)
+	r.lacks(t, "Milk")
+	r = e.do("GET", "/", nil)
+	r.want(t, 200, `<ul id="todos"></ul>`)
+	r.lacks(t, "Milk")
+	r = e.do("GET", "/todos/"+url.PathEscape(id), nil)
+	r.want(t, 404, `<h1>Not found</h1>`)
+
+	// 11. a tampered cookie (a forged payload under the old signature) is no session
+	sess, _ := e.session()
+	u, _ := url.Parse(e.srv.URL)
+	var good string
+	for _, c := range e.c.Jar.Cookies(u) {
+		if c.Name == "alder_session" {
+			good = c.Value
+		}
+	}
+	_, sig, _ := strings.Cut(good, ".")
+	forged := base64.RawURLEncoding.EncodeToString([]byte(`{"User":{"Ok":true,"Val":"`+sess.User.Val+`x"},"Theme":{"Tag":0}}`)) + "." + sig
+	for _, v := range []string{forged, good + "x", "garbage"} {
+		req, _ := http.NewRequest("GET", e.srv.URL+"/", nil)
+		req.AddCookie(&http.Cookie{Name: "alder_session", Value: v})
+		res, err := (&http.Client{CheckRedirect: e.c.CheckRedirect}).Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/login" {
+			t.Fatalf("cookie %q: %d %q, want 303 /login", v, res.StatusCode, res.Header.Get("Location"))
+		}
+	}
+	// the genuine cookie still works
+	e.do("GET", "/", nil).want(t, 200, `<h1>Todos</h1>`)
+
+	// 12. a failing capability: 500 with App.error, the error text in dev only, its Task's
+	// insert rolled back
+	before := e.caps.callCount()
+	r = e.do("POST", "/_m/Auth.Login/Submit", url.Values{"email": {"boom@b.c"}, "password": {"pw"}}, "Referer: "+e.srv.URL+"/login")
+	r.want(t, 500, `<title>Error</title>`, `<h1>Something went wrong</h1>`, `<p>Please try again.</p>`, `<!-- error: `, `password service down -->`)
+	r.html(t)
+	r.noCookie(t)
+	r = e.do("POST", "/_m/Auth.Login/Submit", url.Values{"email": {"boom@b.c"}, "password": {"pw"}}, "Referer: "+e.srv.URL+"/login", datastarHdr)
+	r.sse(t)
+	r.want(t, 200, `<h1>Something went wrong</h1>`)
+	r = e.do("POST", "/_m/Auth.Login/Submit", url.Values{"email": {"probe@b.c"}, "password": {"pw"}}, "Referer: "+e.srv.URL+"/login")
+	r.want(t, 200, `Email or password is incorrect.`)
+	if got := e.caps.callCount() - before; got != 3 {
+		t.Fatalf("Verify called %d times, want 3", got)
+	}
+	e.caps.mu.Lock()
+	probes := append([]int(nil), e.caps.probes...)
+	e.caps.mu.Unlock()
+	if len(probes) != 1 || probes[0] != 0 {
+		t.Fatalf("boom@b.c rows after two failed Tasks = %v, want [0] (rolled back)", probes)
+	}
+	// the user is still logged in: the failed Task stored no session
+	if s, raw := e.session(); s.User.Val != uid {
+		t.Fatalf("session after the failure: %s", raw)
+	}
+	// production: the same page without the error text
+	p := newE2E(t, false)
+	r = p.do("POST", "/_m/Auth.Login/Submit", url.Values{"email": {"boom@b.c"}, "password": {"pw"}}, "Referer: "+p.srv.URL+"/login")
+	r.want(t, 500, `<h1>Something went wrong</h1>`, `<p>Please try again.</p>`)
+	r.html(t)
+	r.lacks(t, "password service down", "<!-- error")
+
+	// 13. App messages: SwitchTheme goes back to the Referer with the theme flipped; Logout
+	// redirects to the login page (the app's update says so) with no user
+	if s, _ := e.session(); s.Theme.Tag != is__Theme__Theme__Light {
+		t.Fatalf("theme before = %v", s.Theme)
+	}
+	r = e.do("POST", "/_m/App/SwitchTheme", nil, ref)
+	r.redirect(t, "/")
+	if s, raw := r.cookieSet(t); s.Theme.Tag != is__Theme__Theme__Dark || s.User.Val != uid {
+		t.Fatalf("session after SwitchTheme: %s", raw)
+	}
+	r = e.do("GET", "/", nil)
+	r.want(t, 200, `<html class="dark">`, `>Light mode</button>`)
+	r = e.do("POST", "/_m/App/SwitchTheme", nil, "Referer: "+e.srv.URL+"/?filter=Active", datastarHdr)
+	r.redirect(t, "/?filter=Active")
+	if s, raw := r.cookieSet(t); s.Theme.Tag != is__Theme__Theme__Light {
+		t.Fatalf("session after the second SwitchTheme: %s", raw)
+	}
+	r = e.do("POST", "/_m/App/Logout", nil, ref)
+	r.redirect(t, "/login")
+	if s, raw := r.cookieSet(t); s.User.Ok || s.Theme.Tag != is__Theme__Theme__Light {
+		t.Fatalf("session after Logout: %s", raw)
+	} else {
+		t.Logf("session after Logout: %s", raw)
+	}
+	e.do("GET", "/", nil).redirect(t, "/login")
+}
