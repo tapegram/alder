@@ -1,0 +1,75 @@
+module Admin
+
+import Post
+import Layout
+
+page "/admin" { } requires author
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Post.Slug,
+  body: Text,
+}
+
+msg CreatePost form NewPost
+msg TogglePublished { id: Post.PostId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  CreatePost p -> {
+    let taken <- Db.first (Db.from Post |> Db.where (Post.slug.eq p.form.slug))
+    match taken {
+      Just _ -> Task.succeed (Reject "Another post already uses that slug."),
+      Nothing -> {
+        let _ <- Db.insert Post { title: p.form.title, slug: p.form.slug, body: p.form.body, author: session.author }
+        Task.succeed (Redirect (Admin {}))
+      },
+    }
+  },
+  TogglePublished p -> {
+    let post <- postById p.id
+    let _ <- Db.update Post post.id (\t -> { t | published: not t.published })
+    Task.succeed Rerender
+  },
+}
+
+postById : Post.PostId -> Task Post
+postById id = {
+  let found <- Db.get Post id
+  match found {
+    Just post -> Task.succeed post,
+    Nothing -> Task.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Admin" author={Just session.author}>
+    <h1>Admin</h1>
+    <form submit={CreatePost}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Input field="slug" label="Slug" />
+      <Errors field="slug" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <button>Create post</button>
+    </form>
+    <ul id="posts">
+      {for post in model.posts ->
+        <li>
+          <a href={Posts.Show { slug: post.slug }}>{post.title}</a>
+          {if post.published then "(published)" else "(draft)"}
+          <button click={TogglePublished { id: post.id }}>{if post.published then "Unpublish" else "Publish"}</button>
+        </li>}
+    </ul>
+  </Layout.Page>

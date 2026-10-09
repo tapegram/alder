@@ -1,0 +1,15 @@
+module Post
+
+type PostId = brand Text
+type CommentId = brand Text
+
+table Post {
+  id: PostId @id,
+  title: Text.NonEmpty,
+}
+
+table Comment {
+  id: CommentId @id,
+  post: PostId @ref Post,
+  body: Text,
+}

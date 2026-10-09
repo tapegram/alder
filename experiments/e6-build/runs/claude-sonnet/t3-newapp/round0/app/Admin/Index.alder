@@ -1,0 +1,84 @@
+module Admin.Index
+
+import Post
+import Layout
+
+page "/admin" { } requires user
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Post.Slug,
+  body: Text.NonEmpty,
+  published: Bool,
+}
+
+msg Create form NewPost
+msg TogglePublished { id: Post.PostId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let existing <- Db.from Post |> Db.where (Post.slug.eq p.form.slug) |> Db.first
+    match existing {
+      Just other -> Task.succeed (Reject "That slug is already used."),
+      Nothing -> {
+        let _ <- Db.insert Post { title: p.form.title, slug: p.form.slug, body: p.form.body, published: p.form.published }
+        Task.succeed (Redirect (Admin.Index {}))
+      },
+    }
+  },
+  TogglePublished p -> {
+    let found <- Db.get Post p.id
+    match found {
+      Just post -> {
+        let _ <- Db.update Post post.id (\x -> { x | published: not x.published })
+        Task.succeed Rerender
+      },
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Admin" user={session.user}>
+    <h1>Admin</h1>
+
+    <form submit={Create}>
+      <h2>New post</h2>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Input field="slug" label="Slug" />
+      <Errors field="slug" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <Input field="published" label="Published" />
+      <Errors field="published" />
+      <button>Create post</button>
+    </form>
+
+    <h2>All posts</h2>
+    <ul id="posts">
+      {for post in model.posts -> <Row post={post} />}
+    </ul>
+  </Layout.Page>
+
+Row : { post: Post } -> Html Msg
+Row props =
+  <li>
+    <a href={Blog.Show { slug: props.post.slug }}>{props.post.title}</a>
+    <span class="status"> {if props.post.published then "Published" else "Draft"} </span>
+    <button click={TogglePublished { id: props.post.id }}>{if props.post.published then "Unpublish" else "Publish"}</button>
+  </li>

@@ -1,0 +1,49 @@
+{
+ "model": "ollama-qwen3-coder-30b",
+ "task": "t4-appmsg",
+ "retries": 2,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 2
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 8,
+   "exit": 1,
+   "errors": 1,
+   "warnings": 0,
+   "codes": {
+    "E0202": 1
+   },
+   "rejected": [],
+   "seconds": 44.0,
+   "tokens": 1648,
+   "stderr": "",
+   "prompt_eval_count": 25292,
+   "eval_count": 1648
+  },
+  {
+   "n": 1,
+   "files": 8,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 53.0,
+   "tokens": 1649,
+   "stderr": "",
+   "prompt_eval_count": 27067,
+   "eval_count": 1649,
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   }
+  }
+ ],
+ "final_pass": true
+}

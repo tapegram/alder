@@ -1,0 +1,71 @@
+module Posts.Admin
+
+import Post
+import Layout
+
+page "/admin" { } requires user
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Post.Slug,
+  body: Text,
+  published: Bool = False,
+}
+
+msg Submit form NewPost
+msg TogglePublished { id: Post.PostId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insert Post { title: p.form.title, slug: p.form.slug, body: p.form.body, published: p.form.published, author: session.user }
+    Task.succeed Rerender
+  },
+  TogglePublished p -> {
+    let post <- Db.get Post p.id
+    match post {
+      Just pt -> {
+        let _ <- Db.update Post p.id (\t -> { t | published: not t.published })
+        Task.succeed Rerender
+      },
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Admin" theme={session.theme}>
+    <h1>Admin</h1>
+
+    <h2>Create a post</h2>
+    <form submit={Submit}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Input field="slug" label="Slug" />
+      <Errors field="slug" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <Input field="published" label="Published" type="checkbox" />
+      <Errors field="published" />
+      <button>Create</button>
+    </form>
+
+    <h2>Posts</h2>
+    {for post in model.posts ->
+      <article>
+        <h3>{post.title}</h3>
+        <p>{Date.format "Jan 2, 2006" post.created}</p>
+        <p>{if post.published then "Published" else "Draft"}</p>
+        <button click={TogglePublished { id: post.id }}>{if post.published then "Unpublish" else "Publish"}</button>
+      </article>}
+  </Layout.Page>

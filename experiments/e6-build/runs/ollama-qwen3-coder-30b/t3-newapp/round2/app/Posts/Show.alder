@@ -1,0 +1,61 @@
+module Posts.Show
+
+import Post
+import Layout
+
+page "/posts/{slug}" { slug: Post.Slug }
+
+type Model = { post: Post, comments: List Post.Comment }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Post params.slug
+  match found {
+    Just post -> {
+      let comments <- Db.from Post.Comment |> Db.where (Post.Comment.postId.eq post.id) |> Db.orderBy Post.Comment.created.asc |> Db.all
+      Query.succeed { post: post, comments: comments }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewComment = {
+  author: Text.NonEmpty,
+  body: Text,
+}
+
+msg Submit form NewComment
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insert Post.Comment { postId: model.post.id, author: p.form.author, body: p.form.body }
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.post.title} theme={session.theme}>
+    <h1>{model.post.title}</h1>
+    <p>{Time.format "Jan 2, 2006" model.post.created}</p>
+    <div>{model.post.body}</div>
+
+    <h2>Comments</h2>
+    {for comment in model.comments ->
+      <article>
+        <p><strong>{comment.author}</strong></p>
+        <p>{comment.body}</p>
+        <p>{Time.format "Jan 2, 2006 at 3:04 PM" comment.created}</p>
+      </article>}
+
+    <h2>Add a comment</h2>
+    <form submit={Submit}>
+      <Errors form />
+      <Input field="author" label="Name" />
+      <Errors field="author" />
+      <Textarea field="body" label="Comment" />
+      <Errors field="body" />
+      <button>Post</button>
+    </form>
+  </Layout.Page>

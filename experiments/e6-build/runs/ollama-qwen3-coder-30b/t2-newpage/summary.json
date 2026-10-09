@@ -1,0 +1,51 @@
+{
+ "model": "ollama-qwen3-coder-30b",
+ "task": "t2-newpage",
+ "retries": 2,
+ "base": "../examples/todos",
+ "harness": {
+  "build": true,
+  "retries": 2
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 9,
+   "exit": 1,
+   "errors": 1,
+   "warnings": 0,
+   "codes": {
+    "E0003": 1
+   },
+   "rejected": [
+    "static/app.css"
+   ],
+   "seconds": 107.0,
+   "tokens": 1743,
+   "stderr": "",
+   "prompt_eval_count": 25186,
+   "eval_count": 1743
+  },
+  {
+   "n": 1,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 46.2,
+   "tokens": 1216,
+   "stderr": "",
+   "prompt_eval_count": 28031,
+   "eval_count": 1216,
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   }
+  }
+ ],
+ "final_pass": true
+}

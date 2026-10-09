@@ -1,0 +1,52 @@
+{
+ "model": "claude-haiku",
+ "task": "t5-ownership",
+ "retries": 2,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 2
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 7,
+   "exit": 1,
+   "errors": 5,
+   "warnings": 0,
+   "codes": {
+    "E0001": 5
+   },
+   "rejected": [
+    "adapters/password.go",
+    "static/app.css"
+   ],
+   "seconds": 90.2,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "haiku"
+  },
+  {
+   "n": 1,
+   "files": 7,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 22.6,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "haiku",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   }
+  }
+ ],
+ "final_pass": true
+}

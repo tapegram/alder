@@ -1,0 +1,16 @@
+module Note
+
+import User
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  title: Text.NonEmpty,
+  body: Text = "",
+  owner: User.UserId @ref User,
+  created: Time @created,
+}
+
+test "note has required title" =
+  NoteId "a" == NoteId "a"

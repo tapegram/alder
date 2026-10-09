@@ -1,0 +1,31 @@
+module Home
+
+import Post
+import Layout
+
+page "/" { }
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <-
+    Db.from Post
+      |> Db.where (Post.published.eq True)
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Blog" author={session.author}>
+    <h1>Blog</h1>
+    {if List.isEmpty model.posts then <p>No posts yet.</p> else <ul id="posts">
+      {for post in model.posts ->
+        <li>
+          <a href={Posts.Show { slug: post.slug }}>{post.title}</a>
+          <time>{Time.format "Jan 2, 2006" post.created}</time>
+        </li>}
+    </ul>}
+  </Layout.Page>

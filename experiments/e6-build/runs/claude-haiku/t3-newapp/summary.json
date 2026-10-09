@@ -1,0 +1,33 @@
+{
+ "model": "claude-haiku",
+ "task": "t3-newapp",
+ "retries": 2,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 2
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 111.9,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "haiku",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   }
+  }
+ ],
+ "final_pass": true
+}

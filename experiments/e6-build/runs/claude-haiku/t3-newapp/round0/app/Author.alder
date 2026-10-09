@@ -1,0 +1,10 @@
+module Author
+
+type AuthorId = brand Text
+
+table Author {
+  id: AuthorId @id,
+  email: Text.Email @unique,
+  password: Text.Secret,
+  created: Time @created,
+}

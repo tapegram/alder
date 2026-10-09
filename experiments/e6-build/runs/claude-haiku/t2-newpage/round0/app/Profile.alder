@@ -1,0 +1,58 @@
+module Profile
+
+import User
+import Todo
+import Layout
+
+page "/profile" { } requires user
+
+type Model = {
+  user: User,
+  total: Int,
+  done: Int,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let user <- Db.get User session.user
+  let total <- Db.from Todo |> Db.where (Todo.owner.eq session.user) |> Db.count
+  let done <- Db.from Todo |> Db.where (Todo.owner.eq session.user) |> Db.where (Todo.done.eq True) |> Db.count
+  match user {
+    Just u -> Query.succeed { user: u, total: total, done: done },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NameChange = {
+  name: Text.NonEmpty,
+}
+
+-- The logout button sends the app-level App.Logout message, which App.update handles.
+msg Rename form NameChange
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Rename p -> {
+    let _ <- Db.update User session.user (\u -> { u | name: p.form.name })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Profile" theme={session.theme}>
+    <h1>Profile</h1>
+    <p id="name">Name: {model.user.name}</p>
+    <p id="email">Email: {model.user.email}</p>
+    <p id="todos">{Text.fromInt model.total} todos, {Text.fromInt model.done} done</p>
+
+    <form submit={Rename}>
+      <Errors form />
+      <Input field="name" label="Name" value={model.user.name} />
+      <Errors field="name" />
+      <button>Save name</button>
+    </form>
+
+    <button click={App.Logout}>Log out</button>
+    <a href={Todos.Index {}}>Back</a>
+  </Layout.Page>

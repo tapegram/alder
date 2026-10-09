@@ -1,0 +1,71 @@
+module Profile.Show
+
+import User
+import Todo
+import Layout
+
+page "/profile" { } requires user
+
+type Model = {
+  user: User,
+  total: Int,
+  finished: Int,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get User session.user
+  match found {
+    Just user -> {
+      let total <- Db.count (Db.from Todo |> Db.where (Todo.owner.eq session.user))
+      let finished <-
+        Db.count (
+          Db.from Todo
+            |> Db.where (Todo.owner.eq session.user)
+            |> Db.where (Todo.done.eq True)
+        )
+      Query.succeed { user: user, total: total, finished: finished }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+form Rename = {
+  name: Text.NonEmpty,
+}
+
+-- The user is the session's user, which `load` has already fetched, so the message carries no
+-- id: `update` writes `model.user.id`.
+msg Save form Rename
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> {
+    let _ <- Db.update User model.user.id (\u -> { u | name: p.form.name })
+    Task.succeed Rerender
+  },
+}
+
+-- Logging out is the app-level message App.Logout (declared in App, not on the Login page),
+-- which any page can send, so it is posted here rather than declared again.
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Profile" theme={session.theme}>
+    <h1>Profile</h1>
+
+    <p id="profile-name">Name: {model.user.name}</p>
+    <p id="profile-email">Email: {model.user.email}</p>
+
+    <p id="profile-todos">
+      Todos: {Text.fromInt model.total}, done: {Text.fromInt model.finished}
+    </p>
+
+    <form submit={Save}>
+      <Input field="name" label="Name" value={model.user.name} />
+      <Errors field="name" />
+      <button>Change name</button>
+    </form>
+
+    <button click={App.Logout}>Log out</button>
+    <a href={Todos.Index {}}>Back</a>
+  </Layout.Page>

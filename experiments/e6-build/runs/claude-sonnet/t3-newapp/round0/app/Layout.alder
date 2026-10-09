@@ -1,0 +1,22 @@
+module Layout
+
+import User
+
+Page : { title: Text, user: Maybe User.UserId, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+    </head>
+    <body>
+      <nav>
+        <a href={Blog.Index {}}>My Blog</a>
+        {match props.user {
+          Just u -> <span><a href={Admin.Index {}}>Admin</a> <button click={App.Logout}>Log out</button></span>,
+          Nothing -> <a href={Auth.Login {}}>Log in</a>,
+        }}
+      </nav>
+      <main>{props.children}</main>
+    </body>
+  </html>

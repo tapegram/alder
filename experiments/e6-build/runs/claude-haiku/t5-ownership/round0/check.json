@@ -1,0 +1,5 @@
+{"code": "E0001", "severity": "error", "file": "app/Auth/Login.alder", "line": 30, "col": 96, "endLine": 30, "endCol": 97, "message": "in the definition of `update`: expected `}`, got `,`"}
+{"code": "E0001", "severity": "error", "file": "app/Auth/Login.alder", "line": 31, "col": 4, "endLine": 31, "endCol": 5, "message": "expected end of line after declaration, got `,`"}
+{"code": "E0001", "severity": "error", "file": "app/Auth/Login.alder", "line": 42, "col": 18, "endLine": 42, "endCol": 19, "message": "in the definition of `signIn`: expected `}`, got `,`"}
+{"code": "E0001", "severity": "error", "file": "app/Auth/Login.alder", "line": 43, "col": 6, "endLine": 43, "endCol": 7, "message": "in the definition of `signIn`: expected `}`, got `,`"}
+{"code": "E0001", "severity": "error", "file": "app/Auth/Login.alder", "line": 43, "col": 6, "endLine": 43, "endCol": 7, "message": "expected end of line after declaration, got `,`"}

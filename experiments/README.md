@@ -70,6 +70,7 @@ Tasks are chosen to exercise different things:
 - **T2 new page**: a new page module from scratch (touches STRUCT, EFF, ROUTE).
 - **T3 new app**: a small app from scratch (everything).
 - **T4 app messages**: a notes app with a theme switch and logout on every page (app-level messages, session).
+- **T5 ownership** (E6): shared notes where each user sees and deletes only their own; a message carrying another user's id must 404 (authorization in `update`).
 
 ## Experiment list
 
@@ -78,6 +79,7 @@ Tasks are chosen to exercise different things:
 - **E3 pitfalls** (`e3-pitfalls/`): does a "common mistakes" appendix help? No.
 - **E4 msgpath** (`e4-msgpath/`): path-less `msg`; end of the spike.
 - **E5 loop** (`e5-loop/`): first run with `alder check` in the loop (generate, check, one retry), T2–T4 × Qwen3-Coder, Haiku, Sonnet; scored by the checker. `repros/` holds each compiler problem it found as an app plus `check.json`.
+- **E6 build** (`e6-build/`): the first run with `--build` (a round passes only if `alder check` is clean and `alder build --emit` succeeds), up to two retries, T2–T5 × Qwen3-Coder, Haiku, Sonnet; T5 (shared notes, each user's own) probes authorization in `update`. Every clean program built (no compiler bugs); `findings.md` hand-scores T5's owner check.
 
 ## Harness (M2)
 

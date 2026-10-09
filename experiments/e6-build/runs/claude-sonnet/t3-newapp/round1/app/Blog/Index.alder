@@ -1,0 +1,32 @@
+module Blog.Index
+
+import Post
+import Layout
+
+page "/" { }
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <-
+    Db.from Post
+      |> Db.where (Post.published.eq True)
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="My Blog" user={session.user}>
+    <h1>My Blog</h1>
+    {if List.isEmpty model.posts then <p>No posts yet.</p> else <ul id="posts">{for post in model.posts -> <Item post={post} />}</ul>}
+  </Layout.Page>
+
+Item : { post: Post } -> Html Msg
+Item props =
+  <li>
+    <a href={Blog.Show { slug: props.post.slug }}>{props.post.title}</a>
+    <span class="date"> {Time.format "Jan 2, 2006" props.post.created}</span>
+  </li>

@@ -1,0 +1,71 @@
+module Posts.Show
+
+import Post
+import Comment
+import Layout
+
+page "/posts/{slug}" { slug: Post.Slug }
+
+type Model = { post: Post, comments: List Comment }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.first (Db.from Post |> Db.where (Post.slug.eq params.slug))
+  match found {
+    Just post -> if post.published || session.author != Nothing then commentsOf post else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+commentsOf : Post -> Query Model
+commentsOf post = {
+  let comments <-
+    Db.from Comment
+      |> Db.where (Comment.post.eq post.id)
+      |> Db.orderBy Comment.created.asc
+      |> Db.all
+  Query.succeed { post: post, comments: comments }
+}
+
+form NewComment = {
+  author: Text.NonEmpty,
+  body: Text.NonEmpty,
+}
+
+msg AddComment form NewComment
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddComment p -> {
+    let _ <- Db.insert Comment { post: model.post.id, author: p.form.author, body: p.form.body }
+    Task.succeed (Redirect (Posts.Show { slug: model.post.slug }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.post.title} author={session.author}>
+    <article>
+      <h1>{model.post.title}</h1>
+      <p class="meta">{Time.format "Jan 2, 2006" model.post.created}</p>
+      {if model.post.published then Html.none else <p><em>Draft: only logged-in authors can see this.</em></p>}
+      <div style="white-space: pre-wrap">{model.post.body}</div>
+    </article>
+    <section>
+      <h2>Comments</h2>
+      {if List.isEmpty model.comments then <p>No comments yet.</p> else <ul id="comments">
+        {for c in model.comments ->
+          <li><strong>{c.author}</strong> {c.body}</li>}
+      </ul>}
+      <h2>Add a comment</h2>
+      <form submit={AddComment}>
+        <Errors form />
+        <Input field="author" label="Your name" />
+        <Errors field="author" />
+        <Textarea field="body" label="Comment" />
+        <Errors field="body" />
+        <button>Post comment</button>
+      </form>
+    </section>
+    <a href={Home {}}>All posts</a>
+  </Layout.Page>

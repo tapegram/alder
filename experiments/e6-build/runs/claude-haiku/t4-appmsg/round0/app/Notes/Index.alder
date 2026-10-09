@@ -1,0 +1,58 @@
+module Notes.Index
+
+import Note
+import Layout
+
+page "/" { } requires user
+
+type Model = { notes: List Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <-
+    Db.from Note
+      |> Db.where (Note.owner.eq session.user)
+      |> Db.orderBy Note.created.desc
+      |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Submit form NewNote
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let id <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+    Task.succeed (Redirect (Notes.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Notes" theme={session.theme}>
+    <h1>Notes</h1>
+
+    <form submit={Submit}>
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <button>Add note</button>
+    </form>
+
+    <ul id="notes">
+      {for note in model.notes -> <NoteLink note={note} />}
+    </ul>
+    {if List.isEmpty model.notes then <p>No notes yet.</p> else Html.none}
+  </Layout.Page>
+
+NoteLink : { note: Note } -> Html Msg
+NoteLink props =
+  <li>
+    <a href={Notes.Show { id: props.note.id }}>{props.note.title}</a>
+  </li>

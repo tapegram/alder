@@ -1,0 +1,16 @@
+module Index
+
+import Post
+
+page "/" { }
+
+type Model = { comments: List Post.Comment }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let comments <- Db.from Post.Comment |> Db.where (Post.Comment.post.eq (Post.PostId "a")) |> Db.all
+  Query.succeed { comments: comments }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Text.fromInt (List.length model.comments)}</p>

@@ -1,0 +1,1 @@
+{"code": "E0202", "severity": "error", "file": "app/Notes/Show.alder", "line": 6, "col": 26, "endLine": 6, "endCol": 32, "message": "type `NoteId` belongs to module `Note`; write `Note.NoteId`", "fix": {"line": 6, "col": 26, "endLine": 6, "endCol": 32, "replace": "Note.NoteId"}}

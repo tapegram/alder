@@ -1,0 +1,59 @@
+module Profile.Show
+
+import User
+import Todo
+import Layout
+
+page "/profile" { } requires user
+
+type Model = {
+  user: User,
+  todoCount: Int,
+  doneCount: Int,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get User session.user
+  match found {
+    Just user -> {
+      let todos <-
+        Db.from Todo
+          |> Db.where (Todo.owner.eq session.user)
+          |> Db.all
+      let todoCount = List.length todos
+      let doneCount = List.length (List.filter (\t -> t.done) todos)
+      Query.succeed { user: user, todoCount: todoCount, doneCount: doneCount }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+form EditName = {
+  name: Text.NonEmpty,
+}
+
+msg Save form EditName
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> {
+    let _ <- Db.update User session.user (\u -> { u | name: p.form.name })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Profile" theme={session.theme}>
+    <h1>Profile</h1>
+    <p>Name: {model.user.name}</p>
+    <p>Email: {model.user.email}</p>
+    <p>Todos: {Text.fromInt model.todoCount} ({Text.fromInt model.doneCount} done)</p>
+    <form submit={Save}>
+      <Input field="name" label="Name" value={model.user.name} />
+      <Errors field="name" />
+      <button>Save</button>
+    </form>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>

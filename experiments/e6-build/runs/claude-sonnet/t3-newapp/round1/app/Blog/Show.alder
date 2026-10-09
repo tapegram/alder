@@ -1,0 +1,79 @@
+module Blog.Show
+
+import Post
+import Comment
+import Layout
+
+page "/posts/{slug}" { slug: Post.Slug }
+
+type Model = { post: Post, comments: List Comment }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.from Post |> Db.where (Post.slug.eq params.slug) |> Db.first
+  match found {
+    Just post -> if post.published || Maybe.isJust session.user then withComments post else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+withComments : Post -> Query Model
+withComments post = {
+  let comments <-
+    Db.from Comment
+      |> Db.where (Comment.post.eq post.id)
+      |> Db.orderBy Comment.created.asc
+      |> Db.all
+  Query.succeed { post: post, comments: comments }
+}
+
+form NewComment = {
+  author: Text.NonEmpty,
+  body: Text.NonEmpty,
+}
+
+msg AddComment form NewComment
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddComment p -> {
+    let _ <- Db.insert Comment { post: model.post.id, author: p.form.author, body: p.form.body }
+    Task.succeed (Redirect (Blog.Show { slug: model.post.slug }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.post.title} user={session.user}>
+    <article>
+      <h1>{model.post.title}</h1>
+      <p class="date">{Time.format "Jan 2, 2006" model.post.created}</p>
+      {if model.post.published then Html.none else <p class="draft">Draft: only you can see this post.</p>}
+      <div class="body">{model.post.body}</div>
+    </article>
+
+    <section id="comments">
+      <h2>Comments</h2>
+      {if List.isEmpty model.comments then <p>No comments yet.</p> else <ul>{for c in model.comments -> <CommentItem comment={c} />}</ul>}
+    </section>
+
+    <form submit={AddComment}>
+      <h3>Add a comment</h3>
+      <Errors form />
+      <Input field="author" label="Your name" />
+      <Errors field="author" />
+      <Textarea field="body" label="Comment" />
+      <Errors field="body" />
+      <button>Add comment</button>
+    </form>
+
+    <a href={Blog.Index {}}>Back</a>
+  </Layout.Page>
+
+CommentItem : { comment: Comment } -> Html Msg
+CommentItem props =
+  <li>
+    <strong>{props.comment.author}</strong>
+    <span class="date"> {Time.format "Jan 2, 2006" props.comment.created}</span>
+    <p>{props.comment.body}</p>
+  </li>

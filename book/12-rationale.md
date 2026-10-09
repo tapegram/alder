@@ -282,6 +282,35 @@ reasons for parse errors, a table declared in another table's module,
 missing-import cascades, and an annotation hint for `let`-bound record
 literals.
 
+### E6: Does it build?
+
+*Done 2026-10-09.* The first run with `alder build` in the loop: a round
+passes only if `alder check` is clean and `alder build --emit` then
+succeeds, with up to two retries. Qwen3-Coder 30B, Haiku and Sonnet on
+T2–T4 and a new T5 (shared notes; deleting another user's note by id must
+answer 404), on the book at `3415cf8`. Full data in
+`experiments/e6-build/` (`scores.md`, `findings.md`).
+
+| Model | Round 0 errors (T2–T5) | Final errors | Pass | E5 pass (T2–T4) |
+|---|---|---|---|---|
+| Claude Sonnet | 1 | 0 | 4 / 4 | 3 / 3 |
+| Claude Haiku | 5 | 0 | 4 / 4 | 3 / 3 |
+| Qwen3-Coder 30B | 22 | 8 | 2 / 4 | 2 / 3 |
+
+What it showed: every program that checked clean also built (10 / 10), so
+the build found no compiler bug. Each Claude slip (a trailing comma, a
+missing `Just`) took one retry. Both of Qwen's failures trace to messages
+E5 had already named: a table declared in another table's module, whose
+`fix: import Post.Comment` cannot work, cost both T3 retries, and a parse
+error hid seven errors in T5, after which an `unknown constructor` with no
+reason led Qwen to qualify constructors. On ownership, every T5 app checks
+the owner in `update`, and every T4 app now acts on the note `load`
+checked, where in E5 two of three T4 apps updated and deleted any id they
+were sent. The models copied the example's `owned` helper, though, so this
+shows the example sets the pattern, not that agents authorize `update`
+unprompted; the open question on row ownership below needs a task the
+example does not answer.
+
 ## Open questions
 
 - Should `view` be able to read form state (for "edit" forms that show

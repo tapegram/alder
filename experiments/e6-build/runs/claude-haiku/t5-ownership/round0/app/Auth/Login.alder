@@ -1,0 +1,65 @@
+module Auth.Login
+
+import User
+import Layout
+
+-- Password checking is outside the language: a capability implemented in Go. It answers whether
+-- the password is right for the email; the user row is found, or made on first login, here.
+capability Password {
+  verify : { email: Text.Email, password: Text } -> Task Bool,
+}
+
+page "/login" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+form Credentials = {
+  email: Text.Email,
+  password: Text.Secret,
+}
+
+msg Submit form Credentials
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let ok <- Password.verify { email: p.form.email, password: p.form.password }
+    if ok then signIn p.form.email else Task.succeed (Reject "Email or password is incorrect."),
+  },
+}
+
+-- signIn puts the user with this email into the session.
+signIn : Text.Email -> Task Nav
+signIn email = {
+  let found <- Db.first (Db.from User |> Db.where (User.email.eq email))
+  match found {
+    Just u -> remember u.id,
+    Nothing -> {
+      let id <- Db.insert User { email: email, name: email, passwordHash: "" }
+      remember id,
+    },
+  }
+}
+
+remember : User.UserId -> Task Nav
+remember id = {
+  let _ <- Session.put (\s -> { s | user: Just id })
+  Task.succeed (Redirect (Notes.Index {}))
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Log in">
+    <h1>Log in</h1>
+    <form submit={Submit}>
+      <Errors form />
+      <Input field="email" label="Email" />
+      <Errors field="email" />
+      <Input field="password" label="Password" />
+      <Errors field="password" />
+      <button>Log in</button>
+    </form>
+  </Layout.Page>

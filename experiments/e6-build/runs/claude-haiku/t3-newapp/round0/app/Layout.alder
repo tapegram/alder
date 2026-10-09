@@ -1,0 +1,22 @@
+module Layout
+
+import Author
+
+Page : { title: Text, author: Maybe Author.AuthorId, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+    </head>
+    <body>
+      <header>
+        <a href={Home {}}>Blog</a>
+        {match props.author {
+          Just _ -> <nav class="account"><a href={Admin {}}>Admin</a> <button click={App.Logout}>Log out</button></nav>,
+          Nothing -> <nav class="account"><a href={Login {}}>Log in</a></nav>,
+        }}
+      </header>
+      <main>{props.children}</main>
+    </body>
+  </html>

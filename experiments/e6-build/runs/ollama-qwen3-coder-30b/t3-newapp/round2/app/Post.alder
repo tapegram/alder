@@ -1,0 +1,27 @@
+module Post
+
+import User
+
+type PostId = brand Text
+type Slug = brand Text where Text.matches "^[a-z0-9-]+$"
+
+table Post {
+  id: PostId @id,
+  title: Text.NonEmpty,
+  slug: Slug @unique,
+  body: Text,
+  published: Bool = False,
+  created: Time @created,
+  author: User.UserId @ref User,
+}
+
+table Comment {
+  id: Text @id,
+  postId: PostId @ref Post,
+  author: Text.NonEmpty,
+  body: Text,
+  created: Time @created,
+}
+
+test "post can be created" =
+  True

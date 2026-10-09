@@ -1,0 +1,25 @@
+module Note
+
+import User
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  title: Text.NonEmpty,
+  body: Text,
+  owner: User.UserId @ref User,
+  created: Time @created,
+}
+
+-- ownedBy is the note with this id when it belongs to the user; otherwise Task.notFound (a 404),
+-- whether the row is missing or someone else's. A message's id comes from the request, so
+-- `update` checks ownership again.
+ownedBy : User.UserId -> NoteId -> Task Note
+ownedBy user id = {
+  let found <- Db.get Note id
+  match found {
+    Just note -> if note.owner == user then Task.succeed note else Task.notFound,
+    Nothing -> Task.notFound,
+  }
+}
