@@ -239,6 +239,11 @@ func instantiateRecord(r *Record, args []Type, inProgress map[string]*Record) *R
 	}
 	inst := &Record{Module: def.Module, Name: def.Name, Params: def.Params, Args: args, Def: def}
 	inProgress[key] = inst
+	if len(inProgress) > maxRecordNesting {
+		// A record that refers to itself at growing arguments (`type T a = { more: List (T
+		// (List a)) }`) has no finite instance; the checker rejects it (E0011). Stop here.
+		return inst
+	}
 	idx := map[string]Type{}
 	for i, n := range def.Params {
 		if i < len(args) {
@@ -250,6 +255,9 @@ func instantiateRecord(r *Record, args []Type, inProgress map[string]*Record) *R
 	}
 	return inst
 }
+
+// maxRecordNesting bounds the generic record instances one instantiation builds.
+const maxRecordNesting = 64
 
 // typeKey is a string that identifies t up to equality, telling inference variables apart.
 func typeKey(t Type) string {

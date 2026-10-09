@@ -1,0 +1,6 @@
+module M
+
+type T a = { x: a, more: List (T (List a)) }
+
+f : T Int -> Int
+f t = t.x

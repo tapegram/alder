@@ -225,6 +225,7 @@ func (mc *modCtx) defineTypes() {
 				for _, f := range d.Record.Fields {
 					ft := mc.typeOf(f.Type, params)
 					mc.deferDefault(f, ft)
+					mc.checkRegular(tt, f, ft)
 					tt.Fields = append(tt.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
 				}
 			}
@@ -244,6 +245,56 @@ func (mc *modCtx) defineTypes() {
 		// True/False are literals; Bool stays a Con. Register ctors Just/Nothing/Ok/Err/Rerender/Redirect/Reject only.
 		delete(c.ctors, "Prelude.True")
 		delete(c.ctors, "Prelude.False")
+	}
+}
+
+// checkRegular reports E0011 when field f of generic record decl refers to decl at other
+// arguments than its own parameters (`type T a = { more: List (T (List a)) }`): such a record
+// has no finite instance, in the checker or in Go.
+func (mc *modCtx) checkRegular(decl *types.Record, f *syntax.Field, ft types.Type) {
+	if len(decl.Params) == 0 {
+		return
+	}
+	var bad types.Type
+	var walk func(t types.Type)
+	walk = func(t types.Type) {
+		switch t := t.(type) {
+		case *types.Record:
+			if t.Anonymous {
+				for _, fl := range t.Fields {
+					walk(fl.Type)
+				}
+				return
+			}
+			if (t == decl || t.Def == decl) && bad == nil {
+				for i, a := range t.Args {
+					if p, ok := a.(*types.Param); !ok || i >= len(decl.Params) || p.Name != decl.Params[i] {
+						bad = t
+					}
+				}
+			}
+			for _, a := range t.Args {
+				walk(a)
+			}
+		case *types.App:
+			for _, a := range t.Args {
+				walk(a)
+			}
+		case *types.Union:
+			for _, a := range t.Args {
+				walk(a)
+			}
+		case *types.Fun:
+			for _, p := range t.Params {
+				walk(p)
+			}
+			walk(t.Result)
+		}
+	}
+	walk(ft)
+	if bad != nil {
+		mc.c.errorf(diag.InvalidDecl, f.Span, "field `%s` refers to `%s` as `%s`; a record may refer to itself only with its own parameters (`%s %s`)",
+			f.Name, decl.Name, types.StringIn(bad, mc.m.Name), decl.Name, strings.Join(decl.Params, " "))
 	}
 }
 
