@@ -58,7 +58,10 @@ func TestCheckGolden(t *testing.T) {
 				os.WriteFile(golden, []byte(got), 0o644)
 				return
 			}
-			want, _ := os.ReadFile(golden)
+			want, err := os.ReadFile(golden)
+			if err != nil {
+				t.Fatalf("missing golden %s", golden)
+			}
 			if got != string(want) {
 				t.Fatalf("golden mismatch\n got:\n%s\nwant:\n%s", got, want)
 			}

@@ -87,7 +87,7 @@ func (u *Unifier) Apply(t Type) Type {
 		for i, a := range t.Args {
 			args[i] = u.Apply(a)
 		}
-		return &Union{Module: t.Module, Name: t.Name, Args: args, Ctors: t.Ctors, Params: t.Params}
+		return t.WithArgs(args)
 	case *Record:
 		if !t.Anonymous {
 			return t
@@ -283,7 +283,7 @@ func (u *Unifier) Instantiate(t Type) Type {
 			for i, a := range t.Args {
 				args[i] = inst(a)
 			}
-			return &Union{Module: t.Module, Name: t.Name, Args: args, Ctors: t.Ctors, Params: t.Params}
+			return t.WithArgs(args)
 		case *Record:
 			if !t.Anonymous {
 				return t
@@ -301,7 +301,7 @@ func (u *Unifier) Instantiate(t Type) Type {
 
 // CtorArg returns the payload type of constructor `name` of union `un`, with the union's parameters substituted by un.Args.
 func CtorArg(un *Union, name string) (Type, bool) {
-	for _, c := range un.Ctors {
+	for _, c := range un.Constructors() {
 		if c.Name == name {
 			if c.Arg == nil {
 				return nil, true
@@ -347,7 +347,7 @@ func substParams(t Type, names []string, args []Type) Type {
 			for i, a := range t.Args {
 				as[i] = sub(a)
 			}
-			return &Union{Module: t.Module, Name: t.Name, Args: as, Ctors: t.Ctors, Params: t.Params}
+			return t.WithArgs(as)
 		case *Record:
 			fs := make([]Field, len(t.Fields))
 			for i, f := range t.Fields {

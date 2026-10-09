@@ -106,3 +106,16 @@ func TestCheck_NeverDoesNotBindVar(t *testing.T) {
 		t.Fatalf("var should still be free: %v", err)
 	}
 }
+
+func TestInstantiate_SeesLaterCtors(t *testing.T) {
+	u := &Union{Module: "M", Name: "T", Params: []string{"a"}}
+	cp := u.WithArgs([]Type{Int})
+	u.Ctors = append(u.Ctors, Ctor{Name: "Box", Arg: &Param{Name: "a"}})
+	if _, ok := CtorArg(cp, "Box"); !ok {
+		t.Fatal("copy made before the ctor was appended should still find it")
+	}
+	un := &Unifier{Subst: Subst{}}
+	if _, ok := CtorArg(un.Instantiate(cp).(*Union), "Box"); !ok {
+		t.Fatal("instantiated copy should find it")
+	}
+}

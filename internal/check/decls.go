@@ -155,7 +155,7 @@ func applyArgs(decl types.Type, args []types.Type) types.Type {
 		if len(args) == 0 {
 			return d
 		}
-		return &types.Union{Module: d.Module, Name: d.Name, Args: args, Ctors: d.Ctors, Params: d.Params}
+		return d.WithArgs(args)
 	case *types.App:
 		if len(args) == 0 {
 			return d
@@ -197,9 +197,6 @@ func (mc *modCtx) defineTypes() {
 			rec := c.types[c.key(mc.m.Name, d.Name)].(*types.Record)
 			for _, f := range d.Fields {
 				ft := mc.typeOf(f.Type, nil)
-				if !formRepresentable(ft) {
-					c.errorf(diag.InvalidDecl, f.Span, "form field `%s` has type `%s`, which cannot come from a form", f.Name, types.String(ft))
-				}
 				rec.Fields = append(rec.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
 			}
 			c.forms[c.key(mc.m.Name, d.Name)] = rec
@@ -219,9 +216,6 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 	idCount := 0
 	for _, f := range d.Fields {
 		ft := mc.typeOf(f.Type, nil)
-		if !storable(ft) {
-			c.errorf(diag.InvalidDecl, f.Span, "table field `%s` has type `%s`, which cannot be stored; model nesting with a second table and `@ref`", f.Name, types.String(ft))
-		}
 		rec.Fields = append(rec.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
 		info.Columns[f.Name] = ft
 		generated := false
@@ -231,12 +225,12 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 				idCount++
 				generated = true
 				info.IDField, info.IDType = f.Name, ft
-				if b, ok := ft.(*types.Brand); !ok || b.Base != types.Text {
+				if b, ok := ft.(*types.Brand); !ok || !isCon(b.Base, "Text") {
 					c.errorf(diag.InvalidDecl, f.Span, "`@id` field must be a `brand Text`, got `%s`", types.String(ft))
 				}
 			case "created", "updated":
 				generated = true
-				if ft != types.Time {
+				if !isCon(ft, "Time") {
 					c.errorf(diag.InvalidDecl, f.Span, "`@%s` field must have type `Time`", a.Name)
 				}
 			case "ref":
@@ -315,7 +309,7 @@ func isScalar(t types.Type) bool {
 		if t.Name == "Maybe" {
 			return false
 		}
-		for _, ct := range t.Ctors {
+		for _, ct := range t.Constructors() {
 			if ct.Arg != nil {
 				return false
 			}
@@ -340,7 +334,7 @@ func storable(t types.Type) bool {
 }
 
 func formRepresentable(t types.Type) bool {
-	if c, ok := t.(*types.Con); ok && c.Name == "Time" {
+	if isCon(t, "Time") {
 		return false
 	}
 	return storable(t)
@@ -353,10 +347,32 @@ func urlRepresentable(t types.Type) bool {
 	if app, ok := t.(*types.App); ok && app.Con == "List" && len(app.Args) == 1 {
 		return urlRepresentable(app.Args[0])
 	}
-	if c, ok := t.(*types.Con); ok && (c.Name == "Float" || c.Name == "Date" || c.Name == "Time") {
+	if isCon(t, "Float") || isCon(t, "Date") || isCon(t, "Time") {
 		return false
 	}
 	return isScalar(t)
+}
+
+// checkRepresentable runs after every module's types are defined, so payload unions
+// declared later in a file (or in another module) are seen with their constructors.
+func (mc *modCtx) checkRepresentable() {
+	c := mc.c
+	for _, d := range mc.m.Decls {
+		switch d := d.(type) {
+		case *syntax.TableDecl:
+			for _, f := range d.Fields {
+				if ft := mc.typeOf(f.Type, nil); !storable(ft) {
+					c.errorf(diag.InvalidDecl, f.Span, "table field `%s` has type `%s`, which cannot be stored; model nesting with a second table and `@ref`", f.Name, types.String(ft))
+				}
+			}
+		case *syntax.FormDecl:
+			for _, f := range d.Fields {
+				if ft := mc.typeOf(f.Type, nil); !formRepresentable(ft) {
+					c.errorf(diag.InvalidDecl, f.Span, "form field `%s` has type `%s`, which cannot come from a form", f.Name, types.String(ft))
+				}
+			}
+		}
+	}
 }
 
 // defineApp reads session/login/msg from App.

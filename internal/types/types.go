@@ -35,6 +35,7 @@ type Union struct {
 	Module, Name string
 	Args         []Type
 	Ctors        []Ctor
+	Def          *Union // declaration this instance was copied from (nil on the declaration itself)
 	Params       []string // declared parameter names, same length as Args
 }
 type App struct {
@@ -145,4 +146,22 @@ func itoa(i int) string {
 		i /= 10
 	}
 	return string(b)
+}
+
+// Constructors returns the declaration's constructors, even when this is an instance
+// copied before the declaration's body was defined.
+func (u *Union) Constructors() []Ctor {
+	if u.Def != nil {
+		return u.Def.Ctors
+	}
+	return u.Ctors
+}
+
+// WithArgs returns a copy of u carrying args and a back-pointer to the declaration.
+func (u *Union) WithArgs(args []Type) *Union {
+	def := u.Def
+	if def == nil {
+		def = u
+	}
+	return &Union{Module: u.Module, Name: u.Name, Args: args, Ctors: u.Ctors, Params: u.Params, Def: def}
 }

@@ -73,6 +73,10 @@ func Program(prog *names.Program, bag *diag.Bag) {
 	for _, m := range c.allModules() {
 		c.ctx(m).defineTypes()
 	}
+	// pass 2b: representability checks need every union's constructors
+	for _, m := range c.allModules() {
+		c.ctx(m).checkRepresentable()
+	}
 	// pass 3: App session + app msgs, then pages (generated Params/Msg), capabilities, value signatures
 	if app := prog.Modules["App"]; app != nil {
 		c.ctx(app).defineApp()
@@ -146,4 +150,10 @@ func (c *Checker) declareStd() {
 	for _, t := range []*types.Con{types.Int, types.Float, types.Bool, types.Text, types.Unit, types.Date, types.Time, types.Never, types.Error, types.Page} {
 		c.types[c.key("Prelude", t.Name)] = t // canonical singletons, so identity comparisons (e.g. `ft == types.Time`) hold
 	}
+}
+
+// isCon reports whether t is the builtin type constructor called name (compared by name, not identity).
+func isCon(t types.Type, name string) bool {
+	c, ok := t.(*types.Con)
+	return ok && c.Name == name
 }
