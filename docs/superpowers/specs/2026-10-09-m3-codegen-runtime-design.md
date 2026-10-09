@@ -91,7 +91,7 @@ for I/O. Output is formatted with `go/format`. Mapping:
 | Alder | Go |
 |---|---|
 | record type | `struct` (value semantics) |
-| union | `struct{ Tag <Union>Tag; <field per payload> }` + tag constants + constructor funcs |
+| union | `struct{ Tag Tag__<M>__<Union>; <Ctor> *<payload struct> … }`: one pointer field per constructor with a payload (nil unless that constructor built the value), tag constants, constructor funcs that allocate the payload |
 | brand | erased to its base type |
 | `Maybe a`, `Result e a`, `List a`, `Dict k v` | `rt.Maybe[T]`, `rt.Result[E, T]`, `[]T`, `rt.Dict[K, V]` |
 | function | `func` with all parameters; `Partial` and `Lambda` → closures |
@@ -266,3 +266,11 @@ Each milestone gets its own implementation plan.
   routes a literal through the identity `rt.Int`/`rt.Float` when both
   operands of an arithmetic operator are constant expressions, and always
   for the literal divisor of `/` or `%` (M3a fix wave, C8).
+- Every union constructor payload is held by pointer (M3a fix wave, C1):
+  `type M__Tree[A any] struct{ Tag …; Node *M__Tree__Node[A] }`. Without
+  the pointer a recursive union (`Node { left: Tree a, … }`) is an invalid
+  recursive Go type. The rule is uniform (every payload, recursive or not)
+  so the emitter needs no recursion analysis; the constructor function
+  allocates, a match reads through the pointer, and `rt.Eq`/`rt.Key`
+  follow pointers. Prelude's `Maybe` and `Result` keep their value
+  representation.

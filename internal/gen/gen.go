@@ -165,6 +165,9 @@ func bindParams(decl, inst types.Type, m map[string]types.Type) {
 			}
 		}
 	case *types.Record:
+		if d.Name != "" && !d.Anonymous { // a named record may be recursive (through a union)
+			return
+		}
 		if i, ok := inst.(*types.Record); ok && len(i.Fields) == len(d.Fields) {
 			for k := range d.Fields {
 				bindParams(d.Fields[k].Type, i.Fields[k].Type, m)

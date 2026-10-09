@@ -129,6 +129,9 @@ func typeParams(ts ...types.Type) []string {
 				walk(a)
 			}
 		case *types.Record:
+			if t.Name != "" && !t.Anonymous { // a named record may be recursive (through a union)
+				return
+			}
 			for _, f := range t.Fields {
 				walk(f.Type)
 			}
@@ -203,7 +206,7 @@ func typeDecl(w *strings.Builder, d *ir.TypeDecl) {
 	fmt.Fprintf(w, "type %s%s struct {\nTag %s\n", name, decl, tt)
 	for _, c := range u.Ctors {
 		if c.Payload != nil {
-			fmt.Fprintf(w, "%s %s\n", ctorField(c.Name), payloadType(u, c, use))
+			fmt.Fprintf(w, "%s *%s\n", ctorField(c.Name), payloadType(u, c, use))
 		}
 	}
 	w.WriteString("}\n\n")
@@ -229,11 +232,11 @@ func typeDecl(w *strings.Builder, d *ir.TypeDecl) {
 			fmt.Fprintf(w, "var %s = %s{Tag: %s}\n\n", ctorVar(u.Module, u.Name, c.Name), name, tc)
 		case c.Payload == nil: // a generic union's payload-less value is built where it is used
 		case wrapped(c.Payload):
-			fmt.Fprintf(w, "func %s%s(v %s) %s%s {\nreturn %s%s{Tag: %s, %s: %s{Value: v}}\n}\n\n",
+			fmt.Fprintf(w, "func %s%s(v %s) %s%s {\nreturn %s%s{Tag: %s, %s: &%s{Value: v}}\n}\n\n",
 				ctorFunc(u.Module, u.Name, c.Name), decl, GoType(c.Payload.Fields[0].Type), name, use,
 				name, use, tc, ctorField(c.Name), payloadType(u, c, use))
 		default:
-			fmt.Fprintf(w, "func %s%s(v %s) %s%s {\nreturn %s%s{Tag: %s, %s: v}\n}\n\n",
+			fmt.Fprintf(w, "func %s%s(v %s) %s%s {\nreturn %s%s{Tag: %s, %s: &v}\n}\n\n",
 				ctorFunc(u.Module, u.Name, c.Name), decl, payloadType(u, c, use), name, use,
 				name, use, tc, ctorField(c.Name))
 		}

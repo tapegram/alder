@@ -10,8 +10,8 @@ import (
 
 type M__Shape struct {
 	Tag    M__Shape__Tag
-	Circle M__Shape_Circle
-	Rect   M__Shape_Rect
+	Circle *M__Shape_Circle
+	Rect   *M__Shape_Rect
 }
 
 type M__Shape__Tag uint8
@@ -31,11 +31,11 @@ type M__Shape_Rect struct {
 }
 
 func M__Shape_Circle_(v float64) M__Shape {
-	return M__Shape{Tag: M__Shape__Tag_Circle, Circle: M__Shape_Circle{Value: v}}
+	return M__Shape{Tag: M__Shape__Tag_Circle, Circle: &M__Shape_Circle{Value: v}}
 }
 
 func M__Shape_Rect_(v M__Shape_Rect) M__Shape {
-	return M__Shape{Tag: M__Shape__Tag_Rect, Rect: v}
+	return M__Shape{Tag: M__Shape__Tag_Rect, Rect: &v}
 }
 
 type M__Point struct {

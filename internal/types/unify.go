@@ -126,6 +126,9 @@ func (u *Unifier) occurs(v *Var, t Type) bool {
 			}
 		}
 	case *Record:
+		if !t.Anonymous { // a nominal record holds no inference variable, and may be recursive
+			return false
+		}
 		for _, f := range t.Fields {
 			if u.occurs(v, f.Type) {
 				return true
@@ -353,6 +356,9 @@ func substParams(t Type, names []string, args []Type) Type {
 			}
 			return t.WithArgs(as)
 		case *Record:
+			if !t.Anonymous { // a nominal record mentions no parameter of the union, and may be recursive
+				return t
+			}
 			fs := make([]Field, len(t.Fields))
 			for i, f := range t.Fields {
 				fs[i] = Field{f.Name, sub(f.Type), f.HasDefault}

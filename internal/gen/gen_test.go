@@ -234,7 +234,7 @@ node v = Node { value: v, size: 1 }
 	contains(t, src,
 		"type U__Shape_Rect struct {\n\tW float64\n\tH float64\n}",
 		"type U__Shape_Circle struct {\n\tValue float64\n}",
-		"Rect   U__Shape_Rect",
+		"Rect   *U__Shape_Rect",
 		"func U__Shape_Circle_(v float64) U__Shape {",
 		"func U__Shape_Rect_(v U__Shape_Rect) U__Shape {",
 		"var U__Shape_Empty = U__Shape{Tag: U__Shape__Tag_Empty}",
@@ -270,7 +270,7 @@ go range = {
 `})
 	src := files["K.go"]
 	contains(t, src,
-		"Tag_ K__Kind_Tag",
+		"Tag_ *K__Kind_Tag",
 		"Type string",
 		"func K__func(k K__Kind) string {",
 		"case K__Kind__Tag_Tag:",
@@ -882,6 +882,83 @@ func TestDictKeys(t *testing.T) {
 	}
 	if D__two != 2 {
 		t.Errorf("two = %d", D__two)
+	}
+}
+`)
+}
+
+// A union may be recursive: every constructor payload is held by pointer, so the Go struct is
+// finite (C1). Matching, equality and the whole-payload binding read through the pointer.
+func TestGen_RunRecursiveUnion(t *testing.T) {
+	files := emitSource(t, map[string]string{"T.alder": `module T
+
+type Tree a = Leaf | Node { left: Tree a, value: a, right: Tree a }
+
+type Expr = Num Int | Add { l: Expr, r: Expr } | Neg Expr
+
+insert : Int -> Tree Int -> Tree Int
+insert x t = match t {
+  Leaf -> Node { left: Leaf, value: x, right: Leaf },
+  Node n -> if x < n.value then Node { n | left: insert x n.left } else Node { n | right: insert x n.right },
+}
+
+toList : Tree a -> List a
+toList t = match t {
+  Leaf -> [],
+  Node { left: l, value: v, right: r } -> toList l ++ [v] ++ toList r,
+}
+
+eval : Expr -> Int
+eval e = match e {
+  Num n -> n,
+  Add { l: l, r: r } -> eval l + eval r,
+  Neg x -> 0 - eval x,
+}
+
+tree : Tree Int
+tree = List.foldl insert Leaf [3, 1, 2]
+
+sorted : List Int
+sorted = toList tree
+
+same : Bool
+same = tree == List.foldl insert Leaf [3, 1, 2]
+
+differ : Bool
+differ = tree == List.foldl insert Leaf [1, 2, 3]
+
+value : Int
+value = eval (Add { l: Num 2, r: Neg (Num 5) })
+
+type Dir = { name: Text, entries: List Dir, link: Link }
+type Link = None | To Dir
+
+depth : Dir -> Int
+depth d = match d.link {
+  None -> 1,
+  To e -> 1 + depth e,
+}
+
+deep : Int
+deep = depth { name: "a", entries: [], link: To { name: "b", entries: [], link: None } }
+`})
+	contains(t, files["T.go"], "Node *T__Tree_Node[A]", "Add *T__Expr_Add")
+	runGo(t, files, `package app
+
+import (
+	"slices"
+	"testing"
+)
+
+func TestTree(t *testing.T) {
+	if !slices.Equal(T__sorted, []int64{1, 2, 3}) {
+		t.Errorf("sorted = %v", T__sorted)
+	}
+	if !T__same || T__differ {
+		t.Errorf("same, differ = %v, %v", T__same, T__differ)
+	}
+	if T__value != -3 || T__deep != 2 {
+		t.Errorf("value, deep = %d, %d", T__value, T__deep)
 	}
 }
 `)

@@ -180,8 +180,8 @@ func partAccess(x *ir.Match, tag, field, subj string) string {
 			}
 			return subj + ".Val"
 		}
-		if field == "" {
-			return subj + "." + ctorField(tag)
+		if field == "" { // the whole payload record: the union holds it by pointer
+			return "*" + subj + "." + ctorField(tag)
 		}
 		return subj + "." + ctorField(tag) + "." + Field(field)
 	}

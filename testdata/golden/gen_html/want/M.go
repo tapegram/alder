@@ -25,8 +25,8 @@ var M__Color_Green = M__Color{Tag: M__Color__Tag_Green}
 
 type M__Shape struct {
 	Tag    M__Shape__Tag
-	Circle M__Shape_Circle
-	Square M__Shape_Square
+	Circle *M__Shape_Circle
+	Square *M__Shape_Square
 }
 
 type M__Shape__Tag uint8
@@ -45,11 +45,11 @@ type M__Shape_Square struct {
 }
 
 func M__Shape_Circle_(v float64) M__Shape {
-	return M__Shape{Tag: M__Shape__Tag_Circle, Circle: M__Shape_Circle{Value: v}}
+	return M__Shape{Tag: M__Shape__Tag_Circle, Circle: &M__Shape_Circle{Value: v}}
 }
 
 func M__Shape_Square_(v float64) M__Shape {
-	return M__Shape{Tag: M__Shape__Tag_Square, Square: M__Shape_Square{Value: v}}
+	return M__Shape{Tag: M__Shape__Tag_Square, Square: &M__Shape_Square{Value: v}}
 }
 
 type M__Model struct {
@@ -83,8 +83,8 @@ type M__PickParams struct {
 
 type M__Msg struct {
 	Tag  M__Msg__Tag
-	Save M__SaveParams
-	Pick M__PickParams
+	Save *M__SaveParams
+	Pick *M__PickParams
 }
 
 type M__Msg__Tag uint8
@@ -96,11 +96,11 @@ const (
 )
 
 func M__Msg_Save_(v M__SaveParams) M__Msg {
-	return M__Msg{Tag: M__Msg__Tag_Save, Save: v}
+	return M__Msg{Tag: M__Msg__Tag_Save, Save: &v}
 }
 
 func M__Msg_Pick_(v M__PickParams) M__Msg {
-	return M__Msg{Tag: M__Msg__Tag_Pick, Pick: v}
+	return M__Msg{Tag: M__Msg__Tag_Pick, Pick: &v}
 }
 
 var M__Msg_Ping = M__Msg{Tag: M__Msg__Tag_Ping}
