@@ -118,6 +118,11 @@ Dict.values   : Dict k v -> List v
 Dict.size     : Dict k v -> Int
 ```
 
+A key may be of any type: a `List`, a record, a `Time`. Two keys are the
+same key when they are `==`, so a `Time` key is its instant (the same
+moment written in two time zones is one key). A `Dict` keeps its keys in
+the order they were first inserted; `==` on two dicts ignores that order.
+
 ## Date, Time
 
 `Date` is a calendar date. `Time` is an instant (UTC).

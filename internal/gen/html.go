@@ -295,7 +295,7 @@ func (f *fn) comp(x *ir.Comp, s *scope) string {
 			}
 		} else if v := given[fd.Name]; v != nil {
 			// a field whose declared type has type parameters takes the instance's type
-			if ps, _ := typeParams(fd.Type); len(ps) > 0 {
+			if ps := typeParams(fd.Type); len(ps) > 0 {
 				t = GoType(v.Type())
 			}
 			inits = append(inits, Field(fd.Name)+": "+f.code(v, s))

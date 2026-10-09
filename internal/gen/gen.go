@@ -116,7 +116,7 @@ func reaches(refs map[*ir.Value][]*ir.Value, v *ir.Value) bool {
 func (g *gen) params(v *ir.Value) []string {
 	ps, ok := g.tparams[v]
 	if !ok {
-		ps, _ = typeParams(v.Type)
+		ps = typeParams(v.Type)
 		g.tparams[v] = ps
 	}
 	return ps
@@ -250,8 +250,7 @@ func importsOf(body string) ([]string, error) {
 func (g *gen) value(w *strings.Builder, v *ir.Value) {
 	f := &fn{g: g}
 	s := newScope()
-	ps, cmp := typeParams(v.Type)
-	tps := typeParamDecl(ps, cmp)
+	tps := typeParamDecl(g.params(v))
 	name := GoName(v.Module, v.Name)
 	ft, isFun := v.Type.(*types.Fun)
 	if !isFun {

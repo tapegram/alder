@@ -2,11 +2,11 @@ package std
 
 import "alder/rt"
 
-func DictEmpty[K comparable, V any]() rt.Dict[K, V] { return rt.Dict[K, V]{} }
+func DictEmpty[K, V any]() rt.Dict[K, V] { return rt.Dict[K, V]{} }
 
 // DictFromList builds a Dict in list order; a repeated key keeps its first
 // position and its last value.
-func DictFromList[K comparable, V any](kvs []struct {
+func DictFromList[K, V any](kvs []struct {
 	Key   K
 	Value V
 }) rt.Dict[K, V] {
@@ -18,7 +18,7 @@ func DictFromList[K comparable, V any](kvs []struct {
 }
 
 // DictToList lists entries in key insertion order.
-func DictToList[K comparable, V any](d rt.Dict[K, V]) []struct {
+func DictToList[K, V any](d rt.Dict[K, V]) []struct {
 	Key   K
 	Value V
 } {
@@ -34,23 +34,23 @@ func DictToList[K comparable, V any](d rt.Dict[K, V]) []struct {
 	return out
 }
 
-func DictGet[K comparable, V any](k K, d rt.Dict[K, V]) rt.Maybe[V] {
+func DictGet[K, V any](k K, d rt.Dict[K, V]) rt.Maybe[V] {
 	if v, ok := d.Get(k); ok {
 		return rt.Just(v)
 	}
 	return rt.Nothing[V]()
 }
 
-func DictInsert[K comparable, V any](k K, v V, d rt.Dict[K, V]) rt.Dict[K, V] { return d.Insert(k, v) }
+func DictInsert[K, V any](k K, v V, d rt.Dict[K, V]) rt.Dict[K, V] { return d.Insert(k, v) }
 
-func DictRemove[K comparable, V any](k K, d rt.Dict[K, V]) rt.Dict[K, V] { return d.Remove(k) }
+func DictRemove[K, V any](k K, d rt.Dict[K, V]) rt.Dict[K, V] { return d.Remove(k) }
 
-func DictKeys[K comparable, V any](d rt.Dict[K, V]) []K { return d.Keys() }
+func DictKeys[K, V any](d rt.Dict[K, V]) []K { return d.Keys() }
 
-func DictValues[K comparable, V any](d rt.Dict[K, V]) []V { return d.Values() }
+func DictValues[K, V any](d rt.Dict[K, V]) []V { return d.Values() }
 
-func DictSize[K comparable, V any](d rt.Dict[K, V]) int64 { return int64(d.Len()) }
+func DictSize[K, V any](d rt.Dict[K, V]) int64 { return int64(d.Len()) }
 
 // DictMember is not in stdlib/Dict.alder; it is provided for the emitter
 // and for a future Dict.member.
-func DictMember[K comparable, V any](k K, d rt.Dict[K, V]) bool { return d.Has(k) }
+func DictMember[K, V any](k K, d rt.Dict[K, V]) bool { return d.Has(k) }

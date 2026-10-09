@@ -479,7 +479,7 @@ shadow n = {
 		"k := int64(2)",
 		"func E__loopy() int64 {",
 		"return n + E__loopy()",
-		"func E__keysOf[K comparable, V any](d rt.Dict[K, V]) []K {",
+		"func E__keysOf[K any, V any](d rt.Dict[K, V]) []K {",
 		"n_2 := n + 1",
 		"return n_2 * 2",
 	)
@@ -831,6 +831,57 @@ func TestArithmetic(t *testing.T) {
 	}
 	if !panics(func() { M__crash(1) }) || !panics(func() { M__crashMod(1) }) {
 		t.Error("Int division by zero did not panic")
+	}
+}
+`)
+}
+
+// Dict keys of any type compile and work (C2): a List key, a type parameter used as a key only
+// inside a body, and a parameter reached through a generic union with a Dict payload.
+func TestGen_RunDictKeys(t *testing.T) {
+	files := emitSource(t, map[string]string{"D.alder": `module D
+
+type Index k = Index (Dict k Int) | NoIndex
+
+byPath : Dict (List Int) Text
+byPath = Dict.fromList [{ key: [1, 2], value: "a" }, { key: [], value: "root" }]
+
+find : List Int -> Text
+find p = Dict.get p byPath ?? "none"
+
+single : k -> Int -> Dict k Int
+single k n = Dict.insert k n Dict.empty
+
+count : Index k -> Int
+count i = match i {
+  Index d -> Dict.size d,
+  NoIndex -> 0,
+}
+
+two : Int
+two = count (Index (single [1] 1)) + Dict.size (single { a: 1 } 2)
+`})
+	src := string(files["D.go"])
+	if strings.Contains(src, "comparable") {
+		t.Errorf("generated code constrains a type parameter:\n%s", src)
+	}
+	contains(t, files["D.go"], "var D__byPath rt.Dict[[]int64, string] =", "func D__single[K any](k K, n int64) rt.Dict[K, int64] {")
+	runGo(t, files, `package app
+
+import "testing"
+
+func TestDictKeys(t *testing.T) {
+	if got := D__find([]int64{1, 2}); got != "a" {
+		t.Errorf("find [1, 2] = %q", got)
+	}
+	if got := D__find(nil); got != "root" {
+		t.Errorf("find [] = %q", got)
+	}
+	if got := D__find([]int64{2}); got != "none" {
+		t.Errorf("find [2] = %q", got)
+	}
+	if D__two != 2 {
+		t.Errorf("two = %d", D__two)
 	}
 }
 `)

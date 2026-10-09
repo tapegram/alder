@@ -106,63 +106,57 @@ func typeArgs(args []types.Type) string {
 
 // typeParams lists the type parameters that occur in ts, in order of first occurrence. A
 // parameter that occurs only inside Html is left out: Html a is html.Node whatever a is, and Go
-// could never infer it. comparable reports the parameters used as a Dict key.
-func typeParams(ts ...types.Type) (params []string, comparable map[string]bool) {
+// could never infer it. Every Go type parameter is `any`: no Alder type needs a Go constraint
+// (rt.Dict keys any type by its canonical encoding, rt.Key).
+func typeParams(ts ...types.Type) []string {
+	var params []string
 	seen := map[string]bool{}
-	comparable = map[string]bool{}
-	var walk func(t types.Type, key bool)
-	walk = func(t types.Type, key bool) {
+	var walk func(t types.Type)
+	walk = func(t types.Type) {
 		switch t := t.(type) {
 		case *types.Param:
 			if !seen[t.Name] {
 				seen[t.Name] = true
 				params = append(params, t.Name)
 			}
-			if key {
-				comparable[t.Name] = true
-			}
 		case *types.Brand:
-			walk(t.Base, key)
+			walk(t.Base)
 		case *types.App:
 			if t.Con == "Html" {
 				return
 			}
-			for i, a := range t.Args {
-				walk(a, t.Con == "Dict" && i == 0)
+			for _, a := range t.Args {
+				walk(a)
 			}
 		case *types.Record:
 			for _, f := range t.Fields {
-				walk(f.Type, false)
+				walk(f.Type)
 			}
 		case *types.Union:
 			for _, a := range t.Args {
-				walk(a, false)
+				walk(a)
 			}
 		case *types.Fun:
 			for _, p := range t.Params {
-				walk(p, false)
+				walk(p)
 			}
-			walk(t.Result, false)
+			walk(t.Result)
 		}
 	}
 	for _, t := range ts {
-		walk(t, false)
+		walk(t)
 	}
-	return params, comparable
+	return params
 }
 
-// typeParamDecl renders a Go type parameter list ("[A any, K comparable]"), "" for none.
-func typeParamDecl(params []string, comparable map[string]bool) string {
+// typeParamDecl renders a Go type parameter list ("[A any, K any]"), "" for none.
+func typeParamDecl(params []string) string {
 	if len(params) == 0 {
 		return ""
 	}
 	var ps []string
 	for _, p := range params {
-		c := "any"
-		if comparable[p] {
-			c = "comparable"
-		}
-		ps = append(ps, typeParam(p)+" "+c)
+		ps = append(ps, typeParam(p)+" any")
 	}
 	return "[" + strings.Join(ps, ", ") + "]"
 }
@@ -185,22 +179,9 @@ func wrapped(p *ir.RecordType) bool {
 	return p != nil && p.Name == "" && len(p.Fields) == 1 && p.Fields[0].Name == "value"
 }
 
-// unionParams are the Go type parameters of a union declaration with their constraints.
+// unionParams are the Go type parameters of a union declaration.
 func unionParams(u *ir.UnionType) (decl, use string) {
-	comparable := map[string]bool{}
-	var payloads []types.Type
-	for _, c := range u.Ctors {
-		if c.Payload != nil {
-			for _, f := range c.Payload.Fields {
-				payloads = append(payloads, f.Type)
-			}
-		}
-	}
-	_, cmp := typeParams(payloads...)
-	for p := range cmp {
-		comparable[p] = true
-	}
-	return typeParamDecl(u.Params, comparable), typeParamUse(u.Params)
+	return typeParamDecl(u.Params), typeParamUse(u.Params)
 }
 
 // typeDecl writes the Go declarations of one nominal type.

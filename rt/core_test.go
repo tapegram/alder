@@ -1,6 +1,7 @@
 package rt
 
 import (
+	"math"
 	"reflect"
 	"testing"
 	"time"
@@ -185,5 +186,65 @@ func TestURLs(t *testing.T) {
 	}
 	if got := MaybeText(Nothing[int64](), func(n int64) string { return "n" }); got != "" {
 		t.Errorf("MaybeText Nothing = %q", got)
+	}
+}
+
+// Any Alder type can be a Dict key: keys are compared by their canonical encoding (C2).
+func TestDict_AnyKey(t *testing.T) {
+	var lists Dict[[]int64, string]
+	lists = lists.Insert([]int64{1, 2}, "a").Insert([]int64{1}, "b").Insert(nil, "nil")
+	if v, ok := lists.Get([]int64{1, 2}); !ok || v != "a" {
+		t.Fatalf("Get [1, 2] = %q, %v", v, ok)
+	}
+	if v, ok := lists.Get([]int64{}); !ok || v != "nil" {
+		t.Fatalf("empty list key is not the nil list key: %q, %v", v, ok)
+	}
+	if lists.Len() != 3 {
+		t.Fatalf("Len = %d", lists.Len())
+	}
+
+	utc := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	ny := utc.In(time.FixedZone("NY", -4*3600))
+	times := Dict[time.Time, int64]{}.Insert(utc, 1)
+	if v, ok := times.Get(ny); !ok || v != 1 {
+		t.Fatalf("the same instant in another location is another key: %d, %v", v, ok)
+	}
+	if times.Insert(ny, 2).Len() != 1 {
+		t.Fatal("Insert of the same instant added a key")
+	}
+	if !times.Equal(Dict[time.Time, int64]{}.Insert(ny, 1)) || !Eq(times, Dict[time.Time, int64]{}.Insert(ny, 1)) {
+		t.Fatal("dicts keyed by the same instants in two locations are not equal")
+	}
+
+	type rec struct {
+		A string
+		B Maybe[int64]
+	}
+	recs := Dict[rec, int64]{}.Insert(rec{"x", Just[int64](1)}, 1).Insert(rec{"x", Nothing[int64]()}, 2)
+	if v, _ := recs.Get(rec{"x", Just[int64](1)}); v != 1 || recs.Len() != 2 {
+		t.Fatalf("record keys: %d, %d", v, recs.Len())
+	}
+
+	ab := Dict[string, int64]{}.Insert("a", 1).Insert("b", 2)
+	ba := Dict[string, int64]{}.Insert("b", 2).Insert("a", 1)
+	dicts := Dict[Dict[string, int64], int64]{}.Insert(ab, 1)
+	if v, ok := dicts.Get(ba); !ok || v != 1 {
+		t.Fatal("a Dict key ignores insertion order")
+	}
+
+	// length prefixes keep different values apart
+	for _, pair := range [][2]any{
+		{[]string{"a,b"}, []string{"a", "b"}},
+		{[]string{"ab", ""}, []string{"a", "b"}},
+		{rec{"1", Nothing[int64]()}, rec{"", Just[int64](1)}},
+		{0.0, 0},
+		{int64(1), "1"},
+	} {
+		if Key(pair[0]) == Key(pair[1]) {
+			t.Errorf("Key(%#v) == Key(%#v)", pair[0], pair[1])
+		}
+	}
+	if Key(0.0) != Key(math.Copysign(0, -1)) {
+		t.Error("-0 and 0 are different keys")
 	}
 }

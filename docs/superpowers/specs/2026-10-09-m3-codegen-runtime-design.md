@@ -255,3 +255,14 @@ Each milestone gets its own implementation plan.
 - The dev watcher polls (no fsnotify dependency in the compiler).
 - The dev key for cookies is fixed and printed as a warning; `ALDER_SECRET`
   overrides it.
+- `Dict k v` takes keys of any type (M3a fix wave, C2): `rt.Dict[K, V any]`
+  keys its map by the canonical encoding `rt.Key(k)` (a `Time` as its UTC
+  instant, lists and records structurally, a nil list as the empty list),
+  keeps insertion order, and generated code has no `comparable` constraint.
+- `Int` is 64-bit two's complement and wraps on overflow; `/` truncates
+  toward zero and `%` has the dividend's sign; `Int` division by zero is a
+  runtime failure (a Go panic in M3a; M3b makes it a task failure). `Float`
+  is IEEE. So that Go never folds constants at compile time, the emitter
+  routes a literal through the identity `rt.Int`/`rt.Float` when both
+  operands of an arithmetic operator are constant expressions, and always
+  for the literal divisor of `/` or `%` (M3a fix wave, C8).

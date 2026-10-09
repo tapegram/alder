@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/url"
 	"reflect"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -39,20 +41,25 @@ func Err[E, T any](e E) Result[E, T] { return Result[E, T]{Err: e} }
 // Dict is Alder's `Dict k v`: an immutable map that remembers the order in
 // which keys were first inserted. The zero value is the empty Dict.
 // Insert and Remove return a new Dict and never change the receiver.
-type Dict[K comparable, V any] struct {
-	m    map[K]V
+//
+// A key may be of any Alder type (a List, a record, a Time, …), so the map
+// is keyed by the key's canonical encoding, Key(k): two keys are the same
+// key exactly when their encodings are equal, which is when they are Eq.
+type Dict[K, V any] struct {
+	m    map[string]V
 	keys []K
+	encs []string // Key of each of keys
 }
 
 // Get looks a key up.
 func (d Dict[K, V]) Get(k K) (V, bool) {
-	v, ok := d.m[k]
+	v, ok := d.m[Key(k)]
 	return v, ok
 }
 
 // Has reports whether the key is present.
 func (d Dict[K, V]) Has(k K) bool {
-	_, ok := d.m[k]
+	_, ok := d.m[Key(k)]
 	return ok
 }
 
@@ -65,14 +72,15 @@ func (d Dict[K, V]) Keys() []K { return append([]K{}, d.keys...) }
 // Values returns the values in key insertion order.
 func (d Dict[K, V]) Values() []V {
 	vs := make([]V, len(d.keys))
-	for i, k := range d.keys {
-		vs[i] = d.m[k]
+	for i, e := range d.encs {
+		vs[i] = d.m[e]
 	}
 	return vs
 }
 
 // Insert returns a Dict with k bound to v. A key already present keeps its
-// position; a new key goes last.
+// position (and its first spelling, e.g. the first Time zone); a new key
+// goes last.
 func (d Dict[K, V]) Insert(k K, v V) Dict[K, V] {
 	c := d.clone()
 	c.Put(k, v)
@@ -81,14 +89,16 @@ func (d Dict[K, V]) Insert(k K, v V) Dict[K, V] {
 
 // Remove returns a Dict without k.
 func (d Dict[K, V]) Remove(k K) Dict[K, V] {
-	if !d.Has(k) {
+	enc := Key(k)
+	if _, ok := d.m[enc]; !ok {
 		return d
 	}
-	c := Dict[K, V]{m: make(map[K]V, len(d.m)), keys: make([]K, 0, len(d.keys))}
-	for _, key := range d.keys {
-		if key != k {
-			c.keys = append(c.keys, key)
-			c.m[key] = d.m[key]
+	c := Dict[K, V]{m: make(map[string]V, len(d.m)), keys: make([]K, 0, len(d.keys)), encs: make([]string, 0, len(d.encs))}
+	for i, e := range d.encs {
+		if e != enc {
+			c.keys = append(c.keys, d.keys[i])
+			c.encs = append(c.encs, e)
+			c.m[e] = d.m[e]
 		}
 	}
 	return c
@@ -98,12 +108,14 @@ func (d Dict[K, V]) Remove(k K) Dict[K, V] {
 // has seen yet (e.g. inside a stdlib function); everything else uses Insert.
 func (d *Dict[K, V]) Put(k K, v V) {
 	if d.m == nil {
-		d.m = map[K]V{}
+		d.m = map[string]V{}
 	}
-	if _, ok := d.m[k]; !ok {
+	enc := Key(k)
+	if _, ok := d.m[enc]; !ok {
 		d.keys = append(d.keys, k)
+		d.encs = append(d.encs, enc)
 	}
-	d.m[k] = v
+	d.m[enc] = v
 }
 
 // Equal reports whether both dicts hold the same keys with Eq values.
@@ -112,8 +124,8 @@ func (d Dict[K, V]) Equal(o Dict[K, V]) bool {
 	if len(d.m) != len(o.m) {
 		return false
 	}
-	for k, v := range d.m {
-		ov, ok := o.m[k]
+	for e, v := range d.m {
+		ov, ok := o.m[e]
 		if !ok || !Eq(v, ov) {
 			return false
 		}
@@ -123,13 +135,132 @@ func (d Dict[K, V]) Equal(o Dict[K, V]) bool {
 
 func (d Dict[K, V]) eqAny(o any) bool { return d.Equal(o.(Dict[K, V])) }
 
+// keyAny is the Dict's own canonical encoding, for a Dict used inside a key:
+// its entries sorted by key encoding, so that insertion order is ignored as
+// Equal ignores it.
+func (d Dict[K, V]) keyAny(b *strings.Builder) {
+	encs := slices.Clone(d.encs)
+	slices.Sort(encs)
+	b.WriteString("d")
+	for _, e := range encs {
+		writeLen(b, e)
+		keyValue(b, reflect.ValueOf(d.m[e]))
+	}
+	b.WriteString(")")
+}
+
 func (d Dict[K, V]) clone() Dict[K, V] {
-	c := Dict[K, V]{m: make(map[K]V, len(d.m)+1), keys: make([]K, len(d.keys), len(d.keys)+1)}
+	c := Dict[K, V]{
+		m:    make(map[string]V, len(d.m)+1),
+		keys: make([]K, len(d.keys), len(d.keys)+1),
+		encs: make([]string, len(d.encs), len(d.encs)+1),
+	}
 	copy(c.keys, d.keys)
+	copy(c.encs, d.encs)
 	for k, v := range d.m {
 		c.m[k] = v
 	}
 	return c
+}
+
+// Key is the canonical encoding of a Dict key: Key(a) == Key(b) exactly when
+// Eq(a, b) (except that NaN, which is not Eq to itself, is one key). Text,
+// Int, Float and Bool are encoded directly (Float -0 as 0); a Time as its
+// UTC instant (UnixNano), so the same instant in two locations is one key;
+// a Dict as its entries in key order; records, unions, Maybe, Result and
+// Date field by field; lists element by element, with nil and empty the
+// same. Every variable-length part is length-prefixed, so no two values
+// share an encoding. A function cannot be a key: Key panics.
+func Key(k any) string {
+	var b strings.Builder
+	keyValue(&b, reflect.ValueOf(k))
+	return b.String()
+}
+
+// dictKey is implemented by every Dict instantiation.
+type dictKey interface{ keyAny(b *strings.Builder) }
+
+func writeLen(b *strings.Builder, s string) {
+	b.WriteString(strconv.Itoa(len(s)))
+	b.WriteByte(':')
+	b.WriteString(s)
+}
+
+func keyValue(b *strings.Builder, v reflect.Value) {
+	if !v.IsValid() {
+		b.WriteString("0")
+		return
+	}
+	if v.Type() == timeType && v.CanInterface() {
+		b.WriteString("t")
+		b.WriteString(strconv.FormatInt(v.Interface().(time.Time).UnixNano(), 10))
+		b.WriteByte(';')
+		return
+	}
+	if v.Kind() == reflect.Struct && v.CanInterface() {
+		if d, ok := v.Interface().(dictKey); ok {
+			d.keyAny(b)
+			return
+		}
+	}
+	switch v.Kind() {
+	case reflect.String:
+		b.WriteString("s")
+		writeLen(b, v.String())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		b.WriteString("i")
+		b.WriteString(strconv.FormatInt(v.Int(), 10))
+		b.WriteByte(';')
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		b.WriteString("u")
+		b.WriteString(strconv.FormatUint(v.Uint(), 10))
+		b.WriteByte(';')
+	case reflect.Float32, reflect.Float64:
+		f := v.Float()
+		if f == 0 {
+			f = 0 // -0 is 0
+		}
+		b.WriteString("f")
+		b.WriteString(strconv.FormatFloat(f, 'g', -1, 64))
+		b.WriteByte(';')
+	case reflect.Bool:
+		if v.Bool() {
+			b.WriteString("T")
+		} else {
+			b.WriteString("F")
+		}
+	case reflect.Struct:
+		b.WriteString("{")
+		for i := range v.NumField() {
+			keyValue(b, v.Field(i))
+		}
+		b.WriteString("}")
+	case reflect.Slice, reflect.Array:
+		b.WriteString("[")
+		b.WriteString(strconv.Itoa(v.Len()))
+		b.WriteByte(':')
+		for i := range v.Len() {
+			keyValue(b, v.Index(i))
+		}
+		b.WriteString("]")
+	case reflect.Pointer:
+		if v.IsNil() {
+			b.WriteString("n")
+			return
+		}
+		b.WriteString("p")
+		keyValue(b, v.Elem())
+	case reflect.Interface:
+		if v.IsNil() {
+			b.WriteString("n")
+			return
+		}
+		b.WriteString("a")
+		writeLen(b, v.Elem().Type().String())
+		keyValue(b, v.Elem())
+	default:
+		panic("alder: a value of type " + v.Type().String() + " cannot be a Dict key")
+	}
 }
 
 // Eq is Alder's one structural equality. The emitter uses it for `==` and
