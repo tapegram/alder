@@ -70,7 +70,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0005 | module name does not match its file path | — |
 | E0006 | import cycle | — |
 | E0007 | top-level value without a type signature | signature line |
-| E0008 | wrong number of parameters or arguments | — |
+| E0008 | wrong number of parameters or arguments, or of type arguments (`Box Int Text` for `type Box a`) | — |
 | E0009 | duplicate definition, or a constructor declared in two imported modules | — |
 | E0010 | required declaration missing (page `load`/`view`/`update`, `App` `error`/`notFound`/`login`/`session`) | — |
 | E0011 | invalid declaration (unstorable table field, unusable page or form field, bad `@id`, brand constructor used outside its module) | — |

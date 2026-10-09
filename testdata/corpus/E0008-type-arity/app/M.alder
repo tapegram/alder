@@ -1,0 +1,23 @@
+module M
+
+type Box a = { item: a, label: Text }
+
+type T a = A a | B
+
+lab : Box Int Text -> Text
+lab b = b.label
+
+bare : Box -> Text
+bare b = b.label
+
+f : T Int Int -> Int
+f t = 0
+
+g : T -> Int
+g t = 0
+
+h : Maybe -> Int
+h m = 0
+
+k : Int Text -> Int
+k n = 0

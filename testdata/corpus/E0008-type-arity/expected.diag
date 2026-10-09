@@ -1,0 +1,6 @@
+app/M.alder:7:7 E0008 `Box` takes 1 type argument, got 2
+app/M.alder:10:8 E0008 `Box` takes 1 type argument, got 0
+app/M.alder:13:5 E0008 `T` takes 1 type argument, got 2
+app/M.alder:16:5 E0008 `T` takes 1 type argument, got 0
+app/M.alder:19:5 E0008 `Maybe` takes 1 type argument, got 0
+app/M.alder:22:5 E0008 `Int` takes 0 type arguments, got 1

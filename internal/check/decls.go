@@ -133,6 +133,14 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 			if !ok {
 				return types.Err
 			}
+			if n := typeArity(decl); len(args) != n {
+				plural := "s"
+				if n == 1 {
+					plural = ""
+				}
+				c.errorf(diag.Arity, t.Span, "`%s` takes %d type argument%s, got %d", t.Name, n, plural, len(args))
+				return types.Err
+			}
 			out := applyArgs(decl, args)
 			if r, ok := out.(*types.Record); ok && r.Def != nil && !c.typesDefined {
 				c.early = append(c.early, r) // its declaration may not have its fields yet
@@ -171,6 +179,19 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 		return fn
 	}
 	return types.Err
+}
+
+// typeArity is the number of type arguments declared type decl takes.
+func typeArity(decl types.Type) int {
+	switch d := decl.(type) {
+	case *types.Union:
+		return len(d.Params)
+	case *types.Record:
+		return len(d.Params)
+	case *types.App:
+		return len(d.Args)
+	}
+	return 0
 }
 
 // applyArgs instantiates a declared type with arguments: unions and generic records get Args (a
