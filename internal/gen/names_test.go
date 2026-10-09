@@ -66,6 +66,7 @@ func TestGoNameInjective(t *testing.T) {
 		add(widenName(m), "widen "+m)
 		add(pageFunc(m), "page__ "+m)
 		add(updateFunc(m), "update__ "+m)
+		add(paramsFunc(m), "params__ "+m)
 		add(routeFunc(m, ""), "the route of page "+m)
 		for _, n := range uppers {
 			add(tableName(m, n), "table "+m+"."+n)
@@ -103,7 +104,7 @@ func TestGoNameInjective(t *testing.T) {
 	}
 	// locals: never a package-level name, nor an imported package's name
 	for _, n := range append(lowers, "type", "go", "rt", "std", "time", "math", "html", "len", "any", "eff", "db", "context", "fmt", "table", "cap", "name", "insert", "insertvals",
-		"url", "web", "http", "json", "errors", "strings", "check", "decode", "page", "update", "route", "session") {
+		"url", "web", "http", "json", "errors", "strings", "check", "decode", "page", "update", "route", "session", "params") {
 		l := local(n)
 		if _, ok := seen[l]; ok {
 			t.Errorf("local %s is the package-level name of %s", l, seen[l])

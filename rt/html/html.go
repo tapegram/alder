@@ -33,11 +33,38 @@ type Node struct {
 }
 
 // Attr is one attribute. Bool attributes render bare (`disabled`); Omit
-// attributes do not render at all.
+// attributes do not render at all. An attribute made by MsgAttr has its value
+// computed at render time from its message.
 type Attr struct {
 	Name, Value string
 	Bool        bool
 	Omit        bool
+	msg         *rt.MsgRef
+}
+
+// MsgAttr is an attribute naming message m, resolved when rendered: m's URL,
+// carrying the parameters of the page being rendered (FormState.PageParams; none
+// without a state). Its value is, by name: "data-on:click" → "@post('<url>')",
+// "data-on:submit" → SubmitPost(url), anything else (such as "action") → url.
+func MsgAttr(name string, m rt.MsgRef) Attr { return Attr{Name: name, msg: &m} }
+
+// value is a's value as rendered with st.
+func (a Attr) value(st *FormState) string {
+	if a.msg == nil {
+		return a.Value
+	}
+	var page []rt.KV
+	if st != nil {
+		page = st.PageParams
+	}
+	url := a.msg.URL(page)
+	switch a.Name {
+	case "data-on:click":
+		return "@post('" + url + "')"
+	case "data-on:submit":
+		return SubmitPost(url)
+	}
+	return url
 }
 
 // El is an element.
@@ -110,7 +137,7 @@ func render(b *strings.Builder, n Node, st *FormState) {
 			b.WriteString(a.Name)
 			if !a.Bool {
 				b.WriteString(`="`)
-				b.WriteString(html.EscapeString(a.Value))
+				b.WriteString(html.EscapeString(a.value(st)))
 				b.WriteByte('"')
 			}
 		}
@@ -134,6 +161,13 @@ func render(b *strings.Builder, n Node, st *FormState) {
 // the element's other attributes.
 func Form(action string, attrs []Attr, children ...Node) Node {
 	all := append([]Attr{A("method", "post"), A("action", action), A("data-on:submit", SubmitPost(action))}, attrs...)
+	return El("form", all, children...)
+}
+
+// FormTo is a `<form submit={…}>` posting message m, like Form, with its action and
+// data-on:submit resolved when rendered (MsgAttr).
+func FormTo(m rt.MsgRef, attrs []Attr, children ...Node) Node {
+	all := append([]Attr{A("method", "post"), MsgAttr("action", m), MsgAttr("data-on:submit", m)}, attrs...)
 	return El("form", all, children...)
 }
 

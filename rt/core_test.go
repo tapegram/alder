@@ -4,6 +4,7 @@ import (
 	"math"
 	"net/url"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -261,26 +262,25 @@ func TestDict_AnyKey(t *testing.T) {
 }
 
 func TestPageParams(t *testing.T) {
-	q := func(s string) url.Values { v, _ := url.ParseQuery(s); return v }
-	for _, c := range []struct {
-		pattern, referer, query string
-		params                  map[string]string
-		values                  string
-	}{
-		// the page's parameters come from the referer when the message has none of them
-		{"/todos/{id}", "http://h/todos/a%2Fb?x=1", "", map[string]string{"id": "a/b"}, "x=1"},
-		// the message's parameters win, also for a path parameter of the same name
-		{"/todos/{id}", "http://h/todos/a", "id=p1&x=2", map[string]string{"id": "p1"}, "id=p1&x=2"},
-		{"/", "http://h/?filter=Active", "id=7", map[string]string{}, "filter=Active&id=7"},
-		// a referer that is another page, or none, gives nothing
-		{"/todos/{id}", "http://h/other/a?x=1", "y=2", map[string]string{}, "y=2"},
-		{"/todos/{id}", "", "", map[string]string{}, ""},
-		{"/edit/{n}/x", "http://h/edit/3/x/", "", map[string]string{"n": "3"}, ""},
-	} {
-		params, values := PageParams(c.pattern, c.referer, q(c.query))
-		if !reflect.DeepEqual(params, c.params) || values.Encode() != q(c.values).Encode() {
-			t.Errorf("PageParams(%q, %q, %q) = %v, %q; want %v, %q", c.pattern, c.referer, c.query, params, values.Encode(), c.params, c.values)
-		}
+	m := MsgRef{Module: "Posts.Show", Msg: "DeleteComment", Params: []KV{{Key: "id", Value: "c 1"}}}
+	if got, want := m.URL(nil), "/_m/Posts.Show/DeleteComment?id=c+1"; got != want {
+		t.Errorf("URL(nil) = %q, want %q", got, want)
+	}
+	page := []KV{{Key: "id", Value: "p/1"}, QueryKV("filter", "All", "All"), {Key: "tag", Value: "a"}, {Key: "tag", Value: "b"}}
+	u := m.URL(page)
+	if want := "/_m/Posts.Show/DeleteComment?id=c+1&_p.id=p%2F1&_p.tag=a&_p.tag=b"; u != want {
+		t.Errorf("URL(page) = %q, want %q", u, want)
+	}
+	if len(m.Params) != 1 {
+		t.Errorf("URL changed the message's params: %v", m.Params)
+	}
+	q, _ := url.ParseQuery(u[strings.Index(u, "?")+1:])
+	params, values := PageParams(q)
+	if !reflect.DeepEqual(params, map[string]string{"id": "p/1", "tag": "a"}) || values.Encode() != "id=p%2F1&tag=a&tag=b" {
+		t.Errorf("PageParams = %v, %q", params, values.Encode())
+	}
+	if params, values := PageParams(url.Values{"id": {"x"}}); len(params) != 0 || len(values) != 0 {
+		t.Errorf("PageParams without page keys = %v, %v", params, values)
 	}
 }
 

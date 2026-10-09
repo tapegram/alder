@@ -226,3 +226,30 @@ func TestResponse_NotFoundPatchedUnderDatastar(t *testing.T) {
 		}
 	}
 }
+
+// A 404 or 500 response stores a session the handler sets (a committed Task whose page then
+// failed to re-load); without one the cookie is left alone.
+func TestResponse_FailureKeepsSetSession(t *testing.T) {
+	h := NewRouter([]Route{
+		{Method: "POST", Pattern: "/n", Handle: func(rq *Request) Response {
+			r := NotFoundResponse(html.None())
+			r.Session = testSession{User: "u"}
+			return r
+		}},
+		{Method: "POST", Pattern: "/e", Handle: func(rq *Request) Response {
+			r := ErrorResponse(html.None(), errors.New("x"))
+			r.Session = testSession{User: "v"}
+			return r
+		}},
+		{Method: "POST", Pattern: "/plain", Handle: func(rq *Request) Response { return NotFoundResponse(html.None()) }},
+	}, testOpts(nil))
+	for path, want := range map[string]int{"/n": 404, "/e": 500} {
+		w := serve(h, httptest.NewRequest("POST", path, nil))
+		if w.Code != want || !strings.HasPrefix(w.Header().Get("Set-Cookie"), CookieName+"=") {
+			t.Errorf("%s: %d, Set-Cookie %q", path, w.Code, w.Header().Get("Set-Cookie"))
+		}
+	}
+	if w := serve(h, httptest.NewRequest("POST", "/plain", nil)); w.Code != 404 || w.Header().Get("Set-Cookie") != "" {
+		t.Errorf("/plain: %d, Set-Cookie %q", w.Code, w.Header().Get("Set-Cookie"))
+	}
+}

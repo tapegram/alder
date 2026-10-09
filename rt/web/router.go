@@ -361,10 +361,17 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, rq *Request, res
 			return
 		}
 		rt.document(w, http.StatusOK, page)
-	case http.StatusNotFound:
-		rt.notFound(w, r, resp.Node)
-	case http.StatusInternalServerError:
-		rt.fail(w, r, resp.Node, resp.Err, nil)
+	case http.StatusNotFound, http.StatusInternalServerError:
+		// a non-nil session here is one a successful Task left before a later step failed
+		// (the re-load after update): it is stored all the same
+		if err := rt.setSession(w, r, resp.Session); err != nil {
+			rt.log("error", fmt.Sprintf("%s %s: %v", r.Method, r.URL.Path, err))
+		}
+		if resp.Status == http.StatusNotFound {
+			rt.notFound(w, r, resp.Node)
+		} else {
+			rt.fail(w, r, resp.Node, resp.Err, nil)
+		}
 	default:
 		rt.fail(w, r, html.None(), fmt.Errorf("handler returned a response with status %d", resp.Status), nil)
 	}

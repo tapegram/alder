@@ -188,7 +188,6 @@ func (g *gen) serve(b *strings.Builder, p *ir.Program) {
 	if v := g.values["App.notFound"]; v != nil && g.thunks[v] {
 		notFound = "App__notFound"
 	}
-	sess := GoName(p.Session.Module, p.Session.Name)
 	b.WriteString(`// Options configure Serve. The generated cmd/main.go fills them from the environment.
 type Options struct {
 	DB        string                  // the SQLite database file; ":memory:" or "" for a database in memory
@@ -239,25 +238,7 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	}), nil
 }
 
-// session__codec stores App's session in the signed cookie as JSON (web.SessionCodec).
-type session__codec struct{}
-
-// Default is the session of a request without a valid cookie: every field at its default.
-func (session__codec) Default() any {
-	return ` + g.sessionDefault(p.Session) + `
-}
-
-func (session__codec) Encode(s any) ([]byte, error) { return json.Marshal(s.(` + sess + `)) }
-
-// Decode starts from Default, so a field the cookie lacks (one added since) has its default.
-func (c session__codec) Decode(b []byte) (any, error) {
-	s := c.Default().(` + sess + `)
-	if err := json.Unmarshal(b, &s); err != nil {
-		return nil, err
-	}
-	return s, nil
-}
-`)
+` + g.sessionCodec(p.Session))
 }
 
 // sessionDefault is App's Session record with every field at its default (a field without one
@@ -348,6 +329,96 @@ func env(name, def string) string {
 	out, err := format.Source([]byte(src))
 	if err != nil {
 		panic(fmt.Sprintf("gen: cmd/main.go: %v\n%s", err, src))
+	}
+	return out
+}
+
+// sessionCodec is the session cookie's codec: App's session as a JSON object of its fields
+// (by Go field name), a payload-less union stored by constructor name (a Maybe of one: the name
+// or null), so reordering a union's constructors never changes what a cookie means. Decode
+// starts from Default: a field the cookie lacks, or whose value no longer decodes (a
+// constructor since removed), has its default.
+func (g *gen) sessionCodec(r *ir.RecordType) string {
+	sess := GoName(r.Module, r.Name)
+	var enc, dec []string
+	enums := false
+	for _, fd := range r.Fields {
+		name, key := Field(fd.Name), strconv.Quote(Field(fd.Name))
+		t, maybe := fd.Type, false
+		if a := maybeArg(t); a != nil {
+			t, maybe = a, true
+		}
+		u := enumUnion(t)
+		switch {
+		case u == nil:
+			enc = append(enc, key+": s."+name+",")
+			dec = append(dec, fmt.Sprintf("if raw, ok := m[%s]; ok {\nvar v %s\nif json.Unmarshal(raw, &v) == nil {\ns.%s = v\n}\n}\n", key, GoType(fd.Type), name))
+		case maybe:
+			enums = true
+			names, _ := enumLists(u)
+			val := GoType(t) + "{Tag: " + tagType(u.Module, u.Name) + "(i)}"
+			enc = append(enc, fmt.Sprintf("%s: session__name(s.%s.Ok, %s[s.%s.Val.Tag]),", key, name, names, name))
+			dec = append(dec, fmt.Sprintf("if raw, ok := m[%s]; ok {\nif string(raw) == \"null\" {\ns.%s = rt.Nothing[%s]()\n} else if i := session__enum(raw, %s); i >= 0 {\ns.%s = rt.Just(%s)\n}\n}\n",
+				key, name, GoType(t), names, name, val))
+		default:
+			enums = true
+			names, _ := enumLists(u)
+			enc = append(enc, fmt.Sprintf("%s: %s[s.%s.Tag],", key, names, name))
+			dec = append(dec, fmt.Sprintf("if raw, ok := m[%s]; ok {\nif i := session__enum(raw, %s); i >= 0 {\ns.%s = %s{Tag: %s(i)}\n}\n}\n",
+				key, names, name, GoType(t), tagType(u.Module, u.Name)))
+		}
+	}
+	encode := "func (session__codec) Encode(any) ([]byte, error) { return []byte(\"{}\"), nil }\n"
+	if len(r.Fields) > 0 {
+		encode = "func (session__codec) Encode(v any) ([]byte, error) {\ns := v.(" + sess + ")\nreturn json.Marshal(map[string]any{\n" + strings.Join(enc, "\n") + "\n})\n}\n"
+	}
+	out := `// session__codec stores App's session in the signed cookie (web.SessionCodec): a JSON object
+// of its fields, a payload-less union by constructor name (a Maybe of one: the name or null), so
+// reordering a union's constructors does not change what a cookie means.
+type session__codec struct{}
+
+// Default is the session of a request without a valid cookie: every field at its default.
+func (session__codec) Default() any {
+	return ` + g.sessionDefault(r) + `
+}
+
+` + encode + `
+
+// Decode starts from Default: a field the cookie lacks (one added since) or whose value does not
+// decode (a constructor since removed) has its default.
+func (c session__codec) Decode(b []byte) (any, error) {
+	s := c.Default().(` + sess + `)
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+` + strings.Join(dec, "") + `	return s, nil
+}
+`
+	if enums {
+		out += `
+// session__enum is the index in names of the constructor name raw holds, -1 for none.
+func session__enum(raw json.RawMessage, names []string) int {
+	var n string
+	if json.Unmarshal(raw, &n) != nil {
+		return -1
+	}
+	for i, x := range names {
+		if x == n {
+			return i
+		}
+	}
+	return -1
+}
+
+// session__name is a Maybe union field as stored: its constructor name, or null for Nothing.
+func session__name(ok bool, name string) any {
+	if !ok {
+		return nil
+	}
+	return name
+}
+`
 	}
 	return out
 }

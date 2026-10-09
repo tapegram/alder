@@ -428,8 +428,8 @@ func TestE2E_Todos(t *testing.T) {
 	r.html(t)
 	r.cookieSet(t)
 	t.Run("RerenderKeepsFilter", func(t *testing.T) {
-		if !strings.Contains(toggle, "_p.") {
-			t.Skip("awaiting task-4 fix: _p params (" + toggle + " does not carry the page's filter)")
+		if !strings.Contains(toggle, "_p.filter=Completed") {
+			t.Fatalf("the Toggle URL does not carry the page's filter: %s", toggle)
 		}
 		r.want(t, 200, `<a href="/?filter=Completed" aria-current="page">Completed</a>`, `<ul id="todos"></ul>`, `<p id="summary">0 open</p>`)
 	})

@@ -830,8 +830,8 @@ view model session = {
 `})
 	contains(t, files["P_alder.go"],
 		"switch _m1.Tag {",
-		`return rt.MsgURL("P", "Pick", rt.KV{Key: "name", Value: _m1.Pick.Name}, rt.KV{Key: "at", Value: rt.MaybeText(_m1.Pick.At, std.TextFromInt)})`,
-		`return rt.MsgURL("P", "Clear")`,
+		`return rt.MsgRef{Module: "P", Msg: "Pick", Params: []rt.KV{rt.KV{Key: "name", Value: _m1.Pick.Name}, rt.KV{Key: "at", Value: rt.MaybeText(_m1.Pick.At, std.TextFromInt)}}}`,
+		`return rt.MsgRef{Module: "P", Msg: "Clear"}`,
 		"P__Btn(struct {",
 		"P__Each(struct {",
 		"Items  []string",
@@ -2050,35 +2050,62 @@ func TestGen_Routes(t *testing.T) {
 	vet(t, files)
 }
 
-// A message parameter and a form field of the same name do not mix: the parameter comes from
-// the message URL's query, the field from the body. The page's own parameters come from the
-// query too when the message has one of that name, else from the Referer (the page that sent
-// the message); a POST without either is a 404.
+// A message's parameters, the page's and the form's never mix: the page renders every message
+// URL with its own parameters under "_p." keys (html.FormState.PageParams), the route decodes
+// the page's from those only, the message's from the other keys, the form from the body — so
+// a page id, a message id and a form field id decode independently, a re-render keeps the
+// page's query parameters, and a URL without the page's path parameter is a 404. A List
+// message parameter is one key per element and round-trips. A Rerender whose re-load fails
+// still stores the session the Task left. The session cookie stores unions by name.
 func TestDecode_ParamsAndFormDontMix(t *testing.T) {
 	files := emitSource(t, map[string]string{
-		"App.alder": appModule,
+		"App.alder": `module App
+
+type Theme = Light | Dark
+
+session { n: Int = 0, theme: Theme = Light, last: Maybe Theme }
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>not found</p>
+`,
 		"M.alder": `module M
 
-page "/m/{id}" { id: Text }
+page "/m/{id}" { id: Text, filter: Text = "all" }
 
-type Model = { id: Text }
+type Model = { id: Text, filter: Text }
 
 load : Params -> Session -> Query Model
-load params session = Query.succeed { id: params.id }
+load params session = if session.n > 0 then Query.notFound else Query.succeed { id: params.id, filter: params.filter }
 
 form F = { id: Text, title: Text }
 
 msg Save { id: Text } form F
 msg Ping
+msg Pick { ids: List Int }
+msg Vanish
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Save p -> Task.succeed (Redirect (O { a: p.id, b: p.form.id ++ "/" ++ p.form.title ++ "/" ++ model.id })),
-  Ping p -> Task.succeed (Redirect (O { a: model.id, b: "ping" })),
+  Ping p -> Task.succeed Rerender,
+  Pick p -> Task.succeed (Redirect (O { a: Text.join "," (List.map Text.fromInt p.ids), b: model.id })),
+  Vanish p -> {
+    let _ <- Session.put (\s -> { s | n: s.n + 1 })
+    Task.succeed Rerender
+  },
 }
 
 view : Model -> Session -> Html Msg
-view model session = <p>{model.id}</p>
+view model session =
+  <div>
+    <p>{model.id ++ " " ++ model.filter}</p>
+    <button click={Ping}>ping</button>
+    <button click={Pick { ids: [1, 2] }}>pick</button>
+    <form submit={Save { id: "m1" }}><Input field="id" /></form>
+  </div>
 `,
 		"O.alder": `module O
 
@@ -2096,10 +2123,14 @@ view model session = <p>o</p>
 	runGo(t, files, `package app
 
 import (
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"alder/rt"
+	"alder/rt/web"
 )
 
 func TestMix(t *testing.T) {
@@ -2107,29 +2138,89 @@ func TestMix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	post := func(target, body, referer string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest("POST", target, strings.NewReader(body))
+	do := func(method, target, body string, hdr ...string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, target, strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		if referer != "" {
-			r.Header.Set("Referer", referer)
+		for _, h := range hdr {
+			k, v, _ := strings.Cut(h, ": ")
+			r.Header.Set(k, v)
 		}
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		return w
 	}
-	w := post("/_m/M/Save?id=p1", "id=f1&title=x", "http://h/m/r0")
-	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/o?a=p1&b=f1%2Fx%2Fp1" {
+	// the page renders its parameters into every message URL
+	w := do("GET", "/m/p0?filter=x", "")
+	for _, want := range []string{
+		"<p>p0 x</p>",
+		"@post(&#39;/_m/M/Ping?_p.id=p0&amp;_p.filter=x&#39;)",
+		"@post(&#39;/_m/M/Pick?ids=1&amp;ids=2&amp;_p.id=p0&amp;_p.filter=x&#39;)",
+		`+"`"+`action="/_m/M/Save?id=m1&amp;_p.id=p0&amp;_p.filter=x"`+"`"+`,
+	} {
+		if w.Code != 200 || !strings.Contains(w.Body.String(), want) {
+			t.Fatalf("GET lacks %s: %d %s", want, w.Code, w.Body.String())
+		}
+	}
+	// at its default a page parameter is left out
+	if w := do("GET", "/m/p0", ""); !strings.Contains(w.Body.String(), "@post(&#39;/_m/M/Ping?_p.id=p0&#39;)") {
+		t.Fatalf("GET at the default filter: %s", w.Body.String())
+	}
+	// page id, message id and form id are three values
+	w = do("POST", "/_m/M/Save?id=m1&_p.id=p0", "id=f1&title=x")
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/o?a=m1&b=f1%2Fx%2Fp0" {
 		t.Fatalf("Save: %d %q", w.Code, w.Header().Get("Location"))
 	}
-	if w := post("/_m/M/Ping", "", "http://h/m/r%2F1"); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/o?a=r%2F1&b=ping" {
-		t.Fatalf("Ping: %d %q", w.Code, w.Header().Get("Location"))
-	}
-	if w := post("/_m/M/Ping", "", ""); w.Code != http.StatusNotFound {
-		t.Fatalf("Ping without the page's id: %d", w.Code)
-	}
-	// a form error re-renders the page (its id is the message's, which shares the name)
-	if w := post("/_m/M/Save?id=p1", "title=x", "http://h/m/r0"); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "<p>p1</p>") {
+	// a form error re-renders the page the message came from
+	if w := do("POST", "/_m/M/Save?id=m1&_p.id=p0&_p.filter=x", "title=x"); w.Code != 200 || !strings.Contains(w.Body.String(), "<p>p0 x</p>") {
 		t.Fatalf("Save without the form's id: %d %s", w.Code, w.Body.String())
+	}
+	// a Rerender under Datastar keeps the page's query parameter, in the patch's URLs too
+	w = do("POST", "/_m/M/Ping?_p.id=p0&_p.filter=x", "", "Datastar-Request: true")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "event: datastar-patch-elements") || !strings.Contains(w.Body.String(), "<p>p0 x</p>") ||
+		!strings.Contains(w.Body.String(), "/_m/M/Ping?_p.id=p0&amp;_p.filter=x") {
+		t.Fatalf("Ping: %d %s", w.Code, w.Body.String())
+	}
+	// no page path parameter: 404 (the Referer is not consulted)
+	if w := do("POST", "/_m/M/Ping?id=p0", "", "Referer: http://h/m/p0"); w.Code != http.StatusNotFound {
+		t.Fatalf("Ping without _p.id: %d", w.Code)
+	}
+	// a List message parameter round-trips
+	if w := do("POST", "/_m/M/Pick?ids=1&ids=2&_p.id=p0", ""); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/o?a=1%2C2&b=p0" {
+		t.Fatalf("Pick: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	// the Task stored n = 1, then the re-load is Query.notFound: 404, and the session is stored
+	w = do("POST", "/_m/M/Vanish?_p.id=p0", "")
+	sc := w.Header().Get("Set-Cookie")
+	if w.Code != http.StatusNotFound || !strings.HasPrefix(sc, web.CookieName+"=") {
+		t.Fatalf("Vanish: %d, Set-Cookie %q", w.Code, sc)
+	}
+	v, _, _ := strings.Cut(strings.TrimPrefix(sc, web.CookieName+"="), ";")
+	payload, _, _ := strings.Cut(v, ".")
+	raw, _ := base64.RawURLEncoding.DecodeString(payload)
+	if s, err := (session__codec{}).Decode(raw); err != nil || s.(App__Session).N != 1 {
+		t.Fatalf("session after Vanish: %s %v", raw, err)
+	}
+}
+
+func TestSessionCodec(t *testing.T) {
+	c := session__codec{}
+	b, err := c.Encode(App__Session{N: 2, Theme: App__Theme__Dark__, Last: rt.Just(App__Theme__Light__)})
+	if err != nil || string(b) != `+"`"+`{"Last":"Light","N":2,"Theme":"Dark"}`+"`"+` {
+		t.Fatalf("Encode = %s, %v", b, err)
+	}
+	for raw, want := range map[string]App__Session{
+		`+"`"+`{"Last":"Light","N":2,"Theme":"Dark"}`+"`"+`: {N: 2, Theme: App__Theme__Dark__, Last: rt.Just(App__Theme__Light__)},
+		`+"`"+`{"Theme":"Gone","Last":"Nope","N":3}`+"`"+`:  {N: 3, Theme: App__Theme__Light__},
+		`+"`"+`{"Last":null,"N":"x"}`+"`"+`:                    {Theme: App__Theme__Light__},
+		`+"`"+`{}`+"`"+`:                                        {Theme: App__Theme__Light__},
+	} {
+		got, err := c.Decode([]byte(raw))
+		if err != nil || got.(App__Session) != want {
+			t.Errorf("Decode(%s) = %+v, %v; want %+v", raw, got, err, want)
+		}
+	}
+	if _, err := c.Decode([]byte("nope")); err == nil {
+		t.Error("Decode of garbage: no error")
 	}
 }
 `)

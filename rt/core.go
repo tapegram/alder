@@ -436,66 +436,53 @@ func queryString(kvs []KV) string {
 func PathSegment(s string) string { return url.PathEscape(s) }
 
 // MsgURL is the URL a message is posted to: /_m/<module>/<msg>, then the message's parameters
-// (in declaration order) as an URL-encoded query string. `click` and `submit` attributes post to
-// it; the generated route for it decodes them.
+// (in declaration order) as an URL-encoded query string. Generated views do not call it: they
+// render a MsgRef, whose URL also carries the parameters of the page being rendered.
 func MsgURL(module, msg string, params ...KV) string {
-	return "/_m/" + module + "/" + msg + queryString(params)
+	return MsgRef{Module: module, Msg: msg, Params: params}.URL(nil)
 }
 
-// PageParams are the parameters of the page that sent a message, for the message's route to
-// decode: pattern is the page's path ("/todos/{id}"), referer the URL of the page that sent it
-// (the Referer header) and query the message URL's query. A path parameter is query's value of
-// that name when query has one, else the referer's segment when the referer's path matches
-// pattern; the query is the referer's (when its path matches) with every key of query replacing
-// it. A message URL carries the message's parameters only, so the page's own travel in the
-// referer; a parameter named like one of the message's is the message's.
-func PageParams(pattern, referer string, query url.Values) (map[string]string, url.Values) {
-	params := map[string]string{}
-	q := url.Values{}
-	if u, err := url.Parse(referer); err == nil && referer != "" {
-		if ps, ok := matchPath(pattern, u.EscapedPath()); ok {
-			params = ps
-			q = u.Query()
+// MsgRef is a message as a `click` or `submit` attribute names it: its module (the page's, or
+// App), its name and its parameters as text, in declaration order (a List parameter once per
+// element). rt/html resolves it to a URL when the page is rendered (URL).
+type MsgRef struct {
+	Module, Msg string
+	Params      []KV
+}
+
+// PagePrefix starts the query keys of a message URL that carry the parameters of the page the
+// message was rendered on ("_p.filter"): an Alder name never contains '.', so they never clash
+// with the message's own parameters.
+const PagePrefix = "_p."
+
+// URL is the URL m is posted to: /_m/<module>/<msg>, the message's parameters, then page, the
+// parameters of the page rendering it, each key prefixed with PagePrefix — the message's route
+// decodes the page's parameters from those (PageParams), so update and the re-render see the
+// page the user saw.
+func (m MsgRef) URL(page []KV) string {
+	kvs := m.Params
+	if len(page) > 0 {
+		kvs = slices.Clone(m.Params)
+		for _, p := range page {
+			p.Key = PagePrefix + p.Key
+			kvs = append(kvs, p)
 		}
 	}
+	return "/_m/" + m.Module + "/" + m.Msg + queryString(kvs)
+}
+
+// PageParams are the parameters of the page a message was sent from, for the message's route
+// to decode, taken from the PagePrefix keys of the message URL's query (prefix removed): as a
+// map of each key's first value (the path parameters) and as url.Values (the others).
+func PageParams(query url.Values) (map[string]string, url.Values) {
+	params, q := map[string]string{}, url.Values{}
 	for k, vs := range query {
-		q[k] = vs
-	}
-	for _, s := range strings.Split(strings.Trim(pattern, "/"), "/") {
-		if strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}") {
-			name := s[1 : len(s)-1]
-			if vs := query[name]; len(vs) > 0 {
-				params[name] = vs[0]
-			}
+		if name, ok := strings.CutPrefix(k, PagePrefix); ok && len(vs) > 0 {
+			params[name] = vs[0]
+			q[name] = vs
 		}
 	}
 	return params, q
-}
-
-// matchPath matches an escaped URL path against a page pattern ("/todos/{id}"), as rt/web's
-// router does (one trailing slash ignored), and returns its unescaped parameters.
-func matchPath(pattern, path string) (map[string]string, bool) {
-	pat := strings.Split(strings.TrimSuffix(strings.TrimPrefix(pattern, "/"), "/"), "/")
-	segs := strings.Split(strings.TrimSuffix(strings.TrimPrefix(path, "/"), "/"), "/")
-	if len(pat) != len(segs) {
-		return nil, false
-	}
-	params := map[string]string{}
-	for i, p := range pat {
-		s, err := url.PathUnescape(segs[i])
-		if err != nil {
-			return nil, false
-		}
-		if strings.HasPrefix(p, "{") && strings.HasSuffix(p, "}") && len(p) > 2 {
-			if s == "" {
-				return nil, false
-			}
-			params[p[1:len(p)-1]] = s
-		} else if p != s {
-			return nil, false
-		}
-	}
-	return params, true
 }
 
 // BackURL is where a redirect back to the page that sent a request goes: the path and query of

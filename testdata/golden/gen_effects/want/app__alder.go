@@ -3,6 +3,7 @@
 package app
 
 import (
+	"alder/rt"
 	"alder/rt/db"
 	"alder/rt/html"
 	"alder/rt/web"
@@ -87,7 +88,9 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	}), nil
 }
 
-// session__codec stores App's session in the signed cookie as JSON (web.SessionCodec).
+// session__codec stores App's session in the signed cookie (web.SessionCodec): a JSON object
+// of its fields, a payload-less union by constructor name (a Maybe of one: the name or null), so
+// reordering a union's constructors does not change what a cookie means.
 type session__codec struct{}
 
 // Default is the session of a request without a valid cookie: every field at its default.
@@ -95,13 +98,33 @@ func (session__codec) Default() any {
 	return App__Session{Theme: "light"}
 }
 
-func (session__codec) Encode(s any) ([]byte, error) { return json.Marshal(s.(App__Session)) }
+func (session__codec) Encode(v any) ([]byte, error) {
+	s := v.(App__Session)
+	return json.Marshal(map[string]any{
+		"User":  s.User,
+		"Theme": s.Theme,
+	})
+}
 
-// Decode starts from Default, so a field the cookie lacks (one added since) has its default.
+// Decode starts from Default: a field the cookie lacks (one added since) or whose value does not
+// decode (a constructor since removed) has its default.
 func (c session__codec) Decode(b []byte) (any, error) {
 	s := c.Default().(App__Session)
-	if err := json.Unmarshal(b, &s); err != nil {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err != nil {
 		return nil, err
+	}
+	if raw, ok := m["User"]; ok {
+		var v rt.Maybe[string]
+		if json.Unmarshal(raw, &v) == nil {
+			s.User = v
+		}
+	}
+	if raw, ok := m["Theme"]; ok {
+		var v string
+		if json.Unmarshal(raw, &v) == nil {
+			s.Theme = v
+		}
 	}
 	return s, nil
 }

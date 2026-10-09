@@ -58,14 +58,16 @@ func RedirectResponse(location string, session any) Response {
 }
 
 // NotFoundResponse renders doc (App.notFound) with status 404; a zero doc means
-// Options.NotFoundDoc. The session is left unchanged.
+// Options.NotFoundDoc. The session is left unchanged, unless the handler sets the Response's
+// Session (a Task that succeeded before the page failed to re-load).
 func NotFoundResponse(doc html.Node) Response {
 	return Response{Status: http.StatusNotFound, Node: doc}
 }
 
 // ErrorResponse renders doc (App.error) with status 500; a zero doc means Options.ErrorDoc(err).
 // err is logged; in dev it is also appended to the document as a comment. The session is left
-// unchanged (a failed Task does not change it).
+// unchanged (a failed Task does not change it), unless the handler sets the Response's Session
+// (a Task that succeeded before the page failed to re-load).
 func ErrorResponse(doc html.Node, err error) Response {
 	return Response{Status: http.StatusInternalServerError, Node: doc, Err: err}
 }

@@ -77,7 +77,8 @@ func decode__Index__RemoveParams(q url.Values) (r Index__RemoveParams, errs []we
 
 // page__Index runs page Index for rq up to its model: `requires user` (a 303 to App.login, storing
 // keep, when the session's user is Nothing), then load (with params and the narrowed session). It
-// returns the model and the session view and update take, or the response that ends the request.
+// returns the model and the session view and update take, or the response that ends the request,
+// which stores keep (the session a successful update left, or nil).
 func page__Index(rq *web.Request, params Index__Params, keep any) (Index__Model, Index__Session, *web.Response) {
 	var model Index__Model
 	app := rq.Env.Session.(App__Session)
@@ -89,9 +90,16 @@ func page__Index(rq *web.Request, params Index__Params, keep any) (Index__Model,
 	model, err := eff.RunQuery(rq.Env, Index__load(params, session))
 	if err != nil {
 		r := route__fail(err)
+		r.Session = keep
 		return model, session, &r
 	}
 	return model, session, nil
+}
+
+// params__Index are page Index's parameters as text for its message URLs
+// (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
+func params__Index(p Index__Params) []rt.KV {
+	return []rt.KV{rt.KV{Key: "a", Value: p.A}, rt.KV{Key: "b", Value: p.B}}
 }
 
 // update__Index runs page Index's update for msg and answers its Nav (book 06): load, update (a
@@ -114,8 +122,9 @@ func update__Index(rq *web.Request, params Index__Params, msg Index__Msg, st *ht
 	case nav.Tag == rt.NavReject && st != nil:
 		st.FormError = nav.Text
 	default:
-		st = nil
+		st = &html.FormState{}
 	}
+	st.PageParams = params__Index(params)
 	model, session, stop = page__Index(rq, params, rq.Env.Session)
 	if stop != nil {
 		return *stop
@@ -136,16 +145,16 @@ func Route__Index__page() web.Route {
 		if stop != nil {
 			return *stop
 		}
-		return web.PageResponse(Index__view(model, session), nil, rq.Session, false)
+		return web.PageResponse(Index__view(model, session), &html.FormState{PageParams: params__Index(params)}, rq.Session, false)
 	}}
 }
 
 // Route__Index__Add serves message Add of page Index, POST /_m/Index/Add (book 06): decode the
-// page's parameters (from the message URL's query, else from the Referer, the page that sent the
-// message) and the message's (from the query): 404 when they do not decode; then update__Index.
+// page's parameters (the message URL's _p. keys, which the rendered page put there) and the
+// message's (from the query): 404 when they do not decode; then update__Index.
 func Route__Index__Add() web.Route {
 	return web.Route{Method: "POST", Pattern: "/_m/Index/Add", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Index__Params(rt.PageParams("/pair/{a}/{b}", rq.HTTP.Referer(), rq.Query))
+		params, errs := decode__Index__Params(rt.PageParams(rq.Query))
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
@@ -158,11 +167,11 @@ func Route__Index__Add() web.Route {
 }
 
 // Route__Index__Toggle serves message Toggle of page Index, POST /_m/Index/Toggle (book 06): decode
-// the page's parameters (from the message URL's query, else from the Referer, the page that sent
-// the message) and the message's (from the query): 404 when they do not decode; then update__Index.
+// the page's parameters (the message URL's _p. keys, which the rendered page put there) and the
+// message's (from the query): 404 when they do not decode; then update__Index.
 func Route__Index__Toggle() web.Route {
 	return web.Route{Method: "POST", Pattern: "/_m/Index/Toggle", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Index__Params(rt.PageParams("/pair/{a}/{b}", rq.HTTP.Referer(), rq.Query))
+		params, errs := decode__Index__Params(rt.PageParams(rq.Query))
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
@@ -175,11 +184,11 @@ func Route__Index__Toggle() web.Route {
 }
 
 // Route__Index__Remove serves message Remove of page Index, POST /_m/Index/Remove (book 06): decode
-// the page's parameters (from the message URL's query, else from the Referer, the page that sent
-// the message) and the message's (from the query): 404 when they do not decode; then update__Index.
+// the page's parameters (the message URL's _p. keys, which the rendered page put there) and the
+// message's (from the query): 404 when they do not decode; then update__Index.
 func Route__Index__Remove() web.Route {
 	return web.Route{Method: "POST", Pattern: "/_m/Index/Remove", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Index__Params(rt.PageParams("/pair/{a}/{b}", rq.HTTP.Referer(), rq.Query))
+		params, errs := decode__Index__Params(rt.PageParams(rq.Query))
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
@@ -192,11 +201,11 @@ func Route__Index__Remove() web.Route {
 }
 
 // Route__Index__Notify serves message Notify of page Index, POST /_m/Index/Notify (book 06): decode
-// the page's parameters (from the message URL's query, else from the Referer, the page that sent
-// the message): 404 when they do not decode; then update__Index.
+// the page's parameters (the message URL's _p. keys, which the rendered page put there): 404 when
+// they do not decode; then update__Index.
 func Route__Index__Notify() web.Route {
 	return web.Route{Method: "POST", Pattern: "/_m/Index/Notify", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Index__Params(rt.PageParams("/pair/{a}/{b}", rq.HTTP.Referer(), rq.Query))
+		params, errs := decode__Index__Params(rt.PageParams(rq.Query))
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}

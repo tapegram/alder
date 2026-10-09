@@ -20,7 +20,7 @@ import (
 //	Input    html.Input(html.Control{…}), derived from the bound form field's type, with Form
 //	         "<Module>.<Form>" (matched by the request's html.FormState) and Secret for a
 //	         Text.Secret field
-//	FormEl   html.Form(url, []html.Attr{…}, children...)
+//	FormEl   html.FormTo(ref, []html.Attr{…}, children...)
 //
 // Attributes:
 //
@@ -28,12 +28,14 @@ import (
 //	Bool     html.B("name", e)
 //	Maybe    html.M("name", e)
 //	Href     html.A("href", rt.PageURL(e))
-//	Click    html.A("data-on:click", "@post('"+url+"')")
-//	Submit   method="post", action=url and data-on:submit=html.SubmitPost(url), which posts the
-//	         form url-encoded (html.Form adds them itself)
+//	Click    html.MsgAttr("data-on:click", ref)
+//	Submit   method="post", html.MsgAttr("action", ref) and html.MsgAttr("data-on:submit", ref)
+//	         (html.FormTo adds them itself)
 //
-// where url is rt.MsgURL("<Module>", "<Msg>", rt.KV{Key: "<param>", Value: <text>}, …): the
-// message's parameters in declaration order, as text (see text), without the submitted form.
+// where ref is rt.MsgRef{Module: "<Module>", Msg: "<Msg>", Params: …}: the message's parameters
+// in declaration order, as text, without the submitted form (kvList). rt/html resolves it when
+// rendering, appending the rendered page's parameters as "_p." keys (FormState.PageParams), so
+// the message's route knows the page; Datastar posts a submit url-encoded (html.SubmitPost).
 
 // html is HTML node e as a Go expression.
 func (f *fn) html(e ir.Expr, s *scope) string {
@@ -63,16 +65,16 @@ func (f *fn) html(e ir.Expr, s *scope) string {
 	case *ir.Input:
 		return f.input(x, s)
 	case *ir.FormEl:
-		url := `""`
+		ref := "rt.MsgRef{}"
 		var rest []ir.HAttr
 		for _, a := range x.Attrs {
 			if a.Kind == ir.AttrSubmit {
-				url = f.msgURL(a.Value, s)
+				ref = f.msgRef(a.Value, s)
 			} else {
 				rest = append(rest, a)
 			}
 		}
-		return "html.Form(" + url + ", " + f.attrs(rest, s) + f.nodeArgs(x.Children, s)
+		return "html.FormTo(" + ref + ", " + f.attrs(rest, s) + f.nodeArgs(x.Children, s)
 	}
 	panic("gen: not an HTML node")
 }
@@ -127,37 +129,54 @@ func (f *fn) attrs(as []ir.HAttr, s *scope) string {
 		case ir.AttrHref:
 			out = append(out, "html.A("+name+", rt.PageURL("+f.code(a.Value, s)+"))")
 		case ir.AttrClick:
-			out = append(out, `html.A("data-on:click", "@post('"+`+f.msgURL(a.Value, s)+`+"')")`)
+			out = append(out, `html.MsgAttr("data-on:click", `+f.msgRef(a.Value, s)+`)`)
 		case ir.AttrSubmit: // on an element Lower did not make a FormEl
-			url := f.msgURL(a.Value, s)
-			out = append(out, `html.A("method", "post")`, `html.A("action", `+url+`)`,
-				`html.A("data-on:submit", html.SubmitPost(`+url+`))`)
+			ref := f.msgRef(a.Value, s)
+			out = append(out, `html.A("method", "post")`, `html.MsgAttr("action", `+ref+`)`,
+				`html.MsgAttr("data-on:submit", `+ref+`)`)
 		}
 	}
 	return "[]html.Attr{" + strings.Join(out, ", ") + "}"
 }
 
-// msgURL is the URL message value e posts to. A constructor written in place gives its module,
-// name and parameters statically; any other message value is switched on at run time.
-func (f *fn) msgURL(e ir.Expr, s *scope) string {
-	if c, ok := e.(*ir.Ctor); ok {
-		args := []string{strconv.Quote(c.U.Module), strconv.Quote(c.Name)}
-		if c.Payload != nil {
-			if r, ok := c.Payload.(*ir.Record); ok {
-				for _, fi := range r.Fields {
-					if fi.Name != "form" {
-						args = append(args, kv(fi.Name, f.text(fi.Value, s)))
-					}
-				}
-			} else if rec, ok := c.Payload.Type().(*types.Record); ok {
-				for _, fd := range rec.Fields {
-					if fd.Name != "form" {
-						args = append(args, kv(fd.Name, f.text(&ir.Field{Typed: ir.Typed{Ty: fd.Type}, Expr: c.Payload, Name: fd.Name}, s)))
-					}
+// msgRef is message value e as an rt.MsgRef, which rt/html resolves to the URL it posts to
+// (html.MsgAttr). A constructor written in place gives its module, name and parameters
+// statically; any other message value is switched on at run time. The parameters are the
+// message's (without the submitted form), in declaration order, as text (kvList: a List one
+// key per element).
+func (f *fn) msgRef(e ir.Expr, s *scope) string {
+	ref := func(module, msg string, rec *types.Record, field func(name string, t types.Type) ir.Expr, c *scope) string {
+		var items []kvItem
+		if rec != nil {
+			for _, fd := range rec.Fields {
+				if fd.Name != "form" {
+					items = append(items, kvItem{name: fd.Name, t: fd.Type, v: field(fd.Name, fd.Type)})
 				}
 			}
 		}
-		return "rt.MsgURL(" + strings.Join(args, ", ") + ")"
+		out := "rt.MsgRef{Module: " + strconv.Quote(module) + ", Msg: " + strconv.Quote(msg)
+		if len(items) > 0 {
+			out += ", Params: " + f.kvList(items, c)
+		}
+		return out + "}"
+	}
+	if c, ok := e.(*ir.Ctor); ok {
+		var rec *types.Record
+		field := func(string, types.Type) ir.Expr { return nil }
+		if c.Payload != nil {
+			rec, _ = c.Payload.Type().(*types.Record)
+			field = func(name string, t types.Type) ir.Expr {
+				if r, ok := c.Payload.(*ir.Record); ok {
+					for _, fi := range r.Fields {
+						if fi.Name == name {
+							return fi.Value
+						}
+					}
+				}
+				return &ir.Field{Typed: ir.Typed{Ty: t}, Expr: c.Payload, Name: name}
+			}
+		}
+		return ref(c.U.Module, c.Name, rec, field, s)
 	}
 	u, ok := e.Type().(*types.Union)
 	if !ok {
@@ -167,25 +186,64 @@ func (f *fn) msgURL(e ir.Expr, s *scope) string {
 	key, m := f.tempVar(c, "_m")
 	mv := &ir.Var{Typed: ir.Typed{Ty: e.Type()}, Kind: ir.VarLocal, Name: key}
 	var w strings.Builder
-	w.WriteString("func() string {\n" + m + " := " + f.code(e, s) + "\nswitch " + m + ".Tag {\n")
+	w.WriteString("func() rt.MsgRef {\n" + m + " := " + f.code(e, s) + "\nswitch " + m + ".Tag {\n")
 	for _, ct := range u.Constructors() {
-		args := []string{strconv.Quote(u.Module), strconv.Quote(ct.Name)}
-		if rec, ok := ct.Arg.(*types.Record); ok {
-			payload := &ir.Field{Typed: ir.Typed{Ty: rec}, Expr: mv, Name: ctorField(ct.Name)}
-			for _, fd := range rec.Fields {
-				if fd.Name != "form" {
-					args = append(args, kv(fd.Name, f.text(&ir.Field{Typed: ir.Typed{Ty: fd.Type}, Expr: payload, Name: fd.Name}, c)))
-				}
-			}
+		rec, _ := ct.Arg.(*types.Record)
+		payload := &ir.Field{Typed: ir.Typed{Ty: rec}, Expr: mv, Name: ctorField(ct.Name)}
+		field := func(name string, t types.Type) ir.Expr {
+			return &ir.Field{Typed: ir.Typed{Ty: t}, Expr: payload, Name: name}
 		}
-		w.WriteString("case " + tagConst(u.Module, u.Name, ct.Name) + ":\nreturn rt.MsgURL(" + strings.Join(args, ", ") + ")\n")
+		w.WriteString("case " + tagConst(u.Module, u.Name, ct.Name) + ":\nreturn " + ref(u.Module, ct.Name, rec, field, c) + "\n")
 	}
 	w.WriteString("}\npanic(\"unreachable\")\n}()")
 	return w.String()
 }
 
-func kv(key, value string) string {
-	return "rt.KV{Key: " + strconv.Quote(key) + ", Value: " + value + "}"
+// kvItem is one URL parameter: its name, its declared type and value, and for a page link its
+// default (left out at it) and whether Nothing is left out.
+type kvItem struct {
+	name      string
+	t         types.Type
+	v         ir.Expr
+	def       ir.Expr
+	omitBlank bool
+}
+
+// kvList is items as a Go []rt.KV: rt.KV for a parameter always given, rt.QueryKV for one left
+// out at its default (or at Nothing), rt.QueryKVs for a List (one key per element); groups
+// joined with rt.Queries when there is a List.
+func (f *fn) kvList(items []kvItem, s *scope) string {
+	var groups, kvs []string
+	lists := false
+	flush := func() {
+		if len(kvs) > 0 {
+			groups = append(groups, "[]rt.KV{"+strings.Join(kvs, ", ")+"}")
+			kvs = nil
+		}
+	}
+	for _, it := range items {
+		key := strconv.Quote(it.name)
+		switch {
+		case listArg(it.t) != nil:
+			flush()
+			groups = append(groups, "rt.QueryKVs("+key+", "+f.texts(it.v, listArg(it.t), s)+")")
+			lists = true
+		case it.def != nil:
+			kvs = append(kvs, "rt.QueryKV("+key+", "+f.text(it.v, s)+", "+f.text(it.def, s)+")")
+		case it.omitBlank && maybeArg(it.t) != nil:
+			kvs = append(kvs, "rt.QueryKV("+key+", "+f.text(it.v, s)+`, "")`)
+		default:
+			kvs = append(kvs, "rt.KV{Key: "+key+", Value: "+f.text(it.v, s)+"}")
+		}
+	}
+	flush()
+	switch {
+	case len(groups) == 0:
+		return "nil"
+	case !lists && len(groups) == 1:
+		return groups[0]
+	}
+	return "rt.Queries(" + strings.Join(groups, ", ") + ")"
 }
 
 // text is e as a Go string: a message parameter or a form control's value. Literals and

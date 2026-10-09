@@ -17,13 +17,16 @@ import (
 //	                                from the query q; defaults applied; an error is a 404
 //	decode__M__<Msg>Params(q)       a message's parameters from its URL's query (404)
 //	decode__M__<Form>(v)            a form from the request body; errors re-render the page
-//	page__M(rq, params[, keep])     `requires` (a 303 to App.login storing keep), then load
+//	params__M(p)                    the page's parameters as text, carried by every message
+//	                                URL the page renders (rt.MsgRef.URL: "_p.<name>" keys)
+//	page__M(rq, params, keep)       `requires` (a 303 to App.login storing keep), then load (a
+//	                                failure's response also stores keep)
 //	update__M(rq, params, msg, st)  load, update, and the Nav: Rerender → load, view, patched
 //	                                under Datastar; Redirect p → 303; Reject t → as Rerender with
 //	                                t on the form state st
 //	Route__M__page()                GET <path>: decode (404), page__M, view
-//	Route__M__<Msg>()               POST /_m/M/<Msg>: decode the page's parameters (the query
-//	                                first, then the Referer: rt.PageParams) and the message's
+//	Route__M__<Msg>()               POST /_m/M/<Msg>: decode the page's parameters (the query's
+//	                                "_p." keys: rt.PageParams; 404 without them) and the message's
 //	                                (404), the form (re-render with errors), update__M
 //
 // and for App's messages update__App (Rerender and Reject redirect back to the Referer) and
@@ -147,12 +150,8 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 		}
 	}
 	g.pageFunc(b, p, pg)
-	keep := func(k string) string {
-		if pg.Requires != "" {
-			return ", " + k
-		}
-		return ""
-	}
+	keep := func(k string) string { return ", " + k }
+	g.paramsKVs(b, pg)
 	if hasUpdate {
 		b.WriteString(comment(fmt.Sprintf("%s runs page %s's update for msg and answers its Nav (book 06): load, update (a Task, whose session is stored when it succeeds), then for Rerender load and view again (patched into the page under Datastar), for Redirect p a 303 to p, for Reject t the same as Rerender with t on the form that sent the message (st, nil for a message without one). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound.", updateFunc(m), m)))
 		fmt.Fprintf(b, `func %[1]s(rq *web.Request, params %[2]s, msg %[3]s, st *html.FormState) web.Response {
@@ -170,8 +169,9 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	case nav.Tag == rt.NavReject && st != nil:
 		st.FormError = nav.Text
 	default:
-		st = nil
+		st = &html.FormState{}
 	}
+	st.PageParams = %[9]s(params)
 	model, session, stop = %[4]s(rq, params%[7]s)
 	if stop != nil {
 		return *stop
@@ -179,7 +179,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	return web.PageResponse(%[8]s(model, session), st, rq.Env.Session, true)
 }
 
-`, updateFunc(m), GoName(m, "Params"), GoName(m, "Msg"), pageFunc(m), keep("nil"), GoName(m, "update"), keep("rq.Env.Session"), GoName(m, "view"))
+`, updateFunc(m), GoName(m, "Params"), GoName(m, "Msg"), pageFunc(m), keep("nil"), GoName(m, "update"), keep("rq.Env.Session"), GoName(m, "view"), paramsFunc(m))
 	}
 
 	// the GET route
@@ -198,17 +198,17 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 		if stop != nil {
 			return *stop
 		}
-		return web.PageResponse(%s(model, session), nil, rq.Session, false)
+		return web.PageResponse(%s(model, session), &html.FormState{PageParams: %s(params)}, rq.Session, false)
 	}}
 }
 
-`, routeFunc(m, ""), strconv.Quote(pg.Path), decodeName(m, "Params"), pageFunc(m), keep("nil"), GoName(m, "view"))
+`, routeFunc(m, ""), strconv.Quote(pg.Path), decodeName(m, "Params"), pageFunc(m), keep("nil"), GoName(m, "view"), paramsFunc(m))
 
 	if !hasUpdate {
 		return
 	}
 	for _, msg := range pg.Msgs {
-		text := fmt.Sprintf("%s serves message %s of page %s, POST %s (book 06): decode the page's parameters (from the message URL's query, else from the Referer, the page that sent the message)", routeFunc(m, msg.Name), msg.Name, m, msgPath(m, msg.Name))
+		text := fmt.Sprintf("%s serves message %s of page %s, POST %s (book 06): decode the page's parameters (the message URL's _p. keys, which the rendered page put there)", routeFunc(m, msg.Name), msg.Name, m, msgPath(m, msg.Name))
 		if msgHasParams(msg) {
 			text += " and the message's (from the query)"
 		}
@@ -220,11 +220,11 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 		b.WriteString(comment(text))
 		fmt.Fprintf(b, `func %s() web.Route {
 	return web.Route{Method: "POST", Pattern: %s, Handle: func(rq *web.Request) web.Response {
-		params, errs := %s(rt.PageParams(%s, rq.HTTP.Referer(), rq.Query))
+		params, errs := %s(rt.PageParams(rq.Query))
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-`, routeFunc(m, msg.Name), strconv.Quote(msgPath(m, msg.Name)), decodeName(m, "Params"), strconv.Quote(pg.Path))
+`, routeFunc(m, msg.Name), strconv.Quote(msgPath(m, msg.Name)), decodeName(m, "Params"))
 		g.msgBody(b, m, msg, func(form, st string) string {
 			return fmt.Sprintf(`model, session, stop := %s(rq, params%s)
 			if stop != nil {
@@ -286,7 +286,7 @@ if errs != nil {
 		}
 		fmt.Fprintf(b, "values := route__values(%s)\nform, errs := %s(rq.Form)\nif errs != nil {\n%s}\np.Form = form\n",
 			strings.Join(args, ", "), decodeName(f.Module, f.Name),
-			formErr(formName, "&html.FormState{Form: "+formName+", Values: values, Errors: route__errors(errs)}"))
+			formErr(formName, "&html.FormState{Form: "+formName+", Values: values, Errors: route__errors(errs), PageParams: "+paramsFunc(m)+"(params)}"))
 		st = "&html.FormState{Form: " + formName + ", Values: values}"
 	}
 	b.WriteString(run(value, st))
@@ -295,18 +295,39 @@ if errs != nil {
 // isSecret reports whether b is the stdlib's Text.Secret.
 func isSecret(b *ir.Brand) bool { return b != nil && b.Module == "Text" && b.Name == "Secret" }
 
+// paramsKVs writes params__M: page pg's parameters as text, the PageParams every message URL
+// on its rendering carries (left out at a default, as in a link).
+func (g *gen) paramsKVs(b *strings.Builder, pg *ir.Page) {
+	m := pg.Module
+	f := &fn{g: g}
+	s := newScope()
+	p := s.declare("p")
+	pv := &ir.Var{Typed: ir.Typed{Ty: &types.Record{Module: m, Name: "Params"}}, Kind: ir.VarLocal, Name: "p"}
+	var items []kvItem
+	for _, fd := range pg.Params.Fields {
+		items = append(items, kvItem{name: fd.Name, t: fd.Type, v: &ir.Field{Typed: ir.Typed{Ty: fd.Type}, Expr: pv, Name: fd.Name}, def: fd.Default, omitBlank: true})
+	}
+	kvs := f.kvList(items, s)
+	if len(items) == 0 {
+		p = "_"
+	}
+	b.WriteString(comment(fmt.Sprintf("%s are page %s's parameters as text for its message URLs (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.", paramsFunc(m), m)))
+	fmt.Fprintf(b, "func %s(%s %s) []rt.KV {\nreturn %s\n}\n\n", paramsFunc(m), p, GoName(m, "Params"), kvs)
+}
+
 // pageFunc writes page__M: `requires`, then load.
 func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	m := pg.Module
 	model, session := GoName(m, "Model"), GoName(pg.Session.Module, pg.Session.Name)
 	app := GoName(p.Session.Module, p.Session.Name)
 	if pg.Requires == "" {
-		b.WriteString(comment(fmt.Sprintf("%s runs page %s for rq up to its model: load (with params and the session of rq.Env). It returns the model and the session view and update take, or the response that ends the request.", pageFunc(m), m)))
-		fmt.Fprintf(b, `func %s(rq *web.Request, params %s) (%s, %s, *web.Response) {
+		b.WriteString(comment(fmt.Sprintf("%s runs page %s for rq up to its model: load (with params and the session of rq.Env). It returns the model and the session view and update take, or the response that ends the request, which stores keep (the session a successful update left, or nil).", pageFunc(m), m)))
+		fmt.Fprintf(b, `func %s(rq *web.Request, params %s, keep any) (%s, %s, *web.Response) {
 	session := rq.Env.Session.(%s)
 	model, err := eff.RunQuery(rq.Env, %s(params, session))
 	if err != nil {
 		r := route__fail(err)
+		r.Session = keep
 		return model, session, &r
 	}
 	return model, session, nil
@@ -323,7 +344,7 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 		}
 		fs = append(fs, Field(f.Name)+": "+v)
 	}
-	b.WriteString(comment(fmt.Sprintf("%s runs page %s for rq up to its model: `requires %s` (a 303 to App.login, storing keep, when the session's %s is Nothing), then load (with params and the narrowed session). It returns the model and the session view and update take, or the response that ends the request.", pageFunc(m), m, pg.Requires, pg.Requires)))
+	b.WriteString(comment(fmt.Sprintf("%s runs page %s for rq up to its model: `requires %s` (a 303 to App.login, storing keep, when the session's %s is Nothing), then load (with params and the narrowed session). It returns the model and the session view and update take, or the response that ends the request, which stores keep (the session a successful update left, or nil).", pageFunc(m), m, pg.Requires, pg.Requires)))
 	fmt.Fprintf(b, `func %[1]s(rq *web.Request, params %[2]s, keep any) (%[3]s, %[4]s, *web.Response) {
 	var model %[3]s
 	app := rq.Env.Session.(%[5]s)
@@ -335,6 +356,7 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	model, err := eff.RunQuery(rq.Env, %[8]s(params, session))
 	if err != nil {
 		r := route__fail(err)
+		r.Session = keep
 		return model, session, &r
 	}
 	return model, session, nil

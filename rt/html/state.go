@@ -1,5 +1,7 @@
 package html
 
+import "alder/rt"
+
 // FormState is what a re-render after a failed form decode or a Reject carries. Form is the
 // Alder form's name ("NewTodo"); Values are the submitted raw strings by field name (an
 // unchecked checkbox is simply absent, as browsers do not submit it); Errors are the messages by
@@ -13,6 +15,11 @@ type FormState struct {
 	Values    map[string]string
 	Errors    map[string][]string
 	FormError string
+	// PageParams are the parameters of the page being rendered, as text in declaration order
+	// (a parameter at its default left out): every message URL on the page carries them
+	// (MsgAttr), so its route knows the page. A state with only PageParams (Form "") is what a
+	// plain page render passes; it matches no control.
+	PageParams []rt.KV
 }
 
 // Control is a form control bound to a form field: what `<Input>`, `<Textarea>`, `<Select>` and

@@ -26,6 +26,7 @@ import (
 //	decodeName  decode__M__Record           the decoder of a page's Params, a message's
 //	                                        <Msg>Params or a form (routes__alder.go)
 //	pageFunc    page__M                     page M's `requires` check and load (routes)
+//	paramsFunc  params__M                   page M's parameters as text for message URLs
 //	updateFunc  update__M                   page M's (or App's) update and its Nav (routes)
 //	routeFunc   Route__M__page              page M's GET route (routes)
 //	            Route__M__Msg               message Msg of page M or of App (M = App)
@@ -60,7 +61,7 @@ import (
 //     (an identifier never ends in "__"). Stripping that "__", Ctor is the text after the last
 //     "__" (Ctor has no "__" and does not start with '_'), and the rest is a GoName (1).
 //  3. payloadName, tagType, tagConst, widenName, tableName, insertName, insertVals, enumName,
-//     checkName, decodeName, pageFunc, updateFunc and the route__/session__ helpers start with a
+//     checkName, decodeName, pageFunc, paramsFunc, updateFunc and the route__/session__ helpers start with a
 //     lower-case word and "__". No GoName or ctorName does (they start with an upper-case module
 //     segment); no local does (a local contains "__" only at its end, or followed by its "_N"
 //     renaming suffix); the words differ, so the kinds cannot collide with each other; within a
@@ -205,6 +206,9 @@ func decodeName(module, record string) string { return "decode__" + GoName(modul
 
 // pageFunc runs page M's requires check and load ("page__Todos__Index").
 func pageFunc(module string) string { return "page__" + strings.ReplaceAll(module, ".", "__") }
+
+// paramsFunc renders page M's parameters for its message URLs ("params__Todos__Index").
+func paramsFunc(module string) string { return "params__" + strings.ReplaceAll(module, ".", "__") }
 
 // updateFunc runs page M's update, or App's, and answers its Nav ("update__Todos__Index").
 func updateFunc(module string) string { return "update__" + strings.ReplaceAll(module, ".", "__") }

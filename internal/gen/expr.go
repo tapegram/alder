@@ -606,42 +606,16 @@ func (f *fn) pageRef(x *ir.PageRef, s *scope) string {
 	if x.Params == nil {
 		return "rt.Page{Path: " + p + "}"
 	}
-	var groups []string // []rt.KV literals and rt.QueryKVs calls, in order
-	var kvs []string
-	flush := func() {
-		if len(kvs) > 0 {
-			groups = append(groups, "[]rt.KV{"+strings.Join(kvs, ", ")+"}")
-			kvs = nil
-		}
-	}
-	lists := false
+	var items []kvItem
 	for _, fd := range x.Page.Params.Fields {
-		if inPath[fd.Name] {
-			continue
-		}
-		v := f.pageParam(x.Params, fd.Name)
-		key := strconv.Quote(fd.Name)
-		switch {
-		case listArg(fd.Type) != nil:
-			flush()
-			groups = append(groups, "rt.QueryKVs("+key+", "+f.texts(v, listArg(fd.Type), s)+")")
-			lists = true
-		case fd.Default != nil:
-			kvs = append(kvs, "rt.QueryKV("+key+", "+f.text(v, s)+", "+f.text(fd.Default, s)+")")
-		case maybeArg(fd.Type) != nil:
-			kvs = append(kvs, "rt.QueryKV("+key+", "+f.text(v, s)+`, "")`)
-		default:
-			kvs = append(kvs, "rt.KV{Key: "+key+", Value: "+f.text(v, s)+"}")
+		if !inPath[fd.Name] {
+			items = append(items, kvItem{name: fd.Name, t: fd.Type, v: f.pageParam(x.Params, fd.Name), def: fd.Default, omitBlank: true})
 		}
 	}
-	flush()
-	switch {
-	case len(groups) == 0:
-		return "rt.Page{Path: " + p + "}"
-	case !lists && len(groups) == 1:
-		return "rt.Page{Path: " + p + ", Query: " + groups[0] + "}"
+	if q := f.kvList(items, s); q != "nil" {
+		return "rt.Page{Path: " + p + ", Query: " + q + "}"
 	}
-	return "rt.Page{Path: " + p + ", Query: rt.Queries(" + strings.Join(groups, ", ") + ")}"
+	return "rt.Page{Path: " + p + "}"
 }
 
 // pageParam is page parameter name of params: the field's value when params is a record

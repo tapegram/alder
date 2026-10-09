@@ -6,6 +6,7 @@ import (
 	"alder/rt"
 	"alder/rt/eff"
 	"alder/rt/html"
+	"alder/rt/std"
 	"alder/rt/web"
 	"errors"
 	"net/url"
@@ -98,15 +99,23 @@ func decode__M__PickParams(q url.Values) (r M__PickParams, errs []web.FieldError
 }
 
 // page__M runs page M for rq up to its model: load (with params and the session of rq.Env). It
-// returns the model and the session view and update take, or the response that ends the request.
-func page__M(rq *web.Request, params M__Params) (M__Model, App__Session, *web.Response) {
+// returns the model and the session view and update take, or the response that ends the request,
+// which stores keep (the session a successful update left, or nil).
+func page__M(rq *web.Request, params M__Params, keep any) (M__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, M__load(params, session))
 	if err != nil {
 		r := route__fail(err)
+		r.Session = keep
 		return model, session, &r
 	}
 	return model, session, nil
+}
+
+// params__M are page M's parameters as text for its message URLs (html.FormState.PageParams): each
+// message route decodes them back from the URL's _p. keys.
+func params__M(p M__Params) []rt.KV {
+	return []rt.KV{rt.KV{Key: "id", Value: std.TextFromInt(p.Id)}}
 }
 
 // update__M runs page M's update for msg and answers its Nav (book 06): load, update (a Task, whose
@@ -115,7 +124,7 @@ func page__M(rq *web.Request, params M__Params) (M__Model, App__Session, *web.Re
 // that sent the message (st, nil for a message without one). A failed Task changes nothing: 500
 // (App.error), or 404 for Query.notFound.
 func update__M(rq *web.Request, params M__Params, msg M__Msg, st *html.FormState) web.Response {
-	model, session, stop := page__M(rq, params)
+	model, session, stop := page__M(rq, params, nil)
 	if stop != nil {
 		return *stop
 	}
@@ -129,9 +138,10 @@ func update__M(rq *web.Request, params M__Params, msg M__Msg, st *html.FormState
 	case nav.Tag == rt.NavReject && st != nil:
 		st.FormError = nav.Text
 	default:
-		st = nil
+		st = &html.FormState{}
 	}
-	model, session, stop = page__M(rq, params)
+	st.PageParams = params__M(params)
+	model, session, stop = page__M(rq, params, rq.Env.Session)
 	if stop != nil {
 		return *stop
 	}
@@ -146,22 +156,22 @@ func Route__M__page() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__M(rq, params)
+		model, session, stop := page__M(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
-		return web.PageResponse(M__view(model, session), nil, rq.Session, false)
+		return web.PageResponse(M__view(model, session), &html.FormState{PageParams: params__M(params)}, rq.Session, false)
 	}}
 }
 
 // Route__M__Save serves message Save of page M, POST /_m/M/Save (book 06): decode the page's
-// parameters (from the message URL's query, else from the Referer, the page that sent the message)
-// and the message's (from the query): 404 when they do not decode; decode form Note from the body:
-// when it does not, re-render the page with the submitted values (no Text.Secret field) and the
-// errors, without calling update; then update__M.
+// parameters (the message URL's _p. keys, which the rendered page put there) and the message's
+// (from the query): 404 when they do not decode; decode form Note from the body: when it does not,
+// re-render the page with the submitted values (no Text.Secret field) and the errors, without
+// calling update; then update__M.
 func Route__M__Save() web.Route {
 	return web.Route{Method: "POST", Pattern: "/_m/M/Save", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__M__Params(rt.PageParams("/m/{id}", rq.HTTP.Referer(), rq.Query))
+		params, errs := decode__M__Params(rt.PageParams(rq.Query))
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
@@ -172,11 +182,11 @@ func Route__M__Save() web.Route {
 		values := route__values(rq.Form)
 		form, errs := decode__M__Note(rq.Form)
 		if errs != nil {
-			model, session, stop := page__M(rq, params)
+			model, session, stop := page__M(rq, params, nil)
 			if stop != nil {
 				return *stop
 			}
-			return web.PageResponse(M__view(model, session), &html.FormState{Form: "M.Note", Values: values, Errors: route__errors(errs)}, nil, true)
+			return web.PageResponse(M__view(model, session), &html.FormState{Form: "M.Note", Values: values, Errors: route__errors(errs), PageParams: params__M(params)}, nil, true)
 		}
 		p.Form = form
 		return update__M(rq, params, M__Msg__Save__(p), &html.FormState{Form: "M.Note", Values: values})
@@ -184,11 +194,11 @@ func Route__M__Save() web.Route {
 }
 
 // Route__M__Pick serves message Pick of page M, POST /_m/M/Pick (book 06): decode the page's
-// parameters (from the message URL's query, else from the Referer, the page that sent the message)
-// and the message's (from the query): 404 when they do not decode; then update__M.
+// parameters (the message URL's _p. keys, which the rendered page put there) and the message's
+// (from the query): 404 when they do not decode; then update__M.
 func Route__M__Pick() web.Route {
 	return web.Route{Method: "POST", Pattern: "/_m/M/Pick", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__M__Params(rt.PageParams("/m/{id}", rq.HTTP.Referer(), rq.Query))
+		params, errs := decode__M__Params(rt.PageParams(rq.Query))
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
@@ -201,11 +211,11 @@ func Route__M__Pick() web.Route {
 }
 
 // Route__M__Ping serves message Ping of page M, POST /_m/M/Ping (book 06): decode the page's
-// parameters (from the message URL's query, else from the Referer, the page that sent the message):
-// 404 when they do not decode; then update__M.
+// parameters (the message URL's _p. keys, which the rendered page put there): 404 when they do not
+// decode; then update__M.
 func Route__M__Ping() web.Route {
 	return web.Route{Method: "POST", Pattern: "/_m/M/Ping", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__M__Params(rt.PageParams("/m/{id}", rq.HTTP.Referer(), rq.Query))
+		params, errs := decode__M__Params(rt.PageParams(rq.Query))
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
@@ -220,15 +230,23 @@ func decode__Other__Params(_ map[string]string, _ url.Values) (r Other__Params, 
 }
 
 // page__Other runs page Other for rq up to its model: load (with params and the session of rq.Env).
-// It returns the model and the session view and update take, or the response that ends the request.
-func page__Other(rq *web.Request, params Other__Params) (Other__Model, App__Session, *web.Response) {
+// It returns the model and the session view and update take, or the response that ends the request,
+// which stores keep (the session a successful update left, or nil).
+func page__Other(rq *web.Request, params Other__Params, keep any) (Other__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Other__load(params, session))
 	if err != nil {
 		r := route__fail(err)
+		r.Session = keep
 		return model, session, &r
 	}
 	return model, session, nil
+}
+
+// params__Other are page Other's parameters as text for its message URLs
+// (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
+func params__Other(_ Other__Params) []rt.KV {
+	return nil
 }
 
 // Route__Other__page serves page Other, GET /other (book 06): decode the parameters (404 when they
@@ -239,11 +257,11 @@ func Route__Other__page() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Other(rq, params)
+		model, session, stop := page__Other(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
-		return web.PageResponse(Other__view(model, session), nil, rq.Session, false)
+		return web.PageResponse(Other__view(model, session), &html.FormState{PageParams: params__Other(params)}, rq.Session, false)
 	}}
 }
 
