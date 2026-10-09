@@ -1,0 +1,1 @@
+app/Notes/Show.alder:3:1 E0016 pages `Notes.BySlug` and `Notes.Show` both answer `/notes/{id}`; give one of them another path

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -95,8 +96,10 @@ type segment struct {
 
 // NewRouter returns the app's http.Handler. For each request it: recovers panics (→ 500 via
 // ErrorDoc); serves the Datastar script at datastar.ScriptPath and Options.StaticDir under
-// /static/; matches method and pattern (a trailing slash is tolerated; anything unmatched,
-// including a GET to a POST-only path, is a 404 rendered with NotFoundDoc); reads a POST body
+// /static/; matches method and pattern, the most specific pattern first (a literal segment
+// before a parameter, left to right; equally specific ones in declaration order), a trailing
+// slash tolerated (anything unmatched, including a GET to a POST-only path, is a 404 rendered
+// with NotFoundDoc); reads a POST body
 // (at most 1 MiB, else 413; url-encoded forms are parsed, multipart is refused with 415);
 // decodes the session cookie; builds the Request and its Env; calls the route's Handle; and
 // writes the Response. Patterns are compiled here; a malformed one panics, as does a Secret
@@ -133,7 +136,23 @@ func NewRouter(routes []Route, opts Options) http.Handler {
 		}
 		rt.routes = append(rt.routes, route{method: r.Method, segs: compile(r.Pattern), handle: r.Handle})
 	}
+	// the most specific pattern first: /x/new before /x/{id}, whatever the declaration order
+	slices.SortStableFunc(rt.routes, func(a, b route) int { return strings.Compare(a.shape(), b.shape()) })
 	return rt
+}
+
+// shape orders routes by specificity: one byte per segment, a literal ('a') before a parameter
+// ('b'), left to right. Two patterns that can match the same path have the same length, so the
+// first segment where they differ in kind decides; equal shapes keep the declaration order.
+func (r *route) shape() string {
+	b := make([]byte, len(r.segs))
+	for i, s := range r.segs {
+		b[i] = 'a'
+		if s.param != "" {
+			b[i] = 'b'
+		}
+	}
+	return string(b)
 }
 
 func compile(pattern string) []segment {

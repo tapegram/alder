@@ -360,3 +360,33 @@ func TestRouter_PanicAfterWriteOnlyLogged(t *testing.T) {
 		t.Fatalf("logs %q", logs)
 	}
 }
+
+// Routes are matched most specific first (I4): a literal segment before a parameter, left to
+// right, whatever the declaration order; equally specific patterns keep it.
+func TestRouter_Specificity(t *testing.T) {
+	var got string
+	route := func(pattern, name string) Route {
+		return Route{Method: "GET", Pattern: pattern, Handle: func(rq *Request) Response {
+			got = name
+			return PageResponse(doc(name), nil, nil, false)
+		}}
+	}
+	h := NewRouter([]Route{
+		route("/x/{id}", "show"),
+		route("/x/{id}/edit", "edit"),
+		route("/x/new", "new"),
+		route("/{a}/{b}", "any2"),
+		route("/x/{other}", "shadowed"),
+		route("/{a}/new/{c}", "anynew"),
+		route("/y/{b}/z", "yz"),
+	}, testOpts(nil))
+	for path, want := range map[string]string{
+		"/x/new": "new", "/x/new/": "new", "/x/1": "show", "/x/1/edit": "edit", "/x/new/edit": "edit",
+		"/q/r": "any2", "/y/new/z": "yz", "/q/new/z": "anynew",
+	} {
+		got = ""
+		if w := serve(h, httptest.NewRequest("GET", path, nil)); w.Code != 200 || got != want {
+			t.Errorf("GET %s → %d %q, want %q", path, w.Code, got, want)
+		}
+	}
+}

@@ -113,6 +113,7 @@ func Program(prog *names.Program, bag *diag.Bag) *Result {
 		}
 		mc.defineCapabilities()
 	}
+	c.checkPagePaths()
 	for _, m := range c.allModules() {
 		c.ctx(m).declareValues()
 	}

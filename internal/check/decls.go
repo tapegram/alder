@@ -748,6 +748,37 @@ func lineOf(m *syntax.Module, line int) string {
 }
 
 // pathParams extracts {name} segments.
+// checkPagePaths reports E0016 for a page whose path answers the same requests as an earlier
+// page's (in module order): the same segments, with any parameter names, ignoring a trailing
+// slash, as rt/web matches them.
+func (c *Checker) checkPagePaths() {
+	seen := map[string]string{}
+	for _, name := range c.prog.Order {
+		pd := c.prog.Pages[name]
+		if pd == nil || !c.prog.IsPageModule(name) {
+			continue
+		}
+		shape := pathShape(pd.Path)
+		if first, ok := seen[shape]; ok {
+			c.errorf(diag.DuplicatePage, pd.Span, "pages `%s` and `%s` both answer `%s`; give one of them another path", first, name, pd.Path)
+			continue
+		}
+		seen[shape] = name
+	}
+}
+
+// pathShape is path as the router matches it: every `{param}` segment as `{}`, no trailing
+// slash.
+func pathShape(path string) string {
+	segs := strings.Split(strings.TrimSuffix(path, "/"), "/")
+	for i, s := range segs {
+		if strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}") {
+			segs[i] = "{}"
+		}
+	}
+	return strings.Join(segs, "/")
+}
+
 func pathParams(path string) []string {
 	var out []string
 	for i := 0; i < len(path); i++ {

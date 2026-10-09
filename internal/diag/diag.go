@@ -100,6 +100,7 @@ const (
 	InvalidDecl    = "E0011"
 	ModuleCase     = "E0014"
 	ReservedModule = "E0015"
+	DuplicatePage  = "E0016"
 	UnreachableArm = "E0310"
 	UnusedImport   = "W0001"
 )
