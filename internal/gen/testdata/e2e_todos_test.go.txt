@@ -373,7 +373,7 @@ func TestE2E_Todos(t *testing.T) {
 	r = e.do("GET", "/login", nil)
 	r.want(t, 200,
 		`<form method="post" action="/_m/Auth.Login/Submit`,
-		`type="password"`, `name="password"`, `<input name="email" type="text" required />`,
+		`type="password"`, `name="password"`, `<input name="email" type="email" required />`,
 		`<script type="module" src="/_alder/datastar.js"></script>`,
 		`<title>Log in</title>`, `<ul class="errors" data-errors="form"></ul>`)
 	r.html(t)

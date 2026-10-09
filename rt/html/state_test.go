@@ -168,3 +168,21 @@ func TestRender_ClickButtons(t *testing.T) {
 		t.Fatalf("a non-button: %s", got)
 	}
 }
+
+// Validation attributes follow the decoder (I5): a Float's number input steps "any"; email and
+// url inputs; required only when set.
+func TestRender_ControlTypes(t *testing.T) {
+	for _, tc := range []struct {
+		c    Control
+		want string
+	}{
+		{Control{Kind: "input", Name: "r", Type: "number", Step: "any", Required: true}, `<label><input name="r" type="number" step="any" required /></label>`},
+		{Control{Kind: "input", Name: "n", Type: "number"}, `<label><input name="n" type="number" /></label>`},
+		{Control{Kind: "input", Name: "e", Type: "email", Required: true}, `<label><input name="e" type="email" required /></label>`},
+		{Control{Kind: "input", Name: "u", Type: "url"}, `<label><input name="u" type="url" /></label>`},
+	} {
+		if got := Render(Input(tc.c)); got != tc.want {
+			t.Errorf("%+v:\n got %s\nwant %s", tc.c, got, tc.want)
+		}
+	}
+}

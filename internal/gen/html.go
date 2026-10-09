@@ -391,17 +391,25 @@ func (f *fn) input(x *ir.Input, s *scope) string {
 		return "html.Input(html.Control{" + strings.Join(out, ", ") + "})"
 	}
 	var ft types.Type
-	secret := false
+	var brand *ir.Brand
+	hasDefault := false
 	if x.Form != nil {
 		for _, fd := range x.Form.Record.Fields {
 			if fd.Name == x.Field {
-				ft, secret = fd.Type, isSecret(fd.Brand)
+				ft, brand, hasDefault = fd.Type, fd.Brand, fd.Default != nil
 			}
 		}
 	}
-	required := true
+	secret := isSecret(brand)
+	// required only where the decoder refuses a blank value (book 05): not for a Maybe, a field
+	// with a default (blank is the default), a checkbox, or Text that accepts "" (plain Text and
+	// a brand of it other than the stdlib's NonEmpty, Email, Url and Secret)
+	required := !hasDefault
 	if u, ok := ft.(*types.Union); ok && u.Module == "Prelude" && u.Name == "Maybe" {
 		ft, required = u.Args[0], false
+	}
+	if GoType(ft) == "string" && !blankRefused(brand) {
+		required = false
 	}
 	if x.Kind == ir.InputInput {
 		typ := "text"
@@ -412,8 +420,18 @@ func (f *fn) input(x *ir.Input, s *scope) string {
 			typ = "date"
 		case "bool":
 			typ, required = "checkbox", false
+		case "string":
+			switch brandName(brand) {
+			case "Text.Email":
+				typ = "email"
+			case "Text.Url":
+				typ = "url"
+			}
 		}
 		out = append(out, "Type: "+strconv.Quote(typ))
+		if GoType(ft) == "float64" {
+			out = append(out, `Step: "any"`) // a number input accepts only integers without it
+		}
 	}
 	switch {
 	case x.LabelExpr != nil:
@@ -436,4 +454,22 @@ func (f *fn) input(x *ir.Input, s *scope) string {
 		out = append(out, "Secret: true")
 	}
 	return "html.Input(html.Control{" + strings.Join(out, ", ") + "})"
+}
+
+// brandName is "<Module>.<Name>" of brand b, "" for none.
+func brandName(b *ir.Brand) string {
+	if b == nil {
+		return ""
+	}
+	return b.Module + "." + b.Name
+}
+
+// blankRefused reports whether a Text field of brand b refuses "" when decoded: the stdlib's
+// Text.NonEmpty, Email, Url and Secret do; plain Text and an app's brand need not.
+func blankRefused(b *ir.Brand) bool {
+	switch brandName(b) {
+	case "Text.NonEmpty", "Text.Email", "Text.Url", "Text.Secret":
+		return true
+	}
+	return false
 }

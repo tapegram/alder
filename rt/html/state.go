@@ -33,9 +33,10 @@ type Control struct {
 	Kind     string   // "input", "textarea", "select" or "errors"
 	Form     string   // the Alder form's name; matched against FormState.Form
 	Name     string   // the field; "" for `<Errors form />`
-	Type     string   // an input's type: "text", "number", "date" or "checkbox"
+	Type     string   // an input's type: "text", "email", "url", "number", "date" or "checkbox"
+	Step     string   // a number input's step: "any" for a Float, "" (the browser's 1) for an Int
 	Label    string   // "" for none
-	Required bool     // the field is not a Maybe (never set for a checkbox)
+	Required bool     // the decoder refuses a blank value: not a Maybe, no default, not a checkbox, not plain Text
 	Value    string   // the initial value as text ("True" checks a checkbox), "" for none
 	Options  []string // a select's options: the union's constructor names
 	Secret   bool     // a Text.Secret field: type="password", and no value is ever rendered
@@ -94,7 +95,7 @@ func (c *Control) build(st *FormState, active bool) Node {
 		} else if typ == "" {
 			typ = "text"
 		}
-		attrs := []Attr{A("name", c.Name), A("type", typ)}
+		attrs := []Attr{A("name", c.Name), A("type", typ), Attr{Name: "step", Value: c.Step, Omit: c.Step == ""}}
 		if typ == "checkbox" {
 			attrs = append(attrs, A("value", "True"), B("checked", value == "True"))
 		} else {

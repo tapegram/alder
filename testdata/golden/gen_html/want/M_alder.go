@@ -66,6 +66,11 @@ type M__Note struct {
 	Color  M__Color
 	Count  rt.Maybe[int64]
 	Urgent bool
+	Ratio  float64
+	Email  string
+	Site   rt.Maybe[string]
+	Title  string
+	Size   int64
 }
 
 type M__Params struct {
@@ -154,10 +159,15 @@ func M__view(model M__Model, session App__Session) html.Node {
 		}(),
 		html.FormTo(rt.MsgRef{Module: "M", Msg: "Save", Params: []rt.KV{rt.KV{Key: "id", Value: std.TextFromInt(model.Id)}}}, []html.Attr{html.A("class", "note")},
 			html.Input(html.Control{Kind: "errors", Form: "M.Note"}),
-			html.Input(html.Control{Kind: "textarea", Form: "M.Note", Name: "body", Label: "Body", Required: true}),
+			html.Input(html.Control{Kind: "textarea", Form: "M.Note", Name: "body", Label: "Body"}),
 			html.Input(html.Control{Kind: "select", Form: "M.Note", Name: "color", Label: "Color " + std.TextFromInt(model.Id), Required: true, Value: "Red", Options: []string{"Red", "Green"}}),
 			html.Input(html.Control{Kind: "input", Form: "M.Note", Name: "count", Type: "number", Label: "Count"}),
 			html.Input(html.Control{Kind: "input", Form: "M.Note", Name: "urgent", Type: "checkbox", Label: "Urgent", Value: "True"}),
+			html.Input(html.Control{Kind: "input", Form: "M.Note", Name: "ratio", Type: "number", Step: "any", Label: "Ratio", Required: true}),
+			html.Input(html.Control{Kind: "input", Form: "M.Note", Name: "email", Type: "email", Label: "Email", Required: true}),
+			html.Input(html.Control{Kind: "input", Form: "M.Note", Name: "site", Type: "url", Label: "Site"}),
+			html.Input(html.Control{Kind: "input", Form: "M.Note", Name: "title", Type: "text", Label: "Title", Required: true}),
+			html.Input(html.Control{Kind: "input", Form: "M.Note", Name: "size", Type: "number", Label: "Size"}),
 			html.Input(html.Control{Kind: "errors", Form: "M.Note", Name: "body"}),
 			html.El("button", nil, html.Text("Save")),
 		),

@@ -15,6 +15,11 @@ form Note = {
   color: Color,
   count: Maybe Int,
   urgent: Bool,
+  ratio: Float,
+  email: Text.Email,
+  site: Maybe Text.Url,
+  title: Text.NonEmpty,
+  size: Int = 3,
 }
 
 msg Save { id: Int } form Note
@@ -52,6 +57,11 @@ view model session =
       <Select field="color" label={"Color " ++ Text.fromInt model.id} value={Red} />
       <Input field="count" label="Count" />
       <Input field="urgent" label="Urgent" value={True} />
+      <Input field="ratio" label="Ratio" />
+      <Input field="email" label="Email" />
+      <Input field="site" label="Site" />
+      <Input field="title" label="Title" />
+      <Input field="size" label="Size" />
       <Errors field="body" />
       <button>Save</button>
     </form>

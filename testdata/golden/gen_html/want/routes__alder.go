@@ -77,6 +77,41 @@ func decode__M__Note(v url.Values) (r M__Note, errs []web.FieldError) {
 		}
 	}
 	r.Urgent = web.Bool(v, "urgent")
+	if s, _ := web.Text(v, "ratio", false); strings.TrimSpace(s) == "" {
+		errs = append(errs, web.Missing("ratio"))
+	} else if x, msg := web.Float(v, "ratio"); msg != "" {
+		errs = append(errs, web.FieldError{Field: "ratio", Message: msg})
+	} else {
+		r.Ratio = x
+	}
+	if s, ok := web.Text(v, "email", false); !ok {
+		errs = append(errs, web.Missing("email"))
+	} else if e := web.Check(web.Email(s), "email", web.MsgEmail); e != nil {
+		errs = append(errs, *e)
+	} else {
+		r.Email = s
+	}
+	if s, _ := web.Text(v, "site", false); s != "" {
+		if e := web.Check(web.URL(s), "site", web.MsgURL); e != nil {
+			errs = append(errs, *e)
+		} else {
+			r.Site = rt.Just(s)
+		}
+	}
+	if s, ok := web.Text(v, "title", false); !ok {
+		errs = append(errs, web.Missing("title"))
+	} else if e := web.Check(web.NonEmpty(s), "title", web.MsgNonEmpty); e != nil {
+		errs = append(errs, *e)
+	} else {
+		r.Title = s
+	}
+	if s, _ := web.Text(v, "size", false); strings.TrimSpace(s) == "" {
+		r.Size = 3
+	} else if x, msg := web.Int(v, "size"); msg != "" {
+		errs = append(errs, web.FieldError{Field: "size", Message: msg})
+	} else {
+		r.Size = x
+	}
 	return r, errs
 }
 
