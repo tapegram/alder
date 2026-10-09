@@ -2,7 +2,7 @@
 """Generate → alder check → feed diagnostics back → retry.
 
 Usage:
-  run_loop.py --exp DIR --model ollama:NAME|claude:NAME --task NAME [--retries 1] [--prompt prompt.md] [--alder BIN]
+  run_loop.py --exp DIR --model ollama:NAME|claude:NAME --task NAME [--retries 1] [--prompt prompt.md] [--alder BIN] [--base APPDIR]
 
 Writes DIR/runs/<model>/<task>/round<N>/{output.md,check.json,app/...} and DIR/runs/<model>/<task>/summary.json.
 """
@@ -191,13 +191,14 @@ def write_round(round_dir: pathlib.Path, prev_dir, text: str, files: dict):
 
 
 def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, task_text: str,
-            system: str, alder: pathlib.Path, retries: int = 1) -> dict:
+            system: str, alder: pathlib.Path, retries: int = 1, base=None) -> dict:
+    """`base`, if given, is a directory whose `app/` seeds round 0 (for tasks that modify an existing app)."""
     run_dir = exp / "runs" / model_label / task_name
     if run_dir.exists():
         shutil.rmtree(run_dir)
     summary = {"model": model_label, "task": task_name, "retries": retries, "error": None, "rounds": [], "final_pass": False}
     user = task_text
-    prev = None
+    prev = pathlib.Path(base) if base else None
     for n in range(retries + 1):
         try:
             text, meta = model.generate(system, user)
@@ -235,6 +236,7 @@ def main(argv=None):
     ap.add_argument("--retries", type=int, default=1)
     ap.add_argument("--prompt", default="prompt.md")
     ap.add_argument("--alder", default=None, help="path to the alder binary (default: build it)")
+    ap.add_argument("--base", default=None, help="directory whose app/ seeds round 0 (modification tasks, e.g. examples/todos for t2)")
     a = ap.parse_args(argv)
     exp = pathlib.Path(a.exp)
     system = (exp / a.prompt).read_text()
@@ -245,7 +247,7 @@ def main(argv=None):
         label = spec.replace(":", "-").replace("/", "-")
         for task in a.task:
             task_text = (exp / "tasks" / f"{task}.md").read_text()
-            s = run_one(exp, model, label, task, task_text, system, alder, a.retries)
+            s = run_one(exp, model, label, task, task_text, system, alder, a.retries, base=a.base)
             status = "ERROR " + s["error"] if s["error"] else ("pass" if s["final_pass"] else "fail")
             counts = " → ".join(str(r["errors"]) for r in s["rounds"])
             print(f"{label} {task}: {status} ({counts} errors)")

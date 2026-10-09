@@ -227,8 +227,33 @@ at all, since the page's params travel with it.
 46 scored runs across five models. Final from-scratch error counts (T3+T4):
 Haiku 4 → 0, Qwen3-Coder 9 → 3 between E2 and E4. The remaining Qwen errors
 are two habits (`Db.get` with a non-id, `.field` on a `Maybe`) that a
-checker reports with a fix and that prose does not change (E3). The next
-phase is the compiler, starting with `alder check`.
+checker reports with a fix and that prose does not change (E3).
+
+### E5: Checker in the loop
+
+*Done 2026-10-08.* The first run with the compiler: `alder check --json`
+after each generation, and one retry with the diagnostics.
+Qwen3-Coder 30B, Haiku and Sonnet on T2–T4, E4's prompt; errors are
+counted by the checker, not by hand. Full data in
+`experiments/e5-loop/` (`scores.md`, `findings.md`).
+
+| Model | Round 0 errors (T2+T3+T4) | After retry | Pass | E4 (T3+T4, hand) |
+|---|---|---|---|---|
+| Claude Sonnet | 0 | 0 | 3 / 3 | 0 (T3) |
+| Claude Haiku | 1 | 3 | 2 / 3 | 0 |
+| Qwen3-Coder 30B | 6 | 7 | 1 / 3 | 3 |
+
+What it showed: the checker confirms E4's one-shot picture and made no
+false positives, but no failing run was rescued by one retry, because the
+retry sees only diagnostics, not the model's previous files, so the model
+re-rolls (Haiku T3 went 1 → 3) or repeats itself (Qwen kept its `Maybe User`
+error). Qwen's real T3 distance is larger than either count, since a parse
+error stops the compiler and 12 more errors sat behind it. Three messages
+misled (a table declared in another table's module is accepted and then
+gets `fix: import Note` for a module that does not exist; one missing
+import yields six errors; a `let`-bound record literal gets no annotation
+hint), which with feeding back the previous files and checking past parse
+errors is the M3 work.
 
 ## Open questions
 

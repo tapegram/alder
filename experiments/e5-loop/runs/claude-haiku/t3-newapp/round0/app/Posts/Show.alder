@@ -1,0 +1,80 @@
+module Posts.Show
+
+import Post
+import Comment
+import Layout
+
+page "/posts/{slug}" { slug: Post.Slug }
+
+type Model = {
+  post: Post,
+  comments: List Comment,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <-
+    Db.from Post
+      |> Db.where (Post.slug.eq params.slug)
+      |> Db.first
+  match found {
+    Nothing -> Query.notFound,
+    Just post -> {
+      let comments <-
+        Db.from Comment
+          |> Db.where (Comment.post.eq post.id)
+          |> Db.orderBy Comment.created.asc
+          |> Db.all
+      if Post.canView post session.user then Query.succeed { post: post, comments: comments } else Query.notFound
+    },
+  }
+}
+
+form NewComment = {
+  author: Text.NonEmpty,
+  body: Text.NonEmpty,
+}
+
+msg AddComment form NewComment
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddComment p -> {
+    let _ <- Db.insert Comment { post: model.post.id, author: p.form.author, body: p.form.body }
+    Task.succeed (Redirect (Posts.Show { slug: model.post.slug }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.post.title} loggedIn={Maybe.isJust session.user}>
+    <article>
+      <h1>{model.post.title}</h1>
+      <p>{model.post.body}</p>
+    </article>
+
+    <section id="comments">
+      <h2>Comments</h2>
+      <ul>
+        {for c in model.comments -> <CommentItem comment={c} />}
+      </ul>
+    </section>
+
+    <form submit={AddComment}>
+      <Errors form />
+      <Input field="author" label="Your name" />
+      <Errors field="author" />
+      <Textarea field="body" label="Comment" />
+      <Errors field="body" />
+      <button>Post comment</button>
+    </form>
+
+    <a href={Home {}}>All posts</a>
+  </Layout.Page>
+
+CommentItem : { comment: Comment } -> Html Msg
+CommentItem props =
+  <li>
+    <strong>{props.comment.author}</strong>
+    <p>{props.comment.body}</p>
+  </li>

@@ -1,0 +1,66 @@
+module Posts.Show
+
+import Post
+import Layout
+
+page "/posts/{slug}" { slug: Post.Slug } requires user
+
+type Model = { post: Post, comments: List Comment }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Post params.slug
+  match found {
+    Just post -> if post.published || post.author == session.user then {
+      let comments <- Db.from Comment |> Db.where (Comment.post.eq post.id) |> Db.orderBy Comment.created.asc |> Db.all
+      Query.succeed { post: post, comments: comments }
+    } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewComment = {
+  authorName: Text.NonEmpty,
+  body: Text.NonEmpty,
+}
+
+msg AddComment { slug: Post.Slug } form NewComment
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddComment p -> {
+    let _ <- Db.insert Comment { post: model.post.id, authorName: p.form.authorName, body: p.form.body }
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.post.title} theme={session.theme}>
+    <article>
+      <h1>{model.post.title}</h1>
+      <p class="meta">Published {Date.format "Jan 2, 2006" (Time.toDate model.post.created)}</p>
+      <div>{model.post.body}</div>
+    </article>
+
+    <h2>Comments</h2>
+    {for comment in model.comments ->
+      <article class="comment">
+        <p class="comment-author">{comment.authorName}</p>
+        <p class="comment-body">{comment.body}</p>
+        <p class="comment-meta">Posted {Date.format "Jan 2, 2006 at 3:04 PM" (Time.toDate comment.created)}</p>
+      </article>}
+
+    <h2>Add a comment</h2>
+    <form submit={AddComment { slug: model.post.slug }}>
+      <Errors form />
+      <Input field="authorName" label="Your name" />
+      <Errors field="authorName" />
+      <Textarea field="body" label="Comment" />
+      <Errors field="body" />
+      <button>Post comment</button>
+    </form>
+
+    {if model.post.author == session.user ->
+      <a href={Posts.Admin {}}>Back to admin</a>}
+  </Layout.Page>

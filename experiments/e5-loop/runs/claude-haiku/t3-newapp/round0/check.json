@@ -1,0 +1,1 @@
+{"code": "E0003", "severity": "error", "file": "app/Post.alder", "line": 25, "col": 16, "endLine": 25, "endCol": 20, "message": "expected Post, got { id: Post.PostId, title: Text.NonEmpty, slug: Post.Slug, body: Text.NonEmpty, published: Bool, author: User.UserId, created: Time }"}

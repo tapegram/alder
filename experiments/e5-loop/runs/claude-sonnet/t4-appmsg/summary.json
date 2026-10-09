@@ -1,0 +1,21 @@
+{
+ "model": "claude-sonnet",
+ "task": "t4-appmsg",
+ "retries": 1,
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 8,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 22.2,
+   "tokens": null,
+   "stderr": ""
+  }
+ ],
+ "final_pass": true
+}

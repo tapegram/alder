@@ -1,0 +1,37 @@
+{
+ "model": "claude-haiku",
+ "task": "t3-newapp",
+ "retries": 1,
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 9,
+   "exit": 1,
+   "errors": 1,
+   "warnings": 0,
+   "codes": {
+    "E0003": 1
+   },
+   "rejected": [],
+   "seconds": 77.4,
+   "tokens": null,
+   "stderr": ""
+  },
+  {
+   "n": 1,
+   "files": 9,
+   "exit": 1,
+   "errors": 3,
+   "warnings": 0,
+   "codes": {
+    "E0001": 3
+   },
+   "rejected": [],
+   "seconds": 69.7,
+   "tokens": null,
+   "stderr": ""
+  }
+ ],
+ "final_pass": false
+}

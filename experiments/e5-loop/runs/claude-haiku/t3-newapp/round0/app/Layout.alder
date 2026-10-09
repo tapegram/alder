@@ -1,0 +1,19 @@
+module Layout
+
+Page : { title: Text, loggedIn: Bool, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+      <link rel="stylesheet" href={Url.external "/static/app.css"} />
+    </head>
+    <body>
+      <nav>
+        <a href={Home {}}>Blog</a>
+        {if props.loggedIn then <a href={Admin {}}>Admin</a> else <a href={Auth.Login {}}>Log in</a>}
+        {if props.loggedIn then <button click={App.Logout}>Log out</button> else Html.none}
+      </nav>
+      <main>{props.children}</main>
+    </body>
+  </html>

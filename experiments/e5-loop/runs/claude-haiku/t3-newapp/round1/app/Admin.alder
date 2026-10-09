@@ -1,0 +1,73 @@
+module Admin
+
+import Post
+import Layout
+
+page "/admin" { } requires user
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Post.Slug,
+  body: Text.NonEmpty,
+}
+
+msg Create form NewPost
+msg TogglePublished { id: Post.PostId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let existing <-
+      Db.from Post
+        |> Db.where (Post.slug.eq p.form.slug)
+        |> Db.first
+    match existing {
+      Just x -> Task.succeed (Reject "That slug is already used."),
+      Nothing -> {
+        let _ <- Db.insert Post { title: p.form.title, slug: p.form.slug, body: p.form.body, author: session.user }
+        Task.succeed (Redirect (Admin {}))
+      },
+    }
+  },
+  TogglePublished p -> {
+    let _ <- Db.update Post p.id (\t -> { t | published: not t.published })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Admin" user={session.user}>
+    <h1>Admin</h1>
+    <form submit={Create}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Input field="slug" label="Slug" />
+      <Errors field="slug" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <button>Create post</button>
+    </form>
+    <h2>All posts</h2>
+    <ul id="posts">
+      {for post in model.posts ->
+        <li>
+          <a href={Posts.Show { slug: post.slug }}>{post.title}</a>
+          {if post.published then <span>Published</span> else <span>Draft</span>}
+          <button click={TogglePublished { id: post.id }}>{if post.published then "Unpublish" else "Publish"}</button>
+        </li>}
+    </ul>
+    <a href={Home {}}>Home</a>
+  </Layout.Page>

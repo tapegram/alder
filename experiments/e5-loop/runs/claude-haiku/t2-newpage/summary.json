@@ -1,0 +1,21 @@
+{
+ "model": "claude-haiku",
+ "task": "t2-newpage",
+ "retries": 1,
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 32.1,
+   "tokens": null,
+   "stderr": ""
+  }
+ ],
+ "final_pass": true
+}

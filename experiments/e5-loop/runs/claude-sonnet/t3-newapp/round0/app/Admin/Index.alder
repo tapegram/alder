@@ -1,0 +1,73 @@
+module Admin.Index
+
+import Post
+import Layout
+
+page "/admin" { } requires user
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Post.Slug,
+  body: Text.NonEmpty,
+  published: Bool,
+}
+
+msg Create form NewPost
+msg TogglePublished { id: Post.PostId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let existing <- Db.from Post |> Db.where (Post.slug.eq p.form.slug) |> Db.first
+    match existing {
+      Just other -> Task.succeed (Reject "That slug is already taken."),
+      Nothing -> {
+        let _ <- Db.insert Post { title: p.form.title, slug: p.form.slug, body: p.form.body, published: p.form.published }
+        Task.succeed (Redirect (Admin.Index {}))
+      },
+    }
+  },
+  TogglePublished p -> {
+    let _ <- Db.update Post p.id (\t -> { t | published: not t.published })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Admin" loggedIn={True}>
+    <h1>Admin</h1>
+
+    <form submit={Create}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Input field="slug" label="Slug" />
+      <Errors field="slug" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <Input field="published" label="Published" />
+      <Errors field="published" />
+      <button>Create post</button>
+    </form>
+
+    <ul id="posts">
+      {for post in model.posts -> <Row post={post} />}
+    </ul>
+  </Layout.Page>
+
+Row : { post: Post } -> Html Msg
+Row props =
+  <li>
+    <a href={Posts.Show { slug: props.post.slug }}>{props.post.title}</a>
+    <span class="status">{Post.statusLabel props.post}</span>
+    <button click={TogglePublished { id: props.post.id }}>{if props.post.published then "Unpublish" else "Publish"}</button>
+  </li>

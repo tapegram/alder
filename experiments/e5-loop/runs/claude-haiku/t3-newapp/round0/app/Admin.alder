@@ -1,0 +1,76 @@
+module Admin
+
+import Post
+import Layout
+
+page "/admin" { } requires user
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Post.Slug,
+  body: Text.NonEmpty,
+}
+
+msg CreatePost form NewPost
+msg TogglePublished { id: Post.PostId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  CreatePost p -> {
+    let existing <-
+      Db.from Post
+        |> Db.where (Post.slug.eq p.form.slug)
+        |> Db.first
+    match existing {
+      Just _ -> Task.succeed (Reject "That slug is already in use."),
+      Nothing -> {
+        let _ <- Db.insert Post { title: p.form.title, slug: p.form.slug, body: p.form.body, author: session.user }
+        Task.succeed Rerender
+      },
+    }
+  },
+  TogglePublished p -> {
+    let _ <- Db.update Post p.id (\t -> { t | published: not t.published })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Admin" loggedIn={True}>
+    <h1>Posts</h1>
+
+    <form submit={CreatePost}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Input field="slug" label="Slug" />
+      <Errors field="slug" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <button>Create post</button>
+    </form>
+
+    <ul id="posts">
+      {for post in model.posts -> <AdminRow post={post} />}
+    </ul>
+  </Layout.Page>
+
+AdminRow : { post: Post } -> Html Msg
+AdminRow props =
+  <li>
+    <a href={Posts.Show { slug: props.post.slug }}>{props.post.title}</a>
+    <span>{if props.post.published then "Published" else "Draft"}</span>
+    <button click={TogglePublished { id: props.post.id }}>{if props.post.published then "Unpublish" else "Publish"}</button>
+  </li>

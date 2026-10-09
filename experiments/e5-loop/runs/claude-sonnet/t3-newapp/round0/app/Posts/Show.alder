@@ -1,0 +1,73 @@
+module Posts.Show
+
+import Post
+import Comment
+import Layout
+
+page "/posts/{slug}" { slug: Post.Slug }
+
+type Model = { post: Post, comments: List Comment }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.from Post |> Db.where (Post.slug.eq params.slug) |> Db.first
+  match found {
+    Just post -> if Post.canView (Maybe.isJust session.user) post then {
+      let comments <-
+        Db.from Comment
+          |> Db.where (Comment.post.eq post.id)
+          |> Db.orderBy Comment.created.asc
+          |> Db.all
+      Query.succeed { post: post, comments: comments }
+    } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewComment = {
+  author: Text.NonEmpty,
+  body: Text.NonEmpty,
+}
+
+msg AddComment { post: Post.PostId } form NewComment
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddComment p -> {
+    let _ <- Db.insert Comment { post: p.post, author: p.form.author, body: p.form.body }
+    Task.succeed (Redirect (Posts.Show { slug: model.post.slug }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.post.title} loggedIn={Maybe.isJust session.user}>
+    <article>
+      <h1>{model.post.title}</h1>
+      <p class="date">{Time.format "Jan 2, 2006" model.post.created}</p>
+      <div>{model.post.body}</div>
+    </article>
+
+    <section id="comments">
+      <h2>Comments</h2>
+      {if model.comments == [] then
+        <p>No comments yet.</p>
+      else
+        <ul>
+          {for c in model.comments ->
+            <li>
+              <strong>{c.author}</strong>
+              <p>{c.body}</p>
+            </li>}
+        </ul>}
+    </section>
+
+    <form submit={AddComment { post: model.post.id }}>
+      <Errors form />
+      <Input field="author" label="Your name" />
+      <Errors field="author" />
+      <Textarea field="body" label="Comment" />
+      <Errors field="body" />
+      <button>Add comment</button>
+    </form>
+  </Layout.Page>

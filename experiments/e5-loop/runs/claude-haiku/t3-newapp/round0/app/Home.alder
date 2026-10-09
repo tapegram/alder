@@ -1,0 +1,33 @@
+module Home
+
+import Post
+import Layout
+
+page "/" { }
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <-
+    Db.from Post
+      |> Db.where (Post.published.eq True)
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Blog" loggedIn={Maybe.isJust session.user}>
+    <h1>Blog</h1>
+    <ul id="posts">
+      {for post in model.posts -> <PostItem post={post} />}
+    </ul>
+  </Layout.Page>
+
+PostItem : { post: Post } -> Html Msg
+PostItem props =
+  <li>
+    <a href={Posts.Show { slug: props.post.slug }}>{props.post.title}</a>
+  </li>

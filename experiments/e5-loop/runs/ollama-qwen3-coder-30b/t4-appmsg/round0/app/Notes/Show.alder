@@ -1,0 +1,53 @@
+module Notes.Show
+
+import Note
+import Layout
+
+page "/notes/{id}" { id: Note.NoteId } requires user
+
+type Model = { note: Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Note params.id
+  match found {
+    Just note -> if note.owner == session.user then Query.succeed { note: note } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+form EditNote = {
+  title: Text.NonEmpty,
+  body: Text = "",
+}
+
+msg Save { id: Note.NoteId } form EditNote
+msg Delete { id: Note.NoteId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> {
+    let _ <- Db.update Note p.id (\n -> { n | title: p.form.title, body: p.form.body })
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+  Delete p -> {
+    let _ <- Db.delete Note p.id
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.note.title} theme={session.theme}>
+    <h1>{model.note.title}</h1>
+    <p>{model.note.body}</p>
+    <form submit={Save { id: model.note.id }}>
+      <Input field="title" label="Title" value={model.note.title} />
+      <Errors field="title" />
+      <Textarea field="body" label="Body" value={model.note.body} />
+      <Errors field="body" />
+      <button>Save</button>
+    </form>
+    <button click={Delete { id: model.note.id }}>Delete</button>
+    <a href={Notes.Index {}}>Back</a>
+  </Layout.Page>

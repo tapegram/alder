@@ -1,0 +1,1 @@
+{"code": "E0003", "severity": "error", "file": "app/Profile.alder", "line": 23, "col": 25, "endLine": 23, "endCol": 29, "message": "expected User, got Maybe User; match it: match m { Just x -> \u2026, Nothing -> \u2026 }"}

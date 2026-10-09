@@ -1,0 +1,26 @@
+module Posts.Index
+
+import Post
+import Layout
+
+page "/" { }
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <- Db.from Post |> Db.where (Post.published.eq True) |> Db.orderBy Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Blog" theme={session.theme}>
+    <h1>Blog</h1>
+    {for post in model.posts ->
+      <article>
+        <h2><a href={Posts.Show { slug: post.slug }}>{post.title}</a></h2>
+        <p class="meta">Published {Date.format "Jan 2, 2006" (Time.toDate post.created)}</p>
+        <p>{Text.slice 0 150 post.body}...</p>
+      </article>}
+  </Layout.Page>

@@ -61,6 +61,21 @@ class LoopTests(unittest.TestCase):
         self.assertTrue(s["final_pass"])
         self.assertEqual(s["rounds"][0]["codes"], {"E0003": 1})
 
+    def test_base_seeds_round0(self):
+        # A modification task (T2) emits only changed files; round 0 must start from the base app.
+        base = pathlib.Path(self.tmp) / "base"
+        (base / "app" / "Todos").mkdir(parents=True)
+        (base / "app" / "App.alder").write_text("module App\n")
+        (base / "app" / "Todos" / "Index.alder").write_text("module Todos.Index\n-- old\n")
+        chk = FakeChecker(self.tmp, [(0, "", "")])
+        model = rl.FakeModel(["--- file: app/Todos/Index.alder ---\nmodule Todos.Index\n-- new\n"
+                              "--- file: app/Profile.alder ---\nmodule Profile\n"])
+        s = rl.run_one(self.exp, model, "fake", "t", "task", "sys", chk.path, retries=0, base=base)
+        self.assertEqual(s["rounds"][0]["files"], 3)
+        self.assertTrue((self.exp / "runs/fake/t/round0/app/App.alder").exists())
+        self.assertIn("new", (self.exp / "runs/fake/t/round0/app/Todos/Index.alder").read_text())
+        self.assertEqual((base / "app" / "Todos" / "Index.alder").read_text(), "module Todos.Index\n-- old\n")
+
     def test_check_exit2_recorded_not_raised(self):
         chk = FakeChecker(self.tmp, [(2, "", "alder check: internal error: boom\n"), (2, "", "alder check: internal error: boom\n")])
         s = rl.run_one(self.exp, rl.FakeModel([GOOD, GOOD]), "fake", "t", "task", "sys", chk.path, retries=1)

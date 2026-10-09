@@ -1,0 +1,5 @@
+{"code": "E0001", "severity": "error", "file": "app/Post.alder", "line": 19, "col": 7, "endLine": 19, "endCol": 12, "message": "expected a type, got `brand`"}
+{"code": "E0001", "severity": "error", "file": "app/Post.alder", "line": 19, "col": 7, "endLine": 19, "endCol": 12, "message": "expected `,` or closing brace"}
+{"code": "E0001", "severity": "error", "file": "app/Post.alder", "line": 19, "col": 7, "endLine": 19, "endCol": 12, "message": "expected end of line after declaration, got `brand`"}
+{"code": "E0001", "severity": "error", "file": "app/Posts/Admin.alder", "line": 18, "col": 19, "endLine": 18, "endCol": 20, "message": "expected `,` or closing brace"}
+{"code": "E0001", "severity": "error", "file": "app/Posts/Admin.alder", "line": 18, "col": 19, "endLine": 18, "endCol": 20, "message": "expected end of line after declaration, got `@`"}

@@ -1,0 +1,37 @@
+{
+ "model": "ollama-qwen3-coder-30b",
+ "task": "t2-newpage",
+ "retries": 1,
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 9,
+   "exit": 1,
+   "errors": 1,
+   "warnings": 0,
+   "codes": {
+    "E0003": 1
+   },
+   "rejected": [],
+   "seconds": 39.1,
+   "tokens": 1267,
+   "stderr": ""
+  },
+  {
+   "n": 1,
+   "files": 9,
+   "exit": 1,
+   "errors": 1,
+   "warnings": 0,
+   "codes": {
+    "E0003": 1
+   },
+   "rejected": [],
+   "seconds": 22.3,
+   "tokens": 1238,
+   "stderr": ""
+  }
+ ],
+ "final_pass": false
+}

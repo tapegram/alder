@@ -1,0 +1,72 @@
+module Notes.Show
+
+import Note
+import Layout
+
+page "/notes/{id}" { id: Note.NoteId } requires user
+
+type Model = { note: Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Note params.id
+  match found {
+    Just note -> if note.owner == session.user then Query.succeed { note: note } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+form EditNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Save { id: Note.NoteId } form EditNote
+msg Delete { id: Note.NoteId }
+
+-- Runs the task only when the note exists and belongs to the session user.
+-- Otherwise the page is re-run through load, which answers 404.
+ifOwned : Note.NoteId -> Session -> Task Nav -> Task Nav
+ifOwned id session next = {
+  let found <- Db.get Note id
+  match found {
+    Just note -> if note.owner == session.user then next else Task.succeed Rerender,
+    Nothing -> Task.succeed Rerender,
+  }
+}
+
+save : Note.NoteId -> EditNote -> Task Nav
+save id form = {
+  let _ <- Db.update Note id (\n -> { n | title: form.title, body: form.body })
+  Task.succeed (Redirect (Notes.Index {}))
+}
+
+remove : Note.NoteId -> Task Nav
+remove id = {
+  let _ <- Db.delete Note id
+  Task.succeed (Redirect (Notes.Index {}))
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> ifOwned p.id session (save p.id p.form),
+  Delete p -> ifOwned p.id session (remove p.id),
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.note.title} theme={session.theme}>
+    <h1>{model.note.title}</h1>
+    <p class="body">{model.note.body}</p>
+
+    <form submit={Save { id: model.note.id }}>
+      <Input field="title" label="Title" value={model.note.title} />
+      <Errors field="title" />
+      <Textarea field="body" label="Body" value={model.note.body} />
+      <Errors field="body" />
+      <button>Save</button>
+    </form>
+
+    <button click={Delete { id: model.note.id }}>Delete</button>
+    <a href={Notes.Index {}}>Back</a>
+  </Layout.Page>

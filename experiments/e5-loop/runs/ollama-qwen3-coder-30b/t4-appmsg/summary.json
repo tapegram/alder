@@ -1,0 +1,21 @@
+{
+ "model": "ollama-qwen3-coder-30b",
+ "task": "t4-appmsg",
+ "retries": 1,
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 8,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 30.9,
+   "tokens": 1690,
+   "stderr": ""
+  }
+ ],
+ "final_pass": true
+}

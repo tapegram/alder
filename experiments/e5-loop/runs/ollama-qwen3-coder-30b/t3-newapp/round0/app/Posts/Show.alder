@@ -1,0 +1,62 @@
+module Posts.Show
+
+import Post
+import Layout
+
+page "/posts/{slug}" { slug: Post.Slug } requires user
+
+type Model = { post: Post, comments: List Comment }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Post params.slug
+  match found {
+    Just post -> if post.published || post.author == session.user then {
+      let comments <- Db.from Comment |> Db.where (Comment.post.eq post.id) |> Db.orderBy Comment.created.asc |> Db.all
+      Query.succeed { post: post, comments: comments }
+    } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewComment = {
+  authorName: Text.NonEmpty,
+  body: Text.NonEmpty,
+}
+
+msg Submit form NewComment
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insert Comment { post: model.post.id, authorName: p.form.authorName, body: p.form.body }
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.post.title} theme={session.theme}>
+    <article>
+      <h1>{model.post.title}</h1>
+      <p class="meta">Published {Date.format "Jan 2, 2006" (Time.toDate model.post.created)}</p>
+      <div>{model.post.body}</div>
+    </article>
+
+    <h2>Comments</h2>
+    {for comment in model.comments ->
+      <article>
+        <p class="meta">By {comment.authorName} on {Date.format "Jan 2, 2006" (Time.toDate comment.created)}</p>
+        <p>{comment.body}</p>
+      </article>}
+
+    <h2>Add a comment</h2>
+    <form submit={Submit}>
+      <Errors form />
+      <Input field="authorName" label="Your name" />
+      <Errors field="authorName" />
+      <Textarea field="body" label="Comment" />
+      <Errors field="body" />
+      <button>Post comment</button>
+    </form>
+  </Layout.Page>

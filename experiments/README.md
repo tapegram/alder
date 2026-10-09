@@ -48,17 +48,26 @@ Tasks are chosen to exercise different things:
 - **T1 modify**: add a field across table, form, view (touches TYP, ROUTE, HTML).
 - **T2 new page**: a new page module from scratch (touches STRUCT, EFF, ROUTE).
 - **T3 new app**: a small app from scratch (everything).
+- **T4 app messages**: a notes app with a theme switch and logout on every page (app-level messages, session).
+
+## Experiment list
+
+- **E1 baseline** (`e1-baseline/`): can agents write Alder from the reference alone; hand-scored, one shot.
+- **E2 revised** (`e2-revised/`): the E1-revised book, with and without the example app; added T4.
+- **E3 pitfalls** (`e3-pitfalls/`): does a "common mistakes" appendix help? No.
+- **E4 msgpath** (`e4-msgpath/`): path-less `msg`; end of the spike.
+- **E5 loop** (`e5-loop/`): first run with `alder check` in the loop (generate, check, one retry), T2–T4 × Qwen3-Coder, Haiku, Sonnet; scored by the checker.
 
 ## Harness (M2)
 
 `run_loop.py` closes the loop: generate, run `alder check --json`, feed the diagnostics back, retry.
 
 ```
-python3 experiments/run_loop.py --exp experiments/e5-loop --model ollama:qwen3-coder:30b --task t3-newapp [--retries 1] [--prompt prompt.md] [--alder path/to/alder]
+python3 experiments/run_loop.py --exp experiments/e5-loop --model ollama:qwen3-coder:30b --task t3-newapp [--retries 1] [--prompt prompt.md] [--alder path/to/alder] [--base examples/todos]
 python3 experiments/report_loop.py experiments/e5-loop > experiments/e5-loop/scores.md
 ```
 
-`--model` (`ollama:NAME` or `claude:NAME`) and `--task` are repeatable. Each run writes `runs/<model>/<task>/round<N>/{output.md,check.json,app/...}` and `runs/<model>/<task>/summary.json`. Round N+1 starts from round N's files, overlaid with whatever the model re-emits.
+`--model` (`ollama:NAME` or `claude:NAME`) and `--task` are repeatable. Each run writes `runs/<model>/<task>/round<N>/{output.md,check.json,app/...}` and `runs/<model>/<task>/summary.json`. Round N+1 starts from round N's files, overlaid with whatever the model re-emits. `--base DIR` seeds round 0 with `DIR/app`, for tasks that modify an existing app (T2 uses `--base examples/todos`). The retry prompt carries the task and the diagnostics, not the previous files (see E5 findings).
 
 Summary shape:
 
