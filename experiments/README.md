@@ -54,13 +54,35 @@ under `BUILD OUTPUT`.
 
 In the loop harness (`run_loop.py`):
 
-- `claude:NAME` runs `claude -p` isolated: in a fresh empty temp directory (no `CLAUDE.md`, no
-  project settings or memory), with the prompt as `--system-prompt` and only the task on stdin,
-  `--no-session-persistence`, and every tool disallowed. Each round records `claude_version`
-  (`claude --version`) and `model`.
+- `claude:NAME` runs `claude -p` isolated, in a fresh empty temp directory, with the prompt as
+  `--system-prompt` and only the task on stdin. Each round records `claude_version`
+  (`claude --version`) and `model`; `summary.json` records the exact command line as
+  `claude_argv` (the system prompt replaced by `<system prompt>`):
+
+  ```
+  claude -p --model NAME --output-format text --system-prompt <system prompt>
+    --no-session-persistence --setting-sources "" --strict-mcp-config --tools "" --disable-slash-commands
+  ```
+
+  **Excluded:** `CLAUDE.md` and project memory (the empty cwd); the user, project and local
+  settings files (`--setting-sources ""`), and with them their hooks (SessionStart and the rest),
+  enabled plugins and permissions; every MCP server, the user's connectors included
+  (`--strict-mcp-config` with no `--mcp-config`); every tool, built-in or deferred (Skill and
+  ToolSearch included: `--tools ""`); skills and slash commands (`--disable-slash-commands`);
+  the saved session. Checked with `--output-format stream-json --verbose` on claude 2.1.295: the
+  init event lists no tools, no MCP servers, no skills and no slash commands.
+  **Not excluded:** managed (policy) settings; Claude Code's built-in plugins (that init event
+  still lists three `@builtin` ones); the auto-memory directory keyed by the temp cwd (new and
+  empty every call). `--bare` would drop more but requires `ANTHROPIC_API_KEY` (it reads no
+  OAuth login), so it is not used. **E6 ran before this**, in the empty temp cwd with
+  `--no-session-persistence` and `--disallowedTools` naming ten built-in tools: user settings
+  (their plugins' SessionStart hooks), user MCP connectors and the Skill/ToolSearch tools were
+  not excluded then (E5 also ran in the repository as its cwd, with the prompt on stdin). No
+  contamination was seen in the outputs; E6 was not re-run.
 - `ollama:NAME` records `prompt_eval_count` and `eval_count` per round. Ollama silently drops the
-  start of a prompt longer than `num_ctx`, so when `prompt_eval_count` is missing or below 90% of
-  the estimate (`len(prompt) / 4`), the round gets a `warning` (also printed to stderr).
+  start of a prompt longer than `num_ctx`, so the round gets a `warning` (also printed to stderr)
+  when `prompt_eval_count` is missing or below 90% of the estimate (`len(prompt) / 4`), or when
+  `prompt_eval_count + eval_count` reaches `num_ctx - 512` (32768 - 512).
 
 ## Tasks
 

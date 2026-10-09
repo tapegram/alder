@@ -20,6 +20,10 @@ class Model:
     def generate(self, system: str, user: str):
         raise NotImplementedError
 
+    def summary_fields(self) -> dict:
+        """Fields this model adds to summary.json (how it was run)."""
+        return {}
+
 
 class FakeModel(Model):
     def __init__(self, responses):
@@ -34,11 +38,14 @@ class FakeModel(Model):
 
 
 class OllamaModel(Model):
+    NUM_CTX = 32768
+    CTX_MARGIN = 512   # prompt + answer this close to num_ctx: the prompt's start may have been dropped
+
     def __init__(self, name, host="http://localhost:11434"):
         self.name, self.host = name, host
 
     def generate(self, system, user):
-        body = {"model": self.name, "stream": False, "options": {"num_ctx": 32768, "temperature": 0},
+        body = {"model": self.name, "stream": False, "options": {"num_ctx": self.NUM_CTX, "temperature": 0},
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
         t0 = time.time()
         req = urllib.request.Request(self.host + "/api/chat", data=json.dumps(body).encode(),
@@ -51,16 +58,28 @@ class OllamaModel(Model):
         text = re.sub(r"<think>.*?</think>\s*", "", resp["message"]["content"], flags=re.S)
         meta = {"seconds": round(time.time() - t0, 1), "tokens": resp.get("eval_count"),
                 "prompt_eval_count": resp.get("prompt_eval_count"), "eval_count": resp.get("eval_count")}
-        # Ollama silently drops the start of a prompt longer than num_ctx; the count it evaluated tells.
+        # Ollama silently drops the start of a prompt longer than num_ctx; the count it evaluated tells:
+        # well below the estimate, or prompt + answer at the context's end.
         estimated = (len(system) + len(user)) // 4
-        pec = resp.get("prompt_eval_count")
+        pec, ec = resp.get("prompt_eval_count"), resp.get("eval_count")
+        warnings = []
         if not isinstance(pec, int) or pec < 0.9 * estimated:
-            meta["warning"] = f"prompt may have been truncated (prompt_eval_count={pec}, estimated={estimated})"
+            warnings.append(f"prompt may have been truncated (prompt_eval_count={pec}, estimated={estimated})")
+        if isinstance(pec, int) and isinstance(ec, int) and pec + ec >= self.NUM_CTX - self.CTX_MARGIN:
+            warnings.append(f"context may have overflowed (prompt_eval_count={pec} + eval_count={ec} "
+                            f">= num_ctx {self.NUM_CTX} - {self.CTX_MARGIN})")
+        if warnings:
+            meta["warning"] = "; ".join(warnings)
         return text, meta
 
 
 class ClaudeModel(Model):
-    TOOLS_OFF = "Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Agent,NotebookEdit"
+    # Isolation (see README "Models"): no session saved; no user, project or local settings files,
+    # so none of their hooks, enabled plugins or permissions; no MCP server but those of
+    # --mcp-config (none); no tools at all (--tools ""); no skills or slash commands.
+    ISOLATION = ["--no-session-persistence", "--setting-sources", "", "--strict-mcp-config",
+                 "--tools", "", "--disable-slash-commands"]
+    SYSTEM_PLACEHOLDER = "<system prompt>"
 
     _version = None   # `claude --version`, once per process
 
@@ -77,6 +96,14 @@ class ClaudeModel(Model):
                 cls._version = f"unknown ({e})"
         return cls._version
 
+    def argv(self, system):
+        """The command line of one generation; the task goes on stdin."""
+        return (["claude", "-p", "--model", self.name, "--output-format", "text", "--system-prompt", system]
+                + self.ISOLATION)
+
+    def summary_fields(self):
+        return {"claude_argv": self.argv(self.SYSTEM_PLACEHOLDER)}
+
     def generate(self, system, user):
         if shutil.which("claude") is None:
             raise ModelError("claude CLI not found")
@@ -84,10 +111,7 @@ class ClaudeModel(Model):
         cwd = tempfile.mkdtemp(prefix="alder-claude-")
         t0 = time.time()
         try:
-            p = subprocess.run(["claude", "-p", "--model", self.name, "--output-format", "text",
-                                "--system-prompt", system,
-                                "--no-session-persistence", "--disallowedTools", self.TOOLS_OFF],
-                               input=user, capture_output=True, text=True, timeout=1800, cwd=cwd)
+            p = subprocess.run(self.argv(system), input=user, capture_output=True, text=True, timeout=1800, cwd=cwd)
         except subprocess.TimeoutExpired:
             raise ModelError(f"claude {self.name}: timeout")
         finally:
@@ -257,6 +281,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
         shutil.rmtree(run_dir)
     summary = {"model": model_label, "task": task_name, "retries": retries, "base": str(base) if base else None,
                "harness": {"build": build, "retries": retries}, "error": None, "rounds": [], "final_pass": False}
+    summary.update(model.summary_fields())
     user = task_text
     prev = pathlib.Path(base) if base else None
     for n in range(retries + 1):

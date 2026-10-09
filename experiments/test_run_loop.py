@@ -276,7 +276,14 @@ class ModelTests(unittest.TestCase):
         argv, kw = gen[0]
         self.assertEqual(argv[argv.index("--system-prompt") + 1], "SYSTEM TEXT")
         self.assertIn("--no-session-persistence", argv)
-        self.assertEqual(argv[argv.index("--disallowedTools") + 1], rl.ClaudeModel.TOOLS_OFF)
+        self.assertEqual(argv[argv.index("--setting-sources") + 1], "")   # no user/project/local settings, hooks, plugins
+        self.assertIn("--strict-mcp-config", argv)                        # no MCP servers
+        self.assertEqual(argv[argv.index("--tools") + 1], "")             # no tools
+        self.assertIn("--disable-slash-commands", argv)                   # no skills
+        self.assertNotIn("--bare", argv)                                  # it would require ANTHROPIC_API_KEY
+        self.assertEqual(m.summary_fields()["claude_argv"],
+                         [rl.ClaudeModel.SYSTEM_PLACEHOLDER if a == "SYSTEM TEXT" else a for a in argv])
+        self.assertNotIn("THE TASK", " ".join(m.summary_fields()["claude_argv"]))
         self.assertEqual(kw["input"], "THE TASK")
         cwd = pathlib.Path(kw["cwd"])
         self.assertTrue(str(cwd.resolve()).startswith(str(pathlib.Path(tempfile.gettempdir()).resolve())))
@@ -307,6 +314,34 @@ class ModelTests(unittest.TestCase):
         self.assertIn("warning", meta)                                 # absent count: warn too
         _, meta = self._ollama({"message": {"content": "hi"}, "prompt_eval_count": 1000, "eval_count": 5}, prompt)
         self.assertNotIn("warning", meta)
+
+    def test_ollama_context_overflow_warning(self):
+        prompt = "x" * 4000
+        ctx = rl.OllamaModel.NUM_CTX
+        _, meta = self._ollama({"message": {"content": "hi"}, "prompt_eval_count": 1000, "eval_count": ctx - 512 - 1000}, prompt)
+        self.assertIn("context may have overflowed", meta["warning"])
+        self.assertNotIn("truncated", meta["warning"])
+        _, meta = self._ollama({"message": {"content": "hi"}, "prompt_eval_count": 1000, "eval_count": ctx - 513 - 1000}, prompt)
+        self.assertNotIn("warning", meta)
+        _, meta = self._ollama({"message": {"content": "hi"}, "prompt_eval_count": 10, "eval_count": ctx}, prompt)
+        self.assertIn("truncated", meta["warning"])                    # both checks, one warning
+        self.assertIn("overflowed", meta["warning"])
+
+    def test_summary_records_claude_argv(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            chk = FakeChecker(tmp, [(0, "", "")])
+            class Fake(rl.ClaudeModel):   # the real argv, a scripted answer
+                def generate(self, system, user):
+                    return GOOD, {"seconds": 0.0}
+            s = rl.run_one(pathlib.Path(tmp) / "exp", Fake("haiku"), "claude-haiku", "t", "task", "SYSTEM", chk.path)
+            saved = json.loads((pathlib.Path(tmp) / "exp/runs/claude-haiku/t/summary.json").read_text())
+            self.assertEqual(saved["claude_argv"], s["claude_argv"])
+            self.assertEqual(saved["claude_argv"][:4], ["claude", "-p", "--model", "haiku"])
+            self.assertIn(rl.ClaudeModel.SYSTEM_PLACEHOLDER, saved["claude_argv"])
+            self.assertNotIn("SYSTEM", [a for a in saved["claude_argv"]])
+        finally:
+            shutil.rmtree(tmp)
 
 class ReportTests(unittest.TestCase):
     def test_report_table(self):
