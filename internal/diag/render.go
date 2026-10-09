@@ -16,7 +16,7 @@ func RenderText(d Diagnostic, lines []string) string {
 		if d.Span.End.Line == l && d.Span.End.Col > d.Span.Start.Col {
 			width = d.Span.End.Col - d.Span.Start.Col
 		}
-		fmt.Fprintf(&sb, "  %s%s\n", strings.Repeat(" ", d.Span.Start.Col-1), strings.Repeat("^", width))
+		fmt.Fprintf(&sb, "  %s%s\n", strings.Repeat(" ", max(0, d.Span.Start.Col-1)), strings.Repeat("^", width))
 	}
 	if d.Fix != nil {
 		fmt.Fprintf(&sb, "  fix: %s\n", d.Fix.Replace)
@@ -46,6 +46,10 @@ func RenderJSON(d Diagnostic) string {
 	if d.Fix != nil {
 		j.Fix = &jsonFix{d.Fix.Line, d.Fix.Col, d.Fix.Replace}
 	}
-	b, _ := json.Marshal(j)
-	return string(b)
+	// SetEscapeHTML(false): messages quote code such as `|>` and `<Input>`, which must stay readable.
+	var sb strings.Builder
+	enc := json.NewEncoder(&sb)
+	enc.SetEscapeHTML(false)
+	enc.Encode(j)
+	return strings.TrimSuffix(sb.String(), "\n")
 }

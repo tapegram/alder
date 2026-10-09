@@ -43,7 +43,7 @@ func (mc *modCtx) checkBodies() {
 	if c.prog.Std[mc.m.Name] != nil {
 		return
 	}
-	for _, d := range mc.m.Decls {
+	for _, d := range c.live(mc.m) {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
 			sig, ok := c.values[c.key(mc.m.Name, d.Name)]

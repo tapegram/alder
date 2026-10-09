@@ -1,0 +1,18 @@
+module P
+
+page "/p" { n: Int = "five", m: Int = 3 }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+msg Go { k: Int = True }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Go p -> Task.succeed Rerender,
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>p</p>

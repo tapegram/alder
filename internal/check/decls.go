@@ -12,15 +12,18 @@ import (
 // declareTypeNames creates placeholders so types can refer to each other in any order.
 func (c *Checker) declareTypeNames(m *syntax.Module) {
 	seen := map[string]diag.Span{}
+	var cur syntax.Decl
 	dup := func(name string, sp diag.Span) bool {
 		if prev, ok := seen[name]; ok {
 			c.errorf(diag.Duplicate, sp, "`%s` is already declared at line %d", name, prev.Start.Line)
+			c.losers[cur] = true // every later pass skips it (see live)
 			return true
 		}
 		seen[name] = sp
 		return false
 	}
 	for _, d := range m.Decls {
+		cur = d
 		switch d := d.(type) {
 		case *syntax.TypeDecl:
 			if dup(d.Name, d.Span) {
@@ -64,6 +67,18 @@ func (c *Checker) declareTypeNames(m *syntax.Module) {
 			dup(d.Name, d.Span)
 		}
 	}
+}
+
+// live returns m's declarations without the duplicates declareTypeNames reported:
+// the first declaration of a name wins and the others are never defined or checked.
+func (c *Checker) live(m *syntax.Module) []syntax.Decl {
+	out := make([]syntax.Decl, 0, len(m.Decls))
+	for _, d := range m.Decls {
+		if !c.losers[d] {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 func baseType(name string) types.Type {
@@ -168,7 +183,7 @@ func applyArgs(decl types.Type, args []types.Type) types.Type {
 // defineTypes fills in placeholder bodies for this module's unions, records, tables, forms.
 func (mc *modCtx) defineTypes() {
 	c := mc.c
-	for _, d := range mc.m.Decls {
+	for _, d := range c.live(mc.m) {
 		switch d := d.(type) {
 		case *syntax.TypeDecl:
 			params := map[string]bool{}
@@ -188,7 +203,9 @@ func (mc *modCtx) defineTypes() {
 				}
 			case *types.Record:
 				for _, f := range d.Record.Fields {
-					tt.Fields = append(tt.Fields, types.Field{Name: f.Name, Type: mc.typeOf(f.Type, params), HasDefault: f.Default != nil})
+					ft := mc.typeOf(f.Type, params)
+					mc.deferDefault(f, ft)
+					tt.Fields = append(tt.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
 				}
 			}
 		case *syntax.TableDecl:
@@ -197,6 +214,7 @@ func (mc *modCtx) defineTypes() {
 			rec := c.types[c.key(mc.m.Name, d.Name)].(*types.Record)
 			for _, f := range d.Fields {
 				ft := mc.typeOf(f.Type, nil)
+				mc.deferDefault(f, ft)
 				rec.Fields = append(rec.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
 			}
 			c.forms[c.key(mc.m.Name, d.Name)] = rec
@@ -216,6 +234,7 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 	idCount := 0
 	for _, f := range d.Fields {
 		ft := mc.typeOf(f.Type, nil)
+		mc.deferDefault(f, ft)
 		rec.Fields = append(rec.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
 		info.Columns[f.Name] = ft
 		generated := false
@@ -260,7 +279,7 @@ func (mc *modCtx) checkRef(f *syntax.Field, a *syntax.Attr, ft types.Type) {
 		if m.Name != mc.m.Name && !imports(mc.m, m.Name) {
 			continue
 		}
-		for _, d := range m.Decls {
+		for _, d := range c.live(m) {
 			if td, ok := d.(*syntax.TableDecl); ok && td.Name == a.Arg {
 				for _, tf := range td.Fields {
 					for _, ta := range tf.Attrs {
@@ -357,7 +376,7 @@ func urlRepresentable(t types.Type) bool {
 // declared later in a file (or in another module) are seen with their constructors.
 func (mc *modCtx) checkRepresentable() {
 	c := mc.c
-	for _, d := range mc.m.Decls {
+	for _, d := range c.live(mc.m) {
 		switch d := d.(type) {
 		case *syntax.TableDecl:
 			for _, f := range d.Fields {
@@ -379,7 +398,7 @@ func (mc *modCtx) checkRepresentable() {
 func (mc *modCtx) defineApp() {
 	c := mc.c
 	c.appMsg = &types.Union{Module: "App", Name: "Msg"}
-	for _, d := range mc.m.Decls {
+	for _, d := range c.live(mc.m) {
 		switch d := d.(type) {
 		case *syntax.SessionDecl:
 			rec := &types.Record{Module: "App", Name: "Session"}
@@ -388,6 +407,7 @@ func (mc *modCtx) defineApp() {
 				if !formRepresentable(ft) {
 					c.errorf(diag.InvalidDecl, f.Span, "session field `%s` has type `%s`, which cannot be stored in a session", f.Name, types.String(ft))
 				}
+				mc.deferDefault(f, ft)
 				rec.Fields = append(rec.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
 			}
 			c.session = rec
@@ -408,6 +428,7 @@ func (mc *modCtx) addMsg(u *types.Union, d *syntax.MsgDecl, owner string) {
 			if !urlRepresentable(ft) {
 				c.errorf(diag.InvalidDecl, f.Span, "message parameter `%s` has type `%s`, which cannot appear in a URL", f.Name, types.String(ft))
 			}
+			mc.deferDefault(f, ft)
 			payload.Fields = append(payload.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
 		}
 	}
@@ -437,6 +458,7 @@ func (mc *modCtx) definePage() {
 		if !urlRepresentable(ft) {
 			c.errorf(diag.InvalidDecl, f.Span, "page parameter `%s` has type `%s`, which cannot appear in a URL", f.Name, types.String(ft))
 		}
+		mc.deferDefault(f, ft)
 		info.Params.Fields = append(info.Params.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
 	}
 	for _, s := range segs {
@@ -456,17 +478,41 @@ func (mc *modCtx) definePage() {
 			}
 		}
 		if !found {
-			sp := pd.Span
-			sp.Start.Col = sp.Start.Col + strings.Index(lineOf(mc.m, pd.Span.Start.Line), "requires")
+			sp := pd.RequiresSpan
+			if sp.File == "" {
+				sp = pd.Span
+			}
 			c.errorf(diag.InvalidDecl, sp, "`requires %s`: the session has no field `%s`", pd.Requires, pd.Requires)
 		}
 		mc.session = narrow(c.session, pd.Requires)
 	}
-	for _, d := range mc.m.Decls {
+	for _, d := range c.live(mc.m) {
 		if md, ok := d.(*syntax.MsgDecl); ok {
 			info.Msgs[md.Name] = md
 			mc.addMsg(info.Msg, md, mc.m.Name)
 		}
+	}
+}
+
+// pendingDefault is a field default (`x: Int = 0`), checked against its field's type once
+// every constructor and value signature is known.
+type pendingDefault struct {
+	m *syntax.Module
+	f *syntax.Field
+	t types.Type
+}
+
+func (mc *modCtx) deferDefault(f *syntax.Field, ft types.Type) {
+	if f.Default != nil && mc.c.prog.Std[mc.m.Name] == nil {
+		mc.c.defaults = append(mc.c.defaults, pendingDefault{mc.m, f, ft})
+	}
+}
+
+func (c *Checker) checkDefaults() {
+	for _, d := range c.defaults {
+		mc := c.ctx(d.m)
+		mc.check(d.f.Default, d.t, newEnv(), effect{})
+		mc.reportHoles()
 	}
 }
 
@@ -494,7 +540,7 @@ func pathParams(path string) []string {
 
 func (mc *modCtx) defineCapabilities() {
 	c := mc.c
-	for _, d := range mc.m.Decls {
+	for _, d := range c.live(mc.m) {
 		cd, ok := d.(*syntax.CapDecl)
 		if !ok {
 			continue
@@ -520,7 +566,7 @@ func (mc *modCtx) defineCapabilities() {
 func (mc *modCtx) declareValues() {
 	c := mc.c
 	has := map[string]bool{}
-	for _, d := range mc.m.Decls {
+	for _, d := range c.live(mc.m) {
 		vd, ok := d.(*syntax.ValueDecl)
 		if !ok {
 			continue

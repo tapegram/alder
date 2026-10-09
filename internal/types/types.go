@@ -35,7 +35,7 @@ type Union struct {
 	Module, Name string
 	Args         []Type
 	Ctors        []Ctor
-	Def          *Union // declaration this instance was copied from (nil on the declaration itself)
+	Def          *Union   // declaration this instance was copied from (nil on the declaration itself)
 	Params       []string // declared parameter names, same length as Args
 }
 type App struct {

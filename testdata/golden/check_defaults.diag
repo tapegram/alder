@@ -1,0 +1,6 @@
+app/App.alder:3:24 E0003 expected Int, got Text
+app/D.alder:7:53 E0003 expected Int, got Float
+app/D.alder:9:21 E0003 expected Int, got Text
+app/D.alder:13:16 E0003 expected Bool, got Int
+app/P.alder:3:22 E0003 expected Int, got Text
+app/P.alder:10:19 E0003 expected Int, got Bool

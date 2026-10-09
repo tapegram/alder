@@ -11,17 +11,17 @@ func (n *Node) GetSpan() diag.Span { return n.Span }
 type RefKind int
 
 const (
-	RefNone      RefKind = iota
-	RefValue             // top-level value/function
-	RefLocal             // parameter, let, lambda param, pattern var
-	RefType              // type/table/form/brand declaration
-	RefCtor              // union constructor (incl. Msg ctors)
-	RefPage              // page module used as a value
-	RefTable             // table used as a value (Db.get Todo)
-	RefColumn            // Todo.done
-	RefComponent         // capitalized function used as element
-	RefCapability        // capability module (Password.verify)
-	RefStd               // standard library value
+	RefNone       RefKind = iota
+	RefValue              // top-level value/function
+	RefLocal              // parameter, let, lambda param, pattern var
+	RefType               // type/table/form/brand declaration
+	RefCtor               // union constructor (incl. Msg ctors)
+	RefPage               // page module used as a value
+	RefTable              // table used as a value (Db.get Todo)
+	RefColumn             // Todo.done
+	RefComponent          // capitalized function used as element
+	RefCapability         // capability module (Password.verify)
+	RefStd                // standard library value
 )
 
 type Ref struct {
@@ -50,9 +50,9 @@ type Decl interface{ GetSpan() diag.Span }
 type ValueDecl struct {
 	Node
 	Name   string
-	Sig    Type   // nil only in stdlib signature files (body nil) or when missing (E0007)
+	Sig    Type // nil only in stdlib signature files (body nil) or when missing (E0007)
 	Params []*Ident
-	Body   Expr   // nil in stdlib signature files
+	Body   Expr // nil in stdlib signature files
 }
 type Ident struct {
 	Node
@@ -62,7 +62,7 @@ type TypeDecl struct {
 	Node
 	Name   string
 	Params []string
-	Union  []*Ctor     // one of Union/Record/Brand set; all nil = opaque (stdlib only)
+	Union  []*Ctor // one of Union/Record/Brand set; all nil = opaque (stdlib only)
 	Record *RecordType
 	Brand  *BrandType
 }
@@ -80,7 +80,7 @@ type Field struct {
 	Node
 	Name    string
 	Type    Type
-	Default Expr   // nil if none
+	Default Expr // nil if none
 	Attrs   []*Attr
 }
 type Attr struct {
@@ -90,9 +90,10 @@ type Attr struct {
 }
 type PageDecl struct {
 	Node
-	Path     string
-	Params   *RecordType
-	Requires string
+	Path         string
+	Params       *RecordType
+	Requires     string
+	RequiresSpan diag.Span // the `requires field` clause; zero when absent
 }
 type MsgDecl struct {
 	Node

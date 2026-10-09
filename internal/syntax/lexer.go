@@ -24,9 +24,10 @@ func NewLexer(file string, src []byte) *Lexer {
 	return &Lexer{file: file, src: src, line: 1, col: 1}
 }
 
-func (l *Lexer) Errors() []LexError   { return l.errs }
-func (l *Lexer) Pos() int             { return l.pos }
-func (l *Lexer) SetHTMLTag(on bool)   { l.htmlTag = on }
+func (l *Lexer) Errors() []LexError { return l.errs }
+func (l *Lexer) Pos() int           { return l.pos }
+func (l *Lexer) SetHTMLTag(on bool) { l.htmlTag = on }
+
 // LexState is a cheap snapshot of the lexer position, for speculative lookahead.
 type LexState struct{ pos, line, col, nerrs int }
 

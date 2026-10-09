@@ -196,8 +196,9 @@ func (p *Parser) parseDecl() Decl {
 		d := &PageDecl{Path: p.parseStringText()}
 		d.Params = p.parseRecordType()
 		if p.atKeyword("requires") {
-			p.advance()
+			rt := p.advance()
 			d.Requires = p.expect(LIdent, "session field").Text
+			d.RequiresSpan = p.spanFrom(rt)
 		}
 		d.Span = p.spanFrom(start)
 		return d

@@ -48,7 +48,32 @@ func TestRenderText(t *testing.T) {
 	}
 }
 
-func contains(s, sub string) bool { return len(s) >= len(sub) && (func() bool { for i := 0; i+len(sub) <= len(s); i++ { if s[i:i+len(sub)] == sub { return true } }; return false })() }
+// A column before the line start (a bad span from a checker bug) must not panic.
+func TestRenderTextClampsColumn(t *testing.T) {
+	d := Diagnostic{Code: "E0011", Severity: "error", Span: Span{File: "app/X.alder", Start: Pos{1, -3}, End: Pos{1, 1}}, Message: "m"}
+	if got := RenderText(d, []string{"module X"}); !contains(got, "\n  ^") {
+		t.Fatalf("caret not clamped to column 1: %q", got)
+	}
+}
+
+func TestRenderJSONDoesNotEscapeHTML(t *testing.T) {
+	d := Diagnostic{Code: "E0304", Severity: "error", Span: Span{File: "app/X.alder", Start: Pos{1, 1}, End: Pos{1, 2}},
+		Message: "`<Input>` needs `|>` & more"}
+	if got := RenderJSON(d); !contains(got, "`<Input>` needs `|>` & more") {
+		t.Fatalf("HTML-escaped: %s", got)
+	}
+}
+
+func contains(s, sub string) bool {
+	return len(s) >= len(sub) && (func() bool {
+		for i := 0; i+len(sub) <= len(s); i++ {
+			if s[i:i+len(sub)] == sub {
+				return true
+			}
+		}
+		return false
+	})()
+}
 
 func TestExplainCoversEveryCode(t *testing.T) {
 	codes := []string{"E0001", "E0002", "E0003", "E0004", "E0005", "E0006", "E0007", "E0008", "E0009", "E0010", "E0011",

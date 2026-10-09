@@ -24,19 +24,19 @@ type Diagnostic struct {
 
 // General codes. Spec codes (E0101..E0602) are declared where they are raised.
 const (
-	ParseError      = "E0001"
-	UnknownName     = "E0002"
-	TypeMismatch    = "E0003"
-	NonExhaustive   = "E0004"
-	ModulePath      = "E0005"
-	ImportCycle     = "E0006"
-	MissingSig      = "E0007"
-	Arity           = "E0008"
-	Duplicate       = "E0009"
-	MissingDecl     = "E0010"
-	InvalidDecl     = "E0011"
-	UnreachableArm  = "E0310"
-	UnusedImport    = "W0001"
+	ParseError     = "E0001"
+	UnknownName    = "E0002"
+	TypeMismatch   = "E0003"
+	NonExhaustive  = "E0004"
+	ModulePath     = "E0005"
+	ImportCycle    = "E0006"
+	MissingSig     = "E0007"
+	Arity          = "E0008"
+	Duplicate      = "E0009"
+	MissingDecl    = "E0010"
+	InvalidDecl    = "E0011"
+	UnreachableArm = "E0310"
+	UnusedImport   = "W0001"
 )
 
 type Bag struct{ Items []Diagnostic }

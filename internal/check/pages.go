@@ -40,7 +40,7 @@ func (c *Checker) navType() types.Type {
 // requireSig checks that value `name`'s declared signature unifies exactly with want.
 func (mc *modCtx) requireSig(name string, want types.Type, msg string) {
 	c := mc.c
-	for _, d := range mc.m.Decls {
+	for _, d := range c.live(mc.m) {
 		vd, ok := d.(*syntax.ValueDecl)
 		if !ok || vd.Name != name || vd.Sig == nil {
 			continue
@@ -72,7 +72,7 @@ func (mc *modCtx) checkApp() {
 	c := mc.c
 	has := map[string]*syntax.ValueDecl{}
 	hasLogin, hasSession := false, false
-	for _, d := range mc.m.Decls {
+	for _, d := range c.live(mc.m) {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
 			has[d.Name] = d

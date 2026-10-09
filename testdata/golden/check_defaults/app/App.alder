@@ -1,0 +1,9 @@
+module App
+
+session { count: Int = "zero" }
+
+error : Error -> Html Never
+error err = <h1>Something went wrong</h1>
+
+notFound : Html Never
+notFound = <h1>Not found</h1>

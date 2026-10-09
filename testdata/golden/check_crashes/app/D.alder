@@ -1,0 +1,12 @@
+module D
+
+type Foo = A | B
+
+form Foo = { name: Text }
+
+type Bar = brand Text
+
+table Bar {
+  id: Bar @id,
+  n: Int,
+}

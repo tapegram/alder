@@ -22,18 +22,20 @@ type pageInfo struct {
 }
 
 type Checker struct {
-	prog    *names.Program
-	bag     *diag.Bag
-	u       *types.Unifier
-	types   map[string]types.Type
-	values  map[string]types.Type
-	ctors   map[string]*ctorInfo
-	tables  map[string]*types.TableInfo
-	forms   map[string]*types.Record
-	caps    map[string]map[string]types.Type
-	pages   map[string]*pageInfo
-	session *types.Record
-	appMsg  *types.Union
+	prog     *names.Program
+	bag      *diag.Bag
+	u        *types.Unifier
+	types    map[string]types.Type
+	values   map[string]types.Type
+	ctors    map[string]*ctorInfo
+	tables   map[string]*types.TableInfo
+	forms    map[string]*types.Record
+	caps     map[string]map[string]types.Type
+	pages    map[string]*pageInfo
+	session  *types.Record
+	appMsg   *types.Union
+	losers   map[syntax.Decl]bool
+	defaults []pendingDefault // field defaults, checked after value signatures // duplicate declarations (E0009), skipped after declareTypeNames
 
 	usesSessionPut bool // some module calls Session.put
 }
@@ -66,7 +68,7 @@ type modCtx struct {
 func Program(prog *names.Program, bag *diag.Bag) {
 	c := &Checker{prog: prog, bag: bag, u: &types.Unifier{Subst: types.Subst{}},
 		types: map[string]types.Type{}, values: map[string]types.Type{}, ctors: map[string]*ctorInfo{},
-		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, caps: map[string]map[string]types.Type{}, pages: map[string]*pageInfo{}}
+		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, caps: map[string]map[string]types.Type{}, pages: map[string]*pageInfo{}, losers: map[syntax.Decl]bool{}}
 	c.declareStd()
 	// pass 1: placeholders for every declared type in every module (app + std)
 	for _, m := range c.allModules() {
@@ -100,6 +102,7 @@ func Program(prog *names.Program, bag *diag.Bag) {
 	for _, m := range c.allModules() {
 		c.ctx(m).declareValues()
 	}
+	c.checkDefaults()
 	// pass 4: bodies (Tasks 9-11)
 	for _, name := range prog.Order {
 		c.ctx(prog.Modules[name]).checkBodies()

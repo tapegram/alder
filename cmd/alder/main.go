@@ -46,7 +46,14 @@ func usageTo(w io.Writer) {
 	fmt.Fprintln(w, "usage: alder check [dir] [--json] | alder explain <code>")
 }
 
-func runCheckTo(args []string, stdout, stderr io.Writer) int {
+func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {
+	// A checker bug must degrade to an internal error, never a stack trace.
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(stderr, "alder check: internal error: %v\n", r)
+			code = 2
+		}
+	}()
 	dir, jsonOut, haveDir := ".", false, false
 	for _, a := range args {
 		switch {
