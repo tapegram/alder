@@ -1716,6 +1716,7 @@ const runShopTest = `package app
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -1817,6 +1818,30 @@ func TestShop(t *testing.T) {
 	}
 	if nav := Shop__after(rt.Reject("no")); nav.Tag != rt.NavReject || nav.Text != "no!" || !Shop__isRedirect(rt.Redirect(rt.Page{Path: "/"})) {
 		t.Errorf("after = %+v", nav)
+	}
+
+	// conditions on Maybe columns are two-valued (C1)
+	codes := func(rows []Shop__Order) string {
+		var out []string
+		for _, r := range rows {
+			out = append(out, r.Code)
+		}
+		return strings.Join(out, " ")
+	}
+	if got := codes(all(Shop__lateIn(open))); got != "x1 x5 y4" {
+		t.Errorf("late in [Just Open, Nothing] = %s", got)
+	}
+	if got := codes(all(Shop__lateNothing)); got != "x5" {
+		t.Errorf("late in [Nothing] = %s", got)
+	}
+	if got := codes(all(Shop__notLateIn([]rt.Maybe[Shop__Status]{rt.Just(paid)}))); got != "x1 x3 x5 y4" {
+		t.Errorf("not (late in [Just Paid]) = %s", got)
+	}
+	if got := codes(all(Shop__notLateIn([]rt.Maybe[Shop__Status]{rt.Just(paid), rt.Nothing[Shop__Status]()}))); got != "x1 x3 y4" {
+		t.Errorf("not (late in [Just Paid, Nothing]) = %s", got)
+	}
+	if got := codes(all(Shop__notNote("n"))); got != "x5" {
+		t.Errorf("not (note eq (Just n)) = %s", got)
 	}
 
 	// Time columns compare and order correctly below a second: x6 is created half a second

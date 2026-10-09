@@ -357,6 +357,14 @@ func TestStore_SelectSQL(t *testing.T) {
 		{"and empty is true", Where(CAnd(nil), base), `1=1`, nil},
 		{"or empty is false", Where(COr([]Cond{}), base), `0=1`, nil},
 		{"not of empty or", Where(CNot(COr(nil)), base), `NOT (0=1)`, nil},
+		// a nullable (Maybe) column: every condition is two-valued
+		{"nullable eq", Where(CNot(CEq("due", "2026-01-01")), base), `NOT ("due" IS ?)`, []any{"2026-01-01"}},
+		{"nullable ne", Where(CNe("due", "2026-01-01"), base), `"due" IS NOT ?`, []any{"2026-01-01"}},
+		{"nullable in nothing", Where(CIn("due", []any{nil}), base), `"due" IS NULL`, nil},
+		{"nullable in just and nothing", Where(CNot(CIn("due", []any{"a", nil})), base),
+			`NOT (COALESCE((("due" IN (?) OR "due" IS NULL)), 0))`, []any{"a"}},
+		{"nullable in just", Where(CNot(CIn("due", []any{"a"})), base), `NOT (COALESCE(("due" IN (?)), 0))`, []any{"a"}},
+		{"nullable lt", Where(CNot(CLt("due", "a")), base), `NOT (COALESCE(("due" < ?), 0))`, []any{"a"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -381,6 +389,48 @@ func TestStore_SelectSQL(t *testing.T) {
 	c := Where(CEq("title", "x"), a)
 	if len(b.Where) != 2 || len(c.Where) != 2 || b.Where[1].Col != "done" || c.Where[1].Col != "title" {
 		t.Fatal("selects share a backing array")
+	}
+}
+
+// Conditions on a nullable column match by Alder's two-valued logic, not SQL's three-valued
+// one: Db.not of a condition matches exactly the rows it does not (C1).
+func TestStore_NullableConditions(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	d := func(day int) rt.Maybe[rt.Date] { return rt.Just(rt.Date{Y: 2026, M: 1, D: day}) }
+	for i, due := range []rt.Maybe[rt.Date]{d(1), d(2), rt.Nothing[rt.Date]()} {
+		if _, err := InsertRow(ctx, s, nil, todoTable, insertVals("t"+strconv.Itoa(i), false, due, "Low"), clock); err != nil {
+			t.Fatal(err)
+		}
+	}
+	enc := func(m rt.Maybe[rt.Date]) any { return EncodeMaybe(m, func(x rt.Date) any { return EncodeDate(x) }) }
+	cases := []struct {
+		name string
+		c    Cond
+		want string
+	}{
+		{"eq", CEq("due", enc(d(1))), "t0"},
+		{"not eq", CNot(CEq("due", enc(d(1)))), "t1 t2"},
+		{"in nothing", CIn("due", []any{enc(rt.Nothing[rt.Date]())}), "t2"},
+		{"in just, nothing", CIn("due", []any{enc(d(1)), nil}), "t0 t2"},
+		{"not in just, nothing", CNot(CIn("due", []any{enc(d(1)), nil})), "t1"},
+		{"not in just", CNot(CIn("due", []any{enc(d(1))})), "t1 t2"},
+		{"not lt", CNot(CLt("due", enc(d(2)))), "t1 t2"},
+		{"not ne", CNot(CNe("due", enc(d(1)))), "t0"},
+		{"or not", COr([]Cond{CNot(CGt("due", enc(d(1)))), CEq("title", "zz")}), "t0 t2"},
+	}
+	for _, c := range cases {
+		rows, err := All(ctx, s, nil, OrderBy(Asc("title"), Where(c.c, From(todoTable))))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, r := range rows {
+			got = append(got, r.Title)
+		}
+		if strings.Join(got, " ") != c.want {
+			t.Errorf("%s: got %v, want %s", c.name, got, c.want)
+		}
 	}
 }
 

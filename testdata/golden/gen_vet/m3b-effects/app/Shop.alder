@@ -150,3 +150,17 @@ createdBefore t = Db.from Order |> Db.where (Order.created.lt t) |> Db.orderBy O
 
 newestFirst : Select Order
 newestFirst = Db.from Order |> Db.orderBy Order.created.desc
+
+-- conditions on Maybe columns are two-valued: `Nothing` rows are matched by `in [.., Nothing]`
+-- and by the negation of a condition they do not satisfy
+lateIn : Status -> Select Order
+lateIn s = Db.from Order |> Db.where (Order.late.in [Just s, Nothing]) |> Db.orderBy Order.code.asc
+
+lateNothing : Select Order
+lateNothing = Db.from Order |> Db.where (Order.late.in [Nothing])
+
+notLateIn : List (Maybe Status) -> Select Order
+notLateIn ss = Db.from Order |> Db.where (Db.not (Order.late.in ss)) |> Db.orderBy Order.code.asc
+
+notNote : Text -> Select Order
+notNote t = Db.from Order |> Db.where (Db.not (Order.note.eq (Just t)))

@@ -187,7 +187,9 @@ type SQL struct {
 }
 
 // SQL renders s. Column names are quoted; Eq/Ne with a nil value become IS
-// NULL / IS NOT NULL, and Ne is null-safe (IS NOT ?), so Nothing ≠ Just x;
+// NULL / IS NOT NULL, and Ne is null-safe (IS NOT ?), so Nothing ≠ Just x; on a
+// nullable column every condition is two-valued (see renderCond), so Db.not of
+// one matches exactly the rows it does not;
 // Contains is `lower(col) LIKE lower(?) ESCAPE '\'` with % _ \ in the value
 // escaped; In with no values is `0=1`; And/Or of nothing is `1=1`/`0=1`;
 // every And, Or and Not is parenthesized. Several Where conditions render as
@@ -244,35 +246,63 @@ func enumRank(expr string, names []string) string {
 	return b.String()
 }
 
+// column is the column named name of cols, or nil.
+func column(cols []Column, name string) *Column {
+	for i, c := range cols {
+		if c.Name == name {
+			return &cols[i]
+		}
+	}
+	return nil
+}
+
 // renderCond renders c; cols (nil when unknown) lets Lt/Le/Gt/Ge on an enum column compare
-// declaration order, as ORDER BY does, rather than the constructor names' spelling.
+// declaration order, as ORDER BY does, rather than the constructor names' spelling, and makes
+// every condition on a nullable (Maybe) column two-valued, so NOT, AND and OR never see SQL's
+// NULL: Eq/Ne render as IS / IS NOT; In whose list holds nil (Nothing) adds `OR col IS NULL`;
+// and every other leaf on such a column is wrapped as COALESCE((leaf), 0).
 func renderCond(c Cond, cols []Column, args *[]any) string {
 	col := quote(c.Col)
+	nullable := false
+	if k := column(cols, c.Col); k != nil {
+		nullable = k.Nullable
+	}
+	twoValued := func(leaf string) string {
+		if nullable {
+			return "COALESCE((" + leaf + "), 0)"
+		}
+		return leaf
+	}
 	bin := func(op string) string {
-		if e := enumCol(cols, c.Col); e != nil && op != "=" && op != "IS NOT" {
+		if e := enumCol(cols, c.Col); e != nil && op != "=" && op != "IS" && op != "IS NOT" {
 			if name, ok := c.Val.(string); ok {
 				for j, n := range e.Enum {
 					if n == name {
 						*args = append(*args, int64(j))
-						return enumRank(col, e.Enum) + " " + op + " ?"
+						return twoValued(enumRank(col, e.Enum) + " " + op + " ?")
 					}
 				}
 			}
 		}
 		*args = append(*args, c.Val)
-		return col + " " + op + " ?"
+		return twoValued(col + " " + op + " ?")
 	}
 	switch c.Kind {
 	case Eq:
 		if c.Val == nil {
 			return col + " IS NULL"
 		}
+		if nullable {
+			*args = append(*args, c.Val)
+			return col + " IS ?"
+		}
 		return bin("=")
 	case Ne:
 		if c.Val == nil {
 			return col + " IS NOT NULL"
 		}
-		return bin("IS NOT")
+		*args = append(*args, c.Val)
+		return col + " IS NOT ?"
 	case Lt:
 		return bin("<")
 	case Le:
@@ -287,14 +317,30 @@ func renderCond(c Cond, cols []Column, args *[]any) string {
 			return "0=1" // only Text columns have .contains
 		}
 		*args = append(*args, "%"+escapeLike(s)+"%")
-		return "lower(" + col + `) LIKE lower(?) ESCAPE '\'`
+		return twoValued("lower(" + col + `) LIKE lower(?) ESCAPE '\'`)
 	case In:
 		vs, _ := c.Val.([]any)
-		if len(vs) == 0 {
+		var vals []any
+		hasNil := false
+		for _, v := range vs {
+			if v == nil {
+				hasNil = true
+			} else {
+				vals = append(vals, v)
+			}
+		}
+		if len(vals) == 0 {
+			if hasNil {
+				return col + " IS NULL"
+			}
 			return "0=1"
 		}
-		*args = append(*args, vs...)
-		return col + " IN (" + strings.TrimSuffix(strings.Repeat("?, ", len(vs)), ", ") + ")"
+		*args = append(*args, vals...)
+		in := col + " IN (" + strings.TrimSuffix(strings.Repeat("?, ", len(vals)), ", ") + ")"
+		if hasNil {
+			in = "(" + in + " OR " + col + " IS NULL)"
+		}
+		return twoValued(in)
 	case IsNull:
 		return col + " IS NULL"
 	case IsNotNull:
