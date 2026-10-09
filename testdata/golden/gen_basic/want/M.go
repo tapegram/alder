@@ -11,16 +11,16 @@ import (
 // TODO: HTML is not emitted yet; these nodes are stubbed as html.None(): Elem.
 
 type M__Shape struct {
-	Tag    M__ShapeTag
+	Tag    M__Shape__Tag
 	Circle M__Shape_Circle
 	Rect   M__Shape_Rect
 }
 
-type M__ShapeTag uint8
+type M__Shape__Tag uint8
 
 const (
-	M__Shape_Tag_Circle M__ShapeTag = 0
-	M__Shape_Tag_Rect   M__ShapeTag = 1
+	M__Shape__Tag_Circle M__Shape__Tag = 0
+	M__Shape__Tag_Rect   M__Shape__Tag = 1
 )
 
 type M__Shape_Circle struct {
@@ -33,11 +33,11 @@ type M__Shape_Rect struct {
 }
 
 func M__Shape_Circle_(v float64) M__Shape {
-	return M__Shape{Tag: M__Shape_Tag_Circle, Circle: M__Shape_Circle{Value: v}}
+	return M__Shape{Tag: M__Shape__Tag_Circle, Circle: M__Shape_Circle{Value: v}}
 }
 
 func M__Shape_Rect_(v M__Shape_Rect) M__Shape {
-	return M__Shape{Tag: M__Shape_Tag_Rect, Rect: v}
+	return M__Shape{Tag: M__Shape__Tag_Rect, Rect: v}
 }
 
 type M__Point struct {
@@ -47,10 +47,10 @@ type M__Point struct {
 
 func M__area(s M__Shape) float64 {
 	switch s.Tag {
-	case M__Shape_Tag_Circle:
+	case M__Shape__Tag_Circle:
 		r := s.Circle.Value
 		return 3.14 * r * r
-	case M__Shape_Tag_Rect:
+	case M__Shape__Tag_Rect:
 		w := s.Rect.W
 		h := s.Rect.H
 		return w * h

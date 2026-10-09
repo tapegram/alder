@@ -54,15 +54,18 @@ func typeParam(name string) string { return Field(name) }
 
 // Union naming: for union M.Shape with constructor Circle,
 //
-//	tagType   M__ShapeTag          the tag's type
-//	tagConst  M__Shape_Tag_Circle  the constructor's tag
-//	payload   M__Shape_Circle      the payload struct (anonymous record payloads only)
-//	ctorFunc  M__Shape_Circle_     the constructor function (payload ctors)
-//	ctorVar   M__Shape_Circle      the constructor value (payload-less ctors of non-generic unions)
-//	ctorField Circle               the union struct's field holding the payload ("Tag_" for Tag)
-func tagType(module, union string) string { return GoName(module, union) + "Tag" }
+//	tagType   M__Shape__Tag         the tag's type
+//	tagConst  M__Shape__Tag_Circle  the constructor's tag
+//	payload   M__Shape_Circle       the payload struct (anonymous record payloads only)
+//	ctorFunc  M__Shape_Circle_      the constructor function (payload ctors)
+//	ctorVar   M__Shape_Circle       the constructor value (payload-less ctors of non-generic unions)
+//	ctorField Circle                the union struct's field holding the payload ("Tag_" for Tag)
+//
+// The tag names use "__" so that a type ShapeTag (M__ShapeTag) cannot collide with them, and
+// not "_Tag" (M__Shape_Tag is the payload struct of a constructor named Tag).
+func tagType(module, union string) string { return GoName(module, union) + "__Tag" }
 func tagConst(module, union, ctor string) string {
-	return GoName(module, union) + "_Tag_" + ctor
+	return GoName(module, union) + "__Tag_" + ctor
 }
 func payloadName(module, union, ctor string) string { return GoName(module, union) + "_" + ctor }
 func ctorFunc(module, union, ctor string) string    { return payloadName(module, union, ctor) + "_" }

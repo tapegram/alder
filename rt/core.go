@@ -253,3 +253,18 @@ func Append[T any](a, b []T) []T {
 
 // Unit is Alder's `Unit` value.
 func Unit() struct{} { return struct{}{} }
+
+// DateCmp orders dates: negative when a is before b, 0 when equal, positive when after. The
+// emitter uses it for `<`, `<=`, `>`, `>=` on Date.
+func DateCmp(a, b Date) int {
+	switch {
+	case a.Y != b.Y:
+		return a.Y - b.Y
+	case a.M != b.M:
+		return a.M - b.M
+	}
+	return a.D - b.D
+}
+
+// TimeCmp orders instants like DateCmp: the emitter uses it for ordered comparisons on Time.
+func TimeCmp(a, b time.Time) int { return a.Compare(b) }

@@ -320,9 +320,9 @@ func (g *gen) value(w *strings.Builder, v *ir.Value) {
 	if len(rest) > 0 { // otherwise apply the body to the remaining parameters
 		var extra []ir.Expr
 		for _, t := range rest {
-			p := f.temp("_a")
-			params = append(params, s.declare(p)+" "+GoType(t))
-			extra = append(extra, &ir.Var{Typed: ir.Typed{Ty: t}, Kind: ir.VarLocal, Name: p})
+			key, p := f.tempVar(s, "_a")
+			params = append(params, p+" "+GoType(t))
+			extra = append(extra, &ir.Var{Typed: ir.Typed{Ty: t}, Kind: ir.VarLocal, Name: key})
 		}
 		if pa, ok := body.(*ir.Partial); ok && pa.Missing == len(extra) {
 			body = &ir.Call{Typed: ir.Typed{Ty: ft.Result}, Fn: pa.Fn, Args: append(slices.Clone(pa.Given), extra...)}

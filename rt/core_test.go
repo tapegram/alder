@@ -134,3 +134,37 @@ func TestDict_RemoveThenInsertMovesToEnd(t *testing.T) {
 		t.Fatalf("Keys = %v", got)
 	}
 }
+
+func TestDateCmpTimeCmp(t *testing.T) {
+	d := func(y, m, dd int) Date { return Date{Y: y, M: m, D: dd} }
+	for _, tc := range []struct {
+		a, b Date
+		sign int
+	}{
+		{d(2026, 1, 1), d(2026, 1, 1), 0},
+		{d(2025, 12, 31), d(2026, 1, 1), -1},
+		{d(2026, 2, 1), d(2026, 1, 31), 1},
+		{d(2026, 1, 2), d(2026, 1, 3), -1},
+	} {
+		if got := DateCmp(tc.a, tc.b); sign(got) != tc.sign {
+			t.Errorf("DateCmp(%v, %v) = %d, want sign %d", tc.a, tc.b, got, tc.sign)
+		}
+	}
+	t0 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	if TimeCmp(t0, t0.Add(time.Second)) >= 0 || TimeCmp(t0.Add(time.Second), t0) <= 0 {
+		t.Error("TimeCmp orders instants")
+	}
+	if TimeCmp(t0, t0.In(time.FixedZone("x", 3600))) != 0 {
+		t.Error("TimeCmp compares instants, not zones")
+	}
+}
+
+func sign(n int) int {
+	switch {
+	case n < 0:
+		return -1
+	case n > 0:
+		return 1
+	}
+	return 0
+}

@@ -46,15 +46,31 @@ type fn struct {
 	temps int
 }
 
-func (f *fn) temp(prefix string) string {
+// temp declares a fresh temporary in s ("_a1", "_u2", …) and returns its Go name.
+func (f *fn) temp(s *scope, prefix string) string {
+	_, g := f.tempVar(s, prefix)
+	return g
+}
+
+// tempVar declares a fresh temporary in s and returns its scope key, which no Alder local can
+// have (an ir.Var of that name refers to it), and its Go name.
+func (f *fn) tempVar(s *scope, prefix string) (key, g string) {
 	f.temps++
-	return fmt.Sprintf("%s%d", prefix, f.temps)
+	name := fmt.Sprintf("%s%d", prefix, f.temps)
+	key = "\x00" + name
+	return key, s.declareAs(key, name)
 }
 
 // scope maps Alder locals to their Go names and tracks the Go names declared in the current Go
-// block, so that a Let re-binding a name already declared in the same block gets a fresh one.
+// block.
+//
+// Alder identifiers are ASCII letters, digits and '_' (and may start with '_'), so every Go name
+// the emitter derives — "type_", "n_2", "_a1" — is also an Alder name a user could write. A name
+// is therefore never chosen by its spelling alone: declare picks the first candidate that is
+// neither declared in the current Go block nor the Go name of another visible binding, so no
+// declaration can shadow a variable the code still refers to.
 type scope struct {
-	vars  map[string]string
+	vars  map[string]string // visible bindings: Alder name (or tempKey) → Go name
 	block map[string]bool
 }
 
@@ -65,21 +81,40 @@ func (s *scope) child() *scope { return &scope{vars: s.vars, block: map[string]b
 
 // declare binds Alder name in the current block and returns its Go name.
 func (s *scope) declare(name string) string {
-	g := local(name)
 	if name == "_" {
-		return g
+		return "_"
 	}
-	for i := 2; s.block[g]; i++ {
-		g = fmt.Sprintf("%s_%d", local(name), i)
+	return s.declareAs(name, local(name))
+}
+
+// declareAs binds key to a Go name based on base, renamed base_2, base_3, … when base is taken.
+func (s *scope) declareAs(key, base string) string {
+	g := base
+	for i := 2; s.taken(key, g); i++ {
+		g = fmt.Sprintf("%s_%d", base, i)
 	}
 	s.block[g] = true
 	vars := make(map[string]string, len(s.vars)+1)
 	for k, v := range s.vars {
 		vars[k] = v
 	}
-	vars[name] = g
+	vars[key] = g
 	s.vars = vars
 	return g
+}
+
+// taken reports whether Go name g is unavailable for key: declared in this block, or the Go name
+// of another visible binding.
+func (s *scope) taken(key, g string) bool {
+	if s.block[g] {
+		return true
+	}
+	for k, v := range s.vars {
+		if v == g && k != key {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *scope) lookup(name string) string {
@@ -348,8 +383,9 @@ func (f *fn) partial(x *ir.Partial, s *scope) string {
 	for _, g := range x.Given {
 		args = append(args, f.argument(x.Fn, g, s))
 	}
+	c := s.child()
 	for _, t := range ft.Params[len(x.Given):] {
-		p := f.temp("_a")
+		p := f.temp(c, "_a")
 		params = append(params, p+" "+GoType(t))
 		args = append(args, p)
 	}
@@ -419,9 +455,10 @@ func (f *fn) update(x *ir.Update, s *scope) string {
 		}
 		return typ + "{" + strings.Join(fs, ", ") + "}"
 	}
-	t := f.temp("_u")
+	base := f.code(x.Base, s)
+	t := f.temp(s.child(), "_u")
 	var w strings.Builder
-	fmt.Fprintf(&w, "func() %s {\n%s := %s\n", typ, t, f.code(x.Base, s))
+	fmt.Fprintf(&w, "func() %s {\n%s := %s\n", typ, t, base)
 	for _, fi := range x.Fields {
 		fmt.Fprintf(&w, "%s.%s = %s\n", t, Field(fi.Name), f.code(fi.Value, s))
 	}
@@ -570,6 +607,16 @@ func (f *fn) op(x *ir.Op, s *scope) (string, int) {
 			return "!" + c, precUnary
 		}
 		return c, precAtom
+	case "<", "<=", ">", ">=":
+		switch t := x.OperandT.(type) {
+		case *types.Con:
+			if t.Name == "Date" || t.Name == "Time" {
+				c, _ := call("rt." + t.Name + "Cmp")
+				return c + " " + x.Kind + " 0", precCompare
+			}
+		case *types.Union: // a scalar union: constructors in declaration order
+			return f.operand(x.L, s, precAtom) + ".Tag " + x.Kind + " " + f.operand(x.R, s, precAtom) + ".Tag", precCompare
+		}
 	case "%":
 		if GoType(x.OperandT) == "float64" {
 			return call("math.Mod")
