@@ -1,0 +1,51 @@
+module Pg
+
+import Layout
+
+page "/" { }
+
+type Model = { n: Int, name: Text, saving: Bool, items: List Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 1, name: "x", saving: False, items: [] }
+
+form F = { title: Text.NonEmpty, kind: Kind }
+
+type Kind = A | B
+
+msg Submit form F
+msg Toggle { id: Int }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> Task.succeed Rerender,
+  Toggle p -> Task.succeed Rerender,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="T">
+    <p>{model.n}</p>
+    <a href="/somewhere">x</a>
+    <button onclick={Toggle { id: 1 }}>x</button>
+    <button click={Toggle}>x</button>
+    <button click={Toggle { id: 1 }} disabled={model.saving}>ok</button>
+    <blink>x</blink>
+    <Input field="title" label="T" />
+    <form submit={Submit}>
+      <Input field="nope" label="N" />
+      <Input field="kind" label="K" />
+      <Select field="kind" label="K" value={A} />
+      <input name="raw" />
+      <Errors form />
+      <Errors field="title" />
+      <button>Go</button>
+    </form>
+    <ul>{for it in model.items -> <li>{it}</li>}</ul>
+    {if model.saving then <p>s</p> else Html.none}
+    {match session.user {
+      Just u -> <span>{u}</span>,
+      Nothing -> <a href={Pg {}}>in</a>,
+    }}
+    <Layout.Page title={model.n}>x</Layout.Page>
+  </Layout.Page>
