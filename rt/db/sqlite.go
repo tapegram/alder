@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -384,11 +385,19 @@ func createStmt(d TableDesc, byName map[string]TableDesc) (string, error) {
 	return "CREATE TABLE " + quote(SQLName(d.Name)) + " (" + strings.Join(defs, ", ") + ") STRICT", nil
 }
 
-// Ensure creates tables (in order) and records a hash of their CREATE TABLE
-// statements in _alder_meta. When the stored hash differs (or app tables
-// exist without one): with dev, every app table is dropped and the schema
-// recreated empty; without dev, Ensure returns an error naming the tables
-// that changed and touches nothing.
+// Format is the storage format version Ensure records in _alder_meta ("format"). Bump it
+// whenever createStmt (or anything else about how a table is laid out in SQL) changes, so a
+// database made by an older runtime is recognised instead of silently misread.
+const Format = "1"
+
+// Ensure creates tables and records, in _alder_meta, the storage format
+// version (Format) and a hash of their CREATE TABLE statements sorted, so the
+// order the tables are listed in does not matter. When the stored format or
+// hash differs (or app tables exist without them): with dev, every app table
+// is dropped and the schema recreated empty; without dev, Ensure returns an
+// error — "database format v0 is older than this runtime (v1)" for a format
+// change, one naming the tables that changed for a schema change — and
+// touches nothing.
 func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err error) {
 	byName := map[string]TableDesc{}
 	for _, d := range tables {
@@ -403,7 +412,8 @@ func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err 
 			return err
 		}
 	}
-	schema := strings.Join(stmts, "\n")
+	sorted := slices.Sorted(slices.Values(stmts))
+	schema := strings.Join(sorted, "\n")
 	sum := sha256.Sum256([]byte(schema))
 	hash := hex.EncodeToString(sum[:])
 
@@ -427,6 +437,10 @@ func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err 
 	if err != nil {
 		return err
 	}
+	oldFormat, err := meta("format")
+	if err != nil {
+		return err
+	}
 	register := func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -434,13 +448,23 @@ func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err 
 			s.tables[d.Name] = d
 		}
 	}
-	if oldHash == hash {
+	if oldHash == hash && oldFormat == Format {
 		register()
 		return nil
 	}
 	existing, err := appTables(ctx, conn)
 	if err != nil {
 		return err
+	}
+	if len(existing) > 0 && !dev && oldFormat != Format {
+		if oldFormat == "" {
+			oldFormat = "0"
+		}
+		rel := "older"
+		if n, ferr := strconv.Atoi(oldFormat); ferr == nil && n > formatNumber() {
+			rel = "newer"
+		}
+		return fmt.Errorf("db: database format v%s is %s than this runtime (v%s); run in dev mode to recreate the database", oldFormat, rel, Format)
 	}
 	if len(existing) > 0 && !dev {
 		oldSchema, err := meta("schema")
@@ -489,7 +513,7 @@ func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err 
 			return fmt.Errorf("db: %s: %w", st, err)
 		}
 	}
-	for k, v := range map[string]string{"schema_hash": hash, "schema": schema} {
+	for k, v := range map[string]string{"schema_hash": hash, "schema": schema, "format": Format} {
 		if _, err = tx.ExecContext(ctx, `INSERT INTO "_alder_meta" ("key", "value") VALUES (?, ?) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value"`, k, v); err != nil {
 			return err
 		}
@@ -499,6 +523,11 @@ func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err 
 	}
 	register()
 	return nil
+}
+
+func formatNumber() int {
+	n, _ := strconv.Atoi(Format)
+	return n
 }
 
 // appTables lists every table except SQLite's own and _alder_meta.

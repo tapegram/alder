@@ -538,6 +538,62 @@ func TestStore_EnsureRecreatesInDev(t *testing.T) {
 	}
 }
 
+// The schema hash covers the sorted CREATE statements, so listing the tables in another order
+// is no change; the storage format version is checked separately (I5).
+func TestStore_EnsureOrderAndFormat(t *testing.T) {
+	ctx := context.Background()
+	path := t.TempDir() + "/app.db"
+	s, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	user := TableDesc{Name: "User.User", ID: "id", Columns: []Column{{Name: "id", Type: CText}}}
+	todo := todoTable.Desc()
+	if err := s.Ensure(ctx, []TableDesc{todo, user}, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := InsertRow(ctx, s, nil, todoTable, insertVals("a", false, rt.Nothing[rt.Date](), "Low"), clock); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Ensure(ctx, []TableDesc{user, todo}, false); err != nil {
+		t.Fatalf("swapped tables: %v", err)
+	}
+	if n := count(t, s, From(todoTable)); n != 1 {
+		t.Fatalf("swapped tables touched data: %d", n)
+	}
+	var format string
+	if err := s.db.QueryRow(`SELECT "value" FROM "_alder_meta" WHERE "key" = 'format'`).Scan(&format); err != nil || format != Format {
+		t.Fatalf("stored format %q %v, want %q", format, err, Format)
+	}
+	// A database made before formats were recorded is v0.
+	if _, err := s.db.Exec(`DELETE FROM "_alder_meta" WHERE "key" = 'format'`); err != nil {
+		t.Fatal(err)
+	}
+	err = s.Ensure(ctx, []TableDesc{todo, user}, false)
+	if err == nil || !strings.Contains(err.Error(), "database format v0 is older than this runtime (v"+Format+")") {
+		t.Fatalf("old format in prod: %v", err)
+	}
+	if n := count(t, s, From(todoTable)); n != 1 {
+		t.Fatalf("prod Ensure touched data: %d", n)
+	}
+	if _, err := s.db.Exec(`INSERT INTO "_alder_meta" ("key", "value") VALUES ('format', '99')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Ensure(ctx, []TableDesc{todo, user}, false); err == nil || !strings.Contains(err.Error(), "v99 is newer") {
+		t.Fatalf("newer format in prod: %v", err)
+	}
+	if err := s.Ensure(ctx, []TableDesc{todo, user}, true); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, s, From(todoTable)); n != 0 {
+		t.Fatalf("dev Ensure over another format kept %d rows", n)
+	}
+	if err := s.Ensure(ctx, []TableDesc{user, todo}, false); err != nil {
+		t.Fatalf("after dev recreate: %v", err)
+	}
+}
+
 func TestStore_EnsureRefs(t *testing.T) {
 	ctx := context.Background()
 	s, err := OpenSQLite(":memory:")
