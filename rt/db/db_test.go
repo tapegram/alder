@@ -455,6 +455,12 @@ func TestStore_AllFirstCount(t *testing.T) {
 	if err != nil || !first.Ok || first.Val.Title != "first" {
 		t.Fatalf("first %+v %v", first, err)
 	}
+	if zero, err := First(ctx, s, nil, Limit(0, From(todoTable))); err != nil || zero.Ok {
+		t.Fatalf("limit 0 |> first = %+v %v, want Nothing", zero, err)
+	}
+	if two, err := First(ctx, s, nil, Limit(2, Offset(2, OrderBy(Asc("created"), From(todoTable))))); err != nil || !two.Ok || two.Val.Title != "third" {
+		t.Fatalf("limit 2 offset 2 |> first = %+v %v", two, err)
+	}
 	none, err := First(ctx, s, nil, Where(CEq("title", "zzz"), From(todoTable)))
 	if err != nil || none.Ok {
 		t.Fatalf("none %+v %v", none, err)

@@ -40,11 +40,6 @@ func TxOf(e *eff.Env) Tx {
 	return e.Tx.(Tx)
 }
 
-// ErrUnique is the generic @unique failure, used only when the violated
-// column cannot be identified. A store returns a fresh
-// &eff.ErrFail{Msg: "<Table>.<column> must be unique"} otherwise.
-var ErrUnique = &eff.ErrFail{Msg: "unique constraint violated"}
-
 // NewID is a fresh 20-character URL-safe id from crypto/rand.
 func NewID() string {
 	var b [15]byte
@@ -84,9 +79,14 @@ func All[T any](ctx context.Context, st Store, tx Tx, s Select[T]) ([]T, error) 
 	return out, nil
 }
 
-// First is Db.first: the first row of s (s with limit 1).
+// First is Db.first: the first row of s (s with limit 1, or with its own
+// limit when that is smaller: `Db.limit 0 |> Db.first` is Nothing).
 func First[T any](ctx context.Context, st Store, tx Tx, s Select[T]) (rt.Maybe[T], error) {
-	rows, err := All(ctx, st, tx, Limit(1, s))
+	n := int64(1)
+	if s.Limit != nil {
+		n = min(*s.Limit, 1)
+	}
+	rows, err := All(ctx, st, tx, Limit(n, s))
 	if err != nil || len(rows) == 0 {
 		return rt.Nothing[T](), err
 	}
