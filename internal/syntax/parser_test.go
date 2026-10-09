@@ -46,3 +46,19 @@ func TestParseGolden(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_UnclosedElement(t *testing.T) {
+	src := "module U\nv : Html a\nv = <div><p>x</div>"
+	_, diags := ParseFile("u.alder", []byte(src))
+	var msgs []string
+	for _, d := range diags {
+		if d.Code != "E0001" {
+			t.Errorf("unexpected code %s: %s", d.Code, d.Message)
+		}
+		msgs = append(msgs, d.Message)
+	}
+	want := []string{"closing tag </div> does not match <p>", "unclosed element <div>"}
+	if strings.Join(msgs, "|") != strings.Join(want, "|") {
+		t.Fatalf("got %q want %q", msgs, want)
+	}
+}

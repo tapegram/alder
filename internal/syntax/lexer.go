@@ -245,11 +245,14 @@ func (l *Lexer) Next() Token {
 	return l.tok(Invalid, string(c), line, col, off)
 }
 
-// ScanText reads raw HTML text from the current position up to '<' or '{'.
+// ScanText reads raw HTML text from the current position up to '{', or to a '<' that starts
+// a tag (followed by a letter, '/' or '!'). Any other '<' is ordinary text.
 func (l *Lexer) ScanText() Token {
 	line, col, off := l.line, l.col, l.pos
-	for l.pos < len(l.src) && l.peek() != '<' && l.peek() != '{' {
+	for l.pos < len(l.src) && l.peek() != '{' && !(l.peek() == '<' && isTagStart(l.peek2())) {
 		l.advance()
 	}
 	return l.tok(Text, string(l.src[off:l.pos]), line, col, off)
 }
+
+func isTagStart(c byte) bool { return isLower(c) || isUpper(c) || c == '/' || c == '!' }

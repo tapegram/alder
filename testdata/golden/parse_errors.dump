@@ -1,0 +1,4 @@
+(module Err (val a : Int = (unit)) (val b : Int = (unit)) (val c : Int = (int 2)) (val d : Int = (unit)))
+! E0602 4:5 `case ... of` is not Alder; use `match x { ... }`
+! E0602 7:5 `let ... in` is not Alder; use a block: `{ let y = 1  ...  }`
+! E0602 13:5 tuples are not Alder; use a record `{ a: 1, b: 2 }`

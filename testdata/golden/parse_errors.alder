@@ -1,0 +1,13 @@
+module Err
+
+a : Int
+a = case x of
+
+b : Int
+b = let y = 1 in y
+
+c : Int
+c = 2
+
+d : Int
+d = (1, 2)

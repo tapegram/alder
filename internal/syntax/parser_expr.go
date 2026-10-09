@@ -703,6 +703,3 @@ func (p *Parser) parseString(t Token) Expr {
 	}
 	return s
 }
-
-// TEMPORARY: replaced by parser_html.go in the next commit.
-func (p *Parser) parseHTML() Expr { p.errorAt(p.tok, "html not implemented"); p.advance(); return &UnitLit{} }

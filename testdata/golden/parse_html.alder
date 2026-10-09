@@ -1,0 +1,23 @@
+module H
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Todos" theme={session.theme}>
+    <h1>Todos</h1>
+    -- a comment between elements
+    <form submit={Submit}>
+      <Errors form />
+      <Input field="title" label="What?" />
+      <button disabled={model.saving}>Add</button>
+    </form>
+    <ul id="todos">
+      {for todo in model.todos -> <Item todo={todo} />}
+      {if model.todos == [] then <p>Nothing</p> else Html.none}
+      {match model.user {
+        Just u -> <span>{u.name}</span>,
+        Nothing -> <a href={Auth.Login {}}>Log in</a>,
+      }}
+    </ul>
+    <p class="n">{Text.fromInt n} open, a < b</p>
+    <br />
+  </Layout.Page>

@@ -1,0 +1,63 @@
+module E
+
+a : Int
+a = 1 + 2 * 3 - 4 % 2
+
+b : Bool
+b = x < 3 && y >= 4 || not z
+
+c : Text
+c = "Hi {name}, {Text.fromInt n}!" ++ "\{x} \"q\""
+
+d : List Int
+d = [1, 2, 3] |> List.map (\x -> x + 1) |> List.filter (\x y -> x == y)
+
+e : Int
+e = m ?? 0
+
+f : Point
+f = { x: 1, y: 2 }
+
+g : Point
+g = { f | x: 10 }
+
+h : Int
+h = f.x
+
+i : Int
+i = if a then 1 else 2
+
+j : Text
+j = match s {
+  Circle r -> "c",
+  Rect { w: w, h: h } -> "r",
+  Just (Just x) -> "nested",
+  0 -> "zero",
+  "s" -> "str",
+  [] -> "empty",
+  [x] -> "one",
+  [x, ..rest] -> "many",
+  _ -> "other",
+}
+
+k : Query Model
+k = {
+  let todos <- Db.from Todo |> Db.all
+  let n : Int = List.length todos
+  Query.succeed { todos: todos }
+}
+
+l : Int
+l = ?count
+
+m : Unit
+m = ()
+
+n : Todos.Show
+n = Todos.Show { id: id }
+
+o : Msg
+o = Toggle { id: props.todo.id }
+
+q : Int
+q = -1

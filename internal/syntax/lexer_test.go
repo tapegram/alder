@@ -133,3 +133,14 @@ func TestLexer_ResetClampsOffset(t *testing.T) {
 		t.Fatalf("expected EOF after clamped reset, got %+v", tok)
 	}
 }
+
+func TestLexer_ScanTextLessThan(t *testing.T) {
+	l := NewLexer("t.alder", []byte("a < b<p>"))
+	tx := l.ScanText()
+	if tx.Kind != Text || tx.Text != "a < b" {
+		t.Fatalf("got %+v", tx)
+	}
+	if next := l.Next(); next.Kind != Lt {
+		t.Fatalf("expected Lt after text, got %+v", next)
+	}
+}
