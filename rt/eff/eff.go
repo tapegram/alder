@@ -148,7 +148,8 @@ func Call[T any](name string, write bool, fn func(*Env) (T, error)) Task[T] {
 }
 
 // Env is what effects run against. Run reads Ctx, Store and Log, makes Ctx
-// carry the Env while it runs, restores Tx and Ctx when it returns, and
+// carry the Env and Kind record its kind while it runs, restores Tx, Ctx and
+// Kind when it returns, and
 // appends to Trace; Transaction sets Tx when a Task's transaction is begun;
 // everything else is for Call functions.
 type Env struct {
@@ -160,6 +161,7 @@ type Env struct {
 	Now     func() time.Time        // the clock
 	Log     func(level, msg string) // level is "info", "warn" or "effect"; nil: no log
 	Trace   []string                // every Call name in order (dev log / tests)
+	Kind    Kind                    // the kind of the effect Run is running (set by Run, restored when it returns)
 
 	beginTx func() (Tx, error) // set by Run for a Task with a Store: begins Tx
 }

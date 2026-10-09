@@ -65,14 +65,40 @@ func TxFrom(ctx context.Context) Tx {
 }
 
 // StoreFrom is the Store of the Env running with ctx (eff.EnvFrom), or nil.
+// While that Env runs a Query (Env.Kind is eff.KQuery) it is a read-only
+// view of the Store: a capability entry typed Query may be implemented in
+// Go, and a write from it would run outside any transaction, so Insert,
+// Update, Delete and Begin return an eff.ErrInternal error ("write from a
+// Query") and write nothing; Get, Query and Count pass through.
 func StoreFrom(ctx context.Context) Store {
 	e := eff.EnvFrom(ctx)
 	if e == nil {
 		return nil
 	}
 	st, _ := e.Store.(Store)
+	if st != nil && e.Kind == eff.KQuery {
+		return readOnly{st}
+	}
 	return st
 }
+
+// readOnly is the Store StoreFrom gives during a Query: reads pass through
+// to the embedded Store, every write method fails.
+type readOnly struct{ Store }
+
+var errQueryWrite = fmt.Errorf("db: %w: write from a Query", eff.ErrInternal)
+
+func (readOnly) Begin(context.Context) (eff.Tx, error) { return nil, errQueryWrite }
+
+func (readOnly) Insert(context.Context, Tx, string, []Column, string, string, string, []any, time.Time) (string, error) {
+	return "", errQueryWrite
+}
+
+func (readOnly) Update(context.Context, Tx, string, []Column, string, string, string, []any, time.Time) error {
+	return errQueryWrite
+}
+
+func (readOnly) Delete(context.Context, Tx, string, string, string) error { return errQueryWrite }
 
 // beginFailed is the Tx TxOf returns when beginning the transaction failed.
 type beginFailed struct{ err error }

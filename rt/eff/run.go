@@ -29,6 +29,8 @@ var ErrInternal = errors.New("internal error")
 //
 // kind KQuery: no transaction (env.Tx is nil and env.Transaction gives nil);
 // a Call with write=true is not run and Run returns an internal error.
+// env.Kind is KQuery while it runs, so db.StoreFrom(ctx) gives a capability
+// implementation a store that refuses writes.
 //
 // Every Call is logged at level "effect" with its name and appended to
 // env.Trace before it runs.
@@ -38,7 +40,7 @@ var ErrInternal = errors.New("internal error")
 // and to capabilities, and e.Now() to Db.insert/update) may use both
 // unchecked. While Run runs, env.Ctx carries env (EnvFrom), so a capability
 // implementation can reach the running effect's transaction
-// (db.TxFrom(ctx)); env.Ctx is restored when Run returns.
+// (db.TxFrom(ctx)); env.Kind is kind. Both are restored when Run returns.
 //
 // Depth guarantee: Run is a loop over an explicit continuation stack kept
 // on the heap, so Bind, Map and All chains of any length or nesting depth
@@ -52,11 +54,11 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 	if env.Now == nil {
 		env.Now = time.Now
 	}
-	prevCtx, prevTx, prevBegin := env.Ctx, env.Tx, env.beginTx
+	prevCtx, prevTx, prevBegin, prevKind := env.Ctx, env.Tx, env.beginTx, env.Kind
 	if EnvFrom(env.Ctx) != env {
 		env.Ctx = context.WithValue(env.Ctx, envKey{}, env)
 	}
-	env.Tx, env.beginTx = nil, nil
+	env.Tx, env.beginTx, env.Kind = nil, nil, kind
 	if kind == KTask && env.Store != nil {
 		store := env.Store
 		env.beginTx = func() (Tx, error) { return store.Begin(ctx(env)) }
@@ -65,7 +67,7 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 	done := false
 	defer func() {
 		tx := env.Tx
-		env.Ctx, env.Tx, env.beginTx = prevCtx, prevTx, prevBegin
+		env.Ctx, env.Tx, env.beginTx, env.Kind = prevCtx, prevTx, prevBegin, prevKind
 		if !done && kind == KTask { // a panic is unwinding through us
 			if tx != nil {
 				rollback(env, tx)

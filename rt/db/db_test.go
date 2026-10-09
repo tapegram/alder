@@ -868,3 +868,49 @@ func TestStore_ConcurrentTasksOnFile(t *testing.T) {
 		t.Fatalf("rows %d, want %d", n, 2+2*per)
 	}
 }
+
+// A capability entry typed Query may be implemented in Go; inside a Query the store it reaches
+// through StoreFrom refuses writes (they would otherwise run in autocommit), while reads pass
+// through. The same implementation run from a Task writes.
+func TestStoreFrom_QueryRefusesWrite(t *testing.T) {
+	s := open(t)
+	record := func(ctx context.Context, title string) (string, error) {
+		return StoreFrom(ctx).Insert(ctx, TxFrom(ctx), todoTable.Name, todoTable.Columns, "id", "created", "updated",
+			insertVals(title, false, rt.Nothing[rt.Date](), "Low"), clock)
+	}
+	capCall := func(title string) eff.Task[string] {
+		// the capability entry is typed Query, so its Call is a read
+		return eff.Call("Audit.peek", false, func(e *eff.Env) (string, error) { return record(e.Ctx, title) })
+	}
+	env := newEnv(s)
+	_, err := eff.RunQuery(env, eff.Q(capCall("q")))
+	if !errors.Is(err, eff.ErrInternal) || !strings.Contains(err.Error(), "write from a Query") {
+		t.Fatalf("write from a Query: %v", err)
+	}
+	if n := count(t, s, From(todoTable)); n != 0 {
+		t.Fatalf("Query write left %d rows", n)
+	}
+	// every write method refuses; reads pass through
+	q := eff.Call("Audit.peek", false, func(e *eff.Env) (int64, error) {
+		st := StoreFrom(e.Ctx)
+		if err := st.Update(e.Ctx, nil, todoTable.Name, todoTable.Columns, "id", "updated", "x", nil, clock); !errors.Is(err, eff.ErrInternal) {
+			t.Errorf("Update from a Query: %v", err)
+		}
+		if err := st.Delete(e.Ctx, nil, todoTable.Name, "id", "x"); !errors.Is(err, eff.ErrInternal) {
+			t.Errorf("Delete from a Query: %v", err)
+		}
+		if _, err := st.Begin(e.Ctx); !errors.Is(err, eff.ErrInternal) {
+			t.Errorf("Begin from a Query: %v", err)
+		}
+		return CountRows(e.Ctx, st, TxFrom(e.Ctx), From(todoTable))
+	})
+	if n, err := eff.RunQuery(env, eff.Q(q)); err != nil || n != 0 {
+		t.Fatalf("read from a Query: %d %v", n, err)
+	}
+	if _, err := eff.Run(env, eff.KTask, capCall("t")); err != nil {
+		t.Fatalf("write from a Task: %v", err)
+	}
+	if n := count(t, s, Where(CEq("title", "t"), From(todoTable))); n != 1 {
+		t.Fatalf("Task write: %d rows", n)
+	}
+}

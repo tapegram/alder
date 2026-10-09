@@ -305,8 +305,11 @@ A capability that writes through the store without `db.TxFrom(ctx)` (with
 a `nil` transaction) is outside the task: its writes survive a rollback,
 and once the task has begun its transaction the write waits for it,
 forever on `:memory:` (one connection) and up to SQLite's five-second busy
-timeout on a file. In a `Query`, `db.TxFrom(ctx)` is `nil` and the store
-reads without a transaction.
+timeout on a file. In a `Query` (a capability entry typed `Query`),
+`db.TxFrom(ctx)` is `nil` and `db.StoreFrom(ctx)` is read-only: it reads
+without a transaction, and its `Insert`, `Update`, `Delete` and `Begin`
+return an internal error (`eff.ErrInternal`, "write from a Query") and
+write nothing.
 
 It is registered in the `Env` under the capability's module-qualified
 name, `env.Caps["Auth.Login.Password"] = password{user: uid}`, and the
