@@ -164,9 +164,14 @@ func CContains(col string, v any) Cond { return Cond{Kind: Contains, Col: col, V
 func CIn(col string, vs []any) Cond    { return Cond{Kind: In, Col: col, Val: vs} }
 func CIsNull(col string) Cond          { return Cond{Kind: IsNull, Col: col} }
 func CIsNotNull(col string) Cond       { return Cond{Kind: IsNotNull, Col: col} }
-func CAnd(cs []Cond) Cond              { return Cond{Kind: And, Subs: cs} }
-func COr(cs []Cond) Cond               { return Cond{Kind: Or, Subs: cs} }
-func CNot(c Cond) Cond                 { return Cond{Kind: Not, Subs: []Cond{c}} }
+
+// CAnd holds when every condition of cs holds: CAnd of none is true.
+func CAnd(cs []Cond) Cond { return Cond{Kind: And, Subs: cs} }
+
+// COr holds when some condition of cs holds: COr of none is false.
+func COr(cs []Cond) Cond { return Cond{Kind: Or, Subs: cs} }
+
+func CNot(c Cond) Cond { return Cond{Kind: Not, Subs: []Cond{c}} }
 
 func Asc(col string) Order  { return Order{Col: col} }
 func Desc(col string) Order { return Order{Col: col, Desc: true} }
@@ -187,33 +192,25 @@ type SQL struct {
 // escaped; In with no values is `0=1`; And/Or of nothing is `1=1`/`0=1`;
 // every And, Or and Not is parenthesized. Several Where conditions render as
 // one And. Ordering by an enum column orders by declaration (a CASE over its
-// constructors).
+// constructors), and so do <, <=, >, >= on one.
 func (s Select[T]) SQL() SQL {
 	var out SQL
-	switch len(s.Where) {
-	case 0:
-	case 1:
-		out.Where = renderCond(s.Where[0], &out.Args)
-	default:
-		out.Where = renderCond(CAnd(s.Where), &out.Args)
-	}
 	var cols []Column
 	if s.Table != nil {
 		cols = s.Table.Columns
 	}
+	switch len(s.Where) {
+	case 0:
+	case 1:
+		out.Where = renderCond(s.Where[0], cols, &out.Args)
+	default:
+		out.Where = renderCond(CAnd(s.Where), cols, &out.Args)
+	}
 	terms := make([]string, len(s.Order))
 	for i, o := range s.Order {
 		expr := quote(o.Col)
-		for _, c := range cols {
-			if c.Name == o.Col && c.Type == CEnum && len(c.Enum) > 0 {
-				var b strings.Builder
-				b.WriteString("CASE " + expr)
-				for j, name := range c.Enum {
-					b.WriteString(" WHEN " + literal(name) + " THEN " + strconv.Itoa(j))
-				}
-				b.WriteString(" END")
-				expr = b.String()
-			}
+		if c := enumCol(cols, o.Col); c != nil {
+			expr = enumRank(expr, c.Enum)
 		}
 		if o.Desc {
 			terms[i] = expr + " DESC"
@@ -226,9 +223,42 @@ func (s Select[T]) SQL() SQL {
 	return out
 }
 
-func renderCond(c Cond, args *[]any) string {
+// enumCol is the CEnum column named name of cols, or nil.
+func enumCol(cols []Column, name string) *Column {
+	for i, c := range cols {
+		if c.Name == name && c.Type == CEnum && len(c.Enum) > 0 {
+			return &cols[i]
+		}
+	}
+	return nil
+}
+
+// enumRank is the declaration index of enum column expr's value (a CASE over its constructors).
+func enumRank(expr string, names []string) string {
+	var b strings.Builder
+	b.WriteString("CASE " + expr)
+	for j, name := range names {
+		b.WriteString(" WHEN " + literal(name) + " THEN " + strconv.Itoa(j))
+	}
+	b.WriteString(" END")
+	return b.String()
+}
+
+// renderCond renders c; cols (nil when unknown) lets Lt/Le/Gt/Ge on an enum column compare
+// declaration order, as ORDER BY does, rather than the constructor names' spelling.
+func renderCond(c Cond, cols []Column, args *[]any) string {
 	col := quote(c.Col)
 	bin := func(op string) string {
+		if e := enumCol(cols, c.Col); e != nil && op != "=" && op != "IS NOT" {
+			if name, ok := c.Val.(string); ok {
+				for j, n := range e.Enum {
+					if n == name {
+						*args = append(*args, int64(j))
+						return enumRank(col, e.Enum) + " " + op + " ?"
+					}
+				}
+			}
+		}
 		*args = append(*args, c.Val)
 		return col + " " + op + " ?"
 	}
@@ -282,14 +312,14 @@ func renderCond(c Cond, args *[]any) string {
 		}
 		parts := make([]string, len(c.Subs))
 		for i, sub := range c.Subs {
-			parts[i] = renderCond(sub, args)
+			parts[i] = renderCond(sub, cols, args)
 		}
 		return "(" + strings.Join(parts, op) + ")"
 	case Not:
 		if len(c.Subs) != 1 {
 			return "0=1"
 		}
-		return "NOT (" + renderCond(c.Subs[0], args) + ")"
+		return "NOT (" + renderCond(c.Subs[0], cols, args) + ")"
 	}
 	return "0=1" // unknown kind: match nothing
 }

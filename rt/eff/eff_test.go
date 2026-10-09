@@ -75,7 +75,7 @@ func TestRun_NotFoundShortCircuits(t *testing.T) {
 func TestRun_QueryRefusesWrite(t *testing.T) {
 	s := &fakeStore{}
 	_, err := RunQuery(env(s), Q(Call("w", true, func(*Env) (int, error) { return 0, nil })))
-	if err == nil || len(s.txs) != 0 {
+	if !errors.Is(err, ErrInternal) || len(s.txs) != 0 {
 		t.Fatalf("err=%v txs=%d", err, len(s.txs))
 	}
 }
@@ -282,7 +282,18 @@ func TestRun_NilInterfaceValues(t *testing.T) {
 }
 
 func TestRun_ZeroTaskIsAnError(t *testing.T) {
-	if _, err := Run(env(&fakeStore{}), KTask, Task[int]{}); err == nil {
-		t.Fatal("zero Task ran")
+	if _, err := Run(env(&fakeStore{}), KTask, Task[int]{}); !errors.Is(err, ErrInternal) {
+		t.Fatalf("zero Task: err = %v, want ErrInternal", err)
+	}
+}
+
+// Run fills a nil Ctx and Now, so a Call may pass e.Ctx on and call e.Now().
+func TestRun_FillsCtxAndNow(t *testing.T) {
+	e := &Env{}
+	v, err := Run(e, KTask, Call("c", false, func(e *Env) (bool, error) {
+		return e.Ctx != nil && !e.Now().IsZero(), nil
+	}))
+	if err != nil || !v || e.Ctx == nil || e.Now == nil {
+		t.Fatalf("v=%v err=%v ctx=%v", v, err, e.Ctx)
 	}
 }

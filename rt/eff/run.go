@@ -2,8 +2,14 @@ package eff
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 )
+
+// ErrInternal marks an error that is a bug in the compiler or the runtime, not in the app: a
+// write effect reached from a Query, an invalid effect node. Test with errors.Is.
+var ErrInternal = errors.New("internal error")
 
 // Run interprets t eagerly, node by node, and returns its result:
 // (value, nil) | (zero, *ErrFail) | (zero, ErrNotFound) | (zero, another
@@ -21,12 +27,22 @@ import (
 // Every Call is logged at level "effect" with its name and appended to
 // env.Trace before it runs.
 //
+// Run first fills a nil env.Ctx with context.Background() and a nil env.Now
+// with time.Now, so Call functions (generated code passes e.Ctx to the store
+// and e.Now() to Db.insert/update) may use both unchecked.
+//
 // Depth guarantee: Run is a loop over an explicit continuation stack kept
 // on the heap, so Bind, Map and All chains of any length or nesting depth
 // (left- or right-nested) run in constant Go stack. Run starts no
 // goroutines.
 func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 	var zero T
+	if env.Ctx == nil {
+		env.Ctx = context.Background()
+	}
+	if env.Now == nil {
+		env.Now = time.Now
+	}
 	if kind != KTask || env.Store == nil {
 		v, err := interpret(env, kind, t.node)
 		if err != nil {
@@ -86,7 +102,7 @@ func interpret(env *Env, kind Kind, n node) (any, error) {
 			n = x.e
 		case call:
 			if kind == KQuery && x.write {
-				return nil, fmt.Errorf("eff: internal error: write effect %q reached from a Query", x.name)
+				return nil, fmt.Errorf("eff: %w: write effect %q reached from a Query", ErrInternal, x.name)
 			}
 			if err := ctx(env).Err(); err != nil {
 				return nil, err
@@ -105,7 +121,7 @@ func interpret(env *Env, kind Kind, n node) (any, error) {
 		case notFound:
 			return nil, ErrNotFound
 		default:
-			return nil, fmt.Errorf("eff: internal error: invalid effect node %T (zero Task or Query?)", n)
+			return nil, fmt.Errorf("eff: %w: invalid effect node %T (zero Task or Query?)", ErrInternal, n)
 		}
 	}
 }

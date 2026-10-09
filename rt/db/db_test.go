@@ -352,6 +352,11 @@ func TestStore_SelectSQL(t *testing.T) {
 		{"enum order + offset", Offset(5, OrderBy(Asc("title"), OrderBy(Desc("prio"), base))),
 			`ORDER BY CASE "prio" WHEN 'Low' THEN 0 WHEN 'Normal' THEN 1 WHEN 'High' THEN 2 END DESC, "title" ASC OFFSET 5`, nil},
 		{"quoted ident", Where(CEq(`we"ird`, "x"), base), `"we""ird" = ?`, []any{"x"}},
+		{"enum compares by declaration", Where(CLt("prio", "High"), Where(CEq("prio", "Low"), base)),
+			`("prio" = ? AND CASE "prio" WHEN 'Low' THEN 0 WHEN 'Normal' THEN 1 WHEN 'High' THEN 2 END < ?)`, []any{"Low", int64(2)}},
+		{"and empty is true", Where(CAnd(nil), base), `1=1`, nil},
+		{"or empty is false", Where(COr([]Cond{}), base), `0=1`, nil},
+		{"not of empty or", Where(CNot(COr(nil)), base), `NOT (0=1)`, nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -528,5 +533,27 @@ func TestStore_QueryWithoutTx(t *testing.T) {
 	}
 	if n := count(t, s, From(todoTable)); n != 0 {
 		t.Fatalf("count after delete %d", n)
+	}
+}
+
+func TestEncodeListAndDecodeEnum(t *testing.T) {
+	got := EncodeList([]bool{true, false}, func(b bool) any { return EncodeBool(b) })
+	if len(got) != 2 || got[0] != int64(1) || got[1] != int64(0) {
+		t.Fatalf("EncodeList = %#v", got)
+	}
+	if got := EncodeList[string](nil, func(s string) any { return s }); got == nil || len(got) != 0 {
+		t.Fatalf("EncodeList(nil) = %#v, want empty non-nil", got)
+	}
+	names, values := []string{"Low", "Normal", "High"}, []int{10, 11, 12}
+	if i, err := DecodeEnum("High", names, values); err != nil || i != 12 {
+		t.Fatalf("DecodeEnum(High) = %d, %v", i, err)
+	}
+	if i, err := DecodeEnum([]byte("Low"), names, values); err != nil || i != 10 {
+		t.Fatalf("DecodeEnum([]byte Low) = %d, %v", i, err)
+	}
+	for _, bad := range []any{"Urgent", int64(1), nil} {
+		if _, err := DecodeEnum(bad, names, values); err == nil {
+			t.Errorf("DecodeEnum(%#v): no error", bad)
+		}
 	}
 }

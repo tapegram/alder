@@ -113,3 +113,30 @@ func DecodeMaybe[T any](v any, dec func(any) (T, error)) (rt.Maybe[T], error) {
 	}
 	return rt.Just(x), nil
 }
+
+// EncodeList encodes each element of vs with enc: the value list of a CIn
+// condition. It is never nil.
+func EncodeList[T any](vs []T, enc func(T) any) []any {
+	out := make([]any, 0, len(vs))
+	for _, v := range vs {
+		out = append(out, enc(v))
+	}
+	return out
+}
+
+// DecodeEnum decodes a payload-less union stored as its constructor name:
+// values[i] where names[i] is the name (names and values list the
+// constructors in declaration order).
+func DecodeEnum[T any](v any, names []string, values []T) (T, error) {
+	var zero T
+	s, err := DecodeText(v)
+	if err != nil {
+		return zero, fmt.Errorf("db: enum: %w", err)
+	}
+	for i, n := range names {
+		if n == s && i < len(values) {
+			return values[i], nil
+		}
+	}
+	return zero, fmt.Errorf("db: enum: %q is not one of %v", s, names)
+}
