@@ -1,7 +1,9 @@
 # 11. Tooling
 
-`alder check` exists as of M1; `build`, `run`, `test`, `fmt`, holes and `query` are planned.
-`alder build --emit` generates and vets Go for the pure parts of an app (M3a); effects, pages and `alder run` arrive in M3b–M3d.
+`alder check` exists as of M1, and `alder build --emit` as of M3a: it
+generates and vets Go for the pure parts of an app. A full `alder build`
+(effects, pages, a server you can run) and `alder run` arrive in M3b–M3d;
+`test`, `fmt`, holes and `query` are planned.
 
 ## Project layout
 
@@ -34,6 +36,12 @@ alder explain <id>   explain a diagnostic code
 ```
 
 `alder build --emit` writes the generated Go to `build/<app>/` and vets it. Chapter 13 walks through what it generates and why: see [How the compiler works](13-compiler.md).
+
+The generated `go.mod` points at the alder repository, which holds the
+runtime the code imports (`replace alder => "<path>"`). The `alder` binary
+finds the repository it was built from; set `ALDER_ROOT` to the
+repository's path when the binary was built elsewhere or moved, or to use
+another checkout's runtime.
 
 ## Diagnostics
 

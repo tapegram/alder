@@ -76,6 +76,18 @@ Text.toFloat   : Text -> Maybe Float
 Text.NonEmpty, Text.Email, Text.Url, Text.Secret   -- refinement brands
 ```
 
+`Text.length` counts code points (`Text.length "é"` is 1), and
+`Text.slice start end` takes the code points from `start` up to, not
+including, `end`. A negative index counts from the end (`Text.slice -3 -1
+"abcdef"` is `"de"`), indices past either end are clamped, and a `start` at
+or after `end` gives `""`. `Text.matches regex text` is true when the
+regex (RE2 syntax) matches anywhere in the text: write `^…$` to match the
+whole text. An invalid regex matches nothing. `Text.fromFloat` writes the
+shortest decimal that reads back as the same number, never an exponent
+(`2.0` is `"2"`, `3.5` is `"3.5"`); infinity is `"+Inf"` or `"-Inf"` and
+not-a-number is `"NaN"`. `Text.toInt` and `Text.toFloat` give `Nothing`
+for anything else than a plain decimal number (spaces, overflow, `"NaN"`).
+
 ## Int, Float
 
 ```alder
@@ -97,12 +109,20 @@ Float.format : { decimals: Int } -> Float -> Text
 the dividend's sign; an `Int` division or remainder by zero is a runtime
 failure (chapter 4). `Float` division by zero gives infinity or NaN.
 
+`Float.round` rounds half away from zero: `Float.round 2.5` is `3` and
+`Float.round -2.5` is `-3`. `Float.format { decimals: n }` rounds the same
+way to `n` decimals and pads with zeros (`Float.format { decimals: 2 }
+1.005` is `"1.01"`, and `1.5` gives `"1.50"`); it never writes `"-0"`
+(`-0.001` with one decimal is `"0.0"`).
+
 ## Bool
 
 ```alder
 not : Bool -> Bool
 Bool.toText : Bool -> Text
 ```
+
+`Bool.toText` writes the constructor names, `"True"` and `"False"`.
 
 ## Dict
 
@@ -141,6 +161,10 @@ Time.toDate    : Time -> Date
 Time.format    : Text -> Time -> Text
 Time.ago       : Time -> Time -> Text           -- Time.ago now then = "3 hours ago"
 ```
+
+`Date.diffDays a b` is the number of days from `a` to `b`, that is `b − a`:
+`Date.diffDays monday wednesday` is `2`, and it is negative when `b` comes
+first.
 
 ## Html
 

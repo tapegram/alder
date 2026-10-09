@@ -387,3 +387,28 @@ func TestHtml(t *testing.T) {
 	eq(t, "text escapes", html.Render(HtmlText("<a>")), "&lt;a&gt;")
 	eq(t, "unsafe raw", html.Render(HtmlUnsafe("<a>")), "<a>")
 }
+
+// TestBookSemantics pins every runtime behavior chapter 9 of the book states (I2).
+func TestBookSemantics(t *testing.T) {
+	eq(t, "length é", TextLength("é"), int64(1))
+	eq(t, "slice -3 -1", TextSlice(-3, -1, "abcdef"), "de")
+	eq(t, "slice clamped", TextSlice(-10, 10, "abc"), "abc")
+	eq(t, "slice empty", TextSlice(2, 1, "abc"), "")
+	eq(t, "matches unanchored", TextMatches("b", "abc"), true)
+	eq(t, "matches anchored", TextMatches("^b$", "abc"), false)
+	eq(t, "matches invalid", TextMatches("(", "("), false)
+	eq(t, "fromFloat 2.0", TextFromFloat(2.0), "2")
+	eq(t, "fromFloat +Inf", TextFromFloat(math.Inf(1)), "+Inf")
+	eq(t, "fromFloat -Inf", TextFromFloat(math.Inf(-1)), "-Inf")
+	eq(t, "fromFloat NaN", TextFromFloat(math.NaN()), "NaN")
+	eq(t, "toInt spaces", TextToInt(" 1"), rt.Nothing[int64]())
+	eq(t, "round 2.5", FloatRound(2.5), int64(3))
+	eq(t, "round -2.5", FloatRound(-2.5), int64(-3))
+	eq(t, "format 1.005", FloatFormat(struct{ Decimals int64 }{2}, 1.005), "1.01")
+	eq(t, "format 1.5", FloatFormat(struct{ Decimals int64 }{2}, 1.5), "1.50")
+	eq(t, "format -0.001", FloatFormat(struct{ Decimals int64 }{1}, -0.001), "0.0")
+	eq(t, "Bool.toText", BoolToText(true)+BoolToText(false), "TrueFalse")
+	mon, wed := rt.Date{Y: 2026, M: 10, D: 5}, rt.Date{Y: 2026, M: 10, D: 7}
+	eq(t, "diffDays forward", DateDiffDays(mon, wed), int64(2))
+	eq(t, "diffDays backward", DateDiffDays(wed, mon), int64(-2))
+}

@@ -27,3 +27,10 @@ in chapter 12. Each is a compile error.
     `let` is a block.
 12. There is no `case ... of`, no `let ... in`, no `andThen`, no tuples,
     and no type aliases.
+13. A `"` (or `\"`) inside a `{…}` interpolation ends the string early, so
+    `"tags: {Text.join ", " tags}"` is a parse error (E0001) today. Compute
+    the text first, with a `let` or a helper, and interpolate the name:
+    `let shown = Text.join ", " tags` then `"tags: {shown}"`.
+14. Names may not contain `__` (`max__len`) and module names may not end
+    with `_`; in a page module or `App`, `Params`, `Msg`, `Session` and
+    `<Msg>Params` are taken by the compiler (E0012).
