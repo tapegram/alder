@@ -2,6 +2,7 @@
  "model": "claude-sonnet",
  "task": "t2-newpage",
  "retries": 1,
+ "base": "examples/todos",
  "error": null,
  "rounds": [
   {

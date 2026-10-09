@@ -1,0 +1,2 @@
+{"code": "E0002", "severity": "error", "file": "app/Todos/Index.alder", "line": 44, "col": 26, "endLine": 44, "endCol": 30, "message": "unknown constructor `Note`"}
+{"code": "E0201", "severity": "error", "file": "app/Todos/Index.alder", "line": 44, "col": 44, "endLine": 44, "endCol": 53, "message": "module `Note` is not imported", "fix": {"line": 5, "col": 1, "endLine": 5, "endCol": 1, "replace": "import Note\n"}}

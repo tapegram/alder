@@ -35,7 +35,7 @@ Per model:
 The one-shot picture matches E4. Sonnet and Haiku are clean on every task; qwen is clean on T4 and fails T3 with its known habits. Things to know when comparing:
 
 - **qwen runs at temperature 0 and is deterministic.** Its round 0s are byte-identical to the first run's (same token counts), so its round-0 numbers are a property of the prompt. The Claude CLI exposes no temperature: Haiku's T3 had 1 error in the first run (a `let`-bound row literal in a test, problem 1 below) and 0 here. Treat a single Claude run as one sample.
-- **qwen's T3, 5 errors, all `E0001`, which hide the rest.** A parse error stops the compiler (chapter 11), so both rounds report only two parse mistakes (as five diagnostics) and nothing about types. If the round-1 parse errors are fixed by hand, `alder check` reports 15 more errors (see Counting). qwen's real T3 distance from a passing app is larger than either E4's 3 or this run's 5.
+- **qwen's T3, 5 errors, all `E0001`, which hide the rest.** A parse error stops the compiler (chapter 11), so both rounds report only two parse mistakes (as five diagnostics) and nothing about types. If the round-1 parse errors are fixed by hand, `alder check` reports 15 more errors (`repros/qwen-t3-after-parse-fix/`: the committed round 1 with only the two parse mistakes fixed, and its `check.json`; see Counting). qwen's real T3 distance from a passing app is larger than either E4's 3 or this run's 5.
 
 ## 2. What one retry buys
 
@@ -65,13 +65,13 @@ Round 1 changed exactly that: it wrapped the rest of `load` in `match user { Jus
 
 Check counts are per diagnostic and include cascades, so they run higher than E4's hand counts:
 - One parse mistake gives two or three `E0001`s at the same span (all of qwen's T3 count).
-- A parse error hides everything after it. qwen T3 round 1 with only the reported parse errors fixed by hand (scratch copy, not committed) gives 15 more errors: a missing `import Theme` in `App.alder` (6 diagnostics, problem 3), unqualified `Slug` in a form and a page parameter (4: 2 × E0202 + 2 × E0011 `_`), and the `Comment` table declared inside `Post` (5, problem 2).
+- A parse error hides everything after it. qwen T3 round 1 with only the reported parse errors fixed by hand (`repros/qwen-t3-after-parse-fix/`; `app/` differs from `runs/ollama-qwen3-coder-30b/t3-newapp/round1/app` only in `Post.alder`, where `type CommentId = brand Text` is added and used, and `Posts/Admin.alder`, where `@unique` is dropped) gives 15 more errors (`check.json`, 15 errors and 1 warning): a missing `import Theme` in `App.alder` (6 diagnostics, problem 3), unqualified `Slug` in a form and a page parameter (4: 2 × E0202 + 2 × E0011 `_`), and the `Comment` table declared inside `Post` (5, problem 2).
 
 ## 3. Compiler problems found by E5
 
-None is a false positive. Each is a message that did not lead the model, or a person, to the fix. All repros were re-run against the binary built for the re-run, using scratch copies of `examples/todos`.
+None is a false positive. Each is a message that did not lead the model, or a person, to the fix. Each problem has a committed repro under `repros/problem-N/`: a copy of `examples/todos/app` with only the change shown, and the `check.json` the re-run's binary produced for it. Provenance is given for each.
 
-**Problem 1: E0003 on a `let`-bound record literal does not suggest the annotation.** (Haiku T3, first run, commit 49e7792.) Reproduce by adding this test to `examples/todos/app/Todo.alder`:
+**Problem 1: E0003 on a `let`-bound record literal does not suggest the annotation.** *Provenance: observed in the superseded first run (49e7792), `claude-haiku/t3-newapp` round 0; reproduced here in `repros/problem-1/`.* The repro adds this test to `examples/todos/app/Todo.alder`:
 ```alder
 test "let-bound literal" = {
   let t = { id: TodoId "a", title: Text.NonEmpty "x", done: False, due: Nothing, owner: UserId "u", created: Time.epoch }
@@ -83,7 +83,7 @@ app/Todo.alder:43:23: error[E0003]: expected Todo, got { id: Todo.TodoId, title:
 ```
 `let t : Todo = { ... }` passes. **M3:** when the actual type is an anonymous record that matches the expected record's fields, give a `fix` adding the annotation at the `let`. **Book now:** chapter 10's examples all pass literals inline. Add an example of `let t : Todo = { … }` in a test, since binding a fixture first is the natural form.
 
-**Problem 2: a table declared in another table's module is accepted, and its uses get a wrong fix.** (qwen T3, both runs; also qwen's E4 T3 "Comment declared inside Post".) Chapter 8 says "A table is declared in its own module named after it", but the checker accepts this in `examples/todos/app/Todo.alder` with exit 0:
+**Problem 2: a table declared in another table's module is accepted, and its uses get a wrong fix.** *Provenance: the declaration is in E5 run `ollama-qwen3-coder-30b/t3-newapp` rounds 0 and 1 (`table Comment` in `Post.alder`), but its diagnostics are hidden there by the parse errors; they are observed in `repros/qwen-t3-after-parse-fix/check.json` (``unknown constructor `Comment` ``, `fix: import Comment`) and reproduced here in `repros/problem-2/` and `repros/problem-2-qualified/`.* Also qwen's E4 T3 "Comment declared inside Post". Chapter 8 says "A table is declared in its own module named after it", but the checker accepts this in `examples/todos/app/Todo.alder` with exit 0:
 ```alder
 type NoteId = brand Text
 
@@ -99,9 +99,9 @@ app/Todos/Index.alder:44:26: error[E0002]: unknown constructor `Note`
 app/Todos/Index.alder:44:44: error[E0201]: module `Note` is not imported
   fix: import Note
 ```
-There is no module `Note`, so the fix is wrong. Qualifying it does not help either: `Db.from Todo.Note |> Db.where (Todo.Note.todo.eq p.id)` gives ``module `Todo.Note` is not imported; fix: import Todo.Note``. Such a table cannot be used from another module at all. **M3:** enforce the rule at the declaration: an error on `table Note` in module `Todo` saying "move it to `app/Note.alder`" (E0005 or E0011). At a use site, never offer `import X` when no module `X` exists.
+There is no module `Note`, so the fix is wrong. Qualifying it does not help either: `Db.from Todo.Note |> Db.where (Todo.Note.todo.eq p.id)` gives ``module `Todo.Note` is not imported; fix: import Todo.Note`` (`repros/problem-2-qualified/`). Such a table cannot be used from another module at all. **M3:** enforce the rule at the declaration: an error on `table Note` in module `Todo` saying "move it to `app/Note.alder`" (E0005 or E0011). At a use site, never offer `import X` when no module `X` exists.
 
-**Problem 3: one missing import produces six errors, and an unresolved type produces E0011 noise.** (qwen T3, both runs.) Delete `import Theme` from `examples/todos/app/App.alder`:
+**Problem 3: one missing import produces six errors, and an unresolved type produces E0011 noise.** *Provenance: the missing import is in E5 run `ollama-qwen3-coder-30b/t3-newapp` rounds 0 and 1 (`App.alder`), hidden there by the parse errors; the six diagnostics are observed in `repros/qwen-t3-after-parse-fix/check.json` and reproduced here in `repros/problem-3/`.* The repro deletes `import Theme` from `examples/todos/app/App.alder`:
 ```
 app/App.alder:6:36: error[E0011]: session field `theme` has type `_`, which cannot be stored in a session
 app/App.alder:6:43: error[E0201]: module `Theme` is not imported   fix: import Theme
@@ -112,20 +112,21 @@ app/App.alder:34:41: error[E0002]: unknown constructor `Light`
 ```
 Only `E0201` is the cause. The same ``has type `_` `` E0011 follows every unresolved type: in the re-run, after an unqualified `Slug`, it appears as ``form field `slug` has type `_`, which cannot come from a form`` and ``page parameter `slug` has type `_`, which cannot appear in a URL``. Chapter 11 says a module whose names could not be resolved is not checked further; that is not what happens here. **M3:** suppress E0011/E0003 on a `_` type from a failed resolution. When an unknown constructor is exported by a module that exists, say "`Light` is a constructor of `Theme.Theme`; import `Theme`" with the fix.
 
-**Problem 4: parse errors with no reason.** (qwen T3, both runs.) The two parse mistakes qwen could not fix get only the parser's position, with no hint at the rule. `@unique` on a form field gives ``expected `,` or closing brace`` at the `@`, which misled qwen into changing the type (see §2). An inline `brand` in a table field gives three diagnostics. **M3:** dedicated messages for both. Attributes are allowed only on table fields, and a brand is declared with `type X = brand …`. Also collapse same-span cascades into one diagnostic.
+**Problem 4: parse errors with no reason.** *Provenance: observed in E5 run `ollama-qwen3-coder-30b/t3-newapp` rounds 0 and 1 (`check.json`); reproduced here in `repros/problem-4/` (`id: brand Text @id` in `table Todo`, `title: Text.NonEmpty @unique` in `form NewTodo`: 5 × E0001).* The two parse mistakes qwen could not fix get only the parser's position, with no hint at the rule. `@unique` on a form field gives ``expected `,` or closing brace`` at the `@`, which misled qwen into changing the type (see §2). An inline `brand` in a table field gives three diagnostics. **M3:** dedicated messages for both. Attributes are allowed only on table fields, and a brand is declared with `type X = brand …`. Also collapse same-span cascades into one diagnostic.
 
-**Problem 5 (design, not a bug): a parse error hides the rest of the program.** It is documented in chapter 11, and this run measured what it costs in a loop: qwen's T3 shows 5 errors per round while 15 wait behind them, 6 of them in `App.alder`, which parsed and was never checked. **M3:** parse every file and report all parse errors, then check the modules that parsed and whose imports parsed, the same way name-resolution failures are already gated.
+**Problem 5 (design, not a bug): a parse error hides the rest of the program.** It is documented in chapter 11, and this run measured what it costs in a loop: qwen's T3 shows 5 errors per round while 15 wait behind them (`repros/qwen-t3-after-parse-fix/`), 6 of them in `App.alder`, which parsed and was never checked. **M3:** parse every file and report all parse errors, then check the modules that parsed and whose imports parsed, the same way name-resolution failures are already gated.
 
 ## 4. Harness notes
 
 - **Timing per round** (`summary.json`): qwen3-coder 31–56 s (mean 43 s, 1.3k–2.5k tokens out; the retries are the slow ones, since they now carry the previous files); Haiku 25–86 s (mean 56 s); Sonnet 14–34 s (mean 23 s). The matrix took 7 min 32 s (T2 2 min 15 s, T3+T4 5 min 18 s) because 7 of 9 runs passed in round 0.
+- **Provenance of the invocation:** `summary.json` records `base` (the `--base` directory, or null). The nine committed summaries were backfilled after the run from the logged invocations (`examples/todos` for T2, null for T3/T4); runs from now on record it directly.
 - **Splitter:** Haiku wrapped its T2 files in code fences, and the splitter removed them. No preambles, no rejected paths, no `exit 2`, and no model errors, so no re-runs were needed.
 - **Passes are real apps.** T3/T4 passes have 8–10 files and 249–361 lines; T2 passes have the example's 8 files plus `Profile.alder`, linked from `Todos/Index`, with logout as `<button click={App.Logout}>`. Haiku T3 and qwen T4 were read in full: all routes, forms, `msg`s and the theme switch are present, and Haiku's T3 shows drafts to their author only (`visible : Post -> Maybe User.UserId -> Bool`). Gaps the checker cannot see, recorded as design signals: qwen's T4 puts `class="dark"` on `<html>`, not `<body>`, and labels the buttons "Dark mode"/"Light mode"; qwen's T3 puts `requires user` on the public `/posts/{slug}` page.
 
 ## 5. What this changes in the plan
 
 1. **A retry must carry the previous answer.** With it, qwen's T2 went from repeating its error to a one-hunk fix. Done in this milestone; every later loop experiment depends on it.
-2. **Report every parse error and check past them** (problem 5). qwen's T3 failure is now all parse-layer: two mistakes whose messages give no reason (problem 4), with 15 errors queued behind them. Each retry can reveal only one layer, so one retry cannot get there.
+2. **Report every parse error and check past them** (problem 5). qwen's T3 failure is now all parse-layer: two mistakes whose messages give no reason (problem 4), with 15 errors queued behind them (`repros/qwen-t3-after-parse-fix/`). Each retry can reveal only one layer, so one retry cannot get there.
 3. **Fix the messages** (problems 1–4). Problem 2 is qwen's oldest habit (E4's "`Comment` inside `Post`"), and today the checker accepts the declaration and then suggests a fix that cannot work. Problem 4 is the one that actually stopped qwen in this run.
 4. **Count distinct mistakes, not diagnostics,** when comparing with hand-scored experiments, or dedupe same-span diagnostics in `report_loop.py`.
 5. Haiku and Sonnet are at the ceiling on T2–T4 in one shot. qwen3-coder remains the model to iterate on: rerun T3 with more retries once (2) and (4) are in, and run the Claude models several times per task, since a single run is one sample.

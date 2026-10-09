@@ -2,6 +2,7 @@
  "model": "ollama-qwen3-coder-30b",
  "task": "t2-newpage",
  "retries": 1,
+ "base": "examples/todos",
  "error": null,
  "rounds": [
   {

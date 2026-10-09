@@ -1,0 +1,1 @@
+{"code": "E0003", "severity": "error", "file": "app/Todo.alder", "line": 43, "col": 23, "endLine": 43, "endCol": 24, "message": "expected Todo, got { id: Todo.TodoId, title: Text.NonEmpty, done: Bool, due: Maybe _, owner: User.UserId, created: Time }"}

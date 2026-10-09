@@ -2,6 +2,7 @@
  "model": "claude-sonnet",
  "task": "t3-newapp",
  "retries": 1,
+ "base": null,
  "error": null,
  "rounds": [
   {

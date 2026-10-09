@@ -75,6 +75,10 @@ class LoopTests(unittest.TestCase):
         self.assertTrue((self.exp / "runs/fake/t/round0/app/App.alder").exists())
         self.assertIn("new", (self.exp / "runs/fake/t/round0/app/Todos/Index.alder").read_text())
         self.assertEqual((base / "app" / "Todos" / "Index.alder").read_text(), "module Todos.Index\n-- old\n")
+        self.assertEqual(s["base"], str(base))
+        self.assertEqual(json.loads((self.exp / "runs/fake/t/summary.json").read_text())["base"], str(base))
+        s2 = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t2", "task", "sys", FakeChecker(self.tmp, [(0, "", "")]).path, retries=0)
+        self.assertIsNone(s2["base"])
 
     def test_retry_prompt_includes_previous_files(self):
         # Every model call is a fresh process: the retry must carry the files it asks the model to fix.

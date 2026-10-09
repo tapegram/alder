@@ -2,6 +2,7 @@
  "model": "claude-sonnet",
  "task": "t4-appmsg",
  "retries": 1,
+ "base": null,
  "error": null,
  "rounds": [
   {

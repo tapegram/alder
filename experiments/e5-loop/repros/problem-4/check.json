@@ -1,0 +1,5 @@
+{"code": "E0001", "severity": "error", "file": "app/Todo.alder", "line": 10, "col": 7, "endLine": 10, "endCol": 12, "message": "expected a type, got `brand`"}
+{"code": "E0001", "severity": "error", "file": "app/Todo.alder", "line": 10, "col": 7, "endLine": 10, "endCol": 12, "message": "expected `,` or closing brace"}
+{"code": "E0001", "severity": "error", "file": "app/Todo.alder", "line": 10, "col": 7, "endLine": 10, "endCol": 12, "message": "expected end of line after declaration, got `brand`"}
+{"code": "E0001", "severity": "error", "file": "app/Todos/Index.alder", "line": 24, "col": 24, "endLine": 24, "endCol": 25, "message": "expected `,` or closing brace"}
+{"code": "E0001", "severity": "error", "file": "app/Todos/Index.alder", "line": 24, "col": 24, "endLine": 24, "endCol": 25, "message": "expected end of line after declaration, got `@`"}

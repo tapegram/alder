@@ -249,7 +249,8 @@ edit, but only once the retry carried the model's previous files. The
 first run of this matrix fed back diagnostics alone, and the models
 re-rolled instead of fixing (Haiku 1 → 3, Qwen unchanged). Qwen's T3
 failure is two parse mistakes whose messages give no reason, with 15 more
-errors hidden behind them because a parse error stops the compiler. So
+errors hidden behind them because a parse error stops the compiler
+(`experiments/e5-loop/repros/qwen-t3-after-parse-fix/`). So
 the M3 work is reporting past parse errors, plus four message fixes:
 reasons for parse errors, a table declared in another table's module,
 missing-import cascades, and an annotation hint for `let`-bound record

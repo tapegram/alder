@@ -1,0 +1,39 @@
+module Todo
+
+import User
+
+type TodoId = brand Text
+
+type Filter = All | Active | Completed
+
+table Todo {
+  id: brand Text @id,
+  title: Text.NonEmpty,
+  done: Bool = False,
+  due: Maybe Date,
+  owner: User.UserId @ref User,
+  created: Time @created,
+}
+
+matches : Filter -> Todo -> Bool
+matches filter todo = match filter {
+  All -> True,
+  Active -> not todo.done,
+  Completed -> todo.done,
+}
+
+filterLabel : Filter -> Text
+filterLabel filter = match filter {
+  All -> "All",
+  Active -> "Active",
+  Completed -> "Completed",
+}
+
+countOpen : List Todo -> Int
+countOpen todos = todos |> List.filter (\t -> not t.done) |> List.length
+
+test "countOpen ignores done todos" =
+  countOpen [
+    { id: TodoId "a", title: Text.NonEmpty "x", done: False, due: Nothing, owner: User.UserId "u", created: Time.epoch },
+    { id: TodoId "b", title: Text.NonEmpty "y", done: True, due: Nothing, owner: User.UserId "u", created: Time.epoch },
+  ] == 1

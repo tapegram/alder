@@ -200,7 +200,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     run_dir = exp / "runs" / model_label / task_name
     if run_dir.exists():
         shutil.rmtree(run_dir)
-    summary = {"model": model_label, "task": task_name, "retries": retries, "error": None, "rounds": [], "final_pass": False}
+    summary = {"model": model_label, "task": task_name, "retries": retries, "base": str(base) if base else None, "error": None, "rounds": [], "final_pass": False}
     user = task_text
     prev = pathlib.Path(base) if base else None
     for n in range(retries + 1):

@@ -1,0 +1,6 @@
+{"code": "E0011", "severity": "error", "file": "app/App.alder", "line": 6, "col": 36, "endLine": 6, "endCol": 56, "message": "session field `theme` has type `_`, which cannot be stored in a session"}
+{"code": "E0201", "severity": "error", "file": "app/App.alder", "line": 6, "col": 43, "endLine": 6, "endCol": 48, "message": "module `Theme` is not imported", "fix": {"line": 5, "col": 1, "endLine": 5, "endCol": 1, "replace": "import Theme\n"}}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 6, "col": 51, "endLine": 6, "endCol": 56, "message": "unknown constructor `Light`"}
+{"code": "E0201", "severity": "error", "file": "app/App.alder", "line": 20, "col": 46, "endLine": 20, "endCol": 56, "message": "module `Theme` is not imported", "fix": {"line": 5, "col": 1, "endLine": 5, "endCol": 1, "replace": "import Theme\n"}}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 27, "col": 37, "endLine": 27, "endCol": 42, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 34, "col": 41, "endLine": 34, "endCol": 46, "message": "unknown constructor `Light`"}

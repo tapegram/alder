@@ -56,7 +56,7 @@ Tasks are chosen to exercise different things:
 - **E2 revised** (`e2-revised/`): the E1-revised book, with and without the example app; added T4.
 - **E3 pitfalls** (`e3-pitfalls/`): does a "common mistakes" appendix help? No.
 - **E4 msgpath** (`e4-msgpath/`): path-less `msg`; end of the spike.
-- **E5 loop** (`e5-loop/`): first run with `alder check` in the loop (generate, check, one retry), T2–T4 × Qwen3-Coder, Haiku, Sonnet; scored by the checker.
+- **E5 loop** (`e5-loop/`): first run with `alder check` in the loop (generate, check, one retry), T2–T4 × Qwen3-Coder, Haiku, Sonnet; scored by the checker. `repros/` holds each compiler problem it found as an app plus `check.json`.
 
 ## Harness (M2)
 
@@ -72,7 +72,7 @@ python3 experiments/report_loop.py experiments/e5-loop > experiments/e5-loop/sco
 Summary shape:
 
 ```json
-{"model": "ollama:qwen3-coder:30b", "task": "t3-newapp", "retries": 1, "error": null,
+{"model": "ollama:qwen3-coder:30b", "task": "t3-newapp", "retries": 1, "base": null, "error": null,
  "rounds": [{"n": 0, "files": 9, "exit": 1, "errors": 3, "warnings": 0, "codes": {"E0101": 1, "E0003": 2}, "seconds": 41.2, "stderr": ""},
             {"n": 1, "files": 9, "exit": 0, "errors": 0, "warnings": 0, "codes": {}, "seconds": 38.0, "stderr": ""}],
  "final_pass": true}
