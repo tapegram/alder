@@ -71,7 +71,7 @@ letting pages send each other's messages. E2 confirmed the fix (Haiku,
 which had collided on `/logout` in E1, used `App.Logout` correctly) and
 added two refinements: `App.update` may `Rerender` the sending page (a
 theme switch should stay on the page it was clicked on; the server
-answers it with a 303 back to that page, chapter 6), and app-level messages type-check
+answers it with a redirect back to that page, chapter 6), and app-level messages type-check
 inside any `Html a`, so a shared layout can carry the buttons.
 
 ### Form state is in the request, not the Model **(untested)**
@@ -295,5 +295,15 @@ literals.
 - Should `Db.insert` accept a user-chosen `@id` (slug as primary key)?
 - Should `Task.succeed` be implicit for a final non-effect expression in
   an effect block?
-- Is `Query.notFound` the right way to 404 from `load`?
+- Is `Query.notFound` the right way to 404 from `load`? (`update` has the
+  same in `Task.notFound`, M3c.)
+- Should the language help with row ownership? The to-do example had
+  `load` checking that the user owns the page's todo, but `update` acting
+  on the ids its messages carried, unchecked: any user could toggle or
+  delete anyone's todo by posting an id (found in the M3c review, fixed
+  with an `owned` helper and `Task.notFound`, chapter 6, "Authorize in
+  `update` too"). A language-level helper, such as a table marked as
+  owned by a session field so that `Db.get`/`Db.update` on it check the
+  owner, would make the safe way the short way. Experiment E6 should show
+  whether agents make this mistake, before a feature is added for it.
 - Do agents need `List.map` with index, or is `List.indexed` enough?

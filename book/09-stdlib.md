@@ -178,4 +178,7 @@ Url.external : Text -> Page                     -- external link for href
 
 ## Query, Task, Db, Session, Log, Time, Random, Http
 
-See chapters 7 and 8.
+See chapters 7 and 8. `Query.notFound` and `Task.notFound` (both
+`: Query a` / `: Task a`, no arguments) stop the effect and answer 404 with
+`App.notFound`; a `Task` that ends in `Task.notFound` is rolled back like
+any failed `Task`.

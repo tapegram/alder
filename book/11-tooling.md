@@ -77,15 +77,16 @@ part of `dir` once it is made absolute (so `alder build .` inside
 1. Check the program. With errors or holes, print them and exit 1, as
    `alder check` would.
 2. Generate the Go into `build/<app>/`, as `--emit` does (below).
-3. Replace `build/<app>/adapters/` with copies of the `.go` files in
-   `<dir>/adapters/`, and `build/<app>/static/` with a copy of
-   `<dir>/static/`.
+3. Replace `build/<app>/adapters/` with copies of the `.go` files at the
+   top level of `<dir>/adapters/` (subdirectories and other files are not
+   copied), and `build/<app>/static/` with a copy of `<dir>/static/`.
 4. Write `build/<app>/cmd/main.go`, the program's `main`.
 5. Run `go vet` on the whole module, then `go build`, which writes
    `build/<app>/<app>`.
 
-If the app declares capabilities and has no `adapters/` directory, nothing
-is written, and the build exits 1 naming each interface to implement:
+If the app declares capabilities and has no `adapters/` directory (or one
+with no `.go` file at its top level), nothing is written, and the build
+exits 1 naming each interface to implement:
 
 ```
 examples/todos needs an adapters package: create adapters/caps.go with `func Caps() app.Caps` implementing: Auth.Login.Password (interface app.Cap__Auth__Login__Password)
@@ -103,32 +104,43 @@ error of the compiler and is reported as one, with Go's output. (If
 `build/<app>/` holds Go files alder did not write, the message names them
 instead.)
 
-The executable reads four environment variables
+The executable reads five environment variables
 (`build/<app>/cmd/main.go`):
 
 | Variable | Meaning | Default |
 |---|---|---|
 | `ALDER_ADDR` | the address to listen on | `:8080` |
 | `ALDER_DB` | the SQLite database file (`:memory:` for none on disk) | `<app>.db` in the working directory |
-| `ALDER_SECRET` | the session cookie key, at least 16 bytes | unset or shorter: a public development key, with a warning |
+| `ALDER_SECRET` | the session cookie key, at least 16 bytes | required; in development mode, unset or shorter means a public development key, with a warning |
 | `ALDER_DEV` | `1` turns on development mode | off |
+| `ALDER_STATIC` | the directory served under `/static/` | the `static/` directory next to the executable |
 
 Development mode shows a failed request's error text in the page (as an
-HTML comment), logs every effect step, and lets a changed schema drop and
-recreate the tables (chapter 8). Static files are served from the
-`static/` directory next to the executable. Once it is listening, the
-server prints the address:
+HTML comment), logs every effect step, lets a changed schema drop and
+recreate the tables (chapter 8), and accepts a missing `ALDER_SECRET`.
+Once it is listening, the server prints the address:
 
 ```
-$ ALDER_ADDR=127.0.0.1:8080 ./build/todos/todos
-warn: warning: ALDER_SECRET not set; using the development cookie key
+$ ALDER_DEV=1 ALDER_ADDR=127.0.0.1:8080 ./build/todos/todos
+warn: ALDER_SECRET is not set (or shorter than 16 bytes); dev mode signs sessions with the public development cookie key
 listening on 127.0.0.1:8080
 ```
 
-(The `warn:` line is logged with a date and time in front.) In production,
-set `ALDER_SECRET` to a long random string (at least 16 bytes; a shorter
-one is ignored with the same warning), and keep it: changing it logs
-everyone out.
+(The `warn:` line is logged with a date and time in front.) Outside
+development mode a missing or short `ALDER_SECRET` stops the server before
+it listens:
+
+```
+$ ./build/todos/todos
+alder: ALDER_SECRET must be set to at least 16 bytes outside dev mode (ALDER_DEV=1)
+```
+
+and it exits 1. In production, set `ALDER_SECRET` to a long random string
+and keep it: changing it logs everyone out.
+
+The server waits at most 10 seconds for a request's headers. On `SIGINT`
+(Ctrl-C) or `SIGTERM` it stops accepting connections, gives the requests
+in flight up to 5 seconds to finish, and exits 0.
 
 `build/<app>/` then holds the generated package (one
 `<Module>_alder.go` per module, `app__alder.go`, `routes__alder.go`,
@@ -205,6 +217,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0012 | a type, table, form or component in a page module or `App` named like a generated type: `Params`, `Msg`, `Session`, or `<Msg>Params` for a declared `msg` | — |
 | E0014 | two module names that differ only in case (`Ab` and `AB`): their files would be one on a case-insensitive file system | — |
 | E0015 | a module whose first name segment is exactly `Route`, `Cap` or `Args` (`Cap.Mail` is refused, `Caps.Mail` and `My.Cap` are fine): the generated Go uses those prefixes for exported names | — |
+| E0016 | two pages answer the same path (`/x/{id}` and `/x/{slug}`, or `/x` and `/x/`) | — |
 | E0101 | `Db.get T x` where `x` is not `Id T` | `Db.from T \|> Db.where (T.<col>.eq x) \|> Db.first` when a column of `x`'s type exists |
 | E0102 | field access on a `Maybe` | `match` skeleton |
 | E0201 | name from a module that isn't imported | `import M` |
@@ -223,6 +236,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0602 | `case ... of`, `let ... in`, tuple, alias | the Alder form (in message) |
 | W0001 | unused import | — |
 | W0002 | typed hole (`?name`) with its expected type | — |
+| W0003 | a form field whose decoding errors no `<Errors field>` and no `<Errors form />` of its form would show | — |
 
 ## Holes
 

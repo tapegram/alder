@@ -780,7 +780,8 @@ packages the generated code imports. There are seven.
 - **`rt/html`** (`rt/html/html.go`) builds HTML trees (`El`, `Text`,
   `Raw`, `A`, `Nodes`) and renders them. `Render` is where escaping
   happens: a text node goes through `html.EscapeString`, and so does every
-  attribute value. A `Raw` node is written as is.
+  attribute value, and a carriage return becomes `&#13;`. A `Raw` node is
+  written as is.
 - **`rt/std`** (`rt/std/*.go`) has one Go function per stdlib function:
   `std.ListMap` is `List.map`, `std.TextToUpper` is `Text.toUpper`. A call
   lets Go infer a generic one's type arguments; a stdlib function used as
@@ -802,13 +803,14 @@ packages the generated code imports. There are seven.
   `web.NonEmpty`, …). Chapter 6, "How a request runs", describes it from
   the outside.
 - **`rt/datastar`** (`rt/datastar/datastar.go`) serves the Datastar
-  script, which is built into the binary, and writes the one kind of
-  server-sent event Alder uses, `PatchBody`.
+  script, which is built into the binary, and writes the server-sent
+  events Alder answers with: `PatchBody`, which replaces the `<body>`, and
+  `Navigate`, which sends the browser to another URL.
 
 The generated program is small because the runtime is the library. All of
-`examples/todos` emits about 1,450 lines of Go across ten files, plus the
-58-line `cmd/main.go`, and those lines mostly call into `rt`. The largest
-file, `routes__alder.go` (580 lines), is the request handlers of the last
+`examples/todos` emits about 1,440 lines of Go across ten files, plus the
+81-line `cmd/main.go`, and those lines mostly call into `rt`. The largest
+file, `routes__alder.go` (560 lines), is the request handlers of the last
 part of this section.
 
 The rest of this section follows one `load` from source to SQL, then one
@@ -1144,8 +1146,10 @@ SQLite store, calls `Ensure`, and runs its `load` and `update` with
 `eff.Run`: log in, add, toggle, delete, an add that is rolled back by a
 later `Task.fail`, log out, a theme switch whose session change is undone
 by a later `Task.fail`. After each one it checks the database and the
-trace of the steps that ran, `calls("toggle", "Db.update Todo")`: exactly
-the kind of check chapter 10 promises `alder test` will make.
+trace of the steps that ran, `calls("toggle", "Db.get Todo", "Db.update
+Todo")` (the to-do app's `Toggle` first reads the row to check its owner,
+chapter 6): exactly the kind of check chapter 10 promises `alder test`
+will make.
 
 ### A request: `GET` and `POST`
 
@@ -1155,7 +1159,7 @@ to-do app (chapter 2): a `GET` of the list, then a `POST` of the Done
 button, sent by Datastar. Build the app and run it with the commands in
 chapter 11, log in as `a@b.c` with the password `password`, and add a
 todo called Milk. The bytes below are what that server sent; the id
-`DJ92YHT4U9KYifXwI_Tz` is random and differs every run.
+`Em2Gv4v9BaA0Wf9ujESN` is random and differs every run.
 
 **`GET /?filter=Active`.** The router's `ServeHTTP` (`rt/web/router.go`)
 sees that the path is neither the Datastar script nor under `/static/`. It
@@ -1232,7 +1236,10 @@ func params__Todos__Index(p Todos__Index__Params) []rt.KV {
 then calls `html.RenderWith(node, state)`. Every message attribute in the
 tree is an `html.MsgAttr`, a value that is only turned into text now: its
 `rt.MsgRef` (module, message, the message's own parameters) is given the
-page's parameters with `_p.` in front (`MsgRef.URL` in `rt/core.go`).
+page's parameters with `_p.` in front (`MsgRef.URL` in `rt/core.go`). A
+`<button>` with a `click` is rendered as a click button here too: the
+renderer knows whether it is inside a `<form>`, and wraps the button in a
+form of its own when it is not (chapter 6, "With and without JavaScript").
 Last, `document` writes `<!doctype html>` and the page, with the Datastar
 script tag put after `<head>`. The answer begins like this (without the
 `Date` and `Content-Length` headers, and with the page cut after
@@ -1241,7 +1248,7 @@ script tag put after `<head>`. The answer begins like this (without the
 ```
 HTTP/1.1 200 OK
 Content-Type: text/html; charset=utf-8
-Set-Cookie: alder_session=eyJUaGVtZSI6IkxpZ2h0IiwiVXNlciI6eyJPayI6dHJ1ZSwiVmFsIjoiVzlDaVpuREhCMDFsVG9YQmxWU0gifX0.ZTyy0P6_3amBrnNmm1GAAGdTIVNh6tlqxc4knveyJvs; Path=/; Expires=Sun, 08 Nov 2026 18:18:53 GMT; Max-Age=2592000; HttpOnly; SameSite=Lax
+Set-Cookie: alder_session=eyJleHAiOjE3OTQxNjUwMzIsInNlc3Npb24iOnsiVGhlbWUiOiJMaWdodCIsIlVzZXIiOnsiT2siOnRydWUsIlZhbCI6Im9WNUV0NU5aVVBzek9lTG5PU1NCIn19fQ.kfTeo6dGqWQphtqM3E1aJqqK_hG4xPmba5-_b6mEFs8; Path=/; Expires=Sun, 08 Nov 2026 19:10:32 GMT; Max-Age=2592000; HttpOnly; SameSite=Lax
 
 <!doctype html>
 <html class=""><head><script type="module" src="/_alder/datastar.js"></script><meta charset="utf-8" /><title>Todos</title>
@@ -1250,17 +1257,19 @@ Set-Cookie: alder_session=eyJUaGVtZSI6IkxpZ2h0IiwiVXNlciI6eyJPayI6dHJ1ZSwiVmFsIj
 and has the Done button with its message URL:
 
 ```html
-<button data-on:click="@post(&#39;/_m/Todos.Index/Toggle?id=DJ92YHT4U9KYifXwI_Tz&amp;_p.filter=Active&#39;)">Done</button>
+<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="@post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;})"><button type="submit">Done</button></form>
 ```
 
 The `&#39;` and `&amp;` are the escaping of section 8's first part: the
-attribute holds `@post('/_m/Todos.Index/Toggle?id=…&_p.filter=Active')`.
+attribute holds
+`@post('/_m/Todos.Index/Toggle?id=…&_p.filter=Active', {contentType: 'form'})`.
 
-**`POST /_m/Todos.Index/Toggle?id=DJ92YHT4U9KYifXwI_Tz&_p.filter=Active`.**
-Click Done, and Datastar runs that `@post`. It sends the header
-`Datastar-Request: true` and a small JSON body. The router matches the
-`POST` route with pattern `/_m/Todos.Index/Toggle`. The JSON body is not a
-form, so `rq.Form` is empty. `rq.Datastar` is true. The handler,
+**`POST /_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&_p.filter=Active`.**
+Click Done, and the button submits its little form; Datastar catches the
+submission and runs that `@post`. It sends the header
+`Datastar-Request: true` and the form's fields, url-encoded: there are
+none. The router matches the `POST` route with pattern
+`/_m/Todos.Index/Toggle`, so `rq.Form` is empty. `rq.Datastar` is true. The handler,
 `Route__Todos__Index__Toggle`, is the one quoted in chapter 6. It calls
 `rt.PageParams(rq.Query)`, which keeps only the `_p.` keys with the prefix
 cut off, so `filter=Active`, and decodes them with the same
@@ -1282,6 +1291,8 @@ func update__Todos__Index(rq *web.Request, params Todos__Index__Params, msg Todo
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
 	case nav.Tag == rt.NavReject && st != nil:
 		st.FormError = nav.Text
+	case !rq.Datastar:
+		return web.RedirectResponse(rt.PageAt("/", params__Todos__Index(params)), rq.Env.Session)
 	default:
 		st = &html.FormState{}
 	}
@@ -1298,14 +1309,17 @@ This is chapter 6's lifecycle, line by line:
 
 1. `page__Todos__Index` checks `requires` and runs `load`, so `update`
    gets the same `Model` the page showed.
-2. `eff.Run` with `eff.KTask` runs the `Toggle` arm exactly as "A `Task`:
-   `Toggle`" did: one transaction, one `UPDATE`, a commit, and `Nav`
-   `Rerender`. If the task failed, `route__fail` answers 500 (or 404) and
-   nothing is stored, since `Run` already rolled back the writes and the
-   session.
-3. `Rerender` takes the `default` branch: an empty `FormState`, then the
-   page's parameters, so the re-rendered buttons carry `_p.filter=Active`
-   again.
+2. `eff.Run` with `eff.KTask` runs the `Toggle` arm much as "A `Task`:
+   `Toggle`" did, with one step more in front: `owned` reads the row
+   (`Db.get Todo`, which begins the transaction) and checks that its
+   `owner` is the session's user, then one `UPDATE`, a commit, and `Nav`
+   `Rerender`. If the task failed, `route__fail` answers 500, or 404 for
+   `Task.notFound` (an id that is missing or someone else's), and nothing
+   is stored, since `Run` already rolled back the writes and the session.
+3. Under Datastar, `Rerender` takes the `default` branch: an empty
+   `FormState`, then the page's parameters, so the re-rendered buttons
+   carry `_p.filter=Active` again. (Without Datastar it stops at
+   `!rq.Datastar` instead, below.)
 4. `page__Todos__Index` runs a second time, now with `keep` set to the
    session the task left. `load` reads the database after the commit, so
    the new model has Milk done. If this second load fails, the 404 or 500
@@ -1327,31 +1341,65 @@ Set-Cookie: alder_session=…; Path=/; Expires=…; Max-Age=2592000; HttpOnly; S
 event: datastar-patch-elements
 data: selector body
 data: mode outer
-data: elements <body><nav><button data-on:click="@post(&#39;/_m/App/SwitchTheme?_p.filter=Active&#39;)">Dark mode</button></nav><main><h1>Todos</h1>…<ul id="todos"></ul><p id="summary">0 open</p>…</main></body>
+data: elements <body><nav><form method="post" action="/_m/App/SwitchTheme?_p.filter=Active" class="_alder-click" data-on:submit="@post(&#39;/_m/App/SwitchTheme?_p.filter=Active&#39;, {contentType: &#39;form&#39;})"><button type="submit">Dark mode</button></form></nav><main><h1>Todos</h1>…<ul id="todos"></ul><p id="summary">0 open</p>…</main></body>
 
 ```
 
 (without the `Date` and `Transfer-Encoding` headers, and shortened at each
 `…`). The rendered page has no line breaks, so the body
-is one `elements` line, and a blank line ends the event. Datastar finds
+is one `elements` line, and a blank line ends the event. (`PatchBody`
+turns every `\r\n` and lone `\r` into `\n` before it splits the lines, and
+the renderer writes a carriage return in text as `&#13;`: a line end
+inside your data can never end a `data:` line and start a field.) Datastar finds
 `body` in the page and morphs it into the new one: Milk is done, so it
 leaves the Active list, and the summary says `0 open`. No `<head>` and no
 doctype are sent.
 
 The same `POST` without the `Datastar-Request` header goes through the
-same handler. Only `write` differs: it sends the whole document, as for
-the `GET`. If the id names no row, `Db.update` fails the task, and under
-Datastar the 500 page's body arrives the same way, as a 200 event (in dev
-mode with `<!-- error: Db.update Todo: no row with id "nope" -->` before
-`</body>`).
+same handler, up to the `switch`: there `Rerender` meets `!rq.Datastar`
+and answers a 303 to the page the message came from, rebuilt from its
+parameters by `rt.PageAt("/", params__Todos__Index(params))`:
+
+```
+HTTP/1.1 303 See Other
+Location: /?filter=Active
+```
+
+The browser then `GET`s `/?filter=Active`, so its address bar shows the
+list, not the message URL, and a refresh does not post again. If the id
+names no row, or another user's, `owned` ends in `Task.notFound`, and under
+Datastar the 404 page's body arrives the same way as a re-render, as a 200
+event.
+
+A `Redirect` under Datastar is not a 303 either: `write` sends a 200 event
+from `datastar.Navigate` that appends a self-removing script calling
+`window.location.assign` with the URL, because the client's `fetch` would
+follow a 303 itself and leave the address bar behind. Clicking "Dark mode"
+on `/?filter=Active` (an App message whose `Rerender` goes back to the
+`Referer`) answers
+
+```
+HTTP/1.1 200 OK
+Cache-Control: no-cache
+Content-Type: text/event-stream
+Set-Cookie: alder_session=…; Path=/; Expires=…; Max-Age=2592000; HttpOnly; SameSite=Lax
+
+event: datastar-patch-elements
+data: selector body
+data: mode append
+data: elements <script data-effect="el.remove()">window.location.assign("/?filter=Active")</script>
+
+```
 
 `TestE2E_Todos` in `internal/gen/e2e_test.go` runs this whole scenario
 against the generated app on every `go test ./...`. Its program,
 `internal/gen/testdata/e2e_todos_test.go.txt`, checks that a Datastar
 answer starts with exactly
 `event: datastar-patch-elements\ndata: selector body\ndata: mode outer\ndata: elements <body>`
-and ends with `</body>\n\n`, and that the re-render after a `Toggle`
-sent from `/?filter=Completed` keeps that filter.
+and ends with `</body>\n\n`, that a `Redirect` under Datastar is exactly
+the navigation event above, that a `Toggle` sent without JavaScript from
+`/?filter=Completed` is a 303 back to that filter, and that another user
+posting the messages with a@b.c's id gets 404 every time.
 
 ### What is still to come
 
@@ -1449,7 +1497,7 @@ So to find a page's view, search for it:
 
 ```
 $ grep -n "func Todos__Index__view" build/todos/*.go
-build/todos/Todos__Index_alder.go:114:func Todos__Index__view(model Todos__Index__Model, session Todos__Index__Session) html.Node {
+build/todos/Todos__Index_alder.go:133:func Todos__Index__view(model Todos__Index__Model, session Todos__Index__Session) html.Node {
 ```
 
 Its first lines show the `<Layout.Page>` component call and the `<form>`

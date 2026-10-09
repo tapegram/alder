@@ -121,6 +121,21 @@ expression's type depends on the attribute:
 Event attributes are not HTML event names (`onclick`); they are `click` and
 `submit`, and they take a message, not a function.
 
+A `<button click={…}>` works with and without JavaScript. Outside a form it
+is rendered inside a small form of its own that posts the message:
+
+```html
+<form method="post" action="/_m/App/Logout" class="_alder-click" data-on:submit="@post(&#39;/_m/App/Logout&#39;, {contentType: &#39;form&#39;})"><button type="submit">Log out</button></form>
+```
+
+A form is a block element, so give the wrapper
+`form._alder-click { display: inline }` in your stylesheet to keep such
+buttons in line with the text around them. Inside a `<form submit>` (forms
+cannot nest) a `click` button is a submit button with its own
+`formaction` instead. A `click` on any other element, such as a `<li>`,
+needs JavaScript. Chapter 6, "With and without JavaScript", has the
+details.
+
 `data-*` and `aria-*` attributes take `Text`.
 
 ## Components
@@ -179,8 +194,10 @@ Inside `<form submit={Msg}>`, the `<Input>`, `<Select>`, `<Textarea>`, and
 ```
 
 `<Errors field="x" />` shows the errors for one field; `<Errors form />`
-shows form-level errors (from `Reject`). Each renders a list, empty until
-there is something to show, with one item per message:
+shows form-level errors (from `Reject`), then the errors of every field
+that has no `<Errors field>` of its own, each after the field's name. Each
+renders a list, empty until there is something to show, with one item per
+message:
 
 ```html
 <ul class="errors" data-errors="title"></ul>
@@ -197,15 +214,25 @@ Which component to use depends on the field's type:
 
 | Field type | Component | Renders |
 |---|---|---|
-| `Text`, brands of `Text`, `Int`, `Float`, `Date` | `<Input>` | `<input>` with a matching `type` |
+| `Text`, brands of `Text` | `<Input>` | `<input type="text">` |
+| `Text.Email` | `<Input>` | `<input type="email">` |
+| `Text.Url` | `<Input>` | `<input type="url">` |
+| `Text.Secret` | `<Input>` | `<input type="password">` |
+| `Int` | `<Input>` | `<input type="number">` |
+| `Float` | `<Input>` | `<input type="number" step="any">` (without `step` a browser takes only whole numbers) |
+| `Date` | `<Input>` | `<input type="date">` |
 | `Text` meant to be long | `<Textarea>` | `<textarea>` |
 | `Bool` | `<Input>` | checkbox |
 | union with no payloads | `<Select>` | `<select>` with one option per constructor, labeled by its name |
 | `Maybe` of any of these | same as the inner type | not `required` |
 
-A `Text.Email` field currently renders `type="text"`, like any other
-`Text`; the decoder still refuses a value that is not an email address.
-(Rendering `type="email"` is a planned follow-up.)
+The browser's `required` is set exactly when the decoder refuses a blank
+value, so the browser never blocks what the server would accept: not for
+a `Maybe`, a field with a default (blank is the default), a checkbox, plain
+`Text` (where `""` is a value) or a brand of `Text` without the stdlib's
+check; it is set for `Text.NonEmpty`, `Text.Email`, `Text.Url`,
+`Text.Secret`, `Int`, `Float`, `Date` and unions. The decoder still checks
+everything: the browser's checks are a convenience.
 
 `value={...}` on any of them takes the field's own type (`value={model.todo.priority}`
 for a `Select` over `Priority`), or `Maybe` of it.

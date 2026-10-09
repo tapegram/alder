@@ -75,6 +75,7 @@ Query.notFound : Query a            -- stop: respond 404 with App.notFound
 
 Task.succeed  : a -> Task a
 Task.fail     : Text -> Task a
+Task.notFound : Task a              -- fail: respond 404 with App.notFound
 Task.map      : (a -> b) -> Task a -> Task b
 Task.all      : List (Task a) -> Task (List a)
 ```
@@ -86,7 +87,10 @@ There is no `andThen`; use `let x <-` in a block.
 A `Task` can fail. `Task.fail "message"` fails explicitly; a capability may
 fail on its own (database down, email rejected). A failed task stops
 `update`, undoes everything it did (its database writes and its
-`Session.put` changes), and the runtime renders `App.error`. A task that
+`Session.put` changes), and the runtime renders `App.error`.
+`Task.notFound` fails the same way but answers 404 with `App.notFound`:
+use it when a message names something that is not there, or not the
+user's (chapter 6, "Authorize in `update` too"). A task that
 ends in `Reject` has not failed: its writes and session changes are kept
 (chapter 6). There is no `try`/`catch`:
 if a failure should be handled, the capability returns a `Result` instead
@@ -170,7 +174,7 @@ the block. `call` is one step that touches the outside world: a `Db.*`
 operation, a capability, `Time.now`, `Log.info`. It carries a name for the
 log, whether it writes, and the Go function that does the work. `fail` is
 `Task.fail` (and a `@unique` violation, chapter 8); `notFound` is
-`Query.notFound`. Building a tree does nothing. Only `eff.Run` does.
+`Query.notFound` or `Task.notFound`. Building a tree does nothing. Only `eff.Run` does.
 
 **Run is eager.** `eff.Run` (`rt/eff/run.go`) walks the tree node by node:
 at a `call` it runs the step right away, at a `bind` it remembers the
@@ -181,14 +185,18 @@ on. The
 
 ```alder
 Toggle p -> {
-  let _ <- Db.update Todo p.id (\t -> { t | done: not t.done })
+  let todo <- owned p.id session
+  let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
   Task.succeed Rerender
 },
 ```
 
-is a `bind` whose first part is the `call` named `Db.update Todo` and
-whose continuation returns `pure Rerender`. `Run` performs the update,
-then calls the continuation, then returns `Rerender`. Nothing is batched,
+is a `bind` whose first part is `owned p.id session` (itself a `bind`: the
+`call` named `Db.get Todo`, then a `match` that ends in `pure todo` or in
+`notFound`) and whose continuation is a second `bind`: the `call` named
+`Db.update Todo`, then `pure Rerender`. `Run` performs the read, checks
+the owner, performs the update, then returns `Rerender`; when `owned` ends
+in `notFound`, it stops there and nothing is written. Nothing is batched,
 reordered or run in parallel: steps run in the order the block lists
 them, one at a time.
 
@@ -202,7 +210,7 @@ capability or HTTP call made before the first database step holds no
 database lock: other requests' tasks run meanwhile. If the task produces
 its result, `Run` commits the transaction, if one was begun. If it fails
 in any way (`Task.fail`, `Db.update` on a row that doesn't exist,
-`Query.notFound`, an error from the database or a capability, or a Go
+`Query.notFound`, `Task.notFound`, an error from the database or a capability, or a Go
 panic), `Run` rolls the transaction back instead. `Db.get` finding
 nothing is not a failure: it produces `Nothing`. Either every write of an
 `update` happens or none does.
@@ -336,7 +344,7 @@ is one Go package, `package adapters`, and it must declare one function:
 func Caps() app.Caps
 ```
 
-`alder build` (chapter 11) copies the `.go` files of `adapters/` into
+`alder build` (chapter 11) copies the `.go` files at the top level of `adapters/` into
 `build/<app>/adapters/`, inside the generated Go module. There, the
 generated package is called `app`, so your code imports it as `"app"`, and
 the runtime as `"alder/rt"`, `"alder/rt/db"` and so on. The generated

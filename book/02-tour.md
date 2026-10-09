@@ -102,13 +102,24 @@ update msg model session = match msg {
     Task.succeed (Redirect (Todos.Index { filter: model.filter }))
   },
   Toggle p -> {
-    let _ <- Db.update Todo p.id (\t -> { t | done: not t.done })
+    let todo <- owned p.id session
+    let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
     Task.succeed Rerender
   },
   Delete p -> {
-    let _ <- Db.delete Todo p.id
+    let todo <- owned p.id session
+    let _ <- Db.delete Todo todo.id
     Task.succeed Rerender
   },
+}
+
+owned : Todo.TodoId -> Session -> Task Todo
+owned id session = {
+  let found <- Db.get Todo id
+  match found {
+    Just todo -> if todo.owner == session.user then Task.succeed todo else Task.notFound,
+    Nothing -> Task.notFound,
+  }
 }
 ```
 
@@ -116,6 +127,10 @@ update msg model session = match msg {
 next. `Rerender` re-runs `load` and `view` and patches the page in place.
 `Redirect` is a real HTTP redirect, used after a create so a refresh doesn't
 resubmit. The `match` must handle every `msg`, or the module won't compile.
+`owned` checks that the todo a message names belongs to the user before
+`Toggle` or `Delete` touches it: a message's id comes from the request, so
+`update` must not trust it (`Task.notFound` answers 404; chapter 6,
+"Authorize in `update` too").
 
 ```alder
 view : Model -> Session -> Html Msg

@@ -149,11 +149,16 @@ Every page is rendered as a full document. The layout component is
 ordinary Alder; the generated `<head>` gets the Datastar script tag and, in
 dev mode, the live-reload subscriber. After a message:
 
-- `Rerender`: run `load` and `view` again; if the request carries
-  Datastar's `Datastar-Request: true` header, respond with one SSE event
-  patching the whole `<body>` in morph mode; otherwise respond with the full
-  page (200).
-- `Redirect`: HTTP 303 in both cases (Datastar follows it).
+- `Rerender`: if the request carries Datastar's `Datastar-Request: true`
+  header, run `load` and `view` again and respond with one SSE event
+  patching the whole `<body>` in morph mode; otherwise respond with a 303
+  to the page (Post/Redirect/Get; see "Decisions recorded").
+- `Redirect`: without Datastar, HTTP 303. Under Datastar a 303 would be
+  followed inside the client's `fetch` and the new page morphed into the
+  old URL, so the answer is a 200 SSE event that navigates: a
+  `datastar-patch-elements` event appending to `body` a self-removing
+  `<script data-effect="el.remove()">window.location.assign("<url>")</script>`
+  (see "Decisions recorded").
 - `Reject text`: same as `Rerender` with the form-level error attached.
 - form decode failure: same as `Rerender` with field errors attached;
   `update` is not called.
@@ -255,7 +260,8 @@ Each milestone gets its own implementation plan.
   repo; publishing `rt` as a module is out of scope.
 - The dev watcher polls (no fsnotify dependency in the compiler).
 - The dev key for cookies is fixed and printed as a warning; `ALDER_SECRET`
-  overrides it.
+  overrides it. (Superseded in the M3c final fix wave: the dev key is used
+  only in dev mode; production requires `ALDER_SECRET`, below.)
 - `Dict k v` takes keys of any type (M3a fix wave, C2): `rt.Dict[K, V any]`
   keys its map by the canonical encoding `rt.Key(k)` (a `Time` as its UTC
   instant, lists and records structurally, a nil list as the empty list),
@@ -400,19 +406,33 @@ Each milestone gets its own implementation plan.
 - `Rerender` (and `Reject`) from `App.update` is a 303 back to the
   `Referer`'s path and query (`rt.BackURL`, `/` without one); App has no
   page to render. A `Reject` text and the errors of a form on an App
-  message are not shown. `Redirect` is a 303 to its page.
+  message are not shown (dropped on the redirect). `Redirect` is a 303 to
+  its page. Under Datastar each of these 303s is the navigation event
+  below.
 - The server's address is `ALDER_ADDR` (default `:8080`; it supersedes
-  `ALDER_PORT` in "Dev loop" above); with `ALDER_DB` (default `<app>.db`), `ALDER_SECRET` and
-  `ALDER_DEV=1` these are the environment of the generated `cmd/main.go`,
-  which prints `listening on <addr>` once bound.
-- Session cookie format: `alder_session` = base64url(JSON) "." base64url(
-  HMAC-SHA256(key, JSON)), unpadded; signed, not encrypted (a `Text.Secret`
-  must never be stored in the session). The JSON is an object keyed by Go
-  field name; a payload-less union is stored by constructor name; decode
-  starts from the defaults and a missing or undecodable field keeps its
-  default; a cookie that does not verify is the default session. Key:
-  `ALDER_SECRET` of at least 16 bytes, else the public dev key and a
-  warning logged once at startup. Attributes: `HttpOnly`, `SameSite=Lax`,
+  `ALDER_PORT` in "Dev loop" above); with `ALDER_DB` (default `<app>.db`), `ALDER_SECRET`,
+  `ALDER_DEV=1` and `ALDER_STATIC` (default: `static/` beside the
+  executable) these are the environment of the generated `cmd/main.go`,
+  which prints `listening on <addr>` once bound. It serves with an
+  `http.Server` whose `ReadHeaderTimeout` is 10 s and, on SIGINT or
+  SIGTERM, shuts down gracefully (5 s for requests in flight, exit 0).
+- Session cookie format: `alder_session` = base64url(P) "." base64url(
+  HMAC-SHA256(key, P)), unpadded, where the signed payload P is
+  `{"exp":<unix seconds>,"session":<session JSON>}` (M3c final fix wave,
+  I6); signed, not encrypted (a `Text.Secret` must never be stored in the
+  session). The session JSON is an object keyed by Go field name; a
+  payload-less union is stored by constructor name; decode starts from the
+  defaults and a missing or undecodable field keeps its default; a cookie
+  that does not verify, whose `exp` has passed, or that has no `exp` is
+  the default session. `exp` is the time of the store plus 30 days,
+  renewed on every store, so the server revokes a copied cookie after 30
+  days whatever the browser does. Key: `ALDER_SECRET` of at least 16
+  bytes. Outside dev mode a missing or shorter secret is refused:
+  `web.CheckSecret`, called first by the generated `Serve`, returns
+  "ALDER_SECRET must be set to at least 16 bytes outside dev mode
+  (ALDER_DEV=1)", `cmd/main.go` prints it and exits 1, and `web.NewRouter`
+  panics on it (M3c final fix wave, C2). Only in dev mode is the public dev
+  key used, with a warning logged once at startup. Attributes: `HttpOnly`, `SameSite=Lax`,
   `Path=/`, `Max-Age` 30 days, `Secure` under TLS or
   `X-Forwarded-Proto: https`. Stored on every rendered `GET` and every
   answer after a successful `update`; on a 404/500 only when a successful
@@ -422,7 +442,70 @@ Each milestone gets its own implementation plan.
   (including an unknown route and a recovered panic) is answered like a
   `Rerender`, status 200 with one `datastar-patch-elements` event of the
   failure page's `<body>`, because the Datastar client ignores non-2xx
-  answers. A `Redirect` stays a 303. The router injects the Datastar
-  script tag after the first `<head>` of every document it writes, so
-  layouts stay plain Alder. A no-JS `Rerender` answers 200 at the message
-  URL, so a refresh resubmits (book chapter 6 says so).
+  answers. The router injects the Datastar script tag after the first
+  `<head>` of every document it writes (else after `<html>`, else before
+  the last `</body>`, else first), so layouts stay plain Alder.
+- Datastar redirect = navigation event (M3c final fix wave, C1). Under
+  `Datastar-Request: true` every 303 the router would write (`Redirect`,
+  `requires` → `App.login`, App messages) is instead a 200
+  `datastar-patch-elements` event, `selector body`, `mode append`,
+  `elements <script data-effect="el.remove()">window.location.assign(<url
+  as a JSON string>)</script>` (`datastar.Navigate`; what the official SDKs
+  do; `data-effect` and the `el` binding are in the vendored v1.0.0
+  bundle, and appended scripts are executed). The session is stored on
+  that response as on the 303. The generated handlers are unchanged: the
+  router decides.
+- SSE line ends (C3). `PatchBody`/`Navigate` turn `\r\n` and a lone `\r`
+  into `\n` before splitting the elements into `data:` lines, and the HTML
+  renderer writes `\r` in text and attribute values as `&#13;`, so no user
+  text can end a data line and inject an SSE field.
+- Post/Redirect/Get for a no-JS `Rerender` (I2). Without Datastar, a page
+  message's `Rerender` (and a `Reject` of a message without a form)
+  answers 303 to the page URL rebuilt from the decoded page parameters
+  (`rt.PageAt(pattern, params__M(params))`); form errors and a form's
+  `Reject` stay 200 re-renders, since they must show state.
+- Click buttons without JavaScript (I3). The renderer (not the emitter, so
+  components and computed HTML are covered too) renders a `<button>` with
+  a `data-on:click` message attribute outside any `<form>` as
+  `<form method="post" action="<url>" class="_alder-click"
+  data-on:submit="@post('<url>', {contentType: 'form'})"><button
+  type="submit" …>…</button></form>`, and inside a `<form>` as `<button
+  type="submit" formaction="<url>" formmethod="post" formnovalidate
+  data-on:click__prevent="@post('<url>')" …>`. Deviation from the review
+  ruling: inside a form the Datastar action has no `{contentType: 'form'}`
+  and the button has `formnovalidate`, because Datastar's form mode runs
+  the enclosing form's `checkValidity()` (and the browser's native
+  submission validates too), which would block a click button whenever a
+  `required` field of the surrounding form is empty; the enclosing form's
+  fields are therefore posted only by the no-JS path, and a message without
+  a form ignores them. Other elements with `click` keep
+  `data-on:click="@post('<url>')"` (JavaScript only).
+- Form state belongs to one form (I1). `html.FormState` carries `Msg`, the
+  posting message's key (`rt.MsgKey(path, query)`: path plus its own
+  parameters, sorted, `_p.` keys dropped); a control shows the state only
+  inside a `<form>` whose message key (`rt.MsgRef.Key`, or the literal
+  action's) equals it, and only for its own form type; a state without
+  `Form` or `Msg` matches nothing. Errors of a field without an `<Errors
+  field>` in that form are listed by `<Errors form />` after the field's
+  name (M2); the checker warns W0003 for a field with neither.
+- Route precedence (I4). `web.NewRouter` sorts routes by specificity —
+  segment by segment from the left, a literal before a parameter; equally
+  specific patterns keep their declaration order — so `/x/new` is matched
+  before `/x/{id}` whatever the module order. The checker rejects two
+  pages answering the same pattern (parameter names and a trailing slash
+  ignored) with E0016 "pages `A` and `B` both answer `/x/{id}`".
+- Browser validation follows the decoder (I5): `Float` inputs get
+  `step="any"`, `Text.Email`/`Text.Url` render `type="email"`/`"url"`, and
+  `required` is set only when the decoder refuses a blank value (not for a
+  `Maybe`, a field with a default, a checkbox, plain `Text`, or an app
+  brand of `Text`).
+- `Task.notFound : Task a` (C4) mirrors `Query.notFound`: it lowers to
+  `ir.EffNotFound` and runs as `eff.NotFound`, so the `Task` rolls back and
+  the route answers 404. The to-do example authorizes in `update`
+  (`owned`), and `Todos.Show`'s messages carry no id: they act on the
+  `load`-authorized `model.todo`.
+- A `Bool` URL parameter is strict (M3, `web.BoolParam`): `True`/`False`,
+  `true`/`false`, `1`/`0` or absent; anything else is a 404. A checkbox
+  keeps the lenient `web.Bool`.
+- `alder build` treats an `adapters/` without top-level `.go` files as
+  absent (M1); only top-level `.go` files are copied.
