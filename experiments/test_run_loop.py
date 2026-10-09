@@ -217,6 +217,24 @@ class BuildTests(unittest.TestCase):
         self.assertIn("does not vet", (self.exp / "runs/fake/t/round0/build.stderr.txt").read_text())
         self.assertTrue(json.loads((self.exp / "runs/fake/t/summary.json").read_text())["compiler_bug"])
 
+    def test_build_exit1_is_fail_with_retry(self):
+        refusal = "alder build: the program has 1 typed hole(s); fill them before building\n"
+        fa = FakeAlder(self.tmp, [(0, "", ""), (0, "", "")], [(1, refusal), (1, refusal)])
+        model = rl.FakeModel([GOOD, GOOD])
+        s = rl.run_one(self.exp, model, "fake", "t", "task", "sys", fa.path, retries=1, build=True)
+        self.assertEqual(len(model.prompts), 2)
+        self.assertEqual(s["rounds"][0]["build"]["exit"], 1)
+        self.assertFalse(s["rounds"][0]["build"]["ok"])
+        self.assertFalse(s["final_pass"])
+        self.assertNotIn("compiler_bug", s)
+        p = model.prompts[1]
+        self.assertIn("The program type-checks but `alder build` refused it; fix the cause below.", p)
+        self.assertIn("BUILD OUTPUT", p)
+        self.assertIn("typed hole(s); fill them before building", p)
+        self.assertLess(p.index("COMPILER FEEDBACK"), p.index("BUILD OUTPUT"))
+        import report_loop as rp
+        self.assertIn("| fake | t | 0 (build ✗) | 0 (build ✗) | fail |", rp.markdown(rp.rows([s])))
+
     def test_build_skipped_when_check_fails(self):
         fa = FakeAlder(self.tmp, [(1, ERR, "")], [])
         s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", fa.path, retries=0, build=True)

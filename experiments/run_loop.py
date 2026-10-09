@@ -195,7 +195,11 @@ def render_diags(diags, sources):
     return "\n".join(out)
 
 
-def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles: int, rejected=()) -> str:
+BUILD_REFUSED = "The program type-checks but `alder build` refused it; fix the cause below."
+
+
+def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles: int, rejected=(), build_output=None) -> str:
+    """`build_output`, when given, is what `alder build --emit` printed when it refused (exit 1) a clean program."""
     sources = {}
     for f in (round_dir / "app").rglob("*.alder"):
         sources[str(f.relative_to(round_dir))] = f.read_text()
@@ -203,8 +207,14 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
         feedback = "Your previous answer contained no files (no `--- file: app/... ---` sections were found)."
     elif diags:
         feedback = "The compiler reported these errors in your previous answer:\n\n" + render_diags(diags, sources)
+    elif build_output is not None:
+        feedback = BUILD_REFUSED
     else:
         feedback = "The compiler could not check your previous answer:\n\n" + stderr.strip()
+    if build_output is not None:
+        if diags:
+            feedback += "\n\n" + BUILD_REFUSED
+        feedback += "\n\n====================  BUILD OUTPUT  ====================\n" + build_output.strip()
     if rejected:
         feedback += ("\n\nThese paths were rejected: " + ", ".join(rejected) +
                      "; files must be `app/<Module>.alder`.")
@@ -238,8 +248,10 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     """`base`, if given, is a directory whose `app/` seeds round 0 (for tasks that modify an existing app).
 
     With `build`, a clean round also runs `alder build --emit`; the run passes only if that succeeds.
-    A build failure after a clean check is a compiler bug, not the model's: it is recorded
-    (`compiler_bug`, round<N>/build.stderr.txt) and the task stops there, with no retry."""
+    A build that exits 2 (internal error, generated Go that does not vet) after a clean check is a
+    compiler bug, not the model's: it is recorded (`compiler_bug`, round<N>/build.stderr.txt) and the
+    task stops there, with no retry. Exit 1 (holes, or anything else the build refuses with
+    diagnostics) is an ordinary failed round: the retry prompt carries the build's output."""
     run_dir = exp / "runs" / model_label / task_name
     if run_dir.exists():
         shutil.rmtree(run_dir)
@@ -271,17 +283,21 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                 rnd[k] = meta[k]
         summary["rounds"].append(rnd)
         clean = exit_code == 0 and rnd["errors"] == 0
+        build_output = None
         if clean and build:
             bexit, bstderr, bstdout = run_build(alder, round_dir)
             rnd["build"] = {"ok": bexit == 0, "exit": bexit, "stderr": bstderr[-4000:]}
             if bexit != 0:
+                build_output = bstderr + (("\n" + bstdout) if bstdout.strip() else "")
                 (round_dir / "build.stderr.txt").write_text(bstderr + (("\n--- stdout ---\n" + bstdout) if bstdout.strip() else ""))
-                summary["compiler_bug"] = True
-                break
+                if bexit != 1:   # 2: internal error / does not vet — the compiler's fault
+                    summary["compiler_bug"] = True
+                    break
+                clean = False
         if clean:
             summary["final_pass"] = True
             break
-        user = retry_prompt(task_text, round_dir, diags, stderr, nfiles, rejected)
+        user = retry_prompt(task_text, round_dir, diags, stderr, nfiles, rejected, build_output=build_output)
         prev = round_dir
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=1) + "\n")
@@ -297,7 +313,7 @@ def main(argv=None):
     ap.add_argument("--prompt", default="prompt.md")
     ap.add_argument("--alder", default=None, help="path to the alder binary (default: build it)")
     ap.add_argument("--base", default=None, help="directory whose app/ seeds round 0 (modification tasks, e.g. examples/todos for t2)")
-    ap.add_argument("--build", action="store_true", help="after a clean check, run `alder build --emit`; the run passes only if it succeeds")
+    ap.add_argument("--build", action="store_true", help="after a clean check, run `alder build --emit`; the run passes only if it succeeds (exit 2 = compiler bug, stop)")
     a = ap.parse_args(argv)
     exp = pathlib.Path(a.exp)
     system = (exp / a.prompt).read_text()
