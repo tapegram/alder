@@ -1,0 +1,2 @@
+app/M.alder:6:16 E0003 expected Int, got Text
+app/M.alder:9:11 E0003 expected M.Box Int, got M.Box Text

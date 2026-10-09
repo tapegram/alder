@@ -49,9 +49,13 @@ type TypeDecl struct {
 	Union        *UnionType
 }
 
-// RecordType is a record's shape. Name == "" means an anonymous (structural) record.
+// RecordType is a record's shape. Name == "" means an anonymous (structural) record. Params are
+// a nominal record's type parameter names (`type Box a = { item: a }` → ["a"]); its fields
+// mention them as types.Param. A use of the record at arguments (`Box Int`) is the types.Record
+// instance with Args, whose fields have the parameters substituted.
 type RecordType struct {
 	Module, Name string
+	Params       []string
 	Fields       []FieldT // in declaration order
 }
 

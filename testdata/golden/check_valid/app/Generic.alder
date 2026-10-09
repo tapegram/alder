@@ -1,0 +1,28 @@
+module Generic
+
+type Box a = { item: a, label: Text }
+
+type Tree a = { value: a, kids: List (Tree a) }
+
+type Holder = { ints: Box Int, texts: Box Text }
+
+item : Box a -> a
+item b = b.item
+
+mk : a -> Box a
+mk x = { item: x, label: "made" }
+
+relabel : Box a -> Box a
+relabel b = { b | label: "re" }
+
+holder : Holder
+holder = { ints: { item: 1, label: "i" }, texts: mk "t" }
+
+total : Int
+total = item holder.ints + Text.length (item holder.texts)
+
+size : Tree a -> Int
+size t = 1 + List.foldl (\k acc -> acc + size k) 0 t.kids
+
+leaves : Int
+leaves = size { value: "root", kids: [{ value: "leaf", kids: [] }] }

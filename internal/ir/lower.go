@@ -123,10 +123,16 @@ func (l *lowerer) eraseT(t types.Type) types.Type {
 		if r, ok := l.erased[t]; ok {
 			return r
 		}
-		r := &types.Record{Module: t.Module, Name: t.Name, Anonymous: t.Anonymous}
+		r := &types.Record{Module: t.Module, Name: t.Name, Anonymous: t.Anonymous, Params: t.Params}
 		l.erased[t] = r
 		for _, f := range t.Fields {
 			r.Fields = append(r.Fields, types.Field{Name: f.Name, Type: l.eraseT(f.Type), HasDefault: f.HasDefault})
+		}
+		if len(t.Args) > 0 {
+			r.Args = l.eraseList(t.Args)
+		}
+		if t.Def != nil {
+			r.Def = l.eraseT(t.Def).(*types.Record)
 		}
 		return r
 	case *types.Union: // constructors too, so no brand is reachable from any type in the IR
@@ -282,6 +288,9 @@ func (l *lowerer) declareTypes() {
 		l.out.Modules = append(l.out.Modules, mod)
 		addRecord := func(n string, t types.Type, fields []*syntax.Field) *RecordType {
 			rt := &RecordType{Module: name, Name: n}
+			if r, ok := t.(*types.Record); ok {
+				rt.Params = r.Params
+			}
 			l.records[key(name, n)] = rt
 			mod.Types = append(mod.Types, &TypeDecl{Module: name, Name: n, Record: rt})
 			l.recordFields(name, rt, t, fields)

@@ -183,7 +183,10 @@ func (d *dumper) rt(r *RecordType) string {
 func (d *dumper) typeDecl(t *TypeDecl) *sx {
 	name := t.Module + "." + t.Name
 	if t.Record != nil {
-		x := list(2, atom("record"), atom(name))
+		x := list(2+len(t.Record.Params), atom("record"), atom(name))
+		for _, p := range t.Record.Params {
+			x.items = append(x.items, atom(p))
+		}
 		for _, f := range t.Record.Fields {
 			fx := list(2, atom(f.Name), atom(d.ty(f.Type)))
 			if f.Default != nil {

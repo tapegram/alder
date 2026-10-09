@@ -963,3 +963,31 @@ func TestTree(t *testing.T) {
 }
 `)
 }
+
+// Generic records (C6): declared with Go type parameters, instantiated at each use; the
+// gen_generic golden also runs.
+func TestGen_RunGenericRecords(t *testing.T) {
+	files := emit(t, "../../testdata/golden/gen_generic")
+	runGo(t, files, `package app
+
+import "testing"
+
+func TestGeneric(t *testing.T) {
+	if B__n != 3 {
+		t.Errorf("n = %d", B__n)
+	}
+	if B__s != "xttwo" {
+		t.Errorf("s = %q", B__s)
+	}
+	if B__same { // labels "i" and "made" differ
+		t.Error("same is true")
+	}
+	if B__byMatch(B__Box[int64]{Item: 0}) != 0 || B__byMatch(B__Box[int64]{Item: 5}) != 5 {
+		t.Error("byMatch")
+	}
+	if got := B__relabel(B__mk("v")); got.Label != "re" || got.Item != "v" {
+		t.Errorf("relabel = %+v", got)
+	}
+}
+`)
+}

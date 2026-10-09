@@ -968,6 +968,11 @@ func unknownIn(t types.Type) bool {
 				}
 			}
 		}
+		for _, a := range t.Args {
+			if unknownIn(a) {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -1004,29 +1009,41 @@ func poisoned(t types.Type) bool {
 				}
 			}
 		}
+		for _, a := range t.Args {
+			if poisoned(a) {
+				return true
+			}
+		}
 	}
 	return false
 }
 
-func containsFun(t types.Type) bool {
+func containsFun(t types.Type) bool { return containsFunIn(t, map[*types.Record]bool{}) }
+
+// containsFunIn is containsFun that visits each record once: a record may be recursive.
+func containsFunIn(t types.Type, seen map[*types.Record]bool) bool {
 	switch t := t.(type) {
 	case *types.Fun:
 		return true
 	case *types.App:
 		for _, a := range t.Args {
-			if containsFun(a) {
+			if containsFunIn(a, seen) {
 				return true
 			}
 		}
 	case *types.Union:
 		for _, a := range t.Args {
-			if containsFun(a) {
+			if containsFunIn(a, seen) {
 				return true
 			}
 		}
 	case *types.Record:
+		if seen[t] {
+			return false
+		}
+		seen[t] = true
 		for _, f := range t.Fields {
-			if containsFun(f.Type) {
+			if containsFunIn(f.Type, seen) {
 				return true
 			}
 		}

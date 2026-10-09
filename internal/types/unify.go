@@ -90,7 +90,14 @@ func (u *Unifier) Apply(t Type) Type {
 		return t.WithArgs(args)
 	case *Record:
 		if !t.Anonymous {
-			return t
+			if len(t.Args) == 0 {
+				return t
+			}
+			args := make([]Type, len(t.Args))
+			for i, a := range t.Args {
+				args[i] = u.Apply(a)
+			}
+			return t.WithArgs(args)
 		}
 		fs := make([]Field, len(t.Fields))
 		for i, f := range t.Fields {
@@ -126,7 +133,12 @@ func (u *Unifier) occurs(v *Var, t Type) bool {
 			}
 		}
 	case *Record:
-		if !t.Anonymous { // a nominal record holds no inference variable, and may be recursive
+		if !t.Anonymous { // a nominal record's variables are in its arguments; it may be recursive
+			for _, a := range t.Args {
+				if u.occurs(v, a) {
+					return true
+				}
+			}
 			return false
 		}
 		for _, f := range t.Fields {
@@ -214,7 +226,12 @@ func (u *Unifier) unify(a, b Type, widen bool) error {
 			}
 			return nil
 		}
-		if x.Module == y.Module && x.Name == y.Name && !x.Anonymous && !y.Anonymous {
+		if x.Module == y.Module && x.Name == y.Name && !x.Anonymous && !y.Anonymous && len(x.Args) == len(y.Args) {
+			for i := range x.Args {
+				if err := u.unify(x.Args[i], y.Args[i], false); err != nil {
+					return err
+				}
+			}
 			return nil
 		}
 	case *Union:
@@ -293,7 +310,14 @@ func (u *Unifier) Instantiate(t Type) Type {
 			return t.WithArgs(args)
 		case *Record:
 			if !t.Anonymous {
-				return t
+				if len(t.Args) == 0 {
+					return t
+				}
+				args := make([]Type, len(t.Args))
+				for i, a := range t.Args {
+					args[i] = inst(a)
+				}
+				return t.WithArgs(args)
 			}
 			fs := make([]Field, len(t.Fields))
 			for i, f := range t.Fields {
@@ -326,46 +350,55 @@ func substParams(t Type, names []string, args []Type) Type {
 			idx[n] = args[i]
 		}
 	}
-	var sub func(Type) Type
-	sub = func(t Type) Type {
-		switch t := t.(type) {
-		case *Param:
-			if r, ok := idx[t.Name]; ok {
-				return r
-			}
+	return subst(t, idx, map[string]*Record{})
+}
+
+// subst replaces the parameters in idx. inProgress are the generic record instances being built
+// (see instantiateRecord), so a recursive record does not recurse forever.
+func subst(t Type, idx map[string]Type, inProgress map[string]*Record) Type {
+	switch t := t.(type) {
+	case *Param:
+		if r, ok := idx[t.Name]; ok {
+			return r
+		}
+		return t
+	case *App:
+		args := make([]Type, len(t.Args))
+		for i, a := range t.Args {
+			args[i] = subst(a, idx, inProgress)
+		}
+		return &App{Con: t.Con, Args: args}
+	case *Fun:
+		ps := make([]Type, len(t.Params))
+		for i, p := range t.Params {
+			ps[i] = subst(p, idx, inProgress)
+		}
+		return &Fun{Params: ps, Result: subst(t.Result, idx, inProgress)}
+	case *Union:
+		if len(t.Args) == 0 {
 			return t
-		case *App:
-			args := make([]Type, len(t.Args))
-			for i, a := range t.Args {
-				args[i] = sub(a)
-			}
-			return &App{Con: t.Con, Args: args}
-		case *Fun:
-			ps := make([]Type, len(t.Params))
-			for i, p := range t.Params {
-				ps[i] = sub(p)
-			}
-			return &Fun{Params: ps, Result: sub(t.Result)}
-		case *Union:
+		}
+		as := make([]Type, len(t.Args))
+		for i, a := range t.Args {
+			as[i] = subst(a, idx, inProgress)
+		}
+		return t.WithArgs(as)
+	case *Record:
+		if !t.Anonymous { // a nominal record mentions parameters only in its arguments, and may be recursive
 			if len(t.Args) == 0 {
 				return t
 			}
 			as := make([]Type, len(t.Args))
 			for i, a := range t.Args {
-				as[i] = sub(a)
+				as[i] = subst(a, idx, inProgress)
 			}
-			return t.WithArgs(as)
-		case *Record:
-			if !t.Anonymous { // a nominal record mentions no parameter of the union, and may be recursive
-				return t
-			}
-			fs := make([]Field, len(t.Fields))
-			for i, f := range t.Fields {
-				fs[i] = Field{f.Name, sub(f.Type), f.HasDefault}
-			}
-			return &Record{Module: t.Module, Name: t.Name, Fields: fs, Anonymous: t.Anonymous}
+			return instantiateRecord(t, as, inProgress)
 		}
-		return t
+		fs := make([]Field, len(t.Fields))
+		for i, f := range t.Fields {
+			fs[i] = Field{f.Name, subst(f.Type, idx, inProgress), f.HasDefault}
+		}
+		return &Record{Module: t.Module, Name: t.Name, Fields: fs, Anonymous: t.Anonymous}
 	}
-	return sub(t)
+	return t
 }

@@ -14,7 +14,7 @@ import (
 //	Date Time Page Error Never       rt.Date time.Time rt.Page error struct{}
 //	List a, Dict k v, Html a         []A, rt.Dict[K, V], html.Node (whatever a is)
 //	Maybe a, Result e a              rt.Maybe[A], rt.Result[E, A]
-//	nominal record or union M.T      M__T, with type arguments for a generic union (M__T[A])
+//	nominal record or union M.T      M__T, with type arguments when generic (M__T[A])
 //	anonymous record                 struct{ F1 T1; F2 T2 } (fields PascalCase, in order)
 //	a -> b -> c                      func(A, B) C
 //	type parameter a                 A
@@ -62,7 +62,7 @@ func GoType(t types.Type) string {
 		return "any"
 	case *types.Record:
 		if t.Name != "" && !t.Anonymous {
-			return GoName(t.Module, t.Name)
+			return GoName(t.Module, t.Name) + typeArgs(t.Args)
 		}
 		if len(t.Fields) == 0 {
 			return "struct{}"
@@ -129,7 +129,10 @@ func typeParams(ts ...types.Type) []string {
 				walk(a)
 			}
 		case *types.Record:
-			if t.Name != "" && !t.Anonymous { // a named record may be recursive (through a union)
+			if t.Name != "" && !t.Anonymous { // its parameters are in its arguments; it may be recursive
+				for _, a := range t.Args {
+					walk(a)
+				}
 				return
 			}
 			for _, f := range t.Fields {
@@ -190,11 +193,11 @@ func unionParams(u *ir.UnionType) (decl, use string) {
 // typeDecl writes the Go declarations of one nominal type.
 func typeDecl(w *strings.Builder, d *ir.TypeDecl) {
 	if d.Record != nil && len(d.Record.Fields) == 0 {
-		fmt.Fprintf(w, "type %s struct{}\n\n", GoName(d.Module, d.Name))
+		fmt.Fprintf(w, "type %s%s struct{}\n\n", GoName(d.Module, d.Name), typeParamDecl(d.Record.Params))
 		return
 	}
 	if d.Record != nil {
-		fmt.Fprintf(w, "type %s struct {\n", GoName(d.Module, d.Name))
+		fmt.Fprintf(w, "type %s%s struct {\n", GoName(d.Module, d.Name), typeParamDecl(d.Record.Params))
 		fields(w, d.Record.Fields)
 		w.WriteString("}\n\n")
 		return

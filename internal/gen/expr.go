@@ -412,7 +412,11 @@ func (f *fn) lambda(x *ir.Lambda, s *scope) string {
 // struct of its type.
 func recordTypeName(x *ir.Record) string {
 	if x.T != nil && x.T.Name != "" {
-		return GoName(x.T.Module, x.T.Name)
+		var args []types.Type
+		if r, ok := x.Ty.(*types.Record); ok {
+			args = r.Args
+		}
+		return GoName(x.T.Module, x.T.Name) + typeArgs(args)
 	}
 	return GoType(x.Ty)
 }

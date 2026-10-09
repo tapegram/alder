@@ -37,7 +37,7 @@ func (c *Checker) declareTypeNames(m *syntax.Module) {
 			case d.Brand != nil:
 				c.types[k] = &types.Brand{Module: m.Name, Name: d.Name, Base: baseType(d.Brand.Base), HasCheck: d.Brand.Check != nil}
 			case d.Record != nil:
-				c.types[k] = &types.Record{Module: m.Name, Name: d.Name}
+				c.types[k] = &types.Record{Module: m.Name, Name: d.Name, Params: d.Params}
 			case d.Union != nil:
 				c.types[k] = &types.Union{Module: m.Name, Name: d.Name, Params: d.Params}
 			default: // opaque (stdlib): represented as App with Param args, or Con when no params
@@ -133,7 +133,11 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 			if !ok {
 				return types.Err
 			}
-			return applyArgs(decl, args)
+			out := applyArgs(decl, args)
+			if r, ok := out.(*types.Record); ok && r.Def != nil && !c.typesDefined {
+				c.early = append(c.early, r) // its declaration may not have its fields yet
+			}
+			return out
 		}
 		return types.Err // unresolved: the resolver reported it
 	case *syntax.TypeVar:
@@ -165,11 +169,17 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 	return types.Err
 }
 
-// applyArgs instantiates a declared type with arguments: unions get Args; opaque Apps substitute their Params.
+// applyArgs instantiates a declared type with arguments: unions and generic records get Args (a
+// record also its fields at those arguments); opaque Apps substitute their Params.
 func applyArgs(decl types.Type, args []types.Type) types.Type {
 	switch d := decl.(type) {
 	case *types.Union:
 		if len(args) == 0 {
+			return d
+		}
+		return d.WithArgs(args)
+	case *types.Record:
+		if len(args) == 0 || len(d.Params) == 0 {
 			return d
 		}
 		return d.WithArgs(args)

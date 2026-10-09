@@ -24,6 +24,11 @@ type Checker struct {
 	losers   map[syntax.Decl]bool
 	defaults []pendingDefault // field defaults, checked after value signatures // duplicate declarations (E0009), skipped after declareTypeNames
 
+	// typesDefined is set once every record has its fields (after pass 2); early are the generic
+	// record instances made before, refreshed then.
+	typesDefined bool
+	early        []*types.Record
+
 	usesSessionPut bool // some module calls Session.put
 	res            *Result
 }
@@ -68,6 +73,10 @@ func Program(prog *names.Program, bag *diag.Bag) *Result {
 	// pass 2: bodies of types, tables, forms
 	for _, m := range c.allModules() {
 		c.ctx(m).defineTypes()
+	}
+	c.typesDefined = true
+	for _, r := range c.early {
+		r.Refresh()
 	}
 	// pass 2b: representability checks need every union's constructors
 	for _, m := range c.allModules() {

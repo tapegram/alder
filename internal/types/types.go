@@ -2,6 +2,7 @@
 package types
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -22,10 +23,18 @@ type Field struct {
 	Type       Type
 	HasDefault bool
 }
+
+// Record is a record type: anonymous (structural) when Anonymous, else nominal Module.Name. A
+// nominal record may have type parameters (`type Box a = { item: a }`): the declaration has
+// Params and fields mentioning them; an instance (`Box Int`) has Args, Def pointing at the
+// declaration, and Fields with the parameters substituted (see WithArgs).
 type Record struct {
 	Module, Name string
 	Fields       []Field
 	Anonymous    bool
+	Params       []string // declared parameter names
+	Args         []Type   // an instance's arguments, same length as Params
+	Def          *Record  // declaration this instance was made from (nil on the declaration)
 }
 type Ctor struct {
 	Name string
@@ -108,10 +117,20 @@ func str(t Type, paren bool, home string) string {
 		return qualify(t.Module, t.Name, home)
 	case *Record:
 		if !t.Anonymous && t.Name != "" {
-			if t.Module == t.Name {
-				return t.Name
+			s := t.Name
+			if t.Module != t.Name {
+				s = qualify(t.Module, t.Name, home)
 			}
-			return qualify(t.Module, t.Name, home)
+			if len(t.Args) == 0 {
+				return s
+			}
+			for _, a := range t.Args {
+				s += " " + str(a, true, home)
+			}
+			if paren {
+				return "(" + s + ")"
+			}
+			return s
 		}
 		var parts []string
 		for _, f := range t.Fields {
@@ -185,4 +204,90 @@ func (u *Union) WithArgs(args []Type) *Union {
 		def = u
 	}
 	return &Union{Module: u.Module, Name: u.Name, Args: args, Ctors: u.Ctors, Params: u.Params, Def: def}
+}
+
+// WithArgs returns the instance of a generic record's declaration at args: a copy carrying args,
+// a back-pointer to the declaration, and the declaration's fields with its parameters replaced
+// by args. A record that refers to itself (`type T a = { kids: List (T a) }`) gets a cyclic
+// instance: inside the substitution, the same declaration at the same arguments is this
+// instance. The fields are those the declaration has now: the checker refreshes instances made
+// before every declaration was complete (see Refresh).
+func (r *Record) WithArgs(args []Type) *Record {
+	return instantiateRecord(r, args, map[string]*Record{})
+}
+
+// Refresh recomputes an instance's fields from its (now complete) declaration.
+func (r *Record) Refresh() {
+	if r.Def != nil {
+		r.Fields = instantiateRecord(r.Def, r.Args, map[string]*Record{}).Fields
+	}
+}
+
+func instantiateRecord(r *Record, args []Type, inProgress map[string]*Record) *Record {
+	def := r.Def
+	if def == nil {
+		def = r
+	}
+	key := fmt.Sprintf("%p", def) + typeKey(&App{Con: "", Args: args})
+	if inst, ok := inProgress[key]; ok {
+		return inst
+	}
+	inst := &Record{Module: def.Module, Name: def.Name, Params: def.Params, Args: args, Def: def}
+	inProgress[key] = inst
+	idx := map[string]Type{}
+	for i, n := range def.Params {
+		if i < len(args) {
+			idx[n] = args[i]
+		}
+	}
+	for _, f := range def.Fields {
+		inst.Fields = append(inst.Fields, Field{f.Name, subst(f.Type, idx, inProgress), f.HasDefault})
+	}
+	return inst
+}
+
+// typeKey is a string that identifies t up to equality, telling inference variables apart.
+func typeKey(t Type) string {
+	switch t := t.(type) {
+	case *Var:
+		return "?" + itoa(t.ID)
+	case *Con:
+		return t.Name
+	case *Param:
+		return "'" + t.Name
+	case *Brand:
+		return "#" + t.Module + "." + t.Name
+	case *App:
+		s := "(" + t.Con
+		for _, a := range t.Args {
+			s += " " + typeKey(a)
+		}
+		return s + ")"
+	case *Union:
+		s := "(" + t.Module + "." + t.Name
+		for _, a := range t.Args {
+			s += " " + typeKey(a)
+		}
+		return s + ")"
+	case *Record:
+		if t.Anonymous {
+			s := "{"
+			for _, f := range t.Fields {
+				s += f.Name + ":" + typeKey(f.Type) + ","
+			}
+			return s + "}"
+		}
+		s := "(" + t.Module + "." + t.Name
+		for _, a := range t.Args {
+			s += " " + typeKey(a)
+		}
+		return s + ")"
+	case *Fun:
+		s := "(->"
+		for _, p := range t.Params {
+			s += " " + typeKey(p)
+		}
+		return s + " " + typeKey(t.Result) + ")"
+	}
+	return "?"
 }

@@ -1,0 +1,9 @@
+module M
+
+type Box a = { item: a, label: Text }
+
+ints : Box Int
+ints = { item: "one", label: "x" }
+
+texts : Box Text -> Box Int
+texts b = b
