@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -23,23 +24,35 @@ func RunTimeout(b Build, env []string, stdin string, d time.Duration) (string, s
 	return RunContext(ctx, b, env, stdin)
 }
 
-// RunContext is Run until ctx is done (no time limit of its own). The program runs in a process
-// group of its own, so a terminal's Ctrl-C reaches only the caller; when ctx is done (the
-// caller's own interrupt, or a deadline) the whole group is killed, so a process it started
-// cannot keep RunContext waiting either. Once the program has exited its output is read for at
-// most WaitDelay longer (a process it left behind holding the output is then killed with the
-// group). Killed or left behind, the exit code is -1, with the reason appended to the standard
-// error: "<binary> timed out…" for a deadline (its cause when it has one, as RunTimeout's does),
-// "<binary> was interrupted" for a cancellation.
+// RunContext is Run until ctx is done (no time limit of its own): RunStream with the output
+// collected. The program runs in a process group of its own, so a terminal's Ctrl-C reaches
+// only the caller; when ctx is done (the caller's own interrupt, or a deadline) the whole group
+// is killed, so a process it started cannot keep RunContext waiting either. Once the program
+// has exited its output is read for at most WaitDelay longer (a process it left behind holding
+// the output is then killed with the group). Killed or left behind, the exit code is -1, with
+// the reason appended to the standard error: "<binary> timed out…" for a deadline (its cause
+// when it has one, as RunTimeout's does), "<binary> was interrupted" for a cancellation.
 func RunContext(ctx context.Context, b Build, env []string, stdin string) (string, string, int) {
+	var stdout, stderr bytes.Buffer
+	exit := RunStream(ctx, b, env, strings.NewReader(stdin), &stdout, &stderr)
+	return stdout.String(), stderr.String(), exit
+}
+
+// RunStream is RunContext writing the program's standard output and error to stdout and
+// stderr as it produces them (each from a goroutine of its own when it is not an *os.File, so
+// the two writers must not be the same unsynchronized value), and reading its standard input
+// from stdin (nil: none). An *os.File stdin, such as a pipe's read end, is given to the program
+// itself: it sees end of file when every write end is closed — when the caller closes its end,
+// or dies. The exit code and the reason lines appended to stderr are RunContext's.
+func RunStream(ctx context.Context, b Build, env []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if b.Binary == "" {
-		return "", "scratch: nothing to run\n", -1
+		io.WriteString(stderr, "scratch: nothing to run\n")
+		return -1
 	}
 	cmd := exec.CommandContext(ctx, b.Binary)
 	cmd.Env = append(os.Environ(), env...)
-	cmd.Stdin = strings.NewReader(stdin)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	cmd.Stdin = stdin
+	cmd.Stdout, cmd.Stderr = stdout, stderr
 	cmd.WaitDelay = WaitDelay
 	ownGroup(cmd)
 	err := cmd.Run()
@@ -47,21 +60,21 @@ func RunContext(ctx context.Context, b Build, env []string, stdin string) (strin
 		killGroup(cmd) // whatever the program left running
 	}
 	if ctx.Err() != nil {
-		fmt.Fprintf(&stderr, "scratch: %s %s\n", b.Binary, stopReason(ctx))
-		return stdout.String(), stderr.String(), -1
+		fmt.Fprintf(stderr, "scratch: %s %s\n", b.Binary, stopReason(ctx))
+		return -1
 	}
 	var ee *exec.ExitError
 	switch {
 	case err == nil:
-		return stdout.String(), stderr.String(), 0
+		return 0
 	case errors.Is(err, exec.ErrWaitDelay):
-		fmt.Fprintf(&stderr, "scratch: %s exited, but a process it started kept its output open; killed\n", b.Binary)
-		return stdout.String(), stderr.String(), -1
+		fmt.Fprintf(stderr, "scratch: %s exited, but a process it started kept its output open; killed\n", b.Binary)
+		return -1
 	case errors.As(err, &ee) && ee.ExitCode() >= 0:
-		return stdout.String(), stderr.String(), ee.ExitCode()
+		return ee.ExitCode()
 	default:
-		fmt.Fprintf(&stderr, "scratch: %v\n", err)
-		return stdout.String(), stderr.String(), -1
+		fmt.Fprintf(stderr, "scratch: %v\n", err)
+		return -1
 	}
 }
 

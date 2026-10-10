@@ -3,6 +3,7 @@ package scratch
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -139,5 +140,47 @@ func TestRunTimeout_KillsGroup(t *testing.T) {
 	_, stderr, code = RunContext(ctx, b, nil, "")
 	if took := time.Since(start); took > 3*time.Second || code != -1 || !strings.Contains(stderr, "was interrupted") {
 		t.Fatalf("cancel: took %v, exit %d, stderr %q", took, code, stderr)
+	}
+}
+
+// timedWriter records when each write arrived.
+type timedWriter struct {
+	mu    sync.Mutex
+	buf   strings.Builder
+	first time.Time
+}
+
+func (w *timedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.first.IsZero() {
+		w.first = time.Now()
+	}
+	return w.buf.Write(p)
+}
+
+// RunStream hands the program's output over as it is written, and passes its stdin through.
+func TestRunStream(t *testing.T) {
+	needGo(t)
+	main := "package main\n\nimport (\n\t\"fmt\"\n\t\"io\"\n\t\"os\"\n\t\"time\"\n\n\t_ \"app\"\n)\n\nfunc main() {\n\tfmt.Println(\"first\")\n\tfmt.Fprintln(os.Stderr, \"note\")\n\ttime.Sleep(time.Second)\n\tb, _ := io.ReadAll(os.Stdin)\n\tfmt.Print(string(b))\n\tos.Exit(3)\n}\n"
+	b := Compile("../../examples/todos", nil, main, "", t.TempDir())
+	defer b.Close()
+	if !b.Runnable() {
+		t.Fatal(b.Err, b.Diags)
+	}
+	var out, errw timedWriter
+	start := time.Now()
+	code := RunStream(context.Background(), b, nil, strings.NewReader("in\n"), &out, &errw)
+	end := time.Now()
+	if code != 3 || out.buf.String() != "first\nin\n" || errw.buf.String() != "note\n" {
+		t.Fatalf("exit %d out %q err %q", code, out.buf.String(), errw.buf.String())
+	}
+	if end.Sub(out.first) < 700*time.Millisecond || out.first.Before(start) {
+		t.Fatalf("the first line arrived %v before the end, want it streamed", end.Sub(out.first))
+	}
+	// RunContext keeps its contract on top of it
+	o, e, code := RunContext(context.Background(), b, nil, "x")
+	if code != 3 || o != "first\nx" || e != "note\n" {
+		t.Fatalf("RunContext: exit %d out %q err %q", code, o, e)
 	}
 }

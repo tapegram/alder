@@ -16,8 +16,9 @@
 // inner run undoes only its own writes, and a failing outer run undoes the inner run's
 // writes too, even when the inner run succeeded.
 //
-// Tests run one after another in one goroutine: Eq records the sides of the test's last `==`
-// in package state that Run reads after each case, so Run must not be called concurrently.
+// Tests run one after another (Main runs each in a goroutine of its own, so it can stop
+// waiting at the deadline): Eq records the sides of the test's last `==` in package state that
+// Run reads after each case, so Run must not be called concurrently.
 package rtesting
 
 import (
@@ -31,6 +32,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -114,9 +116,12 @@ func Trace(env *eff.Env) []string {
 	return append([]string{}, env.Trace[:len(env.Trace)-1]...)
 }
 
-// The sides of the running test's last Eq, as Show text. Package state: Run clears it before
-// each case and reads it after, which is safe because cases run sequentially in one goroutine.
+// The sides of the running test's last Eq, as Show text. Package state: runCase clears it
+// before each case and reads it after, which is right because cases run one at a time. The
+// mutex only keeps a case Main gave up on (timed out, still running in its goroutine) from
+// racing with the next Main in the same process (rtesting's own tests).
 var (
+	sidesMu   sync.Mutex
 	lastSides [2]string
 	hasSides  bool
 	lastEq    bool // what the last Eq returned
@@ -124,10 +129,11 @@ var (
 
 // Eq is rt.Eq that also records Show(l) and Show(r) as the sides of the test's final `==`.
 func Eq(l, r any) bool {
-	lastSides = [2]string{rt.Show(l), rt.Show(r)}
-	hasSides = true
-	lastEq = rt.Eq(l, r)
-	return lastEq
+	sides, eq := [2]string{rt.Show(l), rt.Show(r)}, rt.Eq(l, r)
+	sidesMu.Lock()
+	lastSides, hasSides, lastEq = sides, true, eq
+	sidesMu.Unlock()
+	return eq
 }
 
 // sameSidesNote is the note a failing test's report adds when its last `==` was False although
@@ -157,13 +163,16 @@ type Result struct {
 
 // Options configure Run. Run, when set, selects the cases whose `Module "Name"` it matches;
 // Tables are created in each case's database; Caps (an empty map when nil) and Session are
-// each case's Env.Caps and Env.Session; Now is the fixed clock (zero: 2026-01-01T00:00:00Z).
+// each case's Env.Caps and Env.Session; Now is the fixed clock (zero: 2026-01-01T00:00:00Z);
+// Deadline, when set, is the deadline of a task test's context (its store operations and
+// capabilities see it).
 type Options struct {
-	Run     *regexp.Regexp
-	Tables  []db.TableDesc
-	Caps    map[string]any
-	Session any
-	Now     time.Time
+	Run      *regexp.Regexp
+	Tables   []db.TableDesc
+	Caps     map[string]any
+	Session  any
+	Now      time.Time
+	Deadline time.Time
 }
 
 // defaultNow is the clock tests see unless told otherwise.
@@ -179,29 +188,44 @@ func key(c Case) string { return c.Module + " \"" + c.Name + "\"" }
 // Run runs the cases o.Run selects, in order, each against its own fresh store, and returns
 // their results. A panic fails its case and the next case still runs.
 func Run(cases []Case, o Options) []Result {
-	now := o.Now
-	if now.IsZero() {
-		now = defaultNow
-	}
-	caps := o.Caps
-	if caps == nil {
-		caps = map[string]any{}
-	}
+	o = defaults(o)
 	out := []Result{}
-	for _, c := range cases {
-		if o.Run != nil && !o.Run.MatchString(key(c)) {
-			continue
-		}
-		out = append(out, runCase(c, o, caps, now))
+	for _, c := range selected(cases, o) {
+		out = append(out, runCase(c, o))
 	}
 	return out
 }
 
-func runCase(c Case, o Options, caps map[string]any, now time.Time) (r Result) {
+// defaults fills o's zero Now and nil Caps.
+func defaults(o Options) Options {
+	if o.Now.IsZero() {
+		o.Now = defaultNow
+	}
+	if o.Caps == nil {
+		o.Caps = map[string]any{}
+	}
+	return o
+}
+
+// selected is the cases o.Run selects, in order.
+func selected(cases []Case, o Options) []Case {
+	out := []Case{}
+	for _, c := range cases {
+		if o.Run == nil || o.Run.MatchString(key(c)) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func runCase(c Case, o Options) (r Result) {
+	caps, now := o.Caps, o.Now
 	r = Result{Module: c.Module, Name: c.Name}
 	start := time.Now()
 	defer func() { r.Ms = float64(time.Since(start).Microseconds()) / 1000 }()
+	sidesMu.Lock()
 	lastSides, hasSides, lastEq = [2]string{}, false, false
+	sidesMu.Unlock()
 
 	ok, errText := false, ""
 	switch {
@@ -209,6 +233,11 @@ func runCase(c Case, o Options, caps map[string]any, now time.Time) (r Result) {
 		ok, errText = guard(c.Pure)
 	case c.Task != nil:
 		ctx := context.Background()
+		if !o.Deadline.IsZero() {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithDeadline(ctx, o.Deadline)
+			defer cancel()
+		}
 		store, err := db.OpenSQLite(":memory:")
 		if err != nil {
 			r.Error = err.Error()
@@ -233,6 +262,8 @@ func runCase(c Case, o Options, caps map[string]any, now time.Time) (r Result) {
 	}
 	r.OK = ok && errText == ""
 	r.Error = unwired.ReplaceAllString(errText, "capability $1 is not wired in tests")
+	sidesMu.Lock()
+	defer sidesMu.Unlock()
 	if hasSides {
 		r.Left, r.Right = lastSides[0], lastSides[1]
 		if !r.OK && !lastEq && r.Left == r.Right {
@@ -263,10 +294,10 @@ func guard(f func() bool) (ok bool, errText string) {
 	return f(), ""
 }
 
-// quoteName is a test name as the text report prints it: in double quotes, escaped
+// QuoteName is a test name as the text report prints it: in double quotes, escaped
 // (strconv.Quote) only when it contains a newline or a double quote, so every report line
 // stays one line.
-func quoteName(name string) string {
+func QuoteName(name string) string {
 	if strings.ContainsAny(name, "\n\"") {
 		return strconv.Quote(name)
 	}
@@ -286,16 +317,76 @@ type jsonResult struct {
 	Ms     float64  `json:"ms"`
 }
 
+// WriteResult writes r as the report prints it: with asJSON one JSON object on one line;
+// otherwise `ok   M "name"`, or `FAIL M "name"` followed by indented `left:`/`right:` lines
+// (when the test made an Eq), `note:` (when that Eq was False but its sides print the same),
+// `error:` (when it has one; its continuation lines indented by four spaces) and `trace:` (a
+// task test's steps, as Show of a List Text). `alder test` uses it to report a test whose
+// program crashed.
+func WriteResult(w io.Writer, r Result, asJSON bool) error {
+	if asJSON {
+		tr := r.Trace
+		if tr == nil {
+			tr = []string{}
+		}
+		enc := json.NewEncoder(w)
+		enc.SetEscapeHTML(false)
+		return enc.Encode(jsonResult{r.Module, r.Name, r.OK, r.Left, r.Right, r.Note, r.Error, tr, r.Ms})
+	}
+	var b strings.Builder
+	if r.OK {
+		fmt.Fprintf(&b, "ok   %s %s\n", r.Module, QuoteName(r.Name))
+	} else {
+		fmt.Fprintf(&b, "FAIL %s %s\n", r.Module, QuoteName(r.Name))
+		if r.Left != "" || r.Right != "" {
+			fmt.Fprintf(&b, "  left:  %s\n  right: %s\n", r.Left, r.Right)
+		}
+		if r.Note != "" {
+			fmt.Fprintf(&b, "  note:  %s\n", r.Note)
+		}
+		if r.Error != "" {
+			fmt.Fprintf(&b, "  error: %s\n", strings.ReplaceAll(r.Error, "\n", "\n    "))
+		}
+		if r.Trace != nil {
+			fmt.Fprintf(&b, "  trace: %s\n", rt.Show(r.Trace))
+		}
+	}
+	_, e := io.WriteString(w, b.String())
+	return e
+}
+
+// slowAfter is how long a test runs before Main says it is still running, and how often it
+// says so again.
+var slowAfter = 10 * time.Second
+
+// The environment `alder test` passes the program besides ALDER_TEST_RUN and ALDER_TEST_JSON.
+const (
+	// EnvDeadline is when the run must end (RFC 3339): the test running then fails as timed out.
+	EnvDeadline = "ALDER_TEST_DEADLINE"
+	// EnvTimeout is the -timeout the deadline came from (a Go duration), for the message.
+	EnvTimeout = "ALDER_TEST_TIMEOUT"
+	// EnvStatus names a file Main truncates and writes `Module\tName\n` to before each test,
+	// and empties when it returns: after a crash it names the test that crashed.
+	EnvStatus = "ALDER_TEST_STATUS"
+	// EnvStdinEOF=1 makes the program exit (2, "alder test: parent gone") when its standard
+	// input reaches end of file: `alder test` holds the pipe open while it runs, so the program
+	// dies with it.
+	EnvStdinEOF = "ALDER_TEST_STDIN_EOF"
+)
+
 // Main runs cases with the flags in args (-run re, --json) and env (ALDER_TEST_RUN, ALDER_TEST_JSON=1,
 // flags win), prints the report to out/err, returns the exit code: 0 all passed, 1 a failure, 2 a usage error.
 //
-// The text report has one line per case, `ok   M "name"` or `FAIL M "name"`; a failure is
-// followed by indented `left:`/`right:` lines (when the test made an Eq), `note:` (when that
-// Eq was False but its sides print the same), `error:` (when it
-// has one; its continuation lines indented by four spaces) and `trace:` (a task test's steps, as Show of a List Text), and the report ends
-// with `N passed, M failed`. With --json stdout has one JSON object per case and nothing
-// else; the summary goes to err.
+// The report has one entry per case (WriteResult), printed as the case finishes, and ends with
+// `N passed, M failed`. With --json stdout has one JSON object per case and nothing else; the
+// summary goes to err. A case running for slowAfter (10 s) prints `still running M "name" (10s)`
+// on err, and again every 10 s.
+//
+// Main also reads the variables EnvDeadline, EnvTimeout, EnvStatus and EnvStdinEOF: when the
+// deadline passes the running case is reported as failed ("timed out after <timeout>"), the
+// summary printed, and Main returns 1 without waiting for it (the caller exits, which stops it).
 func Main(cases []Case, tables []db.TableDesc, caps map[string]any, session any, args []string, out, err io.Writer) int {
+	started := time.Now()
 	fs := flag.NewFlagSet("alder test", flag.ContinueOnError)
 	fs.SetOutput(err)
 	runPat := fs.String("run", os.Getenv("ALDER_TEST_RUN"), "run only the tests whose `Module \"name\"` matches this regexp")
@@ -307,6 +398,13 @@ func Main(cases []Case, tables []db.TableDesc, caps map[string]any, session any,
 		fmt.Fprintf(err, "alder test: unexpected argument %q\n", fs.Arg(0))
 		return 2
 	}
+	if os.Getenv(EnvStdinEOF) == "1" {
+		go func() {
+			io.Copy(io.Discard, os.Stdin)
+			fmt.Fprintln(err, "alder test: parent gone")
+			os.Exit(2)
+		}()
+	}
 	o := Options{Tables: tables, Caps: caps, Session: session, Now: defaultNow}
 	if *runPat != "" {
 		re, e := regexp.Compile(*runPat)
@@ -316,51 +414,88 @@ func Main(cases []Case, tables []db.TableDesc, caps map[string]any, session any,
 		}
 		o.Run = re
 	}
-	results := Run(cases, o)
+	timeout := os.Getenv(EnvTimeout)
+	if d := os.Getenv(EnvDeadline); d != "" {
+		t, e := time.Parse(time.RFC3339Nano, d)
+		if e != nil {
+			fmt.Fprintf(err, "alder test: bad %s: %v\n", EnvDeadline, e)
+			return 2
+		}
+		o.Deadline = t
+		if timeout == "" {
+			timeout = t.Sub(started).Round(time.Second).String()
+		}
+	}
+	status := os.Getenv(EnvStatus)
+	if status != "" {
+		defer os.WriteFile(status, nil, 0o644)
+	}
+	o = defaults(o)
+
+	run := selected(cases, o)
 	passed, failed := 0, 0
-	enc := json.NewEncoder(out)
-	enc.SetEscapeHTML(false)
-	for _, r := range results {
+	summary := func() {
+		line := fmt.Sprintf("%d passed, %d failed\n", passed, failed)
+		if *asJSON {
+			io.WriteString(err, line)
+		} else {
+			io.WriteString(out, line)
+		}
+	}
+	var deadline <-chan time.Time
+	if !o.Deadline.IsZero() {
+		timer := time.NewTimer(time.Until(o.Deadline))
+		defer timer.Stop()
+		deadline = timer.C
+	}
+	for i, c := range run {
+		if status != "" {
+			if e := os.WriteFile(status, []byte(c.Module+"\t"+c.Name+"\n"), 0o644); e != nil {
+				fmt.Fprintf(err, "alder test: %v\n", e)
+				return 2
+			}
+		}
+		done := make(chan Result, 1)
+		go func() { done <- runCase(c, o) }()
+		var r Result
+		start := time.Now()
+		slow := time.NewTicker(slowAfter)
+	wait:
+		for {
+			select {
+			case r = <-done:
+				break wait
+			case <-slow.C:
+				fmt.Fprintf(err, "still running %s %s (%s)\n", c.Module, QuoteName(c.Name), time.Since(start).Round(time.Second))
+			case <-deadline:
+				slow.Stop()
+				failed++
+				r = Result{Module: c.Module, Name: c.Name, Error: "timed out after " + timeout, Ms: float64(time.Since(start).Microseconds()) / 1000}
+				if e := WriteResult(out, r, *asJSON); e != nil {
+					fmt.Fprintf(err, "alder test: writing the report: %v\n", e)
+					return 2
+				}
+				summary()
+				note := ""
+				if rest := len(run) - i - 1; rest > 0 {
+					note = fmt.Sprintf("; %d did not run", rest)
+				}
+				fmt.Fprintf(err, "alder test: the tests timed out after %s%s\n", timeout, note)
+				return 1
+			}
+		}
+		slow.Stop()
 		if r.OK {
 			passed++
 		} else {
 			failed++
 		}
-		if *asJSON {
-			tr := r.Trace
-			if tr == nil {
-				tr = []string{}
-			}
-			if e := enc.Encode(jsonResult{r.Module, r.Name, r.OK, r.Left, r.Right, r.Note, r.Error, tr, r.Ms}); e != nil {
-				fmt.Fprintf(err, "alder test: writing the report: %v\n", e)
-				return 2
-			}
-			continue
-		}
-		if r.OK {
-			fmt.Fprintf(out, "ok   %s %s\n", r.Module, quoteName(r.Name))
-			continue
-		}
-		fmt.Fprintf(out, "FAIL %s %s\n", r.Module, quoteName(r.Name))
-		if r.Left != "" || r.Right != "" {
-			fmt.Fprintf(out, "  left:  %s\n  right: %s\n", r.Left, r.Right)
-		}
-		if r.Note != "" {
-			fmt.Fprintf(out, "  note:  %s\n", r.Note)
-		}
-		if r.Error != "" {
-			fmt.Fprintf(out, "  error: %s\n", strings.ReplaceAll(r.Error, "\n", "\n    "))
-		}
-		if r.Trace != nil {
-			fmt.Fprintf(out, "  trace: %s\n", rt.Show(r.Trace))
+		if e := WriteResult(out, r, *asJSON); e != nil {
+			fmt.Fprintf(err, "alder test: writing the report: %v\n", e)
+			return 2
 		}
 	}
-	summary := fmt.Sprintf("%d passed, %d failed\n", passed, failed)
-	if *asJSON {
-		io.WriteString(err, summary)
-	} else {
-		io.WriteString(out, summary)
-	}
+	summary()
 	if failed > 0 {
 		return 1
 	}

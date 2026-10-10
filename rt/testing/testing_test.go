@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -547,5 +549,80 @@ func TestMain_SamePrintedSidesNote(t *testing.T) {
 		"FAIL M \"other\"\n  left:  1\n  right: 1\n0 passed, 2 failed\n"
 	if out != want || code != 1 {
 		t.Fatalf("code %d\n%q\nwant\n%q", code, out, want)
+	}
+}
+
+// Each result is printed as its test finishes, and the status file names the running test.
+func TestMain_StreamsAndWritesStatus(t *testing.T) {
+	t.Setenv("ALDER_TEST_RUN", "")
+	t.Setenv("ALDER_TEST_JSON", "")
+	status := filepath.Join(t.TempDir(), "status")
+	t.Setenv(EnvStatus, status)
+	var out, errb bytes.Buffer
+	var sawFirst bool
+	var during string
+	cs := []Case{
+		{Module: "M", Name: "a", Pure: func() bool { return true }},
+		{Module: "M", Name: "b c", Pure: func() bool {
+			sawFirst = out.String() == "ok   M \"a\"\n"
+			b, _ := os.ReadFile(status)
+			during = string(b)
+			return true
+		}},
+	}
+	if code := Main(cs, tables, nil, nil, nil, &out, &errb); code != 0 {
+		t.Fatalf("code %d %q %q", code, out.String(), errb.String())
+	}
+	if !sawFirst || during != "M\tb c\n" {
+		t.Fatalf("first line printed before the second test: %v; status during it %q", sawFirst, during)
+	}
+	if b, _ := os.ReadFile(status); len(b) != 0 {
+		t.Fatalf("status after the run %q, want empty", b)
+	}
+}
+
+// When the deadline passes the running test fails as timed out and Main returns at once.
+func TestMain_Deadline(t *testing.T) {
+	t.Setenv("ALDER_TEST_RUN", "")
+	t.Setenv("ALDER_TEST_JSON", "")
+	t.Setenv(EnvDeadline, time.Now().Add(300*time.Millisecond).Format(time.RFC3339Nano))
+	t.Setenv(EnvTimeout, "300ms")
+	release := make(chan struct{})
+	defer close(release)
+	cs := []Case{
+		{Module: "M", Name: "quick", Pure: func() bool { return true }},
+		{Module: "M", Name: "hang", Pure: func() bool { <-release; return true }},
+		{Module: "M", Name: "never", Pure: func() bool { return true }},
+	}
+	start := time.Now()
+	out, errs, code := runMain(t, cs)
+	if el := time.Since(start); el > 2*time.Second {
+		t.Fatalf("took %v", el)
+	}
+	want := "ok   M \"quick\"\nFAIL M \"hang\"\n  error: timed out after 300ms\n1 passed, 1 failed\n"
+	if code != 1 || out != want || !strings.Contains(errs, "timed out after 300ms; 1 did not run") {
+		t.Fatalf("code %d\n%q\nwant\n%q\nstderr %q", code, out, want, errs)
+	}
+	// a task test's context carries the deadline
+	t.Setenv(EnvDeadline, time.Now().Add(time.Hour).Format(time.RFC3339Nano))
+	var dl time.Time
+	cs = []Case{{Module: "M", Name: "ctx", Task: func() eff.Task[bool] {
+		return eff.Call("Ctx", false, func(e *eff.Env) (bool, error) { dl, _ = e.Ctx.Deadline(); return true, nil })
+	}}}
+	if _, _, code := runMain(t, cs); code != 0 || time.Until(dl) < 50*time.Minute {
+		t.Fatalf("code %d deadline %v", code, dl)
+	}
+}
+
+// A test running longer than slowAfter is announced on stderr.
+func TestMain_SlowNotice(t *testing.T) {
+	t.Setenv("ALDER_TEST_RUN", "")
+	t.Setenv("ALDER_TEST_JSON", "")
+	defer func(d time.Duration) { slowAfter = d }(slowAfter)
+	slowAfter = 50 * time.Millisecond
+	cs := []Case{{Module: "Theme", Name: "slow", Pure: func() bool { time.Sleep(130 * time.Millisecond); return true }}}
+	out, errs, code := runMain(t, cs)
+	if code != 0 || out != "ok   Theme \"slow\"\n1 passed, 0 failed\n" || !strings.Contains(errs, "still running Theme \"slow\" (") || strings.Count(errs, "still running") != 2 {
+		t.Fatalf("code %d out %q err %q", code, out, errs)
 	}
 }

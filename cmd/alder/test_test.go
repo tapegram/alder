@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // runTest runs `alder test args…`. Tests that use examples/todos itself first move to a fresh
@@ -231,4 +235,177 @@ func TestTest_Usage(t *testing.T) {
 	if entries, _ := os.ReadDir("."); len(entries) != 0 {
 		t.Errorf("a usage error built something: %v", entries)
 	}
+}
+
+// slowTodos is a copy of examples/todos whose Theme module adds a quick test, a test that
+// runs for hours, and one that overflows the stack.
+func slowTodos(t *testing.T) string {
+	return tempTodos(t, "Theme.alder", `
+loop : Int -> Int
+loop n = loop (n + 1) + 1
+
+spin : Int -> Int
+spin n = List.foldl (\i a -> a + List.foldl (\j b -> b + List.sum (List.range 1 n)) 0 (List.range 1 n)) 0 (List.range 1 n)
+
+test "quick" = spin 3 > 0
+
+test "hang" = spin 100000 > 0
+
+test "overflow" = loop 0 == 1
+`)
+}
+
+// firstWrite records the output and when its first write arrived.
+type firstWrite struct {
+	mu    sync.Mutex
+	buf   bytes.Buffer
+	first time.Time
+}
+
+func (w *firstWrite) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.first.IsZero() {
+		w.first = time.Now()
+	}
+	return w.buf.Write(p)
+}
+
+// Results stream as tests finish; at -timeout the running test fails as timed out.
+func TestTest_StreamAndTimeout(t *testing.T) {
+	needGoTool(t)
+	dir := slowTodos(t)
+	var out firstWrite
+	var errb bytes.Buffer
+	code := runTestTo([]string{dir, "-run", `"quick"|"hang"`, "-timeout", "2s"}, &out, &errb)
+	end := time.Now()
+	want := "ok   Theme \"quick\"\nFAIL Theme \"hang\"\n  error: timed out after 2s\n1 passed, 1 failed\n"
+	if code != 1 || out.buf.String() != want {
+		t.Fatalf("exit %d\nstdout %q\nwant   %q\nstderr: %s", code, out.buf.String(), want, errb.String())
+	}
+	if gap := end.Sub(out.first); gap < time.Second {
+		t.Errorf("the first result arrived only %v before the end: not streamed", gap)
+	}
+	if !strings.Contains(errb.String(), "timed out after 2s") {
+		t.Errorf("stderr %q", errb.String())
+	}
+}
+
+// A test that crashes the program (a stack overflow) fails by name, without the Go trace.
+func TestTest_Crash(t *testing.T) {
+	needGoTool(t)
+	dir := slowTodos(t)
+	code, stdout, stderr := runTest(t, dir, "-run", "overflow")
+	if code != 1 || !strings.HasPrefix(stdout, "FAIL Theme \"overflow\"\n  error: fatal error: stack overflow\n    app.Theme__loop(") {
+		t.Fatalf("exit %d\nstdout %q\nstderr %q", code, stdout, stderr)
+	}
+	if strings.Count(stdout, "\n") != 4 || strings.Contains(stderr, "goroutine") || len(stderr) > 300 ||
+		!strings.Contains(stderr, "crashed running Theme \"overflow\"") {
+		t.Errorf("want a short report\nstdout %q\nstderr %q", stdout, stderr)
+	}
+	code, stdout, _ = runTest(t, dir, "-run", "overflow", "--json")
+	var r struct {
+		Module, Name, Error string
+		OK                  *bool
+	}
+	if code != 1 || strings.Count(stdout, "\n") != 1 || json.Unmarshal([]byte(stdout), &r) != nil ||
+		r.Module != "Theme" || r.Name != "overflow" || r.OK == nil || *r.OK || !strings.HasPrefix(r.Error, "fatal error: stack overflow\n") {
+		t.Errorf("--json: exit %d stdout %q", code, stdout)
+	}
+}
+
+// TestHelperAlderTest is `alder test` in a process of its own, for TestTest_KilledParent.
+func TestHelperAlderTest(t *testing.T) {
+	args := os.Getenv("ALDER_HELPER_TEST_ARGS")
+	if args == "" {
+		t.Skip("a helper process")
+	}
+	os.Exit(runTestTo(strings.Split(args, "\x1f"), os.Stdout, os.Stderr))
+}
+
+// SIGKILL of `alder test` takes the test program with it (its stdin reaches end of file).
+func TestTest_KilledParent(t *testing.T) {
+	needGoTool(t)
+	dir := slowTodos(t)
+	wd, _ := os.Getwd()
+	real, _ := filepath.EvalSymlinks(wd)
+	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperAlderTest$")
+	cmd.Env = append(os.Environ(), "ALDER_HELPER_TEST_ARGS="+dir+"\x1f-run\x1fhang")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer cmd.Process.Kill()
+	// wait for the hanging test to be running
+	status := filepath.Join(wd, "build", "todos", "scratch", "test", "status")
+	for start := time.Now(); ; time.Sleep(50 * time.Millisecond) {
+		if b, _ := os.ReadFile(status); string(b) == "Theme\thang\n" {
+			break
+		}
+		if time.Since(start) > 2*time.Minute {
+			t.Fatal("the test never started")
+		}
+	}
+	children := func() []string {
+		out, _ := exec.Command("ps", "-A", "-o", "pid=,command=").Output()
+		var ps []string
+		for _, l := range strings.Split(string(out), "\n") {
+			if strings.Contains(l, filepath.Join(wd, "build")) || strings.Contains(l, filepath.Join(real, "build")) {
+				ps = append(ps, strings.TrimSpace(l))
+			}
+		}
+		return ps
+	}
+	if len(children()) == 0 {
+		t.Fatal("found no test program running")
+	}
+	cmd.Process.Signal(syscall.SIGKILL)
+	cmd.Wait()
+	for start := time.Now(); len(children()) > 0; time.Sleep(50 * time.Millisecond) {
+		if time.Since(start) > 2*time.Second {
+			left := children()
+			for _, l := range left {
+				pid, _, _ := strings.Cut(l, " ")
+				exec.Command("kill", "-9", pid).Run()
+			}
+			t.Fatalf("the test program outlived alder test: %q", left)
+		}
+	}
+}
+
+// A typed hole stops the run with a reason; a build problem under --json is one object.
+func TestTest_HoleAndJSONError(t *testing.T) {
+	needGoTool(t)
+	dir := tempTodos(t, "Theme.alder", "\ntest \"h\" = ?todo == 1\n")
+	code, _, stderr := runTest(t, dir)
+	if code != 1 || !strings.Contains(stderr, "W0002") || !strings.HasSuffix(stderr, "alder test: no tests ran (fill the hole)\n") {
+		t.Errorf("hole: exit %d stderr %q", code, stderr)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "adapters", "bad.go"), []byte("package adapters\n\nfunc broken() int { return \"x\" }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "app", "Theme.alder"), mustRead(t, filepath.Join(todosDir(t), "app", "Theme.alder")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runTest(t, dir, "--json")
+	var r map[string]string
+	if code != 2 || strings.Count(stdout, "\n") != 1 || json.Unmarshal([]byte(stdout), &r) != nil || len(r) != 1 || !strings.Contains(r["error"], "bad.go") {
+		t.Errorf("build error: exit %d stdout %q stderr %q", code, stdout, stderr)
+	}
+	code, stdout, _ = runTest(t, dir, "--json", "-run", "(")
+	if code != 2 || !strings.HasPrefix(stdout, `{"error":"bad -run pattern`) {
+		t.Errorf("bad -run: exit %d stdout %q", code, stdout)
+	}
+	code, stdout, stderr = runTest(t, dir, "-timeout", "soon")
+	if code != 2 || stdout != "" || !strings.Contains(stderr, "bad -timeout") {
+		t.Errorf("bad -timeout: exit %d stdout %q stderr %q", code, stdout, stderr)
+	}
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }
