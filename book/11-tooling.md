@@ -322,7 +322,7 @@ $ alder eval examples/todos '[]'
 Every module of the app is in scope under its own name. With `-` in place
 of the expression, `alder eval` reads standard input: `let name = expr`
 lines (or `let name : Type = expr`), then the expression, which may use
-them. A `let`'s name starts with a lowercase letter, like any value's
+them. A `let`'s name starts with a lowercase letter or `_`, like any value's
 (`let Todo = …` would be shadowed by the module `Todo`), and may not be
 `it`, the name eval gives the expression. A `let` may define a function
 that calls itself (`let fact n = if n <= 1 then 1 else n * fact (n - 1)`),
@@ -395,7 +395,7 @@ Each line you type is one of three things:
 
 | You type | The REPL |
 |---|---|
-| `let name = expr` (or `let name : Type = expr`) | checks it with the session's other `let`s; when it is clean, keeps it and prints `name : Type`. The name starts with a lowercase letter and is not `it`. A later `let` of the same name replaces it where it stands (`redefined name`): a `let` is a definition, not a snapshot, so the `let`s that use the name see the new one (`let a = 1`, `let b = a + 1`, `let a = 5`, then `b` is `6`). A `let` with an error is not kept, and a redefinition that breaks another `let` is refused, leaving the old one: `alder repl: a not redefined: let b (line 2) uses it: error[E0003]: …`. |
+| `let name = expr` (or `let name : Type = expr`) | checks it with the session's other `let`s; when it is clean, keeps it and prints `name : Type`. The name starts with a lowercase letter or `_` and is not `it`. A later `let` of the same name replaces it where it stands (`redefined name`): a `let` is a definition, not a snapshot, so the `let`s that use the name see the new one (`let a = 1`, `let b = a + 1`, `let a = 5`, then `b` is `6`). A `let` with an error is not kept, and a redefinition that breaks another `let` is refused, leaving the old one: `alder repl: a not redefined: let b (line 2) uses it: error[E0003]: …`. |
 | `expr` | evaluates it and prints `value : Type`. A `Query`, a `Task` and a `Select` are not run: they print `<Query> : Query T` (and so on) with a hint naming the command that runs them. |
 | `:command …` | one of the commands below. |
 

@@ -339,7 +339,7 @@ Each milestone gets its own plan.
   which may over-include, never under-include), because every `let` is
   a package variable computed at program start; checks still use the
   whole session, and a failed run names the `let`s it computed. A
-  `let`'s name starts with a lowercase letter (eval too). Each REPL
+  `let`'s name starts with a lowercase letter or `_` (eval too). Each REPL
   builds in `build/<app>/scratch/repl-<pid>/`, removed when it ends
   (stale ones of dead pids at the next start), so two REPLs never wait
   on each other; `alder eval` keeps one shared directory, tries the lock

@@ -604,7 +604,7 @@ func reachable(lets []replEntry, e replEntry) []replEntry {
 }
 
 // identRE is an identifier (or the identifier-like part of a longer token).
-var identRE = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_']*`)
+var identRE = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 
 // run compiles what checked holds with the main of kind for its `it` (of type sig) into the
 // REPL's build directory and runs it; it reports a failure itself (ok false), naming lets, the
@@ -766,7 +766,7 @@ func letLabel(e replEntry, line int) string {
 }
 
 // letNameRE is a value name.
-var letNameRE = regexp.MustCompile(`^[a-z_][A-Za-z0-9_']*$`)
+var letNameRE = regexp.MustCompile(`^[a-z_][A-Za-z0-9_]*$`)
 
 // printDiag prints d, a diagnostic of the session module in entry e (which starts at line
 // offset start of the module), through evalDiags over e's own text, labelled as report says.

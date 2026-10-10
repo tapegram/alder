@@ -120,8 +120,8 @@ func itemStarts(lines []string) []int {
 
 // splitItems makes the items of lines, which start at starts (non-empty); exprLast makes the
 // last one the expression, else every one must be a let. A let's name starts with a lowercase
-// ASCII letter (an uppercase one would name a module or type, which the name would be shadowed
-// by) and is not `it`; who names the tool in the messages.
+// ASCII letter or `_`, as a value name does (an uppercase one would name a module or type, which
+// the name would be shadowed by), and is not `it`; who names the tool in the messages.
 func splitItems(lines []string, starts []int, exprLast bool, who string) ([]item, error) {
 	items := make([]item, 0, len(starts))
 	var cur *item    // the item the next line continues
@@ -157,9 +157,9 @@ func splitItems(lines []string, starts []int, exprLast bool, who string) ([]item
 		}
 		def := strings.TrimLeft(rest, " \t")
 		at := indent + len(body) - len(def) // the input column (0-based) where def starts
-		name := def[:len(def)-len(strings.TrimLeft(def, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'"))]
-		if def == "" || def[0] < 'a' || def[0] > 'z' {
-			return nil, fmt.Errorf("input line %d: a let name starts with a lowercase letter (`let todo = …`)", i+1)
+		name := def[:len(def)-len(strings.TrimLeft(def, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"))]
+		if def == "" || (def[0] < 'a' || def[0] > 'z') && def[0] != '_' {
+			return nil, fmt.Errorf("input line %d: a let name starts with a lowercase letter or `_` (`let todo = …`)", i+1)
 		}
 		if name == "it" {
 			return nil, fmt.Errorf("input line %d: a let may not be named `it`, the name %s gives the expression; let another name", i+1, who)

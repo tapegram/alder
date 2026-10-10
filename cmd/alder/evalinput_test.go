@@ -52,7 +52,17 @@ func TestParseItems(t *testing.T) {
 		}},
 		{name: "let it", in: "let it = 1\nit", err: "input line 1: a let may not be named `it`, the name eval gives the expression"},
 		// an uppercase name is a module's or a type's, which would shadow the let
-		{name: "let Upper", in: "let Todo = 1\nTodo", err: "input line 1: a let name starts with a lowercase letter (`let todo = …`)"},
+		{name: "let Upper", in: "let Todo = 1\nTodo", err: "input line 1: a let name starts with a lowercase letter or `_` (`let todo = …`)"},
+		// a value name may start with `_`
+		{name: "let underscore", in: "let _x = 1\n_x", want: []it{
+			{Let: true, Name: "_x", Lines: []string{"_x = 1"}, InLine: []int{1}, Shift: []int{4}},
+			{Lines: []string{"it = _x"}, InLine: []int{2}, Shift: []int{-5}},
+		}},
+		// `'` is no identifier character: the name ends before it (the parser then refuses the rest)
+		{name: "let prime", in: "let x' = 1\n1", want: []it{
+			{Let: true, Name: "x", Lines: []string{"x' = 1"}, InLine: []int{1}, Shift: []int{4}},
+			{Lines: []string{"it = 1"}, InLine: []int{2}, Shift: []int{-5}},
+		}},
 		{name: "let non-ASCII", in: "let ünï = 1\n1", err: "a let name starts with a lowercase letter"},
 		{name: "let digit", in: "let x = 1\nlet 3 = 4\n1", err: "input line 2: a let name starts with a lowercase letter"},
 		{name: "empty", in: "\n  \n-- c\n", nothing: true},

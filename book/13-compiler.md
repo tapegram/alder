@@ -1813,7 +1813,7 @@ Here is `alder eval examples/todos 'Theme.flip Light'`, step by step
 
 1. **The scratch module.** `parseItems` (`cmd/alder/evalinput.go`)
    splits the input into its items, the `let`s and the expression (a
-   `let`'s name must start with a lowercase letter: `let Todo = 1` would
+   `let`'s name must start with a lowercase letter or `_`: `let Todo = 1` would
    otherwise be shadowed by the module `Todo`), and
    `assemble` joins them into the source of module `Scratch`, line for
    line (two steps, so that a REPL can keep the `let`s of earlier

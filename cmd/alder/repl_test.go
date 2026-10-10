@@ -112,7 +112,7 @@ func TestRepl_Diagnostic(t *testing.T) {
 	}
 	// what follows `let` is not a name
 	out = replTodos(t, "let = 4\nlet x 3 = 4\n")
-	wantIn(t, out, "alder repl: a let name starts with a lowercase letter (`let todo = …`)\n", "let x (line 2): error[")
+	wantIn(t, out, "alder repl: a let name starts with a lowercase letter or `_` (`let todo = …`)\n", "let x (line 2): error[")
 	if strings.Contains(out, "alder> x : ") {
 		t.Errorf("a let with an error was kept:\n%s", out)
 	}
@@ -122,7 +122,7 @@ func TestRepl_Diagnostic(t *testing.T) {
 // name; `it` is the expression's.
 func TestRepl_LetNames(t *testing.T) {
 	out := replTodos(t, "let Todo = 1\nlet ünï = 1\nlet it = 1\n:type Todo.countOpen\n")
-	if n := strings.Count(out, "alder repl: a let name starts with a lowercase letter (`let todo = …`)\n"); n != 2 {
+	if n := strings.Count(out, "alder repl: a let name starts with a lowercase letter or `_` (`let todo = …`)\n"); n != 2 {
 		t.Errorf("want the lowercase rule twice, got %d:\n%s", n, out)
 	}
 	wantIn(t, out, "alder repl: a let may not be named `it`, the name the REPL gives the expression; let another name\n",
@@ -185,8 +185,9 @@ func TestRepl_BuildDirs(t *testing.T) {
 	t.Chdir(t.TempDir())
 	scratchDir := filepath.Join("build", "todos", "scratch")
 	gone := filepath.Join(scratchDir, "repl-99999999") // no such pid
+	zero := filepath.Join(scratchDir, "repl-0")        // not a process (kill(0, 0) is the caller's group)
 	live := filepath.Join(scratchDir, "repl-1")        // init
-	for _, d := range []string{gone, live} {
+	for _, d := range []string{gone, zero, live} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -201,7 +202,7 @@ func TestRepl_BuildDirs(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(own, "scratch")); err != nil {
 		t.Errorf("the REPL's build: %v", err)
 	}
-	for _, p := range []string{gone, gone + ".lock"} {
+	for _, p := range []string{gone, gone + ".lock", zero, zero + ".lock"} {
 		if _, err := os.Stat(p); !os.IsNotExist(err) {
 			t.Errorf("%s: %v, want removed", p, err)
 		}
@@ -221,6 +222,17 @@ func TestRepl_BuildDirs(t *testing.T) {
 	for _, p := range []string{own, own + ".lock"} {
 		if _, err := os.Stat(p); !os.IsNotExist(err) {
 			t.Errorf("%s after the REPL ended: %v", p, err)
+		}
+	}
+}
+
+func TestPidAlive(t *testing.T) {
+	if !pidAlive(os.Getpid()) {
+		t.Error("this process is not alive")
+	}
+	for _, pid := range []int{0, -1, 99999999} {
+		if pidAlive(pid) {
+			t.Errorf("pid %d alive", pid)
 		}
 	}
 }
