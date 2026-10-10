@@ -10,7 +10,7 @@ With --build, a round whose check is clean also runs `alder build --emit` (outpu
 with --test too, a round that built also runs `alder test --json` and passes only if every test does.
 --base DIR seeds round 0 from DIR/app (and DIR/adapters, when there is one) as committed
 (`git archive HEAD`), never from the working tree. --adapters (opt-in) also accepts adapters/<name>.go
-sections and lets build and test run them: it executes Go the model wrote. --num-ctx sets Ollama's context window.
+sections and lets build and test run them. WARNING: it executes Go the model wrote, unsandboxed. --num-ctx sets Ollama's context window.
 summary.json's `outcome` is pass, fail, compiler_bug or harness_error (see README "Outcomes").
 """
 import argparse, io, json, os, pathlib, posixpath, re, shutil, signal, subprocess, sys, tarfile, tempfile, time, urllib.request
@@ -160,9 +160,10 @@ STDLIB_NAMES = stdlib_names()
 
 
 def classify_path(path: str, adapters: bool = False):
-    """(safe path, None), or (None, reason): reason is STDLIB_REASON for a path whose first segment
-    under `app/` names a standard-library module, else "" (traversal, absolute, wrong extension).
-    With `adapters`, `adapters/<name>.go` is a safe path too."""
+    """(safe path, None), or (None, reason): reason is STDLIB_REASON for `app/stdlib/…` and for a module
+    named exactly like a standard-library module (`app/List.alder`), else "" (traversal, absolute, wrong
+    extension). A module under a stdlib name's directory (`app/Time/Slots.alder`, `module Time.Slots`)
+    is legal Alder and accepted. With `adapters`, `adapters/<name>.go` is a safe path too."""
     if not path or path.startswith("/") or "\\" in path:
         return None, ""
     p = posixpath.normpath(path)
@@ -174,8 +175,8 @@ def classify_path(path: str, adapters: bool = False):
         return None, ""
     if not p.startswith("app/"):
         p = "app/" + p
-    first = p.split("/")[1]
-    if first.removesuffix(".alder") in STDLIB_NAMES:
+    segs = p.split("/")
+    if segs[1] == "stdlib" or (len(segs) == 2 and segs[1].removesuffix(".alder") in STDLIB_NAMES):
         return None, STDLIB_REASON
     return p, None
 
@@ -436,24 +437,38 @@ def go_refusal_hint(rejected, round_dir: pathlib.Path) -> str:
         p = posixpath.normpath(raw)
         if not ADAPTER_RE.match(p):
             continue
-        cap = pathlib.PurePosixPath(p).stem
-        cap = cap[:1].upper() + cap[1:]
+        cap = _cap_name(pathlib.PurePosixPath(p).stem)
         notice = f"`{p}` was not accepted (this run does not take Go files); "
-        if any((round_dir / "adapters").glob("*.go")):
+        provided = sorted(_cap_name(f.stem) for f in (round_dir / "adapters").glob("*.go"))
+        if (round_dir / p).is_file():   # the base provides this very adapter
             out.append(notice + f"the `{cap}` adapter is provided \u2014 keep the capability and do not replace it "
                        "with a password in the code")
+        elif provided:   # the base provides others, not this one
+            names = " and ".join(f"`{c}`" for c in provided)
+            out.append(notice + f"the {names} adapter{'s are' if len(provided) > 1 else ' is'} provided; `{cap}` is not: "
+                       "declare the capability and leave its Go side unwritten")
         else:
             out.append(notice + "declare the capability and leave its Go side unwritten")
     return "\n\n".join(out)
 
 
+def _cap_name(stem: str) -> str:
+    """The capability an adapter file is for: `password` → `Password`."""
+    return stem[:1].upper() + stem[1:]
+
+
+PROVIDED_ADAPTERS = ("These adapters are provided, not yours (from the base app); emit one only to replace it, "
+                     "and otherwise leave it out:")
+
+
 def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles: int, rejected=(), build_output=None,
-                 test_output=None, truncated=None, cut_off_file=None, show_adapters=False) -> str:
+                 test_output=None, truncated=None, cut_off_file=None, show_adapters=False, provided=None) -> str:
     """`build_output`, when given, is what `alder build --emit` printed when it refused (exit 1) a clean program;
     `test_output`, the text report of `alder test` when tests of a program that built failed (exit 1);
     `truncated`, the token cap when the model's answer was cut off by it (Ollama's done_reason "length");
     `cut_off_file`, the path of the file it was cut off in (not written); `show_adapters`, carry the round's
-    adapters/*.go in the previous answer (a --adapters run)."""
+    adapters/*.go in the previous answer (a --adapters run); `provided`, the base's adapters ({path: text}):
+    one the round still has unchanged is listed apart, after the model's files, as provided, not yours."""
     sources = {}
     for f in (round_dir / "app").rglob("*.alder"):
         sources[str(f.relative_to(round_dir))] = f.read_text()
@@ -487,13 +502,20 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
         hint = go_refusal_hint(rejected, round_dir)
         if hint:
             feedback += "\n\n" + hint
+    theirs = {}
     if show_adapters:
         for f in (round_dir / "adapters").glob("*.go"):
-            sources[str(f.relative_to(round_dir))] = f.read_text()
+            path, text = str(f.relative_to(round_dir)), f.read_text()
+            if provided and provided.get(path) == text:
+                theirs[path] = text
+            else:
+                sources[path] = text
     previous = ""
-    if sources:  # every model call is a fresh process: the retry must carry the files it asks to fix
-        previous = ("\n\n====================  YOUR PREVIOUS ANSWER  ====================\n" +
-                    "\n".join(f"--- file: {path} ---\n{sources[path].rstrip(chr(10))}\n" for path in sorted(sources)))
+    if sources or theirs:  # every model call is a fresh process: the retry must carry the files it asks to fix
+        section = lambda files: "\n".join(f"--- file: {path} ---\n{files[path].rstrip(chr(10))}\n" for path in sorted(files))
+        previous = "\n\n====================  YOUR PREVIOUS ANSWER  ====================\n" + section(sources)
+        if theirs:
+            previous += "\n" + PROVIDED_ADAPTERS + "\n\n" + section(theirs)
     return (task + previous + "\n\n====================  COMPILER FEEDBACK  ====================\n" + feedback +
             "\n\nFix every error. Output every file again, in full, each preceded by `--- file: app/<path> ---`. No explanation, only files.")
 
@@ -567,6 +589,9 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     summary.update(model.summary_fields())
     user = task_text
     prev = pathlib.Path(seed[0]) if seed is not None else None
+    provided = {}   # the base's adapters, as exported: shown apart in a retry (provided, not the model's)
+    if prev is not None and (prev / "adapters").is_dir():
+        provided = {f"adapters/{f.name}": f.read_text() for f in (prev / "adapters").glob("*.go")}
 
     def harness_error(reason):
         summary["outcome"] = "harness_error"
@@ -659,7 +684,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             break
         user = retry_prompt(task_text, round_dir, diags, stderr, nfiles, rejected, build_output=build_output,
                             test_output=test_output, truncated=getattr(model, "NUM_PREDICT", None) if rnd.get("truncated") else None,
-                            cut_off_file=cut_off_file, show_adapters=adapters)
+                            cut_off_file=cut_off_file, show_adapters=adapters, provided=provided)
         prev = round_dir
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=1) + "\n")
@@ -679,8 +704,8 @@ def main(argv=None):
     ap.add_argument("--build", action="store_true", help="after a clean check, run `alder build --emit`; the run passes only if it succeeds (exit 2 = compiler bug, stop)")
     ap.add_argument("--test", action="store_true", help="with --build: after a successful build, run `alder test --json`; the run passes only if every test passes "
                                                         "(exit 1 = retry with the report, exit 2 = compiler bug, stop)")
-    ap.add_argument("--adapters", action="store_true", help="accept `--- file: adapters/<name>.go ---` sections, write them into the round's adapters/ and let "
-                                                            "build/test run them. OPT-IN: this executes Go code the model wrote, on this machine")
+    ap.add_argument("--adapters", action="store_true", help="WARNING: executes Go code the model wrote, on this machine, unsandboxed. Opt-in: accept "
+                                                            "`--- file: adapters/<name>.go ---` sections, write them into the round's adapters/ and let build/test run them")
     ap.add_argument("--num-ctx", type=int, default=None, help=f"Ollama's num_ctx for this invocation (default {OllamaModel.NUM_CTX}); recorded as harness.num_ctx")
     a = ap.parse_args(argv)
     if a.test and not a.build:
