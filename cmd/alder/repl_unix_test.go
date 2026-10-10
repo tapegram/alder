@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-// replEval starts `alder repl examples/todos` as a process in a fresh directory, has it run a
-// task that runs for minutes, and returns the process and the path of the scratch
+// replEval starts `alder repl examples/todos` as a process in a fresh directory, has it evaluate
+// a pure expression that runs for minutes, and returns the process and the path of the scratch
 // program once that program is running.
 func replEval(t *testing.T) (*exec.Cmd, string) {
 	t.Helper()
@@ -31,9 +31,9 @@ func replEval(t *testing.T) (*exec.Cmd, string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
-	// computed inside main (in eff.Run), not while the generated package initializes: a value
-	// computed at package initialization runs before any main code, the tether included
-	io.WriteString(stdin, `:run! (Task.map (\n -> List.range n 100000 |> List.map (\i -> List.range 1 100000 |> List.length) |> List.sum) (Task.succeed 1))`+"\n")
+	// a pure value: the generated package computes it while it initializes, before the main
+	// runs (rt's init tethers it all the same)
+	io.WriteString(stdin, `List.range 1 100000 |> List.map (\i -> List.range 1 100000 |> List.length) |> List.sum`+"\n")
 	// the executable's path as the REPL resolved it (macOS's /var is /private/var), by a part
 	// unique to this test
 	prog := filepath.Join(filepath.Base(filepath.Dir(work)), filepath.Base(work), "build", filepath.Base(todosDir(t)), "scratch", "repl", "scratch")

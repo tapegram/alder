@@ -485,8 +485,8 @@ func TestEval_RunHasSession(t *testing.T) {
 	}
 	for _, k := range []mainKind{mainPure, mainQuery, mainTask} {
 		m := scratchMain(k, true, "x")
-		if !strings.Contains(m, `os.Getenv("ALDER_SCRATCH_STDIN_EOF") == "1"`) || !strings.Contains(m, "io.Copy(io.Discard, os.Stdin)") {
-			t.Errorf("kind %d: no stdin tether:\n%s", k, m)
+		if !strings.Contains(m, "\t\"alder/rt\"\n") { // rt's init is the stdin tether (rt/tether.go)
+			t.Errorf("kind %d: does not import alder/rt:\n%s", k, m)
 		}
 	}
 	if m := scratchMain(mainPure, true, "x"); !strings.Contains(m, "func main() { fmt.Print(rt.Show(x)) }") {

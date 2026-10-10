@@ -19,16 +19,16 @@ const (
 // with "capability X is not wired in eval"), and print rt.Show of the value; a failed effect
 // prints its message to stderr and exits 1.
 //
-// Every main exits (2) when its standard input reaches end of file if ALDER_SCRATCH_STDIN_EOF
-// is 1 (scratch.EnvStdinEOF): eval and the REPL run it with scratch.RunTethered, whose stdin is a
-// pipe only they hold, so the program, in a process group of its own, dies with them however
-// they die.
+// Every main imports alder/rt, whose init exits the program (2) when its standard input reaches
+// end of file if ALDER_SCRATCH_STDIN_EOF is 1 (rt.EnvStdinEOF): eval and the REPL run it with
+// scratch.RunTethered, whose stdin is a pipe only they hold, so the program, in a process group
+// of its own, dies with them however they die.
 //
 // The database file is created with O_EXCL, so of this process and an `alder run` starting at
 // the same moment only the one that created it builds its tables.
 func scratchMain(kind mainKind, withAdapters bool, it string) string {
 	if kind == mainPure {
-		return strings.NewReplacer("{{it}}", it, "{{tether}}", tether).Replace(pureMain)
+		return strings.ReplaceAll(pureMain, "{{it}}", it)
 	}
 	imp, caps := "", "app.Caps{}.Registry()"
 	if withAdapters {
@@ -38,34 +38,19 @@ func scratchMain(kind mainKind, withAdapters bool, it string) string {
 	if kind == mainTask {
 		run = "eff.Run(env, eff.KTask, " + it + ")"
 	}
-	return strings.NewReplacer("{{imports}}", imp, "{{caps}}", caps, "{{run}}", run, "{{tether}}", tether).Replace(effectMain)
+	return strings.NewReplacer("{{imports}}", imp, "{{caps}}", caps, "{{run}}", run).Replace(effectMain)
 }
-
-// tether is the init of every scratch main: with ALDER_SCRATCH_STDIN_EOF=1 the program exits
-// when its standard input (the parent's pipe) reaches end of file.
-const tether = `func init() {
-	if os.Getenv("ALDER_SCRATCH_STDIN_EOF") == "1" {
-		go func() {
-			io.Copy(io.Discard, os.Stdin)
-			os.Exit(2)
-		}()
-	}
-}
-`
 
 // pureMain prints the value of {{it}} as Alder (rt.Show).
 const pureMain = `package main
 
 import (
 	"fmt"
-	"io"
-	"os"
 
 	"alder/rt"
 	"app"
 )
 
-{{tether}}
 func main() { fmt.Print(rt.Show({{it}})) }
 `
 
@@ -76,7 +61,6 @@ const effectMain = `package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"regexp"
 	"time"
@@ -90,7 +74,6 @@ import (
 // unwired is the message of a capability call that finds no implementation.
 var unwired = regexp.MustCompile(` + "`" + `alder: capability "([^"]*)" is not wired` + "`" + `)
 
-{{tether}}
 func fail(msg string) {
 	fmt.Fprintln(os.Stderr, unwired.ReplaceAllString(msg, "capability $1 is not wired in eval"))
 	os.Exit(1)

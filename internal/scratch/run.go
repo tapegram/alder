@@ -24,12 +24,12 @@ func RunTimeout(b Build, env []string, stdin string, d time.Duration) (string, s
 	return RunContext(ctx, b, env, stdin)
 }
 
-// EnvStdinEOF is the variable RunTethered sets to 1: a main that honours it exits when its
-// standard input reaches end of file.
+// EnvStdinEOF is the variable RunTethered sets to 1: a program importing alder/rt exits when
+// its standard input reaches end of file (rt.EnvStdinEOF, rt/tether.go).
 const EnvStdinEOF = "ALDER_SCRATCH_STDIN_EOF"
 
-// RunTethered is RunContext (no stdin) for a program whose main honours EnvStdinEOF, which it
-// sets: the program's standard input is a pipe whose write end only this process holds,
+// RunTethered is RunContext (no stdin) for a program that honours EnvStdinEOF (every program
+// importing alder/rt), which it sets: the program's standard input is a pipe whose write end only this process holds,
 // closed when the run ends, so the program, out of reach of signals in its own process group,
 // still exits when this process dies in any way (SIGKILL included). Its contract is
 // otherwise RunContext's.
