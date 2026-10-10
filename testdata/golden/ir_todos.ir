@@ -316,12 +316,16 @@
             (record Session (user (var me)) (theme (ctor Theme.Theme.Light)))))
         (bind task after : Maybe Todo
           (db-get Todo.Todo (var id))
-          (pure task
-            (&&
-              (== : List Text (field trace (var r))
-                (list "Db.get Todo" "Db.update Todo"))
-              (== : Maybe Bool (call (std Maybe.map) (lambda (t : Todo) (field done (var t))) (var after))
-                (ctor Prelude.Maybe.Just (record (value True)))))))))))
+          (let done : Maybe Bool
+            (call (std Maybe.map)
+              (lambda (t : Todo) (field done (var t)))
+              (var after))
+            (pure task
+              (test-eq
+                (record (trace (field trace (var r))) (done (var done)))
+                (record
+                  (trace (list "Db.get Todo" "Db.update Todo"))
+                  (done (ctor Prelude.Maybe.Just (record (value True)))))))))))))
 (test "Toggle by another user is not found" task
   (bind task me : Text
     (db-insert User.User
@@ -345,14 +349,21 @@
                 (theme (ctor Theme.Theme.Light)))))
           (bind task after : Maybe Todo
             (db-get Todo.Todo (var id))
-            (pure task
-              (&&
-                (&&
-                  (== : Result Text Nav (field value (var r))
-                    (ctor Prelude.Result.Err (record (value "not found"))))
-                  (== : List Text (field trace (var r)) (list "Db.get Todo")))
-                (== : Maybe Bool (call (std Maybe.map) (lambda (t : Todo) (field done (var t))) (var after))
-                  (ctor Prelude.Maybe.Just (record (value False))))))))))))
+            (let done : Maybe Bool
+              (call (std Maybe.map)
+                (lambda (t : Todo) (field done (var t)))
+                (var after))
+              (pure task
+                (test-eq
+                  (record
+                    (value (field value (var r)))
+                    (trace (field trace (var r)))
+                    (done (var done)))
+                  (record
+                    (value
+                      (ctor Prelude.Result.Err (record (value "not found"))))
+                    (trace (list "Db.get Todo"))
+                    (done (ctor Prelude.Maybe.Just (record (value False))))))))))))))
 (module Todos.Show)
 (record Todos.Show.Model (todo Todo))
 (record Todos.Show.EditTodo (title Text) (due Maybe Date))

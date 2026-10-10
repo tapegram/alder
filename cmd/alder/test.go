@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -83,6 +84,10 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 			dir, haveDir = a, true
 		}
 	}
+	if _, err := regexp.Compile(runPat); err != nil { // before the build: a typo should fail at once
+		fmt.Fprintf(stderr, "alder test: bad -run pattern: %v\n", err)
+		return 2
+	}
 	if !dirHasApp(dir) {
 		fmt.Fprintf(stderr, "alder test: no .alder files under %s/app\n", dir)
 		return 2
@@ -106,7 +111,8 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 	// kills the group and stops
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	ctx, cancel := context.WithTimeoutCause(sigCtx, testTimeout, fmt.Errorf("timed out after %v", testTimeout))
+	errTimeout := fmt.Errorf("the tests timed out after %v", testTimeout)
+	ctx, cancel := context.WithTimeoutCause(sigCtx, testTimeout, errTimeout)
 	defer cancel()
 	out, errOut, exit := scratch.RunContext(ctx, b, env, "")
 	io.WriteString(stdout, out)
@@ -114,22 +120,30 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 	case sigCtx.Err() != nil:
 		fmt.Fprintln(stderr, "alder test: interrupted")
 		return 1
-	case exit == -1 && !strings.Contains(errOut, "timed out"): // could not start
-		fmt.Fprintf(stderr, "alder test: %s\n", strings.TrimSpace(errOut))
-		return 2
-	case exit == -1: // ran past testTimeout
-		fmt.Fprintf(stderr, "alder test: the tests timed out after %v\n", testTimeout)
+	case context.Cause(ctx) == errTimeout:
+		fmt.Fprintf(stderr, "alder test: %v\n", errTimeout)
 		return 1
+	case exit == -1: // not started, or killed for a reason of its own (RunContext says which)
+		fmt.Fprintf(stderr, "alder test: the test program stopped: %s\n", tail(errOut, 20))
+		return 2
 	}
 	io.WriteString(stderr, errOut)
 	return exit
+}
+
+// tail is the last n lines of s, trimmed.
+func tail(s string, n int) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	return strings.Join(lines[max(0, len(lines)-n):], "\n")
 }
 
 // testDiags prints the check diagnostics ds as `alder check` does (an error's text on stdout,
 // a warning's on stderr, each with its source line read from dir), or with jsonOut, when they
 // stopped the build, the object {"diagnostics": […]} on stdout and nothing else; and reports
 // whether they stopped it. stopped is true when nothing was built: an error, or a typed hole
-// (whose warning W0002 then explains why, as it does for `alder build`).
+// (whose warning W0002 then explains why, as it does for `alder build`). It is its own
+// printer: `alder check` prints inline from the loaded program's sources, and eval's evalDiags
+// maps scratch-module positions and writes everything to stderr.
 func testDiags(dir string, ds []diag.Diagnostic, stopped, jsonOut bool, stdout, stderr io.Writer) bool {
 	failed := stopped
 	for _, d := range ds {

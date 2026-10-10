@@ -9,6 +9,8 @@ import (
 	"testing"
 )
 
+// runTest runs `alder test args…`. Tests that use examples/todos itself first move to a fresh
+// working directory (inTemp), so the build lands there, not in cmd/alder/build.
 func runTest(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
 	var out, errb bytes.Buffer
@@ -35,8 +37,12 @@ func tempTodos(t *testing.T, rel, extra string) string {
 	return "todos"
 }
 
+// inTemp makes a fresh temporary directory the working directory.
+func inTemp(t *testing.T) { t.Chdir(t.TempDir()) }
+
 func TestTest_Todos(t *testing.T) {
 	needGoTool(t)
+	inTemp(t)
 	code, stdout, stderr := runTest(t, todosDir(t))
 	if code != 0 {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
@@ -70,6 +76,7 @@ func TestTest_Failing(t *testing.T) {
 
 func TestTest_JSON(t *testing.T) {
 	needGoTool(t)
+	inTemp(t)
 	code, stdout, stderr := runTest(t, todosDir(t), "--json")
 	if code != 0 {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
@@ -101,6 +108,7 @@ func TestTest_JSON(t *testing.T) {
 
 func TestTest_Run(t *testing.T) {
 	needGoTool(t)
+	inTemp(t)
 	code, stdout, stderr := runTest(t, todosDir(t), "-run", "Theme")
 	if code != 0 || stdout != "ok   Theme \"flip alternates\"\n1 passed, 0 failed\n" {
 		t.Errorf("exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
@@ -109,6 +117,7 @@ func TestTest_Run(t *testing.T) {
 
 func TestTest_NoMatch(t *testing.T) {
 	needGoTool(t)
+	inTemp(t)
 	code, stdout, stderr := runTest(t, todosDir(t), "-run", "zzz")
 	if code != 0 || stdout != "0 passed, 0 failed\n" {
 		t.Errorf("exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
@@ -160,5 +169,30 @@ test "verify rejects a stranger" = {
 	want := "FAIL Auth.Login \"verify rejects a stranger\"\n  error: capability Auth.Login.Password is not wired in tests\n  trace: [\"Password.verify\"]\n"
 	if !strings.Contains(stdout, want) {
 		t.Errorf("stdout lacks %q:\n%s", want, stdout)
+	}
+}
+
+func TestTest_Usage(t *testing.T) {
+	inTemp(t)
+	for _, args := range [][]string{
+		{todosDir(t), "extra"},
+		{todosDir(t), "--verbose"},
+		{todosDir(t), "-run"},
+	} {
+		code, stdout, stderr := runTest(t, args...)
+		if code != 2 || stdout != "" || !strings.Contains(stderr, "usage: alder test") {
+			t.Errorf("%q: exit %d, stdout %q, stderr %q", args, code, stdout, stderr)
+		}
+	}
+	code, stdout, stderr := runTest(t, todosDir(t), "-run", "(")
+	if code != 2 || stdout != "" || !strings.Contains(stderr, "alder test: bad -run pattern") {
+		t.Errorf("bad regexp: exit %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	code, _, stderr = runTest(t, "nowhere")
+	if code != 2 || !strings.Contains(stderr, "no .alder files") {
+		t.Errorf("no app: exit %d, stderr %q", code, stderr)
+	}
+	if entries, _ := os.ReadDir("."); len(entries) != 0 {
+		t.Errorf("a usage error built something: %v", entries)
 	}
 }
