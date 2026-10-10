@@ -1,0 +1,19 @@
+module Home
+
+import Theme
+
+page "/" { } requires user
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 0 }
+
+view : Model -> Session -> Html Msg
+view model session = <p>{session.user}</p>
+
+-- the page's narrowed Session: the same rule
+test "the view shows the user" = view { n: 0 } { user: "ann" } == <p>ann</p>
+
+-- every field named: fine
+test "with the theme" = view { n: 0 } { user: "ann", theme: Light } == <p>ann</p>

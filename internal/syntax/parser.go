@@ -103,7 +103,12 @@ func (p *Parser) in(what string) func() {
 	return func() { p.ctx = p.ctx[:len(p.ctx)-1] }
 }
 
+// errorAt reports a parse error at t; a second error at the token of the previous one is a
+// cascade of it and is dropped.
 func (p *Parser) errorAt(t Token, msg string) {
+	if n := len(p.diags); n > 0 && p.diags[n-1].Span.Start == p.posOf(t) {
+		return
+	}
 	if n := len(p.ctx); n > 0 {
 		msg = "in " + p.ctx[n-1] + ": " + msg
 	}

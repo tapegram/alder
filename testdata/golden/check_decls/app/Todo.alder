@@ -15,9 +15,4 @@ table Todo {
   boxed: Payload,
 }
 
-table Broken {
-  id: Int @id,
-  name: Text,
-}
-
 type Payload = Boxed Int

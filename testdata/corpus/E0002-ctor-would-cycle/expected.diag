@@ -1,4 +1,6 @@
-app/Colors.alder:7:12 E0002 `Dark` is a constructor of `Theme.Theme`, and `Theme` imports `Colors` through `Palette`, so `Colors` cannot import it
-app/Colors.alder:7:20 E0002 `Dark` is a constructor of `Theme.Theme`, and `Theme` imports `Colors` through `Palette`, so `Colors` cannot import it
-app/Util.alder:7:11 E0002 `Light` is a constructor of `Theme.Theme`, and `Theme` imports `Util`, so `Util` cannot import it
-app/Util.alder:7:20 E0002 `Light` is a constructor of `Theme.Theme`, and `Theme` imports `Util`, so `Util` cannot import it
+app/Colors.alder:7:12 E0002 `Dark` is a constructor of `Theme.Theme`, and `Theme` imports `Colors` through `Palette`, so `Colors` cannot import it; move the code that uses it into `Theme`
+app/Colors.alder:7:20 E0002 `Dark` is a constructor of `Theme.Theme`, and `Theme` imports `Colors` through `Palette`, so `Colors` cannot import it; move the code that uses it into `Theme`
+app/Util.alder:7:11 E0002 `Light` is a constructor of `Theme.Theme`, and `Theme` imports `Util`, so `Util` cannot import it; move the code that uses it into `Theme`
+app/Util.alder:7:20 E0002 `Light` is a constructor of `Theme.Theme`, and `Theme` imports `Util`, so `Util` cannot import it; move the code that uses it into `Theme`
+app/Util.alder:9:25 E0002 `Light` is a constructor of `Theme.Theme`, and `Theme` imports `Util`, so `Util` cannot import it; a test of `Theme` belongs in `app/Theme.alder`
+app/Util.alder:9:34 E0002 `Light` is a constructor of `Theme.Theme`, and `Theme` imports `Util`, so `Util` cannot import it; a test of `Theme` belongs in `app/Theme.alder`

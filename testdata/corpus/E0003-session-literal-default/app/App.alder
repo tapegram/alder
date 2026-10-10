@@ -1,0 +1,17 @@
+module App
+
+import Theme
+
+session { user: Maybe Text, theme: Theme = Light }
+
+login = Login
+
+-- a literal names every field: `theme`'s default is for the cookie, not for this
+guest : Session
+guest = { user: Nothing }
+
+error : Error -> Html Never
+error err = <h1>Something went wrong</h1>
+
+notFound : Html Never
+notFound = <h1>Not found</h1>

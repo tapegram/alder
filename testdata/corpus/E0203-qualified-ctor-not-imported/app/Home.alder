@@ -1,0 +1,12 @@
+module Home
+
+page "/" { }
+
+type Model = { dark: Bool }
+
+-- `Theme` exists but is not imported, and its constructor is written qualified
+load : Params -> Session -> Query Model
+load params session = Query.succeed { dark: Theme.Light == Theme.Dark }
+
+view : Model -> Session -> Html Msg
+view model session = <p>ok</p>

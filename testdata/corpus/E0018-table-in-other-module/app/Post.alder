@@ -1,0 +1,19 @@
+module Post
+
+type PostId = brand Text
+type CommentId = brand Text
+
+table Post {
+  id: PostId @id,
+  title: Text.NonEmpty,
+}
+
+-- used only here, in its own declaring module: still refused, once, at the declaration
+table Comment {
+  id: CommentId @id,
+  post: PostId @ref Post,
+  body: Text,
+}
+
+commentsOf : PostId -> Query (List Comment)
+commentsOf id = Db.from Comment |> Db.where (Comment.post.eq id) |> Db.all

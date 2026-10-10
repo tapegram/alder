@@ -5,3 +5,5 @@ label light = if light then "light" else "dark"
 
 isLight : Bool
 isLight = Light == Light
+
+test "light is light" = Light == Light

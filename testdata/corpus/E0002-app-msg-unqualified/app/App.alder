@@ -1,0 +1,19 @@
+module App
+
+session { user: Maybe Text }
+
+msg Logout
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing })
+    Task.succeed Rerender
+  },
+}
+
+error : Error -> Html Never
+error err = <h1>Something went wrong</h1>
+
+notFound : Html Never
+notFound = <h1>Not found</h1>

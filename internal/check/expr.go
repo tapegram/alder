@@ -641,13 +641,29 @@ func (mc *modCtx) checkRecordLit(x *syntax.RecordLit, rec *types.Record, env *en
 		seen[fi.Name] = true
 		mc.check(fi.Value, f.Type, env, eff)
 	}
-	var missing []string
+	// A session's defaults are for its cookie (a field it lacks), never for a literal: a
+	// literal of App's Session or a page's narrowed one names every field.
+	session := appSession(rec) || c.narrowedSession(rec)
+	var missing, defaulted []string
 	for _, f := range rec.Fields {
-		if !seen[f.Name] && !f.HasDefault && f.Name != "form" {
+		if seen[f.Name] || f.Name == "form" {
+			continue
+		}
+		switch {
+		case !f.HasDefault:
 			missing = append(missing, f.Name)
+		case session:
+			missing = append(missing, f.Name)
+			defaulted = append(defaulted, f.Name)
 		}
 	}
-	if len(missing) > 0 {
+	const why = "a default applies only to a cookie or a page parameter, not to a literal"
+	switch {
+	case len(missing) > 0 && len(missing) == len(defaulted):
+		c.errorf(diag.TypeMismatch, x.Span, "record literal for `Session` is missing `%s` (%s)", strings.Join(missing, "`, `"), why)
+	case len(defaulted) > 0:
+		c.errorf(diag.TypeMismatch, x.Span, "record `%s` is missing field(s): %s (for `%s`, %s)", types.String(rec), strings.Join(missing, ", "), strings.Join(defaulted, "`, `"), why)
+	case len(missing) > 0:
 		c.errorf(diag.TypeMismatch, x.Span, "record `%s` is missing field(s): %s", types.String(rec), strings.Join(missing, ", "))
 	}
 }
@@ -1304,7 +1320,13 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 		r := c.u.Apply(mc.infer(x.R, env, eff))
 		if c.u.Check(l, r) == nil {
 			l = r
-		} else if c.u.Check(r, l) != nil {
+		} else if c.u.Check(r, l) == nil {
+			// r widens to l
+		} else if lb, rb := brandBase(l), brandBase(r); lb != nil && rb != nil && lb.Name == rb.Name && isNumeric(l) && isNumeric(r) {
+			// two different brands of one numeric base (`Int.Positive < Int.NonNegative`):
+			// both widen to the base and compare as it, as `arith` does (chapter 4, rule 1)
+			l = lb
+		} else {
 			mc.mismatch(x.R.GetSpan(), r, l)
 		}
 		if l2 := c.u.Apply(l); !comparable(l2) {
@@ -1586,6 +1608,8 @@ func brandBase(t types.Type) *types.Con {
 	}
 	return nil
 }
+
+func isNumeric(t types.Type) bool { _, ok := numericBase(t); return ok }
 
 func firstNonNumeric(l, r types.Type) types.Type {
 	if _, ok := numericBase(l); !ok {

@@ -1,0 +1,2 @@
+app/Index.alder:12:37 E0002 `Logout` is an app-level message: write `App.Logout`
+  fix 12:37-12:43 App.Logout

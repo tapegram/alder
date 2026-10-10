@@ -408,7 +408,19 @@ func (r *resolver) tableInOtherModule(x string) (owner, table string, ok bool) {
 // tableMisplaced reports a use of a table declared in another table's module (E5 problem 2):
 // such a table's columns cannot be named from anywhere, so no import can help.
 func (r *resolver) tableMisplaced(span diag.Span, owner, table string) {
-	r.bag.Error(diag.UnknownName, span, "`%s` is a table of module `%s`, but a table is declared in its own module named after it: move it to `%s.alder`", table, owner, modulePath(table))
+	r.bag.Error(diag.UnknownName, span, "`%s` is a table of module `%s`, but a table is declared in its own module named after it: move it to `%s.alder`%s", table, owner, modulePath(table), r.p.tableDeclSee(owner, table))
+}
+
+// tableDeclSee points at the E0018 declaration of table in module owner: "; see `app/Post.alder:11`".
+func (p *Program) tableDeclSee(owner, table string) string {
+	if m := p.Modules[owner]; m != nil {
+		for _, d := range m.Decls {
+			if t, ok := d.(*syntax.TableDecl); ok && t.Name == table {
+				return fmt.Sprintf(" (see `%s:%d`)", t.Span.File, t.Span.Start.Line)
+			}
+		}
+	}
+	return ""
 }
 
 // ---- types
@@ -483,7 +495,7 @@ func (r *resolver) typ(t syntax.Type) {
 				if r.p.scopes[x] != nil && r.p.scopes[x].types[t.Name] {
 					r.ms.used[x] = true
 					if r.p.scopes[x].tables[t.Name] && x != t.Name && r.p.Modules[x] != nil {
-						r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`, but `%s` is a table, and a table is declared in its own module named after it: move it to `%s.alder`", t.Name, x, t.Name, modulePath(t.Name))
+						r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`, but `%s` is a table, and a table is declared in its own module named after it: move it to `%s.alder`%s", t.Name, x, t.Name, modulePath(t.Name), r.p.tableDeclSee(x, t.Name))
 						return
 					}
 					d := r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`; write `%s.%s`", t.Name, x, x, t.Name)
@@ -728,7 +740,7 @@ func (r *resolver) unresolvedCtor(c *syntax.CtorRef) {
 				return
 			}
 			if path := r.p.importPath(o.Module, r.m.Name); path != nil {
-				r.bag.Error(diag.UnknownName, c.Span, "`%s` is a constructor %s, and `%s` %s, so `%s` cannot import it", c.Name, of[0], o.Module, importsPhrase(path), r.m.Name)
+				r.bag.Error(diag.UnknownName, c.Span, "`%s` is a constructor %s, and `%s` %s, so `%s` cannot import it; %s", c.Name, of[0], o.Module, importsPhrase(path), r.m.Name, r.cycleRemedy(o.Module))
 				return
 			}
 			d := r.bag.Error(diag.UnknownName, c.Span, "`%s` is a constructor %s; import `%s`", c.Name, of[0], o.Module)
@@ -739,14 +751,29 @@ func (r *resolver) unresolvedCtor(c *syntax.CtorRef) {
 		r.bag.Error(diag.UnknownName, c.Span, "`%s` is a constructor %s; import one of them", c.Name, list)
 		return
 	}
+	if _, ok := r.p.AppMsgs[c.Name]; ok && r.m.Name != "App" { // `Logout` in a page
+		d := r.bag.Error(diag.UnknownName, c.Span, "`%s` is an app-level message: write `App.%s`", c.Name, c.Name)
+		d.Fix = diag.ReplaceSpan(c.Span, "App."+c.Name)
+		return
+	}
 	if len(r.missing) > 0 {
 		return
 	}
 	r.bag.Error(diag.UnknownName, c.Span, "unknown constructor `%s`%s", c.Name, r.missingCause(c.Name))
 }
 
+// cycleRemedy says what to do instead of importing module x, which imports this module: inside
+// a `test`, the test belongs in x's file; elsewhere the code using x's names moves into x.
+func (r *resolver) cycleRemedy(x string) string {
+	if r.inTest {
+		return fmt.Sprintf("a test of `%s` belongs in `%s.alder`", x, modulePath(x))
+	}
+	return fmt.Sprintf("move the code that uses it into `%s`", x)
+}
+
 // missingCause explains a name no module declares when some module's import names no module
 // (the E7 shape: App uses `Light`, Layout imports a `Theme` nobody wrote); "" when none does.
+// With several such imports every one is named, since any of them may be the one meant.
 func (r *resolver) missingCause(name string) string {
 	var mods []string
 	for x := range r.p.missingImports {
@@ -763,8 +790,17 @@ func (r *resolver) missingCause(name string) string {
 		}
 	}
 	sort.Strings(mods)
-	x := mods[0]
-	return fmt.Sprintf("; no module declares `%s`, and `import %s` in `%s` names no file (`%s.alder`)", name, x, r.p.missingImports[x], modulePath(x))
+	if len(mods) == 1 { // the one missing import is the cause
+		x := mods[0]
+		return fmt.Sprintf("; no module declares `%s`, and `import %s` in `%s` names no file (`%s.alder`)", name, x, r.p.missingImports[x], modulePath(x))
+	}
+	// several: which one was meant to declare name is unknowable, so name them all
+	var each []string
+	for _, x := range mods {
+		each = append(each, fmt.Sprintf("`import %s` in `%s`", x, r.p.missingImports[x]))
+	}
+	list := strings.Join(each[:len(each)-1], ", ") + " and " + each[len(each)-1]
+	return fmt.Sprintf("; no module declares `%s`, and %s name no file", name, list)
 }
 
 // loginPage is the page named by App's `login` declaration (Auth.Login when there is none).
@@ -878,6 +914,18 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 	if owner, table, ok := r.tableInOtherModule(full); ok { // `Db.from Post.Comment` without `import Post`
 		r.tableMisplaced(c.Span, owner, table)
 		return
+	}
+	// `Theme.Light` where app module Theme declares Light but is not imported
+	if s := r.p.scopes[c.Module]; s != nil && r.p.Modules[c.Module] != nil {
+		if _, isCtor := s.ctors[c.Name]; isCtor && s.ctors[c.Name] != "Msg" {
+			if path := r.p.importPath(c.Module, r.m.Name); path != nil {
+				r.bag.Error("E0203", c.Span, "constructors are not qualified; write `%s`, but `%s` %s, so `%s` cannot import it; %s", c.Name, c.Module, importsPhrase(path), r.m.Name, r.cycleRemedy(c.Module))
+				return
+			}
+			d := r.bag.Error("E0203", c.Span, "constructors are not qualified; write `%s` and import `%s`", c.Name, c.Module)
+			d.Fix = r.importFix(c.Module)
+			return
+		}
 	}
 	r.bag.Error(diag.UnknownName, c.Span, "unknown `%s`", full)
 }

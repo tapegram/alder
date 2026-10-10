@@ -1,0 +1,6 @@
+module Post
+
+import Colors
+
+accent : Colors.Color -> Text
+accent c = "red"

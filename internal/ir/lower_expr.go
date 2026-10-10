@@ -133,7 +133,7 @@ func (l *lowerer) recordOf(rt *RecordType, t types.Type, given map[string]syntax
 		case f.Default != nil:
 			out.Fields = append(out.Fields, FieldInit{Name: f.Name, Value: f.Default})
 		case f.Name == "form" && l.msgPayloads[rt]: // the runtime supplies the submitted form
-		default:
+		default: // unreachable: the checker rejects such a literal (a Session's defaults are its cookie's, E0003)
 			panic(fmt.Sprintf("ir: record at %s has no field %s and no default for it", at, f.Name))
 		}
 	}

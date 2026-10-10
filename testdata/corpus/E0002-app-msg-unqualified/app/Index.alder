@@ -1,0 +1,12 @@
+module Index
+
+page "/" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 1 }
+
+-- an app-level message is sent from a page as `App.Logout`
+view : Model -> Session -> Html Msg
+view model session = <button click={Logout}>Log out</button>

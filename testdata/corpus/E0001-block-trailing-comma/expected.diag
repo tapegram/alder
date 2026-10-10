@@ -1,1 +1,2 @@
 app/Home.alder:16:68 E0001 in the definition of `update`: expected `}`, got `,`; the last expression of a block is its result and takes no `,`
+app/Point.alder:5:17 E0001 in the definition of `origin`: expected `}`, got `,`

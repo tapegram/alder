@@ -1,0 +1,3 @@
+app/Home.alder:9:45 E0203 constructors are not qualified; write `Light` and import `Theme`
+  fix 2:1-2:1 import Theme⏎
+app/Home.alder:9:60 E0203 constructors are not qualified; write `Dark` and import `Theme`

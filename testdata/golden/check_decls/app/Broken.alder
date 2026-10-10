@@ -1,0 +1,8 @@
+module Broken
+
+-- a table is declared in its own module named after it (E0018); this one's @id is not a brand
+
+table Broken {
+  id: Int @id,
+  name: Text,
+}

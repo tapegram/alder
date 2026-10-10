@@ -1,0 +1,5 @@
+module Point
+
+-- record punning is not Alder: `{ x, y }` is read as a block, and its `,` is not trailing
+origin : Int -> Int -> { x: Int, y: Int }
+origin x y = { x, y }

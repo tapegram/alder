@@ -21,3 +21,11 @@ stillBranded qty price = qty * price
 -- different bases do not mix
 mixed : Int.Positive -> Float -> Float
 mixed n x = n * x
+
+-- two different brands of one base are ordered as the base (clean)
+cheaper : Int.Positive -> Int.NonNegative -> Bool
+cheaper price budget = price < budget
+
+-- and so are a brand and an app brand of the same base (clean)
+overTip : Cents -> Int.Positive -> Bool
+overTip amount tip = amount >= tip

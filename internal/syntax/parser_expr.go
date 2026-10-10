@@ -480,14 +480,25 @@ func (p *Parser) parseBlockBody(start Token) Expr {
 	return b
 }
 
-// expectBlockEnd expects the `}` after a block's result; a `,` there gets the reason.
+// expectBlockEnd expects the `}` after a block's result; a trailing `,` there (one followed by
+// the `}`) gets the reason. Any other `,` (`{ a, b }`) is a bare "expected `}`".
 func (p *Parser) expectBlockEnd() {
-	if p.at(Comma) {
+	if p.at(Comma) && p.commaBeforeRBrace() {
 		p.errorAt(p.tok, "expected `}`, got `,`; the last expression of a block is its result and takes no `,`")
 		p.advance() // recover as if the `,` were not there
 		p.skipNL()
 	}
 	p.expect(RBrace, "`}`")
+}
+
+// commaBeforeRBrace reports whether the `,` at the current token is followed, past any
+// newlines, by `}`.
+func (p *Parser) commaBeforeRBrace() bool {
+	st, tok := p.mark()
+	defer p.restore(st, tok)
+	p.advance()
+	p.skipNL()
+	return p.at(RBrace)
 }
 
 func (p *Parser) expectNameOrWild() string {

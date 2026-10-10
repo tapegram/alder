@@ -8,7 +8,7 @@ type Settings = { shade: Shade = Light, size: Int = 1.5 }
 
 form F = { x: Int = "s", ok: Bool = True }
 
-table T {
+table D {
   id: TId @id,
   done: Bool = 42,
   shade: Shade = Light,
