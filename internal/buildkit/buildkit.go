@@ -80,12 +80,19 @@ func GoCmd(dir string, args ...string) ([]byte, error) {
 	return GoCmdContext(context.Background(), dir, args...)
 }
 
-// GoCmdContext is GoCmd, the go command killed when ctx is done.
+// GoCmdContext is GoCmd, the go command killed when ctx is done. The go command's work files
+// go into a fresh directory (GOTMPDIR, under os.TempDir) that GoCmdContext removes when the
+// command returns, however it ends: a killed go cannot remove its own go-build* directory.
 func GoCmdContext(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	tmp, err := os.MkdirTemp("", "alder-go-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmp)
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.WaitDelay = 2 * time.Second // a compiler it started may hold the output a moment longer
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod")
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "GOTMPDIR="+tmp)
 	return cmd.CombinedOutput()
 }
 
