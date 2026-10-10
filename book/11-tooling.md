@@ -60,6 +60,7 @@ alder check          type-check everything; milliseconds; no output on success
 alder build          check, generate Go, go build → ./build/myapp/myapp
 alder run            build and run with the dev database, reloading on change
 alder eval <expr>    evaluate an expression against the app: value : Type
+alder repl           a session: let, evaluate, :type, :run, :run!, :html, :reload
 alder test           run every `test`, each against a fresh database: ok/FAIL
 alder fmt            rewrite every file in canonical format
 alder dump <path>    print a file's tokens, AST, or an app's IR
@@ -370,6 +371,131 @@ printed, so it is safe to run from several terminals or tests at once.
 Each evaluation compiles and builds the whole app with the expression;
 Go's build cache keeps that to about 0.6 s once the runtime's packages
 are in it. Chapter 13, "The scratch runner", shows what it compiles.
+
+### `alder repl`
+
+`alder repl [dir] [--module Name]` is `alder eval` with a memory: a
+read-eval-print loop over one scratch module that lives as long as the
+session. It is a tool for a person exploring an app: trying a function
+on a value, looking at a type, running a query against the dev
+database. An agent uses `alder eval`, which takes its whole input at
+once and has `--json`; the REPL has neither.
+
+Each line you type is one of three things:
+
+| You type | The REPL |
+|---|---|
+| `let name = expr` (or `let name : Type = expr`) | checks it with the session's other `let`s; when it is clean, keeps it and prints `name : Type`. A later `let` of the same name replaces it (`redefined name`). A `let` with an error is not kept. |
+| `expr` | evaluates it and prints `value : Type`. A `Query`, a `Task` and a `Select` are not run: they print `<Query> : Query T` (and so on) with a hint naming the command that runs them. |
+| `:command …` | one of the commands below. |
+
+| Command | What it does |
+|---|---|
+| `:type expr` | prints `expr : Type` (the expression as you typed it) without building or running anything |
+| `:run expr` | runs a `Query` against the dev database `build/<app>/dev.db` (the one `alder run` uses; created when absent) and prints the result |
+| `:run! expr` | runs a `Task` against the same database; its writes **commit**. A task that fails (`alder repl: the task failed: …`) commits nothing: its writes are rolled back with it |
+| `:html expr` | evaluates an `Html` value and prints its markup |
+| `:reload` | re-checks the session against the app as it is now; a `let` that no longer checks is dropped, with a notice |
+| `:reset` | forgets every `let` |
+| `:help`, `:h` | lists the commands |
+| `:quit`, `:q` | leaves (so does Ctrl-D) |
+
+`:run` given a `Task`, or `:run!` given a `Query`, says which one to
+use instead; a `Select` needs `Db.all`, `Db.first` or `Db.count` first.
+Both run with the app's default session and, when the app has
+`adapters/`, its real capabilities, exactly as `alder eval --run` does.
+
+A captured session against `examples/todos`, from a fresh working
+directory (the id is random):
+
+```text
+$ alder repl examples/todos
+alder repl: todos (:help for the commands, :quit to leave)
+alder> let xs = [3, 1, 2]
+xs : List Int
+alder> List.sortBy (\n -> n) xs
+[1, 2, 3] : List Int
+alder> :type Todo.countOpen
+Todo.countOpen : List Todo -> Int
+alder> Db.from Todo |> Db.count
+<Query> : Query Int
+hint: `:run Db.from Todo |> Db.count` runs it against the dev database
+alder> :run (Db.from Todo |> Db.count)
+0 : Int
+alder> :run! (Db.insert User { email: Text.Email "ada@example.com", name: Text.NonEmpty "Ada", passwordHash: "" })
+"6Pm-PR7HhdkHXHb9kzij" : User.UserId
+alder> :run (Db.from User |> Db.count)
+1 : Int
+alder> :html <p>{Text.fromInt (List.length xs)} items</p>
+<p>3 items</p>
+alder> xs ++ "four"
+expr:1:7: error[E0003]: expected List Int, got Text
+  xs ++ "four"
+        ^^^^^^
+alder> let total = List.sum xs \
+    …>   + 10
+total : Int
+alder> :reload
+session re-checked
+alder> total * 2
+32 : Int
+alder> :quit
+```
+
+Diagnostics are the compiler's, positioned in what you typed. One in
+the expression is `expr:line:col`, counted in the expression's own
+lines. One in a `let` names it and the REPL line it was typed on,
+`let total (line 10): …`. Either way the source line and a caret
+follow. The app's own errors are printed with their files, as `alder
+check` prints them.
+
+The REPL watches `app/`, `adapters/` and `static/` as `alder run` does,
+every 300 ms. When you save a file it re-checks the session before the
+next prompt (`app changed: session re-checked`), as `:reload` does. A
+`let` that used something the edit removed is dropped. Here
+`Todo.shout` was deleted from `app/Todo.alder` between the second and
+third lines:
+
+```text
+alder> let greeting = Todo.shout "hello"
+greeting : Text
+alder> let n = 2
+n : Int
+alder> :reload
+session re-checked
+dropped let greeting: error[E0002]: module `Todo` has no `shout`
+alder> greeting
+expr:1:1: error[E0002]: unknown name `greeting`
+  greeting
+  ^^^^^^^^
+```
+
+While the app itself has errors, `:reload` prints them and keeps the
+session as it is, so fixing the app gets the `let`s back.
+
+Ctrl-C during an evaluation stops it and everything it started
+(`alder repl: interrupted`) and keeps the session; at the prompt it
+only says `(use :quit or Ctrl-D to leave)`.
+
+Limits:
+
+- There is no line editing beyond what the terminal gives: no history,
+  no arrow keys (the REPL uses only Go's standard library). `rlwrap
+  alder repl` adds both.
+- A line ending in `\` continues on the next (the `\` is dropped, the
+  line break kept), with the prompt `    …>`. Pasting a multi-line
+  `match` needs a `\` at the end of every line but the last.
+- `:run!` writes to the dev database, the one `alder run` serves. Use it
+  to set up data to look at, knowing that it stays.
+- Like `alder eval`, every evaluation compiles the app with the session
+  module: about half a second each, from `build/<app>/scratch/repl/`
+  of the working directory, under the lock
+  `build/<app>/scratch/repl.lock`. `:type` and `let` only check, and
+  answer at once.
+- The session's module is named `Scratch`; `--module Name` renames it
+  for an app that has a `Scratch` module of its own.
+
+Chapter 13, "The REPL", shows how it works.
 
 ### `alder test`
 

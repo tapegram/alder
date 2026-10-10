@@ -296,3 +296,24 @@ Each milestone gets its own plan.
   the test that crashed the program (exit 1, never the Go dump), and the
   program exits when its stdin (a pipe `alder test` holds) closes, so a
   killed `alder test` leaves nothing running.
+- REPL (M4c): an entry is one line, or several joined by a trailing `\`
+  (the `\` dropped, the line break kept); one entry is always one item,
+  so a continuation line at column 1 is indented before parsing (its
+  columns shifted back), unlike `alder eval -`, where such a line starts
+  the next item.
+- REPL (M4c): no readline or line editing (stdlib only; `rlwrap alder
+  repl` adds history); no `--json` (agents use `alder eval`). Prompts go
+  to standard output even when standard input is not a terminal.
+- REPL (M4c): `:run!` is the only way to run a `Task`, and its writes
+  commit to the dev database `build/<app>/dev.db` (the one `alder run`
+  serves); a failing task commits nothing (`eff.Run` rolls back). `:run`
+  takes only a `Query`, and each says which command the other kind needs.
+- REPL (M4c): `:reload` (and the auto-reload on a change to `app/` or
+  `adapters/`) re-checks each `let` in order against the ones kept so
+  far and drops the ones that fail with `dropped let x: <error>`; while
+  the app itself has errors the session is kept unchanged. The first
+  build of a session, and the first after a reload, is vetted; later
+  ones use `NoVet`.
+- REPL (M4c): diagnostics are labelled `expr:L:C` for the expression and
+  `let x (line N)` for a let (N the REPL line); errors are printed from
+  anywhere in the session, warnings only for the line just typed.

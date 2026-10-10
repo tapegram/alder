@@ -171,6 +171,26 @@ One toolchain. Datastar is Go-first. Static binaries. Emitting a typed
 language forces an honest IR. The compiler runs `go build` only after our
 own checks pass, so the agent's edit-check loop never waits on it.
 
+### A REPL for people, `alder eval` for agents **(untested)**
+
+Alder is meant to be written by agents, and an agent does not need a
+REPL. It cannot see a prompt or type into a session, and it would gain
+nothing from one. What it needs is one command that takes the whole input
+and answers in a form it can parse. That is `alder eval`: `let` lines and
+an expression on standard input, `value : Type` or diagnostics out,
+`--json` for a program, and no state between calls to drift out of date.
+The book verifier uses it the same way.
+
+The REPL (`alder repl`, chapter 11) is for the person reading the
+agent's work. They want to try `Todo.countOpen` on a list, see what a
+query returns from the dev database, or insert a row and look at the
+page again. So the REPL has what eval leaves out, and no more: `let`s
+that last, `:run!` to commit a task's writes, `:html`, and a session
+that re-checks when the agent edits a file. It has no `--json` and no
+line editing, since a person can run it under `rlwrap`. Both commands are
+one scratch runner, so the REPL cannot disagree with `eval`, or with the
+compiler.
+
 ## Experiments
 
 Each experiment has a directory under `experiments/` with its prompt,

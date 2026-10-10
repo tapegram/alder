@@ -2141,11 +2141,126 @@ number from a counter, so nested and successive savepoints never share a
 name. `Test.trace` is a smaller `Call` whose function returns
 `rtesting.Trace(env)`: the trace so far without its own step.
 
+### The REPL
+
+`alder repl` (chapter 11) is the scratch runner kept open. `alder eval`
+builds one scratch module from its input and throws it away; the REPL
+keeps a list of the `let`s you typed and builds a new scratch module
+from that list every time you type a line. The code is
+`cmd/alder/repl.go`, and nothing in it is new compiler machinery: it
+calls the same `parseItems`, `assemble`, `scratch.Check`,
+`scratch.CompileCheckedWith` and `scratch.RunContext` as `alder eval`.
+
+**The session is a list of items.** An *item* (`cmd/alder/evalinput.go`)
+is one `let` or the expression, already rewritten as the lines it
+contributes to a module: `let xs = [3, 1, 2]` becomes the top-level
+definition `xs = [3, 1, 2]`, and the expression `total * 2` becomes
+`it = total * 2`. The REPL keeps the kept `let`s as a slice, each with
+the REPL line it was typed on. To evaluate `total * 2` after the session
+of chapter 11, it appends the expression's item and joins them:
+
+```text
+xs = [3, 1, 2]
+total = List.sum xs
+  + 10
+it = total * 2
+```
+
+`scratch.Check` puts `module Scratch` and an `import` of every app module
+above that, and checks it with the app, exactly as for `alder eval`. The
+signatures are inferred (no `let` needs one), and the type of `it` is
+the type the REPL prints. A `let` is checked the same way, as the kept
+`let`s plus the new one, with no `it`. Only when that check is clean
+does the new `let` join the list, so the list always checks. Defining a
+name again removes the old item before the check, which is why `let x =
+x + 1` does not mean "one more than the old `x`": it is a definition of
+`x` in terms of itself, which the checker refuses (E0007), and the old
+`x` stays.
+
+One entry is always one item. `parseItems` would start a new item at a
+continuation line that begins at column 1 (`+ 10` typed after `let total
+= List.sum xs \`), so the REPL indents such a line by two spaces before
+parsing, and records a shift of -2 for it so its columns still match what
+you typed.
+
+**Why every line re-checks everything.** The session could remember what
+each `let` checked to and check only the new line. It does not, because
+checking the whole app plus the session is cheap: on `examples/todos` a
+check takes a millisecond or two, against half a second for a build. A
+full check also means the REPL needs no state of its own about types.
+The checker's answer is always about the app as it is on disk and the
+session as it is now, so nothing can go stale.
+
+**Mapping a diagnostic back.** A diagnostic of the scratch module names
+a line of the joined source, after `scratch.Check` inserted its import
+lines. `Checked.MapDiag` undoes the inserted lines, which leaves a line
+of the joined items. The REPL walks the items' lengths to find which
+item it falls in: an item's `InLine` numbers count from the start of the
+entry it came from, so they cannot say which item a line is in. It then
+subtracts where that item starts, and hands the diagnostic to
+`evalDiags`, the printer `alder eval` uses, with the item's own text as
+the source to show and underline. `evalDiags` labels the position
+`input:L:C`, and the REPL rewrites that label: `expr:L:C` for the
+expression, `let total (line 10)` for a `let` (its REPL line plus the
+line within it). Errors are printed wherever they are, but warnings only
+for the line just typed: an old `let`'s warning would otherwise repeat on
+every line.
+
+**Evaluating.** When the check is clean, the type of `it` decides. A
+`Query`, `Task` or `Select` is shown with a hint unless the command
+asked to run it (`:run` a `Query`, `:run!` a `Task`). Anything else is
+built with the pure main, which prints `rt.Show(it)`. The build goes into
+`build/<app>/scratch/repl/` under its lock, held until the program has
+finished. `:run` and `:run!` use the effect mains of "The scratch
+runner": a `Task` main runs `eff.Run`, which commits the transaction when
+the task succeeds and rolls it back when it fails, so a failed `:run!`
+leaves the database as it was.
+
+**The no-vet build.** `go vet` checks the generated Go before it is
+built, so that an emitter bug shows up as an internal error and not as a
+confusing build failure. The first build of a session is vetted, and so
+is the first after a reload, so a bug in the generated Go is still
+caught. Later builds pass `scratch.Options{NoVet: true}`. On
+`examples/todos`, warm, the first evaluation takes about 0.6 s and later
+ones about 0.45 s: each new expression changes the generated package, so
+Go compiles and links it again.
+
+**`:reload`.** The app's files may have changed since the `let`s were
+checked. `:reload` checks the app alone first; if that has errors, they
+are printed and the session is left as it is. Otherwise it rebuilds the
+list: each `let` in order is checked with the ones kept so far and kept
+if clean, else dropped with the first error (`dropped let greeting:
+error[E0002]: …`). A `let` that used a dropped one is dropped too. It
+also marks the next build to be vetted.
+
+**The loop.** Reading a line from the terminal blocks, but the REPL also
+has to notice an edited file or a Ctrl-C while it waits. So a goroutine
+reads standard input with a `bufio.Scanner` (lines up to 1 MB) and sends
+each line on a channel. A second goroutine runs `watch`, the polling
+loop of `alder run` ("The dev server"), which sends on another channel
+when `app/` or `adapters/` change. The main loop prints the prompt and
+`select`s on the two channels and the interrupt channel:
+
+- a line is handled;
+- a change runs `:reload` (`app changed: session re-checked`);
+- a Ctrl-C says how to leave.
+
+A change that arrives during an evaluation waits in its channel and is
+handled before the next prompt.
+
+Ctrl-C arrives as a signal. `main.go` asks for it with
+`signal.Notify(…, os.Interrupt)`, so it no longer kills `alder`; each
+one becomes a value on the interrupt channel. During an evaluation a
+goroutine waits on that channel and cancels the evaluation's context. As
+for `alder eval`, the program runs in its own process group, out of the
+terminal's reach, and `RunContext` kills the group when the context is
+cancelled. The REPL prints `alder repl: interrupted` and keeps the
+session.
+
 ### What is still to come
 
-M4a added `alder eval` and the book verifier, M4b `alder test` (above).
-The rest of M4 adds a REPL (`alder repl`), on the same scratch runner.
-See the design spec,
+M4a added `alder eval` and the book verifier, M4b `alder test`, and M4c
+the REPL (above). See the design spec,
 [`docs/superpowers/specs/2026-10-09-m4-test-repl-design.md`](../docs/superpowers/specs/2026-10-09-m4-test-repl-design.md),
 "Milestones".
 
