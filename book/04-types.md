@@ -64,9 +64,7 @@ area r = r.w * r.h
 
 ## Unions
 
-```alder fragment
--- TODO(compiler): `type Shape` followed by `= …` on the next line is a parse error (E0001,
--- "expected `=`, got end of line"); only `type Shape =` with the constructors after it parses.
+```alder
 type Filter = All | Active | Completed
 
 type Shape
@@ -114,7 +112,7 @@ Rules:
 
 Rule 4 is a type error, not a silent widening:
 
-```alder error=E0003
+```alder error=E0003 "`==` needs both sides to have the same type"
 type Cents = brand Int
 
 sameAmount : Cents -> Int -> Bool

@@ -316,7 +316,9 @@ question on row ownership below needs a task the example does not answer.
 ### The book, verified
 
 *Measured 2026-10-09.* The book verifier (`go test ./book`, chapter 11)
-checks every fenced `alder` block against the compiler. The verifier's
+runs every fenced `alder` block through the compiler: modules and
+declarations are type-checked, `eval=` and `error=` expressions are
+evaluated, and other expressions are parsed. The verifier's
 first run, on the 78 blocks of the book as it stood, found 41 blocks that
 did not compile, in 52 diagnostics. Nineteen were excerpts checked out
 of their context (the tour's pieces of `Todos.Index`, a page's `load` or
@@ -326,7 +328,7 @@ checked as the whole module; all but one of the other thirteen are marked
 `fragment`, and that one is rewritten as a function that stands alone.
 Three were signature tables a program cannot state: the
 generic `Db` functions (`Table t`; 12 of the diagnostics) and `Http.get`'s
-`HttpError`, which the checker does not know by name. Two were the
+`HttpError`, which the checker then did not know by name. Two were the
 multi-line `type Shape` / `= Circle Float` form of chapters 4 and 6,
 which the grammar allows and the parser rejects. The other 17 were the
 book being wrong: modules that would not compile beside the example (the
@@ -344,13 +346,18 @@ excerpts had kept out of reach: `Todo.title.eq` takes a `Text.NonEmpty`,
 not a `Text`, and two `Db.insert` records lacked the `due` and `owner`
 fields an `Insert Todo` requires. Adding `eval=` values found two in the
 prose: `Text.slice -3 -1 "abcdef"` and `Float.round -2.5` are type errors
-(a negative argument needs parentheses). None of these was a compiler
-bug. Three compiler bugs are marked `TODO(compiler)` in their blocks: the
-`type` line break, `HttpError`, and a two-parameter lambda applied
-inline, `(\a b -> a + b) 1 2`, which fails to infer (E0003 "expected Int,
-got _"), found while giving chapter 3's expressions `eval=` values. About one block in five was simply
-wrong, and half did not compile as written: the case for checking the
-book on every test run.
+(a negative argument needs parentheses). Those were the book's mistakes,
+not the compiler's. The compiler's were three, first marked
+`TODO(compiler)` in their blocks: the `type` line break, `HttpError`, and
+a two-parameter lambda applied inline, `(\a b -> a + b) 1 2`, which
+failed to infer (E0003 "expected Int, got _"), found while giving chapter
+3's expressions `eval=` values. All three are now fixed: an indented `=`
+may start the line after `type Shape`, `Http.HttpError` is the type's
+qualified name (a bare `HttpError` is E0202 with that fix), and an inline
+lambda is checked against its arguments' types; their blocks are checked
+again (chapter 3's with `eval=3`). About one block in five was simply
+wrong, and half did not compile as written: the case for checking the book
+on every test run.
 
 ## Open questions
 

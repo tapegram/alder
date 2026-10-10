@@ -24,7 +24,7 @@ Effects are tested by what they do, not by `==`. A `Query` or `Task`
 value cannot be compared: `==` or `!=` on one is a type error (E0003,
 "effect values cannot be compared"):
 
-```alder error=E0003
+```alder error=E0003 "effect values cannot be compared"
 Query.succeed 1 == Query.succeed 1
 ```
 

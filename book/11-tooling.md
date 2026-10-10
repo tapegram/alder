@@ -5,9 +5,11 @@
 executable that serves the app over HTTP, with its database, sessions and
 forms (chapter 6, "How a request runs"). As of M3d, `alder run` rebuilds
 the app every time you save a file and reloads the browser. As of M4a,
-`alder eval` evaluates an expression against the app, and every Alder
-block in this book not marked `fragment` is checked by `go test ./book`. `alder test` arrives in
-M4; `fmt`, holes beyond W0002 and `query` are planned.
+`alder eval` evaluates an expression against the app, and `go test ./book`
+verifies this book's Alder blocks: its modules and declarations are
+type-checked, its `eval=` and `error=` expressions are evaluated, and its
+other expressions are parsed. `alder test` arrives in M4; `fmt`, holes
+beyond W0002 and `query` are planned.
 
 ## Project layout
 
@@ -304,51 +306,68 @@ $ alder eval examples/todos '[]'
 Every module of the app is in scope under its own name. With `-` in place
 of the expression, `alder eval` reads standard input: `let name = expr`
 lines (or `let name : Type = expr`), then the expression, which may use
-them. Each `let` and the final expression starts on a line that is not
-indented; an indented line continues the one before it, so a long
-expression can span lines:
+them. A `let` may define a function that calls itself (`let fact n = if n
+<= 1 then 1 else n * fact (n - 1)`), but not one defined after it. Each
+`let` and the final expression starts on a line at column 1; an indented
+line continues the one before it, so a long expression can span lines, and
+so does a line that starts with a closer, `}`, `)`, `]` or `</tag>`, so a
+multi-line `match` or element pastes as written:
 
 ```
 let xs =
     [1, 2, 3]
+let size n = match n {
+  0 -> "none",
+  _ -> "some",
+}
 xs
   |> List.map (\x -> x * 2)
 ```
 
-The type is the one the checker infers; nothing needs a signature. A
-`Query` is shown as `<Query> : Query T` and not run; `--run` runs it
-against the dev database `build/<app>/dev.db` (creating it when absent)
-and prints the result. A `Select` is shown as `<Select> : Select T`, even
-with `--run`: pipe it to `Db.all`, `Db.first` or `Db.count` to make a
-`Query`. A `Task` is never run. `--json` prints
-`{"value", "type", "diagnostics"}` instead. Diagnostics name the input as
-`input:line:col`; `alder eval` exits 1 for them, 2 for a usage or internal
-error.
+The type is the one the checker infers; nothing needs a signature. The
+input is like the body of a `test` in one respect: it may use any module's
+brand constructors (`Todos.Show { id: TodoId "x" }`, `Text.NonEmpty
+"milk"`), which elsewhere only their own module may (E0011). A `Query` is
+shown as `<Query> : Query T` and not run; `--run` runs it against the dev
+database `build/<app>/dev.db` (creating it, with the app's tables, when
+absent) and prints the result. A `Select` is shown as `<Select> : Select
+T`, even with `--run`: pipe it to `Db.all`, `Db.first` or `Db.count` to
+make a `Query`. A `Task` is never run. `--json` prints one object instead,
+`{"value", "type", "diagnostics"}`, with `"error"` when the evaluation
+failed for a reason that is not a diagnostic and `"hint"` for a note on a
+success (`--run` given a `Select`). Diagnostics name the input as
+`input:line:col`; `alder eval` exits 1 for them and for an evaluation
+that fails or is interrupted (Ctrl-C stops it and everything it started),
+2 for a usage or internal error.
 
-A line at column 1 starts a new `let` or the expression, and that
-includes a closing `}`, `)`, `]` or `</tag>`: indent the closing line of a
-multi-line `match` or element given to `alder eval -`.
+The input is compiled as a module named `Scratch`. An app that has a
+module of that name of its own gets an error saying so; `--module <Name>`
+gives eval's module another name (`alder eval . --module Probe '1 + 2'`).
 
 `alder eval` writes only under `build/<app>/scratch/` of the working
 directory (and, with `--run`, the dev database `build/<app>/dev.db`), and
 two evaluations of one app take turns on the lock file
-`build/<app>/scratch/eval.lock`, so it is safe to run from several terminals or tests at once. Each
-evaluation compiles and builds the whole app with the expression; Go's
-build cache keeps that to about 0.6 s once the runtime's packages are in
-it. Chapter 13, "The scratch runner", shows what it compiles.
+`build/<app>/scratch/eval.lock`, held from the build until the value is
+printed, so it is safe to run from several terminals or tests at once.
+Each evaluation compiles and builds the whole app with the expression;
+Go's build cache keeps that to about 0.6 s once the runtime's packages
+are in it. Chapter 13, "The scratch runner", shows what it compiles.
 
 ### The book is verified
 
 Every fenced `alder` block in this book that is not marked `fragment` is
-checked against the compiler by `go test ./book` (`book/book_test.go`; the parsing of chapters is
-`book/snippets.go`). A block is a whole module, declarations, a table of
-signatures, or expressions, and its fence says what to expect:
+verified against the compiler by `go test ./book` (`book/book_test.go`;
+the parsing of chapters is `book/snippets.go`): modules, declarations and
+signature tables are type-checked, `eval=` and `error=` expressions are
+evaluated, and other expressions are only parsed. A block is a whole
+module, declarations, a table of signatures, or expressions, and its fence
+says what to expect:
 
 | Fence | Checked |
 |---|---|
-| `alder` | A module or declarations: `alder check` is clean in a copy of `examples/todos` (declarations see every example module; a module replaces the example's module of that name). A table of `Name.x : Type` lines: each name's real type is at least as general as the table's (a `sig : Type` / `sig = Name.x` checks). Expressions: they parse |
+| `alder` | A module or declarations: `alder check` is clean in a copy of `examples/todos` (declarations see every example module; a module replaces the example's module of that name). A table of `Name.x : Type` lines: each name's real type is at least as general as the table's (a `sig : Type` / `sig = Name.x` checks). Expressions: they parse, each starting where `alder eval` would start one (not type-checked) |
 | `alder eval=<value>` | `alder eval examples/todos -` prints exactly `<value>` (the rest of the fence line) |
-| `alder error=<CODE>` | compiling the block reports diagnostic `<CODE>` |
+| `alder error=<CODE> "<text>"` | compiling (or, for expressions, evaluating) the block reports diagnostic `<CODE>` in the block itself, its message containing `<text>` (optional) |
 | `alder part=<Module>` | one piece of a module shown piece by piece (the tour's `Todos.Index`): a chapter's `part=` blocks of one module, consecutive among its `part=` blocks, are joined in order and checked as that module, replacing the example's |
 | `alder fragment` | not checked: a deliberate excerpt, such as one arm of an `update`; listed by `go test -v ./book` |
 

@@ -209,9 +209,8 @@ update : Msg -> Model -> Session -> Task Nav
 
 `update` returns a `Task` (chapter 7) that ends in a `Nav`:
 
-```alder fragment
+```alder
 -- Built in; shown for reference.
--- TODO(compiler): `type Nav` followed by `= …` on the next line does not parse (E0001); see chapter 4.
 type Nav
   = Rerender                 -- re-run load and view for this page, patch the result in
   | Redirect Page            -- go to another page (HTTP 303)

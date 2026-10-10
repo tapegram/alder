@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -59,7 +60,8 @@ const (
 	Check ExpectKind = iota
 	// Eval: the block, given to `alder eval`, prints Value (```alder eval=<value>).
 	Eval
-	// Error: compiling the block reports the diagnostic Code (```alder error=<CODE>).
+	// Error: compiling the block reports the diagnostic Code, in the block's own source, its
+	// message containing Message when one is given (```alder error=<CODE> "<message part>").
 	Error
 	// Fragment: the block is a deliberate excerpt and is not checked (```alder fragment).
 	Fragment
@@ -89,10 +91,12 @@ func (k ExpectKind) String() string {
 
 // Expect is a fence's expectation of its block.
 type Expect struct {
-	Kind   ExpectKind
-	Value  string // Eval: the expected value, verbatim (the rest of the info string after `eval=`)
-	Code   string // Error: the expected diagnostic code
-	Module string // Part: the module the block is a piece of
+	Kind  ExpectKind
+	Value string // Eval: the expected value, verbatim (the rest of the info string after `eval=`)
+	Code  string // Error: the expected diagnostic code
+	// Message is, for Error, a part of the expected diagnostic's message ("" for any message)
+	Message string
+	Module  string // Part: the module the block is a piece of
 }
 
 var (
@@ -101,8 +105,9 @@ var (
 )
 
 // Expectation parses a fence's info string: `alder`, `alder eval=<value>` (the value is the rest
-// of the line, verbatim), `alder error=<CODE>`, `alder fragment` or `alder part=<Module>`.
-// Anything else is an error.
+// of the line, verbatim), `alder error=<CODE>` optionally followed by a quoted part of the
+// message (`alder error=E0003 "expected Int"`, Go string syntax), `alder fragment` or
+// `alder part=<Module>`. Anything else is an error.
 func Expectation(info string) (Expect, error) {
 	rest, ok := strings.CutPrefix(info, "alder")
 	if !ok || (rest != "" && rest[0] != ' ') {
@@ -121,11 +126,19 @@ func Expectation(info string) (Expect, error) {
 		}
 		return Expect{Kind: Eval, Value: v}, nil
 	case strings.HasPrefix(rest, "error="):
-		c := strings.TrimPrefix(rest, "error=")
+		c, msg, _ := strings.Cut(strings.TrimPrefix(rest, "error="), " ")
 		if !codeRE.MatchString(c) {
 			return Expect{}, fmt.Errorf("error= wants a diagnostic code such as E0304, got %q", c)
 		}
-		return Expect{Kind: Error, Code: c}, nil
+		e := Expect{Kind: Error, Code: c}
+		if msg = strings.TrimSpace(msg); msg != "" {
+			m, err := strconv.Unquote(msg)
+			if err != nil || !strings.HasPrefix(msg, `"`) || m == "" {
+				return Expect{}, fmt.Errorf("error=%s wants a quoted part of the message after it, got %s", c, msg)
+			}
+			e.Message = m
+		}
+		return e, nil
 	case strings.HasPrefix(rest, "part="):
 		m := strings.TrimPrefix(rest, "part=")
 		if !moduleNameRE.MatchString(m) {
@@ -229,21 +242,6 @@ func ModuleName(s Snippet) string {
 		return ""
 	}
 	return strings.TrimSpace(name)
-}
-
-// ExprStarts reports, for each line of an Expr snippet's source, whether an expression starts
-// there: a column-1 line that is not blank, a comment, or a closing `}`, `)`, `]` or `</…>`. A
-// block of several expressions (`add 1 2` then `List.map (add 1) [1, 2, 3]`) has several starts.
-func ExprStarts(src string) []bool {
-	lines := strings.Split(strings.TrimRight(src, "\n"), "\n")
-	starts := make([]bool, len(lines))
-	for i, l := range lines {
-		t := strings.TrimSpace(l)
-		starts[i] = t != "" && !strings.HasPrefix(t, "--") && l[0] != ' ' && l[0] != '\t' &&
-			!strings.HasPrefix(t, "}") && !strings.HasPrefix(t, ")") && !strings.HasPrefix(t, "]") &&
-			!strings.HasPrefix(t, "</")
-	}
-	return starts
 }
 
 // A Sig is one typed line of a Signatures snippet: `List.map : (a -> b) -> List a -> List b`.

@@ -33,6 +33,6 @@ as context when writing Alder. They are kept short on purpose.
 
 ## Status
 
-Alder is a design in progress. `alder check`, `alder dump` and `alder build` exist: the to-do app serves, and `alder build` produces a binary that runs it over HTTP against SQLite (chapter 11). `alder run` rebuilds and reloads: save a file and the browser shows the new app, or the compiler's errors (chapter 11). `alder eval` evaluates an expression against the app (chapter 11), and every Alder block in this book not marked as a fragment is checked by `go test ./book`. `alder test` and a REPL come with M4. The reference
+Alder is a design in progress. `alder check`, `alder dump` and `alder build` exist: the to-do app serves, and `alder build` produces a binary that runs it over HTTP against SQLite (chapter 11). `alder run` rebuilds and reloads: save a file and the browser shows the new app, or the compiler's errors (chapter 11). `alder eval` evaluates an expression against the app (chapter 11), and `go test ./book` verifies every Alder block in this book not marked as a fragment: modules and declarations are type-checked, `eval=` and `error=` expressions are evaluated, other expressions are parsed. `alder test` and a REPL come with M4. The reference
 describes the language as currently specified; the rationale chapter records
 what experiments have shown and what is still open.

@@ -1736,6 +1736,7 @@ comment of `Compile`:
 // Compile builds the app at appDir with extra (nil for none) added as one more module, and the
 // caller's Go command mainGo (package main, importing "app"), into the output directory out;
 // out "" is build/<app>/scratch/<purpose> under the working directory (purpose "" is "default").
+// It is Check followed by CompileChecked.
 //
 // The extra module implicitly imports every app module except App (which needs no import)
 // and those its source already imports: Compile inserts `import M` lines after the source's
@@ -1747,39 +1748,61 @@ comment of `Compile`:
 //     the app ("app/Todo.alder"); the extra module's is "<Name>.alder". Diags may hold warnings
 //     alone and still produce a binary.
 //   - Binary is "" when Diags hold an error or a typed hole (W0002), or when Err is set. Err is
-//     set only for I/O failures, generated or caller Go that does not vet, and go build
-//     failures; its message carries Go's output.
+//     set only for I/O failures, an app that already has a module named like the extra one
+//     (*ModuleExistsError), generated or caller Go that does not vet, and go build failures;
+//     its message carries Go's output.
 //   - Compile writes only under out (the generated module "app", adapters/ and static/ copied
-//     from the app, cmd/main.go and the executable out/scratch); it never touches build/<app>
-//     itself. Nothing is written when the check fails, and the previous executable in out stays
-//     until a new one is built, so a failed Compile leaves the last good one runnable.
+//     from the app, cmd/main.go and the executable out/scratch) and the lock file <out>.lock;
+//     it never touches build/<app> itself. Nothing is written when the check fails, and the
+//     previous executable in out stays until a new one is built, so a failed Compile leaves
+//     the last good one runnable.
+//   - Compiles into one out serialize: Compile takes an exclusive lock on <out>.lock (flock;
+//     the kernel drops it if the process dies) before writing, and a Runnable Build keeps it
+//     until Close, so no other Compile replaces the executable while the caller runs it. A
+//     Build that is not Runnable holds no lock. Callers must Close a Runnable Build.
 //   - Compiles into the same out reuse Go's build cache (a second build of an unchanged app is
-//     much faster). Two Compiles must not run into the same out at once.
-func Compile(appDir string, extra *Module, mainGo string, purpose, out string) (b Build)
+//     much faster).
+func Compile(appDir string, extra *Module, mainGo string, purpose, out string) Build
 ```
 
 Here is `alder eval examples/todos 'Theme.flip Light'`, step by step
 (`cmd/alder/eval.go`):
 
 1. **The scratch module.** `evalModule` turns the input into the source
-   of module `Scratch`, one line per input line: the expression becomes
-   `it = Theme.flip Light`, and each `let name = expr` line before it a
-   top-level `name = expr`. None has a signature.
+   of module `Scratch`, line for line: the expression's first line
+   becomes `it = Theme.flip Light`, and each `let name = expr` before it a
+   top-level `name = expr` (an annotated `let name : T = expr` becomes the
+   two lines `name : T` and `name = expr`, which is why eval keeps a map
+   from each line it wrote back to the input's). Where each item starts
+   is `snippets.Starts` (`internal/snippets`): a line at column 1 that is
+   not blank, a comment, or a closer such as `}` or `</ul>`; the book
+   verifier uses the same rule. None of the values has a signature.
 2. **Check.** `scratch.Check` adds `module Scratch` and an `import` of
-   every app module but `App`, and checks the program with
-   `check.Options{InferTopLevel}` for `Scratch` alone, so its values
-   without a signature are inferred instead of being E0007. Diagnostics
-   are mapped back through the inserted lines (`MapDiag`) and the
-   rewriting of step 1, and come out as `input:1:12`.
+   every app module but `App` (an app that already has a module named
+   `Scratch` is an error, `ModuleExistsError`; `--module` picks another
+   name), and checks the program with `check.Options{InferModule:
+   "Scratch"}`: that module's values without a signature are inferred
+   instead of being E0007, and it may use any module's brand
+   constructors, as a `test` may. A function may call itself: while its
+   body is inferred, its own name has a fresh type variable, unified
+   with the body's type at the end (let-rec); a value defined after it is
+   not known yet, and using one is E0007. Diagnostics are mapped back
+   through the inserted lines (`MapDiag`, which also maps the line an
+   E0009 message names) and the rewriting of step 1, and come out as
+   `input:1:12`.
 3. **Choose a main.** The inferred type of `Scratch.it` picks the Go
    `main`: a `Task` is refused; a `Query` is printed as `<Query>` with its
    type unless `--run` is given (then the main runs it against
    `build/<app>/dev.db`); any other value gets a main that prints
    `rt.Show(app.Scratch__it)`, the value written as Alder (a polymorphic
    `it` is a generic thunk, instantiated at `any`).
-4. **Compile.** `scratch.Compile` lowers and emits the whole app plus
-   `Scratch` into `build/todos/scratch/eval/`, holding the lock file
-   `build/todos/scratch/eval.lock`, and builds it. The scratch module's Go is one line:
+4. **Compile.** `scratch.CompileChecked` builds what step 2 checked,
+   without checking again: it takes the lock file
+   `build/todos/scratch/eval.lock`, lowers and emits the whole app plus
+   `Scratch` into `build/todos/scratch/eval/`, and builds it. The
+   returned `Build` keeps the lock until `alder eval` closes it after
+   step 5, so another evaluation cannot replace the executable while
+   this one runs it. The scratch module's Go is one line:
 
    ```go
    // Code generated by alder; DO NOT EDIT.
@@ -1797,9 +1820,11 @@ Here is `alder eval examples/todos 'Theme.flip Light'`, step by step
 
    Every compile goes into the same directory, so Go's build cache has
    the app's packages from the last one: an evaluation takes about 0.6 s.
-5. **Run.** `scratch.Run` runs the executable (in its own process group,
-   killed after `scratch.Timeout`) and `alder eval` prints its output
-   with the type: `Dark : Theme`.
+5. **Run.** `scratch.RunContext` runs the executable in its own process
+   group, so the terminal's Ctrl-C reaches `alder eval` alone; eval
+   catches it (and SIGTERM), cancels the context, and the whole group is
+   killed, as it is after `scratch.Timeout`. Then `alder eval` prints the
+   output with the type: `Dark : Theme`.
 
 A captured session, from a fresh working directory:
 
@@ -1833,17 +1858,21 @@ blocks, chapter 11) is joined first. All of a chapter's modules,
 declarations and signature tables go into one copy of `examples/todos/app` and one
 `alder check --json`; only when that is not clean is each block checked
 alone, to pin every diagnostic on its block and line. Expressions are
-parsed with `alder dump`, or, when the fence gives `eval=`, evaluated with
-`alder eval --json -` in a working directory shared by all chapters,
-where the lock above makes the chapters take turns. Chapters run in
+only parsed, with `alder dump` (each starting where `snippets.Starts`
+says), unless the fence gives `eval=` or `error=`: then they are
+evaluated with `alder eval --json -` in a working directory shared by
+all chapters, where the lock above makes the chapters take turns. An
+`error=` block passes only when the diagnostic is in the block itself
+and, when the fence quotes a part of the message, its message has it. Chapters run in
 parallel, each in its own temporary directory; the whole book takes
 about 15 seconds, almost all of it the evaluations.
 
 ### What is still to come
 
 M4a added `alder eval` and the book verifier (above). The rest of M4
-adds `alder test` and a REPL (`alder repl`), on the same scratch runner. See the design spec,
-[`docs/superpowers/specs/2026-10-09-m3-codegen-runtime-design.md`](../docs/superpowers/specs/2026-10-09-m3-codegen-runtime-design.md),
+adds `alder test` and a REPL (`alder repl`), on the same scratch runner.
+See the design spec,
+[`docs/superpowers/specs/2026-10-09-m4-test-repl-design.md`](../docs/superpowers/specs/2026-10-09-m4-test-repl-design.md),
 "Milestones".
 
 ## 9. Reading generated code

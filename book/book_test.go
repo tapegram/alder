@@ -15,11 +15,14 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"alder/internal/snippets"
 )
 
 // The verifier compiles every ```alder block of the book with the real `alder` binary, built
-// once per run: a Module or Decls block is `alder check`ed in a copy of examples/todos, an Expr
-// block is parsed (`alder dump`), or evaluated (`alder eval`) when its fence gives `eval=`.
+// once per run: a Module, Decls or Signatures block is `alder check`ed (type-checked) in a copy
+// of examples/todos; an Expr block is evaluated (`alder eval`) when its fence gives `eval=` or
+// `error=`, and otherwise only parsed (`alder dump`).
 
 var (
 	tmpRoot   string // removed by TestMain
@@ -89,6 +92,19 @@ type jdiag struct {
 	File     string `json:"file"`
 	Line     int    `json:"line"`
 	Message  string `json:"message"`
+}
+
+// matches reports whether d is the diagnostic exp (an Error) asks for.
+func (exp Expect) matches(d jdiag) bool {
+	return d.Code == exp.Code && strings.Contains(d.Message, exp.Message)
+}
+
+// want describes what an Error expectation asks for, for a failure.
+func (exp Expect) want() string {
+	if exp.Message == "" {
+		return exp.Code
+	}
+	return exp.Code + " " + strconv.Quote(exp.Message)
 }
 
 // verifier verifies the blocks of one chapter in its own temporary directory.
@@ -167,7 +183,7 @@ func verify(t *testing.T, path, display string) report {
 			if kind == Expr {
 				v.eval(s, exp)
 			} else {
-				v.checkError(s, exp.Code)
+				v.checkError(s, exp)
 			}
 		case Check:
 			v.r.counts["checked"]++
@@ -407,10 +423,11 @@ func (v *verifier) checkAlone(s Snippet) {
 	}
 }
 
-// checkError checks one Module or Decls block, which must report code.
-func (v *verifier) checkError(s Snippet, code string) {
+// checkError checks one Module or Decls block, which must report exp's diagnostic in its own
+// file (not in an example module it breaks).
+func (v *verifier) checkError(s Snippet, exp Expect) {
 	dir := v.newApp()
-	v.place(dir, s, 1)
+	p := v.place(dir, s, 1)
 	ds, bad := v.check(dir)
 	if bad != "" {
 		v.failf(s.Line, "%s", bad)
@@ -418,21 +435,24 @@ func (v *verifier) checkError(s Snippet, code string) {
 	}
 	var got []string
 	for _, d := range ds {
-		if d.Code == code {
+		if d.File == filepath.ToSlash(p.file) && exp.matches(d) {
 			return
 		}
-		got = append(got, d.Code)
+		if d.Severity == "error" || d.Code == exp.Code {
+			got = append(got, d.Code+" "+d.Message+" ("+d.File+")")
+		}
 	}
-	v.failf(s.Line, "want %s, got %v", code, got)
+	v.failf(s.Line, "want %s, got [%s]", exp.want(), strings.Join(got, "; "))
 }
 
 var textDiagRE = regexp.MustCompile(`^[^\s:]+:(\d+):\d+: \w+\[(\w+)\]: (.*)$`)
 
-// parseOnly parses an Expr block: each expression in it becomes `itN = …` in module Snippet,
-// line for line, and `alder dump` must find no error.
+// parseOnly parses an Expr block: each expression in it (where `alder eval` would start an
+// item, snippets.Starts) becomes `itN = …` in module Snippet, line for line, and `alder dump`
+// must find no error.
 func (v *verifier) parseOnly(s Snippet) {
 	lines := strings.Split(strings.TrimRight(s.Source, "\n"), "\n")
-	starts := ExprStarts(s.Source)
+	starts := snippets.Starts(lines) // eval's item rule
 	var b strings.Builder
 	b.WriteString("module Snippet\n")
 	n := 0
@@ -473,7 +493,7 @@ func (v *verifier) parseOnly(s Snippet) {
 func (v *verifier) eval(s Snippet, exp Expect) {
 	cmd := exec.Command(v.bin, "eval", todosApp, "--json", "-")
 	cmd.Dir = v.evalDir
-	cmd.Stdin = strings.NewReader(evalInput(s.Source))
+	cmd.Stdin = strings.NewReader(s.Source) // as written: eval continues an item on a closer
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	cmd.Run() // the exit code is in the JSON's diagnostics and error
@@ -496,12 +516,14 @@ func (v *verifier) eval(s Snippet, exp Expect) {
 	if exp.Kind == Error {
 		var got []string
 		for _, d := range res.Diagnostics {
-			if d.Code == exp.Code {
+			if d.File == "input" && exp.matches(d) {
 				return
 			}
-			got = append(got, d.Code)
+			if d.Severity == "error" || d.Code == exp.Code {
+				got = append(got, d.Code+" "+d.Message+" ("+d.File+")")
+			}
 		}
-		v.failf(s.Line, "want %s, got %v %s", exp.Code, got, res.Error)
+		v.failf(s.Line, "want %s, got [%s] %s", exp.want(), strings.Join(got, "; "), res.Error)
 		return
 	}
 	for _, d := range res.Diagnostics {
@@ -517,20 +539,6 @@ func (v *verifier) eval(s Snippet, exp Expect) {
 	if res.Value != exp.Value {
 		v.failf(s.Line, "eval= wants %s, got %s : %s", exp.Value, res.Value, res.Type)
 	}
-}
-
-// evalInput is a block as `alder eval -` reads it. eval starts a new item at every line that is
-// not indented, so a closing `}`, `)`, `]` or `</tag>` at column 1 (the book's style for a
-// multi-line match or element) is indented to continue the expression; that changes no value.
-func evalInput(src string) string {
-	lines := strings.Split(src, "\n")
-	starts := ExprStarts(src)
-	for i, l := range lines {
-		if i < len(starts) && !starts[i] && l != "" && l[0] != ' ' && l[0] != '\t' && !strings.HasPrefix(l, "--") {
-			lines[i] = "  " + l
-		}
-	}
-	return strings.Join(lines, "\n")
 }
 
 func TestBook_Classify(t *testing.T) {
@@ -587,6 +595,10 @@ func TestBook_Expectations(t *testing.T) {
 		{info: `alder eval={ a: 1, b: "x = y" }`, want: Expect{Kind: Eval, Value: `{ a: 1, b: "x = y" }`}},
 		{info: "alder error=E0304", want: Expect{Kind: Error, Code: "E0304"}},
 		{info: "alder error=W0003", want: Expect{Kind: Error, Code: "W0003"}},
+		{info: `alder error=E0003 "expected Int, got Text"`, want: Expect{Kind: Error, Code: "E0003", Message: "expected Int, got Text"}},
+		{info: `alder error=E0003 "a \"quoted\" part"`, want: Expect{Kind: Error, Code: "E0003", Message: `a "quoted" part`}},
+		{info: "alder error=E0003 expected", bad: true},
+		{info: `alder error=E0003 ""`, bad: true},
 		{info: "alder part=Todos.Index", want: Expect{Kind: Part, Module: "Todos.Index"}},
 		{info: "alder part=todos", bad: true},
 		{info: "alder error=oops", bad: true},
@@ -614,8 +626,8 @@ func TestBook_Extract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ss) != 12 {
-		t.Fatalf("got %d snippets, want 12 (the go block is not one)", len(ss))
+	if len(ss) != 13 {
+		t.Fatalf("got %d snippets, want 13 (the go block is not one)", len(ss))
 	}
 	if ss[0].Line != 8 || !strings.HasPrefix(ss[0].Source, "module Theme\n") || ss[0].Info != "alder" {
 		t.Errorf("first snippet: %+v", ss[0])
@@ -623,7 +635,7 @@ func TestBook_Extract(t *testing.T) {
 	if ss[3].Info != "alder eval=[2, 3, 4]" || ss[3].Source != "List.map (\\x -> x + 1) [1, 2, 3]\n" {
 		t.Errorf("fourth snippet: %+v", ss[3])
 	}
-	wantKinds := []Kind{Module, Decls, Expr, Expr, Expr, Decls, Signatures, Decls, Module, Decls, Signatures, Decls}
+	wantKinds := []Kind{Module, Decls, Expr, Expr, Expr, Decls, Signatures, Decls, Module, Decls, Signatures, Decls, Decls}
 	for i, s := range ss {
 		if k := Classify(s); k != wantKinds[i] {
 			t.Errorf("snippet %d (line %d): %s, want %s", i, s.Line, k, wantKinds[i])
@@ -631,9 +643,9 @@ func TestBook_Extract(t *testing.T) {
 	}
 }
 
-// TestBook_FixtureFails proves the verifier fails: the fixture's wrong eval=, wrong signature
-// and wrong declaration are its only failures, each on its line, and every other kind of block
-// (the part= pieces joined) passes.
+// TestBook_FixtureFails proves the verifier fails: the fixture's wrong eval=, wrong signature,
+// wrong declaration and wrong error= message are its only failures, each on its line, and
+// every other kind of block (the part= pieces joined) passes.
 func TestBook_FixtureFails(t *testing.T) {
 	t.Parallel()
 	r := verify(t, "testdata/fixture.md", "book/testdata/fixture.md")
@@ -641,6 +653,7 @@ func TestBook_FixtureFails(t *testing.T) {
 		"book/testdata/fixture.md:50: eval= wants 4, got 3 : Int",
 		"book/testdata/fixture.md:101: E0003 expected Int -> Int, got Int -> Text",
 		"book/testdata/fixture.md:108: E0003 expected Text, got Int",
+		`book/testdata/fixture.md:113: want E0003 "expected Bool", got [E0003 expected Int, got Text (app/Snippet1.alder)]`,
 	}
 	got := append([]string(nil), r.failures...)
 	sort.Strings(got)
@@ -648,7 +661,7 @@ func TestBook_FixtureFails(t *testing.T) {
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("failures:\n%s\nwant exactly:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	if len(r.fragments) != 1 || r.counts["eval"] != 2 || r.counts["error"] != 1 || r.counts["checked"] != 6 || r.counts["part"] != 2 {
+	if len(r.fragments) != 1 || r.counts["eval"] != 2 || r.counts["error"] != 2 || r.counts["checked"] != 6 || r.counts["part"] != 2 {
 		t.Errorf("fragments %v, counts %v", r.fragments, r.counts)
 	}
 }

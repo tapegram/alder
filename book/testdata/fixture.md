@@ -1,7 +1,7 @@
 # Fixture
 
-One block of each kind the verifier knows. `TestBook_FixtureFails` wants exactly three failures:
-the wrong `eval=`, the wrong signature and the wrong declaration below.
+One block of each kind the verifier knows. `TestBook_FixtureFails` wants exactly four failures:
+the wrong `eval=`, signature, declaration and `error=` message below.
 
 A whole module, replacing the example's `Theme`:
 
@@ -51,9 +51,9 @@ A wrong value (the one failure):
 1 + 2
 ```
 
-An error example:
+An error example, with a part of its message:
 
-```alder error=E0003
+```alder error=E0003 "expected Int, got Text"
 x : Int
 x = "a"
 ```
@@ -106,4 +106,11 @@ A wrong declaration (the third failure):
 ```alder
 double : Int -> Int
 double n = n ++ 2
+```
+
+A wrong error message (the fourth failure):
+
+```alder error=E0003 "expected Bool"
+y : Int
+y = "b"
 ```

@@ -53,10 +53,21 @@ Packages added: `internal/scratch`, `rt/testing`, `stdlib/Test.alder`;
 ### The scratch-module runner (`internal/scratch`)
 
 ```go
-type Module struct{ Name, Source string }           // an in-memory .alder module
-type Build struct{ Dir string; Binary string; Diags []diag.Diagnostic; Err error }
-func Compile(appDir string, extra *Module, mainGo string, out string) Build
+type Module struct{ Name, Source string; Infer bool } // an in-memory .alder module
+type Build struct{ Dir string; Binary string; Diags []diag.Diagnostic; Err error; … }
+func Check(appDir string, extra *Module) Checked
+func Compile(appDir string, extra *Module, mainGo, purpose, out string) Build // Check + CompileChecked
+func CompileChecked(c Checked, mainGo, purpose, out string) Build
+func RunContext(ctx context.Context, b Build, env []string, stdin string) (stdout, stderr string, exit int)
 ```
+
+(As built in M4a.) `Infer` sets `check.Options{InferModule: Name}`: that
+module's sig-less values are inferred (functions may call themselves) and
+it may use any brand constructor, as a `test` may. An app that already
+has a module of that name is a `ModuleExistsError`. `CompileChecked`
+takes a flock on `<out>.lock` and a runnable `Build` holds it until
+`Close`. `RunContext` runs the binary in its own process group and kills
+the group when the context is done (a timeout, or the caller's Ctrl-C).
 
 `Compile` loads the app from `appDir` (as `alder check` does), adds `extra`
 to the module set (if non-nil) with an implicit import of every app module
@@ -165,10 +176,13 @@ brand constructors are usable from any module (existing rule).
 ### `alder eval`
 
 `alder eval [dir] 'expr'` or `-` for stdin (several lines allowed; `let`
-lines then a final expression). Prints `value : Type` or the diagnostics;
-`--run` allows a `Query` against the dev database; `--json` prints
-`{"value": "...", "type": "...", "diagnostics": [...]}`. Exit 0/1/2 as
-`check`. This is the form agents and the book verifier use.
+lines then a final expression; a line at column 1 starts an item unless
+it starts with a closer, `}`, `)`, `]` or `</`). Prints `value : Type` or
+the diagnostics; `--run` allows a `Query` against the dev database;
+`--json` prints `{"value": "...", "type": "...", "diagnostics": [...]}`,
+plus `"error"` and `"hint"` when present; `--module <Name>` names the
+scratch module for an app that has a `Scratch` module of its own. Exit
+0/1/2 as `check`. This is the form agents and the book verifier use.
 
 ### Book verification
 
@@ -179,12 +193,23 @@ chapter and appendix. The info string carries the expectation:
 - ```` ```alder ```` — the block must check clean: a block starting with
   `module` is checked as a whole module (in a temp app with the to-do
   example's modules available for imports); a block of declarations is
-  wrapped in `module Snippet` with the example modules imported; a block
-  that is a single expression (or `let`s + expression) is run through
-  `alder eval` against the example app and must evaluate.
-- ```` ```alder eval=<value> ```` — must evaluate to exactly that `Show`
-  text.
-- ```` ```alder error=E0304 ```` — must produce that diagnostic code.
+  wrapped in `module Snippet` with the example modules imported; a
+  **signatures** block (every line `Name.x : T` or a list of names, at
+  least one qualified) is a reference table, each typed name checked to
+  have that type (`sig : T` / `sig = Name.x`). A block of expressions (or
+  `let`s + expression) is only **parsed** (`alder dump`), not
+  type-checked: prose expressions often use names the example does not
+  define; give one `eval=` to have it evaluated.
+- ```` ```alder eval=<value> ```` — must evaluate (`alder eval`) to
+  exactly that `Show` text.
+- ```` ```alder error=E0304 "message part" ```` — must produce that
+  diagnostic code in the block itself (not in an example module it
+  breaks), its message containing the optional quoted text; an expression
+  is evaluated, anything else checked.
+- ```` ```alder part=<Module> ```` — one piece of a module shown piece by
+  piece: a chapter's `part=` blocks of one module, consecutive among its
+  `part=` blocks, are joined in order (the first starts with the `module`
+  line) and checked as that module, replacing the example's.
 - ```` ```alder fragment ```` — a deliberate excerpt: not checked,
   but counted and listed in the test output so fragments stay rare.
 

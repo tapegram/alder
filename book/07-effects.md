@@ -38,7 +38,8 @@ update msg model session = match msg {
     Task.succeed (Redirect (Todos.Show { id: id }))
   },
   Toggle p -> {
-    let _ <- Db.update Todo p.id (\t -> { t | done: not t.done })
+    let todo <- owned p.id session  -- the user's todo, or a 404 (chapter 6)
+    let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
     Task.succeed Rerender
   },
 }
@@ -51,7 +52,7 @@ or as an element of `Task.all`, a `Query` is a type error (E0003,
 `expected Task Int, got Query Int`). Bind it and finish with
 `Task.succeed`:
 
-```alder error=E0003
+```alder error=E0003 "expected Task Int, got Query Int"
 recount : Task Int
 recount = Db.count (Db.from Todo)
 ```
@@ -136,14 +137,13 @@ Log.warn    : Text -> Task Unit
 Time.now    : Query Time
 Random.int  : { min: Int, max: Int } -> Task Int
 Random.id   : Task Text              -- 20-character URL-safe id
+Http.get    : { url: Text } -> Task (Result Http.HttpError Text)
+Http.post   : { url: Text, body: Text } -> Task (Result Http.HttpError Text)
 ```
 
-```alder fragment
--- TODO(compiler): `HttpError` is the type these return, but a program cannot name it
--- (E0002 "unknown type `HttpError`"), so these lines cannot be written as signatures.
-Http.get    : { url: Text } -> Task (Result HttpError Text)
-Http.post   : { url: Text, body: Text } -> Task (Result HttpError Text)
-```
+`Http.HttpError` is the stdlib's type for a failed request: a type of a
+standard module other than the Prelude is always written qualified (a bare
+`HttpError` is E0202, with the fix).
 
 Nothing else in the language touches the outside world. If a function's
 signature has no `Query` or `Task` in it, it is pure.

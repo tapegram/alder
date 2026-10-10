@@ -134,10 +134,8 @@ There is no `<|`, no `<<`, no `>>`.
 \x -> x + 1
 ```
 
-```alder fragment
--- TODO(compiler): two-parameter lambda applied inline fails to infer (E0003): `(\a b -> a + b) 1 2`
--- is "expected Int, got _"; with a signature or an annotated `let` it checks.
-\a b -> a + b
+```alder eval=3
+(\a b -> a + b) 1 2
 ```
 
 ## Operators
