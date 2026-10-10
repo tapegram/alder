@@ -9,7 +9,7 @@ With --build, a round whose check is clean also runs `alder build --emit` (outpu
 --base DIR seeds round 0 from DIR/app as committed (`git archive HEAD`), never from the working tree.
 summary.json's `outcome` is pass, fail, compiler_bug or harness_error (see README "Outcomes").
 """
-import argparse, io, json, pathlib, posixpath, re, shutil, subprocess, sys, tarfile, tempfile, time, urllib.request
+import argparse, io, json, os, pathlib, posixpath, re, shutil, signal, subprocess, sys, tarfile, tempfile, time, urllib.request
 
 MAX_OUTPUT = 200_000
 
@@ -179,16 +179,40 @@ def unknown_exit(what: str, code: int):
     return None if code in ALDER_EXITS else f"alder {what} exited {code} (not 0, 1 or 2)"
 
 
+class Hang(str):
+    """A harness reason that is a timeout: alder check or build ran past its limit, which is almost
+    certainly the compiler hanging (run_one records it as compiler_bug, kind "hang")."""
+
+
+def run_proc(argv, timeout, **kw):
+    """subprocess.run(argv, capture_output=True, text=True, timeout=timeout, **kw), except that on
+    the timeout the whole process group is killed (the process runs in a session of its own), so a
+    child it started (go's compiler under `alder build`) cannot keep the pipes open and the harness
+    waiting. Raises subprocess.TimeoutExpired after the kill, as subprocess.run does."""
+    p = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
+                         text=True, start_new_session=True, **kw)
+    try:
+        out, err = p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        p.communicate()
+        raise
+    return subprocess.CompletedProcess(argv, p.returncode, out, err)
+
+
 def run_check(alder: pathlib.Path, app_root: pathlib.Path, timeout: float = 600):
     """`alder check --json` on app_root. Returns (exit, diagnostics, stderr, harness_reason):
     harness_reason is None normally, and a string when the check did not run as a check (a
-    timeout, a binary that cannot start, an exit code other than 0, 1 or 2); exit is then 2,
-    or the exit code."""
+    timeout — a Hang —, a binary that cannot start, an exit code other than 0, 1 or 2); exit is
+    then 2, or the exit code."""
     try:
-        p = subprocess.run([str(alder), "check", str(app_root), "--json"], capture_output=True, text=True, timeout=timeout)
+        p = run_proc([str(alder), "check", str(app_root), "--json"], timeout)
     except subprocess.TimeoutExpired:
         msg = f"{alder}: check timed out after {timeout}s"
-        return 2, [], msg, msg
+        return 2, [], msg, Hang(msg)
     except OSError as e:
         msg = f"{alder}: {e}"
         return 2, [], msg, msg
@@ -209,15 +233,14 @@ def run_build(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = 900
     """`alder build --emit` in round_dir, so the generated Go lands in round_dir/build/.
 
     Returns (exit, stderr, stdout, harness_reason): harness_reason is None normally, and a string
-    for a timeout, a binary that cannot start, or an exit code other than 0, 1 or 2 (exit is then
-    None, or the exit code)."""
+    for a timeout (a Hang), a binary that cannot start, or an exit code other than 0, 1 or 2 (exit
+    is then None, or the exit code)."""
     rd = round_dir.resolve()
     try:
-        p = subprocess.run([str(pathlib.Path(alder).resolve()), "build", "--emit", str(rd)],
-                           cwd=rd, capture_output=True, text=True, timeout=timeout)
+        p = run_proc([str(pathlib.Path(alder).resolve()), "build", "--emit", str(rd)], timeout, cwd=rd)
     except subprocess.TimeoutExpired:
         msg = f"{alder}: build timed out after {timeout}s"
-        return None, msg, "", msg
+        return None, msg, "", Hang(msg)
     except OSError as e:
         msg = f"{alder}: {e}"
         return None, msg, "", msg
@@ -232,34 +255,42 @@ def _git(cwd, *args) -> bytes:
     return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, check=True).stdout
 
 
-def export_base(base: pathlib.Path) -> pathlib.Path:
+def export_base(base: pathlib.Path):
     """Export `<base>/app` as committed at HEAD of the git repository containing base into a new
-    temporary directory, and return the exported base (tmp/<base relative to the repository>).
-    Uncommitted edits and untracked files are never seen. Exits 2 when base is not inside a git
-    repository or HEAD has no `<base>/app`. The caller removes the directory (remove_export)."""
+    temporary directory, and return (the exported base — tmp/<base relative to the repository> —,
+    the commit it was exported from): HEAD is resolved once and that commit archived. Uncommitted
+    edits and untracked files are never seen; when `<base>/app` has some, a warning says so on
+    stderr. Exits 2 when base does not exist, is not inside a git repository, or HEAD has no
+    `<base>/app`. The caller removes the directory (remove_export)."""
     base = pathlib.Path(base)
+    if not base.is_dir():
+        print(f"run_loop.py: --base {base} does not exist (or is not a directory)", file=sys.stderr)
+        raise SystemExit(2)
     try:
         top = pathlib.Path(_git(base, "rev-parse", "--show-toplevel").decode().strip()).resolve()
+        commit = _git(top, "rev-parse", "HEAD").decode().strip()
     except (OSError, subprocess.CalledProcessError):
         print(f"run_loop.py: {BASE_NOT_IN_GIT}", file=sys.stderr)
         raise SystemExit(2)
     rel = base.resolve().relative_to(top).as_posix()
     app = "app" if rel == "." else rel + "/app"
     try:
-        tar = _git(top, "archive", "--format=tar", "HEAD", "--", app)
+        tar = _git(top, "archive", "--format=tar", commit, "--", app)
     except subprocess.CalledProcessError as e:
-        print(f"run_loop.py: --base {base}: git archive HEAD -- {app}: {e.stderr.decode().strip()}", file=sys.stderr)
+        print(f"run_loop.py: --base {base}: git archive {commit} -- {app}: {e.stderr.decode().strip()}", file=sys.stderr)
         raise SystemExit(2)
+    try:
+        dirty = _git(top, "status", "--porcelain", "--", app).decode().strip()
+    except (OSError, subprocess.CalledProcessError):
+        dirty = ""
+    if dirty:
+        print(f"run_loop.py: warning: uncommitted changes under {base}/app are ignored "
+              f"(round 0 is seeded from commit {commit[:12]})", file=sys.stderr)
     out = pathlib.Path(tempfile.mkdtemp(prefix="alder-base-"))
     with tarfile.open(fileobj=io.BytesIO(tar)) as tf:
         tf.extractall(out, filter="data")
     _exports[out / rel] = out
-    return out / rel
-
-
-def base_commit(base: pathlib.Path) -> str:
-    """The commit export_base exports base from (HEAD of its repository)."""
-    return _git(base, "rev-parse", "HEAD").decode().strip()
+    return out / rel, commit
 
 
 def remove_export(exported: pathlib.Path):
@@ -339,8 +370,8 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             system: str, alder: pathlib.Path, retries: int = 1, base=None, build: bool = False, seed=None) -> dict:
     """`base`, if given, is a directory inside a git repository whose `app/` as committed (`git archive
     HEAD`, never the working tree) seeds round 0 (for tasks that modify an existing app). `seed`, if
-    given, is that export already made, `(export_base(base), base_commit(base))`: main exports once
-    for every task; without it run_one exports (and removes the export) itself.
+    given, is that export already made, `export_base(base)` (the exported base and its commit): main
+    exports once for every task; without it run_one exports (and removes the export) itself.
 
     With `build`, a clean round also runs `alder build --emit`; the run passes only if that succeeds.
     A build that exits 2 (internal error, generated Go that does not vet) after a clean check is a
@@ -348,16 +379,20 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     task stops there, with no retry. Exit 1 (holes, or anything else the build refuses with
     diagnostics) is an ordinary failed round: the retry prompt carries the build's output.
 
+    A check that exits 2 with "internal error" on stderr (a checker panic) is a compiler bug too
+    (kind "internal_error", round<N>/check.stderr.txt), and so is a check or build that times out
+    (kind "hang": a hang is the compiler's). `summary["compiler_bug_kind"]` says which ("build" for
+    a build exit 2).
+
     `outcome` is set on every path: pass, fail, compiler_bug, or harness_error when the harness
-    itself failed (the model was unavailable; check or build timed out, could not start, or exited
-    with a code alder never uses), with the reason in `harness_error`; the task stops there."""
+    itself failed (the model was unavailable; check or build could not start, or exited with a code
+    alder never uses), with the reason in `harness_error`; the task stops there."""
     if base and seed is None:
-        exported = export_base(base)
+        seed = export_base(base)
         try:
-            return run_one(exp, model, model_label, task_name, task_text, system, alder, retries, base, build,
-                           seed=(exported, base_commit(base)))
+            return run_one(exp, model, model_label, task_name, task_text, system, alder, retries, base, build, seed=seed)
         finally:
-            remove_export(exported)
+            remove_export(seed[0])
     run_dir = exp / "runs" / model_label / task_name
     if run_dir.exists():
         shutil.rmtree(run_dir)
@@ -373,6 +408,11 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     def harness_error(reason):
         summary["outcome"] = "harness_error"
         summary["harness_error"] = reason
+
+    def compiler_bug(kind):
+        summary["compiler_bug"] = True
+        summary["outcome"] = "compiler_bug"
+        summary["compiler_bug_kind"] = kind
 
     for n in range(retries + 1):
         try:
@@ -398,8 +438,16 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             if k in meta:
                 rnd[k] = meta[k]
         summary["rounds"].append(rnd)
+        if isinstance(reason, Hang):   # the checker hung on the model's program
+            (round_dir / "check.stderr.txt").write_text(stderr)
+            compiler_bug("hang")
+            break
         if reason is not None:   # the check did not run as a check: no verdict on the model's program
             harness_error(reason)
+            break
+        if exit_code == 2 and "internal error" in stderr:   # the checker panicked: never the model's fault
+            (round_dir / "check.stderr.txt").write_text(stderr)
+            compiler_bug("internal_error")
             break
         clean = exit_code == 0 and rnd["errors"] == 0
         build_output = None
@@ -409,12 +457,14 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             if bexit != 0:
                 build_output = bstderr + (("\n" + bstdout) if bstdout.strip() else "")
                 (round_dir / "build.stderr.txt").write_text(bstderr + (("\n--- stdout ---\n" + bstdout) if bstdout.strip() else ""))
-                if reason is not None:   # timed out, did not start, or killed: neither the model's nor the compiler's
+                if isinstance(reason, Hang):   # the build hung: the compiler's
+                    compiler_bug("hang")
+                    break
+                if reason is not None:   # did not start, or killed: neither the model's nor the compiler's
                     harness_error(reason)
                     break
                 if bexit != 1:   # 2: internal error / does not vet — the compiler's fault
-                    summary["compiler_bug"] = True
-                    summary["outcome"] = "compiler_bug"
+                    compiler_bug("build")
                     break
                 clean = False
         if clean:
@@ -442,7 +492,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     seed = None
     if a.base:   # first: a --base outside git is a usage error before any work
-        seed = (export_base(pathlib.Path(a.base)), base_commit(pathlib.Path(a.base)))
+        seed = export_base(pathlib.Path(a.base))
     try:
         return run_all(a, seed)
     finally:

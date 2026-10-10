@@ -3,8 +3,9 @@
 
 Summaries written since M3d carry `harness`; they get one column per round (`r0 … rN`, each
 `errors` or `errors (build ✓|✗)`) and a `Result` of pass / fail / compiler-bug / harness-error
-(the last from `outcome`, which summaries carry since M4c). Older summaries
-(E5) without `harness` keep the original two-round table, so their scores.md regenerates unchanged."""
+(the last from `outcome`, which summaries carry since M4c; compiler-bug says "(hang)" or "(check
+panic)" from `compiler_bug_kind`). Older summaries (E5) without `harness` keep the original
+two-round table, so their scores.md regenerates unchanged."""
 import json, pathlib, sys
 
 
@@ -14,7 +15,7 @@ def rows(summaries):
         r = {"model": s["model"], "task": s["task"], "error": s["error"], "pass": s["final_pass"],
              "r0": None, "r1": None, "codes0": {}, "codes1": {},
              "harness": "harness" in s, "compiler_bug": bool(s.get("compiler_bug")),
-             "outcome": s.get("outcome"), "rounds": []}
+             "outcome": s.get("outcome"), "bug_kind": s.get("compiler_bug_kind"), "rounds": []}
         for rd in s["rounds"]:
             r[f"r{rd['n']}"] = rd["errors"]
             r[f"codes{rd['n']}"] = rd["codes"]
@@ -33,7 +34,10 @@ def fmt_codes(c):
 def result(r):
     if r.get("outcome") == "harness_error":   # summaries since M4c carry `outcome`; older ones do not
         return "harness-error"
-    return "compiler-bug" if r["compiler_bug"] else "pass" if r["pass"] else "fail"
+    if r["compiler_bug"]:   # a hang or a checker panic says so; a build exit 2 is plain compiler-bug
+        kind = {"hang": " (hang)", "internal_error": " (check panic)"}.get(r.get("bug_kind"), "")
+        return "compiler-bug" + kind
+    return "pass" if r["pass"] else "fail"
 
 
 def markdown(rs):

@@ -101,12 +101,19 @@ class LoopTests(unittest.TestCase):
         self.assertLess(p.index("app/App.alder ---"), p.index("app/Pages/Home.alder ---"))   # sorted by path
         self.assertTrue(p.rstrip().endswith("No explanation, only files."))
 
-    def test_check_exit2_recorded_not_raised(self):
-        chk = FakeChecker(self.tmp, [(2, "", "alder check: internal error: boom\n"), (2, "", "alder check: internal error: boom\n")])
-        s = rl.run_one(self.exp, rl.FakeModel([GOOD, GOOD]), "fake", "t", "task", "sys", chk.path, retries=1)
+    def test_check_internal_error_is_compiler_bug(self):
+        # a checker panic: exit 2 with "internal error" — the compiler's fault, no retry
+        chk = FakeChecker(self.tmp, [(2, "", "alder check: internal error: boom\n"), (0, "", "")])
+        model = rl.FakeModel([GOOD, GOOD])
+        s = rl.run_one(self.exp, model, "fake", "t", "task", "sys", chk.path, retries=1)
+        self.assertEqual(s["outcome"], "compiler_bug")
+        self.assertEqual(s["compiler_bug_kind"], "internal_error")
+        self.assertTrue(s["compiler_bug"])
         self.assertFalse(s["final_pass"])
         self.assertEqual(s["rounds"][0]["exit"], 2)
         self.assertIn("boom", s["rounds"][0]["stderr"])
+        self.assertEqual(len(model.prompts), 1)   # no retry
+        self.assertIn("internal error: boom", (self.exp / "runs/fake/t/round0/check.stderr.txt").read_text())
 
     def test_no_files_round(self):
         chk = FakeChecker(self.tmp, [(2, "", "no .alder files\n"), (0, "", "")])
@@ -276,8 +283,8 @@ class HarnessErrorTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
-    def test_build_timeout_is_harness_error(self):
-        # check is clean; build sleeps past the (shortened) timeout
+    def test_build_timeout_is_compiler_bug_hang(self):
+        # check is clean; build sleeps past the (shortened) timeout: a hang is the compiler's
         alder = stub_alder(self.tmp, 'if [ "$1" = check ]; then exit 0; fi\nexec sleep 5')
         saved = rl.run_build
         rl.run_build = lambda a, rd: saved(a, rd, timeout=0.3)
@@ -286,13 +293,37 @@ class HarnessErrorTests(unittest.TestCase):
             s = rl.run_one(self.exp, model, "fake", "t", "task", "sys", alder, retries=1, build=True)
         finally:
             rl.run_build = saved
-        self.assertEqual(s["outcome"], "harness_error")
-        self.assertIn("timed out", s["harness_error"])
-        self.assertIsNot(s.get("compiler_bug"), True)
+        self.assertEqual(s["outcome"], "compiler_bug")
+        self.assertEqual(s["compiler_bug_kind"], "hang")
+        self.assertNotIn("harness_error", s)
+        self.assertIn("timed out", s["rounds"][0]["build"]["stderr"])
         self.assertEqual(len(s["rounds"]), 1)
         self.assertEqual(len(model.prompts), 1)   # no retry
         self.assertFalse(s["final_pass"])
-        self.assertEqual(json.loads((self.exp / "runs/fake/t/summary.json").read_text())["outcome"], "harness_error")
+        self.assertEqual(json.loads((self.exp / "runs/fake/t/summary.json").read_text())["outcome"], "compiler_bug")
+
+    def test_check_timeout_is_compiler_bug_hang(self):
+        alder = stub_alder(self.tmp, "exec sleep 5")
+        saved = rl.run_check
+        rl.run_check = lambda a, rd: saved(a, rd, timeout=0.3)
+        try:
+            model = rl.FakeModel([GOOD, GOOD])
+            s = rl.run_one(self.exp, model, "fake", "t", "task", "sys", alder, retries=1)
+        finally:
+            rl.run_check = saved
+        self.assertEqual((s["outcome"], s["compiler_bug_kind"]), ("compiler_bug", "hang"))
+        self.assertEqual(len(model.prompts), 1)   # no retry
+        self.assertIn("timed out", (self.exp / "runs/fake/t/round0/check.stderr.txt").read_text())
+
+    def test_timeout_kills_the_process_group(self):
+        # the stub leaves a child holding stdout open: without a group kill the harness would wait
+        # for it (30 s)
+        alder = stub_alder(self.tmp, "sleep 30 &\nexec sleep 30")
+        t0 = __import__("time").time()
+        code, err, out, reason = rl.run_build(alder, pathlib.Path(self.tmp), timeout=0.5)
+        self.assertLess(__import__("time").time() - t0, 10)
+        self.assertIsNone(code)
+        self.assertIsInstance(reason, rl.Hang)
 
     def test_unknown_exit_is_harness_error(self):
         alder = stub_alder(self.tmp, "exit 137")
@@ -334,6 +365,36 @@ class HarnessErrorTests(unittest.TestCase):
         self.assertEqual(s["base"], str(base))
         head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
         self.assertEqual(s["base_commit"], head)
+
+    def test_base_missing_is_an_error(self):
+        import contextlib, io
+        err = io.StringIO()
+        missing = pathlib.Path(self.tmp) / "nope"
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as cm:
+            rl.main(["--exp", str(self.exp), "--model", "ollama:x", "--task", "t", "--alder", "/nonexistent", "--base", str(missing)])
+        self.assertEqual(cm.exception.code, 2)
+        self.assertIn(f"--base {missing} does not exist", err.getvalue())
+
+    @unittest.skipUnless(shutil.which("git"), "git is not on PATH")
+    def test_base_uncommitted_changes_warn(self):
+        import contextlib, io
+        repo = pathlib.Path(self.tmp) / "repo"
+        (repo / "app").mkdir(parents=True)
+        (repo / "app" / "A.alder").write_text("module A\n")
+        git(repo, "init", "-q")
+        git(repo, "add", ".")
+        git(repo, "commit", "-q", "-m", "base")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            exported, commit = rl.export_base(repo)
+        rl.remove_export(exported)
+        self.assertEqual(err.getvalue(), "")
+        (repo / "app" / "A.alder").write_text("module A\n-- edit\n")
+        with contextlib.redirect_stderr(err):
+            exported, commit2 = rl.export_base(repo)
+        rl.remove_export(exported)
+        self.assertEqual(commit, commit2)
+        self.assertIn(f"warning: uncommitted changes under {repo}/app are ignored", err.getvalue())
 
     def test_base_outside_git_is_an_error(self):
         d = pathlib.Path(self.tmp) / "notrepo"
@@ -470,7 +531,9 @@ class ReportTests(unittest.TestCase):
               {"model": "m", "task": "u", "error": None, "final_pass": False, "compiler_bug": True, "harness": {"build": True, "retries": 2},
                "rounds": [rd(0, 0, {}, build=False)]},
               {"model": "m", "task": "v", "error": None, "final_pass": False, "harness": {"build": True, "retries": 2},
-               "rounds": [rd(0, 2, {"E0003": 2}), rd(1, 2, {"E0003": 2}), rd(2, 1, {"E0003": 1})]}]
+               "rounds": [rd(0, 2, {"E0003": 2}), rd(1, 2, {"E0003": 2}), rd(2, 1, {"E0003": 1})]},
+              {"model": "m", "task": "w", "error": None, "final_pass": False, "compiler_bug": True, "outcome": "compiler_bug",
+               "compiler_bug_kind": "hang", "harness": {"build": True, "retries": 2}, "rounds": [rd(0, 0, {})]}]
         md = rp.markdown(rp.rows(ss))
         header = md.splitlines()[0]
         for col in ("r0", "r1", "r2", "Result"):
@@ -478,6 +541,7 @@ class ReportTests(unittest.TestCase):
         self.assertIn("| m | t | 3 | 1 | 0 (build ✓) | pass |", md)
         self.assertIn("| m | u | 0 (build ✗) | — | — | compiler-bug |", md)
         self.assertIn("| m | v | 2 | 2 | 1 | fail |", md)
+        self.assertIn("| m | w | 0 | — | — | compiler-bug (hang) |", md)
 
     def test_report_e5_summaries_unchanged(self):
         import report_loop as rp
