@@ -197,3 +197,25 @@ func TestInferModule_AnyNameAndBrands(t *testing.T) {
 		t.Errorf("Scratch without InferModule: %v\n%s", got, render(bag))
 	}
 }
+
+// Only a lambda applied to exactly as many arguments as it has parameters takes the inline
+// path; any other count is the ordinary application, whose arity error is E0008 (followed, for
+// the curried lambda, by the E0003s it has always cascaded into: the arity design question
+// of `(\a -> \b -> …) 1 2` is open, chapter 12).
+func TestInlineLambdaArity(t *testing.T) {
+	for _, src := range []string{"it = (\\a -> \\b -> a + b) 1 2\n", "it = (\\a -> a) 1 2\n"} {
+		for _, c := range []struct {
+			files map[string]string
+			o     Options
+			want  string
+		}{
+			{map[string]string{"Scratch.alder": "module Scratch\n\n" + src}, Options{InferModule: "Scratch"}, "3 E0008"},
+			{map[string]string{"Lib.alder": "module Lib\n\nit : Int\n" + src}, Options{}, "4 E0008"}, // with a signature
+		} {
+			_, bag := checkWith(t, c.files, c.o)
+			if got := errorsOf(bag); !strings.HasPrefix(got, c.want) {
+				t.Errorf("%q: errors %v, want %s first\n%s", src, got, c.want, render(bag))
+			}
+		}
+	}
+}

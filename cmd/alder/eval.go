@@ -279,7 +279,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	mod := &scratch.Module{Name: modName, Source: es.src, Infer: true}
 	checked := scratch.Check(dir, mod)
 	if exists := (*scratch.ModuleExistsError)(nil); errors.As(checked.Err, &exists) {
-		return failf(2, "alder eval: the app already has a module named %s; pass --module <Name> to name eval's module otherwise", exists.Name)
+		return failf(2, "alder eval: %s; pass --module <Name> to name eval's module otherwise", exists.Taken())
 	}
 	if checked.Err != nil {
 		return failf(2, "alder eval: %v", checked.Err)
@@ -360,6 +360,9 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return failf(1, "alder eval: interrupted")
 	case exit == -1 && !strings.Contains(errOut, "timed out"): // could not start: internal
 		return failf(2, "alder eval: %s", strings.TrimSpace(errOut))
+	case exit != 0 && (strings.Contains(errOut, "goroutine stack exceeds") || strings.Contains(errOut, "fatal error: stack overflow")):
+		// Go's trace of the overflow is hundreds of lines about the generated code
+		return failf(1, "alder eval: stack overflow (unbounded recursion?)")
 	case exit != 0: // the evaluation failed (or ran past scratch.Timeout)
 		if strings.HasPrefix(errOut, "panic: ") { // the Go goroutine dump says nothing about the input
 			errOut, _, _ = strings.Cut(errOut, "\n\n")

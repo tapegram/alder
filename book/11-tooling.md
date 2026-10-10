@@ -332,7 +332,8 @@ shown as `<Query> : Query T` and not run; `--run` runs it against the dev
 database `build/<app>/dev.db` (creating it, with the app's tables, when
 absent) and prints the result. A `Select` is shown as `<Select> : Select
 T`, even with `--run`: pipe it to `Db.all`, `Db.first` or `Db.count` to
-make a `Query`. A `Task` is never run. `--json` prints one object instead,
+make a `Query`. A `Task` is never run. A function that never stops calling itself ends in
+`alder eval: stack overflow (unbounded recursion?)`. `--json` prints one object instead,
 `{"value", "type", "diagnostics"}`, with `"error"` when the evaluation
 failed for a reason that is not a diagnostic and `"hint"` for a note on a
 success (`--run` given a `Select`). Diagnostics name the input as
@@ -341,7 +342,8 @@ that fails or is interrupted (Ctrl-C stops it and everything it started),
 2 for a usage or internal error.
 
 The input is compiled as a module named `Scratch`. An app that has a
-module of that name of its own gets an error saying so; `--module <Name>`
+module of that name of its own gets an error saying so (as does a
+`--module` naming a standard module, such as `List`); `--module <Name>`
 gives eval's module another name (`alder eval . --module Probe '1 + 2'`).
 
 `alder eval` writes only under `build/<app>/scratch/` of the working

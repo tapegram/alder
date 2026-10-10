@@ -433,3 +433,40 @@ func TestEval_InterruptKillsProgram(t *testing.T) {
 		t.Error("the program outlived eval")
 	}
 }
+
+// An inline lambda applied to more arguments than it has parameters is E0008, not an internal
+// error in the generated Go.
+func TestEval_InlineLambdaArity(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	dir := todosDir(t)
+	for _, in := range []string{"(\\a -> \\b -> a + b) 1 2", "(\\a -> a) 1 2"} {
+		code, _, stderr := runEval(t, "", dir, in)
+		if code != 1 || !strings.Contains(stderr, "E0008") || strings.Contains(stderr, "internal error") {
+			t.Errorf("%q: exit %d\nstderr: %s", in, code, stderr)
+		}
+	}
+	evalOK(t, "3 : Int\n", "(\\a b -> a + b) 1 2")
+}
+
+// A stdlib module's name is taken, like an app module's.
+func TestEval_ModuleFlagStdlibName(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	for _, name := range []string{"List", "Http", "Prelude"} {
+		code, stdout, stderr := runEval(t, "", todosDir(t), "--module", name, "1")
+		if code != 2 || stdout != "" || !strings.Contains(stderr, name+" is a standard library module; pass --module <Name>") {
+			t.Errorf("%s: exit %d, stdout %q\nstderr: %s", name, code, stdout, stderr)
+		}
+	}
+}
+
+// Unbounded recursion is one line, not Go's stack trace.
+func TestEval_StackOverflow(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	code, stdout, stderr := runEval(t, "let loop n = loop n\nloop 1", todosDir(t), "-")
+	if code != 1 || stdout != "" || strings.TrimSpace(stderr) != "alder eval: stack overflow (unbounded recursion?)" {
+		t.Errorf("exit %d, stdout %q\nstderr (%d lines): %.500s", code, stdout, strings.Count(stderr, "\n"), stderr)
+	}
+}

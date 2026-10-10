@@ -33,12 +33,24 @@ type Module struct {
 	Infer        bool
 }
 
-// ModuleExistsError is Check's (and Compile's) error when the app already has a module with the
-// extra module's name: the two would be one module.
-type ModuleExistsError struct{ Name string }
+// ModuleExistsError is Check's (and Compile's) error when the extra module's name is taken: by
+// a module of the app, or (Std) by a standard library module. The two would be one module.
+type ModuleExistsError struct {
+	Name string
+	Std  bool // the name is a standard library module's
+}
 
 func (e *ModuleExistsError) Error() string {
-	return fmt.Sprintf("the app already has a module named %s; give the extra module another name", e.Name)
+	return e.Taken() + "; give the extra module another name"
+}
+
+// Taken says who has the name: "the app already has a module named X" or "X is a standard
+// library module".
+func (e *ModuleExistsError) Taken() string {
+	if e.Std {
+		return e.Name + " is a standard library module"
+	}
+	return "the app already has a module named " + e.Name
 }
 
 // Build is the outcome of Compile.
@@ -87,7 +99,7 @@ const Timeout = 60 * time.Second
 //     the app ("app/Todo.alder"); the extra module's is "<Name>.alder". Diags may hold warnings
 //     alone and still produce a binary.
 //   - Binary is "" when Diags hold an error or a typed hole (W0002), or when Err is set. Err is
-//     set only for I/O failures, an app that already has a module named like the extra one
+//     set only for I/O failures, an extra module named like an app or stdlib module
 //     (*ModuleExistsError), generated or caller Go that does not vet, and go build failures;
 //     its message carries Go's output.
 //   - Compile writes only under out (the generated module "app", adapters/ and static/ copied
@@ -247,6 +259,15 @@ func Check(appDir string, extra *Module) (c Checked) {
 		}
 		if slices.Contains(appMods, modName) {
 			c.Err = &ModuleExistsError{Name: modName}
+			return c
+		}
+		std, err := types.LoadStd()
+		if err != nil {
+			c.Err = fmt.Errorf("internal error loading stdlib: %v", err)
+			return c
+		}
+		if _, isStd := std[modName]; isStd {
+			c.Err = &ModuleExistsError{Name: modName, Std: true}
 			return c
 		}
 		if extra.Infer {

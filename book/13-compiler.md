@@ -1748,7 +1748,7 @@ comment of `Compile`:
 //     the app ("app/Todo.alder"); the extra module's is "<Name>.alder". Diags may hold warnings
 //     alone and still produce a binary.
 //   - Binary is "" when Diags hold an error or a typed hole (W0002), or when Err is set. Err is
-//     set only for I/O failures, an app that already has a module named like the extra one
+//     set only for I/O failures, an extra module named like an app or stdlib module
 //     (*ModuleExistsError), generated or caller Go that does not vet, and go build failures;
 //     its message carries Go's output.
 //   - Compile writes only under out (the generated module "app", adapters/ and static/ copied
@@ -1778,9 +1778,8 @@ Here is `alder eval examples/todos 'Theme.flip Light'`, step by step
    not blank, a comment, or a closer such as `}` or `</ul>`; the book
    verifier uses the same rule. None of the values has a signature.
 2. **Check.** `scratch.Check` adds `module Scratch` and an `import` of
-   every app module but `App` (an app that already has a module named
-   `Scratch` is an error, `ModuleExistsError`; `--module` picks another
-   name), and checks the program with `check.Options{InferModule:
+   every app module but `App` (a name an app or stdlib module already
+   has is an error, `ModuleExistsError`; `--module` picks another name), and checks the program with `check.Options{InferModule:
    "Scratch"}`: that module's values without a signature are inferred
    instead of being E0007, and it may use any module's brand
    constructors, as a `test` may. A function may call itself: while its

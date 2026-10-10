@@ -1092,7 +1092,7 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 	}
 	// a lambda applied inline (`(\a b -> a + b) 1 2`): its parameters take the arguments' types,
 	// so the body is checked knowing them (inferred alone, `a + b` would not know it adds Ints)
-	if lam, ok := x.Fn.(*syntax.Lambda); ok && pipe == nil && len(x.Args) >= len(lam.Params) {
+	if lam, ok := x.Fn.(*syntax.Lambda); ok && pipe == nil && len(x.Args) == len(lam.Params) {
 		fn := &types.Fun{Result: c.u.Fresh()}
 		for _, a := range x.Args {
 			fn.Params = append(fn.Params, mc.infer(a, env, eff))
