@@ -6,7 +6,7 @@ nothing has type `Html Never`.
 
 ## Elements
 
-```alder
+```alder eval=<ul class="todos"><li>First</li><li>Second</li></ul>
 <ul class="todos">
   <li>First</li>
   <li>Second</li>
@@ -42,14 +42,16 @@ unescaped output, and it must never be applied to text a user entered.
 ## Control flow in HTML
 
 ```alder
-{if model.todos == [] then <p>Nothing to do.</p> else <ul>{items}</ul>}
+<div>
+  {if model.todos == [] then <p>Nothing to do.</p> else <ul>{items}</ul>}
 
-{for todo in model.todos -> <TodoItem todo={todo} />}
+  {for todo in model.todos -> <TodoItem todo={todo} />}
 
-{match model.user {
-  Just u -> <span>{u.name}</span>,
-  Nothing -> <a href={Auth.Login {}}>Log in</a>,
-}}
+  {match model.user {
+    Just u -> <span>{u.name}</span>,
+    Nothing -> <a href={Auth.Login {}}>Log in</a>,
+  }}
+</div>
 ```
 
 `for x in list -> html` produces a `List (Html Msg)`. There is no index
@@ -76,18 +78,25 @@ of the parent) is one **run**.
 - Whitespace between text and a node on the same line stays: in
   `Hello {name}` the space after `Hello` is kept.
 
-```alder
+```alder eval=<p><b>a</b><i>b</i></p>
 <p>
   <b>a</b>
   <i>b</i>
 </p>                       -- <p><b>a</b><i>b</i></p>: no space
+```
 
+```alder eval=<p><b>a</b> <i>b</i></p>
 <p><b>a</b> <i>b</i></p>   -- <p><b>a</b> <i>b</i></p>: one space
+```
 
+```alder eval=<p>Hello Ann</p>
+let name = "Ann"
 <p>
   Hello {name}
 </p>                       -- "Hello " then the name
+```
 
+```alder eval=<p>one two</p>
 <p>
   one
   two
@@ -101,9 +110,9 @@ put a space between elements on separate lines, insert it with `{" "}`.
 
 ```alder
 <input type="text" name="title" value={model.draft} />
-<li class={if todo.done then "done" else ""}>
-<button disabled={model.saving}>
-<a href={Todos.Show { id: todo.id }}>
+<li class={if todo.done then "done" else ""}>{todo.title}</li>
+<button disabled={model.saving}>Save</button>
+<a href={Todos.Show { id: todo.id }}>{todo.title}</a>
 ```
 
 Attribute values are either a literal string or a braced expression. The
@@ -140,11 +149,11 @@ details.
 
 ## Components
 
-A component is a function from a record to `Html Msg`, named with an
+A component is a function from a record to `Html`, named with an
 uppercase letter:
 
 ```alder
-TodoItem : { todo: Todo } -> Html Msg
+TodoItem : { todo: Todo } -> Html a
 TodoItem props =
   <li class={if props.todo.done then "done" else ""}>
     <span>{props.todo.title}</span>
@@ -166,7 +175,9 @@ Layout props =
     <head><title>{props.title}</title></head>
     <body>{props.children}</body>
   </html>
+```
 
+```alder
 <Layout title="Todos">
   <h1>Todos</h1>
 </Layout>

@@ -6,11 +6,14 @@ A table is declared with `table`. It defines a record type of the same name
 and the storage for it.
 
 ```alder
+type TodoId = brand Text
+
 table Todo {
   id: TodoId @id,
   title: Text.NonEmpty,
   done: Bool = False,
-  owner: UserId @ref User,
+  due: Maybe Date,
+  owner: User.UserId @ref User,
   created: Time @created,
 }
 ```
@@ -35,7 +38,8 @@ that belong to it.
 
 Reads are `Query` values.
 
-```alder
+```alder fragment
+-- Generic over tables: a program cannot state these (a function of `Table t` is E0003, below).
 Db.get   : Table t -> Id t -> Query (Maybe t)
 Db.from  : Table t -> Select t
 Db.where : Condition t -> Select t -> Select t
@@ -63,10 +67,10 @@ Db.from Todo
 Column operations:
 
 ```alder
-Todo.title.eq   : Text -> Condition Todo         -- also .ne
+Todo.title.eq   : Text.NonEmpty -> Condition Todo   -- the column's type; also .ne
 Todo.created.lt : Time -> Condition Todo         -- also .le .gt .ge
 Todo.title.contains : Text -> Condition Todo     -- substring, case-insensitive
-Todo.owner.in   : List UserId -> Condition Todo
+Todo.owner.in   : List User.UserId -> Condition Todo
 Todo.due.isNothing : Condition Todo              -- for Maybe fields; also .isJust
 Todo.created.asc, Todo.created.desc : Order Todo   -- unions order by declaration
 
@@ -107,7 +111,8 @@ last with `.desc`.
 
 Writes are `Task` values.
 
-```alder
+```alder fragment
+-- Generic over tables, like the reads above.
 Db.insert : Table t -> Insert t -> Task (Id t)
 Db.update : Table t -> Id t -> (t -> t) -> Task Unit
 Db.delete : Table t -> Id t -> Task Unit
@@ -122,8 +127,8 @@ returns a record with a different id, the task fails with
 (`UpdateRow` in `rt/db/store.go`). Deleting a row that doesn't exist is
 not an error.
 
-```alder
-let id <- Db.insert Todo { title: p.form.title, owner: session.user }
+```alder fragment
+let id <- Db.insert Todo { title: p.form.title, due: p.form.due, owner: session.user }
 let _ <- Db.update Todo id (\t -> { t | done: True })
 let _ <- Db.delete Todo id
 ```
@@ -242,6 +247,6 @@ the running task's transaction (chapter 7):
 
 ```alder
 capability Reports {
-  todosPerUser : Query (List { user: UserId, count: Int }),
+  todosPerUser : Query (List { user: User.UserId, count: Int }),
 }
 ```

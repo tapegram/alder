@@ -8,9 +8,11 @@ it. This is the whole shape of an Alder app.
 ```alder
 module Todos.Index
 
-page "/" { filter: Filter = All }
+import Todo
 
-type Model = { filter: Filter, todos: List Todo }
+page "/" { filter: Todo.Filter = All }
+
+type Model = { filter: Todo.Filter, todos: List Todo }
 
 load : Params -> Session -> Query Model
 load params session = {
@@ -19,13 +21,20 @@ load params session = {
 }
 
 view : Model -> Session -> Html Msg
-view model session = ...
+view model session =
+  <ul>
+    {for todo in model.todos ->
+      <li><button click={Toggle { id: todo.id }}>{todo.title}</button></li>}
+  </ul>
 
-msg Toggle { id: TodoId }
+msg Toggle { id: Todo.TodoId }
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
-  Toggle p -> ...,
+  Toggle p -> {
+    let _ <- Db.update Todo p.id (\t -> { t | done: not t.done })
+    Task.succeed Rerender
+  },
 }
 ```
 
@@ -39,9 +48,9 @@ pages). `view` receives the session so that per-user presentation (theme,
 
 ## `page`
 
-```alder
-page "/todos/{id}" { id: TodoId }
-page "/" { filter: Filter = All, q: Maybe Text }
+```alder fragment
+page "/todos/{id}" { id: Todo.TodoId }
+page "/" { filter: Todo.Filter = All, q: Maybe Text }
 page "/admin" { } requires user
 ```
 
@@ -71,8 +80,8 @@ A page value is the module name applied to its parameter record. It is the
 only thing `href` accepts:
 
 ```alder
-<a href={Todos.Show { id: todo.id }}>
-<a href={Todos.Index { filter: Active }}>     -- defaulted fields may be omitted
+<a href={Todos.Show { id: todo.id }}>{todo.title}</a>
+<a href={Todos.Index { filter: Active }}>Active</a>   -- defaulted fields may be omitted
 ```
 
 ## `msg`
@@ -81,8 +90,8 @@ A message belongs to the page that declares it. It has no path: the
 compiler generates the POST URL from the page and message name, so two
 messages can never collide.
 
-```alder
-msg Toggle { id: TodoId }
+```alder fragment
+msg Toggle { id: Todo.TodoId }
 msg Submit form NewTodo
 msg Comment { post: PostId } form NewComment
 ```
@@ -98,16 +107,16 @@ A message value in HTML is the constructor applied to its parameters,
 without `form`:
 
 ```alder
-<button click={Toggle { id: todo.id }}>
-<form submit={Comment { post: model.post.id }}>
-<form submit={Submit}>                         -- no parameters: bare constructor
+<button click={Toggle { id: todo.id }}>Done</button>
+<form submit={Comment { post: model.post.id }}>…</form>
+<form submit={Submit}>…</form>                 -- no parameters: bare constructor
 ```
 
 In `update`, the same constructor carries the full record:
 
-```alder
+```alder fragment
 update msg model session = match msg {
-  Toggle p -> ...,                 -- p.id : TodoId
+  Toggle p -> ...,                 -- p.id : Todo.TodoId
   Submit p -> ...,                 -- p.form : NewTodo
   Comment p -> ...,                -- p.post : PostId, p.form : NewComment
 }
@@ -134,7 +143,7 @@ an App message that fails to decode: both answer with the same redirect
 back, and the errors are dropped. Give a form that needs its errors shown a
 page message. ("How a request runs", below, shows the code.)
 
-```alder
+```alder fragment
 -- in App
 msg Logout
 
@@ -156,6 +165,8 @@ layout component typed `Html a` can contain `click={App.Logout}`.
 ## `form`
 
 ```alder
+type Priority = Low | Normal | High
+
 form NewTodo = {
   title: Text.NonEmpty,
   due: Maybe Date,
@@ -180,13 +191,15 @@ form's `<Errors form />`, after its name ("due must be a date
 
 ## `update` and `Nav`
 
-```alder
+```alder fragment
 update : Msg -> Model -> Session -> Task Nav
 ```
 
 `update` returns a `Task` (chapter 7) that ends in a `Nav`:
 
-```alder
+```alder fragment
+-- Built in; shown for reference.
+-- TODO(compiler): `type Nav` followed by `= …` on the next line does not parse (E0001); see chapter 4.
 type Nav
   = Rerender                 -- re-run load and view for this page, patch the result in
   | Redirect Page            -- go to another page (HTTP 303)
@@ -214,7 +227,7 @@ anyone can post `/_m/Todos.Index/Toggle?id=` with an id that is not theirs.
 `update` must check it again. The example does it with a helper that ends
 in `Task.notFound` (a 404) when the row is missing or someone else's:
 
-```alder
+```alder fragment
 owned : Todo.TodoId -> Session -> Task Todo
 owned id session = {
   let found <- Db.get Todo id
@@ -271,15 +284,41 @@ Every app has an `App` module:
 ```alder
 module App
 
-session { user: Maybe UserId, theme: Theme = Light }
+import User
+import Layout
+import Theme
+
+session { user: Maybe User.UserId, theme: Theme = Light }
 
 login = Auth.Login
 
+msg Logout
+msg SwitchTheme
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing })
+    Task.succeed (Redirect (Auth.Login {}))
+  },
+  SwitchTheme p -> {
+    let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
+    Task.succeed Rerender
+  },
+}
+
 error : Error -> Html Never
-error err = <h1>Something went wrong</h1>
+error err =
+  <Layout.Page title="Error" theme={Light}>
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
 
 notFound : Html Never
-notFound = <h1>Not found</h1>
+notFound =
+  <Layout.Page title="Not found" theme={Light}>
+    <h1>Not found</h1>
+  </Layout.Page>
 ```
 
 - `session` declares the session record. The runtime stores it in a signed

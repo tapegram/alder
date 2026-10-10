@@ -16,7 +16,7 @@ viewed.
 
 Effects are built in effect blocks with `let x <- e`:
 
-```alder
+```alder fragment
 load : Params -> Session -> Query Model
 load params session = {
   let post <- Db.get Post params.id
@@ -31,10 +31,10 @@ plain value.
 
 The same shape works for `Task`:
 
-```alder
+```alder fragment
 update msg model session = match msg {
   Submit p -> {
-    let id <- Db.insert Todo { title: p.form.title, done: False }
+    let id <- Db.insert Todo { title: p.form.title, due: p.form.due, owner: session.user }
     Task.succeed (Redirect (Todos.Show { id: id }))
   },
   Toggle p -> {
@@ -50,6 +50,11 @@ in a `match` arm or an `if` branch, as the whole body of a `Task` value,
 or as an element of `Task.all`, a `Query` is a type error (E0003,
 `expected Task Int, got Query Int`). Bind it and finish with
 `Task.succeed`:
+
+```alder error=E0003
+recount : Task Int
+recount = Db.count (Db.from Todo)
+```
 
 ```alder
 recount : Task Int
@@ -131,6 +136,11 @@ Log.warn    : Text -> Task Unit
 Time.now    : Query Time
 Random.int  : { min: Int, max: Int } -> Task Int
 Random.id   : Task Text              -- 20-character URL-safe id
+```
+
+```alder fragment
+-- TODO(compiler): `HttpError` is the type these return, but a program cannot name it
+-- (E0002 "unknown type `HttpError`"), so these lines cannot be written as signatures.
 Http.get    : { url: Text } -> Task (Result HttpError Text)
 Http.post   : { url: Text, body: Text } -> Task (Result HttpError Text)
 ```
@@ -183,7 +193,7 @@ is given the bound value), and when a value comes out it passes the value
 on. The
 `Toggle` arm of the to-do page,
 
-```alder
+```alder fragment
 Toggle p -> {
   let todo <- owned p.id session
   let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })

@@ -4,8 +4,10 @@
 `alder dump` as of M3b. As of M3c, `alder build` makes a server: one
 executable that serves the app over HTTP, with its database, sessions and
 forms (chapter 6, "How a request runs"). As of M3d, `alder run` rebuilds
-the app every time you save a file and reloads the browser. `alder test`
-arrives in M4; `fmt`, holes beyond W0002 and `query` are planned.
+the app every time you save a file and reloads the browser. As of M4a,
+`alder eval` evaluates an expression against the app, and every Alder
+block in this book is checked by `go test ./book`. `alder test` arrives in
+M4; `fmt`, holes beyond W0002 and `query` are planned.
 
 ## Project layout
 
@@ -322,6 +324,35 @@ with `--run`: pipe it to `Db.all`, `Db.first` or `Db.count` to make a
 `{"value", "type", "diagnostics"}` instead. Diagnostics name the input as
 `input:line:col`; `alder eval` exits 1 for them, 2 for a usage or internal
 error.
+
+A line at column 1 starts a new `let` or the expression, and that
+includes a closing `}`, `)`, `]` or `</tag>`: indent the closing line of a
+multi-line `match` or element given to `alder eval -`.
+
+`alder eval` writes only under `build/<app>/scratch/eval/` of the working
+directory, and two evaluations of one app take turns (a lock file there),
+so it is safe to run from several terminals or tests at once. Each
+evaluation compiles and builds the whole app with the expression; Go's
+build cache keeps that to about 0.6 s once the runtime's packages are in
+it. Chapter 13, "The scratch runner", shows what it compiles.
+
+### The book is verified
+
+Every fenced `alder` block in this book is checked against the compiler
+by `go test ./book` (`book/book_test.go`; the parsing of chapters is
+`book/snippets.go`). A block is a whole module, declarations, a table of
+signatures, or expressions, and its fence says what to expect:
+
+| Fence | Checked |
+|---|---|
+| `alder` | A module or declarations: `alder check` is clean in a copy of `examples/todos` (declarations see every example module; a module replaces the example's module of that name). A table of `Name.x : Type` lines: each name has that type. Expressions: they parse |
+| `alder eval=<value>` | `alder eval examples/todos -` prints exactly `<value>` (the rest of the fence line) |
+| `alder error=<CODE>` | compiling the block reports diagnostic `<CODE>` |
+| `alder fragment` | not checked: a deliberate excerpt, such as one arm of an `update` or a page's pieces in the tour; listed by `go test -v ./book` |
+
+A failure names the block's line, `book/03-syntax.md:120: E0003 …`, so a
+change to the language that leaves the book behind fails the build like
+any other test.
 
 ### `alder build --emit`
 

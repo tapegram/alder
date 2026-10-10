@@ -313,6 +313,41 @@ set the pattern is the example, now backed by chapter 6's "Authorize in
 it does not show that agents authorize `update` unprompted. The open
 question on row ownership below needs a task the example does not answer.
 
+### The book, verified
+
+*Measured 2026-10-09.* The book verifier (`go test ./book`, chapter 11)
+checks every fenced `alder` block against the compiler. The verifier's
+first run, on the 78 blocks of the book as it stood, found 41 blocks that
+did not compile, in 52 diagnostics. Nineteen were excerpts checked out
+of their context (the tour's pieces of `Todos.Index`, a page's `load` or
+`update` outside a page module, an `update` arm, `let` lines outside a
+block); they are now marked `fragment`, but for one rewritten as a
+function that stands alone. Three were signature tables a program cannot state: the
+generic `Db` functions (`Table t`; 12 of the diagnostics) and `Http.get`'s
+`HttpError`, which the checker does not know by name. Two were the
+multi-line `type Shape` / `= Circle Float` form of chapters 4 and 6,
+which the grammar allows and the parser rejects. The other 17 were the
+book being wrong: modules that would not compile beside the example (the
+tour's `Todo` without the `filterLabel` the page uses; an `App` with an
+unqualified `UserId`, no imports, and without the `SwitchTheme` its
+`Layout` sends); unqualified `TodoId` and `UserId` outside their modules
+(chapter 8, three blocks); elements left unclosed (three blocks), and `{…}`
+children with no element around them; a component typed `Html Msg`
+outside a page module; declarations and expressions mixed in one block
+(two); a page skeleton with `...` for a body; a `form` with an
+undeclared `Priority`; signatures with no definition (two); and chapter
+10's tests calling chapter 3's `summary` and an unqualified `matches`.
+Fixing them uncovered three more the first errors had hidden or the
+excerpts had kept out of reach: `Todo.title.eq` takes a `Text.NonEmpty`,
+not a `Text`, and two `Db.insert` records lacked the `due` and `owner`
+fields an `Insert Todo` requires. Adding `eval=` values found two in the
+prose: `Text.slice -3 -1 "abcdef"` and `Float.round -2.5` are type errors
+(a negative argument needs parentheses). None of these was a compiler
+bug; two compiler bugs (the `type` line break and `HttpError`) are marked
+`TODO(compiler)` in their blocks. About one block in five was simply
+wrong, and half did not compile as written: the case for checking the
+book on every test run.
+
 ## Open questions
 
 - Should `view` be able to read form state (for "edit" forms that show

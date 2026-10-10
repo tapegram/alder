@@ -5,7 +5,7 @@
 One module per file. The first line names the module, and the module name
 is the file path: `Todos.Index` lives in `app/Todos/Index.alder`.
 
-```alder
+```alder fragment
 module Todos.Index
 
 import Todo
@@ -103,16 +103,24 @@ of its own, written as usual without escaping:
 
 ## Function application
 
-Functions are applied by juxtaposition and are curried:
+Functions are applied by juxtaposition and are curried. With `add` from
+above (a block's leading `let` lines are how `alder eval` takes definitions;
+chapter 11):
 
-```alder
+```alder eval=3
+let add : Int -> Int -> Int = \a b -> a + b
 add 1 2
+```
+
+```alder eval=[2, 3, 4]
+let add : Int -> Int -> Int = \a b -> a + b
 List.map (add 1) [1, 2, 3]
 ```
 
 Use parentheses to group. Use `|>` to pipe a value into the last parameter:
 
-```alder
+```alder eval=1
+let todos = [{ title: "a", done: False }, { title: "b", done: True }]
 todos
   |> List.filter (\t -> not t.done)
   |> List.length
@@ -146,12 +154,10 @@ Precedence, highest first: function application; `* / %`; `+ - ++`;
 
 ## Records
 
-```alder
-origin : Point
-origin = { x: 0, y: 0 }
-
-origin.x                 -- field access
-{ origin | x: 10 }       -- copy with fields changed; fields must already exist
+```alder eval={ x: 10, y: 0 }
+let origin = { x: 0, y: 0 }
+let x = origin.x                 -- field access
+{ origin | x: x + 10 }           -- copy with fields changed; fields must already exist
 ```
 
 Record literals are checked against the expected record type. Every field
@@ -160,7 +166,8 @@ write `{ id: id }`, not `{ id }`.
 
 ## Conditionals
 
-```alder
+```alder eval="done"
+let todo = { title: "a", done: True }
 if todo.done then "done" else "open"
 ```
 
@@ -168,7 +175,9 @@ if todo.done then "done" else "open"
 
 ## Match
 
-```alder
+```alder eval=[{ title: "a", done: False }]
+let filter = Active
+let todos = [{ title: "a", done: False }, { title: "b", done: True }]
 match filter {
   All -> todos,
   Active -> List.filter (\t -> not t.done) todos,
@@ -227,10 +236,10 @@ Inside an effect block (a block whose final expression is a `Query` or
 `Task`, chapter 7), `let x <- effect` runs the effect and binds its result:
 
 ```alder
-load : Params -> Session -> Query Model
-load params session = {
+openCount : Query Int
+openCount = {
   let todos <- Db.from Todo |> Db.all
-  Query.succeed { filter: params.filter, todos: todos }
+  Query.succeed (Todo.countOpen todos)
 }
 ```
 

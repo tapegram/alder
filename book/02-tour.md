@@ -32,7 +32,19 @@ matches filter todo = match filter {
   Active -> not todo.done,
   Completed -> todo.done,
 }
+
+filterLabel : Filter -> Text
+filterLabel filter = match filter {
+  All -> "All",
+  Active -> "Active",
+  Completed -> "Completed",
+}
+
+countOpen : List Todo -> Int
+countOpen todos = todos |> List.filter (\t -> not t.done) |> List.length
 ```
+
+(The file ends with a test of `countOpen`; chapter 10.)
 
 `TodoId` is a brand: at runtime it is a `Text`, and it can be used as one,
 but only this module can make one from a plain `Text`. Everywhere else, a
@@ -44,7 +56,7 @@ table, and the form that creates todos will refuse one before any code runs.
 
 `app/Todos/Index.alder` is the list page.
 
-```alder
+```alder fragment
 module Todos.Index
 
 import Todo
@@ -59,7 +71,7 @@ both `/` and `/?filter=Active` work and `filter` is never missing.
 otherwise the runtime sends the visitor to the login page, and inside this
 module `session.user` is a `UserId`, not a `Maybe UserId`.
 
-```alder
+```alder fragment
 type Model = {
   filter: Todo.Filter,
   todos: List Todo,
@@ -80,7 +92,7 @@ load params session = {
 of reads that the runtime performs. `let todos <- ...` binds the result of a
 read. Because it is a `Query`, nothing in `load` can write.
 
-```alder
+```alder fragment
 form NewTodo = {
   title: Text.NonEmpty,
   due: Maybe Date,
@@ -94,7 +106,7 @@ msg Delete { id: Todo.TodoId }
 Each `msg` is an action this page can receive; the compiler gives it a POST
 URL. `Submit` carries a form; the other two carry an id. Together they make up this page's `Msg` type.
 
-```alder
+```alder fragment
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Submit p -> {
@@ -132,7 +144,7 @@ resubmit. The `match` must handle every `msg`, or the module won't compile.
 `update` must not trust it (`Task.notFound` answers 404; chapter 6,
 "Authorize in `update` too").
 
-```alder
+```alder fragment
 view : Model -> Session -> Html Msg
 view model session =
   <Layout.Page title="Todos" theme={session.theme}>
@@ -166,7 +178,7 @@ message, and `<Input field="title">` is checked against `NewTodo`. If the
 submitted form is invalid, the runtime re-renders this page with the errors
 in place, and `update` is never called.
 
-```alder
+```alder fragment
 Item : { todo: Todo } -> Html Msg
 Item props =
   <li class={if props.todo.done then "done" else ""}>

@@ -33,6 +33,16 @@ List.unique   : List a -> List a
 List.groupBy  : (a -> Text) -> List a -> Dict Text (List a)
 ```
 
+```alder eval=[10, 30, 50]
+List.range 1 5
+  |> List.filter (\n -> n % 2 == 1)
+  |> List.map (\n -> n * 10)
+```
+
+```alder eval=[{ name: "a", age: 1 }, { name: "c", age: 1 }, { name: "b", age: 2 }]
+List.sortBy (\p -> p.age) [{ name: "b", age: 2 }, { name: "a", age: 1 }, { name: "c", age: 1 }]
+```
+
 ## Maybe
 
 ```alder
@@ -41,6 +51,10 @@ Maybe.andThen  : (a -> Maybe b) -> Maybe a -> Maybe b
 Maybe.withDefault : a -> Maybe a -> a          -- same as ??
 Maybe.isJust   : Maybe a -> Bool
 Maybe.toList   : Maybe a -> List a
+```
+
+```alder eval=42
+Maybe.withDefault 0 (Text.toInt "42")
 ```
 
 ## Result
@@ -76,10 +90,18 @@ Text.toFloat   : Text -> Maybe Float
 Text.NonEmpty, Text.Email, Text.Url, Text.Secret   -- refinement brands
 ```
 
+```alder eval=["a", "b", "c"]
+Text.split ", " "a, b, c"
+```
+
+```alder eval=True
+Text.contains "ell" "hello"
+```
+
 `Text.length` counts code points (`Text.length "é"` is 1), and
 `Text.slice start end` takes the code points from `start` up to, not
-including, `end`. A negative index counts from the end (`Text.slice -3 -1
-"abcdef"` is `"de"`), indices past either end are clamped, and a `start` at
+including, `end`. A negative index counts from the end (`Text.slice (-3) (-1)
+"abcdef"` is `"de"`; a negative argument needs its parentheses), indices past either end are clamped, and a `start` at
 or after `end` gives `""`. `Text.matches regex text` is true when the
 regex (RE2 syntax) matches anywhere in the text: write `^…$` to match the
 whole text. An invalid regex matches nothing. `Text.fromFloat` writes the
@@ -87,6 +109,10 @@ shortest decimal that reads back as the same number, never an exponent
 (`2.0` is `"2"`, `3.5` is `"3.5"`); infinity is `"+Inf"` or `"-Inf"` and
 not-a-number is `"NaN"`. `Text.toInt` and `Text.toFloat` give `Nothing`
 for anything else than a plain decimal number (spaces, overflow, `"NaN"`).
+
+```alder eval=["de", "2", "3.5"]
+[Text.slice (-3) (-1) "abcdef", Text.fromFloat 2.0, Text.fromFloat 3.5]
+```
 
 ## Int, Float
 
@@ -110,10 +136,18 @@ the dividend's sign; an `Int` division or remainder by zero is a runtime
 failure (chapter 4). `Float` division by zero gives infinity or NaN.
 
 `Float.round` rounds half away from zero: `Float.round 2.5` is `3` and
-`Float.round -2.5` is `-3`. `Float.format { decimals: n }` rounds the same
+`Float.round (-2.5)` is `-3`. `Float.format { decimals: n }` rounds the same
 way to `n` decimals and pads with zeros (`Float.format { decimals: 2 }
 1.005` is `"1.01"`, and `1.5` gives `"1.50"`); it never writes `"-0"`
 (`-0.001` with one decimal is `"0.0"`).
+
+```alder eval=[3, -3, -3, -1]
+[Float.round 2.5, Float.round (-2.5), -7 / 2, -7 % 2]
+```
+
+```alder eval=["1.01", "1.50", "0.0"]
+[Float.format { decimals: 2 } 1.005, Float.format { decimals: 2 } 1.5, Float.format { decimals: 1 } (-0.001)]
+```
 
 ## Bool
 
@@ -144,6 +178,12 @@ same key when they are `==`, so a `Time` key is its instant (the same
 moment written in two time zones is one key). A `Dict` keeps its keys in
 the order they were first inserted; `==` on two dicts ignores that order.
 
+```alder eval=Just 2
+Dict.fromList [{ key: "a", value: 1 }]
+  |> Dict.insert "b" 2
+  |> Dict.get "b"
+```
+
 ## Date, Time
 
 `Date` is a calendar date. `Time` is an instant (UTC).
@@ -166,6 +206,12 @@ Time.ago       : Time -> Time -> Text           -- Time.ago now then = "3 hours 
 `Date.diffDays a b` is the number of days from `a` to `b`, that is `b − a`:
 `Date.diffDays monday wednesday` is `2`, and it is negative when `b` comes
 first.
+
+```alder eval=Just "2026-10-09"
+Date.fromText "2026-10-08"
+  |> Maybe.map (Date.addDays 1)
+  |> Maybe.map Date.toText
+```
 
 ## Html
 

@@ -37,6 +37,7 @@ Function types use `->`. Type parameters are lowercase names.
 
 ```alder
 first : List a -> Maybe a
+first xs = List.head xs
 ```
 
 A signature may use any type parameter; there are no constraints on type
@@ -58,11 +59,14 @@ signature may spell out a record type inline when it is used only once:
 
 ```alder
 area : { w: Float, h: Float } -> Float
+area r = r.w * r.h
 ```
 
 ## Unions
 
-```alder
+```alder fragment
+-- TODO(compiler): `type Shape` followed by `= …` on the next line is a parse error (E0001,
+-- "expected `=`, got end of line"); only `type Shape =` with the constructors after it parses.
 type Filter = All | Active | Completed
 
 type Shape
@@ -107,6 +111,15 @@ Rules:
 4. **Equality requires identical types.** `id == text` is an error even
    though `id` widens to `Text`.
 5. **A brand's base is a built-in type**, never another brand.
+
+Rule 4 is a type error, not a silent widening:
+
+```alder error=E0003
+type Cents = brand Int
+
+sameAmount : Cents -> Int -> Bool
+sameAmount c n = c == n
+```
 
 ## Refinements
 
