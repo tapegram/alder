@@ -2267,20 +2267,25 @@ A REPL killed with SIGKILL runs no code at all, so it cannot kill the
 program's group, and the program, in a group of its own, gets no
 signal either. So the program watches its parent another way. Its
 standard input is a pipe (`scratch.RunTethered`) whose write end only
-the REPL holds. Every scratch main starts a goroutine, when
-`ALDER_SCRATCH_STDIN_EOF=1`, that reads standard input until end of
-file and then exits. When the REPL dies, the kernel closes its end of
-the pipe, the read returns, and the program exits. `alder test`'s
-program does the same, and `alder eval` uses `RunTethered` too.
+the REPL holds. When `ALDER_SCRATCH_STDIN_EOF=1`, the runtime package
+`alder/rt` starts a goroutine in its `init` (`rt/tether.go`) that reads
+standard input until end of file and then exits. When the REPL dies,
+the kernel closes its end of the pipe, the read returns, and the program
+exits. `alder eval` uses `RunTethered` too.
 
-One gap remains. The generated package computes a plain value, such as
-`it = List.sum …` or a `let`, as a Go package variable, while the
-package initializes. Go initializes `app` before the main package's
-`init`, so the goroutine starts only after that work is done. A pure
-evaluation that never finishes is therefore not tethered: it outlives a
-killed REPL. A `:run` or `:run!` does its work inside `main`, after the
-goroutine has started, so it is tethered. Closing the gap needs the
-goroutine in a package that Go initializes before `app`.
+Why in `rt`, and not in the scratch main? The generated package
+computes a plain value, such as `it = List.sum …` or a `let`, as a Go
+package variable, while the package initializes. Go initializes every
+package a program imports before the main package's `init` runs. A
+goroutine started in the main would therefore start only after a
+never-ending evaluation had finished, which is never. `rt` is
+initialized before the app's variables, by two rules of the Go spec:
+
+- A package's imports are initialized before the package itself, and an
+  app with a union imports `alder/rt` for `rt.RegisterUnion`.
+- An app without one is still preceded, because the main imports `rt`
+  (for `rt.Show`). Since Go 1.21, packages that are ready to initialize
+  go in import-path order, and `alder/rt` sorts before `app`.
 
 ### What is still to come
 

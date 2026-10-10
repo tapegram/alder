@@ -488,8 +488,8 @@ Ctrl-C during an evaluation stops it and everything it started
 only says `(use :quit or Ctrl-D to leave)`. SIGTERM, or closing the
 terminal (SIGHUP), stops a running evaluation and ends the REPL with
 exit 1. Killed outright (SIGKILL), the REPL cannot stop anything, but
-the program of a `:run` or `:run!` notices that the REPL is gone and
-exits. A pure evaluation does not yet (chapter 13, "The REPL").
+the evaluation's program notices that the REPL is gone and exits
+(chapter 13, "The REPL").
 
 Limits:
 

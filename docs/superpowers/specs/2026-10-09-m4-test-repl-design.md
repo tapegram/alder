@@ -323,4 +323,6 @@ Each milestone gets its own plan.
   refused. While the app has errors they are printed once, then one line
   per entry until they change. SIGTERM/SIGHUP stop a running evaluation
   and exit 1; scratch programs run by eval and the REPL exit when their
-  stdin pipe (held by the parent) closes (`ALDER_SCRATCH_STDIN_EOF`).
+  stdin pipe (held by the parent) closes (`ALDER_SCRATCH_STDIN_EOF`,
+  honoured by `alder/rt`'s `init`, which runs before the app's package
+  variables are computed).
