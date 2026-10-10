@@ -391,6 +391,14 @@ func (p *Parser) parseTypeDecl() Decl {
 	for p.at(LIdent) {
 		d.Params = append(d.Params, p.advance().Text)
 	}
+	if p.at(NL) {
+		// `type T` with `= …` on a following, indented line (Elm's layout): skip to it
+		save, saveTok := p.mark()
+		p.skipNL()
+		if !p.at(Equal) || p.tok.Col == 1 {
+			p.restore(save, saveTok)
+		}
+	}
 	if p.sigMode && (p.at(NL) || p.at(EOF)) { // opaque
 		d.Span = p.spanFrom(start)
 		return d

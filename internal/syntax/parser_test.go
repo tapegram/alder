@@ -163,3 +163,24 @@ func TestParse_InlineWhitespaceJSXRule(t *testing.T) {
 		}
 	}
 }
+
+func TestTypeDecl_EqualOnNextLine(t *testing.T) {
+	src := "module M\n\ntype Shape\n  = Circle Float\n  | Rect { w: Float, h: Float }\n\ntype Tree a\n    = Leaf\n    | Node a\n\ntype B\n  = brand Text\n\ntype R\n  = { x: Int }\n"
+	m, diags := ParseFile("M.alder", []byte(src))
+	if len(diags) > 0 {
+		t.Fatalf("diagnostics: %v", diags)
+	}
+	got := []string{}
+	for _, d := range m.Decls {
+		td := d.(*TypeDecl)
+		got = append(got, fmt.Sprintf("%s:%d/%v/%v", td.Name, len(td.Union), td.Brand != nil, td.Record != nil))
+	}
+	if strings.Join(got, " ") != "Shape:2/false/false Tree:2/false/false B:0/true/false R:0/false/true" {
+		t.Errorf("decls %v", got)
+	}
+	// an `=` at column 1 is not a continuation: the declaration is incomplete
+	_, diags = ParseFile("M.alder", []byte("module M\n\ntype T\n= A\n"))
+	if len(diags) == 0 || diags[0].Code != "E0001" {
+		t.Errorf("column-1 `=`: %v", diags)
+	}
+}
