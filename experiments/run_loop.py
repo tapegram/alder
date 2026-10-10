@@ -45,6 +45,7 @@ class FakeModel(Model):
 class OllamaModel(Model):
     NUM_CTX = 32768
     CTX_MARGIN = 512   # prompt + answer this close to num_ctx: the prompt's start may have been dropped
+    NUM_PREDICT = 8192   # E7: cap the answer; a capped answer (done_reason "length") is a failed, truncated round
 
     def __init__(self, name, host="http://localhost:11434", num_ctx=None):
         self.name, self.host = name, host
@@ -52,7 +53,7 @@ class OllamaModel(Model):
             self.NUM_CTX = num_ctx
 
     def generate(self, system, user):
-        body = {"model": self.name, "stream": False, "options": {"num_ctx": self.NUM_CTX, "temperature": 0},
+        body = {"model": self.name, "stream": False, "options": {"num_ctx": self.NUM_CTX, "temperature": 0, "num_predict": self.NUM_PREDICT},
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
         t0 = time.time()
         req = urllib.request.Request(self.host + "/api/chat", data=json.dumps(body).encode(),
@@ -64,7 +65,10 @@ class OllamaModel(Model):
             raise ModelError(f"ollama {self.name}: {e}")
         text = re.sub(r"<think>.*?</think>\s*", "", resp["message"]["content"], flags=re.S)
         meta = {"seconds": round(time.time() - t0, 1), "tokens": resp.get("eval_count"),
-                "prompt_eval_count": resp.get("prompt_eval_count"), "eval_count": resp.get("eval_count")}
+                "prompt_eval_count": resp.get("prompt_eval_count"), "eval_count": resp.get("eval_count"),
+                "done_reason": resp.get("done_reason")}
+        if resp.get("done_reason") == "length":   # stopped by num_predict: the answer is cut off
+            meta["truncated"] = True
         # Ollama silently drops the start of a prompt longer than num_ctx; the count it evaluated tells:
         # well below the estimate, or prompt + answer at the context's end.
         estimated = (len(system) + len(user)) // 4
@@ -383,12 +387,15 @@ def render_diags(diags, sources):
 
 BUILD_REFUSED = "The program type-checks but `alder build` refused it; fix the cause below."
 TESTS_FAILED = "The program builds but its tests fail; fix the program or the tests so every test passes."
+TRUNCATED = ("Your previous answer was cut off after {n} tokens; output only the Alder files "
+             "(`--- file: app/<path> ---`), nothing else.")
 
 
 def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles: int, rejected=(), build_output=None,
-                 test_output=None) -> str:
+                 test_output=None, truncated=None) -> str:
     """`build_output`, when given, is what `alder build --emit` printed when it refused (exit 1) a clean program;
-    `test_output`, the text report of `alder test` when tests of a program that built failed (exit 1)."""
+    `test_output`, the text report of `alder test` when tests of a program that built failed (exit 1);
+    `truncated`, the token cap when the model's answer was cut off by it (Ollama's done_reason "length")."""
     sources = {}
     for f in (round_dir / "app").rglob("*.alder"):
         sources[str(f.relative_to(round_dir))] = f.read_text()
@@ -400,6 +407,8 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
         feedback = BUILD_REFUSED
     elif test_output is not None:
         feedback = TESTS_FAILED
+    elif truncated is not None:
+        feedback = TRUNCATED.format(n=truncated)
     else:
         feedback = "The compiler could not check your previous answer:\n\n" + stderr.strip()
     if build_output is not None:
@@ -410,6 +419,8 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
         if diags:
             feedback += "\n\n" + TESTS_FAILED
         feedback += "\n\n====================  TEST OUTPUT  ====================\n" + test_output.strip()
+    if truncated is not None and (nfiles == 0 or diags or build_output is not None or test_output is not None):
+        feedback += "\n\n" + TRUNCATED.format(n=truncated)
     if rejected:
         feedback += ("\n\nThese paths were rejected: " + ", ".join(rejected) +
                      "; files must be `app/<Module>.alder`.")
@@ -483,7 +494,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
         shutil.rmtree(run_dir)
     summary = {"model": model_label, "task": task_name, "retries": retries, "base": str(base) if base else None,
                "harness": {"build": build, "retries": retries, **({"test": True} if test else {}),
-                           **({"num_ctx": model.NUM_CTX} if isinstance(model, OllamaModel) else {})}, "error": None, "rounds": [], "final_pass": False,
+                           **({"num_ctx": model.NUM_CTX, "num_predict": model.NUM_PREDICT} if isinstance(model, OllamaModel) else {})}, "error": None, "rounds": [], "final_pass": False,
                "outcome": "fail"}
     if seed is not None:
         summary["base_commit"] = seed[1]
@@ -520,7 +531,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
         rnd = {"n": n, "files": nfiles, "exit": exit_code,
                "errors": sum(codes.values()), "warnings": sum(1 for d in diags if d["severity"] == "warning"),
                "codes": codes, "rejected": rejected, "seconds": meta.get("seconds", 0.0), "tokens": meta.get("tokens"), "stderr": stderr[:2000]}
-        for k in ("prompt_eval_count", "eval_count", "warning", "claude_version", "model"):
+        for k in ("prompt_eval_count", "eval_count", "done_reason", "truncated", "warning", "claude_version", "model"):
             if k in meta:
                 rnd[k] = meta[k]
         summary["rounds"].append(rnd)
@@ -535,7 +546,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             (round_dir / "check.stderr.txt").write_text(stderr)
             compiler_bug("internal_error")
             break
-        clean = exit_code == 0 and rnd["errors"] == 0
+        clean = exit_code == 0 and rnd["errors"] == 0 and not rnd.get("truncated")   # a cut-off answer fails its round
         build_output = None
         if clean and build:
             bexit, bstderr, bstdout, reason = run_build(alder, round_dir)
@@ -578,7 +589,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             summary["outcome"] = "pass"
             break
         user = retry_prompt(task_text, round_dir, diags, stderr, nfiles, rejected, build_output=build_output,
-                            test_output=test_output)
+                            test_output=test_output, truncated=getattr(model, "NUM_PREDICT", None) if rnd.get("truncated") else None)
         prev = round_dir
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=1) + "\n")

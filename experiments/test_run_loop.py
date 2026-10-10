@@ -650,6 +650,59 @@ class TestLoopTests(unittest.TestCase):
         s = rl.run_one(self.exp, FakeOllama("q", num_ctx=65536), "q", "t", "task", "sys", chk.path, retries=0)
         self.assertEqual(s["harness"]["num_ctx"], 65536)
 
+    def test_ollama_length_is_truncated_failed_round(self):
+        import io
+        sent = []
+        resp = {}
+        def fake_urlopen(req, timeout=None):
+            sent.append(json.loads(req.data))
+            return io.BytesIO(json.dumps(resp).encode())
+        saved = rl.urllib.request.urlopen
+        rl.urllib.request.urlopen = fake_urlopen
+        try:
+            m = rl.OllamaModel("q")
+            resp.update({"message": {"content": GOOD + "--- file: go.mod ---\nmodule x\n"}, "prompt_eval_count": 1000,
+                         "eval_count": 8192, "done_reason": "length"})
+            _, meta = m.generate("x" * 2000, "x" * 2000)
+            self.assertEqual(sent[-1]["options"]["num_predict"], 8192)
+            self.assertTrue(meta["truncated"])
+            self.assertEqual(meta["done_reason"], "length")
+            resp.update({"done_reason": "stop", "eval_count": 100})
+            _, meta = m.generate("x" * 2000, "x" * 2000)
+            self.assertNotIn("truncated", meta)
+            self.assertEqual(meta["done_reason"], "stop")
+        finally:
+            rl.urllib.request.urlopen = saved
+
+        class CutOff(rl.OllamaModel):   # round 0 cut off (a clean program, but truncated), round 1 complete
+            def __init__(self):
+                super().__init__("q")
+                self.prompts = []
+            def generate(self, system, user):
+                self.prompts.append(user)
+                if len(self.prompts) == 1:
+                    return GOOD, {"seconds": 0.0, "eval_count": 8192, "done_reason": "length", "truncated": True}
+                return GOOD, {"seconds": 0.0, "eval_count": 100, "done_reason": "stop"}
+        chk = FakeChecker(self.tmp, [(0, "", ""), (0, "", "")])
+        m = CutOff()
+        s = rl.run_one(self.exp, m, "q", "t", "task", "sys", chk.path, retries=1)
+        self.assertEqual(s["outcome"], "pass")
+        self.assertTrue(s["rounds"][0]["truncated"])
+        self.assertEqual(s["rounds"][0]["done_reason"], "length")
+        self.assertEqual(s["rounds"][0]["errors"], 0)
+        self.assertNotIn("truncated", s["rounds"][1])
+        self.assertIn("Your previous answer was cut off after 8192 tokens; output only the Alder files "
+                      "(`--- file: app/<path> ---`), nothing else.", m.prompts[1])
+        self.assertEqual(s["harness"]["num_predict"], 8192)
+        # with errors too, the sentence is appended to the compiler's feedback
+        chk = FakeChecker(self.tmp, [(1, ERR, "")])
+        m = CutOff()
+        s = rl.run_one(self.exp, m, "q", "t", "task", "sys", chk.path, retries=0)
+        self.assertEqual(s["outcome"], "fail")
+        p = rl.retry_prompt("task", self.exp / "runs/q/t/round0", [json.loads(ERR)], "", 1, truncated=8192)
+        self.assertIn("expected Int, got Text", p)
+        self.assertIn("cut off after 8192 tokens", p)
+
     def test_report_tests_column(self):
         import report_loop as rp
         def rd(n, tests=None, build=True):

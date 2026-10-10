@@ -101,6 +101,13 @@ In the loop harness (`run_loop.py`):
   `--num-ctx N` (E7) sets `num_ctx` for every Ollama model of the invocation, the warning's
   threshold with it (`N - 512`); every Ollama run records the window it ran with as
   `harness.num_ctx`. Claude models ignore the flag.
+  Since E7's T2 re-runs, every Ollama call also sends `num_predict` 8192 (recorded as `harness.num_predict`)
+  and each round records Ollama's `done_reason`: at temperature 0 Qwen can fall into a repetition loop that never
+  ends (E7 T2: the example app re-emitted, then invented non-Alder files and a linter list repeated until the
+  3600 s HTTP timeout, a `harness_error`). A round whose `done_reason` is `length` gets `truncated: true` and is an
+  ordinary failed round (no build, no tests); the retry prompt adds "Your previous answer was cut off after 8192
+  tokens; output only the Alder files (`--- file: app/<path> ---`), nothing else." 8192 is above every completed
+  Ollama round in E6 and E7 (at most 5,393 tokens).
 
 ## Tasks
 
