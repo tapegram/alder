@@ -41,6 +41,22 @@ func main() {
 		os.Exit(runEvalTo(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	case "test":
 		os.Exit(runTestTo(os.Args[2:], os.Stdout, os.Stderr))
+	case "repl":
+		// Ctrl-C does not stop the REPL: each one is a value on interrupt (it stops a running
+		// evaluation, whose program runs out of the terminal's reach in a process group of its
+		// own); SIGTERM still ends the REPL
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, os.Interrupt)
+		interrupt := make(chan struct{}, 1)
+		go func() {
+			for range sig {
+				select {
+				case interrupt <- struct{}{}:
+				default: // one pending is enough
+				}
+			}
+		}()
+		os.Exit(runReplTo(os.Args[2:], os.Stdin, os.Stdout, os.Stderr, interrupt))
 	case "explain":
 		if len(os.Args) < 3 {
 			usage()
@@ -61,7 +77,7 @@ func main() {
 func usage() { usageTo(os.Stderr) }
 
 func usageTo(w io.Writer) {
-	fmt.Fprintln(w, "usage: alder check [dir] [--json] | alder build [--emit] [dir] | alder run [dir] | alder dump [--tokens|--ast|--ir] <file.alder | dir> | alder eval [dir] [--run] [--json] [--module Name] <expr | -> | alder test [dir] [-run re] [-timeout d] [--json] | alder explain <code>")
+	fmt.Fprintln(w, "usage: alder check [dir] [--json] | alder build [--emit] [dir] | alder run [dir] | alder dump [--tokens|--ast|--ir] <file.alder | dir> | alder eval [dir] [--run] [--json] [--module Name] <expr | -> | alder test [dir] [-run re] [-timeout d] [--json] | alder repl [dir] [--module Name] | alder explain <code>")
 }
 
 func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {
