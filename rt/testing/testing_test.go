@@ -460,3 +460,53 @@ func TestMain_NoCases(t *testing.T) {
 		t.Fatalf("json: code %d out %q err %q", code, out, errs)
 	}
 }
+
+func TestRun_MsIsWallTime(t *testing.T) {
+	t.Setenv("ALDER_TEST_RUN", "")
+	t.Setenv("ALDER_TEST_JSON", "")
+	slow := []Case{{Module: "M", Name: "slow", Pure: func() bool { time.Sleep(2 * time.Millisecond); return true }}}
+	if rs := Run(slow, Options{}); rs[0].Ms <= 0 {
+		t.Fatalf("Ms = %v, want > 0", rs[0].Ms)
+	}
+	out, _, _ := runMain(t, slow, "--json")
+	var m map[string]any
+	if err := json.Unmarshal([]byte(out), &m); err != nil {
+		t.Fatal(err)
+	}
+	if ms, _ := m["ms"].(float64); ms <= 0 {
+		t.Fatalf("json ms = %v, want > 0", m["ms"])
+	}
+}
+
+func TestMain_TextStaysLineStructured(t *testing.T) {
+	t.Setenv("ALDER_TEST_RUN", "")
+	t.Setenv("ALDER_TEST_JSON", "")
+	cs := []Case{
+		{Module: "M", Name: "two\nlines", Pure: func() bool { return true }},
+		{Module: "M", Name: `say "hi"`, Pure: func() bool { return true }},
+		{Module: "M", Name: "multi", Task: func() eff.Task[bool] { return eff.Fail[bool]("first\nsecond") }},
+	}
+	out, _, code := runMain(t, cs)
+	want := "ok   M \"two\\nlines\"\n" +
+		"ok   M \"say \\\"hi\\\"\"\n" +
+		"FAIL M \"multi\"\n  error: first\n    second\n  trace: []\n" +
+		"2 passed, 1 failed\n"
+	if out != want || code != 1 {
+		t.Fatalf("code %d\n%q\nwant\n%q", code, out, want)
+	}
+}
+
+// failWriter fails every write.
+type failWriter struct{}
+
+func (failWriter) Write([]byte) (int, error) { return 0, errors.New("closed pipe") }
+
+func TestMain_JSONWriteErrorIsUsageExit(t *testing.T) {
+	t.Setenv("ALDER_TEST_RUN", "")
+	t.Setenv("ALDER_TEST_JSON", "")
+	var errb bytes.Buffer
+	code := Main(mainCases(), tables, nil, nil, []string{"--json"}, failWriter{}, &errb)
+	if code != 2 || !strings.Contains(errb.String(), "closed pipe") {
+		t.Fatalf("code %d err %q", code, errb.String())
+	}
+}

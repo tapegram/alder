@@ -30,6 +30,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -182,8 +183,8 @@ func Run(cases []Case, o Options) []Result {
 	return out
 }
 
-func runCase(c Case, o Options, caps map[string]any, now time.Time) Result {
-	r := Result{Module: c.Module, Name: c.Name}
+func runCase(c Case, o Options, caps map[string]any, now time.Time) (r Result) {
+	r = Result{Module: c.Module, Name: c.Name}
 	start := time.Now()
 	defer func() { r.Ms = float64(time.Since(start).Microseconds()) / 1000 }()
 	lastSides, hasSides = [2]string{}, false
@@ -245,6 +246,16 @@ func guard(f func() bool) (ok bool, errText string) {
 	return f(), ""
 }
 
+// quoteName is a test name as the text report prints it: in double quotes, escaped
+// (strconv.Quote) only when it contains a newline or a double quote, so every report line
+// stays one line.
+func quoteName(name string) string {
+	if strings.ContainsAny(name, "\n\"") {
+		return strconv.Quote(name)
+	}
+	return "\"" + name + "\""
+}
+
 // jsonResult is one line of --json output.
 type jsonResult struct {
 	Module string   `json:"module"`
@@ -262,7 +273,7 @@ type jsonResult struct {
 //
 // The text report has one line per case, `ok   M "name"` or `FAIL M "name"`; a failure is
 // followed by indented `left:`/`right:` lines (when the test made an Eq), `error:` (when it
-// has one) and `trace:` (a task test's steps, as Show of a List Text), and the report ends
+// has one; its continuation lines indented by four spaces) and `trace:` (a task test's steps, as Show of a List Text), and the report ends
 // with `N passed, M failed`. With --json stdout has one JSON object per case and nothing
 // else; the summary goes to err.
 func Main(cases []Case, tables []db.TableDesc, caps map[string]any, session any, args []string, out, err io.Writer) int {
@@ -301,19 +312,22 @@ func Main(cases []Case, tables []db.TableDesc, caps map[string]any, session any,
 			if tr == nil {
 				tr = []string{}
 			}
-			enc.Encode(jsonResult{r.Module, r.Name, r.OK, r.Left, r.Right, r.Error, tr, r.Ms})
+			if e := enc.Encode(jsonResult{r.Module, r.Name, r.OK, r.Left, r.Right, r.Error, tr, r.Ms}); e != nil {
+				fmt.Fprintf(err, "alder test: writing the report: %v\n", e)
+				return 2
+			}
 			continue
 		}
 		if r.OK {
-			fmt.Fprintf(out, "ok   %s \"%s\"\n", r.Module, r.Name)
+			fmt.Fprintf(out, "ok   %s %s\n", r.Module, quoteName(r.Name))
 			continue
 		}
-		fmt.Fprintf(out, "FAIL %s \"%s\"\n", r.Module, r.Name)
+		fmt.Fprintf(out, "FAIL %s %s\n", r.Module, quoteName(r.Name))
 		if r.Left != "" || r.Right != "" {
 			fmt.Fprintf(out, "  left:  %s\n  right: %s\n", r.Left, r.Right)
 		}
 		if r.Error != "" {
-			fmt.Fprintf(out, "  error: %s\n", r.Error)
+			fmt.Fprintf(out, "  error: %s\n", strings.ReplaceAll(r.Error, "\n", "\n    "))
 		}
 		if r.Trace != nil {
 			fmt.Fprintf(out, "  trace: %s\n", rt.Show(r.Trace))
