@@ -385,7 +385,7 @@ Each line you type is one of three things:
 
 | You type | The REPL |
 |---|---|
-| `let name = expr` (or `let name : Type = expr`) | checks it with the session's other `let`s; when it is clean, keeps it and prints `name : Type`. A later `let` of the same name replaces it (`redefined name`). A `let` with an error is not kept. |
+| `let name = expr` (or `let name : Type = expr`) | checks it with the session's other `let`s; when it is clean, keeps it and prints `name : Type`. A later `let` of the same name replaces it where it stands (`redefined name`): a `let` is a definition, not a snapshot, so the `let`s that use the name see the new one (`let a = 1`, `let b = a + 1`, `let a = 5`, then `b` is `6`). A `let` with an error is not kept, and a redefinition that breaks another `let` is refused, leaving the old one. |
 | `expr` | evaluates it and prints `value : Type`. A `Query`, a `Task` and a `Select` are not run: they print `<Query> : Query T` (and so on) with a hint naming the command that runs them. |
 | `:command …` | one of the commands below. |
 
@@ -402,8 +402,13 @@ Each line you type is one of three things:
 
 `:run` given a `Task`, or `:run!` given a `Query`, says which one to
 use instead; a `Select` needs `Db.all`, `Db.first` or `Db.count` first.
-Both run with the app's default session and, when the app has
-`adapters/`, its real capabilities, exactly as `alder eval --run` does.
+Both run with the app's default session (`TestSession()`, every field
+at its default, as a test has) and, when the app has `adapters/`, its
+real capabilities, exactly as `alder eval --run` does. A `Query` that
+needs a session takes it as an argument you write, like any other
+value. A `Task` that changes the session (`Session.put`) changes only
+that run's copy: it is discarded, so `:run!` cannot log you in to the
+app that `alder run` serves.
 
 A captured session against `examples/todos`, from a fresh working
 directory (the id is random):
@@ -449,8 +454,8 @@ lines. One in a `let` names it and the REPL line it was typed on,
 follow. The app's own errors are printed with their files, as `alder
 check` prints them.
 
-The REPL watches `app/`, `adapters/` and `static/` as `alder run` does,
-every 300 ms. When you save a file it re-checks the session before the
+The REPL watches `app/` and `adapters/` as `alder run` does, every
+300 ms. When you save a file it re-checks the session before the
 next prompt (`app changed: session re-checked`), as `:reload` does. A
 `let` that used something the edit removed is dropped. Here
 `Todo.shout` was deleted from `app/Todo.alder` between the second and
@@ -470,12 +475,21 @@ expr:1:1: error[E0002]: unknown name `greeting`
   ^^^^^^^^
 ```
 
-While the app itself has errors, `:reload` prints them and keeps the
-session as it is, so fixing the app gets the `let`s back.
+While the app itself has errors, nothing can be evaluated. The REPL
+prints the app's errors once, at start or when they appear, and each
+line you type after that says only `alder repl: the app has errors
+(shown above); fix them and save` (a changed set of errors is printed
+again). `:reload` prints them and keeps the session as it is
+(`the session is kept until the app checks`), so fixing the app gets the
+`let`s back.
 
 Ctrl-C during an evaluation stops it and everything it started
 (`alder repl: interrupted`) and keeps the session; at the prompt it
-only says `(use :quit or Ctrl-D to leave)`.
+only says `(use :quit or Ctrl-D to leave)`. SIGTERM, or closing the
+terminal (SIGHUP), stops a running evaluation and ends the REPL with
+exit 1. Killed outright (SIGKILL), the REPL cannot stop anything, but
+the program of a `:run` or `:run!` notices that the REPL is gone and
+exits. A pure evaluation does not yet (chapter 13, "The REPL").
 
 Limits:
 

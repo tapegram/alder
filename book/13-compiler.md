@@ -2172,10 +2172,12 @@ signatures are inferred (no `let` needs one), and the type of `it` is
 the type the REPL prints. A `let` is checked the same way, as the kept
 `let`s plus the new one, with no `it`. Only when that check is clean
 does the new `let` join the list, so the list always checks. Defining a
-name again removes the old item before the check, which is why `let x =
-x + 1` does not mean "one more than the old `x`": it is a definition of
-`x` in terms of itself, which the checker refuses (E0007), and the old
-`x` stays.
+name again replaces the old item where it stands, so the `let`s after
+it that use the name now use the new definition: a `let` is a
+top-level definition, not a snapshot of a value. That is also why `let
+x = x + 1` does not mean "one more than the old `x`": it is a
+definition of `x` in terms of itself, which the checker refuses (E0007),
+and the old `x` stays.
 
 One entry is always one item. `parseItems` would start a new item at a
 continuation line that begins at column 1 (`+ 10` typed after `let total
@@ -2227,7 +2229,10 @@ Go compiles and links it again.
 
 **`:reload`.** The app's files may have changed since the `let`s were
 checked. `:reload` checks the app alone first; if that has errors, they
-are printed and the session is left as it is. Otherwise it rebuilds the
+are printed and the session is left as it is. The REPL remembers the
+app's errors it last printed and, while they stay the same, says only
+that the app has errors on later lines, instead of the whole block each
+time. Otherwise it rebuilds the
 list: each `let` in order is checked with the ones kept so far and kept
 if clean, else dropped with the first error (`dropped let greeting:
 error[E0002]: …`). A `let` that used a dropped one is dropped too. It
@@ -2255,7 +2260,27 @@ goroutine waits on that channel and cancels the evaluation's context. As
 for `alder eval`, the program runs in its own process group, out of the
 terminal's reach, and `RunContext` kills the group when the context is
 cancelled. The REPL prints `alder repl: interrupted` and keeps the
-session.
+session. SIGTERM and SIGHUP close a second channel, `terminate`: the
+evaluation is cancelled the same way, and the REPL exits 1.
+
+A REPL killed with SIGKILL runs no code at all, so it cannot kill the
+program's group, and the program, in a group of its own, gets no
+signal either. So the program watches its parent another way. Its
+standard input is a pipe (`scratch.RunTethered`) whose write end only
+the REPL holds. Every scratch main starts a goroutine, when
+`ALDER_SCRATCH_STDIN_EOF=1`, that reads standard input until end of
+file and then exits. When the REPL dies, the kernel closes its end of
+the pipe, the read returns, and the program exits. `alder test`'s
+program does the same, and `alder eval` uses `RunTethered` too.
+
+One gap remains. The generated package computes a plain value, such as
+`it = List.sum …` or a `let`, as a Go package variable, while the
+package initializes. Go initializes `app` before the main package's
+`init`, so the goroutine starts only after that work is done. A pure
+evaluation that never finishes is therefore not tethered: it outlives a
+killed REPL. A `:run` or `:run!` does its work inside `main`, after the
+goroutine has started, so it is tethered. Closing the gap needs the
+goroutine in a package that Go initializes before `app`.
 
 ### What is still to come
 

@@ -317,3 +317,10 @@ Each milestone gets its own plan.
 - REPL (M4c): diagnostics are labelled `expr:L:C` for the expression and
   `let x (line N)` for a let (N the REPL line); errors are printed from
   anywhere in the session, warnings only for the line just typed.
+- REPL (M4c, fix round): a redefined `let` replaces the old one in
+  place; the lets that use it see the new definition (lets are
+  definitions, not snapshots), and a redefinition that breaks one is
+  refused. While the app has errors they are printed once, then one line
+  per entry until they change. SIGTERM/SIGHUP stop a running evaluation
+  and exit 1; scratch programs run by eval and the REPL exit when their
+  stdin pipe (held by the parent) closes (`ALDER_SCRATCH_STDIN_EOF`).
