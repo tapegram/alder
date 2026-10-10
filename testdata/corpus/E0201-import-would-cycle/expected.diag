@@ -1,1 +1,2 @@
 app/Blog.alder:7:12 E0201 module `Blog.Show` is not imported, and it imports `Blog`, so `Blog` cannot import it; a test of `Blog.Show` belongs in `app/Blog/Show.alder`
+app/Blog.alder:12:12 E0201 module `Blog.Feed` is not imported, and it imports `Blog` through `Blog.Show`, so `Blog` cannot import it

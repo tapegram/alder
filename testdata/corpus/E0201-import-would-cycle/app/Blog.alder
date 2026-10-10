@@ -7,3 +7,6 @@ test "the show page loads the blog's title" = {
   let m <- Blog.Show.load { } { }
   Task.succeed (m.title == "Blog")
 }
+
+feedSize : Int
+feedSize = Blog.Feed.count

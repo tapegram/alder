@@ -1,0 +1,9 @@
+module Theme
+
+import Util
+import Palette
+
+type Theme = Light | Dark
+
+name : Theme -> Text
+name t = Util.label (t == Light)

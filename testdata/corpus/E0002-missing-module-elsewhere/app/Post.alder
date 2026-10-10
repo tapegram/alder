@@ -1,0 +1,6 @@
+module Post
+
+isDark : Theme.Theme -> Bool
+isDark t = False
+
+test "a light session is not dark" = isDark Light == False

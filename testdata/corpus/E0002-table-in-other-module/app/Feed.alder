@@ -4,12 +4,12 @@ import Post
 
 page "/feed" { }
 
-type Model = { count: Int }
+type Model = { count: Int, last: Maybe Comment }
 
 load : Params -> Session -> Query Model
 load params session = {
   let comments <- Db.from Comment |> Db.where (Comment.post.eq (Post.PostId "a")) |> Db.all
-  Query.succeed { count: List.length comments }
+  Query.succeed { count: List.length comments, last: Nothing }
 }
 
 view : Model -> Session -> Html Msg

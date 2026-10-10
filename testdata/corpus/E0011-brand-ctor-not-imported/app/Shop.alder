@@ -1,0 +1,6 @@
+module Shop
+
+price : Int
+price = Cents 5
+
+test "cents add up" = Cents 2 + Cents 3 == 5

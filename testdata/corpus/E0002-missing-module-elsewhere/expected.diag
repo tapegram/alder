@@ -1,0 +1,5 @@
+app/App.alder:3:36 E0002 there is no `app/Theme.alder` (imported in `Layout`)
+app/App.alder:3:44 E0002 unknown constructor `Light`; no module declares `Light`, and `import Theme` in `Layout` names no file (`app/Theme.alder`)
+app/Layout.alder:3:1 E0002 there is no `app/Theme.alder` (or `app/Theme/…`): write the module or remove the import
+app/Post.alder:3:10 E0002 there is no `app/Theme.alder` (imported in `Layout`)
+app/Post.alder:6:45 E0002 unknown constructor `Light`; no module declares `Light`, and `import Theme` in `Layout` names no file (`app/Theme.alder`)

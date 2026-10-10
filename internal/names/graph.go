@@ -23,7 +23,10 @@ type Program struct {
 	// both are built before any body is resolved, for the hints of names not imported.
 	ctorIndex  map[string][]ctorOwner
 	tableIndex map[string][]string
-	Failed     map[string]bool // module name -> resolution produced errors
+	// missingImports maps a module name that some `import` names but no module has to the first
+	// module (in Order) importing it.
+	missingImports map[string]string
+	Failed         map[string]bool // module name -> resolution produced errors
 	// stdNamed are the names of app modules refused because a standard-library module has the
 	// name (E0017); uses of the name resolve to the stdlib module, and a name the stdlib module
 	// lacks is not reported (it is the app module's), but quiets the module using it instead.

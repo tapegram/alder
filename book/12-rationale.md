@@ -504,9 +504,13 @@ believes is right.
   one exception stays the `session` declaration's own defaults, which
   decode a cookie that lacks a field (chapter 6, "The session cookie").
 - Is `Int.NonNegative * Int.Positive` an `Int`? Chapter 4's rules
-  (implicit widening; operations return the base type) say yes, the
-  checker says no, and both E7 T6 apps multiply through plain `Int`s
+  (implicit widening; operations return the base type) said yes, the
+  checker said no, and both E7 T6 apps multiplied through plain `Int`s
   (one with an identity function), consistent with avoiding it.
+  *Decided (M4d, 2026-10-10): chapter 4's rule 3 holds.* Two different
+  brands of one base widen to it and the operation returns the base; the
+  checker now agrees (`(Int.NonNegative 2) * (Int.Positive 3)` is
+  `6 : Int`, chapter 4), and `Cents + Cents` stays `Cents`.
 - Do agents need `List.map` with index, or is `List.indexed` enough?
 - Should `alder test` also run the book's `eval=` blocks? Today
   `go test ./book` runs them, and only in this repository; an app's own

@@ -2,6 +2,7 @@
 package names
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -101,6 +102,8 @@ type resolver struct {
 	// missing holds the imports of this module that name no module: their error at the `import`
 	// stands for every use of the name (message 3), which is then not reported again.
 	missing map[string]bool
+	// inTest is set while a `test` body is resolved.
+	inTest bool
 }
 
 func (p *Program) Resolve(bag *diag.Bag) {
@@ -109,6 +112,16 @@ func (p *Program) Resolve(bag *diag.Bag) {
 	}
 	for _, name := range p.Std {
 		p.scopes[name.Name] = p.index(name)
+	}
+	p.missingImports = map[string]string{}
+	for _, name := range p.Order {
+		for _, im := range p.Modules[name].Imports {
+			_, inApp := p.Modules[im.Module]
+			_, inStd := p.Std[im.Module]
+			if _, seen := p.missingImports[im.Module]; !seen && !inApp && !inStd {
+				p.missingImports[im.Module] = name
+			}
+		}
 	}
 	p.ctorIndex = map[string][]ctorOwner{}
 	p.tableIndex = map[string][]string{}
@@ -227,7 +240,9 @@ func (r *resolver) module() {
 				r.bag.Error(diag.UnknownName, d.Span, "unknown page `%s`", d.Page)
 			}
 		case *syntax.TestDecl:
+			r.inTest = true
 			r.expr(d.Body, &Scope{names: map[string]bool{}})
+			r.inTest = false
 		}
 	}
 	for _, name := range r.importNames() {
@@ -298,8 +313,16 @@ func (r *resolver) notImported(span diag.Span, x string) {
 		r.tableMisplaced(span, owner, table)
 		return
 	}
-	if _, ok := r.p.Modules[x]; ok && r.p.imports(x, r.m.Name) {
-		r.bag.Error("E0201", span, "module `%s` is not imported, and it imports `%s`, so `%s` cannot import it; a test of `%s` belongs in `%s.alder`", x, r.m.Name, r.m.Name, x, modulePath(x))
+	if by, ok := r.p.missingImports[x]; ok && r.p.Modules[x] == nil {
+		r.bag.Error(diag.UnknownName, span, "there is no `%s.alder` (imported in `%s`)", modulePath(x), by)
+		return
+	}
+	if path := r.p.importPath(x, r.m.Name); path != nil {
+		msg := fmt.Sprintf("module `%s` is not imported, and it %s, so `%s` cannot import it", x, importsPhrase(path), r.m.Name)
+		if r.inTest {
+			msg += fmt.Sprintf("; a test of `%s` belongs in `%s.alder`", x, modulePath(x))
+		}
+		r.bag.Error("E0201", span, "%s", msg)
 		return
 	}
 	d := r.bag.Error("E0201", span, "module `%s` is not imported", x)
@@ -323,27 +346,40 @@ func (r *resolver) importFix(x string) *diag.Fix {
 	return diag.InsertAt(line, 1, "import "+x+"\n")
 }
 
-// imports reports whether app module from imports module to, directly or through other modules.
-func (p *Program) imports(from, to string) bool {
+// importPath is the chain of imports from app module from to module to (from first, to
+// last), or nil when from does not import to, directly or through other modules.
+func (p *Program) importPath(from, to string) []string {
 	seen := map[string]bool{}
-	var walk func(string) bool
-	walk = func(name string) bool {
+	var walk func(string) []string
+	walk = func(name string) []string {
 		if seen[name] {
-			return false
+			return nil
 		}
 		seen[name] = true
 		m := p.Modules[name]
 		if m == nil {
-			return false
+			return nil
 		}
 		for _, im := range m.Imports {
-			if im.Module == to || walk(im.Module) {
-				return true
+			if im.Module == to {
+				return []string{name, to}
+			}
+			if rest := walk(im.Module); rest != nil {
+				return append([]string{name}, rest...)
 			}
 		}
-		return false
+		return nil
 	}
 	return walk(from)
+}
+
+// importsPhrase: "imports `M`", or "imports `M` through `B`" when the chain is longer.
+func importsPhrase(path []string) string {
+	out := "imports `" + path[len(path)-1] + "`"
+	if mid := path[1 : len(path)-1]; len(mid) > 0 {
+		out += " through `" + strings.Join(mid, "` and `") + "`"
+	}
+	return out
 }
 
 // tableInOtherModule: x names no module, but is a table declared in a module not named after
@@ -446,6 +482,10 @@ func (r *resolver) typ(t syntax.Type) {
 			for _, x := range r.importNames() {
 				if r.p.scopes[x] != nil && r.p.scopes[x].types[t.Name] {
 					r.ms.used[x] = true
+					if r.p.scopes[x].tables[t.Name] && x != t.Name && r.p.Modules[x] != nil {
+						r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`, but `%s` is a table, and a table is declared in its own module named after it: move it to `%s.alder`", t.Name, x, t.Name, modulePath(t.Name))
+						return
+					}
 					d := r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`; write `%s.%s`", t.Name, x, x, t.Name)
 					d.Fix = diag.ReplaceSpan(t.Span, x+"."+t.Name)
 					return
@@ -479,7 +519,11 @@ func (r *resolver) typ(t syntax.Type) {
 			if len(r.missing) > 0 { // the import that names no module stands for it
 				return
 			}
-			r.bag.Error(diag.UnknownName, t.Span, "unknown type `%s`", t.Name)
+			if by, ok := r.p.missingImports[t.Name]; ok {
+				r.bag.Error(diag.UnknownName, t.Span, "there is no `%s.alder` (imported in `%s`)", modulePath(t.Name), by)
+				return
+			}
+			r.bag.Error(diag.UnknownName, t.Span, "unknown type `%s`%s", t.Name, r.missingCause(t.Name))
 		}
 	case *syntax.RecordType:
 		r.recordType(t)
@@ -635,7 +679,7 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 		return
 	}
 	if v.Module == "App" { // App needs no import; only its messages are usable values
-		if v.Name == "update" {
+		if app := r.p.scopes["App"]; v.Name == "update" && r.p.Modules["App"] != nil && app != nil && app.values["update"] {
 			r.bag.Error(diag.UnknownName, v.Span, "`App.update` is called by the runtime, not by code; a test of it belongs in `app/App.alder`")
 			return
 		}
@@ -678,11 +722,17 @@ func (r *resolver) unresolvedCtor(c *syntax.CtorRef) {
 			of = append(of, "of `"+o.Module+"."+o.Type+"`")
 		}
 		if len(owners) == 1 {
-			x := owners[0].Module
-			d := r.bag.Error(diag.UnknownName, c.Span, "`%s` is a constructor %s; import `%s`", c.Name, of[0], x)
-			if !r.p.imports(x, r.m.Name) {
-				d.Fix = r.importFix(x)
+			o := owners[0]
+			if o.Type == c.Name && r.p.scopes[o.Module].brands[c.Name] && !r.inTest {
+				r.bag.Error(diag.InvalidDecl, c.Span, "brand constructor `%s` can only be used in module `%s` or inside a `test`", c.Name, o.Module)
+				return
 			}
+			if path := r.p.importPath(o.Module, r.m.Name); path != nil {
+				r.bag.Error(diag.UnknownName, c.Span, "`%s` is a constructor %s, and `%s` %s, so `%s` cannot import it", c.Name, of[0], o.Module, importsPhrase(path), r.m.Name)
+				return
+			}
+			d := r.bag.Error(diag.UnknownName, c.Span, "`%s` is a constructor %s; import `%s`", c.Name, of[0], o.Module)
+			d.Fix = r.importFix(o.Module)
 			return
 		}
 		list := strings.Join(of[:len(of)-1], ", ") + " and " + of[len(of)-1]
@@ -692,7 +742,29 @@ func (r *resolver) unresolvedCtor(c *syntax.CtorRef) {
 	if len(r.missing) > 0 {
 		return
 	}
-	r.bag.Error(diag.UnknownName, c.Span, "unknown constructor `%s`", c.Name)
+	r.bag.Error(diag.UnknownName, c.Span, "unknown constructor `%s`%s", c.Name, r.missingCause(c.Name))
+}
+
+// missingCause explains a name no module declares when some module's import names no module
+// (the E7 shape: App uses `Light`, Layout imports a `Theme` nobody wrote); "" when none does.
+func (r *resolver) missingCause(name string) string {
+	var mods []string
+	for x := range r.p.missingImports {
+		mods = append(mods, x)
+	}
+	if len(mods) == 0 {
+		return ""
+	}
+	for _, m := range r.p.Order { // a page's message, say, is declared: the cause is elsewhere
+		if s := r.p.scopes[m]; s != nil {
+			if _, ok := s.ctors[name]; ok || s.types[name] {
+				return ""
+			}
+		}
+	}
+	sort.Strings(mods)
+	x := mods[0]
+	return fmt.Sprintf("; no module declares `%s`, and `import %s` in `%s` names no file (`%s.alder`)", name, x, r.p.missingImports[x], modulePath(x))
 }
 
 // loginPage is the page named by App's `login` declaration (Auth.Login when there is none).

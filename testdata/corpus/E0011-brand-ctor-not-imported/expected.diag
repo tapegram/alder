@@ -1,0 +1,4 @@
+app/Shop.alder:4:9 E0011 brand constructor `Cents` can only be used in module `Money` or inside a `test`
+app/Shop.alder:6:23 E0002 `Cents` is a constructor of `Money.Cents`; import `Money`
+  fix 2:1-2:1 import Money⏎
+app/Shop.alder:6:33 E0002 `Cents` is a constructor of `Money.Cents`; import `Money`

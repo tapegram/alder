@@ -1,0 +1,7 @@
+module Colors
+
+blue : Text
+blue = "#00f"
+
+darkBlue : Bool
+darkBlue = Dark == Dark

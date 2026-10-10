@@ -1,0 +1,6 @@
+module Layout
+
+import Theme
+
+Page : { theme: Theme.Theme, children: List (Html a) } -> Html a
+Page props = <main class={if props.theme == Dark then "dark" else "light"}>{props.children}</main>

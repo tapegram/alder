@@ -1,0 +1,6 @@
+module Blog.Feed
+
+import Blog.Show
+
+count : Int
+count = 3

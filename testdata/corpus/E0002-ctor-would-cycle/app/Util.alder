@@ -1,0 +1,7 @@
+module Util
+
+label : Bool -> Text
+label light = if light then "light" else "dark"
+
+isLight : Bool
+isLight = Light == Light

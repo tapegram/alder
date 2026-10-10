@@ -1,0 +1,3 @@
+module Money
+
+type Cents = brand Int
