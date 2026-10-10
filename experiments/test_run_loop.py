@@ -736,6 +736,131 @@ class TestLoopTests(unittest.TestCase):
             self.skipTest("no E6 runs")
         self.assertEqual(rp.markdown(rp.rows(ss)), (here / "scores.md").read_text())
 
+class E7FalloutTests(unittest.TestCase):
+    """After E7: stdlib paths, cut-off files, opt-in adapters, the Go-refusal hint."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.exp = pathlib.Path(self.tmp) / "exp"
+        (self.exp / "tasks").mkdir(parents=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def run1(self, answers, alder, retries=1, **kw):
+        model = rl.FakeModel(answers)
+        return rl.run_one(self.exp, model, "fake", "t", "TASK", "sys", alder, retries=retries, **kw), model
+
+    def test_stdlib_paths_rejected(self):
+        repo_stdlib = pathlib.Path(rl.__file__).resolve().parent.parent / "stdlib"
+        names = {f.stem for f in repo_stdlib.glob("*.alder")}
+        self.assertTrue({"List", "Db", "Http"} <= names)
+        self.assertTrue(names <= rl.STDLIB_NAMES and "stdlib" in rl.STDLIB_NAMES)
+        text = ("--- file: app/stdlib/List.alder ---\nmodule List\n--- file: app/List.alder ---\nmodule List\n"
+                "--- file: Db/Query.alder ---\nmodule X\n--- file: app/Auth/List.alder ---\nmodule Auth.List\n"
+                "--- file: app/Lists.alder ---\nmodule Lists\n")
+        files, rejected = rl.split_files(text)
+        self.assertEqual(sorted(files), ["app/Auth/List.alder", "app/Lists.alder"])
+        self.assertEqual(rejected, ["app/stdlib/List.alder (standard-library module)", "app/List.alder (standard-library module)",
+                                    "Db/Query.alder (standard-library module)"])
+        # and through the loop: nothing written, the retry names the paths
+        chk = FakeChecker(self.tmp, [(0, "", ""), (0, "", "")])
+        s, model = self.run1([GOOD + "--- file: app/stdlib/List.alder ---\nmodule List\n", GOOD], chk.path)
+        self.assertFalse((self.exp / "runs/fake/t/round0/app/stdlib").exists())
+        self.assertEqual(s["rounds"][0]["rejected"], ["app/stdlib/List.alder (standard-library module)"])
+        self.assertIn("app/stdlib/List.alder (standard-library module)", model.prompts[1] if s["rounds"][0]["errors"] else
+                      rl.retry_prompt("T", self.exp / "runs/fake/t/round0", [], "", 1, rejected=s["rounds"][0]["rejected"]))
+
+    def test_truncated_last_file_not_written(self):
+        class Cut(rl.FakeModel):
+            def generate(self, system, user):
+                text, meta = super().generate(system, user)
+                if len(self.prompts) == 2:   # round 1: stopped by the token cap, mid-file
+                    meta.update({"done_reason": "length", "truncated": True})
+                return text, meta
+        chk = FakeChecker(self.tmp, [(1, ERR, ""), (1, ERR, ""), (0, "", "")])
+        model = Cut([GOOD + "--- file: app/X.alder ---\nmodule X\n\nv : Int\nv = 1\n",
+                     "--- file: app/Y.alder ---\nmodule Y\n--- file: app/X.alder ---\nmodule X\n\nv : Int\nv = 2\n\nw : In",
+                     GOOD])
+        s = rl.run_one(self.exp, model, "fake", "t", "TASK", "sys", chk.path, retries=2)
+        r1 = self.exp / "runs/fake/t/round1/app"
+        self.assertTrue((r1 / "Y.alder").exists())                       # the complete file before it is written
+        self.assertEqual((r1 / "X.alder").read_text(), "module X\n\nv : Int\nv = 1\n")   # round 0's version stays
+        self.assertEqual(s["rounds"][1]["cut_off_file"], "app/X.alder")
+        self.assertNotIn("cut_off_file", s["rounds"][0])
+        self.assertIn("`app/X.alder` was cut off and not written; emit it again in full", model.prompts[2])
+        # a cut-off first-time file is absent
+        chk = FakeChecker(self.tmp, [(0, "", "")])
+        files, rejected, cut = rl.split_answer("--- file: app/A.alder ---\nmodule A\n--- file: app/B.alder ---\nmod", cut_off=True)
+        self.assertEqual((sorted(files), cut), (["app/A.alder"], "app/B.alder"))
+        self.assertEqual(rl.split_answer("--- file: app/A.alder ---\nmod", cut_off=False)[2], None)
+
+    def test_adapters_flag_accepts_go(self):
+        text = (GOOD + "--- file: adapters/password.go ---\n```go\npackage adapters\n```\n"
+                "--- file: adapters/sub/x.go ---\npackage adapters\n--- file: adapters/../evil.go ---\npackage x\n"
+                "--- file: go.mod ---\nmodule x\n")
+        files, rejected = rl.split_files(text, adapters=True)
+        self.assertEqual(sorted(files), ["adapters/password.go", "app/App.alder"])
+        self.assertEqual(files["adapters/password.go"], "package adapters\n")
+        self.assertEqual(rejected, ["adapters/sub/x.go", "adapters/../evil.go", "go.mod"])
+        self.assertEqual(rl.split_files(text)[0].keys(), {"app/App.alder"})   # opt-in: off by default
+        chk = FakeChecker(self.tmp, [(0, "", "")])
+        s, _ = self.run1([text], chk.path, retries=0, adapters=True)
+        rd = self.exp / "runs/fake/t/round0"
+        self.assertEqual((rd / "adapters/password.go").read_text(), "package adapters\n")
+        self.assertFalse((rd / "adapters/sub").exists() or (self.exp / "runs/fake/t/evil.go").exists())
+        self.assertTrue(s["harness"]["adapters"])
+        chk = FakeChecker(self.tmp, [(0, "", "")])
+        s, _ = self.run1([text], chk.path, retries=0)
+        self.assertNotIn("adapters", s["harness"])
+        self.assertFalse((self.exp / "runs/fake/t/round0/adapters").exists())
+        import contextlib, io
+        with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as cm:
+            rl.main(["--adapters", "--help"])
+        self.assertEqual(cm.exception.code, 0)
+
+    def test_adapter_that_does_not_vet_is_a_failed_round(self):
+        stub = pathlib.Path(self.tmp) / "alder"
+        stub.write_text('#!/bin/sh\n[ "$1" = check ] && exit 0\n'
+                        'if grep -q BROKEN adapters/*.go 2>/dev/null; then echo "adapters/password.go:3:1: undefined: BROKEN" >&2; exit 1; fi\n'
+                        'exit 0\n')
+        stub.chmod(0o755)
+        bad = GOOD + "--- file: adapters/password.go ---\npackage adapters\n\nvar x = BROKEN\n"
+        good = "--- file: adapters/password.go ---\npackage adapters\n\nvar x = 1\n"
+        s, model = self.run1([bad, good], stub, build=True, adapters=True)
+        self.assertEqual(s["outcome"], "pass")
+        self.assertFalse(s["rounds"][0]["build"]["ok"])
+        self.assertEqual(s["rounds"][0]["build"]["exit"], 1)
+        self.assertNotIn("compiler_bug", s)   # the model's Go, not the compiler's
+        self.assertIn("undefined: BROKEN", model.prompts[1])
+        self.assertIn("--- file: adapters/password.go ---\npackage adapters\n\nvar x = BROKEN", model.prompts[1])
+        self.assertTrue(s["rounds"][1]["build"]["ok"])
+
+    @unittest.skipUnless(shutil.which("git"), "git is not on PATH")
+    def test_rejected_adapter_hint_with_base(self):
+        repo = pathlib.Path(self.tmp) / "repo"
+        (repo / "ex" / "app").mkdir(parents=True)
+        (repo / "ex" / "adapters").mkdir(parents=True)
+        (repo / "ex" / "app" / "App.alder").write_text("module App\n")
+        (repo / "ex" / "adapters" / "password.go").write_text("package adapters\n")
+        git(repo, "init", "-q")
+        git(repo, "add", ".")
+        git(repo, "commit", "-q", "-m", "base")
+        go = "--- file: adapters/password.go ---\npackage adapters\n"
+        chk = FakeChecker(self.tmp, [(1, ERR, ""), (0, "", "")])
+        s, model = self.run1([GOOD + go, GOOD], chk.path, base=repo / "ex")
+        self.assertEqual(s["rounds"][0]["rejected"], ["adapters/password.go"])
+        self.assertEqual((self.exp / "runs/fake/t/round0/adapters/password.go").read_text(), "package adapters\n")   # base's, not the model's
+        p = model.prompts[1]
+        self.assertIn("These paths were rejected: adapters/password.go; files must be `app/<Module>.alder`.", p)
+        self.assertIn("`adapters/password.go` was not accepted (this run does not take Go files); the `Password` adapter is provided"
+                      " \u2014 keep the capability and do not replace it with a password in the code", p)
+        # without a base carrying adapters: the other hint
+        chk = FakeChecker(self.tmp, [(1, ERR, ""), (0, "", "")])
+        s, model = self.run1([GOOD + go, GOOD], chk.path)
+        self.assertIn("`adapters/password.go` was not accepted (this run does not take Go files); "
+                      "declare the capability and leave its Go side unwritten", model.prompts[1])
+        self.assertNotIn("is provided", model.prompts[1])
+
 class ModelTests(unittest.TestCase):
     def test_claude_isolated_cwd_and_system_prompt(self):
         calls = []

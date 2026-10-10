@@ -3,13 +3,14 @@
 
 Usage:
   run_loop.py --exp DIR --model ollama:NAME|claude:NAME --task NAME [--retries 1] [--prompt prompt.md] [--alder BIN]
-              [--base APPDIR] [--build [--test]] [--num-ctx N]
+              [--base APPDIR] [--build [--test]] [--adapters] [--num-ctx N]
 
 Writes DIR/runs/<model>/<task>/round<N>/{output.md,check.json,app/...} and DIR/runs/<model>/<task>/summary.json.
 With --build, a round whose check is clean also runs `alder build --emit` (output in round<N>/build/);
 with --test too, a round that built also runs `alder test --json` and passes only if every test does.
 --base DIR seeds round 0 from DIR/app (and DIR/adapters, when there is one) as committed
-(`git archive HEAD`), never from the working tree. --num-ctx sets Ollama's context window.
+(`git archive HEAD`), never from the working tree. --adapters (opt-in) also accepts adapters/<name>.go
+sections and lets build and test run them: it executes Go the model wrote. --num-ctx sets Ollama's context window.
 summary.json's `outcome` is pass, fail, compiler_bug or harness_error (see README "Outcomes").
 """
 import argparse, io, json, os, pathlib, posixpath, re, shutil, signal, subprocess, sys, tarfile, tempfile, time, urllib.request
@@ -144,38 +145,74 @@ def make_model(spec: str, num_ctx=None) -> Model:
 
 FILE_RE = re.compile(r"^-{3,}\s*file:\s*(\S+?)\s*-{3,}\s*$", re.M)
 
+STDLIB_REASON = "standard-library module"
+ADAPTER_RE = re.compile(r"^adapters/[A-Za-z0-9_]+\.go$")   # only adapters/<name>.go, no subdirectories
 
-def normalize_path(path: str):
-    """Return a safe `app/...alder` path, or None if the path must be rejected."""
+
+def stdlib_names(root=None):
+    """The standard library's module names (`stdlib/*.alder` stems) plus `stdlib` itself, read from the
+    repository's stdlib/ directory next to this directory. Computed once, at harness start."""
+    root = pathlib.Path(root) if root else pathlib.Path(__file__).resolve().parent.parent / "stdlib"
+    return frozenset(f.stem for f in root.glob("*.alder")) | {"stdlib"}
+
+
+STDLIB_NAMES = stdlib_names()
+
+
+def classify_path(path: str, adapters: bool = False):
+    """(safe path, None), or (None, reason): reason is STDLIB_REASON for a path whose first segment
+    under `app/` names a standard-library module, else "" (traversal, absolute, wrong extension).
+    With `adapters`, `adapters/<name>.go` is a safe path too."""
     if not path or path.startswith("/") or "\\" in path:
-        return None
+        return None, ""
     p = posixpath.normpath(path)
     if p.startswith("/") or p == ".." or p.startswith("../") or ".." in p.split("/"):
-        return None
+        return None, ""
+    if p.endswith(".go"):
+        return (p, None) if adapters and ADAPTER_RE.match(p) else (None, "")
     if not p.endswith(".alder"):
-        return None
+        return None, ""
     if not p.startswith("app/"):
         p = "app/" + p
-    return p
+    first = p.split("/")[1]
+    if first.removesuffix(".alder") in STDLIB_NAMES:
+        return None, STDLIB_REASON
+    return p, None
 
 
-def split_files(text: str):
+def normalize_path(path: str, adapters: bool = False):
+    """Return a safe `app/...alder` path (or `adapters/<name>.go` with `adapters`), or None if the path must be rejected."""
+    return classify_path(path, adapters)[0]
+
+
+def split_answer(text: str, adapters: bool = False, cut_off: bool = False):
     """Split `--- file: path ---` sections; strip surrounding ``` fences; ignore any preamble.
 
-    Returns (files, rejected): files maps safe `app/...alder` paths to contents;
-    rejected lists the raw paths that were refused (traversal, absolute, non-.alder)."""
+    Returns (files, rejected, cut_off_file): files maps safe paths to contents; rejected lists the raw paths
+    that were refused (traversal, absolute, wrong extension; a standard-library module carries its reason).
+    With `cut_off` (the answer stopped at the token cap) the last section is incomplete: it is not in files,
+    and cut_off_file names it (None when that section was rejected anyway or there is none)."""
     parts = FILE_RE.split(text)
-    out, rejected = {}, []
+    out, rejected, cut = {}, [], None
+    last = len(parts) - 2
     for i in range(1, len(parts), 2):
         raw, body = parts[i], parts[i + 1]
         body = re.sub(r"^\s*```\w*\n", "", body)         # opening fence right after the marker
         body = re.sub(r"\n```\s*(\n|$)[\s\S]*$", "\n", body)  # closing fence and anything after it
-        path = normalize_path(raw)
+        path, reason = classify_path(raw, adapters)
         if path is None:
-            rejected.append(raw)
+            rejected.append(f"{raw} ({reason})" if reason else raw)
+        elif cut_off and i == last:
+            cut = path
         else:
             out[path] = body.strip("\n") + "\n"
-    return out, rejected
+    return out, rejected, cut
+
+
+def split_files(text: str, adapters: bool = False):
+    """split_answer without the cut-off handling: (files, rejected)."""
+    files, rejected, _ = split_answer(text, adapters)
+    return files, rejected
 
 
 DIAG_KEYS = ("code", "severity", "file", "line", "col")
@@ -391,15 +428,36 @@ TRUNCATED = ("Your previous answer was cut off after {n} tokens; output only the
              "(`--- file: app/<path> ---`), nothing else.")
 
 
+def go_refusal_hint(rejected, round_dir: pathlib.Path) -> str:
+    """For each rejected `adapters/<name>.go` (a run without --adapters): the notice that keeps a model
+    from replacing a capability with a password in the code (E7: Haiku's T3)."""
+    out = []
+    for raw in rejected:
+        p = posixpath.normpath(raw)
+        if not ADAPTER_RE.match(p):
+            continue
+        cap = pathlib.PurePosixPath(p).stem
+        cap = cap[:1].upper() + cap[1:]
+        notice = f"`{p}` was not accepted (this run does not take Go files); "
+        if any((round_dir / "adapters").glob("*.go")):
+            out.append(notice + f"the `{cap}` adapter is provided \u2014 keep the capability and do not replace it "
+                       "with a password in the code")
+        else:
+            out.append(notice + "declare the capability and leave its Go side unwritten")
+    return "\n\n".join(out)
+
+
 def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles: int, rejected=(), build_output=None,
-                 test_output=None, truncated=None) -> str:
+                 test_output=None, truncated=None, cut_off_file=None, show_adapters=False) -> str:
     """`build_output`, when given, is what `alder build --emit` printed when it refused (exit 1) a clean program;
     `test_output`, the text report of `alder test` when tests of a program that built failed (exit 1);
-    `truncated`, the token cap when the model's answer was cut off by it (Ollama's done_reason "length")."""
+    `truncated`, the token cap when the model's answer was cut off by it (Ollama's done_reason "length");
+    `cut_off_file`, the path of the file it was cut off in (not written); `show_adapters`, carry the round's
+    adapters/*.go in the previous answer (a --adapters run)."""
     sources = {}
     for f in (round_dir / "app").rglob("*.alder"):
         sources[str(f.relative_to(round_dir))] = f.read_text()
-    if nfiles == 0:
+    if nfiles == 0 and not cut_off_file:
         feedback = "Your previous answer contained no files (no `--- file: app/... ---` sections were found)."
     elif diags:
         feedback = "The compiler reported these errors in your previous answer:\n\n" + render_diags(diags, sources)
@@ -421,9 +479,17 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
         feedback += "\n\n====================  TEST OUTPUT  ====================\n" + test_output.strip()
     if truncated is not None and (nfiles == 0 or diags or build_output is not None or test_output is not None):
         feedback += "\n\n" + TRUNCATED.format(n=truncated)
+    if cut_off_file:
+        feedback += f"\n\n`{cut_off_file}` was cut off and not written; emit it again in full."
     if rejected:
         feedback += ("\n\nThese paths were rejected: " + ", ".join(rejected) +
                      "; files must be `app/<Module>.alder`.")
+        hint = go_refusal_hint(rejected, round_dir)
+        if hint:
+            feedback += "\n\n" + hint
+    if show_adapters:
+        for f in (round_dir / "adapters").glob("*.go"):
+            sources[str(f.relative_to(round_dir))] = f.read_text()
     previous = ""
     if sources:  # every model call is a fresh process: the retry must carry the files it asks to fix
         previous = ("\n\n====================  YOUR PREVIOUS ANSWER  ====================\n" +
@@ -439,11 +505,11 @@ def write_round(round_dir: pathlib.Path, prev_dir, text: str, files: dict):
     if prev_dir is not None and (prev_dir / "adapters").is_dir():   # from --base; the model writes only app/
         shutil.copytree(prev_dir / "adapters", round_dir / "adapters", dirs_exist_ok=True)
     (round_dir / "output.md").write_text(text[:MAX_OUTPUT])
-    app_root = (round_dir / "app").resolve()
+    roots = [(round_dir / "app").resolve(), (round_dir / "adapters").resolve()]
     skipped = []
     for path, body in files.items():
         p = (round_dir / path).resolve()
-        if not p.is_relative_to(app_root):
+        if not any(p.is_relative_to(r) for r in roots):
             skipped.append(path)
             continue
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -453,7 +519,7 @@ def write_round(round_dir: pathlib.Path, prev_dir, text: str, files: dict):
 
 def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, task_text: str,
             system: str, alder: pathlib.Path, retries: int = 1, base=None, build: bool = False, seed=None,
-            test: bool = False) -> dict:
+            test: bool = False, adapters: bool = False) -> dict:
     """`base`, if given, is a directory inside a git repository whose `app/` as committed (`git archive
     HEAD`, never the working tree) seeds round 0 (for tasks that modify an existing app). `seed`, if
     given, is that export already made, `export_base(base)` (the exported base and its commit): main
@@ -486,14 +552,14 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     if base and seed is None:
         seed = export_base(base)
         try:
-            return run_one(exp, model, model_label, task_name, task_text, system, alder, retries, base, build, seed=seed, test=test)
+            return run_one(exp, model, model_label, task_name, task_text, system, alder, retries, base, build, seed=seed, test=test, adapters=adapters)
         finally:
             remove_export(seed[0])
     run_dir = exp / "runs" / model_label / task_name
     if run_dir.exists():
         shutil.rmtree(run_dir)
     summary = {"model": model_label, "task": task_name, "retries": retries, "base": str(base) if base else None,
-               "harness": {"build": build, "retries": retries, **({"test": True} if test else {}),
+               "harness": {"build": build, "retries": retries, **({"test": True} if test else {}), **({"adapters": True} if adapters else {}),
                            **({"num_ctx": model.NUM_CTX, "num_predict": model.NUM_PREDICT} if isinstance(model, OllamaModel) else {})}, "error": None, "rounds": [], "final_pass": False,
                "outcome": "fail"}
     if seed is not None:
@@ -519,7 +585,8 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             harness_error(f"model: {e}")
             break
         round_dir = run_dir / f"round{n}"
-        files, rejected = split_files(text)
+        cut = bool(meta.get("truncated")) or meta.get("done_reason") == "length"
+        files, rejected, cut_off_file = split_answer(text, adapters=adapters, cut_off=cut)
         nfiles, skipped = write_round(round_dir, prev, text, files)
         rejected = rejected + skipped
         exit_code, diags, stderr, reason = run_check(alder, round_dir)
@@ -534,6 +601,8 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
         for k in ("prompt_eval_count", "eval_count", "done_reason", "truncated", "warning", "claude_version", "model"):
             if k in meta:
                 rnd[k] = meta[k]
+        if cut_off_file:
+            rnd["cut_off_file"] = cut_off_file
         summary["rounds"].append(rnd)
         if isinstance(reason, Hang):   # the checker hung on the model's program
             (round_dir / "check.stderr.txt").write_text(stderr)
@@ -589,7 +658,8 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             summary["outcome"] = "pass"
             break
         user = retry_prompt(task_text, round_dir, diags, stderr, nfiles, rejected, build_output=build_output,
-                            test_output=test_output, truncated=getattr(model, "NUM_PREDICT", None) if rnd.get("truncated") else None)
+                            test_output=test_output, truncated=getattr(model, "NUM_PREDICT", None) if rnd.get("truncated") else None,
+                            cut_off_file=cut_off_file, show_adapters=adapters)
         prev = round_dir
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=1) + "\n")
@@ -609,6 +679,8 @@ def main(argv=None):
     ap.add_argument("--build", action="store_true", help="after a clean check, run `alder build --emit`; the run passes only if it succeeds (exit 2 = compiler bug, stop)")
     ap.add_argument("--test", action="store_true", help="with --build: after a successful build, run `alder test --json`; the run passes only if every test passes "
                                                         "(exit 1 = retry with the report, exit 2 = compiler bug, stop)")
+    ap.add_argument("--adapters", action="store_true", help="accept `--- file: adapters/<name>.go ---` sections, write them into the round's adapters/ and let "
+                                                            "build/test run them. OPT-IN: this executes Go code the model wrote, on this machine")
     ap.add_argument("--num-ctx", type=int, default=None, help=f"Ollama's num_ctx for this invocation (default {OllamaModel.NUM_CTX}); recorded as harness.num_ctx")
     a = ap.parse_args(argv)
     if a.test and not a.build:
@@ -634,7 +706,7 @@ def run_all(a, seed):
         for task in a.task:
             task_text = (exp / "tasks" / f"{task}.md").read_text()
             s = run_one(exp, model, label, task, task_text, system, alder, a.retries, base=a.base, build=a.build, seed=seed,
-                        test=a.test)
+                        test=a.test, adapters=a.adapters)
             status = ("ERROR " + s["error"] if s["error"]
                       else f"harness-error ({s['harness_error']})" if s["outcome"] == "harness_error"
                       else s["outcome"].replace("_", "-"))

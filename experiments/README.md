@@ -67,6 +67,8 @@ adapters when the app declares a capability, so `--base` exports them too (below
 | claude-haiku, claude-sonnet, claude-opus | subagent with the prompt + task, fresh context |
 | qwen3-coder:30b, qwen3:8b | Ollama, `run_ollama.py`, `num_ctx` 32768, temperature 0 |
 
+Qwen3-Coder 30B is **out of the matrix since E7**: 0/10 with no clean check. It returns once the example and message fixes land, or is replaced by a dense 14B–32B coder.
+
 In the loop harness (`run_loop.py`):
 
 - `claude:NAME` runs `claude -p` isolated, in a fresh empty temp directory, with the prompt as
@@ -107,7 +109,11 @@ In the loop harness (`run_loop.py`):
   3600 s HTTP timeout, a `harness_error`). A round whose `done_reason` is `length` gets `truncated: true` and is an
   ordinary failed round (no build, no tests); the retry prompt adds "Your previous answer was cut off after 8192
   tokens; output only the Alder files (`--- file: app/<path> ---`), nothing else." 8192 is above every completed
-  Ollama round in E6 and E7 (at most 5,393 tokens).
+  Ollama round in E6 and E7 (at most 5,393 tokens). The last `--- file:` section of a cut-off answer is
+  incomplete, so it is **not written**: a version of that path from the previous round (or the `--base`) stays,
+  the round records `cut_off_file` (e.g. `"app/Todos/Show.alder"`), and the retry prompt adds
+  "`app/X.alder` was cut off and not written; emit it again in full". No `cut_off_file` when the last section's
+  path was rejected anyway.
 
 ## Tasks
 
@@ -119,6 +125,8 @@ Tasks are chosen to exercise different things:
 - **T4 app messages**: a notes app with a theme switch and logout on every page (app-level messages, session).
 - **T5 ownership** (E6): shared notes where each user sees and deletes only their own; a message carrying another user's id must 404 (authorization in `update`).
 - **T6 orders** (E7): a shop's orders with line items, a computed total and a `Staff`/`Manager` role that changes what `load` may show; the floor for harder use cases.
+
+The canonical task texts for the next experiments are in `experiments/tasks/` (T2–T6 copied from `e7-prompt-tests/tasks/`; E7's own `tasks/` stay as they were run). T2 there is reworded after E7's runaway: "Output only the files you add or change: not the files you leave as they are, not the standard library, nothing outside `app/`."
 
 From E7 every task ends with a tests paragraph ("Also write tests … `alder test` must pass. Do not write tests that call the `Password` capability.") naming what to test.
 
@@ -132,12 +140,14 @@ From E7 every task ends with a tests paragraph ("Also write tests … `alder tes
 - **E6 build** (`e6-build/`): the first run with `--build` (a round passes only if `alder check` is clean and `alder build --emit` succeeds), up to two retries, T2–T5 × Qwen3-Coder, Haiku, Sonnet; T5 (shared notes, each user's own) probes authorization in `update`. Every clean program built (no compiler bugs); `findings.md` hand-scores T5's owner check.
 - **E7 prompt and tests** (`e7-prompt-tests/`): two questions in one run. Prompt size: Qwen3-Coder on the `full` prompt (chapters 3–10 + example, `--num-ctx 65536`) against the `reference` prompt (`build_context.py --reference`, `--num-ctx 32768`). Tests in the loop: T2–T5 with a tests paragraph and a new T6, all `--build --test --retries 2`, Qwen3-Coder × both prompts, Haiku and Sonnet × `full`; E6's T2–T5 are the control. Result: Haiku and Sonnet 10 / 10 (every run wrote the named tests, all passed; T6 in round 0 for both); Qwen3-Coder 0 / 10, no round checked clean under either prompt, so the agent-facing cut is not the lever: two in five of its errors come from the example's `Theme` module, mostly copied into new apps without `Theme.alder` (the rest missing imports and duplicated or over-qualified constructors). Haiku's T3 pass shipped a hard-coded password after its adapter was rejected. The test loop caught nothing (no round built and then failed its tests), yet a mutation probe showed the tests catch 10 / 10 removed authorization checks. The Qwen T2 runaway forced a mid-run cap (`num_predict` 8192, `0c80d80`); `findings.md` §0, §6.
 
+- **E8 (planned)**: hidden acceptance tests (tests the model never sees, run against its program) and a condition without the tests paragraph, to separate what the paragraph adds from what the loop catches.
+
 ## Harness (M2)
 
 `run_loop.py` closes the loop: generate, run `alder check --json`, feed the diagnostics back, retry.
 
 ```
-python3 experiments/run_loop.py --exp experiments/e5-loop --model ollama:qwen3-coder:30b --task t3-newapp [--retries 1] [--prompt prompt.md] [--alder path/to/alder] [--base examples/todos] [--build [--test]] [--num-ctx 32768]
+python3 experiments/run_loop.py --exp experiments/e5-loop --model ollama:qwen3-coder:30b --task t3-newapp [--retries 1] [--prompt prompt.md] [--alder path/to/alder] [--base examples/todos] [--build [--test]] [--adapters] [--num-ctx 32768]
 python3 experiments/report_loop.py experiments/e5-loop > experiments/e5-loop/scores.md
 ```
 
@@ -165,7 +175,9 @@ Summary shape:
  "test_output": "ok   Todo \"countOpen ignores done todos\"\nFAIL Todos.Index \"Toggle flips done\"\n…\n1 passed, 1 failed\n"}
 ```
 
-Paths in `--- file: ... ---` markers are normalized (`X.alder` and `./app/X.alder` become `app/X.alder`); absolute paths, `..` escapes, backslashes and non-`.alder` files are refused, recorded per round as `rejected`, and named in the retry prompt.
+Paths in `--- file: ... ---` markers are normalized (`X.alder` and `./app/X.alder` become `app/X.alder`); absolute paths, `..` escapes, backslashes and non-`.alder` files are refused, recorded per round as `rejected`, and named in the retry prompt. So is a path whose first segment under `app/` names a standard-library module (`app/stdlib/List.alder`, `app/List.alder`, `app/Db/X.alder`): the names are the `stdlib/*.alder` stems of this repository, read once when the harness starts, plus `stdlib`; it is listed in `rejected` as `app/stdlib/List.alder (standard-library module)` (E7 T2: Qwen invented `app/stdlib/*.alder` files).
+
+**`--adapters`** (opt-in, off by default). Without it a `--- file: adapters/<name>.go ---` section is refused like any non-`.alder` file, and the retry prompt adds a notice: with a `--base` that carries adapters, "`adapters/password.go` was not accepted (this run does not take Go files); the `Password` adapter is provided — keep the capability and do not replace it with a password in the code" (E7: Haiku's T3 pass replaced a rejected adapter with a password in the code); without one, "… declare the capability and leave its Go side unwritten". With `--adapters`, `adapters/<name>.go` sections (no subdirectories, same path safety) are written into the round's `adapters/`, shown to the model in the retry prompt, and `alder build` / `alder test` compile and run them; the summary records `harness.adapters: true`. A Go file that does not vet is an ordinary failed round (build exit 1). **This executes Go code the model wrote, on this machine, with your permissions**, with no sandbox: use it only on a machine and in a directory you are prepared to lose.
 
 `compiler_bug: true` appears only when the compiler failed on a clean program (see Outcomes: a `--build` or `--test` exiting 2, a checker panic, a hang). Summaries from before M3d have no `harness` key.
 
