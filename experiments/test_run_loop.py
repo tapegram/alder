@@ -61,12 +61,17 @@ class LoopTests(unittest.TestCase):
         self.assertTrue(s["final_pass"])
         self.assertEqual(s["rounds"][0]["codes"], {"E0003": 1})
 
+    @unittest.skipUnless(shutil.which("git"), "git is not on PATH")
     def test_base_seeds_round0(self):
-        # A modification task (T2) emits only changed files; round 0 must start from the base app.
+        # A modification task (T2) emits only changed files; round 0 must start from the base app
+        # (as committed: --base reads `git archive HEAD`, test_base_exports_from_git_not_the_tree).
         base = pathlib.Path(self.tmp) / "base"
         (base / "app" / "Todos").mkdir(parents=True)
         (base / "app" / "App.alder").write_text("module App\n")
         (base / "app" / "Todos" / "Index.alder").write_text("module Todos.Index\n-- old\n")
+        git(base, "init", "-q")
+        git(base, "add", ".")
+        git(base, "commit", "-q", "-m", "base")
         chk = FakeChecker(self.tmp, [(0, "", "")])
         model = rl.FakeModel(["--- file: app/Todos/Index.alder ---\nmodule Todos.Index\n-- new\n"
                               "--- file: app/Profile.alder ---\nmodule Profile\n"])
@@ -134,16 +139,18 @@ class LoopTests(unittest.TestCase):
 
     def test_run_check_ignores_non_diagnostic_json(self):
         chk = FakeChecker(self.tmp, [(1, '{"ok":true}\n' + ERR, "")])
-        code, diags, _ = rl.run_check(chk.path, pathlib.Path(self.tmp))
+        code, diags, _, reason = rl.run_check(chk.path, pathlib.Path(self.tmp))
+        self.assertIsNone(reason)
         self.assertEqual(code, 1)
         self.assertEqual(len(diags), 1)
         self.assertEqual(diags[0]["code"], "E0003")
 
     def test_run_check_missing_binary(self):
         missing = pathlib.Path(self.tmp) / "nope"
-        code, diags, err = rl.run_check(missing, pathlib.Path(self.tmp))
+        code, diags, err, reason = rl.run_check(missing, pathlib.Path(self.tmp))
         self.assertEqual((code, diags), (2, []))
         self.assertIn(str(missing), err)
+        self.assertIn(str(missing), reason)   # a binary that cannot start is a harness error
 
     def test_traversal_not_written_and_recorded(self):
         chk = FakeChecker(self.tmp, [(0, "", "")])
@@ -248,6 +255,103 @@ class BuildTests(unittest.TestCase):
         self.assertNotIn("build", s["rounds"][0])
         self.assertTrue(s["final_pass"])
         self.assertEqual(s["harness"], {"build": False, "retries": 0})
+
+def stub_alder(tmp, body):
+    """A stub `alder`: a shell script whose body sees the arguments as $1, $2, ..."""
+    path = pathlib.Path(tmp) / "alder-stub"
+    path.write_text("#!/bin/sh\n" + body + "\n")
+    path.chmod(0o755)
+    return path
+
+def git(cwd, *args):
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", *args],
+                   cwd=cwd, check=True, capture_output=True)
+
+class HarnessErrorTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.exp = pathlib.Path(self.tmp) / "exp"
+        (self.exp / "tasks").mkdir(parents=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def test_build_timeout_is_harness_error(self):
+        # check is clean; build sleeps past the (shortened) timeout
+        alder = stub_alder(self.tmp, 'if [ "$1" = check ]; then exit 0; fi\nexec sleep 5')
+        saved = rl.run_build
+        rl.run_build = lambda a, rd: saved(a, rd, timeout=0.3)
+        try:
+            model = rl.FakeModel([GOOD, GOOD])
+            s = rl.run_one(self.exp, model, "fake", "t", "task", "sys", alder, retries=1, build=True)
+        finally:
+            rl.run_build = saved
+        self.assertEqual(s["outcome"], "harness_error")
+        self.assertIn("timed out", s["harness_error"])
+        self.assertIsNot(s.get("compiler_bug"), True)
+        self.assertEqual(len(s["rounds"]), 1)
+        self.assertEqual(len(model.prompts), 1)   # no retry
+        self.assertFalse(s["final_pass"])
+        self.assertEqual(json.loads((self.exp / "runs/fake/t/summary.json").read_text())["outcome"], "harness_error")
+
+    def test_unknown_exit_is_harness_error(self):
+        alder = stub_alder(self.tmp, "exit 137")
+        model = rl.FakeModel([GOOD, GOOD])
+        s = rl.run_one(self.exp, model, "fake", "t", "task", "sys", alder, retries=1)
+        self.assertEqual(s["outcome"], "harness_error")
+        self.assertIn("137", s["harness_error"])
+        self.assertEqual(len(s["rounds"]), 1)
+        self.assertEqual(s["rounds"][0]["exit"], 137)
+        self.assertEqual(len(model.prompts), 1)   # no retry
+        self.assertFalse(s["final_pass"])
+        self.assertNotIn("compiler_bug", s)
+
+    def test_outcome_on_every_path(self):
+        ok = FakeChecker(self.tmp, [(0, "", "")])
+        self.assertEqual(rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "a", "task", "sys", ok.path, retries=0)["outcome"], "pass")
+        bad = FakeChecker(self.tmp, [(1, ERR, "")])
+        self.assertEqual(rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "b", "task", "sys", bad.path, retries=0)["outcome"], "fail")
+        fa = FakeAlder(self.tmp, [(0, "", "")], [(2, "alder build: internal error\n")])
+        self.assertEqual(rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "c", "task", "sys", fa.path, retries=1, build=True)["outcome"], "compiler_bug")
+
+    @unittest.skipUnless(shutil.which("git"), "git is not on PATH")
+    def test_base_exports_from_git_not_the_tree(self):
+        repo = pathlib.Path(self.tmp) / "repo"
+        (repo / "examples" / "x" / "app").mkdir(parents=True)
+        a = repo / "examples" / "x" / "app" / "A.alder"
+        a.write_text("module A\n-- committed\n")
+        git(repo, "init", "-q")
+        git(repo, "add", ".")
+        git(repo, "commit", "-q", "-m", "base")
+        a.write_text("module A\n-- uncommitted edit\n")
+        (repo / "examples" / "x" / "app" / "Untracked.alder").write_text("module Untracked\n")
+        chk = FakeChecker(self.tmp, [(0, "", "")])
+        base = repo / "examples" / "x"
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", chk.path, retries=0, base=base)
+        rd = self.exp / "runs/fake/t/round0/app"
+        self.assertEqual((rd / "A.alder").read_text(), "module A\n-- committed\n")
+        self.assertFalse((rd / "Untracked.alder").exists())
+        self.assertEqual(s["base"], str(base))
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+        self.assertEqual(s["base_commit"], head)
+
+    def test_base_outside_git_is_an_error(self):
+        d = pathlib.Path(self.tmp) / "notrepo"
+        (d / "app").mkdir(parents=True)
+        import contextlib, io
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as cm:
+            rl.main(["--exp", str(self.exp), "--model", "ollama:x", "--task", "t", "--alder", "/nonexistent", "--base", str(d)])
+        self.assertEqual(cm.exception.code, 2)
+        self.assertIn("`--base` must be inside a git repository (the harness seeds from `git archive HEAD`, never the working tree)", err.getvalue())
+
+    def test_report_shows_harness_error(self):
+        import report_loop as rp
+        s = {"model": "m", "task": "t", "error": None, "final_pass": False, "outcome": "harness_error",
+             "harness_error": "alder: build timed out after 900s", "harness": {"build": True, "retries": 1},
+             "rounds": [{"n": 0, "errors": 0, "codes": {}, "files": 5, "exit": 0, "seconds": 1.0, "warnings": 0, "stderr": "",
+                         "build": {"ok": False, "exit": None, "stderr": ""}}]}
+        self.assertIn("| m | t | 0 (build ✗) | harness-error |", rp.markdown(rp.rows([s])))
 
 class ModelTests(unittest.TestCase):
     def test_claude_isolated_cwd_and_system_prompt(self):
