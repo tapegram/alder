@@ -206,6 +206,9 @@ func verify(t *testing.T, path, display string) report {
 			continue
 		}
 		v.joined[js] = lines
+		if msg := sameAsExample(m, src); msg != "" {
+			v.failf(js.Line, "%s", msg)
+		}
 		if moduleNames[m] > 1 {
 			v.checkAlone(js)
 		} else {
@@ -706,5 +709,60 @@ func TestBook(t *testing.T) {
 			}
 			total.fragments = append(total.fragments, r.fragments...)
 		})
+	}
+}
+
+// sameAsExample compares the module m joined from part= blocks (src) with the example's
+// module of that name, ignoring blank lines: a module the book shows piece by piece must be
+// the example's, line for line, so the two cannot drift apart. It returns "" when they agree
+// or the example has no module m, else a message naming the first line that differs.
+func sameAsExample(m, src string) string {
+	file := filepath.Join(todosApp, "app", filepath.FromSlash(strings.ReplaceAll(m, ".", "/"))+".alder")
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return ""
+	}
+	nonBlank := func(s string) []string {
+		var out []string
+		for _, l := range strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n") {
+			if strings.TrimSpace(l) != "" {
+				out = append(out, l)
+			}
+		}
+		return out
+	}
+	book, ex := nonBlank(src), nonBlank(string(b))
+	for i := 0; i < max(len(book), len(ex)); i++ {
+		var bl, el string
+		if i < len(book) {
+			bl = book[i]
+		}
+		if i < len(ex) {
+			el = ex[i]
+		}
+		if bl != el {
+			return fmt.Sprintf("the part=%s blocks joined differ from %s at its non-blank line %d: the book has %q, the file %q (update the book's pieces or the example so they match)", m, file, i+1, bl, el)
+		}
+	}
+	return ""
+}
+
+func TestSameAsExample(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(todosApp, "app", "Theme.alder"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(b)
+	if msg := sameAsExample("Theme", "\n\n"+strings.ReplaceAll(src, "\n", "\n\n")); msg != "" {
+		t.Errorf("blank lines aside the same, got %q", msg)
+	}
+	if msg := sameAsExample("Theme", strings.Replace(src, "flip", "flop", 1)); !strings.Contains(msg, "differ from") {
+		t.Errorf("a changed line: got %q", msg)
+	}
+	if msg := sameAsExample("Theme", src+"\nextra = 1\n"); !strings.Contains(msg, `"extra = 1"`) {
+		t.Errorf("an extra line: got %q", msg)
+	}
+	if msg := sameAsExample("Extra", "module Extra\n"); msg != "" {
+		t.Errorf("a module the example lacks: got %q", msg)
 	}
 }

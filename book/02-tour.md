@@ -219,7 +219,8 @@ test "Toggle flips done" = {
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: me, theme: Light })
   let after <- Db.get Todo id
-  Task.succeed (r.trace == ["Db.get Todo", "Db.update Todo"] && Maybe.map (\t -> t.done) after == Just True)
+  let done = Maybe.map (\t -> t.done) after
+  Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.get Todo", "Db.update Todo"], done: Just True })
 }
 
 test "Toggle by another user is not found" = {
@@ -228,7 +229,8 @@ test "Toggle by another user is not found" = {
   let stranger = User.UserId "someone-else"
   let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger, theme: Light })
   let after <- Db.get Todo id
-  Task.succeed (r.value == Err "not found" && r.trace == ["Db.get Todo"] && Maybe.map (\t -> t.done) after == Just False)
+  let done = Maybe.map (\t -> t.done) after
+  Task.succeed ({ value: r.value, trace: r.trace, done: done } == { value: Err "not found", trace: ["Db.get Todo"], done: Just False })
 }
 ```
 

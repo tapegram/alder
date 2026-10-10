@@ -240,7 +240,8 @@ again so that a compiler bug can't turn a page view into a write.
 
 **Every step is traced.** Before it runs a `call`, `Run` appends the
 step's name to `Env.Trace` and logs it at level `effect`. The `Toggle`
-above leaves the trace `["Db.get Todo", "Db.update Todo"]` (`owned`'s read, then the update); the `Add` arm of
+above leaves the trace `["Db.get Todo", "Db.update Todo"]`: `owned`'s
+read, then the update. The `Add` arm of
 `testdata/golden/gen_effects/app/Index.alder`, which inserts a row and
 then logs, leaves `["Db.insert Todo" "Log.info"]`. The trace is the dev
 log of what a request did, and what a test can compare (chapter 10).

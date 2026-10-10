@@ -1964,7 +1964,8 @@ report's trace is `env.Trace`. Then the database is closed, and with
 **`Test.run` is a step.** Section 6 lowers `Test.run t` to a node of its
 own, and the emitter makes it a `Call` named `"Test.run"`, marked as a
 write, whose function hands `t` to `rtesting.Inner` and packs the five
-results into the record Alder sees. From `test__Todos__Index__1`:
+results into the record Alder sees. From `test__Todos__Index__1`
+(re-indented):
 
 ```go
 	return eff.Bind(eff.Call("Test.run", true, func(_e3 *eff.Env) (struct {

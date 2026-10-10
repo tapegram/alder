@@ -378,7 +378,7 @@ ok   Todos.Index "Toggle by another user is not found"
   `ms`, and `left`, `right`, `error` when they are not empty:
 
   ```text
-  {"module":"Todos.Index","name":"Toggle flips done","ok":true,"trace":["Db.insert User","Db.insert Todo","Test.run","Db.get Todo","Db.update Todo","Db.get Todo"],"ms":0.562}
+  {"module":"Todos.Index","name":"Toggle flips done","ok":true,"left":"{ trace: [\"Db.get Todo\", \"Db.update Todo\"], done: Just True }","right":"{ trace: [\"Db.get Todo\", \"Db.update Todo\"], done: Just True }","trace":["Db.insert User","Db.insert Todo","Test.run","Db.get Todo","Db.update Todo","Db.get Todo"],"ms":0.704}
   ```
 
   When the app does not compile, `--json` prints one object,
@@ -415,7 +415,7 @@ says what to expect:
 | `alder` | A module or declarations: `alder check` is clean in a copy of `examples/todos` (declarations see every example module; a module replaces the example's module of that name). A table of `Name.x : Type` lines: each name's real type is at least as general as the table's (a `sig : Type` / `sig = Name.x` checks). Expressions: they parse, each starting where `alder eval` would start one (not type-checked) |
 | `alder eval=<value>` | `alder eval examples/todos -` prints exactly `<value>` (the rest of the fence line) |
 | `alder error=<CODE> "<text>"` | compiling (or, for expressions, evaluating) the block reports diagnostic `<CODE>` in the block itself, its message containing `<text>` (optional) |
-| `alder part=<Module>` | one piece of a module shown piece by piece (the tour's `Todos.Index`): a chapter's `part=` blocks of one module, consecutive among its `part=` blocks, are joined in order and checked as that module, replacing the example's |
+| `alder part=<Module>` | one piece of a module shown piece by piece (the tour's `Todos.Index`): a chapter's `part=` blocks of one module, consecutive among its `part=` blocks, are joined in order and checked as that module, replacing the example's; when the example has that module, the joined pieces must also equal its file, blank lines aside |
 | `alder fragment` | not checked: a deliberate excerpt, such as one arm of an `update`; listed by `go test -v ./book` |
 
 A failure names the block's line, `book/03-syntax.md:120: E0003 …`, so a

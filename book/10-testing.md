@@ -11,20 +11,30 @@ and ends with what cannot be tested yet.
 
 `test "name" = expression` declares a test. When its body is not a block,
 the body must be a `Bool`: `True` means the test passed. The to-do app's
-`Todo` module ends with one:
+`Todo` module (`examples/todos/app/Todo.alder`) ends with one, which
+checks that `countOpen` counts only the todos that are not done:
 
 ```alder
-test "countOpen counts open todos" =
-  Todo.countOpen [{ id: Todo.TodoId "a", title: Text.NonEmpty "x", done: False, due: Nothing, owner: User.UserId "u", created: Time.epoch }] == 1
+test "countOpen ignores done todos" =
+  Todo.countOpen [
+    { id: Todo.TodoId "a", title: Text.NonEmpty "x", done: False, due: Nothing, owner: User.UserId "u", created: Time.epoch },
+    { id: Todo.TodoId "b", title: Text.NonEmpty "y", done: True, due: Nothing, owner: User.UserId "u", created: Time.epoch },
+  ] == 1
+```
 
+Inside `Todo` the names are written unqualified (`countOpen`,
+`TodoId "a"`), and that is how the file has them; the blocks of this
+chapter are checked as a module of their own, so they qualify them as any
+other module must. A test of another function looks the same. This one,
+not in the example, checks that the `Active` filter leaves out a done
+todo:
+
+```alder
 test "matches Active excludes done" =
   not (Todo.matches Active { id: Todo.TodoId "a", title: Text.NonEmpty "x", done: True, due: Nothing, owner: User.UserId "u", created: Time.epoch })
 ```
 
-Inside `Todo` the names are written unqualified (`countOpen`, `matches`,
-`TodoId "a"`); the blocks of this chapter are checked as a module of their
-own, so they qualify them as any other module must. Two rules are
-particular to tests:
+Two rules are particular to tests:
 
 - A test may use any module's brand constructors. Outside `Todo`, nothing
   else may write `Todo.TodoId "a"`: a `TodoId` must come from a route, a
@@ -104,7 +114,7 @@ A failing test is `FAIL`, followed by indented lines that say why:
   Alder values (as `alder eval` writes them). They appear when the test's
   body is an `==`, or, for a block (section 3), when the value its final
   `Task.succeed` returns is an `==`. A body such as `a == b && c == d`
-  has no single `==` to show, so a failure says only `FAIL`: when you
+  has no single `==` to show, so its failure has no sides: when you
   want the sides, end a test with one `==`, comparing records if there
   is more than one thing to check.
 - `error:` is why the test stopped before it produced `True` or `False`:
@@ -147,7 +157,8 @@ test "Toggle flips done" = {
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me, theme: Light })
   let after <- Db.get Todo id
-  Task.succeed (r.trace == ["Db.get Todo", "Db.update Todo"] && Maybe.map (\t -> t.done) after == Just True)
+  let done = Maybe.map (\t -> t.done) after
+  Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.get Todo", "Db.update Todo"], done: Just True })
 }
 ```
 
@@ -169,9 +180,12 @@ Line by line:
    written where `update` expects one. Bound to a name first by a `let`
    without an annotation, it would be a plain record, which `update`
    does not accept.
-4. Read the todo again.
-5. The verdict: `update` read the todo and updated it, and the stored
-   todo is now done.
+4. Read the todo again, and take its `done` (`after` is a `Maybe Todo`:
+   `Nothing` if the row were gone).
+5. The verdict, as one `==` between two records: `update` read the todo
+   and updated it, and the stored todo is now done. Putting everything
+   the test checks into one record, rather than joining several `==`
+   with `&&`, means a failure prints both records whole (section 2).
 
 The second test is the authorization rule of chapter 6, "Authorize in
 `update` too": a user who posts `Toggle` with someone else's todo id gets
@@ -184,14 +198,27 @@ test "Toggle by another user is not found" = {
   let stranger = User.UserId "someone-else"
   let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger, theme: Light })
   let after <- Db.get Todo id
-  Task.succeed (r.value == Err "not found" && r.trace == ["Db.get Todo"] && Maybe.map (\t -> t.done) after == Just False)
+  let done = Maybe.map (\t -> t.done) after
+  Task.succeed ({ value: r.value, trace: r.trace, done: done } == { value: Err "not found", trace: ["Db.get Todo"], done: Just False })
 }
 ```
 
 The session's user, `stranger`, is not a row and need not be: a session
 holds an id, not a reference the database checks. `owned` reads
 the todo, sees another owner and stops with `Task.notFound`; the update
-never runs.
+never runs. If someone deleted the owner check from `owned`, this test
+would say exactly what went wrong:
+
+```text
+$ alder test examples/todos -run another
+FAIL Todos.Index "Toggle by another user is not found"
+  left:  { value: Ok Rerender, trace: ["Db.get Todo", "Db.update Todo"], done: Just True }
+  right: { value: Err "not found", trace: ["Db.get Todo"], done: Just False }
+  trace: ["Db.insert User", "Db.insert Todo", "Test.run", "Db.get Todo", "Db.update Todo", "Db.get Todo"]
+0 passed, 1 failed
+```
+
+The stranger's `Toggle` succeeded, the update ran, and the todo is done.
 
 **Where an effect test runs.** Every effect test gets a world of its own:
 
@@ -282,13 +309,12 @@ test "a failed run is undone" = {
 }
 ```
 
-This test ends with one `==` between two records, so a failure would
-print both records whole.
+Like the page's tests, this one ends with one `==` between two records.
 
 ## 5. `Test.trace`: the steps so far
 
-`Test.trace : Task (List Text)` is the list of steps the test itself has performed so far,
-without the `Test.trace` step:
+`Test.trace : Task (List Text)` is the list of steps the test itself has
+performed so far, without the `Test.trace` step:
 
 ```alder
 test "the steps so far" = {
@@ -354,14 +380,14 @@ error.
 
 ```text
 $ alder test examples/todos --json -run Theme
-{"module":"Theme","name":"flip alternates","ok":true,"left":"Light","right":"Light","trace":[],"ms":0.008}
+{"module":"Theme","name":"flip alternates","ok":true,"left":"Light","right":"Light","trace":[],"ms":0.009}
 1 passed, 0 failed
 ```
 
 Each object has `module`, `name`, `ok`, `trace` (empty for a pure test)
-and `ms`, the time it took in milliseconds (it differs from run to run); `left`, `right` and `error` when they have
-something to say. Unlike the text report, it gives the sides of a
-passing test's `==` too. If the app does not compile, the output is one
+and `ms`, the time it took in milliseconds (it differs from run to run);
+and `left`, `right` and `error` when they have something to say. Unlike
+the text report, it gives the sides of a passing test's `==` too. If the app does not compile, the output is one
 object, `{"diagnostics":[…]}`, holding what `alder check --json` would
 print, so a program always gets JSON. Chapter 11 lists the exit codes.
 

@@ -369,7 +369,9 @@ effect test "Toggle by another user is not found" (chapter 10), which
 runs `update` with a session whose user does not own the todo and
 checks that the result is `Err "not found"`, that the only step was
 the read, and that the row is unchanged. Removing the owner check from
-`owned` now fails `alder test examples/todos`, and the example shows
+`owned` now fails `alder test examples/todos`, whose report prints the
+result, trace and row the test expected beside the ones it got; the
+example shows
 agents what a test of the rule looks like. Writing the tests also
 corrected the book: chapter 7 said `Toggle` traces `["Db.update Todo"]`,
 but `owned`'s read comes first, and the trace is
