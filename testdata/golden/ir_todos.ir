@@ -297,6 +297,62 @@
         (ctor Todos.Index.Msg.Delete
           (record DeleteParams (id (field id (field todo (var props)))))))
       (htext "Delete"))))
+(test "Toggle flips done" task
+  (bind task me : Text
+    (db-insert User.User
+      (record (email "me@example.com") (name "Me") (passwordHash "")))
+    (bind task id : Text
+      (db-insert Todo.Todo
+        (record
+          (title "Milk")
+          (done False)
+          (due (ctor Prelude.Maybe.Nothing))
+          (owner (var me))))
+      (bind task r : { value: Result Text Nav, trace: List Text }
+        (test-run
+          (call (global Todos.Index.update)
+            (ctor Todos.Index.Msg.Toggle (record ToggleParams (id (var id))))
+            (record Model (filter (ctor Todo.Filter.All)) (todos (list)))
+            (record Session (user (var me)) (theme (ctor Theme.Theme.Light)))))
+        (bind task after : Maybe Todo
+          (db-get Todo.Todo (var id))
+          (pure task
+            (&&
+              (== : List Text (field trace (var r))
+                (list "Db.get Todo" "Db.update Todo"))
+              (== : Maybe Bool (call (std Maybe.map) (lambda (t : Todo) (field done (var t))) (var after))
+                (ctor Prelude.Maybe.Just (record (value True)))))))))))
+(test "Toggle by another user is not found" task
+  (bind task me : Text
+    (db-insert User.User
+      (record (email "me@example.com") (name "Me") (passwordHash "")))
+    (bind task id : Text
+      (db-insert Todo.Todo
+        (record
+          (title "Milk")
+          (done False)
+          (due (ctor Prelude.Maybe.Nothing))
+          (owner (var me))))
+      (let stranger : Text
+        "someone-else"
+        (bind task r : { value: Result Text Nav, trace: List Text }
+          (test-run
+            (call (global Todos.Index.update)
+              (ctor Todos.Index.Msg.Toggle (record ToggleParams (id (var id))))
+              (record Model (filter (ctor Todo.Filter.All)) (todos (list)))
+              (record Session
+                (user (var stranger))
+                (theme (ctor Theme.Theme.Light)))))
+          (bind task after : Maybe Todo
+            (db-get Todo.Todo (var id))
+            (pure task
+              (&&
+                (&&
+                  (== : Result Text Nav (field value (var r))
+                    (ctor Prelude.Result.Err (record (value "not found"))))
+                  (== : List Text (field trace (var r)) (list "Db.get Todo")))
+                (== : Maybe Bool (call (std Maybe.map) (lambda (t : Todo) (field done (var t))) (var after))
+                  (ctor Prelude.Maybe.Just (record (value False))))))))))))
 (module Todos.Show)
 (record Todos.Show.Model (todo Todo))
 (record Todos.Show.EditTodo (title Text) (due Maybe Date))

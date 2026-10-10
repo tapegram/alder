@@ -105,8 +105,7 @@ Item props =
 test "Toggle flips done" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
-  let session : Session = { user: me, theme: Light }
-  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } session)
+  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: me, theme: Light })
   let after <- Db.get Todo id
   Task.succeed (r.trace == ["Db.get Todo", "Db.update Todo"] && Maybe.map (\t -> t.done) after == Just True)
 }
@@ -114,8 +113,8 @@ test "Toggle flips done" = {
 test "Toggle by another user is not found" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
-  let session : Session = { user: User.UserId "someone-else", theme: Light }
-  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } session)
+  let stranger = User.UserId "someone-else"
+  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger, theme: Light })
   let after <- Db.get Todo id
   Task.succeed (r.value == Err "not found" && r.trace == ["Db.get Todo"] && Maybe.map (\t -> t.done) after == Just False)
 }
