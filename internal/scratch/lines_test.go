@@ -1,0 +1,127 @@
+package scratch
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"alder/internal/diag"
+)
+
+func TestSourceLine_Regions(t *testing.T) {
+	// a source whose module line is line 1, with three imports inserted as lines 2-4
+	b := Build{InsertLine: 2, LineOffset: 3, ExtraFile: "Scratch.alder"}
+	for l, want := range map[int]int{1: 1, 2: 0, 3: 0, 4: 0, 5: 2, 9: 6} {
+		got, ok := b.SourceLine(l)
+		if ok != (want != 0) || got != want {
+			t.Errorf("SourceLine(%d) = %d, %v; want %d", l, got, ok, want)
+		}
+	}
+	// synthesized module line and imports at the top: lines 1-2 inserted
+	b = Build{InsertLine: 1, LineOffset: 2, ExtraFile: "Scratch.alder"}
+	if _, ok := b.SourceLine(1); ok {
+		t.Error("the synthesized module line maps to the source")
+	}
+	if l, ok := b.SourceLine(3); !ok || l != 1 {
+		t.Errorf("SourceLine(3) = %d, %v", l, ok)
+	}
+	// nothing inserted
+	if l, ok := (Build{}).SourceLine(7); !ok || l != 7 {
+		t.Errorf("no insertion: %d %v", l, ok)
+	}
+}
+
+func TestMapDiag(t *testing.T) {
+	b := Build{InsertLine: 2, LineOffset: 3, ExtraFile: "Scratch.alder"}
+	sp := func(file string, l int) diag.Span {
+		return diag.Span{File: file, Start: diag.Pos{Line: l, Col: 1}, End: diag.Pos{Line: l, Col: 4}}
+	}
+	// after the insertion: span and fix move up
+	d, ok := b.MapDiag(diag.Diagnostic{Code: "E0201", Span: sp("Scratch.alder", 7), Fix: diag.InsertAt(6, 1, "import X\n")})
+	if !ok || d.Span.Start.Line != 4 || d.Span.End.Line != 4 || d.Fix == nil || d.Fix.Line != 3 || d.Fix.EndLine != 3 {
+		t.Fatalf("after: %v %+v %+v", ok, d.Span, d.Fix)
+	}
+	// a fix landing on an inserted line is dropped; the diagnostic stays
+	d, ok = b.MapDiag(diag.Diagnostic{Code: "E0201", Span: sp("Scratch.alder", 7), Fix: diag.InsertAt(4, 1, "import X\n")})
+	if !ok || d.Fix != nil || d.Span.Start.Line != 4 {
+		t.Fatalf("fix on an inserted line: %v %+v", ok, d)
+	}
+	// before the insertion (the module line): unchanged
+	d, ok = b.MapDiag(diag.Diagnostic{Code: "E0011", Span: sp("Scratch.alder", 1)})
+	if !ok || d.Span.Start.Line != 1 {
+		t.Fatalf("before: %v %+v", ok, d.Span)
+	}
+	// on an inserted line: not the caller's text
+	if _, ok = b.MapDiag(diag.Diagnostic{Code: "W0001", Span: sp("Scratch.alder", 3)}); ok {
+		t.Fatal("a diagnostic on an inserted line mapped")
+	}
+	// another file: unchanged
+	orig := diag.Diagnostic{Code: "E0003", Span: sp("app/Todo.alder", 3), Fix: diag.InsertAt(3, 1, "x")}
+	if d, ok = b.MapDiag(orig); !ok || d.Span != orig.Span || d.Fix != orig.Fix {
+		t.Fatalf("app diagnostic changed: %+v", d)
+	}
+}
+
+func TestCompile_MapDiagWithModuleLine(t *testing.T) {
+	src := "-- a comment\nmodule Scratch\n\nit : Int\nit = \"x\"\n"
+	b := Compile("../../examples/todos", &Module{Name: "Scratch", Source: src}, printMain, "", t.TempDir())
+	if b.Err != nil || len(b.Diags) != 1 || b.InsertLine != 3 || b.ExtraFile != "Scratch.alder" || b.Runnable() {
+		t.Fatalf("%v insert %d file %q %+v", b.Err, b.InsertLine, b.ExtraFile, b.Diags)
+	}
+	if d, ok := b.MapDiag(b.Diags[0]); !ok || d.Span.Start.Line != 5 {
+		t.Fatalf("%v %+v", ok, d.Span)
+	}
+}
+
+func TestCompile_DeclaredNameMismatch(t *testing.T) {
+	b := Compile("../../examples/todos", &Module{Name: "Scratch", Source: "module Other\n\nit : Int\nit = 1\n"}, printMain, "", t.TempDir())
+	if b.Err == nil || !strings.Contains(b.Err.Error(), "module Other") || len(b.Diags) != 0 || b.Runnable() {
+		t.Fatalf("%v %+v", b.Err, b.Diags)
+	}
+}
+
+func TestHeaderLines(t *testing.T) {
+	src := "-- c\nmodule Scratch\n\nimport Todo\n-- c\nimport User\nit : Int\nimport Theme\n"
+	modLine, declared, imports := headerLines(src)
+	if modLine != 1 || declared != "Scratch" || strings.Join(imports, ",") != "Todo,User" {
+		t.Fatalf("%d %q %v", modLine, declared, imports)
+	}
+	if modLine, declared, imports = headerLines("it : Int\nimport Todo\n"); modLine != -1 || declared != "" || len(imports) != 0 {
+		t.Fatalf("no header: %d %q %v", modLine, declared, imports)
+	}
+	// only the header's imports are taken as the caller's: Todo after a declaration is inserted
+	out, n, _ := withImports("module Scratch\nit : Int\nit = 1\n-- import Todo\n", "Scratch", []string{"App", "Todo"})
+	if n != 1 || !strings.HasPrefix(out, "module Scratch\nimport Todo\n") {
+		t.Fatalf("%d %q", n, out)
+	}
+}
+
+// A program that leaves a process holding its output does not keep Run waiting.
+func TestRun_GrandchildDoesNotHang(t *testing.T) {
+	needGo(t)
+	main := "package main\n\nimport (\n\t\"os\"\n\t\"os/exec\"\n\n\t_ \"app\"\n)\n\nfunc main() {\n\tc := exec.Command(\"sleep\", \"30\")\n\tc.Stdout, c.Stderr = os.Stdout, os.Stderr\n\tc.Start()\n}\n"
+	b := Compile("../../examples/todos", nil, main, "", t.TempDir())
+	if !b.Runnable() {
+		t.Fatal(b.Err, b.Diags)
+	}
+	start := time.Now()
+	_, stderr, code := Run(b, nil, "")
+	if took := time.Since(start); took > WaitDelay+5*time.Second || code == 0 {
+		t.Fatalf("took %v, exit %d, stderr %q", took, code, stderr)
+	}
+}
+
+// At the time limit the program and what it started are killed.
+func TestRunTimeout_KillsGroup(t *testing.T) {
+	needGo(t)
+	main := "package main\n\nimport (\n\t\"os\"\n\t\"os/exec\"\n\n\t_ \"app\"\n)\n\nfunc main() {\n\tc := exec.Command(\"sleep\", \"30\")\n\tc.Stdout = os.Stdout\n\tc.Run()\n}\n"
+	b := Compile("../../examples/todos", nil, main, "", t.TempDir())
+	if !b.Runnable() {
+		t.Fatal(b.Err, b.Diags)
+	}
+	start := time.Now()
+	_, stderr, code := RunTimeout(b, nil, "", time.Second)
+	if took := time.Since(start); took > 4*time.Second || code != -1 || !strings.Contains(stderr, "timed out") {
+		t.Fatalf("took %v, exit %d, stderr %q", took, code, stderr)
+	}
+}

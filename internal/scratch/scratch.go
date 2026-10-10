@@ -6,12 +6,9 @@
 package scratch
 
 import (
-	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -39,7 +36,12 @@ type Build struct {
 	// LineOffset is the number of lines Compile inserted into the extra module's source: a
 	// diagnostic of the extra module at line L is at line L-LineOffset of the caller's source
 	// (for L after the inserted lines; a source without a `module` line has them at the top).
+	//
+	// Callers should map diagnostics with MapDiag (or lines with SourceLine), which also handle
+	// the lines before and on the inserted ones.
 	LineOffset int
+	InsertLine int    // the first inserted line (1-based) of the rewritten source; 0 when none
+	ExtraFile  string // the extra module's file, "<Name>.alder" ("" without an extra module)
 }
 
 // Timeout bounds a Run.
@@ -95,6 +97,10 @@ func Compile(appDir string, extra *Module, mainGo string, purpose, out string) (
 		if modName == "" {
 			modName = "Scratch"
 		}
+		if err := checkDeclaredName(extra.Source, modName); err != nil {
+			b.Err = err
+			return b
+		}
 		appMods, err := appModules(appDir)
 		if err != nil {
 			b.Err = err
@@ -102,6 +108,7 @@ func Compile(appDir string, extra *Module, mainGo string, purpose, out string) (
 		}
 		src, offset, lines := withImports(extra.Source, modName, appMods)
 		b.LineOffset, implicit = offset, lines
+		b.InsertLine, b.ExtraFile = insertInfo(extra.Source, modName, offset)
 		m, ds := syntax.ParseFile(modName+".alder", []byte(src))
 		if len(ds) > 0 {
 			b.Diags = ds
@@ -203,21 +210,12 @@ func appModules(appDir string) ([]string, error) {
 func withImports(src, name string, appMods []string) (string, int, map[int]bool) {
 	lines := strings.Split(src, "\n")
 	have := map[string]bool{"App": true, name: true}
-	modLine := -1 // index of the module line
-	for i, l := range lines {
-		f := strings.Fields(l)
-		if len(f) == 0 || strings.HasPrefix(f[0], "--") {
-			continue
-		}
-		if f[0] == "module" && modLine < 0 && !seenDecl(lines[:i]) {
-			modLine = i
-			if len(f) > 1 {
-				have[f[1]] = true
-			}
-		}
-		if f[0] == "import" && len(f) > 1 {
-			have[f[1]] = true
-		}
+	modLine, declared, imports := headerLines(src) // only the header's imports count
+	if declared != "" {
+		have[declared] = true
+	}
+	for _, m := range imports {
+		have[m] = true
 	}
 	var ins []string
 	if modLine < 0 {
@@ -239,44 +237,10 @@ func withImports(src, name string, appMods []string) (string, int, map[int]bool)
 	return strings.Join(out, "\n"), len(ins), implicit
 }
 
-// seenDecl reports whether lines hold anything but blanks and comments.
-func seenDecl(lines []string) bool {
-	for _, l := range lines {
-		if f := strings.Fields(l); len(f) > 0 && !strings.HasPrefix(f[0], "--") {
-			return true
-		}
-	}
-	return false
-}
-
 // Run executes b.Binary in the working directory with env appended to the environment and
 // stdin as its standard input, for at most Timeout, and returns its standard output, standard
-// error and exit code. A binary that cannot be started, or is killed at the timeout, has exit
-// code -1, with the reason appended to its standard error.
+// error and exit code; see RunTimeout. A binary that cannot be started, or is killed at the
+// timeout, has exit code -1, with the reason appended to its standard error.
 func Run(b Build, env []string, stdin string) (string, string, int) {
-	if b.Binary == "" {
-		return "", "scratch: nothing to run\n", -1
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), Timeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, b.Binary)
-	cmd.Env = append(os.Environ(), env...)
-	cmd.Stdin = strings.NewReader(stdin)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err := cmd.Run()
-	if ctx.Err() != nil {
-		fmt.Fprintf(&stderr, "scratch: %s timed out after %v\n", b.Binary, Timeout)
-		return stdout.String(), stderr.String(), -1
-	}
-	var ee *exec.ExitError
-	switch {
-	case err == nil:
-		return stdout.String(), stderr.String(), 0
-	case errors.As(err, &ee) && ee.ExitCode() >= 0:
-		return stdout.String(), stderr.String(), ee.ExitCode()
-	default:
-		fmt.Fprintf(&stderr, "scratch: %v\n", err)
-		return stdout.String(), stderr.String(), -1
-	}
+	return RunTimeout(b, env, stdin, Timeout)
 }
