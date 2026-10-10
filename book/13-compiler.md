@@ -1727,6 +1727,37 @@ stream; shuts down the HTTP server (5 seconds for requests in flight);
 waits for a rebuild in progress to finish, so the child it may have
 started is not left behind; and then stops the current child.
 
+**When the dev server dies.** None of that runs when the dev server is
+killed with `SIGKILL` (which a process cannot catch), and a child left
+running would keep its port and its database open with no one to stop it.
+So `startChild` gives each child a pipe as its standard input: it makes
+one with `os.Pipe()`, passes the read end as `cmd.Stdin` (closing its own
+copy once the child has started), keeps the write end in `child.stdinW`,
+and adds `ALDER_EXIT_ON_STDIN_EOF=1` to the child's environment. Nothing
+is ever written to the pipe. `stop` closes the write end after its
+`SIGTERM`, and when the dev server's process ends any other way, the
+kernel closes every file it had open, the write end too. The generated
+`main` (chapter 11, "`alder build`") waits for that, right after it sets
+up its signal handling:
+
+```go
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	if os.Getenv("ALDER_EXIT_ON_STDIN_EOF") == "1" {
+		// alder run holds the other end of stdin: when it dies, this read ends and the app stops
+		go func() {
+			_, _ = io.Copy(io.Discard, os.Stdin)
+			stop()
+		}()
+	}
+```
+
+`io.Copy` reads until end of file, which a pipe reports once every write
+end is closed. `stop` is the function `signal.NotifyContext` returned:
+it cancels `ctx`, which is exactly what a `SIGTERM` does, so the app
+shuts down the same graceful way (requests in flight get 5 seconds).
+`alder test` uses the same technique for the test program
+(`ALDER_TEST_STDIN_EOF`, "Running tests" below).
+
 ### The scratch runner
 
 `alder eval` (chapter 11) answers "what is `Todo.countOpen []`?" with

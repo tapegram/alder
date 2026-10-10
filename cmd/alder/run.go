@@ -450,9 +450,13 @@ func lastLines(s string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-// child is a running app executable.
+// child is a running app executable. Its standard input is the read end of a pipe whose write
+// end, stdinW, only this process holds (ALDER_EXIT_ON_STDIN_EOF=1 is set): stop closes it, and
+// when the dev server dies without stopping it (SIGKILL), the kernel closes it, the app reads
+// EOF and shuts down by itself, so it never outlives the dev server.
 type child struct {
 	cmd      *exec.Cmd
+	stdinW   *os.File      // the write end of the child's stdin pipe; closed by stop
 	addr     string        // where it listens
 	stderr   tailBuffer    // the end of its stderr, for error reports
 	exited   chan struct{} // closed once it has exited (and been waited for)
@@ -465,20 +469,31 @@ const childStartTimeout = 10 * time.Second
 // startChild runs the app executable binary in development mode with reloads on for the build
 // generation gen (ALDER_DEV=1, ALDER_RELOAD=<gen>) on a free port of 127.0.0.1, the database
 // dbPath and the static files of staticDir (ALDER_SECRET and the rest of the environment are
-// passed through), its output copied to logs. It waits (10 s at most) for its
+// passed through), its output copied to logs; its standard input is a pipe the child keeps
+// open (ALDER_EXIT_ON_STDIN_EOF=1: the app exits when the dev server dies). It waits (10 s at most) for its
 // `listening on <addr>` line; when the child exits first or does not print it in time (it is
 // then killed), the error holds the last overlayLines lines of its stderr.
 func startChild(binary, dbPath, staticDir, gen string, logs io.Writer) (*child, error) {
 	cmd := exec.Command(binary)
 	cmd.Env = append(os.Environ(), "ALDER_ADDR=127.0.0.1:0", "ALDER_DEV=1", "ALDER_RELOAD="+gen,
-		"ALDER_DB="+dbPath, "ALDER_STATIC="+staticDir)
-	c := &child{cmd: cmd, exited: make(chan struct{})}
-	cmd.Stderr = io.MultiWriter(&c.stderr, logs)
-	stdout, err := cmd.StdoutPipe()
+		"ALDER_DB="+dbPath, "ALDER_STATIC="+staticDir, "ALDER_EXIT_ON_STDIN_EOF=1")
+	stdinR, stdinW, err := os.Pipe()
 	if err != nil {
 		return nil, err
 	}
-	if err := cmd.Start(); err != nil {
+	c := &child{cmd: cmd, stdinW: stdinW, exited: make(chan struct{})}
+	cmd.Stdin = stdinR
+	cmd.Stderr = io.MultiWriter(&c.stderr, logs)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		stdinR.Close()
+		stdinW.Close()
+		return nil, err
+	}
+	err = cmd.Start()
+	stdinR.Close() // the child holds its copy
+	if err != nil {
+		stdinW.Close()
 		return nil, err
 	}
 	addr := make(chan string, 1)
@@ -493,6 +508,7 @@ func startChild(binary, dbPath, staticDir, gen string, logs io.Writer) (*child, 
 		}
 		_, _ = io.Copy(logs, stdout) // every read is done before Wait
 		_ = cmd.Wait()
+		stdinW.Close() // the child is gone; a second Close (stop's) is harmless
 		close(c.exited)
 	}()
 	select {
@@ -508,10 +524,11 @@ func startChild(binary, dbPath, staticDir, gen string, logs io.Writer) (*child, 
 }
 
 // stop shuts c down: SIGTERM (a graceful shutdown), then SIGKILL after 5 s; it returns once c
-// has exited.
+// has exited. It closes the child's stdin pipe after the SIGTERM (the EOF only repeats it).
 func (c *child) stop() {
 	c.stopping.Store(true)
 	_ = c.cmd.Process.Signal(syscall.SIGTERM)
+	_ = c.stdinW.Close()
 	select {
 	case <-c.exited:
 	case <-time.After(5 * time.Second):

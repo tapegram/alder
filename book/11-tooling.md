@@ -283,6 +283,18 @@ build is done. Everything the app prints goes to `alder run`'s stderr.
 Ctrl-C (or `SIGTERM`) stops the dev server: a build in progress finishes,
 the app is stopped (`SIGTERM`, then killed if it hasn't exited after 5
 seconds), and `alder run` exits 0. A second Ctrl-C kills it at once.
+
+The app also exits when the dev server dies without stopping it: killed
+with `kill -9`, say, or by a test harness's timeout, when no clean-up
+code gets to run. `alder run` gives the app a *pipe* (a one-way channel
+between two processes) as its standard input and keeps the other end
+open, and sets `ALDER_EXIT_ON_STDIN_EOF=1`. The app writes nothing to it
+and reads nothing from it until the end: when the dev server's process
+ends, for whatever reason, the operating system closes its end, the app
+reads *end of file* (EOF: there is no more input, ever) and shuts down
+the same way it does on `SIGTERM`. So a killed `alder run` leaves no app
+behind holding a port. An app you start yourself, without that variable,
+ignores its standard input.
 `alder run` exits 2 when its arguments are wrong, when `dir` has no
 `app/` directory, or when it cannot listen on `ALDER_ADDR` (another
 program already uses the port, say). Chapter 13, "The dev server", shows

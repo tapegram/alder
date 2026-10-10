@@ -336,6 +336,9 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 // <address>" with the bound address, so ALDER_ADDR=127.0.0.1:0 picks a free port that a caller
 // can read. Its http.Server waits at most 10 s for a request's headers, and on SIGINT or SIGTERM
 // it stops accepting connections and lets the requests in flight finish (5 s at most).
+// ALDER_EXIT_ON_STDIN_EOF=1 (set by alder run, which holds the other end of the app's standard
+// input) makes the same shutdown happen when standard input reaches EOF, so the app never
+// outlives the dev server.
 func Main(name string, withAdapters bool) []byte {
 	imports := "\t\"app\"\n"
 	caps := "app.Caps{}"
@@ -351,12 +354,15 @@ func Main(name string, withAdapters bool) []byte {
 // key is used) and ALDER_DEV=1 turns on development mode; ALDER_RELOAD (set by alder run to its
 // build generation) makes pages subscribe to the dev server's reloads. Static files are served under /static/
 // from ALDER_STATIC, by default the static directory next to the executable. SIGINT or SIGTERM
-// shuts the server down gracefully: requests in flight get 5 s to finish.
+// shuts the server down gracefully: requests in flight get 5 s to finish. ALDER_EXIT_ON_STDIN_EOF=1
+// (set by alder run) makes the app stop the same way when its standard input reaches EOF, so it
+// never outlives the dev server.
 package main
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -401,6 +407,13 @@ func main() {
 	fmt.Println("listening on " + ln.Addr().String())
 	srv := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	if os.Getenv("ALDER_EXIT_ON_STDIN_EOF") == "1" {
+		// alder run holds the other end of stdin: when it dies, this read ends and the app stops
+		go func() {
+			_, _ = io.Copy(io.Discard, os.Stdin)
+			stop()
+		}()
+	}
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ln) }()
 	select {
