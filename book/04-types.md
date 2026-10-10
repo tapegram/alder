@@ -12,7 +12,7 @@
 | `List a` | `[1, 2, 3]` |
 | `Maybe a` | `Just x`, `Nothing` |
 | `Result e a` | `Ok x`, `Err e` |
-| `Dict k v` | built with `Dict.fromList`; `k` may be any type that can be compared with `==` (no functions or effect values in it, including inside a union's payloads), and two keys are the same key when they are `==` |
+| `Dict k v` | built with `Dict.fromList`; `k` may be any type that can be compared with `==` (no functions or effect values in it, including inside a union's payloads), and two keys are the same key when they are `==` (so `Html` keys are compared by their markup) |
 | `Date`, `Time` | calendar date; instant (chapter 9) |
 
 There is no `Char` and no `String`: text is `Text`. There is no tuple: use

@@ -146,3 +146,22 @@ func TestHTML_EqIsRenderEq(t *testing.T) {
 		t.Error("a List Html compares its elements by markup")
 	}
 }
+
+// An Html Dict key is its markup, as `==` is: two nodes that render alike are one key.
+func TestHTML_DictKeyIsMarkup(t *testing.T) {
+	ab := El("p", nil, Text("ab"))
+	split := El("p", nil, Text("a"), Text("b"))
+	d := rt.Dict[Node, int64]{}.Insert(ab, 1).Insert(split, 2)
+	if d.Len() != 1 {
+		t.Fatalf("two entries for one markup: %d", d.Len())
+	}
+	if v, ok := d.Get(ab); !ok || v != 2 {
+		t.Fatalf("Get = %v %v", v, ok)
+	}
+	if !rt.Eq(rt.Dict[Node, int64]{}.Insert(ab, 1), rt.Dict[Node, int64]{}.Insert(split, 1)) {
+		t.Error("one-entry dicts keyed by equal markup are not ==")
+	}
+	if rt.Key(ab) == rt.Key(El("p", nil, Text("b"))) {
+		t.Error("different markup, same key")
+	}
+}

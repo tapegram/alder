@@ -175,7 +175,9 @@ Dict.size     : Dict k v -> Int
 A key may be of any type `==` works on: a `List`, a record, a `Time`, but
 not a function or a type containing one. Two keys are the
 same key when they are `==`, so a `Time` key is its instant (the same
-moment written in two time zones is one key). A `Dict` keeps its keys in
+moment written in two time zones is one key), and `Html` keys are
+compared by their markup (`<p>ab</p>` and
+`<p>{Html.text "a"}{Html.text "b"}</p>` are one key). A `Dict` keeps its keys in
 the order they were first inserted; `==` on two dicts ignores that order.
 
 ```alder eval=Just 2

@@ -182,6 +182,11 @@ func Key(k any) string {
 // dictKey is implemented by every Dict instantiation.
 type dictKey interface{ keyAny(b *strings.Builder) }
 
+// Keyer is an Equaler whose equality is equality of a string: Key uses AlderKey() as the
+// value's key, so a Dict and `==` agree on which keys are the same. html.Node implements it
+// with its rendered markup.
+type Keyer interface{ AlderKey() string }
+
 func writeLen(b *strings.Builder, s string) {
 	b.WriteString(strconv.Itoa(len(s)))
 	b.WriteByte(':')
@@ -202,6 +207,11 @@ func keyValue(b *strings.Builder, v reflect.Value) {
 	if v.Kind() == reflect.Struct && v.CanInterface() {
 		if d, ok := v.Interface().(dictKey); ok {
 			d.keyAny(b)
+			return
+		}
+		if k, ok := v.Interface().(Keyer); ok {
+			b.WriteString("k")
+			writeLen(b, k.AlderKey())
 			return
 		}
 	}

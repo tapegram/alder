@@ -118,6 +118,10 @@ func (n Node) String() string { return Render(n) }
 // views whose printed sides in a failing test would be identical.
 func (n Node) AlderEqual(other any) bool { return Render(n) == Render(other.(Node)) }
 
+// AlderKey is Html's Dict key (rt.Keyer): its rendered markup, so two nodes equal under
+// AlderEqual are one key.
+func (n Node) AlderKey() string { return Render(n) }
+
 // RenderWith serialises a node like Render, filling deferred form controls from
 // st (see FormState). st may be nil.
 //
