@@ -172,6 +172,42 @@ test "verify rejects a stranger" = {
 	}
 }
 
+// A capability's Go error inside Test.run is an Err naming the capability, not a failed test.
+func TestTest_CapabilityError(t *testing.T) {
+	needGoTool(t)
+	dir := tempTodos(t, filepath.Join("Auth", "Login.alder"), `
+test "a capability's error is an Err" = {
+  let r <- Test.run (Password.verify { email: Text.Email "x@y.z", password: "nope" })
+  Task.succeed (r.value == Err "Password.verify: hash store unreachable")
+}
+`)
+	adapter := `package adapters
+
+import (
+	"context"
+	"errors"
+
+	"alder/rt"
+	"app"
+)
+
+func Caps() app.Caps { return app.Caps{Auth__Login__Password: password{}} }
+
+type password struct{}
+
+func (password) Verify(context.Context, app.Args__Auth__Login__Password__Verify) (rt.Maybe[string], error) {
+	return rt.Nothing[string](), errors.New("hash store unreachable")
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "adapters", "password.go"), []byte(adapter), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runTest(t, dir, "-run", "Auth.Login")
+	if code != 0 || stdout != "ok   Auth.Login \"a capability's error is an Err\"\n1 passed, 0 failed\n" {
+		t.Errorf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+}
+
 func TestTest_Usage(t *testing.T) {
 	inTemp(t)
 	for _, args := range [][]string{

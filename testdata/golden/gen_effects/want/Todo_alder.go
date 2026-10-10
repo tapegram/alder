@@ -122,13 +122,15 @@ func Todo__totals(u string) eff.Query[[]int64] {
 		if !_ok3 {
 			panic("alder: capability \"Todo.Stats\" is not wired")
 		}
-		return _c2.Total(_e1.Ctx)
-	}), eff.Call("Stats.forOwner", false, func(_e4 *eff.Env) (int64, error) {
-		_c5, _ok6 := _e4.Caps["Todo.Stats"].(Cap__Todo__Stats)
-		if !_ok6 {
+		_v4, _err5 := _c2.Total(_e1.Ctx)
+		return _v4, eff.CapError("Stats.total", _err5)
+	}), eff.Call("Stats.forOwner", false, func(_e6 *eff.Env) (int64, error) {
+		_c7, _ok8 := _e6.Caps["Todo.Stats"].(Cap__Todo__Stats)
+		if !_ok8 {
 			panic("alder: capability \"Todo.Stats\" is not wired")
 		}
-		return _c5.ForOwner(_e4.Ctx, u, true)
+		_v9, _err10 := _c7.ForOwner(_e6.Ctx, u, true)
+		return _v9, eff.CapError("Stats.forOwner", _err10)
 	}), eff.Map(func(n int64) int64 {
 		return n * 2
 	}, eff.NotFound[int64]())}))
@@ -140,7 +142,8 @@ var Todo__counters []func(string) eff.Query[int64] = []func(string) eff.Query[in
 		if !_ok3 {
 			panic("alder: capability \"Todo.Stats\" is not wired")
 		}
-		return _c2.ForOwner(_e1.Ctx, u, false)
+		_v4, _err5 := _c2.ForOwner(_e1.Ctx, u, false)
+		return _v4, eff.CapError("Stats.forOwner", _err5)
 	}))
 }}
 
@@ -150,7 +153,8 @@ func Todo__byOwner(_m1 string, _m2 bool) eff.Query[int64] {
 		if !_ok3 {
 			panic("alder: capability \"Todo.Stats\" is not wired")
 		}
-		return _c2.ForOwner(_e1.Ctx, _m1, _m2)
+		_v4, _err5 := _c2.ForOwner(_e1.Ctx, _m1, _m2)
+		return _v4, eff.CapError("Stats.forOwner", _err5)
 	}))
 }
 

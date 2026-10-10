@@ -158,10 +158,11 @@ func Index__update(msg Index__Msg, model Index__Model, session Index__Session) e
 				if !_ok7 {
 					panic("alder: capability \"Index.Mailer\" is not wired")
 				}
-				return _c6.Send(_e5.Ctx, struct {
+				_v8, _err9 := _c6.Send(_e5.Ctx, struct {
 					To   string
 					Body string
 				}{To: "a@b.c", Body: token})
+				return _v8, eff.CapError("Mailer.send", _err9)
 			})}), func(sent []bool) eff.Task[rt.Nav] {
 				return eff.Bind(eff.Map(std.ListLength[bool], eff.Pure(sent)), func(n int64) eff.Task[rt.Nav] {
 					return eff.Bind(std.SessionPut(func(s App__Session) App__Session {

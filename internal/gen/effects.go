@@ -38,9 +38,11 @@ import (
 //	Ord                db.Asc("col") / db.Desc("col")
 //	CapCall            eff.Call("Cap.entry", write, func(_e) { _c, _ok := _e.Caps["M.Cap"].(Cap__M__Cap);
 //	                   if !_ok { panic("alder: capability \"M.Cap\" is not wired") };
-//	                   return _c.Entry(_e.Ctx, args…) }), write true for a Task entry, false for
-//	                   a Query entry (the registry keys are the Capabilities variable); the
-//	                   argument of a one-parameter entry is its Args__ record (caps.go)
+//	                   _v, _err := _c.Entry(_e.Ctx, args…); return _v, eff.CapError("Cap.entry", _err) }),
+//	                   write true for a Task entry, false for a Query entry (the registry keys
+//	                   are the Capabilities variable); the argument of a one-parameter entry is
+//	                   its Args__ record (caps.go); an adapter's error becomes *eff.ErrCapability
+//	                   (a failure passes through), which Test.run observes as Err "Cap.entry: msg"
 //	TableRef           table__M__T
 //	TestRun            eff.Call("Test.run", true, func(_e *eff.Env) (R, error) { _v, _msg, _ok, _tr,
 //	                   _err := rtesting.Inner(_e, task(t)); …; R{Value: rt.Ok/Err…, Trace: _tr} })
@@ -190,9 +192,10 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 	case *ir.CapCall:
 		cp := x.Cap
 		key := cp.Module + "." + cp.Name
-		return f.callStmts(cp.Name+"."+x.Entry, !isQuery(x.Ty), x.Ty, s, func(env string, c *scope) string {
+		step := cp.Name + "." + x.Entry
+		return f.callStmts(step, !isQuery(x.Ty), x.Ty, s, func(env string, c *scope) string {
 			// temporaries, so the arguments below still see any user local named like them
-			impl, ok := f.temp(c, "_c"), f.temp(c, "_ok")
+			impl, ok, v, err := f.temp(c, "_c"), f.temp(c, "_ok"), f.temp(c, "_v"), f.temp(c, "_err")
 			args := []string{env + ".Ctx"}
 			for _, a := range x.Args {
 				args = append(args, f.code(a, c))
@@ -202,7 +205,8 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 			}
 			return impl + ", " + ok + " := " + env + ".Caps[" + strconv.Quote(key) + "].(" + capName(cp.Module, cp.Name) + ")\n" +
 				"if !" + ok + " {\npanic(" + strconv.Quote("alder: capability "+strconv.Quote(key)+" is not wired") + ")\n}\n" +
-				"return " + impl + "." + Field(x.Entry) + "(" + strings.Join(args, ", ") + ")\n"
+				v + ", " + err + " := " + impl + "." + Field(x.Entry) + "(" + strings.Join(args, ", ") + ")\n" +
+				"return " + v + ", eff.CapError(" + strconv.Quote(step) + ", " + err + ")\n"
 		}), true
 	case *ir.TestRun:
 		return f.testRun(x, s), true
