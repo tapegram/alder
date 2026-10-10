@@ -1961,8 +1961,9 @@ variables, which `rtesting.Main` reads:
   `still running M "name" (10s)` on standard error). At the deadline it
   reports the running case as `timed out after 5m0s`, prints the summary
   and returns 1 without waiting: `os.Exit` in the main then stops the
-  goroutine. A task case's `context` carries the deadline too, so a
-  database step waiting on something stops then.
+  goroutine. A task case's `context` carries the deadline too, 100 ms later, so a
+  database step waiting on something stops then, and `Main`'s timer,
+  not the step's error, reports the timeout.
 - `ALDER_TEST_STATUS`: a file. Before each case `Main` writes
   `Module<tab>Name` to it, and it empties it when it returns. A Go panic
   in a test is recovered and fails that test, but some failures cannot
@@ -1971,8 +1972,9 @@ variables, which `rtesting.Main` reads:
   exits with anything but 0 or 1, `alder test` reads the file to learn
   which test was running, prints a `FAIL` for it (an object under
   `--json`) whose `error:` is the first lines of the dump (the
-  `fatal error:` line and the top frame of the running goroutine), and
-  exits 1. It passes the program's standard error through line by line
+  `fatal error:` line and the top frame of the running goroutine), then
+  the summary line the program never printed (it counts the results it
+  passed through, and this failure), and exits 1. It passes the program's standard error through line by line
   until a line that starts a Go crash report (`fatal error:`, `panic:`,
   `runtime:`, `goroutine …`), and keeps the rest, so the dump is never
   printed.

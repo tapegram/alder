@@ -164,8 +164,8 @@ type Result struct {
 // Options configure Run. Run, when set, selects the cases whose `Module "Name"` it matches;
 // Tables are created in each case's database; Caps (an empty map when nil) and Session are
 // each case's Env.Caps and Env.Session; Now is the fixed clock (zero: 2026-01-01T00:00:00Z);
-// Deadline, when set, is the deadline of a task test's context (its store operations and
-// capabilities see it).
+// Deadline, when set, is (100 ms after it) the deadline of a task test's context (its store
+// operations and capabilities see it).
 type Options struct {
 	Run      *regexp.Regexp
 	Tables   []db.TableDesc
@@ -235,7 +235,8 @@ func runCase(c Case, o Options) (r Result) {
 		ctx := context.Background()
 		if !o.Deadline.IsZero() {
 			var cancel context.CancelFunc
-			ctx, cancel = context.WithDeadline(ctx, o.Deadline)
+			// a little after the deadline, so Main's timer (not a failed step) reports it
+			ctx, cancel = context.WithDeadline(ctx, o.Deadline.Add(100*time.Millisecond))
 			defer cancel()
 		}
 		store, err := db.OpenSQLite(":memory:")

@@ -193,7 +193,8 @@ func runTests(b scratch.Build, runPat string, timeout time.Duration, jsonOut boo
 	ctx, cancel := context.WithDeadlineCause(sigCtx, deadline.Add(testGrace), errTimeout)
 	defer cancel()
 	crash := &crashFilter{w: stderr}
-	exit := scratch.RunStream(ctx, b, env, pr, stdout, crash)
+	counted := &resultCounter{w: stdout, json: jsonOut}
+	exit := scratch.RunStream(ctx, b, env, pr, counted, crash)
 	crash.flush()
 	if sigCtx.Err() != nil {
 		fmt.Fprintln(stderr, "alder test: interrupted")
@@ -215,6 +216,13 @@ func runTests(b scratch.Build, runPat string, timeout time.Duration, jsonOut boo
 		} else {
 			fmt.Fprintf(stderr, "alder test: the test program crashed running %s %s; no later test ran\n", mod, rtesting.QuoteName(name))
 		}
+		// the summary the program could not print: the results it streamed and this failure
+		summary := fmt.Sprintf("%d passed, %d failed\n", counted.passed, counted.failed+1)
+		if jsonOut {
+			io.WriteString(stderr, summary)
+		} else {
+			io.WriteString(stdout, summary)
+		}
 		return 1
 	}
 	switch {
@@ -226,6 +234,44 @@ func runTests(b scratch.Build, runPat string, timeout time.Duration, jsonOut boo
 	}
 	fail("the test program stopped: " + crash.summary())
 	return 2
+}
+
+// resultCounter passes the test program's standard output through and counts the results in
+// it, line by line: `ok   …` and `FAIL …` lines, or with json each object's "ok".
+type resultCounter struct {
+	w              io.Writer
+	json           bool
+	partial        []byte
+	passed, failed int
+}
+
+func (c *resultCounter) Write(p []byte) (int, error) {
+	c.partial = append(c.partial, p...)
+	for {
+		i := bytes.IndexByte(c.partial, '\n')
+		if i < 0 {
+			break
+		}
+		line := c.partial[:i]
+		if c.json {
+			var r struct {
+				OK *bool `json:"ok"`
+			}
+			if json.Unmarshal(line, &r) == nil && r.OK != nil {
+				if *r.OK {
+					c.passed++
+				} else {
+					c.failed++
+				}
+			}
+		} else if bytes.HasPrefix(line, []byte("ok   ")) {
+			c.passed++
+		} else if bytes.HasPrefix(line, []byte("FAIL ")) {
+			c.failed++
+		}
+		c.partial = c.partial[i+1:]
+	}
+	return c.w.Write(p)
 }
 
 // readStatus reads the status file the test program writes before each test: `Module\tName\n`,

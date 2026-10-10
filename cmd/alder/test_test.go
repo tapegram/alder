@@ -295,22 +295,27 @@ func TestTest_StreamAndTimeout(t *testing.T) {
 func TestTest_Crash(t *testing.T) {
 	needGoTool(t)
 	dir := slowTodos(t)
-	code, stdout, stderr := runTest(t, dir, "-run", "overflow")
-	if code != 1 || !strings.HasPrefix(stdout, "FAIL Theme \"overflow\"\n  error: fatal error: stack overflow\n    app.Theme__loop(") {
+	code, stdout, stderr := runTest(t, dir, "-run", "flip|overflow")
+	if code != 1 || !strings.HasPrefix(stdout, "ok   Theme \"flip alternates\"\nFAIL Theme \"overflow\"\n  error: fatal error: stack overflow\n    app.Theme__loop(") {
 		t.Fatalf("exit %d\nstdout %q\nstderr %q", code, stdout, stderr)
 	}
-	if strings.Count(stdout, "\n") != 4 || strings.Contains(stderr, "goroutine") || len(stderr) > 300 ||
+	// the summary counts the streamed result and the crash, and is the last line
+	if strings.Count(stdout, "\n") != 6 || !strings.HasSuffix(stdout, "\n1 passed, 1 failed\n") || strings.Contains(stderr, "goroutine") || len(stderr) > 300 ||
 		!strings.Contains(stderr, "crashed running Theme \"overflow\"") {
-		t.Errorf("want a short report\nstdout %q\nstderr %q", stdout, stderr)
+		t.Errorf("want a short report ending in the summary\nstdout %q\nstderr %q", stdout, stderr)
 	}
-	code, stdout, _ = runTest(t, dir, "-run", "overflow", "--json")
+	code, stdout, stderr = runTest(t, dir, "-run", "flip|overflow", "--json")
+	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
 	var r struct {
 		Module, Name, Error string
 		OK                  *bool
 	}
-	if code != 1 || strings.Count(stdout, "\n") != 1 || json.Unmarshal([]byte(stdout), &r) != nil ||
+	if code != 1 || len(lines) != 2 || json.Unmarshal([]byte(lines[1]), &r) != nil ||
 		r.Module != "Theme" || r.Name != "overflow" || r.OK == nil || *r.OK || !strings.HasPrefix(r.Error, "fatal error: stack overflow\n") {
 		t.Errorf("--json: exit %d stdout %q", code, stdout)
+	}
+	if !strings.HasSuffix(stderr, "\n1 passed, 1 failed\n") {
+		t.Errorf("--json: the summary is not the last line of stderr: %q", stderr)
 	}
 }
 
