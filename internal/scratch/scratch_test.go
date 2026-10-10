@@ -1,6 +1,7 @@
 package scratch
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,6 +32,7 @@ func needGo(t *testing.T) {
 func TestCompile_PureValueAgainstTodos(t *testing.T) {
 	needGo(t)
 	b := Compile("../../examples/todos", &Module{Name: "Scratch", Source: "it : Int\nit = Todo.countOpen []\n"}, printMain, "", t.TempDir())
+	defer b.Close()
 	if b.Err != nil || len(b.Diags) != 0 {
 		t.Fatalf("%v %v", b.Err, b.Diags)
 	}
@@ -88,6 +90,7 @@ func TestCompile_AppErrorIsDiagnostic(t *testing.T) {
 	}
 	os.WriteFile(todo, orig, 0o644)
 	b = Compile(app, extra, printMain, "", out)
+	defer b.Close()
 	if b.Err != nil || len(b.Diags) != 0 || b.Binary == "" {
 		t.Fatalf("after the fix: %v %+v", b.Err, b.Diags)
 	}
@@ -102,14 +105,18 @@ func TestCompile_ReusesCache(t *testing.T) {
 	out := t.TempDir()
 	extra := &Module{Name: "Scratch", Source: "it : Int\nit = Todo.countOpen []\n"}
 	start := time.Now()
-	if b := Compile("../../examples/todos", extra, printMain, "", out); b.Err != nil || b.Binary == "" {
+	b := Compile("../../examples/todos", extra, printMain, "", out)
+	if b.Err != nil || b.Binary == "" {
 		t.Fatalf("%v %v", b.Err, b.Diags)
 	}
+	b.Close()
 	first := time.Since(start)
 	start = time.Now()
-	if b := Compile("../../examples/todos", extra, printMain, "", out); b.Err != nil || b.Binary == "" {
+	b = Compile("../../examples/todos", extra, printMain, "", out)
+	if b.Err != nil || b.Binary == "" {
 		t.Fatalf("%v %v", b.Err, b.Diags)
 	}
+	b.Close()
 	second := time.Since(start)
 	const floor = 3 * time.Second // a loaded machine may be slow even with every package cached
 	if second > first/2 && second > floor {
@@ -122,6 +129,7 @@ func TestCompile_NoExtraModule(t *testing.T) {
 	needGo(t)
 	main := "package main\n\nimport (\n\t\"fmt\"\n\n\t\"app\"\n)\n\nfunc main() { fmt.Println(len(app.Tables)) }\n"
 	b := Compile("../../examples/todos", nil, main, "", t.TempDir())
+	defer b.Close()
 	if b.Err != nil || len(b.Diags) != 0 || b.LineOffset != 0 {
 		t.Fatalf("%v %v", b.Err, b.Diags)
 	}
@@ -143,11 +151,91 @@ func TestRun_EnvStdinExit(t *testing.T) {
 	needGo(t)
 	main := "package main\n\nimport (\n\t\"fmt\"\n\t\"io\"\n\t\"os\"\n\n\t_ \"app\"\n)\n\nfunc main() {\n\tb, _ := io.ReadAll(os.Stdin)\n\tfmt.Print(os.Getenv(\"SCRATCH_X\"), string(b))\n\tfmt.Fprint(os.Stderr, \"e\")\n\tos.Exit(3)\n}\n"
 	b := Compile("../../examples/todos", nil, main, "", t.TempDir())
+	defer b.Close()
 	if b.Err != nil {
 		t.Fatal(b.Err)
 	}
 	out, errOut, code := Run(b, []string{"SCRATCH_X=a"}, "b")
 	if out != "ab" || errOut != "e" || code != 3 {
 		t.Fatalf("%q %q %d", out, errOut, code)
+	}
+}
+
+// The inferred module may have any name; an app that already has a module of that name is an
+// Err naming it, never a diagnostic pinned on the extra module's first line.
+func TestCheck_ModuleName(t *testing.T) {
+	needGo(t)
+	app := filepath.Join(t.TempDir(), "todos")
+	if err := os.CopyFS(app, os.DirFS("../../examples/todos")); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(app, "app", "Scratch.alder"), []byte("module Scratch\n\nx : Int\nx = 1\n"), 0o644)
+	c := Check(app, &Module{Name: "Scratch", Source: "it = 1\n", Infer: true})
+	var exists *ModuleExistsError
+	if !errors.As(c.Err, &exists) || exists.Name != "Scratch" || len(c.Diags) != 0 {
+		t.Fatalf("err %v, diags %v", c.Err, c.Diags)
+	}
+	main := strings.ReplaceAll(printMain, "Scratch__it", "Probe__it")
+	b := Compile(app, &Module{Name: "Probe", Source: "it = Scratch.x + 1\n", Infer: true}, main, "", t.TempDir())
+	defer b.Close()
+	if !b.Runnable() {
+		t.Fatalf("%v %v", b.Err, b.Diags)
+	}
+	if out, _, code := Run(b, nil, ""); code != 0 || strings.TrimSpace(out) != "2" {
+		t.Fatalf("%q %d", out, code)
+	}
+}
+
+// CompileChecked builds what Check checked, without checking again.
+func TestCompileChecked(t *testing.T) {
+	needGo(t)
+	c := Check("../../examples/todos", &Module{Source: "it = Todo.countOpen []\n", Infer: true})
+	if c.Err != nil || len(c.Diags) != 0 || c.Result == nil {
+		t.Fatalf("%v %v", c.Err, c.Diags)
+	}
+	b := CompileChecked(c, printMain, "", t.TempDir())
+	defer b.Close()
+	if out, _, code := Run(b, nil, ""); code != 0 || strings.TrimSpace(out) != "0" {
+		t.Fatalf("%q %d %v %v", out, code, b.Err, b.Diags)
+	}
+}
+
+// A Runnable Build holds the lock on its directory until Close: a second Compile into it waits.
+func TestCompile_LockHeldUntilClose(t *testing.T) {
+	needGo(t)
+	out := t.TempDir()
+	extra := &Module{Source: "it = 1\n", Infer: true}
+	b := Compile("../../examples/todos", extra, printMain, "", out)
+	if !b.Runnable() {
+		t.Fatalf("%v %v", b.Err, b.Diags)
+	}
+	if _, err := os.Stat(out + ".lock"); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan Build)
+	go func() { done <- Compile("../../examples/todos", extra, printMain, "", out) }()
+	select {
+	case b2 := <-done:
+		b2.Close()
+		t.Fatal("a second Compile did not wait for Close")
+	case <-time.After(500 * time.Millisecond):
+	}
+	if got, _, code := Run(b, nil, ""); code != 0 || strings.TrimSpace(got) != "1" {
+		t.Fatalf("%q %d", got, code)
+	}
+	b.Close()
+	b.Close() // twice is fine
+	b2 := <-done
+	defer b2.Close()
+	if !b2.Runnable() {
+		t.Fatalf("%v %v", b2.Err, b2.Diags)
+	}
+	// a Build that is not Runnable holds nothing: two failed Compiles in a row do not wait
+	bad := &Module{Source: "it = 1 + \"x\"\n", Infer: true}
+	b2.Close()
+	for range 2 {
+		if b := Compile("../../examples/todos", bad, printMain, "", out); b.Runnable() || len(b.Diags) == 0 {
+			t.Fatal("bad module compiled")
+		}
 	}
 }

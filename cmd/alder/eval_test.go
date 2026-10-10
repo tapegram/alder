@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // todosAbs is examples/todos, made absolute before any test changes directory.
@@ -315,5 +316,120 @@ func TestEval_LetRecAndInlineLambda(t *testing.T) {
 		if code != 0 || stdout != c.out {
 			t.Errorf("%q: exit %d, stdout %q (want %q)\nstderr: %s", c.in, code, stdout, c.out, stderr)
 		}
+	}
+}
+
+// A brand constructor is usable from eval, as from a `test` (E0011 elsewhere).
+func TestEval_BrandConstructors(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	evalOK(t, "/todos/x : Page\n", `Todos.Show { id: TodoId "x" }`)
+	evalOK(t, "\"x\" : Text.NonEmpty\n", `Text.NonEmpty "x"`)
+}
+
+// An app with its own Scratch module: eval says to pass --module, and works with it.
+func TestEval_ModuleFlag(t *testing.T) {
+	needGoTool(t)
+	app := filepath.Join(t.TempDir(), "todos")
+	if err := os.CopyFS(app, os.DirFS(todosDir(t))); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(app, "app", "Scratch.alder"), []byte("module Scratch\n\nx : Int\nx = 41\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(t.TempDir())
+	code, stdout, stderr := runEval(t, "", app, "Scratch.x + 1")
+	if code != 2 || stdout != "" || !strings.Contains(stderr, "the app already has a module named Scratch; pass --module <Name>") || strings.Contains(stderr, "E0009") {
+		t.Errorf("without --module: exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
+	}
+	for _, args := range [][]string{{app, "--module", "Probe", "Scratch.x + 1"}, {"--module=Probe", app, "Scratch.x + 1"}} {
+		if code, stdout, stderr := runEval(t, "", args...); code != 0 || stdout != "42 : Int\n" {
+			t.Errorf("%q: exit %d, stdout %q\nstderr: %s", args, code, stdout, stderr)
+		}
+	}
+	// a diagnostic of the renamed module is still the input's
+	if code, _, stderr := runEval(t, "", app, "--module", "Probe", "1 + \"x\""); code != 1 || !strings.Contains(stderr, "input:1:") {
+		t.Errorf("error under --module: exit %d\nstderr: %s", code, stderr)
+	}
+	if code, _, stderr := runEval(t, "", app, "--module", "probe", "1"); code != 2 || !strings.Contains(stderr, "module name") {
+		t.Errorf("bad --module: exit %d\nstderr: %s", code, stderr)
+	}
+}
+
+// A line starting with a closer continues the item: a multi-line match or element pastes as
+// written, its `}` or `</tag>` at column 1.
+func TestEval_Closers(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	dir := todosDir(t)
+	for _, c := range []struct{ in, out string }{
+		{"match Just 1 {\n  Just v -> v,\n  Nothing -> 0,\n}\n", "1 : Int\n"},
+		{"<ul>\n  <li>a</li>\n</ul>\n", "<ul><li>a</li></ul> : Html a\n"},
+		{"let r = {\n  a: 1,\n}\nr.a\n", "1 : Int\n"},
+	} {
+		code, stdout, stderr := runEval(t, c.in, dir, "-")
+		if code != 0 || stdout != c.out {
+			t.Errorf("%q: exit %d, stdout %q (want %q)\nstderr: %s", c.in, code, stdout, c.out, stderr)
+		}
+	}
+}
+
+// A duplicate let names the input's line, not the scratch module's.
+func TestEval_DuplicateNamesInputLine(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	code, _, stderr := runEval(t, "-- first\nlet x = 1\nlet x = 2\nx", todosDir(t), "-")
+	if code != 1 || !strings.Contains(stderr, "input:3:5: error[E0009]: `x` is already declared at line 2\n") {
+		t.Errorf("exit %d\nstderr: %s", code, stderr)
+	}
+}
+
+// `alder eval <dir>` alone asks for the expression instead of evaluating the path.
+func TestEval_DirWithoutExpression(t *testing.T) {
+	code, stdout, stderr := runEval(t, "", todosDir(t))
+	if code != 2 || stdout != "" || !strings.Contains(stderr, "expected an expression after the app directory") {
+		t.Errorf("exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
+	}
+}
+
+// Ctrl-C on a running eval stops it and its program: the program runs in its own process group,
+// which eval kills.
+func TestEval_InterruptKillsProgram(t *testing.T) {
+	needGoTool(t)
+	work := t.TempDir()
+	bin := filepath.Join(work, "alder")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v\n%s", err, out)
+	}
+	long := "List.foldl (\\x acc -> acc + List.length (List.range 1 100000)) 0 (List.range 1 1000000)"
+	cmd := exec.Command(bin, "eval", todosDir(t), long)
+	cmd.Dir = work
+	var errb bytes.Buffer
+	cmd.Stderr = &errb
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	program := filepath.Join(work, "build", "todos", "scratch", "eval", "scratch")
+	running := func() bool { return exec.Command("pgrep", "-f", "^"+program).Run() == nil }
+	deadline := time.Now().Add(2 * time.Minute)
+	for !running() {
+		if time.Now().After(deadline) {
+			cmd.Process.Kill()
+			t.Fatalf("the program never started\nstderr: %s", errb.String())
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	start := time.Now()
+	cmd.Process.Signal(os.Interrupt)
+	err := cmd.Wait()
+	if took := time.Since(start); took > 2*time.Second {
+		t.Errorf("eval took %v to stop", took)
+	}
+	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 1 || !strings.Contains(errb.String(), "interrupted") {
+		t.Errorf("eval: %v\nstderr: %s", err, errb.String())
+	}
+	if running() {
+		exec.Command("pkill", "-f", "^"+program).Run()
+		t.Error("the program outlived eval")
 	}
 }

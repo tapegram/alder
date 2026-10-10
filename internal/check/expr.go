@@ -124,9 +124,9 @@ func (mc *modCtx) inferSig(d *syntax.ValueDecl) {
 }
 
 // infersTopLevel reports whether this module's sig-less top-level values have their signatures
-// inferred (Options.InferTopLevel, module Scratch) rather than reported as E0007.
+// inferred (it is Options.InferModule) rather than reported as E0007.
 func (mc *modCtx) infersTopLevel() bool {
-	return mc.c.opts.InferTopLevel && mc.m.Name == "Scratch"
+	return mc.c.opts.InferModule != "" && mc.m.Name == mc.c.opts.InferModule
 }
 
 // inferTopLevel infers the signature of a value written without one, generalizes the type
@@ -893,7 +893,7 @@ func (mc *modCtx) inferCtor(x *syntax.CtorRef, applied bool) types.Type {
 		info, ok := c.ctors[c.key(x.Ref.Module, x.Ref.Name)]
 		if !ok {
 			if b, isBrand := c.types[c.key(x.Ref.Module, x.Ref.Name)].(*types.Brand); isBrand {
-				if x.Ref.Module != mc.m.Name && !mc.inTest {
+				if x.Ref.Module != mc.m.Name && !mc.inTest && !mc.infersTopLevel() { // eval's module is a test's
 					c.errorf(diag.InvalidDecl, x.Span, "brand constructor `%s` can only be used in module `%s` or inside a `test`", x.Name, x.Ref.Module)
 				}
 				return &types.Fun{Params: []types.Type{b.Base}, Result: b}

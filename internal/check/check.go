@@ -37,7 +37,7 @@ type Checker struct {
 
 	usesSessionPut bool // some module calls Session.put
 	opts           Options
-	// poisonedTop are the Scratch values whose inferred type is poisoned (InferTopLevel), and
+	// poisonedTop are the InferModule values whose inferred type is poisoned, and
 	// usedPoisoned is set when a body being inferred uses one of them
 	poisonedTop  map[string]bool
 	usedPoisoned bool
@@ -81,11 +81,12 @@ type modCtx struct {
 
 // Options adjust what Program accepts.
 type Options struct {
-	// InferTopLevel infers the signature of a top-level value written without one in the module
-	// named Scratch (the scratch module of `alder eval` and the REPL) and records it in
-	// Result.Values, instead of reporting E0007; unsolved type variables become type parameters
-	// (`[]` is `List a`). Every other module still needs its signatures.
-	InferTopLevel bool
+	// InferModule names the module whose top-level values written without a signature have it
+	// inferred and recorded in Result.Values, instead of reporting E0007 (the scratch module
+	// of `alder eval` and the REPL); unsolved type variables become type parameters (`[]` is
+	// `List a`). That module is also treated like a `test` body for brand constructors (E0011):
+	// it may use any module's. "" names none; every other module still needs its signatures.
+	InferModule string
 }
 
 // Program checks prog, reporting into bag, and returns the types it learned.

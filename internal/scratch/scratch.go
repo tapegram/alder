@@ -24,13 +24,21 @@ import (
 	"alder/internal/types"
 )
 
-// Module is a module held in memory. Name is its module name ("Scratch" by convention) and,
-// with ".alder", the file its diagnostics name; Source may omit the `module` line. Infer, for a
-// module named Scratch, infers the signatures of its top-level values written without one
-// (check.Options.InferTopLevel) instead of reporting E0007.
+// Module is a module held in memory. Name is its module name ("Scratch" when empty) and, with
+// ".alder", the file its diagnostics name; Source may omit the `module` line. Infer infers the
+// signatures of its top-level values written without one, instead of reporting E0007, and lets
+// it use any module's brand constructors, as a `test` may (check.Options.InferModule).
 type Module struct {
 	Name, Source string
 	Infer        bool
+}
+
+// ModuleExistsError is Check's (and Compile's) error when the app already has a module with the
+// extra module's name: the two would be one module.
+type ModuleExistsError struct{ Name string }
+
+func (e *ModuleExistsError) Error() string {
+	return fmt.Sprintf("the app already has a module named %s; give the extra module another name", e.Name)
 }
 
 // Build is the outcome of Compile.
@@ -48,6 +56,17 @@ type Build struct {
 	LineOffset int
 	InsertLine int    // the first inserted line (1-based) of the rewritten source; 0 when none
 	ExtraFile  string // the extra module's file, "<Name>.alder" ("" without an extra module)
+
+	unlock func() // releases the lock on out (Close); nil when not held
+}
+
+// Close releases the lock a successful Compile holds on its output directory (see Compile). It
+// is safe to call more than once, and on any Build.
+func (b *Build) Close() {
+	if b.unlock != nil {
+		b.unlock()
+		b.unlock = nil
+	}
 }
 
 // Timeout bounds a Run.
@@ -56,6 +75,7 @@ const Timeout = 60 * time.Second
 // Compile builds the app at appDir with extra (nil for none) added as one more module, and the
 // caller's Go command mainGo (package main, importing "app"), into the output directory out;
 // out "" is build/<app>/scratch/<purpose> under the working directory (purpose "" is "default").
+// It is Check followed by CompileChecked.
 //
 // The extra module implicitly imports every app module except App (which needs no import)
 // and those its source already imports: Compile inserts `import M` lines after the source's
@@ -67,41 +87,65 @@ const Timeout = 60 * time.Second
 //     the app ("app/Todo.alder"); the extra module's is "<Name>.alder". Diags may hold warnings
 //     alone and still produce a binary.
 //   - Binary is "" when Diags hold an error or a typed hole (W0002), or when Err is set. Err is
-//     set only for I/O failures, generated or caller Go that does not vet, and go build
-//     failures; its message carries Go's output.
+//     set only for I/O failures, an app that already has a module named like the extra one
+//     (*ModuleExistsError), generated or caller Go that does not vet, and go build failures;
+//     its message carries Go's output.
 //   - Compile writes only under out (the generated module "app", adapters/ and static/ copied
-//     from the app, cmd/main.go and the executable out/scratch); it never touches build/<app>
-//     itself. Nothing is written when the check fails, and the previous executable in out stays
-//     until a new one is built, so a failed Compile leaves the last good one runnable.
+//     from the app, cmd/main.go and the executable out/scratch) and the lock file <out>.lock;
+//     it never touches build/<app> itself. Nothing is written when the check fails, and the
+//     previous executable in out stays until a new one is built, so a failed Compile leaves
+//     the last good one runnable.
+//   - Compiles into one out serialize: Compile takes an exclusive lock on <out>.lock (flock;
+//     the kernel drops it if the process dies) before writing, and a Runnable Build keeps it
+//     until Close, so no other Compile replaces the executable while the caller runs it. A
+//     Build that is not Runnable holds no lock. Callers must Close a Runnable Build.
 //   - Compiles into the same out reuse Go's build cache (a second build of an unchanged app is
-//     much faster). Two Compiles must not run into the same out at once.
-func Compile(appDir string, extra *Module, mainGo string, purpose, out string) (b Build) {
+//     much faster).
+func Compile(appDir string, extra *Module, mainGo string, purpose, out string) Build {
+	return CompileChecked(Check(appDir, extra), mainGo, purpose, out)
+}
+
+// CompileChecked is the second half of Compile: it builds what c checked (Check's result for
+// the same app and extra module), so a caller that checked first does not check twice.
+func CompileChecked(c Checked, mainGo string, purpose, out string) (b Build) {
 	defer func() {
 		if r := recover(); r != nil {
+			b.Close()
 			b.Binary, b.Err = "", fmt.Errorf("internal error: %v", r)
 		}
 	}()
-	abs, err := filepath.Abs(appDir)
-	if err != nil {
-		return Build{Err: err}
-	}
-	name := filepath.Base(abs)
-	if out == "" {
-		if purpose == "" {
-			purpose = "default"
-		}
-		out = filepath.Join("build", name, "scratch", purpose)
-	}
-	if b.Dir, err = filepath.Abs(out); err != nil {
-		return Build{Err: err}
-	}
-
-	c := Check(appDir, extra)
 	b.Diags, b.Err, b.LineOffset, b.InsertLine, b.ExtraFile = c.Diags, c.Err, c.LineOffset, c.InsertLine, c.ExtraFile
 	prog, res := c.program, c.Result
 	if b.Err != nil || res == nil || c.hasErrors || res.Holes > 0 {
 		return b
 	}
+	appDir := c.appDir
+	abs, err := filepath.Abs(appDir)
+	if err != nil {
+		b.Err = err
+		return b
+	}
+	if out == "" {
+		if purpose == "" {
+			purpose = "default"
+		}
+		out = filepath.Join("build", filepath.Base(abs), "scratch", purpose)
+	}
+	if b.Dir, err = filepath.Abs(out); err != nil {
+		b.Err = err
+		return b
+	}
+	unlock, err := lockFile(b.Dir + ".lock")
+	if err != nil {
+		b.Err = err
+		return b
+	}
+	b.unlock = unlock
+	defer func() {
+		if b.Binary == "" {
+			b.Close() // nothing to run: release at once
+		}
+	}()
 
 	repo, err := buildkit.RepoRoot()
 	if err != nil {
@@ -163,8 +207,9 @@ type Checked struct {
 	// When Diags hold an error the program is not to be lowered.
 	Result *check.Result
 
-	program   *names.Program // the checked program, for Compile
+	program   *names.Program // the checked program, for CompileChecked
 	hasErrors bool           // Diags hold an error
+	appDir    string         // the app checked
 }
 
 // MapDiag is Build.MapDiag for a Check: it maps a diagnostic of the extra module to the
@@ -177,6 +222,7 @@ func (c Checked) MapDiag(d diag.Diagnostic) (diag.Diagnostic, bool) {
 // stops there: nothing is generated or written. A caller that must know a value's type before
 // choosing the main it compiles (`alder eval` on a Query) checks first.
 func Check(appDir string, extra *Module) (c Checked) {
+	c.appDir = appDir
 	defer func() {
 		if r := recover(); r != nil {
 			c.Result, c.program, c.Err = nil, nil, fmt.Errorf("internal error: %v", r)
@@ -184,6 +230,7 @@ func Check(appDir string, extra *Module) (c Checked) {
 	}()
 	var mods []*syntax.Module
 	var implicit map[int]bool
+	var opts check.Options
 	if extra != nil {
 		modName := extra.Name
 		if modName == "" {
@@ -198,6 +245,13 @@ func Check(appDir string, extra *Module) (c Checked) {
 			c.Err = err
 			return c
 		}
+		if slices.Contains(appMods, modName) {
+			c.Err = &ModuleExistsError{Name: modName}
+			return c
+		}
+		if extra.Infer {
+			opts.InferModule = modName
+		}
 		src, offset, lines := withImports(extra.Source, modName, appMods)
 		c.LineOffset, implicit = offset, lines
 		c.InsertLine, c.ExtraFile = insertInfo(extra.Source, modName, offset)
@@ -208,7 +262,7 @@ func Check(appDir string, extra *Module) (c Checked) {
 		}
 		mods = append(mods, m)
 	}
-	prog, res, bag, ioErrs := buildkit.LoadCheckedWith(appDir, mods, check.Options{InferTopLevel: extra != nil && extra.Infer})
+	prog, res, bag, ioErrs := buildkit.LoadCheckedWith(appDir, mods, opts)
 	if len(ioErrs) > 0 {
 		c.Err = errors.Join(ioErrs...)
 		return c
@@ -282,7 +336,7 @@ func withImports(src, name string, appMods []string) (string, int, map[int]bool)
 
 // Run executes b.Binary in the working directory with env appended to the environment and
 // stdin as its standard input, for at most Timeout, and returns its standard output, standard
-// error and exit code; see RunTimeout. A binary that cannot be started, or is killed at the
+// error and exit code; see RunContext. A binary that cannot be started, or is killed at the
 // timeout, has exit code -1, with the reason appended to its standard error.
 func Run(b Build, env []string, stdin string) (string, string, int) {
 	return RunTimeout(b, env, stdin, Timeout)

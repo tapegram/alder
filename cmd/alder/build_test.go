@@ -101,7 +101,7 @@ func TestBuildEmit_ForeignFileDoesNotVet(t *testing.T) {
 	os.WriteFile(filepath.Join(out, "stale_test.go"), []byte("package app\n\nvar _ = Gone__value\n"), 0o644)
 	code, stdout, stderr := runBuild(t, "--emit", "todos")
 	if code != 2 || strings.Contains(stderr, "internal error") ||
-		!strings.Contains(stderr, "holds Go files alder did not generate: stale_test.go; build/<app> must contain only generated files") {
+		!strings.Contains(stderr, "holds Go files alder did not generate: stale_test.go; ") || !strings.Contains(stderr, "must contain only generated files") {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 }

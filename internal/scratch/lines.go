@@ -2,6 +2,8 @@ package scratch
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"alder/internal/diag"
@@ -28,10 +30,11 @@ func (b Build) SourceLine(l int) (line int, ok bool) {
 }
 
 // MapDiag maps a diagnostic of the extra module (Span.File == b.ExtraFile) to the caller's
-// source: its span's lines and its fix's lines go through SourceLine. A fix that touches an
-// inserted line is dropped; a diagnostic whose span does is returned with ok false (it is about
-// text the caller did not write). Other diagnostics are returned unchanged. Callers should
-// report the extra module's diagnostics through MapDiag rather than subtracting LineOffset.
+// source: its span's lines, its fix's lines and the line a duplicate declaration's message
+// names (E0009's "at line N") go through SourceLine. A fix that touches an inserted line is
+// dropped; a diagnostic whose span does is returned with ok false (it is about text the caller
+// did not write). Other diagnostics are returned unchanged. Callers should report the extra
+// module's diagnostics through MapDiag rather than subtracting LineOffset.
 func (b Build) MapDiag(d diag.Diagnostic) (diag.Diagnostic, bool) {
 	if b.ExtraFile == "" || d.Span.File != b.ExtraFile {
 		return d, true
@@ -42,6 +45,7 @@ func (b Build) MapDiag(d diag.Diagnostic) (diag.Diagnostic, bool) {
 		return d, false
 	}
 	d.Span.Start.Line, d.Span.End.Line = start, end
+	d.Message = MapLineRef(d, b.SourceLine)
 	if d.Fix != nil {
 		l, ok1 := b.SourceLine(d.Fix.Line)
 		e, ok2 := b.SourceLine(d.Fix.EndLine)
@@ -97,4 +101,29 @@ func insertInfo(src, name string, offset int) (insertLine int, file string) {
 		insertLine = modLine + 2 // the line after the module line; 1 when synthesized (-1 + 2)
 	}
 	return insertLine, name + ".alder"
+}
+
+// lineRefRE is the line a duplicate declaration's message (E0009) names.
+var lineRefRE = regexp.MustCompile(`at line (\d+)$`)
+
+// MapLineRef is d's message with the line an E0009 message names ("`x` is already declared at
+// line N") mapped through mapLine; any other message, or a line mapLine does not map, is
+// returned unchanged.
+func MapLineRef(d diag.Diagnostic, mapLine func(int) (int, bool)) string {
+	if d.Code != diag.Duplicate {
+		return d.Message
+	}
+	m := lineRefRE.FindStringSubmatchIndex(d.Message)
+	if m == nil {
+		return d.Message
+	}
+	n, err := strconv.Atoi(d.Message[m[2]:m[3]])
+	if err != nil {
+		return d.Message
+	}
+	l, ok := mapLine(n)
+	if !ok {
+		return d.Message
+	}
+	return d.Message[:m[2]] + strconv.Itoa(l)
 }

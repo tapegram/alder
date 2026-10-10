@@ -81,14 +81,15 @@ func GoCmd(dir string, args ...string) ([]byte, error) {
 // VetApp vets package pkg of the generated module out (files are the files alder wrote there)
 // and returns nil, or an error saying why it does not vet (with go vet's output): Go files
 // someone else put in out, or else an internal error. Either is exit code 2 for `alder build`.
+// out is build/<app> or a scratch directory (scratch.Compile); the message names it.
 func VetApp(out string, files map[string][]byte, pkg string) error {
 	vetOut, err := GoCmd(out, "vet", "-mod=mod", pkg)
 	if err == nil {
 		return nil
 	}
 	if mine := ForeignGoFiles(out, files); len(mine) > 0 {
-		return fmt.Errorf("the Go in %s does not vet, and %s holds Go files alder did not generate: %s; build/<app> must contain only generated files, so move them out and build again: %v\n%s",
-			out, out, strings.Join(mine, ", "), err, vetOut)
+		return fmt.Errorf("the Go in %s does not vet, and %s holds Go files alder did not generate: %s; %s must contain only generated files, so move them out and try again: %v\n%s",
+			out, out, strings.Join(mine, ", "), out, err, vetOut)
 	}
 	return fmt.Errorf("internal error: the generated Go in %s (%s) does not vet: %v\n%s", out, strings.Join(slices.Sorted(maps.Keys(files)), ", "), err, vetOut)
 }

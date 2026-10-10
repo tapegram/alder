@@ -1,6 +1,7 @@
 package scratch
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -55,6 +56,11 @@ func TestMapDiag(t *testing.T) {
 	if _, ok = b.MapDiag(diag.Diagnostic{Code: "W0001", Span: sp("Scratch.alder", 3)}); ok {
 		t.Fatal("a diagnostic on an inserted line mapped")
 	}
+	// E0009's "at line N" names the caller's line too
+	d, ok = b.MapDiag(diag.Diagnostic{Code: "E0009", Span: sp("Scratch.alder", 8), Message: "`x` is already declared at line 6"})
+	if !ok || d.Span.Start.Line != 5 || d.Message != "`x` is already declared at line 3" {
+		t.Fatalf("E0009: %v %+v", ok, d)
+	}
 	// another file: unchanged
 	orig := diag.Diagnostic{Code: "E0003", Span: sp("app/Todo.alder", 3), Fix: diag.InsertAt(3, 1, "x")}
 	if d, ok = b.MapDiag(orig); !ok || d.Span != orig.Span || d.Fix != orig.Fix {
@@ -101,6 +107,7 @@ func TestRun_GrandchildDoesNotHang(t *testing.T) {
 	needGo(t)
 	main := "package main\n\nimport (\n\t\"os\"\n\t\"os/exec\"\n\n\t_ \"app\"\n)\n\nfunc main() {\n\tc := exec.Command(\"sleep\", \"30\")\n\tc.Stdout, c.Stderr = os.Stdout, os.Stderr\n\tc.Start()\n}\n"
 	b := Compile("../../examples/todos", nil, main, "", t.TempDir())
+	defer b.Close()
 	if !b.Runnable() {
 		t.Fatal(b.Err, b.Diags)
 	}
@@ -116,12 +123,21 @@ func TestRunTimeout_KillsGroup(t *testing.T) {
 	needGo(t)
 	main := "package main\n\nimport (\n\t\"os\"\n\t\"os/exec\"\n\n\t_ \"app\"\n)\n\nfunc main() {\n\tc := exec.Command(\"sleep\", \"30\")\n\tc.Stdout = os.Stdout\n\tc.Run()\n}\n"
 	b := Compile("../../examples/todos", nil, main, "", t.TempDir())
+	defer b.Close()
 	if !b.Runnable() {
 		t.Fatal(b.Err, b.Diags)
 	}
 	start := time.Now()
 	_, stderr, code := RunTimeout(b, nil, "", time.Second)
-	if took := time.Since(start); took > 4*time.Second || code != -1 || !strings.Contains(stderr, "timed out") {
+	if took := time.Since(start); took > 4*time.Second || code != -1 || !strings.Contains(stderr, "timed out after 1s") {
 		t.Fatalf("took %v, exit %d, stderr %q", took, code, stderr)
+	}
+	// a cancelled context (the caller's interrupt) kills the group too
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(500*time.Millisecond, cancel)
+	start = time.Now()
+	_, stderr, code = RunContext(ctx, b, nil, "")
+	if took := time.Since(start); took > 3*time.Second || code != -1 || !strings.Contains(stderr, "was interrupted") {
+		t.Fatalf("cancel: took %v, exit %d, stderr %q", took, code, stderr)
 	}
 }
