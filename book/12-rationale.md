@@ -397,6 +397,50 @@ corrected the book: chapter 7 said `Toggle` traces `["Db.update Todo"]`,
 but `owned`'s read comes first, and the trace is
 `["Db.get Todo", "Db.update Todo"]`.
 
+### E7: prompt size, tests in the loop
+
+*Done 2026-10-10.* Two questions in one run, all with `--build --test
+--retries 2`: every task now asks for named tests, and a round passes
+only if `alder test` passes too. Prompt size: Qwen3-Coder 30B on the
+whole of chapters 3–10 (`full`, 32.5k tokens, run at a 64k window)
+against the same with nine human-facing sections dropped (`reference`,
+21.5k tokens, 32k window). T2–T5 as in E6, plus T6 (a shop's orders,
+where a `Manager` may open any user's order and a `Staff` user gets 404).
+One sample per Claude cell. Full data in `experiments/e7-prompt-tests/`
+(`scores.md`, `findings.md`).
+
+| Model | Prompt | Pass (T2–T6) | Round-0 pass | New tests | E6 pass (T2–T5) |
+|---|---|---|---|---|---|
+| Claude Sonnet | full | 5 / 5 | 3 / 5 | 19 | 4 / 4 |
+| Claude Haiku | full | 5 / 5 | 3 / 5 | 24 | 4 / 4 |
+| Qwen3-Coder 30B | full | 0 / 5 | 0 / 5 | — | 2 / 4 |
+| Qwen3-Coder 30B | reference | 0 / 5 | 0 / 5 | — | 2 / 4 |
+
+What it showed: a third less prompt did nothing for Qwen. No Qwen round
+in either condition checked clean, so none reached the build or the
+tests, and its errors fall in the same classes under both prompts, none
+traceable to a dropped section. They are not invented library calls.
+Two in five come from the example's `Theme` module: Qwen copies the
+example's `App`, whose session has `theme: Theme = Light`, into a new app
+and never writes `Theme.alder`, and every test that builds a session
+needs `Light`. Three of Claude's four retries were the same `Light` in a
+test. The rest are page and table wiring, where three messages misled
+(one offers to import the module it is in, one an import that closes a
+cycle). E6's 2 / 4 is not a clean control: the tests paragraph, the
+book's growth and the new T6 changed together, and 39% of Qwen's errors
+sit inside tests.
+
+The test loop caught nothing: no round ever checked and built and then
+failed its tests. That was not weak tests. The models wrote a test for
+every rule the tasks named, mostly effect tests through `Test.run`, and
+a probe that removed one condition from each authorization rule (ten
+mutants over T4–T6) was caught every time, by the test named for it.
+The programs were right first. Both T6 apps put the Manager rule in
+`load`, refuse a change to a Paid order with `Task.fail` and say why, in
+round 0. A model's own tests check only what it thought of; hidden
+acceptance tests (E8) are the measure that can fail a program its author
+believes is right.
+
 ## Open questions
 
 - Should `view` be able to read form state (for "edit" forms that show
@@ -423,10 +467,29 @@ but `owned`'s read comes first, and the trace is
   make this mistake when the example does (two of three T4 apps in E5)
   and stop when the example and chapter 6 show the fix (none of three in
   E6, and every T5 app checks the owner in `update`), but they copied the
-  example's `owned` helper. The next probe is harder: a message whose
-  authorization the example does not show (an `Edit { id }` on the list
-  page, or a second owned table reached through the first), before a
-  feature is added for it.
+  example's `owned` helper. E7's T6 was the first task whose rule the
+  example does not show (a `Manager` may open any user's order): both
+  Claude apps put it in `load` first try and wrote tests that fail when
+  it is removed, and since M4b the example's own effect test does the
+  same for `owned`. For strong models that weakens the case for a
+  language feature; it says nothing about weaker ones (Qwen never got
+  that far). Still open: a second owned table reached through the first,
+  and an `Edit { id }` on the list page.
+- How large can the prompt get? Chapters 3–10 are 32.5k tokens (E7),
+  past a 32k window on their own. Dropping the sections written for
+  people (21.5k) did not help Qwen3-Coder 30B (E7: 0 / 5 both ways), so
+  an agent-facing cut is not the lever for that model; whether a smaller
+  book (chapters 3–6) or a different local model is, is not measured.
+- Should a test be able to build a session without naming every field?
+  The example's `theme: Theme = Light` has a default, but a session
+  literal in a test must still write `theme: Light` and import `Theme`:
+  three of Claude's four retries in E7 and two in five of Qwen's errors.
+  Defaulted fields that may be omitted, or a `Test.session`, are two
+  shapes; moving the theme out of the example's skeleton is a third.
+- Is `Int.NonNegative * Int.Positive` an `Int`? Chapter 4's rules
+  (implicit widening; operations return the base type) say yes, the
+  checker says no, and both E7 T6 apps wrote an identity function to
+  widen before multiplying.
 - Do agents need `List.map` with index, or is `List.indexed` enough?
 - Should `alder test` also run the book's `eval=` blocks? Today
   `go test ./book` runs them, and only in this repository; an app's own
