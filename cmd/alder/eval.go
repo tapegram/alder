@@ -45,7 +45,8 @@ type evalResult struct {
 // interrupted) evaluation, 2 for usage, I/O and internal errors. --json prints one object
 // {value, type, diagnostics, error, hint} on stdout instead. Evaluations of one app serialize on
 // build/<app>/scratch/eval.lock (scratch.Compile's lock), held from the build to the end of the
-// run; Ctrl-C (SIGINT) or SIGTERM during the run kills the evaluation's processes.
+// run; one that has to wait says so on stderr. Ctrl-C (SIGINT) or SIGTERM stops the wait, the
+// build, or the run (killing the evaluation's processes).
 func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code int) {
 	jsonOut := false
 	res := evalResult{Diagnostics: []json.RawMessage{}}
@@ -186,10 +187,19 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		env = append(env, "ALDER_EVAL_DB="+dbPath)
 	}
 
-	// CompileChecked builds what was checked above (no second check) under the lock, which the
-	// Build holds until Close
-	b := scratch.CompileChecked(checked, mainGo, "eval", filepath.Join(appBuild, "scratch", "eval"))
+	// Ctrl-C (or SIGTERM) stops the wait for the lock, the build and the run. The program runs
+	// in its own process group, out of the terminal's reach: an interrupt reaches eval alone,
+	// which kills the program's group and stops
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	// CompileCheckedWith builds what was checked above (no second check) under the lock, which
+	// the Build holds until Close; another eval of the app holding it is waited for, said once
+	waiting := func() { fmt.Fprintln(stderr, "alder eval: waiting for another alder eval of this app…") }
+	b := scratch.CompileCheckedWith(sigCtx, checked, mainGo, "eval", filepath.Join(appBuild, "scratch", "eval"), scratch.Options{Waiting: waiting})
 	defer b.Close()
+	if sigCtx.Err() != nil {
+		return failf(1, "alder eval: interrupted")
+	}
 	if b.Err != nil {
 		return failf(2, "alder eval: %v", b.Err)
 	}
@@ -199,10 +209,6 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		}
 		return failf(2, "alder eval: internal error: nothing was built")
 	}
-	// the program runs in its own process group, out of the terminal's reach: an interrupt
-	// reaches eval alone, which kills the program's group and stops
-	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	ctx, cancel := context.WithTimeoutCause(sigCtx, scratch.Timeout, fmt.Errorf("timed out after %v", scratch.Timeout))
 	defer cancel()
 	out, errOut, exit := scratch.RunTethered(ctx, b, env)

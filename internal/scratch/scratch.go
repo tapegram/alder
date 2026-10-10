@@ -109,9 +109,10 @@ const Timeout = 60 * time.Second
 //     previous executable in out stays until a new one is built, so a failed Compile leaves
 //     the last good one runnable.
 //   - Compiles into one out serialize: Compile takes an exclusive lock on <out>.lock (flock;
-//     the kernel drops it if the process dies) before writing, and a Runnable Build keeps it
-//     until Close, so no other Compile replaces the executable while the caller runs it. A
-//     Build that is not Runnable holds no lock. Callers must Close a Runnable Build.
+//     the kernel drops it if the process dies) before writing, waiting while another holds it
+//     (CompileCheckedWith's ctx ends the wait; its Options.Waiting is told), and a Runnable
+//     Build keeps it until Close, so no other Compile replaces the executable while the caller
+//     runs it. A Build that is not Runnable holds no lock. Callers must Close a Runnable Build.
 //   - Compiles into the same out reuse Go's build cache (a second build of an unchanged app is
 //     much faster).
 func Compile(appDir string, extra *Module, mainGo string, purpose, out string) Build {
@@ -132,6 +133,9 @@ type Options struct {
 	// module is vetted after all, so the failure is reported as without NoVet: generated Go
 	// that does not vet is an internal error, a main or adapters that do not vet say so.
 	NoVet bool
+	// Waiting, when set, is called once when another process (or Build) holds the lock on the
+	// output directory, before CompileCheckedWith waits for it (a done ctx ends the wait).
+	Waiting func()
 }
 
 // CompileCheckedWith is CompileChecked with options, stopped when ctx is done: `go vet` and `go
@@ -172,7 +176,7 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 		b.Err = err
 		return b
 	}
-	unlock, err := lockFile(b.Dir + ".lock")
+	unlock, err := lockFile(ctx, b.Dir+".lock", o.Waiting)
 	if err != nil {
 		b.Err = err
 		return b

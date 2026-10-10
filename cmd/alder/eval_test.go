@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"alder/internal/scratch"
 	"time"
 )
 
@@ -572,3 +574,42 @@ func TestDevDBHint(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// An eval that finds another holding the app's eval lock says it waits, and goes on when the
+// lock is released.
+func TestEval_WaitsForLock(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	held := scratch.Compile(todosDir(t), &scratch.Module{Source: "it = 1\n", Infer: true}, pureMainFor("app.Scratch__it"), "eval", filepath.Join("build", "todos", "scratch", "eval"))
+	if !held.Runnable() {
+		t.Fatalf("%v %v", held.Err, held.Diags)
+	}
+	var stdout, stderr syncBuffer
+	done := make(chan int, 1)
+	go func() { done <- runEvalTo([]string{todosDir(t), "1 + 1"}, nil, &stdout, &stderr) }()
+	deadline := time.Now().Add(10 * time.Second)
+	for !strings.Contains(stderr.String(), "alder eval: waiting for another alder eval of this app…\n") {
+		if time.Now().After(deadline) {
+			held.Close()
+			t.Fatalf("no waiting message: %s", stderr.String())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	select {
+	case code := <-done:
+		t.Fatalf("eval did not wait: exit %d", code)
+	default:
+	}
+	held.Close()
+	select {
+	case code := <-done:
+		if code != 0 || stdout.String() != "2 : Int\n" {
+			t.Errorf("exit %d, stdout %q\nstderr: %s", code, stdout.String(), stderr.String())
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("eval did not finish after the lock was released")
+	}
+}
+
+// pureMainFor is the scratch main printing the Go expression it.
+func pureMainFor(it string) string { return scratchMain(mainPure, false, it) }

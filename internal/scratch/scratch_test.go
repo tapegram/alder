@@ -231,6 +231,31 @@ func TestCompile_LockHeldUntilClose(t *testing.T) {
 	if !b2.Runnable() {
 		t.Fatalf("%v %v", b2.Err, b2.Diags)
 	}
+	// a Compile that would wait says so, and stops waiting when its context is done
+	c := Check("../../examples/todos", extra)
+	waited := make(chan struct{}, 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	got := make(chan Build)
+	go func() {
+		got <- CompileCheckedWith(ctx, c, printMain, "", out, Options{Waiting: func() { waited <- struct{}{} }})
+	}()
+	select {
+	case <-waited:
+	case b3 := <-got:
+		b3.Close()
+		t.Fatal("a Compile did not wait for the lock")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Waiting was not called")
+	}
+	cancel()
+	select {
+	case b3 := <-got:
+		if b3.Runnable() || !errors.Is(b3.Err, context.Canceled) {
+			t.Fatalf("after cancel: runnable %v, err %v", b3.Runnable(), b3.Err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the wait for the lock did not stop when the context was done")
+	}
 	// a Build that is not Runnable holds nothing: two failed Compiles in a row do not wait
 	bad := &Module{Source: "it = 1 + \"x\"\n", Infer: true}
 	b2.Close()

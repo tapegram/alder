@@ -3,13 +3,14 @@
 package scratch
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 )
 
 // lockFile: without flock, Compiles into one directory are not serialized; the lock file is
 // still created so its location is the same everywhere.
-func lockFile(path string) (func(), error) {
+func lockFile(_ context.Context, path string, _ func()) (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
