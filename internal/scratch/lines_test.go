@@ -184,3 +184,20 @@ func TestRunStream(t *testing.T) {
 		t.Fatalf("RunContext: exit %d out %q err %q", code, o, e)
 	}
 }
+
+// RunTethered gives the program EnvStdinEOF=1 and a stdin pipe that stays open for the run (a
+// main honouring the variable keeps running until it is done), and keeps RunContext's
+// contract.
+func TestRunTethered(t *testing.T) {
+	needGo(t)
+	main := "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n\t\"time\"\n\n\t_ \"app\"\n)\n\nfunc main() {\n\tgo func() {\n\t\tb := make([]byte, 1)\n\t\t_, err := os.Stdin.Read(b)\n\t\tfmt.Fprintln(os.Stderr, \"stdin:\", err)\n\t}()\n\ttime.Sleep(300 * time.Millisecond)\n\tfmt.Print(os.Getenv(\"" + EnvStdinEOF + "\"))\n\tos.Exit(3)\n}\n"
+	b := Compile("../../examples/todos", nil, main, "", t.TempDir())
+	defer b.Close()
+	if !b.Runnable() {
+		t.Fatal(b.Err, b.Diags)
+	}
+	o, e, code := RunTethered(context.Background(), b, []string{"X=1"})
+	if code != 3 || o != "1" || e != "" {
+		t.Fatalf("exit %d out %q err %q (want stdin open for the whole run)", code, o, e)
+	}
+}

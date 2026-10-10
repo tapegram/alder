@@ -44,19 +44,25 @@ func main() {
 	case "repl":
 		// Ctrl-C does not stop the REPL: each one is a value on interrupt (it stops a running
 		// evaluation, whose program runs out of the terminal's reach in a process group of its
-		// own); SIGTERM still ends the REPL
+		// own). SIGTERM and SIGHUP (the terminal closed) close terminate: the REPL stops a
+		// running evaluation and exits 1
 		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, os.Interrupt)
-		interrupt := make(chan struct{}, 1)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+		interrupt, terminate := make(chan struct{}, 1), make(chan struct{})
 		go func() {
-			for range sig {
+			for s := range sig {
+				if s != os.Interrupt {
+					close(terminate)
+					signal.Reset(syscall.SIGTERM, syscall.SIGHUP) // a second one ends alder outright
+					return
+				}
 				select {
 				case interrupt <- struct{}{}:
 				default: // one pending is enough
 				}
 			}
 		}()
-		os.Exit(runReplTo(os.Args[2:], os.Stdin, os.Stdout, os.Stderr, interrupt))
+		os.Exit(replMain(os.Args[2:], os.Stdin, os.Stdout, os.Stderr, interrupt, terminate))
 	case "explain":
 		if len(os.Args) < 3 {
 			usage()

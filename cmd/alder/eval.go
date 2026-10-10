@@ -202,7 +202,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	defer stop()
 	ctx, cancel := context.WithTimeoutCause(sigCtx, scratch.Timeout, fmt.Errorf("timed out after %v", scratch.Timeout))
 	defer cancel()
-	out, errOut, exit := scratch.RunContext(ctx, b, env, "")
+	out, errOut, exit := scratch.RunTethered(ctx, b, env)
 	switch {
 	case sigCtx.Err() != nil:
 		return failf(1, "alder eval: interrupted")

@@ -52,6 +52,9 @@ type repl struct {
 	vet                    bool // vet the next build (the first, and the first after a reload)
 	stdout, stderr         io.Writer
 	interrupt              <-chan struct{}
+	terminate              <-chan struct{}  // closed on SIGTERM or SIGHUP
+	seen                   map[string]stamp // the app's files as the session was last checked against
+	appDiags               string           // the app's errors as last printed ("" while it checks)
 }
 
 // runReplTo is `alder repl [dir] [--module Name]`: a read-eval-print loop over a persistent
@@ -62,7 +65,13 @@ type repl struct {
 // when the app's files change (as :reload). interrupt receives one value per Ctrl-C: it stops a
 // running evaluation, and at the prompt says how to leave. Exit 0 on :quit or end of input, 2
 // for usage or an app directory without app/.
-func runReplTo(args []string, stdin io.Reader, stdout, stderr io.Writer, interrupt <-chan struct{}) (code int) {
+func runReplTo(args []string, stdin io.Reader, stdout, stderr io.Writer, interrupt <-chan struct{}) int {
+	return replMain(args, stdin, stdout, stderr, interrupt, nil)
+}
+
+// replMain is runReplTo with terminate, which main closes on SIGTERM or SIGHUP (the terminal
+// closed): the REPL stops a running evaluation (killing its process group) and exits 1.
+func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrupt, terminate <-chan struct{}) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(stderr, "alder repl: internal error: %v\n", r)
@@ -108,7 +117,8 @@ func runReplTo(args []string, stdin io.Reader, stdout, stderr io.Writer, interru
 		return 2
 	}
 	r := &repl{dir: dir, modName: modName, appBuild: filepath.Join("build", filepath.Base(abs)),
-		vet: true, stdout: stdout, stderr: stderr, interrupt: interrupt}
+		vet: true, stdout: stdout, stderr: stderr, interrupt: interrupt, terminate: terminate}
+	r.seen = snapshot(dir)
 	checked, _ := r.check(nil)
 	if exists := (*scratch.ModuleExistsError)(nil); errors.As(checked.Err, &exists) {
 		fmt.Fprintf(stderr, "alder repl: %s; pass --module <Name> to name the REPL's module otherwise\n", exists.Taken())
@@ -118,7 +128,9 @@ func runReplTo(args []string, stdin io.Reader, stdout, stderr io.Writer, interru
 		fmt.Fprintf(stderr, "alder repl: %v\n", checked.Err)
 		return 2
 	}
-	r.report(checked, nil, nil, -1)
+	if r.report(checked, nil, nil, -1) {
+		fmt.Fprintln(stderr, "alder repl: the app has errors; fix them (the REPL re-checks when you save) — :type and lets will work once it checks")
+	}
 	fmt.Fprintf(stdout, "alder repl: %s (:help for the commands, :quit to leave)\n", filepath.Base(abs))
 
 	stop := make(chan struct{})
@@ -130,9 +142,15 @@ func runReplTo(args []string, stdin io.Reader, stdout, stderr io.Writer, interru
 	lineNo, at := 0, 0
 	var pending []string // the lines of an entry continued with `\`
 	for {
+		select {
+		case <-terminate: // during the last evaluation, which it stopped
+			fmt.Fprintln(stderr, "alder repl: terminated")
+			return 1
+		default:
+		}
 		select { // a change that arrived during the last evaluation
-		case k := <-changed:
-			r.autoReload(k)
+		case <-changed:
+			r.autoReload(false)
 		default:
 		}
 		if pending == nil {
@@ -160,9 +178,11 @@ func runReplTo(args []string, stdin io.Reader, stdout, stderr io.Writer, interru
 			if r.line(entry, at) {
 				return 0
 			}
-		case k := <-changed:
-			fmt.Fprintln(stdout)
-			r.autoReload(k)
+		case <-changed:
+			r.autoReload(true)
+		case <-terminate:
+			fmt.Fprintln(stderr, "\nalder repl: terminated")
+			return 1
 		case <-interrupt:
 			fmt.Fprintln(stdout)
 			pending = nil
@@ -225,8 +245,7 @@ func (r *repl) command(cmd string, lines []string, at int) (quit bool) {
 		r.lets = nil
 		fmt.Fprintln(r.stdout, "session reset")
 	case ":reload":
-		fmt.Fprintln(r.stdout, "session re-checked")
-		r.reload()
+		r.reload("session re-checked")
 	case ":type", ":run", ":run!", ":html":
 		if arg == "" {
 			fmt.Fprintf(r.stderr, "alder repl: `%s` wants an expression: %s <expr>\n", cmd, cmd)
@@ -292,22 +311,27 @@ func (r *repl) let(lines []string, at int) {
 		fmt.Fprintln(r.stderr, "alder repl: a let is `let name = expr`")
 		return
 	}
-	var others []replEntry
-	redefined := false
-	for _, l := range r.lets {
+	// a redefinition replaces the let in place: the lets after it that use the name see the
+	// new definition (lets are definitions, not snapshots)
+	session := append([]replEntry(nil), r.lets...)
+	cur := len(session)
+	for i, l := range session {
 		if l.Name == e.Name {
-			redefined = true
-			continue
+			cur = i
 		}
-		others = append(others, l)
 	}
-	session := append(others, e)
+	redefined := cur < len(session)
+	if redefined {
+		session[cur] = e
+	} else {
+		session = append(session, e)
+	}
 	checked, starts := r.check(session)
 	if checked.Err != nil {
 		fmt.Fprintf(r.stderr, "alder repl: %v\n", checked.Err)
 		return
 	}
-	if r.report(checked, session, starts, len(session)-1) || checked.Result == nil {
+	if r.report(checked, session, starts, cur) || checked.Result == nil {
 		return
 	}
 	if checked.Result.Holes > 0 {
@@ -361,6 +385,13 @@ func (r *repl) eval(cmd string, lines []string, at int) {
 	sig = checked.Result.U.Apply(sig)
 	typ := types.String(sig)
 	text := strings.TrimSpace(strings.Join(lines, "\n"))
+	var flat []string // text on one line, for a hint
+	for _, l := range lines {
+		if l = strings.TrimSpace(l); l != "" {
+			flat = append(flat, l)
+		}
+	}
+	oneLine := strings.Join(flat, " ")
 	if cmd == ":type" {
 		fmt.Fprintf(r.stdout, "%s : %s\n", text, typ)
 		return
@@ -375,10 +406,10 @@ func (r *repl) eval(cmd string, lines []string, at int) {
 	case "":
 		switch con {
 		case "Query":
-			fmt.Fprintf(r.stdout, "<Query> : %s\nhint: `:run %s` runs it against the dev database\n", typ, text)
+			fmt.Fprintf(r.stdout, "<Query> : %s\nhint: `:run %s` runs it against the dev database\n", typ, oneLine)
 			return
 		case "Task":
-			fmt.Fprintf(r.stdout, "<Task> : %s\nhint: `:run! %s` runs it; its writes commit to the dev database\n", typ, text)
+			fmt.Fprintf(r.stdout, "<Task> : %s\nhint: `:run! %s` runs it; its writes commit to the dev database\n", typ, oneLine)
 			return
 		case "Select":
 			fmt.Fprintf(r.stdout, "<Select> : %s\nhint: pipe it to Db.all, Db.first or Db.count to make a Query\n", typ)
@@ -439,6 +470,8 @@ func (r *repl) run(checked scratch.Checked, kind mainKind, sig types.Type) (out 
 		select {
 		case <-r.interrupt:
 			cancel()
+		case <-r.terminate:
+			cancel()
 		case <-done:
 		}
 	}()
@@ -473,7 +506,7 @@ func (r *repl) run(checked scratch.Checked, kind mainKind, sig types.Type) (out 
 	r.vet = false
 	tctx, tcancel := context.WithTimeoutCause(ctx, scratch.Timeout, fmt.Errorf("timed out after %v", scratch.Timeout))
 	defer tcancel()
-	out, errOut, exit := scratch.RunContext(tctx, b, env, "")
+	out, errOut, exit := scratch.RunTethered(tctx, b, env)
 	switch {
 	case ctx.Err() != nil:
 		return failf("interrupted")
@@ -528,14 +561,18 @@ var inputPos = regexp.MustCompile(`^input:(\d+):(\d+): `)
 // app's warnings are not repeated on every line.
 func (r *repl) report(checked scratch.Checked, entries []replEntry, starts []int, cur int) bool {
 	failed := false
+	var app []diag.Diagnostic
+	for _, d := range checked.Diags {
+		if d.Span.File != r.modName+".alder" && d.Severity == "error" {
+			app = append(app, d)
+		}
+	}
+	r.reportApp(checked, app)
 	for _, d := range checked.Diags {
 		if d.Severity == "error" {
 			failed = true
 		}
 		if d.Span.File != r.modName+".alder" {
-			if d.Severity == "error" {
-				evalDiags(r.dir, []diag.Diagnostic{d}, checked.MapDiag, evalSource{}, r.modName, false, nil, r.stderr)
-			}
 			continue
 		}
 		k := cur
@@ -552,6 +589,35 @@ func (r *repl) report(checked scratch.Checked, entries []replEntry, starts []int
 	}
 	return failed
 }
+
+// reportApp prints the app's errors: the block when it differs from the one last printed,
+// else only a line saying the app still has them.
+func (r *repl) reportApp(checked scratch.Checked, app []diag.Diagnostic) {
+	if len(app) == 0 {
+		r.appDiags = ""
+		return
+	}
+	var buf bytes.Buffer
+	evalDiags(r.dir, app, checked.MapDiag, evalSource{}, r.modName, false, nil, &buf)
+	if buf.String() == r.appDiags {
+		fmt.Fprintln(r.stderr, "alder repl: the app has errors (shown above); fix them and save")
+		return
+	}
+	r.appDiags = buf.String()
+	io.WriteString(r.stderr, r.appDiags)
+}
+
+// letLabel is the name a let's diagnostics give it: `let x (line N)`, or `let (line N)` when
+// what follows `let` is not a name.
+func letLabel(e replEntry, line int) string {
+	if letNameRE.MatchString(e.Name) {
+		return fmt.Sprintf("let %s (line %d)", e.Name, line)
+	}
+	return fmt.Sprintf("let (line %d)", line)
+}
+
+// letNameRE is a value name.
+var letNameRE = regexp.MustCompile(`^[a-z_][A-Za-z0-9_']*$`)
 
 // printDiag prints d, a diagnostic of the session module in entry e (which starts at line
 // offset start of the module), through evalDiags over e's own text, labelled as report says.
@@ -582,27 +648,30 @@ func (r *repl) printDiag(checked scratch.Checked, d diag.Diagnostic, e replEntry
 		if e.Let {
 			var l int
 			fmt.Sscan(text[m[2]:m[3]], &l)
-			label = fmt.Sprintf("let %s (line %d): ", e.Name, e.at+l-1)
+			label = letLabel(e, e.at+l-1) + ": "
 		}
 		text = label + text[m[1]:]
 	}
 	io.WriteString(r.stderr, text)
 }
 
-// reload re-checks the session against the app as it is now: each let in order, against the
-// lets kept so far; a let that no longer checks is dropped with a notice. While the app itself
-// has errors they are printed and the session is kept as it is. The next build is vetted.
-func (r *repl) reload() {
+// reload re-checks the session against the app as it is now, after header (printed once the
+// app checks): each let in order, against the lets kept so far; a let that no longer checks is
+// dropped with a notice. While the app itself has errors they are printed and the session is
+// kept as it is. The next build is vetted.
+func (r *repl) reload(header string) {
 	r.vet = true
+	r.seen = snapshot(r.dir)
 	base, _ := r.check(nil)
 	if base.Err != nil {
 		fmt.Fprintf(r.stderr, "alder repl: %v\n", base.Err)
 		return
 	}
 	if r.report(base, nil, nil, -1) {
-		fmt.Fprintln(r.stderr, "alder repl: the app has errors; the session is kept until it checks")
+		fmt.Fprintln(r.stderr, "alder repl: the session is kept until the app checks")
 		return
 	}
+	fmt.Fprintln(r.stdout, header)
 	var kept []replEntry
 	for _, l := range r.lets {
 		session := append(append([]replEntry(nil), kept...), l)
@@ -627,12 +696,15 @@ func (r *repl) reload() {
 	r.lets = kept
 }
 
-// autoReload is reload after the watcher saw the app's files change (k); a change to static/
-// alone changes nothing the session checks.
-func (r *repl) autoReload(k change) {
-	if k&sourceChange == 0 {
+// autoReload is reload after the watcher saw the app's files change, unless nothing the session
+// checks differs from what it was last checked against (a :reload since, or static/ alone).
+// atPrompt: the prompt is showing, so the notice starts a new line.
+func (r *repl) autoReload(atPrompt bool) {
+	if diff(r.seen, snapshot(r.dir))&sourceChange == 0 {
 		return
 	}
-	fmt.Fprintln(r.stdout, "app changed: session re-checked")
-	r.reload()
+	if atPrompt {
+		fmt.Fprintln(r.stdout)
+	}
+	r.reload("app changed: session re-checked")
 }

@@ -24,6 +24,27 @@ func RunTimeout(b Build, env []string, stdin string, d time.Duration) (string, s
 	return RunContext(ctx, b, env, stdin)
 }
 
+// EnvStdinEOF is the variable RunTethered sets to 1: a main that honours it exits when its
+// standard input reaches end of file.
+const EnvStdinEOF = "ALDER_SCRATCH_STDIN_EOF"
+
+// RunTethered is RunContext (no stdin) for a program whose main honours EnvStdinEOF, which it
+// sets: the program's standard input is a pipe whose write end only this process holds,
+// closed when the run ends, so the program, out of reach of signals in its own process group,
+// still exits when this process dies in any way (SIGKILL included). Its contract is
+// otherwise RunContext's.
+func RunTethered(ctx context.Context, b Build, env []string) (string, string, int) {
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return "", fmt.Sprintf("scratch: %v\n", err), -1
+	}
+	defer pr.Close()
+	defer pw.Close()
+	var stdout, stderr bytes.Buffer
+	exit := RunStream(ctx, b, append(append([]string(nil), env...), EnvStdinEOF+"=1"), pr, &stdout, &stderr)
+	return stdout.String(), stderr.String(), exit
+}
+
 // RunContext is Run until ctx is done (no time limit of its own): RunStream with the output
 // collected. The program runs in a process group of its own, so a terminal's Ctrl-C reaches
 // only the caller; when ctx is done (the caller's own interrupt, or a deadline) the whole group

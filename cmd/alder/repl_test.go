@@ -109,6 +109,12 @@ func TestRepl_Diagnostic(t *testing.T) {
 	if strings.Contains(out, "y : ") {
 		t.Errorf("a let with an error was kept:\n%s", out)
 	}
+	// what follows `let` is not a name
+	out = replTodos(t, "let 3 = 4\n")
+	wantIn(t, out, "let (line 1): error[")
+	if strings.Contains(out, "y : ") {
+		t.Errorf("a let with an error was kept:\n%s", out)
+	}
 }
 
 func TestRepl_Redefine(t *testing.T) {
@@ -117,6 +123,13 @@ func TestRepl_Redefine(t *testing.T) {
 	if strings.Count(out, "x : Text\n") != 3 { // the let, :type, and :type after the failed redefinition
 		t.Errorf("want x : Text three times:\n%s", out)
 	}
+}
+
+// Redefining a let replaces it in place: the lets that use it see the new definition.
+func TestRepl_RedefineDependents(t *testing.T) {
+	needGoTool(t)
+	out := replTodos(t, "let a = 1\nlet b = a + 1\nlet a = 5\nb\n")
+	wantIn(t, out, "redefined a\na : Int\n", "6 : Int\n")
 }
 
 func TestRepl_Reset(t *testing.T) {
@@ -132,9 +145,10 @@ func TestRepl_Continuation(t *testing.T) {
 }
 
 func TestRepl_QueryHints(t *testing.T) {
-	out := replTodos(t, "Db.from Todo |> Db.all\nTask.fail \"no\"\nDb.from Todo\n:run Task.fail \"no\"\n:run! (Db.from Todo |> Db.all)\n:html 1\n")
+	out := replTodos(t, "Db.from Todo \\\n  |> Db.count\nDb.from Todo |> Db.all\nTask.fail \"no\"\nDb.from Todo\n:run Task.fail \"no\"\n:run! (Db.from Todo |> Db.all)\n:html 1\n")
 	wantIn(t, out,
 		"<Query> : Query (List Todo)\n", "`:run ",
+		"hint: `:run Db.from Todo |> Db.count` runs it", // a multi-line input on one line
 		"<Task> : Task a\n", "`:run! ",
 		"<Select> : Select Todo\n", "Db.all, Db.first or Db.count",
 		"`:run` wants a Query; use `:run!` for a Task",
@@ -213,6 +227,46 @@ func TestRepl_ReloadDropsBrokenLet(t *testing.T) {
 	r.waitOut(t, "k : Int\n", 2, 10*time.Second)
 	r.send(t, ":type n")
 	r.waitOut(t, "expr:1:1: error[E0002]", 1, 10*time.Second)
+	// the watcher sees the edit too, but the :reload already re-checked it: no second notice
+	time.Sleep(time.Second)
+	if strings.Contains(r.out.String(), "app changed") {
+		t.Errorf("a second notice after :reload:\n%s", r.out.String())
+	}
+}
+
+// An app with an error: its diagnostics are printed once, then each line says it in one line;
+// :reload keeps the session; fixing the file makes the REPL work.
+func TestRepl_BrokenApp(t *testing.T) {
+	needGoTool(t)
+	dir := replTemp(t)
+	path := filepath.Join(dir, "app", "Todo.alder")
+	good, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(append([]byte(nil), good...), "\nbroken : Int\nbroken = \"x\"\n"...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := startRepl(t, dir)
+	r.waitOut(t, "the app has errors; fix them (the REPL re-checks when you save)", 1, 10*time.Second)
+	r.send(t, "1 + 1")
+	r.waitOut(t, "alder repl: the app has errors (shown above); fix them and save\n", 1, 10*time.Second)
+	r.send(t, ":reload")
+	r.waitOut(t, "the session is kept until the app checks\n", 1, 10*time.Second)
+	out := r.out.String()
+	if n := strings.Count(out, "error[E0003]"); n != 1 {
+		t.Errorf("the app's error printed %d times, want once:\n%s", n, out)
+	}
+	if strings.Contains(out, "session re-checked") {
+		t.Errorf(":reload of a broken app said re-checked:\n%s", out)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if err := os.WriteFile(path, good, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r.waitOut(t, "app changed: session re-checked\n", 1, 3*time.Second)
+	r.send(t, "1 + 1")
+	r.waitOut(t, "2 : Int\n", 1, 30*time.Second)
 }
 
 func TestRepl_AutoReload(t *testing.T) {

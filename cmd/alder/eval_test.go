@@ -483,17 +483,18 @@ func TestEval_RunHasSession(t *testing.T) {
 	if m := scratchMain(mainTask, false, "x"); !strings.Contains(m, "eff.Run(env, eff.KTask, x)") {
 		t.Errorf("task main:\n%s", m)
 	}
-	if m := scratchMain(mainPure, true, "x"); m != evalPureMainText("x") {
+	for _, k := range []mainKind{mainPure, mainQuery, mainTask} {
+		m := scratchMain(k, true, "x")
+		if !strings.Contains(m, `os.Getenv("ALDER_SCRATCH_STDIN_EOF") == "1"`) || !strings.Contains(m, "io.Copy(io.Discard, os.Stdin)") {
+			t.Errorf("kind %d: no stdin tether:\n%s", k, m)
+		}
+	}
+	if m := scratchMain(mainPure, true, "x"); !strings.Contains(m, "func main() { fmt.Print(rt.Show(x)) }") {
 		t.Errorf("pure main:\n%s", m)
 	}
 	needGoTool(t)
 	t.Chdir(t.TempDir())
 	evalOK(t, "[] : List Todo\n", "--run", "Db.from Todo |> Db.all")
-}
-
-// evalPureMainText is the pure main `alder eval` compiled before scratchMain, for it.
-func evalPureMainText(it string) string {
-	return "package main\n\nimport (\n\t\"fmt\"\n\n\t\"alder/rt\"\n\t\"app\"\n)\n\nfunc main() { fmt.Print(rt.Show(" + it + ")) }\n"
 }
 
 // `--run` wires the app's adapters when adapters/ holds Go files, and none otherwise.
