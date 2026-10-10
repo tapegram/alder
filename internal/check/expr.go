@@ -539,6 +539,11 @@ func (mc *modCtx) annotateMismatch(d *diag.Diagnostic, e syntax.Expr, got, expec
 	if k, _ := queryOrTask(g); mc.inTest && e == mc.testBody && k != "" && isCon(ex, "Bool") && d.Message != "" {
 		d.Message += "; a test of a Task is written as a block: `test \"…\" = { … }`"
 	}
+	if b, ok := mc.testBody.(*syntax.Block); ok && mc.inTest && e == b.Result && isCon(g, "Bool") {
+		if k, arg := queryOrTask(ex); k == "Task" && isCon(arg, "Bool") && d.Message != "" {
+			d.Message += "; a block test is a Task: end it with `Task.succeed (…)`"
+		}
+	}
 	if isCon(ex, "Text") {
 		sp := e.GetSpan()
 		src := mc.source(sp)
@@ -697,8 +702,12 @@ func (mc *modCtx) checkBlock(x *syntax.Block, expected types.Type, env *env, eff
 		if got == nil {
 			got = c.u.Apply(mc.infer(s.Expr, child, sub()))
 		}
-		if types.IsErr(got) { // already reported: the name is poisoned too, so its uses report nothing more
-			c.bind(child, s, s.Name, types.Err)
+		if types.IsErr(got) { // already reported: the name has its annotation, else is poisoned too, so its uses report nothing more
+			if t != nil {
+				c.bind(child, s, s.Name, t)
+			} else {
+				c.bind(child, s, s.Name, types.Err)
+			}
 			continue
 		}
 		k, arg := queryOrTask(got)

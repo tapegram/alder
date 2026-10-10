@@ -235,6 +235,7 @@ func TestTestBodies(t *testing.T) {
 		{"int", `test "t" = 1`, "E0003"},
 		{"query block", `test "t" = { Query.succeed True }`, "E0003"},
 		{"task not block", `test "t" = Task.succeed True`, "E0003 expected Bool, got Task Bool; a test of a Task is written as a block"},
+		{"pure block", "test \"t\" = {\n  let x = 1\n  x == 1\n}", "E0003 expected Task Bool, got Bool; a block test is a Task: end it with `Task.succeed (…)`"},
 		{"nested task", `test "t" = if Task.succeed True then True else False`, "E0003 expected Bool, got Task Bool"},
 		{"Test.run outside", "x : Task Int\nx = Task.map (\\r -> 1) (Test.run (Task.succeed 1))", "E0003"},
 		{"Test.trace outside", "x : Task (List Text)\nx = Test.trace", "E0003"},
@@ -251,5 +252,27 @@ func TestTestBodies(t *testing.T) {
 				t.Fatalf("got %q want one %q", got, c.want)
 			}
 		})
+	}
+}
+
+// `let x : T <- e` whose e has the poison type binds x to its annotation T, so x's uses are
+// still checked; without an annotation x is poisoned and its uses report nothing more.
+func TestPoisonedBindKeepsAnnotation(t *testing.T) {
+	src := func(ann string) string {
+		return "module M\n\nx : Task Bool\nx = {\n  let r" + ann + " <- Test.run (Task.succeed 1)\n  Task.succeed (r == \"a\")\n}\n"
+	}
+	var got []string
+	for _, d := range checkModule(t, src(" : Int")) {
+		got = append(got, d.Code+" "+d.Message)
+	}
+	if len(got) != 2 || !strings.Contains(got[1], "cannot compare `Int` with `Text`") {
+		t.Errorf("annotated: %q", got)
+	}
+	got = nil
+	for _, d := range checkModule(t, src("")) {
+		got = append(got, d.Code+" "+d.Message)
+	}
+	if len(got) != 1 {
+		t.Errorf("unannotated: %q", got)
 	}
 }
