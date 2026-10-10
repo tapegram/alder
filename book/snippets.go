@@ -63,6 +63,12 @@ const (
 	Error
 	// Fragment: the block is a deliberate excerpt and is not checked (```alder fragment).
 	Fragment
+	// Part: the block is one piece of module Module (```alder part=<Module>). The part= blocks
+	// of one module in a chapter, consecutive among the chapter's part= blocks, are joined in
+	// order (JoinParts) and checked as that module, replacing the example's; the first piece
+	// starts with its `module` line. A walk through one module, piece by piece, is checked
+	// whole this way.
+	Part
 )
 
 func (k ExpectKind) String() string {
@@ -75,21 +81,28 @@ func (k ExpectKind) String() string {
 		return "error"
 	case Fragment:
 		return "fragment"
+	case Part:
+		return "part"
 	}
 	return fmt.Sprintf("ExpectKind(%d)", int(k))
 }
 
 // Expect is a fence's expectation of its block.
 type Expect struct {
-	Kind  ExpectKind
-	Value string // Eval: the expected value, verbatim (the rest of the info string after `eval=`)
-	Code  string // Error: the expected diagnostic code
+	Kind   ExpectKind
+	Value  string // Eval: the expected value, verbatim (the rest of the info string after `eval=`)
+	Code   string // Error: the expected diagnostic code
+	Module string // Part: the module the block is a piece of
 }
 
-var codeRE = regexp.MustCompile(`^[EW][0-9]{4}$`)
+var (
+	codeRE       = regexp.MustCompile(`^[EW][0-9]{4}$`)
+	moduleNameRE = regexp.MustCompile(`^[A-Z][A-Za-z0-9_]*(\.[A-Z][A-Za-z0-9_]*)*$`)
+)
 
 // Expectation parses a fence's info string: `alder`, `alder eval=<value>` (the value is the rest
-// of the line, verbatim), `alder error=<CODE>` or `alder fragment`. Anything else is an error.
+// of the line, verbatim), `alder error=<CODE>`, `alder fragment` or `alder part=<Module>`.
+// Anything else is an error.
 func Expectation(info string) (Expect, error) {
 	rest, ok := strings.CutPrefix(info, "alder")
 	if !ok || (rest != "" && rest[0] != ' ') {
@@ -113,8 +126,14 @@ func Expectation(info string) (Expect, error) {
 			return Expect{}, fmt.Errorf("error= wants a diagnostic code such as E0304, got %q", c)
 		}
 		return Expect{Kind: Error, Code: c}, nil
+	case strings.HasPrefix(rest, "part="):
+		m := strings.TrimPrefix(rest, "part=")
+		if !moduleNameRE.MatchString(m) {
+			return Expect{}, fmt.Errorf("part= wants a module name such as Todos.Index, got %q", m)
+		}
+		return Expect{Kind: Part, Module: m}, nil
 	}
-	return Expect{}, fmt.Errorf("unknown fence expectation %q (want eval=, error= or fragment)", rest)
+	return Expect{}, fmt.Errorf("unknown fence expectation %q (want eval=, error=, part= or fragment)", rest)
 }
 
 // Extract returns the ```alder blocks of the Markdown file at path, in order.
@@ -281,4 +300,22 @@ func isSignatures(src string) bool {
 		}
 	}
 	return typed && qualified
+}
+
+// JoinParts joins the pieces of one module, in order, with a blank line between them, and
+// returns the source and, for each of its lines, the book line it came from (0 for a blank line
+// put between two pieces).
+func JoinParts(parts []Snippet) (src string, lines []int) {
+	var b strings.Builder
+	for k, p := range parts {
+		if k > 0 {
+			b.WriteString("\n")
+			lines = append(lines, 0)
+		}
+		for i, l := range strings.Split(strings.TrimRight(p.Source, "\n"), "\n") {
+			b.WriteString(l + "\n")
+			lines = append(lines, p.Line+1+i)
+		}
+	}
+	return b.String(), lines
 }

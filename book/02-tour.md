@@ -56,7 +56,7 @@ table, and the form that creates todos will refuse one before any code runs.
 
 `app/Todos/Index.alder` is the list page.
 
-```alder fragment
+```alder part=Todos.Index
 module Todos.Index
 
 import Todo
@@ -71,7 +71,7 @@ both `/` and `/?filter=Active` work and `filter` is never missing.
 otherwise the runtime sends the visitor to the login page, and inside this
 module `session.user` is a `UserId`, not a `Maybe UserId`.
 
-```alder fragment
+```alder part=Todos.Index
 type Model = {
   filter: Todo.Filter,
   todos: List Todo,
@@ -92,7 +92,7 @@ load params session = {
 of reads that the runtime performs. `let todos <- ...` binds the result of a
 read. Because it is a `Query`, nothing in `load` can write.
 
-```alder fragment
+```alder part=Todos.Index
 form NewTodo = {
   title: Text.NonEmpty,
   due: Maybe Date,
@@ -106,7 +106,7 @@ msg Delete { id: Todo.TodoId }
 Each `msg` is an action this page can receive; the compiler gives it a POST
 URL. `Submit` carries a form; the other two carry an id. Together they make up this page's `Msg` type.
 
-```alder fragment
+```alder part=Todos.Index
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Submit p -> {
@@ -125,6 +125,9 @@ update msg model session = match msg {
   },
 }
 
+-- owned is the todo a message names, when the session's user owns it; otherwise the message is
+-- a 404. `load` only lists the user's todos, but a message's id comes from the request: anyone
+-- can post `Toggle` with another user's id, so `update` checks it again.
 owned : Todo.TodoId -> Session -> Task Todo
 owned id session = {
   let found <- Db.get Todo id
@@ -144,7 +147,7 @@ resubmit. The `match` must handle every `msg`, or the module won't compile.
 `update` must not trust it (`Task.notFound` answers 404; chapter 6,
 "Authorize in `update` too").
 
-```alder fragment
+```alder part=Todos.Index
 view : Model -> Session -> Html Msg
 view model session =
   <Layout.Page title="Todos" theme={session.theme}>
@@ -168,27 +171,36 @@ view model session =
     <ul id="todos">
       {for todo in model.todos -> <Item todo={todo} />}
     </ul>
+
+    <p id="summary">{Text.fromInt (Todo.countOpen model.todos)} open</p>
+
+    <button click={App.Logout}>Log out</button>
   </Layout.Page>
 ```
 
-`view` is HTML with expressions in braces. It also receives the session, used here for the theme. `href` takes a page value, never
+`view` is HTML with expressions in braces. It also receives the session, used here for the theme. `App.Logout` is an app-level message, which any page may send (chapter 6). `href` takes a page value, never
 a string, so a link to a page that doesn't exist, or with the wrong
 parameters, is a compile error. `submit={Submit}` ties the form to its
 message, and `<Input field="title">` is checked against `NewTodo`. If the
 submitted form is invalid, the runtime re-renders this page with the errors
 in place, and `update` is never called.
 
-```alder fragment
+```alder part=Todos.Index
 Item : { todo: Todo } -> Html Msg
 Item props =
   <li class={if props.todo.done then "done" else ""}>
     <button click={Toggle { id: props.todo.id }}>{if props.todo.done then "Undo" else "Done"}</button>
     <a href={Todos.Show { id: props.todo.id }}>{props.todo.title}</a>
+    {match props.todo.due {
+      Just d -> <span class="due">{Date.format "Jan 2" d}</span>,
+      Nothing -> Html.none,
+    }}
     <button click={Delete { id: props.todo.id }}>Delete</button>
   </li>
 ```
 
-`Item` is a component: a function from a record to HTML. `click={Toggle
+`Item` is a component: a function from a record to HTML. A todo without a
+due date shows nothing there: `Html.none` renders nothing. `click={Toggle
 { id: ... }}` sends a message; it compiles to a POST (and, with Datastar, an
 in-place patch of the page; chapter 6, "How a request runs").
 

@@ -100,6 +100,8 @@ type verifier struct {
 	evalDir string // the working directory of `alder eval`, shared by every chapter
 	seq     int
 	r       report
+	// joined are the modules joined from part= blocks, with the book line of each source line.
+	joined map[Snippet][]int
 }
 
 func (v *verifier) failf(line int, format string, a ...any) {
@@ -109,7 +111,7 @@ func (v *verifier) failf(line int, format string, a ...any) {
 // verify checks every ```alder block of the chapter at path, reported as display.
 func verify(t *testing.T, path, display string) report {
 	t.Helper()
-	v := &verifier{t: t, bin: alder(t), display: display, r: report{counts: map[string]int{}}}
+	v := &verifier{t: t, bin: alder(t), display: display, r: report{counts: map[string]int{}}, joined: map[Snippet][]int{}}
 	v.evalDir = filepath.Join(tmpRoot, "eval")
 	var err error
 	if err = os.MkdirAll(v.evalDir, 0o755); err == nil {
@@ -123,6 +125,9 @@ func verify(t *testing.T, path, display string) report {
 		t.Fatal(err)
 	}
 	var batch []Snippet
+	parts := map[string][]Snippet{} // part= blocks by module
+	var partOrder []string
+	lastPart := ""
 	moduleNames := map[string]int{}
 	for _, s := range snippets {
 		if Classify(s) == Module {
@@ -138,6 +143,15 @@ func verify(t *testing.T, path, display string) report {
 		kind := Classify(s)
 		v.r.counts[kind.String()]++
 		switch exp.Kind {
+		case Part:
+			v.r.counts["part"]++
+			if _, seen := parts[exp.Module]; !seen {
+				partOrder = append(partOrder, exp.Module)
+			} else if lastPart != exp.Module {
+				v.failf(s.Line, "the part=%s blocks are not consecutive: a part= block of %s comes between", exp.Module, lastPart)
+			}
+			parts[exp.Module] = append(parts[exp.Module], s)
+			lastPart = exp.Module
 		case Fragment:
 			v.r.counts["fragment"]++
 			v.r.fragments = append(v.r.fragments, fmt.Sprintf("%s:%d", display, s.Line))
@@ -166,6 +180,20 @@ func verify(t *testing.T, path, display string) report {
 			default:
 				batch = append(batch, s)
 			}
+		}
+	}
+	for _, m := range partOrder {
+		src, lines := JoinParts(parts[m])
+		js := Snippet{File: path, Line: parts[m][0].Line, Info: "alder part=" + m, Source: src}
+		if Classify(js) != Module || ModuleName(js) != m {
+			v.failf(js.Line, "the first part=%s block must start with `module %s`", m, m)
+			continue
+		}
+		v.joined[js] = lines
+		if moduleNames[m] > 1 {
+			v.checkAlone(js)
+		} else {
+			batch = append(batch, js)
 		}
 	}
 	v.checkBatch(batch)
@@ -222,8 +250,13 @@ func (v *verifier) place(dir string, s Snippet, n int) placed {
 	kind := Classify(s)
 	if kind == Module {
 		p.file = filepath.Join("app", strings.ReplaceAll(ModuleName(s), ".", "/")+".alder")
+		bookLines := v.joined[s] // nil unless s was joined from part= blocks
 		for i, l := range src {
-			add(l, s.Line+1+i)
+			if bookLines != nil {
+				add(l, bookLines[i])
+			} else {
+				add(l, s.Line+1+i)
+			}
 		}
 	} else {
 		name := fmt.Sprintf("Snippet%d", n)
@@ -554,6 +587,8 @@ func TestBook_Expectations(t *testing.T) {
 		{info: `alder eval={ a: 1, b: "x = y" }`, want: Expect{Kind: Eval, Value: `{ a: 1, b: "x = y" }`}},
 		{info: "alder error=E0304", want: Expect{Kind: Error, Code: "E0304"}},
 		{info: "alder error=W0003", want: Expect{Kind: Error, Code: "W0003"}},
+		{info: "alder part=Todos.Index", want: Expect{Kind: Part, Module: "Todos.Index"}},
+		{info: "alder part=todos", bad: true},
 		{info: "alder error=oops", bad: true},
 		{info: "alder eval=", bad: true},
 		{info: "alder frag", bad: true},
@@ -579,8 +614,8 @@ func TestBook_Extract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ss) != 8 {
-		t.Fatalf("got %d snippets, want 8 (the go block is not one)", len(ss))
+	if len(ss) != 12 {
+		t.Fatalf("got %d snippets, want 12 (the go block is not one)", len(ss))
 	}
 	if ss[0].Line != 8 || !strings.HasPrefix(ss[0].Source, "module Theme\n") || ss[0].Info != "alder" {
 		t.Errorf("first snippet: %+v", ss[0])
@@ -588,7 +623,7 @@ func TestBook_Extract(t *testing.T) {
 	if ss[3].Info != "alder eval=[2, 3, 4]" || ss[3].Source != "List.map (\\x -> x + 1) [1, 2, 3]\n" {
 		t.Errorf("fourth snippet: %+v", ss[3])
 	}
-	wantKinds := []Kind{Module, Decls, Expr, Expr, Expr, Decls, Signatures, Decls}
+	wantKinds := []Kind{Module, Decls, Expr, Expr, Expr, Decls, Signatures, Decls, Module, Decls, Signatures, Decls}
 	for i, s := range ss {
 		if k := Classify(s); k != wantKinds[i] {
 			t.Errorf("snippet %d (line %d): %s, want %s", i, s.Line, k, wantKinds[i])
@@ -596,16 +631,24 @@ func TestBook_Extract(t *testing.T) {
 	}
 }
 
-// TestBook_FixtureFails proves the verifier fails: the fixture's one wrong eval= is its only
-// failure, and every other kind of block passes.
+// TestBook_FixtureFails proves the verifier fails: the fixture's wrong eval=, wrong signature
+// and wrong declaration are its only failures, each on its line, and every other kind of block
+// (the part= pieces joined) passes.
 func TestBook_FixtureFails(t *testing.T) {
 	t.Parallel()
 	r := verify(t, "testdata/fixture.md", "book/testdata/fixture.md")
-	want := "book/testdata/fixture.md:50: eval= wants 4, got 3 : Int"
-	if len(r.failures) != 1 || r.failures[0] != want {
-		t.Errorf("failures:\n%s\nwant exactly:\n%s", strings.Join(r.failures, "\n"), want)
+	want := []string{
+		"book/testdata/fixture.md:50: eval= wants 4, got 3 : Int",
+		"book/testdata/fixture.md:101: E0003 expected Int -> Int, got Int -> Text",
+		"book/testdata/fixture.md:108: E0003 expected Text, got Int",
 	}
-	if len(r.fragments) != 1 || r.counts["eval"] != 2 || r.counts["error"] != 1 || r.counts["checked"] != 4 {
+	got := append([]string(nil), r.failures...)
+	sort.Strings(got)
+	sort.Strings(want)
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("failures:\n%s\nwant exactly:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if len(r.fragments) != 1 || r.counts["eval"] != 2 || r.counts["error"] != 1 || r.counts["checked"] != 6 || r.counts["part"] != 2 {
 		t.Errorf("fragments %v, counts %v", r.fragments, r.counts)
 	}
 }
@@ -627,9 +670,9 @@ func TestBook(t *testing.T) {
 			nj, _ := strconv.Atoi(lj)
 			return fi < fj || fi == fj && ni < nj
 		})
-		t.Logf("%d blocks: checked %d (%d of them expressions, parsed only), eval= %d, error= %d, fragment %d (module %d, decls %d, signatures %d, expr %d) in %v",
+		t.Logf("%d blocks: checked %d (%d of them expressions, parsed only), part= %d, eval= %d, error= %d, fragment %d (module %d, decls %d, signatures %d, expr %d) in %v",
 			total.counts["module"]+total.counts["decls"]+total.counts["signatures"]+total.counts["expr"],
-			total.counts["checked"], total.counts["parsed"], total.counts["eval"], total.counts["error"], total.counts["fragment"],
+			total.counts["checked"], total.counts["parsed"], total.counts["part"], total.counts["eval"], total.counts["error"], total.counts["fragment"],
 			total.counts["module"], total.counts["decls"], total.counts["signatures"], total.counts["expr"],
 			time.Since(start).Round(time.Millisecond))
 		for _, f := range total.fragments {

@@ -10,13 +10,13 @@ module Todos.Index
 
 import Todo
 
-page "/" { filter: Todo.Filter = All }
+page "/" { filter: Todo.Filter = All } requires user
 
 type Model = { filter: Todo.Filter, todos: List Todo }
 
 load : Params -> Session -> Query Model
 load params session = {
-  let todos <- Db.from Todo |> Db.all
+  let todos <- Db.from Todo |> Db.where (Todo.owner.eq session.user) |> Db.all
   Query.succeed { filter: params.filter, todos: todos }
 }
 
@@ -32,9 +32,21 @@ msg Toggle { id: Todo.TodoId }
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Toggle p -> {
-    let _ <- Db.update Todo p.id (\t -> { t | done: not t.done })
+    let todo <- owned p.id session
+    let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
     Task.succeed Rerender
   },
+}
+
+-- The id in a message comes from the request: check that it is the user's ("Authorize in
+-- `update` too", below).
+owned : Todo.TodoId -> Session -> Task Todo
+owned id session = {
+  let found <- Db.get Todo id
+  match found {
+    Just todo -> if todo.owner == session.user then Task.succeed todo else Task.notFound,
+    Nothing -> Task.notFound,
+  }
 }
 ```
 

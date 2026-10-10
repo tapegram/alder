@@ -321,8 +321,10 @@ first run, on the 78 blocks of the book as it stood, found 41 blocks that
 did not compile, in 52 diagnostics. Nineteen were excerpts checked out
 of their context (the tour's pieces of `Todos.Index`, a page's `load` or
 `update` outside a page module, an `update` arm, `let` lines outside a
-block); they are now marked `fragment`, but for one rewritten as a
-function that stands alone. Three were signature tables a program cannot state: the
+block). The tour's six pieces are now `part=` blocks, joined and
+checked as the whole module; all but one of the other thirteen are marked
+`fragment`, and that one is rewritten as a function that stands alone.
+Three were signature tables a program cannot state: the
 generic `Db` functions (`Table t`; 12 of the diagnostics) and `Http.get`'s
 `HttpError`, which the checker does not know by name. Two were the
 multi-line `type Shape` / `= Circle Float` form of chapters 4 and 6,
@@ -343,8 +345,10 @@ not a `Text`, and two `Db.insert` records lacked the `due` and `owner`
 fields an `Insert Todo` requires. Adding `eval=` values found two in the
 prose: `Text.slice -3 -1 "abcdef"` and `Float.round -2.5` are type errors
 (a negative argument needs parentheses). None of these was a compiler
-bug; two compiler bugs (the `type` line break and `HttpError`) are marked
-`TODO(compiler)` in their blocks. About one block in five was simply
+bug. Three compiler bugs are marked `TODO(compiler)` in their blocks: the
+`type` line break, `HttpError`, and a two-parameter lambda applied
+inline, `(\a b -> a + b) 1 2`, which fails to infer (E0003 "expected Int,
+got _"), found while giving chapter 3's expressions `eval=` values. About one block in five was simply
 wrong, and half did not compile as written: the case for checking the
 book on every test run.
 

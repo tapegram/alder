@@ -10,9 +10,11 @@ test "matches Active excludes done" =
   not (Todo.matches Active { id: Todo.TodoId "a", title: Text.NonEmpty "x", done: True, due: Nothing, owner: User.UserId "u", created: Time.epoch })
 ```
 
-Tests live in the module they test, after the code. `alder test` runs every
-test in the project and reports each failing test with both sides of the
-final `==` if the body is an equality.
+Tests live in the module they test, after the code. Inside `Todo` the
+names above are written unqualified (`countOpen`, `matches`,
+`TodoId "a"`); the example qualifies them as any other module must.
+`alder test` runs every test in the project and reports each failing
+test with both sides of the final `==` if the body is an equality.
 
 Because `load`, `view`, and `update` are pure functions that return
 descriptions, they can be tested without a server. `view` returns HTML,

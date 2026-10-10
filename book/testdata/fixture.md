@@ -1,7 +1,7 @@
 # Fixture
 
-One block of each kind the verifier knows. `TestBook_FixtureFails` wants exactly one failure:
-the wrong `eval=` below.
+One block of each kind the verifier knows. `TestBook_FixtureFails` wants exactly three failures:
+the wrong `eval=`, the wrong signature and the wrong declaration below.
 
 A whole module, replacing the example's `Theme`:
 
@@ -78,4 +78,32 @@ Other fences are not Alder:
 
 ```go
 func main() {}
+```
+
+A module walked through in pieces, checked whole:
+
+```alder part=Extra
+module Extra
+
+import Theme
+```
+
+Prose between the pieces.
+
+```alder part=Extra
+dark : Theme
+dark = Theme.flip Light
+```
+
+A wrong signature (the second failure):
+
+```alder
+Text.fromInt : Int -> Int
+```
+
+A wrong declaration (the third failure):
+
+```alder
+double : Int -> Int
+double n = n ++ 2
 ```
