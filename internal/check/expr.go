@@ -134,11 +134,20 @@ func (mc *modCtx) infersTopLevel() bool {
 // parameter, so the body's recorded types name them too), and records it as the value's
 // signature. A body whose type is not known is remembered as poisoned; unless that comes from
 // an error already reported (in it, or in a poisoned value it uses) it is E0007 without a fix
-// (a value used in its own definition or before its own).
+// (a value used before its own definition).
+//
+// A function may use itself (let-rec): while its body is inferred its name is bound to a fresh,
+// monomorphic type variable, unified with the body's type before generalizing. Values without a
+// signature defined after it are not known yet (there is no mutual recursion between them): such
+// a forward reference poisons the value. A body that reports an error, uses a poisoned value or
+// makes a forward reference is poisoned even when its final type is known, since the poison type
+// inside it must not reach Lower.
 func (mc *modCtx) inferTopLevel(d *syntax.ValueDecl) {
 	c := mc.c
+	key := c.key(mc.m.Name, d.Name)
 	errs := errorCount(c.bag)
 	c.usedPoisoned = false
+	c.forwardRef = ""
 	mc.holes = nil
 	env := newEnv()
 	var params []types.Type
@@ -147,9 +156,19 @@ func (mc *modCtx) inferTopLevel(d *syntax.ValueDecl) {
 		c.bind(env, p, p.Name, v)
 		params = append(params, v)
 	}
+	_, isLambda := d.Body.(*syntax.Lambda)
+	recursive := len(d.Params) > 0 || isLambda // only a function may use itself
+	self := c.u.Fresh()
+	if recursive {
+		c.values[key] = self
+	}
 	var sig types.Type = mc.infer(d.Body, env, effect{})
 	if len(params) > 0 {
 		sig = &types.Fun{Params: params, Result: sig}
+	}
+	if c.u.Unify(self, sig) != nil {
+		// the value uses itself at a type its body does not have (`f = \x -> f`)
+		c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred: it uses itself at a different type; give it a type signature", d.Name)
 	}
 	t := c.u.Apply(sig)
 	for i, v := range freeVars(t) {
@@ -157,17 +176,24 @@ func (mc *modCtx) inferTopLevel(d *syntax.ValueDecl) {
 	}
 	mc.reportHoles()
 	t = c.u.Apply(t)
-	if poisoned(t) {
+	if poisoned(t) || errorCount(c.bag) > errs || c.usedPoisoned || c.forwardRef != "" {
+		delete(c.values, key)
 		if c.poisonedTop == nil {
 			c.poisonedTop = map[string]bool{}
 		}
-		c.poisonedTop[c.key(mc.m.Name, d.Name)] = true
+		c.poisonedTop[key] = true
 		if errorCount(c.bag) == errs && !c.usedPoisoned { // else the error is reported already
-			c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred: it uses itself or a value defined after it; give it a type signature", d.Name)
+			if c.forwardRef == d.Name {
+				c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred: it uses itself, and only a function may", d.Name)
+			} else if c.forwardRef != "" {
+				c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred: it uses `%s`, a value defined after it; move `%s` above it or give `%s` a type signature", d.Name, c.forwardRef, c.forwardRef, d.Name)
+			} else {
+				c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred; give it a type signature", d.Name)
+			}
 		}
 		return
 	}
-	c.values[c.key(mc.m.Name, d.Name)] = t
+	c.values[key] = t
 }
 
 // errorCount is the number of errors in bag.
@@ -812,6 +838,8 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 		}
 		if c.poisonedTop[c.key(x.Ref.Module, x.Ref.Name)] {
 			c.usedPoisoned = true
+		} else if x.Ref.Kind == syntax.RefValue && mc.infersTopLevel() && x.Ref.Module == mc.m.Name && c.forwardRef == "" {
+			c.forwardRef = x.Ref.Name // a sig-less value of this module not inferred yet
 		}
 	case syntax.RefColumn:
 		if info, ok := c.tables[c.key(x.Ref.Module, x.Module)]; ok {
@@ -1061,6 +1089,16 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 		if r := mc.checkDbGet(x, env, eff); r != nil {
 			return r
 		}
+	}
+	// a lambda applied inline (`(\a b -> a + b) 1 2`): its parameters take the arguments' types,
+	// so the body is checked knowing them (inferred alone, `a + b` would not know it adds Ints)
+	if lam, ok := x.Fn.(*syntax.Lambda); ok && pipe == nil && len(x.Args) >= len(lam.Params) {
+		fn := &types.Fun{Result: c.u.Fresh()}
+		for _, a := range x.Args {
+			fn.Params = append(fn.Params, mc.infer(a, env, eff))
+		}
+		mc.check(lam, fn, env, eff)
+		return fn.Result
 	}
 	var fnT types.Type
 	if ct, ok := x.Fn.(*syntax.CtorRef); ok {

@@ -41,7 +41,10 @@ type Checker struct {
 	// usedPoisoned is set when a body being inferred uses one of them
 	poisonedTop  map[string]bool
 	usedPoisoned bool
-	res          *Result
+	// forwardRef is the first sig-less value of the inferred module used, by the body being
+	// inferred, before its own definition
+	forwardRef string
+	res        *Result
 	// bodyExprs are the expressions recorded since the last body ended (reportHoles), for
 	// checkInferredDictKeys
 	bodyExprs []syntax.Expr

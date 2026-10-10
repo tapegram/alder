@@ -288,8 +288,9 @@ func TestEval_NoCascade(t *testing.T) {
 	if code != 1 || strings.Count(stderr, "error[") != 1 || !strings.Contains(stderr, "E0003") {
 		t.Errorf("exit %d, want one E0003\nstderr: %s", code, stderr)
 	}
-	// a value that uses itself: E0007 without a ?type fix, and never the name `it`
-	for _, in := range []string{"let f = \\n -> f n\n1", "it + 1"} {
+	// a value that uses one defined after it, or a non-function that uses itself: E0007 without
+	// a ?type fix, and never the name `it`
+	for _, in := range []string{"let f = \\n -> g n\nlet g = \\n -> n\n1", "let v = v + 1\nv", "it + 1"} {
 		code, _, stderr = runEval(t, in, dir, "-")
 		if code != 1 || !strings.Contains(stderr, "E0007") || strings.Contains(stderr, "?type") || strings.Contains(stderr, "`it`") && !strings.Contains(stderr, "eval does not define") {
 			t.Errorf("%q: exit %d\nstderr: %s", in, code, stderr)
@@ -298,5 +299,21 @@ func TestEval_NoCascade(t *testing.T) {
 	code, _, stderr = runEval(t, "", dir, "1 +")
 	if code != 1 || strings.Contains(stderr, "`it`") {
 		t.Errorf("parse error names it: exit %d\nstderr: %s", code, stderr)
+	}
+}
+
+func TestEval_LetRecAndInlineLambda(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	dir := todosDir(t)
+	for _, c := range []struct{ in, out string }{
+		{"let fact n = if n <= 1 then 1 else n * fact (n - 1)\nfact 5", "120 : Int\n"},
+		{"let fact n = if n <= 1 then 1 else n * fact (n - 1)\n1", "1 : Int\n"}, // unused: still compiles
+		{"(\\a b -> a + b) 1 2", "3 : Int\n"},
+	} {
+		code, stdout, stderr := runEval(t, c.in, dir, "-")
+		if code != 0 || stdout != c.out {
+			t.Errorf("%q: exit %d, stdout %q (want %q)\nstderr: %s", c.in, code, stdout, c.out, stderr)
+		}
 	}
 }

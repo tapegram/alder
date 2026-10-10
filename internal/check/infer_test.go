@@ -84,7 +84,7 @@ func TestInferTopLevel_ScratchOnly(t *testing.T) {
 
 func TestInferTopLevel_NoCascade(t *testing.T) {
 	files := map[string]string{
-		"Scratch.alder": "module Scratch\n\na = 1 + \"x\"\nb = a\nf = \\n -> f n\nit = b + 1\n",
+		"Scratch.alder": "module Scratch\n\na = 1 + \"x\"\nb = a\nf = \\n -> f n\ng = \\n -> g (n + h)\nh = 1\nk = \\x -> k\nit = b + 1\nj = g 1\nv = v + 1\n",
 	}
 	_, bag := checkWith(t, files, Options{InferTopLevel: true})
 	var got []string
@@ -96,8 +96,65 @@ func TestInferTopLevel_NoCascade(t *testing.T) {
 			}
 		}
 	}
-	// a's E0003; f's E0007 (it uses itself); nothing for b and it, which only use a
-	if strings.Join(got, ", ") != "3 E0003, 5 E0007" {
+	// a's E0003; f uses itself (let-rec): fine; g's E0007 (it uses h, defined after it); k's
+	// E0007 (it uses itself at another type); nothing for b, it and j, which only use a or g;
+	// v's E0007 (only a function may use itself)
+	if strings.Join(got, ", ") != "3 E0003, 6 E0007, 8 E0007, 11 E0007" {
 		t.Errorf("errors %v\n%s", got, render(bag))
+	}
+}
+
+// errorsOf lists bag's errors as "line code".
+func errorsOf(bag *diag.Bag) string {
+	var got []string
+	for _, d := range bag.Items {
+		if d.Severity == "error" {
+			got = append(got, fmt.Sprintf("%d %s", d.Span.Start.Line, d.Code))
+		}
+	}
+	return strings.Join(got, ", ")
+}
+
+func TestInferTopLevel_LetRec(t *testing.T) {
+	files := map[string]string{
+		"Scratch.alder": "module Scratch\n\nfact n = if n <= 1 then 1 else n * fact (n - 1)\nloop = \\n -> loop n\nit = fact 5\n",
+	}
+	res, bag := checkWith(t, files, Options{InferTopLevel: true})
+	if got := errorsOf(bag); got != "" {
+		t.Fatalf("errors %v\n%s", got, render(bag))
+	}
+	for k, w := range map[string]string{"Scratch.fact": "Int -> Int", "Scratch.loop": "a -> b", "Scratch.it": "Int"} {
+		if got, ok := res.Values[k]; !ok || types.String(res.U.Apply(got)) != w {
+			t.Errorf("%s : %v, want %s", k, got, w)
+		}
+	}
+}
+
+func TestInferTopLevel_ForwardReference(t *testing.T) {
+	files := map[string]string{
+		// g uses itself and h, defined after it: E0007 naming h; it uses g: no cascade
+		"Scratch.alder": "module Scratch\n\ng n = if n then g n else h\nh = 2\nit = g True\n",
+	}
+	_, bag := checkWith(t, files, Options{InferTopLevel: true})
+	if got := errorsOf(bag); got != "3 E0007" {
+		t.Fatalf("errors %v\n%s", got, render(bag))
+	}
+	if m := bag.Items[0].Message; !strings.Contains(m, "`h`") || !strings.Contains(m, "defined after it") {
+		t.Errorf("message %q", m)
+	}
+}
+
+func TestInlineLambdaApplication(t *testing.T) {
+	files := map[string]string{
+		"Scratch.alder": "module Scratch\n\nit = (\\a b -> a + b) 1 2\nf = (\\s -> s ++ \"!\") \"x\"\n",
+	}
+	res, bag := checkWith(t, files, Options{InferTopLevel: true})
+	if got := errorsOf(bag); got != "" {
+		t.Fatalf("errors %v\n%s", got, render(bag))
+	}
+	for k, w := range map[string]string{"Scratch.it": "Int", "Scratch.f": "Text"} {
+		if got, ok := res.Values[k]; !ok || types.String(res.U.Apply(got)) != w {
+			t.Errorf("%s : %v, want %s", k, got, w)
+		}
 	}
 }
