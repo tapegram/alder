@@ -86,6 +86,9 @@ func emitSource(t *testing.T, srcs map[string]string) map[string][]byte {
 		t.Fatal(err)
 	}
 	for name, src := range srcs {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, "app", name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(filepath.Join(dir, "app", name), []byte(src), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -2811,4 +2814,73 @@ func TestUnderscore(t *testing.T) {
 	}
 }
 `)
+}
+
+// TestGen_Tests: an app's `test` declarations are emitted as test__M__N functions and the Tests
+// table of app__alder.go (with TestSession and Registry), and run through rtesting.Run they
+// compute the right outcomes: a pure test's recorded `==` sides, Test.run undoing a failed
+// task's writes inside the test's transaction, its trace and Test.trace
+// (testdata/e2e_tests_test.go.txt).
+func TestGen_Tests(t *testing.T) {
+	files := emitSource(t, map[string]string{
+		"App.alder": `module App
+
+session { n: Int = 0 }
+
+error : Error -> Html Never
+error err = <html><body><p>error</p></body></html>
+
+notFound : Html Never
+notFound = <html><body><p>nf</p></body></html>
+`,
+		"Shop.alder": `module Shop
+
+total : List Int -> Int
+total xs = List.sum xs
+
+test "total adds" = total [1, 2] == 3
+
+test "total is wrong" = total [1, 2] == 4
+`,
+		"Shop/Orders.alder": `module Shop.Orders
+
+type ItemId = brand Text
+
+table Item {
+  id: ItemId @id,
+  name: Text,
+}
+
+addThenFail : Task Int
+addThenFail = {
+  let _ <- Db.insert Item { name: "gone" }
+  Task.fail "boom"
+}
+
+test "a failed run undoes its writes" = {
+  let _ <- Db.insert Item { name: "kept" }
+  let r <- Test.run addThenFail
+  let tr <- Test.trace
+  let n <- Db.from Item |> Db.count
+  Task.succeed ({ value: r.value, trace: r.trace, steps: tr, n: n } == { value: Err "boom", trace: ["Db.insert Item"], steps: ["Db.insert Item", "Test.run", "Db.insert Item"], n: 1 })
+}
+
+test "a successful run keeps its insert" = {
+  let r <- Test.run (Db.insert Item { name: "x" })
+  let n <- Db.from Item |> Db.count
+  Task.succeed (n == 1)
+}
+`,
+	})
+	contains(t, files["Shop_alder.go"], "func test__Shop__1() bool {", "rtesting.Eq(", "func test__Shop__2() bool {")
+	contains(t, files["Shop__Orders_alder.go"], "func test__Shop__Orders__1() eff.Task[bool] {", "func test__Shop__Orders__2() eff.Task[bool] {",
+		`eff.Call("Test.run", true,`, "rtesting.Inner(", `eff.Call("Test.trace", false,`, "rtesting.Trace(")
+	contains(t, files["app__alder.go"], "var Tests = []rtesting.Case{\n", `{Module: "Shop", Name: "total adds", Pure: test__Shop__1},`,
+		`{Module: "Shop.Orders", Name: "a failed run undoes its writes", Task: test__Shop__Orders__1}`,
+		"func TestSession() any {", "func (Caps) Registry() map[string]any {", "reg := caps.Registry()")
+	prog, err := os.ReadFile("testdata/e2e_tests_test.go.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runGo(t, files, string(prog))
 }

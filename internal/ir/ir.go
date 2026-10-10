@@ -59,6 +59,17 @@ type Module struct {
 	Types      []*TypeDecl
 	Values     []*Value // lowercase top-level values, in declaration order
 	Components []*Value // capitalized top-level values (used as elements), in declaration order
+	Tests      []*Test  // `test` declarations, in declaration order
+}
+
+// Test is a `test` declaration. Effect says its Body is a Task Bool (a block, run as a Task);
+// otherwise Body is a Bool. The test's recorded `==` is a TestEq: a pure test's Body when it is
+// an `==`, or the Value of the EffPure that ends an effect test's straight-line block (reached
+// through EffBind and Let bodies) when that is an `==`.
+type Test struct {
+	Module, Name string
+	Body         Expr
+	Effect       bool
 }
 
 // TypeDecl is one nominal type: exactly one of Record and Union is set.
@@ -694,4 +705,24 @@ type CapCall struct {
 	Cap   *Capability
 	Entry string
 	Args  []Expr
+}
+
+// ---- Tests
+
+// TestRun is `Test.run task`: a Task of the record { value: Result Text a, trace: List Text }
+// (its type): it runs Task (a Task a) inside the enclosing test's Task, undoing its writes when
+// it fails, and gives its outcome and the steps it performed.
+type TestRun struct {
+	Typed
+	Task Expr
+}
+
+// TestTrace is `Test.trace`: a Task (List Text) of the enclosing test's steps so far.
+type TestTrace struct{ Typed }
+
+// TestEq is the `==` a test records (see Test): Left == Right, of type Bool, whose sides the
+// test runner shows when the test fails.
+type TestEq struct {
+	Typed
+	Left, Right Expr
 }

@@ -31,7 +31,7 @@ func (l *lowerer) effHead(fn syntax.Expr) *effHead {
 		switch x.Ref.Kind {
 		case syntax.RefStd:
 			switch x.Ref.Module {
-			case "Query", "Task", "Db":
+			case "Query", "Task", "Db", "Test":
 				return &effHead{name: x.Ref.Module + "." + x.Ref.Name, ft: l.typeOf(x), at: pos(x.Span)}
 			}
 		case syntax.RefCapability:
@@ -126,6 +126,10 @@ func (l *lowerer) build(h *effHead, args []Expr, t types.Type) Expr {
 		return &EffFail{Typed: Typed{t}, Message: args[0]}
 	case "Query.notFound", "Task.notFound":
 		return &EffNotFound{Typed: Typed{t}}
+	case "Test.run":
+		return &TestRun{Typed: Typed{t}, Task: args[0]}
+	case "Test.trace":
+		return &TestTrace{Typed: Typed{t}}
 	case "Db.get":
 		return &DbGet{Typed: Typed{t}, Table: table(0), ID: args[1]}
 	case "Db.from":

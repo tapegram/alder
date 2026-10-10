@@ -11,6 +11,11 @@
   (match union (var theme)
     (case Light (ctor Theme.Theme.Dark))
     (case Dark (ctor Theme.Theme.Light))))
+(test "flip alternates" pure
+  (test-eq
+    (call (global Theme.flip)
+      (call (global Theme.flip) (ctor Theme.Theme.Light)))
+    (ctor Theme.Theme.Light)))
 (module Layout)
 (component Layout.Page : { title: Text, theme: Theme, children: List (Html a) } -> Html a (props)
   (elem html
@@ -135,6 +140,25 @@
     (call (std List.filter)
       (lambda (t : Todo) (call (std Prelude.not) (field done (var t))))
       (var todos))))
+(test "countOpen ignores done todos" pure
+  (test-eq
+    (call (global Todo.countOpen)
+      (list
+        (record Todo
+          (id "a")
+          (title "x")
+          (done False)
+          (due (ctor Prelude.Maybe.Nothing))
+          (owner "u")
+          (created (std Time.epoch)))
+        (record Todo
+          (id "b")
+          (title "y")
+          (done True)
+          (due (ctor Prelude.Maybe.Nothing))
+          (owner "u")
+          (created (std Time.epoch)))))
+    1))
 (module Todos.Index)
 (record Todos.Index.Model (filter Todo.Filter) (todos List Todo))
 (record Todos.Index.NewTodo (title Text) (due Maybe Date))

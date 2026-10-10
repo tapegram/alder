@@ -1,0 +1,4 @@
+module Test
+
+run : Task a -> Task { value: Result Text a, trace: List Text }
+trace : Task (List Text)

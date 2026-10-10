@@ -42,6 +42,10 @@ import (
 //	                   a Query entry (the registry keys are the Capabilities variable); the
 //	                   argument of a one-parameter entry is its Args__ record (caps.go)
 //	TableRef           table__M__T
+//	TestRun            eff.Call("Test.run", true, func(_e *eff.Env) (R, error) { _v, _msg, _ok, _tr,
+//	                   _err := rtesting.Inner(_e, task(t)); …; R{Value: rt.Ok/Err…, Trace: _tr} })
+//	                   (R the result record { value: Result Text a, trace: List Text })
+//	TestTrace          eff.Call("Test.trace", false, func(_e) { return rtesting.Trace(_e), nil })
 //
 // Values compared with a column are encoded with the column's encoder (encode): Bool, Date, Time
 // and payload-less unions (name__M__U) have one, Maybe goes through db.EncodeMaybe, Text, Int and
@@ -93,7 +97,7 @@ func effResult(t types.Type) types.Type {
 func isEffNode(e ir.Expr) bool {
 	switch x := e.(type) {
 	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.CapCall,
-		*ir.DbGet, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete:
+		*ir.DbGet, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete, *ir.TestRun, *ir.TestTrace:
 		return true
 	case *ir.DbSelect:
 		return x.Terminal != ir.SelNone
@@ -200,8 +204,30 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 				"if !" + ok + " {\npanic(" + strconv.Quote("alder: capability "+strconv.Quote(key)+" is not wired") + ")\n}\n" +
 				"return " + impl + "." + Field(x.Entry) + "(" + strings.Join(args, ", ") + ")\n"
 		}), true
+	case *ir.TestRun:
+		return f.testRun(x, s), true
+	case *ir.TestTrace:
+		return f.callStmts("Test.trace", false, x.Ty, s, func(env string, c *scope) string {
+			return "return rtesting.Trace(" + env + "), nil\n"
+		}), true
 	}
 	panic(fmt.Sprintf("gen: %T is not an effect node", e))
+}
+
+// testRun is Test.run: a step that runs the task inside the running Task under a savepoint
+// (rtesting.Inner) and gives its outcome as the record { value: Result Text a, trace: List Text }.
+func (f *fn) testRun(x *ir.TestRun, s *scope) string {
+	r := GoType(effResult(x.Ty))
+	a := GoType(effResult(x.Task.Type()))
+	return f.callStmts("Test.run", true, x.Ty, s, func(env string, c *scope) string {
+		task := f.task(x.Task, c)
+		v, msg, ok, tr, err, out, zero := f.temp(c, "_v"), f.temp(c, "_msg"), f.temp(c, "_ok"), f.temp(c, "_tr"), f.temp(c, "_err"), f.temp(c, "_r"), f.temp(c, "_z")
+		return v + ", " + msg + ", " + ok + ", " + tr + ", " + err + " := rtesting.Inner(" + env + ", " + task + ")\n" +
+			"if " + err + " != nil {\nvar " + zero + " " + r + "\nreturn " + zero + ", " + err + "\n}\n" +
+			out + " := " + r + "{Trace: " + tr + "}\n" +
+			"if " + ok + " {\n" + out + ".Value = rt.Ok[string, " + a + "](" + v + ")\n} else {\n" + out + ".Value = rt.Err[string, " + a + "](" + msg + ")\n}\n" +
+			"return " + out + ", nil\n"
+	})
 }
 
 // bind is eff.Bind(effect, continuation): the continuation returns its body as a Task.

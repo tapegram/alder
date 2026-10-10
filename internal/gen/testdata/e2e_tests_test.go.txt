@@ -1,0 +1,58 @@
+package app
+
+import (
+	"reflect"
+	"testing"
+
+	rtesting "alder/rt/testing"
+)
+
+// TestAlderTests runs the app's generated test table (TestGen_Tests) through rtesting.Run as
+// `alder test` does: the pure tests' recorded sides, Test.run's rollback of a failed task and
+// its trace, Test.trace, and the Tests table's order and kinds.
+func TestAlderTests(t *testing.T) {
+	if TestSession() == nil {
+		t.Fatal("TestSession is nil for an app with an App module")
+	}
+	var keys []string
+	for _, c := range Tests {
+		kind := "pure"
+		if c.Task != nil {
+			kind = "task"
+		}
+		keys = append(keys, c.Module+" "+c.Name+" "+kind)
+	}
+	wantKeys := []string{
+		"Shop total adds pure",
+		"Shop total is wrong pure",
+		"Shop.Orders a failed run undoes its writes task",
+		"Shop.Orders a successful run keeps its insert task",
+	}
+	if !reflect.DeepEqual(keys, wantKeys) {
+		t.Fatalf("Tests: %q, want %q", keys, wantKeys)
+	}
+	rs := rtesting.Run(Tests, rtesting.Options{Tables: Tables, Session: TestSession(), Caps: Caps{}.Registry()})
+	if len(rs) != 4 {
+		t.Fatalf("%d results", len(rs))
+	}
+	if r := rs[0]; !r.OK || r.Left != "3" || r.Right != "3" || r.Trace != nil {
+		t.Errorf("total adds: %+v", r)
+	}
+	if r := rs[1]; r.OK || r.Left != "3" || r.Right != "4" || r.Error != "" {
+		t.Errorf("total is wrong: %+v", r)
+	}
+	r := rs[2]
+	if !r.OK || r.Error != "" {
+		t.Errorf("a failed run: %+v", r)
+	}
+	wantTrace := []string{"Db.insert Item", "Test.run", "Db.insert Item", "Test.trace", "Db.count Item"}
+	if !reflect.DeepEqual(r.Trace, wantTrace) {
+		t.Errorf("a failed run's trace: %q, want %q", r.Trace, wantTrace)
+	}
+	if r.Left == "" || r.Left != r.Right {
+		t.Errorf("a failed run's sides: %q vs %q", r.Left, r.Right)
+	}
+	if r := rs[3]; !r.OK || r.Left != "1" || r.Right != "1" {
+		t.Errorf("a successful run: %+v", r)
+	}
+}

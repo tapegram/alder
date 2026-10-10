@@ -1,6 +1,7 @@
 package gen
 
 import (
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -33,12 +34,16 @@ import (
 //	capName     Cap__M__Capability          a capability's Go interface (exported: the adapters
 //	                                        package implements it)
 //	argsName    Args__M__Capability__Entry  the arguments record of a capability entry
+//	testFunc    test__M__N                  the N-th `test` of module M (from 1, in declaration
+//	                                        order)
 //	route__fail, route__values, route__errors, session__codec
 //	                                        fixed helpers of routes__alder.go and app__alder.go
-//	Tables, Capabilities, Caps, Options, Serve, Routes
+//	Tables, Capabilities, Caps, Options, Serve, Routes, Tests, TestSession, Registry
 //	                                        the app's table descriptors, capability keys,
 //	                                        capability implementations, Serve and its options,
-//	                                        and its routes (app__alder.go, routes__alder.go)
+//	                                        its routes, its tests, the session a test runs with
+//	                                        and Caps' registry method (app__alder.go,
+//	                                        routes__alder.go)
 //
 // where "M__…" is the module path with every '.' replaced by "__" ("Todos.Index", "view" →
 // "Todos__Index__view"). A local is its Alder name, with "__" appended when that is reserved
@@ -63,14 +68,16 @@ import (
 //     (an identifier never ends in "__"). Stripping that "__", Ctor is the text after the last
 //     "__" (Ctor has no "__" and does not start with '_'), and the rest is a GoName (1).
 //  3. payloadName, tagType, tagConst, widenName, tableName, insertName, insertVals, enumName,
-//     checkName, decodeName, pageFunc, paramsFunc, updateFunc and the route__/session__ helpers start with a
-//     lower-case word and "__". No GoName or ctorName does (they start with an upper-case module
-//     segment); no local does (a local contains "__" only at its end, or followed by its "_N"
-//     renaming suffix); the words differ, so the kinds cannot collide with each other; within a
-//     kind the rest is decoded as in 1 and 2 (decodeName's record is a page's Params, a
-//     <Msg>Params or a form of M: type names of one module, distinct). Tables, Capabilities,
-//     Caps, Options, Serve and Routes contain no "__" and start upper-case, which no GoName (it
-//     has "__"), no local (lower-case or '_') and none of the others is. app__alder.go and
+//     checkName, decodeName, pageFunc, paramsFunc, updateFunc, testFunc and the route__/session__
+//     helpers start with a lower-case word and "__". No GoName or ctorName does (they start with
+//     an upper-case module segment); no local does (a local contains "__" only at its end, or
+//     followed by its "_N" renaming suffix); the words differ, so the kinds cannot collide with
+//     each other; within a kind the rest is decoded as in 1 and 2 (decodeName's record is a
+//     page's Params, a <Msg>Params or a form of M: type names of one module, distinct; testFunc's
+//     N is the text after the last "__", digits, and the rest is the module's segments).
+//     Tables, Capabilities, Caps, Options, Serve, Routes, Tests and TestSession contain no "__"
+//     and start upper-case, which no GoName (it has "__"), no local (lower-case or '_') and none
+//     of the others is (Registry is a method of Caps, in Caps' own namespace). app__alder.go and
 //     routes__alder.go are no module's file, even ignoring case (on a case-insensitive file
 //     system such as macOS's, app_alder.go would be App's file): they would be files of a
 //     module segment "app_" or "routes_", which never ends a segment.
@@ -121,7 +128,7 @@ func init() {
 		any append bool byte cap clear close comparable complex complex64 complex128 copy delete
 		error false float32 float64 imag int int8 int16 int32 int64 iota len make max min new nil
 		panic print println real recover rune string true uint uint8 uint16 uint32 uint64 uintptr
-		rt html std time math eff db context fmt url web http json errors strings reflect`) {
+		rt html std time math eff db context fmt url web http json errors strings reflect rtesting`) {
 		reserved[s] = true
 	}
 }
@@ -233,6 +240,12 @@ func routeFunc(module, msg string) string {
 		msg = "page"
 	}
 	return "Route__" + GoName(module, msg)
+}
+
+// testFunc is the function of the n-th `test` of module M, counted from 1 in declaration order
+// ("test__Todos__Index__1"): it returns the test's Bool, or its Task Bool.
+func testFunc(module string, n int) string {
+	return "test__" + strings.ReplaceAll(module, ".", "__") + "__" + strconv.Itoa(n)
 }
 
 // enumName is the function naming a value of payload-less union M.U ("name__Todo__Filter").

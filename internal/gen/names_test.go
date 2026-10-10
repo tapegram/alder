@@ -1,6 +1,7 @@
 package gen
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -48,9 +49,9 @@ func TestGoNameInjective(t *testing.T) {
 	uppers := identifiers("A", "A_x", 3, false)  // types, constructors, components
 	lowers := identifiers("x_", "A_x", 3, false) // values (and locals)
 	// not Route, Cap or Args, nor under them: E0015 (names.ReservedModules)
-	modules = append(modules, "A.B", "A_B", "M", "M.Shape", "Tag", "Tag.M", "Shape", "Std", "Home", "App", "Routes", "Caps", "Capx.Y", "Arg", "Page.Route")
+	modules = append(modules, "A.B", "A_B", "M", "M.Shape", "Tag", "Tag.M", "Shape", "Std", "Home", "App", "Routes", "Caps", "Capx.Y", "Arg", "Page.Route", "Test", "Test.M1")
 	uppers = append(uppers, "Shape", "Shape_Rect", "ShapeTag", "Tag", "Rect", "Rect_", "Circle", "M", "Session", "Msg", "Params", "PickParams")
-	lowers = append(lowers, "type", "x", "_x", "x_", "rt", "html", "tag", "is", "payload", "widen", "view")
+	lowers = append(lowers, "type", "x", "_x", "x_", "rt", "html", "tag", "is", "payload", "widen", "view", "test", "test1")
 
 	seen := map[string]string{} // Go name → the entity that has it
 	add := func(goName, entity string) {
@@ -68,6 +69,9 @@ func TestGoNameInjective(t *testing.T) {
 		add(updateFunc(m), "update__ "+m)
 		add(paramsFunc(m), "params__ "+m)
 		add(routeFunc(m, ""), "the route of page "+m)
+		for _, i := range []int{1, 2, 10, 11, 101} {
+			add(testFunc(m, i), fmt.Sprintf("test %d of %s", i, m))
+		}
 		for _, n := range uppers {
 			add(tableName(m, n), "table "+m+"."+n)
 			add(insertName(m, n), "insert "+m+"."+n)
@@ -84,7 +88,7 @@ func TestGoNameInjective(t *testing.T) {
 			}
 		}
 	}
-	for _, n := range []string{tablesVar, capsVar, "Caps", "Options", "Serve", "Routes", "route__fail", "route__values", "route__errors", "session__codec"} {
+	for _, n := range []string{tablesVar, capsVar, "Caps", "Options", "Serve", "Routes", "route__fail", "route__values", "route__errors", "session__codec", "Tests", "TestSession", "Registry"} {
 		add(n, "the fixed name "+n)
 	}
 	ctors := uppers
@@ -104,7 +108,7 @@ func TestGoNameInjective(t *testing.T) {
 	}
 	// locals: never a package-level name, nor an imported package's name
 	for _, n := range append(lowers, "type", "go", "rt", "std", "time", "math", "html", "len", "any", "eff", "db", "context", "fmt", "table", "cap", "name", "insert", "insertvals",
-		"url", "web", "http", "json", "errors", "strings", "check", "decode", "page", "update", "route", "session", "params") {
+		"url", "web", "http", "json", "errors", "strings", "check", "decode", "page", "update", "route", "session", "params", "test", "rtesting") {
 		l := local(n)
 		if _, ok := seen[l]; ok {
 			t.Errorf("local %s is the package-level name of %s", l, seen[l])

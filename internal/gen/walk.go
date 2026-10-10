@@ -145,8 +145,12 @@ func children(e ir.Expr) []ir.Expr {
 		return append([]ir.Expr{x.Value}, x.Subs...)
 	case *ir.CapCall:
 		return x.Args
+	case *ir.TestRun:
+		return []ir.Expr{x.Task}
+	case *ir.TestEq:
+		return []ir.Expr{x.Left, x.Right}
 	}
-	return nil // Lit, Var, Hole, HText, EffNotFound, ColumnRef, TableRef, Ord
+	return nil // Lit, Var, Hole, HText, EffNotFound, ColumnRef, TableRef, Ord, TestTrace
 }
 
 func matchChildren(x *ir.Match) []ir.Expr {

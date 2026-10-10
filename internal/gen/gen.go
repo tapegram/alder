@@ -336,6 +336,9 @@ func (g *gen) module(m *ir.Module) ([]byte, error) {
 	for _, v := range m.Components {
 		g.value(&body, v)
 	}
+	for i, t := range m.Tests {
+		g.test(&body, t, i+1)
+	}
 	imports, err := importsOf(body.String())
 	if err != nil {
 		return nil, fmt.Errorf("gen: module %s: %v\n%s", m.Name, err, body.String())
@@ -359,8 +362,12 @@ var packages = map[string]string{
 	"rt": "alder/rt", "html": "alder/rt/html", "std": "alder/rt/std", "time": "time", "math": "math",
 	"eff": "alder/rt/eff", "db": "alder/rt/db", "context": "context", "fmt": "fmt",
 	"web": "alder/rt/web", "url": "net/url", "http": "net/http", "json": "encoding/json", "errors": "errors",
-	"strings": "strings", "reflect": "reflect",
+	"strings": "strings", "reflect": "reflect", "rtesting": "alder/rt/testing",
 }
+
+// importNames are the packages whose name is not their path's last element, by path: they are
+// imported under that name.
+var importNames = map[string]string{"alder/rt/testing": "rtesting"}
 
 // importsOf lists the import paths body refers to. Locals never take a package's name (see
 // local), so a selector on such a name is a package reference.
@@ -438,6 +445,26 @@ func (g *gen) value(w *strings.Builder, v *ir.Value) {
 	var b strings.Builder
 	f.ret(&b, body, s)
 	fmt.Fprintf(w, "func %s%s(%s) %s {\n%s}\n\n", name, tps, strings.Join(params, ", "), GoType(ft.Result), b.String())
+}
+
+// test emits the n-th test of its module: a function returning its Bool, or for an effect test
+// its Task Bool.
+//
+//	func test__Todo__1() bool {
+//		return rtesting.Eq(Todo__countOpen(…), int64(1))
+//	}
+func (g *gen) test(w *strings.Builder, t *ir.Test, n int) {
+	f := &fn{g: g}
+	var b strings.Builder
+	result := "bool"
+	if t.Effect {
+		result = "eff.Task[bool]"
+		f.retK(&b, t.Body, newScope(), f.task)
+	} else {
+		f.ret(&b, t.Body, newScope())
+	}
+	fmt.Fprintf(w, "// %s is test %s of module %s.\nfunc %s() %s {\n%s}\n\n", testFunc(t.Module, n), strconv.Quote(t.Name), t.Module,
+		testFunc(t.Module, n), result, b.String())
 }
 
 // checkDecl emits brand b's `where` check: its function applied to the value.

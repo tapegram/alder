@@ -1,0 +1,6 @@
+module Main
+
+test "a block test is a Task" = {
+  let n <- Query.succeed 1
+  Query.succeed (n == 1)
+}

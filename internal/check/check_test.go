@@ -203,3 +203,53 @@ view model session =
 		t.Fatalf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
+
+// checkModule checks src as the only module (its file named after its `module` line) of an app
+// and returns the error diagnostics.
+func checkModule(t *testing.T, src string) []diag.Diagnostic {
+	t.Helper()
+	dir := t.TempDir()
+	name := strings.TrimSpace(strings.TrimPrefix(strings.SplitN(src, "\n", 2)[0], "module "))
+	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "app", name+".alder"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out []diag.Diagnostic
+	for _, d := range runDir(t, dir).Items {
+		if d.Severity == "error" {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// A `test` whose body is a block is a Task Bool; any other body is a Bool. Test.* is only
+// available inside a test.
+func TestTestBodies(t *testing.T) {
+	cases := []struct{ name, src, want string }{
+		{"bool", `test "t" = 1 == 1`, ""},
+		{"task block", "test \"t\" = {\n  let r <- Test.run (Task.succeed 1)\n  Task.succeed (r.value == Ok 1)\n}", ""},
+		{"trace", "test \"t\" = {\n  let tr <- Test.trace\n  Task.succeed (tr == [])\n}", ""},
+		{"int", `test "t" = 1`, "E0003"},
+		{"query block", `test "t" = { Query.succeed True }`, "E0003"},
+		{"task not block", `test "t" = Task.succeed True`, "E0003 expected Bool, got Task Bool; a test of a Task is written as a block"},
+		{"nested task", `test "t" = if Task.succeed True then True else False`, "E0003 expected Bool, got Task Bool"},
+		{"Test.run outside", "x : Task Int\nx = Task.map (\\r -> 1) (Test.run (Task.succeed 1))", "E0003"},
+		{"Test.trace outside", "x : Task (List Text)\nx = Test.trace", "E0003"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			diags := checkModule(t, "module M\n\n"+c.src+"\n")
+			var got []string
+			for _, d := range diags {
+				got = append(got, d.Code+" "+d.Message)
+			}
+			if c.want == "" && len(got) != 0 || c.want != "" && (len(got) != 1 || !strings.HasPrefix(got[0], c.want)) ||
+				c.name == "nested task" && strings.Contains(got[0], "written as a block") {
+				t.Fatalf("got %q want one %q", got, c.want)
+			}
+		})
+	}
+}

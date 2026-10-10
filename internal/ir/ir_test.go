@@ -283,3 +283,46 @@ func TestIR_TableRefAndAttrs(t *testing.T) {
 		t.Errorf("table Order: %+v", tb)
 	}
 }
+
+// A module's `test` declarations lower to Module.Tests in declaration order: a pure test's
+// top-level `==` and an effect test's final `Task.succeed (… == …)` become TestEq, and
+// Test.run / Test.trace their own nodes.
+func TestIR_Tests(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "app"), 0o755)
+	src := `module M
+
+countOpen : List Bool -> Int
+countOpen xs = List.length (List.filter (\x -> not x) xs)
+
+test "a" = countOpen [] == 0
+
+test "b" = {
+  let r <- Test.run (Task.succeed 1)
+  let tr <- Test.trace
+  let n = List.length tr
+  Task.succeed (r.value == Ok n)
+}
+
+test "c" = not (1 == 2)
+`
+	os.WriteFile(filepath.Join(dir, "app", "M.alder"), []byte(src), 0o644)
+	p := lowerDir(t, dir)
+	m := p.Modules[len(p.Modules)-1]
+	if len(m.Tests) != 3 || m.Tests[0].Name != "a" || m.Tests[0].Effect || !m.Tests[1].Effect || m.Tests[1].Module != "M" {
+		t.Fatalf("tests: %+v", m.Tests)
+	}
+	if _, ok := m.Tests[2].Body.(*TestEq); ok {
+		t.Errorf("only a top-level == is a TestEq")
+	}
+	d := Dump(p)
+	for _, want := range []string{
+		`(test "a" pure (test-eq (call (global M.countOpen) (list)) 0))`,
+		`(test "b" task`, `(test-run (pure task 1))`, `(test-trace)`, "(pure task\n          (test-eq\n            (field value (var r))",
+		`(test "c" pure (call (std Prelude.not) (== : Int 1 2)))`,
+	} {
+		if !strings.Contains(d, want) {
+			t.Errorf("dump lacks %q:\n%s", want, d)
+		}
+	}
+}

@@ -84,9 +84,13 @@ func (mc *modCtx) checkBodies() {
 			mc.reportHoles()
 		case *syntax.TestDecl:
 			mc.holes = nil
-			mc.inTest = true
-			mc.check(d.Body, types.Bool, newEnv(), effect{})
-			mc.inTest = false
+			mc.inTest, mc.testBody = true, d.Body
+			if _, isBlock := d.Body.(*syntax.Block); isBlock { // an effect test: a Task Bool
+				mc.check(d.Body, &types.App{Con: "Task", Args: []types.Type{types.Bool}}, newEnv(), effect{kind: "Task"})
+			} else {
+				mc.check(d.Body, types.Bool, newEnv(), effect{})
+			}
+			mc.inTest, mc.testBody = false, nil
 			mc.reportHoles()
 		case *syntax.TypeDecl:
 			if d.Brand != nil && d.Brand.Check != nil {
@@ -532,6 +536,9 @@ func (mc *modCtx) checkExpr(e syntax.Expr, expected types.Type, env *env, eff ef
 func (mc *modCtx) annotateMismatch(d *diag.Diagnostic, e syntax.Expr, got, expected types.Type) {
 	c := mc.c
 	g, ex := c.u.Apply(got), c.u.Apply(expected)
+	if k, _ := queryOrTask(g); mc.inTest && e == mc.testBody && k != "" && isCon(ex, "Bool") && d.Message != "" {
+		d.Message += "; a test of a Task is written as a block: `test \"…\" = { … }`"
+	}
 	if isCon(ex, "Text") {
 		sp := e.GetSpan()
 		src := mc.source(sp)
@@ -690,6 +697,10 @@ func (mc *modCtx) checkBlock(x *syntax.Block, expected types.Type, env *env, eff
 		if got == nil {
 			got = c.u.Apply(mc.infer(s.Expr, child, sub()))
 		}
+		if types.IsErr(got) { // already reported: the name is poisoned too, so its uses report nothing more
+			c.bind(child, s, s.Name, types.Err)
+			continue
+		}
 		k, arg := queryOrTask(got)
 		switch {
 		case k == kind, k == "Query" && kind == "Task":
@@ -830,6 +841,10 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			return t
 		}
 	case syntax.RefValue, syntax.RefStd:
+		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Test" && !mc.inTest { // eval's module is not a test here: it cannot run Tasks
+			c.errorf(diag.TypeMismatch, x.Span, "`Test.%s` is only available inside a `test`", x.Ref.Name)
+			return types.Err
+		}
 		if x.Ref.Module == "Session" && x.Ref.Name == "put" {
 			c.usesSessionPut = true
 		}

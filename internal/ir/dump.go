@@ -26,7 +26,8 @@ import (
 // (input Kind Form field=f label="…" [label-expr] [(value e)] [form]), (form-el M.Msg attrs… children…).
 // Effects (kind is query or task): (pure kind v), (bind kind x : T effect body) or
 // (bind kind _ effect body), (map kind fn effect), (all kind effects), (fail msg), (not-found),
-// (cap M.Cap entry args…). Database: (db-get M.T id), (db-select M.T [(base e)] (where c)…
+// (cap M.Cap entry args…). Tests, after a module's values and components: (test "name" pure|task
+// body); in their bodies (test-run task), (test-trace), (test-eq l r). Database: (db-get M.T id), (db-select M.T [(base e)] (where c)…
 // (order o)… [(limit n)] [(offset n)] select|all|first|count), (db-run all|first|count sel),
 // (db-insert M.T row), (db-update M.T id fn), (db-delete M.T id), (col M.T field),
 // (cond kind [col] [value] subs…) with (cond and|or (value e)) for a list that is no literal,
@@ -48,6 +49,13 @@ func Dump(p *Program) string {
 		}
 		for _, v := range m.Components {
 			form(d.value("component", v))
+		}
+		for _, t := range m.Tests {
+			kind := "pure"
+			if t.Effect {
+				kind = "task"
+			}
+			form(list(3, atom("test"), atom(strconv.Quote(t.Name)), atom(kind), d.expr(t.Body)))
 		}
 	}
 	for _, t := range p.Tables {
@@ -419,6 +427,12 @@ func (d *dumper) expr(e Expr) *sx {
 		return list(1, atom("fail"), d.expr(x.Message))
 	case *EffNotFound:
 		return atoms("not-found")
+	case *TestRun:
+		return list(1, atom("test-run"), d.expr(x.Task))
+	case *TestTrace:
+		return atoms("test-trace")
+	case *TestEq:
+		return list(1, atom("test-eq"), d.expr(x.Left), d.expr(x.Right))
 	case *CapCall:
 		items := []*sx{atom("cap"), atom(x.Cap.Module + "." + x.Cap.Name), atom(x.Entry)}
 		return list(3, append(items, d.exprs(x.Args)...)...)

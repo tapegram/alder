@@ -77,6 +77,7 @@ type modCtx struct {
 	form     *formCtx
 	inUpdate bool
 	inTest   bool
+	testBody syntax.Expr // the body of the `test` being checked (inTest)
 }
 
 // Options adjust what Program accepts.

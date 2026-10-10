@@ -33,7 +33,59 @@ func Lower(prog *names.Program, res *check.Result) *Program {
 		l.enter(c.brand.Module)
 		c.brand.Check = l.expr(c.expr)
 	}
+	l.lowerTests()
 	return l.out
+}
+
+// lowerTests lowers every module's `test` declarations into Module.Tests, marking the `==` each
+// records (see Test).
+func (l *lowerer) lowerTests() {
+	for i, name := range l.prog.Order {
+		mod := l.out.Modules[i]
+		for _, d := range l.prog.Modules[name].Decls {
+			td, ok := d.(*syntax.TestDecl)
+			if !ok {
+				continue
+			}
+			_, effect := effectKind(l.typeOf(td.Body))
+			l.enter(name)
+			test := &Test{Module: name, Name: td.Name, Effect: effect, Body: l.expr(td.Body)}
+			if effect {
+				recordEq(test.Body)
+			} else if eq := testEq(test.Body); eq != nil {
+				test.Body = eq
+			}
+			mod.Tests = append(mod.Tests, test)
+		}
+	}
+}
+
+// recordEq replaces the `==` that ends an effect test's straight-line block (the Value of the
+// EffPure reached through EffBind and Let bodies) by a TestEq.
+func recordEq(e Expr) {
+	for {
+		switch x := e.(type) {
+		case *EffBind:
+			e = x.Body
+		case *Let:
+			e = x.Body
+		case *EffPure:
+			if eq := testEq(x.Value); eq != nil {
+				x.Value = eq
+			}
+			return
+		default:
+			return
+		}
+	}
+}
+
+// testEq is e as a TestEq when it is an `==`, else nil.
+func testEq(e Expr) *TestEq {
+	if op, ok := e.(*Op); ok && op.Kind == "==" {
+		return &TestEq{Typed: op.Typed, Left: op.L, Right: op.R}
+	}
+	return nil
 }
 
 type lowerer struct {
