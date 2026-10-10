@@ -359,7 +359,7 @@ var packages = map[string]string{
 	"rt": "alder/rt", "html": "alder/rt/html", "std": "alder/rt/std", "time": "time", "math": "math",
 	"eff": "alder/rt/eff", "db": "alder/rt/db", "context": "context", "fmt": "fmt",
 	"web": "alder/rt/web", "url": "net/url", "http": "net/http", "json": "encoding/json", "errors": "errors",
-	"strings": "strings",
+	"strings": "strings", "reflect": "reflect",
 }
 
 // importsOf lists the import paths body refers to. Locals never take a package's name (see

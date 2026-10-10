@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"reflect"
 	"strings"
 )
 
@@ -36,6 +37,12 @@ func (c Caps) registry() map[string]any {
 		"Todo.Stats":   c.Todo__Stats,
 		"Index.Mailer": c.Index__Mailer,
 	}
+}
+
+// init registers the constructor names of every union of the app, for rt.Show.
+func init() {
+	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{"Logout"})
+	rt.RegisterUnion(reflect.TypeOf(tag__Index__Msg(0)), []string{"Add", "Toggle", "Remove", "Notify"})
 }
 
 // Options configure Serve. The generated cmd/main.go fills them from the environment.

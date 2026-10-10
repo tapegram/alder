@@ -3,6 +3,7 @@
 package app
 
 import (
+	"alder/rt"
 	"alder/rt/db"
 	"alder/rt/html"
 	"alder/rt/web"
@@ -10,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"reflect"
 	"strings"
 )
 
@@ -29,6 +31,15 @@ type Caps struct{}
 // field is).
 func (Caps) registry() map[string]any {
 	return map[string]any{}
+}
+
+// init registers the constructor names of every union of the app, for rt.Show.
+func init() {
+	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{"Logout"})
+	rt.RegisterUnion(reflect.TypeOf(tag__M__Color(0)), []string{"Red", "Green"})
+	rt.RegisterUnion(reflect.TypeOf(tag__M__Shape(0)), []string{"Circle", "Square"})
+	rt.RegisterUnion(reflect.TypeOf(tag__M__Msg(0)), []string{"Save", "Pick", "Ping"})
+	rt.RegisterUnion(reflect.TypeOf(tag__Other__Msg(0)), []string{})
 }
 
 // Options configure Serve. The generated cmd/main.go fills them from the environment.

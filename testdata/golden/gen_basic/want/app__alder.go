@@ -2,7 +2,11 @@
 
 package app
 
-import "alder/rt/db"
+import (
+	"alder/rt"
+	"alder/rt/db"
+	"reflect"
+)
 
 // Tables describes every table of the app, in module order then declaration order, for db.Ensure.
 var Tables = []db.TableDesc{}
@@ -20,4 +24,9 @@ type Caps struct{}
 // field is).
 func (Caps) registry() map[string]any {
 	return map[string]any{}
+}
+
+// init registers the constructor names of every union of the app, for rt.Show.
+func init() {
+	rt.RegisterUnion(reflect.TypeOf(tag__M__Shape(0)), []string{"Circle", "Rect"})
 }

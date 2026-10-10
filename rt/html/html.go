@@ -110,6 +110,9 @@ var void = map[string]bool{
 // error lists.
 func Render(n Node) string { return RenderWith(n, nil) }
 
+// String is Render(n): rt.Show prints Html values as their markup.
+func (n Node) String() string { return Render(n) }
+
 // RenderWith serialises a node like Render, filling deferred form controls from
 // st (see FormState). st may be nil.
 //

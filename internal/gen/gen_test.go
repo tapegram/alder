@@ -1576,7 +1576,7 @@ func TestGen_EffectsLoad(t *testing.T) {
 // generated table descriptors, with a stub for the Auth.Login.Password capability.
 func TestGen_RunTodos(t *testing.T) {
 	dir := emitApp(t, "../../examples/todos")
-	if err := os.WriteFile(filepath.Join(dir, "zz_run_test.go"), []byte(runTodosTest), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "zz_run_test.go"), []byte(runTodosTest+runTodosShowTest), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	goRun(t, dir, "test", "-count=1", "-v", "-run", "TestTodos|TestServe", "./...")
@@ -2602,3 +2602,69 @@ func TestProbe(t *testing.T) {
 }
 `)
 }
+
+// Every union of the program, page and App Msg unions included, registers its constructor
+// names from app__alder.go's init, in declaration order, so rt.Show prints its values.
+func TestGen_RegistersUnions(t *testing.T) {
+	files := emit(t, "../../testdata/golden/gen_basic")
+	contains(t, files[appFile], `rt.RegisterUnion(reflect.TypeOf(tag__M__Shape(0)), []string{"Circle", "Rect"})`)
+	runGo(t, files, `package app
+
+import (
+	"testing"
+
+	"alder/rt"
+)
+
+func TestShow(t *testing.T) {
+	for _, c := range []struct {
+		v    any
+		want string
+	}{
+		{M__Shape__Rect__(payload__M__Shape__Rect{W: 1, H: 2}), "Rect { w: 1.0, h: 2.0 }"},
+		{M__Shape__Circle__(-1.5), "Circle (-1.5)"},
+		{rt.Just(M__Shape__Circle__(2)), "Just (Circle 2.0)"},
+		{M__Point{X: 1, Y: 0.5}, "{ x: 1.0, y: 0.5 }"},
+	} {
+		if got := rt.Show(c.v); got != c.want {
+			t.Errorf("Show = %s, want %s", got, c.want)
+		}
+	}
+}
+`)
+	todos := emit(t, "../../examples/todos")
+	contains(t, todos[appFile],
+		`rt.RegisterUnion(reflect.TypeOf(tag__Todos__Index__Msg(0)), []string{"Submit", "Toggle", "Delete"})`,
+		`rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{`)
+}
+
+// runTodosShowTest prints todos values with rt.Show: unions from every module file (Todo,
+// Theme, the page's and App's Msg) print by their constructor names, never as Go.
+const runTodosShowTest = `
+
+func TestTodosShow(t *testing.T) {
+	due := rt.Just(rt.Date{Y: 2026, M: 10, D: 9})
+	for _, c := range []struct {
+		v    any
+		want string
+	}{
+		{Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: "x"}), "Toggle { id: \"x\" }"},
+		{Todos__Index__Msg__Submit__(Todos__Index__SubmitParams{Form: Todos__Index__NewTodo{Title: "Milk", Due: due}}),
+			"Submit { form: { title: \"Milk\", due: Just 2026-10-09 } }"},
+		{App__Msg__SwitchTheme__, "SwitchTheme"},
+		{App__Session{User: rt.Just("u1"), Theme: Theme__Theme__Dark__}, "{ user: Just \"u1\", theme: Dark }"},
+		{Todos__Index__Model{Filter: Todo__Filter__Active__, Todos: []Todo__Todo{{Id: "1", Title: "a", Created: time.Unix(0, 0)}}},
+			"{ filter: Active, todos: [{ id: \"1\", title: \"a\", done: False, due: Nothing, owner: \"\", created: 1970-01-01T00:00:00Z }] }"},
+	} {
+		got := rt.Show(c.v)
+		if got != c.want {
+			t.Errorf("Show = %s, want %s", got, c.want)
+		}
+		for _, bad := range []string{"{Ok:", "*rt.", "0x", "Tag:"} {
+			if strings.Contains(got, bad) {
+				t.Errorf("Show = %s: Go syntax %q", got, bad)
+			}
+		}
+	}
+}
+`
