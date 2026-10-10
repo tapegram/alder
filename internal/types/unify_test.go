@@ -42,7 +42,7 @@ func TestCheck_BrandWidening(t *testing.T) {
 func TestNormalize_IdAndInsert(t *testing.T) {
 	u := &Unifier{Subst: Subst{}}
 	id := &Brand{Module: "Todo", Name: "TodoId", Base: tText}
-	rec := &Record{Module: "Todo", Name: "Todo", Fields: []Field{{Name: "id", Type: id}, {Name: "title", Type: tText}, {Name: "done", Type: &Con{"Bool"}, HasDefault: true}}}
+	rec := &Record{Module: "Todo", Name: "Todo", Fields: []Field{{Name: "id", Type: id}, {Name: "title", Type: tText}, {Name: "done", Type: &Con{Name: "Bool"}, HasDefault: true}}}
 	u.RegisterTable(&TableInfo{Module: "Todo", Name: "Todo", Record: rec, IDField: "id", IDType: id,
 		Insert: &Record{Module: "Todo", Name: "Insert Todo", Fields: rec.Fields[1:]}})
 	got := u.Apply(&App{Con: "Id", Args: []Type{rec}})

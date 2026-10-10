@@ -328,6 +328,19 @@ func (r *resolver) typ(t syntax.Type) {
 				r.notImported(t.Span, cands[0])
 				return
 			}
+			// a type of a stdlib module other than Prelude (`Http.HttpError`) is always qualified
+			var stds []string
+			for x, s := range r.p.scopes {
+				if _, isStd := r.p.Std[x]; isStd && x != "Prelude" && s.types[t.Name] {
+					stds = append(stds, x)
+				}
+			}
+			sort.Strings(stds)
+			if len(stds) > 0 {
+				d := r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`; write `%s.%s`", t.Name, stds[0], stds[0], t.Name)
+				d.Fix = diag.ReplaceSpan(t.Span, stds[0]+"."+t.Name)
+				return
+			}
 			r.bag.Error(diag.UnknownName, t.Span, "unknown type `%s`", t.Name)
 		}
 	case *syntax.RecordType:

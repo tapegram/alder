@@ -10,7 +10,9 @@ import (
 
 type Type interface{ isType() }
 
-type Con struct{ Name string }
+// Con is a builtin type without arguments. Module is "" for Prelude's, and the stdlib module
+// that declares it otherwise (Http's HttpError), which qualifies its printed name.
+type Con struct{ Name, Module string }
 type Var struct {
 	ID   int
 	Name string
@@ -72,16 +74,16 @@ func (*Fun) isType()    {}
 func (*Param) isType()  {}
 
 var (
-	Int   = &Con{"Int"}
-	Float = &Con{"Float"}
-	Bool  = &Con{"Bool"}
-	Text  = &Con{"Text"}
-	Unit  = &Con{"Unit"}
-	Date  = &Con{"Date"}
-	Time  = &Con{"Time"}
-	Never = &Con{"Never"}
-	Error = &Con{"Error"}
-	Page  = &Con{"Page"}
+	Int   = &Con{Name: "Int"}
+	Float = &Con{Name: "Float"}
+	Bool  = &Con{Name: "Bool"}
+	Text  = &Con{Name: "Text"}
+	Unit  = &Con{Name: "Unit"}
+	Date  = &Con{Name: "Date"}
+	Time  = &Con{Name: "Time"}
+	Never = &Con{Name: "Never"}
+	Error = &Con{Name: "Error"}
+	Page  = &Con{Name: "Page"}
 )
 
 // Err is the poison type: the type of a reference that could not be resolved. An error has
@@ -110,7 +112,7 @@ func str(t Type, paren bool, home string) string {
 		if t == Err {
 			return "_"
 		}
-		return t.Name
+		return qualify(t.Module, t.Name, home)
 	case *Var:
 		if t.Name != "" {
 			return t.Name

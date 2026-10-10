@@ -278,3 +278,17 @@ func TestResolve_ImportFixAfterLeadingComment(t *testing.T) {
 		}
 	}
 }
+
+func TestResolve_StdlibOpaqueType(t *testing.T) {
+	s := std(t)
+	h, _ := syntax.ParseSignatures("Http.alder", []byte("module Http\ntype HttpError\nget : { url: Text } -> Task (Result HttpError Text)\n"))
+	s["Http"] = h
+	m := parse(t, "app/Lib.alder", "module Lib\n\nf : Http.HttpError -> Text\nf e = \"x\"\n\ng : HttpError -> Text\ng e = \"y\"\n")
+	prog, bag := Build([]*syntax.Module{m}, s)
+	prog.Resolve(bag)
+	if len(bag.Items) != 1 || bag.Items[0].Code != "E0202" || bag.Items[0].Span.Start.Line != 6 ||
+		bag.Items[0].Message != "type `HttpError` belongs to module `Http`; write `Http.HttpError`" ||
+		bag.Items[0].Fix == nil || bag.Items[0].Fix.Replace != "Http.HttpError" {
+		t.Fatalf("want one E0202 on line 6 with a fix, got:\n%s", codes(bag))
+	}
+}

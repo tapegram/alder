@@ -42,7 +42,10 @@ func (c *Checker) declareTypeNames(m *syntax.Module) {
 				c.types[k] = &types.Union{Module: m.Name, Name: d.Name, Params: d.Params}
 			default: // opaque (stdlib): represented as App with Param args, or Con when no params
 				if len(d.Params) == 0 {
-					c.types[k] = &types.Con{Name: d.Name}
+					c.types[k] = &types.Con{Name: d.Name, Module: m.Name}
+					if m.Name == "Prelude" {
+						c.types[k] = &types.Con{Name: d.Name}
+					}
 				} else {
 					var args []types.Type
 					for _, p := range d.Params {

@@ -158,3 +158,21 @@ func TestInlineLambdaApplication(t *testing.T) {
 		}
 	}
 }
+
+func TestStdlibOpaqueTypeIsNamedQualified(t *testing.T) {
+	files := map[string]string{
+		"Lib.alder":     "module Lib\n\nfetch : Text -> Task (Result Http.HttpError Text)\nfetch u = Http.get { url: u }\n",
+		"Scratch.alder": "module Scratch\n\nit = Http.get\n",
+	}
+	res, bag := checkWith(t, files, Options{InferTopLevel: true})
+	if got := errorsOf(bag); got != "" {
+		t.Fatalf("errors %v\n%s", got, render(bag))
+	}
+	// printed so that it can be pasted into a signature
+	if got := types.String(res.U.Apply(res.Values["Scratch.it"])); got != "{ url: Text } -> Task (Result Http.HttpError Text)" {
+		t.Errorf("it : %s", got)
+	}
+	if got := types.StringIn(res.U.Apply(res.Values["Scratch.it"]), "Http"); got != "{ url: Text } -> Task (Result HttpError Text)" {
+		t.Errorf("in Http: %s", got)
+	}
+}
