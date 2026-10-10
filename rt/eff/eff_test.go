@@ -407,3 +407,47 @@ func TestRun_CtxCarriesEnv(t *testing.T) {
 		t.Fatal("EnvFrom of a plain context")
 	}
 }
+
+func TestRunInner_SharesTransactionAndTrace(t *testing.T) {
+	s := &fakeStore{}
+	e := env(s)
+	inner := dbCall("inner", true, func(*Env) (int, error) { return 7, nil })
+	outer := dbCall("outer", true, func(e *Env) (int, error) {
+		v, err := RunInner(e, inner)
+		return v + 1, err
+	})
+	v, err := Run(e, KTask, outer)
+	if err != nil || v != 8 {
+		t.Fatalf("v=%d err=%v", v, err)
+	}
+	if !reflect.DeepEqual(e.Trace, []string{"outer", "inner"}) {
+		t.Fatalf("trace %v", e.Trace)
+	}
+	if len(s.txs) != 1 || !s.txs[0].committed {
+		t.Fatalf("one shared transaction, committed: %+v", s.txs)
+	}
+}
+
+func TestRunInner_FailureDoesNotRollBack(t *testing.T) {
+	s := &fakeStore{}
+	e := env(s)
+	var innerErr error
+	outer := dbCall("outer", true, func(e *Env) (int, error) {
+		_, innerErr = RunInner(e, Fail[int]("boom"))
+		return 1, nil
+	})
+	v, err := Run(e, KTask, outer)
+	var f *ErrFail
+	if err != nil || v != 1 || !errors.As(innerErr, &f) || f.Msg != "boom" {
+		t.Fatalf("v=%d err=%v inner=%v", v, err, innerErr)
+	}
+	if len(s.txs) != 1 || !s.txs[0].committed || s.txs[0].rolledBack {
+		t.Fatalf("the outer transaction decides: %+v", s.txs)
+	}
+}
+
+func TestRunInner_OutsideRunIsInternal(t *testing.T) {
+	if _, err := RunInner(env(&fakeStore{}), Pure(1)); !errors.Is(err, ErrInternal) {
+		t.Fatalf("err=%v", err)
+	}
+}

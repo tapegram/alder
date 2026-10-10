@@ -32,6 +32,24 @@ type Store interface {
 // Tx is a Store's transaction.
 type Tx interface{ eff.Tx }
 
+// Savepointer is a Store whose transactions support savepoints (SQLite does).
+//
+// A savepoint is a named mark inside an open transaction. Savepoint sets the
+// mark; RollbackTo undoes every write made since the mark (the writes made
+// before it, earlier in the same transaction, stay) and keeps the mark;
+// Release forgets the mark and keeps its writes as part of the enclosing
+// transaction (or the enclosing savepoint), so they are committed or rolled
+// back with it. SQLite nests savepoints: one opened while another is open
+// belongs to it, and rolling back the outer one undoes the inner one too.
+// A Test.run uses one so a failed task undoes only its own writes while the
+// test's earlier writes stay. Every method needs a transaction: given a nil
+// tx it returns an error ("db: savepoint outside a transaction").
+type Savepointer interface {
+	Savepoint(ctx context.Context, tx Tx, name string) error
+	Release(ctx context.Context, tx Tx, name string) error
+	RollbackTo(ctx context.Context, tx Tx, name string) error
+}
+
 // TxOf is the running Task's transaction as a Tx, begun on first use
 // (eff.Env.Transaction), or nil in a Query. If beginning it fails, TxOf
 // returns a Tx that carries the error: every operation of this package (and

@@ -100,6 +100,24 @@ func RunQuery[T any](env *Env, q Query[T]) (T, error) {
 	return Run(env, KQuery, Task[T]{q.node})
 }
 
+// RunInner interprets t inside the Run that is running env — the same transaction, the same
+// Trace, the same Session — and returns its result or error without committing, rolling back
+// or restoring anything: the enclosing Run decides. A Call's function uses it to run a Task it
+// was given (Test.run, through rtesting.Inner, which brackets it with a savepoint so a failure
+// undoes only t's writes). Outside a running Task (env.Kind is not KTask: Run sets it while
+// it runs a Task and restores it after) it is an internal error.
+func RunInner[T any](env *Env, t Task[T]) (T, error) {
+	var zero T
+	if env.Kind != KTask {
+		return zero, fmt.Errorf("eff: %w: RunInner outside a running Task", ErrInternal)
+	}
+	v, err := interpret(env, KTask, t.node)
+	if err != nil {
+		return zero, err
+	}
+	return as[T](v), nil
+}
+
 // interpret is the eager loop. stack holds the continuations of the binds
 // we are inside of, innermost last.
 func interpret(env *Env, kind Kind, n node) (any, error) {

@@ -914,3 +914,52 @@ func TestStoreFrom_QueryRefusesWrite(t *testing.T) {
 		t.Fatalf("Task write: %d rows", n)
 	}
 }
+
+func TestSavepoint_RollbackToKeepsOuterWrites(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	etx, err := s.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx := etx.(Tx)
+	defer tx.Rollback()
+	insert := func(title string) {
+		t.Helper()
+		if _, err := InsertRow(ctx, s, tx, todoTable, insertVals(title, false, rt.Nothing[rt.Date](), "Low"), clock); err != nil {
+			t.Fatal(err)
+		}
+	}
+	countTx := func() int64 {
+		t.Helper()
+		n, err := CountRows(ctx, s, tx, From(todoTable))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	insert("outer")
+	if err := s.Savepoint(ctx, tx, "alder_t1"); err != nil {
+		t.Fatal(err)
+	}
+	insert("inner")
+	if err := s.RollbackTo(ctx, tx, "alder_t1"); err != nil {
+		t.Fatal(err)
+	}
+	if n := countTx(); n != 1 {
+		t.Fatalf("after rollback-to: n=%d (want 1: the outer write survives)", n)
+	}
+	if err := s.Savepoint(ctx, tx, "alder_t2"); err != nil {
+		t.Fatal(err)
+	}
+	insert("released")
+	if err := s.Release(ctx, tx, "alder_t2"); err != nil {
+		t.Fatal(err)
+	}
+	if n := countTx(); n != 2 {
+		t.Fatalf("after release: n=%d (want 2)", n)
+	}
+	if err := s.Savepoint(ctx, nil, "alder_t3"); err == nil || !strings.Contains(err.Error(), "savepoint outside a transaction") {
+		t.Fatalf("a savepoint outside a transaction must fail: %v", err)
+	}
+}
