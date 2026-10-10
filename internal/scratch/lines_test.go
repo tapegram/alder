@@ -196,8 +196,15 @@ func TestRunTethered(t *testing.T) {
 	if !b.Runnable() {
 		t.Fatal(b.Err, b.Diags)
 	}
+	// rt's init cleared the variable (a process the program starts does not inherit it)
 	o, e, code := RunTethered(context.Background(), b, []string{"X=1"})
-	if code != 3 || o != "1" || e != "" {
+	if code != 3 || o != "" || e != "" {
 		t.Fatalf("exit %d out %q err %q (want stdin open for the whole run)", code, o, e)
+	}
+	// stdin at end of file (the parent gone): the program says so and exits 2
+	var out, errOut strings.Builder
+	code = RunStream(context.Background(), b, []string{EnvStdinEOF + "=1"}, strings.NewReader(""), &out, &errOut)
+	if code != 2 || !strings.HasSuffix(errOut.String(), "alder: parent gone\n") { // after the main's "stdin: EOF", maybe
+		t.Fatalf("stdin closed: exit %d out %q err %q", code, out.String(), errOut.String())
 	}
 }

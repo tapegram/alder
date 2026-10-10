@@ -3,6 +3,7 @@
 package app
 
 import (
+	_ "alder/rt" // initialized before this package (rt/tether.go)
 	"alder/rt/db"
 	rtesting "alder/rt/testing"
 )

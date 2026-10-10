@@ -114,3 +114,64 @@ func childOf(t *testing.T, pid int) int {
 func processAlive(pid int) bool {
 	return syscall.Kill(pid, 0) == nil
 }
+
+// The production server ignores its stdin: without ALDER_EXIT_ON_STDIN_EOF (which only alder run
+// sets) a stdin at end of file from the start (/dev/null, as under a service manager) does not
+// stop it.
+func TestServer_IgnoresStdinEOF(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns processes")
+	}
+	needGoTool(t)
+	work := t.TempDir()
+	t.Chdir(work)
+	var errb strings.Builder
+	bin, code := buildApp(todosDir(t), "", &errb)
+	if code != 0 {
+		t.Fatalf("build: exit %d\n%s", code, errb.String())
+	}
+	devNull, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer devNull.Close()
+	cmd := exec.Command(bin)
+	cmd.Dir = work
+	cmd.Stdin = devNull
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "ALDER_") {
+			env = append(env, kv)
+		}
+	}
+	cmd.Env = append(env, "ALDER_ADDR=127.0.0.1:0", "ALDER_DEV=1", "ALDER_DB="+filepath.Join(work, "t.db"))
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	t.Cleanup(func() { _ = cmd.Process.Kill(); <-exited })
+	waitForLine(t, out, "listening on ", 30*time.Second)
+	go func() { exited <- cmd.Wait() }()
+	select {
+	case err := <-exited:
+		exited <- err
+		t.Fatalf("the server stopped at stdin's end of file: %v", err)
+	case <-time.After(time.Second):
+	}
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-exited:
+		exited <- err
+		if err != nil {
+			t.Errorf("after SIGTERM: %v, want exit 0", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Error("the server did not stop on SIGTERM")
+	}
+}
