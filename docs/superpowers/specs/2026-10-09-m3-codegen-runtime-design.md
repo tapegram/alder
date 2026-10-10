@@ -311,6 +311,20 @@ the cursor; a language server comes later, once the checker exposes
 positions for hover and go-to-definition. To be brainstormed and specced
 after M5.
 
+**M7 — styling and design systems** (added 2026-10-10): make a
+web-component design system (Web Awesome is the default) easy to use from
+Alder: custom elements (`<wa-button variant="brand">`) first-class in the
+HTML syntax and the checker (today `internal/check/html.go` reports any
+tag outside its whitelist as "unknown element"), attribute passthrough,
+slots, linking the system's CSS and JS (from `static/` or a CDN), and how
+Datastar's morph interacts with shadow DOM; the to-do example adopts the
+system as the test case. To be brainstormed and specced.
+
+**Harder use cases for experiments** (added 2026-10-10): the to-do app is
+the floor; E7 and later need apps with relations between tables, roles
+and permissions, multi-step forms, uploads and dashboards. The blog (M5)
+is the first; the list is an input to E7's design.
+
 Each milestone gets its own implementation plan.
 
 ## Decisions recorded
