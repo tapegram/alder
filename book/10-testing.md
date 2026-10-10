@@ -1,6 +1,17 @@
 # 10. Testing
 
-A test is a declaration whose body is a `Bool`:
+A test is a piece of the program that checks another piece and says yes or
+no. In Alder a test is a declaration, written in the module it tests, after
+the code, and `alder test` runs every test in the app. This chapter starts
+with the simplest kind, a test of a pure function, then reads the report
+`alder test` prints, then tests code that reads and writes the database,
+and ends with what cannot be tested yet.
+
+## 1. A test is a `Bool`
+
+`test "name" = expression` declares a test. When its body is not a block,
+the body must be a `Bool`: `True` means the test passed. The to-do app's
+`Todo` module ends with one:
 
 ```alder
 test "countOpen counts open todos" =
@@ -10,31 +21,372 @@ test "matches Active excludes done" =
   not (Todo.matches Active { id: Todo.TodoId "a", title: Text.NonEmpty "x", done: True, due: Nothing, owner: User.UserId "u", created: Time.epoch })
 ```
 
-Tests live in the module they test, after the code. Inside `Todo` the
-names above are written unqualified (`countOpen`, `matches`,
-`TodoId "a"`); the example qualifies them as any other module must.
-`alder test` runs every test in the project and reports each failing
-test with both sides of the final `==` if the body is an equality.
+Inside `Todo` the names are written unqualified (`countOpen`, `matches`,
+`TodoId "a"`); the blocks of this chapter are checked as a module of their
+own, so they qualify them as any other module must. Two rules are
+particular to tests:
 
-Because `load`, `view`, and `update` are pure functions that return
-descriptions, they can be tested without a server. `view` returns HTML,
-and two HTML values are equal when they render to the same markup.
+- A test may use any module's brand constructors. Outside `Todo`, nothing
+  else may write `Todo.TodoId "a"`: a `TodoId` must come from a route, a
+  form or a row (chapter 4). A test needs to make up values, so it may.
+- A test has no name you can call. It is not a value; only `alder test`
+  runs it.
 
-Effects are tested by what they do, not by `==`. A `Query` or `Task`
-value cannot be compared: `==` or `!=` on one is a type error (E0003,
-"effect values cannot be compared"):
+Because `load`, `view` and `update` are functions that return
+descriptions, much of a page can be tested this way. `view` returns HTML,
+and two HTML values are equal when they render to the same markup:
+
+```alder eval=True
+<p>{Html.text "a"}</p> == <p>a</p>
+```
+
+## 2. Running the tests
+
+`alder test` checks the app, compiles it with its tests, runs every test
+and prints one line per test. In the repository:
+
+```text
+$ alder test examples/todos
+ok   Theme "flip alternates"
+ok   Todo "countOpen ignores done todos"
+ok   Todos.Index "Toggle flips done"
+ok   Todos.Index "Toggle by another user is not found"
+4 passed, 0 failed
+```
+
+Each line names the module and the test. Tests run in module order (a
+module after the modules it imports), and within a module in the order
+they are written. The last line counts them. `alder test` exits with 0
+when every test passed and 1 when one failed, so a script or CI job can
+use it directly.
+
+Here is the same app with two wrong tests added: one at the end of
+`Todo`,
+
+```alder
+test "an empty list has one open todo" = Todo.countOpen [] == 1
+```
+
+and one at the end of `Todos.Index` that expects `Toggle` to make a
+single step (sections 3 to 6 explain effect tests and traces):
+
+```alder
+test "Toggle only updates" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me, theme: Light })
+  Task.succeed (r.trace == ["Db.update Todo"])
+}
+```
+
+In their modules they are written without the `Todo.` and `Todos.Index.`
+prefixes. Both compile; both are wrong:
+
+```text
+$ alder test examples/todos
+ok   Theme "flip alternates"
+ok   Todo "countOpen ignores done todos"
+FAIL Todo "an empty list has one open todo"
+  left:  0
+  right: 1
+ok   Todos.Index "Toggle flips done"
+ok   Todos.Index "Toggle by another user is not found"
+FAIL Todos.Index "Toggle only updates"
+  left:  ["Db.get Todo", "Db.update Todo"]
+  right: ["Db.update Todo"]
+  trace: ["Db.insert User", "Db.insert Todo", "Test.run", "Db.get Todo", "Db.update Todo"]
+4 passed, 2 failed
+```
+
+A failing test is `FAIL`, followed by indented lines that say why:
+
+- `left:` and `right:` are the two sides of the test's `==`, written as
+  Alder values (as `alder eval` writes them). They appear when the test's
+  body is an `==`, or, for a block (section 3), when the value its final
+  `Task.succeed` returns is an `==`. A body such as `a == b && c == d`
+  has no single `==` to show, so a failure says only `FAIL`: when you
+  want the sides, end a test with one `==`, comparing records if there
+  is more than one thing to check.
+- `error:` is why the test stopped before it produced `True` or `False`:
+  a task that failed, a capability with no implementation, a Go panic.
+- `trace:` is, for a block test, every step it performed (section 6).
+
+If the app does not compile, no test runs: `alder test` prints the
+diagnostics as `alder check` does and exits 1. Here the app has gained a
+module `Probe` that uses `Test.trace` outside a test (section 5) and
+declares `test "one" = { Task.succeed 1 }`, a block whose verdict is not
+a `Bool`:
+
+```text
+$ alder test examples/todos
+app/Probe.alder:4:9: error[E0003]: `Test.trace` is only available inside a `test`
+  steps = Test.trace
+          ^^^^^^^^^^
+app/Probe.alder:6:29: error[E0003]: expected Bool, got Int
+  test "one" = { Task.succeed 1 }
+                              ^
+```
+
+## 3. Testing effects
+
+A `Task` cannot be compared with `==` (section 8 says why), so a test of
+`update` cannot just compare its result. Instead it runs the task and
+looks at what happened. A test whose body is a block, `{ … }`, is an
+**effect test**: the block is a `Task Bool`, with `let x <-` lines like
+any `Task` (chapter 7), and it ends with `Task.succeed` of the verdict. A
+block that ends in a plain `Bool` is an error; the compiler's hint says
+to end it with `Task.succeed (…)`.
+
+The to-do page's tests are the last thing in `app/Todos/Index.alder`
+(chapter 2 shows them in place). Written in another module, as the
+blocks of this chapter are, the page's names are qualified:
+
+```alder
+test "Toggle flips done" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me, theme: Light })
+  let after <- Db.get Todo id
+  Task.succeed (r.trace == ["Db.get Todo", "Db.update Todo"] && Maybe.map (\t -> t.done) after == Just True)
+}
+```
+
+Line by line:
+
+1. Insert a user. The database starts empty, and `Todo.owner` is a
+   reference to a `User` row (`@ref User`, chapter 8), so a todo whose
+   owner does not exist cannot be inserted: the test would fail with
+   `error: Todo.owner: no User with that id`. A test builds every row it
+   needs, the rows they refer to included. `Db.insert` returns the new
+   row's id, `me`.
+2. Insert a todo owned by `me`; its id is `id`.
+3. Run `update` under `Test.run` (section 4) and call the outcome `r`.
+   `update` takes the message (`Toggle` for that todo), the page's model
+   (`load` is not called; `update` only needs a value of the type), and
+   the session. `Todos.Index` `requires user`, so its `Session` is a type
+   of its own whose `user` is a `UserId`, not a `Maybe` (chapter 6). The
+   record literal `{ user: me, theme: Light }` is that type because it is
+   written where `update` expects one. Bound to a name first by a `let`
+   without an annotation, it would be a plain record, which `update`
+   does not accept.
+4. Read the todo again.
+5. The verdict: `update` read the todo and updated it, and the stored
+   todo is now done.
+
+The second test is the authorization rule of chapter 6, "Authorize in
+`update` too": a user who posts `Toggle` with someone else's todo id gets
+a 404 and changes nothing.
+
+```alder
+test "Toggle by another user is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let stranger = User.UserId "someone-else"
+  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger, theme: Light })
+  let after <- Db.get Todo id
+  Task.succeed (r.value == Err "not found" && r.trace == ["Db.get Todo"] && Maybe.map (\t -> t.done) after == Just False)
+}
+```
+
+The session's user, `stranger`, is not a row and need not be: a session
+holds an id, not a reference the database checks. `owned` reads
+the todo, sees another owner and stops with `Task.notFound`; the update
+never runs.
+
+**Where an effect test runs.** Every effect test gets a world of its own:
+
+- **A fresh database.** An empty SQLite database in memory, with the
+  app's tables and nothing in them. Each test has its own, so no test
+  sees another's rows, and the order tests run in never matters. When the
+  test ends, the database is thrown away.
+- **One transaction.** The block runs as one `Task` (chapter 7, "How
+  effects run"): its first database step begins a transaction, every
+  later step uses it, and the block's own reads see its own writes.
+- **A fixed clock.** `Time.now`, and the `@created` column a `Db.insert`
+  fills, are always `2026-01-01T00:00:00Z`, so a test that stores a time
+  gets the same one on every run.
+- **The app's capabilities.** When the app has an `adapters/` package
+  (chapter 7, "Implementing a capability"), its `Caps()` are wired, so a
+  test calls the real Go. When it has none, a capability call fails the
+  test, saying so:
+
+  ```text
+  FAIL Auth.Login "a stranger is not verified"
+    error: capability Auth.Login.Password is not wired in tests
+    trace: ["Password.verify"]
+  ```
+
+- **The app's default session.** A test's `Session.put` starts from
+  `App`'s session with every field at its default (here
+  `{ user: Nothing, theme: Light }`). A test of `update` passes the
+  session it wants as an argument, as above.
+
+A pure test (section 1) touches none of this: it is an expression,
+evaluated once.
+
+## 4. `Test.run`: running a task that may fail
+
+`update` for another user's todo ends in `Task.notFound`. If the test
+simply wrote `let nav <- Todos.Index.update …`, that failure would be the
+test's failure, as a failing step is any task's failure, and the test
+could never check that the 404 happened. `Test.run` catches it. Its type,
+from the standard module `Test` (`stdlib/Test.alder`), is
+`Test.run : Task a -> Task { value: Result Text a, trace: List Text }`.
+
+`Test.run t` runs the task `t` inside the test and always succeeds, with
+a record:
+
+- `value` is `Ok v` when `t` succeeded with `v`, and `Err msg` when it
+  failed: `msg` is the text of a `Task.fail msg`, or `"not found"` for
+  `Task.notFound` (and `Query.notFound`) — the failures that become a 404
+  page in the running app. `update`'s `value` is a `Result Text Nav`, and
+  `Nav` values compare with `==`, so `r.value == Ok Rerender` works too.
+- `trace` is the list of steps `t` performed (section 6).
+
+When `t` fails, what it did is undone, and only that: its writes are
+rolled back and the session is put back as it was before `Test.run`; the
+writes the test made before it stay. The database can do this because of
+a **savepoint**: a named mark inside the open transaction. `Test.run`
+sets one before `t` starts; on failure `ROLLBACK TO` the mark undoes
+exactly the writes after it, and on success `RELEASE` forgets the mark,
+and `t`'s writes become part of the test's. Here is the second test as
+the database sees it:
+
+```text
+test "Toggle by another user is not found"   (a fresh database in memory)
+
+  BEGIN                                       first database step: the transaction opens
+  │ Db.insert User
+  │ Db.insert Todo
+  │ Test.run ── SAVEPOINT alder_t1
+  │             │ Db.get Todo                 owned: the todo is someone else's
+  │             │ Task.notFound               update fails
+  │             └ ROLLBACK TO alder_t1        undo update's writes (it made none)
+  │               RELEASE alder_t1            r.value = Err "not found"
+  │ Db.get Todo                               the todo is still there, not done
+  COMMIT                                      the verdict was produced
+                                              then the database is thrown away
+```
+
+Savepoints nest, so `Test.run` inside `Test.run` works the same way. A
+test that inserts inside a failing `Test.run` can see the insert undone:
+
+```alder
+test "a failed run is undone" = {
+  let r <- Test.run {
+    let _ <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+    Task.fail "changed my mind"
+  }
+  let n <- Db.from User |> Db.count
+  Task.succeed ({ value: r.value, users: n } == { value: Err "changed my mind", users: 0 })
+}
+```
+
+This test ends with one `==` between two records, so a failure would
+print both records whole.
+
+## 5. `Test.trace`: the steps so far
+
+`Test.trace : Task (List Text)` is the list of steps the test itself has performed so far,
+without the `Test.trace` step:
+
+```alder
+test "the steps so far" = {
+  let _ <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.from Todo |> Db.count
+  let steps <- Test.trace
+  Task.succeed (steps == ["Db.insert User", "Db.count Todo"])
+}
+```
+
+`Test.run` and `Test.trace` exist only inside a `test`. Anywhere else
+they are an error, so no page can depend on them:
+
+```alder error=E0003 "is only available inside a `test`"
+steps : Task (List Text)
+steps = Test.trace
+```
+
+## 6. What a trace says
+
+Every step a `Task` performs (every `Db.*` operation, capability call,
+`Time.now`, `Log.info`, `Session.put`) is recorded by name, in order,
+before it runs (chapter 7, "Every step is traced"). The names:
+
+- a database step is its function and table: `"Db.insert User"`,
+  `"Db.get Todo"`, `"Db.update Todo"`, `"Db.delete Todo"`,
+  `"Db.count Todo"`;
+- a capability call is the capability and its function, as the calling
+  module writes them: `"Password.verify"`;
+- `Test.run` is a step itself, `"Test.run"`, in the test's trace.
+
+The steps inside a `Test.run` appear twice: in `r.trace`, which holds
+only them, and in the test's own trace, after `"Test.run"`, even when
+the run failed and its writes were undone. That is why the report of
+"Toggle only updates" above has the trace
+`["Db.insert User", "Db.insert Todo", "Test.run", "Db.get Todo", "Db.update Todo"]`
+while its `r.trace` was `["Db.get Todo", "Db.update Todo"]`. Compare
+`r.trace` when the question is what `update` did; the test's own trace
+is what the report prints to help you find out why a test failed.
+
+A trace says what was attempted, not what the data became: it is the
+same whether `Toggle` set `done` to `True` or to `False`. A test that
+cares about the data reads it back, as both tests above do.
+
+## 7. Choosing tests, and output for programs
+
+`-run` takes a regular expression and runs only the tests whose
+`Module "name"` matches it:
+
+```text
+$ alder test examples/todos -run Toggle
+ok   Todos.Index "Toggle flips done"
+ok   Todos.Index "Toggle by another user is not found"
+2 passed, 0 failed
+```
+
+A pattern that matches nothing runs nothing and passes:
+`0 passed, 0 failed`.
+
+`--json` is for programs, an agent among them: standard output has one
+JSON object per test and nothing else, and the summary goes to standard
+error.
+
+```text
+$ alder test examples/todos --json -run Theme
+{"module":"Theme","name":"flip alternates","ok":true,"left":"Light","right":"Light","trace":[],"ms":0.008}
+1 passed, 0 failed
+```
+
+Each object has `module`, `name`, `ok`, `trace` (empty for a pure test)
+and `ms`, the time it took in milliseconds (it differs from run to run); `left`, `right` and `error` when they have
+something to say. Unlike the text report, it gives the sides of a
+passing test's `==` too. If the app does not compile, the output is one
+object, `{"diagnostics":[…]}`, holding what `alder check --json` would
+print, so a program always gets JSON. Chapter 11 lists the exit codes.
+
+## 8. What cannot be tested yet
+
+- **A request's round trip.** A test calls `load` and `update` directly.
+  Nothing yet sends an HTTP request to the app and reads the response,
+  so routing, the decoding of a submitted form, `requires` redirecting
+  to the login page and the page that a `Nav` turns into are checked by
+  the compiler and by the CLI's own Go tests, not by `alder test`.
+- **`view` in a browser.** A test can compare `view`'s `Html` with
+  another `Html` (section 1). What a browser does with it, and the
+  in-place updates of chapter 6, are not testable from Alder.
+
+And one thing will not change: effects are tested by what they do, not
+by `==`. A `Query` or `Task` cannot be compared; `==` or `!=` on one is a
+type error:
 
 ```alder error=E0003 "effect values cannot be compared"
 Query.succeed 1 == Query.succeed 1
 ```
 
 An effect holds functions (each `let x <-` continues with a function of
-`x`; chapter 7, "How effects run"), and functions have no equality.
-Instead a test will run the effect against a fresh database and compare its **trace**: the names of
-the steps it performed, in order, which the runtime records in
-`Env.Trace` (`rt/eff/eff.go`). The `Toggle` message of the to-do page
-traces `["Db.update Todo"]`; the test can then also read the table to
-check that `done` flipped. `alder test` is not built yet; the trace is
-what it will compare.
-
-Within a test, a brand constructor may be used from any module.
+`x`; chapter 7, "How effects run"), and two functions cannot be compared:
+there is no way to tell whether they would always do the same thing. So
+a test runs the effect, against a fresh database, and compares what it
+did (its trace, its value) and what it left behind (the rows it reads
+back).

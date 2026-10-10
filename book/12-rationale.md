@@ -359,6 +359,22 @@ again (chapter 3's with `eval=3`). About one block in five was simply
 wrong, and half did not compile as written: the case for checking the book
 on every test run.
 
+### The authorization rule, as a test
+
+*Done 2026-10-09.* E6 showed agents copying the example's `owned`
+helper, and the open question on row ownership below asks how to make
+that rule harder to forget. With `alder test` (M4b) the rule is no
+longer only a convention in the example: `Todos.Index` ends with the
+effect test "Toggle by another user is not found" (chapter 10), which
+runs `update` with a session whose user does not own the todo and
+checks that the result is `Err "not found"`, that the only step was
+the read, and that the row is unchanged. Removing the owner check from
+`owned` now fails `alder test examples/todos`, and the example shows
+agents what a test of the rule looks like. Writing the tests also
+corrected the book: chapter 7 said `Toggle` traces `["Db.update Todo"]`,
+but `owned`'s read comes first, and the trace is
+`["Db.get Todo", "Db.update Todo"]`.
+
 ## Open questions
 
 - Should `view` be able to read form state (for "edit" forms that show
@@ -390,3 +406,7 @@ on every test run.
   page, or a second owned table reached through the first), before a
   feature is added for it.
 - Do agents need `List.map` with index, or is `List.indexed` enough?
+- Should `alder test` also run the book's `eval=` blocks? Today
+  `go test ./book` runs them, and only in this repository; an app's own
+  documentation has no such check. Running a project's examples as tests
+  would keep them true, at the cost of a second way to write a test.

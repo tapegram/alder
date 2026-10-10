@@ -8,8 +8,8 @@ the app every time you save a file and reloads the browser. As of M4a,
 `alder eval` evaluates an expression against the app, and `go test ./book`
 verifies this book's Alder blocks: its modules and declarations are
 type-checked, its `eval=` and `error=` expressions are evaluated, and its
-other expressions are parsed. `alder test` arrives in M4; `fmt`, holes
-beyond W0002 and `query` are planned.
+other expressions are parsed. As of M4b, `alder test` runs the app's
+tests. `fmt`, holes beyond W0002 and `query` are planned.
 
 ## Project layout
 
@@ -60,7 +60,7 @@ alder check          type-check everything; milliseconds; no output on success
 alder build          check, generate Go, go build → ./build/myapp/myapp
 alder run            build and run with the dev database, reloading on change
 alder eval <expr>    evaluate an expression against the app: value : Type
-alder test           run every `test`
+alder test           run every `test`, each against a fresh database: ok/FAIL
 alder fmt            rewrite every file in canonical format
 alder dump <path>    print a file's tokens, AST, or an app's IR
 alder explain <id>   explain a diagnostic code
@@ -354,6 +354,51 @@ printed, so it is safe to run from several terminals or tests at once.
 Each evaluation compiles and builds the whole app with the expression;
 Go's build cache keeps that to about 0.6 s once the runtime's packages
 are in it. Chapter 13, "The scratch runner", shows what it compiles.
+
+### `alder test`
+
+`alder test [dir] [-run re] [--json]` runs every `test` declaration of
+the app in `dir` (default `.`) and prints one line per test, `ok   M "name"`
+or `FAIL M "name"` with the reasons indented under it, then
+`N passed, M failed`. Chapter 10 explains the tests and the report.
+
+```text
+$ alder test examples/todos -run Toggle
+ok   Todos.Index "Toggle flips done"
+ok   Todos.Index "Toggle by another user is not found"
+2 passed, 0 failed
+```
+
+- `-run re` runs only the tests whose `Module "name"` matches the
+  regular expression `re` (Go's syntax). A pattern that matches nothing
+  runs nothing: `0 passed, 0 failed`, exit 0.
+- `--json` prints one JSON object per test on standard output, and
+  nothing else; the summary line goes to standard error. An object has
+  `module`, `name`, `ok`, `trace` (a list, empty for a pure test) and
+  `ms`, and `left`, `right`, `error` when they are not empty:
+
+  ```text
+  {"module":"Todos.Index","name":"Toggle flips done","ok":true,"trace":["Db.insert User","Db.insert Todo","Test.run","Db.get Todo","Db.update Todo","Db.get Todo"],"ms":0.562}
+  ```
+
+  When the app does not compile, `--json` prints one object,
+  `{"diagnostics":[…]}`, whose items are the objects `alder check --json`
+  prints, and runs nothing.
+
+Exit codes: 0 when every selected test passed; 1 when a test failed,
+the app has a check error or a typed hole (the diagnostics are printed
+as `alder check` prints them), or the run was interrupted or took more
+than five minutes; 2 for a usage error or a build problem (adapters that
+do not compile, say).
+
+Like `alder eval`, `alder test` compiles the app through the scratch
+runner (chapter 13, "Running tests"): it writes only under
+`build/<app>/scratch/test/` of the working directory, and two runs for
+one app take turns on `build/<app>/scratch/test.lock`. The tests use no
+file database: each effect test has its own, in memory. The app's
+`adapters/`, when it has one, is compiled in, so capability calls reach
+the real Go; without it, a test that calls a capability fails with
+"capability … is not wired in tests". Ctrl-C stops the tests' process.
 
 ### The book is verified
 

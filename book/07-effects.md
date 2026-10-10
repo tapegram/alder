@@ -240,10 +240,10 @@ again so that a compiler bug can't turn a page view into a write.
 
 **Every step is traced.** Before it runs a `call`, `Run` appends the
 step's name to `Env.Trace` and logs it at level `effect`. The `Toggle`
-above leaves the trace `["Db.update Todo"]`; the `Add` arm of
+above leaves the trace `["Db.get Todo", "Db.update Todo"]` (`owned`'s read, then the update); the `Add` arm of
 `testdata/golden/gen_effects/app/Index.alder`, which inserts a row and
 then logs, leaves `["Db.insert Todo" "Log.info"]`. The trace is the dev
-log of what a request did, and it is what tests will compare (chapter 10).
+log of what a request did, and what a test can compare (chapter 10).
 
 **What a capability looks like in Go.** The to-do app checks
 passwords outside the language

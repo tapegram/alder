@@ -995,7 +995,7 @@ list is `Tables`, in a file of its own, `app__alder.go`:
 // Tables describes every table of the app, in module order then declaration order, for db.Ensure.
 var Tables = []db.TableDesc{table__Todo__Todo.Desc()}
 
-// Capabilities are the keys of eff.Env.Caps the app's capability calls look up: Caps.registry
+// Capabilities are the keys of eff.Env.Caps the app's capability calls look up: Caps.Registry
 // fills them.
 var Capabilities = []string{"Todo.Stats", "Index.Mailer"}
 ```
@@ -1866,10 +1866,166 @@ and, when the fence quotes a part of the message, its message has it. Chapters r
 parallel, each in its own temporary directory; the whole book takes
 about 15 seconds, almost all of it the evaluations.
 
+### Running tests
+
+`alder test` (chapter 10) is the scratch runner with no scratch module:
+`cmd/alder/test.go` calls `scratch.Compile(dir, nil, mainGo, "test", "")`,
+so the app is compiled as it is, into `build/<app>/scratch/test/`, under
+the lock `build/<app>/scratch/test.lock`. What makes it a test program
+is what the compiler emits for `test` declarations, and the main.
+
+**Each test is a function.** Section 7's emitter turns the N-th `test`
+of module M into `test__M__N`. `Theme`'s one test,
+`test "flip alternates" = flip (flip Light) == Light`, is emitted into
+`build/todos/Theme_alder.go` as
+
+```go
+// test__Theme__1 is test "flip alternates" of module Theme.
+func test__Theme__1() bool {
+	return rtesting.Eq(Theme__flip(Theme__flip(Theme__Theme__Light__)), Theme__Theme__Light__)
+}
+```
+
+The `==` is not `rt.Eq`, as it would be anywhere else, but
+`rtesting.Eq`: the same comparison, which also records both sides as
+`rt.Show` text, so that the report can print `left:` and `right:`. Only
+one `==` is recorded: the test's body when it is an `==`, or, in an
+effect test, the value of the `Task.succeed` that ends its block
+(`recordEq` in `internal/ir/lower.go`). An effect test's function
+returns an `eff.Task[bool]` instead of a `bool`, built like any other
+task (section 8, "A `Task`: `Toggle`").
+
+**The table of tests.** `app__alder.go` lists them, with the session a
+test starts from:
+
+```go
+// Tests are the app's `test` declarations in module order then declaration order, for alder test (rtesting.Main).
+var Tests = []rtesting.Case{
+	{Module: "Theme", Name: "flip alternates", Pure: test__Theme__1},
+	{Module: "Todo", Name: "countOpen ignores done todos", Pure: test__Todo__1},
+	{Module: "Todos.Index", Name: "Toggle flips done", Task: test__Todos__Index__1},
+	{Module: "Todos.Index", Name: "Toggle by another user is not found", Task: test__Todos__Index__2},
+}
+
+// TestSession is the session a test runs with: App's session with every field at its default (nil without an App module).
+func TestSession() any {
+	return session__codec{}.Default()
+}
+```
+
+A `Case` has `Pure` (a `func() bool`) or `Task` (a `func() eff.Task[bool]`),
+never both. `alder build` emits the table too; nothing in the server
+calls it.
+
+**The main.** `testMain` in `cmd/alder/test.go` writes the scratch
+program's `cmd/main.go`. For the to-do app, which has adapters:
+
+```go
+package main
+
+import (
+	"os"
+
+	rtesting "alder/rt/testing"
+	"app"
+	"app/adapters"
+)
+
+func main() {
+	caps := adapters.Caps().Registry()
+	os.Exit(rtesting.Main(app.Tests, app.Tables, caps, app.TestSession(), os.Args[1:], os.Stdout, os.Stderr))
+}
+```
+
+Without adapters the capabilities are `app.Caps{}.Registry()`: every
+capability's key is there with no implementation, and a call to one
+fails with "capability … is not wired", which the report turns into
+"… is not wired in tests". `scratch.RunContext` passes the program an
+environment, not arguments, so `alder test` hands `-run` and `--json`
+over as `ALDER_TEST_RUN` and `ALDER_TEST_JSON=1`; `rtesting.Main` reads
+them as its flags' defaults. The program prints the report itself;
+`alder test` copies its output and exits with its exit code. A run is
+bounded by five minutes (`testTimeout`) rather than eval's
+`scratch.Timeout`.
+
+**One world per test.** `rtesting.Run` (`rt/testing/testing.go`) runs
+the cases one after another. A pure case is called, with a `recover` so
+a Go panic fails that test and the next one still runs. A task case
+gets its own environment: `db.OpenSQLite(":memory:")`, a database that
+exists only in this process, `store.Ensure` with the app's `Tables`,
+and an `eff.Env` with those capabilities, the session from
+`TestSession()`, and a clock that always says `2026-01-01T00:00:00Z`.
+Then `eff.Run(env, eff.KTask, c.Task())` runs it exactly as the server
+runs an `update` (section 8, "What `Run` does"): one transaction, begun
+by the first database step, committed when the task succeeds. The
+report's trace is `env.Trace`. Then the database is closed, and with
+`:memory:` that is the end of it.
+
+**`Test.run` is a step.** Section 6 lowers `Test.run t` to a node of its
+own, and the emitter makes it a `Call` named `"Test.run"`, marked as a
+write, whose function hands `t` to `rtesting.Inner` and packs the five
+results into the record Alder sees. From `test__Todos__Index__1`:
+
+```go
+	return eff.Bind(eff.Call("Test.run", true, func(_e3 *eff.Env) (struct {
+		Value rt.Result[string, rt.Nav]
+		Trace []string
+	}, error) {
+		_v4, _msg5, _ok6, _tr7, _err8 := rtesting.Inner(_e3, Todos__Index__update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: id}), Todos__Index__Model{Filter: Todo__Filter__All__, Todos: []Todo__Todo{}}, Todos__Index__Session{User: me, Theme: Theme__Theme__Light__}))
+		if _err8 != nil {
+			var _z10 struct {
+				Value rt.Result[string, rt.Nav]
+				Trace []string
+			}
+			return _z10, _err8
+		}
+		_r9 := struct {
+			Value rt.Result[string, rt.Nav]
+			Trace []string
+		}{Trace: _tr7}
+		if _ok6 {
+			_r9.Value = rt.Ok[string, rt.Nav](_v4)
+		} else {
+			_r9.Value = rt.Err[string, rt.Nav](_msg5)
+		}
+		return _r9, nil
+	}), func(r struct {
+```
+
+`Inner` is where the savepoint lives. Its doc comment is its contract:
+
+```go
+// Inner runs t under a savepoint as Test.run does: ok is true with v on success; on *eff.ErrFail
+// or eff.ErrNotFound the savepoint is rolled back, the session restored, and msg is the failure
+// text ("not found" for ErrNotFound); trace is the steps t performed. Any other error is returned.
+//
+// Inner is called from a Call's function while a Task runs (env.Kind is KTask); it begins the
+// Task's transaction if no step has yet, so the savepoint has a transaction to live in. When
+// env.Store does not implement db.Savepointer (or there is no store) t runs without one and a
+// failure undoes nothing in the store. On an error other than a failure the savepoint is
+// still rolled back, so the store is consistent, and the error is returned for the enclosing
+// Run to fail the test with. A panic in t is not recovered: it unwinds through the enclosing
+// Run, which rolls back the whole transaction.
+func Inner[T any](env *eff.Env, t eff.Task[T]) (v T, msg string, ok bool, trace []string, err error)
+```
+
+`eff.RunInner` (`rt/eff/run.go`) runs `t` with the same `Env`, inside
+the running task: same transaction, same trace (which is why the inner
+steps also appear in the test's trace, after `"Test.run"`). `Inner`
+copies the part of the trace added since it started; that is `r.trace`.
+The savepoint itself is three SQL statements on the open transaction,
+in `rt/db/sqlite.go`: `SAVEPOINT alder_t1` before `t`, then
+`RELEASE alder_t1` when `t` succeeded, or `ROLLBACK TO alder_t1` and
+`RELEASE alder_t1` when it failed (`ROLLBACK TO` undoes the writes but
+keeps the mark open, so it is released too). Each `Inner` takes the next
+number from a counter, so nested and successive savepoints never share a
+name. `Test.trace` is a smaller `Call` whose function returns
+`rtesting.Trace(env)`: the trace so far without its own step.
+
 ### What is still to come
 
-M4a added `alder eval` and the book verifier (above). The rest of M4
-adds `alder test` and a REPL (`alder repl`), on the same scratch runner.
+M4a added `alder eval` and the book verifier, M4b `alder test` (above).
+The rest of M4 adds a REPL (`alder repl`), on the same scratch runner.
 See the design spec,
 [`docs/superpowers/specs/2026-10-09-m4-test-repl-design.md`](../docs/superpowers/specs/2026-10-09-m4-test-repl-design.md),
 "Milestones".

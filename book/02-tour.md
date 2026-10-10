@@ -61,10 +61,13 @@ module Todos.Index
 
 import Todo
 import Layout
+import Theme
+import User
 
 page "/" { filter: Todo.Filter = All } requires user
 ```
 
+`Theme` and `User` are imported for the tests at the end of the module.
 `page` declares the route. `filter` is a query parameter with a default, so
 both `/` and `/?filter=Active` work and `filter` is never missing.
 `requires user` means the `user` field of the session must be `Just`;
@@ -203,6 +206,31 @@ Item props =
 due date shows nothing there: `Html.none` renders nothing. `click={Toggle
 { id: ... }}` sends a message; it compiles to a POST (and, with Datastar, an
 in-place patch of the page; chapter 6, "How a request runs").
+
+The module ends with its tests. Each one inserts a user and a todo into a
+fresh, empty database, sends `update` a `Toggle`, and checks what
+happened: the owner's toggle reads the todo and updates it; another
+user's is a 404 and changes nothing. Chapter 10 explains them line by
+line.
+
+```alder part=Todos.Index
+test "Toggle flips done" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: me, theme: Light })
+  let after <- Db.get Todo id
+  Task.succeed (r.trace == ["Db.get Todo", "Db.update Todo"] && Maybe.map (\t -> t.done) after == Just True)
+}
+
+test "Toggle by another user is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let stranger = User.UserId "someone-else"
+  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger, theme: Light })
+  let after <- Db.get Todo id
+  Task.succeed (r.value == Err "not found" && r.trace == ["Db.get Todo"] && Maybe.map (\t -> t.done) after == Just False)
+}
+```
 
 ## What the compiler checked
 
