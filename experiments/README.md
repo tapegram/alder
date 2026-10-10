@@ -169,7 +169,7 @@ Paths in `--- file: ... ---` markers are normalized (`X.alder` and `./app/X.alde
 
 `compiler_bug: true` appears only when the compiler failed on a clean program (see Outcomes: a `--build` or `--test` exiting 2, a checker panic, a hang). Summaries from before M3d have no `harness` key.
 
-#Rounds seeded with `--base` carry a copy of the base's `adapters/` (so `alder test` can run against the example's capability). Those copies are not committed with the runs (`runs/**/adapters/` is ignored): they are Go files inside this repository's module and would break `go vet ./...`, and they are reproducible from `base_commit`.
+#Rounds seeded with `--base` carry a copy of the base's `adapters/` (so `alder test` can run against the example's capability). Those copies are not committed with the runs (`runs/**/adapters/` is ignored; they are reproducible from `base_commit`). `experiments/go.mod` makes this directory a Go module of its own, so Go files inside run output never reach `go vet ./...` or `go test ./...` at the repository root.
 
 ## Outcomes
 
