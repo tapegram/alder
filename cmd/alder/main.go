@@ -11,10 +11,8 @@ import (
 	"strings"
 	"syscall"
 
-	"alder/internal/check"
+	"alder/internal/buildkit"
 	"alder/internal/diag"
-	"alder/internal/names"
-	"alder/internal/types"
 )
 
 func main() {
@@ -100,29 +98,12 @@ func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {
 		fmt.Fprintf(stderr, "alder check: no .alder files under %s/app\n", dir)
 		return 2
 	}
-	std, err := types.LoadStd()
-	if err != nil {
-		fmt.Fprintf(stderr, "alder: internal error loading stdlib: %v\n", err)
-		return 2
-	}
 	// A parse error stops the pipeline; after that each module is checked unless its own name resolution failed.
-	prog, bag, ioErrs := names.Load(dir, std)
-	if len(ioErrs) > 0 {
-		for _, e := range ioErrs {
-			fmt.Fprintf(stderr, "alder check: %v\n", e)
-		}
+	prog, _, bag, ioErrs := buildkit.LoadChecked(dir, nil)
+	if reportLoadErrs("alder check", ioErrs, stderr) {
 		return 2
 	}
-	if !prog.ParseFailed { // Load's bag also holds module-graph errors (cycles), which only gate their modules
-		prog.Resolve(bag)
-		prog.MarkFailed(bag)
-		check.Program(prog, bag)
-	}
-	bag.Sort()
-	sources := map[string][]string{}
-	for _, m := range prog.Modules {
-		sources[m.File] = m.Lines
-	}
+	sources := buildkit.Sources(prog)
 	for _, d := range bag.Items {
 		if jsonOut {
 			fmt.Fprintln(stdout, diag.RenderJSON(d))

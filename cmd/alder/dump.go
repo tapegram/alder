@@ -9,12 +9,10 @@ import (
 	"sort"
 	"strings"
 
-	"alder/internal/check"
+	"alder/internal/buildkit"
 	"alder/internal/diag"
 	"alder/internal/ir"
-	"alder/internal/names"
 	"alder/internal/syntax"
-	"alder/internal/types"
 )
 
 // runDumpTo is `alder dump [--tokens|--ast|--ir] <file.alder | dir>`. The default (--ast) prints
@@ -126,33 +124,15 @@ func tokenLine(t syntax.Token) string {
 // dumpIR checks the app in dir like `alder check` and, when it has no errors and no holes,
 // prints the IR of the lowered program.
 func dumpIR(dir string, stdout, stderr io.Writer) int {
-	std, err := types.LoadStd()
-	if err != nil {
-		fmt.Fprintf(stderr, "alder: internal error loading stdlib: %v\n", err)
-		return 2
-	}
-	prog, bag, ioErrs := names.Load(dir, std)
-	if len(ioErrs) > 0 {
-		for _, e := range ioErrs {
-			fmt.Fprintf(stderr, "alder dump: %v\n", e)
-		}
+	prog, res, bag, ioErrs := buildkit.LoadChecked(dir, nil)
+	if reportLoadErrs("alder dump", ioErrs, stderr) {
 		return 2
 	}
 	if len(prog.Modules) == 0 {
 		fmt.Fprintf(stderr, "alder dump: no .alder files under %s/app\n", dir)
 		return 2
 	}
-	var res *check.Result
-	if !prog.ParseFailed {
-		prog.Resolve(bag)
-		prog.MarkFailed(bag)
-		res = check.Program(prog, bag)
-	}
-	bag.Sort()
-	sources := map[string][]string{}
-	for _, m := range prog.Modules {
-		sources[m.File] = m.Lines
-	}
+	sources := buildkit.Sources(prog)
 	for _, d := range bag.Items {
 		fmt.Fprint(stderr, diag.RenderText(d, sources[d.Span.File]))
 	}

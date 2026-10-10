@@ -205,3 +205,28 @@ func TestBuildEmit_RefusesErrorsAndHoles(t *testing.T) {
 		})
 	}
 }
+
+// buildTo with an explicit output directory writes there, not to build/<app>.
+func TestBuildTo_OutDir(t *testing.T) {
+	src, err := filepath.Abs("../../examples/todos")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := t.TempDir()
+	copyDir(t, src, filepath.Join(tmp, "todos"))
+	t.Chdir(tmp)
+	var stdout, stderr bytes.Buffer
+	out := filepath.Join("elsewhere", "todos")
+	path, code := buildTo("todos", false, out, &stdout, &stderr)
+	if code != 0 || path != filepath.Join(out, "todos") {
+		t.Fatalf("exit %d path %q\nstdout: %s\nstderr: %s", code, path, stdout.String(), stderr.String())
+	}
+	for _, f := range []string{"todos", "cmd/main.go", "App_alder.go", "adapters/password.go", "static/app.css"} {
+		if _, err := os.Stat(filepath.Join(out, f)); err != nil {
+			t.Errorf("%s: %v", f, err)
+		}
+	}
+	if _, err := os.Stat("build"); !os.IsNotExist(err) {
+		t.Errorf("build/ written: %v", err)
+	}
+}

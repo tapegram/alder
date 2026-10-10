@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"alder/rt/datastar"
+
+	"alder/internal/buildkit"
 )
 
 // runRunTo is `alder run [dir]`: a development server for the app in dir. It builds the app
@@ -48,7 +50,7 @@ func runRunTo(args []string, stdout, stderr io.Writer, stop <-chan struct{}) int
 		fmt.Fprintf(stderr, "alder run: %v\n", err)
 		return 2
 	}
-	if !isDir(filepath.Join(dir, "app")) {
+	if !buildkit.IsDir(filepath.Join(dir, "app")) {
 		fmt.Fprintf(stderr, "alder run: no app directory in %s\n", dir)
 		return 2
 	}
@@ -374,7 +376,7 @@ func (d *devServer) rebuild() {
 	}
 	d.stderr.Write(out.Bytes()) // warnings
 	out.Reset()
-	binary, code := buildApp(d.dir, &out)
+	binary, code := buildApp(d.dir, filepath.Join("build", d.app), &out)
 	if code != 0 {
 		d.fail(out.String())
 		return

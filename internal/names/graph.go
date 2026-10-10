@@ -23,9 +23,12 @@ type Program struct {
 	ParseFailed bool
 }
 
-// Load parses every .alder file under dir/app. I/O failures (unreadable directory or file) are
-// returned separately as ioErrs; the caller must not check a program that failed to load.
-func Load(dir string, std map[string]*syntax.Module) (*Program, *diag.Bag, []error) {
+// Load parses every .alder file under dir/app and adds the modules extra, parsed by the caller
+// from memory (their File is what the caller named them, e.g. "Scratch.alder", and their parse
+// diagnostics are the caller's), after the directory's; duplicate, cycle and naming rules apply
+// to them as to the rest. I/O failures (unreadable directory or file) are returned separately as
+// ioErrs; the caller must not check a program that failed to load.
+func Load(dir string, std map[string]*syntax.Module, extra ...*syntax.Module) (*Program, *diag.Bag, []error) {
 	var ioErrs []error
 	bag := &diag.Bag{}
 	var mods []*syntax.Module
@@ -50,6 +53,7 @@ func Load(dir string, std map[string]*syntax.Module) (*Program, *diag.Bag, []err
 		return nil
 	})
 	parseFailed := bag.HasErrors()
+	mods = append(mods, extra...)
 	prog, b2 := Build(mods, std)
 	prog.ParseFailed = parseFailed
 	bag.Items = append(bag.Items, b2.Items...)
