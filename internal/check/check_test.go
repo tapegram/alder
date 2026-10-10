@@ -232,7 +232,9 @@ func TestTestBodies(t *testing.T) {
 		{"bool", `test "t" = 1 == 1`, ""},
 		{"task block", "test \"t\" = {\n  let r <- Test.run (Task.succeed 1)\n  Task.succeed (r.value == Ok 1)\n}", ""},
 		{"trace", "test \"t\" = {\n  let tr <- Test.trace\n  Task.succeed (tr == [])\n}", ""},
-		{"int", `test "t" = 1`, "E0003"},
+		{"int", `test "t" = 1`, "E0003 test \"t\": expected Bool, got Int"},
+		{"int call", "f : Int -> Int\nf n = n\n\ntest \"t\" = f 1", "E0003 test \"t\": expected Bool, got Int"},
+		{"Test.run of a Query", "test \"t\" = {\n  let r <- Test.run (Query.succeed 1)\n  Task.succeed (r.value == Ok 1)\n}", "E0003 expected Task _, got Query Int; a Query runs inside a test's block: `let x <- q`; `Test.run` takes a Task"},
 		{"query block", `test "t" = { Query.succeed True }`, "E0003"},
 		{"task not block", `test "t" = Task.succeed True`, "E0003 expected Bool, got Task Bool; a test of a Task is written as a block"},
 		{"pure block", "test \"t\" = {\n  let x = 1\n  x == 1\n}", "E0003 expected Task Bool, got Bool; a block test is a Task: end it with `Task.succeed (…)`"},
@@ -248,7 +250,8 @@ func TestTestBodies(t *testing.T) {
 				got = append(got, d.Code+" "+d.Message)
 			}
 			if c.want == "" && len(got) != 0 || c.want != "" && (len(got) != 1 || !strings.HasPrefix(got[0], c.want)) ||
-				c.name == "nested task" && strings.Contains(got[0], "written as a block") {
+				c.name == "nested task" && (strings.Contains(got[0], "written as a block") || strings.Contains(got[0], "test \"t\"")) ||
+				c.name == "task not block" && strings.Contains(got[0], "test \"t\"") {
 				t.Fatalf("got %q want one %q", got, c.want)
 			}
 		})

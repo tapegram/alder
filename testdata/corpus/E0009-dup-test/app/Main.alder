@@ -1,0 +1,8 @@
+module Main
+
+double : Int -> Int
+double n = n * 2
+
+test "dup" = double 2 == 4
+
+test "dup" = double 3 == 6

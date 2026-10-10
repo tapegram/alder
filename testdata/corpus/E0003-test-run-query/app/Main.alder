@@ -1,0 +1,9 @@
+module Main
+
+count : Query Int
+count = Query.succeed 1
+
+test "count is one" = {
+  let r <- Test.run count
+  Task.succeed (r.value == Ok 1)
+}

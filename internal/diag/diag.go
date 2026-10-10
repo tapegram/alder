@@ -101,6 +101,7 @@ const (
 	ModuleCase     = "E0014"
 	ReservedModule = "E0015"
 	DuplicatePage  = "E0016"
+	StdModule      = "E0017"
 	UnreachableArm = "E0310"
 	UnusedImport   = "W0001"
 	UnshownErrors  = "W0003"

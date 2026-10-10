@@ -1,0 +1,1 @@
+app/Main.alder:7:21 E0003 expected Task _, got Query Int; a Query runs inside a test's block: `let x <- q`; `Test.run` takes a Task

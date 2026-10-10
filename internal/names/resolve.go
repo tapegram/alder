@@ -230,6 +230,17 @@ func (r *resolver) importedScope(x string) (*moduleScope, bool) {
 	return nil, false
 }
 
+// stdShadowed reports whether x is the name of an app module refused by E0017 (the stdlib has
+// a module named x). A name the stdlib's x lacks is then the app module's: rather than report
+// it, stdShadowed marks the module using it failed (MarkFailed), so it is not checked either.
+func (r *resolver) stdShadowed(x string) bool {
+	if !r.p.stdNamed[x] {
+		return false
+	}
+	r.p.quiet[r.m.Name] = true
+	return true
+}
+
 func (r *resolver) notImported(span diag.Span, x string) {
 	if r.reported[x] {
 		return
@@ -264,7 +275,9 @@ func (r *resolver) typ(t syntax.Type) {
 					t.Ref = syntax.Ref{Kind: syntax.RefType, Module: t.Module, Name: t.Name}
 					return
 				}
-				r.bag.Error(diag.UnknownName, t.Span, "module `%s` has no type `%s`", t.Module, t.Name)
+				if !r.stdShadowed(t.Module) {
+					r.bag.Error(diag.UnknownName, t.Span, "module `%s` has no type `%s`", t.Module, t.Name)
+				}
 				return
 			}
 			if r.p.IsPageModule(t.Module+"."+t.Name) || r.p.IsPageModule(t.Module) {
@@ -469,7 +482,9 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 		case s.tables[v.Module] && s.columns[v.Module][v.Name]:
 			v.Ref = syntax.Ref{Kind: syntax.RefColumn, Module: v.Module, Name: v.Name}
 		default:
-			r.bag.Error(diag.UnknownName, v.Span, "module `%s` has no `%s`", v.Module, v.Name)
+			if !r.stdShadowed(v.Module) {
+				r.bag.Error(diag.UnknownName, v.Span, "module `%s` has no `%s`", v.Module, v.Name)
+			}
 		}
 		return
 	}
@@ -595,7 +610,9 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 			c.Ref = syntax.Ref{Kind: syntax.RefTable, Module: c.Module, Name: c.Name}
 			return
 		}
-		r.bag.Error(diag.UnknownName, c.Span, "module `%s` has no `%s`", c.Module, c.Name)
+		if !r.stdShadowed(c.Module) {
+			r.bag.Error(diag.UnknownName, c.Span, "module `%s` has no `%s`", c.Module, c.Name)
+		}
 		return
 	}
 	r.bag.Error(diag.UnknownName, c.Span, "unknown `%s`", full)

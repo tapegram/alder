@@ -2,6 +2,7 @@
 package check
 
 import (
+	"strconv"
 	"strings"
 
 	"alder/internal/diag"
@@ -11,7 +12,7 @@ import (
 
 // declareTypeNames creates placeholders so types can refer to each other in any order.
 func (c *Checker) declareTypeNames(m *syntax.Module) {
-	seen := map[string]diag.Span{}
+	seen, tests := map[string]diag.Span{}, map[string]diag.Span{}
 	var cur syntax.Decl
 	dup := func(name string, sp diag.Span) bool {
 		if prev, ok := seen[name]; ok {
@@ -68,6 +69,13 @@ func (c *Checker) declareTypeNames(m *syntax.Module) {
 			dup(d.Name, d.Span)
 		case *syntax.MsgDecl:
 			dup(d.Name, d.Span)
+		case *syntax.TestDecl: // test names are a namespace of their own
+			if prev, ok := tests[d.Name]; ok {
+				c.errorf(diag.Duplicate, d.Span, "test %s is already declared at line %d", strconv.Quote(d.Name), prev.Start.Line)
+				c.losers[d] = true
+				continue
+			}
+			tests[d.Name] = d.Span
 		}
 	}
 }

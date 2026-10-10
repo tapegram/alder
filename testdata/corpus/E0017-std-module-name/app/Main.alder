@@ -1,0 +1,6 @@
+module Main
+
+import Test
+
+x : Int
+x = Test.helper + 1

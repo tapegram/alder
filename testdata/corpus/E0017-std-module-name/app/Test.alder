@@ -1,0 +1,4 @@
+module Test
+
+helper : Int
+helper = 1

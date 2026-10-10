@@ -77,7 +77,9 @@ type modCtx struct {
 	form     *formCtx
 	inUpdate bool
 	inTest   bool
-	testBody syntax.Expr // the body of the `test` being checked (inTest)
+	testBody syntax.Expr          // the body of the `test` being checked (inTest)
+	testName string               // the name of the `test` being checked (inTest)
+	runArgs  map[syntax.Expr]bool // the arguments of `Test.run` calls (their mismatches get a hint)
 }
 
 // Options adjust what Program accepts.

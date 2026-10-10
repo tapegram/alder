@@ -19,6 +19,13 @@ type Program struct {
 	Std     map[string]*syntax.Module
 	scopes  map[string]*moduleScope
 	Failed  map[string]bool // module name -> resolution produced errors
+	// stdNamed are the names of app modules refused because a standard-library module has the
+	// name (E0017); uses of the name resolve to the stdlib module, and a name the stdlib module
+	// lacks is not reported (it is the app module's), but quiets the module using it instead.
+	stdNamed map[string]bool
+	// Refused are the app modules left out of the program by E0017, kept for their source lines.
+	Refused []*syntax.Module
+	quiet   map[string]bool // modules that used a stdNamed module's missing name: Failed, silently
 	// ParseFailed is set by Load when any file had a syntax error; such a program must not be checked.
 	ParseFailed bool
 }
@@ -67,11 +74,20 @@ var ReservedModules = []string{"Args", "Cap", "Route"}
 
 func Build(mods []*syntax.Module, std map[string]*syntax.Module) (*Program, *diag.Bag) {
 	bag := &diag.Bag{}
-	p := &Program{Modules: map[string]*syntax.Module{}, Pages: map[string]*syntax.PageDecl{}, AppMsgs: map[string]*syntax.MsgDecl{}, Std: std, scopes: map[string]*moduleScope{}}
+	p := &Program{Modules: map[string]*syntax.Module{}, Pages: map[string]*syntax.PageDecl{}, AppMsgs: map[string]*syntax.MsgDecl{}, Std: std, scopes: map[string]*moduleScope{},
+		stdNamed: map[string]bool{}, quiet: map[string]bool{}}
 	folded := map[string]*syntax.Module{} // by lower-cased name
 	for _, m := range mods {
 		if prev, dup := p.Modules[m.Name]; dup {
 			bag.Error(diag.Duplicate, m.Span, "module `%s` is also defined in %s", m.Name, prev.File)
+			continue
+		}
+		// A module named like a stdlib module would be shadowed by it: `Test.helper` would be
+		// looked up in the stdlib's Test. It is refused and left out of the program.
+		if _, isStd := std[m.Name]; isStd {
+			bag.Error(diag.StdModule, m.Span, "module `%s` is a standard-library module; rename it", m.Name)
+			p.stdNamed[m.Name] = true
+			p.Refused = append(p.Refused, m)
 			continue
 		}
 		// Each module becomes a file named after it (<Module>_alder.go); on a case-insensitive
@@ -185,7 +201,8 @@ func sortStrings(s []string) {
 	}
 }
 
-// MarkFailed records which modules produced resolution errors, by diagnostic file.
+// MarkFailed records which modules produced resolution errors, by diagnostic file, and the
+// modules that used a name of an app module refused by E0017 (whose error is that E0017).
 func (p *Program) MarkFailed(bag *diag.Bag) {
 	if p.Failed == nil {
 		p.Failed = map[string]bool{}
@@ -201,5 +218,8 @@ func (p *Program) MarkFailed(bag *diag.Bag) {
 		if name, ok := byFile[d.Span.File]; ok {
 			p.Failed[name] = true
 		}
+	}
+	for name := range p.quiet {
+		p.Failed[name] = true
 	}
 }

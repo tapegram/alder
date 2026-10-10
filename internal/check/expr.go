@@ -4,6 +4,7 @@ package check
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"alder/internal/diag"
@@ -84,13 +85,13 @@ func (mc *modCtx) checkBodies() {
 			mc.reportHoles()
 		case *syntax.TestDecl:
 			mc.holes = nil
-			mc.inTest, mc.testBody = true, d.Body
+			mc.inTest, mc.testBody, mc.testName = true, d.Body, d.Name
 			if _, isBlock := d.Body.(*syntax.Block); isBlock { // an effect test: a Task Bool
 				mc.check(d.Body, &types.App{Con: "Task", Args: []types.Type{types.Bool}}, newEnv(), effect{kind: "Task"})
 			} else {
 				mc.check(d.Body, types.Bool, newEnv(), effect{})
 			}
-			mc.inTest, mc.testBody = false, nil
+			mc.inTest, mc.testBody, mc.testName = false, nil, ""
 			mc.reportHoles()
 		case *syntax.TypeDecl:
 			if d.Brand != nil && d.Brand.Check != nil {
@@ -538,6 +539,14 @@ func (mc *modCtx) annotateMismatch(d *diag.Diagnostic, e syntax.Expr, got, expec
 	g, ex := c.u.Apply(got), c.u.Apply(expected)
 	if k, _ := queryOrTask(g); mc.inTest && e == mc.testBody && k != "" && isCon(ex, "Bool") && d.Message != "" {
 		d.Message += "; a test of a Task is written as a block: `test \"…\" = { … }`"
+	} else if mc.inTest && e == mc.testBody && isCon(ex, "Bool") && d.Message != "" {
+		// the body itself is neither a Bool nor a Task Bool: say which test
+		d.Message = "test " + strconv.Quote(mc.testName) + ": " + d.Message
+	}
+	if k, _ := queryOrTask(g); k == "Query" && mc.runArgs[e] && d.Message != "" {
+		if k, _ := queryOrTask(ex); k == "Task" {
+			d.Message += "; a Query runs inside a test's block: `let x <- q`; `Test.run` takes a Task"
+		}
 	}
 	if b, ok := mc.testBody.(*syntax.Block); ok && mc.inTest && e == b.Result && isCon(g, "Bool") {
 		if k, arg := queryOrTask(ex); k == "Task" && isCon(arg, "Bool") && d.Message != "" {
@@ -1192,6 +1201,12 @@ func (mc *modCtx) applyFn(fnExpr syntax.Expr, fnT types.Type, args []syntax.Expr
 	// arguments fix type variables the piped value's parameter mentions (`p.id |> Db.delete Todo`
 	// needs `Table t` bound before `Id t` can normalize), and lambdas go last so their parameter
 	// types are known.
+	if v, isVar := fnExpr.(*syntax.Var); isVar && v.Module == "Test" && v.Name == "run" && len(args) > 0 {
+		if mc.runArgs == nil {
+			mc.runArgs = map[syntax.Expr]bool{}
+		}
+		mc.runArgs[args[0]] = true
+	}
 	checkArgs := func(lambdas bool) {
 		for i, a := range args {
 			if _, isLam := a.(*syntax.Lambda); isLam != lambdas {

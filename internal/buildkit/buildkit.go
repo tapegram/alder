@@ -67,6 +67,9 @@ func Sources(prog *names.Program) map[string][]string {
 	for _, m := range prog.Modules {
 		sources[m.File] = m.Lines
 	}
+	for _, m := range prog.Refused {
+		sources[m.File] = m.Lines
+	}
 	return sources
 }
 
