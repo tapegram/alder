@@ -25,9 +25,10 @@ func TestE2E_Todos(t *testing.T) {
 
 // TestE2E_RejectKeepsWrites runs gen_vet/m3c-reject (an update that inserts a row, stores the
 // session and then Rejects) through Serve: the row and the session are kept, the form shows the
-// rejection (testdata/e2e_reject_test.go.txt).
+// rejection; and TestE2E_AppRerenderToReferer: App.Reset's Rerender goes back to the Referer's
+// path and query, a Datastar navigation or a 303, never off-site (testdata/e2e_reject_test.go.txt).
 func TestE2E_RejectKeepsWrites(t *testing.T) {
-	runE2E(t, "../../testdata/golden/gen_vet/m3c-reject", "testdata/e2e_reject_test.go.txt", "TestE2E_RejectKeepsWrites")
+	runE2E(t, "../../testdata/golden/gen_vet/m3c-reject", "testdata/e2e_reject_test.go.txt", "TestE2E_RejectKeepsWrites", "TestE2E_AppRerenderToReferer")
 }
 
 // runE2E emits app, adds program as zz_e2e_test.go and runs the tests named, each of which

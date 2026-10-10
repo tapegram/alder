@@ -1,16 +1,10 @@
 module Names
 
-type NameId = brand Text
-
-table Name {
-  id: NameId @id,
-  name: Text,
-  created: Time @created,
-}
+import Name
 
 page "/" { }
 
-type Model = { names: List Name }
+type Model = { names: List Name.Name }
 
 load : Params -> Session -> Query Model
 load params session = {

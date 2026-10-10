@@ -1,0 +1,9 @@
+module Name
+
+type NameId = brand Text
+
+table Name {
+  id: NameId @id,
+  name: Text,
+  created: Time @created,
+}

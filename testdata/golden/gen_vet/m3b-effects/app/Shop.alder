@@ -1,41 +1,17 @@
 module Shop
 
+import Customer
+import Order
+
 -- M3b emission corpus: every column kind in conditions, @unique/@ref/@updated, a table passed
 -- as a value, an effect in a record field, Nav built and matched in pure code, capabilities with
--- zero, one and two parameters, and the effectful stdlib.
-
-type UserId = brand Text
-
-type OrderId = brand Text
-
-type Status = Open | Paid | Shipped
-
-table Order {
-  id: OrderId @id,
-  buyer: UserId @ref Customer,
-  status: Status = Open,
-  late: Maybe Status,
-  total: Float,
-  qty: Int,
-  gift: Bool,
-  day: Date,
-  shipDay: Maybe Date,
-  code: Text @unique,
-  note: Maybe Text,
-  created: Time @created,
-  updated: Time @updated,
-}
-
-table Customer {
-  id: UserId @id,
-  email: Text @unique,
-  seen: Maybe Time,
-}
+-- zero, one and two parameters, and the effectful stdlib. The tables are in their own modules
+-- (`Order`, `Customer`), and this module queries them through their imports.
 
 capability Pay {
   charge : { amount: Float, card: Text } -> Task (Maybe Text),
   balance : Query Float,
-  limit : UserId -> Int -> Query Int,
+  limit : Customer.UserId -> Int -> Query Int,
 }
 
 type Job = { run: Task Int, label: Text }
@@ -59,13 +35,13 @@ isRedirect n = match n {
   _ -> False,
 }
 
-countIn : Table Order -> Query Int
+countIn : Table Order.Order -> Query Int
 countIn t = Db.count (Db.from t)
 
 allOrders : Query Int
 allOrders = countIn Order
 
-search : Status -> Date -> Time -> List Status -> Select Order
+search : Order.Status -> Date -> Time -> List Order.Status -> Select Order.Order
 search s d t ss =
   Db.from Order
     |> Db.where (Db.and [
@@ -89,16 +65,16 @@ search s d t ss =
     |> Db.orderBy Order.updated.desc
     |> Db.offset 0
 
-conds : List (Condition Order) -> Condition Order
+conds : List (Condition Order.Order) -> Condition Order.Order
 conds cs = Db.or [Db.and cs, Db.not (Db.or cs)]
 
-either : List (Condition Order) -> Select Order
+either : List (Condition Order.Order) -> Select Order.Order
 either cs = Db.from Order |> Db.where (Db.or cs) |> Db.where (Db.not (Db.and []))
 
-seenBefore : Time -> Query (List Customer)
+seenBefore : Time -> Query (List Customer.Customer)
 seenBefore t = Db.all (Db.from Customer |> Db.where (Customer.seen.eq (Just t)))
 
-buy : UserId -> Text -> Task OrderId
+buy : Customer.UserId -> Text -> Task Order.OrderId
 buy u code = {
   let today <- Date.today
   let n <- Random.int { min: 1, max: 9 }
@@ -116,22 +92,22 @@ buy u code = {
   }
 }
 
-register : Text -> Task UserId
+register : Text -> Task Customer.UserId
 register email = Db.insert Customer { email: email, seen: Nothing }
 
 charges : List (Task (Maybe Text))
 charges = [Pay.charge { amount: 1.0, card: "a" }]
 
-limits : UserId -> List (Query Int)
+limits : Customer.UserId -> List (Query Int)
 limits u = List.map (Pay.limit u) [1, 2]
 
-allLimits : UserId -> Query (List Int)
+allLimits : Customer.UserId -> Query (List Int)
 allLimits u = Query.all (limits u)
 
-firstQ : Query (Maybe Order)
+firstQ : Query (Maybe Order.Order)
 firstQ = Db.first (search Open (Date.fromText "2026-01-01" |> Maybe.withDefault (Time.toDate Time.epoch)) Time.epoch [])
 
-remove : OrderId -> Task Unit
+remove : Order.OrderId -> Task Unit
 remove id = Db.delete Order id
 
 fetch : Text -> Task Text
@@ -145,22 +121,22 @@ fetch url = {
   }
 }
 
-createdBefore : Time -> Select Order
+createdBefore : Time -> Select Order.Order
 createdBefore t = Db.from Order |> Db.where (Order.created.lt t) |> Db.orderBy Order.created.desc
 
-newestFirst : Select Order
+newestFirst : Select Order.Order
 newestFirst = Db.from Order |> Db.orderBy Order.created.desc
 
 -- conditions on Maybe columns are two-valued: `Nothing` rows are matched by `in [.., Nothing]`
 -- and by the negation of a condition they do not satisfy
-lateIn : Status -> Select Order
+lateIn : Order.Status -> Select Order.Order
 lateIn s = Db.from Order |> Db.where (Order.late.in [Just s, Nothing]) |> Db.orderBy Order.code.asc
 
-lateNothing : Select Order
+lateNothing : Select Order.Order
 lateNothing = Db.from Order |> Db.where (Order.late.in [Nothing])
 
-notLateIn : List (Maybe Status) -> Select Order
+notLateIn : List (Maybe Order.Status) -> Select Order.Order
 notLateIn ss = Db.from Order |> Db.where (Db.not (Order.late.in ss)) |> Db.orderBy Order.code.asc
 
-notNote : Text -> Select Order
+notNote : Text -> Select Order.Order
 notNote t = Db.from Order |> Db.where (Db.not (Order.note.eq (Just t)))

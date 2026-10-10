@@ -163,3 +163,69 @@ func TestE2E_RejectKeepsWrites(t *testing.T) {
 	_, body = do("GET", "/", nil)
 	has(body, `<ul id="names"><li>ann</li><li>bob</li></ul>`, `<p id="adds">0</p>`)
 }
+
+// TestE2E_AppRerenderToReferer: gen_vet/m3c-reject's App.Reset answers Rerender. App has no page
+// of its own, so the runtime sends the browser back to the page that posted the message: the
+// Referer's path and query. Under Datastar that is a navigation event (a script assigning
+// window.location); without it, a 303. An off-site Referer keeps only its path and query (never
+// a redirect out of the app), and a missing or protocol-relative one goes to "/".
+func TestE2E_AppRerenderToReferer(t *testing.T) {
+	h, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true, Secret: []byte("test-secret-0123456789")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	c := &http.Client{Timeout: 10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	reset := func(hdr ...string) (*http.Response, string) {
+		t.Helper()
+		req, _ := http.NewRequest("POST", srv.URL+"/_m/App/Reset", nil)
+		for _, h := range hdr {
+			k, v, _ := strings.Cut(h, ": ")
+			req.Header.Set(k, v)
+		}
+		res, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		return res, string(b)
+	}
+	back := func(loc string, hdr ...string) {
+		t.Helper()
+		res, body := reset(hdr...)
+		if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != loc || body != "" {
+			t.Fatalf("Reset %q = %d Location %q:\n%s\nwant a 303 to %s", hdr, res.StatusCode, res.Header.Get("Location"), body, loc)
+		}
+		if !strings.HasPrefix(res.Header.Get("Set-Cookie"), "alder_session=") {
+			t.Fatalf("Reset %q stored no session", hdr)
+		}
+	}
+	navigate := func(loc string, hdr ...string) {
+		t.Helper()
+		res, body := reset(append(hdr, "Datastar-Request: true")...)
+		j, _ := json.Marshal(loc)
+		want := "event: datastar-patch-elements\ndata: selector body\ndata: mode append\n" +
+			`data: elements <script data-effect="el.remove()">window.location.assign(` + string(j) + `)</script>` + "\n\n"
+		if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "text/event-stream" || res.Header.Get("Location") != "" || body != want {
+			t.Fatalf("Reset (Datastar) %q = %d %q Location %q:\n%q\nwant a navigation to %s", hdr, res.StatusCode, res.Header.Get("Content-Type"), res.Header.Get("Location"), body, loc)
+		}
+		if !strings.HasPrefix(res.Header.Get("Set-Cookie"), "alder_session=") {
+			t.Fatalf("Reset (Datastar) %q stored no session", hdr)
+		}
+	}
+
+	// the Referer's path and query
+	back("/?filter=Active", "Referer: "+srv.URL+"/?filter=Active")
+	navigate("/?filter=Active", "Referer: "+srv.URL+"/?filter=Active")
+	// an off-site Referer: its path and query only, on this app
+	back("/steal?x=1", "Referer: https://evil.example/steal?x=1")
+	navigate("/steal?x=1", "Referer: https://evil.example/steal?x=1")
+	// a path that a browser would read as another host, and no Referer at all: "/"
+	back("/", "Referer: https://evil.example//evil.example/x")
+	navigate("/", "Referer: https://evil.example//evil.example/x")
+	back("/")
+	navigate("/")
+}

@@ -1873,8 +1873,8 @@ type pay struct{}
 // Charge writes a row through the running Task's transaction (I3): it commits or rolls back
 // with the Task.
 func (pay) Charge(ctx context.Context, args Args__Shop__Pay__Charge) (rt.Maybe[string], error) {
-	row := insertvals__Shop__Customer(insert__Shop__Customer{Email: args.Card + "@pay", Seen: rt.Nothing[time.Time]()})
-	_, err := db.InsertRow(ctx, db.StoreFrom(ctx), db.TxFrom(ctx), table__Shop__Customer, row, time.Now())
+	row := insertvals__Customer__Customer(insert__Customer__Customer{Email: args.Card + "@pay", Seen: rt.Nothing[time.Time]()})
+	_, err := db.InsertRow(ctx, db.StoreFrom(ctx), db.TxFrom(ctx), table__Customer__Customer, row, time.Now())
 	return rt.Just(args.Card), err
 }
 func (pay) Balance(ctx context.Context) (float64, error) { return 2.5, nil }
@@ -1907,11 +1907,11 @@ func TestShop(t *testing.T) {
 		t.Fatal(err)
 	}
 	day := rt.Date{Y: 2026, M: 1, D: 1}
-	open, paid, shipped := Shop__Status__Open__, Shop__Status__Paid__, Shop__Status__Shipped__
-	add := func(code string, st Shop__Status, late rt.Maybe[Shop__Status], qty int64, gift bool, note rt.Maybe[string]) {
+	open, paid, shipped := Order__Status__Open__, Order__Status__Paid__, Order__Status__Shipped__
+	add := func(code string, st Order__Status, late rt.Maybe[Order__Status], qty int64, gift bool, note rt.Maybe[string]) {
 		t.Helper()
 		_, err := eff.Run(env, eff.KTask, eff.Call("add", true, func(e *eff.Env) (string, error) {
-			return db.InsertRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__Shop__Order, insertvals__Shop__Order(insert__Shop__Order{
+			return db.InsertRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__Order__Order, insertvals__Order__Order(insert__Order__Order{
 				Buyer: uid, Status: st, Late: late, Total: 2, Qty: qty, Gift: gift, Day: day, ShipDay: rt.Nothing[rt.Date](), Code: code, Note: note}), e.Now())
 		}))
 		if err != nil {
@@ -1922,11 +1922,11 @@ func TestShop(t *testing.T) {
 	add("x2", paid, rt.Just(paid), 2, false, rt.Just("n"))     // matches search paid
 	add("x3", shipped, rt.Just(shipped), 3, false, rt.Just("n")) // shipped: not < Shipped
 	add("y4", open, rt.Just(open), 1, false, rt.Just("n"))     // code lacks x
-	add("x5", open, rt.Nothing[Shop__Status](), 1, true, rt.Nothing[string]())
+	add("x5", open, rt.Nothing[Order__Status](), 1, true, rt.Nothing[string]())
 
-	all := func(s db.Select[Shop__Order]) []Shop__Order {
+	all := func(s db.Select[Order__Order]) []Order__Order {
 		t.Helper()
-		rows, err := eff.RunQuery(env, eff.Q(eff.Call("all", false, func(e *eff.Env) ([]Shop__Order, error) {
+		rows, err := eff.RunQuery(env, eff.Q(eff.Call("all", false, func(e *eff.Env) ([]Order__Order, error) {
 			return db.All(e.Ctx, e.Store.(db.Store), db.TxOf(e), s)
 		})))
 		if err != nil {
@@ -1935,16 +1935,16 @@ func TestShop(t *testing.T) {
 		return rows
 	}
 	later := clock.Add(time.Hour)
-	if got := all(Shop__search(open, day, later, []Shop__Status{open, paid})); len(got) != 1 || got[0].Code != "x1" || got[0].Late.Val.Tag != is__Shop__Status__Open {
+	if got := all(Shop__search(open, day, later, []Order__Status{open, paid})); len(got) != 1 || got[0].Code != "x1" || got[0].Late.Val.Tag != is__Order__Status__Open {
 		t.Errorf("search open: %+v", got)
 	}
-	if got := all(Shop__search(paid, day, later, []Shop__Status{paid})); len(got) != 1 || got[0].Code != "x2" {
+	if got := all(Shop__search(paid, day, later, []Order__Status{paid})); len(got) != 1 || got[0].Code != "x2" {
 		t.Errorf("search paid: %+v", got)
 	}
-	if got := all(Shop__search(shipped, day, later, []Shop__Status{shipped})); len(got) != 0 {
+	if got := all(Shop__search(shipped, day, later, []Order__Status{shipped})); len(got) != 0 {
 		t.Errorf("search shipped (not < Shipped): %+v", got)
 	}
-	if got := all(Shop__search(open, day, clock, []Shop__Status{open})); len(got) != 0 {
+	if got := all(Shop__search(open, day, clock, []Order__Status{open})); len(got) != 0 {
 		t.Errorf("search created before the clock: %+v", got)
 	}
 	if got := all(Shop__either(nil)); len(got) != 0 {
@@ -1953,7 +1953,7 @@ func TestShop(t *testing.T) {
 	if got := all(Shop__either([]db.Cond{Shop__conds(nil)})); len(got) != 0 {
 		t.Errorf("Db.not (Db.and []) matched %d rows", len(got))
 	}
-	if got := all(db.Where(Shop__conds(nil), db.From(table__Shop__Order))); len(got) != 5 {
+	if got := all(db.Where(Shop__conds(nil), db.From(table__Order__Order))); len(got) != 5 {
 		t.Errorf("Db.or [Db.and [], Db.not (Db.or [])] matched %d rows, want 5", len(got))
 	}
 	if n, err := eff.RunQuery(env, Shop__allOrders); err != nil || n != 5 {
@@ -1977,7 +1977,7 @@ func TestShop(t *testing.T) {
 	customers := func() int64 {
 		t.Helper()
 		n, err := eff.RunQuery(env, eff.Q(eff.Call("count", false, func(e *eff.Env) (int64, error) {
-			return db.CountRows(e.Ctx, e.Store.(db.Store), db.TxOf(e), db.From(table__Shop__Customer))
+			return db.CountRows(e.Ctx, e.Store.(db.Store), db.TxOf(e), db.From(table__Customer__Customer))
 		})))
 		if err != nil {
 			t.Fatal(err)
@@ -2000,7 +2000,7 @@ func TestShop(t *testing.T) {
 	}
 
 	// conditions on Maybe columns are two-valued (C1)
-	codes := func(rows []Shop__Order) string {
+	codes := func(rows []Order__Order) string {
 		var out []string
 		for _, r := range rows {
 			out = append(out, r.Code)
@@ -2013,10 +2013,10 @@ func TestShop(t *testing.T) {
 	if got := codes(all(Shop__lateNothing)); got != "x5" {
 		t.Errorf("late in [Nothing] = %s", got)
 	}
-	if got := codes(all(Shop__notLateIn([]rt.Maybe[Shop__Status]{rt.Just(paid)}))); got != "x1 x3 x5 y4" {
+	if got := codes(all(Shop__notLateIn([]rt.Maybe[Order__Status]{rt.Just(paid)}))); got != "x1 x3 x5 y4" {
 		t.Errorf("not (late in [Just Paid]) = %s", got)
 	}
-	if got := codes(all(Shop__notLateIn([]rt.Maybe[Shop__Status]{rt.Just(paid), rt.Nothing[Shop__Status]()}))); got != "x1 x3 y4" {
+	if got := codes(all(Shop__notLateIn([]rt.Maybe[Order__Status]{rt.Just(paid), rt.Nothing[Order__Status]()}))); got != "x1 x3 y4" {
 		t.Errorf("not (late in [Just Paid, Nothing]) = %s", got)
 	}
 	if got := codes(all(Shop__notNote("n"))); got != "x5" {
@@ -2687,9 +2687,7 @@ error err = <p>error</p>
 notFound : Html Never
 notFound = <p>not found</p>
 `,
-		"Home.alder": `module Home
-
-page "/home" { _q: Int = 0 }
+		"Row.alder": `module Row
 
 type RowId = brand Text
 
@@ -2698,13 +2696,19 @@ table Row {
   _note: Text,
   _at: Time @created,
 }
+`,
+		"Home.alder": `module Home
+
+import Row
+
+page "/home" { _q: Int = 0 }
 
 form NewRow = { _note: Text }
 
 msg Add form NewRow
 msg Pick { _k: Int }
 
-type Model = { _rows: List Row, _h: Html Never, _d: Dict Text Time }
+type Model = { _rows: List Row.Row, _h: Html Never, _d: Dict Text Time }
 
 load : Params -> Session -> Query Model
 load params session = {
@@ -2738,6 +2742,7 @@ update msg model session = match msg {
 `,
 	})
 	contains(t, files["Home_alder.go"], "U__note string", "U__q int64")
+	contains(t, files["Row_alder.go"], "U__note ", "U__at ", "r.U__note, err = db.DecodeText")
 	runGo(t, files, `package app
 
 import (
@@ -2836,7 +2841,7 @@ test "total adds" = total [1, 2] == 3
 
 test "total is wrong" = total [1, 2] == 4
 `,
-		"Shop/Orders.alder": `module Shop.Orders
+		"Item.alder": `module Item
 
 type ItemId = brand Text
 
@@ -2844,6 +2849,10 @@ table Item {
   id: ItemId @id,
   name: Text,
 }
+`,
+		"Shop/Orders.alder": `module Shop.Orders
+
+import Item
 
 addThenFail : Task Int
 addThenFail = {

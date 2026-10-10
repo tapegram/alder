@@ -1,8 +1,9 @@
 module App
 
+import Customer
 import Shop
 
-session { user: Maybe Shop.UserId, cart: Int = 0 }
+session { user: Maybe Customer.UserId, cart: Int = 0 }
 
 login = Home
 

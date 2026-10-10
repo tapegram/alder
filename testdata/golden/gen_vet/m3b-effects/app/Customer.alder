@@ -1,0 +1,9 @@
+module Customer
+
+type UserId = brand Text
+
+table Customer {
+  id: UserId @id,
+  email: Text @unique,
+  seen: Maybe Time,
+}

@@ -265,21 +265,26 @@ func TestLower_RefusesPoison(t *testing.T) {
 }
 
 // A table used as a value (passed to a function taking `Table Order`) lowers to a TableRef, and a
-// table's attributes are kept: @created, @updated, @unique and @ref (to a table of the same
-// module declared after it).
+// table's attributes are kept: @created, @updated, @unique and @ref (to a table of another
+// module).
 func TestIR_TableRefAndAttrs(t *testing.T) {
 	p := lowerDir(t, "../../testdata/golden/gen_vet/m3b-effects")
 	d := Dump(p)
 	for _, want := range []string{
-		"(call (global Shop.countIn) (table Shop.Order))",
-		"(created created)", "(updated updated)", "(unique code)", "(ref buyer Shop.Customer)",
+		"(call (global Shop.countIn) (table Order.Order))",
+		"(created created)", "(updated updated)", "(unique code)", "(ref buyer Customer.Customer)",
 	} {
 		if !strings.Contains(d, want) {
 			t.Errorf("dump lacks %q:\n%s", want, d)
 		}
 	}
-	tb := p.Tables[0]
-	if tb.Name != "Order" || tb.Created != "created" || tb.Updated != "updated" || len(tb.Unique) != 1 || tb.Refs["buyer"] != "Shop.Customer" {
+	var tb *Table
+	for _, x := range p.Tables {
+		if x.Name == "Order" {
+			tb = x
+		}
+	}
+	if tb == nil || tb.Created != "created" || tb.Updated != "updated" || len(tb.Unique) != 1 || tb.Refs["buyer"] != "Customer.Customer" {
 		t.Errorf("table Order: %+v", tb)
 	}
 }
