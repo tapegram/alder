@@ -302,6 +302,15 @@ M5.
 M4): the blog example app end to end; schema migrations replacing
 dev-mode recreate.
 
+**M6 — editor support** (added 2026-10-09): a tree-sitter grammar for
+Alder (generated from, and tested against, the same corpus
+`internal/syntax` parses; chapter 3 is its prose form) and a Neovim
+plugin: file type, highlighting and indentation from the grammar,
+`alder check --json` as diagnostics, `alder eval` of the expression under
+the cursor; a language server comes later, once the checker exposes
+positions for hover and go-to-definition. To be brainstormed and specced
+after M5.
+
 Each milestone gets its own implementation plan.
 
 ## Decisions recorded
