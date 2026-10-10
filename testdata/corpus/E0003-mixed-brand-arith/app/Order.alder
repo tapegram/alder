@@ -1,0 +1,23 @@
+module Order
+
+type Cents = brand Int
+
+-- two brands of Int: both widen, and the result is an Int
+lineTotal : Int.NonNegative -> Int.Positive -> Int
+lineTotal qty price = qty * price
+
+-- a brand and another brand of the same base
+withTip : Cents -> Int.Positive -> Int
+withTip amount tip = amount + tip
+
+-- the same brand on both sides keeps it
+sum : Cents -> Cents -> Cents
+sum a b = a + b
+
+-- the result of two different brands is the base, not either brand
+stillBranded : Int.NonNegative -> Int.Positive -> Int.Positive
+stillBranded qty price = qty * price
+
+-- different bases do not mix
+mixed : Int.Positive -> Float -> Float
+mixed n x = n * x

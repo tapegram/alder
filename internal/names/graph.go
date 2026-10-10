@@ -18,7 +18,12 @@ type Program struct {
 	AppMsgs map[string]*syntax.MsgDecl
 	Std     map[string]*syntax.Module
 	scopes  map[string]*moduleScope
-	Failed  map[string]bool // module name -> resolution produced errors
+	// ctorIndex maps a constructor (or brand) name to the app modules declaring it, and
+	// tableIndex a table name to the app modules declaring it that are not named after it;
+	// both are built before any body is resolved, for the hints of names not imported.
+	ctorIndex  map[string][]ctorOwner
+	tableIndex map[string][]string
+	Failed     map[string]bool // module name -> resolution produced errors
 	// stdNamed are the names of app modules refused because a standard-library module has the
 	// name (E0017); uses of the name resolve to the stdlib module, and a name the stdlib module
 	// lacks is not reported (it is the app module's), but quiets the module using it instead.
@@ -129,6 +134,9 @@ func expectedName(file string) string {
 	rest := strings.TrimSuffix(file[i+4:], ".alder")
 	return strings.ReplaceAll(rest, "/", ".")
 }
+
+// ctorOwner is a module declaring a constructor, and the type it constructs.
+type ctorOwner struct{ Module, Type string }
 
 func (p *Program) IsPageModule(name string) bool { _, ok := p.Pages[name]; return ok }
 

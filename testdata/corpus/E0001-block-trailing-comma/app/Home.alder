@@ -1,0 +1,21 @@
+module Home
+
+page "/" { }
+
+type Model = { count: Int }
+
+msg Add
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { count: 0 }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let n = model.count + 1
+    if n > 10 then Task.succeed Rerender else Task.succeed Rerender,
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <button click={Add}>{Text.fromInt model.count}</button>

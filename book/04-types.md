@@ -110,6 +110,16 @@ Rules:
    though `id` widens to `Text`.
 5. **A brand's base is a built-in type**, never another brand.
 
+Rules 1 and 3 together decide arithmetic on two *different* brands of one
+base: both widen to the base, and the result is the base. An
+`Int.NonNegative` times an `Int.Positive` is an `Int`, and so is `Cents +
+Int.Positive`; only `Cents + Cents` stays `Cents`.
+
+```alder eval=6
+-- 6 : Int, neither brand
+(Int.NonNegative 2) * (Int.Positive 3)
+```
+
 Rule 4 is a type error, not a silent widening:
 
 ```alder error=E0003 "`==` needs both sides to have the same type"

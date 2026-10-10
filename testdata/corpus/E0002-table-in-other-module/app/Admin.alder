@@ -1,0 +1,17 @@
+module Admin
+
+import Post
+import Post.Comment
+
+page "/admin" { }
+
+type Model = { count: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let comments <- Db.from Post.Comment |> Db.where (Post.Comment.body.eq "spam") |> Db.all
+  Query.succeed { count: List.length comments }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Text.fromInt model.count}</p>

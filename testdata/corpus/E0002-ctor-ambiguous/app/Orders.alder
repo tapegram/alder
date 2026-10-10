@@ -1,0 +1,14 @@
+module Orders
+
+page "/orders" { }
+
+type Model = { count: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { count: 0 }
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Text.fromInt model.count}</p>
+
+canSee : Bool
+canSee = Staff == Staff

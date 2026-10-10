@@ -1,0 +1,26 @@
+module Notes.Show
+
+page "/notes" { }
+
+type Model = { count: Int }
+
+msg Clear
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { count: 1 }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = Task.succeed Rerender
+
+view : Model -> Session -> Html Msg
+view model session = <button click={Clear}>{Text.fromInt model.count}</button>
+
+test "clear rerenders" = {
+  let r <- Test.run (Notes.Show.update Notes.Show.Clear { count: 1 } { })
+  Task.succeed (r.value == Ok Rerender)
+}
+
+test "no such message" = {
+  let r <- Test.run (update Notes.Show.Reset { count: 1 } { })
+  Task.succeed (r.value == Ok Rerender)
+}

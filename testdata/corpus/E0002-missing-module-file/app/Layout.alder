@@ -1,0 +1,25 @@
+module Layout
+
+import Theme
+
+Page : { theme: Theme.Theme, title: Text, children: List (Html a) } -> Html a
+Page props =
+  <main class={if props.theme == Dark then "dark" else "light"}>
+    <h1>{props.title}</h1>
+    {props.children}
+  </main>
+
+defaultTheme : Theme
+defaultTheme = Light
+
+isDark : Theme.Theme -> Bool
+isDark t = match t {
+  Dark -> True,
+  _ -> False,
+}
+
+lowest : Bool
+lowest = Low == Low
+
+shout : Text -> Text
+shout t = Text.toUpper titel

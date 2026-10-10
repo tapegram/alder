@@ -1,0 +1,2 @@
+app/Home.alder:13:53 E0001 in <div>: `if` always has an `else`; in markup write `else Html.none`
+app/Label.alder:5:1 E0001 in the definition of `label`: expected `else`, got end of file; `if` always has an `else`

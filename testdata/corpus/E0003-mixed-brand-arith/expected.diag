@@ -1,0 +1,2 @@
+app/Order.alder:19:26 E0003 expected Int.Positive, got Int
+app/Order.alder:23:13 E0003 cannot apply `*` to `Int.Positive` and `Float`

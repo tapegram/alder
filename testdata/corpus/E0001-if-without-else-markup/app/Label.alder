@@ -1,0 +1,4 @@
+module Label
+
+label : Bool -> Text
+label admin = if admin then "admin"

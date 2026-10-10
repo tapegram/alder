@@ -1,0 +1,14 @@
+module Home
+
+page "/" { }
+
+type Model = { admin: Bool }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { admin: False }
+
+view : Model -> Session -> Html Msg
+view model session =
+  <div>
+    {if model.admin then <a href={Home {}}>Admin</a>}
+  </div>

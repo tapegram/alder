@@ -178,7 +178,12 @@ func (p *Parser) parseHTMLBrace(ltok Token) Expr {
 		p.skipNL()
 		h.Then = p.parseHTMLChild()
 		p.skipNL()
-		p.expectKeyword("else")
+		if !p.atKeyword("else") {
+			p.errorAt(p.tok, "`if` always has an `else`; in markup write `else Html.none`")
+			h.Span = p.spanFrom(ltok)
+			return h
+		}
+		p.advance()
 		p.skipNL()
 		h.Else = p.parseHTMLChild()
 		h.Span = p.spanFrom(ltok)

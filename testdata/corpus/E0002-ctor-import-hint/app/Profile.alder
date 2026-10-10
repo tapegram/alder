@@ -1,0 +1,16 @@
+module Profile
+
+page "/profile" { }
+
+type Model = { dark: Bool }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { dark: False }
+
+view : Model -> Session -> Html Msg
+view model session = <p>{if model.dark then "dark" else "light"}</p>
+
+label : Bool -> Text
+label dark = if dark then "dark" else "light"
+
+test "the light theme is not dark" = label (Light == Dark) == "light"

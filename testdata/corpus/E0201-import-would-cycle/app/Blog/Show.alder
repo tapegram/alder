@@ -1,0 +1,13 @@
+module Blog.Show
+
+import Blog
+
+page "/blog" { }
+
+type Model = { title: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { title: Blog.title }
+
+view : Model -> Session -> Html Msg
+view model session = <h1>{model.title}</h1>

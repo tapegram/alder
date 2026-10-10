@@ -1,0 +1,16 @@
+module Feed
+
+import Post
+
+page "/feed" { }
+
+type Model = { count: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let comments <- Db.from Comment |> Db.where (Comment.post.eq (Post.PostId "a")) |> Db.all
+  Query.succeed { count: List.length comments }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Text.fromInt model.count}</p>

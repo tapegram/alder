@@ -1,4 +1,4 @@
 app/Index.alder:5:23 E0201 module `Theme` is not imported
   fix 2:1-2:1 import Theme⏎
-app/Index.alder:8:46 E0002 unknown constructor `Light`
-app/Index.alder:11:44 E0002 unknown constructor `Dark`
+app/Index.alder:8:46 E0002 `Light` is a constructor of `Theme.Theme`; import `Theme`
+app/Index.alder:11:44 E0002 `Dark` is a constructor of `Theme.Theme`; import `Theme`

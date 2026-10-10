@@ -1,0 +1,4 @@
+app/Admin.alder:4:1 E0002 `Comment` is a table of module `Post`, but a table is declared in its own module named after it: move it to `app/Comment.alder`
+app/Feed.alder:11:27 E0002 `Comment` is a table of module `Post`, but a table is declared in its own module named after it: move it to `app/Comment.alder`
+app/Feed.alder:11:48 E0002 `Comment` is a table of module `Post`, but a table is declared in its own module named after it: move it to `app/Comment.alder`
+app/Index.alder:11:53 E0002 `Comment` is a table of module `Post`, but a table is declared in its own module named after it: move it to `app/Comment.alder`

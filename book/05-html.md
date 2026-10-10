@@ -54,6 +54,15 @@ unescaped output, and it must never be applied to text a user entered.
 </div>
 ```
 
+An `if` in markup always has an `else`, as `if` does everywhere. When one
+branch should show nothing, write `else Html.none`:
+
+```alder
+<nav>
+  {if model.user == Nothing then <a href={Auth.Login {}}>Log in</a> else Html.none}
+</nav>
+```
+
 `for x in list -> html` produces a `List (Html Msg)`. There is no index
 variable; use `List.indexed` first if an index is needed.
 

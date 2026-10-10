@@ -283,7 +283,12 @@ func (p *Parser) parsePrimary() Expr {
 			p.skipNL()
 			e.Then = p.parseExpr()
 			p.skipNL()
-			p.expectKeyword("else")
+			if !p.atKeyword("else") {
+				p.errorAt(p.tok, "expected `else`, got "+describe(p.tok)+"; `if` always has an `else`")
+				e.Span = p.spanFrom(start)
+				return e
+			}
+			p.advance()
 			p.skipNL()
 			e.Else = p.parseExpr()
 			e.Span = p.spanFrom(start)
@@ -404,7 +409,7 @@ func (p *Parser) parseBraces() Expr {
 		return e
 	}
 	// block with a single result expression
-	p.expect(RBrace, "`}`")
+	p.expectBlockEnd()
 	b := &Block{Result: first}
 	b.Span = p.spanFrom(start)
 	return b
@@ -470,9 +475,19 @@ func (p *Parser) parseBlockBody(start Token) Expr {
 		b.Result = p.parseExpr()
 	}
 	p.skipNL()
-	p.expect(RBrace, "`}`")
+	p.expectBlockEnd()
 	b.Span = p.spanFrom(start)
 	return b
+}
+
+// expectBlockEnd expects the `}` after a block's result; a `,` there gets the reason.
+func (p *Parser) expectBlockEnd() {
+	if p.at(Comma) {
+		p.errorAt(p.tok, "expected `}`, got `,`; the last expression of a block is its result and takes no `,`")
+		p.advance() // recover as if the `,` were not there
+		p.skipNL()
+	}
+	p.expect(RBrace, "`}`")
 }
 
 func (p *Parser) expectNameOrWild() string {

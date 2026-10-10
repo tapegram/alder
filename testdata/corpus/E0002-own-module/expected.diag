@@ -1,0 +1,5 @@
+app/Notes/Show.alder:19:22 E0002 inside `Notes.Show`, its own names are written unqualified: `update`
+  fix 19:22-19:39 update
+app/Notes/Show.alder:19:40 E0002 inside `Notes.Show`, its own names are written unqualified: `Clear`
+  fix 19:40-19:56 Clear
+app/Notes/Show.alder:24:29 E0002 module `Notes.Show` has no `Reset`

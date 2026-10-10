@@ -179,7 +179,7 @@ func TestResolve_AppQualifierNeverE0201(t *testing.T) {
 		"E0002:`Session` is not qualified; write `Session`",
 		"E0002:`App` has no type `Theme` other modules can use; only `App.Msg` is global",
 		"E0002:`App` has no `login`; `login` is a declaration, not a value — link to the page with `href={Auth.Login {}}`",
-		"E0002:`App` has no `update`; only app-level messages such as `App.Logout` can be used from other modules",
+		"E0002:`App.update` is called by the runtime, not by code; a test of it belongs in `app/App.alder`",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)

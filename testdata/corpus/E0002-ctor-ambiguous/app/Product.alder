@@ -1,0 +1,3 @@
+module Product
+
+type Audience = Staff | Public

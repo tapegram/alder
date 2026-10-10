@@ -1563,10 +1563,28 @@ func (mc *modCtx) arith(x *syntax.BinOp, l, r types.Type) types.Type {
 		if c.u.Check(r, l) == nil {
 			return l
 		}
+		// two different brands of one base (`Int.NonNegative * Int.Positive`): both widen to
+		// the base, and the operation returns it (chapter 4, rules 1 and 3)
+		if lb, rb := brandBase(l), brandBase(r); lb != nil && rb != nil && lb.Name == rb.Name {
+			return lb
+		}
 		c.errorf(diag.TypeMismatch, x.Span, "cannot apply `%s` to `%s` and `%s`", x.Op, types.String(l), types.String(r))
 		return c.u.Fresh()
 	}
 	return lt
+}
+
+// brandBase is the built-in base of a numeric type: Int for `Int` and for `Cents = brand Int`.
+func brandBase(t types.Type) *types.Con {
+	switch t := t.(type) {
+	case *types.Con:
+		return t
+	case *types.Brand:
+		if b, ok := t.Base.(*types.Con); ok {
+			return b
+		}
+	}
+	return nil
 }
 
 func firstNonNumeric(l, r types.Type) types.Type {

@@ -1,0 +1,5 @@
+app/Layout.alder:3:1 E0002 there is no `app/Theme.alder` (or `app/Theme/…`): write the module or remove the import
+app/Layout.alder:22:10 E0002 `Low` is a constructor of `Priority.Priority`; import `Priority`
+  fix 4:1-4:1 import Priority⏎
+app/Layout.alder:22:17 E0002 `Low` is a constructor of `Priority.Priority`; import `Priority`
+app/Layout.alder:25:24 E0002 unknown name `titel`

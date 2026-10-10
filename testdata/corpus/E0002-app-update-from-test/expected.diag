@@ -1,0 +1,1 @@
+app/Home.alder:14:22 E0002 `App.update` is called by the runtime, not by code; a test of it belongs in `app/App.alder`

@@ -1,0 +1,19 @@
+module App
+
+session { dark: Bool = False }
+
+msg Flip
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Flip p -> {
+    let _ <- Session.put (\s -> { s | dark: not s.dark })
+    Task.succeed Rerender
+  },
+}
+
+error : Error -> Html Never
+error err = <h1>Something went wrong</h1>
+
+notFound : Html Never
+notFound = <h1>Not found</h1>

@@ -300,7 +300,12 @@ diagnostics from three distinct mistakes, four of them introduced by the retry i
 the M3 work is reporting past parse errors, plus four message fixes:
 reasons for parse errors, a table declared in another table's module,
 missing-import cascades, and an annotation hint for `let`-bound record
-literals.
+literals. The table fix did not land until M4d, after E6 and E7 met it
+again: a use of a table declared in another table's module now says to
+move the table to its own module (`app/Comment.alder`), where it offered
+`import Post.Comment`, a module that does not exist (E5's problem 2,
+closed). Still open: a parse error hides every name and type error
+behind it (problem 5), which cost Qwen again in E7's T4 and T6.
 
 ### E6: Does it build?
 
