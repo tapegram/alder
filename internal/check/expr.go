@@ -45,6 +45,10 @@ func (mc *modCtx) checkBodies() {
 	for _, d := range c.live(mc.m) {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
+			if d.Sig == nil && d.Body != nil && mc.infersTopLevel() {
+				mc.inferTopLevel(d)
+				continue
+			}
 			if d.Sig == nil && d.Body != nil {
 				mc.inferSig(d)
 				continue
@@ -117,6 +121,107 @@ func (mc *modCtx) inferSig(d *syntax.ValueDecl) {
 		s = types.StringIn(t, mc.m.Name)
 	}
 	mc.missingSig(d, s)
+}
+
+// infersTopLevel reports whether this module's sig-less top-level values have their signatures
+// inferred (Options.InferTopLevel, module Scratch) rather than reported as E0007.
+func (mc *modCtx) infersTopLevel() bool {
+	return mc.c.opts.InferTopLevel && mc.m.Name == "Scratch"
+}
+
+// inferTopLevel infers the signature of a value written without one, generalizes the type
+// variables left unsolved to type parameters `a`, `b`, … (binding each variable to its
+// parameter, so the body's recorded types name them too), and records it as the value's
+// signature. A body whose type is not known without an error of its own (a value used in its
+// own definition) is E0007 as before.
+func (mc *modCtx) inferTopLevel(d *syntax.ValueDecl) {
+	c := mc.c
+	errs := errorCount(c.bag)
+	mc.holes = nil
+	env := newEnv()
+	var params []types.Type
+	for _, p := range d.Params {
+		v := c.u.Fresh()
+		c.bind(env, p, p.Name, v)
+		params = append(params, v)
+	}
+	var sig types.Type = mc.infer(d.Body, env, effect{})
+	if len(params) > 0 {
+		sig = &types.Fun{Params: params, Result: sig}
+	}
+	t := c.u.Apply(sig)
+	for i, v := range freeVars(t) {
+		c.u.Subst[v.ID] = &types.Param{Name: paramName(i)}
+	}
+	mc.reportHoles()
+	t = c.u.Apply(t)
+	if poisoned(t) {
+		if errorCount(c.bag) == errs {
+			mc.missingSig(d, "?type")
+		}
+		return
+	}
+	c.values[c.key(mc.m.Name, d.Name)] = t
+}
+
+// errorCount is the number of errors in bag.
+func errorCount(bag *diag.Bag) int {
+	n := 0
+	for _, d := range bag.Items {
+		if d.Severity == "error" {
+			n++
+		}
+	}
+	return n
+}
+
+// freeVars lists the unsolved variables of the applied type t, in order of first occurrence.
+func freeVars(t types.Type) []*types.Var {
+	var out []*types.Var
+	seen := map[int]bool{}
+	var walk func(types.Type)
+	walk = func(t types.Type) {
+		switch t := t.(type) {
+		case *types.Var:
+			if !seen[t.ID] {
+				seen[t.ID] = true
+				out = append(out, t)
+			}
+		case *types.App:
+			for _, a := range t.Args {
+				walk(a)
+			}
+		case *types.Union:
+			for _, a := range t.Args {
+				walk(a)
+			}
+		case *types.Fun:
+			for _, p := range t.Params {
+				walk(p)
+			}
+			walk(t.Result)
+		case *types.Record:
+			if t.Anonymous {
+				for _, f := range t.Fields {
+					walk(f.Type)
+				}
+			}
+			for _, a := range t.Args {
+				walk(a)
+			}
+		}
+	}
+	walk(t)
+	return out
+}
+
+// paramName is the i-th generalized type parameter's name: a … z, then a1, b1, ….
+func paramName(i int) string {
+	s := string(rune('a' + i%26))
+	if i >= 26 {
+		s += fmt.Sprint(i / 26)
+	}
+	return s
 }
 
 // missingSig reports E0007 for d with a fix that inserts `name : sig` on the line before it.

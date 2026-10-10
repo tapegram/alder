@@ -39,6 +39,11 @@ func (e *StdError) Error() string { return e.Err.Error() }
 // diagnostic, sorted. res is nil when the program was not checked (a parse error). ioErrs are the
 // I/O failures of reading dir (or a single *StdError); with any, the program must not be used.
 func LoadChecked(dir string, extra []*syntax.Module) (prog *names.Program, res *check.Result, bag *diag.Bag, ioErrs []error) {
+	return LoadCheckedWith(dir, extra, check.Options{})
+}
+
+// LoadCheckedWith is LoadChecked with the checker's options (check.ProgramWith).
+func LoadCheckedWith(dir string, extra []*syntax.Module, o check.Options) (prog *names.Program, res *check.Result, bag *diag.Bag, ioErrs []error) {
 	std, err := types.LoadStd()
 	if err != nil {
 		return nil, nil, &diag.Bag{}, []error{&StdError{err}}
@@ -50,7 +55,7 @@ func LoadChecked(dir string, extra []*syntax.Module) (prog *names.Program, res *
 	if !prog.ParseFailed { // Load's bag also holds module-graph errors (cycles), which only gate their modules
 		prog.Resolve(bag)
 		prog.MarkFailed(bag)
-		res = check.Program(prog, bag)
+		res = check.ProgramWith(prog, bag, o)
 	}
 	bag.Sort()
 	return prog, res, bag, nil

@@ -829,7 +829,7 @@ func (mc *modCtx) declareValues() {
 		}
 		has[vd.Name] = true
 		if vd.Sig == nil {
-			if c.prog.Failed[mc.m.Name] && c.prog.Std[mc.m.Name] == nil {
+			if c.prog.Failed[mc.m.Name] && c.prog.Std[mc.m.Name] == nil && !mc.infersTopLevel() {
 				mc.missingSig(vd, "?type") // bodies of this module are not checked, so nothing is inferred
 			}
 			continue

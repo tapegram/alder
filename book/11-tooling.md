@@ -55,6 +55,7 @@ An app that is not inside a Go module doesn't need one.
 alder check          type-check everything; milliseconds; no output on success
 alder build          check, generate Go, go build → ./build/myapp/myapp
 alder run            build and run with the dev database, reloading on change
+alder eval <expr>    evaluate an expression against the app: value : Type
 alder test           run every `test`
 alder fmt            rewrite every file in canonical format
 alder dump <path>    print a file's tokens, AST, or an app's IR
@@ -282,6 +283,31 @@ seconds), and `alder run` exits 0. A second Ctrl-C kills it at once.
 `app/` directory, or when it cannot listen on `ALDER_ADDR` (another
 program already uses the port, say). Chapter 13, "The dev server", shows
 the exact messages and the code.
+
+### `alder eval`
+
+`alder eval [dir] <expr>` evaluates one expression in the context of the
+app in `dir` (default `.`), through the real compiler, and prints the
+value and its type:
+
+```
+$ alder eval examples/todos '1 + 2'
+3 : Int
+$ alder eval examples/todos 'Theme.flip Light'
+Dark : Theme
+$ alder eval examples/todos '[]'
+[] : List a
+```
+
+Every module of the app is in scope under its own name. With `-` in place
+of the expression, `alder eval` reads standard input: `let name = expr`
+lines, then the expression, which may use them. The type is the one the
+checker infers; nothing needs a signature. A `Query` is shown as
+`<Query> : Query T` and not run; `--run` runs it against the dev database
+`build/<app>/dev.db` (creating it when absent) and prints the result. A
+`Task` is never run. `--json` prints `{"value", "type", "diagnostics"}`
+instead. Diagnostics name the input as `input:line:col`; `alder eval`
+exits 1 for them, 2 for a usage or internal error.
 
 ### `alder build --emit`
 

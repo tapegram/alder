@@ -36,6 +36,7 @@ type Checker struct {
 	widenedFrom map[syntax.Expr]types.Type
 
 	usesSessionPut bool // some module calls Session.put
+	opts           Options
 	res            *Result
 	// bodyExprs are the expressions recorded since the last body ended (reportHoles), for
 	// checkInferredDictKeys
@@ -71,9 +72,23 @@ type modCtx struct {
 	inTest   bool
 }
 
+// Options adjust what Program accepts.
+type Options struct {
+	// InferTopLevel infers the signature of a top-level value written without one in the module
+	// named Scratch (the scratch module of `alder eval` and the REPL) and records it in
+	// Result.Values, instead of reporting E0007; unsolved type variables become type parameters
+	// (`[]` is `List a`). Every other module still needs its signatures.
+	InferTopLevel bool
+}
+
 // Program checks prog, reporting into bag, and returns the types it learned.
 func Program(prog *names.Program, bag *diag.Bag) *Result {
-	c := &Checker{prog: prog, bag: bag, u: &types.Unifier{Subst: types.Subst{}},
+	return ProgramWith(prog, bag, Options{})
+}
+
+// ProgramWith is Program with options.
+func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
+	c := &Checker{prog: prog, bag: bag, u: &types.Unifier{Subst: types.Subst{}}, opts: o,
 		types: map[string]types.Type{}, values: map[string]types.Type{}, ctors: map[string]*ctorInfo{},
 		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, caps: map[string]map[string]types.Type{}, pages: map[string]*pageInfo{}, losers: map[syntax.Decl]bool{},
 		anonDefaults: map[*syntax.Field]bool{},

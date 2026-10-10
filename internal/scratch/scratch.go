@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"alder/internal/buildkit"
+	"alder/internal/check"
 	"alder/internal/diag"
 	"alder/internal/gen"
 	"alder/internal/ir"
@@ -24,8 +25,13 @@ import (
 )
 
 // Module is a module held in memory. Name is its module name ("Scratch" by convention) and,
-// with ".alder", the file its diagnostics name; Source may omit the `module` line.
-type Module struct{ Name, Source string }
+// with ".alder", the file its diagnostics name; Source may omit the `module` line. Infer, for a
+// module named Scratch, infers the signatures of its top-level values written without one
+// (check.Options.InferTopLevel) instead of reporting E0007.
+type Module struct {
+	Name, Source string
+	Infer        bool
+}
 
 // Build is the outcome of Compile.
 type Build struct {
@@ -90,49 +96,10 @@ func Compile(appDir string, extra *Module, mainGo string, purpose, out string) (
 		return Build{Err: err}
 	}
 
-	var mods []*syntax.Module
-	var implicit map[int]bool // the inserted import lines of extra
-	if extra != nil {
-		modName := extra.Name
-		if modName == "" {
-			modName = "Scratch"
-		}
-		if err := checkDeclaredName(extra.Source, modName); err != nil {
-			b.Err = err
-			return b
-		}
-		appMods, err := appModules(appDir)
-		if err != nil {
-			b.Err = err
-			return b
-		}
-		src, offset, lines := withImports(extra.Source, modName, appMods)
-		b.LineOffset, implicit = offset, lines
-		b.InsertLine, b.ExtraFile = insertInfo(extra.Source, modName, offset)
-		m, ds := syntax.ParseFile(modName+".alder", []byte(src))
-		if len(ds) > 0 {
-			b.Diags = ds
-			return b
-		}
-		mods = append(mods, m)
-	}
-
-	prog, res, bag, ioErrs := buildkit.LoadChecked(appDir, mods)
-	if len(ioErrs) > 0 {
-		b.Err = errors.Join(ioErrs...)
-		return b
-	}
-	if len(prog.Modules) == len(mods) {
-		b.Err = fmt.Errorf("no .alder files under %s/app", appDir)
-		return b
-	}
-	for _, d := range bag.Items {
-		if d.Code == diag.UnusedImport && extra != nil && d.Span.File == mods[0].File && implicit[d.Span.Start.Line] {
-			continue
-		}
-		b.Diags = append(b.Diags, d)
-	}
-	if bag.HasErrors() || res == nil || res.Holes > 0 {
+	c := Check(appDir, extra)
+	b.Diags, b.Err, b.LineOffset, b.InsertLine, b.ExtraFile = c.Diags, c.Err, c.LineOffset, c.InsertLine, c.ExtraFile
+	prog, res := c.program, c.Result
+	if b.Err != nil || res == nil || c.hasErrors || res.Holes > 0 {
 		return b
 	}
 
@@ -182,6 +149,82 @@ func Compile(appDir string, extra *Module, mainGo string, purpose, out string) (
 	}
 	b.Binary = filepath.Join(b.Dir, "scratch")
 	return b
+}
+
+// Checked is the outcome of Check.
+type Checked struct {
+	Diags      []diag.Diagnostic // as Build.Diags
+	Err        error             // as Build.Err, for an I/O failure; never a diagnostic
+	LineOffset int               // as Build.LineOffset
+	InsertLine int               // as Build.InsertLine
+	ExtraFile  string            // as Build.ExtraFile
+	// Result is what the checker learned (Result.Values holds the extra module's signatures,
+	// inferred ones too, as "<Name>.<value>"); nil when Err is set or a module failed to parse.
+	// When Diags hold an error the program is not to be lowered.
+	Result *check.Result
+
+	program   *names.Program // the checked program, for Compile
+	hasErrors bool           // Diags hold an error
+}
+
+// MapDiag is Build.MapDiag for a Check: it maps a diagnostic of the extra module to the
+// caller's source.
+func (c Checked) MapDiag(d diag.Diagnostic) (diag.Diagnostic, bool) {
+	return Build{LineOffset: c.LineOffset, InsertLine: c.InsertLine, ExtraFile: c.ExtraFile}.MapDiag(d)
+}
+
+// Check loads and checks the app at appDir with extra added, the first half of Compile, and
+// stops there: nothing is generated or written. A caller that must know a value's type before
+// choosing the main it compiles (`alder eval` on a Query) checks first.
+func Check(appDir string, extra *Module) (c Checked) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.Result, c.program, c.Err = nil, nil, fmt.Errorf("internal error: %v", r)
+		}
+	}()
+	var mods []*syntax.Module
+	var implicit map[int]bool
+	if extra != nil {
+		modName := extra.Name
+		if modName == "" {
+			modName = "Scratch"
+		}
+		if err := checkDeclaredName(extra.Source, modName); err != nil {
+			c.Err = err
+			return c
+		}
+		appMods, err := appModules(appDir)
+		if err != nil {
+			c.Err = err
+			return c
+		}
+		src, offset, lines := withImports(extra.Source, modName, appMods)
+		c.LineOffset, implicit = offset, lines
+		c.InsertLine, c.ExtraFile = insertInfo(extra.Source, modName, offset)
+		m, ds := syntax.ParseFile(modName+".alder", []byte(src))
+		if len(ds) > 0 {
+			c.Diags = ds
+			return c
+		}
+		mods = append(mods, m)
+	}
+	prog, res, bag, ioErrs := buildkit.LoadCheckedWith(appDir, mods, check.Options{InferTopLevel: extra != nil && extra.Infer})
+	if len(ioErrs) > 0 {
+		c.Err = errors.Join(ioErrs...)
+		return c
+	}
+	if len(prog.Modules) == len(mods) {
+		c.Err = fmt.Errorf("no .alder files under %s/app", appDir)
+		return c
+	}
+	for _, d := range bag.Items {
+		if d.Code == diag.UnusedImport && extra != nil && d.Span.File == mods[0].File && implicit[d.Span.Start.Line] {
+			continue
+		}
+		c.Diags = append(c.Diags, d)
+	}
+	c.Result, c.program, c.hasErrors = res, prog, bag.HasErrors()
+	return c
 }
 
 // appModules lists the names of the app's modules (sorted).
