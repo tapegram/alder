@@ -1,0 +1,25 @@
+module Product
+
+type ProductId = brand Text
+
+table Product {
+  id: ProductId @id,
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+  active: Bool = True,
+}
+
+name : ProductId -> List Product -> Text
+name id products = products
+  |> List.find (\p -> p.id == id)
+  |> Maybe.map (\p -> p.name)
+  |> Maybe.withDefault "Unknown"
+
+test "name returns product name" = {
+  let products = [
+    { id: ProductId "a", name: Text.NonEmpty "Product A", price: 100, active: True },
+    { id: ProductId "b", name: Text.NonEmpty "Product B", price: 200, active: True }
+  ]
+  let result = name (ProductId "a") products
+  Task.succeed (result == "Product A")
+}

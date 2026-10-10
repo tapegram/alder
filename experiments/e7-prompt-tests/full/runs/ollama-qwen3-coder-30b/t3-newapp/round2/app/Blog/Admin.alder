@@ -1,0 +1,69 @@
+module Blog.Admin
+
+import Blog
+import Layout
+
+page "/admin" { } requires user
+
+type Model = { posts: List Blog.Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <- Db.from Blog.Post |> Db.orderBy Blog.Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Blog.Slug,
+  body: Text.NonEmpty,
+  published: Bool = False,
+}
+
+msg Create form NewPost
+msg TogglePublished { id: Blog.PostId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let _ <- Db.insert Blog.Post { title: p.form.title, slug: p.form.slug, body: p.form.body, published: p.form.published, owner: session.user }
+    Task.succeed Rerender
+  },
+  TogglePublished p -> {
+    let post <- Db.get Blog.Post p.id
+    match post {
+      Just pt -> {
+        let _ <- Db.update Blog.Post p.id (\t -> { t | published: not t.published })
+        Task.succeed Rerender
+      },
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Admin" theme={session.theme}>
+    <h1>Admin</h1>
+    <form submit={Create}>
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Input field="slug" label="Slug" />
+      <Errors field="slug" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <label>
+        <Input field="published" label="Published" />
+        Published
+      </label>
+      <button>Create</button>
+    </form>
+
+    {for post in model.posts ->
+      <div>
+        <h2>{post.title}</h2>
+        <p>{post.body}</p>
+        <p>Published: {Bool.toText post.published}</p>
+        <button click={TogglePublished { id: post.id }}>Toggle Published</button>
+      </div>}
+  </Layout.Page>

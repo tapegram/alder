@@ -1,0 +1,67 @@
+module Products.Index
+
+import Product
+import Layout
+import User
+
+page "/products" { } requires user
+
+type Model = { products: List Product }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let user <- Db.get User session.user
+  match user {
+    Just u -> if u.role == Manager then {
+      let products <- Db.from Product |> Db.all
+      Query.succeed { products: products }
+    } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+msg Create form NewProduct
+msg ToggleActive { id: Product.ProductId }
+
+form NewProduct = {
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let _ <- Db.insert Product { name: p.form.name, price: p.form.price, active: True }
+    Task.succeed Rerender
+  },
+  ToggleActive p -> {
+    let product <- Db.get Product p.id
+    match product {
+      Just prod -> {
+        let _ <- Db.update Product p.id (\p -> { p | active: not p.active })
+        Task.succeed Rerender
+      },
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Products" theme={session.theme}>
+    <h1>Products</h1>
+    <form submit={Create}>
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <Input field="price" label="Price (cents)" />
+      <Errors field="price" />
+      <button>Add product</button>
+    </form>
+    <ul>
+      {for p in model.products ->
+        <li>
+          {p.name} - {Text.fromInt p.price} cents
+          <button click={ToggleActive { id: p.id }}>{if p.active then "Deactivate" else "Activate"}</button>
+        </li>}
+    </ul>
+  </Layout.Page>

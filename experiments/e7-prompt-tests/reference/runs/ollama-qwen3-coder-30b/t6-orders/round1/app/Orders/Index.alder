@@ -1,0 +1,43 @@
+module Orders.Index
+
+import Order
+import Product
+import Layout
+import User
+
+page "/" { } requires user
+
+type Model = { orders: List Order }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let orders <-
+    Db.from Order
+      |> Db.where (Order.user.eq session.user)
+      |> Db.orderBy Order.created.desc
+      |> Db.all
+  Query.succeed { orders: orders }
+}
+
+msg Create
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let _ <- Db.insert Order { user: session.user, status: Open, created: Time.epoch }
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Orders" theme={session.theme}>
+    <h1>Orders</h1>
+    <form submit={Create}>
+      <button>Create new order</button>
+    </form>
+    <ul>
+      {for o in model.orders ->
+        <li><a href={Orders.Show { id: o.id }}>{Order.statusLabel o.status}</a></li>}
+    </ul>
+  </Layout.Page>

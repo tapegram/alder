@@ -1,0 +1,33 @@
+module Comment
+
+import Post
+
+type CommentId = brand Text
+
+table Comment {
+  id: CommentId @id,
+  post: Post.PostId @ref Post,
+  author: Text.NonEmpty,
+  body: Text.NonEmpty,
+  created: Time @created,
+}
+
+-- The reason a comment is refused, if it is. The form decoder already refuses empty
+-- fields; this keeps the rule in one tested place that `update` checks again.
+problem : Text -> Text -> Maybe Text
+problem author body =
+  if Text.isEmpty (Text.trim author) then Just "Author is required."
+  else if Text.isEmpty (Text.trim body) then Just "Comment is required."
+  else Nothing
+
+test "a comment with an empty author is refused" =
+  problem "" "Nice post" == Just "Author is required."
+
+test "a comment with a blank author is refused" =
+  problem "   " "Nice post" == Just "Author is required."
+
+test "a comment with an empty body is refused" =
+  problem "Ann" "" == Just "Comment is required."
+
+test "a complete comment is accepted" =
+  problem "Ann" "Nice post" == Nothing

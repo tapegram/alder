@@ -1,0 +1,36 @@
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 13, "message": "unknown module `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 7, "col": 43, "endLine": 7, "endCol": 48, "message": "unknown type `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 7, "col": 51, "endLine": 7, "endCol": 56, "message": "unknown constructor `Light`"}
+{"code": "E0201", "severity": "error", "file": "app/App.alder", "line": 21, "col": 46, "endLine": 21, "endCol": 56, "message": "module `Theme` is not imported", "fix": {"line": 6, "col": 1, "endLine": 6, "endCol": 1, "replace": "import Theme\n"}}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 28, "col": 37, "endLine": 28, "endCol": 42, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 35, "col": 41, "endLine": 35, "endCol": 46, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Layout.alder", "line": 3, "col": 1, "endLine": 3, "endCol": 13, "message": "unknown module `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/Layout.alder", "line": 5, "col": 30, "endLine": 5, "endCol": 35, "message": "unknown type `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/Layout.alder", "line": 7, "col": 34, "endLine": 7, "endCol": 38, "message": "unknown constructor `Dark`"}
+{"code": "E0002", "severity": "error", "file": "app/Layout.alder", "line": 15, "col": 60, "endLine": 15, "endCol": 64, "message": "unknown constructor `Dark`"}
+{"code": "E0003", "severity": "error", "file": "app/Order.alder", "line": 37, "col": 17, "endLine": 37, "endCol": 37, "message": "cannot apply `*` to `Int.NonNegative` and `Int.Positive`"}
+{"code": "E0003", "severity": "error", "file": "app/Order.alder", "line": 53, "col": 3, "endLine": 53, "endCol": 30, "message": "expected Task Bool, got Bool; a block test is a Task: end it with `Task.succeed (\u2026)`"}
+{"code": "E0003", "severity": "error", "file": "app/Order.alder", "line": 53, "col": 9, "endLine": 53, "endCol": 14, "message": "expected List Order.Line, got List { id: Order.LineId, order: Order.OrderId, product: Product.ProductId, quantity: Int }"}
+{"code": "E0003", "severity": "error", "file": "app/Order.alder", "line": 53, "col": 15, "endLine": 53, "endCol": 23, "message": "expected List Product, got List { id: Product.ProductId, name: Text.NonEmpty, price: Int, active: Bool }"}
+{"code": "W0001", "severity": "warning", "file": "app/Orders/Index.alder", "line": 4, "col": 1, "endLine": 4, "endCol": 15, "message": "import `Product` is unused"}
+{"code": "W0001", "severity": "warning", "file": "app/Orders/Index.alder", "line": 6, "col": 1, "endLine": 6, "endCol": 12, "message": "import `User` is unused"}
+{"code": "E0501", "severity": "error", "file": "app/Orders/Index.alder", "line": 27, "col": 66, "endLine": 27, "endCol": 85, "message": "`Db.insert` never takes `created`; it is generated"}
+{"code": "E0202", "severity": "error", "file": "app/Orders/Show.alder", "line": 12, "col": 15, "endLine": 12, "endCol": 19, "message": "type `Line` belongs to module `Order`; write `Order.Line`", "fix": {"line": 12, "col": 15, "endLine": 12, "endCol": 19, "replace": "Order.Line"}}
+{"code": "E0002", "severity": "error", "file": "app/Orders/Show.alder", "line": 27, "col": 32, "endLine": 27, "endCol": 36, "message": "unknown constructor `Line`"}
+{"code": "E0201", "severity": "error", "file": "app/Orders/Show.alder", "line": 27, "col": 50, "endLine": 27, "endCol": 60, "message": "module `Line` is not imported", "fix": {"line": 7, "col": 1, "endLine": 7, "endCol": 1, "replace": "import Line\n"}}
+{"code": "E0002", "severity": "error", "file": "app/Orders/Show.alder", "line": 53, "col": 28, "endLine": 53, "endCol": 32, "message": "unknown constructor `Line`"}
+{"code": "E0009", "severity": "error", "file": "app/Orders/Show.alder", "line": 108, "col": 122, "endLine": 108, "endCol": 127, "message": "constructor `Staff` is declared in both `Product` and `User`"}
+{"code": "E0002", "severity": "error", "file": "app/Orders/Show.alder", "line": 111, "col": 195, "endLine": 111, "endCol": 200, "message": "unknown constructor `Light`"}
+{"code": "E0009", "severity": "error", "file": "app/Orders/Show.alder", "line": 116, "col": 125, "endLine": 116, "endCol": 130, "message": "constructor `Staff` is declared in both `Product` and `User`"}
+{"code": "E0009", "severity": "error", "file": "app/Orders/Show.alder", "line": 117, "col": 125, "endLine": 117, "endCol": 130, "message": "constructor `Staff` is declared in both `Product` and `User`"}
+{"code": "E0201", "severity": "error", "file": "app/Orders/Show.alder", "line": 119, "col": 22, "endLine": 119, "endCol": 38, "message": "module `Orders.Show` is not imported", "fix": {"line": 7, "col": 1, "endLine": 7, "endCol": 1, "replace": "import Orders.Show\n"}}
+{"code": "E0002", "severity": "error", "file": "app/Orders/Show.alder", "line": 119, "col": 77, "endLine": 119, "endCol": 82, "message": "unknown constructor `Light`"}
+{"code": "E0009", "severity": "error", "file": "app/Orders/Show.alder", "line": 124, "col": 125, "endLine": 124, "endCol": 130, "message": "constructor `Staff` is declared in both `Product` and `User`"}
+{"code": "E0009", "severity": "error", "file": "app/Orders/Show.alder", "line": 125, "col": 131, "endLine": 125, "endCol": 138, "message": "constructor `Manager` is declared in both `Product` and `User`"}
+{"code": "E0002", "severity": "error", "file": "app/Orders/Show.alder", "line": 127, "col": 79, "endLine": 127, "endCol": 84, "message": "unknown constructor `Light`"}
+{"code": "W0001", "severity": "warning", "file": "app/Product.alder", "line": 3, "col": 1, "endLine": 3, "endCol": 12, "message": "import `User` is unused"}
+{"code": "E0003", "severity": "error", "file": "app/Product.alder", "line": 17, "col": 20, "endLine": 19, "endCol": 30, "message": "expected Maybe Text, got Maybe Text.NonEmpty"}
+{"code": "E0003", "severity": "error", "file": "app/Product.alder", "line": 27, "col": 3, "endLine": 27, "endCol": 61, "message": "cannot compare `Text` with `Text.NonEmpty`: `==` needs both sides to have the same type"}
+{"code": "E0003", "severity": "error", "file": "app/Product.alder", "line": 27, "col": 3, "endLine": 27, "endCol": 61, "message": "expected Task Bool, got Bool; a block test is a Task: end it with `Task.succeed (\u2026)`"}
+{"code": "E0003", "severity": "error", "file": "app/Product.alder", "line": 27, "col": 24, "endLine": 27, "endCol": 32, "message": "expected List Product, got List { id: Product.ProductId, name: Text.NonEmpty, price: Int, active: Bool }"}
+{"code": "E0009", "severity": "error", "file": "app/Products/Index.alder", "line": 15, "col": 28, "endLine": 15, "endCol": 35, "message": "constructor `Manager` is declared in both `Product` and `User`"}

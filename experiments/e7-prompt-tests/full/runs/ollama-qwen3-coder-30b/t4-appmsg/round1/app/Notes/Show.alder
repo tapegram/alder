@@ -1,0 +1,71 @@
+module Notes.Show
+
+import Note
+import Layout
+import Theme
+import User
+
+page "/notes/{id}" { id: NoteId } requires user
+
+type Model = { note: Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Note params.id
+  match found {
+    Just note -> if note.owner == session.user then Query.succeed { note: note } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+form EditNote = {
+  title: Text.NonEmpty,
+  body: Text = "",
+}
+
+msg Save form EditNote
+msg Delete
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> {
+    let _ <- Db.update Note model.note.id (\n -> { n | title: p.form.title, body: p.form.body })
+    Task.succeed Rerender
+  },
+  Delete p -> {
+    let _ <- Db.delete Note model.note.id
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.note.title} theme={session.theme}>
+    <h1>{model.note.title}</h1>
+    <p>{model.note.body}</p>
+    <p>Created: {Time.ago model.note.created Time.epoch}</p>
+
+    <form submit={Save}>
+      <Input field="title" label="Title" value={model.note.title} />
+      <Errors field="title" />
+      <Textarea field="body" label="Body" value={model.note.body} />
+      <Errors field="body" />
+      <button>Save</button>
+    </form>
+
+    <button click={Delete}>Delete</button>
+    <a href={Notes.Index {}}>Back to notes</a>
+  </Layout.Page>
+
+test "user cannot see another user's note" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "My Note", body: "", owner: me }
+  let stranger = User.UserId "someone-else"
+  let r <- Test.run (Notes.Show.update (Notes.Show.Show { id: id }) { note: { id: id, title: Text.NonEmpty "My Note", body: "", owner: me, created: Time.epoch } } { user: stranger, theme: Light })
+  Task.succeed (r.value == Err "not found")
+}
+
+test "theme flips" = {
+  let r <- Test.run (App.update (App.SwitchTheme {}) { user: Nothing, theme: Light } )
+  Task.succeed (r.value == Ok Rerender && r.trace == ["Session.put"])
+}

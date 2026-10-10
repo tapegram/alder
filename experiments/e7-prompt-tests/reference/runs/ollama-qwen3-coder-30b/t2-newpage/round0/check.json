@@ -1,0 +1,194 @@
+{"code": "E0001", "severity": "error", "file": "app/Profile.alder", "line": 24, "col": 5, "endLine": 24, "endCol": 12, "message": "in the definition of `load`: expected `,` or `}`, got `Nothing`"}
+{"code": "E0001", "severity": "error", "file": "app/Profile.alder", "line": 24, "col": 13, "endLine": 24, "endCol": 15, "message": "in the definition of `load`: expected `}`, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Profile.alder", "line": 24, "col": 13, "endLine": 24, "endCol": 15, "message": "expected end of line after declaration, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Profile.alder", "line": 68, "col": 5, "endLine": 68, "endCol": 8, "message": "expected `,` or `}`, got `Err`"}
+{"code": "E0001", "severity": "error", "file": "app/Profile.alder", "line": 68, "col": 9, "endLine": 68, "endCol": 10, "message": "expected `}`, got `_`"}
+{"code": "E0001", "severity": "error", "file": "app/Profile.alder", "line": 68, "col": 9, "endLine": 68, "endCol": 10, "message": "expected end of line after declaration, got `_`"}
+{"code": "E0017", "severity": "error", "file": "app/std::Log.alder", "line": 1, "col": 1, "endLine": 5, "endCol": 25, "message": "module `Log` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/std::Log.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 5, "message": "in the definition of `info`: expected definition of `info` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/std::Log.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 5, "message": "expected end of line after declaration, got `warn`"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Bool.alder", "line": 1, "col": 1, "endLine": 5, "endCol": 22, "message": "module `Bool` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Bool.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 7, "message": "in the definition of `not`: expected definition of `not` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Bool.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 7, "message": "expected end of line after declaration, got `toText`"}
+{"code": "E0005", "severity": "error", "file": "app/stdlib/Brand.alder", "line": 1, "col": 1, "endLine": 5, "endCol": 17, "message": "module `Brand` is in file app/stdlib/Brand.alder; expected `module stdlib.Brand`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Brand.alder", "line": 5, "col": 16, "endLine": 5, "endCol": 17, "message": "expected constructor, got `t`"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Date.alder", "line": 1, "col": 1, "endLine": 19, "endCol": 18, "message": "module `Date` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Date.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 9, "message": "in the definition of `today`: expected definition of `today` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Date.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 9, "message": "expected end of line after declaration, got `fromText`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Date.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 7, "message": "in the definition of `toText`: expected definition of `toText` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Date.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 7, "message": "expected end of line after declaration, got `format`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Date.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 9, "message": "in the definition of `addDays`: expected definition of `addDays` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Date.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 9, "message": "expected end of line after declaration, got `diffDays`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Date.alder", "line": 17, "col": 1, "endLine": 17, "endCol": 6, "message": "in the definition of `year`: expected definition of `year` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Date.alder", "line": 17, "col": 1, "endLine": 17, "endCol": 6, "message": "expected end of line after declaration, got `month`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Date.alder", "line": 20, "col": 1, "endLine": 20, "endCol": 2, "message": "in the definition of `day`: expected definition of `day` after its signature"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Db.alder", "line": 1, "col": 1, "endLine": 88, "endCol": 21, "message": "module `Db` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 4, "col": 16, "endLine": 4, "endCol": 17, "message": "expected constructor, got `t`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 20, "col": 1, "endLine": 20, "endCol": 5, "message": "in the definition of `get`: expected definition of `get` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 20, "col": 1, "endLine": 20, "endCol": 5, "message": "expected end of line after declaration, got `from`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 22, "col": 1, "endLine": 22, "endCol": 6, "message": "expected a declaration, got `where`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 24, "col": 1, "endLine": 24, "endCol": 8, "message": "expected end of line after declaration, got `orderBy`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 28, "col": 1, "endLine": 28, "endCol": 7, "message": "in the definition of `limit`: expected definition of `limit` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 28, "col": 1, "endLine": 28, "endCol": 7, "message": "expected end of line after declaration, got `offset`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 32, "col": 1, "endLine": 32, "endCol": 6, "message": "in the definition of `all`: expected definition of `all` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 32, "col": 1, "endLine": 32, "endCol": 6, "message": "expected end of line after declaration, got `first`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 36, "col": 1, "endLine": 36, "endCol": 7, "message": "in the definition of `count`: expected definition of `count` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 36, "col": 1, "endLine": 36, "endCol": 7, "message": "expected end of line after declaration, got `insert`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 40, "col": 1, "endLine": 40, "endCol": 7, "message": "in the definition of `update`: expected definition of `update` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 40, "col": 1, "endLine": 40, "endCol": 7, "message": "expected end of line after declaration, got `delete`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 46, "col": 1, "endLine": 46, "endCol": 3, "message": "in the definition of `eq`: expected definition of `eq` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 46, "col": 1, "endLine": 46, "endCol": 3, "message": "expected end of line after declaration, got `ne`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 52, "col": 1, "endLine": 52, "endCol": 3, "message": "in the definition of `lt`: expected definition of `lt` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 52, "col": 1, "endLine": 52, "endCol": 3, "message": "expected end of line after declaration, got `le`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 58, "col": 1, "endLine": 58, "endCol": 3, "message": "in the definition of `gt`: expected definition of `gt` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 58, "col": 1, "endLine": 58, "endCol": 3, "message": "expected end of line after declaration, got `ge`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 64, "col": 1, "endLine": 64, "endCol": 3, "message": "in the definition of `contains`: expected definition of `contains` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 64, "col": 1, "endLine": 64, "endCol": 3, "message": "expected end of line after declaration, got `in`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 70, "col": 1, "endLine": 70, "endCol": 7, "message": "in the definition of `isNothing`: expected definition of `isNothing` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 70, "col": 1, "endLine": 70, "endCol": 7, "message": "expected end of line after declaration, got `isJust`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 76, "col": 1, "endLine": 76, "endCol": 5, "message": "in the definition of `asc`: expected definition of `asc` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 76, "col": 1, "endLine": 76, "endCol": 5, "message": "expected end of line after declaration, got `desc`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 82, "col": 1, "endLine": 82, "endCol": 3, "message": "in the definition of `and`: expected definition of `and` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 82, "col": 1, "endLine": 82, "endCol": 3, "message": "expected end of line after declaration, got `or`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 88, "col": 1, "endLine": 88, "endCol": 5, "message": "in the definition of `not`: expected definition of `not` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Db.alder", "line": 88, "col": 1, "endLine": 88, "endCol": 5, "message": "expected end of line after declaration, got `type`"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Dict.alder", "line": 1, "col": 1, "endLine": 19, "endCol": 23, "message": "module `Dict` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Dict.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 9, "message": "in the definition of `empty`: expected definition of `empty` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Dict.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 9, "message": "expected end of line after declaration, got `fromList`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Dict.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 4, "message": "in the definition of `toList`: expected definition of `toList` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Dict.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 4, "message": "expected end of line after declaration, got `get`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Dict.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 7, "message": "in the definition of `insert`: expected definition of `insert` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Dict.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 7, "message": "expected end of line after declaration, got `remove`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Dict.alder", "line": 17, "col": 1, "endLine": 17, "endCol": 7, "message": "in the definition of `keys`: expected definition of `keys` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Dict.alder", "line": 17, "col": 1, "endLine": 17, "endCol": 7, "message": "expected end of line after declaration, got `values`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Dict.alder", "line": 20, "col": 1, "endLine": 20, "endCol": 2, "message": "in the definition of `size`: expected definition of `size` after its signature"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Float.alder", "line": 1, "col": 1, "endLine": 15, "endCol": 44, "message": "module `Float` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Float.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 6, "message": "in the definition of `round`: expected definition of `round` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Float.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 6, "message": "expected end of line after declaration, got `floor`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Float.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 4, "message": "in the definition of `ceil`: expected definition of `ceil` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Float.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 4, "message": "expected end of line after declaration, got `min`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Float.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 4, "message": "in the definition of `max`: expected definition of `max` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Float.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 4, "message": "expected end of line after declaration, got `abs`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Float.alder", "line": 16, "col": 1, "endLine": 16, "endCol": 2, "message": "in the definition of `format`: expected definition of `format` after its signature"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Html.alder", "line": 1, "col": 1, "endLine": 13, "endCol": 24, "message": "module `Html` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Html.alder", "line": 7, "col": 1, "endLine": 7, "endCol": 5, "message": "in the definition of `unsafe`: expected definition of `unsafe` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Html.alder", "line": 7, "col": 1, "endLine": 7, "endCol": 5, "message": "expected end of line after declaration, got `none`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Html.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 9, "message": "in the definition of `text`: expected definition of `text` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Html.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 9, "message": "expected end of line after declaration, got `external`"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Http.alder", "line": 1, "col": 1, "endLine": 10, "endCol": 65, "message": "module `Http` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Http.alder", "line": 10, "col": 1, "endLine": 10, "endCol": 5, "message": "in the definition of `get`: expected definition of `get` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Http.alder", "line": 10, "col": 1, "endLine": 10, "endCol": 5, "message": "expected end of line after declaration, got `post`"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Int.alder", "line": 1, "col": 1, "endLine": 15, "endCol": 24, "message": "module `Int` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Int.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 4, "message": "in the definition of `toFloat`: expected definition of `toFloat` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Int.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 4, "message": "expected end of line after declaration, got `min`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Int.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 4, "message": "in the definition of `max`: expected definition of `max` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Int.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 4, "message": "expected end of line after declaration, got `abs`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Int.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 9, "message": "in the definition of `clamp`: expected definition of `clamp` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Int.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 9, "message": "expected end of line after declaration, got `Positive`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Int.alder", "line": 15, "col": 15, "endLine": 15, "endCol": 20, "message": "in a type: `brand` is only allowed as the whole body of a `type` declaration (`type TodoId = brand Text`)"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Int.alder", "line": 16, "col": 1, "endLine": 16, "endCol": 2, "message": "in the definition of `NonNegative`: expected definition of `NonNegative` after its signature"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/List.alder", "line": 1, "col": 1, "endLine": 51, "endCol": 54, "message": "module `List` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 8, "message": "in the definition of `length`: expected definition of `length` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 8, "message": "expected end of line after declaration, got `isEmpty`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 5, "message": "in the definition of `head`: expected definition of `head` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 5, "message": "expected end of line after declaration, got `last`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 5, "message": "in the definition of `take`: expected definition of `take` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 5, "message": "expected end of line after declaration, got `drop`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 17, "col": 1, "endLine": 17, "endCol": 4, "message": "in the definition of `reverse`: expected definition of `reverse` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 17, "col": 1, "endLine": 17, "endCol": 4, "message": "expected end of line after declaration, got `map`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 21, "col": 1, "endLine": 21, "endCol": 10, "message": "in the definition of `filter`: expected definition of `filter` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 21, "col": 1, "endLine": 21, "endCol": 10, "message": "expected end of line after declaration, got `filterMap`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 25, "col": 1, "endLine": 25, "endCol": 4, "message": "in the definition of `find`: expected definition of `find` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 25, "col": 1, "endLine": 25, "endCol": 4, "message": "expected end of line after declaration, got `any`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 29, "col": 1, "endLine": 29, "endCol": 7, "message": "in the definition of `all`: expected definition of `all` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 29, "col": 1, "endLine": 29, "endCol": 7, "message": "expected end of line after declaration, got `member`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 33, "col": 1, "endLine": 33, "endCol": 4, "message": "in the definition of `foldl`: expected definition of `foldl` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 33, "col": 1, "endLine": 33, "endCol": 4, "message": "expected end of line after declaration, got `sum`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 37, "col": 1, "endLine": 37, "endCol": 7, "message": "in the definition of `sumFloat`: expected definition of `sumFloat` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 37, "col": 1, "endLine": 37, "endCol": 7, "message": "expected end of line after declaration, got `sortBy`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 41, "col": 1, "endLine": 41, "endCol": 8, "message": "in the definition of `sortByText`: expected definition of `sortByText` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 41, "col": 1, "endLine": 41, "endCol": 8, "message": "expected end of line after declaration, got `indexed`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 45, "col": 1, "endLine": 45, "endCol": 7, "message": "in the definition of `range`: expected definition of `range` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 45, "col": 1, "endLine": 45, "endCol": 7, "message": "expected end of line after declaration, got `concat`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 49, "col": 1, "endLine": 49, "endCol": 7, "message": "in the definition of `append`: expected definition of `append` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 49, "col": 1, "endLine": 49, "endCol": 7, "message": "expected end of line after declaration, got `unique`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/List.alder", "line": 52, "col": 1, "endLine": 52, "endCol": 2, "message": "in the definition of `groupBy`: expected definition of `groupBy` after its signature"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Log.alder", "line": 1, "col": 1, "endLine": 5, "endCol": 25, "message": "module `Log` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Log.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 5, "message": "in the definition of `info`: expected definition of `info` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Log.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 5, "message": "expected end of line after declaration, got `warn`"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Maybe.alder", "line": 1, "col": 1, "endLine": 11, "endCol": 27, "message": "module `Maybe` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Maybe.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 8, "message": "in the definition of `map`: expected definition of `map` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Maybe.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 8, "message": "expected end of line after declaration, got `andThen`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Maybe.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 7, "message": "in the definition of `withDefault`: expected definition of `withDefault` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Maybe.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 7, "message": "expected end of line after declaration, got `isJust`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Maybe.alder", "line": 12, "col": 1, "endLine": 12, "endCol": 2, "message": "in the definition of `toList`: expected definition of `toList` after its signature"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Query.alder", "line": 1, "col": 1, "endLine": 9, "endCol": 19, "message": "module `Query` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Query.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 4, "message": "in the definition of `succeed`: expected definition of `succeed` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Query.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 4, "message": "expected end of line after declaration, got `map`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Query.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 9, "message": "in the definition of `all`: expected definition of `all` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Query.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 9, "message": "expected end of line after declaration, got `notFound`"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Random.alder", "line": 1, "col": 1, "endLine": 5, "endCol": 15, "message": "module `Random` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Random.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 3, "message": "in the definition of `int`: expected definition of `int` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Random.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 3, "message": "expected end of line after declaration, got `id`"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Result.alder", "line": 1, "col": 1, "endLine": 11, "endCol": 32, "message": "module `Result` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Result.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 7, "message": "in the definition of `map`: expected definition of `map` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Result.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 7, "message": "expected end of line after declaration, got `mapErr`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Result.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 12, "message": "in the definition of `andThen`: expected definition of `andThen` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Result.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 12, "message": "expected end of line after declaration, got `withDefault`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Result.alder", "line": 12, "col": 1, "endLine": 12, "endCol": 2, "message": "in the definition of `toMaybe`: expected definition of `toMaybe` after its signature"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Session.alder", "line": 1, "col": 1, "endLine": 5, "endCol": 57, "message": "module `Session` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Session.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 5, "message": "in the definition of `put`: expected definition of `put` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Session.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 5, "message": "expected end of line after declaration, got `type`"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Task.alder", "line": 1, "col": 1, "endLine": 11, "endCol": 37, "message": "module `Task` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Task.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 5, "message": "in the definition of `succeed`: expected definition of `succeed` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Task.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 5, "message": "expected end of line after declaration, got `fail`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Task.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 4, "message": "in the definition of `notFound`: expected definition of `notFound` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Task.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 4, "message": "expected end of line after declaration, got `map`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Task.alder", "line": 12, "col": 1, "endLine": 12, "endCol": 2, "message": "in the definition of `all`: expected definition of `all` after its signature"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Test.alder", "line": 1, "col": 1, "endLine": 21, "endCol": 22, "message": "module `Test` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Test.alder", "line": 14, "col": 1, "endLine": 14, "endCol": 6, "message": "in the definition of `run`: expected definition of `run` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Test.alder", "line": 14, "col": 1, "endLine": 14, "endCol": 6, "message": "expected end of line after declaration, got `trace`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Test.alder", "line": 17, "col": 6, "endLine": 17, "endCol": 7, "message": "expected string literal, got `:`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Test.alder", "line": 17, "col": 6, "endLine": 17, "endCol": 7, "message": "expected `=`, got `:`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Test.alder", "line": 17, "col": 6, "endLine": 17, "endCol": 7, "message": "expected an expression, got `:`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Test.alder", "line": 17, "col": 13, "endLine": 17, "endCol": 15, "message": "expected end of line after declaration, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Test.alder", "line": 18, "col": 6, "endLine": 18, "endCol": 10, "message": "expected string literal, got `name`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Test.alder", "line": 18, "col": 6, "endLine": 18, "endCol": 10, "message": "expected `=`, got `name`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Test.alder", "line": 18, "col": 19, "endLine": 18, "endCol": 20, "message": "expected end of line after declaration, got `=`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Test.alder", "line": 22, "col": 1, "endLine": 22, "endCol": 2, "message": "in the definition of `fail`: expected definition of `fail` after its signature"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Text.alder", "line": 1, "col": 1, "endLine": 43, "endCol": 20, "message": "module `Text` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 8, "message": "in the definition of `length`: expected definition of `length` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 8, "message": "expected end of line after declaration, got `isEmpty`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 8, "message": "in the definition of `trim`: expected definition of `trim` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 8, "message": "expected end of line after declaration, got `toUpper`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 9, "message": "in the definition of `toLower`: expected definition of `toLower` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 9, "message": "expected end of line after declaration, got `contains`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 17, "col": 1, "endLine": 17, "endCol": 9, "message": "in the definition of `startsWith`: expected definition of `startsWith` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 17, "col": 1, "endLine": 17, "endCol": 9, "message": "expected end of line after declaration, got `endsWith`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 21, "col": 1, "endLine": 21, "endCol": 6, "message": "in the definition of `replace`: expected definition of `replace` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 21, "col": 1, "endLine": 21, "endCol": 6, "message": "expected end of line after declaration, got `split`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 25, "col": 1, "endLine": 25, "endCol": 6, "message": "in the definition of `join`: expected definition of `join` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 25, "col": 1, "endLine": 25, "endCol": 6, "message": "expected end of line after declaration, got `slice`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 29, "col": 1, "endLine": 29, "endCol": 8, "message": "in the definition of `matches`: expected definition of `matches` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 29, "col": 1, "endLine": 29, "endCol": 8, "message": "expected end of line after declaration, got `fromInt`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 33, "col": 1, "endLine": 33, "endCol": 6, "message": "in the definition of `fromFloat`: expected definition of `fromFloat` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 33, "col": 1, "endLine": 33, "endCol": 6, "message": "expected end of line after declaration, got `toInt`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 37, "col": 1, "endLine": 37, "endCol": 9, "message": "in the definition of `toFloat`: expected definition of `toFloat` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 37, "col": 1, "endLine": 37, "endCol": 9, "message": "expected end of line after declaration, got `NonEmpty`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 39, "col": 9, "endLine": 39, "endCol": 14, "message": "in a type: `brand` is only allowed as the whole body of a `type` declaration (`type TodoId = brand Text`)"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 41, "col": 1, "endLine": 41, "endCol": 4, "message": "in the definition of `Email`: expected definition of `Email` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 41, "col": 1, "endLine": 41, "endCol": 4, "message": "expected end of line after declaration, got `Url`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 43, "col": 10, "endLine": 43, "endCol": 15, "message": "in a type: `brand` is only allowed as the whole body of a `type` declaration (`type TodoId = brand Text`)"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Text.alder", "line": 44, "col": 1, "endLine": 44, "endCol": 2, "message": "in the definition of `Secret`: expected definition of `Secret` after its signature"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Time.alder", "line": 1, "col": 1, "endLine": 15, "endCol": 27, "message": "module `Time` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Time.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 4, "message": "in the definition of `epoch`: expected definition of `epoch` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Time.alder", "line": 9, "col": 1, "endLine": 9, "endCol": 4, "message": "expected end of line after declaration, got `now`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Time.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 7, "message": "in the definition of `toDate`: expected definition of `toDate` after its signature"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Time.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 7, "message": "expected end of line after declaration, got `format`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Time.alder", "line": 18, "col": 1, "endLine": 18, "endCol": 2, "message": "in the definition of `ago`: expected definition of `ago` after its signature"}
+{"code": "E0005", "severity": "error", "file": "app/stdlib/Type.alder", "line": 1, "col": 1, "endLine": 5, "endCol": 17, "message": "module `Type` is in file app/stdlib/Type.alder; expected `module stdlib.Type`"}
+{"code": "E0005", "severity": "error", "file": "app/stdlib/Unit.alder", "line": 1, "col": 1, "endLine": 7, "endCol": 12, "message": "module `Unit` is in file app/stdlib/Unit.alder; expected `module stdlib.Unit`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Unit.alder", "line": 4, "col": 13, "endLine": 4, "endCol": 14, "message": "expected constructor, got `(`"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Unit.alder", "line": 8, "col": 1, "endLine": 8, "endCol": 2, "message": "in the definition of `unit`: expected definition of `unit` after its signature"}
+{"code": "E0017", "severity": "error", "file": "app/stdlib/Url.alder", "line": 1, "col": 1, "endLine": 4, "endCol": 24, "message": "module `Url` is a standard-library module; rename it"}
+{"code": "E0001", "severity": "error", "file": "app/stdlib/Url.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 2, "message": "in the definition of `external`: expected definition of `external` after its signature"}

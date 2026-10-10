@@ -1,0 +1,21 @@
+module Product
+
+type ProductId = brand Text
+
+table Product {
+  id: ProductId @id,
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+  active: Bool = True,
+  created: Time @created,
+}
+
+-- cents writes an amount in cents as pounds and pence: 1205 is "12.05".
+cents : Int -> Text
+cents amount = {
+  let pence = amount % 100
+  let pad = if pence < 10 then "0" else ""
+  "{Text.fromInt (amount / 100)}.{pad}{Text.fromInt pence}"
+}
+
+test "cents pads the pence" = cents 1205 == "12.05" && cents 1250 == "12.50"

@@ -1,0 +1,99 @@
+module Shop.Show
+
+import User
+import Product
+import Order
+
+page "/orders/{id}" { id: Order.OrderId } requires user
+
+type Model = { order: Order }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Order params.id
+  match found {
+    Just order ->
+      if order.owner == session.user || session.role == Manager then Query.succeed { order: order }
+      else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewLine = {
+  product: Product.ProductId,
+  quantity: Int.Positive,
+}
+
+msg AddLine form NewLine
+msg MarkPaid
+msg MarkCancelled
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddLine p -> {
+    let order <- Db.get Order model.order.id
+    match order {
+      Just o ->
+        if o.status == Open then {
+          let product <- Db.get Product p.form.product
+          match product {
+            Just prod -> {
+              let _ <- Db.insert OrderLine { id: "line1", orderId: model.order.id, productId: p.form.product, quantity: p.form.quantity }
+              Task.succeed Rerender
+            },
+            Nothing -> Task.fail "Product not found",
+          }
+        } else Task.fail "Order is not open",
+      Nothing -> Task.notFound,
+    }
+  },
+  MarkPaid p -> {
+    let order <- Db.get Order model.order.id
+    match order {
+      Just o ->
+        if o.status == Open then {
+          let _ <- Db.update Order model.order.id (\t -> { t | status: Paid })
+          Task.succeed Rerender
+        } else Task.fail "Order is not open",
+      Nothing -> Task.notFound,
+    }
+  },
+  MarkCancelled p -> {
+    let order <- Db.get Order model.order.id
+    match order {
+      Just o ->
+        if o.status == Open then {
+          let _ <- Db.update Order model.order.id (\t -> { t | status: Cancelled })
+          Task.succeed Rerender
+        } else Task.fail "Order is not open",
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Order">
+    <h1>Order {model.order.id}</h1>
+    <p>Status: {model.order.status}</p>
+    <p>Total: {Order.total model.order}</p>
+    {if model.order.status == Open ->
+      <form submit={AddLine}>
+        <Input field="product" label="Product" />
+        <Errors field="product" />
+        <Input field="quantity" label="Quantity" />
+        <Errors field="quantity" />
+        <button>Add Line</button>
+      </form>
+    }
+    {if model.order.status == Open ->
+      <div>
+        <button click={MarkPaid}>Mark Paid</button>
+        <button click={MarkCancelled}>Cancel</button>
+      </div>
+    }
+    <ul>
+      {for line in Order.lines model.order ->
+        <li>{Product.name line.productId} x {line.quantity}</li>}
+    </ul>
+  </Layout.Page>

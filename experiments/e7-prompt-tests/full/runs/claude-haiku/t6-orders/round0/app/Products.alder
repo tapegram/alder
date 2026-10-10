@@ -1,0 +1,83 @@
+module Products
+
+import Product
+import User
+import Layout
+
+page "/products" { } requires user
+
+type Model = { products: List Product }
+
+-- Only a manager sees the list; anyone else gets a 404.
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get User session.user
+  match found {
+    Just me -> if me.role == Manager then listAll else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+listAll : Query Model
+listAll = {
+  let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+  Query.succeed { products: products }
+}
+
+form NewProduct = {
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+}
+
+msg Add form NewProduct
+msg Toggle { id: Product.ProductId }
+
+-- managerOnly stops the task unless the session's user is a manager now. `load` checked it for
+-- the page; a message can be posted by anyone, so `update` checks it again.
+managerOnly : Session -> Task Unit
+managerOnly session = {
+  let found <- Db.get User session.user
+  match found {
+    Just me -> if me.role == Manager then Task.succeed () else Task.notFound,
+    Nothing -> Task.notFound,
+  }
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- managerOnly session
+    let _ <- Db.insert Product { name: p.form.name, price: p.form.price }
+    Task.succeed Rerender
+  },
+  Toggle p -> {
+    let _ <- managerOnly session
+    let _ <- Db.update Product p.id (\pr -> { pr | active: not pr.active })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Products" theme={session.theme}>
+    <h1>Products</h1>
+    <form submit={Add}>
+      <Errors form />
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <Input field="price" label="Price (cents)" />
+      <Errors field="price" />
+      <button>Add product</button>
+    </form>
+    <ul id="products">
+      {for p in model.products -> <ProductRow product={p} />}
+    </ul>
+    <a href={Orders.Index {}}>Orders</a>
+  </Layout.Page>
+
+ProductRow : { product: Product } -> Html Msg
+ProductRow props =
+  <li class={if props.product.active then "" else "inactive"}>
+    {props.product.name} {Product.cents props.product.price}
+    <button click={Toggle { id: props.product.id }}>{if props.product.active then "Deactivate" else "Activate"}</button>
+  </li>

@@ -1,0 +1,72 @@
+module Notes.Index
+
+import Note
+import Layout
+import Theme
+import User
+
+page "/" { } requires user
+
+type Model = { notes: List Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <-
+    Db.from Note
+      |> Db.where (Note.owner.eq session.user)
+      |> Db.orderBy Note.created.desc
+      |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Maybe Text,
+}
+
+msg Submit form NewNote
+msg View { id: Note.NoteId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+    Task.succeed Rerender
+  },
+  View p -> {
+    Task.succeed (Redirect (Notes.Show { id: p.id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Notes" theme={session.theme}>
+    <h1>Notes</h1>
+
+    <form submit={Submit}>
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <button>Add note</button>
+    </form>
+
+    <ul>
+      {for note in model.notes -> <Item note={note} />}
+    </ul>
+  </Layout.Page>
+
+Item : { note: Note } -> Html Msg
+Item props =
+  <li>
+    <a href={Notes.Show { id: props.note.id }}>{props.note.title}</a>
+  </li>
+
+test "notes are listed newest first" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id1 <- Db.insert Note { title: Text.NonEmpty "First", body: "", owner: me }
+  let id2 <- Db.insert Note { title: Text.NonEmpty "Second", body: "", owner: me }
+  let r <- Test.run (update (Submit { title: Text.NonEmpty "Third", body: Nothing }) { notes: [] } { user: me, theme: Light })
+  let after <- Db.from Note |> Db.where (Note.owner.eq me) |> Db.orderBy Note.created.desc |> Db.all
+  Task.succeed ({ trace: r.trace, count: List.length after } == { trace: ["Db.insert Note"], count: 3 })
+}

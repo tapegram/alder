@@ -1,0 +1,21 @@
+module Test
+
+import Db
+import Session
+import Time
+
+-- The test runtime.
+type Trace = List Text
+
+-- Run a task and return its result and the steps it performed.
+run : Task a -> Task { value: Result Text a, trace: Trace }
+
+-- Get the list of steps so far.
+trace : Task Trace
+
+-- A test is a Bool that is True when it passes.
+test : Text -> Bool -> Unit
+test name verdict = if not verdict then Test.fail ("FAIL " ++ name) else ()
+
+-- The test runner fails the test with this message.
+fail : Text -> Task a

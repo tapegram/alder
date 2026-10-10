@@ -1,0 +1,13 @@
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 13, "message": "unknown module `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 7, "col": 43, "endLine": 7, "endCol": 48, "message": "unknown type `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 7, "col": 51, "endLine": 7, "endCol": 56, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 23, "col": 37, "endLine": 23, "endCol": 42, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 30, "col": 41, "endLine": 30, "endCol": 46, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Layout.alder", "line": 3, "col": 1, "endLine": 3, "endCol": 13, "message": "unknown module `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/Layout.alder", "line": 5, "col": 30, "endLine": 5, "endCol": 35, "message": "unknown type `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/Layout.alder", "line": 7, "col": 34, "endLine": 7, "endCol": 38, "message": "unknown constructor `Dark`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Index.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 13, "message": "unknown module `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Index.alder", "line": 76, "col": 82, "endLine": 76, "endCol": 87, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Index.alder", "line": 85, "col": 88, "endLine": 85, "endCol": 93, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Index.alder", "line": 94, "col": 82, "endLine": 94, "endCol": 87, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Show.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 13, "message": "unknown module `Theme`"}

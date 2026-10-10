@@ -1,0 +1,35 @@
+module Product
+
+import User
+
+type ProductId = brand Text
+
+table Product {
+  id: ProductId @id,
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+  active: Bool = True,
+}
+
+name : ProductId -> Text
+name id = {
+  let found <- Db.get Product id
+  match found {
+    Just p -> p.name,
+    Nothing -> "Unknown",
+  }
+}
+
+price : ProductId -> Int
+price id = {
+  let found <- Db.get Product id
+  match found {
+    Just p -> p.price,
+    Nothing -> 0,
+  }
+}
+
+test "product name and price" = {
+  let id <- Db.insert Product { name: Text.NonEmpty "Test Product", price: 150, active: True }
+  Task.succeed (name id == "Test Product" && price id == 150)
+}

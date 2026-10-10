@@ -1,0 +1,7 @@
+module User
+
+type UserId = brand Text
+
+-- The id of the one author who logs in.
+adminUser : UserId
+adminUser = UserId "admin"

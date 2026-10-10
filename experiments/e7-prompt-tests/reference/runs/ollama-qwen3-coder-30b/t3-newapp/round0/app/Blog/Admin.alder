@@ -1,0 +1,69 @@
+module Blog.Admin
+
+import Post
+import Layout
+import User
+
+page "/admin" { } requires user
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Post.Slug,
+  body: Text.NonEmpty,
+  published: Bool = False,
+}
+
+msg Create form NewPost
+msg TogglePublished { slug: Post.Slug }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let _ <- Db.insert Post { title: p.form.title, slug: p.form.slug, body: p.form.body, published: p.form.published, owner: session.user }
+    Task.succeed Rerender
+  },
+  TogglePublished p -> {
+    let post <- Db.get Post p.slug
+    match post {
+      Just pt -> {
+        let _ <- Db.update Post p.slug (\t -> { t | published: not t.published })
+        Task.succeed Rerender
+      },
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Admin" theme={session.theme}>
+    <h1>Admin</h1>
+    <form submit={Create}>
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Input field="slug" label="Slug" />
+      <Errors field="slug" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <Input field="published" label="Published" type="checkbox" />
+      <Errors field="published" />
+      <button>Create post</button>
+    </form>
+    <h2>Posts</h2>
+    <ul>
+      {for post in model.posts ->
+        <li>
+          <span>{post.title} ({if post.published then "Published" else "Draft"})</span>
+          <button click={TogglePublished { slug: post.slug }}>Toggle Published</button>
+        </li>}
+    </ul>
+    <a href={Blog.Index {}}>Back to blog</a>
+  </Layout.Page>

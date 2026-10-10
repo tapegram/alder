@@ -1,0 +1,129 @@
+module Orders.Show
+
+import Order
+import Product
+import Layout
+import User
+
+page "/orders/{id}" { id: Order.OrderId } requires user
+
+type Model = {
+  order: Order,
+  lines: List Line,
+  products: List Product,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Order params.id
+  match found {
+    Just order -> {
+      -- Check if the user owns the order or is a manager
+      let isOwner = order.user == session.user
+      let isManager = session.user == User.UserId "manager" -- Simplified check for manager role
+      let canView = isOwner || isManager
+      match canView {
+        True -> {
+          let lines <- Db.from Line |> Db.where (Line.order.eq params.id) |> Db.all
+          let products <- Db.from Product |> Db.all
+          Query.succeed { order: order, lines: lines, products: products }
+        },
+        False -> Query.notFound,
+      }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+msg AddLine form NewLine
+msg MarkPaid
+msg MarkCancelled
+
+form NewLine = {
+  product: Product.ProductId,
+  quantity: Int.Positive,
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddLine p -> {
+    let order <- Db.get Order model.order.id
+    match order {
+      Just o -> if o.status == Open then {
+        let _ <- Db.insert Line { order: model.order.id, product: p.form.product, quantity: p.form.quantity }
+        Task.succeed Rerender
+      } else Task.fail "Cannot add line to a non-open order",
+      Nothing -> Task.notFound,
+    }
+  },
+  MarkPaid p -> {
+    let order <- Db.get Order model.order.id
+    match order {
+      Just o -> if o.status == Open then {
+        let _ <- Db.update Order model.order.id (\o -> { o | status: Paid })
+        Task.succeed Rerender
+      } else Task.fail "Cannot mark a non-open order as paid",
+      Nothing -> Task.notFound,
+    }
+  },
+  MarkCancelled p -> {
+    let order <- Db.get Order model.order.id
+    match order {
+      Just o -> if o.status == Open then {
+        let _ <- Db.update Order model.order.id (\o -> { o | status: Cancelled })
+        Task.succeed Rerender
+      } else Task.fail "Cannot cancel a non-open order",
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Order" theme={session.theme}>
+    <h1>Order {Order.statusLabel model.order.status}</h1>
+    <p>Total: {Text.fromInt (Order.total model.lines model.products)}</p>
+    {if model.order.status == Open ->
+      <form submit={AddLine}>
+        <Input field="product" label="Product" />
+        <Errors field="product" />
+        <Input field="quantity" label="Quantity" />
+        <Errors field="quantity" />
+        <button>Add line</button>
+      </form>
+    }
+    {if model.order.status == Open ->
+      <div>
+        <button click={MarkPaid}>Mark Paid</button>
+        <button click={MarkCancelled}>Cancel</button>
+      </div>
+    }
+    <ul>
+      {for l in model.lines ->
+        <li>{Product.name l.product model.products} x {Text.fromInt l.quantity}</li>}
+    </ul>
+  </Layout.Page>
+
+test "adding line to paid order fails" = {
+  let user <- Db.insert User { email: Text.Email "user@example.com", name: Text.NonEmpty "User", passwordHash: "", role: Staff }
+  let orderId <- Db.insert Order { user: user, status: Paid, created: Time.epoch }
+  let productId <- Db.insert Product { name: Text.NonEmpty "Test Product", price: 100, active: True }
+  let r <- Test.run (update (AddLine { product: productId, quantity: 1 }) { order: { id: orderId, user: user, status: Paid, created: Time.epoch }, lines: [], products: [] } { user: user, theme: Light })
+  Task.succeed (r.value == Err "Cannot add line to a non-open order")
+}
+
+test "staff user cannot view another user's order" = {
+  let user1 <- Db.insert User { email: Text.Email "user1@example.com", name: Text.NonEmpty "User1", passwordHash: "", role: Staff }
+  let user2 <- Db.insert User { email: Text.Email "user2@example.com", name: Text.NonEmpty "User2", passwordHash: "", role: Staff }
+  let orderId <- Db.insert Order { user: user1, status: Open, created: Time.epoch }
+  let r <- Test.run (Orders.Show.load { id: orderId } { user: user2, theme: Light })
+  Task.succeed (r.value == Err "not found")
+}
+
+test "manager can view another user's order" = {
+  let user1 <- Db.insert User { email: Text.Email "user1@example.com", name: Text.NonEmpty "User1", passwordHash: "", role: Staff }
+  let manager <- Db.insert User { email: Text.Email "manager@example.com", name: Text.NonEmpty "Manager", passwordHash: "", role: Manager }
+  let orderId <- Db.insert Order { user: user1, status: Open, created: Time.epoch }
+  let r <- Test.run (Orders.Show.load { id: orderId } { user: manager, theme: Light })
+  Task.succeed (r.value == Ok { order: { id: orderId, user: user1, status: Open, created: Time.epoch }, lines: [], products: [] })
+}

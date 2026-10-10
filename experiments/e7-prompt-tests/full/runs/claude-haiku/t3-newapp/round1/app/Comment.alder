@@ -1,0 +1,28 @@
+module Comment
+
+import Post
+
+type CommentId = brand Text
+
+table Comment {
+  id: CommentId @id,
+  post: Post.PostId @ref Post,
+  author: Text,
+  body: Text,
+  created: Time @created,
+}
+
+-- complete is true when the author and the comment both have text once trimmed.
+complete : Text -> Text -> Bool
+complete author body =
+  not (Text.isEmpty (Text.trim author)) && not (Text.isEmpty (Text.trim body))
+
+add : Post.PostId -> Text -> Text -> Task Unit
+add post author body = {
+  let _ <- Db.insert Comment { post: post, author: Text.trim author, body: Text.trim body }
+  Task.succeed ()
+}
+
+test "a comment with an empty author is refused" = not (complete "   " "a comment")
+
+test "a comment with an empty body is refused" = not (complete "Ann" "  ")

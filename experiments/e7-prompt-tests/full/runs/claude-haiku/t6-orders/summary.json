@@ -1,0 +1,135 @@
+{
+ "model": "claude-haiku",
+ "task": "t6-orders",
+ "retries": 2,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 2,
+  "test": true
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 11,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 232.9,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "haiku",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 6,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Theme",
+      "name": "flip alternates",
+      "ok": true,
+      "left": "Light",
+      "right": "Light",
+      "trace": [],
+      "ms": 0.122
+     },
+     {
+      "module": "Product",
+      "name": "cents pads the pence",
+      "ok": true,
+      "trace": [],
+      "ms": 0.014
+     },
+     {
+      "module": "SaleLine",
+      "name": "an open order totals quantity times price over its lines",
+      "ok": true,
+      "left": "750",
+      "right": "750",
+      "trace": [],
+      "ms": 0.002
+     },
+     {
+      "module": "Orders.Show",
+      "name": "adding a line to a paid order is refused",
+      "ok": true,
+      "left": "{ value: Err \"the order is not open\", lines: 0 }",
+      "right": "{ value: Err \"the order is not open\", lines: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Sale",
+       "Db.insert Product",
+       "Test.run",
+       "Db.get Sale",
+       "Db.get User",
+       "Db.count SaleLine"
+      ],
+      "ms": 2.304
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a staff user opening another user's order is not found",
+      "ok": true,
+      "left": "Err \"not found\"",
+      "right": "Err \"not found\"",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Sale",
+       "Test.run",
+       "Db.get Sale",
+       "Db.get User"
+      ],
+      "ms": 0.409
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a manager opening another user's order is found",
+      "ok": true,
+      "left": "Ok \"JDJ38FmqIGU57sThxf4v\"",
+      "right": "Ok \"JDJ38FmqIGU57sThxf4v\"",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Sale",
+       "Test.run",
+       "Db.get Sale",
+       "Db.get User",
+       "Db.all SaleLine",
+       "Db.all Product"
+      ],
+      "ms": 0.343
+     }
+    ],
+    "exit": 0
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "haiku",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ]
+}

@@ -1,0 +1,17 @@
+module Time
+
+import Db
+
+type Time = brand Text
+
+epoch : Time
+
+now : Query Time
+
+toDate : Time -> Date
+
+format : Text -> Time -> Text
+
+ago : Time -> Time -> Text
+
+--- file: stdlib

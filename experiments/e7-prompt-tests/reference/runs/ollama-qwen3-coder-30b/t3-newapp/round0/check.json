@@ -1,0 +1,24 @@
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 6, "col": 43, "endLine": 6, "endCol": 48, "message": "unknown type `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 6, "col": 51, "endLine": 6, "endCol": 56, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 22, "col": 37, "endLine": 22, "endCol": 42, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 29, "col": 41, "endLine": 29, "endCol": 46, "message": "unknown constructor `Light`"}
+{"code": "W0001", "severity": "warning", "file": "app/Blog/Admin.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 12, "message": "import `User` is unused"}
+{"code": "E0101", "severity": "error", "file": "app/Blog/Admin.alder", "line": 34, "col": 29, "endLine": 34, "endCol": 35, "message": "`Db.get Post` takes a `Post.PostId`, got `Post.Slug`", "fix": {"line": 34, "col": 17, "endLine": 34, "endCol": 35, "replace": "Db.from Post |> Db.where (Post.slug.eq p.slug) |> Db.first"}}
+{"code": "E0003", "severity": "error", "file": "app/Blog/Admin.alder", "line": 37, "col": 33, "endLine": 37, "endCol": 39, "message": "expected Post.PostId, got Post.Slug"}
+{"code": "E0304", "severity": "error", "file": "app/Blog/Admin.alder", "line": 56, "col": 50, "endLine": 56, "endCol": 65, "message": "`<Input>` has no attribute `type`"}
+{"code": "W0001", "severity": "warning", "file": "app/Blog/Index.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 12, "message": "import `User` is unused"}
+{"code": "W0001", "severity": "warning", "file": "app/Blog/Show.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 12, "message": "import `User` is unused"}
+{"code": "E0202", "severity": "error", "file": "app/Blog/Show.alder", "line": 9, "col": 43, "endLine": 9, "endCol": 50, "message": "type `Comment` belongs to module `Post`; write `Post.Comment`", "fix": {"line": 9, "col": 43, "endLine": 9, "endCol": 50, "replace": "Post.Comment"}}
+{"code": "E0002", "severity": "error", "file": "app/Blog/Show.alder", "line": 16, "col": 31, "endLine": 16, "endCol": 38, "message": "unknown constructor `Comment`"}
+{"code": "E0201", "severity": "error", "file": "app/Blog/Show.alder", "line": 16, "col": 52, "endLine": 16, "endCol": 64, "message": "module `Comment` is not imported", "fix": {"line": 6, "col": 1, "endLine": 6, "endCol": 1, "replace": "import Comment\n"}}
+{"code": "E0002", "severity": "error", "file": "app/Blog/Show.alder", "line": 33, "col": 24, "endLine": 33, "endCol": 31, "message": "unknown constructor `Comment`"}
+{"code": "E0002", "severity": "error", "file": "app/Layout.alder", "line": 3, "col": 1, "endLine": 3, "endCol": 13, "message": "unknown module `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/Layout.alder", "line": 5, "col": 30, "endLine": 5, "endCol": 35, "message": "unknown type `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/Layout.alder", "line": 7, "col": 34, "endLine": 7, "endCol": 38, "message": "unknown constructor `Dark`"}
+{"code": "E0502", "severity": "error", "file": "app/Post.alder", "line": 23, "col": 3, "endLine": 23, "endCol": 28, "message": "`@ref Post` field `post` must have type `Post.PostId` or `Maybe Post.PostId`, got `Post.Slug`"}
+{"code": "E0201", "severity": "error", "file": "app/Post.alder", "line": 32, "col": 22, "endLine": 32, "endCol": 36, "message": "module `Blog.Show` is not imported", "fix": {"line": 4, "col": 1, "endLine": 4, "endCol": 1, "replace": "import Blog.Show\n"}}
+{"code": "E0002", "severity": "error", "file": "app/Post.alder", "line": 32, "col": 102, "endLine": 32, "endCol": 107, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Post.alder", "line": 39, "col": 40, "endLine": 39, "endCol": 46, "message": "unknown constructor `Submit`"}
+{"code": "E0002", "severity": "error", "file": "app/Post.alder", "line": 39, "col": 282, "endLine": 39, "endCol": 287, "message": "unknown constructor `Light`"}
+{"code": "E0201", "severity": "error", "file": "app/Post.alder", "line": 47, "col": 22, "endLine": 47, "endCol": 37, "message": "module `Blog.Index` is not imported", "fix": {"line": 4, "col": 1, "endLine": 4, "endCol": 1, "replace": "import Blog.Index\n"}}
+{"code": "E0002", "severity": "error", "file": "app/Post.alder", "line": 47, "col": 65, "endLine": 47, "endCol": 70, "message": "unknown constructor `Light`"}

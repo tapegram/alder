@@ -1,0 +1,47 @@
+module Blog
+
+import User
+import Layout
+
+type PostId = brand Text
+type Slug = brand Text where Text.matches "^[a-z0-9-]+$"
+
+table Post {
+  id: PostId @id,
+  title: Text.NonEmpty,
+  slug: Slug @unique,
+  body: Text.NonEmpty,
+  published: Bool = False,
+  owner: User.UserId @ref User,
+  created: Time @created,
+}
+
+table Comment {
+  id: Text @id,
+  author: Text.NonEmpty,
+  body: Text.NonEmpty,
+  post: PostId @ref Post,
+  created: Time @created,
+}
+
+test "unpublished post is not found for reader" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Post { title: Text.NonEmpty "My Post", slug: Slug "my-post", body: Text.NonEmpty "Body", published: False, owner: me }
+  let r <- Test.run (Blog.Show.load { slug: Slug "my-post" } { user: User.UserId "someone-else", theme: Layout.Light })
+  Task.succeed (r.value == Err "not found")
+}
+
+test "comment with empty author is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Post { title: Text.NonEmpty "My Post", slug: Slug "my-post", body: Text.NonEmpty "Body", published: True, owner: me }
+  let r <- Test.run (Blog.Show.update (Blog.Show.Submit { author: "", body: Text.NonEmpty "Good comment" }) { post: { id: PostId "a", title: Text.NonEmpty "My Post", slug: Slug "my-post", body: Text.NonEmpty "Body", published: True, owner: me, created: Time.epoch }, comments: [] } { user: me, theme: Layout.Light })
+  Task.succeed (r.value == Err "not found")
+}
+
+test "index lists only published posts, newest first" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id1 <- Db.insert Post { title: Text.NonEmpty "Old Post", slug: Slug "old-post", body: Text.NonEmpty "Body", published: True, owner: me }
+  let id2 <- Db.insert Post { title: Text.NonEmpty "New Post", slug: Slug "new-post", body: Text.NonEmpty "Body", published: True, owner: me }
+  let r <- Test.run (Blog.Index.load {} { user: Nothing, theme: Layout.Light })
+  Task.succeed (r.value == Ok { posts: [{ id: PostId "b", title: Text.NonEmpty "New Post", slug: Slug "new-post", body: Text.NonEmpty "Body", published: True, owner: me, created: Time.epoch }, { id: PostId "a", title: Text.NonEmpty "Old Post", slug: Slug "old-post", body: Text.NonEmpty "Body", published: True, owner: me, created: Time.epoch }] })
+}

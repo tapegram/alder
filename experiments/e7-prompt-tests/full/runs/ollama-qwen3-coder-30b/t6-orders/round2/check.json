@@ -1,0 +1,6 @@
+{"code": "E0001", "severity": "error", "file": "app/Shop/Products.alder", "line": 57, "col": 5, "endLine": 57, "endCol": 6, "message": "in <Layout.Page>: expected `else`, got `}`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Products.alder", "line": 57, "col": 5, "endLine": 57, "endCol": 6, "message": "in <Layout.Page>: expected an expression, got `}`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Products.alder", "line": 58, "col": 5, "endLine": 58, "endCol": 6, "message": "in <Layout.Page>: expected `}`, got `{`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Show.alder", "line": 88, "col": 5, "endLine": 88, "endCol": 6, "message": "in <Layout.Page>: expected `else`, got `}`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Show.alder", "line": 88, "col": 5, "endLine": 88, "endCol": 6, "message": "in <Layout.Page>: expected an expression, got `}`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Show.alder", "line": 89, "col": 5, "endLine": 89, "endCol": 6, "message": "in <Layout.Page>: expected `}`, got `{`"}

@@ -1,0 +1,97 @@
+module Posts.Show
+
+import Post
+import Comment
+import User
+import Layout
+
+page "/posts/{slug}" { slug: Post.Slug }
+
+type Model = { post: Post, comments: List Comment }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.from Post |> Db.where (Post.slug.eq params.slug) |> Db.first
+  match found {
+    Just post -> {
+      if Post.visibleTo session.user post then {
+        let comments <-
+          Db.from Comment
+            |> Db.where (Comment.post.eq post.id)
+            |> Db.orderBy Comment.created.asc
+            |> Db.all
+        Query.succeed { post: post, comments: comments }
+      } else Query.notFound
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewComment = {
+  author: Text.NonEmpty,
+  body: Text.NonEmpty,
+}
+
+msg AddComment form NewComment
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddComment p -> {
+    match Comment.problem p.form.author p.form.body {
+      Just reason -> Task.succeed (Reject reason),
+      Nothing -> {
+        let _ <- Db.insert Comment { post: model.post.id, author: p.form.author, body: p.form.body }
+        Task.succeed Rerender
+      },
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.post.title}>
+    <article>
+      <h1>{model.post.title}</h1>
+      {if model.post.published then Html.none else <p class="draft">Draft: only you can see this post.</p>}
+      <p class="meta">{Time.format "Jan 2, 2006" model.post.created}</p>
+      <div class="body">{model.post.body}</div>
+    </article>
+    <section id="comments">
+      <h2>Comments</h2>
+      <ul>
+        {for c in model.comments -> <li><strong>{c.author}</strong>: {c.body}</li>}
+      </ul>
+      <form submit={AddComment}>
+        <Errors form />
+        <Input field="author" label="Your name" />
+        <Errors field="author" />
+        <Textarea field="body" label="Comment" />
+        <Errors field="body" />
+        <button>Add comment</button>
+      </form>
+    </section>
+    <a href={Home {}}>Back</a>
+  </Layout.Page>
+
+test "an unpublished post is not found for a reader" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Draft", slug: Post.Slug "draft", body: Text.NonEmpty "x", author: me }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Live", slug: Post.Slug "live", body: Text.NonEmpty "x", published: True, author: me }
+  let reader <- Test.run {
+    let m <- load { slug: Post.Slug "draft" } { user: Nothing }
+    Task.succeed m
+  }
+  let author <- Test.run {
+    let m <- load { slug: Post.Slug "draft" } { user: Just me }
+    Task.succeed m
+  }
+  let live <- Test.run {
+    let m <- load { slug: Post.Slug "live" } { user: Nothing }
+    Task.succeed m
+  }
+  Task.succeed ({
+    draftForReader: Maybe.isJust (Result.toMaybe reader.value),
+    draftForAuthor: Maybe.isJust (Result.toMaybe author.value),
+    liveForReader: Maybe.isJust (Result.toMaybe live.value),
+  } == { draftForReader: False, draftForAuthor: True, liveForReader: True })
+}

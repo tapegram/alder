@@ -1,0 +1,79 @@
+{
+ "model": "ollama-qwen3-coder-30b",
+ "task": "t2-newpage",
+ "retries": 2,
+ "base": "examples/todos",
+ "harness": {
+  "build": true,
+  "retries": 2,
+  "test": true,
+  "num_ctx": 32768,
+  "num_predict": 8192
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 33,
+   "exit": 1,
+   "errors": 194,
+   "warnings": 0,
+   "codes": {
+    "E0001": 170,
+    "E0017": 21,
+    "E0005": 3
+   },
+   "rejected": [],
+   "seconds": 257.7,
+   "tokens": 8192,
+   "stderr": "",
+   "prompt_eval_count": 21761,
+   "eval_count": 8192,
+   "done_reason": "length",
+   "truncated": true
+  },
+  {
+   "n": 1,
+   "files": 33,
+   "exit": 1,
+   "errors": 194,
+   "warnings": 0,
+   "codes": {
+    "E0001": 170,
+    "E0017": 21,
+    "E0005": 3
+   },
+   "rejected": [],
+   "seconds": 40.9,
+   "tokens": 696,
+   "stderr": "",
+   "prompt_eval_count": 16386,
+   "eval_count": 696,
+   "done_reason": "stop",
+   "warning": "prompt may have been truncated (prompt_eval_count=16386, estimated=31809)"
+  },
+  {
+   "n": 2,
+   "files": 33,
+   "exit": 1,
+   "errors": 194,
+   "warnings": 0,
+   "codes": {
+    "E0001": 170,
+    "E0017": 21,
+    "E0005": 3
+   },
+   "rejected": [],
+   "seconds": 96.0,
+   "tokens": 3286,
+   "stderr": "",
+   "prompt_eval_count": 16386,
+   "eval_count": 3286,
+   "done_reason": "stop",
+   "warning": "prompt may have been truncated (prompt_eval_count=16386, estimated=31778)"
+  }
+ ],
+ "final_pass": false,
+ "outcome": "fail",
+ "base_commit": "0c80d8038e55c8c520a449555ac63bedb55423b7"
+}

@@ -1,0 +1,2 @@
+{"code": "E0002", "severity": "error", "file": "app/Notes/Show.alder", "line": 60, "col": 52, "endLine": 60, "endCol": 57, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Show.alder", "line": 70, "col": 49, "endLine": 70, "endCol": 54, "message": "unknown constructor `Light`"}

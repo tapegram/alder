@@ -1,0 +1,64 @@
+module Orders.Index
+
+import ShopOrder
+import OrderLine
+import Product
+import Layout
+
+page "/" { } requires user
+
+type Row = { order: ShopOrder, total: Int }
+
+type Model = { rows: List Row }
+
+rowOf : List Product -> List OrderLine -> ShopOrder -> Row
+rowOf products lines order = {
+  order: order,
+  total: OrderLine.total products (List.filter (\l -> l.order == order.id) lines),
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let orders <-
+    Db.from ShopOrder
+      |> Db.where (ShopOrder.owner.eq session.user)
+      |> Db.orderBy ShopOrder.created.desc
+      |> Db.all
+  let lines <-
+    Db.from OrderLine
+      |> Db.where (OrderLine.order.in (List.map (\o -> o.id) orders))
+      |> Db.all
+  let products <- Db.from Product |> Db.all
+  Query.succeed { rows: List.map (rowOf products lines) orders }
+}
+
+msg Create
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert ShopOrder { owner: session.user }
+    Task.succeed (Redirect (Orders.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Orders">
+    <h1>Your orders</h1>
+
+    <form submit={Create}>
+      <button>New order</button>
+    </form>
+
+    <ul id="orders">
+      {for row in model.rows -> <Item row={row} />}
+    </ul>
+  </Layout.Page>
+
+Item : { row: Row } -> Html Msg
+Item props =
+  <li>
+    <a href={Orders.Show { id: props.row.order.id }}>{Time.format "Jan 2 15:04" props.row.order.created}</a>
+    <span class="status">{ShopOrder.statusLabel props.row.order.status} - {Product.money props.row.total}</span>
+  </li>

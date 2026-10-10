@@ -1,0 +1,160 @@
+{
+ "model": "claude-sonnet",
+ "task": "t2-newpage",
+ "retries": 2,
+ "base": "examples/todos",
+ "harness": {
+  "build": true,
+  "retries": 2,
+  "test": true
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 9,
+   "exit": 1,
+   "errors": 3,
+   "warnings": 0,
+   "codes": {
+    "E0002": 3
+   },
+   "rejected": [],
+   "seconds": 36.0,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "sonnet"
+  },
+  {
+   "n": 1,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 27.3,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "sonnet",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 6,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Theme",
+      "name": "flip alternates",
+      "ok": true,
+      "left": "Light",
+      "right": "Light",
+      "trace": [],
+      "ms": 0.123
+     },
+     {
+      "module": "Todo",
+      "name": "countOpen ignores done todos",
+      "ok": true,
+      "left": "1",
+      "right": "1",
+      "trace": [],
+      "ms": 0.002
+     },
+     {
+      "module": "Profile",
+      "name": "load counts only the user's todos",
+      "ok": true,
+      "left": "{ total: 2, done: 1 }",
+      "right": "{ total: 2, done: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.update Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.update Todo",
+       "Db.get User",
+       "Db.all Todo"
+      ],
+      "ms": 2.255
+     },
+     {
+      "module": "Profile",
+      "name": "renaming to an empty name is refused",
+      "ok": true,
+      "left": "{ value: Ok (Reject \"Name must not be empty.\"), name: Just \"Me\" }",
+      "right": "{ value: Ok (Reject \"Name must not be empty.\"), name: Just \"Me\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.get User",
+       "Db.all Todo",
+       "Test.run",
+       "Db.get User"
+      ],
+      "ms": 0.315
+     },
+     {
+      "module": "Todos.Index",
+      "name": "Toggle flips done",
+      "ok": true,
+      "left": "{ trace: [\"Db.get Todo\", \"Db.update Todo\"], done: Just True }",
+      "right": "{ trace: [\"Db.get Todo\", \"Db.update Todo\"], done: Just True }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.run",
+       "Db.get Todo",
+       "Db.update Todo",
+       "Db.get Todo"
+      ],
+      "ms": 0.276
+     },
+     {
+      "module": "Todos.Index",
+      "name": "Toggle by another user is not found",
+      "ok": true,
+      "left": "{ value: Err \"not found\", trace: [\"Db.get Todo\"], done: Just False }",
+      "right": "{ value: Err \"not found\", trace: [\"Db.get Todo\"], done: Just False }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.run",
+       "Db.get Todo",
+       "Db.get Todo"
+      ],
+      "ms": 0.258
+     }
+    ],
+    "exit": 0
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "base_commit": "097185ca9c7e9bc6b662ff132d97b79d2c9c091a",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "sonnet",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ]
+}

@@ -1,0 +1,58 @@
+module Orders.Index
+
+import Sale
+import SaleLine
+import Product
+import Layout
+
+page "/" { } requires user
+
+type Model = { rows: List Row }
+
+type Row = { sale: Sale, total: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let sales <-
+    Db.from Sale
+      |> Db.where (Sale.owner.eq session.user)
+      |> Db.orderBy Sale.created.desc
+      |> Db.all
+  let products <- Db.from Product |> Db.all
+  let rows <- Query.all (List.map (rowFor products) sales)
+  Query.succeed { rows: rows }
+}
+
+rowFor : List Product -> Sale -> Query Row
+rowFor products sale = {
+  let lines <- Db.from SaleLine |> Db.where (SaleLine.sale.eq sale.id) |> Db.all
+  Query.succeed { sale: sale, total: SaleLine.total lines products }
+}
+
+msg Create
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Sale { owner: session.user }
+    Task.succeed (Redirect (Orders.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Orders" theme={session.theme}>
+    <h1>Orders</h1>
+    <form submit={Create}>
+      <button>New order</button>
+    </form>
+    <ul id="orders">
+      {for row in model.rows -> <OrderRow row={row} />}
+    </ul>
+  </Layout.Page>
+
+OrderRow : { row: Row } -> Html a
+OrderRow props =
+  <li>
+    <a href={Orders.Show { id: props.row.sale.id }}>{Sale.statusLabel props.row.sale.status}, {Product.cents props.row.total}</a>
+  </li>

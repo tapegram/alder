@@ -1,0 +1,21 @@
+module Sale
+
+import User
+
+type SaleId = brand Text
+
+type Status = Open | Paid | Cancelled
+
+table Sale {
+  id: SaleId @id,
+  owner: User.UserId @ref User,
+  status: Status = Open,
+  created: Time @created,
+}
+
+statusLabel : Status -> Text
+statusLabel status = match status {
+  Open -> "Open",
+  Paid -> "Paid",
+  Cancelled -> "Cancelled",
+}

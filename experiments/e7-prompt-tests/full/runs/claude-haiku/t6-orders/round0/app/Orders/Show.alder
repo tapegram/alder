@@ -1,0 +1,187 @@
+module Orders.Show
+
+import Sale
+import SaleLine
+import Product
+import User
+import Theme
+import Layout
+
+page "/orders/{id}" { id: Sale.SaleId } requires user
+
+type Model = {
+  sale: Sale,
+  lines: List SaleLine,
+  products: List Product,
+}
+
+form AddQuantity = {
+  quantity: Int.Positive,
+}
+
+msg AddLine { product: Product.ProductId } form AddQuantity
+msg Pay
+msg Cancel
+
+-- load shows an order to its owner and to a manager. Anyone else gets a 404.
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Sale params.id
+  let me <- Db.get User session.user
+  match found {
+    Just sale -> if canSee me session sale then pageFor sale else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+pageFor : Sale -> Query Model
+pageFor sale = {
+  let lines <- Db.from SaleLine |> Db.where (SaleLine.sale.eq sale.id) |> Db.all
+  let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+  Query.succeed { sale: sale, lines: lines, products: products }
+}
+
+-- canSee is true when the order is the session user's, or the session user is a manager.
+canSee : Maybe User -> Session -> Sale -> Bool
+canSee me session sale = match me {
+  Just u -> sale.owner == session.user || u.role == Manager,
+  Nothing -> False,
+}
+
+-- update checks the order again: `load` checked it for the page, but a message can be posted
+-- by anyone with the page's id. A line can be added, and the order paid or cancelled, only
+-- while it is still Open in the database.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddLine p -> {
+    let sale <- editable model.sale session
+    let _ <- activeProduct p.product
+    let _ <- Db.insert SaleLine { sale: sale.id, product: p.product, quantity: p.form.quantity }
+    Task.succeed Rerender
+  },
+  Pay p -> {
+    let sale <- editable model.sale session
+    let _ <- Db.update Sale sale.id (\s -> { s | status: Paid })
+    Task.succeed Rerender
+  },
+  Cancel p -> {
+    let sale <- editable model.sale session
+    let _ <- Db.update Sale sale.id (\s -> { s | status: Cancelled })
+    Task.succeed Rerender
+  },
+}
+
+-- editable is the order as it is now in the database, if the session may change it and it is
+-- still Open. Otherwise the task stops: 404 for an order the user may not see, and a failure
+-- for an order that is no longer open.
+editable : Sale -> Session -> Task Sale
+editable sale session = {
+  let found <- Db.get Sale sale.id
+  let me <- Db.get User session.user
+  match found {
+    Just now -> if canSee me session now then openOrFail now else Task.notFound,
+    Nothing -> Task.notFound,
+  }
+}
+
+-- An order that is not Open is refused with Task.fail, not Task.notFound: the order exists and
+-- the user may see it, so "not found" would be a lie. A Task.fail rolls back the whole task
+-- (nothing is inserted or updated) and the page answers 500. The page only offers changes on an
+-- Open order, so this is reached by a stale page or a message sent by hand.
+openOrFail : Sale -> Task Sale
+openOrFail sale =
+  if sale.status == Open then Task.succeed sale else Task.fail "the order is not open"
+
+activeProduct : Product.ProductId -> Task Product
+activeProduct productId = {
+  let found <- Db.get Product productId
+  match found {
+    Just p -> if p.active then Task.succeed p else Task.fail "that product is not for sale",
+    Nothing -> Task.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Order" theme={session.theme}>
+    <h1>Order</h1>
+    <p>Status: {Sale.statusLabel model.sale.status}</p>
+    <ul id="lines">
+      {for line in model.lines -> <LineRow line={line} products={model.products} />}
+    </ul>
+    <p id="total">Total: {Product.cents (SaleLine.total model.lines model.products)}</p>
+    {match model.sale.status {
+      Open -> <OpenOrder products={model.products} />,
+      Paid -> <p>This order is paid.</p>,
+      Cancelled -> <p>This order was cancelled.</p>,
+    }}
+    <a href={Orders.Index {}}>All orders</a>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+LineRow : { line: SaleLine, products: List Product } -> Html a
+LineRow props =
+  <li>{nameOf props.products props.line.product} x {Text.fromInt props.line.quantity} = {Product.cents (SaleLine.lineCents props.products props.line)}</li>
+
+nameOf : List Product -> Product.ProductId -> Text
+nameOf products productId = {
+  let found = List.find (\p -> p.id == productId) products
+  match found {
+    Just p -> p.name,
+    Nothing -> "unknown product",
+  }
+}
+
+OpenOrder : { products: List Product } -> Html Msg
+OpenOrder props =
+  <div>
+    {for p in List.filter (\p -> p.active) props.products -> <ProductForm product={p} />}
+    <div>
+      <button click={Pay}>Mark paid</button>
+      <button click={Cancel}>Cancel order</button>
+    </div>
+  </div>
+
+ProductForm : { product: Product } -> Html Msg
+ProductForm props =
+  <form submit={AddLine { product: props.product.id }}>
+    <Errors form />
+    <Input field="quantity" label="Quantity" />
+    <Errors field="quantity" />
+    <button>Add {props.product.name}</button>
+  </form>
+
+saleIdOf : Model -> Sale.SaleId
+saleIdOf model = model.sale.id
+
+test "adding a line to a paid order is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Staff }
+  let sid <- Db.insert Sale { owner: me, status: Paid }
+  let pid <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 300 }
+  let model : Model = { sale: { id: sid, owner: me, status: Paid, created: Time.epoch }, lines: [], products: [] }
+  let r <- Test.run (update (AddLine { product: pid, form: { quantity: Int.Positive 1 } }) model { user: me, theme: Light })
+  let lines <- Db.from SaleLine |> Db.where (SaleLine.sale.eq sid) |> Db.count
+  Task.succeed ({ value: r.value, lines: lines } == { value: Err "the order is not open", lines: 0 })
+}
+
+test "a staff user opening another user's order is not found" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let staff <- Db.insert User { email: Text.Email "staff@example.com", name: Text.NonEmpty "Staff", passwordHash: "", role: Staff }
+  let sid <- Db.insert Sale { owner: owner }
+  let r <- Test.run {
+    let m <- load { id: sid } { user: staff, theme: Light }
+    Task.succeed m
+  }
+  Task.succeed (Result.map saleIdOf r.value == Err "not found")
+}
+
+test "a manager opening another user's order is found" = {
+  let owner <- Db.insert User { email: Text.Email "owner2@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let sid <- Db.insert Sale { owner: owner }
+  let r <- Test.run {
+    let m <- load { id: sid } { user: boss, theme: Light }
+    Task.succeed m
+  }
+  Task.succeed (Result.map saleIdOf r.value == Ok sid)
+}

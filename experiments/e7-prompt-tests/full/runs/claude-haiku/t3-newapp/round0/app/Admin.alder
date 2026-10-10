@@ -1,0 +1,84 @@
+module Admin
+
+import Post
+import Layout
+
+page "/admin" { } requires user
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Post.Slug,
+  body: Text,
+}
+
+msg Create form NewPost
+msg Toggle { id: Post.PostId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let taken <- Db.first (Db.from Post |> Db.where (Post.slug.eq p.form.slug))
+    match taken {
+      Just _ -> Task.succeed (Reject "That slug is already used."),
+      Nothing -> {
+        let _ <- Db.insert Post { slug: p.form.slug, title: p.form.title, body: p.form.body, published: False, author: session.user }
+        Task.succeed Rerender
+      },
+    }
+  },
+  Toggle p -> {
+    let post <- owned p.id session
+    let _ <- Db.update Post post.id (\t -> { t | published: not t.published })
+    Task.succeed Rerender
+  },
+}
+
+-- owned is the post a message names, when the session's user wrote it; otherwise a 404.
+owned : Post.PostId -> Session -> Task Post
+owned id session = {
+  let found <- Db.get Post id
+  match found {
+    Just post -> if post.author == session.user then Task.succeed post else Task.notFound,
+    Nothing -> Task.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Admin">
+    <h1>Posts</h1>
+
+    <form submit={Create}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Input field="slug" label="Slug" />
+      <Errors field="slug" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <button>Create post</button>
+    </form>
+
+    <ul id="posts">
+      {for p in model.posts -> <PostRow post={p} />}
+    </ul>
+  </Layout.Page>
+
+PostRow : { post: Post } -> Html Msg
+PostRow props =
+  <li>
+    <a href={Posts.Show { slug: props.post.slug }}>{props.post.title}</a>
+    {if props.post.published then " (published)" else " (draft)"}
+    <button click={Toggle { id: props.post.id }}>{if props.post.published then "Unpublish" else "Publish"}</button>
+  </li>

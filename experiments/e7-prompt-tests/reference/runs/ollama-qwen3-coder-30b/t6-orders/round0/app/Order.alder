@@ -1,0 +1,52 @@
+module Order
+
+import User
+import Product
+
+type OrderId = brand Text
+type LineId = brand Text
+
+type Status = Open | Paid | Cancelled
+
+table Order {
+  id: OrderId @id,
+  user: User.UserId @ref User,
+  status: Status = Open,
+  created: Time @created,
+}
+
+table Line {
+  id: LineId @id,
+  order: OrderId @ref Order,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+statusLabel : Status -> Text
+statusLabel status = match status {
+  Open -> "Open",
+  Paid -> "Paid",
+  Cancelled -> "Cancelled",
+}
+
+total : List Line -> List Product -> Int
+total lines products = lines
+  |> List.map (\l -> {
+    let p = List.find (\p -> p.id == l.product) products
+    match p {
+      Just p -> p.price * l.quantity,
+      Nothing -> 0, -- Should not happen in a valid order
+    }
+  })
+  |> List.sum
+
+test "total computes sum of quantity × price" =
+  let lines = [
+    { id: LineId "a", order: OrderId "o", product: Product.ProductId "p1", quantity: 2 },
+    { id: LineId "b", order: OrderId "o", product: Product.ProductId "p2", quantity: 3 }
+  ]
+  let products = [
+    { id: Product.ProductId "p1", name: Text.NonEmpty "A", price: 100, active: True },
+    { id: Product.ProductId "p2", name: Text.NonEmpty "B", price: 200, active: True }
+  ]
+  total lines products == 800

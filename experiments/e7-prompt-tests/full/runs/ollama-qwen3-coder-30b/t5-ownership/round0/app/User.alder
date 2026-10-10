@@ -1,0 +1,15 @@
+module User
+
+type UserId = brand Text
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  created: Time @created,
+}
+
+test "user can be created" =
+  let u = { id: UserId "a", email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "", created: Time.epoch }
+  u.email == Text.Email "a@example.com"

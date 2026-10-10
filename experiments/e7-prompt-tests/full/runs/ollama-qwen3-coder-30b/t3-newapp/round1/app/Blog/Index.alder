@@ -1,0 +1,25 @@
+module Blog.Index
+
+import Blog
+import Layout
+
+page "/" { }
+
+type Model = { posts: List Blog.Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <- Db.from Blog.Post |> Db.where (Blog.Post.published.eq True) |> Db.orderBy Blog.Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Blog" theme={session.theme}>
+    <h1>Blog</h1>
+    {for post in model.posts ->
+      <div>
+        <a href={Blog.Show { slug: post.slug }}>{post.title}</a>
+        <span>{Blog.Post.created.post}</span>
+      </div>}
+  </Layout.Page>

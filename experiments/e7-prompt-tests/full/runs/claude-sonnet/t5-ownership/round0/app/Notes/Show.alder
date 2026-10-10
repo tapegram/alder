@@ -1,0 +1,25 @@
+module Notes.Show
+
+import Note
+import Layout
+
+page "/notes/{id}" { id: Note.NoteId } requires user
+
+type Model = { note: Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Note params.id
+  match found {
+    Just note -> if note.owner == session.user then Query.succeed { note: note } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.note.title}>
+    <h1>{model.note.title}</h1>
+    <p>{model.note.body}</p>
+    <a href={Notes.Index {}}>Back</a>
+  </Layout.Page>

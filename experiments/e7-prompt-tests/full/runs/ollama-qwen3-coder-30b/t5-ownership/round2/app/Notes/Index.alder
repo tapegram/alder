@@ -1,0 +1,97 @@
+module Notes.Index
+
+import Note
+import Layout
+import User
+import Theme
+
+page "/" { } requires user
+
+type Model = { notes: List Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <- Db.from Note |> Db.where (Note.owner.eq session.user) |> Db.orderBy Note.created.desc |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Submit form NewNote
+msg Delete { id: Note.NoteId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+    Task.succeed Rerender
+  },
+  Delete p -> {
+    let note <- owned p.id session
+    let _ <- Db.delete Note note.id
+    Task.succeed Rerender
+  },
+}
+
+-- owned is the note a message names, when the session's user owns it; otherwise the message is
+-- a 404.
+owned : Note.NoteId -> Session -> Task Note
+owned id session = {
+  let found <- Db.get Note id
+  match found {
+    Just note -> if note.owner == session.user then Task.succeed note else Task.notFound,
+    Nothing -> Task.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="My Notes" theme={session.theme}>
+    <h1>My Notes</h1>
+
+    <form submit={Submit}>
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <button>Add Note</button>
+    </form>
+
+    <ul>
+      {for note in model.notes -> <Item note={note} />}
+    </ul>
+  </Layout.Page>
+
+Item : { note: Note } -> Html Msg
+Item props =
+  <li>
+    <a href={Notes.Show { id: props.note.id }}>{props.note.title}</a>
+    <button click={Delete { id: props.note.id }}>Delete</button>
+  </li>
+
+test "Delete note by owner succeeds" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "My Note", body: "Content", owner: me }
+  let r <- Test.run (update (Delete { id: id }) { notes: [] } { user: me, theme: Light })
+  let after <- Db.get Note id
+  Task.succeed ({ value: r.value, trace: r.trace, exists: after } == { value: Ok Rerender, trace: ["Db.get Note", "Db.delete Note"], exists: Nothing })
+}
+
+test "Delete note by another user is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "My Note", body: "Content", owner: me }
+  let stranger = User.UserId "someone-else"
+  let r <- Test.run (update (Delete { id: id }) { notes: [] } { user: stranger, theme: Light })
+  let after <- Db.get Note id
+  let exists = Maybe.map (\n -> n.id) after
+  Task.succeed ({ value: r.value, trace: r.trace, exists: exists } == { value: Err "not found", trace: ["Db.get Note"], exists: Just (NoteId "a") })
+}
+
+test "Delete missing note is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let r <- Test.run (update (Delete { id: Note.NoteId "missing" }) { notes: [] } { user: me, theme: Light })
+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Err "not found", trace: ["Db.get Note"] })
+}

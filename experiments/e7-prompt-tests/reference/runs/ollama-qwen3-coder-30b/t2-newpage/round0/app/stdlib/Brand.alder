@@ -1,0 +1,10 @@
+module Brand
+
+-- A brand is a type that has the same runtime representation as its base type
+-- but is distinct to the type checker.
+type Brand t = t
+
+-- Widening is implicit. A brand can be used anywhere its base type is expected.
+-- Narrowing is explicit and local. The constructor exists only inside the module that declares the brand.
+-- Operations return the base type.
+-- Equality requires identical types.

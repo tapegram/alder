@@ -1,0 +1,105 @@
+module Posts.Show
+
+import Post
+import Comment
+import Layout
+import User
+
+page "/posts/{slug}" { slug: Post.Slug }
+
+type Model = { post: Post, comments: List Comment }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.first (Db.from Post |> Db.where (Post.slug.eq params.slug))
+  match found {
+    Nothing -> Query.notFound,
+    Just post -> if canSee post session then showPost post else Query.notFound,
+  }
+}
+
+-- canSee: published posts are for everyone; a draft only for its author.
+canSee : Post -> Session -> Bool
+canSee post session = post.published || session.user == Just post.author
+
+showPost : Post -> Query Model
+showPost post = {
+  let comments <-
+    Db.from Comment
+      |> Db.where (Comment.post.eq post.id)
+      |> Db.orderBy Comment.created.asc
+      |> Db.all
+  Query.succeed { post: post, comments: comments }
+}
+
+form NewComment = {
+  author: Text,
+  body: Text,
+}
+
+msg AddComment form NewComment
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddComment p -> comment model.post.id p.form.author p.form.body,
+}
+
+-- comment stores the comment when the author and the body both have text; otherwise it refuses.
+comment : Post.PostId -> Text -> Text -> Task Nav
+comment post author body =
+  if Comment.complete author body then {
+    let _ <- Comment.add post author body
+    Task.succeed Rerender
+  } else Task.succeed (Reject "Please give your name and a comment.")
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.post.title}>
+    <article>
+      <h1>{model.post.title}</h1>
+      {if model.post.published then Html.none else <p class="draft">Draft: only you can see this.</p>}
+      <p>{model.post.body}</p>
+    </article>
+
+    <h2>Comments</h2>
+    <ul id="comments">
+      {for c in model.comments -> <li><strong>{c.author}</strong>: {c.body}</li>}
+    </ul>
+
+    <form submit={AddComment}>
+      <Errors form />
+      <Input field="author" label="Your name" />
+      <Errors field="author" />
+      <Textarea field="body" label="Comment" />
+      <Errors field="body" />
+      <button>Post comment</button>
+    </form>
+
+    <a href={Home {}}>All posts</a>
+  </Layout.Page>
+
+test "an unpublished post is not found for a reader" = {
+  let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "", published: False, author: User.UserId "admin" }
+  let r <- Test.run {
+    let m <- load { slug: Post.Slug "draft" } { user: Nothing }
+    Task.succeed m
+  }
+  Task.succeed (r.value == Err "not found")
+}
+
+test "an unpublished post is shown to its author" = {
+  let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "", published: False, author: User.UserId "admin" }
+  let r <- Test.run {
+    let m <- load { slug: Post.Slug "draft" } { user: Just (User.UserId "admin") }
+    Task.succeed m
+  }
+  Task.succeed (Maybe.isJust (Result.toMaybe r.value))
+}
+
+test "a comment with a blank author is refused" = {
+  let id <- Db.insert Post { slug: Post.Slug "hi", title: Text.NonEmpty "Hi", body: "b", published: True, author: User.UserId "admin" }
+  let post : Post = { id: id, slug: Post.Slug "hi", title: Text.NonEmpty "Hi", body: "b", published: True, author: User.UserId "admin", created: Time.epoch }
+  let r <- Test.run (update (AddComment { form: { author: "  ", body: "hi" } }) { post: post, comments: [] } { user: Nothing })
+  let n <- Db.count (Db.from Comment)
+  Task.succeed ({ value: r.value, comments: n } == { value: Ok (Reject "Please give your name and a comment."), comments: 0 })
+}

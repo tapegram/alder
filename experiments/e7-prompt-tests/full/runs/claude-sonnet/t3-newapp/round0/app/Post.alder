@@ -1,0 +1,32 @@
+module Post
+
+import User
+
+type PostId = brand Text
+
+type Slug = brand Text where Text.matches "^[a-z0-9-]+$"
+
+table Post {
+  id: PostId @id,
+  title: Text.NonEmpty,
+  slug: Slug @unique,
+  body: Text.NonEmpty,
+  published: Bool = False,
+  author: User.UserId @ref User,
+  created: Time @created,
+}
+
+-- A post is visible to everyone once published, and always to its author.
+visibleTo : Maybe User.UserId -> Post -> Bool
+visibleTo viewer post = post.published || viewer == Just post.author
+
+-- True when each post is at least as new as the one after it.
+isNewestFirst : List Post -> Bool
+isNewestFirst posts = match posts {
+  [] -> True,
+  [x] -> True,
+  [x, ..rest] -> match List.head rest {
+    Just y -> x.created >= y.created && isNewestFirst rest,
+    Nothing -> True,
+  },
+}

@@ -1,0 +1,5 @@
+module Random
+
+int : { min: Int, max: Int } -> Task Int
+
+id : Task Text

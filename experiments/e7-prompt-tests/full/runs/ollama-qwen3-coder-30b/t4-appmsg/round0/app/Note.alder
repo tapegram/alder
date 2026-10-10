@@ -1,0 +1,17 @@
+module Note
+
+import User
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  title: Text.NonEmpty,
+  body: Text = "",
+  owner: User.UserId @ref User,
+  created: Time @created,
+}
+
+test "note can be created with empty body" =
+  let n = { id: NoteId "a", title: Text.NonEmpty "x", body: "", owner: User.UserId "u", created: Time.epoch }
+  n.title == Text.NonEmpty "x" && n.body == ""

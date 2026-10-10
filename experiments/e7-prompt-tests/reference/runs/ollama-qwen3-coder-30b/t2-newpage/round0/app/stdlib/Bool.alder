@@ -1,0 +1,5 @@
+module Bool
+
+not : Bool -> Bool
+
+toText : Bool -> Text

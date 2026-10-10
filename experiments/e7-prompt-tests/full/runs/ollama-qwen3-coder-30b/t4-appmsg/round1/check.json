@@ -1,0 +1,8 @@
+{"code": "E0003", "severity": "error", "file": "app/Note.alder", "line": 17, "col": 3, "endLine": 17, "endCol": 47, "message": "expected Task Bool, got Bool; a block test is a Task: end it with `Task.succeed (\u2026)`"}
+{"code": "W0001", "severity": "warning", "file": "app/Notes/Index.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 13, "message": "import `Theme` is unused"}
+{"code": "W0001", "severity": "warning", "file": "app/Notes/Index.alder", "line": 6, "col": 1, "endLine": 6, "endCol": 12, "message": "import `User` is unused"}
+{"code": "E0202", "severity": "error", "file": "app/Notes/Index.alder", "line": 24, "col": 16, "endLine": 24, "endCol": 22, "message": "type `NoteId` belongs to module `Note`; write `Note.NoteId`", "fix": {"line": 24, "col": 16, "endLine": 24, "endCol": 22, "replace": "Note.NoteId"}}
+{"code": "E0202", "severity": "error", "file": "app/Notes/Show.alder", "line": 8, "col": 26, "endLine": 8, "endCol": 32, "message": "type `NoteId` belongs to module `Note`; write `Note.NoteId`", "fix": {"line": 8, "col": 26, "endLine": 8, "endCol": 32, "replace": "Note.NoteId"}}
+{"code": "E0201", "severity": "error", "file": "app/Notes/Show.alder", "line": 64, "col": 22, "endLine": 64, "endCol": 39, "message": "module `Notes.Show` is not imported", "fix": {"line": 7, "col": 1, "endLine": 7, "endCol": 1, "replace": "import Notes.Show\n"}}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Show.alder", "line": 64, "col": 41, "endLine": 64, "endCol": 56, "message": "unknown `Notes.Show.Show`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Show.alder", "line": 69, "col": 22, "endLine": 69, "endCol": 32, "message": "`App` has no `update`; only app-level messages such as `App.Logout` can be used from other modules"}

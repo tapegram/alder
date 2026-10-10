@@ -1,0 +1,91 @@
+module Profile
+
+import Todo
+import User
+import Layout
+
+page "/profile" { } requires user
+
+type Model = {
+  user: User,
+  total: Int,
+  done: Int,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get User session.user
+  match found {
+    Just user -> {
+      let todos <- Db.from Todo |> Db.where (Todo.owner.eq session.user) |> Db.all
+      Query.succeed {
+        user: user,
+        total: List.length todos,
+        done: List.length (List.filter (\t -> t.done) todos),
+      }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewName = {
+  name: Text.NonEmpty,
+}
+
+msg Rename form NewName
+
+-- The decoder already refuses a blank name; `update` checks again so that the rule
+-- holds (and can be tested) without going through a request.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Rename p ->
+    if Text.isEmpty (Text.trim p.form.name) then
+      Task.succeed (Reject "Name must not be empty.")
+    else {
+      let _ <- Db.update User session.user (\u -> { u | name: p.form.name })
+      Task.succeed Rerender
+    },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Profile" theme={session.theme}>
+    <h1>Profile</h1>
+    <p id="profile-name">Name: {model.user.name}</p>
+    <p id="profile-email">Email: {model.user.email}</p>
+    <p id="profile-counts">{Text.fromInt model.total} todos, {Text.fromInt model.done} done</p>
+
+    <form submit={Rename}>
+      <Errors form />
+      <Input field="name" label="Name" value={model.user.name} />
+      <Errors field="name" />
+      <button>Change name</button>
+    </form>
+
+    <a href={Todos.Index {}}>Back to todos</a>
+
+    -- Logout is the App-level message (App.Logout); any page may send it.
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "load counts only the user's todos" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "a", due: Nothing, owner: me }
+  let second <- Db.insert Todo { title: Text.NonEmpty "b", due: Nothing, owner: me }
+  let _ <- Db.update Todo second (\t -> { t | done: True })
+  let _ <- Db.insert Todo { title: Text.NonEmpty "c", due: Nothing, owner: other }
+  let theirs <- Db.insert Todo { title: Text.NonEmpty "d", due: Nothing, owner: other }
+  let _ <- Db.update Todo theirs (\t -> { t | done: True })
+  let model <- load { } { user: me, theme: Light }
+  Task.succeed ({ total: model.total, done: model.done } == { total: 2, done: 1 })
+}
+
+test "renaming to an empty name is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let model <- load { } { user: me, theme: Light }
+  let r <- Test.run (update (Rename { form: { name: Text.NonEmpty "  " } }) model { user: me, theme: Light })
+  let after <- Db.get User me
+  let name = Maybe.map (\u -> u.name) after
+  Task.succeed ({ value: r.value, name: name } == { value: Ok (Reject "Name must not be empty."), name: Just (Text.NonEmpty "Me") })
+}

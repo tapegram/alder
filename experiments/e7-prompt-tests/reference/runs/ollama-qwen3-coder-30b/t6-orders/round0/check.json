@@ -1,0 +1,8 @@
+{"code": "E0602", "severity": "error", "file": "app/Order.alder", "line": 44, "col": 3, "endLine": 44, "endCol": 6, "message": "`let ... in` is not Alder; use a block: `{ let y = 1 \u2026 y }`"}
+{"code": "E0001", "severity": "error", "file": "app/Orders/Show.alder", "line": 86, "col": 36, "endLine": 86, "endCol": 38, "message": "in <Layout.Page>: expected `then`, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Orders/Show.alder", "line": 86, "col": 36, "endLine": 86, "endCol": 38, "message": "in <Layout.Page>: expected an expression, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Orders/Show.alder", "line": 87, "col": 7, "endLine": 87, "endCol": 8, "message": "in <Layout.Page>: expected `else`, got `<`"}
+{"code": "E0001", "severity": "error", "file": "app/Orders/Show.alder", "line": 95, "col": 36, "endLine": 95, "endCol": 38, "message": "in <Layout.Page>: expected `then`, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Orders/Show.alder", "line": 95, "col": 36, "endLine": 95, "endCol": 38, "message": "in <Layout.Page>: expected an expression, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Orders/Show.alder", "line": 96, "col": 7, "endLine": 96, "endCol": 8, "message": "in <Layout.Page>: expected `else`, got `<`"}
+{"code": "E0602", "severity": "error", "file": "app/Product.alder", "line": 23, "col": 3, "endLine": 23, "endCol": 6, "message": "`let ... in` is not Alder; use a block: `{ let y = 1 \u2026 y }`"}

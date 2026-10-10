@@ -1,0 +1,56 @@
+module Blog.Show
+
+import Post
+import Layout
+import User
+
+page "/posts/{slug}" { slug: Post.Slug } requires user
+
+type Model = { post: Post, comments: List Comment }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Post params.slug
+  match found {
+    Just post -> if post.owner == session.user || post.published then {
+      let comments <- Db.from Comment |> Db.where (Comment.post.eq params.slug) |> Db.orderBy Comment.created.desc |> Db.all
+      Query.succeed { post: post, comments: comments }
+    } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewComment = {
+  author: Text.NonEmpty,
+  body: Text.NonEmpty,
+}
+
+msg Submit form NewComment
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insert Comment { author: p.form.author, body: p.form.body, post: model.post.slug }
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.post.title} theme={session.theme}>
+    <h1>{model.post.title}</h1>
+    <p>Published: {model.post.published}</p>
+    <p>{model.post.body}</p>
+    <h2>Comments</h2>
+    <ul>
+      {for comment in model.comments ->
+        <li><strong>{comment.author}</strong>: {comment.body}</li>}
+    </ul>
+    <form submit={Submit}>
+      <Input field="author" label="Your name" />
+      <Errors field="author" />
+      <Textarea field="body" label="Comment" />
+      <Errors field="body" />
+      <button>Post comment</button>
+    </form>
+  </Layout.Page>

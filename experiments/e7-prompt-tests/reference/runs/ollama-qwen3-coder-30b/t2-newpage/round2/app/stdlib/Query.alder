@@ -1,0 +1,9 @@
+module Query
+
+succeed : a -> Query a
+
+map : (a -> b) -> Query a -> Query b
+
+all : List (Query a) -> Query (List a)
+
+notFound : Query a

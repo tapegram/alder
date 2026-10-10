@@ -1,0 +1,5 @@
+module Type
+
+-- This module is a placeholder for type-related functionality.
+-- It's not actually used in the language but serves as a reference point.
+type Type = Unit

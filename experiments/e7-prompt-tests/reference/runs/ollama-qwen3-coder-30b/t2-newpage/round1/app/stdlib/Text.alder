@@ -1,0 +1,43 @@
+module Text
+
+length : Text -> Int
+
+isEmpty : Text -> Bool
+
+trim : Text -> Text
+
+toUpper : Text -> Text
+
+toLower : Text -> Text
+
+contains : Text -> Text -> Bool
+
+startsWith : Text -> Text -> Bool
+
+endsWith : Text -> Text -> Bool
+
+replace : Text -> Text -> Text -> Text
+
+split : Text -> Text -> List Text
+
+join : Text -> List Text -> Text
+
+slice : Int -> Int -> Text -> Text
+
+matches : Text -> Text -> Bool
+
+fromInt : Int -> Text
+
+fromFloat : Float -> Text
+
+toInt : Text -> Maybe Int
+
+toFloat : Text -> Maybe Float
+
+NonEmpty : brand Text
+
+Email : brand Text
+
+Url : brand Text
+
+Secret : brand Text

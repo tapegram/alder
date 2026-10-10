@@ -1,0 +1,12 @@
+{"code": "E0001", "severity": "error", "file": "app/Shop/Products.alder", "line": 49, "col": 33, "endLine": 49, "endCol": 35, "message": "in <Layout.Page>: expected `then`, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Products.alder", "line": 49, "col": 33, "endLine": 49, "endCol": 35, "message": "in <Layout.Page>: expected an expression, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Products.alder", "line": 50, "col": 7, "endLine": 50, "endCol": 8, "message": "in <Layout.Page>: expected `else`, got `<`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Products.alder", "line": 58, "col": 33, "endLine": 58, "endCol": 35, "message": "in <Layout.Page>: expected `then`, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Products.alder", "line": 58, "col": 33, "endLine": 58, "endCol": 35, "message": "in <Layout.Page>: expected an expression, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Products.alder", "line": 59, "col": 7, "endLine": 59, "endCol": 8, "message": "in <Layout.Page>: expected `else`, got `<`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Show.alder", "line": 80, "col": 36, "endLine": 80, "endCol": 38, "message": "in <Layout.Page>: expected `then`, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Show.alder", "line": 80, "col": 36, "endLine": 80, "endCol": 38, "message": "in <Layout.Page>: expected an expression, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Show.alder", "line": 81, "col": 7, "endLine": 81, "endCol": 8, "message": "in <Layout.Page>: expected `else`, got `<`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Show.alder", "line": 89, "col": 36, "endLine": 89, "endCol": 38, "message": "in <Layout.Page>: expected `then`, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Show.alder", "line": 89, "col": 36, "endLine": 89, "endCol": 38, "message": "in <Layout.Page>: expected an expression, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Shop/Show.alder", "line": 90, "col": 7, "endLine": 90, "endCol": 8, "message": "in <Layout.Page>: expected `else`, got `<`"}

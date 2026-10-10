@@ -1,0 +1,4 @@
+{"code": "E0003", "severity": "error", "file": "app/Note.alder", "line": 17, "col": 3, "endLine": 17, "endCol": 18, "message": "expected Task Bool, got Bool; a block test is a Task: end it with `Task.succeed (\u2026)`"}
+{"code": "E0202", "severity": "error", "file": "app/Notes/Index.alder", "line": 28, "col": 16, "endLine": 28, "endCol": 22, "message": "type `NoteId` belongs to module `Note`; write `Note.NoteId`", "fix": {"line": 28, "col": 16, "endLine": 28, "endCol": 22, "replace": "Note.NoteId"}}
+{"code": "E0202", "severity": "error", "file": "app/Notes/Show.alder", "line": 8, "col": 26, "endLine": 8, "endCol": 32, "message": "type `NoteId` belongs to module `Note`; write `Note.NoteId`", "fix": {"line": 8, "col": 26, "endLine": 8, "endCol": 32, "replace": "Note.NoteId"}}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Show.alder", "line": 66, "col": 30, "endLine": 66, "endCol": 41, "message": "unknown constructor `SwitchTheme`"}

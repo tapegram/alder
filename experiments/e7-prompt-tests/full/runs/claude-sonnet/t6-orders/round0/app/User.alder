@@ -1,0 +1,24 @@
+module User
+
+type UserId = brand Text
+
+type Role = Staff | Manager
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  role: Role = Staff,
+  created: Time @created,
+}
+
+-- isManager is True when the user exists and has the Manager role.
+isManager : UserId -> Query Bool
+isManager id = {
+  let found <- Db.get User id
+  match found {
+    Just u -> Query.succeed (u.role == Manager),
+    Nothing -> Query.succeed False,
+  }
+}

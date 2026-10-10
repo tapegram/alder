@@ -1,0 +1,5 @@
+module Session
+
+put : (Session -> Session) -> Task Unit
+
+type Session = { user: Maybe User.UserId, theme: Theme }

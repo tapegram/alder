@@ -1,0 +1,54 @@
+module Auth.Login
+
+import User
+import Layout
+
+-- The admin password is a placeholder. Replace this check with a real one (a capability
+-- implemented in Go, or a hash kept in a table) before deploying.
+adminPassword : Text
+adminPassword = "change-me-now"
+
+page "/login" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+form Credentials = {
+  password: Text.Secret,
+}
+
+msg Submit form Credentials
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> attempt p.form.password,
+}
+
+attempt : Text.Secret -> Task Nav
+attempt password = if checkPassword password then logIn else Task.succeed (Reject "The password is incorrect.")
+
+logIn : Task Nav
+logIn = {
+  let _ <- Session.put (\s -> { s | user: Just User.adminUser })
+  Task.succeed (Redirect (Admin {}))
+}
+
+checkPassword : Text.Secret -> Bool
+checkPassword password = {
+  let given : Text = password
+  given == adminPassword
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Log in">
+    <h1>Log in</h1>
+    <form submit={Submit}>
+      <Errors form />
+      <Input field="password" label="Password" />
+      <Errors field="password" />
+      <button>Log in</button>
+    </form>
+  </Layout.Page>

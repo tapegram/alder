@@ -1,0 +1,7 @@
+module Unit
+
+-- The unit type.
+type Unit = ()
+
+-- A value of the unit type.
+unit : Unit

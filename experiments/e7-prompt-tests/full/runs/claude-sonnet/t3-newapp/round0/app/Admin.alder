@@ -1,0 +1,86 @@
+module Admin
+
+import Post
+import Layout
+
+page "/admin" { } requires user
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Post.Slug,
+  body: Text.NonEmpty,
+  published: Bool,
+}
+
+msg Create form NewPost
+msg Toggle { id: Post.PostId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let taken <- Db.from Post |> Db.where (Post.slug.eq p.form.slug) |> Db.count
+    if taken > 0 then Task.succeed (Reject "That slug is already used.") else {
+      let _ <- Db.insert Post {
+        title: p.form.title,
+        slug: p.form.slug,
+        body: p.form.body,
+        published: p.form.published,
+        author: session.user,
+      }
+      Task.succeed (Redirect (Admin {}))
+    }
+  },
+  Toggle p -> {
+    let post <- owned p.id session
+    let _ <- Db.update Post post.id (\x -> { x | published: not x.published })
+    Task.succeed Rerender
+  },
+}
+
+-- The id in a message comes from the request, so check it again here.
+owned : Post.PostId -> Session -> Task Post
+owned id session = {
+  let found <- Db.get Post id
+  match found {
+    Just post -> if post.author == session.user then Task.succeed post else Task.notFound,
+    Nothing -> Task.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Admin">
+    <h1>Admin</h1>
+    <form submit={Create}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Input field="slug" label="Slug" />
+      <Errors field="slug" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <Input field="published" label="Published" />
+      <Errors field="published" />
+      <button>Create</button>
+    </form>
+    <ul id="posts">
+      {for post in model.posts -> <Row post={post} />}
+    </ul>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+Row : { post: Post } -> Html Msg
+Row props =
+  <li>
+    <a href={Posts.Show { slug: props.post.slug }}>{props.post.title}</a>
+    <span class="status">{if props.post.published then "Published" else "Draft"}</span>
+    <button click={Toggle { id: props.post.id }}>{if props.post.published then "Unpublish" else "Publish"}</button>
+  </li>

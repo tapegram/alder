@@ -1,0 +1,16 @@
+module Layout
+
+import Theme
+
+Page : { title: Text, theme: Theme, children: List (Html a) } -> Html a
+Page props =
+  <html class={if props.theme == Dark then "dark" else ""}>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+      <link rel="stylesheet" href={Url.external "/static/app.css"} />
+    </head>
+    <body>
+      <main>{props.children}</main>
+    </body>
+  </html>

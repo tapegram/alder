@@ -1,0 +1,131 @@
+{
+ "model": "claude-sonnet",
+ "task": "t3-newapp",
+ "retries": 2,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 2,
+  "test": true
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 99.3,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "sonnet",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 6,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Comment",
+      "name": "a comment with an empty author is refused",
+      "ok": true,
+      "left": "Just \"Author is required.\"",
+      "right": "Just \"Author is required.\"",
+      "trace": [],
+      "ms": 0.133
+     },
+     {
+      "module": "Comment",
+      "name": "a comment with a blank author is refused",
+      "ok": true,
+      "left": "Just \"Author is required.\"",
+      "right": "Just \"Author is required.\"",
+      "trace": [],
+      "ms": 0.003
+     },
+     {
+      "module": "Comment",
+      "name": "a comment with an empty body is refused",
+      "ok": true,
+      "left": "Just \"Comment is required.\"",
+      "right": "Just \"Comment is required.\"",
+      "trace": [],
+      "ms": 0.002
+     },
+     {
+      "module": "Comment",
+      "name": "a complete comment is accepted",
+      "ok": true,
+      "left": "Nothing",
+      "right": "Nothing",
+      "trace": [],
+      "ms": 0.002
+     },
+     {
+      "module": "Home",
+      "name": "lists only published posts, newest first",
+      "ok": true,
+      "left": "{ titles: [\"A\", \"C\"], ordered: True }",
+      "right": "{ titles: [\"A\", \"C\"], ordered: True }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.all Post"
+      ],
+      "ms": 2.398
+     },
+     {
+      "module": "Posts.Show",
+      "name": "an unpublished post is not found for a reader",
+      "ok": true,
+      "left": "{ draftForReader: False, draftForAuthor: True, liveForReader: True }",
+      "right": "{ draftForReader: False, draftForAuthor: True, liveForReader: True }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Test.run",
+       "Db.first Post",
+       "Test.run",
+       "Db.first Post",
+       "Db.all Comment",
+       "Test.run",
+       "Db.first Post",
+       "Db.all Comment"
+      ],
+      "ms": 0.467
+     }
+    ],
+    "exit": 0
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "sonnet",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ]
+}

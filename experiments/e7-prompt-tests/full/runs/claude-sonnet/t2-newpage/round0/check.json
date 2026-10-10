@@ -1,0 +1,3 @@
+{"code": "E0002", "severity": "error", "file": "app/Profile.alder", "line": 80, "col": 44, "endLine": 80, "endCol": 49, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Profile.alder", "line": 86, "col": 44, "endLine": 86, "endCol": 49, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Profile.alder", "line": 87, "col": 102, "endLine": 87, "endCol": 107, "message": "unknown constructor `Light`"}

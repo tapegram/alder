@@ -1,0 +1,39 @@
+module SaleLine
+
+import Sale
+import Product
+
+type LineId = brand Text
+
+table SaleLine {
+  id: LineId @id,
+  sale: Sale.SaleId @ref Sale,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+-- total is what an order's lines add up to, in cents: each line's quantity times its product's price.
+total : List SaleLine -> List Product -> Int
+total lines products = lines |> List.map (lineCents products) |> List.sum
+
+-- lineCents is one line's amount in cents. A line whose product is not in `products` adds nothing.
+lineCents : List Product -> SaleLine -> Int
+lineCents products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  match found {
+    Just p -> lineAmount line.quantity p.price,
+    Nothing -> 0,
+  }
+}
+
+lineAmount : Int -> Int -> Int
+lineAmount quantity price = quantity * price
+
+test "an open order totals quantity times price over its lines" =
+  total [
+    { id: LineId "a", sale: Sale.SaleId "s", product: Product.ProductId "tea", quantity: Int.Positive 2 },
+    { id: LineId "b", sale: Sale.SaleId "s", product: Product.ProductId "cup", quantity: Int.Positive 1 },
+  ] [
+    { id: Product.ProductId "tea", name: Text.NonEmpty "Tea", price: Int.NonNegative 300, active: True, created: Time.epoch },
+    { id: Product.ProductId "cup", name: Text.NonEmpty "Cup", price: Int.NonNegative 150, active: True, created: Time.epoch },
+  ] == 750

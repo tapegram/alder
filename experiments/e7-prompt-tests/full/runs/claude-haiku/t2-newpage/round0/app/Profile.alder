@@ -1,0 +1,98 @@
+module Profile
+
+import Todo
+import User
+import Layout
+import Theme
+
+page "/profile" { } requires user
+
+type Model = {
+  name: Text,
+  email: Text,
+  total: Int,
+  done: Int,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get User session.user
+  match found {
+    Just user -> {
+      let total <-
+        Db.from Todo
+          |> Db.where (Todo.owner.eq session.user)
+          |> Db.count
+      let done <-
+        Db.from Todo
+          |> Db.where (Todo.owner.eq session.user)
+          |> Db.where (Todo.done.eq True)
+          |> Db.count
+      Query.succeed { name: user.name, email: user.email, total: total, done: done }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewName = {
+  name: Text,
+}
+
+msg Save form NewName
+
+-- cleanName is the name a user may choose: trimmed, and never empty.
+cleanName : Text -> Result Text Text
+cleanName raw = {
+  let name = Text.trim raw
+  if Text.isEmpty name then Err "Name must not be empty." else Ok name
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> match cleanName p.form.name {
+    Ok name -> {
+      let _ <- Db.update User session.user (\u -> { u | name: name })
+      Task.succeed Rerender
+    },
+    Err e -> Task.succeed (Reject e),
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Profile" theme={session.theme}>
+    <h1>Profile</h1>
+    <dl>
+      <dt>Name</dt>
+      <dd>{model.name}</dd>
+      <dt>Email</dt>
+      <dd>{model.email}</dd>
+    </dl>
+    <p id="counts">{Text.fromInt model.total} todos, {Text.fromInt model.done} done</p>
+
+    <form submit={Save}>
+      <Errors form />
+      <Input field="name" label="Name" value={model.name} />
+      <Errors field="name" />
+      <button>Save name</button>
+    </form>
+
+    <button click={App.Logout}>Log out</button>
+    <a href={Todos.Index {}}>Back to todos</a>
+  </Layout.Page>
+
+test "load counts only the user's todos" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: "Other", passwordHash: "" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Bread", due: Nothing, owner: me, done: True }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Not mine", due: Nothing, owner: other, done: True }
+  let m <- load {} { user: me, theme: Light }
+  Task.succeed ({ total: m.total, done: m.done } == { total: 2, done: 1 })
+}
+
+test "renaming to an empty name is refused" =
+  cleanName "   " == Err "Name must not be empty."
+
+test "renamed names are trimmed" =
+  cleanName "  Ann " == Ok "Ann"

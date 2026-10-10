@@ -1,0 +1,88 @@
+module Db
+
+-- A table is a type that has an `id` field of type `Id t`.
+type Table t = t
+
+-- The id of a row in a table.
+type Id t = brand Text
+
+-- A condition on a table's column.
+type Condition t = Unit
+
+-- A sort order for a table.
+type Order t = Unit
+
+-- A query that can be run to get rows from the database.
+type Select t = Unit
+
+get : Table t -> Id t -> Query (Maybe t)
+
+from : Table t -> Select t
+
+where : Condition t -> Select t -> Select t
+
+orderBy : Order t -> Select t -> Select t
+
+limit : Int -> Select t -> Select t
+
+offset : Int -> Select t -> Select t
+
+all : Select t -> Query (List t)
+
+first : Select t -> Query (Maybe t)
+
+count : Select t -> Query Int
+
+insert : Table t -> Insert t -> Task (Id t)
+
+update : Table t -> Id t -> (t -> t) -> Task Unit
+
+delete : Table t -> Id t -> Task Unit
+
+-- A condition that is true if the column's value equals the given value.
+eq : a -> Condition t
+
+-- A condition that is true if the column's value does not equal the given value.
+ne : a -> Condition t
+
+-- A condition that is true if the column's value is less than the given value.
+lt : a -> Condition t
+
+-- A condition that is true if the column's value is less than or equal to the given value.
+le : a -> Condition t
+
+-- A condition that is true if the column's value is greater than the given value.
+gt : a -> Condition t
+
+-- A condition that is true if the column's value is greater than or equal to the given value.
+ge : a -> Condition t
+
+-- A condition that is true if the column's value contains the given substring (case-insensitive).
+contains : Text -> Condition t
+
+-- A condition that is true if the column's value is in the list of values.
+in : List a -> Condition t
+
+-- A condition that is true if the column's value is Nothing.
+isNothing : Condition t
+
+-- A condition that is true if the column's value is Just.
+isJust : Condition t
+
+-- A sort order that sorts by the column in ascending order.
+asc : Order t
+
+-- A sort order that sorts by the column in descending order.
+desc : Order t
+
+-- Combine multiple conditions with AND.
+and : List (Condition t) -> Condition t
+
+-- Combine multiple conditions with OR.
+or : List (Condition t) -> Condition t
+
+-- Negate a condition.
+not : Condition t -> Condition t
+
+-- A record type that represents the fields of a table that can be inserted.
+type Insert t = Unit

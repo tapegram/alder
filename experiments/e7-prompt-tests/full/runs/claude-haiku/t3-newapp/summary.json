@@ -1,0 +1,147 @@
+{
+ "model": "claude-haiku",
+ "task": "t3-newapp",
+ "retries": 2,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 2,
+  "test": true
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 9,
+   "exit": 1,
+   "errors": 2,
+   "warnings": 0,
+   "codes": {
+    "E0001": 2
+   },
+   "rejected": [
+    "adapters/password.go"
+   ],
+   "seconds": 153.6,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "haiku"
+  },
+  {
+   "n": 1,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 124.0,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "haiku",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 7,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Post",
+      "name": "slugs have no capitals",
+      "ok": true,
+      "trace": [],
+      "ms": 0.112
+     },
+     {
+      "module": "Comment",
+      "name": "a comment with an empty author is refused",
+      "ok": true,
+      "trace": [],
+      "ms": 0.002
+     },
+     {
+      "module": "Comment",
+      "name": "a comment with an empty body is refused",
+      "ok": true,
+      "trace": [],
+      "ms": 0.001
+     },
+     {
+      "module": "Home",
+      "name": "listing shows only published posts, newest first",
+      "ok": true,
+      "left": "[{ id: \"c\", slug: \"recent\", title: \"Recent\", body: \"\", published: True, author: \"admin\", created: 2026-01-01T00:00:00Z }, { id: \"a\", slug: \"old\", title: \"Old\", body: \"\", published: True, author: \"admin\", created: 1970-01-01T00:00:00Z }]",
+      "right": "[{ id: \"c\", slug: \"recent\", title: \"Recent\", body: \"\", published: True, author: \"admin\", created: 2026-01-01T00:00:00Z }, { id: \"a\", slug: \"old\", title: \"Old\", body: \"\", published: True, author: \"admin\", created: 1970-01-01T00:00:00Z }]",
+      "trace": [
+       "Time.now"
+      ],
+      "ms": 2
+     },
+     {
+      "module": "Posts.Show",
+      "name": "an unpublished post is not found for a reader",
+      "ok": true,
+      "left": "Err \"not found\"",
+      "right": "Err \"not found\"",
+      "trace": [
+       "Db.insert Post",
+       "Test.run",
+       "Db.first Post"
+      ],
+      "ms": 0.441
+     },
+     {
+      "module": "Posts.Show",
+      "name": "an unpublished post is shown to its author",
+      "ok": true,
+      "trace": [
+       "Db.insert Post",
+       "Test.run",
+       "Db.first Post",
+       "Db.all Comment"
+      ],
+      "ms": 0.296
+     },
+     {
+      "module": "Posts.Show",
+      "name": "a comment with a blank author is refused",
+      "ok": true,
+      "left": "{ value: Ok (Reject \"Please give your name and a comment.\"), comments: 0 }",
+      "right": "{ value: Ok (Reject \"Please give your name and a comment.\"), comments: 0 }",
+      "trace": [
+       "Db.insert Post",
+       "Test.run",
+       "Db.count Comment"
+      ],
+      "ms": 0.263
+     }
+    ],
+    "exit": 0
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "haiku",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ]
+}

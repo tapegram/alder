@@ -1,0 +1,47 @@
+module Home
+
+import Post
+import User
+import Layout
+
+page "/" { }
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <-
+    Db.from Post
+      |> Db.where (Post.published.eq True)
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Blog">
+    <h1>Blog</h1>
+    {if model.posts == [] then <p>No posts yet.</p> else <ul id="posts">{for post in model.posts -> <Item post={post} />}</ul>}
+    {match session.user {
+      Just u -> <a href={Admin {}}>Admin</a>,
+      Nothing -> <a href={Auth.Login {}}>Log in</a>,
+    }}
+  </Layout.Page>
+
+Item : { post: Post } -> Html Msg
+Item props =
+  <li>
+    <a href={Posts.Show { slug: props.post.slug }}>{props.post.title}</a>
+    <span class="date">{Time.format "Jan 2, 2006" props.post.created}</span>
+  </li>
+
+test "lists only published posts, newest first" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Post { title: Text.NonEmpty "A", slug: Post.Slug "a", body: Text.NonEmpty "x", published: True, author: me }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Draft", slug: Post.Slug "draft", body: Text.NonEmpty "x", author: me }
+  let _ <- Db.insert Post { title: Text.NonEmpty "C", slug: Post.Slug "c", body: Text.NonEmpty "x", published: True, author: me }
+  let m <- load { } { user: Nothing }
+  let titles = m.posts |> List.map (\p -> Text.trim p.title) |> List.sortByText (\t -> t)
+  Task.succeed ({ titles: titles, ordered: Post.isNewestFirst m.posts } == { titles: ["A", "C"], ordered: True })
+}

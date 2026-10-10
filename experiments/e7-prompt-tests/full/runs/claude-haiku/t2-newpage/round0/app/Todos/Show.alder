@@ -1,0 +1,54 @@
+module Todos.Show
+
+import Todo
+import Layout
+
+page "/todos/{id}" { id: Todo.TodoId } requires user
+
+type Model = { todo: Todo }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Todo params.id
+  match found {
+    Just todo -> if todo.owner == session.user then Query.succeed { todo: todo } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+form EditTodo = {
+  title: Text.NonEmpty,
+  due: Maybe Date,
+}
+
+-- The messages carry no id: the page's parameter names the todo, and `load` has checked that
+-- the session's user owns it, so `update` acts on `model.todo` (book 06, "Authorize in update").
+msg Save form EditTodo
+msg Delete
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> {
+    let _ <- Db.update Todo model.todo.id (\t -> { t | title: p.form.title, due: p.form.due })
+    Task.succeed (Redirect (Todos.Index {}))
+  },
+  Delete p -> {
+    let _ <- Db.delete Todo model.todo.id
+    Task.succeed (Redirect (Todos.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.todo.title} theme={session.theme}>
+    <h1>{model.todo.title}</h1>
+    <form submit={Save}>
+      <Input field="title" label="Title" value={model.todo.title} />
+      <Errors field="title" />
+      <Input field="due" label="Due" value={model.todo.due} />
+      <Errors field="due" />
+      <button>Save</button>
+    </form>
+    <button click={Delete}>Delete</button>
+    <a href={Todos.Index {}}>Back</a>
+  </Layout.Page>

@@ -1,0 +1,41 @@
+module Home
+
+import Post
+import Layout
+import User
+
+page "/" { }
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <- Db.from Post |> Db.where (Post.published.eq True) |> Db.all
+  Query.succeed { posts: listing posts }
+}
+
+-- listing keeps the published posts, newest first.
+listing : List Post -> List Post
+listing posts =
+  posts
+    |> List.filter (\p -> p.published)
+    |> List.sortByText (\p -> Time.format "2006-01-02T15:04:05.000000000" p.created)
+    |> List.reverse
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Blog">
+    <h1>Blog</h1>
+    <ul id="posts">
+      {for p in model.posts ->
+        <li><a href={Posts.Show { slug: p.slug }}>{p.title}</a></li>}
+    </ul>
+  </Layout.Page>
+
+test "listing shows only published posts, newest first" = {
+  let now <- Time.now
+  let old : Post = { id: Post.PostId "a", slug: Post.Slug "old", title: Text.NonEmpty "Old", body: "", published: True, author: User.UserId "admin", created: Time.epoch }
+  let draft : Post = { id: Post.PostId "b", slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "", published: False, author: User.UserId "admin", created: now }
+  let recent : Post = { id: Post.PostId "c", slug: Post.Slug "recent", title: Text.NonEmpty "Recent", body: "", published: True, author: User.UserId "admin", created: now }
+  Task.succeed (listing [old, draft, recent] == [recent, old])
+}

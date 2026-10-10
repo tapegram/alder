@@ -1,0 +1,75 @@
+{
+ "model": "ollama-qwen3-coder-30b",
+ "task": "t3-newapp",
+ "retries": 2,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 2,
+  "test": true,
+  "num_ctx": 32768
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 8,
+   "exit": 1,
+   "errors": 21,
+   "warnings": 3,
+   "codes": {
+    "E0002": 13,
+    "E0101": 1,
+    "E0003": 1,
+    "E0304": 1,
+    "E0202": 1,
+    "E0201": 3,
+    "E0502": 1
+   },
+   "rejected": [],
+   "seconds": 105.5,
+   "tokens": 2492,
+   "stderr": "",
+   "prompt_eval_count": 21823,
+   "eval_count": 2492
+  },
+  {
+   "n": 1,
+   "files": 8,
+   "exit": 1,
+   "errors": 14,
+   "warnings": 0,
+   "codes": {
+    "E0002": 11,
+    "E0201": 3
+   },
+   "rejected": [],
+   "seconds": 82.2,
+   "tokens": 2472,
+   "stderr": "",
+   "prompt_eval_count": 25749,
+   "eval_count": 2472
+  },
+  {
+   "n": 2,
+   "files": 9,
+   "exit": 1,
+   "errors": 8,
+   "warnings": 4,
+   "codes": {
+    "E0304": 1,
+    "E0201": 1,
+    "E0006": 2,
+    "E0002": 4
+   },
+   "rejected": [],
+   "seconds": 83.0,
+   "tokens": 2580,
+   "stderr": "",
+   "prompt_eval_count": 25202,
+   "eval_count": 2580
+  }
+ ],
+ "final_pass": false,
+ "outcome": "fail"
+}

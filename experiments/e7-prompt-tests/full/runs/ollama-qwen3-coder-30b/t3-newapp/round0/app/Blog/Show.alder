@@ -1,0 +1,55 @@
+module Blog.Show
+
+import Blog
+import Layout
+import User
+
+page "/posts/{slug}" { slug: Blog.Slug } requires user
+
+type Model = { post: Blog.Post, comments: List Blog.Comment }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Blog.Post params.slug
+  match found {
+    Just post -> if post.owner == session.user || post.published then {
+      let comments <- Db.from Blog.Comment |> Db.where (Blog.Comment.post.eq params.slug) |> Db.orderBy Blog.Comment.created.desc |> Db.all
+      Query.succeed { post: post, comments: comments }
+    } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewComment = {
+  author: Text.NonEmpty,
+  body: Text.NonEmpty,
+}
+
+msg Submit form NewComment
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insert Blog.Comment { author: p.form.author, body: p.form.body, post: model.post.slug }
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.post.title} theme={session.theme}>
+    <h1>{model.post.title}</h1>
+    <p>{model.post.body}</p>
+    <form submit={Submit}>
+      <Input field="author" label="Author" />
+      <Errors field="author" />
+      <Textarea field="body" label="Comment" />
+      <Errors field="body" />
+      <button>Post</button>
+    </form>
+    {for comment in model.comments ->
+      <div>
+        <strong>{comment.author}</strong>
+        <p>{comment.body}</p>
+      </div>}
+  </Layout.Page>

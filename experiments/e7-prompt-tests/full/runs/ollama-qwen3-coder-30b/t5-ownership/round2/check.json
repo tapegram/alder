@@ -1,0 +1,16 @@
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 13, "message": "unknown module `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 7, "col": 43, "endLine": 7, "endCol": 48, "message": "unknown type `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 7, "col": 51, "endLine": 7, "endCol": 56, "message": "unknown constructor `Light`"}
+{"code": "E0201", "severity": "error", "file": "app/App.alder", "line": 21, "col": 46, "endLine": 21, "endCol": 56, "message": "module `Theme` is not imported", "fix": {"line": 6, "col": 1, "endLine": 6, "endCol": 1, "replace": "import Theme\n"}}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 28, "col": 37, "endLine": 28, "endCol": 42, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 35, "col": 41, "endLine": 35, "endCol": 46, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Auth/Login.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 13, "message": "unknown module `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/Layout.alder", "line": 3, "col": 1, "endLine": 3, "endCol": 13, "message": "unknown module `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/Layout.alder", "line": 5, "col": 30, "endLine": 5, "endCol": 35, "message": "unknown type `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/Layout.alder", "line": 7, "col": 34, "endLine": 7, "endCol": 38, "message": "unknown constructor `Dark`"}
+{"code": "E0002", "severity": "error", "file": "app/Layout.alder", "line": 16, "col": 60, "endLine": 16, "endCol": 64, "message": "unknown constructor `Dark`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Index.alder", "line": 6, "col": 1, "endLine": 6, "endCol": 13, "message": "unknown module `Theme`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Index.alder", "line": 78, "col": 82, "endLine": 78, "endCol": 87, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Index.alder", "line": 87, "col": 88, "endLine": 87, "endCol": 93, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Index.alder", "line": 95, "col": 101, "endLine": 95, "endCol": 106, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Show.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 13, "message": "unknown module `Theme`"}

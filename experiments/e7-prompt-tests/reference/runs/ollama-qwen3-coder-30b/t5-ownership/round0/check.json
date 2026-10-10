@@ -1,0 +1,10 @@
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 6, "col": 43, "endLine": 6, "endCol": 48, "message": "unknown type `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 22, "col": 37, "endLine": 22, "endCol": 42, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 29, "col": 41, "endLine": 29, "endCol": 46, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Layout.alder", "line": 3, "col": 30, "endLine": 3, "endCol": 35, "message": "unknown type `Theme`"}
+{"code": "E0202", "severity": "error", "file": "app/Notes/Index.alder", "line": 23, "col": 18, "endLine": 23, "endCol": 24, "message": "type `NoteId` belongs to module `Note`; write `Note.NoteId`", "fix": {"line": 23, "col": 18, "endLine": 23, "endCol": 24, "replace": "Note.NoteId"}}
+{"code": "E0202", "severity": "error", "file": "app/Notes/Index.alder", "line": 38, "col": 9, "endLine": 38, "endCol": 15, "message": "type `NoteId` belongs to module `Note`; write `Note.NoteId`", "fix": {"line": 38, "col": 9, "endLine": 38, "endCol": 15, "replace": "Note.NoteId"}}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Index.alder", "line": 75, "col": 82, "endLine": 75, "endCol": 87, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Index.alder", "line": 84, "col": 88, "endLine": 84, "endCol": 93, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Index.alder", "line": 93, "col": 82, "endLine": 93, "endCol": 87, "message": "unknown constructor `Light`"}
+{"code": "E0202", "severity": "error", "file": "app/Notes/Show.alder", "line": 6, "col": 26, "endLine": 6, "endCol": 32, "message": "type `NoteId` belongs to module `Note`; write `Note.NoteId`", "fix": {"line": 6, "col": 26, "endLine": 6, "endCol": 32, "replace": "Note.NoteId"}}

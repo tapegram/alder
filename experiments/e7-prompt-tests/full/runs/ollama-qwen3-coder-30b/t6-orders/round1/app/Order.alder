@@ -1,0 +1,69 @@
+module Order
+
+import User
+import Product
+
+type OrderId = brand Text
+
+type Status = Open | Paid | Cancelled
+
+table Order {
+  id: OrderId @id,
+  owner: User.UserId @ref User,
+  status: Status,
+  created: Time @created,
+}
+
+table OrderLine {
+  id: Text @id,
+  orderId: OrderId @ref Order,
+  productId: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+total : Order -> Int
+total order = {
+  let lines <- Db.from OrderLine |> Db.where (OrderLine.orderId.eq order.id) |> Db.all
+  let sum = List.sum (List.map (\l -> Product.price l.productId * l.quantity) lines)
+  sum
+}
+
+lines : Order -> List OrderLine
+lines order = {
+  let lines <- Db.from OrderLine |> Db.where (OrderLine.orderId.eq order.id) |> Db.all
+  lines
+}
+
+test "total over two lines" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Staff }
+  let prod1 <- Db.insert Product { name: Text.NonEmpty "Product 1", price: 100, active: True }
+  let prod2 <- Db.insert Product { name: Text.NonEmpty "Product 2", price: 200, active: True }
+  let orderId <- Db.insert Order { owner: me, status: Open, created: Time.epoch }
+  let _ <- Db.insert OrderLine { id: "line1", orderId: orderId, productId: prod1, quantity: 2 }
+  let _ <- Db.insert OrderLine { id: "line2", orderId: orderId, productId: prod2, quantity: 3 }
+  let order = { id: orderId, owner: me, status: Open, created: Time.epoch }
+  Task.succeed (total order == 800)
+}
+
+test "adding line to paid order is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Staff }
+  let orderId <- Db.insert Order { owner: me, status: Paid, created: Time.epoch }
+  let r <- Test.run (update (AddLine { product: Product.ProductId "prod1", quantity: 1 }) { order: { id: orderId, owner: me, status: Paid, created: Time.epoch } } { user: me, role: Staff })
+  Task.succeed (r.value == Err "Order is not open")
+}
+
+test "staff user opening another user's order is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Staff }
+  let otherUser <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "", role: Staff }
+  let orderId <- Db.insert Order { owner: otherUser, status: Open, created: Time.epoch }
+  let r <- Test.run (update (AddLine { product: Product.ProductId "prod1", quantity: 1 }) { order: { id: orderId, owner: otherUser, status: Open, created: Time.epoch } } { user: me, role: Staff })
+  Task.succeed (r.value == Err "not found")
+}
+
+test "manager user opening another user's order is allowed" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Manager }
+  let otherUser <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "", role: Staff }
+  let orderId <- Db.insert Order { owner: otherUser, status: Open, created: Time.epoch }
+  let r <- Test.run (update (AddLine { product: Product.ProductId "prod1", quantity: 1 }) { order: { id: orderId, owner: otherUser, status: Open, created: Time.epoch } } { user: me, role: Manager })
+  Task.succeed (r.value == Err "Product not found")
+}

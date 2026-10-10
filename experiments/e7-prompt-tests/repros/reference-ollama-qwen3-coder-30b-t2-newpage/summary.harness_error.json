@@ -1,0 +1,18 @@
+{
+ "model": "ollama-qwen3-coder-30b",
+ "task": "t2-newpage",
+ "retries": 2,
+ "base": "examples/todos",
+ "harness": {
+  "build": true,
+  "retries": 2,
+  "test": true,
+  "num_ctx": 32768
+ },
+ "error": "ollama qwen3-coder:30b: timed out",
+ "rounds": [],
+ "final_pass": false,
+ "outcome": "harness_error",
+ "base_commit": "097185ca9c7e9bc6b662ff132d97b79d2c9c091a",
+ "harness_error": "model: ollama qwen3-coder:30b: timed out"
+}

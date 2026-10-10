@@ -1,0 +1,11 @@
+{"code": "E0003", "severity": "error", "file": "app/Notes/Index.alder", "line": 33, "col": 58, "endLine": 33, "endCol": 69, "message": "expected Text, got Maybe Text; match it: match m { Just x -> \u2026, Nothing -> \u2026 }"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Index.alder", "line": 69, "col": 39, "endLine": 69, "endCol": 67, "message": "no field `title` on `Notes.Index.SubmitParams`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Index.alder", "line": 69, "col": 69, "endLine": 69, "endCol": 82, "message": "no field `body` on `Notes.Index.SubmitParams`"}
+{"code": "E0003", "severity": "error", "file": "app/Notes/Show.alder", "line": 32, "col": 83, "endLine": 32, "endCol": 94, "message": "expected Text, got Maybe Text; match it: match m { Just x -> \u2026, Nothing -> \u2026 }"}
+{"code": "E0003", "severity": "error", "file": "app/Notes/Show.alder", "line": 49, "col": 50, "endLine": 49, "endCol": 65, "message": "expected Maybe Text, got Text"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Show.alder", "line": 61, "col": 37, "endLine": 61, "endCol": 69, "message": "no field `title` on `Notes.Show.SaveParams`"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Show.alder", "line": 61, "col": 71, "endLine": 61, "endCol": 84, "message": "no field `body` on `Notes.Show.SaveParams`"}
+{"code": "E0003", "severity": "error", "file": "app/Notes/Show.alder", "line": 66, "col": 30, "endLine": 66, "endCol": 48, "message": "expected Notes.Show.Msg, got App.Msg"}
+{"code": "E0003", "severity": "error", "file": "app/Notes/Show.alder", "line": 66, "col": 50, "endLine": 66, "endCol": 63, "message": "record `Notes.Show.Model` is missing field(s): note"}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Show.alder", "line": 66, "col": 52, "endLine": 66, "endCol": 61, "message": "no field `notes` on `Notes.Show.Model`"}
+{"code": "E0003", "severity": "error", "file": "app/Notes/Show.alder", "line": 66, "col": 72, "endLine": 66, "endCol": 79, "message": "expected User.UserId, got Maybe _; match it: match m { Just x -> \u2026, Nothing -> \u2026 }"}

@@ -1,0 +1,12 @@
+module Todos.Show
+
+import Todo
+import Layout
+
+page "/todos/{id}" { id: Todo.TodoId } requires user
+
+type Model = { todo: Todo }
+
+load : Params -> Session -> Query Model
+load params session = {
+ 

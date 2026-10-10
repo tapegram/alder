@@ -1,0 +1,50 @@
+module Shop.Index
+
+import User
+import Product
+import Order
+
+page "/" { } requires user
+
+type Model = { orders: List Order }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let orders <-
+    Db.from Order
+      |> Db.where (Order.owner.eq session.user)
+      |> Db.orderBy Order.created.desc
+      |> Db.all
+  Query.succeed { orders: orders }
+}
+
+form NewOrder = { }
+
+msg Submit form NewOrder
+msg View { id: Order.OrderId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insert Order { owner: session.user, status: Open, created: Time.epoch }
+    Task.succeed Rerender
+  },
+  View p -> {
+    Task.succeed (Redirect (Shop.Show { id: p.id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Orders">
+    <h1>Orders</h1>
+    <form submit={Submit}>
+      <button>Add Order</button>
+    </form>
+    <ul>
+      {for order in model.orders ->
+        <li>
+          <a href={Shop.Show { id: order.id }}>{order.status} - {Order.total order}</a>
+        </li>}
+    </ul>
+  </Layout.Page>

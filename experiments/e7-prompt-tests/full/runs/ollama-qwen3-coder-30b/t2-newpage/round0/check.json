@@ -1,0 +1,5 @@
+{"code": "E0001", "severity": "error", "file": "app/Profile.alder", "line": 24, "col": 5, "endLine": 24, "endCol": 12, "message": "in the definition of `load`: expected `,` or `}`, got `Nothing`"}
+{"code": "E0001", "severity": "error", "file": "app/Profile.alder", "line": 24, "col": 13, "endLine": 24, "endCol": 15, "message": "in the definition of `load`: expected `}`, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Profile.alder", "line": 24, "col": 13, "endLine": 24, "endCol": 15, "message": "expected end of line after declaration, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Todos/Show.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 2, "message": "in the definition of `load`: expected an expression, got end of file"}
+{"code": "E0001", "severity": "error", "file": "app/Todos/Show.alder", "line": 13, "col": 1, "endLine": 13, "endCol": 2, "message": "in the definition of `load`: expected `}`, got end of file"}

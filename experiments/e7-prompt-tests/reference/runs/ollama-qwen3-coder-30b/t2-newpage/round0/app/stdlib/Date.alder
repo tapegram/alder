@@ -1,0 +1,19 @@
+module Date
+
+today : Query Date
+
+fromText : Text -> Maybe Date
+
+toText : Date -> Text
+
+format : Text -> Date -> Text
+
+addDays : Int -> Date -> Date
+
+diffDays : Date -> Date -> Int
+
+year : Date -> Int
+
+month : Date -> Int
+
+day : Date -> Int

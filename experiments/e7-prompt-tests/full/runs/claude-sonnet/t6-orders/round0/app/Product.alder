@@ -1,0 +1,30 @@
+module Product
+
+type ProductId = brand Text
+
+table Product {
+  id: ProductId @id,
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+  active: Bool = True,
+}
+
+-- plainInt widens a refined Int to a plain Int, so that it can be used in arithmetic.
+plainInt : Int -> Int
+plainInt n = n
+
+-- money writes an amount of cents as units with two decimals.
+money : Int -> Text
+money cents = Float.format { decimals: 2 } (Int.toFloat cents / 100.0)
+
+label : Product -> Text
+label p = "{Text.trim p.name} ({money (plainInt p.price)})"
+
+nameOf : List Product -> ProductId -> Text
+nameOf products pid = {
+  let found = List.find (\p -> p.id == pid) products
+  match found {
+    Just p -> Text.trim p.name,
+    Nothing -> "?",
+  }
+}

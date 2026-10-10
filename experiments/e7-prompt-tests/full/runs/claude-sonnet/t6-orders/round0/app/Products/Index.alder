@@ -1,0 +1,91 @@
+module Products.Index
+
+import Product
+import User
+import Layout
+
+page "/products" { } requires user
+
+type Model = { products: List Product }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let manager <- User.isManager session.user
+  if manager then listProducts else Query.notFound
+}
+
+listProducts : Query Model
+listProducts = {
+  let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+  Query.succeed { products: products }
+}
+
+form NewProduct = {
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+}
+
+msg Add form NewProduct
+msg Toggle { id: Product.ProductId }
+
+-- Messages come from the request, so `update` checks the role again.
+requireManager : Session -> Task Unit
+requireManager session = {
+  let manager <- User.isManager session.user
+  if manager then Task.succeed () else Task.notFound
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- requireManager session
+    let _ <- Db.insert Product { name: p.form.name, price: p.form.price, active: True }
+    Task.succeed (Redirect (Products.Index {}))
+  },
+  Toggle p -> {
+    let _ <- requireManager session
+    let found <- Db.get Product p.id
+    match found {
+      Just prod -> {
+        let _ <- Db.update Product prod.id (\x -> { x | active: not x.active })
+        Task.succeed Rerender
+      },
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Products">
+    <h1>Products</h1>
+
+    <form submit={Add}>
+      <Errors form />
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <Input field="price" label="Price in cents" />
+      <Errors field="price" />
+      <button>Add product</button>
+    </form>
+
+    <ul id="products">
+      {for prod in model.products -> <Item product={prod} />}
+    </ul>
+  </Layout.Page>
+
+Item : { product: Product } -> Html Msg
+Item props =
+  <li class={if props.product.active then "active" else "inactive"}>
+    <span>{Product.label props.product}</span>
+    <button click={Toggle { id: props.product.id }}>{if props.product.active then "Deactivate" else "Activate"}</button>
+  </li>
+
+test "a staff user opening the products page is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let r <- Test.run {
+    let m <- load { } { user: me }
+    Task.succeed m
+  }
+  Task.succeed (r.value == Err "not found")
+}

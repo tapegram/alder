@@ -1,0 +1,19 @@
+module Dict
+
+empty : Dict k v
+
+fromList : List { key: k, value: v } -> Dict k v
+
+toList : Dict k v -> List { key: k, value: v }
+
+get : k -> Dict k v -> Maybe v
+
+insert : k -> v -> Dict k v -> Dict k v
+
+remove : k -> Dict k v -> Dict k v
+
+keys : Dict k v -> List k
+
+values : Dict k v -> List v
+
+size : Dict k v -> Int

@@ -1,0 +1,18 @@
+{"code": "E0201", "severity": "error", "file": "app/App.alder", "line": 6, "col": 43, "endLine": 6, "endCol": 48, "message": "module `Theme` is not imported", "fix": {"line": 5, "col": 1, "endLine": 5, "endCol": 1, "replace": "import Theme\n"}}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 6, "col": 51, "endLine": 6, "endCol": 56, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 27, "col": 37, "endLine": 27, "endCol": 42, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/App.alder", "line": 34, "col": 41, "endLine": 34, "endCol": 46, "message": "unknown constructor `Light`"}
+{"code": "E0011", "severity": "error", "file": "app/Blog.alder", "line": 19, "col": 3, "endLine": 19, "endCol": 15, "message": "`@id` field must be a `brand Text`, got `Text`"}
+{"code": "E0502", "severity": "error", "file": "app/Blog.alder", "line": 22, "col": 3, "endLine": 22, "endCol": 23, "message": "`@ref Post` field `post` must have type `Blog.PostId` or `Maybe Blog.PostId`, got `Blog.Slug`"}
+{"code": "E0201", "severity": "error", "file": "app/Blog.alder", "line": 29, "col": 22, "endLine": 29, "endCol": 36, "message": "module `Blog.Show` is not imported", "fix": {"line": 4, "col": 1, "endLine": 4, "endCol": 1, "replace": "import Blog.Show\n"}}
+{"code": "E0002", "severity": "error", "file": "app/Blog.alder", "line": 29, "col": 105, "endLine": 29, "endCol": 110, "message": "unknown constructor `Light`"}
+{"code": "E0002", "severity": "error", "file": "app/Blog.alder", "line": 36, "col": 40, "endLine": 36, "endCol": 46, "message": "unknown constructor `Submit`"}
+{"code": "E0002", "severity": "error", "file": "app/Blog.alder", "line": 36, "col": 292, "endLine": 36, "endCol": 297, "message": "unknown constructor `Light`"}
+{"code": "E0201", "severity": "error", "file": "app/Blog.alder", "line": 44, "col": 22, "endLine": 44, "endCol": 37, "message": "module `Blog.Index` is not imported", "fix": {"line": 4, "col": 1, "endLine": 4, "endCol": 1, "replace": "import Blog.Index\n"}}
+{"code": "E0002", "severity": "error", "file": "app/Blog.alder", "line": 44, "col": 65, "endLine": 44, "endCol": 70, "message": "unknown constructor `Light`"}
+{"code": "W0001", "severity": "warning", "file": "app/Blog/Admin.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 12, "message": "import `User` is unused"}
+{"code": "E0201", "severity": "error", "file": "app/Blog/Admin.alder", "line": 13, "col": 48, "endLine": 13, "endCol": 65, "message": "module `Blog.Post` is not imported", "fix": {"line": 6, "col": 1, "endLine": 6, "endCol": 1, "replace": "import Blog.Post\n"}}
+{"code": "W0001", "severity": "warning", "file": "app/Blog/Index.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 12, "message": "import `User` is unused"}
+{"code": "E0201", "severity": "error", "file": "app/Blog/Index.alder", "line": 13, "col": 47, "endLine": 13, "endCol": 66, "message": "module `Blog.Post` is not imported", "fix": {"line": 6, "col": 1, "endLine": 6, "endCol": 1, "replace": "import Blog.Post\n"}}
+{"code": "W0001", "severity": "warning", "file": "app/Blog/Show.alder", "line": 5, "col": 1, "endLine": 5, "endCol": 12, "message": "import `User` is unused"}
+{"code": "E0201", "severity": "error", "file": "app/Blog/Show.alder", "line": 16, "col": 57, "endLine": 16, "endCol": 74, "message": "module `Blog.Comment` is not imported", "fix": {"line": 6, "col": 1, "endLine": 6, "endCol": 1, "replace": "import Blog.Comment\n"}}

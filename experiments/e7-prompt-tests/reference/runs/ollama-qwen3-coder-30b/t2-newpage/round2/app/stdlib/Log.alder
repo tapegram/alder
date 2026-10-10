@@ -1,0 +1,5 @@
+module Log
+
+info : Text -> Task Unit
+
+warn : Text -> Task Unit

@@ -1,0 +1,160 @@
+module Orders.Show
+
+import ShopOrder
+import OrderLine
+import Product
+import User
+import Layout
+
+page "/orders/{id}" { id: ShopOrder.OrderId } requires user
+
+type Model = {
+  order: ShopOrder,
+  lines: List OrderLine,
+  products: List Product,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get ShopOrder params.id
+  match found {
+    Just order -> visible order session,
+    Nothing -> Query.notFound,
+  }
+}
+
+-- visible: the owner and any Manager may see an order; for everyone else it is a 404.
+visible : ShopOrder -> Session -> Query Model
+visible order session = {
+  let manager <- User.isManager session.user
+  if order.owner == session.user || manager then fetch order else Query.notFound
+}
+
+fetch : ShopOrder -> Query Model
+fetch order = {
+  let lines <- OrderLine.forOrder order.id
+  let products <- Db.from Product |> Db.all
+  Query.succeed { order: order, lines: lines, products: products }
+}
+
+form NewLine = {
+  quantity: Int.Positive,
+}
+
+-- The messages name no order: the page's {id} is the order, and `load` authorized it.
+-- AddLine names a product, which comes from the request, so `update` checks it again.
+msg AddLine { product: Product.ProductId } form NewLine
+msg Pay
+msg Cancel
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddLine p -> {
+    let order <- openOrder model.order.id
+    let prod <- activeProduct p.product
+    let _ <- Db.insert OrderLine { order: order.id, product: prod.id, quantity: p.form.quantity }
+    Task.succeed Rerender
+  },
+  Pay p -> {
+    let order <- openOrder model.order.id
+    let _ <- Db.update ShopOrder order.id (\o -> { o | status: Paid })
+    Task.succeed Rerender
+  },
+  Cancel p -> {
+    let order <- openOrder model.order.id
+    let _ <- Db.update ShopOrder order.id (\o -> { o | status: Cancelled })
+    Task.succeed Rerender
+  },
+}
+
+-- openOrder is the stored order when it is still Open. A change to an order that is Paid or
+-- Cancelled is refused with Task.fail, not Task.notFound: the order exists and the user may see
+-- it, so nothing is "not there"; the request is well-formed but invalid in the order's current
+-- state (only a stale page or a forged post can send it, as the view offers no such action).
+-- Task.fail rolls everything back and answers with App.error. A missing row is a 404.
+openOrder : ShopOrder.OrderId -> Task ShopOrder
+openOrder id = {
+  let found <- Db.get ShopOrder id
+  match found {
+    Just order -> if order.status == Open then Task.succeed order else Task.fail "order is not open",
+    Nothing -> Task.notFound,
+  }
+}
+
+activeProduct : Product.ProductId -> Task Product
+activeProduct pid = {
+  let found <- Db.get Product pid
+  match found {
+    Just prod -> if prod.active then Task.succeed prod else Task.fail "product is not active",
+    Nothing -> Task.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Order">
+    <h1>Order</h1>
+    <p>Status: {ShopOrder.statusLabel model.order.status}</p>
+
+    <ul id="lines">
+      {for line in model.lines -> <LineItem line={line} products={model.products} />}
+    </ul>
+
+    <p id="total">Total: {Product.money (OrderLine.total model.products model.lines)}</p>
+
+    {if model.order.status == Open then <Actions products={model.products} /> else Html.none}
+
+    <a href={Orders.Index {}}>Back</a>
+  </Layout.Page>
+
+LineItem : { line: OrderLine, products: List Product } -> Html Msg
+LineItem props =
+  <li>{OrderLine.describe props.products props.line}</li>
+
+Actions : { products: List Product } -> Html Msg
+Actions props =
+  <div id="actions">
+    <h2>Add a line</h2>
+    {for prod in List.filter (\p -> p.active) props.products ->
+      <form submit={AddLine { product: prod.id }}>
+        <Errors form />
+        <Input field="quantity" label={Product.label prod} />
+        <Errors field="quantity" />
+        <button>Add</button>
+      </form>}
+    <button click={Pay}>Mark paid</button>
+    <button click={Cancel}>Mark cancelled</button>
+  </div>
+
+test "adding a line to a paid order is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let pid <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150, active: True }
+  let oid <- Db.insert ShopOrder { owner: me, status: Paid }
+  let model : Model = { order: { id: oid, owner: me, status: Paid, created: Time.epoch }, lines: [], products: [] }
+  let r <- Test.run (update (AddLine { product: pid, form: { quantity: Int.Positive 1 } }) model { user: me })
+  let lines <- OrderLine.forOrder oid
+  Task.succeed ({ value: r.value, lines: List.length lines } == { value: Err "order is not open", lines: 0 })
+}
+
+test "a staff user opening another user's order is not found" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let oid <- Db.insert ShopOrder { owner: owner }
+  let r <- Test.run {
+    let m <- load { id: oid } { user: other }
+    Task.succeed m
+  }
+  Task.succeed (r.value == Err "not found")
+}
+
+test "a manager opening another user's order sees it" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let oid <- Db.insert ShopOrder { owner: owner }
+  let r <- Test.run {
+    let m <- load { id: oid } { user: boss }
+    Task.succeed m
+  }
+  let seen = Maybe.map (\m -> m.order.id) (Result.toMaybe r.value)
+  Task.succeed (seen == Just oid)
+}

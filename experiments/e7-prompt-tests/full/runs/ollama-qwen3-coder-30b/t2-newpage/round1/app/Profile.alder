@@ -1,0 +1,69 @@
+module Profile
+
+import Todo
+import Layout
+import User
+
+page "/profile" { } requires user
+
+type Model = {
+  name: Text.NonEmpty,
+  email: Text.Email,
+  todoCount: Int,
+  doneCount: Int,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todos <- Db.from Todo |> Db.where (Todo.owner.eq session.user) |> Db.all
+  let todoCount = List.length todos
+  let doneCount = List.length (List.filter (\t -> t.done) todos)
+  let user <- Db.get User session.user
+  match user {
+    Just u -> Query.succeed { name: u.name, email: u.email, todoCount: todoCount, doneCount: doneCount }
+    Nothing -> Query.notFound,
+  }
+}
+
+form UpdateName = {
+  name: Text.NonEmpty,
+}
+
+msg Save form UpdateName
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> {
+    let _ <- Db.update User session.user (\u -> { u | name: p.form.name })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Profile" theme={session.theme}>
+    <h1>Profile</h1>
+    <p><strong>Name:</strong> {model.name}</p>
+    <p><strong>Email:</strong> {model.email}</p>
+    <p><strong>Todos:</strong> {Text.fromInt model.todoCount} ({Text.fromInt model.doneCount} done)</p>
+    <form submit={Save}>
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <button>Update Name</button>
+    </form>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "load counts user's todos" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id1 <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let id2 <- Db.insert Todo { title: Text.NonEmpty "Bread", due: Nothing, owner: me }
+  let r <- Test.run (Profile.load {} { user: me, theme: Light })
+  Task.succeed (r.value == Ok { name: Text.NonEmpty "Me", email: Text.Email "me@example.com", todoCount: 2, doneCount: 0 })
+}
+
+test "renaming to empty is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let r <- Test.run (Profile.update (Save { name: Text.NonEmpty "" }) { name: Text.NonEmpty "Me", email: Text.Email "me@example.com", todoCount: 0, doneCount: 0 } { user: me, theme: Light })
+  Task.succeed (r.value == Err "not found")
+}

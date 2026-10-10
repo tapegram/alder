@@ -1,0 +1,67 @@
+module Shop.Products
+
+import User
+import Product
+
+page "/products" { } requires user
+
+type Model = { products: List Product }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let products <-
+    Db.from Product
+      |> Db.orderBy Product.name.asc
+      |> Db.all
+  Query.succeed { products: products }
+}
+
+form NewProduct = {
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+}
+
+msg Submit form NewProduct
+msg ToggleActive { id: Product.ProductId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insert Product { name: p.form.name, price: p.form.price, active: True }
+    Task.succeed Rerender
+  },
+  ToggleActive p -> {
+    let product <- Db.get Product p.id
+    match product {
+      Just prod -> {
+        let _ <- Db.update Product prod.id (\t -> { t | active: not t.active })
+        Task.succeed Rerender
+      },
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Products">
+    <h1>Products</h1>
+    {if session.role == Manager then
+      <form submit={Submit}>
+        <Input field="name" label="Name" />
+        <Errors field="name" />
+        <Input field="price" label="Price (cents)" />
+        <Errors field="price" />
+        <button>Add Product</button>
+      </form>
+    }
+    {if session.role == Manager then
+      <ul>
+        {for product in model.products ->
+          <li>
+            {product.name} - {product.price} cents
+            <button click={ToggleActive { id: product.id }}>Toggle Active</button>
+          </li>}
+      </ul>
+    }
+  </Layout.Page>

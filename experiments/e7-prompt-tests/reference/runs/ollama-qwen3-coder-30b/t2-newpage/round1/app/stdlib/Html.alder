@@ -1,0 +1,13 @@
+module Html
+
+-- Unsafe HTML text.
+unsafe : Text -> Html Never
+
+-- No HTML.
+none : Html a
+
+-- HTML text.
+text : Text -> Html a
+
+-- A URL to an external page.
+external : Text -> Page

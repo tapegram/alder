@@ -1,0 +1,66 @@
+{
+ "model": "ollama-qwen3-coder-30b",
+ "task": "t5-ownership",
+ "retries": 2,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 2,
+  "test": true,
+  "num_ctx": 32768
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 7,
+   "exit": 1,
+   "errors": 10,
+   "warnings": 0,
+   "codes": {
+    "E0002": 7,
+    "E0202": 3
+   },
+   "rejected": [],
+   "seconds": 46.6,
+   "tokens": 1890,
+   "stderr": "",
+   "prompt_eval_count": 21841,
+   "eval_count": 1890
+  },
+  {
+   "n": 1,
+   "files": 7,
+   "exit": 1,
+   "errors": 13,
+   "warnings": 0,
+   "codes": {
+    "E0002": 13
+   },
+   "rejected": [],
+   "seconds": 59.4,
+   "tokens": 1920,
+   "stderr": "",
+   "prompt_eval_count": 24321,
+   "eval_count": 1920
+  },
+  {
+   "n": 2,
+   "files": 7,
+   "exit": 1,
+   "errors": 3,
+   "warnings": 0,
+   "codes": {
+    "E0002": 3
+   },
+   "rejected": [],
+   "seconds": 58.0,
+   "tokens": 1862,
+   "stderr": "",
+   "prompt_eval_count": 24389,
+   "eval_count": 1862
+  }
+ ],
+ "final_pass": false,
+ "outcome": "fail"
+}

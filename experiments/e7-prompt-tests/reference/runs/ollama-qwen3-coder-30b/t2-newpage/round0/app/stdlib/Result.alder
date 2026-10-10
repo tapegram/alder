@@ -1,0 +1,11 @@
+module Result
+
+map : (a -> b) -> Result e a -> Result e b
+
+mapErr : (e -> f) -> Result e a -> Result f a
+
+andThen : (a -> Result e b) -> Result e a -> Result e b
+
+withDefault : a -> Result e a -> a
+
+toMaybe : Result e a -> Maybe a

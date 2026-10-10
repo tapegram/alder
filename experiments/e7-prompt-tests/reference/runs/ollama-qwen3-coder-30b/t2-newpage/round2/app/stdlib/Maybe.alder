@@ -1,0 +1,11 @@
+module Maybe
+
+map : (a -> b) -> Maybe a -> Maybe b
+
+andThen : (a -> Maybe b) -> Maybe a -> Maybe b
+
+withDefault : a -> Maybe a -> a
+
+isJust : Maybe a -> Bool
+
+toList : Maybe a -> List a

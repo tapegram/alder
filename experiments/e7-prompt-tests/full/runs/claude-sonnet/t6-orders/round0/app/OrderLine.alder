@@ -1,0 +1,49 @@
+module OrderLine
+
+import User
+import ShopOrder
+import Product
+
+type LineId = brand Text
+
+table OrderLine {
+  id: LineId @id,
+  order: ShopOrder.OrderId @ref ShopOrder,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+forOrder : ShopOrder.OrderId -> Query (List OrderLine)
+forOrder oid = Db.from OrderLine |> Db.where (OrderLine.order.eq oid) |> Db.all
+
+priceOf : List Product -> Product.ProductId -> Int
+priceOf products pid = {
+  let found = List.find (\p -> p.id == pid) products
+  match found {
+    Just p -> Product.plainInt p.price,
+    Nothing -> 0,
+  }
+}
+
+lineTotal : List Product -> OrderLine -> Int
+lineTotal products line = Product.plainInt line.quantity * priceOf products line.product
+
+-- total is the sum of quantity x price over the lines.
+total : List Product -> List OrderLine -> Int
+total products lines = lines |> List.map (lineTotal products) |> List.sum
+
+describe : List Product -> OrderLine -> Text
+describe products line =
+  "{Product.nameOf products line.product} x {Text.fromInt (Product.plainInt line.quantity)}: {Product.money (lineTotal products line)}"
+
+test "an open order totals quantity times price over its two lines" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150, active: True }
+  let ink <- Db.insert Product { name: Text.NonEmpty "Ink", price: Int.NonNegative 400, active: True }
+  let oid <- Db.insert ShopOrder { owner: me }
+  let _ <- Db.insert OrderLine { order: oid, product: pen, quantity: Int.Positive 2 }
+  let _ <- Db.insert OrderLine { order: oid, product: ink, quantity: Int.Positive 1 }
+  let lines <- forOrder oid
+  let products <- Db.from Product |> Db.all
+  Task.succeed (total products lines == 700)
+}

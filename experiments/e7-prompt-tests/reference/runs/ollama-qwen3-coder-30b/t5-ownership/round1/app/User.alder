@@ -1,0 +1,13 @@
+module User
+
+type UserId = brand Text
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  created: Time @created,
+}
+
+test "User table is defined" = True
