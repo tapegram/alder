@@ -6,6 +6,7 @@ package buildkit
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"time"
 
 	"alder/internal/check"
 	"alder/internal/diag"
@@ -75,7 +77,13 @@ func Sources(prog *names.Program) map[string][]string {
 
 // GoCmd runs the go command with args in the generated module dir.
 func GoCmd(dir string, args ...string) ([]byte, error) {
-	cmd := exec.Command("go", args...)
+	return GoCmdContext(context.Background(), dir, args...)
+}
+
+// GoCmdContext is GoCmd, the go command killed when ctx is done.
+func GoCmdContext(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "go", args...)
+	cmd.WaitDelay = 2 * time.Second // a compiler it started may hold the output a moment longer
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod")
 	return cmd.CombinedOutput()

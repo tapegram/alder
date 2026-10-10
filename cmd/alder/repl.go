@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,8 +49,10 @@ type replEntry struct {
 // repl is a REPL session over the app at dir.
 type repl struct {
 	dir, modName, appBuild string
+	work                   string // the build directory, build/<app>/scratch/repl-<pid>
 	lets                   []replEntry
-	vet                    bool // vet the next build (the first, and the first after a reload)
+	redefining             string // the let a redefinition is being checked for (printDiag)
+	vet                    bool   // vet the next build (the first, and the first after a reload)
 	stdout, stderr         io.Writer
 	interrupt              <-chan struct{}
 	terminate              <-chan struct{}  // closed on SIGTERM or SIGHUP
@@ -61,7 +64,9 @@ type repl struct {
 // scratch module (named Scratch, or Name) that sees every module of the app at dir (default
 // "."). Each line is a `let name = expr` the session keeps, an expression to evaluate (printed
 // as `value : Type`), or a command (replHelp). Every line re-checks the whole session; an
-// expression is compiled into build/<app>/scratch/repl/ and run. The session re-checks itself
+// expression is compiled, with the lets it uses, into build/<app>/scratch/repl-<pid>/ (the
+// REPL's own: two REPLs never wait for each other; removed when the REPL ends, and one a killed
+// REPL left is removed by the next) and run. The session re-checks itself
 // when the app's files change (as :reload). interrupt receives one value per Ctrl-C: it stops a
 // running evaluation, and at the prompt says how to leave. Exit 0 on :quit or end of input, 2
 // for usage or an app directory without app/.
@@ -79,15 +84,15 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 		}
 	}()
 	var pos []string
-	modName := "Scratch"
+	modName, named := "Scratch", false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
 		case a == "--module" && i+1 < len(args):
 			i++
-			modName = args[i]
+			modName, named = args[i], true
 		case strings.HasPrefix(a, "--module="):
-			modName = strings.TrimPrefix(a, "--module=")
+			modName, named = strings.TrimPrefix(a, "--module="), true
 		case strings.HasPrefix(a, "-"):
 			fmt.Fprintln(stderr, replUsage)
 			return 2
@@ -121,7 +126,11 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 	r.seen = snapshot(dir)
 	checked, _ := r.check(nil)
 	if exists := (*scratch.ModuleExistsError)(nil); errors.As(checked.Err, &exists) {
-		fmt.Fprintf(stderr, "alder repl: %s; pass --module <Name> to name the REPL's module otherwise\n", exists.Taken())
+		if named {
+			fmt.Fprintf(stderr, "alder repl: %s; give --module another name\n", exists.Taken())
+		} else {
+			fmt.Fprintf(stderr, "alder repl: %s; pass --module <Name> to name the REPL's module otherwise\n", exists.Taken())
+		}
 		return 2
 	}
 	if checked.Err != nil {
@@ -131,6 +140,13 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 	if r.report(checked, nil, nil, -1) {
 		fmt.Fprintln(stderr, "alder repl: the app has errors; fix them (the REPL re-checks when you save) — :type and lets will work once it checks")
 	}
+	scratchDir := filepath.Join(r.appBuild, "scratch")
+	removeStale(scratchDir)
+	r.work = filepath.Join(scratchDir, fmt.Sprintf("repl-%d", os.Getpid()))
+	defer func() { // on :quit, end of input and SIGTERM/SIGHUP alike; a SIGKILL leaves it to removeStale
+		os.RemoveAll(r.work)
+		os.Remove(r.work + ".lock")
+	}()
 	fmt.Fprintf(stdout, "alder repl: %s (:help for the commands, :quit to leave)\n", filepath.Base(abs))
 
 	stop := make(chan struct{})
@@ -159,12 +175,22 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 			fmt.Fprint(stdout, "    …> ")
 		}
 		select {
-		case l, ok := <-lines:
+		case in, ok := <-lines:
 			if !ok {
 				fmt.Fprintln(stdout)
 				return 0
 			}
+			if in.err != nil {
+				fmt.Fprintf(stderr, "\nalder repl: reading input: %v\n", in.err)
+				return 1
+			}
 			lineNo++
+			if in.tooLong {
+				pending = nil
+				fmt.Fprintf(stderr, "alder repl: line too long (limit %d MB); ignored\n", maxLine>>20)
+				continue
+			}
+			l := in.text
 			if pending == nil {
 				at = lineNo
 			}
@@ -191,23 +217,89 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 	}
 }
 
-// replLines feeds stdin's lines (up to 1 MB each) to the channel it returns, which is closed
-// at end of input; it stops when stop is closed.
-func replLines(stdin io.Reader, stop <-chan struct{}) <-chan string {
-	lines := make(chan string)
+// replDirRE is a REPL's build directory (or its lock file) under build/<app>/scratch.
+var replDirRE = regexp.MustCompile(`^repl-([0-9]+)(\.lock)?$`)
+
+// removeStale removes the build directories (and lock files) under scratchDir of REPLs that are
+// gone: a REPL removes its own when it ends, but not when it is killed outright. One whose pid
+// is alive (another REPL, or a process that took the pid since) is kept.
+func removeStale(scratchDir string) {
+	entries, _ := os.ReadDir(scratchDir)
+	for _, e := range entries {
+		m := replDirRE.FindStringSubmatch(e.Name())
+		if m == nil {
+			continue
+		}
+		pid, err := strconv.Atoi(m[1])
+		if err != nil || pid == os.Getpid() || pidAlive(pid) {
+			continue
+		}
+		os.RemoveAll(filepath.Join(scratchDir, e.Name()))
+	}
+}
+
+// maxLine is the longest line the REPL reads (bytes, without the newline).
+const maxLine = 1 << 20
+
+// inputLine is a line of the REPL's input: its text, or tooLong (longer than maxLine; its text
+// is dropped), or err, the read error that ends the input (never io.EOF).
+type inputLine struct {
+	text    string
+	tooLong bool
+	err     error
+}
+
+// replLines feeds stdin's lines to the channel it returns, which is closed at end of input
+// (after an inputLine with err, when reading failed); it stops when stop is closed.
+func replLines(stdin io.Reader, stop <-chan struct{}) <-chan inputLine {
+	lines := make(chan inputLine)
 	go func() {
 		defer close(lines)
-		sc := bufio.NewScanner(stdin)
-		sc.Buffer(make([]byte, 64*1024), 1<<20)
-		for sc.Scan() {
+		br := bufio.NewReaderSize(stdin, 64*1024)
+		for {
+			l, err := readLine(br)
+			if err == io.EOF && l.text == "" && !l.tooLong {
+				return
+			}
+			if err != nil && err != io.EOF {
+				l = inputLine{err: err}
+			}
 			select {
-			case lines <- sc.Text():
+			case lines <- l:
 			case <-stop:
+				return
+			}
+			if err != nil {
 				return
 			}
 		}
 	}()
 	return lines
+}
+
+// readLine reads a line from br (a last one without a newline too): its text without the
+// newline, or tooLong past maxLine (the rest of the line is read and dropped). The error is
+// br's (io.EOF at the end).
+func readLine(br *bufio.Reader) (inputLine, error) {
+	var l inputLine
+	var buf []byte
+	for {
+		chunk, err := br.ReadSlice('\n')
+		if !l.tooLong {
+			if len(buf)+len(bytes.TrimSuffix(chunk, []byte("\n"))) > maxLine {
+				l.tooLong, buf = true, nil
+			} else {
+				buf = append(buf, chunk...)
+			}
+		}
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		if !l.tooLong {
+			l.text = strings.TrimSuffix(string(buf), "\n")
+		}
+		return l, err
+	}
 }
 
 // line handles one entry (its lines, the first entered at REPL line at) and says whether the
@@ -219,9 +311,10 @@ func (r *repl) line(lines []string, at int) (quit bool) {
 		return false
 	case strings.HasPrefix(text, ":"):
 		lines[0] = strings.TrimLeft(lines[0], " \t")
+		// the command is `:` and the letters (and `!`) after it: `:run!(x)` is `:run! (x)`
 		cmd := lines[0]
-		if i := strings.IndexAny(cmd, " \t"); i >= 0 {
-			cmd = cmd[:i]
+		if i := strings.IndexFunc(cmd[1:], func(c rune) bool { return !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '!') }); i >= 0 {
+			cmd = cmd[:i+1]
 		}
 		lines[0] = strings.TrimLeft(lines[0][len(cmd):], " \t")
 		return r.command(cmd, lines, at)
@@ -271,9 +364,10 @@ func entry(lines []string, at int) (replEntry, error) {
 			indented[i+1] = true
 		}
 	}
-	items, err := parseItems(strings.Join(src, "\n"))
+	items, err := parseItems(strings.Join(src, "\n"), "the REPL")
 	if err != nil && !errors.Is(err, errNothing) {
-		return replEntry{}, err
+		// the entry is one item, so its first line: the REPL's messages say no "input line 1"
+		return replEntry{}, errors.New(inputLineRE.ReplaceAllString(err.Error(), ""))
 	}
 	if len(items) != 1 {
 		return replEntry{}, errNothing
@@ -286,6 +380,9 @@ func entry(lines []string, at int) (replEntry, error) {
 	}
 	return replEntry{item: it, at: at, lines: lines}, err
 }
+
+// inputLineRE is parseItems' "input line N: " before a message.
+var inputLineRE = regexp.MustCompile(`^input line \d+: `)
 
 // allBlank says whether every line is blank or a `--` comment.
 func allBlank(lines []string) bool {
@@ -331,7 +428,12 @@ func (r *repl) let(lines []string, at int) {
 		fmt.Fprintf(r.stderr, "alder repl: %v\n", checked.Err)
 		return
 	}
-	if r.report(checked, session, starts, cur) || checked.Result == nil {
+	if redefined {
+		r.redefining = e.Name // a let that uses it and no longer checks refuses the redefinition
+	}
+	failed := r.report(checked, session, starts, cur)
+	r.redefining = ""
+	if failed || checked.Result == nil {
 		return
 	}
 	if checked.Result.Holes > 0 {
@@ -393,7 +495,7 @@ func (r *repl) eval(cmd string, lines []string, at int) {
 	}
 	oneLine := strings.Join(flat, " ")
 	if cmd == ":type" {
-		fmt.Fprintf(r.stdout, "%s : %s\n", text, typ)
+		fmt.Fprintf(r.stdout, "%s : %s\n", oneLine, typ)
 		return
 	}
 	con := ""
@@ -446,7 +548,22 @@ func (r *repl) eval(cmd string, lines []string, at int) {
 			return
 		}
 	}
-	out, ok := r.run(checked, kind, sig)
+	// only the lets the expression uses go into the program: each let is a package variable,
+	// computed whenever the program starts, so another let that fails (or is slow) is no
+	// concern of this evaluation
+	used := reachable(r.lets, e)
+	if len(used) < len(r.lets) {
+		if sub, _ := r.check(append(append([]replEntry(nil), used...), e)); sub.Err == nil && sub.Result != nil && !hasError(sub.Diags) {
+			checked = sub
+		} else {
+			used = r.lets // not expected: the whole session checks
+		}
+	}
+	var names []string
+	for _, l := range used {
+		names = append(names, l.Name)
+	}
+	out, ok := r.run(checked, kind, sig, names)
 	if !ok {
 		return
 	}
@@ -457,11 +574,42 @@ func (r *repl) eval(cmd string, lines []string, at int) {
 	fmt.Fprintf(r.stdout, "%s : %s\n", out, typ)
 }
 
-// run compiles what checked holds with the main of kind for its `it` (of type sig) into
-// build/<app>/scratch/repl/ and runs it; it reports a failure itself (ok false). The lock on
-// the build directory is held from the build to the end of the run. A value on interrupt stops
-// the build or the run.
-func (r *repl) run(checked scratch.Checked, kind mainKind, sig types.Type) (out string, ok bool) {
+// reachable is the lets (in order) the entry e uses, directly or through other lets: those whose
+// name appears in its text as an identifier, then in theirs, to a fixpoint. It may take a let
+// that is not used (its name in a string, a record field, a qualified name), never miss one.
+func reachable(lets []replEntry, e replEntry) []replEntry {
+	byName := map[string]int{}
+	for i, l := range lets {
+		byName[l.Name] = i
+	}
+	in := make([]bool, len(lets))
+	work := []replEntry{e}
+	for len(work) > 0 {
+		x := work[len(work)-1]
+		work = work[:len(work)-1]
+		for _, id := range identRE.FindAllString(strings.Join(x.Lines, "\n"), -1) {
+			if i, ok := byName[id]; ok && !in[i] {
+				in[i] = true
+				work = append(work, lets[i])
+			}
+		}
+	}
+	var out []replEntry
+	for i, l := range lets {
+		if in[i] {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// identRE is an identifier (or the identifier-like part of a longer token).
+var identRE = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_']*`)
+
+// run compiles what checked holds with the main of kind for its `it` (of type sig) into the
+// REPL's build directory and runs it; it reports a failure itself (ok false), naming lets, the
+// lets the program computes. A value on interrupt (or terminate) stops the build or the run.
+func (r *repl) run(checked scratch.Checked, kind mainKind, sig types.Type, lets []string) (out string, ok bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan struct{})
@@ -492,7 +640,7 @@ func (r *repl) run(checked scratch.Checked, kind mainKind, sig types.Type) (out 
 		env = append(env, "ALDER_EVAL_DB="+dbPath)
 	}
 	mainGo := scratchMain(kind, kind != mainPure && buildkit.HasGoFiles(filepath.Join(r.dir, "adapters")), evalIt(r.modName, sig))
-	b := scratch.CompileCheckedWith(checked, mainGo, "repl", filepath.Join(r.appBuild, "scratch", "repl"), scratch.Options{NoVet: !r.vet})
+	b := scratch.CompileCheckedWith(ctx, checked, mainGo, "repl", r.work, scratch.Options{NoVet: !r.vet})
 	defer b.Close()
 	if ctx.Err() != nil {
 		return failf("interrupted")
@@ -507,23 +655,24 @@ func (r *repl) run(checked scratch.Checked, kind mainKind, sig types.Type) (out 
 	tctx, tcancel := context.WithTimeoutCause(ctx, scratch.Timeout, fmt.Errorf("timed out after %v", scratch.Timeout))
 	defer tcancel()
 	out, errOut, exit := scratch.RunTethered(tctx, b, env)
-	switch {
-	case ctx.Err() != nil:
+	if ctx.Err() != nil {
 		return failf("interrupted")
-	case exit == -1 && !strings.Contains(errOut, "timed out"):
-		return failf("%s", strings.TrimSpace(errOut))
-	case exit != 0 && (strings.Contains(errOut, "goroutine stack exceeds") || strings.Contains(errOut, "fatal error: stack overflow")):
-		return failf("stack overflow (unbounded recursion?)")
-	case exit != 0:
-		if strings.HasPrefix(errOut, "panic: ") {
-			errOut, _, _ = strings.Cut(errOut, "\n\n")
-		}
-		if kind == mainTask {
-			return failf("the task failed: %s", strings.TrimSpace(errOut))
-		}
-		return failf("%s", strings.TrimSpace(errOut))
 	}
-	return out, true
+	msg, outcome := classifyRun(errOut, exit)
+	switch outcome {
+	case runOK:
+		return out, true
+	case runInternal:
+		return failf("%s", msg)
+	}
+	msg = devDBHint(msg, r.appBuild)
+	if outcome == runFailed && kind == mainTask {
+		msg = "the task failed: " + msg
+	}
+	if len(lets) > 0 {
+		msg += fmt.Sprintf(" (the lets it uses — %s — are computed with it)", strings.Join(lets, ", "))
+	}
+	return failf("%s", msg)
 }
 
 // check checks the session module made of entries, and returns where each entry starts in it
@@ -649,6 +798,9 @@ func (r *repl) printDiag(checked scratch.Checked, d diag.Diagnostic, e replEntry
 			var l int
 			fmt.Sscan(text[m[2]:m[3]], &l)
 			label = letLabel(e, e.at+l-1) + ": "
+			if r.redefining != "" && e.Name != r.redefining {
+				label = fmt.Sprintf("alder repl: %s not redefined: %s uses it: ", r.redefining, letLabel(e, e.at+l-1))
+			}
 		}
 		text = label + text[m[1]:]
 	}

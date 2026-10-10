@@ -25,10 +25,12 @@ var errNothing = errors.New("nothing to evaluate")
 
 // item is one input item: a `let` (Let, Name) or the expression (Let false). Lines are the
 // item's lines as they go into the scratch module (a let's `name = …`, preceded by `name : T`
-// when annotated; the expression's `it = …`), followed by its continuation lines, and preceded,
-// for the input's first item, by the blank and `--` comment lines before it; InLine[i] is the
-// input line Lines[i] comes from (1-based) and Shift[i] what to add to a column on it to get
-// the input column.
+// when annotated; the expression's `it = …`), followed by its continuation lines — the blank
+// and `--` comment lines after it included, so the last item ends with the input's trailing
+// ones — and preceded, for the input's first item, by the blank and `--` comment lines before
+// it. InLine[i] is the line of the text parsed (1-based) that Lines[i] comes from — the
+// input's line for eval; for the REPL, which parses each entry on its own, the line within
+// that entry — and Shift[i] what to add to a column on it to get that line's column.
 type item struct {
 	Let   bool
 	Name  string
@@ -45,7 +47,8 @@ type item struct {
 // must be `let name = expr` (or `let name : Type = expr`); the last is the expression unless it
 // starts with `let `, in which case the input has none and parseItems returns its lets with
 // errNothing (the REPL checks a `let` alone). An input with no item at all is errNothing too.
-func parseItems(input string) ([]item, error) {
+// who names the tool in the messages ("eval", "the REPL").
+func parseItems(input, who string) ([]item, error) {
 	lines := inputLines(input)
 	starts := itemStarts(lines)
 	if len(starts) == 0 {
@@ -53,9 +56,9 @@ func parseItems(input string) ([]item, error) {
 	}
 	last := strings.TrimLeft(lines[starts[len(starts)-1]], " \t")
 	if !strings.HasPrefix(last, "let ") {
-		return splitItems(lines, starts, true)
+		return splitItems(lines, starts, true, who)
 	}
-	items, err := splitItems(lines, starts, false)
+	items, err := splitItems(lines, starts, false, who)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +77,7 @@ func evalModule(input string) (evalSource, error) {
 	if len(starts) == 0 {
 		return es, errNothing
 	}
-	items, err := splitItems(lines, starts, true)
+	items, err := splitItems(lines, starts, true, "eval")
 	if err != nil {
 		return es, err
 	}
@@ -116,8 +119,10 @@ func itemStarts(lines []string) []int {
 }
 
 // splitItems makes the items of lines, which start at starts (non-empty); exprLast makes the
-// last one the expression, else every one must be a let.
-func splitItems(lines []string, starts []int, exprLast bool) ([]item, error) {
+// last one the expression, else every one must be a let. A let's name starts with a lowercase
+// ASCII letter (an uppercase one would name a module or type, which the name would be shadowed
+// by) and is not `it`; who names the tool in the messages.
+func splitItems(lines []string, starts []int, exprLast bool, who string) ([]item, error) {
 	items := make([]item, 0, len(starts))
 	var cur *item    // the item the next line continues
 	var pending item // the lines before the first item, which go with it
@@ -153,8 +158,11 @@ func splitItems(lines []string, starts []int, exprLast bool) ([]item, error) {
 		def := strings.TrimLeft(rest, " \t")
 		at := indent + len(body) - len(def) // the input column (0-based) where def starts
 		name := def[:len(def)-len(strings.TrimLeft(def, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'"))]
+		if def == "" || def[0] < 'a' || def[0] > 'z' {
+			return nil, fmt.Errorf("input line %d: a let name starts with a lowercase letter (`let todo = …`)", i+1)
+		}
 		if name == "it" {
-			return nil, fmt.Errorf("input line %d: `it` is the name eval gives the expression; let another name", i+1)
+			return nil, fmt.Errorf("input line %d: a let may not be named `it`, the name %s gives the expression; let another name", i+1, who)
 		}
 		cur.Let, cur.Name = true, name
 		if after := strings.TrimLeft(def[len(name):], " \t"); name != "" && strings.HasPrefix(after, ":") {

@@ -50,7 +50,11 @@ func TestParseItems(t *testing.T) {
 			{Let: true, Name: "x", Lines: []string{"-- first", "x = 1"}, InLine: []int{1, 2}, Shift: []int{0, 4}},
 			{Lines: []string{"it = x"}, InLine: []int{3}, Shift: []int{-5}},
 		}},
-		{name: "let it", in: "let it = 1\nit", err: "`it` is the name eval gives the expression"},
+		{name: "let it", in: "let it = 1\nit", err: "input line 1: a let may not be named `it`, the name eval gives the expression"},
+		// an uppercase name is a module's or a type's, which would shadow the let
+		{name: "let Upper", in: "let Todo = 1\nTodo", err: "input line 1: a let name starts with a lowercase letter (`let todo = …`)"},
+		{name: "let non-ASCII", in: "let ünï = 1\n1", err: "a let name starts with a lowercase letter"},
+		{name: "let digit", in: "let x = 1\nlet 3 = 4\n1", err: "input line 2: a let name starts with a lowercase letter"},
 		{name: "empty", in: "\n  \n-- c\n", nothing: true},
 		{name: "lets alone", in: "let a = 1\nlet b = 2\n", nothing: true, want: []it{
 			{Let: true, Name: "a", Lines: []string{"a = 1"}, InLine: []int{1}, Shift: []int{4}},
@@ -60,7 +64,7 @@ func TestParseItems(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			items, err := parseItems(c.in)
+			items, err := parseItems(c.in, "eval")
 			switch {
 			case c.nothing:
 				if !errors.Is(err, errNothing) {
@@ -87,7 +91,7 @@ func TestParseItems(t *testing.T) {
 
 // assemble of lets alone is a module with no `it`.
 func TestAssembleLetsOnly(t *testing.T) {
-	items, err := parseItems("let a = 1\nlet b : Int = a")
+	items, err := parseItems("let a = 1\nlet b : Int = a", "eval")
 	if !errors.Is(err, errNothing) {
 		t.Fatal(err)
 	}
@@ -130,7 +134,7 @@ func TestAssembleRoundTrip(t *testing.T) {
 		"",
 	} {
 		old, oldErr := evalModule(in)
-		items, err := parseItems(in)
+		items, err := parseItems(in, "eval")
 		if oldErr != nil { // parseItems fails alike
 			if fmt.Sprint(err) != fmt.Sprint(oldErr) {
 				t.Errorf("%q: err %v, evalModule's %v", in, err, oldErr)
@@ -144,6 +148,25 @@ func TestAssembleRoundTrip(t *testing.T) {
 		es.lines = inputLines(in)
 		if es.src != old.src || !reflect.DeepEqual(es.inLine, old.inLine) || !reflect.DeepEqual(es.shift, old.shift) || !reflect.DeepEqual(es.lines, old.lines) {
 			t.Errorf("%q:\n got %q %v %v\nwant %q %v %v", in, es.src, es.inLine, es.shift, old.src, old.inLine, old.shift)
+		}
+	}
+	// and what the two agree on, for a few inputs: the module and its column shifts
+	for in, want := range map[string]struct {
+		src   string
+		shift []int
+	}{
+		"1 + 2":                          {"it = 1 + 2\n", []int{-5}},
+		"   1 + 2":                       {"it = 1 + 2\n", []int{-2}},
+		"let x : Int = 1\nx + 1":         {"x : Int\nx = 1\nit = x + 1\n", []int{4, 10, -5}},
+		"let r = {\n  a: 1,\n}\nr.a\n":   {"r = {\n  a: 1,\n}\nit = r.a\n", []int{4, 0, 0, -5}},
+		"-- c\nlet a = 1\n\na\n-- end\n": {"-- c\na = 1\n\nit = a\n-- end\n", []int{0, 4, 0, -5, 0}},
+	} {
+		items, err := parseItems(in, "eval")
+		if err != nil {
+			t.Fatalf("%q: %v", in, err)
+		}
+		if es := assemble(items); es.src != want.src || !reflect.DeepEqual(es.shift, want.shift) {
+			t.Errorf("%q: got %q %v, want %q %v", in, es.src, es.shift, want.src, want.shift)
 		}
 	}
 }

@@ -70,7 +70,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	}()
 
 	var pos []string
-	run := false
+	run, named := false, false
 	modName := "Scratch"
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -81,9 +81,9 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 			run = true
 		case a == "--module" && i+1 < len(args):
 			i++
-			modName = args[i]
+			modName, named = args[i], true
 		case strings.HasPrefix(a, "--module="):
-			modName = strings.TrimPrefix(a, "--module=")
+			modName, named = strings.TrimPrefix(a, "--module="), true
 		case strings.HasPrefix(a, "--"):
 			return failf(2, "%s", evalUsage)
 		default:
@@ -128,6 +128,9 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	mod := &scratch.Module{Name: modName, Source: es.src, Infer: true}
 	checked := scratch.Check(dir, mod)
 	if exists := (*scratch.ModuleExistsError)(nil); errors.As(checked.Err, &exists) {
+		if named {
+			return failf(2, "alder eval: %s; give --module another name", exists.Taken())
+		}
 		return failf(2, "alder eval: %s; pass --module <Name> to name eval's module otherwise", exists.Taken())
 	}
 	if checked.Err != nil {
@@ -203,21 +206,61 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	ctx, cancel := context.WithTimeoutCause(sigCtx, scratch.Timeout, fmt.Errorf("timed out after %v", scratch.Timeout))
 	defer cancel()
 	out, errOut, exit := scratch.RunTethered(ctx, b, env)
-	switch {
-	case sigCtx.Err() != nil:
+	if sigCtx.Err() != nil {
 		return failf(1, "alder eval: interrupted")
-	case exit == -1 && !strings.Contains(errOut, "timed out"): // could not start: internal
-		return failf(2, "alder eval: %s", strings.TrimSpace(errOut))
-	case exit != 0 && (strings.Contains(errOut, "goroutine stack exceeds") || strings.Contains(errOut, "fatal error: stack overflow")):
-		// Go's trace of the overflow is hundreds of lines about the generated code
-		return failf(1, "alder eval: stack overflow (unbounded recursion?)")
-	case exit != 0: // the evaluation failed (or ran past scratch.Timeout)
-		if strings.HasPrefix(errOut, "panic: ") { // the Go goroutine dump says nothing about the input
-			errOut, _, _ = strings.Cut(errOut, "\n\n")
-		}
-		return failf(1, "alder eval: %s", strings.TrimSpace(errOut))
+	}
+	switch msg, outcome := classifyRun(errOut, exit); outcome {
+	case runInternal: // could not start
+		return failf(2, "alder eval: %s", msg)
+	case runOK:
+	default:
+		return failf(1, "alder eval: %s", devDBHint(msg, appBuild))
 	}
 	return evalPrint(stdout, jsonOut, &res, out, typ)
+}
+
+// runOutcome is how a scratch run ended (classifyRun).
+type runOutcome int
+
+const (
+	runOK       runOutcome = iota
+	runFailed              // the program reported a failure (a panic, a failed effect)
+	runCrashed             // it overflowed its stack or ran past its time limit
+	runInternal            // it could not be run at all
+)
+
+// classifyRun is what eval and the REPL report of a scratch run that ended with exit code exit
+// and standard error errOut (scratch.RunTethered's; the caller has already told its own
+// interruption apart): the message (without the tool's prefix) and how the run ended. A stack
+// overflow is one line (Go's trace of it is hundreds about the generated code), a panic its
+// first paragraph (the goroutine dump says nothing about the input), a timeout says so without
+// the scratch program's path.
+func classifyRun(errOut string, exit int) (string, runOutcome) {
+	switch {
+	case exit == 0:
+		return "", runOK
+	case exit == -1 && !timedOutRE.MatchString(errOut):
+		return strings.TrimSpace(errOut), runInternal
+	case strings.Contains(errOut, "goroutine stack exceeds") || strings.Contains(errOut, "fatal error: stack overflow"):
+		return "stack overflow (unbounded recursion?)", runCrashed
+	}
+	if m := timedOutRE.FindStringSubmatch(errOut); m != nil && exit == -1 {
+		return "the evaluation " + m[1], runCrashed
+	}
+	if strings.HasPrefix(errOut, "panic: ") {
+		errOut, _, _ = strings.Cut(errOut, "\n\n")
+	}
+	return strings.TrimSpace(errOut), runFailed
+}
+
+// timedOutRE is the line scratch.RunStream adds when a program runs past its deadline.
+var timedOutRE = regexp.MustCompile(`(?m)^scratch: .* (timed out.*)$`)
+
+// devDBHint rewrites the database's "run in dev mode to recreate the database" (a schema
+// mismatch: what the app's server says) for eval and the REPL, which never recreate it.
+func devDBHint(msg, appBuild string) string {
+	return strings.Replace(msg, "run in dev mode to recreate the database",
+		"start `alder run` (it recreates "+filepath.Join(appBuild, "dev.db")+") or delete it", 1)
 }
 
 // evalIt is the Go expression for the scratch module mod's `it` of type sig in the generated

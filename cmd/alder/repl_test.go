@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -106,14 +107,121 @@ func TestRepl_Diagnostic(t *testing.T) {
 		// and the let was not kept
 		"expr:1:1: error[E0002]",
 	)
-	if strings.Contains(out, "y : ") {
+	if strings.Contains(out, "alder> y : ") { // the line a kept let prints
 		t.Errorf("a let with an error was kept:\n%s", out)
 	}
 	// what follows `let` is not a name
-	out = replTodos(t, "let 3 = 4\n")
-	wantIn(t, out, "let (line 1): error[")
-	if strings.Contains(out, "y : ") {
+	out = replTodos(t, "let = 4\nlet x 3 = 4\n")
+	wantIn(t, out, "alder repl: a let name starts with a lowercase letter (`let todo = …`)\n", "let x (line 2): error[")
+	if strings.Contains(out, "alder> x : ") {
 		t.Errorf("a let with an error was kept:\n%s", out)
+	}
+}
+
+// A let's name is a value's: an uppercase one would be shadowed by the module or type of that
+// name; `it` is the expression's.
+func TestRepl_LetNames(t *testing.T) {
+	out := replTodos(t, "let Todo = 1\nlet ünï = 1\nlet it = 1\n:type Todo.countOpen\n")
+	if n := strings.Count(out, "alder repl: a let name starts with a lowercase letter (`let todo = …`)\n"); n != 2 {
+		t.Errorf("want the lowercase rule twice, got %d:\n%s", n, out)
+	}
+	wantIn(t, out, "alder repl: a let may not be named `it`, the name the REPL gives the expression; let another name\n",
+		"Todo.countOpen : List Todo -> Int\n")
+	if strings.Contains(out, "input line") {
+		t.Errorf("the REPL says input line:\n%s", out)
+	}
+}
+
+// Only the lets an expression uses are computed with it: a let that fails at run time breaks
+// the evaluations that use it, named, and no other.
+func TestRepl_UnusedLetsNotComputed(t *testing.T) {
+	needGoTool(t)
+	out := replTodos(t, "let loop n = loop (n + 1)\nlet boom = loop 0\nlet k = 40\n1 + 1\nk + 2\nboom + 1\n")
+	wantIn(t, out, "alder> 2 : Int\n", "alder> 42 : Int\n",
+		"alder repl: stack overflow (unbounded recursion?) (the lets it uses — loop, boom — are computed with it)\n")
+}
+
+func TestReachable(t *testing.T) {
+	mk := func(name, src string) replEntry {
+		return replEntry{item: item{Let: name != "", Name: name, Lines: []string{src}}}
+	}
+	lets := []replEntry{mk("a", "a = 1"), mk("b", "b = a + 1"), mk("c", `c = "b"`), mk("d", "d = 4"), mk("e", "e = c")}
+	var names []string
+	for _, l := range reachable(lets, mk("", "it = e + 1")) {
+		names = append(names, l.Name)
+	}
+	// e uses c; c's string mentions b, which is taken (over-taking is fine), and b uses a
+	if got := strings.Join(names, ","); got != "a,b,c,e" {
+		t.Errorf("got %s", got)
+	}
+}
+
+// A redefinition that a later let no longer checks with is refused, the let named.
+func TestRepl_RedefineRefused(t *testing.T) {
+	out := replTodos(t, "let a = 1\nlet b = a + 1\nlet a = \"x\"\n:type a\n")
+	wantIn(t, out, "alder repl: a not redefined: let b (line 2) uses it: error[E0003]", "a : Int\n")
+	if strings.Contains(out, "redefined a\n") {
+		t.Errorf("redefined:\n%s", out)
+	}
+}
+
+// A command's name ends at the first character that is not a letter or `!`; :type prints its
+// expression on one line.
+func TestRepl_CommandSyntax(t *testing.T) {
+	out := replTodos(t, ":type(1)\n:run!(Db.from Todo |> Db.all)\n:type [1,\\\n  2]\n")
+	wantIn(t, out, "(1) : Int\n", "`:run!` wants a Task; use `:run` for a Query", "[1, 2] : List Int\n")
+}
+
+// A line longer than the limit is refused, and the REPL reads on.
+func TestRepl_LineTooLong(t *testing.T) {
+	out := replTodos(t, strings.Repeat("x", maxLine+1)+"\n:type 1\n")
+	wantIn(t, out, "alder repl: line too long (limit 1 MB); ignored\n", "1 : Int\n")
+}
+
+// The REPL builds in a directory of its own, removed when it ends; it removes those of REPLs
+// that are gone, and keeps those of live ones.
+func TestRepl_BuildDirs(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	scratchDir := filepath.Join("build", "todos", "scratch")
+	gone := filepath.Join(scratchDir, "repl-99999999") // no such pid
+	live := filepath.Join(scratchDir, "repl-1")        // init
+	for _, d := range []string{gone, live} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(d+".lock", nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := startRepl(t, todosDir(t))
+	r.send(t, "1 + 1")
+	r.waitOut(t, "2 : Int\n", 1, 30*time.Second)
+	own := filepath.Join(scratchDir, fmt.Sprintf("repl-%d", os.Getpid()))
+	if _, err := os.Stat(filepath.Join(own, "scratch")); err != nil {
+		t.Errorf("the REPL's build: %v", err)
+	}
+	for _, p := range []string{gone, gone + ".lock"} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s: %v, want removed", p, err)
+		}
+	}
+	for _, p := range []string{live, live + ".lock"} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s of a live pid: %v", p, err)
+		}
+	}
+	r.in.Close()
+	select {
+	case code := <-r.done:
+		r.done <- code // for startRepl's cleanup
+	case <-time.After(10 * time.Second):
+		t.Fatal("the REPL did not end")
+	}
+	for _, p := range []string{own, own + ".lock"} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s after the REPL ended: %v", p, err)
+		}
 	}
 }
 
@@ -227,6 +335,9 @@ func TestRepl_ReloadDropsBrokenLet(t *testing.T) {
 	r.waitOut(t, "k : Int\n", 2, 10*time.Second)
 	r.send(t, ":type n")
 	r.waitOut(t, "expr:1:1: error[E0002]", 1, 10*time.Second)
+	if strings.Contains(r.out.String(), "dropped let k") {
+		t.Errorf("k was dropped:\n%s", r.out.String())
+	}
 	// the watcher sees the edit too, but the :reload already re-checked it: no second notice
 	time.Sleep(time.Second)
 	if strings.Contains(r.out.String(), "app changed") {
@@ -269,6 +380,22 @@ func TestRepl_BrokenApp(t *testing.T) {
 	r.waitOut(t, "2 : Int\n", 1, 30*time.Second)
 }
 
+// A let dropped on reload drops the lets that use it, in turn.
+func TestRepl_ReloadDropsDependents(t *testing.T) {
+	dir := replTemp(t)
+	r := startRepl(t, dir)
+	r.send(t, "let n = Todo.probe 1")
+	r.send(t, "let m = n + 1")
+	r.send(t, "let k = 2")
+	r.waitOut(t, "k : Int\n", 1, 10*time.Second)
+	dropProbe(t, dir)
+	r.send(t, ":reload")
+	r.waitOut(t, "dropped let m: error[E0002]", 1, 10*time.Second)
+	wantIn(t, r.out.String(), "dropped let n: error[")
+	r.send(t, ":type k")
+	r.waitOut(t, "k : Int\n", 2, 10*time.Second)
+}
+
 func TestRepl_AutoReload(t *testing.T) {
 	dir := replTemp(t)
 	r := startRepl(t, dir)
@@ -280,12 +407,26 @@ func TestRepl_AutoReload(t *testing.T) {
 	r.waitOut(t, "dropped let n: ", 1, time.Second)
 }
 
+// longEval is a pure expression that runs for minutes.
+const longEval = `List.range 1 100000 |> List.map (\i -> List.range 1 100000 |> List.length) |> List.sum`
+
 func TestRepl_InterruptDuringEval(t *testing.T) {
 	needGoTool(t)
 	t.Chdir(t.TempDir())
 	r := startRepl(t, todosDir(t))
-	r.send(t, `List.range 1 100000 |> List.map (\i -> List.range 1 100000 |> List.length) |> List.sum`)
-	time.Sleep(1500 * time.Millisecond) // built and running (the build alone stops too)
+	r.send(t, longEval)
+	// built (the directory is new: the executable is this build's), so running
+	bin := filepath.Join("build", "todos", "scratch", fmt.Sprintf("repl-%d", os.Getpid()), "scratch")
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		if _, err := os.Stat(bin); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("not built within 60 s")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	start := time.Now()
 	r.intr <- struct{}{}
 	r.waitOut(t, "alder repl: interrupted\n", 1, 10*time.Second)
@@ -294,6 +435,21 @@ func TestRepl_InterruptDuringEval(t *testing.T) {
 	}
 	r.send(t, "1 + 1")
 	r.waitOut(t, "2 : Int\n", 1, 30*time.Second)
+}
+
+// An interrupt during the build stops it (go build is killed).
+func TestRepl_InterruptDuringBuild(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	r := startRepl(t, todosDir(t))
+	r.send(t, longEval)
+	time.Sleep(300 * time.Millisecond) // building: a first build (vetted, in a new directory) takes longer
+	start := time.Now()
+	r.intr <- struct{}{}
+	r.waitOut(t, "alder repl: interrupted\n", 1, 10*time.Second)
+	if d := time.Since(start); d > 3*time.Second {
+		t.Errorf("the interrupt took %v", d)
+	}
 }
 
 func TestRepl_InterruptAtPrompt(t *testing.T) {
@@ -334,7 +490,7 @@ func TestRepl_Usage(t *testing.T) {
 		}
 	}
 	code, out := runRepl(t, "", todosDir(t), "--module", "Todo")
-	if code != 2 || !strings.Contains(out, "the app already has a module named Todo") {
+	if code != 2 || !strings.Contains(out, "the app already has a module named Todo; give --module another name\n") {
 		t.Errorf("--module Todo: exit %d\n%s", code, out)
 	}
 }

@@ -354,6 +354,30 @@ func TestEval_ModuleFlag(t *testing.T) {
 	if code, _, stderr := runEval(t, "", app, "--module", "probe", "1"); code != 2 || !strings.Contains(stderr, "module name") {
 		t.Errorf("bad --module: exit %d\nstderr: %s", code, stderr)
 	}
+	// a --module that is taken: not "pass --module", which was passed
+	if code, _, stderr := runEval(t, "", app, "--module", "Todo", "1"); code != 2 || !strings.Contains(stderr, "the app already has a module named Todo; give --module another name") {
+		t.Errorf("--module Todo: exit %d\nstderr: %s", code, stderr)
+	}
+}
+
+func TestClassifyRun(t *testing.T) {
+	for _, c := range []struct {
+		errOut  string
+		exit    int
+		msg     string
+		outcome runOutcome
+	}{
+		{"", 0, "", runOK},
+		{"scratch: exec: no such file\n", -1, "scratch: exec: no such file", runInternal},
+		{"runtime: goroutine stack exceeds 1000000000-byte limit\nfatal error: stack overflow\n\nruntime stack:\n…", 2, "stack overflow (unbounded recursion?)", runCrashed},
+		{"scratch: /tmp/x y/build/todos/scratch/eval/scratch timed out after 1m0s\n", -1, "the evaluation timed out after 1m0s", runCrashed},
+		{"panic: list index out of range\n\ngoroutine 1 [running]:\nmain.main()\n", 2, "panic: list index out of range", runFailed},
+		{"no such todo\n", 1, "no such todo", runFailed},
+	} {
+		if msg, outcome := classifyRun(c.errOut, c.exit); msg != c.msg || outcome != c.outcome {
+			t.Errorf("%q %d: got %q %d, want %q %d", c.errOut, c.exit, msg, outcome, c.msg, c.outcome)
+		}
+	}
 }
 
 // A line starting with a closer continues the item: a multi-line match or element pastes as
@@ -455,7 +479,7 @@ func TestEval_ModuleFlagStdlibName(t *testing.T) {
 	t.Chdir(t.TempDir())
 	for _, name := range []string{"List", "Http", "Prelude"} {
 		code, stdout, stderr := runEval(t, "", todosDir(t), "--module", name, "1")
-		if code != 2 || stdout != "" || !strings.Contains(stderr, name+" is a standard library module; pass --module <Name>") {
+		if code != 2 || stdout != "" || !strings.Contains(stderr, name+" is a standard library module; give --module another name") {
 			t.Errorf("%s: exit %d, stdout %q\nstderr: %s", name, code, stdout, stderr)
 		}
 	}
@@ -526,5 +550,25 @@ func TestEval_RunWithAdapters(t *testing.T) {
 		if got := strings.Contains(string(b), "adapters.Caps().Registry()"); got != withAdapters {
 			t.Errorf("adapters %v: main.go:\n%s", withAdapters, b)
 		}
+	}
+}
+
+// A let bound to a record literal is a structural record: where a table's record is expected,
+// the mismatch says to annotate it.
+func TestEval_StructuralRecordHint(t *testing.T) {
+	t.Chdir(t.TempDir())
+	in := "let t = { id: Todo.TodoId \"a\", title: Text.NonEmpty \"x\", done: False, due: Nothing, owner: User.UserId \"u\", created: Time.epoch }\nTodo.countOpen [t]\n"
+	code, _, stderr := runEval(t, in, todosDir(t), "-")
+	if code != 1 || !strings.Contains(stderr, "; the record has Todo's fields: annotate the let (`let x : Todo = …`), or give the value a signature") {
+		t.Errorf("exit %d\nstderr: %s", code, stderr)
+	}
+}
+
+// A schema mismatch of build/<app>/dev.db says what recreates it.
+func TestDevDBHint(t *testing.T) {
+	msg := "db: schema mismatch: …; changed tables: todos; run in dev mode to recreate the database"
+	want := "db: schema mismatch: …; changed tables: todos; start `alder run` (it recreates " + filepath.Join("build", "todos", "dev.db") + ") or delete it"
+	if got := devDBHint(msg, filepath.Join("build", "todos")); got != want {
+		t.Errorf("got %q", got)
 	}
 }

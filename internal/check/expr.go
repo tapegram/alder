@@ -419,7 +419,31 @@ func (mc *modCtx) mismatch(span diag.Span, got, expected types.Type) *diag.Diagn
 	if inner, ok := maybeOf(g); ok && c.u.Check(inner, e) == nil {
 		msg += "; match it: match m { Just x -> …, Nothing -> … }"
 	}
+	if sameFields(g, e) {
+		// a record literal bound without a signature (an eval or REPL let) is structural
+		msg += fmt.Sprintf("; the record has %s's fields: annotate the let (`let x : %s = …`), or give the value a signature", types.String(e), types.String(e))
+	}
 	return c.errorf(diag.TypeMismatch, span, "%s", msg)
+}
+
+// sameFields reports whether got is a structural record with exactly the field names of the
+// nominal record expected.
+func sameFields(got, expected types.Type) bool {
+	g, ok1 := got.(*types.Record)
+	e, ok2 := expected.(*types.Record)
+	if !ok1 || !ok2 || !g.Anonymous || e.Anonymous || len(g.Fields) != len(e.Fields) {
+		return false
+	}
+	names := map[string]bool{}
+	for _, f := range e.Fields {
+		names[f.Name] = true
+	}
+	for _, f := range g.Fields {
+		if !names[f.Name] {
+			return false
+		}
+	}
+	return true
 }
 
 // check verifies e against expected, pushing the expectation into literals, lambdas, branches and blocks.

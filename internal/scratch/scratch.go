@@ -6,6 +6,7 @@
 package scratch
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -119,9 +120,9 @@ func Compile(appDir string, extra *Module, mainGo string, purpose, out string) B
 
 // CompileChecked is the second half of Compile: it builds what c checked (Check's result for
 // the same app and extra module), so a caller that checked first does not check twice. It is
-// CompileCheckedWith with the default Options.
+// CompileCheckedWith with no cancellation and the default Options.
 func CompileChecked(c Checked, mainGo string, purpose, out string) Build {
-	return CompileCheckedWith(c, mainGo, purpose, out, Options{})
+	return CompileCheckedWith(context.Background(), c, mainGo, purpose, out, Options{})
 }
 
 // Options adjust CompileCheckedWith.
@@ -133,8 +134,11 @@ type Options struct {
 	NoVet bool
 }
 
-// CompileCheckedWith is CompileChecked with options.
-func CompileCheckedWith(c Checked, mainGo string, purpose, out string, o Options) (b Build) {
+// CompileCheckedWith is CompileChecked with options, stopped when ctx is done: `go vet` and `go
+// build` are killed (so a Ctrl-C during a build stops it), and the Build has no Binary and Err
+// ctx's error (context.Canceled or DeadlineExceeded; the caller, which owns ctx, says what
+// happened).
+func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, out string, o Options) (b Build) {
 	defer func() {
 		if r := recover(); r != nil {
 			b.Close()
@@ -146,6 +150,12 @@ func CompileCheckedWith(c Checked, mainGo string, purpose, out string, o Options
 	if b.Err != nil || res == nil || c.hasErrors || res.Holes > 0 {
 		return b
 	}
+	defer func() {
+		if ctx.Err() != nil { // whatever failed, it failed because it was stopped
+			b.Close()
+			b.Binary, b.Err = "", ctx.Err()
+		}
+	}()
 	appDir := c.appDir
 	abs, err := filepath.Abs(appDir)
 	if err != nil {
@@ -207,13 +217,16 @@ func CompileCheckedWith(c Checked, mainGo string, purpose, out string, o Options
 		return b
 	}
 	if !o.NoVet {
-		if b.Err = vet(b.Dir, files); b.Err != nil {
+		if b.Err = vet(ctx, b.Dir, files); b.Err != nil {
 			return b
 		}
 	}
-	if buildOut, err := buildkit.GoCmd(b.Dir, "build", "-mod=mod", "-o", "scratch", "./cmd"); err != nil {
+	if buildOut, err := buildkit.GoCmdContext(ctx, b.Dir, "build", "-mod=mod", "-o", "scratch", "./cmd"); err != nil {
+		if ctx.Err() != nil {
+			return b
+		}
 		if o.NoVet { // what vet would have said first
-			if b.Err = vet(b.Dir, files); b.Err != nil {
+			if b.Err = vet(ctx, b.Dir, files); b.Err != nil {
 				return b
 			}
 		}
@@ -227,10 +240,13 @@ func CompileCheckedWith(c Checked, mainGo string, purpose, out string, o Options
 // vet runs `go vet` on the scratch module in dir (files are the generated ones) and returns
 // nil, or why it does not vet: buildkit.VetApp's error when the generated package is at fault,
 // else the main's or the adapters'.
-func vet(dir string, files map[string][]byte) error {
-	vetOut, err := buildkit.GoCmd(dir, "vet", "-mod=mod", "./...")
+func vet(ctx context.Context, dir string, files map[string][]byte) error {
+	vetOut, err := buildkit.GoCmdContext(ctx, dir, "vet", "-mod=mod", "./...")
 	if err == nil {
 		return nil
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 	if verr := buildkit.VetApp(dir, files, "."); verr != nil {
 		return verr

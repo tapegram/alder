@@ -1,6 +1,7 @@
 package scratch
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -240,6 +241,23 @@ func TestCompile_LockHeldUntilClose(t *testing.T) {
 	}
 }
 
+// A done context stops the build: no binary, and Err is the context's error.
+func TestCompileCheckedWith_Cancelled(t *testing.T) {
+	needGo(t)
+	c := Check("../../examples/todos", &Module{Source: "it = 1\n", Infer: true})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	b := CompileCheckedWith(ctx, c, printMain, "", t.TempDir(), Options{})
+	defer b.Close()
+	if b.Runnable() || !errors.Is(b.Err, context.Canceled) {
+		t.Fatalf("runnable %v, err %v", b.Runnable(), b.Err)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("the cancelled build took %v", d)
+	}
+}
+
 // With NoVet a main that builds but does not vet runs; one that does not build either is told
 // apart from a generated-code failure by the vet CompileCheckedWith then runs: the main or the
 // adapters "does not vet", as without NoVet.
@@ -249,11 +267,11 @@ func TestCompileCheckedWith_NoVet(t *testing.T) {
 	vetBad := strings.Replace(printMain, "fmt.Println(app.Scratch__it)", `fmt.Printf("%d\n", "x"); fmt.Println(app.Scratch__it)`, 1)
 	out := t.TempDir()
 	c := Check("../../examples/todos", extra)
-	if b := CompileCheckedWith(c, vetBad, "", out, Options{}); b.Err == nil || !strings.Contains(b.Err.Error(), "does not vet") {
+	if b := CompileCheckedWith(context.Background(), c, vetBad, "", out, Options{}); b.Err == nil || !strings.Contains(b.Err.Error(), "does not vet") {
 		b.Close()
 		t.Fatalf("with vet: %v", b.Err)
 	}
-	b := CompileCheckedWith(c, vetBad, "", out, Options{NoVet: true})
+	b := CompileCheckedWith(context.Background(), c, vetBad, "", out, Options{NoVet: true})
 	if b.Err != nil || !b.Runnable() {
 		t.Fatalf("no vet: %v", b.Err)
 	}
@@ -262,7 +280,7 @@ func TestCompileCheckedWith_NoVet(t *testing.T) {
 	}
 	b.Close()
 	broken := strings.Replace(printMain, "fmt.Println(app.Scratch__it)", `var n int = "x"; fmt.Println(n, app.Scratch__it)`, 1)
-	b = CompileCheckedWith(c, broken, "", out, Options{NoVet: true})
+	b = CompileCheckedWith(context.Background(), c, broken, "", out, Options{NoVet: true})
 	defer b.Close()
 	if b.Err == nil || !strings.Contains(b.Err.Error(), "(the main or the adapters) does not vet") || b.Runnable() {
 		t.Errorf("neither vets nor builds: %v", b.Err)
