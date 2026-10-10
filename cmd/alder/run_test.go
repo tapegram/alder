@@ -311,10 +311,10 @@ func TestRun_EditReloads(t *testing.T) {
 	r := startRun(t)
 	old := generation(t, get(t, r.base+"/login"))
 	events := sse(t, r.base+"/_dev/reload?b="+old)
-	edit(t, r.dir, "app/Layout.alder", `"Dark mode"`, `"Dark mode!"`)
+	edit(t, r.dir, "app/Layout.alder", `<main>`, `<main class="edited">`)
 	waitFor(t, events, wantReload, 60*time.Second)
 	body := get(t, r.base+"/login")
-	if !strings.Contains(body, "Dark mode!") {
+	if !strings.Contains(body, `<main class="edited">`) {
 		t.Fatalf("the new build is not serving:\n%s", body)
 	}
 	if gen := generation(t, body); gen == old {
@@ -362,9 +362,9 @@ func TestRun_ErrorThenFixReloads(t *testing.T) {
 func TestRun_CoalescesSaves(t *testing.T) {
 	r := startRun(t)
 	events := r.subscribe(t)
-	edit(t, r.dir, "app/Layout.alder", `"Dark mode"`, `"Dark mode!"`)
+	edit(t, r.dir, "app/Layout.alder", `<main>`, `<main class="edited">`)
 	time.Sleep(50 * time.Millisecond)
-	edit(t, r.dir, "app/Layout.alder", `"Light mode"`, `"Light mode!"`)
+	edit(t, r.dir, "app/Layout.alder", `</title>`, `!</title>`)
 	waitFor(t, events, "location.reload()", 60*time.Second)
 	select {
 	case e := <-events:
@@ -408,7 +408,7 @@ func TestRun_StartupCrashKeepsOld(t *testing.T) {
 	if err := os.Mkdir(db, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	edit(t, r.dir, "app/Layout.alder", `"Dark mode"`, `"Dark mode!"`)
+	edit(t, r.dir, "app/Layout.alder", `<main>`, `<main class="edited">`)
 	seen := waitFor(t, events, "selector #_alder_errors", 120*time.Second)
 	overlay := seen[len(seen)-1]
 	for _, want := range []string{"alder run: the app did not start (exit status 1):", "data: elements alder: "} {
@@ -417,7 +417,7 @@ func TestRun_StartupCrashKeepsOld(t *testing.T) {
 		}
 	}
 	body := get(t, r.base+"/login") // the old child still serves, as the same generation
-	if strings.Contains(body, "Dark mode!") || generation(t, body) != gen {
+	if strings.Contains(body, `<main class="edited">`) || generation(t, body) != gen {
 		t.Fatalf("the old child is not the one serving /login:\n%s", body)
 	}
 	quiet(t, events, time.Second) // no reload
@@ -448,9 +448,9 @@ func TestRun_RuntimeCrashThenRecovers(t *testing.T) {
 	if g := generation(t, body); g != gen { // the 502 page waits for a generation after the crashed one
 		t.Fatalf("the 502 page's generation is %q, want %q", g, gen)
 	}
-	edit(t, r.dir, "app/Layout.alder", `"Dark mode"`, `"Dark mode!"`)
+	edit(t, r.dir, "app/Layout.alder", `<main>`, `<main class="edited">`)
 	waitFor(t, events, wantReload, 120*time.Second)
-	if body := get(t, r.base+"/login"); !strings.Contains(body, "Dark mode!") {
+	if body := get(t, r.base+"/login"); !strings.Contains(body, `<main class="edited">`) {
 		t.Fatalf("the new build is not serving:\n%s", body)
 	}
 }

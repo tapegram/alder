@@ -5,40 +5,19 @@
   (name Text)
   (passwordHash Text)
   (created Time))
-(module Theme)
-(union Theme.Theme (Light) (Dark))
-(value Theme.flip : Theme -> Theme (theme)
-  (match union (var theme)
-    (case Light (ctor Theme.Theme.Dark))
-    (case Dark (ctor Theme.Theme.Light))))
-(test "flip alternates" pure
-  (test-eq
-    (call (global Theme.flip)
-      (call (global Theme.flip) (ctor Theme.Theme.Light)))
-    (ctor Theme.Theme.Light)))
 (module Layout)
-(component Layout.Page : { title: Text, theme: Theme, children: List (Html a) } -> Html a (props)
+(component Layout.Page : { title: Text, children: List (Html a) } -> Html a (props)
   (elem html
-    (attr class text
-      (if (== : Theme (field theme (var props)) (ctor Theme.Theme.Dark))
-        "dark"
-        ""))
     (elem head
       (elem meta (attr charset text "utf-8"))
       (elem title (hexpr text (field title (var props))))
       (elem link
         (attr rel text "stylesheet")
         (attr href href (call (std Url.external) "/static/app.css"))))
-    (elem body
-      (elem nav
-        (elem button (attr click click (ctor App.Msg.SwitchTheme))
-          (hif (== : Theme (field theme (var props)) (ctor Theme.Theme.Dark))
-            (hexpr text "Light mode")
-            (hexpr text "Dark mode"))))
-      (elem main (hexpr list (field children (var props)))))))
+    (elem body (elem main (hexpr list (field children (var props)))))))
 (module App)
-(record App.Session (user Maybe Text) (theme Theme = (ctor Theme.Theme.Light)))
-(union App.Msg (Logout) (SwitchTheme))
+(record App.Session (user Maybe Text))
+(union App.Msg (Logout))
 (value App.update : Msg -> Session -> Task Nav (msg session)
   (match union (var msg)
     (case Logout
@@ -48,23 +27,14 @@
             (update (var s) (user (ctor Prelude.Maybe.Nothing)))))
         (pure task
           (ctor Prelude.Nav.Redirect
-            (record (value (page-ref Auth.Login (record Auth.Login.Params))))))))
-    (case SwitchTheme
-      (bind task _
-        (call (std Session.put)
-          (lambda (s : Session)
-            (update (var s)
-              (theme (call (global Theme.flip) (field theme (var s)))))))
-        (pure task (ctor Prelude.Nav.Rerender))))))
+            (record (value (page-ref Auth.Login (record Auth.Login.Params))))))))))
 (value App.error : Error -> Html Never (err)
   (comp Layout.Page
-    (record (title "Error") (theme (ctor Theme.Theme.Light)))
+    (record (title "Error"))
     (elem h1 (htext "Something went wrong"))
     (elem p (htext "Please try again."))))
 (value App.notFound : Html Never ()
-  (comp Layout.Page
-    (record (title "Not found") (theme (ctor Theme.Theme.Light)))
-    (elem h1 (htext "Not found"))))
+  (comp Layout.Page (record (title "Not found")) (elem h1 (htext "Not found"))))
 (module Auth.Login)
 (record Auth.Login.Model)
 (record Auth.Login.Credentials (email Text) (password Text))
@@ -106,7 +76,7 @@
                   (record (value "Email or password is incorrect.")))))))))))
 (value Auth.Login.view : Model -> App.Session -> Html Msg (model session)
   (comp Layout.Page
-    (record (title "Log in") (theme (field theme (var session))))
+    (record (title "Log in"))
     (elem h1 (htext "Log in"))
     (form-el Auth.Login.Submit
       (attr submit submit (ctor Auth.Login.Msg.Submit (record SubmitParams)))
@@ -170,7 +140,7 @@
   (Submit SubmitParams)
   (Toggle ToggleParams)
   (Delete DeleteParams))
-(record Todos.Index.Session (user Text) (theme Theme))
+(record Todos.Index.Session (user Text))
 (value Todos.Index.load : Params -> Session -> Query Model (params session)
   (bind query todos : List Todo
     (db-select Todo.Todo
@@ -237,7 +207,7 @@
       (case Nothing (not-found)))))
 (value Todos.Index.view : Model -> Session -> Html Msg (model session)
   (comp Layout.Page
-    (record (title "Todos") (theme (field theme (var session))))
+    (record (title "Todos"))
     (elem h1 (htext "Todos"))
     (form-el Todos.Index.Submit
       (attr submit submit (ctor Todos.Index.Msg.Submit (record SubmitParams)))
@@ -313,7 +283,7 @@
           (call (global Todos.Index.update)
             (ctor Todos.Index.Msg.Toggle (record ToggleParams (id (var id))))
             (record Model (filter (ctor Todo.Filter.All)) (todos (list)))
-            (record Session (user (var me)) (theme (ctor Theme.Theme.Light)))))
+            (record Session (user (var me)))))
         (bind task after : Maybe Todo
           (db-get Todo.Todo (var id))
           (let done : Maybe Bool
@@ -344,9 +314,7 @@
             (call (global Todos.Index.update)
               (ctor Todos.Index.Msg.Toggle (record ToggleParams (id (var id))))
               (record Model (filter (ctor Todo.Filter.All)) (todos (list)))
-              (record Session
-                (user (var stranger))
-                (theme (ctor Theme.Theme.Light)))))
+              (record Session (user (var stranger)))))
           (bind task after : Maybe Todo
             (db-get Todo.Todo (var id))
             (let done : Maybe Bool
@@ -370,7 +338,7 @@
 (record Todos.Show.Params (id Text))
 (record Todos.Show.SaveParams (form EditTodo))
 (union Todos.Show.Msg (Save SaveParams) (Delete))
-(record Todos.Show.Session (user Text) (theme Theme))
+(record Todos.Show.Session (user Text))
 (value Todos.Show.load : Params -> Session -> Query Model (params session)
   (bind query found : Maybe Todo
     (db-get Todo.Todo (field id (var params)))
@@ -411,9 +379,7 @@
                   (record Todos.Index.Params (filter (ctor Todo.Filter.All))))))))))))
 (value Todos.Show.view : Model -> Session -> Html Msg (model session)
   (comp Layout.Page
-    (record
-      (title (field title (field todo (var model))))
-      (theme (field theme (var session))))
+    (record (title (field title (field todo (var model)))))
     (elem h1 (hexpr text (field title (field todo (var model)))))
     (form-el Todos.Show.Save
       (attr submit submit (ctor Todos.Show.Msg.Save (record SaveParams)))
@@ -473,7 +439,6 @@
   (load Todos.Show.load)
   (update Todos.Show.update))
 (app-msg Logout)
-(app-msg SwitchTheme)
 (app-update App.update)
 (session App.Session)
 (capability Auth.Login.Password

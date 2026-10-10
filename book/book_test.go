@@ -748,18 +748,18 @@ func sameAsExample(m, src string) string {
 }
 
 func TestSameAsExample(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join(todosApp, "app", "Theme.alder"))
+	b, err := os.ReadFile(filepath.Join(todosApp, "app", "Todo.alder"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	src := string(b)
-	if msg := sameAsExample("Theme", "\n\n"+strings.ReplaceAll(src, "\n", "\n\n")); msg != "" {
+	if msg := sameAsExample("Todo", "\n\n"+strings.ReplaceAll(src, "\n", "\n\n")); msg != "" {
 		t.Errorf("blank lines aside the same, got %q", msg)
 	}
-	if msg := sameAsExample("Theme", strings.Replace(src, "flip", "flop", 1)); !strings.Contains(msg, "differ from") {
+	if msg := sameAsExample("Todo", strings.Replace(src, "countOpen", "countAll", 1)); !strings.Contains(msg, "differ from") {
 		t.Errorf("a changed line: got %q", msg)
 	}
-	if msg := sameAsExample("Theme", src+"\nextra = 1\n"); !strings.Contains(msg, `"extra = 1"`) {
+	if msg := sameAsExample("Todo", src+"\nextra = 1\n"); !strings.Contains(msg, `"extra = 1"`) {
 		t.Errorf("an extra line: got %q", msg)
 	}
 	if msg := sameAsExample("Extra", "module Extra\n"); msg != "" {

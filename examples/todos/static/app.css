@@ -10,17 +10,8 @@ body {
   background: #ffffff;
 }
 
-html.dark body {
-  color: #e6edf3;
-  background: #0d1117;
-}
-
 a {
   color: #0969da;
-}
-
-html.dark a {
-  color: #58a6ff;
 }
 
 label {

@@ -54,7 +54,7 @@ func TestEval_UsesAppModules(t *testing.T) {
 	needGoTool(t)
 	t.Chdir(t.TempDir())
 	evalOK(t, "0 : Int\n", "Todo.countOpen []")
-	evalOK(t, "Dark : Theme\n", "Theme.flip Light")
+	evalOK(t, "\"Active\" : Text\n", "Todo.filterLabel Active")
 }
 
 func TestEval_Record(t *testing.T) {
@@ -123,7 +123,7 @@ func TestEval_BrokenAppReportsDiagnostics(t *testing.T) {
 	tmp := t.TempDir()
 	copyDir(t, todosDir(t), filepath.Join(tmp, "todos"))
 	t.Chdir(tmp)
-	path := filepath.Join("todos", "app", "Theme.alder")
+	path := filepath.Join("todos", "app", "Todo.alder")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +133,7 @@ func TestEval_BrokenAppReportsDiagnostics(t *testing.T) {
 	if code != 1 || stdout != "" {
 		t.Errorf("exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
 	}
-	if !strings.Contains(stderr, "app/Theme.alder:") || !strings.Contains(stderr, "E0003") || !strings.Contains(stderr, `broken = "x"`) {
+	if !strings.Contains(stderr, "app/Todo.alder:") || !strings.Contains(stderr, "E0003") || !strings.Contains(stderr, `broken = "x"`) {
 		t.Errorf("stderr lacks the app's diagnostic with its source line:\n%s", stderr)
 	}
 	// no app at all is a usage/internal failure

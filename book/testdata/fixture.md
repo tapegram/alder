@@ -3,7 +3,7 @@
 One block of each kind the verifier knows. `TestBook_FixtureFails` wants exactly four failures:
 the wrong `eval=`, signature, declaration and `error=` message below.
 
-A whole module, replacing the example's `Theme`:
+A whole module, one the example does not have:
 
 ```alder
 module Theme
@@ -85,14 +85,14 @@ A module walked through in pieces, checked whole:
 ```alder part=Extra
 module Extra
 
-import Theme
+import Todo
 ```
 
 Prose between the pieces.
 
 ```alder part=Extra
-dark : Theme
-dark = Theme.flip Light
+active : Todo.Filter
+active = Active
 ```
 
 A wrong signature (the second failure):

@@ -2,7 +2,6 @@ module Todos.Index
 
 import Todo
 import Layout
-import Theme
 import User
 
 page "/" { filter: Todo.Filter = All } requires user
@@ -63,7 +62,7 @@ owned id session = {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Layout.Page title="Todos" theme={session.theme}>
+  <Layout.Page title="Todos">
     <h1>Todos</h1>
 
     <form submit={Submit}>
@@ -105,7 +104,7 @@ Item props =
 test "Toggle flips done" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
-  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: me, theme: Light })
+  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: me })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.get Todo", "Db.update Todo"], done: Just True })
@@ -115,7 +114,7 @@ test "Toggle by another user is not found" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let stranger = User.UserId "someone-else"
-  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger, theme: Light })
+  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ value: r.value, trace: r.trace, done: done } == { value: Err "not found", trace: ["Db.get Todo"], done: Just False })

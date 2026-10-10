@@ -638,27 +638,10 @@ func TestE2E_Todos(t *testing.T) {
 	r.html(t)
 	r.lacks(t, "password service down", "<!-- error")
 
-	// 13. App messages (the URLs the layout renders): SwitchTheme goes back to the Referer with
-	// the theme flipped; Logout redirects to the login page (the app's update says so) with no
-	// user
-	if s, _ := e.session(); s.Theme.Tag != is__Theme__Theme__Light {
-		t.Fatalf("theme before = %v", s.Theme)
-	}
+	// 13. App messages (the URL the page renders): Logout redirects to the login page (the app's
+	// update says so) with no user
 	r = e.do("GET", "/", nil)
-	switchTheme := msgURL(t, r.body, "/_m/App/SwitchTheme", "")
 	logout := msgURL(t, r.body, "/_m/App/Logout", "")
-	r = e.do("POST", switchTheme, nil, "Referer: "+e.srv.URL+"/")
-	r.redirect(t, "/")
-	if s, raw := r.cookieSet(t); s.Theme.Tag != is__Theme__Theme__Dark || s.User.Val != uid {
-		t.Fatalf("session after SwitchTheme: %s", raw)
-	}
-	r = e.do("GET", "/", nil)
-	r.want(t, 200, `<html class="dark">`, `>Light mode</button>`)
-	r = e.do("POST", switchTheme, nil, "Referer: "+e.srv.URL+"/?filter=Active", datastarHdr)
-	r.navigate(t, "/?filter=Active")
-	if s, raw := r.cookieSet(t); s.Theme.Tag != is__Theme__Theme__Light {
-		t.Fatalf("session after the second SwitchTheme: %s", raw)
-	}
 	r = e.do("POST", logout, nil, datastarHdr)
 	r.navigate(t, "/login")
 	if s, raw := r.cookieSet(t); s.User.Ok {
@@ -670,7 +653,7 @@ func TestE2E_Todos(t *testing.T) {
 	}
 	r = e.do("POST", logout, nil)
 	r.redirect(t, "/login")
-	if s, raw := r.cookieSet(t); s.User.Ok || s.Theme.Tag != is__Theme__Theme__Light {
+	if s, raw := r.cookieSet(t); s.User.Ok {
 		t.Fatalf("session after Logout: %s", raw)
 	} else {
 		t.Logf("session after Logout: %s", raw)

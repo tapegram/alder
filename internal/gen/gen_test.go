@@ -1634,7 +1634,7 @@ func TestTodos(t *testing.T) {
 	if err != nil || uid == "" {
 		t.Fatalf("insert user: %q, %v", uid, err)
 	}
-	env.Session = App__Session{User: rt.Nothing[string](), Theme: Theme__Theme__Light__}
+	env.Session = App__Session{User: rt.Nothing[string]()}
 	if len(Capabilities) != 1 || Capabilities[0] != "Auth.Login.Password" {
 		t.Fatalf("Capabilities = %v", Capabilities)
 	}
@@ -1687,7 +1687,7 @@ func TestTodos(t *testing.T) {
 	if !app.User.Ok || app.User.Val != uid {
 		t.Fatalf("login did not set the session user: %+v", app)
 	}
-	session := Todos__Index__Session{User: app.User.Val, Theme: app.Theme}
+	session := Todos__Index__Session{User: app.User.Val}
 	model := Todos__Index__Model{Filter: Todo__Filter__All__}
 
 	update := func(msg Todos__Index__Msg) (rt.Nav, error) {
@@ -1738,7 +1738,7 @@ func TestTodos(t *testing.T) {
 
 	// the show page loads the user's own todo, and not one that does not exist
 	mark = len(env.Trace)
-	shown, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: td.Id}, Todos__Show__Session{User: uid, Theme: app.Theme}))
+	shown, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: td.Id}, Todos__Show__Session{User: uid}))
 	if err != nil || shown.Todo.Title != "Buy milk" {
 		t.Fatalf("show: %+v, %v", shown, err)
 	}
@@ -1754,7 +1754,7 @@ func TestTodos(t *testing.T) {
 	if _, err := update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: "nope"})); err != eff.ErrNotFound {
 		t.Fatalf("toggle missing: err = %v, want ErrNotFound", err)
 	}
-	other := Todos__Index__Session{User: "someone else", Theme: session.Theme}
+	other := Todos__Index__Session{User: "someone else"}
 	if _, err := eff.Run(env, eff.KTask, Todos__Index__update(Todos__Index__Msg__Delete__(Todos__Index__DeleteParams{Id: td.Id}), model, other)); err != eff.ErrNotFound {
 		t.Fatalf("delete other's: err = %v, want ErrNotFound", err)
 	}
@@ -1781,29 +1781,23 @@ func TestTodos(t *testing.T) {
 	}
 	calls("load", "Db.all Todo")
 
-	// App's update: switch the theme, then log out
-	if nav, err := eff.Run(env, eff.KTask, App__update(App__Msg__SwitchTheme__, env.Session.(App__Session))); err != nil || nav.Tag != rt.NavRerender {
-		t.Fatalf("switch theme: %+v, %v", nav, err)
+	// a Task that fails after Session.put leaves the session as it was (I1); a successful one
+	// that touches no table begins no transaction (I2: the in-memory store's single connection
+	// would otherwise be held)
+	before := env.Session.(App__Session)
+	logoutThenFail := eff.Bind(App__update(App__Msg__Logout__, before), func(rt.Nav) eff.Task[rt.Nav] { return eff.Fail[rt.Nav]("boom") })
+	if _, err := eff.Run(env, eff.KTask, logoutThenFail); !errors.As(err, &fail) || fail.Msg != "boom" {
+		t.Fatalf("logout then fail: err = %v", err)
 	}
-	if s := env.Session.(App__Session); s.Theme.Tag != is__Theme__Theme__Dark {
-		t.Fatalf("theme not switched: %+v", s)
+	if s := env.Session.(App__Session); s != before || !s.User.Ok {
+		t.Fatalf("failed Task kept its session change: %+v, want %+v", s, before)
 	}
+	// App's update: log out
 	if nav, err := eff.Run(env, eff.KTask, App__update(App__Msg__Logout__, env.Session.(App__Session))); err != nil || nav.Tag != rt.NavRedirect || nav.Page.Path != "/login" {
 		t.Fatalf("logout: %+v, %v", nav, err)
 	}
 	if s := env.Session.(App__Session); s.User.Ok {
 		t.Fatalf("logout kept the user: %+v", s)
-	}
-	// a Task that fails after Session.put leaves the session as it was (I1); a successful one
-	// that touches no table begins no transaction (I2: the in-memory store's single connection
-	// would otherwise be held)
-	before := env.Session.(App__Session)
-	switchThenFail := eff.Bind(App__update(App__Msg__SwitchTheme__, before), func(rt.Nav) eff.Task[rt.Nav] { return eff.Fail[rt.Nav]("boom") })
-	if _, err := eff.Run(env, eff.KTask, switchThenFail); !errors.As(err, &fail) || fail.Msg != "boom" {
-		t.Fatalf("switch then fail: err = %v", err)
-	}
-	if s := env.Session.(App__Session); s != before {
-		t.Fatalf("failed Task kept its session change: %+v, want %+v", s, before)
 	}
 	t.Logf("trace: %v", env.Trace)
 	t.Logf("log: %d lines", len(logs))
@@ -1828,10 +1822,10 @@ func TestServe(t *testing.T) {
 		t.Fatalf("Serve in production with a secret: %v", err)
 	}
 	c := session__codec{}
-	if d := c.Default().(App__Session); d.User.Ok || d.Theme.Tag != is__Theme__Theme__Light {
+	if d := c.Default().(App__Session); d.User.Ok {
 		t.Fatalf("Default = %+v", d)
 	}
-	s := App__Session{User: rt.Just("u"), Theme: Theme__Theme__Dark__}
+	s := App__Session{User: rt.Just("u")}
 	b, err := c.Encode(s)
 	if err != nil {
 		t.Fatal(err)
@@ -1839,7 +1833,7 @@ func TestServe(t *testing.T) {
 	if got, err := c.Decode(b); err != nil || got.(App__Session) != s {
 		t.Fatalf("Decode(Encode(s)) = %+v, %v", got, err)
 	}
-	if got, err := c.Decode([]byte(` + "`" + `{"User":{"Ok":true,"Val":"v"}}` + "`" + `)); err != nil || got.(App__Session).User.Val != "v" || got.(App__Session).Theme.Tag != is__Theme__Theme__Light {
+	if got, err := c.Decode([]byte(` + "`" + `{"User":{"Ok":true,"Val":"v"}}` + "`" + `)); err != nil || got.(App__Session).User.Val != "v" {
 		t.Fatalf("Decode of a partial session = %+v, %v", got, err)
 	}
 	if _, err := c.Decode([]byte("nope")); err == nil {
@@ -2642,7 +2636,7 @@ func TestShow(t *testing.T) {
 }
 
 // runTodosShowTest prints todos values with rt.Show: unions from every module file (Todo,
-// Theme, the page's and App's Msg) print by their constructor names, never as Go.
+// the page's and App's Msg) print by their constructor names, never as Go.
 const runTodosShowTest = `
 
 func TestTodosShow(t *testing.T) {
@@ -2654,8 +2648,8 @@ func TestTodosShow(t *testing.T) {
 		{Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: "x"}), "Toggle { id: \"x\" }"},
 		{Todos__Index__Msg__Submit__(Todos__Index__SubmitParams{Form: Todos__Index__NewTodo{Title: "Milk", Due: due}}),
 			"Submit { form: { title: \"Milk\", due: Just 2026-10-09 } }"},
-		{App__Msg__SwitchTheme__, "SwitchTheme"},
-		{App__Session{User: rt.Just("u1"), Theme: Theme__Theme__Dark__}, "{ user: Just \"u1\", theme: Dark }"},
+		{App__Msg__Logout__, "Logout"},
+		{App__Session{User: rt.Just("u1")}, "{ user: Just \"u1\" }"},
 		{Todos__Index__Model{Filter: Todo__Filter__Active__, Todos: []Todo__Todo{{Id: "1", Title: "a", Created: time.Unix(0, 0)}}},
 			"{ filter: Active, todos: [{ id: \"1\", title: \"a\", done: False, due: Nothing, owner: \"\", created: 1970-01-01T00:00:00Z }] }"},
 	} {

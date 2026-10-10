@@ -174,6 +174,98 @@ update msg session = match msg {
 An app-level message value is accepted in `Html a` for every `a`, so a
 layout component typed `Html a` can contain `click={App.Logout}`.
 
+### Example: a theme switch
+
+The to-do app has one app-level message, `Logout`. A switch between a
+light and a dark theme is the other usual one, and it uses every piece an
+app-level message can involve: a type for the state, a session field to
+keep it in, the message and its arm of `App.update`, and a button that
+every page shows. (The example app leaves it out, so that its `App`,
+`Layout` and login page are a skeleton a new app can copy and check
+without writing anything else.) Here is how to add it.
+
+The state is a union, in a module of its own, `app/Theme.alder`:
+
+```alder
+module Theme
+
+type Theme = Light | Dark
+
+flip : Theme -> Theme
+flip theme = match theme {
+  Light -> Dark,
+  Dark -> Light,
+}
+
+test "flip alternates" = flip (flip Light) == Light
+```
+
+`App` imports it, gives the session a field for it, and declares the
+message. This block is an excerpt, and the verifier does not check it: an
+app declares its `session` once, and the example's `App` (in "The `App`
+module", below) already does. The new lines are the `import`, the
+`theme` field, `msg SwitchTheme` and its arm:
+
+```alder fragment
+-- in App
+import Theme
+
+session { user: Maybe User.UserId, theme: Theme = Light }
+
+msg Logout
+msg SwitchTheme
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Logout p -> ...,
+  SwitchTheme p -> {
+    let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
+    Task.succeed Rerender
+  },
+}
+```
+
+`theme: Theme = Light` has a default, so a visitor's first request, and a
+cookie from before the field existed, get `Light` ("The session cookie",
+below). `Rerender` sends the browser back to the page the button was on,
+which loads again with the new session.
+
+The layout cannot read the session; it takes the theme as a prop, sets a
+class the stylesheet can use (`html.dark body { ... }`), and shows the
+button. Also an excerpt, of `app/Layout.alder`:
+
+```alder fragment
+-- in Layout
+import Theme
+
+Page : { title: Text, theme: Theme, children: List (Html a) } -> Html a
+Page props =
+  <html class={if props.theme == Dark then "dark" else ""}>
+    ...
+    <body>
+      <nav>
+        <button click={App.SwitchTheme}>{if props.theme == Dark then "Light mode" else "Dark mode"}</button>
+      </nav>
+      <main>{props.children}</main>
+    </body>
+  </html>
+```
+
+Every call of `Layout.Page` then passes a theme: a page passes its
+session's, and `App.error` and `App.notFound`, which have no session,
+pass `Light`:
+
+```alder fragment
+<Layout.Page title="Todos" theme={session.theme}>
+<Layout.Page title="Error" theme={Light}>
+```
+
+That is the cost of the feature, and why the example does without it:
+every page's `view` passes the theme on, and a test that builds a session
+by hand names the field too, `{ user: me, theme: Light }` (chapter 10,
+"Testing effects"), because a record literal lists every field, defaults
+or not (chapter 12, "Open questions").
+
 ## `form`
 
 ```alder
@@ -297,14 +389,12 @@ module App
 
 import User
 import Layout
-import Theme
 
-session { user: Maybe User.UserId, theme: Theme = Light }
+session { user: Maybe User.UserId }
 
 login = Auth.Login
 
 msg Logout
-msg SwitchTheme
 
 update : Msg -> Session -> Task Nav
 update msg session = match msg {
@@ -312,22 +402,18 @@ update msg session = match msg {
     let _ <- Session.put (\s -> { s | user: Nothing })
     Task.succeed (Redirect (Auth.Login {}))
   },
-  SwitchTheme p -> {
-    let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
-    Task.succeed Rerender
-  },
 }
 
 error : Error -> Html Never
 error err =
-  <Layout.Page title="Error" theme={Light}>
+  <Layout.Page title="Error">
     <h1>Something went wrong</h1>
     <p>Please try again.</p>
   </Layout.Page>
 
 notFound : Html Never
 notFound =
-  <Layout.Page title="Not found" theme={Light}>
+  <Layout.Page title="Not found">
     <h1>Not found</h1>
   </Layout.Page>
 ```
@@ -443,7 +529,7 @@ header. A message URL without the keys a page needs, such as a `Save` for
 `/todos/{id}` without `_p.id`, gets a 404.
 
 The URLs of App messages carry the `_p.` keys too
-(`/_m/App/SwitchTheme?_p.filter=Active`), but `App.update` has no page, so
+(`/_m/App/Logout?_p.filter=Active`), but `App.update` has no page, so
 its handler ignores them.
 
 ### The session cookie
@@ -454,7 +540,7 @@ it, both in unpadded base64url (`Sign` in `rt/web/session.go`). After
 logging in to the to-do app, the first part decodes to
 
 ```json
-{"exp":1794165032,"session":{"Theme":"Light","User":{"Ok":true,"Val":"oV5Et5NZUPszOeLnOSSB"}}}
+{"exp":1794165032,"session":{"User":{"Ok":true,"Val":"oV5Et5NZUPszOeLnOSSB"}}}
 ```
 
 `session` is the session. `exp` is when the cookie stops counting, in
@@ -462,9 +548,9 @@ seconds since 1970: 30 days after the session was last stored. The server
 checks it itself, so a copied cookie is no good after that, whatever the
 browser keeps, and a cookie without `exp` is no session at all.
 
-A union without payloads, such as `Theme`, is stored by its constructor's
-name, so reordering the constructors doesn't change what an old cookie
-means. A field the cookie lacks, or whose value no longer decodes, gets its
+A union without payloads, such as the `Theme` of "App-level messages"
+above, is stored by its constructor's name (`"Theme":"Dark"`), so
+reordering the constructors doesn't change what an old cookie means. A field the cookie lacks, or whose value no longer decodes, gets its
 default.
 
 The cookie is **signed, not encrypted**. Anyone holding it can read it, so
@@ -626,9 +712,12 @@ above:
 ```
 
 `rt.BackURL` keeps only the path and query of the `Referer`, so the 303
-never leads to another site. Clicking "Dark mode" on `/?filter=Active`
-answers a cookie whose `Theme` is `"Dark"` and, under Datastar, an event
-that runs `window.location.assign("/?filter=Active")` (without it,
+never leads to another site. Clicking "Log out" on `/?filter=Active`
+answers a cookie whose `User` is `Nothing` and a redirect to `/login`.
+With the theme switch of "App-level messages" (its `update` answers
+`Rerender`), clicking "Dark mode" there answers a cookie whose `Theme` is
+`"Dark"` and, under Datastar, an event that runs
+`window.location.assign("/?filter=Active")` (without it,
 `303 /?filter=Active`).
 
 ### Failure pages

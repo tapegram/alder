@@ -485,11 +485,19 @@ believes is right.
   an agent-facing cut is not the lever for that model; whether a smaller
   book (chapters 3–6) or a different local model is, is not measured.
 - Should a test be able to build a session without naming every field?
-  The example's `theme: Theme = Light` has a default, but a session
-  literal in a test must still write `theme: Light` and import `Theme`:
+  The example's `theme: Theme = Light` had a default, but a session
+  literal in a test still had to write `theme: Light` and import `Theme`:
   three of Claude's four retries in E7 and two in five of Qwen's errors.
-  Defaulted fields that may be omitted, or a `Test.session`, are two
-  shapes; moving the theme out of the example's skeleton is a third.
+  *Decided (M4d): the example changed, the language did not.* The theme
+  switch left the example's skeleton for chapter 6's "App-level
+  messages", where it is the worked example; the example's session is
+  `{ user: Maybe User.UserId }`, and its tests write `{ user: me }`. A
+  record literal, a session's included, still names every field: no
+  defaulted fields that may be left out, no `Test.session`. Implicit
+  values cause mistakes (a value nobody wrote is one nobody checked), and
+  this is revisited only if required fields prove demonstrably worse. The
+  one exception stays the `session` declaration's own defaults, which
+  decode a cookie that lacks a field (chapter 6, "The session cookie").
 - Is `Int.NonNegative * Int.Positive` an `Int`? Chapter 4's rules
   (implicit widening; operations return the base type) say yes, the
   checker says no, and both E7 T6 apps multiply through plain `Int`s

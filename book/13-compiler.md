@@ -1149,8 +1149,8 @@ You can watch this happen. `TestGen_RunTodos` in
 `internal/gen/gen_test.go` emits the to-do example, opens an in-memory
 SQLite store, calls `Ensure`, and runs its `load` and `update` with
 `eff.Run`: log in, add, toggle, delete, an add that is rolled back by a
-later `Task.fail`, log out, a theme switch whose session change is undone
-by a later `Task.fail`. After each one it checks the database and the
+later `Task.fail`, a log out whose session change is undone by a later
+`Task.fail`, and a log out. After each one it checks the database and the
 trace of the steps that ran, `calls("toggle", "Db.get Todo", "Db.update
 Todo")` (the to-do app's `Toggle` first reads the row to check its owner,
 chapter 6): exactly the kind of check chapter 10 promises `alder test`
@@ -1207,7 +1207,7 @@ func page__Todos__Index(rq *web.Request, params Todos__Index__Params, keep any) 
 		r := web.RedirectResponse(rq.Login, keep)
 		return model, Todos__Index__Session{}, &r
 	}
-	session := Todos__Index__Session{User: app.User.Val, Theme: app.Theme}
+	session := Todos__Index__Session{User: app.User.Val}
 	model, err := eff.RunQuery(rq.Env, Todos__Index__load(params, session))
 	if err != nil {
 		r := route__fail(err)
@@ -1253,10 +1253,10 @@ script tag put after `<head>`. The answer begins like this (without the
 ```
 HTTP/1.1 200 OK
 Content-Type: text/html; charset=utf-8
-Set-Cookie: alder_session=eyJleHAiOjE3OTQxNjUwMzIsInNlc3Npb24iOnsiVGhlbWUiOiJMaWdodCIsIlVzZXIiOnsiT2siOnRydWUsIlZhbCI6Im9WNUV0NU5aVVBzek9lTG5PU1NCIn19fQ.kfTeo6dGqWQphtqM3E1aJqqK_hG4xPmba5-_b6mEFs8; Path=/; Expires=Sun, 08 Nov 2026 19:10:32 GMT; Max-Age=2592000; HttpOnly; SameSite=Lax
+Set-Cookie: alder_session=eyJleHAiOjE3OTQxNjUwMzIsInNlc3Npb24iOnsiVXNlciI6eyJPayI6dHJ1ZSwiVmFsIjoib1Y1RXQ1TlpVUHN6T2VMbk9TU0IifX19.K74dmYmShNDDHvaHP5wlwizxAZgG8yLfVwLnYee1aCw; Path=/; Expires=Sun, 08 Nov 2026 19:10:32 GMT; Max-Age=2592000; HttpOnly; SameSite=Lax
 
 <!doctype html>
-<html class=""><head><script type="module" src="/_alder/datastar.js"></script><meta charset="utf-8" /><title>Todos</title>
+<html><head><script type="module" src="/_alder/datastar.js"></script><meta charset="utf-8" /><title>Todos</title>
 ```
 
 and has the Done button with its message URL:
@@ -1346,7 +1346,7 @@ Set-Cookie: alder_session=…; Path=/; Expires=…; Max-Age=2592000; HttpOnly; S
 event: datastar-patch-elements
 data: selector body
 data: mode outer
-data: elements <body><nav><form method="post" action="/_m/App/SwitchTheme?_p.filter=Active" class="_alder-click" data-on:submit="@post(&#39;/_m/App/SwitchTheme?_p.filter=Active&#39;, {contentType: &#39;form&#39;})"><button type="submit">Dark mode</button></form></nav><main><h1>Todos</h1>…<ul id="todos"></ul><p id="summary">0 open</p>…</main></body>
+data: elements <body><main><h1>Todos</h1>…<ul id="todos"></ul><p id="summary">0 open</p>…</main></body>
 
 ```
 
@@ -1379,9 +1379,9 @@ event.
 A `Redirect` under Datastar is not a 303 either: `write` sends a 200 event
 from `datastar.Navigate` that appends a self-removing script calling
 `window.location.assign` with the URL, because the client's `fetch` would
-follow a 303 itself and leave the address bar behind. Clicking "Dark mode"
-on `/?filter=Active` (an App message whose `Rerender` goes back to the
-`Referer`) answers
+follow a 303 itself and leave the address bar behind. Clicking "Log out"
+on `/?filter=Active` (an App message whose `update` answers
+`Redirect (Auth.Login {})`) answers
 
 ```
 HTTP/1.1 200 OK
@@ -1392,7 +1392,7 @@ Set-Cookie: alder_session=…; Path=/; Expires=…; Max-Age=2592000; HttpOnly; S
 event: datastar-patch-elements
 data: selector body
 data: mode append
-data: elements <script data-effect="el.remove()">window.location.assign("/?filter=Active")</script>
+data: elements <script data-effect="el.remove()">window.location.assign("/login")</script>
 
 ```
 
@@ -1566,7 +1566,7 @@ sets it from the environment:
 So the first page `alder run examples/todos` served began
 
 ```html
-<body><div id="_alder_errors" data-ignore-morph></div><div data-init="@get('/_dev/reload?b=afcb2a7d-1', {openWhenHidden: true})"></div><nav>
+<body><div id="_alder_errors" data-ignore-morph></div><div data-init="@get('/_dev/reload?b=afcb2a7d-1', {openWhenHidden: true})"></div><main>
 ```
 
 `data-init` is Datastar's "run this when the element is set up";
@@ -1808,7 +1808,7 @@ comment of `Compile`:
 func Compile(appDir string, extra *Module, mainGo string, purpose, out string) Build
 ```
 
-Here is `alder eval examples/todos 'Theme.flip Light'`, step by step
+Here is `alder eval examples/todos 'Todo.filterLabel Active'`, step by step
 (`cmd/alder/eval.go`):
 
 1. **The scratch module.** `parseItems` (`cmd/alder/evalinput.go`)
@@ -1819,7 +1819,7 @@ Here is `alder eval examples/todos 'Theme.flip Light'`, step by step
    line (two steps, so that a REPL can keep the `let`s of earlier
    entries and assemble them again with each new one): the expression's
    first line
-   becomes `it = Theme.flip Light`, and each `let name = expr` before it a
+   becomes `it = Todo.filterLabel Active`, and each `let name = expr` before it a
    top-level `name = expr` (an annotated `let name : T = expr` becomes the
    two lines `name : T` and `name = expr`, which is why eval keeps a map
    from each line it wrote back to the input's). Where each item starts
@@ -1837,7 +1837,7 @@ Here is `alder eval examples/todos 'Theme.flip Light'`, step by step
    not known yet, and using one is E0007. Diagnostics are mapped back
    through the inserted lines (`MapDiag`, which also maps the line an
    E0009 message names) and the rewriting of step 1, and come out as
-   `input:1:12`.
+   `input:1:18`.
 3. **Choose a main.** The inferred type of `Scratch.it` picks the Go
    `main`, which `scratchMain` (`cmd/alder/scratchmain.go`) writes in one
    of three kinds. `mainPure` prints `rt.Show(app.Scratch__it)`, the
@@ -1884,7 +1884,7 @@ Here is `alder eval examples/todos 'Theme.flip Light'`, step by step
 
    package app
 
-   var Scratch__it Theme__Theme = Theme__flip(Theme__Theme__Light__)
+   var Scratch__it string = Todo__filterLabel(Todo__Filter__Active__)
    ```
 
    and `cmd/main.go` is
@@ -1928,7 +1928,7 @@ Here is `alder eval examples/todos 'Theme.flip Light'`, step by step
    `classifyRun` turns a failure into one message, shared with the
    REPL: a stack overflow is one line instead of Go's hundreds, a panic
    its first paragraph, a timeout `the evaluation timed out after 1m0s`.
-   Then `alder eval` prints the output with the type: `Dark : Theme`.
+   Then `alder eval` prints the output with the type: `"Active" : Text`.
 
 A captured session, from a fresh working directory:
 
@@ -1939,12 +1939,12 @@ $ alder eval examples/todos 'Db.from Todo |> Db.count'
 <Query> : Query Int
 $ printf 'let xs = [3, 1, 2]\nList.sortBy (\\x -> x) xs\n' | alder eval examples/todos -
 [1, 2, 3] : List Int
-$ alder eval examples/todos 'Theme.flip 1'
-input:1:12: error[E0003]: expected Theme, got Int
-  Theme.flip 1
-             ^
-$ alder eval examples/todos --json 'Theme.flip Light'
-{"value":"Dark","type":"Theme","diagnostics":[]}
+$ alder eval examples/todos 'Todo.filterLabel 1'
+input:1:18: error[E0003]: expected Todo.Filter, got Int
+  Todo.filterLabel 1
+                   ^
+$ alder eval examples/todos --json 'Todo.filterLabel Active'
+{"value":"\"Active\"","type":"Text","diagnostics":[]}
 ```
 
 **The book verifier** (`go test ./book`, chapter 11) runs every block of
@@ -1980,14 +1980,14 @@ the lock `build/<app>/scratch/test.lock`. What makes it a test program
 is what the compiler emits for `test` declarations, and the main.
 
 **Each test is a function.** Section 7's emitter turns the N-th `test`
-of module M into `test__M__N`. `Theme`'s one test,
-`test "flip alternates" = flip (flip Light) == Light`, is emitted into
-`build/todos/Theme_alder.go` as
+of module M into `test__M__N`. `Todo`'s one test,
+`test "countOpen ignores done todos" = countOpen [ … ] == 1` (two todos,
+one done), is emitted into `build/todos/Todo_alder.go` as
 
 ```go
-// test__Theme__1 is test "flip alternates" of module Theme.
-func test__Theme__1() bool {
-	return rtesting.Eq(Theme__flip(Theme__flip(Theme__Theme__Light__)), Theme__Theme__Light__)
+// test__Todo__1 is test "countOpen ignores done todos" of module Todo.
+func test__Todo__1() bool {
+	return rtesting.Eq(Todo__countOpen([]Todo__Todo{Todo__Todo{Id: "a", Title: "x", Done: false, Due: rt.Nothing[rt.Date](), Owner: "u", Created: std.TimeEpoch()}, Todo__Todo{Id: "b", Title: "y", Done: true, Due: rt.Nothing[rt.Date](), Owner: "u", Created: std.TimeEpoch()}}), int64(1))
 }
 ```
 
@@ -2006,7 +2006,6 @@ test starts from:
 ```go
 // Tests are the app's `test` declarations in module order then declaration order, for alder test (rtesting.Main).
 var Tests = []rtesting.Case{
-	{Module: "Theme", Name: "flip alternates", Pure: test__Theme__1},
 	{Module: "Todo", Name: "countOpen ignores done todos", Pure: test__Todo__1},
 	{Module: "Todos.Index", Name: "Toggle flips done", Task: test__Todos__Index__1},
 	{Module: "Todos.Index", Name: "Toggle by another user is not found", Task: test__Todos__Index__2},
@@ -2116,7 +2115,7 @@ results into the record Alder sees. From `test__Todos__Index__1`
 		Value rt.Result[string, rt.Nav]
 		Trace []string
 	}, error) {
-		_v4, _msg5, _ok6, _tr7, _err8 := rtesting.Inner(_e3, Todos__Index__update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: id}), Todos__Index__Model{Filter: Todo__Filter__All__, Todos: []Todo__Todo{}}, Todos__Index__Session{User: me, Theme: Theme__Theme__Light__}))
+		_v4, _msg5, _ok6, _tr7, _err8 := rtesting.Inner(_e3, Todos__Index__update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: id}), Todos__Index__Model{Filter: Todo__Filter__All__, Todos: []Todo__Todo{}}, Todos__Index__Session{User: me}))
 		if _err8 != nil {
 			var _z10 struct {
 				Value rt.Result[string, rt.Nav]
@@ -2475,9 +2474,8 @@ are a slice:
 func Todos__Index__view(model Todos__Index__Model, session Todos__Index__Session) html.Node {
 	return Layout__Page(struct {
 		Title    string
-		Theme    Theme__Theme
 		Children []html.Node
-	}{Title: "Todos", Theme: session.Theme, Children: []html.Node{
+	}{Title: "Todos", Children: []html.Node{
 		html.El("h1", nil, html.Text("Todos")),
 		html.FormTo(rt.MsgRef{Module: "Todos.Index", Msg: "Submit"}, nil,
 			html.Input(html.Control{Kind: "input", Form: "Todos.Index.NewTodo", Name: "title", Type: "text", Label: "What needs doing?", Required: true}),

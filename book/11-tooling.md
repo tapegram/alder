@@ -313,8 +313,8 @@ value and its type:
 ```
 $ alder eval examples/todos '1 + 2'
 3 : Int
-$ alder eval examples/todos 'Theme.flip Light'
-Dark : Theme
+$ alder eval examples/todos 'Todo.filterLabel Active'
+"Active" : Text
 $ alder eval examples/todos '[]'
 [] : List a
 ```

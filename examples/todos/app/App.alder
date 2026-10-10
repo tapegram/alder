@@ -2,14 +2,12 @@ module App
 
 import User
 import Layout
-import Theme
 
-session { user: Maybe User.UserId, theme: Theme = Light }
+session { user: Maybe User.UserId }
 
 login = Auth.Login
 
 msg Logout
-msg SwitchTheme
 
 update : Msg -> Session -> Task Nav
 update msg session = match msg {
@@ -17,21 +15,17 @@ update msg session = match msg {
     let _ <- Session.put (\s -> { s | user: Nothing })
     Task.succeed (Redirect (Auth.Login {}))
   },
-  SwitchTheme p -> {
-    let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
-    Task.succeed Rerender
-  },
 }
 
 error : Error -> Html Never
 error err =
-  <Layout.Page title="Error" theme={Light}>
+  <Layout.Page title="Error">
     <h1>Something went wrong</h1>
     <p>Please try again.</p>
   </Layout.Page>
 
 notFound : Html Never
 notFound =
-  <Layout.Page title="Not found" theme={Light}>
+  <Layout.Page title="Not found">
     <h1>Not found</h1>
   </Layout.Page>

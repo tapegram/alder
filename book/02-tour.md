@@ -61,13 +61,12 @@ module Todos.Index
 
 import Todo
 import Layout
-import Theme
 import User
 
 page "/" { filter: Todo.Filter = All } requires user
 ```
 
-`Theme` and `User` are imported for the tests at the end of the module.
+`User` is imported for the tests at the end of the module.
 `page` declares the route. `filter` is a query parameter with a default, so
 both `/` and `/?filter=Active` work and `filter` is never missing.
 `requires user` means the `user` field of the session must be `Just`;
@@ -153,7 +152,7 @@ resubmit. The `match` must handle every `msg`, or the module won't compile.
 ```alder part=Todos.Index
 view : Model -> Session -> Html Msg
 view model session =
-  <Layout.Page title="Todos" theme={session.theme}>
+  <Layout.Page title="Todos">
     <h1>Todos</h1>
 
     <form submit={Submit}>
@@ -181,7 +180,7 @@ view model session =
   </Layout.Page>
 ```
 
-`view` is HTML with expressions in braces. It also receives the session, used here for the theme. `App.Logout` is an app-level message, which any page may send (chapter 6). `href` takes a page value, never
+`view` is HTML with expressions in braces. It also receives the session, which this page does not need (a page that greets the user by name would). `App.Logout` is an app-level message, which any page may send (chapter 6). `href` takes a page value, never
 a string, so a link to a page that doesn't exist, or with the wrong
 parameters, is a compile error. `submit={Submit}` ties the form to its
 message, and `<Input field="title">` is checked against `NewTodo`. If the
@@ -217,7 +216,7 @@ line.
 test "Toggle flips done" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
-  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: me, theme: Light })
+  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: me })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.get Todo", "Db.update Todo"], done: Just True })
@@ -227,7 +226,7 @@ test "Toggle by another user is not found" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let stranger = User.UserId "someone-else"
-  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger, theme: Light })
+  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ value: r.value, trace: r.trace, done: done } == { value: Err "not found", trace: ["Db.get Todo"], done: Just False })

@@ -67,11 +67,10 @@ and prints one line per test. In the repository:
 
 ```text
 $ alder test examples/todos
-ok   Theme "flip alternates"
 ok   Todo "countOpen ignores done todos"
 ok   Todos.Index "Toggle flips done"
 ok   Todos.Index "Toggle by another user is not found"
-4 passed, 0 failed
+3 passed, 0 failed
 ```
 
 Each line names the module and the test, and is printed as soon as that
@@ -96,7 +95,7 @@ single step (sections 3 to 6 explain effect tests and traces):
 test "Toggle only updates" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
-  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me, theme: Light })
+  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me })
   Task.succeed (r.trace == ["Db.update Todo"])
 }
 ```
@@ -106,7 +105,6 @@ prefixes. Both compile; both are wrong:
 
 ```text
 $ alder test examples/todos
-ok   Theme "flip alternates"
 ok   Todo "countOpen ignores done todos"
 FAIL Todo "an empty list has one open todo"
   left:  0
@@ -117,7 +115,7 @@ FAIL Todos.Index "Toggle only updates"
   left:  ["Db.get Todo", "Db.update Todo"]
   right: ["Db.update Todo"]
   trace: ["Db.insert User", "Db.insert Todo", "Test.run", "Db.get Todo", "Db.update Todo"]
-4 passed, 2 failed
+3 passed, 2 failed
 ```
 
 A failing test is `FAIL`, followed by indented lines that say why:
@@ -145,7 +143,7 @@ A failing test is `FAIL`, followed by indented lines that say why:
 - `trace:` is, for a block test, every step it performed (section 6).
 
 A test that runs for ten seconds is announced on standard error,
-`still running Theme "slow" (10s)`, and again every ten seconds, so a
+`still running Todo "slow" (10s)`, and again every ten seconds, so a
 test that hangs is not mistaken for a quiet one.
 
 If the app does not compile, no test runs: `alder test` prints the
@@ -184,7 +182,7 @@ blocks of this chapter are, the page's names are qualified:
 test "Toggle flips done" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
-  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me, theme: Light })
+  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.get Todo", "Db.update Todo"], done: Just True })
@@ -205,7 +203,7 @@ Line by line:
    (`load` is not called; `update` only needs a value of the type), and
    the session. `Todos.Index` `requires user`, so its `Session` is a type
    of its own whose `user` is a `UserId`, not a `Maybe` (chapter 6). The
-   record literal `{ user: me, theme: Light }` is that type because it is
+   record literal `{ user: me }` is that type because it is
    written where `update` expects one. Bound to a name first by a `let`
    without an annotation, it would be a plain record, which `update`
    does not accept.
@@ -225,7 +223,7 @@ test "Toggle by another user is not found" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let stranger = User.UserId "someone-else"
-  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger, theme: Light })
+  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ value: r.value, trace: r.trace, done: done } == { value: Err "not found", trace: ["Db.get Todo"], done: Just False })
@@ -276,7 +274,7 @@ The stranger's `Toggle` succeeded, the update ran, and the todo is done.
 
 - **The app's default session.** A test's `Session.put` starts from
   `App`'s session with every field at its default (here
-  `{ user: Nothing, theme: Light }`). A test of `update` passes the
+  `{ user: Nothing }`). A test of `update` passes the
   session it wants as an argument, as above.
 
 A pure test (section 1) touches none of this: it is an expression,
@@ -418,8 +416,8 @@ JSON object per test and nothing else, and the summary goes to standard
 error.
 
 ```text
-$ alder test examples/todos --json -run Theme
-{"module":"Theme","name":"flip alternates","ok":true,"left":"Light","right":"Light","trace":[],"ms":0.009}
+$ alder test examples/todos --json -run countOpen
+{"module":"Todo","name":"countOpen ignores done todos","ok":true,"left":"1","right":"1","trace":[],"ms":0.009}
 1 passed, 0 failed
 ```
 

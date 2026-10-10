@@ -52,11 +52,10 @@ func TestTest_Todos(t *testing.T) {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 	for _, want := range []string{
-		`ok   Theme "flip alternates"`,
 		`ok   Todo "countOpen ignores done todos"`,
 		`ok   Todos.Index "Toggle flips done"`,
 		`ok   Todos.Index "Toggle by another user is not found"`,
-		"4 passed, 0 failed\n",
+		"3 passed, 0 failed\n",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
@@ -71,7 +70,7 @@ func TestTest_Failing(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	for _, want := range []string{"FAIL Todo \"wrong\"\n  left:  0\n  right: 1\n", "4 passed, 1 failed\n"} {
+	for _, want := range []string{"FAIL Todo \"wrong\"\n  left:  0\n  right: 1\n", "3 passed, 1 failed\n"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
 		}
@@ -86,7 +85,7 @@ func TestTest_JSON(t *testing.T) {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
-	if len(lines) != 4 {
+	if len(lines) != 3 {
 		t.Fatalf("want one line per test, got %d:\n%s", len(lines), stdout)
 	}
 	for _, l := range lines {
@@ -102,10 +101,10 @@ func TestTest_JSON(t *testing.T) {
 			t.Errorf("want a passing test with module and name: %s", l)
 		}
 	}
-	if !strings.Contains(lines[2], `"trace":["Db.insert User","Db.insert Todo","Test.run","Db.get Todo","Db.update Todo","Db.get Todo"]`) {
-		t.Errorf("the effect test's line lacks its trace: %s", lines[2])
+	if !strings.Contains(lines[1], `"trace":["Db.insert User","Db.insert Todo","Test.run","Db.get Todo","Db.update Todo","Db.get Todo"]`) {
+		t.Errorf("the effect test's line lacks its trace: %s", lines[1])
 	}
-	if stderr != "4 passed, 0 failed\n" {
+	if stderr != "3 passed, 0 failed\n" {
 		t.Errorf("stderr %q, want the summary", stderr)
 	}
 }
@@ -113,8 +112,8 @@ func TestTest_JSON(t *testing.T) {
 func TestTest_Run(t *testing.T) {
 	needGoTool(t)
 	inTemp(t)
-	code, stdout, stderr := runTest(t, todosDir(t), "-run", "Theme")
-	if code != 0 || stdout != "ok   Theme \"flip alternates\"\n1 passed, 0 failed\n" {
+	code, stdout, stderr := runTest(t, todosDir(t), "-run", "countOpen")
+	if code != 0 || stdout != "ok   Todo \"countOpen ignores done todos\"\n1 passed, 0 failed\n" {
 		t.Errorf("exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
 	}
 }
@@ -134,12 +133,12 @@ func TestTest_NoMatch(t *testing.T) {
 
 func TestTest_CheckError(t *testing.T) {
 	needGoTool(t)
-	dir := tempTodos(t, "Theme.alder", "\nbroken : Int\nbroken = \"x\"\n")
+	dir := tempTodos(t, "Todo.alder", "\nbroken : Int\nbroken = \"x\"\n")
 	code, stdout, stderr := runTest(t, dir)
 	if code != 1 {
 		t.Fatalf("exit %d, want 1\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	if !strings.Contains(stdout, "app/Theme.alder:") || !strings.Contains(stdout, "E0003") || !strings.Contains(stdout, `broken = "x"`) {
+	if !strings.Contains(stdout, "app/Todo.alder:") || !strings.Contains(stdout, "E0003") || !strings.Contains(stdout, `broken = "x"`) {
 		t.Errorf("stdout lacks the diagnostic with its source line:\n%s", stdout)
 	}
 	if strings.Contains(stdout, "passed") {
@@ -237,10 +236,10 @@ func TestTest_Usage(t *testing.T) {
 	}
 }
 
-// slowTodos is a copy of examples/todos whose Theme module adds a quick test, a test that
+// slowTodos is a copy of examples/todos whose Todo module adds a quick test, a test that
 // runs for hours, and one that overflows the stack.
 func slowTodos(t *testing.T) string {
-	return tempTodos(t, "Theme.alder", `
+	return tempTodos(t, "Todo.alder", `
 loop : Int -> Int
 loop n = loop (n + 1) + 1
 
@@ -279,7 +278,7 @@ func TestTest_StreamAndTimeout(t *testing.T) {
 	var errb bytes.Buffer
 	code := runTestTo([]string{dir, "-run", `"quick"|"hang"`, "-timeout", "2s"}, &out, &errb)
 	end := time.Now()
-	want := "ok   Theme \"quick\"\nFAIL Theme \"hang\"\n  error: timed out after 2s\n1 passed, 1 failed\n"
+	want := "ok   Todo \"quick\"\nFAIL Todo \"hang\"\n  error: timed out after 2s\n1 passed, 1 failed\n"
 	if code != 1 || out.buf.String() != want {
 		t.Fatalf("exit %d\nstdout %q\nwant   %q\nstderr: %s", code, out.buf.String(), want, errb.String())
 	}
@@ -295,23 +294,23 @@ func TestTest_StreamAndTimeout(t *testing.T) {
 func TestTest_Crash(t *testing.T) {
 	needGoTool(t)
 	dir := slowTodos(t)
-	code, stdout, stderr := runTest(t, dir, "-run", "flip|overflow")
-	if code != 1 || !strings.HasPrefix(stdout, "ok   Theme \"flip alternates\"\nFAIL Theme \"overflow\"\n  error: fatal error: stack overflow\n    app.Theme__loop(") {
+	code, stdout, stderr := runTest(t, dir, "-run", "countOpen|overflow")
+	if code != 1 || !strings.HasPrefix(stdout, "ok   Todo \"countOpen ignores done todos\"\nFAIL Todo \"overflow\"\n  error: fatal error: stack overflow\n    app.Todo__loop(") {
 		t.Fatalf("exit %d\nstdout %q\nstderr %q", code, stdout, stderr)
 	}
 	// the summary counts the streamed result and the crash, and is the last line
 	if strings.Count(stdout, "\n") != 6 || !strings.HasSuffix(stdout, "\n1 passed, 1 failed\n") || strings.Contains(stderr, "goroutine") || len(stderr) > 300 ||
-		!strings.Contains(stderr, "crashed running Theme \"overflow\"") {
+		!strings.Contains(stderr, "crashed running Todo \"overflow\"") {
 		t.Errorf("want a short report ending in the summary\nstdout %q\nstderr %q", stdout, stderr)
 	}
-	code, stdout, stderr = runTest(t, dir, "-run", "flip|overflow", "--json")
+	code, stdout, stderr = runTest(t, dir, "-run", "countOpen|overflow", "--json")
 	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
 	var r struct {
 		Module, Name, Error string
 		OK                  *bool
 	}
 	if code != 1 || len(lines) != 2 || json.Unmarshal([]byte(lines[1]), &r) != nil ||
-		r.Module != "Theme" || r.Name != "overflow" || r.OK == nil || *r.OK || !strings.HasPrefix(r.Error, "fatal error: stack overflow\n") {
+		r.Module != "Todo" || r.Name != "overflow" || r.OK == nil || *r.OK || !strings.HasPrefix(r.Error, "fatal error: stack overflow\n") {
 		t.Errorf("--json: exit %d stdout %q", code, stdout)
 	}
 	if !strings.HasSuffix(stderr, "\n1 passed, 1 failed\n") {
@@ -343,7 +342,7 @@ func TestTest_KilledParent(t *testing.T) {
 	// wait for the hanging test to be running
 	status := filepath.Join(wd, "build", "todos", "scratch", "test", "status")
 	for start := time.Now(); ; time.Sleep(50 * time.Millisecond) {
-		if b, _ := os.ReadFile(status); string(b) == "Theme\thang\n" {
+		if b, _ := os.ReadFile(status); string(b) == "Todo\thang\n" {
 			break
 		}
 		if time.Since(start) > 2*time.Minute {
@@ -380,7 +379,7 @@ func TestTest_KilledParent(t *testing.T) {
 // A typed hole stops the run with a reason; a build problem under --json is one object.
 func TestTest_HoleAndJSONError(t *testing.T) {
 	needGoTool(t)
-	dir := tempTodos(t, "Theme.alder", "\ntest \"h\" = ?todo == 1\n")
+	dir := tempTodos(t, "Todo.alder", "\ntest \"h\" = ?todo == 1\n")
 	code, _, stderr := runTest(t, dir)
 	if code != 1 || !strings.Contains(stderr, "W0002") || !strings.HasSuffix(stderr, "alder test: no tests ran (fill the hole)\n") {
 		t.Errorf("hole: exit %d stderr %q", code, stderr)
@@ -388,7 +387,7 @@ func TestTest_HoleAndJSONError(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "adapters", "bad.go"), []byte("package adapters\n\nfunc broken() int { return \"x\" }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "app", "Theme.alder"), mustRead(t, filepath.Join(todosDir(t), "app", "Theme.alder")), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "app", "Todo.alder"), mustRead(t, filepath.Join(todosDir(t), "app", "Todo.alder")), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	code, stdout, stderr := runTest(t, dir, "--json")

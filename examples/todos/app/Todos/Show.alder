@@ -40,7 +40,7 @@ update msg model session = match msg {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Layout.Page title={model.todo.title} theme={session.theme}>
+  <Layout.Page title={model.todo.title}>
     <h1>{model.todo.title}</h1>
     <form submit={Save}>
       <Input field="title" label="Title" value={model.todo.title} />
