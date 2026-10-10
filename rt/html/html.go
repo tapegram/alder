@@ -113,6 +113,11 @@ func Render(n Node) string { return RenderWith(n, nil) }
 // String is Render(n): rt.Show prints Html values as their markup.
 func (n Node) String() string { return Render(n) }
 
+// AlderEqual is Html's equality (rt.Equaler): two nodes are equal when they render to the same
+// markup (Render), so `<p>{Html.text "a"}{Html.text "b"}</p> == <p>ab</p>` is True, as are two
+// views whose printed sides in a failing test would be identical.
+func (n Node) AlderEqual(other any) bool { return Render(n) == Render(other.(Node)) }
+
 // RenderWith serialises a node like Render, filling deferred form controls from
 // st (see FormState). st may be nil.
 //

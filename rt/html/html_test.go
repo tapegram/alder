@@ -121,3 +121,28 @@ func TestHTML_UnsafeHrefIsHash(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// Two Html values are Eq when they render to the same markup (rt.Equaler).
+func TestHTML_EqIsRenderEq(t *testing.T) {
+	cases := []struct {
+		name string
+		a, b Node
+		want bool
+	}{
+		{"adjacent text nodes", El("p", nil, Text("a"), Text("b")), El("p", nil, Text("ab")), true},
+		{"a fragment vs its children", El("p", nil, Nodes(Text("a"), El("b", nil, Text("c")))), El("p", nil, Text("a"), El("b", nil, Text("c"))), true},
+		{"text vs the same raw markup", Text("a & b"), Raw("a &amp; b"), true},
+		{"attributes in the same order", El("a", []Attr{A("href", "/x"), A("class", "c")}, Text("x")), El("a", []Attr{A("href", "/x"), A("class", "c")}, Text("x")), true},
+		{"attributes in another order", El("a", []Attr{A("class", "c"), A("href", "/x")}), El("a", []Attr{A("href", "/x"), A("class", "c")}), false},
+		{"different text", Text("a"), Text("b"), false},
+		{"none vs empty text", None(), Text(""), true},
+	}
+	for _, c := range cases {
+		if got := rt.Eq(c.a, c.b); got != c.want {
+			t.Errorf("%s: Eq = %v, want %v", c.name, got, c.want)
+		}
+	}
+	if !rt.Eq([]Node{Text("a"), Text("b")}, []Node{Text("a"), Nodes(Text("b"))}) {
+		t.Error("a List Html compares its elements by markup")
+	}
+}

@@ -451,3 +451,22 @@ func TestRunInner_OutsideRunIsInternal(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 }
+
+func TestCapError(t *testing.T) {
+	if CapError("C.e", nil) != nil {
+		t.Fatal("nil must stay nil")
+	}
+	base := errors.New("bad password store")
+	err := CapError("Password.verify", base)
+	var c *ErrCapability
+	if !errors.As(err, &c) || c.Name != "Password.verify" || err.Error() != "Password.verify: bad password store" || !errors.Is(err, base) {
+		t.Fatalf("wrapped: %v", err)
+	}
+	if CapError("X.y", err) != err {
+		t.Fatal("an ErrCapability is not wrapped twice")
+	}
+	f := &ErrFail{Msg: "no"}
+	if CapError("X.y", f) != error(f) || CapError("X.y", ErrNotFound) != ErrNotFound {
+		t.Fatal("failures pass through unchanged")
+	}
+}

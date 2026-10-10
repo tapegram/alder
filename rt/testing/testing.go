@@ -43,9 +43,11 @@ import (
 // name (alder_t1, alder_t2, …).
 var savepoints atomic.Int64
 
-// Inner runs t under a savepoint as Test.run does: ok is true with v on success; on *eff.ErrFail
-// or eff.ErrNotFound the savepoint is rolled back, the session restored, and msg is the failure
-// text ("not found" for ErrNotFound); trace is the steps t performed. Any other error is returned.
+// Inner runs t under a savepoint as Test.run does: ok is true with v on success; on *eff.ErrFail,
+// eff.ErrNotFound or *eff.ErrCapability (a capability's adapter returned an error) the
+// savepoint is rolled back, the session restored, and msg is the failure text ("not found" for
+// ErrNotFound, "<Name>: <msg>" for a capability's error); trace is the steps t performed. Any
+// other error is returned.
 //
 // Inner is called from a Call's function while a Task runs (env.Kind is KTask); it begins the
 // Task's transaction if no step has yet, so the savepoint has a transaction to live in. When
@@ -89,7 +91,11 @@ func Inner[T any](env *eff.Env, t eff.Task[T]) (v T, msg string, ok bool, trace 
 		}
 	}
 	var f *eff.ErrFail
+	var c *eff.ErrCapability
 	switch {
+	case errors.As(rerr, &c):
+		env.Session = session
+		return v, c.Error(), false, trace, nil
 	case errors.As(rerr, &f):
 		env.Session = session
 		return v, f.Msg, false, trace, nil
@@ -113,14 +119,20 @@ func Trace(env *eff.Env) []string {
 var (
 	lastSides [2]string
 	hasSides  bool
+	lastEq    bool // what the last Eq returned
 )
 
 // Eq is rt.Eq that also records Show(l) and Show(r) as the sides of the test's final `==`.
 func Eq(l, r any) bool {
 	lastSides = [2]string{rt.Show(l), rt.Show(r)}
 	hasSides = true
-	return rt.Eq(l, r)
+	lastEq = rt.Eq(l, r)
+	return lastEq
 }
+
+// sameSidesNote is the note a failing test's report adds when its last `==` was False although
+// its two sides print the same text (a NaN, two values Show cannot tell apart).
+const sameSidesNote = "the sides print the same but are different values"
 
 // Case is one `test` declaration: exactly one of Pure and Task is set.
 type Case struct {
@@ -130,12 +142,14 @@ type Case struct {
 }
 
 // Result is the outcome of one Case. Left and Right are the Show text of the sides of the
-// test's last Eq ("" when it made none); Error is the failure or panic text; Trace is the
-// task's steps (nil for a pure test); Ms the wall time in milliseconds.
+// test's last Eq ("" when it made none); Note is sameSidesNote when that Eq was False but its
+// sides print the same; Error is the failure or panic text; Trace is the task's steps (nil for
+// a pure test); Ms the wall time in milliseconds.
 type Result struct {
 	Module, Name string
 	OK           bool
 	Left, Right  string
+	Note         string
 	Error        string
 	Trace        []string
 	Ms           float64
@@ -187,7 +201,7 @@ func runCase(c Case, o Options, caps map[string]any, now time.Time) (r Result) {
 	r = Result{Module: c.Module, Name: c.Name}
 	start := time.Now()
 	defer func() { r.Ms = float64(time.Since(start).Microseconds()) / 1000 }()
-	lastSides, hasSides = [2]string{}, false
+	lastSides, hasSides, lastEq = [2]string{}, false, false
 
 	ok, errText := false, ""
 	switch {
@@ -221,6 +235,9 @@ func runCase(c Case, o Options, caps map[string]any, now time.Time) (r Result) {
 	r.Error = unwired.ReplaceAllString(errText, "capability $1 is not wired in tests")
 	if hasSides {
 		r.Left, r.Right = lastSides[0], lastSides[1]
+		if !r.OK && !lastEq && r.Left == r.Right {
+			r.Note = sameSidesNote
+		}
 	}
 	return r
 }
@@ -263,6 +280,7 @@ type jsonResult struct {
 	OK     bool     `json:"ok"`
 	Left   string   `json:"left,omitempty"`
 	Right  string   `json:"right,omitempty"`
+	Note   string   `json:"note,omitempty"`
 	Error  string   `json:"error,omitempty"`
 	Trace  []string `json:"trace"`
 	Ms     float64  `json:"ms"`
@@ -272,7 +290,8 @@ type jsonResult struct {
 // flags win), prints the report to out/err, returns the exit code: 0 all passed, 1 a failure, 2 a usage error.
 //
 // The text report has one line per case, `ok   M "name"` or `FAIL M "name"`; a failure is
-// followed by indented `left:`/`right:` lines (when the test made an Eq), `error:` (when it
+// followed by indented `left:`/`right:` lines (when the test made an Eq), `note:` (when that
+// Eq was False but its sides print the same), `error:` (when it
 // has one; its continuation lines indented by four spaces) and `trace:` (a task test's steps, as Show of a List Text), and the report ends
 // with `N passed, M failed`. With --json stdout has one JSON object per case and nothing
 // else; the summary goes to err.
@@ -312,7 +331,7 @@ func Main(cases []Case, tables []db.TableDesc, caps map[string]any, session any,
 			if tr == nil {
 				tr = []string{}
 			}
-			if e := enc.Encode(jsonResult{r.Module, r.Name, r.OK, r.Left, r.Right, r.Error, tr, r.Ms}); e != nil {
+			if e := enc.Encode(jsonResult{r.Module, r.Name, r.OK, r.Left, r.Right, r.Note, r.Error, tr, r.Ms}); e != nil {
 				fmt.Fprintf(err, "alder test: writing the report: %v\n", e)
 				return 2
 			}
@@ -325,6 +344,9 @@ func Main(cases []Case, tables []db.TableDesc, caps map[string]any, session any,
 		fmt.Fprintf(out, "FAIL %s %s\n", r.Module, quoteName(r.Name))
 		if r.Left != "" || r.Right != "" {
 			fmt.Fprintf(out, "  left:  %s\n  right: %s\n", r.Left, r.Right)
+		}
+		if r.Note != "" {
+			fmt.Fprintf(out, "  note:  %s\n", r.Note)
 		}
 		if r.Error != "" {
 			fmt.Fprintf(out, "  error: %s\n", strings.ReplaceAll(r.Error, "\n", "\n    "))

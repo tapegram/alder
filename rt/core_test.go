@@ -348,3 +348,29 @@ func TestSafeURL(t *testing.T) {
 		}
 	}
 }
+
+// modEq is an Equaler: two values are equal when they agree mod 10.
+type modEq struct{ n int }
+
+func (m modEq) AlderEqual(o any) bool { return m.n%10 == o.(modEq).n%10 }
+
+func TestEq_Equaler(t *testing.T) {
+	type rec struct {
+		V modEq
+		M Maybe[modEq]
+		L []modEq
+	}
+	if !Eq(modEq{3}, modEq{13}) || Eq(modEq{3}, modEq{4}) {
+		t.Error("top-level Equaler not used")
+	}
+	if !Eq(rec{modEq{1}, Just(modEq{2}), []modEq{{3}}}, rec{modEq{11}, Just(modEq{12}), []modEq{{23}}}) {
+		t.Error("nested Equaler not used")
+	}
+	if Eq(Just(modEq{1}), Nothing[modEq]()) {
+		t.Error("Just vs Nothing")
+	}
+	var a, b any = modEq{1}, modEq{21}
+	if !Eq(a, b) {
+		t.Error("Equaler behind an interface not used")
+	}
+}

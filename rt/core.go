@@ -267,7 +267,8 @@ func keyValue(b *strings.Builder, v reflect.Value) {
 
 // Eq is Alder's one structural equality. The emitter uses it for `==` and
 // `!=` on every non-primitive type, and rt/std uses it wherever it compares
-// values. Time is compared as an instant (Time.Equal); a Dict by its key set
+// values. A type implementing Equaler (Html) is compared by its AlderEqual;
+// Time is compared as an instant (Time.Equal); a Dict by its key set
 // and Eq on each value, ignoring insertion order; structs (records, unions,
 // Maybe, Result, Date) field by field; slices element-wise, with nil and
 // empty equal; union payloads through their pointers; everything else by
@@ -291,6 +292,11 @@ func Eq[T any](a, b T) bool {
 // dictEq is implemented by every Dict instantiation.
 type dictEq interface{ eqAny(o any) bool }
 
+// Equaler is a runtime type with an equality of its own: Eq calls AlderEqual(other) — other is
+// a value of the same type — instead of comparing the value field by field. html.Node
+// implements it, so two Html values are equal when they render to the same markup.
+type Equaler interface{ AlderEqual(other any) bool }
+
 var timeType = reflect.TypeFor[time.Time]()
 
 func eqValue(a, b reflect.Value) bool {
@@ -303,6 +309,9 @@ func eqValue(a, b reflect.Value) bool {
 	if a.CanInterface() {
 		if d, ok := a.Interface().(dictEq); ok && a.Kind() == reflect.Struct {
 			return d.eqAny(b.Interface())
+		}
+		if q, ok := a.Interface().(Equaler); ok && a.Kind() != reflect.Interface && a.Kind() != reflect.Pointer {
+			return q.AlderEqual(b.Interface())
 		}
 	}
 	switch a.Kind() {

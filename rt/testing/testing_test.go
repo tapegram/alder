@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"reflect"
 	"regexp"
 	"strings"
@@ -508,5 +509,43 @@ func TestMain_JSONWriteErrorIsUsageExit(t *testing.T) {
 	code := Main(mainCases(), tables, nil, nil, []string{"--json"}, failWriter{}, &errb)
 	if code != 2 || !strings.Contains(errb.String(), "closed pipe") {
 		t.Fatalf("code %d err %q", code, errb.String())
+	}
+}
+
+// A capability's error inside Test.run is an Err the test can observe: the savepoint is rolled
+// back, the session restored, and the message names the capability.
+func TestInner_CapabilityErrorIsErr(t *testing.T) {
+	var r res
+	var after any
+	capStep := eff.Call("Password.verify", false, func(e *eff.Env) (bool, error) {
+		e.Session = "changed"
+		return false, eff.CapError("Password.verify", errors.New("hash store unreachable"))
+	})
+	task := then(insertStep("Db.insert T", "outer"),
+		eff.Bind(testRun(then(insertStep("Db.insert T", "inner"), capStep)), func(a res) eff.Task[bool] {
+			r = a
+			return eff.Bind(eff.Call("Session.get", false, func(e *eff.Env) (any, error) { return e.Session, nil }), func(s any) eff.Task[bool] {
+				after = s
+				return eff.Map(func(n int64) bool { return n == 1 }, countStep())
+			})
+		}))
+	rs := Run([]Case{{Module: "M", Name: "cap", Task: func() eff.Task[bool] { return task }}}, Options{Tables: tables, Session: "start"})
+	if !rs[0].OK || r.ok || r.msg != "Password.verify: hash store unreachable" || after != "start" {
+		t.Fatalf("%+v r=%+v session=%v", rs[0], r, after)
+	}
+}
+
+// When a failing test's two sides print the same, the report says they are different values.
+func TestMain_SamePrintedSidesNote(t *testing.T) {
+	t.Setenv("ALDER_TEST_RUN", "")
+	t.Setenv("ALDER_TEST_JSON", "")
+	nan := math.NaN()
+	cs := []Case{{Module: "M", Name: "nan", Pure: func() bool { return Eq(nan, nan) }},
+		{Module: "M", Name: "other", Pure: func() bool { _ = Eq(int64(1), int64(1)); return false }}}
+	out, _, code := runMain(t, cs)
+	want := "FAIL M \"nan\"\n  left:  NaN\n  right: NaN\n  note:  the sides print the same but are different values\n" +
+		"FAIL M \"other\"\n  left:  1\n  right: 1\n0 passed, 2 failed\n"
+	if out != want || code != 1 {
+		t.Fatalf("code %d\n%q\nwant\n%q", code, out, want)
 	}
 }

@@ -217,3 +217,30 @@ func (e *ErrFail) Error() string { return e.Msg }
 // ErrNotFound is the error of an effect that looked for a record that is
 // not there. Run returns this exact value, so err == ErrNotFound works.
 var ErrNotFound = errors.New("not found")
+
+// ErrCapability is the error of a capability whose implementation (an adapter) returned an
+// error: Name is the step ("Password.verify") and Err the adapter's error. Generated
+// capability Calls wrap with CapError. A route answers it as it answers any other error (500);
+// Test.run (rtesting.Inner) turns it into `Err "<Name>: <msg>"`, so a capability's error is a
+// failure a test can observe.
+type ErrCapability struct {
+	Name string
+	Err  error
+}
+
+func (e *ErrCapability) Error() string { return e.Name + ": " + e.Err.Error() }
+
+// Unwrap is the adapter's error, so errors.Is and errors.As see through the wrapping.
+func (e *ErrCapability) Unwrap() error { return e.Err }
+
+// CapError is what a generated capability Call returns for its adapter's error err: nil for
+// nil; err itself when it is already a failure (*ErrFail, ErrNotFound) or an ErrCapability;
+// otherwise &ErrCapability{name, err}.
+func CapError(name string, err error) error {
+	var f *ErrFail
+	var c *ErrCapability
+	if err == nil || errors.Is(err, ErrNotFound) || errors.As(err, &f) || errors.As(err, &c) {
+		return err
+	}
+	return &ErrCapability{Name: name, Err: err}
+}
