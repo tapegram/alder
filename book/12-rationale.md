@@ -422,8 +422,9 @@ tests, and its errors fall in the same classes under both prompts, none
 traceable to a dropped section. They are not invented library calls.
 Two in five come from the example's `Theme` module: Qwen copies the
 example's `App`, whose session has `theme: Theme = Light`, into a new app
-and never writes `Theme.alder`, and every test that builds a session
-needs `Light`. Three of Claude's four retries were the same `Light` in a
+and usually does not write `Theme.alder` (the rest are missing imports and
+duplicated or over-qualified constructors), and every test that builds a
+session needs `Light`. Three of Claude's four retries were the same `Light` in a
 test. The rest are page and table wiring, where three messages misled
 (one offers to import the module it is in, one an import that closes a
 cycle). E6's 2 / 4 is not a clean control: the tests paragraph, the
@@ -433,11 +434,14 @@ sit inside tests.
 The test loop caught nothing: no round ever checked and built and then
 failed its tests. That was not weak tests. The models wrote a test for
 every rule the tasks named, mostly effect tests through `Test.run`, and
-a probe that removed one condition from each authorization rule (ten
-mutants over T4–T6) was caught every time, by the test named for it.
+a probe run after the run, outside the measurement, that removed one
+condition from each authorization rule (ten mutants over T4–T6) was
+caught every time, by the test named for it.
 The programs were right first. Both T6 apps put the Manager rule in
 `load`, refuse a change to a Paid order with `Task.fail` and say why, in
-round 0. A model's own tests check only what it thought of; hidden
+round 0. The checker cannot see everything: Haiku's T3 retry passed
+with a hard-coded password in place of the `Password` capability, after
+the harness rejected its Go adapter. A model's own tests check only what it thought of; hidden
 acceptance tests (E8) are the measure that can fail a program its author
 believes is right.
 
@@ -488,8 +492,8 @@ believes is right.
   shapes; moving the theme out of the example's skeleton is a third.
 - Is `Int.NonNegative * Int.Positive` an `Int`? Chapter 4's rules
   (implicit widening; operations return the base type) say yes, the
-  checker says no, and both E7 T6 apps wrote an identity function to
-  widen before multiplying.
+  checker says no, and both E7 T6 apps multiply through plain `Int`s
+  (one with an identity function), consistent with avoiding it.
 - Do agents need `List.map` with index, or is `List.indexed` enough?
 - Should `alder test` also run the book's `eval=` blocks? Today
   `go test ./book` runs them, and only in this repository; an app's own
