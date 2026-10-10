@@ -1,8 +1,10 @@
 package check
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"alder/internal/diag"
@@ -77,5 +79,25 @@ func TestInferTopLevel_ScratchOnly(t *testing.T) {
 	}
 	if n != 6 {
 		t.Errorf("%d E0007 without InferTopLevel, want 6:\n%s", n, render(bag))
+	}
+}
+
+func TestInferTopLevel_NoCascade(t *testing.T) {
+	files := map[string]string{
+		"Scratch.alder": "module Scratch\n\na = 1 + \"x\"\nb = a\nf = \\n -> f n\nit = b + 1\n",
+	}
+	_, bag := checkWith(t, files, Options{InferTopLevel: true})
+	var got []string
+	for _, d := range bag.Items {
+		if d.Severity == "error" {
+			got = append(got, fmt.Sprintf("%d %s", d.Span.Start.Line, d.Code))
+			if d.Fix != nil {
+				t.Errorf("%s has a fix %q", d.Message, d.Fix.Replace)
+			}
+		}
+	}
+	// a's E0003; f's E0007 (it uses itself); nothing for b and it, which only use a
+	if strings.Join(got, ", ") != "3 E0003, 5 E0007" {
+		t.Errorf("errors %v\n%s", got, render(bag))
 	}
 }

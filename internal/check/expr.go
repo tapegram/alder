@@ -132,11 +132,13 @@ func (mc *modCtx) infersTopLevel() bool {
 // inferTopLevel infers the signature of a value written without one, generalizes the type
 // variables left unsolved to type parameters `a`, `b`, … (binding each variable to its
 // parameter, so the body's recorded types name them too), and records it as the value's
-// signature. A body whose type is not known without an error of its own (a value used in its
-// own definition) is E0007 as before.
+// signature. A body whose type is not known is remembered as poisoned; unless that comes from
+// an error already reported (in it, or in a poisoned value it uses) it is E0007 without a fix
+// (a value used in its own definition or before its own).
 func (mc *modCtx) inferTopLevel(d *syntax.ValueDecl) {
 	c := mc.c
 	errs := errorCount(c.bag)
+	c.usedPoisoned = false
 	mc.holes = nil
 	env := newEnv()
 	var params []types.Type
@@ -156,8 +158,12 @@ func (mc *modCtx) inferTopLevel(d *syntax.ValueDecl) {
 	mc.reportHoles()
 	t = c.u.Apply(t)
 	if poisoned(t) {
-		if errorCount(c.bag) == errs {
-			mc.missingSig(d, "?type")
+		if c.poisonedTop == nil {
+			c.poisonedTop = map[string]bool{}
+		}
+		c.poisonedTop[c.key(mc.m.Name, d.Name)] = true
+		if errorCount(c.bag) == errs && !c.usedPoisoned { // else the error is reported already
+			c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred: it uses itself or a value defined after it; give it a type signature", d.Name)
 		}
 		return
 	}
@@ -803,6 +809,9 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 		}
 		if t, ok := c.values[c.key(x.Ref.Module, x.Ref.Name)]; ok {
 			return c.u.Instantiate(t)
+		}
+		if c.poisonedTop[c.key(x.Ref.Module, x.Ref.Name)] {
+			c.usedPoisoned = true
 		}
 	case syntax.RefColumn:
 		if info, ok := c.tables[c.key(x.Ref.Module, x.Module)]; ok {

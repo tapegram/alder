@@ -90,26 +90,31 @@ func main() {
 type evalSource struct {
 	src   string
 	lines []string // the input's lines
-	// shift[i] is what to add to a column on line i+1 of src to get the input's column: the
-	// expression's first line gains `it = ` (-5), a let line loses `let ` (+4 and its indent).
-	shift []int
+	// For line i+1 of src: inLine[i] is the input's line it comes from, and shift[i] is what to
+	// add to a column on it to get the input's column (the expression's first line gains
+	// `it = `, a let line loses its indentation and `let `, an annotated let's body line its
+	// annotation).
+	inLine, shift []int
 }
 
 // errNothing is an input with no expression.
 var errNothing = errors.New("nothing to evaluate")
 
-// evalModule turns the input (zero or more `let name = expr` items, then one expression; an item
-// starts on a line that is not indented, blank or a comment, and continues on the indented lines
-// after it) into the source of module Scratch: each let item `name = expr`, the expression
-// `it = expr`, all without signatures (the checker infers them), one source line per input line.
+// evalModule turns the input into the source of module Scratch. The input is zero or more
+// `let name = expr` (or `let name : Type = expr`) items, then one expression. The first item
+// starts on the first line that is not blank or a `--` comment (its indentation is ignored);
+// every later item starts on a line that is not indented, blank or a comment, and an item
+// continues on the indented lines after it. Each let item becomes the top-level `name = expr`
+// (an annotated one also the line `name : Type` before it), the expression `it = expr`;
+// unannotated values have no signature, and the checker infers them.
 func evalModule(input string) (evalSource, error) {
 	input = strings.TrimRight(strings.ReplaceAll(input, "\r\n", "\n"), "\n")
 	lines := strings.Split(input, "\n")
-	es := evalSource{lines: lines, shift: make([]int, len(lines))}
+	es := evalSource{lines: lines}
 	var starts []int // the first line of each item
 	for i, l := range lines {
 		t := strings.TrimSpace(l)
-		if t == "" || strings.HasPrefix(t, "--") || l[0] == ' ' || l[0] == '\t' {
+		if t == "" || strings.HasPrefix(t, "--") || (len(starts) > 0 && (l[0] == ' ' || l[0] == '\t')) {
 			continue
 		}
 		starts = append(starts, i)
@@ -117,24 +122,44 @@ func evalModule(input string) (evalSource, error) {
 	if len(starts) == 0 {
 		return es, errNothing
 	}
-	out := append([]string(nil), lines...)
-	for k, i := range starts {
-		l := lines[i]
-		if k == len(starts)-1 {
-			out[i] = "it = " + l
-			es.shift[i] = -len("it = ")
+	var out []string
+	emit := func(src string, in, shift int) {
+		out = append(out, src)
+		es.inLine, es.shift = append(es.inLine, in+1), append(es.shift, shift)
+	}
+	next := 0 // the next item
+	for i, l := range lines {
+		if next >= len(starts) || i != starts[next] {
+			emit(l, i, 0)
 			continue
 		}
-		rest, ok := strings.CutPrefix(l, "let ")
+		next++
+		body := strings.TrimLeft(l, " \t")
+		indent := len(l) - len(body)
+		if next == len(starts) {
+			emit("it = "+body, i, indent-len("it = "))
+			continue
+		}
+		rest, ok := strings.CutPrefix(body, "let ")
 		if !ok {
 			return es, fmt.Errorf("input line %d: only `let name = expr` lines may come before the expression", i+1)
 		}
-		trimmed := strings.TrimLeft(rest, " \t")
-		if name, _, _ := strings.Cut(trimmed, " "); name == "it" || strings.HasPrefix(trimmed, "it=") {
+		def := strings.TrimLeft(rest, " \t")
+		at := indent + len(body) - len(def) // the input column (0-based) where def starts
+		name := def[:len(def)-len(strings.TrimLeft(def, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'"))]
+		if name == "it" {
 			return es, fmt.Errorf("input line %d: `it` is the name eval gives the expression; let another name", i+1)
 		}
-		out[i] = trimmed
-		es.shift[i] = len(l) - len(trimmed)
+		if after := strings.TrimLeft(def[len(name):], " \t"); name != "" && strings.HasPrefix(after, ":") {
+			eq := strings.Index(def, "=")
+			if eq < 0 {
+				return es, fmt.Errorf("input line %d: an annotated let is `let name : Type = expr`", i+1)
+			}
+			emit(strings.TrimRight(def[:eq], " \t"), i, at)
+			emit(name+" "+def[eq:], i, at+eq-len(name)-1)
+			continue
+		}
+		emit(def, i, at)
 	}
 	es.src = strings.Join(out, "\n") + "\n"
 	return es, nil
@@ -146,15 +171,17 @@ type evalResult struct {
 	Type        string            `json:"type"`
 	Diagnostics []json.RawMessage `json:"diagnostics"`
 	Error       string            `json:"error,omitempty"`
+	Hint        string            `json:"hint,omitempty"` // a note on a success (`--run` given a Select)
 }
 
 // runEvalTo is `alder eval [dir] [--run] [--json] <expr | ->`: it evaluates an expression (or,
 // with `-`, standard input: `let name = expr` lines, then an expression) in a scratch module
 // that sees every module of the app at dir (default "."), compiled by the real compiler, and
 // prints `value : Type`. A `Query` is shown as `<Query>` unless --run runs it against
-// build/<app>/dev.db; a `Task` is refused. Diagnostics go to stderr, positioned in the input
+// build/<app>/dev.db; a `Select` is shown as `<Select>` (with --run, a hint to pipe it to a Db
+// function); a `Task` is refused. Diagnostics go to stderr, positioned in the input
 // (`input:L:C`). Exit 0 on success, 1 for diagnostics or a failing evaluation, 2 for usage, I/O
-// and internal errors. --json prints one object {value, type, diagnostics, error} on stdout
+// and internal errors. --json prints one object {value, type, diagnostics, error, hint} on stdout
 // instead. Evaluations of one app serialize on build/<app>/scratch/eval.lock.
 func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code int) {
 	jsonOut := false
@@ -249,6 +276,14 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		switch app.Con {
 		case "Task":
 			return failf(1, "alder eval: a Task is not run by eval (the REPL's :run! will); its type is %s", typ)
+		case "Select":
+			if run {
+				res.Hint = "pipe it to Db.all, Db.first or Db.count to run it"
+				if !jsonOut {
+					fmt.Fprintf(stderr, "alder eval: a Select is not a Query: %s\n", res.Hint)
+				}
+			}
+			return evalPrint(stdout, jsonOut, &res, "<Select>", typ)
 		case "Query":
 			if !run {
 				return evalPrint(stdout, jsonOut, &res, "<Query>", typ)
@@ -405,31 +440,36 @@ func evalDiags(dir string, ds []diag.Diagnostic, mapLine func(diag.Diagnostic) (
 }
 
 // evalMapDiag positions a diagnostic of the scratch module in the input, as file "input": its
-// lines through mapLine (scratch's MapDiag), its columns undoing evalModule's rewriting. One on a
-// line Compile inserted (not mapped) is put at 1:1 with its message unchanged.
+// lines through mapLine (scratch's MapDiag) and evalSource's map, its columns undoing
+// evalModule's rewriting. One on a line Compile inserted (not mapped) is put at 1:1 with its
+// message unchanged; one past the end of the source at the end of the input. The parser's
+// "in the definition of `it`: " is dropped: `it` is a name the input never wrote.
 func evalMapDiag(d diag.Diagnostic, mapLine func(diag.Diagnostic) (diag.Diagnostic, bool), es evalSource) diag.Diagnostic {
 	d, ok := mapLine(d)
 	d.Span.File = "input"
+	d.Message = strings.TrimPrefix(d.Message, "in the definition of `it`: ")
+	if strings.HasPrefix(d.Message, "the type of `it` cannot be inferred") {
+		d.Message = "the expression uses `it`, which eval does not define"
+	}
 	if !ok {
 		d.Span.Start, d.Span.End, d.Fix = diag.Pos{Line: 1, Col: 1}, diag.Pos{Line: 1, Col: 1}, nil
 		return d
 	}
-	if n := len(es.lines); d.Span.Start.Line > n { // at the end of the input
-		end := diag.Pos{Line: n, Col: len(es.lines[n-1]) + 1}
-		d.Span.Start, d.Span.End, d.Fix = end, end, nil
-		return d
-	}
-	col := func(line, c int) int {
-		if line < 1 || line > len(es.shift) {
-			return c
+	pos := func(p diag.Pos) diag.Pos {
+		if p.Line < 1 {
+			return diag.Pos{Line: 1, Col: 1}
 		}
-		return max(1, c+es.shift[line-1])
+		if p.Line > len(es.inLine) { // past the end of the input
+			n := len(es.lines)
+			return diag.Pos{Line: n, Col: len(es.lines[n-1]) + 1}
+		}
+		return diag.Pos{Line: es.inLine[p.Line-1], Col: max(1, p.Col+es.shift[p.Line-1])}
 	}
-	d.Span.Start.Col = col(d.Span.Start.Line, d.Span.Start.Col)
-	d.Span.End.Col = col(d.Span.End.Line, d.Span.End.Col)
+	d.Span.Start, d.Span.End = pos(d.Span.Start), pos(d.Span.End)
 	if d.Fix != nil {
 		f := *d.Fix
-		f.Col, f.EndCol = col(f.Line, f.Col), col(f.EndLine, f.EndCol)
+		start, end := pos(diag.Pos{Line: f.Line, Col: f.Col}), pos(diag.Pos{Line: f.EndLine, Col: f.EndCol})
+		f.Line, f.Col, f.EndLine, f.EndCol = start.Line, start.Col, end.Line, end.Col
 		d.Fix = &f
 	}
 	return d

@@ -37,7 +37,11 @@ type Checker struct {
 
 	usesSessionPut bool // some module calls Session.put
 	opts           Options
-	res            *Result
+	// poisonedTop are the Scratch values whose inferred type is poisoned (InferTopLevel), and
+	// usedPoisoned is set when a body being inferred uses one of them
+	poisonedTop  map[string]bool
+	usedPoisoned bool
+	res          *Result
 	// bodyExprs are the expressions recorded since the last body ended (reportHoles), for
 	// checkInferredDictKeys
 	bodyExprs []syntax.Expr

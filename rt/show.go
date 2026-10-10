@@ -29,7 +29,8 @@ func RegisterUnion(tagType reflect.Type, names []string) {
 // insertion order (Dict.empty), a Date 2026-10-09, a Time in RFC 3339 UTC, a record
 // { title: "Milk", done: False } (field names are the Go fields with the first letter
 // lower-cased, the inverse of gen's Field), a registered union Name / Name 3 / Name { w: 1.0 },
-// Html as its markup, <Query> / <Task>, a Page as its URL, a Nav as Rerender / Redirect <url> /
+// Html as its markup, <Query> / <Task>, the Db builder's values as <Select> / <Table> /
+// <Condition> / <Order>, a Page as its URL, a Nav as Rerender / Redirect <url> /
 // Reject "text". NaN, +Inf and -Inf are not Alder literals; they print as is. A constructor's argument is parenthesized when it is itself an application or
 // negative: Just (Rect { w: 1.0 }), Just (-1).
 func Show(v any) (s string) {
@@ -108,6 +109,18 @@ func show(v reflect.Value) (string, bool) {
 			return "<Query>", false
 		case strings.HasPrefix(name, "Task["):
 			return "<Task>", false
+		}
+	case "alder/rt/db": // the query builder's data is opaque in Alder
+		name := t.Name()
+		switch {
+		case strings.HasPrefix(name, "Select["):
+			return "<Select>", false
+		case strings.HasPrefix(name, "Table["):
+			return "<Table>", false
+		case name == "Cond":
+			return "<Condition>", false
+		case name == "Order":
+			return "<Order>", false
 		}
 	case "alder/rt/html":
 		if t.Name() == "Node" && v.CanInterface() {

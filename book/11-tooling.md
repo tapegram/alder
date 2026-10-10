@@ -301,13 +301,27 @@ $ alder eval examples/todos '[]'
 
 Every module of the app is in scope under its own name. With `-` in place
 of the expression, `alder eval` reads standard input: `let name = expr`
-lines, then the expression, which may use them. The type is the one the
-checker infers; nothing needs a signature. A `Query` is shown as
-`<Query> : Query T` and not run; `--run` runs it against the dev database
-`build/<app>/dev.db` (creating it when absent) and prints the result. A
-`Task` is never run. `--json` prints `{"value", "type", "diagnostics"}`
-instead. Diagnostics name the input as `input:line:col`; `alder eval`
-exits 1 for them, 2 for a usage or internal error.
+lines (or `let name : Type = expr`), then the expression, which may use
+them. Each `let` and the final expression starts on a line that is not
+indented; an indented line continues the one before it, so a long
+expression can span lines:
+
+```
+let xs =
+    [1, 2, 3]
+xs
+  |> List.map (\x -> x * 2)
+```
+
+The type is the one the checker infers; nothing needs a signature. A
+`Query` is shown as `<Query> : Query T` and not run; `--run` runs it
+against the dev database `build/<app>/dev.db` (creating it when absent)
+and prints the result. A `Select` is shown as `<Select> : Select T`, even
+with `--run`: pipe it to `Db.all`, `Db.first` or `Db.count` to make a
+`Query`. A `Task` is never run. `--json` prints
+`{"value", "type", "diagnostics"}` instead. Diagnostics name the input as
+`input:line:col`; `alder eval` exits 1 for them, 2 for a usage or internal
+error.
 
 ### `alder build --emit`
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"alder/rt"
+	"alder/rt/db"
 	"alder/rt/eff"
 	"alder/rt/html"
 )
@@ -120,6 +121,11 @@ func TestShow(t *testing.T) {
 		{"html", html.El("p", nil, html.Text("a<b")), "<p>a&lt;b</p>"},
 		{"Query", eff.Q(eff.Pure[int64](1)), "<Query>"},
 		{"Task", eff.Pure[int64](1), "<Task>"},
+		{"Select", db.From(&db.Table[todo]{Name: "Todo.Todo"}), "<Select>"},
+		{"Table", &db.Table[todo]{Name: "Todo.Todo"}, "<Table>"},
+		{"Condition", db.Cond{Kind: db.Eq, Col: "done", Val: true}, "<Condition>"},
+		{"Order", db.Order{Col: "title"}, "<Order>"},
+		{"list of Conditions", []db.Cond{{Kind: db.IsNull, Col: "due"}}, "[<Condition>]"},
 		{"Page", rt.Page{Path: "/todos", Query: []rt.KV{{Key: "f", Value: "a b"}}}, "/todos?f=a+b"},
 		{"Rerender", rt.Rerender(), "Rerender"},
 		{"Redirect", rt.Redirect(rt.Page{Path: "/x"}), "Redirect /x"},

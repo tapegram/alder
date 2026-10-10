@@ -100,7 +100,7 @@ func TestEval_TypeError(t *testing.T) {
 	if code != 1 || stdout != "" {
 		t.Errorf("exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
 	}
-	if !strings.Contains(stderr, "E0003") || !strings.Contains(stderr, "input:1:") || !strings.Contains(stderr, "  1 + \"x\"\n") {
+	if !strings.Contains(stderr, "E0003") || !strings.Contains(stderr, "input:1:1:") || !strings.Contains(stderr, "  1 + \"x\"\n") {
 		t.Errorf("stderr lacks E0003 at input:1 with the input line:\n%s", stderr)
 	}
 	if strings.Contains(stderr, "Scratch") || strings.Contains(stderr, "it =") {
@@ -145,6 +145,7 @@ type evalJSON struct {
 	Type        *string           `json:"type"`
 	Diagnostics []json.RawMessage `json:"diagnostics"`
 	Error       string            `json:"error"`
+	Hint        string            `json:"hint"`
 }
 
 func decodeEval(t *testing.T, stdout string) evalJSON {
@@ -226,5 +227,76 @@ func needGoTool(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go is not on PATH")
+	}
+}
+
+func TestEval_Select(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	dir := todosDir(t)
+	for _, args := range [][]string{{"Db.from Todo"}, {"--run", "Db.from Todo"}} {
+		code, stdout, stderr := runEval(t, "", append([]string{dir}, args...)...)
+		if code != 0 || stdout != "<Select> : Select Todo\n" {
+			t.Errorf("%q: exit %d, stdout %q\nstderr: %s", args, code, stdout, stderr)
+		}
+		hint := strings.Contains(stderr, "pipe it to Db.all, Db.first or Db.count")
+		if hint != (args[0] == "--run") {
+			t.Errorf("%q: stderr %q", args, stderr)
+		}
+	}
+	if _, err := os.Stat(filepath.Join("build", "todos", "scratch", "eval", "scratch")); err == nil {
+		t.Errorf("a Select was built")
+	}
+	code, stdout, _ := runEval(t, "", dir, "--json", "--run", "Db.from Todo")
+	j := decodeEval(t, stdout)
+	if code != 0 || *j.Value != "<Select>" || *j.Type != "Select Todo" || !strings.Contains(j.Hint, "Db.all") {
+		t.Errorf("json: exit %d, %s", code, stdout)
+	}
+	// a Select inside a value is opaque too (rt.Show)
+	evalOK(t, "{ s: <Select>, n: 1 } : { s: Select Todo, n: Int }\n", "{ s: Db.from Todo, n: 1 }")
+}
+
+func TestEval_LetForms(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	dir := todosDir(t)
+	cases := []struct{ in, out string }{
+		{"   1 + 2", "3 : Int\n"},                                 // the first item's indentation is ignored
+		{"  let a = 1\nlet b =\n    a + 1\nb * 10", "20 : Int\n"}, // and continuation lines are indented
+		{"let x : Int = 1\nx + 1", "2 : Int\n"},                   // an annotated let
+		{"let none : List Int = []\nnone", "[] : List Int\n"},
+	}
+	for _, c := range cases {
+		code, stdout, stderr := runEval(t, c.in, dir, "-")
+		if code != 0 || stdout != c.out {
+			t.Errorf("%q: exit %d, stdout %q (want %q)\nstderr: %s", c.in, code, stdout, c.out, stderr)
+		}
+	}
+	// an annotated let's error is positioned in the input
+	code, _, stderr := runEval(t, "let x : Text = 1\nx", dir, "-")
+	if code != 1 || !strings.Contains(stderr, "input:1:16:") || !strings.Contains(stderr, "  let x : Text = 1\n") {
+		t.Errorf("annotated let error: exit %d\nstderr: %s", code, stderr)
+	}
+}
+
+func TestEval_NoCascade(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	dir := todosDir(t)
+	// a failing let is reported once; the expression using it adds nothing
+	code, _, stderr := runEval(t, "let a = 1 + \"x\"\nlet b = a\na + 1", dir, "-")
+	if code != 1 || strings.Count(stderr, "error[") != 1 || !strings.Contains(stderr, "E0003") {
+		t.Errorf("exit %d, want one E0003\nstderr: %s", code, stderr)
+	}
+	// a value that uses itself: E0007 without a ?type fix, and never the name `it`
+	for _, in := range []string{"let f = \\n -> f n\n1", "it + 1"} {
+		code, _, stderr = runEval(t, in, dir, "-")
+		if code != 1 || !strings.Contains(stderr, "E0007") || strings.Contains(stderr, "?type") || strings.Contains(stderr, "`it`") && !strings.Contains(stderr, "eval does not define") {
+			t.Errorf("%q: exit %d\nstderr: %s", in, code, stderr)
+		}
+	}
+	code, _, stderr = runEval(t, "", dir, "1 +")
+	if code != 1 || strings.Contains(stderr, "`it`") {
+		t.Errorf("parse error names it: exit %d\nstderr: %s", code, stderr)
 	}
 }
