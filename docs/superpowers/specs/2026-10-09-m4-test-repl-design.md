@@ -167,7 +167,7 @@ brand constructors are usable from any module (existing rule).
   your input"). A `let` that stops type-checking after `:reload` is
   dropped with a notice.
 - Evaluation compiles the session through `scratch.Compile` into
-  `build/<app>/scratch/repl/` and runs the binary, which prints
+  `build/<app>/scratch/repl-<pid>/` and runs the binary, which prints
   `rt.Show(it)`; the REPL prints `value : Type`. Effects print `<Query>`
   unless `:run`.
 - Auto-reload: the REPL polls `app/` like `alder run` (300 ms) and
@@ -221,9 +221,17 @@ reason the book can keep being the single source of truth.
 
 - The `alder run` child exits when its stdin reaches EOF (the dev server
   holds the pipe), so a SIGKILLed `alder run` leaves no orphan.
-- Harness: build timeouts and unknown exit codes become `harness_error`,
-  not `compiler_bug`; `--base` copies from `git archive HEAD` of the base
-  directory, never the live tree.
+- Harness: every summary has `outcome` (pass, fail, compiler_bug,
+  harness_error). A build exit 2, a check exit 2 whose stderr says
+  "internal error" (a checker panic), and a check or build timeout (a
+  hang is the compiler's; the whole process group is killed) are
+  `compiler_bug`, with `compiler_bug_kind` build, internal_error or
+  hang; no retry. A check or build that cannot start or exits with a code
+  alder never uses, and an unavailable model, are `harness_error`.
+  `--base` copies from `git archive <HEAD>` of the base directory (HEAD
+  resolved once, recorded as `base_commit`), never the live tree, and
+  warns when `<base>/app` has uncommitted changes; a missing `--base`
+  says it does not exist.
 - `buildApp`/`buildTo` output-directory parameter.
 
 ## Error handling
@@ -326,3 +334,21 @@ Each milestone gets its own plan.
   stdin pipe (held by the parent) closes (`ALDER_SCRATCH_STDIN_EOF`,
   honoured by `alder/rt`'s `init`, which runs before the app's package
   variables are computed).
+- REPL (M4c, final review): an evaluation compiles only the `let`s its
+  expression reaches (an identifier scan of the texts to a fixpoint,
+  which may over-include, never under-include), because every `let` is
+  a package variable computed at program start; checks still use the
+  whole session, and a failed run names the `let`s it computed. A
+  `let`'s name starts with a lowercase letter (eval too). Each REPL
+  builds in `build/<app>/scratch/repl-<pid>/`, removed when it ends
+  (stale ones of dead pids at the next start), so two REPLs never wait
+  on each other; `alder eval` keeps one shared directory, tries the lock
+  without blocking first, says it waits, and polls (interruptibly). The
+  scratch build takes a context (Ctrl-C kills `go build`). `alder/rt` is
+  imported by every generated app (a blank import when unused), so its
+  `init` (the tether) runs before the app's variables by the dependency
+  rule alone; it clears `ALDER_SCRATCH_STDIN_EOF` and says `alder:
+  parent gone`. Measured on `examples/todos`, warm: eval 0.63 s for a
+  new expression (0.22 s repeated); the REPL 0.47 s (no vet) and 0.10 s
+  repeated; vet is about 0.15 s, recompiling and relinking the app
+  package the rest.

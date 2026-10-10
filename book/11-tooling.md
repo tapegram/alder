@@ -289,13 +289,16 @@ The app also exits when the dev server dies without stopping it: killed
 with `kill -9`, say, or by a test harness's timeout, when no clean-up
 code gets to run. `alder run` gives the app a *pipe* (a one-way channel
 between two processes) as its standard input and keeps the other end
-open, and sets `ALDER_EXIT_ON_STDIN_EOF=1`. The app writes nothing to it
-and reads nothing from it until the end: when the dev server's process
-ends, for whatever reason, the operating system closes its end, the app
-reads *end of file* (EOF: there is no more input, ever) and shuts down
-the same way it does on `SIGTERM`. So a killed `alder run` leaves no app
-behind holding a port. An app you start yourself, without that variable,
-ignores its standard input.
+open, and sets `ALDER_EXIT_ON_STDIN_EOF=1`. The dev server never writes
+to the pipe; the app reads it, and that read simply waits. When the dev
+server's process ends, for whatever reason, the operating system closes
+its end, the app's read returns *end of file* (EOF: there is no more
+input, ever), and the app shuts down the same way it does on `SIGTERM`.
+So a killed `alder run` leaves no app behind holding a port. An app you
+start yourself, without that variable, never reads its standard input,
+so a server started with its input closed (`< /dev/null`, as a service
+manager does) keeps running.
+
 `alder run` exits 2 when its arguments are wrong, when `dir` has no
 `app/` directory, or when it cannot listen on `ALDER_ADDR` (another
 program already uses the port, say). Chapter 13, "The dev server", shows
@@ -319,8 +322,11 @@ $ alder eval examples/todos '[]'
 Every module of the app is in scope under its own name. With `-` in place
 of the expression, `alder eval` reads standard input: `let name = expr`
 lines (or `let name : Type = expr`), then the expression, which may use
-them. A `let` may define a function that calls itself (`let fact n = if n
-<= 1 then 1 else n * fact (n - 1)`), but not one defined after it. Each
+them. A `let`'s name starts with a lowercase letter, like any value's
+(`let Todo = …` would be shadowed by the module `Todo`), and may not be
+`it`, the name eval gives the expression. A `let` may define a function
+that calls itself (`let fact n = if n <= 1 then 1 else n * fact (n - 1)`),
+but not one defined after it. Each
 `let` and the final expression starts on a line at column 1; an indented
 line continues the one before it, so a long expression can span lines, and
 so does a line that starts with a closer, `}`, `)`, `]` or `</tag>`, so a
@@ -346,8 +352,9 @@ database `build/<app>/dev.db` (creating it, with the app's tables, when
 absent) and prints the result. The Query runs with the app's default
 session, every field at its default, as a test does. The app's `adapters/`,
 when it has one, is compiled in, so a capability the Query calls reaches
-the real Go; only an app without `adapters/` gets "capability … is not
-wired in eval". A `Select` is shown as `<Select> : Select
+the real Go; an app without `adapters/`, or whose `Caps` leaves a
+capability's field `nil`, gets "capability … is not wired in eval" when
+that capability is called. A `Select` is shown as `<Select> : Select
 T`, even with `--run`: pipe it to `Db.all`, `Db.first` or `Db.count` to
 make a `Query`. A `Task` is never run. A function that never stops calling itself ends in
 `alder eval: stack overflow (unbounded recursion?)`. `--json` prints one object instead,
@@ -368,9 +375,12 @@ directory (and, with `--run`, the dev database `build/<app>/dev.db`), and
 two evaluations of one app take turns on the lock file
 `build/<app>/scratch/eval.lock`, held from the build until the value is
 printed, so it is safe to run from several terminals or tests at once.
-Each evaluation compiles and builds the whole app with the expression;
-Go's build cache keeps that to about 0.6 s once the runtime's packages
-are in it. Chapter 13, "The scratch runner", shows what it compiles.
+One that has to wait says `alder eval: waiting for another alder eval of
+this app…` on stderr first, and Ctrl-C stops the wait. Each evaluation
+compiles and builds the whole app with the expression; Go's build cache
+keeps that to about 0.6 s once the runtime's packages are in it (0.2 s
+for an expression evaluated just before). Chapter 13, "The scratch
+runner", shows what it compiles.
 
 ### `alder repl`
 
@@ -385,22 +395,23 @@ Each line you type is one of three things:
 
 | You type | The REPL |
 |---|---|
-| `let name = expr` (or `let name : Type = expr`) | checks it with the session's other `let`s; when it is clean, keeps it and prints `name : Type`. A later `let` of the same name replaces it where it stands (`redefined name`): a `let` is a definition, not a snapshot, so the `let`s that use the name see the new one (`let a = 1`, `let b = a + 1`, `let a = 5`, then `b` is `6`). A `let` with an error is not kept, and a redefinition that breaks another `let` is refused, leaving the old one. |
+| `let name = expr` (or `let name : Type = expr`) | checks it with the session's other `let`s; when it is clean, keeps it and prints `name : Type`. The name starts with a lowercase letter and is not `it`. A later `let` of the same name replaces it where it stands (`redefined name`): a `let` is a definition, not a snapshot, so the `let`s that use the name see the new one (`let a = 1`, `let b = a + 1`, `let a = 5`, then `b` is `6`). A `let` with an error is not kept, and a redefinition that breaks another `let` is refused, leaving the old one: `alder repl: a not redefined: let b (line 2) uses it: error[E0003]: …`. |
 | `expr` | evaluates it and prints `value : Type`. A `Query`, a `Task` and a `Select` are not run: they print `<Query> : Query T` (and so on) with a hint naming the command that runs them. |
 | `:command …` | one of the commands below. |
 
 | Command | What it does |
 |---|---|
-| `:type expr` | prints `expr : Type` (the expression as you typed it) without building or running anything |
+| `:type expr` | prints `expr : Type` (the expression as you typed it, on one line) without building or running anything |
 | `:run expr` | runs a `Query` against the dev database `build/<app>/dev.db` (the one `alder run` uses; created when absent) and prints the result |
 | `:run! expr` | runs a `Task` against the same database; its writes **commit**. A task that fails (`alder repl: the task failed: …`) commits nothing: its writes are rolled back with it |
 | `:html expr` | evaluates an `Html` value and prints its markup |
-| `:reload` | re-checks the session against the app as it is now; a `let` that no longer checks is dropped, with a notice |
+| `:reload` | re-checks the session against the app as it is now; a `let` that no longer checks is dropped, with a notice, and so is a `let` that used it |
 | `:reset` | forgets every `let` |
 | `:help`, `:h` | lists the commands |
 | `:quit`, `:q` | leaves (so does Ctrl-D) |
 
-`:run` given a `Task`, or `:run!` given a `Query`, says which one to
+A command ends where its letters (and `!`) do, so `:run!(Db.insert …)`
+needs no space. `:run` given a `Task`, or `:run!` given a `Query`, says which one to
 use instead; a `Select` needs `Db.all`, `Db.first` or `Db.count` first.
 Both run with the app's default session (`TestSession()`, every field
 at its default, as a test has) and, when the app has `adapters/`, its
@@ -479,12 +490,22 @@ While the app itself has errors, nothing can be evaluated. The REPL
 prints the app's errors once, at start or when they appear, and each
 line you type after that says only `alder repl: the app has errors
 (shown above); fix them and save` (a changed set of errors is printed
-again). `:reload` prints them and keeps the session as it is
-(`the session is kept until the app checks`), so fixing the app gets the
-`let`s back.
+again). `:reload` says the same (or prints the errors, when they have
+changed) and keeps the session as it is (`the session is kept until the
+app checks`), so fixing the app gets the `let`s back.
 
-Ctrl-C during an evaluation stops it and everything it started
-(`alder repl: interrupted`) and keeps the session; at the prompt it
+An evaluation computes only the `let`s its expression uses, directly or
+through other `let`s. Each `let` becomes a value of the scratch module,
+and the program computes its values when it starts, so without that a
+`let` that fails, or takes a long time, would fail or slow every line
+after it. With it, after `let loop n = loop (n + 1)` and `let boom =
+loop 0`, `1 + 1` still prints `2 : Int`, and only an expression that
+uses `boom` fails, naming the `let`s: `alder repl: stack overflow (unbounded
+recursion?) (the lets it uses — loop, boom — are computed with it)`.
+`:type` and `let` check with the whole session, which costs nothing.
+
+Ctrl-C during an evaluation (or its build) stops it and everything it
+started (`alder repl: interrupted`) and keeps the session; at the prompt it
 only says `(use :quit or Ctrl-D to leave)`. SIGTERM, or closing the
 terminal (SIGHUP), stops a running evaluation and ends the REPL with
 exit 1. Killed outright (SIGKILL), the REPL cannot stop anything, but
@@ -495,17 +516,20 @@ Limits:
 
 - There is no line editing beyond what the terminal gives: no history,
   no arrow keys (the REPL uses only Go's standard library). `rlwrap
-  alder repl` adds both.
+  alder repl` adds both. A line longer than 1 MB is refused (`line too
+  long (limit 1 MB); ignored`), and the REPL reads on.
 - A line ending in `\` continues on the next (the `\` is dropped, the
   line break kept), with the prompt `    …>`. Pasting a multi-line
   `match` needs a `\` at the end of every line but the last.
 - `:run!` writes to the dev database, the one `alder run` serves. Use it
   to set up data to look at, knowing that it stays.
 - Like `alder eval`, every evaluation compiles the app with the session
-  module: about half a second each, from `build/<app>/scratch/repl/`
-  of the working directory, under the lock
-  `build/<app>/scratch/repl.lock`. `:type` and `let` only check, and
-  answer at once.
+  module: about half a second each (0.1 s for the same expression
+  again), in `build/<app>/scratch/repl-<pid>/` of the working
+  directory, a directory of the REPL's own (`<pid>` is its process id),
+  so two REPLs on one app never wait for each other. The REPL removes it
+  when it ends; one a killed REPL left behind is removed by the next
+  `alder repl` there. `:type` and `let` only check, and answer at once.
 - The session's module is named `Scratch`; `--module Name` renames it
   for an app that has a `Scratch` module of its own.
 
