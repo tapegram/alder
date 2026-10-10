@@ -24,14 +24,15 @@ func RegisterUnion(tagType reflect.Type, names []string) {
 
 // Show prints v as Alder syntax. Deterministic. Unknown Go values print as %v.
 //
-// Int 3, Float 1.5 / 1.0 / NaN / +Inf, Text "a\"b" (escapes \\ \" \n \t \{), True/False, () for
-// Unit, [1, 2], Nothing / Just 3, Ok 1 / Err "x", Dict.fromList [{ key: k, value: v }] in
-// insertion order (Dict.empty), a Date 2026-10-09, a Time in RFC 3339 UTC, a record
-// { title: "Milk", done: False } (field names are the Go fields with the first letter
-// lower-cased, the inverse of gen's Field), a registered union Name / Name 3 / Name { w: 1.0 },
-// Html as its markup, <Query> / <Task>, the Db builder's values as <Select> / <Table> /
-// <Condition> / <Order>, a Page as its URL, a Nav as Rerender / Redirect <url> /
-// Reject "text". NaN, +Inf and -Inf are not Alder literals; they print as is. A constructor's argument is parenthesized when it is itself an application or
+// Int 3, Float 1.5 / 1.0 / 1000000.0 / 0.00001 (always with a point, never an exponent) / NaN /
+// +Inf, Text "a\"b" (escapes \\ \" \n \t \{), True/False, () for Unit, [1, 2], Nothing / Just 3,
+// Ok 1 / Err "x", Dict.fromList [{ key: k, value: v }] in insertion order (Dict.empty), a Date
+// 2026-10-09, a Time in RFC 3339 UTC, a record { title: "Milk", _at: … } (field names are the
+// inverse of gen's Field: the Go field with its first letter lower-cased, U__at as _at), a
+// registered union Name / Name 3 / Name { w: 1.0 }, Html as its markup, <Query> / <Task>, the
+// Db builder's values as <Select> / <Table> / <Condition> / <Order>, a Page as its URL, a Nav
+// as Rerender / Redirect <url> / Reject "text". NaN, +Inf and -Inf are not Alder literals; they
+// print as is. A constructor's argument is parenthesized when it is itself an application or
 // negative: Just (Rect { w: 1.0 }), Just (-1).
 func Show(v any) (s string) {
 	defer func() {
@@ -185,14 +186,15 @@ func showFloat(f float64) (string, bool) {
 	case math.IsInf(f, -1):
 		return "-Inf", true
 	}
-	s := strconv.FormatFloat(f, 'g', -1, 64)
-	if !strings.ContainsAny(s, ".e") {
+	s := strconv.FormatFloat(f, 'f', -1, 64) // an Alder literal: no exponent
+	if !strings.Contains(s, ".") {
 		s += ".0"
 	}
 	return s, math.Signbit(f)
 }
 
-// pageURL is PageURL of a Page value, read field by field (it may sit in an unexported field).
+// pageURL is PageURL of a Page value, read field by field (so it works on a value reflect cannot
+// hand out as an interface).
 func pageURL(v reflect.Value) string {
 	p := Page{Path: v.FieldByName("Path").String()}
 	q := v.FieldByName("Query")
@@ -225,9 +227,9 @@ func asDictShow(v reflect.Value) (dictShow, bool) {
 	return d, ok
 }
 
-// showDict prints a Dict as Dict.fromList of its entries in insertion order. A Dict that
-// reflect cannot hand out (held in a '_' record field) is read field by field instead, its
-// Time keys and values then printing as <time> (the limitation Eq documents).
+// showDict prints a Dict as Dict.fromList of its entries in insertion order. Generated records
+// export every field, so reflect can always hand a Dict out; one that it could not (reached
+// through unexported Go fields) is read field by field instead, as a fallback that never panics.
 func showDict(v reflect.Value) (string, bool) {
 	var keys, vals []reflect.Value
 	if d, ok := asDictShow(v); ok {
@@ -300,8 +302,12 @@ func showRecord(v reflect.Value) string {
 	return "{ " + strings.Join(parts, ", ") + " }"
 }
 
-// fieldName inverts gen's Field: the Go field with its first letter lower-cased.
+// fieldName inverts gen's Field: U__x is the field _x; any other has its first letter
+// lower-cased.
 func fieldName(goName string) string {
+	if rest, ok := strings.CutPrefix(goName, "U__"); ok {
+		return "_" + rest
+	}
 	r, n := utf8.DecodeRuneInString(goName)
 	return string(unicode.ToLower(r)) + goName[n:]
 }

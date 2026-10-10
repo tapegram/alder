@@ -2668,3 +2668,147 @@ func TestTodosShow(t *testing.T) {
 	}
 }
 `
+
+// A record field whose Alder name starts with '_' is the exported Go field U__<rest> (Field), in
+// every place a field may be: a record (rt.Show, rt.Eq and rt.Key see it), App's session (its
+// cookie codec), a page parameter, a message parameter, a form and a table row.
+func TestGen_RunUnderscoreFields(t *testing.T) {
+	if got := Field("_at"); got != "U__at" {
+		t.Errorf("Field(_at) = %s", got)
+	}
+	if got := Field("title"); got != "Title" {
+		t.Errorf("Field(title) = %s", got)
+	}
+	files := emitSource(t, map[string]string{
+		"App.alder": `module App
+
+session { _n: Int = 0, _seen: Maybe Time }
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>not found</p>
+`,
+		"Home.alder": `module Home
+
+page "/home" { _q: Int = 0 }
+
+type RowId = brand Text
+
+table Row {
+  id: RowId @id,
+  _note: Text,
+  _at: Time @created,
+}
+
+form NewRow = { _note: Text }
+
+msg Add form NewRow
+msg Pick { _k: Int }
+
+type Model = { _rows: List Row, _h: Html Never, _d: Dict Text Time }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let rows <- Db.from Row |> Db.orderBy Row._at.asc |> Db.all
+  Query.succeed { _rows: rows, _h: <b>{Text.fromInt params._q}</b>, _d: Dict.empty }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <div>
+    {model._h}
+    <ul>{for r in model._rows -> <li>{r._note}</li>}</ul>
+    <form submit={Add}>
+      <Input field="_note" label="Note" />
+      <Errors field="_note" />
+    </form>
+    <button click={Pick { _k: 7 }}>pick</button>
+  </div>
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Row { _note: p.form._note }
+    Task.succeed Rerender
+  },
+  Pick p -> {
+    let _ <- Session.put (\s -> { s | _n: s._n + p._k })
+    Task.succeed (Redirect (Home { _q: p._k }))
+  },
+}
+`,
+	})
+	contains(t, files["Home_alder.go"], "U__note string", "U__q int64")
+	runGo(t, files, `package app
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"alder/rt"
+	"alder/rt/html"
+)
+
+func TestUnderscore(t *testing.T) {
+	tm := time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)
+	m := Home__Model{U__h: html.El("b", nil, html.Text("x")), U__d: rt.Dict[string, time.Time]{}.Insert("k", tm)}
+	if got, want := rt.Show(m), "{ _rows: [], _h: <b>x</b>, _d: Dict.fromList [{ key: \"k\", value: 2026-10-09T00:00:00Z }] }"; got != want {
+		t.Errorf("Show = %s, want %s", got, want)
+	}
+	other := Home__Model{U__d: rt.Dict[string, time.Time]{}.Insert("k", tm.In(time.FixedZone("x", 3600)))}
+	if !rt.Eq(Home__Model{U__d: m.U__d}, other) || rt.Key(Home__Model{U__d: m.U__d}) != rt.Key(other) {
+		t.Error("Eq/Key do not see the _d field's value")
+	}
+	// the session cookie keeps _n
+	b, err := (session__codec{}).Encode(App__Session{U__n: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, err := (session__codec{}).Decode(b); err != nil || s.(App__Session).U__n != 3 {
+		t.Fatalf("session codec: %s → %+v, %v", b, s, err)
+	}
+
+	h, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cookie string
+	do := func(method, target, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, target, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if cookie != "" {
+			r.Header.Set("Cookie", cookie)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if c := w.Header().Get("Set-Cookie"); c != "" {
+			cookie, _, _ = strings.Cut(c, ";")
+		}
+		return w
+	}
+	// a page parameter
+	if w := do("GET", "/home?_q=3", ""); w.Code != 200 || !strings.Contains(w.Body.String(), "<b>3</b>") {
+		t.Fatalf("GET: %d %s", w.Code, w.Body.String())
+	}
+	// a form field, into a table row and back
+	if w := do("POST", "/_m/Home/Add", "_note=milk"); w.Code != http.StatusSeeOther {
+		t.Fatalf("Add: %d %s", w.Code, w.Body.String())
+	}
+	if w := do("GET", "/home", ""); !strings.Contains(w.Body.String(), "<li>milk</li>") {
+		t.Fatalf("the row: %s", w.Body.String())
+	}
+	// a message parameter, and the session
+	if w := do("POST", "/_m/Home/Pick?_k=7", ""); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/home?_q=7" {
+		t.Fatalf("Pick: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if cookie == "" {
+		t.Fatal("Pick stored no session")
+	}
+}
+`)
+}

@@ -170,9 +170,9 @@ func (d Dict[K, V]) clone() Dict[K, V] {
 // a Dict as its entries in key order; records, unions, Maybe, Result and
 // Date field by field; lists element by element, with nil and empty the
 // same. Every variable-length part is length-prefixed, so no two values
-// share an encoding. A function cannot be a key: Key panics. The '_' field
-// limitation of Eq applies: a Time in such a field is keyed by its
-// representation, and a Dict there makes Key panic.
+// share an encoding. A function cannot be a key: Key panics. (Every field
+// of a generated record is exported, `_at` as U__at, so reflect hands Key
+// each field's value.)
 func Key(k any) string {
 	var b strings.Builder
 	keyValue(&b, reflect.ValueOf(k))
@@ -272,12 +272,8 @@ func keyValue(b *strings.Builder, v reflect.Value) {
 // Maybe, Result, Date) field by field; slices element-wise, with nil and
 // empty equal; union payloads through their pointers; everything else by
 // ==. So a Float follows IEEE: NaN is not Eq to itself, and -0 is Eq to 0.
-//
-// Limitation: a record field whose Alder name starts with '_' is an
-// unexported Go field (`_at`), and reflect cannot hand Eq its value as an
-// interface. A Time or Dict held there is compared field by field instead:
-// the same instant in two locations, or the same entries inserted in
-// another order, compare unequal. (Key panics on a Dict there.)
+// Every field of a generated record is exported (`_at` is U__at, gen's
+// Field), so a Time or Dict in any field is compared as above.
 func Eq[T any](a, b T) bool {
 	switch x := any(a).(type) {
 	case string:

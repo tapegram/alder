@@ -1903,7 +1903,7 @@ parts are always joined by a double underscore, `__`:
 | `route__…`, `session__…` | helpers shared by every route, and the session codec | `route__fail`, `session__codec` |
 | `Cap__M__Cap` | a capability's Go interface | `Cap__Auth__Login__Password` |
 | `Args__M__Cap__Entry` | the argument record of a capability entry | `Args__Auth__Login__Password__Verify` |
-| `title` → `Title` | a record field, with a capital first letter so Go exports it | |
+| `title` → `Title`, `_at` → `U__at` | a record field, exported (a capital first letter, or `U__` for a leading `_`) so that adapters, and the runtime's `Show`, `Eq` and `Key`, see it | |
 | `type` → `type__` | a local whose name Go reserves, or that names `rt`, `html`, `std` | |
 
 Why `__`? Your names may not contain it: the compiler rejects `max__len`

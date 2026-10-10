@@ -79,7 +79,12 @@ func TestShow(t *testing.T) {
 		{"negative int", int64(-3), "-3"},
 		{"float", 1.5, "1.5"},
 		{"whole float", 1.0, "1.0"},
-		{"big float", 1e21, "1e+21"},
+		{"big float", 1e21, "1000000000000000000000.0"},
+		{"million", 1e6, "1000000.0"},
+		{"large fraction", 1234567.5, "1234567.5"},
+		{"small float", 0.00001, "0.00001"},
+		{"negative small", -0.00025, "-0.00025"},
+		{"-Inf", math.Inf(-1), "-Inf"},
 		{"NaN", math.NaN(), "NaN"},
 		{"Inf", math.Inf(1), "+Inf"},
 		{"string", "milk", `"milk"`},
@@ -192,7 +197,7 @@ func TestShow_Unregistered(t *testing.T) {
 	}
 	// a registered tag out of range does not panic
 	_ = rt.Show(shape{Tag: 9})
-	type unexported struct{ _at time.Time }
+	type unexported struct{ at time.Time }
 	_ = rt.Show(unexported{})
 	_ = rt.Show(map[string]int{"a": 1})
 }
@@ -217,5 +222,43 @@ func TestShow_DictEntries(t *testing.T) {
 		if got := rt.Show(c.v); got != c.want {
 			t.Errorf("Show = %s, want %s", got, c.want)
 		}
+	}
+}
+
+// underscored is gen's struct for `{ _h: Html a, _t: Time, _d: Dict Text Time, n: Int }`: a field
+// whose Alder name starts with '_' is the exported Go field U__<rest> (gen.Field).
+type underscored struct {
+	U__h html.Node
+	U__t time.Time
+	U__d rt.Dict[string, time.Time]
+	N    int64
+}
+
+func TestShow_UnderscoreFields(t *testing.T) {
+	tm := time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)
+	v := underscored{U__h: html.El("b", nil, html.Text("x")), U__t: tm, U__d: rt.Dict[string, time.Time]{}.Insert("k", tm), N: 1}
+	want := `{ _h: <b>x</b>, _t: 2026-10-09T00:00:00Z, _d: Dict.fromList [{ key: "k", value: 2026-10-09T00:00:00Z }], n: 1 }`
+	if got := rt.Show(v); got != want {
+		t.Errorf("Show:\n got %s\nwant %s", got, want)
+	}
+}
+
+func TestEqKey_UnderscoreFields(t *testing.T) {
+	tm := time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)
+	ab := rt.Dict[string, time.Time]{}.Insert("a", tm).Insert("b", tm)
+	ba := rt.Dict[string, time.Time]{}.Insert("b", tm).Insert("a", tm.In(time.FixedZone("x", 3600)))
+	type rec struct {
+		U__t time.Time
+		U__d rt.Dict[string, time.Time]
+	}
+	x, y := rec{tm, ab}, rec{tm.In(time.FixedZone("y", -7200)), ba}
+	if !rt.Eq(x, y) {
+		t.Error("Eq: the same instant in another zone, or the same entries in another order, differ")
+	}
+	if rt.Eq(x, rec{tm.Add(1), ab}) {
+		t.Error("Eq: different instants are equal")
+	}
+	if rt.Key(x) != rt.Key(y) {
+		t.Errorf("Key: %q != %q", rt.Key(x), rt.Key(y))
 	}
 }

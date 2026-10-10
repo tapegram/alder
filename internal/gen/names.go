@@ -43,7 +43,9 @@ import (
 // where "M__…" is the module path with every '.' replaced by "__" ("Todos.Index", "view" →
 // "Todos__Index__view"). A local is its Alder name, with "__" appended when that is reserved
 // ("type" → "type__"), renamed "x_2", "x_3", … only to avoid capture (see scope), or a
-// temporary "_a1", "_m2", …. Record fields are capitalized ("title" → "Title"); the union struct
+// temporary "_a1", "_m2", …. Record fields are capitalized ("title" → "Title"), and a field
+// starting with '_' is "U__" and the rest ("_at" → "U__at"), so that every field is exported
+// (reflect, and so rt.Show, rt.Eq and rt.Key, sees its value); the union struct
 // field holding constructor C's payload is C ("Tag__" for a constructor named Tag, which would
 // otherwise be the tag field).
 //
@@ -72,9 +74,10 @@ import (
 //     routes__alder.go are no module's file, even ignoring case (on a case-insensitive file
 //     system such as macOS's, app_alder.go would be App's file): they would be files of a
 //     module segment "app_" or "routes_", which never ends a segment.
-//  4. Record fields and union fields live in their struct's own namespace: Field is injective
-//     (only the first letter changes, and Alder fields start lower-case or with '_'), and union
-//     fields are constructor names (upper-case) plus Tag and Tag__.
+//  4. Record fields and union fields live in their struct's own namespace: Field is injective.
+//     A field starting lower-case only has its first letter upper-cased, and contains no "__";
+//     a field "_x" becomes "U__x", which contains "__", so it is no other field's, and its
+//     rest x determines it. Union fields are constructor names (upper-case) plus Tag and Tag__.
 //  5. routeFunc, capName and argsName are exported (the adapters package and cmd/main.go use
 //     them), so they start with an upper-case word: Route, Cap or Args, then "__". They are
 //     GoNames of a module whose first segment is Route, Cap or Args, so no module may be named
@@ -132,15 +135,25 @@ func local(name string) string {
 	return name
 }
 
-// Field is the Go name of a record field: the Alder name with its first letter upper-cased
-// ("title" → "Title"), so that it is exported and never a Go keyword.
+// Field is the Go name of a record field (and of a capability entry's method): the Alder name
+// with its first letter upper-cased ("title" → "Title"), or, for a name starting with '_',
+// "U__" and the rest ("_at" → "U__at"); so that it is exported and never a Go keyword (naming
+// rule 4). rt's fieldName inverts it.
 func Field(name string) string {
+	if rest, ok := strings.CutPrefix(name, "_"); ok {
+		return "U__" + rest
+	}
+	return capitalize(name)
+}
+
+// capitalize is name with its first letter upper-cased.
+func capitalize(name string) string {
 	r, n := utf8.DecodeRuneInString(name)
 	return string(unicode.ToUpper(r)) + name[n:]
 }
 
 // typeParam is the Go name of an Alder type parameter ("a" → "A").
-func typeParam(name string) string { return Field(name) }
+func typeParam(name string) string { return capitalize(name) }
 
 // tagType is the Go type of union M.Union's tag ("tag__M__Shape").
 func tagType(module, union string) string { return "tag__" + GoName(module, union) }
@@ -190,7 +203,7 @@ func capName(module, capability string) string { return "Cap__" + GoName(module,
 // ("Args__Auth__Login__Password__Verify"): the entry capitalized, or prefixed with "x" when it
 // starts with '_' ("_raw" → "x_raw"), so that it never starts with '_' (naming rule 5).
 func argsName(module, capability, entry string) string {
-	e := Field(entry)
+	e := capitalize(entry)
 	if strings.HasPrefix(entry, "_") {
 		e = "x" + entry
 	}
