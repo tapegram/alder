@@ -2,11 +2,14 @@
 """Generate → alder check → feed diagnostics back → retry.
 
 Usage:
-  run_loop.py --exp DIR --model ollama:NAME|claude:NAME --task NAME [--retries 1] [--prompt prompt.md] [--alder BIN] [--base APPDIR] [--build]
+  run_loop.py --exp DIR --model ollama:NAME|claude:NAME --task NAME [--retries 1] [--prompt prompt.md] [--alder BIN]
+              [--base APPDIR] [--build [--test]] [--num-ctx N]
 
 Writes DIR/runs/<model>/<task>/round<N>/{output.md,check.json,app/...} and DIR/runs/<model>/<task>/summary.json.
-With --build, a round whose check is clean also runs `alder build --emit` (output in round<N>/build/).
---base DIR seeds round 0 from DIR/app as committed (`git archive HEAD`), never from the working tree.
+With --build, a round whose check is clean also runs `alder build --emit` (output in round<N>/build/);
+with --test too, a round that built also runs `alder test --json` and passes only if every test does.
+--base DIR seeds round 0 from DIR/app (and DIR/adapters, when there is one) as committed
+(`git archive HEAD`), never from the working tree. --num-ctx sets Ollama's context window.
 summary.json's `outcome` is pass, fail, compiler_bug or harness_error (see README "Outcomes").
 """
 import argparse, io, json, os, pathlib, posixpath, re, shutil, signal, subprocess, sys, tarfile, tempfile, time, urllib.request
@@ -43,8 +46,10 @@ class OllamaModel(Model):
     NUM_CTX = 32768
     CTX_MARGIN = 512   # prompt + answer this close to num_ctx: the prompt's start may have been dropped
 
-    def __init__(self, name, host="http://localhost:11434"):
+    def __init__(self, name, host="http://localhost:11434", num_ctx=None):
         self.name, self.host = name, host
+        if num_ctx is not None:   # --num-ctx: this instance's window (and overflow threshold)
+            self.NUM_CTX = num_ctx
 
     def generate(self, system, user):
         body = {"model": self.name, "stream": False, "options": {"num_ctx": self.NUM_CTX, "temperature": 0},
@@ -123,10 +128,11 @@ class ClaudeModel(Model):
         return p.stdout, {"seconds": round(time.time() - t0, 1), "claude_version": self.version(), "model": self.name}
 
 
-def make_model(spec: str) -> Model:
+def make_model(spec: str, num_ctx=None) -> Model:
+    """`num_ctx` (--num-ctx) applies to Ollama models; Claude ignores it."""
     kind, _, name = spec.partition(":")
     if kind == "ollama":
-        return OllamaModel(name)
+        return OllamaModel(name, num_ctx=num_ctx)
     if kind == "claude":
         return ClaudeModel(name)
     raise SystemExit(f"unknown model spec {spec!r}; use ollama:NAME or claude:NAME")
@@ -180,7 +186,7 @@ def unknown_exit(what: str, code: int):
 
 
 class Hang(str):
-    """A harness reason that is a timeout: alder check or build ran past its limit, which is almost
+    """A harness reason that is a timeout: alder check, build or test ran past its limit, which is almost
     certainly the compiler hanging (run_one records it as compiler_bug, kind "hang")."""
 
 
@@ -247,6 +253,58 @@ def run_build(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = 900
     return p.returncode, p.stderr, p.stdout, unknown_exit("build", p.returncode)
 
 
+TEST_OUTPUT_MAX = 4000   # characters of `alder test`'s text report kept in summary.json and the retry prompt
+
+
+def parse_tests(stdout: str):
+    """The test results in `alder test --json`'s stdout: one object per test (module, name, ok,
+    and left, right, error, trace, ms when present). Other objects ({"error": …},
+    {"diagnostics": […]}) and other lines are skipped."""
+    results = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            d = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(d, dict) and "name" in d and "ok" in d:
+            results.append(d)
+    return results
+
+
+def run_test(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = 600):
+    """`alder test --json <round_dir>` in round_dir, its own process group (run_proc).
+
+    Returns (exit, results, stderr, stdout, harness_reason), as run_build: harness_reason is None
+    normally, and a string for a timeout (a Hang), a binary that cannot start, or an exit code
+    other than 0, 1 or 2 (exit is then None, or the exit code)."""
+    rd = round_dir.resolve()
+    try:
+        p = run_proc([str(pathlib.Path(alder).resolve()), "test", "--json", str(rd)], timeout, cwd=rd)
+    except subprocess.TimeoutExpired:
+        msg = f"{alder}: test timed out after {timeout}s"
+        return None, [], msg, "", Hang(msg)
+    except OSError as e:
+        msg = f"{alder}: {e}"
+        return None, [], msg, "", msg
+    return p.returncode, parse_tests(p.stdout), p.stderr, p.stdout, unknown_exit("test", p.returncode)
+
+
+def test_report(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = 600) -> str:
+    """`alder test <round_dir>` without --json, run once more after a failing `--json` run: the
+    text report (stdout, then stderr) is what the retry prompt carries; never raises."""
+    rd = round_dir.resolve()
+    try:
+        p = run_proc([str(pathlib.Path(alder).resolve()), "test", str(rd)], timeout, cwd=rd)
+    except subprocess.TimeoutExpired:
+        return f"alder test timed out after {timeout}s"
+    except OSError as e:
+        return f"{alder}: {e}"
+    return (p.stdout.rstrip("\n") + ("\n" + p.stderr.rstrip("\n") if p.stderr.strip() else "")).strip("\n") + "\n"
+
+
 BASE_NOT_IN_GIT = ("`--base` must be inside a git repository "
                    "(the harness seeds from `git archive HEAD`, never the working tree)")
 
@@ -256,8 +314,9 @@ def _git(cwd, *args) -> bytes:
 
 
 def export_base(base: pathlib.Path):
-    """Export `<base>/app` as committed at HEAD of the git repository containing base into a new
-    temporary directory, and return (the exported base — tmp/<base relative to the repository> —,
+    """Export `<base>/app`, and `<base>/adapters` when the commit has one (the Go adapters
+    `alder build` and `alder test` need for an app with capabilities), as committed at HEAD of the
+    git repository containing base into a new temporary directory, and return (the exported base — tmp/<base relative to the repository> —,
     the commit it was exported from): HEAD is resolved once and that commit archived. Uncommitted
     edits and untracked files are never seen; when `<base>/app` has some, a warning says so on
     stderr. Exits 2 when base does not exist, is not inside a git repository, or HEAD has no
@@ -274,8 +333,12 @@ def export_base(base: pathlib.Path):
         raise SystemExit(2)
     rel = base.resolve().relative_to(top).as_posix()
     app = "app" if rel == "." else rel + "/app"
+    adapters = "adapters" if rel == "." else rel + "/adapters"
+    paths = [app]
+    if subprocess.run(["git", "-C", str(top), "cat-file", "-e", f"{commit}:{adapters}"], capture_output=True).returncode == 0:
+        paths.append(adapters)
     try:
-        tar = _git(top, "archive", "--format=tar", commit, "--", app)
+        tar = _git(top, "archive", "--format=tar", commit, "--", *paths)
     except subprocess.CalledProcessError as e:
         print(f"run_loop.py: --base {base}: git archive {commit} -- {app}: {e.stderr.decode().strip()}", file=sys.stderr)
         raise SystemExit(2)
@@ -319,10 +382,13 @@ def render_diags(diags, sources):
 
 
 BUILD_REFUSED = "The program type-checks but `alder build` refused it; fix the cause below."
+TESTS_FAILED = "The program builds but its tests fail; fix the program or the tests so every test passes."
 
 
-def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles: int, rejected=(), build_output=None) -> str:
-    """`build_output`, when given, is what `alder build --emit` printed when it refused (exit 1) a clean program."""
+def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles: int, rejected=(), build_output=None,
+                 test_output=None) -> str:
+    """`build_output`, when given, is what `alder build --emit` printed when it refused (exit 1) a clean program;
+    `test_output`, the text report of `alder test` when tests of a program that built failed (exit 1)."""
     sources = {}
     for f in (round_dir / "app").rglob("*.alder"):
         sources[str(f.relative_to(round_dir))] = f.read_text()
@@ -332,12 +398,18 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
         feedback = "The compiler reported these errors in your previous answer:\n\n" + render_diags(diags, sources)
     elif build_output is not None:
         feedback = BUILD_REFUSED
+    elif test_output is not None:
+        feedback = TESTS_FAILED
     else:
         feedback = "The compiler could not check your previous answer:\n\n" + stderr.strip()
     if build_output is not None:
         if diags:
             feedback += "\n\n" + BUILD_REFUSED
         feedback += "\n\n====================  BUILD OUTPUT  ====================\n" + build_output.strip()
+    if test_output is not None:
+        if diags:
+            feedback += "\n\n" + TESTS_FAILED
+        feedback += "\n\n====================  TEST OUTPUT  ====================\n" + test_output.strip()
     if rejected:
         feedback += ("\n\nThese paths were rejected: " + ", ".join(rejected) +
                      "; files must be `app/<Module>.alder`.")
@@ -353,6 +425,8 @@ def write_round(round_dir: pathlib.Path, prev_dir, text: str, files: dict):
     (round_dir / "app").mkdir(parents=True, exist_ok=True)
     if prev_dir is not None and (prev_dir / "app").exists():
         shutil.copytree(prev_dir / "app", round_dir / "app", dirs_exist_ok=True)
+    if prev_dir is not None and (prev_dir / "adapters").is_dir():   # from --base; the model writes only app/
+        shutil.copytree(prev_dir / "adapters", round_dir / "adapters", dirs_exist_ok=True)
     (round_dir / "output.md").write_text(text[:MAX_OUTPUT])
     app_root = (round_dir / "app").resolve()
     skipped = []
@@ -367,7 +441,8 @@ def write_round(round_dir: pathlib.Path, prev_dir, text: str, files: dict):
 
 
 def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, task_text: str,
-            system: str, alder: pathlib.Path, retries: int = 1, base=None, build: bool = False, seed=None) -> dict:
+            system: str, alder: pathlib.Path, retries: int = 1, base=None, build: bool = False, seed=None,
+            test: bool = False) -> dict:
     """`base`, if given, is a directory inside a git repository whose `app/` as committed (`git archive
     HEAD`, never the working tree) seeds round 0 (for tasks that modify an existing app). `seed`, if
     given, is that export already made, `export_base(base)` (the exported base and its commit): main
@@ -379,6 +454,14 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     task stops there, with no retry. Exit 1 (holes, or anything else the build refuses with
     diagnostics) is an ordinary failed round: the retry prompt carries the build's output.
 
+    With `test` (requires `build`; ValueError otherwise), a round that built also runs `alder test
+    --json`; its results go in `rnd["tests"]` ({"passed", "failed", "results", "exit"}). Exit 0 is the
+    pass (zero tests included). Exit 1 is an ordinary failed round: `rnd["test_output"]` and the
+    retry prompt (under TEST OUTPUT) carry the text report of a second, non-JSON run. Exit 2 (a
+    build problem or a crash outside any test, after a clean build) is a compiler bug, kind "test"
+    — or "hang" when its stderr says the tests timed out, as when the 600 s limit kills it —
+    with its stderr in round<N>/test.stderr.txt; the task stops.
+
     A check that exits 2 with "internal error" on stderr (a checker panic) is a compiler bug too
     (kind "internal_error", round<N>/check.stderr.txt), and so is a check or build that times out
     (kind "hang": a hang is the compiler's). `summary["compiler_bug_kind"]` says which ("build" for
@@ -387,17 +470,20 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     `outcome` is set on every path: pass, fail, compiler_bug, or harness_error when the harness
     itself failed (the model was unavailable; check or build could not start, or exited with a code
     alder never uses), with the reason in `harness_error`; the task stops there."""
+    if test and not build:
+        raise ValueError("--test requires --build")
     if base and seed is None:
         seed = export_base(base)
         try:
-            return run_one(exp, model, model_label, task_name, task_text, system, alder, retries, base, build, seed=seed)
+            return run_one(exp, model, model_label, task_name, task_text, system, alder, retries, base, build, seed=seed, test=test)
         finally:
             remove_export(seed[0])
     run_dir = exp / "runs" / model_label / task_name
     if run_dir.exists():
         shutil.rmtree(run_dir)
     summary = {"model": model_label, "task": task_name, "retries": retries, "base": str(base) if base else None,
-               "harness": {"build": build, "retries": retries}, "error": None, "rounds": [], "final_pass": False,
+               "harness": {"build": build, "retries": retries, **({"test": True} if test else {}),
+                           **({"num_ctx": model.NUM_CTX} if isinstance(model, OllamaModel) else {})}, "error": None, "rounds": [], "final_pass": False,
                "outcome": "fail"}
     if seed is not None:
         summary["base_commit"] = seed[1]
@@ -467,11 +553,32 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                     compiler_bug("build")
                     break
                 clean = False
+        test_output = None
+        if clean and test:
+            texit, results, tstderr, tstdout, reason = run_test(alder, round_dir)
+            rnd["tests"] = {"passed": sum(1 for r in results if r.get("ok") is True),
+                            "failed": sum(1 for r in results if r.get("ok") is not True),
+                            "results": results, "exit": texit}
+            if texit != 0:
+                (round_dir / "test.stderr.txt").write_text(tstderr + (("\n--- stdout ---\n" + tstdout) if tstdout.strip() else ""))
+                if isinstance(reason, Hang):   # alder test ran past the harness's limit
+                    compiler_bug("hang")
+                    break
+                if reason is not None:
+                    harness_error(reason)
+                    break
+                if texit != 1:   # 2: a build problem or a crash outside any test, after a clean build
+                    compiler_bug("hang" if "timed out" in tstderr else "test")
+                    break
+                test_output = test_report(alder, round_dir)[:TEST_OUTPUT_MAX]
+                rnd["test_output"] = test_output
+                clean = False
         if clean:
             summary["final_pass"] = True
             summary["outcome"] = "pass"
             break
-        user = retry_prompt(task_text, round_dir, diags, stderr, nfiles, rejected, build_output=build_output)
+        user = retry_prompt(task_text, round_dir, diags, stderr, nfiles, rejected, build_output=build_output,
+                            test_output=test_output)
         prev = round_dir
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=1) + "\n")
@@ -489,7 +596,12 @@ def main(argv=None):
     ap.add_argument("--base", default=None, help="directory (inside a git repository) whose app/ as committed at HEAD seeds round 0 "
                                                  "(modification tasks, e.g. examples/todos for t2); never the working tree")
     ap.add_argument("--build", action="store_true", help="after a clean check, run `alder build --emit`; the run passes only if it succeeds (exit 2 = compiler bug, stop)")
+    ap.add_argument("--test", action="store_true", help="with --build: after a successful build, run `alder test --json`; the run passes only if every test passes "
+                                                        "(exit 1 = retry with the report, exit 2 = compiler bug, stop)")
+    ap.add_argument("--num-ctx", type=int, default=None, help=f"Ollama's num_ctx for this invocation (default {OllamaModel.NUM_CTX}); recorded as harness.num_ctx")
     a = ap.parse_args(argv)
+    if a.test and not a.build:
+        ap.error("--test requires --build")
     seed = None
     if a.base:   # first: a --base outside git is a usage error before any work
         seed = export_base(pathlib.Path(a.base))
@@ -506,15 +618,17 @@ def run_all(a, seed):
     alder = pathlib.Path(a.alder) if a.alder else build_alder(exp)
     failed = 0
     for spec in a.model:
-        model = make_model(spec)
+        model = make_model(spec, a.num_ctx)
         label = spec.replace(":", "-").replace("/", "-")
         for task in a.task:
             task_text = (exp / "tasks" / f"{task}.md").read_text()
-            s = run_one(exp, model, label, task, task_text, system, alder, a.retries, base=a.base, build=a.build, seed=seed)
+            s = run_one(exp, model, label, task, task_text, system, alder, a.retries, base=a.base, build=a.build, seed=seed,
+                        test=a.test)
             status = ("ERROR " + s["error"] if s["error"]
                       else f"harness-error ({s['harness_error']})" if s["outcome"] == "harness_error"
                       else s["outcome"].replace("_", "-"))
             counts = " → ".join(str(r["errors"]) + ("" if "build" not in r else " (build ok)" if r["build"]["ok"] else " (build FAILED)")
+                                + ("" if "tests" not in r else f" (tests {r['tests']['passed']}/{r['tests']['passed'] + r['tests']['failed']})")
                                 for r in s["rounds"])
             for r in s["rounds"]:
                 if r.get("warning"):

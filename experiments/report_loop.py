@@ -4,7 +4,9 @@
 Summaries written since M3d carry `harness`; they get one column per round (`r0 … rN`, each
 `errors` or `errors (build ✓|✗)`) and a `Result` of pass / fail / compiler-bug / harness-error
 (the last from `outcome`, which summaries carry since M4c; compiler-bug says "(hang)" or "(check
-panic)" from `compiler_bug_kind`). Older summaries (E5) without `harness` keep the original
+panic)" from `compiler_bug_kind`; kind "test", `alder test` exiting 2, is plain compiler-bug as
+"build" is). When any summary has rounds run with `--test`, a `Tests` column follows the rounds:
+per round that ran tests, `rN ✓ N` (all N passed) or `rN ✗ M/N` (M of N failed). Older summaries (E5) without `harness` keep the original
 two-round table, so their scores.md regenerates unchanged."""
 import json, pathlib, sys
 
@@ -15,7 +17,7 @@ def rows(summaries):
         r = {"model": s["model"], "task": s["task"], "error": s["error"], "pass": s["final_pass"],
              "r0": None, "r1": None, "codes0": {}, "codes1": {},
              "harness": "harness" in s, "compiler_bug": bool(s.get("compiler_bug")),
-             "outcome": s.get("outcome"), "bug_kind": s.get("compiler_bug_kind"), "rounds": []}
+             "outcome": s.get("outcome"), "bug_kind": s.get("compiler_bug_kind"), "rounds": [], "tests": []}
         for rd in s["rounds"]:
             r[f"r{rd['n']}"] = rd["errors"]
             r[f"codes{rd['n']}"] = rd["codes"]
@@ -23,6 +25,10 @@ def rows(summaries):
             if "build" in rd:
                 cell += " (build ✓)" if rd["build"]["ok"] else " (build ✗)"
             r["rounds"].append((cell, rd["codes"]))
+            if "tests" in rd:
+                t = rd["tests"]
+                total = t["passed"] + t["failed"]
+                r["tests"].append(f"r{rd['n']} ✓ {total}" if t["failed"] == 0 else f"r{rd['n']} ✗ {t['failed']}/{total}")
         out.append(r)
     return out
 
@@ -57,15 +63,18 @@ def markdown(rs):
 def markdown_rounds(rs):
     n = max([len(r["rounds"]) for r in rs] + [1])
     cols = [f"r{i}" for i in range(n)]
-    lines = ["| Model | Task | " + " | ".join(cols) + " | Result | Codes |",
-             "|---|---|" + "---|" * n + "---|---|"]
+    tests = any(r.get("tests") for r in rs)   # a Tests column only for runs with --test: E6 regenerates unchanged
+    lines = ["| Model | Task | " + " | ".join(cols) + (" | Tests" if tests else "") + " | Result | Codes |",
+             "|---|---|" + "---|" * n + ("---|" if tests else "") + "---|---|"]
     for r in rs:
         if r["error"]:
-            lines.append(f"| {r['model']} | {r['task']} | " + " | ".join("—" for _ in cols) + f" | ERROR: {r['error'][:60]} | |")
+            lines.append(f"| {r['model']} | {r['task']} | " + " | ".join("—" for _ in cols) + (" | —" if tests else "")
+                         + f" | ERROR: {r['error'][:60]} | |")
             continue
         cells = [c for c, _ in r["rounds"]] + ["—"] * (n - len(r["rounds"]))
         codes = "; ".join(f"r{i}: {fmt_codes(c)}" for i, (_, c) in enumerate(r["rounds"]) if c) or "—"
-        lines.append(f"| {r['model']} | {r['task']} | " + " | ".join(cells) + f" | {result(r)} | {codes} |")
+        tcell = (" | " + ("; ".join(r["tests"]) or "—")) if tests else ""
+        lines.append(f"| {r['model']} | {r['task']} | " + " | ".join(cells) + tcell + f" | {result(r)} | {codes} |")
     return "\n".join(lines) + "\n"
 
 

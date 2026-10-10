@@ -32,6 +32,21 @@ build refuses with diagnostics) is an ordinary failed round: the retry prompt sa
 type-checks but `alder build` refused it; fix the cause below." and carries the build's output
 under `BUILD OUTPUT`.
 
+With `--test` (E7; requires `--build`, otherwise a usage error, exit 2), a round that built also
+runs `alder test --json <round dir>` in the round directory (its own process group, 600 s). Every
+test object it prints goes in the round's `tests`: `{"passed": N, "failed": M, "results": [{module,
+name, ok, left, right, error, trace, ms}, …], "exit": E}` (`alder test`'s own JSON, empty fields
+omitted). Exit 0 is the pass; a program with no tests passes too (`0 passed, 0 failed`: whether the
+model wrote tests is scored separately, `passed + failed == 0`). Exit 1 is an ordinary failed round:
+the harness runs `alder test <round dir>` once more without `--json` and the round records that text
+report, truncated to 4000 characters, as `test_output` (the `--json` run's stderr goes to
+`round<N>/test.stderr.txt` on any exit but 0); the retry prompt says "The program builds
+but its tests fail; fix the program or the tests so every test passes." and carries the report
+under `TEST OUTPUT`. Exit 2 (a build problem or a crash outside any test, after a clean check and
+build) is a compiler bug, kind `test`, unless its stderr says the tests timed out (kind `hang`);
+its stderr is kept in `round<N>/test.stderr.txt` and the task stops. `alder test` needs the Go
+adapters when the app declares a capability, so `--base` exports them too (below).
+
 ## Error taxonomy
 
 | Code | Meaning | Examples |
@@ -82,7 +97,10 @@ In the loop harness (`run_loop.py`):
 - `ollama:NAME` records `prompt_eval_count` and `eval_count` per round. Ollama silently drops the
   start of a prompt longer than `num_ctx`, so the round gets a `warning` (also printed to stderr)
   when `prompt_eval_count` is missing or below 90% of the estimate (`len(prompt) / 4`), or when
-  `prompt_eval_count + eval_count` reaches `num_ctx - 512` (32768 - 512).
+  `prompt_eval_count + eval_count` reaches `num_ctx - 512` (32768 - 512 by default).
+  `--num-ctx N` (E7) sets `num_ctx` for every Ollama model of the invocation, the warning's
+  threshold with it (`N - 512`); every Ollama run records the window it ran with as
+  `harness.num_ctx`. Claude models ignore the flag.
 
 ## Tasks
 
@@ -93,6 +111,9 @@ Tasks are chosen to exercise different things:
 - **T3 new app**: a small app from scratch (everything).
 - **T4 app messages**: a notes app with a theme switch and logout on every page (app-level messages, session).
 - **T5 ownership** (E6): shared notes where each user sees and deletes only their own; a message carrying another user's id must 404 (authorization in `update`).
+- **T6 orders** (E7): a shop's orders with line items, a computed total and a `Staff`/`Manager` role that changes what `load` may show; the floor for harder use cases.
+
+From E7 every task ends with a tests paragraph ("Also write tests … `alder test` must pass. Do not write tests that call the `Password` capability.") naming what to test.
 
 ## Experiment list
 
@@ -102,17 +123,18 @@ Tasks are chosen to exercise different things:
 - **E4 msgpath** (`e4-msgpath/`): path-less `msg`; end of the spike.
 - **E5 loop** (`e5-loop/`): first run with `alder check` in the loop (generate, check, one retry), T2–T4 × Qwen3-Coder, Haiku, Sonnet; scored by the checker. `repros/` holds each compiler problem it found as an app plus `check.json`.
 - **E6 build** (`e6-build/`): the first run with `--build` (a round passes only if `alder check` is clean and `alder build --emit` succeeds), up to two retries, T2–T5 × Qwen3-Coder, Haiku, Sonnet; T5 (shared notes, each user's own) probes authorization in `update`. Every clean program built (no compiler bugs); `findings.md` hand-scores T5's owner check.
+- **E7 prompt and tests** (`e7-prompt-tests/`): two questions in one run. Prompt size: Qwen3-Coder on the `full` prompt (chapters 3–10 + example, `--num-ctx 65536`) against the `reference` prompt (`build_context.py --reference`, `--num-ctx 32768`). Tests in the loop: T2–T5 with a tests paragraph and a new T6, all `--build --test --retries 2`, Qwen3-Coder × both prompts, Haiku and Sonnet × `full`; E6's T2–T5 are the control.
 
 ## Harness (M2)
 
 `run_loop.py` closes the loop: generate, run `alder check --json`, feed the diagnostics back, retry.
 
 ```
-python3 experiments/run_loop.py --exp experiments/e5-loop --model ollama:qwen3-coder:30b --task t3-newapp [--retries 1] [--prompt prompt.md] [--alder path/to/alder] [--base examples/todos] [--build]
+python3 experiments/run_loop.py --exp experiments/e5-loop --model ollama:qwen3-coder:30b --task t3-newapp [--retries 1] [--prompt prompt.md] [--alder path/to/alder] [--base examples/todos] [--build [--test]] [--num-ctx 32768]
 python3 experiments/report_loop.py experiments/e5-loop > experiments/e5-loop/scores.md
 ```
 
-`--model` (`ollama:NAME` or `claude:NAME`) and `--task` are repeatable. Each run writes `runs/<model>/<task>/round<N>/{output.md,check.json,app/...}` and `runs/<model>/<task>/summary.json`. Round N+1 starts from round N's files, overlaid with whatever the model re-emits. `--base DIR` seeds round 0 with `DIR/app`, for tasks that modify an existing app (T2 uses `--base examples/todos`): `DIR/app` *as committed*. DIR must be inside a git repository; the harness resolves HEAD of that repository once, exports `git archive <that commit> -- <DIR>/app` into a temporary directory once per invocation and copies round 0 from there, so uncommitted edits and untracked files in the working tree never leak into a run, and the summary records `base` (DIR as given) and `base_commit` (the commit exported). When `DIR/app` has uncommitted changes the harness says so on stderr ("warning: uncommitted changes under DIR/app are ignored …") and runs on. A DIR that does not exist exits 2 ("--base DIR does not exist"), and so does one outside a git repository: "`--base` must be inside a git repository (the harness seeds from `git archive HEAD`, never the working tree)". The retry prompt carries the task, the previous round's files in full (`YOUR PREVIOUS ANSWER`), and the diagnostics; every model call is a fresh process, so without the files a retry is a re-roll (E5's first run).
+`--model` (`ollama:NAME` or `claude:NAME`) and `--task` are repeatable. Each run writes `runs/<model>/<task>/round<N>/{output.md,check.json,app/...}` and `runs/<model>/<task>/summary.json`. Round N+1 starts from round N's files, overlaid with whatever the model re-emits. `--base DIR` seeds round 0 with `DIR/app`, for tasks that modify an existing app (T2 uses `--base examples/todos`): `DIR/app` *as committed*, and with it `DIR/adapters` when that commit has one (since E7: the Go adapters `alder build` and `alder test` need for an app with capabilities, e.g. the example's `Password`; every round carries them, the model writes only `app/`). DIR must be inside a git repository; the harness resolves HEAD of that repository once, exports `git archive <that commit> -- <DIR>/app [<DIR>/adapters]` into a temporary directory once per invocation and copies round 0 from there, so uncommitted edits and untracked files in the working tree never leak into a run, and the summary records `base` (DIR as given) and `base_commit` (the commit exported). When `DIR/app` has uncommitted changes the harness says so on stderr ("warning: uncommitted changes under DIR/app are ignored …") and runs on. A DIR that does not exist exits 2 ("--base DIR does not exist"), and so does one outside a git repository: "`--base` must be inside a git repository (the harness seeds from `git archive HEAD`, never the working tree)". The retry prompt carries the task, the previous round's files in full (`YOUR PREVIOUS ANSWER`), and the diagnostics; every model call is a fresh process, so without the files a retry is a re-roll (E5's first run).
 
 Summary shape:
 
@@ -126,9 +148,19 @@ Summary shape:
  "final_pass": true}
 ```
 
+`harness` gains `"test": true` on a `--test` run (absent otherwise) and `"num_ctx": N` for an Ollama model. A round of a `--test` run that built has `tests`, and `test_output` when they failed:
+
+```json
+{"n": 0, "errors": 0, "build": {"ok": true, "exit": 0, "stderr": ""},
+ "tests": {"passed": 1, "failed": 1, "exit": 1, "results": [
+   {"module": "Todo", "name": "countOpen ignores done todos", "ok": true, "left": "1", "right": "1", "trace": [], "ms": 0.003},
+   {"module": "Todos.Index", "name": "Toggle flips done", "ok": false, "left": "…", "right": "…", "trace": ["Db.get Todo"], "ms": 2.8}]},
+ "test_output": "ok   Todo \"countOpen ignores done todos\"\nFAIL Todos.Index \"Toggle flips done\"\n…\n1 passed, 1 failed\n"}
+```
+
 Paths in `--- file: ... ---` markers are normalized (`X.alder` and `./app/X.alder` become `app/X.alder`); absolute paths, `..` escapes, backslashes and non-`.alder` files are refused, recorded per round as `rejected`, and named in the retry prompt.
 
-`compiler_bug: true` appears only when a `--build` exited 2 after a clean check. Summaries from before M3d have no `harness` key.
+`compiler_bug: true` appears only when the compiler failed on a clean program (see Outcomes: a `--build` or `--test` exiting 2, a checker panic, a hang). Summaries from before M3d have no `harness` key.
 
 ### Outcomes
 
@@ -136,9 +168,18 @@ Since M4c every summary has `outcome`, one of four:
 
 - **`pass`**: `alder check` exited 0 with no errors in some round and, with `--build`, that round's build succeeded (`final_pass: true`).
 - **`fail`**: every round had errors (or a build that refused the program, exit 1), and the retries ran out. A check that exits 2 for another reason (no files, an I/O error alder reports) is an ordinary failed round too: it is alder answering.
-- **`compiler_bug`**: the compiler failed on the model's program; `compiler_bug: true` as before, and `compiler_bug_kind` says how: `build` (a `--build` exited 2 after a clean check: an internal error, or generated Go that does not vet), `internal_error` (`alder check` exited 2 with "internal error" on stderr: a checker panic; its stderr is kept in `round<N>/check.stderr.txt`) or `hang` (`alder check` or `alder build` ran past its limit, 600 s / 900 s: a hang is the compiler's, and the harness kills its whole process group, `go` children included). The task stops, no retry.
-- **`harness_error`**: no verdict on the model's program, because the harness itself failed: `alder check` or `alder build` could not be started, or exited with a code alder never uses (not 0, 1 or 2: a process killed by a signal, which Python reports as a negative code, or a wrapper's 137 for SIGKILL); or the model was unavailable (`error` is then set as before). The reason is in `harness_error`; the task stops there, with no retry, and `run_loop.py` exits 1.
+- **`compiler_bug`**: the compiler failed on the model's program; `compiler_bug: true` as before, and `compiler_bug_kind` says how: `build` (a `--build` exited 2 after a clean check: an internal error, or generated Go that does not vet), `internal_error` (`alder check` exited 2 with "internal error" on stderr: a checker panic; its stderr is kept in `round<N>/check.stderr.txt`), `test` (a `--test` run's `alder test` exited 2 after a clean check and build: a build problem in the test program, adapters that do not compile there, or a crash outside any test; its stderr is kept in `round<N>/test.stderr.txt`) or `hang` (`alder check`, `alder build` or `alder test` ran past its limit, 600 s / 900 s / 600 s, or `alder test` exited 2 saying the tests timed out: a hang is the compiler's, and the harness kills its whole process group, `go` children included). The task stops, no retry. A test that fails, crashes or times out *inside* the tests (`alder test` exit 1) is the model's: an ordinary failed round.
+- **`harness_error`**: no verdict on the model's program, because the harness itself failed: `alder check`, `alder build` or `alder test` could not be started, or exited with a code alder never uses (not 0, 1 or 2: a process killed by a signal, which Python reports as a negative code, or a wrapper's 137 for SIGKILL); or the model was unavailable (`error` is then set as before). The reason is in `harness_error`; the task stops there, with no retry, and `run_loop.py` exits 1.
 
 `final_pass` and `compiler_bug` keep their meaning for older readers. Summaries from before M4c have no `outcome`; `report_loop.py` derives their result as before.
 
-Scores are now generated by `report_loop.py`: one column per round (`r0 … rN`, each `errors` or `errors (build ✓|✗)`), then `Result` (pass / fail / compiler-bug / harness-error: compiler-bug with "(hang)" or "(check panic)" from `compiler_bug_kind`, harness-error from `outcome`). Summaries without `harness` (E5) keep the original two-round table; hand-scoring is reserved for design signals the checker cannot see. Tests: `cd experiments && python3 -m unittest test_run_loop -v`.
+Scores are now generated by `report_loop.py`: one column per round (`r0 … rN`, each `errors` or `errors (build ✓|✗)`), then — only when some run used `--test` — `Tests` (for each round that ran tests, `rN ✓ N` when all N passed or `rN ✗ M/N` when M of N failed, e.g. `r0 ✗ 1/3; r1 ✓ 3`), then `Result` (pass / fail / compiler-bug / harness-error: compiler-bug with "(hang)" or "(check panic)" from `compiler_bug_kind`, harness-error from `outcome`; kind `test` is plain compiler-bug). Summaries without `harness` (E5) keep the original two-round table, and E5's and E6's `scores.md` regenerate byte-identical; hand-scoring is reserved for design signals the checker cannot see. Tests: `cd experiments && python3 -m unittest -v` (`test_run_loop`, `test_build_context`).
+
+## The prompt (`build_context.py`)
+
+```
+python3 experiments/build_context.py [--chapters 03,04,05,06,07,08,09,10] [--no-example] [--reference] > prompt.md
+python3 experiments/build_context.py [--reference] --size [--count ollama:qwen3-coder:30b [--num-ctx 65536]]
+```
+
+The prompt is a fixed header, the chapters (default 3–10) and the example app (`examples/todos/app`). `--reference` (E7) drops the `## ` sections written for a human reader, listed by exact heading in `HUMAN_SECTIONS`: ch.6 "How a request runs"; ch.7 "How effects run", "Implementing a capability"; ch.8 "How tables are stored", "Schema changes"; ch.10 "2. Running the tests", "6. What a trace says", "7. Choosing tests, and output for programs", "8. What cannot be tested yet". A section runs from its heading to the next `## ` heading (one inside a code fence does not count); the chapter's text before its first `## ` and every other section are kept, in order. A listed heading the chapter no longer has exits 2 naming the chapter file and the heading, so a renamed section never silently builds the wrong prompt. `--size` prints the size instead of the prompt: `characters: N` and `estimate (len/4): N`; `--count ollama:MODEL` (implies `--size`) adds `prompt_eval_count (ollama:MODEL, num_ctx N): N`, Ollama's own count for the prompt alone (one `/api/chat` call with the prompt as the system message and `num_predict: 1`, at `--num-ctx`, default 65536, large enough not to truncate it; a count that reaches it warns). `--book DIR` and `--example DIR` replace the book and the example's `app/` directory (for tests).
