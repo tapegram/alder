@@ -342,7 +342,11 @@ brand constructors (`Todos.Show { id: TodoId "x" }`, `Text.NonEmpty
 "milk"`), which elsewhere only their own module may (E0011). A `Query` is
 shown as `<Query> : Query T` and not run; `--run` runs it against the dev
 database `build/<app>/dev.db` (creating it, with the app's tables, when
-absent) and prints the result. A `Select` is shown as `<Select> : Select
+absent) and prints the result. The Query runs with the app's default
+session, every field at its default, as a test does. The app's `adapters/`,
+when it has one, is compiled in, so a capability the Query calls reaches
+the real Go; only an app without `adapters/` gets "capability … is not
+wired in eval". A `Select` is shown as `<Select> : Select
 T`, even with `--run`: pipe it to `Db.all`, `Db.first` or `Db.count` to
 make a `Query`. A `Task` is never run. A function that never stops calling itself ends in
 `alder eval: stack overflow (unbounded recursion?)`. `--json` prints one object instead,

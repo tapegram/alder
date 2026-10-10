@@ -470,3 +470,60 @@ func TestEval_StackOverflow(t *testing.T) {
 		t.Errorf("exit %d, stdout %q\nstderr (%d lines): %.500s", code, stdout, strings.Count(stderr, "\n"), stderr)
 	}
 }
+
+// The Query and Task mains run with the app's default session; `--run` of a Query still prints
+// its result.
+func TestEval_RunHasSession(t *testing.T) {
+	for _, k := range []mainKind{mainQuery, mainTask} {
+		m := scratchMain(k, false, "x")
+		if !strings.Contains(m, "Session: app.TestSession()") || !strings.Contains(m, "Caps: app.Caps{}.Registry()") || strings.Contains(m, "app/adapters") {
+			t.Errorf("kind %d:\n%s", k, m)
+		}
+	}
+	if m := scratchMain(mainTask, false, "x"); !strings.Contains(m, "eff.Run(env, eff.KTask, x)") {
+		t.Errorf("task main:\n%s", m)
+	}
+	if m := scratchMain(mainPure, true, "x"); m != evalPureMainText("x") {
+		t.Errorf("pure main:\n%s", m)
+	}
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	evalOK(t, "[] : List Todo\n", "--run", "Db.from Todo |> Db.all")
+}
+
+// evalPureMainText is the pure main `alder eval` compiled before scratchMain, for it.
+func evalPureMainText(it string) string {
+	return "package main\n\nimport (\n\t\"fmt\"\n\n\t\"alder/rt\"\n\t\"app\"\n)\n\nfunc main() { fmt.Print(rt.Show(" + it + ")) }\n"
+}
+
+// `--run` wires the app's adapters when adapters/ holds Go files, and none otherwise.
+func TestEval_RunWithAdapters(t *testing.T) {
+	m := scratchMain(mainQuery, true, "x")
+	if !strings.Contains(m, "\t\"app/adapters\"\n") || !strings.Contains(m, "Caps: adapters.Caps().Registry()") {
+		t.Errorf("query main with adapters:\n%s", m)
+	}
+	needGoTool(t)
+	tmp := t.TempDir()
+	app := filepath.Join(tmp, "todos")
+	copyDir(t, todosDir(t), app)
+	t.Chdir(tmp)
+	mainGo := filepath.Join("build", "todos", "scratch", "eval", "cmd", "main.go")
+	for _, withAdapters := range []bool{true, false} {
+		if !withAdapters {
+			if err := os.RemoveAll(filepath.Join(app, "adapters")); err != nil {
+				t.Fatal(err)
+			}
+		}
+		code, stdout, stderr := runEval(t, "", "todos", "--run", "Db.from Todo |> Db.count")
+		if code != 0 || stdout != "0 : Int\n" {
+			t.Fatalf("adapters %v: exit %d, stdout %q\nstderr: %s", withAdapters, code, stdout, stderr)
+		}
+		b, err := os.ReadFile(mainGo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(string(b), "adapters.Caps().Registry()"); got != withAdapters {
+			t.Errorf("adapters %v: main.go:\n%s", withAdapters, b)
+		}
+	}
+}

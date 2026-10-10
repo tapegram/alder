@@ -239,3 +239,32 @@ func TestCompile_LockHeldUntilClose(t *testing.T) {
 		}
 	}
 }
+
+// With NoVet a main that builds but does not vet runs; one that does not build either is told
+// apart from a generated-code failure by the vet CompileCheckedWith then runs: the main or the
+// adapters "does not vet", as without NoVet.
+func TestCompileCheckedWith_NoVet(t *testing.T) {
+	needGo(t)
+	extra := &Module{Name: "Scratch", Source: "it : Int\nit = Todo.countOpen []\n"}
+	vetBad := strings.Replace(printMain, "fmt.Println(app.Scratch__it)", `fmt.Printf("%d\n", "x"); fmt.Println(app.Scratch__it)`, 1)
+	out := t.TempDir()
+	c := Check("../../examples/todos", extra)
+	if b := CompileCheckedWith(c, vetBad, "", out, Options{}); b.Err == nil || !strings.Contains(b.Err.Error(), "does not vet") {
+		b.Close()
+		t.Fatalf("with vet: %v", b.Err)
+	}
+	b := CompileCheckedWith(c, vetBad, "", out, Options{NoVet: true})
+	if b.Err != nil || !b.Runnable() {
+		t.Fatalf("no vet: %v", b.Err)
+	}
+	if got, _, code := Run(b, nil, ""); code != 0 || !strings.HasSuffix(strings.TrimSpace(got), "0") {
+		t.Errorf("%q %d", got, code)
+	}
+	b.Close()
+	broken := strings.Replace(printMain, "fmt.Println(app.Scratch__it)", `var n int = "x"; fmt.Println(n, app.Scratch__it)`, 1)
+	b = CompileCheckedWith(c, broken, "", out, Options{NoVet: true})
+	defer b.Close()
+	if b.Err == nil || !strings.Contains(b.Err.Error(), "(the main or the adapters) does not vet") || b.Runnable() {
+		t.Errorf("neither vets nor builds: %v", b.Err)
+	}
+}

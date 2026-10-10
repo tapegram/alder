@@ -118,8 +118,23 @@ func Compile(appDir string, extra *Module, mainGo string, purpose, out string) B
 }
 
 // CompileChecked is the second half of Compile: it builds what c checked (Check's result for
-// the same app and extra module), so a caller that checked first does not check twice.
-func CompileChecked(c Checked, mainGo string, purpose, out string) (b Build) {
+// the same app and extra module), so a caller that checked first does not check twice. It is
+// CompileCheckedWith with the default Options.
+func CompileChecked(c Checked, mainGo string, purpose, out string) Build {
+	return CompileCheckedWith(c, mainGo, purpose, out, Options{})
+}
+
+// Options adjust CompileCheckedWith.
+type Options struct {
+	// NoVet skips `go vet` of the generated module before `go build` (the REPL: the app vetted
+	// when it was built, and vet costs a build's time again). When the build then fails, the
+	// module is vetted after all, so the failure is reported as without NoVet: generated Go
+	// that does not vet is an internal error, a main or adapters that do not vet say so.
+	NoVet bool
+}
+
+// CompileCheckedWith is CompileChecked with options.
+func CompileCheckedWith(c Checked, mainGo string, purpose, out string, o Options) (b Build) {
 	defer func() {
 		if r := recover(); r != nil {
 			b.Close()
@@ -191,20 +206,36 @@ func CompileChecked(c Checked, mainGo string, purpose, out string) (b Build) {
 		b.Err = err
 		return b
 	}
-	if vetOut, err := buildkit.GoCmd(b.Dir, "vet", "-mod=mod", "./..."); err != nil {
-		if verr := buildkit.VetApp(b.Dir, files, "."); verr != nil {
-			b.Err = verr
+	if !o.NoVet {
+		if b.Err = vet(b.Dir, files); b.Err != nil {
 			return b
 		}
-		b.Err = fmt.Errorf("the Go in %s (the main or the adapters) does not vet: %v\n%s", b.Dir, err, vetOut)
-		return b
 	}
 	if buildOut, err := buildkit.GoCmd(b.Dir, "build", "-mod=mod", "-o", "scratch", "./cmd"); err != nil {
+		if o.NoVet { // what vet would have said first
+			if b.Err = vet(b.Dir, files); b.Err != nil {
+				return b
+			}
+		}
 		b.Err = fmt.Errorf("go build of %s failed: %v\n%s", b.Dir, err, buildOut)
 		return b
 	}
 	b.Binary = filepath.Join(b.Dir, "scratch")
 	return b
+}
+
+// vet runs `go vet` on the scratch module in dir (files are the generated ones) and returns
+// nil, or why it does not vet: buildkit.VetApp's error when the generated package is at fault,
+// else the main's or the adapters'.
+func vet(dir string, files map[string][]byte) error {
+	vetOut, err := buildkit.GoCmd(dir, "vet", "-mod=mod", "./...")
+	if err == nil {
+		return nil
+	}
+	if verr := buildkit.VetApp(dir, files, "."); verr != nil {
+		return verr
+	}
+	return fmt.Errorf("the Go in %s (the main or the adapters) does not vet: %v\n%s", dir, err, vetOut)
 }
 
 // Checked is the outcome of Check.

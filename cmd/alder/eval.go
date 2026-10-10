@@ -13,168 +13,15 @@ import (
 	"strings"
 	"syscall"
 
+	"alder/internal/buildkit"
 	"alder/internal/diag"
 	"alder/internal/gen"
 	"alder/internal/scratch"
-	"alder/internal/snippets"
 	"alder/internal/types"
 )
 
 // evalUsage is the usage line of `alder eval`.
 const evalUsage = "usage: alder eval [dir] [--run] [--json] [--module Name] <expr | ->"
-
-// evalPureMain prints the value of the scratch module's `it` as Alder (rt.Show); {{it}} is
-// evalIt's Go expression for it.
-const evalPureMain = `package main
-
-import (
-	"fmt"
-
-	"alder/rt"
-	"app"
-)
-
-func main() { fmt.Print(rt.Show({{it}})) }
-`
-
-// evalQueryMain runs the scratch module's `it` ({{it}}, as in evalPureMain), a Query, against
-// the SQLite database ALDER_EVAL_DB (created with the app's tables when absent; an existing one
-// is checked against the app's schema and never rebuilt) with no capabilities wired, and prints
-// its result (rt.Show). The database file is created with O_EXCL, so of this process and an
-// `alder run` starting at the same moment only the one that created it builds its tables.
-const evalQueryMain = `package main
-
-import (
-	"context"
-	"fmt"
-	"os"
-	"regexp"
-	"time"
-
-	"alder/rt"
-	"alder/rt/db"
-	"alder/rt/eff"
-	"app"
-)
-
-// unwired is the message of a capability call that finds no implementation.
-var unwired = regexp.MustCompile(` + "`" + `alder: capability "([^"]*)" is not wired` + "`" + `)
-
-func fail(msg string) {
-	fmt.Fprintln(os.Stderr, unwired.ReplaceAllString(msg, "capability $1 is not wired in eval"))
-	os.Exit(1)
-}
-
-func main() {
-	defer func() {
-		if r := recover(); r != nil {
-			fail(fmt.Sprint(r))
-		}
-	}()
-	path := os.Getenv("ALDER_EVAL_DB")
-	created := false
-	if f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o644); err == nil {
-		f.Close()
-		created = true
-	} else if !os.IsExist(err) {
-		fail(err.Error())
-	}
-	store, err := db.OpenSQLite(path)
-	if err != nil {
-		fail(err.Error())
-	}
-	defer store.Close()
-	ctx := context.Background()
-	if err := store.Ensure(ctx, app.Tables, created); err != nil {
-		fail(err.Error())
-	}
-	env := &eff.Env{Ctx: ctx, Store: store, Caps: map[string]any{}, Now: time.Now}
-	v, err := eff.RunQuery(env, {{it}})
-	if err != nil {
-		fail(err.Error())
-	}
-	fmt.Print(rt.Show(v))
-}
-`
-
-// evalSource is the scratch module `alder eval` compiles for an input, and how to map its
-// positions back to the input's.
-type evalSource struct {
-	src   string
-	lines []string // the input's lines
-	// For line i+1 of src: inLine[i] is the input's line it comes from, and shift[i] is what to
-	// add to a column on it to get the input's column (the expression's first line gains
-	// `it = `, a let line loses its indentation and `let `, an annotated let's body line its
-	// annotation).
-	inLine, shift []int
-}
-
-// errNothing is an input with no expression.
-var errNothing = errors.New("nothing to evaluate")
-
-// evalModule turns the input into the source of the scratch module. The input is zero or more
-// `let name = expr` (or `let name : Type = expr`) items, then one expression; where each item
-// starts is snippets.Starts: the first on the first line that is not blank or a `--` comment
-// (its indentation is ignored), every later one on a line at column 1 that is not blank, a
-// comment or a closer (`}`, `)`, `]`, `</tag>`, which continue the item before them, so a
-// multi-line `match` or element pastes as written). Each let item becomes the top-level
-// `name = expr` (an annotated one also the line `name : Type` before it), the expression
-// `it = expr`; unannotated values have no signature, and the checker infers them.
-func evalModule(input string) (evalSource, error) {
-	input = strings.TrimRight(strings.ReplaceAll(input, "\r\n", "\n"), "\n")
-	lines := strings.Split(input, "\n")
-	es := evalSource{lines: lines}
-	var starts []int // the first line of each item
-	for i, st := range snippets.Starts(lines) {
-		if st {
-			starts = append(starts, i)
-		}
-	}
-	if len(starts) == 0 {
-		return es, errNothing
-	}
-	var out []string
-	emit := func(src string, in, shift int) {
-		out = append(out, src)
-		es.inLine, es.shift = append(es.inLine, in+1), append(es.shift, shift)
-	}
-	next := 0 // the next item
-	for i, l := range lines {
-		if next >= len(starts) || i != starts[next] {
-			emit(l, i, 0)
-			continue
-		}
-		next++
-		body := strings.TrimLeft(l, " \t")
-		indent := len(l) - len(body)
-		if next == len(starts) {
-			emit("it = "+body, i, indent-len("it = "))
-			continue
-		}
-		rest, ok := strings.CutPrefix(body, "let ")
-		if !ok {
-			return es, fmt.Errorf("input line %d: only `let name = expr` lines may come before the expression", i+1)
-		}
-		def := strings.TrimLeft(rest, " \t")
-		at := indent + len(body) - len(def) // the input column (0-based) where def starts
-		name := def[:len(def)-len(strings.TrimLeft(def, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'"))]
-		if name == "it" {
-			return es, fmt.Errorf("input line %d: `it` is the name eval gives the expression; let another name", i+1)
-		}
-		if after := strings.TrimLeft(def[len(name):], " \t"); name != "" && strings.HasPrefix(after, ":") {
-			eq := strings.Index(def, "=")
-			if eq < 0 {
-				return es, fmt.Errorf("input line %d: an annotated let is `let name : Type = expr`", i+1)
-			}
-			emit(strings.TrimRight(def[:eq], " \t"), i, at)
-			emit(name+" "+def[eq:], i, at+eq-len(name)-1)
-			continue
-		}
-		emit(def, i, at)
-	}
-	es.src = strings.Join(out, "\n") + "\n"
-	return es, nil
-}
 
 // evalResult is the --json output of `alder eval`.
 type evalResult struct {
@@ -191,7 +38,9 @@ type evalResult struct {
 // compiler, and prints `value : Type`. The scratch module is named Scratch, or Name with
 // --module (for an app that has a module named Scratch). A `Query` is shown as `<Query>` unless
 // --run runs it against build/<app>/dev.db; a `Select` is shown as `<Select>` (with --run, a
-// hint to pipe it to a Db function); a `Task` is refused. Diagnostics go to stderr, positioned
+// hint to pipe it to a Db function); a `Task` is refused. --run runs with the app's default
+// session (app.TestSession()) and, when adapters/ holds Go files, the adapters' capabilities
+// (scratchMain). Diagnostics go to stderr, positioned
 // in the input (`input:L:C`). Exit 0 on success, 1 for diagnostics or a failing (or
 // interrupted) evaluation, 2 for usage, I/O and internal errors. --json prints one object
 // {value, type, diagnostics, error, hint} on stdout instead. Evaluations of one app serialize on
@@ -301,7 +150,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	sig = checked.Result.U.Apply(sig)
 	typ := types.String(sig)
 
-	mainGo := evalPureMain
+	kind := mainPure
 	if app, ok := sig.(*types.App); ok {
 		switch app.Con {
 		case "Task":
@@ -318,13 +167,12 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 			if !run {
 				return evalPrint(stdout, jsonOut, &res, "<Query>", typ)
 			}
-			mainGo, typ = evalQueryMain, types.String(app.Args[0])
+			kind, typ = mainQuery, types.String(app.Args[0])
 		}
 	}
 	var env []string
-	isQuery := mainGo == evalQueryMain
-	mainGo = strings.ReplaceAll(mainGo, "{{it}}", evalIt(modName, sig))
-	if isQuery {
+	mainGo := scratchMain(kind, buildkit.HasGoFiles(filepath.Join(dir, "adapters")), evalIt(modName, sig))
+	if kind == mainQuery {
 		dbPath, err := filepath.Abs(filepath.Join(appBuild, "dev.db"))
 		if err != nil {
 			return failf(2, "alder eval: %v", err)
@@ -483,9 +331,9 @@ func evalDiags(dir string, ds []diag.Diagnostic, mapLine func(diag.Diagnostic) (
 }
 
 // evalMapDiag positions a diagnostic of the scratch module in the input, as file "input": its
-// lines through mapLine (scratch's MapDiag) and evalSource's map, its columns undoing
-// evalModule's rewriting, and the line a duplicate's message names (E0009) likewise. One on a
-// line Compile inserted (not mapped) is put at 1:1 with its message unchanged; one past the end
+// lines through mapLine (scratch's MapDiag) and evalSource's map, its columns undoing the input
+// items' rewriting (parseItems), and the line a duplicate's message names (E0009) likewise. One
+// on a line Compile inserted (not mapped) is put at 1:1 with its message unchanged; one past the end
 // of the source at the end of the input. The parser's "in the definition of `it`: " is
 // dropped: `it` is a name the input never wrote.
 func evalMapDiag(d diag.Diagnostic, mapLine func(diag.Diagnostic) (diag.Diagnostic, bool), es evalSource) diag.Diagnostic {

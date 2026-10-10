@@ -1804,8 +1804,12 @@ func Compile(appDir string, extra *Module, mainGo string, purpose, out string) B
 Here is `alder eval examples/todos 'Theme.flip Light'`, step by step
 (`cmd/alder/eval.go`):
 
-1. **The scratch module.** `evalModule` turns the input into the source
-   of module `Scratch`, line for line: the expression's first line
+1. **The scratch module.** `parseItems` (`cmd/alder/evalinput.go`)
+   splits the input into its items, the `let`s and the expression, and
+   `assemble` joins them into the source of module `Scratch`, line for
+   line (two steps, so that a REPL can keep the `let`s of earlier
+   entries and assemble them again with each new one): the expression's
+   first line
    becomes `it = Theme.flip Light`, and each `let name = expr` before it a
    top-level `name = expr` (an annotated `let name : T = expr` becomes the
    two lines `name : T` and `name = expr`, which is why eval keeps a map
@@ -1826,11 +1830,29 @@ Here is `alder eval examples/todos 'Theme.flip Light'`, step by step
    E0009 message names) and the rewriting of step 1, and come out as
    `input:1:12`.
 3. **Choose a main.** The inferred type of `Scratch.it` picks the Go
-   `main`: a `Task` is refused; a `Query` is printed as `<Query>` with its
-   type unless `--run` is given (then the main runs it against
-   `build/<app>/dev.db`); any other value gets a main that prints
-   `rt.Show(app.Scratch__it)`, the value written as Alder (a polymorphic
-   `it` is a generic thunk, instantiated at `any`).
+   `main`, which `scratchMain` (`cmd/alder/scratchmain.go`) writes in one
+   of three kinds. `mainPure` prints `rt.Show(app.Scratch__it)`, the
+   value written as Alder (a polymorphic `it` is a generic thunk,
+   instantiated at `any`); `alder eval` uses it for every value but a
+   `Query` or a `Task`. `mainQuery` runs `it` as a Query against the
+   database named by `ALDER_EVAL_DB`; eval uses it only with `--run`
+   (`build/<app>/dev.db`), and otherwise prints `<Query>` with its type.
+   `mainTask` runs it as a Task, whose writes commit; eval refuses a
+   `Task`, and the REPL's `:run!` is what uses it. The two effect mains
+   are one template; `scratchMain(mainQuery, true, "app.Scratch__it")`
+   (an app with Go files in `adapters/`) opens the database, creating it
+   with the app's tables when absent, and then runs
+
+   ```go
+   env := &eff.Env{Ctx: ctx, Store: store, Session: app.TestSession(), Caps: adapters.Caps().Registry(), Now: time.Now}
+   v, err := eff.RunQuery(env, app.Scratch__it)
+   ```
+
+   with the app's default session (`TestSession`, the one `alder test`
+   uses) and the adapters' capabilities; without adapters `Caps` is
+   `app.Caps{}.Registry()`, every capability unwired, and a call to one
+   fails with "capability … is not wired in eval". A failed effect
+   prints its message to stderr and exits 1.
 4. **Compile.** `scratch.CompileChecked` builds what step 2 checked,
    without checking again: it takes the lock file
    `build/todos/scratch/eval.lock`, lowers and emits the whole app plus
@@ -1855,6 +1877,18 @@ Here is `alder eval examples/todos 'Theme.flip Light'`, step by step
 
    Every compile goes into the same directory, so Go's build cache has
    the app's packages from the last one: an evaluation takes about 0.6 s.
+   Before `go build`, `CompileChecked` runs `go vet` on the generated
+   module, so Go that the emitter got wrong is reported as an internal
+   error rather than as whatever `go build` makes of it. Vet is most of
+   those 0.6 s: on `examples/todos`, warm, a fresh scratch module
+   compiles, builds and runs in about 0.60 s with vet and 0.10 s
+   without. `scratch.CompileCheckedWith(…, scratch.Options{NoVet: true})`
+   skips it, for the REPL, whose app was vetted when it was built; if
+   `go build` then fails, it vets after all, so the error says the same
+   as with vet (the generated Go is an internal error, the main's or the
+   adapters' is theirs). `alder eval` keeps vetting: it is what agents
+   and the book verifier run, and there correctness is worth the half
+   second.
 5. **Run.** `scratch.RunContext` runs the executable in its own process
    group, so the terminal's Ctrl-C reaches `alder eval` alone; eval
    catches it (and SIGTERM), cancels the context, and the whole group is
