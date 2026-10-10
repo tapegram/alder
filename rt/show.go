@@ -30,7 +30,7 @@ func RegisterUnion(tagType reflect.Type, names []string) {
 // { title: "Milk", done: False } (field names are the Go fields with the first letter
 // lower-cased, the inverse of gen's Field), a registered union Name / Name 3 / Name { w: 1.0 },
 // Html as its markup, <Query> / <Task>, a Page as its URL, a Nav as Rerender / Redirect <url> /
-// Reject "text". A constructor's argument is parenthesized when it is itself an application or
+// Reject "text". NaN, +Inf and -Inf are not Alder literals; they print as is. A constructor's argument is parenthesized when it is itself an application or
 // negative: Just (Rect { w: 1.0 }), Just (-1).
 func Show(v any) (s string) {
 	defer func() {
@@ -190,17 +190,51 @@ func pageURL(v reflect.Value) string {
 	return PageURL(p)
 }
 
-// showDict reads a Dict's unexported fields: its keys in insertion order and, by their
-// encodings, its values.
+// dictShow is implemented by every Dict instantiation.
+type dictShow interface{ showEntries() (keys, vals []any) }
+
+// showEntries are d's keys in insertion order and their values, as interfaces: Show reads them
+// through this method rather than through reflect on d's unexported fields, whose values reflect
+// marks read-only (a Time key or an Html value could then not be handed out).
+func (d Dict[K, V]) showEntries() (keys, vals []any) {
+	keys, vals = make([]any, len(d.keys)), make([]any, len(d.keys))
+	for i, k := range d.keys {
+		keys[i], vals[i] = k, d.m[d.encs[i]]
+	}
+	return keys, vals
+}
+
+func asDictShow(v reflect.Value) (dictShow, bool) {
+	if !v.CanInterface() {
+		return nil, false
+	}
+	d, ok := v.Interface().(dictShow)
+	return d, ok
+}
+
+// showDict prints a Dict as Dict.fromList of its entries in insertion order. A Dict that
+// reflect cannot hand out (held in a '_' record field) is read field by field instead, its
+// Time keys and values then printing as <time> (the limitation Eq documents).
 func showDict(v reflect.Value) (string, bool) {
-	keys, encs, m := v.FieldByName("keys"), v.FieldByName("encs"), v.FieldByName("m")
-	if keys.Len() == 0 {
+	var keys, vals []reflect.Value
+	if d, ok := asDictShow(v); ok {
+		ks, vs := d.showEntries()
+		for i := range ks {
+			keys, vals = append(keys, reflect.ValueOf(ks[i])), append(vals, reflect.ValueOf(vs[i]))
+		}
+	} else {
+		ks, encs, m := v.FieldByName("keys"), v.FieldByName("encs"), v.FieldByName("m")
+		for i := range ks.Len() {
+			keys, vals = append(keys, ks.Index(i)), append(vals, m.MapIndex(encs.Index(i)))
+		}
+	}
+	if len(keys) == 0 {
 		return "Dict.empty", false
 	}
-	parts := make([]string, keys.Len())
-	for i := range keys.Len() {
-		k, _ := show(keys.Index(i))
-		val, _ := show(m.MapIndex(encs.Index(i)))
+	parts := make([]string, len(keys))
+	for i := range keys {
+		k, _ := show(keys[i])
+		val, _ := show(vals[i])
 		parts[i] = "{ key: " + k + ", value: " + val + " }"
 	}
 	return "Dict.fromList [" + strings.Join(parts, ", ") + "]", true

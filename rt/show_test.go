@@ -190,3 +190,26 @@ func TestShow_Unregistered(t *testing.T) {
 	_ = rt.Show(unexported{})
 	_ = rt.Show(map[string]int{"a": 1})
 }
+
+// Dict keys and values print as they do anywhere else: a Time, Html, record or union key or value
+// is not hidden behind the Dict's unexported fields.
+func TestShow_DictEntries(t *testing.T) {
+	tm := time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)
+	nested := rt.Dict[string, rt.Dict[string, time.Time]]{}.Insert("a", rt.Dict[string, time.Time]{}.Insert("b", tm))
+	for _, c := range []struct {
+		v    any
+		want string
+	}{
+		{rt.Dict[string, html.Node]{}.Insert("p", html.El("p", nil, html.Text("hi"))), `Dict.fromList [{ key: "p", value: <p>hi</p> }]`},
+		{rt.Dict[time.Time, int64]{}.Insert(tm, 1), `Dict.fromList [{ key: 2026-10-09T00:00:00Z, value: 1 }]`},
+		{rt.Dict[string, time.Time]{}.Insert("t", tm), `Dict.fromList [{ key: "t", value: 2026-10-09T00:00:00Z }]`},
+		{rt.Dict[todo, int64]{}.Insert(todo{Title: "a"}, 2), `Dict.fromList [{ key: { title: "a", done: False, ownerId: 0 }, value: 2 }]`},
+		{rt.Dict[shape, int64]{}.Insert(rect(1, 2), 3).Insert(shape{Tag: isEmpty}, 4),
+			`Dict.fromList [{ key: Rect { w: 1.0, h: 2.0 }, value: 3 }, { key: Empty, value: 4 }]`},
+		{nested, `Dict.fromList [{ key: "a", value: Dict.fromList [{ key: "b", value: 2026-10-09T00:00:00Z }] }]`},
+	} {
+		if got := rt.Show(c.v); got != c.want {
+			t.Errorf("Show = %s, want %s", got, c.want)
+		}
+	}
+}
