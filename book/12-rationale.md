@@ -412,3 +412,11 @@ but `owned`'s read comes first, and the trace is
   `go test ./book` runs them, and only in this repository; an app's own
   documentation has no such check. Running a project's examples as tests
   would keep them true, at the cost of a second way to write a test.
+- How should a test replace a capability with a fake? Today a test runs
+  with the app's own adapters, or with none (chapter 10, section 8). A
+  test of a login wants a `Password` that accepts the user it made; a
+  `with` form on a test (`test "x" with Password = …`) is one shape, a
+  test-only adapter set chosen by name another.
+- Should `Test.run` also give the session the task left? It restores the
+  session on failure and keeps it on success, but a test cannot read it,
+  so `Session.put` in a login's `update` cannot be checked yet.

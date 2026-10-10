@@ -707,8 +707,13 @@ called a closure.
 **Equality and ordering.** Go's `==` doesn't work on every struct, and
 wouldn't mean the right thing if it did (two `Dict`s with the same entries
 inserted in different orders are equal in Alder). So `==` on records,
-unions, `Maybe`, `Dict` and `Time` calls `rt.Eq`, which compares
+unions, `Maybe`, `Dict`, `Time` and `Html` calls `rt.Eq`, which compares
 structurally: a `Dict` ignoring insertion order, a `Time` as an instant.
+A runtime type can bring an equality of its own by implementing
+`rt.Equaler` (`AlderEqual(other any) bool`), which `rt.Eq` asks first:
+`html.Node` does, comparing the markup the two nodes render to, so
+`<p>{Html.text "a"}{Html.text "b"}</p> == <p>ab</p>` is `True` although
+one tree has two text nodes and the other one.
 `<` on a `Date` or `Time` calls `rt.DateCmp` or `rt.TimeCmp`. From
 `build/facts/F_alder.go`:
 
@@ -1940,16 +1945,53 @@ func main() {
 Without adapters the capabilities are `app.Caps{}.Registry()`: every
 capability's key is there with no implementation, and a call to one
 fails with "capability … is not wired", which the report turns into
-"… is not wired in tests". `scratch.RunContext` passes the program an
-environment, not arguments, so `alder test` hands `-run` and `--json`
-over as `ALDER_TEST_RUN` and `ALDER_TEST_JSON=1`; `rtesting.Main` reads
-them as its flags' defaults. The program prints the report itself;
-`alder test` copies its output and exits with its exit code. A run is
-bounded by five minutes (`testTimeout`) rather than eval's
-`scratch.Timeout`.
+"… is not wired in tests". `alder test` runs the program with
+`scratch.RunStream`, which, unlike eval's `RunContext`, hands the
+program's output over as it is written instead of collecting it, so each
+test's line appears as the test finishes. The runner passes an
+environment, not arguments, so `alder test` hands its settings over as
+variables, which `rtesting.Main` reads:
+
+- `ALDER_TEST_RUN` and `ALDER_TEST_JSON=1`: `-run` and `--json`, as its
+  flags' defaults.
+- `ALDER_TEST_DEADLINE` (an RFC 3339 time) and `ALDER_TEST_TIMEOUT`:
+  `-timeout` (default `5m`) as a moment, and the duration for the
+  message. `Main` runs each case in a goroutine of its own and waits for
+  it, for the deadline, or for a ten-second tick (which prints
+  `still running M "name" (10s)` on standard error). At the deadline it
+  reports the running case as `timed out after 5m0s`, prints the summary
+  and returns 1 without waiting: `os.Exit` in the main then stops the
+  goroutine. A task case's `context` carries the deadline too, so a
+  database step waiting on something stops then.
+- `ALDER_TEST_STATUS`: a file. Before each case `Main` writes
+  `Module<tab>Name` to it, and it empties it when it returns. A Go panic
+  in a test is recovered and fails that test, but some failures cannot
+  be recovered: a stack overflow is a fatal error that ends the process
+  with exit code 2 and a long dump on standard error. When the program
+  exits with anything but 0 or 1, `alder test` reads the file to learn
+  which test was running, prints a `FAIL` for it (an object under
+  `--json`) whose `error:` is the first lines of the dump (the
+  `fatal error:` line and the top frame of the running goroutine), and
+  exits 1. It passes the program's standard error through line by line
+  until a line that starts a Go crash report (`fatal error:`, `panic:`,
+  `runtime:`, `goroutine …`), and keeps the rest, so the dump is never
+  printed.
+- `ALDER_TEST_STDIN_EOF=1`: the program's standard input is the read end
+  of a pipe whose write end only `alder test` holds. `Main` reads it in
+  a goroutine and exits when it reaches end of file. The program runs
+  in a process group of its own (so a terminal's Ctrl-C reaches
+  `alder test` alone, which then kills the group), which means a
+  `kill -9` of `alder test` would not reach it; but the kernel closes a
+  dead process's files, the pipe's write end among them, so the program
+  sees end of file and exits too.
+
+`alder test` waits five seconds past the deadline (`testGrace`) before
+it kills a program that has not stopped by itself, and then reports the
+running test as timed out.
 
 **One world per test.** `rtesting.Run` (`rt/testing/testing.go`) runs
-the cases one after another. A pure case is called, with a `recover` so
+the cases one after another (`Main` does the same, one goroutine per
+case, as above). A pure case is called, with a `recover` so
 a Go panic fails that test and the next one still runs. A task case
 gets its own environment: `db.OpenSQLite(":memory:")`, a database that
 exists only in this process, `store.Ensure` with the app's `Tables`,
@@ -1996,9 +2038,11 @@ results into the record Alder sees. From `test__Todos__Index__1`
 `Inner` is where the savepoint lives. Its doc comment is its contract:
 
 ```go
-// Inner runs t under a savepoint as Test.run does: ok is true with v on success; on *eff.ErrFail
-// or eff.ErrNotFound the savepoint is rolled back, the session restored, and msg is the failure
-// text ("not found" for ErrNotFound); trace is the steps t performed. Any other error is returned.
+// Inner runs t under a savepoint as Test.run does: ok is true with v on success; on *eff.ErrFail,
+// eff.ErrNotFound or *eff.ErrCapability (a capability's adapter returned an error) the
+// savepoint is rolled back, the session restored, and msg is the failure text ("not found" for
+// ErrNotFound, "<Name>: <msg>" for a capability's error); trace is the steps t performed. Any
+// other error is returned.
 //
 // Inner is called from a Call's function while a Task runs (env.Kind is KTask); it begins the
 // Task's transaction if no step has yet, so the savepoint has a transaction to live in. When
@@ -2009,6 +2053,13 @@ results into the record Alder sees. From `test__Todos__Index__1`
 // Run, which rolls back the whole transaction.
 func Inner[T any](env *eff.Env, t eff.Task[T]) (v T, msg string, ok bool, trace []string, err error)
 ```
+
+A capability's error reaches `Inner` as an `*eff.ErrCapability`
+because the emitter wraps it: a capability `Call`'s function ends
+`_v, _err := _c.Verify(_e.Ctx, …); return _v, eff.CapError("Password.verify", _err)`.
+`CapError` leaves `nil`, `*eff.ErrFail` and `eff.ErrNotFound` as they
+are and wraps any other error with the call's name; the router answers
+it like any other error, with a 500.
 
 `eff.RunInner` (`rt/eff/run.go`) runs `t` with the same `Env`, inside
 the running task: same transaction, same trace (which is why the inner

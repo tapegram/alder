@@ -344,7 +344,10 @@ list `Capabilities` (in `app__alder.go`) names every key an app needs. A
 call to a capability with nothing registered is a Go `panic`,
 `alder: capability "Auth.Login.Password" is not wired`, which rolls the
 task back like any other failure; a server never gets that far, because
-it checks every capability when it starts (below).
+it checks every capability when it starts (below). An error the
+implementation returns is wrapped with the call's name
+(`*eff.ErrCapability`, whose text is `Password.verify: <the error>`) and
+fails the task too.
 
 ## Implementing a capability
 
@@ -428,7 +431,16 @@ func (password) Verify(ctx context.Context, args app.Args__Auth__Login__Password
 missing function, `devUser`, looks the row up with `db.StoreFrom(ctx)`
 and `db.TxFrom(ctx)` and inserts it the first time, inside the transaction
 of the `Task` that called `Password.verify`. If that task fails, the new
-row is rolled back with it.
+row is rolled back with it. Pass `db.TxFrom(ctx)` to every query an
+adapter makes: under `alder test` the database is a single in-memory
+connection that the running transaction holds, so a query made through
+`db.StoreFrom(ctx)` outside that transaction waits for it forever.
+
+When a method returns an error, the step fails with it, named after the
+call: `Password.verify: <the error>`. A page answers it like any other
+failure, with a 500; inside a test, `Test.run` gives it back as
+`Err "Password.verify: <the error>"` (chapter 10). A capability's error is
+a failure the test can observe.
 
 The server refuses to start when a field of `Caps` is `nil`. `Serve`, in
 `app__alder.go`, checks every capability before it opens the database,

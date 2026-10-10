@@ -277,3 +277,22 @@ Each milestone gets its own plan.
   failure message becomes a value.
 - Book expectations live in fence info strings so readers see them.
 - `Now` is fixed in tests (`2026-01-01T00:00:00Z`); `Random.id` is real.
+- Departure (M4b): each effect test gets a fresh `:memory:` database, and
+  its transaction is committed when the task succeeds (not always rolled
+  back, as "Isolation" above says); the database is then closed and
+  gone, so nothing can leak between tests either way, and the test runs
+  exactly as the server runs a Task.
+- Departure (M4b): a test's body is a `Task Bool` exactly when it is a
+  block `{ … }`, and a `Bool` otherwise (not "`Bool` first, then
+  `Task Bool`"); the hints point at the other form ("a test of a Task is
+  written as a block", "end it with `Task.succeed (…)`"), and a body that
+  is neither names the test (`test "x": expected Bool, got Int`).
+- A capability's error is a failure a test can observe: generated
+  capability calls wrap an adapter's error as `*eff.ErrCapability`
+  (`"Password.verify: <msg>"`), which `Test.run` turns into `Err`; the
+  router still answers it with a 500.
+- `alder test` streams each result as the test finishes, bounds the run
+  with `-timeout` (default 5m) passed to the program as a deadline, names
+  the test that crashed the program (exit 1, never the Go dump), and the
+  program exits when its stdin (a pipe `alder test` holds) closes, so a
+  killed `alder test` leaves nothing running.

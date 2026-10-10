@@ -357,10 +357,11 @@ are in it. Chapter 13, "The scratch runner", shows what it compiles.
 
 ### `alder test`
 
-`alder test [dir] [-run re] [--json]` runs every `test` declaration of
-the app in `dir` (default `.`) and prints one line per test, `ok   M "name"`
-or `FAIL M "name"` with the reasons indented under it, then
-`N passed, M failed`. Chapter 10 explains the tests and the report.
+`alder test [dir] [-run re] [-timeout d] [--json]` runs every `test`
+declaration of the app in `dir` (default `.`) and prints one line per
+test as it finishes, `ok   M "name"` or `FAIL M "name"` with the reasons
+indented under it, then `N passed, M failed`. Chapter 10 explains the
+tests and the report.
 
 ```text
 $ alder test examples/todos -run Toggle
@@ -372,10 +373,14 @@ ok   Todos.Index "Toggle by another user is not found"
 - `-run re` runs only the tests whose `Module "name"` matches the
   regular expression `re` (Go's syntax). A pattern that matches nothing
   runs nothing: `0 passed, 0 failed`, exit 0.
+- `-timeout d` bounds the whole run (a Go duration; default `5m`). The
+  test running when the time is up fails with `error: timed out after d`
+  and no later test runs. A test still running after ten seconds is
+  announced on standard error: `still running M "name" (10s)`.
 - `--json` prints one JSON object per test on standard output, and
   nothing else; the summary line goes to standard error. An object has
   `module`, `name`, `ok`, `trace` (a list, empty for a pure test) and
-  `ms`, and `left`, `right`, `error` when they are not empty:
+  `ms`, and `left`, `right`, `note`, `error` when they are not empty:
 
   ```text
   {"module":"Todos.Index","name":"Toggle flips done","ok":true,"left":"{ trace: [\"Db.get Todo\", \"Db.update Todo\"], done: Just True }","right":"{ trace: [\"Db.get Todo\", \"Db.update Todo\"], done: Just True }","trace":["Db.insert User","Db.insert Todo","Test.run","Db.get Todo","Db.update Todo","Db.get Todo"],"ms":0.704}
@@ -383,13 +388,19 @@ ok   Todos.Index "Toggle by another user is not found"
 
   When the app does not compile, `--json` prints one object,
   `{"diagnostics":[…]}`, whose items are the objects `alder check --json`
-  prints, and runs nothing.
+  prints, and runs nothing. Any other problem found after the arguments
+  are read (a build problem, a bad `-run` or `-timeout`) is one object
+  `{"error":"<message>"}`, the message also on standard error. Only a
+  usage error (an unknown flag) prints no JSON.
 
 Exit codes: 0 when every selected test passed; 1 when a test failed,
-the app has a check error or a typed hole (the diagnostics are printed
-as `alder check` prints them), or the run was interrupted or took more
-than five minutes; 2 for a usage error or a build problem (adapters that
-do not compile, say).
+timed out (`-timeout`) or crashed the test program (a stack overflow,
+say: that test is reported as a `FAIL` with the crash's first lines and
+no later test runs), when the app has a check error or a typed hole (the
+diagnostics are printed as `alder check` prints them; a hole adds
+`alder test: no tests ran (fill the hole)`), or when the run was
+interrupted; 2 for a usage error or a build problem (adapters that do
+not compile, say).
 
 Like `alder eval`, `alder test` compiles the app through the scratch
 runner (chapter 13, "Running tests"): it writes only under
@@ -397,8 +408,11 @@ runner (chapter 13, "Running tests"): it writes only under
 one app take turns on `build/<app>/scratch/test.lock`. The tests use no
 file database: each effect test has its own, in memory. The app's
 `adapters/`, when it has one, is compiled in, so capability calls reach
-the real Go; without it, a test that calls a capability fails with
-"capability … is not wired in tests". Ctrl-C stops the tests' process.
+the real Go, and an error one returns is the failure `Cap.entry: <error>`,
+which `Test.run` gives as an `Err`; without it, a test that calls a
+capability fails with "capability … is not wired in tests". Ctrl-C stops
+the tests' process, and so does killing `alder test` in any way (the
+process exits when its standard input, a pipe `alder test` holds, closes).
 
 ### The book is verified
 
@@ -486,13 +500,14 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0006 | import cycle | — |
 | E0007 | top-level value without a type signature | signature line |
 | E0008 | wrong number of parameters or arguments, or of type arguments (`Box Int Text` for `type Box a`) | — |
-| E0009 | duplicate definition, or a constructor declared in two imported modules | — |
+| E0009 | duplicate definition (two tests of one module with the same name too), or a constructor declared in two imported modules | — |
 | E0010 | required declaration missing (page `load`/`view`/`update`, `App` `error`/`notFound`/`login`/`session`) | — |
 | E0011 | invalid declaration (unstorable table field, unusable page or form field, bad `@id`, brand constructor used outside its module, a record that contains itself by value) | — |
 | E0012 | a type, table, form or component in a page module or `App` named like a generated type: `Params`, `Msg`, `Session`, or `<Msg>Params` for a declared `msg` | — |
 | E0014 | two module names that differ only in case (`Ab` and `AB`): their files would be one on a case-insensitive file system | — |
 | E0015 | a module whose first name segment is exactly `Route`, `Cap` or `Args` (`Cap.Mail` is refused, `Caps.Mail` and `My.Cap` are fine): the generated Go uses those prefixes for exported names | — |
 | E0016 | two pages answer the same path (`/x/{id}` and `/x/{slug}`, or `/x` and `/x/`) | — |
+| E0017 | a module named like a standard-library module (`Test`, `List`, `Http`, …): the stdlib's would shadow it; uses of its names are not reported separately | — |
 | E0101 | `Db.get T x` where `x` is not `Id T` | `Db.from T \|> Db.where (T.<col>.eq x) \|> Db.first` when a column of `x`'s type exists |
 | E0102 | field access on a `Maybe` | `match` skeleton |
 | E0201 | name from a module that isn't imported | `import M` |

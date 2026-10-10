@@ -50,6 +50,16 @@ and two HTML values are equal when they render to the same markup:
 <p>{Html.text "a"}</p> == <p>a</p>
 ```
 
+The comparison is of the markup, not of how the values were built: two
+text pieces side by side are the same markup as one piece holding both,
+
+```alder eval=True
+<p>{Html.text "a"}{Html.text "b"}</p> == <p>ab</p>
+```
+
+so a test of `view` passes exactly when the two sides it prints are the
+same text.
+
 ## 2. Running the tests
 
 `alder test` checks the app, compiles it with its tests, runs every test
@@ -64,11 +74,13 @@ ok   Todos.Index "Toggle by another user is not found"
 4 passed, 0 failed
 ```
 
-Each line names the module and the test. Tests run in module order (a
-module after the modules it imports), and within a module in the order
-they are written. The last line counts them. `alder test` exits with 0
-when every test passed and 1 when one failed, so a script or CI job can
-use it directly.
+Each line names the module and the test, and is printed as soon as that
+test finishes, so a slow test shows which tests ran before it. Tests run
+in module order (a module after the modules it imports), and within a
+module in the order they are written. The last line counts them.
+`alder test` exits with 0 when every test passed and 1 when one failed,
+so a script or CI job can use it directly. Two tests of one module may
+not have the same name (E0009).
 
 Here is the same app with two wrong tests added: one at the end of
 `Todo`,
@@ -117,12 +129,29 @@ A failing test is `FAIL`, followed by indented lines that say why:
   has no single `==` to show, so its failure has no sides: when you
   want the sides, end a test with one `==`, comparing records if there
   is more than one thing to check.
+- `note:` appears under the sides when they print the same text but
+  `==` still said `False`: `the sides print the same but are different
+  values`. A `Float` that is not a number (`0.0 / 0.0` prints as `NaN`
+  and is not equal to itself) is one way to get there.
 - `error:` is why the test stopped before it produced `True` or `False`:
   a task that failed, a capability with no implementation, a Go panic.
+  Two more stop the whole run at that test, which then fails with the
+  reason and no later test runs (exit 1): a test that ran past the time
+  limit (`error: timed out after 5m0s`; `-timeout`, section 7), and a
+  test that crashed the program, such as a function that recurses
+  forever and overflows the stack: the error is the first lines of the
+  crash, `fatal error: stack overflow` and the Go function and line it
+  happened in, not the whole Go trace.
 - `trace:` is, for a block test, every step it performed (section 6).
 
+A test that runs for ten seconds is announced on standard error,
+`still running Theme "slow" (10s)`, and again every ten seconds, so a
+test that hangs is not mistaken for a quiet one.
+
 If the app does not compile, no test runs: `alder test` prints the
-diagnostics as `alder check` does and exits 1. Here the app has gained a
+diagnostics as `alder check` does and exits 1. A typed hole (`?todo`,
+chapter 11) compiles to nothing that can run either: its warning W0002 is
+followed by `alder test: no tests ran (fill the hole)`, exit 1. Here the app has gained a
 module `Probe` that uses `Test.trace` outside a test (section 5) and
 declares `test "one" = { Task.succeed 1 }`, a block whose verdict is not
 a `Bool`:
@@ -234,8 +263,10 @@ The stranger's `Toggle` succeeded, the update ran, and the todo is done.
   gets the same one on every run.
 - **The app's capabilities.** When the app has an `adapters/` package
   (chapter 7, "Implementing a capability"), its `Caps()` are wired, so a
-  test calls the real Go. When it has none, a capability call fails the
-  test, saying so:
+  test calls the real Go. A capability's error is a failure the test can
+  observe: under `Test.run` (section 4) it is `Err "Password.verify: …"`.
+  When the app has no `adapters/`, a capability call fails the test,
+  saying so:
 
   ```text
   FAIL Auth.Login "a stranger is not verified"
@@ -264,9 +295,10 @@ from the standard module `Test` (`stdlib/Test.alder`), is
 a record:
 
 - `value` is `Ok v` when `t` succeeded with `v`, and `Err msg` when it
-  failed: `msg` is the text of a `Task.fail msg`, or `"not found"` for
+  failed: `msg` is the text of a `Task.fail msg`, `"not found"` for
   `Task.notFound` (and `Query.notFound`) — the failures that become a 404
-  page in the running app. `update`'s `value` is a `Result Text Nav`, and
+  page in the running app — or, when a capability's Go code returned an
+  error, the call and the error: `"Password.verify: connection refused"`. `update`'s `value` is a `Result Text Nav`, and
   `Nav` values compare with `==`, so `r.value == Ok Rerender` works too.
 - `trace` is the list of steps `t` performed (section 6).
 
@@ -374,6 +406,13 @@ ok   Todos.Index "Toggle by another user is not found"
 A pattern that matches nothing runs nothing and passes:
 `0 passed, 0 failed`.
 
+`-timeout` bounds the whole run (default `5m`; any Go duration, such as
+`30s` or `2m`). When the time is up, the test running then fails with
+`error: timed out after 30s`, the summary counts the tests that ran, and
+`alder test` exits 1. The test program also stops if `alder test` itself
+is killed, even with `kill -9`: it reads its standard input, which
+`alder test` holds open, and exits when that closes.
+
 `--json` is for programs, an agent among them: standard output has one
 JSON object per test and nothing else, and the summary goes to standard
 error.
@@ -386,10 +425,16 @@ $ alder test examples/todos --json -run Theme
 
 Each object has `module`, `name`, `ok`, `trace` (empty for a pure test)
 and `ms`, the time it took in milliseconds (it differs from run to run);
-and `left`, `right` and `error` when they have something to say. Unlike
-the text report, it gives the sides of a passing test's `==` too. If the app does not compile, the output is one
-object, `{"diagnostics":[…]}`, holding what `alder check --json` would
-print, so a program always gets JSON. Chapter 11 lists the exit codes.
+and `left`, `right`, `note` and `error` when they have something to say.
+Unlike the text report, it gives the sides of a passing test's `==` too.
+A test that crashed the program or timed out is an object like any
+failing test's, with the reason in `error`. If the app does not compile,
+the output is one object, `{"diagnostics":[…]}`, holding what
+`alder check --json` would print; any other problem after the arguments
+are read (a build failure, a bad `-run` pattern) is one object
+`{"error":"…"}`. So a program always gets JSON, except for a usage
+error such as an unknown flag, which prints the usage line. Chapter 11
+lists the exit codes.
 
 ## 8. What cannot be tested yet
 
@@ -401,6 +446,12 @@ print, so a program always gets JSON. Chapter 11 lists the exit codes.
 - **`view` in a browser.** A test can compare `view`'s `Html` with
   another `Html` (section 1). What a browser does with it, and the
   in-place updates of chapter 6, are not testable from Alder.
+- **Replacing a capability with a fake.** A test runs with the app's own
+  adapters (section 3), or with none. There is no way yet to give one
+  test a stand-in `Password` that, say, accepts everyone.
+- **Observing the session after `Test.run`.** `Test.run` gives the run's
+  value and trace, not the session it left; a test of a login cannot yet
+  check that `Session.put` stored the user.
 
 And one thing will not change: effects are tested by what they do, not
 by `==`. A `Query` or `Task` cannot be compared; `==` or `!=` on one is a

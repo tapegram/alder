@@ -15,7 +15,10 @@ import Layout
 `import X` brings module `X` into scope as a qualified name: `X.foo`,
 `X.SomeType`, `<X.Component>`. There are no unqualified imports and no
 renaming. Modules from the standard library (`List`, `Text`, `Db`, ...) are
-always in scope and never imported.
+always in scope and never imported. For the same reason no module of the
+app may take a standard-library module's name: an app module `Test` would
+be hidden behind the stdlib's `Test`, so it is refused (E0017); call it
+`TestHelpers` or `Todos.Fixtures` instead.
 
 A declaration whose name equals the last segment of its module's name is
 referred to by the module name alone: module `Todo` defining `type Todo` (or
