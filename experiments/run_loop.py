@@ -3,13 +3,15 @@
 
 Usage:
   run_loop.py --exp DIR --model ollama:NAME|claude:NAME --task NAME [--retries 1] [--prompt prompt.md] [--alder BIN]
-              [--base APPDIR] [--build [--test]] [--adapters] [--num-ctx N]
+              [--base APPDIR] [--build [--test]] [--migrate] [--adapters] [--num-ctx N]
 
 Writes DIR/runs/<model>/<task>/round<N>/{output.md,check.json,app/...} and DIR/runs/<model>/<task>/summary.json.
 With --build, a round whose check is clean also runs `alder build --emit` (output in round<N>/build/);
 with --test too, a round that built also runs `alder test --json` and passes only if every test does.
---base DIR seeds round 0 from DIR/app (and DIR/adapters, when there is one) as committed
-(`git archive HEAD`), never from the working tree. --adapters (opt-in) also accepts adapters/<name>.go
+--base DIR seeds round 0 from DIR/app (and DIR/adapters and DIR/migrations, when there are) as
+committed (`git archive HEAD`), never from the working tree. --migrate: a round whose only check
+errors are E0019 (the tables changed since the last migration) runs `alder migrate` and checks
+again, recording the new file's `-- step:` / `-- DROPS DATA:` lines in the round. --adapters (opt-in) also accepts adapters/<name>.go
 sections and lets build and test run them. WARNING: it executes Go the model wrote, unsandboxed. --num-ctx sets Ollama's context window.
 summary.json's `outcome` is pass, fail, compiler_bug or harness_error (see README "Outcomes").
 """
@@ -347,6 +349,38 @@ def test_report(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = 6
     return (p.stdout.rstrip("\n") + ("\n" + p.stderr.rstrip("\n") if p.stderr.strip() else "")).strip("\n") + "\n"
 
 
+def run_migrate(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = 600):
+    """`alder migrate <round_dir>` in round_dir. Returns (exit, record, stdout, stderr,
+    harness_reason): record is {"exit", "file", "steps", "drops_data"} — the migration file it
+    wrote (its name under migrations/, or None) and that file's `-- step:` and `-- DROPS DATA:`
+    header lines —; harness_reason as run_build's."""
+    rd = round_dir.resolve()
+    before = {f.name for f in (rd / "migrations").glob("*.sql")}
+    try:
+        p = run_proc([str(pathlib.Path(alder).resolve()), "migrate", str(rd)], timeout, cwd=rd)
+    except subprocess.TimeoutExpired:
+        msg = f"{alder}: migrate timed out after {timeout}s"
+        return None, {"exit": None, "file": None, "steps": [], "drops_data": []}, "", msg, Hang(msg)
+    except OSError as e:
+        msg = f"{alder}: {e}"
+        return None, {"exit": None, "file": None, "steps": [], "drops_data": []}, "", msg, msg
+    new = sorted({f.name for f in (rd / "migrations").glob("*.sql")} - before)
+    record = {"exit": p.returncode, "file": new[-1] if new else None, "steps": [], "drops_data": []}
+    if new:
+        for line in (rd / "migrations" / new[-1]).read_text().splitlines():
+            if not line.startswith("--"):
+                break
+            if line.startswith("-- step: "):
+                record["steps"].append(line[len("-- step: "):])
+            elif line.startswith("-- DROPS DATA: "):
+                record["drops_data"].append(line[len("-- DROPS DATA: "):])
+    return p.returncode, record, p.stdout, p.stderr, unknown_exit("migrate", p.returncode)
+
+
+MIGRATE_REFUSED = ("Your change to the tables needs a migration, and `alder migrate` could not write one for it; "
+                   "change the tables so it can (its output is below).")
+
+
 BASE_NOT_IN_GIT = ("`--base` must be inside a git repository "
                    "(the harness seeds from `git archive HEAD`, never the working tree)")
 
@@ -356,8 +390,9 @@ def _git(cwd, *args) -> bytes:
 
 
 def export_base(base: pathlib.Path):
-    """Export `<base>/app`, and `<base>/adapters` when the commit has one (the Go adapters
-    `alder build` and `alder test` need for an app with capabilities), as committed at HEAD of the
+    """Export `<base>/app`, and `<base>/adapters` and `<base>/migrations` when the commit has them
+    (the Go adapters `alder build` and `alder test` need for an app with capabilities; the
+    migrations an app with a database keeps its tables by), as committed at HEAD of the
     git repository containing base into a new temporary directory, and return (the exported base — tmp/<base relative to the repository> —,
     the commit it was exported from): HEAD is resolved once and that commit archived. Uncommitted
     edits and untracked files are never seen; when `<base>/app` has some, a warning says so on
@@ -375,10 +410,11 @@ def export_base(base: pathlib.Path):
         raise SystemExit(2)
     rel = base.resolve().relative_to(top).as_posix()
     app = "app" if rel == "." else rel + "/app"
-    adapters = "adapters" if rel == "." else rel + "/adapters"
     paths = [app]
-    if subprocess.run(["git", "-C", str(top), "cat-file", "-e", f"{commit}:{adapters}"], capture_output=True).returncode == 0:
-        paths.append(adapters)
+    for extra in ("adapters", "migrations"):   # the Go adapters; the app's migrations (E8)
+        path = extra if rel == "." else rel + "/" + extra
+        if subprocess.run(["git", "-C", str(top), "cat-file", "-e", f"{commit}:{path}"], capture_output=True).returncode == 0:
+            paths.append(path)
     try:
         tar = _git(top, "archive", "--format=tar", commit, "--", *paths)
     except subprocess.CalledProcessError as e:
@@ -462,13 +498,15 @@ PROVIDED_ADAPTERS = ("These adapters are provided, not yours (from the base app)
 
 
 def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles: int, rejected=(), build_output=None,
-                 test_output=None, truncated=None, cut_off_file=None, show_adapters=False, provided=None) -> str:
+                 test_output=None, truncated=None, cut_off_file=None, show_adapters=False, provided=None,
+                 migrate_output=None) -> str:
     """`build_output`, when given, is what `alder build --emit` printed when it refused (exit 1) a clean program;
     `test_output`, the text report of `alder test` when tests of a program that built failed (exit 1);
     `truncated`, the token cap when the model's answer was cut off by it (Ollama's done_reason "length");
     `cut_off_file`, the path of the file it was cut off in (not written); `show_adapters`, carry the round's
     adapters/*.go in the previous answer (a --adapters run); `provided`, the base's adapters ({path: text}):
-    one the round still has unchanged is listed apart, after the model's files, as provided, not yours."""
+    one the round still has unchanged is listed apart, after the model's files, as provided, not yours;
+    `migrate_output`, what `alder migrate` printed when it refused (exit 1) the change (a --migrate run)."""
     sources = {}
     for f in (round_dir / "app").rglob("*.alder"):
         sources[str(f.relative_to(round_dir))] = f.read_text()
@@ -488,6 +526,8 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
         if diags:
             feedback += "\n\n" + BUILD_REFUSED
         feedback += "\n\n====================  BUILD OUTPUT  ====================\n" + build_output.strip()
+    if migrate_output is not None:
+        feedback += "\n\n" + MIGRATE_REFUSED + "\n\n====================  MIGRATE OUTPUT  ====================\n" + migrate_output.strip()
     if test_output is not None:
         if diags:
             feedback += "\n\n" + TESTS_FAILED
@@ -520,8 +560,13 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
             "\n\nFix every error. Output every file again, in full, each preceded by `--- file: app/<path> ---`. No explanation, only files.")
 
 
-def write_round(round_dir: pathlib.Path, prev_dir, text: str, files: dict):
+def write_round(round_dir: pathlib.Path, prev_dir, text: str, files: dict, base_dir=None):
+    """Write the round: prev_dir's app/ (and adapters/) overlaid with the model's files; the
+    base's migrations/ (base_dir, the export), never a previous round's: a round's own `alder
+    migrate` (--migrate) adds one file to the base's, so each round's migration is its change."""
     (round_dir / "app").mkdir(parents=True, exist_ok=True)
+    if base_dir is not None and (base_dir / "migrations").is_dir():
+        shutil.copytree(base_dir / "migrations", round_dir / "migrations", dirs_exist_ok=True)
     if prev_dir is not None and (prev_dir / "app").exists():
         shutil.copytree(prev_dir / "app", round_dir / "app", dirs_exist_ok=True)
     if prev_dir is not None and (prev_dir / "adapters").is_dir():   # from --base; the model writes only app/
@@ -541,7 +586,7 @@ def write_round(round_dir: pathlib.Path, prev_dir, text: str, files: dict):
 
 def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, task_text: str,
             system: str, alder: pathlib.Path, retries: int = 1, base=None, build: bool = False, seed=None,
-            test: bool = False, adapters: bool = False) -> dict:
+            test: bool = False, adapters: bool = False, migrate: bool = False) -> dict:
     """`base`, if given, is a directory inside a git repository whose `app/` as committed (`git archive
     HEAD`, never the working tree) seeds round 0 (for tasks that modify an existing app). `seed`, if
     given, is that export already made, `export_base(base)` (the exported base and its commit): main
@@ -561,6 +606,13 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     — or "hang" when its stderr says the tests timed out, as when the 600 s limit kills it —
     with its stderr in round<N>/test.stderr.txt; the task stops.
 
+    With `migrate`, a round whose check fails with E0019 alone (the app's tables changed since the
+    base's last migration) runs `alder migrate` (run_migrate) and checks again; `rnd["migrate"]`
+    records it (the file, its `-- step:` and `-- DROPS DATA:` lines, the codes of the check before
+    it) and the round goes on with the second check. Exit 1 (a change it refuses, such as a new
+    non-null column without a default) is an ordinary failed round whose retry prompt carries its
+    output; exit 2 with "internal error" is a compiler bug (kind "migrate"); a hang, kind "hang".
+
     A check that exits 2 with "internal error" on stderr (a checker panic) is a compiler bug too
     (kind "internal_error", round<N>/check.stderr.txt), and so is a check or build that times out
     (kind "hang": a hang is the compiler's). `summary["compiler_bug_kind"]` says which ("build" for
@@ -574,7 +626,8 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     if base and seed is None:
         seed = export_base(base)
         try:
-            return run_one(exp, model, model_label, task_name, task_text, system, alder, retries, base, build, seed=seed, test=test, adapters=adapters)
+            return run_one(exp, model, model_label, task_name, task_text, system, alder, retries, base, build, seed=seed, test=test, adapters=adapters,
+                           migrate=migrate)
         finally:
             remove_export(seed[0])
     run_dir = exp / "runs" / model_label / task_name
@@ -582,6 +635,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
         shutil.rmtree(run_dir)
     summary = {"model": model_label, "task": task_name, "retries": retries, "base": str(base) if base else None,
                "harness": {"build": build, "retries": retries, **({"test": True} if test else {}), **({"adapters": True} if adapters else {}),
+                           **({"migrate": True} if migrate else {}),
                            **({"num_ctx": model.NUM_CTX, "num_predict": model.NUM_PREDICT} if isinstance(model, OllamaModel) else {})}, "error": None, "rounds": [], "final_pass": False,
                "outcome": "fail"}
     if seed is not None:
@@ -612,7 +666,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
         round_dir = run_dir / f"round{n}"
         cut = bool(meta.get("truncated")) or meta.get("done_reason") == "length"
         files, rejected, cut_off_file = split_answer(text, adapters=adapters, cut_off=cut)
-        nfiles, skipped = write_round(round_dir, prev, text, files)
+        nfiles, skipped = write_round(round_dir, prev, text, files, base_dir=pathlib.Path(seed[0]) if seed is not None else None)
         rejected = rejected + skipped
         exit_code, diags, stderr, reason = run_check(alder, round_dir)
         (round_dir / "check.json").write_text("\n".join(json.dumps(d) for d in diags) + ("\n" if diags else ""))
@@ -640,6 +694,42 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             (round_dir / "check.stderr.txt").write_text(stderr)
             compiler_bug("internal_error")
             break
+        migrate_output = None
+        if migrate and exit_code == 1 and set(codes) == {"E0019"}:   # only the tables are ahead of the migrations
+            mexit, record, mstdout, mstderr, reason = run_migrate(alder, round_dir)
+            record["codes_before"] = codes
+            rnd["migrate"] = record
+            if mexit != 0:
+                (round_dir / "migrate.stderr.txt").write_text(mstderr + (("\n--- stdout ---\n" + mstdout) if mstdout.strip() else ""))
+                if isinstance(reason, Hang):
+                    compiler_bug("hang")
+                    break
+                if reason is not None:
+                    harness_error(reason)
+                    break
+                if mexit != 1:
+                    if "internal error" in mstderr:
+                        compiler_bug("migrate")
+                    else:
+                        harness_error(f"alder migrate exited {mexit}: {mstderr.strip()[:500]}")
+                    break
+                migrate_output = (mstdout + mstderr)[:TEST_OUTPUT_MAX]
+            else:   # check again: the round goes on with the migrated app
+                exit_code, diags, stderr, reason = run_check(alder, round_dir)
+                (round_dir / "check.json").write_text("\n".join(json.dumps(d) for d in diags) + ("\n" if diags else ""))
+                codes = {}
+                for d in diags:
+                    if d["severity"] == "error":
+                        codes[d["code"]] = codes.get(d["code"], 0) + 1
+                rnd.update({"exit": exit_code, "errors": sum(codes.values()),
+                            "warnings": sum(1 for d in diags if d["severity"] == "warning"), "codes": codes, "stderr": stderr[:2000]})
+                if isinstance(reason, Hang):
+                    (round_dir / "check.stderr.txt").write_text(stderr)
+                    compiler_bug("hang")
+                    break
+                if reason is not None:
+                    harness_error(reason)
+                    break
         clean = exit_code == 0 and rnd["errors"] == 0 and not rnd.get("truncated")   # a cut-off answer fails its round
         build_output = None
         if clean and build:
@@ -684,7 +774,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             break
         user = retry_prompt(task_text, round_dir, diags, stderr, nfiles, rejected, build_output=build_output,
                             test_output=test_output, truncated=getattr(model, "NUM_PREDICT", None) if rnd.get("truncated") else None,
-                            cut_off_file=cut_off_file, show_adapters=adapters, provided=provided)
+                            cut_off_file=cut_off_file, show_adapters=adapters, provided=provided, migrate_output=migrate_output)
         prev = round_dir
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=1) + "\n")
@@ -704,6 +794,8 @@ def main(argv=None):
     ap.add_argument("--build", action="store_true", help="after a clean check, run `alder build --emit`; the run passes only if it succeeds (exit 2 = compiler bug, stop)")
     ap.add_argument("--test", action="store_true", help="with --build: after a successful build, run `alder test --json`; the run passes only if every test passes "
                                                         "(exit 1 = retry with the report, exit 2 = compiler bug, stop)")
+    ap.add_argument("--migrate", action="store_true", help="a round whose only check errors are E0019 runs `alder migrate` and checks again; "
+                                                           "the new file's step and DROPS DATA lines are recorded in the round (E8)")
     ap.add_argument("--adapters", action="store_true", help="WARNING: executes Go code the model wrote, on this machine, unsandboxed. Opt-in: accept "
                                                             "`--- file: adapters/<name>.go ---` sections, write them into the round's adapters/ and let build/test run them")
     ap.add_argument("--num-ctx", type=int, default=None, help=f"Ollama's num_ctx for this invocation (default {OllamaModel.NUM_CTX}); recorded as harness.num_ctx")
@@ -731,7 +823,7 @@ def run_all(a, seed):
         for task in a.task:
             task_text = (exp / "tasks" / f"{task}.md").read_text()
             s = run_one(exp, model, label, task, task_text, system, alder, a.retries, base=a.base, build=a.build, seed=seed,
-                        test=a.test, adapters=a.adapters)
+                        test=a.test, adapters=a.adapters, migrate=a.migrate)
             status = ("ERROR " + s["error"] if s["error"]
                       else f"harness-error ({s['harness_error']})" if s["outcome"] == "harness_error"
                       else s["outcome"].replace("_", "-"))

@@ -1033,5 +1033,119 @@ class ReportTests(unittest.TestCase):
             self.skipTest("no E5 runs")
         self.assertEqual(rp.markdown(rp.rows(ss)), (here / "scores.md").read_text())
 
+E0019 = json.dumps({"code": "E0019", "severity": "error", "file": "migrations/schema.json", "line": 1, "col": 1, "endLine": 1, "endCol": 1,
+                    "message": "the schema changed since migration 0001 (table Post: column views): run `alder migrate`"}) + "\n"
+
+MIGRATION_0002 = ("-- alder migration 0002_add_views\n-- from aaaaaaaaaaaa\n-- to bbbbbbbbbbbb\n"
+                  "-- step: rebuild table Post: Post.views: new non-null column\n-- DROPS DATA: column Post.summary\n\n"
+                  'ALTER TABLE "Post__Post" DROP COLUMN "summary";\n')
+
+def migrate_stub(tmp, checks, migrate_exit=0, migrate_out="", migrate_err=""):
+    """A stub `alder`: `check` answers per call (checks[i] = (exit, json_stdout)); `migrate DIR`
+    writes DIR/migrations/0002_add_views.sql (exit 0) or prints its refusal (exit migrate_exit)."""
+    tmp = pathlib.Path(tmp)
+    count, calls = tmp / "mig-count", tmp / "mig-calls"
+    count.write_text("0")
+    calls.write_text("")
+    lines = ["#!/bin/sh", f'echo "$PWD|$*" >> {calls}',
+             'if [ "$1" = migrate ]; then']
+    if migrate_exit == 0:
+        lines.append(f'  mkdir -p "$2/migrations" && printf %b {json.dumps(MIGRATION_0002)} > "$2/migrations/0002_add_views.sql"')
+    lines += [f'  printf %b {json.dumps(migrate_out)}; printf %b {json.dumps(migrate_err)} 1>&2; exit {migrate_exit}', "fi",
+              '[ "$1" = check ] || exit 2', f'n=$(cat {count}); echo $((n+1)) > {count}']
+    for i, (exit_code, out) in enumerate(checks):
+        lines.append(f'if [ "$n" = "{i}" ]; then printf %b {json.dumps(out)}; exit {exit_code}; fi')
+    lines.append("exit 2")
+    path = tmp / "alder-migrate-stub"
+    path.write_text("\n".join(lines) + "\n")
+    path.chmod(0o755)
+    stub = StubPath(path)
+    stub.calls = calls
+    return stub
+
+class MigrateTests(unittest.TestCase):
+    """E8: --base carries migrations/, and --migrate runs `alder migrate` when E0019 is the only error."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.exp = pathlib.Path(self.tmp) / "exp"
+        (self.exp / "tasks").mkdir(parents=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def commands(self, stub):
+        return [l.split("|", 1)[1].split()[0] for l in stub.calls.read_text().splitlines()]
+
+    def test_migrate_after_e0019_only(self):
+        stub = migrate_stub(self.tmp, [(1, E0019), (0, "")])
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", stub, retries=0, migrate=True)
+        self.assertEqual(s["outcome"], "pass")
+        self.assertEqual(self.commands(stub), ["check", "migrate", "check"])
+        r = s["rounds"][0]
+        self.assertEqual(r["migrate"], {"exit": 0, "file": "0002_add_views.sql",
+                                        "steps": ["rebuild table Post: Post.views: new non-null column"],
+                                        "drops_data": ["column Post.summary"], "codes_before": {"E0019": 1}})
+        self.assertEqual((r["codes"], r["errors"], r["exit"]), ({}, 0, 0))
+        self.assertEqual(s["harness"]["migrate"], True)
+        rd = (self.exp / "runs/fake/t/round0").resolve()
+        cwd, args = stub.calls.read_text().splitlines()[1].split("|", 1)
+        self.assertEqual((pathlib.Path(cwd).resolve(), args), (rd, f"migrate {rd}"))
+
+    def test_no_migrate_with_other_errors_or_without_flag(self):
+        stub = migrate_stub(self.tmp, [(1, E0019 + ERR)])
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", stub, retries=0, migrate=True)
+        self.assertNotIn("migrate", s["rounds"][0])
+        self.assertEqual(self.commands(stub), ["check"])
+        stub = migrate_stub(self.tmp, [(1, E0019)])
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t2", "task", "sys", stub, retries=0)
+        self.assertNotIn("migrate", s["rounds"][0])
+        self.assertNotIn("migrate", s["harness"])
+        self.assertEqual(self.commands(stub), ["check"])
+
+    def test_migrate_refusal_is_a_failed_round_with_its_output(self):
+        refusal = "alder migrate: table Post: new column views is not null and has no default: give it one\n"
+        stub = migrate_stub(self.tmp, [(1, E0019), (1, E0019)], migrate_exit=1, migrate_out=refusal)
+        model = rl.FakeModel([GOOD, GOOD])
+        s = rl.run_one(self.exp, model, "fake", "t", "task", "sys", stub, retries=1, migrate=True)
+        self.assertEqual(s["outcome"], "fail")
+        self.assertEqual(s["rounds"][0]["migrate"]["exit"], 1)
+        self.assertIsNone(s["rounds"][0]["migrate"]["file"])
+        p = model.prompts[1]
+        self.assertIn(rl.MIGRATE_REFUSED, p)
+        self.assertIn("MIGRATE OUTPUT", p)
+        self.assertIn("has no default: give it one", p)
+
+    def test_migrate_internal_error_is_compiler_bug(self):
+        stub = migrate_stub(self.tmp, [(1, E0019)], migrate_exit=2, migrate_err="alder migrate: internal error: boom\n")
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD, GOOD]), "fake", "t", "task", "sys", stub, retries=1, migrate=True)
+        self.assertEqual((s["outcome"], s["compiler_bug_kind"]), ("compiler_bug", "migrate"))
+        self.assertEqual(len(s["rounds"]), 1)
+
+    @unittest.skipUnless(shutil.which("git"), "git is not on PATH")
+    def test_base_carries_migrations_every_round(self):
+        repo = pathlib.Path(self.tmp) / "repo"
+        (repo / "ex" / "app").mkdir(parents=True)
+        (repo / "ex" / "migrations").mkdir(parents=True)
+        (repo / "ex" / "app" / "App.alder").write_text("module App\n")
+        (repo / "ex" / "migrations" / "0001_initial.sql").write_text("-- alder migration 0001_initial\n")
+        (repo / "ex" / "migrations" / "schema.json").write_text("{}\n")
+        git(repo, "init", "-q")
+        git(repo, "add", ".")
+        git(repo, "commit", "-q", "-m", "base")
+        # round 0 migrates (0002 written), fails its second check; round 1 starts from the base's
+        # migrations again, not round 0's
+        stub = migrate_stub(self.tmp, [(1, E0019), (1, ERR), (0, "")])
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD, GOOD]), "fake", "t", "task", "sys", stub, retries=1,
+                       base=repo / "ex", migrate=True)
+        self.assertEqual(s["outcome"], "pass")
+        r0, r1 = self.exp / "runs/fake/t/round0", self.exp / "runs/fake/t/round1"
+        self.assertEqual(sorted(f.name for f in (r0 / "migrations").iterdir()), ["0001_initial.sql", "0002_add_views.sql", "schema.json"])
+        self.assertEqual(sorted(f.name for f in (r1 / "migrations").iterdir()), ["0001_initial.sql", "schema.json"])
+        exported, _ = rl.export_base(repo / "ex")
+        try:
+            self.assertTrue((exported / "migrations" / "0001_initial.sql").exists())
+        finally:
+            rl.remove_export(exported)
+
 if __name__ == "__main__":
     unittest.main()
