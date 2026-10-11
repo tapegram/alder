@@ -49,7 +49,8 @@ func then[A, B any](a eff.Task[A], b eff.Task[B]) eff.Task[B] {
 // recSP records the savepoint statements the store runs.
 type recSP struct {
 	*db.SQLite
-	log []string
+	log         []string
+	failRelease int // fail this many RELEASEs before passing them through
 }
 
 func (r *recSP) Savepoint(ctx context.Context, tx eff.Tx, name string) error {
@@ -59,6 +60,10 @@ func (r *recSP) Savepoint(ctx context.Context, tx eff.Tx, name string) error {
 
 func (r *recSP) Release(ctx context.Context, tx eff.Tx, name string) error {
 	r.log = append(r.log, "RELEASE")
+	if r.failRelease > 0 {
+		r.failRelease--
+		return errors.New("release refused")
+	}
 	return r.SQLite.Release(ctx, tx, name)
 }
 
@@ -165,6 +170,62 @@ func TestRun_WithinFailureUndoesOnlyItsWrites(t *testing.T) {
 	}
 	if want := []string{"SAVEPOINT", "RELEASE", "SAVEPOINT", "ROLLBACK TO", "RELEASE"}; !equal(rec.log, want) {
 		t.Fatalf("savepoints = %v, want %v", rec.log, want)
+	}
+}
+
+// TestRun_WithinCancelledContext: a Task that succeeds although its context was cancelled
+// during its last step still releases its savepoint (the statement runs without the
+// cancellation), so its writes stay and no savepoint lingers.
+func TestRun_WithinCancelledContext(t *testing.T) {
+	rec, _, mk := outer(t)
+	env := mk()
+	cctx, cancel := context.WithCancel(env.Ctx)
+	defer cancel()
+	env.Ctx = cctx
+	_, err := eff.Run(env, eff.KTask, then(insert("a"), eff.Call("cancel", false, func(*eff.Env) (int, error) {
+		cancel()
+		return 0, nil
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"SAVEPOINT", "RELEASE"}; !equal(rec.log, want) {
+		t.Fatalf("savepoints = %v, want %v", rec.log, want)
+	}
+	if got := outerCount(t, mk); got != 1 {
+		t.Fatalf("outer sees %d rows, want 1", got)
+	}
+	// a failure after the cancellation is rolled back all the same
+	env = mk()
+	cctx, cancel2 := context.WithCancel(env.Ctx)
+	defer cancel2()
+	env.Ctx = cctx
+	_, err = eff.Run(env, eff.KTask, then(insert("b"), then(eff.Call("cancel", false, func(*eff.Env) (int, error) {
+		cancel2()
+		return 0, nil
+	}), eff.Fail[int]("x"))))
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if got := outerCount(t, mk); got != 1 {
+		t.Fatalf("outer sees %d rows after the cancelled failure, want 1", got)
+	}
+}
+
+// TestRun_WithinFailedRelease: when RELEASE fails, Run rolls back to the savepoint and releases
+// it, so the Task's writes do not stay in the outer transaction, and returns the error.
+func TestRun_WithinFailedRelease(t *testing.T) {
+	rec, _, mk := outer(t)
+	rec.failRelease = 1
+	_, err := eff.Run(mk(), eff.KTask, insert("a"))
+	if err == nil || err.Error() != "release refused" {
+		t.Fatalf("err = %v", err)
+	}
+	if want := []string{"SAVEPOINT", "RELEASE", "ROLLBACK TO", "RELEASE"}; !equal(rec.log, want) {
+		t.Fatalf("savepoints = %v, want %v", rec.log, want)
+	}
+	if got := outerCount(t, mk); got != 0 {
+		t.Fatalf("outer sees %d rows, want 0", got)
 	}
 }
 

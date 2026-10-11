@@ -73,7 +73,7 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 		// and a failure of this Task must undo those too
 		if w.Savepoints != nil {
 			name := SavepointName()
-			if err := w.Savepoints.Savepoint(ctx(env), w.Tx, name); err != nil {
+			if err := w.Savepoints.Savepoint(spCtx(env), w.Tx, name); err != nil {
 				env.Ctx, env.Tx, env.beginTx, env.Kind, env.active = prevCtx, prevTx, prevBegin, prevKind, prevActive
 				return zero, err
 			}
@@ -89,10 +89,22 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 		if w == nil {
 			return tx.Commit()
 		}
-		if sp != "" {
-			return w.Savepoints.Release(ctx(env), w.Tx, sp)
+		if sp == "" {
+			return nil
 		}
-		return nil
+		err := w.Savepoints.Release(spCtx(env), w.Tx, sp)
+		if err != nil {
+			// the savepoint is still open with the Task's writes in it: undo them, so a
+			// failed release leaves nothing behind in the outer transaction
+			if rerr := w.Savepoints.RollbackTo(spCtx(env), w.Tx, sp); rerr == nil {
+				if rerr = w.Savepoints.Release(spCtx(env), w.Tx, sp); rerr != nil {
+					err = errors.Join(err, rerr)
+				}
+			} else {
+				err = errors.Join(err, rerr)
+			}
+		}
+		return err
 	}
 	undo := func(tx Tx) {
 		if w == nil {
@@ -102,10 +114,10 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 		if sp == "" {
 			return
 		}
-		err := w.Savepoints.RollbackTo(ctx(env), w.Tx, sp)
+		err := w.Savepoints.RollbackTo(spCtx(env), w.Tx, sp)
 		if err == nil {
 			// ROLLBACK TO keeps the savepoint open; release it so it does not linger
-			err = w.Savepoints.Release(ctx(env), w.Tx, sp)
+			err = w.Savepoints.Release(spCtx(env), w.Tx, sp)
 		}
 		if err != nil && env.Log != nil {
 			env.Log("warn", "rollback: "+err.Error())
@@ -216,6 +228,11 @@ func rollback(env *Env, tx Tx) {
 		env.Log("warn", "rollback: "+err.Error())
 	}
 }
+
+// spCtx is the context of the savepoint statements Run issues under a Within: env's without
+// its cancellation, so a Task whose context is cancelled (or past its deadline) still releases
+// or rolls back to its savepoint instead of leaving it open in the outer transaction.
+func spCtx(env *Env) context.Context { return context.WithoutCancel(ctx(env)) }
 
 // ctx is env.Ctx, or Background when it is nil.
 func ctx(env *Env) context.Context {

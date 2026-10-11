@@ -110,9 +110,10 @@ func MustParse(s string) Selector {
 }
 
 // Parse parses s as a selector of the subset. A tag must be an HTML element name (or a custom
-// element's, which has a hyphen), lower case; an id, class or attribute name is letters,
-// digits, `-`, `_` (an attribute name also `:` and `.`, as Datastar's `data-on:click` has); an
-// attribute value is an identifier or a quoted string ("…" or '…', no escapes).
+// element's, which has a hyphen), lower case. An id, class or attribute name is letters, digits,
+// `-`, `_` (an attribute name also `:` and `.`, as Datastar's `data-on:click` has); attribute
+// names are case-insensitive (`[DATA-X]` is `[data-x]`, as rt/html.Parse reads them), values
+// are not. An attribute value is an identifier or a quoted string ("…" or '…', no escapes).
 func Parse(s string) (Selector, error) {
 	p := &parser{in: s}
 	return p.parse()
@@ -230,7 +231,7 @@ func (p *parser) attr() (Attr, error) {
 	if n == 0 {
 		return a, p.fail(p.pos, p.pos+tokenLen(p.in[p.pos:]))
 	}
-	a.Name = p.in[p.pos : p.pos+n]
+	a.Name = strings.ToLower(p.in[p.pos : p.pos+n]) // attribute names are case-insensitive
 	p.pos += n
 	if p.pos < len(p.in) && p.in[p.pos] == '=' {
 		p.pos++

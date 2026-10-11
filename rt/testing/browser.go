@@ -105,8 +105,10 @@ type Browser struct {
 	doc    html.Node // the page held (without the router's doctype and script tag)
 	hasDoc bool
 
-	reqEnvs []*eff.Env // the Envs of the request being served
-	lastErr string     // the router's last error log line for it
+	reqEnvs []*eff.Env  // the Envs of the request being served
+	cur     *eff.Within // the transaction it runs within
+	reqHead string      // "METHOD /decoded/path: ", how the router's log lines for it begin
+	lastErr string      // the router's last error log line for it
 }
 
 // NewBrowser is a browser for the test running env, serving routes with opts: opts is the
@@ -132,7 +134,7 @@ func NewBrowser(env *eff.Env, routes []web.Route, opts web.Options) *Browser {
 	}
 	opts.Store, opts.Caps, opts.Now, opts.Dev, opts.Reload = env.Store, env.Caps, cookieNow, false, ""
 	opts.EnvFor = func(ctx context.Context, session any) *eff.Env {
-		e := &eff.Env{Ctx: ctx, Store: b.env.Store, Caps: b.env.Caps, Now: b.env.Now, Log: b.env.Log, Session: session, Within: b.within()}
+		e := &eff.Env{Ctx: ctx, Store: b.env.Store, Caps: b.env.Caps, Now: b.env.Now, Log: b.env.Log, Session: session, Within: b.cur}
 		b.reqEnvs = append(b.reqEnvs, e)
 		return e
 	}
@@ -141,14 +143,19 @@ func NewBrowser(env *eff.Env, routes []web.Route, opts web.Options) *Browser {
 }
 
 // within is the test's transaction for a request to run inside: env's, begun if no step has
-// yet (nil outside a running Task, or when it cannot be begun: the request then begins its own).
-func (b *Browser) within() *eff.Within {
+// yet; nil outside a running Task (the request then runs on its own, as in production). An
+// error beginning it is the step's error: a request that began its own transaction instead
+// would wait forever for the single connection of the test's in-memory database.
+func (b *Browser) within() (*eff.Within, error) {
 	tx, err := b.env.Transaction()
-	if err != nil || tx == nil {
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("beginning the test's transaction: %w", err)
+	}
+	if tx == nil {
+		return nil, nil
 	}
 	sp, _ := b.env.Store.(eff.Savepointer)
-	return &eff.Within{Tx: tx, Savepoints: sp}
+	return &eff.Within{Tx: tx, Savepoints: sp}, nil
 }
 
 // browserKey carries a test's browser slot in its Env's context.
@@ -445,7 +452,11 @@ func (b *Browser) result(ans Answer) Result {
 // serve sends one request through the router: with the cookie, the held page as Referer (an App
 // message redirects back to it), and for a Datastar request its header; it then keeps the cookie
 // the answer sets and appends the effects the request ran to the test's trace.
-func (b *Browser) serve(method, target string, form url.Values, ds bool) *httptest.ResponseRecorder {
+func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httptest.ResponseRecorder, error) {
+	cur, err := b.within()
+	if err != nil {
+		return nil, err
+	}
 	var req *http.Request
 	if method == http.MethodPost {
 		req = httptest.NewRequest(method, target, strings.NewReader(form.Encode()))
@@ -465,7 +476,8 @@ func (b *Browser) serve(method, target string, form url.Values, ds bool) *httpte
 	if b.cookie != "" {
 		req.AddCookie(&http.Cookie{Name: web.CookieName, Value: b.cookie})
 	}
-	b.reqEnvs, b.lastErr = nil, ""
+	b.reqEnvs, b.lastErr, b.cur = nil, "", cur
+	b.reqHead = req.Method + " " + req.URL.Path + ": "
 	w := httptest.NewRecorder()
 	b.handler.ServeHTTP(w, req)
 	for _, e := range b.reqEnvs {
@@ -481,14 +493,23 @@ func (b *Browser) serve(method, target string, form url.Values, ds bool) *httpte
 			}
 		}
 	}
-	return w
+	return w, nil
 }
 
 // navigate GETs u, following redirects, and holds the page it ends on; redirected says u is
 // itself a redirect's target, so a page shown is Redirected.
 func (b *Browser) navigate(u string, redirected bool) (Answer, error) {
 	for hop := 0; ; hop++ {
-		w := b.serve(http.MethodGet, u, nil, false)
+		if redirected && external(u) {
+			// another site (Url.external): the browser does not leave the app, so nothing is
+			// served and the held page and URL stay as they were; the answer names the target
+			// as Url.external builds it
+			return Answer{Tag: Redirected, Page: rt.Page{Path: u}}, nil
+		}
+		w, err := b.serve(http.MethodGet, u, nil, false)
+		if err != nil {
+			return Answer{}, err
+		}
 		if w.Code == http.StatusSeeOther {
 			if hop == redirectLimit {
 				return Answer{Tag: Failed, Text: fmt.Sprintf("more than %d redirects in a row (the last to %s)", redirectLimit, w.Header().Get("Location"))}, nil
@@ -549,14 +570,7 @@ func (b *Browser) failText() string {
 	if i := strings.Index(msg, "\ngoroutine "); i >= 0 {
 		msg = msg[:i]
 	}
-	for _, method := range []string{"GET ", "POST ", "HEAD "} {
-		if strings.HasPrefix(msg, method) {
-			if _, rest, ok := strings.Cut(msg, ": "); ok {
-				msg = rest
-			}
-			break
-		}
-	}
+	msg = strings.TrimPrefix(msg, b.reqHead)
 	if msg == "" {
 		msg = "internal server error"
 	}
@@ -565,7 +579,10 @@ func (b *Browser) failText() string {
 
 // post sends a Datastar POST of form to target and applies its answer.
 func (b *Browser) post(target string, form url.Values) (Answer, error) {
-	w := b.serve(http.MethodPost, target, form, true)
+	w, err := b.serve(http.MethodPost, target, form, true)
+	if err != nil {
+		return Answer{}, err
+	}
 	if w.Code == http.StatusSeeOther { // not under Datastar, but a client follows it all the same
 		return b.navigate(w.Header().Get("Location"), true)
 	}
@@ -714,6 +731,12 @@ func (b *Browser) patch(ev sseEvent) error {
 	}
 	b.doc, b.hasDoc = doc, true
 	return nil
+}
+
+// external reports whether u leads to another site: it has a scheme or a host.
+func external(u string) bool {
+	p, err := url.Parse(u)
+	return err == nil && (p.Scheme != "" || p.Host != "")
 }
 
 // pageOf is the Page a URL of this site links to: its escaped path and its query in order.

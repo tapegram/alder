@@ -68,6 +68,7 @@ func indexView(filter string, s session, rows []row) html.Node {
 		html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("Index", "Fail"))}, html.Text("Fail")),
 		html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("Index", "Boom"))}, html.Text("Boom")),
 		html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("App", "Logout"))}, html.Text("Log out")),
+		html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("Index", "Away"))}, html.Text("Away")),
 		html.El("a", []html.Attr{html.A("href", "/?filter=Done")}, html.Text("Done")),
 	)
 }
@@ -157,6 +158,15 @@ func fixtureRoutes() []web.Route {
 		{Method: "GET", Pattern: "/old", Handle: func(rq *web.Request) web.Response { return web.RedirectResponse("/?filter=Old", nil) }},
 		{Method: "GET", Pattern: "/loop", Handle: func(rq *web.Request) web.Response { return web.RedirectResponse("/loop", nil) }},
 		{Method: "GET", Pattern: "/gone", Handle: func(rq *web.Request) web.Response { return web.RedirectResponse("/nope", nil) }},
+		{Method: "GET", Pattern: "/away", Handle: func(rq *web.Request) web.Response {
+			return web.RedirectResponse("https://other.example/login?next=%2F", nil)
+		}},
+		{Method: "GET", Pattern: "/p/{slug}", Handle: func(rq *web.Request) web.Response {
+			return web.ErrorResponse(html.None(), errors.New("bad slug"))
+		}},
+		{Method: "POST", Pattern: "/_m/Index/Away", Handle: func(rq *web.Request) web.Response {
+			return web.RedirectResponse("https://other.example/login", rq.Env.Session)
+		}},
 		{Method: "GET", Pattern: "/broken", Handle: func(rq *web.Request) web.Response {
 			_, err := eff.Run(rq.Env, eff.KTask, then(insertTask("broken"), eff.Fail[int]("kaput")))
 			return fail(err)
@@ -672,5 +682,68 @@ func TestStep(t *testing.T) {
 	Step(e, "Test.login")
 	if !reflect.DeepEqual(e.Trace, []string{"Test.login"}) || !reflect.DeepEqual(logged, []string{"effect Test.login"}) {
 		t.Fatalf("%v %v", e.Trace, logged)
+	}
+}
+
+// TestBrowser_ExternalRedirect: a redirect to another site (Url.external) is Redirected with
+// the URL as the page's path; nothing is served, and the held page and URL stay — for a GET's
+// 303 and for a Datastar navigate alike.
+func TestBrowser_ExternalRedirect(t *testing.T) {
+	browse(t, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		b.Login(session{User: "ann"})
+		must(b.Get("/"))
+		before := html.Render(b.Doc())
+		r := must(b.Open("/away"))
+		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Page{Path: "https://other.example/login?next=%2F"}})
+		if b.URL() != "/" || html.Render(r.Doc) != before {
+			t.Errorf("held %s %s", b.URL(), html.Render(r.Doc))
+		}
+		r = must(b.Click("/_m/Index/Away"))
+		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Page{Path: "https://other.example/login"}})
+		if b.URL() != "/" || html.Render(r.Doc) != before {
+			t.Errorf("held after the navigate: %s %s", b.URL(), html.Render(r.Doc))
+		}
+	})
+}
+
+// TestBrowser_FailTextWithColonInPath: the router's log line is stripped of exactly its
+// "METHOD /decoded/path: " head, though the path holds ": ".
+func TestBrowser_FailTextWithColonInPath(t *testing.T) {
+	browse(t, func(b *Browser, e *eff.Env) {
+		r := mustOf(t)(b.Open("/p/a%3A%20b"))
+		wantAnswer(t, r, Answer{Tag: Failed, Text: "bad slug"})
+	})
+}
+
+// beginFails is a store whose transactions cannot be begun.
+type beginFails struct{ *db.SQLite }
+
+func (beginFails) Begin(context.Context) (eff.Tx, error) {
+	return nil, errors.New("database is locked")
+}
+
+// TestBrowser_TransactionErrorFailsTheStep: when the test's transaction cannot be begun, the
+// step fails with that error and sends no request.
+func TestBrowser_TransactionErrorFailsTheStep(t *testing.T) {
+	s, err := db.OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	env := &eff.Env{Ctx: context.Background(), Store: beginFails{s}, Now: cookieNow}
+	var stepErr error
+	_, err = eff.Run(env, eff.KTask, eff.Call("Test.get", true, func(e *eff.Env) (int, error) {
+		_, stepErr = NewBrowser(e, fixtureRoutes(), fixtureWeb()).Open("/login")
+		return 0, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stepErr == nil || stepErr.Error() != "beginning the test's transaction: database is locked" {
+		t.Fatalf("step error = %v", stepErr)
+	}
+	if len(env.Trace) != 1 {
+		t.Fatalf("a request was served: %v", env.Trace)
 	}
 }
