@@ -23,8 +23,9 @@ func (markdown) Render(_ context.Context, args app.Args__Markdown__Markdown__Ren
 //   - `code`: its content is literal, nothing inside it is formatting;
 //   - **strong** and *emphasis*, each closed by the next ** or * and never empty;
 //   - [text](url) for an absolute http: or https: URL with a host (rt.SafeURL), at most maxURL
-//     bytes and without "](" in it; any other link, such as javascript:, data: or a relative
-//     one, stays as its literal source text.
+//     bytes and without "](" in it; the URL ends at the first ")", so one that holds a
+//     parenthesis (…/Foo_(bar)) is written with it encoded (…/Foo_%28bar%29); any other link,
+//     such as javascript:, data: or a relative one, stays as its literal source text.
 //
 // Everything else, an unclosed * or ` or [ included, is literal text. The result is built from
 // html.El and html.Text nodes, never html.Raw: the renderer escapes every piece of text, so no

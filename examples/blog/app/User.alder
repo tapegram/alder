@@ -15,5 +15,7 @@ table User {
   created: Time @created,
 }
 
-isAuthor : User -> Bool
-isAuthor user = user.role == Author
+-- author is the user with that id when they are an Author, and Nothing for a Reader (or no
+-- user): the one role check of the Admin pages and of the front page's Write link.
+author : UserId -> Query (Maybe User)
+author id = Db.from User |> Db.where (User.id.eq id) |> Db.where (User.role.eq Author) |> Db.first

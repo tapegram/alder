@@ -30,6 +30,8 @@ func TestMarkdown_Constructs(t *testing.T) {
 		{"uppercase scheme", "[x](HTTPS://example.com)", `<p><a href="HTTPS://example.com">x</a></p>`},
 		{"formatted link text", "[**big** news](https://example.com)", `<p><a href="https://example.com"><strong>big</strong> news</a></p>`},
 		{"a link closes at the first ](", "[a [b](https://x.y)](https://e.com)", `<p><a href="https://x.y">a [b</a>](https://e.com)</p>`},
+		{"a parenthesis ends the URL", "[Foo](https://e.com/wiki/Foo_(bar))", `<p><a href="https://e.com/wiki/Foo_(bar">Foo</a>)</p>`},
+		{"an encoded parenthesis", "[Foo](https://e.com/wiki/Foo_%28bar%29)", `<p><a href="https://e.com/wiki/Foo_%28bar%29">Foo</a></p>`},
 		{"link in emphasis", "*see [x](https://e.com)*", `<p><em>see <a href="https://e.com">x</a></em></p>`},
 		{"arithmetic is not emphasis", "2 * 3 * 4", "<p>2 * 3 * 4</p>"},
 		{"empty emphasis", "** and ****", "<p>** and ****</p>"},

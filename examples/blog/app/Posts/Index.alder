@@ -21,14 +21,14 @@ perPage = 10
 lastPage : Int
 lastPage = 1000000
 
--- load reads one page of published posts, newest first, matching `q` when it is not blank. It
--- asks for one post more than a page holds: if that one comes back there is a next page
--- (`hasMore`), and it is dropped from the list. `canWrite` shows the link to the Admin page to
--- an Author only.
+-- load reads one page of published posts, newest first, matching `q` when it is not blank; `q`
+-- is cut to 100 characters. It asks for one post more than a page holds: if that one comes back
+-- there is a next page (`hasMore`), and it is dropped from the list. `canWrite` shows the link
+-- to the Admin page to an Author only.
 load : Params -> Session -> Query Model
 load params session = {
   let page = if params.page < 1 then 1 else if params.page > lastPage then lastPage else params.page
-  let q = Text.trim params.q
+  let q = Text.slice 0 100 (Text.trim params.q)
   let matching =
     if Text.isEmpty q then Db.and [] else Db.or [Post.title.contains q, Post.body.contains q]
   let found <-
@@ -40,10 +40,10 @@ load params session = {
       |> Db.offset ((page - 1) * perPage)
       |> Db.all
   let me <- match session.user {
-    Just id -> Db.get User id,
+    Just id -> User.author id,
     Nothing -> Query.succeed Nothing,
   }
-  let canWrite = Maybe.withDefault False (Maybe.map User.isAuthor me)
+  let canWrite = me != Nothing
   Query.succeed { page: page, q: q, posts: List.take perPage found, hasMore: List.length found > perPage, canWrite: canWrite }
 }
 
@@ -126,4 +126,38 @@ test "page 99 is empty" = {
   let pages <- Query.all (List.map (\n -> load { page: n, q: "" } { user: Nothing }) [1, 2, 99, 0])
   let seen = List.map (\m -> { page: m.page, posts: List.length m.posts, hasMore: m.hasMore }) pages
   Task.succeed (seen == [{ page: 1, posts: 10, hasMore: True }, { page: 2, posts: 1, hasMore: False }, { page: 99, posts: 0, hasMore: False }, { page: 1, posts: 10, hasMore: True }])
+}
+
+test "a negative page is page 1" = {
+  let model <- load { page: -3, q: "" } { user: Nothing }
+  Task.succeed (model.page == 1)
+}
+
+test "a `_` in the query is literal" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "snake", title: Text.NonEmpty "snake_case", body: "", published: True, author: author }
+  let _ <- Db.insert Post { slug: Post.Slug "camel", title: Text.NonEmpty "snakeYcase", body: "", published: True, author: author }
+  let model <- load { page: 1, q: "e_c" } { user: Nothing }
+  Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "snake_case"])
+}
+
+-- The query is cut to its first 100 characters: SQLite refuses a pattern over ~50 KB, and below
+-- that a search costs the length of every post times the length of the query.
+test "a long query is cut" = {
+  let long = Text.join "" (List.map (\n -> "tomato ") (List.range 1 100))
+  let model <- load { page: 1, q: long } { user: Nothing }
+  Task.succeed (model.q == Text.slice 0 100 long)
+}
+
+test "a search answers with the first page of its results" = {
+  let model <- load { page: 3, q: "" } { user: Nothing }
+  let nav <- update (Search { form: { q: "soup" } }) model { user: Nothing }
+  Task.succeed (nav == Redirect (Posts.Index { page: 1, q: "soup" }))
+}
+
+test "only an Author sees the Write link" = {
+  let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let pages <- Query.all (List.map (\user -> load { page: 1, q: "" } { user: user }) [Nothing, Just reader, Just author])
+  Task.succeed (List.map (\m -> m.canWrite) pages == [False, False, True])
 }

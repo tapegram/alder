@@ -16,17 +16,16 @@ type Model = {
 -- its own.
 load : Params -> Session -> Query Model
 load params session = {
-  let me <- Db.get User session.user
+  let me <- User.author session.user
   match me {
-    Just user ->
-      if User.isAuthor user then {
-        let posts <-
-          Db.from Post
-            |> Db.where (Post.author.eq user.id)
-            |> Db.orderBy Post.created.desc
-            |> Db.all
-        Query.succeed { author: user, posts: posts }
-      } else Query.notFound,
+    Just user -> {
+      let posts <-
+        Db.from Post
+          |> Db.where (Post.author.eq user.id)
+          |> Db.orderBy Post.created.desc
+          |> Db.all
+      Query.succeed { author: user, posts: posts }
+    },
     Nothing -> Query.notFound,
   }
 }
@@ -104,4 +103,13 @@ test "creating a post redirects to its edit page" = {
     Just post -> Task.succeed ({ value: r.value, published: post.published } == { value: Ok (Redirect (Admin.Edit { id: post.id })), published: False }),
     Nothing -> Task.fail "no post has the slug hello",
   }
+}
+
+test "a taken slug is refused" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
+  let model <- load {} { user: author }
+  let r <- Test.run (update (Create { form: { slug: Post.Slug "hello", title: Text.NonEmpty "Again", body: "" } }) model { user: author })
+  let posts <- Db.from Post |> Db.count
+  Task.succeed ({ value: r.value, posts: posts } == { value: Ok (Reject "Another post has that slug."), posts: 1 })
 }

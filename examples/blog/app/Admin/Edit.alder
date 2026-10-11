@@ -4,6 +4,7 @@ import Post
 import Comment
 import User
 import Layout
+import Posts.Index
 
 page "/admin/{id}" { id: Post.PostId } requires user
 
@@ -15,11 +16,10 @@ type Model = { post: Post }
 -- this `load` has authorized (as the to-do example's Todos.Show does).
 load : Params -> Session -> Query Model
 load params session = {
-  let me <- Db.get User session.user
+  let me <- User.author session.user
   let found <- Db.get Post params.id
-  let isAuthor = Maybe.withDefault False (Maybe.map User.isAuthor me)
   match found {
-    Just post -> if isAuthor && post.author == session.user then Query.succeed { post: post } else Query.notFound,
+    Just post -> if me != Nothing && post.author == session.user then Query.succeed { post: post } else Query.notFound,
     Nothing -> Query.notFound,
   }
 }
@@ -84,8 +84,8 @@ view model session =
 test "deleting a post deletes its comments" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", published: True, author: author }
-  let _ <- Db.insert Comment { post: id, author: Text.NonEmpty "Ann", body: Text.NonEmpty "First!" }
-  let _ <- Db.insert Comment { post: id, author: Text.NonEmpty "Bob", body: Text.NonEmpty "Second." }
+  let _ <- Db.insert Comment { post: id, author: Comment.Name "Ann", body: Comment.Body "First!" }
+  let _ <- Db.insert Comment { post: id, author: Comment.Name "Bob", body: Comment.Body "Second." }
   let model <- load { id: id } { user: author }
   let r <- Test.run (update Delete model { user: author })
   let posts <- Db.from Post |> Db.count
@@ -117,4 +117,16 @@ test "a demoted author cannot edit" = {
     Task.succeed m.post.id
   }
   Task.succeed ({ before: before.value, after: after.value } == { before: Ok id, after: Err "not found" })
+}
+
+test "Publish shows the post on the front page; Unpublish hides it" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
+  let draft <- load { id: id } { user: author }
+  let _ <- update Publish draft { user: author }
+  let published <- Posts.Index.load { page: 1, q: "" } { user: Nothing }
+  let shown <- load { id: id } { user: author }
+  let _ <- update Unpublish shown { user: author }
+  let unpublished <- Posts.Index.load { page: 1, q: "" } { user: Nothing }
+  Task.succeed ({ published: List.length published.posts, unpublished: List.length unpublished.posts } == { published: 1, unpublished: 0 })
 }

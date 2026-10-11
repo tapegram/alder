@@ -6,6 +6,9 @@ package adapters
 import (
 	"context"
 	"errors"
+	"log"
+	"os"
+	"sync"
 	"time"
 
 	"alder/rt"
@@ -24,14 +27,30 @@ const (
 	devPassword = "password"
 )
 
-// password is a development stub of Auth.Login.Password: it accepts a@b.c with the password
-// "password" and nobody else. Replace it before deploying the app.
+// password is a development stub of Auth.Login.Password: in dev mode (ALDER_DEV=1, which
+// `alder run` sets) it accepts a@b.c with the password "password" and nobody else; outside dev
+// mode it refuses every login. Replace it before deploying the app.
 type password struct{}
 
-// Verify returns the id of the development account's User row for a@b.c and "password", and
-// Nothing for anything else.
+// refusing logs, once, that the stub is refusing every login because the app is not in dev mode.
+var refusing sync.Once
+
+// devMode reports whether the app runs in dev mode (ALDER_DEV=1); when it does not, it logs
+// (once) that every login is refused.
+func devMode() bool {
+	if os.Getenv("ALDER_DEV") == "1" {
+		return true
+	}
+	refusing.Do(func() {
+		log.Print("the dev Password stub refuses every login outside dev mode: replace it")
+	})
+	return false
+}
+
+// Verify returns the id of the development account's User row for a@b.c and "password" in dev
+// mode, and Nothing for anything else.
 func (password) Verify(ctx context.Context, args app.Args__Auth__Login__Password__Verify) (rt.Maybe[string], error) {
-	if args.Email != devEmail || args.Password != devPassword {
+	if !devMode() || args.Email != devEmail || args.Password != devPassword {
 		return rt.Nothing[string](), nil
 	}
 	id, err := devUser(ctx)
