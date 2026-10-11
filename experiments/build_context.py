@@ -37,10 +37,13 @@ HUMAN_SECTIONS = {
 }
 
 # The `### ` subsections of a dropped section that --reference keeps, by chapter and `## `
-# heading: chapter 7's adapter naming rule (capability X of module A.B -> adapters/a/, func BX),
-# which an agent writing a capability needs; the rest of that section is how the build wires it.
+# heading: chapter 7's shape of a capability in Go (the interface and its methods: ctx first, an
+# Args__ record, a1…an or nothing, result and error; the Go types; `import "app"`, rt, db.TxFrom)
+# and its adapter naming rule (capability X of module A.B -> adapters/a/, func BX; a keyword
+# directory), which an agent writing a capability needs; the rest of those sections is how the
+# effects run and how the build wires the adapters.
 KEEP_SUBSECTIONS = {
-    "07": {"Implementing a capability": ["The rule"]},
+    "07": {"How effects run": ["What a capability looks like in Go"], "Implementing a capability": ["The rule"]},
 }
 
 HEADER = """You are writing code in Alder, a small language for server-rendered web

@@ -294,8 +294,9 @@ read, then the update. The `Add` arm of
 then logs, leaves `["Db.insert Todo" "Log.info"]`. The trace is the dev
 log of what a request did, and what a test can compare (chapter 10).
 
-**What a capability looks like in Go.** The to-do app checks
-passwords outside the language
+### What a capability looks like in Go
+
+The to-do app checks passwords outside the language
 (`examples/todos/app/Auth/Login.alder`):
 
 ```alder
@@ -357,7 +358,20 @@ Returning a non-nil `error` fails the task, which rolls it back. The
 brands are gone in Go (`User.UserId` is a `string`), so the Go side must
 keep the brand's promise itself.
 
-**A capability can write in the task's transaction.** While `Run` runs,
+The other types: `Int` is `int64`, `Float` `float64`, `Text` `string`,
+`Bool` `bool`, `Unit` `struct{}` (an entry returning `Task Unit` returns
+`struct{}{}, nil`), `Maybe a` `rt.Maybe[A]` (`rt.Just(x)`,
+`rt.Nothing[A]()`), `Result e a` `rt.Result[E, A]`, `List a` `[]A`,
+`Time` `time.Time` and `Html Never` `html.Node`. The stub above lives
+inside the generated package; an adapter, in its own package, imports it
+as `"app"` and writes `app.Cap__…` and `app.Args__…`, with `rt.Maybe`
+from `"alder/rt"`. An adapter that uses the database passes
+`db.TxFrom(ctx)` (from `"alder/rt/db"`), the running task's transaction,
+to every query it makes.
+
+### A capability in the task's transaction
+
+While `Run` runs,
 the `ctx` it passes to a capability carries the running effect
 (`eff.EnvFrom(ctx)`), so a Go implementation reaches the task's store and
 transaction with `db.StoreFrom(ctx)` and `db.TxFrom(ctx)`; the
@@ -385,6 +399,8 @@ timeout on a file. In a `Query` (a capability entry typed `Query`),
 without a transaction, and its `Insert`, `Update`, `Delete` and `Begin`
 return an internal error (`eff.ErrInternal`, "write from a Query") and
 write nothing.
+
+### How the program finds an implementation
 
 Inside the program, an implementation is found by the capability's
 module-qualified name, `Env.Caps["Auth.Login.Password"]`. The generated
@@ -433,9 +449,14 @@ share a package: `Auth.Login`'s `Password` and an `Auth.Signup`'s
 `Password` are both in `adapters/auth/`, as `func LoginPassword()` and
 `func SignupPassword()`.
 
+The directory is the package's import path, not its name: when it is a
+Go keyword (`adapters/select/` for a module `Select.Menu`), write
+`package selectadapter` (any other name) in it; the directory stays.
+
 You never have to work this out yourself. When an adapter is missing,
 `alder build` prints the exact directory and function to write, one line
-per missing adapter (shown under "When an adapter is missing").
+per missing adapter, such as
+``capability `Markdown.Markdown` needs `adapters/markdown/` with `func Markdown() app.Cap__Markdown__Markdown` ``.
 
 A few words of Go, for what follows. A Go **package** is one directory of
 `.go` files that all start with the same `package <name>` line. A name
@@ -615,7 +636,7 @@ checks every capability before it opens the database, and the binary
 prints the reason and exits 1:
 
 ```
-alder: capability Auth.Login.Password is not wired: set Caps.Auth__Login__Password
+alder: capability Auth.Login.Password is not wired: adapters/auth/: func LoginPassword returned nil
 ```
 
 ### When an adapter is missing
@@ -634,10 +655,8 @@ capability `Markdown.Markdown` needs `adapters/markdown/` with `func Markdown() 
 ```
 
 The build exits 1 and writes nothing: no `build/blog/` appears. `alder
-test` and `alder eval`, which build the app too, stop with the same lines
-(prefixed `alder test: ` or `alder eval: `) and exit 2, their code for a
-build problem (chapter 11). `alder check` never looks at `adapters/`:
-adapters are a build concern, and an app checks clean without them.
+check` never looks at `adapters/`: adapters are a build concern, and an
+app checks clean without them.
 
 An app with capabilities and no `adapters/` at all is the same case, with
 every capability listed. Here is the blog with its `adapters/` deleted:
@@ -649,9 +668,20 @@ capability `Auth.Login.Password` needs `adapters/auth/` with `func LoginPassword
 capability `Markdown.Markdown` needs `adapters/markdown/` with `func Markdown() app.Cap__Markdown__Markdown`
 ```
 
-`alder test` treats that app differently: with no `adapters/` (no `.go`
-file anywhere under it) it runs the tests unwired, and a test whose code
-calls a capability that no `Test.fake` replaced fails at that call:
+`alder test`, `alder eval` and the REPL (chapter 11), which build the app
+too, treat a missing adapter differently: they do not refuse it. The
+capability is left *unwired* (the generated `caps` package simply has no
+line for it), they print the same list once, as a warning, and carry on:
+
+```
+$ alder test .
+warning: 1 capability without an adapter runs unwired in tests:
+capability `Markdown.Markdown` needs `adapters/markdown/` with `func Markdown() app.Cap__Markdown__Markdown`
+```
+
+A test that replaces the capability with its fake (`Test.fake Markdown`,
+chapter 10) runs as usual. A test whose code calls a capability that no
+`Test.fake` replaced fails at that call:
 
 ```
 FAIL Posts.Show "a draft is shown to its author"
@@ -659,18 +689,45 @@ FAIL Posts.Show "a draft is shown to its author"
   trace: ["Db.insert User", "Db.insert Post", "Db.first Post", "Markdown.render"]
 ```
 
-So you can write and test an app's Alder before any of its Go exists.
-Once `adapters/` has a `.go` file, every adapter must be there.
+It is the same with some adapters written and others not, and with no
+`adapters/` at all (no `.go` file anywhere under it), where nothing is
+wired and there is nothing to warn about. So you can write and test an app's Alder, its fakes
+first, before any of its Go exists, and add the adapters one at a time;
+only `alder build`, which makes the executable you deploy, insists on
+every one.
 
-A function with the right name that is not exported (`func loginPassword()`),
-takes a parameter, or is a method does not count: the adapter is reported
-missing. So does one in a `_test.go` file, which the executable never has.
+A function with the right name that is not exported (`func loginPassword()`)
+or is a method does not count: the adapter is reported missing. So does
+one in a `_test.go` file, which the executable never has. When the
+package declares the constructor's name as something else, a function
+that takes a parameter or a variable, say, the line says what it found:
+
+```
+capability `Markdown.Markdown` needs `adapters/markdown/` with `func Markdown() app.Cap__Markdown__Markdown` (found func Markdown(style string): it must take no parameters)
+```
+
+The directory's name must be exactly the lower-cased segment. On macOS,
+whose file system ignores letter case, `adapters/Markdown/` would
+otherwise pass for `adapters/markdown/` and confuse Go later, so the
+build (and `alder test`) refuses it by name, exit 1:
+
+```
+adapters/Markdown/ must be adapters/markdown/ (an adapter package's directory is its module's first segment, lower-cased)
+```
+
+A symbolic link under `adapters/` is not followed and not copied: an
+adapter directory or file that is a link counts as missing, and the list
+ends with `(symlinks under adapters/ are ignored)`. Copy the files
+instead.
 
 ### When an adapter does not compile
 
 A constructor with the right name but the wrong type is found, and the
 mistake surfaces when Go compiles the package. The build quotes Go's
-errors as they are, under a line naming the adapters, and exits 1. In this
+errors as they are, under a line naming the adapters, and exits 1
+(`alder test`, `alder eval` and the REPL print the same line, prefixed
+with their own name, and `alder test` and `alder eval` exit 1 as well:
+it is your program, like a check error). In this
 copy of the blog, `Render` forgot its `error` result, and the constructor
 returns its struct type:
 
@@ -716,7 +773,9 @@ one file and more than one package:
   helpers, a module whose first segment is `Internal` cannot have
   capabilities, and neither can one starting with `Testdata` (Go skips
   every directory named `testdata`). `alder build` refuses them before
-  anything else, and exits 1 (`alder test` and `alder eval` exit 2):
+  it looks for a single adapter (only the naming error at the end of this
+  section is checked earlier), and exits 1, as `alder test` and `alder
+  eval` do:
 
   ```
   module `Internal` cannot name an adapter package: Go keeps `adapters/internal/` private to adapters/ (it holds helpers); rename the module
@@ -732,7 +791,11 @@ one file and more than one package:
   `package selectadapter` for instance. The directory is still
   `adapters/select/`, and the generated `caps` imports it under its alias,
   `a_select "app/adapters/select"`, so the package's own name never
-  appears there.
+  appears there. While the adapter is missing, its line says so:
+
+  ```
+  capability `Select.Menu.Choice` needs `adapters/select/` with `func MenuChoice() app.Cap__Select__Menu__Choice` (select is a Go keyword: name the package e.g. selectadapter)
+  ```
 - **An adapter's own tests.** Go test files (`*_test.go`) and `testdata/`
   directories are copied too, so an adapter can be tested in Go against
   the real generated `app` package. Run them inside the build directory,
@@ -749,10 +812,16 @@ one file and more than one package:
   `examples/blog/adapters/markdown/markdown_test.go` tests `ToHTML`;
   `examples/blog/adapters/auth/password_test.go` tests that the stub
   refuses every login outside dev mode. The executable contains none of
-  this: `go build` never compiles test files.
+  this: `go build` never compiles test files. The build's check does,
+  though: `go vet` compiles every package with its tests, so an adapter
+  `_test.go` that does not compile stops `alder build` like any other
+  adapter that does not compile.
 
 `alder run` (chapter 11) rebuilds when any file under `adapters/` changes,
-in any directory.
+in any directory, except your editor's own files (a name starting with
+`.`, such as `.markdown.go.swp` or `.DS_Store`; one ending in `~`, `.swp`
+or `.swx`; `#markdown.go#`) and symbolic links, which the build does not
+copy.
 
 Two more messages you can meet. Two capabilities whose names join to the
 same function in the same directory (module `Mail`'s `OutBox` and module
@@ -769,7 +838,7 @@ one package at the top of `adapters/` with a hand-written function
 packages are still missing, the list follows:
 
 ```
-adapters/ no longer wires capabilities: move each adapter to adapters/<module>/ (see the list below)
+adapters/ no longer wires capabilities: move each adapter to adapters/<first module segment, lower-cased>/ (see the list below)
 ```
 
 and when every adapter is already in place, only the old function is left
@@ -781,4 +850,10 @@ adapters/ no longer wires capabilities: delete func Caps (adapters/caps.go): the
 
 Your editor will not resolve `import "app"` inside `adapters/`: that
 package only exists in `build/<app>/`. For the same reason, an app inside
-another Go module needs a `go.mod` of its own (chapter 11).
+another Go module needs a `go.mod` of its own (chapter 11). That `go.mod`
+goes next to `app/`, never in `adapters/`: there it would cut `adapters/`
+out of the generated module, and the build refuses it (exit 1):
+
+```
+adapters/go.mod: adapters/ is part of the generated module; delete it (your editor resolves `app` in build/<app>/)
+```

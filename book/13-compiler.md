@@ -1436,8 +1436,11 @@ for change notifications, so the compiler needs no dependency beyond Go's
 standard library. Every 300 ms, `snapshot` records the modification time
 and size of every `.alder` file under `app/`, every file under
 `adapters/` (any directory, any extension: `alder build` copies the whole
-tree, so any of it can change the build), the migration files, and every
-file under `static/`; `diff` compares two
+tree, so any of it can change the build; but not an editor's files,
+which `editorNoise` recognizes by name: a name starting with `.`, ending
+in `~`, `.swp` or `.swx`, or of the form `#…#`, nor a symbolic link,
+which the build does not copy), the migration files, and every file
+under `static/`; `diff` compares two
 snapshots and says which kinds changed, `sourceChange`, `staticChange` or
 both (a `change` is a set of bits). The watcher does not report a change
 at once. It waits for a poll that finds nothing new:
@@ -1795,8 +1798,9 @@ comment of `Compile`:
 //     alone and still produce a binary.
 //   - Binary is "" when Diags hold an error or a typed hole (W0002), or when Err is set. Err is
 //     set only for I/O failures, an extra module named like an app or stdlib module
-//     (*ModuleExistsError), generated or caller Go that does not vet, and go build failures;
-//     its message carries Go's output.
+//     (*ModuleExistsError), adapters that are refused or do not compile with the app
+//     (*AdapterError: the user's, as a check error is), generated or caller Go that does not
+//     vet, and go build failures; its message carries Go's output.
 //   - Compile writes only under out (the generated module "app" with its caps/ when it wires
 //     the adapters (Checked.WiresAdapters), adapters/, static/ and
 //     migrations/ copied from the app, cmd/main.go and the executable out/scratch) and the
@@ -1870,8 +1874,11 @@ Here is `alder eval examples/todos 'Todo.filterLabel Active'`, step by step
    `scratch.Options{Tests: true}`, below) and the adapters' capabilities,
    wired by the generated `caps` package as in `alder build` (chapter 7);
    before compiling, the build checks the adapters with
-   `buildkit.CheckAdapters`, the check `alder build` makes, and a missing
-   one is the build's error, with the same lines. Without adapters the
+   `buildkit.CheckTestAdapters`: `alder build`'s check, whose refusals are
+   the build's error (a `scratch.AdapterError`, exit 1, with the same
+   lines), except that a missing adapter is left unwired (out of the
+   `caps` package) and listed once, as a warning (`Build.Warning`), so
+   eval goes on. Without adapters the
    main does not import `app/caps`, `caps/` is left out of the scratch
    module, and `Caps` is `app.Caps{}.Registry()`, every capability
    unwired: a call to one fails with "capability … is not wired in eval"
@@ -2068,7 +2075,10 @@ func main() {
 `app.FakeTables` the tables of its fakes ("Fakes", below; the to-do app
 has none, so its test build has `var FakeTables = []db.TableDesc{}`).
 (The local `caps` takes the package's name from that line on, which Go
-allows: `caps.Caps()` on the right is still the package.) Without
+allows: `caps.Caps()` on the right is still the package.) A capability
+whose adapter is missing has no line in the test build's `caps` package
+(`gen.Options.Unwired`), so its field is `nil`, and `alder test` prints
+the warning `Build.Warning` holds before running the tests. Without
 adapters the main does not import `app/caps` and the capabilities are
 `app.Caps{}.Registry()`: every
 capability's key is there with no implementation, and a call to one
@@ -2710,7 +2720,7 @@ hand, and git ignores it.
 replaced by `__` and `_alder.go` added (`Todos__Index_alder.go` for
 `Todos.Index`), plus two app-wide files and a `go.mod` that points back at
 this repository for `rt`. `app__alder.go` holds the lists of section 8
-(`Tables`, `Capabilities`), the `Caps` struct the adapters fill, `Options`,
+(`Tables`, `Capabilities`), the `Caps` struct the generated `caps` package fills, `Options`,
 `Serve` (which checks the capabilities, opens the database, creates the
 tables and returns `web.NewRouter(Routes, …)`), and `session__codec`, the
 cookie's JSON. `routes__alder.go` holds `Routes` and every handler of
@@ -2722,39 +2732,6 @@ quotes the blog's). A full `alder build` (without `--emit`) adds
 capabilities); `adapters/` and `static/`, copies of the app's own; and
 the executable.
 
-**The build, in order** (`runBuildTo` in `cmd/alder/build.go`):
-
-1. Check the program (section 5), and lower it to the IR (section 6).
-2. Check the adapters, before anything is written:
-   `buildkit.CheckAdapters` (`internal/buildkit/adapters.go`). It turns
-   each capability of the IR's `Program.Caps` into a `Need`: the module,
-   the capability, the directory (`gen.AdapterPkg`: the module's first
-   segment, lower-cased), the function (`gen.AdapterFunc`: the other
-   segments and the capability's name, joined) and the interface. Two
-   needs with the same directory and function are the "internal naming
-   error" (`gen.AdapterCollision`); a directory named `internal` or
-   `testdata` is refused. Then the scan: for each needed directory it
-   parses, with Go's own parser (`go/parser`, which reads a file's
-   declarations without type-checking anything), every `.go` file that
-   is not a test and that Go would build here (`build.Default.MatchFile`
-   applies build tags and `_linux`-style file names), and collects the
-   functions that are exported, have no receiver, no type parameters and
-   no parameters. A need whose function is not among them is missing.
-   A file that does not parse counts as having every function, so that
-   Go, later, reports the syntax error itself. Every missing need is
-   printed, and the build exits 1.
-3. Emit the Go (section 7); `gen.Emit` adds the `caps` file
-   (`gen.CapsPackage`) when the program has capabilities. Write it
-   (`buildkit.WriteGenerated`, which also removes a stale `caps/`).
-4. Copy `migrations/`, then the whole `adapters/` tree
-   (`buildkit.CopyAdapters`, which skips a file whose content is
-   unchanged, so Go's build cache stays warm, and removes what the app
-   no longer has) and `static/`, and write `cmd/main.go` (`gen.Main`).
-5. `go vet ./...` on the module, then `go build ./cmd`. When vet fails,
-   the build vets the generated package alone to decide whose fault it
-   is: if that fails too, it is an internal error (exit 2); otherwise the
-   adapters (or the wiring of their constructors) do not compile, which
-   is your Go, and exit 1 with Go's output.
 The fixed ending is there because Go reads meaning into file names: a file
 ending in `_test.go` is a test, and one whose name ends in `_linux` or
 `_amd64` (before the first `.`) is compiled only on Linux or only on that
@@ -2816,7 +2793,64 @@ for `msg Pick`, so a type or component of yours may not use those names
 (E0012). A generated name can never be a Go keyword or clash with `rt`,
 `html` or `std`.
 
-So to find a page's view, search for it:
+**The build, in order** (`runBuildTo` in `cmd/alder/build.go`):
+
+1. Check the program (section 5), and lower it to the IR (section 6).
+2. Check the adapters, before anything is written:
+   `buildkit.CheckAdapters` (`internal/buildkit/adapters.go`). It turns
+   each capability of the IR's `Program.Caps` into a `Need`: the module,
+   the capability, the directory (`gen.AdapterPkg`: the module's first
+   segment, lower-cased), the function (`gen.AdapterFunc`: the other
+   segments and the capability's name, joined) and the interface. Two
+   needs with the same directory and function are the "internal naming
+   error" (`gen.AdapterCollision`), checked first; then a directory named
+   `internal` or `testdata` is refused, and so is an `adapters/go.mod`.
+   Then the scan. It lists `adapters/` and wants each needed directory
+   by its exact name, as a real directory: a symbolic link is skipped
+   (as the copy below skips it), and a directory that differs only in
+   letter case is refused by name, since on a case-insensitive file
+   system it would pass the scan and then confuse Go. In each directory
+   it parses, with Go's own parser (`go/parser`, which reads a file's
+   declarations without type-checking anything), every regular `.go`
+   file that is not a test and that Go would build here
+   (`build.Default.MatchFile` applies build tags and `_linux`-style file
+   names), and collects the functions that are exported, have no
+   receiver, no type parameters and no parameters. A need whose function
+   is not among them is missing; when the package declares the name as
+   something else (a function with parameters, a variable, a type), the
+   `Need` keeps that near miss in `Found` for its line. A file that does
+   not parse counts as having every function, so that Go, later, reports
+   the syntax error itself. Every missing need is printed, and the build
+   exits 1.
+3. Emit the Go (section 7); `gen.Emit` adds the `caps` file
+   (`gen.CapsPackage`) when the program has capabilities. Write it
+   (`buildkit.WriteGenerated`, which also removes a stale `caps/`).
+4. Copy `migrations/`, then the whole `adapters/` tree
+   (`buildkit.CopyAdapters`, which first removes, by exact name, what
+   the app no longer has, so a directory renamed only in its case is not
+   lost on macOS, then copies, skipping a file whose content is
+   unchanged, so Go's build cache stays warm) and `static/`, and write
+   `cmd/main.go` (`gen.Main`).
+5. `go vet ./...` on the module, then `go build ./cmd`. When vet fails,
+   the build vets the generated package alone to decide whose fault it
+   is: if that fails too, it is an internal error (exit 2); otherwise the
+   adapters (or the wiring of their constructors) do not compile, which
+   is your Go, and exit 1 with Go's output
+   (`buildkit.AdaptersCompileMessage`).
+
+The test builds of `alder test`, `alder eval` and the REPL (section
+"Running tests", above) follow the same steps through `scratch.CompileCheckedWith`,
+with two differences. Step 2 is `buildkit.CheckTestAdapters`: every
+refusal stands, but a missing need is returned instead, its key goes into
+`gen.Options.Unwired`, `gen.CapsPackage` leaves that field of `Caps` out
+(with a comment) and does not import a package nothing else needs, and
+the warning goes into `Build.Warning` for the command to print. In step 5,
+when the generated package vets but the module does not, the scratch
+runner vets `./caps` and `./adapters/...` alone: if they fail it is a
+`scratch.AdapterError` with step 5's message (the commands exit 1),
+otherwise the fault is the scratch `main`'s.
+
+Because every name follows the scheme, finding a page's view is a search:
 
 ```
 $ grep -n "func Todos__Index__view" build/todos/*.go

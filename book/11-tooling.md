@@ -114,15 +114,19 @@ adapters (chapter 7, "Implementing a capability"). In order:
 - Two capabilities whose adapters would be the same function in the same
   package stop the build:
   `internal naming error: capabilities Mail.OutBox and Mail.Out.Box both need func OutBox in adapters/mail/ (rename one of them)`.
+- An `adapters/go.mod` is refused:
+  ``adapters/go.mod: adapters/ is part of the generated module; delete it (your editor resolves `app` in build/<app>/)``.
 - A module with capabilities whose first segment is `Internal` or
   `Testdata` is refused, one line per module:
   ``module `Internal` cannot name an adapter package: Go keeps `adapters/internal/` private to adapters/ (it holds helpers); rename the module``
   or ``module `Testdata` cannot name an adapter package: Go skips `testdata/` directories; rename the module``.
 - The scan: for each capability, the build reads (without compiling) the
-  `.go` files of its directory under `adapters/`, skipping test files and
-  files Go would not build on this machine, and looks for its exported,
-  parameterless constructor. It lists every one that is missing, all in
-  one run:
+  `.go` files of its directory under `adapters/`, skipping test files,
+  files Go would not build on this machine and symbolic links, and looks
+  for its exported, parameterless constructor. The directory must be
+  named exactly (`adapters/Mail/` is refused:
+  `adapters/Mail/ must be adapters/mail/ (an adapter package's directory is its module's first segment, lower-cased)`).
+  It lists every adapter that is missing, all in one run:
 
   ```
   blog is missing adapters for 2 capabilities:
@@ -132,10 +136,15 @@ adapters (chapter 7, "Implementing a capability"). In order:
 
   (`blog` is the app's name; one missing adapter says `1 capability:`.)
   An app with capabilities and no `adapters/` at all gets this list with
-  every capability on it.
+  every capability on it. A line can end with what the scan found under
+  the constructor's name instead, `(found func Markdown(style string): it
+  must take no parameters)`, or with a hint when the directory is a Go
+  keyword, `(select is a Go keyword: name the package e.g.
+  selectadapter)`; when a symbolic link was skipped, the list ends with
+  `(symlinks under adapters/ are ignored)`.
 - A `.go` file at the top level of `adapters/` that declares `func Caps`
   is the form adapters had before Alder generated the wiring, and is
-  refused: `adapters/ no longer wires capabilities: move each adapter to adapters/<module>/ (see the list below)`
+  refused: `adapters/ no longer wires capabilities: move each adapter to adapters/<first module segment, lower-cased>/ (see the list below)`
   above the list, or, when no adapter is missing,
   `adapters/ no longer wires capabilities: delete func Caps (adapters/caps.go): the generated caps package wires the adapters`
   (naming the file it found).
@@ -144,17 +153,32 @@ Any of these exits 1, and `build/<app>/` is not touched. `alder check`
 does none of it: it never looks at `adapters/`. `alder test` and `alder
 eval` make the same check when they build an app that has adapters (a
 `.go` file anywhere under `adapters/`), print the same lines after their
-own prefix (`alder test: `, `alder eval: `), and exit 2, their code for a
-build problem. The REPL prints them (after `alder repl: `) in answer to an
-entry and waits for the next one.
+own prefix (`alder test: `, `alder eval: `), and exit 1 too; the REPL
+prints them (after `alder repl: `) in answer to an entry and waits for
+the next one. One thing they do not refuse: a missing adapter. They
+leave that capability unwired, print the list once to standard error as
+a warning,
+
+```
+warning: 1 capability without an adapter runs unwired in tests:
+capability `Markdown.Markdown` needs `adapters/markdown/` with `func Markdown() app.Cap__Markdown__Markdown`
+```
+
+and go on (`N capabilities without adapters run …` for several), so the
+app can be tested and explored with fakes before its Go is written; a
+call to an unwired capability fails "capability … is not wired in tests"
+(or "in eval").
 
 If your adapters don't compile against the generated package (a method
 with the wrong signature, say), the build prints Go's errors as they are,
 after the line
 `alder build: the adapters of <app> (copied to build/<app>/adapters) do not compile with the app: exit status 1`,
 and exits 1. Chapter 7 shows one. A package under `adapters/` that no
-capability needs (a helper) is compiled here too, so its errors are
-reported the same way.
+capability needs (a helper), and an adapter's Go test file (`go vet`
+compiles those), are compiled here too, so their errors are reported the
+same way. `alder test` and `alder eval` print the same line (their build
+directory, `build/<app>/scratch/test/adapters` or `…/eval/adapters`, in
+the parentheses) and exit 1.
 
 Exit 2 means the problem is not in your program: a usage error (an
 unknown flag, two directories), a file that cannot be read or written, or
@@ -266,7 +290,7 @@ depends on what changed:
 | You change | What happens |
 |---|---|
 | a `.alder` file under `app/` (or add or delete one) | check, build, start the new app, reload the browser |
-| any file under `adapters/`, in any directory | the same |
+| any file under `adapters/`, in any directory (not an editor's swap, backup or lock file, a name starting with `.`, or a symbolic link) | the same |
 | any file under `static/` | reload the browser only: the app reads those files as it serves them, so nothing is rebuilt |
 | anything else | nothing |
 
@@ -409,8 +433,9 @@ database `build/<app>/dev.db` (creating it, with the app's tables, when
 absent) and prints the result. The Query runs with the app's default
 session, every field at its default, as a test does. The app's `adapters/`,
 when it has one, is compiled in, so a capability the Query calls reaches
-the real Go; an app without `adapters/`, or whose adapter's constructor
-returns `nil`, gets "capability … is not wired in eval" when
+the real Go; an app without `adapters/`, one whose adapter is missing
+(eval warns, as `alder test` does, and goes on), or whose adapter's
+constructor returns `nil`, gets "capability … is not wired in eval" when
 that capability is called. A `Select` is shown as `<Select> : Select
 T`, even with `--run`: pipe it to `Db.all`, `Db.first` or `Db.count` to
 make a `Query`. A `Task` is never run. A function that never stops calling itself ends in
@@ -418,9 +443,10 @@ make a `Query`. A `Task` is never run. A function that never stops calling itsel
 `{"value", "type", "diagnostics"}`, with `"error"` when the evaluation
 failed for a reason that is not a diagnostic and `"hint"` for a note on a
 success (`--run` given a `Select`). Diagnostics name the input as
-`input:line:col`; `alder eval` exits 1 for them and for an evaluation
-that fails or is interrupted (Ctrl-C stops it and everything it started),
-2 for a usage or internal error.
+`input:line:col`; `alder eval` exits 1 for them, for adapters that are
+refused or do not compile with the app (`alder build`'s messages), and
+for an evaluation that fails or is interrupted (Ctrl-C stops it and
+everything it started), 2 for a usage or internal error.
 
 The input is compiled as a module named `Scratch`. An app that has a
 module of that name of its own gets an error saying so (as does a
@@ -639,9 +665,11 @@ timed out (`-timeout`) or crashed the test program (a stack overflow,
 say: that test is reported as a `FAIL` with the crash's first lines and
 no later test runs), when the app has a check error or a typed hole (the
 diagnostics are printed as `alder check` prints them; a hole adds
-`alder test: no tests ran (fill the hole)`), or when the run was
-interrupted; 2 for a usage error or a build problem (a missing adapter or
-adapters that do not compile, say: the same messages as `alder build`'s).
+`alder test: no tests ran (fill the hole)`), when the adapters are
+refused or do not compile with the app (the same messages as `alder
+build`'s: they are your program too), or when the run was interrupted;
+2 for a usage error or another build problem. A missing adapter is not
+an error here: the capability runs unwired, with the warning above.
 
 Like `alder eval`, `alder test` compiles the app through the scratch
 runner (chapter 13, "Running tests"): it writes only under
@@ -651,10 +679,11 @@ file database: each effect test has its own, in memory, made by
 applying the app's migrations when it has them (chapter 8). The app's
 `adapters/`, when it has one (a `.go` file anywhere under it), is
 compiled in, wired by the same generated `caps` package as `alder build`'s,
-so capability calls reach the real Go (and every adapter must be there),
-and an error one returns is the failure `Cap.entry: <error>`,
-which `Test.run` gives as an `Err`; without it, a test that calls a
-capability fails with "capability … is not wired in tests". A test can
+so capability calls reach the real Go, and an error one returns is the
+failure `Cap.entry: <error>`, which `Test.run` gives as an `Err`; a
+capability whose adapter is missing is left out of that package (with
+the warning), and without `adapters/` none is wired: a test that calls
+an unwired capability fails with "capability … is not wired in tests". A test can
 replace a capability with its `fake` (`Test.fake`, chapter 10). Its
 build is a test build, which adds the tests themselves (`Tests`,
 `TestSession`), each fake's Go and the fakes' tables (`FakeTables`),

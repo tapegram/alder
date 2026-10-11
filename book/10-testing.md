@@ -266,12 +266,16 @@ The stranger's `Toggle` succeeded, the update ran, and the todo is done.
 - **The app's capabilities.** When the app has adapters (Go under
   `adapters/`, chapter 7, "Implementing a capability"), they are wired as
   in `alder build`, by the generated `caps` package, so a test calls the
-  real Go; a missing adapter then stops `alder test` before any test runs,
-  with the same list `alder build` prints. A capability's error is a failure the test can
-  observe: under `Test.run` (section 4) it is `Err "Password.verify: …"`.
-  A test can replace a capability with a fake instead (section 8).
-  When the app has no `adapters/`, a capability call fails the test,
-  saying so:
+  real Go. A capability's error is a failure the test can observe: under
+  `Test.run` (section 4) it is `Err "Password.verify: …"`. A test can
+  replace a capability with a fake instead (section 8). A capability
+  whose adapter is missing is not wired: `alder test` prints the list
+  `alder build` would refuse, as a warning (`warning: 1 capability
+  without an adapter runs unwired in tests:`, then one line per
+  capability), and runs the tests anyway, so you can test with fakes
+  before writing any Go. When the app has no `adapters/` at all, no
+  capability is wired. Either way, a call to an unwired capability that
+  no `Test.fake` replaced fails the test, saying so:
 
   ```text
   FAIL Auth.Login "a stranger is not verified"

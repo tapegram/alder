@@ -182,7 +182,16 @@ class BuildContextTests(unittest.TestCase):
         self.assertIn("\n### The rule\n", out)
         self.assertIn("func LoginPassword() app.Cap__Auth__Login__Password", out)
         self.assertNotIn("\n### What the build does with `adapters/`\n", out)
-        self.assertNotIn("\n## How effects run\n", out)
+        self.assertIn("`package selectadapter`", out)
+        # and the shape of a capability in Go (method, Args__ record, types, imports), not the
+        # rest of "How effects run"
+        self.assertIn("\n## How effects run\n\n### What a capability looks like in Go\n", out)
+        for want in ("Verify(ctx context.Context, args Args__Auth__Login__Password__Verify) (rt.Maybe[string], error)",
+                     "`a1`, `a2`", "`Unit` `struct{}`", "imports it\nas `\"app\"`", "`db.TxFrom(ctx)`"):
+            self.assertIn(want, out)
+        self.assertNotIn("\n### A capability in the task's transaction\n", out)
+        self.assertNotIn("\n### How the program finds an implementation\n", out)
+        self.assertNotIn("**An effect is a tree.**", out)
 
     def test_real_reference_keeps_migrations(self):
         # agents need the E0019 -> `alder migrate` workflow: chapter 8's "Migrations" stays in
