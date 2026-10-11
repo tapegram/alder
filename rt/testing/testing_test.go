@@ -18,6 +18,7 @@ import (
 
 	"alder/rt/db"
 	"alder/rt/eff"
+	"alder/rt/web"
 )
 
 // row is what generated code would emit for `table T { id: TId @id, title: Text }` in module M.
@@ -89,7 +90,7 @@ func then[A, B any](a eff.Task[A], b eff.Task[B]) eff.Task[B] {
 	return eff.Bind(a, func(A) eff.Task[B] { return b })
 }
 
-func one(c Case) []Result { return Run([]Case{c}, Options{Tables: tables}) }
+func one(c Case) []CaseResult { return Run([]Case{c}, Options{Tables: tables}) }
 
 func TestInner_RollbackToSavepoint(t *testing.T) {
 	// outer insert; Test.run(inner insert then Fail) → Err, the inner insert undone, outer kept
@@ -160,7 +161,7 @@ type recSP struct {
 	names []string
 }
 
-func (r *recSP) Savepoint(ctx context.Context, tx db.Tx, name string) error {
+func (r *recSP) Savepoint(ctx context.Context, tx eff.Tx, name string) error {
 	r.names = append(r.names, name)
 	return r.SQLite.Savepoint(ctx, tx, name)
 }
@@ -428,7 +429,7 @@ func mainCases() []Case {
 func runMain(t *testing.T, cs []Case, args ...string) (string, string, int) {
 	t.Helper()
 	var out, errb bytes.Buffer
-	code := Main(cs, tables, nil, nil, nil, nil, args, &out, &errb)
+	code := Main(cs, tables, nil, nil, nil, nil, nil, web.Options{}, args, &out, &errb)
 	return out.String(), errb.String(), code
 }
 
@@ -561,7 +562,7 @@ func TestMain_JSONWriteErrorIsUsageExit(t *testing.T) {
 	t.Setenv("ALDER_TEST_RUN", "")
 	t.Setenv("ALDER_TEST_JSON", "")
 	var errb bytes.Buffer
-	code := Main(mainCases(), tables, nil, nil, nil, nil, []string{"--json"}, failWriter{}, &errb)
+	code := Main(mainCases(), tables, nil, nil, nil, nil, nil, web.Options{}, []string{"--json"}, failWriter{}, &errb)
 	if code != 2 || !strings.Contains(errb.String(), "closed pipe") {
 		t.Fatalf("code %d err %q", code, errb.String())
 	}
@@ -623,7 +624,7 @@ func TestMain_StreamsAndWritesStatus(t *testing.T) {
 			return true
 		}},
 	}
-	if code := Main(cs, tables, nil, nil, nil, nil, nil, &out, &errb); code != 0 {
+	if code := Main(cs, tables, nil, nil, nil, nil, nil, web.Options{}, nil, &out, &errb); code != 0 {
 		t.Fatalf("code %d %q %q", code, out.String(), errb.String())
 	}
 	if !sawFirst || during != "M\tb c\n" {
@@ -709,7 +710,7 @@ func TestRun_Migrations(t *testing.T) {
 		}
 	}
 	var out, errb bytes.Buffer
-	if code := Main(cases, tables, nil, stale, nil, nil, nil, &out, &errb); code != 1 || !strings.Contains(out.String(), "0 passed, 2 failed") {
+	if code := Main(cases, tables, nil, stale, nil, nil, nil, web.Options{}, nil, &out, &errb); code != 1 || !strings.Contains(out.String(), "0 passed, 2 failed") {
 		t.Fatalf("Main: %d\n%s%s", code, out.String(), errb.String())
 	}
 	// a file edited after it was written (its header names the app's schema, its statements do
@@ -759,7 +760,7 @@ func TestRun_TestTables(t *testing.T) {
 		}
 	}
 	var out, errb bytes.Buffer
-	if code := Main(cases, tables, []db.TableDesc{fakeTb.Desc()}, good, nil, nil, nil, &out, &errb); code != 0 {
+	if code := Main(cases, tables, []db.TableDesc{fakeTb.Desc()}, good, nil, nil, nil, web.Options{}, nil, &out, &errb); code != 0 {
 		t.Fatalf("Main: %d\n%s%s", code, out.String(), errb.String())
 	}
 	// without TestTables the table is not there

@@ -48,12 +48,13 @@ import (
 	"os"
 
 	rtesting "alder/rt/testing"
+	"alder/rt/web"
 	"app"
 ` + imp + `)
 
 func main() {
 	caps := ` + caps + `
-	os.Exit(rtesting.Main(app.Tests, app.Tables, app.FakeTables, app.Migrations, caps, app.TestSession(), os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(rtesting.Main(app.Tests, app.Tables, app.FakeTables, app.Migrations, caps, app.TestSession(), nil, web.Options{}, os.Args[1:], os.Stdout, os.Stderr))
 }
 `
 }
@@ -223,7 +224,7 @@ func runTests(b scratch.Build, runPat string, timeout time.Duration, jsonOut boo
 		if timedOut {
 			msg = "timed out after " + timeout.String()
 		}
-		rtesting.WriteResult(stdout, rtesting.Result{Module: mod, Name: name, Error: msg}, jsonOut)
+		rtesting.WriteResult(stdout, rtesting.CaseResult{Module: mod, Name: name, Error: msg}, jsonOut)
 		if timedOut {
 			fmt.Fprintf(stderr, "alder test: %v\n", errTimeout)
 		} else {

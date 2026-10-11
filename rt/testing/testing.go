@@ -36,17 +36,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"alder/rt"
 	"alder/rt/db"
 	"alder/rt/eff"
+	"alder/rt/web"
 )
-
-// savepoints numbers the savepoints Inner opens, so nested and sequential ones never share a
-// name (alder_t1, alder_t2, …).
-var savepoints atomic.Int64
 
 // Inner runs t under a savepoint as Test.run does: ok is true with v on success; on *eff.ErrFail,
 // eff.ErrNotFound or *eff.ErrCapability (a capability's adapter returned an error) the
@@ -70,7 +66,7 @@ func Inner[T any](env *eff.Env, t eff.Task[T]) (v T, msg string, ok bool, trace 
 	}
 	sp, _ := env.Store.(db.Savepointer)
 	useSP := sp != nil && tx != nil
-	name := "alder_t" + strconv.FormatInt(savepoints.Add(1), 10)
+	name := eff.SavepointName() // alder_t1, alder_t2, …: shared with eff.Run under a Within
 	if useSP {
 		if err := sp.Savepoint(env.Ctx, tx.(db.Tx), name); err != nil {
 			return v, "", false, nil, err
@@ -109,6 +105,16 @@ func Inner[T any](env *eff.Env, t eff.Task[T]) (v T, msg string, ok bool, trace 
 		return v, "not found", false, trace, nil
 	}
 	return v, "", false, trace, rerr
+}
+
+// Step records a browser step (`Test.get Todos.Index`, `Test.login`) on the running test's
+// trace, before the effects of the requests it makes, which the browser appends after it. The
+// generated code records its steps as Calls do; Step is for a step made outside a Call.
+func Step(env *eff.Env, name string) {
+	if env.Log != nil {
+		env.Log("effect", name)
+	}
+	env.Trace = append(env.Trace, name)
 }
 
 // Trace is the enclosing run's trace so far, without the Test.trace step itself.
@@ -150,11 +156,11 @@ type Case struct {
 	Task         func() eff.Task[bool]
 }
 
-// Result is the outcome of one Case. Left and Right are the Show text of the sides of the
+// CaseResult is the outcome of one Case. Left and Right are the Show text of the sides of the
 // test's last Eq ("" when it made none); Note is sameSidesNote when that Eq was False but its
 // sides print the same; Error is the failure or panic text; Trace is the task's steps (nil for
 // a pure test); Ms the wall time in milliseconds.
-type Result struct {
+type CaseResult struct {
 	Module, Name string
 	OK           bool
 	Left, Right  string
@@ -186,6 +192,12 @@ type Options struct {
 	Session    any
 	Now        time.Time
 	Deadline   time.Time
+	// Routes and Web are the app's routes and router options (the generated app.Routes and
+	// app.Web(): the options Serve builds, without Store, Caps, Now, Log, Dev, Secret or Reload):
+	// each task test's browser (BrowserOf) serves them. nil Routes: the app has no browser, and
+	// BrowserOf fails the test.
+	Routes []web.Route
+	Web    web.Options
 
 	schemaErr string // why Migrations do not make Tables (set by defaults): every case fails with it
 }
@@ -224,9 +236,9 @@ func key(c Case) string { return c.Module + " \"" + c.Name + "\"" }
 
 // Run runs the cases o.Run selects, in order, each against its own fresh store, and returns
 // their results. A panic fails its case and the next case still runs.
-func Run(cases []Case, o Options) []Result {
+func Run(cases []Case, o Options) []CaseResult {
 	o = defaults(o)
-	out := []Result{}
+	out := []CaseResult{}
 	for _, c := range selected(cases, o) {
 		out = append(out, runCase(c, o))
 	}
@@ -283,12 +295,12 @@ func selected(cases []Case, o Options) []Case {
 	return out
 }
 
-func runCase(c Case, o Options) (r Result) {
+func runCase(c Case, o Options) (r CaseResult) {
 	caps, now := maps.Clone(o.Caps), o.Now // a copy: Test.fake replaces entries of the case's own
 	if caps == nil {
 		caps = map[string]any{}
 	}
-	r = Result{Module: c.Module, Name: c.Name}
+	r = CaseResult{Module: c.Module, Name: c.Name}
 	start := time.Now()
 	defer func() { r.Ms = float64(time.Since(start).Microseconds()) / 1000 }()
 	sidesMu.Lock()
@@ -320,6 +332,9 @@ func runCase(c Case, o Options) (r Result) {
 			return r
 		}
 		env := &eff.Env{Ctx: ctx, Store: store, Caps: caps, Session: o.Session, Now: Ticking(now)}
+		if o.Routes != nil {
+			env.Ctx = withBrowser(env, o.Routes, o.Web)
+		}
 		ok, errText = guard(func() bool {
 			v, err := eff.Run(env, eff.KTask, c.Task())
 			if err != nil {
@@ -394,7 +409,7 @@ type jsonResult struct {
 // `error:` (when it has one; its continuation lines indented by four spaces) and `trace:` (a
 // task test's steps, as Show of a List Text). `alder test` uses it to report a test whose
 // program crashed.
-func WriteResult(w io.Writer, r Result, asJSON bool) error {
+func WriteResult(w io.Writer, r CaseResult, asJSON bool) error {
 	if asJSON {
 		tr := r.Trace
 		if tr == nil {
@@ -459,7 +474,10 @@ const (
 //
 // tables are the app's tables (Options.Tables), testTables the test-only tables of its fakes
 // (Options.TestTables: the generated FakeTables of a test build).
-func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migration, caps map[string]any, session any, args []string, out, err io.Writer) int {
+//
+// routes and webOpts are the app's routes and router options (Options.Routes and Options.Web),
+// which each task test's browser serves; nil routes: no browser (a build without them).
+func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migration, caps map[string]any, session any, routes []web.Route, webOpts web.Options, args []string, out, err io.Writer) int {
 	started := time.Now()
 	fs := flag.NewFlagSet("alder test", flag.ContinueOnError)
 	fs.SetOutput(err)
@@ -479,7 +497,7 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 			os.Exit(2)
 		}()
 	}
-	o := Options{Tables: tables, TestTables: testTables, Migrations: migrations, Caps: caps, Session: session, Now: defaultNow}
+	o := Options{Tables: tables, TestTables: testTables, Migrations: migrations, Caps: caps, Session: session, Now: defaultNow, Routes: routes, Web: webOpts}
 	if *runPat != "" {
 		re, e := regexp.Compile(*runPat)
 		if e != nil {
@@ -529,9 +547,9 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 				return 2
 			}
 		}
-		done := make(chan Result, 1)
+		done := make(chan CaseResult, 1)
 		go func() { done <- runCase(c, o) }()
-		var r Result
+		var r CaseResult
 		start := time.Now()
 		slow := time.NewTicker(slowAfter)
 	wait:
@@ -544,7 +562,7 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 			case <-deadline:
 				slow.Stop()
 				failed++
-				r = Result{Module: c.Module, Name: c.Name, Error: "timed out after " + timeout, Ms: float64(time.Since(start).Microseconds()) / 1000}
+				r = CaseResult{Module: c.Module, Name: c.Name, Error: "timed out after " + timeout, Ms: float64(time.Since(start).Microseconds()) / 1000}
 				if e := WriteResult(out, r, *asJSON); e != nil {
 					fmt.Fprintf(err, "alder test: writing the report: %v\n", e)
 					return 2

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"alder/rt/datastar"
+	"alder/rt/eff"
 	"alder/rt/html"
 )
 
@@ -462,5 +464,84 @@ func TestRouter_Reload(t *testing.T) {
 	// the generation is query-escaped: it cannot end the JavaScript string or the attribute
 	if got := reloadTags(`x'" &y`); !strings.Contains(got, `?b=x%27%22+%26y'`) {
 		t.Errorf("reloadTags with a quote: %s", got)
+	}
+}
+
+// TestRouter_EnvFor: with Options.EnvFor the router uses the Env it makes (with the request's
+// context and decoded session, then sets its Session); without, a fresh Env from the options.
+func TestRouter_EnvFor(t *testing.T) {
+	var got *Request
+	routes := []Route{{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response {
+		got = rq
+		return PageResponse(doc("home"), nil, nil, false)
+	}}}
+	made := &eff.Env{Caps: map[string]any{"X": 1}}
+	var calledWith any
+	var ctxOK bool
+	h := NewRouter(routes, testOpts(func(o *Options) {
+		o.Caps = map[string]any{"Y": 2}
+		o.EnvFor = func(ctx context.Context, session any) *eff.Env {
+			calledWith, ctxOK = session, ctx != nil
+			return made
+		}
+	}))
+	value, err := SessionCookie([]byte("test-secret-test-secret"), jsonCodec{}, testSession{User: "ann"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(&http.Cookie{Name: CookieName, Value: value})
+	serve(h, req)
+	if got.Env != made || !ctxOK || calledWith != (testSession{User: "ann"}) || made.Session != (testSession{User: "ann"}) {
+		t.Fatalf("EnvFor not used: env %p (made %p), session %v / %v", got.Env, made, calledWith, made.Session)
+	}
+	// nil EnvFor: today's Env
+	h = NewRouter(routes, testOpts(func(o *Options) { o.Caps = map[string]any{"Y": 2} }))
+	serve(h, httptest.NewRequest("GET", "/", nil))
+	if got.Env == made || got.Env.Caps["Y"] != 2 || got.Env.Session != (testSession{}) {
+		t.Fatalf("default Env = %+v", got.Env)
+	}
+}
+
+// TestRouter_DatastarFailureStatusHeader: a Datastar answer to a 404 or 500 is a 200 patch
+// that names the status in StatusHeader; a re-rendered page carries none.
+func TestRouter_DatastarFailureStatusHeader(t *testing.T) {
+	routes := []Route{
+		{Method: "POST", Pattern: "/ok", Handle: func(rq *Request) Response { return PageResponse(doc("ok"), nil, nil, true) }},
+		{Method: "POST", Pattern: "/missing", Handle: func(rq *Request) Response { return NotFoundResponse(html.None()) }},
+		{Method: "POST", Pattern: "/fail", Handle: func(rq *Request) Response { return ErrorResponse(html.None(), io.EOF) }},
+		{Method: "POST", Pattern: "/panic", Handle: func(rq *Request) Response { panic("boom") }},
+	}
+	h := NewRouter(routes, testOpts(func(o *Options) { o.Log = func(string, string) {} }))
+	for path, want := range map[string]string{"/ok": "", "/missing": "404", "/nowhere": "404", "/fail": "500", "/panic": "500"} {
+		req := httptest.NewRequest("POST", path, nil)
+		req.Header.Set("Datastar-Request", "true")
+		w := serve(h, req)
+		if w.Code != 200 || w.Header().Get(StatusHeader) != want {
+			t.Errorf("%s: %d, %s %q, want %q", path, w.Code, StatusHeader, w.Header().Get(StatusHeader), want)
+		}
+		// without Datastar: the status itself, no header
+		w = serve(h, httptest.NewRequest("POST", path, nil))
+		if w.Header().Get(StatusHeader) != "" {
+			t.Errorf("%s without Datastar carries %s", path, StatusHeader)
+		}
+	}
+}
+
+func TestSessionCookie_RoundTrip(t *testing.T) {
+	key := []byte("test-secret-test-secret")
+	now := time.Unix(1_800_000_000, 0)
+	v, err := SessionCookie(key, jsonCodec{}, testSession{User: "u"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, ok := SessionFromCookie(key, jsonCodec{}, v, now); !ok || s != (testSession{User: "u"}) {
+		t.Fatalf("= %v %v", s, ok)
+	}
+	if _, ok := SessionFromCookie(key, jsonCodec{}, v, now.Add(31*24*time.Hour)); ok {
+		t.Fatal("expired cookie accepted")
+	}
+	if _, ok := SessionFromCookie([]byte("another-key-another-key"), jsonCodec{}, v, now); ok {
+		t.Fatal("wrong key accepted")
 	}
 }

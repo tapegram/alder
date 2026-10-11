@@ -1,0 +1,736 @@
+package rtesting
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"alder/rt"
+	"alder/rt/datastar"
+	"alder/rt/eff"
+	"alder/rt/html"
+	"alder/rt/web"
+)
+
+// AnswerTag says what a browser step's request came to: the Prelude `Answer`'s constructor.
+type AnswerTag int
+
+const (
+	Shown      AnswerTag = iota // a GET showed its page
+	Rerendered                  // a message re-rendered the page (the body patch was applied)
+	Redirected                  // the answer was a redirect; the browser fetched Answer.Page
+	Rejected                    // a form came back with errors (Answer.Errors)
+	Missing                     // 404: the not-found document is held
+	Failed                      // 500 (or a request the router refused): Answer.Text says why
+)
+
+func (t AnswerTag) String() string {
+	switch t {
+	case Shown:
+		return "Shown"
+	case Rerendered:
+		return "Rerendered"
+	case Redirected:
+		return "Redirected"
+	case Rejected:
+		return "Rejected"
+	case Missing:
+		return "Missing"
+	case Failed:
+		return "Failed"
+	}
+	return "AnswerTag(" + strconv.Itoa(int(t)) + ")"
+}
+
+// Answer is the Prelude `Answer`: Tag, and the page of Redirected, the errors of Rejected (in
+// document order: each `<Errors>` list's items, Field "" for the form-level list) or the text
+// of Failed.
+type Answer struct {
+	Tag    AnswerTag
+	Page   rt.Page
+	Errors []web.FieldError
+	Text   string
+}
+
+// Result is what a step gives the test: the answer, the session after it (what the browser's
+// cookie now carries, decoded; the codec's Default without one; nil without a codec) and the
+// document the browser now holds.
+type Result struct {
+	Answer  Answer
+	Session any
+	Doc     html.Node
+}
+
+// TestSecret is the cookie key of a test's router when its options carry none (the router
+// refuses a short one outside dev mode).
+var TestSecret = []byte("alder-test-cookie-key: tests only")
+
+// cookieNow is the clock of the browser's router (cookie expiry only): fixed, so the cookies of
+// a test never expire and reading it does not advance the test's own clock.
+var cookieNow = func() time.Time { return defaultNow }
+
+// redirectLimit is how many redirects in a row the browser follows before it gives up (Failed).
+const redirectLimit = 10
+
+// Browser is a test's in-memory browser: the app's real router (web.NewRouter over the app's
+// routes), a cookie jar holding the session cookie, the current page's URL and the document it
+// holds. Its requests are served in-process; each runs within the test's transaction under a
+// savepoint (the router's per-request Env comes from Options.EnvFor: the test's Store, Caps,
+// Now and Log, eff.Within the test's transaction), so the test's rows are visible to the page
+// and a failed request undoes only its own writes. Submits and clicks are Datastar requests
+// (Datastar-Request: true), so their answers are the patch and navigate events a real client
+// applies; Get and Open are plain GETs. The effects each request runs are appended to the
+// test's trace.
+//
+// A Browser belongs to one test and is not safe for concurrent use.
+type Browser struct {
+	env     *eff.Env
+	handler http.Handler
+	codec   web.SessionCodec
+	key     []byte
+	login   string
+
+	cookie string    // the session cookie's value, "" for none
+	url    string    // the URL of the page held, "" before the first
+	doc    html.Node // the page held (without the router's doctype and script tag)
+	hasDoc bool
+
+	reqEnvs []*eff.Env // the Envs of the request being served
+	lastErr string     // the router's last error log line for it
+}
+
+// NewBrowser is a browser for the test running env, serving routes with opts: opts is the
+// app's options, of which the browser replaces Store, Caps, Now (the cookie clock), Dev (off),
+// Reload (none) and EnvFor, and gives Secret TestSecret when it is shorter than 16 bytes. The
+// Env each request gets shares env's Store, Caps (read when the request is made, so a
+// Test.fake installed since applies), Now and Log, and runs Within env's transaction, begun
+// when the first request needs it (env.Transaction).
+func NewBrowser(env *eff.Env, routes []web.Route, opts web.Options) *Browser {
+	b := &Browser{env: env, codec: opts.Session, login: opts.Login}
+	if len(opts.Secret) < 16 {
+		opts.Secret = TestSecret
+	}
+	b.key = opts.Secret
+	log := opts.Log
+	opts.Log = func(level, msg string) {
+		if level == "error" {
+			b.lastErr = msg
+		}
+		if log != nil {
+			log(level, msg)
+		}
+	}
+	opts.Store, opts.Caps, opts.Now, opts.Dev, opts.Reload = env.Store, env.Caps, cookieNow, false, ""
+	opts.EnvFor = func(ctx context.Context, session any) *eff.Env {
+		e := &eff.Env{Ctx: ctx, Store: b.env.Store, Caps: b.env.Caps, Now: b.env.Now, Log: b.env.Log, Session: session, Within: b.within()}
+		b.reqEnvs = append(b.reqEnvs, e)
+		return e
+	}
+	b.handler = web.NewRouter(routes, opts)
+	return b
+}
+
+// within is the test's transaction for a request to run inside: env's, begun if no step has
+// yet (nil outside a running Task, or when it cannot be begun: the request then begins its own).
+func (b *Browser) within() *eff.Within {
+	tx, err := b.env.Transaction()
+	if err != nil || tx == nil {
+		return nil
+	}
+	sp, _ := b.env.Store.(eff.Savepointer)
+	return &eff.Within{Tx: tx, Savepoints: sp}
+}
+
+// browserKey carries a test's browser slot in its Env's context.
+type browserKey struct{}
+
+type browserSlot struct {
+	once   sync.Once
+	env    *eff.Env
+	routes []web.Route
+	opts   web.Options
+	b      *Browser
+}
+
+// withBrowser is env.Ctx carrying the slot BrowserOf makes env's browser in.
+func withBrowser(env *eff.Env, routes []web.Route, opts web.Options) context.Context {
+	ctx := env.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, browserKey{}, &browserSlot{env: env, routes: routes, opts: opts})
+}
+
+// BrowserOf is the browser of the test running env, made on first use: the test runner puts
+// the app's routes and options in each task test's context (Options.Routes), so every case has
+// a browser of its own and nothing of one case reaches the next. It panics when the test has
+// none (a build without the app's routes).
+func BrowserOf(env *eff.Env) *Browser {
+	var slot *browserSlot
+	if env != nil && env.Ctx != nil {
+		slot, _ = env.Ctx.Value(browserKey{}).(*browserSlot)
+	}
+	if slot == nil {
+		panic("alder: this test has no browser (the test program was built without the app's routes)")
+	}
+	slot.once.Do(func() { slot.b = NewBrowser(slot.env, slot.routes, slot.opts) })
+	return slot.b
+}
+
+// Doc is the document the browser holds (None before the first page).
+func (b *Browser) Doc() html.Node { return b.doc }
+
+// URL is the URL of the page the browser holds ("" before the first).
+func (b *Browser) URL() string { return b.url }
+
+// Login stores session in the browser's cookie, signed with the router's key as the router
+// would store it (Test.login). Without a session codec (an app without a session) it does
+// nothing.
+func (b *Browser) Login(session any) error {
+	if b.codec == nil {
+		return nil
+	}
+	v, err := web.SessionCookie(b.key, b.codec, session, cookieNow())
+	if err != nil {
+		return err
+	}
+	b.cookie = v
+	return nil
+}
+
+// Session is the session the browser's cookie carries: the codec's Default without a valid
+// cookie, nil without a codec.
+func (b *Browser) Session() any {
+	if b.codec == nil {
+		return nil
+	}
+	if b.cookie != "" {
+		if s, ok := web.SessionFromCookie(b.key, b.codec, b.cookie, cookieNow()); ok {
+			return s
+		}
+	}
+	return b.codec.Default()
+}
+
+// NotShownError is Get's error: the page was not shown. Requires, when set (the generated code
+// knows the page's `requires` field), is added to a redirect to the login page.
+type NotShownError struct {
+	URL      string
+	Answer   Answer
+	Requires string
+}
+
+// Error is "GET /todos/x: not found", "GET /: redirected to /login (requires user)" or
+// "GET /: failed: <message>".
+func (e *NotShownError) Error() string {
+	head := "GET " + e.URL + ": "
+	switch e.Answer.Tag {
+	case Missing:
+		return head + "not found"
+	case Redirected:
+		s := head + "redirected to " + rt.PageURL(e.Answer.Page)
+		if e.Requires != "" {
+			s += " (requires " + e.Requires + ")"
+		}
+		return s
+	case Failed:
+		return head + "failed: " + e.Answer.Text
+	}
+	return head + e.Answer.Tag.String()
+}
+
+// NoControlError is the error of a Submit or Click the held page offers no control for. Msg is
+// the message as the test wrote it — the browser fills it from the URL (MsgLabel); the
+// generated code may replace it with the message's Alder form (`Todos.Index.Toggle { id: "…"
+// }`) — and Form the form's name for a Submit ("" when not known). Page is the held page's URL.
+type NoControlError struct {
+	Submit bool
+	Form   string
+	Msg    string
+	URL    string
+	Page   string
+}
+
+// Error is "the page has no form NewTodo (Todos.Index.Submit)" for a Submit ("the page has no
+// form for Todos.Index.Submit" without Form) and "the page has no button or form for
+// Todos.Index.Toggle { id: "…" }" for a Click.
+func (e *NoControlError) Error() string {
+	if e.Submit {
+		if e.Form != "" {
+			return "the page has no form " + e.Form + " (" + e.Msg + ")"
+		}
+		return "the page has no form for " + e.Msg
+	}
+	return "the page has no button or form for " + e.Msg
+}
+
+// MsgLabel is a message URL (/_m/<Module>/<Msg>?k=v) as the test would write the message:
+// `Module.Msg`, then its own parameters (not the page's `_p.` ones) as a record of text values
+// in URL order, `Todos.Index.Toggle { id: "a" }`.
+func MsgLabel(msgURL string) string {
+	u, err := url.Parse(msgURL)
+	if err != nil {
+		return msgURL
+	}
+	name := strings.TrimPrefix(u.Path, "/_m/")
+	if i := strings.LastIndexByte(name, '/'); i >= 0 {
+		name = name[:i] + "." + name[i+1:]
+	}
+	var fields []string
+	for _, kv := range strings.Split(u.RawQuery, "&") {
+		k, v, _ := strings.Cut(kv, "=")
+		k, _ = url.QueryUnescape(k)
+		v, _ = url.QueryUnescape(v)
+		if k == "" || strings.HasPrefix(k, rt.PagePrefix) {
+			continue
+		}
+		fields = append(fields, k+": "+strconv.Quote(v))
+	}
+	if len(fields) == 0 {
+		return name
+	}
+	return name + " { " + strings.Join(fields, ", ") + " }"
+}
+
+// Open requests the page at url with a plain GET and the browser's cookie, follows a redirect
+// (to at most redirectLimit in a row) and holds what it ends on: Shown, Redirected (the page
+// reached), Missing (the not-found document held) or Failed (the error document held, Text the
+// error). Its error is for internal failures only (a page that does not parse).
+func (b *Browser) Open(u string) (Result, error) {
+	ans, err := b.navigate(u, false)
+	if err != nil {
+		return Result{}, err
+	}
+	return b.result(ans), nil
+}
+
+// Get is Open for a test that expects the page shown: any other answer is a *NotShownError.
+func (b *Browser) Get(u string) (Result, error) {
+	r, err := b.Open(u)
+	if err != nil {
+		return r, err
+	}
+	if r.Answer.Tag != Shown {
+		return r, &NotShownError{URL: u, Answer: r.Answer}
+	}
+	return r, nil
+}
+
+// Submit posts fields to the form on the held page whose action is msgURL — compared as the
+// message and its own parameters, so the page's `_p.` parameters the rendered URL carries are
+// sent as rendered — as Datastar does (url-encoded, Datastar-Request: true), and applies the
+// answer: Rerendered (the body patch replaces the held body), Rejected (the same, when the
+// re-rendered page shows errors), Redirected (the target fetched and held), Missing, Failed.
+// With no such form the error is a *NoControlError and nothing is sent.
+func (b *Browser) Submit(msgURL string, fields url.Values) (Result, error) {
+	target, ok := b.control(msgURL, true)
+	if !ok {
+		return Result{}, &NoControlError{Submit: true, Msg: MsgLabel(msgURL), URL: msgURL, Page: b.url}
+	}
+	if fields == nil {
+		fields = url.Values{}
+	}
+	ans, err := b.post(target, fields)
+	if err != nil {
+		return Result{}, err
+	}
+	return b.result(ans), nil
+}
+
+// Click posts the message msgURL as the held page's control for it would: a `click` button (its
+// formaction, or its own form's action), a form posting it, or any element whose data-on:click
+// posts it — compared as the message and its own parameters; the control's URL, with the page's
+// `_p.` parameters, is what is posted. The answer is applied as for Submit. With no such control
+// the error is a *NoControlError and nothing is sent.
+func (b *Browser) Click(msgURL string) (Result, error) {
+	target, ok := b.control(msgURL, false)
+	if !ok {
+		return Result{}, &NoControlError{Msg: MsgLabel(msgURL), URL: msgURL, Page: b.url}
+	}
+	ans, err := b.post(target, url.Values{})
+	if err != nil {
+		return Result{}, err
+	}
+	return b.result(ans), nil
+}
+
+var (
+	selForm   = html.MustParseSelector("form")
+	selAction = html.MustParseSelector("[formaction]")
+	selClick  = html.MustParseSelector("[data-on:click]")
+	selClickP = html.MustParseSelector("[data-on:click__prevent]")
+	selErrors = html.MustParseSelector("ul[data-errors]")
+	selLi     = html.MustParseSelector("li")
+)
+
+// control is the URL the held page's control for msgURL posts: for a submit a <form>'s action
+// or data-on:submit; for a click also a [formaction] button's and any data-on:click's.
+func (b *Browser) control(msgURL string, submit bool) (string, bool) {
+	if !b.hasDoc {
+		return "", false
+	}
+	want, ok := msgKey(msgURL)
+	if !ok {
+		return "", false
+	}
+	var urls []string
+	for _, f := range html.Select(b.doc, selForm) {
+		if class, _ := html.AttrOf(f, "class"); submit && slices.Contains(strings.Fields(class), "_alder-click") {
+			continue // a click button's own form is not a form to submit
+		}
+		if a, ok := html.AttrOf(f, "action"); ok {
+			urls = append(urls, a)
+		}
+		if a, ok := html.AttrOf(f, "data-on:submit"); ok {
+			urls = append(urls, postURL(a))
+		}
+	}
+	if !submit {
+		for _, n := range html.Select(b.doc, selAction) {
+			a, _ := html.AttrOf(n, "formaction")
+			urls = append(urls, a)
+		}
+		for _, sel := range []html.Selector{selClick, selClickP} {
+			for _, n := range html.Select(b.doc, sel) {
+				for _, name := range []string{"data-on:click", "data-on:click__prevent"} {
+					if a, ok := html.AttrOf(n, name); ok {
+						urls = append(urls, postURL(a))
+					}
+				}
+			}
+		}
+	}
+	for _, u := range urls {
+		if k, ok := msgKey(u); ok && k == want {
+			return u, true
+		}
+	}
+	return "", false
+}
+
+// msgKey is rt.MsgKey of a message URL: its path and own parameters.
+func msgKey(u string) (string, bool) {
+	p, err := url.Parse(u)
+	if err != nil || p.Path == "" {
+		return "", false
+	}
+	return rt.MsgKey(p.Path, p.Query()), true
+}
+
+// postURL is the URL of a Datastar action `@post('<url>'…)`, "" for another.
+func postURL(action string) string {
+	_, rest, ok := strings.Cut(action, "@post('")
+	if !ok {
+		return ""
+	}
+	u, _, _ := strings.Cut(rest, "'")
+	return u
+}
+
+// result is ans with the session the cookie now carries and the document held.
+func (b *Browser) result(ans Answer) Result {
+	return Result{Answer: ans, Session: b.Session(), Doc: b.doc}
+}
+
+// serve sends one request through the router: with the cookie, the held page as Referer (an App
+// message redirects back to it), and for a Datastar request its header; it then keeps the cookie
+// the answer sets and appends the effects the request ran to the test's trace.
+func (b *Browser) serve(method, target string, form url.Values, ds bool) *httptest.ResponseRecorder {
+	var req *http.Request
+	if method == http.MethodPost {
+		req = httptest.NewRequest(method, target, strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	} else {
+		req = httptest.NewRequest(method, target, nil)
+	}
+	if b.env.Ctx != nil {
+		req = req.WithContext(b.env.Ctx)
+	}
+	if ds {
+		req.Header.Set("Datastar-Request", "true")
+	}
+	if b.url != "" {
+		req.Header.Set("Referer", "http://example.com"+b.url)
+	}
+	if b.cookie != "" {
+		req.AddCookie(&http.Cookie{Name: web.CookieName, Value: b.cookie})
+	}
+	b.reqEnvs, b.lastErr = nil, ""
+	w := httptest.NewRecorder()
+	b.handler.ServeHTTP(w, req)
+	for _, e := range b.reqEnvs {
+		b.env.Trace = append(b.env.Trace, e.Trace...)
+	}
+	b.reqEnvs = nil
+	for _, c := range w.Result().Cookies() {
+		if c.Name == web.CookieName {
+			if c.MaxAge < 0 || c.Value == "" {
+				b.cookie = ""
+			} else {
+				b.cookie = c.Value
+			}
+		}
+	}
+	return w
+}
+
+// navigate GETs u, following redirects, and holds the page it ends on; redirected says u is
+// itself a redirect's target, so a page shown is Redirected.
+func (b *Browser) navigate(u string, redirected bool) (Answer, error) {
+	for hop := 0; ; hop++ {
+		w := b.serve(http.MethodGet, u, nil, false)
+		if w.Code == http.StatusSeeOther {
+			if hop == redirectLimit {
+				return Answer{Tag: Failed, Text: fmt.Sprintf("more than %d redirects in a row (the last to %s)", redirectLimit, w.Header().Get("Location"))}, nil
+			}
+			u, redirected = w.Header().Get("Location"), true
+			continue
+		}
+		ans, err := b.document(u, w)
+		if err != nil {
+			return ans, err
+		}
+		if redirected && ans.Tag == Shown {
+			ans = Answer{Tag: Redirected, Page: pageOf(u)}
+		}
+		return ans, nil
+	}
+}
+
+// document holds the page of a plain (non-Datastar) answer w to a request for u: 200 Shown,
+// 404 Missing, 500 Failed, anything else (a request the router refused: 400, 413, 415) Failed
+// with its status.
+func (b *Browser) document(u string, w *httptest.ResponseRecorder) (Answer, error) {
+	body := w.Body.String()
+	isHTML := strings.HasPrefix(w.Header().Get("Content-Type"), "text/html")
+	if isHTML {
+		if err := b.hold(u, body); err != nil {
+			return Answer{}, err
+		}
+	}
+	switch {
+	case w.Code == http.StatusOK && isHTML:
+		return Answer{Tag: Shown}, nil
+	case w.Code == http.StatusNotFound:
+		return Answer{Tag: Missing}, nil
+	case w.Code == http.StatusInternalServerError:
+		return Answer{Tag: Failed, Text: b.failText()}, nil
+	}
+	return Answer{Tag: Failed, Text: fmt.Sprintf("%d %s", w.Code, strings.TrimSpace(body))}, nil
+}
+
+// hold makes page (a document the router served for u) the held one: its doctype and the
+// Datastar script tag the router injected are left out, so it is the page as the view renders it.
+func (b *Browser) hold(u, page string) error {
+	page = strings.TrimPrefix(page, "<!doctype html>\n")
+	page = strings.Replace(page, html.Render(datastar.ScriptTag()), "", 1)
+	doc, err := html.Parse(page)
+	if err != nil {
+		return fmt.Errorf("the page at %s does not parse: %w", u, err)
+	}
+	b.url, b.doc, b.hasDoc = u, doc, true
+	return nil
+}
+
+// failText is the error of the request just served, as the router logged it ("POST /x: boom"
+// and a stack for a panic): the message alone.
+func (b *Browser) failText() string {
+	msg := b.lastErr
+	if i := strings.Index(msg, "\ngoroutine "); i >= 0 {
+		msg = msg[:i]
+	}
+	for _, method := range []string{"GET ", "POST ", "HEAD "} {
+		if strings.HasPrefix(msg, method) {
+			if _, rest, ok := strings.Cut(msg, ": "); ok {
+				msg = rest
+			}
+			break
+		}
+	}
+	if msg == "" {
+		msg = "internal server error"
+	}
+	return msg
+}
+
+// post sends a Datastar POST of form to target and applies its answer.
+func (b *Browser) post(target string, form url.Values) (Answer, error) {
+	w := b.serve(http.MethodPost, target, form, true)
+	if w.Code == http.StatusSeeOther { // not under Datastar, but a client follows it all the same
+		return b.navigate(w.Header().Get("Location"), true)
+	}
+	if !strings.HasPrefix(w.Header().Get("Content-Type"), "text/event-stream") {
+		return b.document(b.url, w)
+	}
+	events, err := sseEvents(w.Body.String())
+	if err != nil {
+		return Answer{}, err
+	}
+	for _, ev := range events {
+		if loc, ok := navigation(ev); ok {
+			return b.navigate(loc, true)
+		}
+		if err := b.patch(ev); err != nil {
+			return Answer{}, err
+		}
+	}
+	switch w.Header().Get(web.StatusHeader) {
+	case "404":
+		return Answer{Tag: Missing}, nil
+	case "500":
+		return Answer{Tag: Failed, Text: b.failText()}, nil
+	}
+	if errs := pageErrors(b.doc); len(errs) > 0 {
+		return Answer{Tag: Rejected, Errors: errs}, nil
+	}
+	return Answer{Tag: Rerendered}, nil
+}
+
+// pageErrors is the errors a page shows: the items of each `<ul class="errors" data-errors>`
+// list in document order, Field the list's data-errors ("" for the form-level list, "form").
+func pageErrors(doc html.Node) []web.FieldError {
+	var out []web.FieldError
+	for _, ul := range html.Select(doc, selErrors) {
+		field, _ := html.AttrOf(ul, "data-errors")
+		if field == "form" {
+			field = ""
+		}
+		for _, li := range html.Select(ul, selLi) {
+			out = append(out, web.FieldError{Field: field, Message: html.TextContent(li)})
+		}
+	}
+	return out
+}
+
+// sseEvent is one server-sent event: its type and data lines, each split at its first space
+// into a key and a value ("selector body", "elements <p>…").
+type sseEvent struct {
+	typ  string
+	data [][2]string
+}
+
+func sseEvents(body string) ([]sseEvent, error) {
+	var out []sseEvent
+	var cur sseEvent
+	sc := bufio.NewScanner(strings.NewReader(body))
+	sc.Buffer(make([]byte, 0, 64*1024), 64<<20)
+	for sc.Scan() {
+		line := sc.Text()
+		switch {
+		case line == "":
+			if cur.typ != "" || len(cur.data) > 0 {
+				out = append(out, cur)
+			}
+			cur = sseEvent{}
+		case strings.HasPrefix(line, "event: "):
+			cur.typ = strings.TrimPrefix(line, "event: ")
+		case strings.HasPrefix(line, "data: "):
+			k, v, _ := strings.Cut(strings.TrimPrefix(line, "data: "), " ")
+			cur.data = append(cur.data, [2]string{k, v})
+		}
+	}
+	if cur.typ != "" || len(cur.data) > 0 {
+		out = append(out, cur)
+	}
+	return out, sc.Err()
+}
+
+// field is the value of ev's data lines with key k, joined by newlines (elements span several).
+func (ev sseEvent) field(k string) string {
+	var vs []string
+	for _, d := range ev.data {
+		if d[0] == k {
+			vs = append(vs, d[1])
+		}
+	}
+	return strings.Join(vs, "\n")
+}
+
+// navigation is the URL a datastar.Navigate event sends the browser to.
+func navigation(ev sseEvent) (string, bool) {
+	if ev.typ != "datastar-patch-elements" || ev.field("mode") != "append" {
+		return "", false
+	}
+	_, rest, ok := strings.Cut(ev.field("elements"), "window.location.assign(")
+	if !ok {
+		return "", false
+	}
+	end := strings.LastIndex(rest, ")</script>")
+	if end < 0 {
+		return "", false
+	}
+	var u string
+	if json.Unmarshal([]byte(rest[:end]), &u) != nil {
+		return "", false
+	}
+	return u, true
+}
+
+// patch applies a datastar-patch-elements event to the held document: the router only ever
+// patches the <body> (outer: replace it; inner: replace its children; append: add to them).
+func (b *Browser) patch(ev sseEvent) error {
+	if ev.typ != "datastar-patch-elements" {
+		return nil
+	}
+	sel, mode := ev.field("selector"), ev.field("mode")
+	if sel != "body" {
+		return fmt.Errorf("a patch of %q: the browser only patches the body", sel)
+	}
+	els, err := html.Parse(ev.field("elements"))
+	if err != nil {
+		return fmt.Errorf("the patch does not parse: %w", err)
+	}
+	doc := b.doc
+	if !b.hasDoc {
+		doc = html.El("html", nil, html.El("body", nil))
+	}
+	var ok bool
+	switch mode {
+	case "outer", "":
+		body := els
+		if els.Tag() != "body" {
+			body = html.El("body", nil, els)
+		}
+		doc, ok = html.ReplaceElement(doc, "body", body)
+	case "inner":
+		doc, ok = html.ReplaceElement(doc, "body", html.El("body", nil, els))
+	case "append":
+		doc, ok = html.AppendTo(doc, "body", els)
+	default:
+		return fmt.Errorf("a patch in mode %q: the browser does not apply it", mode)
+	}
+	if !ok {
+		return errors.New("the held page has no <body> to patch")
+	}
+	b.doc, b.hasDoc = doc, true
+	return nil
+}
+
+// pageOf is the Page a URL of this site links to: its escaped path and its query in order.
+func pageOf(u string) rt.Page {
+	p, err := url.Parse(u)
+	if err != nil {
+		return rt.Page{Path: u}
+	}
+	page := rt.Page{Path: p.EscapedPath()}
+	if p.RawQuery == "" {
+		return page
+	}
+	for _, kv := range strings.Split(p.RawQuery, "&") {
+		k, v, _ := strings.Cut(kv, "=")
+		k, _ = url.QueryUnescape(k)
+		v, _ = url.QueryUnescape(v)
+		page.Query = append(page.Query, rt.KV{Key: k, Value: v})
+	}
+	return page
+}

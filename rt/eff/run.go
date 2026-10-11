@@ -59,9 +59,57 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 		env.Ctx = context.WithValue(env.Ctx, envKey{}, env)
 	}
 	env.Tx, env.beginTx, env.Kind, env.active = nil, nil, kind, true
-	if kind == KTask && env.Store != nil {
+	w := env.Within
+	if w != nil && w.Tx == nil {
+		w = nil
+	}
+	sp := "" // the savepoint taken on w.Tx, once taken
+	switch {
+	case w != nil && kind == KQuery:
+		env.Tx = w.Tx // a Query reads through the outer transaction
+	case w != nil:
+		// the savepoint is taken now, not when a step first asks for the transaction: a
+		// Call may run effects of its own within the same transaction (another Env's Run),
+		// and a failure of this Task must undo those too
+		if w.Savepoints != nil {
+			name := SavepointName()
+			if err := w.Savepoints.Savepoint(ctx(env), w.Tx, name); err != nil {
+				env.Ctx, env.Tx, env.beginTx, env.Kind, env.active = prevCtx, prevTx, prevBegin, prevKind, prevActive
+				return zero, err
+			}
+			sp = name
+		}
+		env.Tx = w.Tx
+	case kind == KTask && env.Store != nil:
 		store := env.Store
 		env.beginTx = func() (Tx, error) { return store.Begin(ctx(env)) }
+	}
+	// commit ends a Task's transaction (or savepoint) after success; undo after a failure.
+	commit := func(tx Tx) error {
+		if w == nil {
+			return tx.Commit()
+		}
+		if sp != "" {
+			return w.Savepoints.Release(ctx(env), w.Tx, sp)
+		}
+		return nil
+	}
+	undo := func(tx Tx) {
+		if w == nil {
+			rollback(env, tx)
+			return
+		}
+		if sp == "" {
+			return
+		}
+		err := w.Savepoints.RollbackTo(ctx(env), w.Tx, sp)
+		if err == nil {
+			// ROLLBACK TO keeps the savepoint open; release it so it does not linger
+			err = w.Savepoints.Release(ctx(env), w.Tx, sp)
+		}
+		if err != nil && env.Log != nil {
+			env.Log("warn", "rollback: "+err.Error())
+		}
 	}
 	session := env.Session
 	done := false
@@ -70,7 +118,7 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 		env.Ctx, env.Tx, env.beginTx, env.Kind, env.active = prevCtx, prevTx, prevBegin, prevKind, prevActive
 		if !done && kind == KTask { // a panic is unwinding through us
 			if tx != nil {
-				rollback(env, tx)
+				undo(tx)
 			}
 			env.Session = session
 		}
@@ -79,14 +127,14 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 	v, err := interpret(env, kind, t.node)
 	tx := env.Tx
 	if err == nil && tx != nil && kind == KTask {
-		err = tx.Commit()
+		err = commit(tx)
 		tx = nil // a failed commit is not rolled back again
 	}
 	done = true
 	if err != nil {
 		if kind == KTask {
 			if tx != nil {
-				rollback(env, tx)
+				undo(tx)
 			}
 			env.Session = session
 		}

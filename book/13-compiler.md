@@ -2061,13 +2061,14 @@ import (
 	"os"
 
 	rtesting "alder/rt/testing"
+	"alder/rt/web"
 	"app"
 	"app/caps"
 )
 
 func main() {
 	caps := caps.Caps().Registry()
-	os.Exit(rtesting.Main(app.Tests, app.Tables, app.FakeTables, app.Migrations, caps, app.TestSession(), os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(rtesting.Main(app.Tests, app.Tables, app.FakeTables, app.Migrations, caps, app.TestSession(), nil, web.Options{}, os.Args[1:], os.Stdout, os.Stderr))
 }
 ```
 

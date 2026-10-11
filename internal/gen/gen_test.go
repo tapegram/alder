@@ -303,9 +303,12 @@ func TestGen_GoMod(t *testing.T) {
 // The replace path is quoted (M2): a repository path with a space still builds.
 func TestGen_GoModPathWithSpace(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "my repo")
-	// the runtime is all the generated code needs of the repository
-	if err := os.CopyFS(filepath.Join(dir, "rt"), os.DirFS(filepath.Join(repoPath(t), "rt"))); err != nil {
-		t.Fatal(err)
+	// the runtime is all the generated code needs of the repository: rt/, and the selector
+	// grammar rt/html shares with the checker
+	for _, sub := range []string{"rt", filepath.Join("internal", "selector")} {
+		if err := os.CopyFS(filepath.Join(dir, sub), os.DirFS(filepath.Join(repoPath(t), sub))); err != nil {
+			t.Fatal(err)
+		}
 	}
 	gomod, err := os.ReadFile(filepath.Join(repoPath(t), "go.mod"))
 	if err != nil {

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"runtime/debug"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +38,12 @@ type Options struct {
 	NotFoundDoc func() html.Node
 	Login       string // App.login page path, copied to Request.Login
 	Reload      string // under `alder run`, the build generation (ALDER_RELOAD); non-empty: every page carries the dev server's overlay and reload subscriber (withReload)
+	// EnvFor, when set, makes each request's Env instead of the router: it is called with the
+	// request's context and its decoded session, and the router then sets the Env's Session to
+	// that session. An Alder test's browser (rt/testing) supplies one sharing the test's Store,
+	// capabilities, clock and log, running Within the test's transaction. nil: a fresh Env from
+	// Store, Caps, Now and Log, as in production.
+	EnvFor func(ctx context.Context, session any) *eff.Env
 }
 
 // maxBody is the largest POST body the router reads.
@@ -285,13 +293,18 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		rq.Form = form
 	}
 	rq.Session = rt.decodeSession(r)
-	rq.Env = &eff.Env{
-		Ctx:     r.Context(),
-		Store:   rt.opts.Store,
-		Caps:    rt.opts.Caps,
-		Now:     rt.now,
-		Log:     rt.log,
-		Session: rq.Session,
+	if rt.opts.EnvFor != nil {
+		rq.Env = rt.opts.EnvFor(r.Context(), rq.Session)
+		rq.Env.Session = rq.Session
+	} else {
+		rq.Env = &eff.Env{
+			Ctx:     r.Context(),
+			Store:   rt.opts.Store,
+			Caps:    rt.opts.Caps,
+			Now:     rt.now,
+			Log:     rt.log,
+			Session: rq.Session,
+		}
 	}
 	rt.write(w, r, rq, hit.handle(rq))
 }
@@ -328,16 +341,46 @@ func (rt *router) decodeSession(r *http.Request) any {
 		return nil
 	}
 	if c, err := r.Cookie(CookieName); err == nil {
-		if payload, ok := Verify(rt.key, c.Value); ok {
-			var env sessionEnvelope
-			if json.Unmarshal(payload, &env) == nil && env.Exp != nil && rt.now().Unix() < *env.Exp && env.Session != nil {
-				if s, err := codec.Decode(env.Session); err == nil {
-					return s
-				}
-			}
+		if s, ok := SessionFromCookie(rt.key, codec, c.Value, rt.now()); ok {
+			return s
 		}
 	}
 	return codec.Default()
+}
+
+// SessionFromCookie is the session a cookie value made by SessionCookie carries, decoded with
+// codec, and whether it is valid at now: signed with key, not expired, with an expiry and a
+// session the codec decodes.
+func SessionFromCookie(key []byte, codec SessionCodec, value string, now time.Time) (any, bool) {
+	payload, ok := Verify(key, value)
+	if !ok {
+		return nil, false
+	}
+	var env sessionEnvelope
+	if json.Unmarshal(payload, &env) != nil || env.Exp == nil || now.Unix() >= *env.Exp || env.Session == nil {
+		return nil, false
+	}
+	s, err := codec.Decode(env.Session)
+	if err != nil {
+		return nil, false
+	}
+	return s, true
+}
+
+// SessionCookie is the value of the session cookie storing s at now: the codec's encoding of s
+// and an expiry sessionMaxAge after now, signed with key. An Alder test's Test.login writes it
+// into its browser's cookie jar the way the router would.
+func SessionCookie(key []byte, codec SessionCodec, s any, now time.Time) (string, error) {
+	enc, err := codec.Encode(s)
+	if err != nil {
+		return "", fmt.Errorf("encoding the session: %w", err)
+	}
+	exp := now.Unix() + sessionMaxAge
+	payload, err := json.Marshal(sessionEnvelope{Exp: &exp, Session: enc})
+	if err != nil {
+		return "", fmt.Errorf("encoding the session: %w", err)
+	}
+	return Sign(key, payload), nil
 }
 
 // sessionEnvelope is the signed cookie payload: the codec's encoding of the session and its
@@ -355,22 +398,17 @@ func (rt *router) setSession(w http.ResponseWriter, r *http.Request, s any) erro
 	if s == nil || rt.opts.Session == nil {
 		return nil
 	}
-	enc, err := rt.opts.Session.Encode(s)
-	if err != nil {
-		return fmt.Errorf("encoding the session: %w", err)
-	}
 	now := rt.now()
-	exp := now.Unix() + sessionMaxAge
-	payload, err := json.Marshal(sessionEnvelope{Exp: &exp, Session: enc})
+	value, err := SessionCookie(rt.key, rt.opts.Session, s, now)
 	if err != nil {
-		return fmt.Errorf("encoding the session: %w", err)
+		return err
 	}
 	// Secure is set for TLS requests and behind a proxy that says https. X-Forwarded-Proto
 	// is client-supplied, but it can only add the flag (making the cookie stricter), never
 	// remove it.
 	c := &http.Cookie{
 		Name:     CookieName,
-		Value:    Sign(rt.key, payload),
+		Value:    value,
 		Path:     "/",
 		MaxAge:   sessionMaxAge,
 		Expires:  now.Add(sessionMaxAge * time.Second),
@@ -480,9 +518,12 @@ func (rt *router) fail(w http.ResponseWriter, r *http.Request, doc html.Node, er
 }
 
 // failure writes a 404/500 page: a full document with that status, or, for a Datastar
-// request, a 200 SSE patch of its body (the Datastar client ignores non-2xx answers).
+// request, a 200 SSE patch of its body (the Datastar client ignores non-2xx answers) whose
+// StatusHeader names the status, so a client that is not a browser (an Alder test's) can tell
+// it from a re-rendered page.
 func (rt *router) failure(w http.ResponseWriter, r *http.Request, status int, page string) {
 	if datastar.IsDatastar(r) {
+		w.Header().Set(StatusHeader, strconv.Itoa(status))
 		if err := datastar.PatchBody(w, rt.dev(bodyOf(page))); err != nil {
 			rt.log("error", fmt.Sprintf("%s %s: writing the patch: %v", r.Method, r.URL.Path, err))
 		}
@@ -490,6 +531,10 @@ func (rt *router) failure(w http.ResponseWriter, r *http.Request, status int, pa
 	}
 	rt.document(w, status, page)
 }
+
+// StatusHeader is the response header of a Datastar answer to a request that failed: "404" or
+// "500" (the answer itself is a 200 body patch).
+const StatusHeader = "Alder-Status"
 
 // endOfBody inserts s just before the last </body> of page, or appends it when there is none.
 func endOfBody(page, s string) string {

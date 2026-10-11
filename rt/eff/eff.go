@@ -11,6 +11,8 @@ package eff
 import (
 	"context"
 	"errors"
+	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -162,6 +164,7 @@ type Env struct {
 	Log     func(level, msg string) // level is "info", "warn" or "effect"; nil: no log
 	Trace   []string                // every Call name in order (dev log / tests)
 	Kind    Kind                    // the kind of the effect Run is running (set by Run, restored when it returns)
+	Within  *Within                 // nil: a Task begins its own transaction on Store; else it runs inside Within.Tx (Run)
 
 	beginTx func() (Tx, error) // set by Run for a Task with a Store: begins Tx
 	active  bool               // Run is running (RunInner may run inside it); restored when it returns
@@ -183,6 +186,40 @@ func (e *Env) Transaction() (Tx, error) {
 	e.Tx = tx
 	return tx, nil
 }
+
+// Within is an outer transaction an effect runs inside instead of beginning its own: an Alder
+// test's browser hands the router one, so every request of the test runs in the test's
+// transaction (the test's rows are visible to the page, no second connection is opened). Run
+// brackets a Task with a savepoint on Tx (when Savepoints is set), released when the Task
+// succeeds and rolled back to when it fails, so a failed request undoes only its own writes;
+// nothing is committed. A Query reads through Tx.
+type Within struct {
+	Tx         Tx
+	Savepoints Savepointer // nil: no savepoint, and a failure undoes nothing
+}
+
+// Savepointer is a Store whose transactions support savepoints (db.SQLite; db.Savepointer is
+// this interface).
+//
+// A savepoint is a named mark inside an open transaction. Savepoint sets the mark; RollbackTo
+// undoes every write made since the mark (the writes made before it, earlier in the same
+// transaction, stay) and keeps the mark; Release forgets the mark and keeps its writes as part
+// of the enclosing transaction (or the enclosing savepoint), so they are committed or rolled
+// back with it. Savepoints nest: one opened while another is open belongs to it, and rolling
+// back the outer one undoes the inner one too.
+type Savepointer interface {
+	Savepoint(ctx context.Context, tx Tx, name string) error
+	Release(ctx context.Context, tx Tx, name string) error
+	RollbackTo(ctx context.Context, tx Tx, name string) error
+}
+
+// savepoints numbers the savepoints SavepointName gives, so nested and sequential ones never
+// share a name.
+var savepoints atomic.Int64
+
+// SavepointName is a fresh savepoint name (alder_t1, alder_t2, …): Run's under a Within and
+// rtesting.Inner's draw from the same counter.
+func SavepointName() string { return "alder_t" + strconv.FormatInt(savepoints.Add(1), 10) }
 
 type envKey struct{}
 

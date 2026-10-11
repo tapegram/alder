@@ -87,23 +87,23 @@ var _ Savepointer = (*SQLite)(nil)
 
 // Savepoint opens savepoint name inside tx (Savepointer). name must be an identifier the
 // caller controls (rtesting uses alder_t<n>); it is not quoted.
-func (s *SQLite) Savepoint(ctx context.Context, tx Tx, name string) error {
+func (s *SQLite) Savepoint(ctx context.Context, tx eff.Tx, name string) error {
 	return s.savepointStmt(ctx, tx, "SAVEPOINT "+name)
 }
 
 // Release commits savepoint name into its transaction (Savepointer): its writes stay and
 // are committed or rolled back with the transaction.
-func (s *SQLite) Release(ctx context.Context, tx Tx, name string) error {
+func (s *SQLite) Release(ctx context.Context, tx eff.Tx, name string) error {
 	return s.savepointStmt(ctx, tx, "RELEASE "+name)
 }
 
 // RollbackTo undoes everything since savepoint name was opened and keeps the savepoint
 // (Savepointer); the transaction's earlier writes stay.
-func (s *SQLite) RollbackTo(ctx context.Context, tx Tx, name string) error {
+func (s *SQLite) RollbackTo(ctx context.Context, tx eff.Tx, name string) error {
 	return s.savepointStmt(ctx, tx, "ROLLBACK TO "+name)
 }
 
-func (s *SQLite) savepointStmt(ctx context.Context, tx Tx, stmt string) error {
+func (s *SQLite) savepointStmt(ctx context.Context, tx eff.Tx, stmt string) error {
 	if tx == nil {
 		return errors.New("db: savepoint outside a transaction")
 	}

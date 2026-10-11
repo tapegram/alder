@@ -19,7 +19,7 @@ func TestAlderFakes(t *testing.T) {
 		t.Fatalf("FakeTables: %+v", FakeTables)
 	}
 	rs := rtesting.Run(Tests, rtesting.Options{Tables: Tables, TestTables: FakeTables, Caps: Caps{}.Registry(), Session: TestSession()})
-	got := map[string]rtesting.Result{}
+	got := map[string]rtesting.CaseResult{}
 	for _, r := range rs {
 		got[r.Module+" "+r.Name] = r
 	}
