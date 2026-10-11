@@ -1,0 +1,6 @@
+module Auth.Login
+
+-- adapters/auth/, func LoginPassword.
+capability Password {
+  verify : { email: Text, password: Text } -> Task (Maybe Text),
+}

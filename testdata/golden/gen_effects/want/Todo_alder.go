@@ -78,9 +78,9 @@ var table__Todo__Todo = &db.Table[Todo__Todo]{
 	},
 }
 
-// Cap__Todo__Stats is capability Stats of module Todo, implemented by the app's adapters package
-// (adapters.Caps): one method per entry, called with the running request's context (db.TxFrom(ctx)
-// is the running Task's transaction).
+// Cap__Todo__Stats is capability Stats of module Todo, implemented by adapters/todo/ (func Stats,
+// wired by the generated caps package): one method per entry, called with the running request's
+// context (db.TxFrom(ctx) is the running Task's transaction).
 type Cap__Todo__Stats interface {
 	Total(ctx context.Context) (int64, error)
 	ForOwner(ctx context.Context, a1 string, a2 bool) (int64, error)

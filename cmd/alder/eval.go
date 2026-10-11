@@ -13,7 +13,6 @@ import (
 	"strings"
 	"syscall"
 
-	"alder/internal/buildkit"
 	"alder/internal/diag"
 	"alder/internal/gen"
 	"alder/internal/scratch"
@@ -176,7 +175,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		}
 	}
 	var env []string
-	mainGo := scratchMain(kind, buildkit.HasGoFiles(filepath.Join(dir, "adapters")), evalIt(modName, sig))
+	mainGo := scratchMain(kind, checked.WiresAdapters(), evalIt(modName, sig))
 	if kind == mainQuery {
 		dbPath, err := filepath.Abs(filepath.Join(appBuild, "dev.db"))
 		if err != nil {

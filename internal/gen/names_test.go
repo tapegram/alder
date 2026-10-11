@@ -160,3 +160,70 @@ func TestEmit_RejectsDuplicates(t *testing.T) {
 		t.Errorf("duplicate name: err = %v", err)
 	}
 }
+
+// The adapter naming rule: capability C of module A.B.… is func B…C of package adapters/a.
+func TestAdapterNames(t *testing.T) {
+	for _, c := range []struct{ module, cap, pkg, fn string }{
+		{"Auth.Login", "Password", "auth", "LoginPassword"},
+		{"Auth.Signup", "Password", "auth", "SignupPassword"},
+		{"Markdown", "Markdown", "markdown", "Markdown"},
+		{"Payments", "Stripe", "payments", "Stripe"},
+		{"App", "Clock", "app", "Clock"},
+		{"Billing.Plans.Annual", "Invoice", "billing", "PlansAnnualInvoice"},
+		{"My_Mail.Out", "Smtp", "my_mail", "OutSmtp"},
+	} {
+		if got := AdapterPkg(c.module); got != c.pkg {
+			t.Errorf("AdapterPkg(%q) = %q, want %q", c.module, got, c.pkg)
+		}
+		if got := AdapterFunc(c.module, c.cap); got != c.fn {
+			t.Errorf("AdapterFunc(%q, %q) = %q, want %q", c.module, c.cap, got, c.fn)
+		}
+	}
+}
+
+// For every pair of capabilities, their adapters are distinct (package, constructor) pairs or
+// AdapterCollision reports the pair; and Emit refuses the program with both named. The rule is
+// not injective (A.BC's D and A.B's CD are both BCD in adapters/a), so it is the check that
+// matters.
+func TestAdapterCollision(t *testing.T) {
+	segs := identifiers("AB", "AB", 2, true)
+	var modules []string
+	for _, a := range segs {
+		modules = append(modules, a)
+		for _, b := range segs {
+			modules = append(modules, a+"."+b)
+		}
+	}
+	var caps []*ir.Capability
+	for _, m := range modules {
+		for _, c := range identifiers("AB", "AB", 2, false) {
+			caps = append(caps, &ir.Capability{Module: m, Name: c})
+		}
+	}
+	collisions := 0
+	for i, a := range caps {
+		for _, b := range caps[i+1:] {
+			same := AdapterPkg(a.Module) == AdapterPkg(b.Module) && AdapterFunc(a.Module, a.Name) == AdapterFunc(b.Module, b.Name)
+			x, y := AdapterCollision([]*ir.Capability{a, b})
+			if same != (x != nil) || (x != nil && (x != a || y != b)) {
+				t.Fatalf("%s.%s and %s.%s: same adapter %v, AdapterCollision = %v, %v", a.Module, a.Name, b.Module, b.Name, same, x, y)
+			}
+			if same {
+				collisions++
+			}
+		}
+	}
+	if collisions == 0 {
+		t.Fatal("the corpus has no colliding pair")
+	}
+	shared := []*ir.Capability{{Module: "Auth.Login", Name: "Password"}, {Module: "Auth.Signup", Name: "Password"}}
+	if a, b := AdapterCollision(shared); a != nil {
+		t.Errorf("Auth.Login.Password and Auth.Signup.Password collide: %v %v", a, b)
+	}
+	p := &ir.Program{Caps: []*ir.Capability{{Module: "A.BC", Name: "D"}, {Module: "A.B", Name: "CD"}}}
+	_, err := Emit(p, Options{RepoPath: "/r"})
+	want := "gen: internal naming error: capabilities A.BC.D and A.B.CD both need func BCD in adapters/a/ (rename one of them)"
+	if err == nil || err.Error() != want {
+		t.Errorf("Emit: err = %v, want %s", err, want)
+	}
+}

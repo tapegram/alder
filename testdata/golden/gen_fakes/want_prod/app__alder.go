@@ -20,8 +20,8 @@ var Capabilities = []string{"Payments.Stripe", "Markdown.Markdown"}
 var Migrations []db.Migration
 
 // Caps are the app's capability implementations, one field per capability, named by its
-// module and name: the adapters package's Caps function returns them, and Serve refuses a
-// field left nil.
+// module and name: the generated caps package's Caps function builds them from the adapters,
+// and Serve refuses a field left nil.
 type Caps struct {
 	Payments__Stripe   Cap__Payments__Stripe
 	Markdown__Markdown Cap__Markdown__Markdown

@@ -19,16 +19,20 @@ import (
 // runBuildTo is `alder build [--emit] [dir]`: check the app in dir and, when it has no errors
 // and no holes, lower it and emit its Go into build/<app>/ (app is dir's base name), the module
 // "app". With --emit it stops there, after vetting that package. Without, it builds the app's
-// executable build/<app>/<app>: it copies dir/adapters/*.go (the Go implementing the app's
-// capabilities, package adapters; only the top-level .go files, and a directory without any
-// counts as absent) to build/<app>/adapters/ and dir/static/ to
-// build/<app>/static/ and dir/migrations/*.sql (with migrations/schema.json) to
-// build/<app>/migrations/ for app__alder.go to embed (replacing earlier copies), writes the command build/<app>/cmd/main.go,
-// vets the module and builds the command.
+// executable build/<app>/<app>: it checks that dir/adapters/ has an adapter for every
+// capability (buildkit.CheckAdapters: capability X of module A.B is `func BX()` of package
+// adapters/a/; every missing one is printed, and nothing is written), copies the whole
+// dir/adapters/ tree (a directory without any .go file counts as absent) to
+// build/<app>/adapters/, next to the generated wiring build/<app>/caps/ (gen.CapsPackage), and
+// dir/static/ to build/<app>/static/ and dir/migrations/*.sql (with migrations/schema.json) to
+// build/<app>/migrations/ for app__alder.go to embed (replacing earlier copies), writes the
+// command build/<app>/cmd/main.go, vets the module and builds the command. With --emit the
+// adapters are not checked.
 //
-// Exit 0 on success; 1 when the program has errors or holes, when it has capabilities but no
-// adapters directory, or when the adapters do not compile (Go's errors are printed as they
-// are); 2 for usage errors and internal errors (including generated Go that does not vet).
+// Exit 0 on success; 1 when the program has errors or holes, when an adapter is missing (or
+// the adapters are in the removed flat form), or when the adapters do not compile with the app
+// (Go's errors are printed as they are); 2 for usage errors and internal errors (including
+// generated Go that does not vet).
 func runBuildTo(args []string, stdout, stderr io.Writer) int {
 	dir, emit, haveDir := ".", false, false
 	for _, a := range args {
@@ -116,13 +120,8 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 	p := ir.Lower(prog, res)
 	name := filepath.Base(abs)
 	adapters := filepath.Join(dir, "adapters")
-	hasAdapters := buildkit.HasGoFiles(adapters) // an empty adapters/ (or one of notes only) is none
-	if !emit && !hasAdapters && len(p.Caps) > 0 {
-		var list []string
-		for _, c := range p.Caps {
-			list = append(list, fmt.Sprintf("%s.%s (interface app.Cap__%s__%s)", c.Module, c.Name, strings.ReplaceAll(c.Module, ".", "__"), c.Name))
-		}
-		fmt.Fprintf(stderr, "%s needs an adapters package: create adapters/caps.go with `func Caps() app.Caps` implementing: %s\n", dir, strings.Join(list, ", "))
+	hasAdapters := buildkit.HasAdapters(dir) // an empty adapters/ (or one of notes only) is none
+	if !emit && !buildkit.CheckAdapters(dir, p.Caps, stderr) {
 		return "", 1
 	}
 	files, err := gen.Emit(p, gen.Options{RepoPath: repo, Migrations: buildkit.HasMigrations(dir)})
@@ -142,7 +141,7 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 		return "", 1
 	}
 	if emit {
-		// the app package alone: a cmd/ or adapters/ of an earlier full build is not vetted
+		// the app package alone: a cmd/, caps/ or adapters/ of an earlier full build is not vetted
 		if err := buildkit.VetApp(out, files, "."); err != nil {
 			fmt.Fprintf(stderr, "alder build: %v", err)
 			return "", 2
@@ -163,7 +162,7 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 		fmt.Fprintf(stderr, "alder build: %v\n", err)
 		return "", 2
 	}
-	if err := os.WriteFile(filepath.Join(out, "cmd", "main.go"), gen.Main(name, hasAdapters), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(out, "cmd", "main.go"), gen.Main(name, len(p.Caps) > 0), 0o644); err != nil {
 		fmt.Fprintf(stderr, "alder build: %v\n", err)
 		return "", 2
 	}
@@ -173,12 +172,9 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 			fmt.Fprintf(stderr, "alder build: %v", err)
 			return "", 2
 		}
-		if hasAdapters {
-			fmt.Fprintf(stderr, "alder build: the adapters package (%s, copied to %s) does not compile with the app: %v\n%s",
+		if hasAdapters || len(p.Caps) > 0 { // the adapters, or the wiring of their constructors
+			fmt.Fprintf(stderr, "alder build: the adapters (%s, copied to %s) do not compile with the app: %v\n%s",
 				adapters, filepath.Join(out, "adapters"), err, vetOut)
-			if strings.Contains(string(vetOut), "adapters.Caps") {
-				fmt.Fprintf(stderr, "the adapters package must declare `func Caps() app.Caps`\n")
-			}
 			return "", 1
 		}
 		fmt.Fprintf(stderr, "alder build: internal error: the generated Go in %s does not vet: %v\n%s", out, err, vetOut)

@@ -112,64 +112,10 @@ func VetApp(out string, files map[string][]byte, pkg string) error {
 	return fmt.Errorf("internal error: the generated Go in %s (%s) does not vet: %v\n%s", out, strings.Join(slices.Sorted(maps.Keys(files)), ", "), err, vetOut)
 }
 
-// HasGoFiles reports whether the directory dir holds a .go file at its top level (the files
-// CopyAdapters copies).
-func HasGoFiles(dir string) bool {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return false
-	}
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") {
-			return true
-		}
-	}
-	return false
-}
-
 // IsDir reports whether path is a directory.
 func IsDir(path string) bool {
 	st, err := os.Stat(path)
 	return err == nil && st.IsDir()
-}
-
-// CopyAdapters replaces the Go files of dst with those of src (when present). Every Go file in
-// dst is a copy alder made, so a file deleted from src disappears from dst too.
-func CopyAdapters(src, dst string, present bool) error {
-	entries, err := os.ReadDir(dst)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") {
-			if err := os.Remove(filepath.Join(dst, e.Name())); err != nil {
-				return err
-			}
-		}
-	}
-	if !present {
-		os.Remove(dst) // only when empty
-		return nil
-	}
-	if entries, err = os.ReadDir(src); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(dst, 0o755); err != nil {
-		return err
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
-			continue
-		}
-		b, err := os.ReadFile(filepath.Join(src, e.Name()))
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(filepath.Join(dst, e.Name()), b, 0o644); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // CopyStatic replaces dst with a copy of the directory src, or removes it when src does not
@@ -185,36 +131,50 @@ func CopyStatic(src, dst string) error {
 }
 
 // WriteGenerated replaces the generated files in dir with files: it deletes go.mod and every Go
-// file there that starts with the generated-code header, then writes files. Other files are kept.
+// file there (and in dir/caps, the generated caps package, which it removes when it is left
+// empty) that starts with the generated-code header, then writes files, a name with a
+// directory ("caps/caps__alder.go") into that subdirectory. Other files are kept.
 // Gen names its files <Module>_alder.go; matching every *.go by its header also deletes the
 // <Module>.go files of builds before that naming (M3a), so an old build/ directory is cleaned up.
 func WriteGenerated(dir string, files map[string][]byte) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	for _, e := range entries {
-		path := filepath.Join(dir, e.Name())
-		if e.IsDir() {
-			continue
+	for _, sub := range []string{".", "caps"} {
+		entries, err := os.ReadDir(filepath.Join(dir, sub))
+		if err != nil {
+			if sub != "." && os.IsNotExist(err) {
+				continue
+			}
+			return err
 		}
-		stale := e.Name() == "go.mod"
-		if !stale && strings.HasSuffix(e.Name(), ".go") {
-			if stale, err = isGenerated(path); err != nil {
-				return err
+		for _, e := range entries {
+			path := filepath.Join(dir, sub, e.Name())
+			if e.IsDir() {
+				continue
+			}
+			stale := sub == "." && e.Name() == "go.mod"
+			if !stale && strings.HasSuffix(e.Name(), ".go") {
+				if stale, err = isGenerated(path); err != nil {
+					return err
+				}
+			}
+			if stale {
+				if err := os.Remove(path); err != nil {
+					return err
+				}
 			}
 		}
-		if stale {
-			if err := os.Remove(path); err != nil {
-				return err
-			}
+		if sub != "." {
+			os.Remove(filepath.Join(dir, sub)) // only when empty
 		}
 	}
 	for name, b := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), b, 0o644); err != nil {
+		path := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, b, 0o644); err != nil {
 			return err
 		}
 	}
@@ -223,7 +183,7 @@ func WriteGenerated(dir string, files map[string][]byte) error {
 
 // ForeignGoFiles lists the Go files of the package in dir (sorted) that are not among the
 // generated files: go vet sees them too, so they can make a correct build fail. (The
-// subdirectories adapters/ and cmd/ hold alder's copies and its command.)
+// subdirectories adapters/, caps/ and cmd/ hold alder's copies, its wiring and its command.)
 func ForeignGoFiles(dir string, files map[string][]byte) []string {
 	var out []string
 	entries, _ := os.ReadDir(dir)

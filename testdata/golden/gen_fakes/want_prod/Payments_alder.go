@@ -8,9 +8,9 @@ import (
 	"context"
 )
 
-// Cap__Payments__Stripe is capability Stripe of module Payments, implemented by the app's adapters
-// package (adapters.Caps): one method per entry, called with the running request's context
-// (db.TxFrom(ctx) is the running Task's transaction).
+// Cap__Payments__Stripe is capability Stripe of module Payments, implemented by adapters/payments/
+// (func Stripe, wired by the generated caps package): one method per entry, called with the running
+// request's context (db.TxFrom(ctx) is the running Task's transaction).
 type Cap__Payments__Stripe interface {
 	Charge(ctx context.Context, args Args__Payments__Stripe__Charge) (rt.Result[string, string], error)
 	Refund(ctx context.Context, args Args__Payments__Stripe__Refund) (rt.Result[string, struct{}], error)

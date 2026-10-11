@@ -7,9 +7,11 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -133,6 +135,7 @@ func vet(t *testing.T, files map[string][]byte) {
 			}
 		}
 	}
+	writeAdapterStubs(t, dir, files)
 	cmd := exec.Command("go", "vet", "-mod=mod", "./...")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "GOPROXY=off", "GOTOOLCHAIN=local")
@@ -142,6 +145,51 @@ func vet(t *testing.T, files map[string][]byte) {
 			fmt.Fprintf(&src, "==== %s\n%s\n", name, files[name])
 		}
 		t.Fatalf("go vet failed: %v\n%s\n%s", err, out, src.String())
+	}
+}
+
+// capsCall is a line of the generated caps package calling an adapter's constructor, and
+// capsImport one importing an adapter package.
+var (
+	capsCall   = regexp.MustCompile(`(?m)^\t+(\w+):\s+(a_\w+)\.(\w+)\(\),$`)
+	capsImport = regexp.MustCompile(`(?m)^\t(a_\w+) "app/adapters/(\w+)"$`)
+)
+
+// writeAdapterStubs writes, into the emitted module in dir, a stub of every adapter package
+// and constructor the generated caps package (CapsFile) calls, each returning a nil interface
+// of the capability's type, so that `go vet ./...` compiles the caps package too.
+func writeAdapterStubs(t *testing.T, dir string, files map[string][]byte) {
+	t.Helper()
+	src, ok := files[CapsFile]
+	if !ok {
+		return
+	}
+	pkgs := map[string]string{} // alias → directory
+	for _, m := range capsImport.FindAllStringSubmatch(string(src), -1) {
+		pkgs[m[1]] = m[2]
+	}
+	stubs := map[string]*strings.Builder{}
+	for _, m := range capsCall.FindAllStringSubmatch(string(src), -1) {
+		d, ok := pkgs[m[2]]
+		if !ok {
+			t.Fatalf("%s calls %s.%s, which it does not import:\n%s", CapsFile, m[2], m[3], src)
+		}
+		if stubs[d] == nil {
+			stubs[d] = &strings.Builder{}
+			fmt.Fprintf(stubs[d], "package %s\n\nimport \"app\"\n\n", d)
+		}
+		fmt.Fprintf(stubs[d], "func %s() app.Cap__%s { return nil }\n\n", m[3], m[1])
+	}
+	if len(stubs) != len(pkgs) {
+		t.Fatalf("%s imports %d adapter packages but calls into %d:\n%s", CapsFile, len(pkgs), len(stubs), src)
+	}
+	for d, b := range stubs {
+		if err := os.MkdirAll(filepath.Join(dir, "adapters", d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "adapters", d, "stub.go"), []byte(b.String()), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -196,17 +244,24 @@ func goldenCompare(t *testing.T, files map[string][]byte, want string) {
 		}
 		for name, b := range files {
 			if strings.HasSuffix(name, ".go") {
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(want, name)), 0o755); err != nil {
+					t.Fatal(err)
+				}
 				if err := os.WriteFile(filepath.Join(want, name), b, 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
 		}
 	}
-	wantFiles, _ := filepath.Glob(filepath.Join(want, "*.go"))
 	var wantNames, gotNames []string
-	for _, w := range wantFiles {
-		wantNames = append(wantNames, filepath.Base(w))
-	}
+	filepath.WalkDir(want, func(path string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(path, ".go") {
+			rel, _ := filepath.Rel(want, path)
+			wantNames = append(wantNames, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	slices.Sort(wantNames)
 	for name := range files {
 		if strings.HasSuffix(name, ".go") {
 			gotNames = append(gotNames, name)
@@ -911,10 +966,14 @@ func runGo(t *testing.T, files map[string][]byte, test string) {
 	t.Helper()
 	dir := t.TempDir()
 	for name, b := range files {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(filepath.Join(dir, name), b, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
+	writeAdapterStubs(t, dir, files)
 	if err := os.WriteFile(filepath.Join(dir, "run_test.go"), []byte(test), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1464,7 +1523,9 @@ func TestPayload(t *testing.T) {
 func emitApp(t *testing.T, dir string) string {
 	t.Helper()
 	out := t.TempDir()
-	for name, b := range emit(t, dir) {
+	files := emit(t, dir)
+	writeAdapterStubs(t, out, files)
+	for name, b := range files {
 		if err := os.MkdirAll(filepath.Dir(filepath.Join(out, name)), 0o755); err != nil {
 			t.Fatal(err)
 		}

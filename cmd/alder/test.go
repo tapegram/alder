@@ -14,7 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"alder/internal/buildkit"
 	"alder/internal/diag"
 	"alder/internal/scratch"
 	rtesting "alder/rt/testing"
@@ -33,12 +32,13 @@ const testGrace = 5 * time.Second
 // testMain is the Go main `alder test` compiles with the app (a test build, so app.FakeTables
 // exists): it hands the app's test table, tables, its fakes' test-only tables, migrations,
 // capabilities and session to rtesting.Main, which reads -run and --json from the
-// environment (ALDER_TEST_RUN, ALDER_TEST_JSON). With withAdapters the capabilities are the
-// app's adapters (adapters.Caps()); otherwise none is wired, and a test that calls one fails.
-func testMain(withAdapters bool) string {
+// environment (ALDER_TEST_RUN, ALDER_TEST_JSON). With withCaps (scratch.Checked.WiresAdapters)
+// the capabilities are the app's adapters, as the generated caps package wires them
+// (caps.Caps()); otherwise none is wired, and a test that calls one fails.
+func testMain(withCaps bool) string {
 	imp, caps := "", "app.Caps{}.Registry()"
-	if withAdapters {
-		imp, caps = "\t\"app/adapters\"\n", "adapters.Caps().Registry()"
+	if withCaps {
+		imp, caps = "\t\"app/caps\"\n", "caps.Caps().Registry()"
 	}
 	return `package main
 
@@ -137,7 +137,8 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 		return 2
 	}
 
-	b := scratch.CompileCheckedWith(context.Background(), scratch.Check(dir, nil), testMain(buildkit.HasGoFiles(filepath.Join(dir, "adapters"))), "test", "", scratch.Options{Tests: true})
+	checked := scratch.Check(dir, nil)
+	b := scratch.CompileCheckedWith(context.Background(), checked, testMain(checked.WiresAdapters()), "test", "", scratch.Options{Tests: true})
 	defer b.Close()
 	if b.Err != nil {
 		fail(b.Err.Error())

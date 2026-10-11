@@ -103,7 +103,8 @@ const Timeout = 60 * time.Second
 //     set only for I/O failures, an extra module named like an app or stdlib module
 //     (*ModuleExistsError), generated or caller Go that does not vet, and go build failures;
 //     its message carries Go's output.
-//   - Compile writes only under out (the generated module "app", adapters/, static/ and
+//   - Compile writes only under out (the generated module "app" with its caps/ when it wires
+//     the adapters (Checked.WiresAdapters), adapters/, static/ and
 //     migrations/ copied from the app, cmd/main.go and the executable out/scratch) and the
 //     lock file <out>.lock; it never touches build/<app> itself. Nothing is written when the
 //     check fails, and the previous executable in out stays until a new one is built, so a
@@ -197,13 +198,25 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 		b.Err = err
 		return b
 	}
-	files, err := gen.Emit(ir.Lower(prog, res), gen.Options{RepoPath: repo, Migrations: buildkit.HasMigrations(appDir), Tests: o.Tests})
+	p := ir.Lower(prog, res)
+	adapters := filepath.Join(appDir, "adapters")
+	hasAdapters := buildkit.HasAdapters(appDir)
+	wire := len(p.Caps) > 0 && hasAdapters // as Checked.WiresAdapters
+	if wire {
+		var msg strings.Builder
+		if !buildkit.CheckAdapters(appDir, p.Caps, &msg) {
+			b.Err = errors.New(strings.TrimSuffix(msg.String(), "\n"))
+			return b
+		}
+	}
+	files, err := gen.Emit(p, gen.Options{RepoPath: repo, Migrations: buildkit.HasMigrations(appDir), Tests: o.Tests})
 	if err != nil {
 		b.Err = fmt.Errorf("internal error: %v", err)
 		return b
 	}
-	adapters := filepath.Join(appDir, "adapters")
-	hasAdapters := buildkit.HasGoFiles(adapters)
+	if !wire {
+		delete(files, gen.CapsFile) // nothing to wire: the main uses app.Caps{}
+	}
 	if err := buildkit.WriteGenerated(b.Dir, files); err != nil {
 		b.Err = err
 		return b
@@ -281,6 +294,24 @@ type Checked struct {
 	program   *names.Program // the checked program, for CompileChecked
 	hasErrors bool           // Diags hold an error
 	appDir    string         // the app checked
+}
+
+// WiresAdapters reports whether a build of what c checked wires the app's adapters: the app
+// has capabilities and adapters (a .go file under adapters/). Then CompileChecked checks them
+// first (buildkit.CheckAdapters: a missing adapter is Build.Err, with the lines alder build
+// prints) and writes the generated package caps, and the caller's main must serve them with
+// caps.Caps() (importing "app/caps"); otherwise the main uses app.Caps{}, and a capability
+// call finds no implementation.
+func (c Checked) WiresAdapters() bool {
+	if c.Result == nil || !buildkit.HasAdapters(c.appDir) {
+		return false
+	}
+	for _, m := range c.Result.Caps {
+		if len(m) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // MapDiag is Build.MapDiag for a Check: it maps a diagnostic of the extra module to the

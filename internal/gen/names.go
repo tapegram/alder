@@ -1,10 +1,13 @@
 package gen
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"alder/internal/ir"
 )
 
 // Naming scheme. Every package-level Go name the emitter writes is one of:
@@ -31,8 +34,8 @@ import (
 //	updateFunc  update__M                   page M's (or App's) update and its Nav (routes)
 //	routeFunc   Route__M__page              page M's GET route (routes)
 //	            Route__M__Msg               message Msg of page M or of App (M = App)
-//	capName     Cap__M__Capability          a capability's Go interface (exported: the adapters
-//	                                        package implements it)
+//	capName     Cap__M__Capability          a capability's Go interface (exported: an adapter
+//	                                        implements it)
 //	argsName    Args__M__Capability__Entry  the arguments record of a capability entry
 //	testFunc    test__M__N                  the N-th `test` of module M (from 1, in declaration
 //	                                        order)
@@ -96,7 +99,7 @@ import (
 //     A field starting lower-case only has its first letter upper-cased, and contains no "__";
 //     a field "_x" becomes "U__x", which contains "__", so it is no other field's, and its
 //     rest x determines it. Union fields are constructor names (upper-case) plus Tag and Tag__.
-//  5. routeFunc, capName and argsName are exported (the adapters package and cmd/main.go use
+//  5. routeFunc, capName and argsName are exported (the adapters, caps and cmd/main.go use
 //     them), so they start with an upper-case word: Route, Cap or Args, then "__". They are
 //     GoNames of a module whose first segment is Route, Cap or Args, so no module may be named
 //     so (E0015, names.ReservedModules); then no GoName or ctorName starts with those
@@ -216,6 +219,54 @@ func insertVals(module, table string) string { return "insertvals__" + GoName(mo
 
 // capName is capability M.C's interface ("Cap__Auth__Login__Password").
 func capName(module, capability string) string { return "Cap__" + GoName(module, capability) }
+
+// AdapterPkg is the directory under adapters/ (and the package's last import path element)
+// holding the adapters of module's capabilities: the module's first segment, lower-cased
+// ("Auth.Login" → "auth", "Markdown" → "markdown", "App" → "app"). The generated caps package
+// imports it under adapterAlias, so a directory named like a package caps already imports
+// ("app") is no clash.
+func AdapterPkg(module string) string {
+	first, _, _ := strings.Cut(module, ".")
+	return strings.ToLower(first)
+}
+
+// AdapterFunc is the constructor of capability C of module M in package AdapterPkg(M): M's
+// segments after the first, then C, concatenated (("Auth.Login", "Password") →
+// "LoginPassword", ("Markdown", "Markdown") → "Markdown"). It is exported, as segments and
+// capability names start upper-case. Two capabilities can get the same package and
+// constructor (A.BC's D and A.B's CD are both BCD in adapters/a/); AdapterCollision finds them.
+func AdapterFunc(module, capability string) string {
+	_, rest, _ := strings.Cut(module, ".")
+	return strings.ReplaceAll(rest, ".", "") + capability
+}
+
+// adapterAlias is the name the caps package imports adapter package dir under ("a_auth").
+func adapterAlias(dir string) string { return "a_" + dir }
+
+// AdapterCollision returns the first two capabilities of caps (in order) whose adapters would
+// be the same function of the same package, or nil, nil.
+func AdapterCollision(caps []*ir.Capability) (a, b *ir.Capability) {
+	seen := map[[2]string]*ir.Capability{}
+	for _, c := range caps {
+		k := [2]string{AdapterPkg(c.Module), AdapterFunc(c.Module, c.Name)}
+		if prev, ok := seen[k]; ok {
+			return prev, c
+		}
+		seen[k] = c
+	}
+	return nil, nil
+}
+
+// AdapterCollisionError is the internal naming error for two capabilities of caps whose
+// adapters would be one constructor (AdapterCollision), naming both; nil when there are none.
+func AdapterCollisionError(caps []*ir.Capability) error {
+	a, b := AdapterCollision(caps)
+	if a == nil {
+		return nil
+	}
+	return fmt.Errorf("internal naming error: capabilities %s.%s and %s.%s both need func %s in adapters/%s/ (rename one of them)",
+		a.Module, a.Name, b.Module, b.Name, AdapterFunc(a.Module, a.Name), AdapterPkg(a.Module))
+}
 
 // argsName is the arguments record of entry e of capability M.C
 // ("Args__Auth__Login__Password__Verify"): the entry capitalized, or prefixed with "x" when it

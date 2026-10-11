@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"alder/internal/buildkit"
 )
 
 func runBuild(t *testing.T, args ...string) (int, string, string) {
@@ -107,7 +109,8 @@ func TestBuildEmit_ForeignFileDoesNotVet(t *testing.T) {
 }
 
 // `alder build` (no --emit) builds the app's executable: the generated package, the app's
-// adapters package and static files copied next to it, and the generated command.
+// adapters and static files copied next to it, the generated caps package wiring the adapters,
+// and the generated command.
 func TestBuild_Todos(t *testing.T) {
 	src, err := filepath.Abs("../../examples/todos")
 	if err != nil {
@@ -117,9 +120,10 @@ func TestBuild_Todos(t *testing.T) {
 	copyDir(t, src, filepath.Join(tmp, "todos"))
 	t.Chdir(tmp)
 	out := filepath.Join("build", "todos")
-	// a stale copy of an adapter since deleted, and a stale static file
-	os.MkdirAll(filepath.Join(out, "adapters"), 0o755)
+	// a stale copy of an adapter since deleted (top level and in a package), and a stale static file
+	os.MkdirAll(filepath.Join(out, "adapters", "gone"), 0o755)
 	os.WriteFile(filepath.Join(out, "adapters", "gone.go"), []byte("package adapters\n\nvar _ = undefined\n"), 0o644)
+	os.WriteFile(filepath.Join(out, "adapters", "gone", "gone.go"), []byte("package gone\n\nvar _ = undefined\n"), 0o644)
 	os.MkdirAll(filepath.Join(out, "static"), 0o755)
 	os.WriteFile(filepath.Join(out, "static", "gone.css"), []byte("x"), 0o644)
 
@@ -134,51 +138,193 @@ func TestBuild_Todos(t *testing.T) {
 	if err != nil || st.Mode()&0o111 == 0 {
 		t.Fatalf("no executable build/todos/todos: %v", err)
 	}
-	for _, f := range []string{"adapters/password.go", "static/app.css", "cmd/main.go", "routes__alder.go"} {
+	for _, f := range []string{"adapters/auth/password.go", "caps/caps__alder.go", "static/app.css", "cmd/main.go", "routes__alder.go"} {
 		if _, err := os.Stat(filepath.Join(out, f)); err != nil {
 			t.Errorf("build/todos/%s: %v", f, err)
 		}
 	}
-	for _, f := range []string{"adapters/gone.go", "static/gone.css"} {
+	for _, f := range []string{"adapters/gone.go", "adapters/gone", "static/gone.css"} {
 		if _, err := os.Stat(filepath.Join(out, f)); !os.IsNotExist(err) {
 			t.Errorf("stale build/todos/%s kept: %v", f, err)
 		}
 	}
-	if b, _ := os.ReadFile(filepath.Join(out, "cmd", "main.go")); !strings.Contains(string(b), "app.Serve(adapters.Caps(), app.Options{") {
+	if b, _ := os.ReadFile(filepath.Join(out, "cmd", "main.go")); !strings.Contains(string(b), "app.Serve(caps.Caps(), app.Options{") || !strings.Contains(string(b), "\t\"app/caps\"\n") {
 		t.Errorf("cmd/main.go:\n%s", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(out, "caps", "caps__alder.go")); !strings.Contains(string(b), "a_auth \"app/adapters/auth\"") || !strings.Contains(string(b), "Auth__Login__Password: a_auth.LoginPassword(),") {
+		t.Errorf("caps/caps__alder.go:\n%s", b)
 	}
 
 	// adapters that do not compile are the app's error, shown as Go reports it
-	os.WriteFile(filepath.Join("todos", "adapters", "broken.go"), []byte("package adapters\n\nvar _ int = \"x\"\n"), 0o644)
+	os.WriteFile(filepath.Join("todos", "adapters", "auth", "broken.go"), []byte("package auth\n\nvar _ int = \"x\"\n"), 0o644)
 	code, stdout, stderr = runBuild(t, "todos")
-	if code != 1 || strings.Contains(stderr, "internal error") || !strings.Contains(stderr, "adapters/broken.go:3:") ||
-		!strings.Contains(stderr, "the adapters package (todos/adapters, copied to build/todos/adapters) does not compile") {
+	if code != 1 || strings.Contains(stderr, "internal error") || !strings.Contains(stderr, "adapters/auth/broken.go:3:") ||
+		!strings.Contains(stderr, "alder build: the adapters (todos/adapters, copied to build/todos/adapters) do not compile with the app: ") {
 		t.Fatalf("broken adapters: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	// adapters without Caps
-	os.Remove(filepath.Join("todos", "adapters", "broken.go"))
-	b, _ := os.ReadFile(filepath.Join("todos", "adapters", "password.go"))
-	os.WriteFile(filepath.Join("todos", "adapters", "password.go"), []byte(strings.Replace(string(b), "func Caps()", "func caps()", 1)), 0o644)
-	code, _, stderr = runBuild(t, "todos")
-	if code != 1 || !strings.Contains(stderr, "the adapters package must declare `func Caps() app.Caps`") {
-		t.Fatalf("adapters without Caps: exit %d\nstderr: %s", code, stderr)
-	}
+	os.Remove(filepath.Join("todos", "adapters", "auth", "broken.go"))
 
-	// an app with capabilities needs an adapters package; a directory without Go files (only
-	// subdirectories, notes) is none
-	want := "todos needs an adapters package: create adapters/caps.go with `func Caps() app.Caps` implementing: Auth.Login.Password (interface app.Cap__Auth__Login__Password)\n"
+	// an app with capabilities needs their adapters; a directory without Go files (notes, or
+	// only a package that matches no module) is none
+	want := "todos is missing adapters for 1 capability:\n" +
+		"capability `Auth.Login.Password` needs `adapters/auth/` with `func LoginPassword() app.Cap__Auth__Login__Password`\n"
 	os.RemoveAll(filepath.Join("todos", "adapters"))
 	os.MkdirAll(filepath.Join("todos", "adapters", "sub"), 0o755)
 	os.WriteFile(filepath.Join("todos", "adapters", "sub", "x.go"), []byte("package sub\n"), 0o644)
 	os.WriteFile(filepath.Join("todos", "adapters", "README"), []byte("todo\n"), 0o644)
 	code, stdout, stderr = runBuild(t, "todos")
 	if code != 1 || stderr != want {
-		t.Fatalf("adapters without Go files: exit %d\nstdout: %s\nstderr: %q\nwant %q", code, stdout, stderr, want)
+		t.Fatalf("adapters without the package: exit %d\nstdout: %s\nstderr: %q\nwant %q", code, stdout, stderr, want)
 	}
 	os.RemoveAll(filepath.Join("todos", "adapters"))
 	code, stdout, stderr = runBuild(t, "todos")
 	if code != 1 || stderr != want {
 		t.Fatalf("no adapters: exit %d\nstdout: %s\nstderr: %q\nwant %q", code, stdout, stderr, want)
+	}
+}
+
+// writeFiles writes files (slash path under dir → content).
+func writeFiles(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	for name, body := range files {
+		path := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// An app whose adapters are sub-packages (a module named App among them) and share a helper
+// package under adapters/internal/: it builds, the helper is copied and compiled but never
+// wired, and the adapters' own tests run in the build directory against the real app package.
+func TestBuild_SubAdapters(t *testing.T) {
+	src, err := filepath.Abs("testdata/subadapters")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := t.TempDir()
+	copyDir(t, src, filepath.Join(tmp, "subadapters"))
+	t.Chdir(tmp)
+	code, stdout, stderr := runBuild(t, "subadapters")
+	if code != 0 || stderr != "" {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	out := filepath.Join("build", "subadapters")
+	b, err := os.ReadFile(filepath.Join(out, "caps", "caps__alder.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"a_app \"app/adapters/app\"", "a_auth \"app/adapters/auth\"", "App__Clock:            a_app.Clock(),", "Auth__Login__Password: a_auth.LoginPassword(),"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("caps/caps__alder.go lacks %s:\n%s", want, b)
+		}
+	}
+	if strings.Contains(string(b), "dbx") {
+		t.Errorf("the helper package is wired:\n%s", b)
+	}
+	for _, f := range []string{"adapters/internal/dbx/dbx.go", "adapters/auth/password_test.go", "adapters/auth/testdata/user.txt"} {
+		if _, err := os.Stat(filepath.Join(out, f)); err != nil {
+			t.Errorf("%s not copied: %v", f, err)
+		}
+	}
+	testOut, err := buildkit.GoCmd(out, "test", "-count=1", "./adapters/...")
+	if err != nil || !strings.Contains(string(testOut), "ok  \tapp/adapters/auth") {
+		t.Fatalf("go test ./adapters/...: %v\n%s", err, testOut)
+	}
+}
+
+// The ruled texts of a build whose adapters are missing or wrong. Every missing adapter is
+// printed, and nothing is written; a constructor with the wrong result type is Go's error,
+// quoted.
+func TestBuild_AdapterErrors(t *testing.T) {
+	src, err := filepath.Abs("testdata/subadapters")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const missingBoth = "subadapters is missing adapters for 2 capabilities:\n" +
+		"capability `App.Clock` needs `adapters/app/` with `func Clock() app.Cap__App__Clock`\n" +
+		"capability `Auth.Login.Password` needs `adapters/auth/` with `func LoginPassword() app.Cap__Auth__Login__Password`\n"
+	for _, c := range []struct {
+		name   string
+		edit   func(t *testing.T, app string)
+		stderr string // the whole of stderr, or (contains) what it must contain
+		exact  bool
+	}{
+		{"missing constructor", func(t *testing.T, app string) {
+			replaceIn(t, filepath.Join(app, "adapters", "auth", "password.go"), "func LoginPassword()", "func loginPassword()")
+		}, "subadapters is missing adapters for 1 capability:\n" +
+			"capability `Auth.Login.Password` needs `adapters/auth/` with `func LoginPassword() app.Cap__Auth__Login__Password`\n", true},
+		{"all missing", func(t *testing.T, app string) {
+			os.RemoveAll(filepath.Join(app, "adapters"))
+		}, missingBoth, true},
+		{"flat form", func(t *testing.T, app string) {
+			os.RemoveAll(filepath.Join(app, "adapters"))
+			writeFiles(t, app, map[string]string{"adapters/caps.go": "package adapters\n\nimport \"app\"\n\nfunc Caps() app.Caps { return app.Caps{} }\n"})
+		}, "adapters/ no longer wires capabilities: move each adapter to adapters/<module>/ (see the list below)\n" + missingBoth, true},
+		{"wrong result type", func(t *testing.T, app string) {
+			replaceIn(t, filepath.Join(app, "adapters", "app", "clock.go"), "func Clock() app.Cap__App__Clock { return clock{} }", "func Clock() app.Cap__Auth__Login__Password { return nil }")
+		}, "alder build: the adapters (subadapters/adapters, copied to build/subadapters/adapters) do not compile with the app: ", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			app := filepath.Join(tmp, "subadapters")
+			copyDir(t, src, app)
+			c.edit(t, app)
+			t.Chdir(tmp)
+			code, stdout, stderr := runBuild(t, "subadapters")
+			if code != 1 || stdout != "" {
+				t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+			}
+			if c.exact {
+				if stderr != c.stderr {
+					t.Fatalf("stderr:\n%s\nwant:\n%s", stderr, c.stderr)
+				}
+				if _, err := os.Stat("build"); !os.IsNotExist(err) {
+					t.Errorf("build/ written: %v", err)
+				}
+				return
+			}
+			if !strings.Contains(stderr, c.stderr) || !strings.Contains(stderr, "caps/caps__alder.go") || !strings.Contains(stderr, "a_app.Clock()") || strings.Contains(stderr, "internal error") {
+				t.Fatalf("stderr:\n%s\nwant it to contain %q and Go's error in caps/caps__alder.go", stderr, c.stderr)
+			}
+		})
+	}
+}
+
+// Two capabilities whose adapters would be one constructor (A.BC's D and A.B's CD are both
+// func BCD of adapters/a/) are an internal naming error naming both, before anything is written.
+func TestBuild_AdapterCollision(t *testing.T) {
+	tmp := t.TempDir()
+	writeFiles(t, filepath.Join(tmp, "clash"), map[string]string{
+		"app/A/BC.alder": "module A.BC\n\ncapability D {\n  ping : Query Int,\n}\n",
+		"app/A/B.alder":  "module A.B\n\ncapability CD {\n  ping : Query Int,\n}\n",
+	})
+	t.Chdir(tmp)
+	code, stdout, stderr := runBuild(t, "clash")
+	want := "internal naming error: capabilities A.B.CD and A.BC.D both need func BCD in adapters/a/ (rename one of them)\n"
+	if code != 1 || stdout != "" || stderr != want {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %q\nwant %q", code, stdout, stderr, want)
+	}
+	if _, err := os.Stat("build"); !os.IsNotExist(err) {
+		t.Errorf("build/ written: %v", err)
+	}
+}
+
+// replaceIn replaces old (which must occur) with new in the file at path.
+func replaceIn(t *testing.T, path, old, new string) {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), old) {
+		t.Fatalf("%s lacks %q", path, old)
+	}
+	if err := os.WriteFile(path, []byte(strings.Replace(string(b), old, new, 1)), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -221,7 +367,7 @@ func TestBuildTo_OutDir(t *testing.T) {
 	if code != 0 || path != filepath.Join(out, "todos") {
 		t.Fatalf("exit %d path %q\nstdout: %s\nstderr: %s", code, path, stdout.String(), stderr.String())
 	}
-	for _, f := range []string{"todos", "cmd/main.go", "App_alder.go", "adapters/password.go", "static/app.css"} {
+	for _, f := range []string{"todos", "cmd/main.go", "App_alder.go", "adapters/auth/password.go", "caps/caps__alder.go", "static/app.css"} {
 		if _, err := os.Stat(filepath.Join(out, f)); err != nil {
 			t.Errorf("%s: %v", f, err)
 		}

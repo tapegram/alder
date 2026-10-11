@@ -1,0 +1,15 @@
+module App
+
+-- A capability of App: adapters/app/, func Clock, imported under an alias beside the
+-- generated package "app".
+capability Clock {
+  now : Query Int,
+}
+
+session { user: Maybe Text }
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>not found</p>

@@ -1,0 +1,7 @@
+module Auth.Login
+
+-- The gen_caps golden: a capability of a dotted module is implemented by adapters/auth/,
+-- func LoginPassword.
+capability Password {
+  verify : { email: Text, password: Text } -> Task (Maybe Text),
+}

@@ -184,7 +184,7 @@ test "a capability's error is an Err" = {
   Task.succeed (r.value == Err "Password.verify: hash store unreachable")
 }
 `)
-	adapter := `package adapters
+	adapter := `package auth
 
 import (
 	"context"
@@ -194,7 +194,7 @@ import (
 	"app"
 )
 
-func Caps() app.Caps { return app.Caps{Auth__Login__Password: password{}} }
+func LoginPassword() app.Cap__Auth__Login__Password { return password{} }
 
 type password struct{}
 
@@ -202,7 +202,7 @@ func (password) Verify(context.Context, app.Args__Auth__Login__Password__Verify)
 	return rt.Nothing[string](), errors.New("hash store unreachable")
 }
 `
-	if err := os.WriteFile(filepath.Join(dir, "adapters", "password.go"), []byte(adapter), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "adapters", "auth", "password.go"), []byte(adapter), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	code, stdout, stderr := runTest(t, dir, "-run", "Auth.Login")
@@ -212,7 +212,7 @@ func (password) Verify(context.Context, app.Args__Auth__Login__Password__Verify)
 }
 
 // alder test makes a test build: the corpus app fake-ok's tests install its fakes (Test.fake),
-// drive them and read the fake's table back. With an adapters package as well, a test that
+// drive them and read the fake's table back. With adapters as well, a test that
 // installs the fake uses the fake and one that does not uses the adapter (each test has its
 // own capabilities), and the production build (alder build) of the same app has no fakes.
 func TestTest_Fakes(t *testing.T) {
@@ -245,17 +245,16 @@ test "the real adapter without Test.fake" = {
   Task.succeed (r == Err "real" && n == 0)
 }
 `
-	adapter := `package adapters
+	stripe := `package payments
 
 import (
 	"context"
 
 	"alder/rt"
-	"alder/rt/html"
 	"app"
 )
 
-func Caps() app.Caps { return app.Caps{Payments__Stripe: stripe{}, Markdown__Markdown: md{}} }
+func Stripe() app.Cap__Payments__Stripe { return stripe{} }
 
 type stripe struct{}
 
@@ -266,6 +265,17 @@ func (stripe) Refund(context.Context, app.Args__Payments__Stripe__Refund) (rt.Re
 	return rt.Err[string, struct{}]("real"), nil
 }
 func (stripe) Balance(context.Context) (int64, error) { return 0, nil }
+`
+	markdown := `package markdown
+
+import (
+	"context"
+
+	"alder/rt/html"
+	"app"
+)
+
+func Markdown() app.Cap__Markdown__Markdown { return md{} }
 
 type md struct{}
 
@@ -273,7 +283,7 @@ func (md) Render(_ context.Context, a app.Args__Markdown__Markdown__Render) (htm
 	return html.Text(a.Value), nil
 }
 `
-	for path, body := range map[string]string{"fake-ok/app/App.alder": app, "fake-ok/adapters/caps.go": adapter} {
+	for path, body := range map[string]string{"fake-ok/app/App.alder": app, "fake-ok/adapters/payments/stripe.go": stripe, "fake-ok/adapters/markdown/markdown.go": markdown} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -507,4 +517,21 @@ func mustRead(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// alder test checks the adapters as alder build does, with the same texts: a missing
+// constructor stops the build before anything is written.
+func TestTest_MissingAdapter(t *testing.T) {
+	needGoTool(t)
+	dir := tempTodos(t, "App.alder", "")
+	replaceIn(t, filepath.Join(dir, "adapters", "auth", "password.go"), "func LoginPassword()", "func loginPassword()")
+	code, stdout, stderr := runTest(t, dir)
+	want := "todos is missing adapters for 1 capability:\n" +
+		"capability `Auth.Login.Password` needs `adapters/auth/` with `func LoginPassword() app.Cap__Auth__Login__Password`\n"
+	if code != 2 || stdout != "" || !strings.Contains(stderr, want) {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s\nwant it to contain %q", code, stdout, stderr, want)
+	}
+	if _, err := os.Stat(filepath.Join("build", "todos", "scratch", "test", "go.mod")); !os.IsNotExist(err) {
+		t.Errorf("the scratch module was written: %v", err)
+	}
 }

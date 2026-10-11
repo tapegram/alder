@@ -28,8 +28,8 @@ var Capabilities = []string{"Todo.Stats", "Index.Mailer"}
 var Migrations []db.Migration
 
 // Caps are the app's capability implementations, one field per capability, named by its
-// module and name: the adapters package's Caps function returns them, and Serve refuses a
-// field left nil.
+// module and name: the generated caps package's Caps function builds them from the adapters,
+// and Serve refuses a field left nil.
 type Caps struct {
 	Todo__Stats   Cap__Todo__Stats
 	Index__Mailer Cap__Index__Mailer

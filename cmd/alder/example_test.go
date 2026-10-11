@@ -69,8 +69,8 @@ func blogDir(t *testing.T) string {
 	return blogAbs
 }
 
-// TestExample_Blog: the second example checks clean, builds, its Markdown adapter passes its Go
-// tests, and the app passes its own tests, every one of which chapter 14 quotes by name.
+// TestExample_Blog: the second example checks clean, builds, its adapters (adapters/auth/ and
+// adapters/markdown/) pass their Go tests, and the app passes its own tests, every one of which chapter 14 quotes by name.
 func TestExample_Blog(t *testing.T) {
 	needGoTool(t)
 	code, out, errs := run(t, blogDir(t))
@@ -83,11 +83,17 @@ func TestExample_Blog(t *testing.T) {
 	if code != 0 || out != "wrote build/blog/blog\n" {
 		t.Fatalf("alder build examples/blog: exit %d\nout: %s\nerr: %s", code, out, errs)
 	}
-	// the Markdown adapter's Go tests, which compile only in the built module (they import "app")
-	gotest := exec.Command("go", "test", "-count=1", "./adapters")
+	// the adapters' Go tests, which compile only in the built module (they import "app")
+	gotest := exec.Command("go", "test", "-count=1", "./adapters/...")
 	gotest.Dir = filepath.Join("build", "blog")
-	if b, err := gotest.CombinedOutput(); err != nil {
-		t.Fatalf("go test ./adapters in build/blog: %v\n%s", err, b)
+	b, err := gotest.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go test ./adapters/... in build/blog: %v\n%s", err, b)
+	}
+	for _, pkg := range []string{"app/adapters/auth", "app/adapters/markdown"} {
+		if !strings.Contains(string(b), "ok  \t"+pkg+"\t") {
+			t.Errorf("go test ./adapters/... in build/blog did not pass %s:\n%s", pkg, b)
+		}
 	}
 	code, out, errs = runTest(t, "blog")
 	if code != 0 {

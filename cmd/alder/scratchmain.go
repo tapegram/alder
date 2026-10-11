@@ -16,9 +16,10 @@ const (
 // (created with the app's tables when absent, O_EXCL; an existing one checked against the
 // schema and never rebuilt; for an app with migrations, db.Migrate applies those the database
 // has not had, as the app would at start), run with Session app.TestSession(), Now time.Now and the
-// capabilities of the adapters package when withAdapters (else none: a capability call fails
-// with "capability X is not wired in eval"), and print rt.Show of the value; a failed effect
-// prints its message to stderr and exits 1.
+// capabilities the generated caps package wires from the adapters (caps.Caps) when withCaps
+// (scratch.Checked.WiresAdapters; else none: a capability call fails with "capability X is not
+// wired in eval"), and print rt.Show of the value; a failed effect prints its message to stderr
+// and exits 1.
 //
 // Every main imports alder/rt, whose init exits the program (2) when its standard input reaches
 // end of file if ALDER_SCRATCH_STDIN_EOF is 1 (rt.EnvStdinEOF): eval and the REPL run it with
@@ -27,13 +28,13 @@ const (
 //
 // The database file is created with O_EXCL, so of this process and an `alder run` starting at
 // the same moment only the one that created it builds its tables.
-func scratchMain(kind mainKind, withAdapters bool, it string) string {
+func scratchMain(kind mainKind, withCaps bool, it string) string {
 	if kind == mainPure {
 		return strings.ReplaceAll(pureMain, "{{it}}", it)
 	}
 	imp, caps := "", "app.Caps{}.Registry()"
-	if withAdapters {
-		imp, caps = "\t\"app/adapters\"\n", "adapters.Caps().Registry()"
+	if withCaps {
+		imp, caps = "\t\"app/caps\"\n", "caps.Caps().Registry()"
 	}
 	run := "eff.RunQuery(env, " + it + ")"
 	if kind == mainTask {

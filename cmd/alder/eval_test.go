@@ -504,7 +504,7 @@ func TestEval_StackOverflow(t *testing.T) {
 func TestEval_RunHasSession(t *testing.T) {
 	for _, k := range []mainKind{mainQuery, mainTask} {
 		m := scratchMain(k, false, "x")
-		if !strings.Contains(m, "Session: app.TestSession()") || !strings.Contains(m, "Caps: app.Caps{}.Registry()") || strings.Contains(m, "app/adapters") {
+		if !strings.Contains(m, "Session: app.TestSession()") || !strings.Contains(m, "Caps: app.Caps{}.Registry()") || strings.Contains(m, "app/caps") {
 			t.Errorf("kind %d:\n%s", k, m)
 		}
 	}
@@ -525,10 +525,11 @@ func TestEval_RunHasSession(t *testing.T) {
 	evalOK(t, "[] : List Todo\n", "--run", "Db.from Todo |> Db.all")
 }
 
-// `--run` wires the app's adapters when adapters/ holds Go files, and none otherwise.
+// `--run` wires the app's adapters (the generated caps package) when adapters/ holds Go files,
+// and none otherwise.
 func TestEval_RunWithAdapters(t *testing.T) {
 	m := scratchMain(mainQuery, true, "x")
-	if !strings.Contains(m, "\t\"app/adapters\"\n") || !strings.Contains(m, "Caps: adapters.Caps().Registry()") {
+	if !strings.Contains(m, "\t\"app/caps\"\n") || !strings.Contains(m, "Caps: caps.Caps().Registry()") {
 		t.Errorf("query main with adapters:\n%s", m)
 	}
 	needGoTool(t)
@@ -551,7 +552,7 @@ func TestEval_RunWithAdapters(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := strings.Contains(string(b), "adapters.Caps().Registry()"); got != withAdapters {
+		if got := strings.Contains(string(b), "caps.Caps().Registry()"); got != withAdapters {
 			t.Errorf("adapters %v: main.go:\n%s", withAdapters, b)
 		}
 	}

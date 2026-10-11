@@ -72,9 +72,9 @@ type Index__Session struct {
 	Theme string
 }
 
-// Cap__Index__Mailer is capability Mailer of module Index, implemented by the app's adapters
-// package (adapters.Caps): one method per entry, called with the running request's context
-// (db.TxFrom(ctx) is the running Task's transaction).
+// Cap__Index__Mailer is capability Mailer of module Index, implemented by adapters/index/ (func
+// Mailer, wired by the generated caps package): one method per entry, called with the running
+// request's context (db.TxFrom(ctx) is the running Task's transaction).
 type Cap__Index__Mailer interface {
 	Send(ctx context.Context, args Args__Index__Mailer__Send) (bool, error)
 }

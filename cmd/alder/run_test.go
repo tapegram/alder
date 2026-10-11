@@ -381,11 +381,11 @@ func TestRun_CoalescesSaves(t *testing.T) {
 func TestRun_BuildFailureKeepsOld(t *testing.T) {
 	r := startRun(t)
 	events := r.subscribe(t)
-	if err := os.Remove(filepath.Join(r.dir, "adapters", "password.go")); err != nil {
+	if err := os.Remove(filepath.Join(r.dir, "adapters", "auth", "password.go")); err != nil {
 		t.Fatal(err)
 	}
 	seen := waitFor(t, events, "selector #_alder_errors", 60*time.Second)
-	if overlay := seen[len(seen)-1]; !strings.Contains(overlay, "needs an adapters package") {
+	if overlay := seen[len(seen)-1]; !strings.Contains(overlay, "is missing adapters for 1 capability:") {
 		t.Fatalf("overlay lacks the missing-adapters message:\n%s", overlay)
 	}
 	if body := get(t, r.base+"/login"); !strings.Contains(body, `type="password"`) {

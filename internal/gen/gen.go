@@ -37,10 +37,13 @@ type Options struct {
 
 // Emit returns the generated files: one "<Module>_alder.go" per module ('.' → "__"),
 // "app__alder.go" (Tables, Migrations, Capabilities, Caps and, with an App module, Options and Serve),
-// "routes__alder.go" with an App module (the routes: routes.go) and "go.mod".
+// "routes__alder.go" with an App module (the routes: routes.go), "go.mod" and, when the app has
+// capabilities, CapsFile ("caps/caps__alder.go", package caps: CapsPackage), which imports the
+// adapter packages under adapters/ (copied next to it by buildkit.CopyAdapters).
 // Its error is for a bug in gen: output go/format cannot parse, or a program gen cannot emit
 // (such as a stdlib function with no Go implementation), or two modules or declarations that
-// would get the same file or Go name.
+// would get the same file or Go name; and for two capabilities whose adapters would be the same
+// constructor (AdapterCollision), an internal naming error naming both.
 func Emit(p *ir.Program, opts Options) (files map[string][]byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -106,6 +109,12 @@ func Emit(p *ir.Program, opts Options) (files map[string][]byte, err error) {
 			}
 			declared[n] = f
 		}
+	}
+	if len(p.Caps) > 0 {
+		if err := AdapterCollisionError(p.Caps); err != nil {
+			return nil, fmt.Errorf("gen: %v", err)
+		}
+		files[CapsFile] = CapsPackage(p)
 	}
 	return files, nil
 }
