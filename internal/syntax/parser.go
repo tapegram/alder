@@ -498,19 +498,14 @@ func (p *Parser) parseFieldList(closing Kind, attrs bool) []*Field {
 			}
 			p.errorAt(atTok, "attributes such as `@"+name+"` are only allowed on table fields")
 		}
-		var ats []Token // each attribute's `@`, for the delete-rule errors
 		for attrs && p.at(At) {
 			at := p.advance()
-			ats = append(ats, at)
 			a := &Attr{Name: p.expect(LIdent, "attribute name").Text}
 			if a.Name == "ref" {
 				a.Arg = p.expect(UIdent, "table name").Text
 			}
 			a.Span = p.spanFrom(at)
 			f.Attrs = append(f.Attrs, a)
-		}
-		if attrs {
-			p.checkDeleteRules(f, ats)
 		}
 		f.Span = p.spanFrom(ft)
 		fields = append(fields, f)
@@ -523,33 +518,6 @@ func (p *Parser) parseFieldList(closing Kind, attrs bool) []*Field {
 		if !p.at(closing) {
 			p.errorAt(p.tok, "expected `,` or closing brace")
 			return fields
-		}
-	}
-}
-
-// deleteRules are the attributes that say what deleting a referenced row does to a `@ref`
-// column's row; `@restrict` is the default.
-var deleteRules = map[string]bool{"cascade": true, "restrict": true, "setNull": true}
-
-// checkDeleteRules reports a delete rule (`@cascade`, `@restrict`, `@setNull`) on a field
-// without `@ref`, and a second delete rule on one field; ats are the attributes' `@` tokens.
-func (p *Parser) checkDeleteRules(f *Field, ats []Token) {
-	hasRef := false
-	for _, a := range f.Attrs {
-		hasRef = hasRef || a.Name == "ref"
-	}
-	first := ""
-	for i, a := range f.Attrs {
-		if !deleteRules[a.Name] {
-			continue
-		}
-		switch {
-		case !hasRef:
-			p.errorAt(ats[i], "`@"+a.Name+"` belongs on a `@ref` column, after `@ref Table`")
-		case first != "":
-			p.errorAt(ats[i], "a `@ref` column takes one delete rule; it has `@"+first+"` and `@"+a.Name+"`")
-		default:
-			first = a.Name
 		}
 	}
 }

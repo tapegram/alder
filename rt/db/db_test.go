@@ -643,7 +643,7 @@ func TestStore_EnsureRefs(t *testing.T) {
 	}
 	failMsg("dangling update", s.Update(ctx, nil, "Note.Note", note.Columns, "id", "", nid, []any{nid, "ghost"}, clock),
 		"Note.owner: no User with that id")
-	failMsg("delete referenced", s.Delete(ctx, nil, "User.User", "id", uid), "User "+uid+" is referenced by another row")
+	failMsg("delete referenced", s.Delete(ctx, nil, "User.User", "id", uid), "User "+uid+referenced)
 	// Inside a Task the failure rolls back the Task's earlier writes.
 	_, err = eff.Run(newEnv(s), eff.KTask, eff.Bind(
 		eff.Call("Db.insert User", true, func(e *eff.Env) (string, error) {
@@ -1041,12 +1041,39 @@ func TestSetNullDelete(t *testing.T) {
 	}
 }
 
+const referenced = " is referenced by another row, directly or through rows that `@cascade` would delete with it"
+
+// In a chain Post ← Comment (@cascade) ← Flag (@restrict), deleting the post fails on the flag,
+// two levels down; the message says the blocking row may be one a cascade would delete.
+func TestRestrictDeleteThroughCascade(t *testing.T) {
+	s, post, comment := refTables(t, Cascade, false)
+	flag := TableDesc{Name: "Flag.Flag", ID: "id", Columns: []Column{
+		{Name: "id", Type: CText}, {Name: "comment", Type: CText, Ref: "Comment.Comment"}}}
+	ctx := context.Background()
+	if err := s.Ensure(ctx, []TableDesc{comment, post, flag}, true); err != nil {
+		t.Fatal(err)
+	}
+	pid := postWithComments(t, s, post, comment, 0)
+	cid, err := s.Insert(ctx, nil, comment.Name, comment.Columns, "id", "", "", []any{nil, pid}, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Insert(ctx, nil, flag.Name, flag.Columns, "id", "", "", []any{nil, cid}, clock); err != nil {
+		t.Fatal(err)
+	}
+	err = s.Delete(ctx, nil, post.Name, "id", pid)
+	var ef *eff.ErrFail
+	if !errors.As(err, &ef) || ef.Msg != "Post "+pid+referenced {
+		t.Fatalf("err = %v, want the referenced-row ErrFail", err)
+	}
+}
+
 func TestRestrictDelete(t *testing.T) {
 	s, post, comment := refTables(t, Restrict, false)
 	pid := postWithComments(t, s, post, comment, 1)
 	err := s.Delete(context.Background(), nil, post.Name, "id", pid)
 	var ef *eff.ErrFail
-	if !errors.As(err, &ef) || ef.Msg != "Post "+pid+" is referenced by another row" {
+	if !errors.As(err, &ef) || ef.Msg != "Post "+pid+referenced {
 		t.Fatalf("err = %v, want the referenced-row ErrFail", err)
 	}
 	// Restrict is the default and writes no clause, so existing CREATE TABLEs are unchanged.

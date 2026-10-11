@@ -1,0 +1,3 @@
+app/Comment.alder:9:21 E0011 `@cascade` goes after `@ref Post`: write `@ref Post @cascade`
+app/Comment.alder:10:47 E0011 a `@ref` column takes one delete rule; it has `@cascade` and `@setNull`
+app/Comment.alder:16:9 E0003 expected Int, got Text

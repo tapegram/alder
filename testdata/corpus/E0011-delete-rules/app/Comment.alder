@@ -1,0 +1,16 @@
+module Comment
+
+import Post
+
+type CommentId = brand Text
+
+table Comment {
+  id: CommentId @id,
+  post: Post.PostId @cascade @ref Post,
+  reply: Maybe Post.PostId @ref Post @cascade @setNull,
+  body: Text.NonEmpty,
+}
+
+-- a misplaced delete rule does not hide the module's other errors
+count : Int
+count = "none"

@@ -110,6 +110,8 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 	for _, m := range c.allModules() {
 		c.declareTypeNames(m)
 	}
+	quiet := c.reservePrelude()
+	checkStart := len(bag.Items)
 	// App's Session exists from here on, so a type may name it (`{ s: Session }`); defineApp
 	// fills its fields in pass 3.
 	c.session = &types.Record{Module: "App", Name: "Session"}
@@ -159,6 +161,7 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 		c.ctx(app).checkApp()
 	}
 	c.checkInferredDictKeys() // anything recorded after the last body
+	quietErrors(bag, checkStart, quiet)
 	return c.result()
 }
 

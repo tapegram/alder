@@ -322,7 +322,7 @@ update : Msg -> Model -> Session -> Task Nav
 
 `update` returns a `Task` (chapter 7) that ends in a `Nav`:
 
-```alder
+```alder fragment
 -- Built in; shown for reference.
 type Nav
   = Rerender                 -- re-run load and view for this page, patch the result in

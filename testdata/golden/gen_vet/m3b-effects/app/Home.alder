@@ -1,11 +1,11 @@
 module Home
 
-import Order
+import Purchase
 import Shop
 
 page "/home" { } requires user
 
-type Model = { n: Int, orders: List Order.Order }
+type Model = { n: Int, orders: List Purchase.Purchase }
 
 load : Params -> Session -> Query Model
 load params session = {

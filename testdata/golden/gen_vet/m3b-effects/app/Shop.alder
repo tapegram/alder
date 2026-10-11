@@ -1,12 +1,12 @@
 module Shop
 
 import Customer
-import Order
+import Purchase
 
 -- M3b emission corpus: every column kind in conditions, @unique/@ref/@updated, a table passed
 -- as a value, an effect in a record field, Nav built and matched in pure code, capabilities with
 -- zero, one and two parameters, and the effectful stdlib. The tables are in their own modules
--- (`Order`, `Customer`), and this module queries them through their imports.
+-- (`Purchase`, `Customer`), and this module queries them through their imports.
 
 capability Pay {
   charge : { amount: Float, card: Text } -> Task (Maybe Text),
@@ -35,46 +35,46 @@ isRedirect n = match n {
   _ -> False,
 }
 
-countIn : Table Order.Order -> Query Int
+countIn : Table Purchase.Purchase -> Query Int
 countIn t = Db.count (Db.from t)
 
 allOrders : Query Int
-allOrders = countIn Order
+allOrders = countIn Purchase
 
-search : Order.Status -> Date -> Time -> List Order.Status -> Select Order.Order
+search : Purchase.Status -> Date -> Time -> List Purchase.Status -> Select Purchase.Purchase
 search s d t ss =
-  Db.from Order
+  Db.from Purchase
     |> Db.where (Db.and [
-      Order.status.eq s,
-      Order.status.lt Shipped,
-      Order.late.eq (Just s),
-      Order.late.isJust,
-      Order.total.gt 1.5,
-      Order.qty.le 3,
-      Order.gift.ne True,
-      Order.day.ge d,
-      Order.shipDay.eq Nothing,
-      Order.code.contains "x",
-      Order.note.eq (Just "n"),
-      Order.created.lt t,
-      Order.status.in ss,
-      Order.day.in [d],
-      Order.late.in [Just s, Nothing],
+      Purchase.status.eq s,
+      Purchase.status.lt Shipped,
+      Purchase.late.eq (Just s),
+      Purchase.late.isJust,
+      Purchase.total.gt 1.5,
+      Purchase.qty.le 3,
+      Purchase.gift.ne True,
+      Purchase.day.ge d,
+      Purchase.shipDay.eq Nothing,
+      Purchase.code.contains "x",
+      Purchase.note.eq (Just "n"),
+      Purchase.created.lt t,
+      Purchase.status.in ss,
+      Purchase.day.in [d],
+      Purchase.late.in [Just s, Nothing],
     ])
-    |> Db.orderBy Order.status.asc
-    |> Db.orderBy Order.updated.desc
+    |> Db.orderBy Purchase.status.asc
+    |> Db.orderBy Purchase.updated.desc
     |> Db.offset 0
 
-conds : List (Condition Order.Order) -> Condition Order.Order
+conds : List (Condition Purchase.Purchase) -> Condition Purchase.Purchase
 conds cs = Db.or [Db.and cs, Db.not (Db.or cs)]
 
-either : List (Condition Order.Order) -> Select Order.Order
-either cs = Db.from Order |> Db.where (Db.or cs) |> Db.where (Db.not (Db.and []))
+either : List (Condition Purchase.Purchase) -> Select Purchase.Purchase
+either cs = Db.from Purchase |> Db.where (Db.or cs) |> Db.where (Db.not (Db.and []))
 
 seenBefore : Time -> Query (List Customer.Customer)
 seenBefore t = Db.all (Db.from Customer |> Db.where (Customer.seen.eq (Just t)))
 
-buy : Customer.UserId -> Text -> Task Order.OrderId
+buy : Customer.UserId -> Text -> Task Purchase.OrderId
 buy u code = {
   let today <- Date.today
   let n <- Random.int { min: 1, max: 9 }
@@ -83,9 +83,9 @@ buy u code = {
   let bal <- Pay.balance
   let lim <- Pay.limit u n
   let r <- Http.post { url: "http://x", body: "b" }
-  let id <- Db.insert Order { buyer: u, late: Nothing, total: bal, qty: lim, gift: False, day: today, shipDay: Nothing, code: code, note: paid }
-  let _ <- Db.update Order id (\o -> { o | status: Paid })
-  let found <- Db.get Order id
+  let id <- Db.insert Purchase { buyer: u, late: Nothing, total: bal, qty: lim, gift: False, day: today, shipDay: Nothing, code: code, note: paid }
+  let _ <- Db.update Purchase id (\o -> { o | status: Paid })
+  let found <- Db.get Purchase id
   match found {
     Just o -> Task.succeed o.id,
     Nothing -> Task.fail "lost",
@@ -104,11 +104,11 @@ limits u = List.map (Pay.limit u) [1, 2]
 allLimits : Customer.UserId -> Query (List Int)
 allLimits u = Query.all (limits u)
 
-firstQ : Query (Maybe Order.Order)
+firstQ : Query (Maybe Purchase.Purchase)
 firstQ = Db.first (search Open (Date.fromText "2026-01-01" |> Maybe.withDefault (Time.toDate Time.epoch)) Time.epoch [])
 
-remove : Order.OrderId -> Task Unit
-remove id = Db.delete Order id
+remove : Purchase.OrderId -> Task Unit
+remove id = Db.delete Purchase id
 
 fetch : Text -> Task Text
 fetch url = {
@@ -121,22 +121,22 @@ fetch url = {
   }
 }
 
-createdBefore : Time -> Select Order.Order
-createdBefore t = Db.from Order |> Db.where (Order.created.lt t) |> Db.orderBy Order.created.desc
+createdBefore : Time -> Select Purchase.Purchase
+createdBefore t = Db.from Purchase |> Db.where (Purchase.created.lt t) |> Db.orderBy Purchase.created.desc
 
-newestFirst : Select Order.Order
-newestFirst = Db.from Order |> Db.orderBy Order.created.desc
+newestFirst : Select Purchase.Purchase
+newestFirst = Db.from Purchase |> Db.orderBy Purchase.created.desc
 
 -- conditions on Maybe columns are two-valued: `Nothing` rows are matched by `in [.., Nothing]`
 -- and by the negation of a condition they do not satisfy
-lateIn : Order.Status -> Select Order.Order
-lateIn s = Db.from Order |> Db.where (Order.late.in [Just s, Nothing]) |> Db.orderBy Order.code.asc
+lateIn : Purchase.Status -> Select Purchase.Purchase
+lateIn s = Db.from Purchase |> Db.where (Purchase.late.in [Just s, Nothing]) |> Db.orderBy Purchase.code.asc
 
-lateNothing : Select Order.Order
-lateNothing = Db.from Order |> Db.where (Order.late.in [Nothing])
+lateNothing : Select Purchase.Purchase
+lateNothing = Db.from Purchase |> Db.where (Purchase.late.in [Nothing])
 
-notLateIn : List (Maybe Order.Status) -> Select Order.Order
-notLateIn ss = Db.from Order |> Db.where (Db.not (Order.late.in ss)) |> Db.orderBy Order.code.asc
+notLateIn : List (Maybe Purchase.Status) -> Select Purchase.Purchase
+notLateIn ss = Db.from Purchase |> Db.where (Db.not (Purchase.late.in ss)) |> Db.orderBy Purchase.code.asc
 
-notNote : Text -> Select Order.Order
-notNote t = Db.from Order |> Db.where (Db.not (Order.note.eq (Just t)))
+notNote : Text -> Select Purchase.Purchase
+notNote t = Db.from Purchase |> Db.where (Db.not (Purchase.note.eq (Just t)))

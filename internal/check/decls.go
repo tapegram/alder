@@ -372,6 +372,7 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 	for _, f := range d.Fields {
 		ft := mc.typeOf(f.Type, nil)
 		mc.deferDefault(f, ft)
+		c.checkDeleteRules(f)
 		rec.Fields = append(rec.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
 		info.Columns[f.Name] = ft
 		generated := false
@@ -392,7 +393,7 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 			case "ref":
 				mc.checkRef(f, a, ft)
 			case "unique", "cascade", "restrict":
-				// the parser reports a delete rule without `@ref`, or a second one
+				// checkDeleteRules reports a delete rule without `@ref`, before it, or a second one
 			case "setNull":
 				if _, ok := maybeOf(ft); !ok && !types.IsErr(ft) {
 					c.errorf(diag.TypeMismatch, a.Span, "`@setNull` needs a `Maybe` reference, got `%s`; write `%s: Maybe %s`", types.String(ft), f.Name, types.String(ft))
@@ -410,6 +411,38 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 	}
 	c.tables[c.key(mc.m.Name, d.Name)] = info
 	c.u.RegisterTable(info)
+}
+
+// deleteRules are the attributes that say what deleting a referenced row does to a `@ref`
+// column's row; `@restrict` is the default.
+var deleteRules = map[string]bool{"cascade": true, "restrict": true, "setNull": true}
+
+// checkDeleteRules reports (E0011) a delete rule (`@cascade`, `@restrict`, `@setNull`) on a
+// field without `@ref`, one written before `@ref Table`, and a second delete rule on one field.
+func (c *Checker) checkDeleteRules(f *syntax.Field) {
+	ref := -1
+	for i, a := range f.Attrs {
+		if a.Name == "ref" && ref < 0 {
+			ref = i
+		}
+	}
+	first := ""
+	for i, a := range f.Attrs {
+		if !deleteRules[a.Name] {
+			continue
+		}
+		switch {
+		case ref < 0:
+			c.errorf(diag.InvalidDecl, a.Span, "`@%s` belongs on a `@ref` column, after `@ref Table`", a.Name)
+		case i < ref:
+			c.errorf(diag.InvalidDecl, a.Span, "`@%s` goes after `@ref %s`: write `@ref %s @%s`", a.Name, f.Attrs[ref].Arg, f.Attrs[ref].Arg, a.Name)
+		case first != "":
+			c.errorf(diag.InvalidDecl, a.Span, "a `@ref` column takes one delete rule; it has `@%s` and `@%s`", first, a.Name)
+		}
+		if first == "" {
+			first = a.Name
+		}
+	}
 }
 
 // checkRef validates `@ref T` after all tables have placeholders; the referenced table's id type is read from its decl.
@@ -713,6 +746,61 @@ func (mc *modCtx) reserveGenerated(where string, fixed map[string]string) {
 			c.errorf(ReservedName, d.GetSpan(), "`%s` is reserved in %s (generated for %s); rename it", name, where, what)
 		}
 	}
+}
+
+// reservePrelude reports E0012 for a type, table, form or union of an app module that takes a
+// Prelude type's name (`form Query`): every use of the name in that module would read as the
+// declaration, not the Prelude type, so its other errors would be a cascade of the name. It
+// returns the files of the modules it reported, whose other errors quietErrors drops; those
+// modules' bodies are not checked.
+func (c *Checker) reservePrelude() map[string]bool {
+	prelude := map[string]bool{}
+	if m := c.prog.Std["Prelude"]; m != nil {
+		for _, d := range m.Decls {
+			if td, ok := d.(*syntax.TypeDecl); ok {
+				prelude[td.Name] = true
+			}
+		}
+	}
+	quiet := map[string]bool{}
+	for _, name := range c.prog.Order {
+		m := c.prog.Modules[name]
+		for _, d := range c.live(m) {
+			var decl, kind string
+			switch d := d.(type) {
+			case *syntax.TypeDecl:
+				decl, kind = d.Name, "type"
+			case *syntax.TableDecl:
+				decl, kind = d.Name, "table"
+			case *syntax.FormDecl:
+				decl, kind = d.Name, "form"
+			}
+			if prelude[decl] {
+				c.errorf(ReservedName, d.GetSpan(), "`%s` is a Prelude type; name the %s differently (for example `%s%s`)", decl, kind, decl, strings.ToUpper(kind[:1])+kind[1:])
+				quiet[m.File] = true
+				if c.prog.Failed == nil {
+					c.prog.Failed = map[string]bool{}
+				}
+				c.prog.Failed[name] = true
+			}
+		}
+	}
+	return quiet
+}
+
+// quietErrors drops the errors reported from index from on in the files of quiet, except E0012:
+// in a module that declares a Prelude type's name they are a cascade of it.
+func quietErrors(bag *diag.Bag, from int, quiet map[string]bool) {
+	if len(quiet) == 0 {
+		return
+	}
+	keep := bag.Items[:from]
+	for _, d := range bag.Items[from:] {
+		if d.Severity != "error" || d.Code == ReservedName || !quiet[d.Span.File] {
+			keep = append(keep, d)
+		}
+	}
+	bag.Items = keep
 }
 
 // ReservedName is E0012: a declaration takes the name of a type the compiler generates.

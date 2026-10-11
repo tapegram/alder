@@ -298,7 +298,8 @@ func (s *SQLite) Delete(ctx context.Context, tx Tx, table string, idCol, id stri
 	}
 	_, err = q.ExecContext(ctx, "DELETE FROM "+quote(SQLName(table))+" WHERE "+quote(idCol)+" = ?", id)
 	if isForeignKey(err) {
-		return &eff.ErrFail{Msg: shortName(table) + " " + id + " is referenced by another row"}
+		// SQLite does not say which row blocks: it may be one a `@cascade` chain reaches.
+		return &eff.ErrFail{Msg: shortName(table) + " " + id + " is referenced by another row, directly or through rows that `@cascade` would delete with it"}
 	}
 	return err
 }

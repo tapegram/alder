@@ -279,3 +279,54 @@ func TestPoisonedBindKeepsAnnotation(t *testing.T) {
 		t.Errorf("unannotated: %q", got)
 	}
 }
+
+// A type, table, form or union of an app module may not take a Prelude type's name (E0012):
+// every use of the name in the module would read as the declaration, so the module's other
+// errors would be a cascade of it; they are not reported until it is renamed.
+func TestReservedPreludeNames(t *testing.T) {
+	cases := []struct{ name, src, want string }{
+		{"form", "form Query = {\n  q: Text,\n}\n\nx : Query Int\nx = Query.succeed 1\n", "E0012 `Query` is a Prelude type; name the form differently (for example `QueryForm`)"},
+		{"type", "type Task = { n: Int }\n", "E0012 `Task` is a Prelude type; name the type differently (for example `TaskType`)"},
+		{"union", "type Maybe = Yes | No\n", "E0012 `Maybe` is a Prelude type; name the type differently (for example `MaybeType`)"},
+		{"table", "type OrderId = brand Text\n\ntable Order {\n  id: OrderId @id,\n}\n", "E0012 `Order` is a Prelude type; name the table differently (for example `OrderTable`)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var got []string
+			module := "M"
+			if c.name == "table" {
+				module = "Order" // a table is declared in its own module
+			}
+			for _, d := range checkModule(t, "module "+module+"\n\n"+c.src) {
+				got = append(got, d.Code+" "+d.Message)
+			}
+			if len(got) != 1 || got[0] != c.want {
+				t.Fatalf("got %q want one %q", got, c.want)
+			}
+		})
+	}
+}
+
+// A delete rule (`@cascade`, `@restrict`, `@setNull`) belongs on a `@ref` column, after
+// `@ref Table`, and a column takes one; a misuse is E0011 from the checker, so it does not hide
+// the module's other errors.
+func TestDeleteRules(t *testing.T) {
+	src := func(field string) string {
+		return "module C\n\ntype CId = brand Text\n\ntable C {\n  id: CId @id,\n  " + field + ",\n}\n\nx : Int\nx = \"one\"\n"
+	}
+	for _, c := range []struct{ field, want string }{
+		{"parent: Maybe CId @ref C @setNull", ""},
+		{"parent: CId @cascade", "E0011 7:15 `@cascade` belongs on a `@ref` column, after `@ref Table`"},
+		{"parent: CId @cascade @ref C", "E0011 7:15 `@cascade` goes after `@ref C`: write `@ref C @cascade`"},
+		{"parent: Maybe CId @ref C @cascade @setNull", "E0011 7:37 a `@ref` column takes one delete rule; it has `@cascade` and `@setNull`"},
+	} {
+		var got []string
+		for _, d := range checkModule(t, src(c.field)) {
+			got = append(got, fmt.Sprintf("%s %d:%d %s", d.Code, d.Span.Start.Line, d.Span.Start.Col, d.Message))
+		}
+		// the module's other error (`x = "one"`) is reported as well
+		if len(got) == 0 || !strings.Contains(got[len(got)-1], "E0003") || c.want == "" && len(got) != 1 || c.want != "" && (len(got) != 2 || got[0] != c.want) {
+			t.Errorf("%s: got %q, want %q and the E0003", c.field, got, c.want)
+		}
+	}
+}

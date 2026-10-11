@@ -1,0 +1,1 @@
+app/Index.alder:10:1 E0012 `Query` is a Prelude type; name the form differently (for example `QueryForm`)

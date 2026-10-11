@@ -1,0 +1,26 @@
+module Index
+
+page "/" { q: Text = "" }
+
+type Model = { q: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { q: params.q }
+
+form Query = {
+  q: Text,
+}
+
+msg Search form Query
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Search p -> Task.succeed (Redirect (Index { q: p.form.q })),
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <form submit={Search}>
+    <Input field="q" label="Search" />
+    <button>Search</button>
+  </form>
