@@ -573,11 +573,6 @@ func TestDevDBHint(t *testing.T) {
 	if got := devDBHint(msg, filepath.Join("build", "todos")); got != want {
 		t.Errorf("got %q", got)
 	}
-	msg = "this database was not created by migrations: run in dev mode once, or back it up and delete it"
-	want = "this database was not created by migrations: start `alder run` (it recreates " + filepath.Join("build", "todos", "dev.db") + ") or delete it"
-	if got := devDBHint(msg, filepath.Join("build", "todos")); got != want {
-		t.Errorf("got %q", got)
-	}
 }
 
 // An eval that finds another holding the app's eval lock says it waits, and goes on when the

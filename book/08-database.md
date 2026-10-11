@@ -359,27 +359,280 @@ A few rules follow from the mapping:
 Every value reaches SQLite as a parameter, never as part of the SQL text,
 so no input can change what a query does.
 
-## Schema changes
+## Migrations
 
-When an app starts, the runtime creates the tables (`Ensure` in
-`rt/db/sqlite.go`): the generated `Serve` calls it before it serves the
-first request, and so do tests (`TestGen_RunTodos` in
-`internal/gen/gen_test.go`). It keeps two things in a table of its own, `_alder_meta`: a
-hash of the `CREATE TABLE` statements, sorted so that the order of your
-`table` declarations does not matter, and the storage format version of
-the runtime that created the database (`db.Format`, now `1`, raised
-whenever the runtime changes how a table is laid out). If both match,
-nothing happens. If your tables changed since the database was created, or
-it was created by a runtime with another format:
+Your users' data has to survive when the tables change. A **migration**
+is a file of SQL statements that turns a database with the old tables
+into one with the new tables, keeping the rows. Alder writes them: you
+change a `table`, run `alder migrate`, read the file, and commit it. The
+app applies the files it has not had yet every time it starts.
 
-- **In dev mode** every table in the database is dropped, except
-  SQLite's own (`sqlite_*`) and `_alder_meta`, and the app's tables are
-  created again, empty. That includes tables your Go capability code
-  created itself. Your dev data is lost on every schema change; that is
-  the price of not writing migrations while the schema is still moving.
-- **Otherwise** the app refuses to start and changes none of your tables
-  (only `_alder_meta` is created, if it was missing). The error names the
-  tables that changed:
+### The files
+
+An app with migrations has a `migrations/` directory beside `app/`. Both
+examples have one:
+
+```text
+examples/blog/migrations/
+  0001_initial.sql    -- creates every table
+  schema.json         -- the tables as of the last migration
+```
+
+Each `NNNN_<name>.sql` is one migration, numbered in the order they
+apply. `schema.json`, the **snapshot**, records every table, column,
+type, default and attribute as of the last migration; `alder migrate`
+compares your `table` declarations with it. Commit the whole directory:
+the executable carries the `.sql` files inside it (chapter 13).
+
+For your own app, run `alder migrate` once, from the first table on:
+with no `migrations/` it creates one holding `0001_initial.sql`, which
+creates every table (an app without migrations loses its data on every
+change: "Without migrations", below).
+
+### A change, step by step
+
+The steps below were run on a copy of the blog (chapter 14):
+`cp -R examples/blog /tmp/blog`, then `cd /tmp/blog`. First, give posts a
+summary. Add the field to `table Post` in `app/Post.alder`:
+
+```alder fragment
+  created: Time @created,
+  summary: Maybe Text = Nothing,
+}
+```
+
+The default `= Nothing` lets every `Db.insert Post` in the blog leave the
+field out. The one test that builds a whole `Post` by hand needs
+`summary: Nothing` too (the checker points at it). Now the tables are
+ahead of the migrations, and the compiler says so:
+
+```text
+$ alder check
+migrations/schema.json:1:1: error[E0019]: the schema changed since migration 0001 (table Post: column summary): run `alder migrate`
+```
+
+`build`, `run`, `test` and `eval` refuse the app with the same error.
+Run the command it names:
+
+```text
+$ alder migrate
+wrote migrations/0002_add_summary.sql
+  add column Post.summary
+updated migrations/schema.json
+```
+
+```text
+$ cat migrations/0002_add_summary.sql
+-- alder migration 0002_add_summary
+-- from 3fa31c8ee016
+-- to c709adc8b82b
+-- step: add column Post.summary
+
+ALTER TABLE "Post__Post" ADD COLUMN "summary" TEXT;
+```
+
+The `--` lines are the header: `from` and `to` are short fingerprints
+(*hashes*) of the tables before and after the file, and the `step:`
+lines say in words what the statements below them do, one per line.
+The runtime runs each file in a transaction of its own. Read the file,
+then commit it with `schema.json`.
+
+Next, rename the field. A rename looks exactly like a removed field and
+an added one, so say it is a rename with `@renamed "old"` (above, under
+Tables):
+
+```alder fragment
+  excerpt: Maybe Text = Nothing @renamed "summary",
+```
+
+```text
+$ alder migrate
+wrote migrations/0003_rename_summary.sql
+  rename column Post.summary to excerpt
+updated migrations/schema.json
+```
+
+The file's statement is
+`ALTER TABLE "Post__Post" RENAME COLUMN "summary" TO "excerpt";`, which
+keeps every post's summary. Without `@renamed`, the migration would drop
+`summary`, with its data, and add an empty `excerpt`. Once the migration
+exists you may delete `@renamed "summary"`: `alder check` stays clean,
+because the snapshot already says `excerpt`.
+
+Last, remove the field. `--dry-run` prints the file without writing it:
+
+```text
+$ alder migrate --dry-run
+-- alder migration 0004_drop_excerpt
+-- from 7af9d614a3af
+-- to 3fa31c8ee016
+-- step: drop column Post.excerpt
+-- DROPS DATA: column Post.excerpt
+
+ALTER TABLE "Post__Post" DROP COLUMN "excerpt";
+
+dry run: migrations/0004_drop_excerpt.sql not written
+```
+
+```text
+$ alder migrate
+wrote migrations/0004_drop_excerpt.sql
+  drop column Post.excerpt
+!! DROPS DATA: column Post.excerpt
+updated migrations/schema.json
+```
+
+**A migration never loses data silently.** Every step that can lose data
+is marked `DROPS DATA`, in the output (`!!`) and in the file's header.
+Read those lines before you commit. A migration you have not shared yet
+can be thrown away: delete the file, restore the snapshot with
+`git checkout migrations/schema.json`, change the tables, and run
+`alder migrate` again. Once a migration has run against a database you
+keep, never edit or delete it; write the next one instead.
+
+The file's name comes from its steps (`add_summary`, `rename_summary`,
+`drop_excerpt`, `create_comment`, `change_post` for a rebuild, below), at
+most 40 characters; `--name some_name` chooses it instead. Run with
+nothing changed, `alder migrate` writes nothing and prints
+`no changes since 0004_drop_excerpt`.
+
+### What a change becomes
+
+- **A new `Maybe` field** with no default (or `= Nothing`) is
+  `ADD COLUMN`; existing rows get `Nothing`.
+- **A new field that is not a `Maybe`** needs a default to fill the rows
+  that already exist. Without one, `alder migrate` writes nothing and
+  says ``Post.views: a new non-null column needs a default (`= 0`) so
+  existing rows can be filled`` (if no `Db.insert` has refused to
+  compile first). A new `@ref` field has no possible
+  default, so add it as a `Maybe` first.
+- **A removed field or table** is `DROP COLUMN` or `DROP TABLE`, marked
+  `DROPS DATA`.
+- **A rename** declared with `@renamed` is `RENAME COLUMN` or
+  `RENAME TO`.
+- **Anything else is a rebuild.** SQLite's `ALTER TABLE` can only add,
+  drop and rename columns. To change a type, make a field a `Maybe` or
+  not, change a union's constructors, add or remove `@unique`, `@ref` or
+  a delete rule, or add a field that is not a `Maybe`, the migration
+  builds the table again: it creates the new table under a temporary
+  name, copies every row into it, converting each value, drops the old
+  table and renames the new one. Adding `views: Int = 0` to `Post`:
+
+```text
+-- step: rebuild table Post: Post.views: new column filled with 0
+
+CREATE TABLE "Post__Post__alder__new" ("id" TEXT NOT NULL PRIMARY KEY, "slug" TEXT NOT NULL UNIQUE, "title" TEXT NOT NULL, "body" TEXT NOT NULL, "published" INTEGER NOT NULL CHECK ("published" IN (0, 1)), "author" TEXT NOT NULL REFERENCES "User__User"("id"), "created" TEXT NOT NULL, "views" INTEGER NOT NULL) STRICT;
+INSERT INTO "Post__Post__alder__new" ("id", "slug", "title", "body", "published", "author", "created", "views") SELECT "id", "slug", "title", "body", "published", "author", "created", 0 FROM "Post__Post";
+DROP TABLE "Post__Post";
+ALTER TABLE "Post__Post__alder__new" RENAME TO "Post__Post";
+CREATE INDEX IF NOT EXISTS "Post__Post__author" ON "Post__Post"("author");
+```
+
+A conversion that cannot keep every value is marked `DROPS DATA` and
+says what is lost: `Float` to `Int` cuts off fractions; `Text` to `Int`
+keeps the leading whole number (`'12abc'` becomes `12`) and turns other
+text into `0`; a removed constructor deletes the rows that hold it; a
+`Maybe` field made required replaces `Nothing` with the default, or,
+without one, deletes those rows. A change with no sensible conversion
+(`Date` to `Int`, say) is refused: remove the field and add one under a
+new name. Adding `@unique` to a column that holds duplicates fails when
+the migration runs, and nothing is changed.
+
+A default lives in the program, not the database, so changing only a
+default needs no migration. Every `@ref` column gets an index (the
+`CREATE INDEX` line above), so finding a post's comments does not read
+every comment.
+
+### When the app starts
+
+Before it serves anything, the executable brings its database up to
+date (`db.Migrate`, in `rt/db/migrate.go`):
+
+1. It reads `_alder_migrations`, the table listing the files applied.
+2. It applies every other file, in order, each in its own transaction:
+   the statements, a check that every `@ref` still points at a row, and
+   the file's name into `_alder_migrations`.
+3. It checks that the tables are exactly the app's.
+
+The first start on an empty database logs each file (with a date and
+time in front of each line); the next start applies nothing:
+
+```text
+$ ALDER_DB=blog.db ALDER_ADDR=127.0.0.1:8080 ALDER_SECRET=… ./build/blog/blog
+info: migrated 0001_initial
+info: migrated 0002_add_summary
+info: migrated 0003_rename_summary
+info: migrated 0004_drop_excerpt
+listening on 127.0.0.1:8080
+```
+
+Before changing anything it checks that each file's `from` is where the
+database, or the file before it, ends. Otherwise it prints `alder: ` and
+the reason, and exits 1. The reasons, word for word:
+
+- A statement fails: the file's transaction is undone, the files before
+  it stay applied, and the app stops with
+  `migration 0003_rename_summary failed: <SQLite's error>`.
+- A file deletes rows that other rows still point at:
+  `migration 0005_x: rows in Comment refer to rows this migration deletes: delete or re-point them first`.
+- A file the database has had is gone:
+  `migration 0003_rename_summary is recorded as applied but its file is missing`.
+- A new file is numbered before one the database has had (two branches
+  each added a `0005`):
+  `migration 0005_a is not applied but 0005_b, which comes after it, is: migrations apply in order, so give it a number after 0005_b`.
+- The files do not lead from the database's tables to the app's:
+  `migration 0003_add_views expects the schema <hash> but the database is at <hash> (is a file missing, or was the database changed outside migrations?)`,
+  or `db: the database's tables are not the app's schema: 0004_drop_excerpt leads to the schema <hash>, but the app's is <hash>: the migrations do not produce the app's schema`.
+- Someone changed the tables by hand (here, added a column with the
+  `sqlite3` tool):
+
+```text
+alder: db: the database's tables are not the app's schema: the database was changed outside migrations since 0004_drop_excerpt (changed tables: Post.Post); back it up and restore it, or run in dev mode to recreate it
+```
+
+`alder check` catches most of these first: a missing or edited file is
+E0019 (`migration 0004_drop_excerpt does not follow
+0002_add_summary: a file is missing or edited; regenerate it`), and so is
+a malformed one (`migration 0002_x: line 6: a statement must end in `;``).
+
+**A database from before migrations.** An app that ran before it had
+`migrations/` has a database `Ensure` made (below), with tables but no
+`_alder_migrations`. If its tables are exactly what one of the files
+leads to, usually `0001_initial`, the executable *adopts* it: it records
+that file and the ones before it as applied without running them, logs
+`adopted the database at 0001_initial`, and applies the rest. If they
+match no file, it refuses:
+`this database was not created by migrations and matches none of them: back it up, then recreate it (or add a migration that produces its schema)`.
+
+**Dev mode** (`alder run`, or `ALDER_DEV=1`) treats the database as
+disposable. Where production refuses because the database is not where
+the files say (made outside migrations and matching none, changed by
+hand, not what the files produce, or of another storage format), dev
+mode drops every table, creates the app's tables again, empty, records
+every file as applied, and logs why:
+
+```text
+info: recreated the database (dev mode): it was changed outside migrations
+```
+
+A file that is missing or out of order is refused in dev mode too: the
+files, not the database, are wrong. `alder eval --run` and the REPL never
+recreate the database; they add where to delete it to start again.
+
+### Tests run through migrations
+
+`alder test` builds each test's fresh in-memory database by applying the
+migrations, as a production start would. So a passing run also shows
+that the migrations make the tables the app expects. When they do not
+(a hand-edited file, say), every test fails with
+``the migrations do not produce the app's schema: run `alder migrate` ``.
+
+### Without migrations
+
+An app without `migrations/` gets its tables from `Ensure`
+(`rt/db/sqlite.go`), which records their hash and the storage format
+(`db.Format`, now `1`) in `_alder_meta`. If either differs at start,
+dev mode recreates the tables, empty; otherwise the app refuses:
 
 ```
 db: schema mismatch: the database's schema (hash 5de59b25abca) differs from the app's (hash 40d037c4462a); changed tables: Todo.Todo; run in dev mode to recreate the database
@@ -391,7 +644,6 @@ or, for a database from a runtime with an older format:
 db: database format v0 is older than this runtime (v1); run in dev mode to recreate the database
 ```
 
-Migrations, which would keep the data across a change, are planned.
 
 ## Beyond CRUD
 

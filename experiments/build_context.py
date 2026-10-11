@@ -28,7 +28,7 @@ DEFAULT_CHAPTERS = ["03", "04", "05", "06", "07", "08", "09", "10"]
 HUMAN_SECTIONS = {
     "06": ["How a request runs"],
     "07": ["How effects run", "Implementing a capability"],
-    "08": ["How tables are stored", "Schema changes"],
+    "08": ["How tables are stored", "Migrations"],
     "10": ["2. Running the tests", "6. What a trace says",
            "7. Choosing tests, and output for programs", "8. What cannot be tested yet"],
 }

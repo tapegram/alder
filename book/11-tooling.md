@@ -9,7 +9,8 @@ the app every time you save a file and reloads the browser. As of M4a,
 verifies this book's Alder blocks: its modules and declarations are
 type-checked, its `eval=` and `error=` expressions are evaluated, and its
 other expressions are parsed. As of M4b, `alder test` runs the app's
-tests. `fmt`, holes beyond W0002 and `query` are planned.
+tests. As of M5b, `alder migrate` writes the app's migrations. `fmt`,
+holes beyond W0002 and `query` are planned.
 
 ## Project layout
 
@@ -62,6 +63,7 @@ alder run            build and run with the dev database, reloading on change
 alder eval <expr>    evaluate an expression against the app: value : Type
 alder repl           a session: let, evaluate, :type, :run, :run!, :html, :reload
 alder test           run every `test`, each against a fresh database: ok/FAIL
+alder migrate        write the next migration after a change to the tables
 alder fmt            rewrite every file in canonical format
 alder dump <path>    print a file's tokens, AST, or an app's IR
 alder explain <id>   explain a diagnostic code
@@ -123,8 +125,10 @@ The executable reads five environment variables
 | `ALDER_STATIC` | the directory served under `/static/` | the `static/` directory next to the executable |
 
 Development mode shows a failed request's error text in the page (as an
-HTML comment), logs every effect step, lets a changed schema drop and
-recreate the tables (chapter 8), and accepts a missing `ALDER_SECRET`.
+HTML comment), logs every effect step, lets a database that is not
+where the app's migrations say (changed by hand, say, or, for an app
+without migrations, made for other tables) be dropped and created again,
+empty (chapter 8, "Migrations"), and accepts a missing `ALDER_SECRET`.
 Once it is listening, the server prints the address:
 
 ```
@@ -196,8 +200,10 @@ The app runs in development mode (`ALDER_DEV=1`, see the table above),
 with its database at `build/<app>/dev.db` (`ALDER_DB`) and the static
 files straight from your `<dir>/static/` (`ALDER_STATIC`). `ALDER_SECRET`
 and the rest of your environment are passed on to it. Because it is in
-development mode, a change to your tables drops every table and creates
-them again, empty (chapter 8, "Schema changes"). To start from an empty database,
+development mode, a dev database that does not match the app is dropped
+and created again, empty (chapter 8, "Migrations"); an app with
+migrations otherwise keeps its dev data across a change, through
+`alder migrate`. To start from an empty database,
 stop `alder run` and delete `build/<app>/dev.db`. Two `alder run`s of the
 same app started from the same directory (or an `alder run` and an
 `alder build`) share `build/<app>/` and `dev.db`, and each overwrites what
@@ -586,13 +592,62 @@ Like `alder eval`, `alder test` compiles the app through the scratch
 runner (chapter 13, "Running tests"): it writes only under
 `build/<app>/scratch/test/` of the working directory, and two runs for
 one app take turns on `build/<app>/scratch/test.lock`. The tests use no
-file database: each effect test has its own, in memory. The app's
+file database: each effect test has its own, in memory, made by
+applying the app's migrations when it has them (chapter 8). The app's
 `adapters/`, when it has one, is compiled in, so capability calls reach
 the real Go, and an error one returns is the failure `Cap.entry: <error>`,
 which `Test.run` gives as an `Err`; without it, a test that calls a
 capability fails with "capability … is not wired in tests". Ctrl-C stops
 the tests' process, and so does killing `alder test` in any way (the
 process exits when its standard input, a pipe `alder test` holds, closes).
+
+### `alder migrate`
+
+`alder migrate [dir] [--name slug] [--dry-run]` writes the next
+migration of the app in `dir` (default `.`): chapter 8, "Migrations",
+walks through a change. It checks the app as `alder check` does, except
+that it never reports E0019 (it is what fixes it), compares the tables
+with `migrations/schema.json` (an empty schema when there is no
+`migrations/` yet, which it creates), and writes
+`migrations/NNNN_<slug>.sql` and the new `schema.json`:
+
+```text
+$ alder migrate
+wrote migrations/0004_drop_excerpt.sql
+  drop column Post.excerpt
+!! DROPS DATA: column Post.excerpt
+updated migrations/schema.json
+```
+
+Each step is one indented line, and a step that loses data is followed
+by a `!! DROPS DATA:` line. The slug is `--name`'s (lower-case letters,
+digits and single underscores), or `initial` for the first migration,
+or made from the steps: `create_<table>`, `drop_<table>`,
+`rename_<old name>`, `add_<field>`, `drop_<field>`, `change_<table>`
+for a rebuild, in lower case with `_` between words
+(`publishedAt` is `published_at`), each once, joined with `_` while the
+whole stays within 40 characters. `--dry-run` prints the file it would
+write, followed by `dry run: migrations/NNNN_<slug>.sql not written`,
+and writes nothing. With no change since the last migration it prints
+`no changes since NNNN_<slug>` and writes nothing, except that a change
+of a default alone (defaults are not in the database) is recorded in
+`schema.json`: `updated migrations/schema.json (defaults only)`.
+
+Exit 0 when it wrote a migration or found no change. Exit 1 for check
+errors (printed as `alder check` prints them), for a change no migration
+can make (the reason on standard output after `alder migrate: `, such as
+``Post.views: a new non-null column needs a default (`= 0`) so existing
+rows can be filled``), and for a `migrations/` directory that disagrees
+with itself, on standard error:
+
+```text
+alder migrate: migrations/schema.json does not match 0002_add_bio.sql's result; restore the snapshot from git or regenerate the migration
+alder migrate: migrations/ has migration files but no schema.json, the schema they lead to: restore it from git
+alder migrate: migrations/schema.json has no migration file: restore the migrations from git, or delete schema.json to start again from 0001_initial
+```
+
+It never changes an existing migration file. Exit 2 for a usage error
+or a file that cannot be read or written.
 
 ### The book is verified
 
@@ -690,6 +745,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0016 | two pages answer the same path (`/x/{id}` and `/x/{slug}`, or `/x` and `/x/`) | — |
 | E0017 | a module named like a standard-library module (`Test`, `List`, `Http`, …): the stdlib's would shadow it; uses of its names are not reported separately | — |
 | E0018 | a table declared outside its own module (`table Comment` in `app/Post.alder` belongs in `app/Comment.alder`); reported once, at the declaration | — |
+| E0019 | the app's tables changed since its last migration (`migrations/schema.json` differs from the `table` declarations): run `alder migrate`; also `migrations/` with `.sql` files but no `schema.json`, a `schema.json` that does not read, a malformed file (``migration 0002_x: line 6: a statement must end in `;` ``), or files that do not chain (`migration 0003_sub does not follow 0001_initial: a file is missing or edited; regenerate it`). Reported at `migrations/schema.json:1:1` by every command but `alder migrate` | — |
 | E0022 | a table field's default that is not a literal (`count: Int = 1 + 1`): migrations write a table default into the database as SQL | — |
 | E0101 | `Db.get T x` where `x` is not `Id T` | `Db.from T \|> Db.where (T.<col>.eq x) \|> Db.first` when a column of `x`'s type exists |
 | E0102 | field access on a `Maybe` | `match` skeleton |

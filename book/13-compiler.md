@@ -994,7 +994,8 @@ var table__Todo__Todo = &db.Table[Todo__Todo]{
 It goes on with `Encode` and `Decode`, which convert each field with the
 helpers in `rt/db/encode.go` (`db.EncodeBool`, `db.DecodeDate`, …), and
 `ReadID`. When the app starts, the list of every descriptor is passed to
-`Ensure`, which creates the SQL tables (chapter 8, "Schema changes"). The
+`Ensure`, which creates the SQL tables (chapter 8, "Without migrations"),
+or, for an app with migrations, to `Migrate` (below, "Migrations"). The
 list is `Tables`, in a file of its own, `app__alder.go`:
 
 ```go
@@ -2367,10 +2368,110 @@ import (
 )
 ```
 
+### Migrations
+
+Chapter 8 shows migrations from the outside. Three pieces of code make
+them: `internal/migrate` writes a migration, `alder build` puts the files
+into the executable, and `db.Migrate` in `rt/db/migrate.go` applies them.
+
+**Writing one.** `alder migrate` (`cmd/alder/migrate.go`) checks the app
+and lowers it to the IR, as a build does. `migrate.FromProgram`
+(`internal/migrate/schema.go`) turns the IR's tables into a `Schema`: one
+`Table` per `table`, named `Post.Post` (module, then table), with its
+columns in declaration order and each column's type, `Maybe`-ness,
+constructors, `@unique`, `@ref`, delete rule and default as SQL text
+(`False` is `0`). `schema.json` is that value written as JSON with the
+tables sorted by name, and `Schema.Hash` is the same hash `Ensure`
+records: SHA-256 over the sorted `CREATE TABLE` statements. A file's
+`from` and `to` lines are the first 12 hex digits of the hashes on
+either side of it.
+
+`migrate.Diff(old, new)` (`internal/migrate/diff.go`) pairs the tables
+(by name, else by `@renamed`), then the columns of each pair, and emits
+steps in a fixed order, so the same change always gives the same file:
+
+1. drop the tables that are gone;
+2. rename the renamed ones;
+3. create the new ones;
+4. for each kept table, in name order: drop columns, rename columns, add
+   columns;
+5. rebuild the tables `ALTER TABLE` cannot change;
+6. drop, then create, `@ref` indexes.
+
+A table needs a rebuild when no `ALTER TABLE` gives it the new
+`CREATE TABLE` text byte for byte: SQLite stores that text, and the
+start-up check compares hashes of it. `ADD COLUMN` only appends a
+nullable column without `UNIQUE`; anything else (a new column that needs
+a default, a changed type, a reordered table) is a rebuild, which
+carries the table's renames, drops and additions in one step.
+`migrate.SQL` (`internal/migrate/sqlite.go`) writes each step's
+statements. A rebuild is SQLite's documented procedure: create
+`T__alder__new` with the new statement, `INSERT INTO … SELECT` one
+expression per new column (the default for an added column, the old name
+for a renamed one, a conversion such as `CAST("x" AS REAL)` for a changed
+type, with a `WHERE` that keeps only the rows the new column can hold),
+drop `T`, rename `T__alder__new` to `T`, and create its `@ref` indexes
+again. A conversion that loses values sets the step's `DropsData`.
+`migrate.Plan` is `Diff` plus `SQL` plus the hashes; `migrate.Render`
+writes the file, and `migrate.NextName` numbers it.
+
+**Building it in.** `alder build` copies `migrations/*.sql` (not
+`schema.json`) into `build/<app>/migrations/`
+(`buildkit.CopyMigrations`), and the generated `app__alder.go` embeds
+them with Go's `//go:embed`, which makes files part of the compiled
+program:
+
+```go
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
+
+// Migrations are the app's migrations in order (db.ReadMigrations): Serve applies those the
+// database has not had (db.Migrate).
+var Migrations = db.ReadMigrations(migrationsFS)
+```
+
+(from `testdata/golden/gen_migrations/want/app__alder.go`). An app
+without migrations gets `var Migrations []db.Migration`, and `Serve` calls
+`Ensure` instead. `buildkit.SchemaDrift` is E0019: it compares
+`FromProgram`'s hash with the snapshot's, so every command that checks
+the app refuses one whose tables are ahead of its migrations.
+
+**Applying them.** `db.ReadMigrations` parses each embedded file with
+`db.ParseMigration` into a `Migration`: its name, its `from` and `to`
+hashes, and its statements (the header stripped). `Serve` passes them to
+`store.MigrateLog` (`rt/db/migrate.go`), which works on one connection
+(`database/sql` otherwise hands each statement whichever pooled
+connection is free, and a `PRAGMA` holds only for its own connection):
+
+1. It reads `_alder_migrations` (name, time applied). A database with
+   app tables but no such table was made by `Ensure`: it is adopted at
+   the file whose `to` is its hash, or refused (dev: recreated).
+2. It refuses a recorded name with no file, or a pending file numbered
+   before a recorded one, and compares the live hash with the one
+   recorded after the last migration (drift).
+3. It checks the chain: the first pending file's `from` is the live
+   hash, each next `from` the previous `to`, the last `to` the app's
+   hash. Nothing has changed yet, so a refusal here leaves the database
+   as it was.
+4. It sets `PRAGMA foreign_keys = OFF`, outside any transaction (SQLite
+   ignores it inside one), and restores the old value when done. With
+   it on, a rebuild's `DROP TABLE "Post__Post"` would delete every
+   comment through `ON DELETE CASCADE`. `legacy_alter_table` stays off,
+   so `RENAME TO` also rewrites the `REFERENCES` of other tables.
+5. Each pending file runs in its own transaction: its statements, then
+   `PRAGMA foreign_key_check` (which lists rows whose reference points
+   at nothing, since nothing was enforced during the statements), then
+   the row in `_alder_migrations` and the live schema and hash in
+   `_alder_meta`, then `COMMIT`. A failure rolls that file back.
+6. Last, the live hash must equal the app's.
+
+`rtesting` and the `eval`/REPL mains call the same function, so a test's
+database and the dev database are made exactly as production's.
+
 ### What is still to come
 
-M4a added `alder eval` and the book verifier, M4b `alder test`, and M4c
-the REPL (above). See the design spec,
+M4a added `alder eval` and the book verifier, M4b `alder test`, M4c
+the REPL, and M5b migrations (above). See the design spec,
 [`docs/superpowers/specs/2026-10-09-m4-test-repl-design.md`](../docs/superpowers/specs/2026-10-09-m4-test-repl-design.md),
 "Milestones".
 

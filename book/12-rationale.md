@@ -247,6 +247,47 @@ checked. M5 needed nothing more. The blog's tests write their records in
 full, and E7's evidence is under "Open questions" below. This is
 revisited only if required fields prove demonstrably worse.
 
+### Migrations are generated from the tables and versioned **(tested: both examples, the blog's worked change)**
+
+The `table` declarations are the source of truth, as they were before
+migrations; a migration is derived from a change to them, never written
+by hand. `alder migrate` diffs the declarations against the snapshot of
+the last migration and writes the SQL, so the schema is not stated twice
+and an agent cannot write a migration that disagrees with the program.
+The files are numbered and committed: a database records which it has
+had, and every copy of the app, a teammate's dev database or production,
+goes through the same steps. Generating is a command a person runs and
+reads; applying is automatic, at start, because an app that serves
+before its tables match would fail on its first query. (Data
+migrations, changing values with Alder code, and changes made without
+downtime are not covered: a capability in Go can do the first.)
+
+**Renames are declared, never guessed** (`@renamed "old"`). A removed
+field next to an added one of the same type may be a rename or two
+unrelated changes; guessing wrong either loses data or keeps the wrong
+data. The attribute costs one line, and once the migration exists it
+may stay or go: the snapshot already has the new name.
+
+**A step that loses data is marked, never silent.** A dropped table or
+column, a conversion that cuts values (`Float` to `Int`), a removed
+constructor: each is generated, because refusing would leave the app
+unable to change, but each is printed with `!!` and written in the
+file's header as `DROPS DATA`, so the person reading the file before the
+commit sees it.
+
+**Tables ahead of their migrations do not check** (E0019). Every
+command but `alder migrate` refuses such an app, so a forgotten
+migration is a compile error, not a server that refuses to start in
+production. Tests run through the migrations for the same reason: a
+passing `alder test` shows the files make the tables the program uses.
+
+**Exact text, so some additions rebuild.** A new non-null field with a
+default could be `ADD COLUMN … DEFAULT 0`, but SQLite would then store a
+`CREATE TABLE` text with a `DEFAULT` the app's own statement lacks, and
+the start-up check compares those texts. The check was kept exact, and
+such a field rebuilds the table: slower on a large table, never a
+false alarm.
+
 ## Experiments
 
 Each experiment has a directory under `experiments/` with its prompt,

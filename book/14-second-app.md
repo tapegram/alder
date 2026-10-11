@@ -590,3 +590,8 @@ two accounts, both with the password `password`, and creates each one's
 
 Outside dev mode the stub refuses every login and logs that it must be
 replaced, as it must before the blog faces the internet.
+
+The blog's tables come from `examples/blog/migrations/` (chapter 8,
+"Migrations"): `0001_initial.sql` creates them, and `alder run` and
+`alder test` apply it. After a change to a `table`, run `alder migrate`;
+until then `alder check` reports E0019.
