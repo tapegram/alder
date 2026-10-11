@@ -1,0 +1,1 @@
+app/Todos/Index.alder:30:15 E0012 `Shown` is a constructor of the Prelude's test type `Answer`; name the constructor differently (for example `ShownStatus`)

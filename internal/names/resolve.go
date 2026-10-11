@@ -10,7 +10,7 @@ import (
 	"alder/internal/syntax"
 )
 
-var preludeTypes = map[string]bool{"Int": true, "Float": true, "Bool": true, "Text": true, "Unit": true, "Date": true, "Time": true, "List": true, "Maybe": true, "Result": true, "Dict": true, "Html": true, "Never": true, "Query": true, "Task": true, "Nav": true, "Error": true, "Form": true, "Table": true, "Id": true, "Insert": true, "Select": true, "Condition": true, "Order": true, "Page": true}
+var preludeTypes = map[string]bool{"Int": true, "Float": true, "Bool": true, "Text": true, "Unit": true, "Date": true, "Time": true, "List": true, "Maybe": true, "Result": true, "Dict": true, "Html": true, "Never": true, "Query": true, "Task": true, "Nav": true, "Error": true, "Form": true, "Table": true, "Id": true, "Insert": true, "Select": true, "Condition": true, "Order": true, "Page": true, "Doc": true, "Answer": true}
 var generatedTypes = map[string]bool{"Params": true, "Msg": true, "Session": true}
 
 // moduleScope indexes one module's declarations.
@@ -18,6 +18,7 @@ type moduleScope struct {
 	name   string
 	values map[string]bool
 	types  map[string]bool   // type, table, form, brand names
+	forms  map[string]bool   // form names
 	ctors  map[string]string // ctor → owning type name
 	brands map[string]bool   // brand names; the constructor is usable only in the declaring module
 	tables map[string]bool
@@ -38,7 +39,7 @@ type moduleScope struct {
 }
 
 func (p *Program) index(m *syntax.Module) *moduleScope {
-	s := &moduleScope{name: m.Name, values: map[string]bool{}, types: map[string]bool{}, ctors: map[string]string{}, brands: map[string]bool{}, tables: map[string]bool{}, fakeTables: map[string]string{}, caps: map[string]bool{}, capEntries: map[string]bool{}, entryCaps: map[string]string{}, comps: map[string]bool{}, columns: map[string]map[string]bool{}, imports: map[string]*syntax.Import{}, used: map[string]bool{}}
+	s := &moduleScope{name: m.Name, values: map[string]bool{}, types: map[string]bool{}, forms: map[string]bool{}, ctors: map[string]string{}, brands: map[string]bool{}, tables: map[string]bool{}, fakeTables: map[string]string{}, caps: map[string]bool{}, capEntries: map[string]bool{}, entryCaps: map[string]string{}, comps: map[string]bool{}, columns: map[string]map[string]bool{}, imports: map[string]*syntax.Import{}, used: map[string]bool{}}
 	for _, im := range m.Imports {
 		s.imports[im.Module] = im
 	}
@@ -66,6 +67,7 @@ func (p *Program) index(m *syntax.Module) *moduleScope {
 			}
 		case *syntax.FormDecl:
 			s.types[d.Name] = true
+			s.forms[d.Name] = true
 		case *syntax.CapDecl:
 			s.caps[d.Name] = true
 			for _, e := range d.Entries {
@@ -407,6 +409,65 @@ func (r *resolver) testFakeArg(a syntax.Expr, sc *Scope) {
 		}
 	}
 	r.bag.Error(diag.UnknownName, ct.Span, "`Test.fake %s`: there is no capability `%s` in scope", full, full)
+}
+
+// testFormArg resolves the first argument of `Test.submit` and `Test.submitRaw`: a form, `NewTodo`
+// (of this module) or `Todos.Index.NewTodo` (of any module, imported or not, as a page needs no
+// import), resolved as a type. A form of another module written unqualified gets the qualified
+// name as a fix. Any other argument is resolved as an expression (the checker refuses it).
+func (r *resolver) testFormArg(a syntax.Expr, step string, sc *Scope) {
+	ct, ok := a.(*syntax.CtorRef)
+	if !ok {
+		r.expr(a, sc)
+		return
+	}
+	if ct.Module == "" && r.ms.types[ct.Name] { // a form, or another type (the checker refuses it)
+		ct.Ref = syntax.Ref{Kind: syntax.RefType, Module: r.m.Name, Name: ct.Name}
+		return
+	}
+	if ct.Module != "" {
+		if s := r.p.scopes[ct.Module]; s != nil && r.p.Modules[ct.Module] != nil && s.forms[ct.Name] {
+			ct.Ref = syntax.Ref{Kind: syntax.RefType, Module: ct.Module, Name: ct.Name}
+			return
+		}
+	} else {
+		var owners []string
+		for _, x := range r.p.Order {
+			if s := r.p.scopes[x]; s != nil && s.forms[ct.Name] {
+				owners = append(owners, x)
+			}
+		}
+		if len(owners) > 0 {
+			d := r.bag.Error(diag.UnknownName, ct.Span, "`%s` is a form of `%s`: write `%s.%s`", ct.Name, owners[0], owners[0], ct.Name)
+			d.Fix = diag.ReplaceSpan(ct.Span, owners[0]+"."+ct.Name)
+			return
+		}
+	}
+	r.expr(a, sc)
+}
+
+// testClickArg resolves the argument of `Test.click`: a message, `Toggle { id: id }` or
+// `App.Logout`, or from another module a page's message written with its page,
+// `Todos.Index.Toggle { id: id }` (a page's messages are otherwise its own). Anything else is
+// resolved as an expression.
+func (r *resolver) testClickArg(a syntax.Expr, sc *Scope) {
+	head, rest := a, []syntax.Expr(nil)
+	if app, ok := a.(*syntax.App); ok {
+		head, rest = app.Fn, app.Args
+	}
+	ct, ok := head.(*syntax.CtorRef)
+	if !ok || ct.Module == "" || ct.Module == r.m.Name || !r.p.IsPageModule(ct.Module) {
+		r.expr(a, sc)
+		return
+	}
+	if s := r.p.scopes[ct.Module]; s != nil && s.ctors[ct.Name] == "Msg" {
+		ct.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: ct.Module, Name: ct.Name}
+		for _, x := range rest {
+			r.expr(x, sc)
+		}
+		return
+	}
+	r.expr(a, sc)
 }
 
 func (r *resolver) fields(fs []*syntax.Field) {
@@ -754,9 +815,18 @@ func (r *resolver) expr(e syntax.Expr, sc *Scope) {
 	case *syntax.App:
 		r.expr(e.Fn, sc)
 		for i, a := range e.Args {
-			if v, ok := e.Fn.(*syntax.Var); ok && i == 0 && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" && v.Ref.Name == "fake" {
-				r.testFakeArg(a, sc)
-				continue
+			if v, ok := e.Fn.(*syntax.Var); ok && i == 0 && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" {
+				switch v.Ref.Name {
+				case "fake":
+					r.testFakeArg(a, sc)
+					continue
+				case "submit", "submitRaw":
+					r.testFormArg(a, v.Ref.Name, sc)
+					continue
+				case "click":
+					r.testClickArg(a, sc)
+					continue
+				}
 			}
 			r.expr(a, sc)
 		}

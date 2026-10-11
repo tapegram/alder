@@ -926,6 +926,10 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			c.errorf(diag.TypeMismatch, x.Span, "`Test.fake` wants a capability name, got an expression")
 			return types.Err
 		}
+		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Test" && IsTestStep(x.Ref.Name) { // applied, inferApp takes it
+			c.errorf(diag.TypeMismatch, x.Span, "`Test.%s` is a step: apply it to its argument%s, as in `%s`", x.Ref.Name, map[bool]string{true: "s", false: ""}[testSteps[x.Ref.Name] > 1], stepExample[x.Ref.Name])
+			return types.Err
+		}
 		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Session" && mc.fake != "" { // the entry's prefix names the fake
 			c.errorf(diag.TypeMismatch, x.Span, "a fake cannot use `Session`: an adapter has no session")
 			return types.Err
@@ -993,6 +997,10 @@ func (mc *modCtx) inferCtor(x *syntax.CtorRef, applied bool) types.Type {
 			return &types.App{Con: "Table", Args: []types.Type{info.Record}}
 		}
 	case syntax.RefCtor:
+		if x.Ref.Module == "Prelude" && answerCtors[x.Ref.Name] && !mc.inTest {
+			c.errorf(diag.TypeMismatch, x.Span, "`%s` is a constructor of the test type `Answer`: it exists only inside a `test`", x.Name)
+			return types.Err
+		}
 		info, ok := c.ctors[c.key(x.Ref.Module, x.Ref.Name)]
 		if !ok {
 			if b, isBrand := c.types[c.key(x.Ref.Module, x.Ref.Name)].(*types.Brand); isBrand {
@@ -1155,6 +1163,12 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 	c := mc.c
 	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" && v.Ref.Name == "fake" {
 		return mc.inferTestFake(x, v, pipe)
+	}
+	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" && IsTestStep(v.Ref.Name) {
+		return mc.inferTestStep(x, v, env, eff, pipe)
+	}
+	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" && mc.inTest {
+		mc.checkSelectorArg(v.Ref.Name, x.Args)
 	}
 	// constructor applied to a record literal: check against the payload (form field implicit)
 	if ct, ok := x.Fn.(*syntax.CtorRef); ok && len(x.Args) == 1 && pipe == nil {

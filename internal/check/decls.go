@@ -156,6 +156,9 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 				}
 			}
 			mc.fakeTableUse(c.key(t.Ref.Module, t.Name), t.Name, t.Span)
+			if t.Ref.Module == "Prelude" && testTypes[t.Name] {
+				mc.testTypeUse(t.Name, t.Span)
+			}
 			decl, ok := c.types[c.key(t.Ref.Module, t.Name)]
 			if !ok {
 				return types.Err
@@ -879,7 +882,7 @@ func (mc *modCtx) reserveGenerated(where string, fixed map[string]string) {
 var preludeReserved = map[string]bool{
 	"Query": true, "Task": true, "Html": true, "Maybe": true, "Result": true, "Nav": true,
 	"List": true, "Dict": true, "Int": true, "Float": true, "Text": true, "Bool": true,
-	"Unit": true, "Date": true, "Time": true, "Never": true, "Error": true,
+	"Unit": true, "Date": true, "Time": true, "Never": true, "Error": true, "Doc": true, "Answer": true,
 }
 
 // reservePrelude reports E0012 for a type, table, form or union of an app module that takes a
@@ -901,6 +904,11 @@ func (c *Checker) reservePrelude() map[string]bool {
 			case *syntax.FormDecl:
 				decl, kind = d.Name, "form"
 			}
+			for _, ctor := range ctorsOf(d) {
+				if answerCtors[ctor.name] {
+					c.errorf(ReservedName, ctor.span, "`%s` is a constructor of the Prelude's test type `Answer`; name the %s differently (for example `%s%s`)", ctor.name, ctor.kind, ctor.name, ctor.suffix)
+				}
+			}
 			if prelude[decl] {
 				c.errorf(ReservedName, d.GetSpan(), "`%s` is a Prelude type; name the %s differently (for example `%s%s`)", decl, kind, decl, strings.ToUpper(kind[:1])+kind[1:])
 				quiet[m.File] = true
@@ -912,6 +920,28 @@ func (c *Checker) reservePrelude() map[string]bool {
 		}
 	}
 	return quiet
+}
+
+// namedCtor is a constructor a declaration makes: a union's, or a `msg` (a constructor of its
+// module's Msg).
+type namedCtor struct {
+	name, kind, suffix string // suffix: a word to suggest a different name with
+	span               diag.Span
+}
+
+// ctorsOf lists the constructors declaration d makes.
+func ctorsOf(d syntax.Decl) []namedCtor {
+	switch d := d.(type) {
+	case *syntax.TypeDecl:
+		var out []namedCtor
+		for _, ct := range d.Union {
+			out = append(out, namedCtor{ct.Name, "constructor", d.Name, ct.Span})
+		}
+		return out
+	case *syntax.MsgDecl:
+		return []namedCtor{{d.Name, "message", "Msg", d.Span}}
+	}
+	return nil
 }
 
 // quietErrors drops the errors reported from index from on in the files of quiet, except E0012:

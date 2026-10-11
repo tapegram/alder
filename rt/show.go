@@ -50,6 +50,11 @@ var (
 	dateType = reflect.TypeFor[Date]()
 )
 
+// Shower is a runtime type that prints itself as Alder (the test types Doc and Answer of
+// rt/testing, which rt cannot name): AlderShow is its text and whether it is an application
+// (it needs parentheses as an argument).
+type Shower interface{ AlderShow() (string, bool) }
+
 // arg is v as a constructor's argument: parenthesized when it is an application or negative.
 func arg(v reflect.Value) string {
 	s, app := show(v)
@@ -84,6 +89,11 @@ func show(v reflect.Value) (string, bool) {
 			return "Redirect " + pageURL(v.FieldByName("Page")), true
 		case NavReject:
 			return "Reject " + quote(v.FieldByName("Text").String()), true
+		}
+	}
+	if v.Kind() == reflect.Struct && v.CanInterface() {
+		if sh, ok := v.Interface().(Shower); ok {
+			return sh.AlderShow()
 		}
 	}
 	switch t.PkgPath() {

@@ -1,0 +1,5 @@
+app/Todos/Index.alder:32:21 E0003 `Test.get` wants a page value such as `Todos.Index {}`, got `p`
+app/Todos/Index.alder:37:30 E0003 `Test.open` is a step: apply it to its argument, as in `Test.open (Todos.Index {})`
+app/Todos/Index.alder:42:12 E0008 `Test.submit` takes 2 arguments, got 1: `Test.submit NewTodo { title: "Milk" }`
+app/Todos/Index.alder:47:23 E0003 `Test.login` wants the app's session `{ n: Int }`: record literal for `Session` is missing `n` (a default applies only to an insert, the session cookie, a page or message parameter, or a form, not to a literal)
+app/Todos/Index.alder:47:25 E0002 `Test.login` wants the app's session `{ n: Int }`: no field `user` on `App.Session`

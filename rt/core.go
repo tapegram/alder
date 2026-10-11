@@ -401,6 +401,14 @@ type Page struct {
 	Query []KV
 }
 
+// AlderEqual is Page's equality (Equaler): two pages are equal when they link to the same URL
+// (PageURL), so a page built with a parameter at its default (left out of the URL) equals the
+// page read back from that URL, and `==` agrees with Show, which prints a page as its URL.
+func (p Page) AlderEqual(other any) bool { return PageURL(p) == PageURL(other.(Page)) }
+
+// AlderKey is Page's Dict key (Keyer): its URL, so two pages equal under AlderEqual are one key.
+func (p Page) AlderKey() string { return PageURL(p) }
+
 // PageURL is the URL a link to p points at: `href={…}` and `Redirect` render it. It is p's
 // Path, then the Query parameters that are not Omit as an URL-encoded query string
 // ("/?filter=Active").

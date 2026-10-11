@@ -1,0 +1,23 @@
+module App
+
+import User
+
+session { user: Maybe User.UserId }
+
+login = Auth.Login
+
+msg Logout
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing })
+    Task.succeed (Redirect (Auth.Login {}))
+  },
+}
+
+error : Error -> Html Never
+error err = <html><body><h1>Something went wrong</h1></body></html>
+
+notFound : Html Never
+notFound = <html><body><h1>Not found</h1></body></html>

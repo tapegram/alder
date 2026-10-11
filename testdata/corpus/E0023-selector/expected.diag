@@ -1,0 +1,3 @@
+app/Todos/Index.alder:32:27 E0023 `#sumary x` is not a selector: unexpected `x` after `#sumary` (a selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, combined with spaces or `>`)
+app/Todos/Index.alder:32:79 E0023 `a >` is not a selector: unexpected end after `a >` (a selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, combined with spaces or `>`)
+app/Todos/Index.alder:32:117 E0023 `` is not a selector: it is empty (a selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, combined with spaces or `>`)

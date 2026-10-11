@@ -1,0 +1,30 @@
+module Todos.Index
+
+type Filter = All | Active
+
+page "/" { filter: Filter = All }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 0 }
+
+form NewTodo = {
+  title: Text,
+}
+
+msg Submit form NewTodo
+msg Toggle { id: Text }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = Task.succeed Rerender
+
+view : Model -> Session -> Html Msg
+view model session =
+  <form submit={Submit}>
+    <Input field="title" label="Title" />
+    <Errors field="title" />
+    <button click={Toggle { id: "a" }}>Toggle</button>
+  </form>
+
+type Status = Shown | Hidden

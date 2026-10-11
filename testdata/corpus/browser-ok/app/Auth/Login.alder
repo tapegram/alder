@@ -1,0 +1,85 @@
+module Auth.Login
+
+import User
+
+capability Password {
+  verify : { email: Text.Email, password: Text } -> Task (Maybe User.UserId),
+}
+
+-- A fake that knows one password, so the login form can be tested through the browser.
+fake Password {
+  verify args = {
+    let found <- Db.from User |> Db.where (User.email.eq args.email) |> Db.first
+    if args.password == "secret" then Task.succeed (Maybe.map (\u -> u.id) found) else Task.succeed Nothing
+  }
+}
+
+page "/login" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+form Credentials = {
+  email: Text.Email,
+  password: Text.Secret,
+}
+
+msg Submit form Credentials
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let found <- Password.verify { email: p.form.email, password: p.form.password }
+    match found {
+      Just id -> {
+        let _ <- Session.put (\s -> { s | user: Just id })
+        Task.succeed (Redirect (Notes.Index {}))
+      },
+      Nothing -> Task.succeed (Reject "Email or password is incorrect."),
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html>
+    <body>
+      <h1>Log in</h1>
+      <form submit={Submit}>
+        <Errors form />
+        <Input field="email" label="Email" />
+        <Errors field="email" />
+        <Input field="password" label="Password" />
+        <Errors field="password" />
+        <button>Log in</button>
+      </form>
+    </body>
+  </html>
+
+-- RF4: a page that requires a user redirects to the login page, which the browser then holds.
+test "a page that requires a user redirects to the login page" = {
+  let r <- Test.open (Notes.Index {})
+  Task.succeed ({ answer: r.answer, title: Test.text "h1" r.doc, user: r.session.user } == { answer: Redirected (Auth.Login {}), title: Just "Log in", user: Nothing })
+}
+
+-- RF4: logging in through the form with the fake: a wrong password is Rejected with the
+-- form-level message, the right one redirects and stores the user in the session.
+test "logging in through the form" = {
+  let _ <- Test.fake Password
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.get (Auth.Login {})
+  let wrong <- Test.submit Credentials { email: Text.Email "me@example.com", password: Text.Secret "nope" }
+  let right <- Test.submit Credentials { email: Text.Email "me@example.com", password: Text.Secret "secret" }
+  Task.succeed ({ wrong: wrong.answer, wrongUser: wrong.session.user, right: right.answer, user: right.session.user, title: Test.text "h1" right.doc } == { wrong: Rejected [{ field: "", message: "Email or password is incorrect." }], wrongUser: Nothing, right: Redirected (Notes.Index {}), user: Just me, title: Just "Notes" })
+}
+
+-- RF4: after Test.login the page is shown; App.Logout's button logs out.
+test "Test.login, then log out through the button" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let shown <- Test.open (Notes.Index {})
+  let out <- Test.click App.Logout
+  Task.succeed ({ shown: shown.answer, out: out.answer, user: out.session.user } == { shown: Shown, out: Redirected (Auth.Login {}), user: Nothing })
+}

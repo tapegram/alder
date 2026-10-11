@@ -28,4 +28,13 @@ type Maybe a = Just a | Nothing
 type Result e a = Ok a | Err e
 type Nav = Rerender | Redirect Page | Reject Text
 
+-- Test types: they exist only inside a `test` (the browser steps of module Test).
+type Doc
+type Answer = Shown
+            | Rerendered
+            | Redirected Page
+            | Rejected (List { field: Text, message: Text })
+            | Missing
+            | Failed Text
+
 not : Bool -> Bool

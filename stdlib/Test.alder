@@ -4,3 +4,30 @@ run : Task a -> Task { value: Result Text a, trace: List Text }
 trace : Task (List Text)
 -- special form: the argument is a capability name (one whose module declares a fake)
 fake : Capability -> Task Unit
+
+-- The browser steps (special forms, only inside a `test`). Each requests a page or posts a
+-- message the way a browser does, through the app's real routes, inside the test's transaction.
+-- special form: the argument is App's session record
+login : Session -> Task Unit
+-- special form: the argument is a page value (`Todos.Index { filter: All }`); `model` is that
+-- page's `Model`, which must be a record; the test fails unless the page is shown
+get : Page -> Task { model: model, session: Session, doc: Doc }
+-- special form: the argument is a page value; the answer says what the request came to
+open : Page -> Task { answer: Answer, session: Session, doc: Doc }
+-- special form: the first argument is a form a page declares (`NewTodo`, or `Todos.Index.NewTodo`
+-- from another module), the second that form's record
+submit : Form f -> f -> Task { answer: Answer, session: Session, doc: Doc }
+-- special form: the first argument is a form a page declares, the second the fields to post as text
+submitRaw : Form f -> List { name: Text, value: Text } -> Task { answer: Answer, session: Session, doc: Doc }
+-- special form: the argument is a message of a page or of App (`Toggle { id: id }`, `App.Logout`)
+click : msg -> Task { answer: Answer, session: Session, doc: Doc }
+
+-- Queries on a document. The selector (the first argument; `attr`'s second) is a tag, `#id`,
+-- `.class`, `[attr]` or `[attr=value]`, combined with spaces or `>`; written as a literal it is
+-- checked when the test is (E0023), otherwise one that does not parse matches nothing.
+text : Text -> Doc -> Maybe Text
+texts : Text -> Doc -> List Text
+has : Text -> Doc -> Bool
+count : Text -> Doc -> Int
+attr : Text -> Text -> Doc -> Maybe Text
+doc : Html a -> Doc

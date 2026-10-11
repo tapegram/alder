@@ -324,7 +324,7 @@ func (p *Parser) parseDecl() Decl {
 		pop()
 		d.Span = p.spanFrom(start)
 		return d
-	case p.atKeyword("login"):
+	case p.atKeyword("login") && !(p.sigMode && p.peekIsColon()): // stdlib Test's `login : …` is a value
 		p.advance()
 		p.expect(Equal, "`=`")
 		d := &LoginDecl{Page: p.parseModName()}

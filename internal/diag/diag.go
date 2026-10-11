@@ -107,6 +107,7 @@ const (
 	FakePlacement  = "E0020" // a `fake` declared outside its capability's module
 	FakeTable      = "E0021" // a fake's table used outside tests and the fake
 	TableDefault   = "E0022"
+	BadSelector    = "E0023" // a selector literal of a Test query that does not parse
 	UnreachableArm = "E0310"
 	UnusedImport   = "W0001"
 	UnshownErrors  = "W0003"
