@@ -201,7 +201,7 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 	p := ir.Lower(prog, res)
 	adapters := filepath.Join(appDir, "adapters")
 	hasAdapters := buildkit.HasAdapters(appDir)
-	wire := len(p.Caps) > 0 && hasAdapters // as Checked.WiresAdapters
+	wire := c.WiresAdapters() // the caller's main imports app/caps exactly when this holds
 	if wire {
 		var msg strings.Builder
 		if !buildkit.CheckAdapters(appDir, p.Caps, &msg) {

@@ -26,9 +26,15 @@ import (
 // CheckAdapters that every needed package and constructor exists, so a missing one is named
 // exactly instead of surfacing as a Go error in the generated caps package.
 
-// FlatAdaptersMessage is printed when a top-level adapters/*.go declares func Caps: the flat
-// form (one package adapters whose Caps returns every capability) is no longer wired.
+// FlatAdaptersMessage is printed when a top-level adapters/*.go declares func Caps and
+// adapters are missing (listed after it): the flat form (one package adapters whose Caps
+// returns every capability) is no longer wired. When none is missing, flatStaleMessage is
+// printed instead.
 const FlatAdaptersMessage = "adapters/ no longer wires capabilities: move each adapter to adapters/<module>/ (see the list below)"
+
+// flatStaleMessage is the flat-form message when no adapter is missing: %s is the file
+// declaring func Caps ("adapters/caps.go").
+const flatStaleMessage = "adapters/ no longer wires capabilities: delete func Caps (%s): the generated caps package wires the adapters"
 
 // AdapterPackage is the directory under adapters/ holding module's capabilities' adapters:
 // its first segment, lower-cased ("Auth.Login" → "auth").
@@ -68,32 +74,42 @@ func (n Need) String() string {
 // taken to have every constructor, so Go reports the syntax error. flat reports whether a
 // top-level adapters/*.go declares func Caps (the removed flat form). err is an I/O failure.
 func ScanAdapters(appDir string, caps []Need) (missing []Need, flat bool, err error) {
+	missing, flatFile, err := scanAdapters(appDir, caps)
+	return missing, flatFile != "", err
+}
+
+// scanAdapters is ScanAdapters, flat as the file declaring func Caps, slash-separated and
+// relative to appDir ("adapters/caps.go"), or "".
+func scanAdapters(appDir string, caps []Need) (missing []Need, flatFile string, err error) {
 	root := filepath.Join(appDir, "adapters")
-	funcs := map[string]map[string]bool{} // package → its exported parameterless functions (nil: does not parse)
+	funcs := map[string]map[string]string{} // package → its exported parameterless functions' files (nil: does not parse)
 	for _, n := range caps {
 		fns, ok := funcs[n.Package]
 		if !ok {
 			if fns, err = packageFuncs(filepath.Join(root, n.Package)); err != nil {
-				return nil, false, err
+				return nil, "", err
 			}
 			funcs[n.Package] = fns
 		}
-		if fns != nil && !fns[n.Func] {
+		if _, found := fns[n.Func]; fns != nil && !found {
 			missing = append(missing, n)
 		}
 	}
 	top, err := packageFuncs(root)
 	if err != nil {
-		return nil, false, err
+		return nil, "", err
 	}
-	return missing, top["Caps"], nil
+	if f := top["Caps"]; f != "" {
+		flatFile = "adapters/" + f
+	}
+	return missing, flatFile, nil
 }
 
-// packageFuncs is the set of exported, parameterless, non-generic functions (not methods)
-// the Go package in dir declares; empty when dir holds no Go file of the package or does not
-// exist, nil when one of its files does not parse.
-func packageFuncs(dir string) (map[string]bool, error) {
-	out := map[string]bool{}
+// packageFuncs maps the exported, parameterless, non-generic functions (not methods) the Go
+// package in dir declares to the file declaring each; empty when dir holds no Go file of the
+// package or does not exist, nil when one of its files does not parse.
+func packageFuncs(dir string) (map[string]string, error) {
+	out := map[string]string{}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -117,7 +133,7 @@ func packageFuncs(dir string) (map[string]bool, error) {
 		for _, d := range f.Decls {
 			fd, ok := d.(*ast.FuncDecl)
 			if ok && fd.Recv == nil && fd.Name.IsExported() && fd.Type.TypeParams == nil && fd.Type.Params.NumFields() == 0 {
-				out[fd.Name.Name] = true
+				out[fd.Name.Name] = name
 			}
 		}
 	}
@@ -127,33 +143,69 @@ func packageFuncs(dir string) (map[string]bool, error) {
 // CheckAdapters checks, before anything is emitted, that the app in appDir has an adapter for
 // every capability of caps, and reports whether it does. Otherwise it prints to stderr, as
 // applicable: the internal naming error of two capabilities that would share a constructor
-// (gen.AdapterCollisionError); FlatAdaptersMessage when a top-level adapters/*.go declares func
-// Caps; and the heading "<appDir> is missing adapters for N capabilities:" (or "1 capability")
-// followed by one Need.String line per missing adapter, all of them.
+// (gen.AdapterCollisionError); that a module's first segment cannot name an adapter package
+// (Internal: Go keeps adapters/internal/ private to adapters/, and it holds helpers; Testdata:
+// Go skips testdata/ directories); FlatAdaptersMessage (or, when nothing is missing, the
+// message to delete func Caps, naming its file) when a top-level adapters/*.go declares func
+// Caps; and the heading "<app> is missing adapters for N capabilities:" (or "1 capability";
+// <app> is appDir's base name) followed by one Need.String line per missing adapter, all of
+// them.
 func CheckAdapters(appDir string, caps []*ir.Capability, stderr io.Writer) (ok bool) {
 	if err := gen.AdapterCollisionError(caps); err != nil {
 		fmt.Fprintln(stderr, err)
 		return false
 	}
-	missing, flat, err := ScanAdapters(appDir, Needs(caps))
+	refused := map[string]bool{}
+	for _, c := range caps {
+		first, _, _ := strings.Cut(c.Module, ".")
+		if refused[first] {
+			continue
+		}
+		switch AdapterPackage(c.Module) {
+		case "internal":
+			fmt.Fprintf(stderr, "module `%s` cannot name an adapter package: Go keeps `adapters/internal/` private to adapters/ (it holds helpers); rename the module\n", first)
+		case "testdata":
+			fmt.Fprintf(stderr, "module `%s` cannot name an adapter package: Go skips `testdata/` directories; rename the module\n", first)
+		default:
+			continue
+		}
+		refused[first] = true
+	}
+	if len(refused) > 0 {
+		return false
+	}
+	missing, flatFile, err := scanAdapters(appDir, Needs(caps))
 	if err != nil {
 		fmt.Fprintf(stderr, "cannot read the adapters of %s: %v\n", appDir, err)
 		return false
 	}
-	if flat {
-		fmt.Fprintln(stderr, FlatAdaptersMessage)
+	if flatFile != "" {
+		if len(missing) > 0 {
+			fmt.Fprintln(stderr, FlatAdaptersMessage)
+		} else {
+			fmt.Fprintf(stderr, flatStaleMessage+"\n", flatFile)
+		}
 	}
 	if len(missing) > 0 {
 		noun := "capabilities"
 		if len(missing) == 1 {
 			noun = "capability"
 		}
-		fmt.Fprintf(stderr, "%s is missing adapters for %d %s:\n", appDir, len(missing), noun)
+		fmt.Fprintf(stderr, "%s is missing adapters for %d %s:\n", AppName(appDir), len(missing), noun)
 		for _, n := range missing {
 			fmt.Fprintln(stderr, n)
 		}
 	}
-	return !flat && len(missing) == 0
+	return flatFile == "" && len(missing) == 0
+}
+
+// AppName is the app's name: the base name of appDir made absolute ("." in examples/blog is
+// "blog"); appDir's own base name when it cannot be made absolute.
+func AppName(appDir string) string {
+	if abs, err := filepath.Abs(appDir); err == nil {
+		return filepath.Base(abs)
+	}
+	return filepath.Base(appDir)
 }
 
 // HasAdapters reports whether the app in appDir has adapters: a .go file anywhere under

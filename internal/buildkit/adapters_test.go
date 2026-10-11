@@ -94,14 +94,18 @@ func TestCheckAdapters(t *testing.T) {
 	}{
 		{"ok", caps("Auth.Login.Password", "Markdown.Markdown"), true, ""},
 		{"ok", nil, true, ""},
-		{"ok", caps("Payments.Stripe"), false, "testdata/adapters/ok is missing adapters for 1 capability:\n" +
+		{"ok", caps("Payments.Stripe"), false, "ok is missing adapters for 1 capability:\n" +
 			"capability `Payments.Stripe` needs `adapters/payments/` with `func Stripe() app.Cap__Payments__Stripe`\n"},
-		{"missing", caps("Auth.Login.Password", "Markdown.Markdown"), false, "testdata/adapters/missing is missing adapters for 2 capabilities:\n" +
+		{"missing", caps("Auth.Login.Password", "Markdown.Markdown"), false, "missing is missing adapters for 2 capabilities:\n" +
 			"capability `Auth.Login.Password` needs `adapters/auth/` with `func LoginPassword() app.Cap__Auth__Login__Password`\n" +
 			"capability `Markdown.Markdown` needs `adapters/markdown/` with `func Markdown() app.Cap__Markdown__Markdown`\n"},
 		{"flat", caps("Auth.Login.Password"), false, "adapters/ no longer wires capabilities: move each adapter to adapters/<module>/ (see the list below)\n" +
-			"testdata/adapters/flat is missing adapters for 1 capability:\n" +
+			"flat is missing adapters for 1 capability:\n" +
 			"capability `Auth.Login.Password` needs `adapters/auth/` with `func LoginPassword() app.Cap__Auth__Login__Password`\n"},
+		{"flat", nil, false, "adapters/ no longer wires capabilities: delete func Caps (adapters/caps.go): the generated caps package wires the adapters\n"},
+		{"ok", caps("Internal.Mail.Smtp", "Internal.Log", "Testdata.Seed", "Auth.Login.Password"), false,
+			"module `Internal` cannot name an adapter package: Go keeps `adapters/internal/` private to adapters/ (it holds helpers); rename the module\n" +
+				"module `Testdata` cannot name an adapter package: Go skips `testdata/` directories; rename the module\n"},
 		{"ok", caps("A.BC.D", "A.B.CD"), false, "internal naming error: capabilities A.BC.D and A.B.CD both need func BCD in adapters/a/ (rename one of them)\n"},
 	} {
 		var out strings.Builder

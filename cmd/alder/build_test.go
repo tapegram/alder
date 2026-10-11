@@ -159,7 +159,7 @@ func TestBuild_Todos(t *testing.T) {
 	os.WriteFile(filepath.Join("todos", "adapters", "auth", "broken.go"), []byte("package auth\n\nvar _ int = \"x\"\n"), 0o644)
 	code, stdout, stderr = runBuild(t, "todos")
 	if code != 1 || strings.Contains(stderr, "internal error") || !strings.Contains(stderr, "adapters/auth/broken.go:3:") ||
-		!strings.Contains(stderr, "alder build: the adapters (todos/adapters, copied to build/todos/adapters) do not compile with the app: ") {
+		!strings.Contains(stderr, "alder build: the adapters of todos (copied to build/todos/adapters) do not compile with the app: ") {
 		t.Fatalf("broken adapters: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 	os.Remove(filepath.Join("todos", "adapters", "auth", "broken.go"))
@@ -264,9 +264,19 @@ func TestBuild_AdapterErrors(t *testing.T) {
 			os.RemoveAll(filepath.Join(app, "adapters"))
 			writeFiles(t, app, map[string]string{"adapters/caps.go": "package adapters\n\nimport \"app\"\n\nfunc Caps() app.Caps { return app.Caps{} }\n"})
 		}, "adapters/ no longer wires capabilities: move each adapter to adapters/<module>/ (see the list below)\n" + missingBoth, true},
+		{"flat form, nothing missing", func(t *testing.T, app string) {
+			writeFiles(t, app, map[string]string{"adapters/caps.go": "package adapters\n\nimport \"app\"\n\nfunc Caps() app.Caps { return app.Caps{} }\n"})
+		}, "adapters/ no longer wires capabilities: delete func Caps (adapters/caps.go): the generated caps package wires the adapters\n", true},
+		{"module Internal", func(t *testing.T, app string) {
+			writeFiles(t, app, map[string]string{"app/Internal/Mail.alder": "module Internal.Mail\n\ncapability Smtp {\n  send : Text -> Task Unit,\n}\n",
+				"adapters/internal/mail.go": "package internal\n\nfunc MailSmtp() {}\n"})
+		}, "module `Internal` cannot name an adapter package: Go keeps `adapters/internal/` private to adapters/ (it holds helpers); rename the module\n", true},
+		{"module Testdata", func(t *testing.T, app string) {
+			writeFiles(t, app, map[string]string{"app/Testdata.alder": "module Testdata\n\ncapability Seed {\n  rows : Query Int,\n}\n"})
+		}, "module `Testdata` cannot name an adapter package: Go skips `testdata/` directories; rename the module\n", true},
 		{"wrong result type", func(t *testing.T, app string) {
 			replaceIn(t, filepath.Join(app, "adapters", "app", "clock.go"), "func Clock() app.Cap__App__Clock { return clock{} }", "func Clock() app.Cap__Auth__Login__Password { return nil }")
-		}, "alder build: the adapters (subadapters/adapters, copied to build/subadapters/adapters) do not compile with the app: ", false},
+		}, "alder build: the adapters of subadapters (copied to build/subadapters/adapters) do not compile with the app: ", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			tmp := t.TempDir()
@@ -374,5 +384,23 @@ func TestBuildTo_OutDir(t *testing.T) {
 	}
 	if _, err := os.Stat("build"); !os.IsNotExist(err) {
 		t.Errorf("build/ written: %v", err)
+	}
+}
+
+// The heading names the app, not the directory argument: `alder build .` inside the app.
+func TestBuild_MissingAdapterNamesApp(t *testing.T) {
+	src, err := filepath.Abs("testdata/subadapters")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := filepath.Join(t.TempDir(), "subadapters")
+	copyDir(t, src, app)
+	os.RemoveAll(filepath.Join(app, "adapters", "app"))
+	t.Chdir(app)
+	code, stdout, stderr := runBuild(t, ".")
+	want := "subadapters is missing adapters for 1 capability:\n" +
+		"capability `App.Clock` needs `adapters/app/` with `func Clock() app.Cap__App__Clock`\n"
+	if code != 1 || stdout != "" || stderr != want {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %q\nwant %q", code, stdout, stderr, want)
 	}
 }
