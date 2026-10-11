@@ -1104,3 +1104,33 @@ func TestStartsWith(t *testing.T) {
 		}
 	}
 }
+
+// A `.contains` or `.startsWith` text over MaxPattern bytes fails the query with a clear
+// ErrFail ("search text too long") before SQLite sees it (its own limit is ~50 KB, with a
+// cryptic "LIKE or GLOB pattern too complex"); MaxPattern bytes exactly is a query like any.
+func TestLongPattern(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	if _, err := InsertRow(ctx, s, nil, todoTable, insertVals("abc", false, rt.Nothing[rt.Date](), "Low"), clock); err != nil {
+		t.Fatal(err)
+	}
+	ok := strings.Repeat("a", MaxPattern)
+	long := ok + "a"
+	for _, sel := range []Select[todo]{
+		Where(CContains("title", long), From(todoTable)),
+		Where(COr([]Cond{CEq("done", false), CStartsWith("title", long)}), From(todoTable)),
+	} {
+		_, err := All(ctx, s, nil, sel)
+		var ef *eff.ErrFail
+		if !errors.As(err, &ef) || ef.Msg != "search text too long (over 10000 bytes)" {
+			t.Errorf("All: err = %v, want the too-long ErrFail", err)
+		}
+		_, err = CountRows(ctx, s, nil, sel)
+		if !errors.As(err, &ef) {
+			t.Errorf("CountRows: err = %v, want the too-long ErrFail", err)
+		}
+	}
+	if rows, err := All(ctx, s, nil, Where(CContains("title", ok), From(todoTable))); err != nil || len(rows) != 0 {
+		t.Errorf("a %d-byte pattern: %d rows, %v", MaxPattern, len(rows), err)
+	}
+}

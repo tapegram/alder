@@ -162,7 +162,11 @@ func All[T any](ctx context.Context, st Store, tx Tx, s Select[T]) ([]T, error) 
 	if err := txErr(tx); err != nil {
 		return nil, err
 	}
-	rows, err := st.Query(ctx, tx, s.Table.Name, s.Table.Columns, s.SQL())
+	q := s.SQL()
+	if q.Err != nil {
+		return nil, q.Err
+	}
+	rows, err := st.Query(ctx, tx, s.Table.Name, s.Table.Columns, q)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +201,11 @@ func CountRows[T any](ctx context.Context, st Store, tx Tx, s Select[T]) (int64,
 	if err := txErr(tx); err != nil {
 		return 0, err
 	}
-	return st.Count(ctx, tx, s.Table.Name, s.SQL())
+	q := s.SQL()
+	if q.Err != nil {
+		return 0, q.Err
+	}
+	return st.Count(ctx, tx, s.Table.Name, q)
 }
 
 // InsertRow is Db.insert; vals is the Insert record's columns in Columns

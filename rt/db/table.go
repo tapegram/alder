@@ -21,8 +21,11 @@
 package db
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
+
+	"alder/rt/eff"
 )
 
 // ColType is a column's storage type.
@@ -196,6 +199,9 @@ type SQL struct {
 	Args          []any
 	Order         string
 	Limit, Offset *int64
+	// Err is set when the query must not run: a `.contains` or `.startsWith` text over
+	// MaxPattern bytes (see patternErr). All and CountRows return it.
+	Err error
 }
 
 // SQL renders s. Column names are quoted; Eq/Ne with a nil value become IS
@@ -213,6 +219,11 @@ func (s Select[T]) SQL() SQL {
 	var cols []Column
 	if s.Table != nil {
 		cols = s.Table.Columns
+	}
+	for _, c := range s.Where {
+		if out.Err == nil {
+			out.Err = patternErr(c)
+		}
 	}
 	switch len(s.Where) {
 	case 0:
@@ -264,6 +275,30 @@ func column(cols []Column, name string) *Column {
 	for i, c := range cols {
 		if c.Name == name {
 			return &cols[i]
+		}
+	}
+	return nil
+}
+
+// MaxPattern is the longest text, in bytes, a `.contains` or `.startsWith` condition takes.
+// SQLite refuses a LIKE pattern over ~50 KB ("LIKE or GLOB pattern too complex"), and below
+// that a match costs the column's length times the pattern's: an app cuts a search query
+// (the blog's is 100 characters); this is the backstop, with a message that says what failed.
+const MaxPattern = 10000
+
+// patternErr is the ErrFail of the first `.contains` or `.startsWith` in c whose text is over
+// MaxPattern bytes, or nil.
+func patternErr(c Cond) error {
+	switch c.Kind {
+	case Contains, StartsWith:
+		if s, ok := c.Val.(string); ok && len(s) > MaxPattern {
+			return &eff.ErrFail{Msg: fmt.Sprintf("search text too long (over %d bytes)", MaxPattern)}
+		}
+	case And, Or, Not:
+		for _, sub := range c.Subs {
+			if err := patternErr(sub); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
