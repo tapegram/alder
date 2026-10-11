@@ -273,7 +273,7 @@ func (s *SQLite) MigrateLog(ctx context.Context, tables []TableDesc, ms []Migrat
 		return nil, formatErr(oldFormat)
 	}
 	if len(existing) > 0 && !hasLog {
-		live, liveHash, err := liveSchema(ctx, conn)
+		_, liveHash, err := liveSchema(ctx, conn)
 		if err != nil {
 			return nil, err
 		}
@@ -289,26 +289,23 @@ func (s *SQLite) MigrateLog(ctx context.Context, tables []TableDesc, ms []Migrat
 			}
 			return nil, fmt.Errorf("%w: back it up, then recreate it (or add a migration that produces its schema)", ErrNotMigrated)
 		}
-		tx, err := conn.BeginTx(ctx, nil)
+		// the files after the adopted one must lead from it to the app's schema before anything
+		// is recorded, so a refusal changes nothing
+		if broken, drift := checkChain(liveHash, ms[at+1:], ms, sc.hash); broken != nil {
+			return nil, broken
+		} else if drift != nil {
+			if dev {
+				return recreate("the migrations do not produce the app's schema")
+			}
+			return nil, drift
+		}
+		adopted, err := adopt(ctx, conn, ms[:at+1])
 		if err != nil {
 			return nil, err
 		}
-		if _, err := tx.ExecContext(ctx, createMigrationsTable); err != nil {
-			tx.Rollback()
-			return nil, err
+		if adopted {
+			logf("adopted the database at " + ms[at].Name)
 		}
-		if err := record(ctx, tx, ms[:at+1]); err != nil {
-			tx.Rollback()
-			return nil, err
-		}
-		if err := putMeta(ctx, tx, live, liveHash); err != nil {
-			tx.Rollback()
-			return nil, err
-		}
-		if err := tx.Commit(); err != nil {
-			return nil, err
-		}
-		logf("adopted the database at " + ms[at].Name)
 	}
 	// created only now: a refused database stays as it was, so a later dev run still sees it was
 	// not made by migrations
@@ -360,23 +357,17 @@ func (s *SQLite) MigrateLog(ctx context.Context, tables []TableDesc, ms []Migrat
 		}
 	}
 	// the chain: every pending file starts where the one before it (or the database) is
-	at := short(liveHash)
-	for _, m := range pending {
-		if m.From != at {
-			return nil, fmt.Errorf("migration %s expects the schema %s but the database is at %s (is a file missing, or was the database changed outside migrations?)", m.Name, m.From, at)
+	if broken, drift := checkChain(liveHash, pending, ms, sc.hash); broken != nil {
+		return nil, broken
+	} else if drift != nil {
+		if dev {
+			return recreate("the migrations do not produce the app's schema")
 		}
-		at = m.To
+		return nil, drift
 	}
 	last := "the last migration"
 	if len(ms) > 0 {
 		last = ms[len(ms)-1].Name
-	}
-	if at != short(sc.hash) {
-		if dev {
-			return recreate("the migrations do not produce the app's schema")
-		}
-		return nil, fmt.Errorf("db: %w: %s leads to the schema %s, but the app's is %s: the migrations do not produce the app's schema",
-			ErrDrift, last, at, short(sc.hash))
 	}
 
 	if len(pending) > 0 {
@@ -421,13 +412,74 @@ func (s *SQLite) MigrateLog(ctx context.Context, tables []TableDesc, ms []Migrat
 	return applied, nil
 }
 
+// checkChain checks that pending, applied to a database whose schema hash is liveHash, run in
+// a chain (each file's From the schema before it) to the app's hash appHash. broken is the
+// refusal of a file that does not start where it should (a file missing or edited); drift,
+// wrapping ErrDrift, says the last file does not lead to the app's schema.
+func checkChain(liveHash string, pending, ms []Migration, appHash string) (broken, drift error) {
+	at := short(liveHash)
+	for _, m := range pending {
+		if m.From != at {
+			return fmt.Errorf("migration %s expects the schema %s but the database is at %s (is a file missing, or was the database changed outside migrations?)", m.Name, m.From, at), nil
+		}
+		at = m.To
+	}
+	if at != short(appHash) {
+		last := "the last migration"
+		if len(ms) > 0 {
+			last = ms[len(ms)-1].Name
+		}
+		return nil, fmt.Errorf("db: %w: %s leads to the schema %s, but the app's is %s: the migrations do not produce the app's schema",
+			ErrDrift, last, at, short(appHash))
+	}
+	return nil, nil
+}
+
+// adopt records ms (the files up to the one whose To is the database's schema) as applied
+// without running them, with the database's schema in _alder_meta, in one transaction. It is
+// false when another process got there first (it found _alder_migrations with rows inside
+// the transaction, which on a file database holds the write lock from its start): nothing done.
+func adopt(ctx context.Context, conn *sql.Conn, ms []Migration) (bool, error) {
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_schema WHERE "type" = 'table' AND "name" = '_alder_migrations'`).Scan(&n); err != nil {
+		return false, err
+	}
+	if n > 0 {
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM "_alder_migrations"`).Scan(&n); err != nil {
+			return false, err
+		}
+		if n > 0 {
+			return false, nil
+		}
+	}
+	if _, err := tx.ExecContext(ctx, createMigrationsTable); err != nil {
+		return false, err
+	}
+	if err := record(ctx, tx, ms); err != nil {
+		return false, err
+	}
+	live, liveHash, err := liveSchema(ctx, tx)
+	if err != nil {
+		return false, err
+	}
+	if err := putMeta(ctx, tx, live, liveHash); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
+}
+
 // short is a schema hash as a migration file's header records it.
 func short(hash string) string { return hash[:min(len(hash), HashLen)] }
 
 // record records ms as applied in _alder_migrations (inside tx).
 func record(ctx context.Context, tx *sql.Tx, ms []Migration) error {
 	for _, m := range ms {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO "_alder_migrations" ("name", "applied") VALUES (?, ?)`, m.Name, EncodeTime(time.Now())); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO "_alder_migrations" ("name", "applied") VALUES (?, ?)`, m.Name, EncodeTime(time.Now())); err != nil {
 			return err
 		}
 	}

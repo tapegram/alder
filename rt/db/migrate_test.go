@@ -533,3 +533,70 @@ func TestParseMigration(t *testing.T) {
 		t.Fatalf("%+v %v", m, err)
 	}
 }
+
+// Two processes starting at once on a database made by Ensure: one adopts it, the other finds
+// it adopted and goes on; neither fails.
+func TestMigrate_ConcurrentAdoption(t *testing.T) {
+	ctx := context.Background()
+	ms := migrations(t)
+	for i := range 20 {
+		path := t.TempDir() + "/app.db"
+		s0, err := OpenSQLite(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s0.Ensure(ctx, []TableDesc{postV1, commentT}, false); err != nil {
+			t.Fatal(err)
+		}
+		s0.Close()
+		errs := make(chan error, 2)
+		for range 2 {
+			go func() {
+				s, err := OpenSQLite(path)
+				if err != nil {
+					errs <- err
+					return
+				}
+				defer s.Close()
+				_, err = s.Migrate(ctx, []TableDesc{postV2, commentT}, ms[:2], false)
+				errs <- err
+			}()
+		}
+		for range 2 {
+			if err := <-errs; err != nil {
+				t.Fatalf("run %d: %v", i, err)
+			}
+		}
+		s, _ := OpenSQLite(path)
+		if got := recordedNames(t, s); !slices.Equal(got, []string{"0001_initial", "0002_add_summary"}) {
+			t.Fatalf("run %d: recorded %v", i, got)
+		}
+		s.Close()
+	}
+}
+
+// An adoption followed by a broken chain is refused before the adoption is recorded: nothing
+// changes, not even _alder_migrations.
+func TestMigrate_AdoptionThenBrokenChain(t *testing.T) {
+	ctx := context.Background()
+	s := openMem(t)
+	if err := s.Ensure(ctx, []TableDesc{postV1, commentT}, false); err != nil {
+		t.Fatal(err)
+	}
+	ms := migrations(t)
+	_, err := s.Migrate(ctx, []TableDesc{postV3, commentT}, []Migration{ms[0], ms[2]}, false)
+	if err == nil || !strings.HasPrefix(err.Error(), "migration 0003_add_views expects the schema ") {
+		t.Fatalf("err = %v", err)
+	}
+	if n := rawCount(t, s, `SELECT COUNT(*) FROM sqlite_schema WHERE "name" = '_alder_migrations'`); n != 0 {
+		t.Fatal("the refusal created _alder_migrations")
+	}
+	// and with a last file that does not lead to the app's schema
+	_, err = s.Migrate(ctx, []TableDesc{postV3, commentT}, ms[:2], false)
+	if !errors.Is(err, ErrDrift) {
+		t.Fatalf("err = %v", err)
+	}
+	if n := rawCount(t, s, `SELECT COUNT(*) FROM sqlite_schema WHERE "name" = '_alder_migrations'`); n != 0 {
+		t.Fatal("the refusal created _alder_migrations")
+	}
+}
