@@ -263,10 +263,18 @@ func classifyRun(errOut string, exit int) (string, runOutcome) {
 var timedOutRE = regexp.MustCompile(`(?m)^scratch: .* (timed out.*)$`)
 
 // devDBHint rewrites the database's "run in dev mode to recreate the database" (a schema
-// mismatch: what the app's server says) for eval and the REPL, which never recreate it.
+// mismatch: what the app's server says), and the migration refusals' "run in dev mode once, or
+// back it up and delete it" (a database made before the app had migrations) and "run in dev
+// mode to recreate it" (a database changed outside migrations), for eval and the REPL, which
+// never recreate it.
 func devDBHint(msg, appBuild string) string {
-	return strings.Replace(msg, "run in dev mode to recreate the database",
-		"start `alder run` (it recreates "+filepath.Join(appBuild, "dev.db")+") or delete it", 1)
+	hint := "start `alder run` (it recreates " + filepath.Join(appBuild, "dev.db") + ") or delete it"
+	for _, s := range []string{"run in dev mode to recreate the database", "run in dev mode once, or back it up and delete it", "run in dev mode to recreate it"} {
+		if strings.Contains(msg, s) {
+			return strings.Replace(msg, s, hint, 1)
+		}
+	}
+	return msg
 }
 
 // evalIt is the Go expression for the scratch module mod's `it` of type sig in the generated
