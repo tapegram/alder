@@ -340,8 +340,12 @@ Lit tooling emit), so any system is checked like built-in elements; and a
 shadcn-inspired design system as light-DOM web components over native
 platform primitives (`<dialog>`, Popover API, anchor positioning) with
 shadcn's token sheet, distributed as copied source, may be built as a
-separate open-source project with Alder as its first consumer (it fits
-server rendering and Datastar's morph better than shadow DOM).
+separate open-source project usable by any stack, and, if built, a
+strong candidate to become Alder's built-in default design system (part
+of the language's opinionated nature: elements the checker knows, a
+first-class theme, the examples and book using it), with the manifest
+mechanism keeping other systems usable (it fits server rendering and
+Datastar's morph better than shadow DOM).
 
 **Harder use cases for experiments** (added 2026-10-10): the to-do app is
 the floor; E7 and later need apps with relations between tables, roles
