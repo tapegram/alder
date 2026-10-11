@@ -298,6 +298,37 @@ the start-up check compares those texts. The check was kept exact, and
 such a field rebuilds the table: slower on a large table, never a
 false alarm.
 
+### A fake is a whole capability, with tables **(tested: the blog, the Stripe-shaped fake of chapter 10)**
+
+A test replaces a capability with a `fake`: an implementation of every
+entry, written in Alder beside the capability, with tables of its own in
+the test's database (chapter 10, "Faking a capability"). The stance is
+the user's: a fake acts as a real implementation would, just in memory.
+So a fake answers the way the service does for any sequence of calls,
+not the one a test expected. A charge it made can be refunded, a refund
+of a charge it never made is refused, and a test reads back what the
+service holds with `Db`, as it reads the app's tables.
+
+Per-call mocks (a test listing "when `charge` is called with 250, answer
+`Ok "ch_1"`") were the other shape. They were declined. A mock answers only the calls its
+test predicted, and must be written again in every test that reaches
+the capability. Each test's list of answers then states what the service
+does a second time, where it can disagree with the service and with the
+other tests' lists. A test that checks which calls were made also
+breaks when the code makes the same calls in another order or makes
+fewer of them, though it still does the right thing. A fake is written
+once, beside its capability, and every test that installs it gets the
+same behaviour; what a test checks is the result and the rows, and the
+trace when the calls themselves matter.
+
+The rest follows from that choice. A fake's tables use the database the
+test already has, so its writes are part of the test's transaction and a
+failing `Test.run` undoes them like any other. Fakes are compiled only
+into `alder test`'s build, so no production binary contains one, and a
+fake's tables are kept out of the schema and the migrations. A fake
+lives beside its capability (E0020), so there is one place to look for
+it and the module that owns the capability owns the fake as well.
+
 ## Experiments
 
 Each experiment has a directory under `experiments/` with its prompt,
@@ -644,11 +675,14 @@ believes is right.
   `go test ./book` runs them, and only in this repository; an app's own
   documentation has no such check. Running a project's examples as tests
   would keep them true, at the cost of a second way to write a test.
-- How should a test replace a capability with a fake? Today a test runs
-  with the app's own adapters, or with none (chapter 10, section 8). A
-  test of a login wants a `Password` that accepts the user it made; a
-  `with` form on a test (`test "x" with Password = …`) is one shape, a
-  test-only adapter set chosen by name another.
+- How should a test replace a capability with a fake? A test ran with
+  the app's own adapters, or with none. A test of a login wants a
+  `Password` that accepts the user it made; a `with` form on a test
+  (`test "x" with Password = …`) was one shape, a test-only adapter set
+  chosen by name another. *Decided (M5c): a `fake` of the whole
+  capability, beside it, with tables of its own, installed by
+  `Test.fake`* ("A fake is a whole capability, with tables", above;
+  chapter 10, section 8).
 - Should `Test.run` also give the session the task left? It restores the
   session on failure and keeps it on success, but a test cannot read it,
   so `Session.put` in a login's `update` cannot be checked yet.

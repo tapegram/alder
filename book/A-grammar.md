@@ -8,7 +8,7 @@ module      = "module" ModName NL {import NL} {decl NL} ;
 import      = "import" ModName ;
 
 decl        = valueDecl | typeDecl | pageDecl | msgDecl | formDecl
-            | tableDecl | capDecl | sessionDecl | testDecl | loginDecl ;
+            | tableDecl | capDecl | fakeDecl | sessionDecl | testDecl | loginDecl ;
 
 valueDecl   = lname ":" type NL lname {lname} "=" expr ;
 typeDecl    = "type" uname {lname} "=" ( unionBody | recordType | brandType ) ;
@@ -26,6 +26,7 @@ attr        = "@id" | "@ref" uname | "@created" | "@updated" | "@unique"
             | renamed ;
 renamed     = "@renamed" string ;   (* the old name; a plain string, no "{…}" *)
 capDecl     = "capability" uname "{" {lname ":" type ","} [lname ":" type] "}" ;
+fakeDecl    = "fake" uname "{" {tableDecl | lname {lname} "=" expr} "}" ;   (* beside its capability, E0020 *)
 sessionDecl = "session" recordType ;
 loginDecl   = "login" "=" ModName ;
 testDecl    = "test" string "=" expr ;

@@ -137,5 +137,15 @@ class BuildContextTests(unittest.TestCase):
         self.assertIn("\n## Migrations\n", out)
         self.assertNotIn("\n## How tables are stored\n", out)
 
+    def test_real_reference_keeps_fakes(self):
+        # agents write fakes and install them: chapter 10's "Faking a capability" stays in the
+        # reference, "What cannot be tested yet" goes
+        bc.HUMAN_SECTIONS = self.saved
+        code, out, _ = self.run_main("--reference", "--chapters", "10", "--book", str(bc.BOOK))
+        self.assertEqual(code, 0)
+        self.assertIn("\n## 8. Faking a capability\n", out)
+        self.assertIn("fake Stripe {", out)
+        self.assertNotIn("\n## 9. What cannot be tested yet\n", out)
+
 if __name__ == "__main__":
     unittest.main()

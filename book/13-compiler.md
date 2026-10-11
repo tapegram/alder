@@ -2039,10 +2039,13 @@ import (
 
 func main() {
 	caps := adapters.Caps().Registry()
-	os.Exit(rtesting.Main(app.Tests, app.Tables, caps, app.TestSession(), os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(rtesting.Main(app.Tests, app.Tables, app.FakeTables, app.Migrations, caps, app.TestSession(), os.Args[1:], os.Stdout, os.Stderr))
 }
 ```
 
+`app.Migrations` are the app's migrations ("Migrations", below), and
+`app.FakeTables` the tables of its fakes ("Fakes", below; the to-do app
+has none, so its test build has `var FakeTables = []db.TableDesc{}`).
 Without adapters the capabilities are `app.Caps{}.Registry()`: every
 capability's key is there with no implementation, and a call to one
 fails with "capability … is not wired", which the report turns into
@@ -2097,8 +2100,12 @@ the cases one after another (`Main` does the same, one goroutine per
 case, as above). A pure case is called, with a `recover` so
 a Go panic fails that test and the next one still runs. A task case
 gets its own environment: `db.OpenSQLite(":memory:")`, a database that
-exists only in this process, `store.Ensure` with the app's `Tables`,
-and an `eff.Env` with those capabilities, the session from
+exists only in this process; the app's tables, made by `store.Migrate`
+with the app's migrations when it has them and by `store.Ensure` with
+its `Tables` when it has none; then the fakes' tables
+(`store.CreateTables`, "Fakes", below); and an `eff.Env` with a copy of
+the capabilities (`maps.Clone`, so a `Test.fake` changes only this
+test's), the session from
 `TestSession()`, and a clock that starts at `2026-01-01T00:00:00Z` and
 moves one second on each read (`rtesting.Ticking`), so rows a test
 inserts get distinct, ordered `created` times.
@@ -2497,10 +2504,179 @@ file to WAL is refused at once, without waiting, while anyone holds it.
 `rtesting` and the `eval`/REPL mains call the same function, so a test's
 database and the dev database are made exactly as production's.
 
+### Fakes
+
+Chapter 10 shows a `fake` from the outside. Here is what each stage
+does with chapter 10's `Payments` module, built by `alder test` as the
+app `shop`.
+
+**Parsing, names and checking.** `fake` is a declaration keyword, like
+`capability` (column 1 only). The parser reads `fake Stripe { … }` into
+a `FakeDecl` holding its `TableDecl`s and its entries, each a
+`ValueDecl` with no signature (`internal/syntax`). Names
+(`internal/names/resolve.go`) resolve `Stripe` to the capability, which
+must be in scope, and register the fake's tables as tables of the
+module, so `Payments.Charge` and, from another module,
+`Payments.Charge.cents` resolve as an app table's would. The checker
+(`internal/check/fakes.go`) reports E0020 when the capability is in
+another module, then checks each entry as a value whose signature is
+the entry's type in the capability (a missing or extra entry is E0003).
+It records which tables belong to a fake, and E0021 is a check on every
+use of such a table, its type or a column: allowed inside a `test`, or
+inside the fake's own entries, and nowhere else. `Test.fake Stripe` is
+typed by the checker itself, not by its signature in
+`stdlib/Test.alder` (`fake : Capability -> Task Unit`, where
+`Capability` is a name only that file may write): the argument must be
+a capability with a fake, and the result is `Task Unit`.
+
+**The IR.** `ir.Program.Fakes` holds one `ir.Fake` per fake: its
+module, a pointer to the `ir.Capability` it implements, its tables, and
+its entries as `ir.Value`s in the capability's entry order. The tables
+are lowered by the same code as the app's, but kept out of
+`Program.Tables`. Everything that reads `Program.Tables` therefore
+never sees them: the schema, `migrate.FromProgram`, E0019 and the
+production build. `Test.fake Stripe` lowers to an `ir.TestFake` node
+naming the fake.
+
+**A fake becomes a Go struct.** `gen.Emit` takes `Options.Tests`, which
+only `alder test` sets (`scratch.Options{Tests: true}`). With it, the
+module's Go file gets the fake's table, as a record type and a
+`db.Table` exactly like an app table's (`Payments__Charge`,
+`table__Payments__Charge`), and then the fake itself. From
+`build/shop/scratch/test/Payments_alder.go`:
+
+```go
+// fake__Payments__Stripe is `fake Stripe` of module Payments (test builds only): it implements
+// Cap__Payments__Stripe by running the fake's entries inside the effect that calls them
+// (eff.RunInner on the Env eff.EnvFrom finds in ctx), so their steps, writes and failures are the
+// calling test's. Test.fake Stripe installs it.
+type fake__Payments__Stripe struct{}
+
+func (fake__Payments__Stripe) Charge(ctx context.Context, args Args__Payments__Stripe__Charge) (rt.Result[string, string], error) {
+	env := eff.EnvFrom(ctx)
+	if env == nil {
+		var zero rt.Result[string, string]
+		return zero, errors.New("fake Stripe called outside a running effect")
+	}
+	return eff.RunInner(env, fakeentry__Payments__Stripe__Charge(args))
+}
+```
+
+`Refund` is the same with its own types. The struct has no fields: a
+fake's state is in its tables, not in Go. It has one method per entry,
+with the signature of the capability's interface,
+`Cap__Payments__Stripe`, so to the rest of the program it is one more
+implementation of that interface, like the adapter's. Each entry's body
+is emitted as an ordinary function returning an effect (an entry with
+no parameters, such as a `balance : Query Int`, is a package `var`):
+
+```go
+func fakeentry__Payments__Stripe__Charge(args struct{ Cents int64 }) eff.Task[rt.Result[string, string]] {
+	return eff.Bind(eff.Call("Db.insert Charge", true, func(_e1 *eff.Env) (string, error) {
+		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Payments__Charge, insertvals__Payments__Charge(insert__Payments__Charge{Cents: args.Cents, Refunded: false}), _e1.Now())
+	}), func(id string) eff.Task[rt.Result[string, string]] {
+		if args.Cents > 100000 {
+			return eff.Fail[rt.Result[string, string]]("card declined")
+		}
+		return eff.Pure(rt.Ok[string, string](id))
+	})
+}
+```
+
+The method is how the Go world (a capability call) gets back into the
+Alder world (an effect to interpret). A capability call's `Call`
+passes `_e.Ctx` to the method, and `eff.Run` put the running `Env` in
+that context, so `eff.EnvFrom(ctx)` finds it. `eff.RunInner(env, t)`
+(`rt/eff/run.go`) then interprets the entry's effect inside the effect
+that is already running, under its kind: the same transaction, the same
+trace, the same session. This is why the trace shows `Stripe.charge`
+(the capability call's own step) followed by `Db.insert Charge` (the
+entry's step), why the insert is part of the test's transaction, and
+why a `Test.run` savepoint around the call undoes it. A failure, such
+as `eff.Fail` with `"card declined"`, comes back out of `RunInner` as
+the method's error. `CapError` leaves an `*eff.ErrFail` as it is, so the
+test sees `card declined`, not `Stripe.charge: card declined`. Called
+from a `Query`, the entry runs as a `Query`, and a write it reaches is
+the usual internal error.
+
+`app__alder.go` gets two variables:
+
+```go
+// FakeTables are the test-only tables of the app's fakes, which alder test's main creates in each
+// test's database after Tables (rtesting.Options.TestTables). Test builds only.
+var FakeTables = []db.TableDesc{table__Payments__Charge.Desc()}
+
+// Fakes are the app's fakes by the Env.Caps key of their capability: Test.fake installs one in the
+// running test's Env.Caps. Test builds only.
+var Fakes = map[string]func() any{
+	"Payments.Stripe": func() any { return fake__Payments__Stripe{} },
+}
+```
+
+and `Test.fake Stripe` is a `Call` that puts a new fake under the
+capability's key in the running test's `Env.Caps`, the map every
+capability call looks its implementation up in (from
+`test__Payments__1`):
+
+```go
+	return eff.Bind(eff.Call("Test.fake Stripe", false, func(_e1 *eff.Env) (struct{}, error) {
+		if _e1.Caps == nil {
+			_e1.Caps = map[string]any{}
+		}
+		_e1.Caps["Payments.Stripe"] = Fakes["Payments.Stripe"]()
+		return struct{}{}, nil
+	}), func(_ struct{}) eff.Task[bool] {
+```
+
+Each case's `Env.Caps` is its own copy of the app's capabilities
+(`runCase` clones the map), so the next test starts with the adapter
+again. A `Test.run` savepoint covers the database, not this map, so a
+fake installed inside a failing run stays installed.
+
+**The fakes' tables in a test's database.** `rtesting.Main` passes
+`FakeTables` on as `Options.TestTables`. For each case, after the app's
+tables exist (by `Migrate` or `Ensure`), `ensure` calls
+`store.CreateTables(ctx, o.TestTables, o.Tables)` (`rt/db/sqlite.go`):
+in one transaction it runs a plain `CREATE TABLE` for each fake table,
+resolving its `@ref`s against both lists, and its indexes. It records
+nothing in `_alder_meta`, where `Ensure` and `Migrate` keep the app's
+schema hash. The order matters: `Migrate` ends by checking that the
+live tables are exactly the app's, so it runs before the fakes' tables
+exist, never after.
+
+**Production.** Without `Options.Tests` (`alder build`, `alder run`,
+eval and the REPL) none of this is emitted: no fake struct, no entry
+functions, no fake table, no `FakeTables` or `Fakes`. Tests are still
+compiled (section 8, "Running tests"), so each must compile without
+them. A test that uses a fake's table (decided on the IR, by
+`usesFakeTable` in `internal/gen/gen.go`) becomes a stub, and
+`Test.fake` becomes a step that fails. From `alder build --emit shop`:
+
+```go
+// test__Checkout__1 is test "an order is paid" of module Checkout.
+func test__Checkout__1() eff.Task[bool] {
+	return eff.Bind(eff.Call("Test.fake Stripe", false, func(_e1 *eff.Env) (struct{}, error) {
+		return struct{}{}, errors.New("Test.fake is only available in `alder test`")
+	}), func(_ struct{}) eff.Task[bool] {
+		return eff.Bind(Checkout__pay(250), func(said string) eff.Task[bool] {
+			return eff.Pure(rtesting.Eq(said, "paid"))
+		})
+	})
+}
+
+// test__Checkout__2 is test "a declined charge leaves no row" of module Checkout.
+func test__Checkout__2() eff.Task[bool] {
+	return eff.Fail[bool]("this test uses a fake's tables, which exist only in `alder test`")
+}
+```
+
+Neither ever runs: only `alder test` runs tests, and it builds with
+`Tests` set.
+
 ### What is still to come
 
 M4a added `alder eval` and the book verifier, M4b `alder test`, M4c
-the REPL, and M5b migrations (above). See the design spec,
+the REPL, M5b migrations and M5c fakes (above). See the design spec,
 [`docs/superpowers/specs/2026-10-09-m4-test-repl-design.md`](../docs/superpowers/specs/2026-10-09-m4-test-repl-design.md),
 "Milestones".
 

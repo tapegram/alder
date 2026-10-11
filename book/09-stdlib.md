@@ -256,3 +256,22 @@ knows them:
 `: Query a` / `: Task a`, no arguments) stop the effect and answer 404 with
 `App.notFound`; a `Task` that ends in `Task.notFound` is rolled back like
 any failed `Task`.
+
+## Test
+
+Only a `test` may use these (chapter 10); anywhere else each is E0003
+"… is only available inside a `test`".
+
+- `Test.run : Task a -> Task { value: Result Text a, trace: List Text }`
+  runs a task that may fail: `value` is `Ok` with its result or `Err`
+  with the failure's message (its writes undone), and `trace` is the
+  steps it took (chapter 10, section 4).
+- `Test.trace : Task (List Text)` is the steps the test has taken so far
+  (chapter 10, section 5).
+- `Test.fake Stripe : Task Unit` installs the `fake` of capability
+  `Stripe` for the rest of the test (chapter 10, section 8). It is a
+  special form, not a function: its argument is a capability's name
+  (`Stripe` or `Payments.Stripe`), whose module declares a `fake`, and
+  never an expression. It has no type of its own to pass around, so
+  `Test.fake` cannot be applied to a variable, piped into, or left
+  without its argument.
