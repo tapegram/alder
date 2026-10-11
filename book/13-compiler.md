@@ -820,8 +820,9 @@ part of this section.
 
 The rest of this section follows one `load` from source to SQL, then one
 `update` arm through a transaction. The program is
-`testdata/golden/ir_effects/app/`, whose page module `Index` has a `Todo`
-table and a page `"/pair/{a}/{b}"`. (`testdata/golden/gen_effects/app/`
+`testdata/golden/ir_effects/app/`, whose page module `Index` uses the `Todo`
+table (declared in `app/Todo.alder`, as every table is: chapter 8) and has a
+page `"/pair/{a}/{b}"`. (`testdata/golden/gen_effects/app/`
 holds the same three files, and `gen_effects/want/` the Go they become.)
 
 ### The source
