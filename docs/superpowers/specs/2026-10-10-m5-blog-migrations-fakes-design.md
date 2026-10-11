@@ -382,8 +382,50 @@ E0019, `rt/db.Migrate`, application at start, tests via migrations;
 chapter 8 "Migrations"; both examples get `migrations/`.
 **M5c — fakes:** `fake`, `Test.fake`, E0020/E0021, test-only gen; the
 blog's Markdown fake and a Stripe-shaped fake in the corpus; chapter 10.
-**M5d — adapter sub-packages** (the second plan, after M5c): one Go
-package per domain under `adapters/`, generated wiring.
+**M5d — adapter sub-packages** (the third plan, after M5c; designed
+2026-10-11): one Go package per domain under `adapters/`, generated wiring.
+
+- **The problem.** Today `adapters/` is one Go package whose `Caps()`
+  returns every capability. A large app (billing, subscriptions, auth,
+  mail) wants its Go organised by domain, next to the Alder module that
+  declares each capability, with no hand-written wiring to keep in step.
+- **The rule: a capability's adapter lives in the package named after its
+  module's first segment.** A capability `X` declared in module `A.B`
+  is implemented by `adapters/a/` (the first segment, lower-cased), which
+  exports `func BX() app.Cap__A__B__X` (the remaining segments and the
+  capability's name, concatenated). So `Auth.Login`'s `Password` is
+  `adapters/auth/`, `func LoginPassword() app.Cap__Auth__Login__Password`;
+  `Markdown`'s `Markdown` is `adapters/markdown/`, `func Markdown()`;
+  `Payments`'s `Stripe` is `adapters/payments/`, `func Stripe()`. The
+  function may return any value implementing the interface. Packages
+  under `adapters/` that match no module (helpers, `adapters/internal/`)
+  are copied and compiled but never wired. The flat form (top-level
+  `adapters/*.go` with `Caps()`) is removed: one way, named by the
+  compiler.
+- **Generated wiring.** `alder build` (and the test, eval and REPL
+  mains) emits a package `build/<app>/caps/` (`package caps`,
+  `func Caps() app.Caps`) that imports each needed `app/adapters/<dir>`
+  (aliased, so a module named `App` works) and calls each constructor;
+  `cmd/main.go` and the mains import `app/caps`. Nothing in `adapters/`
+  is generated or edited. The whole `adapters/` tree is copied (Go test
+  files included, so `go test ./adapters/...` in the build directory
+  runs an adapter's tests against the real `app` package).
+- **Errors, at build time, naming the exact thing to write.** A missing
+  package or function: "capability `Auth.Login.Password` needs
+  `adapters/auth/` with `func LoginPassword() app.Cap__Auth__Login__Password`"
+  (one line per missing capability, and the build stops before `go
+  build`); a function with the wrong signature is Go's own error, quoted;
+  a directory under `adapters/` that is not a Go package (no `.go`
+  files) is ignored. `alder check` is unaffected (adapters are a build
+  concern).
+- **Production builds carry no test code** (folded in from M5c's
+  ledger): with `gen.Options{Tests}` unset, gen emits no `Tests`, no
+  `TestSession`, no test bodies, no `Test.fake` stubs — only `alder test`
+  builds them. The production module no longer imports `rt/testing`.
+- **Examples and book.** Both examples move to `adapters/auth/` (and the
+  blog to `adapters/markdown/`); chapter 7 "Implementing a capability"
+  teaches the rule and the generated `caps` package; chapters 11, 13 and
+  14 follow; the harness's `--adapters` accepts `adapters/<dir>/<name>.go`.
 
 ## Decisions recorded
 
