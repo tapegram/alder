@@ -318,7 +318,11 @@ a reader cannot tell a draft from an unused slug, renders the body, and
 reads the comments oldest first. `view` embeds the body, an
 `Html Never`, as `{model.body}` (chapter 5). The Go side builds it with
 `html.El` and `html.Text`, never `html.Raw`, so a post cannot inject
-markup; a link is kept only for an `http:` or `https:` address.
+markup; a link is kept only for an `http:` or `https:` address. That Go
+is the adapter `examples/blog/adapters/markdown/markdown.go`: module
+`Markdown`, capability `Markdown`, so directory `adapters/markdown/` and
+constructor `func Markdown()` (chapter 7 quotes its top, and the
+generated `caps` package that wires it).
 `app/Markdown.alder` also has a `fake Markdown`, which one `Posts.Show`
 test uses in the adapter's place (chapter 10, "Faking a capability").
 
@@ -582,7 +586,8 @@ $ alder run examples/blog
 ```
 
 `alder run` serves the app in dev mode (`ALDER_DEV=1`, chapter 11). In
-dev mode only, the stub of `Password` (`adapters/password.go`) accepts
+dev mode only, the stub of `Password` (`adapters/auth/password.go`,
+`func LoginPassword()`, as for the to-do app) accepts
 two accounts, both with the password `password`, and creates each one's
 `User` row on its first login:
 

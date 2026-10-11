@@ -32,6 +32,26 @@ Effects text.
 ## How effects run
 
 Effect internals.
+
+## Implementing a capability
+
+Wiring intro.
+
+### The rule
+
+Rule text.
+
+```go
+### not a subheading (inside a fence)
+```
+
+### What the build does
+
+Build internals.
+
+## After
+
+After text.
 """
 
 class BuildContextTests(unittest.TestCase):
@@ -45,10 +65,13 @@ class BuildContextTests(unittest.TestCase):
         self.example.mkdir(parents=True)
         (self.example / "App.alder").write_text("module App\n")
         self.saved = bc.HUMAN_SECTIONS
+        self.saved_keep = bc.KEEP_SUBSECTIONS
         bc.HUMAN_SECTIONS = {"06": ["How a request runs"], "07": ["How effects run"]}
+        bc.KEEP_SUBSECTIONS = {}
 
     def tearDown(self):
         bc.HUMAN_SECTIONS = self.saved
+        bc.KEEP_SUBSECTIONS = self.saved_keep
         shutil.rmtree(self.tmp)
 
     def run_main(self, *args):
@@ -77,6 +100,26 @@ class BuildContextTests(unittest.TestCase):
         pos = [out.index(k) for k in kept]
         self.assertEqual(pos, sorted(pos))   # order kept
         self.assertTrue(out.startswith(bc.HEADER))
+
+    def test_reference_keeps_listed_subsections(self):
+        bc.HUMAN_SECTIONS = {"07": ["How effects run", "Implementing a capability"]}
+        bc.KEEP_SUBSECTIONS = {"07": {"Implementing a capability": ["The rule"]}}
+        code, out, _ = self.run_main("--reference", "--chapters", "07")
+        self.assertEqual(code, 0)
+        for gone in ("Effect internals.", "Wiring intro.", "### What the build does", "Build internals."):
+            self.assertNotIn(gone, out)
+        kept = ["## Building effects", "## Implementing a capability\n", "### The rule", "Rule text.",
+                "### not a subheading (inside a fence)", "## After", "After text."]
+        pos = [out.index(k) for k in kept]
+        self.assertEqual(pos, sorted(pos))
+
+    def test_reference_unknown_subsection(self):
+        bc.HUMAN_SECTIONS = {"07": ["Implementing a capability"]}
+        bc.KEEP_SUBSECTIONS = {"07": {"Implementing a capability": ["The rules"]}}
+        code, out, err = self.run_main("--reference", "--chapters", "07")
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn('"### The rules"', err)
 
     def test_reference_only_selected_chapters(self):
         code, out, _ = self.run_main("--reference", "--chapters", "06")
@@ -127,6 +170,19 @@ class BuildContextTests(unittest.TestCase):
             text = next(bc.BOOK.glob(f"{ch}-*.md")).read_text()
             for h in heads:
                 self.assertIn("\n## " + h + "\n", text)
+
+    def test_real_reference_keeps_adapter_rule(self):
+        # an agent implementing a capability needs where its adapter goes and what it is called:
+        # chapter 7's "The rule" stays, the rest of "Implementing a capability" goes
+        bc.HUMAN_SECTIONS = self.saved
+        bc.KEEP_SUBSECTIONS = self.saved_keep
+        code, out, _ = self.run_main("--reference", "--chapters", "07", "--book", str(bc.BOOK))
+        self.assertEqual(code, 0)
+        self.assertIn("\n## Implementing a capability\n", out)
+        self.assertIn("\n### The rule\n", out)
+        self.assertIn("func LoginPassword() app.Cap__Auth__Login__Password", out)
+        self.assertNotIn("\n### What the build does with `adapters/`\n", out)
+        self.assertNotIn("\n## How effects run\n", out)
 
     def test_real_reference_keeps_migrations(self):
         # agents need the E0019 -> `alder migrate` workflow: chapter 8's "Migrations" stays in

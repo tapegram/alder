@@ -4,9 +4,10 @@
 Usage: build_context.py [--chapters 03,04,...] [--no-example] [--reference] [--book DIR] [--example DIR]
                         [--size [--count ollama:MODEL [--num-ctx N]]] > prompt.md
 
---reference drops the sections written for humans (HUMAN_SECTIONS, by exact `## ` heading); a
-listed heading missing from its chapter exits 2 naming it, so a renamed section never silently
-builds the wrong prompt. --size prints the prompt's size instead of the prompt: characters and
+--reference drops the sections written for humans (HUMAN_SECTIONS, by exact `## ` heading),
+except the `### ` subsections of a dropped section listed in KEEP_SUBSECTIONS, which stay under
+the section's heading; a listed heading missing from its chapter exits 2 naming it, so a renamed
+section never silently builds the wrong prompt. --size prints the prompt's size instead of the prompt: characters and
 len/4; with --count ollama:MODEL also Ollama's prompt_eval_count for the prompt alone (one
 /api/chat call, the prompt as the system message, num_predict 1).
 """
@@ -33,6 +34,13 @@ HUMAN_SECTIONS = {
     "08": ["How tables are stored"],
     "10": ["2. Running the tests", "6. What a trace says",
            "7. Choosing tests, and output for programs", "9. What cannot be tested yet"],
+}
+
+# The `### ` subsections of a dropped section that --reference keeps, by chapter and `## `
+# heading: chapter 7's adapter naming rule (capability X of module A.B -> adapters/a/, func BX),
+# which an agent writing a capability needs; the rest of that section is how the build wires it.
+KEEP_SUBSECTIONS = {
+    "07": {"Implementing a capability": ["The rule"]},
 }
 
 HEADER = """You are writing code in Alder, a small language for server-rendered web
@@ -67,8 +75,26 @@ def sections(text):
     return out
 
 
-def drop_sections(path, text, headings):
-    """text without the `## ` sections named in headings; exits 2 naming a heading not found."""
+def subsections(text):
+    """Split a `## ` section's text into [(heading or None, text)] at its `### ` lines, outside
+    code fences, as sections does at `## ` lines."""
+    out, cur, head, fenced = [], [], None, False
+    for line in text.splitlines(keepends=True):
+        if FENCE.match(line):
+            fenced = not fenced
+        if not fenced and line.startswith("### "):
+            out.append((head, "".join(cur)))
+            cur, head = [], line[4:].rstrip()
+        cur.append(line)
+    out.append((head, "".join(cur)))
+    return out
+
+
+def drop_sections(path, text, headings, keep=None):
+    """text without the `## ` sections named in headings, but for the `### ` subsections that
+    keep (a dict: `## ` heading -> [`### ` headings]) lists for a dropped section, which stay
+    after that section's `## ` line; exits 2 naming a heading not found."""
+    keep = keep or {}
     parts = sections(text)
     found = {h for h, _ in parts}
     for h in headings:
@@ -76,7 +102,23 @@ def drop_sections(path, text, headings):
             print(f'build_context.py: --reference: {path} has no section "## {h}" '
                   f"(update HUMAN_SECTIONS to match the book)", file=sys.stderr)
             raise SystemExit(2)
-    return "".join(t for h, t in parts if h not in headings)
+    out = []
+    for h, t in parts:
+        if h not in headings:
+            out.append(t)
+            continue
+        if not keep.get(h):
+            continue
+        subs = subsections(t)
+        names = {sh for sh, _ in subs}
+        for sh in keep[h]:
+            if sh not in names:
+                print(f'build_context.py: --reference: {path} has no subsection "### {sh}" in "## {h}" '
+                      f"(update KEEP_SUBSECTIONS to match the book)", file=sys.stderr)
+                raise SystemExit(2)
+        out.append(t.splitlines(keepends=True)[0] + "\n")
+        out.extend(st for sh, st in subs if sh in keep[h])
+    return "".join(out)
 
 
 def build(chapters, book, example, reference):
@@ -85,7 +127,7 @@ def build(chapters, book, example, reference):
         for f in sorted(book.glob(f"{ch}-*.md")):
             text = f.read_text()
             if reference and ch in HUMAN_SECTIONS:
-                text = drop_sections(f, text, HUMAN_SECTIONS[ch])
+                text = drop_sections(f, text, HUMAN_SECTIONS[ch], KEEP_SUBSECTIONS.get(ch))
             out.append(text)
             out.append("\n")
     if example is not None:

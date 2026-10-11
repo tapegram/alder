@@ -1434,8 +1434,10 @@ above) needs. Cookies and `303`s are passed on untouched, and the
 **The watcher.** `watch` polls rather than asking the operating system
 for change notifications, so the compiler needs no dependency beyond Go's
 standard library. Every 300 ms, `snapshot` records the modification time
-and size of every `.alder` file under `app/`, every `.go` file at the top
-level of `adapters/` and every file under `static/`; `diff` compares two
+and size of every `.alder` file under `app/`, every file under
+`adapters/` (any directory, any extension: `alder build` copies the whole
+tree, so any of it can change the build), the migration files, and every
+file under `static/`; `diff` compares two
 snapshots and says which kinds changed, `sourceChange`, `staticChange` or
 both (a `change` is a set of bits). The watcher does not report a change
 at once. It waits for a poll that finds nothing new:
@@ -1795,11 +1797,12 @@ comment of `Compile`:
 //     set only for I/O failures, an extra module named like an app or stdlib module
 //     (*ModuleExistsError), generated or caller Go that does not vet, and go build failures;
 //     its message carries Go's output.
-//   - Compile writes only under out (the generated module "app", adapters/ and static/ copied
-//     from the app, cmd/main.go and the executable out/scratch) and the lock file <out>.lock;
-//     it never touches build/<app> itself. Nothing is written when the check fails, and the
-//     previous executable in out stays until a new one is built, so a failed Compile leaves
-//     the last good one runnable.
+//   - Compile writes only under out (the generated module "app" with its caps/ when it wires
+//     the adapters (Checked.WiresAdapters), adapters/, static/ and
+//     migrations/ copied from the app, cmd/main.go and the executable out/scratch) and the
+//     lock file <out>.lock; it never touches build/<app> itself. Nothing is written when the
+//     check fails, and the previous executable in out stays until a new one is built, so a
+//     failed Compile leaves the last good one runnable.
 //   - Compiles into one out serialize: Compile takes an exclusive lock on <out>.lock (flock;
 //     the kernel drops it if the process dies) before writing, waiting while another holds it
 //     (CompileCheckedWith's ctx ends the wait; its Options.Waiting is told), and a Runnable
@@ -1851,20 +1854,28 @@ Here is `alder eval examples/todos 'Todo.filterLabel Active'`, step by step
    `mainTask` runs it as a Task, whose writes commit; eval refuses a
    `Task`, and the REPL's `:run!` is what uses it. The two effect mains
    are one template; `scratchMain(mainQuery, true, "app.Scratch__it")`
-   (an app with Go files in `adapters/`) opens the database, creating it
-   with the app's tables when absent, and then runs
+   (an app with capabilities and a `.go` file somewhere under `adapters/`,
+   `Checked.WiresAdapters`) imports `"app/caps"`, opens the database,
+   creating it with the app's tables when absent, and then runs (from
+   `build/todos/scratch/eval/cmd/main.go`, after
+   `alder eval examples/todos --run 'Db.count (Db.from Todo.Todo)'`)
 
    ```go
-   env := &eff.Env{Ctx: ctx, Store: store, Session: app.TestSession(), Caps: adapters.Caps().Registry(), Now: time.Now}
+   env := &eff.Env{Ctx: ctx, Store: store, Session: app.TestSession(), Caps: caps.Caps().Registry(), Now: time.Now}
    v, err := eff.RunQuery(env, app.Scratch__it)
    ```
 
    with the app's default session (`TestSession`, the one `alder test`
    uses; only a test build has it, so eval and the REPL build with
-   `scratch.Options{Tests: true}`, below) and the adapters' capabilities; without adapters `Caps` is
-   `app.Caps{}.Registry()`, every capability unwired, and a call to one
-   fails with "capability … is not wired in eval" (as does a call to one
-   whose field the adapters' `Caps` leaves `nil`). A failed effect
+   `scratch.Options{Tests: true}`, below) and the adapters' capabilities,
+   wired by the generated `caps` package as in `alder build` (chapter 7);
+   before compiling, the build checks the adapters with
+   `buildkit.CheckAdapters`, the check `alder build` makes, and a missing
+   one is the build's error, with the same lines. Without adapters the
+   main does not import `app/caps`, `caps/` is left out of the scratch
+   module, and `Caps` is `app.Caps{}.Registry()`, every capability
+   unwired: a call to one fails with "capability … is not wired in eval"
+   (as does a call to one whose constructor returned `nil`). A failed effect
    prints its message to stderr and exits 1.
 4. **Compile.** `scratch.CompileCheckedWith` builds what step 2
    checked, without checking again: it takes the lock file
@@ -2033,7 +2044,8 @@ function, and does not import `alder/rt/testing` (`TestGen_ProdHasNoTests`
 in `internal/gen/gen_test.go` checks it).
 
 **The main.** `testMain` in `cmd/alder/test.go` writes the scratch
-program's `cmd/main.go`. For the to-do app, which has adapters:
+program's `cmd/main.go`. For the to-do app, which has adapters
+(`build/todos/scratch/test/cmd/main.go`):
 
 ```go
 package main
@@ -2043,11 +2055,11 @@ import (
 
 	rtesting "alder/rt/testing"
 	"app"
-	"app/adapters"
+	"app/caps"
 )
 
 func main() {
-	caps := adapters.Caps().Registry()
+	caps := caps.Caps().Registry()
 	os.Exit(rtesting.Main(app.Tests, app.Tables, app.FakeTables, app.Migrations, caps, app.TestSession(), os.Args[1:], os.Stdout, os.Stderr))
 }
 ```
@@ -2055,7 +2067,10 @@ func main() {
 `app.Migrations` are the app's migrations ("Migrations", below), and
 `app.FakeTables` the tables of its fakes ("Fakes", below; the to-do app
 has none, so its test build has `var FakeTables = []db.TableDesc{}`).
-Without adapters the capabilities are `app.Caps{}.Registry()`: every
+(The local `caps` takes the package's name from that line on, which Go
+allows: `caps.Caps()` on the right is still the package.) Without
+adapters the main does not import `app/caps` and the capabilities are
+`app.Caps{}.Registry()`: every
 capability's key is there with no implementation, and a call to one
 fails with "capability … is not wired", which the report turns into
 "… is not wired in tests". `alder test` runs the program with
@@ -2374,13 +2389,14 @@ package's imports are initialized before the package itself. So the
 generated package imports `alder/rt` always. An app with a union already
 uses it (`rt.RegisterUnion`); for one that does not, `app__alder.go` has
 a blank import, which runs a package's `init` without naming anything in
-it:
+it (`testdata/golden/gen_generic/want/app__alder.go`, a production
+build, which imports nothing else; a test build adds
+`rtesting "alder/rt/testing"`):
 
 ```go
 import (
 	_ "alder/rt" // initialized before this package (rt/tether.go)
 	"alder/rt/db"
-	rtesting "alder/rt/testing"
 )
 ```
 
@@ -2698,9 +2714,47 @@ this repository for `rt`. `app__alder.go` holds the lists of section 8
 `Serve` (which checks the capabilities, opens the database, creates the
 tables and returns `web.NewRouter(Routes, …)`), and `session__codec`, the
 cookie's JSON. `routes__alder.go` holds `Routes` and every handler of
-section 8's last part. A full `alder build` (without `--emit`) adds
-`cmd/main.go`, which reads the environment and calls `Serve`;
-`adapters/` and `static/`, copies of the app's own; and the executable.
+section 8's last part. An app with capabilities also gets
+`caps/caps__alder.go`, the package `caps` that wires them (chapter 7
+quotes the blog's). A full `alder build` (without `--emit`) adds
+`cmd/main.go`, which reads the environment and calls
+`Serve(caps.Caps(), …)` (or `Serve(app.Caps{}, …)` for an app without
+capabilities); `adapters/` and `static/`, copies of the app's own; and
+the executable.
+
+**The build, in order** (`runBuildTo` in `cmd/alder/build.go`):
+
+1. Check the program (section 5), and lower it to the IR (section 6).
+2. Check the adapters, before anything is written:
+   `buildkit.CheckAdapters` (`internal/buildkit/adapters.go`). It turns
+   each capability of the IR's `Program.Caps` into a `Need`: the module,
+   the capability, the directory (`gen.AdapterPkg`: the module's first
+   segment, lower-cased), the function (`gen.AdapterFunc`: the other
+   segments and the capability's name, joined) and the interface. Two
+   needs with the same directory and function are the "internal naming
+   error" (`gen.AdapterCollision`); a directory named `internal` or
+   `testdata` is refused. Then the scan: for each needed directory it
+   parses, with Go's own parser (`go/parser`, which reads a file's
+   declarations without type-checking anything), every `.go` file that
+   is not a test and that Go would build here (`build.Default.MatchFile`
+   applies build tags and `_linux`-style file names), and collects the
+   functions that are exported, have no receiver, no type parameters and
+   no parameters. A need whose function is not among them is missing.
+   A file that does not parse counts as having every function, so that
+   Go, later, reports the syntax error itself. Every missing need is
+   printed, and the build exits 1.
+3. Emit the Go (section 7); `gen.Emit` adds the `caps` file
+   (`gen.CapsPackage`) when the program has capabilities. Write it
+   (`buildkit.WriteGenerated`, which also removes a stale `caps/`).
+4. Copy `migrations/`, then the whole `adapters/` tree
+   (`buildkit.CopyAdapters`, which skips a file whose content is
+   unchanged, so Go's build cache stays warm, and removes what the app
+   no longer has) and `static/`, and write `cmd/main.go` (`gen.Main`).
+5. `go vet ./...` on the module, then `go build ./cmd`. When vet fails,
+   the build vets the generated package alone to decide whose fault it
+   is: if that fails too, it is an internal error (exit 2); otherwise the
+   adapters (or the wiring of their constructors) do not compile, which
+   is your Go, and exit 1 with Go's output.
 The fixed ending is there because Go reads meaning into file names: a file
 ending in `_test.go` is a test, and one whose name ends in `_linux` or
 `_amd64` (before the first `.`) is compiled only on Linux or only on that
@@ -2730,6 +2784,9 @@ parts are always joined by a double underscore, `__`:
 | `route__…`, `session__…` | helpers shared by every route, and the session codec | `route__fail`, `session__codec` |
 | `Cap__M__Cap` | a capability's Go interface | `Cap__Auth__Login__Password` |
 | `Args__M__Cap__Entry` | the argument record of a capability entry | `Args__Auth__Login__Password__Verify` |
+| `M__Cap` | a capability's field of `Caps` | `Auth__Login__Password` |
+| `a_<dir>` | the alias of `app/adapters/<dir>` in `caps/caps__alder.go` | `a_auth` |
+| first segment, lower-cased; the rest + the capability | the adapter's directory and constructor (`gen.AdapterPkg`, `gen.AdapterFunc`) | `adapters/auth/`, `LoginPassword` |
 | `title` → `Title`, `_at` → `U__at` | a record field, exported (a capital first letter, or `U__` for a leading `_`) so that adapters, and the runtime's `Show`, `Eq` and `Key`, see it | |
 | `type` → `type__` | a local whose name Go reserves, or that names `rt`, `html`, `std` | |
 

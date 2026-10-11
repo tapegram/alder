@@ -23,14 +23,20 @@ myapp/
       Index.alder     -- page "/"
       Show.alder      -- page "/todos/{id}"
     Layout.alder      -- shared components
-  adapters/           -- Go implementations of capabilities (package adapters)
+  adapters/           -- Go implementations of capabilities, one package per module
+    auth/
+      password.go     -- package auth: func LoginPassword() (module Auth.Login, capability Password)
+    internal/         -- Go helpers your adapters share (optional; never wired)
   static/             -- files served under /static/ (stylesheets, images)
   go.mod              -- needed only inside another Go module (below)
   build/              -- generated, never edited
 ```
 
 `examples/todos/` has this shape. `adapters/` is needed only when the app
-declares a capability (chapter 7, "Implementing a capability"). `static/`
+declares a capability: a capability `X` of module `A.B` is implemented in
+`adapters/a/` by `func BX()` (chapter 7, "Implementing a capability"),
+so `adapters/` holds one directory per first segment of a module with
+capabilities, plus any helper directories. `static/`
 is optional: `examples/todos/static/app.css` is served at
 `/static/app.css`, and the layout links it with
 `<link rel="stylesheet" href={Url.external "/static/app.css"} />`.
@@ -88,25 +94,67 @@ part of `dir` once it is made absolute (so `alder build .` inside
 2. Generate the Go into `build/<app>/`, as `--emit` does (below). This
    is a production build: it contains none of the app's `test`s, no
    fakes and no test runner (`alder test` makes its own build).
-3. Replace `build/<app>/adapters/` with copies of the `.go` files at the
-   top level of `<dir>/adapters/` (subdirectories and other files are not
-   copied), and `build/<app>/static/` with a copy of `<dir>/static/`.
-4. Write `build/<app>/cmd/main.go`, the program's `main`.
+   When the app has capabilities, this includes the wiring,
+   `build/<app>/caps/caps__alder.go`: a package `caps` whose
+   `func Caps() app.Caps` calls each adapter's constructor (chapter 7
+   quotes the blog's).
+3. Replace `build/<app>/adapters/` with a copy of the whole
+   `<dir>/adapters/` tree (every file in every directory: helper
+   packages, Go test files and `testdata/` included; a file that is gone
+   from yours is removed from the copy), and `build/<app>/static/` with a
+   copy of `<dir>/static/`.
+4. Write `build/<app>/cmd/main.go`, the program's `main`, which imports
+   `"app/caps"` when the app has capabilities.
 5. Run `go vet` on the whole module, then `go build`, which writes
    `build/<app>/<app>`.
 
-If the app declares capabilities and has no `adapters/` directory (or one
-with no `.go` file at its top level), nothing is written, and the build
-exits 1 naming each interface to implement:
+Between steps 1 and 2, before anything is written, the build checks the
+adapters (chapter 7, "Implementing a capability"). In order:
 
-```
-examples/todos needs an adapters package: create adapters/caps.go with `func Caps() app.Caps` implementing: Auth.Login.Password (interface app.Cap__Auth__Login__Password)
-```
+- Two capabilities whose adapters would be the same function in the same
+  package stop the build:
+  `internal naming error: capabilities Mail.OutBox and Mail.Out.Box both need func OutBox in adapters/mail/ (rename one of them)`.
+- A module with capabilities whose first segment is `Internal` or
+  `Testdata` is refused, one line per module:
+  ``module `Internal` cannot name an adapter package: Go keeps `adapters/internal/` private to adapters/ (it holds helpers); rename the module``
+  or ``module `Testdata` cannot name an adapter package: Go skips `testdata/` directories; rename the module``.
+- The scan: for each capability, the build reads (without compiling) the
+  `.go` files of its directory under `adapters/`, skipping test files and
+  files Go would not build on this machine, and looks for its exported,
+  parameterless constructor. It lists every one that is missing, all in
+  one run:
 
-If your adapters don't compile against the generated package, the build
-prints Go's errors as they are, with a line naming the adapters
-directory, and exits 1. If `Caps` is missing, it says the package must
-declare `func Caps() app.Caps`.
+  ```
+  blog is missing adapters for 2 capabilities:
+  capability `Auth.Login.Password` needs `adapters/auth/` with `func LoginPassword() app.Cap__Auth__Login__Password`
+  capability `Markdown.Markdown` needs `adapters/markdown/` with `func Markdown() app.Cap__Markdown__Markdown`
+  ```
+
+  (`blog` is the app's name; one missing adapter says `1 capability:`.)
+  An app with capabilities and no `adapters/` at all gets this list with
+  every capability on it.
+- A `.go` file at the top level of `adapters/` that declares `func Caps`
+  is the form adapters had before Alder generated the wiring, and is
+  refused: `adapters/ no longer wires capabilities: move each adapter to adapters/<module>/ (see the list below)`
+  above the list, or, when no adapter is missing,
+  `adapters/ no longer wires capabilities: delete func Caps (adapters/caps.go): the generated caps package wires the adapters`
+  (naming the file it found).
+
+Any of these exits 1, and `build/<app>/` is not touched. `alder check`
+does none of it: it never looks at `adapters/`. `alder test` and `alder
+eval` make the same check when they build an app that has adapters (a
+`.go` file anywhere under `adapters/`), print the same lines after their
+own prefix (`alder test: `, `alder eval: `), and exit 2, their code for a
+build problem. The REPL prints them (after `alder repl: `) in answer to an
+entry and waits for the next one.
+
+If your adapters don't compile against the generated package (a method
+with the wrong signature, say), the build prints Go's errors as they are,
+after the line
+`alder build: the adapters of <app> (copied to build/<app>/adapters) do not compile with the app: exit status 1`,
+and exits 1. Chapter 7 shows one. A package under `adapters/` that no
+capability needs (a helper) is compiled here too, so its errors are
+reported the same way.
 
 Exit 2 means the problem is not in your program: a usage error (an
 unknown flag, two directories), a file that cannot be read or written, or
@@ -157,7 +205,8 @@ in flight up to 5 seconds to finish, and exits 0.
 
 `build/<app>/` then holds the generated package (one
 `<Module>_alder.go` per module, `app__alder.go`, `routes__alder.go`,
-`go.mod`), `cmd/main.go`, `adapters/`, `static/` and the executable.
+`go.mod`), `caps/` (when the app has capabilities), `cmd/main.go`,
+`adapters/`, `static/` and the executable.
 Chapter 13, section 9, reads them.
 
 ### `alder run`
@@ -217,7 +266,7 @@ depends on what changed:
 | You change | What happens |
 |---|---|
 | a `.alder` file under `app/` (or add or delete one) | check, build, start the new app, reload the browser |
-| a `.go` file at the top level of `adapters/` | the same |
+| any file under `adapters/`, in any directory | the same |
 | any file under `static/` | reload the browser only: the app reads those files as it serves them, so nothing is rebuilt |
 | anything else | nothing |
 
@@ -360,8 +409,8 @@ database `build/<app>/dev.db` (creating it, with the app's tables, when
 absent) and prints the result. The Query runs with the app's default
 session, every field at its default, as a test does. The app's `adapters/`,
 when it has one, is compiled in, so a capability the Query calls reaches
-the real Go; an app without `adapters/`, or whose `Caps` leaves a
-capability's field `nil`, gets "capability … is not wired in eval" when
+the real Go; an app without `adapters/`, or whose adapter's constructor
+returns `nil`, gets "capability … is not wired in eval" when
 that capability is called. A `Select` is shown as `<Select> : Select
 T`, even with `--run`: pipe it to `Db.all`, `Db.first` or `Db.count` to
 make a `Query`. A `Task` is never run. A function that never stops calling itself ends in
@@ -591,8 +640,8 @@ say: that test is reported as a `FAIL` with the crash's first lines and
 no later test runs), when the app has a check error or a typed hole (the
 diagnostics are printed as `alder check` prints them; a hole adds
 `alder test: no tests ran (fill the hole)`), or when the run was
-interrupted; 2 for a usage error or a build problem (adapters that do
-not compile, say).
+interrupted; 2 for a usage error or a build problem (a missing adapter or
+adapters that do not compile, say: the same messages as `alder build`'s).
 
 Like `alder eval`, `alder test` compiles the app through the scratch
 runner (chapter 13, "Running tests"): it writes only under
@@ -600,8 +649,10 @@ runner (chapter 13, "Running tests"): it writes only under
 one app take turns on `build/<app>/scratch/test.lock`. The tests use no
 file database: each effect test has its own, in memory, made by
 applying the app's migrations when it has them (chapter 8). The app's
-`adapters/`, when it has one, is compiled in, so capability calls reach
-the real Go, and an error one returns is the failure `Cap.entry: <error>`,
+`adapters/`, when it has one (a `.go` file anywhere under it), is
+compiled in, wired by the same generated `caps` package as `alder build`'s,
+so capability calls reach the real Go (and every adapter must be there),
+and an error one returns is the failure `Cap.entry: <error>`,
 which `Test.run` gives as an `Err`; without it, a test that calls a
 capability fails with "capability … is not wired in tests". A test can
 replace a capability with its `fake` (`Test.fake`, chapter 10). Its
@@ -695,7 +746,9 @@ any other test.
 
 `alder build --emit` writes the generated Go to `build/<app>/` and vets it,
 and stops there: it copies nothing and builds no executable, so it needs
-no adapters. Chapter 13 walks through what it generates and why: see [How the compiler works](13-compiler.md).
+no adapters and does not look for them. (It still writes `caps/` for an
+app with capabilities, but vets only the app's package, the Go files at
+the top of `build/<app>/`: `caps/` imports adapters it has not copied.) Chapter 13 walks through what it generates and why: see [How the compiler works](13-compiler.md).
 It replaces only the files it generated; anything else in `build/<app>/` is
 kept, and vetted with the rest. `build/<app>/` must contain only generated
 files: if the vet fails and the directory holds Go files alder did not

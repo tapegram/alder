@@ -263,9 +263,11 @@ The stranger's `Toggle` succeeded, the update ran, and the todo is done.
   test are ordered, and a test gets the same times on every run. Time is
   not transactional: a `Test.run` that fails rolls back its writes, but
   the clock keeps the ticks that run read.
-- **The app's capabilities.** When the app has an `adapters/` package
-  (chapter 7, "Implementing a capability"), its `Caps()` are wired, so a
-  test calls the real Go. A capability's error is a failure the test can
+- **The app's capabilities.** When the app has adapters (Go under
+  `adapters/`, chapter 7, "Implementing a capability"), they are wired as
+  in `alder build`, by the generated `caps` package, so a test calls the
+  real Go; a missing adapter then stops `alder test` before any test runs,
+  with the same list `alder build` prints. A capability's error is a failure the test can
   observe: under `Test.run` (section 4) it is `Err "Password.verify: …"`.
   A test can replace a capability with a fake instead (section 8).
   When the app has no `adapters/`, a capability call fails the test,
@@ -522,7 +524,7 @@ module Payments
 
 type ChargeId = brand Text
 
--- The card processor. In production, Go code in adapters/ implements it (chapter 7).
+-- The card processor. In production, Go in adapters/payments/ implements it, func Stripe (chapter 7).
 capability Stripe {
   charge : { cents: Int.Positive } -> Task (Result Text ChargeId),
   refund : { id: ChargeId } -> Task (Result Text Unit),
