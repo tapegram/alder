@@ -206,9 +206,9 @@ due date shows nothing there: `Html.none` renders nothing. `click={Toggle
 { id: ... }}` sends a message; it compiles to a POST (and, with Datastar, an
 in-place patch of the page; chapter 6, "How a request runs").
 
-The module ends with its tests. Each one inserts a user and a todo into a
-fresh, empty database, sends `update` a `Toggle`, and checks what
-happened: the owner's toggle reads the todo and updates it; another
+The module ends with its tests. The first two each insert a user and a
+todo into a fresh, empty database, send `update` a `Toggle`, and check
+what happened: the owner's toggle reads the todo and updates it; another
 user's is a 404 and changes nothing. Chapter 10 explains them line by
 line.
 

@@ -275,3 +275,55 @@ Only a `test` may use these (chapter 10); anywhere else each is E0003
   never an expression. It has no type of its own to pass around, so
   `Test.fake` cannot be applied to a variable, piped into, or left
   without its argument.
+
+The browser steps (chapter 10, section 9) are special forms too: each is
+applied directly to all its arguments, never passed as a value or piped
+into, and `get`, `open`, `submit`, `submitRaw` and `click` need an `App`
+module. `Session` here is `App`'s session record.
+
+```text
+Test.login     : Session -> Task Unit
+Test.get       : Page -> Task { model: Model, session: Session, doc: Doc }
+Test.open      : Page -> Task { answer: Answer, session: Session, doc: Doc }
+Test.submit    : Form -> record -> Task { answer: Answer, session: Session, doc: Doc }
+Test.submitRaw : Form -> List { name: Text, value: Text } -> Task { answer: Answer, session: Session, doc: Doc }
+Test.click     : Msg -> Task { answer: Answer, session: Session, doc: Doc }
+```
+
+- `Test.get p` and `Test.open p` take a page value written in place
+  (`Todos.Index {}`, `Todos.Show { id: id }`); `model` is the `Model`
+  of `p`'s page, which must be a record. `Test.get` fails the test
+  unless the page is shown.
+- `Test.submit F r` takes a form of a page or of `App` (`NewTodo` in its
+  module, `Todos.Index.NewTodo` elsewhere) and that form's record; a
+  form each row renders, or one two messages post, is written as its
+  message with its parameters, `Test.submit (Rename { id: b }) { … }`.
+  `Test.submitRaw` takes the same first argument and text fields.
+- `Test.click m` takes a message of a page or of `App` that carries no
+  form, with its parameters: `Toggle { id: id }`, `App.Logout`.
+
+Two types of the Prelude exist only in tests (anywhere else, E0003
+"`Doc` is a test type"): `Doc`, a parsed page, which has `==`, and
+
+```text
+type Answer = Shown | Rerendered | Redirected Page | Rejected (List { field: Text, message: Text }) | Missing | Failed Text
+```
+
+Their names, and `Answer`'s six constructors, are taken in every module
+(E0012). The queries are ordinary functions on a `Doc`, available only
+in tests like the rest of `Test`:
+
+```text
+Test.text  : Text -> Doc -> Maybe Text           -- the first match's text
+Test.texts : Text -> Doc -> List Text            -- every match's text, in page order
+Test.has   : Text -> Doc -> Bool
+Test.count : Text -> Doc -> Int
+Test.attr  : Text -> Text -> Doc -> Maybe Text   -- attribute name, then selector: the first match's
+Test.doc   : Html a -> Doc                       -- a view rendered and parsed
+```
+
+A selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, or
+several of those together (`li.done`), combined with spaces (inside) or
+`>` (directly inside). Written as a literal it is checked when the test
+compiles (E0023); any other selector that does not parse matches
+nothing.

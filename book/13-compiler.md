@@ -1188,10 +1188,14 @@ func Route__Todos__Index__page() web.Route {
 		if stop != nil {
 			return *stop
 		}
+		rq.Model = model
 		return web.PageResponse(Todos__Index__view(model, session), &html.FormState{PageParams: params__Todos__Index(params)}, rq.Session, false)
 	}}
 }
 ```
+
+(`rq.Model = model` keeps the model on the request. The server never
+reads it; a test's browser does, "The browser", below.)
 
 `decode__Todos__Index__Params` turns the text `Active` into the
 constructor `Active` of `Todo.Filter`, through `web.Enum`. Any other text
@@ -2033,9 +2037,15 @@ test starts from:
 ```go
 // Tests are the app's `test` declarations in module order then declaration order, for alder test (rtesting.Main).
 var Tests = []rtesting.Case{
+	{Module: "Auth.Login", Name: "an unknown email is rejected", Task: test__Auth__Login__1},
+	{Module: "Auth.Login", Name: "logging in through the form", Task: test__Auth__Login__2},
+	{Module: "Auth.Login", Name: "a visitor is sent to log in, and can log out", Task: test__Auth__Login__3},
 	{Module: "Todo", Name: "countOpen ignores done todos", Pure: test__Todo__1},
 	{Module: "Todos.Index", Name: "Toggle flips done", Task: test__Todos__Index__1},
 	{Module: "Todos.Index", Name: "Toggle by another user is not found", Task: test__Todos__Index__2},
+	{Module: "Todos.Index", Name: "adding a todo through the page", Task: test__Todos__Index__3},
+	{Module: "Todos.Index", Name: "toggling a todo through the page", Task: test__Todos__Index__4},
+	{Module: "Todos.Index", Name: "a stranger cannot see my todo", Task: test__Todos__Index__5},
 }
 
 // TestSession is the session a test runs with: App's session with every field at its default (nil without an App module).
@@ -2071,9 +2081,12 @@ func main() {
 }
 ```
 
-`app.Migrations` are the app's migrations ("Migrations", below), and
-`app.FakeTables` the tables of its fakes ("Fakes", below; the to-do app
-has none, so its test build has `var FakeTables = []db.TableDesc{}`).
+`app.Migrations` are the app's migrations ("Migrations", below),
+`app.FakeTables` the tables of its fakes ("Fakes", below; the to-do
+app's one fake, `Password`'s, has none, so its test build has
+`var FakeTables = []db.TableDesc{}`), and `app.Routes` and `app.Web()`
+the app's routes and router options, for the browser ("The browser",
+below).
 (The local `caps` takes the package's name from that line on, which Go
 allows: `caps.Caps()` on the right is still the package.) A capability
 whose adapter is missing has no line in the test build's `caps` package
@@ -2692,10 +2705,287 @@ reaching it in a production build as a bug in the compiler: `testNode`
 in `internal/gen/effects.go` panics, and `Emit` returns that as its
 internal error instead of writing Go.
 
+### The browser
+
+Chapter 10, section 9, shows the browser steps from the outside, and
+section 10 there what a step does. Here is how each stage of the
+compiler and the runtime makes that happen, from the to-do app's test
+build (`build/todos/scratch/test/`, what `alder test examples/todos`
+compiles).
+
+**Checking.** The six steps are special forms, like `Test.fake`: the
+checker types them itself (`internal/check/browser.go`), and their lines
+in `stdlib/Test.alder` are documentation. `Test.get p` and `Test.open p`
+need `p` written as a page value in place (a page module's name applied
+to its parameters' record), so the checker knows which page it is and
+can give `Test.get`'s `model` that page's `Model`. `Test.submit F r`
+finds the form `F`, the page (or `App`) that declares it, and the one
+`msg … form F` that posts it, and checks `r` against the form's record
+the way a form value is checked, defaults included. `Test.click m`
+needs a message of a page or of `App` that carries no form.
+`Test.login s` checks `s` against `App`'s session. Each result is the
+record type chapter 10 gives, with `Session` being `App`'s session type
+and `Doc` and `Answer` types of the Prelude that the checker lets only a
+test name (E0003 elsewhere). The queries are ordinary functions of
+`stdlib/Test.alder`, with one extra check: a selector argument written
+as a literal is parsed with the runtime's own selector parser
+(`internal/selector`, shared by the checker and `rt/html`), and a text
+that does not parse is E0023, at the literal.
+
+**The IR.** Each step lowers to a node of its own (`internal/ir`):
+`TestLogin{Session}`, `TestGet{Page, Params, Open}` (`Open` for
+`Test.open`), `TestSubmit{Form, Msg, Page, Params, Record}`,
+`TestSubmitRaw{…, Fields}` and `TestClick{Page, Msg, Params}` (`Page` is
+nil for an `App` message). The queries stay ordinary calls.
+
+**A step is a `Call`.** Section 8's `Call` is a named step with a
+function to run; every browser step is one, named as the trace shows it,
+marked as a write, whose function asks the test's browser to do the
+step and packs its result into the record Alder sees. From
+`test__Todos__Index__3`, "adding a todo through the page"
+(`Todos__Index_alder.go`, re-indented), the `Test.submit` step:
+
+```go
+eff.Call("Test.submit NewTodo", true, func(_e13 *eff.Env) (struct {
+	Answer  rtesting.Answer
+	Session App__Session
+	Doc     rtesting.Doc
+}, error) {
+	_r14, _err15 := rtesting.BrowserOf(_e13).SubmitForm("/_m/Todos.Index/Submit", "NewTodo", encode__Todos__Index__NewTodo(Todos__Index__NewTodo{Title: "Milk", Due: rt.Nothing[rt.Date]()}))
+	if _err15 != nil {
+		var _z16 struct {
+			Answer  rtesting.Answer
+			Session App__Session
+			Doc     rtesting.Doc
+		}
+		return _z16, _err15
+	}
+	return struct {
+		Answer  rtesting.Answer
+		Session App__Session
+		Doc     rtesting.Doc
+	}{Answer: _r14.Answer, Session: rtesting.SessionOf[App__Session](_r14.Session), Doc: rtesting.DocOf(_r14.Doc)}, nil
+})
+```
+
+The record literal is the form's Go struct, and `encode__Todos__Index__NewTodo`
+turns it into the text the page's inputs would send. Every form of the
+app gets one in a test build (`routes__alder.go`), the inverse of the
+form's decoder (section 8, "A request"):
+
+```go
+// encode__Todos__Index__NewTodo is form NewTodo as the browser's inputs submit it, for Test.submit
+// (test builds): the inverse of decode__Todos__Index__NewTodo.
+func encode__Todos__Index__NewTodo(r Todos__Index__NewTodo) url.Values {
+	v := url.Values{}
+	v.Set("title", r.Title)
+	if r.Due.Ok {
+		v.Set("due", std.DateToText(r.Due.Val))
+	} else {
+		v.Set("due", "")
+	}
+	return v
+}
+```
+
+`SubmitForm` takes the message's path, `/_m/Todos.Index/Submit`, and the
+form's name for its error text. A `Test.submit (Rename { id: b }) …`
+calls `SubmitMsg` instead, with the message's address including its
+parameters. `Test.click (Toggle { id: id })` builds the message's
+address the way a `click={…}` does, and a label for the error text:
+
+```go
+_m15 := Todos__Index__ToggleParams{Id: id}
+_r16, _err17 := rtesting.BrowserOf(_e14).ClickMsg(rt.MsgRef{Module: "Todos.Index", Msg: "Toggle", Params: []rt.KV{{Key: "id", Value: _m15.Id}}}.URL(nil), rtesting.MsgName("Todos.Index.Toggle", _m15))
+```
+
+`Test.get (Todos.Index {})` builds the page's address as an `href` does
+(the default filter left out, so `/`), asks the browser for it, passing
+the page's `requires` field for the error text, and takes the model:
+
+```go
+var _p5 Todos__Index__Params = Todos__Index__Params{Filter: Todo__Filter__All__}
+_u6 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Active", "Completed"}[_p5.Filter.Tag], "All")}})
+_b7 := rtesting.BrowserOf(_e4)
+_r8, _err9 := _b7.GetPage(_u6, "user")
+```
+
+followed by `rtesting.ModelOf[Todos__Index__Model](_u6, _r8)`, which
+gives the `Model` the page rendered (below), typed.
+
+A query is a call into `rt/testing`. A selector literal is parsed once,
+when the program starts, into a package variable of `app__alder.go`:
+
+```go
+var (
+	selector__1 = rtesting.Sel("h1")
+	selector__2 = rtesting.Sel("#summary")
+	selector__3 = rtesting.Sel("li.done")
+	selector__4 = rtesting.Sel("li")
+)
+```
+
+and `Test.text "#summary" page.doc` is
+`rtesting.DocTextSel(selector__2, page.Doc)`. A selector that is not a
+literal is passed as text to `rtesting.DocText(sel, d)`, which parses
+it when the query runs and matches nothing when it does not parse.
+`Answer` is `rtesting.Answer`, a struct with a `Tag` (one of the six
+constructors) and the payload's fields; a `match` on it switches on the
+tag. `Doc` is `rtesting.Doc`, which holds the parsed tree.
+
+**The test program gets the routes.** The test build's `main` (section
+8, "Running tests") passes `app.Routes` and `app.Web()` to
+`rtesting.Main`. `Web` is generated in every build, production's
+included, with the router options that do not depend on how the app
+runs:
+
+```go
+// Web is the app's options for web.NewRouter that do not depend on how it runs: the session
+// codec, App.error, App.notFound and the page App.login names. Serve adds the store, the
+// capabilities, the log, dev mode, the secret, the static directory and the reload generation;
+// alder test's browser routes the app with these options too.
+func Web() web.Options {
+	return web.Options{
+		Session:     session__codec{},
+		ErrorDoc:    App__error,
+		NotFoundDoc: func() html.Node { return App__notFound },
+		Login:       "/login",
+	}
+}
+```
+
+`Serve` starts from it: `w := Web()`, then sets the store, the
+capabilities and the rest, and returns `web.NewRouter(Routes, w)`. The
+test program builds its router from the same two values, so the
+routes, the cookie's codec, the error pages and the login page are
+production's.
+
+**One browser per test.** For each task test, `rtesting.Run` puts a slot
+in the test's `context` holding the routes and options.
+`rtesting.BrowserOf(env)` finds the slot and makes the browser the first
+time a step asks (`rt/testing/browser.go`, `NewBrowser`). A context
+value, not a global, so each test's browser is its own, and a step
+inside `Test.run` (which runs on the same `Env`) finds the same one.
+`NewBrowser` calls `web.NewRouter(routes, opts)`, replacing a few
+options: the test's store and capabilities; a clock for the cookie that
+stands still; dev mode off; a fixed key for signing cookies; a log that
+keeps the router's last error line, which becomes `Failed`'s text; and
+two hooks the router has for this, `EnvFor` and `Served`.
+
+**`EnvFor`: a request inside the test's transaction.** In production
+the router gives each request a fresh `eff.Env` (section 8, "What `Run`
+does"), and `eff.Run` begins a transaction on the store. A test's
+store is an in-memory SQLite with one connection, on which the test
+already holds a transaction: a request that began another would wait
+for ever. `web.Options.EnvFor`, when set, makes each request's `Env`
+instead. The browser's sets `Within`:
+
+```go
+// Within is an outer transaction an effect runs inside instead of beginning its own: an Alder
+// test's browser hands the router one, so every request of the test runs in the test's
+// transaction (the test's rows are visible to the page, no second connection is opened). Run
+// brackets a Task with a savepoint on Tx (when Savepoints is set), released when the Task
+// succeeds and rolled back to when it fails, so a failed request undoes only its own writes;
+// nothing is committed. A Query reads through Tx.
+type Within struct {
+	Tx         Tx
+	Savepoints Savepointer // nil: no savepoint, and a failure undoes nothing
+}
+```
+
+`Tx` is the test's transaction, begun by the browser if no step has yet
+(`env.Transaction()`). With `Within` set, `eff.Run` (`rt/eff/run.go`)
+never begins or commits: a `Query` (a page's `load`) reads through
+`Tx`; a `Task` (an `update`) takes `SAVEPOINT alder_tN` as it starts,
+then `RELEASE` when it succeeds, or `ROLLBACK TO` and `RELEASE` when it
+fails, the same three statements as `Test.run`'s. The savepoint is taken
+at once rather than at the first step, so that writes made by effects
+the task starts on other `Env`s are inside it too. The request's `Env`
+shares the test's store, capabilities (read at each request, so a
+`Test.fake` installed later applies), clock and log, and after each
+request the browser appends that `Env`'s trace to the test's: the
+step's name first (the `Call`), then the request's effects.
+
+**`Served` and `Request.Model`: the model.** `Test.get` gives the model
+the page rendered, so it must come from the request itself. Each page's
+`GET` route sets it on the request before rendering, `rq.Model =
+model` (section 8, "A request"), in every build; production ignores
+it. `web.Options.Served`, when set, is called with each request after
+its handler answers. The browser's keeps `rq.Model`, and `ModelOf`
+returns it with its Go type, or fails "GET /: the page gave no model".
+`load` runs once, so a page that reads the clock in `load` shows the
+time its model holds.
+
+**Requests in memory.** A step makes an `http.Request` with
+`httptest.NewRequest`: a plain `GET` for `get` and `open`; for `submit`
+and `click` a `POST` with the header `Datastar-Request: true` and the
+form as its body. Each request carries the cookie and, as `Referer`,
+the held page's address (an `App` message redirects back to the page
+that sent it). `router.ServeHTTP` writes the answer into an
+`httptest.ResponseRecorder`, and the browser reads it:
+
+- `200` with HTML: the page is shown; the browser parses it and holds it.
+- `303`: followed with a `GET` (at most ten in a row), and the answer is
+  `Redirected` with the page it ends on. A target with a scheme or a
+  host is another site: `Redirected` with that address, nothing
+  fetched, the held page kept.
+- `404` and `500`: `Missing` and `Failed`, holding the page served.
+- A Datastar answer (`text/event-stream`) is a list of events. A
+  `datastar-patch-elements` event whose selector is `body` replaces the
+  held `<body>` with the one it carries; an event that runs
+  `window.location.assign(…)`, Datastar's way of navigating, is followed
+  with a `GET`, as above. After a patch, the router's `Alder-Status`
+  header (set on a Datastar answer that is a 404 or a 500, which is
+  otherwise a `200` patch like any other) gives `Missing` or `Failed`;
+  then a `<ul class="errors" data-errors="…">` with items in the page
+  gives `Rejected`, its items read in page order, `data-errors="form"`
+  as the field `""`; anything else is `Rerendered`.
+
+**Controls.** Before a `submit` or `click` is sent, the browser looks
+for the control on the held page: each `form`'s `action` and its
+`data-on:submit="@post('…')"`, and for a click also each button's
+`formaction` and `data-on:click`. (A `click={…}` button renders inside
+a small `form class="_alder-click"`, which a `submit` does not count as
+a form.) Two addresses name the same message when `rt.MsgKey` of them
+is equal: the path and the message's own parameters, with the page's
+`_p.` ones left out. The browser posts the control's own address, `_p.`
+parameters included. With no match it sends nothing and returns a
+`*NoControlError`, whose text the test fails with.
+
+**Parsing the page.** `rt/html` already renders a view to text. For the
+browser it gained `Parse` (`rt/html/parse.go`), which reads that text
+back into the same `Node` tree: elements with their attributes in order,
+text with its entities decoded, the contents of `<script>` and
+`<style>` kept as they are. It is written for the renderer's own
+output, which is always regular (lower-case names, quoted values, `<br
+/>`), and tested on it: every page of both examples, rendered by the
+built apps, parses and renders back byte for byte. The browser drops
+the `<!doctype html>` line and the Datastar `<script>` tag the router
+adds, so the held tree is what `view` made. `Select(node, selector)`
+walks the tree in document order and keeps each element that matches
+the selector's last compound, checking the ones before it against the
+element's ancestors (any ancestor for a space, the parent for `>`).
+`TextContent` joins the text inside an element and collapses its
+whitespace. `Doc`'s `==` is `Node.Equal` of the two trees after
+`html.WithoutPageParams` has taken the `_p.` parameters out of every
+message address, so a page compares equal to `Test.doc (view …)`,
+which renders without a request.
+
+**Production.** None of this is in an app's binary. The step nodes, like
+`Test.run`'s, reach the emitter only from `test` bodies, which a
+production build does not emit (a step that reached it anyway would be
+the emitter's internal error, `testNode`); the `encode__` functions and
+the `selector__` variables are emitted only in test builds; and
+`TestGen_ProdHasNoTests` (`internal/gen/gen_test.go`) checks that a
+production build of a fixture app using every step has none of
+`encode__`, `selector__` or `BrowserOf`. What production gains is
+`Web()`, the routes' `rq.Model = model`, and the router's two hooks,
+left unset.
+
 ### What is still to come
 
 M4a added `alder eval` and the book verifier, M4b `alder test`, M4c
-the REPL, M5b migrations and M5c fakes (above). See the design spec,
+the REPL, M5b migrations, M5c fakes and M5e the browser (above). See the design spec,
 [`docs/superpowers/specs/2026-10-09-m4-test-repl-design.md`](../docs/superpowers/specs/2026-10-09-m4-test-repl-design.md),
 "Milestones".
 
@@ -2722,8 +3012,9 @@ replaced by `__` and `_alder.go` added (`Todos__Index_alder.go` for
 this repository for `rt`. `app__alder.go` holds the lists of section 8
 (`Tables`, `Capabilities`), the `Caps` struct the generated `caps` package fills, `Options`,
 `Serve` (which checks the capabilities, opens the database, creates the
-tables and returns `web.NewRouter(Routes, …)`), and `session__codec`, the
-cookie's JSON. `routes__alder.go` holds `Routes` and every handler of
+tables and returns `web.NewRouter(Routes, …)`), `Web` (the router's
+options that do not depend on how the app runs, which `Serve` starts
+from), and `session__codec`, the cookie's JSON. `routes__alder.go` holds `Routes` and every handler of
 section 8's last part. An app with capabilities also gets
 `caps/caps__alder.go`, the package `caps` that wires them (chapter 7
 quotes the blog's). A full `alder build` (without `--emit`) adds

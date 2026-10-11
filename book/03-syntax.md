@@ -56,8 +56,11 @@ Nor may a type, table, form or union of any module take the name of a
 Prelude type that programs write (`Query`, `Task`, `Html`, `Maybe`,
 `Result`, `Nav`, `List`, `Dict`, `Int`, `Float`, `Text`, `Bool`, `Unit`,
 `Date`, `Time`, `Never`, `Error`), which every module uses unqualified
-(E0012 too). Db's own types, such as `Order` and `Page`, stay free:
-`table Order` is fine.
+(E0012 too). Nor may one take `Doc` or `Answer`, the Prelude's types
+for tests (chapter 10), and no constructor or `msg` may be named like
+one of `Answer`'s: `Shown`, `Rerendered`, `Redirected`, `Rejected`,
+`Missing`, `Failed`. Db's own types, such as `Order` and `Page`, stay
+free: `table Order` is fine.
 
 ## Comments
 

@@ -331,6 +331,63 @@ schema and the migrations. A fake
 lives beside its capability (E0020), so there is one place to look for
 it and the module that owns the capability owns the fake as well.
 
+### Tests drive the app in memory, not a real browser **(decided M5e; tested: both examples)**
+
+A test can use the app as a user does: get a page, submit its form,
+click its button, and read the page and the session that follow
+(chapter 10, "Testing through the browser"). When this was designed,
+the question was put directly: why not drive a real browser, with
+Playwright, as many web projects do?
+
+Because of where the bugs are. In a server-rendered app the costly ones
+sit at the seams between the code the compiler checks: a route that
+reads its parameter wrongly, a form that decodes into the wrong field,
+a `requires` that is missing, an ownership check that `load` makes and
+`update` forgets, a redirect to the wrong page, a session write that
+does not stick, a page re-rendered with stale data. Each shows only
+across a request and the next. Covering them needs many tests, one per
+seam and case, and a real browser makes each test slow (a browser
+process, a server, a page load: seconds per test) and flaky (timing,
+animations, a port in use). Teams that test that way keep few such
+tests, so most seams stay untested.
+
+An in-process browser covers the same seams. It sends the app's real
+routes real requests, in memory: the same router, decoders, `requires`
+checks, `load`, `update`, rendering and signed cookie as production, with
+nothing between the test and the code but Go function calls. Each
+request runs inside the test's transaction, so it sees the test's rows
+and needs no second database. A step takes well under a millisecond (the
+to-do app's browser tests take about half a millisecond each, fresh
+database included, by `alder test --json`'s `ms`), the result is the
+same on every run, and an app can have thousands of such tests.
+
+What the choices inside it were:
+
+- **Typed results and the document.** A step gives the page's `model`
+  (typed, the very value `view` was given) or the `answer`, the session,
+  and the parsed page. A test asserts on whichever says what it means:
+  data on the model, what the user sees on the document.
+- **Log in directly or through the form.** `Test.login` sets the session
+  from a value, for the tests that are about something else; the login
+  page is tested through its real form with a fake of its capability.
+- **A click applies the answer.** After a step the browser holds what a
+  real one would show (the re-rendered body, the redirect's target), and
+  the raw answer is in the result too.
+- **Forms by name, typed, and a raw variant.** `Test.submit` encodes a
+  form's record as its inputs would, so a test cannot send what a form
+  could not; `Test.submitRaw` sends text, for the validation tests.
+- **Only what the page shows.** A test can submit or click only a
+  control the page it holds renders. This is what makes it a browser
+  test rather than a request: a stranger's test cannot press a button
+  the stranger's page does not have (chapter 10's ownership example),
+  and the raw request stays the business of an `update` test.
+
+What it leaves out is what only a real browser has: CSS, layout, the
+JavaScript of a web component, and the page with JavaScript turned off.
+Those are fewer and change less, and a small suite in a real browser,
+planned for a later milestone, is to cover them; the many tests stay in
+memory.
+
 ## Experiments
 
 Each experiment has a directory under `experiments/` with its prompt,
@@ -687,4 +744,8 @@ believes is right.
   chapter 10, section 8).
 - Should `Test.run` also give the session the task left? It restores the
   session on failure and keeps it on success, but a test cannot read it,
-  so `Session.put` in a login's `update` cannot be checked yet.
+  so `Session.put` in a login's `update` could not be checked.
+  *Decided (M5e): through the browser.* Every browser step's result
+  carries the session after it, so a login is tested through its form
+  and `r.session.user == Just me` ("Tests drive the app in memory",
+  above; chapter 10, section 9); `Test.run` is unchanged.

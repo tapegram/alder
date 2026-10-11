@@ -210,7 +210,18 @@ class BuildContextTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("\n## 8. Faking a capability\n", out)
         self.assertIn("fake Stripe {", out)
-        self.assertNotIn("\n## 9. What cannot be tested yet\n", out)
+        self.assertNotIn("\n## 11. What cannot be tested yet\n", out)
+
+    def test_real_reference_keeps_browser_steps(self):
+        # agents write browser tests: chapter 10's "Testing through the browser" (the step table,
+        # the rules, the texts) stays in the reference, "How the browser works" goes
+        bc.HUMAN_SECTIONS = self.saved
+        code, out, _ = self.run_main("--reference", "--chapters", "10", "--book", str(bc.BOOK))
+        self.assertEqual(code, 0)
+        self.assertIn("\n## 9. Testing through the browser\n", out)
+        self.assertIn("| `Test.submit F r` |", out)
+        self.assertIn("the page has no button or form for", out)
+        self.assertNotIn("\n## 10. How the browser works\n", out)
 
 if __name__ == "__main__":
     unittest.main()

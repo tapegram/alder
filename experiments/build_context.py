@@ -27,13 +27,16 @@ DEFAULT_CHAPTERS = ["03", "04", "05", "06", "07", "08", "09", "10"]
 # The `## ` sections --reference drops: how the compiler and runtime work inside, schema
 # migration, running the test tool — written for a human reader, not needed to write an app.
 # Kept, like chapter 8's "Migrations": chapter 10's "8. Faking a capability" (an agent writes
-# fakes and installs them; its rules and diagnostics are in that section).
+# fakes and installs them; its rules and diagnostics are in that section) and "9. Testing through
+# the browser" (the step table, the rules and the failure texts an agent's tests meet); its
+# "10. How the browser works" is the inside, for a human reader.
 HUMAN_SECTIONS = {
     "06": ["How a request runs"],
     "07": ["How effects run", "Implementing a capability"],
     "08": ["How tables are stored"],
     "10": ["2. Running the tests", "6. What a trace says",
-           "7. Choosing tests, and output for programs", "9. What cannot be tested yet"],
+           "7. Choosing tests, and output for programs", "10. How the browser works",
+           "11. What cannot be tested yet"],
 }
 
 # The `### ` subsections of a dropped section that --reference keeps, by chapter and `## `

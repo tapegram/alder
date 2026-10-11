@@ -5,8 +5,9 @@ no. In Alder a test is a declaration, written in the module it tests, after
 the code, and `alder test` runs every test in the app. This chapter starts
 with the simplest kind, a test of a pure function, then reads the report
 `alder test` prints, then tests code that reads and writes the database,
-replaces a capability with a fake written in Alder, and ends with what
-cannot be tested yet.
+replaces a capability with a fake written in Alder, drives the app
+through an in-memory browser as a user would, and ends with what cannot
+be tested yet.
 
 ## 1. A test is a `Bool`
 
@@ -68,10 +69,16 @@ and prints one line per test. In the repository:
 
 ```text
 $ alder test examples/todos
+ok   Auth.Login "an unknown email is rejected"
+ok   Auth.Login "logging in through the form"
+ok   Auth.Login "a visitor is sent to log in, and can log out"
 ok   Todo "countOpen ignores done todos"
 ok   Todos.Index "Toggle flips done"
 ok   Todos.Index "Toggle by another user is not found"
-3 passed, 0 failed
+ok   Todos.Index "adding a todo through the page"
+ok   Todos.Index "toggling a todo through the page"
+ok   Todos.Index "a stranger cannot see my todo"
+9 passed, 0 failed
 ```
 
 Each line names the module and the test, and is printed as soon as that
@@ -106,17 +113,23 @@ prefixes. Both compile; both are wrong:
 
 ```text
 $ alder test examples/todos
+ok   Auth.Login "an unknown email is rejected"
+ok   Auth.Login "logging in through the form"
+ok   Auth.Login "a visitor is sent to log in, and can log out"
 ok   Todo "countOpen ignores done todos"
 FAIL Todo "an empty list has one open todo"
   left:  0
   right: 1
 ok   Todos.Index "Toggle flips done"
 ok   Todos.Index "Toggle by another user is not found"
+ok   Todos.Index "adding a todo through the page"
+ok   Todos.Index "toggling a todo through the page"
+ok   Todos.Index "a stranger cannot see my todo"
 FAIL Todos.Index "Toggle only updates"
   left:  ["Db.get Todo", "Db.update Todo"]
   right: ["Db.update Todo"]
   trace: ["Db.insert User", "Db.insert Todo", "Test.run", "Db.get Todo", "Db.update Todo"]
-3 passed, 2 failed
+9 passed, 2 failed
 ```
 
 A failing test is `FAIL`, followed by indented lines that say why:
@@ -167,7 +180,7 @@ app/Probe.alder:6:29: error[E0003]: expected Bool, got Int
 
 ## 3. Testing effects
 
-A `Task` cannot be compared with `==` (section 9 says why), so a test of
+A `Task` cannot be compared with `==` (section 11 says why), so a test of
 `update` cannot just compare its result. Instead it runs the task and
 looks at what happened. A test whose body is a block, `{ … }`, is an
 **effect test**: the block is a `Task Bool`, with `let x <-` lines like
@@ -287,6 +300,8 @@ The stranger's `Toggle` succeeded, the update ran, and the todo is done.
   `App`'s session with every field at its default (here
   `{ user: Nothing }`). A test of `update` passes the
   session it wants as an argument, as above.
+- **A browser.** A page held and a session cookie, both empty at the
+  start, for the steps of section 9.
 
 A pure test (section 1) touches none of this: it is an expression,
 evaluated once.
@@ -385,7 +400,11 @@ before it runs (chapter 7, "Every step is traced"). The names:
   `"Db.count Todo"`;
 - a capability call is the capability and its function, as the calling
   module writes them: `"Password.verify"`;
-- `Test.run` is a step itself, `"Test.run"`, in the test's trace.
+- `Test.run` is a step itself, `"Test.run"`, in the test's trace;
+- a browser step is its name and what it names: `"Test.login"`,
+  `"Test.get Todos.Index"`, `"Test.submit NewTodo"`,
+  `"Test.click Todos.Index.Toggle"`, followed by the steps of the
+  requests it made (section 9).
 
 The steps inside a `Test.run` appear twice: in `r.trace`, which holds
 only them, and in the test's own trace, after `"Test.run"`, even when
@@ -631,10 +650,10 @@ pass. Outside `Test.run`, that charge fails the test.
 **The declaration.**
 
 - A fake is declared in the module that declares its capability. A fake
-  elsewhere is E0020. To give the to-do app's login tests a `Password`
-  that accepts any user who has a row, whatever the password, the fake
-  must go in `app/Auth/Login.alder`, beside `capability Password`, not
-  in the module that wants it:
+  elsewhere is E0020. The to-do app's login tests (section 9) use a
+  `Password` that accepts any user who has a row, whatever the password;
+  that fake is in `app/Auth/Login.alder`, beside `capability Password`.
+  Written in the module that wants it instead, it is refused:
 
 ```alder error=E0020 "`fake Password` must be declared in the module that declares `capability Password`"
 fake Password {
@@ -741,19 +760,704 @@ production build (`alder build`, `alder run`) contains no tests at all:
 no `test`, no fake, no fake's table and no test runner. (Chapter 13
 shows the generated Go.)
 
-## 9. What cannot be tested yet
+## 9. Testing through the browser
 
-- **A request's round trip.** A test calls `load` and `update` directly.
-  Nothing yet sends an HTTP request to the app and reads the response,
-  so routing, the decoding of a submitted form, `requires` redirecting
-  to the login page and the page that a `Nav` turns into are checked by
-  the compiler and by the CLI's own Go tests, not by `alder test`.
-- **`view` in a browser.** A test can compare `view`'s `Html` with
-  another `Html` (section 1). What a browser does with it, and the
-  in-place updates of chapter 6, are not testable from Alder.
-- **Observing the session after `Test.run`.** `Test.run` gives the run's
-  value and trace, not the session it left; a test of a login cannot yet
-  check that `Session.put` stored the user.
+The tests so far call `load` and `update` directly. That leaves out what
+happens between them in the running app: the route that reads `/todos/x`
+into a page value, the decoding of a submitted form, `requires` sending a
+visitor to the login page, the session a login stores, the page a
+`Redirect` leads to, the buttons a page actually shows. Most of the bugs a
+server-rendered app ships live at those seams, and they show only across
+one request and the next.
+
+So a test can also use the app the way a user does: open a page, fill in
+and post its form, click its buttons, and read what the page now shows and
+what the session now holds. No browser program runs. The test drives the
+app's real routes in memory, inside the test's own transaction, and each
+step takes a fraction of a millisecond, so an app can have hundreds of
+these tests and they give the same answer on every run. (Chapter 12,
+"Tests drive the app in memory", says why this and not a real browser;
+section 10 below shows how it works inside.)
+
+### The browser a test holds
+
+Every effect test (section 3) has, beside its fresh database, its clock
+and its capabilities, a **browser** of its own. A browser holds two
+things:
+
+- **The page.** The document of the last page it was given, as HTML the
+  test can query. Before the first step it holds no page.
+- **A cookie.** The signed cookie that carries the session (chapter 6),
+  sent back with every request, as a real browser does. Before the first
+  step there is none, so the session is `App`'s default,
+  `{ user: Nothing }`.
+
+Six steps act through it. Each is a `Task` (a step of the test's block,
+written with `let x <-`), and each works only inside a `test`:
+
+| Step | What it does | It gives |
+|---|---|---|
+| `Test.login s` | puts the session `s` in the cookie, as a login would | `Unit` |
+| `Test.get p` | requests the page `p`; the test fails unless the page is shown | `{ model: Model, session: Session, doc: Doc }` |
+| `Test.open p` | requests the page `p`, whatever the answer | `{ answer: Answer, session: Session, doc: Doc }` |
+| `Test.submit F r` | posts the record `r` through the page's form `F` | `{ answer: Answer, session: Session, doc: Doc }` |
+| `Test.submitRaw F fields` | posts text fields through the page's form `F` | `{ answer: Answer, session: Session, doc: Doc }` |
+| `Test.click m` | presses the page's button that sends the message `m` | `{ answer: Answer, session: Session, doc: Doc }` |
+
+The fields of the results:
+
+- `model` is the page's `Model`, exactly the one its `view` was given,
+  and typed: after `let page <- Test.get (Todos.Index {})`,
+  `page.model.todos` is a `List Todo`.
+- `answer` says what the request came to; its type, `Answer`, is
+  below.
+- `session` is `App`'s session after the step: what the cookie now
+  carries, so a login's `Session.put` can be checked with
+  `r.session.user == Just me`.
+- `doc` is the page the browser now holds, a `Doc`. A `Doc` is a parsed
+  HTML document, read with the queries below (`Test.text "#summary"
+  r.doc`), and compared with `==`.
+
+### A first browser test
+
+The to-do page's tests end with three through the browser (chapter 2
+shows them in place). The first adds a todo by its form and reads the
+summary line the page shows:
+
+```alder
+test "adding a todo through the page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index {})
+  let added <- Test.submit Todos.Index.NewTodo { title: Text.NonEmpty "Milk", due: Nothing }
+  let page <- Test.get (Todos.Index {})
+  Task.succeed ({ answer: added.answer, todos: List.map (\t -> t.title) page.model.todos, summary: Test.text "#summary" page.doc } == { answer: Redirected (Todos.Index {}), todos: [Text.NonEmpty "Milk"], summary: Just "1 open" })
+}
+```
+
+In `app/Todos/Index.alder` the form is written `NewTodo`; from another
+module, as here, it is `Todos.Index.NewTodo` (no import is needed for it).
+Line by line:
+
+1. Insert a user, as any effect test does.
+2. `Test.login { user: Just me }` puts that session in the browser's
+   cookie. The record is `App`'s session, so its `user` is a
+   `Maybe UserId`: `Just me`, not `me`. Nothing is requested.
+3. `Test.get (Todos.Index {})` requests `/` with the cookie. The page
+   `requires user`, and the session has one, so `load` runs, `view`
+   renders, and the browser now holds the page. Its result is not needed
+   here (`let _ <-`).
+4. `Test.submit Todos.Index.NewTodo { … }` fills the page's `NewTodo`
+   form with the record and posts it. The page must show that form: the
+   browser posts only what a user could. The page's `update` inserts the
+   todo and answers `Redirect (Todos.Index { filter: model.filter })`; the
+   browser follows the redirect, as a real one does, and now holds the
+   new page. `added.answer` is `Redirected (Todos.Index {})`.
+5. `Test.get` again, for the page's model: `page.model.todos` is the list
+   `view` was given.
+6. The verdict: the answer, the titles in the model, and the text of
+   `<p id="summary">`, which `Test.text "#summary"` finds.
+
+When the test is wrong, here with `"2 open"` expected, the report shows
+what the page said and every step the requests took:
+
+```text
+$ alder test examples/todos -run "adding a todo"
+FAIL Todos.Index "adding a todo through the page"
+  left:  { answer: Redirected /, todos: ["Milk"], summary: Just "1 open" }
+  right: { answer: Redirected /, todos: ["Milk"], summary: Just "2 open" }
+  trace: ["Db.insert User", "Test.login", "Test.get Todos.Index", "Db.all Todo", "Test.submit NewTodo", "Db.all Todo", "Db.insert Todo", "Db.all Todo", "Test.get Todos.Index", "Db.all Todo"]
+0 passed, 1 failed
+```
+
+A page value prints as its address: `Redirected /` is
+`Redirected (Todos.Index {})`, whose `filter` is the default and so not
+in the URL. Two page values are equal when their addresses are. The
+trace is each step's name, then the effects of the requests it made
+(section 10 explains why `Db.all Todo` comes before the insert).
+
+### `Test.get` and `Test.open`: requesting a page
+
+`Test.get p` and `Test.open p` take a page value, written in place:
+`Todos.Index {}`, `Todos.Index { filter: Active }`,
+`Todos.Show { id: id }`. A variable holding a page is not accepted:
+"`Test.get` wants a page value such as `Todos.Index {}`, got `p`"
+(E0003). Each sends a plain `GET` of the page's address with the cookie.
+
+`Test.get` is for a page the test expects to see. When the page is not
+shown, the test fails and says why, with the address requested. Here,
+from a test added to `Todos.Index` that gets the list without logging
+in:
+
+```text
+FAIL Todos.Index "a visitor's list"
+  error: GET /: redirected to /login (requires user)
+  trace: ["Test.get Todos.Index"]
+```
+
+The other two reasons read `GET /todos/x: not found` (a 404: here
+`Todos.Show`'s `load` found no todo `x` and said `Query.notFound`) and
+`GET /: failed: <message>` (the request failed: a 500). Because it fails
+otherwise, `Test.get` can give the page's `model`, typed: the `Model` of
+the page module requested. A page whose `Model` is a union is E0003
+"`Test.get` needs a record `Model`: … use `Test.open`".
+
+`Test.open` is the same request, but it never fails the test on the
+answer: its result's `answer` says what happened, and the test checks it.
+This is how a test checks a redirect or a 404:
+
+```alder
+test "a visitor is sent to the login page" = {
+  let r <- Test.open (Todos.Index {})
+  Task.succeed ({ answer: r.answer, heading: Test.text "h1" r.doc, user: r.session.user } == { answer: Redirected (Auth.Login {}), heading: Just "Log in", user: Nothing })
+}
+```
+
+`Answer` is a union of the Prelude, which only tests can use:
+
+```text
+type Answer = Shown
+            | Rerendered
+            | Redirected Page
+            | Rejected (List { field: Text, message: Text })
+            | Missing
+            | Failed Text
+```
+
+| Answer | When | The page the browser then holds |
+|---|---|---|
+| `Shown` | `get`/`open`: the page was shown | that page |
+| `Rerendered` | `submit`/`click`: `update` answered `Rerender` | the page re-rendered, with the new data |
+| `Redirected p` | a `Redirect p`, or a `requires` sending a visitor to the login page | `p`, which the browser requested in turn |
+| `Rejected errors` | `submit`: the form did not decode, or `update` answered `Reject` | the page with the form re-rendered: the values typed and the errors |
+| `Missing` | a 404: `Query.notFound`, `Task.notFound`, no such page | `App.notFound` |
+| `Failed text` | the request failed (a `Task.fail`, a Go panic): a 500 | `App.error` |
+
+`Redirected p` holds where the redirect led. A redirect to another site
+(`Url.external`, chapter 6) is reported, `Redirected` with that address,
+but not followed: the browser keeps the page it had. A redirect to a page
+that is then a 404 is `Missing`. `Failed`'s text is the failure's
+message: `"nope"` for a `Task.fail "nope"`, `"panic: …"` for a Go panic.
+
+The 404 answer is `Missing`, not `NotFound`, so that an app keeps the
+name `NotFound` for a constructor of its own. In a test, `NotFound`
+alone is E0002 "unknown constructor `NotFound`; the browser's 404 answer
+is `Missing`". The six names are kept for `Answer` everywhere: a union
+or `msg` of the app may not use one (E0012, "`Missing` is a constructor
+of the Prelude's test type `Answer`; …"), nor may a type be named `Doc`
+or `Answer`. Outside a `test`, `Doc`, `Answer` and its constructors are
+E0003 "`Doc` is a test type: it exists only inside a `test`".
+
+After `Redirected p` the browser already holds `p`, so the test goes on
+from there without asking for it. (It could not write `Test.open p` with
+the `p` it matched anyway: a step takes a page value written in place.)
+
+### `Test.login`, `requires`, and the session
+
+`Test.login s` signs `s` into the browser's cookie, exactly as the
+router would after a `Session.put`. `s` is checked against `App`'s
+`session` record, so a mistake is caught when the test compiles:
+`Test.login { user: me }` is E0003 "`Test.login` wants the app's session
+`{ user: Maybe User.UserId }`: expected Maybe User.UserId, got
+User.UserId". In an app without a session, the record is `{ }`.
+
+`Test.login` is the short way in, for a test about something else. A
+test about logging in itself goes through the login page with its real
+form. That page calls the `Password` capability, whose adapter is Go; a
+test replaces it with the fake `app/Auth/Login.alder` declares beside it
+(section 8), which accepts any user who has a row, whatever the
+password:
+
+```alder
+test "logging in through the form" = {
+  let _ <- Test.fake Password
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.submit Auth.Login.Credentials { email: Text.Email "me@example.com", password: Text.Secret "secret" }
+  Task.succeed ({ answer: r.answer, user: r.session.user, title: Test.text "h1" r.doc } == { answer: Redirected (Todos.Index {}), user: Just me, title: Just "Todos" })
+}
+```
+
+The form went through the page's `update`, which called the fake and then
+`Session.put`; the router wrote the cookie, the browser kept it, followed
+the redirect with it, and holds the list. `r.session.user == Just me` is
+the session the next request will carry. With an email that has no row
+the fake answers `Nothing`, `update` answers
+`Reject "Email or password is incorrect."`, and the answer is
+`Rejected [{ field: "", message: "Email or password is incorrect." }]`
+(`Rejected` is explained with `Test.submitRaw` below). The example's
+third login test opens the list as a visitor (`Redirected
+(Auth.Login {})`), logs in with `Test.login`, and presses the list's
+"Log out" button, `Test.click App.Logout`: the answer is
+`Redirected (Auth.Login {})` and `session.user` is `Nothing`.
+
+### `Test.submit`: posting a form
+
+`Test.submit F r` posts the form `F` with the record `r`. `F` is a form a
+page or `App` declares: `NewTodo` in its own module, `Todos.Index.NewTodo`
+from any other (written bare there, it is E0002 "`NewTodo` is a form of
+`Todos.Index`: write `Todos.Index.NewTodo`", with that as the fix). `r`
+is checked as the form's record, so its fields have their types: a field
+with a default may be left out, as in a form.
+
+The browser turns the record into the text an HTML form would send, one
+field per input, the way the page's `<Input>`s send it:
+
+| The field's type | Sent as |
+|---|---|
+| `Text`, `Text.NonEmpty`, `Text.Email`, `Text.Url`, `Text.Secret`, a brand of `Text` | the text |
+| `Int`, a brand of `Int` | its digits: `42`, `-3` |
+| `Float` | the shortest decimal that reads back the same: `1.5`, `1e-07` |
+| `Bool` | `True` when `True` (a ticked checkbox); not sent when `False` (an unticked one) |
+| `Date` | `2026-03-01` |
+| a union without payloads | the constructor's name: `Active` |
+| `Maybe a` | blank for `Nothing` (an empty input); `a`'s text for `Just` |
+
+Decoding it gives back `r`, with one exception the table shows: a
+`Maybe Text` that is `Just ""` is sent blank, which the page decodes as
+`Nothing`, so `Test.submit` cannot send `Just ""`. Neither can a user: an
+empty input is `Nothing`.
+
+A `Date` in a test record: `Date.fromText "2026-03-01"` is a
+`Maybe Date`, the right type for a `due: Maybe Date` field. (For a
+`Date` field, take one from the test's clock: `let today <- Date.today`
+gives `2026-01-01`, and `Date.addDays 3 today` a later day.)
+
+```alder
+test "a todo with a due date" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index {})
+  let r <- Test.submit Todos.Index.NewTodo { title: Text.NonEmpty "Milk", due: Date.fromText "2026-03-01" }
+  Task.succeed ({ answer: r.answer, due: Test.text "span.due" r.doc } == { answer: Redirected (Todos.Index {}), due: Just "Mar 1" })
+}
+```
+
+The form must be on the page the browser holds; the browser posts it to
+the address that form posts to, with the page's parameters (a page opened
+as `Todos.Index { filter: Active }` posts with its filter, and is
+re-rendered with it). Otherwise the test fails, naming the form and the
+message that posts it. A test that opens the login page and then
+submits `NewTodo` gets:
+
+```text
+FAIL Todos.Index "posting a form the page lacks"
+  error: the page has no form NewTodo (Todos.Index.Submit)
+  trace: ["Db.insert User", "Test.login", "Test.get Auth.Login", "Test.submit NewTodo"]
+```
+
+and before any page: "no page is open: `Test.get` one first".
+
+**A form each row renders.** A page may render one form per item, all
+posted by one message with a parameter: `msg Rename { id: NoteId } form
+Title`, with `<form submit={Rename { id: n.id }}>` in a loop. Then the
+form's name does not say which row, and the test writes the message
+instead, with its parameters, then the record:
+
+```text
+let r <- Test.submit (Rename { id: b }) { title: Text.NonEmpty "B2" }
+```
+
+That posts the form of row `b`. Written with the form's name, and the
+page showing two such forms, the test fails "the page has 2 forms for
+Notes.Index.Rename: write the message with its parameters". And when two
+messages post the same form, the form's name cannot say which message is
+meant, so the compiler asks for the message:
+
+```alder error=E0003 "`Title` is posted by `Save` and `Draft`: write `Test.submit (Save { id: … }) { … }`"
+module Drafts
+
+page "/drafts" { }
+
+type Model = { ids: List Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { ids: ["a", "b"] }
+
+form Title = {
+  title: Text,
+}
+
+msg Save { id: Text } form Title
+msg Draft { id: Text } form Title
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = Task.succeed Rerender
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html>
+    <body>
+      <ul>
+        {for id in model.ids ->
+          <li>
+            <form submit={Save { id: id }}><Errors form /><Input field="title" label="Title" /><button>Save</button></form>
+            <form submit={Draft { id: id }}><Errors form /><Input field="title" label="Title" /><button>Keep as draft</button></form>
+          </li>}
+      </ul>
+    </body>
+  </html>
+
+test "renaming one draft" = {
+  let _ <- Test.get (Drafts {})
+  let r <- Test.submit Title { title: "x" }
+  Task.succeed (r.answer == Rerendered)
+}
+```
+
+Written `Test.submit (Save { id: "b" }) { title: "x" }`, the test
+compiles, and posts row `b`'s Save form. A message that posts no form
+is E0003 "`Toggle` posts no form: use `Test.click`".
+
+### `Test.submitRaw`: input the types forbid
+
+`Test.submit`'s record can only hold valid values: a `Text.NonEmpty` is
+never empty, a `Date` is always a date. A user's browser has no such
+rule, and the page must answer bad input with the form and its errors.
+`Test.submitRaw F fields` posts text, field by field, as typed:
+
+```alder
+test "an empty title is rejected" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index {})
+  let r <- Test.submitRaw Todos.Index.NewTodo [{ name: "title", value: "" }, { name: "due", value: "tomorrow" }]
+  let rows <- Db.from Todo |> Db.count
+  Task.succeed ({ answer: r.answer, due: Test.attr "value" "input[name=due]" r.doc, rows: rows } == { answer: Rejected [{ field: "title", message: "must not be empty" }, { field: "due", message: "must be a date (YYYY-MM-DD)" }], due: Just "tomorrow", rows: 0 })
+}
+```
+
+A field not sent is a field left out of the form. A name the form does
+not declare fails the test: "form NewTodo has no field `colour`".
+
+**`Rejected errors`** is the answer when the page shows its form again
+with errors: the form did not decode (chapter 6: `update` never ran), or
+`update` answered `Reject "…"`. The browser holds the page re-rendered,
+with what was typed back in each input (except a `Text.Secret`, which is
+never sent back) and each error in its `<Errors>` list. `errors` is what
+those lists show:
+
+- in the order the lists come in the page (the order of the form's
+  `<Errors field="…">`, usually its fields' order);
+- `field` is the field's name, and `""` for the form's own list,
+  `<Errors form />`, which holds `Reject`'s text;
+- a field error the form has no `<Errors field>` for is shown in
+  `<Errors form />`, after `Reject`'s text, prefixed with the field's
+  name, so it comes back as `{ field: "", message: "title must not be
+  empty" }`;
+- a form with no `<Errors form />` shows no `Reject` text at all; the
+  page looks unchanged, and the answer is `Rerendered`. A test that
+  expects `Rejected` from a `Reject` is a reason to give the form its
+  `<Errors form />`.
+
+The messages are the decoders' (chapter 6): "must not be empty" for a
+`Text.NonEmpty`, "must be a date (YYYY-MM-DD)", "must be a whole
+number", and "is not valid" for a brand whose `where` refuses the value
+(the blog's comment `Body`, chapter 14).
+
+### `Test.click`: pressing a button
+
+`Test.click m` sends the message `m` as the page's button for it would:
+`Test.click (Toggle { id: id })`, `Test.click App.Logout`. `m` is a
+message of a page or of `App`, with its parameters, written as in a
+`click={…}`. A message that carries a form is posted with `Test.submit`,
+not clicked:
+
+```alder error=E0003 "`Submit` carries form `NewTodo`: use `Test.submit`"
+test "clicking a form's message" = {
+  let _ <- Test.get (Todos.Index {})
+  let r <- Test.click (Todos.Index.Submit { form: { title: Text.NonEmpty "Milk", due: Nothing } })
+  Task.succeed (r.answer == Rerendered)
+}
+```
+
+The page must show a button (or form) that sends exactly that message,
+the same message with the same parameters. That is what makes this a
+test through the browser rather than a request: a test can only do what
+the user it is logged in as can see to do. The second to-do test through
+the page:
+
+```alder
+test "toggling a todo through the page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index {})
+  let r <- Test.click (Toggle { id: id })
+  Task.succeed ({ answer: r.answer, done: Test.has "li.done" r.doc, summary: Test.text "#summary" r.doc } == { answer: Rerendered, done: True, summary: Just "0 open" })
+}
+```
+
+`update` answered `Rerender`, so the browser holds the page rendered
+again: the item now has `class="done"`, and nothing is open.
+
+**Who may toggle a todo.** Chapter 6's rule, "Authorize in `update`
+too", says that a user who posts `Toggle` with someone else's todo id
+gets a 404. Section 3 tests that by calling `update` with a stranger's
+session. Through the browser, the same attempt (a test that logs in as
+the stranger, gets the list, and clicks `Toggle { id: id }` expecting
+`Missing`) does not get that far:
+
+```text
+FAIL Todos.Index "a stranger clicks my todo"
+  error: the page has no button or form for Todos.Index.Toggle { id: "tZy4DmaadTQ3si86vA7B" }
+  trace: ["Db.insert User", "Db.insert Todo", "Test.login", "Test.get Todos.Index", "Db.all Todo", "Test.click Todos.Index.Toggle"]
+```
+
+The stranger's list shows only the stranger's todos, so there is no
+Toggle button for mine to press; the browser sends nothing, and the test
+fails. (The id is random, and differs on each run.) That is the right
+answer, and it is why both tests are kept: the page does not offer the
+action, and section 3's test shows that `update` refuses it to anyone
+who posts it anyway, without a page. Through the browser, the ownership
+test is written with what a stranger can do, open the todo's address:
+
+```alder
+test "a stranger cannot see my todo" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let page <- Test.get (Todos.Index {})
+  let show <- Test.open (Todos.Show { id: id })
+  Task.succeed ({ items: Test.count "li" page.doc, show: show.answer } == { items: 0, show: Missing })
+}
+```
+
+The stranger's list has no `<li>`, and `Todos.Show`'s `load` answers the
+todo's page with `Query.notFound`: `Missing`.
+
+### Reading the page: queries
+
+Five functions read a `Doc`, and one makes a `Doc` from a view. They are
+plain functions (not steps), so they are used in expressions, as above:
+
+```text
+Test.text  : Text -> Doc -> Maybe Text           -- the first match's text
+Test.texts : Text -> Doc -> List Text            -- every match's text, in page order
+Test.has   : Text -> Doc -> Bool                 -- whether anything matches
+Test.count : Text -> Doc -> Int                  -- how many elements match
+Test.attr  : Text -> Text -> Doc -> Maybe Text   -- an attribute of the first match
+Test.doc   : Html a -> Doc                       -- a view, as a document
+```
+
+The first `Text` is a **selector**, as in CSS; `Test.attr`'s first is
+the attribute's name, its second the selector:
+`Test.attr "href" "a[rel=next]" doc`. Alder accepts a small part of
+CSS's selectors:
+
+| Selector | Matches |
+|---|---|
+| `li` | every `<li>` |
+| `#summary` | the element with `id="summary"` |
+| `.done` | every element whose `class` has `done` |
+| `[href]` | every element with an `href` attribute |
+| `[rel=next]`, `[name="title"]` | every element whose `rel` is `next` (quote a value with spaces) |
+| `li.done`, `input[name=due]` | both at once: an `<li>` with the class `done` |
+| `ul li` | an `<li>` anywhere inside a `<ul>` |
+| `ul > li` | an `<li>` directly inside a `<ul>` |
+
+A tag is an HTML element's name in lower case, or a custom element's (a
+name with a hyphen). Nothing else is accepted (no `*`, `:first-child`
+or `,`). A selector written as a literal is checked when the test
+compiles. Here the `x` after a space would be an element inside
+`#sumary`, but there is no element `x`:
+
+```alder error=E0023 "`#sumary x` is not a selector: unexpected `x` after `#sumary`"
+test "a misspelt selector" = {
+  let page <- Test.get (Todos.Index {})
+  Task.succeed (Test.text "#sumary x" page.doc == Nothing)
+}
+```
+
+The full text ends with the list above: "(a selector is a tag, `#id`,
+`.class`, `[attr]`, `[attr=value]`, combined with spaces or `>`)".
+A selector that is not a literal (in a variable, or built with `++`) is
+read when the test runs, and if it is not a selector it matches nothing:
+`Nothing`, `[]`, `False`, `0`. A wrong one then looks like a page that
+lacks the element, so write selectors as literals.
+
+An element's text is the text inside it (not counting a `<script>` or
+`<style>`), with every run of spaces and line breaks made one space and
+none at either end. No space is put
+between elements: the to-do item
+`<li><button>Done</button><a …>Milk</a><button>Delete</button></li>` has
+the text `"DoneMilkDelete"`. Select the element that holds just the text
+wanted, `Test.texts "#todos a"`, not the whole item.
+
+**`Test.doc` and `view`.** `Test.doc (view model session)` renders a view
+the way the page renders it and parses it, so a test can compare the
+page the browser holds with what `view` makes of the model it was given:
+
+```alder
+test "the page and its view agree" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Todos.Index { filter: Active })
+  Task.succeed ({ same: page.doc == Test.doc (Todos.Index.view page.model { user: me }), links: Test.texts "nav a" page.doc, titles: Test.texts "#todos a" page.doc, items: Test.count "#todos > li" page.doc } == { same: True, links: ["All", "Active", "Completed"], titles: ["Milk"], items: 1 })
+}
+```
+
+Two `Doc`s are equal when they are the same tree of elements, attributes
+and text, with one thing left out. The page the router serves posts each
+message with the page's parameters (`?_p.filter=Active` at the end of a
+button's address, section 10), which `view` alone does not know;
+`==` on `Doc`s ignores those `_p.` parameters. `Test.doc` renders
+without a request, so a form in it has no typed values and no errors:
+compare a `Rejected` page by its queries, not with `Test.doc`.
+
+When to use which: compare `page.model` when the question is what `load`
+computed; query `doc` when it is what the user sees (a summary line, a
+link's address, a button's presence); compare with `Test.doc (view …)`
+to check that a page shows nothing but what `view` makes of its model.
+
+### The rules
+
+- The steps exist only inside a `test`, like the rest of `Test`
+  (E0003 "`Test.get` is only available inside a `test`"). Each is
+  applied directly to all its arguments: not piped into (`|>`), not
+  passed as a value. `Test.get`, `open`, `submit`, `submitRaw` and
+  `click` need an `App` module: the browser requests the app's routes.
+- **Only what the page shows.** `Test.submit` and `Test.click` act on a
+  form or button the held page renders, posting it exactly as rendered
+  (the page's parameters included). Otherwise the test fails with "the
+  page has no form …", "the page has no button or form for …", or "no
+  page is open: `Test.get` one first", and nothing is sent.
+- **One transaction.** Every request runs inside the test's own
+  transaction, its `update` under a savepoint of its own: a page sees
+  the rows the test inserted, the test sees the rows a page wrote, and a
+  request that fails (`Failed`, `Missing`) undoes only its own writes.
+- **The browser is not rolled back.** A `Test.run` that fails undoes
+  its database writes, but not what happened to the browser: the cookie
+  and the page held stay as the run left them. Steps inside `Test.run`
+  work as anywhere else.
+- **One browser per test.** Each test starts with no page and no
+  cookie; nothing of one test's browser reaches the next.
+- **Traces.** A step is a step of the trace, named `Test.login`,
+  `Test.get Todos.Index`, `Test.open Todos.Show`,
+  `Test.submit NewTodo`, `Test.submitRaw NewTodo`,
+  `Test.click Todos.Index.Toggle` or `Test.click App.Logout`, and the
+  effects of the requests it made follow it.
+- **What it does not test.** No CSS, no layout, no JavaScript: whether a
+  button is visible, whether a web component works, how the page looks.
+  The browser is Datastar's client (section 10), so the path of a
+  browser with JavaScript off, a plain form post answered by a
+  redirect, is not tested either (section 11).
+
+## 10. How the browser works
+
+Section 9 can be used without this one. This section explains what
+happens when a step runs, so that a surprising trace or answer can be
+read.
+
+**The real routes, in memory.** The test program is built with the
+app's routes, the same list the app's binary serves, and the same router
+(`rt/web`). A step does not open a network connection: it builds an HTTP
+request in memory and hands it to the router, which calls the route's
+handler and writes the response into memory, where the browser reads it.
+Everything between, from reading `/todos/x` into a page value to
+decoding the form, checking `requires`, running `load` and `update`,
+rendering and setting the cookie, is the code that runs in production.
+
+**Inside the test's transaction.** A test's database exists in memory,
+with one connection; the test's block holds a transaction on it from its
+first database step (section 3). In the running app, each request begins
+a transaction of its own. In a test, that would wait for ever for the
+one connection, and would not see the test's uncommitted rows anyway. So
+the browser gives the router each request's environment itself, one that
+runs inside the test's transaction. A `load` is a `Query`, which cannot
+write, so it simply reads through that transaction. An `update` is a
+`Task`, and runs under a savepoint (section 4) instead of a transaction
+of its own:
+
+```text
+test "adding a todo through the page"   (a fresh database in memory)
+
+  BEGIN                                    first database step
+  │ Db.insert User
+  │ Test.login                             the cookie; no request
+  │ Test.get                               GET /
+  │   Db.all Todo                          load reads in the test's transaction
+  │ Test.submit                            POST /_m/Todos.Index/Submit
+  │   Db.all Todo                          load, for update's model
+  │   SAVEPOINT alder_t1                   update is a Task
+  │   │ Db.insert Todo
+  │   └ RELEASE alder_t1                   it succeeded: the insert is the test's now
+  │   Db.all Todo                          GET /: the redirect, followed
+  │ Test.get                               GET /
+  │   Db.all Todo
+  COMMIT                                   the verdict
+```
+
+When an `update` fails, its savepoint is rolled back (`ROLLBACK TO`),
+so its writes are gone and the test's are not. This is also why the
+trace shows `Db.all Todo` before `Db.insert Todo`: a message's request
+runs the page's `load` first, to give `update` its model (chapter 6,
+"How a request runs").
+
+**The model.** `Test.get`'s `model` is not computed again: the page's
+route stores the model it rendered on the request (production does too;
+nothing reads it there), and the router hands each answered request to
+the browser, which keeps that model. So `model` is exactly what `view`
+was given, even when `load` read the clock.
+
+**A Datastar client.** In the running app, a click or a form post is
+sent by Datastar (chapter 6), which marks the request with a
+`Datastar-Request: true` header and gets back events instead of a page.
+The browser sends `Test.submit` and `Test.click` the same way and
+applies the events as Datastar would:
+
+- a patch of the page's `<body>` replaces the body it holds (Datastar
+  merges the new body into the old one; the result is the same page).
+  `Rerender` and `Reject` come back this way. The browser then looks at
+  the page: an `<Errors>` list with items makes it `Rejected`; a 404 or
+  a 500, which come back as a patch too (with the status in a header,
+  `Alder-Status`), are `Missing` and `Failed`; anything else is
+  `Rerendered`. A page whose `view` has no `<body>` (every page built
+  on a layout such as `Layout.Page` has one) cannot be patched, and the
+  step fails "the held page has no <body> to patch".
+- an instruction to go to another address is a `Redirect`: the browser
+  requests that page with a plain `GET`, as Datastar has the real
+  browser do, and the answer is `Redirected`. An address on another site
+  is not requested.
+
+`Test.get` and `Test.open` are plain `GET`s, like typing an address. A
+`303` answer, such as `requires` sending a visitor to `/login`, is
+followed (at most ten in a row).
+
+**Controls.** The page's buttons and forms post to message addresses,
+`/_m/<Module>/<Msg>` with the message's parameters and the page's own
+(`/_m/Todos.Index/Toggle?id=…&_p.filter=Active`: chapter 6). Before it
+posts, the browser looks through the held page for a form or button
+whose address names the same message with the same parameters, ignoring
+the page's `_p.` ones, and posts that control's own address, so the
+page's parameters go with it as they would from a real page.
+
+**The document.** The router's HTML is parsed into a tree, and the
+browser holds that, without the `<!doctype html>` line and the Datastar
+`<script>` tag the router adds to every page, so the `Doc` is the page as
+`view` renders it. The queries walk that tree.
+
+**The cookie.** The browser keeps the session cookie the router sets and
+sends it back with each request; `Test.login` writes the cookie itself,
+signed with the router's key. A cookie the router clears (a logout)
+is dropped. The cookie's clock stands still, so it never expires
+during a test.
+
+## 11. What cannot be tested yet
+
+The browser of section 9 runs the app's real routes, so a request's round
+trip, the page a step leaves, and the session after a step are all
+tested. What it does not run is a browser's own machinery:
+
+- **CSS, layout and JavaScript.** The `Doc` is the page's HTML. Whether
+  an element is visible, where it is, how it looks, and what the
+  JavaScript of a web component does with it are not modelled. A small
+  suite in a real browser, planned for later, will cover them.
+- **The page without JavaScript.** The browser is Datastar's client, as
+  every visitor's browser is when its JavaScript runs. With JavaScript
+  off, a form is a plain `POST` answered by a `303` redirect (chapter 6);
+  that path is not exercised.
 
 And one thing will not change: effects are tested by what they do, not
 by `==`. A `Query` or `Task` cannot be compared; `==` or `!=` on one is a
