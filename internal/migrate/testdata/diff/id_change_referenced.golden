@@ -1,0 +1,1 @@
+error: Post's id column changed: tables referencing it (Comment) keep the old ids; this is not migrated

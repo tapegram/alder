@@ -119,7 +119,20 @@ func pairTables(old, new Schema) (pairing, error) {
 			p.renamed[t.RenamedFrom] = t.Name
 		}
 	}
+	// a table kept under its name whose @renamed names another table of the snapshot that
+	// nothing claims: the rename cannot be made (both names exist), and ignoring it would keep
+	// the wrong table's rows
+	for _, t := range new.Tables {
+		if p.from[t.Name] == t.Name && t.RenamedFrom != "" && t.RenamedFrom != t.Name && old.table(t.RenamedFrom) != nil && !p.claimed[t.RenamedFrom] {
+			errs = append(errs, renameBothExist("table "+short(t.Name), short(t.Name), short(t.RenamedFrom)))
+		}
+	}
 	return p, errors.Join(errs...)
+}
+
+// renameBothExist is the error for `n @renamed "o"` when the snapshot has both o and n.
+func renameBothExist(what, n, o string) error {
+	return fmt.Errorf("%s: `%s @renamed %q`: both `%s` and `%s` exist in the snapshot; a rename needs the old name to be gone — remove `@renamed` if `%s` is new, or drop `%s` first", what, n, o, o, n, n, n)
 }
 
 // colPair is a column of the new table and the old column it descends from (nil: added).
@@ -176,6 +189,13 @@ func planTable(o, n *Table, p pairing, old, new Schema) (*tablePlan, error) {
 		}
 		tp.cols = append(tp.cols, cp)
 	}
+	for _, c := range n.Columns {
+		if _, kept := oix[c.Name]; kept && c.RenamedFrom != "" && c.RenamedFrom != c.Name {
+			if _, ok := oix[c.RenamedFrom]; ok && claimed[c.RenamedFrom] == "" {
+				errs = append(errs, renameBothExist(tn+"."+c.Name, c.Name, c.RenamedFrom))
+			}
+		}
+	}
 	for i := range o.Columns {
 		if claimed[o.Columns[i].Name] == "" {
 			tp.dropped = append(tp.dropped, &o.Columns[i])
@@ -208,8 +228,10 @@ func planTable(o, n *Table, p pairing, old, new Schema) (*tablePlan, error) {
 				errs = append(errs, fmt.Errorf("%s: a new non-null `@ref` column needs a default so existing rows can be filled, and a reference has none: add it as `Maybe` first", label))
 			case !cp.n.Nullable && cp.n.Default == nil:
 				errs = append(errs, fmt.Errorf("%s: %s", label, needsDefault(*cp.n)))
-			case !cp.n.Nullable:
-				tp.reasons = append(tp.reasons, fmt.Sprintf("%s: new non-null column (filled with %s)", label, *cp.n.Default))
+			case cp.n.Default != nil && *cp.n.Default != "NULL":
+				// non-null, or a Maybe with a `Just` default: existing rows get the default,
+				// which ADD COLUMN cannot write without leaving DEFAULT in the table's text
+				tp.reasons = append(tp.reasons, fmt.Sprintf("%s: new column filled with %s", label, *cp.n.Default))
 			case cp.n.Unique:
 				tp.reasons = append(tp.reasons, label+": new @unique column")
 			}
@@ -241,7 +263,7 @@ func planTable(o, n *Table, p pairing, old, new Schema) (*tablePlan, error) {
 		// the rebuild also makes the table's simple changes: name them too
 		for _, cp := range tp.cols {
 			switch {
-			case cp.o == nil && cp.n.Nullable && !cp.n.Unique:
+			case cp.o == nil && cp.n.Nullable && !cp.n.Unique && (cp.n.Default == nil || *cp.n.Default == "NULL"):
 				tp.reasons = append(tp.reasons, tn+"."+cp.n.Name+" added")
 			case cp.o != nil && cp.o.Name != cp.n.Name:
 				tp.reasons = append(tp.reasons, tn+"."+cp.o.Name+" renamed to "+cp.n.Name)
@@ -352,8 +374,12 @@ func Diff(old, new Schema) ([]Step, error) {
 	if old.Format != "" && new.Format != "" && old.Format != new.Format {
 		return nil, fmt.Errorf("the snapshot is storage format v%s, this compiler's is v%s", old.Format, new.Format)
 	}
+	old, new = sorted(old), sorted(new)
 	p, err := pairTables(old, new)
 	if err != nil {
+		return nil, err
+	}
+	if err := idChanges(old, new, p); err != nil {
 		return nil, err
 	}
 	var steps []Step
@@ -432,6 +458,59 @@ func Diff(old, new Schema) ([]Step, error) {
 	}
 	steps = append(steps, drops...)
 	return append(steps, adds...), nil
+}
+
+// sorted is s with its tables sorted by name (Diff is a function of the set of tables).
+func sorted(s Schema) Schema {
+	s.Tables = slices.Clone(s.Tables)
+	slices.SortFunc(s.Tables, func(a, b Table) int { return strings.Compare(a.Name, b.Name) })
+	return s
+}
+
+// idChanges reports a referenced table whose @id is a different column than before (not the
+// same one renamed): the rows referring to it hold the old ids, which no migration can map.
+func idChanges(old, new Schema, p pairing) error {
+	var errs []error
+	for _, n := range new.Tables {
+		from, ok := p.from[n.Name]
+		if !ok {
+			continue
+		}
+		o := old.table(from)
+		idFrom := ""
+		for _, c := range n.Columns {
+			if c.Name == n.ID {
+				if o.col(c.Name) != nil {
+					idFrom = c.Name
+				} else if c.RenamedFrom != "" && o.col(c.RenamedFrom) != nil {
+					idFrom = c.RenamedFrom
+				}
+			}
+		}
+		if idFrom == o.ID {
+			continue
+		}
+		var refs []string
+		for _, t := range new.Tables {
+			if slices.ContainsFunc(t.Columns, func(c Column) bool { return c.Ref == n.Name }) {
+				refs = append(refs, short(t.Name))
+			}
+		}
+		if len(refs) > 0 {
+			errs = append(errs, fmt.Errorf("%s's id column changed: tables referencing it (%s) keep the old ids; this is not migrated", short(n.Name), strings.Join(refs, ", ")))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// col is t's column named name, or nil.
+func (t *Table) col(name string) *Column {
+	for i := range t.Columns {
+		if t.Columns[i].Name == name {
+			return &t.Columns[i]
+		}
+	}
+	return nil
 }
 
 // index is the index of a @ref column.

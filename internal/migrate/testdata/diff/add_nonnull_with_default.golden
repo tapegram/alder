@@ -1,11 +1,11 @@
 -- alder migration 0002_add_nonnull_with_default
 -- from 766e287f0a16
 -- to 933f88456ec7
--- step: rebuild table User: User.karma: new non-null column (filled with 0); User.motto: new non-null column (filled with 'it''s' || char(10) || 'new')
+-- step: rebuild table User: User.karma: new column filled with 0; User.motto: new column filled with 'it''s' || char(10) || 'new'
 
-CREATE TABLE "User__User__new" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "email" TEXT NOT NULL UNIQUE, "karma" INTEGER NOT NULL, "motto" TEXT NOT NULL) STRICT;
-INSERT INTO "User__User__new" ("id", "name", "email", "karma", "motto") SELECT "id", "name", "email", 0, 'it''s' || char(10) || 'new' FROM "User__User";
+CREATE TABLE "User__User__alder__new" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "email" TEXT NOT NULL UNIQUE, "karma" INTEGER NOT NULL, "motto" TEXT NOT NULL) STRICT;
+INSERT INTO "User__User__alder__new" ("id", "name", "email", "karma", "motto") SELECT "id", "name", "email", 0, 'it''s' || char(10) || 'new' FROM "User__User";
 DROP TABLE "User__User";
-ALTER TABLE "User__User__new" RENAME TO "User__User";
+ALTER TABLE "User__User__alder__new" RENAME TO "User__User";
 
 -- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

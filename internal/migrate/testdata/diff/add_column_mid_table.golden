@@ -3,9 +3,9 @@
 -- to 32b841c4710c
 -- step: rebuild table User: User: column order changed (ALTER TABLE only appends); User.bio added
 
-CREATE TABLE "User__User__new" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "bio" TEXT, "email" TEXT NOT NULL UNIQUE) STRICT;
-INSERT INTO "User__User__new" ("id", "name", "bio", "email") SELECT "id", "name", NULL, "email" FROM "User__User";
+CREATE TABLE "User__User__alder__new" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "bio" TEXT, "email" TEXT NOT NULL UNIQUE) STRICT;
+INSERT INTO "User__User__alder__new" ("id", "name", "bio", "email") SELECT "id", "name", NULL, "email" FROM "User__User";
 DROP TABLE "User__User";
-ALTER TABLE "User__User__new" RENAME TO "User__User";
+ALTER TABLE "User__User__alder__new" RENAME TO "User__User";
 
 -- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

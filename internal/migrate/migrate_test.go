@@ -107,6 +107,7 @@ func cases() []diffCase {
 	idRenamed.ID = "postId"
 	renamedAndChanged := post(postCols(col("views", db.CFloat))...)
 	renamedAndChanged.Name, renamedAndChanged.RenamedFrom = "Article.Article", "Post.Post"
+	withNew := schema(user(), post(postCols()...), comment(append(commentCols(), text("new").null().ref("Post"))...))
 	withRole := schema(user(enum("role", "A", "B", "C").null()), post(postCols()...), comment())
 	return []diffCase{
 		{"initial", Schema{}, b},
@@ -138,6 +139,13 @@ func cases() []diffCase {
 		{"rename_ref_column", b, schema(user(), post(postCols()...), comment(text("article").ref("Post").on(db.Cascade).from("post"), text("body"), text("parent").null().ref("Comment").on(db.SetNull)))},
 		{"rename_missing_column", b, schema(user(), post(append([]Column{text("heading").from("headline")}, postCols()[1:]...)...), comment())},
 		{"rename_column_still_declared", b, schema(user(), post(append(postCols(), text("heading").from("title"))...), comment())},
+		{"rename_column_both_exist", b, schema(user(), post(append([]Column{text("title").from("body")}, without(postCols(), "body")[1:]...)...), comment())},
+		{"rename_table_both_exist", b, schema(user(), func() Table { t := post(postCols()...); t.RenamedFrom = "Comment.Comment"; return t }())},
+		{"rename_leftover_attribute", b, schema(user(), post(postCols(text("title").from("heading"))...), comment())},
+		{"ref_column_named_new", withNew, schema(user(), post(postCols()...), comment(append(commentCols()[:1], text("body").null(), commentCols()[2], text("new").null().ref("Post"))...))},
+		{"add_nullable_with_default", b, schema(user(text("bio").null().def("'hi'")), post(postCols()...), comment())},
+		{"add_nullable_with_nothing_default", b, schema(user(text("bio").null().def("NULL")), post(postCols()...), comment())},
+		{"id_change_referenced", b, schema(user(), func() Table { t := post(postCols()...); t.ID = "title"; return t }(), comment())},
 		{"rename_in_rebuild", b, schema(user(), post(postCols(text("heading").from("title"), col("views", db.CFloat))...), comment())},
 		{"nullable_enum_remove", withRole, schema(user(enum("role", "A", "B").null()), post(postCols()...), comment())},
 		{"nullable_enum_to_nonnull_default", withRole, schema(user(enum("role", "A", "B").def("'A'")), post(postCols()...), comment())},
@@ -717,6 +725,26 @@ func TestFromProgram(t *testing.T) {
 	}
 	if w := "rename table Article to Post|rename column Post.heading to title|rename column Post.total to count"; strings.Join(lines, "|") != w {
 		t.Fatalf("steps %q, want %q", strings.Join(lines, "|"), w)
+	}
+}
+
+// Diff is a function of the set of tables: their order in the input does not matter.
+func TestDiff_InputOrder(t *testing.T) {
+	n := schema(user(text("bio").null()), post(postCols(col("views", db.CFloat))...), comment(), tbl("Tag", text("post").ref("Post")))
+	shuffled := Schema{Format: n.Format, Tables: []Table{n.Tables[3], n.Tables[0], n.Tables[2], n.Tables[1]}}
+	oldShuffled := Schema{Format: db.Format, Tables: slices.Clone(base().Tables)}
+	slices.Reverse(oldShuffled.Tables)
+	a, err1 := Diff(base(), n)
+	b, err2 := Diff(oldShuffled, shuffled)
+	if err1 != nil || err2 != nil || !reflect.DeepEqual(a, b) {
+		t.Fatalf("order matters:\n%v %v\n%v\n%v", err1, err2, a, b)
+	}
+	for _, st := range a {
+		x, _ := SQL(st, base(), n)
+		y, _ := SQL(st, oldShuffled, shuffled)
+		if !slices.Equal(x, y) {
+			t.Fatalf("SQL order matters for %v", st)
+		}
 	}
 }
 

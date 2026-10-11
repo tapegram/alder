@@ -796,8 +796,8 @@ func isUpper(s string) bool { return s != "" && s[0] >= 'A' && s[0] <= 'Z' }
 
 // SQLLiteral is a table field's literal default (check.LiteralDefault) as SQL: `True`/`False` →
 // 1/0, an integer or float as a number (a float always with a `.` or an exponent), a string
-// single-quoted with `'` doubled (a line break as `' || char(10) || '`, so the literal stays on
-// one line), a payload-less constructor as its quoted name, `Nothing` → NULL, `Just x` → x's.
+// single-quoted with `'` doubled (a control character such as a line break as
+// `' || char(10) || '`, so the literal stays on one line and holds no invisible bytes), a payload-less constructor as its quoted name, `Nothing` → NULL, `Just x` → x's.
 // ok is false for anything else.
 func SQLLiteral(e syntax.Expr) (lit string, ok bool) {
 	switch e := e.(type) {
@@ -847,7 +847,8 @@ func sqlString(s string) string {
 		switch r {
 		case '\'':
 			cur.WriteString("''")
-		case '\n', '\r':
+		case '\x00', '\x01', '\x02', '\x03', '\x04', '\x05', '\x06', '\x07', '\x08', '\t', '\n', '\x0b', '\x0c', '\r', '\x0e', '\x0f',
+			'\x10', '\x11', '\x12', '\x13', '\x14', '\x15', '\x16', '\x17', '\x18', '\x19', '\x1a', '\x1b', '\x1c', '\x1d', '\x1e', '\x1f', '\x7f':
 			cur.WriteByte('\'')
 			parts = append(parts, cur.String(), "char("+strconv.Itoa(int(r))+")")
 			cur.Reset()

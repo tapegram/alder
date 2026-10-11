@@ -417,6 +417,7 @@ func TestSQLLiteral(t *testing.T) {
 		{&syntax.BoolLit{Value: false}, "0"},
 		{&syntax.StrLit{Parts: []syntax.StrPart{{Text: "a\nb'"}}}, "'a' || char(10) || 'b'''"},
 		{&syntax.StrLit{Parts: []syntax.StrPart{{Text: ""}}}, "''"},
+		{&syntax.StrLit{Parts: []syntax.StrPart{{Text: "a\tb\x1b"}}}, "'a' || char(9) || 'b' || char(27) || ''"},
 		{&syntax.App{Fn: &syntax.CtorRef{Name: "Just"}, Args: []syntax.Expr{&syntax.IntLit{Value: 3}}}, "3"},
 	} {
 		if got, ok := SQLLiteral(c.e); !ok || got != c.want {

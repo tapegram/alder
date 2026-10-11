@@ -3,9 +3,9 @@
 -- to 48d072893423
 -- step: rebuild table User: User.name: @unique added
 
-CREATE TABLE "User__User__new" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL UNIQUE, "email" TEXT NOT NULL UNIQUE) STRICT;
-INSERT INTO "User__User__new" ("id", "name", "email") SELECT "id", "name", "email" FROM "User__User";
+CREATE TABLE "User__User__alder__new" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL UNIQUE, "email" TEXT NOT NULL UNIQUE) STRICT;
+INSERT INTO "User__User__alder__new" ("id", "name", "email") SELECT "id", "name", "email" FROM "User__User";
 DROP TABLE "User__User";
-ALTER TABLE "User__User__new" RENAME TO "User__User";
+ALTER TABLE "User__User__alder__new" RENAME TO "User__User";
 
 -- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

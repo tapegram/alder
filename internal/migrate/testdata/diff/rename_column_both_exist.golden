@@ -1,0 +1,1 @@
+error: Post.title: `title @renamed "body"`: both `body` and `title` exist in the snapshot; a rename needs the old name to be gone — remove `@renamed` if `title` is new, or drop `title` first

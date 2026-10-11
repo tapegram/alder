@@ -1,0 +1,14 @@
+-- alder migration 0002_ref_column_named_new
+-- from d582c45fc1b8
+-- to 4d9550f633d7
+-- step: rebuild table Comment: Comment.body: Text -> Maybe Text
+
+CREATE TABLE "Comment__Comment__alder__new" ("id" TEXT NOT NULL PRIMARY KEY, "post" TEXT NOT NULL REFERENCES "Post__Post"("id") ON DELETE CASCADE, "body" TEXT, "parent" TEXT REFERENCES "Comment__Comment"("id") ON DELETE SET NULL, "new" TEXT REFERENCES "Post__Post"("id")) STRICT;
+INSERT INTO "Comment__Comment__alder__new" ("id", "post", "body", "parent", "new") SELECT "id", "post", "body", "parent", "new" FROM "Comment__Comment";
+DROP TABLE "Comment__Comment";
+ALTER TABLE "Comment__Comment__alder__new" RENAME TO "Comment__Comment";
+CREATE INDEX IF NOT EXISTS "Comment__Comment__post" ON "Comment__Comment"("post");
+CREATE INDEX IF NOT EXISTS "Comment__Comment__parent" ON "Comment__Comment"("parent");
+CREATE INDEX IF NOT EXISTS "Comment__Comment__new" ON "Comment__Comment"("new");
+
+-- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

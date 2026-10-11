@@ -3,10 +3,10 @@
 -- to 7ea8174e884b
 -- step: rebuild table Post: Post.body: Text -> Maybe Text
 
-CREATE TABLE "Post__Post__new" ("id" TEXT NOT NULL PRIMARY KEY, "title" TEXT NOT NULL, "body" TEXT, "author" TEXT NOT NULL REFERENCES "User__User"("id"), "views" INTEGER NOT NULL, "status" TEXT NOT NULL CHECK ("status" IN ('Draft', 'Published', 'Archived')), "score" REAL NOT NULL, "published" INTEGER NOT NULL CHECK ("published" IN (0, 1)), "day" TEXT NOT NULL, "at" TEXT NOT NULL, "summary" TEXT) STRICT;
-INSERT INTO "Post__Post__new" ("id", "title", "body", "author", "views", "status", "score", "published", "day", "at", "summary") SELECT "id", "title", "body", "author", "views", "status", "score", "published", "day", "at", "summary" FROM "Post__Post";
+CREATE TABLE "Post__Post__alder__new" ("id" TEXT NOT NULL PRIMARY KEY, "title" TEXT NOT NULL, "body" TEXT, "author" TEXT NOT NULL REFERENCES "User__User"("id"), "views" INTEGER NOT NULL, "status" TEXT NOT NULL CHECK ("status" IN ('Draft', 'Published', 'Archived')), "score" REAL NOT NULL, "published" INTEGER NOT NULL CHECK ("published" IN (0, 1)), "day" TEXT NOT NULL, "at" TEXT NOT NULL, "summary" TEXT) STRICT;
+INSERT INTO "Post__Post__alder__new" ("id", "title", "body", "author", "views", "status", "score", "published", "day", "at", "summary") SELECT "id", "title", "body", "author", "views", "status", "score", "published", "day", "at", "summary" FROM "Post__Post";
 DROP TABLE "Post__Post";
-ALTER TABLE "Post__Post__new" RENAME TO "Post__Post";
+ALTER TABLE "Post__Post__alder__new" RENAME TO "Post__Post";
 CREATE INDEX IF NOT EXISTS "Post__Post__author" ON "Post__Post"("author");
 
 -- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

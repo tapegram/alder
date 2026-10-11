@@ -17,7 +17,7 @@ func createIndex(sqlTable, col string) string {
 	return "CREATE INDEX IF NOT EXISTS " + quote(IndexName(sqlTable, col)) + " ON " + quote(sqlTable) + "(" + quote(col) + ")"
 }
 
-// SQL renders one step for SQLite; a Rebuild is the documented procedure (create T__new,
+// SQL renders one step for SQLite; a Rebuild is the documented procedure (create T__alder__new,
 // INSERT … SELECT with conversions, DROP, RENAME, recreate indexes). Every statement is one line
 // without the trailing `;`. The statements expect foreign keys to be off while they run (the
 // runtime turns them off and runs PRAGMA foreign_key_check afterwards).
@@ -107,10 +107,10 @@ func columnDef(t Table, col string, s Schema) (string, error) {
 // rebuild is SQLite's procedure for a change ALTER TABLE cannot make
 // (https://www.sqlite.org/lang_altertable.html#otheralter):
 //
-//	CREATE TABLE "T__new" (…new definition…) STRICT
-//	INSERT INTO "T__new" (cols) SELECT <converted old columns> FROM "T" [WHERE …]
+//	CREATE TABLE "T__alder__new" (…new definition…) STRICT
+//	INSERT INTO "T__alder__new" (cols) SELECT <converted old columns> FROM "T" [WHERE …]
 //	DROP TABLE "T"
-//	ALTER TABLE "T__new" RENAME TO "T"
+//	ALTER TABLE "T__alder__new" RENAME TO "T"
 //	CREATE INDEX IF NOT EXISTS … (the table's @ref indexes, dropped with "T")
 //
 // A new column is filled with its default (NULL for a Maybe without one); a kept one with its
@@ -120,6 +120,7 @@ func rebuild(step Step, old, new Schema) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	old, new = sorted(old), sorted(new)
 	p, err := pairTables(old, new)
 	if err != nil {
 		return nil, err
@@ -133,7 +134,7 @@ func rebuild(step Step, old, new Schema) ([]string, error) {
 		return nil, err
 	}
 	tmp := *n
-	tmp.Name = n.Name + "__new" // SQL name "T__new"
+	tmp.Name = n.Name + "__alder__new" // SQL "T__alder__new": no @ref index "T__<col>" can be named so (a name has no "__")
 	create, err := db.CreateStmt(tmp.Desc(), new.byName())
 	if err != nil {
 		return nil, err
@@ -214,9 +215,12 @@ func convert(tn string, o, n Column) (conversion, error) {
 	case to == db.CInt && from == db.CFloat:
 		cv.expr = "CAST(" + src + " AS INTEGER)"
 		cv.drops = label + ": fractions are cut off"
-	case (to == db.CInt || to == db.CFloat) && from == db.CText:
-		cv.expr = "CAST(" + src + " AS " + map[db.ColType]string{db.CInt: "INTEGER", db.CFloat: "REAL"}[to] + ")"
-		cv.drops = label + ": text that is not a number becomes 0"
+	case to == db.CInt && from == db.CText:
+		cv.expr = "CAST(" + src + " AS INTEGER)"
+		cv.drops = label + ": text is cut to its leading whole number ('7.5' -> 7, '12abc' -> 12), and text that is not a number becomes 0"
+	case to == db.CFloat && from == db.CText:
+		cv.expr = "CAST(" + src + " AS REAL)"
+		cv.drops = label + ": text is cut to its leading number ('12abc' -> 12.0), and text that is not a number becomes 0"
 	case to == db.CBool && (from == db.CInt || from == db.CFloat):
 		cv.expr = "(" + src + " <> 0)"
 		cv.drops = label + ": numbers other than 0 and 1 become True"

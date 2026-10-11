@@ -3,10 +3,10 @@
 -- to edaf48c2ceb9
 -- step: rebuild table Comment: Comment.body: @ref User added
 
-CREATE TABLE "Comment__Comment__new" ("id" TEXT NOT NULL PRIMARY KEY, "post" TEXT NOT NULL REFERENCES "Post__Post"("id") ON DELETE CASCADE, "body" TEXT NOT NULL REFERENCES "User__User"("id"), "parent" TEXT REFERENCES "Comment__Comment"("id") ON DELETE SET NULL) STRICT;
-INSERT INTO "Comment__Comment__new" ("id", "post", "body", "parent") SELECT "id", "post", "body", "parent" FROM "Comment__Comment";
+CREATE TABLE "Comment__Comment__alder__new" ("id" TEXT NOT NULL PRIMARY KEY, "post" TEXT NOT NULL REFERENCES "Post__Post"("id") ON DELETE CASCADE, "body" TEXT NOT NULL REFERENCES "User__User"("id"), "parent" TEXT REFERENCES "Comment__Comment"("id") ON DELETE SET NULL) STRICT;
+INSERT INTO "Comment__Comment__alder__new" ("id", "post", "body", "parent") SELECT "id", "post", "body", "parent" FROM "Comment__Comment";
 DROP TABLE "Comment__Comment";
-ALTER TABLE "Comment__Comment__new" RENAME TO "Comment__Comment";
+ALTER TABLE "Comment__Comment__alder__new" RENAME TO "Comment__Comment";
 CREATE INDEX IF NOT EXISTS "Comment__Comment__post" ON "Comment__Comment"("post");
 CREATE INDEX IF NOT EXISTS "Comment__Comment__body" ON "Comment__Comment"("body");
 CREATE INDEX IF NOT EXISTS "Comment__Comment__parent" ON "Comment__Comment"("parent");

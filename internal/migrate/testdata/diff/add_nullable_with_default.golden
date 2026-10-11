@@ -1,0 +1,11 @@
+-- alder migration 0002_add_nullable_with_default
+-- from 766e287f0a16
+-- to dff82392c7d2
+-- step: rebuild table User: User.bio: new column filled with 'hi'
+
+CREATE TABLE "User__User__alder__new" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "email" TEXT NOT NULL UNIQUE, "bio" TEXT) STRICT;
+INSERT INTO "User__User__alder__new" ("id", "name", "email", "bio") SELECT "id", "name", "email", 'hi' FROM "User__User";
+DROP TABLE "User__User";
+ALTER TABLE "User__User__alder__new" RENAME TO "User__User";
+
+-- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

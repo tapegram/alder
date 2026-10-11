@@ -1,0 +1,1 @@
+error: table Post: `Post @renamed "Comment"`: both `Comment` and `Post` exist in the snapshot; a rename needs the old name to be gone — remove `@renamed` if `Post` is new, or drop `Post` first
