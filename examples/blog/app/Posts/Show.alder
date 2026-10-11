@@ -115,7 +115,8 @@ test "a post's body is rendered through the Markdown capability" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "Not *yet*.", published: True, author: author }
   let m <- load { slug: Post.Slug "hello" } { user: Nothing }
-  Task.succeed (m.body == Html.text "Not *yet*.")
+  let steps <- Test.trace
+  Task.succeed ({ body: m.body, rendered: List.member "Markdown.render" steps } == { body: Html.text "Not *yet*.", rendered: True })
 }
 
 -- A draft's page is a 404 for a reader, so its comment form cannot be posted; `update` refuses

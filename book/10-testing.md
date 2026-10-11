@@ -531,12 +531,14 @@ shown to its author" goes through the real adapter and checks that
 post's body is rendered through the Markdown capability" installs the
 fake and checks that `load` puts the body in its Model, whatever
 Markdown does to it. It inserts an author and a published post whose
-body is `Not *yet*.`, calls `load` for the post's slug, and ends with
-`Task.succeed (m.body == Html.text "Not *yet*.")`. Its
+body is `Not *yet*.`, calls `load` for the post's slug, and checks two
+things: the body is `Html.text "Not *yet*."`, and `"Markdown.render"` is
+in its `Test.trace`, so the body went through the capability. Its
 trace, from `alder test examples/blog --json`, is
-`["Test.fake Markdown", "Db.insert User", "Db.insert Post", "Db.first Post", "Markdown.render", "Db.all Comment"]`;
-the adapter's test has the same steps from `Db.insert User` on, without
-the first. The rendering itself is tested where it is written, in Go
+`["Test.fake Markdown", "Db.insert User", "Db.insert Post", "Db.first Post", "Markdown.render", "Db.all Comment", "Test.trace"]`
+(the report's trace includes the `Test.trace` step, which the list
+`Test.trace` returns leaves out); the adapter's test has the same steps
+from `Db.insert User` to `Db.all Comment`. The rendering itself is tested where it is written, in Go
 (`adapters/markdown_test.go`). That is the usual split: fake a
 capability in the tests of the code that uses it, and keep one test
 through the real adapter, so the app's wiring is tested too.
@@ -706,17 +708,23 @@ and this app has none.
 
 - A fake is declared in the module that declares its capability. A fake
   elsewhere is E0020. To give the to-do app's login tests a `Password`
-  that accepts everyone, the fake must go in `app/Auth/Login.alder`,
+  that accepts any user who has a row, whatever the password, the fake
+must go in `app/Auth/Login.alder`,
   beside `capability Password`, not in the module that wants it:
 
 ```alder error=E0020 "`fake Password` must be declared in the module that declares `capability Password`"
 fake Password {
-  verify args = Task.succeed Nothing
+  verify args = {
+    let found <- Db.from User |> Db.where (User.email.eq args.email) |> Db.first
+    Task.succeed (Maybe.map (\u -> u.id) found)
+  }
 }
 ```
 
 - One fake per capability: a second is E0009, "`fake Stripe` is already
-  declared at line 7" (the line of the first).
+  declared at line 7" (the line of the first). Inside a fake, a second
+  definition of one entry is E0009 too: "`charge` is already defined in
+  `fake Stripe` at line 8" (the first definition's line).
 - It defines every entry of the capability, and nothing else. A missing
   entry is E0003, at the fake, with the type it must have; an entry the
   capability does not have is E0003 "`fake Stripe` defines `cancel`,
@@ -824,7 +832,7 @@ fake Stripe {
 fake and no fake's table. A `test` is compiled into a production build
 too, but nothing there runs it: in that build, a test that uses a fake's
 table becomes one that fails at once, and `Test.fake` is a step that
-fails ("`Test.fake` is only available in `alder test`"). Chapter 13
+fails ("Test.fake is only available in `alder test`"). Chapter 13
 ("Fakes") shows the Go a fake becomes.
 
 ## 9. What cannot be tested yet
