@@ -181,8 +181,8 @@ light and a dark theme is the other usual one, and it uses every piece an
 app-level message can involve: a type for the state, a session field to
 keep it in, the message and its arm of `App.update`, and a button that
 every page shows. (The example app leaves it out, so that its `App`,
-`Layout` and login page are a skeleton a new app can copy and check
-without writing anything else.) Here is how to add it.
+`Layout` and login page are a skeleton a new app can copy and check with
+nothing to write except its own home page.) Here is how to add it.
 
 The state is a union, in a module of its own, `app/Theme.alder`:
 
@@ -231,8 +231,8 @@ below). `Rerender` sends the browser back to the page the button was on,
 which loads again with the new session.
 
 The layout cannot read the session; it takes the theme as a prop, sets a
-class the stylesheet can use (`html.dark body { ... }`), and shows the
-button. Also an excerpt, of `app/Layout.alder`:
+class on `<html>` for the stylesheet, and shows the button. Also an
+excerpt, of `app/Layout.alder`:
 
 ```alder fragment
 -- in Layout
@@ -251,6 +251,21 @@ Page props =
   </html>
 ```
 
+The class does nothing until the stylesheet has rules for it. Add them to
+`static/app.css` (the to-do app's, served at `/static/app.css`), after the
+rules they override:
+
+```css
+html.dark body {
+  color: #e6edf3;
+  background: #0d1117;
+}
+
+html.dark a {
+  color: #4493f8;
+}
+```
+
 Every call of `Layout.Page` then passes a theme: a page passes its
 session's, and `App.error` and `App.notFound`, which have no session,
 pass `Light`:
@@ -263,8 +278,14 @@ pass `Light`:
 That is the cost of the feature, and why the example does without it:
 every page's `view` passes the theme on, and a test that builds a session
 by hand names the field too, `{ user: me, theme: Light }` (chapter 10,
-"Testing effects"), because a record literal lists every field, defaults
-or not (chapter 12, "Open questions").
+"Testing effects"), and the test's module imports `Theme` for `Light`,
+because a record literal lists every field, defaults or not (chapter 12,
+"Open questions"). A literal that leaves `theme` out is refused, for
+App's `Session` and a `requires` page's alike:
+
+```
+error[E0003]: record literal for `Session` is missing `theme` (a default applies only to a cookie or a page parameter, not to a literal)
+```
 
 ## `form`
 

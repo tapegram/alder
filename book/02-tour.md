@@ -180,7 +180,7 @@ view model session =
   </Layout.Page>
 ```
 
-`view` is HTML with expressions in braces. It also receives the session, which this page does not need (a page that greets the user by name would). `App.Logout` is an app-level message, which any page may send (chapter 6). `href` takes a page value, never
+`view` is HTML with expressions in braces. It also receives the session, which this page does not need (a page that shows a per-user setting kept in the session would; chapter 6's theme is one). `App.Logout` is an app-level message, which any page may send (chapter 6). `href` takes a page value, never
 a string, so a link to a page that doesn't exist, or with the wrong
 parameters, is a compile error. `submit={Submit}` ties the form to its
 message, and `<Input field="title">` is checked against `NewTodo`. If the

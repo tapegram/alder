@@ -120,6 +120,19 @@ Int.Positive`; only `Cents + Cents` stays `Cents`.
 (Int.NonNegative 2) * (Int.Positive 3)
 ```
 
+(`Int.NonNegative 2` narrows outside the brand's module, which rule 2
+forbids in a program: in `alder eval`, as in a `test`, any brand
+constructor may be used; chapter 11.)
+
+Comparison follows rule 1 too: `<`, `<=`, `>` and `>=` on two different
+brands of one numeric base compare them as the base, as they compare a
+brand with its base (`Int.Positive 2 < 3`). Only `==` needs identical
+types (rule 4).
+
+```alder eval=True
+(Int.Positive 2) < (Int.NonNegative 3)
+```
+
 Rule 4 is a type error, not a silent widening:
 
 ```alder error=E0003 "`==` needs both sides to have the same type"

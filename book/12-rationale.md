@@ -510,7 +510,15 @@ believes is right.
   *Decided (M4d, 2026-10-10): chapter 4's rule 3 holds.* Two different
   brands of one base widen to it and the operation returns the base; the
   checker now agrees (`(Int.NonNegative 2) * (Int.Positive 3)` is
-  `6 : Int`, chapter 4), and `Cents + Cents` stays `Cents`.
+  `6 : Int`, chapter 4), and `Cents + Cents` stays `Cents`. Ordering
+  follows rule 1 the same way: `(Int.Positive 2) < (Int.NonNegative 3)`
+  compares two `Int`s; only `==` needs identical types (rule 4).
+  Still open: rule 3's same-brand exception lets an operation leave its
+  brand's refinement behind. `(Int.Positive 2) - (Int.Positive 3)` is
+  `-1 : Int.Positive`, a value no boundary would let in, and
+  `Int.NonNegative - Int.NonNegative` likewise. Should `-` (or `/` and
+  `%` on the standard library's refinements, or the refinements
+  altogether) be excluded from the exception, so the result is the base?
 - Do agents need `List.map` with index, or is `List.indexed` enough?
 - Should `alder test` also run the book's `eval=` blocks? Today
   `go test ./book` runs them, and only in this repository; an app's own

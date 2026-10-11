@@ -35,7 +35,9 @@ table Todo {
 
 A table is declared in its own module named after it (`Todo` in
 `app/Todo.alder`), together with the brand for its id and any functions
-that belong to it.
+that belong to it. A table declared in any other module is an error at
+its declaration (E0018): `table Comment` in `app/Post.alder` belongs in
+`app/Comment.alder`, even if only `Post` uses it.
 
 ## Reading
 
