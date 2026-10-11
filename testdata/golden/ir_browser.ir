@@ -2,7 +2,9 @@
 (record User.User (id Text) (email Text) (name Text))
 (module App)
 (record App.Session (user Maybe Text))
-(union App.Msg (Logout))
+(record App.Feedback (text Text))
+(record App.SendParams (form Feedback))
+(union App.Msg (Logout) (Send SendParams))
 (value App.update : Msg -> Session -> Task Nav (msg session)
   (match union (var msg)
     (case Logout
@@ -12,7 +14,9 @@
             (update (var s) (user (ctor Prelude.Maybe.Nothing)))))
         (pure task
           (ctor Prelude.Nav.Redirect
-            (record (value (page-ref Auth.Login (record Auth.Login.Params))))))))))
+            (record (value (page-ref Auth.Login (record Auth.Login.Params))))))))
+    (case Send (bind _m1 : SendParams)
+      (let p : SendParams (var _m1) (pure task (ctor Prelude.Nav.Rerender))))))
 (value App.error : Error -> Html Never (err)
   (elem html (elem body (elem h1 (htext "Something went wrong")))))
 (value App.notFound : Html Never ()
@@ -163,7 +167,7 @@
     (case Open "Open")
     (case Done "Done")))
 (module Notes.Index)
-(record Notes.Index.Model (filter Note.Filter) (notes List Note))
+(record Notes.Index.Model (filter Note.Filter) (notes List Note) (now Time))
 (record Notes.Index.NewNote
   (title Text)
   (due Maybe Date)
@@ -173,25 +177,42 @@
   (kind Note.Kind = (ctor Note.Kind.Plain))
   (remark Text = "")
   (contact Maybe Text))
+(record Notes.Index.Title (title Text))
+(record Notes.Index.Prefs
+  (site Text)
+  (pin Text)
+  (tag Text)
+  (count Int)
+  (reminder Maybe Int = (ctor Prelude.Maybe.Just (record (value 3)))))
 (record Notes.Index.Params (filter Note.Filter = (ctor Note.Filter.All)))
 (record Notes.Index.SubmitParams (form NewNote))
 (record Notes.Index.ToggleParams (id Text))
-(union Notes.Index.Msg (Submit SubmitParams) (Toggle ToggleParams) (Boom))
+(record Notes.Index.RenameParams (id Text) (form Title))
+(record Notes.Index.SavePrefsParams (form Prefs))
+(union Notes.Index.Msg
+  (Submit SubmitParams)
+  (Toggle ToggleParams)
+  (Boom)
+  (Rename RenameParams)
+  (SavePrefs SavePrefsParams))
 (record Notes.Index.Session (user Text))
 (value Notes.Index.load : Params -> Session -> Query Model (params session)
   (bind query notes : List Note
     (db-select Note.Note
       (where (cond eq (col Note.Note owner) (field user (var session))))
       all)
-    (pure query
-      (record Model
-        (filter (field filter (var params)))
-        (notes
-          (call (std List.filter)
-            (partial (global Note.matches)
-              (field filter (var params))
-              (missing 1))
-            (var notes)))))))
+    (bind query now : Time
+      (std Time.now)
+      (pure query
+        (record Model
+          (filter (field filter (var params)))
+          (notes
+            (call (std List.filter)
+              (partial (global Note.matches)
+                (field filter (var params))
+                (missing 1))
+              (var notes)))
+          (now (var now)))))))
 (value Notes.Index.update : Msg -> Model -> Session -> Task Nav (msg model session)
   (match union (var msg)
     (case Submit (bind _m2 : SubmitParams)
@@ -244,7 +265,20 @@
           (pure task
             (if (== : Int (/ 1 (var zero)) 0)
               (ctor Prelude.Nav.Rerender)
-              (ctor Prelude.Nav.Rerender))))))))
+              (ctor Prelude.Nav.Rerender))))))
+    (case Rename (bind _m4 : RenameParams)
+      (let p : RenameParams
+        (var _m4)
+        (bind task _
+          (db-update Note.Note
+            (field id (var p))
+            (lambda (x : Note)
+              (update (var x) (title (field title (field form (var p)))))))
+          (pure task (ctor Prelude.Nav.Rerender)))))
+    (case SavePrefs (bind _m5 : SavePrefsParams)
+      (let p : SavePrefsParams
+        (var _m5)
+        (pure task (ctor Prelude.Nav.Rerender))))))
 (value Notes.Index.view : Model -> Session -> Html Msg (model session)
   (elem html
     (elem body
@@ -282,10 +316,18 @@
           (field notes (var model))
           (elem li (attr class text (if (field done (var n)) "done" "open"))
             (elem button
+              (attr class text "toggle")
               (attr click click
                 (ctor Notes.Index.Msg.Toggle
                   (record ToggleParams (id (field id (var n))))))
-              (hexpr text (field title (var n)))))))
+              (hexpr text (field title (var n))))
+            (form-el Notes.Index.Rename
+              (attr submit submit
+                (ctor Notes.Index.Msg.Rename
+                  (record RenameParams (id (field id (var n))))))
+              (input Input Title field=title label="New title")
+              (input Errors Title field=title)
+              (elem button (htext "Rename"))))))
       (elem p (attr id text "summary")
         (hexpr text
           (call (std Text.fromInt)
@@ -293,6 +335,13 @@
         (htext " shown"))
       (elem p (attr id text "filter")
         (hexpr text (call (global Note.filterLabel) (field filter (var model)))))
+      (elem p (attr id text "now")
+        (hexpr text (call (std Time.format) "15:04:05" (field now (var model)))))
+      (form-el App.Send
+        (attr submit submit (ctor App.Msg.Send (record App.SendParams)))
+        (input Input App.Feedback field=text label="Feedback")
+        (input Errors App.Feedback field=text)
+        (elem button (htext "Send")))
       (elem button (attr click click (ctor Notes.Index.Msg.Boom))
         (htext "Boom"))
       (elem button (attr click click (ctor App.Msg.Logout)) (htext "Log out")))))
@@ -324,7 +373,9 @@
                 (summary
                   (call (std Test.text) "#summary" (field doc (var after))))
                 (items
-                  (call (std Test.texts) "#notes li" (field doc (var after))))
+                  (call (std Test.texts)
+                    "#notes .toggle"
+                    (field doc (var after))))
                 (done (call (std Test.has) "li.done" (field doc (var after)))))
               (record
                 (before (list))
@@ -514,6 +565,101 @@
           (test-open Notes.Show (record Notes.Show.Params (id (var id))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.Missing))))))))
+(test "the model is the one the page rendered" task
+  (bind task me : Text
+    (db-insert User.User (record (email "me@example.com") (name "Me")))
+    (bind task _
+      (test-login
+        (record App.Session
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+      (bind task page : { model: Model, session: App.Session, doc: Doc }
+        (test-get Notes.Index (record Params (filter (ctor Note.Filter.All))))
+        (bind task trace : List Text
+          (test-trace)
+          (pure task
+            (test-eq
+              (record
+                (shown (call (std Test.text) "#now" (field doc (var page))))
+                (same
+                  (== : Doc (field doc (var page))
+                    (call (std Test.doc)
+                      (call (global Notes.Index.view)
+                        (field model (var page))
+                        (record Session (user (var me)))))))
+                (trace (var trace)))
+              (record
+                (shown
+                  (ctor Prelude.Maybe.Just
+                    (record
+                      (value
+                        (call (std Time.format)
+                          "15:04:05"
+                          (field now (field model (var page))))))))
+                (same True)
+                (trace
+                  (list
+                    "Db.insert User"
+                    "Test.login"
+                    "Test.get Notes.Index"
+                    "Db.all Note"
+                    "Time.now"))))))))))
+(test "renaming one row's note" task
+  (bind task me : Text
+    (db-insert User.User (record (email "me@example.com") (name "Me")))
+    (bind task a : Text
+      (db-insert Note.Note (record (title "A") (done False) (owner (var me))))
+      (bind task b : Text
+        (db-insert Note.Note (record (title "B") (done False) (owner (var me))))
+        (bind task _
+          (test-login
+            (record App.Session
+              (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+          (bind task _
+            (test-get Notes.Index
+              (record Params (filter (ctor Note.Filter.All))))
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+              (test-submit Notes.Index.Title Rename
+                (params (record RenameParams (id (var b))))
+                (record Title (title "B2")))
+              (bind task na : Maybe Note
+                (db-get Note.Note (var a))
+                (bind task nb : Maybe Note
+                  (db-get Note.Note (var b))
+                  (pure task
+                    (test-eq
+                      (record
+                        (answer (field answer (var r)))
+                        (a
+                          (call (std Maybe.map)
+                            (lambda (n : Note) (field title (var n)))
+                            (var na)))
+                        (b
+                          (call (std Maybe.map)
+                            (lambda (n : Note) (field title (var n)))
+                            (var nb))))
+                      (record
+                        (answer (ctor Prelude.Answer.Rerendered))
+                        (a (ctor Prelude.Maybe.Just (record (value "A"))))
+                        (b (ctor Prelude.Maybe.Just (record (value "B2"))))))))))))))))
+(test "an App form" task
+  (bind task me : Text
+    (db-insert User.User (record (email "me@example.com") (name "Me")))
+    (bind task _
+      (test-login
+        (record App.Session
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+      (bind task _
+        (test-get Notes.Index (record Params (filter (ctor Note.Filter.All))))
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+          (test-submit App.Feedback Send (record App.Feedback (text "nice")))
+          (pure task
+            (test-eq
+              (field answer (var r))
+              (ctor Prelude.Answer.Redirected
+                (record
+                  (value
+                    (page-ref Notes.Index
+                      (record Params (filter (ctor Note.Filter.All))))))))))))))
 (module Notes.Show)
 (record Notes.Show.Model (note Note))
 (record Notes.Show.Params (id Text))
@@ -535,8 +681,11 @@
     (elem body (elem h1 (hexpr text (field title (field note (var model))))))))
 (table User.User (id id) (unique email) (insert email name))
 (table Note.Note (id id) (ref owner User.User) (insert title done owner))
+(form App.Feedback)
 (form Auth.Login.Credentials)
 (form Notes.Index.NewNote)
+(form Notes.Index.Title)
+(form Notes.Index.Prefs)
 (page Auth.Login "/login"
   (params Params)
   (model Model)
@@ -552,6 +701,8 @@
   (msg Submit (params SubmitParams) (form NewNote))
   (msg Toggle (params ToggleParams))
   (msg Boom)
+  (msg Rename (params RenameParams) (form Title))
+  (msg SavePrefs (params SavePrefsParams) (form Prefs))
   (view Notes.Index.view)
   (load Notes.Index.load)
   (update Notes.Index.update))
@@ -563,6 +714,7 @@
   (view Notes.Show.view)
   (load Notes.Show.load))
 (app-msg Logout)
+(app-msg Send (params SendParams) (form Feedback))
 (app-update App.update)
 (session App.Session)
 (capability Auth.Login.Password

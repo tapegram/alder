@@ -1,0 +1,53 @@
+module Todos.Index
+
+page "/" { }
+
+type Model = { ids: List Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { ids: ["a", "b"] }
+
+form Rename = {
+  title: Text,
+}
+
+form Note = {
+  text: Text,
+}
+
+-- One form posted by a message per row and by a second message; another by two messages
+-- without parameters.
+msg Save { id: Text } form Rename
+msg Draft form Rename
+msg Add form Note
+msg Keep form Note
+msg Toggle { id: Text }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = Task.succeed Rerender
+
+view : Model -> Session -> Html Msg
+view model session =
+  <ul>
+    {for id in model.ids -> <li><form submit={Save { id: id }}><Input field="title" label="Title" /><Errors field="title" /><button>Save</button></form></li>}
+  </ul>
+
+test "a form two messages post" = {
+  let _ <- Test.get (Todos.Index {})
+  let r <- Test.submit Rename { title: "x" }
+  let n <- Test.submitRaw Note []
+  Task.succeed True
+}
+
+test "the message, with its parameters" = {
+  let _ <- Test.get (Todos.Index {})
+  let r <- Test.submit (Save { id: "b" }) { title: "x" }
+  let d <- Test.submitRaw Draft [{ name: "title", value: "" }]
+  Task.succeed (r.answer == Rerendered && d.answer == Rerendered)
+}
+
+test "a message that posts no form" = {
+  let _ <- Test.get (Todos.Index {})
+  let r <- Test.submit (Toggle { id: "a" }) { title: "x" }
+  Task.succeed True
+}

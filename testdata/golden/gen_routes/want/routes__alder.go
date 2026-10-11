@@ -126,7 +126,8 @@ func update__Edit(rq *web.Request, params Edit__Params, msg Edit__Msg, st *html.
 }
 
 // Route__Edit__page serves page Edit, GET /edit/{n} (book 06): decode the parameters (404 when they
-// do not), load (404 on Query.notFound, 500 on a failure), view.
+// do not), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which
+// a test's browser reads).
 func Route__Edit__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/edit/{n}", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Edit__Params(rq.Params, rq.Query)
@@ -137,6 +138,7 @@ func Route__Edit__page() web.Route {
 		if stop != nil {
 			return *stop
 		}
+		rq.Model = model
 		return web.PageResponse(Edit__view(model, session), &html.FormState{PageParams: params__Edit(params)}, rq.Session, false)
 	}}
 }
@@ -210,7 +212,8 @@ func params__Other(_ Other__Params) []rt.KV {
 }
 
 // Route__Other__page serves page Other, GET /other (book 06): decode the parameters (404 when they
-// do not), load (404 on Query.notFound, 500 on a failure), view.
+// do not), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which
+// a test's browser reads).
 func Route__Other__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/other", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Other__Params(rq.Params, rq.Query)
@@ -221,6 +224,7 @@ func Route__Other__page() web.Route {
 		if stop != nil {
 			return *stop
 		}
+		rq.Model = model
 		return web.PageResponse(Other__view(model, session), &html.FormState{PageParams: params__Other(params)}, rq.Session, false)
 	}}
 }
@@ -259,8 +263,8 @@ func params__Secret(_ Secret__Params) []rt.KV {
 }
 
 // Route__Secret__page serves page Secret, GET /secret (book 06): decode the parameters (404 when
-// they do not), `requires` (303 to App.login), load (404 on Query.notFound, 500 on a failure),
-// view.
+// they do not), `requires` (303 to App.login), load (404 on Query.notFound, 500 on a failure), view
+// (the model also in rq.Model, which a test's browser reads).
 func Route__Secret__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/secret", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Secret__Params(rq.Params, rq.Query)
@@ -271,6 +275,7 @@ func Route__Secret__page() web.Route {
 		if stop != nil {
 			return *stop
 		}
+		rq.Model = model
 		return web.PageResponse(Secret__view(model, session), &html.FormState{PageParams: params__Secret(params)}, rq.Session, false)
 	}}
 }

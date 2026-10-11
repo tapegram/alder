@@ -24,7 +24,10 @@ var Routes = []web.Route{
 	Route__Notes__Index__Submit(),
 	Route__Notes__Index__Toggle(),
 	Route__Notes__Index__Boom(),
+	Route__Notes__Index__Rename(),
+	Route__Notes__Index__SavePrefs(),
 	Route__App__Logout(),
+	Route__App__Send(),
 }
 
 // decode__Auth__Login__Params decodes page Auth.Login's parameters: the path's from params, the
@@ -108,7 +111,8 @@ func update__Auth__Login(rq *web.Request, params Auth__Login__Params, msg Auth__
 }
 
 // Route__Auth__Login__page serves page Auth.Login, GET /login (book 06): decode the parameters (404
-// when they do not), load (404 on Query.notFound, 500 on a failure), view.
+// when they do not), load (404 on Query.notFound, 500 on a failure), view (the model also in
+// rq.Model, which a test's browser reads).
 func Route__Auth__Login__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/login", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Auth__Login__Params(rq.Params, rq.Query)
@@ -119,6 +123,7 @@ func Route__Auth__Login__page() web.Route {
 		if stop != nil {
 			return *stop
 		}
+		rq.Model = model
 		return web.PageResponse(Auth__Login__view(model, session), &html.FormState{PageParams: params__Auth__Login(params)}, rq.Session, false)
 	}}
 }
@@ -228,6 +233,72 @@ func decode__Notes__Index__ToggleParams(q url.Values) (r Notes__Index__TogglePar
 	return r, errs
 }
 
+// decode__Notes__Index__RenameParams decodes the parameters of message Rename from its URL's query
+// q; the form is decoded apart. A parameter that does not decode is an error (the route answers
+// 404).
+func decode__Notes__Index__RenameParams(q url.Values) (r Notes__Index__RenameParams, errs []web.FieldError) {
+	if s, ok := web.Text(q, "id", false); !ok {
+		errs = append(errs, web.Missing("id"))
+	} else {
+		r.Id = s
+	}
+	return r, errs
+}
+
+// decode__Notes__Index__Title decodes form Title from a request body v. Its errors are shown on the
+// re-rendered form.
+func decode__Notes__Index__Title(v url.Values) (r Notes__Index__Title, errs []web.FieldError) {
+	if s, ok := web.Text(v, "title", false); !ok {
+		errs = append(errs, web.Missing("title"))
+	} else if e := web.Check(web.NonEmpty(s), "title", web.MsgNonEmpty); e != nil {
+		errs = append(errs, *e)
+	} else {
+		r.Title = s
+	}
+	return r, errs
+}
+
+// decode__Notes__Index__Prefs decodes form Prefs from a request body v. Its errors are shown on the
+// re-rendered form.
+func decode__Notes__Index__Prefs(v url.Values) (r Notes__Index__Prefs, errs []web.FieldError) {
+	if s, ok := web.Text(v, "site", false); !ok {
+		errs = append(errs, web.Missing("site"))
+	} else if e := web.Check(web.URL(s), "site", web.MsgURL); e != nil {
+		errs = append(errs, *e)
+	} else {
+		r.Site = s
+	}
+	if s, ok := web.Text(v, "pin", false); !ok {
+		errs = append(errs, web.Missing("pin"))
+	} else if e := web.Check(web.Secret(s), "pin", web.MsgSecret); e != nil {
+		errs = append(errs, *e)
+	} else {
+		r.Pin = s
+	}
+	if s, ok := web.Text(v, "tag", false); !ok {
+		errs = append(errs, web.Missing("tag"))
+	} else {
+		r.Tag = s
+	}
+	if s, _ := web.Text(v, "count", false); strings.TrimSpace(s) == "" {
+		errs = append(errs, web.Missing("count"))
+	} else if x, msg := web.Int(v, "count"); msg != "" {
+		errs = append(errs, web.FieldError{Field: "count", Message: msg})
+	} else {
+		r.Count = x
+	}
+	if _, ok := v["reminder"]; !ok {
+		r.Reminder = rt.Just[int64](3)
+	} else if s, _ := web.Text(v, "reminder", false); strings.TrimSpace(s) != "" {
+		if x, msg := web.Int(v, "reminder"); msg != "" {
+			errs = append(errs, web.FieldError{Field: "reminder", Message: msg})
+		} else {
+			r.Reminder = rt.Just(x)
+		}
+	}
+	return r, errs
+}
+
 // page__Notes__Index runs page Notes.Index for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then load (with params and the
 // narrowed session). It returns the model and the session view and update take, or the response
@@ -291,7 +362,7 @@ func update__Notes__Index(rq *web.Request, params Notes__Index__Params, msg Note
 
 // Route__Notes__Index__page serves page Notes.Index, GET / (book 06): decode the parameters (404
 // when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 500 on a failure),
-// view.
+// view (the model also in rq.Model, which a test's browser reads).
 func Route__Notes__Index__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Index__Params(rq.Params, rq.Query)
@@ -302,6 +373,7 @@ func Route__Notes__Index__page() web.Route {
 		if stop != nil {
 			return *stop
 		}
+		rq.Model = model
 		return web.PageResponse(Notes__Index__view(model, session), &html.FormState{PageParams: params__Notes__Index(params)}, rq.Session, false)
 	}}
 }
@@ -363,6 +435,61 @@ func Route__Notes__Index__Boom() web.Route {
 	}}
 }
 
+// Route__Notes__Index__Rename serves message Rename of page Notes.Index, POST
+// /_m/Notes.Index/Rename (book 06): decode the page's parameters (the message URL's _p. keys, which
+// the rendered page put there) and the message's (from the query): 404 when they do not decode;
+// decode form Title from the body: when it does not, re-render the page with the submitted values
+// (no Text.Secret field) and the errors, without calling update; then update__Notes__Index.
+func Route__Notes__Index__Rename() web.Route {
+	return web.Route{Method: "POST", Pattern: "/_m/Notes.Index/Rename", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Notes__Index__Params(rt.PageParams(rq.Query))
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		p, errs := decode__Notes__Index__RenameParams(rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		values := route__values(rq.Form)
+		form, errs := decode__Notes__Index__Title(rq.Form)
+		if errs != nil {
+			model, session, stop := page__Notes__Index(rq, params, nil)
+			if stop != nil {
+				return *stop
+			}
+			return web.PageResponse(Notes__Index__view(model, session), &html.FormState{Form: "Notes.Index.Title", Msg: rt.MsgKey("/_m/Notes.Index/Rename", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Notes__Index(params)}, nil, true)
+		}
+		p.Form = form
+		return update__Notes__Index(rq, params, Notes__Index__Msg__Rename__(p), &html.FormState{Form: "Notes.Index.Title", Msg: rt.MsgKey("/_m/Notes.Index/Rename", rq.Query), Values: values})
+	}}
+}
+
+// Route__Notes__Index__SavePrefs serves message SavePrefs of page Notes.Index, POST
+// /_m/Notes.Index/SavePrefs (book 06): decode the page's parameters (the message URL's _p. keys,
+// which the rendered page put there): 404 when they do not decode; decode form Prefs from the body:
+// when it does not, re-render the page with the submitted values (no Text.Secret field) and the
+// errors, without calling update; then update__Notes__Index.
+func Route__Notes__Index__SavePrefs() web.Route {
+	return web.Route{Method: "POST", Pattern: "/_m/Notes.Index/SavePrefs", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Notes__Index__Params(rt.PageParams(rq.Query))
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		p := Notes__Index__SavePrefsParams{}
+		values := route__values(rq.Form, "pin")
+		form, errs := decode__Notes__Index__Prefs(rq.Form)
+		if errs != nil {
+			model, session, stop := page__Notes__Index(rq, params, nil)
+			if stop != nil {
+				return *stop
+			}
+			return web.PageResponse(Notes__Index__view(model, session), &html.FormState{Form: "Notes.Index.Prefs", Msg: rt.MsgKey("/_m/Notes.Index/SavePrefs", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Notes__Index(params)}, nil, true)
+		}
+		p.Form = form
+		return update__Notes__Index(rq, params, Notes__Index__Msg__SavePrefs__(p), &html.FormState{Form: "Notes.Index.Prefs", Msg: rt.MsgKey("/_m/Notes.Index/SavePrefs", rq.Query), Values: values})
+	}}
+}
+
 // decode__Notes__Show__Params decodes page Notes.Show's parameters: the path's from params, the
 // others from q. A parameter that does not decode is an error (the route answers 404).
 func decode__Notes__Show__Params(params map[string]string, _ url.Values) (r Notes__Show__Params, errs []web.FieldError) {
@@ -407,7 +534,7 @@ func params__Notes__Show(p Notes__Show__Params) []rt.KV {
 
 // Route__Notes__Show__page serves page Notes.Show, GET /notes/{id} (book 06): decode the parameters
 // (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 500 on a
-// failure), view.
+// failure), view (the model also in rq.Model, which a test's browser reads).
 func Route__Notes__Show__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/notes/{id}", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Show__Params(rq.Params, rq.Query)
@@ -418,8 +545,20 @@ func Route__Notes__Show__page() web.Route {
 		if stop != nil {
 			return *stop
 		}
+		rq.Model = model
 		return web.PageResponse(Notes__Show__view(model, session), &html.FormState{PageParams: params__Notes__Show(params)}, rq.Session, false)
 	}}
+}
+
+// decode__App__Feedback decodes form Feedback from a request body v. Its errors are shown on the
+// re-rendered form.
+func decode__App__Feedback(v url.Values) (r App__Feedback, errs []web.FieldError) {
+	if s, ok := web.Text(v, "text", false); !ok {
+		errs = append(errs, web.Missing("text"))
+	} else {
+		r.Text = s
+	}
+	return r, errs
 }
 
 // update__App runs App's update for msg and answers its Nav: Redirect p is a 303 to p; Rerender and
@@ -444,6 +583,21 @@ func Route__App__Logout() web.Route {
 	}}
 }
 
+// Route__App__Send serves App's message Send, POST /_m/App/Send: decode form Feedback from the body
+// (when it does not, a 303 back to the page that sent the message, without calling update); then
+// update__App.
+func Route__App__Send() web.Route {
+	return web.Route{Method: "POST", Pattern: "/_m/App/Send", Handle: func(rq *web.Request) web.Response {
+		p := App__SendParams{}
+		form, errs := decode__App__Feedback(rq.Form)
+		if errs != nil {
+			return web.RedirectResponse(rt.BackURL(rq.HTTP.Referer()), nil)
+		}
+		p.Form = form
+		return update__App(rq, App__Msg__Send__(p))
+	}}
+}
+
 // encode__Auth__Login__Credentials is form Credentials as the browser's inputs submit it, for
 // Test.submit (test builds): the inverse of decode__Auth__Login__Credentials.
 func encode__Auth__Login__Credentials(r Auth__Login__Credentials) url.Values {
@@ -460,6 +614,8 @@ func encode__Notes__Index__NewNote(r Notes__Index__NewNote) url.Values {
 	v.Set("title", r.Title)
 	if r.Due.Ok {
 		v.Set("due", std.DateToText(r.Due.Val))
+	} else {
+		v.Set("due", "")
 	}
 	if r.Urgent {
 		v.Set("urgent", "True")
@@ -470,7 +626,41 @@ func encode__Notes__Index__NewNote(r Notes__Index__NewNote) url.Values {
 	v.Set("remark", r.Remark)
 	if r.Contact.Ok {
 		v.Set("contact", r.Contact.Val)
+	} else {
+		v.Set("contact", "")
 	}
+	return v
+}
+
+// encode__Notes__Index__Title is form Title as the browser's inputs submit it, for Test.submit
+// (test builds): the inverse of decode__Notes__Index__Title.
+func encode__Notes__Index__Title(r Notes__Index__Title) url.Values {
+	v := url.Values{}
+	v.Set("title", r.Title)
+	return v
+}
+
+// encode__Notes__Index__Prefs is form Prefs as the browser's inputs submit it, for Test.submit
+// (test builds): the inverse of decode__Notes__Index__Prefs.
+func encode__Notes__Index__Prefs(r Notes__Index__Prefs) url.Values {
+	v := url.Values{}
+	v.Set("site", r.Site)
+	v.Set("pin", r.Pin)
+	v.Set("tag", r.Tag)
+	v.Set("count", std.TextFromInt(r.Count))
+	if r.Reminder.Ok {
+		v.Set("reminder", std.TextFromInt(r.Reminder.Val))
+	} else {
+		v.Set("reminder", "")
+	}
+	return v
+}
+
+// encode__App__Feedback is form Feedback as the browser's inputs submit it, for Test.submit (test
+// builds): the inverse of decode__App__Feedback.
+func encode__App__Feedback(r App__Feedback) url.Values {
+	v := url.Values{}
+	v.Set("text", r.Text)
 	return v
 }
 

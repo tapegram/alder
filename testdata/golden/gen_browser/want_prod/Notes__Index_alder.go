@@ -8,11 +8,13 @@ import (
 	"alder/rt/eff"
 	"alder/rt/html"
 	"alder/rt/std"
+	"time"
 )
 
 type Notes__Index__Model struct {
 	Filter Note__Filter
 	Notes  []Note__Note
+	Now    time.Time
 }
 
 type Notes__Index__NewNote struct {
@@ -24,6 +26,18 @@ type Notes__Index__NewNote struct {
 	Kind     Note__Kind
 	Remark   string
 	Contact  rt.Maybe[string]
+}
+
+type Notes__Index__Title struct {
+	Title string
+}
+
+type Notes__Index__Prefs struct {
+	Site     string
+	Pin      string
+	Tag      string
+	Count    int64
+	Reminder rt.Maybe[int64]
 }
 
 type Notes__Index__Params struct {
@@ -38,18 +52,31 @@ type Notes__Index__ToggleParams struct {
 	Id string
 }
 
+type Notes__Index__RenameParams struct {
+	Id   string
+	Form Notes__Index__Title
+}
+
+type Notes__Index__SavePrefsParams struct {
+	Form Notes__Index__Prefs
+}
+
 type Notes__Index__Msg struct {
-	Tag    tag__Notes__Index__Msg
-	Submit *Notes__Index__SubmitParams
-	Toggle *Notes__Index__ToggleParams
+	Tag       tag__Notes__Index__Msg
+	Submit    *Notes__Index__SubmitParams
+	Toggle    *Notes__Index__ToggleParams
+	Rename    *Notes__Index__RenameParams
+	SavePrefs *Notes__Index__SavePrefsParams
 }
 
 type tag__Notes__Index__Msg uint8
 
 const (
-	is__Notes__Index__Msg__Submit tag__Notes__Index__Msg = 0
-	is__Notes__Index__Msg__Toggle tag__Notes__Index__Msg = 1
-	is__Notes__Index__Msg__Boom   tag__Notes__Index__Msg = 2
+	is__Notes__Index__Msg__Submit    tag__Notes__Index__Msg = 0
+	is__Notes__Index__Msg__Toggle    tag__Notes__Index__Msg = 1
+	is__Notes__Index__Msg__Boom      tag__Notes__Index__Msg = 2
+	is__Notes__Index__Msg__Rename    tag__Notes__Index__Msg = 3
+	is__Notes__Index__Msg__SavePrefs tag__Notes__Index__Msg = 4
 )
 
 func Notes__Index__Msg__Submit__(v Notes__Index__SubmitParams) Notes__Index__Msg {
@@ -61,6 +88,14 @@ func Notes__Index__Msg__Toggle__(v Notes__Index__ToggleParams) Notes__Index__Msg
 }
 
 var Notes__Index__Msg__Boom__ = Notes__Index__Msg{Tag: is__Notes__Index__Msg__Boom}
+
+func Notes__Index__Msg__Rename__(v Notes__Index__RenameParams) Notes__Index__Msg {
+	return Notes__Index__Msg{Tag: is__Notes__Index__Msg__Rename, Rename: &v}
+}
+
+func Notes__Index__Msg__SavePrefs__(v Notes__Index__SavePrefsParams) Notes__Index__Msg {
+	return Notes__Index__Msg{Tag: is__Notes__Index__Msg__SavePrefs, SavePrefs: &v}
+}
 
 type Notes__Index__Session struct {
 	User string
@@ -74,9 +109,11 @@ func Notes__Index__load(params Notes__Index__Params, session Notes__Index__Sessi
 	return eff.Q(eff.Bind(eff.Call("Db.all Note", false, func(_e1 *eff.Env) ([]Note__Note, error) {
 		return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.Where(db.CEq("owner", session.User), db.From(table__Note__Note)))
 	}), func(notes []Note__Note) eff.Task[Notes__Index__Model] {
-		return eff.Pure(Notes__Index__Model{Filter: params.Filter, Notes: std.ListFilter(func(_a2 Note__Note) bool {
-			return Note__matches(params.Filter, _a2)
-		}, notes)})
+		return eff.Bind(eff.T(std.TimeNow()), func(now time.Time) eff.Task[Notes__Index__Model] {
+			return eff.Pure(Notes__Index__Model{Filter: params.Filter, Notes: std.ListFilter(func(_a2 Note__Note) bool {
+				return Note__matches(params.Filter, _a2)
+			}, notes), Now: now})
+		})
 	}))
 }
 
@@ -125,6 +162,17 @@ func Notes__Index__update(msg Notes__Index__Msg, model Notes__Index__Model, sess
 				return rt.Rerender()
 			}())
 		})
+	case is__Notes__Index__Msg__Rename:
+		p := *msg.Rename
+		return eff.Bind(eff.Call("Db.update Note", true, func(_e5 *eff.Env) (struct{}, error) {
+			return struct{}{}, db.UpdateRow(_e5.Ctx, _e5.Store.(db.Store), db.TxOf(_e5), table__Note__Note, p.Id, func(x Note__Note) Note__Note {
+				return Note__Note{Id: x.Id, Title: p.Form.Title, Done: x.Done, Owner: x.Owner}
+			}, _e5.Now())
+		}), func(_ struct{}) eff.Task[rt.Nav] {
+			return eff.Pure(rt.Rerender())
+		})
+	case is__Notes__Index__Msg__SavePrefs:
+		return eff.Pure(rt.Rerender())
 	}
 	panic("unreachable")
 }
@@ -159,13 +207,26 @@ func Notes__Index__view(model Notes__Index__Model, session Notes__Index__Session
 					return "done"
 				}
 				return "open"
-			}())}, html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Notes.Index", Msg: "Toggle", Params: []rt.KV{{Key: "id", Value: n.Id}}})}, html.Text(n.Title)))
+			}())},
+				html.El("button", []html.Attr{html.A("class", "toggle"), html.MsgAttr("data-on:click", rt.MsgRef{Module: "Notes.Index", Msg: "Toggle", Params: []rt.KV{{Key: "id", Value: n.Id}}})}, html.Text(n.Title)),
+				html.FormTo(rt.MsgRef{Module: "Notes.Index", Msg: "Rename", Params: []rt.KV{{Key: "id", Value: n.Id}}}, nil,
+					html.Input(html.Control{Kind: "input", Form: "Notes.Index.Title", Name: "title", Type: "text", Label: "New title", Required: true}),
+					html.Input(html.Control{Kind: "errors", Form: "Notes.Index.Title", Name: "title"}),
+					html.El("button", nil, html.Text("Rename")),
+				),
+			)
 		}, model.Notes)...)),
 		html.El("p", []html.Attr{html.A("id", "summary")},
 			html.Text(std.TextFromInt(std.ListLength(model.Notes))),
 			html.Text(" shown"),
 		),
 		html.El("p", []html.Attr{html.A("id", "filter")}, html.Text(Note__filterLabel(model.Filter))),
+		html.El("p", []html.Attr{html.A("id", "now")}, html.Text(std.TimeFormat("15:04:05", model.Now))),
+		html.FormTo(rt.MsgRef{Module: "App", Msg: "Send"}, nil,
+			html.Input(html.Control{Kind: "input", Form: "App.Feedback", Name: "text", Type: "text", Label: "Feedback"}),
+			html.Input(html.Control{Kind: "errors", Form: "App.Feedback", Name: "text"}),
+			html.El("button", nil, html.Text("Send")),
+		),
 		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Notes.Index", Msg: "Boom"})}, html.Text("Boom")),
 		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "App", Msg: "Logout"})}, html.Text("Log out")),
 	))

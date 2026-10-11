@@ -166,7 +166,8 @@ func (mc *modCtx) testLogin(arg syntax.Expr, env *env, eff effect) types.Type {
 		for i := from; i < len(c.bag.Items); i++ {
 			it := &c.bag.Items[i]
 			if it.Severity == "error" {
-				it.Message = "`Test.login` wants the app's session `" + shape + "`: " + it.Message
+				msg, _, _ := strings.Cut(it.Message, " (a default applies only to") // a literal of App's Session names every field
+				it.Message = "`Test.login` wants the app's session `" + shape + "`: " + msg
 			}
 		}
 	}
@@ -233,16 +234,34 @@ type stepForm struct {
 	msg    string
 }
 
-// stepFormOf resolves the form argument of `Test.submit`/`submitRaw`: a form of a page module or
-// of App that one of its messages posts. ok is false when an error was reported (or the
-// resolver reported one).
+// stepFormOf resolves the target of `Test.submit`/`submitRaw`: a form of a page module or of
+// App that exactly one of its messages posts, or a message that posts a form, written with its
+// parameters (`Save { id: id }`). ok is false when an error was reported (or the resolver
+// reported one).
 func (mc *modCtx) stepFormOf(step string, arg syntax.Expr, env *env, eff effect) (stepForm, bool) {
 	c := mc.c
-	ct, isCt := arg.(*syntax.CtorRef)
+	head := arg
+	if app, isApp := arg.(*syntax.App); isApp {
+		head = app.Fn
+	}
+	ct, isCt := head.(*syntax.CtorRef)
 	if isCt && ct.Ref.Kind == syntax.RefNone {
+		mc.inferArgs([]syntax.Expr{arg}, env, eff)
 		return stepForm{}, false
 	}
-	if !isCt || ct.Ref.Kind != syntax.RefType || c.forms[c.key(ct.Ref.Module, ct.Ref.Name)] == nil {
+	if isCt && ct.Ref.Kind == syntax.RefCtor {
+		if info := c.ctors[c.key(ct.Ref.Module, ct.Ref.Name)]; info != nil && c.isMessageUnion(info.Union) {
+			form := mc.msgForm(ct.Ref.Module, ct.Ref.Name)
+			if form == "" {
+				c.errorf(diag.TypeMismatch, arg.GetSpan(), "`%s` posts no form: use `Test.click`", ct.Ref.Name)
+				mc.infer(arg, env, eff)
+				return stepForm{}, false
+			}
+			mc.check(arg, info.Union, env, eff)
+			return stepForm{module: ct.Ref.Module, form: c.forms[c.key(ct.Ref.Module, form)], msg: ct.Ref.Name}, true
+		}
+	}
+	if arg != head || !isCt || ct.Ref.Kind != syntax.RefType || c.forms[c.key(ct.Ref.Module, ct.Ref.Name)] == nil {
 		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a form declared by a page, got `%s`", step, mc.source(arg.GetSpan()))
 		if !isCt || ct.Ref.Kind != syntax.RefType {
 			mc.infer(arg, env, eff)
@@ -254,19 +273,49 @@ func (mc *modCtx) stepFormOf(step string, arg syntax.Expr, env *env, eff effect)
 		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a form declared by a page: `%s` is a form of `%s`, which is not a page", step, ct.Name, mod)
 		return stepForm{}, false
 	}
+	var posts []*syntax.MsgDecl
 	if m := c.prog.Modules[mod]; m != nil {
 		for _, d := range c.live(m) {
 			if md, ok := d.(*syntax.MsgDecl); ok && md.Form == ct.Ref.Name {
-				return stepForm{module: mod, form: c.forms[c.key(mod, ct.Ref.Name)], msg: md.Name}, true
+				posts = append(posts, md)
 			}
 		}
 	}
-	c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a form a message posts: no `msg … form %s` in `%s`", step, ct.Ref.Name, mod)
+	switch len(posts) {
+	case 0:
+		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a form a message posts: no `msg … form %s` in `%s`", step, ct.Ref.Name, mod)
+		return stepForm{}, false
+	case 1:
+		return stepForm{module: mod, form: c.forms[c.key(mod, ct.Ref.Name)], msg: posts[0].Name}, true
+	}
+	var names []string
+	for _, md := range posts {
+		names = append(names, "`"+md.Name+"`")
+	}
+	list := strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+	first := posts[0]
+	write := first.Name
+	if first.Params != nil && len(first.Params.Fields) > 0 {
+		var fs []string
+		for _, f := range first.Params.Fields {
+			fs = append(fs, f.Name+": …")
+		}
+		write = "(" + first.Name + " { " + strings.Join(fs, ", ") + " })"
+	}
+	value := "{ … }"
+	if step == "submitRaw" {
+		value = "[…]"
+	}
+	d := c.errorf(diag.TypeMismatch, arg.GetSpan(), "`%s` is posted by %s: write `Test.%s %s %s`", ct.Name, list, step, write, value)
+	if write == first.Name { // a message without parameters: the fix names it
+		d.Fix = diag.ReplaceSpan(arg.GetSpan(), first.Name)
+	}
 	return stepForm{}, false
 }
 
 // testSubmit types `Test.submit F r` (r is F's record: a request value, so its defaults apply)
-// and `Test.submitRaw F fields` (fields a List { name: Text, value: Text }).
+// and `Test.submitRaw F fields` (fields a List { name: Text, value: Text }); F may be the
+// message posting the form, with its parameters.
 func (mc *modCtx) testSubmit(name string, formArg, value syntax.Expr, env *env, eff effect) types.Type {
 	c := mc.c
 	f, ok := mc.stepFormOf(name, formArg, env, eff)

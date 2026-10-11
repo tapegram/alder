@@ -101,34 +101,49 @@ func (l *lowerer) testStep(fn syntax.Expr, args []syntax.Expr, t types.Type) Exp
 		}
 		return &TestGet{Typed: Typed{t}, Page: ref.Page, Params: ref.Params, Open: v.Ref.Name == "open"}
 	case "submit", "submitRaw":
-		ct, _ := args[0].(*syntax.CtorRef)
-		if ct == nil {
-			return bug("not a form")
-		}
-		form := l.forms[key(ct.Ref.Module, ct.Ref.Name)]
-		var page *Page
-		msgs := l.out.AppMsgs
-		if ct.Ref.Module != "App" {
-			page = l.pages[ct.Ref.Module]
-			if page == nil {
-				return bug("a form of no page")
-			}
-			msgs = page.Msgs
-		}
+		var form *Form
 		var msg *Msg
-		for _, m := range msgs {
-			if m.Form == form && form != nil {
-				msg = m
-				break
+		var page *Page
+		var params Expr
+		if ct, _ := args[0].(*syntax.CtorRef); ct != nil && ct.Ref.Kind == syntax.RefType { // a form
+			form = l.forms[key(ct.Ref.Module, ct.Ref.Name)]
+			msgs := l.out.AppMsgs
+			if ct.Ref.Module != "App" {
+				page = l.pages[ct.Ref.Module]
+				if page == nil {
+					return bug("a form of no page")
+				}
+				msgs = page.Msgs
+			}
+			for _, m := range msgs {
+				if m.Form == form && form != nil {
+					msg = m
+					break
+				}
+			}
+		} else { // the message posting it, with its parameters
+			c, ok := l.expr(args[0]).(*Ctor)
+			if !ok {
+				return bug("not a form or a message")
+			}
+			msg = l.msgs[key(c.U.Module, c.Name)]
+			if msg != nil {
+				form = msg.Form
+				if c.U.Module != "App" {
+					page = l.pages[c.U.Module]
+				}
+				if msgHasParams(msg) {
+					params = c.Payload
+				}
 			}
 		}
-		if msg == nil {
+		if msg == nil || form == nil {
 			return bug("no message posts the form")
 		}
 		if v.Ref.Name == "submit" {
-			return &TestSubmit{Typed: Typed{t}, Form: form, Msg: msg, Page: page, Record: l.expr(args[1])}
+			return &TestSubmit{Typed: Typed{t}, Form: form, Msg: msg, Page: page, Params: params, Record: l.expr(args[1])}
 		}
-		return &TestSubmitRaw{Typed: Typed{t}, Form: form, Msg: msg, Page: page, Fields: l.expr(args[1])}
+		return &TestSubmitRaw{Typed: Typed{t}, Form: form, Msg: msg, Page: page, Params: params, Fields: l.expr(args[1])}
 	case "click":
 		c, ok := l.expr(args[0]).(*Ctor)
 		if !ok {

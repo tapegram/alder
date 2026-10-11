@@ -3071,7 +3071,7 @@ func TestGen_Fakes(t *testing.T) {
 // (testdata/e2e_browser_test.go.txt).
 func TestGen_Browser(t *testing.T) {
 	files := emitWith(t, "../../testdata/golden/gen_browser", true)
-	contains(t, files["Notes__Index_alder.go"], `eff.Call("Test.get Notes.Index", true,`, `.GetPage(_u`, `, "user")`, `page__Notes__Index(_rq`,
+	contains(t, files["Notes__Index_alder.go"], `eff.Call("Test.get Notes.Index", true,`, `.GetPage(_u`, `, "user")`, `rtesting.ModelOf[Notes__Index__Model](_u`,
 		`eff.Call("Test.click Notes.Index.Toggle", true,`, `.ClickMsg(rt.MsgRef{Module: "Notes.Index", Msg: "Toggle", Params: []rt.KV{{Key: "id", Value: _m`,
 		`rtesting.MsgName("Notes.Index.Toggle", _m`, `.SubmitForm("/_m/Notes.Index/Submit", "NewNote", encode__Notes__Index__NewNote(`,
 		`rtesting.RawFields("NewNote", []string{"title", "due", "urgent", "priority", "weight", "kind", "remark", "contact"},`,
@@ -3080,7 +3080,7 @@ func TestGen_Browser(t *testing.T) {
 		`rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}`, `rtesting.RejectedAnswer([]struct {`,
 		`eff.Call("Test.click App.Logout", true,`, `rtesting.MsgName("App.Logout", nil)`)
 	contains(t, files["routes__alder.go"], "func encode__Notes__Index__NewNote(r Notes__Index__NewNote) url.Values {")
-	contains(t, files["app__alder.go"], "func Web() web.Options {", `selector__1 = rtesting.Sel("h1")`)
+	contains(t, files["app__alder.go"], "func Web() web.Options {", `selector__1  = rtesting.Sel("h1")`)
 	prog, err := os.ReadFile("testdata/e2e_browser_test.go.txt")
 	if err != nil {
 		t.Fatal(err)

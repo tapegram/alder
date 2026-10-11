@@ -138,7 +138,7 @@ func update__Index(rq *web.Request, params Index__Params, msg Index__Msg, st *ht
 
 // Route__Index__page serves page Index, GET /pair/{a}/{b} (book 06): decode the parameters (404
 // when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 500 on a failure),
-// view.
+// view (the model also in rq.Model, which a test's browser reads).
 func Route__Index__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/pair/{a}/{b}", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Index__Params(rq.Params, rq.Query)
@@ -149,6 +149,7 @@ func Route__Index__page() web.Route {
 		if stop != nil {
 			return *stop
 		}
+		rq.Model = model
 		return web.PageResponse(Index__view(model, session), &html.FormState{PageParams: params__Index(params)}, rq.Session, false)
 	}}
 }

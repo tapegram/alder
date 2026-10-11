@@ -8,12 +8,19 @@ login = Auth.Login
 
 msg Logout
 
+form Feedback = {
+  text: Text,
+}
+
+msg Send form Feedback
+
 update : Msg -> Session -> Task Nav
 update msg session = match msg {
   Logout p -> {
     let _ <- Session.put (\s -> { s | user: Nothing })
     Task.succeed (Redirect (Auth.Login {}))
   },
+  Send p -> Task.succeed Rerender,
 }
 
 error : Error -> Html Never

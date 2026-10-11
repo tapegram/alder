@@ -190,7 +190,6 @@ func test__Auth__Login__2() eff.Task[bool] {
 				Session App__Session
 				Doc     rtesting.Doc
 			}, error) {
-				var _p4 Auth__Login__Params = Auth__Login__Params{}
 				_u5 := rt.PageURL(rt.Page{Path: "/login"})
 				_b6 := rtesting.BrowserOf(_e3)
 				_r7, _err8 := _b6.GetPage(_u5, "")
@@ -202,76 +201,68 @@ func test__Auth__Login__2() eff.Task[bool] {
 					}
 					return _z9, _err8
 				}
-				_rq10, _err8 := _b6.LoadRequest()
+				_m10, _err8 := rtesting.ModelOf[Auth__Login__Model](_u5, _r7)
 				if _err8 != nil {
-					var _z13 struct {
+					var _z11 struct {
 						Model   Auth__Login__Model
 						Session App__Session
 						Doc     rtesting.Doc
 					}
-					return _z13, _err8
-				}
-				_m11, _, _stop12 := page__Auth__Login(_rq10, _p4, nil)
-				if _stop12 != nil {
-					return struct {
-						Model   Auth__Login__Model
-						Session App__Session
-						Doc     rtesting.Doc
-					}{}, rtesting.LoadStopped(_u5, _stop12.Status)
+					return _z11, _err8
 				}
 				return struct {
 					Model   Auth__Login__Model
 					Session App__Session
 					Doc     rtesting.Doc
-				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r7.Session), Doc: rtesting.DocOf(_r7.Doc)}, nil
+				}{Model: _m10, Session: rtesting.SessionOf[App__Session](_r7.Session), Doc: rtesting.DocOf(_r7.Doc)}, nil
 			}), func(_ struct {
 				Model   Auth__Login__Model
 				Session App__Session
 				Doc     rtesting.Doc
 			}) eff.Task[bool] {
-				return eff.Bind(eff.Call("Test.submit Credentials", true, func(_e14 *eff.Env) (struct {
+				return eff.Bind(eff.Call("Test.submit Credentials", true, func(_e12 *eff.Env) (struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
 				}, error) {
-					_r15, _err16 := rtesting.BrowserOf(_e14).SubmitForm("/_m/Auth.Login/Submit", "Credentials", encode__Auth__Login__Credentials(Auth__Login__Credentials{Email: "me@example.com", Password: "nope"}))
-					if _err16 != nil {
-						var _z17 struct {
+					_r13, _err14 := rtesting.BrowserOf(_e12).SubmitForm("/_m/Auth.Login/Submit", "Credentials", encode__Auth__Login__Credentials(Auth__Login__Credentials{Email: "me@example.com", Password: "nope"}))
+					if _err14 != nil {
+						var _z15 struct {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
 						}
-						return _z17, _err16
+						return _z15, _err14
 					}
 					return struct {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
-					}{Answer: _r15.Answer, Session: rtesting.SessionOf[App__Session](_r15.Session), Doc: rtesting.DocOf(_r15.Doc)}, nil
+					}{Answer: _r13.Answer, Session: rtesting.SessionOf[App__Session](_r13.Session), Doc: rtesting.DocOf(_r13.Doc)}, nil
 				}), func(wrong struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
 				}) eff.Task[bool] {
-					return eff.Bind(eff.Call("Test.submit Credentials", true, func(_e18 *eff.Env) (struct {
+					return eff.Bind(eff.Call("Test.submit Credentials", true, func(_e16 *eff.Env) (struct {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
 					}, error) {
-						_r19, _err20 := rtesting.BrowserOf(_e18).SubmitForm("/_m/Auth.Login/Submit", "Credentials", encode__Auth__Login__Credentials(Auth__Login__Credentials{Email: "me@example.com", Password: "secret"}))
-						if _err20 != nil {
-							var _z21 struct {
+						_r17, _err18 := rtesting.BrowserOf(_e16).SubmitForm("/_m/Auth.Login/Submit", "Credentials", encode__Auth__Login__Credentials(Auth__Login__Credentials{Email: "me@example.com", Password: "secret"}))
+						if _err18 != nil {
+							var _z19 struct {
 								Answer  rtesting.Answer
 								Session App__Session
 								Doc     rtesting.Doc
 							}
-							return _z21, _err20
+							return _z19, _err18
 						}
 						return struct {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
-						}{Answer: _r19.Answer, Session: rtesting.SessionOf[App__Session](_r19.Session), Doc: rtesting.DocOf(_r19.Doc)}, nil
+						}{Answer: _r17.Answer, Session: rtesting.SessionOf[App__Session](_r17.Session), Doc: rtesting.DocOf(_r17.Doc)}, nil
 					}), func(right struct {
 						Answer  rtesting.Answer
 						Session App__Session
@@ -346,7 +337,7 @@ func test__Auth__Login__3() eff.Task[bool] {
 					Session App__Session
 					Doc     rtesting.Doc
 				}, error) {
-					_r12, _err13 := rtesting.BrowserOf(_e11).ClickMsg(rt.MsgRef{Module: "App", Msg: "Logout"}.URL(nil), rtesting.MsgName("App.Logout", nil))
+					_r12, _err13 := rtesting.BrowserOf(_e11).ClickMsg(rt.MsgURL("App", "Logout"), rtesting.MsgName("App.Logout", nil))
 					if _err13 != nil {
 						var _z14 struct {
 							Answer  rtesting.Answer

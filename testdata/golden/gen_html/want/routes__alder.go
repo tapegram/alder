@@ -188,7 +188,8 @@ func update__M(rq *web.Request, params M__Params, msg M__Msg, st *html.FormState
 }
 
 // Route__M__page serves page M, GET /m/{id} (book 06): decode the parameters (404 when they do
-// not), load (404 on Query.notFound, 500 on a failure), view.
+// not), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which a
+// test's browser reads).
 func Route__M__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/m/{id}", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__M__Params(rq.Params, rq.Query)
@@ -199,6 +200,7 @@ func Route__M__page() web.Route {
 		if stop != nil {
 			return *stop
 		}
+		rq.Model = model
 		return web.PageResponse(M__view(model, session), &html.FormState{PageParams: params__M(params)}, rq.Session, false)
 	}}
 }
@@ -289,7 +291,8 @@ func params__Other(_ Other__Params) []rt.KV {
 }
 
 // Route__Other__page serves page Other, GET /other (book 06): decode the parameters (404 when they
-// do not), load (404 on Query.notFound, 500 on a failure), view.
+// do not), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which
+// a test's browser reads).
 func Route__Other__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/other", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Other__Params(rq.Params, rq.Query)
@@ -300,6 +303,7 @@ func Route__Other__page() web.Route {
 		if stop != nil {
 			return *stop
 		}
+		rq.Model = model
 		return web.PageResponse(Other__view(model, session), &html.FormState{PageParams: params__Other(params)}, rq.Session, false)
 	}}
 }

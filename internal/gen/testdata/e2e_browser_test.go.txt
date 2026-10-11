@@ -15,7 +15,7 @@ import (
 // browser and the Password fake's capability unwired (TestGen_Browser).
 func TestAlderBrowser(t *testing.T) {
 	rs := rtesting.Run(Tests, rtesting.Options{Tables: Tables, TestTables: FakeTables, Caps: Caps{}.Registry(), Session: TestSession(), Routes: Routes, Web: Web()})
-	if len(rs) != 10 {
+	if len(rs) != 13 {
 		t.Fatalf("%d results", len(rs))
 	}
 	got := map[string]rtesting.CaseResult{}
@@ -27,22 +27,24 @@ func TestAlderBrowser(t *testing.T) {
 	}
 	// RF3: the click posts the URL the page rendered, with the page's parameter, and the
 	// re-render keeps it
-	want := []string{"Db.insert User", "Db.insert Note", "Test.login", "Test.get Notes.Index", "Db.all Note",
-		"Test.click Notes.Index.Toggle", "Db.all Note", "Db.get Note", "Db.update Note", "Db.all Note"}
+	want := []string{"Db.insert User", "Db.insert Note", "Test.login", "Test.get Notes.Index", "Db.all Note", "Time.now",
+		"Test.click Notes.Index.Toggle", "Db.all Note", "Time.now", "Db.get Note", "Db.update Note", "Db.all Note", "Time.now"}
 	if tr := got["Notes.Index a click keeps the page's parameter"].Trace; !reflect.DeepEqual(tr, want) {
 		t.Errorf("RF3 trace %q, want %q", tr, want)
 	}
 	// RF4: the login form through the fake
 	want = []string{"Test.fake Password", "Db.insert User", "Test.get Auth.Login", "Test.submit Credentials", "Password.verify",
-		"Db.first User", "Test.submit Credentials", "Password.verify", "Db.first User", "Session.put", "Db.all Note"}
+		"Db.first User", "Test.submit Credentials", "Password.verify", "Db.first User", "Session.put", "Db.all Note", "Time.now"}
 	if tr := got["Auth.Login logging in through the form"].Trace; !reflect.DeepEqual(tr, want) {
 		t.Errorf("RF4 trace %q, want %q", tr, want)
 	}
 }
 
-// decode(encode(r)) == r for a form with a field of every kind (Text, a refined Text, Maybe
-// Date, Bool, Int, Float, a union, Maybe of a refined Text), set and unset; and the encoding is
-// the inputs': a checked box "True", an unchecked one and Nothing absent.
+// decode(encode(r)) == r for forms with a field of every kind (Text, Text.NonEmpty, Text.Url,
+// Text.Secret, an app Text brand, an Int brand, Maybe Date, Maybe with a default, Bool, Int,
+// Float, a union, Maybe of a refined Text), set and unset; and the encoding is the inputs': a
+// checked box "True", an unchecked one absent, Nothing blank (a cleared input — absent would
+// give a field with a default its default).
 func TestEncodeDecodeForm(t *testing.T) {
 	for _, r := range []Notes__Index__NewNote{
 		{Title: "Milk", Due: rt.Just(rt.Date{Y: 2026, M: 2, D: 3}), Urgent: true, Priority: -12, Weight: 2.25, Kind: Note__Kind__Idea__, Remark: "a b&c", Contact: rt.Just("me@example.com")},
@@ -57,16 +59,27 @@ func TestEncodeDecodeForm(t *testing.T) {
 		if _, ok := v["urgent"]; ok != r.Urgent {
 			t.Errorf("urgent present = %v for %v", ok, r.Urgent)
 		}
-		if _, ok := v["due"]; ok != r.Due.Ok {
-			t.Errorf("due present = %v", ok)
+		if due, ok := v["due"]; !ok || (len(due) == 1 && due[0] == "") == r.Due.Ok {
+			t.Errorf("due = %q for %s", due, rt.Show(r.Due))
 		}
 		if r.Urgent && v.Get("urgent") != "True" {
 			t.Errorf("urgent = %q", v.Get("urgent"))
 		}
 	}
 	v := encode__Notes__Index__NewNote(Notes__Index__NewNote{Title: "t", Due: rt.Just(rt.Date{Y: 2026, M: 1, D: 5}), Kind: Note__Kind__Idea__, Weight: 1.5, Priority: 3})
-	if enc := v.Encode(); enc != "due=2026-01-05&kind=Idea&priority=3&remark=&title=t&weight=1.5" {
+	if enc := v.Encode(); enc != "contact=&due=2026-01-05&kind=Idea&priority=3&remark=&title=t&weight=1.5" {
 		t.Errorf("encoded %s", enc)
+	}
+	for _, r := range []Notes__Index__Prefs{
+		{Site: "https://example.com/a?b=c", Pin: "s3cr3t", Tag: "home", Count: 7, Reminder: rt.Just(int64(5))},
+		{Site: "http://x.org", Pin: "p", Tag: "", Count: -1, Reminder: rt.Nothing[int64]()}, // Nothing, not the default Just 3
+		{Site: "https://y.dev", Pin: "q", Tag: "t", Count: 0, Reminder: rt.Just(int64(3))},
+	} {
+		v := encode__Notes__Index__Prefs(r)
+		back, errs := decode__Notes__Index__Prefs(v)
+		if errs != nil || !rt.Eq(back, r) {
+			t.Errorf("decode(encode(%s)) = %s, %v (encoded %v)", rt.Show(r), rt.Show(back), errs, v)
+		}
 	}
 	if got := encode__Auth__Login__Credentials(Auth__Login__Credentials{Email: "a@b.c", Password: "s"}); !reflect.DeepEqual(got, url.Values{"email": {"a@b.c"}, "password": {"s"}}) {
 		t.Errorf("credentials %v", got)

@@ -503,6 +503,26 @@ func TestRouter_EnvFor(t *testing.T) {
 	}
 }
 
+// TestRouter_Served: Options.Served sees each request after its handler answered, with the
+// model a page route put in Request.Model; nil Served changes nothing.
+func TestRouter_Served(t *testing.T) {
+	routes := []Route{{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response {
+		rq.Model = 42
+		return PageResponse(doc("home"), nil, nil, false)
+	}}}
+	var seen []any
+	h := NewRouter(routes, testOpts(func(o *Options) { o.Served = func(rq *Request) { seen = append(seen, rq.Model) } }))
+	serve(h, httptest.NewRequest("GET", "/", nil))
+	serve(h, httptest.NewRequest("GET", "/nothing-here", nil))
+	if len(seen) != 1 || seen[0] != 42 {
+		t.Fatalf("Served saw %v", seen)
+	}
+	h = NewRouter(routes, testOpts(nil))
+	if w := serve(h, httptest.NewRequest("GET", "/", nil)); w.Code != 200 {
+		t.Fatalf("status %d", w.Code)
+	}
+}
+
 // TestRouter_DatastarFailureStatusHeader: a Datastar answer to a 404 or 500 is a 200 patch
 // that names the status in StatusHeader; a re-rendered page carries none.
 func TestRouter_DatastarFailureStatusHeader(t *testing.T) {

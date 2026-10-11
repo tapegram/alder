@@ -13,17 +13,31 @@ type App__Session struct {
 	User rt.Maybe[string]
 }
 
+type App__Feedback struct {
+	Text string
+}
+
+type App__SendParams struct {
+	Form App__Feedback
+}
+
 type App__Msg struct {
-	Tag tag__App__Msg
+	Tag  tag__App__Msg
+	Send *App__SendParams
 }
 
 type tag__App__Msg uint8
 
 const (
 	is__App__Msg__Logout tag__App__Msg = 0
+	is__App__Msg__Send   tag__App__Msg = 1
 )
 
 var App__Msg__Logout__ = App__Msg{Tag: is__App__Msg__Logout}
+
+func App__Msg__Send__(v App__SendParams) App__Msg {
+	return App__Msg{Tag: is__App__Msg__Send, Send: &v}
+}
 
 func App__update(msg App__Msg, session App__Session) eff.Task[rt.Nav] {
 	switch msg.Tag {
@@ -33,6 +47,8 @@ func App__update(msg App__Msg, session App__Session) eff.Task[rt.Nav] {
 		}), func(_ struct{}) eff.Task[rt.Nav] {
 			return eff.Pure(rt.Redirect(rt.Page{Path: "/login"}))
 		})
+	case is__App__Msg__Send:
+		return eff.Pure(rt.Rerender())
 	}
 	panic("unreachable")
 }

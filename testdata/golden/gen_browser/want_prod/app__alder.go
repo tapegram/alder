@@ -43,11 +43,11 @@ func (c Caps) Registry() map[string]any {
 
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
-	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{"Logout"})
+	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{"Logout", "Send"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Auth__Login__Msg(0)), []string{"Submit"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Note__Filter(0)), []string{"All", "Open", "Done"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Note__Kind(0)), []string{"Plain", "Idea", "Chore"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Index__Msg(0)), []string{"Submit", "Toggle", "Boom"})
+	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Index__Msg(0)), []string{"Submit", "Toggle", "Boom", "Rename", "SavePrefs"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Show__Msg(0)), []string{})
 }
 

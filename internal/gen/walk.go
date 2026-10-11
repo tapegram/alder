@@ -154,9 +154,9 @@ func children(e ir.Expr) []ir.Expr {
 	case *ir.TestGet:
 		return []ir.Expr{x.Params}
 	case *ir.TestSubmit:
-		return []ir.Expr{x.Record}
+		return []ir.Expr{x.Params, x.Record}
 	case *ir.TestSubmitRaw:
-		return []ir.Expr{x.Fields}
+		return []ir.Expr{x.Params, x.Fields}
 	case *ir.TestClick:
 		return []ir.Expr{x.Params}
 	}

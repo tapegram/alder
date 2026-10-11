@@ -44,6 +44,10 @@ type Options struct {
 	// capabilities, clock and log, running Within the test's transaction. nil: a fresh Env from
 	// Store, Caps, Now and Log, as in production.
 	EnvFor func(ctx context.Context, session any) *eff.Env
+	// Served, when set, is called with each request once its handler has answered, before the
+	// answer is written: an Alder test's browser reads the model a page's GET rendered
+	// (Request.Model) from it. nil in production.
+	Served func(rq *Request)
 }
 
 // maxBody is the largest POST body the router reads.
@@ -306,7 +310,11 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			Session: rq.Session,
 		}
 	}
-	rt.write(w, r, rq, hit.handle(rq))
+	resp := hit.handle(rq)
+	if rt.opts.Served != nil {
+		rt.opts.Served(rq)
+	}
+	rt.write(w, r, rq, resp)
 }
 
 // readForm reads a POST body: url-encoded forms are parsed, any other body except multipart

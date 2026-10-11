@@ -69,6 +69,9 @@ type Result struct {
 	Answer  Answer
 	Session any
 	Doc     html.Node
+	// Model is the model the page held was rendered from when the last request the step made
+	// was a page's GET (web.Request.Model; Test.get's typed model), nil otherwise.
+	Model any
 }
 
 // TestSecret is the cookie key of a test's router when its options carry none (the router
@@ -105,6 +108,7 @@ type Browser struct {
 	doc    html.Node // the page held (without the router's doctype and script tag)
 	hasDoc bool
 
+	model   any         // the model the last request's page GET rendered (web.Request.Model), nil for none
 	reqEnvs []*eff.Env  // the Envs of the request being served
 	cur     *eff.Within // the transaction it runs within
 	reqHead string      // "METHOD /decoded/path: ", how the router's log lines for it begin
@@ -137,6 +141,13 @@ func NewBrowser(env *eff.Env, routes []web.Route, opts web.Options) *Browser {
 		e := &eff.Env{Ctx: ctx, Store: b.env.Store, Caps: b.env.Caps, Now: b.env.Now, Log: b.env.Log, Session: session, Within: b.cur}
 		b.reqEnvs = append(b.reqEnvs, e)
 		return e
+	}
+	served := opts.Served
+	opts.Served = func(rq *web.Request) {
+		b.model = rq.Model
+		if served != nil {
+			served(rq)
+		}
 	}
 	b.handler = web.NewRouter(routes, opts)
 	return b
@@ -268,10 +279,14 @@ type NoControlError struct {
 	Page   string
 }
 
-// Error is "the page has no form NewTodo (Todos.Index.Submit)" for a Submit ("the page has no
+// Error is "no page is open: `Test.get` one first" before the browser holds a page (Page ""),
+// else "the page has no form NewTodo (Todos.Index.Submit)" for a Submit ("the page has no
 // form for Todos.Index.Submit" without Form) and "the page has no button or form for
 // Todos.Index.Toggle { id: "…" }" for a Click.
 func (e *NoControlError) Error() string {
+	if e.Page == "" {
+		return "no page is open: `Test.get` one first"
+	}
 	if e.Submit {
 		if e.Form != "" {
 			return "the page has no form " + e.Form + " (" + e.Msg + ")"
@@ -446,7 +461,7 @@ func postURL(action string) string {
 
 // result is ans with the session the cookie now carries and the document held.
 func (b *Browser) result(ans Answer) Result {
-	return Result{Answer: ans, Session: b.Session(), Doc: b.doc}
+	return Result{Answer: ans, Session: b.Session(), Doc: b.doc, Model: b.model}
 }
 
 // serve sends one request through the router: with the cookie, the held page as Referer (an App
@@ -476,7 +491,7 @@ func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httpt
 	if b.cookie != "" {
 		req.AddCookie(&http.Cookie{Name: web.CookieName, Value: b.cookie})
 	}
-	b.reqEnvs, b.lastErr, b.cur = nil, "", cur
+	b.reqEnvs, b.lastErr, b.cur, b.model = nil, "", cur, nil
 	b.reqHead = req.Method + " " + req.URL.Path + ": "
 	w := httptest.NewRecorder()
 	b.handler.ServeHTTP(w, req)

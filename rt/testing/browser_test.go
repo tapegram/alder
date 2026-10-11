@@ -490,8 +490,16 @@ func TestBrowser_NoControl(t *testing.T) {
 	browse(t, func(b *Browser, e *eff.Env) {
 		must := mustOf(t)
 		_, err := b.Click("/_m/Index/Delete?id=zzz")
-		if err == nil || err.Error() != `the page has no button or form for Index.Delete { id: "zzz" }` {
+		if err == nil || err.Error() != "no page is open: `Test.get` one first" {
 			t.Errorf("before any page: %v", err)
+		}
+		for _, sub := range []func() (Result, error){
+			func() (Result, error) { return b.Submit("/_m/Index/NewRow", nil) },
+			func() (Result, error) { return b.SubmitForm("/_m/Index/NewRow", "NewRow", nil) },
+		} {
+			if _, err := sub(); err == nil || err.Error() != "no page is open: `Test.get` one first" {
+				t.Errorf("submit before any page: %v", err)
+			}
 		}
 		b.Login(session{User: "ann"})
 		a := insertDirect(t, e, "a")

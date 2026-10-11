@@ -31,6 +31,10 @@ type Request struct {
 	Datastar bool       // sent by the Datastar client (header Datastar-Request: true)
 	Dev      bool       // Options.Dev
 	Login    string     // Options.Login: where a failed `requires` redirects
+	// Model is the model a page's GET route rendered (set by the generated route, nil for any
+	// other request): Options.Served hands it to an Alder test's browser, so Test.get gives the
+	// model the page showed without running its load again.
+	Model any
 }
 
 // Response is what a handler returns; build it with the constructors below. Status decides its

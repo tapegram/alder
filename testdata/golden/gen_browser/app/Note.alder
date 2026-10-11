@@ -8,6 +8,10 @@ type Filter = All | Open | Done
 
 type Kind = Plain | Idea | Chore
 
+type Tag = brand Text
+
+type Count = brand Int
+
 table Note {
   id: NoteId @id,
   title: Text.NonEmpty,

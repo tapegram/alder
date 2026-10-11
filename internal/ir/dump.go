@@ -471,9 +471,9 @@ func (d *dumper) expr(e Expr) *sx {
 		}
 		return list(2, items...)
 	case *TestSubmit:
-		return list(3, atom("test-submit"), atom(x.Form.Module+"."+x.Form.Name), atom(x.Msg.Name), d.expr(x.Record))
+		return list(3, d.submitItems("test-submit", x.Form, x.Msg, x.Params, x.Record)...)
 	case *TestSubmitRaw:
-		return list(3, atom("test-submit-raw"), atom(x.Form.Module+"."+x.Form.Name), atom(x.Msg.Name), d.expr(x.Fields))
+		return list(3, d.submitItems("test-submit-raw", x.Form, x.Msg, x.Params, x.Fields)...)
 	case *TestClick:
 		owner := "App"
 		if x.Page != nil {
@@ -595,3 +595,13 @@ var effKinds = []string{"query", "task"}
 var selTerminals = []string{"select", "all", "first", "count"}
 
 func tableName(t *Table) string { return t.Module + "." + t.Name }
+
+// submitItems are the items of a test-submit or test-submit-raw: the form, the message (with
+// its parameters when the test wrote them) and the value posted.
+func (d *dumper) submitItems(name string, form *Form, msg *Msg, params, value Expr) []*sx {
+	items := []*sx{atom(name), atom(form.Module + "." + form.Name), atom(msg.Name)}
+	if params != nil {
+		items = append(items, list(1, atom("params"), d.expr(params)))
+	}
+	return append(items, d.expr(value))
+}

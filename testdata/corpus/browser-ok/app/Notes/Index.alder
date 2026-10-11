@@ -8,12 +8,14 @@ page "/" { filter: Note.Filter = All } requires user
 type Model = {
   filter: Note.Filter,
   notes: List Note,
+  now: Time,
 }
 
 load : Params -> Session -> Query Model
 load params session = {
   let notes <- Db.from Note |> Db.where (Note.owner.eq session.user) |> Db.all
-  Query.succeed { filter: params.filter, notes: List.filter (Note.matches params.filter) notes }
+  let now <- Time.now
+  Query.succeed { filter: params.filter, notes: List.filter (Note.matches params.filter) notes, now: now }
 }
 
 -- A form with a field of every kind a form can carry.
@@ -28,9 +30,24 @@ form NewNote = {
   contact: Maybe Text.Email,
 }
 
+-- A form each row renders, and a form no view renders, with a field of the remaining kinds.
+form Title = {
+  title: Text.NonEmpty,
+}
+
+form Prefs = {
+  site: Text.Url,
+  pin: Text.Secret,
+  tag: Note.Tag,
+  count: Note.Count,
+  reminder: Maybe Int = Just 3,
+}
+
 msg Submit form NewNote
 msg Toggle { id: Note.NoteId }
 msg Boom
+msg Rename { id: Note.NoteId } form Title
+msg SavePrefs form Prefs
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
@@ -53,6 +70,11 @@ update msg model session = match msg {
     let zero = List.length model.notes - List.length model.notes
     Task.succeed (if 1 / zero == 0 then Rerender else Rerender)
   },
+  Rename p -> {
+    let _ <- Db.update Note p.id (\x -> { x | title: p.form.title })
+    Task.succeed Rerender
+  },
+  SavePrefs p -> Task.succeed Rerender,
 }
 
 view : Model -> Session -> Html Msg
@@ -82,10 +104,24 @@ view model session =
         {for f in [All, Open, Done] -> <a href={Notes.Index { filter: f }}>{Note.filterLabel f}</a>}
       </nav>
       <ul id="notes">
-        {for n in model.notes -> <li class={if n.done then "done" else "open"}><button click={Toggle { id: n.id }}>{n.title}</button></li>}
+        {for n in model.notes ->
+          <li class={if n.done then "done" else "open"}>
+            <button class="toggle" click={Toggle { id: n.id }}>{n.title}</button>
+            <form submit={Rename { id: n.id }}>
+              <Input field="title" label="New title" />
+              <Errors field="title" />
+              <button>Rename</button>
+            </form>
+          </li>}
       </ul>
       <p id="summary">{Text.fromInt (List.length model.notes)} shown</p>
       <p id="filter">{Note.filterLabel model.filter}</p>
+      <p id="now">{Time.format "15:04:05" model.now}</p>
+      <form submit={App.Send}>
+        <Input field="text" label="Feedback" />
+        <Errors field="text" />
+        <button>Send</button>
+      </form>
       <button click={Boom}>Boom</button>
       <button click={App.Logout}>Log out</button>
     </body>
@@ -96,7 +132,7 @@ test "adding a note through the form" = {
   let _ <- Test.login { user: Just me }
   let page <- Test.get (Notes.Index {})
   let after <- Test.submit NewNote { title: Text.NonEmpty "Milk", due: Nothing, urgent: False, contact: Nothing }
-  Task.succeed ({ before: page.model.notes, answer: after.answer, summary: Test.text "#summary" after.doc, items: Test.texts "#notes li" after.doc, done: Test.has "li.done" after.doc } == { before: [], answer: Redirected (Notes.Index {}), summary: Just "1 shown", items: ["Milk"], done: False })
+  Task.succeed ({ before: page.model.notes, answer: after.answer, summary: Test.text "#summary" after.doc, items: Test.texts "#notes .toggle" after.doc, done: Test.has "li.done" after.doc } == { before: [], answer: Redirected (Notes.Index {}), summary: Just "1 shown", items: ["Milk"], done: False })
 }
 
 -- RF3: a click on a page opened with a parameter keeps the parameter.
@@ -160,4 +196,36 @@ test "a stranger's note is missing" = {
   let _ <- Test.login { user: Just (User.UserId "stranger") }
   let r <- Test.open (Notes.Show { id: id })
   Task.succeed (r.answer == Missing)
+}
+
+-- The model Test.get gives is the one the page rendered: `load` ran once (its clock read is in
+-- the trace once), so the rendered time is the model's.
+test "the model is the one the page rendered" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Notes.Index {})
+  let trace <- Test.trace
+  Task.succeed ({ shown: Test.text "#now" page.doc, same: page.doc == Test.doc (view page.model { user: me }), trace: trace } == { shown: Just (Time.format "15:04:05" page.model.now), same: True, trace: ["Db.insert User", "Test.login", "Test.get Notes.Index", "Db.all Note", "Time.now"] })
+}
+
+-- A form each row renders: the message with its parameters names the row's.
+test "renaming one row's note" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let a <- Db.insert Note { title: Text.NonEmpty "A", owner: me }
+  let b <- Db.insert Note { title: Text.NonEmpty "B", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let r <- Test.submit (Rename { id: b }) { title: Text.NonEmpty "B2" }
+  let na <- Db.get Note a
+  let nb <- Db.get Note b
+  Task.succeed ({ answer: r.answer, a: Maybe.map (\n -> n.title) na, b: Maybe.map (\n -> n.title) nb } == { answer: Rerendered, a: Just (Text.NonEmpty "A"), b: Just (Text.NonEmpty "B2") })
+}
+
+-- An App message's form, posted from the page: App's Rerender goes back to the page.
+test "an App form" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let r <- Test.submit App.Feedback { text: "nice" }
+  Task.succeed (r.answer == Redirected (Notes.Index {}))
 }

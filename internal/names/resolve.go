@@ -413,12 +413,13 @@ func (r *resolver) testFakeArg(a syntax.Expr, sc *Scope) {
 
 // testFormArg resolves the first argument of `Test.submit` and `Test.submitRaw`: a form, `NewTodo`
 // (of this module) or `Todos.Index.NewTodo` (of any module, imported or not, as a page needs no
-// import), resolved as a type. A form of another module written unqualified gets the qualified
-// name as a fix. Any other argument is resolved as an expression (the checker refuses it).
+// import), resolved as a type; or a message posting one, resolved as testClickArg does. A form
+// of another module written unqualified gets the qualified name as a fix. Any other argument
+// is resolved as an expression (the checker refuses it).
 func (r *resolver) testFormArg(a syntax.Expr, step string, sc *Scope) {
 	ct, ok := a.(*syntax.CtorRef)
 	if !ok {
-		r.expr(a, sc)
+		r.testClickArg(a, sc) // a message with its parameters: `(Save { id: id })`
 		return
 	}
 	if ct.Module == "" && r.ms.types[ct.Name] { // a form, or another type (the checker refuses it)
@@ -443,7 +444,7 @@ func (r *resolver) testFormArg(a syntax.Expr, step string, sc *Scope) {
 			return
 		}
 	}
-	r.expr(a, sc)
+	r.testClickArg(a, sc) // a message: `Save`, `App.Send`, `Todos.Index.Save`
 }
 
 // testClickArg resolves the argument of `Test.click`: a message, `Toggle { id: id }` or
@@ -1075,7 +1076,11 @@ func (r *resolver) unresolvedCtor(c *syntax.CtorRef) {
 	if len(r.missing) > 0 {
 		return
 	}
-	r.bag.Error(diag.UnknownName, c.Span, "unknown constructor `%s`%s", c.Name, r.missingCause(c.Name))
+	hint := r.missingCause(c.Name)
+	if c.Name == "NotFound" && r.inTest && hint == "" {
+		hint = "; the browser's 404 answer is `Missing`"
+	}
+	r.bag.Error(diag.UnknownName, c.Span, "unknown constructor `%s`%s", c.Name, hint)
 }
 
 // cycleRemedy says what to do instead of importing module x, which imports this module: inside

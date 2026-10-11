@@ -776,22 +776,27 @@ type TestGet struct {
 }
 
 // TestSubmit is `Test.submit F r`: Record (F's record) posted to Msg, the message that posts
-// form Form, of Page (nil for App's form): a Task { answer, session, doc }.
+// form Form, of Page (nil for App's form): a Task { answer, session, doc }. Params is the
+// message's payload when the test wrote the message (`Test.submit (Save { id: id }) r`), nil
+// when it wrote the form: the form is then found by the message alone.
 type TestSubmit struct {
 	Typed
 	Form   *Form
 	Msg    *Msg
 	Page   *Page
+	Params Expr
 	Record Expr
 }
 
 // TestSubmitRaw is `Test.submitRaw F fields`: Fields (a List { name: Text, value: Text })
-// posted as text to Msg, the message that posts form Form, of Page (nil for App's form).
+// posted as text to Msg, the message that posts form Form, of Page (nil for App's form);
+// Params as for TestSubmit.
 type TestSubmitRaw struct {
 	Typed
 	Form   *Form
 	Msg    *Msg
 	Page   *Page
+	Params Expr
 	Fields Expr
 }
 

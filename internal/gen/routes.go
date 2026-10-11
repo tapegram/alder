@@ -192,9 +192,9 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	}
 
 	// the GET route
-	steps := "decode the parameters (404 when they do not), load (404 on Query.notFound, 500 on a failure), view."
+	steps := "decode the parameters (404 when they do not), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
 	if pg.Requires != "" {
-		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 500 on a failure), view."
+		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
 	}
 	b.WriteString(comment(fmt.Sprintf("%s serves page %s, GET %s (book 06): %s", routeFunc(m, ""), m, pg.Path, steps)))
 	fmt.Fprintf(b, `func %s() web.Route {
@@ -207,6 +207,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 		if stop != nil {
 			return *stop
 		}
+		rq.Model = model
 		return web.PageResponse(%s(model, session), &html.FormState{PageParams: %s(params)}, rq.Session, false)
 	}}
 }
@@ -294,10 +295,15 @@ if errs != nil {
 				args = append(args, strconv.Quote(fd.Name))
 			}
 		}
-		fmt.Fprintf(b, "values := route__values(%s)\nform, errs := %s(rq.Form)\nif errs != nil {\n%s}\np.Form = form\n",
-			strings.Join(args, ", "), decodeName(f.Module, f.Name),
-			formErr(formName, "&html.FormState{Form: "+formName+", Msg: "+key+", Values: values, Errors: route__errors(errs), PageParams: "+paramsFunc(m)+"(params)}"))
-		st = "&html.FormState{Form: " + formName + ", Msg: " + key + ", Values: values}"
+		if m == "App" { // App renders no page: a form error goes back to the page, and no state is kept
+			fmt.Fprintf(b, "form, errs := %s(rq.Form)\nif errs != nil {\n%s}\np.Form = form\n",
+				decodeName(f.Module, f.Name), formErr(formName, "nil"))
+		} else {
+			fmt.Fprintf(b, "values := route__values(%s)\nform, errs := %s(rq.Form)\nif errs != nil {\n%s}\np.Form = form\n",
+				strings.Join(args, ", "), decodeName(f.Module, f.Name),
+				formErr(formName, "&html.FormState{Form: "+formName+", Msg: "+key+", Values: values, Errors: route__errors(errs), PageParams: "+paramsFunc(m)+"(params)}"))
+			st = "&html.FormState{Form: " + formName + ", Msg: " + key + ", Values: values}"
+		}
 	}
 	b.WriteString(run(value, st))
 }

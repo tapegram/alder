@@ -1,0 +1,4 @@
+app/Todos/Index.alder:37:24 E0003 `Rename` is posted by `Save` and `Draft`: write `Test.submit (Save { id: … }) { … }`
+app/Todos/Index.alder:38:27 E0003 `Note` is posted by `Add` and `Keep`: write `Test.submitRaw Add […]`
+  fix 38:27-38:31 Add
+app/Todos/Index.alder:51:25 E0003 `Toggle` posts no form: use `Test.click`

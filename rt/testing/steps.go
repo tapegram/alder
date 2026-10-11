@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
 	"alder/rt"
-	"alder/rt/eff"
 	"alder/rt/html"
 	"alder/rt/web"
 )
@@ -201,31 +201,24 @@ func (b *Browser) GetPage(u, requires string) (Result, error) {
 	return r, err
 }
 
-// LoadRequest is a request for running the held page's `load` again, as Test.get does for
-// its typed model: it carries the browser's session and runs within the test's transaction
-// (its reads see the test's rows; it records nothing on the test's trace).
-func (b *Browser) LoadRequest() (*web.Request, error) {
-	w, err := b.within()
-	if err != nil {
-		return nil, err
+// ModelOf is Test.get's typed model: the model the page's GET rendered (Result.Model), or
+// the error naming the request when there is none (a route that is not a page's).
+func ModelOf[M any](u string, r Result) (M, error) {
+	m, ok := r.Model.(M)
+	if !ok {
+		return m, fmt.Errorf("GET %s: the page gave no model", u)
 	}
-	session := b.Session()
-	env := &eff.Env{Ctx: b.env.Ctx, Store: b.env.Store, Caps: b.env.Caps, Now: b.env.Now, Log: b.env.Log, Session: session, Within: w}
-	return &web.Request{Ctx: b.env.Ctx, Session: session, Env: env, Login: b.login}, nil
+	return m, nil
 }
 
-// LoadStopped is Test.get's error when the page's `load`, run again for the model, does not
-// give one (the page was shown a moment before).
-func LoadStopped(u string, status int) error {
-	return fmt.Errorf("GET %s: the page's load, run again for its model, answered %d", u, status)
-}
-
-// SubmitForm is Test.submit's request: the fields posted to the form on the held page whose
-// message is msgPath (/_m/<Module>/<Msg>) — a form's message is named by its path alone, as
-// Test.submit names it by its form — as Submit posts them. Without such a form the error is a
-// *NoControlError naming form ("the page has no form NewTodo (Todos.Index.Submit)").
+// SubmitForm is Test.submit of a form by its name: the fields posted to the form on the held
+// page whose message is msgPath (/_m/<Module>/<Msg>) — the message's own parameters, which the
+// test did not write, are the rendered form's — as Submit posts them. Without such a form the
+// error is a *NoControlError naming form ("the page has no form NewTodo (Todos.Index.Submit)");
+// with several whose URLs differ (one per row) it is "the page has 2 forms for
+// Todos.Index.Rename: write the message with its parameters".
 func (b *Browser) SubmitForm(msgPath, form string, fields url.Values) (Result, error) {
-	target := ""
+	var targets []string
 	if b.hasDoc {
 		for _, f := range html.Select(b.doc, selForm) {
 			if class, _ := html.AttrOf(f, "class"); strings.Contains(" "+class+" ", " _alder-click ") {
@@ -233,19 +226,33 @@ func (b *Browser) SubmitForm(msgPath, form string, fields url.Values) (Result, e
 			}
 			for _, u := range formURLs(f) {
 				if p, err := url.Parse(u); err == nil && p.Path == msgPath {
-					target = u
+					if !slices.Contains(targets, u) {
+						targets = append(targets, u)
+					}
 					break
 				}
 			}
-			if target != "" {
-				break
-			}
 		}
 	}
-	if target == "" {
+	switch len(targets) {
+	case 0:
 		return Result{}, &NoControlError{Submit: true, Form: form, Msg: MsgLabel(msgPath), URL: msgPath, Page: b.url}
+	case 1:
+		return b.Submit(targets[0], fields)
 	}
-	return b.Submit(target, fields)
+	return Result{}, fmt.Errorf("the page has %d forms for %s: write the message with its parameters", len(targets), MsgLabel(msgPath))
+}
+
+// SubmitMsg is Test.submit of a message with its parameters (`Test.submit (Save { id: id }) r`):
+// Submit to the held page's form for msgURL (matched as the message and its own parameters),
+// with form and label — the message as Alder writes it (MsgName) — in its error.
+func (b *Browser) SubmitMsg(msgURL, form, label string, fields url.Values) (Result, error) {
+	r, err := b.Submit(msgURL, fields)
+	var nc *NoControlError
+	if errors.As(err, &nc) {
+		nc.Form, nc.Msg = form, label
+	}
+	return r, err
 }
 
 // formURLs are the URLs form f posts: its action and its data-on:submit's.

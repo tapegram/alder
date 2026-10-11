@@ -54,6 +54,9 @@ var Tests = []rtesting.Case{
 	{Module: "Notes.Index", Name: "a panicking update is Failed", Task: test__Notes__Index__5},
 	{Module: "Notes.Index", Name: "the document and the view agree", Task: test__Notes__Index__6},
 	{Module: "Notes.Index", Name: "a stranger's note is missing", Task: test__Notes__Index__7},
+	{Module: "Notes.Index", Name: "the model is the one the page rendered", Task: test__Notes__Index__8},
+	{Module: "Notes.Index", Name: "renaming one row's note", Task: test__Notes__Index__9},
+	{Module: "Notes.Index", Name: "an App form", Task: test__Notes__Index__10},
 }
 
 // TestSession is the session a test runs with: App's session with every field at its default (nil without an App module).
@@ -73,11 +76,11 @@ var Fakes = map[string]func() any{
 
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
-	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{"Logout"})
+	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{"Logout", "Send"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Auth__Login__Msg(0)), []string{"Submit"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Note__Filter(0)), []string{"All", "Open", "Done"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Note__Kind(0)), []string{"Plain", "Idea", "Chore"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Index__Msg(0)), []string{"Submit", "Toggle", "Boom"})
+	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Index__Msg(0)), []string{"Submit", "Toggle", "Boom", "Rename", "SavePrefs"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Show__Msg(0)), []string{})
 }
 
@@ -194,13 +197,14 @@ func (c session__codec) Decode(b []byte) (any, error) {
 
 // The selector literals of the tests' queries, parsed once (the checker has parsed them too).
 var (
-	selector__1 = rtesting.Sel("h1")
-	selector__2 = rtesting.Sel("#summary")
-	selector__3 = rtesting.Sel("#notes li")
-	selector__4 = rtesting.Sel("li.done")
-	selector__5 = rtesting.Sel("li")
-	selector__6 = rtesting.Sel("#filter")
-	selector__7 = rtesting.Sel("input[name=priority]")
-	selector__8 = rtesting.Sel("nav a")
-	selector__9 = rtesting.Sel("#nothing")
+	selector__1  = rtesting.Sel("h1")
+	selector__2  = rtesting.Sel("#summary")
+	selector__3  = rtesting.Sel("#notes .toggle")
+	selector__4  = rtesting.Sel("li.done")
+	selector__5  = rtesting.Sel("li")
+	selector__6  = rtesting.Sel("#filter")
+	selector__7  = rtesting.Sel("input[name=priority]")
+	selector__8  = rtesting.Sel("nav a")
+	selector__9  = rtesting.Sel("#nothing")
+	selector__10 = rtesting.Sel("#now")
 )
