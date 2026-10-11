@@ -319,6 +319,8 @@ reads the comments oldest first. `view` embeds the body, an
 `Html Never`, as `{model.body}` (chapter 5). The Go side builds it with
 `html.El` and `html.Text`, never `html.Raw`, so a post cannot inject
 markup; a link is kept only for an `http:` or `https:` address.
+`app/Markdown.alder` also has a `fake Markdown`, which one `Posts.Show`
+test uses in the adapter's place (chapter 10, "Faking a capability").
 
 The comment form's message, `msg AddComment form NewComment`, carries no
 post id either. A draft's page is a 404 for everyone but its author, so
@@ -462,7 +464,7 @@ view model session =
 
 ## Its tests
 
-`alder test examples/blog` runs twenty-three tests in six modules:
+`alder test examples/blog` runs twenty-four tests in six modules:
 
 ```text
 $ alder test examples/blog
@@ -487,9 +489,10 @@ ok   Admin.Edit "a demoted author cannot edit"
 ok   Admin.Edit "Publish shows the post on the front page; Unpublish hides it"
 ok   Posts.Show "a draft is not found for a reader"
 ok   Posts.Show "a draft is shown to its author"
+ok   Posts.Show "a post's body is rendered through the Markdown capability"
 ok   Posts.Show "a comment on a draft is refused"
 ok   Posts.Show "a comment is listed oldest first"
-23 passed, 0 failed
+24 passed, 0 failed
 ```
 
 The `Posts.Index` tests call `load` the way the runtime does, with

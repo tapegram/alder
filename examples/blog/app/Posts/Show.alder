@@ -108,6 +108,16 @@ test "a draft is shown to its author" = {
   Task.succeed ({ title: m.post.title, body: m.body } == { title: Text.NonEmpty "Draft", body: <p>Not <em>yet</em>.</p> })
 }
 
+-- The same page with the Markdown capability faked (`fake Markdown` in app/Markdown.alder):
+-- the body arrives as plain text, so the test is about where `load` puts it, not about Markdown.
+test "a post's body is rendered through the Markdown capability" = {
+  let _ <- Test.fake Markdown
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "Not *yet*.", published: True, author: author }
+  let m <- load { slug: Post.Slug "hello" } { user: Nothing }
+  Task.succeed (m.body == Html.text "Not *yet*.")
+}
+
 -- A draft's page is a 404 for a reader, so its comment form cannot be posted; `update` refuses
 -- a comment on a draft as well, whoever sends it.
 test "a comment on a draft is refused" = {

@@ -124,7 +124,9 @@ Each entry is a function whose result is a `Query` or `Task`. Using
 `Email.send { ... }` in `update` is then an ordinary effect. The compiler
 generates a Go interface for each capability, and the app will not build
 or start until every capability is implemented and wired in ("Implementing
-a capability", below).
+a capability", below). In a test, a capability can instead be replaced by
+a `fake`, an implementation written in Alder beside the capability
+(chapter 10, "Faking a capability").
 
 Capabilities are declared in any module and used by their name. The
 standard library provides these; they need no declaration:
@@ -150,8 +152,8 @@ signature has no `Query` or `Task` in it, it is pure.
 
 **A capability in `load`.** An entry whose result is a `Query` is a
 read, so `load` can call it like `Db.get`. The blog (chapter 14) keeps
-its Markdown renderer behind such an entry. Its whole module,
-`examples/blog/app/Markdown.alder`, is shown below:
+its Markdown renderer behind such an entry. Its module,
+`examples/blog/app/Markdown.alder`, begins:
 
 ```alder part=blog/Markdown
 module Markdown
@@ -175,6 +177,21 @@ E0009. In Go, the entry is the method
 on the field `Markdown__Markdown` of `Caps` ("Implementing a capability",
 below). An `Html` value is an `html.Node` from `alder/rt/html`, which
 escapes every piece of text when the page is rendered.
+
+The module ends with a `fake`, an implementation of the capability
+written in Alder that only tests use, here one that returns the text
+unrendered:
+
+```alder part=blog/Markdown
+-- In a test, `let _ <- Test.fake Markdown` replaces the adapter with this: the body as plain
+-- text, so a test about a page asserts on the page, not on how Markdown is rendered.
+fake Markdown {
+  render text = Query.succeed (Html.text text)
+}
+```
+
+Chapter 10 ("Faking a capability") teaches fakes: how a test installs
+one, the tables a fake may keep, and what the trace shows.
 
 ## How effects run
 

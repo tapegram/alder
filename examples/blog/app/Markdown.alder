@@ -5,3 +5,9 @@ module Markdown
 capability Markdown {
   render : Text -> Query (Html Never),
 }
+
+-- In a test, `let _ <- Test.fake Markdown` replaces the adapter with this: the body as plain
+-- text, so a test about a page asserts on the page, not on how Markdown is rendered.
+fake Markdown {
+  render text = Query.succeed (Html.text text)
+}

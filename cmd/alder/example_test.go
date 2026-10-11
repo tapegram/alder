@@ -108,6 +108,7 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Comment "a name or comment has text and a bound"`,
 		`ok   Posts.Show "a draft is not found for a reader"`,
 		`ok   Posts.Show "a draft is shown to its author"`,
+		`ok   Posts.Show "a post's body is rendered through the Markdown capability"`,
 		`ok   Posts.Show "a comment on a draft is refused"`,
 		`ok   Posts.Show "a comment is listed oldest first"`,
 		`ok   Admin "a Reader cannot open the admin page"`,
@@ -117,7 +118,7 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Admin.Edit "another author's post is not found"`,
 		`ok   Admin.Edit "a demoted author cannot edit"`,
 		`ok   Admin.Edit "Publish shows the post on the front page; Unpublish hides it"`,
-		"23 passed, 0 failed\n",
+		"24 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("alder test examples/blog lacks %q:\n%s", want, out)
