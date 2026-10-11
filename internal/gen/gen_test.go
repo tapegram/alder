@@ -3068,7 +3068,7 @@ func TestGen_ProdHasNoTests(t *testing.T) {
 				}
 			}
 		}
-		if dir != "../../examples/todos" {
+		if dir != "../../examples/todos" { // todos' production module is vetted and built with its real adapters by TestBuild_Todos (cmd/alder)
 			vet(t, files)
 		}
 	}

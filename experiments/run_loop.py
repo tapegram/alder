@@ -11,8 +11,8 @@ with --test too, a round that built also runs `alder test --json` and passes onl
 --base DIR seeds round 0 from DIR/app (and DIR/adapters and DIR/migrations, when there are) as
 committed (`git archive HEAD`), never from the working tree. --migrate: a round whose only check
 errors are E0019 (the tables changed since the last migration) runs `alder migrate` and checks
-again, recording the new file's `-- step:` / `-- DROPS DATA:` lines in the round. --adapters (opt-in) also accepts adapters/<name>.go
-sections and lets build and test run them. WARNING: it executes Go the model wrote, unsandboxed. --num-ctx sets Ollama's context window.
+again, recording the new file's `-- step:` / `-- DROPS DATA:` lines in the round. --adapters (opt-in) also accepts adapters/<dir>/<name>.go
+sections (one package level: capability X of module A.B is adapters/a/, func BX) and lets build and test run them. WARNING: it executes Go the model wrote, unsandboxed. --num-ctx sets Ollama's context window.
 summary.json's `outcome` is pass, fail, compiler_bug or harness_error (see README "Outcomes").
 """
 import argparse, io, json, os, pathlib, posixpath, re, shutil, signal, subprocess, sys, tarfile, tempfile, time, urllib.request
@@ -148,7 +148,10 @@ def make_model(spec: str, num_ctx=None) -> Model:
 FILE_RE = re.compile(r"^-{3,}\s*file:\s*(\S+?)\s*-{3,}\s*$", re.M)
 
 STDLIB_REASON = "standard-library module"
-ADAPTER_RE = re.compile(r"^adapters/[A-Za-z0-9_]+\.go$")   # only adapters/<name>.go, no subdirectories
+# only adapters/<dir>/<name>.go: one package per module's first segment (capability X of module A.B
+# is adapters/a/, func BX; book chapter 7); no deeper directories, and not the removed flat
+# adapters/<name>.go
+ADAPTER_RE = re.compile(r"^adapters/[A-Za-z0-9_]+/[A-Za-z0-9_]+\.go$")
 
 
 def stdlib_names(root=None):
@@ -165,7 +168,7 @@ def classify_path(path: str, adapters: bool = False):
     """(safe path, None), or (None, reason): reason is STDLIB_REASON for `app/stdlib/…` and for a module
     named exactly like a standard-library module (`app/List.alder`), else "" (traversal, absolute, wrong
     extension). A module under a stdlib name's directory (`app/Time/Slots.alder`, `module Time.Slots`)
-    is legal Alder and accepted. With `adapters`, `adapters/<name>.go` is a safe path too."""
+    is legal Alder and accepted. With `adapters`, `adapters/<dir>/<name>.go` is a safe path too."""
     if not path or path.startswith("/") or "\\" in path:
         return None, ""
     p = posixpath.normpath(path)
@@ -184,7 +187,7 @@ def classify_path(path: str, adapters: bool = False):
 
 
 def normalize_path(path: str, adapters: bool = False):
-    """Return a safe `app/...alder` path (or `adapters/<name>.go` with `adapters`), or None if the path must be rejected."""
+    """Return a safe `app/...alder` path (or `adapters/<dir>/<name>.go` with `adapters`), or None if the path must be rejected."""
     return classify_path(path, adapters)[0]
 
 
@@ -295,6 +298,20 @@ def run_build(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = 900
         msg = f"{alder}: {e}"
         return None, msg, "", msg
     return p.returncode, p.stderr, p.stdout, unknown_exit("build", p.returncode)
+
+
+# `alder test` (exit 2, its build-problem code) refusing the app's adapters before it builds:
+# a missing adapter, a module that cannot name one, the removed flat form, two capabilities that
+# need one function (book chapter 7). That is the model's program, not the compiler: `--build`
+# runs `alder build --emit`, which does not look at adapters, so `alder test` is the first to see
+# it. An ordinary failed round; the retry carries the message.
+ADAPTER_REFUSALS = ("is missing adapters for", "cannot name an adapter package",
+                    "adapters/ no longer wires capabilities", "internal naming error: capabilities")
+
+
+def adapter_refusal(stderr: str) -> bool:
+    """Whether `alder test`'s exit-2 stderr is its refusal of the app's adapters (ADAPTER_REFUSALS)."""
+    return any(r in stderr for r in ADAPTER_REFUSALS)
 
 
 TEST_OUTPUT_MAX = 4000   # characters of `alder test`'s text report kept in summary.json and the retry prompt
@@ -466,7 +483,7 @@ TRUNCATED = ("Your previous answer was cut off after {n} tokens; output only the
 
 
 def go_refusal_hint(rejected, round_dir: pathlib.Path) -> str:
-    """For each rejected `adapters/<name>.go` (a run without --adapters): the notice that keeps a model
+    """For each rejected `adapters/<dir>/<name>.go` (a run without --adapters): the notice that keeps a model
     from replacing a capability with a password in the code (E7: Haiku's T3)."""
     out = []
     for raw in rejected:
@@ -475,7 +492,7 @@ def go_refusal_hint(rejected, round_dir: pathlib.Path) -> str:
             continue
         cap = _cap_name(pathlib.PurePosixPath(p).stem)
         notice = f"`{p}` was not accepted (this run does not take Go files); "
-        provided = sorted(_cap_name(f.stem) for f in (round_dir / "adapters").glob("*.go"))
+        provided = sorted(_cap_name(f.stem) for f in (round_dir / "adapters").glob("*/*.go"))
         if (round_dir / p).is_file():   # the base provides this very adapter
             out.append(notice + f"the `{cap}` adapter is provided \u2014 keep the capability and do not replace it "
                        "with a password in the code")
@@ -489,7 +506,7 @@ def go_refusal_hint(rejected, round_dir: pathlib.Path) -> str:
 
 
 def _cap_name(stem: str) -> str:
-    """The capability an adapter file is for: `password` → `Password`."""
+    """The capability an adapter file is for, by its name: `password` (adapters/auth/password.go) → `Password`."""
     return stem[:1].upper() + stem[1:]
 
 
@@ -504,7 +521,7 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
     `test_output`, the text report of `alder test` when tests of a program that built failed (exit 1);
     `truncated`, the token cap when the model's answer was cut off by it (Ollama's done_reason "length");
     `cut_off_file`, the path of the file it was cut off in (not written); `show_adapters`, carry the round's
-    adapters/*.go in the previous answer (a --adapters run); `provided`, the base's adapters ({path: text}):
+    adapters/<dir>/*.go in the previous answer (a --adapters run); `provided`, the base's adapters ({path: text}):
     one the round still has unchanged is listed apart, after the model's files, as provided, not yours;
     `migrate_output`, what `alder migrate` printed when it refused (exit 1) the change (a --migrate run)."""
     sources = {}
@@ -544,7 +561,7 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
             feedback += "\n\n" + hint
     theirs = {}
     if show_adapters:
-        for f in (round_dir / "adapters").glob("*.go"):
+        for f in (round_dir / "adapters").glob("*/*.go"):
             path, text = str(f.relative_to(round_dir)), f.read_text()
             if provided and provided.get(path) == text:
                 theirs[path] = text
@@ -601,7 +618,9 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     With `test` (requires `build`; ValueError otherwise), a round that built also runs `alder test
     --json`; its results go in `rnd["tests"]` ({"passed", "failed", "results", "exit"}). Exit 0 is the
     pass (zero tests included). Exit 1 is an ordinary failed round: `rnd["test_output"]` and the
-    retry prompt (under TEST OUTPUT) carry the text report of a second, non-JSON run. Exit 2 (a
+    retry prompt (under TEST OUTPUT) carry the text report of a second, non-JSON run. Exit 2 when
+    `alder test` refuses the app's adapters (adapter_refusal: a missing adapter, say) is an ordinary
+    failed round too, its stderr under TEST OUTPUT. Any other exit 2 (a
     build problem or a crash outside any test, after a clean build) is a compiler bug, kind "test"
     — or "hang" when its stderr says the tests timed out, as when the 600 s limit kills it —
     with its stderr in round<N>/test.stderr.txt; the task stops.
@@ -645,7 +664,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     prev = pathlib.Path(seed[0]) if seed is not None else None
     provided = {}   # the base's adapters, as exported: shown apart in a retry (provided, not the model's)
     if prev is not None and (prev / "adapters").is_dir():
-        provided = {f"adapters/{f.name}": f.read_text() for f in (prev / "adapters").glob("*.go")}
+        provided = {f"adapters/{f.parent.name}/{f.name}": f.read_text() for f in (prev / "adapters").glob("*/*.go")}
 
     def harness_error(reason):
         summary["outcome"] = "harness_error"
@@ -762,12 +781,17 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                 if reason is not None:
                     harness_error(reason)
                     break
-                if texit != 1:   # 2: a build problem or a crash outside any test, after a clean build
+                if texit == 2 and adapter_refusal(tstderr):   # the app's adapters: the model's
+                    test_output = tstderr.strip()[:TEST_OUTPUT_MAX]
+                    rnd["test_output"] = test_output
+                    clean = False
+                elif texit != 1:   # 2: a build problem or a crash outside any test, after a clean build
                     compiler_bug("hang" if "timed out" in tstderr else "test")
                     break
-                test_output = test_report(alder, round_dir)[:TEST_OUTPUT_MAX]
-                rnd["test_output"] = test_output
-                clean = False
+                else:
+                    test_output = test_report(alder, round_dir)[:TEST_OUTPUT_MAX]
+                    rnd["test_output"] = test_output
+                    clean = False
         if clean:
             summary["final_pass"] = True
             summary["outcome"] = "pass"
@@ -797,7 +821,8 @@ def main(argv=None):
     ap.add_argument("--migrate", action="store_true", help="a round whose only check errors are E0019 runs `alder migrate` and checks again; "
                                                            "the new file's step and DROPS DATA lines are recorded in the round (E8)")
     ap.add_argument("--adapters", action="store_true", help="WARNING: executes Go code the model wrote, on this machine, unsandboxed. Opt-in: accept "
-                                                            "`--- file: adapters/<name>.go ---` sections, write them into the round's adapters/ and let build/test run them")
+                                                            "`--- file: adapters/<dir>/<name>.go ---` sections (one package level, as chapter 7's rule names it: capability X of "
+                                                            "module A.B is adapters/a/, func BX), write them into the round's adapters/ and let build/test run them")
     ap.add_argument("--num-ctx", type=int, default=None, help=f"Ollama's num_ctx for this invocation (default {OllamaModel.NUM_CTX}); recorded as harness.num_ctx")
     a = ap.parse_args(argv)
     if a.test and not a.build:

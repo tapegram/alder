@@ -1,4 +1,4 @@
-import json, os, pathlib, shutil, subprocess, sys, tempfile, unittest
+import json, os, pathlib, posixpath, shutil, subprocess, sys, tempfile, unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import run_loop as rl
 
@@ -429,9 +429,10 @@ def tests_stub(tmp, rounds):
              'case " $* " in *" --json "*) json=1;; *) json=0;; esac',
              f'n=$(cat {count})',
              f'if [ $json = 1 ]; then echo $((n+1)) > {count}; else n=$((n-1)); fi']
+    q = lambda t: json.dumps(t).replace("`", "\\`")   # a double-quoted sh word; a backtick stays literal
     for i, (exit_code, out, err, text) in enumerate(rounds):
-        lines.append(f'if [ "$n" = "{i}" ]; then if [ $json = 1 ]; then printf %b {json.dumps(out)}; printf %b {json.dumps(err)} 1>&2; '
-                     f'else printf %b {json.dumps(text)}; fi; exit {exit_code}; fi')
+        lines.append(f'if [ "$n" = "{i}" ]; then if [ $json = 1 ]; then printf %b {q(out)}; printf %b {q(err)} 1>&2; '
+                     f'else printf %b {q(text)}; fi; exit {exit_code}; fi')
     lines.append("exit 2")
     path = tmp / "alder-test-stub"
     path.write_text("\n".join(lines) + "\n")
@@ -529,6 +530,25 @@ class TestLoopTests(unittest.TestCase):
         import report_loop as rp
         self.assertIn("| compiler-bug |", rp.markdown(rp.rows([s])))
 
+    def test_test_exit2_adapter_refusal_is_a_failed_round(self):
+        # alder test refuses the app's adapters (exit 2) before building: the model's program, so an
+        # ordinary failed round whose retry carries the message (real text, M5d)
+        err = ("alder test: blog is missing adapters for 1 capability:\n"
+               "capability `Markdown.Markdown` needs `adapters/markdown/` with `func Markdown() app.Cap__Markdown__Markdown`\n")
+        alder = tests_stub(self.tmp, [(2, '{"error": "x"}\n', err, ""), (0, PASS2, "", "")])
+        model = rl.FakeModel([GOOD, GOOD])
+        s = rl.run_one(self.exp, model, "fake", "t", "task", "sys", alder, retries=1, build=True, test=True)
+        self.assertEqual(s["outcome"], "pass")
+        self.assertNotIn("compiler_bug", s)
+        self.assertEqual(s["rounds"][0]["tests"]["exit"], 2)
+        self.assertIn("needs `adapters/markdown/` with `func Markdown()", s["rounds"][0]["test_output"])
+        self.assertIn("====================  TEST OUTPUT  ====================\nalder test: blog is missing adapters", model.prompts[1])
+        for text in ("module `Internal` cannot name an adapter package: Go keeps `adapters/internal/` private to adapters/ (it holds helpers); rename the module",
+                     "adapters/ no longer wires capabilities: move each adapter to adapters/<module>/ (see the list below)",
+                     "internal naming error: capabilities Mail.OutBox and Mail.Out.Box both need func OutBox in adapters/mail/ (rename one of them)"):
+            self.assertTrue(rl.adapter_refusal("alder test: " + text + "\n"), text)
+        self.assertFalse(rl.adapter_refusal("alder test: the test program stopped: boom\n"))
+
     def test_test_exit2_timed_out_is_hang(self):
         alder = tests_stub(self.tmp, [(2, "", "alder test: the tests timed out after 5m0s\n", "")])
         s = rl.run_one(self.exp, rl.FakeModel([GOOD, GOOD]), "fake", "t", "task", "sys", alder, retries=1, build=True, test=True)
@@ -573,9 +593,9 @@ class TestLoopTests(unittest.TestCase):
     def test_base_exports_adapters(self):
         repo = pathlib.Path(self.tmp) / "repo"
         (repo / "ex" / "app").mkdir(parents=True)
-        (repo / "ex" / "adapters").mkdir(parents=True)
+        (repo / "ex" / "adapters" / "x").mkdir(parents=True)
         (repo / "ex" / "app" / "App.alder").write_text("module App\n")
-        (repo / "ex" / "adapters" / "x.go").write_text("package adapters\n")
+        (repo / "ex" / "adapters" / "x" / "x.go").write_text("package x\n")
         (repo / "other" / "adapters").mkdir(parents=True)
         (repo / "other" / "adapters" / "y.go").write_text("package adapters\n")
         git(repo, "init", "-q")
@@ -587,7 +607,7 @@ class TestLoopTests(unittest.TestCase):
         self.assertEqual(s["outcome"], "pass")
         for n in (0, 1):   # every round carries the adapters (the model writes only app/)
             rd = self.exp / f"runs/fake/t/round{n}"
-            self.assertEqual((rd / "adapters" / "x.go").read_text(), "package adapters\n")
+            self.assertEqual((rd / "adapters" / "x" / "x.go").read_text(), "package x\n")
             self.assertFalse((rd / "adapters" / "y.go").exists())
         # a base without adapters/ still exports
         (repo / "noad" / "app").mkdir(parents=True)
@@ -799,20 +819,37 @@ class E7FalloutTests(unittest.TestCase):
         self.assertEqual((sorted(files), cut), (["app/A.alder"], "app/B.alder"))
         self.assertEqual(rl.split_answer("--- file: app/A.alder ---\nmod", cut_off=False)[2], None)
 
+    def test_classify_path_adapters(self):
+        # one package level under adapters/ (chapter 7's rule): adapters/<dir>/<name>.go, with --adapters only
+        for path in ("adapters/auth/password.go", "adapters/markdown/markdown.go", "adapters/app/clock.go",
+                     "adapters/auth/password_test.go", "./adapters/auth/x.go", "adapters/auth/../auth/x.go"):
+            self.assertEqual(rl.classify_path(path, adapters=True), (posixpath.normpath(path), None), path)
+            self.assertEqual(rl.classify_path(path), (None, ""), path)   # opt-in
+        for path in ("adapters/password.go",             # the removed flat form
+                     "adapters/internal/dbx/dbx.go",     # deeper than one level
+                     "adapters/auth/password.txt", "adapters/auth.go/x.alder.go/y.go",
+                     "adapters/../evil.go", "adapters/auth/../../evil.go", "/adapters/auth/x.go",
+                     "adapters\\auth\\x.go", "adapters/a-b/x.go", "go.mod", "x.go"):
+            self.assertEqual(rl.classify_path(path, adapters=True), (None, ""), path)
+        self.assertEqual(rl.normalize_path("adapters/auth/password.go", adapters=True), "adapters/auth/password.go")
+
     def test_adapters_flag_accepts_go(self):
-        text = (GOOD + "--- file: adapters/password.go ---\n```go\npackage adapters\n```\n"
-                "--- file: adapters/sub/x.go ---\npackage adapters\n--- file: adapters/../evil.go ---\npackage x\n"
-                "--- file: go.mod ---\nmodule x\n")
+        text = (GOOD + "--- file: adapters/auth/password.go ---\n```go\npackage auth\n```\n"
+                "--- file: adapters/flat.go ---\npackage adapters\n"
+                "--- file: adapters/auth/sub/x.go ---\npackage sub\n--- file: adapters/../evil.go ---\npackage x\n"
+                "--- file: adapters/auth/../../evil.go ---\npackage x\n--- file: go.mod ---\nmodule x\n")
         files, rejected = rl.split_files(text, adapters=True)
-        self.assertEqual(sorted(files), ["adapters/password.go", "app/App.alder"])
-        self.assertEqual(files["adapters/password.go"], "package adapters\n")
-        self.assertEqual(rejected, ["adapters/sub/x.go", "adapters/../evil.go", "go.mod"])
+        self.assertEqual(sorted(files), ["adapters/auth/password.go", "app/App.alder"])
+        self.assertEqual(files["adapters/auth/password.go"], "package auth\n")
+        self.assertEqual(rejected, ["adapters/flat.go", "adapters/auth/sub/x.go", "adapters/../evil.go",
+                                    "adapters/auth/../../evil.go", "go.mod"])
         self.assertEqual(rl.split_files(text)[0].keys(), {"app/App.alder"})   # opt-in: off by default
         chk = FakeChecker(self.tmp, [(0, "", "")])
         s, _ = self.run1([text], chk.path, retries=0, adapters=True)
         rd = self.exp / "runs/fake/t/round0"
-        self.assertEqual((rd / "adapters/password.go").read_text(), "package adapters\n")
-        self.assertFalse((rd / "adapters/sub").exists() or (self.exp / "runs/fake/t/evil.go").exists())
+        self.assertEqual((rd / "adapters/auth/password.go").read_text(), "package auth\n")
+        self.assertFalse((rd / "adapters/auth/sub").exists() or (rd / "adapters/flat.go").exists()
+                         or (self.exp / "runs/fake/t/evil.go").exists())
         self.assertTrue(s["harness"]["adapters"])
         chk = FakeChecker(self.tmp, [(0, "", "")])
         s, _ = self.run1([text], chk.path, retries=0)
@@ -826,49 +863,49 @@ class E7FalloutTests(unittest.TestCase):
     def test_adapter_that_does_not_vet_is_a_failed_round(self):
         stub = pathlib.Path(self.tmp) / "alder"
         stub.write_text('#!/bin/sh\n[ "$1" = check ] && exit 0\n'
-                        'if grep -q BROKEN adapters/*.go 2>/dev/null; then echo "adapters/password.go:3:1: undefined: BROKEN" >&2; exit 1; fi\n'
+                        'if grep -q BROKEN adapters/*/*.go 2>/dev/null; then echo "adapters/auth/password.go:3:1: undefined: BROKEN" >&2; exit 1; fi\n'
                         'exit 0\n')
         stub.chmod(0o755)
-        bad = GOOD + "--- file: adapters/password.go ---\npackage adapters\n\nvar x = BROKEN\n"
-        good = "--- file: adapters/password.go ---\npackage adapters\n\nvar x = 1\n"
+        bad = GOOD + "--- file: adapters/auth/password.go ---\npackage adapters\n\nvar x = BROKEN\n"
+        good = "--- file: adapters/auth/password.go ---\npackage adapters\n\nvar x = 1\n"
         s, model = self.run1([bad, good], stub, build=True, adapters=True)
         self.assertEqual(s["outcome"], "pass")
         self.assertFalse(s["rounds"][0]["build"]["ok"])
         self.assertEqual(s["rounds"][0]["build"]["exit"], 1)
         self.assertNotIn("compiler_bug", s)   # the model's Go, not the compiler's
         self.assertIn("undefined: BROKEN", model.prompts[1])
-        self.assertIn("--- file: adapters/password.go ---\npackage adapters\n\nvar x = BROKEN", model.prompts[1])
+        self.assertIn("--- file: adapters/auth/password.go ---\npackage adapters\n\nvar x = BROKEN", model.prompts[1])
         self.assertTrue(s["rounds"][1]["build"]["ok"])
 
     @unittest.skipUnless(shutil.which("git"), "git is not on PATH")
     def test_rejected_adapter_hint_with_base(self):
         repo = pathlib.Path(self.tmp) / "repo"
         (repo / "ex" / "app").mkdir(parents=True)
-        (repo / "ex" / "adapters").mkdir(parents=True)
+        (repo / "ex" / "adapters" / "auth").mkdir(parents=True)
         (repo / "ex" / "app" / "App.alder").write_text("module App\n")
-        (repo / "ex" / "adapters" / "password.go").write_text("package adapters\n")
+        (repo / "ex" / "adapters" / "auth" / "password.go").write_text("package adapters\n")
         git(repo, "init", "-q")
         git(repo, "add", ".")
         git(repo, "commit", "-q", "-m", "base")
-        go = "--- file: adapters/password.go ---\npackage adapters\n"
+        go = "--- file: adapters/auth/password.go ---\npackage adapters\n"
         chk = FakeChecker(self.tmp, [(1, ERR, ""), (0, "", "")])
         s, model = self.run1([GOOD + go, GOOD], chk.path, base=repo / "ex")
-        self.assertEqual(s["rounds"][0]["rejected"], ["adapters/password.go"])
-        self.assertEqual((self.exp / "runs/fake/t/round0/adapters/password.go").read_text(), "package adapters\n")   # base's, not the model's
+        self.assertEqual(s["rounds"][0]["rejected"], ["adapters/auth/password.go"])
+        self.assertEqual((self.exp / "runs/fake/t/round0/adapters/auth/password.go").read_text(), "package adapters\n")   # base's, not the model's
         p = model.prompts[1]
-        self.assertIn("These paths were rejected: adapters/password.go; files must be `app/<Module>.alder`.", p)
-        self.assertIn("`adapters/password.go` was not accepted (this run does not take Go files); the `Password` adapter is provided"
+        self.assertIn("These paths were rejected: adapters/auth/password.go; files must be `app/<Module>.alder`.", p)
+        self.assertIn("`adapters/auth/password.go` was not accepted (this run does not take Go files); the `Password` adapter is provided"
                       " \u2014 keep the capability and do not replace it with a password in the code", p)
         # an adapter the base does not provide, next to one it does: name what is provided
         chk = FakeChecker(self.tmp, [(1, ERR, ""), (0, "", "")])
-        s, model = self.run1([GOOD + "--- file: adapters/hash.go ---\npackage adapters\n", GOOD], chk.path, base=repo / "ex")
-        self.assertIn("`adapters/hash.go` was not accepted (this run does not take Go files); the `Password` adapter is provided;"
+        s, model = self.run1([GOOD + "--- file: adapters/auth/hash.go ---\npackage adapters\n", GOOD], chk.path, base=repo / "ex")
+        self.assertIn("`adapters/auth/hash.go` was not accepted (this run does not take Go files); the `Password` adapter is provided;"
                       " `Hash` is not: declare the capability and leave its Go side unwritten", model.prompts[1])
         self.assertNotIn("the `Hash` adapter is provided", model.prompts[1])
         # without a base carrying adapters: the other hint
         chk = FakeChecker(self.tmp, [(1, ERR, ""), (0, "", "")])
         s, model = self.run1([GOOD + go, GOOD], chk.path)
-        self.assertIn("`adapters/password.go` was not accepted (this run does not take Go files); "
+        self.assertIn("`adapters/auth/password.go` was not accepted (this run does not take Go files); "
                       "declare the capability and leave its Go side unwritten", model.prompts[1])
         self.assertNotIn("is provided", model.prompts[1])
 
@@ -876,25 +913,26 @@ class E7FalloutTests(unittest.TestCase):
     def test_provided_adapters_labeled_in_retry(self):
         repo = pathlib.Path(self.tmp) / "repo"
         (repo / "ex" / "app").mkdir(parents=True)
-        (repo / "ex" / "adapters").mkdir(parents=True)
+        (repo / "ex" / "adapters" / "auth").mkdir(parents=True)
+        (repo / "ex" / "adapters" / "mail").mkdir(parents=True)
         (repo / "ex" / "app" / "App.alder").write_text("module App\n")
-        (repo / "ex" / "adapters" / "password.go").write_text("package adapters\n")
-        (repo / "ex" / "adapters" / "mail.go").write_text("package adapters\n\n// mail\n")
+        (repo / "ex" / "adapters" / "auth" / "password.go").write_text("package adapters\n")
+        (repo / "ex" / "adapters" / "mail" / "mail.go").write_text("package adapters\n\n// mail\n")
         git(repo, "init", "-q")
         git(repo, "add", ".")
         git(repo, "commit", "-q", "-m", "base")
-        # with --adapters the model overwrites mail.go: password.go stays the base's
-        mine = "--- file: adapters/mail.go ---\npackage adapters\n\n// mine\n"
+        # with --adapters the model overwrites mail/mail.go: auth/password.go stays the base's
+        mine = "--- file: adapters/mail/mail.go ---\npackage adapters\n\n// mine\n"
         chk = FakeChecker(self.tmp, [(1, ERR, ""), (0, "", "")])
         s, model = self.run1([GOOD + mine, GOOD], chk.path, base=repo / "ex", adapters=True)
         p = model.prompts[1]
         prev = p[p.index("YOUR PREVIOUS ANSWER"):p.index("COMPILER FEEDBACK")]
-        self.assertIn("--- file: adapters/mail.go ---\npackage adapters\n\n// mine", prev)
+        self.assertIn("--- file: adapters/mail/mail.go ---\npackage adapters\n\n// mine", prev)
         self.assertIn(rl.PROVIDED_ADAPTERS, prev)
         provided = prev[prev.index(rl.PROVIDED_ADAPTERS):]
-        self.assertIn("--- file: adapters/password.go ---\npackage adapters", provided)
-        self.assertNotIn("adapters/mail.go", provided)
-        self.assertLess(prev.index("adapters/mail.go"), prev.index(rl.PROVIDED_ADAPTERS))
+        self.assertIn("--- file: adapters/auth/password.go ---\npackage adapters", provided)
+        self.assertNotIn("adapters/mail/mail.go", provided)
+        self.assertLess(prev.index("adapters/mail/mail.go"), prev.index(rl.PROVIDED_ADAPTERS))
 
 class ModelTests(unittest.TestCase):
     def test_claude_isolated_cwd_and_system_prompt(self):
