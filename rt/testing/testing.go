@@ -2,7 +2,8 @@
 // calls Main with the table of test cases the app's generated code emits.
 //
 // Each case runs on its own: a fresh private in-memory SQLite database with the app's tables
-// (so no case sees another's rows), the fixed clock 2026-01-01T00:00:00Z, the capabilities
+// (so no case sees another's rows), a clock that starts at 2026-01-01T00:00:00Z and ticks one
+// second each time it is read (Ticking), the capabilities
 // and the session it was given. A pure test is a func() bool; a task test is an eff.Task[bool]
 // run as a Task (eff.Run with KTask), so its writes happen inside one transaction, which is
 // committed when the task succeeds and then thrown away with the database.
@@ -163,7 +164,8 @@ type Result struct {
 
 // Options configure Run. Run, when set, selects the cases whose `Module "Name"` it matches;
 // Tables are created in each case's database; Caps (an empty map when nil) and Session are
-// each case's Env.Caps and Env.Session; Now is the fixed clock (zero: 2026-01-01T00:00:00Z);
+// each case's Env.Caps and Env.Session; Now is when each case's clock starts (zero:
+// 2026-01-01T00:00:00Z; see Ticking);
 // Deadline, when set, is (100 ms after it) the deadline of a task test's context (its store
 // operations and capabilities see it).
 type Options struct {
@@ -175,8 +177,24 @@ type Options struct {
 	Deadline time.Time
 }
 
-// defaultNow is the clock tests see unless told otherwise.
+// defaultNow is when a test's clock starts unless told otherwise.
 var defaultNow = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+// Ticking is a test's clock: its first reading is start, and each later one is a second after
+// the one before. It is deterministic (the same test reads the same times on every run), and
+// the rows a test inserts get distinct `@created` times in the order they were inserted, so a
+// test can observe an ordering by creation time (`Db.orderBy T.created.desc`).
+func Ticking(start time.Time) func() time.Time {
+	var mu sync.Mutex
+	next := start
+	return func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		t := next
+		next = next.Add(time.Second)
+		return t
+	}
+}
 
 // unwired is the panic message of a capability call that finds no implementation (as in
 // cmd/alder/eval.go).
@@ -249,7 +267,7 @@ func runCase(c Case, o Options) (r Result) {
 			r.Error = err.Error()
 			return r
 		}
-		env := &eff.Env{Ctx: ctx, Store: store, Caps: caps, Session: o.Session, Now: func() time.Time { return now }}
+		env := &eff.Env{Ctx: ctx, Store: store, Caps: caps, Session: o.Session, Now: Ticking(now)}
 		ok, errText = guard(func() bool {
 			v, err := eff.Run(env, eff.KTask, c.Task())
 			if err != nil {

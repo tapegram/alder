@@ -256,9 +256,10 @@ The stranger's `Toggle` succeeded, the update ran, and the todo is done.
 - **One transaction.** The block runs as one `Task` (chapter 7, "How
   effects run"): its first database step begins a transaction, every
   later step uses it, and the block's own reads see its own writes.
-- **A fixed clock.** `Time.now`, and the `@created` column a `Db.insert`
-  fills, are always `2026-01-01T00:00:00Z`, so a test that stores a time
-  gets the same one on every run.
+- **A ticking clock.** `Time.now`, and the `@created` column a
+  `Db.insert` fills, read a clock that starts at `2026-01-01T00:00:00Z`
+  and advances one second each time it is read, so rows created in a
+  test are ordered, and a test gets the same times on every run.
 - **The app's capabilities.** When the app has an `adapters/` package
   (chapter 7, "Implementing a capability"), its `Caps()` are wired, so a
   test calls the real Go. A capability's error is a failure the test can

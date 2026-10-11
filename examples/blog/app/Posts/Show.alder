@@ -22,7 +22,7 @@ load params session = {
   match found {
     Just post ->
       if Post.visible session.user post then {
-        let body <- Markdown.toHtml post.body
+        let body <- Markdown.render post.body
         let comments <-
           Db.from Comment
             |> Db.where (Comment.post.eq post.id)
@@ -119,9 +119,6 @@ test "a comment on a draft is refused" = {
   Task.succeed ({ value: r.value, comments: comments } == { value: Err "not found", comments: 0 })
 }
 
--- Both comments get the same `created` (a test's clock is fixed), and rows with the same
--- `created` come back in the order they were inserted: this test shows the order the page lists
--- comments in, which `Comment.created.asc` makes oldest first when the times differ.
 test "a comment is listed oldest first" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", published: True, author: author }

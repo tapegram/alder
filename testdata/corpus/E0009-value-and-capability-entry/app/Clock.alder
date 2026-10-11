@@ -1,0 +1,9 @@
+module Clock
+
+capability Clock {
+  ticks : Query Int,
+}
+
+-- `Clock.ticks` would name both this value and the capability's entry.
+ticks : Query Int
+ticks = Query.succeed 1

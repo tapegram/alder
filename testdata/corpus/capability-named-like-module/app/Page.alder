@@ -1,0 +1,16 @@
+module Page
+
+import Markdown
+
+page "/" { }
+
+type Model = { body: Html Never }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let body <- Markdown.render "*hi*"
+  Query.succeed { body: body }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <div>{model.body}</div>

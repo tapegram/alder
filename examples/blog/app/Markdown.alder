@@ -5,8 +5,3 @@ module Markdown
 capability Markdown {
   render : Text -> Query (Html Never),
 }
-
--- toHtml is the post body as HTML. Other modules call this rather than the capability: from
--- outside, `Markdown.render` names this module's values, not the capability's entry.
-toHtml : Text -> Query (Html Never)
-toHtml text = Markdown.render text

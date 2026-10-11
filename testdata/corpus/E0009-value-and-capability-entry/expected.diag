@@ -1,0 +1,1 @@
+app/Clock.alder:4:3 E0009 `ticks` is both a value of `Clock` and an entry of capability `Clock`

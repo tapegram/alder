@@ -81,17 +81,13 @@ view model session =
     }}
   </Layout.Page>
 
--- Every row a test inserts gets the same `created` (a test's clock is fixed at
--- 2026-01-01T00:00:00Z), so no test can observe the newest-first order: this one checks that the
--- drafts are left out and both published posts are listed. The order is `Db.orderBy` in `load`.
 test "the front page lists only published posts, newest first" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Db.insert Post { slug: Post.Slug "first", title: Text.NonEmpty "First", body: "", published: True, author: author }
   let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "", author: author }
   let _ <- Db.insert Post { slug: Post.Slug "second", title: Text.NonEmpty "Second", body: "", published: True, author: author }
   let model <- load { page: 1, q: "" } { user: Nothing }
-  let titles = List.map (\p -> p.title) model.posts
-  Task.succeed ({ count: List.length titles, first: List.member (Text.NonEmpty "First") titles, second: List.member (Text.NonEmpty "Second") titles } == { count: 2, first: True, second: True })
+  Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "Second", Text.NonEmpty "First"])
 }
 
 test "search matches title or body" = {

@@ -292,3 +292,29 @@ func TestResolve_StdlibOpaqueType(t *testing.T) {
 		t.Fatalf("want one E0202 on line 6 with a fix, got:\n%s", codes(bag))
 	}
 }
+
+// A capability named like its module (`capability Markdown` in module Markdown) is reached as
+// `Markdown.render` from a module that imports it, and inside its own module; a value of the
+// module with an entry's name is E0009.
+func TestResolve_CapabilityNamedLikeModule(t *testing.T) {
+	md := parse(t, "app/Markdown.alder", "module Markdown\n\ncapability Markdown {\n  render : Text -> Query Text,\n}\n\nown : Query Text\nown = Markdown.render \"a\"\n")
+	use := parse(t, "app/Use.alder", "module Use\n\nimport Markdown\n\nx : Query Text\nx = Markdown.render \"b\"\n")
+	prog, bag := Build([]*syntax.Module{md, use}, std(t))
+	prog.Resolve(bag)
+	if len(bag.Items) != 0 {
+		t.Fatalf("unexpected: %s", codes(bag))
+	}
+	for _, m := range []*syntax.Module{md, use} {
+		v := m.Decls[len(m.Decls)-1].(*syntax.ValueDecl).Body.(*syntax.App).Fn.(*syntax.Var)
+		if want := (syntax.Ref{Kind: syntax.RefCapability, Module: "Markdown", Name: "Markdown.render"}); v.Ref != want {
+			t.Errorf("%s: Markdown.render resolved to %+v, want %+v", m.Name, v.Ref, want)
+		}
+	}
+
+	dup := parse(t, "app/Clock.alder", "module Clock\n\ncapability Clock {\n  ticks : Query Int,\n}\n\nticks : Query Int\nticks = Query.succeed 1\n")
+	prog, bag = Build([]*syntax.Module{dup}, std(t))
+	prog.Resolve(bag)
+	if got := codes(bag); got != "E0009:`ticks` is both a value of `Clock` and an entry of capability `Clock`" {
+		t.Fatalf("got %q", got)
+	}
+}

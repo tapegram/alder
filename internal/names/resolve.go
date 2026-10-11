@@ -15,21 +15,24 @@ var generatedTypes = map[string]bool{"Params": true, "Msg": true, "Session": tru
 
 // moduleScope indexes one module's declarations.
 type moduleScope struct {
-	name    string
-	values  map[string]bool
-	types   map[string]bool   // type, table, form, brand names
-	ctors   map[string]string // ctor → owning type name
-	brands  map[string]bool   // brand names; the constructor is usable only in the declaring module
-	tables  map[string]bool
-	caps    map[string]bool
-	comps   map[string]bool            // capitalized value names
-	columns map[string]map[string]bool // table → field set
-	imports map[string]*syntax.Import
-	used    map[string]bool
+	name   string
+	values map[string]bool
+	types  map[string]bool   // type, table, form, brand names
+	ctors  map[string]string // ctor → owning type name
+	brands map[string]bool   // brand names; the constructor is usable only in the declaring module
+	tables map[string]bool
+	caps   map[string]bool
+	// capEntries holds, for a capability named like its module (`capability Markdown` in module
+	// Markdown), its entry names: `Markdown.render` from another module is that entry.
+	capEntries map[string]bool
+	comps      map[string]bool            // capitalized value names
+	columns    map[string]map[string]bool // table → field set
+	imports    map[string]*syntax.Import
+	used       map[string]bool
 }
 
 func (p *Program) index(m *syntax.Module) *moduleScope {
-	s := &moduleScope{name: m.Name, values: map[string]bool{}, types: map[string]bool{}, ctors: map[string]string{}, brands: map[string]bool{}, tables: map[string]bool{}, caps: map[string]bool{}, comps: map[string]bool{}, columns: map[string]map[string]bool{}, imports: map[string]*syntax.Import{}, used: map[string]bool{}}
+	s := &moduleScope{name: m.Name, values: map[string]bool{}, types: map[string]bool{}, ctors: map[string]string{}, brands: map[string]bool{}, tables: map[string]bool{}, caps: map[string]bool{}, capEntries: map[string]bool{}, comps: map[string]bool{}, columns: map[string]map[string]bool{}, imports: map[string]*syntax.Import{}, used: map[string]bool{}}
 	for _, im := range m.Imports {
 		s.imports[im.Module] = im
 	}
@@ -60,6 +63,11 @@ func (p *Program) index(m *syntax.Module) *moduleScope {
 			s.types[d.Name] = true
 		case *syntax.CapDecl:
 			s.caps[d.Name] = true
+			if d.Name == m.Name {
+				for _, e := range d.Entries {
+					s.capEntries[e.Name] = true
+				}
+			}
 		case *syntax.MsgDecl:
 			s.ctors[d.Name] = "Msg"
 		case *syntax.PageDecl:
@@ -233,6 +241,13 @@ func (r *resolver) module() {
 			r.fields(d.Fields)
 		case *syntax.CapDecl:
 			r.fields(d.Entries)
+			if d.Name == r.m.Name {
+				for _, e := range d.Entries {
+					if r.ms.values[e.Name] {
+						r.bag.Error(diag.Duplicate, e.Span, "`%s` is both a value of `%s` and an entry of capability `%s`", e.Name, r.m.Name, d.Name)
+					}
+				}
+			}
 		case *syntax.SessionDecl:
 			r.fields(d.Fields)
 		case *syntax.LoginDecl:
@@ -662,6 +677,8 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 			v.Ref = syntax.Ref{Kind: kind, Module: v.Module, Name: v.Name}
 		case s.tables[v.Module] && s.columns[v.Module][v.Name]:
 			v.Ref = syntax.Ref{Kind: syntax.RefColumn, Module: v.Module, Name: v.Name}
+		case s.capEntries[v.Name]: // `capability M` of module M: Markdown.render
+			v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: v.Module, Name: v.Module + "." + v.Name}
 		default:
 			if !r.stdShadowed(v.Module) {
 				r.bag.Error(diag.UnknownName, v.Span, "module `%s` has no `%s`", v.Module, v.Name)

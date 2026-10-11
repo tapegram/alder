@@ -337,7 +337,7 @@ func TestRun_FreshStorePerCase(t *testing.T) {
 	}
 }
 
-func TestRun_FixedNowAndCaps(t *testing.T) {
+func TestRun_ClockStartAndCaps(t *testing.T) {
 	var now time.Time
 	var caps map[string]any
 	rs := one(Case{Module: "M", Name: "now", Task: func() eff.Task[bool] {
@@ -351,6 +351,57 @@ func TestRun_FixedNowAndCaps(t *testing.T) {
 	}
 	if rs[0].Trace == nil || rs[0].Ms < 0 {
 		t.Fatalf("%+v", rs[0])
+	}
+}
+
+// The clock ticks: each reading is a second after the last, starting at defaultNow, so two
+// rows inserted in one test get two different, ordered @created times.
+func TestRun_TickingClock(t *testing.T) {
+	var reads []time.Time
+	rs := one(Case{Module: "M", Name: "tick", Task: func() eff.Task[bool] {
+		read := eff.Call("Clock.now", false, func(e *eff.Env) (bool, error) {
+			reads = append(reads, e.Now())
+			return true, nil
+		})
+		return eff.Bind(read, func(bool) eff.Task[bool] { return read })
+	}})
+	want := []time.Time{defaultNow, defaultNow.Add(time.Second)}
+	if !rs[0].OK || len(reads) != 2 || !reads[0].Equal(want[0]) || !reads[1].Equal(want[1]) {
+		t.Fatalf("%+v reads=%v want %v", rs, reads, want)
+	}
+}
+
+// stamped is `table S { id: SId @id, created: Time @created }` in module M.
+var stamped = &db.Table[[]any]{
+	Name:    "M.S",
+	Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "created", Type: db.CTime}},
+	ID:      "id",
+	Created: "created",
+	Encode:  func(v []any) []any { return v },
+	Decode:  func(v []any) ([]any, error) { return v, nil },
+	ReadID:  func(v []any) string { s, _ := db.DecodeText(v[0]); return s },
+	SetID:   func(v []any, id string) []any { v[0] = id; return v },
+}
+
+// Two rows inserted in one test get two different @created times, the later one second later.
+func TestRun_TickingCreated(t *testing.T) {
+	var created []string
+	insert := eff.Call("Db.insert S", true, func(e *eff.Env) (string, error) {
+		return db.InsertRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), stamped, []any{nil, nil}, e.Now())
+	})
+	read := eff.Call("Db.all S", false, func(e *eff.Env) (bool, error) {
+		rs, err := db.All(e.Ctx, e.Store.(db.Store), db.TxOf(e), db.OrderBy(db.Asc("created"), db.From(stamped)))
+		for _, r := range rs {
+			c, _ := db.DecodeText(r[1])
+			created = append(created, c)
+		}
+		return err == nil, err
+	})
+	rs := Run([]Case{{Module: "M", Name: "created", Task: func() eff.Task[bool] { return then(insert, then(insert, read)) }}},
+		Options{Tables: []db.TableDesc{stamped.Desc()}})
+	want := []string{"2026-01-01T00:00:00.000000000Z", "2026-01-01T00:00:01.000000000Z"}
+	if !rs[0].OK || !reflect.DeepEqual(created, want) {
+		t.Fatalf("%+v created=%q want %q", rs, created, want)
 	}
 }
 
