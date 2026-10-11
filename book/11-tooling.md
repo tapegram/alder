@@ -606,7 +606,7 @@ says what to expect:
 
 | Fence | Checked |
 |---|---|
-| `alder` | A module or declarations: `alder check` is clean in a copy of `examples/todos` (declarations see every example module; a module replaces the example's module of that name). A table of `Name.x : Type` lines: each name's real type is at least as general as the table's (a `sig : Type` / `sig = Name.x` checks). Expressions: they parse, each starting where `alder eval` would start one (not type-checked) |
+| `alder` | A module or declarations: `alder check` is clean in a copy of `examples/todos` (declarations see every example module; a module replaces the example's module of that name; declarations with exactly one `table T` are checked as `module T`, since a table is declared in its own module, replacing the example's `T` if it has one, and a block with two tables is marked `fragment`). A table of `Name.x : Type` lines: each name's real type is at least as general as the table's (a `sig : Type` / `sig = Name.x` checks). Expressions: they parse, each starting where `alder eval` would start one (not type-checked) |
 | `alder eval=<value>` | `alder eval examples/todos -` prints exactly `<value>` (the rest of the fence line) |
 | `alder error=<CODE> "<text>"` | compiling (or, for expressions, evaluating) the block reports diagnostic `<CODE>` in the block itself, its message containing `<text>` (optional) |
 | `alder part=<Module>` | one piece of a module shown piece by piece (the tour's `Todos.Index`): a chapter's `part=` blocks of one module, consecutive among its `part=` blocks, are joined in order and checked as that module, replacing the example's; when the example has that module, the joined pieces must also equal its file, blank lines aside |

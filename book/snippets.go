@@ -234,6 +234,23 @@ func Classify(s Snippet) Kind {
 	return Expr
 }
 
+var tableRE = regexp.MustCompile(`(?m)^table ([A-Z][A-Za-z0-9_]*)`)
+
+// TableModule is, for a Decls snippet that declares exactly one table, that table's name: a
+// table is declared in its own module named after it (E0018), so the verifier checks the block
+// as that module. "" for any other snippet; a block with two tables cannot be one module and is
+// marked `fragment`.
+func TableModule(s Snippet) string {
+	if Classify(s) != Decls {
+		return ""
+	}
+	m := tableRE.FindAllStringSubmatch(s.Source, -1)
+	if len(m) != 1 {
+		return ""
+	}
+	return m[0][1]
+}
+
 // ModuleName is the name in a Module snippet's `module` line ("" for other kinds).
 func ModuleName(s Snippet) string {
 	l := firstCode(s.Source)

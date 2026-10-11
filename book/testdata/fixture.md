@@ -114,3 +114,15 @@ A wrong error message (the fourth failure):
 y : Int
 y = "b"
 ```
+
+A table, checked as its own module, `module Note` (a table is declared in the module named after it):
+
+```alder
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  body: Text.NonEmpty,
+  owner: User.UserId @ref User,
+}
+```

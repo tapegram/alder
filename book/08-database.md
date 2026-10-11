@@ -3,12 +3,9 @@
 ## Tables
 
 A table is declared with `table`. It defines a record type of the same name
-and the storage for it. This is the to-do app's, an excerpt of
-`app/Todo.alder` (chapter 2 shows, and the verifier checks, the whole
-module):
+and the storage for it.
 
-```alder fragment
--- in Todo
+```alder
 type TodoId = brand Text
 
 table Todo {

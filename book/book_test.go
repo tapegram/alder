@@ -191,7 +191,7 @@ func verify(t *testing.T, path, display string) report {
 			case kind == Expr:
 				v.r.counts["parsed"]++
 				v.parseOnly(s)
-			case kind == Module && moduleNames[ModuleName(s)] > 1:
+			case kind == Module && moduleNames[ModuleName(s)] > 1, TableModule(s) != "":
 				v.checkAlone(s)
 			default:
 				batch = append(batch, s)
@@ -247,12 +247,39 @@ func (v *verifier) newApp() string {
 
 var importRE = regexp.MustCompile(`(?m)^import ([A-Za-z0-9_.]+)`)
 
+// exampleImports reports whether example module m imports module t, directly or through other
+// example modules.
+func exampleImports(m, t string) bool {
+	seen := map[string]bool{}
+	var walk func(string) bool
+	walk = func(x string) bool {
+		if seen[x] {
+			return false
+		}
+		seen[x] = true
+		src, err := os.ReadFile(filepath.Join(todosApp, "app", strings.ReplaceAll(x, ".", "/")+".alder"))
+		if err != nil {
+			return false
+		}
+		for _, im := range importRE.FindAllStringSubmatch(string(src), -1) {
+			if im[1] == t || walk(im[1]) {
+				return true
+			}
+		}
+		return false
+	}
+	return walk(m)
+}
+
 // placed is a block written into an app: its file (relative to the app dir) and, for each line
-// of the file, the book line it came from (0 for a line the verifier wrote).
+// of the file, the book line it came from (0 for a line the verifier wrote). replaces is set
+// when a one-table block took the place of the example's module of that name: the example's
+// other modules may then miss what that module also declared, which is not the block's error.
 type placed struct {
-	s     Snippet
-	file  string
-	lines []int
+	s        Snippet
+	file     string
+	replaces bool
+	lines    []int
 }
 
 // place writes s into the app at dir: a Module as its module's file; Decls as module Snippet<n>
@@ -279,11 +306,20 @@ func (v *verifier) place(dir string, s Snippet, n int) placed {
 		}
 	} else {
 		name := fmt.Sprintf("Snippet%d", n)
-		p.file = filepath.Join("app", name+".alder")
 		own := map[string]bool{}
 		for _, m := range importRE.FindAllStringSubmatch(s.Source, -1) {
 			own[m[1]] = true
 		}
+		if t := TableModule(s); t != "" { // one table: its own module, replacing the example's
+			name = t
+			for _, m := range exampleModules {
+				p.replaces = p.replaces || m == t
+				if m == t || exampleImports(m, t) { // itself, or a module that would make a cycle
+					own[m] = true
+				}
+			}
+		}
+		p.file = filepath.Join("app", strings.ReplaceAll(name, ".", "/")+".alder")
 		add("module "+name, 0)
 		for _, m := range exampleModules {
 			if !own[m] {
@@ -417,6 +453,15 @@ func (v *verifier) checkAlone(s Snippet) {
 	}
 	// A signature table's lines are separate claims: report each; any other block, its first.
 	f := failing(ds, []placed{p})
+	if p.replaces { // only the block's own module is its claim
+		var own []jdiag
+		for _, d := range f {
+			if d.File == filepath.ToSlash(p.file) {
+				own = append(own, d)
+			}
+		}
+		f = own
+	}
 	if Classify(s) != Signatures && len(f) > 1 {
 		f = f[:1]
 	}
@@ -629,8 +674,8 @@ func TestBook_Extract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ss) != 13 {
-		t.Fatalf("got %d snippets, want 13 (the go block is not one)", len(ss))
+	if len(ss) != 14 {
+		t.Fatalf("got %d snippets, want 14 (the go block is not one)", len(ss))
 	}
 	if ss[0].Line != 8 || !strings.HasPrefix(ss[0].Source, "module Theme\n") || ss[0].Info != "alder" {
 		t.Errorf("first snippet: %+v", ss[0])
@@ -638,11 +683,21 @@ func TestBook_Extract(t *testing.T) {
 	if ss[3].Info != "alder eval=[2, 3, 4]" || ss[3].Source != "List.map (\\x -> x + 1) [1, 2, 3]\n" {
 		t.Errorf("fourth snippet: %+v", ss[3])
 	}
-	wantKinds := []Kind{Module, Decls, Expr, Expr, Expr, Decls, Signatures, Decls, Module, Decls, Signatures, Decls, Decls}
+	wantKinds := []Kind{Module, Decls, Expr, Expr, Expr, Decls, Signatures, Decls, Module, Decls, Signatures, Decls, Decls, Decls}
 	for i, s := range ss {
 		if k := Classify(s); k != wantKinds[i] {
 			t.Errorf("snippet %d (line %d): %s, want %s", i, s.Line, k, wantKinds[i])
 		}
+	}
+	// one table: checked as its module; two tables cannot be one module; a module block is itself
+	for i, s := range ss {
+		if want := map[int]string{13: "Note"}[i]; TableModule(s) != want {
+			t.Errorf("TableModule(snippet %d) = %q, want %q", i, TableModule(s), want)
+		}
+	}
+	two := Snippet{Source: "table A {\n  id: AId @id,\n}\n\ntable B {\n  id: BId @id,\n}\n"}
+	if got := TableModule(two); got != "" {
+		t.Errorf("TableModule of two tables = %q, want \"\"", got)
 	}
 }
 
@@ -664,7 +719,7 @@ func TestBook_FixtureFails(t *testing.T) {
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("failures:\n%s\nwant exactly:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	if len(r.fragments) != 1 || r.counts["eval"] != 2 || r.counts["error"] != 2 || r.counts["checked"] != 6 || r.counts["part"] != 2 {
+	if len(r.fragments) != 1 || r.counts["eval"] != 2 || r.counts["error"] != 2 || r.counts["checked"] != 7 || r.counts["part"] != 2 {
 		t.Errorf("fragments %v, counts %v", r.fragments, r.counts)
 	}
 }
