@@ -1,0 +1,19 @@
+module Payments
+
+type ChargeId = brand Text
+
+capability Stripe {
+  charge : { cents: Int } -> Task (Result Text ChargeId),
+}
+
+fake Stripe {
+  table Charge {
+    id: ChargeId @id,
+    cents: Int,
+  }
+
+  charge args = {
+    let id <- Db.insert Charge { cents: args.cents }
+    Task.succeed (Ok id)
+  }
+}

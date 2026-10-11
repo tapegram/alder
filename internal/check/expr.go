@@ -938,8 +938,9 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			c.forwardRef = x.Ref.Name // a sig-less value of this module not inferred yet
 		}
 	case syntax.RefColumn:
-		mc.fakeTableUse(c.key(x.Ref.Module, x.Module), x.Module, x.Span)
-		if info, ok := c.tables[c.key(x.Ref.Module, x.Module)]; ok {
+		table := columnTable(x)
+		mc.fakeTableUse(c.key(x.Ref.Module, table), table, x.Span)
+		if info, ok := c.tables[c.key(x.Ref.Module, table)]; ok {
 			return &types.App{Con: "Column", Args: []types.Type{info.Record, info.Columns[x.Name]}}
 		}
 	case syntax.RefCapability:

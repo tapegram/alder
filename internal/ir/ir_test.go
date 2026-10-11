@@ -446,11 +446,24 @@ func TestIR_Fakes(t *testing.T) {
 			}
 		}
 	}
-	if len(p.Fakes) != 2 || p.Fakes[0].Module != "Markdown" || p.Fakes[1].Module != "Payments" {
-		t.Fatalf("fakes: %+v", p.Fakes)
+	var f *Fake
+	var mods []string
+	for _, x := range p.Fakes {
+		mods = append(mods, x.Module)
+		if x.Module == "Payments" {
+			f = x
+		}
 	}
-	f := p.Fakes[1]
-	if f.Capability == nil || f.Capability.Name != "Stripe" || f.Capability != p.Caps[1] {
+	if len(p.Fakes) != 2 || f == nil { // module order (dependencies first)
+		t.Fatalf("fakes of modules %v", mods)
+	}
+	var cap *Capability
+	for _, c := range p.Caps {
+		if c.Name == "Stripe" {
+			cap = c
+		}
+	}
+	if f.Capability == nil || f.Capability != cap {
 		t.Fatalf("capability: %+v", f.Capability)
 	}
 	if len(f.Tables) != 1 || f.Tables[0].Name != "Charge" || f.Tables[0].Refs["user"] != "User.User" || f.Tables[0].Record == nil {
@@ -472,7 +485,7 @@ func TestIR_Fakes(t *testing.T) {
 			walkTestFakes(ts.Body, &fakes)
 		}
 	}
-	if len(fakes) != 4 || fakes[0].Fake != f {
+	if len(fakes) != 5 || fakes[0].Fake != f {
 		t.Fatalf("test fakes: %d", len(fakes))
 	}
 	if tf := fakes[0]; types.String(tf.Type()) != "Task Unit" {

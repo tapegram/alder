@@ -1,0 +1,12 @@
+module Payments
+
+type ChargeId = brand Text
+
+capability Stripe {
+  charge : { cents: Int } -> Task (Result Text ChargeId),
+}
+
+-- The entry's body is checked against `charge`'s type in the capability.
+fake Stripe {
+  charge args = Task.succeed "ch_1"
+}

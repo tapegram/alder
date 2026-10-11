@@ -1,4 +1,3 @@
-(module Markdown)
 (module User)
 (record User.User (id Text) (name Text))
 (module Payments)
@@ -24,6 +23,31 @@
               (where (cond eq (col Payments.Charge refunded) True))
               count)
             (pure task (test-eq (var left) 1))))))))
+(module Checkout)
+(test "a charge is recorded" task
+  (bind task _
+    (test-fake Payments.Stripe)
+    (bind task user : Text
+      (db-insert User.User (record (name "Grace")))
+      (bind task charged : Result Text Text
+        (cap Payments.Stripe charge (record (cents 250) (user (var user))))
+        (bind task found : Maybe Payments.Charge
+          (match union (var charged)
+            (case Ok (bind _m1 value : Text)
+              (let id : Text (var _m1) (db-get Payments.Charge (var id))))
+            (case Err (bind _m2 value : Text)
+              (let e : Text (var _m2) (pure query (ctor Prelude.Maybe.Nothing)))))
+          (let cents : Int
+            (match union (var found)
+              (case Just (bind _m3 value : Payments.Charge)
+                (let c : Payments.Charge (var _m3) (field cents (var c))))
+              (case Nothing 0))
+            (bind task big : Int
+              (db-select Payments.Charge
+                (where (cond eq (col Payments.Charge cents) 250))
+                count)
+              (pure task (&& (== : Int (var cents) 250) (== : Int (var big) 1))))))))))
+(module Markdown)
 (module Shop)
 (value Shop.total : List Text -> Int (ids) (call (std List.length) (var ids)))
 (test "installs and reads back" task
@@ -45,16 +69,11 @@
                     (record (cents 7) (user (var user))))))
               (pure task (test-eq (call (std List.length) (var charges)) 1)))))))))
 (table User.User (id id) (insert name))
-(capability Markdown.Markdown (render Text -> Query (Html Never)))
 (capability Payments.Stripe
   (charge { cents: Int, user: Text } -> Task (Result Text Text))
   (refund { id: Text } -> Task (Result Text Unit))
   (balance Query Int))
-(fake Markdown.Markdown
-  (tables)
-  (entries
-    (entry Markdown.render : Text -> Query (Html Never) (text)
-      (pure query (call (std Html.text) (var text))))))
+(capability Markdown.Markdown (render Text -> Query (Html Never)))
 (fake Payments.Stripe
   (tables
     (record Payments.Charge
@@ -94,3 +113,8 @@
       (db-select Payments.Charge
         (where (cond eq (col Payments.Charge refunded) False))
         count))))
+(fake Markdown.Markdown
+  (tables)
+  (entries
+    (entry Markdown.render : Text -> Query (Html Never) (text)
+      (pure query (call (std Html.text) (var text))))))

@@ -1,0 +1,1 @@
+app/Charges.alder:12:20 E0021 `Charge` is a fake's table: only tests and `fake Stripe` may use it

@@ -812,6 +812,25 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 		r.ownQualified(v.Span, v.Name, r.ms.values[v.Name], true)
 		return
 	}
+	// a fake's table's column from another module: Payments.Charge.cents
+	if i := strings.LastIndexByte(v.Module, '.'); i > 0 {
+		owner, table := v.Module[:i], v.Module[i+1:]
+		if _, fake := r.p.scopes[owner].fakeTablesOf()[table]; fake {
+			if s, ok := r.importedScope(owner); ok && s.columns[table][v.Name] {
+				v.Ref = syntax.Ref{Kind: syntax.RefColumn, Module: owner, Name: v.Name}
+				return
+			}
+			if _, ok := r.ms.imports[owner]; ok {
+				r.bag.Error(diag.UnknownName, v.Span, "table `%s` of `fake %s` has no column `%s`", table, r.p.scopes[owner].fakeTables[table], v.Name)
+				return
+			}
+		}
+	}
+	// a fake's table of an imported module, unqualified: Charge.cents
+	if owner, fake, ok := r.importedFakeTable(v.Module); ok {
+		r.bag.Error(diag.UnknownName, v.Span, "`%s` is a table of `fake %s` in module `%s`: write `%s.%s.%s`", v.Module, fake, owner, owner, v.Module, v.Name)
+		return
+	}
 	if v.Module == "App" { // App needs no import; only its messages are usable values
 		if app := r.p.scopes["App"]; v.Name == "update" && r.p.Modules["App"] != nil && app != nil && app.values["update"] {
 			r.bag.Error(diag.UnknownName, v.Span, "`App.update` is called by the runtime, not by code; a test of it belongs in `app/App.alder`")
@@ -825,6 +844,25 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 		return
 	}
 	r.notImported(v.Span, v.Module)
+}
+
+// fakeTablesOf is s's fake tables (none for a nil scope).
+func (s *moduleScope) fakeTablesOf() map[string]string {
+	if s == nil {
+		return nil
+	}
+	return s.fakeTables
+}
+
+// importedFakeTable finds table as a fake's table of a module this one imports: the module
+// and the fake's capability name.
+func (r *resolver) importedFakeTable(table string) (owner, fake string, ok bool) {
+	for _, x := range r.importNames() {
+		if f, isFake := r.p.scopes[x].fakeTablesOf()[table]; isFake {
+			return x, f, true
+		}
+	}
+	return "", "", false
 }
 
 // ownQualified reports `M.x` inside module M (message 1): never "module `M` is not imported".
@@ -982,6 +1020,10 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 		}
 		if s := r.p.scopes[c.Name]; s != nil && s.tables[c.Name] {
 			r.notImported(c.Span, c.Name) // `Db.from Todo` without `import Todo`
+			return
+		}
+		if owner, fake, ok := r.importedFakeTable(c.Name); ok { // `Db.from Charge` in another module
+			r.bag.Error(diag.UnknownName, c.Span, "`%s` is a table of `fake %s` in module `%s`: write `%s.%s`", c.Name, fake, owner, owner, c.Name)
 			return
 		}
 		r.unresolvedCtor(c)

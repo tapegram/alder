@@ -3,6 +3,7 @@ package ir
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"alder/internal/syntax"
 	"alder/internal/types"
@@ -237,7 +238,11 @@ func (l *lowerer) effKind(t types.Type, at string) EffKind {
 
 // column lowers a column reference `Todo.owner`.
 func (l *lowerer) column(x *syntax.Var) *ColumnRef {
-	tb := l.tables[key(x.Ref.Module, x.Module)]
+	table := x.Module // `Charge.cents`; a fake's table from another module: `Payments.Charge.cents`
+	if i := strings.LastIndexByte(table, '.'); i >= 0 {
+		table = table[i+1:]
+	}
+	tb := l.tables[key(x.Ref.Module, table)]
 	if tb == nil {
 		panic(fmt.Sprintf("ir: unknown table %s.%s at %s", x.Ref.Module, x.Module, pos(x.Span)))
 	}

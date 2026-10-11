@@ -1,0 +1,1 @@
+app/Payments.alder:11:30 E0003 in `fake Stripe`'s `charge`: expected Result Text Payments.ChargeId, got Text

@@ -397,3 +397,30 @@ func TestResolve_FakeErrors(t *testing.T) {
 		}
 	}
 }
+
+// A fake's table's columns are named from another module as `Payments.Charge.cents` (an app
+// table's module is named after it, so `Post.slug` suffices; a fake's table has no module of
+// its own); written unqualified there, `Charge.cents` and `Charge` say how to write them.
+func TestResolve_FakeTableFromAnotherModule(t *testing.T) {
+	pay := parse(t, "app/Payments.alder", paymentsSrc)
+	shop := parse(t, "app/Shop.alder", "module Shop\n\nimport Payments\n\ntest \"t\" = Payments.Charge.cents == Payments.Charge.cents\n\ntest \"u\" = Charge.cents == Charge\n\ntest \"v\" = Payments.Charge.nope == 1\n")
+	prog, bag := Build([]*syntax.Module{pay, shop}, testStd(t))
+	prog.Resolve(bag)
+	col := shop.Decls[0].(*syntax.TestDecl).Body.(*syntax.BinOp).L.(*syntax.Var)
+	if want := (syntax.Ref{Kind: syntax.RefColumn, Module: "Payments", Name: "cents"}); col.Ref != want {
+		t.Fatalf("Payments.Charge.cents ref %+v", col.Ref)
+	}
+	got := codes(bag)
+	for _, want := range []string{
+		"E0002:`Charge` is a table of `fake Stripe` in module `Payments`: write `Payments.Charge.cents`",
+		"E0002:`Charge` is a table of `fake Stripe` in module `Payments`: write `Payments.Charge`",
+		"E0002:table `Charge` of `fake Stripe` has no column `nope`",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "E0201") {
+		t.Errorf("an import of a module that does not exist was suggested:\n%s", got)
+	}
+}
