@@ -1,0 +1,12 @@
+-- alder migration 0002_rename_table
+-- from 766e287f0a16
+-- to 7378acad3f56
+-- step: rename table Post to Article
+-- step: drop index on Post.author
+-- step: add index on Article.author
+
+ALTER TABLE "Post__Post" RENAME TO "Article__Article";
+DROP INDEX IF EXISTS "Post__Post__author";
+CREATE INDEX IF NOT EXISTS "Article__Article__author" ON "Article__Article"("author");
+
+-- applied to seeded rows: Article=3 Comment=3 User=3; foreign_key_check: 0

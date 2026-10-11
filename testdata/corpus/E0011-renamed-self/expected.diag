@@ -1,0 +1,3 @@
+app/Post.alder:5:12 E0011 `@renamed "Post"` names the table itself: write the table's old name, or remove the attribute
+app/Post.alder:7:15 E0011 `@renamed "title"` names the field itself: write the field's old name, or remove the attribute
+app/Post.alder:8:14 E0011 `@renamed "title"`: the table still has a field `title`; a renamed field's old name must be gone

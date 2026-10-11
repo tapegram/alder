@@ -1,0 +1,9 @@
+module Post
+
+type PostId = brand Text
+
+table Post @renamed "Post" {
+  id: PostId @id,
+  title: Text @renamed "title",
+  body: Text @renamed "title",
+}

@@ -383,6 +383,12 @@ func sqlType(t ColType) string {
 	return "TEXT"
 }
 
+// CreateStmt is the one-line CREATE TABLE statement Ensure creates d with and hashes; byName
+// resolves @ref. The migration generator (internal/migrate) diffs over it.
+func CreateStmt(d TableDesc, byName map[string]TableDesc) (string, error) {
+	return createStmt(d, byName)
+}
+
 // createStmt is the one-line CREATE TABLE for d; byName resolves @ref.
 func createStmt(d TableDesc, byName map[string]TableDesc) (string, error) {
 	if !slices.ContainsFunc(d.Columns, func(c Column) bool { return c.Name == d.ID }) {

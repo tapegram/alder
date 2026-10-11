@@ -332,3 +332,59 @@ func TestDeleteRules(t *testing.T) {
 		}
 	}
 }
+
+// A table field's default must be a literal (E0022); `@renamed "old"` names an identifier that
+// is neither the field itself nor one of the table's fields (E0011). Other records' defaults
+// are unaffected.
+func TestTableDefaultsAndRenamed(t *testing.T) {
+	src := func(attrs, field string) string {
+		return "module C\n\ntype CId = brand Text\n\ntype Role = Reader | Admin\n\nn : Int\nn = 1\n\ns : Text\ns = \"s\"\n\ntable C" + attrs + " {\n  id: CId @id,\n  " + field + ",\n}\n"
+	}
+	for _, c := range []struct{ attrs, field, want string }{
+		{"", "a: Bool = False", ""},
+		{"", "a: Int = -3", ""},
+		{"", "a: Float = 1.5", ""},
+		{"", "a: Text = \"it's\"", ""},
+		{"", "a: Role = Reader", ""},
+		{"", "a: Maybe Int = Nothing", ""},
+		{"", "a: Maybe Role = Just Admin", ""},
+		{"", "a: Int = n", "E0022 15:12 a table field's default must be a literal (migrations write it into the database): got an expression"},
+		{"", "a: Int = 1 + 1", "E0022 15:12 a table field's default must be a literal"},
+		{"", "a: Text = \"n{s}\"", "E0022 15:13 a table field's default must be a literal"},
+		{"", "a: Maybe Int = Just n", "E0022 15:18 a table field's default must be a literal"},
+		{"", "a: Text @renamed \"b\"", ""},
+		{" @renamed \"Old\"", "a: Text", ""},
+		{"", "a: Text @renamed \"a\"", "E0011 15:11 `@renamed \"a\"` names the field itself"},
+		{"", "a: Text @renamed \"B\"", "E0011 15:11 `@renamed \"B\"`: the old name must be a field name"},
+		{"", "a: Text @renamed \"id\"", "E0011 15:11 `@renamed \"id\"`: the table still has a field `id`"},
+		{"", "a: Text @renamed \"b\" @renamed \"c\"", "E0011 15:24 a field takes one `@renamed`"},
+		{" @renamed \"C\"", "a: Text", "E0011 13:9 `@renamed \"C\"` names the table itself"},
+		{" @renamed \"old\"", "a: Text", "E0011 13:9 `@renamed \"old\"`: the old name must be a table name"},
+		{" @unique", "a: Text", "E0011 13:9 a table takes only `@renamed \"OldName\"` after its name, not `@unique`"},
+	} {
+		var got []string
+		for _, d := range checkModule(t, src(c.attrs, c.field)) {
+			got = append(got, fmt.Sprintf("%s %d:%d %s", d.Code, d.Span.Start.Line, d.Span.Start.Col, d.Message))
+		}
+		if c.want == "" && len(got) != 0 || c.want != "" && (len(got) != 1 || !strings.HasPrefix(got[0], c.want)) {
+			t.Errorf("%s / %s: got %q, want %q", c.attrs, c.field, got, c.want)
+		}
+	}
+	// two fields renamed from one name
+	var got []string
+	for _, d := range checkModule(t, src("", "a: Text @renamed \"x\",\n  b: Text @renamed \"x\"")) {
+		got = append(got, d.Code+" "+d.Message)
+	}
+	if len(got) != 1 || got[0] != "E0011 fields `a` and `b` are both `@renamed \"x\"`" {
+		t.Errorf("two renames: %q", got)
+	}
+	// a form's, a record's and the session's defaults may be expressions
+	for _, s := range []string{
+		"module M\n\nn : Int\nn = 1\n\ntype R = { a: Int = n + 1 }\n",
+		"module M\n\nn : Int\nn = 1\n\nform F = {\n  a: Int = n + 1,\n}\n",
+	} {
+		if diags := checkModule(t, s); len(diags) != 0 {
+			t.Errorf("%q: %+v", s, diags)
+		}
+	}
+}

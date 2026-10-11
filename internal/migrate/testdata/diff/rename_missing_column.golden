@@ -1,0 +1,1 @@
+error: Post.heading: `@renamed "headline"`, but the snapshot's table Post has no column headline

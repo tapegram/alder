@@ -1,0 +1,10 @@
+-- alder migration 0002_add_nullable_ref_column
+-- from 766e287f0a16
+-- to b5e9354ba50e
+-- step: add column Post.editor
+-- step: add index on Post.editor
+
+ALTER TABLE "Post__Post" ADD COLUMN "editor" TEXT REFERENCES "User__User"("id") ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS "Post__Post__editor" ON "Post__Post"("editor");
+
+-- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

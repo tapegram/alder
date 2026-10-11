@@ -103,6 +103,7 @@ const (
 	DuplicatePage  = "E0016"
 	StdModule      = "E0017"
 	TablePlacement = "E0018"
+	TableDefault   = "E0022"
 	UnreachableArm = "E0310"
 	UnusedImport   = "W0001"
 	UnshownErrors  = "W0003"

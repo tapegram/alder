@@ -1,0 +1,11 @@
+-- alder migration 0002_add_unique_column
+-- from 766e287f0a16
+-- to d5302267979c
+-- step: rebuild table User: User.handle: new @unique column
+
+CREATE TABLE "User__User__new" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "email" TEXT NOT NULL UNIQUE, "handle" TEXT UNIQUE) STRICT;
+INSERT INTO "User__User__new" ("id", "name", "email", "handle") SELECT "id", "name", "email", NULL FROM "User__User";
+DROP TABLE "User__User";
+ALTER TABLE "User__User__new" RENAME TO "User__User";
+
+-- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

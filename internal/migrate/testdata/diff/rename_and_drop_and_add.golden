@@ -1,0 +1,13 @@
+-- alder migration 0002_rename_and_drop_and_add
+-- from 766e287f0a16
+-- to 502cc11d70db
+-- step: drop column Post.summary
+-- DROPS DATA: column Post.summary
+-- step: rename column Post.title to heading
+-- step: add column Post.subtitle
+
+ALTER TABLE "Post__Post" DROP COLUMN "summary";
+ALTER TABLE "Post__Post" RENAME COLUMN "title" TO "heading";
+ALTER TABLE "Post__Post" ADD COLUMN "subtitle" TEXT;
+
+-- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

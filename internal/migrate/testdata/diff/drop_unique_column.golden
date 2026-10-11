@@ -1,0 +1,12 @@
+-- alder migration 0002_drop_unique_column
+-- from 766e287f0a16
+-- to 1e117f278c2c
+-- step: rebuild table User: User.email: dropped @unique column
+-- DROPS DATA: column User.email
+
+CREATE TABLE "User__User__new" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL) STRICT;
+INSERT INTO "User__User__new" ("id", "name") SELECT "id", "name" FROM "User__User";
+DROP TABLE "User__User";
+ALTER TABLE "User__User__new" RENAME TO "User__User";
+
+-- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

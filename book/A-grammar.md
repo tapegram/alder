@@ -19,10 +19,12 @@ brandType   = "brand" uname ["where" expr] ;
 pageDecl    = "page" string recordType ["requires" lname] ;
 msgDecl     = "msg" uname [recordType] ["form" uname] ;
 formDecl    = "form" uname "=" "{" {fieldDef ","} [fieldDef] "}" ;
-tableDecl   = "table" uname "{" {fieldDef {attr} ","} [fieldDef {attr}] "}" ;
-fieldDef    = lname ":" type ["=" expr] ;
+tableDecl   = "table" uname [renamed] "{" {fieldDef {attr} ","} [fieldDef {attr}] "}" ;
+fieldDef    = lname ":" type ["=" expr] ;   (* in a table: the default is a literal, E0022 *)
 attr        = "@id" | "@ref" uname | "@created" | "@updated" | "@unique"
-            | "@cascade" | "@restrict" | "@setNull" ;   (* a delete rule: after "@ref T" only *)
+            | "@cascade" | "@restrict" | "@setNull"    (* a delete rule: after "@ref T" only *)
+            | renamed ;
+renamed     = "@renamed" string ;   (* the old name; a plain string, no "{…}" *)
 capDecl     = "capability" uname "{" {lname ":" type ","} [lname ":" type] "}" ;
 sessionDecl = "session" recordType ;
 loginDecl   = "login" "=" ModName ;

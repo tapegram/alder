@@ -94,11 +94,17 @@ type RecordType struct {
 // Brand is the brand the field's declared type is, or the brand of its Maybe's or List's
 // element (`email: Maybe Text.Email`), nil for none; it is set on the fields of nominal records
 // (forms, page and message parameters, the session, tables, records).
+//
+// On a table's fields only: DefaultLit is the default as an SQL literal ("0", "1", "'Reader'",
+// "NULL"; see SQLLiteral), nil when the field has no default; RenamedFrom is the field's old
+// name from `@renamed "old"`, "" for none.
 type FieldT struct {
-	Name    string
-	Type    types.Type
-	Default Expr
-	Brand   *Brand
+	Name        string
+	Type        types.Type
+	Default     Expr
+	Brand       *Brand
+	DefaultLit  *string
+	RenamedFrom string
 }
 
 // UnionType is a union's declaration. Params are its type parameter names (`Maybe a` → ["a"]).
@@ -159,6 +165,7 @@ type Table struct {
 	Refs             map[string]string
 	OnDelete         map[string]string
 	InsertFields     []string // the fields `Db.insert` takes: all but @id, @created, @updated
+	RenamedFrom      string   // the table's old name from `table Post @renamed "Article"`, "" for none
 }
 
 // Form is a `form` declaration; Record is also in its module's Types.

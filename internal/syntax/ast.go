@@ -85,8 +85,8 @@ type Field struct {
 }
 type Attr struct {
 	Node
-	Name string // id | ref | created | updated | unique | cascade | restrict | setNull
-	Arg  string // table name for ref
+	Name string // id | ref | created | updated | unique | cascade | restrict | setNull | renamed
+	Arg  string // table name for ref; the old name for renamed (`@renamed "heading"` → heading)
 }
 type PageDecl struct {
 	Node
@@ -109,6 +109,7 @@ type FormDecl struct {
 type TableDecl struct {
 	Node
 	Name   string
+	Attrs  []*Attr // after the name: `table Post @renamed "Article" {`
 	Fields []*Field
 }
 type CapDecl struct {

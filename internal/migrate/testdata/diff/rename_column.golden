@@ -1,0 +1,8 @@
+-- alder migration 0002_rename_column
+-- from 766e287f0a16
+-- to 785210a32467
+-- step: rename column Post.title to heading
+
+ALTER TABLE "Post__Post" RENAME COLUMN "title" TO "heading";
+
+-- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

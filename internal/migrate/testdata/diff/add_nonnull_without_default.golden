@@ -1,0 +1,1 @@
+error: User.karma: a new non-null column needs a default (`= 0`) so existing rows can be filled

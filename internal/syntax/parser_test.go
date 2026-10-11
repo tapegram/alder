@@ -208,3 +208,39 @@ func TestParse_DeleteRules(t *testing.T) {
 		}
 	}
 }
+
+// `@renamed "old"` takes a plain string: on a field after its type (and default), on a table
+// after its name.
+func TestParse_Renamed(t *testing.T) {
+	m, diags := ParseFile("post.alder", []byte("module Post\n\ntable Post @renamed \"Article\" {\n  id: PostId @id,\n  title: Text = \"x\" @renamed \"heading\",\n  n: Int @unique @renamed \"count\",\n}\n"))
+	if len(diags) != 0 {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	td := m.Decls[0].(*TableDecl)
+	if len(td.Attrs) != 1 || td.Attrs[0].Name != "renamed" || td.Attrs[0].Arg != "Article" {
+		t.Fatalf("table attrs %+v", td.Attrs)
+	}
+	var got []string
+	for _, f := range td.Fields {
+		for _, a := range f.Attrs {
+			got = append(got, f.Name+":"+a.Name+"="+a.Arg)
+		}
+	}
+	if want := "id:id= title:renamed=heading n:unique= n:renamed=count"; strings.Join(got, " ") != want {
+		t.Fatalf("attrs %q, want %q", strings.Join(got, " "), want)
+	}
+	for _, c := range []struct{ src, want string }{
+		{"  title: Text @renamed heading,", "expected the old name as a string"},
+		{"  title: Text @renamed \"a{b}\",", "`@renamed` takes a plain string"},
+	} {
+		_, diags := ParseFile("post.alder", []byte("module Post\n\ntable Post {\n  id: PostId @id,\n"+c.src+"\n}\n"))
+		if len(diags) == 0 || !strings.Contains(diags[0].Message, c.want) {
+			t.Errorf("%s: got %+v, want %q", c.src, diags, c.want)
+		}
+	}
+	// a form field: the attribute is refused, its string skipped
+	_, diags = ParseFile("f.alder", []byte("module F\n\nform F = {\n  title: Text @renamed \"heading\",\n}\n"))
+	if len(diags) != 1 || !strings.Contains(diags[0].Message, "only allowed on table fields") {
+		t.Errorf("form: %+v", diags)
+	}
+}

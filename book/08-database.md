@@ -38,6 +38,58 @@ that belong to it. A table declared in any other module is an error at
 its declaration (E0018): `table Comment` in `app/Post.alder` belongs in
 `app/Comment.alder`, even if only `Post` uses it.
 
+A table field's default must be a **literal**: `True` or `False`, a
+number, a string without `{…}`, a constructor without a payload
+(`Reader`, `Nothing`), or `Just` of one of those. The default is not only
+used by `Db.insert`: migrations (`alder migrate`) write it into the
+database as SQL, to fill a new field in the rows that already exist, or
+to replace `Nothing` when a field stops being a `Maybe`. The compiler
+turns a literal into SQL text when it lowers the table (`True` becomes
+`1`, `Reader` becomes `'Reader'`, `Nothing` becomes `NULL`); an
+expression would have to be run by the program, so it is refused (E0022):
+
+```alder error=E0022 "a table field's default must be a literal"
+module Note
+
+type NoteId = brand Text
+
+defaultBody : Text
+defaultBody = "(empty)"
+
+table Note {
+  id: NoteId @id,
+  body: Text = defaultBody,
+}
+```
+
+Defaults of forms, records, the session and page parameters are never
+stored, and may be any expression.
+
+When you rename a table or a field, say so with **`@renamed "old"`**,
+after the table's name or after the field's type (and default). The next
+migration then renames the table or column, keeping its data, instead of
+dropping the old one and creating an empty new one; without the
+attribute a rename looks exactly like a removed field and an added one.
+The attribute may stay once the migration is made (the migration's
+snapshot already has the new name):
+
+```alder
+module Memo
+
+type MemoId = brand Text
+
+table Memo @renamed "Note" {
+  id: MemoId @id,
+  text: Text @renamed "body",
+  pinned: Bool = False,
+}
+```
+
+The old name must be a name (`"body"`, not `"the body"`), not the field's
+or table's own name, and not a field the table still has; a field takes
+one `@renamed`, and two fields cannot both be renamed from one name (all
+E0011).
+
 ## Reading
 
 Reads are `Query` values.

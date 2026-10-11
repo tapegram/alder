@@ -1,0 +1,6 @@
+-- alder migration 0002_no_change
+-- from 766e287f0a16
+-- to 766e287f0a16
+
+
+-- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

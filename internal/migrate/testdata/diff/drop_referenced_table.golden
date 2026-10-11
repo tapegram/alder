@@ -1,0 +1,15 @@
+-- alder migration 0002_drop_referenced_table
+-- from 766e287f0a16
+-- to 8ba29d3a60ae
+-- step: drop table User
+-- DROPS DATA: table User
+-- step: rebuild table Post: Post.author: dropped @ref column
+-- DROPS DATA: column Post.author
+
+DROP TABLE "User__User";
+CREATE TABLE "Post__Post__new" ("id" TEXT NOT NULL PRIMARY KEY, "title" TEXT NOT NULL, "body" TEXT NOT NULL, "views" INTEGER NOT NULL, "status" TEXT NOT NULL CHECK ("status" IN ('Draft', 'Published', 'Archived')), "score" REAL NOT NULL, "published" INTEGER NOT NULL CHECK ("published" IN (0, 1)), "day" TEXT NOT NULL, "at" TEXT NOT NULL, "summary" TEXT) STRICT;
+INSERT INTO "Post__Post__new" ("id", "title", "body", "views", "status", "score", "published", "day", "at", "summary") SELECT "id", "title", "body", "views", "status", "score", "published", "day", "at", "summary" FROM "Post__Post";
+DROP TABLE "Post__Post";
+ALTER TABLE "Post__Post__new" RENAME TO "Post__Post";
+
+-- applied to seeded rows: Comment=3 Post=3; foreign_key_check: 0

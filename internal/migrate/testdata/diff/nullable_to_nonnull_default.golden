@@ -1,0 +1,12 @@
+-- alder migration 0002_nullable_to_nonnull_default
+-- from 766e287f0a16
+-- to effcdf988b9f
+-- step: rebuild table Post: Post.summary: Maybe Text -> Text
+
+CREATE TABLE "Post__Post__new" ("id" TEXT NOT NULL PRIMARY KEY, "title" TEXT NOT NULL, "body" TEXT NOT NULL, "author" TEXT NOT NULL REFERENCES "User__User"("id"), "views" INTEGER NOT NULL, "status" TEXT NOT NULL CHECK ("status" IN ('Draft', 'Published', 'Archived')), "score" REAL NOT NULL, "published" INTEGER NOT NULL CHECK ("published" IN (0, 1)), "day" TEXT NOT NULL, "at" TEXT NOT NULL, "summary" TEXT NOT NULL) STRICT;
+INSERT INTO "Post__Post__new" ("id", "title", "body", "author", "views", "status", "score", "published", "day", "at", "summary") SELECT "id", "title", "body", "author", "views", "status", "score", "published", "day", "at", COALESCE("summary", '') FROM "Post__Post";
+DROP TABLE "Post__Post";
+ALTER TABLE "Post__Post__new" RENAME TO "Post__Post";
+CREATE INDEX IF NOT EXISTS "Post__Post__author" ON "Post__Post"("author");
+
+-- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

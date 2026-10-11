@@ -1,0 +1,9 @@
+-- alder migration 0002_drop_column
+-- from 766e287f0a16
+-- to 068e24c9e70d
+-- step: drop column Post.summary
+-- DROPS DATA: column Post.summary
+
+ALTER TABLE "Post__Post" DROP COLUMN "summary";
+
+-- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

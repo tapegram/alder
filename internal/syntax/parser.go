@@ -288,6 +288,9 @@ func (p *Parser) parseDecl() Decl {
 	case p.atKeyword("table"):
 		p.advance()
 		d := &TableDecl{Name: p.expect(UIdent, "table name").Text}
+		for p.at(At) {
+			d.Attrs = append(d.Attrs, p.parseAttr())
+		}
 		p.expect(LBrace, "`{`")
 		pop := p.in("a table field")
 		d.Fields = p.parseFieldList(RBrace, true)
@@ -465,6 +468,33 @@ func (p *Parser) parseTypeDecl() Decl {
 	return d
 }
 
+// parseAttr parses `@name`, `@ref Table` or `@renamed "old"` (a plain string: no
+// interpolation) at an `@`.
+func (p *Parser) parseAttr() *Attr {
+	at := p.advance()
+	a := &Attr{Name: p.expect(LIdent, "attribute name").Text}
+	switch a.Name {
+	case "ref":
+		a.Arg = p.expect(UIdent, "table name").Text
+	case "renamed":
+		if !p.at(String) {
+			p.errorAt(p.tok, "expected the old name as a string (`@renamed \"old\"`), got "+describe(p.tok))
+			break
+		}
+		t := p.advance()
+		s := p.parseString(t).(*StrLit)
+		for _, part := range s.Parts {
+			if part.Expr != nil {
+				p.errorAt(t, "`@renamed` takes a plain string, without `{…}`")
+				break
+			}
+			a.Arg += part.Text
+		}
+	}
+	a.Span = p.spanFrom(at)
+	return a
+}
+
 // parseFieldList parses `name: Type [= default] [@attr…] ,` … up to `closing`; the opening brace is consumed.
 func (p *Parser) parseFieldList(closing Kind, attrs bool) []*Field {
 	var fields []*Field
@@ -493,19 +523,13 @@ func (p *Parser) parseFieldList(closing Kind, attrs bool) []*Field {
 			if p.at(LIdent) {
 				name = p.advance().Text
 			}
-			if p.at(UIdent) {
+			if p.at(UIdent) || p.at(String) {
 				p.advance()
 			}
 			p.errorAt(atTok, "attributes such as `@"+name+"` are only allowed on table fields")
 		}
 		for attrs && p.at(At) {
-			at := p.advance()
-			a := &Attr{Name: p.expect(LIdent, "attribute name").Text}
-			if a.Name == "ref" {
-				a.Arg = p.expect(UIdent, "table name").Text
-			}
-			a.Span = p.spanFrom(at)
-			f.Attrs = append(f.Attrs, a)
+			f.Attrs = append(f.Attrs, p.parseAttr())
 		}
 		f.Span = p.spanFrom(ft)
 		fields = append(fields, f)

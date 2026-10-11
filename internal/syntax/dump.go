@@ -97,6 +97,9 @@ func dump(sb *strings.Builder, n any) {
 		sb.WriteByte(')')
 	case *TableDecl:
 		fmt.Fprintf(sb, "(table %s", x.Name)
+		for _, a := range x.Attrs {
+			fmt.Fprintf(sb, " @%s %q", a.Name, a.Arg)
+		}
 		dumpList(sb, x.Fields)
 		sb.WriteByte(')')
 	case *CapDecl:
@@ -122,7 +125,9 @@ func dump(sb *strings.Builder, n any) {
 		}
 		for _, a := range x.Attrs {
 			fmt.Fprintf(sb, " @%s", a.Name)
-			if a.Arg != "" {
+			if a.Name == "renamed" {
+				fmt.Fprintf(sb, " %q", a.Arg)
+			} else if a.Arg != "" {
 				sb.WriteString(" " + a.Arg)
 			}
 		}

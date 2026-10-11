@@ -1,0 +1,1 @@
+error: Post.editor: a new non-null `@ref` column needs a default so existing rows can be filled, and a reference has none: add it as `Maybe` first

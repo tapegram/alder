@@ -12,6 +12,7 @@ import (
 	"alder/internal/check"
 	"alder/internal/diag"
 	"alder/internal/names"
+	"alder/internal/syntax"
 	"alder/internal/types"
 )
 
@@ -373,5 +374,56 @@ test "c" = not (1 == 2)
 		if !strings.Contains(d, want) {
 			t.Errorf("dump lacks %q:\n%s", want, d)
 		}
+	}
+}
+
+// A table's `@renamed` old names and its fields' literal defaults, as SQL, reach the IR.
+func TestIR_RenamedAndDefaultLit(t *testing.T) {
+	p := lowerDir(t, "../../testdata/corpus/renamed-attrs-ok")
+	var tb *Table
+	for _, x := range p.Tables {
+		if x.Name == "Post" {
+			tb = x
+		}
+	}
+	if tb == nil || tb.RenamedFrom != "Article" {
+		t.Fatalf("table: %+v", tb)
+	}
+	var got []string
+	for _, f := range tb.Record.Fields {
+		s := f.Name
+		if f.DefaultLit != nil {
+			s += "=" + *f.DefaultLit
+		}
+		if f.RenamedFrom != "" {
+			s += "<" + f.RenamedFrom
+		}
+		got = append(got, s)
+	}
+	want := "id title<heading count=0<total ratio=-0.5 shown=1 role='Reader' note=NULL level='Admin' motto='it''s {done}'"
+	if strings.Join(got, " ") != want {
+		t.Fatalf("got  %s\nwant %s", strings.Join(got, " "), want)
+	}
+}
+
+func TestSQLLiteral(t *testing.T) {
+	for _, c := range []struct {
+		e    syntax.Expr
+		want string
+	}{
+		{&syntax.FloatLit{Value: 2}, "2.0"},
+		{&syntax.FloatLit{Value: 1e21}, "1e+21"},
+		{&syntax.IntLit{Value: -7}, "-7"},
+		{&syntax.BoolLit{Value: false}, "0"},
+		{&syntax.StrLit{Parts: []syntax.StrPart{{Text: "a\nb'"}}}, "'a' || char(10) || 'b'''"},
+		{&syntax.StrLit{Parts: []syntax.StrPart{{Text: ""}}}, "''"},
+		{&syntax.App{Fn: &syntax.CtorRef{Name: "Just"}, Args: []syntax.Expr{&syntax.IntLit{Value: 3}}}, "3"},
+	} {
+		if got, ok := SQLLiteral(c.e); !ok || got != c.want {
+			t.Errorf("SQLLiteral(%T) = %q, %v; want %q", c.e, got, ok, c.want)
+		}
+	}
+	if _, ok := SQLLiteral(&syntax.Var{Name: "x"}); ok {
+		t.Error("a variable is not a literal")
 	}
 }

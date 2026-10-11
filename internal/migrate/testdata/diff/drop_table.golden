@@ -1,0 +1,9 @@
+-- alder migration 0002_drop_table
+-- from 766e287f0a16
+-- to 95d040fc900c
+-- step: drop table Comment
+-- DROPS DATA: table Comment
+
+DROP TABLE "Comment__Comment";
+
+-- applied to seeded rows: Post=3 User=3; foreign_key_check: 0

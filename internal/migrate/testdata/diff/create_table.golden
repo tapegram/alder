@@ -1,0 +1,10 @@
+-- alder migration 0002_create_table
+-- from 766e287f0a16
+-- to 3b6d30646ee4
+-- step: create table Tag
+-- step: add index on Tag.post
+
+CREATE TABLE "Tag__Tag" ("id" TEXT NOT NULL PRIMARY KEY, "post" TEXT NOT NULL REFERENCES "Post__Post"("id"), "label" TEXT NOT NULL UNIQUE) STRICT;
+CREATE INDEX IF NOT EXISTS "Tag__Tag__post" ON "Tag__Tag"("post");
+
+-- applied to seeded rows: Comment=3 Post=3 Tag=0 User=3; foreign_key_check: 0

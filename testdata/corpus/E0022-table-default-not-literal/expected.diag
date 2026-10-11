@@ -1,0 +1,2 @@
+app/Post.alder:14:16 E0022 a table field's default must be a literal (migrations write it into the database): got an expression
+app/Post.alder:15:18 E0022 a table field's default must be a literal (migrations write it into the database): got an expression

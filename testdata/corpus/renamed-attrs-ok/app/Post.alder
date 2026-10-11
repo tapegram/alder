@@ -1,0 +1,18 @@
+module Post
+
+type PostId = brand Text
+
+type Role = Reader | Admin
+
+-- a table renamed from Article, a field renamed from heading; literal defaults of every kind
+table Post @renamed "Article" {
+  id: PostId @id,
+  title: Text @renamed "heading",
+  count: Int = 0 @renamed "total",
+  ratio: Float = -0.5,
+  shown: Bool = True,
+  role: Role = Reader,
+  note: Maybe Text = Nothing,
+  level: Maybe Role = Just Admin,
+  motto: Text = "it's \{done}",
+}

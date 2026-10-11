@@ -369,10 +369,14 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 	rec := c.types[c.key(mc.m.Name, d.Name)].(*types.Record)
 	info := &types.TableInfo{Module: mc.m.Name, Name: d.Name, Record: rec, Columns: map[string]types.Type{}, Insert: &types.Record{Module: mc.m.Name, Name: "Insert " + d.Name}}
 	idCount := 0
+	c.checkTableAttrs(d)
 	for _, f := range d.Fields {
 		ft := mc.typeOf(f.Type, nil)
 		mc.deferDefault(f, ft)
 		c.checkDeleteRules(f)
+		if f.Default != nil && !LiteralDefault(f.Default) {
+			c.errorf(diag.TableDefault, f.Default.GetSpan(), "a table field's default must be a literal (migrations write it into the database): got an expression")
+		}
 		rec.Fields = append(rec.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
 		info.Columns[f.Name] = ft
 		generated := false
@@ -392,6 +396,8 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 				}
 			case "ref":
 				mc.checkRef(f, a, ft)
+			case "renamed":
+				// checkTableAttrs reports a malformed or self-naming `@renamed`
 			case "unique", "cascade", "restrict":
 				// checkDeleteRules reports a delete rule without `@ref`, before it, or a second one
 			case "setNull":
@@ -412,6 +418,97 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 	}
 	c.tables[c.key(mc.m.Name, d.Name)] = info
 	c.u.RegisterTable(info)
+}
+
+// LiteralDefault reports whether e is a table field default a migration can write into the
+// database (E0022): `True`/`False`, an integer, a float, a string without `{…}`, a constructor
+// without arguments (`Reader`, `Nothing`), or `Just` of one of those. The checker's types make sure
+// a constructor here is payload-less: a table field's type is a scalar or `Maybe` of one.
+func LiteralDefault(e syntax.Expr) bool {
+	switch e := e.(type) {
+	case *syntax.IntLit, *syntax.FloatLit, *syntax.BoolLit, *syntax.CtorRef:
+		return true
+	case *syntax.StrLit:
+		for _, p := range e.Parts {
+			if p.Expr != nil {
+				return false
+			}
+		}
+		return true
+	case *syntax.App:
+		if fn, ok := e.Fn.(*syntax.CtorRef); ok && fn.Name == "Just" && len(e.Args) == 1 {
+			if _, nested := e.Args[0].(*syntax.App); !nested {
+				return LiteralDefault(e.Args[0])
+			}
+		}
+	}
+	return false
+}
+
+// checkTableAttrs reports (E0011) an attribute on a table other than `@renamed`, and every
+// misuse of `@renamed "old"` on the table or its fields: an old name that is not an identifier
+// of the right kind, one naming the table or field itself, a second `@renamed`, two fields
+// renamed from one name, and an old name that is still a field of the table.
+func (c *Checker) checkTableAttrs(d *syntax.TableDecl) {
+	seenTable := false
+	for _, a := range d.Attrs {
+		switch {
+		case a.Name != "renamed":
+			c.errorf(diag.InvalidDecl, a.Span, "a table takes only `@renamed \"OldName\"` after its name, not `@%s`", a.Name)
+		case seenTable:
+			c.errorf(diag.InvalidDecl, a.Span, "a table takes one `@renamed`")
+		case !isIdent(a.Arg, true):
+			c.errorf(diag.InvalidDecl, a.Span, "`@renamed %q`: the old name must be a table name such as `Article`", a.Arg)
+		case a.Arg == d.Name:
+			c.errorf(diag.InvalidDecl, a.Span, "`@renamed %q` names the table itself: write the table's old name, or remove the attribute", a.Arg)
+		}
+		seenTable = seenTable || a.Name == "renamed"
+	}
+	current := map[string]bool{}
+	for _, f := range d.Fields {
+		current[f.Name] = true
+	}
+	from := map[string]string{} // old name → the field renamed from it
+	for _, f := range d.Fields {
+		seen := false
+		for _, a := range f.Attrs {
+			if a.Name != "renamed" {
+				continue
+			}
+			switch {
+			case seen:
+				c.errorf(diag.InvalidDecl, a.Span, "a field takes one `@renamed`")
+			case !isIdent(a.Arg, false):
+				c.errorf(diag.InvalidDecl, a.Span, "`@renamed %q`: the old name must be a field name such as `heading`", a.Arg)
+			case a.Arg == f.Name:
+				c.errorf(diag.InvalidDecl, a.Span, "`@renamed %q` names the field itself: write the field's old name, or remove the attribute", a.Arg)
+			case current[a.Arg]:
+				c.errorf(diag.InvalidDecl, a.Span, "`@renamed %q`: the table still has a field `%s`; a renamed field's old name must be gone", a.Arg, a.Arg)
+			case from[a.Arg] != "":
+				c.errorf(diag.InvalidDecl, a.Span, "fields `%s` and `%s` are both `@renamed %q`", from[a.Arg], f.Name, a.Arg)
+			default:
+				from[a.Arg] = f.Name
+			}
+			seen = true
+		}
+	}
+}
+
+// isIdent reports whether s is an Alder name: a letter (upper case when upper) followed by
+// letters, digits and single underscores.
+func isIdent(s string, upper bool) bool {
+	if s == "" || strings.Contains(s, "__") {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case i == 0 && upper && r >= 'A' && r <= 'Z', i == 0 && !upper && r >= 'a' && r <= 'z':
+		case i > 0 && (r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_'):
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // deleteRules are the attributes that say what deleting a referenced row does to a `@ref`

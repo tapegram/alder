@@ -457,6 +457,28 @@ func (l *lowerer) declareTypes() {
 				for _, f := range info.Insert.Fields {
 					t.InsertFields = append(t.InsertFields, f.Name)
 				}
+				for _, a := range d.Attrs {
+					if a.Name == "renamed" {
+						t.RenamedFrom = a.Arg
+					}
+				}
+				for i, f := range d.Fields {
+					if i >= len(rt.Fields) || rt.Fields[i].Name != f.Name {
+						panic(fmt.Sprintf("ir: table %s.%s: field %s out of step with its record", name, d.Name, f.Name))
+					}
+					if f.Default != nil {
+						lit, ok := SQLLiteral(f.Default)
+						if !ok {
+							panic(fmt.Sprintf("ir: table %s.%s: the default of %s is not a literal (the checker's E0022)", name, d.Name, f.Name))
+						}
+						rt.Fields[i].DefaultLit = &lit
+					}
+					for _, a := range f.Attrs {
+						if a.Name == "renamed" {
+							rt.Fields[i].RenamedFrom = a.Arg
+						}
+					}
+				}
 				for _, f := range d.Fields {
 					for _, a := range f.Attrs {
 						switch a.Name {
@@ -771,3 +793,70 @@ func (l *lowerer) bindType(site interface{ GetSpan() diag.Span }) types.Type {
 func pos(s diag.Span) string { return fmt.Sprintf("%s:%d:%d", s.File, s.Start.Line, s.Start.Col) }
 
 func isUpper(s string) bool { return s != "" && s[0] >= 'A' && s[0] <= 'Z' }
+
+// SQLLiteral is a table field's literal default (check.LiteralDefault) as SQL: `True`/`False` →
+// 1/0, an integer or float as a number (a float always with a `.` or an exponent), a string
+// single-quoted with `'` doubled (a line break as `' || char(10) || '`, so the literal stays on
+// one line), a payload-less constructor as its quoted name, `Nothing` → NULL, `Just x` → x's.
+// ok is false for anything else.
+func SQLLiteral(e syntax.Expr) (lit string, ok bool) {
+	switch e := e.(type) {
+	case *syntax.IntLit:
+		return strconv.FormatInt(e.Value, 10), true
+	case *syntax.FloatLit:
+		s := strconv.FormatFloat(e.Value, 'g', -1, 64)
+		if !strings.ContainsAny(s, ".eEn") { // n: NaN/Inf cannot be written, but never panic here
+			s += ".0"
+		}
+		return s, true
+	case *syntax.BoolLit:
+		if e.Value {
+			return "1", true
+		}
+		return "0", true
+	case *syntax.StrLit:
+		var sb strings.Builder
+		for _, p := range e.Parts {
+			if p.Expr != nil {
+				return "", false
+			}
+			sb.WriteString(p.Text)
+		}
+		return sqlString(sb.String()), true
+	case *syntax.CtorRef:
+		if e.Name == "Nothing" {
+			return "NULL", true
+		}
+		return sqlString(e.Name), true
+	case *syntax.App:
+		if fn, isCtor := e.Fn.(*syntax.CtorRef); isCtor && fn.Name == "Just" && len(e.Args) == 1 {
+			if _, nested := e.Args[0].(*syntax.App); !nested {
+				return SQLLiteral(e.Args[0])
+			}
+		}
+	}
+	return "", false
+}
+
+// sqlString is s as a one-line SQL text expression.
+func sqlString(s string) string {
+	var parts []string
+	var cur strings.Builder
+	cur.WriteByte('\'')
+	for _, r := range s {
+		switch r {
+		case '\'':
+			cur.WriteString("''")
+		case '\n', '\r':
+			cur.WriteByte('\'')
+			parts = append(parts, cur.String(), "char("+strconv.Itoa(int(r))+")")
+			cur.Reset()
+			cur.WriteByte('\'')
+		default:
+			cur.WriteRune(r)
+		}
+	}
+	cur.WriteByte('\'')
+	parts = append(parts, cur.String())
+	return strings.Join(parts, " || ")
+}

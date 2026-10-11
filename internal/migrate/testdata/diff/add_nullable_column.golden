@@ -1,0 +1,8 @@
+-- alder migration 0002_add_nullable_column
+-- from 766e287f0a16
+-- to dff82392c7d2
+-- step: add column User.bio
+
+ALTER TABLE "User__User" ADD COLUMN "bio" TEXT;
+
+-- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

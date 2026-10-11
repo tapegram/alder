@@ -1,0 +1,1 @@
+error: User.born: a new non-null column needs a default so existing rows can be filled, and a Date has no literal: add it as `Maybe` first

@@ -1,0 +1,12 @@
+-- alder migration 0002_nullable_enum_remove
+-- from 676df5b243e5
+-- to 055ee036c786
+-- step: rebuild table User: User.role: Maybe (A | B | C) -> Maybe (A | B)
+-- DROPS DATA: rows whose User.role is C are deleted
+
+CREATE TABLE "User__User__new" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "email" TEXT NOT NULL UNIQUE, "role" TEXT CHECK ("role" IN ('A', 'B'))) STRICT;
+INSERT INTO "User__User__new" ("id", "name", "email", "role") SELECT "id", "name", "email", "role" FROM "User__User" WHERE ("role" IS NULL OR "role" IN ('A', 'B'));
+DROP TABLE "User__User";
+ALTER TABLE "User__User__new" RENAME TO "User__User";
+
+-- applied to seeded rows: Comment=3 Post=3 User=2; foreign_key_check: 1

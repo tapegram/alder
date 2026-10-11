@@ -1,0 +1,17 @@
+module Post
+
+type PostId = brand Text
+
+type Status = Draft | Published
+
+defaultViews : Int
+defaultViews = 10
+
+table Post {
+  id: PostId @id,
+  title: Text = "Untitled",
+  status: Status = Draft,
+  views: Int = defaultViews,
+  score: Float = 1.0 * 2.0,
+  summary: Maybe Text = Just "none",
+}

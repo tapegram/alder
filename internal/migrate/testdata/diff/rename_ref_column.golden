@@ -1,0 +1,12 @@
+-- alder migration 0002_rename_ref_column
+-- from 766e287f0a16
+-- to 4e8a3edccf10
+-- step: rename column Comment.post to article
+-- step: drop index on Comment.post
+-- step: add index on Comment.article
+
+ALTER TABLE "Comment__Comment" RENAME COLUMN "post" TO "article";
+DROP INDEX IF EXISTS "Comment__Comment__post";
+CREATE INDEX IF NOT EXISTS "Comment__Comment__article" ON "Comment__Comment"("article");
+
+-- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0

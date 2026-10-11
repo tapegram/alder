@@ -1,0 +1,18 @@
+-- alder migration 0002_initial
+-- from e3b0c44298fc
+-- to 766e287f0a16
+-- step: create table Comment
+-- step: create table Post
+-- step: create table User
+-- step: add index on Comment.parent
+-- step: add index on Comment.post
+-- step: add index on Post.author
+
+CREATE TABLE "Comment__Comment" ("id" TEXT NOT NULL PRIMARY KEY, "post" TEXT NOT NULL REFERENCES "Post__Post"("id") ON DELETE CASCADE, "body" TEXT NOT NULL, "parent" TEXT REFERENCES "Comment__Comment"("id") ON DELETE SET NULL) STRICT;
+CREATE TABLE "Post__Post" ("id" TEXT NOT NULL PRIMARY KEY, "title" TEXT NOT NULL, "body" TEXT NOT NULL, "author" TEXT NOT NULL REFERENCES "User__User"("id"), "views" INTEGER NOT NULL, "status" TEXT NOT NULL CHECK ("status" IN ('Draft', 'Published', 'Archived')), "score" REAL NOT NULL, "published" INTEGER NOT NULL CHECK ("published" IN (0, 1)), "day" TEXT NOT NULL, "at" TEXT NOT NULL, "summary" TEXT) STRICT;
+CREATE TABLE "User__User" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "email" TEXT NOT NULL UNIQUE) STRICT;
+CREATE INDEX IF NOT EXISTS "Comment__Comment__parent" ON "Comment__Comment"("parent");
+CREATE INDEX IF NOT EXISTS "Comment__Comment__post" ON "Comment__Comment"("post");
+CREATE INDEX IF NOT EXISTS "Post__Post__author" ON "Post__Post"("author");
+
+-- applied to seeded rows: Comment=0 Post=0 User=0; foreign_key_check: 0

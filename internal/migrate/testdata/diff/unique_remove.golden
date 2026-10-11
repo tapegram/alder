@@ -1,0 +1,11 @@
+-- alder migration 0002_unique_remove
+-- from 766e287f0a16
+-- to b5d13bdec175
+-- step: rebuild table User: User.email: @unique removed
+
+CREATE TABLE "User__User__new" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "email" TEXT NOT NULL) STRICT;
+INSERT INTO "User__User__new" ("id", "name", "email") SELECT "id", "name", "email" FROM "User__User";
+DROP TABLE "User__User";
+ALTER TABLE "User__User__new" RENAME TO "User__User";
+
+-- applied to seeded rows: Comment=3 Post=3 User=3; foreign_key_check: 0
