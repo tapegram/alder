@@ -1,0 +1,5 @@
+module Index
+
+-- `fake` begins a declaration at column 1, so a value cannot be named fake.
+fake : Int
+fake = 1

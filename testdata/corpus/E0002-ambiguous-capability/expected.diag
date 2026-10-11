@@ -1,0 +1,2 @@
+app/Report.alder:8:9 E0002 `Clock` is a capability of both `A` and `B`: write `A.Clock` or `B.Clock`
+app/Report.alder:14:22 E0002 `Clock` is a capability of both `A` and `B`: write `A.Clock` or `B.Clock`

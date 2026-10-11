@@ -36,7 +36,11 @@ func (l *lowerer) effHead(fn syntax.Expr) *effHead {
 				return &effHead{name: x.Ref.Module + "." + x.Ref.Name, ft: l.typeOf(x), at: pos(x.Span)}
 			}
 		case syntax.RefCapability:
-			c := l.caps[key(x.Ref.Module, x.Module)]
+			capName := x.Module // `Clock.now`; with its module, `A.Clock.now`
+			if i := strings.LastIndexByte(capName, '.'); i >= 0 {
+				capName = capName[i+1:]
+			}
+			c := l.caps[key(x.Ref.Module, capName)]
 			if c == nil {
 				panic(fmt.Sprintf("ir: unknown capability %s.%s at %s", x.Ref.Module, x.Module, pos(x.Span)))
 			}

@@ -926,6 +926,10 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			c.errorf(diag.TypeMismatch, x.Span, "`Test.fake` wants a capability name, got an expression")
 			return types.Err
 		}
+		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Session" && mc.fake != "" { // the entry's prefix names the fake
+			c.errorf(diag.TypeMismatch, x.Span, "a fake cannot use `Session`: an adapter has no session")
+			return types.Err
+		}
 		if x.Ref.Module == "Session" && x.Ref.Name == "put" {
 			c.usesSessionPut = true
 		}
@@ -944,7 +948,7 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			return &types.App{Con: "Column", Args: []types.Type{info.Record, info.Columns[x.Name]}}
 		}
 	case syntax.RefCapability:
-		if entries, ok := c.caps[c.key(x.Ref.Module, x.Module)]; ok {
+		if entries, ok := c.caps[c.key(x.Ref.Module, columnTable(x))]; ok { // `Clock.now`, or `A.Clock.now`
 			if t, ok := entries[x.Name]; ok {
 				return c.u.Instantiate(t)
 			}

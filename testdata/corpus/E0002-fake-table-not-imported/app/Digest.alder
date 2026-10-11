@@ -1,0 +1,7 @@
+module Digest
+
+-- A fake's table is not a module: the import names its module.
+import Mail.Sent
+
+size : Int
+size = 1

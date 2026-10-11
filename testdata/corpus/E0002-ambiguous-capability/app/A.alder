@@ -1,0 +1,9 @@
+module A
+
+capability Clock {
+  now : Query Int,
+}
+
+fake Clock {
+  now = Query.succeed 1
+}

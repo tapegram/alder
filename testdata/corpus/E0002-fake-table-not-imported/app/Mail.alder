@@ -1,0 +1,20 @@
+module Mail
+
+type SentId = brand Text
+
+capability Mailer {
+  send : { to: Text, body: Text } -> Task (Result Text Unit),
+}
+
+fake Mailer {
+  table Sent {
+    id: SentId @id,
+    to: Text,
+    bounced: Bool,
+  }
+
+  send args = {
+    let _ <- Db.insert Sent { to: args.to, bounced: False }
+    Task.succeed (Ok ())
+  }
+}

@@ -1,0 +1,8 @@
+module Notify
+
+-- The most likely first mistake in a test in another module: the fake's table, written with its
+-- module, but no `import Mail`.
+test "nothing bounced" = {
+  let n <- Db.from Mail.Sent |> Db.count
+  Task.succeed (n == 0)
+}

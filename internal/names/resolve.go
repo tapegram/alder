@@ -28,14 +28,17 @@ type moduleScope struct {
 	// capEntries holds, for a capability named like its module (`capability Markdown` in module
 	// Markdown), its entry names: `Markdown.render` from another module is that entry.
 	capEntries map[string]bool
-	comps      map[string]bool            // capitalized value names
-	columns    map[string]map[string]bool // table → field set
-	imports    map[string]*syntax.Import
-	used       map[string]bool
+	// entryCaps maps each entry name of any of its capabilities to the first capability
+	// declaring it: `Mail.send` for `capability Mailer { send … }` says to write `Mailer.send`.
+	entryCaps map[string]string
+	comps     map[string]bool            // capitalized value names
+	columns   map[string]map[string]bool // table → field set
+	imports   map[string]*syntax.Import
+	used      map[string]bool
 }
 
 func (p *Program) index(m *syntax.Module) *moduleScope {
-	s := &moduleScope{name: m.Name, values: map[string]bool{}, types: map[string]bool{}, ctors: map[string]string{}, brands: map[string]bool{}, tables: map[string]bool{}, fakeTables: map[string]string{}, caps: map[string]bool{}, capEntries: map[string]bool{}, comps: map[string]bool{}, columns: map[string]map[string]bool{}, imports: map[string]*syntax.Import{}, used: map[string]bool{}}
+	s := &moduleScope{name: m.Name, values: map[string]bool{}, types: map[string]bool{}, ctors: map[string]string{}, brands: map[string]bool{}, tables: map[string]bool{}, fakeTables: map[string]string{}, caps: map[string]bool{}, capEntries: map[string]bool{}, entryCaps: map[string]string{}, comps: map[string]bool{}, columns: map[string]map[string]bool{}, imports: map[string]*syntax.Import{}, used: map[string]bool{}}
 	for _, im := range m.Imports {
 		s.imports[im.Module] = im
 	}
@@ -65,6 +68,11 @@ func (p *Program) index(m *syntax.Module) *moduleScope {
 			s.types[d.Name] = true
 		case *syntax.CapDecl:
 			s.caps[d.Name] = true
+			for _, e := range d.Entries {
+				if _, seen := s.entryCaps[e.Name]; !seen {
+					s.entryCaps[e.Name] = d.Name
+				}
+			}
 			if d.Name == m.Name {
 				for _, e := range d.Entries {
 					s.capEntries[e.Name] = true
@@ -208,6 +216,17 @@ func (r *resolver) module() {
 			r.missing[im.Module] = true
 			delete(r.ms.imports, im.Module)
 			if owner, table, ok := r.tableInOtherModule(im.Module); ok {
+				if s := r.p.scopes[owner]; s != nil && s.fakeTables[table] != "" { // `import Mail.Sent`
+					d := r.bag.Error(diag.UnknownName, im.Span, "`%s` is a table, not a module: `import %s`", im.Module, owner)
+					if _, has := r.ms.imports[owner]; !has && r.p.importPath(owner, r.m.Name) == nil {
+						d.Fix = diag.ReplaceSpan(im.Span, "import "+owner)
+						if r.fixed == nil {
+							r.fixed = map[string]bool{}
+						}
+						r.fixed[owner] = true // a use of the table offers no second `import`
+					}
+					continue
+				}
 				r.tableMisplaced(im.Span, owner, table)
 				continue
 			}
@@ -286,7 +305,7 @@ func (r *resolver) module() {
 // (the checker reports E0020 for one declared elsewhere), its tables as the module's tables,
 // and its entries' bodies like values', each parameter in scope.
 func (r *resolver) fake(d *syntax.FakeDecl) {
-	if ref, ok := r.capability("", d.Name); ok {
+	if ref, ok := r.capability("", d.Name, d.NameSpan); ok {
 		d.Ref = ref
 	} else {
 		r.bag.Error(diag.UnknownName, d.NameSpan, "`fake %s`: there is no capability `%s`; a fake implements a capability declared in its module (`capability %s { … }`)", d.Name, d.Name, d.Name)
@@ -304,8 +323,9 @@ func (r *resolver) fake(d *syntax.FakeDecl) {
 }
 
 // capability finds capability name, written `name` or `mod.name`: declared in this module or,
-// unqualified, in an imported one. Its Ref is RefCapability with Name "Module.Cap".
-func (r *resolver) capability(mod, name string) (syntax.Ref, bool) {
+// unqualified, in an imported one. Its Ref is RefCapability with Name "Module.Cap". A name two
+// imported modules declare is reported at span (found, with no Ref).
+func (r *resolver) capability(mod, name string, span diag.Span) (syntax.Ref, bool) {
 	ref := func(m string) syntax.Ref {
 		return syntax.Ref{Kind: syntax.RefCapability, Module: m, Name: m + "." + name}
 	}
@@ -317,11 +337,12 @@ func (r *resolver) capability(mod, name string) (syntax.Ref, bool) {
 		if mod != "" {
 			return syntax.Ref{}, false
 		}
-		for _, x := range r.importNames() {
-			if s := r.p.scopes[x]; s != nil && s.caps[name] {
-				r.ms.used[x] = true
-				return ref(x), true
-			}
+		if owners := r.importedCapOwners(name); len(owners) > 1 {
+			r.ambiguousCapability(span, name, owners)
+			return syntax.Ref{}, true
+		} else if len(owners) == 1 {
+			r.ms.used[owners[0]] = true
+			return ref(owners[0]), true
 		}
 	default:
 		if _, ok := r.ms.imports[mod]; ok {
@@ -334,6 +355,37 @@ func (r *resolver) capability(mod, name string) (syntax.Ref, bool) {
 	return syntax.Ref{}, false
 }
 
+// importedCapOwners is the imported modules declaring capability name, in import order.
+func (r *resolver) importedCapOwners(name string) []string {
+	var out []string
+	for _, x := range r.importNames() {
+		if s := r.p.scopes[x]; s != nil && s.caps[name] {
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+// ambiguousCapability reports capability name, written unqualified, that several imported
+// modules declare: the use must name the module. Each such module counts as used.
+func (r *resolver) ambiguousCapability(span diag.Span, name string, owners []string) {
+	owners = append([]string(nil), owners...)
+	sort.Strings(owners)
+	var of, alts []string
+	for _, o := range owners {
+		r.ms.used[o] = true
+		of = append(of, "`"+o+"`")
+		alts = append(alts, "`"+o+"."+name+"`")
+	}
+	both, or := "both ", alts[0]+" or "+alts[1]
+	if len(owners) > 2 {
+		both = ""
+		or = strings.Join(alts[:len(alts)-1], ", ") + " or " + alts[len(alts)-1]
+	}
+	list := strings.Join(of[:len(of)-1], ", ") + " and " + of[len(of)-1]
+	r.bag.Error(diag.UnknownName, span, "`%s` is a capability of %s%s: write %s", name, both, list, or)
+}
+
 // testFakeArg resolves the argument of `Test.fake`: a capability name, `Stripe` or
 // `Payments.Stripe`. Any other argument is resolved as an expression (the checker refuses it).
 func (r *resolver) testFakeArg(a syntax.Expr, sc *Scope) {
@@ -342,7 +394,7 @@ func (r *resolver) testFakeArg(a syntax.Expr, sc *Scope) {
 		r.expr(a, sc)
 		return
 	}
-	if ref, found := r.capability(ct.Module, ct.Name); found {
+	if ref, found := r.capability(ct.Module, ct.Name, ct.Span); found {
 		ct.Ref = ref
 		return
 	}
@@ -514,8 +566,13 @@ func (r *resolver) tableInOtherModule(x string) (owner, table string, ok bool) {
 // such a table's columns cannot be named from anywhere, so no import can help.
 func (r *resolver) tableMisplaced(span diag.Span, owner, table string) {
 	if s := r.p.scopes[owner]; s != nil {
-		if fake, ok := s.fakeTables[table]; ok { // its columns are named inside its module only
-			r.bag.Error(diag.UnknownName, span, "`%s` is a table of `fake %s` in module `%s`: its columns are named only inside `%s` (`%s.column`); elsewhere use the table, `%s.%s`", table, fake, owner, owner, table, owner, table)
+		if fake, ok := s.fakeTables[table]; ok { // a use from a module that does not import owner
+			if path := r.p.importPath(owner, r.m.Name); path != nil {
+				r.bag.Error(diag.UnknownName, span, "`%s` is a table of `fake %s` in module `%s`, and `%s` %s, so `%s` cannot import it; %s", table, fake, owner, owner, importsPhrase(path), r.m.Name, r.cycleRemedy(owner))
+				return
+			}
+			d := r.bag.Error(diag.UnknownName, span, "`%s` is a table of `fake %s` in module `%s`: add `import %s`, then write `%s.%s` (columns: `%s.%s.column`)", table, fake, owner, owner, owner, table, owner, table)
+			d.Fix = r.importFix(owner)
 			return
 		}
 	}
@@ -786,7 +843,10 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 			v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: v.Module, Name: v.Module + "." + v.Name}
 		default:
 			if !r.stdShadowed(v.Module) {
-				r.bag.Error(diag.UnknownName, v.Span, "module `%s` has no `%s`", v.Module, v.Name)
+				d := r.bag.Error(diag.UnknownName, v.Span, "module `%s` has no `%s`%s", v.Module, v.Name, entryHint(s, v.Name))
+				if c := s.entryCaps[v.Name]; c != "" {
+					d.Fix = diag.ReplaceSpan(v.Span, c+"."+v.Name)
+				}
 			}
 		}
 		return
@@ -796,12 +856,13 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 		v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: r.m.Name, Name: v.Module + "." + v.Name}
 		return
 	}
-	for _, x := range r.importNames() {
-		if r.p.scopes[x].caps[v.Module] {
-			r.ms.used[x] = true
-			v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: x, Name: v.Module + "." + v.Name}
-			return
-		}
+	if owners := r.importedCapOwners(v.Module); len(owners) > 1 { // `Clock.now`, A and B declaring Clock
+		r.ambiguousCapability(v.Span, v.Module, owners)
+		return
+	} else if len(owners) == 1 {
+		r.ms.used[owners[0]] = true
+		v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: owners[0], Name: v.Module + "." + v.Name}
+		return
 	}
 	// this module's own table columns: Todo.done inside module Todo
 	if r.ms.tables[v.Module] && r.ms.columns[v.Module][v.Name] {
@@ -812,9 +873,22 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 		r.ownQualified(v.Span, v.Name, r.ms.values[v.Name], true)
 		return
 	}
-	// a fake's table's column from another module: Payments.Charge.cents
 	if i := strings.LastIndexByte(v.Module, '.'); i > 0 {
 		owner, table := v.Module[:i], v.Module[i+1:]
+		// an entry of a capability named with its module: A.Clock.now
+		if s := r.p.scopes[owner]; s != nil && s.caps[table] && r.p.Modules[owner] != nil {
+			switch _, imported := r.ms.imports[owner]; {
+			case owner == r.m.Name:
+				r.ownQualified(v.Span, table+"."+v.Name, true, true)
+			case imported:
+				r.ms.used[owner] = true
+				v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: owner, Name: table + "." + v.Name}
+			default:
+				r.notImported(v.Span, owner)
+			}
+			return
+		}
+		// a fake's table's column from another module: Payments.Charge.cents
 		if _, fake := r.p.scopes[owner].fakeTablesOf()[table]; fake {
 			if s, ok := r.importedScope(owner); ok && s.columns[table][v.Name] {
 				v.Ref = syntax.Ref{Kind: syntax.RefColumn, Module: owner, Name: v.Name}
@@ -865,12 +939,24 @@ func (r *resolver) importedFakeTable(table string) (owner, fake string, ok bool)
 	return "", "", false
 }
 
+// entryHint is "; `send` is an entry of `capability Mailer`: write `Mailer.send`" when name is
+// an entry of a capability of module s (written `Mail.send` for module Mail), else "".
+func entryHint(s *moduleScope, name string) string {
+	if s == nil || s.entryCaps[name] == "" {
+		return ""
+	}
+	return fmt.Sprintf("; `%s` is an entry of `capability %s`: write `%s.%s`", name, s.entryCaps[name], s.entryCaps[name], name)
+}
+
 // ownQualified reports `M.x` inside module M (message 1): never "module `M` is not imported".
 // When M declares x the fix drops the qualifier.
 // fix is false where span covers more than the name (an element).
 func (r *resolver) ownQualified(span diag.Span, name string, declared, fix bool) {
 	if !declared {
-		r.bag.Error(diag.UnknownName, span, "module `%s` has no `%s`", r.m.Name, name)
+		d := r.bag.Error(diag.UnknownName, span, "module `%s` has no `%s`%s", r.m.Name, name, entryHint(r.ms, name))
+		if c := r.ms.entryCaps[name]; c != "" && fix {
+			d.Fix = diag.ReplaceSpan(span, c+"."+name)
+		}
 		return
 	}
 	d := r.bag.Error(diag.UnknownName, span, "inside `%s`, its own names are written unqualified: `%s`", r.m.Name, name)

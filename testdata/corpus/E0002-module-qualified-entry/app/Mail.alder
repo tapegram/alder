@@ -1,0 +1,9 @@
+module Mail
+
+capability Mailer {
+  send : { to: Text, body: Text } -> Task (Result Text Unit),
+}
+
+-- An entry is named with its capability, not its module.
+welcome : Text -> Task (Result Text Unit)
+welcome to = Mail.send { to: to, body: "hello" }

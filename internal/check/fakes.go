@@ -90,18 +90,17 @@ func (mc *modCtx) checkFakeEntries(d *syntax.FakeDecl) {
 	}
 	entries := c.caps[d.Ref.Name]
 	mc.fake = d.Name
+	defer func() { mc.fake = "" }()
 	for _, e := range d.Entries {
 		if sig, ok := entries[e.Name]; ok && !c.losers[e] && e.Body != nil {
 			from := len(c.bag.Items)
 			mc.checkValue(e, sig)
-			for i := from; i < len(c.bag.Items); i++ { // say which entry a type error is in
-				if it := &c.bag.Items[i]; it.Code == diag.TypeMismatch && it.Severity == "error" {
-					it.Message = "in `fake " + d.Name + "`'s `" + e.Name + "`: " + it.Message
-				}
+			for i := from; i < len(c.bag.Items); i++ { // say which entry every diagnostic is in
+				it := &c.bag.Items[i]
+				it.Message = "in `fake " + d.Name + "`'s `" + e.Name + "`: " + it.Message
 			}
 		}
 	}
-	mc.fake = ""
 }
 
 // fakeTableUse reports E0021 when the table tableKey ("Module.Table") belongs to a fake and is
@@ -158,7 +157,8 @@ func (mc *modCtx) inferTestFake(x *syntax.App, v *syntax.Var, pipe *pipeArg) typ
 }
 
 // columnTable is the table a column reference names: `Charge` in `Charge.cents`, and in the
-// form `Payments.Charge.cents` a fake's table takes from another module.
+// form `Payments.Charge.cents` a fake's table takes from another module. Of a capability
+// entry's reference it is the capability: `Clock` in `Clock.now` and in `A.Clock.now`.
 func columnTable(x *syntax.Var) string {
 	if i := strings.LastIndexByte(x.Module, '.'); i >= 0 {
 		return x.Module[i+1:]

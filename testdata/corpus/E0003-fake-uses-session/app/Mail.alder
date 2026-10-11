@@ -1,0 +1,15 @@
+module Mail
+
+capability Mailer {
+  send : { to: Text, body: Text } -> Task (Result Text Unit),
+}
+
+-- An adapter has no session, so a fake has none either; and every error inside an entry says
+-- which entry it is in.
+fake Mailer {
+  send args = {
+    let _ <- Session.put (\s -> s)
+    let n = Text.length args.to args.body
+    Task.succeed (Ok ())
+  }
+}

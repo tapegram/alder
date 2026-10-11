@@ -1,0 +1,4 @@
+app/Digest.alder:4:1 E0002 `Mail.Sent` is a table, not a module: `import Mail`
+  fix 4:1-4:17 import Mail
+app/Notify.alder:6:20 E0002 `Sent` is a table of `fake Mailer` in module `Mail`: add `import Mail`, then write `Mail.Sent` (columns: `Mail.Sent.column`)
+  fix 2:1-2:1 import Mail⏎

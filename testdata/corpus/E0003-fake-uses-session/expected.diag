@@ -1,0 +1,2 @@
+app/Mail.alder:11:14 E0003 in `fake Mailer`'s `send`: a fake cannot use `Session`: an adapter has no session
+app/Mail.alder:12:13 E0008 in `fake Mailer`'s `send`: too many arguments: `Text.length` takes 1, got 2

@@ -255,6 +255,10 @@ func TestParse_FakeErrors(t *testing.T) {
 		{"module M\n\nfake Stripe {\n  charge : Int -> Task Int\n  charge args = Task.succeed 1\n}\n", "4:3 in `fake Stripe`: a fake's entry takes its type from the capability: write `charge args = …` without a signature"},
 		// unterminated
 		{"module M\n\nfake Stripe {\n  now = Query.succeed 1\n", "5:1 in `fake Stripe`: unterminated `fake Stripe`: expected `}`"},
+		// a top-level value named fake: its signature, its definition, a function
+		{"module M\n\nfake : Int\nfake = 1\n", "3:1 `fake` starts a fake declaration at column 1: rename the value"},
+		{"module M\n\nfake : Int\nfake = 1\n", "4:1 `fake` starts a fake declaration at column 1: rename the value"},
+		{"module M\n\nfake x =\n  x\n\ny = 1\n", "3:1 `fake` starts a fake declaration at column 1: rename the value"},
 	} {
 		_, diags := ParseFile("t.alder", []byte(tc.src))
 		var got []string
@@ -263,6 +267,13 @@ func TestParse_FakeErrors(t *testing.T) {
 		}
 		if !slicesContains(got, tc.want) {
 			t.Errorf("%q: diagnostics %q lack %q", tc.src, got, tc.want)
+		}
+		if strings.Contains(tc.want, "rename the value") {
+			for _, g := range got { // the value's lines say nothing else
+				if !strings.Contains(g, "rename the value") {
+					t.Errorf("%q: also %q", tc.src, g)
+				}
+			}
 		}
 	}
 }

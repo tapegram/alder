@@ -2,6 +2,7 @@
 package names
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -422,5 +423,93 @@ func TestResolve_FakeTableFromAnotherModule(t *testing.T) {
 	}
 	if strings.Contains(got, "E0201") {
 		t.Errorf("an import of a module that does not exist was suggested:\n%s", got)
+	}
+}
+
+// A fake's table used from a module that does not import its module says to import it (with
+// the fix), and `import Payments.Charge` names the module to import instead.
+func TestResolve_FakeTableNotImported(t *testing.T) {
+	pay := parse(t, "app/Payments.alder", paymentsSrc)
+	shop := parse(t, "app/Shop.alder", "module Shop\n\ntest \"t\" = Payments.Charge == Payments.Charge\n")
+	prog, bag := Build([]*syntax.Module{pay, shop}, testStd(t))
+	prog.Resolve(bag)
+	want := "`Charge` is a table of `fake Stripe` in module `Payments`: add `import Payments`, then write `Payments.Charge` (columns: `Payments.Charge.column`)"
+	var fixes int
+	for _, d := range bag.Items {
+		if d.Message != want {
+			t.Errorf("unexpected %s %s", d.Code, d.Message)
+		}
+		if d.Fix != nil {
+			fixes++
+			if d.Fix.Replace != "import Payments\n" {
+				t.Errorf("fix %q", d.Fix.Replace)
+			}
+		}
+	}
+	if len(bag.Items) == 0 || fixes != 1 {
+		t.Fatalf("got %s (fixes %d)", codes(bag), fixes)
+	}
+	col := parse(t, "app/Shop.alder", "module Shop\n\ntest \"t\" = Payments.Charge.cents == Payments.Charge.cents\n")
+	prog, bag = Build([]*syntax.Module{pay, col}, testStd(t))
+	prog.Resolve(bag)
+	if got := codes(bag); !strings.Contains(got, want) || strings.Contains(got, "E0201") {
+		t.Fatalf("column: got %s", got)
+	}
+	imp := parse(t, "app/Shop.alder", "module Shop\n\nimport Payments.Charge\n\nx : Int\nx = 1\n")
+	prog, bag = Build([]*syntax.Module{pay, imp}, testStd(t))
+	prog.Resolve(bag)
+	if got := codes(bag); got != "E0002:`Payments.Charge` is a table, not a module: `import Payments`" {
+		t.Fatalf("import: got %s", got)
+	}
+	if f := bag.Items[0].Fix; f == nil || f.Replace != "import Payments" {
+		t.Fatalf("import fix %+v", f)
+	}
+}
+
+const clockSrc = "module %s\n\ncapability Clock {\n  now : Query Int,\n}\n"
+
+// A capability two imported modules declare is ambiguous written unqualified (an entry call,
+// `Test.fake`); qualified with its module it resolves, and the error names both modules.
+func TestResolve_AmbiguousCapability(t *testing.T) {
+	a := parse(t, "app/A.alder", fmt.Sprintf(clockSrc, "A"))
+	b := parse(t, "app/B.alder", fmt.Sprintf(clockSrc, "B"))
+	use := parse(t, "app/Use.alder", "module Use\n\nimport B\nimport A\n\nx : Query Int\nx = Clock.now\n\ny : Query Int\ny = B.Clock.now\n\ntest \"t\" = {\n  let _ <- Test.fake Clock\n  let _ <- Test.fake A.Clock\n  Task.succeed True\n}\n")
+	prog, bag := Build([]*syntax.Module{a, b, use}, testStd(t))
+	prog.Resolve(bag)
+	want := "E0002:`Clock` is a capability of both `A` and `B`: write `A.Clock` or `B.Clock`"
+	if got := codes(bag); got != want+"\n"+want {
+		t.Fatalf("got %s", got)
+	}
+	y := use.Decls[1].(*syntax.ValueDecl).Body.(*syntax.Var)
+	if wantRef := (syntax.Ref{Kind: syntax.RefCapability, Module: "B", Name: "Clock.now"}); y.Ref != wantRef {
+		t.Fatalf("B.Clock.now ref %+v", y.Ref)
+	}
+	blk := use.Decls[2].(*syntax.TestDecl).Body.(*syntax.Block)
+	if ref := blk.Stmts[1].Expr.(*syntax.App).Args[0].(*syntax.CtorRef).Ref; ref != (syntax.Ref{Kind: syntax.RefCapability, Module: "A", Name: "A.Clock"}) {
+		t.Fatalf("Test.fake A.Clock ref %+v", ref)
+	}
+	// `A.Clock.now` without `import A` names the module to import
+	no := parse(t, "app/No.alder", "module No\n\nx : Query Int\nx = A.Clock.now\n")
+	prog, bag = Build([]*syntax.Module{a, no}, testStd(t))
+	prog.Resolve(bag)
+	if got := codes(bag); got != "E0201:module `A` is not imported" {
+		t.Fatalf("not imported: got %s", got)
+	}
+}
+
+// `Mail.send` for an entry of `capability Mailer` in module Mail says to write `Mailer.send`.
+func TestResolve_ModuleQualifiedEntry(t *testing.T) {
+	mail := parse(t, "app/Mail.alder", "module Mail\n\ncapability Mailer {\n  send : Text -> Task Unit,\n}\n\nown : Task Unit\nown = Mail.send \"a\"\n")
+	use := parse(t, "app/Use.alder", "module Use\n\nimport Mail\n\nx : Task Unit\nx = Mail.send \"b\"\n")
+	prog, bag := Build([]*syntax.Module{mail, use}, testStd(t))
+	prog.Resolve(bag)
+	want := "E0002:module `Mail` has no `send`; `send` is an entry of `capability Mailer`: write `Mailer.send`"
+	if got := codes(bag); got != want+"\n"+want {
+		t.Fatalf("got %s", got)
+	}
+	for _, d := range bag.Items {
+		if d.Fix == nil || d.Fix.Replace != "Mailer.send" {
+			t.Fatalf("fix %+v", d.Fix)
+		}
 	}
 }

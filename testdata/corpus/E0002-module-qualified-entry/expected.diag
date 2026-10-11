@@ -1,0 +1,2 @@
+app/Mail.alder:9:14 E0002 module `Mail` has no `send`; `send` is an entry of `capability Mailer`: write `Mailer.send`
+  fix 9:14-9:23 Mailer.send

@@ -170,6 +170,23 @@ func describe(t Token) string {
 }
 
 // skipToDecl recovers after a parse error: advance to the next line that starts a declaration.
+// skipBeforeDecl skips like skipToDecl but stops at the newline before the next declaration,
+// as a declaration that parsed ends (a value's continuation lines are skipped with it).
+func (p *Parser) skipBeforeDecl() {
+	for !p.at(EOF) {
+		if p.at(NL) {
+			st, tok := p.mark()
+			p.skipNL()
+			next := p.at(EOF) || p.tok.Col == 1 && (p.tok.Kind == Keyword || p.tok.Kind == LIdent || p.tok.Kind == UIdent)
+			p.restore(st, tok)
+			if next {
+				return
+			}
+		}
+		p.advance()
+	}
+}
+
 func (p *Parser) skipToDecl() {
 	for !p.at(EOF) {
 		if p.at(NL) {
@@ -358,6 +375,11 @@ var fakeDeclWords = map[string]bool{"module": true, "import": true, "type": true
 // declarations and one definition per entry of the capability, `name args = body`, written
 // without a signature (the capability's entry type is its signature).
 func (p *Parser) parseFakeDecl() Decl {
+	if p.peekIs(Colon) || p.peekIs(Equal) || p.peekIs(LIdent) { // `fake : Int`, `fake = 1`, `fake x = …`: a value
+		p.errorAt(p.tok, "`fake` starts a fake declaration at column 1: rename the value")
+		p.skipBeforeDecl()
+		return nil
+	}
 	start := p.advance()
 	nameTok := p.expect(UIdent, "capability name")
 	d := &FakeDecl{Name: nameTok.Text, NameSpan: p.spanTok(nameTok)}

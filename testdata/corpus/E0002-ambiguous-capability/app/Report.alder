@@ -1,0 +1,18 @@
+module Report
+
+import B
+import A
+
+-- Both imports declare `Clock`: written alone it is ambiguous; with its module it is not.
+first : Query Int
+first = Clock.now
+
+second : Query Int
+second = B.Clock.now
+
+test "clock" = {
+  let _ <- Test.fake Clock
+  let _ <- Test.fake A.Clock
+  let n <- A.Clock.now
+  Task.succeed (n == 1)
+}
