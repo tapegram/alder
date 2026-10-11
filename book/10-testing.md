@@ -729,12 +729,11 @@ fake Stripe {
 - Each test starts with a fresh database and its own capabilities, so a
   fake installed in one test, and its rows, are never seen by the next.
 
-**Where fakes exist.** Only `alder test` compiles them: `alder build`,
-`alder run`, `alder eval` and `alder repl` contain no fake and no fake's
-table. In a production build, a test that uses a fake's table fails at
-once, and `Test.fake` fails ("Test.fake is only available in
-`alder test`"); nothing there runs tests. (Chapter 13 shows the
-generated Go.)
+**Where fakes exist.** `alder test` compiles them, and so do `alder eval`
+and `alder repl`, whose builds are test builds too (chapter 11). A
+production build (`alder build`, `alder run`) contains no tests at all:
+no `test`, no fake, no fake's table and no test runner. (Chapter 13
+shows the generated Go.)
 
 ## 9. What cannot be tested yet
 

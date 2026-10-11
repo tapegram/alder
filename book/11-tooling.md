@@ -85,7 +85,9 @@ part of `dir` once it is made absolute (so `alder build .` inside
 
 1. Check the program. With errors or holes, print them and exit 1, as
    `alder check` would.
-2. Generate the Go into `build/<app>/`, as `--emit` does (below).
+2. Generate the Go into `build/<app>/`, as `--emit` does (below). This
+   is a production build: it contains none of the app's `test`s, no
+   fakes and no test runner (`alder test` makes its own build).
 3. Replace `build/<app>/adapters/` with copies of the `.go` files at the
    top level of `<dir>/adapters/` (subdirectories and other files are not
    copied), and `build/<app>/static/` with a copy of `<dir>/static/`.
@@ -386,7 +388,11 @@ this app…` on stderr first, and Ctrl-C stops the wait. Each evaluation
 compiles and builds the whole app with the expression; Go's build cache
 keeps that to about 0.6 s once the runtime's packages are in it (0.2 s
 for an expression evaluated just before). Chapter 13, "The scratch
-runner", shows what it compiles.
+runner", shows what it compiles. That build is a test build, like
+`alder test`'s: the app's tests and fakes are compiled in (eval is a
+developer tool, never deployed), because its main runs with the
+session a test starts from, `TestSession()`, which only a test build
+has. `alder repl` builds the same way.
 
 ### `alder repl`
 
@@ -598,11 +604,13 @@ applying the app's migrations when it has them (chapter 8). The app's
 the real Go, and an error one returns is the failure `Cap.entry: <error>`,
 which `Test.run` gives as an `Err`; without it, a test that calls a
 capability fails with "capability … is not wired in tests". A test can
-replace a capability with its `fake` (`Test.fake`, chapter 10). Only
-`alder test` compiles the fakes: its build is a test build, which adds
-each fake's Go and the fakes' tables (`FakeTables`), created in each
-test's database after the app's. `alder build`, `alder run`,
-`alder eval` and `alder repl` compile none of it (chapter 13, "Fakes"). Ctrl-C stops
+replace a capability with its `fake` (`Test.fake`, chapter 10). Its
+build is a test build, which adds the tests themselves (`Tests`,
+`TestSession`), each fake's Go and the fakes' tables (`FakeTables`),
+created in each test's database after the app's. `alder eval` and
+`alder repl` build the same way; `alder build` and `alder run` compile
+none of it, so a production binary carries no test code (chapter 13,
+"Fakes"). Ctrl-C stops
 the tests' process, and so does killing `alder test` in any way (the
 process exits when its standard input, a pipe `alder test` holds, closes).
 

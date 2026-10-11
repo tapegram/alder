@@ -323,9 +323,11 @@ trace when the calls themselves matter.
 
 The rest follows from that choice. A fake's tables use the database the
 test already has, so its writes are part of the test's transaction and a
-failing `Test.run` undoes them like any other. Fakes are compiled only
-into `alder test`'s build, so no production binary contains one, and a
-fake's tables are kept out of the schema and the migrations. A fake
+failing `Test.run` undoes them like any other. Fakes, like the tests
+themselves, are compiled only into test builds (`alder test`'s, and
+those of the developer tools `alder eval` and `alder repl`), so no
+production binary contains one, and a fake's tables are kept out of the
+schema and the migrations. A fake
 lives beside its capability (E0020), so there is one place to look for
 it and the module that owns the capability owns the fake as well.
 

@@ -1860,7 +1860,8 @@ Here is `alder eval examples/todos 'Todo.filterLabel Active'`, step by step
    ```
 
    with the app's default session (`TestSession`, the one `alder test`
-   uses) and the adapters' capabilities; without adapters `Caps` is
+   uses; only a test build has it, so eval and the REPL build with
+   `scratch.Options{Tests: true}`, below) and the adapters' capabilities; without adapters `Caps` is
    `app.Caps{}.Registry()`, every capability unwired, and a call to one
    fails with "capability … is not wired in eval" (as does a call to one
    whose field the adapters' `Caps` leaves `nil`). A failed effect
@@ -1868,7 +1869,10 @@ Here is `alder eval examples/todos 'Todo.filterLabel Active'`, step by step
 4. **Compile.** `scratch.CompileCheckedWith` builds what step 2
    checked, without checking again: it takes the lock file
    `build/todos/scratch/eval.lock`, lowers and emits the whole app plus
-   `Scratch` into `build/todos/scratch/eval/`, and builds it. The
+   `Scratch` into `build/todos/scratch/eval/` as a test build (its
+   `Options.Tests`: the app's tests, `TestSession` and fakes are
+   compiled in, as for `alder test`; eval is a developer tool, never
+   deployed), and builds it. The
    returned `Build` keeps the lock until `alder eval` closes it after
    step 5, so another evaluation cannot replace the executable while
    this one runs it. Taking the lock first *tries* it
@@ -1976,15 +1980,18 @@ about 15 seconds, almost all of it the evaluations.
 ### Running tests
 
 `alder test` (chapter 10) is the scratch runner with no scratch module:
-`cmd/alder/test.go` calls `scratch.Compile(dir, nil, mainGo, "test", "")`,
-so the app is compiled as it is, into `build/<app>/scratch/test/`, under
-the lock `build/<app>/scratch/test.lock`. What makes it a test program
-is what the compiler emits for `test` declarations, and the main.
+`cmd/alder/test.go` calls `scratch.CompileCheckedWith` with purpose
+`"test"` and `scratch.Options{Tests: true}`, so the app is compiled as
+it is, into `build/<app>/scratch/test/`, under the lock
+`build/<app>/scratch/test.lock`, as a test build. What makes it a test
+program is what the compiler emits for `test` declarations, which only
+a test build has (`gen.Options.Tests`; a production build, `alder
+build`'s, emits none of what this section shows), and the main.
 
 **Each test is a function.** Section 7's emitter turns the N-th `test`
 of module M into `test__M__N`. `Todo`'s one test,
 `test "countOpen ignores done todos" = countOpen [ … ] == 1` (two todos,
-one done), is emitted into `build/todos/Todo_alder.go` as
+one done), is emitted into `build/todos/scratch/test/Todo_alder.go` as
 
 ```go
 // test__Todo__1 is test "countOpen ignores done todos" of module Todo.
@@ -2020,8 +2027,10 @@ func TestSession() any {
 ```
 
 A `Case` has `Pure` (a `func() bool`) or `Task` (a `func() eff.Task[bool]`),
-never both. `alder build` emits the table too; nothing in the server
-calls it.
+never both. `alder build` emits neither the tests nor the table: the
+production module has no `Tests`, no `TestSession` and no `test__`
+function, and does not import `alder/rt/testing` (`TestGen_ProdHasNoTests`
+in `internal/gen/gen_test.go` checks it).
 
 **The main.** `testMain` in `cmd/alder/test.go` writes the scratch
 program's `cmd/main.go`. For the to-do app, which has adapters:
@@ -2539,7 +2548,8 @@ production build. `Test.fake Stripe` lowers to an `ir.TestFake` node
 naming the fake.
 
 **A fake becomes a Go struct.** `gen.Emit` takes `Options.Tests`, which
-only `alder test` sets (`scratch.Options{Tests: true}`). With it, the
+`alder test` sets (`scratch.Options{Tests: true}`), and so do `alder
+eval` and the REPL, whose mains need `TestSession`. With it, the
 module's Go file gets the fake's table, as a record type and a
 `db.Table` exactly like an app table's (`Payments__Charge`,
 `table__Payments__Charge`), and then the fake itself. From
@@ -2644,34 +2654,17 @@ schema hash. The order matters: `Migrate` ends by checking that the
 live tables are exactly the app's, so it runs before the fakes' tables
 exist, never after.
 
-**Production.** Without `Options.Tests` (`alder build`, `alder run`,
-eval and the REPL) none of this is emitted: no fake struct, no entry
-functions, no fake table, no `FakeTables` or `Fakes`. Tests are still
-compiled (section 8, "Running tests"), so each must compile without
-them. A test that uses a fake's table (decided on the IR, by
-`usesFakeTable` in `internal/gen/gen.go`) becomes a stub, and
-`Test.fake` becomes a step that fails. From `alder build --emit shop`:
-
-```go
-// test__Checkout__1 is test "an order is paid" of module Checkout.
-func test__Checkout__1() eff.Task[bool] {
-	return eff.Bind(eff.Call("Test.fake Stripe", false, func(_e1 *eff.Env) (struct{}, error) {
-		return struct{}{}, errors.New("Test.fake is only available in `alder test`")
-	}), func(_ struct{}) eff.Task[bool] {
-		return eff.Bind(Checkout__pay(250), func(said string) eff.Task[bool] {
-			return eff.Pure(rtesting.Eq(said, "paid"))
-		})
-	})
-}
-
-// test__Checkout__2 is test "a declined charge leaves no row" of module Checkout.
-func test__Checkout__2() eff.Task[bool] {
-	return eff.Fail[bool]("this test uses a fake's tables, which exist only in `alder test`")
-}
-```
-
-Neither ever runs: only `alder test` runs tests, and it builds with
-`Tests` set.
+**Production.** Without `Options.Tests` (`alder build` and `alder
+run`) none of this is emitted: no fake struct, no entry functions, no
+fake table, no `FakeTables` or `Fakes`. Nor are the tests (section 8,
+"Running tests"): no `test__` functions, no `Tests`, no `TestSession`,
+so nothing in a production build uses a fake, a fake's table or
+`Test.fake`, and nothing imports `alder/rt/testing`. The `Test` nodes
+(`ir.TestRun`, `ir.TestTrace`, `ir.TestFake` and a test's recorded `==`,
+`ir.TestEq`) occur only in `test` bodies, so the emitter treats one
+reaching it in a production build as a bug in the compiler: `testNode`
+in `internal/gen/effects.go` panics, and `Emit` returns that as its
+internal error instead of writing Go.
 
 ### What is still to come
 
