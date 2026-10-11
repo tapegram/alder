@@ -1,0 +1,12 @@
+module Markdown
+
+-- Rendering a post's body is outside the language: a capability implemented in Go
+-- (adapters/markdown.go), which builds the HTML node by node, so a post cannot inject markup.
+capability Markdown {
+  render : Text -> Query (Html Never),
+}
+
+-- toHtml is the post body as HTML. Other modules call this rather than the capability: from
+-- outside, `Markdown.render` names this module's values, not the capability's entry.
+toHtml : Text -> Query (Html Never)
+toHtml text = Markdown.render text

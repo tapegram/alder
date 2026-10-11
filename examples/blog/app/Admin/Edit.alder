@@ -1,0 +1,102 @@
+module Admin.Edit
+
+import Post
+import Comment
+import User
+import Layout
+
+page "/admin/{id}" { id: Post.PostId } requires user
+
+type Model = { post: Post }
+
+-- load finds the post when the session's user wrote it; anyone else's post, like a missing
+-- one, is a 404. The messages carry no id: they act on `model.post`, which this `load` has
+-- authorized (as the to-do example's Todos.Show does).
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Post params.id
+  match found {
+    Just post -> if post.author == session.user then Query.succeed { post: post } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+form EditPost = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Save form EditPost
+msg Publish
+msg Unpublish
+msg Delete
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> {
+    let _ <- Db.update Post model.post.id (\post -> { post | title: p.form.title, body: p.form.body })
+    Task.succeed Rerender
+  },
+  Publish p -> {
+    let _ <- Db.update Post model.post.id (\post -> { post | published: True })
+    Task.succeed Rerender
+  },
+  Unpublish p -> {
+    let _ <- Db.update Post model.post.id (\post -> { post | published: False })
+    Task.succeed Rerender
+  },
+  -- The post's comments go with it: Comment.post is `@ref Post @cascade`.
+  Delete p -> {
+    let _ <- Db.delete Post model.post.id
+    Task.succeed (Redirect (Admin {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={"Edit: " ++ model.post.title}>
+    <h1>{model.post.title}</h1>
+    <p>
+      {if model.post.published then "Published" else "Draft"}
+      · <a href={Posts.Show { slug: model.post.slug }}>View</a>
+    </p>
+
+    <form submit={Save}>
+      <Errors form />
+      <Input field="title" label="Title" value={model.post.title} />
+      <Errors field="title" />
+      <Textarea field="body" label="Body (Markdown)" value={model.post.body} />
+      <Errors field="body" />
+      <button>Save</button>
+    </form>
+
+    {if model.post.published then
+      <button click={Unpublish}>Unpublish</button>
+    else
+      <button click={Publish}>Publish</button>}
+    <button click={Delete}>Delete</button>
+    <a href={Admin {}}>All your posts</a>
+  </Layout.Page>
+
+test "deleting a post deletes its comments" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", published: True, author: author }
+  let _ <- Db.insert Comment { post: id, author: Text.NonEmpty "Ann", body: Text.NonEmpty "First!" }
+  let _ <- Db.insert Comment { post: id, author: Text.NonEmpty "Bob", body: Text.NonEmpty "Second." }
+  let model <- load { id: id } { user: author }
+  let r <- Test.run (update Delete model { user: author })
+  let posts <- Db.from Post |> Db.count
+  let comments <- Db.from Comment |> Db.count
+  Task.succeed ({ value: r.value, trace: r.trace, posts: posts, comments: comments } == { value: Ok (Redirect (Admin {})), trace: ["Db.delete Post"], posts: 0, comments: 0 })
+}
+
+test "another author's post is not found" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "", role: Author }
+  let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
+  let r <- Test.run {
+    let m <- load { id: id } { user: other }
+    Task.succeed m.post.id
+  }
+  Task.succeed (r.value == Err "not found")
+}

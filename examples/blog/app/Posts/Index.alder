@@ -1,0 +1,121 @@
+module Posts.Index
+
+import Post
+import User
+import Layout
+
+page "/" { page: Int = 1, q: Text = "" }
+
+type Model = {
+  page: Int,
+  q: Text,
+  posts: List Post,
+  hasMore: Bool,
+}
+
+perPage : Int
+perPage = 10
+
+-- load reads one page of published posts, newest first, matching `q` when it is not empty. It
+-- asks for one post more than a page holds: if that one comes back there is a next page
+-- (`hasMore`), and it is dropped from the list.
+load : Params -> Session -> Query Model
+load params session = {
+  let page = if params.page < 1 then 1 else params.page
+  let matching =
+    if Text.isEmpty params.q then Db.and [] else Db.or [Post.title.contains params.q, Post.body.contains params.q]
+  let found <-
+    Db.from Post
+      |> Db.where (Post.published.eq True)
+      |> Db.where matching
+      |> Db.orderBy Post.created.desc
+      |> Db.limit (perPage + 1)
+      |> Db.offset ((page - 1) * perPage)
+      |> Db.all
+  Query.succeed { page: page, q: params.q, posts: List.take perPage found, hasMore: List.length found > perPage }
+}
+
+form SearchForm = {
+  q: Text,
+}
+
+-- A search is a message like any form: `update` answers with the first page of the results,
+-- whose address (/?q=…) can be bookmarked and shared.
+msg Search form SearchForm
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Search p -> Task.succeed (Redirect (Posts.Index { page: 1, q: p.form.q })),
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Blog">
+    <h1>Blog</h1>
+
+    <form submit={Search} class="search">
+      <Input field="q" label="Search" value={model.q} />
+      <Errors form />
+      <button>Search</button>
+    </form>
+
+    {if List.isEmpty model.posts then
+      <p class="empty">No posts{if Text.isEmpty model.q then "" else " match “" ++ model.q ++ "”"}.</p>
+    else
+      <ul class="posts">
+        {for post in model.posts ->
+          <li>
+            <a href={Posts.Show { slug: post.slug }}>{post.title}</a>
+            <span class="date">{Time.format "Jan 2, 2006" post.created}</span>
+          </li>}
+      </ul>}
+
+    <nav class="pages">
+      {if model.page > 1 then <a href={Posts.Index { page: model.page - 1, q: model.q }} rel="prev">Newer</a> else Html.none}
+      {if model.hasMore then <a href={Posts.Index { page: model.page + 1, q: model.q }} rel="next">Older</a> else Html.none}
+    </nav>
+
+    {match session.user {
+      Just _ -> <p><a href={Admin {}}>Write</a> <button click={App.Logout}>Log out</button></p>,
+      Nothing -> <p><a href={Auth.Login {}}>Log in</a></p>,
+    }}
+  </Layout.Page>
+
+-- Every row a test inserts gets the same `created` (a test's clock is fixed at
+-- 2026-01-01T00:00:00Z), so no test can observe the newest-first order: this one checks that the
+-- drafts are left out and both published posts are listed. The order is `Db.orderBy` in `load`.
+test "the front page lists only published posts, newest first" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "first", title: Text.NonEmpty "First", body: "", published: True, author: author }
+  let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "", author: author }
+  let _ <- Db.insert Post { slug: Post.Slug "second", title: Text.NonEmpty "Second", body: "", published: True, author: author }
+  let model <- load { page: 1, q: "" } { user: Nothing }
+  let titles = List.map (\p -> p.title) model.posts
+  Task.succeed ({ count: List.length titles, first: List.member (Text.NonEmpty "First") titles, second: List.member (Text.NonEmpty "Second") titles } == { count: 2, first: True, second: True })
+}
+
+test "search matches title or body" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "tomatoes", title: Text.NonEmpty "Tomato season", body: "It is here.", published: True, author: author }
+  let _ <- Db.insert Post { slug: Post.Slug "soup", title: Text.NonEmpty "Soup", body: "Use ripe tomatoes.", published: True, author: author }
+  let _ <- Db.insert Post { slug: Post.Slug "trains", title: Text.NonEmpty "Trains", body: "Fast ones.", published: True, author: author }
+  let model <- load { page: 1, q: "TOMATO" } { user: Nothing }
+  let titles = List.map (\p -> p.title) model.posts
+  Task.succeed ({ count: List.length titles, title: List.member (Text.NonEmpty "Tomato season") titles, body: List.member (Text.NonEmpty "Soup") titles } == { count: 2, title: True, body: True })
+}
+
+test "a `%` in the query is literal" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "done", title: Text.NonEmpty "100% done", body: "", published: True, author: author }
+  let _ <- Db.insert Post { slug: Post.Slug "ways", title: Text.NonEmpty "1000 ways", body: "", published: True, author: author }
+  let model <- load { page: 1, q: "100%" } { user: Nothing }
+  Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "100% done"])
+}
+
+test "page 99 is empty" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Task.all (List.map (\n -> Db.insert Post { slug: Post.Slug ("post-" ++ Text.fromInt n), title: Text.NonEmpty "A post", body: "", published: True, author: author }) (List.range 1 11))
+  let pages <- Query.all (List.map (\n -> load { page: n, q: "" } { user: Nothing }) [1, 2, 99, 0])
+  let seen = List.map (\m -> { page: m.page, posts: List.length m.posts, hasMore: m.hasMore }) pages
+  Task.succeed (seen == [{ page: 1, posts: 10, hasMore: True }, { page: 2, posts: 1, hasMore: False }, { page: 99, posts: 0, hasMore: False }, { page: 1, posts: 10, hasMore: True }])
+}
