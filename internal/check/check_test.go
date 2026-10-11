@@ -47,10 +47,14 @@ func runDirProg(t *testing.T, dir string) (*names.Program, *Result, *diag.Bag) {
 	return prog, res, bag
 }
 
-func render(bag *diag.Bag) string {
+func render(bag *diag.Bag) string { return renderSev(bag, false) }
+
+// renderSev is render, with the warnings too when warnings is set (a corpus directory named
+// after a warning code, "W0004-…").
+func renderSev(bag *diag.Bag, warnings bool) string {
 	var sb strings.Builder
 	for _, d := range bag.Items {
-		if d.Severity != "error" {
+		if d.Severity != "error" && !warnings {
 			continue
 		}
 		fmt.Fprintf(&sb, "%s:%d:%d %s %s\n", d.Span.File, d.Span.Start.Line, d.Span.Start.Col, d.Code, d.Message)
@@ -89,7 +93,7 @@ func TestCorpus(t *testing.T) {
 	dirs, _ := filepath.Glob("../../testdata/corpus/*")
 	for _, dir := range dirs {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
-			got := render(runDir(t, dir))
+			got := renderSev(runDir(t, dir), strings.HasPrefix(filepath.Base(dir), "W"))
 			if *update {
 				if err := os.WriteFile(filepath.Join(dir, "expected.diag"), []byte(got), 0o644); err != nil {
 					t.Fatal(err)

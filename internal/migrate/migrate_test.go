@@ -758,3 +758,11 @@ func TestIndexes(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// ParseHeader ignores a byte-order mark an editor added (as db.ParseMigration does).
+func TestParseHeader_BOM(t *testing.T) {
+	name, from, to, drops, err := ParseHeader("\ufeff-- alder migration 0002_x\r\n-- from aaaaaaaaaaaa\r\n-- to bbbbbbbbbbbb\r\n-- DROPS DATA: column Post.x\r\n\r\nSELECT 1;\r\n")
+	if err != nil || name != "0002_x" || from != "aaaaaaaaaaaa" || to != "bbbbbbbbbbbb" || len(drops) != 1 || drops[0] != "column Post.x" {
+		t.Fatalf("%q %q %q %q %v", name, from, to, drops, err)
+	}
+}

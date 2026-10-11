@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"alder/internal/scratch"
+	"alder/rt/db"
 	"time"
 )
 
@@ -566,12 +568,31 @@ func TestEval_StructuralRecordHint(t *testing.T) {
 	}
 }
 
-// A schema mismatch of build/<app>/dev.db says what recreates it.
+// A refusal of build/<app>/dev.db says what recreates it, and what that costs: Ensure's schema
+// mismatch and Migrate's drift end in the same remedy.
 func TestDevDBHint(t *testing.T) {
-	msg := "db: schema mismatch: …; changed tables: todos; run in dev mode to recreate the database"
-	want := "db: schema mismatch: …; changed tables: todos; start `alder run` (it recreates " + filepath.Join("build", "todos", "dev.db") + ") or delete it"
-	if got := devDBHint(msg, filepath.Join("build", "todos")); got != want {
-		t.Errorf("got %q", got)
+	ctx := context.Background()
+	todo := db.TableDesc{Name: "Todo.Todo", ID: "id", Columns: []db.Column{{Name: "id", Type: db.CText}}}
+	todo2 := db.TableDesc{Name: "Todo.Todo", ID: "id", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "x", Type: db.CInt}}}
+	s, err := db.OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.Ensure(ctx, []db.TableDesc{todo}, true); err != nil {
+		t.Fatal(err)
+	}
+	err = s.Ensure(ctx, []db.TableDesc{todo2}, false)
+	if err == nil {
+		t.Fatal("no mismatch")
+	}
+	want := "; changed tables: Todo; to start over, start `alder run` (it recreates " + filepath.Join("build", "todos", "dev.db") + " empty: every row is deleted) or delete it"
+	if got := devDBHint(err.Error(), filepath.Join("build", "todos")); !strings.HasSuffix(got, want) {
+		t.Errorf("Ensure: got %q", got)
+	}
+	drift := "db: the database's tables are not the app's schema: the database was changed outside migrations since 0001_initial (changed tables: Todo): restore a backup; " + db.DevRemedy
+	if got := devDBHint(drift, filepath.Join("build", "todos")); strings.Contains(got, "ALDER_DEV") || !strings.Contains(got, "start `alder run`") {
+		t.Errorf("Migrate: got %q", got)
 	}
 }
 

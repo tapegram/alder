@@ -70,9 +70,10 @@ func Render(m Migration) string {
 }
 
 // ParseHeader reads the header of a migration file written by Render: its name, the two
-// hashes, and the DROPS DATA lines in order.
+// hashes, and the DROPS DATA lines in order. A leading byte-order mark is ignored.
 func ParseHeader(text string) (name, fromHash, toHash string, dropsData []string, err error) {
 	var header []string
+	text = strings.TrimPrefix(text, "\ufeff") // a byte-order mark an editor may add
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSuffix(line, "\r")
 		if !strings.HasPrefix(line, "--") {

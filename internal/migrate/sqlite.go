@@ -201,14 +201,14 @@ func convert(tn string, o, n Column) (conversion, error) {
 		}
 		if len(gone) > 0 {
 			cv.cond = inList(n.Enum)
-			cv.drops = "rows whose " + label + " is " + strings.Join(gone, " or ") + " are deleted"
+			cv.drops = "rows whose " + label + " is " + strings.Join(gone, " or ") + " are deleted (to keep them, add an UPDATE first)"
 		}
 	case to == db.CText && (from == db.CEnum || from == db.CDate || from == db.CTime):
 	case to == db.CText && (from == db.CInt || from == db.CFloat):
 		cv.expr = "CAST(" + src + " AS TEXT)"
 	case to == db.CEnum && from == db.CText:
 		cv.cond = inList(n.Enum)
-		cv.drops = "rows whose " + label + " is not " + strings.Join(n.Enum, " or ") + " are deleted"
+		cv.drops = "rows whose " + label + " is not " + strings.Join(n.Enum, " or ") + " are deleted (to keep them, add an UPDATE first)"
 	case to == db.CInt && from == db.CBool:
 	case to == db.CFloat && (from == db.CInt || from == db.CBool):
 		cv.expr = "CAST(" + src + " AS REAL)"

@@ -71,6 +71,13 @@ func (s Step) String() string {
 	return s.Kind.String() + " " + t
 }
 
+// FormatChanged is the refusal of a snapshot of another storage format (E0019's text, and
+// Diff's): moving every table to a new format is a rebuild of each, which `alder migrate`
+// does not write yet.
+func FormatChanged(old, new string) string {
+	return fmt.Sprintf("the storage format changed (v%s → v%s): this needs a rebuild migration of every table, which this `alder migrate` cannot write yet (`alder migrate --format` is planned); build with the compiler that wrote migrations/ until then", old, new)
+}
+
 // display is the Alder name of SQL table name sql: "Post__Post" → "Post" (a table lives in the
 // module named after it, and module names have no "__").
 func display(sql string) string {
@@ -372,7 +379,7 @@ func ruleName(r db.OnDelete) string {
 // column; kept columns in a new order.
 func Diff(old, new Schema) ([]Step, error) {
 	if old.Format != "" && new.Format != "" && old.Format != new.Format {
-		return nil, fmt.Errorf("the snapshot is storage format v%s, this compiler's is v%s", old.Format, new.Format)
+		return nil, errors.New(FormatChanged(old.Format, new.Format))
 	}
 	old, new = sorted(old), sorted(new)
 	p, err := pairTables(old, new)

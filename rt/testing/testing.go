@@ -183,8 +183,10 @@ type Options struct {
 	schemaErr string // why Migrations do not make Tables (set by defaults): every case fails with it
 }
 
-// notTheSchema is the failure of every test of an app whose migrations do not produce its
-// tables (its tables changed without `alder migrate`).
+// notTheSchema is the failure of every test of an app whose migrations lead to a schema that
+// is not its tables' (db.ErrSchemaAhead: its tables changed without `alder migrate`). Any other
+// refusal of the migrations (a file edited after it was written, a broken chain) fails every
+// test with the runtime's own text, which names the file and the remedy.
 const notTheSchema = "the migrations do not produce the app's schema: run `alder migrate`"
 
 // defaultNow is when a test's clock starts unless told otherwise.
@@ -240,7 +242,7 @@ func defaults(o Options) Options {
 			_, err = store.Migrate(context.Background(), o.Tables, o.Migrations, false)
 			store.Close()
 		}
-		if errors.Is(err, db.ErrDrift) {
+		if errors.Is(err, db.ErrSchemaAhead) {
 			o.schemaErr = notTheSchema
 		} else if err != nil {
 			o.schemaErr = err.Error()

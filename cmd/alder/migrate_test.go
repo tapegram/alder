@@ -297,7 +297,7 @@ func TestMigrate_SnapshotMismatch(t *testing.T) {
 	editApp(t, dir, "User.alder", "  bio: Maybe Text = Nothing,\n", "  bio: Maybe Text = Nothing,\n  site: Maybe Text = Nothing,\n")
 	before := migrationsList(t, dir)
 	code, out, errs := runMigrate(t, dir)
-	if code != 1 || out != "" || errs != "alder migrate: migrations/schema.json does not match 0002_add_bio.sql's result; restore migrations/schema.json from version control, or delete the last migration file and run `alder migrate` again\n" {
+	if code != 1 || out != "" || errs != "alder migrate: migrations/schema.json does not match 0002_add_bio.sql's result; restore migrations/schema.json from version control, or delete the last migration file and run `alder migrate` again (only if it has not run against a database you keep)\n" {
 		t.Fatalf("mismatch: exit %d\n%s%s", code, out, errs)
 	}
 	if got := migrationsList(t, dir); !slices.Equal(got, before) {
@@ -374,5 +374,25 @@ func TestDeriveSlug(t *testing.T) {
 		if _, err := migrate.NextName(t.TempDir(), got); err != nil {
 			t.Errorf("%q is not a slug NextName takes: %v", got, err)
 		}
+	}
+}
+
+// A middle file deleted (or two numbered alike): `alder migrate` refuses with `alder check`'s
+// text instead of planning on top of a broken chain ("no changes").
+func TestMigrate_BrokenChainRefused(t *testing.T) {
+	dir := freshBlog(t)
+	runMigrate(t, dir)
+	mdir := filepath.Join(dir, "migrations")
+	editApp(t, dir, "User.alder", "  created: Time @created,\n", "  created: Time @created,\n  bio: Maybe Text = Nothing,\n")
+	runMigrate(t, dir)
+	editApp(t, dir, "User.alder", "  bio: Maybe Text = Nothing,\n", "  bio: Maybe Text = Nothing,\n  site: Maybe Text = Nothing,\n")
+	runMigrate(t, dir)
+	if err := os.Remove(filepath.Join(mdir, "0002_add_bio.sql")); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errs := runMigrate(t, dir)
+	want := "alder migrate: migration 0003_add_site does not follow 0001_initial: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)\n"
+	if code != 1 || out != "" || errs != want {
+		t.Fatalf("deleted middle file: exit %d\n%s%s", code, out, errs)
 	}
 }

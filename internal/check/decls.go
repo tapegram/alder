@@ -265,6 +265,9 @@ func (mc *modCtx) defineTypes() {
 				for _, f := range d.Record.Fields {
 					ft := mc.typeOf(f.Type, params)
 					mc.deferDefault(f, ft)
+					if f.Default != nil { // a literal of a declared record names every field
+						c.bag.Warn(diag.PlainDefault, f.Span, "field `%s`: a default on a plain record type never applies; remove it", f.Name)
+					}
 					mc.checkRegular(tt, f, ft)
 					tt.Fields = append(tt.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
 				}

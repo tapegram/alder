@@ -108,6 +108,7 @@ const (
 	UnreachableArm = "E0310"
 	UnusedImport   = "W0001"
 	UnshownErrors  = "W0003"
+	PlainDefault   = "W0004"
 )
 
 type Bag struct{ Items []Diagnostic }

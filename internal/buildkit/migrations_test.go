@@ -128,9 +128,9 @@ func TestSchemaDrift(t *testing.T) {
 	// missing), a last file that does not end at the snapshot, a malformed file
 	for _, c := range []struct{ file, want string }{
 		{"-- alder migration 0003_sub\n-- from 123456789abc\n-- to " + m1.To + "\n\nSELECT 1;\n",
-			"migration 0003_sub does not follow 0001_initial: a file is missing or edited; regenerate it"},
+			"migration 0003_sub does not follow 0001_initial: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)"},
 		{"-- alder migration 0003_sub\n-- from " + m1.To + "\n-- to 123456789abc\n\nSELECT 1;\n",
-			"migration 0003_sub does not lead to migrations/schema.json: a file is missing or edited; regenerate it"},
+			"migration 0003_sub does not lead to migrations/schema.json: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)"},
 		{"-- alder migration 0003_sub\n-- from " + m1.To + "\n-- to " + m1.To + "\n\nSELECT 1;\nSELECT 2\n",
 			"migration 0003_sub: line 6: a statement must end in `;`"},
 	} {
@@ -141,6 +141,27 @@ func TestSchemaDrift(t *testing.T) {
 		if d := SchemaDrift(dir, lowered(t, dir)); d == nil || d.Message != c.want || d.Code != "E0019" {
 			t.Fatalf("chain: %+v, want %q", d, c.want)
 		}
+	}
+	// two files with one number (two branches each added the next migration)
+	dir = copyApp(t, migrated)
+	first, err = os.ReadFile(filepath.Join(dir, "migrations", "0001_initial.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := strings.Replace(string(first), "0001_initial", "0001_other", 1)
+	if err := os.WriteFile(filepath.Join(dir, "migrations", "0001_other.sql"), []byte(other), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want := "two migrations are numbered 0001 (likely two branches: 0001_initial.sql, 0001_other.sql): keep the one already merged or deployed, delete the other, restore schema.json to its result, run `alder migrate`"
+	if d := SchemaDrift(dir, lowered(t, dir)); d == nil || d.Message != want {
+		t.Fatalf("duplicate number: %+v\nwant %q", d, want)
+	}
+	// a snapshot of another storage format: a rebuild of every table, not yet written
+	dir = copyApp(t, migrated)
+	edit(t, filepath.Join(dir, "migrations", "schema.json"), `"format": "1"`, `"format": "0"`)
+	want = "the storage format changed (v0 → v1): this needs a rebuild migration of every table, which this `alder migrate` cannot write yet (`alder migrate --format` is planned); build with the compiler that wrote migrations/ until then"
+	if d := SchemaDrift(dir, lowered(t, dir)); d == nil || d.Message != want {
+		t.Fatalf("format: %+v\nwant %q", d, want)
 	}
 	// migration files without the snapshot, and a snapshot that does not read
 	dir = copyApp(t, migrated)

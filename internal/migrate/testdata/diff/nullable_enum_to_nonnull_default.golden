@@ -2,7 +2,7 @@
 -- from 676df5b243e5
 -- to fcca24c0c1ab
 -- step: rebuild table User: User.role: Maybe (A | B | C) -> A | B
--- DROPS DATA: rows whose User.role is C are deleted
+-- DROPS DATA: rows whose User.role is C are deleted (to keep them, add an UPDATE first)
 
 CREATE TABLE "User__User__alder__new" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "email" TEXT NOT NULL UNIQUE, "role" TEXT NOT NULL CHECK ("role" IN ('A', 'B'))) STRICT;
 INSERT INTO "User__User__alder__new" ("id", "name", "email", "role") SELECT "id", "name", "email", COALESCE("role", 'A') FROM "User__User" WHERE ("role" IS NULL OR "role" IN ('A', 'B'));

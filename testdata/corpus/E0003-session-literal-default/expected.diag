@@ -1,2 +1,2 @@
-app/App.alder:11:9 E0003 record literal for `Session` is missing `theme` (a default applies to an insert, a cookie or a page parameter, not to a literal)
-app/Home.alder:16:48 E0003 record literal for `Session` is missing `theme` (a default applies to an insert, a cookie or a page parameter, not to a literal)
+app/App.alder:11:9 E0003 record literal for `Session` is missing `theme` (a default applies only to an insert, the session cookie, a page or message parameter, or a form, not to a literal)
+app/Home.alder:16:48 E0003 record literal for `Session` is missing `theme` (a default applies only to an insert, the session cookie, a page or message parameter, or a form, not to a literal)

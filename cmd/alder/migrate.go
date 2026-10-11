@@ -39,7 +39,8 @@ const maxSlug = 40
 // what this command fixes. Exit 0 on success or no change; 1 for check errors, a change Diff
 // refuses (a new non-null column without a default, a `@renamed` that names nothing, …), or
 // migrations/ that do not agree with themselves (a schema.json that is not the last file's
-// result); 2 for usage errors and files that cannot be read or written.
+// result, a file that does not follow the one before it, two files with one number:
+// buildkit.MigrationsChain); 2 for usage errors and files that cannot be read or written.
 func runMigrateTo(args []string, stdout, stderr io.Writer) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -91,6 +92,15 @@ func runMigrateTo(args []string, stdout, stderr io.Writer) (code int) {
 	old, last, code := previous(mdir, stderr)
 	if code != 0 {
 		return code
+	}
+	// the files must agree with themselves before a migration is planned on top of them (a
+	// middle file deleted, two numbered alike): `alder check`'s E0019 texts
+	if _, _, _, err := buildkit.MigrationsChain(dir); err != nil {
+		var sm *buildkit.SnapshotMismatch
+		if !errors.As(err, &sm) { // (previous has said that one its own way)
+			fmt.Fprintf(stderr, "alder migrate: %v\n", err)
+			return 1
+		}
 	}
 
 	m, err := migrate.Plan(old, cur, "next")
@@ -217,7 +227,7 @@ func previous(mdir string, stderr io.Writer) (migrate.Schema, string, int) {
 		return old, last, 1
 	}
 	if !strings.HasPrefix(hash, to) {
-		fmt.Fprintf(stderr, "alder migrate: migrations/schema.json does not match %s's result; restore migrations/schema.json from version control, or delete the last migration file and run `alder migrate` again\n", lastFile)
+		fmt.Fprintf(stderr, "alder migrate: migrations/schema.json does not match %s's result; restore migrations/schema.json from version control, or delete the last migration file and run `alder migrate` again (only if it has not run against a database you keep)\n", lastFile)
 		return old, last, 1
 	}
 	return old, last, 0

@@ -660,7 +660,7 @@ func (mc *modCtx) checkRecordLit(x *syntax.RecordLit, rec *types.Record, env *en
 			defaulted = append(defaulted, f.Name)
 		}
 	}
-	const why = "a default applies to an insert, a cookie or a page parameter, not to a literal"
+	const why = "a default applies only to an insert, the session cookie, a page or message parameter, or a form, not to a literal"
 	switch {
 	case len(missing) > 0 && len(missing) == len(defaulted):
 		c.errorf(diag.TypeMismatch, x.Span, "record literal for `%s` is missing `%s` (%s)", rec.Name, strings.Join(missing, "`, `"), why)

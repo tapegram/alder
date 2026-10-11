@@ -65,16 +65,77 @@ func CopyMigrations(src, dst string) error {
 	return nil
 }
 
+// MigrationsChain reads dir/migrations: the snapshot schema.json (with its hash) and the
+// migration files, and checks that they agree with themselves: every file parses
+// (db.ParseMigration: "migration 0002_x: line 7: a statement must end in `;`"), no two share a
+// number, each file's `-- from` is the previous file's `-- to`, and the last `-- to` is the
+// snapshot's hash. ok is false when there is no schema.json and no file (an app without
+// migrations); err is the first disagreement, a sentence naming the remedy. Both SchemaDrift
+// (E0019) and `alder migrate` (which must not plan on top of a broken chain) use it.
+func MigrationsChain(dir string) (snap migrate.Schema, snapHash string, ok bool, err error) {
+	files := migrationFiles(dir)
+	if !HasMigrations(dir) {
+		if len(files) == 0 {
+			return snap, "", false, nil
+		}
+		return snap, "", true, fmt.Errorf("migrations/ has migration files but no schema.json, the schema they lead to: restore it from version control")
+	}
+	snap, err = migrate.ReadSnapshot(filepath.Join(dir, snapshotFile))
+	if err == nil {
+		snapHash, err = snap.Hash()
+	}
+	if err != nil {
+		return snap, "", true, fmt.Errorf("migrations/schema.json does not read (%v): restore it from version control", err)
+	}
+	// two files with one number: two branches each added the next migration
+	byNum := map[string][]string{}
+	for _, f := range files {
+		num, _, _ := strings.Cut(filepath.Base(f), "_")
+		byNum[num] = append(byNum[num], filepath.Base(f))
+	}
+	for _, f := range files {
+		num, _, _ := strings.Cut(filepath.Base(f), "_")
+		if same := byNum[num]; len(same) > 1 {
+			return snap, snapHash, true, fmt.Errorf("two migrations are numbered %s (likely two branches: %s): keep the one already merged or deployed, delete the other, restore schema.json to its result, run `alder migrate`", num, strings.Join(same, ", "))
+		}
+	}
+	const restore = "restore migrations/ from version control (`git checkout migrations/`)" // as SnapshotMismatch says
+	var prev db.Migration
+	for i, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return snap, snapHash, true, fmt.Errorf("migration %s does not read: %v", filepath.Base(f), err)
+		}
+		m, err := db.ParseMigration(strings.TrimSuffix(filepath.Base(f), ".sql"), string(b))
+		if err != nil {
+			return snap, snapHash, true, err
+		}
+		if i > 0 && m.From != prev.To {
+			return snap, snapHash, true, fmt.Errorf("migration %s does not follow %s: a file is missing or edited; %s", m.Name, prev.Name, restore)
+		}
+		prev = m
+	}
+	if len(files) > 0 && prev.To != snapHash[:db.HashLen] {
+		return snap, snapHash, true, &SnapshotMismatch{Last: prev.Name}
+	}
+	return snap, snapHash, true, nil
+}
+
+// SnapshotMismatch is MigrationsChain's error when the last migration file does not lead to
+// schema.json (`alder migrate` says it its own way: it can also write the file again).
+type SnapshotMismatch struct{ Last string }
+
+func (e *SnapshotMismatch) Error() string {
+	return "migration " + e.Last + " does not lead to migrations/schema.json: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)"
+}
+
 // SchemaDrift compares the checked program's schema with dir/migrations/schema.json; nil when
 // absent or equal; else an E0019 at migrations/schema.json:1:1 naming the first changed table:
 // "the schema changed since migration 0003 (table Post: column body): run `alder migrate`".
 // Schemas are equal when their hashes are (the tables' CREATE TABLE statements, what a
-// database holds), so a changed default alone is no change. Before that it checks the files
-// (db.ParseMigration: "migration 0002_x: line 7: a statement must end in `;`") and their chain:
-// each file's `-- from` is the previous file's `-- to` ("migration 0003_sub does not follow
-// 0001_initial: a file is missing or edited; regenerate it"), and the last `-- to` is the
-// snapshot's hash. Migration files without a schema.json, and a schema.json that does not read,
-// are E0019 too.
+// database holds), so a changed default alone is no change. Before that it checks migrations/
+// itself (MigrationsChain), whose every disagreement is an E0019 too. A changed storage format
+// says it needs a rebuild of every table, which `alder migrate` cannot write yet.
 func SchemaDrift(dir string, p *ir.Program) *diag.Diagnostic {
 	files := migrationFiles(dir)
 	since := "the last migration"
@@ -88,43 +149,16 @@ func SchemaDrift(dir string, p *ir.Program) *diag.Diagnostic {
 			Span:    diag.Span{File: snapshotFile, Start: diag.Pos{Line: 1, Col: 1}, End: diag.Pos{Line: 1, Col: 1}},
 			Message: fmt.Sprintf(format, args...)}
 	}
-	if !HasMigrations(dir) {
-		if len(files) == 0 {
-			return nil
-		}
-		return at("migrations/ has migration files but no schema.json, the schema they lead to: restore it from version control")
-	}
-	old, err := migrate.ReadSnapshot(filepath.Join(dir, snapshotFile))
-	var oldHash string
-	if err == nil {
-		oldHash, err = old.Hash()
-	}
+	old, oldHash, ok, err := MigrationsChain(dir)
 	if err != nil {
-		return at("migrations/schema.json does not read (%v): restore it from version control", err)
+		return at("%v", err)
 	}
-	// the files: each well-formed, each starting where the one before it ends, the last ending
-	// at the snapshot
-	var prev db.Migration
-	for i, f := range files {
-		b, err := os.ReadFile(f)
-		if err != nil {
-			return at("migration %s does not read: %v", filepath.Base(f), err)
-		}
-		m, err := db.ParseMigration(strings.TrimSuffix(filepath.Base(f), ".sql"), string(b))
-		if err != nil {
-			return at("%v", err)
-		}
-		if i > 0 && m.From != prev.To {
-			return at("migration %s does not follow %s: a file is missing or edited; regenerate it", m.Name, prev.Name)
-		}
-		prev = m
-	}
-	if len(files) > 0 && prev.To != oldHash[:db.HashLen] {
-		return at("migration %s does not lead to migrations/schema.json: a file is missing or edited; regenerate it", prev.Name)
+	if !ok {
+		return nil
 	}
 	cur := migrate.FromProgram(p)
 	if old.Format != cur.Format {
-		return at("the storage format changed since %s (v%s to v%s): run `alder migrate`", since, old.Format, cur.Format)
+		return at("%s", migrate.FormatChanged(old.Format, cur.Format))
 	}
 	curHash, err := cur.Hash()
 	if err != nil {
@@ -202,7 +236,8 @@ func firstChange(old, cur migrate.Schema) string {
 
 // AddSchemaDrift adds SchemaDrift's E0019 for the app in dir to bag (sorted again) when the
 // program checked without errors (res non-nil): the program is lowered to read its tables. A
-// lowering that fails is left for the build to report.
+// lowering that panics is a compiler bug: the panic surfaces (the command reports an internal
+// error), as one in the checker does.
 func AddSchemaDrift(dir string, prog *names.Program, res *check.Result, bag *diag.Bag) {
 	if res == nil || bag.HasErrors() {
 		return
@@ -210,12 +245,7 @@ func AddSchemaDrift(dir string, prog *names.Program, res *check.Result, bag *dia
 	if !HasMigrations(dir) && len(migrationFiles(dir)) == 0 {
 		return
 	}
-	var d *diag.Diagnostic
-	func() {
-		defer func() { recover() }()
-		d = SchemaDrift(dir, ir.Lower(prog, res))
-	}()
-	if d != nil {
+	if d := SchemaDrift(dir, ir.Lower(prog, res)); d != nil {
 		bag.Items = append(bag.Items, *d)
 		bag.Sort()
 	}

@@ -2,7 +2,7 @@
 -- from 766e287f0a16
 -- to 162a320b6486
 -- step: rebuild table Post: Post.title: Text -> 12 | abc
--- DROPS DATA: rows whose Post.title is not 12 or abc are deleted
+-- DROPS DATA: rows whose Post.title is not 12 or abc are deleted (to keep them, add an UPDATE first)
 
 CREATE TABLE "Post__Post__alder__new" ("id" TEXT NOT NULL PRIMARY KEY, "title" TEXT NOT NULL CHECK ("title" IN ('12', 'abc')), "body" TEXT NOT NULL, "author" TEXT NOT NULL REFERENCES "User__User"("id"), "views" INTEGER NOT NULL, "status" TEXT NOT NULL CHECK ("status" IN ('Draft', 'Published', 'Archived')), "score" REAL NOT NULL, "published" INTEGER NOT NULL CHECK ("published" IN (0, 1)), "day" TEXT NOT NULL, "at" TEXT NOT NULL, "summary" TEXT) STRICT;
 INSERT INTO "Post__Post__alder__new" ("id", "title", "body", "author", "views", "status", "score", "published", "day", "at", "summary") SELECT "id", "title", "body", "author", "views", "status", "score", "published", "day", "at", "summary" FROM "Post__Post" WHERE "title" IN ('12', 'abc');

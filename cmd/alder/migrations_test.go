@@ -191,8 +191,7 @@ func TestEval_AdoptsDevDB(t *testing.T) {
 	}
 	conn.Close()
 	code, out, errs = runEval(t, "", dir, "--run", "Db.from Note |> Db.count")
-	abs, _ := filepath.Abs(path)
-	if code != 1 || !strings.Contains(errs, "matches none of them") || !strings.Contains(errs, "delete "+abs+" to start a new one") {
+	if code != 1 || !strings.Contains(errs, "matches none of them") || !strings.Contains(errs, "to start over, start `alder run` (it recreates ") || strings.Contains(errs, "ALDER_DEV") {
 		t.Fatalf("no match: exit %d\n%s%s", code, out, errs)
 	}
 }

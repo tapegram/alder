@@ -61,7 +61,6 @@ const effectMain = `package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -103,10 +102,7 @@ func main() {
 	ctx := context.Background()
 	if len(app.Migrations) > 0 {
 		if _, err := store.Migrate(ctx, app.Tables, app.Migrations, created); err != nil {
-			if errors.Is(err, db.ErrNotMigrated) {
-				fail(err.Error() + "; delete " + path + " to start a new one")
-			}
-			fail(err.Error())
+			fail(err.Error()) // its dev-mode remedy is rewritten for eval (devDBHint)
 		}
 	} else if err := store.Ensure(ctx, app.Tables, created); err != nil {
 		fail(err.Error())

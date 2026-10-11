@@ -18,6 +18,7 @@ import (
 	"alder/internal/gen"
 	"alder/internal/scratch"
 	"alder/internal/types"
+	"alder/rt/db"
 )
 
 // evalUsage is the usage line of `alder eval`.
@@ -262,11 +263,12 @@ func classifyRun(errOut string, exit int) (string, runOutcome) {
 // timedOutRE is the line scratch.RunStream adds when a program runs past its deadline.
 var timedOutRE = regexp.MustCompile(`(?m)^scratch: .* (timed out.*)$`)
 
-// devDBHint rewrites the database's "run in dev mode to recreate the database" (a schema
-// mismatch: what the app's server says) for eval and the REPL, which never recreate it.
+// devDBHint rewrites the database's dev-mode remedy (db.DevRemedy, which ends Ensure's and
+// Migrate's refusals: what the app's server says) for eval and the REPL, which never recreate
+// the database.
 func devDBHint(msg, appBuild string) string {
-	return strings.Replace(msg, "run in dev mode to recreate the database",
-		"start `alder run` (it recreates "+filepath.Join(appBuild, "dev.db")+") or delete it", 1)
+	return strings.Replace(msg, db.DevRemedy,
+		"to start over, start `alder run` (it recreates "+filepath.Join(appBuild, "dev.db")+" empty: every row is deleted) or delete it", 1)
 }
 
 // evalIt is the Go expression for the scratch module mod's `it` of type sig in the generated

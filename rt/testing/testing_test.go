@@ -712,4 +712,13 @@ func TestRun_Migrations(t *testing.T) {
 	if code := Main(cases, tables, stale, nil, nil, nil, &out, &errb); code != 1 || !strings.Contains(out.String(), "0 passed, 2 failed") {
 		t.Fatalf("Main: %d\n%s%s", code, out.String(), errb.String())
 	}
+	// a file edited after it was written (its header names the app's schema, its statements do
+	// not make it): the runtime's text, not "run `alder migrate`" (which would find no change)
+	edited := []db.Migration{{Name: "0001_initial", From: hash(""), To: hash(goodSQL), SQL: staleSQL + ";"}}
+	want := "migration 0001_initial does not produce the schema its header names (to " + hash(goodSQL) + ", got " + hash(staleSQL) + "): the file was edited; restore it from version control"
+	for _, r := range Run(cases, Options{Tables: tables, Migrations: edited}) {
+		if r.OK || r.Error != want {
+			t.Fatalf("with an edited migration: %+v\nwant %s", r, want)
+		}
+	}
 }
