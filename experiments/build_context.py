@@ -6,8 +6,9 @@ Usage: build_context.py [--chapters 03,04,...] [--no-example] [--reference] [--b
 
 --reference drops the sections written for humans (HUMAN_SECTIONS, by exact `## ` heading),
 except the `### ` subsections of a dropped section listed in KEEP_SUBSECTIONS, which stay under
-the section's heading; a listed heading missing from its chapter exits 2 naming it, so a renamed
-section never silently builds the wrong prompt. --size prints the prompt's size instead of the prompt: characters and
+the section's heading; and from a section it keeps, the `### ` subsections listed in
+DROP_SUBSECTIONS (the inverse). A listed heading missing from its chapter exits 2 naming it, so
+a renamed section never silently builds the wrong prompt. --size prints the prompt's size instead of the prompt: characters and
 len/4; with --count ollama:MODEL also Ollama's prompt_eval_count for the prompt alone (one
 /api/chat call, the prompt as the system message, num_predict 1).
 """
@@ -47,6 +48,23 @@ HUMAN_SECTIONS = {
 # effects run and how the build wires the adapters.
 KEEP_SUBSECTIONS = {
     "07": {"How effects run": ["What a capability looks like in Go"], "Implementing a capability": ["The rule"]},
+}
+
+# The `### ` subsections of a kept section that --reference drops, by chapter and `## `
+# heading: the inverse of KEEP_SUBSECTIONS. Chapter 10's "9. Testing through the browser" keeps
+# the step table and the result fields, one complete example (adding a todo), `Answer`, the
+# session and the login through its form, how a record is sent (with the encoding table),
+# `submitRaw` and `Rejected`, the toggle and the stranger's examples, the queries and selectors,
+# the list of every failure text and the rules; it drops the walkthrough of the first example
+# and its failing report, the prose of `Test.get`/`Test.open`, the further form examples (the
+# due date, two messages posting one form), the bad-input example, the refused click and the ownership narrative, the
+# refused selector, and the comparison with a view (with a Doc's failure report and "when to use
+# which"), and the case for testing through the browser at all. Chapter 9's step and query signatures repeat chapter 10's.
+DROP_SUBSECTIONS = {
+    "09": {"Test": ["Browser steps and queries"]},
+    "10": {"9. Testing through the browser": ["Why through the browser", "Step by step", "`Test.get` and `Test.open`: requesting a page",
+                                              "More forms", "Bad input, an example", "Clicks that fail", "A selector the compiler refuses",
+                                              "Comparing a page with its view"]},
 }
 
 HEADER = """You are writing code in Alder, a small language for server-rendered web
@@ -96,32 +114,44 @@ def subsections(text):
     return out
 
 
-def drop_sections(path, text, headings, keep=None):
+def check_subsections(path, h, subs, listed, table):
+    """Exits 2 naming the first of listed (`### ` headings) not among subs, the `## ` section
+    h's subsections; table names the dict to update."""
+    names = {sh for sh, _ in subs}
+    for sh in listed:
+        if sh not in names:
+            print(f'build_context.py: --reference: {path} has no subsection "### {sh}" in "## {h}" '
+                  f"(update {table} to match the book)", file=sys.stderr)
+            raise SystemExit(2)
+
+
+def drop_sections(path, text, headings, keep=None, drop=None):
     """text without the `## ` sections named in headings, but for the `### ` subsections that
     keep (a dict: `## ` heading -> [`### ` headings]) lists for a dropped section, which stay
-    after that section's `## ` line; exits 2 naming a heading not found."""
-    keep = keep or {}
+    after that section's `## ` line; and without the `### ` subsections drop (the same shape)
+    lists for a kept section; exits 2 naming a heading not found."""
+    keep, drop = keep or {}, drop or {}
     parts = sections(text)
     found = {h for h, _ in parts}
-    for h in headings:
+    for h in list(headings) + list(drop):
         if h not in found:
             print(f'build_context.py: --reference: {path} has no section "## {h}" '
-                  f"(update HUMAN_SECTIONS to match the book)", file=sys.stderr)
+                  f"(update HUMAN_SECTIONS or DROP_SUBSECTIONS to match the book)", file=sys.stderr)
             raise SystemExit(2)
     out = []
     for h, t in parts:
         if h not in headings:
-            out.append(t)
+            if not drop.get(h):
+                out.append(t)
+                continue
+            subs = subsections(t)
+            check_subsections(path, h, subs, drop[h], "DROP_SUBSECTIONS")
+            out.extend(st for sh, st in subs if sh not in drop[h])
             continue
         if not keep.get(h):
             continue
         subs = subsections(t)
-        names = {sh for sh, _ in subs}
-        for sh in keep[h]:
-            if sh not in names:
-                print(f'build_context.py: --reference: {path} has no subsection "### {sh}" in "## {h}" '
-                      f"(update KEEP_SUBSECTIONS to match the book)", file=sys.stderr)
-                raise SystemExit(2)
+        check_subsections(path, h, subs, keep[h], "KEEP_SUBSECTIONS")
         out.append(t.splitlines(keepends=True)[0] + "\n")
         out.extend(st for sh, st in subs if sh in keep[h])
     return "".join(out)
@@ -132,8 +162,8 @@ def build(chapters, book, example, reference):
     for ch in chapters:
         for f in sorted(book.glob(f"{ch}-*.md")):
             text = f.read_text()
-            if reference and ch in HUMAN_SECTIONS:
-                text = drop_sections(f, text, HUMAN_SECTIONS[ch], KEEP_SUBSECTIONS.get(ch))
+            if reference and (ch in HUMAN_SECTIONS or ch in DROP_SUBSECTIONS):
+                text = drop_sections(f, text, HUMAN_SECTIONS.get(ch, []), KEEP_SUBSECTIONS.get(ch), DROP_SUBSECTIONS.get(ch))
             out.append(text)
             out.append("\n")
     if example is not None:

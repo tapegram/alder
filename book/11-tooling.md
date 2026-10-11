@@ -850,7 +850,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0020 | a `fake` declared outside the module of its capability: "`fake Stripe` must be declared in the module that declares `capability Stripe`" (chapter 10, "Faking a capability") | — |
 | E0021 | a fake's table used outside a `test` and the fake's own entries (a value, a signature, a page's `load`, an app table's `@ref`): "`Charge` is a fake's table: only tests and `fake Stripe` may use it" | — |
 | E0022 | a table field's default that is not a literal (`count: Int = 1 + 1`): migrations write a table default into the database as SQL | — |
-| E0023 | a selector written as a literal in a test's query that is not one: "`#sumary x` is not a selector: unexpected `x` after `#sumary` (a selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, combined with spaces or `>`)" (chapter 10, "Reading the page: queries") | — |
+| E0023 | a selector written as a literal in a test's query that is not one: "`#sumary x` is not a selector: unexpected `x` after `#sumary`; `x` is not an HTML element (a custom element has a hyphen) (a selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, combined with spaces or `>`)"; the other hints are "tags are lower case: `h1`" and "quote the value: `[href="/x"]`" (chapter 10, "Reading the page: queries") | — |
 | E0101 | `Db.get T x` where `x` is not `Id T` | `Db.from T \|> Db.where (T.<col>.eq x) \|> Db.first` when a column of `x`'s type exists |
 | E0102 | field access on a `Maybe` | `match` skeleton |
 | E0201 | name from a module that isn't imported | `import M` |
@@ -871,6 +871,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | W0002 | typed hole (`?name`) with its expected type | — |
 | W0003 | a form field whose decoding errors no `<Errors field>` and no `<Errors form />` of its form would show | — |
 | W0004 | a default on a field of a declared `type R = {…}` (``field `loud`: a default on a plain record type never applies; remove it``): a literal of a declared record names every field, so the default could never apply | — |
+| W0005 | a form posting a page's message whose arm of `update` can answer `Reject`, but without `<Errors form />` to show the text: "`Submit` can answer `Reject`, but this form has no `<Errors form />`: the user never sees the rejection text" (chapter 10, "`Test.submitRaw`: input the types forbid") | — |
 
 ## Holes
 

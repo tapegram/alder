@@ -236,6 +236,9 @@ would be `//evil`). So a link or a
 again: an `href` that is not such a URL renders as `#`, and a redirect to
 one is answered with a 500 (`refusing to navigate to javascript:`).
 
+A `Page` compares by its address: `Todos.Index {} == Todos.Index
+{ filter: All }`, since a defaulted parameter is left out of the URL.
+
 ## Query, Task, Db, Session, Log, Time, Random, Http
 
 See chapters 7 and 8. The column methods, written on a column in place
@@ -275,6 +278,8 @@ Only a `test` may use these (chapter 10); anywhere else each is E0003
   never an expression. It has no type of its own to pass around, so
   `Test.fake` cannot be applied to a variable, piped into, or left
   without its argument.
+
+### Browser steps and queries
 
 The browser steps (chapter 10, section 9) are special forms too: each is
 applied directly to all its arguments, never passed as a value or piped

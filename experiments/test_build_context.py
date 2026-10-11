@@ -66,12 +66,15 @@ class BuildContextTests(unittest.TestCase):
         (self.example / "App.alder").write_text("module App\n")
         self.saved = bc.HUMAN_SECTIONS
         self.saved_keep = bc.KEEP_SUBSECTIONS
+        self.saved_drop = bc.DROP_SUBSECTIONS
         bc.HUMAN_SECTIONS = {"06": ["How a request runs"], "07": ["How effects run"]}
         bc.KEEP_SUBSECTIONS = {}
+        bc.DROP_SUBSECTIONS = {}
 
     def tearDown(self):
         bc.HUMAN_SECTIONS = self.saved
         bc.KEEP_SUBSECTIONS = self.saved_keep
+        bc.DROP_SUBSECTIONS = self.saved_drop
         shutil.rmtree(self.tmp)
 
     def run_main(self, *args):
@@ -120,6 +123,32 @@ class BuildContextTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(out, "")
         self.assertIn('"### The rules"', err)
+
+    def test_reference_drops_listed_subsections(self):
+        # the inverse of KEEP_SUBSECTIONS: a kept section loses the `### ` subsections listed
+        bc.HUMAN_SECTIONS = {}
+        bc.DROP_SUBSECTIONS = {"07": {"Implementing a capability": ["What the build does"]}}
+        code, out, _ = self.run_main("--reference", "--chapters", "07")
+        self.assertEqual(code, 0)
+        for gone in ("### What the build does", "Build internals."):
+            self.assertNotIn(gone, out)
+        kept = ["## How effects run", "Effect internals.", "## Implementing a capability\n", "Wiring intro.",
+                "### The rule", "Rule text.", "### not a subheading (inside a fence)", "## After", "After text."]
+        pos = [out.index(k) for k in kept]
+        self.assertEqual(pos, sorted(pos))
+
+    def test_reference_unknown_dropped_subsection(self):
+        bc.HUMAN_SECTIONS = {}
+        bc.DROP_SUBSECTIONS = {"07": {"Implementing a capability": ["The rules"]}}
+        code, out, err = self.run_main("--reference", "--chapters", "07")
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn('"### The rules"', err)
+        self.assertIn("DROP_SUBSECTIONS", err)
+        bc.DROP_SUBSECTIONS = {"07": {"Running effects": ["The rule"]}}
+        code, _, err = self.run_main("--reference", "--chapters", "07")
+        self.assertEqual(code, 2)
+        self.assertIn('"## Running effects"', err)
 
     def test_reference_only_selected_chapters(self):
         code, out, _ = self.run_main("--reference", "--chapters", "06")
@@ -170,6 +199,13 @@ class BuildContextTests(unittest.TestCase):
             text = next(bc.BOOK.glob(f"{ch}-*.md")).read_text()
             for h in heads:
                 self.assertIn("\n## " + h + "\n", text)
+        for table in (self.saved_keep, self.saved_drop):
+            for ch, secs in table.items():
+                text = next(bc.BOOK.glob(f"{ch}-*.md")).read_text()
+                for h, subs in secs.items():
+                    self.assertIn("\n## " + h + "\n", text)
+                    for sh in subs:
+                        self.assertIn("\n### " + sh + "\n", text)
 
     def test_real_reference_keeps_adapter_rule(self):
         # an agent implementing a capability needs where its adapter goes and what it is called:
@@ -216,12 +252,22 @@ class BuildContextTests(unittest.TestCase):
         # agents write browser tests: chapter 10's "Testing through the browser" (the step table,
         # the rules, the texts) stays in the reference, "How the browser works" goes
         bc.HUMAN_SECTIONS = self.saved
-        code, out, _ = self.run_main("--reference", "--chapters", "10", "--book", str(bc.BOOK))
+        bc.DROP_SUBSECTIONS = self.saved_drop
+        code, out, _ = self.run_main("--reference", "--chapters", "09,10", "--book", str(bc.BOOK))
         self.assertEqual(code, 0)
         self.assertIn("\n## 9. Testing through the browser\n", out)
         self.assertIn("| `Test.submit F r` |", out)
-        self.assertIn("the page has no button or form for", out)
         self.assertNotIn("\n## 10. How the browser works\n", out)
+        # §9 keeps the table, one example, the encoding, every failure text and the rules; it
+        # drops the walkthrough, the further examples and chapter 9's repeated signatures
+        for kept in ("test \"adding a todo through the page\"", "| `Rejected errors` |", "| `Maybe a` | blank",
+                     "### What a failed step says", "has no button or form for", "has no input `due`",
+                     "test \"a stranger cannot see my todo\"", "| `ul > li` |", "\n### The rules\n",
+                     "## Test\n", "Test.run : Task a"):
+            self.assertIn(kept, out)
+        for gone in ("### Step by step", "module Drafts", "test \"a todo with a due date\"", "1. Insert a user, as any effect test does.",
+                     "When to use which", "test \"a misspelt selector\"", "Test.login     : Session -> Task Unit"):
+            self.assertNotIn(gone, out)
 
 if __name__ == "__main__":
     unittest.main()

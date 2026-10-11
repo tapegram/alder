@@ -2950,7 +2950,16 @@ a form.) Two addresses name the same message when `rt.MsgKey` of them
 is equal: the path and the message's own parameters, with the page's
 `_p.` ones left out. The browser posts the control's own address, `_p.`
 parameters included. With no match it sends nothing and returns a
-`*NoControlError`, whose text the test fails with.
+`*NoControlError`, whose text the test fails with; it names the held
+page's URL and, when a control posts the same message with other
+parameters, lists them (`Offered`). A submit then sends only the fields
+the matched form has an `input`, `select` or `textarea` for, by `name`,
+as Datastar's form serialization does (`Fields.For`). The generated
+`encode__M__F` returns the encoded fields together with `Absent`, the
+names whose value is what the decoder makes of a missing field (a
+`Maybe` without a default that is `Nothing`, a field equal to its
+default); such a field without an input is left out, and any other one
+is a `*NoInputError`, "the page's form F has no input `n`".
 
 **Parsing the page.** `rt/html` already renders a view to text. For the
 browser it gained `Parse` (`rt/html/parse.go`), which reads that text
@@ -2969,7 +2978,11 @@ element's ancestors (any ancestor for a space, the parent for `>`).
 whitespace. `Doc`'s `==` is `Node.Equal` of the two trees after
 `html.WithoutPageParams` has taken the `_p.` parameters out of every
 message address, so a page compares equal to `Test.doc (view …)`,
-which renders without a request.
+which renders without a request. When a test's `==` of two `Doc`s is
+`False`, `rtesting.Eq` records `html.Diff` instead of the two markups:
+the path of the first element whose content differs and that element on
+each side, cut to 120 characters, which the report prints as `left:`,
+`right:` and `note:`.
 
 **Production.** None of this is in an app's binary. The step nodes, like
 `Test.run`'s, reach the emitter only from `test` bodies, which a
@@ -2979,8 +2992,15 @@ the `selector__` variables are emitted only in test builds; and
 `TestGen_ProdHasNoTests` (`internal/gen/gen_test.go`) checks that a
 production build of a fixture app using every step has none of
 `encode__`, `selector__` or `BrowserOf`. What production gains is
-`Web()`, the routes' `rq.Model = model`, and the router's two hooks,
-left unset.
+`Web()`, the routes' `rq.Model = model`, the router's two hooks, left
+unset, and the `Alder-Status` header on a Datastar answer that is a 404
+or a 500, which Datastar's client ignores. `rt/html` imports
+`internal/selector` (for `Select`), so the package is part of every
+app's build, but nothing in production calls `Parse` or `Select`, and
+the linker leaves their code out: `go tool nm` on a built app lists no
+`internal/selector` symbol. (The selector package keeps the HTML element
+names in a string rather than a map for the same reason: a map would be
+built when the binary starts.)
 
 ### What is still to come
 

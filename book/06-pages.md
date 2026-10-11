@@ -96,6 +96,10 @@ only thing `href` accepts:
 <a href={Todos.Index { filter: Active }}>Active</a>   -- defaulted fields may be omitted
 ```
 
+Two page values are `==` when they lead to the same address: a field left
+at its default is not in the URL, so `Todos.Index {} == Todos.Index
+{ filter: All }`.
+
 ## `msg`
 
 A message belongs to the page that declares it. It has no path: the
@@ -334,7 +338,8 @@ type Nav
 Use `Rerender` for in-place changes (toggle, delete). Use `Redirect` after
 creating something, so a browser refresh doesn't resubmit. Use `Reject` when
 a well-formed submission is refused for a reason only `update` can know
-(wrong password, name already taken); `<Errors form />` shows the text.
+(wrong password, name already taken); `<Errors form />` shows the text,
+and a form that can be rejected without one gets warning W0005.
 
 `Reject` is a successful result, not a failure: the `Task` that produced it
 commits, so anything it wrote and any `Session.put` it ran are kept. To

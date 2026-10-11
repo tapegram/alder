@@ -253,7 +253,11 @@ every field (E0003: "a default applies only to an insert, the session
 cookie, a page or message parameter, or a form, not to a literal"); only
 an anonymous record type's defaults (a component's props) apply to its
 literals, and a default on a declared `type R = {…}` field, which could
-never apply, is warning W0004. M5 needed nothing more. The blog's tests write their records in
+never apply, is warning W0004. M5 needed nothing more. M5e adds one
+boundary: the record `Test.login` stores is the cookie's value, so the
+session's defaults apply to its literal (`Test.login { user: Just me }`
+when the session also has `visits: Int = 0`); a session literal anywhere
+else in a test still names every field. The blog's tests write their records in
 full, and E7's evidence is under "Open questions" below. This is
 revisited only if required fields prove demonstrably worse.
 
@@ -374,8 +378,9 @@ What the choices inside it were:
   real one would show (the re-rendered body, the redirect's target), and
   the raw answer is in the result too.
 - **Forms by name, typed, and a raw variant.** `Test.submit` encodes a
-  form's record as its inputs would, so a test cannot send what a form
-  could not; `Test.submitRaw` sends text, for the validation tests.
+  form's record as its inputs would and sends only the fields the page's
+  form has an input for, so a test cannot send what a form could not;
+  `Test.submitRaw` sends text, for the validation tests.
 - **Only what the page shows.** A test can submit or click only a
   control the page it holds renders. This is what makes it a browser
   test rather than a request: a stranger's test cannot press a button
@@ -707,8 +712,9 @@ believes is right.
   switch left the example's skeleton for chapter 6's "App-level
   messages", where it is the worked example; the example's session is
   `{ user: Maybe User.UserId }`, and its tests write `{ user: me }`. A
-  record literal, a session's included, still names every field: no
-  defaulted fields that may be left out, no `Test.session`. Implicit
+  record literal, a session's included, still names every field (M5e's
+  one exception: the literal `Test.login` stores in the cookie, whose
+  defaults are the cookie's): no `Test.session`. Implicit
   values cause mistakes (a value nobody wrote is one nobody checked), and
   this is revisited only if required fields prove demonstrably worse. The
   one exception stays the `session` declaration's own defaults, which
