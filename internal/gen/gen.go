@@ -9,6 +9,8 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"maps"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -25,6 +27,13 @@ type Options struct {
 	// by buildkit.CopyMigrations), which app__alder.go embeds as Migrations; without, Migrations
 	// is empty and Serve uses db.Ensure.
 	Migrations bool
+	// Tests makes a test build (alder test's scratch build): each `fake` is emitted — its
+	// tables' records and descriptors and its entries in its module's file, a struct
+	// implementing its capability (fake__M__C), FakeTables and Fakes in app__alder.go — and
+	// Test.fake installs the fake in the running test's Env.Caps. Without it (every production
+	// build) none of that is emitted: Test.fake is a step that fails, and a test that uses a
+	// fake's table is emitted as one that fails (fakeStub).
+	Tests bool
 }
 
 // Emit returns the generated files: one "<Module>_alder.go" per module ('.' → "__"),
@@ -40,6 +49,7 @@ func Emit(p *ir.Program, opts Options) (files map[string][]byte, err error) {
 		}
 	}()
 	g := newGen(p)
+	g.indexFakes(p, opts.Tests)
 	files = map[string][]byte{"go.mod": []byte(goMod(opts.RepoPath))}
 	declared := map[string]string{} // Go name → module declaring it
 	for _, m := range p.Modules {
@@ -150,6 +160,33 @@ type gen struct {
 	caps     map[string][]*ir.Capability // by module, in declaration order
 	brands   map[string][]*ir.Brand      // by module, in declaration order
 	enums    map[string]bool             // unions stored in a table column (storedEnums)
+	// tests: a test build (Options.Tests); fakes are the program's fakes by module
+	tests bool
+	fakes map[string][]*ir.Fake
+	// fakeIdents matches the Go names of the fakes' tables (records, descriptors, insert
+	// records): a production build emits a test whose body uses one as fakeStub; nil without
+	// fake tables
+	fakeIdents *regexp.Regexp
+}
+
+// indexFakes records p's fakes for module and app emission. In a test build the unions their
+// tables store get an enumDecl too.
+func (g *gen) indexFakes(p *ir.Program, tests bool) {
+	g.tests, g.fakes = tests, map[string][]*ir.Fake{}
+	var idents []string
+	for _, fk := range p.Fakes {
+		g.fakes[fk.Module] = append(g.fakes[fk.Module], fk)
+		for _, tb := range fk.Tables {
+			idents = append(idents, GoName(tb.Module, tb.Name), tableName(tb.Module, tb.Name),
+				insertName(tb.Module, tb.Name), insertVals(tb.Module, tb.Name))
+		}
+		if tests {
+			maps.Copy(g.enums, storedEnums(&ir.Program{Tables: fk.Tables}))
+		}
+	}
+	if len(idents) > 0 {
+		g.fakeIdents = regexp.MustCompile(`\b(` + strings.Join(idents, "|") + `)\b`)
+	}
 }
 
 // newGen indexes the program's values. A constant (a value with no parameters and a non-function
@@ -326,6 +363,17 @@ func (g *gen) module(m *ir.Module) ([]byte, error) {
 	for _, c := range g.caps[m.Name] {
 		capDecl(&body, c)
 	}
+	if g.tests {
+		for _, fk := range g.fakes[m.Name] {
+			for _, tb := range fk.Tables {
+				body.WriteString(comment(fmt.Sprintf("%s is table %s of `fake %s` (test builds only: rtesting creates it after the app's tables, from FakeTables).",
+					GoName(tb.Module, tb.Name), tb.Name, fk.Capability.Name)))
+				typeDecl(&body, &ir.TypeDecl{Module: tb.Module, Name: tb.Name, Record: tb.Record}, g.boxed)
+				g.tableDecl(&body, tb)
+			}
+			fakeDecl(&body, fk)
+		}
+	}
 	for _, b := range g.brands[m.Name] {
 		if b.Check != nil {
 			g.checkDecl(&body, b)
@@ -339,6 +387,13 @@ func (g *gen) module(m *ir.Module) ([]byte, error) {
 	}
 	for _, v := range m.Components {
 		g.value(&body, v)
+	}
+	if g.tests {
+		for _, fk := range g.fakes[m.Name] {
+			for _, v := range fk.Entries {
+				g.valueAs(&body, v, fakeEntry(fk.Module, fk.Capability.Name, v.Name))
+			}
+		}
 	}
 	for i, t := range m.Tests {
 		g.test(&body, t, i+1)
@@ -401,10 +456,14 @@ func importsOf(body string) ([]string, error) {
 // all the signature's parameters, also those its definition leaves to a function-valued body),
 // else a package variable or, for a thunk, a function of no parameters.
 func (g *gen) value(w *strings.Builder, v *ir.Value) {
+	g.valueAs(w, v, GoName(v.Module, v.Name))
+}
+
+// valueAs is value with the Go name name (a fake's entry: fakeEntry).
+func (g *gen) valueAs(w *strings.Builder, v *ir.Value, name string) {
 	f := &fn{g: g}
 	s := newScope()
 	tps := typeParamDecl(g.params(v))
-	name := GoName(v.Module, v.Name)
 	ft, isFun := v.Type.(*types.Fun)
 	if !isFun {
 		if g.thunks[v] {
@@ -467,8 +526,24 @@ func (g *gen) test(w *strings.Builder, t *ir.Test, n int) {
 	} else {
 		f.ret(&b, t.Body, newScope())
 	}
+	if !g.tests && g.fakeIdents != nil && g.fakeIdents.MatchString(b.String()) {
+		b.Reset()
+		b.WriteString(fakeStub(t.Effect))
+	}
 	fmt.Fprintf(w, "// %s is test %s of module %s.\nfunc %s() %s {\n%s}\n\n", testFunc(t.Module, n), strconv.Quote(t.Name), t.Module,
 		testFunc(t.Module, n), result, b.String())
+}
+
+// fakeStub is the body of a test that uses a fake's table, in a production build (which has
+// no fake tables): a test that fails saying where it runs.
+//
+//	return eff.Fail[bool]("this test uses a fake's tables, which exist only in `alder test`")
+func fakeStub(effect bool) string {
+	msg := strconv.Quote("this test uses a fake's tables, which exist only in `alder test`")
+	if effect {
+		return "return eff.Fail[bool](" + msg + ")\n"
+	}
+	return "panic(" + msg + ")\n"
 }
 
 // checkDecl emits brand b's `where` check: its function applied to the value.

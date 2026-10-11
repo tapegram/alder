@@ -36,15 +36,20 @@ import (
 //	argsName    Args__M__Capability__Entry  the arguments record of a capability entry
 //	testFunc    test__M__N                  the N-th `test` of module M (from 1, in declaration
 //	                                        order)
+//	fakeName    fake__M__Capability         the struct implementing a capability with its `fake`
+//	                                        (test builds only)
+//	fakeEntry   fakeentry__M__Capability__Entry
+//	                                        an entry of a `fake` (test builds only)
 //	route__fail, route__values, route__errors, session__codec
 //	                                        fixed helpers of routes__alder.go and app__alder.go
 //	Tables, Migrations, migrationsFS, Capabilities, Caps, Options, Serve, Routes, Tests,
-//	TestSession, Registry
+//	TestSession, Registry, FakeTables, Fakes
 //	                                        the app's table descriptors, migrations (and their
 //	                                        embedded files), capability keys,
 //	                                        capability implementations, Serve and its options,
 //	                                        its routes, its tests, the session a test runs with
-//	                                        and Caps' registry method (app__alder.go,
+//	                                        and Caps' registry method; in a test build the
+//	                                        fakes' tables and constructors (app__alder.go,
 //	                                        routes__alder.go)
 //
 // where "M__…" is the module path with every '.' replaced by "__" ("Todos.Index", "view" →
@@ -70,15 +75,17 @@ import (
 //     (an identifier never ends in "__"). Stripping that "__", Ctor is the text after the last
 //     "__" (Ctor has no "__" and does not start with '_'), and the rest is a GoName (1).
 //  3. payloadName, tagType, tagConst, widenName, tableName, insertName, insertVals, enumName,
-//     checkName, decodeName, pageFunc, paramsFunc, updateFunc, testFunc and the route__/session__
-//     helpers start with a lower-case word and "__". No GoName or ctorName does (they start with
+//     checkName, decodeName, pageFunc, paramsFunc, updateFunc, testFunc, fakeName, fakeEntry and the
+//     route__/session__ helpers start with a lower-case word and "__". No GoName or ctorName does (they start with
 //     an upper-case module segment); no local does (a local contains "__" only at its end, or
 //     followed by its "_N" renaming suffix); the words differ, so the kinds cannot collide with
 //     each other; within a kind the rest is decoded as in 1 and 2 (decodeName's record is a
 //     page's Params, a <Msg>Params or a form of M: type names of one module, distinct; testFunc's
-//     N is the text after the last "__", digits, and the rest is the module's segments).
-//     Tables, Migrations, Capabilities, Caps, Options, Serve, Routes, Tests and TestSession
-//     contain no "__" and start upper-case, which no GoName (it has "__"), no local (lower-case
+//     N is the text after the last "__", digits, and the rest is the module's segments;
+//     fakeEntry's entry is the text after the last "__", as argsName's in 5, and the rest
+//     decodes as in 1).
+//     Tables, Migrations, Capabilities, Caps, Options, Serve, Routes, Tests, TestSession,
+//     FakeTables and Fakes contain no "__" and start upper-case, which no GoName (it has "__"), no local (lower-case
 //     or '_') and none of the others is (Registry is a method of Caps, in Caps' own namespace).
 //     migrationsFS has no "__" either, so no package-level name of the kinds above is it (a
 //     local of that name only shadows it inside its function, which never reads it). app__alder.go and
@@ -250,6 +257,18 @@ func routeFunc(module, msg string) string {
 // ("test__Todos__Index__1"): it returns the test's Bool, or its Task Bool.
 func testFunc(module string, n int) string {
 	return "test__" + strings.ReplaceAll(module, ".", "__") + "__" + strconv.Itoa(n)
+}
+
+// fakeName is the struct implementing capability M.C with its `fake` in a test build
+// ("fake__Payments__Stripe").
+func fakeName(module, capability string) string { return "fake__" + GoName(module, capability) }
+
+// fakeEntry is the function (or, for an entry that is itself a Query or Task, the variable) of
+// entry e of capability M.C's `fake` in a test build ("fakeentry__Payments__Stripe__Charge"): the
+// entry spelled as in argsName (capitalized, or prefixed with "x" when it starts with '_'), so
+// the text after the last "__" determines the entry (naming rule 3, as argsName under rule 5).
+func fakeEntry(module, capability, entry string) string {
+	return "fakeentry__" + strings.TrimPrefix(argsName(module, capability, entry), "Args__")
 }
 
 // enumName is the function naming a value of payload-less union M.U ("name__Todo__Filter").

@@ -108,6 +108,90 @@ func capDecl(w *strings.Builder, c *ir.Capability) {
 	w.WriteString(args.String())
 }
 
+// fakeDecl writes, for a test build, the struct implementing fk's capability with fk's entries:
+// each method runs its entry (fakeEntry) inside the effect that called the capability, through
+// eff.RunInner on the Env that ctx carries (eff.EnvFrom), so the entry's steps are on the
+// calling test's trace, its writes in its transaction (under Test.run's savepoint) and its
+// failure the call's. The method takes its arguments as the capability's interface does
+// (capDecl): one Args__ record (passed on as it is, or its Value when wrapped), several a1, a2, …,
+// or none.
+//
+//	type fake__Payments__Stripe struct{}
+//
+//	func (fake__Payments__Stripe) Charge(ctx context.Context, args Args__Payments__Stripe__Charge) (rt.Result[string, string], error) {
+//		env := eff.EnvFrom(ctx)
+//		if env == nil {
+//			var zero rt.Result[string, string]
+//			return zero, errors.New("fake Stripe called outside a running effect")
+//		}
+//		return eff.RunInner(env, fakeentry__Payments__Stripe__Charge(args))
+//	}
+func fakeDecl(w *strings.Builder, fk *ir.Fake) {
+	c := fk.Capability
+	name := fakeName(c.Module, c.Name)
+	w.WriteString(comment(fmt.Sprintf("%s is `fake %s` of module %s (test builds only): it implements %s by running the fake's entries inside the effect that calls them (eff.RunInner on the Env eff.EnvFrom finds in ctx), so their steps, writes and failures are the calling test's. Test.fake %s installs it.",
+		name, c.Name, c.Module, capName(c.Module, c.Name), c.Name)))
+	fmt.Fprintf(w, "type %s struct{}\n\n", name)
+	for i, e := range c.Entries {
+		params := []string{"ctx context.Context"}
+		var args []string
+		res := e.Type
+		ft, isFun := e.Type.(*types.Fun)
+		if isFun {
+			if p, kind := capArg(e.Type); p != nil {
+				params = append(params, "args "+argsName(c.Module, c.Name, e.Name))
+				if kind == "wrap" {
+					args = append(args, "args.Value")
+				} else {
+					args = append(args, "args")
+				}
+			} else {
+				for j, p := range ft.Params {
+					a := "a" + strconv.Itoa(j+1)
+					params = append(params, a+" "+GoType(p))
+					args = append(args, a)
+				}
+			}
+			res = ft.Result
+		}
+		entry := fakeEntry(c.Module, c.Name, fk.Entries[i].Name)
+		if isFun {
+			entry += "(" + strings.Join(args, ", ") + ")"
+		}
+		if isQuery(res) {
+			entry = "eff.T(" + entry + ")"
+		}
+		r := GoType(effResult(res))
+		fmt.Fprintf(w, "func (%s) %s(%s) (%s, error) {\nenv := eff.EnvFrom(ctx)\nif env == nil {\nvar zero %s\nreturn zero, errors.New(%s)\n}\nreturn eff.RunInner(env, %s)\n}\n\n",
+			name, Field(e.Name), strings.Join(params, ", "), r, r, strconv.Quote("fake "+c.Name+" called outside a running effect"), entry)
+	}
+}
+
+// fakesTable writes, for a test build, FakeTables (the descriptors of every fake's tables, in
+// the order of Program.Fakes, then declaration order: rtesting creates them after the app's,
+// db.SQLite.CreateTables) and Fakes (each fake's constructor by its capability's Env.Caps key,
+// for Test.fake).
+func fakesTable(b *strings.Builder, p *ir.Program) {
+	var ds, fs []string
+	for _, fk := range p.Fakes {
+		for _, tb := range fk.Tables {
+			ds = append(ds, tableName(tb.Module, tb.Name)+".Desc()")
+		}
+		c := fk.Capability
+		fs = append(fs, fmt.Sprintf("%s: func() any { return %s{} },\n", strconv.Quote(c.Module+"."+c.Name), fakeName(c.Module, c.Name)))
+	}
+	b.WriteString("// FakeTables are the test-only tables of the app's fakes, which alder test's main creates in each\n" +
+		"// test's database after Tables (rtesting.Options.TestTables). Test builds only.\n" +
+		"var FakeTables = []db.TableDesc{" + strings.Join(ds, ", ") + "}\n\n")
+	b.WriteString("// Fakes are the app's fakes by the Env.Caps key of their capability: Test.fake installs one in the\n" +
+		"// running test's Env.Caps. Test builds only.\n")
+	if len(fs) == 0 {
+		b.WriteString("var Fakes = map[string]func() any{}\n\n")
+	} else {
+		b.WriteString("var Fakes = map[string]func() any{\n" + strings.Join(fs, "") + "}\n\n")
+	}
+}
+
 // appSource is app__alder.go: Tables, the descriptors of every table in module order then
 // declaration order (db.Ensure's schema hash depends on it); Capabilities, the Env.Caps key of
 // every capability; Caps and its Registry; Tests and TestSession (testsTable); and for an app
@@ -165,6 +249,9 @@ func (g *gen) appSource(p *ir.Program, migrations bool) string {
 		b.WriteString("}\n}\n\n")
 	}
 	g.testsTable(&b, p)
+	if g.tests {
+		fakesTable(&b, p)
+	}
 	unionsInit(&b, p)
 	if p.Session != nil {
 		g.serve(&b, p)

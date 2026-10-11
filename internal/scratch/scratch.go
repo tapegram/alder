@@ -136,6 +136,10 @@ type Options struct {
 	// Waiting, when set, is called once when another process (or Build) holds the lock on the
 	// output directory, before CompileCheckedWith waits for it (a done ctx ends the wait).
 	Waiting func()
+	// Tests makes a test build (gen.Options.Tests, for `alder test`): the app's fakes, their
+	// tables (FakeTables) and Test.fake's capability swap are compiled in. Every other caller
+	// builds production-shaped code.
+	Tests bool
 }
 
 // CompileCheckedWith is CompileChecked with options, stopped when ctx is done: `go vet` and `go
@@ -193,7 +197,7 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 		b.Err = err
 		return b
 	}
-	files, err := gen.Emit(ir.Lower(prog, res), gen.Options{RepoPath: repo, Migrations: buildkit.HasMigrations(appDir)})
+	files, err := gen.Emit(ir.Lower(prog, res), gen.Options{RepoPath: repo, Migrations: buildkit.HasMigrations(appDir), Tests: o.Tests})
 	if err != nil {
 		b.Err = fmt.Errorf("internal error: %v", err)
 		return b

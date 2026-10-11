@@ -211,6 +211,101 @@ func (password) Verify(context.Context, app.Args__Auth__Login__Password__Verify)
 	}
 }
 
+// alder test makes a test build: the corpus app fake-ok's tests install its fakes (Test.fake),
+// drive them and read the fake's table back. With an adapters package as well, a test that
+// installs the fake uses the fake and one that does not uses the adapter (each test has its
+// own capabilities), and the production build (alder build) of the same app has no fakes.
+func TestTest_Fakes(t *testing.T) {
+	needGoTool(t)
+	src, err := filepath.Abs("../../testdata/corpus/fake-ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inTemp(t)
+	copyDir(t, src, "fake-ok")
+	code, stdout, stderr := runTest(t, "fake-ok")
+	if code != 0 || !strings.Contains(stdout, "3 passed, 0 failed\n") || !strings.Contains(stdout, `ok   Checkout "a charge is recorded"`) {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	app := `module App
+
+session { n: Int = 0 }
+
+error : Error -> Html Never
+error err = <html><body><p>error</p></body></html>
+
+notFound : Html Never
+notFound = <html><body><p>nf</p></body></html>
+`
+	real := `
+test "the real adapter without Test.fake" = {
+  let user <- Db.insert User.User { name: "Ada" }
+  let r <- Stripe.charge { cents: Int.Positive 5, user: user }
+  let n <- Db.from Payments.Charge |> Db.count
+  Task.succeed (r == Err "real" && n == 0)
+}
+`
+	adapter := `package adapters
+
+import (
+	"context"
+
+	"alder/rt"
+	"alder/rt/html"
+	"app"
+)
+
+func Caps() app.Caps { return app.Caps{Payments__Stripe: stripe{}, Markdown__Markdown: md{}} }
+
+type stripe struct{}
+
+func (stripe) Charge(context.Context, app.Args__Payments__Stripe__Charge) (rt.Result[string, string], error) {
+	return rt.Err[string, string]("real"), nil
+}
+func (stripe) Refund(context.Context, app.Args__Payments__Stripe__Refund) (rt.Result[string, struct{}], error) {
+	return rt.Err[string, struct{}]("real"), nil
+}
+func (stripe) Balance(context.Context) (int64, error) { return 0, nil }
+
+type md struct{}
+
+func (md) Render(_ context.Context, a app.Args__Markdown__Markdown__Render) (html.Node, error) {
+	return html.Text(a.Value), nil
+}
+`
+	for path, body := range map[string]string{"fake-ok/app/App.alder": app, "fake-ok/adapters/caps.go": adapter} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f, err := os.OpenFile("fake-ok/app/Checkout.alder", os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(real); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	code, stdout, stderr = runTest(t, "fake-ok")
+	if code != 0 || !strings.Contains(stdout, "4 passed, 0 failed\n") {
+		t.Fatalf("with adapters: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	var out, errb bytes.Buffer
+	if code := runBuildTo([]string{"fake-ok"}, &out, &errb); code != 0 {
+		t.Fatalf("alder build: exit %d\n%s%s", code, out.String(), errb.String())
+	}
+	gen, err := os.ReadFile(filepath.Join("build", "fake-ok", "Payments_alder.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(gen), "fake__") || strings.Contains(string(gen), "Payments__Charge") {
+		t.Errorf("the production build has fake code:\n%s", gen)
+	}
+}
+
 func TestTest_Usage(t *testing.T) {
 	inTemp(t)
 	for _, args := range [][]string{

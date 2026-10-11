@@ -1,0 +1,66 @@
+module Checkout
+
+import Payments
+import User
+
+-- A lifecycle test in another module: install the fake, charge through it, refund, read the
+-- row back by id, and filter the fake's table by a column (`Payments.Charge.cents`).
+test "a charge is recorded" = {
+  let _ <- Test.fake Stripe
+  let user <- Db.insert User.User { name: "Grace" }
+  let charged <- Stripe.charge { cents: Int.Positive 250, user: user }
+  let refunded <- match charged {
+    Ok id -> Stripe.refund { id: id },
+    Err e -> Task.succeed (Err e),
+  }
+  let found <- match charged {
+    Ok id -> Db.get Payments.Charge id,
+    Err e -> Query.succeed Nothing,
+  }
+  let cents = match found {
+    Just c -> c.cents,
+    Nothing -> 0,
+  }
+  let big <- Db.from Payments.Charge |> Db.where (Payments.Charge.cents.eq 250) |> Db.count
+  Task.succeed (cents == 250 && big == 1 && refunded == Ok ())
+}
+
+-- Review focus 1: the fake's entry fails under Test.run: the value is Err, the trace holds the
+-- fake's own steps, and its insert is rolled back with Test.run's savepoint.
+test "a declined charge leaves no row" = {
+  let _ <- Test.fake Stripe
+  let user <- Db.insert User.User { name: "Ada" }
+  let r <- Test.run (Stripe.charge { cents: Int.Positive 500000, user: user })
+  let n <- Db.from Payments.Charge |> Db.count
+  Task.succeed ({ value: r.value, trace: r.trace, n: n } == { value: Err "card declined", trace: ["Stripe.charge", "Db.insert Charge"], n: 0 })
+}
+
+-- Outside Test.run the failure fails the test.
+test "a declined charge fails the test" = {
+  let _ <- Test.fake Stripe
+  let user <- Db.insert User.User { name: "Ada" }
+  let r <- Stripe.charge { cents: Int.Positive 500000, user: user }
+  Task.succeed True
+}
+
+-- A Query entry, called from a Task; Test.fake twice replaces the first.
+test "the balance counts what is not refunded" = {
+  let _ <- Test.fake Stripe
+  let user <- Db.insert User.User { name: "Ada" }
+  let a <- Stripe.charge { cents: Int.Positive 1, user: user }
+  let _ <- Test.fake Payments.Stripe
+  let b <- Stripe.charge { cents: Int.Positive 2, user: user }
+  let _ <- match b {
+    Ok id -> Stripe.refund { id: id },
+    Err e -> Task.succeed (Err e),
+  }
+  let left <- Stripe.balance
+  Task.succeed (left == 1)
+}
+
+-- The previous tests installed the fake in their own Env: this one has none (no adapter is
+-- wired here), so its call fails.
+test "no fake leaks into the next test" = {
+  let n <- Stripe.balance
+  Task.succeed (n == 0)
+}

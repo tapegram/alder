@@ -2,9 +2,10 @@
 // calls Main with the table of test cases the app's generated code emits.
 //
 // Each case runs on its own: a fresh private in-memory SQLite database with the app's tables
-// (so no case sees another's rows), a clock that starts at 2026-01-01T00:00:00Z and ticks one
-// second each time it is read (Ticking), the capabilities
-// and the session it was given. A pure test is a func() bool; a task test is an eff.Task[bool]
+// and then the test-only tables of its fakes (so no case sees another's rows), a clock that
+// starts at 2026-01-01T00:00:00Z and ticks one second each time it is read (Ticking), its own
+// copy of the capabilities it was given (so Test.fake, which replaces one in the running
+// test's Env.Caps, never reaches the next case) and the session it was given. A pure test is a func() bool; a task test is an eff.Task[bool]
 // run as a Task (eff.Run with KTask), so its writes happen inside one transaction, which is
 // committed when the task succeeds and then thrown away with the database.
 //
@@ -29,6 +30,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"regexp"
 	"strconv"
@@ -164,7 +166,8 @@ type Result struct {
 
 // Options configure Run. Run, when set, selects the cases whose `Module "Name"` it matches;
 // Tables are created in each case's database (by Migrations when set: when they do not
-// produce Tables, every case fails, pure ones too, with notTheSchema); Caps (an empty map when nil) and Session are
+// produce Tables, every case fails, pure ones too, with notTheSchema), then TestTables;
+// a copy of Caps (an empty map when nil) and Session are
 // each case's Env.Caps and Env.Session; Now is when each case's clock starts (zero:
 // 2026-01-01T00:00:00Z; see Ticking);
 // Deadline, when set, is (100 ms after it) the deadline of a task test's context (its store
@@ -173,7 +176,11 @@ type Options struct {
 	Run *regexp.Regexp
 	// Tables are each task test's tables: made by applying Migrations (db.Migrate) when the
 	// app has any, else by db.Ensure.
-	Tables     []db.TableDesc
+	Tables []db.TableDesc
+	// TestTables are the test-only tables of the app's fakes (the generated FakeTables): made
+	// in each task test's database after Tables (db.SQLite.CreateTables), never part of the
+	// app's schema, so the check of Migrations against Tables never sees them.
+	TestTables []db.TableDesc
 	Migrations []db.Migration
 	Caps       map[string]any
 	Session    any
@@ -251,14 +258,18 @@ func defaults(o Options) Options {
 	return o
 }
 
-// ensure gives a case's fresh store o's tables: by o.Migrations when there are any, else by
-// Ensure.
+// ensure gives a case's fresh store o's tables — by o.Migrations when there are any, else by
+// Ensure — and then o.TestTables (CreateTables). The order is required: Migrate's final check
+// requires the live tables to be exactly the app's, so it must never run after CreateTables.
 func ensure(ctx context.Context, store *db.SQLite, o Options) error {
 	if len(o.Migrations) > 0 {
-		_, err := store.Migrate(ctx, o.Tables, o.Migrations, false)
+		if _, err := store.Migrate(ctx, o.Tables, o.Migrations, false); err != nil {
+			return err
+		}
+	} else if err := store.Ensure(ctx, o.Tables, true); err != nil {
 		return err
 	}
-	return store.Ensure(ctx, o.Tables, true)
+	return store.CreateTables(ctx, o.TestTables, o.Tables)
 }
 
 // selected is the cases o.Run selects, in order.
@@ -273,7 +284,10 @@ func selected(cases []Case, o Options) []Case {
 }
 
 func runCase(c Case, o Options) (r Result) {
-	caps, now := o.Caps, o.Now
+	caps, now := maps.Clone(o.Caps), o.Now // a copy: Test.fake replaces entries of the case's own
+	if caps == nil {
+		caps = map[string]any{}
+	}
 	r = Result{Module: c.Module, Name: c.Name}
 	start := time.Now()
 	defer func() { r.Ms = float64(time.Since(start).Microseconds()) / 1000 }()
@@ -442,7 +456,10 @@ const (
 // Main also reads the variables EnvDeadline, EnvTimeout, EnvStatus and EnvStdinEOF: when the
 // deadline passes the running case is reported as failed ("timed out after <timeout>"), the
 // summary printed, and Main returns 1 without waiting for it (the caller exits, which stops it).
-func Main(cases []Case, tables []db.TableDesc, migrations []db.Migration, caps map[string]any, session any, args []string, out, err io.Writer) int {
+//
+// tables are the app's tables (Options.Tables), testTables the test-only tables of its fakes
+// (Options.TestTables: the generated FakeTables of a test build).
+func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migration, caps map[string]any, session any, args []string, out, err io.Writer) int {
 	started := time.Now()
 	fs := flag.NewFlagSet("alder test", flag.ContinueOnError)
 	fs.SetOutput(err)
@@ -462,7 +479,7 @@ func Main(cases []Case, tables []db.TableDesc, migrations []db.Migration, caps m
 			os.Exit(2)
 		}()
 	}
-	o := Options{Tables: tables, Migrations: migrations, Caps: caps, Session: session, Now: defaultNow}
+	o := Options{Tables: tables, TestTables: testTables, Migrations: migrations, Caps: caps, Session: session, Now: defaultNow}
 	if *runPat != "" {
 		re, e := regexp.Compile(*runPat)
 		if e != nil {

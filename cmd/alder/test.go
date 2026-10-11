@@ -30,8 +30,9 @@ const defaultTestTimeout = 5 * time.Minute
 // the test that timed out before it kills the program itself.
 const testGrace = 5 * time.Second
 
-// testMain is the Go main `alder test` compiles with the app: it hands the app's test table,
-// tables, migrations, capabilities and session to rtesting.Main, which reads -run and --json from the
+// testMain is the Go main `alder test` compiles with the app (a test build, so app.FakeTables
+// exists): it hands the app's test table, tables, its fakes' test-only tables, migrations,
+// capabilities and session to rtesting.Main, which reads -run and --json from the
 // environment (ALDER_TEST_RUN, ALDER_TEST_JSON). With withAdapters the capabilities are the
 // app's adapters (adapters.Caps()); otherwise none is wired, and a test that calls one fails.
 func testMain(withAdapters bool) string {
@@ -50,7 +51,7 @@ import (
 
 func main() {
 	caps := ` + caps + `
-	os.Exit(rtesting.Main(app.Tests, app.Tables, app.Migrations, caps, app.TestSession(), os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(rtesting.Main(app.Tests, app.Tables, app.FakeTables, app.Migrations, caps, app.TestSession(), os.Args[1:], os.Stdout, os.Stderr))
 }
 `
 }
@@ -136,7 +137,7 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 		return 2
 	}
 
-	b := scratch.Compile(dir, nil, testMain(buildkit.HasGoFiles(filepath.Join(dir, "adapters"))), "test", "")
+	b := scratch.CompileCheckedWith(context.Background(), scratch.Check(dir, nil), testMain(buildkit.HasGoFiles(filepath.Join(dir, "adapters"))), "test", "", scratch.Options{Tests: true})
 	defer b.Close()
 	if b.Err != nil {
 		fail(b.Err.Error())

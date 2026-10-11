@@ -428,7 +428,7 @@ func mainCases() []Case {
 func runMain(t *testing.T, cs []Case, args ...string) (string, string, int) {
 	t.Helper()
 	var out, errb bytes.Buffer
-	code := Main(cs, tables, nil, nil, nil, args, &out, &errb)
+	code := Main(cs, tables, nil, nil, nil, nil, args, &out, &errb)
 	return out.String(), errb.String(), code
 }
 
@@ -561,7 +561,7 @@ func TestMain_JSONWriteErrorIsUsageExit(t *testing.T) {
 	t.Setenv("ALDER_TEST_RUN", "")
 	t.Setenv("ALDER_TEST_JSON", "")
 	var errb bytes.Buffer
-	code := Main(mainCases(), tables, nil, nil, nil, []string{"--json"}, failWriter{}, &errb)
+	code := Main(mainCases(), tables, nil, nil, nil, nil, []string{"--json"}, failWriter{}, &errb)
 	if code != 2 || !strings.Contains(errb.String(), "closed pipe") {
 		t.Fatalf("code %d err %q", code, errb.String())
 	}
@@ -623,7 +623,7 @@ func TestMain_StreamsAndWritesStatus(t *testing.T) {
 			return true
 		}},
 	}
-	if code := Main(cs, tables, nil, nil, nil, nil, &out, &errb); code != 0 {
+	if code := Main(cs, tables, nil, nil, nil, nil, nil, &out, &errb); code != 0 {
 		t.Fatalf("code %d %q %q", code, out.String(), errb.String())
 	}
 	if !sawFirst || during != "M\tb c\n" {
@@ -709,7 +709,7 @@ func TestRun_Migrations(t *testing.T) {
 		}
 	}
 	var out, errb bytes.Buffer
-	if code := Main(cases, tables, stale, nil, nil, nil, &out, &errb); code != 1 || !strings.Contains(out.String(), "0 passed, 2 failed") {
+	if code := Main(cases, tables, nil, stale, nil, nil, nil, &out, &errb); code != 1 || !strings.Contains(out.String(), "0 passed, 2 failed") {
 		t.Fatalf("Main: %d\n%s%s", code, out.String(), errb.String())
 	}
 	// a file edited after it was written (its header names the app's schema, its statements do
@@ -720,5 +720,68 @@ func TestRun_Migrations(t *testing.T) {
 		if r.OK || r.Error != want {
 			t.Fatalf("with an edited migration: %+v\nwant %s", r, want)
 		}
+	}
+}
+
+// fakeTb is a fake's test-only table, M.Fake, whose owner column refers to the app's M.T.
+var fakeTb = &db.Table[row]{
+	Name:    "M.Fake",
+	Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "title", Type: db.CText, Ref: "M.T"}},
+	ID:      "id",
+	Encode:  tb.Encode,
+	Decode:  tb.Decode,
+	ReadID:  tb.ReadID,
+	SetID:   tb.SetID,
+}
+
+// TestTables are made in every task test's database after the app's tables — by Migrate when
+// the app has migrations (which would refuse them as drift were they there first), by Ensure
+// otherwise — and the one-off check of the migrations never sees them.
+func TestRun_TestTables(t *testing.T) {
+	sum := func(stmt string) string {
+		h := sha256.Sum256([]byte(stmt))
+		return hex.EncodeToString(h[:])[:db.HashLen]
+	}
+	goodSQL := `CREATE TABLE "M__T" ("id" TEXT NOT NULL PRIMARY KEY, "title" TEXT NOT NULL) STRICT`
+	good := []db.Migration{{Name: "0001_initial", From: sum(""), To: sum(goodSQL), SQL: goodSQL + ";"}}
+	cases := []Case{{Module: "M", Name: "fake rows", Task: func() eff.Task[bool] {
+		return eff.Bind(insertStep("Db.insert T", "x"), func(id string) eff.Task[bool] {
+			return eff.Call("Db.insert Fake", true, func(e *eff.Env) (bool, error) {
+				_, err := db.InsertRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), fakeTb, []any{nil, id}, e.Now())
+				return err == nil, err
+			})
+		})
+	}}}
+	for _, ms := range [][]db.Migration{nil, good} {
+		rs := Run(cases, Options{Tables: tables, TestTables: []db.TableDesc{fakeTb.Desc()}, Migrations: ms})
+		if len(rs) != 1 || !rs[0].OK {
+			t.Fatalf("migrations %d: %+v", len(ms), rs)
+		}
+	}
+	var out, errb bytes.Buffer
+	if code := Main(cases, tables, []db.TableDesc{fakeTb.Desc()}, good, nil, nil, nil, &out, &errb); code != 0 {
+		t.Fatalf("Main: %d\n%s%s", code, out.String(), errb.String())
+	}
+	// without TestTables the table is not there
+	if rs := Run(cases, Options{Tables: tables}); rs[0].OK {
+		t.Fatalf("without TestTables: %+v", rs)
+	}
+}
+
+// Each case gets its own copy of Options.Caps: a case that replaces a capability (as Test.fake
+// does) changes neither the map it was given nor the next case's.
+func TestRun_CapsCopiedPerCase(t *testing.T) {
+	caps := map[string]any{"M.Cap": "real"}
+	var seen []any
+	swap := Case{Module: "M", Name: "swap", Task: func() eff.Task[bool] {
+		return eff.Call("Test.fake Cap", false, func(e *eff.Env) (bool, error) {
+			seen = append(seen, e.Caps["M.Cap"])
+			e.Caps["M.Cap"] = "fake"
+			return true, nil
+		})
+	}}
+	rs := Run([]Case{swap, swap}, Options{Tables: tables, Caps: caps})
+	if !rs[0].OK || !rs[1].OK || !reflect.DeepEqual(seen, []any{"real", "real"}) || caps["M.Cap"] != "real" {
+		t.Fatalf("%+v seen=%v caps=%v", rs, seen, caps)
 	}
 }

@@ -1,0 +1,86 @@
+package app
+
+import (
+	"context"
+	"reflect"
+	"strings"
+	"testing"
+
+	"alder/rt/db"
+	"alder/rt/eff"
+	"alder/rt/html"
+	rtesting "alder/rt/testing"
+)
+
+// TestAlderFakes runs the gen_fakes golden's tests (a test build) as `alder test` does, with
+// the fakes' tables after the app's (FakeTables) and no adapters wired (TestGen_Fakes).
+func TestAlderFakes(t *testing.T) {
+	if len(FakeTables) != 1 || FakeTables[0].Name != "Payments.Charge" {
+		t.Fatalf("FakeTables: %+v", FakeTables)
+	}
+	rs := rtesting.Run(Tests, rtesting.Options{Tables: Tables, TestTables: FakeTables, Caps: Caps{}.Registry(), Session: TestSession()})
+	got := map[string]rtesting.Result{}
+	for _, r := range rs {
+		got[r.Module+" "+r.Name] = r
+	}
+	for _, name := range []string{
+		"Payments a refund marks the charge",
+		"Checkout a charge is recorded",
+		"Checkout a declined charge leaves no row",
+		"Checkout the balance counts what is not refunded",
+		"Shop installs and reads back",
+	} {
+		if r := got[name]; !r.OK {
+			t.Errorf("%s: %+v", name, r)
+		}
+	}
+	// the lifecycle's trace: Test.fake, then the entries by their capability's names, each
+	// followed by the fake's own steps
+	wantTrace := []string{"Test.fake Stripe", "Db.insert User", "Stripe.charge", "Db.insert Charge", "Stripe.refund",
+		"Db.get Charge", "Db.update Charge", "Db.get Charge", "Db.count Charge"}
+	if tr := got["Checkout a charge is recorded"].Trace; !reflect.DeepEqual(tr, wantTrace) {
+		t.Errorf("lifecycle trace %q, want %q", tr, wantTrace)
+	}
+	if r := got["Checkout a declined charge fails the test"]; r.OK || r.Error != "card declined" ||
+		!reflect.DeepEqual(r.Trace, []string{"Test.fake Stripe", "Db.insert User", "Stripe.charge", "Db.insert Charge"}) {
+		t.Errorf("a failing entry outside Test.run: %+v", r)
+	}
+	if r := got["Checkout no fake leaks into the next test"]; r.OK || r.Error != "capability Payments.Stripe is not wired in tests" {
+		t.Errorf("a fake leaked: %+v", r)
+	}
+}
+
+// A fake's Query entry runs as a Query inside a running Query, and a fake called with a
+// context that carries no running effect says so.
+func TestFakeQueryEntry(t *testing.T) {
+	md := Fakes["Markdown.Markdown"]().(Cap__Markdown__Markdown)
+	env := &eff.Env{Caps: map[string]any{}}
+	n, err := eff.RunQuery(env, eff.Q(eff.Call("Markdown.render", false, func(e *eff.Env) (html.Node, error) {
+		return md.Render(e.Ctx, Args__Markdown__Markdown__Render{Value: "hi"})
+	})))
+	if err != nil || !reflect.DeepEqual(n, html.Text("hi")) {
+		t.Fatalf("n=%v err=%v", n, err)
+	}
+	if _, err := md.Render(context.Background(), Args__Markdown__Markdown__Render{Value: "x"}); err == nil || !strings.Contains(err.Error(), "fake Markdown called outside a running effect") {
+		t.Fatalf("outside an effect: %v", err)
+	}
+	// a write reached from a Query is the runtime's internal error
+	st := Fakes["Payments.Stripe"]().(Cap__Payments__Stripe)
+	store, err := db.OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Ensure(context.Background(), Tables, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateTables(context.Background(), FakeTables, Tables); err != nil {
+		t.Fatal(err)
+	}
+	_, err = eff.RunQuery(&eff.Env{Store: store}, eff.Q(eff.Call("Stripe.charge", false, func(e *eff.Env) (any, error) {
+		return st.Charge(e.Ctx, Args__Payments__Stripe__Charge{Cents: 1, User: "u"})
+	})))
+	if err == nil || !strings.Contains(err.Error(), `write effect "Db.insert Charge" reached from a Query`) {
+		t.Fatalf("a Task entry inside a Query: %v", err)
+	}
+}

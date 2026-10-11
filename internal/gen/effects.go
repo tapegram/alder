@@ -48,6 +48,10 @@ import (
 //	                   _err := rtesting.Inner(_e, task(t)); …; R{Value: rt.Ok/Err…, Trace: _tr} })
 //	                   (R the result record { value: Result Text a, trace: List Text })
 //	TestTrace          eff.Call("Test.trace", false, func(_e) { return rtesting.Trace(_e), nil })
+//	TestFake           eff.Call("Test.fake Stripe", false, func(_e) { _e.Caps["Payments.Stripe"] =
+//	                   Fakes["Payments.Stripe"](); return struct{}{}, nil }) in a test build (the
+//	                   Caps of the running test, its own copy: rtesting); in a production build
+//	                   the Call fails: "Test.fake is only available in `alder test`"
 //
 // Values compared with a column are encoded with the column's encoder (encode): Bool, Date, Time
 // and payload-less unions (name__M__U) have one, Maybe goes through db.EncodeMaybe, Text, Int and
@@ -99,7 +103,7 @@ func effResult(t types.Type) types.Type {
 func isEffNode(e ir.Expr) bool {
 	switch x := e.(type) {
 	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.CapCall,
-		*ir.DbGet, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete, *ir.TestRun, *ir.TestTrace:
+		*ir.DbGet, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete, *ir.TestRun, *ir.TestTrace, *ir.TestFake:
 		return true
 	case *ir.DbSelect:
 		return x.Terminal != ir.SelNone
@@ -213,6 +217,16 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 	case *ir.TestTrace:
 		return f.callStmts("Test.trace", false, x.Ty, s, func(env string, c *scope) string {
 			return "return rtesting.Trace(" + env + "), nil\n"
+		}), true
+	case *ir.TestFake:
+		cp := x.Fake.Capability
+		key := strconv.Quote(cp.Module + "." + cp.Name)
+		return f.callStmts("Test.fake "+cp.Name, false, x.Ty, s, func(env string, c *scope) string {
+			if !f.g.tests { // a production build has no fakes
+				return "return struct{}{}, errors.New(" + strconv.Quote("Test.fake is only available in `alder test`") + ")\n"
+			}
+			return "if " + env + ".Caps == nil {\n" + env + ".Caps = map[string]any{}\n}\n" +
+				env + ".Caps[" + key + "] = Fakes[" + key + "]()\nreturn struct{}{}, nil\n"
 		}), true
 	}
 	panic(fmt.Sprintf("gen: %T is not an effect node", e))

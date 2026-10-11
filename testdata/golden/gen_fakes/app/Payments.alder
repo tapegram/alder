@@ -1,0 +1,54 @@
+module Payments
+
+import User
+
+type ChargeId = brand Text
+
+capability Stripe {
+  charge : { cents: Int.Positive, user: User.UserId } -> Task (Result Text ChargeId),
+  refund : { id: ChargeId } -> Task (Result Text Unit),
+  balance : Query Int,
+}
+
+-- The gen_fakes golden: corpus fake-ok, with a charge that can fail and more tests.
+-- Entries in any order, tables among them; a fake's table may refer to an app table.
+fake Stripe {
+  refund args = {
+    let found <- Db.get Charge args.id
+    match found {
+      Just c -> {
+        let _ <- Db.update Charge c.id (\x -> { x | refunded: True })
+        Task.succeed (Ok ())
+      },
+      Nothing -> Task.succeed (Err "no such charge"),
+    }
+  }
+
+  table Charge {
+    id: ChargeId @id,
+    cents: Int,
+    user: User.UserId @ref User,
+    refunded: Bool = False,
+  }
+
+  -- a large charge fails after its insert: the insert is undone with the failure
+  charge args = {
+    let id <- Db.insert Charge { cents: args.cents, user: args.user }
+    if args.cents > 100000 then Task.fail "card declined" else Task.succeed (Ok id)
+  }
+
+  balance = Db.from Charge |> Db.where (Charge.refunded.eq False) |> Db.count
+}
+
+-- A test in the fake's module names the table's columns.
+test "a refund marks the charge" = {
+  let _ <- Test.fake Stripe
+  let user <- Db.insert User.User { name: "Ada" }
+  let charged <- Stripe.charge { cents: Int.Positive 300, user: user }
+  let refunded <- match charged {
+    Ok id -> Stripe.refund { id: id },
+    Err e -> Task.succeed (Err e),
+  }
+  let left <- Db.from Charge |> Db.where (Charge.refunded.eq True) |> Db.count
+  Task.succeed (left == 1)
+}

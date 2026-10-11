@@ -150,7 +150,7 @@ func children(e ir.Expr) []ir.Expr {
 	case *ir.TestEq:
 		return []ir.Expr{x.Left, x.Right}
 	}
-	return nil // Lit, Var, Hole, HText, EffNotFound, ColumnRef, TableRef, Ord, TestTrace
+	return nil // Lit, Var, Hole, HText, EffNotFound, ColumnRef, TableRef, Ord, TestTrace, TestFake
 }
 
 func matchChildren(x *ir.Match) []ir.Expr {

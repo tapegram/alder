@@ -267,7 +267,7 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 		return f.html(e, s), precAtom // html.go
 	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.CapCall,
 		*ir.DbGet, *ir.DbSelect, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete,
-		*ir.ColumnRef, *ir.TableRef, *ir.Cond, *ir.Ord, *ir.TestRun, *ir.TestTrace:
+		*ir.ColumnRef, *ir.TableRef, *ir.Cond, *ir.Ord, *ir.TestRun, *ir.TestTrace, *ir.TestFake:
 		return f.effect(e, s), precAtom // effects.go
 	case *ir.TestEq: // as rt.Eq for `==`, typed: an Int literal passed as `any` would be a Go int
 		return "rtesting.Eq(" + f.typedExpr(x.Left, s) + ", " + f.typedExpr(x.Right, s) + ")", precAtom

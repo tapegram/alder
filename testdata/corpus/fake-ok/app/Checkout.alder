@@ -3,12 +3,16 @@ module Checkout
 import Payments
 import User
 
--- A lifecycle test in another module: install the fake, charge through it, read the row back
--- by id, and filter the fake's table by a column (`Payments.Charge.cents`).
+-- A lifecycle test in another module: install the fake, charge through it, refund, read the
+-- row back by id, and filter the fake's table by a column (`Payments.Charge.cents`).
 test "a charge is recorded" = {
   let _ <- Test.fake Stripe
   let user <- Db.insert User.User { name: "Grace" }
   let charged <- Stripe.charge { cents: Int.Positive 250, user: user }
+  let refunded <- match charged {
+    Ok id -> Stripe.refund { id: id },
+    Err e -> Task.succeed (Err e),
+  }
   let found <- match charged {
     Ok id -> Db.get Payments.Charge id,
     Err e -> Query.succeed Nothing,
@@ -18,5 +22,5 @@ test "a charge is recorded" = {
     Nothing -> 0,
   }
   let big <- Db.from Payments.Charge |> Db.where (Payments.Charge.cents.eq 250) |> Db.count
-  Task.succeed (cents == 250 && big == 1)
+  Task.succeed (cents == 250 && big == 1 && refunded == Ok ())
 }

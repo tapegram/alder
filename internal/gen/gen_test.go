@@ -73,8 +73,14 @@ func repoPath(t *testing.T) string {
 // emitted module builds.
 func emit(t *testing.T, dir string) map[string][]byte {
 	t.Helper()
+	return emitWith(t, dir, false)
+}
+
+// emitWith is emit, a test build (Options.Tests) when tests is set.
+func emitWith(t *testing.T, dir string, tests bool) map[string][]byte {
+	t.Helper()
 	sqls, _ := filepath.Glob(filepath.Join(dir, "migrations", "*.sql"))
-	files, err := Emit(lowerDir(t, dir), Options{RepoPath: repoPath(t), Migrations: len(sqls) > 0})
+	files, err := Emit(lowerDir(t, dir), Options{RepoPath: repoPath(t), Migrations: len(sqls) > 0, Tests: tests})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,6 +154,10 @@ func mapsKeys(m map[string][]byte) []string {
 	return ks
 }
 
+// testBuildGoldens are the gen goldens whose want/ is a test build (Options.Tests) and whose
+// want_prod/ is the production build of the same app.
+var testBuildGoldens = map[string]bool{"gen_fakes": true}
+
 func TestGenGolden(t *testing.T) {
 	dirs, _ := filepath.Glob("../../testdata/golden/gen_*")
 	n := 0
@@ -156,51 +166,66 @@ func TestGenGolden(t *testing.T) {
 			continue // not an app (gen_vet holds a corpus of apps: TestGenVetCorpus)
 		}
 		n++
-		t.Run(filepath.Base(dir), func(t *testing.T) {
-			files := emit(t, dir)
-			want := filepath.Join(dir, "want")
-			if *update {
-				os.RemoveAll(want)
-				if err := os.MkdirAll(want, 0o755); err != nil {
-					t.Fatal(err)
-				}
-				for name, b := range files {
-					if strings.HasSuffix(name, ".go") {
-						if err := os.WriteFile(filepath.Join(want, name), b, 0o644); err != nil {
-							t.Fatal(err)
-						}
-					}
-				}
-			}
-			wantFiles, _ := filepath.Glob(filepath.Join(want, "*.go"))
-			var wantNames, gotNames []string
-			for _, w := range wantFiles {
-				wantNames = append(wantNames, filepath.Base(w))
-			}
-			for name := range files {
-				if strings.HasSuffix(name, ".go") {
-					gotNames = append(gotNames, name)
-				}
-			}
-			slices.Sort(gotNames)
-			if !slices.Equal(wantNames, gotNames) {
-				t.Fatalf("emitted files %v, want %v", gotNames, wantNames)
-			}
-			for _, name := range wantNames {
-				w, err := os.ReadFile(filepath.Join(want, name))
-				if err != nil {
-					t.Fatal(err)
-				}
-				if got := string(files[name]); got != string(w) {
-					t.Errorf("golden mismatch for %s\n got:\n%s\nwant:\n%s", name, got, w)
-				}
-			}
-			vet(t, files)
-		})
+		type variant struct {
+			want  string
+			tests bool
+		}
+		variants := []variant{{"want", false}}
+		if testBuildGoldens[filepath.Base(dir)] {
+			variants = []variant{{"want", true}, {"want_prod", false}}
+		}
+		for _, v := range variants {
+			t.Run(filepath.Base(dir)+"/"+v.want, func(t *testing.T) {
+				goldenCompare(t, emitWith(t, dir, v.tests), filepath.Join(dir, v.want))
+			})
+		}
 	}
 	if n == 0 {
 		t.Fatal("no gen golden directories")
 	}
+}
+
+// goldenCompare compares the emitted .go files with want/ (rewriting it with -update) and vets
+// them.
+func goldenCompare(t *testing.T, files map[string][]byte, want string) {
+	t.Helper()
+	if *update {
+		os.RemoveAll(want)
+		if err := os.MkdirAll(want, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for name, b := range files {
+			if strings.HasSuffix(name, ".go") {
+				if err := os.WriteFile(filepath.Join(want, name), b, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	wantFiles, _ := filepath.Glob(filepath.Join(want, "*.go"))
+	var wantNames, gotNames []string
+	for _, w := range wantFiles {
+		wantNames = append(wantNames, filepath.Base(w))
+	}
+	for name := range files {
+		if strings.HasSuffix(name, ".go") {
+			gotNames = append(gotNames, name)
+		}
+	}
+	slices.Sort(gotNames)
+	if !slices.Equal(wantNames, gotNames) {
+		t.Fatalf("emitted files %v, want %v", gotNames, wantNames)
+	}
+	for _, name := range wantNames {
+		w, err := os.ReadFile(filepath.Join(want, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := string(files[name]); got != string(w) {
+			t.Errorf("golden mismatch for %s\n got:\n%s\nwant:\n%s", name, got, w)
+		}
+	}
+	vet(t, files)
 }
 
 func TestGen_GoMod(t *testing.T) {
@@ -2937,6 +2962,70 @@ test "a successful run keeps its insert" = {
 		t.Fatal(err)
 	}
 	runGo(t, files, string(prog))
+}
+
+// TestGen_Fakes: a test build of the gen_fakes golden (corpus fake-ok with a charge that can
+// fail) runs its tests through rtesting as `alder test` does: the Stripe-shaped fake's
+// lifecycle (charge, refund, read the fake's table back), a failing entry under Test.run (Err,
+// its insert rolled back) and outside it (the test fails), a Query entry, Test.fake twice, and
+// no fake leaking into the next test (testdata/e2e_fakes_test.go.txt).
+func TestGen_Fakes(t *testing.T) {
+	files := emitWith(t, "../../testdata/golden/gen_fakes", true)
+	contains(t, files["Payments_alder.go"], "type fake__Payments__Stripe struct{}", "func (fake__Payments__Stripe) Charge(ctx context.Context, args Args__Payments__Stripe__Charge)",
+		"env := eff.EnvFrom(ctx)", "return eff.RunInner(env, fakeentry__Payments__Stripe__Charge(args))", "return eff.RunInner(env, eff.T(fakeentry__Payments__Stripe__Balance))",
+		"type Payments__Charge struct {", "var table__Payments__Charge = &db.Table[Payments__Charge]{")
+	contains(t, files["Checkout_alder.go"], `eff.Call("Test.fake Stripe", false,`, `_e1.Caps["Payments.Stripe"] = Fakes["Payments.Stripe"]()`)
+	contains(t, files["app__alder.go"], "var FakeTables = []db.TableDesc{table__Payments__Charge.Desc()}", `"Payments.Stripe":   func() any { return fake__Payments__Stripe{} },`)
+	if strings.Contains(string(files["app__alder.go"]), "var Tables = []db.TableDesc{table__User__User.Desc(), table__Payments") {
+		t.Error("a fake's table is in Tables")
+	}
+	prog, err := os.ReadFile("testdata/e2e_fakes_test.go.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runGo(t, files, string(prog))
+}
+
+// TestGen_ProdHasNoFakes: the production build of an app with fakes (and tests that use them)
+// has no fake code, no fake tables and no FakeTables or Fakes; Test.fake is a step that fails,
+// and a test that uses a fake's table is one that fails. It still vets (TestGenGolden builds
+// want_prod/ too).
+func TestGen_ProdHasNoFakes(t *testing.T) {
+	for _, dir := range []string{"../../testdata/corpus/fake-ok", "../../testdata/golden/gen_fakes"} {
+		files := emitWith(t, dir, false)
+		for name, b := range files {
+			for _, bad := range []string{"fake__", "fakeentry__", "Payments__Charge", "FakeTables", "Fakes[", "var Fakes", "EnvFrom", "RunInner"} {
+				if strings.Contains(string(b), bad) {
+					t.Errorf("%s: production %s contains %q", dir, name, bad)
+				}
+			}
+		}
+		contains(t, files["Checkout_alder.go"], "return eff.Fail[bool](\"this test uses a fake's tables, which exist only in `alder test`\")")
+		contains(t, files["Shop_alder.go"], "return eff.Fail[bool](\"this test uses a fake's tables, which exist only in `alder test`\")")
+	}
+	// a test that installs a fake without using its tables keeps its body: Test.fake fails
+	files := emitSource(t, map[string]string{"Markdown.alder": `module Markdown
+
+capability Markdown {
+  render : Text -> Query (Html Never),
+}
+
+fake Markdown {
+  render text = Query.succeed (Html.text text)
+}
+
+test "renders" = {
+  let _ <- Test.fake Markdown
+  let h <- Markdown.render "x"
+  Task.succeed True
+}
+`})
+	contains(t, files["Markdown_alder.go"], `eff.Call("Test.fake Markdown", false, func(_e1 *eff.Env) (struct{}, error) {`,
+		"return struct{}{}, errors.New(\"Test.fake is only available in `alder test`\")")
+	if strings.Contains(string(files["app__alder.go"]), "Fakes") || strings.Contains(string(files["Markdown_alder.go"]), "fake__") {
+		t.Error("production build has fake code")
+	}
+	vet(t, files)
 }
 
 // A @ref column's delete rule reaches its db.Column (@restrict, the default, writes nothing), and
