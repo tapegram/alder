@@ -817,12 +817,17 @@ func TestBook(t *testing.T) {
 // sameAsExample compares the module m joined from part= blocks (src) with example's
 // module of that name, ignoring blank lines: a module the book shows piece by piece must be
 // the example's, line for line, so the two cannot drift apart. It returns "" when they agree
-// or the example has no module m, else a message naming the first line that differs.
+// or the to-do example has no module m (the tour's pieces may be a module of their own), else a
+// message naming the first line that differs. Another example must have the module: a part=
+// block names it to quote it, so a misspelt name fails.
 func sameAsExample(example, m, src string) string {
 	file := filepath.Join(exampleApp(example), "app", filepath.FromSlash(strings.ReplaceAll(m, ".", "/"))+".alder")
 	b, err := os.ReadFile(file)
 	if err != nil {
-		return ""
+		if example == DefaultExample {
+			return ""
+		}
+		return fmt.Sprintf("the part=%s/%s blocks name a module the example does not have: there is no %s", example, m, file)
 	}
 	nonBlank := func(s string) []string {
 		var out []string
@@ -888,6 +893,10 @@ func TestSameAsExample_OtherExample(t *testing.T) {
 	// todos has no Comment: the same source is not compared with anything there.
 	if msg := sameAsExample("todos", "Comment", "module Comment\n"); msg != "" {
 		t.Errorf("todos has no Comment: got %q", msg)
+	}
+	// a module of another example must exist there: a typo'd name fails
+	if msg := sameAsExample("blog", "Commnet", "module Commnet\n"); !strings.Contains(msg, "part=blog/Commnet") || !strings.Contains(msg, filepath.Join("blog", "app", "Commnet.alder")) {
+		t.Errorf("a module the blog lacks: got %q", msg)
 	}
 }
 

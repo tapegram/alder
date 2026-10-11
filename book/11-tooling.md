@@ -673,7 +673,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 
 | Code | Meaning | Fix offered |
 |---|---|---|
-| E0001 | parse error (also: an identifier with `__` in it, a module name segment ending in `_`, a delete rule such as `@cascade` on a field without `@ref`, or two on one field) | — |
+| E0001 | parse error (also: an identifier with `__` in it, a module name segment ending in `_`) | — |
 | E0002 | unknown name | — |
 | E0003 | type mismatch (also: `==` or a `Dict` key on a function or an effect value, a column method on a column held in a variable, `.contains` or `.startsWith` on a column that is not `Text`, `@setNull` on a field that is not a `Maybe`, a `Db` function over a type parameter) | conversion such as `Text.fromInt (…)` where one exists |
 | E0004 | non-exhaustive `match` | arm skeleton |
@@ -683,8 +683,8 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0008 | wrong number of parameters or arguments, or of type arguments (`Box Int Text` for `type Box a`) | — |
 | E0009 | duplicate definition (two tests of one module with the same name too), a constructor declared in two imported modules, or a value named like an entry of the capability named like its module (`render` beside `capability Markdown { render … }` in module `Markdown`) | — |
 | E0010 | required declaration missing (page `load`/`view`/`update`, `App` `error`/`notFound`/`login`/`session`) | — |
-| E0011 | invalid declaration (unstorable table field, unusable page or form field, bad `@id`, brand constructor used outside its module, a record that contains itself by value) | — |
-| E0012 | a type, table, form or component in a page module or `App` named like a generated type: `Params`, `Msg`, `Session`, or `<Msg>Params` for a declared `msg` | — |
+| E0011 | invalid declaration (unstorable table field, unusable page or form field, bad `@id`, brand constructor used outside its module, a record that contains itself by value, a delete rule such as `@cascade` on a field without `@ref`, before `@ref T`, or two on one field) | — |
+| E0012 | a type, table, form or component in a page module or `App` named like a generated type: `Params`, `Msg`, `Session`, or `<Msg>Params` for a declared `msg`; in any module, a type, table, form or union named like a Prelude type (`Query`, `Task`, `Html`, `Maybe`, `Order`, …), whose module's other errors wait for the rename | — |
 | E0014 | two module names that differ only in case (`Ab` and `AB`): their files would be one on a case-insensitive file system | — |
 | E0015 | a module whose first name segment is exactly `Route`, `Cap` or `Args` (`Cap.Mail` is refused, `Caps.Mail` and `My.Cap` are fine): the generated Go uses those prefixes for exported names | — |
 | E0016 | two pages answer the same path (`/x/{id}` and `/x/{slug}`, or `/x` and `/x/`) | — |

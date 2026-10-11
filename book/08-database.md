@@ -122,14 +122,31 @@ meaning, so `Todo.title.startsWith "100%"` finds `100% done` and not
 combine the conditions with `Db.or`:
 
 ```alder
-search : Text -> Query (List Todo)
+module Article
+
+type ArticleId = brand Text
+
+table Article {
+  id: ArticleId @id,
+  title: Text.NonEmpty,
+  body: Text,
+  created: Time @created,
+}
+
+search : Text -> Query (List Article)
 search q =
-  Db.from Todo
-    |> Db.where (Db.or [Todo.title.contains q, Todo.title.startsWith q])
-    |> Db.orderBy Todo.created.desc
+  Db.from Article
+    |> Db.where (Db.or [Article.title.contains q, Article.body.contains q])
+    |> Db.orderBy Article.created.desc
     |> Db.limit 10
     |> Db.all
 ```
+
+A search costs the column's length times the argument's for every row,
+and SQLite refuses a pattern much over 50 KB, so a search text over
+10,000 bytes fails the query with `search text too long`. Cut a query a
+visitor typed before searching with it, as the blog does with
+`Text.slice 0 100` (chapter 14).
 
 On any other column the method is an error (E0003):
 
@@ -178,8 +195,11 @@ still refer to does is the referring field's **delete rule**, written
 after `@ref T`:
 
 - **`@restrict`**, the default, refuses: `Db.delete` fails with
-  `User QXZMRYnkC2vuE_TefkuR is referenced by another row` (the table
-  and the id). Delete or re-point the referring rows first.
+  `User QXZMRYnkC2vuE_TefkuR is referenced by another row, directly or
+  through rows that `@cascade` would delete with it` (the table and the
+  id). The blocking row can be further down a chain: if comments cascade
+  from posts, a `@restrict` reference to a comment refuses the post's
+  delete. Delete or re-point the referring rows first.
 - **`@cascade`** deletes the referring rows too, and theirs in turn if
   other tables cascade from them.
 - **`@setNull`** sets the referring field to `Nothing`; the field must be
@@ -207,7 +227,8 @@ table Note {
 The rules are carried out by SQLite inside the delete statement, not by
 the runtime: `Db.delete Todo id` is one step in a test's trace
 (chapter 10) however many notes go with it. A field takes at most one
-rule, and only a `@ref` field takes one (`@cascade` alone is E0001).
+rule, and only a `@ref` field takes one, after `@ref T` (`@cascade` alone,
+or before `@ref T`, is E0011).
 `@setNull` on a field that is not a `Maybe` is E0003, since the field
 could not hold the `Nothing` it would be set to:
 

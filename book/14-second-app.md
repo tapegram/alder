@@ -1,30 +1,27 @@
 # 14. A second app
 
 The to-do app of chapter 2 has one table that matters and one kind of
-user. `examples/blog` is the second example, and it adds the things a
-to-do list never needed. It has two tables joined by a reference, two
-kinds of user, a capability that `load` calls, pages of results, and a
-search. This chapter covers only what is new. The rules themselves are in
-chapters 6 to 10, and the chapter points back to them.
+user. `examples/blog` adds what a to-do list never needed: two tables
+joined by a reference, two kinds of user, a capability that `load`
+calls, pages of results, and a search. This chapter covers only what is
+new; the rules are in chapters 6 to 10.
 
 The blog has eleven modules in `examples/blog/app/`:
 
 | Module | What it is |
 |---|---|
-| `App`, `Layout`, `Auth.Login` | As in the to-do app. The login page redirects to the front page |
+| `App`, `Layout`, `Auth.Login` | As in the to-do app; the login leads to `/` |
 | `User` | The user table, with a `role` column |
 | `Post`, `Comment` | The two tables, and the functions about posts |
 | `Markdown` | A capability that turns a post's body into HTML |
-| `Posts.Index` | `/`: the published posts, a page at a time, with a search |
-| `Posts.Show` | `/posts/{slug}`: one post, its comments, and a comment form |
+| `Posts.Index` | `/`: the published posts, a page at a time, and a search |
+| `Posts.Show` | `/posts/{slug}`: one post, its comments, a comment form |
 | `Admin` | `/admin`: an author's own posts, and a form for a new one |
-| `Admin.Edit` | `/admin/{id}`: edit, publish, unpublish or delete one post |
+| `Admin.Edit` | `/admin/{id}`: edit, publish, unpublish or delete a post |
 
-Four modules are shown in full below, piece by piece. `go test ./book`
-joins the pieces of each one and checks that they equal the file in
-`examples/blog`, ignoring blank lines (chapter 11, "The book is
-verified"). The other modules are described in the text. Their files
-are short.
+Four modules are shown in full, piece by piece: `go test ./book` checks
+that the pieces of each equal its file in `examples/blog`, blank lines
+aside (chapter 11). The others are described in the text.
 
 ## A relation: `Comment`
 
@@ -35,28 +32,46 @@ import Post
 
 type CommentId = brand Text
 
+-- Anyone may comment, so a comment's name and text are bounded: a Name is 1 to 80 characters, a
+-- Body 1 to 5,000, and neither is only spaces. (A brand's base is a built-in type, so each
+-- checks for itself what Text.NonEmpty would.) The form refuses a longer one with an error
+-- beside the field.
+type Name = brand Text where (\s -> fits 80 s)
+type Body = brand Text where (\s -> fits 5000 s)
+
 table Comment {
   id: CommentId @id,
   post: Post.PostId @ref Post @cascade,
-  author: Text.NonEmpty,
-  body: Text.NonEmpty,
+  author: Name,
+  body: Body,
   created: Time @created,
+}
+
+-- fits is whether s has text other than spaces and at most n characters.
+fits : Int -> Text -> Bool
+fits n s = not (Text.isEmpty (Text.trim s)) && Text.length s <= n
+
+test "a name or comment has text and a bound" = {
+  let long = Text.join "" (List.map (\n -> "a") (List.range 1 81))
+  Task.succeed (List.map (fits 80) ["Ann", "", "   ", Text.slice 0 80 long, long] == [True, False, False, True, False])
 }
 ```
 
 A comment belongs to a post: `post: Post.PostId @ref Post` names a `Post`
-row, and inserting a comment for a post that does not exist fails
-(chapter 8, "Writing"). The new part is `@cascade`, the field's **delete
-rule**. It says what happens to a comment when its post is deleted.
-`@cascade` deletes the comments too. Without a rule, the default
-`@restrict` would refuse to delete a post that has comments, and
-`@setNull` would need the field to be a `Maybe`. The rule sits on the
-referring field, so `Comment.alder` is the one place that says what a
-deletion does, whichever page deletes the post. `Admin.Edit`, below,
-deletes a post with a single `Db.delete`.
+row, and inserting a comment for a missing post fails (chapter 8,
+"Writing"). `@cascade` is the field's **delete rule**: deleting a post
+deletes its comments. The default, `@restrict`, would refuse to delete a
+post that has comments, and `@setNull` needs a `Maybe` field. The rule
+sits on the referring field, so this file says what any page's deletion
+of a post does to its comments.
 
-`Comment` has no functions of its own. The page that shows a post reads
-that post's comments.
+Anyone may comment without logging in, so the name and the text are
+bounded: without a bound, one visitor could store a megabyte under a
+post for every reader to download. `Name` and `Body` are brands of `Text`
+with a refinement (chapter 4); a brand's base is a built-in type, not
+another brand, so `fits` checks for itself what `Text.NonEmpty` would.
+The comment form uses these types, so a longer comment is refused with
+an error beside the field before `update` runs.
 
 ## A slug: `Post`
 
@@ -79,12 +94,10 @@ table Post {
 }
 ```
 
-A post's address is `/posts/hello-world`, not `/posts/<id>`. The id is
-still generated, like every `@id` (chapter 8), and the slug is a second,
-`@unique` column. `Slug` is a brand of `Text` with a refinement
-(chapter 4): a slug that breaks the rule cannot be made. A form field of
-type `Post.Slug` reports an error before `update` runs, and so does a
-route parameter: `/posts/Bad%20Slug` is a 404.
+A post's address is `/posts/hello-world`. The id is still generated, and
+the slug is a second, `@unique` column. `Slug` is a refined brand too: a
+form field of type `Post.Slug` reports an error before `update` runs,
+and a route parameter that breaks the rule, `/posts/Bad%20Slug`, is a 404.
 
 ```alder part=blog/Post
 bySlug : Slug -> Query (Maybe Post)
@@ -100,11 +113,9 @@ visible : Maybe User.UserId -> Post -> Bool
 visible viewer post = post.published || viewer == Just post.author
 ```
 
-`bySlug` is the lookup by slug, and both `Posts.Show` and `Admin` use it.
-`isSlug` is the rule, written once and used both by the brand and by the
-first test below. `visible` is the rule for drafts. Everyone can see a
-published post, but only its author can see a draft. `viewer` is a
-`Maybe` because a visitor who has not logged in can still read the blog.
+`bySlug` is the lookup by slug. `isSlug` is the rule, written once for
+the brand and the first test below. `visible` is the rule for drafts;
+`viewer` is a `Maybe` because a visitor need not log in.
 
 ```alder part=blog/Post
 test "a slug is lowercase letters, digits and hyphens" =
@@ -117,29 +128,28 @@ test "a draft is not visible" = {
 }
 ```
 
-The two tests are pure (chapter 10, section 1). The second one builds a
-`Post` record by hand, so it writes every field, `created` included, with
-`Time.epoch` as a fixed time, as chapter 10's tests do.
+The second test builds a `Post` by hand, `created` included, with
+`Time.epoch` as a fixed time (chapter 10).
 
 ## A role checked in `load`: `Admin` and `Admin.Edit`
 
 `User` declares `type Role = Reader | Author` and a column
-`role: Role = Reader`, so a user is a Reader unless the row says
-otherwise. Roles are not a language feature. A role is a column, and a
-page that only authors may open checks that column in `load`. The page
-`Admin` (`app/Admin.alder`) declares `requires user`, reads the
-session's `User` row, and continues only when `User.isAuthor user` is
-true. In every other case the answer is `Query.notFound`, so a Reader at
-`/admin` gets the same 404 as a page that does not exist. The runtime
-runs `load` before every message of the page (chapter 6, "The request
-lifecycle"), so `Admin`'s `update` needs no check of its own. Its one
-message, `Create`, looks the new slug up with `Post.bySlug` before it
-inserts. If the slug is taken, `Create` answers with `Reject`, and the
-form shows the message. Without that check, the insert would fail on
-`@unique` and the user would get a 500 page. On success, `Create`
-redirects to the new post's edit page.
+`role: Role = Reader`. A role is a column, not a language feature, and a
+page that only authors may open checks it in `load`, with the one check
+`User` has for every page to call:
 
-That edit page is shown here in full:
+```alder fragment
+author : UserId -> Query (Maybe User)
+author id = Db.from User |> Db.where (User.id.eq id) |> Db.where (User.role.eq Author) |> Db.first
+```
+
+`Admin` (`requires user`) answers `Query.notFound` when `User.author`
+of the session's user is `Nothing`, so a Reader at `/admin` gets the
+same 404 as a page that does not exist. The runtime runs `load` before
+every message of the page (chapter 6), so `update` needs no check of its
+own. Its message `Create` looks the slug up with `Post.bySlug` and
+answers `Reject` if it is taken, where the insert would fail on
+`@unique` with a 500 page. The edit page, in full:
 
 ```alder part=blog/Admin.Edit
 module Admin.Edit
@@ -148,6 +158,7 @@ import Post
 import Comment
 import User
 import Layout
+import Posts.Index
 
 page "/admin/{id}" { id: Post.PostId } requires user
 
@@ -159,20 +170,18 @@ type Model = { post: Post }
 -- this `load` has authorized (as the to-do example's Todos.Show does).
 load : Params -> Session -> Query Model
 load params session = {
-  let me <- Db.get User session.user
+  let me <- User.author session.user
   let found <- Db.get Post params.id
-  let isAuthor = Maybe.withDefault False (Maybe.map User.isAuthor me)
   match found {
-    Just post -> if isAuthor && post.author == session.user then Query.succeed { post: post } else Query.notFound,
+    Just post -> if me != Nothing && post.author == session.user then Query.succeed { post: post } else Query.notFound,
     Nothing -> Query.notFound,
   }
 }
 ```
 
-This `load` checks two things. The user must still be an Author, which
-is the same check as on `Admin`, so an author who was made a Reader can
-no longer edit their old posts. The post must also belong to that
-author. Another author's post gets a 404, just like a missing post.
+`load` asks two things: the user is still an Author, so one made a
+Reader can no longer edit old posts, and the post is theirs. Another
+author's post is a 404, like a missing one.
 
 ```alder part=blog/Admin.Edit
 form EditPost = {
@@ -207,13 +216,10 @@ update msg model session = match msg {
 }
 ```
 
-None of the four messages carries an id. Each one acts on `model.post`,
-which `load` has already checked, so no request can name a different
-post. This is chapter 6's advice ("Authorize in `update` too"): when the
-page's own parameter names the row, let the messages carry nothing. The
-blog follows it on every page, so it needs no `owned` helper like the
-to-do list's. `Delete` makes one write, and `@cascade` deletes the
-post's comments with it.
+No message carries an id: each acts on `model.post`, which `load` has
+checked, so no request can name another post. This is chapter 6's
+advice ("Authorize in `update` too"), and the blog follows it on every
+page. `Delete` makes one write, and `@cascade` deletes the comments.
 
 ```alder part=blog/Admin.Edit
 view : Model -> Session -> Html Msg
@@ -243,15 +249,12 @@ view model session =
   </Layout.Page>
 ```
 
-`view` shows Publish or Unpublish, depending on the post's state. The
-module ends with its tests:
-
 ```alder part=blog/Admin.Edit
 test "deleting a post deletes its comments" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", published: True, author: author }
-  let _ <- Db.insert Comment { post: id, author: Text.NonEmpty "Ann", body: Text.NonEmpty "First!" }
-  let _ <- Db.insert Comment { post: id, author: Text.NonEmpty "Bob", body: Text.NonEmpty "Second." }
+  let _ <- Db.insert Comment { post: id, author: Comment.Name "Ann", body: Comment.Body "First!" }
+  let _ <- Db.insert Comment { post: id, author: Comment.Name "Bob", body: Comment.Body "Second." }
   let model <- load { id: id } { user: author }
   let r <- Test.run (update Delete model { user: author })
   let posts <- Db.from Post |> Db.count
@@ -284,59 +287,43 @@ test "a demoted author cannot edit" = {
   }
   Task.succeed ({ before: before.value, after: after.value } == { before: Ok id, after: Err "not found" })
 }
-```
 
-The first of the three tests checks the cascade. It inserts a post and
-two comments, deletes the post through `update`, and counts the rows that remain. The
-trace has one step, `Db.delete Post`, because SQLite deletes the
-comments inside that same statement (chapter 8, "How tables are
-stored"). The other two check the rules in `load`: another author's post, and an
-author made a Reader after writing the post. A failing
-`load` cannot be passed to `Test.run` directly: `Test.run` takes a
-`Task`, and `load` is a `Query`. Writing `Test.run (load …)` is E0003,
-and the message itself says what to do: "a Query runs inside a test's
-block: `let x <- q`; `Test.run` takes a Task". So these tests wrap the
-query in a block. A block that binds a `Query` and ends in
-`Task.succeed` is a `Task`. When `load` answers `Query.notFound`, the
-block fails, and `Test.run` reports the failure as `Err "not found"`.
-The third test runs `load` twice in this way, once before and once after
-a `Db.update` of the author's role.
-
-## A capability in `load`: `Posts.Show`
-
-`app/Markdown.alder` declares the blog's second capability:
-
-```alder
-capability Markdown {
-  render : Text -> Query (Html Never),
+test "Publish shows the post on the front page; Unpublish hides it" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
+  let draft <- load { id: id } { user: author }
+  let _ <- update Publish draft { user: author }
+  let published <- Posts.Index.load { page: 1, q: "" } { user: Nothing }
+  let shown <- load { id: id } { user: author }
+  let _ <- update Unpublish shown { user: author }
+  let unpublished <- Posts.Index.load { page: 1, q: "" } { user: Nothing }
+  Task.succeed ({ published: List.length published.posts, unpublished: List.length unpublished.posts } == { published: 1, unpublished: 0 })
 }
 ```
 
-Chapter 7 shows the whole module. `render` returns a
-`Query`, so it is a read, and `load` may call it. `Posts.Show`'s `load`
-(`app/Posts/Show.alder`) finds the post with `Post.bySlug params.slug`.
-If `Post.visible session.user post` is false, the answer is
-`Query.notFound`, so a reader cannot tell a draft from a slug that was
-never used. Otherwise `load` writes `let body <- Markdown.render
-post.body` and reads the comments, oldest first. The capability's name
-is the same as its module's name, and that works: from another module,
-`Markdown.render` names the capability's entry, because the module
-`Markdown` has no value called `render`.
+The first test deletes a post with two comments through `update`. Its
+trace has one step, `Db.delete Post`, since SQLite deletes the comments
+in that statement (chapter 8, "Writing"). The next two wrap `load` in a
+block, because `Test.run` takes a `Task` and `load` is a `Query`. The
+last reads the front page through `Posts.Index.load`, which a test may
+call once its module imports `Posts.Index`.
 
-The Model keeps the rendered body as `body: Html Never`. That is markup
-that sends no message. The page's `view` returns `Html Msg` and embeds
-the body as `{model.body}`, with no conversion, because `Html Never`
-fits any `Html a` (chapter 5). The Go side (`adapters/markdown.go`)
-builds the HTML element by element with `html.El` and `html.Text`, and
-never uses `html.Raw`. Every piece of text is escaped when the page is
-rendered, so a post cannot inject markup. A link is kept only for an
-`http:` or `https:` address. Any other link, such as `javascript:`,
-stays as the literal text the author typed.
+## A capability in `load`: `Posts.Show`
+
+`app/Markdown.alder` declares `capability Markdown` with one entry,
+`render : Text -> Query (Html Never)` (chapter 7 shows the module).
+`Posts.Show`'s `load` finds the post with `Post.bySlug`, answers
+`Query.notFound` when `Post.visible` says the session may not see it, so
+a reader cannot tell a draft from an unused slug, renders the body, and
+reads the comments oldest first. `view` embeds the body, an
+`Html Never`, as `{model.body}` (chapter 5). The Go side builds it with
+`html.El` and `html.Text`, never `html.Raw`, so a post cannot inject
+markup; a link is kept only for an `http:` or `https:` address.
 
 The comment form's message, `msg AddComment form NewComment`, carries no
-post id either: the page's slug names the post. A draft's page is a 404
-for everyone but its author, so its form cannot be posted. `update` also
-refuses a comment on a draft, whoever sends it, with `Task.notFound`.
+post id either. A draft's page is a 404 for everyone but its author, so
+no one else can post its form, and `update` refuses a comment on a draft
+anyway, with `Task.notFound`.
 
 ## Pages and a search: `Posts.Index`
 
@@ -366,19 +353,17 @@ lastPage = 1000000
 ```
 
 Both query parameters have defaults, so `/`, `/?page=2` and
-`/?q=soup&page=2` all reach this page (chapter 6). `/?page=abc` is a 404,
-because `abc` is not an `Int`. `canWrite` decides whether the page shows
-the link to `Admin`.
+`/?q=soup&page=2` reach this page (chapter 6); `/?page=abc` is a 404.
 
 ```alder part=blog/Posts.Index
--- load reads one page of published posts, newest first, matching `q` when it is not blank. It
--- asks for one post more than a page holds: if that one comes back there is a next page
--- (`hasMore`), and it is dropped from the list. `canWrite` shows the link to the Admin page to
--- an Author only.
+-- load reads one page of published posts, newest first, matching `q` when it is not blank; `q`
+-- is cut to 100 characters. It asks for one post more than a page holds: if that one comes back
+-- there is a next page (`hasMore`), and it is dropped from the list. `canWrite` shows the link
+-- to the Admin page to an Author only.
 load : Params -> Session -> Query Model
 load params session = {
   let page = if params.page < 1 then 1 else if params.page > lastPage then lastPage else params.page
-  let q = Text.trim params.q
+  let q = Text.slice 0 100 (Text.trim params.q)
   let matching =
     if Text.isEmpty q then Db.and [] else Db.or [Post.title.contains q, Post.body.contains q]
   let found <-
@@ -390,25 +375,21 @@ load params session = {
       |> Db.offset ((page - 1) * perPage)
       |> Db.all
   let me <- match session.user {
-    Just id -> Db.get User id,
+    Just id -> User.author id,
     Nothing -> Query.succeed Nothing,
   }
-  let canWrite = Maybe.withDefault False (Maybe.map User.isAuthor me)
+  let canWrite = me != Nothing
   Query.succeed { page: page, q: q, posts: List.take perPage found, hasMore: List.length found > perPage, canWrite: canWrite }
 }
 ```
 
-`load` keeps the page number between 1 and `lastPage`, so `/?page=0`
-shows the first page and a huge number cannot overflow the offset. A pagination step is `Db.limit` and `Db.offset` (chapter 8).
-`load` asks for `perPage + 1` rows: if the extra row comes back, there
-is an older page, and the extra row is dropped from the list.
-The search is a condition built before the query runs. `load` trims
-`q`, and a blank `q` gives `Db.and []`, which matches every row. Otherwise `Db.or` matches
-posts whose title or body contains `q`. `.contains` ignores the case of
-A–Z and matches `%` and `_` literally (chapter 8, "Search"). It is SQL's
-`LIKE`, not full-text search. Last, `load` reads the session's `User`
-row, if there is a session user, and sets `canWrite` only for an Author.
-A Reader therefore never sees a link to a page that would be a 404.
+`load` keeps the page between 1 and `lastPage`, so a huge number cannot
+overflow the offset. It asks for `perPage + 1` rows: if the extra one
+comes back, there is an older page. A blank `q` gives `Db.and []`, which
+matches every row; otherwise `Db.or` matches title or body (chapter 8,
+"Search"). `q` is cut to 100 characters, since a search costs every
+post's length times the query's and SQLite refuses a pattern over about
+50 KB. `canWrite` is `User.author`, so a Reader never sees a 404 link.
 
 ```alder part=blog/Posts.Index
 form SearchForm = {
@@ -425,13 +406,24 @@ update msg model session = match msg {
 }
 ```
 
-The search box is an ordinary form (chapter 6), and its message answers
-with a `Redirect` to the first page of results. The results therefore
-have an address, `/?q=soup`, that a reader can bookmark, and the Newer
-and Older links keep `q`. The form is named `SearchForm`, not `Query`.
-A `form` declares a type, and a type named `Query` in this module would
-hide the effect type `Query`: `load : … -> Query Model` would then be
-E0008, "`Query` takes 0 type arguments".
+The search form's message redirects to the first page of results, so
+`/?q=soup` can be bookmarked. The form is `SearchForm`, not `Query`: a
+`form` declares a type, and one named like a Prelude type would hide it
+in its module, so the compiler refuses the name:
+
+```alder error=E0012 "`Query` is a Prelude type; name the form differently"
+module Search
+
+form Query = {
+  q: Text,
+}
+
+count : Query Int
+count = Query.succeed 0
+```
+
+`count`'s `Query Int` would be the next error, and it is not reported:
+a module's other errors wait until the name is changed.
 
 ```alder part=blog/Posts.Index
 view : Model -> Session -> Html Msg
@@ -470,7 +462,7 @@ view model session =
 
 ## Its tests
 
-`alder test examples/blog` runs the fifteen tests of five modules:
+`alder test examples/blog` runs twenty-three tests in six modules:
 
 ```text
 $ alder test examples/blog
@@ -478,22 +470,30 @@ ok   Post "a slug is lowercase letters, digits and hyphens"
 ok   Post "a draft is not visible"
 ok   Admin "a Reader cannot open the admin page"
 ok   Admin "creating a post redirects to its edit page"
-ok   Admin.Edit "deleting a post deletes its comments"
-ok   Admin.Edit "another author's post is not found"
-ok   Admin.Edit "a demoted author cannot edit"
+ok   Admin "a taken slug is refused"
+ok   Comment "a name or comment has text and a bound"
 ok   Posts.Index "the front page lists only published posts, newest first"
 ok   Posts.Index "search matches title or body"
 ok   Posts.Index "a `%` in the query is literal"
 ok   Posts.Index "page 99 is empty"
+ok   Posts.Index "a negative page is page 1"
+ok   Posts.Index "a `_` in the query is literal"
+ok   Posts.Index "a long query is cut"
+ok   Posts.Index "a search answers with the first page of its results"
+ok   Posts.Index "only an Author sees the Write link"
+ok   Admin.Edit "deleting a post deletes its comments"
+ok   Admin.Edit "another author's post is not found"
+ok   Admin.Edit "a demoted author cannot edit"
+ok   Admin.Edit "Publish shows the post on the front page; Unpublish hides it"
 ok   Posts.Show "a draft is not found for a reader"
 ok   Posts.Show "a draft is shown to its author"
 ok   Posts.Show "a comment on a draft is refused"
 ok   Posts.Show "a comment is listed oldest first"
-15 passed, 0 failed
+23 passed, 0 failed
 ```
 
-The tests that end `Posts.Index` call `load` the way the runtime does,
-with parameters and a session, against rows the test inserted:
+The `Posts.Index` tests call `load` the way the runtime does, with
+parameters and a session, against rows the test inserted:
 
 ```alder part=blog/Posts.Index
 test "the front page lists only published posts, newest first" = {
@@ -530,30 +530,47 @@ test "page 99 is empty" = {
   let seen = List.map (\m -> { page: m.page, posts: List.length m.posts, hasMore: m.hasMore }) pages
   Task.succeed (seen == [{ page: 1, posts: 10, hasMore: True }, { page: 2, posts: 1, hasMore: False }, { page: 99, posts: 0, hasMore: False }, { page: 1, posts: 10, hasMore: True }])
 }
+
+test "a negative page is page 1" = {
+  let model <- load { page: -3, q: "" } { user: Nothing }
+  Task.succeed (model.page == 1)
+}
+
+test "a `_` in the query is literal" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "snake", title: Text.NonEmpty "snake_case", body: "", published: True, author: author }
+  let _ <- Db.insert Post { slug: Post.Slug "camel", title: Text.NonEmpty "snakeYcase", body: "", published: True, author: author }
+  let model <- load { page: 1, q: "e_c" } { user: Nothing }
+  Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "snake_case"])
+}
+
+-- The query is cut to its first 100 characters: SQLite refuses a pattern over ~50 KB, and below
+-- that a search costs the length of every post times the length of the query.
+test "a long query is cut" = {
+  let long = Text.join "" (List.map (\n -> "tomato ") (List.range 1 100))
+  let model <- load { page: 1, q: long } { user: Nothing }
+  Task.succeed (model.q == Text.slice 0 100 long)
+}
+
+test "a search answers with the first page of its results" = {
+  let model <- load { page: 3, q: "" } { user: Nothing }
+  let nav <- update (Search { form: { q: "soup" } }) model { user: Nothing }
+  Task.succeed (nav == Redirect (Posts.Index { page: 1, q: "soup" }))
+}
+
+test "only an Author sees the Write link" = {
+  let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let pages <- Query.all (List.map (\user -> load { page: 1, q: "" } { user: user }) [Nothing, Just reader, Just author])
+  Task.succeed (List.map (\m -> m.canWrite) pages == [False, False, True])
+}
 ```
 
-Look at the first test. It inserts a user and three posts, and the
-middle post is a draft (`published` defaults to `False`). Then it checks
-the titles `load` returns: the draft is missing, and `Second` comes
-before `First`. The order can only be checked because a test's clock
-ticks (chapter 10, "Where an effect test runs"). Each `Db.insert` reads
-the clock to fill `created`, and each read is one second later than the
-one before. So `Second` is newer than `First` by a second, and
-`orderBy Post.created.desc` has something to sort. With a clock that
-never moved, every row would have the same `created`, and the test
-could not tell `desc` from `asc`. Changing `desc` to `asc` in `load`
-makes this test fail, and making the same change in `Posts.Show` makes
-"a comment is listed oldest first" fail.
-
-"page 99 is empty" makes eleven posts in one step (`Task.all`) and then
-loads four pages in one step (`Query.all`). It checks pages 1, 2, 99 and
-0 together, and page 0 comes back as page 1. "a draft is shown to its
-author" in `Posts.Show` runs the real Markdown adapter. Its body
-`Not *yet*.` comes back equal to the literal `<p>Not <em>yet</em>.</p>`,
-because `Html` values can be compared with `==` (chapter 10, section 1). The Go
-adapter has its own Go tests in `adapters/markdown_test.go`, including
-hostile input: scripts, `javascript:` links, unclosed markers, and 50 KB
-bodies.
+The first test can check that `Second` comes before `First` because a
+test's clock ticks (chapter 10): each `Db.insert` reads it for `created`,
+one second later each time. Changing `desc` to `asc` in `load` fails
+this test, and flipping it in `Posts.Show` fails "a comment is listed
+oldest first".
 
 ## Run it
 
@@ -561,19 +578,15 @@ bodies.
 $ alder run examples/blog
 ```
 
-As in chapter 11 ("`alder run`"), the dev server prints its address.
-Open `http://localhost:8080/`. The front page is empty until someone
-writes a post. The development stub of `Password`
-(`adapters/password.go`) accepts two accounts, and both use the password
-`password`:
+`alder run` serves the app in dev mode (`ALDER_DEV=1`, chapter 11). In
+dev mode only, the stub of `Password` (`adapters/password.go`) accepts
+two accounts, both with the password `password`, and creates each one's
+`User` row on its first login:
 
-- `author@example.com` is an Author. It can open `/admin` ("Write" on
-  the front page after logging in), create a draft, publish it, and
-  delete it.
-- `reader@example.com` is a Reader. It can comment on a published post.
-  For this account, `/admin` and every `/admin/{id}` are a 404.
+- `author@example.com` is an Author: "Write" on the front page opens
+  `/admin`, to create, publish and delete posts.
+- `reader@example.com` is a Reader: it can comment, and every `/admin`
+  page is a 404 for it.
 
-The stub creates each account's `User` row the first time that account
-logs in, with its role. Try a draft: it shows to its author with a
-"Draft" note, and logged out the same address is a 404. Replace the stub
-before the blog faces the internet.
+Outside dev mode the stub refuses every login and logs that it must be
+replaced, as it must before the blog faces the internet.

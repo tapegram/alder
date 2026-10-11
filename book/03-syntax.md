@@ -52,6 +52,9 @@ keeps for itself.
 In a page module and in `App`, the compiler also generates the types
 `Params`, `Msg`, `Session` and, for each `msg Pick`, `PickParams`. A type,
 table, form or component of yours may not take one of those names (E0012).
+Nor may a type, table, form or union of any module take the name of a
+Prelude type (`Query`, `Task`, `Html`, `Maybe`, `Order`, …), which every
+module uses unqualified (E0012 too).
 
 ## Comments
 

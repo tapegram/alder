@@ -153,7 +153,7 @@ read, so `load` can call it like `Db.get`. The blog (chapter 14) keeps
 its Markdown renderer behind such an entry. Its whole module,
 `examples/blog/app/Markdown.alder`, is shown below:
 
-```alder
+```alder part=blog/Markdown
 module Markdown
 
 -- Rendering a post's body is outside the language: a capability implemented in Go

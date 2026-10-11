@@ -22,7 +22,7 @@ formDecl    = "form" uname "=" "{" {fieldDef ","} [fieldDef] "}" ;
 tableDecl   = "table" uname "{" {fieldDef {attr} ","} [fieldDef {attr}] "}" ;
 fieldDef    = lname ":" type ["=" expr] ;
 attr        = "@id" | "@ref" uname | "@created" | "@updated" | "@unique"
-            | "@cascade" | "@restrict" | "@setNull" ;   (* a delete rule: with "@ref" only *)
+            | "@cascade" | "@restrict" | "@setNull" ;   (* a delete rule: after "@ref T" only *)
 capDecl     = "capability" uname "{" {lname ":" type ","} [lname ":" type] "}" ;
 sessionDecl = "session" recordType ;
 loginDecl   = "login" "=" ModName ;

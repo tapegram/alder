@@ -304,8 +304,12 @@ fake Stripe {
 - Chapter 13 §8: how a migration is generated and applied; how a fake
   becomes a Go struct.
 - Chapter 2 or a new chapter 14, "A second app": a tour of the blog
-  (`part=` blocks verified against `examples/blog`), shorter than the
-  to-do tour, pointing at what is new.
+  (`part=` blocks verified against `examples/blog`) whose prose is
+  shorter than the to-do tour (at most 120 non-blank lines outside code
+  blocks; the tour is 216 non-blank lines), pointing at what is new.
+  Its four modules stay quoted in full: seeing a whole second app is the
+  chapter's value, so the code, not the prose, makes it longer than the
+  tour.
 - Chapter 12: the decisions below; the open questions E7 raised that M5
   answers (fakes; row ownership gets the blog's second data point).
 

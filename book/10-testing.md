@@ -259,7 +259,9 @@ The stranger's `Toggle` succeeded, the update ran, and the todo is done.
 - **A ticking clock.** `Time.now`, and the `@created` column a
   `Db.insert` fills, read a clock that starts at `2026-01-01T00:00:00Z`
   and advances one second each time it is read, so rows created in a
-  test are ordered, and a test gets the same times on every run.
+  test are ordered, and a test gets the same times on every run. Time is
+  not transactional: a `Test.run` that fails rolls back its writes, but
+  the clock keeps the ticks that run read.
 - **The app's capabilities.** When the app has an `adapters/` package
   (chapter 7, "Implementing a capability"), its `Caps()` are wired, so a
   test calls the real Go. A capability's error is a failure the test can

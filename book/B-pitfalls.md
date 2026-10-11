@@ -29,4 +29,5 @@ in chapter 12. Each is a compile error.
     and no type aliases.
 13. Names may not contain `__` (`max__len`) and module names may not end
     with `_`; in a page module or `App`, `Params`, `Msg`, `Session` and
-    `<Msg>Params` are taken by the compiler (E0012).
+    `<Msg>Params` are taken by the compiler (E0012), and in any module a
+    Prelude type's name (`form Query`) is too (E0012).
