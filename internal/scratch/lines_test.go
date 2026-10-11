@@ -204,7 +204,8 @@ func TestRunTethered(t *testing.T) {
 	// stdin at end of file (the parent gone): the program says so and exits 2
 	var out, errOut strings.Builder
 	code = RunStream(context.Background(), b, []string{EnvStdinEOF + "=1"}, strings.NewReader(""), &out, &errOut)
-	if code != 2 || !strings.HasSuffix(errOut.String(), "alder: parent gone\n") { // after the main's "stdin: EOF", maybe
+	// the main's own "stdin: EOF" line and the tether's line race for stderr: either order is fine
+	if code != 2 || !strings.Contains(errOut.String(), "alder: parent gone\n") {
 		t.Fatalf("stdin closed: exit %d out %q err %q", code, out.String(), errOut.String())
 	}
 }
