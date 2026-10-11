@@ -442,21 +442,18 @@ lists the exit codes.
 ## 8. Faking a capability
 
 A capability's adapter is Go code that reaches outside the program
-(chapter 7): the blog's `Markdown` renderer, a card processor, a mail
-service. Section 3 runs a test against the app's adapters, or against
-none. Often neither is what a test wants. A test of a checkout should
-not charge a real card, and a test of a page should not depend on how
-Markdown is rendered. For those, a module can declare a **fake**: a
-second implementation of a capability, written in Alder beside the
-capability, that only tests use. A fake acts as a real implementation
-would, just in memory. It answers every entry of the capability, and it
-can keep state in tables of its own, so a charge and then a refund of
-that charge behave as they would against the real service.
+(chapter 7). A test of a checkout should not charge a real card, and a
+test of a page should not depend on how Markdown is rendered. For
+those, a module can declare a **fake**: a second implementation of a
+capability, written in Alder beside the capability, that only tests
+use. It answers every entry of the capability, and it can keep state in
+tables of its own, so a charge and then its refund behave as they would
+against the real service.
 
 ### A fake without state: `Markdown`
 
-The blog's `app/Markdown.alder` (chapter 14) declares the capability and,
-after it, its fake:
+The blog's `app/Markdown.alder` declares the capability and, after it,
+its fake:
 
 ```alder
 module Markdown
@@ -474,18 +471,14 @@ fake Markdown {
 }
 ```
 
-`fake Markdown { … }` names the capability it implements and holds one
-definition for each of its entries, here `render`. A definition has no
-signature: its type is the entry's, `Text -> Query (Html Never)`, so
-`text` is a `Text` and the body must be a `Query (Html Never)`. This
-one wraps the text in a single text node, unrendered.
+`fake Markdown { … }` names the capability and holds one definition for
+each of its entries, here `render`, without a signature: its type is
+the entry's, so `text` is a `Text` and the body a `Query (Html Never)`.
 
-A test installs the fake with `Test.fake`, a step like `Test.run`:
-`let _ <- Test.fake Markdown`. From that step on, until the test ends,
-every call of `Markdown.render` in the test (in `load`, in a function
-`load` calls, anywhere) runs the fake instead of the adapter. These two
-tests, in a module of their own, call the entry once with the fake and
-once without it:
+A test installs the fake with a step, `let _ <- Test.fake Markdown`.
+From then until the test ends, every call of `Markdown.render` (in
+`load`, in a function it calls, anywhere) runs the fake instead of the
+adapter. These two tests call the entry with the fake and without it:
 
 ```alder
 module Preview
@@ -506,50 +499,23 @@ test "the adapter renders the Markdown" = {
 }
 ```
 
-Added to a copy of the blog as `app/Preview.alder`, both pass:
+Added to a copy of the blog, both pass. Their traces show the shape of
+every faked trace: installing is a step, `"Test.fake Markdown"`; each
+call is traced by the entry's usual name, as a call to the adapter is;
+and the steps a fake takes inside an entry follow that entry's step.
 
-```text
-$ alder test blog -run Preview
-ok   Preview "the fake leaves the text as it is"
-ok   Preview "the adapter renders the Markdown"
-2 passed, 0 failed
-```
-
-The traces show what changed and what did not. Installing is a step,
-`"Test.fake Markdown"`. The call is `"Markdown.render"` either way: a
-fake's entry is traced by the entry's usual name, as a call to the
-adapter is. So a test that compares only the steps of the code it tests
-(a `Test.run`'s `r.trace`) gets the same list with this fake and with
-the adapter, while a comparison of the test's whole trace sees the extra
-first step. (A fake whose entries take steps of their own, such as
-reading a table, adds those steps after the entry's; the next example
-has one.)
-
-The blog itself has one test of each kind in `Posts.Show`. "a draft is
-shown to its author" goes through the real adapter and checks that
-`Not *yet*.` becomes `<p>Not <em>yet</em>.</p>`: the wiring works. "a
-post's body is rendered through the Markdown capability" installs the
-fake and checks that `load` puts the body in its Model, whatever
-Markdown does to it. It inserts an author and a published post whose
-body is `Not *yet*.`, calls `load` for the post's slug, and checks two
-things: the body is `Html.text "Not *yet*."`, and `"Markdown.render"` is
-in its `Test.trace`, so the body went through the capability. Its
-trace, from `alder test examples/blog --json`, is
-`["Test.fake Markdown", "Db.insert User", "Db.insert Post", "Db.first Post", "Markdown.render", "Db.all Comment", "Test.trace"]`
-(the report's trace includes the `Test.trace` step, which the list
-`Test.trace` returns leaves out); the adapter's test has the same steps
-from `Db.insert User` to `Db.all Comment`. The rendering itself is tested where it is written, in Go
-(`adapters/markdown_test.go`). That is the usual split: fake a
-capability in the tests of the code that uses it, and keep one test
-through the real adapter, so the app's wiring is tested too.
+The blog's `Posts.Show` has one test of each kind: one through the real
+adapter, so the wiring is tested; one with the fake, checking that
+`load` puts the body in its Model and that `"Markdown.render"` is in its
+trace. The rendering itself is tested in Go. That is the usual split:
+fake a capability in the tests of the code that uses it, and keep one
+test through the real adapter.
 
 ### A fake with state: a card processor
 
-A fake that only answers is enough for a renderer. A card processor
-remembers: a refund must name a charge it made. This module, `Payments`,
-is not part of an example; it and the module after it were run as an
-app of their own, `shop`. Its capability charges and refunds, and its
-fake keeps each charge as a row:
+A card processor remembers: a refund must name a charge it made. This
+module, `Payments`, and `Checkout` after it were run as an app of their
+own, `shop`. The fake keeps each charge as a row:
 
 ```alder
 module Payments
@@ -605,31 +571,15 @@ test "a refunded charge is marked refunded" = {
 }
 ```
 
-Piece by piece:
+`table Charge { … }` is a table like any other (chapter 8), the record
+type `Payments.Charge`, used with `Db`. The entries are ordinary Alder
+typed by the capability (`args` is `{ cents: Int.Positive }` in
+`charge`); `charge` inserts before it decides, so the insert is there to
+be undone when it fails. The test's trace is
+`["Test.fake Stripe", "Stripe.charge", "Db.insert Charge", "Stripe.refund", "Db.get Charge", "Db.update Charge", "Db.get Charge"]`.
 
-- **The fake's table.** `table Charge { … }` inside the fake is a table
-  like any other (chapter 8): a record type `Payments.Charge` with an
-  `@id`, columns and a default, read and written with `Db`. Two things
-  differ. It is declared inside the fake, not in a module named after
-  it, so the rule that a table lives in its own module (E0018) does not
-  apply. And it exists only in the databases of tests, so only tests and
-  the fake itself may use it.
-- **The entries.** `charge args = { … }` and `refund args = { … }` are
-  ordinary Alder, typed by the capability: `args` is
-  `{ cents: Int.Positive }` in `charge` and `{ id: ChargeId }` in
-  `refund`, and each body is a `Task (Result Text …)`. They read and
-  write the fake's table as a `Task` reads and writes any table.
-  `charge` inserts before it decides, so its insert is there to be
-  undone when it fails (below).
-- **The test.** It installs the fake, charges 250, refunds that charge,
-  reads the row back with `Db.get Charge id`, and compares. Its trace is
-  `["Test.fake Stripe", "Stripe.charge", "Db.insert Charge", "Stripe.refund", "Db.get Charge", "Db.update Charge", "Db.get Charge"]`:
-  each entry by its usual name, followed by the steps the fake took
-  inside it, then the test's own `Db.get Charge`.
-
-Code that uses the capability does not change. A checkout in another
-module calls `Stripe.charge` as it always would, and its tests install
-the fake by the capability's name:
+Code that uses the capability does not change; its tests install the
+fake by the capability's name:
 
 ```alder
 module Checkout
@@ -662,45 +612,13 @@ test "a declined charge leaves no row" = {
 }
 ```
 
-From `Checkout`, the table is `Payments.Charge` and its columns are
-`Payments.Charge.cents`, with the module's name in front. The second
-test is the failing entry. Charging 500000 makes `charge` insert a row
-and then `Task.fail "card declined"`. Under `Test.run` (section 4) that
-is `Err "card declined"`, the message as `Task.fail` wrote it (an
-adapter's Go error would read `Stripe.charge: <the error>`, section 4).
-The run's trace holds the fake's own step, `Db.insert Charge`, and
-the savepoint undid that insert, so one row is left, the 250 charge.
-(A `Result` `Err` is a different thing: an answer `pay` handles, as
-`"refused: …"`. `Task.fail` imitates a processor that does not answer.)
-
-```text
-$ alder test shop
-ok   Payments "a refunded charge is marked refunded"
-ok   Checkout "an order is paid"
-ok   Checkout "a declined charge leaves no row"
-3 passed, 0 failed
-```
-
-Two more tests, added at the end of `Checkout` to show the failures: one
-charges 500000 outside `Test.run`, and one calls `pay` without
-`Test.fake` in an app that has no `adapters/`:
-
-```text
-$ alder test shop -run Checkout
-ok   Checkout "an order is paid"
-ok   Checkout "a declined charge leaves no row"
-FAIL Checkout "a large order is paid"
-  error: card declined
-  trace: ["Test.fake Stripe", "Stripe.charge", "Db.insert Charge"]
-FAIL Checkout "an order without the fake"
-  error: capability Payments.Stripe is not wired in tests
-  trace: ["Stripe.charge"]
-2 passed, 2 failed
-```
-
-Outside `Test.run`, the fake's failure is the test's failure, as any
-failing step is. Without `Test.fake` the test gets the app's adapter,
-and this app has none.
+From `Checkout` the table is `Payments.Charge`, its columns
+`Payments.Charge.cents`. The second test charges 500000: `charge`
+inserts, then `Task.fail "card declined"`, which under `Test.run`
+(section 4) is `Err "card declined"`; the savepoint undid the insert, so
+one row is left. (A `Result` `Err` is an answer `pay` handles;
+`Task.fail` imitates a processor that does not answer.) All three tests
+pass. Outside `Test.run`, that charge fails the test.
 
 ### The rules
 
@@ -709,8 +627,8 @@ and this app has none.
 - A fake is declared in the module that declares its capability. A fake
   elsewhere is E0020. To give the to-do app's login tests a `Password`
   that accepts any user who has a row, whatever the password, the fake
-must go in `app/Auth/Login.alder`,
-  beside `capability Password`, not in the module that wants it:
+  must go in `app/Auth/Login.alder`, beside `capability Password`, not
+  in the module that wants it:
 
 ```alder error=E0020 "`fake Password` must be declared in the module that declares `capability Password`"
 fake Password {
@@ -745,19 +663,19 @@ fake Stripe {
 
 - An entry is written `name params = body`, with no signature (a
   signature inside a fake is a parse error): its type is the entry's.
-  A body that does not fit is an ordinary type error, named after the
-  entry: "in `fake Stripe`'s `charge`: expected Result Text
-  Payments.ChargeId, got Text".
+  Every error inside an entry is named after it: "in `fake Stripe`'s
+  `charge`: expected Result Text Payments.ChargeId, got Text".
 - A fake holds only `table` declarations and entry definitions, in any
   order. Types the fake needs (`ChargeId`) are declared in the module.
-- Entry bodies are ordinary Alder. They may use `Db` on the fake's
-  tables and on the app's, values of their own module and of the
-  modules it imports, and the capability's other entries. Inside
-  `fake Stripe`, `Stripe.refund` calls the installed implementation,
-  which is the fake (a fake runs only once installed), never the
-  adapter. An entry that calls itself unconditionally (`tick = Clock.tick`)
-  recurses forever, like any function that does; the test crashes with
-  `fatal error: stack overflow` (section 2).
+  A top-level value cannot be named `fake`: E0001 "`fake` starts a fake
+  declaration at column 1: rename the value".
+- Entry bodies are ordinary Alder: `Db` on the fake's tables and the
+  app's, values of their module and its imports, and the capability's
+  other entries (inside `fake Stripe`, `Stripe.refund` is the fake's,
+  never the adapter's; an entry that calls itself unconditionally
+  recurses until the run stops with `fatal error: stack overflow`). Not
+  `Session`, which an adapter does not have: E0003 "in `fake Stripe`'s
+  `charge`: a fake cannot use `Session`: an adapter has no session".
 
 **The fake's tables.**
 
@@ -766,37 +684,28 @@ fake Stripe {
   exempt from E0018 (a table in its own module).
 - Only a `test`, in any module, and the fake's own entries may use it,
   its type or its columns. Anywhere else (a value, a signature, a page's
-  `load`, an app table's `@ref`) it is E0021. Here `Checkout` has gained
-  a value that counts the charges:
+  `load`, an app table's `@ref`) it is E0021: a value
+  `charges = Db.from Payments.Charge |> Db.count` in `Checkout` gets
+  "`Charge` is a fake's table: only tests and `fake Stripe` may use it".
 
-  ```text
-  $ alder check shop
-  app/Checkout.alder:31:19: error[E0021]: `Charge` is a fake's table: only tests and `fake Stripe` may use it
-    charges = Db.from Payments.Charge |> Db.count
-                      ^^^^^^^^^^^^^^^
-  ```
-
-- In another module, the table and its columns carry the module's name:
-  `Payments.Charge`, `Payments.Charge.cents`. Here the second `Checkout`
-  test writes `Charge.cents.eq 250` instead:
-
-  ```text
-  $ alder check shop
-  app/Checkout.alder:25:52: error[E0002]: `Charge` is a table of `fake Stripe` in module `Payments`: write `Payments.Charge.cents`
-      let rows <- Db.from Payments.Charge |> Db.where (Charge.cents.eq 250) |> Db.count
-                                                       ^^^^^^^^^^^^
-  ```
-
+- In another module, the table and its columns carry the module's name,
+  `Payments.Charge` and `Payments.Charge.cents`, and that module must
+  import `Payments`. Written bare, `Charge.cents.eq 250` is E0002
+  "`Charge` is a table of `fake Stripe` in module `Payments`: write
+  `Payments.Charge.cents`"; in a module without `import Payments`,
+  `Payments.Charge` is E0002 "`Charge` is a table of `fake Stripe` in
+  module `Payments`: add `import Payments`, then write `Payments.Charge`
+  (columns: `Payments.Charge.column`)", with the import as its fix.
 - A fake's table may `@ref` an app table (`user: User.UserId @ref User`):
-  a fake can keep, say, which user each charge was for. An app table may
-  not `@ref` a fake's (E0021): the app's tables exist in production,
-  where the fake's do not.
-- The tables exist only in test databases. Each test's database is made
-  as section 3 says, with the app's tables, by its migrations when it
-  has them; then the fakes' tables are created beside them. They are
-  never in `migrations/schema.json` or a migration, and `alder migrate`
-  ignores them, so adding or changing a fake's table needs no
-  migration.
+  a fake can keep, say, which user each charge was for. Give that ref
+  `@cascade` (or `@setNull`), so the app's deletes behave as they do in
+  production, where the fake's table does not exist: with the default
+  `@restrict`, deleting a user with a charge fails with
+  ``User … is referenced by a row of Charge (`Charge.user`)``. An app
+  table may not `@ref` a fake's (E0021).
+- The tables exist only in test databases, created beside the app's
+  tables (section 3). They are never in `migrations/schema.json` or a
+  migration, so adding or changing a fake's table needs no migration.
 
 **`Test.fake`.**
 
@@ -806,34 +715,26 @@ fake Stripe {
   `Payments.Stripe`, not an expression (E0003 "`Test.fake` wants a
   capability name, got an expression"), and the capability must have a
   fake (E0003 "`Test.fake` wants a capability with a `fake`: `Stripe` has
-  none").
-- It replaces the capability for the rest of the test: every later call,
-  from any module, runs the fake. A `Test.fake` inside a `Test.run` stays
-  installed after the run, even when the run fails: the savepoint undoes
-  writes to the database, and installing is not one. Installing again
-  replaces the fake with a new copy of itself; the rows in its tables
-  stay, since they are in the database.
-- Without it, a test calls the app's adapter, or fails with "capability
-  … is not wired in tests" when the app has no `adapters/` (section 3).
-- The trace shows `Test.fake Stripe`, then each call by the entry's
-  name (`Stripe.charge`), then the steps the fake took inside it
-  (`Db.insert Charge`). A trace of the code under test therefore has the
-  same entry steps with the fake as with the adapter, plus the fake's
-  own steps after each.
-- A failing entry is a failing step: under `Test.run` it is `Err` with
-  the entry's message, and the writes it made are undone; outside it,
-  the test fails with that message.
-- Each test starts with a fresh database and its own set of
-  capabilities, so a fake installed in one test, and the rows it wrote,
-  are never seen by the next.
+  none"). When two imported modules both declare `Clock`, the bare name
+  is E0002 "`Clock` is a capability of both `A` and `B`: write `A.Clock`
+  or `B.Clock`", here and in a call (`A.Clock.now`).
+- It replaces the capability for the rest of the test, in every module.
+  Installed inside a `Test.run`, it stays after the run, even a failed
+  one (installing is not a database write). Installing again gives a
+  new copy of the fake; the rows in its tables stay.
+- Without it, a test calls the app's adapter, if any (section 3).
+- Its trace has the shape shown with `Markdown` above. A failing entry
+  is a failing step: under `Test.run` it is `Err` with the entry's
+  message, its writes undone; outside it, the test fails.
+- Each test starts with a fresh database and its own capabilities, so a
+  fake installed in one test, and its rows, are never seen by the next.
 
-**Where fakes exist.** Only `alder test` compiles them. `alder build`,
-`alder run` and the programs of `alder eval` and `alder repl` contain no
-fake and no fake's table. A `test` is compiled into a production build
-too, but nothing there runs it: in that build, a test that uses a fake's
-table becomes one that fails at once, and `Test.fake` is a step that
-fails ("Test.fake is only available in `alder test`"). Chapter 13
-("Fakes") shows the Go a fake becomes.
+**Where fakes exist.** Only `alder test` compiles them: `alder build`,
+`alder run`, `alder eval` and `alder repl` contain no fake and no fake's
+table. In a production build, a test that uses a fake's table fails at
+once, and `Test.fake` fails ("Test.fake is only available in
+`alder test`"); nothing there runs tests. (Chapter 13 shows the
+generated Go.)
 
 ## 9. What cannot be tested yet
 

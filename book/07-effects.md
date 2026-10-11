@@ -128,7 +128,10 @@ a capability", below). In a test, a capability can instead be replaced by
 a `fake`, an implementation written in Alder beside the capability
 (chapter 10, "Faking a capability").
 
-Capabilities are declared in any module and used by their name. The
+Capabilities are declared in any module and used by their name. When
+two imported modules both declare `Clock`, the bare name is E0002
+"`Clock` is a capability of both `A` and `B`: write `A.Clock` or
+`B.Clock`": the call names the module too, `A.Clock.now`. The
 standard library provides these; they need no declaration:
 
 ```alder

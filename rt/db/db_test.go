@@ -643,7 +643,7 @@ func TestStore_EnsureRefs(t *testing.T) {
 	}
 	failMsg("dangling update", s.Update(ctx, nil, "Note.Note", note.Columns, "id", "", nid, []any{nid, "ghost"}, clock),
 		"Note.owner: no User with that id")
-	failMsg("delete referenced", s.Delete(ctx, nil, "User.User", "id", uid), "User "+uid+referenced)
+	failMsg("delete referenced", s.Delete(ctx, nil, "User.User", "id", uid), "User "+uid+" is referenced by a row of Note (`Note.owner`)")
 	// Inside a Task the failure rolls back the Task's earlier writes.
 	_, err = eff.Run(newEnv(s), eff.KTask, eff.Bind(
 		eff.Call("Db.insert User", true, func(e *eff.Env) (string, error) {
@@ -1073,7 +1073,8 @@ func TestRestrictDelete(t *testing.T) {
 	pid := postWithComments(t, s, post, comment, 1)
 	err := s.Delete(context.Background(), nil, post.Name, "id", pid)
 	var ef *eff.ErrFail
-	if !errors.As(err, &ef) || ef.Msg != "Post "+pid+referenced {
+	// a direct @restrict referrer is named by its table and column
+	if !errors.As(err, &ef) || ef.Msg != "Post "+pid+" is referenced by a row of Comment (`Comment.post`)" {
 		t.Fatalf("err = %v, want the referenced-row ErrFail", err)
 	}
 	// Restrict is the default and writes no clause, so existing CREATE TABLEs are unchanged.

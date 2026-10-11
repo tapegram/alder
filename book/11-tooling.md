@@ -741,7 +741,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 |---|---|---|
 | E0001 | parse error (also: an identifier with `__` in it, a module name segment ending in `_`) | — |
 | E0002 | unknown name | — |
-| E0003 | type mismatch (also: `==` or a `Dict` key on a function or an effect value, a column method on a column held in a variable, `.contains` or `.startsWith` on a column that is not `Text`, `@setNull` on a field that is not a `Maybe`, a `Db` function over a type parameter, a `fake` that lacks an entry of its capability or defines one it does not have, `Test.fake` outside a `test`, on an expression, or on a capability without a `fake`) | conversion such as `Text.fromInt (…)` where one exists |
+| E0003 | type mismatch (also: `==` or a `Dict` key on a function or an effect value, a column method on a column held in a variable, `.contains` or `.startsWith` on a column that is not `Text`, `@setNull` on a field that is not a `Maybe`, a `Db` function over a type parameter, a `fake` that lacks an entry of its capability or defines one it does not have, `Test.fake` outside a `test`, on an expression, or on a capability without a `fake`, `Session` in a fake's entry) | conversion such as `Text.fromInt (…)` where one exists |
 | E0004 | non-exhaustive `match` | arm skeleton |
 | E0005 | module name does not match its file path | — |
 | E0006 | import cycle | — |

@@ -248,11 +248,13 @@ still refer to does is the referring field's **delete rule**, written
 after `@ref T`:
 
 - **`@restrict`**, the default, refuses: `Db.delete` fails with
-  `User QXZMRYnkC2vuE_TefkuR is referenced by another row, directly or
-  through rows that `@cascade` would delete with it` (the table and the
-  id). The blocking row can be further down a chain: if comments cascade
+  ``User QXZMRYnkC2vuE_TefkuR is referenced by a row of Todo (`Todo.owner`)``
+  (the table and the id, then the table and the field that refer to it).
+  The blocking row can be further down a chain: if comments cascade
   from posts, a `@restrict` reference to a comment refuses the post's
-  delete. Delete or re-point the referring rows first.
+  delete, with ``Post … is referenced by another row, directly or
+  through rows that `@cascade` would delete with it``. Delete or re-point
+  the referring rows first.
 - **`@cascade`** deletes the referring rows too, and theirs in turn if
   other tables cascade from them.
 - **`@setNull`** sets the referring field to `Nothing`; the field must be

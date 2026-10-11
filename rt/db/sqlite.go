@@ -306,10 +306,42 @@ func (s *SQLite) Delete(ctx context.Context, tx Tx, table string, idCol, id stri
 	}
 	_, err = q.ExecContext(ctx, "DELETE FROM "+quote(SQLName(table))+" WHERE "+quote(idCol)+" = ?", id)
 	if isForeignKey(err) {
-		// SQLite does not say which row blocks: it may be one a `@cascade` chain reaches.
+		// SQLite does not say which row blocks. A `@restrict` row referring to this one directly
+		// is named by its table and column; else it is one a `@cascade` chain reaches.
+		if by := s.restrictReferrer(ctx, q, table, id); by != "" {
+			return &eff.ErrFail{Msg: shortName(table) + " " + id + " is referenced by a row of " + by}
+		}
 		return &eff.ErrFail{Msg: shortName(table) + " " + id + " is referenced by another row, directly or through rows that `@cascade` would delete with it"}
 	}
 	return err
+}
+
+// restrictReferrer is "Comment (`Comment.post`)" for the first table, by name, with a
+// `@restrict` @ref column to table holding a row that names id; "" when there is none.
+func (s *SQLite) restrictReferrer(ctx context.Context, q querier, table, id string) string {
+	s.mu.RLock()
+	names := make([]string, 0, len(s.tables))
+	for n := range s.tables {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	type ref struct{ table, col string }
+	var refs []ref
+	for _, n := range names {
+		for _, c := range s.tables[n].Columns {
+			if c.Ref == table && c.OnDelete == Restrict {
+				refs = append(refs, ref{n, c.Name})
+			}
+		}
+	}
+	s.mu.RUnlock()
+	for _, r := range refs {
+		var one int
+		if q.QueryRowContext(ctx, "SELECT 1 FROM "+quote(SQLName(r.table))+" WHERE "+quote(r.col)+" = ? LIMIT 1", id).Scan(&one) == nil {
+			return shortName(r.table) + " (`" + shortName(r.table) + "." + r.col + "`)"
+		}
+	}
+	return ""
 }
 
 // isForeignKey reports whether err is SQLite's foreign-key constraint failure.
