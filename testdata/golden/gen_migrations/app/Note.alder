@@ -1,0 +1,9 @@
+module Note
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  title: Text,
+  created: Time @created,
+}

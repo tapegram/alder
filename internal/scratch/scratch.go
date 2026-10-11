@@ -103,11 +103,11 @@ const Timeout = 60 * time.Second
 //     set only for I/O failures, an extra module named like an app or stdlib module
 //     (*ModuleExistsError), generated or caller Go that does not vet, and go build failures;
 //     its message carries Go's output.
-//   - Compile writes only under out (the generated module "app", adapters/ and static/ copied
-//     from the app, cmd/main.go and the executable out/scratch) and the lock file <out>.lock;
-//     it never touches build/<app> itself. Nothing is written when the check fails, and the
-//     previous executable in out stays until a new one is built, so a failed Compile leaves
-//     the last good one runnable.
+//   - Compile writes only under out (the generated module "app", adapters/, static/ and
+//     migrations/ copied from the app, cmd/main.go and the executable out/scratch) and the
+//     lock file <out>.lock; it never touches build/<app> itself. Nothing is written when the
+//     check fails, and the previous executable in out stays until a new one is built, so a
+//     failed Compile leaves the last good one runnable.
 //   - Compiles into one out serialize: Compile takes an exclusive lock on <out>.lock (flock;
 //     the kernel drops it if the process dies) before writing, waiting while another holds it
 //     (CompileCheckedWith's ctx ends the wait; its Options.Waiting is told), and a Runnable
@@ -193,7 +193,7 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 		b.Err = err
 		return b
 	}
-	files, err := gen.Emit(ir.Lower(prog, res), gen.Options{RepoPath: repo})
+	files, err := gen.Emit(ir.Lower(prog, res), gen.Options{RepoPath: repo, Migrations: buildkit.HasMigrations(appDir)})
 	if err != nil {
 		b.Err = fmt.Errorf("internal error: %v", err)
 		return b
@@ -209,6 +209,10 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 		return b
 	}
 	if err := buildkit.CopyStatic(filepath.Join(appDir, "static"), filepath.Join(b.Dir, "static")); err != nil {
+		b.Err = err
+		return b
+	}
+	if err := buildkit.CopyMigrations(filepath.Join(appDir, "migrations"), filepath.Join(b.Dir, "migrations")); err != nil {
 		b.Err = err
 		return b
 	}
@@ -343,6 +347,7 @@ func Check(appDir string, extra *Module) (c Checked) {
 		c.Err = fmt.Errorf("no .alder files under %s/app", appDir)
 		return c
 	}
+	buildkit.AddSchemaDrift(appDir, prog, res, bag) // E0019: a test, eval or REPL runs on the app's migrations
 	for _, d := range bag.Items {
 		if d.Code == diag.UnusedImport && extra != nil && d.Span.File == mods[0].File && implicit[d.Span.Start.Line] {
 			continue

@@ -31,7 +31,7 @@ const defaultTestTimeout = 5 * time.Minute
 const testGrace = 5 * time.Second
 
 // testMain is the Go main `alder test` compiles with the app: it hands the app's test table,
-// tables, capabilities and session to rtesting.Main, which reads -run and --json from the
+// tables, migrations, capabilities and session to rtesting.Main, which reads -run and --json from the
 // environment (ALDER_TEST_RUN, ALDER_TEST_JSON). With withAdapters the capabilities are the
 // app's adapters (adapters.Caps()); otherwise none is wired, and a test that calls one fails.
 func testMain(withAdapters bool) string {
@@ -50,7 +50,7 @@ import (
 
 func main() {
 	caps := ` + caps + `
-	os.Exit(rtesting.Main(app.Tests, app.Tables, caps, app.TestSession(), os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(rtesting.Main(app.Tests, app.Tables, app.Migrations, caps, app.TestSession(), os.Args[1:], os.Stdout, os.Stderr))
 }
 `
 }

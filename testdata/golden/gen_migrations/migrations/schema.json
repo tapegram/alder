@@ -1,0 +1,44 @@
+{
+  "format": "1",
+  "tables": [
+    {
+      "name": "Note.Note",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "title",
+          "type": "Text"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "Tag.Tag",
+      "id": "id",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "note",
+          "type": "Text",
+          "ref": "Note.Note",
+          "onDelete": "cascade"
+        },
+        {
+          "name": "label",
+          "type": "Text"
+        }
+      ]
+    }
+  ]
+}

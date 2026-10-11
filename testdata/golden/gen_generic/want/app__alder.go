@@ -15,6 +15,10 @@ var Tables = []db.TableDesc{}
 // fills them.
 var Capabilities = []string{}
 
+// Migrations are the app's migrations: none (the app has no migrations/ directory), so
+// Serve creates the tables with db.Ensure.
+var Migrations []db.Migration
+
 // Caps are the app's capability implementations, one field per capability, named by its
 // module and name: the adapters package's Caps function returns them, and Serve refuses a
 // field left nil.

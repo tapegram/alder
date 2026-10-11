@@ -426,7 +426,7 @@ func mainCases() []Case {
 func runMain(t *testing.T, cs []Case, args ...string) (string, string, int) {
 	t.Helper()
 	var out, errb bytes.Buffer
-	code := Main(cs, tables, nil, nil, args, &out, &errb)
+	code := Main(cs, tables, nil, nil, nil, args, &out, &errb)
 	return out.String(), errb.String(), code
 }
 
@@ -559,7 +559,7 @@ func TestMain_JSONWriteErrorIsUsageExit(t *testing.T) {
 	t.Setenv("ALDER_TEST_RUN", "")
 	t.Setenv("ALDER_TEST_JSON", "")
 	var errb bytes.Buffer
-	code := Main(mainCases(), tables, nil, nil, []string{"--json"}, failWriter{}, &errb)
+	code := Main(mainCases(), tables, nil, nil, nil, []string{"--json"}, failWriter{}, &errb)
 	if code != 2 || !strings.Contains(errb.String(), "closed pipe") {
 		t.Fatalf("code %d err %q", code, errb.String())
 	}
@@ -621,7 +621,7 @@ func TestMain_StreamsAndWritesStatus(t *testing.T) {
 			return true
 		}},
 	}
-	if code := Main(cs, tables, nil, nil, nil, &out, &errb); code != 0 {
+	if code := Main(cs, tables, nil, nil, nil, nil, &out, &errb); code != 0 {
 		t.Fatalf("code %d %q %q", code, out.String(), errb.String())
 	}
 	if !sawFirst || during != "M\tb c\n" {
@@ -675,5 +675,33 @@ func TestMain_SlowNotice(t *testing.T) {
 	out, errs, code := runMain(t, cs)
 	if code != 0 || out != "ok   Theme \"slow\"\n1 passed, 0 failed\n" || !strings.Contains(errs, "still running Theme \"slow\" (") || strings.Count(errs, "still running") != 2 {
 		t.Fatalf("code %d out %q err %q", code, out, errs)
+	}
+}
+
+// A test of an app with migrations runs on the tables they make; when they do not make the
+// app's tables (the app changed without `alder migrate`), every test fails, pure ones too.
+func TestRun_Migrations(t *testing.T) {
+	good := []db.Migration{{Name: "0001_initial", SQL: `CREATE TABLE "M__T" ("id" TEXT NOT NULL PRIMARY KEY, "title" TEXT NOT NULL) STRICT;`}}
+	stale := []db.Migration{{Name: "0001_initial", SQL: `CREATE TABLE "M__T" ("id" TEXT NOT NULL PRIMARY KEY) STRICT;`}}
+	cases := []Case{
+		{Module: "M", Name: "pure", Pure: func() bool { return true }},
+		{Module: "M", Name: "task", Task: func() eff.Task[bool] {
+			return eff.Bind(insertStep("Db.insert T", "x"), func(string) eff.Task[bool] { return eff.Pure(true) })
+		}},
+	}
+	for _, r := range Run(cases, Options{Tables: tables, Migrations: good}) {
+		if !r.OK {
+			t.Fatalf("with migrations that make the tables: %+v", r)
+		}
+	}
+	rs := Run(cases, Options{Tables: tables, Migrations: stale})
+	for _, r := range rs {
+		if r.OK || r.Error != "the migrations do not produce the app's schema: run `alder migrate`" {
+			t.Fatalf("with stale migrations: %+v", r)
+		}
+	}
+	var out, errb bytes.Buffer
+	if code := Main(cases, tables, stale, nil, nil, nil, &out, &errb); code != 1 || !strings.Contains(out.String(), "0 passed, 2 failed") {
+		t.Fatalf("Main: %d\n%s%s", code, out.String(), errb.String())
 	}
 }

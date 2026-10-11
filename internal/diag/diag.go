@@ -103,6 +103,7 @@ const (
 	DuplicatePage  = "E0016"
 	StdModule      = "E0017"
 	TablePlacement = "E0018"
+	SchemaChanged  = "E0019" // raised by buildkit.SchemaDrift, not the checker: the tables changed since the last migration
 	TableDefault   = "E0022"
 	UnreachableArm = "E0310"
 	UnusedImport   = "W0001"

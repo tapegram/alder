@@ -21,10 +21,14 @@ import (
 type Options struct {
 	RepoPath string // absolute path of the alder repository, for go.mod's replace directive
 	Dev      bool
+	// Migrations: the app has migrations (migrations/*.sql, copied next to the generated files
+	// by buildkit.CopyMigrations), which app__alder.go embeds as Migrations; without, Migrations
+	// is empty and Serve uses db.Ensure.
+	Migrations bool
 }
 
 // Emit returns the generated files: one "<Module>_alder.go" per module ('.' → "__"),
-// "app__alder.go" (Tables, Capabilities, Caps and, with an App module, Options and Serve),
+// "app__alder.go" (Tables, Migrations, Capabilities, Caps and, with an App module, Options and Serve),
 // "routes__alder.go" with an App module (the routes: routes.go) and "go.mod".
 // Its error is for a bug in gen: output go/format cannot parse, or a program gen cannot emit
 // (such as a stdlib function with no Go implementation), or two modules or declarations that
@@ -60,7 +64,7 @@ func Emit(p *ir.Program, opts Options) (files map[string][]byte, err error) {
 			declared[n] = "module " + m.Name
 		}
 	}
-	app, err := format.Source([]byte(g.appSource(p)))
+	app, err := format.Source([]byte(g.appSource(p, opts.Migrations)))
 	if err != nil {
 		return nil, fmt.Errorf("gen: %s: %v", appFile, err)
 	}
@@ -362,7 +366,7 @@ var packages = map[string]string{
 	"rt": "alder/rt", "html": "alder/rt/html", "std": "alder/rt/std", "time": "time", "math": "math",
 	"eff": "alder/rt/eff", "db": "alder/rt/db", "context": "context", "fmt": "fmt",
 	"web": "alder/rt/web", "url": "net/url", "http": "net/http", "json": "encoding/json", "errors": "errors",
-	"strings": "strings", "reflect": "reflect", "rtesting": "alder/rt/testing",
+	"strings": "strings", "reflect": "reflect", "rtesting": "alder/rt/testing", "embed": "embed",
 }
 
 // importNames are the packages whose name is not their path's last element, by path: they are

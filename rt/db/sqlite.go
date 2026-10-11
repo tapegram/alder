@@ -2,9 +2,7 @@ package db
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -445,59 +443,39 @@ const Format = "1"
 // is dropped and the schema recreated empty; without dev, Ensure returns an
 // error — "database format v0 is older than this runtime (v1)" for a format
 // change, one naming the tables that changed for a schema change — and
-// touches nothing.
+// touches nothing. It also creates the index of every @ref column (IndexStmts,
+// CREATE INDEX IF NOT EXISTS: a database made before them gets them), which the
+// hash does not cover.
+//
+// Ensure is for an app without migrations; an app with them calls Migrate instead.
 func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err error) {
-	byName := map[string]TableDesc{}
-	for _, d := range tables {
-		if _, dup := byName[d.Name]; dup {
-			return fmt.Errorf("db: table %s listed twice", d.Name)
-		}
-		byName[d.Name] = d
+	sc, err := schemaOf(tables)
+	if err != nil {
+		return err
 	}
-	stmts := make([]string, len(tables))
-	for i, d := range tables {
-		if stmts[i], err = createStmt(d, byName); err != nil {
-			return err
-		}
-	}
-	sorted := slices.Sorted(slices.Values(stmts))
-	schema := strings.Join(sorted, "\n")
-	sum := sha256.Sum256([]byte(schema))
-	hash := hex.EncodeToString(sum[:])
-
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
-	if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS "_alder_meta" ("key" TEXT NOT NULL PRIMARY KEY, "value" TEXT NOT NULL)`); err != nil {
+	if _, err := conn.ExecContext(ctx, createMetaTable); err != nil {
 		return err
 	}
-	meta := func(key string) (string, error) {
-		var v string
-		err := conn.QueryRowContext(ctx, `SELECT "value" FROM "_alder_meta" WHERE "key" = ?`, key).Scan(&v)
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", nil
-		}
-		return v, err
-	}
-	oldHash, err := meta("schema_hash")
+	oldHash, err := metaValue(ctx, conn, "schema_hash")
 	if err != nil {
 		return err
 	}
-	oldFormat, err := meta("format")
+	oldFormat, err := metaValue(ctx, conn, "format")
 	if err != nil {
 		return err
 	}
-	register := func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		for _, d := range tables {
-			s.tables[d.Name] = d
+	if oldHash == sc.hash && oldFormat == Format {
+		for _, st := range IndexStmts(tables) {
+			if _, err := conn.ExecContext(ctx, st); err != nil {
+				return fmt.Errorf("db: %s: %w", st, err)
+			}
 		}
-	}
-	if oldHash == hash && oldFormat == Format {
-		register()
+		s.register(tables)
 		return nil
 	}
 	existing, err := appTables(ctx, conn)
@@ -505,40 +483,56 @@ func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err 
 		return err
 	}
 	if len(existing) > 0 && !dev && oldFormat != Format {
-		if oldFormat == "" {
-			oldFormat = "0"
-		}
-		rel := "older"
-		if n, ferr := strconv.Atoi(oldFormat); ferr == nil && n > formatNumber() {
-			rel = "newer"
-		}
-		return fmt.Errorf("db: database format v%s is %s than this runtime (v%s); run in dev mode to recreate the database", oldFormat, rel, Format)
+		return formatErr(oldFormat)
 	}
 	if len(existing) > 0 && !dev {
-		oldSchema, err := meta("schema")
+		oldSchema, err := metaValue(ctx, conn, "schema")
 		if err != nil {
 			return err
 		}
 		return fmt.Errorf("db: schema mismatch: the database's schema (hash %.12s) differs from the app's (hash %.12s); changed tables: %s; run in dev mode to recreate the database",
-			oldHash, hash, strings.Join(changedTables(tables, stmts, oldSchema), ", "))
+			oldHash, sc.hash, strings.Join(changedTables(tables, sc.stmts, oldSchema), ", "))
 	}
-
-	// Dropping a referenced table with foreign keys on would cascade checks;
-	// the pragma can only change outside a transaction. Restore the
-	// connection's setting (from the DSN) afterwards.
-	var fk int64
-	if err := conn.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&fk); err != nil {
+	if err := s.recreate(ctx, conn, sc, tables, existing, nil); err != nil {
 		return err
 	}
-	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+	s.register(tables)
+	return nil
+}
+
+// register makes tables known to the store's operations (desc).
+func (s *SQLite) register(tables []TableDesc) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, d := range tables {
+		s.tables[d.Name] = d
+	}
+}
+
+// formatErr is the refusal of a database of another storage format (oldFormat "" is v0).
+func formatErr(oldFormat string) error {
+	if oldFormat == "" {
+		oldFormat = "0"
+	}
+	rel := "older"
+	if n, ferr := strconv.Atoi(oldFormat); ferr == nil && n > formatNumber() {
+		rel = "newer"
+	}
+	return fmt.Errorf("db: database format v%s is %s than this runtime (v%s); run in dev mode to recreate the database", oldFormat, rel, Format)
+}
+
+// recreate drops the tables existing and creates sc's (tables'), their @ref indexes and the
+// _alder_meta record, in one transaction with foreign keys off, then runs extra (when set) in
+// that transaction before it commits.
+func (s *SQLite) recreate(ctx context.Context, conn *sql.Conn, sc appSchema, tables []TableDesc, existing []string, extra func(*sql.Tx) error) (err error) {
+	// Dropping a referenced table with foreign keys on would cascade checks;
+	// the pragma can only change outside a transaction.
+	restore, err := foreignKeysOff(ctx, conn)
+	if err != nil {
 		return err
 	}
 	defer func() {
-		restore := "PRAGMA foreign_keys = OFF"
-		if fk == 1 {
-			restore = "PRAGMA foreign_keys = ON"
-		}
-		if _, ferr := conn.ExecContext(context.Background(), restore); ferr != nil && err == nil {
+		if ferr := restore(); ferr != nil && err == nil {
 			err = ferr
 		}
 	}()
@@ -556,21 +550,20 @@ func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err 
 			return err
 		}
 	}
-	for _, st := range stmts {
+	for _, st := range append(slices.Clone(sc.stmts), IndexStmts(tables)...) {
 		if _, err = tx.ExecContext(ctx, st); err != nil {
 			return fmt.Errorf("db: %s: %w", st, err)
 		}
 	}
-	for k, v := range map[string]string{"schema_hash": hash, "schema": schema, "format": Format} {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO "_alder_meta" ("key", "value") VALUES (?, ?) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value"`, k, v); err != nil {
+	if err = putMeta(ctx, tx, sc.schema, sc.hash); err != nil {
+		return err
+	}
+	if extra != nil {
+		if err = extra(tx); err != nil {
 			return err
 		}
 	}
-	if err = tx.Commit(); err != nil {
-		return err
-	}
-	register()
-	return nil
+	return tx.Commit()
 }
 
 func formatNumber() int {
@@ -578,9 +571,9 @@ func formatNumber() int {
 	return n
 }
 
-// appTables lists every table except SQLite's own and _alder_meta.
+// appTables lists every table except SQLite's own, _alder_meta and _alder_migrations.
 func appTables(ctx context.Context, conn *sql.Conn) ([]string, error) {
-	rows, err := conn.QueryContext(ctx, `SELECT "name" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" <> '_alder_meta' ORDER BY "name"`)
+	rows, err := conn.QueryContext(ctx, `SELECT "name" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" NOT IN ('_alder_meta', '_alder_migrations') ORDER BY "name"`)
 	if err != nil {
 		return nil, err
 	}

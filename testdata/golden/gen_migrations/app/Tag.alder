@@ -1,0 +1,11 @@
+module Tag
+
+import Note
+
+type TagId = brand Text
+
+table Tag {
+  id: TagId @id,
+  note: Note.NoteId @ref Note @cascade,
+  label: Text,
+}

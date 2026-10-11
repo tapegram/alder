@@ -14,7 +14,8 @@ const (
 // scratchMain is the generated cmd/main.go of a scratch build: it evaluates the Go expression
 // it (e.g. "app.Scratch__it") of the given kind. Query and Task mains open ALDER_EVAL_DB
 // (created with the app's tables when absent, O_EXCL; an existing one checked against the
-// schema and never rebuilt), run with Session app.TestSession(), Now time.Now and the
+// schema and never rebuilt; for an app with migrations, db.Migrate applies those the database
+// has not had, as the app would at start), run with Session app.TestSession(), Now time.Now and the
 // capabilities of the adapters package when withAdapters (else none: a capability call fails
 // with "capability X is not wired in eval"), and print rt.Show of the value; a failed effect
 // prints its message to stderr and exits 1.
@@ -99,7 +100,11 @@ func main() {
 	}
 	defer store.Close()
 	ctx := context.Background()
-	if err := store.Ensure(ctx, app.Tables, created); err != nil {
+	if len(app.Migrations) > 0 {
+		if _, err := store.Migrate(ctx, app.Tables, app.Migrations, created); err != nil {
+			fail(err.Error())
+		}
+	} else if err := store.Ensure(ctx, app.Tables, created); err != nil {
 		fail(err.Error())
 	}
 	env := &eff.Env{Ctx: ctx, Store: store, Session: app.TestSession(), Caps: {{caps}}, Now: time.Now}

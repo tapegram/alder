@@ -125,7 +125,7 @@ func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {
 		return 2
 	}
 	// A parse error stops the pipeline; after that each module is checked unless its own name resolution failed.
-	prog, _, bag, ioErrs := buildkit.LoadChecked(dir, nil)
+	prog, _, bag, ioErrs := checkedApp(dir)
 	if reportLoadErrs("alder check", ioErrs, stderr) {
 		return 2
 	}

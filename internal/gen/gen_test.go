@@ -68,11 +68,22 @@ func repoPath(t *testing.T) string {
 }
 
 // emit lowers dir and emits it.
+// An app with a migrations/ directory is emitted with Options.Migrations, and its *.sql files
+// are added to the result as "migrations/<file>" (what buildkit.CopyMigrations copies), so the
+// emitted module builds.
 func emit(t *testing.T, dir string) map[string][]byte {
 	t.Helper()
-	files, err := Emit(lowerDir(t, dir), Options{RepoPath: repoPath(t)})
+	sqls, _ := filepath.Glob(filepath.Join(dir, "migrations", "*.sql"))
+	files, err := Emit(lowerDir(t, dir), Options{RepoPath: repoPath(t), Migrations: len(sqls) > 0})
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, f := range sqls {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files["migrations/"+filepath.Base(f)] = b
 	}
 	return files
 }
@@ -104,6 +115,9 @@ func vet(t *testing.T, files map[string][]byte) {
 	}
 	dir := t.TempDir()
 	for name, b := range files {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(filepath.Join(dir, name), b, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -1426,6 +1440,9 @@ func emitApp(t *testing.T, dir string) string {
 	t.Helper()
 	out := t.TempDir()
 	for name, b := range emit(t, dir) {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(out, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(filepath.Join(out, name), b, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -1572,6 +1589,40 @@ func TestGen_EffectsLoad(t *testing.T) {
 	)
 	contains(t, files["app__alder.go"], "var Tables = []db.TableDesc{table__Todo__Todo.Desc()}",
 		`var Capabilities = []string{"Todo.Stats", "Index.Mailer"}`)
+}
+
+// TestGen_ServeMigrates: the gen_migrations golden app embeds its migrations/*.sql, and Serve
+// applies them to a new database (logging each), then finds nothing to apply on the next start.
+func TestGen_ServeMigrates(t *testing.T) {
+	dir := emitApp(t, "../../testdata/golden/gen_migrations")
+	const test = `package app
+
+import (
+	"slices"
+	"testing"
+)
+
+func TestServeMigrates(t *testing.T) {
+	if len(Migrations) != 1 || Migrations[0].Name != "0001_initial" {
+		t.Fatalf("Migrations = %v", Migrations)
+	}
+	path := t.TempDir() + "/app.db"
+	for i, want := range [][]string{{"info: migrated 0001_initial"}, nil} {
+		var logs []string
+		o := Options{DB: path, Secret: []byte("0123456789abcdef0123"), Log: func(level, msg string) { logs = append(logs, level+": "+msg) }}
+		if _, err := Serve(Caps{}, o); err != nil {
+			t.Fatalf("start %d: %v", i, err)
+		}
+		if !slices.Equal(logs, want) {
+			t.Fatalf("start %d logged %q, want %q", i, logs, want)
+		}
+	}
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "zz_serve_test.go"), []byte(test), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	goRun(t, dir, "test", "-count=1", "-run", "TestServeMigrates", ".")
 }
 
 // TestGen_RunTodos runs the todos example end to end: its generated load and update functions,

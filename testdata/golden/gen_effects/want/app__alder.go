@@ -23,6 +23,10 @@ var Tables = []db.TableDesc{table__Todo__Todo.Desc()}
 // fills them.
 var Capabilities = []string{"Todo.Stats", "Index.Mailer"}
 
+// Migrations are the app's migrations: none (the app has no migrations/ directory), so
+// Serve creates the tables with db.Ensure.
+var Migrations []db.Migration
+
 // Caps are the app's capability implementations, one field per capability, named by its
 // module and name: the adapters package's Caps function returns them, and Serve refuses a
 // field left nil.
@@ -66,7 +70,8 @@ type Options struct {
 
 // Serve is the app's HTTP handler. It checks that o.Secret is at least 16 bytes outside dev
 // mode (web.CheckSecret) and that caps implements every capability (an error names each field
-// left nil), opens the database o.DB and creates its tables (db.Ensure), and routes Routes
+// left nil), opens the database o.DB and brings it to the app's tables (db.Migrate with the
+// app's Migrations, logging each one applied; db.Ensure for an app without), and routes Routes
 // (web.NewRouter) with the session codec, App.error, App.notFound and the page App.login names.
 func Serve(caps Caps, o Options) (http.Handler, error) {
 	if err := web.CheckSecret(o.Secret, o.Dev); err != nil {
@@ -90,7 +95,18 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := store.Ensure(context.Background(), Tables, o.Dev); err != nil {
+	if len(Migrations) > 0 {
+		applied, err := store.Migrate(context.Background(), Tables, Migrations, o.Dev)
+		if err != nil {
+			store.Close()
+			return nil, err
+		}
+		if o.Log != nil {
+			for _, name := range applied {
+				o.Log("info", "migrated "+name)
+			}
+		}
+	} else if err := store.Ensure(context.Background(), Tables, o.Dev); err != nil {
 		store.Close()
 		return nil, err
 	}

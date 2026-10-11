@@ -38,8 +38,10 @@ import (
 //	                                        order)
 //	route__fail, route__values, route__errors, session__codec
 //	                                        fixed helpers of routes__alder.go and app__alder.go
-//	Tables, Capabilities, Caps, Options, Serve, Routes, Tests, TestSession, Registry
-//	                                        the app's table descriptors, capability keys,
+//	Tables, Migrations, migrationsFS, Capabilities, Caps, Options, Serve, Routes, Tests,
+//	TestSession, Registry
+//	                                        the app's table descriptors, migrations (and their
+//	                                        embedded files), capability keys,
 //	                                        capability implementations, Serve and its options,
 //	                                        its routes, its tests, the session a test runs with
 //	                                        and Caps' registry method (app__alder.go,
@@ -75,9 +77,11 @@ import (
 //     each other; within a kind the rest is decoded as in 1 and 2 (decodeName's record is a
 //     page's Params, a <Msg>Params or a form of M: type names of one module, distinct; testFunc's
 //     N is the text after the last "__", digits, and the rest is the module's segments).
-//     Tables, Capabilities, Caps, Options, Serve, Routes, Tests and TestSession contain no "__"
-//     and start upper-case, which no GoName (it has "__"), no local (lower-case or '_') and none
-//     of the others is (Registry is a method of Caps, in Caps' own namespace). app__alder.go and
+//     Tables, Migrations, Capabilities, Caps, Options, Serve, Routes, Tests and TestSession
+//     contain no "__" and start upper-case, which no GoName (it has "__"), no local (lower-case
+//     or '_') and none of the others is (Registry is a method of Caps, in Caps' own namespace).
+//     migrationsFS has no "__" either, so no package-level name of the kinds above is it (a
+//     local of that name only shadows it inside its function, which never reads it). app__alder.go and
 //     routes__alder.go are no module's file, even ignoring case (on a case-insensitive file
 //     system such as macOS's, app_alder.go would be App's file): they would be files of a
 //     module segment "app_" or "routes_", which never ends a segment.
@@ -258,4 +262,7 @@ const (
 	routesFile = "routes__alder.go"
 	tablesVar  = "Tables"
 	capsVar    = "Capabilities"
+	// migrationsVar is the app's migrations ([]db.Migration); with migrations, read from
+	// migrationsFS, the embedded migrations/*.sql.
+	migrationsVar = "Migrations"
 )

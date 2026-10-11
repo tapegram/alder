@@ -31,7 +31,7 @@ import (
 // assignable to it), an alias of it when it is a named record, else struct{ Value T }; for
 // several parameters (`limit : UserId -> Int -> Query Int`) one Go parameter each, a1, a2, ….
 //
-// app__alder.go holds Tables and Capabilities and, for an app with an App module, Caps (one
+// app__alder.go holds Tables, Migrations and Capabilities and, for an app with an App module, Caps (one
 // field per capability), Options and Serve, which wires everything into a web.NewRouter
 // handler, and the session cookie codec.
 
@@ -112,7 +112,7 @@ func capDecl(w *strings.Builder, c *ir.Capability) {
 // declaration order (db.Ensure's schema hash depends on it); Capabilities, the Env.Caps key of
 // every capability; Caps and its Registry; Tests and TestSession (testsTable); and for an app
 // with an App module Options, Serve and the session codec.
-func (g *gen) appSource(p *ir.Program) string {
+func (g *gen) appSource(p *ir.Program, migrations bool) string {
 	var ds, cs []string
 	for _, tb := range p.Tables {
 		ds = append(ds, tableName(tb.Module, tb.Name)+".Desc()")
@@ -126,6 +126,19 @@ func (g *gen) appSource(p *ir.Program) string {
 		"// Capabilities are the keys of eff.Env.Caps the app's capability calls look up: Caps.Registry\n" +
 		"// fills them.\n" +
 		"var " + capsVar + " = []string{" + strings.Join(cs, ", ") + "}\n\n")
+	if migrations {
+		b.WriteString("// migrationsFS holds the app's migration files, migrations/*.sql, embedded when the app is built.\n" +
+			"//\n" +
+			"//go:embed migrations/*.sql\n" +
+			"var migrationsFS embed.FS\n\n" +
+			"// " + migrationsVar + " are the app's migrations in order (db.ReadMigrations): Serve applies those the\n" +
+			"// database has not had (db.Migrate).\n" +
+			"var " + migrationsVar + " = db.ReadMigrations(migrationsFS)\n\n")
+	} else {
+		b.WriteString("// " + migrationsVar + " are the app's migrations: none (the app has no migrations/ directory), so\n" +
+			"// Serve creates the tables with db.Ensure.\n" +
+			"var " + migrationsVar + " []db.Migration\n\n")
+	}
 
 	// Caps
 	b.WriteString("// Caps are the app's capability implementations, one field per capability, named by its\n" +
@@ -280,7 +293,8 @@ type Options struct {
 
 // Serve is the app's HTTP handler. It checks that o.Secret is at least 16 bytes outside dev
 // mode (web.CheckSecret) and that caps implements every capability (an error names each field
-// left nil), opens the database o.DB and creates its tables (db.Ensure), and routes Routes
+// left nil), opens the database o.DB and brings it to the app's tables (db.Migrate with the
+// app's Migrations, logging each one applied; db.Ensure for an app without), and routes Routes
 // (web.NewRouter) with the session codec, App.error, App.notFound and the page App.login names.
 func Serve(caps Caps, o Options) (http.Handler, error) {
 	if err := web.CheckSecret(o.Secret, o.Dev); err != nil {
@@ -304,7 +318,18 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := store.Ensure(context.Background(), Tables, o.Dev); err != nil {
+	if len(Migrations) > 0 {
+		applied, err := store.Migrate(context.Background(), Tables, Migrations, o.Dev)
+		if err != nil {
+			store.Close()
+			return nil, err
+		}
+		if o.Log != nil {
+			for _, name := range applied {
+				o.Log("info", "migrated "+name)
+			}
+		}
+	} else if err := store.Ensure(context.Background(), Tables, o.Dev); err != nil {
 		store.Close()
 		return nil, err
 	}

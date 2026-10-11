@@ -163,19 +163,29 @@ type Result struct {
 }
 
 // Options configure Run. Run, when set, selects the cases whose `Module "Name"` it matches;
-// Tables are created in each case's database; Caps (an empty map when nil) and Session are
+// Tables are created in each case's database (by Migrations when set: when they do not
+// produce Tables, every case fails, pure ones too, with notTheSchema); Caps (an empty map when nil) and Session are
 // each case's Env.Caps and Env.Session; Now is when each case's clock starts (zero:
 // 2026-01-01T00:00:00Z; see Ticking);
 // Deadline, when set, is (100 ms after it) the deadline of a task test's context (its store
 // operations and capabilities see it).
 type Options struct {
-	Run      *regexp.Regexp
-	Tables   []db.TableDesc
-	Caps     map[string]any
-	Session  any
-	Now      time.Time
-	Deadline time.Time
+	Run *regexp.Regexp
+	// Tables are each task test's tables: made by applying Migrations (db.Migrate) when the
+	// app has any, else by db.Ensure.
+	Tables     []db.TableDesc
+	Migrations []db.Migration
+	Caps       map[string]any
+	Session    any
+	Now        time.Time
+	Deadline   time.Time
+
+	schemaErr string // why Migrations do not make Tables (set by defaults): every case fails with it
 }
+
+// notTheSchema is the failure of every test of an app whose migrations do not produce its
+// tables (its tables changed without `alder migrate`).
+const notTheSchema = "the migrations do not produce the app's schema: run `alder migrate`"
 
 // defaultNow is when a test's clock starts unless told otherwise.
 var defaultNow = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -214,7 +224,8 @@ func Run(cases []Case, o Options) []Result {
 	return out
 }
 
-// defaults fills o's zero Now and nil Caps.
+// defaults fills o's zero Now and nil Caps, and applies o.Migrations once to a database of
+// its own to see that they produce o.Tables (schemaErr).
 func defaults(o Options) Options {
 	if o.Now.IsZero() {
 		o.Now = defaultNow
@@ -222,7 +233,30 @@ func defaults(o Options) Options {
 	if o.Caps == nil {
 		o.Caps = map[string]any{}
 	}
+	if len(o.Migrations) > 0 {
+		o.schemaErr = ""
+		store, err := db.OpenSQLite(":memory:")
+		if err == nil {
+			_, err = store.Migrate(context.Background(), o.Tables, o.Migrations, false)
+			store.Close()
+		}
+		if errors.Is(err, db.ErrDrift) {
+			o.schemaErr = notTheSchema
+		} else if err != nil {
+			o.schemaErr = err.Error()
+		}
+	}
 	return o
+}
+
+// ensure gives a case's fresh store o's tables: by o.Migrations when there are any, else by
+// Ensure.
+func ensure(ctx context.Context, store *db.SQLite, o Options) error {
+	if len(o.Migrations) > 0 {
+		_, err := store.Migrate(ctx, o.Tables, o.Migrations, false)
+		return err
+	}
+	return store.Ensure(ctx, o.Tables, true)
 }
 
 // selected is the cases o.Run selects, in order.
@@ -247,6 +281,8 @@ func runCase(c Case, o Options) (r Result) {
 
 	ok, errText := false, ""
 	switch {
+	case o.schemaErr != "":
+		errText = o.schemaErr
 	case c.Pure != nil:
 		ok, errText = guard(c.Pure)
 	case c.Task != nil:
@@ -263,7 +299,7 @@ func runCase(c Case, o Options) (r Result) {
 			return r
 		}
 		defer store.Close()
-		if err := store.Ensure(ctx, o.Tables, true); err != nil {
+		if err := ensure(ctx, store, o); err != nil {
 			r.Error = err.Error()
 			return r
 		}
@@ -404,7 +440,7 @@ const (
 // Main also reads the variables EnvDeadline, EnvTimeout, EnvStatus and EnvStdinEOF: when the
 // deadline passes the running case is reported as failed ("timed out after <timeout>"), the
 // summary printed, and Main returns 1 without waiting for it (the caller exits, which stops it).
-func Main(cases []Case, tables []db.TableDesc, caps map[string]any, session any, args []string, out, err io.Writer) int {
+func Main(cases []Case, tables []db.TableDesc, migrations []db.Migration, caps map[string]any, session any, args []string, out, err io.Writer) int {
 	started := time.Now()
 	fs := flag.NewFlagSet("alder test", flag.ContinueOnError)
 	fs.SetOutput(err)
@@ -424,7 +460,7 @@ func Main(cases []Case, tables []db.TableDesc, caps map[string]any, session any,
 			os.Exit(2)
 		}()
 	}
-	o := Options{Tables: tables, Caps: caps, Session: session, Now: defaultNow}
+	o := Options{Tables: tables, Migrations: migrations, Caps: caps, Session: session, Now: defaultNow}
 	if *runPat != "" {
 		re, e := regexp.Compile(*runPat)
 		if e != nil {

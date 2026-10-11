@@ -31,8 +31,8 @@ import (
 
 // runRunTo is `alder run [dir]`: a development server for the app in dir. It builds the app
 // (buildApp), runs its executable as a child process on a free port, and serves on ALDER_ADDR
-// (default localhost:8080: the app behind it runs in development mode) a reverse proxy to it. While it runs, a save under app/ (*.alder) or
-// adapters/ (*.go) rebuilds the app and reloads the browser; a change under static/ only reloads
+// (default localhost:8080: the app behind it runs in development mode) a reverse proxy to it. While it runs, a save under app/ (*.alder),
+// adapters/ (*.go) or migrations/ (`alder migrate`) rebuilds the app and reloads the browser; a change under static/ only reloads
 // it; a check or build error is shown in the browser (an overlay) and on stderr while the last
 // good build keeps serving. See devServer for the lifecycle. It returns when stop is closed,
 // after stopping the child: 0, or 2 for a usage error or when it cannot listen.
@@ -541,7 +541,7 @@ func (c *child) stop() {
 type change int
 
 const (
-	sourceChange change = 1 << iota // app/**/*.alder or adapters/*.go
+	sourceChange change = 1 << iota // app/**/*.alder, adapters/*.go or migrations/ (*.sql, schema.json)
 	staticChange                    // static/**
 )
 
@@ -551,8 +551,8 @@ type stamp struct {
 	size int64
 }
 
-// watch polls dir every interval until stop closes: the files app/**/*.alder, adapters/*.go
-// and static/**. A file added, removed or modified is a change; the changes are coalesced and
+// watch polls dir every interval until stop closes: the files app/**/*.alder, adapters/*.go,
+// migrations/*.sql, migrations/schema.json and static/**. A file added, removed or modified is a change; the changes are coalesced and
 // sent on changed once a poll finds nothing new after a poll that did, so a burst of saves is
 // one change.
 func watch(dir string, interval time.Duration, stop <-chan struct{}, changed chan<- change) {
@@ -608,6 +608,12 @@ func snapshot(dir string) map[string]stamp {
 	for _, e := range entries {
 		if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") {
 			add(filepath.Join(dir, "adapters", e.Name()), e)
+		}
+	}
+	entries, _ = os.ReadDir(filepath.Join(dir, "migrations"))
+	for _, e := range entries {
+		if !e.IsDir() && (strings.HasSuffix(e.Name(), ".sql") || e.Name() == "schema.json") {
+			add(filepath.Join(dir, "migrations", e.Name()), e)
 		}
 	}
 	return files

@@ -9,9 +9,11 @@ import (
 	"strings"
 
 	"alder/internal/buildkit"
+	"alder/internal/check"
 	"alder/internal/diag"
 	"alder/internal/gen"
 	"alder/internal/ir"
+	"alder/internal/names"
 )
 
 // runBuildTo is `alder build [--emit] [dir]`: check the app in dir and, when it has no errors
@@ -20,7 +22,8 @@ import (
 // executable build/<app>/<app>: it copies dir/adapters/*.go (the Go implementing the app's
 // capabilities, package adapters; only the top-level .go files, and a directory without any
 // counts as absent) to build/<app>/adapters/ and dir/static/ to
-// build/<app>/static/ (replacing earlier copies), writes the command build/<app>/cmd/main.go,
+// build/<app>/static/ and dir/migrations/*.sql (with migrations/schema.json) to
+// build/<app>/migrations/ for app__alder.go to embed (replacing earlier copies), writes the command build/<app>/cmd/main.go,
 // vets the module and builds the command.
 //
 // Exit 0 on success; 1 when the program has errors or holes, when it has capabilities but no
@@ -86,7 +89,7 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 		return "", 2
 	}
 
-	prog, res, bag, ioErrs := buildkit.LoadChecked(dir, nil)
+	prog, res, bag, ioErrs := checkedApp(dir)
 	if reportLoadErrs("alder build", ioErrs, stderr) {
 		return "", 2
 	}
@@ -122,7 +125,7 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 		fmt.Fprintf(stderr, "%s needs an adapters package: create adapters/caps.go with `func Caps() app.Caps` implementing: %s\n", dir, strings.Join(list, ", "))
 		return "", 1
 	}
-	files, err := gen.Emit(p, gen.Options{RepoPath: repo})
+	files, err := gen.Emit(p, gen.Options{RepoPath: repo, Migrations: buildkit.HasMigrations(dir)})
 	if err != nil {
 		fmt.Fprintf(stderr, "alder build: internal error: %v\n", err)
 		return "", 2
@@ -133,6 +136,10 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 	if err := buildkit.WriteGenerated(out, files); err != nil {
 		fmt.Fprintf(stderr, "alder build: %v\n", err)
 		return "", 2
+	}
+	if err := buildkit.CopyMigrations(filepath.Join(dir, "migrations"), filepath.Join(out, "migrations")); err != nil {
+		fmt.Fprintf(stderr, "alder build: %v\n", err)
+		return "", 1
 	}
 	if emit {
 		// the app package alone: a cmd/ or adapters/ of an earlier full build is not vetted
@@ -182,6 +189,18 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 		return "", 2
 	}
 	return filepath.Join(out, name), 0
+}
+
+// checkedApp is buildkit.LoadChecked of the app in dir (no extra module) followed by the check
+// of its migrations, buildkit.AddSchemaDrift: E0019 when its tables changed since the last
+// migration. `alder check` and `alder build` (and so `alder run`) check with it; `alder test`,
+// `eval` and the REPL get the same through scratch.Check.
+func checkedApp(dir string) (*names.Program, *check.Result, *diag.Bag, []error) {
+	prog, res, bag, ioErrs := buildkit.LoadChecked(dir, nil)
+	if len(ioErrs) == 0 {
+		buildkit.AddSchemaDrift(dir, prog, res, bag)
+	}
+	return prog, res, bag, ioErrs
 }
 
 // reportLoadErrs prints the failures buildkit.LoadChecked returned, each prefixed with the
