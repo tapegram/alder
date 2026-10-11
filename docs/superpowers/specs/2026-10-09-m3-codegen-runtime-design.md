@@ -334,6 +334,14 @@ tag outside its whitelist as "unknown element"), attribute passthrough,
 slots, linking the system's CSS and JS (from `static/` or a CDN), and how
 Datastar's morph interacts with shadow DOM; the to-do example adopts the
 system as the test case. To be brainstormed and specced.
+Direction noted 2026-10-11: the checker should learn custom elements from
+a Custom Elements Manifest (`custom-elements.json`, which Web Awesome and
+Lit tooling emit), so any system is checked like built-in elements; and a
+shadcn-inspired design system as light-DOM web components over native
+platform primitives (`<dialog>`, Popover API, anchor positioning) with
+shadcn's token sheet, distributed as copied source, may be built as a
+separate open-source project with Alder as its first consumer (it fits
+server rendering and Datastar's morph better than shadow DOM).
 
 **Harder use cases for experiments** (added 2026-10-10): the to-do app is
 the floor; E7 and later need apps with relations between tables, roles
