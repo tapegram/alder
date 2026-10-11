@@ -1,0 +1,1 @@
+app/Comment.alder:9:31 E0003 `@setNull` needs a `Maybe` reference, got `Post.PostId`; write `post: Maybe Post.PostId`

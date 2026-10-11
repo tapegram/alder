@@ -21,7 +21,9 @@ table Todo {
 - Exactly one field has `@id`. Its type is a brand of `Text`; the runtime
   generates the value on insert.
 - `@ref T` marks a foreign key to table `T`'s id. The field's type must be
-  `T`'s id type, or `Maybe` of it.
+  `T`'s id type, or `Maybe` of it. A delete rule may follow it:
+  `@restrict` (the default), `@cascade` or `@setNull` (below, under
+  Writing).
 - `@created` is set to the current time on insert. `@updated` is set on
   every write.
 - A field with a default may be omitted on insert.
@@ -72,6 +74,7 @@ Column operations:
 Todo.title.eq   : Text.NonEmpty -> Condition Todo   -- the column's type; also .ne
 Todo.created.lt : Time -> Condition Todo         -- also .le .gt .ge
 Todo.title.contains : Text -> Condition Todo     -- substring, case-insensitive
+Todo.title.startsWith : Text -> Condition Todo   -- prefix, case-insensitive
 Todo.owner.in   : List User.UserId -> Condition Todo
 Todo.due.isNothing : Condition Todo              -- for Maybe fields; also .isJust
 Todo.created.asc, Todo.created.desc : Order Todo   -- unions order by declaration
@@ -109,6 +112,31 @@ does not, so `Db.not (Todo.due.eq (Just d))` includes the rows with no due
 date. Ordering by a `Maybe` column puts `Nothing` first with `.asc` and
 last with `.desc`.
 
+**Search.** `.contains` matches a column whose text has the argument
+somewhere in it, and `.startsWith` one whose text begins with it. Both
+work on `Text` columns and brands of `Text` only (on a brand, the
+argument is still plain `Text`), and both ignore the case of the letters
+A–Z. The argument is matched literally: `%`, `_` and `\` have no special
+meaning, so `Todo.title.startsWith "100%"` finds `100% done` and not
+`1000 ways`. An empty argument matches every row. To search two columns,
+combine the conditions with `Db.or`:
+
+```alder
+search : Text -> Query (List Todo)
+search q =
+  Db.from Todo
+    |> Db.where (Db.or [Todo.title.contains q, Todo.title.startsWith q])
+    |> Db.orderBy Todo.created.desc
+    |> Db.limit 10
+    |> Db.all
+```
+
+On any other column the method is an error (E0003):
+
+```alder error=E0003 "`.startsWith` needs a Text column, got `Bool`"
+Db.from Todo |> Db.where (Todo.done.startsWith "T")
+```
+
 ## Writing
 
 Writes are `Task` values.
@@ -145,10 +173,57 @@ write.
 
 `@ref` is checked the same way. Inserting or updating a row whose `@ref`
 field names a row that does not exist fails the task with
-`Todo.owner: no User with that id`; deleting a row that another row still
-refers to fails with `User QXZMRYnkC2vuE_TefkuR is referenced by another
-row` (the table and the id). Either way the task's earlier writes are
-rolled back.
+`Todo.owner: no User with that id`. What deleting a row that other rows
+still refer to does is the referring field's **delete rule**, written
+after `@ref T`:
+
+- **`@restrict`**, the default, refuses: `Db.delete` fails with
+  `User QXZMRYnkC2vuE_TefkuR is referenced by another row` (the table
+  and the id). Delete or re-point the referring rows first.
+- **`@cascade`** deletes the referring rows too, and theirs in turn if
+  other tables cascade from them.
+- **`@setNull`** sets the referring field to `Nothing`; the field must be
+  a `Maybe`.
+
+Either way a failure rolls back the task's earlier writes. A table of
+notes attached to to-dos, which go when their to-do goes, and which keep
+an optional link to another to-do that is cleared when that one goes:
+
+```alder
+module Note
+
+import Todo
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  todo: Todo.TodoId @ref Todo @cascade,
+  seeAlso: Maybe Todo.TodoId @ref Todo @setNull,
+  body: Text,
+}
+```
+
+The rules are carried out by SQLite inside the delete statement, not by
+the runtime: `Db.delete Todo id` is one step in a test's trace
+(chapter 10) however many notes go with it. A field takes at most one
+rule, and only a `@ref` field takes one (`@cascade` alone is E0001).
+`@setNull` on a field that is not a `Maybe` is E0003, since the field
+could not hold the `Nothing` it would be set to:
+
+```alder error=E0003 "`@setNull` needs a `Maybe` reference, got `Todo.TodoId`"
+module Note
+
+import Todo
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  todo: Todo.TodoId @ref Todo @setNull,
+  body: Text,
+}
+```
 
 ## How tables are stored
 
@@ -181,8 +256,11 @@ func EncodeTime(t time.Time) string { return t.UTC().Format(timeLayout) }
 ```
 
 Every column except a `Maybe` is `NOT NULL`. The `@id` is the primary key,
-`@unique` adds `UNIQUE`, `@ref` adds `REFERENCES`, and a `Bool` or union
-column gets a `CHECK` listing its allowed values. For the to-do example's
+`@unique` adds `UNIQUE`, `@ref` adds `REFERENCES`, followed by
+`ON DELETE CASCADE` for `@cascade` and `ON DELETE SET NULL` for
+`@setNull` (`@restrict` adds nothing: SQLite refuses such a delete by
+default), and a `Bool` or union column gets a `CHECK` listing its
+allowed values. For the to-do example's
 `Todo` table the runtime creates:
 
 ```
@@ -198,8 +276,10 @@ A few rules follow from the mapping:
 - **Unions order by declaration.** `orderBy` and `.lt`/`.gt` on a union
   column follow the order the constructors are declared in, not
   alphabetical order.
-- **`.contains`** ignores case for the letters A–Z only; `É` and `é`
-  differ.
+- **`.contains` and `.startsWith`** are SQL's `LIKE` with `%` around
+  the argument (after it, for `.startsWith`), and with `%`, `_` and `\`
+  in the argument escaped, so they match themselves. `LIKE` ignores case
+  for the letters A–Z only; `É` and `é` differ.
 - **Empty lists.** `Db.and []` matches every row, `Db.or []` matches no
   row, and `.in []` matches no row.
 

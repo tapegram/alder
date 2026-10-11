@@ -468,6 +468,11 @@ func (l *lowerer) declareTypes() {
 							t.Unique = append(t.Unique, f.Name)
 						case "ref":
 							refs = append(refs, pendingRef{t, f.Name, m, a.Arg})
+						case "cascade", "setNull":
+							if t.OnDelete == nil {
+								t.OnDelete = map[string]string{}
+							}
+							t.OnDelete[f.Name] = a.Name
 						}
 					}
 				}

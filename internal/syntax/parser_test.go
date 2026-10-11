@@ -184,3 +184,31 @@ func TestTypeDecl_EqualOnNextLine(t *testing.T) {
 		t.Errorf("column-1 `=`: %v", diags)
 	}
 }
+
+// A `@ref` column takes one delete rule after `@ref T`; a rule without `@ref`, or a second
+// rule, is a parse error.
+func TestParse_DeleteRules(t *testing.T) {
+	m, diags := ParseFile("c.alder", []byte("module C\n\ntable C {\n  id: CId @id,\n  post: Post.PostId @ref Post @cascade,\n  author: Maybe User.UserId @ref User @setNull,\n  tag: Tag.TagId @ref Tag @restrict,\n}\n"))
+	if len(diags) != 0 {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	td := m.Decls[0].(*TableDecl)
+	var got []string
+	for _, f := range td.Fields {
+		for _, a := range f.Attrs {
+			got = append(got, f.Name+":"+a.Name+a.Arg)
+		}
+	}
+	if want := "id:id post:refPost post:cascade author:refUser author:setNull tag:refTag tag:restrict"; strings.Join(got, " ") != want {
+		t.Fatalf("attrs %q, want %q", strings.Join(got, " "), want)
+	}
+	for _, tc := range []struct{ field, want string }{
+		{"post: Post.PostId @cascade", "5:21 in a table field: `@cascade` belongs on a `@ref` column, after `@ref Table`"},
+		{"post: Post.PostId @ref Post @cascade @setNull", "5:40 in a table field: a `@ref` column takes one delete rule; it has `@cascade` and `@setNull`"},
+	} {
+		_, diags := ParseFile("c.alder", []byte("module C\n\ntable C {\n  id: CId @id,\n  "+tc.field+",\n}\n"))
+		if len(diags) != 1 || diags[0].Code != "E0001" || fmt.Sprintf("%d:%d %s", diags[0].Span.Start.Line, diags[0].Span.Start.Col, diags[0].Message) != tc.want {
+			t.Errorf("%s: got %+v, want %s", tc.field, diags, tc.want)
+		}
+	}
+}

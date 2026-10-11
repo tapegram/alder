@@ -2887,3 +2887,41 @@ test "a successful run keeps its insert" = {
 	}
 	runGo(t, files, string(prog))
 }
+
+// A @ref column's delete rule reaches its db.Column (@restrict, the default, writes nothing), and
+// `.startsWith` becomes db.CStartsWith.
+func TestGen_DeleteRulesAndStartsWith(t *testing.T) {
+	files := emitSource(t, map[string]string{
+		"Post.alder": `module Post
+
+type PostId = brand Text
+
+table Post {
+  id: PostId @id,
+  title: Text,
+}
+
+titled : Text -> Query (List Post)
+titled p = Db.from Post |> Db.where (Post.title.startsWith p) |> Db.all
+`,
+		"Comment.alder": `module Comment
+
+import Post
+
+type CommentId = brand Text
+
+table Comment {
+  id: CommentId @id,
+  post: Post.PostId @ref Post @cascade,
+  reply: Maybe Post.PostId @ref Post @setNull,
+  quote: Post.PostId @ref Post @restrict,
+}
+`})
+	contains(t, files["Comment_alder.go"],
+		`{Name: "post", Type: db.CText, Ref: "Post.Post", OnDelete: db.Cascade},`,
+		`{Name: "reply", Type: db.CText, Nullable: true, Ref: "Post.Post", OnDelete: db.SetNull},`,
+		`{Name: "quote", Type: db.CText, Ref: "Post.Post"},`,
+	)
+	contains(t, files["Post_alder.go"], `db.CStartsWith("title", p)`)
+	vet(t, files)
+}

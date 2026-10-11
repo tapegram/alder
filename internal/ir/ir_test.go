@@ -289,6 +289,50 @@ func TestIR_TableRefAndAttrs(t *testing.T) {
 	}
 }
 
+// A delete rule other than the default @restrict is kept per @ref field, and `.startsWith` is a
+// Cond of kind startsWith.
+func TestIR_DeleteRulesAndStartsWith(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "app"), 0o755)
+	os.WriteFile(filepath.Join(dir, "app", "Post.alder"), []byte(`module Post
+
+type PostId = brand Text
+
+table Post {
+  id: PostId @id,
+  title: Text,
+}
+
+titled : Text -> Query (List Post)
+titled p = Db.from Post |> Db.where (Post.title.startsWith p) |> Db.all
+`), 0o644)
+	os.WriteFile(filepath.Join(dir, "app", "Comment.alder"), []byte(`module Comment
+
+import Post
+
+type CommentId = brand Text
+
+table Comment {
+  id: CommentId @id,
+  post: Post.PostId @ref Post @cascade,
+  reply: Maybe Post.PostId @ref Post @setNull,
+  quote: Post.PostId @ref Post @restrict,
+}
+`), 0o644)
+	p := lowerDir(t, dir)
+	d := Dump(p)
+	for _, want := range []string{"(ref post Post.Post cascade)", "(ref reply Post.Post setNull)", "(ref quote Post.Post)", "startsWith"} {
+		if !strings.Contains(d, want) {
+			t.Errorf("dump lacks %q:\n%s", want, d)
+		}
+	}
+	for _, tb := range p.Tables {
+		if tb.Name == "Comment" && (len(tb.OnDelete) != 2 || tb.OnDelete["post"] != "cascade" || tb.OnDelete["reply"] != "setNull") {
+			t.Errorf("Comment.OnDelete = %v", tb.OnDelete)
+		}
+	}
+}
+
 // A module's `test` declarations lower to Module.Tests in declaration order: a pure test's
 // top-level `==` and an effect test's final `Task.succeed (… == …)` become TestEq, and
 // Test.run / Test.trace their own nodes.

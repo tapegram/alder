@@ -316,7 +316,7 @@ func (f *fn) selectExpr(x *ir.DbSelect, s *scope) string {
 
 var condFuncs = map[string]string{
 	"eq": "db.CEq", "ne": "db.CNe", "lt": "db.CLt", "le": "db.CLe", "gt": "db.CGt", "ge": "db.CGe",
-	"contains": "db.CContains", "isNothing": "db.CIsNull", "isJust": "db.CIsNotNull",
+	"contains": "db.CContains", "startsWith": "db.CStartsWith", "isNothing": "db.CIsNull", "isJust": "db.CIsNotNull",
 	"and": "db.CAnd", "or": "db.COr", "not": "db.CNot",
 }
 
@@ -516,6 +516,12 @@ func (g *gen) tableDecl(w *strings.Builder, tb *ir.Table) {
 		}
 		if ref := tb.Refs[fd.Name]; ref != "" {
 			col += ", Ref: " + strconv.Quote(ref)
+			switch tb.OnDelete[fd.Name] { // @restrict, the default, is db.Restrict, the zero value
+			case "cascade":
+				col += ", OnDelete: db.Cascade"
+			case "setNull":
+				col += ", OnDelete: db.SetNull"
+			}
 		}
 		fmt.Fprintf(w, "%s},\n", col)
 		enc = append(enc, encode(fd.Type, "r."+Field(fd.Name)))

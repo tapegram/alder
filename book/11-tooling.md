@@ -672,9 +672,9 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 
 | Code | Meaning | Fix offered |
 |---|---|---|
-| E0001 | parse error (also: an identifier with `__` in it, a module name segment ending in `_`) | — |
+| E0001 | parse error (also: an identifier with `__` in it, a module name segment ending in `_`, a delete rule such as `@cascade` on a field without `@ref`, or two on one field) | — |
 | E0002 | unknown name | — |
-| E0003 | type mismatch (also: `==` or a `Dict` key on a function or an effect value, a column method on a column held in a variable, a `Db` function over a type parameter) | conversion such as `Text.fromInt (…)` where one exists |
+| E0003 | type mismatch (also: `==` or a `Dict` key on a function or an effect value, a column method on a column held in a variable, `.contains` or `.startsWith` on a column that is not `Text`, `@setNull` on a field that is not a `Maybe`, a `Db` function over a type parameter) | conversion such as `Text.fromInt (…)` where one exists |
 | E0004 | non-exhaustive `match` | arm skeleton |
 | E0005 | module name does not match its file path | — |
 | E0006 | import cycle | — |

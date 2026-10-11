@@ -1082,9 +1082,9 @@ func (mc *modCtx) columnMethod(x *syntax.Access, table, field types.Type) types.
 			c.errorf(diag.TypeMismatch, x.Span, "`.%s` needs an ordered column, got `%s`", x.Field, types.String(ft))
 		}
 		return &types.Fun{Params: []types.Type{ft}, Result: cond}
-	case "contains":
+	case "contains", "startsWith":
 		if !isTextLike {
-			c.errorf(diag.TypeMismatch, x.Span, "`.contains` needs a Text column, got `%s`", types.String(ft))
+			c.errorf(diag.TypeMismatch, x.Span, "`.%s` needs a Text column, got `%s`", x.Field, types.String(ft))
 		}
 		return &types.Fun{Params: []types.Type{types.Text}, Result: cond}
 	case "in":
@@ -1097,7 +1097,7 @@ func (mc *modCtx) columnMethod(x *syntax.Access, table, field types.Type) types.
 	case "asc", "desc":
 		return order
 	}
-	c.errorf(diag.UnknownName, x.Span, "columns have no `.%s`; use .eq .ne .lt .le .gt .ge .contains .in .isNothing .isJust .asc .desc", x.Field)
+	c.errorf(diag.UnknownName, x.Span, "columns have no `.%s`; use .eq .ne .lt .le .gt .ge .contains .startsWith .in .isNothing .isJust .asc .desc", x.Field)
 	return c.u.Fresh()
 }
 

@@ -85,7 +85,7 @@ type Field struct {
 }
 type Attr struct {
 	Node
-	Name string // id | ref | created | updated | unique
+	Name string // id | ref | created | updated | unique | cascade | restrict | setNull
 	Arg  string // table name for ref
 }
 type PageDecl struct {

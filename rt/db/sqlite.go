@@ -414,6 +414,12 @@ func createStmt(d TableDesc, byName map[string]TableDesc) (string, error) {
 				return "", fmt.Errorf("db: %s.%s: @ref to unknown table %q", d.Name, c.Name, c.Ref)
 			}
 			def += " REFERENCES " + quote(SQLName(ref.Name)) + "(" + quote(ref.ID) + ")"
+			switch c.OnDelete { // Restrict, the default, writes nothing: SQLite's default refuses
+			case Cascade:
+				def += " ON DELETE CASCADE"
+			case SetNull:
+				def += " ON DELETE SET NULL"
+			}
 		}
 		defs[i] = def
 	}

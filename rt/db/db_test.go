@@ -963,3 +963,117 @@ func TestSavepoint_RollbackToKeepsOuterWrites(t *testing.T) {
 		t.Fatalf("a savepoint outside a transaction must fail: %v", err)
 	}
 }
+
+// refTables is a Post table and a Comment table whose post column references it with rule
+// del; nullable makes the reference a Maybe.
+func refTables(t *testing.T, del OnDelete, nullable bool) (*SQLite, TableDesc, TableDesc) {
+	t.Helper()
+	s, err := OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	post := TableDesc{Name: "Post.Post", ID: "id", Columns: []Column{{Name: "id", Type: CText}}}
+	comment := TableDesc{Name: "Comment.Comment", ID: "id", Columns: []Column{
+		{Name: "id", Type: CText}, {Name: "post", Type: CText, Nullable: nullable, Ref: "Post.Post", OnDelete: del}}}
+	if err := s.Ensure(context.Background(), []TableDesc{comment, post}, true); err != nil {
+		t.Fatal(err)
+	}
+	return s, post, comment
+}
+
+// postWithComments inserts a post and n comments on it, returning the post's id.
+func postWithComments(t *testing.T, s *SQLite, post, comment TableDesc, n int) string {
+	t.Helper()
+	ctx := context.Background()
+	pid, err := s.Insert(ctx, nil, post.Name, post.Columns, "id", "", "", []any{nil}, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range n {
+		if _, err := s.Insert(ctx, nil, comment.Name, comment.Columns, "id", "", "", []any{nil, pid}, clock); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return pid
+}
+
+func rawCount(t *testing.T, s *SQLite, query string) int {
+	t.Helper()
+	var n int
+	if err := s.db.QueryRow(query).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func TestCascadeDelete(t *testing.T) {
+	s, post, comment := refTables(t, Cascade, false)
+	pid := postWithComments(t, s, post, comment, 2)
+	other := postWithComments(t, s, post, comment, 1)
+	if err := s.Delete(context.Background(), nil, post.Name, "id", pid); err != nil {
+		t.Fatal(err)
+	}
+	if n := rawCount(t, s, `SELECT COUNT(*) FROM "Comment__Comment" WHERE "post" = '`+pid+`'`); n != 0 {
+		t.Fatalf("comments of the deleted post: %d, want 0", n)
+	}
+	if n := rawCount(t, s, `SELECT COUNT(*) FROM "Comment__Comment" WHERE "post" = '`+other+`'`); n != 1 {
+		t.Fatalf("comments of the other post: %d, want 1", n)
+	}
+	stmt, err := createStmt(comment, map[string]TableDesc{post.Name: post})
+	if err != nil || !strings.Contains(stmt, `REFERENCES "Post__Post"("id") ON DELETE CASCADE`) {
+		t.Fatalf("createStmt = %q, %v", stmt, err)
+	}
+}
+
+func TestSetNullDelete(t *testing.T) {
+	s, post, comment := refTables(t, SetNull, true)
+	pid := postWithComments(t, s, post, comment, 2)
+	if err := s.Delete(context.Background(), nil, post.Name, "id", pid); err != nil {
+		t.Fatal(err)
+	}
+	if n := rawCount(t, s, `SELECT COUNT(*) FROM "Comment__Comment" WHERE "post" IS NULL`); n != 2 {
+		t.Fatalf("comments with a NULL post: %d, want 2", n)
+	}
+	stmt, err := createStmt(comment, map[string]TableDesc{post.Name: post})
+	if err != nil || !strings.Contains(stmt, `REFERENCES "Post__Post"("id") ON DELETE SET NULL`) {
+		t.Fatalf("createStmt = %q, %v", stmt, err)
+	}
+}
+
+func TestRestrictDelete(t *testing.T) {
+	s, post, comment := refTables(t, Restrict, false)
+	pid := postWithComments(t, s, post, comment, 1)
+	err := s.Delete(context.Background(), nil, post.Name, "id", pid)
+	var ef *eff.ErrFail
+	if !errors.As(err, &ef) || ef.Msg != "Post "+pid+" is referenced by another row" {
+		t.Fatalf("err = %v, want the referenced-row ErrFail", err)
+	}
+	// Restrict is the default and writes no clause, so existing CREATE TABLEs are unchanged.
+	stmt, err := createStmt(comment, map[string]TableDesc{post.Name: post})
+	if err != nil || strings.Contains(stmt, "ON DELETE") || !strings.Contains(stmt, `REFERENCES "Post__Post"("id")`) {
+		t.Fatalf("createStmt = %q, %v", stmt, err)
+	}
+}
+
+func TestStartsWith(t *testing.T) {
+	q := Where(CStartsWith("title", `50%_off\`), From(todoTable)).SQL()
+	if q.Where != `lower("title") LIKE lower(?) ESCAPE '\'` || len(q.Args) != 1 || q.Args[0] != `50\%\_off\\%` {
+		t.Fatalf("SQL = %q %#v", q.Where, q.Args)
+	}
+	s := open(t)
+	ctx := context.Background()
+	for _, title := range []string{"abc", "ABx", "zab", "100% done", "1000 done"} {
+		if _, err := InsertRow(ctx, s, nil, todoTable, insertVals(title, false, rt.Nothing[rt.Date](), "Low"), clock); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct {
+		prefix string
+		want   int64
+	}{{"ab", 2}, {"bc", 0}, {"AB", 2}, {"100%", 1}, {"10", 2}, {"", 5}} {
+		if n := count(t, s, Where(CStartsWith("title", c.prefix), From(todoTable))); n != c.want {
+			t.Errorf("startsWith %q: %d rows, want %d", c.prefix, n, c.want)
+		}
+	}
+}

@@ -1,0 +1,12 @@
+module Post
+
+type PostId = brand Text
+
+table Post {
+  id: PostId @id,
+  title: Text.NonEmpty,
+  views: Int,
+}
+
+popular : Int -> Query (List Post)
+popular n = Db.from Post |> Db.where (Post.views.startsWith "1") |> Db.all

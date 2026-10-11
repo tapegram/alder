@@ -238,7 +238,21 @@ one is answered with a 500 (`refusing to navigate to javascript:`).
 
 ## Query, Task, Db, Session, Log, Time, Random, Http
 
-See chapters 7 and 8. `Query.notFound` and `Task.notFound` (both
+See chapters 7 and 8. The column methods, written on a column in place
+(`Todo.title.contains q`), are not functions of a module; the compiler
+knows them:
+
+| Method | Columns | Type (for a column of type `a` in table `t`) |
+|---|---|---|
+| `.eq`, `.ne` | any | `a -> Condition t` |
+| `.lt`, `.le`, `.gt`, `.ge` | ordered: `Int`, `Float`, `Text`, `Date`, `Time`, brands, unions without payloads | `a -> Condition t` |
+| `.contains` | `Text` and its brands | `Text -> Condition t` (substring, ignores A–Z case) |
+| `.startsWith` | `Text` and its brands | `Text -> Condition t` (prefix, ignores A–Z case) |
+| `.in` | any | `List a -> Condition t` |
+| `.isNothing`, `.isJust` | `Maybe` | `Condition t` |
+| `.asc`, `.desc` | any | `Order t` |
+
+`Query.notFound` and `Task.notFound` (both
 `: Query a` / `: Task a`, no arguments) stop the effect and answer 404 with
 `App.notFound`; a `Task` that ends in `Task.notFound` is rolled back like
 any failed `Task`.

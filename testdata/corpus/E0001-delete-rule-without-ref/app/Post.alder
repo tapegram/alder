@@ -1,0 +1,12 @@
+module Post
+
+type PostId = brand Text
+
+type Slug = brand Text
+
+table Post {
+  id: PostId @id,
+  slug: Slug @unique,
+  title: Text.NonEmpty,
+  created: Time @created,
+}

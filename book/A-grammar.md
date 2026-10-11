@@ -21,7 +21,8 @@ msgDecl     = "msg" uname [recordType] ["form" uname] ;
 formDecl    = "form" uname "=" "{" {fieldDef ","} [fieldDef] "}" ;
 tableDecl   = "table" uname "{" {fieldDef {attr} ","} [fieldDef {attr}] "}" ;
 fieldDef    = lname ":" type ["=" expr] ;
-attr        = "@id" | "@ref" uname | "@created" | "@updated" | "@unique" ;
+attr        = "@id" | "@ref" uname | "@created" | "@updated" | "@unique"
+            | "@cascade" | "@restrict" | "@setNull" ;   (* a delete rule: with "@ref" only *)
 capDecl     = "capability" uname "{" {lname ":" type ","} [lname ":" type] "}" ;
 sessionDecl = "session" recordType ;
 loginDecl   = "login" "=" ModName ;

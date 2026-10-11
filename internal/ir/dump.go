@@ -71,7 +71,11 @@ func Dump(p *Program) string {
 		}
 		for _, f := range t.Record.Fields {
 			if r := t.Refs[f.Name]; r != "" {
-				items = append(items, atoms("ref", f.Name, r))
+				ref := []string{"ref", f.Name, r}
+				if del := t.OnDelete[f.Name]; del != "" {
+					ref = append(ref, del)
+				}
+				items = append(items, atoms(ref...))
 			}
 		}
 		form(list(2, append(items, atoms(append([]string{"insert"}, t.InsertFields...)...))...))

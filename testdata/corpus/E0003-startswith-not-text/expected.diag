@@ -1,0 +1,1 @@
+app/Post.alder:12:39 E0003 `.startsWith` needs a Text column, got `Int`

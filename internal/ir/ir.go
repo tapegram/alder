@@ -148,7 +148,8 @@ type Param struct {
 // Table is a `table` declaration; Record is also in its module's Types. Its fields' attributes:
 // IDField is the @id field; Created and Updated the @created and @updated fields ("" when
 // absent); Unique the @unique fields in declaration order; Refs maps each @ref field to the
-// referenced table, module-qualified ("User.User").
+// referenced table, module-qualified ("User.User"), and OnDelete each @ref field with a delete
+// rule other than the default @restrict to it ("cascade" or "setNull").
 type Table struct {
 	Module, Name     string
 	Record           *RecordType
@@ -156,6 +157,7 @@ type Table struct {
 	Created, Updated string
 	Unique           []string
 	Refs             map[string]string
+	OnDelete         map[string]string
 	InsertFields     []string // the fields `Db.insert` takes: all but @id, @created, @updated
 }
 
@@ -673,8 +675,8 @@ type ColumnRef struct {
 
 // Cond is a condition (type Condition t). Kind is one of:
 //
-//	eq ne lt le gt ge contains in   Col compared with Value (for in, Value is a List of the
-//	                                column's type; for contains, Text)
+//	eq ne lt le gt ge contains      Col compared with Value (for in, Value is a List of the
+//	startsWith in                   column's type; for contains and startsWith, Text)
 //	isNothing isJust                Col is a Maybe column; Value is nil
 //	and or                          Subs are the conditions when written as a list literal;
 //	                                otherwise Subs is nil and Value is the List (Condition t)

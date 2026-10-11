@@ -1,0 +1,11 @@
+module Comment
+
+import Post
+
+type CommentId = brand Text
+
+table Comment {
+  id: CommentId @id,
+  post: Post.PostId @ref Post @setNull,
+  body: Text.NonEmpty,
+}

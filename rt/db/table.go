@@ -45,8 +45,18 @@ type Column struct {
 	Nullable bool     // Maybe T
 	Enum     []string // CEnum: constructor names in declaration order
 	Unique   bool
-	Ref      string // table name for @ref (module-qualified, like Table.Name), "" otherwise
+	Ref      string   // table name for @ref (module-qualified, like Table.Name), "" otherwise
+	OnDelete OnDelete // what deleting the referenced row does to this row (Ref only)
 }
+
+// OnDelete is a @ref column's delete rule: `@restrict` (the default), `@cascade` or `@setNull`.
+type OnDelete int
+
+const (
+	Restrict OnDelete = iota // deleting a referenced row fails (no ON DELETE clause)
+	Cascade                  // ON DELETE CASCADE: the referencing rows are deleted too
+	SetNull                  // ON DELETE SET NULL: the reference becomes Nothing (a Maybe column)
+)
 
 // Table describes one `table`. Generated code builds one per table as a package var.
 //
@@ -116,6 +126,7 @@ const (
 	And
 	Or
 	Not
+	StartsWith
 )
 
 // Cond is one condition. Val is an encoded scalar (see encode.go), or []any
@@ -154,16 +165,17 @@ func Limit[T any](n int64, s Select[T]) Select[T] { s.Limit = &n; return s }
 // Offset is Db.offset.
 func Offset[T any](n int64, s Select[T]) Select[T] { s.Offset = &n; return s }
 
-func CEq(col string, v any) Cond       { return Cond{Kind: Eq, Col: col, Val: v} }
-func CNe(col string, v any) Cond       { return Cond{Kind: Ne, Col: col, Val: v} }
-func CLt(col string, v any) Cond       { return Cond{Kind: Lt, Col: col, Val: v} }
-func CLe(col string, v any) Cond       { return Cond{Kind: Le, Col: col, Val: v} }
-func CGt(col string, v any) Cond       { return Cond{Kind: Gt, Col: col, Val: v} }
-func CGe(col string, v any) Cond       { return Cond{Kind: Ge, Col: col, Val: v} }
-func CContains(col string, v any) Cond { return Cond{Kind: Contains, Col: col, Val: v} }
-func CIn(col string, vs []any) Cond    { return Cond{Kind: In, Col: col, Val: vs} }
-func CIsNull(col string) Cond          { return Cond{Kind: IsNull, Col: col} }
-func CIsNotNull(col string) Cond       { return Cond{Kind: IsNotNull, Col: col} }
+func CEq(col string, v any) Cond         { return Cond{Kind: Eq, Col: col, Val: v} }
+func CNe(col string, v any) Cond         { return Cond{Kind: Ne, Col: col, Val: v} }
+func CLt(col string, v any) Cond         { return Cond{Kind: Lt, Col: col, Val: v} }
+func CLe(col string, v any) Cond         { return Cond{Kind: Le, Col: col, Val: v} }
+func CGt(col string, v any) Cond         { return Cond{Kind: Gt, Col: col, Val: v} }
+func CGe(col string, v any) Cond         { return Cond{Kind: Ge, Col: col, Val: v} }
+func CContains(col string, v any) Cond   { return Cond{Kind: Contains, Col: col, Val: v} }
+func CStartsWith(col string, v any) Cond { return Cond{Kind: StartsWith, Col: col, Val: v} }
+func CIn(col string, vs []any) Cond      { return Cond{Kind: In, Col: col, Val: vs} }
+func CIsNull(col string) Cond            { return Cond{Kind: IsNull, Col: col} }
+func CIsNotNull(col string) Cond         { return Cond{Kind: IsNotNull, Col: col} }
 
 // CAnd holds when every condition of cs holds: CAnd of none is true.
 func CAnd(cs []Cond) Cond { return Cond{Kind: And, Subs: cs} }
@@ -191,7 +203,8 @@ type SQL struct {
 // nullable column every condition is two-valued (see renderCond), so Db.not of
 // one matches exactly the rows it does not;
 // Contains is `lower(col) LIKE lower(?) ESCAPE '\'` with % _ \ in the value
-// escaped; In with no values is `0=1`; And/Or of nothing is `1=1`/`0=1`;
+// escaped (so they match literally), and StartsWith the same with the pattern
+// anchored at the start; In with no values is `0=1`; And/Or of nothing is `1=1`/`0=1`;
 // every And, Or and Not is parenthesized. Several Where conditions render as
 // one And. Ordering by an enum column orders by declaration (a CASE over its
 // constructors), and so do <, <=, >, >= on one.
@@ -261,7 +274,7 @@ func column(cols []Column, name string) *Column {
 // every condition on a nullable (Maybe) column two-valued, so NOT, AND and OR never see SQL's
 // NULL: Eq/Ne render as IS / IS NOT; In whose list holds nil (Nothing) adds `OR col IS NULL`
 // (`col IS NULL` alone when it holds only nil); and every leaf SQL could make NULL (Lt, Le, Gt,
-// Ge, Contains, In) is wrapped as COALESCE((leaf), 0). IS forms are never NULL.
+// Ge, Contains, StartsWith, In) is wrapped as COALESCE((leaf), 0). IS forms are never NULL.
 func renderCond(c Cond, cols []Column, args *[]any) string {
 	col := quote(c.Col)
 	nullable := false
@@ -312,12 +325,16 @@ func renderCond(c Cond, cols []Column, args *[]any) string {
 		return bin(">")
 	case Ge:
 		return bin(">=")
-	case Contains:
+	case Contains, StartsWith:
 		s, ok := c.Val.(string)
 		if !ok {
-			return "0=1" // only Text columns have .contains
+			return "0=1" // only Text columns have .contains and .startsWith
 		}
-		*args = append(*args, "%"+escapeLike(s)+"%")
+		pat := escapeLike(s) + "%"
+		if c.Kind == Contains {
+			pat = "%" + pat
+		}
+		*args = append(*args, pat)
 		return twoValued("lower(" + col + `) LIKE lower(?) ESCAPE '\'`)
 	case In:
 		vs, _ := c.Val.([]any)

@@ -391,7 +391,12 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 				}
 			case "ref":
 				mc.checkRef(f, a, ft)
-			case "unique":
+			case "unique", "cascade", "restrict":
+				// the parser reports a delete rule without `@ref`, or a second one
+			case "setNull":
+				if _, ok := maybeOf(ft); !ok && !types.IsErr(ft) {
+					c.errorf(diag.TypeMismatch, a.Span, "`@setNull` needs a `Maybe` reference, got `%s`; write `%s: Maybe %s`", types.String(ft), f.Name, types.String(ft))
+				}
 			default:
 				c.errorf(diag.InvalidDecl, a.Span, "unknown attribute `@%s`", a.Name)
 			}
