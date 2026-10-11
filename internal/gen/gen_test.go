@@ -210,7 +210,7 @@ func mapsKeys(m map[string][]byte) []string {
 
 // testBuildGoldens are the gen goldens whose want/ is a test build (Options.Tests) and whose
 // want_prod/ is the production build of the same app.
-var testBuildGoldens = map[string]bool{"gen_fakes": true}
+var testBuildGoldens = map[string]bool{"gen_fakes": true, "gen_browser": true}
 
 func TestGenGolden(t *testing.T) {
 	dirs, _ := filepath.Glob("../../testdata/golden/gen_*")
@@ -774,8 +774,12 @@ func TestStdCallsExist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	testing, err := filepath.Glob("../../rt/testing/*.go") // Test's queries: rtesting (test builds)
+	if err != nil {
+		t.Fatal(err)
+	}
 	funcs := map[string]bool{}
-	for _, file := range pkgs {
+	for _, file := range append(pkgs, testing...) {
 		if strings.HasSuffix(file, "_test.go") {
 			continue
 		}
@@ -785,7 +789,11 @@ func TestStdCallsExist(t *testing.T) {
 		}
 		for _, d := range f.Decls {
 			if fd, ok := d.(*ast.FuncDecl); ok && fd.Recv == nil {
-				funcs["std."+fd.Name.Name] = true
+				pkg := "std."
+				if strings.Contains(file, "rt/testing/") {
+					pkg = "rtesting."
+				}
+				funcs[pkg+fd.Name.Name] = true
 			}
 		}
 	}
@@ -3056,16 +3064,40 @@ func TestGen_Fakes(t *testing.T) {
 	runGo(t, files, string(prog))
 }
 
+// TestGen_Browser: a test build of the gen_browser golden (corpus browser-ok) emits the browser
+// steps as Calls into the test's browser, the forms' encoders and the selector literals parsed
+// once, and runs its tests through rtesting with the app's Routes and Web() as `alder test`
+// does (RF3, RF4, RF5); decode(encode(r)) == r for a form with a field of every kind
+// (testdata/e2e_browser_test.go.txt).
+func TestGen_Browser(t *testing.T) {
+	files := emitWith(t, "../../testdata/golden/gen_browser", true)
+	contains(t, files["Notes__Index_alder.go"], `eff.Call("Test.get Notes.Index", true,`, `.GetPage(_u`, `, "user")`, `page__Notes__Index(_rq`,
+		`eff.Call("Test.click Notes.Index.Toggle", true,`, `.ClickMsg(rt.MsgRef{Module: "Notes.Index", Msg: "Toggle", Params: []rt.KV{{Key: "id", Value: _m`,
+		`rtesting.MsgName("Notes.Index.Toggle", _m`, `.SubmitForm("/_m/Notes.Index/Submit", "NewNote", encode__Notes__Index__NewNote(`,
+		`rtesting.RawFields("NewNote", []string{"title", "due", "urgent", "priority", "weight", "kind", "remark", "contact"},`,
+		`rtesting.DocCountSel(selector__`, `rtesting.DocTexts(sel, `, `rtesting.DocCount(bad, `, `rtesting.ViewDoc(Notes__Index__view(`, `case rtesting.Failed:`)
+	contains(t, files["Auth__Login_alder.go"], `eff.Call("Test.login", true,`, `eff.Call("Test.open Notes.Index", true,`, `.Open(_u`,
+		`rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}`, `rtesting.RejectedAnswer([]struct {`,
+		`eff.Call("Test.click App.Logout", true,`, `rtesting.MsgName("App.Logout", nil)`)
+	contains(t, files["routes__alder.go"], "func encode__Notes__Index__NewNote(r Notes__Index__NewNote) url.Values {")
+	contains(t, files["app__alder.go"], "func Web() web.Options {", `selector__1 = rtesting.Sel("h1")`)
+	prog, err := os.ReadFile("testdata/e2e_browser_test.go.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runGo(t, files, string(prog))
+}
+
 // TestGen_ProdHasNoTests: a production build (Options.Tests unset) carries no test code: no
 // Tests, TestSession or test bodies, no fake code, fake tables, FakeTables or Fakes, and no
 // import of alder/rt/testing — for an app with fakes and tests that use them (fake-ok, the
 // gen_fakes golden) and for the todos example. It still vets (TestGenGolden builds want_prod/).
 func TestGen_ProdHasNoTests(t *testing.T) {
-	for _, dir := range []string{"../../testdata/corpus/fake-ok", "../../testdata/golden/gen_fakes", "../../examples/todos"} {
+	for _, dir := range []string{"../../testdata/corpus/fake-ok", "../../testdata/golden/gen_fakes", "../../examples/todos", "../../testdata/corpus/browser-ok"} {
 		files := emitWith(t, dir, false)
 		for name, b := range files {
 			for _, bad := range []string{"Tests", "TestSession", "rtesting", "alder/rt/testing", "test__", "Test.", "fake__", "fakeentry__",
-				"Payments__Charge", "FakeTables", "Fakes[", "var Fakes", "EnvFrom", "RunInner"} {
+				"Payments__Charge", "FakeTables", "Fakes[", "var Fakes", "EnvFrom", "RunInner", "encode__", "selector__", "BrowserOf"} {
 				if strings.Contains(string(b), bad) {
 					t.Errorf("%s: production %s contains %q", dir, name, bad)
 				}
@@ -3084,21 +3116,24 @@ func TestGen_ProdHasNoTests(t *testing.T) {
 // TestGen_ProdTestNode: a Test node reaching the emitter in a production build (which emits no
 // `test` bodies) is an internal error, not code: here a test's body moved into a value.
 func TestGen_ProdTestNode(t *testing.T) {
-	p := lowerDir(t, "../../testdata/corpus/fake-ok")
-	moved := false
-	for _, m := range p.Modules {
-		if len(m.Tests) > 0 && !moved {
-			body := m.Tests[0].Body
-			m.Values = append(m.Values, &ir.Value{Module: m.Name, Name: "leaked", Type: body.Type(), Body: body})
-			moved = true
+	// fake-ok's first test starts with Test.fake; browser-ok's with Test.open (a browser step)
+	for _, dir := range []string{"../../testdata/corpus/fake-ok", "../../testdata/corpus/browser-ok"} {
+		p := lowerDir(t, dir)
+		moved := false
+		for _, m := range p.Modules {
+			if len(m.Tests) > 0 && !moved {
+				body := m.Tests[0].Body
+				m.Values = append(m.Values, &ir.Value{Module: m.Name, Name: "leaked", Type: body.Type(), Body: body})
+				moved = true
+			}
 		}
-	}
-	if !moved {
-		t.Fatal("fake-ok has no tests")
-	}
-	_, err := Emit(p, Options{RepoPath: repoPath(t)})
-	if err == nil || !strings.Contains(err.Error(), "in a production build (test nodes are emitted only with Options.Tests)") {
-		t.Fatalf("Emit: %v", err)
+		if !moved {
+			t.Fatalf("%s has no tests", dir)
+		}
+		_, err := Emit(p, Options{RepoPath: repoPath(t)})
+		if err == nil || !strings.Contains(err.Error(), "in a production build (test nodes are emitted only with Options.Tests)") {
+			t.Fatalf("%s: Emit: %v", dir, err)
+		}
 	}
 }
 

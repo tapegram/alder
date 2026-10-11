@@ -316,6 +316,86 @@ func (md) Render(_ context.Context, a app.Args__Markdown__Markdown__Render) (htm
 	}
 }
 
+// TestTest_Browser runs the browser-ok corpus app's tests through `alder test` (M5e): the
+// browser steps against the app's real routes — RF3 (a click on a page opened with a parameter
+// keeps it), RF4 (`requires` redirects to the login page, Test.login, the login form with the
+// Password fake, App.Logout), RF5 (a step inside Test.run; a panicking update is Failed, its
+// writes undone) — and then the failures a step reports: a page not shown, a control the page
+// does not render, a form the page does not render, a field the form does not declare.
+func TestTest_Browser(t *testing.T) {
+	needGoTool(t)
+	src, err := filepath.Abs("../../testdata/corpus/browser-ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inTemp(t)
+	copyDir(t, src, "browser-ok")
+	code, stdout, stderr := runTest(t, "browser-ok")
+	if code != 0 || !strings.Contains(stdout, "10 passed, 0 failed\n") {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	failing := `
+test "get a page that requires a user" = {
+  let _ <- Test.get (Notes.Index {})
+  Task.succeed True
+}
+
+test "click a message the page does not render" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let _ <- Test.click (Toggle { id: Note.NoteId "zzz" })
+  Task.succeed True
+}
+
+test "submit a form the page does not render" = {
+  let _ <- Test.get (Auth.Login {})
+  let _ <- Test.submit NewNote { title: Text.NonEmpty "Milk", due: Nothing, urgent: False, contact: Nothing }
+  Task.succeed True
+}
+
+test "submit a field the form does not declare" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let _ <- Test.submitRaw NewNote [{ name: "colour", value: "red" }]
+  Task.succeed True
+}
+
+test "get a page that is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Show { id: Note.NoteId "nope" })
+  Task.succeed True
+}
+`
+	f, err := os.OpenFile("browser-ok/app/Notes/Index.alder", os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(failing); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	code, stdout, stderr = runTest(t, "browser-ok", "-run", "Notes.Index")
+	for _, want := range []string{
+		"FAIL Notes.Index \"get a page that requires a user\"\n  error: GET /: redirected to /login (requires user)\n",
+		"FAIL Notes.Index \"click a message the page does not render\"\n  error: the page has no button or form for Notes.Index.Toggle { id: \"zzz\" }\n",
+		"FAIL Notes.Index \"submit a form the page does not render\"\n  error: the page has no form NewNote (Notes.Index.Submit)\n",
+		"FAIL Notes.Index \"submit a field the form does not declare\"\n  error: form NewNote has no field `colour`\n",
+		"FAIL Notes.Index \"get a page that is not found\"\n  error: GET /notes/nope: not found\n",
+		`trace: ["Db.insert User", "Test.login", "Test.get Notes.Index", "Db.all Note", "Test.click Notes.Index.Toggle"]`,
+		"7 passed, 5 failed\n",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("missing %q in\n%s\nstderr: %s", want, stdout, stderr)
+		}
+	}
+	if code != 1 {
+		t.Errorf("exit %d", code)
+	}
+}
+
 func TestTest_Usage(t *testing.T) {
 	inTemp(t)
 	for _, args := range [][]string{

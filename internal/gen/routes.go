@@ -83,6 +83,9 @@ func (g *gen) routesSource(p *ir.Program) string {
 	if p.AppUpdate != nil && len(p.AppMsgs) > 0 {
 		g.appRoutes(&b, p)
 	}
+	if g.tests {
+		g.encoders(&b, p) // browser.go
+	}
 	b.WriteString(`// route__fail answers a load or update that did not succeed: 404 (App.notFound) for
 // Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {

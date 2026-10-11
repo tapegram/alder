@@ -32,7 +32,8 @@ const testGrace = 5 * time.Second
 
 // testMain is the Go main `alder test` compiles with the app (a test build, so app.FakeTables
 // exists): it hands the app's test table, tables, its fakes' test-only tables, migrations,
-// capabilities and session to rtesting.Main, which reads -run and --json from the
+// capabilities, session, routes and router options (app.Web(), for the tests' browser) to
+// rtesting.Main, which reads -run and --json from the
 // environment (ALDER_TEST_RUN, ALDER_TEST_JSON). With withCaps (scratch.Checked.WiresAdapters)
 // the capabilities are the app's adapters, as the generated caps package wires them
 // (caps.Caps(): a capability whose adapter is missing is left unwired); otherwise none is
@@ -48,13 +49,12 @@ import (
 	"os"
 
 	rtesting "alder/rt/testing"
-	"alder/rt/web"
 	"app"
 ` + imp + `)
 
 func main() {
 	caps := ` + caps + `
-	os.Exit(rtesting.Main(app.Tests, app.Tables, app.FakeTables, app.Migrations, caps, app.TestSession(), nil, web.Options{}, os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(rtesting.Main(app.Tests, app.Tables, app.FakeTables, app.Migrations, caps, app.TestSession(), app.Routes, app.Web(), os.Args[1:], os.Stdout, os.Stderr))
 }
 `
 }

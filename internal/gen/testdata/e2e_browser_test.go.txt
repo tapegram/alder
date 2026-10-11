@@ -1,0 +1,81 @@
+package app
+
+import (
+	"net/url"
+	"reflect"
+	"strings"
+	"testing"
+
+	"alder/rt"
+	rtesting "alder/rt/testing"
+)
+
+// TestAlderBrowser runs the gen_browser golden's tests (a test build of corpus browser-ok) as
+// `alder test` does, with the app's routes and router options (Routes, Web()) for each test's
+// browser and the Password fake's capability unwired (TestGen_Browser).
+func TestAlderBrowser(t *testing.T) {
+	rs := rtesting.Run(Tests, rtesting.Options{Tables: Tables, TestTables: FakeTables, Caps: Caps{}.Registry(), Session: TestSession(), Routes: Routes, Web: Web()})
+	if len(rs) != 10 {
+		t.Fatalf("%d results", len(rs))
+	}
+	got := map[string]rtesting.CaseResult{}
+	for _, r := range rs {
+		got[r.Module+" "+r.Name] = r
+		if !r.OK {
+			t.Errorf("%s %q: %+v", r.Module, r.Name, r)
+		}
+	}
+	// RF3: the click posts the URL the page rendered, with the page's parameter, and the
+	// re-render keeps it
+	want := []string{"Db.insert User", "Db.insert Note", "Test.login", "Test.get Notes.Index", "Db.all Note",
+		"Test.click Notes.Index.Toggle", "Db.all Note", "Db.get Note", "Db.update Note", "Db.all Note"}
+	if tr := got["Notes.Index a click keeps the page's parameter"].Trace; !reflect.DeepEqual(tr, want) {
+		t.Errorf("RF3 trace %q, want %q", tr, want)
+	}
+	// RF4: the login form through the fake
+	want = []string{"Test.fake Password", "Db.insert User", "Test.get Auth.Login", "Test.submit Credentials", "Password.verify",
+		"Db.first User", "Test.submit Credentials", "Password.verify", "Db.first User", "Session.put", "Db.all Note"}
+	if tr := got["Auth.Login logging in through the form"].Trace; !reflect.DeepEqual(tr, want) {
+		t.Errorf("RF4 trace %q, want %q", tr, want)
+	}
+}
+
+// decode(encode(r)) == r for a form with a field of every kind (Text, a refined Text, Maybe
+// Date, Bool, Int, Float, a union, Maybe of a refined Text), set and unset; and the encoding is
+// the inputs': a checked box "True", an unchecked one and Nothing absent.
+func TestEncodeDecodeForm(t *testing.T) {
+	for _, r := range []Notes__Index__NewNote{
+		{Title: "Milk", Due: rt.Just(rt.Date{Y: 2026, M: 2, D: 3}), Urgent: true, Priority: -12, Weight: 2.25, Kind: Note__Kind__Idea__, Remark: "a b&c", Contact: rt.Just("me@example.com")},
+		{Title: "x", Due: rt.Nothing[rt.Date](), Urgent: false, Priority: 0, Weight: 1e-7, Kind: Note__Kind__Chore__, Remark: "", Contact: rt.Nothing[string]()},
+		{Title: " y ", Priority: 9223372036854775807, Weight: 0.1, Kind: Note__Kind__Plain__},
+	} {
+		v := encode__Notes__Index__NewNote(r)
+		back, errs := decode__Notes__Index__NewNote(v)
+		if errs != nil || !rt.Eq(back, r) {
+			t.Errorf("decode(encode(%s)) = %s, %v (encoded %v)", rt.Show(r), rt.Show(back), errs, v)
+		}
+		if _, ok := v["urgent"]; ok != r.Urgent {
+			t.Errorf("urgent present = %v for %v", ok, r.Urgent)
+		}
+		if _, ok := v["due"]; ok != r.Due.Ok {
+			t.Errorf("due present = %v", ok)
+		}
+		if r.Urgent && v.Get("urgent") != "True" {
+			t.Errorf("urgent = %q", v.Get("urgent"))
+		}
+	}
+	v := encode__Notes__Index__NewNote(Notes__Index__NewNote{Title: "t", Due: rt.Just(rt.Date{Y: 2026, M: 1, D: 5}), Kind: Note__Kind__Idea__, Weight: 1.5, Priority: 3})
+	if enc := v.Encode(); enc != "due=2026-01-05&kind=Idea&priority=3&remark=&title=t&weight=1.5" {
+		t.Errorf("encoded %s", enc)
+	}
+	if got := encode__Auth__Login__Credentials(Auth__Login__Credentials{Email: "a@b.c", Password: "s"}); !reflect.DeepEqual(got, url.Values{"email": {"a@b.c"}, "password": {"s"}}) {
+		t.Errorf("credentials %v", got)
+	}
+}
+
+// The selector literals are parsed once, as package variables.
+func TestSelectorVars(t *testing.T) {
+	if !strings.Contains(rt.Show(rtesting.DocTextSel(selector__1, rtesting.ViewDoc(Notes__Show__view(Notes__Show__Model{Note: Note__Note{Title: "T"}}, Notes__Show__Session{})))), `Just "T"`) {
+		t.Error("selector__1 is h1")
+	}
+}

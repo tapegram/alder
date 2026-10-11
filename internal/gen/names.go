@@ -29,6 +29,10 @@ import (
 //	checkName   check__M__Brand             a brand's `where` check (func(v Base) bool)
 //	decodeName  decode__M__Record           the decoder of a page's Params, a message's
 //	                                        <Msg>Params or a form (routes__alder.go)
+//	encodeName  encode__M__Form             a form's encoder, the inverse of its decoder, for
+//	                                        Test.submit (routes__alder.go, test builds only)
+//	selector__N                             the N-th selector literal of the tests' queries,
+//	                                        parsed once (app__alder.go, test builds only)
 //	pageFunc    page__M                     page M's `requires` check and load (routes)
 //	paramsFunc  params__M                   page M's parameters as text for message URLs
 //	updateFunc  update__M                   page M's (or App's) update and its Nav (routes)
@@ -45,12 +49,12 @@ import (
 //	                                        an entry of a `fake` (test builds only)
 //	route__fail, route__values, route__errors, session__codec
 //	                                        fixed helpers of routes__alder.go and app__alder.go
-//	Tables, Migrations, migrationsFS, Capabilities, Caps, Options, Serve, Routes, Tests,
+//	Tables, Migrations, migrationsFS, Capabilities, Caps, Options, Serve, Web, Routes, Tests,
 //	TestSession, Registry, FakeTables, Fakes
 //	                                        the app's table descriptors, migrations (and their
 //	                                        embedded files), capability keys,
 //	                                        capability implementations, Serve and its options,
-//	                                        its routes, its tests, the session a test runs with
+//	                                        the router's options (Web), its routes, its tests, the session a test runs with
 //	                                        and Caps' registry method; in a test build the
 //	                                        fakes' tables and constructors (app__alder.go,
 //	                                        routes__alder.go)
@@ -78,7 +82,7 @@ import (
 //     (an identifier never ends in "__"). Stripping that "__", Ctor is the text after the last
 //     "__" (Ctor has no "__" and does not start with '_'), and the rest is a GoName (1).
 //  3. payloadName, tagType, tagConst, widenName, tableName, insertName, insertVals, enumName,
-//     checkName, decodeName, pageFunc, paramsFunc, updateFunc, testFunc, fakeName, fakeEntry and the
+//     checkName, decodeName, encodeName, selector__N, pageFunc, paramsFunc, updateFunc, testFunc, fakeName, fakeEntry and the
 //     route__/session__ helpers start with a lower-case word and "__". No GoName or ctorName does (they start with
 //     an upper-case module segment); no local does (a local contains "__" only at its end, or
 //     followed by its "_N" renaming suffix); the words differ, so the kinds cannot collide with
@@ -87,7 +91,7 @@ import (
 //     N is the text after the last "__", digits, and the rest is the module's segments;
 //     fakeEntry's entry is the text after the last "__", as argsName's in 5, and the rest
 //     decodes as in 1).
-//     Tables, Migrations, Capabilities, Caps, Options, Serve, Routes, Tests, TestSession,
+//     Tables, Migrations, Capabilities, Caps, Options, Serve, Web, Routes, Tests, TestSession,
 //     FakeTables and Fakes contain no "__" and start upper-case, which no GoName (it has "__"), no local (lower-case
 //     or '_') and none of the others is (Registry is a method of Caps, in Caps' own namespace).
 //     migrationsFS has no "__" either, so no package-level name of the kinds above is it (a

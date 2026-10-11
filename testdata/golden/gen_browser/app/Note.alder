@@ -1,0 +1,30 @@
+module Note
+
+import User
+
+type NoteId = brand Text
+
+type Filter = All | Open | Done
+
+type Kind = Plain | Idea | Chore
+
+table Note {
+  id: NoteId @id,
+  title: Text.NonEmpty,
+  done: Bool = False,
+  owner: User.UserId @ref User,
+}
+
+matches : Filter -> Note -> Bool
+matches filter note = match filter {
+  All -> True,
+  Open -> not note.done,
+  Done -> note.done,
+}
+
+filterLabel : Filter -> Text
+filterLabel filter = match filter {
+  All -> "All",
+  Open -> "Open",
+  Done -> "Done",
+}

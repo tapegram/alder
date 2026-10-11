@@ -14,6 +14,7 @@ import (
 //	Int Float Bool Text Unit         int64 float64 bool string struct{}
 //	Date Time Page Error Never       rt.Date time.Time rt.Page error struct{}
 //	HttpError, Nav                   rt.HttpError, rt.Nav
+//	Doc, Answer (test builds only)   rtesting.Doc, rtesting.Answer
 //	List a, Dict k v, Html a         []A, rt.Dict[K, V], html.Node (whatever a is)
 //	Maybe a, Result e a              rt.Maybe[A], rt.Result[E, A]
 //	Query a, Task a                  eff.Query[A], eff.Task[A]
@@ -53,6 +54,8 @@ func GoType(t types.Type) string {
 			return "error"
 		case "HttpError":
 			return "rt.HttpError"
+		case "Doc":
+			return "rtesting.Doc"
 		}
 		return "any"
 	case *types.Param:
@@ -106,6 +109,8 @@ func GoType(t types.Type) string {
 				return "rt.Result[" + GoType(t.Args[0]) + ", " + GoType(t.Args[1]) + "]"
 			case "Nav":
 				return "rt.Nav"
+			case "Answer":
+				return "rtesting.Answer"
 			}
 		}
 		return GoName(t.Module, t.Name) + typeArgs(t.Args)

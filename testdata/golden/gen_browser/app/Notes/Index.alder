@@ -1,0 +1,163 @@
+module Notes.Index
+
+import Note
+import User
+
+page "/" { filter: Note.Filter = All } requires user
+
+type Model = {
+  filter: Note.Filter,
+  notes: List Note,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <- Db.from Note |> Db.where (Note.owner.eq session.user) |> Db.all
+  Query.succeed { filter: params.filter, notes: List.filter (Note.matches params.filter) notes }
+}
+
+-- A form with a field of every kind a form can carry.
+form NewNote = {
+  title: Text.NonEmpty,
+  due: Maybe Date,
+  urgent: Bool,
+  priority: Int = 1,
+  weight: Float = 1.5,
+  kind: Note.Kind = Plain,
+  remark: Text = "",
+  contact: Maybe Text.Email,
+}
+
+msg Submit form NewNote
+msg Toggle { id: Note.NoteId }
+msg Boom
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insert Note { title: p.form.title, owner: session.user }
+    Task.succeed (Redirect (Notes.Index { filter: model.filter }))
+  },
+  Toggle p -> {
+    let found <- Db.get Note p.id
+    match found {
+      Just n -> if n.owner == session.user then {
+        let _ <- Db.update Note n.id (\x -> { x | done: not x.done })
+        Task.succeed Rerender
+      } else Task.notFound,
+      Nothing -> Task.notFound,
+    }
+  },
+  Boom p -> {
+    let _ <- Task.all (List.map (\n -> Db.update Note n.id (\x -> { x | done: True })) model.notes)
+    let zero = List.length model.notes - List.length model.notes
+    Task.succeed (if 1 / zero == 0 then Rerender else Rerender)
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html>
+    <body>
+      <h1>Notes</h1>
+      <form submit={Submit}>
+        <Errors form />
+        <Input field="title" label="Title" />
+        <Errors field="title" />
+        <Input field="due" label="Due" />
+        <Errors field="due" />
+        <Input field="urgent" label="Urgent" />
+        <Input field="priority" label="Priority" />
+        <Errors field="priority" />
+        <Input field="weight" label="Weight" />
+        <Errors field="weight" />
+        <Select field="kind" label="Kind" />
+        <Errors field="kind" />
+        <Input field="remark" label="Remark" />
+        <Input field="contact" label="Contact" />
+        <Errors field="contact" />
+        <button>Add</button>
+      </form>
+      <nav>
+        {for f in [All, Open, Done] -> <a href={Notes.Index { filter: f }}>{Note.filterLabel f}</a>}
+      </nav>
+      <ul id="notes">
+        {for n in model.notes -> <li class={if n.done then "done" else "open"}><button click={Toggle { id: n.id }}>{n.title}</button></li>}
+      </ul>
+      <p id="summary">{Text.fromInt (List.length model.notes)} shown</p>
+      <p id="filter">{Note.filterLabel model.filter}</p>
+      <button click={Boom}>Boom</button>
+      <button click={App.Logout}>Log out</button>
+    </body>
+  </html>
+
+test "adding a note through the form" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Notes.Index {})
+  let after <- Test.submit NewNote { title: Text.NonEmpty "Milk", due: Nothing, urgent: False, contact: Nothing }
+  Task.succeed ({ before: page.model.notes, answer: after.answer, summary: Test.text "#summary" after.doc, items: Test.texts "#notes li" after.doc, done: Test.has "li.done" after.doc } == { before: [], answer: Redirected (Notes.Index {}), summary: Just "1 shown", items: ["Milk"], done: False })
+}
+
+-- RF3: a click on a page opened with a parameter keeps the parameter.
+test "a click keeps the page's parameter" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Notes.Index { filter: Open })
+  let r <- Test.click (Toggle { id: id })
+  Task.succeed ({ filter: page.model.filter, before: Test.count "li" page.doc, answer: r.answer, shown: Test.text "#filter" r.doc, after: Test.count "li" r.doc } == { filter: Open, before: 1, answer: Rerendered, shown: Just "Open", after: 0 })
+}
+
+test "a form with an empty title is rejected" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let r <- Test.submitRaw NewNote [{ name: "title", value: "" }, { name: "priority", value: "x" }]
+  let rows <- Db.from Note |> Db.count
+  Task.succeed ({ answer: r.answer, rows: rows, priority: Test.attr "value" "input[name=priority]" r.doc } == { answer: Rejected [{ field: "title", message: "must not be empty" }, { field: "priority", message: "must be a whole number" }], rows: 0, priority: Just "x" })
+}
+
+-- RF5: a step inside Test.run.
+test "a step inside Test.run" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.run {
+    let page <- Test.get (Notes.Index {})
+    Task.succeed (Test.count "li" page.doc)
+  }
+  Task.succeed (r.value == Ok 0)
+}
+
+-- RF5: an update that panics is Failed; its write is undone and the test's rows stay.
+test "a panicking update is Failed" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let r <- Test.click Boom
+  let rows <- Db.from Note |> Db.where (Note.done.eq False) |> Db.count
+  let failed = match r.answer {
+    Failed _ -> True,
+    _ -> False,
+  }
+  Task.succeed ({ failed: failed, rows: rows, title: Test.text "h1" r.doc } == { failed: True, rows: 1, title: Just "Something went wrong" })
+}
+
+test "the document and the view agree" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Milk", owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Notes.Index { filter: Open })
+  let sel = "nav a"
+  let bad = "nav >"
+  Task.succeed ({ same: page.doc == Test.doc (view page.model { user: me }), links: Test.texts sel page.doc, bad: Test.count bad page.doc, href: Test.attr "href" "nav a" page.doc, none: Test.text "#nothing" page.doc } == { same: True, links: ["All", "Open", "Done"], bad: 0, href: Just "/", none: Nothing })
+}
+
+test "a stranger's note is missing" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", owner: me }
+  let _ <- Test.login { user: Just (User.UserId "stranger") }
+  let r <- Test.open (Notes.Show { id: id })
+  Task.succeed (r.answer == Missing)
+}

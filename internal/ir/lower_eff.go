@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"alder/internal/check"
 	"alder/internal/syntax"
 	"alder/internal/types"
 )
@@ -32,8 +33,12 @@ func (l *lowerer) effHead(fn syntax.Expr) *effHead {
 		switch x.Ref.Kind {
 		case syntax.RefStd:
 			switch x.Ref.Module {
-			case "Query", "Task", "Db", "Test":
+			case "Query", "Task", "Db":
 				return &effHead{name: x.Ref.Module + "." + x.Ref.Name, ft: l.typeOf(x), at: pos(x.Span)}
+			case "Test":
+				if x.Ref.Name == "run" || x.Ref.Name == "trace" { // the queries are ordinary calls
+					return &effHead{name: x.Ref.Module + "." + x.Ref.Name, ft: l.typeOf(x), at: pos(x.Span)}
+				}
 			}
 		case syntax.RefCapability:
 			capName := x.Module // `Clock.now`; with its module, `A.Clock.now`
@@ -73,6 +78,91 @@ func (l *lowerer) testFake(fn syntax.Expr, args []syntax.Expr, t types.Type) Exp
 		panic(fmt.Sprintf("ir: Test.fake at %s is not applied to a capability with a fake (checker bug)", pos(v.Span)))
 	}
 	return &TestFake{Typed: Typed{t}, Fake: l.fakesByCap[ct.Ref.Name]}
+}
+
+// testStep lowers a browser step of module Test (`Test.login s`, `Test.get p`, `Test.open p`,
+// `Test.submit F r`, `Test.submitRaw F fields`, `Test.click m`) of type t, or returns nil when
+// fn is not one. The checker accepted each applied to all its arguments, in the shapes below.
+func (l *lowerer) testStep(fn syntax.Expr, args []syntax.Expr, t types.Type) Expr {
+	v, ok := fn.(*syntax.Var)
+	if !ok || v.Ref.Kind != syntax.RefStd || v.Ref.Module != "Test" || !check.IsTestStep(v.Ref.Name) {
+		return nil
+	}
+	bug := func(what string) Expr {
+		panic(fmt.Sprintf("ir: Test.%s at %s: %s (checker bug)", v.Ref.Name, pos(v.Span), what))
+	}
+	switch v.Ref.Name {
+	case "login":
+		return &TestLogin{Typed: Typed{t}, Session: l.expr(args[0])}
+	case "get", "open":
+		ref, ok := l.expr(args[0]).(*PageRef)
+		if !ok {
+			return bug("not a page value")
+		}
+		return &TestGet{Typed: Typed{t}, Page: ref.Page, Params: ref.Params, Open: v.Ref.Name == "open"}
+	case "submit", "submitRaw":
+		ct, _ := args[0].(*syntax.CtorRef)
+		if ct == nil {
+			return bug("not a form")
+		}
+		form := l.forms[key(ct.Ref.Module, ct.Ref.Name)]
+		var page *Page
+		msgs := l.out.AppMsgs
+		if ct.Ref.Module != "App" {
+			page = l.pages[ct.Ref.Module]
+			if page == nil {
+				return bug("a form of no page")
+			}
+			msgs = page.Msgs
+		}
+		var msg *Msg
+		for _, m := range msgs {
+			if m.Form == form && form != nil {
+				msg = m
+				break
+			}
+		}
+		if msg == nil {
+			return bug("no message posts the form")
+		}
+		if v.Ref.Name == "submit" {
+			return &TestSubmit{Typed: Typed{t}, Form: form, Msg: msg, Page: page, Record: l.expr(args[1])}
+		}
+		return &TestSubmitRaw{Typed: Typed{t}, Form: form, Msg: msg, Page: page, Fields: l.expr(args[1])}
+	case "click":
+		c, ok := l.expr(args[0]).(*Ctor)
+		if !ok {
+			return bug("not a message")
+		}
+		owner := c.U.Module
+		msg := l.msgs[key(owner, c.Name)]
+		if msg == nil {
+			return bug("not a message")
+		}
+		var page *Page
+		if owner != "App" {
+			page = l.pages[owner]
+		}
+		var params Expr
+		if msgHasParams(msg) {
+			params = c.Payload
+		}
+		return &TestClick{Typed: Typed{t}, Page: page, Msg: msg, Params: params}
+	}
+	return nil
+}
+
+// msgHasParams reports whether message m has parameters besides its form.
+func msgHasParams(m *Msg) bool {
+	if m.Params == nil {
+		return false
+	}
+	for _, f := range m.Params.Fields {
+		if f.Name != "form" {
+			return true
+		}
+	}
+	return false
 }
 
 // lowerArgs lowers a head's arguments, then piped. A table argument (`Todo` in `Db.get Todo`)

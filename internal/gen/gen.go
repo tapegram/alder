@@ -31,10 +31,13 @@ type Options struct {
 	// TestSession in app__alder.go, and each `fake` is emitted — its tables' records and
 	// descriptors and its entries in its module's file, a struct implementing its capability
 	// (fake__M__C), FakeTables and Fakes in app__alder.go — and Test.fake installs the fake in
-	// the running test's Env.Caps. Without it (alder build: every production build) none of
-	// that is emitted, so the production module carries no test code and does not import
-	// alder/rt/testing; a test node (Test.run, Test.trace, Test.fake, a test's `==`) reaching
-	// the emitter there is a bug in gen, reported as Emit's error.
+	// the running test's Env.Caps; the browser steps' helpers are emitted too: each form's
+	// encoder (encode__M__F, routes__alder.go), the selector literals of the queries
+	// (selector__N) and, for an app without an App module, an empty Routes and Web (the test
+	// main passes both to rtesting.Main). Without it (alder build: every production build) none
+	// of that is emitted, so the production module carries no test code and does not import
+	// alder/rt/testing; a test node (Test.run, Test.trace, Test.fake, a browser step, a test's
+	// `==`) reaching the emitter there is a bug in gen, reported as Emit's error.
 	Tests bool
 	// Unwired, in a test build only, are the capabilities (keys "M.C", as in Capabilities)
 	// whose adapters are missing (buildkit.CheckTestAdapters): the caps package leaves their
@@ -44,7 +47,7 @@ type Options struct {
 }
 
 // Emit returns the generated files: one "<Module>_alder.go" per module ('.' → "__"),
-// "app__alder.go" (Tables, Migrations, Capabilities, Caps and, with an App module, Options and Serve),
+// "app__alder.go" (Tables, Migrations, Capabilities, Caps and, with an App module, Options, Serve and Web),
 // "routes__alder.go" with an App module (the routes: routes.go), "go.mod" and, when the app has
 // capabilities, CapsFile ("caps/caps__alder.go", package caps: CapsPackage), which imports the
 // adapter packages under adapters/ (copied next to it by buildkit.CopyAdapters).
@@ -182,6 +185,10 @@ type gen struct {
 	// tests: a test build (Options.Tests); fakes are the program's fakes by module
 	tests bool
 	fakes map[string][]*ir.Fake
+	// selectors are the selector literals of the tests' queries, by text, with their package
+	// variables (selector), in order of first use (selectorOrder)
+	selectors     map[string]string
+	selectorOrder []string
 }
 
 // indexFakes records p's fakes for module and app emission. In a test build the unions their
@@ -203,7 +210,8 @@ func (g *gen) indexFakes(p *ir.Program, tests bool) {
 func newGen(p *ir.Program) *gen {
 	g := &gen{values: map[string]*ir.Value{}, thunks: map[*ir.Value]bool{}, tparams: map[*ir.Value][]string{},
 		pages: map[string]*ir.Page{}, session: p.Session, boxed: boxedFields(p), payloads: map[string]*ir.RecordType{},
-		tables: map[string][]*ir.Table{}, caps: map[string][]*ir.Capability{}, brands: map[string][]*ir.Brand{}, enums: storedEnums(p)}
+		tables: map[string][]*ir.Table{}, caps: map[string][]*ir.Capability{}, brands: map[string][]*ir.Brand{}, enums: storedEnums(p),
+		selectors: map[string]string{}}
 	for _, b := range p.Brands {
 		g.brands[b.Module] = append(g.brands[b.Module], b)
 	}

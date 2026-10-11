@@ -65,8 +65,8 @@ type Options struct {
 // adapter of each field left nil: "adapters/mail/: func Mailer returned nil"), opens the
 // database o.DB and brings it to the app's tables (db.MigrateLog with the app's Migrations,
 // logging each one as it commits, an adoption and a dev recreate; db.Ensure for an app
-// without), and routes Routes (web.NewRouter) with the session codec, App.error, App.notFound
-// and the page App.login names.
+// without), and routes Routes (web.NewRouter) with Web's options: the session codec,
+// App.error, App.notFound and the page App.login names.
 func Serve(caps Caps, o Options) (http.Handler, error) {
 	if err := web.CheckSecret(o.Secret, o.Dev); err != nil {
 		return nil, err
@@ -103,19 +103,22 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 		store.Close()
 		return nil, err
 	}
-	return web.NewRouter(Routes, web.Options{
-		Store:       store,
-		Caps:        reg,
-		Log:         o.Log,
-		Dev:         o.Dev,
-		Secret:      o.Secret,
+	w := Web()
+	w.Store, w.Caps, w.Log, w.Dev, w.Secret, w.StaticDir, w.Reload = store, reg, o.Log, o.Dev, o.Secret, o.StaticDir, o.Reload
+	return web.NewRouter(Routes, w), nil
+}
+
+// Web is the app's options for web.NewRouter that do not depend on how it runs: the session
+// codec, App.error, App.notFound and the page App.login names. Serve adds the store, the
+// capabilities, the log, dev mode, the secret, the static directory and the reload generation;
+// alder test's browser routes the app with these options too.
+func Web() web.Options {
+	return web.Options{
 		Session:     session__codec{},
-		StaticDir:   o.StaticDir,
-		Reload:      o.Reload,
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/",
-	}), nil
+	}
 }
 
 // session__codec stores App's session in the signed cookie (web.SessionCodec): a JSON object

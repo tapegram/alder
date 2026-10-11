@@ -105,7 +105,8 @@ func effResult(t types.Type) types.Type {
 func isEffNode(e ir.Expr) bool {
 	switch x := e.(type) {
 	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.CapCall,
-		*ir.DbGet, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete, *ir.TestRun, *ir.TestTrace, *ir.TestFake:
+		*ir.DbGet, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete, *ir.TestRun, *ir.TestTrace, *ir.TestFake,
+		*ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick:
 		return true
 	case *ir.DbSelect:
 		return x.Terminal != ir.SelNone
@@ -230,6 +231,9 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 			return "if " + env + ".Caps == nil {\n" + env + ".Caps = map[string]any{}\n}\n" +
 				env + ".Caps[" + key + "] = Fakes[" + key + "]()\nreturn struct{}{}, nil\n"
 		}), true
+	case *ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick:
+		f.g.testNode(x)
+		return f.browserStep(x, s), true // browser.go
 	}
 	panic(fmt.Sprintf("gen: %T is not an effect node", e))
 }

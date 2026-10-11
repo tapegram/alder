@@ -755,6 +755,56 @@ type TestFake struct {
 // TestTrace is `Test.trace`: a Task (List Text) of the enclosing test's steps so far.
 type TestTrace struct{ Typed }
 
+// The browser steps of a test (module Test's special forms): each is a Task of the step's result
+// record (its type), made by the test's browser (rtesting.BrowserOf) against the app's routes.
+
+// TestLogin is `Test.login s`: a Task Unit storing Session (App's session record) in the
+// browser's cookie.
+type TestLogin struct {
+	Typed
+	Session Expr
+}
+
+// TestGet is `Test.get p` (Open unset: a Task { model: M, session, doc }, failing unless the
+// page is shown; M is Page's Model) or `Test.open p` (Open set: { answer, session, doc }), for
+// the page value Page with Params (nil for a page without parameters).
+type TestGet struct {
+	Typed
+	Page   *Page
+	Params Expr
+	Open   bool
+}
+
+// TestSubmit is `Test.submit F r`: Record (F's record) posted to Msg, the message that posts
+// form Form, of Page (nil for App's form): a Task { answer, session, doc }.
+type TestSubmit struct {
+	Typed
+	Form   *Form
+	Msg    *Msg
+	Page   *Page
+	Record Expr
+}
+
+// TestSubmitRaw is `Test.submitRaw F fields`: Fields (a List { name: Text, value: Text })
+// posted as text to Msg, the message that posts form Form, of Page (nil for App's form).
+type TestSubmitRaw struct {
+	Typed
+	Form   *Form
+	Msg    *Msg
+	Page   *Page
+	Fields Expr
+}
+
+// TestClick is `Test.click m`: message Msg of Page (nil for App's) with its parameters Params
+// (Msg's payload record; nil for a message without parameters) posted as the held page's
+// control for it would.
+type TestClick struct {
+	Typed
+	Page   *Page
+	Msg    *Msg
+	Params Expr
+}
+
 // TestEq is the `==` a test records (see Test): Left == Right, of type Bool, whose sides the
 // test runner shows when the test fails.
 type TestEq struct {

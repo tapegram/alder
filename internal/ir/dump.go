@@ -458,6 +458,32 @@ func (d *dumper) expr(e Expr) *sx {
 		return atoms("test-fake", x.Fake.Capability.Module+"."+x.Fake.Capability.Name)
 	case *TestEq:
 		return list(1, atom("test-eq"), d.expr(x.Left), d.expr(x.Right))
+	case *TestLogin:
+		return list(1, atom("test-login"), d.expr(x.Session))
+	case *TestGet:
+		name := "test-get"
+		if x.Open {
+			name = "test-open"
+		}
+		items := []*sx{atom(name), atom(x.Page.Module)}
+		if x.Params != nil {
+			items = append(items, d.expr(x.Params))
+		}
+		return list(2, items...)
+	case *TestSubmit:
+		return list(3, atom("test-submit"), atom(x.Form.Module+"."+x.Form.Name), atom(x.Msg.Name), d.expr(x.Record))
+	case *TestSubmitRaw:
+		return list(3, atom("test-submit-raw"), atom(x.Form.Module+"."+x.Form.Name), atom(x.Msg.Name), d.expr(x.Fields))
+	case *TestClick:
+		owner := "App"
+		if x.Page != nil {
+			owner = x.Page.Module
+		}
+		items := []*sx{atom("test-click"), atom(owner + "." + x.Msg.Name)}
+		if x.Params != nil {
+			items = append(items, d.expr(x.Params))
+		}
+		return list(2, items...)
 	case *CapCall:
 		items := []*sx{atom("cap"), atom(x.Cap.Module + "." + x.Cap.Name), atom(x.Entry)}
 		return list(3, append(items, d.exprs(x.Args)...)...)

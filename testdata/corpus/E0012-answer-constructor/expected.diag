@@ -1,1 +1,3 @@
+app/Report.alder:4:1 E0012 `Doc` is a Prelude type; name the type differently (for example `DocType`)
+app/Report.alder:6:27 E0012 `Missing` is a constructor of the Prelude's test type `Answer`; name the constructor differently (for example `MissingLookup`)
 app/Todos/Index.alder:30:15 E0012 `Shown` is a constructor of the Prelude's test type `Answer`; name the constructor differently (for example `ShownStatus`)

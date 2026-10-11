@@ -1,0 +1,6 @@
+module Report
+
+-- A type named like the Prelude's test type `Doc`, and a message-like constructor `Missing`.
+type Doc = { title: Text }
+
+type Lookup = Found Int | Missing

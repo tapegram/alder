@@ -267,7 +267,8 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 		return f.html(e, s), precAtom // html.go
 	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.CapCall,
 		*ir.DbGet, *ir.DbSelect, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete,
-		*ir.ColumnRef, *ir.TableRef, *ir.Cond, *ir.Ord, *ir.TestRun, *ir.TestTrace, *ir.TestFake:
+		*ir.ColumnRef, *ir.TableRef, *ir.Cond, *ir.Ord, *ir.TestRun, *ir.TestTrace, *ir.TestFake,
+		*ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick:
 		return f.effect(e, s), precAtom // effects.go
 	case *ir.TestEq: // as rt.Eq for `==`, typed: an Int literal passed as `any` would be a Go int
 		f.g.testNode(x)
@@ -343,6 +344,9 @@ func (f *fn) call(x *ir.Call, s *scope) (string, int) {
 	}
 	if isNot(x.Fn) && n == 1 {
 		return "!" + f.operand(x.Args[0], s, precUnary), precUnary
+	}
+	if q, ok := f.querySel(x.Fn, x.Args, s); ok && n == len(x.Args) { // browser.go
+		return q, precAtom
 	}
 	var args []string
 	for i, a := range x.Args[:n] {
@@ -545,6 +549,14 @@ func (f *fn) ctor(x *ir.Ctor, s *scope) string {
 			return "rt.Redirect(" + inner() + ")"
 		case "Reject":
 			return "rt.Reject(" + inner() + ")"
+		case "Shown", "Rerendered", "Missing":
+			return "rtesting.Answer{Tag: rtesting." + x.Name + "}"
+		case "Redirected":
+			return "rtesting.Answer{Tag: rtesting.Redirected, Page: " + inner() + "}"
+		case "Rejected":
+			return "rtesting.RejectedAnswer(" + inner() + ")"
+		case "Failed":
+			return "rtesting.Answer{Tag: rtesting.Failed, Text: " + inner() + "}"
 		}
 		panic(fmt.Sprintf("gen: unknown Prelude constructor %s", x.Name))
 	}

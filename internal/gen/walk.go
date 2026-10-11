@@ -149,6 +149,16 @@ func children(e ir.Expr) []ir.Expr {
 		return []ir.Expr{x.Task}
 	case *ir.TestEq:
 		return []ir.Expr{x.Left, x.Right}
+	case *ir.TestLogin:
+		return []ir.Expr{x.Session}
+	case *ir.TestGet:
+		return []ir.Expr{x.Params}
+	case *ir.TestSubmit:
+		return []ir.Expr{x.Record}
+	case *ir.TestSubmitRaw:
+		return []ir.Expr{x.Fields}
+	case *ir.TestClick:
+		return []ir.Expr{x.Params}
 	}
 	return nil // Lit, Var, Hole, HText, EffNotFound, ColumnRef, TableRef, Ord, TestTrace, TestFake
 }

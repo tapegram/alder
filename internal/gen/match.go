@@ -15,6 +15,8 @@ import (
 //	                  there is no default
 //	Maybe, Result     if s.Ok { … } / if s.IsOk { … } then the other case or the default
 //	Nav               switch s.Tag { case rt.NavRedirect: … } (payloads s.Page, s.Text)
+//	Answer            switch s.Tag { case rtesting.Redirected: … } (payloads s.Page,
+//	                  s.FieldErrors(), s.Text; test builds only)
 //	Bool              if s { … } (or if !s) then the other case or the default
 //	List              if len(s) == 0 { … } (or len(s) > 0) then the other case or the default
 //	literal           switch s { case 1: … default: … }
@@ -38,10 +40,14 @@ func (f *fn) match(w *strings.Builder, x *ir.Match, s *scope, k func(ir.Expr, *s
 	switch x.Kind {
 	case ir.MatchUnion:
 		u, _ := x.Subject.Type().(*types.Union)
-		if u != nil && u.Module == "Prelude" && u.Name == "Nav" {
+		if u != nil && u.Module == "Prelude" && (u.Name == "Nav" || u.Name == "Answer") {
 			fmt.Fprintf(w, "switch %s.Tag {\n", subj)
 			for _, c := range x.Cases {
-				fmt.Fprintf(w, "case rt.Nav%s:\n", c.Tag)
+				if u.Name == "Answer" {
+					fmt.Fprintf(w, "case rtesting.%s:\n", c.Tag)
+				} else {
+					fmt.Fprintf(w, "case rt.Nav%s:\n", c.Tag)
+				}
 				f.caseBody(w, x, c, subj, s.child(), k)
 			}
 			if x.Default != nil {
@@ -194,10 +200,12 @@ func (f *fn) partAccess(x *ir.Match, tag, field, subj string) string {
 	case ir.MatchUnion:
 		if u, ok := x.Subject.Type().(*types.Union); ok && u.Module == "Prelude" {
 			switch tag {
-			case "Redirect":
+			case "Redirect", "Redirected":
 				return subj + ".Page"
-			case "Reject":
+			case "Reject", "Failed":
 				return subj + ".Text"
+			case "Rejected":
+				return subj + ".FieldErrors()"
 			}
 			if tag == "Err" {
 				return subj + ".Err"

@@ -1,0 +1,583 @@
+(module User)
+(record User.User (id Text) (email Text) (name Text))
+(module App)
+(record App.Session (user Maybe Text))
+(union App.Msg (Logout))
+(value App.update : Msg -> Session -> Task Nav (msg session)
+  (match union (var msg)
+    (case Logout
+      (bind task _
+        (call (std Session.put)
+          (lambda (s : Session)
+            (update (var s) (user (ctor Prelude.Maybe.Nothing)))))
+        (pure task
+          (ctor Prelude.Nav.Redirect
+            (record (value (page-ref Auth.Login (record Auth.Login.Params))))))))))
+(value App.error : Error -> Html Never (err)
+  (elem html (elem body (elem h1 (htext "Something went wrong")))))
+(value App.notFound : Html Never ()
+  (elem html (elem body (elem h1 (htext "Not found")))))
+(module Auth.Login)
+(record Auth.Login.Model)
+(record Auth.Login.Credentials (email Text) (password Text))
+(record Auth.Login.Params)
+(record Auth.Login.SubmitParams (form Credentials))
+(union Auth.Login.Msg (Submit SubmitParams))
+(value Auth.Login.load : Params -> App.Session -> Query Model (params session)
+  (pure query (record Model)))
+(value Auth.Login.update : Msg -> Model -> App.Session -> Task Nav (msg model session)
+  (match union (var msg)
+    (case Submit (bind _m2 : SubmitParams)
+      (let p : SubmitParams
+        (var _m2)
+        (bind task found : Maybe Text
+          (cap Auth.Login.Password verify
+            (record
+              (email (field email (field form (var p))))
+              (password (field password (field form (var p))))))
+          (match union (var found)
+            (case Just (bind _m1 value : Text)
+              (let id : Text
+                (var _m1)
+                (bind task _
+                  (call (std Session.put)
+                    (lambda (s : App.Session)
+                      (update (var s)
+                        (user
+                          (ctor Prelude.Maybe.Just (record (value (var id))))))))
+                  (pure task
+                    (ctor Prelude.Nav.Redirect
+                      (record
+                        (value
+                          (page-ref Notes.Index
+                            (record Notes.Index.Params
+                              (filter (ctor Note.Filter.All)))))))))))
+            (case Nothing
+              (pure task
+                (ctor Prelude.Nav.Reject
+                  (record (value "Email or password is incorrect.")))))))))))
+(value Auth.Login.view : Model -> App.Session -> Html Msg (model session)
+  (elem html
+    (elem body
+      (elem h1 (htext "Log in"))
+      (form-el Auth.Login.Submit
+        (attr submit submit (ctor Auth.Login.Msg.Submit (record SubmitParams)))
+        (input Errors Credentials form)
+        (input Input Credentials field=email label="Email")
+        (input Errors Credentials field=email)
+        (input Input Credentials field=password label="Password")
+        (input Errors Credentials field=password)
+        (elem button (htext "Log in"))))))
+(test "a page that requires a user redirects to the login page" task
+  (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+    (test-open Notes.Index
+      (record Notes.Index.Params (filter (ctor Note.Filter.All))))
+    (pure task
+      (test-eq
+        (record
+          (answer (field answer (var r)))
+          (title (call (std Test.text) "h1" (field doc (var r))))
+          (user (field user (field session (var r)))))
+        (record
+          (answer
+            (ctor Prelude.Answer.Redirected
+              (record (value (page-ref Auth.Login (record Params))))))
+          (title (ctor Prelude.Maybe.Just (record (value "Log in"))))
+          (user (ctor Prelude.Maybe.Nothing)))))))
+(test "logging in through the form" task
+  (bind task _
+    (test-fake Auth.Login.Password)
+    (bind task me : Text
+      (db-insert User.User (record (email "me@example.com") (name "Me")))
+      (bind task _
+        (test-get Auth.Login (record Params))
+        (bind task wrong : { answer: Answer, session: App.Session, doc: Doc }
+          (test-submit Auth.Login.Credentials Submit
+            (record Credentials (email "me@example.com") (password "nope")))
+          (bind task right : { answer: Answer, session: App.Session, doc: Doc }
+            (test-submit Auth.Login.Credentials Submit
+              (record Credentials (email "me@example.com") (password "secret")))
+            (pure task
+              (test-eq
+                (record
+                  (wrong (field answer (var wrong)))
+                  (wrongUser (field user (field session (var wrong))))
+                  (right (field answer (var right)))
+                  (user (field user (field session (var right))))
+                  (title (call (std Test.text) "h1" (field doc (var right)))))
+                (record
+                  (wrong
+                    (ctor Prelude.Answer.Rejected
+                      (record
+                        (value
+                          (list
+                            (record
+                              (field "")
+                              (message "Email or password is incorrect.")))))))
+                  (wrongUser (ctor Prelude.Maybe.Nothing))
+                  (right
+                    (ctor Prelude.Answer.Redirected
+                      (record
+                        (value
+                          (page-ref Notes.Index
+                            (record Notes.Index.Params
+                              (filter (ctor Note.Filter.All))))))))
+                  (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+                  (title (ctor Prelude.Maybe.Just (record (value "Notes")))))))))))))
+(test "Test.login, then log out through the button" task
+  (bind task me : Text
+    (db-insert User.User (record (email "me@example.com") (name "Me")))
+    (bind task _
+      (test-login
+        (record App.Session
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+      (bind task shown : { answer: Answer, session: App.Session, doc: Doc }
+        (test-open Notes.Index
+          (record Notes.Index.Params (filter (ctor Note.Filter.All))))
+        (bind task out : { answer: Answer, session: App.Session, doc: Doc }
+          (test-click App.Logout)
+          (pure task
+            (test-eq
+              (record
+                (shown (field answer (var shown)))
+                (out (field answer (var out)))
+                (user (field user (field session (var out)))))
+              (record
+                (shown (ctor Prelude.Answer.Shown))
+                (out
+                  (ctor Prelude.Answer.Redirected
+                    (record (value (page-ref Auth.Login (record Params))))))
+                (user (ctor Prelude.Maybe.Nothing))))))))))
+(module Note)
+(union Note.Filter (All) (Open) (Done))
+(union Note.Kind (Plain) (Idea) (Chore))
+(record Note.Note (id Text) (title Text) (done Bool = False) (owner Text))
+(value Note.matches : Filter -> Note -> Bool (filter note)
+  (match union (var filter)
+    (case All True)
+    (case Open (call (std Prelude.not) (field done (var note))))
+    (case Done (field done (var note)))))
+(value Note.filterLabel : Filter -> Text (filter)
+  (match union (var filter)
+    (case All "All")
+    (case Open "Open")
+    (case Done "Done")))
+(module Notes.Index)
+(record Notes.Index.Model (filter Note.Filter) (notes List Note))
+(record Notes.Index.NewNote
+  (title Text)
+  (due Maybe Date)
+  (urgent Bool)
+  (priority Int = 1)
+  (weight Float = 1.5)
+  (kind Note.Kind = (ctor Note.Kind.Plain))
+  (remark Text = "")
+  (contact Maybe Text))
+(record Notes.Index.Params (filter Note.Filter = (ctor Note.Filter.All)))
+(record Notes.Index.SubmitParams (form NewNote))
+(record Notes.Index.ToggleParams (id Text))
+(union Notes.Index.Msg (Submit SubmitParams) (Toggle ToggleParams) (Boom))
+(record Notes.Index.Session (user Text))
+(value Notes.Index.load : Params -> Session -> Query Model (params session)
+  (bind query notes : List Note
+    (db-select Note.Note
+      (where (cond eq (col Note.Note owner) (field user (var session))))
+      all)
+    (pure query
+      (record Model
+        (filter (field filter (var params)))
+        (notes
+          (call (std List.filter)
+            (partial (global Note.matches)
+              (field filter (var params))
+              (missing 1))
+            (var notes)))))))
+(value Notes.Index.update : Msg -> Model -> Session -> Task Nav (msg model session)
+  (match union (var msg)
+    (case Submit (bind _m2 : SubmitParams)
+      (let p : SubmitParams
+        (var _m2)
+        (bind task _
+          (db-insert Note.Note
+            (record
+              (title (field title (field form (var p))))
+              (done False)
+              (owner (field user (var session)))))
+          (pure task
+            (ctor Prelude.Nav.Redirect
+              (record
+                (value
+                  (page-ref Notes.Index
+                    (record Params (filter (field filter (var model))))))))))))
+    (case Toggle (bind _m3 : ToggleParams)
+      (let p : ToggleParams
+        (var _m3)
+        (bind task found : Maybe Note
+          (db-get Note.Note (field id (var p)))
+          (match union (var found)
+            (case Just (bind _m1 value : Note)
+              (let n : Note
+                (var _m1)
+                (if (== : Text (field owner (var n)) (field user (var session)))
+                  (bind task _
+                    (db-update Note.Note
+                      (field id (var n))
+                      (lambda (x : Note)
+                        (update (var x)
+                          (done (call (std Prelude.not) (field done (var x)))))))
+                    (pure task (ctor Prelude.Nav.Rerender)))
+                  (not-found))))
+            (case Nothing (not-found))))))
+    (case Boom
+      (bind task _
+        (all task
+          (call (std List.map)
+            (lambda (n : Note)
+              (db-update Note.Note
+                (field id (var n))
+                (lambda (x : Note) (update (var x) (done True)))))
+            (field notes (var model))))
+        (let zero : Int
+          (-
+            (call (std List.length) (field notes (var model)))
+            (call (std List.length) (field notes (var model))))
+          (pure task
+            (if (== : Int (/ 1 (var zero)) 0)
+              (ctor Prelude.Nav.Rerender)
+              (ctor Prelude.Nav.Rerender))))))))
+(value Notes.Index.view : Model -> Session -> Html Msg (model session)
+  (elem html
+    (elem body
+      (elem h1 (htext "Notes"))
+      (form-el Notes.Index.Submit
+        (attr submit submit (ctor Notes.Index.Msg.Submit (record SubmitParams)))
+        (input Errors NewNote form)
+        (input Input NewNote field=title label="Title")
+        (input Errors NewNote field=title)
+        (input Input NewNote field=due label="Due")
+        (input Errors NewNote field=due)
+        (input Input NewNote field=urgent label="Urgent")
+        (input Input NewNote field=priority label="Priority")
+        (input Errors NewNote field=priority)
+        (input Input NewNote field=weight label="Weight")
+        (input Errors NewNote field=weight)
+        (input Select NewNote field=kind label="Kind")
+        (input Errors NewNote field=kind)
+        (input Input NewNote field=remark label="Remark")
+        (input Input NewNote field=contact label="Contact")
+        (input Errors NewNote field=contact)
+        (elem button (htext "Add")))
+      (elem nav
+        (hfor f : Note.Filter
+          (list
+            (ctor Note.Filter.All)
+            (ctor Note.Filter.Open)
+            (ctor Note.Filter.Done))
+          (elem a
+            (attr href href
+              (page-ref Notes.Index (record Params (filter (var f)))))
+            (hexpr text (call (global Note.filterLabel) (var f))))))
+      (elem ul (attr id text "notes")
+        (hfor n : Note
+          (field notes (var model))
+          (elem li (attr class text (if (field done (var n)) "done" "open"))
+            (elem button
+              (attr click click
+                (ctor Notes.Index.Msg.Toggle
+                  (record ToggleParams (id (field id (var n))))))
+              (hexpr text (field title (var n)))))))
+      (elem p (attr id text "summary")
+        (hexpr text
+          (call (std Text.fromInt)
+            (call (std List.length) (field notes (var model)))))
+        (htext " shown"))
+      (elem p (attr id text "filter")
+        (hexpr text (call (global Note.filterLabel) (field filter (var model)))))
+      (elem button (attr click click (ctor Notes.Index.Msg.Boom))
+        (htext "Boom"))
+      (elem button (attr click click (ctor App.Msg.Logout)) (htext "Log out")))))
+(test "adding a note through the form" task
+  (bind task me : Text
+    (db-insert User.User (record (email "me@example.com") (name "Me")))
+    (bind task _
+      (test-login
+        (record App.Session
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+      (bind task page : { model: Model, session: App.Session, doc: Doc }
+        (test-get Notes.Index (record Params (filter (ctor Note.Filter.All))))
+        (bind task after : { answer: Answer, session: App.Session, doc: Doc }
+          (test-submit Notes.Index.NewNote Submit
+            (record NewNote
+              (title "Milk")
+              (due (ctor Prelude.Maybe.Nothing))
+              (urgent False)
+              (priority 1)
+              (weight 1.5)
+              (kind (ctor Note.Kind.Plain))
+              (remark "")
+              (contact (ctor Prelude.Maybe.Nothing))))
+          (pure task
+            (test-eq
+              (record
+                (before (field notes (field model (var page))))
+                (answer (field answer (var after)))
+                (summary
+                  (call (std Test.text) "#summary" (field doc (var after))))
+                (items
+                  (call (std Test.texts) "#notes li" (field doc (var after))))
+                (done (call (std Test.has) "li.done" (field doc (var after)))))
+              (record
+                (before (list))
+                (answer
+                  (ctor Prelude.Answer.Redirected
+                    (record
+                      (value
+                        (page-ref Notes.Index
+                          (record Params (filter (ctor Note.Filter.All))))))))
+                (summary (ctor Prelude.Maybe.Just (record (value "1 shown"))))
+                (items (list "Milk"))
+                (done False)))))))))
+(test "a click keeps the page's parameter" task
+  (bind task me : Text
+    (db-insert User.User (record (email "me@example.com") (name "Me")))
+    (bind task id : Text
+      (db-insert Note.Note
+        (record (title "Milk") (done False) (owner (var me))))
+      (bind task _
+        (test-login
+          (record App.Session
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+        (bind task page : { model: Model, session: App.Session, doc: Doc }
+          (test-get Notes.Index
+            (record Params (filter (ctor Note.Filter.Open))))
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+            (test-click Notes.Index.Toggle (record ToggleParams (id (var id))))
+            (pure task
+              (test-eq
+                (record
+                  (filter (field filter (field model (var page))))
+                  (before (call (std Test.count) "li" (field doc (var page))))
+                  (answer (field answer (var r)))
+                  (shown (call (std Test.text) "#filter" (field doc (var r))))
+                  (after (call (std Test.count) "li" (field doc (var r)))))
+                (record
+                  (filter (ctor Note.Filter.Open))
+                  (before 1)
+                  (answer (ctor Prelude.Answer.Rerendered))
+                  (shown (ctor Prelude.Maybe.Just (record (value "Open"))))
+                  (after 0))))))))))
+(test "a form with an empty title is rejected" task
+  (bind task me : Text
+    (db-insert User.User (record (email "me@example.com") (name "Me")))
+    (bind task _
+      (test-login
+        (record App.Session
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+      (bind task _
+        (test-get Notes.Index (record Params (filter (ctor Note.Filter.All))))
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+          (test-submit-raw Notes.Index.NewNote Submit
+            (list
+              (record (name "title") (value ""))
+              (record (name "priority") (value "x"))))
+          (bind task rows : Int
+            (db-select Note.Note count)
+            (pure task
+              (test-eq
+                (record
+                  (answer (field answer (var r)))
+                  (rows (var rows))
+                  (priority
+                    (call (std Test.attr)
+                      "value"
+                      "input[name=priority]"
+                      (field doc (var r)))))
+                (record
+                  (answer
+                    (ctor Prelude.Answer.Rejected
+                      (record
+                        (value
+                          (list
+                            (record
+                              (field "title")
+                              (message "must not be empty"))
+                            (record
+                              (field "priority")
+                              (message "must be a whole number")))))))
+                  (rows 0)
+                  (priority (ctor Prelude.Maybe.Just (record (value "x")))))))))))))
+(test "a step inside Test.run" task
+  (bind task me : Text
+    (db-insert User.User (record (email "me@example.com") (name "Me")))
+    (bind task _
+      (test-login
+        (record App.Session
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+      (bind task r : { value: Result Text Int, trace: List Text }
+        (test-run
+          (bind task page : { model: Model, session: App.Session, doc: Doc }
+            (test-get Notes.Index
+              (record Params (filter (ctor Note.Filter.All))))
+            (pure task (call (std Test.count) "li" (field doc (var page))))))
+        (pure task
+          (test-eq
+            (field value (var r))
+            (ctor Prelude.Result.Ok (record (value 0)))))))))
+(test "a panicking update is Failed" task
+  (bind task me : Text
+    (db-insert User.User (record (email "me@example.com") (name "Me")))
+    (bind task id : Text
+      (db-insert Note.Note
+        (record (title "Milk") (done False) (owner (var me))))
+      (bind task _
+        (test-login
+          (record App.Session
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+        (bind task _
+          (test-get Notes.Index (record Params (filter (ctor Note.Filter.All))))
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+            (test-click Notes.Index.Boom)
+            (bind task rows : Int
+              (db-select Note.Note
+                (where (cond eq (col Note.Note done) False))
+                count)
+              (let failed : Bool
+                (match union (field answer (var r))
+                  (case Failed True)
+                  (default False))
+                (pure task
+                  (test-eq
+                    (record
+                      (failed (var failed))
+                      (rows (var rows))
+                      (title (call (std Test.text) "h1" (field doc (var r)))))
+                    (record
+                      (failed True)
+                      (rows 1)
+                      (title
+                        (ctor Prelude.Maybe.Just
+                          (record (value "Something went wrong")))))))))))))))
+(test "the document and the view agree" task
+  (bind task me : Text
+    (db-insert User.User (record (email "me@example.com") (name "Me")))
+    (bind task _
+      (db-insert Note.Note
+        (record (title "Milk") (done False) (owner (var me))))
+      (bind task _
+        (test-login
+          (record App.Session
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+        (bind task page : { model: Model, session: App.Session, doc: Doc }
+          (test-get Notes.Index
+            (record Params (filter (ctor Note.Filter.Open))))
+          (let sel : Text
+            "nav a"
+            (let bad : Text
+              "nav >"
+              (pure task
+                (test-eq
+                  (record
+                    (same
+                      (== : Doc (field doc (var page))
+                        (call (std Test.doc)
+                          (call (global Notes.Index.view)
+                            (field model (var page))
+                            (record Session (user (var me)))))))
+                    (links
+                      (call (std Test.texts) (var sel) (field doc (var page))))
+                    (bad
+                      (call (std Test.count) (var bad) (field doc (var page))))
+                    (href
+                      (call (std Test.attr)
+                        "href"
+                        "nav a"
+                        (field doc (var page))))
+                    (none
+                      (call (std Test.text) "#nothing" (field doc (var page)))))
+                  (record
+                    (same True)
+                    (links (list "All" "Open" "Done"))
+                    (bad 0)
+                    (href (ctor Prelude.Maybe.Just (record (value "/"))))
+                    (none (ctor Prelude.Maybe.Nothing))))))))))))
+(test "a stranger's note is missing" task
+  (bind task me : Text
+    (db-insert User.User (record (email "me@example.com") (name "Me")))
+    (bind task id : Text
+      (db-insert Note.Note
+        (record (title "Milk") (done False) (owner (var me))))
+      (bind task _
+        (test-login
+          (record App.Session
+            (user (ctor Prelude.Maybe.Just (record (value "stranger"))))))
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+          (test-open Notes.Show (record Notes.Show.Params (id (var id))))
+          (pure task
+            (test-eq (field answer (var r)) (ctor Prelude.Answer.Missing))))))))
+(module Notes.Show)
+(record Notes.Show.Model (note Note))
+(record Notes.Show.Params (id Text))
+(union Notes.Show.Msg)
+(record Notes.Show.Session (user Text))
+(value Notes.Show.load : Params -> Session -> Query Model (params session)
+  (bind query found : Maybe Note
+    (db-get Note.Note (field id (var params)))
+    (match union (var found)
+      (case Just (bind _m1 value : Note)
+        (let note : Note
+          (var _m1)
+          (if (== : Text (field owner (var note)) (field user (var session)))
+            (pure query (record Model (note (var note))))
+            (not-found))))
+      (case Nothing (not-found)))))
+(value Notes.Show.view : Model -> Session -> Html Msg (model session)
+  (elem html
+    (elem body (elem h1 (hexpr text (field title (field note (var model))))))))
+(table User.User (id id) (unique email) (insert email name))
+(table Note.Note (id id) (ref owner User.User) (insert title done owner))
+(form Auth.Login.Credentials)
+(form Notes.Index.NewNote)
+(page Auth.Login "/login"
+  (params Params)
+  (model Model)
+  (msg Submit (params SubmitParams) (form Credentials))
+  (view Auth.Login.view)
+  (load Auth.Login.load)
+  (update Auth.Login.update))
+(page Notes.Index "/"
+  (params Params)
+  (requires user)
+  (session Session)
+  (model Model)
+  (msg Submit (params SubmitParams) (form NewNote))
+  (msg Toggle (params ToggleParams))
+  (msg Boom)
+  (view Notes.Index.view)
+  (load Notes.Index.load)
+  (update Notes.Index.update))
+(page Notes.Show "/notes/{id}"
+  (params Params)
+  (requires user)
+  (session Session)
+  (model Model)
+  (view Notes.Show.view)
+  (load Notes.Show.load))
+(app-msg Logout)
+(app-update App.update)
+(session App.Session)
+(capability Auth.Login.Password
+  (verify { email: Text, password: Text } -> Task (Maybe Text)))
+(fake Auth.Login.Password
+  (tables)
+  (entries
+    (entry Auth.Login.verify : { email: Text, password: Text } -> Task (Maybe Text) (args)
+      (bind task found : Maybe User
+        (db-select User.User
+          (where (cond eq (col User.User email) (field email (var args))))
+          first)
+        (if (== : Text (field password (var args)) "secret")
+          (pure task
+            (call (std Maybe.map)
+              (lambda (u : User) (field id (var u)))
+              (var found)))
+          (pure task (ctor Prelude.Maybe.Nothing)))))))

@@ -6,6 +6,7 @@ import (
 	_ "alder/rt" // initialized before this package (rt/tether.go)
 	"alder/rt/db"
 	rtesting "alder/rt/testing"
+	"alder/rt/web"
 )
 
 // Tables describes every table of the app, in module order then declaration order, for db.Ensure.
@@ -61,4 +62,12 @@ var FakeTables = []db.TableDesc{table__Payments__Charge.Desc()}
 var Fakes = map[string]func() any{
 	"Payments.Stripe":   func() any { return fake__Payments__Stripe{} },
 	"Markdown.Markdown": func() any { return fake__Markdown__Markdown{} },
+}
+
+// Routes are the app's routes: none, as the app has no App module (alder test's browser serves them).
+var Routes = []web.Route{}
+
+// Web is the app's web.Options for alder test's browser: none, as the app has no App module.
+func Web() web.Options {
+	return web.Options{}
 }
