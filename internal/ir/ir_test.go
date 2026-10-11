@@ -428,3 +428,74 @@ func TestSQLLiteral(t *testing.T) {
 		t.Error("a variable is not a literal")
 	}
 }
+
+// A fake lowers to Program.Fakes: its tables stay out of Program.Tables and out of its
+// module's Types, its entries follow the capability's entry order (whatever the source order),
+// and `Test.fake` is a TestFake pointing at it.
+func TestIR_Fakes(t *testing.T) {
+	p := lowerDir(t, "../../testdata/golden/ir_fakes")
+	for _, tb := range p.Tables {
+		if tb.Name == "Charge" {
+			t.Fatalf("a fake's table is in Program.Tables")
+		}
+	}
+	for _, m := range p.Modules {
+		for _, td := range m.Types {
+			if td.Name == "Charge" {
+				t.Fatalf("a fake's table record is in %s's Types", m.Name)
+			}
+		}
+	}
+	if len(p.Fakes) != 2 || p.Fakes[0].Module != "Markdown" || p.Fakes[1].Module != "Payments" {
+		t.Fatalf("fakes: %+v", p.Fakes)
+	}
+	f := p.Fakes[1]
+	if f.Capability == nil || f.Capability.Name != "Stripe" || f.Capability != p.Caps[1] {
+		t.Fatalf("capability: %+v", f.Capability)
+	}
+	if len(f.Tables) != 1 || f.Tables[0].Name != "Charge" || f.Tables[0].Refs["user"] != "User.User" || f.Tables[0].Record == nil {
+		t.Fatalf("tables: %+v", f.Tables)
+	}
+	var got []string
+	for i, e := range f.Entries {
+		got = append(got, e.Name)
+		if e.Name != f.Capability.Entries[i].Name || !reflect.DeepEqual(e.Type, f.Capability.Entries[i].Type) || !e.IsEffect || e.Body == nil {
+			t.Errorf("entry %d: %+v", i, e)
+		}
+	}
+	if strings.Join(got, " ") != "charge refund balance" {
+		t.Fatalf("entries %v", got)
+	}
+	var fakes []*TestFake
+	for _, m := range p.Modules {
+		for _, ts := range m.Tests {
+			walkTestFakes(ts.Body, &fakes)
+		}
+	}
+	if len(fakes) != 4 || fakes[0].Fake != f {
+		t.Fatalf("test fakes: %d", len(fakes))
+	}
+	if tf := fakes[0]; types.String(tf.Type()) != "Task Unit" {
+		t.Fatalf("Test.fake type %s", types.String(tf.Type()))
+	}
+}
+
+// walkTestFakes collects the TestFake nodes of a test body's effect chain (and of Test.run's task).
+func walkTestFakes(e Expr, out *[]*TestFake) {
+	switch x := e.(type) {
+	case *TestFake:
+		*out = append(*out, x)
+	case *EffBind:
+		walkTestFakes(x.Effect, out)
+		walkTestFakes(x.Body, out)
+	case *Let:
+		walkTestFakes(x.Value, out)
+		walkTestFakes(x.Body, out)
+	case *TestRun:
+		walkTestFakes(x.Task, out)
+	case *Match:
+		for _, c := range x.Cases {
+			walkTestFakes(c.Body, out)
+		}
+	}
+}

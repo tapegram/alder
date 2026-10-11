@@ -1,0 +1,12 @@
+module Payments
+
+capability Stripe {
+  charge : { cents: Int } -> Task (Result Text Text),
+}
+
+fake Stripe {
+  charge args = Task.succeed (Ok "ch_1")
+}
+
+install : Task Unit
+install = Test.fake Stripe

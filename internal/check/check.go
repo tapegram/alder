@@ -21,11 +21,17 @@ type Checker struct {
 	// to a literal too, since a parameter left out of a link is the URL left without it.
 	paramRecs map[string]bool
 	caps      map[string]map[string]types.Type
-	pages     map[string]*pageInfo
-	session   *types.Record
-	appMsg    *types.Union
-	losers    map[syntax.Decl]bool
-	defaults  []pendingDefault // field defaults, checked after value signatures // duplicate declarations (E0009), skipped after declareTypeNames
+	// fakes are the accepted `fake` declarations by capability key ("Module.Cap");
+	// fakeTables maps each fake's table ("Module.Table") to the fake's capability name, and
+	// fakeUses holds the places E0021 was reported at
+	fakes      map[string]*syntax.FakeDecl
+	fakeTables map[string]string
+	fakeUses   map[diag.Span]bool
+	pages      map[string]*pageInfo
+	session    *types.Record
+	appMsg     *types.Union
+	losers     map[syntax.Decl]bool
+	defaults   []pendingDefault // field defaults, checked after value signatures // duplicate declarations (E0009), skipped after declareTypeNames
 
 	// typesDefined is set once every record has its fields (after pass 2); early are the generic
 	// record instances made before, refreshed then.
@@ -83,6 +89,7 @@ type modCtx struct {
 	testBody syntax.Expr          // the body of the `test` being checked (inTest)
 	testName string               // the name of the `test` being checked (inTest)
 	runArgs  map[syntax.Expr]bool // the arguments of `Test.run` calls (their mismatches get a hint)
+	fake     string               // the capability whose `fake` entries are being checked
 }
 
 // Options adjust what Program accepts.
@@ -105,9 +112,9 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 	c := &Checker{prog: prog, bag: bag, u: &types.Unifier{Subst: types.Subst{}}, opts: o,
 		types: map[string]types.Type{}, values: map[string]types.Type{}, ctors: map[string]*ctorInfo{},
 		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, paramRecs: map[string]bool{}, caps: map[string]map[string]types.Type{}, pages: map[string]*pageInfo{}, losers: map[syntax.Decl]bool{},
-		anonDefaults: map[*syntax.Field]bool{},
-		res:          &Result{Types: map[syntax.Expr]types.Type{}, Binds: map[any]types.Type{}, DefaultModules: map[syntax.Expr]string{}, Widened: map[syntax.Expr]*types.Record{}},
-		widenedFrom:  map[syntax.Expr]types.Type{}}
+		anonDefaults: map[*syntax.Field]bool{}, fakes: map[string]*syntax.FakeDecl{}, fakeTables: map[string]string{}, fakeUses: map[diag.Span]bool{},
+		res:         &Result{Types: map[syntax.Expr]types.Type{}, Binds: map[any]types.Type{}, DefaultModules: map[syntax.Expr]string{}, Widened: map[syntax.Expr]*types.Record{}},
+		widenedFrom: map[syntax.Expr]types.Type{}}
 	c.declareStd()
 	// pass 1: placeholders for every declared type in every module (app + std)
 	for _, m := range c.allModules() {
@@ -146,6 +153,9 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 			mc.definePage()
 		}
 		mc.defineCapabilities()
+	}
+	for _, name := range prog.Order {
+		c.ctx(prog.Modules[name]).defineFakes()
 	}
 	c.checkPagePaths()
 	for _, m := range c.allModules() {

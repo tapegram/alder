@@ -21,7 +21,10 @@ type moduleScope struct {
 	ctors  map[string]string // ctor → owning type name
 	brands map[string]bool   // brand names; the constructor is usable only in the declaring module
 	tables map[string]bool
-	caps   map[string]bool
+	// fakeTables maps each table declared inside a `fake` to the fake's capability name; such a
+	// table belongs to the fake, not to its module's name (E0018 does not apply to it)
+	fakeTables map[string]string
+	caps       map[string]bool
 	// capEntries holds, for a capability named like its module (`capability Markdown` in module
 	// Markdown), its entry names: `Markdown.render` from another module is that entry.
 	capEntries map[string]bool
@@ -32,7 +35,7 @@ type moduleScope struct {
 }
 
 func (p *Program) index(m *syntax.Module) *moduleScope {
-	s := &moduleScope{name: m.Name, values: map[string]bool{}, types: map[string]bool{}, ctors: map[string]string{}, brands: map[string]bool{}, tables: map[string]bool{}, caps: map[string]bool{}, capEntries: map[string]bool{}, comps: map[string]bool{}, columns: map[string]map[string]bool{}, imports: map[string]*syntax.Import{}, used: map[string]bool{}}
+	s := &moduleScope{name: m.Name, values: map[string]bool{}, types: map[string]bool{}, ctors: map[string]string{}, brands: map[string]bool{}, tables: map[string]bool{}, fakeTables: map[string]string{}, caps: map[string]bool{}, capEntries: map[string]bool{}, comps: map[string]bool{}, columns: map[string]map[string]bool{}, imports: map[string]*syntax.Import{}, used: map[string]bool{}}
 	for _, im := range m.Imports {
 		s.imports[im.Module] = im
 	}
@@ -52,13 +55,12 @@ func (p *Program) index(m *syntax.Module) *moduleScope {
 				s.ctors[c.Name] = d.Name
 			}
 		case *syntax.TableDecl:
-			s.types[d.Name] = true
-			s.tables[d.Name] = true
-			cols := map[string]bool{}
-			for _, f := range d.Fields {
-				cols[f.Name] = true
+			s.table(d)
+		case *syntax.FakeDecl:
+			for _, t := range d.Tables {
+				s.table(t)
+				s.fakeTables[t.Name] = d.Name
 			}
-			s.columns[d.Name] = cols
 		case *syntax.FormDecl:
 			s.types[d.Name] = true
 		case *syntax.CapDecl:
@@ -78,6 +80,17 @@ func (p *Program) index(m *syntax.Module) *moduleScope {
 		s.types["Session"] = true
 	}
 	return s
+}
+
+// table indexes table declaration d: a type, a table and its columns.
+func (s *moduleScope) table(d *syntax.TableDecl) {
+	s.types[d.Name] = true
+	s.tables[d.Name] = true
+	cols := map[string]bool{}
+	for _, f := range d.Fields {
+		cols[f.Name] = true
+	}
+	s.columns[d.Name] = cols
 }
 
 func isUpper(s string) bool { return len(s) > 0 && s[0] >= 'A' && s[0] <= 'Z' }
@@ -144,7 +157,7 @@ func (p *Program) Resolve(bag *diag.Bag) {
 			p.ctorIndex[b] = append(p.ctorIndex[b], ctorOwner{Module: name, Type: b})
 		}
 		for t := range s.tables {
-			if t != name {
+			if _, fake := s.fakeTables[t]; t != name && !fake {
 				p.tableIndex[t] = append(p.tableIndex[t], name)
 			}
 		}
@@ -248,6 +261,8 @@ func (r *resolver) module() {
 					}
 				}
 			}
+		case *syntax.FakeDecl:
+			r.fake(d)
 		case *syntax.SessionDecl:
 			r.fields(d.Fields)
 		case *syntax.LoginDecl:
@@ -265,6 +280,81 @@ func (r *resolver) module() {
 			r.bag.Warn(diag.UnusedImport, r.ms.imports[name].Span, "import `%s` is unused", name)
 		}
 	}
+}
+
+// fake resolves `fake Cap { … }`: its name as a capability of this module or an imported one
+// (the checker reports E0020 for one declared elsewhere), its tables as the module's tables,
+// and its entries' bodies like values', each parameter in scope.
+func (r *resolver) fake(d *syntax.FakeDecl) {
+	if ref, ok := r.capability("", d.Name); ok {
+		d.Ref = ref
+	} else {
+		r.bag.Error(diag.UnknownName, d.NameSpan, "`fake %s`: there is no capability `%s`; a fake implements a capability declared in its module (`capability %s { … }`)", d.Name, d.Name, d.Name)
+	}
+	for _, t := range d.Tables {
+		r.fields(t.Fields)
+	}
+	for _, e := range d.Entries {
+		sc := (&Scope{names: map[string]bool{}}).child()
+		for _, prm := range e.Params {
+			sc.bind(prm.Name)
+		}
+		r.expr(e.Body, sc)
+	}
+}
+
+// capability finds capability name, written `name` or `mod.name`: declared in this module or,
+// unqualified, in an imported one. Its Ref is RefCapability with Name "Module.Cap".
+func (r *resolver) capability(mod, name string) (syntax.Ref, bool) {
+	ref := func(m string) syntax.Ref {
+		return syntax.Ref{Kind: syntax.RefCapability, Module: m, Name: m + "." + name}
+	}
+	switch {
+	case mod == "" || mod == r.m.Name:
+		if r.ms.caps[name] {
+			return ref(r.m.Name), true
+		}
+		if mod != "" {
+			return syntax.Ref{}, false
+		}
+		for _, x := range r.importNames() {
+			if s := r.p.scopes[x]; s != nil && s.caps[name] {
+				r.ms.used[x] = true
+				return ref(x), true
+			}
+		}
+	default:
+		if _, ok := r.ms.imports[mod]; ok {
+			if s := r.p.scopes[mod]; s != nil && s.caps[name] {
+				r.ms.used[mod] = true
+				return ref(mod), true
+			}
+		}
+	}
+	return syntax.Ref{}, false
+}
+
+// testFakeArg resolves the argument of `Test.fake`: a capability name, `Stripe` or
+// `Payments.Stripe`. Any other argument is resolved as an expression (the checker refuses it).
+func (r *resolver) testFakeArg(a syntax.Expr, sc *Scope) {
+	ct, ok := a.(*syntax.CtorRef)
+	if !ok {
+		r.expr(a, sc)
+		return
+	}
+	if ref, found := r.capability(ct.Module, ct.Name); found {
+		ct.Ref = ref
+		return
+	}
+	full := ct.Name
+	if ct.Module != "" {
+		full = ct.Module + "." + ct.Name
+		if _, imported := r.ms.imports[ct.Module]; !imported && ct.Module != r.m.Name && r.p.Modules[ct.Module] != nil {
+			r.notImported(ct.Span, ct.Module)
+			return
+		}
+	}
+	r.bag.Error(diag.UnknownName, ct.Span, "`Test.fake %s`: there is no capability `%s` in scope", full, full)
 }
 
 func (r *resolver) fields(fs []*syntax.Field) {
@@ -423,6 +513,12 @@ func (r *resolver) tableInOtherModule(x string) (owner, table string, ok bool) {
 // tableMisplaced reports a use of a table declared in another table's module (E5 problem 2):
 // such a table's columns cannot be named from anywhere, so no import can help.
 func (r *resolver) tableMisplaced(span diag.Span, owner, table string) {
+	if s := r.p.scopes[owner]; s != nil {
+		if fake, ok := s.fakeTables[table]; ok { // its columns are named inside its module only
+			r.bag.Error(diag.UnknownName, span, "`%s` is a table of `fake %s` in module `%s`: its columns are named only inside `%s` (`%s.column`); elsewhere use the table, `%s.%s`", table, fake, owner, owner, table, owner, table)
+			return
+		}
+	}
 	r.bag.Error(diag.UnknownName, span, "`%s` is a table of module `%s`, but a table is declared in its own module named after it: move it to `%s.alder`%s", table, owner, modulePath(table), r.p.tableDeclSee(owner, table))
 }
 
@@ -488,6 +584,11 @@ func (r *resolver) typ(t syntax.Type) {
 			t.Ref = syntax.Ref{Kind: syntax.RefType, Module: r.m.Name, Name: t.Name}
 			return
 		}
+		if t.Name == "Capability" && r.m == r.p.Std["Test"] {
+			// `fake : Capability -> Task Unit`: Test.fake is a special form the checker types
+			// itself; `Capability` names no type, here or in any program
+			return
+		}
 		// module-name rule: imported module X declaring type X
 		if s, ok := r.importedScope(t.Name); ok && s.types[t.Name] {
 			t.Ref = syntax.Ref{Kind: syntax.RefType, Module: t.Name, Name: t.Name}
@@ -509,7 +610,7 @@ func (r *resolver) typ(t syntax.Type) {
 			for _, x := range r.importNames() {
 				if r.p.scopes[x] != nil && r.p.scopes[x].types[t.Name] {
 					r.ms.used[x] = true
-					if r.p.scopes[x].tables[t.Name] && x != t.Name && r.p.Modules[x] != nil {
+					if _, fake := r.p.scopes[x].fakeTables[t.Name]; r.p.scopes[x].tables[t.Name] && x != t.Name && r.p.Modules[x] != nil && !fake {
 						r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`, but `%s` is a table, and a table is declared in its own module named after it: move it to `%s.alder`%s", t.Name, x, t.Name, modulePath(t.Name), r.p.tableDeclSee(x, t.Name))
 						return
 					}
@@ -595,7 +696,11 @@ func (r *resolver) expr(e syntax.Expr, sc *Scope) {
 		r.expr(e.Expr, sc)
 	case *syntax.App:
 		r.expr(e.Fn, sc)
-		for _, a := range e.Args {
+		for i, a := range e.Args {
+			if v, ok := e.Fn.(*syntax.Var); ok && i == 0 && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" && v.Ref.Name == "fake" {
+				r.testFakeArg(a, sc)
+				continue
+			}
 			r.expr(a, sc)
 		}
 	case *syntax.Lambda:

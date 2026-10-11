@@ -213,7 +213,7 @@ func Extract(path string) ([]Snippet, error) {
 }
 
 var (
-	declKeywordRE = regexp.MustCompile(`^(type|table|form|page|msg|capability|session|login|test|import)( |$)`)
+	declKeywordRE = regexp.MustCompile(`^(type|table|form|page|msg|capability|fake|session|login|test|import)( |$)`)
 	// signatureRE is `name : T` at column 1.
 	signatureRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]* :( |$)`)
 	// definitionRE is `name args = …` at column 1.

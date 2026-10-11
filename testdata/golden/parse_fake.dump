@@ -1,0 +1,2 @@
+(module Payments (capability Stripe (field charge (fn {cents: Int} -> (Task (Result Text ChargeId)))) (field now (Query Int))) (fake Stripe (table Charge (field id ChargeId @id) (field cents Int) (field refunded Bool = (bool false))) (val charge args = (block (let id <- (app (var Db.insert) (ctor Charge) (record (cents (access (var args) cents))))) (app (var Task.succeed) (app (ctor Ok) (var id))))) (val now = (app (var Query.succeed) (int 1)))) (val after : Int = (int 1)))
+@ module 1:1-23:10

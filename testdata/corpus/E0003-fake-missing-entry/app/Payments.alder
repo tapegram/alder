@@ -1,0 +1,12 @@
+module Payments
+
+type ChargeId = brand Text
+
+capability Stripe {
+  charge : { cents: Int } -> Task (Result Text ChargeId),
+  refund : { id: ChargeId } -> Task (Result Text Unit),
+}
+
+fake Stripe {
+  charge args = Task.succeed (Ok (ChargeId "ch_1"))
+}

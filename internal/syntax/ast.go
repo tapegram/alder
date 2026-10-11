@@ -117,6 +117,18 @@ type CapDecl struct {
 	Name    string
 	Entries []*Field // Type is a FunType or effect type
 }
+
+// FakeDecl is `fake Cap { … }`: an in-memory implementation of capability Cap for tests, with
+// tables of its own (test-only) and one definition per entry (Sig nil: the entry's type is its
+// signature). Ref is the capability the name resolves to (RefCapability, Name "Module.Cap").
+type FakeDecl struct {
+	Node
+	Name     string
+	NameSpan diag.Span
+	Tables   []*TableDecl
+	Entries  []*ValueDecl
+	Ref      Ref
+}
 type SessionDecl struct {
 	Node
 	Fields []*Field

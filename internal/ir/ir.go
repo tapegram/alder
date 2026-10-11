@@ -29,6 +29,7 @@ type Program struct {
 	AppUpdate *Value      // App's `update` (a Task effect); nil when App declares none
 	Session   *RecordType // App's `session` record (empty when App declares none); nil without an App module
 	Caps      []*Capability
+	Fakes     []*Fake  // the `fake` declarations, in module order; test builds only use them
 	Brands    []*Brand // the app's brands, in module order then declaration order
 	Login     string   // the path of the page App's `login` names; "" when App has none
 }
@@ -207,6 +208,24 @@ type Msg struct {
 type Capability struct {
 	Module, Name string
 	Entries      []FieldT
+}
+
+// Fake is `fake Cap { tables; entries }`: an in-memory implementation of capability Cap that a
+// test installs with `Test.fake Cap` (TestFake). It belongs to test builds only.
+//
+// Tables are the fake's own tables, lowered like an app table but test-only: they are NOT in
+// Program.Tables (so migrations, the schema snapshot and E0019 never see them), and their
+// records are NOT in their Module's Types: a consumer that emits a fake declares each table's
+// Record itself. A fake's table may @ref an app table (Refs names it as usual).
+//
+// Entries has one Value per Capability.Entries[i], in the same order: Name is the entry's name,
+// Type the entry's (brand-erased) type, Params the parameters the definition names, Body the
+// lowered definition; IsEffect is always set. Entries are in no Module's Values.
+type Fake struct {
+	Module     string
+	Capability *Capability // the capability it implements (same module)
+	Tables     []*Table
+	Entries    []*Value
 }
 
 // ---- Expressions
@@ -724,6 +743,13 @@ type CapCall struct {
 type TestRun struct {
 	Typed
 	Task Expr
+}
+
+// TestFake is `Test.fake Cap`: a Task Unit (its type) that installs Fake in place of the
+// capability's implementation for the rest of the enclosing test.
+type TestFake struct {
+	Typed
+	Fake *Fake
 }
 
 // TestTrace is `Test.trace`: a Task (List Text) of the enclosing test's steps so far.

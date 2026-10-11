@@ -392,3 +392,39 @@ func TestTableDefaultsAndRenamed(t *testing.T) {
 		}
 	}
 }
+
+// fakeModule is a module with capability Stripe and its fake, followed by rest.
+func fakeModule(rest string) string {
+	return "module Payments\n\ntype ChargeId = brand Text\n\ncapability Stripe {\n  charge : { cents: Int } -> Task (Result Text ChargeId),\n  now : Query Int,\n}\n\n" +
+		"fake Stripe {\n  table Charge {\n    id: ChargeId @id,\n    cents: Int,\n  }\n\n  charge args = {\n    let id <- Db.insert Charge { cents: args.cents }\n    Task.succeed (Ok id)\n  }\n  now = Db.from Charge |> Db.where (Charge.cents.gt 0) |> Db.count\n}\n\n" + rest
+}
+
+// A fake's entries are checked against the capability's entry types; its tables are usable
+// from tests and from its own entries only (E0021); `Test.fake` takes a capability name.
+func TestFakes(t *testing.T) {
+	cases := []struct{ name, src, want string }{
+		{"clean", fakeModule("test \"t\" = {\n  let _ <- Test.fake Stripe\n  let n <- Db.from Charge |> Db.where (Charge.cents.gt 1) |> Db.count\n  let c : List Charge <- Db.from Charge |> Db.all\n  Task.succeed (n == 0)\n}\n"), ""},
+		{"column in app code", fakeModule("big : Query Int\nbig = Db.from Charge |> Db.where (Charge.cents.gt 1) |> Db.count\n"), "E0021 `Charge` is a fake's table: only tests and `fake Stripe` may use it"},
+		{"type in a signature", fakeModule("first : List Charge -> Int\nfirst cs = List.length cs\n"), "E0021 `Charge` is a fake's table: only tests and `fake Stripe` may use it"},
+		{"type in a record", fakeModule("type Receipt = { charge: Charge }\n"), "E0021 `Charge` is a fake's table: only tests and `fake Stripe` may use it"},
+		{"entry type mismatch", "module Payments\n\ncapability Stripe {\n  now : Query Int,\n}\n\nfake Stripe {\n  now = Query.succeed \"noon\"\n}\n", "E0003"},
+		{"entry params", "module Payments\n\ncapability Stripe {\n  now : Query Int,\n}\n\nfake Stripe {\n  now x = Query.succeed 1\n}\n", "E0008"},
+		{"entry defined twice", "module Payments\n\ncapability Stripe {\n  now : Query Int,\n}\n\nfake Stripe {\n  now = Query.succeed 1\n  now = Query.succeed 2\n}\n", "E0009 `now` is already defined in `fake Stripe` at line 8"},
+		{"test fake an expression", fakeModule("test \"t\" = {\n  let _ <- Test.fake (if True then Stripe else Stripe)\n  Task.succeed True\n}\n"), "E0002"},
+		{"test fake a value", fakeModule("x : Int\nx = 1\n\ntest \"t\" = {\n  let _ <- Test.fake x\n  Task.succeed True\n}\n"), "E0003 `Test.fake` wants a capability name, got an expression"},
+		{"test fake unapplied", fakeModule("test \"t\" = {\n  let f = Test.fake\n  Task.succeed True\n}\n"), "E0003 `Test.fake` wants a capability name, got an expression"},
+		{"test fake inside Test.run", fakeModule("test \"t\" = {\n  let r <- Test.run {\n    let _ <- Test.fake Stripe\n    let n <- Stripe.now\n    Task.succeed n\n  }\n  Task.succeed (r.value == Ok 0)\n}\n"), ""},
+		{"fake table named like a reserved name", "module Payments\n\ncapability Stripe {\n  now : Query Int,\n}\n\nfake Stripe {\n  table Query {\n    id: Text @id,\n  }\n  now = Query.succeed 1\n}\n", "E0012"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var got []string
+			for _, d := range checkModule(t, c.src) {
+				got = append(got, d.Code+" "+d.Message)
+			}
+			if c.want == "" && len(got) != 0 || c.want != "" && (len(got) == 0 || !strings.HasPrefix(got[0], c.want)) {
+				t.Fatalf("got %q want %q", got, c.want)
+			}
+		})
+	}
+}

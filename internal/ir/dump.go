@@ -15,7 +15,8 @@ import (
 // Forms: (module M); (record M.T fields…) with fields (name Type) or (name Type = default);
 // (union M.T params… (Ctor payload?)…); (value|component M.name : Type (params) body);
 // then (table …), (form …), (page …) with (view|load|update M.name), (app-msg …),
-// (app-update App.update), (session …), (capability …). Expressions: literals bare (1, 3.14, "s", True, ()), (var x), (global M.f),
+// (app-update App.update), (session …), (capability …), (fake M.Cap (tables (record …)
+// (table …)…) (entries (entry M.name : Type (params) body)…)). Expressions: literals bare (1, 3.14, "s", True, ()), (var x), (global M.f),
 // (std List.map), (call f args…), (partial f given… (missing n)), (lambda (x : T) body),
 // (record M.T? (field value)…), (update base (field value)…), (field name expr),
 // (ctor M.Union.Ctor payload?), (list elems…), (page-ref M params?), (hole name),
@@ -27,7 +28,7 @@ import (
 // Effects (kind is query or task): (pure kind v), (bind kind x : T effect body) or
 // (bind kind _ effect body), (map kind fn effect), (all kind effects), (fail msg), (not-found),
 // (cap M.Cap entry args…). Tests, after a module's values and components: (test "name" pure|task
-// body); in their bodies (test-run task), (test-trace), (test-eq l r). Database: (db-get M.T id), (db-select M.T [(base e)] (where c)…
+// body); in their bodies (test-run task), (test-trace), (test-fake M.Cap), (test-eq l r). Database: (db-get M.T id), (db-select M.T [(base e)] (where c)…
 // (order o)… [(limit n)] [(offset n)] select|all|first|count), (db-run all|first|count sel),
 // (db-insert M.T row), (db-update M.T id fn), (db-delete M.T id), (col M.T field),
 // (cond kind [col] [value] subs…) with (cond and|or (value e)) for a list that is no literal,
@@ -59,26 +60,7 @@ func Dump(p *Program) string {
 		}
 	}
 	for _, t := range p.Tables {
-		items := []*sx{atom("table"), atom(t.Module + "." + t.Name), atoms("id", t.IDField)}
-		if t.Created != "" {
-			items = append(items, atoms("created", t.Created))
-		}
-		if t.Updated != "" {
-			items = append(items, atoms("updated", t.Updated))
-		}
-		if len(t.Unique) > 0 {
-			items = append(items, atoms(append([]string{"unique"}, t.Unique...)...))
-		}
-		for _, f := range t.Record.Fields {
-			if r := t.Refs[f.Name]; r != "" {
-				ref := []string{"ref", f.Name, r}
-				if del := t.OnDelete[f.Name]; del != "" {
-					ref = append(ref, del)
-				}
-				items = append(items, atoms(ref...))
-			}
-		}
-		form(list(2, append(items, atoms(append([]string{"insert"}, t.InsertFields...)...))...))
+		form(table(t))
 	}
 	for _, f := range p.Forms {
 		form(atoms("form", f.Module+"."+f.Name))
@@ -125,7 +107,44 @@ func Dump(p *Program) string {
 		}
 		form(x)
 	}
+	for _, f := range p.Fakes {
+		d := &dumper{home: f.Module}
+		tables := list(1, atom("tables"))
+		for _, t := range f.Tables {
+			tables.items = append(tables.items, d.typeDecl(&TypeDecl{Module: t.Module, Name: t.Name, Record: t.Record}), table(t))
+		}
+		entries := list(1, atom("entries"))
+		for _, v := range f.Entries {
+			entries.items = append(entries.items, d.value("entry", v))
+		}
+		form(list(2, atom("fake"), atom(f.Capability.Module+"."+f.Capability.Name), tables, entries))
+	}
 	return sb.String()
+}
+
+// table is a table's form: (table M.T (id f) (created f)? (updated f)? (unique f…)?
+// (ref f M.T rule?)… (insert f…)).
+func table(t *Table) *sx {
+	items := []*sx{atom("table"), atom(t.Module + "." + t.Name), atoms("id", t.IDField)}
+	if t.Created != "" {
+		items = append(items, atoms("created", t.Created))
+	}
+	if t.Updated != "" {
+		items = append(items, atoms("updated", t.Updated))
+	}
+	if len(t.Unique) > 0 {
+		items = append(items, atoms(append([]string{"unique"}, t.Unique...)...))
+	}
+	for _, f := range t.Record.Fields {
+		if r := t.Refs[f.Name]; r != "" {
+			ref := []string{"ref", f.Name, r}
+			if del := t.OnDelete[f.Name]; del != "" {
+				ref = append(ref, del)
+			}
+			items = append(items, atoms(ref...))
+		}
+	}
+	return list(2, append(items, atoms(append([]string{"insert"}, t.InsertFields...)...))...)
 }
 
 // ---- S-expression layout
@@ -435,6 +454,8 @@ func (d *dumper) expr(e Expr) *sx {
 		return list(1, atom("test-run"), d.expr(x.Task))
 	case *TestTrace:
 		return atoms("test-trace")
+	case *TestFake:
+		return atoms("test-fake", x.Fake.Capability.Module+"."+x.Fake.Capability.Name)
 	case *TestEq:
 		return list(1, atom("test-eq"), d.expr(x.Left), d.expr(x.Right))
 	case *CapCall:

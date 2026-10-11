@@ -106,6 +106,17 @@ func dump(sb *strings.Builder, n any) {
 		fmt.Fprintf(sb, "(capability %s", x.Name)
 		dumpList(sb, x.Entries)
 		sb.WriteByte(')')
+	case *FakeDecl:
+		fmt.Fprintf(sb, "(fake %s", x.Name)
+		for _, t := range x.Tables {
+			sb.WriteByte(' ')
+			dump(sb, t)
+		}
+		for _, e := range x.Entries {
+			sb.WriteByte(' ')
+			dump(sb, e)
+		}
+		sb.WriteByte(')')
 	case *SessionDecl:
 		sb.WriteString("(session")
 		dumpList(sb, x.Fields)

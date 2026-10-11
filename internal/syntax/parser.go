@@ -142,7 +142,7 @@ func (p *Parser) restore(st LexState, tok Token) {
 }
 
 var declKeywords = map[string]bool{"module": true, "import": true, "type": true, "page": true, "msg": true,
-	"form": true, "table": true, "capability": true, "session": true, "login": true, "test": true}
+	"form": true, "table": true, "capability": true, "fake": true, "session": true, "login": true, "test": true}
 
 func (p *Parser) expect(k Kind, what string) Token {
 	if p.tok.Kind != k {
@@ -286,17 +286,9 @@ func (p *Parser) parseDecl() Decl {
 		d.Span = p.spanFrom(start)
 		return d
 	case p.atKeyword("table"):
-		p.advance()
-		d := &TableDecl{Name: p.expect(UIdent, "table name").Text}
-		for p.at(At) {
-			d.Attrs = append(d.Attrs, p.parseAttr())
-		}
-		p.expect(LBrace, "`{`")
-		pop := p.in("a table field")
-		d.Fields = p.parseFieldList(RBrace, true)
-		pop()
-		d.Span = p.spanFrom(start)
-		return d
+		return p.parseTableDecl()
+	case p.atKeyword("fake") && !(p.sigMode && p.peekIsColon()): // stdlib Test's `fake : …` is a value
+		return p.parseFakeDecl()
 	case p.atKeyword("capability"):
 		p.advance()
 		d := &CapDecl{Name: p.expect(UIdent, "capability name").Text}
@@ -339,6 +331,125 @@ func (p *Parser) parseDecl() Decl {
 	p.errorAt(p.tok, "expected a declaration, got "+describe(p.tok))
 	p.skipToDecl()
 	return nil
+}
+
+// parseTableDecl parses `table T [@renamed "Old"] { fields }` at `table` (a keyword at the top
+// level, an ordinary name inside a `fake`).
+func (p *Parser) parseTableDecl() *TableDecl {
+	start := p.advance()
+	d := &TableDecl{Name: p.expect(UIdent, "table name").Text}
+	for p.at(At) {
+		d.Attrs = append(d.Attrs, p.parseAttr())
+	}
+	p.expect(LBrace, "`{`")
+	pop := p.in("a table field")
+	d.Fields = p.parseFieldList(RBrace, true)
+	pop()
+	d.Span = p.spanFrom(start)
+	return d
+}
+
+// fakeDeclWords are the declaration keywords that, followed by a name, a string or `{`, start a
+// declaration a `fake` cannot hold (`type Card = …` inside `fake Stripe { … }`).
+var fakeDeclWords = map[string]bool{"module": true, "import": true, "type": true, "page": true, "msg": true,
+	"form": true, "capability": true, "fake": true, "session": true, "test": true}
+
+// parseFakeDecl parses `fake Cap { … }`: inside the braces, in any order, `table T { … }`
+// declarations and one definition per entry of the capability, `name args = body`, written
+// without a signature (the capability's entry type is its signature).
+func (p *Parser) parseFakeDecl() Decl {
+	start := p.advance()
+	nameTok := p.expect(UIdent, "capability name")
+	d := &FakeDecl{Name: nameTok.Text, NameSpan: p.spanTok(nameTok)}
+	if !p.at(LBrace) {
+		p.errorAt(p.tok, "expected `{` after `fake "+d.Name+"`: a fake holds its tables and one definition per entry of the capability, got "+describe(p.tok))
+		d.Span = p.spanFrom(start)
+		return d
+	}
+	p.advance()
+	defer p.in("`fake " + d.Name + "`")()
+	for {
+		p.skipNL()
+		if p.at(RBrace) {
+			p.advance()
+			break
+		}
+		if p.at(EOF) {
+			p.errorAt(p.tok, "unterminated `fake "+d.Name+"`: expected `}`")
+			break
+		}
+		before := p.tok
+		switch {
+		case (p.at(LIdent) && p.tok.Text == "table" || p.atKeyword("table")) && p.peekIs(UIdent):
+			d.Tables = append(d.Tables, p.parseTableDecl())
+		case p.at(LIdent) && fakeDeclWords[p.tok.Text] && (p.peekIs(UIdent) || p.peekIs(String) || p.peekIs(LBrace)):
+			p.errorAt(p.tok, "a fake holds only `table` declarations and entry definitions; `"+p.tok.Text+"` declarations belong at the top level of the module")
+			p.skipFakeItem()
+		case p.at(LIdent) && p.peekIsColon():
+			p.errorAt(p.tok, "a fake's entry takes its type from the capability: write `"+p.tok.Text+" args = …` without a signature")
+			p.skipFakeItem()
+		case p.at(LIdent):
+			d.Entries = append(d.Entries, p.parseFakeEntry())
+		default:
+			p.errorAt(p.tok, "expected a `table` declaration or an entry definition (`name args = …`), got "+describe(p.tok))
+			p.skipFakeItem()
+		}
+		if !p.at(NL) && !p.at(RBrace) && !p.at(EOF) {
+			p.errorAt(p.tok, "expected end of line, got "+describe(p.tok))
+			p.skipFakeItem()
+		}
+		if p.tok == before { // no progress: avoid an infinite loop
+			p.advance()
+		}
+	}
+	d.Span = p.spanFrom(start)
+	return d
+}
+
+// parseFakeEntry parses `name params = body` inside a fake.
+func (p *Parser) parseFakeEntry() *ValueDecl {
+	start := p.advance()
+	d := &ValueDecl{Name: start.Text}
+	defer p.in("the definition of `" + start.Text + "`")()
+	for p.at(LIdent) {
+		t := p.advance()
+		id := &Ident{Name: t.Text}
+		id.Span = p.spanTok(t)
+		d.Params = append(d.Params, id)
+	}
+	p.expect(Equal, "`=`")
+	p.skipNL()
+	d.Body = p.parseExpr()
+	d.Span = p.spanFrom(start)
+	return d
+}
+
+// skipFakeItem recovers inside a fake: skip to the end of the line, past any braces opened on
+// it, stopping before the fake's own closing brace.
+func (p *Parser) skipFakeItem() {
+	depth := 0
+	for !p.at(EOF) {
+		switch {
+		case p.at(LBrace):
+			depth++
+		case p.at(RBrace):
+			if depth == 0 {
+				return
+			}
+			depth--
+		case p.at(NL) && depth == 0:
+			return
+		}
+		p.advance()
+	}
+}
+
+// peekIs reports whether the token after the current one is of kind k.
+func (p *Parser) peekIs(k Kind) bool {
+	st, tok := p.mark()
+	defer p.restore(st, tok)
+	p.advance()
+	return p.at(k)
 }
 
 // parseValueDecl handles `name : Type NL name params = expr`, and in sigMode a bare signature.

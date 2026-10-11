@@ -245,6 +245,11 @@ func (l *lowerer) app(fn syntax.Expr, args []syntax.Expr, piped Expr, t types.Ty
 		}
 		return all
 	}
+	if piped == nil {
+		if tf := l.testFake(fn, args, t); tf != nil {
+			return tf
+		}
+	}
 	if h := l.effHead(fn); h != nil {
 		return l.special(h, l.lowerArgs(args, piped), t)
 	}

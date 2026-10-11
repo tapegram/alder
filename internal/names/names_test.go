@@ -318,3 +318,82 @@ func TestResolve_CapabilityNamedLikeModule(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func testStd(t *testing.T) map[string]*syntax.Module {
+	s := std(t)
+	tm, ds := syntax.ParseSignatures("Test.alder", []byte("module Test\n\nrun : Task a -> Task a\n-- special form\nfake : Capability -> Task Unit\n"))
+	if len(ds) > 0 {
+		t.Fatal(ds[0].Message)
+	}
+	s["Test"] = tm
+	m, _ := syntax.ParseSignatures("Prelude.alder", []byte("module Prelude\ntype Int\ntype Text\ntype Unit\ntype Bool = True | False\ntype List a\ntype Maybe a = Just a | Nothing\ntype Html a\ntype Query a\ntype Task a\ntype Result e a = Ok a | Err e\n"))
+	s["Prelude"] = m
+	return s
+}
+
+const paymentsSrc = "module Payments\n\ntype ChargeId = brand Text\n\ncapability Stripe {\n  charge : { cents: Int } -> Task ChargeId,\n}\n\nfake Stripe {\n  table Charge {\n    id: ChargeId @id,\n    cents: Int,\n  }\n\n  charge args = Task.succeed (ChargeId \"x\")\n}\n\ntotal : Query Int\ntotal = Query.succeed 1\n\ntest \"own\" = {\n  let _ <- Test.fake Stripe\n  Task.succeed (Charge.cents == Charge.cents)\n}\n"
+
+// A fake's tables are tables of its module (`Payments.Charge`), its name resolves as the
+// capability's, and `Test.fake`'s argument is a capability reference.
+func TestResolve_Fake(t *testing.T) {
+	pay := parse(t, "app/Payments.alder", paymentsSrc)
+	shop := parse(t, "app/Shop.alder", "module Shop\n\nimport Payments\n\ntest \"t\" = {\n  let _ <- Test.fake Stripe\n  let _ <- Test.fake Payments.Stripe\n  let cs <- Db.from Payments.Charge |> Db.all\n  Task.succeed True\n}\n")
+	prog, bag := Build([]*syntax.Module{pay, shop}, testStd(t))
+	prog.Resolve(bag)
+	for _, d := range bag.Items {
+		if d.Severity == "error" && !strings.Contains(d.Message, "Db") {
+			t.Fatalf("unexpected: %s", codes(bag))
+		}
+	}
+	fd := pay.Decls[2].(*syntax.FakeDecl)
+	if want := (syntax.Ref{Kind: syntax.RefCapability, Module: "Payments", Name: "Payments.Stripe"}); fd.Ref != want {
+		t.Fatalf("fake ref %+v", fd.Ref)
+	}
+	blk := shop.Decls[0].(*syntax.TestDecl).Body.(*syntax.Block)
+	for i := 0; i < 2; i++ {
+		arg := blk.Stmts[i].Expr.(*syntax.App).Args[0].(*syntax.CtorRef)
+		if want := (syntax.Ref{Kind: syntax.RefCapability, Module: "Payments", Name: "Payments.Stripe"}); arg.Ref != want {
+			t.Fatalf("Test.fake arg %d ref %+v", i, arg.Ref)
+		}
+	}
+	// the column inside the module resolves
+	own := pay.Decls[4].(*syntax.TestDecl).Body.(*syntax.Block)
+	col := own.Result.(*syntax.App).Args[0].(*syntax.BinOp).L.(*syntax.Var)
+	if col.Ref.Kind != syntax.RefColumn {
+		t.Fatalf("Charge.cents ref %+v", col.Ref)
+	}
+}
+
+// `Capability` is a name only the stdlib's Test.fake signature uses: resolving the stdlib
+// reports nothing for it, a program naming it gets an ordinary unknown type, and a program
+// declaring its own `Capability` type is unaffected.
+func TestResolve_CapabilityNameIsStdlibOnly(t *testing.T) {
+	n := parse(t, "app/N.alder", "module N\n\ny : Capability -> Int\ny c = 1\n")
+	prog, bag := Build([]*syntax.Module{n}, testStd(t))
+	prog.Resolve(bag)
+	if got := codes(bag); got != "E0002:unknown type `Capability`" {
+		t.Fatalf("got %q", got)
+	}
+	m := parse(t, "app/M.alder", "module M\n\ntype Capability = { n: Int }\n\nx : Capability -> Int\nx c = c.n\n")
+	prog, bag = Build([]*syntax.Module{m}, testStd(t))
+	prog.Resolve(bag)
+	if got := codes(bag); got != "" {
+		t.Fatalf("got %q", got)
+	}
+	if ref := m.Decls[1].(*syntax.ValueDecl).Sig.(*syntax.FunType).Params[0].(*syntax.TypeName).Ref; ref != (syntax.Ref{Kind: syntax.RefType, Module: "M", Name: "Capability"}) {
+		t.Fatalf("M's Capability ref %+v", ref)
+	}
+}
+
+func TestResolve_FakeErrors(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{"module M\n\nfake Stripe {\n  charge args = Task.succeed 1\n}\n", "E0002:`fake Stripe`: there is no capability `Stripe`; a fake implements a capability declared in its module (`capability Stripe { … }`)"},
+		{"module M\n\ntest \"t\" = {\n  let _ <- Test.fake Paypal\n  Task.succeed True\n}\n", "E0002:`Test.fake Paypal`: there is no capability `Paypal` in scope"},
+	} {
+		prog, bag := Build([]*syntax.Module{parse(t, "app/M.alder", tc.src)}, testStd(t))
+		prog.Resolve(bag)
+		if got := codes(bag); !strings.Contains(got, tc.want) {
+			t.Errorf("%q: got %s, want %s", tc.src, got, tc.want)
+		}
+	}
+}

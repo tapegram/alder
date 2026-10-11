@@ -17,10 +17,11 @@ import (
 func Lower(prog *names.Program, res *check.Result) *Program {
 	l := &lowerer{prog: prog, res: res, out: &Program{},
 		records: map[string]*RecordType{}, unions: map[string]*UnionType{}, values: map[string]*Value{},
-		pages: map[string]*Page{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, tables: map[string]*Table{}, caps: map[string]*Capability{}, inserts: map[*types.Record]string{}, insertRTs: map[*Table]*RecordType{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, brands: map[string]*Brand{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
+		pages: map[string]*Page{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, tables: map[string]*Table{}, caps: map[string]*Capability{}, fakes: map[*syntax.FakeDecl]*Fake{}, fakesByCap: map[string]*Fake{}, inserts: map[*types.Record]string{}, insertRTs: map[*Table]*RecordType{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, brands: map[string]*Brand{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
 	l.declareTypes()
 	l.declareValues()
 	l.declareCaps() // before bodies: a body's CapCall points at its Capability
+	l.declareFakes()
 	for _, d := range l.defaults {
 		l.enter(d.module)
 		d.rt.Fields[d.index].Default = l.expr(d.field.Default)
@@ -101,6 +102,10 @@ type lowerer struct {
 	msgs    map[string]*Msg        // "Owner.Msg": owner is the page module or App
 	tables  map[string]*Table      // "Module.Table"
 	caps    map[string]*Capability // "Module.Capability"
+	// fakes are the lowered `fake` declarations (made with their tables in declareTypes),
+	// fakesByCap the same by capability key "Module.Capability", for Test.fake
+	fakes      map[*syntax.FakeDecl]*Fake
+	fakesByCap map[string]*Fake
 	// inserts maps the erased (anonymous) record of a table's `Insert t` to the table;
 	// insertRTs holds the RecordType of each, made on first use (insertRecord)
 	inserts   map[*types.Record]string // → "Module.Table"
@@ -430,6 +435,58 @@ func (l *lowerer) declareTypes() {
 			l.recordFields(name, rt, t, fields)
 			return rt
 		}
+		// lowerTable lowers table d, whose record is rt (an app table's is declared in the
+		// module's Types; a fake's is not: it exists only in test builds)
+		lowerTable := func(d *syntax.TableDecl, rt *RecordType) *Table {
+			info := l.res.Tables[key(name, d.Name)]
+			t := &Table{Module: name, Name: d.Name, Record: rt, IDField: info.IDField}
+			for _, f := range info.Insert.Fields {
+				t.InsertFields = append(t.InsertFields, f.Name)
+			}
+			for _, a := range d.Attrs {
+				if a.Name == "renamed" {
+					t.RenamedFrom = a.Arg
+				}
+			}
+			for i, f := range d.Fields {
+				if i >= len(rt.Fields) || rt.Fields[i].Name != f.Name {
+					panic(fmt.Sprintf("ir: table %s.%s: field %s out of step with its record", name, d.Name, f.Name))
+				}
+				if f.Default != nil {
+					lit, ok := SQLLiteral(f.Default)
+					if !ok {
+						panic(fmt.Sprintf("ir: table %s.%s: the default of %s is not a literal (the checker's E0022)", name, d.Name, f.Name))
+					}
+					rt.Fields[i].DefaultLit = &lit
+				}
+				for _, a := range f.Attrs {
+					if a.Name == "renamed" {
+						rt.Fields[i].RenamedFrom = a.Arg
+					}
+				}
+			}
+			for _, f := range d.Fields {
+				for _, a := range f.Attrs {
+					switch a.Name {
+					case "created":
+						t.Created = f.Name
+					case "updated":
+						t.Updated = f.Name
+					case "unique":
+						t.Unique = append(t.Unique, f.Name)
+					case "ref":
+						refs = append(refs, pendingRef{t, f.Name, m, a.Arg})
+					case "cascade", "setNull":
+						if t.OnDelete == nil {
+							t.OnDelete = map[string]string{}
+						}
+						t.OnDelete[f.Name] = a.Name
+					}
+				}
+			}
+			l.tables[key(name, d.Name)] = t
+			return t
+		}
 		for _, d := range m.Decls {
 			switch d := d.(type) {
 			case *syntax.TypeDecl:
@@ -451,55 +508,17 @@ func (l *lowerer) declareTypes() {
 					unions = append(unions, pendingUnion{ut, l.res.Decls[key(name, d.Name)].(*types.Union)})
 				}
 			case *syntax.TableDecl:
-				rt := addRecord(d.Name, l.res.Decls[key(name, d.Name)], d.Fields)
-				info := l.res.Tables[key(name, d.Name)]
-				t := &Table{Module: name, Name: d.Name, Record: rt, IDField: info.IDField}
-				for _, f := range info.Insert.Fields {
-					t.InsertFields = append(t.InsertFields, f.Name)
-				}
-				for _, a := range d.Attrs {
-					if a.Name == "renamed" {
-						t.RenamedFrom = a.Arg
-					}
-				}
-				for i, f := range d.Fields {
-					if i >= len(rt.Fields) || rt.Fields[i].Name != f.Name {
-						panic(fmt.Sprintf("ir: table %s.%s: field %s out of step with its record", name, d.Name, f.Name))
-					}
-					if f.Default != nil {
-						lit, ok := SQLLiteral(f.Default)
-						if !ok {
-							panic(fmt.Sprintf("ir: table %s.%s: the default of %s is not a literal (the checker's E0022)", name, d.Name, f.Name))
-						}
-						rt.Fields[i].DefaultLit = &lit
-					}
-					for _, a := range f.Attrs {
-						if a.Name == "renamed" {
-							rt.Fields[i].RenamedFrom = a.Arg
-						}
-					}
-				}
-				for _, f := range d.Fields {
-					for _, a := range f.Attrs {
-						switch a.Name {
-						case "created":
-							t.Created = f.Name
-						case "updated":
-							t.Updated = f.Name
-						case "unique":
-							t.Unique = append(t.Unique, f.Name)
-						case "ref":
-							refs = append(refs, pendingRef{t, f.Name, m, a.Arg})
-						case "cascade", "setNull":
-							if t.OnDelete == nil {
-								t.OnDelete = map[string]string{}
-							}
-							t.OnDelete[f.Name] = a.Name
-						}
-					}
-				}
-				l.tables[key(name, d.Name)] = t
+				t := lowerTable(d, addRecord(d.Name, l.res.Decls[key(name, d.Name)], d.Fields))
 				l.out.Tables = append(l.out.Tables, t)
+			case *syntax.FakeDecl:
+				f := &Fake{Module: name}
+				for _, td := range d.Tables {
+					rt := &RecordType{Module: name, Name: td.Name}
+					l.records[key(name, td.Name)] = rt
+					l.recordFields(name, rt, l.res.Decls[key(name, td.Name)], td.Fields)
+					f.Tables = append(f.Tables, lowerTable(td, rt))
+				}
+				l.fakes[d] = f
 			case *syntax.FormDecl:
 				f := &Form{Module: name, Name: d.Name, Record: addRecord(d.Name, l.res.Decls[key(name, d.Name)], d.Fields)}
 				l.forms[key(name, d.Name)] = f
@@ -719,6 +738,45 @@ func (l *lowerer) declareCaps() {
 			}
 			l.caps[key(name, cd.Name)] = c
 			l.out.Caps = append(l.out.Caps, c)
+		}
+	}
+}
+
+// declareFakes completes each fake made in declareTypes: its Capability and its entries, in the
+// capability's entry order, whose bodies are lowered with the values'.
+func (l *lowerer) declareFakes() {
+	for _, name := range l.prog.Order {
+		for _, d := range l.prog.Modules[name].Decls {
+			fd, ok := d.(*syntax.FakeDecl)
+			if !ok {
+				continue
+			}
+			f := l.fakes[fd]
+			if f != nil {
+				f.Capability = l.caps[fd.Ref.Name]
+			}
+			if f == nil || f.Capability == nil || f.Capability.Module != name {
+				panic(fmt.Sprintf("ir: fake %s at %s implements no capability of its module (the checker's E0020)", fd.Name, pos(fd.Span)))
+			}
+			defs := map[string]*syntax.ValueDecl{}
+			for _, e := range fd.Entries {
+				defs[e.Name] = e
+			}
+			for _, e := range f.Capability.Entries {
+				vd := defs[e.Name]
+				if vd == nil {
+					panic(fmt.Sprintf("ir: fake %s lacks entry %s (the checker's E0003)", fd.Name, e.Name))
+				}
+				v := &Value{Module: name, Name: e.Name, Type: e.Type}
+				v.Effect, v.IsEffect = effectKind(finalResult(e.Type))
+				for _, p := range vd.Params {
+					v.Params = append(v.Params, &Param{Name: p.Name, Type: l.bindType(p)})
+				}
+				f.Entries = append(f.Entries, v)
+				l.bodies = append(l.bodies, pendingBody{v, vd})
+			}
+			l.fakesByCap[fd.Ref.Name] = f
+			l.out.Fakes = append(l.out.Fakes, f)
 		}
 	}
 }

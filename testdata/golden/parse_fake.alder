@@ -1,0 +1,23 @@
+module Payments
+
+capability Stripe {
+  charge : { cents: Int } -> Task (Result Text ChargeId),
+  now : Query Int,
+}
+
+fake Stripe {
+  table Charge {
+    id: ChargeId @id,
+    cents: Int,
+    refunded: Bool = False,
+  }
+
+  charge args = {
+    let id <- Db.insert Charge { cents: args.cents }
+    Task.succeed (Ok id)
+  }
+  now = Query.succeed 1
+}
+
+after : Int
+after = 1

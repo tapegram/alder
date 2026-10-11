@@ -58,31 +58,11 @@ func (mc *modCtx) checkBodies() {
 			if !ok || d.Body == nil {
 				continue
 			}
-			mc.holes = nil
-			env := newEnv()
-			eff := effect{}
-			body := sig
-			if fn, isFn := sig.(*types.Fun); isFn {
-				if len(d.Params) > len(fn.Params) {
-					c.errorf(diag.Arity, d.Span, "`%s` takes %d parameters but %d are named", d.Name, len(fn.Params), len(d.Params))
-					continue
-				}
-				for i, p := range d.Params {
-					c.bind(env, p, p.Name, fn.Params[i])
-				}
-				if len(d.Params) < len(fn.Params) {
-					body = &types.Fun{Params: fn.Params[len(d.Params):], Result: fn.Result}
-				} else {
-					body = fn.Result
-				}
-			} else if len(d.Params) > 0 {
-				c.errorf(diag.Arity, d.Span, "`%s` has type `%s`, which takes no parameters", d.Name, types.String(sig))
-				continue
-			}
 			mc.inUpdate = (mc.page != nil && d.Name == "update") || (mc.isApp && d.Name == "update")
-			mc.check(d.Body, body, env, eff)
+			mc.checkValue(d, sig)
 			mc.inUpdate = false
-			mc.reportHoles()
+		case *syntax.FakeDecl:
+			mc.checkFakeEntries(d)
 		case *syntax.TestDecl:
 			mc.holes = nil
 			mc.inTest, mc.testBody, mc.testName = true, d.Body, d.Name
@@ -102,6 +82,33 @@ func (mc *modCtx) checkBodies() {
 		}
 	}
 	mc.checkPage() // Task 11; no-op for non-page modules
+}
+
+// checkValue checks the body of value d against its signature sig.
+func (mc *modCtx) checkValue(d *syntax.ValueDecl, sig types.Type) {
+	c := mc.c
+	mc.holes = nil
+	env := newEnv()
+	body := sig
+	if fn, isFn := sig.(*types.Fun); isFn {
+		if len(d.Params) > len(fn.Params) {
+			c.errorf(diag.Arity, d.Span, "`%s` takes %d parameters but %d are named", d.Name, len(fn.Params), len(d.Params))
+			return
+		}
+		for i, p := range d.Params {
+			c.bind(env, p, p.Name, fn.Params[i])
+		}
+		if len(d.Params) < len(fn.Params) {
+			body = &types.Fun{Params: fn.Params[len(d.Params):], Result: fn.Result}
+		} else {
+			body = fn.Result
+		}
+	} else if len(d.Params) > 0 {
+		c.errorf(diag.Arity, d.Span, "`%s` has type `%s`, which takes no parameters", d.Name, types.String(sig))
+		return
+	}
+	mc.check(d.Body, body, env, effect{})
+	mc.reportHoles()
 }
 
 // inferSig checks the body of a value that has no signature and reports E0007 with the inferred
@@ -915,6 +922,10 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			c.errorf(diag.TypeMismatch, x.Span, "`Test.%s` is only available inside a `test`", x.Ref.Name)
 			return types.Err
 		}
+		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Test" && x.Ref.Name == "fake" { // applied, inferApp takes it
+			c.errorf(diag.TypeMismatch, x.Span, "`Test.fake` wants a capability name, got an expression")
+			return types.Err
+		}
 		if x.Ref.Module == "Session" && x.Ref.Name == "put" {
 			c.usesSessionPut = true
 		}
@@ -927,6 +938,7 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			c.forwardRef = x.Ref.Name // a sig-less value of this module not inferred yet
 		}
 	case syntax.RefColumn:
+		mc.fakeTableUse(c.key(x.Ref.Module, x.Module), x.Module, x.Span)
 		if info, ok := c.tables[c.key(x.Ref.Module, x.Module)]; ok {
 			return &types.App{Con: "Column", Args: []types.Type{info.Record, info.Columns[x.Name]}}
 		}
@@ -971,6 +983,7 @@ func (mc *modCtx) inferCtor(x *syntax.CtorRef, applied bool) types.Type {
 		}
 		return &types.Fun{Params: []types.Type{info.Params}, Result: types.Page}
 	case syntax.RefTable:
+		mc.fakeTableUse(c.key(x.Ref.Module, x.Ref.Name), x.Ref.Name, x.Span)
 		if info, ok := c.tables[c.key(x.Ref.Module, x.Ref.Name)]; ok {
 			return &types.App{Con: "Table", Args: []types.Type{info.Record}}
 		}
@@ -1135,6 +1148,9 @@ type pipeArg struct {
 // inferApp types an application; want, when non-nil, is the type the context expects and is pushed into the result.
 func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, want types.Type) types.Type {
 	c := mc.c
+	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" && v.Ref.Name == "fake" {
+		return mc.inferTestFake(x, v, pipe)
+	}
 	// constructor applied to a record literal: check against the payload (form field implicit)
 	if ct, ok := x.Fn.(*syntax.CtorRef); ok && len(x.Args) == 1 && pipe == nil {
 		if lit, isLit := x.Args[0].(*syntax.RecordLit); isLit {

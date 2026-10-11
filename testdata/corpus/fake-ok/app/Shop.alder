@@ -1,0 +1,23 @@
+module Shop
+
+import Markdown
+import Payments
+import User
+
+-- Another module's test installs the fakes by name, qualified or not, and reads the
+-- fake's table back as `Payments.Charge`; `Test.fake` may be a step of `Test.run`'s task.
+test "installs and reads back" = {
+  let _ <- Test.fake Stripe
+  let _ <- Test.fake Markdown
+  let user <- Db.insert User.User { name: "Ada" }
+  let _ <- Stripe.charge { cents: Int.Positive 5, user: user }
+  let charges <- Db.from Payments.Charge |> Db.all
+  let r <- Test.run {
+    let _ <- Test.fake Payments.Stripe
+    Stripe.charge { cents: Int.Positive 7, user: user }
+  }
+  Task.succeed (List.length charges == 1)
+}
+
+total : List Payments.ChargeId -> Int
+total ids = List.length ids

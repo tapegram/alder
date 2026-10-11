@@ -1,0 +1,96 @@
+(module Markdown)
+(module User)
+(record User.User (id Text) (name Text))
+(module Payments)
+(test "a refund marks the charge" task
+  (bind task _
+    (test-fake Payments.Stripe)
+    (bind task user : Text
+      (db-insert User.User (record (name "Ada")))
+      (bind task charged : Result Text Text
+        (cap Payments.Stripe charge (record (cents 300) (user (var user))))
+        (bind task refunded : Result Text Unit
+          (match union (var charged)
+            (case Ok (bind _m1 value : Text)
+              (let id : Text
+                (var _m1)
+                (cap Payments.Stripe refund (record (id (var id))))))
+            (case Err (bind _m2 value : Text)
+              (let e : Text
+                (var _m2)
+                (pure task (ctor Prelude.Result.Err (record (value (var e))))))))
+          (bind task left : Int
+            (db-select Payments.Charge
+              (where (cond eq (col Payments.Charge refunded) True))
+              count)
+            (pure task (test-eq (var left) 1))))))))
+(module Shop)
+(value Shop.total : List Text -> Int (ids) (call (std List.length) (var ids)))
+(test "installs and reads back" task
+  (bind task _
+    (test-fake Payments.Stripe)
+    (bind task _
+      (test-fake Markdown.Markdown)
+      (bind task user : Text
+        (db-insert User.User (record (name "Ada")))
+        (bind task _
+          (cap Payments.Stripe charge (record (cents 5) (user (var user))))
+          (bind task charges : List Payments.Charge
+            (db-select Payments.Charge all)
+            (bind task r : { value: Result Text (Result Text Text), trace: List Text }
+              (test-run
+                (bind task _
+                  (test-fake Payments.Stripe)
+                  (cap Payments.Stripe charge
+                    (record (cents 7) (user (var user))))))
+              (pure task (test-eq (call (std List.length) (var charges)) 1)))))))))
+(table User.User (id id) (insert name))
+(capability Markdown.Markdown (render Text -> Query (Html Never)))
+(capability Payments.Stripe
+  (charge { cents: Int, user: Text } -> Task (Result Text Text))
+  (refund { id: Text } -> Task (Result Text Unit))
+  (balance Query Int))
+(fake Markdown.Markdown
+  (tables)
+  (entries
+    (entry Markdown.render : Text -> Query (Html Never) (text)
+      (pure query (call (std Html.text) (var text))))))
+(fake Payments.Stripe
+  (tables
+    (record Payments.Charge
+      (id Text)
+      (cents Int)
+      (user Text)
+      (refunded Bool = False))
+    (table Payments.Charge
+      (id id)
+      (ref user User.User)
+      (insert cents user refunded)))
+  (entries
+    (entry Payments.charge : { cents: Int, user: Text } -> Task (Result Text Text) (args)
+      (bind task id : Text
+        (db-insert Payments.Charge
+          (record
+            (cents (field cents (var args)))
+            (user (field user (var args)))
+            (refunded False)))
+        (pure task (ctor Prelude.Result.Ok (record (value (var id)))))))
+    (entry Payments.refund : { id: Text } -> Task (Result Text Unit) (args)
+      (bind task found : Maybe Charge
+        (db-get Payments.Charge (field id (var args)))
+        (match union (var found)
+          (case Just (bind _m1 value : Charge)
+            (let c : Charge
+              (var _m1)
+              (bind task _
+                (db-update Payments.Charge
+                  (field id (var c))
+                  (lambda (x : Charge) (update (var x) (refunded True))))
+                (pure task (ctor Prelude.Result.Ok (record (value ())))))))
+          (case Nothing
+            (pure task
+              (ctor Prelude.Result.Err (record (value "no such charge"))))))))
+    (entry Payments.balance : Query Int ()
+      (db-select Payments.Charge
+        (where (cond eq (col Payments.Charge refunded) False))
+        count))))

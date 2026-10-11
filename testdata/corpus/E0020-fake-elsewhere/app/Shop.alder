@@ -1,0 +1,8 @@
+module Shop
+
+import Payments
+
+-- A fake lives beside its capability, in `app/Payments.alder`.
+fake Stripe {
+  charge args = Task.succeed (Ok "ch_1")
+}

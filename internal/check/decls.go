@@ -65,6 +65,8 @@ func (c *Checker) declareTypeNames(m *syntax.Module) {
 				continue
 			}
 			c.types[c.key(m.Name, d.Name)] = &types.Record{Module: m.Name, Name: d.Name}
+		case *syntax.FakeDecl:
+			c.declareFake(m, d, dup, &cur)
 		case *syntax.ValueDecl:
 			dup(d.Name, d.Span)
 		case *syntax.MsgDecl:
@@ -81,12 +83,21 @@ func (c *Checker) declareTypeNames(m *syntax.Module) {
 }
 
 // live returns m's declarations without the duplicates declareTypeNames reported:
-// the first declaration of a name wins and the others are never defined or checked.
+// the first declaration of a name wins and the others are never defined or checked. The
+// tables of a `fake` come right after it, so every table pass sees them.
 func (c *Checker) live(m *syntax.Module) []syntax.Decl {
 	out := make([]syntax.Decl, 0, len(m.Decls))
 	for _, d := range m.Decls {
-		if !c.losers[d] {
-			out = append(out, d)
+		if c.losers[d] {
+			continue
+		}
+		out = append(out, d)
+		if fd, ok := d.(*syntax.FakeDecl); ok { // a fake's tables follow it, as tables of the module
+			for _, t := range fd.Tables {
+				if !c.losers[t] {
+					out = append(out, t)
+				}
+			}
 		}
 	}
 	return out
@@ -144,6 +155,7 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 					return mc.session
 				}
 			}
+			mc.fakeTableUse(c.key(t.Ref.Module, t.Name), t.Name, t.Span)
 			decl, ok := c.types[c.key(t.Ref.Module, t.Name)]
 			if !ok {
 				return types.Err
@@ -366,7 +378,8 @@ func (mc *modCtx) checkAlias(d *syntax.TypeDecl, params map[string]bool) types.T
 
 func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 	c := mc.c
-	if d.Name != mc.m.Name { // reported once here; uses elsewhere point back at it (names)
+	_, fake := c.fakeTables[c.key(mc.m.Name, d.Name)]
+	if d.Name != mc.m.Name && !fake { // reported once here; uses elsewhere point back at it (names); a fake's tables belong to the fake
 		c.errorf(diag.TablePlacement, d.Span, "a table is declared in its own module named after it: `table %s` belongs in `app/%s.alder`", d.Name, d.Name)
 	}
 	rec := c.types[c.key(mc.m.Name, d.Name)].(*types.Record)
@@ -398,7 +411,7 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 					c.errorf(diag.InvalidDecl, f.Span, "`@%s` field must have type `Time`", a.Name)
 				}
 			case "ref":
-				mc.checkRef(f, a, ft)
+				mc.checkRef(f, a, ft, fake)
 			case "renamed":
 				// checkTableAttrs reports a malformed or self-naming `@renamed`
 			case "unique", "cascade", "restrict":
@@ -547,7 +560,9 @@ func (c *Checker) checkDeleteRules(f *syntax.Field) {
 }
 
 // checkRef validates `@ref T` after all tables have placeholders; the referenced table's id type is read from its decl.
-func (mc *modCtx) checkRef(f *syntax.Field, a *syntax.Attr, ft types.Type) {
+// fromFake says the field's table is a fake's: only such a table may refer to a fake's table
+// (E0021 otherwise).
+func (mc *modCtx) checkRef(f *syntax.Field, a *syntax.Attr, ft types.Type, fromFake bool) {
 	c := mc.c
 	// find the table decl named a.Arg in this module or an import
 	var idType types.Type
@@ -557,6 +572,10 @@ func (mc *modCtx) checkRef(f *syntax.Field, a *syntax.Attr, ft types.Type) {
 		}
 		for _, d := range c.live(m) {
 			if td, ok := d.(*syntax.TableDecl); ok && td.Name == a.Arg {
+				if owner, isFake := c.fakeTables[c.key(m.Name, td.Name)]; isFake && !fromFake {
+					c.errorf(FakeTable, a.Span, "`%s` is a fake's table: only tests and `fake %s` may use it", td.Name, owner)
+					return
+				}
 				for _, tf := range td.Fields {
 					for _, ta := range tf.Attrs {
 						if ta.Name == "id" {

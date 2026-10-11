@@ -53,6 +53,23 @@ func (l *lowerer) effHead(fn syntax.Expr) *effHead {
 	return nil
 }
 
+// testFake lowers `Test.fake Cap` (args: the capability name) of type t, or returns nil when fn
+// is not Test.fake. The checker accepted it only applied to a capability with a fake.
+func (l *lowerer) testFake(fn syntax.Expr, args []syntax.Expr, t types.Type) Expr {
+	v, ok := fn.(*syntax.Var)
+	if !ok || v.Ref.Kind != syntax.RefStd || v.Ref.Module != "Test" || v.Ref.Name != "fake" {
+		return nil
+	}
+	var ct *syntax.CtorRef
+	if len(args) == 1 {
+		ct, _ = args[0].(*syntax.CtorRef)
+	}
+	if ct == nil || l.fakesByCap[ct.Ref.Name] == nil {
+		panic(fmt.Sprintf("ir: Test.fake at %s is not applied to a capability with a fake (checker bug)", pos(v.Span)))
+	}
+	return &TestFake{Typed: Typed{t}, Fake: l.fakesByCap[ct.Ref.Name]}
+}
+
 // lowerArgs lowers a head's arguments, then piped. A table argument (`Todo` in `Db.get Todo`)
 // becomes nil: the node takes its table from the checked type.
 func (l *lowerer) lowerArgs(args []syntax.Expr, piped Expr) []Expr {

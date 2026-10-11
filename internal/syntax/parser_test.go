@@ -244,3 +244,44 @@ func TestParse_Renamed(t *testing.T) {
 		t.Errorf("form: %+v", diags)
 	}
 }
+
+func TestParse_FakeErrors(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		// a fake with no body
+		{"module M\n\nfake Stripe\n", "3:12 expected `{` after `fake Stripe`: a fake holds its tables and one definition per entry of the capability, got end of line"},
+		// a non-table declaration inside
+		{"module M\n\nfake Stripe {\n  type Card = { n: Int }\n  charge args = Task.succeed 1\n}\n", "4:3 in `fake Stripe`: a fake holds only `table` declarations and entry definitions; `type` declarations belong at the top level of the module"},
+		// a signature inside
+		{"module M\n\nfake Stripe {\n  charge : Int -> Task Int\n  charge args = Task.succeed 1\n}\n", "4:3 in `fake Stripe`: a fake's entry takes its type from the capability: write `charge args = …` without a signature"},
+		// unterminated
+		{"module M\n\nfake Stripe {\n  now = Query.succeed 1\n", "5:1 in `fake Stripe`: unterminated `fake Stripe`: expected `}`"},
+	} {
+		_, diags := ParseFile("t.alder", []byte(tc.src))
+		var got []string
+		for _, d := range diags {
+			got = append(got, fmt.Sprintf("%d:%d %s", d.Span.Start.Line, d.Span.Start.Col, d.Message))
+		}
+		if !slicesContains(got, tc.want) {
+			t.Errorf("%q: diagnostics %q lack %q", tc.src, got, tc.want)
+		}
+	}
+}
+
+func TestParse_FakeEntriesAndTables(t *testing.T) {
+	src := "module M\n\nfake Stripe {\n  now = Query.succeed 1\n  table Charge {\n    id: ChargeId @id,\n  }\n  charge args = Task.succeed args.cents\n}\n"
+	m, diags := ParseFile("t.alder", []byte(src))
+	if len(diags) != 0 {
+		t.Fatalf("diagnostics: %+v", diags)
+	}
+	fd, ok := m.Decls[0].(*FakeDecl)
+	if !ok || fd.Name != "Stripe" || len(fd.Tables) != 1 || len(fd.Entries) != 2 {
+		t.Fatalf("got %#v", m.Decls[0])
+	}
+	if fd.Entries[0].Name != "now" || len(fd.Entries[0].Params) != 0 || fd.Entries[1].Name != "charge" || len(fd.Entries[1].Params) != 1 || fd.Entries[0].Sig != nil {
+		t.Fatalf("entries: %+v %+v", fd.Entries[0], fd.Entries[1])
+	}
+	// `fake` is a keyword only in column 1: a local or field named fake is fine
+	if _, diags := ParseFile("t.alder", []byte("module M\n\nf : Int -> Int\nf fake = fake + 1\n")); len(diags) != 0 {
+		t.Fatalf("fake as a name: %+v", diags)
+	}
+}

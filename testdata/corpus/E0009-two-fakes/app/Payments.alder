@@ -1,0 +1,14 @@
+module Payments
+
+capability Stripe {
+  charge : { cents: Int } -> Task (Result Text Text),
+}
+
+fake Stripe {
+  charge args = Task.succeed (Ok "ch_1")
+}
+
+-- One fake per capability.
+fake Stripe {
+  charge args = Task.succeed (Ok "ch_2")
+}

@@ -2,3 +2,5 @@ module Test
 
 run : Task a -> Task { value: Result Text a, trace: List Text }
 trace : Task (List Text)
+-- special form: the argument is a capability name (one whose module declares a fake)
+fake : Capability -> Task Unit

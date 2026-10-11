@@ -1,0 +1,1 @@
+app/Payments.alder:9:22 E0003 `Test.fake` wants a capability with a `fake`: `Stripe` has none

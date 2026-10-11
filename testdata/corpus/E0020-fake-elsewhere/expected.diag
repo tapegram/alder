@@ -1,0 +1,1 @@
+app/Shop.alder:6:1 E0020 `fake Stripe` must be declared in the module that declares `capability Stripe`

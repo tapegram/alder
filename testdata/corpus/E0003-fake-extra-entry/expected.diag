@@ -1,0 +1,1 @@
+app/Payments.alder:9:3 E0003 `fake Stripe` defines `cancel`, which `capability Stripe` has no entry for

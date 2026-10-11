@@ -766,3 +766,44 @@ func TestParseHeader_BOM(t *testing.T) {
 		t.Fatalf("%q %q %q %q %v", name, from, to, drops, err)
 	}
 }
+
+// A fake's tables are test-only: they are not in Program.Tables, so the schema (and its hash,
+// which migrations and E0019 compare) of an app with a fake is the schema without it.
+func TestFromProgramIgnoresFakeTables(t *testing.T) {
+	const capability = "module Payments\n\nimport User\n\ntype ChargeId = brand Text\n\ncapability Stripe {\n  charge : { cents: Int } -> Task (Result Text ChargeId),\n}\n"
+	const fake = "\nfake Stripe {\n  table Charge {\n    id: ChargeId @id,\n    cents: Int,\n    user: Maybe User.UserId @ref User,\n  }\n\n  charge args = {\n    let id <- Db.insert Charge { cents: args.cents, user: Nothing }\n    Task.succeed (Ok id)\n  }\n}\n"
+	const user = "module User\n\ntype UserId = brand Text\n\ntable User {\n  id: UserId @id,\n  name: Text,\n}\n"
+	write := func(payments string) string {
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for name, src := range map[string]string{"User": user, "Payments": payments} {
+			if err := os.WriteFile(filepath.Join(dir, "app", name+".alder"), []byte(src), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return dir
+	}
+	with := programIR(t, write(capability+fake))
+	without := programIR(t, write(capability))
+	if len(with.Fakes) != 1 || len(with.Fakes[0].Tables) != 1 {
+		t.Fatalf("the fake was not lowered: %+v", with.Fakes)
+	}
+	hw, err := FromProgram(with).Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ho, err := FromProgram(without).Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hw != ho {
+		t.Fatalf("schema hash with a fake %s, without %s", hw, ho)
+	}
+	for _, tb := range FromProgram(with).Tables {
+		if tb.Name == "Charge" {
+			t.Fatal("the fake's table is in the schema")
+		}
+	}
+}

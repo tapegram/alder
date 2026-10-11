@@ -104,6 +104,8 @@ const (
 	StdModule      = "E0017"
 	TablePlacement = "E0018"
 	SchemaChanged  = "E0019" // raised by buildkit.SchemaDrift, not the checker: the tables changed since the last migration
+	FakePlacement  = "E0020" // a `fake` declared outside its capability's module
+	FakeTable      = "E0021" // a fake's table used outside tests and the fake
 	TableDefault   = "E0022"
 	UnreachableArm = "E0310"
 	UnusedImport   = "W0001"
