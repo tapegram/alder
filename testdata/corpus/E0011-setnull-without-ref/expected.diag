@@ -1,0 +1,1 @@
+app/Comment.alder:7:15 E0011 `@setNull` belongs on a `@ref` column, after `@ref Table`

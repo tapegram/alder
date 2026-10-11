@@ -395,7 +395,8 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 			case "unique", "cascade", "restrict":
 				// checkDeleteRules reports a delete rule without `@ref`, before it, or a second one
 			case "setNull":
-				if _, ok := maybeOf(ft); !ok && !types.IsErr(ft) {
+				// without `@ref` the rule itself is the error (checkDeleteRules): no second one here
+				if _, ok := maybeOf(ft); !ok && !types.IsErr(ft) && hasAttr(f, "ref") {
 					c.errorf(diag.TypeMismatch, a.Span, "`@setNull` needs a `Maybe` reference, got `%s`; write `%s: Maybe %s`", types.String(ft), f.Name, types.String(ft))
 				}
 			default:
@@ -989,4 +990,14 @@ func lastDeclLine(m *syntax.Module) int {
 		}
 	}
 	return line
+}
+
+// hasAttr reports whether field f carries attribute name.
+func hasAttr(f *syntax.Field, name string) bool {
+	for _, a := range f.Attrs {
+		if a.Name == name {
+			return true
+		}
+	}
+	return false
 }

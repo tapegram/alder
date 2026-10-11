@@ -1,0 +1,8 @@
+module Comment
+
+type CommentId = brand Text
+
+table Comment {
+  id: CommentId @id,
+  other: Text @setNull,
+}
