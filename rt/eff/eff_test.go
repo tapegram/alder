@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -447,8 +448,46 @@ func TestRunInner_FailureDoesNotRollBack(t *testing.T) {
 }
 
 func TestRunInner_OutsideRunIsInternal(t *testing.T) {
-	if _, err := RunInner(env(&fakeStore{}), Pure(1)); !errors.Is(err, ErrInternal) {
+	e := env(&fakeStore{})
+	if _, err := RunInner(e, Pure(1)); !errors.Is(err, ErrInternal) || !strings.Contains(err.Error(), "outside a running effect") {
 		t.Fatalf("err=%v", err)
+	}
+	// nor after a Run has returned: Run restores the Env
+	if _, err := Run(e, KTask, Pure(0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RunInner(e, Pure(1)); !errors.Is(err, ErrInternal) {
+		t.Fatalf("after Run: err=%v", err)
+	}
+}
+
+// RunInner runs under the kind of the running effect: inside a Query (a fake's Query entry
+// called from a Query) the inner tree runs as a Query, reads and all, and a write it reaches is
+// the usual internal error; inside a Task it runs as a Task.
+func TestRunInner_UnderTheRunningKind(t *testing.T) {
+	s := &fakeStore{}
+	e := env(s)
+	var kinds []Kind
+	read := Call("read", false, func(e *Env) (int, error) { kinds = append(kinds, e.Kind); return 2, nil })
+	outer := Call("outer", false, func(e *Env) (int, error) {
+		v, err := RunInner(e, read)
+		return v * 10, err
+	})
+	v, err := RunQuery(e, Q(outer))
+	if err != nil || v != 20 || !reflect.DeepEqual(kinds, []Kind{KQuery}) {
+		t.Fatalf("query: v=%d err=%v kinds=%v", v, err, kinds)
+	}
+	if !reflect.DeepEqual(e.Trace, []string{"outer", "read"}) || len(s.txs) != 0 {
+		t.Fatalf("query: trace %v txs %+v", e.Trace, s.txs)
+	}
+	write := Call("write", true, func(*Env) (int, error) { return 1, nil })
+	bad := Call("outer", false, func(e *Env) (int, error) { return RunInner(e, write) })
+	if _, err := RunQuery(e, Q(bad)); !errors.Is(err, ErrInternal) || !strings.Contains(err.Error(), `write effect "write" reached from a Query`) {
+		t.Fatalf("a write inside a Query: err=%v", err)
+	}
+	kinds = nil
+	if v, err := Run(e, KTask, Bind(write, func(int) Task[int] { return outer })); err != nil || v != 20 || !reflect.DeepEqual(kinds, []Kind{KTask}) {
+		t.Fatalf("task: v=%d err=%v kinds=%v", v, err, kinds)
 	}
 }
 

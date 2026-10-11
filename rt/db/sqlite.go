@@ -520,6 +520,67 @@ func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err 
 	return nil
 }
 
+// CreateTables creates the tables extra in a database that already has the app's tables app
+// (made by Ensure or Migrate): a test's fake capabilities keep their rows in them. Each gets a
+// plain CREATE TABLE (its @ref columns resolved against app and extra) and the index of each
+// @ref column, all in one transaction, and is registered with the store. Nothing is recorded in
+// _alder_meta and the app's schema hash is untouched, so a table of extra is never part of the
+// app's schema; for the same reason Migrate must not run on the database afterwards (its final
+// check would see extra as drift). A table of extra that already exists (or is one of app) is an
+// error, and nothing is created.
+func (s *SQLite) CreateTables(ctx context.Context, extra, app []TableDesc) (err error) {
+	defer func() { err = lockedErr(err) }()
+	if len(extra) == 0 {
+		return nil
+	}
+	byName := map[string]TableDesc{}
+	for _, d := range app {
+		byName[d.Name] = d
+	}
+	for _, d := range extra {
+		if _, dup := byName[d.Name]; dup {
+			return fmt.Errorf("db: table %s is already one of the app's tables or listed twice", d.Name)
+		}
+		byName[d.Name] = d
+	}
+	stmts := make([]string, 0, len(extra))
+	for _, d := range extra {
+		st, err := createStmt(d, byName)
+		if err != nil {
+			return err
+		}
+		stmts = append(stmts, st)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+	for _, d := range extra {
+		exists, err := tableExists(ctx, tx, SQLName(d.Name))
+		if err != nil {
+			return err
+		}
+		if exists {
+			return fmt.Errorf("db: table %s already exists", d.Name)
+		}
+	}
+	for _, st := range append(stmts, IndexStmts(extra)...) {
+		if _, err := tx.ExecContext(ctx, st); err != nil {
+			return fmt.Errorf("db: %s: %w", st, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.register(extra)
+	return nil
+}
+
 // register makes tables known to the store's operations (desc).
 func (s *SQLite) register(tables []TableDesc) {
 	s.mu.Lock()

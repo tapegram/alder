@@ -1134,3 +1134,78 @@ func TestLongPattern(t *testing.T) {
 		t.Errorf("a %d-byte pattern: %d rows, %v", MaxPattern, len(rows), err)
 	}
 }
+
+// CreateTables makes a fake's test-only tables after the app's (Ensure here): a @ref to an app
+// table resolves and is enforced, its index is made, the tables are registered, and nothing is
+// recorded in _alder_meta (the app's schema hash is unchanged, so Ensure still accepts the
+// database). A table that already exists is refused, and the store is unchanged.
+func TestCreateTables(t *testing.T) {
+	ctx := context.Background()
+	s, err := OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	user := TableDesc{Name: "User.User", ID: "id", Columns: []Column{{Name: "id", Type: CText}}}
+	app := []TableDesc{user}
+	if err := s.Ensure(ctx, app, false); err != nil {
+		t.Fatal(err)
+	}
+	meta := func() string {
+		var all string
+		rows, err := s.db.Query(`SELECT "key", "value" FROM "_alder_meta" ORDER BY "key"`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var k, v string
+			if err := rows.Scan(&k, &v); err != nil {
+				t.Fatal(err)
+			}
+			all += k + "=" + v + "\n"
+		}
+		return all
+	}
+	before := meta()
+	charge := TableDesc{Name: "Payments.Charge", ID: "id", Columns: []Column{
+		{Name: "id", Type: CText}, {Name: "cents", Type: CInt}, {Name: "user", Type: CText, Ref: "User.User"},
+		{Name: "refund", Type: CText, Nullable: true, Ref: "Payments.Refund"}}}
+	refund := TableDesc{Name: "Payments.Refund", ID: "id", Columns: []Column{{Name: "id", Type: CText}}}
+	if err := s.CreateTables(ctx, []TableDesc{charge, refund}, app); err != nil {
+		t.Fatal(err)
+	}
+	if got := meta(); got != before {
+		t.Fatalf("_alder_meta changed:\n%s\nwant\n%s", got, before)
+	}
+	if n := rawCount(t, s, `SELECT COUNT(*) FROM sqlite_schema WHERE "type" = 'index' AND "name" IN ('Payments__Charge__user', 'Payments__Charge__refund')`); n != 2 {
+		t.Fatalf("%d @ref indexes, want 2", n)
+	}
+	if err := s.Ensure(ctx, app, false); err != nil {
+		t.Fatalf("Ensure after CreateTables: %v", err)
+	}
+	uid, err := s.Insert(ctx, nil, "User.User", user.Columns, "id", "", "", []any{nil}, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Insert(ctx, nil, "Payments.Charge", charge.Columns, "id", "", "", []any{nil, int64(5), uid, nil}, clock); err != nil {
+		t.Fatalf("insert into a created table (registered): %v", err)
+	}
+	var ef *eff.ErrFail
+	if _, err := s.Insert(ctx, nil, "Payments.Charge", charge.Columns, "id", "", "", []any{nil, int64(5), "ghost", nil}, clock); !errors.As(err, &ef) {
+		t.Fatalf("the @ref to the app table is enforced: %v", err)
+	}
+	err = s.CreateTables(ctx, []TableDesc{{Name: "Payments.Other", ID: "id", Columns: []Column{{Name: "id", Type: CText}}}, refund}, app)
+	if err == nil || !strings.Contains(err.Error(), "Payments.Refund already exists") {
+		t.Fatalf("an existing table: %v", err)
+	}
+	if n := rawCount(t, s, `SELECT COUNT(*) FROM sqlite_schema WHERE "name" = 'Payments__Other'`); n != 0 {
+		t.Fatal("a refused CreateTables left a table behind")
+	}
+	if err := s.CreateTables(ctx, []TableDesc{user}, app); err == nil || !strings.Contains(err.Error(), "User.User") {
+		t.Fatalf("an app table: %v", err)
+	}
+	if err := s.CreateTables(ctx, []TableDesc{{Name: "X.X", ID: "id", Columns: []Column{{Name: "id", Type: CText}, {Name: "y", Type: CText, Ref: "Y.Y"}}}}, app); err == nil || !strings.Contains(err.Error(), `unknown table "Y.Y"`) {
+		t.Fatalf("an unknown @ref: %v", err)
+	}
+}

@@ -164,6 +164,7 @@ type Env struct {
 	Kind    Kind                    // the kind of the effect Run is running (set by Run, restored when it returns)
 
 	beginTx func() (Tx, error) // set by Run for a Task with a Store: begins Tx
+	active  bool               // Run is running (RunInner may run inside it); restored when it returns
 }
 
 // Transaction is the running Task's transaction, begun on first use: the

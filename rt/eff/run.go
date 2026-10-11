@@ -54,11 +54,11 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 	if env.Now == nil {
 		env.Now = time.Now
 	}
-	prevCtx, prevTx, prevBegin, prevKind := env.Ctx, env.Tx, env.beginTx, env.Kind
+	prevCtx, prevTx, prevBegin, prevKind, prevActive := env.Ctx, env.Tx, env.beginTx, env.Kind, env.active
 	if EnvFrom(env.Ctx) != env {
 		env.Ctx = context.WithValue(env.Ctx, envKey{}, env)
 	}
-	env.Tx, env.beginTx, env.Kind = nil, nil, kind
+	env.Tx, env.beginTx, env.Kind, env.active = nil, nil, kind, true
 	if kind == KTask && env.Store != nil {
 		store := env.Store
 		env.beginTx = func() (Tx, error) { return store.Begin(ctx(env)) }
@@ -67,7 +67,7 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 	done := false
 	defer func() {
 		tx := env.Tx
-		env.Ctx, env.Tx, env.beginTx, env.Kind = prevCtx, prevTx, prevBegin, prevKind
+		env.Ctx, env.Tx, env.beginTx, env.Kind, env.active = prevCtx, prevTx, prevBegin, prevKind, prevActive
 		if !done && kind == KTask { // a panic is unwinding through us
 			if tx != nil {
 				rollback(env, tx)
@@ -101,17 +101,19 @@ func RunQuery[T any](env *Env, q Query[T]) (T, error) {
 }
 
 // RunInner interprets t inside the Run that is running env — the same transaction, the same
-// Trace, the same Session — and returns its result or error without committing, rolling back
-// or restoring anything: the enclosing Run decides. A Call's function uses it to run a Task it
-// was given (Test.run, through rtesting.Inner, which brackets it with a savepoint so a failure
-// undoes only t's writes). Outside a running Task (env.Kind is not KTask: Run sets it while
-// it runs a Task and restores it after) it is an internal error.
+// Trace, the same Session, the same kind — and returns its result or error without committing,
+// rolling back or restoring anything: the enclosing Run decides. A Call's function uses it to
+// run an effect it was given: Test.run (through rtesting.Inner, which brackets it with a
+// savepoint so a failure undoes only t's writes), and a fake's entry (the generated fake
+// capability's method finds env with EnvFrom(ctx)). t runs as env.Kind: inside a Query it is a
+// Query (a write Call it reaches is the usual internal error), inside a Task a Task. Outside a
+// running effect (no Run is running env) it is an internal error.
 func RunInner[T any](env *Env, t Task[T]) (T, error) {
 	var zero T
-	if env.Kind != KTask {
-		return zero, fmt.Errorf("eff: %w: RunInner outside a running Task", ErrInternal)
+	if !env.active {
+		return zero, fmt.Errorf("eff: %w: RunInner outside a running effect", ErrInternal)
 	}
-	v, err := interpret(env, KTask, t.node)
+	v, err := interpret(env, env.Kind, t.node)
 	if err != nil {
 		return zero, err
 	}
