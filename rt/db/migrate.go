@@ -15,15 +15,57 @@ import (
 )
 
 // Migration is one migration file of an app (migrations/NNNN_slug.sql, written by `alder
-// migrate`): Name is the file's name without ".sql" ("0003_add_comment"), SQL its statements
-// (the header removed), one per line, each ending in `;`.
-type Migration struct{ Name, SQL string }
+// migrate`): Name is the file's name without ".sql" ("0003_add_comment"), From and To the
+// header's `-- from` and `-- to` schema hashes (their first 12 hex digits: the schema the file
+// expects and the one it leaves), SQL its statements (the header removed), one per line, each
+// ending in `;`.
+type Migration struct{ Name, From, To, SQL string }
 
-// ReadMigrations reads migrations/*.sql of fsys (the app's embedded migrations) in name order.
-// A file's header is its leading lines that start with `--` (the rule internal/migrate's Render
-// writes by); the rest is its statements. A malformed file (no `-- alder migration <name>` first
-// line naming the file, or a statement line that does not end in `;`) panics: the files are
-// generated, so that is a bug of the build, found when the app starts.
+// HashLen is how many hex digits of a schema hash a migration file's header records.
+const HashLen = 12
+
+// ParseMigration parses the migration file named name (without ".sql") whose text is text.
+// The header is the leading lines that start with `--` (the rule internal/migrate's Render
+// writes by): its first line must be `-- alder migration <name>`, and it must have a
+// `-- from <hash>` and a `-- to <hash>` line. After it, blank lines are skipped and every other
+// line is one statement ending in `;`. An error names the migration and, for a line, its number:
+// "migration 0002_x: line 7: a statement must end in `;`".
+func ParseMigration(name, text string) (Migration, error) {
+	m := Migration{Name: name}
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	i := 0
+	for i < len(lines) && strings.HasPrefix(lines[i], "--") {
+		switch l := lines[i]; {
+		case strings.HasPrefix(l, "-- from "):
+			m.From = strings.TrimSpace(strings.TrimPrefix(l, "-- from "))
+		case strings.HasPrefix(l, "-- to "):
+			m.To = strings.TrimSpace(strings.TrimPrefix(l, "-- to "))
+		}
+		i++
+	}
+	if len(lines) == 0 || lines[0] != "-- alder migration "+name {
+		return m, fmt.Errorf("migration %s: line 1: the first line must be `-- alder migration %s`", name, name)
+	}
+	if m.From == "" || m.To == "" {
+		return m, fmt.Errorf("migration %s: the header lacks its `-- from` or `-- to` line", name)
+	}
+	var stmts []string
+	for j, l := range lines[i:] {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		if !strings.HasSuffix(strings.TrimSpace(l), ";") {
+			return m, fmt.Errorf("migration %s: line %d: a statement must end in `;`", name, i+j+1)
+		}
+		stmts = append(stmts, l)
+	}
+	m.SQL = strings.Join(stmts, "\n")
+	return m, nil
+}
+
+// ReadMigrations reads migrations/*.sql of fsys (the app's embedded migrations) in name order,
+// each by ParseMigration. A malformed file panics: `alder check` (buildkit.SchemaDrift) refuses
+// one before a build, so it is a bug of the build, found when the app starts.
 func ReadMigrations(fsys fs.FS) []Migration {
 	paths, err := fs.Glob(fsys, "migrations/*.sql")
 	if err != nil {
@@ -36,26 +78,11 @@ func ReadMigrations(fsys fs.FS) []Migration {
 		if err != nil {
 			panic(fmt.Sprintf("db: reading %s: %v", p, err))
 		}
-		name := strings.TrimSuffix(path.Base(p), ".sql")
-		lines := strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
-		i := 0
-		for i < len(lines) && strings.HasPrefix(lines[i], "--") {
-			i++
+		m, err := ParseMigration(strings.TrimSuffix(path.Base(p), ".sql"), string(b))
+		if err != nil {
+			panic("db: " + err.Error())
 		}
-		if i == 0 || lines[0] != "-- alder migration "+name {
-			panic(fmt.Sprintf("db: %s is not the alder migration %s: its first line must be `-- alder migration %s`", p, name, name))
-		}
-		var stmts []string
-		for _, l := range lines[i:] {
-			if strings.TrimSpace(l) == "" {
-				continue
-			}
-			if !strings.HasSuffix(l, ";") {
-				panic(fmt.Sprintf("db: %s: a statement line does not end in `;`: %s", p, l))
-			}
-			stmts = append(stmts, l)
-		}
-		out = append(out, Migration{Name: name, SQL: strings.Join(stmts, "\n")})
+		out = append(out, m)
 	}
 	return out
 }
@@ -140,33 +167,52 @@ const migrationsTable = "_alder_migrations"
 
 const createMigrationsTable = `CREATE TABLE IF NOT EXISTS "_alder_migrations" ("name" TEXT NOT NULL PRIMARY KEY, "applied" TEXT NOT NULL)`
 
-// Migrate brings the database to the app's schema by applying every migration in ms not yet
+// ErrNotMigrated is wrapped by Migrate's refusal of a database that has app tables but was not
+// made by migrations, and whose tables are the schema of none of them.
+var ErrNotMigrated = errors.New("this database was not created by migrations and matches none of them")
+
+// Migrate is MigrateLog without a log.
+func (s *SQLite) Migrate(ctx context.Context, tables []TableDesc, ms []Migration, dev bool) (applied []string, err error) {
+	return s.MigrateLog(ctx, tables, ms, dev, nil)
+}
+
+// MigrateLog brings the database to the app's schema by applying every migration in ms not yet
 // recorded in _alder_migrations, in order, each in its own transaction with foreign keys off
 // and PRAGMA foreign_key_check after; then it checks that the database's tables are the app's
-// (the hash of their CREATE TABLE texts, Ensure's recipe) and records the hash. It returns the
-// names of the migrations it applied.
+// (the hash of their CREATE TABLE texts, Ensure's recipe). It returns the names of the
+// migrations it applied, also when a later one fails (those committed). logf, when set, is told
+// "migrated <name>" as each one commits, "adopted the database at <name>" and "recreated the
+// database (dev mode): <reason>".
 //
-// Refusals (an error, nothing changed):
-//   - a recorded migration whose file is missing (a gap), or a migration not applied that comes
-//     before one that is: "migration 0002_add_comment is recorded as applied but its file is
-//     missing";
-//   - a database with app tables but no _alder_migrations (made by Ensure, before the app had
-//     migrations), unless dev: "this database was not created by migrations: run in dev mode
-//     once, or back it up and delete it";
-//   - a database whose tables are not what its last migration left (changed by hand: ErrDrift),
-//     unless dev;
-//   - a database of another storage Format, unless dev.
+// Before applying anything it checks the chain: the first pending file's From is the
+// database's schema hash, each next file's From the previous one's To, and the last To the
+// app's hash. A broken chain is refused with nothing changed: "migration 0003_sub expects the
+// schema 8f3a1b2c3d4e but the database is at 2c91aa00bb11 (is a file missing, or was the
+// database changed outside migrations?)"; a last To that is not the app's wraps ErrDrift (in
+// dev mode: a recreate).
 //
-// In dev mode, those but the gap recreate the database as Ensure does (every app table dropped,
-// the app's tables created empty) and record every migration of ms as applied, since the
-// fresh tables are where they lead; the names of ms are returned.
+// A database with app tables but no _alder_migrations (made by Ensure, before the app had
+// migrations) is adopted when its tables are the schema some file leads to (its To): that file
+// and those before it are recorded as applied without running them, and the rest apply as
+// usual. When none matches: in dev mode it is recreated, else refused (ErrNotMigrated): "this
+// database was not created by migrations and matches none of them: back it up, then recreate
+// it (or add a migration that produces its schema)".
+//
+// Other refusals (an error, nothing changed): a recorded migration whose file is missing, or a
+// migration not applied that comes before one that is ("migration 0002_add_comment is recorded
+// as applied but its file is missing"), in dev mode too; tables changed since the last
+// migration (ErrDrift) or another storage Format, unless dev, which recreates the database as
+// Ensure does and records every migration of ms as applied (the fresh tables are where they
+// lead).
 //
 // A failed statement rolls its migration back (the ones before it stay applied) and returns
 // "migration <name> failed: <sqlite error>"; a migration that leaves rows referring to rows it
-// deleted fails the same way, naming the referring table. When every migration is applied and
-// the tables still differ from the app's, the migrations do not produce the app's schema: an
-// error wrapping ErrDrift, or in dev mode a recreate.
-func (s *SQLite) Migrate(ctx context.Context, tables []TableDesc, ms []Migration, dev bool) (applied []string, err error) {
+// deleted fails the same way, naming the referring table. A migration another process recorded
+// meanwhile (two starting at once) is skipped.
+func (s *SQLite) MigrateLog(ctx context.Context, tables []TableDesc, ms []Migration, dev bool, logf func(string)) (applied []string, err error) {
+	if logf == nil {
+		logf = func(string) {}
+	}
 	sc, err := schemaOf(tables)
 	if err != nil {
 		return nil, err
@@ -186,11 +232,7 @@ func (s *SQLite) Migrate(ctx context.Context, tables []TableDesc, ms []Migration
 	if _, err := conn.ExecContext(ctx, createMetaTable); err != nil {
 		return nil, err
 	}
-	all := make([]string, len(ms))
-	for i, m := range ms {
-		all[i] = m.Name
-	}
-	recreate := func() ([]string, error) {
+	recreate := func(reason string) ([]string, error) {
 		existing, err := appTables(ctx, conn)
 		if err != nil {
 			return nil, err
@@ -202,18 +244,14 @@ func (s *SQLite) Migrate(ctx context.Context, tables []TableDesc, ms []Migration
 			if _, err := tx.ExecContext(ctx, `DELETE FROM "_alder_migrations"`); err != nil {
 				return err
 			}
-			for _, n := range all {
-				if _, err := tx.ExecContext(ctx, `INSERT INTO "_alder_migrations" ("name", "applied") VALUES (?, ?)`, n, EncodeTime(time.Now())); err != nil {
-					return err
-				}
-			}
-			return nil
+			return record(ctx, tx, ms)
 		})
 		if err != nil {
 			return nil, err
 		}
 		s.register(tables)
-		return all, nil
+		logf("recreated the database (dev mode): " + reason)
+		return nil, nil
 	}
 
 	hasLog, err := tableExists(ctx, conn, migrationsTable)
@@ -224,22 +262,56 @@ func (s *SQLite) Migrate(ctx context.Context, tables []TableDesc, ms []Migration
 	if err != nil {
 		return nil, err
 	}
-	if len(existing) > 0 && !hasLog {
-		if dev {
-			return recreate()
-		}
-		return nil, errors.New("this database was not created by migrations: run in dev mode once, or back it up and delete it")
-	}
 	oldFormat, err := metaValue(ctx, conn, "format")
 	if err != nil {
 		return nil, err
 	}
 	if len(existing) > 0 && oldFormat != Format {
 		if dev {
-			return recreate()
+			return recreate("its storage format is not this runtime's")
 		}
 		return nil, formatErr(oldFormat)
 	}
+	if len(existing) > 0 && !hasLog {
+		live, liveHash, err := liveSchema(ctx, conn)
+		if err != nil {
+			return nil, err
+		}
+		at := -1
+		for i, m := range ms {
+			if m.To == short(liveHash) {
+				at = i
+			}
+		}
+		if at < 0 {
+			if dev {
+				return recreate("it was not created by migrations and matches none of them")
+			}
+			return nil, fmt.Errorf("%w: back it up, then recreate it (or add a migration that produces its schema)", ErrNotMigrated)
+		}
+		tx, err := conn.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, createMigrationsTable); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if err := record(ctx, tx, ms[:at+1]); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if err := putMeta(ctx, tx, live, liveHash); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		logf("adopted the database at " + ms[at].Name)
+	}
+	// created only now: a refused database stays as it was, so a later dev run still sees it was
+	// not made by migrations
 	if _, err := conn.ExecContext(ctx, createMigrationsTable); err != nil {
 		return nil, err
 	}
@@ -265,19 +337,19 @@ func (s *SQLite) Migrate(ctx context.Context, tables []TableDesc, ms []Migration
 		pending = append(pending, m)
 	}
 
+	live, liveHash, err := liveSchema(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
 	// changed by hand since the last migration?
 	if len(recorded) > 0 {
-		live, liveHash, err := liveSchema(ctx, conn)
-		if err != nil {
-			return nil, err
-		}
 		recHash, err := metaValue(ctx, conn, "schema_hash")
 		if err != nil {
 			return nil, err
 		}
 		if liveHash != recHash {
 			if dev {
-				return recreate()
+				return recreate("it was changed outside migrations")
 			}
 			recSchema, err := metaValue(ctx, conn, "schema")
 			if err != nil {
@@ -286,6 +358,25 @@ func (s *SQLite) Migrate(ctx context.Context, tables []TableDesc, ms []Migration
 			return nil, fmt.Errorf("db: %w: the database was changed outside migrations since %s (changed tables: %s); back it up and restore it, or run in dev mode to recreate it",
 				ErrDrift, recorded[len(recorded)-1], strings.Join(schemaDiff(recSchema, live), ", "))
 		}
+	}
+	// the chain: every pending file starts where the one before it (or the database) is
+	at := short(liveHash)
+	for _, m := range pending {
+		if m.From != at {
+			return nil, fmt.Errorf("migration %s expects the schema %s but the database is at %s (is a file missing, or was the database changed outside migrations?)", m.Name, m.From, at)
+		}
+		at = m.To
+	}
+	last := "the last migration"
+	if len(ms) > 0 {
+		last = ms[len(ms)-1].Name
+	}
+	if at != short(sc.hash) {
+		if dev {
+			return recreate("the migrations do not produce the app's schema")
+		}
+		return nil, fmt.Errorf("db: %w: %s leads to the schema %s, but the app's is %s: the migrations do not produce the app's schema",
+			ErrDrift, last, at, short(sc.hash))
 	}
 
 	if len(pending) > 0 {
@@ -299,24 +390,24 @@ func (s *SQLite) Migrate(ctx context.Context, tables []TableDesc, ms []Migration
 			}
 		}()
 		for _, m := range pending {
-			if err := applyMigration(ctx, conn, m); err != nil {
+			ran, err := applyMigration(ctx, conn, m)
+			if err != nil {
 				return applied, err
 			}
-			applied = append(applied, m.Name)
+			if ran {
+				applied = append(applied, m.Name)
+				logf("migrated " + m.Name)
+			}
 		}
 	}
 
-	live, liveHash, err := liveSchema(ctx, conn)
+	live, liveHash, err = liveSchema(ctx, conn)
 	if err != nil {
 		return applied, err
 	}
 	if liveHash != sc.hash {
 		if dev {
-			return recreate()
-		}
-		last := "the last migration"
-		if len(ms) > 0 {
-			last = ms[len(ms)-1].Name
+			return recreate("the migrations do not produce the app's schema")
 		}
 		return applied, fmt.Errorf("db: %w: after %s the tables differ from the app's (changed tables: %s): the migrations do not produce the app's schema, or the database was changed outside them",
 			ErrDrift, last, strings.Join(schemaDiff(live, sc.schema), ", "))
@@ -330,42 +421,67 @@ func (s *SQLite) Migrate(ctx context.Context, tables []TableDesc, ms []Migration
 	return applied, nil
 }
 
+// short is a schema hash as a migration file's header records it.
+func short(hash string) string { return hash[:min(len(hash), HashLen)] }
+
+// record records ms as applied in _alder_migrations (inside tx).
+func record(ctx context.Context, tx *sql.Tx, ms []Migration) error {
+	for _, m := range ms {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO "_alder_migrations" ("name", "applied") VALUES (?, ?)`, m.Name, EncodeTime(time.Now())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // applyMigration runs m in one transaction (foreign keys are already off): its statements,
 // then PRAGMA foreign_key_check, then its record in _alder_migrations and the new schema hash.
-func applyMigration(ctx context.Context, conn *sql.Conn, m Migration) (err error) {
+// ran is false when another process recorded m first (read inside the transaction, which on a
+// file database holds the write lock from its start), and nothing was done.
+func applyMigration(ctx context.Context, conn *sql.Conn, m Migration) (ran bool, err error) {
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() {
-		if err != nil {
+		if err != nil || !ran {
 			tx.Rollback()
 		}
 	}()
+	var n int
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM "_alder_migrations" WHERE "name" = ?`, m.Name).Scan(&n); err != nil {
+		return false, err
+	}
+	if n > 0 {
+		return false, nil
+	}
 	for _, st := range m.statements() {
 		if _, err = tx.ExecContext(ctx, st); err != nil {
-			return fmt.Errorf("migration %s failed: %v", m.Name, err)
+			return false, fmt.Errorf("migration %s failed: %v", m.Name, err)
 		}
 	}
 	child, err := foreignKeyViolation(ctx, tx)
 	if err != nil {
-		return fmt.Errorf("migration %s failed: %v", m.Name, err)
+		return false, fmt.Errorf("migration %s failed: %v", m.Name, err)
 	}
 	if child != "" {
 		err = fmt.Errorf("migration %s: rows in %s refer to rows this migration deletes: delete or re-point them first", m.Name, child)
-		return err
+		return false, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO "_alder_migrations" ("name", "applied") VALUES (?, ?)`, m.Name, EncodeTime(time.Now())); err != nil {
-		return err
+	if err = record(ctx, tx, []Migration{m}); err != nil {
+		return false, err
 	}
 	schema, hash, err := liveSchema(ctx, tx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err = putMeta(ctx, tx, schema, hash); err != nil {
-		return err
+		return false, err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // foreignKeyViolation is the Alder name ("Comment") of the first table PRAGMA

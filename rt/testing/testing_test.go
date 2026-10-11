@@ -3,6 +3,8 @@ package rtesting
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"math"
@@ -681,8 +683,14 @@ func TestMain_SlowNotice(t *testing.T) {
 // A test of an app with migrations runs on the tables they make; when they do not make the
 // app's tables (the app changed without `alder migrate`), every test fails, pure ones too.
 func TestRun_Migrations(t *testing.T) {
-	good := []db.Migration{{Name: "0001_initial", SQL: `CREATE TABLE "M__T" ("id" TEXT NOT NULL PRIMARY KEY, "title" TEXT NOT NULL) STRICT;`}}
-	stale := []db.Migration{{Name: "0001_initial", SQL: `CREATE TABLE "M__T" ("id" TEXT NOT NULL PRIMARY KEY) STRICT;`}}
+	hash := func(stmt string) string {
+		sum := sha256.Sum256([]byte(stmt))
+		return hex.EncodeToString(sum[:])[:db.HashLen]
+	}
+	goodSQL := `CREATE TABLE "M__T" ("id" TEXT NOT NULL PRIMARY KEY, "title" TEXT NOT NULL) STRICT`
+	staleSQL := `CREATE TABLE "M__T" ("id" TEXT NOT NULL PRIMARY KEY) STRICT`
+	good := []db.Migration{{Name: "0001_initial", From: hash(""), To: hash(goodSQL), SQL: goodSQL + ";"}}
+	stale := []db.Migration{{Name: "0001_initial", From: hash(""), To: hash(staleSQL), SQL: staleSQL + ";"}}
 	cases := []Case{
 		{Module: "M", Name: "pure", Pure: func() bool { return true }},
 		{Module: "M", Name: "task", Task: func() eff.Task[bool] {

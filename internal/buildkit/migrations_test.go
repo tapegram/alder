@@ -10,6 +10,7 @@ import (
 
 	"alder/internal/diag"
 	"alder/internal/ir"
+	"alder/rt/db"
 )
 
 // lowered checks and lowers the app in dir, failing on a diagnostic error.
@@ -107,12 +108,39 @@ func TestSchemaDrift(t *testing.T) {
 	}
 	// the latest migration is named
 	dir = copyApp(t, migrated)
-	if err := os.WriteFile(filepath.Join(dir, "migrations", "0002_more.sql"), []byte("-- alder migration 0002_more\n\nSELECT 1;\n"), 0o644); err != nil {
+	first, err := os.ReadFile(filepath.Join(dir, "migrations", "0001_initial.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m1, err := db.ParseMigration("0001_initial", string(first))
+	if err != nil {
+		t.Fatal(err)
+	}
+	more := "-- alder migration 0002_more\n-- from " + m1.To + "\n-- to " + m1.To + "\n\nSELECT 1;\n"
+	if err := os.WriteFile(filepath.Join(dir, "migrations", "0002_more.sql"), []byte(more), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	edit(t, filepath.Join(dir, "app", "Tag.alder"), "label: Text,", "label: Int,")
 	if d := SchemaDrift(dir, lowered(t, dir)); d == nil || !strings.HasPrefix(d.Message, "the schema changed since migration 0002 (") {
 		t.Fatalf("since: %+v", d)
+	}
+	// the files' chain: a file that does not start where the one before it ends (one is
+	// missing), a last file that does not end at the snapshot, a malformed file
+	for _, c := range []struct{ file, want string }{
+		{"-- alder migration 0003_sub\n-- from 123456789abc\n-- to " + m1.To + "\n\nSELECT 1;\n",
+			"migration 0003_sub does not follow 0001_initial: a file is missing or edited; regenerate it"},
+		{"-- alder migration 0003_sub\n-- from " + m1.To + "\n-- to 123456789abc\n\nSELECT 1;\n",
+			"migration 0003_sub does not lead to migrations/schema.json: a file is missing or edited; regenerate it"},
+		{"-- alder migration 0003_sub\n-- from " + m1.To + "\n-- to " + m1.To + "\n\nSELECT 1;\nSELECT 2\n",
+			"migration 0003_sub: line 6: a statement must end in `;`"},
+	} {
+		dir := copyApp(t, migrated)
+		if err := os.WriteFile(filepath.Join(dir, "migrations", "0003_sub.sql"), []byte(c.file), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if d := SchemaDrift(dir, lowered(t, dir)); d == nil || d.Message != c.want || d.Code != "E0019" {
+			t.Fatalf("chain: %+v, want %q", d, c.want)
+		}
 	}
 	// migration files without the snapshot, and a snapshot that does not read
 	dir = copyApp(t, migrated)

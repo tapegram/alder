@@ -70,8 +70,9 @@ type Options struct {
 
 // Serve is the app's HTTP handler. It checks that o.Secret is at least 16 bytes outside dev
 // mode (web.CheckSecret) and that caps implements every capability (an error names each field
-// left nil), opens the database o.DB and brings it to the app's tables (db.Migrate with the
-// app's Migrations, logging each one applied; db.Ensure for an app without), and routes Routes
+// left nil), opens the database o.DB and brings it to the app's tables (db.MigrateLog with the
+// app's Migrations, logging each one as it commits, an adoption and a dev recreate; db.Ensure
+// for an app without), and routes Routes
 // (web.NewRouter) with the session codec, App.error, App.notFound and the page App.login names.
 func Serve(caps Caps, o Options) (http.Handler, error) {
 	if err := web.CheckSecret(o.Secret, o.Dev); err != nil {
@@ -96,15 +97,14 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 		return nil, err
 	}
 	if len(Migrations) > 0 {
-		applied, err := store.Migrate(context.Background(), Tables, Migrations, o.Dev)
-		if err != nil {
+		logf := func(msg string) {
+			if o.Log != nil {
+				o.Log("info", msg)
+			}
+		}
+		if _, err := store.MigrateLog(context.Background(), Tables, Migrations, o.Dev, logf); err != nil {
 			store.Close()
 			return nil, err
-		}
-		if o.Log != nil {
-			for _, name := range applied {
-				o.Log("info", "migrated "+name)
-			}
 		}
 	} else if err := store.Ensure(context.Background(), Tables, o.Dev); err != nil {
 		store.Close()

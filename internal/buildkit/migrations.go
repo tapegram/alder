@@ -69,8 +69,12 @@ func CopyMigrations(src, dst string) error {
 // absent or equal; else an E0019 at migrations/schema.json:1:1 naming the first changed table:
 // "the schema changed since migration 0003 (table Post: column body): run `alder migrate`".
 // Schemas are equal when their hashes are (the tables' CREATE TABLE statements, what a
-// database holds), so a changed default alone is no change. Migration files without a
-// schema.json, and a schema.json that does not read, are E0019 too.
+// database holds), so a changed default alone is no change. Before that it checks the files
+// (db.ParseMigration: "migration 0002_x: line 7: a statement must end in `;`") and their chain:
+// each file's `-- from` is the previous file's `-- to` ("migration 0003_sub does not follow
+// 0001_initial: a file is missing or edited; regenerate it"), and the last `-- to` is the
+// snapshot's hash. Migration files without a schema.json, and a schema.json that does not read,
+// are E0019 too.
 func SchemaDrift(dir string, p *ir.Program) *diag.Diagnostic {
 	files := migrationFiles(dir)
 	since := "the last migration"
@@ -97,6 +101,26 @@ func SchemaDrift(dir string, p *ir.Program) *diag.Diagnostic {
 	}
 	if err != nil {
 		return at("migrations/schema.json does not read (%v): restore it from version control", err)
+	}
+	// the files: each well-formed, each starting where the one before it ends, the last ending
+	// at the snapshot
+	var prev db.Migration
+	for i, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return at("migration %s does not read: %v", filepath.Base(f), err)
+		}
+		m, err := db.ParseMigration(strings.TrimSuffix(filepath.Base(f), ".sql"), string(b))
+		if err != nil {
+			return at("%v", err)
+		}
+		if i > 0 && m.From != prev.To {
+			return at("migration %s does not follow %s: a file is missing or edited; regenerate it", m.Name, prev.Name)
+		}
+		prev = m
+	}
+	if len(files) > 0 && prev.To != oldHash[:db.HashLen] {
+		return at("migration %s does not lead to migrations/schema.json: a file is missing or edited; regenerate it", prev.Name)
 	}
 	cur := migrate.FromProgram(p)
 	if old.Format != cur.Format {

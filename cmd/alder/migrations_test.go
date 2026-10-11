@@ -145,3 +145,51 @@ func TestWatch_Migrations(t *testing.T) {
 		t.Fatalf("diff = %v, want a source change", k)
 	}
 }
+
+// eval --run on a dev database made before the app had migrations: adopted when its tables are
+// where a migration leads; otherwise refused with the path to delete.
+func TestEval_AdoptsDevDB(t *testing.T) {
+	needGoTool(t)
+	dir := tempApp(t, "../../testdata/golden/gen_migrations", "notes")
+	path := filepath.Join("build", "notes", "dev.db")
+	const meta = `CREATE TABLE "_alder_meta" ("key" TEXT NOT NULL PRIMARY KEY, "value" TEXT NOT NULL); INSERT INTO "_alder_meta" VALUES ('format', '1')`
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	sqlText, err := os.ReadFile(filepath.Join(dir, "migrations", "0001_initial.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range strings.Split(string(sqlText), "\n") {
+		if strings.HasSuffix(l, ";") && !strings.HasPrefix(l, "--") {
+			if _, err := conn.Exec(l); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if _, err := conn.Exec(`INSERT INTO "Note__Note" VALUES ('n1', 'kept', '2026-01-01T00:00:00.000000000Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(meta); err != nil { // as Ensure records it
+		t.Fatal(err)
+	}
+	conn.Close()
+	code, out, errs := runEval(t, "", dir, "--run", "Db.from Note |> Db.count")
+	if code != 0 || out != "1 : Int\n" {
+		t.Fatalf("adopted: exit %d\n%s%s", code, out, errs)
+	}
+
+	os.Remove(path)
+	conn, _ = sql.Open("sqlite", path)
+	if _, err := conn.Exec(`CREATE TABLE "Note__Note" ("id" TEXT NOT NULL PRIMARY KEY) STRICT; ` + meta); err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
+	code, out, errs = runEval(t, "", dir, "--run", "Db.from Note |> Db.count")
+	abs, _ := filepath.Abs(path)
+	if code != 1 || !strings.Contains(errs, "matches none of them") || !strings.Contains(errs, "delete "+abs+" to start a new one") {
+		t.Fatalf("no match: exit %d\n%s%s", code, out, errs)
+	}
+}
