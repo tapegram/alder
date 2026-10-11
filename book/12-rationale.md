@@ -249,9 +249,11 @@ field, a page or message parameter left out of a link or URL, a form
 field left out of a request, and an `Insert T` record (that is what a
 table's defaults are for). A literal of a record type itself, a table's
 row, a declared `type R = {…}`, or App's or a page's `Session`, names
-every field (E0003: "a default applies to an insert, a cookie or a page
-parameter, not to a literal"); only an anonymous record type's defaults
-(a component's props) apply to its literals. M5 needed nothing more. The blog's tests write their records in
+every field (E0003: "a default applies only to an insert, the session
+cookie, a page or message parameter, or a form, not to a literal"); only
+an anonymous record type's defaults (a component's props) apply to its
+literals, and a default on a declared `type R = {…}` field, which could
+never apply, is warning W0004. M5 needed nothing more. The blog's tests write their records in
 full, and E7's evidence is under "Open questions" below. This is
 revisited only if required fields prove demonstrably worse.
 

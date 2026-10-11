@@ -2443,27 +2443,55 @@ hashes, and its statements (the header stripped). `Serve` passes them to
 (`database/sql` otherwise hands each statement whichever pooled
 connection is free, and a `PRAGMA` holds only for its own connection):
 
-1. It reads `_alder_migrations` (name, time applied). A database with
-   app tables but no such table was made by `Ensure`: it is adopted at
-   the file whose `to` is its hash, or refused (dev: recreated).
-2. It refuses a recorded name with no file, or a pending file numbered
-   before a recorded one, and compares the live hash with the one
-   recorded after the last migration (drift).
-3. It checks the chain: the first pending file's `from` is the live
-   hash, each next `from` the previous `to`, the last `to` the app's
-   hash. Nothing has changed yet, so a refusal here leaves the database
-   as it was.
-4. It sets `PRAGMA foreign_keys = OFF`, outside any transaction (SQLite
+1. It sets `PRAGMA foreign_keys = OFF`, outside any transaction (SQLite
    ignores it inside one), and restores the old value when done. With
    it on, a rebuild's `DROP TABLE "Post__Post"` would delete every
    comment through `ON DELETE CASCADE`. `legacy_alter_table` stays off,
    so `RENAME TO` also rewrites the `REFERENCES` of other tables.
-5. Each pending file runs in its own transaction: its statements, then
-   `PRAGMA foreign_key_check` (which lists rows whose reference points
-   at nothing, since nothing was enforced during the statements), then
-   the row in `_alder_migrations` and the live schema and hash in
-   `_alder_meta`, then `COMMIT`. A failure rolls that file back.
-6. Last, the live hash must equal the app's.
+2. It opens one transaction for the read phase (`prepare`). On a file
+   database every transaction starts with `BEGIN IMMEDIATE` (the DSN's
+   `_txlock=immediate`), which takes the write lock at once, so two
+   processes starting together take turns, and each sees the other's
+   work whole: the recorded names, the tables and the recorded hash are
+   read in one snapshot, never between another process's file and its
+   record. (Read outside a transaction, a second process could see a
+   file's tables before its record, call that drift, and in dev mode
+   recreate a database full of rows.)
+3. Inside it: `_alder_migrations` (name, time applied) is read. A
+   database with app tables but no such table was made by `Ensure`: it
+   is adopted at the file whose `to` is its hash (the files up to it
+   recorded, in this same transaction), or refused (dev: recreated). A
+   recorded name with no file is refused (the newest recorded name past
+   every file means the executable is older than the database), and so
+   is a pending file numbered before a recorded one; the live hash is
+   compared with the one recorded after the last migration (drift); and
+   the chain is checked: the first pending file's `from` is the live
+   hash, each next `from` the previous `to`, the last `to` the app's
+   hash. Any refusal rolls the transaction back, adoption included, so
+   the database is as it was.
+4. The read phase commits, and each pending file runs in its own
+   transaction (`applyMigration`): it skips the file if another process
+   recorded it meanwhile; checks that the live hash is the file's `from`;
+   runs the statements; runs `PRAGMA foreign_key_check` (which lists
+   rows whose reference points at nothing, since nothing was enforced
+   during the statements); and checks that the live hash is now the
+   file's `to`. Only then the row in `_alder_migrations` and the live
+   schema and hash in `_alder_meta`, then `COMMIT`. A failure rolls that
+   file back. The `to` check is what catches a file whose statements were
+   edited after `alder migrate` wrote them (its header still chains, so
+   `alder check` cannot see it): `DROP COLUMN "views"` under a header
+   that says the column stays is rolled back with the rows intact, not
+   committed and discovered at the next start.
+5. Last, in one more transaction (`finish`), the live hash must equal
+   the app's, the app's schema is recorded, and `IndexStmts` creates
+   every `@ref` index that is missing (`CREATE INDEX IF NOT EXISTS`, not
+   part of the hash), so an adopted database gets its indexes too.
+
+A start that finds the database locked for longer than `busy_timeout`
+(five seconds: another process is in a long rebuild) is refused with a
+text that names the cause (`lockedErr`). `OpenSQLite` itself retries its
+first connection while another process holds a new database: turning a
+file to WAL is refused at once, without waiting, while anyone holds it.
 
 `rtesting` and the `eval`/REPL mains call the same function, so a test's
 database and the dev database are made exactly as production's.

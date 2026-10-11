@@ -290,6 +290,27 @@ fake Stripe {
   capability key to a constructor; `Test.fake` lowers to a Call that sets
   `env.Caps[key]`. Production builds contain no fake code and no fake
   tables.
+- **The test schema (recorded by the M5b final-review wave; M5c's plan
+  starts here).** With M5b every test database of an app with migrations
+  is made by `db.Migrate`, which ends by requiring the live tables to be
+  exactly the app's (`finish`: the live hash equals the hash of
+  `Program.Tables`), so a fake's tables cannot simply be appended to
+  `Tables`, nor created before `Migrate`. The shape: (1) the fake's
+  tables stay **outside `Program.Tables`** (they are in no migration and
+  no `schema.json`; `migrate.FromProgram` and E0019 never see them), in
+  their own list, `app.FakeTables`, emitted only in test builds; (2) a
+  new `db.CreateTables(ctx, extra, app []TableDesc)` creates `extra` (a
+  plain `CREATE TABLE` of each, with its `@ref` indexes, resolving
+  `@ref` against `extra` and `app`) and registers them with the store,
+  recording nothing in `_alder_meta` and not touching the app's hash;
+  (3) `rtesting.Options` gains `TestTables []db.TableDesc`, and the
+  per-case `ensure` runs `Migrate` (or `Ensure`) for `Tables` first and
+  then `CreateTables(TestTables, Tables)`; (4) **`Migrate` is never run
+  after `CreateTables`** on the same database: its `finish` would see
+  the extra tables as drift (and `Ensure`'s dev path would drop them).
+  `defaults`' one-off check database applies the migrations alone, so a
+  `schemaErr` never mentions a fake's table. A fake's table may `@ref`
+  an app table; an app table never refers to a fake's.
 
 ### Book
 

@@ -641,10 +641,16 @@ rows can be filled``), and for a `migrations/` directory that disagrees
 with itself, on standard error:
 
 ```text
-alder migrate: migrations/schema.json does not match 0002_add_bio.sql's result; restore migrations/schema.json from version control, or delete the last migration file and run `alder migrate` again
+alder migrate: migrations/schema.json does not match 0002_add_bio.sql's result; restore migrations/schema.json from version control, or delete the last migration file and run `alder migrate` again (only if it has not run against a database you keep)
 alder migrate: migrations/ has migration files but no schema.json, the schema they lead to: restore it from version control
 alder migrate: migrations/schema.json has no migration file: restore the migrations from version control, or delete schema.json to start again from 0001_initial
 ```
+
+It also refuses, with `alder check`'s E0019 text, files that do not
+chain (a middle file deleted: ``migration 0003_add_site does not follow
+0001_initial: a file is missing or edited; restore migrations/ from
+version control (`git checkout migrations/`)``) and two files with one
+number, rather than plan a migration on top of them.
 
 It never changes an existing migration file. Exit 2 for a usage error
 or a file that cannot be read or written.
@@ -745,7 +751,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0016 | two pages answer the same path (`/x/{id}` and `/x/{slug}`, or `/x` and `/x/`) | — |
 | E0017 | a module named like a standard-library module (`Test`, `List`, `Http`, …): the stdlib's would shadow it; uses of its names are not reported separately | — |
 | E0018 | a table declared outside its own module (`table Comment` in `app/Post.alder` belongs in `app/Comment.alder`); reported once, at the declaration | — |
-| E0019 | `migrations/` is behind the app or disagrees with itself, reported at `migrations/schema.json:1:1` by every command but `alder migrate`: the tables changed since the last migration (``the schema changed since migration 0003 (table Post: column body): run `alder migrate` ``, also for a storage format change); `.sql` files but no `schema.json`; a `schema.json` or migration file that does not read; a malformed file (``migration 0002_x: line 6: a statement must end in `;` ``, a wrong first line, a header without `-- from` or `-- to`); a file that does not start where the one before it ends (`migration 0003_sub does not follow 0001_initial: a file is missing or edited; regenerate it`); a last file that does not end at the snapshot (`migration 0003_sub does not lead to migrations/schema.json: a file is missing or edited; regenerate it`) | — |
+| E0019 | `migrations/` is behind the app or disagrees with itself, reported at `migrations/schema.json:1:1` by every command but `alder migrate`: the tables changed since the last migration (``the schema changed since migration 0003 (table Post: column body): run `alder migrate` ``); a storage format change (``the storage format changed (v1 → v2): this needs a rebuild migration of every table, which this `alder migrate` cannot write yet (`alder migrate --format` is planned); build with the compiler that wrote migrations/ until then``); `.sql` files but no `schema.json`; a `schema.json` or migration file that does not read; a malformed file (``migration 0002_x: line 6: a statement must end in `;` ``, a wrong first line, a header without `-- from` or `-- to`); two files with one number (``two migrations are numbered 0005 (likely two branches: 0005_a.sql, 0005_b.sql): keep the one already merged or deployed, delete the other, restore schema.json to its result, run `alder migrate` ``); a file that does not start where the one before it ends (``migration 0003_sub does not follow 0001_initial: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)``); a last file that does not end at the snapshot (``migration 0003_sub does not lead to migrations/schema.json: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)``) | — |
 | E0022 | a table field's default that is not a literal (`count: Int = 1 + 1`): migrations write a table default into the database as SQL | — |
 | E0101 | `Db.get T x` where `x` is not `Id T` | `Db.from T \|> Db.where (T.<col>.eq x) \|> Db.first` when a column of `x`'s type exists |
 | E0102 | field access on a `Maybe` | `match` skeleton |
@@ -766,6 +772,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | W0001 | unused import | — |
 | W0002 | typed hole (`?name`) with its expected type | — |
 | W0003 | a form field whose decoding errors no `<Errors field>` and no `<Errors form />` of its form would show | — |
+| W0004 | a default on a field of a declared `type R = {…}` (``field `loud`: a default on a plain record type never applies; remove it``): a literal of a declared record names every field, so the default could never apply | — |
 
 ## Holes
 

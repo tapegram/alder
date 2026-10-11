@@ -285,7 +285,7 @@ apply at the boundaries, the cookie, a page parameter or an insert
 App's `Session` and a `requires` page's alike:
 
 ```
-error[E0003]: record literal for `Session` is missing `theme` (a default applies to an insert, a cookie or a page parameter, not to a literal)
+error[E0003]: record literal for `Session` is missing `theme` (a default applies only to an insert, the session cookie, a page or message parameter, or a form, not to a literal)
 ```
 
 ## `form`
