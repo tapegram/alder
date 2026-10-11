@@ -107,7 +107,7 @@ test "pure" = 1 + 1 == 2
 		t.Fatal("build copied schema.json, which the binary does not use")
 	}
 
-	// a migration that no longer makes the tables the snapshot (and the app) says
+	// a migration edited so it no longer makes the tables its header (and the snapshot) says
 	sql := filepath.Join(dir, "migrations", "0001_initial.sql")
 	s, err := os.ReadFile(sql)
 	if err != nil {
@@ -123,8 +123,11 @@ test "pure" = 1 + 1 == 2
 	if !buildkit.HasMigrations(dir) {
 		t.Fatal("HasMigrations")
 	}
+	// (an edited body: the header still matches, so `alder check` is content; every test fails
+	// with the runtime's text, which names the file, not with "run `alder migrate`")
 	code, out, errs = runTest(t, dir)
-	if code != 1 || strings.Count(out, "the migrations do not produce the app's schema: run `alder migrate`") != 2 || !strings.Contains(out, "0 passed, 2 failed") {
+	if code != 1 || strings.Count(out, "migration 0001_initial does not produce the schema its header names") != 2 ||
+		!strings.Contains(out, "the file was edited; restore it from version control") || !strings.Contains(out, "0 passed, 2 failed") {
 		t.Fatalf("test with a broken migration: exit %d\n%s%s", code, out, errs)
 	}
 }

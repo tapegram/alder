@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"slices"
 	"strings"
@@ -216,7 +217,7 @@ func TestMigrate_GapRefused(t *testing.T) {
 	}
 	for _, dev := range []bool{false, true} {
 		_, err := s.Migrate(ctx, []TableDesc{postV3, commentT}, []Migration{ms[0], ms[2]}, dev)
-		if err == nil || err.Error() != "migration 0002_add_summary is recorded as applied but its file is missing" {
+		if err == nil || err.Error() != "migration 0002_add_summary is recorded as applied but its file is missing: restore it from version control" {
 			t.Fatalf("dev=%v: err = %v", dev, err)
 		}
 	}
@@ -272,7 +273,7 @@ func TestMigrate_AdoptionMatchesNone(t *testing.T) {
 	tables := []TableDesc{postV1, commentT}
 	ms := migrations(t)[:1]
 	_, err := s.Migrate(ctx, tables, ms, false)
-	if !errors.Is(err, ErrNotMigrated) || err.Error() != "this database was not created by migrations and matches none of them: back it up, then recreate it (or add a migration that produces its schema)" {
+	if !errors.Is(err, ErrNotMigrated) || err.Error() != "this database was not created by migrations and matches none of them: if the app made it before it had migrations, generate 0001 from the deployed version (check out that commit, run `alder migrate`), then migrate forward; otherwise back it up; to start over, run in dev mode (ALDER_DEV=1 recreates the database empty: every row is deleted)" {
 		t.Fatalf("prod: %v", err)
 	}
 	if n := rawCount(t, s, `SELECT COUNT(*) FROM "Post__Post"`); n != 1 {
@@ -367,7 +368,7 @@ func TestMigrate_DriftRefused(t *testing.T) {
 			tables[0] = postV2
 		}
 		applied, err := s.Migrate(ctx, tables, ms[:upTo], false)
-		if !errors.Is(err, ErrDrift) || !strings.Contains(err.Error(), "changed tables: Post.Post") || len(applied) != 0 {
+		if !errors.Is(err, ErrDrift) || !strings.Contains(err.Error(), "changed tables: Post)") || len(applied) != 0 {
 			t.Fatalf("upTo %d: %v %v", upTo, applied, err)
 		}
 		if !strings.Contains(err.Error(), "changed outside migrations since 0001_initial") {
@@ -414,13 +415,26 @@ func TestMigrate_NotTheAppsSchema(t *testing.T) {
 	if got := tableSQL(t, s, "Post__Post"); got != create(t, postV2) {
 		t.Fatalf("dev recreate: %s", got)
 	}
-	// a file whose statements do not make the schema its header says: found after applying
+	// a file whose statements do not make the schema its header says: rolled back
 	s2 := openMem(t)
 	lying := ms[0]
 	lying.SQL = create(t, postV2) + ";\n" + create(t, commentT, postV2) + ";"
 	_, err = s2.Migrate(ctx, []TableDesc{postV1, commentT}, []Migration{lying}, false)
-	if !errors.Is(err, ErrDrift) || !strings.Contains(err.Error(), "after 0001_initial the tables differ from the app's (changed tables: Post.Post)") {
+	if err == nil || err.Error() != "migration 0001_initial does not produce the schema its header names (to "+ms[0].To+", got "+ms[1].To+"): the file was edited; restore it from version control" {
 		t.Fatalf("lying file: %v", err)
+	}
+	if n := rawCount(t, s2, `SELECT COUNT(*) FROM sqlite_schema WHERE "name" = 'Post__Post'`); n != 0 {
+		t.Fatal("the lying file's tables stayed")
+	}
+	// the database is at the right schema but not the app's (nothing pending): "the database is at"
+	s3 := openMem(t)
+	if _, err := s3.Migrate(ctx, []TableDesc{postV1, commentT}, ms[:1], false); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s3.Migrate(ctx, []TableDesc{postV2, commentT}, ms[:1], false)
+	want = "db: the database's tables are not the app's schema: the database is at the schema " + ms[0].To + " (after 0001_initial), but the app's is " + ms[1].To + ": the migrations do not produce the app's schema"
+	if !errors.Is(err, ErrDrift) || !errors.Is(err, ErrSchemaAhead) || err.Error() != want {
+		t.Fatalf("nothing pending: %v\nwant %s", err, want)
 	}
 }
 
@@ -436,7 +450,7 @@ func TestMigrate_ForeignKeyCheck(t *testing.T) {
 	exec(t, s, `INSERT INTO "Comment__Comment" VALUES ('c1', 'p1')`)
 	drop := Migration{Name: "0002_drop_posts", From: ms[0].To, To: ms[0].To, SQL: `DELETE FROM "Post__Post";`}
 	_, err := s.Migrate(ctx, tables, []Migration{ms[0], drop}, false)
-	if err == nil || err.Error() != "migration 0002_drop_posts: rows in Comment refer to rows this migration deletes: delete or re-point them first" {
+	if err == nil || err.Error() != "migration 0002_drop_posts: rows in Comment refer to rows this migration deletes: delete or re-point them first: add an UPDATE or DELETE at the top of 0002_drop_posts.sql (it was not applied)" {
 		t.Fatalf("err = %v", err)
 	}
 	if n := rawCount(t, s, `SELECT COUNT(*) FROM "Post__Post"`); n != 1 {
@@ -522,7 +536,6 @@ func TestParseMigration(t *testing.T) {
 		"-- alder migration 0002_x\n-- from a\n-- to b\n\nSELECT 1;\nSELECT 2\n": "migration 0002_x: line 6: a statement must end in `;`",
 		"-- alder migration 0002_y\n-- from a\n-- to b\n\nSELECT 1;\n":           "migration 0002_x: line 1: the first line must be `-- alder migration 0002_x`",
 		"-- alder migration 0002_x\n-- to b\n\nSELECT 1;\n":                      "migration 0002_x: the header lacks its `-- from` or `-- to` line",
-		"-- alder migration 0002_x\n-- from a\n-- to b\n\nSELECT 1;\n-- note\n":  "migration 0002_x: line 6: a statement must end in `;`",
 	} {
 		if _, err := ParseMigration("0002_x", text); err == nil || err.Error() != want {
 			t.Errorf("%q: %v, want %s", text, err, want)
@@ -531,6 +544,11 @@ func TestParseMigration(t *testing.T) {
 	m, err := ParseMigration("0002_x", "-- alder migration 0002_x\n-- from aaaaaaaaaaaa\n-- to bbbbbbbbbbbb\n-- step: x\n\nSELECT 1;\n")
 	if err != nil || m != (Migration{Name: "0002_x", From: "aaaaaaaaaaaa", To: "bbbbbbbbbbbb", SQL: "SELECT 1;"}) {
 		t.Fatalf("%+v %v", m, err)
+	}
+	// a byte-order mark, and comment lines among the statements (a hand-added statement's note)
+	m, err = ParseMigration("0002_x", "\ufeff-- alder migration 0002_x\r\n-- from aaaaaaaaaaaa\r\n-- to bbbbbbbbbbbb\r\n\r\n-- keep the drafts: make them public first\r\nUPDATE \"T\" SET \"x\" = 1;\r\n  -- indented note\r\nSELECT 1;\r\n-- trailing note\r\n")
+	if err != nil || m != (Migration{Name: "0002_x", From: "aaaaaaaaaaaa", To: "bbbbbbbbbbbb", SQL: "UPDATE \"T\" SET \"x\" = 1;\nSELECT 1;"}) {
+		t.Fatalf("BOM and comments: %+v %v", m, err)
 	}
 }
 
@@ -549,8 +567,8 @@ func TestMigrate_ConcurrentAdoption(t *testing.T) {
 			t.Fatal(err)
 		}
 		s0.Close()
-		errs := make(chan error, 2)
-		for range 2 {
+		errs := make(chan error, 3)
+		for range 3 {
 			go func() {
 				s, err := OpenSQLite(path)
 				if err != nil {
@@ -562,7 +580,7 @@ func TestMigrate_ConcurrentAdoption(t *testing.T) {
 				errs <- err
 			}()
 		}
-		for range 2 {
+		for range 3 {
 			if err := <-errs; err != nil {
 				t.Fatalf("run %d: %v", i, err)
 			}
@@ -598,5 +616,190 @@ func TestMigrate_AdoptionThenBrokenChain(t *testing.T) {
 	}
 	if n := rawCount(t, s, `SELECT COUNT(*) FROM sqlite_schema WHERE "name" = '_alder_migrations'`); n != 0 {
 		t.Fatal("the refusal created _alder_migrations")
+	}
+}
+
+// The body-edit drill: a file applied nowhere yet whose statements were edited after `alder
+// migrate` wrote it (its header unchanged) is rolled back before it commits: the data stays, it
+// is not recorded, and the error names the file and the remedy. Restored, it applies.
+func TestMigrate_EditedBodyRolledBack(t *testing.T) {
+	ctx := context.Background()
+	path := t.TempDir() + "/app.db"
+	s, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ms := migrations(t)
+	if _, err := s.Migrate(ctx, []TableDesc{postV1, commentT}, ms[:1], false); err != nil {
+		t.Fatal(err)
+	}
+	exec(t, s, `INSERT INTO "Post__Post" VALUES ('p1', 'Hello')`)
+	edited := ms[1]
+	edited.SQL = `ALTER TABLE "Post__Post" DROP COLUMN "title";`
+	tables := []TableDesc{postV2, commentT}
+	applied, err := s.Migrate(ctx, tables, []Migration{ms[0], edited}, false)
+	got := hashOf(t, TableDesc{Name: "Post.Post", ID: "id", Columns: []Column{{Name: "id", Type: CText}}}, commentT)
+	want := "migration 0002_add_summary does not produce the schema its header names (to " + ms[1].To + ", got " + got + "): the file was edited; restore it from version control"
+	if err == nil || err.Error() != want || len(applied) != 0 {
+		t.Fatalf("%v %v\nwant %s", applied, err, want)
+	}
+	var title string
+	if err := s.db.QueryRow(`SELECT "title" FROM "Post__Post" WHERE "id" = 'p1'`).Scan(&title); err != nil || title != "Hello" {
+		t.Fatalf("data after the rollback: %q %v", title, err)
+	}
+	if got := recordedNames(t, s); !slices.Equal(got, []string{"0001_initial"}) {
+		t.Fatalf("recorded %v", got)
+	}
+	var hash string
+	s.db.QueryRow(`SELECT "value" FROM "_alder_meta" WHERE "key" = 'schema_hash'`).Scan(&hash)
+	if short(hash) != ms[0].To {
+		t.Fatalf("recorded schema %s, want 0001's %s", short(hash), ms[0].To)
+	}
+	// in dev mode too: an edited file is never recreated over
+	if _, err := s.Migrate(ctx, tables, []Migration{ms[0], edited}, true); err == nil || err.Error() != want {
+		t.Fatalf("dev: %v", err)
+	}
+	if applied, err := s.Migrate(ctx, tables, ms[:2], false); err != nil || !slices.Equal(applied, []string{"0002_add_summary"}) {
+		t.Fatalf("restored: %v %v", applied, err)
+	}
+	if n := rawCount(t, s, `SELECT COUNT(*) FROM "Post__Post" WHERE "title" = 'Hello'`); n != 1 {
+		t.Fatal("the restored file lost the row")
+	}
+}
+
+// An executable older than the database (it lacks the newest recorded migration) says so.
+func TestMigrate_OlderExecutable(t *testing.T) {
+	ctx := context.Background()
+	s := openMem(t)
+	ms := migrations(t)
+	if _, err := s.Migrate(ctx, []TableDesc{postV3, commentT}, ms, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, dev := range []bool{false, true} {
+		_, err := s.Migrate(ctx, []TableDesc{postV1, commentT}, ms[:1], dev)
+		want := "migration 0002_add_summary is recorded as applied but its file is missing; this executable predates the database (it has had 0003_add_views): deploy a build that includes it, or restore a backup taken before it"
+		if err == nil || err.Error() != want {
+			t.Fatalf("dev=%v: %v\nwant %s", dev, err, want)
+		}
+	}
+	if got := tableSQL(t, s, "Post__Post"); got != create(t, postV3) {
+		t.Fatalf("the refusal changed the table: %s", got)
+	}
+}
+
+// An adopted database (made by Ensure before the @ref indexes existed) gets its indexes, and so
+// does a migrated one whose index was dropped by hand; neither changes the schema hash.
+func TestMigrate_IndexesAfterAdoption(t *testing.T) {
+	ctx := context.Background()
+	const idx = `SELECT COUNT(*) FROM sqlite_schema WHERE "type" = 'index' AND "name" = 'Comment__Comment__post'`
+	for _, upTo := range []int{1, 2} { // adopted at the last file, and adopted then migrated
+		s := openMem(t)
+		if err := s.Ensure(ctx, []TableDesc{postV1, commentT}, false); err != nil {
+			t.Fatal(err)
+		}
+		exec(t, s, `DROP INDEX "Comment__Comment__post"`)
+		tables := []TableDesc{postV1, commentT}
+		if upTo == 2 {
+			tables[0] = postV2
+		}
+		if _, err := s.Migrate(ctx, tables, migrations(t)[:upTo], false); err != nil {
+			t.Fatal(err)
+		}
+		if n := rawCount(t, s, idx); n != 1 {
+			t.Fatalf("upTo %d: the adopted database lacks the @ref index", upTo)
+		}
+	}
+	s := openMem(t)
+	ms := migrations(t)
+	if _, err := s.Migrate(ctx, []TableDesc{postV3, commentT}, ms, false); err != nil {
+		t.Fatal(err)
+	}
+	exec(t, s, `DROP INDEX "Comment__Comment__post"`)
+	if _, err := s.Migrate(ctx, []TableDesc{postV3, commentT}, ms, false); err != nil {
+		t.Fatal(err)
+	}
+	if n := rawCount(t, s, idx); n != 1 {
+		t.Fatal("a dropped @ref index was not recreated")
+	}
+}
+
+// Three instances starting at once on a new file database: they take turns, every migration
+// applies once, none refuses.
+func TestMigrate_ConcurrentStarts(t *testing.T) {
+	ctx := context.Background()
+	ms := migrations(t)
+	tables := []TableDesc{postV3, commentT}
+	for i := range 10 {
+		path := t.TempDir() + "/app.db"
+		errs := make(chan error, 3)
+		applied := make(chan []string, 3)
+		for range 3 {
+			go func() {
+				s, err := OpenSQLite(path)
+				if err != nil {
+					errs <- err
+					applied <- nil
+					return
+				}
+				defer s.Close()
+				a, err := s.Migrate(ctx, tables, ms, false)
+				errs <- err
+				applied <- a
+			}()
+		}
+		var all []string
+		for range 3 {
+			if err := <-errs; err != nil {
+				t.Fatalf("run %d: %v", i, err)
+			}
+			all = append(all, <-applied...)
+		}
+		slices.Sort(all)
+		if !slices.Equal(all, []string{"0001_initial", "0002_add_summary", "0003_add_views"}) {
+			t.Fatalf("run %d: applied %v", i, all)
+		}
+		s, _ := OpenSQLite(path)
+		if got := recordedNames(t, s); !slices.Equal(got, []string{"0001_initial", "0002_add_summary", "0003_add_views"}) {
+			t.Fatalf("run %d: recorded %v", i, got)
+		}
+		if got := tableSQL(t, s, "Post__Post"); got != create(t, postV3) {
+			t.Fatalf("run %d: %s", i, got)
+		}
+		s.Close()
+	}
+}
+
+// SQLite's "database is locked" names its likely cause.
+func TestLockedErr(t *testing.T) {
+	path := t.TempDir() + "/app.db"
+	holder, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_txlock=immediate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close()
+	tx, err := holder.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`CREATE TABLE "x" ("a" INTEGER)`); err != nil {
+		t.Fatal(err)
+	}
+	other, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(0)&_txlock=immediate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	_, busy := other.Begin()
+	if busy == nil {
+		t.Fatal("no busy error")
+	}
+	got := lockedErr(busy)
+	if !strings.HasPrefix(got.Error(), "db: the database is locked: another instance is migrating or serving; wait and retry (") || !errors.Is(got, busy) {
+		t.Fatalf("got %v", got)
+	}
+	if plain := errors.New("x"); lockedErr(plain) != plain {
+		t.Fatal("another error was rewritten")
 	}
 }

@@ -49,9 +49,19 @@ func OpenSQLite(path string) (*SQLite, error) {
 		d.SetConnMaxLifetime(0)
 		d.SetConnMaxIdleTime(0)
 	}
-	if err := d.Ping(); err != nil {
-		d.Close()
-		return nil, fmt.Errorf("db: open %s: %w", path, err)
+	// a new file database turns to WAL on its first connection, which SQLite refuses at once
+	// (no busy wait) while another process holds it: retry for as long as busy_timeout waits
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		err := d.Ping()
+		if err == nil {
+			break
+		}
+		if lockedErr(err) == err || time.Now().After(deadline) {
+			d.Close()
+			return nil, lockedErr(fmt.Errorf("db: open %s: %w", path, err))
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	return &SQLite{db: d, tables: map[string]TableDesc{}}, nil
 }
@@ -363,6 +373,15 @@ func uniqueErr(table string, err error) error {
 	return &eff.ErrFail{Msg: name + ": a @unique column must be unique (could not identify which: " + msg + ")"}
 }
 
+// displayName is the name a person knows the table of SQL name sql by: "Todo__Todo" → "Todo"
+// (a table lives in the module named after it, and module names have no "__").
+func displayName(sql string) string {
+	if i := strings.LastIndex(sql, "__"); i >= 0 {
+		return sql[i+2:]
+	}
+	return sql
+}
+
 // shortName is the table name without its module: "Todo.Todo" → "Todo".
 func shortName(table string) string {
 	if i := strings.LastIndex(table, "."); i >= 0 {
@@ -449,6 +468,7 @@ const Format = "1"
 //
 // Ensure is for an app without migrations; an app with them calls Migrate instead.
 func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err error) {
+	defer func() { err = lockedErr(err) }()
 	sc, err := schemaOf(tables)
 	if err != nil {
 		return err
@@ -490,10 +510,10 @@ func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err 
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("db: schema mismatch: the database's schema (hash %.12s) differs from the app's (hash %.12s); changed tables: %s; run in dev mode to recreate the database",
-			oldHash, sc.hash, strings.Join(changedTables(tables, sc.stmts, oldSchema), ", "))
+		return fmt.Errorf("db: schema mismatch: the database's schema (hash %.12s) differs from the app's (hash %.12s); changed tables: %s; %s",
+			oldHash, sc.hash, strings.Join(changedTables(tables, sc.stmts, oldSchema), ", "), DevRemedy)
 	}
-	if err := s.recreate(ctx, conn, sc, tables, existing, nil); err != nil {
+	if err := s.recreate(ctx, conn, sc, tables, existing); err != nil {
 		return err
 	}
 	s.register(tables)
@@ -518,13 +538,12 @@ func formatErr(oldFormat string) error {
 	if n, ferr := strconv.Atoi(oldFormat); ferr == nil && n > formatNumber() {
 		rel = "newer"
 	}
-	return fmt.Errorf("db: database format v%s is %s than this runtime (v%s); run in dev mode to recreate the database", oldFormat, rel, Format)
+	return fmt.Errorf("db: database format v%s is %s than this runtime (v%s); %s", oldFormat, rel, Format, DevRemedy)
 }
 
 // recreate drops the tables existing and creates sc's (tables'), their @ref indexes and the
-// _alder_meta record, in one transaction with foreign keys off, then runs extra (when set) in
-// that transaction before it commits.
-func (s *SQLite) recreate(ctx context.Context, conn *sql.Conn, sc appSchema, tables []TableDesc, existing []string, extra func(*sql.Tx) error) (err error) {
+// _alder_meta record, in one transaction with foreign keys off (recreateTx).
+func (s *SQLite) recreate(ctx context.Context, conn *sql.Conn, sc appSchema, tables []TableDesc, existing []string) (err error) {
 	// Dropping a referenced table with foreign keys on would cascade checks;
 	// the pragma can only change outside a transaction.
 	restore, err := foreignKeysOff(ctx, conn)
@@ -540,30 +559,27 @@ func (s *SQLite) recreate(ctx context.Context, conn *sql.Conn, sc appSchema, tab
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		}
-	}()
+	if err = recreateTx(ctx, tx, sc, tables, existing); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
+// recreateTx drops the tables existing and creates sc's (tables'), their @ref indexes and the
+// _alder_meta record, inside tx (whose connection has foreign keys off).
+func recreateTx(ctx context.Context, tx *sql.Tx, sc appSchema, tables []TableDesc, existing []string) error {
 	for _, name := range existing {
-		if _, err = tx.ExecContext(ctx, "DROP TABLE "+quote(name)); err != nil {
+		if _, err := tx.ExecContext(ctx, "DROP TABLE "+quote(name)); err != nil {
 			return err
 		}
 	}
 	for _, st := range append(slices.Clone(sc.stmts), IndexStmts(tables)...) {
-		if _, err = tx.ExecContext(ctx, st); err != nil {
+		if _, err := tx.ExecContext(ctx, st); err != nil {
 			return fmt.Errorf("db: %s: %w", st, err)
 		}
 	}
-	if err = putMeta(ctx, tx, sc.schema, sc.hash); err != nil {
-		return err
-	}
-	if extra != nil {
-		if err = extra(tx); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+	return putMeta(ctx, tx, sc.schema, sc.hash)
 }
 
 func formatNumber() int {
@@ -572,8 +588,8 @@ func formatNumber() int {
 }
 
 // appTables lists every table except SQLite's own, _alder_meta and _alder_migrations.
-func appTables(ctx context.Context, conn *sql.Conn) ([]string, error) {
-	rows, err := conn.QueryContext(ctx, `SELECT "name" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" NOT IN ('_alder_meta', '_alder_migrations') ORDER BY "name"`)
+func appTables(ctx context.Context, q querier) ([]string, error) {
+	rows, err := q.QueryContext(ctx, `SELECT "name" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" NOT IN ('_alder_meta', '_alder_migrations') ORDER BY "name"`)
 	if err != nil {
 		return nil, err
 	}
@@ -598,7 +614,7 @@ func changedTables(tables []TableDesc, stmts []string, oldSchema string) []strin
 	for i, d := range tables {
 		cur[`CREATE TABLE `+quote(SQLName(d.Name))+` `] = true
 		if !slices.Contains(old, stmts[i]) {
-			out = append(out, d.Name)
+			out = append(out, shortName(d.Name))
 		}
 	}
 	for _, st := range old {
@@ -611,7 +627,7 @@ func changedTables(tables []TableDesc, stmts []string, oldSchema string) []strin
 			name = rest[:i]
 		}
 		if !cur[`CREATE TABLE `+name+` `] {
-			out = append(out, "removed "+name)
+			out = append(out, "removed "+displayName(strings.Trim(name, `"`)))
 		}
 	}
 	if len(out) == 0 {
