@@ -302,6 +302,21 @@ M5.
 M4): the blog example app end to end; schema migrations replacing
 dev-mode recreate.
 
+**Turso-ready, not Turso-only** (decided 2026-10-10 after a look at Turso's
+state: libSQL is production with embedded replicas via cgo; Turso Database,
+the Rust rewrite, is pre-1.0; Supabase acquired Turso on 2026-10-02). The
+fit is real — Queries read a local replica while Tasks write to the primary,
+database-per-tenant is a SaaS shape Alder wants, branching gives per-test
+databases — but the engine with those features is not 1.0 and the vendor's
+plans are a week old. So: keep the SQLite file as the default store; keep
+`rt/db.Store` behind `eff.Env` as the seam; keep the generated SQL inside
+the SQLite/libSQL common subset (M5 checks Alder's statements against Turso
+Database's compatibility list); design migrations to target a primary; a
+libSQL store is a second implementation after M5; tenant-per-database is a
+candidate M8 as an Alder concept that Turso implements well. Revisit
+"Turso-first" in about six months, when Turso Database's 1.0 and Supabase's
+plans are known.
+
 **M6 — editor support** (added 2026-10-09): a tree-sitter grammar for
 Alder (generated from, and tested against, the same corpus
 `internal/syntax` parses; chapter 3 is its prose form) and a Neovim
