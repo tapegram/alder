@@ -108,7 +108,8 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Admin "creating a post redirects to its edit page"`,
 		`ok   Admin.Edit "deleting a post deletes its comments"`,
 		`ok   Admin.Edit "another author's post is not found"`,
-		"14 passed, 0 failed\n",
+		`ok   Admin.Edit "a demoted author cannot edit"`,
+		"15 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("alder test examples/blog lacks %q:\n%s", want, out)

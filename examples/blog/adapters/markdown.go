@@ -22,13 +22,15 @@ func (markdown) Render(_ context.Context, args app.Args__Markdown__Markdown__Ren
 //   - paragraphs, separated by blank lines; a single line break inside a paragraph is a <br>;
 //   - `code`: its content is literal, nothing inside it is formatting;
 //   - **strong** and *emphasis*, each closed by the next ** or * and never empty;
-//   - [text](url) for an absolute http: or https: URL with a host (rt.SafeURL); any other link,
-//     such as javascript:, data: or a relative one, stays as its literal source text.
+//   - [text](url) for an absolute http: or https: URL with a host (rt.SafeURL), at most maxURL
+//     bytes and without "](" in it; any other link, such as javascript:, data: or a relative
+//     one, stays as its literal source text.
 //
 // Everything else, an unclosed * or ` or [ included, is literal text. The result is built from
 // html.El and html.Text nodes, never html.Raw: the renderer escapes every piece of text, so no
-// input can produce markup. Rendering is linear in the input's length (a closing delimiter is
-// searched for once per position it can close: see finder).
+// input can produce markup. Rendering is linear in the input's length: a closing delimiter is
+// searched for once per position it can close (see finder), and a link's URL, which may not
+// contain "](", is checked once however many "[" precede it.
 func Markdown(src string) html.Node {
 	src = strings.ReplaceAll(src, "\r\n", "\n")
 	src = strings.ReplaceAll(src, "\r", "\n")
@@ -77,7 +79,13 @@ func inline(s string, links bool) []html.Node {
 		out = append(out, n)
 	}
 	tick, star2, star, close := finder{s: s, sub: "`"}, finder{s: s, sub: "**"}, finder{s: s, sub: "*"}, finder{s: s, sub: "]("}
-	paren := finder{s: s, sub: ")"}
+	paren, inner := finder{s: s, sub: ")"}, finder{s: s, sub: "]("}
+	// link is the last link candidate checked: every "[" before the same "](" and ")" asks about
+	// the same URL, which is checked once.
+	link := struct {
+		j, k int
+		ok   bool
+	}{j: -1}
 	for i := 0; i < len(s); {
 		switch {
 		case s[i] == '`':
@@ -104,8 +112,16 @@ func inline(s string, links bool) []html.Node {
 		case s[i] == '[' && links:
 			if j := close.next(i + 1); j >= 0 {
 				if k := paren.next(j + 2); k >= 0 {
-					if url := strings.TrimSpace(s[j+2 : k]); safeLink(url) { // TrimSpace scans only the ends
-						emit(html.El("a", []html.Attr{html.A("href", url)}, inline(s[i+1:j], false)...))
+					if link.j != j || link.k != k {
+						// a URL holding "](" is never a link, so each ")" has at most one
+						// candidate URL (after the last "](" before it) and candidates never
+						// overlap: every byte is checked at most once
+						n := inner.next(j + 1)
+						link.j, link.k = j, k
+						link.ok = (n < 0 || n > k) && safeLink(strings.TrimSpace(s[j+2:k]))
+					}
+					if link.ok {
+						emit(html.El("a", []html.Attr{html.A("href", strings.TrimSpace(s[j+2:k]))}, inline(s[i+1:j], false)...))
 						i = k + 1
 						continue
 					}
@@ -127,8 +143,7 @@ func spanned(s string) bool {
 	return s != "" && s[0] != ' ' && s[len(s)-1] != ' '
 }
 
-// maxURL is the longest URL a link may have. Longer ones stay text, which also keeps rendering
-// linear: "[a](" repeated thousands of times would otherwise check ever longer candidate URLs.
+// maxURL is the longest URL a link may have; a longer one stays text.
 const maxURL = 2048
 
 // safeLink reports whether url may be a link in a post: an absolute http: or https: URL with a

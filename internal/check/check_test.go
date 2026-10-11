@@ -108,7 +108,7 @@ func TestCorpus(t *testing.T) {
 }
 
 func TestExamplesCheckClean(t *testing.T) {
-	for _, ex := range []string{"../../examples/todos"} {
+	for _, ex := range []string{"../../examples/todos", "../../examples/blog"} {
 		if got := render(runDir(t, ex)); got != "" {
 			t.Fatalf("%s should check clean:\n%s", ex, got)
 		}

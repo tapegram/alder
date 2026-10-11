@@ -2,7 +2,8 @@ module User
 
 type UserId = brand Text
 
--- A Reader can comment; an Author can also write posts (the Admin pages).
+-- Anyone, logged in or not, can read and comment. An Author can also write posts: the Admin
+-- pages are a 404 for a Reader.
 type Role = Reader | Author
 
 table User {

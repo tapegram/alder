@@ -11,19 +11,26 @@ type Model = {
   q: Text,
   posts: List Post,
   hasMore: Bool,
+  canWrite: Bool,
 }
 
 perPage : Int
 perPage = 10
 
--- load reads one page of published posts, newest first, matching `q` when it is not empty. It
+-- lastPage bounds `page`, so `(page - 1) * perPage` cannot overflow.
+lastPage : Int
+lastPage = 1000000
+
+-- load reads one page of published posts, newest first, matching `q` when it is not blank. It
 -- asks for one post more than a page holds: if that one comes back there is a next page
--- (`hasMore`), and it is dropped from the list.
+-- (`hasMore`), and it is dropped from the list. `canWrite` shows the link to the Admin page to
+-- an Author only.
 load : Params -> Session -> Query Model
 load params session = {
-  let page = if params.page < 1 then 1 else params.page
+  let page = if params.page < 1 then 1 else if params.page > lastPage then lastPage else params.page
+  let q = Text.trim params.q
   let matching =
-    if Text.isEmpty params.q then Db.and [] else Db.or [Post.title.contains params.q, Post.body.contains params.q]
+    if Text.isEmpty q then Db.and [] else Db.or [Post.title.contains q, Post.body.contains q]
   let found <-
     Db.from Post
       |> Db.where (Post.published.eq True)
@@ -32,7 +39,12 @@ load params session = {
       |> Db.limit (perPage + 1)
       |> Db.offset ((page - 1) * perPage)
       |> Db.all
-  Query.succeed { page: page, q: params.q, posts: List.take perPage found, hasMore: List.length found > perPage }
+  let me <- match session.user {
+    Just id -> Db.get User id,
+    Nothing -> Query.succeed Nothing,
+  }
+  let canWrite = Maybe.withDefault False (Maybe.map User.isAuthor me)
+  Query.succeed { page: page, q: q, posts: List.take perPage found, hasMore: List.length found > perPage, canWrite: canWrite }
 }
 
 form SearchForm = {
@@ -76,7 +88,7 @@ view model session =
     </nav>
 
     {match session.user {
-      Just _ -> <p><a href={Admin {}}>Write</a> <button click={App.Logout}>Log out</button></p>,
+      Just _ -> <p>{if model.canWrite then <a href={Admin {}}>Write</a> else Html.none} <button click={App.Logout}>Log out</button></p>,
       Nothing -> <p><a href={Auth.Login {}}>Log in</a></p>,
     }}
   </Layout.Page>

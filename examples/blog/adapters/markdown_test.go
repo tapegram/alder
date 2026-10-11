@@ -59,6 +59,7 @@ func TestMarkdown_Hostile(t *testing.T) {
 		{"relative link", "[x](/admin)", "<p>[x](/admin)</p>"},
 		{"no host", "[x](https://)", "<p>[x](https://)</p>"},
 		{"control character", "[x](https://e.com/\x01)", "<p>[x](https://e.com/\x01)</p>"},
+		{"no ]( in a url", "[a](https://e.com/](https://f.com)", "<p>[a](https://e.com/](https://f.com)</p>"},
 		{"too long a url", "[x](https://e.com/" + strings.Repeat("a", maxURL) + ")", "<p>[x](https://e.com/" + strings.Repeat("a", maxURL) + ")</p>"},
 		{"tab in url", "[x](https://e.com/\tx)", "<p>[x](https://e.com/\tx)</p>"},
 		{"attribute breakout", `[x](https://e.com/" onclick="alert(1))`, `<p><a href="https://e.com/&#34; onclick=&#34;alert(1">x</a>)</p>`},
@@ -97,6 +98,12 @@ func TestMarkdown_Large(t *testing.T) {
 		"mixed unclosed":  strings.Repeat("*[`", size/3),
 		"nested brackets": strings.Repeat("[a](", size/8) + strings.Repeat(")", size/8),
 		"long http urls":  strings.Repeat("[a](http://e.com/", size/17) + ")",
+		// every "[" before one long link that is refused: checked once, not once per "["
+		"no host":     strings.Repeat("[", 48000) + "[x](https:///" + strings.Repeat("a", 2000) + ")",
+		"bad escape":  strings.Repeat("[", 48000) + "[x](https://e.com/%zz" + strings.Repeat("a", 2000) + ")",
+		"a good link": strings.Repeat("[", 48000) + "[x](https://e.com/" + strings.Repeat("a", 2000) + ")",
+		"nested urls": strings.Repeat("[](https://e.com/", size/17) + ")",
+		"url windows": strings.Repeat("[](https://e.com/"+strings.Repeat("a", 100)+strings.Repeat("[](https://e.com/", 100)+")", size/1800),
 	} {
 		start := time.Now()
 		out := render(src)

@@ -9,14 +9,17 @@ page "/admin/{id}" { id: Post.PostId } requires user
 
 type Model = { post: Post }
 
--- load finds the post when the session's user wrote it; anyone else's post, like a missing
--- one, is a 404. The messages carry no id: they act on `model.post`, which this `load` has
--- authorized (as the to-do example's Todos.Show does).
+-- load finds the post when the session's user wrote it and is still an Author (the same gate as
+-- the Admin page: an author made a Reader can no longer edit their old posts); anyone else's
+-- post, like a missing one, is a 404. The messages carry no id: they act on `model.post`, which
+-- this `load` has authorized (as the to-do example's Todos.Show does).
 load : Params -> Session -> Query Model
 load params session = {
+  let me <- Db.get User session.user
   let found <- Db.get Post params.id
+  let isAuthor = Maybe.withDefault False (Maybe.map User.isAuthor me)
   match found {
-    Just post -> if post.author == session.user then Query.succeed { post: post } else Query.notFound,
+    Just post -> if isAuthor && post.author == session.user then Query.succeed { post: post } else Query.notFound,
     Nothing -> Query.notFound,
   }
 }
@@ -99,4 +102,19 @@ test "another author's post is not found" = {
     Task.succeed m.post.id
   }
   Task.succeed (r.value == Err "not found")
+}
+
+test "a demoted author cannot edit" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
+  let before <- Test.run {
+    let m <- load { id: id } { user: author }
+    Task.succeed m.post.id
+  }
+  let _ <- Db.update User author (\u -> { u | role: Reader })
+  let after <- Test.run {
+    let m <- load { id: id } { user: author }
+    Task.succeed m.post.id
+  }
+  Task.succeed ({ before: before.value, after: after.value } == { before: Ok id, after: Err "not found" })
 }
