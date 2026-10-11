@@ -2482,7 +2482,8 @@ connection is free, and a `PRAGMA` holds only for its own connection):
    `alder check` cannot see it): `DROP COLUMN "views"` under a header
    that says the column stays is rolled back with the rows intact, not
    committed and discovered at the next start.
-5. Last, in one more transaction (`finish`), the live hash must equal
+5. Last (`finish`, in the transaction of the last applied file, or in
+   the preparation's own when nothing was pending), the live hash must equal
    the app's, the app's schema is recorded, and `IndexStmts` creates
    every `@ref` index that is missing (`CREATE INDEX IF NOT EXISTS`, not
    part of the hash), so an adopted database gets its indexes too.
