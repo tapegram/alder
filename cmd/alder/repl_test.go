@@ -506,3 +506,18 @@ func TestRepl_Usage(t *testing.T) {
 		t.Errorf("--module Todo: exit %d\n%s", code, out)
 	}
 }
+
+// A capability without an adapter does not stop the REPL: the warning is printed once, and
+// expressions evaluate.
+func TestRepl_MissingAdapter(t *testing.T) {
+	needGoTool(t)
+	dir := tempTodos(t, "App.alder", "")
+	if err := os.WriteFile(filepath.Join(dir, "app", "Mail.alder"), []byte(mailAlder), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out := runRepl(t, "1 + 1\n2 + 3\n", dir)
+	if code != 0 || strings.Count(out, unwiredWarning) != 1 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	wantIn(t, out, "2 : Int", "5 : Int")
+}

@@ -173,8 +173,7 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 			return "", 2
 		}
 		if hasAdapters || len(p.Caps) > 0 { // the adapters, or the wiring of their constructors
-			fmt.Fprintf(stderr, "alder build: the adapters of %s (copied to %s) do not compile with the app: %v\n%s",
-				name, filepath.Join(out, "adapters"), err, vetOut)
+			fmt.Fprintf(stderr, "alder build: %s", buildkit.AdaptersCompileMessage(name, filepath.Join(out, "adapters"), err, vetOut))
 			return "", 1
 		}
 		fmt.Fprintf(stderr, "alder build: internal error: the generated Go in %s does not vet: %v\n%s", out, err, vetOut)

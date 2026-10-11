@@ -635,3 +635,27 @@ func TestEval_WaitsForLock(t *testing.T) {
 
 // pureMainFor is the scratch main printing the Go expression it.
 func pureMainFor(it string) string { return scratchMain(mainPure, false, it) }
+
+// A capability without an adapter does not stop eval: it runs unwired, with the warning, and
+// `1 + 1` is evaluated; an adapter that does not compile is the user's (exit 1, build's text).
+func TestEval_MissingAdapter(t *testing.T) {
+	needGoTool(t)
+	dir := tempTodos(t, "App.alder", "")
+	if err := os.WriteFile(filepath.Join(dir, "app", "Mail.alder"), []byte(mailAlder), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runEval(t, "", dir, "1 + 1")
+	if code != 0 || stdout != "2 : Int\n" || stderr != unwiredWarning {
+		t.Fatalf("exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "adapters", "mail"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "adapters", "mail", "mail.go"), []byte("package mail\n\nfunc Mailer() int { return 1 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runEval(t, "", dir, "1 + 1")
+	if code != 1 || !strings.Contains(stderr, "alder eval: the adapters of todos (copied to build/todos/scratch/eval/adapters) do not compile with the app: ") {
+		t.Fatalf("broken adapter: exit %d\nstderr: %s", code, stderr)
+	}
+}

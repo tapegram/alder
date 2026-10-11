@@ -264,7 +264,7 @@ func TestBuild_AdapterErrors(t *testing.T) {
 		{"flat form", func(t *testing.T, app string) {
 			os.RemoveAll(filepath.Join(app, "adapters"))
 			writeFiles(t, app, map[string]string{"adapters/caps.go": "package adapters\n\nimport \"app\"\n\nfunc Caps() app.Caps { return app.Caps{} }\n"})
-		}, "adapters/ no longer wires capabilities: move each adapter to adapters/<module>/ (see the list below)\n" + missingBoth, true},
+		}, "adapters/ no longer wires capabilities: move each adapter to adapters/<first module segment, lower-cased>/ (see the list below)\n" + missingBoth, true},
 		{"flat form, nothing missing", func(t *testing.T, app string) {
 			writeFiles(t, app, map[string]string{"adapters/caps.go": "package adapters\n\nimport \"app\"\n\nfunc Caps() app.Caps { return app.Caps{} }\n"})
 		}, "adapters/ no longer wires capabilities: delete func Caps (adapters/caps.go): the generated caps package wires the adapters\n", true},

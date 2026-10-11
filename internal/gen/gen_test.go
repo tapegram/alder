@@ -1946,10 +1946,10 @@ func TestTodos(t *testing.T) {
 	t.Logf("log: %d lines", len(logs))
 }
 
-// Serve refuses a capability left unset, naming the Caps field; the session codec round-trips
+// Serve refuses a capability left unset, naming its adapter constructor; the session codec round-trips
 // App's session as JSON and starts a cookie that lacks a field from the field's default.
 func TestServe(t *testing.T) {
-	if _, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true}); err == nil || err.Error() != "capability Auth.Login.Password is not wired: set Caps.Auth__Login__Password" {
+	if _, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true}); err == nil || err.Error() != "capability Auth.Login.Password is not wired: adapters/auth/: func LoginPassword returned nil" {
 		t.Fatalf("Serve without the capability: %v", err)
 	}
 	if h, err := Serve(Caps{Auth__Login__Password: password{}}, Options{Dev: true}); err != nil || h == nil {
@@ -3135,4 +3135,27 @@ table Comment {
 	)
 	contains(t, files["Post_alder.go"], `db.CStartsWith("title", p)`)
 	vet(t, files)
+}
+
+// A test build's missing adapters (Options.Unwired) are left nil in the caps package, which
+// does not import a package none of the others needs; a production build refuses them.
+func TestCapsPackage_Unwired(t *testing.T) {
+	p := &ir.Program{Caps: []*ir.Capability{{Module: "Mail", Name: "Mailer"}, {Module: "Auth.Login", Name: "Password"}, {Module: "Auth.Login", Name: "Token"}}}
+	src := string(CapsPackage(p, map[string]bool{"Mail.Mailer": true, "Auth.Login.Token": true}))
+	for _, want := range []string{
+		"a_auth \"app/adapters/auth\"",
+		"Auth__Login__Password: a_auth.LoginPassword(),",
+		"// Mail__Mailer: no adapter (adapters/mail/ has no func Mailer): unwired in tests",
+		"// Auth__Login__Token: no adapter (adapters/auth/ has no func LoginToken): unwired in tests",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("missing %q in:\n%s", want, src)
+		}
+	}
+	if strings.Contains(src, "app/adapters/mail") {
+		t.Errorf("imports the unwired package:\n%s", src)
+	}
+	if _, err := Emit(p, Options{Unwired: map[string]bool{"Mail.Mailer": true}}); err == nil || !strings.Contains(err.Error(), "production") {
+		t.Errorf("production build with unwired: %v", err)
+	}
 }

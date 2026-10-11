@@ -52,6 +52,15 @@ func init() {
 	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
 }
 
+// capAdapters name the adapter constructor of each capability, for Serve's refusal of one that
+// returned nil.
+var capAdapters = map[string]string{
+	"App.Clock":           "adapters/app/: func Clock",
+	"Auth.Login.Password": "adapters/auth/: func LoginPassword",
+	"Markdown.Markdown":   "adapters/markdown/: func Markdown",
+	"Payments.Stripe":     "adapters/payments/: func Stripe",
+}
+
 // Options configure Serve. The generated cmd/main.go fills them from the environment.
 type Options struct {
 	DB        string                  // the SQLite database file; ":memory:" or "" for a database in memory
@@ -63,11 +72,12 @@ type Options struct {
 }
 
 // Serve is the app's HTTP handler. It checks that o.Secret is at least 16 bytes outside dev
-// mode (web.CheckSecret) and that caps implements every capability (an error names each field
-// left nil), opens the database o.DB and brings it to the app's tables (db.MigrateLog with the
-// app's Migrations, logging each one as it commits, an adoption and a dev recreate; db.Ensure
-// for an app without), and routes Routes
-// (web.NewRouter) with the session codec, App.error, App.notFound and the page App.login names.
+// mode (web.CheckSecret) and that caps implements every capability (an error names the
+// adapter of each field left nil: "adapters/mail/: func Mailer returned nil"), opens the
+// database o.DB and brings it to the app's tables (db.MigrateLog with the app's Migrations,
+// logging each one as it commits, an adoption and a dev recreate; db.Ensure for an app
+// without), and routes Routes (web.NewRouter) with the session codec, App.error, App.notFound
+// and the page App.login names.
 func Serve(caps Caps, o Options) (http.Handler, error) {
 	if err := web.CheckSecret(o.Secret, o.Dev); err != nil {
 		return nil, err
@@ -76,7 +86,7 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	var missing []string
 	for _, k := range Capabilities {
 		if reg[k] == nil {
-			missing = append(missing, "capability "+k+" is not wired: set Caps."+strings.ReplaceAll(k, ".", "__"))
+			missing = append(missing, "capability "+k+" is not wired: "+capAdapters[k]+" returned nil")
 		}
 	}
 	if len(missing) > 0 {

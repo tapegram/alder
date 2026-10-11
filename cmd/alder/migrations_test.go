@@ -195,3 +195,26 @@ func TestEval_AdoptsDevDB(t *testing.T) {
 		t.Fatalf("no match: exit %d\n%s%s", code, out, errs)
 	}
 }
+
+// alder run does not rebuild on an editor's files under adapters/ (swap, backup and lock
+// files, .DS_Store, a dot directory) nor on a symbolic link, which the build does not copy; a
+// Go file does.
+func TestWatch_AdaptersNoise(t *testing.T) {
+	dir := t.TempDir()
+	mail := filepath.Join(dir, "adapters", "mail")
+	os.MkdirAll(filepath.Join(mail, ".git"), 0o755)
+	os.WriteFile(filepath.Join(mail, "mail.go"), []byte("package mail\n"), 0o644)
+	before := snapshot(dir)
+	for _, name := range []string{".mail.go.swp", ".mail.go.swx", "mail.go.swp", "mail.go~", "#mail.go#", ".#mail.go", ".DS_Store", ".git/index"} {
+		os.WriteFile(filepath.Join(mail, name), []byte("x"), 0o644)
+	}
+	os.Symlink(filepath.Join(mail, "mail.go"), filepath.Join(mail, "link.go"))
+	after := snapshot(dir)
+	if k := diff(before, after); k != 0 || len(after) != 1 {
+		t.Fatalf("diff = %v, snapshot %v", k, after)
+	}
+	os.WriteFile(filepath.Join(mail, "send.go"), []byte("package mail\n"), 0o644)
+	if k := diff(before, snapshot(dir)); k != sourceChange {
+		t.Fatalf("a new Go file: diff = %v", k)
+	}
+}

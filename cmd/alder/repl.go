@@ -57,6 +57,7 @@ type repl struct {
 	terminate              <-chan struct{}  // closed on SIGTERM or SIGHUP
 	seen                   map[string]stamp // the app's files as the session was last checked against
 	appDiags               string           // the app's errors as last printed ("" while it checks)
+	warned                 string           // the last build's warning of unwired capabilities, as printed
 }
 
 // runReplTo is `alder repl [dir] [--module Name]`: a read-eval-print loop over a persistent
@@ -644,6 +645,10 @@ func (r *repl) run(checked scratch.Checked, kind mainKind, sig types.Type, lets 
 	defer b.Close()
 	if ctx.Err() != nil {
 		return failf("interrupted")
+	}
+	if b.Warning != r.warned { // said once, and again when it changes
+		io.WriteString(r.stderr, b.Warning)
+		r.warned = b.Warning
 	}
 	if b.Err != nil {
 		return failf("%v", b.Err)

@@ -36,6 +36,11 @@ type Options struct {
 	// alder/rt/testing; a test node (Test.run, Test.trace, Test.fake, a test's `==`) reaching
 	// the emitter there is a bug in gen, reported as Emit's error.
 	Tests bool
+	// Unwired, in a test build only, are the capabilities (keys "M.C", as in Capabilities)
+	// whose adapters are missing (buildkit.CheckTestAdapters): the caps package leaves their
+	// fields nil and does not import a package that has none of the others, so a call of one
+	// fails "not wired in tests". Emit refuses it in a production build, which wires every one.
+	Unwired map[string]bool
 }
 
 // Emit returns the generated files: one "<Module>_alder.go" per module ('.' → "__"),
@@ -117,7 +122,10 @@ func Emit(p *ir.Program, opts Options) (files map[string][]byte, err error) {
 		if err := AdapterCollisionError(p.Caps); err != nil {
 			return nil, fmt.Errorf("gen: %v", err)
 		}
-		files[CapsFile] = CapsPackage(p)
+		if len(opts.Unwired) > 0 && !opts.Tests {
+			return nil, fmt.Errorf("gen: unwired capabilities in a production build")
+		}
+		files[CapsFile] = CapsPackage(p, opts.Unwired)
 	}
 	return files, nil
 }

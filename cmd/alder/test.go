@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -34,7 +35,8 @@ const testGrace = 5 * time.Second
 // capabilities and session to rtesting.Main, which reads -run and --json from the
 // environment (ALDER_TEST_RUN, ALDER_TEST_JSON). With withCaps (scratch.Checked.WiresAdapters)
 // the capabilities are the app's adapters, as the generated caps package wires them
-// (caps.Caps()); otherwise none is wired, and a test that calls one fails.
+// (caps.Caps(): a capability whose adapter is missing is left unwired); otherwise none is
+// wired, and a test that calls one without Test.fake fails.
 func testMain(withCaps bool) string {
 	imp, caps := "", "app.Caps{}.Registry()"
 	if withCaps {
@@ -75,8 +77,13 @@ func main() {
 // standard input is a pipe this process holds open (rtesting.EnvStdinEOF), so if `alder test`
 // is killed, even with SIGKILL, the program sees end of file and exits.
 //
+// The adapters are checked as alder build checks them, with the same messages, except that a
+// capability without an adapter is not refused: it runs unwired (a test that calls it without
+// Test.fake fails "not wired in tests"), and a warning listing each one goes to stderr first.
+//
 // Exit 0 when every selected test passed; 1 for a failing, crashed or timed-out test, a check
-// error, a typed hole or an interrupted run; 2 for usage errors and build problems. Runs of one
+// error, a typed hole, adapters refused or that do not compile with the app (alder build's
+// message), or an interrupted run; 2 for usage errors and other build problems. Runs of one
 // app serialize on build/<app>/scratch/test.lock (scratch.Compile's lock); Ctrl-C (SIGINT) or
 // SIGTERM kills the tests' process.
 func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
@@ -140,8 +147,12 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 	checked := scratch.Check(dir, nil)
 	b := scratch.CompileCheckedWith(context.Background(), checked, testMain(checked.WiresAdapters()), "test", "", scratch.Options{Tests: true})
 	defer b.Close()
+	io.WriteString(stderr, b.Warning) // capabilities without adapters run unwired
 	if b.Err != nil {
 		fail(b.Err.Error())
+		if adapters := (*scratch.AdapterError)(nil); errors.As(b.Err, &adapters) {
+			return 1 // the user's adapters, as alder build says
+		}
 		return 2
 	}
 	if testDiags(dir, b.Diags, !b.Runnable(), jsonOut, stdout, stderr) {

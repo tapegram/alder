@@ -27,7 +27,7 @@ func TestAdapterRule(t *testing.T) {
 			t.Errorf("Constructor(%q, %q) = %q, want %q", c.module, c.cap, got, c.fn)
 		}
 		n := Needs([]*ir.Capability{{Module: c.module, Name: c.cap}})[0]
-		if want := (Need{c.module, c.cap, c.dir, c.fn, c.iface}); n != want {
+		if want := (Need{c.module, c.cap, c.dir, c.fn, c.iface, ""}); n != want {
 			t.Errorf("Needs: %+v, want %+v", n, want)
 		}
 	}
@@ -98,8 +98,8 @@ func TestCheckAdapters(t *testing.T) {
 			"capability `Payments.Stripe` needs `adapters/payments/` with `func Stripe() app.Cap__Payments__Stripe`\n"},
 		{"missing", caps("Auth.Login.Password", "Markdown.Markdown"), false, "missing is missing adapters for 2 capabilities:\n" +
 			"capability `Auth.Login.Password` needs `adapters/auth/` with `func LoginPassword() app.Cap__Auth__Login__Password`\n" +
-			"capability `Markdown.Markdown` needs `adapters/markdown/` with `func Markdown() app.Cap__Markdown__Markdown`\n"},
-		{"flat", caps("Auth.Login.Password"), false, "adapters/ no longer wires capabilities: move each adapter to adapters/<module>/ (see the list below)\n" +
+			"capability `Markdown.Markdown` needs `adapters/markdown/` with `func Markdown() app.Cap__Markdown__Markdown` (found func Markdown(style string): it must take no parameters)\n"},
+		{"flat", caps("Auth.Login.Password"), false, "adapters/ no longer wires capabilities: move each adapter to adapters/<first module segment, lower-cased>/ (see the list below)\n" +
 			"flat is missing adapters for 1 capability:\n" +
 			"capability `Auth.Login.Password` needs `adapters/auth/` with `func LoginPassword() app.Cap__Auth__Login__Password`\n"},
 		{"flat", nil, false, "adapters/ no longer wires capabilities: delete func Caps (adapters/caps.go): the generated caps package wires the adapters\n"},
@@ -113,6 +113,87 @@ func TestCheckAdapters(t *testing.T) {
 		if ok := CheckAdapters(dir, c.caps, &out); ok != c.ok || out.String() != c.want {
 			t.Errorf("%s %v: ok %v, printed:\n%s\nwant %v:\n%s", c.fixture, c.caps, ok, out.String(), c.ok, c.want)
 		}
+	}
+}
+
+// Near misses under the constructor's name are said; a package named by a Go keyword gets a
+// hint; an adapters/go.mod is refused.
+func TestCheckAdapters_NearMisses(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "adapters", "mail", "mail.go"), "package mail\n\nvar Mailer = 1\n\nfunc Sender[T any]() {}\n\ntype Queue struct{}\n")
+	var out strings.Builder
+	if CheckAdapters(dir, caps("Mail.Mailer", "Mail.Sender", "Mail.Queue", "Select.Picker"), &out) {
+		t.Fatal("ok")
+	}
+	want := filepath.Base(dir) + " is missing adapters for 4 capabilities:\n" +
+		"capability `Mail.Mailer` needs `adapters/mail/` with `func Mailer() app.Cap__Mail__Mailer` (found var Mailer: it must be a func)\n" +
+		"capability `Mail.Sender` needs `adapters/mail/` with `func Sender() app.Cap__Mail__Sender` (found func Sender[T any](): it must not be generic)\n" +
+		"capability `Mail.Queue` needs `adapters/mail/` with `func Queue() app.Cap__Mail__Queue` (found type Queue: it must be a func)\n" +
+		"capability `Select.Picker` needs `adapters/select/` with `func Picker() app.Cap__Select__Picker` (select is a Go keyword: name the package e.g. selectadapter)\n"
+	if out.String() != want {
+		t.Errorf("printed:\n%s\nwant:\n%s", out.String(), want)
+	}
+	write(t, filepath.Join(dir, "adapters", "go.mod"), "module adapters\n")
+	out.Reset()
+	if CheckAdapters(dir, nil, &out) || out.String() != GoModMessage+"\n" {
+		t.Errorf("go.mod: printed %q", out.String())
+	}
+}
+
+// The scan wants the package directory by its exact name: a mis-cased one is named (on a
+// case-insensitive file system it would otherwise pass the scan and collide in Go), a
+// symbolic link is ignored as CopyAdapters ignores it, and the list says so.
+func TestCheckAdapters_CaseAndSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "adapters", "Mail", "mail.go"), "package mail\n\nfunc Mailer() {}\n")
+	var out strings.Builder
+	if CheckAdapters(dir, caps("Mail.Mailer"), &out) || out.String() != "adapters/Mail/ must be adapters/mail/ (an adapter package's directory is its module's first segment, lower-cased)\n" {
+		t.Errorf("mis-cased: printed %q", out.String())
+	}
+	if _, _, ok := CheckTestAdapters(dir, caps("Mail.Mailer"), &strings.Builder{}); ok {
+		t.Error("mis-cased: a test build accepts it")
+	}
+	other := t.TempDir()
+	write(t, filepath.Join(other, "mail.go"), "package mail\n\nfunc Mailer() {}\n")
+	if err := os.RemoveAll(filepath.Join(dir, "adapters", "Mail")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(other, filepath.Join(dir, "adapters", "mail")); err != nil {
+		t.Skip(err)
+	}
+	write(t, filepath.Join(dir, "adapters", "auth", "a.go"), "package auth\n")
+	if err := os.Symlink(filepath.Join(other, "mail.go"), filepath.Join(dir, "adapters", "auth", "password.go")); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	want := filepath.Base(dir) + " is missing adapters for 2 capabilities:\n" +
+		"capability `Mail.Mailer` needs `adapters/mail/` with `func Mailer() app.Cap__Mail__Mailer`\n" +
+		"capability `Auth.Login.Password` needs `adapters/auth/` with `func LoginPassword() app.Cap__Auth__Login__Password`\n" +
+		"(symlinks under adapters/ are ignored)\n"
+	if CheckAdapters(dir, caps("Mail.Mailer", "Auth.Login.Password"), &out) || out.String() != want {
+		t.Errorf("symlinks: printed:\n%s\nwant:\n%s", out.String(), want)
+	}
+}
+
+// A test build leaves missing adapters unwired, with a warning; other refusals stand.
+func TestCheckTestAdapters(t *testing.T) {
+	dir := filepath.Join("testdata", "adapters", "ok")
+	var out strings.Builder
+	unwired, warning, ok := CheckTestAdapters(dir, caps("Auth.Login.Password", "Payments.Stripe", "Mail.Mailer"), &out)
+	want := "warning: 2 capabilities without adapters run unwired in tests:\n" +
+		"capability `Payments.Stripe` needs `adapters/payments/` with `func Stripe() app.Cap__Payments__Stripe`\n" +
+		"capability `Mail.Mailer` needs `adapters/mail/` with `func Mailer() app.Cap__Mail__Mailer`\n"
+	if !ok || out.String() != "" || len(unwired) != 2 || unwired[0].Cap != "Stripe" || warning != want {
+		t.Errorf("ok %v, unwired %v, printed %q, warning:\n%s", ok, unwired, out.String(), warning)
+	}
+	if _, warning, _ := CheckTestAdapters(dir, caps("Payments.Stripe"), &out); !strings.HasPrefix(warning, "warning: 1 capability without an adapter runs unwired in tests:\n") {
+		t.Errorf("one: %q", warning)
+	}
+	if _, _, ok := CheckTestAdapters(filepath.Join("testdata", "adapters", "flat"), caps("Auth.Login.Password"), &out); ok {
+		t.Error("flat: ok")
+	}
+	if _, _, ok := CheckTestAdapters(dir, caps("Internal.Log"), &out); ok {
+		t.Error("Internal: ok")
 	}
 }
 
@@ -188,6 +269,29 @@ func TestCopyAdapters(t *testing.T) {
 	}
 	if _, err := os.Stat(dst); !os.IsNotExist(err) {
 		t.Errorf("not present: %s still exists (%v)", dst, err)
+	}
+}
+
+// A directory renamed only in its letter case is copied under its new name, even on a
+// case-insensitive file system (the stale one is removed before the copy).
+func TestCopyAdapters_CaseRename(t *testing.T) {
+	src, dst := t.TempDir(), filepath.Join(t.TempDir(), "adapters")
+	write(t, filepath.Join(src, "Mail", "mail.go"), "package mail\n")
+	if err := CopyAdapters(src, dst, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(src, "Mail"), filepath.Join(src, "mail")); err != nil {
+		t.Fatal(err)
+	}
+	if err := CopyAdapters(src, dst, true); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(dst)
+	if err != nil || len(entries) != 1 || entries[0].Name() != "mail" {
+		t.Fatalf("dst holds %v (%v)", entries, err)
+	}
+	if got := tree(t, dst); !slices.Equal(got, []string{"mail/mail.go"}) {
+		t.Errorf("copied %v", got)
 	}
 }
 

@@ -481,7 +481,8 @@ func TestTest_KilledParent(t *testing.T) {
 	}
 }
 
-// A typed hole stops the run with a reason; a build problem under --json is one object.
+// A typed hole stops the run with a reason; a build problem under --json is one object (an
+// adapter that does not compile is the user's: exit 1).
 func TestTest_HoleAndJSONError(t *testing.T) {
 	needGoTool(t)
 	dir := tempTodos(t, "Todo.alder", "\ntest \"h\" = ?todo == 1\n")
@@ -497,7 +498,7 @@ func TestTest_HoleAndJSONError(t *testing.T) {
 	}
 	code, stdout, stderr := runTest(t, dir, "--json")
 	var r map[string]string
-	if code != 2 || strings.Count(stdout, "\n") != 1 || json.Unmarshal([]byte(stdout), &r) != nil || len(r) != 1 || !strings.Contains(r["error"], "bad.go") {
+	if code != 1 || strings.Count(stdout, "\n") != 1 || json.Unmarshal([]byte(stdout), &r) != nil || len(r) != 1 || !strings.Contains(r["error"], "bad.go") {
 		t.Errorf("build error: exit %d stdout %q stderr %q", code, stdout, stderr)
 	}
 	code, stdout, _ = runTest(t, dir, "--json", "-run", "(")
@@ -519,19 +520,80 @@ func mustRead(t *testing.T, path string) []byte {
 	return b
 }
 
-// alder test checks the adapters as alder build does, with the same texts: a missing
-// constructor stops the build before anything is written.
+// mailAlder is a capability with a fake and a test using it, and no adapter: fakes first.
+const mailAlder = `module Mail
+
+capability Mailer {
+  send : Text -> Task Unit,
+}
+
+fake Mailer {
+  send to = Task.succeed ()
+}
+
+test "the fake mailer sends" = {
+  let _ <- Test.fake Mailer
+  let _ <- Mailer.send "ada@example.com"
+  let steps <- Test.trace
+  Task.succeed (List.member "Mailer.send" steps)
+}
+`
+
+// unwiredWarning is the warning a test build of todos with mailAlder prints.
+const unwiredWarning = "warning: 1 capability without an adapter runs unwired in tests:\n" +
+	"capability `Mail.Mailer` needs `adapters/mail/` with `func Mailer() app.Cap__Mail__Mailer`\n"
+
+// alder test does not refuse a missing adapter: the capability runs unwired, with a warning,
+// so a test with Test.fake passes (fakes first, before any Go) and one without fails "not
+// wired in tests".
 func TestTest_MissingAdapter(t *testing.T) {
 	needGoTool(t)
 	dir := tempTodos(t, "App.alder", "")
-	replaceIn(t, filepath.Join(dir, "adapters", "auth", "password.go"), "func LoginPassword()", "func loginPassword()")
-	code, stdout, stderr := runTest(t, dir)
-	want := "todos is missing adapters for 1 capability:\n" +
-		"capability `Auth.Login.Password` needs `adapters/auth/` with `func LoginPassword() app.Cap__Auth__Login__Password`\n"
-	if code != 2 || stdout != "" || !strings.Contains(stderr, want) {
-		t.Fatalf("exit %d\nstdout: %s\nstderr: %s\nwant it to contain %q", code, stdout, stderr, want)
+	if err := os.WriteFile(filepath.Join(dir, "app", "Mail.alder"), []byte(mailAlder), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join("build", "todos", "scratch", "test", "go.mod")); !os.IsNotExist(err) {
-		t.Errorf("the scratch module was written: %v", err)
+	code, stdout, stderr := runTest(t, dir)
+	if code != 0 || !strings.HasPrefix(stderr, unwiredWarning) || !strings.Contains(stdout, `ok   Mail "the fake mailer sends"`) {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	replaceIn(t, filepath.Join(dir, "app", "Mail.alder"), "  let _ <- Test.fake Mailer\n", "")
+	code, stdout, stderr = runTest(t, dir)
+	if code != 1 || !strings.Contains(stdout, "capability Mail.Mailer is not wired in tests") {
+		t.Fatalf("unfaked: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+}
+
+// Adapters alder build refuses, or that do not compile with the app, are the user's: alder
+// test exits 1 with alder build's message.
+func TestTest_AdapterRefusals(t *testing.T) {
+	needGoTool(t)
+	dir := tempTodos(t, "App.alder", "")
+	if err := os.WriteFile(filepath.Join(dir, "app", "Mail.alder"), []byte(mailAlder), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	write := func(rel, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("adapters/mail/mail.go", "package mail\n\nfunc Mailer() int { return 1 }\n")
+	code, stdout, stderr := runTest(t, dir)
+	if code != 1 || stdout != "" || !strings.Contains(stderr, "alder test: the adapters of todos (copied to build/todos/scratch/test/adapters) do not compile with the app: ") ||
+		!strings.Contains(stderr, "does not implement app.Cap__Mail__Mailer") {
+		t.Fatalf("wrong signature: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	write("adapters/mail/mail.go", "package mail\n\nfunc Mailer(host string) int { return 1 }\n")
+	code, _, stderr = runTest(t, dir)
+	if code != 0 || !strings.Contains(stderr, "(found func Mailer(host string): it must take no parameters)") {
+		t.Fatalf("near miss: exit %d\nstderr: %s", code, stderr)
+	}
+	write("adapters/go.mod", "module adapters\n")
+	code, _, stderr = runTest(t, dir)
+	if code != 1 || !strings.Contains(stderr, "adapters/go.mod: adapters/ is part of the generated module; delete it") {
+		t.Fatalf("go.mod: exit %d\nstderr: %s", code, stderr)
 	}
 }

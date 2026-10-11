@@ -69,6 +69,9 @@ type Build struct {
 	LineOffset int
 	InsertLine int    // the first inserted line (1-based) of the rewritten source; 0 when none
 	ExtraFile  string // the extra module's file, "<Name>.alder" ("" without an extra module)
+	// Warning, for a test build (Options.Tests) of an app missing adapters, is the warning to
+	// print once (buildkit.CheckTestAdapters): those capabilities run unwired. "" when none.
+	Warning string
 
 	unlock func() // releases the lock on out (Close); nil when not held
 }
@@ -81,6 +84,14 @@ func (b *Build) Close() {
 		b.unlock = nil
 	}
 }
+
+// AdapterError is Build.Err when the app's adapters are refused or do not compile with the
+// app: the user's program is at fault, as with a check error (the commands exit 1). Msg is
+// what alder build prints: buildkit.CheckAdapters' lines, or "the adapters of <app> (copied to
+// <dir>) do not compile with the app: …" with Go's output.
+type AdapterError struct{ Msg string }
+
+func (e *AdapterError) Error() string { return e.Msg }
 
 // Timeout bounds a Run.
 const Timeout = 60 * time.Second
@@ -101,8 +112,9 @@ const Timeout = 60 * time.Second
 //     alone and still produce a binary.
 //   - Binary is "" when Diags hold an error or a typed hole (W0002), or when Err is set. Err is
 //     set only for I/O failures, an extra module named like an app or stdlib module
-//     (*ModuleExistsError), generated or caller Go that does not vet, and go build failures;
-//     its message carries Go's output.
+//     (*ModuleExistsError), adapters that are refused or do not compile with the app
+//     (*AdapterError: the user's, as a check error is), generated or caller Go that does not
+//     vet, and go build failures; its message carries Go's output.
 //   - Compile writes only under out (the generated module "app" with its caps/ when it wires
 //     the adapters (Checked.WiresAdapters), adapters/, static/ and
 //     migrations/ copied from the app, cmd/main.go and the executable out/scratch) and the
@@ -203,14 +215,28 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 	adapters := filepath.Join(appDir, "adapters")
 	hasAdapters := buildkit.HasAdapters(appDir)
 	wire := c.WiresAdapters() // the caller's main imports app/caps exactly when this holds
+	var unwired map[string]bool
 	if wire {
 		var msg strings.Builder
-		if !buildkit.CheckAdapters(appDir, p.Caps, &msg) {
-			b.Err = errors.New(strings.TrimSuffix(msg.String(), "\n"))
+		ok := true
+		if o.Tests { // a missing adapter runs unwired, with a warning
+			var missing []buildkit.Need
+			missing, b.Warning, ok = buildkit.CheckTestAdapters(appDir, p.Caps, &msg)
+			for _, n := range missing {
+				if unwired == nil {
+					unwired = map[string]bool{}
+				}
+				unwired[n.Module+"."+n.Cap] = true
+			}
+		} else {
+			ok = buildkit.CheckAdapters(appDir, p.Caps, &msg)
+		}
+		if !ok {
+			b.Err = &AdapterError{strings.TrimSuffix(msg.String(), "\n")}
 			return b
 		}
 	}
-	files, err := gen.Emit(p, gen.Options{RepoPath: repo, Migrations: buildkit.HasMigrations(appDir), Tests: o.Tests})
+	files, err := gen.Emit(p, gen.Options{RepoPath: repo, Migrations: buildkit.HasMigrations(appDir), Tests: o.Tests, Unwired: unwired})
 	if err != nil {
 		b.Err = fmt.Errorf("internal error: %v", err)
 		return b
@@ -242,8 +268,9 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 		b.Err = err
 		return b
 	}
+	vetMod := func() error { return vet(ctx, b.Dir, files, abs, wire || hasAdapters) }
 	if !o.NoVet {
-		if b.Err = vet(ctx, b.Dir, files); b.Err != nil {
+		if b.Err = vetMod(); b.Err != nil {
 			return b
 		}
 	}
@@ -252,7 +279,7 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 			return b
 		}
 		if o.NoVet { // what vet would have said first
-			if b.Err = vet(ctx, b.Dir, files); b.Err != nil {
+			if b.Err = vetMod(); b.Err != nil {
 				return b
 			}
 		}
@@ -263,10 +290,12 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 	return b
 }
 
-// vet runs `go vet` on the scratch module in dir (files are the generated ones) and returns
-// nil, or why it does not vet: buildkit.VetApp's error when the generated package is at fault,
-// else the main's or the adapters'.
-func vet(ctx context.Context, dir string, files map[string][]byte) error {
+// vet runs `go vet` on the scratch module in dir (files are the generated ones; appDir is the
+// app's absolute directory; adapters: the module has adapters/ or caps/) and returns nil, or
+// why it does not vet: buildkit.VetApp's error when the generated package is at fault; else,
+// when the adapters and the caps package wiring them do not vet on their own, an AdapterError
+// with alder build's message; else the main's.
+func vet(ctx context.Context, dir string, files map[string][]byte, appDir string, adapters bool) error {
 	vetOut, err := buildkit.GoCmdContext(ctx, dir, "vet", "-mod=mod", "./...")
 	if err == nil {
 		return nil
@@ -277,7 +306,31 @@ func vet(ctx context.Context, dir string, files map[string][]byte) error {
 	if verr := buildkit.VetApp(dir, files, "."); verr != nil {
 		return verr
 	}
-	return fmt.Errorf("the Go in %s (the main or the adapters) does not vet: %v\n%s", dir, err, vetOut)
+	if adapters {
+		var pkgs []string
+		if _, ok := files[gen.CapsFile]; ok {
+			pkgs = append(pkgs, "./caps")
+		}
+		if buildkit.IsDir(filepath.Join(dir, "adapters")) {
+			pkgs = append(pkgs, "./adapters/...")
+		}
+		if len(pkgs) > 0 {
+			if aOut, aErr := buildkit.GoCmdContext(ctx, dir, append([]string{"vet", "-mod=mod"}, pkgs...)...); aErr != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				copied := filepath.Join(dir, "adapters")
+				if wd, err := os.Getwd(); err == nil {
+					if rel, err := filepath.Rel(wd, copied); err == nil && !strings.HasPrefix(rel, "..") {
+						copied = rel // as alder build names it: build/<app>/…
+					}
+				}
+				msg := buildkit.AdaptersCompileMessage(filepath.Base(appDir), copied, aErr, aOut)
+				return &AdapterError{strings.TrimRight(msg, "\n")}
+			}
+		}
+	}
+	return fmt.Errorf("the Go main in %s does not vet: %v\n%s", dir, err, vetOut)
 }
 
 // Checked is the outcome of Check.
@@ -299,10 +352,12 @@ type Checked struct {
 
 // WiresAdapters reports whether a build of what c checked wires the app's adapters: the app
 // has capabilities and adapters (a .go file under adapters/). Then CompileChecked checks them
-// first (buildkit.CheckAdapters: a missing adapter is Build.Err, with the lines alder build
-// prints) and writes the generated package caps, and the caller's main must serve them with
+// first and writes the generated package caps, and the caller's main must serve them with
 // caps.Caps() (importing "app/caps"); otherwise the main uses app.Caps{}, and a capability
-// call finds no implementation.
+// call finds no implementation. The check is buildkit.CheckAdapters' (a refusal is an
+// *AdapterError with the lines alder build prints), except that a test build
+// (Options.Tests) leaves a missing adapter unwired, as if there were no adapters, and says so
+// in Build.Warning (buildkit.CheckTestAdapters).
 func (c Checked) WiresAdapters() bool {
 	if c.Result == nil || !buildkit.HasAdapters(c.appDir) {
 		return false

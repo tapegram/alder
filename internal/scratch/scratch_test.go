@@ -284,8 +284,8 @@ func TestCompileCheckedWith_Cancelled(t *testing.T) {
 }
 
 // With NoVet a main that builds but does not vet runs; one that does not build either is told
-// apart from a generated-code failure by the vet CompileCheckedWith then runs: the main or the
-// adapters "does not vet", as without NoVet.
+// apart from a generated-code failure by the vet CompileCheckedWith then runs: the main "does
+// not vet", as without NoVet (the adapters vet on their own).
 func TestCompileCheckedWith_NoVet(t *testing.T) {
 	needGo(t)
 	extra := &Module{Name: "Scratch", Source: "it : Int\nit = Todo.countOpen []\n"}
@@ -307,7 +307,7 @@ func TestCompileCheckedWith_NoVet(t *testing.T) {
 	broken := strings.Replace(printMain, "fmt.Println(app.Scratch__it)", `var n int = "x"; fmt.Println(n, app.Scratch__it)`, 1)
 	b = CompileCheckedWith(context.Background(), c, broken, "", out, Options{NoVet: true})
 	defer b.Close()
-	if b.Err == nil || !strings.Contains(b.Err.Error(), "(the main or the adapters) does not vet") || b.Runnable() {
+	if b.Err == nil || !strings.Contains(b.Err.Error(), "the Go main in ") || !strings.Contains(b.Err.Error(), " does not vet") || b.Runnable() {
 		t.Errorf("neither vets nor builds: %v", b.Err)
 	}
 }

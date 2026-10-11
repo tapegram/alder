@@ -40,11 +40,13 @@ type evalResult struct {
 // --run runs it against build/<app>/dev.db; a `Select` is shown as `<Select>` (with --run, a
 // hint to pipe it to a Db function); a `Task` is refused. --run runs with the app's default
 // session (app.TestSession()) and, when adapters/ holds Go files, the adapters' capabilities
-// (scratchMain). The scratch build is a test build (scratch.Options.Tests: the app's tests,
+// (scratchMain); a capability without an adapter is left unwired, with a warning on stderr,
+// as in alder test. The scratch build is a test build (scratch.Options.Tests: the app's tests,
 // TestSession and fakes are compiled in; eval is a developer tool, never deployed). Diagnostics
 // go to stderr, positioned
-// in the input (`input:L:C`). Exit 0 on success, 1 for diagnostics or a failing (or
-// interrupted) evaluation, 2 for usage, I/O and internal errors. --json prints one object
+// in the input (`input:L:C`). Exit 0 on success, 1 for diagnostics, adapters refused or that
+// do not compile with the app (alder build's message), or a failing (or interrupted)
+// evaluation, 2 for usage, I/O and internal errors. --json prints one object
 // {value, type, diagnostics, error, hint} on stdout instead. Evaluations of one app serialize on
 // build/<app>/scratch/eval.lock (scratch.Compile's lock), held from the build to the end of the
 // run; one that has to wait says so on stderr. Ctrl-C (SIGINT) or SIGTERM stops the wait, the
@@ -202,7 +204,11 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	if sigCtx.Err() != nil {
 		return failf(1, "alder eval: interrupted")
 	}
+	io.WriteString(stderr, b.Warning) // capabilities without adapters run unwired
 	if b.Err != nil {
+		if adapters := (*scratch.AdapterError)(nil); errors.As(b.Err, &adapters) {
+			return failf(1, "alder eval: %v", b.Err) // the user's adapters, as alder build says
+		}
 		return failf(2, "alder eval: %v", b.Err)
 	}
 	if !b.Runnable() { // the check above passed, so this is not expected

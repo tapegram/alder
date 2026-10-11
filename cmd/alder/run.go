@@ -583,7 +583,18 @@ func watch(dir string, interval time.Duration, stop <-chan struct{}, changed cha
 	}
 }
 
-// snapshot stamps the watched files of dir, keyed by path (relative to dir, slash-separated).
+// editorNoise reports whether name, a file or directory under adapters/, is an editor's or the
+// system's, not the user's Go: a name starting with '.' (.x.go.swp, .DS_Store, .#x.go, .git),
+// ending in '~', ".swp" or ".swx", or of the form #…#. A change to one does not rebuild.
+func editorNoise(name string) bool {
+	return strings.HasPrefix(name, ".") || strings.HasSuffix(name, "~") || strings.HasSuffix(name, ".swp") ||
+		strings.HasSuffix(name, ".swx") || (len(name) > 1 && strings.HasPrefix(name, "#") && strings.HasSuffix(name, "#"))
+}
+
+// snapshot stamps the watched files of dir, keyed by path (relative to dir, slash-separated):
+// app/**/*.alder, every file under static/, migrations/*.sql and schema.json, and the files
+// under adapters/ but editor noise (editorNoise) and symbolic links, which the build does not
+// copy.
 func snapshot(dir string) map[string]stamp {
 	files := map[string]stamp{}
 	add := func(path string, d fs.DirEntry) {
@@ -597,6 +608,17 @@ func snapshot(dir string) map[string]stamp {
 		_ = filepath.WalkDir(filepath.Join(dir, sub), func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return nil // vanished meanwhile, or unreadable: skipped
+			}
+			if sub == "adapters" && path != filepath.Join(dir, sub) {
+				if editorNoise(d.Name()) {
+					if d.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+				if d.Type()&fs.ModeSymlink != 0 {
+					return nil
+				}
 			}
 			if !d.IsDir() && (sub != "app" || strings.HasSuffix(path, ".alder")) {
 				add(path, d)
