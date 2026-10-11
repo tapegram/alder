@@ -264,14 +264,14 @@ func TestLower_RefusesPoison(t *testing.T) {
 	Lower(prog, res)
 }
 
-// A table used as a value (passed to a function taking `Table Purchase`) lowers to a TableRef, and a
+// A table used as a value (passed to a function taking `Table Order`) lowers to a TableRef, and a
 // table's attributes are kept: @created, @updated, @unique and @ref (to a table of another
 // module).
 func TestIR_TableRefAndAttrs(t *testing.T) {
 	p := lowerDir(t, "../../testdata/golden/gen_vet/m3b-effects")
 	d := Dump(p)
 	for _, want := range []string{
-		"(call (global Shop.countIn) (table Purchase.Purchase))",
+		"(call (global Shop.countIn) (table Order.Order))",
 		"(created created)", "(updated updated)", "(unique code)", "(ref buyer Customer.Customer)",
 	} {
 		if !strings.Contains(d, want) {
@@ -280,12 +280,12 @@ func TestIR_TableRefAndAttrs(t *testing.T) {
 	}
 	var tb *Table
 	for _, x := range p.Tables {
-		if x.Name == "Purchase" {
+		if x.Name == "Order" {
 			tb = x
 		}
 	}
 	if tb == nil || tb.Created != "created" || tb.Updated != "updated" || len(tb.Unique) != 1 || tb.Refs["buyer"] != "Customer.Customer" {
-		t.Errorf("table Purchase: %+v", tb)
+		t.Errorf("table Order: %+v", tb)
 	}
 }
 

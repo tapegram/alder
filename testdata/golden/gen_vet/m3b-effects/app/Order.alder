@@ -1,4 +1,4 @@
-module Purchase
+module Order
 
 import Customer
 
@@ -6,7 +6,7 @@ type OrderId = brand Text
 
 type Status = Open | Paid | Shipped
 
-table Purchase {
+table Order {
   id: OrderId @id,
   buyer: Customer.UserId @ref Customer,
   status: Status = Open,

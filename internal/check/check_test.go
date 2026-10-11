@@ -288,19 +288,21 @@ func TestReservedPreludeNames(t *testing.T) {
 		{"form", "form Query = {\n  q: Text,\n}\n\nx : Query Int\nx = Query.succeed 1\n", "E0012 `Query` is a Prelude type; name the form differently (for example `QueryForm`)"},
 		{"type", "type Task = { n: Int }\n", "E0012 `Task` is a Prelude type; name the type differently (for example `TaskType`)"},
 		{"union", "type Maybe = Yes | No\n", "E0012 `Maybe` is a Prelude type; name the type differently (for example `MaybeType`)"},
-		{"table", "type OrderId = brand Text\n\ntable Order {\n  id: OrderId @id,\n}\n", "E0012 `Order` is a Prelude type; name the table differently (for example `OrderTable`)"},
+		{"table", "type NavId = brand Text\n\ntable Nav {\n  id: NavId @id,\n}\n", "E0012 `Nav` is a Prelude type; name the table differently (for example `NavTable`)"},
+		// Db's plumbing types are not reserved: they are free for domain names
+		{"Page", "type Page a = { items: List a, total: Int }\n\nfirst : Page Int -> Int\nfirst p = p.total\n", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			var got []string
 			module := "M"
 			if c.name == "table" {
-				module = "Order" // a table is declared in its own module
+				module = "Nav" // a table is declared in its own module
 			}
 			for _, d := range checkModule(t, "module "+module+"\n\n"+c.src) {
 				got = append(got, d.Code+" "+d.Message)
 			}
-			if len(got) != 1 || got[0] != c.want {
+			if c.want == "" && len(got) != 0 || c.want != "" && (len(got) != 1 || got[0] != c.want) {
 				t.Fatalf("got %q want one %q", got, c.want)
 			}
 		})

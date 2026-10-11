@@ -1907,11 +1907,11 @@ func TestShop(t *testing.T) {
 		t.Fatal(err)
 	}
 	day := rt.Date{Y: 2026, M: 1, D: 1}
-	open, paid, shipped := Purchase__Status__Open__, Purchase__Status__Paid__, Purchase__Status__Shipped__
-	add := func(code string, st Purchase__Status, late rt.Maybe[Purchase__Status], qty int64, gift bool, note rt.Maybe[string]) {
+	open, paid, shipped := Order__Status__Open__, Order__Status__Paid__, Order__Status__Shipped__
+	add := func(code string, st Order__Status, late rt.Maybe[Order__Status], qty int64, gift bool, note rt.Maybe[string]) {
 		t.Helper()
 		_, err := eff.Run(env, eff.KTask, eff.Call("add", true, func(e *eff.Env) (string, error) {
-			return db.InsertRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__Purchase__Purchase, insertvals__Purchase__Purchase(insert__Purchase__Purchase{
+			return db.InsertRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__Order__Order, insertvals__Order__Order(insert__Order__Order{
 				Buyer: uid, Status: st, Late: late, Total: 2, Qty: qty, Gift: gift, Day: day, ShipDay: rt.Nothing[rt.Date](), Code: code, Note: note}), e.Now())
 		}))
 		if err != nil {
@@ -1922,11 +1922,11 @@ func TestShop(t *testing.T) {
 	add("x2", paid, rt.Just(paid), 2, false, rt.Just("n"))     // matches search paid
 	add("x3", shipped, rt.Just(shipped), 3, false, rt.Just("n")) // shipped: not < Shipped
 	add("y4", open, rt.Just(open), 1, false, rt.Just("n"))     // code lacks x
-	add("x5", open, rt.Nothing[Purchase__Status](), 1, true, rt.Nothing[string]())
+	add("x5", open, rt.Nothing[Order__Status](), 1, true, rt.Nothing[string]())
 
-	all := func(s db.Select[Purchase__Purchase]) []Purchase__Purchase {
+	all := func(s db.Select[Order__Order]) []Order__Order {
 		t.Helper()
-		rows, err := eff.RunQuery(env, eff.Q(eff.Call("all", false, func(e *eff.Env) ([]Purchase__Purchase, error) {
+		rows, err := eff.RunQuery(env, eff.Q(eff.Call("all", false, func(e *eff.Env) ([]Order__Order, error) {
 			return db.All(e.Ctx, e.Store.(db.Store), db.TxOf(e), s)
 		})))
 		if err != nil {
@@ -1935,16 +1935,16 @@ func TestShop(t *testing.T) {
 		return rows
 	}
 	later := clock.Add(time.Hour)
-	if got := all(Shop__search(open, day, later, []Purchase__Status{open, paid})); len(got) != 1 || got[0].Code != "x1" || got[0].Late.Val.Tag != is__Purchase__Status__Open {
+	if got := all(Shop__search(open, day, later, []Order__Status{open, paid})); len(got) != 1 || got[0].Code != "x1" || got[0].Late.Val.Tag != is__Order__Status__Open {
 		t.Errorf("search open: %+v", got)
 	}
-	if got := all(Shop__search(paid, day, later, []Purchase__Status{paid})); len(got) != 1 || got[0].Code != "x2" {
+	if got := all(Shop__search(paid, day, later, []Order__Status{paid})); len(got) != 1 || got[0].Code != "x2" {
 		t.Errorf("search paid: %+v", got)
 	}
-	if got := all(Shop__search(shipped, day, later, []Purchase__Status{shipped})); len(got) != 0 {
+	if got := all(Shop__search(shipped, day, later, []Order__Status{shipped})); len(got) != 0 {
 		t.Errorf("search shipped (not < Shipped): %+v", got)
 	}
-	if got := all(Shop__search(open, day, clock, []Purchase__Status{open})); len(got) != 0 {
+	if got := all(Shop__search(open, day, clock, []Order__Status{open})); len(got) != 0 {
 		t.Errorf("search created before the clock: %+v", got)
 	}
 	if got := all(Shop__either(nil)); len(got) != 0 {
@@ -1953,7 +1953,7 @@ func TestShop(t *testing.T) {
 	if got := all(Shop__either([]db.Cond{Shop__conds(nil)})); len(got) != 0 {
 		t.Errorf("Db.not (Db.and []) matched %d rows", len(got))
 	}
-	if got := all(db.Where(Shop__conds(nil), db.From(table__Purchase__Purchase))); len(got) != 5 {
+	if got := all(db.Where(Shop__conds(nil), db.From(table__Order__Order))); len(got) != 5 {
 		t.Errorf("Db.or [Db.and [], Db.not (Db.or [])] matched %d rows, want 5", len(got))
 	}
 	if n, err := eff.RunQuery(env, Shop__allOrders); err != nil || n != 5 {
@@ -2000,7 +2000,7 @@ func TestShop(t *testing.T) {
 	}
 
 	// conditions on Maybe columns are two-valued (C1)
-	codes := func(rows []Purchase__Purchase) string {
+	codes := func(rows []Order__Order) string {
 		var out []string
 		for _, r := range rows {
 			out = append(out, r.Code)
@@ -2013,10 +2013,10 @@ func TestShop(t *testing.T) {
 	if got := codes(all(Shop__lateNothing)); got != "x5" {
 		t.Errorf("late in [Nothing] = %s", got)
 	}
-	if got := codes(all(Shop__notLateIn([]rt.Maybe[Purchase__Status]{rt.Just(paid)}))); got != "x1 x3 x5 y4" {
+	if got := codes(all(Shop__notLateIn([]rt.Maybe[Order__Status]{rt.Just(paid)}))); got != "x1 x3 x5 y4" {
 		t.Errorf("not (late in [Just Paid]) = %s", got)
 	}
-	if got := codes(all(Shop__notLateIn([]rt.Maybe[Purchase__Status]{rt.Just(paid), rt.Nothing[Purchase__Status]()}))); got != "x1 x3 y4" {
+	if got := codes(all(Shop__notLateIn([]rt.Maybe[Order__Status]{rt.Just(paid), rt.Nothing[Order__Status]()}))); got != "x1 x3 y4" {
 		t.Errorf("not (late in [Just Paid, Nothing]) = %s", got)
 	}
 	if got := codes(all(Shop__notNote("n"))); got != "x5" {

@@ -748,20 +748,24 @@ func (mc *modCtx) reserveGenerated(where string, fixed map[string]string) {
 	}
 }
 
+// preludeReserved are the Prelude types a program writes in its own signatures. A declaration
+// of one of these names (`form Query`) would hide it in its module, so every use of the name
+// there, such as `load`'s `Query Model`, would read as the declaration. The Prelude's other
+// types (`Order`, `Page`, `Form`, `Table`, `Id`, `Insert`, `Select`, `Condition`, `Column`) are
+// Db's and the runtime's plumbing, which apps do not write, and stay free for domain names
+// (`table Order`).
+var preludeReserved = map[string]bool{
+	"Query": true, "Task": true, "Html": true, "Maybe": true, "Result": true, "Nav": true,
+	"List": true, "Dict": true, "Int": true, "Float": true, "Text": true, "Bool": true,
+	"Unit": true, "Date": true, "Time": true, "Never": true, "Error": true,
+}
+
 // reservePrelude reports E0012 for a type, table, form or union of an app module that takes a
-// Prelude type's name (`form Query`): every use of the name in that module would read as the
-// declaration, not the Prelude type, so its other errors would be a cascade of the name. It
+// name of preludeReserved: its module's other errors would be a cascade of the name. It
 // returns the files of the modules it reported, whose other errors quietErrors drops; those
 // modules' bodies are not checked.
 func (c *Checker) reservePrelude() map[string]bool {
-	prelude := map[string]bool{}
-	if m := c.prog.Std["Prelude"]; m != nil {
-		for _, d := range m.Decls {
-			if td, ok := d.(*syntax.TypeDecl); ok {
-				prelude[td.Name] = true
-			}
-		}
-	}
+	prelude := preludeReserved
 	quiet := map[string]bool{}
 	for _, name := range c.prog.Order {
 		m := c.prog.Modules[name]

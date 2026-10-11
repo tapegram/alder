@@ -171,7 +171,7 @@ These are ordinary brands of `Text` and `Int` and widen the same way.
 ## Type parameters on records and unions
 
 ```alder
-type Paged a = { items: List a, total: Int }
+type Page a = { items: List a, total: Int }
 ```
 
 ## What there is not

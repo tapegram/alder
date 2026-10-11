@@ -1,0 +1,16 @@
+module Order
+
+-- Order and Page are Prelude types (Db's plumbing), but no program writes them in its own
+-- signatures, so they are free for domain names; E0012 reserves only the Prelude types a
+-- program writes (Query, Task, Html, Maybe, …).
+type OrderId = brand Text
+
+type Page a = { items: List a, total: Int }
+
+table Order {
+  id: OrderId @id,
+  total: Int,
+}
+
+firstPage : List Order -> Page Order
+firstPage orders = { items: List.take 10 orders, total: List.length orders }
