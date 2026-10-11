@@ -191,6 +191,62 @@ line editing, since a person can run it under `rlwrap`. Both commands are
 one scratch runner, so the REPL cannot disagree with `eval`, or with the
 compiler.
 
+### Ids stay generated; a slug is a `@unique` column **(tested: the id probe, the blog)**
+
+A blog wants `/posts/hello-world`, and one way to get it is a primary key
+the program chooses. A probe app, written on 2026-10-10 before the blog,
+did everything a chosen key would make easier, with generated ids. It
+created a post and its first comment in one task, redirected by slug,
+commented on the post `load` had found, toggled a post, deleted one with
+its children, and tested both with chosen ids (a pure test) and with
+returned ids (an effect test). It checked, built and passed with no
+friction. The probe showed why. A row never exists before its insert,
+so the id `Db.insert` returns is simply the next step's value. Addresses
+use the slug, a second column with `@unique` and a refined brand
+(chapter 14's `Post`). The blog is built the same way. `Admin` checks
+`Post.bySlug` before it inserts, so a taken slug is a `Reject`, not a
+500, and then redirects to the new id's edit page. A user-chosen `@id`
+is declined, unless an experiment shows agents fumbling the lookup.
+
+### Delete rules are declared on the referencing column **(tested: the blog)**
+
+What deleting a referenced row does is `@cascade`, `@restrict` (the
+default) or `@setNull` on the `@ref` field (chapter 8). It is not an
+option chosen at each `Db.delete`. Then the table that holds the
+reference is the one place that says what happens, whichever page
+deletes, and SQLite carries the rule out inside the delete statement.
+The blog's `Comment.post` is `@ref Post @cascade`. `Admin.Edit`'s
+`Delete` is one `Db.delete Post`, and its test checks that the trace has
+that one step and that no comment is left. `@restrict` is the default
+because it loses nothing: a delete the author did not think through
+fails, and leaves no row without the row it refers to.
+
+### Search is `LIKE`-based **(tested: the blog)**
+
+`.contains` and `.startsWith` on `Text` columns are SQL's `LIKE`, with
+`%`, `_` and `\` escaped so that they match themselves, and they ignore
+the case of A–Z (chapter 8). That is enough for the blog's search, which
+matches the title or the body (`Db.or`). The blog's tests check that a
+match in either column counts, that the case of A–Z does not matter,
+and that `100%` does not find `1000 ways`. Full-text search (SQLite's
+FTS5: ranking, stemming, accents) is left until the question of which
+database engine the language targets is settled, because a portable
+`LIKE` keeps that choice open. Until then, a capability over the same
+database can do more (chapter 8, "Beyond CRUD").
+
+### No defaulted record literals **(decided M4d, kept in M5)**
+
+A record literal names every field: a session literal in a test, a
+`Post` built by hand in a pure test (the blog's `Post` tests write
+`created: Time.epoch`), an argument record. Column defaults are a
+different thing. `Db.insert` may leave out a column declared with a
+default (`published: Bool = False`, `role: Role = Reader`), because the
+table declares that value. The stance is the user's (2026-10-10):
+implicit values cause mistakes, since a value nobody wrote is one nobody
+checked. M5 needed nothing more. The blog's tests write their records in
+full, and E7's evidence is under "Open questions" below. This is
+revisited only if required fields prove demonstrably worse.
+
 ## Experiments
 
 Each experiment has a directory under `experiments/` with its prompt,
@@ -461,6 +517,8 @@ believes is right.
 - Should a function body allow `let` without a `{ }` block? Haiku did this
   twice; it reads naturally but adds a second way.
 - Should `Db.insert` accept a user-chosen `@id` (slug as primary key)?
+  *Decided (M5): no.* Ids stay generated, and a slug is a `@unique`
+  column ("Ids stay generated", above).
 - Should `Task.succeed` be implicit for a final non-effect expression in
   an effect block?
 - Is `Query.notFound` the right way to 404 from `load`? (`update` has the
@@ -482,8 +540,19 @@ believes is right.
   it is removed, and since M4b the example's own effect test does the
   same for `owned`. For strong models that weakens the case for a
   language feature; it says nothing about weaker ones (Qwen never got
-  that far). Still open: a second owned table reached through the first,
-  and an `Edit { id }` on the list page.
+  that far). The blog (M5) is the second data point. It has a role
+  (Author) checked in `load`, an owned row (a post, by `author`), and a
+  second table reached through it (comments, by `post`). It needed no
+  `owned` helper, because none of its messages carries an id. Each page
+  names its row in its route (`/admin/{id}`, `/posts/{slug}`), `load`
+  checks the role, ownership or visibility, and every message acts on
+  `model.post`. A comment is reached only through a post that `load`
+  found visible, and `update` refuses a comment on a draft as well. So
+  the second owned table is covered by the first one's check when the
+  page is the parent's page. Following chapter 6's advice (messages
+  carry no id) made the safe way the short way without a language
+  feature. Still open: an `Edit { id }` on a list page, where the id has
+  to be in the message, and a child row with its own page.
 - How large can the prompt get? Chapters 3–10 are 32.5k tokens (E7),
   past a 32k window on their own. Dropping the sections written for
   people (21.5k) did not help Qwen3-Coder 30B (E7: 0 / 5 both ways), so

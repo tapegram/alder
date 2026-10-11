@@ -610,6 +610,7 @@ says what to expect:
 | `alder eval=<value>` | `alder eval examples/todos -` prints exactly `<value>` (the rest of the fence line) |
 | `alder error=<CODE> "<text>"` | compiling (or, for expressions, evaluating) the block reports diagnostic `<CODE>` in the block itself, its message containing `<text>` (optional) |
 | `alder part=<Module>` | one piece of a module shown piece by piece (the tour's `Todos.Index`): a chapter's `part=` blocks of one module, consecutive among its `part=` blocks, are joined in order and checked as that module, replacing the example's; when the example has that module, the joined pieces must also equal its file, blank lines aside |
+| `alder part=<example>/<Module>` | the same for a module of another example app, `examples/<example>` (chapter 14's `part=blog/Posts.Index`): the joined pieces are checked as that module in a copy of that example, and must equal its file, blank lines aside. `part=<Module>` alone means `part=todos/<Module>`; every other block is checked against `examples/todos` |
 | `alder fragment` | not checked: a deliberate excerpt, such as one arm of an `update`; listed by `go test -v ./book` |
 
 A failure names the block's line, `book/03-syntax.md:120: E0003 …`, so a
@@ -680,7 +681,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0006 | import cycle | — |
 | E0007 | top-level value without a type signature | signature line |
 | E0008 | wrong number of parameters or arguments, or of type arguments (`Box Int Text` for `type Box a`) | — |
-| E0009 | duplicate definition (two tests of one module with the same name too), or a constructor declared in two imported modules | — |
+| E0009 | duplicate definition (two tests of one module with the same name too), a constructor declared in two imported modules, or a value named like an entry of the capability named like its module (`render` beside `capability Markdown { render … }` in module `Markdown`) | — |
 | E0010 | required declaration missing (page `load`/`view`/`update`, `App` `error`/`notFound`/`login`/`session`) | — |
 | E0011 | invalid declaration (unstorable table field, unusable page or form field, bad `@id`, brand constructor used outside its module, a record that contains itself by value) | — |
 | E0012 | a type, table, form or component in a page module or `App` named like a generated type: `Params`, `Msg`, `Session`, or `<Msg>Params` for a declared `msg` | — |

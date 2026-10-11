@@ -2098,7 +2098,9 @@ a Go panic fails that test and the next one still runs. A task case
 gets its own environment: `db.OpenSQLite(":memory:")`, a database that
 exists only in this process, `store.Ensure` with the app's `Tables`,
 and an `eff.Env` with those capabilities, the session from
-`TestSession()`, and a clock that always says `2026-01-01T00:00:00Z`.
+`TestSession()`, and a clock that starts at `2026-01-01T00:00:00Z` and
+moves one second on each read (`rtesting.Ticking`), so rows a test
+inserts get distinct, ordered `created` times.
 Then `eff.Run(env, eff.KTask, c.Task())` runs it exactly as the server
 runs an `update` (section 8, "What `Run` does"): one transaction, begun
 by the first database step, committed when the task succeeds. The

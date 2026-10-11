@@ -148,6 +148,34 @@ standard module other than the Prelude is always written qualified (a bare
 Nothing else in the language touches the outside world. If a function's
 signature has no `Query` or `Task` in it, it is pure.
 
+**A capability in `load`.** An entry whose result is a `Query` is a
+read, so `load` can call it like `Db.get`. The blog (chapter 14) keeps
+its Markdown renderer behind such an entry. Its whole module,
+`examples/blog/app/Markdown.alder`, is shown below:
+
+```alder
+module Markdown
+
+-- Rendering a post's body is outside the language: a capability implemented in Go
+-- (adapters/markdown.go), which builds the HTML node by node, so a post cannot inject markup.
+capability Markdown {
+  render : Text -> Query (Html Never),
+}
+```
+
+`Posts.Show`'s `load` writes `let body <- Markdown.render post.body` and
+keeps the result in its Model. `Html Never` is markup that sends no
+message, so the page's `view` can embed it in its own `Html Msg`
+(chapter 5). The capability has the same name as its module. From
+another module, `Markdown.render` therefore names the capability's
+entry, because the module `Markdown` has no value called `render`. A
+module that declared both a value `render` and the entry would be
+E0009. In Go, the entry is the method
+`Render(ctx, args app.Args__Markdown__Markdown__Render) (html.Node, error)`
+on the field `Markdown__Markdown` of `Caps` ("Implementing a capability",
+below). An `Html` value is an `html.Node` from `alder/rt/html`, which
+escapes every piece of text when the page is rendered.
+
 ## How effects run
 
 This section describes the runtime in `rt/eff`, the Go package the

@@ -254,3 +254,8 @@ that needed a test.
   `Logout` message, which any page can send with `click={App.Logout}`.
 - `app/User.alder`, `app/Layout.alder`: the user table and a page layout
   component.
+
+A second example, `examples/blog`, adds what this app never needed: a
+second table that refers to the first, a user role, a capability called
+from `load`, pages of results and a search. Chapter 14 tours it the same
+way, after the reference chapters.

@@ -21,7 +21,7 @@ import (
 
 // The verifier compiles every ```alder block of the book with the real `alder` binary, built
 // once per run: a Module, Decls or Signatures block is `alder check`ed (type-checked) in a copy
-// of examples/todos; an Expr block is evaluated (`alder eval`) when its fence gives `eval=` or
+// of examples/todos (a part=<example>/<Module> module, in a copy of examples/<example>); an Expr block is evaluated (`alder eval`) when its fence gives `eval=` or
 // `error=`, and otherwise only parsed (`alder dump`).
 
 var (
@@ -33,6 +33,15 @@ var (
 	todosApp, _    = filepath.Abs("../examples/todos")
 	exampleModules []string
 )
+
+// exampleApp is the directory of the example app named ex (a directory under examples/),
+// absolute.
+func exampleApp(ex string) string {
+	if ex == DefaultExample {
+		return todosApp
+	}
+	return filepath.Join(filepath.Dir(todosApp), ex)
+}
 
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "alder-book-")
@@ -118,6 +127,17 @@ type verifier struct {
 	r       report
 	// joined are the modules joined from part= blocks, with the book line of each source line.
 	joined map[Snippet][]int
+	// example is, for a module joined from part=<example>/<Module> blocks, its example app
+	// (every other block is checked in DefaultExample).
+	example map[Snippet]string
+}
+
+// exampleOf is the example app s is checked in.
+func (v *verifier) exampleOf(s Snippet) string {
+	if ex, ok := v.example[s]; ok {
+		return ex
+	}
+	return DefaultExample
 }
 
 func (v *verifier) failf(line int, format string, a ...any) {
@@ -127,7 +147,7 @@ func (v *verifier) failf(line int, format string, a ...any) {
 // verify checks every ```alder block of the chapter at path, reported as display.
 func verify(t *testing.T, path, display string) report {
 	t.Helper()
-	v := &verifier{t: t, bin: alder(t), display: display, r: report{counts: map[string]int{}}, joined: map[Snippet][]int{}}
+	v := &verifier{t: t, bin: alder(t), display: display, r: report{counts: map[string]int{}}, joined: map[Snippet][]int{}, example: map[Snippet]string{}}
 	v.evalDir = filepath.Join(tmpRoot, "eval")
 	var err error
 	if err = os.MkdirAll(v.evalDir, 0o755); err == nil {
@@ -141,8 +161,9 @@ func verify(t *testing.T, path, display string) report {
 		t.Fatal(err)
 	}
 	var batch []Snippet
-	parts := map[string][]Snippet{} // part= blocks by module
+	parts := map[string][]Snippet{} // part= blocks by example/module
 	var partOrder []string
+	partExpect := map[string]Expect{}
 	lastPart := ""
 	moduleNames := map[string]int{}
 	for _, s := range snippets {
@@ -161,13 +182,19 @@ func verify(t *testing.T, path, display string) report {
 		switch exp.Kind {
 		case Part:
 			v.r.counts["part"]++
-			if _, seen := parts[exp.Module]; !seen {
-				partOrder = append(partOrder, exp.Module)
-			} else if lastPart != exp.Module {
-				v.failf(s.Line, "the part=%s blocks are not consecutive: a part= block of %s comes between", exp.Module, lastPart)
+			key := exp.Example + "/" + exp.Module
+			if fi, err := os.Stat(filepath.Join(exampleApp(exp.Example), "app")); err != nil || !fi.IsDir() {
+				v.failf(s.Line, "part=%s: there is no example app examples/%s", key, exp.Example)
+				continue
 			}
-			parts[exp.Module] = append(parts[exp.Module], s)
-			lastPart = exp.Module
+			if _, seen := parts[key]; !seen {
+				partOrder = append(partOrder, key)
+				partExpect[key] = exp
+			} else if lastPart != key {
+				v.failf(s.Line, "the part=%s blocks are not consecutive: a part= block of %s comes between", key, lastPart)
+			}
+			parts[key] = append(parts[key], s)
+			lastPart = key
 		case Fragment:
 			v.r.counts["fragment"]++
 			v.r.fragments = append(v.r.fragments, fmt.Sprintf("%s:%d", display, s.Line))
@@ -198,32 +225,46 @@ func verify(t *testing.T, path, display string) report {
 			}
 		}
 	}
-	for _, m := range partOrder {
-		src, lines := JoinParts(parts[m])
-		js := Snippet{File: path, Line: parts[m][0].Line, Info: "alder part=" + m, Source: src}
+	batches := map[string][]Snippet{} // the joined modules of an example other than todos
+	var others []string
+	for _, key := range partOrder {
+		exp := partExpect[key]
+		m := exp.Module
+		src, lines := JoinParts(parts[key])
+		js := Snippet{File: path, Line: parts[key][0].Line, Info: "alder part=" + key, Source: src}
 		if Classify(js) != Module || ModuleName(js) != m {
-			v.failf(js.Line, "the first part=%s block must start with `module %s`", m, m)
+			v.failf(js.Line, "the first part=%s block must start with `module %s`", key, m)
 			continue
 		}
 		v.joined[js] = lines
-		if msg := sameAsExample(m, src); msg != "" {
+		v.example[js] = exp.Example
+		if msg := sameAsExample(exp.Example, m, src); msg != "" {
 			v.failf(js.Line, "%s", msg)
 		}
-		if moduleNames[m] > 1 {
+		switch {
+		case exp.Example == DefaultExample && moduleNames[m] > 1:
 			v.checkAlone(js)
-		} else {
+		case exp.Example == DefaultExample:
 			batch = append(batch, js)
+		default:
+			if _, ok := batches[exp.Example]; !ok {
+				others = append(others, exp.Example)
+			}
+			batches[exp.Example] = append(batches[exp.Example], js)
 		}
 	}
-	v.checkBatch(batch)
+	v.checkBatch(DefaultExample, batch)
+	for _, ex := range others {
+		v.checkBatch(ex, batches[ex])
+	}
 	return v.r
 }
 
-// newApp copies examples/todos/app into a fresh directory and returns the app directory.
-func (v *verifier) newApp() string {
+// newApp copies examples/<ex>/app into a fresh directory and returns the app directory.
+func (v *verifier) newApp(ex string) string {
 	v.seq++
 	dir := filepath.Join(v.dir, fmt.Sprintf("app%d", v.seq))
-	src := filepath.Join(todosApp, "app")
+	src := filepath.Join(exampleApp(ex), "app")
 	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -424,11 +465,11 @@ func (p placed) where(d jdiag) (int, string) {
 
 // checkBatch checks the blocks in one app; when that is not clean, each alone, so each failure
 // is pinned on its block.
-func (v *verifier) checkBatch(batch []Snippet) {
+func (v *verifier) checkBatch(ex string, batch []Snippet) {
 	if len(batch) == 0 {
 		return
 	}
-	dir := v.newApp()
+	dir := v.newApp(ex)
 	var ps []placed
 	for i, s := range batch {
 		ps = append(ps, v.place(dir, s, i+1))
@@ -444,7 +485,7 @@ func (v *verifier) checkBatch(batch []Snippet) {
 
 // checkAlone checks one Module or Decls block in its own app; it must be clean.
 func (v *verifier) checkAlone(s Snippet) {
-	dir := v.newApp()
+	dir := v.newApp(v.exampleOf(s))
 	p := v.place(dir, s, 1)
 	ds, bad := v.check(dir)
 	if bad != "" {
@@ -474,7 +515,7 @@ func (v *verifier) checkAlone(s Snippet) {
 // checkError checks one Module or Decls block, which must report exp's diagnostic in its own
 // file (not in an example module it breaks).
 func (v *verifier) checkError(s Snippet, exp Expect) {
-	dir := v.newApp()
+	dir := v.newApp(DefaultExample)
 	p := v.place(dir, s, 1)
 	ds, bad := v.check(dir)
 	if bad != "" {
@@ -647,8 +688,14 @@ func TestBook_Expectations(t *testing.T) {
 		{info: `alder error=E0003 "a \"quoted\" part"`, want: Expect{Kind: Error, Code: "E0003", Message: `a "quoted" part`}},
 		{info: "alder error=E0003 expected", bad: true},
 		{info: `alder error=E0003 ""`, bad: true},
-		{info: "alder part=Todos.Index", want: Expect{Kind: Part, Module: "Todos.Index"}},
+		{info: "alder part=Todos.Index", want: Expect{Kind: Part, Module: "Todos.Index", Example: "todos"}},
+		{info: "alder part=blog/Posts.Show", want: Expect{Kind: Part, Module: "Posts.Show", Example: "blog"}},
+		{info: "alder part=todos/Todo", want: Expect{Kind: Part, Module: "Todo", Example: "todos"}},
 		{info: "alder part=todos", bad: true},
+		{info: "alder part=Blog/Post", bad: true},
+		{info: "alder part=blog/", bad: true},
+		{info: "alder part=blog/post", bad: true},
+		{info: "alder part=a/b/Post", bad: true},
 		{info: "alder error=oops", bad: true},
 		{info: "alder eval=", bad: true},
 		{info: "alder frag", bad: true},
@@ -767,12 +814,12 @@ func TestBook(t *testing.T) {
 	}
 }
 
-// sameAsExample compares the module m joined from part= blocks (src) with the example's
+// sameAsExample compares the module m joined from part= blocks (src) with example's
 // module of that name, ignoring blank lines: a module the book shows piece by piece must be
 // the example's, line for line, so the two cannot drift apart. It returns "" when they agree
 // or the example has no module m, else a message naming the first line that differs.
-func sameAsExample(m, src string) string {
-	file := filepath.Join(todosApp, "app", filepath.FromSlash(strings.ReplaceAll(m, ".", "/"))+".alder")
+func sameAsExample(example, m, src string) string {
+	file := filepath.Join(exampleApp(example), "app", filepath.FromSlash(strings.ReplaceAll(m, ".", "/"))+".alder")
 	b, err := os.ReadFile(file)
 	if err != nil {
 		return ""
@@ -796,7 +843,11 @@ func sameAsExample(m, src string) string {
 			el = ex[i]
 		}
 		if bl != el {
-			return fmt.Sprintf("the part=%s blocks joined differ from %s at its non-blank line %d: the book has %q, the file %q (update the book's pieces or the example so they match)", m, file, i+1, bl, el)
+			label := m
+			if example != DefaultExample {
+				label = example + "/" + m
+			}
+			return fmt.Sprintf("the part=%s blocks joined differ from %s at its non-blank line %d: the book has %q, the file %q (update the book's pieces or the example so they match)", label, file, i+1, bl, el)
 		}
 	}
 	return ""
@@ -808,16 +859,75 @@ func TestSameAsExample(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := string(b)
-	if msg := sameAsExample("Todo", "\n\n"+strings.ReplaceAll(src, "\n", "\n\n")); msg != "" {
+	if msg := sameAsExample("todos", "Todo", "\n\n"+strings.ReplaceAll(src, "\n", "\n\n")); msg != "" {
 		t.Errorf("blank lines aside the same, got %q", msg)
 	}
-	if msg := sameAsExample("Todo", strings.Replace(src, "countOpen", "countAll", 1)); !strings.Contains(msg, "differ from") {
+	if msg := sameAsExample("todos", "Todo", strings.Replace(src, "countOpen", "countAll", 1)); !strings.Contains(msg, "differ from") {
 		t.Errorf("a changed line: got %q", msg)
 	}
-	if msg := sameAsExample("Todo", src+"\nextra = 1\n"); !strings.Contains(msg, `"extra = 1"`) {
+	if msg := sameAsExample("todos", "Todo", src+"\nextra = 1\n"); !strings.Contains(msg, `"extra = 1"`) {
 		t.Errorf("an extra line: got %q", msg)
 	}
-	if msg := sameAsExample("Extra", "module Extra\n"); msg != "" {
+	if msg := sameAsExample("todos", "Extra", "module Extra\n"); msg != "" {
 		t.Errorf("a module the example lacks: got %q", msg)
+	}
+}
+
+func TestSameAsExample_OtherExample(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(exampleApp("blog"), "app", "Comment.alder"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(b)
+	if msg := sameAsExample("blog", "Comment", src); msg != "" {
+		t.Errorf("the blog's own Comment: got %q", msg)
+	}
+	if msg := sameAsExample("blog", "Comment", strings.Replace(src, "@cascade", "@restrict", 1)); !strings.Contains(msg, "part=blog/Comment") || !strings.Contains(msg, filepath.Join("blog", "app", "Comment.alder")) {
+		t.Errorf("a changed line: got %q", msg)
+	}
+	// todos has no Comment: the same source is not compared with anything there.
+	if msg := sameAsExample("todos", "Comment", "module Comment\n"); msg != "" {
+		t.Errorf("todos has no Comment: got %q", msg)
+	}
+}
+
+// TestBook_PartOfAnotherExample: a part=blog/<Module> walk is joined, compared with
+// examples/blog's file and checked in a copy of examples/blog (where Post exists); a drifted
+// piece fails on the walk's first line, even when it still checks; an example that does not
+// exist fails.
+func TestBook_PartOfAnotherExample(t *testing.T) {
+	t.Parallel()
+	b, err := os.ReadFile(filepath.Join(exampleApp("blog"), "app", "Comment.alder"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	head, rest, ok := strings.Cut(string(b), "type CommentId")
+	if !ok {
+		t.Fatal("examples/blog/app/Comment.alder has no `type CommentId`")
+	}
+	rest = "type CommentId" + rest
+	chapter := func(name, rest string) string {
+		md := "# A walk\n\n```alder part=blog/Comment\n" + head + "```\n\nProse.\n\n```alder part=blog/Comment\n" + rest + "```\n"
+		p := filepath.Join(t.TempDir(), name)
+		if err := os.WriteFile(p, []byte(md), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	r := verify(t, chapter("same.md", rest), "same.md")
+	if len(r.failures) != 0 || r.counts["part"] != 2 {
+		t.Errorf("the blog's own Comment in two pieces: failures %v, counts %v", r.failures, r.counts)
+	}
+	r = verify(t, chapter("drift.md", strings.Replace(rest, "@cascade", "@restrict", 1)), "drift.md")
+	if len(r.failures) != 1 || !strings.HasPrefix(r.failures[0], "drift.md:3: the part=blog/Comment blocks joined differ") || !strings.Contains(r.failures[0], `"  post: Post.PostId @ref Post @restrict,"`) {
+		t.Errorf("a drifted piece: failures %v", r.failures)
+	}
+	p := filepath.Join(t.TempDir(), "nope.md")
+	if err := os.WriteFile(p, []byte("```alder part=nope/Comment\nmodule Comment\n```\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r = verify(t, p, "nope.md")
+	if len(r.failures) != 1 || !strings.Contains(r.failures[0], "there is no example app examples/nope") {
+		t.Errorf("an example that does not exist: failures %v", r.failures)
 	}
 }

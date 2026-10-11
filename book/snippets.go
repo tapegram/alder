@@ -65,11 +65,12 @@ const (
 	Error
 	// Fragment: the block is a deliberate excerpt and is not checked (```alder fragment).
 	Fragment
-	// Part: the block is one piece of module Module (```alder part=<Module>). The part= blocks
-	// of one module in a chapter, consecutive among the chapter's part= blocks, are joined in
-	// order (JoinParts) and checked as that module, replacing the example's; the first piece
-	// starts with its `module` line. A walk through one module, piece by piece, is checked
-	// whole this way.
+	// Part: the block is one piece of module Module of an example app (```alder part=<Module>
+	// for examples/todos, ```alder part=<example>/<Module> for examples/<example>). The part=
+	// blocks of one module in a chapter, consecutive among the chapter's part= blocks, are
+	// joined in order (JoinParts) and checked as that module in a copy of that example,
+	// replacing its file; the first piece starts with its `module` line. A walk through one
+	// module, piece by piece, is checked whole this way.
 	Part
 )
 
@@ -97,17 +98,24 @@ type Expect struct {
 	// Message is, for Error, a part of the expected diagnostic's message ("" for any message)
 	Message string
 	Module  string // Part: the module the block is a piece of
+	Example string // Part: the example app it belongs to, a directory under examples/ ("todos" by default)
 }
+
+// DefaultExample is the example app a plain ```alder part=<Module> block belongs to, and the
+// one every other checked block is placed in.
+const DefaultExample = "todos"
 
 var (
 	codeRE       = regexp.MustCompile(`^[EW][0-9]{4}$`)
 	moduleNameRE = regexp.MustCompile(`^[A-Z][A-Za-z0-9_]*(\.[A-Z][A-Za-z0-9_]*)*$`)
+	exampleRE    = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 )
 
 // Expectation parses a fence's info string: `alder`, `alder eval=<value>` (the value is the rest
 // of the line, verbatim), `alder error=<CODE>` optionally followed by a quoted part of the
-// message (`alder error=E0003 "expected Int"`, Go string syntax), `alder fragment` or
-// `alder part=<Module>`. Anything else is an error.
+// message (`alder error=E0003 "expected Int"`, Go string syntax), `alder fragment`,
+// `alder part=<Module>` or `alder part=<example>/<Module>` (`alder part=blog/Posts.Show`: the
+// example is a lowercase directory name under examples/). Anything else is an error.
 func Expectation(info string) (Expect, error) {
 	rest, ok := strings.CutPrefix(info, "alder")
 	if !ok || (rest != "" && rest[0] != ' ') {
@@ -141,10 +149,17 @@ func Expectation(info string) (Expect, error) {
 		return e, nil
 	case strings.HasPrefix(rest, "part="):
 		m := strings.TrimPrefix(rest, "part=")
-		if !moduleNameRE.MatchString(m) {
-			return Expect{}, fmt.Errorf("part= wants a module name such as Todos.Index, got %q", m)
+		ex := DefaultExample
+		if e, mod, ok := strings.Cut(m, "/"); ok {
+			if !exampleRE.MatchString(e) {
+				return Expect{}, fmt.Errorf("part= wants an example such as blog before the /, got %q", e)
+			}
+			ex, m = e, mod
 		}
-		return Expect{Kind: Part, Module: m}, nil
+		if !moduleNameRE.MatchString(m) {
+			return Expect{}, fmt.Errorf("part= wants a module name such as Todos.Index or blog/Posts.Show, got %q", m)
+		}
+		return Expect{Kind: Part, Module: m, Example: ex}, nil
 	}
 	return Expect{}, fmt.Errorf("unknown fence expectation %q (want eval=, error=, part= or fragment)", rest)
 }
