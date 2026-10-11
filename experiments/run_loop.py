@@ -149,9 +149,17 @@ FILE_RE = re.compile(r"^-{3,}\s*file:\s*(\S+?)\s*-{3,}\s*$", re.M)
 
 STDLIB_REASON = "standard-library module"
 # only adapters/<dir>/<name>.go: one package per module's first segment (capability X of module A.B
-# is adapters/a/, func BX; book chapter 7); no deeper directories, and not the removed flat
-# adapters/<name>.go
-ADAPTER_RE = re.compile(r"^adapters/[A-Za-z0-9_]+/[A-Za-z0-9_]+\.go$")
+# is adapters/a/, func BX; book chapter 7), and adapters/internal/<dir>/<name>.go, a helper package the
+# adapters share (the book's layout); nothing deeper, and not the removed flat adapters/<name>.go
+ADAPTER_RE = re.compile(r"^adapters/(?:internal/)?[A-Za-z0-9_]+/[A-Za-z0-9_]+\.go$")
+
+
+def adapter_files(root: pathlib.Path):
+    """The Go files under root/adapters that ADAPTER_RE accepts, sorted by their path relative to root."""
+    root = pathlib.Path(root)
+    return sorted((f for f in (root / "adapters").rglob("*.go")
+                   if f.is_file() and ADAPTER_RE.match(f.relative_to(root).as_posix())),
+                  key=lambda f: f.relative_to(root).as_posix())
 
 
 def stdlib_names(root=None):
@@ -298,20 +306,6 @@ def run_build(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = 900
         msg = f"{alder}: {e}"
         return None, msg, "", msg
     return p.returncode, p.stderr, p.stdout, unknown_exit("build", p.returncode)
-
-
-# `alder test` (exit 2, its build-problem code) refusing the app's adapters before it builds:
-# a missing adapter, a module that cannot name one, the removed flat form, two capabilities that
-# need one function (book chapter 7). That is the model's program, not the compiler: `--build`
-# runs `alder build --emit`, which does not look at adapters, so `alder test` is the first to see
-# it. An ordinary failed round; the retry carries the message.
-ADAPTER_REFUSALS = ("is missing adapters for", "cannot name an adapter package",
-                    "adapters/ no longer wires capabilities", "internal naming error: capabilities")
-
-
-def adapter_refusal(stderr: str) -> bool:
-    """Whether `alder test`'s exit-2 stderr is its refusal of the app's adapters (ADAPTER_REFUSALS)."""
-    return any(r in stderr for r in ADAPTER_REFUSALS)
 
 
 TEST_OUTPUT_MAX = 4000   # characters of `alder test`'s text report kept in summary.json and the retry prompt
@@ -488,11 +482,12 @@ def go_refusal_hint(rejected, round_dir: pathlib.Path) -> str:
     out = []
     for raw in rejected:
         p = posixpath.normpath(raw)
-        if not ADAPTER_RE.match(p):
-            continue
+        if not ADAPTER_RE.match(p) or p.startswith("adapters/internal/") or p.endswith("_test.go"):
+            continue   # a helper or a test file is no capability's adapter
         cap = _cap_name(pathlib.PurePosixPath(p).stem)
         notice = f"`{p}` was not accepted (this run does not take Go files); "
-        provided = sorted(_cap_name(f.stem) for f in (round_dir / "adapters").glob("*/*.go"))
+        provided = sorted({_cap_name(f.stem) for f in adapter_files(round_dir)
+                           if f.parent.parent.name == "adapters" and f.parent.name != "internal" and not f.name.endswith("_test.go")})
         if (round_dir / p).is_file():   # the base provides this very adapter
             out.append(notice + f"the `{cap}` adapter is provided \u2014 keep the capability and do not replace it "
                        "with a password in the code")
@@ -506,7 +501,9 @@ def go_refusal_hint(rejected, round_dir: pathlib.Path) -> str:
 
 
 def _cap_name(stem: str) -> str:
-    """The capability an adapter file is for, by its name: `password` (adapters/auth/password.go) → `Password`."""
+    """The capability an adapter file is for, by its name: `password` (adapters/auth/password.go) → `Password`;
+    a test file's stem names the file it tests (`password_test` → `Password`)."""
+    stem = stem.removesuffix("_test")
     return stem[:1].upper() + stem[1:]
 
 
@@ -561,8 +558,8 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
             feedback += "\n\n" + hint
     theirs = {}
     if show_adapters:
-        for f in (round_dir / "adapters").glob("*/*.go"):
-            path, text = str(f.relative_to(round_dir)), f.read_text()
+        for f in adapter_files(round_dir):
+            path, text = f.relative_to(round_dir).as_posix(), f.read_text()
             if provided and provided.get(path) == text:
                 theirs[path] = text
             else:
@@ -618,9 +615,9 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     With `test` (requires `build`; ValueError otherwise), a round that built also runs `alder test
     --json`; its results go in `rnd["tests"]` ({"passed", "failed", "results", "exit"}). Exit 0 is the
     pass (zero tests included). Exit 1 is an ordinary failed round: `rnd["test_output"]` and the
-    retry prompt (under TEST OUTPUT) carry the text report of a second, non-JSON run. Exit 2 when
-    `alder test` refuses the app's adapters (adapter_refusal: a missing adapter, say) is an ordinary
-    failed round too, its stderr under TEST OUTPUT. Any other exit 2 (a
+    retry prompt (under TEST OUTPUT) carry the text report of a second, non-JSON run; that includes
+    `alder test` refusing the app's adapters or finding that they do not compile (exit 1 since M5d:
+    the model's program; a missing adapter is not refused, only warned about). Exit 2 (a
     build problem or a crash outside any test, after a clean build) is a compiler bug, kind "test"
     — or "hang" when its stderr says the tests timed out, as when the 600 s limit kills it —
     with its stderr in round<N>/test.stderr.txt; the task stops.
@@ -664,7 +661,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     prev = pathlib.Path(seed[0]) if seed is not None else None
     provided = {}   # the base's adapters, as exported: shown apart in a retry (provided, not the model's)
     if prev is not None and (prev / "adapters").is_dir():
-        provided = {f"adapters/{f.parent.name}/{f.name}": f.read_text() for f in (prev / "adapters").glob("*/*.go")}
+        provided = {f.relative_to(prev).as_posix(): f.read_text() for f in adapter_files(prev)}
 
     def harness_error(reason):
         summary["outcome"] = "harness_error"
@@ -781,11 +778,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                 if reason is not None:
                     harness_error(reason)
                     break
-                if texit == 2 and adapter_refusal(tstderr):   # the app's adapters: the model's
-                    test_output = tstderr.strip()[:TEST_OUTPUT_MAX]
-                    rnd["test_output"] = test_output
-                    clean = False
-                elif texit != 1:   # 2: a build problem or a crash outside any test, after a clean build
+                if texit != 1:   # 2: a build problem or a crash outside any test, after a clean build
                     compiler_bug("hang" if "timed out" in tstderr else "test")
                     break
                 else:

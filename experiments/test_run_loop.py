@@ -530,24 +530,21 @@ class TestLoopTests(unittest.TestCase):
         import report_loop as rp
         self.assertIn("| compiler-bug |", rp.markdown(rp.rows([s])))
 
-    def test_test_exit2_adapter_refusal_is_a_failed_round(self):
-        # alder test refuses the app's adapters (exit 2) before building: the model's program, so an
-        # ordinary failed round whose retry carries the message (real text, M5d)
-        err = ("alder test: blog is missing adapters for 1 capability:\n"
-               "capability `Markdown.Markdown` needs `adapters/markdown/` with `func Markdown() app.Cap__Markdown__Markdown`\n")
-        alder = tests_stub(self.tmp, [(2, '{"error": "x"}\n', err, ""), (0, PASS2, "", "")])
+    def test_test_exit1_adapter_refusal_is_a_failed_round(self):
+        # since the M5d fixes alder test exits 1 for the app's adapters (refused, or not compiling
+        # with the app): the model's program, an ordinary failed round whose retry carries the
+        # message from the text run (real text)
+        err = ("alder test: the adapters of blog (copied to build/blog/scratch/test/adapters) do not compile with the app: exit status 1\n"
+               "# app/caps\nvet: caps/caps__alder.go:9:26: cannot use a_markdown.Markdown() (value of type int) as app.Cap__Markdown__Markdown value\n")
+        alder = tests_stub(self.tmp, [(1, '{"error": "x"}\n', err, err), (0, PASS2, "", "")])
         model = rl.FakeModel([GOOD, GOOD])
         s = rl.run_one(self.exp, model, "fake", "t", "task", "sys", alder, retries=1, build=True, test=True)
         self.assertEqual(s["outcome"], "pass")
         self.assertNotIn("compiler_bug", s)
-        self.assertEqual(s["rounds"][0]["tests"]["exit"], 2)
-        self.assertIn("needs `adapters/markdown/` with `func Markdown()", s["rounds"][0]["test_output"])
-        self.assertIn("====================  TEST OUTPUT  ====================\nalder test: blog is missing adapters", model.prompts[1])
-        for text in ("module `Internal` cannot name an adapter package: Go keeps `adapters/internal/` private to adapters/ (it holds helpers); rename the module",
-                     "adapters/ no longer wires capabilities: move each adapter to adapters/<module>/ (see the list below)",
-                     "internal naming error: capabilities Mail.OutBox and Mail.Out.Box both need func OutBox in adapters/mail/ (rename one of them)"):
-            self.assertTrue(rl.adapter_refusal("alder test: " + text + "\n"), text)
-        self.assertFalse(rl.adapter_refusal("alder test: the test program stopped: boom\n"))
+        self.assertEqual(s["rounds"][0]["tests"]["exit"], 1)
+        self.assertIn("do not compile with the app", s["rounds"][0]["test_output"])
+        self.assertIn("====================  TEST OUTPUT  ====================\nalder test: the adapters of blog", model.prompts[1])
+        self.assertFalse(hasattr(rl, "adapter_refusal"))   # no exit-2 classifier any more
 
     def test_test_exit2_timed_out_is_hang(self):
         alder = tests_stub(self.tmp, [(2, "", "alder test: the tests timed out after 5m0s\n", "")])
@@ -820,13 +817,16 @@ class E7FalloutTests(unittest.TestCase):
         self.assertEqual(rl.split_answer("--- file: app/A.alder ---\nmod", cut_off=False)[2], None)
 
     def test_classify_path_adapters(self):
-        # one package level under adapters/ (chapter 7's rule): adapters/<dir>/<name>.go, with --adapters only
+        # one package level under adapters/ (chapter 7's rule): adapters/<dir>/<name>.go, and a helper
+        # package adapters/internal/<dir>/<name>.go (the book's layout), with --adapters only
         for path in ("adapters/auth/password.go", "adapters/markdown/markdown.go", "adapters/app/clock.go",
-                     "adapters/auth/password_test.go", "./adapters/auth/x.go", "adapters/auth/../auth/x.go"):
+                     "adapters/auth/password_test.go", "./adapters/auth/x.go", "adapters/auth/../auth/x.go",
+                     "adapters/internal/dbx/dbx.go", "adapters/internal/smtp/smtp_test.go"):
             self.assertEqual(rl.classify_path(path, adapters=True), (posixpath.normpath(path), None), path)
             self.assertEqual(rl.classify_path(path), (None, ""), path)   # opt-in
         for path in ("adapters/password.go",             # the removed flat form
-                     "adapters/internal/dbx/dbx.go",     # deeper than one level
+                     "adapters/internal/a/b/c.go",       # deeper than internal/<dir>/
+                     "adapters/auth/internal/x/y.go",
                      "adapters/auth/password.txt", "adapters/auth.go/x.alder.go/y.go",
                      "adapters/../evil.go", "adapters/auth/../../evil.go", "/adapters/auth/x.go",
                      "adapters\\auth\\x.go", "adapters/a-b/x.go", "go.mod", "x.go"):
@@ -908,6 +908,21 @@ class E7FalloutTests(unittest.TestCase):
         self.assertIn("`adapters/auth/password.go` was not accepted (this run does not take Go files); "
                       "declare the capability and leave its Go side unwritten", model.prompts[1])
         self.assertNotIn("is provided", model.prompts[1])
+
+    def test_rejected_hint_skips_helpers_and_tests(self):
+        rd = pathlib.Path(self.tmp) / "rd"
+        for f in ("adapters/auth/password.go", "adapters/auth/password_test.go", "adapters/internal/dbx/dbx.go"):
+            (rd / f).parent.mkdir(parents=True, exist_ok=True)
+            (rd / f).write_text("package x\n")
+        self.assertEqual(rl._cap_name("password_test"), "Password")
+        # a helper package or a test file is no capability: no hint of its own
+        self.assertEqual(rl.go_refusal_hint(["adapters/internal/dbx/dbx.go", "adapters/auth/password_test.go"], rd), "")
+        # the provided list names Password once (not its test file, not the helper)
+        hint = rl.go_refusal_hint(["adapters/auth/hash.go"], rd)
+        self.assertIn("the `Password` adapter is provided; `Hash` is not", hint)
+        self.assertNotIn("Dbx", hint)
+        self.assertEqual([f.relative_to(rd).as_posix() for f in rl.adapter_files(rd)],
+                         ["adapters/auth/password.go", "adapters/auth/password_test.go", "adapters/internal/dbx/dbx.go"])
 
     @unittest.skipUnless(shutil.which("git"), "git is not on PATH")
     def test_provided_adapters_labeled_in_retry(self):
