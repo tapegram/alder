@@ -54,7 +54,7 @@ KEEP_SUBSECTIONS = {
 # heading: the inverse of KEEP_SUBSECTIONS. Chapter 10's "9. Testing through the browser" keeps
 # the step table and the result fields, one complete example (adding a todo), `Answer`, the
 # session and the login through its form, how a record is sent (with the encoding table),
-# `submitRaw` and `Rejected`, the toggle and the stranger's examples, the queries and selectors,
+# `submitRaw` and `FormRejected`, the toggle and the stranger's examples, the queries and selectors,
 # the list of every failure text and the rules; it drops the walkthrough of the first example
 # and its failing report, the prose of `Test.get`/`Test.open`, the further form examples (the
 # due date, two messages posting one form), the bad-input example, the refused click and the ownership narrative, the

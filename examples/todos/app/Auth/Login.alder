@@ -65,7 +65,7 @@ test "an unknown email is rejected" = {
   let _ <- Test.fake Password
   let _ <- Test.get (Auth.Login {})
   let r <- Test.submit Credentials { email: Text.Email "nobody@example.com", password: Text.Secret "secret" }
-  Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Rejected [{ field: "", message: "Email or password is incorrect." }], user: Nothing })
+  Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: FormRejected [{ field: "", message: "Email or password is incorrect." }], user: Nothing })
 }
 
 test "logging in through the form" = {

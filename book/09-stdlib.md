@@ -311,7 +311,7 @@ Two types of the Prelude exist only in tests (anywhere else, E0003
 "`Doc` is a test type"): `Doc`, a parsed page, which has `==`, and
 
 ```text
-type Answer = Shown | Rerendered | Redirected Page | Rejected (List { field: Text, message: Text }) | Missing | Failed Text
+type Answer = Shown | Rerendered | Redirected Page | FormRejected (List { field: Text, message: Text }) | PageMissing | RequestFailed Text
 ```
 
 Their names, and `Answer`'s six constructors, are taken in every module

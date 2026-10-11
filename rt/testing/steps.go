@@ -123,13 +123,13 @@ func DocAttrSel(name string, s Selector, d Doc) rt.Maybe[string] {
 	return rt.Nothing[string]()
 }
 
-// FieldError is the Alder record { field: Text, message: Text } of a Rejected answer's list.
+// FieldError is the Alder record { field: Text, message: Text } of a FormRejected answer's list.
 type FieldError = struct {
 	Field   string
 	Message string
 }
 
-// FieldErrors is the payload of Rejected, as the Alder list of { field, message } records.
+// FieldErrors is the payload of FormRejected, as the Alder list of { field, message } records.
 func (a Answer) FieldErrors() []FieldError {
 	out := make([]FieldError, len(a.Errors))
 	for i, e := range a.Errors {
@@ -138,9 +138,9 @@ func (a Answer) FieldErrors() []FieldError {
 	return out
 }
 
-// RejectedAnswer is the Prelude's `Rejected errs`.
-func RejectedAnswer(errs []FieldError) Answer {
-	a := Answer{Tag: Rejected, Errors: []web.FieldError{}}
+// FormRejectedAnswer is the Prelude's `FormRejected errs`.
+func FormRejectedAnswer(errs []FieldError) Answer {
+	a := Answer{Tag: FormRejected, Errors: []web.FieldError{}}
 	for _, e := range errs {
 		a.Errors = append(a.Errors, web.FieldError{Field: e.Field, Message: e.Message})
 	}
@@ -157,9 +157,9 @@ func (a Answer) AlderEqual(other any) bool {
 	switch a.Tag {
 	case Redirected:
 		return rt.PageURL(a.Page) == rt.PageURL(b.Page)
-	case Rejected:
+	case FormRejected:
 		return rt.Eq(a.FieldErrors(), b.FieldErrors())
-	case Failed:
+	case RequestFailed:
 		return a.Text == b.Text
 	}
 	return true
@@ -169,15 +169,15 @@ func (a Answer) AlderEqual(other any) bool {
 func (a Answer) AlderKey() string { s, _ := a.AlderShow(); return s }
 
 // AlderShow prints an Answer as Alder (rt.Shower): Shown, Redirected /login,
-// Rejected [{ field: "title", message: "must not be empty" }], Failed "boom".
+// FormRejected [{ field: "title", message: "must not be empty" }], RequestFailed "boom".
 func (a Answer) AlderShow() (string, bool) {
 	switch a.Tag {
 	case Redirected:
 		return "Redirected " + rt.PageURL(a.Page), true
-	case Rejected:
-		return "Rejected " + rt.Show(a.FieldErrors()), true
-	case Failed:
-		return "Failed " + rt.Show(a.Text), true
+	case FormRejected:
+		return "FormRejected " + rt.Show(a.FieldErrors()), true
+	case RequestFailed:
+		return "RequestFailed " + rt.Show(a.Text), true
 	}
 	return a.Tag.String(), false
 }

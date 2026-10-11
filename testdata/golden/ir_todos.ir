@@ -101,7 +101,7 @@
               (user (field user (field session (var r)))))
             (record
               (answer
-                (ctor Prelude.Answer.Rejected
+                (ctor Prelude.Answer.FormRejected
                   (record
                     (value
                       (list
@@ -501,7 +501,7 @@
                 (record
                   (items (call (std Test.count) "li" (field doc (var page))))
                   (show (field answer (var show))))
-                (record (items 0) (show (ctor Prelude.Answer.Missing)))))))))))
+                (record (items 0) (show (ctor Prelude.Answer.PageMissing)))))))))))
 (module Todos.Show)
 (record Todos.Show.Model (todo Todo))
 (record Todos.Show.EditTodo (title Text) (due Maybe Date))

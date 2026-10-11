@@ -69,33 +69,33 @@ func TestDoc_Queries(t *testing.T) {
 }
 
 // Answer's `==` compares the payload its constructor names, a page as its URL; Show prints it
-// as Alder; a Rejected's list converts both ways.
+// as Alder; a FormRejected's list converts both ways.
 func TestAnswer(t *testing.T) {
 	built := Answer{Tag: Redirected, Page: rt.Page{Path: "/", Query: []rt.KV{{Key: "filter", Value: "All", Omit: true}}}}
 	read := Answer{Tag: Redirected, Page: rt.Page{Path: "/"}, Text: "ignored"}
 	if !rt.Eq(built, read) || rt.Eq(built, Answer{Tag: Redirected, Page: rt.Page{Path: "/login"}}) || rt.Eq(built, Answer{Tag: Shown}) {
 		t.Error("Redirected")
 	}
-	rej := RejectedAnswer([]FieldError{{Field: "title", Message: "must not be empty"}})
-	served := Answer{Tag: Rejected, Errors: []web.FieldError{{Field: "title", Message: "must not be empty"}}}
-	if !rt.Eq(rej, served) || rt.Eq(rej, RejectedAnswer(nil)) {
-		t.Error("Rejected")
+	rej := FormRejectedAnswer([]FieldError{{Field: "title", Message: "must not be empty"}})
+	served := Answer{Tag: FormRejected, Errors: []web.FieldError{{Field: "title", Message: "must not be empty"}}}
+	if !rt.Eq(rej, served) || rt.Eq(rej, FormRejectedAnswer(nil)) {
+		t.Error("FormRejected")
 	}
-	if !rt.Eq(RejectedAnswer(nil), Answer{Tag: Rejected}) {
-		t.Error("an empty Rejected")
+	if !rt.Eq(FormRejectedAnswer(nil), Answer{Tag: FormRejected}) {
+		t.Error("an empty FormRejected")
 	}
-	if rt.Eq(Answer{Tag: Failed, Text: "a"}, Answer{Tag: Failed, Text: "b"}) || !rt.Eq(Answer{Tag: Missing}, Answer{Tag: Missing, Text: "x"}) {
-		t.Error("Failed/Missing")
+	if rt.Eq(Answer{Tag: RequestFailed, Text: "a"}, Answer{Tag: RequestFailed, Text: "b"}) || !rt.Eq(Answer{Tag: PageMissing}, Answer{Tag: PageMissing, Text: "x"}) {
+		t.Error("RequestFailed/PageMissing")
 	}
 	for a, want := range map[*Answer]string{
-		{Tag: Shown}: "Shown", &built: "Redirected /", &served: `Rejected [{ field: "title", message: "must not be empty" }]`,
-		{Tag: Failed, Text: "boom"}: `Failed "boom"`, {Tag: Rerendered}: "Rerendered", {Tag: Missing}: "Missing",
+		{Tag: Shown}: "Shown", &built: "Redirected /", &served: `FormRejected [{ field: "title", message: "must not be empty" }]`,
+		{Tag: RequestFailed, Text: "boom"}: `RequestFailed "boom"`, {Tag: Rerendered}: "Rerendered", {Tag: PageMissing}: "PageMissing",
 	} {
 		if got := rt.Show(*a); got != want {
 			t.Errorf("Show = %q, want %q", got, want)
 		}
 	}
-	if got := rt.Show(rt.Just(Answer{Tag: Failed, Text: "x"})); got != `Just (Failed "x")` {
+	if got := rt.Show(rt.Just(Answer{Tag: RequestFailed, Text: "x"})); got != `Just (RequestFailed "x")` {
 		t.Errorf("as an argument: %q", got)
 	}
 	if rt.Key(built) != rt.Key(read) {

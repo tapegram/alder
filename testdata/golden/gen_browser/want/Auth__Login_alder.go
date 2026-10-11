@@ -280,7 +280,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 							Right     rtesting.Answer
 							User      rt.Maybe[string]
 							Title     rt.Maybe[string]
-						}{Wrong: rtesting.RejectedAnswer([]struct {
+						}{Wrong: rtesting.FormRejectedAnswer([]struct {
 							Field   string
 							Message string
 						}{struct {

@@ -121,7 +121,7 @@ test "the admin page needs an Author" = {
   let visitor <- Test.open (Admin {})
   let _ <- Test.login { user: Just reader }
   let asReader <- Test.open (Admin {})
-  Task.succeed ({ visitor: visitor.answer, reader: asReader.answer } == { visitor: Redirected (Auth.Login {}), reader: Missing })
+  Task.succeed ({ visitor: visitor.answer, reader: asReader.answer } == { visitor: Redirected (Auth.Login {}), reader: PageMissing })
 }
 
 test "an Author logs out from the admin page" = {

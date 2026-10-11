@@ -58,8 +58,8 @@ Prelude type that programs write (`Query`, `Task`, `Html`, `Maybe`,
 `Date`, `Time`, `Never`, `Error`), which every module uses unqualified
 (E0012 too). Nor may one take `Doc` or `Answer`, the Prelude's types
 for tests (chapter 10), and no constructor or `msg` may be named like
-one of `Answer`'s: `Shown`, `Rerendered`, `Redirected`, `Rejected`,
-`Missing`, `Failed`. Db's own types, such as `Order` and `Page`, stay
+one of `Answer`'s: `Shown`, `Rerendered`, `Redirected`, `FormRejected`,
+`PageMissing`, `RequestFailed`. Db's own types, such as `Order` and `Page`, stay
 free: `table Order` is fine.
 
 ## Comments

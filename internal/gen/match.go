@@ -202,9 +202,9 @@ func (f *fn) partAccess(x *ir.Match, tag, field, subj string) string {
 			switch tag {
 			case "Redirect", "Redirected":
 				return subj + ".Page"
-			case "Reject", "Failed":
+			case "Reject", "RequestFailed":
 				return subj + ".Text"
-			case "Rejected":
+			case "FormRejected":
 				return subj + ".FieldErrors()"
 			}
 			if tag == "Err" {

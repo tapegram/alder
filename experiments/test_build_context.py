@@ -260,7 +260,7 @@ class BuildContextTests(unittest.TestCase):
         self.assertNotIn("\n## 10. How the browser works\n", out)
         # §9 keeps the table, one example, the encoding, every failure text and the rules; it
         # drops the walkthrough, the further examples and chapter 9's repeated signatures
-        for kept in ("test \"adding a todo through the page\"", "| `Rejected errors` |", "| `Maybe a` | blank",
+        for kept in ("test \"adding a todo through the page\"", "| `FormRejected errors` |", "| `Maybe a` | blank",
                      "### What a failed step says", "has no button or form for", "has no input `due`",
                      "test \"a stranger cannot see my todo\"", "| `ul > li` |", "\n### The rules\n",
                      "## Test\n", "Test.run : Task a"):

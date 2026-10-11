@@ -325,7 +325,7 @@ func (md) Render(_ context.Context, a app.Args__Markdown__Markdown__Render) (htm
 // TestTest_Browser runs the browser-ok corpus app's tests through `alder test` (M5e): the
 // browser steps against the app's real routes — RF3 (a click on a page opened with a parameter
 // keeps it), RF4 (`requires` redirects to the login page, Test.login, the login form with the
-// Password fake, App.Logout), RF5 (a step inside Test.run; a panicking update is Failed, its
+// Password fake, App.Logout), RF5 (a step inside Test.run; a panicking update is RequestFailed, its
 // writes undone) — and then the failures a step reports: a page not shown, a control the page
 // does not render (and, when it renders the message for other rows, which), a form the page does
 // not render, a field the form does not declare — and, with two inputs taken out of NewNote's

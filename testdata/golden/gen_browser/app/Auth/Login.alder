@@ -64,7 +64,7 @@ test "a page that requires a user redirects to the login page" = {
   Task.succeed ({ answer: r.answer, title: Test.text "h1" r.doc, user: r.session.user } == { answer: Redirected (Auth.Login {}), title: Just "Log in", user: Nothing })
 }
 
--- RF4: logging in through the form with the fake: a wrong password is Rejected with the
+-- RF4: logging in through the form with the fake: a wrong password is FormRejected with the
 -- form-level message, the right one redirects and stores the user in the session.
 test "logging in through the form" = {
   let _ <- Test.fake Password
@@ -72,7 +72,7 @@ test "logging in through the form" = {
   let _ <- Test.get (Auth.Login {})
   let wrong <- Test.submit Credentials { email: Text.Email "me@example.com", password: Text.Secret "nope" }
   let right <- Test.submit Credentials { email: Text.Email "me@example.com", password: Text.Secret "secret" }
-  Task.succeed ({ wrong: wrong.answer, wrongUser: wrong.session.user, right: right.answer, user: right.session.user, title: Test.text "h1" right.doc } == { wrong: Rejected [{ field: "", message: "Email or password is incorrect." }], wrongUser: Nothing, right: Redirected (Notes.Index {}), user: Just me, title: Just "Notes" })
+  Task.succeed ({ wrong: wrong.answer, wrongUser: wrong.session.user, right: right.answer, user: right.session.user, title: Test.text "h1" right.doc } == { wrong: FormRejected [{ field: "", message: "Email or password is incorrect." }], wrongUser: Nothing, right: Redirected (Notes.Index {}), user: Just me, title: Just "Notes" })
 }
 
 -- RF4: after Test.login the page is shown; App.Logout's button logs out.

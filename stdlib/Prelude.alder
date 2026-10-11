@@ -33,8 +33,8 @@ type Doc
 type Answer = Shown
             | Rerendered
             | Redirected Page
-            | Rejected (List { field: Text, message: Text })
-            | Missing
-            | Failed Text
+            | FormRejected (List { field: Text, message: Text })
+            | PageMissing
+            | RequestFailed Text
 
 not : Bool -> Bool

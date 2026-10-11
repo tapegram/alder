@@ -35,6 +35,13 @@ small real-browser smoke suite for those).
   in-process browser covers them at milliseconds per test with no
   flakiness source; a real browser is seconds per test and flaky, so
   teams keep few of them.
+- **Renamed 2026-10-11 by the user:** `Rejected` is now `FormRejected`,
+  `Missing` is now `PageMissing` and `Failed` is now `RequestFailed`,
+  because `Failed`, `Rejected` and `Missing` are reserved names (E0012)
+  that collide with common domain words; the rename frees them, so that
+  common domain constructors stay legal (`type Status = Pending | Failed
+  | Rejected | Missing` is a valid program). The spec below uses the new
+  names throughout.
 
 ## The surface
 
@@ -54,9 +61,9 @@ Test.click     : Msg -> Task { answer: Answer, session: Session, doc: Doc }
 type Answer = Shown
             | Rerendered
             | Redirected Page
-            | Rejected (List { field: Text, message: Text })
-            | Missing
-            | Failed Text
+            | FormRejected (List { field: Text, message: Text })
+            | PageMissing
+            | RequestFailed Text
 ```
 
 - **`Test.login s`** signs `s` (the app's `Session` record; the checker
@@ -70,9 +77,9 @@ type Answer = Shown
   browser now holds that page.
 - **`Test.open p`** is the raw form: the same request, but the result's
   `answer` says what happened (`Shown`, `Redirected (Auth.Login {})`,
-  `Missing`, `Failed msg`) and the test asserts. After `Redirected` the
-  browser holds the redirect's target page (fetched); after `Missing`
-  the not-found document; after `Failed` the error document.
+  `PageMissing`, `RequestFailed msg`) and the test asserts. After `Redirected` the
+  browser holds the redirect's target page (fetched); after `PageMissing`
+  the not-found document; after `RequestFailed` the error document.
 - **`Test.submit F r`** needs a `form F` of a page module; `r` is `F`'s
   record (a form literal is a request value, so defaults apply as they do
   for a request). The browser encodes each field as the page's inputs
@@ -96,10 +103,10 @@ type Answer = Shown
 - **The answer is applied.** `Rerendered`: the body patch replaces the
   held body (the same body a `Rerender` gives). `Redirected p`: the
   browser fetches `p` with the (possibly updated) cookie and holds it; a
-  redirect to a page that then 404s is `Missing`. `Rejected errors`: the
+  redirect to a page that then 404s is `PageMissing`. `FormRejected errors`: the
   held page is the re-rendered form with its errors; `errors` lists them
   in field order (`field` is the field name, `""` for the form-level
-  `Reject` text). `Missing` / `Failed`: as for `open`. The result's
+  `Reject` text). `PageMissing` / `RequestFailed`: as for `open`. The result's
   `session` is the session after the step (what `Session.put` left), so
   "observing the session after a step" is `after.session.user == Just me`.
 - **Queries** are pure functions on `Doc`, the parsed document:
@@ -162,7 +169,7 @@ type Answer = Shown
   only in tests (E0003 "`Doc` is a test type" elsewhere). `Answer`'s
   constructors are Prelude names a program may not write as its own
   constructors (E0012 extends to `Shown`, `Rerendered`, `Redirected`,
-  `Rejected`, `Missing`, `Failed`); the 404 case is spelled `Missing`
+  `FormRejected`, `PageMissing`, `RequestFailed`); the 404 case is spelled `PageMissing`
   rather than `NotFound` so that a program's own `NotFound` constructor
   stays legal.
 - E0023: a selector literal that does not parse (the text names the
@@ -197,9 +204,9 @@ type Answer = Shown
 - gen: a golden test build; the production golden unchanged; an e2e
   fixture app with a page, a form, a click, `requires`, and `Test.login`.
 - Examples: todos — the ownership check through the page (a stranger's
-  click is `Missing`), login through the form with the `Password` fake,
+  click is `PageMissing`), login through the form with the `Password` fake,
   adding a todo and reading `#summary`; blog — pagination (`?page=2`),
-  search, a comment's validation error (`Rejected`), logout.
+  search, a comment's validation error (`FormRejected`), logout.
 - Book: chapter 10 "Testing through the browser" with real transcripts;
   §9 drops three items and names what remains outside; chapter 9's
   `Test` list; chapter 11 (E0023); chapter 13 (the browser, the

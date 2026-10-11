@@ -919,9 +919,9 @@ the `p` it matched anyway: a step takes a page value written in place.)
 type Answer = Shown
             | Rerendered
             | Redirected Page
-            | Rejected (List { field: Text, message: Text })
-            | Missing
-            | Failed Text
+            | FormRejected (List { field: Text, message: Text })
+            | PageMissing
+            | RequestFailed Text
 ```
 
 | Answer | When | The page the browser then holds |
@@ -929,17 +929,17 @@ type Answer = Shown
 | `Shown` | `get`/`open`: the page was shown | that page |
 | `Rerendered` | `submit`/`click`: `update` answered `Rerender` | the page re-rendered, with the new data |
 | `Redirected p` | a `Redirect p`, or a `requires` sending a visitor to the login page | `p`, which the browser requested in turn |
-| `Rejected errors` | `submit`: the form did not decode, or `update` answered `Reject` | the page with the form re-rendered: the values typed and the errors |
-| `Missing` | a 404: `Query.notFound`, `Task.notFound`, no such page | `App.notFound` |
-| `Failed text` | the request failed (a `Task.fail`, a Go panic): a 500 | `App.error` |
+| `FormRejected errors` | `submit`: the form did not decode, or `update` answered `Reject` | the page with the form re-rendered: the values typed and the errors |
+| `PageMissing` | a 404: `Query.notFound`, `Task.notFound`, no such page | `App.notFound` |
+| `RequestFailed text` | the request failed (a `Task.fail`, a Go panic): a 500 | `App.error` |
 
 A redirect to another site (`Url.external`, chapter 6) is reported,
 `Redirected` with that address, but not followed: the browser keeps the
-page it had. A redirect to a page that is then a 404 is `Missing`.
-`Failed`'s text is the failure's message: `"nope"` for a
+page it had. A redirect to a page that is then a 404 is `PageMissing`.
+`RequestFailed`'s text is the failure's message: `"nope"` for a
 `Task.fail "nope"`, `"panic: …"` for a Go panic.
 
-The 404 answer is `Missing`, not `NotFound`, so that an app keeps the
+The 404 answer is `PageMissing`, not `NotFound`, so that an app keeps the
 name `NotFound` for a constructor of its own. The six names are kept for
 `Answer` everywhere: a union or `msg` of the app may not use one
 (E0012), nor may a type be named `Doc` or `Answer`.
@@ -974,7 +974,7 @@ The page's `update` called the fake and `Session.put`; the browser kept
 the cookie, followed the redirect with it, and holds the list. With an
 email that has no row the fake answers `Nothing`, `update` answers
 `Reject "Email or password is incorrect."`, and the answer is
-`Rejected [{ field: "", message: "Email or password is incorrect." }]`.
+`FormRejected [{ field: "", message: "Email or password is incorrect." }]`.
 `Test.click App.Logout` presses the list's "Log out" button: the answer
 is `Redirected (Auth.Login {})` and `session.user` is `Nothing`.
 
@@ -1100,7 +1100,7 @@ rule, and the page must answer bad input with the form and its errors.
 sent is a field left out of the form. Every name sent must be a field of
 the form and have an input on the page.
 
-**`Rejected errors`** is the answer when the page shows its form again
+**`FormRejected errors`** is the answer when the page shows its form again
 with errors: the form did not decode (chapter 6: `update` never ran), or
 `update` answered `Reject "…"`. The browser holds the page re-rendered,
 with what was typed back in each input (except a `Text.Secret`, which is
@@ -1136,7 +1136,7 @@ test "an empty title is rejected" = {
   let _ <- Test.get (Todos.Index {})
   let r <- Test.submitRaw Todos.Index.NewTodo [{ name: "title", value: "" }, { name: "due", value: "tomorrow" }]
   let rows <- Db.from Todo |> Db.count
-  Task.succeed ({ answer: r.answer, due: Test.attr "value" "input[name=due]" r.doc, rows: rows } == { answer: Rejected [{ field: "title", message: "must not be empty" }, { field: "due", message: "must be a date (YYYY-MM-DD)" }], due: Just "tomorrow", rows: 0 })
+  Task.succeed ({ answer: r.answer, due: Test.attr "value" "input[name=due]" r.doc, rows: rows } == { answer: FormRejected [{ field: "title", message: "must not be empty" }, { field: "due", message: "must be a date (YYYY-MM-DD)" }], due: Just "tomorrow", rows: 0 })
 }
 ```
 
@@ -1186,7 +1186,7 @@ too", says that a user who posts `Toggle` with someone else's
 todo id gets a 404. Section 3 tests that by calling `update` with a
 stranger's session. Through the browser, the same attempt (a test that
 logs in as the stranger, gets the list, and clicks `Toggle { id: id }`
-expecting `Missing`) does not get that far:
+expecting `PageMissing`) does not get that far:
 
 ```text
 FAIL Todos.Index "a stranger clicks my todo"
@@ -1215,12 +1215,12 @@ test "a stranger cannot see my todo" = {
   let _ <- Test.login { user: Just (User.UserId "someone-else") }
   let page <- Test.get (Todos.Index {})
   let show <- Test.open (Todos.Show { id: id })
-  Task.succeed ({ items: Test.count "li" page.doc, show: show.answer } == { items: 0, show: Missing })
+  Task.succeed ({ items: Test.count "li" page.doc, show: show.answer } == { items: 0, show: PageMissing })
 }
 ```
 
 The stranger's list has no `<li>`, and `Todos.Show`'s `load` answers the
-todo's page with `Query.notFound`: `Missing`.
+todo's page with `Query.notFound`: `PageMissing`.
 
 ### Reading the page: queries
 
@@ -1275,7 +1275,7 @@ Two `Doc`s are equal when they are the same tree of elements, attributes
 and text, leaving out the page's parameters the router adds to each
 message's address (`?_p.filter=Active`, section 10), which `view` alone
 does not know. `Test.doc` renders without a request, so a form in it has
-no typed values and no errors: compare a `Rejected` page by its queries,
+no typed values and no errors: compare a `FormRejected` page by its queries,
 not with `Test.doc`.
 
 ### A selector the compiler refuses
@@ -1371,7 +1371,7 @@ And when the test compiles (E0003 unless named):
   wants a message of a page or of `App`, got `Todos.Index {}` of type
   `Page`: follow a link with `Test.get` or `Test.open`".
 - E0002 "unknown constructor `NotFound`; the browser's 404 answer is
-  `Missing`"; E0012 "`Missing` is a constructor of the Prelude's test
+  `PageMissing`"; E0012 "`PageMissing` is a constructor of the Prelude's test
   type `Answer`; …"; "`Doc` is a test type: it exists only inside a
   `test`".
 - E0023 "`#sumary x` is not a selector: unexpected `x` after `#sumary`;
@@ -1393,7 +1393,7 @@ And when the test compiles (E0003 unless named):
 - **One transaction.** Every request runs inside the test's own
   transaction, its `update` under a savepoint of its own: a page sees
   the rows the test inserted, the test sees the rows a page wrote, and a
-  request that fails (`Failed`, `Missing`) undoes only its own writes.
+  request that fails (`RequestFailed`, `PageMissing`) undoes only its own writes.
 - **The browser is not rolled back.** A `Test.run` that fails undoes
   its database writes, the writes of the steps inside it included, but
   not what happened to the browser: the cookie and the page held stay as
@@ -1477,9 +1477,9 @@ applies the events as Datastar would:
 - a patch of the page's `<body>` replaces the body it holds (Datastar
   merges the new body into the old one; the result is the same page).
   `Rerender` and `Reject` come back this way. The browser then looks at
-  the page: an `<Errors>` list with items makes it `Rejected`; a 404 or
+  the page: an `<Errors>` list with items makes it `FormRejected`; a 404 or
   a 500, which come back as a patch too (with the status in a header,
-  `Alder-Status`), are `Missing` and `Failed`; anything else is
+  `Alder-Status`), are `PageMissing` and `RequestFailed`; anything else is
   `Rerendered`. A page whose `view` has no `<body>` (every page built
   on a layout such as `Layout.Page` has one) cannot be patched, and the
   step fails "the held page has no <body> to patch".

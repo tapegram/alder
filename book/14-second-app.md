@@ -617,11 +617,11 @@ oldest first".
 Three more tests go through the browser. `Admin`'s "the admin page needs
 an Author" opens `/admin` as a visitor (`Redirected (Auth.Login {})`:
 `requires user` sends them to log in) and as a logged-in Reader
-(`Missing`: `load`'s 404); "an Author logs out from the admin page"
+(`PageMissing`: `load`'s 404); "an Author logs out from the admin page"
 clicks the page's `App.Logout` button and finds the session's `user`
 gone. `Posts.Show`'s "an empty comment is rejected" posts the comment
 form with an empty body through `Test.submitRaw`, which sends text as
-typed, and gets `Rejected [{ field: "body", message: "is not valid" }]`:
+typed, and gets `FormRejected [{ field: "body", message: "is not valid" }]`:
 `Comment.Body` is a brand with a `where` rule, and a value its rule
 refuses is "is not valid" (a `Text.NonEmpty` field would say "must not
 be empty").

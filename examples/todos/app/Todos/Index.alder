@@ -148,5 +148,5 @@ test "a stranger cannot see my todo" = {
   let _ <- Test.login { user: Just (User.UserId "someone-else") }
   let page <- Test.get (Todos.Index {})
   let show <- Test.open (Todos.Show { id: id })
-  Task.succeed ({ items: Test.count "li" page.doc, show: show.answer } == { items: 0, show: Missing })
+  Task.succeed ({ items: Test.count "li" page.doc, show: show.answer } == { items: 0, show: PageMissing })
 }

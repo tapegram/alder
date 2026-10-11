@@ -549,14 +549,14 @@ func (f *fn) ctor(x *ir.Ctor, s *scope) string {
 			return "rt.Redirect(" + inner() + ")"
 		case "Reject":
 			return "rt.Reject(" + inner() + ")"
-		case "Shown", "Rerendered", "Missing":
+		case "Shown", "Rerendered", "PageMissing":
 			return "rtesting.Answer{Tag: rtesting." + x.Name + "}"
 		case "Redirected":
 			return "rtesting.Answer{Tag: rtesting.Redirected, Page: " + inner() + "}"
-		case "Rejected":
-			return "rtesting.RejectedAnswer(" + inner() + ")"
-		case "Failed":
-			return "rtesting.Answer{Tag: rtesting.Failed, Text: " + inner() + "}"
+		case "FormRejected":
+			return "rtesting.FormRejectedAnswer(" + inner() + ")"
+		case "RequestFailed":
+			return "rtesting.Answer{Tag: rtesting.RequestFailed, Text: " + inner() + "}"
 		}
 		panic(fmt.Sprintf("gen: unknown Prelude constructor %s", x.Name))
 	}

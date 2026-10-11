@@ -111,7 +111,7 @@
                   (title (call (std Test.text) "h1" (field doc (var right)))))
                 (record
                   (wrong
-                    (ctor Prelude.Answer.Rejected
+                    (ctor Prelude.Answer.FormRejected
                       (record
                         (value
                           (list
@@ -445,7 +445,7 @@
                       (field doc (var r)))))
                 (record
                   (answer
-                    (ctor Prelude.Answer.Rejected
+                    (ctor Prelude.Answer.FormRejected
                       (record
                         (value
                           (list
@@ -474,7 +474,7 @@
           (test-eq
             (field value (var r))
             (ctor Prelude.Result.Ok (record (value 0)))))))))
-(test "a panicking update is Failed" task
+(test "a panicking update is RequestFailed" task
   (bind task me : Text
     (db-insert User.User (record (email "me@example.com") (name "Me")))
     (bind task id : Text
@@ -494,7 +494,7 @@
                 count)
               (let failed : Bool
                 (match union (field answer (var r))
-                  (case Failed True)
+                  (case RequestFailed True)
                   (default False))
                 (pure task
                   (test-eq
@@ -564,7 +564,7 @@
         (bind task r : { answer: Answer, session: App.Session, doc: Doc }
           (test-open Notes.Show (record Notes.Show.Params (id (var id))))
           (pure task
-            (test-eq (field answer (var r)) (ctor Prelude.Answer.Missing))))))))
+            (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
 (test "the model is the one the page rendered" task
   (bind task me : Text
     (db-insert User.User (record (email "me@example.com") (name "Me")))

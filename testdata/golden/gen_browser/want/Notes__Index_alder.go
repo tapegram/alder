@@ -530,7 +530,7 @@ func test__Notes__Index__3() eff.Task[bool] {
 							Answer   rtesting.Answer
 							Rows     int64
 							Priority rt.Maybe[string]
-						}{Answer: rtesting.RejectedAnswer([]struct {
+						}{Answer: rtesting.FormRejectedAnswer([]struct {
 							Field   string
 							Message string
 						}{struct {
@@ -627,7 +627,7 @@ func test__Notes__Index__4() eff.Task[bool] {
 	})
 }
 
-// test__Notes__Index__5 is test "a panicking update is Failed" of module Notes.Index.
+// test__Notes__Index__5 is test "a panicking update is RequestFailed" of module Notes.Index.
 func test__Notes__Index__5() eff.Task[bool] {
 	return eff.Bind(eff.Call("Db.insert User", true, func(_e1 *eff.Env) (string, error) {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
@@ -706,7 +706,7 @@ func test__Notes__Index__5() eff.Task[bool] {
 						}), func(rows int64) eff.Task[bool] {
 							failed := func() bool {
 								switch r.Answer.Tag {
-								case rtesting.Failed:
+								case rtesting.RequestFailed:
 									return true
 								default:
 									return false
@@ -841,7 +841,7 @@ func test__Notes__Index__7() eff.Task[bool] {
 					Session App__Session
 					Doc     rtesting.Doc
 				}) eff.Task[bool] {
-					return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Missing}))
+					return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.PageMissing}))
 				})
 			})
 		})

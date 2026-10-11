@@ -158,7 +158,7 @@ test "a form with an empty title is rejected" = {
   let _ <- Test.get (Notes.Index {})
   let r <- Test.submitRaw NewNote [{ name: "title", value: "" }, { name: "priority", value: "x" }]
   let rows <- Db.from Note |> Db.count
-  Task.succeed ({ answer: r.answer, rows: rows, priority: Test.attr "value" "input[name=priority]" r.doc } == { answer: Rejected [{ field: "title", message: "must not be empty" }, { field: "priority", message: "must be a whole number" }], rows: 0, priority: Just "x" })
+  Task.succeed ({ answer: r.answer, rows: rows, priority: Test.attr "value" "input[name=priority]" r.doc } == { answer: FormRejected [{ field: "title", message: "must not be empty" }, { field: "priority", message: "must be a whole number" }], rows: 0, priority: Just "x" })
 }
 
 -- RF5: a step inside Test.run.
@@ -172,8 +172,8 @@ test "a step inside Test.run" = {
   Task.succeed (r.value == Ok 0)
 }
 
--- RF5: an update that panics is Failed; its write is undone and the test's rows stay.
-test "a panicking update is Failed" = {
+-- RF5: an update that panics is RequestFailed; its write is undone and the test's rows stay.
+test "a panicking update is RequestFailed" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
   let id <- Db.insert Note { title: Text.NonEmpty "Milk", owner: me }
   let _ <- Test.login { user: Just me }
@@ -181,7 +181,7 @@ test "a panicking update is Failed" = {
   let r <- Test.click Boom
   let rows <- Db.from Note |> Db.where (Note.done.eq False) |> Db.count
   let failed = match r.answer {
-    Failed _ -> True,
+    RequestFailed _ -> True,
     _ -> False,
   }
   Task.succeed ({ failed: failed, rows: rows, title: Test.text "h1" r.doc } == { failed: True, rows: 1, title: Just "Something went wrong" })
@@ -202,7 +202,7 @@ test "a stranger's note is missing" = {
   let id <- Db.insert Note { title: Text.NonEmpty "Milk", owner: me }
   let _ <- Test.login { user: Just (User.UserId "stranger") }
   let r <- Test.open (Notes.Show { id: id })
-  Task.succeed (r.answer == Missing)
+  Task.succeed (r.answer == PageMissing)
 }
 
 -- The model Test.get gives is the one the page rendered: `load` ran once (its clock read is in

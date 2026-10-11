@@ -148,5 +148,5 @@ test "an empty comment is rejected" = {
   let _ <- Test.get (Posts.Show { slug: Post.Slug "hello" })
   let r <- Test.submitRaw NewComment [{ name: "author", value: "Ann" }, { name: "body", value: "" }]
   let comments <- Db.from Comment |> Db.count
-  Task.succeed ({ answer: r.answer, author: Test.attr "value" "input[name=author]" r.doc, comments: comments } == { answer: Rejected [{ field: "body", message: "is not valid" }], author: Just "Ann", comments: 0 })
+  Task.succeed ({ answer: r.answer, author: Test.attr "value" "input[name=author]" r.doc, comments: comments } == { answer: FormRejected [{ field: "body", message: "is not valid" }], author: Just "Ann", comments: 0 })
 }

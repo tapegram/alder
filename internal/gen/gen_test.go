@@ -3075,9 +3075,9 @@ func TestGen_Browser(t *testing.T) {
 		`eff.Call("Test.click Notes.Index.Toggle", true,`, `.ClickMsg(rt.MsgRef{Module: "Notes.Index", Msg: "Toggle", Params: []rt.KV{{Key: "id", Value: _m`,
 		`rtesting.MsgName("Notes.Index.Toggle", _m`, `.SubmitForm("/_m/Notes.Index/Submit", "NewNote", encode__Notes__Index__NewNote(`,
 		`rtesting.RawFields("NewNote", []string{"title", "due", "urgent", "priority", "weight", "kind", "remark", "contact"},`,
-		`rtesting.DocCountSel(selector__`, `rtesting.DocTexts(sel, `, `rtesting.DocCount(bad, `, `rtesting.ViewDoc(Notes__Index__view(`, `case rtesting.Failed:`)
+		`rtesting.DocCountSel(selector__`, `rtesting.DocTexts(sel, `, `rtesting.DocCount(bad, `, `rtesting.ViewDoc(Notes__Index__view(`, `case rtesting.RequestFailed:`)
 	contains(t, files["Auth__Login_alder.go"], `eff.Call("Test.login", true,`, `eff.Call("Test.open Notes.Index", true,`, `.Open(_u`,
-		`rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}`, `rtesting.RejectedAnswer([]struct {`,
+		`rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}`, `rtesting.FormRejectedAnswer([]struct {`,
 		`eff.Call("Test.click App.Logout", true,`, `rtesting.MsgName("App.Logout", nil)`)
 	contains(t, files["routes__alder.go"], "func encode__Notes__Index__NewNote(r Notes__Index__NewNote) rtesting.Fields {")
 	contains(t, files["app__alder.go"], "func Web() web.Options {", `selector__1  = rtesting.Sel("h1")`)

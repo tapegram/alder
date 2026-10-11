@@ -239,7 +239,7 @@ shows (`#summary` is the `<p id="summary">` above). The form posted by
 `Test.submit NewTodo` and the button clicked by `Test.click (Toggle { id:
 id })` must be on the page the test holds, so a stranger, whose page lists
 none of my todos, has nothing to click; the todo's own page is a 404 for
-them (`Missing`). Chapter 10, "Testing through the browser", explains each
+them (`PageMissing`). Chapter 10, "Testing through the browser", explains each
 step.
 
 ```alder part=Todos.Index
@@ -271,7 +271,7 @@ test "a stranger cannot see my todo" = {
   let _ <- Test.login { user: Just (User.UserId "someone-else") }
   let page <- Test.get (Todos.Index {})
   let show <- Test.open (Todos.Show { id: id })
-  Task.succeed ({ items: Test.count "li" page.doc, show: show.answer } == { items: 0, show: Missing })
+  Task.succeed ({ items: Test.count "li" page.doc, show: show.answer } == { items: 0, show: PageMissing })
 }
 ```
 

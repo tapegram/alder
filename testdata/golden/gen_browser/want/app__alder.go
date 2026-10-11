@@ -51,7 +51,7 @@ var Tests = []rtesting.Case{
 	{Module: "Notes.Index", Name: "a click keeps the page's parameter", Task: test__Notes__Index__2},
 	{Module: "Notes.Index", Name: "a form with an empty title is rejected", Task: test__Notes__Index__3},
 	{Module: "Notes.Index", Name: "a step inside Test.run", Task: test__Notes__Index__4},
-	{Module: "Notes.Index", Name: "a panicking update is Failed", Task: test__Notes__Index__5},
+	{Module: "Notes.Index", Name: "a panicking update is RequestFailed", Task: test__Notes__Index__5},
 	{Module: "Notes.Index", Name: "the document and the view agree", Task: test__Notes__Index__6},
 	{Module: "Notes.Index", Name: "a stranger's note is missing", Task: test__Notes__Index__7},
 	{Module: "Notes.Index", Name: "the model is the one the page rendered", Task: test__Notes__Index__8},

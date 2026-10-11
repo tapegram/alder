@@ -2869,7 +2869,7 @@ inside `Test.run` (which runs on the same `Env`) finds the same one.
 `NewBrowser` calls `web.NewRouter(routes, opts)`, replacing a few
 options: the test's store and capabilities; a clock for the cookie that
 stands still; dev mode off; a fixed key for signing cookies; a log that
-keeps the router's last error line, which becomes `Failed`'s text; and
+keeps the router's last error line, which becomes `RequestFailed`'s text; and
 two hooks the router has for this, `EnvFor` and `Served`.
 
 **`EnvFor`: a request inside the test's transaction.** In production
@@ -2929,16 +2929,16 @@ that sent it). `router.ServeHTTP` writes the answer into an
   `Redirected` with the page it ends on. A target with a scheme or a
   host is another site: `Redirected` with that address, nothing
   fetched, the held page kept.
-- `404` and `500`: `Missing` and `Failed`, holding the page served.
+- `404` and `500`: `PageMissing` and `RequestFailed`, holding the page served.
 - A Datastar answer (`text/event-stream`) is a list of events. A
   `datastar-patch-elements` event whose selector is `body` replaces the
   held `<body>` with the one it carries; an event that runs
   `window.location.assign(…)`, Datastar's way of navigating, is followed
   with a `GET`, as above. After a patch, the router's `Alder-Status`
   header (set on a Datastar answer that is a 404 or a 500, which is
-  otherwise a `200` patch like any other) gives `Missing` or `Failed`;
+  otherwise a `200` patch like any other) gives `PageMissing` or `RequestFailed`;
   then a `<ul class="errors" data-errors="…">` with items in the page
-  gives `Rejected`, its items read in page order, `data-errors="form"`
+  gives `FormRejected`, its items read in page order, `data-errors="form"`
   as the field `""`; anything else is `Rerendered`.
 
 **Controls.** Before a `submit` or `click` is sent, the browser looks

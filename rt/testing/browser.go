@@ -27,12 +27,12 @@ import (
 type AnswerTag int
 
 const (
-	Shown      AnswerTag = iota // a GET showed its page
-	Rerendered                  // a message re-rendered the page (the body patch was applied)
-	Redirected                  // the answer was a redirect; the browser fetched Answer.Page
-	Rejected                    // a form came back with errors (Answer.Errors)
-	Missing                     // 404: the not-found document is held
-	Failed                      // 500 (or a request the router refused): Answer.Text says why
+	Shown         AnswerTag = iota // a GET showed its page
+	Rerendered                     // a message re-rendered the page (the body patch was applied)
+	Redirected                     // the answer was a redirect; the browser fetched Answer.Page
+	FormRejected                   // a form came back with errors (Answer.Errors)
+	PageMissing                    // 404: the not-found document is held
+	RequestFailed                  // 500 (or a request the router refused): Answer.Text says why
 )
 
 func (t AnswerTag) String() string {
@@ -43,19 +43,19 @@ func (t AnswerTag) String() string {
 		return "Rerendered"
 	case Redirected:
 		return "Redirected"
-	case Rejected:
-		return "Rejected"
-	case Missing:
-		return "Missing"
-	case Failed:
-		return "Failed"
+	case FormRejected:
+		return "FormRejected"
+	case PageMissing:
+		return "PageMissing"
+	case RequestFailed:
+		return "RequestFailed"
 	}
 	return "AnswerTag(" + strconv.Itoa(int(t)) + ")"
 }
 
-// Answer is the Prelude `Answer`: Tag, and the page of Redirected, the errors of Rejected (in
+// Answer is the Prelude `Answer`: Tag, and the page of Redirected, the errors of FormRejected (in
 // document order: each `<Errors>` list's items, Field "" for the form-level list) or the text
-// of Failed.
+// of RequestFailed.
 type Answer struct {
 	Tag    AnswerTag
 	Page   rt.Page
@@ -83,7 +83,7 @@ var TestSecret = []byte("alder-test-cookie-key: tests only")
 // a test never expire and reading it does not advance the test's own clock.
 var cookieNow = func() time.Time { return defaultNow }
 
-// redirectLimit is how many redirects in a row the browser follows before it gives up (Failed).
+// redirectLimit is how many redirects in a row the browser follows before it gives up (RequestFailed).
 const redirectLimit = 10
 
 // Browser is a test's in-memory browser: the app's real router (web.NewRouter over the app's
@@ -254,7 +254,7 @@ type NotShownError struct {
 func (e *NotShownError) Error() string {
 	head := "GET " + e.URL + ": "
 	switch e.Answer.Tag {
-	case Missing:
+	case PageMissing:
 		return head + "not found"
 	case Redirected:
 		s := head + "redirected to " + rt.PageURL(e.Answer.Page)
@@ -262,7 +262,7 @@ func (e *NotShownError) Error() string {
 			s += " (requires " + e.Requires + ")"
 		}
 		return s
-	case Failed:
+	case RequestFailed:
 		return head + "failed: " + e.Answer.Text
 	}
 	return head + e.Answer.Tag.String()
@@ -353,7 +353,7 @@ func MsgLabel(msgURL string) string {
 
 // Open requests the page at url with a plain GET and the browser's cookie, follows a redirect
 // (to at most redirectLimit in a row) and holds what it ends on: Shown, Redirected (the page
-// reached), Missing (the not-found document held) or Failed (the error document held, Text the
+// reached), PageMissing (the not-found document held) or RequestFailed (the error document held, Text the
 // error). Its error is for internal failures only (a page that does not parse).
 func (b *Browser) Open(u string) (Result, error) {
 	ans, err := b.navigate(u, false)
@@ -378,8 +378,8 @@ func (b *Browser) Get(u string) (Result, error) {
 // Submit posts fields to the form on the held page whose action is msgURL — compared as the
 // message and its own parameters, so the page's `_p.` parameters the rendered URL carries are
 // sent as rendered — as Datastar does (url-encoded, Datastar-Request: true), and applies the
-// answer: Rerendered (the body patch replaces the held body), Rejected (the same, when the
-// re-rendered page shows errors), Redirected (the target fetched and held), Missing, Failed.
+// answer: Rerendered (the body patch replaces the held body), FormRejected (the same, when the
+// re-rendered page shows errors), Redirected (the target fetched and held), PageMissing, RequestFailed.
 // With no such form the error is a *NoControlError, and with a field the form has no input for
 // a *NoInputError (Fields.For); either way nothing is sent.
 func (b *Browser) Submit(msgURL string, fields url.Values) (Result, error) {
@@ -677,7 +677,7 @@ func (b *Browser) navigate(u string, redirected bool) (Answer, error) {
 		}
 		if w.Code == http.StatusSeeOther {
 			if hop == redirectLimit {
-				return Answer{Tag: Failed, Text: fmt.Sprintf("more than %d redirects in a row (the last to %s)", redirectLimit, w.Header().Get("Location"))}, nil
+				return Answer{Tag: RequestFailed, Text: fmt.Sprintf("more than %d redirects in a row (the last to %s)", redirectLimit, w.Header().Get("Location"))}, nil
 			}
 			u, redirected = w.Header().Get("Location"), true
 			continue
@@ -694,7 +694,7 @@ func (b *Browser) navigate(u string, redirected bool) (Answer, error) {
 }
 
 // document holds the page of a plain (non-Datastar) answer w to a request for u: 200 Shown,
-// 404 Missing, 500 Failed, anything else (a request the router refused: 400, 413, 415) Failed
+// 404 PageMissing, 500 RequestFailed, anything else (a request the router refused: 400, 413, 415) RequestFailed
 // with its status.
 func (b *Browser) document(u string, w *httptest.ResponseRecorder) (Answer, error) {
 	body := w.Body.String()
@@ -708,11 +708,11 @@ func (b *Browser) document(u string, w *httptest.ResponseRecorder) (Answer, erro
 	case w.Code == http.StatusOK && isHTML:
 		return Answer{Tag: Shown}, nil
 	case w.Code == http.StatusNotFound:
-		return Answer{Tag: Missing}, nil
+		return Answer{Tag: PageMissing}, nil
 	case w.Code == http.StatusInternalServerError:
-		return Answer{Tag: Failed, Text: b.failText()}, nil
+		return Answer{Tag: RequestFailed, Text: b.failText()}, nil
 	}
-	return Answer{Tag: Failed, Text: fmt.Sprintf("%d %s", w.Code, strings.TrimSpace(body))}, nil
+	return Answer{Tag: RequestFailed, Text: fmt.Sprintf("%d %s", w.Code, strings.TrimSpace(body))}, nil
 }
 
 // hold makes page (a document the router served for u) the held one: its doctype and the
@@ -768,12 +768,12 @@ func (b *Browser) post(target string, form url.Values) (Answer, error) {
 	}
 	switch w.Header().Get(web.StatusHeader) {
 	case "404":
-		return Answer{Tag: Missing}, nil
+		return Answer{Tag: PageMissing}, nil
 	case "500":
-		return Answer{Tag: Failed, Text: b.failText()}, nil
+		return Answer{Tag: RequestFailed, Text: b.failText()}, nil
 	}
 	if errs := pageErrors(b.doc); len(errs) > 0 {
-		return Answer{Tag: Rejected, Errors: errs}, nil
+		return Answer{Tag: FormRejected, Errors: errs}, nil
 	}
 	return Answer{Tag: Rerendered}, nil
 }

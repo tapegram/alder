@@ -1078,7 +1078,7 @@ func (r *resolver) unresolvedCtor(c *syntax.CtorRef) {
 	}
 	hint := r.missingCause(c.Name)
 	if c.Name == "NotFound" && r.inTest && hint == "" {
-		hint = "; the browser's 404 answer is `Missing`"
+		hint = "; the browser's 404 answer is `PageMissing`"
 	}
 	r.bag.Error(diag.UnknownName, c.Span, "unknown constructor `%s`%s", c.Name, hint)
 }

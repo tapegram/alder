@@ -366,7 +366,7 @@ func TestBrowser_Rejected(t *testing.T) {
 		b.Login(session{User: "ann"})
 		must(b.Get("/"))
 		r := must(b.Submit("/_m/Index/Add", url.Values{"title": {""}, "note": {"keep <me>"}}))
-		wantAnswer(t, r, Answer{Tag: Rejected, Errors: []web.FieldError{{Field: "title", Message: "must not be empty"}}})
+		wantAnswer(t, r, Answer{Tag: FormRejected, Errors: []web.FieldError{{Field: "title", Message: "must not be empty"}}})
 		note := html.Select(r.Doc, html.MustParseSelector("input[name=note]"))
 		if v, _ := html.AttrOf(note[0], "value"); v != "keep <me>" {
 			t.Errorf("the note's value = %q", v)
@@ -379,7 +379,7 @@ func TestBrowser_Rejected(t *testing.T) {
 		}
 		// the form-level Reject text
 		r = must(b.Submit("/_m/Index/Add", url.Values{"title": {"dup"}}))
-		wantAnswer(t, r, Answer{Tag: Rejected, Errors: []web.FieldError{{Field: "", Message: "that title is taken"}}})
+		wantAnswer(t, r, Answer{Tag: FormRejected, Errors: []web.FieldError{{Field: "", Message: "that title is taken"}}})
 		if v, _ := html.AttrOf(html.Select(r.Doc, html.MustParseSelector("input[name=title]"))[0], "value"); v != "dup" {
 			t.Errorf("title value = %q", v)
 		}
@@ -433,7 +433,7 @@ func TestBrowser_PageParamsRideAlong(t *testing.T) {
 }
 
 // TestBrowser_FailuresKeepTheTestsRows (Review Focus 5): a request whose update fails or
-// panics is Failed with its message; its own write is undone, the test's rows stay; steps work
+// panics is RequestFailed with its message; its own write is undone, the test's rows stay; steps work
 // inside Test.run (Inner), whose failure undoes the steps' writes.
 func TestBrowser_FailuresKeepTheTestsRows(t *testing.T) {
 	res := browse(t, func(b *Browser, e *eff.Env) {
@@ -442,7 +442,7 @@ func TestBrowser_FailuresKeepTheTestsRows(t *testing.T) {
 		b.Login(session{User: "ann"})
 		must(b.Get("/"))
 		r := must(b.Click("/_m/Index/Fail"))
-		wantAnswer(t, r, Answer{Tag: Failed, Text: "nope"})
+		wantAnswer(t, r, Answer{Tag: RequestFailed, Text: "nope"})
 		if text(t, r.Doc, "h1") != "Something went wrong" {
 			t.Errorf("held %s", html.Render(r.Doc))
 		}
@@ -451,7 +451,7 @@ func TestBrowser_FailuresKeepTheTestsRows(t *testing.T) {
 		}
 		must(b.Get("/"))
 		r = must(b.Click("/_m/Index/Boom"))
-		wantAnswer(t, r, Answer{Tag: Failed, Text: "panic: boom"})
+		wantAnswer(t, r, Answer{Tag: RequestFailed, Text: "panic: boom"})
 		if got := titles(t, e); !reflect.DeepEqual(got, []string{"mine"}) {
 			t.Errorf("rows after the failures = %v", got)
 		}
@@ -539,13 +539,13 @@ func TestBrowser_NoControl(t *testing.T) {
 }
 
 // TestBrowser_MissingAndFailed: 404 and 500 for a GET hold the served document; a Datastar 404
-// (a click on a row gone meanwhile) is Missing; redirects are followed, a redirect to a 404 is
-// Missing, a loop gives up.
+// (a click on a row gone meanwhile) is PageMissing; redirects are followed, a redirect to a 404 is
+// PageMissing, a loop gives up.
 func TestBrowser_MissingAndFailed(t *testing.T) {
 	browse(t, func(b *Browser, e *eff.Env) {
 		must := mustOf(t)
 		r := must(b.Open("/nope"))
-		wantAnswer(t, r, Answer{Tag: Missing})
+		wantAnswer(t, r, Answer{Tag: PageMissing})
 		if text(t, r.Doc, "h1") != "Not found" || b.URL() != "/nope" {
 			t.Errorf("held %s", html.Render(r.Doc))
 		}
@@ -553,7 +553,7 @@ func TestBrowser_MissingAndFailed(t *testing.T) {
 			t.Errorf("Get: %v", err)
 		}
 		r = must(b.Open("/broken"))
-		wantAnswer(t, r, Answer{Tag: Failed, Text: "kaput"})
+		wantAnswer(t, r, Answer{Tag: RequestFailed, Text: "kaput"})
 		if text(t, r.Doc, "h1") != "Something went wrong" {
 			t.Errorf("held %s", html.Render(r.Doc))
 		}
@@ -564,9 +564,9 @@ func TestBrowser_MissingAndFailed(t *testing.T) {
 			t.Errorf("the failed GET's write stayed: %v", got)
 		}
 		r = must(b.Open("/gone"))
-		wantAnswer(t, r, Answer{Tag: Missing})
+		wantAnswer(t, r, Answer{Tag: PageMissing})
 		r = must(b.Open("/loop"))
-		if r.Answer.Tag != Failed || !strings.HasPrefix(r.Answer.Text, "more than 10 redirects in a row") {
+		if r.Answer.Tag != RequestFailed || !strings.HasPrefix(r.Answer.Text, "more than 10 redirects in a row") {
 			t.Errorf("loop = %+v", r.Answer)
 		}
 		b.Login(session{User: "ann"})
@@ -583,7 +583,7 @@ func TestBrowser_MissingAndFailed(t *testing.T) {
 			t.Error(err)
 		}
 		r = must(b.Click("/_m/Index/Delete?id=" + url.QueryEscape(id)))
-		wantAnswer(t, r, Answer{Tag: Missing})
+		wantAnswer(t, r, Answer{Tag: PageMissing})
 		if text(t, r.Doc, "h1") != "Not found" {
 			t.Errorf("held after a Datastar 404: %s", html.Render(r.Doc))
 		}
@@ -726,7 +726,7 @@ func TestBrowser_ExternalRedirect(t *testing.T) {
 func TestBrowser_FailTextWithColonInPath(t *testing.T) {
 	browse(t, func(b *Browser, e *eff.Env) {
 		r := mustOf(t)(b.Open("/p/a%3A%20b"))
-		wantAnswer(t, r, Answer{Tag: Failed, Text: "bad slug"})
+		wantAnswer(t, r, Answer{Tag: RequestFailed, Text: "bad slug"})
 	})
 }
 
