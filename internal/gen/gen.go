@@ -10,7 +10,6 @@ import (
 	"go/parser"
 	"go/token"
 	"maps"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -163,30 +162,97 @@ type gen struct {
 	// tests: a test build (Options.Tests); fakes are the program's fakes by module
 	tests bool
 	fakes map[string][]*ir.Fake
-	// fakeIdents matches the Go names of the fakes' tables (records, descriptors, insert
-	// records): a production build emits a test whose body uses one as fakeStub; nil without
-	// fake tables
-	fakeIdents *regexp.Regexp
+	// fakeTables are the fakes' tables ("Module.Name"): a production build emits a test whose
+	// body uses one (usesFakeTable) as fakeStub
+	fakeTables map[string]bool
 }
 
 // indexFakes records p's fakes for module and app emission. In a test build the unions their
 // tables store get an enumDecl too.
 func (g *gen) indexFakes(p *ir.Program, tests bool) {
-	g.tests, g.fakes = tests, map[string][]*ir.Fake{}
-	var idents []string
+	g.tests, g.fakes, g.fakeTables = tests, map[string][]*ir.Fake{}, map[string]bool{}
 	for _, fk := range p.Fakes {
 		g.fakes[fk.Module] = append(g.fakes[fk.Module], fk)
 		for _, tb := range fk.Tables {
-			idents = append(idents, GoName(tb.Module, tb.Name), tableName(tb.Module, tb.Name),
-				insertName(tb.Module, tb.Name), insertVals(tb.Module, tb.Name))
+			g.fakeTables[tb.Module+"."+tb.Name] = true
 		}
 		if tests {
 			maps.Copy(g.enums, storedEnums(&ir.Program{Tables: fk.Tables}))
 		}
 	}
-	if len(idents) > 0 {
-		g.fakeIdents = regexp.MustCompile(`\b(` + strings.Join(idents, "|") + `)\b`)
+}
+
+// usesFakeTable reports whether e uses a fake's table: a Db node, table or column of one, or
+// any subexpression, binding or parameter whose type mentions its record.
+func (g *gen) usesFakeTable(e ir.Expr) bool {
+	if len(g.fakeTables) == 0 {
+		return false
 	}
+	is := func(tb *ir.Table) bool { return tb != nil && g.fakeTables[tb.Module+"."+tb.Name] }
+	found := false
+	walk(e, func(x ir.Expr) {
+		if found {
+			return
+		}
+		var tys []types.Type
+		switch n := x.(type) {
+		case *ir.DbGet:
+			found = is(n.Table)
+		case *ir.DbSelect:
+			found = is(n.Table)
+		case *ir.DbInsert:
+			found = is(n.Table)
+		case *ir.DbUpdate:
+			found = is(n.Table)
+		case *ir.DbDelete:
+			found = is(n.Table)
+		case *ir.TableRef:
+			found = is(n.Table)
+		case *ir.ColumnRef:
+			found = is(n.Table)
+		case *ir.Cond:
+			found = n.Col != nil && is(n.Col.Table)
+		case *ir.Ord:
+			found = n.Col != nil && is(n.Col.Table)
+		case *ir.Let:
+			tys = append(tys, n.T)
+		case *ir.Lambda:
+			for _, p := range n.Params {
+				tys = append(tys, p.Type)
+			}
+		case *ir.EffBind:
+			if n.Param != nil {
+				tys = append(tys, n.Param.Type)
+			}
+		}
+		for _, t := range append(tys, x.Type()) {
+			found = found || g.mentionsFakeRecord(t)
+		}
+	})
+	return found
+}
+
+// mentionsFakeRecord reports whether type t mentions the record of a fake's table.
+func (g *gen) mentionsFakeRecord(t types.Type) bool {
+	switch t := t.(type) {
+	case *types.Record:
+		if t.Name != "" && !t.Anonymous {
+			if g.fakeTables[t.Module+"."+t.Name] {
+				return true
+			}
+			return slices.ContainsFunc(t.Args, g.mentionsFakeRecord)
+		}
+		return slices.ContainsFunc(t.Fields, func(f types.Field) bool { return g.mentionsFakeRecord(f.Type) })
+	case *types.Union:
+		return slices.ContainsFunc(t.Args, g.mentionsFakeRecord)
+	case *types.App:
+		return slices.ContainsFunc(t.Args, g.mentionsFakeRecord)
+	case *types.Fun:
+		return g.mentionsFakeRecord(t.Result) || slices.ContainsFunc(t.Params, g.mentionsFakeRecord)
+	case *types.Brand:
+		return g.mentionsFakeRecord(t.Base)
+	}
+	return false
 }
 
 // newGen indexes the program's values. A constant (a value with no parameters and a non-function
@@ -522,13 +588,14 @@ func (g *gen) test(w *strings.Builder, t *ir.Test, n int) {
 	result := "bool"
 	if t.Effect {
 		result = "eff.Task[bool]"
-		f.retK(&b, t.Body, newScope(), f.task)
-	} else {
-		f.ret(&b, t.Body, newScope())
 	}
-	if !g.tests && g.fakeIdents != nil && g.fakeIdents.MatchString(b.String()) {
-		b.Reset()
+	switch {
+	case !g.tests && g.usesFakeTable(t.Body):
 		b.WriteString(fakeStub(t.Effect))
+	case t.Effect:
+		f.retK(&b, t.Body, newScope(), f.task)
+	default:
+		f.ret(&b, t.Body, newScope())
 	}
 	fmt.Fprintf(w, "// %s is test %s of module %s.\nfunc %s() %s {\n%s}\n\n", testFunc(t.Module, n), strconv.Quote(t.Name), t.Module,
 		testFunc(t.Module, n), result, b.String())

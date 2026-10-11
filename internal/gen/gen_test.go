@@ -3003,8 +3003,29 @@ func TestGen_ProdHasNoFakes(t *testing.T) {
 		contains(t, files["Checkout_alder.go"], "return eff.Fail[bool](\"this test uses a fake's tables, which exist only in `alder test`\")")
 		contains(t, files["Shop_alder.go"], "return eff.Fail[bool](\"this test uses a fake's tables, which exist only in `alder test`\")")
 	}
+	// the decision is made on the IR: a string that spells a fake table's Go name is no use of
+	// it, and a Db.from of the fake's table is
+	src, err := os.ReadFile("../../testdata/corpus/fake-ok/app/Payments.alder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := os.ReadFile("../../testdata/corpus/fake-ok/app/User.alder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := emitSource(t, map[string]string{"User.alder": string(user), "Payments.alder": string(src) + `
+test "a string is no table" = "Payments__Charge" == "Payments__Charge"
+
+test "a select is" = {
+  let n <- Db.from Charge |> Db.count
+  Task.succeed (n == 0)
+}
+`})
+	contains(t, files["Payments_alder.go"], "func test__Payments__2() bool {\n\treturn rtesting.Eq(\"Payments__Charge\", \"Payments__Charge\")\n}",
+		"func test__Payments__3() eff.Task[bool] {\n\treturn eff.Fail[bool](\"this test uses a fake's tables")
+	vet(t, files)
 	// a test that installs a fake without using its tables keeps its body: Test.fake fails
-	files := emitSource(t, map[string]string{"Markdown.alder": `module Markdown
+	files = emitSource(t, map[string]string{"Markdown.alder": `module Markdown
 
 capability Markdown {
   render : Text -> Query (Html Never),
