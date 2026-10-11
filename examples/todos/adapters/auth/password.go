@@ -1,7 +1,8 @@
-// Package adapters implements the to-do app's capabilities in Go. `alder build` copies it into
-// the generated module (build/todos/adapters), next to the app's package, which it imports as
-// "app"; the generated cmd/main.go serves the app with Caps().
-package adapters
+// Package auth implements the to-do app's capability of module Auth.Login in Go: a capability
+// of module Auth.… lives in adapters/auth/. `alder build` copies it into the generated module
+// (build/todos/adapters/auth), next to the app's package, which it imports as "app"; the
+// generated package caps (build/todos/caps) wires LoginPassword into the app.
+package auth
 
 import (
 	"context"
@@ -16,10 +17,8 @@ import (
 	"app"
 )
 
-// Caps are the implementations of the app's capabilities.
-func Caps() app.Caps {
-	return app.Caps{Auth__Login__Password: password{}}
-}
+// LoginPassword is the adapter of Auth.Login.Password.
+func LoginPassword() app.Cap__Auth__Login__Password { return password{} }
 
 // The one account the development stub accepts.
 const (
@@ -66,7 +65,7 @@ func (password) Verify(ctx context.Context, args app.Args__Auth__Login__Password
 func devUser(ctx context.Context) (string, error) {
 	st, tx := db.StoreFrom(ctx), db.TxFrom(ctx)
 	if st == nil {
-		return "", errors.New("adapters: the context carries no store")
+		return "", errors.New("auth: the context carries no store")
 	}
 	var users db.TableDesc
 	for _, t := range app.Tables {

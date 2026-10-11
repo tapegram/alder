@@ -1,4 +1,7 @@
-package adapters
+// Package markdown implements the blog's capability Markdown.Markdown in Go: a capability of
+// module Markdown lives in adapters/markdown/, and its constructor is named after the
+// capability. The generated package caps (build/blog/caps) wires Markdown into the app.
+package markdown
 
 import (
 	"context"
@@ -9,15 +12,18 @@ import (
 	"app"
 )
 
+// Markdown is the adapter of Markdown.Markdown.
+func Markdown() app.Cap__Markdown__Markdown { return markdown{} }
+
 // markdown implements Markdown.Markdown: a post's body as HTML.
 type markdown struct{}
 
 // Render is Markdown.render.
 func (markdown) Render(_ context.Context, args app.Args__Markdown__Markdown__Render) (html.Node, error) {
-	return Markdown(args.Value), nil
+	return ToHTML(args.Value), nil
 }
 
-// Markdown renders a small subset of Markdown:
+// ToHTML renders a small subset of Markdown:
 //
 //   - paragraphs, separated by blank lines; a single line break inside a paragraph is a <br>;
 //   - `code`: its content is literal, nothing inside it is formatting;
@@ -32,7 +38,7 @@ func (markdown) Render(_ context.Context, args app.Args__Markdown__Markdown__Ren
 // input can produce markup. Rendering is linear in the input's length: a closing delimiter is
 // searched for once per position it can close (see finder), and a link's URL, which may not
 // contain "](", is checked once however many "[" precede it.
-func Markdown(src string) html.Node {
+func ToHTML(src string) html.Node {
 	src = strings.ReplaceAll(src, "\r\n", "\n")
 	src = strings.ReplaceAll(src, "\r", "\n")
 	var paras []html.Node

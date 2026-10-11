@@ -100,7 +100,7 @@ test "a draft is not found for a reader" = {
   Task.succeed ({ reader: asReader.value, nobody: asNobody.value } == { reader: Err "not found", nobody: Err "not found" })
 }
 
--- The body goes through the real Markdown adapter (adapters/markdown.go).
+-- The body goes through the real Markdown adapter (adapters/markdown/markdown.go).
 test "a draft is shown to its author" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "Not *yet*.", author: author }

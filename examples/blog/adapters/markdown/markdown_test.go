@@ -1,4 +1,4 @@
-package adapters
+package markdown
 
 import (
 	"strings"
@@ -8,8 +8,8 @@ import (
 	"alder/rt/html"
 )
 
-// render is Markdown(src) as the page would send it.
-func render(src string) string { return html.Render(Markdown(src)) }
+// render is ToHTML(src) as the page would send it.
+func render(src string) string { return html.Render(ToHTML(src)) }
 
 func TestMarkdown_Constructs(t *testing.T) {
 	for _, c := range []struct{ name, src, want string }{
@@ -38,7 +38,7 @@ func TestMarkdown_Constructs(t *testing.T) {
 		{"empty code", "a `` b", "<p>a `` b</p>"},
 	} {
 		if got := render(c.src); got != c.want {
-			t.Errorf("%s: Markdown(%q)\n got %s\nwant %s", c.name, c.src, got, c.want)
+			t.Errorf("%s: ToHTML(%q)\n got %s\nwant %s", c.name, c.src, got, c.want)
 		}
 	}
 }
@@ -74,7 +74,7 @@ func TestMarkdown_Hostile(t *testing.T) {
 	} {
 		got := render(c.src)
 		if got != c.want {
-			t.Errorf("%s: Markdown(%q)\n got %s\nwant %s", c.name, c.src, got, c.want)
+			t.Errorf("%s: ToHTML(%q)\n got %s\nwant %s", c.name, c.src, got, c.want)
 		}
 		if strings.Contains(got, "<script") || strings.Contains(got, `href="javascript`) || strings.Contains(got, `href="data`) {
 			t.Errorf("%s: unsafe output %s", c.name, got)

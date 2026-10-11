@@ -459,7 +459,7 @@ its fake:
 module Markdown
 
 -- Rendering a post's body is outside the language: a capability implemented in Go
--- (adapters/markdown.go), which builds the HTML node by node, so a post cannot inject markup.
+-- (adapters/markdown/markdown.go), which builds the HTML node by node, so a post cannot inject markup.
 capability Markdown {
   render : Text -> Query (Html Never),
 }
