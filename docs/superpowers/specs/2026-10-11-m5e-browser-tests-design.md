@@ -70,8 +70,8 @@ type Answer = Shown
   browser now holds that page.
 - **`Test.open p`** is the raw form: the same request, but the result's
   `answer` says what happened (`Shown`, `Redirected (Auth.Login {})`,
-  `NotFound`, `Failed msg`) and the test asserts. After `Redirected` the
-  browser holds the redirect's target page (fetched); after `NotFound`
+  `Missing`, `Failed msg`) and the test asserts. After `Redirected` the
+  browser holds the redirect's target page (fetched); after `Missing`
   the not-found document; after `Failed` the error document.
 - **`Test.submit F r`** needs a `form F` of a page module; `r` is `F`'s
   record (a form literal is a request value, so defaults apply as they do
@@ -96,7 +96,7 @@ type Answer = Shown
 - **The answer is applied.** `Rerendered`: the body patch replaces the
   held body (the same body a `Rerender` gives). `Redirected p`: the
   browser fetches `p` with the (possibly updated) cookie and holds it; a
-  redirect to a page that then 404s is `NotFound`. `Rejected errors`: the
+  redirect to a page that then 404s is `Missing`. `Rejected errors`: the
   held page is the re-rendered form with its errors; `errors` lists them
   in field order (`field` is the field name, `""` for the form-level
   `Reject` text). `Missing` / `Failed`: as for `open`. The result's
@@ -197,7 +197,7 @@ type Answer = Shown
 - gen: a golden test build; the production golden unchanged; an e2e
   fixture app with a page, a form, a click, `requires`, and `Test.login`.
 - Examples: todos — the ownership check through the page (a stranger's
-  click is `NotFound`), login through the form with the `Password` fake,
+  click is `Missing`), login through the form with the `Password` fake,
   adding a todo and reading `#summary`; blog — pagination (`?page=2`),
   search, a comment's validation error (`Rejected`), logout.
 - Book: chapter 10 "Testing through the browser" with real transcripts;
