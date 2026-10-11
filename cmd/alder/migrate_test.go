@@ -297,7 +297,7 @@ func TestMigrate_SnapshotMismatch(t *testing.T) {
 	editApp(t, dir, "User.alder", "  bio: Maybe Text = Nothing,\n", "  bio: Maybe Text = Nothing,\n  site: Maybe Text = Nothing,\n")
 	before := migrationsList(t, dir)
 	code, out, errs := runMigrate(t, dir)
-	if code != 1 || out != "" || errs != "alder migrate: migrations/schema.json does not match 0002_add_bio.sql's result; restore the snapshot from git or regenerate the migration\n" {
+	if code != 1 || out != "" || errs != "alder migrate: migrations/schema.json does not match 0002_add_bio.sql's result; restore migrations/schema.json from version control, or delete the last migration file and run `alder migrate` again\n" {
 		t.Fatalf("mismatch: exit %d\n%s%s", code, out, errs)
 	}
 	if got := migrationsList(t, dir); !slices.Equal(got, before) {
@@ -306,14 +306,14 @@ func TestMigrate_SnapshotMismatch(t *testing.T) {
 
 	os.Remove(filepath.Join(mdir, "schema.json"))
 	code, _, errs = runMigrate(t, dir)
-	if code != 1 || errs != "alder migrate: migrations/ has migration files but no schema.json, the schema they lead to: restore it from git\n" {
+	if code != 1 || errs != "alder migrate: migrations/ has migration files but no schema.json, the schema they lead to: restore it from version control\n" {
 		t.Fatalf("no snapshot: exit %d\n%s", code, errs)
 	}
 	os.WriteFile(filepath.Join(mdir, "schema.json"), []byte(first), 0o644)
 	os.Remove(filepath.Join(mdir, "0001_initial.sql"))
 	os.Remove(filepath.Join(mdir, "0002_add_bio.sql"))
 	code, _, errs = runMigrate(t, dir)
-	if code != 1 || errs != "alder migrate: migrations/schema.json has no migration file: restore the migrations from git, or delete schema.json to start again from 0001_initial\n" {
+	if code != 1 || errs != "alder migrate: migrations/schema.json has no migration file: restore the migrations from version control, or delete schema.json to start again from 0001_initial\n" {
 		t.Fatalf("no files: exit %d\n%s", code, errs)
 	}
 }

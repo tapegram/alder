@@ -82,7 +82,7 @@ joiner : List Text -> Text
 joiner = Text.join ", "
 
 opts : Opts
-opts = { name: "x" }
+opts = { name: "x", loud: False }
 
 compute : Int -> Int
 compute n = {

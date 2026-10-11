@@ -243,7 +243,15 @@ different thing. `Db.insert` may leave out a column declared with a
 default (`published: Bool = False`, `role: Role = Reader`), because the
 table declares that value. The stance is the user's (2026-10-10):
 implicit values cause mistakes, since a value nobody wrote is one nobody
-checked. M5 needed nothing more. The blog's tests write their records in
+checked. Made precise in M5b: defaults apply at boundaries, where a value
+comes from outside the program's literals: a session cookie that lacks a
+field, a page or message parameter left out of a link or URL, a form
+field left out of a request, and an `Insert T` record (that is what a
+table's defaults are for). A literal of a record type itself, a table's
+row, a declared `type R = {…}`, or App's or a page's `Session`, names
+every field (E0003: "a default applies to an insert, a cookie or a page
+parameter, not to a literal"); only an anonymous record type's defaults
+(a component's props) apply to its literals. M5 needed nothing more. The blog's tests write their records in
 full, and E7's evidence is under "Open questions" below. This is
 revisited only if required fields prove demonstrably worse.
 

@@ -641,9 +641,9 @@ rows can be filled``), and for a `migrations/` directory that disagrees
 with itself, on standard error:
 
 ```text
-alder migrate: migrations/schema.json does not match 0002_add_bio.sql's result; restore the snapshot from git or regenerate the migration
-alder migrate: migrations/ has migration files but no schema.json, the schema they lead to: restore it from git
-alder migrate: migrations/schema.json has no migration file: restore the migrations from git, or delete schema.json to start again from 0001_initial
+alder migrate: migrations/schema.json does not match 0002_add_bio.sql's result; restore migrations/schema.json from version control, or delete the last migration file and run `alder migrate` again
+alder migrate: migrations/ has migration files but no schema.json, the schema they lead to: restore it from version control
+alder migrate: migrations/schema.json has no migration file: restore the migrations from version control, or delete schema.json to start again from 0001_initial
 ```
 
 It never changes an existing migration file. Exit 2 for a usage error
@@ -745,7 +745,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0016 | two pages answer the same path (`/x/{id}` and `/x/{slug}`, or `/x` and `/x/`) | — |
 | E0017 | a module named like a standard-library module (`Test`, `List`, `Http`, …): the stdlib's would shadow it; uses of its names are not reported separately | — |
 | E0018 | a table declared outside its own module (`table Comment` in `app/Post.alder` belongs in `app/Comment.alder`); reported once, at the declaration | — |
-| E0019 | the app's tables changed since its last migration (`migrations/schema.json` differs from the `table` declarations): run `alder migrate`; also `migrations/` with `.sql` files but no `schema.json`, a `schema.json` that does not read, a malformed file (``migration 0002_x: line 6: a statement must end in `;` ``), or files that do not chain (`migration 0003_sub does not follow 0001_initial: a file is missing or edited; regenerate it`). Reported at `migrations/schema.json:1:1` by every command but `alder migrate` | — |
+| E0019 | `migrations/` is behind the app or disagrees with itself, reported at `migrations/schema.json:1:1` by every command but `alder migrate`: the tables changed since the last migration (``the schema changed since migration 0003 (table Post: column body): run `alder migrate` ``, also for a storage format change); `.sql` files but no `schema.json`; a `schema.json` or migration file that does not read; a malformed file (``migration 0002_x: line 6: a statement must end in `;` ``, a wrong first line, a header without `-- from` or `-- to`); a file that does not start where the one before it ends (`migration 0003_sub does not follow 0001_initial: a file is missing or edited; regenerate it`); a last file that does not end at the snapshot (`migration 0003_sub does not lead to migrations/schema.json: a file is missing or edited; regenerate it`) | — |
 | E0022 | a table field's default that is not a literal (`count: Int = 1 + 1`): migrations write a table default into the database as SQL | — |
 | E0101 | `Db.get T x` where `x` is not `Id T` | `Db.from T \|> Db.where (T.<col>.eq x) \|> Db.first` when a column of `x`'s type exists |
 | E0102 | field access on a `Maybe` | `match` skeleton |

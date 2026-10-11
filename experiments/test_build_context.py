@@ -128,5 +128,14 @@ class BuildContextTests(unittest.TestCase):
             for h in heads:
                 self.assertIn("\n## " + h + "\n", text)
 
+    def test_real_reference_keeps_migrations(self):
+        # agents need the E0019 -> `alder migrate` workflow: chapter 8's "Migrations" stays in
+        # the reference, "How tables are stored" goes
+        bc.HUMAN_SECTIONS = self.saved
+        code, out, _ = self.run_main("--reference", "--chapters", "08", "--book", str(bc.BOOK))
+        self.assertEqual(code, 0)
+        self.assertIn("\n## Migrations\n", out)
+        self.assertNotIn("\n## How tables are stored\n", out)
+
 if __name__ == "__main__":
     unittest.main()

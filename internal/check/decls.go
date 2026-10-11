@@ -737,6 +737,7 @@ func (mc *modCtx) defineApp() {
 func (mc *modCtx) addMsg(u *types.Union, d *syntax.MsgDecl, owner string) {
 	c := mc.c
 	payload := &types.Record{Module: owner, Name: d.Name + "Params"}
+	c.paramRecs[c.key(owner, payload.Name)] = true
 	if d.Params != nil {
 		for _, f := range d.Params.Fields {
 			ft := mc.typeOf(f.Type, nil)
@@ -763,6 +764,7 @@ func (mc *modCtx) definePage() {
 	c := mc.c
 	pd := c.prog.Pages[mc.m.Name]
 	info := &pageInfo{Decl: pd, Module: mc.m.Name, Msgs: map[string]*syntax.MsgDecl{}, Params: &types.Record{Module: mc.m.Name, Name: "Params"}, Msg: &types.Union{Module: mc.m.Name, Name: "Msg"}}
+	c.paramRecs[c.key(mc.m.Name, "Params")] = true
 	c.pages[mc.m.Name] = info
 	mc.page = info
 	segs := pathParams(pd.Path)

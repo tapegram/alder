@@ -9,20 +9,23 @@ import (
 )
 
 type Checker struct {
-	prog     *names.Program
-	bag      *diag.Bag
-	u        *types.Unifier
-	types    map[string]types.Type
-	values   map[string]types.Type
-	ctors    map[string]*ctorInfo
-	tables   map[string]*types.TableInfo
-	forms    map[string]*types.Record
-	caps     map[string]map[string]types.Type
-	pages    map[string]*pageInfo
-	session  *types.Record
-	appMsg   *types.Union
-	losers   map[syntax.Decl]bool
-	defaults []pendingDefault // field defaults, checked after value signatures // duplicate declarations (E0009), skipped after declareTypeNames
+	prog   *names.Program
+	bag    *diag.Bag
+	u      *types.Unifier
+	types  map[string]types.Type
+	values map[string]types.Type
+	ctors  map[string]*ctorInfo
+	tables map[string]*types.TableInfo
+	forms  map[string]*types.Record
+	// paramRecs are the records of page and message parameters (by key): their defaults apply
+	// to a literal too, since a parameter left out of a link is the URL left without it.
+	paramRecs map[string]bool
+	caps      map[string]map[string]types.Type
+	pages     map[string]*pageInfo
+	session   *types.Record
+	appMsg    *types.Union
+	losers    map[syntax.Decl]bool
+	defaults  []pendingDefault // field defaults, checked after value signatures // duplicate declarations (E0009), skipped after declareTypeNames
 
 	// typesDefined is set once every record has its fields (after pass 2); early are the generic
 	// record instances made before, refreshed then.
@@ -101,7 +104,7 @@ func Program(prog *names.Program, bag *diag.Bag) *Result {
 func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 	c := &Checker{prog: prog, bag: bag, u: &types.Unifier{Subst: types.Subst{}}, opts: o,
 		types: map[string]types.Type{}, values: map[string]types.Type{}, ctors: map[string]*ctorInfo{},
-		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, caps: map[string]map[string]types.Type{}, pages: map[string]*pageInfo{}, losers: map[syntax.Decl]bool{},
+		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, paramRecs: map[string]bool{}, caps: map[string]map[string]types.Type{}, pages: map[string]*pageInfo{}, losers: map[syntax.Decl]bool{},
 		anonDefaults: map[*syntax.Field]bool{},
 		res:          &Result{Types: map[syntax.Expr]types.Type{}, Binds: map[any]types.Type{}, DefaultModules: map[syntax.Expr]string{}, Widened: map[syntax.Expr]*types.Record{}},
 		widenedFrom:  map[syntax.Expr]types.Type{}}

@@ -189,10 +189,10 @@ func previous(mdir string, stderr io.Writer) (migrate.Schema, string, int) {
 	case len(files) == 0 && serr != nil:
 		return migrate.Schema{}, "", 0
 	case len(files) == 0:
-		fmt.Fprintf(stderr, "alder migrate: migrations/schema.json has no migration file: restore the migrations from git, or delete schema.json to start again from 0001_initial\n")
+		fmt.Fprintf(stderr, "alder migrate: migrations/schema.json has no migration file: restore the migrations from version control, or delete schema.json to start again from 0001_initial\n")
 		return migrate.Schema{}, "", 1
 	case serr != nil:
-		fmt.Fprintf(stderr, "alder migrate: migrations/ has migration files but no schema.json, the schema they lead to: restore it from git\n")
+		fmt.Fprintf(stderr, "alder migrate: migrations/ has migration files but no schema.json, the schema they lead to: restore it from version control\n")
 		return migrate.Schema{}, "", 1
 	}
 	lastFile := files[len(files)-1]
@@ -203,7 +203,7 @@ func previous(mdir string, stderr io.Writer) (migrate.Schema, string, int) {
 		hash, err = old.Hash()
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "alder migrate: migrations/schema.json does not read (%v): restore it from git\n", err)
+		fmt.Fprintf(stderr, "alder migrate: migrations/schema.json does not read (%v): restore it from version control\n", err)
 		return old, last, 1
 	}
 	b, err := os.ReadFile(filepath.Join(mdir, lastFile))
@@ -217,7 +217,7 @@ func previous(mdir string, stderr io.Writer) (migrate.Schema, string, int) {
 		return old, last, 1
 	}
 	if !strings.HasPrefix(hash, to) {
-		fmt.Fprintf(stderr, "alder migrate: migrations/schema.json does not match %s's result; restore the snapshot from git or regenerate the migration\n", lastFile)
+		fmt.Fprintf(stderr, "alder migrate: migrations/schema.json does not match %s's result; restore migrations/schema.json from version control, or delete the last migration file and run `alder migrate` again\n", lastFile)
 		return old, last, 1
 	}
 	return old, last, 0

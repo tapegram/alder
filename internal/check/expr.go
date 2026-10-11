@@ -641,9 +641,12 @@ func (mc *modCtx) checkRecordLit(x *syntax.RecordLit, rec *types.Record, env *en
 		seen[fi.Name] = true
 		mc.check(fi.Value, f.Type, env, eff)
 	}
-	// A session's defaults are for its cookie (a field it lacks), never for a literal: a
-	// literal of App's Session or a page's narrowed one names every field.
-	session := appSession(rec) || c.narrowedSession(rec)
+	// Defaults apply at boundaries: a session's to its cookie, an insert's to the row it makes,
+	// a parameter's to a link or URL without it, a form's to a request without it. A literal of
+	// any other declared record (a table's row, a `type R = {…}`, App's Session or a page's
+	// narrowed one) names every field. An anonymous record type's defaults (a component's
+	// props, an options argument) apply to its literals.
+	strict := !rec.Anonymous && !c.boundaryRecord(rec)
 	var missing, defaulted []string
 	for _, f := range rec.Fields {
 		if seen[f.Name] || f.Name == "form" {
@@ -652,20 +655,29 @@ func (mc *modCtx) checkRecordLit(x *syntax.RecordLit, rec *types.Record, env *en
 		switch {
 		case !f.HasDefault:
 			missing = append(missing, f.Name)
-		case session:
+		case strict:
 			missing = append(missing, f.Name)
 			defaulted = append(defaulted, f.Name)
 		}
 	}
-	const why = "a default applies only to a cookie or a page parameter, not to a literal"
+	const why = "a default applies to an insert, a cookie or a page parameter, not to a literal"
 	switch {
 	case len(missing) > 0 && len(missing) == len(defaulted):
-		c.errorf(diag.TypeMismatch, x.Span, "record literal for `Session` is missing `%s` (%s)", strings.Join(missing, "`, `"), why)
+		c.errorf(diag.TypeMismatch, x.Span, "record literal for `%s` is missing `%s` (%s)", rec.Name, strings.Join(missing, "`, `"), why)
 	case len(defaulted) > 0:
 		c.errorf(diag.TypeMismatch, x.Span, "record `%s` is missing field(s): %s (for `%s`, %s)", types.String(rec), strings.Join(missing, ", "), strings.Join(defaulted, "`, `"), why)
 	case len(missing) > 0:
 		c.errorf(diag.TypeMismatch, x.Span, "record `%s` is missing field(s): %s", types.String(rec), strings.Join(missing, ", "))
 	}
+}
+
+// boundaryRecord reports whether rec's defaults apply to its literals: a table's `Insert T`, a
+// form, or a page's or message's parameters.
+func (c *Checker) boundaryRecord(rec *types.Record) bool {
+	if name, ok := strings.CutPrefix(rec.Name, "Insert "); ok && c.tables[c.key(rec.Module, name)] != nil {
+		return true
+	}
+	return c.forms[c.key(rec.Module, rec.Name)] != nil || c.paramRecs[c.key(rec.Module, rec.Name)]
 }
 
 func (mc *modCtx) checkMatch(x *syntax.Match, expected types.Type, env *env, eff effect) {

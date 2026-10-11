@@ -26,7 +26,8 @@ table Todo {
   Writing).
 - `@created` is set to the current time on insert. `@updated` is set on
   every write.
-- A field with a default may be omitted on insert.
+- A field with a default may be omitted on insert, but not from a
+  literal of the row type: a `Todo` written out names every field.
 - `@unique` marks a field that must be unique.
 - Field types: `Int`, `Float`, `Bool`, `Text`, `Date`, `Time`, brands of
   those, unions with no payloads, and `Maybe` of any of those. Nothing
@@ -361,11 +362,10 @@ so no input can change what a query does.
 
 ## Migrations
 
-Your users' data has to survive when the tables change. A **migration**
-is a file of SQL statements that turns a database with the old tables
-into one with the new tables, keeping the rows. Alder writes them: you
-change a `table`, run `alder migrate`, read the file, and commit it. The
-app applies the files it has not had yet every time it starts.
+A **migration** is a file of SQL statements that turns a database with
+the old tables into one with the new tables, keeping the rows. Alder
+writes them: you change a `table`, run `alder migrate`, read the file,
+and commit it. The app applies new files every time it starts.
 
 ### The files
 
@@ -401,10 +401,15 @@ summary. Add the field to `table Post` in `app/Post.alder`:
 }
 ```
 
-The default `= Nothing` lets every `Db.insert Post` in the blog leave the
-field out. The one test that builds a whole `Post` by hand needs
-`summary: Nothing` too (the checker points at it). Now the tables are
-ahead of the migrations, and the compiler says so:
+The default `= Nothing` lets every `Db.insert Post` leave the field out,
+but not a `Post` written as a literal: the checker points at the one test
+that builds a whole `Post` by hand, which needs `summary: Nothing`:
+
+```text
+app/Post.alder:35:22: error[E0003]: record literal for `Post` is missing `summary` (a default applies to an insert, a cookie or a page parameter, not to a literal)
+```
+
+With that fixed, the tables are ahead of the migrations:
 
 ```text
 $ alder check
@@ -490,16 +495,14 @@ can be thrown away: delete the file, restore the snapshot with
 `alder migrate` again. Once a migration has run against a database you
 keep, never edit or delete it; write the next one instead.
 
-The file's name comes from its steps (`add_summary`, `rename_summary`,
-`drop_excerpt`, `create_comment`, `change_post` for a rebuild, below), at
-most 40 characters; `--name some_name` chooses it instead. Run with
-nothing changed, `alder migrate` writes nothing and prints
-`no changes since 0004_drop_excerpt`.
+The file's name comes from its steps (`add_summary`, `change_post` for
+a rebuild), or from `--name some_name`. With nothing changed,
+`alder migrate` prints `no changes since 0004_drop_excerpt`.
 
 ### What a change becomes
 
-- **A new `Maybe` field** with no default (or `= Nothing`) is
-  `ADD COLUMN`; existing rows get `Nothing`.
+- **A new `Maybe` field, last in the table,** with no default or
+  `= Nothing` is `ADD COLUMN`; existing rows get `Nothing`.
 - **A new field that is not a `Maybe`** needs a default to fill the rows
   that already exist. Without one, `alder migrate` writes nothing and
   says ``Post.views: a new non-null column needs a default (`= 0`) so
@@ -510,13 +513,15 @@ nothing changed, `alder migrate` writes nothing and prints
   `DROPS DATA`.
 - **A rename** declared with `@renamed` is `RENAME COLUMN` or
   `RENAME TO`.
-- **Anything else is a rebuild.** SQLite's `ALTER TABLE` can only add,
-  drop and rename columns. To change a type, make a field a `Maybe` or
-  not, change a union's constructors, add or remove `@unique`, `@ref` or
-  a delete rule, or add a field that is not a `Maybe`, the migration
-  builds the table again: it creates the new table under a temporary
-  name, copies every row into it, converting each value, drops the old
-  table and renames the new one. Adding `views: Int = 0` to `Post`:
+- **Anything else is a rebuild.** SQLite's `ALTER TABLE` can only
+  append, drop and rename columns. To change a type, make a field a
+  `Maybe` or not, change a union's constructors, add or remove `@unique`,
+  `@ref` or a delete rule, add a field anywhere but last, reorder fields,
+  or add a field that is not a `Maybe` or has a `Just` default (filled
+  with the default), the migration builds the table again: it creates
+  the new table under a temporary name, copies every row into it,
+  converting each value, drops the old table and renames the new one.
+  Adding `views: Int = 0` to `Post`:
 
 ```text
 -- step: rebuild table Post: Post.views: new column filled with 0
@@ -566,9 +571,10 @@ info: migrated 0004_drop_excerpt
 listening on 127.0.0.1:8080
 ```
 
-Before changing anything it checks that each file's `from` is where the
-database, or the file before it, ends. Otherwise it prints `alder: ` and
-the reason, and exits 1. The reasons, word for word:
+If the database cannot be brought up to date, the app prints `alder: `
+and the reason, and exits 1. Most problems are found before anything
+changes (each file's `from` must be where the database, or the file
+before it, ends); a file that fails is rolled back. Word for word:
 
 - A statement fails: the file's transaction is undone, the files before
   it stay applied, and the app stops with
@@ -615,16 +621,15 @@ every file as applied, and logs why:
 info: recreated the database (dev mode): it was changed outside migrations
 ```
 
-A file that is missing or out of order is refused in dev mode too: the
-files, not the database, are wrong. `alder eval --run` and the REPL never
-recreate the database; they add where to delete it to start again.
+A file missing or out of order is refused in dev mode too: the files,
+not the database, are wrong. `alder eval --run` and the REPL never
+recreate the database.
 
 ### Tests run through migrations
 
-`alder test` builds each test's fresh in-memory database by applying the
-migrations, as a production start would. So a passing run also shows
-that the migrations make the tables the app expects. When they do not
-(a hand-edited file, say), every test fails with
+`alder test` builds each test's in-memory database by applying the
+migrations, so a passing run shows they make the app's tables. When
+they do not, every test fails with
 ``the migrations do not produce the app's schema: run `alder migrate` ``.
 
 ### Without migrations

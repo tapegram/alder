@@ -1,0 +1,3 @@
+app/Post.alder:14:9 E0003 record literal for `Post` is missing `published`, `summary` (a default applies to an insert, a cookie or a page parameter, not to a literal)
+app/Post.alder:18:11 E0003 record `Post` is missing field(s): title, published (for `published`, a default applies to an insert, a cookie or a page parameter, not to a literal)
+app/Post.alder:32:9 E0003 record literal for `Options` is missing `loud` (a default applies to an insert, a cookie or a page parameter, not to a literal)

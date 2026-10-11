@@ -1,0 +1,39 @@
+module Post
+
+type PostId = brand Text
+
+table Post {
+  id: PostId @id,
+  title: Text,
+  published: Bool = False,
+  summary: Maybe Text = Nothing,
+}
+
+-- a row literal names every field: the defaults are for Db.insert
+draft : Post
+draft = { id: PostId "p", title: "Draft" }
+
+-- one default left out among required fields
+partial : Post
+partial = { id: PostId "p", summary: Nothing }
+
+-- every field named: fine
+full : Post
+full = { id: PostId "p", title: "Draft", published: False, summary: Nothing }
+
+-- an insert may leave the defaulted fields out: fine
+add : Task PostId
+add = Db.insert Post { title: "Draft" }
+
+type Options = { loud: Bool = False, name: Text }
+
+-- a declared record type's defaults do not apply to a literal either
+quiet : Options
+quiet = { name: "x" }
+
+-- an anonymous record type's defaults do apply
+describe : { name: Text, loud: Bool = False } -> Text
+describe o = o.name
+
+described : Text
+described = describe { name: "x" }

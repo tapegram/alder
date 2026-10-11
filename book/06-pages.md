@@ -279,12 +279,13 @@ That is the cost of the feature, and why the example does without it:
 every page's `view` passes the theme on, and a test that builds a session
 by hand names the field too, `{ user: me, theme: Light }` (chapter 10,
 "Testing effects"), and the test's module imports `Theme` for `Light`,
-because a record literal lists every field, defaults or not (chapter 12,
-"Open questions"). A literal that leaves `theme` out is refused, for
+because a record literal lists every field, defaults or not: defaults
+apply at the boundaries, the cookie, a page parameter or an insert
+(chapter 12, "No defaulted record literals"). A literal that leaves `theme` out is refused, for
 App's `Session` and a `requires` page's alike:
 
 ```
-error[E0003]: record literal for `Session` is missing `theme` (a default applies only to a cookie or a page parameter, not to a literal)
+error[E0003]: record literal for `Session` is missing `theme` (a default applies to an insert, a cookie or a page parameter, not to a literal)
 ```
 
 ## `form`
