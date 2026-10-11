@@ -5,7 +5,6 @@ package app
 import (
 	_ "alder/rt" // initialized before this package (rt/tether.go)
 	"alder/rt/db"
-	rtesting "alder/rt/testing"
 )
 
 // Tables describes every table of the app, in module order then declaration order, for db.Ensure.
@@ -34,20 +33,4 @@ func (c Caps) Registry() map[string]any {
 		"Payments.Stripe":   c.Payments__Stripe,
 		"Markdown.Markdown": c.Markdown__Markdown,
 	}
-}
-
-// Tests are the app's `test` declarations in module order then declaration order, for alder test (rtesting.Main).
-var Tests = []rtesting.Case{
-	{Module: "Payments", Name: "a refund marks the charge", Task: test__Payments__1},
-	{Module: "Checkout", Name: "a charge is recorded", Task: test__Checkout__1},
-	{Module: "Checkout", Name: "a declined charge leaves no row", Task: test__Checkout__2},
-	{Module: "Checkout", Name: "a declined charge fails the test", Task: test__Checkout__3},
-	{Module: "Checkout", Name: "the balance counts what is not refunded", Task: test__Checkout__4},
-	{Module: "Checkout", Name: "no fake leaks into the next test", Task: test__Checkout__5},
-	{Module: "Shop", Name: "installs and reads back", Task: test__Shop__1},
-}
-
-// TestSession is the session a test runs with: App's session with every field at its default (nil without an App module).
-func TestSession() any {
-	return nil
 }

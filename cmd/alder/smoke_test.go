@@ -113,7 +113,13 @@ type running struct {
 // process is killed when the test ends, unless stop was called.
 func startApp(t *testing.T, dir string, env ...string) *running {
 	t.Helper()
-	cmd := exec.Command(filepath.Join(dir, "build", "todos", "todos"))
+	return startAppNamed(t, dir, "todos", env...)
+}
+
+// startAppNamed is startApp for the app name's executable, build/<name>/<name>.
+func startAppNamed(t *testing.T, dir, name string, env ...string) *running {
+	t.Helper()
+	cmd := exec.Command(filepath.Join(dir, "build", name, name))
 	cmd.Dir = dir
 	cmd.Env = append(append(os.Environ(), "ALDER_ADDR=127.0.0.1:0", "ALDER_DB=:memory:"), env...)
 	stdout, err := cmd.StdoutPipe()

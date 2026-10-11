@@ -4,7 +4,6 @@ package app
 
 import (
 	"alder/rt"
-	"alder/rt/eff"
 	"context"
 )
 
@@ -26,9 +25,4 @@ type Args__Payments__Stripe__Charge struct {
 // Args__Payments__Stripe__Refund are the arguments of Stripe.refund.
 type Args__Payments__Stripe__Refund struct {
 	Id string
-}
-
-// test__Payments__1 is test "a refund marks the charge" of module Payments.
-func test__Payments__1() eff.Task[bool] {
-	return eff.Fail[bool]("this test uses a fake's tables, which exist only in `alder test`")
 }

@@ -270,6 +270,7 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 		*ir.ColumnRef, *ir.TableRef, *ir.Cond, *ir.Ord, *ir.TestRun, *ir.TestTrace, *ir.TestFake:
 		return f.effect(e, s), precAtom // effects.go
 	case *ir.TestEq: // as rt.Eq for `==`, typed: an Int literal passed as `any` would be a Go int
+		f.g.testNode(x)
 		return "rtesting.Eq(" + f.typedExpr(x.Left, s) + ", " + f.typedExpr(x.Right, s) + ")", precAtom
 	}
 	panic(fmt.Sprintf("gen: cannot emit %T", e))

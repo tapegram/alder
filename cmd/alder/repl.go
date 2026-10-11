@@ -608,6 +608,7 @@ var identRE = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 // run compiles what checked holds with the main of kind for its `it` (of type sig) into the
 // REPL's build directory and runs it; it reports a failure itself (ok false), naming lets, the
 // lets the program computes. A value on interrupt (or terminate) stops the build or the run.
+// Like eval's, the build is a test build (scratch.Options.Tests): its main uses app.TestSession().
 func (r *repl) run(checked scratch.Checked, kind mainKind, sig types.Type, lets []string) (out string, ok bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -639,7 +640,7 @@ func (r *repl) run(checked scratch.Checked, kind mainKind, sig types.Type, lets 
 		env = append(env, "ALDER_EVAL_DB="+dbPath)
 	}
 	mainGo := scratchMain(kind, kind != mainPure && checked.WiresAdapters(), evalIt(r.modName, sig))
-	b := scratch.CompileCheckedWith(ctx, checked, mainGo, "repl", r.work, scratch.Options{NoVet: !r.vet})
+	b := scratch.CompileCheckedWith(ctx, checked, mainGo, "repl", r.work, scratch.Options{NoVet: !r.vet, Tests: true})
 	defer b.Close()
 	if ctx.Err() != nil {
 		return failf("interrupted")

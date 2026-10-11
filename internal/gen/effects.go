@@ -50,8 +50,10 @@ import (
 //	TestTrace          eff.Call("Test.trace", false, func(_e) { return rtesting.Trace(_e), nil })
 //	TestFake           eff.Call("Test.fake Stripe", false, func(_e) { _e.Caps["Payments.Stripe"] =
 //	                   Fakes["Payments.Stripe"](); return struct{}{}, nil }) in a test build (the
-//	                   Caps of the running test, its own copy: rtesting); in a production build
-//	                   the Call fails: "Test.fake is only available in `alder test`"
+//	                   Caps of the running test, its own copy: rtesting)
+//
+// The Test nodes exist only in `test` bodies, which only a test build emits (Options.Tests):
+// one reaching the emitter in a production build is an internal error (testNode).
 //
 // Values compared with a column are encoded with the column's encoder (encode): Bool, Date, Time
 // and payload-less unions (name__M__U) have one, Maybe goes through db.EncodeMaybe, Text, Int and
@@ -213,23 +215,31 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 				"return " + v + ", eff.CapError(" + strconv.Quote(step) + ", " + err + ")\n"
 		}), true
 	case *ir.TestRun:
+		f.g.testNode(x)
 		return f.testRun(x, s), true
 	case *ir.TestTrace:
+		f.g.testNode(x)
 		return f.callStmts("Test.trace", false, x.Ty, s, func(env string, c *scope) string {
 			return "return rtesting.Trace(" + env + "), nil\n"
 		}), true
 	case *ir.TestFake:
+		f.g.testNode(x)
 		cp := x.Fake.Capability
 		key := strconv.Quote(cp.Module + "." + cp.Name)
 		return f.callStmts("Test.fake "+cp.Name, false, x.Ty, s, func(env string, c *scope) string {
-			if !f.g.tests { // a production build has no fakes
-				return "return struct{}{}, errors.New(" + strconv.Quote("Test.fake is only available in `alder test`") + ")\n"
-			}
 			return "if " + env + ".Caps == nil {\n" + env + ".Caps = map[string]any{}\n}\n" +
 				env + ".Caps[" + key + "] = Fakes[" + key + "]()\nreturn struct{}{}, nil\n"
 		}), true
 	}
 	panic(fmt.Sprintf("gen: %T is not an effect node", e))
+}
+
+// testNode panics — Emit's internal error — when test node x reaches the emitter in a
+// production build, which emits no `test` bodies.
+func (g *gen) testNode(x ir.Expr) {
+	if !g.tests {
+		panic(fmt.Sprintf("gen: %T in a production build (test nodes are emitted only with Options.Tests)", x))
+	}
 }
 
 // testRun is Test.run: a step that runs the task inside the running Task under a savepoint

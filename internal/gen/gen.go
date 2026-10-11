@@ -26,12 +26,15 @@ type Options struct {
 	// by buildkit.CopyMigrations), which app__alder.go embeds as Migrations; without, Migrations
 	// is empty and Serve uses db.Ensure.
 	Migrations bool
-	// Tests makes a test build (alder test's scratch build): each `fake` is emitted — its
-	// tables' records and descriptors and its entries in its module's file, a struct
-	// implementing its capability (fake__M__C), FakeTables and Fakes in app__alder.go — and
-	// Test.fake installs the fake in the running test's Env.Caps. Without it (every production
-	// build) none of that is emitted: Test.fake is a step that fails, and a test that uses a
-	// fake's table is emitted as one that fails (fakeStub).
+	// Tests makes a test build (the scratch builds of alder test, eval and repl): the app's
+	// `test` declarations are emitted (one function each, test__M__n) with Tests and
+	// TestSession in app__alder.go, and each `fake` is emitted — its tables' records and
+	// descriptors and its entries in its module's file, a struct implementing its capability
+	// (fake__M__C), FakeTables and Fakes in app__alder.go — and Test.fake installs the fake in
+	// the running test's Env.Caps. Without it (alder build: every production build) none of
+	// that is emitted, so the production module carries no test code and does not import
+	// alder/rt/testing; a test node (Test.run, Test.trace, Test.fake, a test's `==`) reaching
+	// the emitter there is a bug in gen, reported as Emit's error.
 	Tests bool
 }
 
@@ -171,97 +174,18 @@ type gen struct {
 	// tests: a test build (Options.Tests); fakes are the program's fakes by module
 	tests bool
 	fakes map[string][]*ir.Fake
-	// fakeTables are the fakes' tables ("Module.Name"): a production build emits a test whose
-	// body uses one (usesFakeTable) as fakeStub
-	fakeTables map[string]bool
 }
 
 // indexFakes records p's fakes for module and app emission. In a test build the unions their
 // tables store get an enumDecl too.
 func (g *gen) indexFakes(p *ir.Program, tests bool) {
-	g.tests, g.fakes, g.fakeTables = tests, map[string][]*ir.Fake{}, map[string]bool{}
+	g.tests, g.fakes = tests, map[string][]*ir.Fake{}
 	for _, fk := range p.Fakes {
 		g.fakes[fk.Module] = append(g.fakes[fk.Module], fk)
-		for _, tb := range fk.Tables {
-			g.fakeTables[tb.Module+"."+tb.Name] = true
-		}
 		if tests {
 			maps.Copy(g.enums, storedEnums(&ir.Program{Tables: fk.Tables}))
 		}
 	}
-}
-
-// usesFakeTable reports whether e uses a fake's table: a Db node, table or column of one, or
-// any subexpression, binding or parameter whose type mentions its record.
-func (g *gen) usesFakeTable(e ir.Expr) bool {
-	if len(g.fakeTables) == 0 {
-		return false
-	}
-	is := func(tb *ir.Table) bool { return tb != nil && g.fakeTables[tb.Module+"."+tb.Name] }
-	found := false
-	walk(e, func(x ir.Expr) {
-		if found {
-			return
-		}
-		var tys []types.Type
-		switch n := x.(type) {
-		case *ir.DbGet:
-			found = is(n.Table)
-		case *ir.DbSelect:
-			found = is(n.Table)
-		case *ir.DbInsert:
-			found = is(n.Table)
-		case *ir.DbUpdate:
-			found = is(n.Table)
-		case *ir.DbDelete:
-			found = is(n.Table)
-		case *ir.TableRef:
-			found = is(n.Table)
-		case *ir.ColumnRef:
-			found = is(n.Table)
-		case *ir.Cond:
-			found = n.Col != nil && is(n.Col.Table)
-		case *ir.Ord:
-			found = n.Col != nil && is(n.Col.Table)
-		case *ir.Let:
-			tys = append(tys, n.T)
-		case *ir.Lambda:
-			for _, p := range n.Params {
-				tys = append(tys, p.Type)
-			}
-		case *ir.EffBind:
-			if n.Param != nil {
-				tys = append(tys, n.Param.Type)
-			}
-		}
-		for _, t := range append(tys, x.Type()) {
-			found = found || g.mentionsFakeRecord(t)
-		}
-	})
-	return found
-}
-
-// mentionsFakeRecord reports whether type t mentions the record of a fake's table.
-func (g *gen) mentionsFakeRecord(t types.Type) bool {
-	switch t := t.(type) {
-	case *types.Record:
-		if t.Name != "" && !t.Anonymous {
-			if g.fakeTables[t.Module+"."+t.Name] {
-				return true
-			}
-			return slices.ContainsFunc(t.Args, g.mentionsFakeRecord)
-		}
-		return slices.ContainsFunc(t.Fields, func(f types.Field) bool { return g.mentionsFakeRecord(f.Type) })
-	case *types.Union:
-		return slices.ContainsFunc(t.Args, g.mentionsFakeRecord)
-	case *types.App:
-		return slices.ContainsFunc(t.Args, g.mentionsFakeRecord)
-	case *types.Fun:
-		return g.mentionsFakeRecord(t.Result) || slices.ContainsFunc(t.Params, g.mentionsFakeRecord)
-	case *types.Brand:
-		return g.mentionsFakeRecord(t.Base)
-	}
-	return false
 }
 
 // newGen indexes the program's values. A constant (a value with no parameters and a non-function
@@ -470,8 +394,10 @@ func (g *gen) module(m *ir.Module) ([]byte, error) {
 			}
 		}
 	}
-	for i, t := range m.Tests {
-		g.test(&body, t, i+1)
+	if g.tests {
+		for i, t := range m.Tests {
+			g.test(&body, t, i+1)
+		}
 	}
 	imports, err := importsOf(body.String())
 	if err != nil {
@@ -598,28 +524,13 @@ func (g *gen) test(w *strings.Builder, t *ir.Test, n int) {
 	if t.Effect {
 		result = "eff.Task[bool]"
 	}
-	switch {
-	case !g.tests && g.usesFakeTable(t.Body):
-		b.WriteString(fakeStub(t.Effect))
-	case t.Effect:
+	if t.Effect {
 		f.retK(&b, t.Body, newScope(), f.task)
-	default:
+	} else {
 		f.ret(&b, t.Body, newScope())
 	}
 	fmt.Fprintf(w, "// %s is test %s of module %s.\nfunc %s() %s {\n%s}\n\n", testFunc(t.Module, n), strconv.Quote(t.Name), t.Module,
 		testFunc(t.Module, n), result, b.String())
-}
-
-// fakeStub is the body of a test that uses a fake's table, in a production build (which has
-// no fake tables): a test that fails saying where it runs.
-//
-//	return eff.Fail[bool]("this test uses a fake's tables, which exist only in `alder test`")
-func fakeStub(effect bool) string {
-	msg := strconv.Quote("this test uses a fake's tables, which exist only in `alder test`")
-	if effect {
-		return "return eff.Fail[bool](" + msg + ")\n"
-	}
-	return "panic(" + msg + ")\n"
 }
 
 // checkDecl emits brand b's `where` check: its function applied to the value.

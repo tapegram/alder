@@ -40,7 +40,9 @@ type evalResult struct {
 // --run runs it against build/<app>/dev.db; a `Select` is shown as `<Select>` (with --run, a
 // hint to pipe it to a Db function); a `Task` is refused. --run runs with the app's default
 // session (app.TestSession()) and, when adapters/ holds Go files, the adapters' capabilities
-// (scratchMain). Diagnostics go to stderr, positioned
+// (scratchMain). The scratch build is a test build (scratch.Options.Tests: the app's tests,
+// TestSession and fakes are compiled in; eval is a developer tool, never deployed). Diagnostics
+// go to stderr, positioned
 // in the input (`input:L:C`). Exit 0 on success, 1 for diagnostics or a failing (or
 // interrupted) evaluation, 2 for usage, I/O and internal errors. --json prints one object
 // {value, type, diagnostics, error, hint} on stdout instead. Evaluations of one app serialize on
@@ -195,7 +197,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	// CompileCheckedWith builds what was checked above (no second check) under the lock, which
 	// the Build holds until Close; another eval of the app holding it is waited for, said once
 	waiting := func() { fmt.Fprintln(stderr, "alder eval: waiting for another alder eval of this app…") }
-	b := scratch.CompileCheckedWith(sigCtx, checked, mainGo, "eval", filepath.Join(appBuild, "scratch", "eval"), scratch.Options{Waiting: waiting})
+	b := scratch.CompileCheckedWith(sigCtx, checked, mainGo, "eval", filepath.Join(appBuild, "scratch", "eval"), scratch.Options{Waiting: waiting, Tests: true})
 	defer b.Close()
 	if sigCtx.Err() != nil {
 		return failf(1, "alder eval: interrupted")

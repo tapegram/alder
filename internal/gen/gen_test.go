@@ -100,6 +100,12 @@ func emitWith(t *testing.T, dir string, tests bool) map[string][]byte {
 // emits it.
 func emitSource(t *testing.T, srcs map[string]string) map[string][]byte {
 	t.Helper()
+	return emitSourceWith(t, srcs, false)
+}
+
+// emitSourceWith is emitSource, a test build (Options.Tests) when tests is set.
+func emitSourceWith(t *testing.T, srcs map[string]string, tests bool) map[string][]byte {
+	t.Helper()
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
 		t.Fatal(err)
@@ -112,7 +118,7 @@ func emitSource(t *testing.T, srcs map[string]string) map[string][]byte {
 			t.Fatal(err)
 		}
 	}
-	return emit(t, dir)
+	return emitWith(t, dir, tests)
 }
 
 // vet writes the emitted files into a temporary module and runs `go vet` on it.
@@ -2952,13 +2958,13 @@ func TestUnderscore(t *testing.T) {
 `)
 }
 
-// TestGen_Tests: an app's `test` declarations are emitted as test__M__N functions and the Tests
-// table of app__alder.go (with TestSession and Registry), and run through rtesting.Run they
+// TestGen_Tests: in a test build an app's `test` declarations are emitted as test__M__N
+// functions and the Tests table of app__alder.go (with TestSession and Registry), and run through rtesting.Run they
 // compute the right outcomes: a pure test's recorded `==` sides, Test.run undoing a failed
 // task's writes inside the test's transaction, its trace and Test.trace
 // (testdata/e2e_tests_test.go.txt).
 func TestGen_Tests(t *testing.T) {
-	files := emitSource(t, map[string]string{
+	files := emitSourceWith(t, map[string]string{
 		"App.alder": `module App
 
 session { n: Int = 0 }
@@ -3011,7 +3017,7 @@ test "a successful run keeps its insert" = {
   Task.succeed (n == 1)
 }
 `,
-	})
+	}, true)
 	contains(t, files["Shop_alder.go"], "func test__Shop__1() bool {", "rtesting.Eq(", "func test__Shop__2() bool {")
 	contains(t, files["Shop__Orders_alder.go"], "func test__Shop__Orders__1() eff.Task[bool] {", "func test__Shop__Orders__2() eff.Task[bool] {",
 		`eff.Call("Test.run", true,`, "rtesting.Inner(", `eff.Call("Test.trace", false,`, "rtesting.Trace(")
@@ -3047,67 +3053,50 @@ func TestGen_Fakes(t *testing.T) {
 	runGo(t, files, string(prog))
 }
 
-// TestGen_ProdHasNoFakes: the production build of an app with fakes (and tests that use them)
-// has no fake code, no fake tables and no FakeTables or Fakes; Test.fake is a step that fails,
-// and a test that uses a fake's table is one that fails. It still vets (TestGenGolden builds
-// want_prod/ too).
-func TestGen_ProdHasNoFakes(t *testing.T) {
-	for _, dir := range []string{"../../testdata/corpus/fake-ok", "../../testdata/golden/gen_fakes"} {
+// TestGen_ProdHasNoTests: a production build (Options.Tests unset) carries no test code: no
+// Tests, TestSession or test bodies, no fake code, fake tables, FakeTables or Fakes, and no
+// import of alder/rt/testing — for an app with fakes and tests that use them (fake-ok, the
+// gen_fakes golden) and for the todos example. It still vets (TestGenGolden builds want_prod/).
+func TestGen_ProdHasNoTests(t *testing.T) {
+	for _, dir := range []string{"../../testdata/corpus/fake-ok", "../../testdata/golden/gen_fakes", "../../examples/todos"} {
 		files := emitWith(t, dir, false)
 		for name, b := range files {
-			for _, bad := range []string{"fake__", "fakeentry__", "Payments__Charge", "FakeTables", "Fakes[", "var Fakes", "EnvFrom", "RunInner"} {
+			for _, bad := range []string{"Tests", "TestSession", "rtesting", "alder/rt/testing", "test__", "Test.", "fake__", "fakeentry__",
+				"Payments__Charge", "FakeTables", "Fakes[", "var Fakes", "EnvFrom", "RunInner"} {
 				if strings.Contains(string(b), bad) {
 					t.Errorf("%s: production %s contains %q", dir, name, bad)
 				}
 			}
 		}
-		contains(t, files["Checkout_alder.go"], "return eff.Fail[bool](\"this test uses a fake's tables, which exist only in `alder test`\")")
-		contains(t, files["Shop_alder.go"], "return eff.Fail[bool](\"this test uses a fake's tables, which exist only in `alder test`\")")
+		if dir != "../../examples/todos" {
+			vet(t, files)
+		}
 	}
-	// the decision is made on the IR: a string that spells a fake table's Go name is no use of
-	// it, and a Db.from of the fake's table is
-	src, err := os.ReadFile("../../testdata/corpus/fake-ok/app/Payments.alder")
-	if err != nil {
-		t.Fatal(err)
-	}
-	user, err := os.ReadFile("../../testdata/corpus/fake-ok/app/User.alder")
-	if err != nil {
-		t.Fatal(err)
-	}
-	files := emitSource(t, map[string]string{"User.alder": string(user), "Payments.alder": string(src) + `
-test "a string is no table" = "Payments__Charge" == "Payments__Charge"
-
-test "a select is" = {
-  let n <- Db.from Charge |> Db.count
-  Task.succeed (n == 0)
-}
-`})
-	contains(t, files["Payments_alder.go"], "func test__Payments__2() bool {\n\treturn rtesting.Eq(\"Payments__Charge\", \"Payments__Charge\")\n}",
-		"func test__Payments__3() eff.Task[bool] {\n\treturn eff.Fail[bool](\"this test uses a fake's tables")
-	vet(t, files)
-	// a test that installs a fake without using its tables keeps its body: Test.fake fails
-	files = emitSource(t, map[string]string{"Markdown.alder": `module Markdown
-
-capability Markdown {
-  render : Text -> Query (Html Never),
+	// the same app as a test build has them all
+	files := emitWith(t, "../../testdata/corpus/fake-ok", true)
+	contains(t, files["app__alder.go"], "var Tests = []rtesting.Case{", "func TestSession() any {", "var Fakes = map[string]func() any{")
+	contains(t, files["Checkout_alder.go"], "func test__Checkout__1() eff.Task[bool] {", `eff.Call("Test.fake Stripe", false,`)
 }
 
-fake Markdown {
-  render text = Query.succeed (Html.text text)
-}
-
-test "renders" = {
-  let _ <- Test.fake Markdown
-  let h <- Markdown.render "x"
-  Task.succeed True
-}
-`})
-	contains(t, files["Markdown_alder.go"], `eff.Call("Test.fake Markdown", false, func(_e1 *eff.Env) (struct{}, error) {`,
-		"return struct{}{}, errors.New(\"Test.fake is only available in `alder test`\")")
-	if strings.Contains(string(files["app__alder.go"]), "Fakes") || strings.Contains(string(files["Markdown_alder.go"]), "fake__") {
-		t.Error("production build has fake code")
+// TestGen_ProdTestNode: a Test node reaching the emitter in a production build (which emits no
+// `test` bodies) is an internal error, not code: here a test's body moved into a value.
+func TestGen_ProdTestNode(t *testing.T) {
+	p := lowerDir(t, "../../testdata/corpus/fake-ok")
+	moved := false
+	for _, m := range p.Modules {
+		if len(m.Tests) > 0 && !moved {
+			body := m.Tests[0].Body
+			m.Values = append(m.Values, &ir.Value{Module: m.Name, Name: "leaked", Type: body.Type(), Body: body})
+			moved = true
+		}
 	}
-	vet(t, files)
+	if !moved {
+		t.Fatal("fake-ok has no tests")
+	}
+	_, err := Emit(p, Options{RepoPath: repoPath(t)})
+	if err == nil || !strings.Contains(err.Error(), "in a production build (test nodes are emitted only with Options.Tests)") {
+		t.Fatalf("Emit: %v", err)
+	}
 }
 
 // A @ref column's delete rule reaches its db.Column (@restrict, the default, writes nothing), and

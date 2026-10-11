@@ -1,11 +1,14 @@
 package main
 
 import (
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestExample_SkeletonStandsAlone: the example's skeleton (App, Layout, User and the login
@@ -69,8 +72,10 @@ func blogDir(t *testing.T) string {
 	return blogAbs
 }
 
-// TestExample_Blog: the second example checks clean, builds, its adapters (adapters/auth/ and
-// adapters/markdown/) pass their Go tests, and the app passes its own tests, every one of which chapter 14 quotes by name.
+// TestExample_Blog: the second example checks clean, builds — a production module with no test
+// code (no Tests, no rt/testing import) whose binary serves the front page —, its adapters
+// (adapters/auth/ and adapters/markdown/) pass their Go tests, and the app passes its own tests,
+// every one of which chapter 14 quotes by name.
 func TestExample_Blog(t *testing.T) {
 	needGoTool(t)
 	code, out, errs := run(t, blogDir(t))
@@ -82,6 +87,24 @@ func TestExample_Blog(t *testing.T) {
 	code, out, errs = runBuild(t, "blog")
 	if code != 0 || out != "wrote build/blog/blog\n" {
 		t.Fatalf("alder build examples/blog: exit %d\nout: %s\nerr: %s", code, out, errs)
+	}
+	prodHasNoTests(t, "blog")
+	tmp, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := startAppNamed(t, tmp, "blog", "ALDER_DEV=1", "ALDER_SECRET=")
+	res, err := (&http.Client{Timeout: 10 * time.Second}).Get("http://" + app.addr + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(body), "<html") {
+		t.Fatalf("GET / of the blog = %d:\n%s", res.StatusCode, body)
+	}
+	if code := app.stop(t, os.Interrupt); code != 0 {
+		t.Fatalf("the blog after SIGINT: exit %d; stderr:\n%s", code, app.stderr.String())
 	}
 	// the adapters' Go tests, which compile only in the built module (they import "app")
 	gotest := exec.Command("go", "test", "-count=1", "./adapters/...")
@@ -128,6 +151,27 @@ func TestExample_Blog(t *testing.T) {
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("alder test examples/blog lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+// prodHasNoTests fails t when the production module build/<name> (alder build's) carries test
+// code: Tests, TestSession, a test function or the rt/testing import.
+func prodHasNoTests(t *testing.T, name string) {
+	t.Helper()
+	gos, _ := filepath.Glob(filepath.Join("build", name, "*.go"))
+	if len(gos) == 0 {
+		t.Fatalf("no generated Go in build/%s", name)
+	}
+	for _, f := range gos {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, bad := range []string{"rtesting", "alder/rt/testing", "var Tests", "TestSession", "func test__"} {
+			if strings.Contains(string(b), bad) {
+				t.Errorf("production %s contains %q", f, bad)
+			}
 		}
 	}
 }

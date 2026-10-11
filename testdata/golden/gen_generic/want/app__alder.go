@@ -5,7 +5,6 @@ package app
 import (
 	_ "alder/rt" // initialized before this package (rt/tether.go)
 	"alder/rt/db"
-	rtesting "alder/rt/testing"
 )
 
 // Tables describes every table of the app, in module order then declaration order, for db.Ensure.
@@ -28,12 +27,4 @@ type Caps struct{}
 // field is). It is exported for alder test's main; Serve uses it too.
 func (Caps) Registry() map[string]any {
 	return map[string]any{}
-}
-
-// Tests are the app's `test` declarations in module order then declaration order, for alder test (rtesting.Main).
-var Tests = []rtesting.Case{}
-
-// TestSession is the session a test runs with: App's session with every field at its default (nil without an App module).
-func TestSession() any {
-	return nil
 }

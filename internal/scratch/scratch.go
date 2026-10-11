@@ -137,9 +137,10 @@ type Options struct {
 	// Waiting, when set, is called once when another process (or Build) holds the lock on the
 	// output directory, before CompileCheckedWith waits for it (a done ctx ends the wait).
 	Waiting func()
-	// Tests makes a test build (gen.Options.Tests, for `alder test`): the app's fakes, their
-	// tables (FakeTables) and Test.fake's capability swap are compiled in. Every other caller
-	// builds production-shaped code.
+	// Tests makes a test build (gen.Options.Tests, for `alder test`, `alder eval` and the REPL,
+	// whose scratch mains use app.TestSession()): the app's tests (Tests, TestSession), its fakes,
+	// their tables (FakeTables) and Test.fake's capability swap are compiled in. Without it the
+	// generated module is production-shaped, as `alder build`'s: no test code at all.
 	Tests bool
 }
 

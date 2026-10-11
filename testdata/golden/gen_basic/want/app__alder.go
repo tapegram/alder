@@ -5,7 +5,6 @@ package app
 import (
 	"alder/rt"
 	"alder/rt/db"
-	rtesting "alder/rt/testing"
 	"reflect"
 )
 
@@ -29,14 +28,6 @@ type Caps struct{}
 // field is). It is exported for alder test's main; Serve uses it too.
 func (Caps) Registry() map[string]any {
 	return map[string]any{}
-}
-
-// Tests are the app's `test` declarations in module order then declaration order, for alder test (rtesting.Main).
-var Tests = []rtesting.Case{}
-
-// TestSession is the session a test runs with: App's session with every field at its default (nil without an App module).
-func TestSession() any {
-	return nil
 }
 
 // init registers the constructor names of every union of the app, for rt.Show.

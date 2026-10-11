@@ -2,16 +2,8 @@
 
 package app
 
-import (
-	"alder/rt/eff"
-	"alder/rt/std"
-)
+import "alder/rt/std"
 
 func Shop__total(ids []string) int64 {
 	return std.ListLength(ids)
-}
-
-// test__Shop__1 is test "installs and reads back" of module Shop.
-func test__Shop__1() eff.Task[bool] {
-	return eff.Fail[bool]("this test uses a fake's tables, which exist only in `alder test`")
 }

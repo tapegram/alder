@@ -151,6 +151,7 @@ func TestBuild_Todos(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(out, "cmd", "main.go")); !strings.Contains(string(b), "app.Serve(caps.Caps(), app.Options{") || !strings.Contains(string(b), "\t\"app/caps\"\n") {
 		t.Errorf("cmd/main.go:\n%s", b)
 	}
+	prodHasNoTests(t, "todos") // the todos' tests exist only in alder test's build
 	if b, _ := os.ReadFile(filepath.Join(out, "caps", "caps__alder.go")); !strings.Contains(string(b), "a_auth \"app/adapters/auth\"") || !strings.Contains(string(b), "Auth__Login__Password: a_auth.LoginPassword(),") {
 		t.Errorf("caps/caps__alder.go:\n%s", b)
 	}
