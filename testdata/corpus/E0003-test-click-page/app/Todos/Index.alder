@@ -1,0 +1,32 @@
+module Todos.Index
+
+page "/" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 0 }
+
+form NewTodo = {
+  title: Text,
+}
+
+msg Submit form NewTodo
+msg Toggle { id: Text }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = Task.succeed Rerender
+
+view : Model -> Session -> Html Msg
+view model session =
+  <form submit={Submit}>
+    <Errors form />
+    <Input field="title" label="Title" />
+    <button click={Toggle { id: "a" }}>Toggle</button>
+  </form>
+
+test "click a link's page" = {
+  let _ <- Test.get (Todos.Index {})
+  let r <- Test.click (Todos.Index {})
+  Task.succeed True
+}

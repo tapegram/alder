@@ -3,6 +3,7 @@ package app
 import (
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,7 +16,7 @@ import (
 // browser and the Password fake's capability unwired (TestGen_Browser).
 func TestAlderBrowser(t *testing.T) {
 	rs := rtesting.Run(Tests, rtesting.Options{Tables: Tables, TestTables: FakeTables, Caps: Caps{}.Registry(), Session: TestSession(), Routes: Routes, Web: Web()})
-	if len(rs) != 13 {
+	if len(rs) != 15 {
 		t.Fatalf("%d results", len(rs))
 	}
 	got := map[string]rtesting.CaseResult{}
@@ -44,14 +45,15 @@ func TestAlderBrowser(t *testing.T) {
 // Text.Secret, an app Text brand, an Int brand, Maybe Date, Maybe with a default, Bool, Int,
 // Float, a union, Maybe of a refined Text), set and unset; and the encoding is the inputs': a
 // checked box "True", an unchecked one absent, Nothing blank (a cleared input — absent would
-// give a field with a default its default).
+// give a field with a default its default). Absent names the fields whose value is what the
+// decoder makes of their absence (Nothing without a default, a default's own value).
 func TestEncodeDecodeForm(t *testing.T) {
 	for _, r := range []Notes__Index__NewNote{
 		{Title: "Milk", Due: rt.Just(rt.Date{Y: 2026, M: 2, D: 3}), Urgent: true, Priority: -12, Weight: 2.25, Kind: Note__Kind__Idea__, Remark: "a b&c", Contact: rt.Just("me@example.com")},
 		{Title: "x", Due: rt.Nothing[rt.Date](), Urgent: false, Priority: 0, Weight: 1e-7, Kind: Note__Kind__Chore__, Remark: "", Contact: rt.Nothing[string]()},
 		{Title: " y ", Priority: 9223372036854775807, Weight: 0.1, Kind: Note__Kind__Plain__},
 	} {
-		v := encode__Notes__Index__NewNote(r)
+		v := encode__Notes__Index__NewNote(r).Values
 		back, errs := decode__Notes__Index__NewNote(v)
 		if errs != nil || !rt.Eq(back, r) {
 			t.Errorf("decode(encode(%s)) = %s, %v (encoded %v)", rt.Show(r), rt.Show(back), errs, v)
@@ -66,7 +68,14 @@ func TestEncodeDecodeForm(t *testing.T) {
 			t.Errorf("urgent = %q", v.Get("urgent"))
 		}
 	}
-	v := encode__Notes__Index__NewNote(Notes__Index__NewNote{Title: "t", Due: rt.Just(rt.Date{Y: 2026, M: 1, D: 5}), Kind: Note__Kind__Idea__, Weight: 1.5, Priority: 3})
+	f := encode__Notes__Index__NewNote(Notes__Index__NewNote{Title: "t", Due: rt.Just(rt.Date{Y: 2026, M: 1, D: 5}), Kind: Note__Kind__Idea__, Weight: 1.5, Priority: 3})
+	if !reflect.DeepEqual(f.Absent, []string{"weight", "remark", "contact"}) {
+		t.Errorf("absent %v", f.Absent)
+	}
+	if f := encode__Notes__Index__NewNote(Notes__Index__NewNote{Title: "t", Due: rt.Nothing[rt.Date](), Urgent: true, Kind: Note__Kind__Plain__, Priority: 1, Weight: 2, Remark: "r", Contact: rt.Just("a@b.c")}); !reflect.DeepEqual(f.Absent, []string{"due", "priority", "kind"}) {
+		t.Errorf("absent %v", f.Absent)
+	}
+	v := f.Values
 	if enc := v.Encode(); enc != "contact=&due=2026-01-05&kind=Idea&priority=3&remark=&title=t&weight=1.5" {
 		t.Errorf("encoded %s", enc)
 	}
@@ -75,13 +84,16 @@ func TestEncodeDecodeForm(t *testing.T) {
 		{Site: "http://x.org", Pin: "p", Tag: "", Count: -1, Reminder: rt.Nothing[int64]()}, // Nothing, not the default Just 3
 		{Site: "https://y.dev", Pin: "q", Tag: "t", Count: 0, Reminder: rt.Just(int64(3))},
 	} {
-		v := encode__Notes__Index__Prefs(r)
-		back, errs := decode__Notes__Index__Prefs(v)
+		f := encode__Notes__Index__Prefs(r)
+		back, errs := decode__Notes__Index__Prefs(f.Values)
+		if absent := slices.Contains(f.Absent, "reminder"); absent != (r.Reminder.Ok && r.Reminder.Val == 3) {
+			t.Errorf("reminder absent = %v for %s", absent, rt.Show(r.Reminder))
+		}
 		if errs != nil || !rt.Eq(back, r) {
-			t.Errorf("decode(encode(%s)) = %s, %v (encoded %v)", rt.Show(r), rt.Show(back), errs, v)
+			t.Errorf("decode(encode(%s)) = %s, %v (encoded %v)", rt.Show(r), rt.Show(back), errs, f.Values)
 		}
 	}
-	if got := encode__Auth__Login__Credentials(Auth__Login__Credentials{Email: "a@b.c", Password: "s"}); !reflect.DeepEqual(got, url.Values{"email": {"a@b.c"}, "password": {"s"}}) {
+	if got := encode__Auth__Login__Credentials(Auth__Login__Credentials{Email: "a@b.c", Password: "s"}).Values; !reflect.DeepEqual(got, url.Values{"email": {"a@b.c"}, "password": {"s"}}) {
 		t.Errorf("credentials %v", got)
 	}
 }

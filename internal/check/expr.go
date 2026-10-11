@@ -648,12 +648,13 @@ func (mc *modCtx) checkRecordLit(x *syntax.RecordLit, rec *types.Record, env *en
 		seen[fi.Name] = true
 		mc.check(fi.Value, f.Type, env, eff)
 	}
-	// Defaults apply at boundaries: a session's to its cookie, an insert's to the row it makes,
+	// Defaults apply at boundaries: a session's to its cookie (and to the literal `Test.login`
+	// stores in it), an insert's to the row it makes,
 	// a parameter's to a link or URL without it, a form's to a request without it. A literal of
 	// any other declared record (a table's row, a `type R = {…}`, App's Session or a page's
 	// narrowed one) names every field. An anonymous record type's defaults (a component's
 	// props, an options argument) apply to its literals.
-	strict := !rec.Anonymous && !c.boundaryRecord(rec)
+	strict := !rec.Anonymous && !c.boundaryRecord(rec) && x != mc.cookieLit
 	var missing, defaulted []string
 	for _, f := range rec.Fields {
 		if seen[f.Name] || f.Name == "form" {

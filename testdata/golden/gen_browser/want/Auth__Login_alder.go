@@ -91,7 +91,7 @@ func Auth__Login__update(msg Auth__Login__Msg, model Auth__Login__Model, session
 			if found.Ok {
 				id := found.Val
 				return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
-					return App__Session{User: rt.Just[string](id)}
+					return App__Session{User: rt.Just[string](id), Visits: s.Visits}
 				}), func(_ struct{}) eff.Task[rt.Nav] {
 					return eff.Pure(rt.Redirect(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}))
 				})
@@ -300,7 +300,7 @@ func test__Auth__Login__3() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me)}); _err3 != nil {
+			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil

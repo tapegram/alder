@@ -31,3 +31,8 @@ test "a misspelt selector" = {
   let page <- Test.get (Todos.Index {})
   Task.succeed (Test.text "#sumary x" page.doc == Nothing && Test.attr "href" "a >" page.doc == Nothing && Test.has "" page.doc)
 }
+
+test "selectors with a hint" = {
+  let page <- Test.get (Todos.Index {})
+  Task.succeed (Test.has "H1" page.doc && Test.has "x[y]" page.doc && Test.has "a[href=/x]" page.doc)
+}

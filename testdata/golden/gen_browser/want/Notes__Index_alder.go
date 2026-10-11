@@ -78,6 +78,7 @@ const (
 	is__Notes__Index__Msg__Boom      tag__Notes__Index__Msg = 2
 	is__Notes__Index__Msg__Rename    tag__Notes__Index__Msg = 3
 	is__Notes__Index__Msg__SavePrefs tag__Notes__Index__Msg = 4
+	is__Notes__Index__Msg__Visit     tag__Notes__Index__Msg = 5
 )
 
 func Notes__Index__Msg__Submit__(v Notes__Index__SubmitParams) Notes__Index__Msg {
@@ -98,12 +99,15 @@ func Notes__Index__Msg__SavePrefs__(v Notes__Index__SavePrefsParams) Notes__Inde
 	return Notes__Index__Msg{Tag: is__Notes__Index__Msg__SavePrefs, SavePrefs: &v}
 }
 
+var Notes__Index__Msg__Visit__ = Notes__Index__Msg{Tag: is__Notes__Index__Msg__Visit}
+
 type Notes__Index__Session struct {
-	User string
+	User   string
+	Visits int64
 }
 
 func widen__Notes__Index__Session(s Notes__Index__Session) App__Session {
-	return App__Session{User: rt.Just(s.User)}
+	return App__Session{User: rt.Just(s.User), Visits: s.Visits}
 }
 
 func Notes__Index__load(params Notes__Index__Params, session Notes__Index__Session) eff.Query[Notes__Index__Model] {
@@ -174,6 +178,12 @@ func Notes__Index__update(msg Notes__Index__Msg, model Notes__Index__Model, sess
 		})
 	case is__Notes__Index__Msg__SavePrefs:
 		return eff.Pure(rt.Rerender())
+	case is__Notes__Index__Msg__Visit:
+		return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
+			return App__Session{User: s.User, Visits: s.Visits + 1}
+		}), func(_ struct{}) eff.Task[rt.Nav] {
+			return eff.Pure(rt.Rerender())
+		})
 	}
 	panic("unreachable")
 }
@@ -229,6 +239,8 @@ func Notes__Index__view(model Notes__Index__Model, session Notes__Index__Session
 			html.El("button", nil, html.Text("Send")),
 		),
 		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Notes.Index", Msg: "Boom"})}, html.Text("Boom")),
+		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Notes.Index", Msg: "Visit"})}, html.Text("Visit")),
+		html.El("p", []html.Attr{html.A("id", "visits")}, html.Text(std.TextFromInt(session.Visits))),
 		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "App", Msg: "Logout"})}, html.Text("Log out")),
 	))
 }
@@ -239,7 +251,7 @@ func test__Notes__Index__1() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me)}); _err3 != nil {
+			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil
@@ -332,7 +344,7 @@ func test__Notes__Index__2() eff.Task[bool] {
 			return db.InsertRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Note__Note, insertvals__Note__Note(insert__Note__Note{Title: "Milk", Done: false, Owner: me}), _e2.Now())
 		}), func(id string) eff.Task[bool] {
 			return eff.Bind(eff.Call("Test.login", true, func(_e3 *eff.Env) (struct{}, error) {
-				if _err4 := rtesting.BrowserOf(_e3).Login(App__Session{User: rt.Just[string](me)}); _err4 != nil {
+				if _err4 := rtesting.BrowserOf(_e3).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err4 != nil {
 					return struct{}{}, _err4
 				}
 				return struct{}{}, nil
@@ -424,7 +436,7 @@ func test__Notes__Index__3() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me)}); _err3 != nil {
+			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil
@@ -541,7 +553,7 @@ func test__Notes__Index__4() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me)}); _err3 != nil {
+			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil
@@ -624,7 +636,7 @@ func test__Notes__Index__5() eff.Task[bool] {
 			return db.InsertRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Note__Note, insertvals__Note__Note(insert__Note__Note{Title: "Milk", Done: false, Owner: me}), _e2.Now())
 		}), func(id string) eff.Task[bool] {
 			return eff.Bind(eff.Call("Test.login", true, func(_e3 *eff.Env) (struct{}, error) {
-				if _err4 := rtesting.BrowserOf(_e3).Login(App__Session{User: rt.Just[string](me)}); _err4 != nil {
+				if _err4 := rtesting.BrowserOf(_e3).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err4 != nil {
 					return struct{}{}, _err4
 				}
 				return struct{}{}, nil
@@ -726,7 +738,7 @@ func test__Notes__Index__6() eff.Task[bool] {
 			return db.InsertRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Note__Note, insertvals__Note__Note(insert__Note__Note{Title: "Milk", Done: false, Owner: me}), _e2.Now())
 		}), func(_ string) eff.Task[bool] {
 			return eff.Bind(eff.Call("Test.login", true, func(_e3 *eff.Env) (struct{}, error) {
-				if _err4 := rtesting.BrowserOf(_e3).Login(App__Session{User: rt.Just[string](me)}); _err4 != nil {
+				if _err4 := rtesting.BrowserOf(_e3).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err4 != nil {
 					return struct{}{}, _err4
 				}
 				return struct{}{}, nil
@@ -775,7 +787,7 @@ func test__Notes__Index__6() eff.Task[bool] {
 						Bad   int64
 						Href  rt.Maybe[string]
 						None  rt.Maybe[string]
-					}{Same: rt.Eq(page.Doc, rtesting.ViewDoc(Notes__Index__view(page.Model, Notes__Index__Session{User: me}))), Links: rtesting.DocTexts(sel, page.Doc), Bad: rtesting.DocCount(bad, page.Doc), Href: rtesting.DocAttrSel("href", selector__8, page.Doc), None: rtesting.DocTextSel(selector__9, page.Doc)}, struct {
+					}{Same: rt.Eq(page.Doc, rtesting.ViewDoc(Notes__Index__view(page.Model, Notes__Index__Session{User: me, Visits: 0}))), Links: rtesting.DocTexts(sel, page.Doc), Bad: rtesting.DocCount(bad, page.Doc), Href: rtesting.DocAttrSel("href", selector__8, page.Doc), None: rtesting.DocTextSel(selector__9, page.Doc)}, struct {
 						Same  bool
 						Links []string
 						Bad   int64
@@ -797,7 +809,7 @@ func test__Notes__Index__7() eff.Task[bool] {
 			return db.InsertRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Note__Note, insertvals__Note__Note(insert__Note__Note{Title: "Milk", Done: false, Owner: me}), _e2.Now())
 		}), func(id string) eff.Task[bool] {
 			return eff.Bind(eff.Call("Test.login", true, func(_e3 *eff.Env) (struct{}, error) {
-				if _err4 := rtesting.BrowserOf(_e3).Login(App__Session{User: rt.Just[string]("stranger")}); _err4 != nil {
+				if _err4 := rtesting.BrowserOf(_e3).Login(App__Session{User: rt.Just[string]("stranger"), Visits: 0}); _err4 != nil {
 					return struct{}{}, _err4
 				}
 				return struct{}{}, nil
@@ -842,7 +854,7 @@ func test__Notes__Index__8() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me)}); _err3 != nil {
+			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil
@@ -890,7 +902,7 @@ func test__Notes__Index__8() eff.Task[bool] {
 						Shown rt.Maybe[string]
 						Same  bool
 						Trace []string
-					}{Shown: rtesting.DocTextSel(selector__10, page.Doc), Same: rt.Eq(page.Doc, rtesting.ViewDoc(Notes__Index__view(page.Model, Notes__Index__Session{User: me}))), Trace: trace}, struct {
+					}{Shown: rtesting.DocTextSel(selector__10, page.Doc), Same: rt.Eq(page.Doc, rtesting.ViewDoc(Notes__Index__view(page.Model, Notes__Index__Session{User: me, Visits: 0}))), Trace: trace}, struct {
 						Shown rt.Maybe[string]
 						Same  bool
 						Trace []string
@@ -913,7 +925,7 @@ func test__Notes__Index__9() eff.Task[bool] {
 				return db.InsertRow(_e3.Ctx, _e3.Store.(db.Store), db.TxOf(_e3), table__Note__Note, insertvals__Note__Note(insert__Note__Note{Title: "B", Done: false, Owner: me}), _e3.Now())
 			}), func(b string) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.login", true, func(_e4 *eff.Env) (struct{}, error) {
-					if _err5 := rtesting.BrowserOf(_e4).Login(App__Session{User: rt.Just[string](me)}); _err5 != nil {
+					if _err5 := rtesting.BrowserOf(_e4).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err5 != nil {
 						return struct{}{}, _err5
 					}
 					return struct{}{}, nil
@@ -1014,7 +1026,7 @@ func test__Notes__Index__10() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me)}); _err3 != nil {
+			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil
@@ -1080,6 +1092,275 @@ func test__Notes__Index__10() eff.Task[bool] {
 					Doc     rtesting.Doc
 				}) eff.Task[bool] {
 					return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}}))
+				})
+			})
+		})
+	})
+}
+
+// test__Notes__Index__11 is test "a Rerender after Session.put updates the session" of module Notes.Index.
+func test__Notes__Index__11() eff.Task[bool] {
+	return eff.Bind(eff.Call("Db.insert User", true, func(_e1 *eff.Env) (string, error) {
+		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
+	}), func(me string) eff.Task[bool] {
+		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
+			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err3 != nil {
+				return struct{}{}, _err3
+			}
+			return struct{}{}, nil
+		}), func(_ struct{}) eff.Task[bool] {
+			return eff.Bind(eff.Call("Test.get Notes.Index", true, func(_e4 *eff.Env) (struct {
+				Model   Notes__Index__Model
+				Session App__Session
+				Doc     rtesting.Doc
+			}, error) {
+				var _p5 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
+				_u6 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p5.Filter.Tag], "All")}})
+				_b7 := rtesting.BrowserOf(_e4)
+				_r8, _err9 := _b7.GetPage(_u6, "user")
+				if _err9 != nil {
+					var _z10 struct {
+						Model   Notes__Index__Model
+						Session App__Session
+						Doc     rtesting.Doc
+					}
+					return _z10, _err9
+				}
+				_m11, _err9 := rtesting.ModelOf[Notes__Index__Model](_u6, _r8)
+				if _err9 != nil {
+					var _z12 struct {
+						Model   Notes__Index__Model
+						Session App__Session
+						Doc     rtesting.Doc
+					}
+					return _z12, _err9
+				}
+				return struct {
+					Model   Notes__Index__Model
+					Session App__Session
+					Doc     rtesting.Doc
+				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc)}, nil
+			}), func(_ struct {
+				Model   Notes__Index__Model
+				Session App__Session
+				Doc     rtesting.Doc
+			}) eff.Task[bool] {
+				return eff.Bind(eff.Call("Test.click Notes.Index.Visit", true, func(_e13 *eff.Env) (struct {
+					Answer  rtesting.Answer
+					Session App__Session
+					Doc     rtesting.Doc
+				}, error) {
+					_r14, _err15 := rtesting.BrowserOf(_e13).ClickMsg(rt.MsgURL("Notes.Index", "Visit"), rtesting.MsgName("Notes.Index.Visit", nil))
+					if _err15 != nil {
+						var _z16 struct {
+							Answer  rtesting.Answer
+							Session App__Session
+							Doc     rtesting.Doc
+						}
+						return _z16, _err15
+					}
+					return struct {
+						Answer  rtesting.Answer
+						Session App__Session
+						Doc     rtesting.Doc
+					}{Answer: _r14.Answer, Session: rtesting.SessionOf[App__Session](_r14.Session), Doc: rtesting.DocOf(_r14.Doc)}, nil
+				}), func(once struct {
+					Answer  rtesting.Answer
+					Session App__Session
+					Doc     rtesting.Doc
+				}) eff.Task[bool] {
+					return eff.Bind(eff.Call("Test.click Notes.Index.Visit", true, func(_e17 *eff.Env) (struct {
+						Answer  rtesting.Answer
+						Session App__Session
+						Doc     rtesting.Doc
+					}, error) {
+						_r18, _err19 := rtesting.BrowserOf(_e17).ClickMsg(rt.MsgURL("Notes.Index", "Visit"), rtesting.MsgName("Notes.Index.Visit", nil))
+						if _err19 != nil {
+							var _z20 struct {
+								Answer  rtesting.Answer
+								Session App__Session
+								Doc     rtesting.Doc
+							}
+							return _z20, _err19
+						}
+						return struct {
+							Answer  rtesting.Answer
+							Session App__Session
+							Doc     rtesting.Doc
+						}{Answer: _r18.Answer, Session: rtesting.SessionOf[App__Session](_r18.Session), Doc: rtesting.DocOf(_r18.Doc)}, nil
+					}), func(twice struct {
+						Answer  rtesting.Answer
+						Session App__Session
+						Doc     rtesting.Doc
+					}) eff.Task[bool] {
+						return eff.Pure(rtesting.Eq(struct {
+							Answer rtesting.Answer
+							First  int64
+							Visits int64
+							Shown  rt.Maybe[string]
+						}{Answer: twice.Answer, First: once.Session.Visits, Visits: twice.Session.Visits, Shown: rtesting.DocTextSel(selector__11, twice.Doc)}, struct {
+							Answer rtesting.Answer
+							First  int64
+							Visits int64
+							Shown  rt.Maybe[string]
+						}{Answer: rtesting.Answer{Tag: rtesting.Rerendered}, First: 1, Visits: 2, Shown: rt.Just[string]("2")}))
+					})
+				})
+			})
+		})
+	})
+}
+
+// test__Notes__Index__12 is test "a browser write inside a failing Test.run is undone" of module Notes.Index.
+func test__Notes__Index__12() eff.Task[bool] {
+	return eff.Bind(eff.Call("Db.insert User", true, func(_e1 *eff.Env) (string, error) {
+		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
+	}), func(me string) eff.Task[bool] {
+		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
+			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err3 != nil {
+				return struct{}{}, _err3
+			}
+			return struct{}{}, nil
+		}), func(_ struct{}) eff.Task[bool] {
+			return eff.Bind(eff.Call("Test.get Notes.Index", true, func(_e4 *eff.Env) (struct {
+				Model   Notes__Index__Model
+				Session App__Session
+				Doc     rtesting.Doc
+			}, error) {
+				var _p5 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
+				_u6 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p5.Filter.Tag], "All")}})
+				_b7 := rtesting.BrowserOf(_e4)
+				_r8, _err9 := _b7.GetPage(_u6, "user")
+				if _err9 != nil {
+					var _z10 struct {
+						Model   Notes__Index__Model
+						Session App__Session
+						Doc     rtesting.Doc
+					}
+					return _z10, _err9
+				}
+				_m11, _err9 := rtesting.ModelOf[Notes__Index__Model](_u6, _r8)
+				if _err9 != nil {
+					var _z12 struct {
+						Model   Notes__Index__Model
+						Session App__Session
+						Doc     rtesting.Doc
+					}
+					return _z12, _err9
+				}
+				return struct {
+					Model   Notes__Index__Model
+					Session App__Session
+					Doc     rtesting.Doc
+				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc)}, nil
+			}), func(_ struct {
+				Model   Notes__Index__Model
+				Session App__Session
+				Doc     rtesting.Doc
+			}) eff.Task[bool] {
+				return eff.Bind(eff.Call("Test.run", true, func(_e13 *eff.Env) (struct {
+					Value rt.Result[string, rt.Maybe[string]]
+					Trace []string
+				}, error) {
+					_v18, _msg19, _ok20, _tr21, _err22 := rtesting.Inner(_e13, eff.Bind(eff.Call("Test.submit NewNote", true, func(_e14 *eff.Env) (struct {
+						Answer  rtesting.Answer
+						Session App__Session
+						Doc     rtesting.Doc
+					}, error) {
+						_r15, _err16 := rtesting.BrowserOf(_e14).SubmitForm("/_m/Notes.Index/Submit", "NewNote", encode__Notes__Index__NewNote(Notes__Index__NewNote{Title: "Milk", Due: rt.Nothing[rt.Date](), Urgent: false, Priority: 1, Weight: 1.5, Kind: Note__Kind__Plain__, Remark: "", Contact: rt.Nothing[string]()}))
+						if _err16 != nil {
+							var _z17 struct {
+								Answer  rtesting.Answer
+								Session App__Session
+								Doc     rtesting.Doc
+							}
+							return _z17, _err16
+						}
+						return struct {
+							Answer  rtesting.Answer
+							Session App__Session
+							Doc     rtesting.Doc
+						}{Answer: _r15.Answer, Session: rtesting.SessionOf[App__Session](_r15.Session), Doc: rtesting.DocOf(_r15.Doc)}, nil
+					}), func(added struct {
+						Answer  rtesting.Answer
+						Session App__Session
+						Doc     rtesting.Doc
+					}) eff.Task[rt.Maybe[string]] {
+						return eff.Bind(eff.Fail[any]("stop"), func(_ any) eff.Task[rt.Maybe[string]] {
+							return eff.Pure(rtesting.DocTextSel(selector__2, added.Doc))
+						})
+					}))
+					if _err22 != nil {
+						var _z24 struct {
+							Value rt.Result[string, rt.Maybe[string]]
+							Trace []string
+						}
+						return _z24, _err22
+					}
+					_r23 := struct {
+						Value rt.Result[string, rt.Maybe[string]]
+						Trace []string
+					}{Trace: _tr21}
+					if _ok20 {
+						_r23.Value = rt.Ok[string, rt.Maybe[string]](_v18)
+					} else {
+						_r23.Value = rt.Err[string, rt.Maybe[string]](_msg19)
+					}
+					return _r23, nil
+				}), func(r struct {
+					Value rt.Result[string, rt.Maybe[string]]
+					Trace []string
+				}) eff.Task[bool] {
+					return eff.Bind(eff.Call("Db.count Note", false, func(_e25 *eff.Env) (int64, error) {
+						return db.CountRows(_e25.Ctx, _e25.Store.(db.Store), db.TxOf(_e25), db.From(table__Note__Note))
+					}), func(rows int64) eff.Task[bool] {
+						return eff.Bind(eff.Call("Test.get Notes.Index", true, func(_e26 *eff.Env) (struct {
+							Model   Notes__Index__Model
+							Session App__Session
+							Doc     rtesting.Doc
+						}, error) {
+							var _p27 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
+							_u28 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p27.Filter.Tag], "All")}})
+							_b29 := rtesting.BrowserOf(_e26)
+							_r30, _err31 := _b29.GetPage(_u28, "user")
+							if _err31 != nil {
+								var _z32 struct {
+									Model   Notes__Index__Model
+									Session App__Session
+									Doc     rtesting.Doc
+								}
+								return _z32, _err31
+							}
+							_m33, _err31 := rtesting.ModelOf[Notes__Index__Model](_u28, _r30)
+							if _err31 != nil {
+								var _z34 struct {
+									Model   Notes__Index__Model
+									Session App__Session
+									Doc     rtesting.Doc
+								}
+								return _z34, _err31
+							}
+							return struct {
+								Model   Notes__Index__Model
+								Session App__Session
+								Doc     rtesting.Doc
+							}{Model: _m33, Session: rtesting.SessionOf[App__Session](_r30.Session), Doc: rtesting.DocOf(_r30.Doc)}, nil
+						}), func(page struct {
+							Model   Notes__Index__Model
+							Session App__Session
+							Doc     rtesting.Doc
+						}) eff.Task[bool] {
+							return eff.Pure(rtesting.Eq(struct {
+								Value rt.Result[string, rt.Maybe[string]]
+								Rows  int64
+								Shown rt.Maybe[string]
+							}{Value: r.Value, Rows: rows, Shown: rtesting.DocTextSel(selector__2, page.Doc)}, struct {
+								Value rt.Result[string, rt.Maybe[string]]
+								Rows  int64
+								Shown rt.Maybe[string]
+							}{Value: rt.Err[string, rt.Maybe[string]]("stop"), Rows: 0, Shown: rt.Just[string]("0 shown")}))
+						})
+					})
 				})
 			})
 		})

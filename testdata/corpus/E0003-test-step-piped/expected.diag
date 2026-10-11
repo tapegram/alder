@@ -1,0 +1,2 @@
+app/Todos/Index.alder:30:12 E0003 `Test.submit` takes its arguments directly, not through `|>`: `Test.submit NewTodo { title: "Milk" }`
+app/Todos/Index.alder:35:12 E0008 `Test.get` takes 1 argument, got 2: `Test.get (Todos.Index {})`

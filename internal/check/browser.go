@@ -146,11 +146,16 @@ func (mc *modCtx) inferArgs(args []syntax.Expr, env *env, eff effect) {
 	}
 }
 
-// testLogin types `Test.login s`: s is App's session record; a Task Unit.
+// testLogin types `Test.login s`: s is App's session record; a Task Unit. s is the cookie's
+// value, so a literal may leave out a field with a default (cookieLit).
 func (mc *modCtx) testLogin(arg syntax.Expr, env *env, eff effect) types.Type {
 	c := mc.c
 	want := c.appSession()
 	from := len(c.bag.Items)
+	if lit, ok := arg.(*syntax.RecordLit); ok {
+		mc.cookieLit = lit
+		defer func() { mc.cookieLit = nil }()
+	}
 	mc.check(arg, want, env, eff)
 	if len(c.bag.Items) > from {
 		var fs []string
@@ -360,6 +365,9 @@ func (mc *modCtx) testClick(arg syntax.Expr, env *env, eff effect) types.Type {
 		got := "`" + mc.source(arg.GetSpan()) + "`"
 		if !types.IsErr(t) {
 			got += " of type `" + types.StringIn(t, mc.m.Name) + "`"
+		}
+		if page, _ := pageOf(arg); page != "" { // a link, not a button
+			got += ": follow a link with `Test.get` or `Test.open`"
 		}
 		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.click` wants a message of a page or of `App`, got %s", got)
 		return types.Err

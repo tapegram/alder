@@ -1,3 +1,6 @@
-app/Todos/Index.alder:32:27 E0023 `#sumary x` is not a selector: unexpected `x` after `#sumary` (a selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, combined with spaces or `>`)
+app/Todos/Index.alder:32:27 E0023 `#sumary x` is not a selector: unexpected `x` after `#sumary`; `x` is not an HTML element (a custom element has a hyphen) (a selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, combined with spaces or `>`)
 app/Todos/Index.alder:32:79 E0023 `a >` is not a selector: unexpected end after `a >` (a selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, combined with spaces or `>`)
 app/Todos/Index.alder:32:117 E0023 `` is not a selector: it is empty (a selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, combined with spaces or `>`)
+app/Todos/Index.alder:37:26 E0023 `H1` is not a selector: unexpected `H1` at the start; tags are lower case: `h1` (a selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, combined with spaces or `>`)
+app/Todos/Index.alder:37:52 E0023 `x[y]` is not a selector: unexpected `x` at the start; `x` is not an HTML element (a custom element has a hyphen) (a selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, combined with spaces or `>`)
+app/Todos/Index.alder:37:80 E0023 `a[href=/x]` is not a selector: unexpected `/` after `a[href=`; quote the value: `[href="/x"]` (a selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, combined with spaces or `>`)

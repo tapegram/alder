@@ -327,7 +327,10 @@ func (md) Render(_ context.Context, a app.Args__Markdown__Markdown__Render) (htm
 // keeps it), RF4 (`requires` redirects to the login page, Test.login, the login form with the
 // Password fake, App.Logout), RF5 (a step inside Test.run; a panicking update is Failed, its
 // writes undone) — and then the failures a step reports: a page not shown, a control the page
-// does not render, a form the page does not render, a field the form does not declare.
+// does not render (and, when it renders the message for other rows, which), a form the page does
+// not render, a field the form does not declare — and, with two inputs taken out of NewNote's
+// form, a field the form has no input for (C1): a defaulted field and an unticked box still
+// submit, a set field and a ticked box fail the step.
 func TestTest_Browser(t *testing.T) {
 	needGoTool(t)
 	src, err := filepath.Abs("../../testdata/corpus/browser-ok")
@@ -337,7 +340,7 @@ func TestTest_Browser(t *testing.T) {
 	inTemp(t)
 	copyDir(t, src, "browser-ok")
 	code, stdout, stderr := runTest(t, "browser-ok")
-	if code != 0 || !strings.Contains(stdout, "13 passed, 0 failed\n") {
+	if code != 0 || !strings.Contains(stdout, "15 passed, 0 failed\n") {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 	failing := `
@@ -391,6 +394,47 @@ test "submit a field the form does not declare" = {
   Task.succeed True
 }
 
+test "click another row's toggle" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Db.insert Note { title: Text.NonEmpty "A", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let _ <- Test.click (Toggle { id: Note.NoteId "zzz" })
+  Task.succeed True
+}
+
+test "a set field the form has no input for" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let _ <- Test.submit NewNote { title: Text.NonEmpty "Milk", due: Nothing, urgent: False, weight: 2.5, contact: Nothing }
+  Task.succeed True
+}
+
+test "a ticked box the form has no input for" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let _ <- Test.submit NewNote { title: Text.NonEmpty "Milk", due: Nothing, urgent: True, contact: Nothing }
+  Task.succeed True
+}
+
+test "a raw field the form has no input for" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let _ <- Test.submitRaw NewNote [{ name: "title", value: "Milk" }, { name: "weight", value: "1.5" }]
+  Task.succeed True
+}
+
+test "a defaulted field and an unticked box need no input" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let r <- Test.submit NewNote { title: Text.NonEmpty "Milk", due: Nothing, urgent: False, weight: 1.5, contact: Nothing }
+  Task.succeed (r.answer == Redirected (Notes.Index {}))
+}
+
 test "get a page that is not found" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
   let _ <- Test.login { user: Just me }
@@ -398,26 +442,36 @@ test "get a page that is not found" = {
   Task.succeed True
 }
 `
-	f, err := os.OpenFile("browser-ok/app/Notes/Index.alder", os.O_APPEND|os.O_WRONLY, 0)
+	index := "browser-ok/app/Notes/Index.alder"
+	srcB, err := os.ReadFile(index)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.WriteString(failing); err != nil {
+	view := string(srcB)
+	cut := strings.NewReplacer(`<Input field="urgent" label="Urgent" />`, "", `<Input field="weight" label="Weight" />`, "").Replace(view)
+	if strings.Count(cut, "<Input") != strings.Count(view, "<Input")-2 {
+		t.Fatal("the inputs to take out are not in Notes.Index's view")
+	}
+	if err := os.WriteFile(index, []byte(cut+failing), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
 	code, stdout, stderr = runTest(t, "browser-ok", "-run", "Notes.Index")
 	for _, want := range []string{
 		"FAIL Notes.Index \"get a page that requires a user\"\n  error: GET /: redirected to /login (requires user)\n",
-		"FAIL Notes.Index \"click a message the page does not render\"\n  error: the page has no button or form for Notes.Index.Toggle { id: \"zzz\" }\n",
-		"FAIL Notes.Index \"submit a form the page does not render\"\n  error: the page has no form NewNote (Notes.Index.Submit)\n",
+		"FAIL Notes.Index \"click a message the page does not render\"\n  error: the page / has no button or form for Notes.Index.Toggle { id: \"zzz\" }\n",
+		"FAIL Notes.Index \"click another row's toggle\"\n  error: the page / has no button or form for Notes.Index.Toggle { id: \"zzz\" } (the page has Toggle for id: ",
+		"FAIL Notes.Index \"a set field the form has no input for\"\n  error: the page's form NewNote has no input `weight`\n",
+		"FAIL Notes.Index \"a raw field the form has no input for\"\n  error: the page's form NewNote has no input `weight`\n",
+		"FAIL Notes.Index \"a ticked box the form has no input for\"\n  error: the page's form NewNote has no input `urgent`\n",
+		"ok   Notes.Index \"a defaulted field and an unticked box need no input\"\n",
+		"FAIL Notes.Index \"submit a form the page does not render\"\n  error: the page /login has no form NewNote (Notes.Index.Submit)\n",
 		"FAIL Notes.Index \"submit a field the form does not declare\"\n  error: form NewNote has no field `colour`\n",
 		"FAIL Notes.Index \"get a page that is not found\"\n  error: GET /notes/nope: not found\n",
 		"FAIL Notes.Index \"submit a form every row renders, by its name\"\n  error: the page has 2 forms for Notes.Index.Rename: write the message with its parameters\n",
 		"FAIL Notes.Index \"click with no page open\"\n  error: no page is open: `Test.get` one first\n",
-		"FAIL Notes.Index \"submit to a row the page does not render\"\n  error: the page has no form Title (Notes.Index.Rename { id: \"zzz\" })\n",
+		"FAIL Notes.Index \"submit to a row the page does not render\"\n  error: the page / has no form Title (Notes.Index.Rename { id: \"zzz\" })\n",
 		`trace: ["Db.insert User", "Test.login", "Test.get Notes.Index", "Db.all Note", "Time.now", "Test.click Notes.Index.Toggle"]`,
-		"10 passed, 8 failed\n",
+		"13 passed, 12 failed\n",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("missing %q in\n%s\nstderr: %s", want, stdout, stderr)

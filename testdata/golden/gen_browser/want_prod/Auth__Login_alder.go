@@ -73,7 +73,7 @@ func Auth__Login__update(msg Auth__Login__Msg, model Auth__Login__Model, session
 			if found.Ok {
 				id := found.Val
 				return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
-					return App__Session{User: rt.Just[string](id)}
+					return App__Session{User: rt.Just[string](id), Visits: s.Visits}
 				}), func(_ struct{}) eff.Task[rt.Nav] {
 					return eff.Pure(rt.Redirect(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}))
 				})

@@ -74,6 +74,7 @@ type formCtx struct {
 	// shown are the fields with an <Errors field>; formErrors is set by an <Errors form />
 	shown      map[string]bool
 	formErrors bool
+	msg        *syntax.CtorRef // the submit message's constructor (W0005), nil when not a message
 }
 
 type modCtx struct {
@@ -90,6 +91,9 @@ type modCtx struct {
 	testName string               // the name of the `test` being checked (inTest)
 	runArgs  map[syntax.Expr]bool // the arguments of `Test.run` calls (their mismatches get a hint)
 	fake     string               // the capability whose `fake` entries are being checked
+	// cookieLit is the record literal `Test.login` is applied to: the cookie's value, so the
+	// session's defaults apply to it (a boundary, like an insert or a form).
+	cookieLit *syntax.RecordLit
 }
 
 // Options adjust what Program accepts.

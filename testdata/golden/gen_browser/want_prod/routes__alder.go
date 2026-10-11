@@ -24,6 +24,7 @@ var Routes = []web.Route{
 	Route__Notes__Index__Boom(),
 	Route__Notes__Index__Rename(),
 	Route__Notes__Index__SavePrefs(),
+	Route__Notes__Index__Visit(),
 	Route__App__Logout(),
 	Route__App__Send(),
 }
@@ -308,7 +309,7 @@ func page__Notes__Index(rq *web.Request, params Notes__Index__Params, keep any) 
 		r := web.RedirectResponse(rq.Login, keep)
 		return model, Notes__Index__Session{}, &r
 	}
-	session := Notes__Index__Session{User: app.User.Val}
+	session := Notes__Index__Session{User: app.User.Val, Visits: app.Visits}
 	model, err := eff.RunQuery(rq.Env, Notes__Index__load(params, session))
 	if err != nil {
 		r := route__fail(err)
@@ -488,6 +489,19 @@ func Route__Notes__Index__SavePrefs() web.Route {
 	}}
 }
 
+// Route__Notes__Index__Visit serves message Visit of page Notes.Index, POST /_m/Notes.Index/Visit
+// (book 06): decode the page's parameters (the message URL's _p. keys, which the rendered page put
+// there): 404 when they do not decode; then update__Notes__Index.
+func Route__Notes__Index__Visit() web.Route {
+	return web.Route{Method: "POST", Pattern: "/_m/Notes.Index/Visit", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Notes__Index__Params(rt.PageParams(rq.Query))
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		return update__Notes__Index(rq, params, Notes__Index__Msg__Visit__, nil)
+	}}
+}
+
 // decode__Notes__Show__Params decodes page Notes.Show's parameters: the path's from params, the
 // others from q. A parameter that does not decode is an error (the route answers 404).
 func decode__Notes__Show__Params(params map[string]string, _ url.Values) (r Notes__Show__Params, errs []web.FieldError) {
@@ -514,7 +528,7 @@ func page__Notes__Show(rq *web.Request, params Notes__Show__Params, keep any) (N
 		r := web.RedirectResponse(rq.Login, keep)
 		return model, Notes__Show__Session{}, &r
 	}
-	session := Notes__Show__Session{User: app.User.Val}
+	session := Notes__Show__Session{User: app.User.Val, Visits: app.Visits}
 	model, err := eff.RunQuery(rq.Env, Notes__Show__load(params, session))
 	if err != nil {
 		r := route__fail(err)

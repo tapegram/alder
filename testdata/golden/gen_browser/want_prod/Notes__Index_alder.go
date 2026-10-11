@@ -77,6 +77,7 @@ const (
 	is__Notes__Index__Msg__Boom      tag__Notes__Index__Msg = 2
 	is__Notes__Index__Msg__Rename    tag__Notes__Index__Msg = 3
 	is__Notes__Index__Msg__SavePrefs tag__Notes__Index__Msg = 4
+	is__Notes__Index__Msg__Visit     tag__Notes__Index__Msg = 5
 )
 
 func Notes__Index__Msg__Submit__(v Notes__Index__SubmitParams) Notes__Index__Msg {
@@ -97,12 +98,15 @@ func Notes__Index__Msg__SavePrefs__(v Notes__Index__SavePrefsParams) Notes__Inde
 	return Notes__Index__Msg{Tag: is__Notes__Index__Msg__SavePrefs, SavePrefs: &v}
 }
 
+var Notes__Index__Msg__Visit__ = Notes__Index__Msg{Tag: is__Notes__Index__Msg__Visit}
+
 type Notes__Index__Session struct {
-	User string
+	User   string
+	Visits int64
 }
 
 func widen__Notes__Index__Session(s Notes__Index__Session) App__Session {
-	return App__Session{User: rt.Just(s.User)}
+	return App__Session{User: rt.Just(s.User), Visits: s.Visits}
 }
 
 func Notes__Index__load(params Notes__Index__Params, session Notes__Index__Session) eff.Query[Notes__Index__Model] {
@@ -173,6 +177,12 @@ func Notes__Index__update(msg Notes__Index__Msg, model Notes__Index__Model, sess
 		})
 	case is__Notes__Index__Msg__SavePrefs:
 		return eff.Pure(rt.Rerender())
+	case is__Notes__Index__Msg__Visit:
+		return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
+			return App__Session{User: s.User, Visits: s.Visits + 1}
+		}), func(_ struct{}) eff.Task[rt.Nav] {
+			return eff.Pure(rt.Rerender())
+		})
 	}
 	panic("unreachable")
 }
@@ -228,6 +238,8 @@ func Notes__Index__view(model Notes__Index__Model, session Notes__Index__Session
 			html.El("button", nil, html.Text("Send")),
 		),
 		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Notes.Index", Msg: "Boom"})}, html.Text("Boom")),
+		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Notes.Index", Msg: "Visit"})}, html.Text("Visit")),
+		html.El("p", []html.Attr{html.A("id", "visits")}, html.Text(std.TextFromInt(session.Visits))),
 		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "App", Msg: "Logout"})}, html.Text("Log out")),
 	))
 }

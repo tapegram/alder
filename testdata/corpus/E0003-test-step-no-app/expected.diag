@@ -1,0 +1,1 @@
+app/Note.alder:6:12 E0003 `Test.click` needs an `App` module: the browser requests the app's routes, which an app without `App` does not serve

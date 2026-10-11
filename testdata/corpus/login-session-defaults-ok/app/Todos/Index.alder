@@ -1,0 +1,33 @@
+module Todos.Index
+
+page "/" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 0 }
+
+form NewTodo = {
+  title: Text,
+}
+
+msg Submit form NewTodo
+msg Toggle { id: Text }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = Task.succeed Rerender
+
+view : Model -> Session -> Html Msg
+view model session =
+  <form submit={Submit}>
+    <Errors form />
+    <Input field="title" label="Title" />
+    <button click={Toggle { id: "a" }}>Toggle</button>
+  </form>
+
+-- The record Test.login stores is the cookie's value: the session's defaults apply to it.
+test "log in with the session's defaults" = {
+  let _ <- Test.login { user: Just "me" }
+  let r <- Test.open (Todos.Index {})
+  Task.succeed (r.session.user == Just "me" && r.session.visits == 0 && r.session.theme == "light")
+}

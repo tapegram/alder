@@ -3079,7 +3079,7 @@ func TestGen_Browser(t *testing.T) {
 	contains(t, files["Auth__Login_alder.go"], `eff.Call("Test.login", true,`, `eff.Call("Test.open Notes.Index", true,`, `.Open(_u`,
 		`rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}`, `rtesting.RejectedAnswer([]struct {`,
 		`eff.Call("Test.click App.Logout", true,`, `rtesting.MsgName("App.Logout", nil)`)
-	contains(t, files["routes__alder.go"], "func encode__Notes__Index__NewNote(r Notes__Index__NewNote) url.Values {")
+	contains(t, files["routes__alder.go"], "func encode__Notes__Index__NewNote(r Notes__Index__NewNote) rtesting.Fields {")
 	contains(t, files["app__alder.go"], "func Web() web.Options {", `selector__1  = rtesting.Sel("h1")`)
 	prog, err := os.ReadFile("testdata/e2e_browser_test.go.txt")
 	if err != nil {

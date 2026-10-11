@@ -50,9 +50,13 @@ type Error struct {
 	Token  string
 	After  string
 	Reason string // set instead of Token/After for an empty selector
+	// Hint, when set, says what was probably meant: "tags are lower case: `h1`", "`x` is not an
+	// HTML element (a custom element has a hyphen)", "quote the value: `[href="/x"]`".
+	Hint string
 }
 
-// Error is "`#sumary x` is not a selector: unexpected `x` after `#sumary` (<Subset>)".
+// Error is "`#sumary x` is not a selector: unexpected `x` after `#sumary` (<Subset>)", with
+// "; <Hint>" before the parenthesis when there is a hint.
 func (e *Error) Error() string {
 	var why string
 	switch {
@@ -66,6 +70,9 @@ func (e *Error) Error() string {
 		why = "unexpected `" + e.Token + "` at the start"
 	default:
 		why = "unexpected `" + e.Token + "` after `" + e.After + "`"
+	}
+	if e.Hint != "" {
+		why += "; " + e.Hint
 	}
 	return "`" + e.Input + "` is not a selector: " + why + " (" + Subset + ")"
 }
@@ -181,7 +188,13 @@ func (p *parser) compound() (Step, error) {
 	if n := identLen(p.in[p.pos:], false); n > 0 {
 		tag := p.in[p.pos : p.pos+n]
 		if !knownTag(tag) {
-			return st, p.fail(p.pos, p.pos+n)
+			err := p.fail(p.pos, p.pos+n).(*Error)
+			if lower := strings.ToLower(tag); knownTag(lower) {
+				err.Hint = "tags are lower case: `" + lower + "`"
+			} else {
+				err.Hint = "`" + tag + "` is not an HTML element (a custom element has a hyphen)"
+			}
+			return st, err
 		}
 		st.Tag = tag
 		p.pos += n
@@ -236,6 +249,7 @@ func (p *parser) attr() (Attr, error) {
 	if p.pos < len(p.in) && p.in[p.pos] == '=' {
 		p.pos++
 		a.HasValue = true
+		valueStart := p.pos
 		if p.pos < len(p.in) && (p.in[p.pos] == '"' || p.in[p.pos] == '\'') {
 			q := p.in[p.pos]
 			end := strings.IndexByte(p.in[p.pos+1:], q)
@@ -246,8 +260,8 @@ func (p *parser) attr() (Attr, error) {
 			p.pos += end + 2
 		} else {
 			m := identLen(p.in[p.pos:], false)
-			if m == 0 {
-				return a, p.fail(p.pos, p.pos+tokenLen(p.in[p.pos:]))
+			if m == 0 || p.pos+m < len(p.in) && p.in[p.pos+m] != ']' {
+				return a, p.unquoted(a.Name, valueStart, p.pos+m)
 			}
 			a.Value = p.in[p.pos : p.pos+m]
 			p.pos += m
@@ -261,6 +275,17 @@ func (p *parser) attr() (Attr, error) {
 	}
 	p.pos++
 	return a, nil
+}
+
+// unquoted is the error of an attribute value at start that is not an identifier, failing at
+// at: with the hint to quote it, up to the next `]` (`[href=/x]`: "quote the value:
+// `[href="/x"]`").
+func (p *parser) unquoted(name string, start, at int) error {
+	err := p.fail(at, at+tokenLen(p.in[at:])).(*Error)
+	if end := strings.IndexByte(p.in[start:], ']'); end > 0 && !strings.ContainsAny(p.in[start:start+end], `"'`) {
+		err.Hint = "quote the value: `[" + name + `="` + p.in[start:start+end] + `"]` + "`"
+	}
+	return err
 }
 
 func isSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' }

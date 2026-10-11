@@ -26,6 +26,7 @@ var Routes = []web.Route{
 	Route__Notes__Index__Boom(),
 	Route__Notes__Index__Rename(),
 	Route__Notes__Index__SavePrefs(),
+	Route__Notes__Index__Visit(),
 	Route__App__Logout(),
 	Route__App__Send(),
 }
@@ -310,7 +311,7 @@ func page__Notes__Index(rq *web.Request, params Notes__Index__Params, keep any) 
 		r := web.RedirectResponse(rq.Login, keep)
 		return model, Notes__Index__Session{}, &r
 	}
-	session := Notes__Index__Session{User: app.User.Val}
+	session := Notes__Index__Session{User: app.User.Val, Visits: app.Visits}
 	model, err := eff.RunQuery(rq.Env, Notes__Index__load(params, session))
 	if err != nil {
 		r := route__fail(err)
@@ -490,6 +491,19 @@ func Route__Notes__Index__SavePrefs() web.Route {
 	}}
 }
 
+// Route__Notes__Index__Visit serves message Visit of page Notes.Index, POST /_m/Notes.Index/Visit
+// (book 06): decode the page's parameters (the message URL's _p. keys, which the rendered page put
+// there): 404 when they do not decode; then update__Notes__Index.
+func Route__Notes__Index__Visit() web.Route {
+	return web.Route{Method: "POST", Pattern: "/_m/Notes.Index/Visit", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Notes__Index__Params(rt.PageParams(rq.Query))
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		return update__Notes__Index(rq, params, Notes__Index__Msg__Visit__, nil)
+	}}
+}
+
 // decode__Notes__Show__Params decodes page Notes.Show's parameters: the path's from params, the
 // others from q. A parameter that does not decode is an error (the route answers 404).
 func decode__Notes__Show__Params(params map[string]string, _ url.Values) (r Notes__Show__Params, errs []web.FieldError) {
@@ -516,7 +530,7 @@ func page__Notes__Show(rq *web.Request, params Notes__Show__Params, keep any) (N
 		r := web.RedirectResponse(rq.Login, keep)
 		return model, Notes__Show__Session{}, &r
 	}
-	session := Notes__Show__Session{User: app.User.Val}
+	session := Notes__Show__Session{User: app.User.Val, Visits: app.Visits}
 	model, err := eff.RunQuery(rq.Env, Notes__Show__load(params, session))
 	if err != nil {
 		r := route__fail(err)
@@ -600,50 +614,72 @@ func Route__App__Send() web.Route {
 
 // encode__Auth__Login__Credentials is form Credentials as the browser's inputs submit it, for
 // Test.submit (test builds): the inverse of decode__Auth__Login__Credentials.
-func encode__Auth__Login__Credentials(r Auth__Login__Credentials) url.Values {
+func encode__Auth__Login__Credentials(r Auth__Login__Credentials) rtesting.Fields {
 	v := url.Values{}
+	var absent []string
 	v.Set("email", r.Email)
 	v.Set("password", r.Password)
-	return v
+	return rtesting.Fields{Values: v, Absent: absent}
 }
 
 // encode__Notes__Index__NewNote is form NewNote as the browser's inputs submit it, for Test.submit
 // (test builds): the inverse of decode__Notes__Index__NewNote.
-func encode__Notes__Index__NewNote(r Notes__Index__NewNote) url.Values {
+func encode__Notes__Index__NewNote(r Notes__Index__NewNote) rtesting.Fields {
 	v := url.Values{}
+	var absent []string
 	v.Set("title", r.Title)
 	if r.Due.Ok {
 		v.Set("due", std.DateToText(r.Due.Val))
 	} else {
 		v.Set("due", "")
 	}
+	if !r.Due.Ok {
+		absent = append(absent, "due")
+	}
 	if r.Urgent {
 		v.Set("urgent", "True")
 	}
 	v.Set("priority", std.TextFromInt(r.Priority))
+	if rt.Eq(r.Priority, 1) {
+		absent = append(absent, "priority")
+	}
 	v.Set("weight", rtesting.FormatFloat(r.Weight))
+	if rt.Eq(r.Weight, 1.5) {
+		absent = append(absent, "weight")
+	}
 	v.Set("kind", []string{"Plain", "Idea", "Chore"}[r.Kind.Tag])
+	if rt.Eq(r.Kind, Note__Kind__Plain__) {
+		absent = append(absent, "kind")
+	}
 	v.Set("remark", r.Remark)
+	if rt.Eq(r.Remark, "") {
+		absent = append(absent, "remark")
+	}
 	if r.Contact.Ok {
 		v.Set("contact", r.Contact.Val)
 	} else {
 		v.Set("contact", "")
 	}
-	return v
+	if !r.Contact.Ok {
+		absent = append(absent, "contact")
+	}
+	return rtesting.Fields{Values: v, Absent: absent}
 }
 
 // encode__Notes__Index__Title is form Title as the browser's inputs submit it, for Test.submit
 // (test builds): the inverse of decode__Notes__Index__Title.
-func encode__Notes__Index__Title(r Notes__Index__Title) url.Values {
+func encode__Notes__Index__Title(r Notes__Index__Title) rtesting.Fields {
 	v := url.Values{}
+	var absent []string
 	v.Set("title", r.Title)
-	return v
+	return rtesting.Fields{Values: v, Absent: absent}
 }
 
 // encode__Notes__Index__Prefs is form Prefs as the browser's inputs submit it, for Test.submit
 // (test builds): the inverse of decode__Notes__Index__Prefs.
-func encode__Notes__Index__Prefs(r Notes__Index__Prefs) url.Values {
+func encode__Notes__Index__Prefs(r Notes__Index__Prefs) rtesting.Fields {
 	v := url.Values{}
+	var absent []string
 	v.Set("site", r.Site)
 	v.Set("pin", r.Pin)
 	v.Set("tag", r.Tag)
@@ -653,15 +689,19 @@ func encode__Notes__Index__Prefs(r Notes__Index__Prefs) url.Values {
 	} else {
 		v.Set("reminder", "")
 	}
-	return v
+	if rt.Eq(r.Reminder, rt.Just[int64](3)) {
+		absent = append(absent, "reminder")
+	}
+	return rtesting.Fields{Values: v, Absent: absent}
 }
 
 // encode__App__Feedback is form Feedback as the browser's inputs submit it, for Test.submit (test
 // builds): the inverse of decode__App__Feedback.
-func encode__App__Feedback(r App__Feedback) url.Values {
+func encode__App__Feedback(r App__Feedback) rtesting.Fields {
 	v := url.Values{}
+	var absent []string
 	v.Set("text", r.Text)
-	return v
+	return rtesting.Fields{Values: v, Absent: absent}
 }
 
 // route__fail answers a load or update that did not succeed: 404 (App.notFound) for

@@ -1,0 +1,1 @@
+app/Todos/Index.alder:30:24 E0003 `Test.click` wants a message of a page or of `App`, got `Todos.Index {}` of type `Page`: follow a link with `Test.get` or `Test.open`

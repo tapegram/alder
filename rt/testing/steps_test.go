@@ -108,7 +108,7 @@ func TestRawFieldsAndMsgName(t *testing.T) {
 		Name  string
 		Value string
 	}{{"title", ""}, {"due", "x"}, {"title", "b"}})
-	if err != nil || !reflect.DeepEqual(v, url.Values{"title": {"", "b"}, "due": {"x"}}) {
+	if err != nil || !reflect.DeepEqual(v, Fields{Values: url.Values{"title": {"", "b"}, "due": {"x"}}}) {
 		t.Fatalf("%v %v", v, err)
 	}
 	_, err = RawFields("NewTodo", []string{"title"}, []struct {
@@ -130,5 +130,40 @@ func TestRawFieldsAndMsgName(t *testing.T) {
 	}
 	if FormatFloat(1.5) != "1.5" || FormatFloat(1e21) != "1e+21" {
 		t.Error("FormatFloat")
+	}
+}
+
+// TestFieldsFor: a submit sends only the fields the form has an input for; a field it has none
+// for is left out when its value is what its absence decodes to (Absent), else the step fails
+// as a user could not send it (C1).
+func TestFieldsFor(t *testing.T) {
+	form, err := html.Parse(`<form action="/_m/M/Save"><input name="title"><select name="kind"></select><textarea name="note"></textarea><input type="checkbox" name="done" value="True"><button>Save</button></form>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs := Fields{Values: url.Values{"title": {"a"}, "kind": {"K"}, "note": {""}, "done": {"True"}, "due": {""}}, Absent: []string{"due"}}
+	got, err := fs.For(form, "Everything")
+	if err != nil || !reflect.DeepEqual(got, url.Values{"title": {"a"}, "kind": {"K"}, "note": {""}, "done": {"True"}}) {
+		t.Errorf("For = %v, %v", got, err)
+	}
+	fs.Values["n"] = []string{"-3"}
+	if _, err := fs.For(form, "Everything"); err == nil || err.Error() != "the page's form Everything has no input `n`" {
+		t.Errorf("a field without an input: %v", err)
+	}
+	if _, err := (Fields{Values: url.Values{"n": {"1"}}}).For(form, ""); err == nil || err.Error() != "the page's form has no input `n`" {
+		t.Errorf("without the form's name: %v", err)
+	}
+}
+
+func TestOffered(t *testing.T) {
+	urls := []string{"/_m/M/Toggle?id=a&_p.f=x", "/_m/M/Toggle?id=b", "/_m/M/Toggle?id=a", "/_m/M/Other?id=c", "/_m/M/Rename?id=a&x=1", "/_m/M/Rename?id=b&x=2"}
+	for _, c := range []struct{ msg, want string }{
+		{"/_m/M/Toggle?id=z", "Toggle for id: a, b"},
+		{"/_m/M/Rename?id=z&x=0", "Rename for id: a, x: 1; id: b, x: 2"},
+		{"/_m/M/Delete?id=z", ""},
+	} {
+		if got := Offered(c.msg, urls); got != c.want {
+			t.Errorf("Offered(%s) = %q, want %q", c.msg, got, c.want)
+		}
 	}
 }

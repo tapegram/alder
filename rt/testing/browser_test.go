@@ -495,7 +495,7 @@ func TestBrowser_NoControl(t *testing.T) {
 		}
 		for _, sub := range []func() (Result, error){
 			func() (Result, error) { return b.Submit("/_m/Index/NewRow", nil) },
-			func() (Result, error) { return b.SubmitForm("/_m/Index/NewRow", "NewRow", nil) },
+			func() (Result, error) { return b.SubmitForm("/_m/Index/NewRow", "NewRow", Fields{}) },
 		} {
 			if _, err := sub(); err == nil || err.Error() != "no page is open: `Test.get` one first" {
 				t.Errorf("submit before any page: %v", err)
@@ -507,21 +507,27 @@ func TestBrowser_NoControl(t *testing.T) {
 		start := len(e.Trace)
 		_, err = b.Click("/_m/Index/Delete?id=zzz")
 		var nc *NoControlError
-		if !errors.As(err, &nc) || nc.Page != "/" || nc.URL != "/_m/Index/Delete?id=zzz" {
+		if !errors.As(err, &nc) || nc.Page != "/" || nc.URL != "/_m/Index/Delete?id=zzz" ||
+			err.Error() != "the page / has no button or form for Index.Delete { id: \"zzz\" } (the page has Delete for id: "+a+")" {
 			t.Errorf("click: %v", err)
 		}
 		_, err = b.Submit("/_m/Login/Submit", url.Values{})
-		if err == nil || err.Error() != "the page has no form for Login.Submit" {
+		if err == nil || err.Error() != "the page / has no form for Login.Submit" {
 			t.Errorf("submit: %v", err)
 		}
 		errors.As(err, &nc)
 		nc.Form, nc.Msg = "LoginForm", "Login.Submit"
-		if err.Error() != "the page has no form LoginForm (Login.Submit)" {
+		if err.Error() != "the page / has no form LoginForm (Login.Submit)" {
 			t.Errorf("submit with Form: %v", err)
 		}
 		// a click button is not a form to submit; a form posting it is a control to click
 		if _, err := b.Submit("/_m/Index/Fail", nil); err == nil {
 			t.Error("submitted a click button")
+		}
+		// a field the form renders no input for is not sent by a browser: the step fails (C1)
+		_, err = b.SubmitForm("/_m/Index/Add", "NewRow", Fields{Values: url.Values{"title": {"x"}, "colour": {"red"}}})
+		if err == nil || err.Error() != "the page's form NewRow has no input `colour`" {
+			t.Errorf("a field without an input: %v", err)
 		}
 		if len(e.Trace) != start {
 			t.Errorf("a refused step sent a request: %v", e.Trace[start:])

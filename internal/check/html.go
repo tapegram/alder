@@ -2,6 +2,7 @@
 package check
 
 import (
+	"reflect"
 	"strings"
 
 	"alder/internal/diag"
@@ -113,6 +114,7 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 				pushed = &formCtx{name: "", rec: &types.Record{Anonymous: true}}
 			}
 			pushed.submit = submitText(a.Value, mc.source(a.Value.GetSpan()))
+			pushed.msg = msgCtor(a.Value)
 		}
 	}
 	saved := mc.form
@@ -123,6 +125,9 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 		mc.htmlNode(ch, m, env, eff)
 	}
 	mc.form = saved
+	if pushed != nil && !pushed.formErrors && pushed.msg != nil && c.mayReject(pushed.msg.Ref.Module, pushed.msg.Ref.Name) {
+		c.bag.Warn(diag.UnshownReject, x.Span, "`%s` can answer `Reject`, but this form has no `<Errors form />`: the user never sees the rejection text", pushed.msg.Ref.Name)
+	}
 	if pushed != nil && pushed.name != "" && !pushed.formErrors {
 		for _, f := range pushed.rec.Fields {
 			if !pushed.shown[f.Name] && !isCon(f.Type, "Bool") {
@@ -130,6 +135,77 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 			}
 		}
 	}
+}
+
+// msgCtor is the constructor of a message expression (`Save`, `Save { id: id }`) when it is a
+// page's message, nil otherwise.
+func msgCtor(e syntax.Expr) *syntax.CtorRef {
+	if app, ok := e.(*syntax.App); ok {
+		e = app.Fn
+	}
+	if ct, ok := e.(*syntax.CtorRef); ok && ct.Ref.Kind == syntax.RefCtor {
+		return ct
+	}
+	return nil
+}
+
+// mayReject reports whether page module's `update` can answer `Reject` for its message msg (W0005):
+// when `update` is a `match` on its message, whether the arms that can match msg mention
+// `Reject`; otherwise whether `update` does anywhere. A `Reject` built by a function `update`
+// calls is not seen.
+func (c *Checker) mayReject(module, msg string) bool {
+	m := c.prog.Modules[module]
+	if m == nil || c.pages[module] == nil {
+		return false
+	}
+	for _, d := range m.Decls {
+		vd, ok := d.(*syntax.ValueDecl)
+		if !ok || vd.Name != "update" || vd.Body == nil {
+			continue
+		}
+		if mt, ok := vd.Body.(*syntax.Match); ok && len(vd.Params) > 0 {
+			if v, ok := mt.Subject.(*syntax.Var); ok && v.Name == vd.Params[0].Name {
+				for _, arm := range mt.Arms {
+					if pc, ok := arm.Pat.(*syntax.PCtor); ok && pc.Name != msg {
+						continue
+					}
+					if mentionsReject(reflect.ValueOf(arm.Body)) {
+						return true
+					}
+				}
+				return false
+			}
+		}
+		return mentionsReject(reflect.ValueOf(vd.Body))
+	}
+	return false
+}
+
+// mentionsReject reports whether the syntax tree v holds the Prelude's `Reject`.
+func mentionsReject(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		if v.IsNil() {
+			return false
+		}
+		if ct, ok := v.Interface().(*syntax.CtorRef); ok {
+			return ct.Ref.Kind == syntax.RefCtor && ct.Ref.Module == "Prelude" && ct.Ref.Name == "Reject"
+		}
+		return mentionsReject(v.Elem())
+	case reflect.Struct:
+		for i := range v.NumField() {
+			if v.Type().Field(i).IsExported() && mentionsReject(v.Field(i)) {
+				return true
+			}
+		}
+	case reflect.Slice:
+		for i := range v.Len() {
+			if mentionsReject(v.Index(i)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // submitText abbreviates a submit value for messages: `Toggle` or `Toggle …`.

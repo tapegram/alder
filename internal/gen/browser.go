@@ -257,7 +257,11 @@ func (g *gen) selectorVars(b *strings.Builder) {
 // rules at the top of routes.go): Text as given, Int and Float as digits, Bool as a checkbox
 // ("True" when checked, absent when not), Date as YYYY-MM-DD, a union by its constructor's
 // name, Maybe blank for Nothing (a cleared input; absent would give a field with a default its
-// default).
+// default). Its Absent are the fields whose value is what the decoder makes of the field not
+// being sent — a Maybe without a default that is Nothing, a field (not a Bool) equal to its
+// default — which the browser leaves out when the page's form has no input for them
+// (rtesting.Fields.For); a Bool's False is not sent at all. Any other field the form has no
+// input for fails the step: a user could not send it.
 func (g *gen) encoders(b *strings.Builder, p *ir.Program) {
 	seen := map[*ir.Form]bool{}
 	var forms []*ir.Form
@@ -279,12 +283,32 @@ func (g *gen) encoders(b *strings.Builder, p *ir.Program) {
 		if len(fm.Record.Fields) == 0 {
 			r = "_"
 		}
-		fmt.Fprintf(b, "func %s(%s %s) url.Values {\nv := url.Values{}\n", encodeName(fm.Module, fm.Name), r, GoName(fm.Module, fm.Name))
+		fmt.Fprintf(b, "func %s(%s %s) rtesting.Fields {\nv := url.Values{}\nvar absent []string\n", encodeName(fm.Module, fm.Name), r, GoName(fm.Module, fm.Name))
 		for _, fd := range fm.Record.Fields {
-			b.WriteString(encodeField(fd.Type, "r."+Field(fd.Name), strconv.Quote(fd.Name)))
+			value, name := "r."+Field(fd.Name), strconv.Quote(fd.Name)
+			b.WriteString(encodeField(fd.Type, value, name))
+			if cond := g.absentWhen(fd, value); cond != "" {
+				b.WriteString("if " + cond + " {\nabsent = append(absent, " + name + ")\n}\n")
+			}
 		}
-		b.WriteString("return v\n}\n\n")
+		b.WriteString("return rtesting.Fields{Values: v, Absent: absent}\n}\n\n")
 	}
+}
+
+// absentWhen is the Go condition under which form field fd, of value value, decodes to the same
+// value when it is not sent: a Maybe without a default when Nothing, any other field but a Bool
+// when equal to its default; "" when never (a required field, a Bool: False is never sent).
+func (g *gen) absentWhen(fd ir.FieldT, value string) string {
+	if fd.Default != nil {
+		if maybeArg(fd.Type) == nil && scalarKind(fd.Type) == "bool" {
+			return "" // a form's Bool is False when not sent, whatever its default
+		}
+		return "rt.Eq(" + value + ", " + (&fn{g: g}).code(fd.Default, newScope()) + ")"
+	}
+	if maybeArg(fd.Type) != nil {
+		return "!" + value + ".Ok"
+	}
+	return ""
 }
 
 // encodeField is the statement setting v[name] (a Go string literal) to value (of type t) as an

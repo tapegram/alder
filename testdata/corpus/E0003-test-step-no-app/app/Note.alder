@@ -1,0 +1,8 @@
+module Note
+
+type Kind = Plain | Idea
+
+test "a browser step in an app without App" = {
+  let r <- Test.click Plain
+  Task.succeed True
+}

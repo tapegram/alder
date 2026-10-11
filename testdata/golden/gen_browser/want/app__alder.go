@@ -57,6 +57,8 @@ var Tests = []rtesting.Case{
 	{Module: "Notes.Index", Name: "the model is the one the page rendered", Task: test__Notes__Index__8},
 	{Module: "Notes.Index", Name: "renaming one row's note", Task: test__Notes__Index__9},
 	{Module: "Notes.Index", Name: "an App form", Task: test__Notes__Index__10},
+	{Module: "Notes.Index", Name: "a Rerender after Session.put updates the session", Task: test__Notes__Index__11},
+	{Module: "Notes.Index", Name: "a browser write inside a failing Test.run is undone", Task: test__Notes__Index__12},
 }
 
 // TestSession is the session a test runs with: App's session with every field at its default (nil without an App module).
@@ -80,7 +82,7 @@ func init() {
 	rt.RegisterUnion(reflect.TypeOf(tag__Auth__Login__Msg(0)), []string{"Submit"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Note__Filter(0)), []string{"All", "Open", "Done"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Note__Kind(0)), []string{"Plain", "Idea", "Chore"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Index__Msg(0)), []string{"Submit", "Toggle", "Boom", "Rename", "SavePrefs"})
+	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Index__Msg(0)), []string{"Submit", "Toggle", "Boom", "Rename", "SavePrefs", "Visit"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Show__Msg(0)), []string{})
 }
 
@@ -168,13 +170,14 @@ type session__codec struct{}
 
 // Default is the session of a request without a valid cookie: every field at its default.
 func (session__codec) Default() any {
-	return App__Session{}
+	return App__Session{Visits: 0}
 }
 
 func (session__codec) Encode(v any) ([]byte, error) {
 	s := v.(App__Session)
 	return json.Marshal(map[string]any{
-		"User": s.User,
+		"User":   s.User,
+		"Visits": s.Visits,
 	})
 }
 
@@ -192,6 +195,12 @@ func (c session__codec) Decode(b []byte) (any, error) {
 			s.User = v
 		}
 	}
+	if raw, ok := m["Visits"]; ok {
+		var v int64
+		if json.Unmarshal(raw, &v) == nil {
+			s.Visits = v
+		}
+	}
 	return s, nil
 }
 
@@ -207,4 +216,5 @@ var (
 	selector__8  = rtesting.Sel("nav a")
 	selector__9  = rtesting.Sel("#nothing")
 	selector__10 = rtesting.Sel("#now")
+	selector__11 = rtesting.Sel("#visits")
 )

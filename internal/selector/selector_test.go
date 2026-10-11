@@ -41,10 +41,14 @@ func TestParse_EveryForm(t *testing.T) {
 func TestParse_ErrorsNameTheToken(t *testing.T) {
 	const sub = " (a selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, combined with spaces or `>`)"
 	for _, tc := range []struct{ in, want string }{
-		{"#sumary x", "`#sumary x` is not a selector: unexpected `x` after `#sumary`" + sub},
+		{"#sumary x", "`#sumary x` is not a selector: unexpected `x` after `#sumary`; `x` is not an HTML element (a custom element has a hyphen)" + sub},
 		{"", "`` is not a selector: it is empty" + sub},
 		{"   ", "`   ` is not a selector: it is empty" + sub},
-		{"LI", "`LI` is not a selector: unexpected `LI` at the start" + sub},
+		{"LI", "`LI` is not a selector: unexpected `LI` at the start; tags are lower case: `li`" + sub},
+		{"H1.title", "`H1.title` is not a selector: unexpected `H1` at the start; tags are lower case: `h1`" + sub},
+		{"x[y]", "`x[y]` is not a selector: unexpected `x` at the start; `x` is not an HTML element (a custom element has a hyphen)" + sub},
+		{"a[href=/x]", "`a[href=/x]` is not a selector: unexpected `/` after `a[href=`; quote the value: `[href=\"/x\"]`" + sub},
+		{"a[href=x/y] li", "`a[href=x/y] li` is not a selector: unexpected `/` after `a[href=x`; quote the value: `[href=\"x/y\"]`" + sub},
 		{"ul + li", "`ul + li` is not a selector: unexpected `+` after `ul`" + sub},
 		{"ul ~ li", "`ul ~ li` is not a selector: unexpected `~` after `ul`" + sub},
 		{"> li", "`> li` is not a selector: unexpected `>` at the start" + sub},
@@ -61,7 +65,7 @@ func TestParse_ErrorsNameTheToken(t *testing.T) {
 		{`[a="x]`, "`[a=\"x]` is not a selector: unexpected `\"x]` after `[a=`" + sub},
 		{"[a~=b]", "`[a~=b]` is not a selector: unexpected `~` after `[a`" + sub},
 		{"[]", "`[]` is not a selector: unexpected `]` after `[`" + sub},
-		{"lu", "`lu` is not a selector: unexpected `lu` at the start" + sub},
+		{"lu", "`lu` is not a selector: unexpected `lu` at the start; `lu` is not an HTML element (a custom element has a hyphen)" + sub},
 	} {
 		_, err := Parse(tc.in)
 		if err == nil {

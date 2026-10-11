@@ -2,7 +2,7 @@ module App
 
 import User
 
-session { user: Maybe User.UserId }
+session { user: Maybe User.UserId, visits: Int = 0 }
 
 login = Auth.Login
 

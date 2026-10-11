@@ -1,0 +1,37 @@
+module Todos.Index
+
+page "/" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 0 }
+
+form NewTodo = {
+  title: Text,
+}
+
+msg Submit form NewTodo
+msg Toggle { id: Text }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = Task.succeed Rerender
+
+view : Model -> Session -> Html Msg
+view model session =
+  <form submit={Submit}>
+    <Errors form />
+    <Input field="title" label="Title" />
+    <button click={Toggle { id: "a" }}>Toggle</button>
+  </form>
+
+test "a step's last argument piped in" = {
+  let _ <- Test.get (Todos.Index {})
+  let r <- { title: "Milk" } |> Test.submit NewTodo
+  Task.succeed True
+}
+
+test "a step with too many arguments" = {
+  let r <- Test.get (Todos.Index {}) (Todos.Index {})
+  Task.succeed True
+}

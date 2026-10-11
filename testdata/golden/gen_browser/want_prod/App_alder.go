@@ -10,7 +10,8 @@ import (
 )
 
 type App__Session struct {
-	User rt.Maybe[string]
+	User   rt.Maybe[string]
+	Visits int64
 }
 
 type App__Feedback struct {
@@ -43,7 +44,7 @@ func App__update(msg App__Msg, session App__Session) eff.Task[rt.Nav] {
 	switch msg.Tag {
 	case is__App__Msg__Logout:
 		return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
-			return App__Session{User: rt.Nothing[string]()}
+			return App__Session{User: rt.Nothing[string](), Visits: s.Visits}
 		}), func(_ struct{}) eff.Task[rt.Nav] {
 			return eff.Pure(rt.Redirect(rt.Page{Path: "/login"}))
 		})

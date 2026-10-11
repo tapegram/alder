@@ -41,6 +41,7 @@ import (
 	"alder/rt"
 	"alder/rt/db"
 	"alder/rt/eff"
+	"alder/rt/html"
 	"alder/rt/web"
 )
 
@@ -133,16 +134,36 @@ var (
 	sidesMu   sync.Mutex
 	lastSides [2]string
 	hasSides  bool
-	lastEq    bool // what the last Eq returned
+	lastEq    bool   // what the last Eq returned
+	lastNote  string // the note of the last Eq: where two Docs differ ("" for none)
 )
 
-// Eq is rt.Eq that also records Show(l) and Show(r) as the sides of the test's final `==`.
+// Eq is rt.Eq that also records Show(l) and Show(r) as the sides of the test's final `==`. Two
+// Docs that differ are recorded as where they first differ instead of their whole markup
+// (docSides): each side the differing element's markup, cut short, and a note naming its path.
 func Eq(l, r any) bool {
-	sides, eq := [2]string{rt.Show(l), rt.Show(r)}, rt.Eq(l, r)
+	eq, note := rt.Eq(l, r), ""
+	var sides [2]string
+	if ld, ok := l.(Doc); ok && !eq {
+		sides, note = docSides(ld, r.(Doc))
+	} else {
+		sides = [2]string{rt.Show(l), rt.Show(r)}
+	}
 	sidesMu.Lock()
-	lastSides, hasSides, lastEq = sides, true, eq
+	lastSides, hasSides, lastEq, lastNote = sides, true, eq, note
 	sidesMu.Unlock()
 	return eq
+}
+
+// docSides are the sides and the note of a failed `==` of two Docs: the first difference
+// (html.Diff, the page's parameters left out as `==` leaves them out), "the documents differ at
+// body > main > ul#todos: left 1 child <li>, right 0", with that element's markup on each side.
+func docSides(l, r Doc) ([2]string, string) {
+	d, ok := html.Diff(html.WithoutPageParams(l.Node), html.WithoutPageParams(r.Node))
+	if !ok { // unreachable: Diff and == compare the same trees
+		return [2]string{rt.Show(l), rt.Show(r)}, ""
+	}
+	return [2]string{d.Left, d.Right}, "the documents differ at " + d.At + ": " + d.What
 }
 
 // sameSidesNote is the note a failing test's report adds when its last `==` was False although
@@ -157,8 +178,9 @@ type Case struct {
 }
 
 // CaseResult is the outcome of one Case. Left and Right are the Show text of the sides of the
-// test's last Eq ("" when it made none); Note is sameSidesNote when that Eq was False but its
-// sides print the same; Error is the failure or panic text; Trace is the task's steps (nil for
+// test's last Eq ("" when it made none; for two Docs that differ, the differing element's
+// markup); Note is sameSidesNote when that Eq was False but its sides print the same, and where
+// two Docs differ when they did (docSides); Error is the failure or panic text; Trace is the task's steps (nil for
 // a pure test); Ms the wall time in milliseconds.
 type CaseResult struct {
 	Module, Name string
@@ -304,7 +326,7 @@ func runCase(c Case, o Options) (r CaseResult) {
 	start := time.Now()
 	defer func() { r.Ms = float64(time.Since(start).Microseconds()) / 1000 }()
 	sidesMu.Lock()
-	lastSides, hasSides, lastEq = [2]string{}, false, false
+	lastSides, hasSides, lastEq, lastNote = [2]string{}, false, false, ""
 	sidesMu.Unlock()
 
 	ok, errText := false, ""
@@ -354,6 +376,9 @@ func runCase(c Case, o Options) (r CaseResult) {
 		r.Left, r.Right = lastSides[0], lastSides[1]
 		if !r.OK && !lastEq && r.Left == r.Right {
 			r.Note = sameSidesNote
+		}
+		if !r.OK && lastNote != "" {
+			r.Note = lastNote
 		}
 	}
 	return r

@@ -24,11 +24,12 @@ type Notes__Show__Msg struct {
 type tag__Notes__Show__Msg uint8
 
 type Notes__Show__Session struct {
-	User string
+	User   string
+	Visits int64
 }
 
 func widen__Notes__Show__Session(s Notes__Show__Session) App__Session {
-	return App__Session{User: rt.Just(s.User)}
+	return App__Session{User: rt.Just(s.User), Visits: s.Visits}
 }
 
 func Notes__Show__load(params Notes__Show__Params, session Notes__Show__Session) eff.Query[Notes__Show__Model] {

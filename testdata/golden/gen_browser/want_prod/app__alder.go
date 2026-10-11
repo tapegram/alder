@@ -47,7 +47,7 @@ func init() {
 	rt.RegisterUnion(reflect.TypeOf(tag__Auth__Login__Msg(0)), []string{"Submit"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Note__Filter(0)), []string{"All", "Open", "Done"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Note__Kind(0)), []string{"Plain", "Idea", "Chore"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Index__Msg(0)), []string{"Submit", "Toggle", "Boom", "Rename", "SavePrefs"})
+	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Index__Msg(0)), []string{"Submit", "Toggle", "Boom", "Rename", "SavePrefs", "Visit"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Show__Msg(0)), []string{})
 }
 
@@ -135,13 +135,14 @@ type session__codec struct{}
 
 // Default is the session of a request without a valid cookie: every field at its default.
 func (session__codec) Default() any {
-	return App__Session{}
+	return App__Session{Visits: 0}
 }
 
 func (session__codec) Encode(v any) ([]byte, error) {
 	s := v.(App__Session)
 	return json.Marshal(map[string]any{
-		"User": s.User,
+		"User":   s.User,
+		"Visits": s.Visits,
 	})
 }
 
@@ -157,6 +158,12 @@ func (c session__codec) Decode(b []byte) (any, error) {
 		var v rt.Maybe[string]
 		if json.Unmarshal(raw, &v) == nil {
 			s.User = v
+		}
+	}
+	if raw, ok := m["Visits"]; ok {
+		var v int64
+		if json.Unmarshal(raw, &v) == nil {
+			s.Visits = v
 		}
 	}
 	return s, nil

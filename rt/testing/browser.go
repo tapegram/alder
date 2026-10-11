@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -270,30 +271,56 @@ func (e *NotShownError) Error() string {
 // NoControlError is the error of a Submit or Click the held page offers no control for. Msg is
 // the message as the test wrote it — the browser fills it from the URL (MsgLabel); the
 // generated code may replace it with the message's Alder form (`Todos.Index.Toggle { id: "…"
-// }`) — and Form the form's name for a Submit ("" when not known). Page is the held page's URL.
+// }`) — and Form the form's name for a Submit ("" when not known). Page is the held page's URL;
+// Offers, when the page renders the same message with other parameters, says which (Offered).
 type NoControlError struct {
 	Submit bool
 	Form   string
 	Msg    string
 	URL    string
 	Page   string
+	Offers string
 }
 
 // Error is "no page is open: `Test.get` one first" before the browser holds a page (Page ""),
-// else "the page has no form NewTodo (Todos.Index.Submit)" for a Submit ("the page has no
-// form for Todos.Index.Submit" without Form) and "the page has no button or form for
-// Todos.Index.Toggle { id: "…" }" for a Click.
+// else "the page / has no form NewTodo (Todos.Index.Submit)" for a Submit ("the page / has no
+// form for Todos.Index.Submit" without Form) and "the page / has no button or form for
+// Todos.Index.Toggle { id: "…" }" for a Click, each followed by " (the page has Toggle for id:
+// a, b)" when the page renders the message with other parameters.
 func (e *NoControlError) Error() string {
 	if e.Page == "" {
 		return "no page is open: `Test.get` one first"
 	}
+	s := "the page " + e.Page + " has no button or form for " + e.Msg
 	if e.Submit {
 		if e.Form != "" {
-			return "the page has no form " + e.Form + " (" + e.Msg + ")"
+			s = "the page " + e.Page + " has no form " + e.Form + " (" + e.Msg + ")"
+		} else {
+			s = "the page " + e.Page + " has no form for " + e.Msg
 		}
-		return "the page has no form for " + e.Msg
 	}
-	return "the page has no button or form for " + e.Msg
+	if e.Offers != "" {
+		s += " (the page has " + e.Offers + ")"
+	}
+	return s
+}
+
+// NoInputError is the error of a Submit whose fields name one the matched form renders no
+// input for (an <input>, <select> or <textarea> with that name): a browser sends only the
+// form's inputs, so the page would never receive it. Form is the form's name ("" when not
+// known).
+type NoInputError struct {
+	Form string
+	Name string
+}
+
+// Error is "the page's form NewTodo has no input `due`".
+func (e *NoInputError) Error() string {
+	form := "the page's form "
+	if e.Form != "" {
+		form += e.Form + " "
+	}
+	return form + "has no input `" + e.Name + "`"
 }
 
 // MsgLabel is a message URL (/_m/<Module>/<Msg>?k=v) as the test would write the message:
@@ -353,20 +380,114 @@ func (b *Browser) Get(u string) (Result, error) {
 // sent as rendered — as Datastar does (url-encoded, Datastar-Request: true), and applies the
 // answer: Rerendered (the body patch replaces the held body), Rejected (the same, when the
 // re-rendered page shows errors), Redirected (the target fetched and held), Missing, Failed.
-// With no such form the error is a *NoControlError and nothing is sent.
+// With no such form the error is a *NoControlError, and with a field the form has no input for
+// a *NoInputError (Fields.For); either way nothing is sent.
 func (b *Browser) Submit(msgURL string, fields url.Values) (Result, error) {
-	target, ok := b.control(msgURL, true)
+	return b.submit(msgURL, "", Fields{Values: fields})
+}
+
+// submit is Submit of fields, form the form's name for the errors.
+func (b *Browser) submit(msgURL, form string, fields Fields) (Result, error) {
+	target, f, ok := b.formFor(msgURL)
 	if !ok {
-		return Result{}, &NoControlError{Submit: true, Msg: MsgLabel(msgURL), URL: msgURL, Page: b.url}
+		return Result{}, &NoControlError{Submit: true, Form: form, Msg: MsgLabel(msgURL), URL: msgURL, Page: b.url,
+			Offers: Offered(msgURL, b.controlURLs(true))}
 	}
-	if fields == nil {
-		fields = url.Values{}
+	send, err := fields.For(f, form)
+	if err != nil {
+		return Result{}, err
 	}
-	ans, err := b.post(target, fields)
+	ans, err := b.post(target, send)
 	if err != nil {
 		return Result{}, err
 	}
 	return b.result(ans), nil
+}
+
+// Fields is a form's record as Test.submit posts it (the generated encode__M__F): Values, the
+// fields as the form's inputs send them, and Absent, the names whose value is what the form's
+// decoder makes of a field that is not sent (a Maybe's Nothing without a default, a field
+// equal to its default): the page decodes the record the test wrote whether its form has an
+// input for one of those or not. A Bool's False is not in Values at all (an unticked checkbox
+// sends nothing), so it needs no input either.
+type Fields struct {
+	Values url.Values
+	Absent []string
+}
+
+// For is the body a browser sends for fs through form f: the fields f has an input for (an
+// <input>, <select> or <textarea> with the field's name, which Datastar's form serialization
+// sends). A field it has no input for is left out when its name is in Absent; otherwise the
+// error is a *NoInputError naming form and the first such field in name order — a user could
+// not send it.
+func (fs Fields) For(f html.Node, form string) (url.Values, error) {
+	inputs := map[string]bool{}
+	for _, sel := range []html.Selector{selInput, selSelect, selTextarea} {
+		for _, n := range html.Select(f, sel) {
+			if name, ok := html.AttrOf(n, "name"); ok {
+				inputs[name] = true
+			}
+		}
+	}
+	out := url.Values{}
+	for _, name := range slices.Sorted(maps.Keys(fs.Values)) {
+		switch {
+		case inputs[name]:
+			out[name] = fs.Values[name]
+		case !slices.Contains(fs.Absent, name):
+			return nil, &NoInputError{Form: form, Name: name}
+		}
+	}
+	return out, nil
+}
+
+// Offered is what the held page offers for the message of msgURL with other parameters, from
+// the URLs its controls post (urls): the message's name, then each control's own parameters in
+// page order, each set once — "Toggle for id: a, b" when every control has the same single
+// parameter, else "Rename for id: a, x: 1; id: b, x: 2"; "" when no control posts the message
+// with parameters.
+func Offered(msgURL string, urls []string) string {
+	want, err := url.Parse(msgURL)
+	if err != nil {
+		return ""
+	}
+	type set struct{ keys, text, value string }
+	var sets []set
+	for _, u := range urls {
+		p, err := url.Parse(u)
+		if err != nil || p.Path != want.Path {
+			continue
+		}
+		var keys, own []string
+		value := ""
+		for _, kv := range strings.Split(p.RawQuery, "&") {
+			k, v, _ := strings.Cut(kv, "=")
+			k, _ = url.QueryUnescape(k)
+			v, _ = url.QueryUnescape(v)
+			if k == "" || strings.HasPrefix(k, rt.PagePrefix) {
+				continue
+			}
+			keys, own, value = append(keys, k), append(own, k+": "+v), v
+		}
+		s := set{strings.Join(keys, ","), strings.Join(own, ", "), value}
+		if len(own) > 0 && !slices.Contains(sets, s) {
+			sets = append(sets, s)
+		}
+	}
+	if len(sets) == 0 {
+		return ""
+	}
+	name := want.Path[strings.LastIndexByte(want.Path, '/')+1:]
+	var texts, values []string
+	single := !strings.Contains(sets[0].keys, ",")
+	for _, s := range sets {
+		texts, values = append(texts, s.text), append(values, s.value)
+		single = single && s.keys == sets[0].keys
+	}
+	if single {
+		return name + " for " + sets[0].keys + ": " + strings.Join(values, ", ")
+	}
+	return name + " for " + strings.Join(texts, "; ")
 }
 
 // Click posts the message msgURL as the held page's control for it would: a `click` button (its
@@ -375,9 +496,9 @@ func (b *Browser) Submit(msgURL string, fields url.Values) (Result, error) {
 // `_p.` parameters, is what is posted. The answer is applied as for Submit. With no such control
 // the error is a *NoControlError and nothing is sent.
 func (b *Browser) Click(msgURL string) (Result, error) {
-	target, ok := b.control(msgURL, false)
+	target, ok := b.control(msgURL)
 	if !ok {
-		return Result{}, &NoControlError{Msg: MsgLabel(msgURL), URL: msgURL, Page: b.url}
+		return Result{}, &NoControlError{Msg: MsgLabel(msgURL), URL: msgURL, Page: b.url, Offers: Offered(msgURL, b.controlURLs(false))}
 	}
 	ans, err := b.post(target, url.Values{})
 	if err != nil {
@@ -387,34 +508,68 @@ func (b *Browser) Click(msgURL string) (Result, error) {
 }
 
 var (
-	selForm   = html.MustParseSelector("form")
-	selAction = html.MustParseSelector("[formaction]")
-	selClick  = html.MustParseSelector("[data-on:click]")
-	selClickP = html.MustParseSelector("[data-on:click__prevent]")
-	selErrors = html.MustParseSelector("ul[data-errors]")
-	selLi     = html.MustParseSelector("li")
+	selForm     = html.MustParseSelector("form")
+	selAction   = html.MustParseSelector("[formaction]")
+	selClick    = html.MustParseSelector("[data-on:click]")
+	selClickP   = html.MustParseSelector("[data-on:click__prevent]")
+	selErrors   = html.MustParseSelector("ul[data-errors]")
+	selLi       = html.MustParseSelector("li")
+	selInput    = html.MustParseSelector("input")
+	selSelect   = html.MustParseSelector("select")
+	selTextarea = html.MustParseSelector("textarea")
 )
 
-// control is the URL the held page's control for msgURL posts: for a submit a <form>'s action
-// or data-on:submit; for a click also a [formaction] button's and any data-on:click's.
-func (b *Browser) control(msgURL string, submit bool) (string, bool) {
-	if !b.hasDoc {
-		return "", false
-	}
+// control is the URL the held page's control for msgURL posts: a <form>'s action or
+// data-on:submit, a [formaction] button's or any data-on:click's.
+func (b *Browser) control(msgURL string) (string, bool) {
 	want, ok := msgKey(msgURL)
 	if !ok {
 		return "", false
 	}
+	for _, u := range b.controlURLs(false) {
+		if k, ok := msgKey(u); ok && k == want {
+			return u, true
+		}
+	}
+	return "", false
+}
+
+// formFor is the URL the held page's form for msgURL posts, and the form (a form to submit:
+// not a click button's own).
+func (b *Browser) formFor(msgURL string) (string, html.Node, bool) {
+	want, ok := msgKey(msgURL)
+	if !b.hasDoc || !ok {
+		return "", html.Node{}, false
+	}
+	for _, f := range html.Select(b.doc, selForm) {
+		if clickForm(f) {
+			continue
+		}
+		for _, u := range formURLs(f) {
+			if k, ok := msgKey(u); ok && k == want {
+				return u, f, true
+			}
+		}
+	}
+	return "", html.Node{}, false
+}
+
+// clickForm reports whether form f is a click button's own form, which is not a form to submit.
+func clickForm(f html.Node) bool {
+	class, _ := html.AttrOf(f, "class")
+	return slices.Contains(strings.Fields(class), "_alder-click")
+}
+
+// controlURLs are the URLs the held page's controls post: its forms' (for a submit only those,
+// and not a click button's own form), then a [formaction] button's and any data-on:click's.
+func (b *Browser) controlURLs(submit bool) []string {
+	if !b.hasDoc {
+		return nil
+	}
 	var urls []string
 	for _, f := range html.Select(b.doc, selForm) {
-		if class, _ := html.AttrOf(f, "class"); submit && slices.Contains(strings.Fields(class), "_alder-click") {
-			continue // a click button's own form is not a form to submit
-		}
-		if a, ok := html.AttrOf(f, "action"); ok {
-			urls = append(urls, a)
-		}
-		if a, ok := html.AttrOf(f, "data-on:submit"); ok {
-			urls = append(urls, postURL(a))
+		if !submit || !clickForm(f) {
+			urls = append(urls, formURLs(f)...)
 		}
 	}
 	if !submit {
@@ -432,12 +587,7 @@ func (b *Browser) control(msgURL string, submit bool) (string, bool) {
 			}
 		}
 	}
-	for _, u := range urls {
-		if k, ok := msgKey(u); ok && k == want {
-			return u, true
-		}
-	}
-	return "", false
+	return urls
 }
 
 // msgKey is rt.MsgKey of a message URL: its path and own parameters.

@@ -48,6 +48,7 @@ msg Toggle { id: Note.NoteId }
 msg Boom
 msg Rename { id: Note.NoteId } form Title
 msg SavePrefs form Prefs
+msg Visit
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
@@ -75,6 +76,10 @@ update msg model session = match msg {
     Task.succeed Rerender
   },
   SavePrefs p -> Task.succeed Rerender,
+  Visit p -> {
+    let _ <- Session.put (\s -> { s | visits: s.visits + 1 })
+    Task.succeed Rerender
+  },
 }
 
 view : Model -> Session -> Html Msg
@@ -123,6 +128,8 @@ view model session =
         <button>Send</button>
       </form>
       <button click={Boom}>Boom</button>
+      <button click={Visit}>Visit</button>
+      <p id="visits">{Text.fromInt session.visits}</p>
       <button click={App.Logout}>Log out</button>
     </body>
   </html>
@@ -187,7 +194,7 @@ test "the document and the view agree" = {
   let page <- Test.get (Notes.Index { filter: Open })
   let sel = "nav a"
   let bad = "nav >"
-  Task.succeed ({ same: page.doc == Test.doc (view page.model { user: me }), links: Test.texts sel page.doc, bad: Test.count bad page.doc, href: Test.attr "href" "nav a" page.doc, none: Test.text "#nothing" page.doc } == { same: True, links: ["All", "Open", "Done"], bad: 0, href: Just "/", none: Nothing })
+  Task.succeed ({ same: page.doc == Test.doc (view page.model { user: me, visits: 0 }), links: Test.texts sel page.doc, bad: Test.count bad page.doc, href: Test.attr "href" "nav a" page.doc, none: Test.text "#nothing" page.doc } == { same: True, links: ["All", "Open", "Done"], bad: 0, href: Just "/", none: Nothing })
 }
 
 test "a stranger's note is missing" = {
@@ -205,7 +212,7 @@ test "the model is the one the page rendered" = {
   let _ <- Test.login { user: Just me }
   let page <- Test.get (Notes.Index {})
   let trace <- Test.trace
-  Task.succeed ({ shown: Test.text "#now" page.doc, same: page.doc == Test.doc (view page.model { user: me }), trace: trace } == { shown: Just (Time.format "15:04:05" page.model.now), same: True, trace: ["Db.insert User", "Test.login", "Test.get Notes.Index", "Db.all Note", "Time.now"] })
+  Task.succeed ({ shown: Test.text "#now" page.doc, same: page.doc == Test.doc (view page.model { user: me, visits: 0 }), trace: trace } == { shown: Just (Time.format "15:04:05" page.model.now), same: True, trace: ["Db.insert User", "Test.login", "Test.get Notes.Index", "Db.all Note", "Time.now"] })
 }
 
 -- A form each row renders: the message with its parameters names the row's.
@@ -228,4 +235,31 @@ test "an App form" = {
   let _ <- Test.get (Notes.Index {})
   let r <- Test.submit App.Feedback { text: "nice" }
   Task.succeed (r.answer == Redirected (Notes.Index {}))
+}
+
+-- A Rerender after Session.put: the cookie the answer sets is the step's session, and the page
+-- re-rendered with it shows it. Test.login left `visits` out: the session's default applies.
+test "a Rerender after Session.put updates the session" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let once <- Test.click Visit
+  let twice <- Test.click Visit
+  Task.succeed ({ answer: twice.answer, first: once.session.visits, visits: twice.session.visits, shown: Test.text "#visits" twice.doc } == { answer: Rerendered, first: 1, visits: 2, shown: Just "2" })
+}
+
+-- A failing Test.run undoes the writes its browser steps made; the browser itself is not rolled
+-- back: it still holds the page the step left it on.
+test "a browser write inside a failing Test.run is undone" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let r <- Test.run {
+    let added <- Test.submit NewNote { title: Text.NonEmpty "Milk", due: Nothing, urgent: False, contact: Nothing }
+    let _ <- Task.fail "stop"
+    Task.succeed (Test.text "#summary" added.doc)
+  }
+  let rows <- Db.from Note |> Db.count
+  let page <- Test.get (Notes.Index {})
+  Task.succeed ({ value: r.value, rows: rows, shown: Test.text "#summary" page.doc } == { value: Err "stop", rows: 0, shown: Just "0 shown" })
 }

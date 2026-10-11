@@ -213,15 +213,16 @@ func ModelOf[M any](u string, r Result) (M, error) {
 
 // SubmitForm is Test.submit of a form by its name: the fields posted to the form on the held
 // page whose message is msgPath (/_m/<Module>/<Msg>) — the message's own parameters, which the
-// test did not write, are the rendered form's — as Submit posts them. Without such a form the
-// error is a *NoControlError naming form ("the page has no form NewTodo (Todos.Index.Submit)");
-// with several whose URLs differ (one per row) it is "the page has 2 forms for
-// Todos.Index.Rename: write the message with its parameters".
-func (b *Browser) SubmitForm(msgPath, form string, fields url.Values) (Result, error) {
+// test did not write, are the rendered form's — as Submit posts them (only the fields the form
+// has inputs for: Fields.For). Without such a form the error is a *NoControlError naming form
+// ("the page / has no form NewTodo (Todos.Index.Submit)"); with several whose URLs differ (one
+// per row) it is "the page has 2 forms for Todos.Index.Rename: write the message with its
+// parameters".
+func (b *Browser) SubmitForm(msgPath, form string, fields Fields) (Result, error) {
 	var targets []string
 	if b.hasDoc {
 		for _, f := range html.Select(b.doc, selForm) {
-			if class, _ := html.AttrOf(f, "class"); strings.Contains(" "+class+" ", " _alder-click ") {
+			if clickForm(f) {
 				continue
 			}
 			for _, u := range formURLs(f) {
@@ -238,7 +239,7 @@ func (b *Browser) SubmitForm(msgPath, form string, fields url.Values) (Result, e
 	case 0:
 		return Result{}, &NoControlError{Submit: true, Form: form, Msg: MsgLabel(msgPath), URL: msgPath, Page: b.url}
 	case 1:
-		return b.Submit(targets[0], fields)
+		return b.submit(targets[0], form, fields)
 	}
 	return Result{}, fmt.Errorf("the page has %d forms for %s: write the message with its parameters", len(targets), MsgLabel(msgPath))
 }
@@ -246,11 +247,11 @@ func (b *Browser) SubmitForm(msgPath, form string, fields url.Values) (Result, e
 // SubmitMsg is Test.submit of a message with its parameters (`Test.submit (Save { id: id }) r`):
 // Submit to the held page's form for msgURL (matched as the message and its own parameters),
 // with form and label — the message as Alder writes it (MsgName) — in its error.
-func (b *Browser) SubmitMsg(msgURL, form, label string, fields url.Values) (Result, error) {
-	r, err := b.Submit(msgURL, fields)
+func (b *Browser) SubmitMsg(msgURL, form, label string, fields Fields) (Result, error) {
+	r, err := b.submit(msgURL, form, fields)
 	var nc *NoControlError
 	if errors.As(err, &nc) {
-		nc.Form, nc.Msg = form, label
+		nc.Msg = label
 	}
 	return r, err
 }
@@ -287,13 +288,13 @@ func MsgName(name string, params any) string {
 	return name + " " + rt.Show(params)
 }
 
-// RawFields is Test.submitRaw's fields as a request body: each { name, value } in order. A
-// name form does not declare (declared: its fields) is an error, "form NewTodo has no field
-// `colour`".
+// RawFields is Test.submitRaw's fields as a request body: each { name, value } in order, none
+// Absent (every name the test wrote must be one the form has an input for). A name form does
+// not declare (declared: its fields) is an error, "form NewTodo has no field `colour`".
 func RawFields(form string, declared []string, fields []struct {
 	Name  string
 	Value string
-}) (url.Values, error) {
+}) (Fields, error) {
 	out := url.Values{}
 	for _, f := range fields {
 		known := false
@@ -301,11 +302,11 @@ func RawFields(form string, declared []string, fields []struct {
 			known = known || d == f.Name
 		}
 		if !known {
-			return nil, fmt.Errorf("form %s has no field `%s`", form, f.Name)
+			return Fields{}, fmt.Errorf("form %s has no field `%s`", form, f.Name)
 		}
 		out[f.Name] = append(out[f.Name], f.Value)
 	}
-	return out, nil
+	return Fields{Values: out}, nil
 }
 
 // FormatFloat is a Float field as an input submits it: digits that parse back to the same

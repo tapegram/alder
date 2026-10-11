@@ -1,0 +1,9 @@
+module App
+
+session { user: Maybe Text, visits: Int = 0, theme: Text = "light" }
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>not found</p>

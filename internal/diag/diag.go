@@ -112,6 +112,7 @@ const (
 	UnusedImport   = "W0001"
 	UnshownErrors  = "W0003"
 	PlainDefault   = "W0004"
+	UnshownReject  = "W0005" // a message whose update may answer Reject, posted by a form without <Errors form />
 )
 
 type Bag struct{ Items []Diagnostic }

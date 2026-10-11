@@ -18,6 +18,7 @@ import (
 
 	"alder/rt/db"
 	"alder/rt/eff"
+	"alder/rt/html"
 	"alder/rt/web"
 )
 
@@ -603,6 +604,33 @@ func TestMain_SamePrintedSidesNote(t *testing.T) {
 		"FAIL M \"other\"\n  left:  1\n  right: 1\n0 passed, 2 failed\n"
 	if out != want || code != 1 {
 		t.Fatalf("code %d\n%q\nwant\n%q", code, out, want)
+	}
+}
+
+// A failed `==` of two Docs prints where they first differ, not the two documents (I2); a
+// later `==` replaces its note.
+func TestMain_DocDifference(t *testing.T) {
+	t.Setenv("ALDER_TEST_RUN", "")
+	t.Setenv("ALDER_TEST_JSON", "")
+	doc := func(s string) Doc {
+		n, err := html.Parse("<html><body><main>" + s + "</main></body></html>")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return DocOf(n)
+	}
+	cs := []Case{{Module: "M", Name: "doc", Pure: func() bool {
+		return Eq(doc(`<ul id="todos"><li>Milk</li></ul>`), doc(`<ul id="todos"></ul>`))
+	}}, {Module: "M", Name: "after", Pure: func() bool {
+		_ = Eq(doc("<p>a</p>"), doc("<p>b</p>"))
+		return Eq(int64(1), int64(2))
+	}}}
+	out, _, code := runMain(t, cs)
+	want := "FAIL M \"doc\"\n  left:  <ul id=\"todos\"><li>Milk</li></ul>\n  right: <ul id=\"todos\"></ul>\n" +
+		"  note:  the documents differ at body > main > ul#todos: left 1 child <li>, right 0\n" +
+		"FAIL M \"after\"\n  left:  1\n  right: 2\n0 passed, 2 failed\n"
+	if out != want || code != 1 {
+		t.Fatalf("code %d\n%s\nwant\n%s", code, out, want)
 	}
 }
 
