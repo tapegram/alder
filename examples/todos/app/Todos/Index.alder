@@ -119,3 +119,34 @@ test "Toggle by another user is not found" = {
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ value: r.value, trace: r.trace, done: done } == { value: Err "not found", trace: ["Db.get Todo"], done: Just False })
 }
+
+-- The same page through the browser: the test logs in, opens the page, and uses the form and
+-- the buttons the page renders, as a user would (book 10, "Testing through the browser").
+test "adding a todo through the page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index {})
+  let added <- Test.submit NewTodo { title: Text.NonEmpty "Milk", due: Nothing }
+  let page <- Test.get (Todos.Index {})
+  Task.succeed ({ answer: added.answer, todos: List.map (\t -> t.title) page.model.todos, summary: Test.text "#summary" page.doc } == { answer: Redirected (Todos.Index {}), todos: [Text.NonEmpty "Milk"], summary: Just "1 open" })
+}
+
+test "toggling a todo through the page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index {})
+  let r <- Test.click (Toggle { id: id })
+  Task.succeed ({ answer: r.answer, done: Test.has "li.done" r.doc, summary: Test.text "#summary" r.doc } == { answer: Rerendered, done: True, summary: Just "0 open" })
+}
+
+-- A stranger's page lists none of my todos, so it has no Toggle button to click for them; the
+-- todo's own page is a 404 for the stranger.
+test "a stranger cannot see my todo" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let page <- Test.get (Todos.Index {})
+  let show <- Test.open (Todos.Show { id: id })
+  Task.succeed ({ items: Test.count "li" page.doc, show: show.answer } == { items: 0, show: Missing })
+}

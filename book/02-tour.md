@@ -233,6 +233,48 @@ test "Toggle by another user is not found" = {
 }
 ```
 
+The last three tests go through the page itself, as a user would: they log
+in, open the page, post its form, click its buttons, and read what the page
+shows (`#summary` is the `<p id="summary">` above). The form posted by
+`Test.submit NewTodo` and the button clicked by `Test.click (Toggle { id:
+id })` must be on the page the test holds, so a stranger, whose page lists
+none of my todos, has nothing to click; the todo's own page is a 404 for
+them (`Missing`). Chapter 10, "Testing through the browser", explains each
+step.
+
+```alder part=Todos.Index
+-- The same page through the browser: the test logs in, opens the page, and uses the form and
+-- the buttons the page renders, as a user would (book 10, "Testing through the browser").
+test "adding a todo through the page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index {})
+  let added <- Test.submit NewTodo { title: Text.NonEmpty "Milk", due: Nothing }
+  let page <- Test.get (Todos.Index {})
+  Task.succeed ({ answer: added.answer, todos: List.map (\t -> t.title) page.model.todos, summary: Test.text "#summary" page.doc } == { answer: Redirected (Todos.Index {}), todos: [Text.NonEmpty "Milk"], summary: Just "1 open" })
+}
+
+test "toggling a todo through the page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index {})
+  let r <- Test.click (Toggle { id: id })
+  Task.succeed ({ answer: r.answer, done: Test.has "li.done" r.doc, summary: Test.text "#summary" r.doc } == { answer: Rerendered, done: True, summary: Just "0 open" })
+}
+
+-- A stranger's page lists none of my todos, so it has no Toggle button to click for them; the
+-- todo's own page is a 404 for the stranger.
+test "a stranger cannot see my todo" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let page <- Test.get (Todos.Index {})
+  let show <- Test.open (Todos.Show { id: id })
+  Task.succeed ({ items: Test.count "li" page.doc, show: show.answer } == { items: 0, show: Missing })
+}
+```
+
 ## What the compiler checked
 
 Reading this module, the compiler verified that: every `href` points at a
@@ -249,7 +291,8 @@ that needed a test.
 - `app/Auth/Login.alder`: the login page. It declares a `Password`
   capability, implemented in Go, and uses `Session.put` to sign the user
   in. A wrong password returns `Reject`, which re-renders the form with a
-  message.
+  message. Beside the capability is a `fake Password` for tests, and three
+  tests that log in and out through the form and the button.
 - `app/App.alder`: the session record, the error pages, and the app-level
   `Logout` message, which any page can send with `click={App.Logout}`.
 - `app/User.alder`, `app/Layout.alder`: the user table and a page layout

@@ -139,3 +139,14 @@ test "a comment is listed oldest first" = {
   let after <- load { slug: Post.Slug "hello" } { user: Nothing }
   Task.succeed (List.map (\c -> c.body) after.comments == [Comment.Body "First!", Comment.Body "Second."])
 }
+
+-- An empty comment, posted as the form's inputs would send it: the form is re-rendered with the
+-- error beside the field, and no comment is stored.
+test "an empty comment is rejected" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", published: True, author: author }
+  let _ <- Test.get (Posts.Show { slug: Post.Slug "hello" })
+  let r <- Test.submitRaw NewComment [{ name: "author", value: "Ann" }, { name: "body", value: "" }]
+  let comments <- Db.from Comment |> Db.count
+  Task.succeed ({ answer: r.answer, author: Test.attr "value" "input[name=author]" r.doc, comments: comments } == { answer: Rejected [{ field: "body", message: "is not valid" }], author: Just "Ann", comments: 0 })
+}

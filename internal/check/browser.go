@@ -268,6 +268,7 @@ func (mc *modCtx) stepFormOf(step string, arg syntax.Expr, env *env, eff effect)
 		}
 		return stepForm{}, false
 	}
+	c.record(ct, types.Unit) // a form's name is not a value (stepParams)
 	mod := ct.Ref.Module
 	if c.pages[mod] == nil && mod != "App" {
 		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a form declared by a page: `%s` is a form of `%s`, which is not a page", step, ct.Name, mod)

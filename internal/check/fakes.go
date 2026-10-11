@@ -153,7 +153,11 @@ func (mc *modCtx) inferTestFake(x *syntax.App, v *syntax.Var, pipe *pipeArg) typ
 		c.errorf(diag.TypeMismatch, ct.Span, "`Test.fake` wants a capability with a `fake`: `%s` has none", ct.Name)
 		return types.Err
 	}
-	return &types.App{Con: "Task", Args: []types.Type{types.Unit}}
+	res := &types.App{Con: "Task", Args: []types.Type{types.Unit}}
+	// the capability's name is not a value: recorded as Unit, as a step's form name is
+	c.record(ct, types.Unit)
+	c.record(v, &types.Fun{Params: []types.Type{types.Unit}, Result: res})
+	return res
 }
 
 // columnTable is the table a column reference names: `Charge` in `Charge.cents`, and in the

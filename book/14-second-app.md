@@ -468,7 +468,7 @@ view model session =
 
 ## Its tests
 
-`alder test examples/blog` runs twenty-four tests in six modules:
+`alder test examples/blog` runs twenty-nine tests in six modules:
 
 ```text
 $ alder test examples/blog
@@ -477,6 +477,8 @@ ok   Post "a draft is not visible"
 ok   Admin "a Reader cannot open the admin page"
 ok   Admin "creating a post redirects to its edit page"
 ok   Admin "a taken slug is refused"
+ok   Admin "the admin page needs an Author"
+ok   Admin "an Author logs out from the admin page"
 ok   Comment "a name or comment has text and a bound"
 ok   Posts.Index "the front page lists only published posts, newest first"
 ok   Posts.Index "search matches title or body"
@@ -487,6 +489,8 @@ ok   Posts.Index "a `_` in the query is literal"
 ok   Posts.Index "a long query is cut"
 ok   Posts.Index "a search answers with the first page of its results"
 ok   Posts.Index "only an Author sees the Write link"
+ok   Posts.Index "the second page links back to the first"
+ok   Posts.Index "a search through the form"
 ok   Admin.Edit "deleting a post deletes its comments"
 ok   Admin.Edit "another author's post is not found"
 ok   Admin.Edit "a demoted author cannot edit"
@@ -496,7 +500,8 @@ ok   Posts.Show "a draft is shown to its author"
 ok   Posts.Show "a post's body is rendered through the Markdown capability"
 ok   Posts.Show "a comment on a draft is refused"
 ok   Posts.Show "a comment is listed oldest first"
-24 passed, 0 failed
+ok   Posts.Show "an empty comment is rejected"
+29 passed, 0 failed
 ```
 
 The `Posts.Index` tests call `load` the way the runtime does, with
@@ -573,11 +578,53 @@ test "only an Author sees the Write link" = {
 }
 ```
 
+The last two go through the page as a browser would (chapter 10,
+"Testing through the browser"). The first opens the first and second
+pages and reads the links the `nav` renders: `Test.attr "href"
+"a[rel=next]"` is the `href` of the first `<a rel="next">`, and the
+second page's "Newer" link is `/`, the first page with both parameters at
+their defaults, which the URL leaves out. The second posts the search form
+with `Test.submit`, follows the redirect to `/?q=tomato` and reads the
+titles listed there and the query kept in the search box:
+
+```alder part=blog/Posts.Index
+-- The same page through the browser: the links a page renders, and the search form posted as a
+-- user posts it (book 10, "Testing through the browser").
+test "the second page links back to the first" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Task.all (List.map (\n -> Db.insert Post { slug: Post.Slug ("post-" ++ Text.fromInt n), title: Text.NonEmpty "A post", body: "", published: True, author: author }) (List.range 1 11))
+  let first <- Test.get (Posts.Index {})
+  let second <- Test.get (Posts.Index { page: 2 })
+  Task.succeed ({ firstPosts: Test.count "ul.posts li" first.doc, next: Test.attr "href" "a[rel=next]" first.doc, secondPosts: Test.count "ul.posts li" second.doc, prev: Test.attr "href" "a[rel=prev]" second.doc, more: Test.has "a[rel=next]" second.doc } == { firstPosts: 10, next: Just "/?page=2", secondPosts: 1, prev: Just "/", more: False })
+}
+
+test "a search through the form" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "soup", title: Text.NonEmpty "Soup", body: "Use ripe tomatoes.", published: True, author: author }
+  let _ <- Db.insert Post { slug: Post.Slug "trains", title: Text.NonEmpty "Trains", body: "Fast ones.", published: True, author: author }
+  let _ <- Test.get (Posts.Index {})
+  let r <- Test.submit SearchForm { q: "tomato" }
+  Task.succeed ({ answer: r.answer, titles: Test.texts "ul.posts a" r.doc, query: Test.attr "value" "input[name=q]" r.doc } == { answer: Redirected (Posts.Index { page: 1, q: "tomato" }), titles: ["Soup"], query: Just "tomato" })
+}
+```
+
 The first test can check that `Second` comes before `First` because a
 test's clock ticks (chapter 10): each `Db.insert` reads it for `created`,
 one second later each time. Changing `desc` to `asc` in `load` fails
 this test, and flipping it in `Posts.Show` fails "a comment is listed
 oldest first".
+
+Three more tests go through the browser. `Admin`'s "the admin page needs
+an Author" opens `/admin` as a visitor (`Redirected (Auth.Login {})`:
+`requires user` sends them to log in) and as a logged-in Reader
+(`Missing`: `load`'s 404); "an Author logs out from the admin page"
+clicks the page's `App.Logout` button and finds the session's `user`
+gone. `Posts.Show`'s "an empty comment is rejected" posts the comment
+form with an empty body through `Test.submitRaw`, which sends text as
+typed, and gets `Rejected [{ field: "body", message: "is not valid" }]`:
+`Comment.Body` is a brand with a `where` rule, and a value its rule
+refuses is "is not valid" (a `Text.NonEmpty` field would say "must not
+be empty").
 
 ## Run it
 

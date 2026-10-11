@@ -113,3 +113,21 @@ test "a taken slug is refused" = {
   let posts <- Db.from Post |> Db.count
   Task.succeed ({ value: r.value, posts: posts } == { value: Ok (Reject "Another post has that slug."), posts: 1 })
 }
+
+-- The admin page through the browser: a visitor is sent to log in; a Reader who is logged in
+-- gets the 404; an Author gets the page, and can log out from it.
+test "the admin page needs an Author" = {
+  let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
+  let visitor <- Test.open (Admin {})
+  let _ <- Test.login { user: Just reader }
+  let asReader <- Test.open (Admin {})
+  Task.succeed ({ visitor: visitor.answer, reader: asReader.answer } == { visitor: Redirected (Auth.Login {}), reader: Missing })
+}
+
+test "an Author logs out from the admin page" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Test.login { user: Just author }
+  let page <- Test.get (Admin {})
+  let out <- Test.click App.Logout
+  Task.succeed ({ heading: Test.text "h1" page.doc, out: out.answer, user: out.session.user } == { heading: Just "Your posts", out: Redirected (Auth.Login {}), user: Nothing })
+}

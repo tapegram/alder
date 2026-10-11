@@ -86,6 +86,86 @@
       (input Input Credentials field=password label="Password")
       (input Errors Credentials field=password)
       (elem button (htext "Log in")))))
+(test "an unknown email is rejected" task
+  (bind task _
+    (test-fake Auth.Login.Password)
+    (bind task _
+      (test-get Auth.Login (record Params))
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+        (test-submit Auth.Login.Credentials Submit
+          (record Credentials (email "nobody@example.com") (password "secret")))
+        (pure task
+          (test-eq
+            (record
+              (answer (field answer (var r)))
+              (user (field user (field session (var r)))))
+            (record
+              (answer
+                (ctor Prelude.Answer.Rejected
+                  (record
+                    (value
+                      (list
+                        (record
+                          (field "")
+                          (message "Email or password is incorrect.")))))))
+              (user (ctor Prelude.Maybe.Nothing)))))))))
+(test "logging in through the form" task
+  (bind task _
+    (test-fake Auth.Login.Password)
+    (bind task me : Text
+      (db-insert User.User
+        (record (email "me@example.com") (name "Me") (passwordHash "")))
+      (bind task _
+        (test-get Auth.Login (record Params))
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+          (test-submit Auth.Login.Credentials Submit
+            (record Credentials (email "me@example.com") (password "secret")))
+          (pure task
+            (test-eq
+              (record
+                (answer (field answer (var r)))
+                (user (field user (field session (var r))))
+                (title (call (std Test.text) "h1" (field doc (var r)))))
+              (record
+                (answer
+                  (ctor Prelude.Answer.Redirected
+                    (record
+                      (value
+                        (page-ref Todos.Index
+                          (record Todos.Index.Params
+                            (filter (ctor Todo.Filter.All))))))))
+                (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+                (title (ctor Prelude.Maybe.Just (record (value "Todos"))))))))))))
+(test "a visitor is sent to log in, and can log out" task
+  (bind task me : Text
+    (db-insert User.User
+      (record (email "me@example.com") (name "Me") (passwordHash "")))
+    (bind task visitor : { answer: Answer, session: App.Session, doc: Doc }
+      (test-open Todos.Index
+        (record Todos.Index.Params (filter (ctor Todo.Filter.All))))
+      (bind task _
+        (test-login
+          (record App.Session
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+        (bind task _
+          (test-get Todos.Index
+            (record Todos.Index.Params (filter (ctor Todo.Filter.All))))
+          (bind task out : { answer: Answer, session: App.Session, doc: Doc }
+            (test-click App.Logout)
+            (pure task
+              (test-eq
+                (record
+                  (visitor (field answer (var visitor)))
+                  (out (field answer (var out)))
+                  (user (field user (field session (var out)))))
+                (record
+                  (visitor
+                    (ctor Prelude.Answer.Redirected
+                      (record (value (page-ref Auth.Login (record Params))))))
+                  (out
+                    (ctor Prelude.Answer.Redirected
+                      (record (value (page-ref Auth.Login (record Params))))))
+                  (user (ctor Prelude.Maybe.Nothing)))))))))))
 (module Todo)
 (union Todo.Filter (All) (Active) (Completed))
 (record Todo.Todo
@@ -332,6 +412,96 @@
                       (ctor Prelude.Result.Err (record (value "not found"))))
                     (trace (list "Db.get Todo"))
                     (done (ctor Prelude.Maybe.Just (record (value False))))))))))))))
+(test "adding a todo through the page" task
+  (bind task me : Text
+    (db-insert User.User
+      (record (email "me@example.com") (name "Me") (passwordHash "")))
+    (bind task _
+      (test-login
+        (record App.Session
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+      (bind task _
+        (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
+        (bind task added : { answer: Answer, session: App.Session, doc: Doc }
+          (test-submit Todos.Index.NewTodo Submit
+            (record NewTodo (title "Milk") (due (ctor Prelude.Maybe.Nothing))))
+          (bind task page : { model: Model, session: App.Session, doc: Doc }
+            (test-get Todos.Index
+              (record Params (filter (ctor Todo.Filter.All))))
+            (pure task
+              (test-eq
+                (record
+                  (answer (field answer (var added)))
+                  (todos
+                    (call (std List.map)
+                      (lambda (t : Todo) (field title (var t)))
+                      (field todos (field model (var page)))))
+                  (summary
+                    (call (std Test.text) "#summary" (field doc (var page)))))
+                (record
+                  (answer
+                    (ctor Prelude.Answer.Redirected
+                      (record
+                        (value
+                          (page-ref Todos.Index
+                            (record Params (filter (ctor Todo.Filter.All))))))))
+                  (todos (list "Milk"))
+                  (summary (ctor Prelude.Maybe.Just (record (value "1 open")))))))))))))
+(test "toggling a todo through the page" task
+  (bind task me : Text
+    (db-insert User.User
+      (record (email "me@example.com") (name "Me") (passwordHash "")))
+    (bind task id : Text
+      (db-insert Todo.Todo
+        (record
+          (title "Milk")
+          (done False)
+          (due (ctor Prelude.Maybe.Nothing))
+          (owner (var me))))
+      (bind task _
+        (test-login
+          (record App.Session
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+        (bind task _
+          (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+            (test-click Todos.Index.Toggle (record ToggleParams (id (var id))))
+            (pure task
+              (test-eq
+                (record
+                  (answer (field answer (var r)))
+                  (done (call (std Test.has) "li.done" (field doc (var r))))
+                  (summary
+                    (call (std Test.text) "#summary" (field doc (var r)))))
+                (record
+                  (answer (ctor Prelude.Answer.Rerendered))
+                  (done True)
+                  (summary (ctor Prelude.Maybe.Just (record (value "0 open")))))))))))))
+(test "a stranger cannot see my todo" task
+  (bind task me : Text
+    (db-insert User.User
+      (record (email "me@example.com") (name "Me") (passwordHash "")))
+    (bind task id : Text
+      (db-insert Todo.Todo
+        (record
+          (title "Milk")
+          (done False)
+          (due (ctor Prelude.Maybe.Nothing))
+          (owner (var me))))
+      (bind task _
+        (test-login
+          (record App.Session
+            (user (ctor Prelude.Maybe.Just (record (value "someone-else"))))))
+        (bind task page : { model: Model, session: App.Session, doc: Doc }
+          (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
+          (bind task show : { answer: Answer, session: App.Session, doc: Doc }
+            (test-open Todos.Show (record Todos.Show.Params (id (var id))))
+            (pure task
+              (test-eq
+                (record
+                  (items (call (std Test.count) "li" (field doc (var page))))
+                  (show (field answer (var show))))
+                (record (items 0) (show (ctor Prelude.Answer.Missing)))))))))))
 (module Todos.Show)
 (record Todos.Show.Model (todo Todo))
 (record Todos.Show.EditTodo (title Text) (due Maybe Date))
@@ -443,3 +613,15 @@
 (session App.Session)
 (capability Auth.Login.Password
   (verify { email: Text, password: Text } -> Task (Maybe Text)))
+(fake Auth.Login.Password
+  (tables)
+  (entries
+    (entry Auth.Login.verify : { email: Text, password: Text } -> Task (Maybe Text) (args)
+      (bind task found : Maybe User
+        (db-select User.User
+          (where (cond eq (col User.User email) (field email (var args))))
+          first)
+        (pure task
+          (call (std Maybe.map)
+            (lambda (u : User) (field id (var u)))
+            (var found)))))))
