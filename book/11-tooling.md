@@ -1044,7 +1044,9 @@ previous tag; pushes a Homebrew formula to `tapegram/homebrew-alder` (so
 `ghcr.io/tapegram/alder:<version>`, Go's official image plus the binary,
 for CI pipelines that run `alder test` and `alder build`. No `-ldflags`
 are passed: the go command records the tag as the module version when it
-builds at a clean tag, which is what `alder version` prints.
+builds at a clean tag, which is what `alder version` prints. CI
+(`.github/workflows/ci.yml`) runs on Linux for every branch push and also
+on macOS for `main` and tags, so every tag is tested on both.
 
 Pushing the formula needs a token GitHub Actions does not have by
 default: before the first tag, create the repository secret
