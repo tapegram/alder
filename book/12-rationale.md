@@ -410,7 +410,7 @@ each survivor is the test that is missing, written out as module, line
 and change. That is feedback a person or an agent can act on at once,
 where a coverage percentage only says "more". On the examples it found
 real gaps: 15 survivors in the to-do app (9 new tests, score 0.55 →
-1.00) and 17 in the blog (10 new tests, 0.70 → 0.95, the 3 left
+1.00) and 17 in the blog (10 new tests, 0.71 → 0.95, the 3 left
 equivalent).
 
 **A curated set of operators, not every possible edit.** Generic

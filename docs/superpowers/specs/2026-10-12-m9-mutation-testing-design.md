@@ -44,21 +44,25 @@ survived:
   Posts.Index   load:12    where dropped       Db.where (Post.published.eq True)
 ```
 
-- A line per survivor: module, declaration and line, operator, the code
-  before and after (one line each, elided to 80 columns).
+- A line per survivor: module, declaration and line (`load:30:17`, with the
+  column, when the line has mutants of that kind at several columns),
+  operator, the code before and after (one line each, elided to 80
+  columns; an arm swap's line to 120). A run with timed-out kills says so
+  in the score line: `55 killed (of which 2 timed out)`.
 - `score` = killed / total over the mutants that ran. `--min R` exits 1
   when the score is below `R` (printing the same report); without `--min`
   the exit code is the tests' as today.
 - `--json` prints, after the per-test objects, one object
-  `{"mutants": [{id, module, decl, line, kind, before, after, killed, by, note}]}`
+  `{"mutants": [{id, module, file, decl, line, col, kind, before, after, killed, by, note}]}`
   (`by`: the first test that failed; `note`: "crashed"/"timed out" when the
   mutant was killed that way) and a final `{"score", "killed", "survived",
   "suppressed"}`.
 - `-run` filters the tests as usual; mutants are judged by the selected
   tests. A suite that does not pass unmutated stops before any mutant
   ("tests fail: fix them before measuring mutants").
-- If the app has no tests: "no tests: nothing can kill a mutant", exit 1
-  with `--min`.
+- If the app has no tests: "no tests: nothing can kill a mutant" ("no test
+  matches -run: nothing can kill a mutant" when `-run` selected none), exit
+  1 with `--min`.
 
 ## The operators
 
@@ -83,16 +87,22 @@ survived:
 | schema | `cascade ↔ restrict` | a `@ref` delete rule | the other rule |
 
 Structural suppression (refused, counted as `suppressed` in the JSON, never
-listed; operator-not-applicable cases are a separate `skipped` count): `condition negated` when the condition is an operator `operator flipped` already covers (the two mutants would be the same program); a `guard dropped` whose surviving arm uses a binding the guard
-introduced (unscopable); `arm swapped` with identical bodies; `orderBy reversed` under a
+listed; operator-not-applicable cases are a separate `skipped` count): `arm swapped` with identical bodies; `orderBy reversed` under a
 `Db.get`/`Db.first` with a `where` on the id; `where dropped` when the
 only condition is the id equality of a `Db.get` (`Db.get` has no `where`:
 n/a); `condition negated` on a literal condition; `operator flipped` where
 both operands are the same expression; `write replaced` on a write whose
 result is never bound or used AND the test suite has no `Db` reads of that
 table (not provable cheaply: skip this rule); `default changed` on a field
-no `Db.insert` omits (the default never applies). Keep the list exactly
-this; everything else survives honestly.
+no literal of the app's code omits (a `Db.insert` row or an `Insert T` a
+helper builds: the default never applies). Keep the list exactly this;
+everything else survives honestly. Skipped (not applicable, not provably
+equivalent; amended in the final review): `condition negated` when the
+condition is an `==` or `!=` (`operator flipped` makes the same program; an
+ordering operator flips to `<=`, not to the negation `>=`, so it is negated
+too) or a `not e` (`not dropped` makes the same program); a `guard dropped`
+or an `arm swapped` whose moved arm uses a binding the match introduced
+(unscopable).
 
 Scope: mutants are made in every non-test module's `load`, `update`, plain
 values and helpers; never in `test` bodies, `fake` entries, `view` and
@@ -119,8 +129,11 @@ each mutant sets `Mutant = id` (and the table override), runs the suite
 again in the same process with a fresh database per test as today,
 stopping at the first failing test (killed, `by` = that test). A test
 panic or a stack overflow kills the mutant (`note: crashed`); a per-mutant
-deadline (the suite's `-timeout`, default 10 s) kills it (`note: timed
-out`). The suite's own timeout applies per mutant, not to the whole run.
+deadline kills it (`note: timed out`, decided before the case's own
+result). The deadline is relative to the suite's own run (the baseline):
+max(`-timeout`, default 10 s, 3 × baseline), with a warning when the
+baseline is over half the timeout. The suite's own timeout applies per
+mutant, not to the whole run.
 Mutants run sequentially (the runtime's effect interpreter is single-threaded
 per env; parallelism is a later optimisation).
 

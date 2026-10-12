@@ -693,7 +693,7 @@ refuses is "is not valid" (a `Text.NonEmpty` field would say "must not
 be empty").
 
 Ten tests were written after `alder test --mutate` (chapter 10, "Mutation
-testing") ran on the blog: before them, 17 of its 56 mutants survived;
+testing") ran on the blog: before them, 17 of its 58 mutants survived;
 after, 3 do, and those three cannot be killed (chapter 10 explains why).
 `Post`'s two and `Admin.Edit`'s two are above. `Admin`'s "the admin page
 lists the author's own posts, newest first" inserts another author's post

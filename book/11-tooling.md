@@ -643,7 +643,7 @@ ok   Todos.Index "Toggle by another user is not found"
   runs nothing: `0 passed, 0 failed`, exit 0.
 - `-timeout d` bounds the whole run (a Go duration; default `5m`; with
   `--mutate`, default `10s`, it bounds each run, the tests' own and each
-  mutant's). The test running when the time is up fails with `error:
+  mutant's, a mutant's being at least three times the tests' own run). The test running when the time is up fails with `error:
   timed out after d` and no later test runs. A test still running after ten seconds is
   announced on standard error: `still running M "name" (10s)`.
 - `--json` prints one JSON object per test on standard output, and
@@ -667,15 +667,18 @@ ok   Todos.Index "Toggle by another user is not found"
   each a small well-typed change the compiler makes (a `requires`
   dropped, a write replaced, an order reversed), and adds to the report
   `N mutants: K killed, S survived  (score X.XX)` and, under
-  `survived:`, one line per survivor: module, `declaration:line`,
+  `survived:`, one line per survivor: module, `declaration:line` (and
+  `:column` when the line has mutants of that kind in two places),
   operator, and the code before `→` after. A mutant is killed by the
   first test that fails against it, crashes or runs out of time. When a
   selected test fails, the report ends with `tests fail: fix them before
-  measuring mutants` (exit 1); with no test selected, `no tests: nothing
-  can kill a mutant` (exit 0, or 1 with `--min`). The build is `build/<app>/scratch/mutate/`, beside
+  measuring mutants` (exit 1); with no test, `no tests: nothing can kill
+  a mutant`, or `no test matches -run: nothing can kill a mutant` when
+  `-run` selected none (exit 0, or 1 with `--min`). The build is `build/<app>/scratch/mutate/`, beside
   the plain test build, which it never replaces. With `--json`, after
   the per-test objects come `{"mutants":[…]}` (each with `id`, `module`,
-  `decl`, `line`, `kind`, `before`, `after`, `killed`, `by`, `note`, and
+  `file`, `decl`, `line`, `col`, `kind`, `before`, `after`, `killed`,
+  `by`, `note`, and
   `"tables":"ensure"` for a schema mutant) and `{"score":…, "killed":…,
   "survived":…, "suppressed":…, "skipped":…}`; the refusals go to
   standard error there.

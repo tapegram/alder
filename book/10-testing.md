@@ -1540,9 +1540,8 @@ during a test.
 
 ## 11. Mutation testing
 
-Every test so far passed. That says the code does what the tests check;
-it does not say the tests check what matters. This section measures
-that, and turns what it finds into tests.
+Passing tests say the code does what they check, not that they check
+what matters. This section measures that, and turns it into tests.
 
 ### Why a mutation score
 
@@ -1562,39 +1561,31 @@ would have let through. The **mutation score** is the share of mutants
 killed. Unlike line coverage, it asks the question that matters: if this
 line were wrong, would a test fail?
 
+The mutants are not random edits. Each operator below is a change that
+breaks something a server-rendered app must get right. Every mutant is
+well-typed: it compiles, so a test that fails against it fails because
+of what it does, not because it is broken code.
+
 ### The command
 
 ```text
 alder test --mutate [--min R] [--json] [-run re] [-timeout d] [dir]
 ```
 
-`alder test --mutate` first runs the tests as plain `alder test` does.
-If one fails, it stops with `tests fail: fix them before measuring
-mutants` (a mutant can only be judged against tests that pass). Otherwise
-it runs the tests again once for each mutant and prints the result. Here
-is the to-do app as it was before the tests this section adds, with nine
-tests:
+It runs the tests as `alder test` does; if one fails, it stops with
+`tests fail: fix them before measuring mutants`. Otherwise it runs them
+again once per mutant. The to-do app before the tests this section adds
+(its nine `ok` lines and `9 passed, 0 failed` first):
 
 ```text
-$ alder test --mutate examples/todos
-ok   Auth.Login "an unknown email is rejected"
-ok   Auth.Login "logging in through the form"
-ok   Auth.Login "a visitor is sent to log in, and can log out"
-ok   Todo "countOpen ignores done todos"
-ok   Todos.Index "Toggle flips done"
-ok   Todos.Index "Toggle by another user is not found"
-ok   Todos.Index "adding a todo through the page"
-ok   Todos.Index "toggling a todo through the page"
-ok   Todos.Index "a stranger cannot see my todo"
-9 passed, 0 failed
 33 mutants: 18 killed, 15 survived  (score 0.55)
 survived:
   App           update:16        redirect → rerender    Redirect (Auth.Login {}) → Rerender
   Todo          Todo:14          cascade ↔ restrict     owner @ref User @restrict → owner @ref User @cascade
-  Todo          matches:19       arm swapped            match filter { All -> True, Active -> not todo.done, Completed -> todo.done } → match filter { All -> True, Active -> todo.done, Completed -> not todo.done }
+  Todo          matches:19       arm swapped            match filter { All ->… → the Active and Completed bodies swapped
   Todo          matches:21       not dropped            not todo.done → todo.done
-  Todo          filterLabel:26   arm swapped            match filter { All -> "All", Active -> "Active", Completed -> "Completed" } → match filter { All -> "Active", Active -> "All", Completed -> "Completed" }
-  Todo          filterLabel:26   arm swapped            match filter { All -> "All", Active -> "Active", Completed -> "Completed" } → match filter { All -> "All", Active -> "Completed", Completed -> "Active" }
+  Todo          filterLabel:26   arm swapped            match filter { All -> "All"… → the All and Active bodies swapped
+  Todo          filterLabel:26   arm swapped            match filter { All ->… → the Active and Completed bodies swapped
   Todos.Index   load:19          orderBy reversed       Db.orderBy Todo.created.desc → Db.orderBy Todo.created.asc
   Todos.Index   update:46        write replaced         let _ <- Db.delete Todo todo.id → let _ <- Task.succeed ()
   Todos.Show    requires:6       requires dropped       requires user → served without user (user = User.UserId "mutant")
@@ -1606,44 +1597,31 @@ survived:
   Todos.Show    update:37        redirect → rerender    Redirect (Todos.Index {}) → Rerender
 ```
 
-The first ten lines are the ordinary report. Then:
-
-- `33 mutants: 18 killed, 15 survived  (score 0.55)`: the compiler made
-  33 mutants of this app; for 18 of them some test failed; the score is
-  18 / 33.
-- `survived:` and one line per survivor, in four columns: the module;
-  the declaration and the line in the source (`load:19` is line 19 of
-  `app/Todos/Index.alder`, inside `load`); the kind of change (the
-  operator, below); and the code before `→` after, each side on one
-  line, a long piece shortened to `…`.
-
-When nothing survives, the report ends at the score line. `alder test
---mutate` exits as `alder test` does (0 when the tests pass) whatever the
-score, unless `--min` asks otherwise (below).
+A test failed for 18 of the 33 mutants: the score is 18 / 33. A
+survivor's line gives its module; `declaration:line` (`load:19` is line
+19 of `app/Todos/Index.alder`; `load:30:17` adds the column when the
+line has mutants of that kind in two places); the operator; and the code
+before `→` after, shortened with `…` (an arm swap names its arms).
 
 ### The operators
 
-The mutants are not random edits. Each comes from one of eighteen
-**operators**, each a change that breaks something a server-rendered app
-must get right, and each named by what it breaks. Every mutant is
-well-typed: it compiles, so a test that fails against it fails because
-of what it does, not because it is broken code. The operators are grouped
-in five classes:
+Each mutant comes from one of eighteen **operators**, named by what it
+breaks, in five classes; every mutant is well-typed:
 
 | Class | Operator | What it changes |
 |---|---|---|
-| authorization | `requires dropped` | A page's `requires user` no longer redirects a visitor: the page is served to them as a made-up user, `User.UserId "mutant"` (only for a field whose type is a brand over `Text`, as `UserId` is) |
-| authorization | `guard dropped` | An `if` or `match` with one arm that ends in `Task.notFound`, `Query.notFound` or `Task.fail`: the whole expression becomes the other arm, so the check is gone |
+| authorization | `requires dropped` | A page's `requires user` no longer redirects a visitor, who is served as `User.UserId "mutant"` (for a field that is a brand over `Text`) |
+| authorization | `guard dropped` | An `if` or `match` with one arm ending in `Task.notFound`, `Query.notFound` or `Task.fail` becomes its other arm: the check is gone |
 | data | `where dropped` | One `Db.where` of a query removed |
 | data | `orderBy reversed` | A `Db.orderBy`'s `asc` and `desc` swapped |
 | data | `limit dropped` | A query's `Db.limit` removed |
 | data | `offset dropped` | A query's `Db.offset` removed |
-| data | `write replaced` | A `let … <-` step that inserts, updates or deletes becomes `Task.succeed` of a placeholder (`()`, or an id of `"mutant"`): the write never happens |
-| data | `update field dropped` | One field of a `{ t \| a: …, b: … }` in a `Db.update` left out (when it sets two or more) |
-| data | `session put dropped` | A `Session.put` step becomes `Task.succeed ()`: the session never changes |
+| data | `write replaced` | A `let … <-` insert, update or delete becomes `Task.succeed` of a placeholder (`()`, or an id `"mutant"`) |
+| data | `update field dropped` | One field of a record update `{ t \| a: …, b: … }` that sets two or more left out, wherever it is |
+| data | `session put dropped` | A `Session.put` step becomes `Task.succeed ()` |
 | flow | `redirect → rerender` | `Redirect page` becomes `Rerender` |
 | flow | `reject → rerender` | `Reject "message"` becomes `Rerender` |
-| flow | `arm swapped` | The bodies of two neighbouring arms of a `match` exchanged (one mutant per pair) |
+| flow | `arm swapped` | Two neighbouring arms of a `match` trade bodies (one mutant per pair) |
 | logic | `condition negated` | `if c` becomes `if not c` |
 | logic | `operator flipped` | `==`↔`!=`, `<`↔`<=`, `>`↔`>=`, `&&`↔`\|\|` |
 | logic | `bool flipped` | `True`↔`False` |
@@ -1651,29 +1629,11 @@ in five classes:
 | schema | `default changed` | A table field's default: `False`↔`True`, a number → one more, `""`→`"x"`, a union's constructor → the next one |
 | schema | `cascade ↔ restrict` | A reference's delete rule, `@cascade`↔`@restrict` |
 
-Mutants are made only in the app's own code: the `load`, `update`,
-helpers and plain values of every module, and its tables. Never in a
-`test`, a `fake`, a `view` or a component (anything that makes `Html`),
-or the standard library.
-
 ### A surviving mutant is a test you have not written
 
-Each survivor names a behaviour that the app has and no test checks.
-Read it as a sentence: "in `Todos.Show`, line 6, if `requires user` were
-gone, no test would notice". Then write the test that would notice.
-
-**`requires dropped`.** The survivor
-
-```text
-  Todos.Show    requires:6       requires dropped       requires user → served without user (user = User.UserId "mutant")
-```
-
-says that the todo page could be served to a visitor who has not logged
-in, and every test would still pass. (It was line 6 then; the `import
-User` the new tests needed has moved it to line 7.) `Todos.Index` has the same
-`requires`, and its mutant was killed, by "a visitor is sent to log in,
-and can log out"; nothing opened `Todos.Show` as a visitor. So that is
-the test to write, in `app/Todos/Show.alder`:
+Each survivor is a behaviour no test checks: write the test that would
+notice. `Todos.Show requires:6` says the todo page could be served to a
+visitor; nothing opened it as one. The test, in `app/Todos/Show.alder`:
 
 ```alder
 test "a visitor is sent to log in from a todo" = {
@@ -1684,25 +1644,9 @@ test "a visitor is sent to log in from a todo" = {
 }
 ```
 
-Against the app the visitor is `Redirected (Auth.Login {})`. Against the
-mutant the page is served as the user `"mutant"`, `load` finds a todo
-that user does not own, and the answer is `PageMissing`: the test fails,
-and the mutant is killed.
-
-**The edit form.** Four survivors sit on lines 32 and 33 of the same
-file, the `Save` arm of `update`:
-
-```text
-  Todos.Show    update:32        write replaced         let _ <- Db.update Todo model.todo.id … → let _ <- Task.succeed ()
-  Todos.Show    update:32        update field dropped   { t | title: p.form.title, due: p.form.due } → { t | due: p.form.due }
-  Todos.Show    update:32        update field dropped   { t | title: p.form.title, due: p.form.due } → { t | title: p.form.title }
-  Todos.Show    update:33        redirect → rerender    Redirect (Todos.Index {}) → Rerender
-```
-
-Saving could store nothing, or forget the title, or forget the due date,
-or stay on the page instead of going back to the list, and no test would
-notice: no test ever saved the form. One test that saves it and checks
-all three things kills all four:
+`Todos.Show update:32` and `update:33` say saving could store nothing,
+drop a field, or stay on the page. One test that saves the form and
+checks all three kills all four:
 
 ```alder
 test "saving changes the title and the due date" = {
@@ -1716,24 +1660,38 @@ test "saving changes the title and the due date" = {
 }
 ```
 
-It reads the row back with `Db.get`, so a save that wrote nothing, or
-left a field out, shows in `title` or `due`; and it checks the answer, so
-a `Rerender` shows too. (`Date.fromText` gives a `Maybe Date`, which is
-the field's type.) In the module the form is written `EditTodo`; this
-chapter's blocks are checked as a module of their own, so it is
-qualified here.
+Nine tests, now in the example, kill all fifteen: the report then ends
+`33 mutants: 33 killed, 0 survived  (score 1.00)`.
 
-Each of the fifteen survivors was read this way, and nine tests, now in
-the example, kill all of them. `examples/todos/README.md` lists each
-test with the survivors it kills. Two are worth a word. `Todo
-countOpen:33 not dropped` (`not t.done → t.done`) was killed even before,
-but only by luck: the old "countOpen ignores done todos" counted one open
-todo and one done one, so counting the done ones instead also gave 1;
-only "adding a todo through the page", whose `#summary` must say `"1
-open"`, noticed. The test now has two open todos
-and one done, so the mutant gives 1 where the test wants 2. And the
-`App` survivor, the logout's redirect, is the subject of "Survivors that
-are not gaps" below. After the nine tests:
+### How the two tests kill them
+
+Against the app the visitor is `Redirected (Auth.Login {})`. Against the
+`requires dropped` mutant the page is served as the user `"mutant"`,
+`load` finds a todo that user does not own, and the answer is
+`PageMissing`: the test fails, and the mutant is killed. (The survivor
+was on line 6 then; the `import User` the new tests needed has moved it
+to line 7.) `Todos.Index` has the same `requires`, and its mutant was
+killed already, by "a visitor is sent to log in, and can log out".
+
+The second test reads the row back with `Db.get`, so a save that wrote
+nothing, or left a field out, shows in `title` or `due`; and it checks
+the answer, so a `Rerender` shows too. (`Date.fromText` gives a `Maybe
+Date`, which is the field's type.) In the module the form is written
+`EditTodo`; this chapter's blocks are checked as a module of their own,
+so it is qualified here.
+
+### All fifteen, and one killed by luck
+
+`examples/todos/README.md` lists each of the nine tests with the
+survivors it kills. Two are worth a word. `Todo countOpen:33 not
+dropped` (`not t.done → t.done`) was killed even before, but only by
+luck: the old "countOpen ignores done todos" counted one open todo and
+one done one, so counting the done ones instead also gave 1; only
+"adding a todo through the page", whose `#summary` must say `"1 open"`,
+noticed. The test now has two open todos and one done, so the mutant
+gives 1 where the test wants 2. And the `App` survivor, the logout's
+redirect, is the subject of "The logout redirect" below. After the nine
+tests:
 
 ```text
 $ alder test --mutate examples/todos
@@ -1761,39 +1719,46 @@ ok   Todos.Show "deleting from the todo's page"
 
 ### What is never a mutant
 
+Mutants are made only in the app's own code: the `load`, `update`,
+helpers and plain values of every module, and its tables. Never in a
+`test`, a `fake`, a `view` or a component (anything that makes `Html`),
+or the standard library.
+
 Some changes are never made, and are not counted in the score. Two kinds
 are reported apart, in `--json`'s last object (below):
 
 - **Suppressed** (`suppressed`): the compiler can prove the mutant is
-  the same program as the original, or as another mutant, or cannot
-  write it at all. The rules: a `guard dropped` whose other arm uses a
-  name the `match` binds (in `Todos.Index.owned`, `Just todo -> … todo …`
-  has no meaning without the `Just`); an `arm swapped` of two identical
-  bodies; an `orderBy reversed` under `Db.first` on a query by id; a
-  `condition negated` of a literal `True` or `False`; an `operator
+  the same program as the original. The rules: an `arm swapped` of two
+  identical bodies; an `orderBy reversed` under `Db.first` on a query by
+  id; a `condition negated` of a literal `True` or `False`; an `operator
   flipped` whose two sides are the same expression; and a `default
-  changed` on a field that no `Db.insert` of the app leaves out, so the
-  default never applies (the blog's `User.role`, which only tests rely
-  on).
-- **Skipped** (`skipped`): the operator does not apply. A `condition
-  negated` of `if a == b` is skipped, because `operator flipped` already
-  makes `if a != b`, the same program; an `arm swapped` is skipped where
-  an arm uses what its pattern binds (`Just todo -> …` cannot trade
-  bodies with `Nothing -> …`); a `requires` on a field that is not a
-  brand over `Text`, a `Maybe` default and an `@setNull` rule have no
-  well-typed change.
+  changed` on a field that no record of the app's code leaves out (no
+  `Db.insert` row, no `Insert T` a helper builds), so the default never
+  applies (the blog's `User.role`, which only tests rely on).
+- **Skipped** (`skipped`): the operator does not apply, or another
+  operator already makes the same program. A `condition negated` of `if
+  a == b` (or `!=`) is skipped, because `operator flipped` already makes
+  `if a != b`; so is one of `if not e`, which `not dropped` makes. (An
+  ordering condition is negated: `<` flips to `<=`, while its negation is
+  `>=`.) A `guard dropped` or an `arm swapped` is skipped where an arm
+  uses what its pattern binds (in `Todos.Index.owned`, `Just todo -> …
+  todo …` cannot move out of its case, nor trade bodies with `Nothing ->
+  …`); a `requires` on a field that is not a brand over `Text`, a `Maybe`
+  default and an `@setNull` rule have no well-typed change.
 
-The to-do app has 2 suppressed (the guards of `owned` and of
-`Todos.Show.load`) and 8 skipped (6 arm swaps, 2 negated comparisons);
-the blog 3 and 7.
+The to-do app has none suppressed and 10 skipped (6 arm swaps, 2 negated
+equalities, the guards of `owned` and of `Todos.Show.load`); the blog 1
+and 7.
 
 ### Survivors that are not gaps
 
-A mutant that survives is not always a missing test: sometimes no test
-can tell it from the app, through the browser or at all.
+Sometimes no test can tell a survivor from the app: then say why in a
+comment or a README; otherwise write the test. No annotation silences a
+survivor: it stays until a test kills it or the code changes.
 
-**The logout redirect.** Before the new tests, `App update:16
-redirect → rerender` survived, although "a visitor is sent to log in,
+### The logout redirect
+
+Before the new tests, `App update:16 redirect → rerender` survived, although "a visitor is sent to log in,
 and can log out" clicks Log out and checks that the answer is
 `Redirected (Auth.Login {})`. Every Log out button of the to-do app is
 on a page that `requires user`. Under the mutant the click answers
@@ -1817,19 +1782,20 @@ test "Logout clears the user and goes to log in" = {
 (The blog has a Log out button on its front page, which a visitor may
 open, so there a browser test kills the same mutant.)
 
-**Mutants that are the same program.** After its ten new tests, the blog
-keeps three survivors (here and below, `…` stands for the 39 `ok`
-lines):
+### Mutants that are the same program
+
+After its ten new tests, the blog keeps three survivors (here and
+below, `…` stands for the 39 `ok` lines):
 
 ```text
 $ alder test --mutate examples/blog
 …
 39 passed, 0 failed
-56 mutants: 53 killed, 3 survived  (score 0.95)
+58 mutants: 55 killed, 3 survived  (score 0.95)
 survived:
-  Posts.Index   load:30   operator flipped   params.page < 1 → params.page <= 1
-  Posts.Index   load:30   operator flipped   params.page > lastPage → params.page >= lastPage
-  Posts.Index   load:39   limit dropped      Db.limit (perPage + 1) → no limit
+  Posts.Index   load:30:17   operator flipped   params.page < 1 → params.page <= 1
+  Posts.Index   load:30:48   operator flipped   params.page > lastPage → params.page >= lastPage
+  Posts.Index   load:39      limit dropped      Db.limit (perPage + 1) → no limit
 ```
 
 The first line of `Posts.Index.load` clamps the page number:
@@ -1838,37 +1804,43 @@ The first line of `Posts.Index.load` clamps the page number:
   let page = if params.page < 1 then 1 else if params.page > lastPage then lastPage else params.page
 ```
 
-`<` and `<=` differ only when `params.page` is 1, and then both branches
-give 1; `>` and `>=` differ only at `lastPage`, where both give
-`lastPage`. No input tells the mutant from the app. The third is `limit
+Two `operator flipped` mutants sit on this line, so their lines carry
+the column: `load:30:17` is `params.page < 1`, `load:30:48` is `params.page
+> lastPage`. `<` and `<=` differ only when `params.page` is 1, and then
+both branches give 1; `>` and `>=` differ only at `lastPage`, where both
+give `lastPage`. No input tells the mutant from the app. (The line's two
+`condition negated` mutants, `if not (params.page < 1)` and `if not
+(params.page > lastPage)`, are killed: negating either clamp sends an
+ordinary page number to the wrong branch, and "page 99 is empty" and
+the front page's test notice.) The third is `limit
 dropped`: `load` asks for `perPage + 1` posts, keeps `List.take perPage`
 of them, and sets `hasMore` when more than `perPage` came back. Without
 the limit, the query reads every matching post and the page is the same,
 only slower. These three are **equivalent mutants**: the compiler cannot
 prove them equivalent with its few structural rules, so it makes them,
 and they survive honestly. `examples/blog/README.md` records them with
-the reason for each. When a survivor is equivalent, say why in a comment
-or a README; when it is not, write the test.
-
-There is no annotation to silence a survivor. A survivor stays in the
-report until a test kills it or the code changes (chapter 12 says why).
+the reason for each.
 
 ### `--min` in CI
 
-`--min R` makes the score a gate: `alder test --mutate` exits 1 when the
-score is below `R` (a number from 0 to 1), after the same report. The
-comparison uses the exact score, not the two decimals printed: the
-blog's is 53 / 56 = 0.946…, printed as 0.95, so
+`--min R` (0 to 1) exits 1 when the exact score is below `R`; without
+it the exit code is the tests'.
+
+### The exact score
+
+With no survivor the report ends at the score line. The comparison
+uses the exact score, not the two decimals printed: the blog's is 55 /
+58 = 0.948…, printed as 0.95, so
 
 ```text
 $ alder test --mutate --min 0.95 examples/blog
 …
 39 passed, 0 failed
-56 mutants: 53 killed, 3 survived  (score 0.95)
+58 mutants: 55 killed, 3 survived  (score 0.95)
 survived:
-  Posts.Index   load:30   operator flipped   params.page < 1 → params.page <= 1
-  Posts.Index   load:30   operator flipped   params.page > lastPage → params.page >= lastPage
-  Posts.Index   load:39   limit dropped      Db.limit (perPage + 1) → no limit
+  Posts.Index   load:30:17   operator flipped   params.page < 1 → params.page <= 1
+  Posts.Index   load:30:48   operator flipped   params.page > lastPage → params.page >= lastPage
+  Posts.Index   load:39      limit dropped      Db.limit (perPage + 1) → no limit
 $ echo $?
 1
 ```
@@ -1877,7 +1849,8 @@ while `--min 0.94` passes. A CI job runs `alder test --mutate --min R`
 with `R` at the score the app has reached, so a change that lets a
 mutant survive fails the build. The examples do this in the Go test
 suite: `TestExample_TodosMutation` and `TestExample_Blog` require at
-least 1.00 and 0.94. Without `--min`, the exit code is the tests'.
+least 1.00 and 0.94, and the number of mutants their READMEs record.
+Without `--min`, the exit code is the tests'.
 
 ### `-run`, `-timeout` and `--json`
 
@@ -1902,31 +1875,39 @@ one module, but the score that counts is the whole suite's.
 
 `-timeout d` bounds each run of the tests: the plain run first, then each
 mutant's (default 10 s with `--mutate`, rather than 5 m, since it applies
-once per mutant). A mutant that makes a test loop for ever is killed
-when its time is up (`timed out`), and one that crashes the test program,
-a stack overflow say, is killed too (`crashed`): `alder test` starts the
-program again from the next mutant. If the plain run itself runs out of
-time, the message says `(--mutate's default 10s; raise it with
--timeout)`. Mutants run one after another, each with a fresh database
+once per mutant). A mutant's run gets at least three times as long as
+the plain run took, so a suite that takes 7 s under the default 10 s
+gives each mutant 21 s, and a mutant is not killed by a slow moment of
+the machine; when the plain run takes more than half of `d`, a line on
+standard error says so (`alder test: the tests took 7.2s, over half the
+-timeout 10s: each mutant gets 21.6s (3 × the tests' time)`). A mutant
+that makes a test loop for ever is killed when its time is up (`timed
+out`; the score line then says `K killed (of which T timed out)`), and
+one that crashes the test program, a stack overflow say, is killed too
+(`crashed`): `alder test` starts the program again from the next
+mutant. If the plain run itself runs out of time, the message says
+`(--mutate's default 10s; raise it with -timeout)`. A `-run` that
+selects no test ends with `no test matches -run: nothing can kill a
+mutant`. Mutants run one after another, each with a fresh database
 per test; the to-do app's 33 take under a second once the build is made,
 because each mutant stops at the first test that fails.
 
 `--json` prints the per-test objects as usual, then one object listing
 every mutant, then one with the totals. A mutant's object has its `id`,
-`module`, `decl`, `line`, `kind`, `before`, `after`, whether it was
-`killed`, `by` which test (the first that failed), and a `note`
-(`"crashed"`, `"timed out"`, or empty). From the to-do app's run, two of
-the 33:
+`module`, `file`, `decl`, `line`, `col` (the column), `kind`, `before`,
+`after`, whether it was `killed`, `by` which test (the first that
+failed), and a `note` (`"crashed"`, `"timed out"`, or empty). From the
+to-do app's run, two of the 33:
 
 ```text
-{"id":17,"module":"Todos.Index","decl":"load","line":19,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
-{"id":7,"module":"Todo","decl":"Todo","line":14,"kind":"cascade ↔ restrict","before":"owner @ref User @restrict","after":"owner @ref User @cascade","killed":true,"by":"Todo \"a user with todos cannot be deleted\"","note":"","tables":"ensure"}
+{"id":17,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"load","line":19,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
+{"id":7,"module":"Todo","file":"app/Todo.alder","decl":"Todo","line":14,"col":3,"kind":"cascade ↔ restrict","before":"owner @ref User @restrict","after":"owner @ref User @cascade","killed":true,"by":"Todo \"a user with todos cannot be deleted\"","note":"","tables":"ensure"}
 ```
 
 and the last line:
 
 ```text
-{"score":1,"killed":33,"survived":0,"suppressed":2,"skipped":8}
+{"score":1,"killed":33,"survived":0,"suppressed":0,"skipped":10}
 ```
 
 `score` is exact here (1 when every mutant was killed). `"tables":

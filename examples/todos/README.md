@@ -10,7 +10,7 @@ each command.
 
 - Before: 9 tests, 18 killed, 15 survived (score 0.55).
 - After: 18 tests, 33 killed, 0 survived (score 1.00). `TestExample_TodosMutation` fails if
-  the score drops below 1.00.
+  the score drops below 1.00 or the number of mutants is not 33.
 
 The nine tests that closed the gaps, each named for what it kills:
 
@@ -28,5 +28,5 @@ The nine tests that closed the gaps, each named for what it kills:
   field dropped, and the redirect after it.
 - `Todos.Show "deleting from the todo's page"`: that page's delete, and its redirect.
 
-No mutant survives. The run also refuses 2 mutants it can prove equivalent and skips 8 that do
-not apply; neither count is part of the score.
+No mutant survives. The run also skips 10 mutants that do not apply (and refuses none as
+provably equivalent); neither count is part of the score.

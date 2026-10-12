@@ -169,31 +169,41 @@ func TestExample_Blog(t *testing.T) {
 			t.Errorf("alder test examples/blog lacks %q:\n%s", want, out)
 		}
 	}
-	mutationAtLeast(t, "blog", blogMutationScore)
+	mutationAtLeast(t, "blog", blogMutationScore, blogMutants)
 }
 
 // The mutation scores examples/todos/README.md and examples/blog/README.md record (`alder test
-// --mutate`, rounded down to two decimals): a change to an example that lets a mutant survive
-// which its tests used to kill fails TestExample_*.
+// --mutate`, rounded down to two decimals: the blog's is 55 / 58 = 0.948) and their numbers of
+// mutants: a change to an example that lets a mutant survive which its tests used to kill, or
+// that changes the mutants made of it, fails TestExample_*.
 const (
 	todosMutationScore = 1.00
 	blogMutationScore  = 0.94
+	todosMutants       = 33
+	blogMutants        = 58
 )
 
-// mutationAtLeast runs `alder test --mutate --json dir` and fails t when the score is below min.
-func mutationAtLeast(t *testing.T, dir string, min float64) {
+// mutationAtLeast runs `alder test --mutate --json dir` and fails t when the score is below min
+// or the number of mutants that ran is not mutants.
+func mutationAtLeast(t *testing.T, dir string, min float64, mutants int) {
 	t.Helper()
 	code, out, errs := runTest(t, dir, "--mutate", "--json")
 	if code != 0 {
 		t.Fatalf("alder test --mutate %s: exit %d\nout: %s\nerr: %s", dir, code, out, errs)
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	var score struct{ Score *float64 }
+	var score struct {
+		Score            *float64
+		Killed, Survived int
+	}
 	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &score); err != nil || score.Score == nil {
 		t.Fatalf("alder test --mutate --json %s: no score on the last line:\n%s", dir, out)
 	}
 	if *score.Score < min {
 		t.Errorf("alder test --mutate %s: score %.4f, below the recorded %.2f:\n%s", dir, *score.Score, min, out)
+	}
+	if n := score.Killed + score.Survived; n != mutants {
+		t.Errorf("alder test --mutate %s: %d mutants, the README records %d", dir, n, mutants)
 	}
 }
 
@@ -203,7 +213,7 @@ func TestExample_TodosMutation(t *testing.T) {
 	needGoTool(t)
 	inTemp(t)
 	copyDir(t, todosDir(t), "todos")
-	mutationAtLeast(t, "todos", todosMutationScore)
+	mutationAtLeast(t, "todos", todosMutationScore, todosMutants)
 }
 
 // prodHasNoTests fails t when the production module build/<name> (alder build's) carries test

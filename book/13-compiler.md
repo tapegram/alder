@@ -3023,10 +3023,12 @@ runs the suite once per mutant.
 `mutate.Mutant`. It has:
 
 - its `ID`;
-- where it is: `Module`, `Decl` and `Line`;
+- where it is: `Module`, `Decl`, the source `File`, `Line` and `Col`;
 - its `Kind`, the operator's name;
 - `Before` and `After`, the code as one line each, printed back from
-  the IR by `internal/mutate/show.go` and shortened at 80 columns;
+  the IR by `internal/mutate/show.go` and shortened at 80 columns (an
+  `arm swapped` whose two matches would not fit says `the All and Active
+  bodies swapped` instead);
 - the change itself.
 
 For most operators the change is a pair of IR nodes. `Node` is the node
@@ -3086,6 +3088,61 @@ the filter keeps the done todos instead. This is the mutant that the
 strengthened "countOpen ignores done todos" kills: its three todos then
 give 1, not 2.
 
+**In place, not per subtree.** A replacement can share the node's
+subtrees: a negated `if` has the same branches, a flipped `&&` the same
+operands. Emitting each replacement in full would emit those subtrees
+once per mutant, and their own mutants' switches inside each copy: an
+`else if` chain nine levels deep, with two mutants per level, became 3
+MB of Go that took a minute and 1.7 GB to compile. So the mutants of an
+`if` switch only its condition, and its branches are emitted once. The
+blog's page clamp,
+
+```alder fragment
+  let page = if params.page < 1 then 1 else if params.page > lastPage then lastPage else params.page
+```
+
+is in the mutate build
+
+```go
+	page := func() int64 {
+		if (Mutant == 19) != (func() bool {
+			switch Mutant {
+			case 20:
+				return params.Page <= 1
+			}
+			return params.Page < 1
+		}()) {
+			return 1
+		}
+		if (Mutant == 21) != (func() bool {
+			switch Mutant {
+			case 22:
+				return params.Page >= Posts__Index__lastPage()
+			}
+			return params.Page > Posts__Index__lastPage()
+		}()) {
+			return Posts__Index__lastPage()
+		}
+		return params.Page
+	}()
+```
+
+where 19 and 21 are `condition negated` (`(Mutant == 19) != c` is `not
+c` under 19 and `c` otherwise) and 20 and 22 the flipped comparisons. A
+`guard dropped` on an `if` is `Mutant != k && c` (or `Mutant == k ||
+c`). A `match` with mutants emits each arm's body once: it first finds
+the arm, and an arm that a mutant moves gives its number instead of its
+value; `guard dropped` and `arm swapped` then change the number (under
+an arm swap, arm 1 becomes 2 and 2 becomes 1), and a switch on the number
+returns the body. For the other operators, the children a replacement
+shares (the operands of a flipped operator, the argument of a dropped
+`not`, an update's fields, a select's steps) are computed once into Go
+variables before the switch, and the original and each replacement use
+those (the right operand of `&&` and `||` becomes a function, called
+only when needed). The mutate build is then a few hundred bytes per
+mutant larger than the test build, and `TestGen_MutateNested` checks
+that on twelve-deep chains.
+
 The emitter switches a node in three places, and all three do nothing
 when `Mutate` is unset:
 
@@ -3138,7 +3195,10 @@ func Posts__Index__perPage() int64 {
 }
 ```
 
-and its uses call `Posts__Index__perPage()`.
+and its uses call `Posts__Index__perPage()`. The constant is computed
+again at each use, so a constant that is costly to compute makes the
+mutate run slower (never the plain test run or the production build,
+where it is still a package variable).
 
 **The table of mutants.** `app__alder.go` also gets
 
@@ -3150,8 +3210,8 @@ var Mutant int
 and `Mutants`, one `rtesting.Mutant` per mutant in id order, such as
 
 ```go
-	{ID: 7, Module: "Todo", Decl: "Todo", Kind: "cascade ↔ restrict", Line: 14, Before: "owner @ref User @restrict", After: "owner @ref User @cascade", Tables: []db.TableDesc{table__User__User.Desc(), {Name: "Todo.Todo", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "title", Type: db.CText}, {Name: "done", Type: db.CBool}, {Name: "due", Type: db.CDate, Nullable: true}, {Name: "owner", Type: db.CText, Ref: "User.User", OnDelete: db.Cascade}, {Name: "created", Type: db.CTime}}, ID: "id", Created: "created"}}},
-	{ID: 17, Module: "Todos.Index", Decl: "load", Kind: "orderBy reversed", Line: 19, Before: "Db.orderBy Todo.created.desc", After: "Db.orderBy Todo.created.asc"},
+	{ID: 7, Module: "Todo", Decl: "Todo", Kind: "cascade ↔ restrict", File: "app/Todo.alder", Line: 14, Col: 3, Before: "owner @ref User @restrict", After: "owner @ref User @cascade", Tables: []db.TableDesc{table__User__User.Desc(), {Name: "Todo.Todo", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "title", Type: db.CText}, {Name: "done", Type: db.CBool}, {Name: "due", Type: db.CDate, Nullable: true}, {Name: "owner", Type: db.CText, Ref: "User.User", OnDelete: db.Cascade}, {Name: "created", Type: db.CTime}}, ID: "id", Created: "created"}}},
+	{ID: 17, Module: "Todos.Index", Decl: "load", Kind: "orderBy reversed", File: "app/Todos/Index.alder", Line: 19, Col: 10, Before: "Db.orderBy Todo.created.desc", After: "Db.orderBy Todo.created.asc"},
 ```
 
 A schema mutant carries `Tables`: the app's table descriptors, with its
@@ -3160,7 +3220,7 @@ own table's descriptor rendered from the mutant's clone (here `owner`'s
 
 ```go
 // MutantsSuppressed and MutantsSkipped count the mutants refused as equivalent and as not applicable.
-var MutantsSuppressed, MutantsSkipped = 2, 8
+var MutantsSuppressed, MutantsSkipped = 0, 10
 ```
 
 The test program's `main` registers the table before running the tests:
@@ -3185,13 +3245,17 @@ before measuring mutants` and stops. Otherwise `runMutant`
    made from with the mutant's `Tables`, made by `db.Ensure`, and drops
    the migrations, so the changed rule is what the test meets (the JSON
    says `"tables":"ensure"`).
-3. It starts one timer for the mutant, `-timeout` (10 s by default).
+3. It starts one timer for the mutant: `-timeout` (10 s by default), or
+   three times the suite's own run when that is longer, so a slow suite
+   does not time out on a slow moment of the machine. (The suite's run
+   is logged, so a later program that goes on from a mutant has it.)
 4. It runs the selected tests in order, each in a goroutine with its
    own fresh database, as plain `alder test` does. The first test that
    fails kills the mutant, and is its `by`. A test that panics (a Go
    runtime error, say) kills it with the note `crashed`. When the timer
-   fires first, the running test kills it with the note `timed out`. If
-   every test passes, the mutant survived.
+   fires first, the running test kills it with the note `timed out`; the
+   timer is looked at first, so a test that fails just as the time is up
+   is a timeout too. If every test passes, the mutant survived.
 
 The score is the number of killed mutants divided by the number of
 mutants that ran (1 when none ran), and `--min` compares that exact
