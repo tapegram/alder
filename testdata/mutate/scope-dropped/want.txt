@@ -4,12 +4,12 @@
 4   Items  latest:11   scope dropped       Db.mine Item → Db.from Item
 5   Items  load:16     scope dropped       Db.mine Item → Db.from Item
 6   Items  update:27   write replaced      let _ <- Db.insertMine Item { title: "new" } → let _ <- Task.succeed (Item.ItemId "mutant")
-7   Items  update:31   scope dropped       Db.getMine Item p.id → Db.get Item p.id, Nothing → Query.notFound
+7   Items  update:31   scope dropped       Db.getMine Item p.id → Db.get Item p.id, not found when missing
 8   Items  update:32   write replaced      let _ <- Db.updateMine Item item.id (\i -> { i | title: "renamed" }) → let _ <- Task.succeed ()
 9   Items  update:32   scope dropped       Db.updateMine Item item.id (\i -> { i | title: "renamed" }) → Db.update Item item.id (\i -> { i | title: "renamed" }), not found when missing
 10  Items  wipe:43     scope dropped       Db.deleteMine Item _m1 → Db.delete Item _m1, not found when missing
 11  Show   requires:5  requires dropped    requires user → served without user (user = User.UserId "mutant")
-12  Show   load:12     scope dropped       Db.getMine Item params.id → Db.get Item params.id, Nothing → Query.notFound
+12  Show   load:12     scope dropped       Db.getMine Item params.id → Db.get Item params.id, not found when missing
 -   Items  update:25   arm swapped         skipped: unscopable: an arm uses what the match binds
 -   Items  update:25   arm swapped         skipped: unscopable: an arm uses what the match binds
 -   Items  update:27   scope dropped       skipped: the owner comes from the session either way

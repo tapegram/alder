@@ -344,3 +344,21 @@ func TestMine_UpdateOfAnothersRowRollsBackTheTask(t *testing.T) {
 		t.Fatalf("trace %q", env.Trace)
 	}
 }
+
+// Db.updateMine never writes the owner column: an f that gives the row away changes the other
+// fields only.
+func TestMine_UpdateKeepsTheOwner(t *testing.T) {
+	s := openItems(t)
+	mine := put(t, s, "a1", "ann")
+	env := itemEnv(s, "ann")
+	_, err := eff.Run(env, eff.KTask, call("Db.updateMine Item", true, func(e *eff.Env) (struct{}, error) {
+		return struct{}{}, UpdateMineRow(e.Ctx, e.Store.(Store), TxOf(e), itemTable, mine, func(r item) item { r.Title = "moved"; r.Owner = "bob"; return r }, e.Now())
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _ := GetRow(context.Background(), s, nil, itemTable, mine)
+	if r.Val.Owner != "ann" || r.Val.Title != "moved" {
+		t.Fatalf("after an owner-changing fn: %+v", r.Val)
+	}
+}

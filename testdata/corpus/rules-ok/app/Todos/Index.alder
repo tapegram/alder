@@ -233,3 +233,14 @@ test "a scoped update of another's row fails the whole task" = {
   let n <- Db.from Todo |> Db.count
   Task.succeed ({ value: r.value, trace: r.trace, n: n } == { value: Err "not found", trace: ["Db.insertMine Todo", "Db.updateMine Todo"], n: 1 })
 }
+
+-- Db.updateMine never writes the owner: a function that gives the todo away changes the rest
+test "updateMine never gives a todo away" = {
+  let me <- Db.insert User { name: "Me" }
+  let bob <- Db.insert User { name: "Bob" }
+  let id <- Db.insert Todo { title: "Milk", owner: me }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.run (Db.updateMine Todo id (\t -> { t | title: "given", owner: bob }))
+  let after <- Db.get Todo id
+  Task.succeed ({ value: r.value, owner: Maybe.map (\t -> t.owner) after, title: titleOf after } == { value: Ok (), owner: Just me, title: "given" })
+}

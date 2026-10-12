@@ -681,6 +681,40 @@
                       (ctor Prelude.Result.Err (record (value "not found"))))
                     (trace (list "Db.insertMine Todo" "Db.updateMine Todo"))
                     (n 1)))))))))))
+(test "updateMine never gives a todo away" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task bob : Text
+      (db-insert User.User (record (name "Bob") (role (ctor User.Role.Reader))))
+      (bind task id : Text
+        (db-insert Todo.Todo
+          (record (title "Milk") (done False) (owner (var me))))
+        (bind task _
+          (test-login
+            (record App.Session
+              (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+              (role (ctor User.Role.Reader))))
+          (bind task r : { value: Result Text Unit, trace: List Text }
+            (test-run
+              (db-update-mine Todo.Todo
+                (var id)
+                (lambda (t : Todo)
+                  (update (var t) (title "given") (owner (var bob))))))
+            (bind task after : Maybe Todo
+              (db-get Todo.Todo (var id))
+              (pure task
+                (test-eq
+                  (record
+                    (value (field value (var r)))
+                    (owner
+                      (call (std Maybe.map)
+                        (lambda (t : Todo) (field owner (var t)))
+                        (var after)))
+                    (title (call (global Todos.Index.titleOf) (var after))))
+                  (record
+                    (value (ctor Prelude.Result.Ok (record (value ()))))
+                    (owner (ctor Prelude.Maybe.Just (record (value (var me)))))
+                    (title "given")))))))))))
 (module Todos.Show)
 (record Todos.Show.Model (todo Todo))
 (record Todos.Show.Params (id Text))

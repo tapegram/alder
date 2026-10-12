@@ -69,7 +69,7 @@ var Mutants = []rtesting.Mutant{
 	{ID: 9, Module: "Notes", Decl: "load", Kind: "scope dropped", File: "app/Notes.alder", Line: 15, Col: 17, Before: "Db.mine Note", After: "Db.from Note"},
 	{ID: 10, Module: "Notes", Decl: "load", Kind: "bool flipped", File: "app/Notes.alder", Line: 15, Col: 58, Before: "True", After: "False"},
 	{ID: 11, Module: "Notes", Decl: "update", Kind: "write replaced", File: "app/Notes.alder", Line: 30, Col: 5, Before: "let _ <- Db.insertMine Note { title: p.form.title }", After: "let _ <- Task.succeed (Note.NoteId \"mutant\")"},
-	{ID: 12, Module: "Notes", Decl: "update", Kind: "scope dropped", File: "app/Notes.alder", Line: 34, Col: 14, Before: "Db.getMine Note p.id", After: "Db.get Note p.id, Nothing → Query.notFound"},
+	{ID: 12, Module: "Notes", Decl: "update", Kind: "scope dropped", File: "app/Notes.alder", Line: 34, Col: 14, Before: "Db.getMine Note p.id", After: "Db.get Note p.id, not found when missing"},
 	{ID: 13, Module: "Notes", Decl: "update", Kind: "write replaced", File: "app/Notes.alder", Line: 35, Col: 5, Before: "let _ <- Db.updateMine Note n.id (\\x -> { x | pinned: True })", After: "let _ <- Task.succeed ()"},
 	{ID: 14, Module: "Notes", Decl: "update", Kind: "scope dropped", File: "app/Notes.alder", Line: 35, Col: 14, Before: "Db.updateMine Note n.id (\\x -> { x | pinned: True })", After: "Db.update Note n.id (\\x -> { x | pinned: True }), not found when missing"},
 	{ID: 15, Module: "Notes", Decl: "update", Kind: "bool flipped", File: "app/Notes.alder", Line: 35, Col: 59, Before: "True", After: "False"},

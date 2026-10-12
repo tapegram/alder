@@ -332,8 +332,11 @@ func GetMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id str
 // UpdateMineRow is Db.updateMine: inside the Task's transaction, read row id with the owner
 // predicate (SELECT … WHERE id = ? AND owner = ?), apply f, and write it back with the
 // predicate again (UPDATE … WHERE id = ? AND owner = ?), checking one row changed; @updated is
-// set to now. A row that is missing or someone else's, at either step, is eff.ErrNotFound and
-// nothing is written. An f that changes the id fails with *eff.ErrFail.
+// set to now. The owner column is never written: the UPDATE sets every other column (UPDATE …
+// SET "title" = ?, "done" = ? WHERE "id" = ? AND "owner" = ?), so an f that changes the owner
+// changes nothing of it (a row is not given away by updateMine). A row that is missing or
+// someone else's, at either step, is eff.ErrNotFound and nothing is written. An f that changes
+// the id fails with *eff.ErrFail.
 func UpdateMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string, f func(T) T, now time.Time) error {
 	if err := txErr(tx); err != nil {
 		return err
@@ -357,7 +360,15 @@ func UpdateMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id 
 	if t.ReadID(next) != id {
 		return &eff.ErrFail{Msg: fmt.Sprintf("Db.updateMine %s: update may not change the id", shortName(t.Name))}
 	}
-	n, err := st.UpdateWhere(ctx, tx, t.Name, t.Columns, t.ID, t.Updated, id, t.Owner, u, t.Encode(next), now)
+	all := t.Encode(next)
+	var cols []Column
+	var vals []any
+	for i, c := range t.Columns {
+		if c.Name != t.Owner {
+			cols, vals = append(cols, c), append(vals, all[i])
+		}
+	}
+	n, err := st.UpdateWhere(ctx, tx, t.Name, cols, t.ID, t.Updated, id, t.Owner, u, vals, now)
 	if err != nil {
 		return err
 	}

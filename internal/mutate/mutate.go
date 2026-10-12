@@ -758,7 +758,7 @@ func (c *collector) scope(e ir.Expr) {
 		get, body := gotOrNotFound(x.Table, x.ID, x.Ty, func(row ir.Expr) ir.Expr {
 			return &ir.EffPure{Typed: ir.Typed{Ty: x.Ty}, Kind: ir.EffQuery, Value: row}
 		})
-		c.add(ScopeDropped, x.Pos, x, body, c.show(x), line(c.module, get, wrapped("", ", Nothing → Query.notFound")))
+		c.add(ScopeDropped, x.Pos, x, body, c.show(x), line(c.module, get, wrapped("", ", not found when missing")))
 	case *ir.DbUpdateMine:
 		w := &ir.DbUpdate{Typed: x.Typed, Pos: x.Pos, Table: x.Table, ID: x.ID, Fn: x.Fn}
 		_, body := gotOrNotFound(x.Table, x.ID, x.Ty, func(ir.Expr) ir.Expr { return w })

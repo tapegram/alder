@@ -518,7 +518,8 @@ func TestTest_Rules(t *testing.T) {
 		"ok   Todos.Index \"a scoped update of another's row fails the whole task\"\n",
 		"ok   Todos.Index \"a scoped helper needs a signed-in user\"\n",
 		"ok   Admin.Index \"a demoted admin still passes the cookie check\"\n",
-		"26 passed, 0 failed\n",
+		"ok   Todos.Index \"updateMine never gives a todo away\"\n",
+		"27 passed, 0 failed\n",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("missing %q in\n%s\nstderr: %s", want, stdout, stderr)
@@ -529,7 +530,7 @@ func TestTest_Rules(t *testing.T) {
 	}
 
 	code, stdout, stderr = runTest(t, "rules-ok", "--mutate")
-	if code != 0 || !strings.HasSuffix(stdout, "26 passed, 0 failed\n31 mutants: 31 killed, 0 survived  (score 1.00)\n") {
+	if code != 0 || !strings.HasSuffix(stdout, "27 passed, 0 failed\n31 mutants: 31 killed, 0 survived  (score 1.00)\n") {
 		t.Fatalf("--mutate: exit %d\n%s\n%s", code, stdout, stderr)
 	}
 	// without the tests that look at a stranger or a role, exactly those mutants survive
@@ -538,9 +539,9 @@ func TestTest_Rules(t *testing.T) {
 		"  Admin.Index   requires:6   role dropped       requires user, role Author | Admin → requires user\n",
 		"  Admin.Users   requires:7   role dropped       requires user, role Admin → requires user\n",
 		"  Todos.Index   update:39    scope dropped      Db.updateMine Todo p.id (\\t -> { t | done: not t.done }) → Db.update Todo p.id (\\t -> { t | done: not t.done }), not found when missing\n",
-		"  Todos.Index   update:43    scope dropped      Db.getMine Todo p.id → Db.get Todo p.id, Nothing → Query.notFound\n",
+		"  Todos.Index   update:43    scope dropped      Db.getMine Todo p.id → Db.get Todo p.id, not found when missing\n",
 		"  Todos.Index   update:48    scope dropped      Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing\n",
-		"  Todos.Show    load:12      scope dropped      Db.getMine Todo params.id → Db.get Todo params.id, Nothing → Query.notFound\n",
+		"  Todos.Show    load:12      scope dropped      Db.getMine Todo params.id → Db.get Todo params.id, not found when missing\n",
 	} {
 		if code != 0 || !strings.Contains(stdout, want) {
 			t.Errorf("exit %d: missing survivor %q in\n%s", code, want, stdout)
