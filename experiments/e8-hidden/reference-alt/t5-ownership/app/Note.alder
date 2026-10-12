@@ -1,0 +1,18 @@
+module Note
+
+import User
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  title: Text.NonEmpty,
+  body: Text,
+  owner: User.UserId @ref User,
+  created: Time @created,
+}
+
+-- mine is the query for a user's notes; every page and message starts from it, so a stranger's
+-- note is never in reach.
+mine : User.UserId -> Select Note
+mine user = Db.from Note |> Db.where (Note.owner.eq user)

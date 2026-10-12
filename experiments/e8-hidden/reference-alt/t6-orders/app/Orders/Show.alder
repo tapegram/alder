@@ -1,0 +1,126 @@
+module Orders.Show
+
+import User
+import Order
+import Line
+import Product
+import Money
+import Access
+import Orders.Index
+import Layout
+
+page "/orders/{id}" { id: Order.OrderId } requires user
+
+type Model = {
+  order: Order,
+  lines: List Money.Shown,
+  products: List Product,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Access.order session.user params.id
+  match found {
+    Nothing -> Query.notFound,
+    Just order -> {
+      let lines <- Money.lines order.id
+      let products <- Db.from Product |> Db.where (Product.active.eq True) |> Db.orderBy Product.name.asc |> Db.all
+      Query.succeed { order: order, lines: lines, products: products }
+    },
+  }
+}
+
+form NewLine = {
+  quantity: Int.Positive,
+}
+
+msg AddLine { product: Product.ProductId } form NewLine
+msg Pay
+msg Cancel
+
+-- Changing an order that is no longer Open is a 404 (Task.notFound): for a closed order there is
+-- no such action, as there is no such form on its page.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session =
+  if model.order.status != Open then Task.notFound
+  else match msg {
+    AddLine p -> {
+      let product <- Db.from Product |> Db.where (Product.id.eq p.product) |> Db.where (Product.active.eq True) |> Db.first
+      match product {
+        Nothing -> Task.notFound,
+        Just prod -> {
+          let _ <- Db.insert Line { order: model.order.id, product: prod.id, quantity: p.form.quantity }
+          Task.succeed (Redirect (Orders.Show { id: model.order.id }))
+        },
+      }
+    },
+    Pay p -> {
+      let _ <- Db.update Order model.order.id (\o -> { o | status: Paid })
+      Task.succeed (Redirect (Orders.Show { id: model.order.id }))
+    },
+    Cancel p -> {
+      let _ <- Db.update Order model.order.id (\o -> { o | status: Cancelled })
+      Task.succeed (Redirect (Orders.Show { id: model.order.id }))
+    },
+  }
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Shell heading="Order">
+    <dl>
+      <dt>Status</dt>
+      <dd id="status">{Orders.Index.statusText model.order.status}</dd>
+      <dt>Total</dt>
+      <dd><strong id="total">{Text.fromInt (Money.sum model.lines)}</strong> cents</dd>
+    </dl>
+    <table id="lines">
+      {for l in model.lines ->
+        <tr><td>{l.name}</td><td>{Text.fromInt l.quantity}</td><td>{Text.fromInt l.amount}</td></tr>}
+    </table>
+    {if model.order.status == Open then <OpenControls products={model.products} /> else <p>This order is closed.</p>}
+    <a href={Orders.Index {}}>Back</a>
+  </Layout.Shell>
+
+OpenControls : { products: List Product } -> Html Msg
+OpenControls props =
+  <div>
+    <table class="add">
+      {for p in props.products ->
+        <tr>
+          <td>{p.name}</td>
+          <td>
+            <form submit={AddLine { product: p.id }}>
+              <Errors form />
+              <Input field="quantity" label="How many" />
+              <button>Add line</button>
+            </form>
+          </td>
+        </tr>}
+    </table>
+    <form submit={Pay}><button>Paid</button></form>
+    <form submit={Cancel}><button>Cancel order</button></form>
+  </div>
+
+test "a Paid order takes no line" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let id <- Db.insert Order { owner: me, status: Paid }
+  let model <- load { id: id } { user: me }
+  let r <- Test.run (update (AddLine { product: pen, form: { quantity: Int.Positive 1 } }) model { user: me })
+  Task.succeed (r.value == Err "not found")
+}
+
+test "Staff cannot open another's order; a Manager can" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let id <- Db.insert Order { owner: owner }
+  let asStaff <- Test.run {
+    let m <- load { id: id } { user: User.UserId "someone" }
+    Task.succeed m.order.id
+  }
+  let asBoss <- Test.run {
+    let m <- load { id: id } { user: boss }
+    Task.succeed m.order.id
+  }
+  Task.succeed ({ staff: asStaff.value, boss: asBoss.value } == { staff: Err "not found", boss: Ok id })
+}

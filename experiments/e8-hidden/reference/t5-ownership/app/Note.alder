@@ -1,0 +1,25 @@
+module Note
+
+import User
+
+type NoteId = brand Text
+
+-- A note belongs to the user who wrote it (`owner`); only that user may see or delete it.
+table Note {
+  id: NoteId @id,
+  title: Text.NonEmpty,
+  body: Text,
+  owner: User.UserId @ref User,
+  created: Time @created,
+}
+
+-- owned is the note with that id when `user` owns it; otherwise Nothing, so a stranger's note
+-- and a missing id look the same to every caller.
+owned : NoteId -> User.UserId -> Query (Maybe Note)
+owned id user = {
+  let found <- Db.get Note id
+  Query.succeed (match found {
+    Just note -> if note.owner == user then Just note else Nothing,
+    Nothing -> Nothing,
+  })
+}

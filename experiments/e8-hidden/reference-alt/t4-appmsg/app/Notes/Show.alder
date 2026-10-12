@@ -1,0 +1,76 @@
+module Notes.Show
+
+import Note
+import User
+import Layout
+
+page "/notes/{id}" { id: Note.NoteId } requires user
+
+type Model = { note: Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.from Note |> Db.where (Note.id.eq params.id) |> Db.where (Note.owner.eq session.user) |> Db.first
+  match found {
+    Just note -> Query.succeed { note: note },
+    Nothing -> Query.notFound,
+  }
+}
+
+form EditNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Save form EditNote
+msg Delete
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> {
+    let _ <- Db.update Note model.note.id (\n -> { n | title: p.form.title, body: p.form.body })
+    Task.succeed (Redirect (Notes.Show { id: model.note.id }))
+  },
+  Delete p -> {
+    let _ <- Db.delete Note model.note.id
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Shell heading="Note" theme={session.theme}>
+    <article>
+      <h2 id="title">{model.note.title}</h2>
+      <div id="body">{model.note.body}</div>
+    </article>
+    <details>
+      <summary>Edit</summary>
+      <form submit={Save}>
+        <Errors form />
+        <Input field="title" label="Title" value={model.note.title} />
+        <Errors field="title" />
+        <Textarea field="body" label="Text" value={model.note.body} />
+        <button>Save changes</button>
+      </form>
+    </details>
+    <form submit={Delete}><button>Delete note</button></form>
+    <p><a href={Notes.Index {}}>Back</a></p>
+  </Layout.Shell>
+
+test "a stranger's note is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "", owner: me }
+  let _ <- Test.login { user: Just (User.UserId "stranger") }
+  let r <- Test.open (Notes.Show { id: id })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "the theme flips on a note's page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Show { id: id })
+  let r <- Test.click App.SwitchTheme
+  Task.succeed (Test.has "body.dark" r.doc)
+}

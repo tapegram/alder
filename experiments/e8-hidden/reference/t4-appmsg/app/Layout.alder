@@ -1,0 +1,21 @@
+module Layout
+
+import Theme
+
+-- Every page is built on Page, so every page has the theme switch and the Log out button.
+Page : { title: Text, theme: Theme.Theme, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+      <link rel="stylesheet" href={Url.external "/static/app.css"} />
+    </head>
+    <body class={if props.theme == Dark then "dark" else ""}>
+      <nav>
+        <button id="theme" click={App.SwitchTheme}>{Theme.label props.theme}</button>
+        <button click={App.Logout}>Log out</button>
+      </nav>
+      <main>{props.children}</main>
+    </body>
+  </html>

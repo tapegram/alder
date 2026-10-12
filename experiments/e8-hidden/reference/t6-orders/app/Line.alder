@@ -1,0 +1,48 @@
+module Line
+
+import User
+import Order
+import Product
+
+type LineId = brand Text
+
+-- A line of an order: a product and how many. The line goes with its order.
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+-- A line with its product, as a page shows it.
+type Priced = { line: Line, product: Product }
+
+-- cents widens a refined Int to a plain Int for arithmetic.
+cents : Int -> Int
+cents n = n
+
+amount : Priced -> Int
+amount p = cents p.line.quantity * cents p.product.price
+
+-- total is the sum of quantity × price over the lines.
+total : List Priced -> Int
+total lines = lines |> List.map amount |> List.sum
+
+-- priced is the order's lines, each with its product.
+priced : Order.OrderId -> Query (List Priced)
+priced order = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq order) |> Db.all
+  let products <- Db.from Product |> Db.all
+  Query.succeed (List.filterMap (\l -> Maybe.map (\p -> { line: l, product: p }) (List.find (\p -> p.id == l.product) products)) lines)
+}
+
+test "an Open order's total over two lines" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let ink <- Db.insert Product { name: Text.NonEmpty "Ink", price: Int.NonNegative 400 }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: order, product: pen, quantity: Int.Positive 3 }
+  let _ <- Db.insert Line { order: order, product: ink, quantity: Int.Positive 2 }
+  let lines <- priced order
+  Task.succeed (total lines == 1250)
+}

@@ -1,0 +1,24 @@
+module Mail
+
+type SentId = brand Text
+
+-- Sending email is outside the language: a capability implemented in Go.
+capability Mailer {
+  send : { to: Text.Email, subject: Text, body: Text } -> Task Unit,
+}
+
+-- In a test, `Test.fake Mailer` puts this in the adapter's place: it keeps each message it is
+-- asked to send as a row of `Sent`, so a test can read back what would have gone out.
+fake Mailer {
+  table Sent {
+    id: SentId @id,
+    to: Text.Email,
+    subject: Text,
+    body: Text,
+  }
+
+  send args = {
+    let _ <- Db.insert Sent { to: args.to, subject: args.subject, body: args.body }
+    Task.succeed ()
+  }
+}

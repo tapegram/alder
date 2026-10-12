@@ -1,0 +1,110 @@
+/* The blog's stylesheet, served at /static/app.css. */
+
+body {
+  font-family: Georgia, "Times New Roman", serif;
+  line-height: 1.6;
+  max-width: 42rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  color: #1f2328;
+  background: #ffffff;
+}
+
+header a {
+  font-weight: bold;
+  text-decoration: none;
+}
+
+a {
+  color: #0969da;
+}
+
+h1,
+h2,
+button,
+label,
+input,
+nav {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+label {
+  display: block;
+  margin: 0.5rem 0;
+}
+
+input {
+  font: inherit;
+  margin-left: 0.5rem;
+}
+
+textarea {
+  display: block;
+  width: 100%;
+  min-height: 8rem;
+  font: inherit;
+}
+
+/* A `click` button is wrapped in a form of its own (so it works without JavaScript); keep it in
+   line with the text around it. */
+form._alder-click {
+  display: inline;
+}
+
+button {
+  font: inherit;
+  margin: 0.25rem 0.5rem 0.25rem 0;
+  padding: 0.25rem 0.75rem;
+  cursor: pointer;
+}
+
+ul.posts {
+  list-style: none;
+  padding: 0;
+}
+
+ul.posts li {
+  margin: 0.5rem 0;
+}
+
+.date,
+.draft,
+.who {
+  color: #6e7781;
+  margin-left: 0.5rem;
+}
+
+p.draft {
+  margin-left: 0;
+  font-style: italic;
+}
+
+.who {
+  margin: 0;
+  font-weight: bold;
+}
+
+nav.pages a {
+  margin-right: 1rem;
+}
+
+article code {
+  font-family: ui-monospace, Menlo, monospace;
+  background: #f6f8fa;
+  padding: 0 0.2rem;
+}
+
+.comments ul {
+  list-style: none;
+  padding: 0;
+}
+
+.errors {
+  color: #cf222e;
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+
+.errors:empty {
+  display: none;
+}

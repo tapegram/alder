@@ -1,0 +1,69 @@
+module Products.Index
+
+import User
+import Product
+import Access
+import Layout
+
+page "/products" { } requires user
+
+type Model = { products: List Product }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let r <- Access.role session.user
+  match r {
+    Manager -> {
+      let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+      Query.succeed { products: products }
+    },
+    Staff -> Query.notFound,
+  }
+}
+
+form NewProduct = {
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+}
+
+msg Add form NewProduct
+msg Toggle { id: Product.ProductId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Product { name: p.form.name, price: p.form.price, active: True }
+    Task.succeed (Redirect (Products.Index {}))
+  },
+  Toggle p -> match List.find (\x -> x.id == p.id) model.products {
+    Just product -> {
+      let _ <- Db.update Product product.id (\x -> { x | active: not product.active })
+      Task.succeed (Redirect (Products.Index {}))
+    },
+    Nothing -> Task.notFound,
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Shell heading="Products">
+    <table id="products">
+      <tr><th>Name</th><th>Price (cents)</th><th>Active</th><th></th></tr>
+      {for p in model.products ->
+        <tr>
+          <td class="name">{p.name}</td>
+          <td>{Text.fromInt p.price}</td>
+          <td>{if p.active then "yes" else "no"}</td>
+          <td><form submit={Toggle { id: p.id }}><button>Toggle</button></form></td>
+        </tr>}
+    </table>
+    <h2>Add a product</h2>
+    <form submit={Add}>
+      <Errors form />
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <Input field="price" label="Price in cents" />
+      <Errors field="price" />
+      <button>Add</button>
+    </form>
+  </Layout.Shell>

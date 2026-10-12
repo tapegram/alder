@@ -1,0 +1,56 @@
+module Orders.Index
+
+import Order
+import Money
+import Layout
+
+page "/" { } requires user
+
+type Model = { rows: List { order: Order, total: Int } }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let orders <- Db.from Order |> Db.where (Order.owner.eq session.user) |> Db.orderBy Order.created.desc |> Db.all
+  let rows <- Query.all (List.map withTotal orders)
+  Query.succeed { rows: rows }
+}
+
+withTotal : Order -> Query { order: Order, total: Int }
+withTotal order = {
+  let ls <- Money.lines order.id
+  Query.succeed { order: order, total: Money.sum ls }
+}
+
+msg Create
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Order { owner: session.user }
+    Task.succeed (Redirect (Orders.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Shell heading="Orders">
+    <form submit={Create}><button>Start a new order</button></form>
+    <ul id="orders">
+      {for row in model.rows ->
+        <li>
+          <div class="row">
+            <a href={Orders.Show { id: row.order.id }}>{Time.format "Jan 2 15:04" row.order.created}</a>
+            — <em class="status">{statusText row.order.status}</em>
+            — <strong class="total">{Text.fromInt row.total}</strong> cents
+          </div>
+        </li>}
+    </ul>
+    <form submit={App.Logout}><button>Log out</button></form>
+  </Layout.Shell>
+
+statusText : Order.Status -> Text
+statusText s = match s {
+  Open -> "Open",
+  Paid -> "Paid",
+  Cancelled -> "Cancelled",
+}

@@ -1,0 +1,84 @@
+module Notes.Index
+
+import Note
+import User
+import Layout
+
+page "/" { } requires user
+
+type Model = { notes: List Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <- Note.mine session.user |> Db.orderBy Note.created.desc |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Add form NewNote
+msg Delete { id: Note.NoteId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+  Delete p -> {
+    let found <- Note.mine session.user |> Db.where (Note.id.eq p.id) |> Db.first
+    match found {
+      Nothing -> Task.notFound,
+      Just note -> {
+        let _ <- Db.delete Note note.id
+        Task.succeed (Redirect (Notes.Index {}))
+      },
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Shell heading="My notes">
+    <nav><form submit={App.Logout}><button>Log out</button></form></nav>
+    {if List.isEmpty model.notes then <p class="empty">No notes yet.</p> else Html.none}
+    <ul id="notes">
+      {for note in model.notes ->
+        <li>
+          <article>
+            <h2><a class="title" href={Notes.Show { id: note.id }}>{note.title}</a></h2>
+            <form submit={Delete { id: note.id }}><button>Delete</button></form>
+          </article>
+        </li>}
+    </ul>
+    <form submit={Add}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Textarea field="body" label="Text" />
+      <Errors field="body" />
+      <button>Add</button>
+    </form>
+  </Layout.Shell>
+
+test "a stranger's id, or a missing one, is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "", owner: me }
+  let stranger = User.UserId "stranger"
+  let model <- load {} { user: stranger }
+  let theirs <- Test.run (update (Delete { id: id }) model { user: stranger })
+  let missing <- Test.run (update (Delete { id: Note.NoteId "nope" }) model { user: stranger })
+  Task.succeed ({ theirs: theirs.value, missing: missing.value } == { theirs: Err "not found", missing: Err "not found" })
+}
+
+test "the owner can delete" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "", owner: me }
+  let model <- load {} { user: me }
+  let r <- update (Delete { id: id }) model { user: me }
+  let left <- Db.from Note |> Db.count
+  Task.succeed ({ nav: r, left: left } == { nav: Redirect (Notes.Index {}), left: 0 })
+}

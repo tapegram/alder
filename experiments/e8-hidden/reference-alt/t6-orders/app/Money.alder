@@ -1,0 +1,31 @@
+module Money
+
+import Order
+import Line
+import Product
+
+-- A line as shown: the product's name, the quantity and the line's amount, all in cents.
+type Shown = { name: Text, quantity: Int, amount: Int }
+
+plain : Int -> Int
+plain n = n
+
+shown : Line -> Query Shown
+shown line = {
+  let product <- Db.get Product line.product
+  Query.succeed (match product {
+    Just p -> { name: p.name, quantity: plain line.quantity, amount: plain line.quantity * plain p.price },
+    Nothing -> { name: "(removed)", quantity: plain line.quantity, amount: 0 },
+  })
+}
+
+lines : Order.OrderId -> Query (List Shown)
+lines id = {
+  let found <- Db.from Line |> Db.where (Line.order.eq id) |> Db.all
+  Query.all (List.map shown found)
+}
+
+sum : List Shown -> Int
+sum xs = List.foldl (\x acc -> acc + x.amount) 0 xs
+
+test "the sum of two lines" = sum [{ name: "a", quantity: 3, amount: 450 }, { name: "b", quantity: 2, amount: 800 }] == 1250

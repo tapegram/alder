@@ -1,0 +1,45 @@
+module Mail
+
+import User
+
+type SentId = brand Text
+
+capability Mailer {
+  send : { to: Text.Email, subject: Text, body: Text } -> Task Unit,
+}
+
+fake Mailer {
+  table Sent {
+    id: SentId @id,
+    to: Text.Email,
+    subject: Text,
+    body: Text,
+  }
+
+  send args = {
+    let _ <- Db.insert Sent { to: args.to, subject: args.subject, body: args.body }
+    Task.succeed ()
+  }
+}
+
+-- commentNotice tells `to` that `name` commented on their post `title`.
+commentNotice : { to: User.UserId, title: Text, name: Text, text: Text } -> Task Unit
+commentNotice n = {
+  let found <- Db.from User |> Db.where (User.id.eq n.to) |> Db.first
+  match found {
+    Nothing -> Task.succeed (),
+    Just user -> Mailer.send {
+      to: user.email,
+      subject: "New comment on " ++ n.title,
+      body: "Hello " ++ user.name ++ ",\n\n" ++ n.name ++ " commented on \"" ++ n.title ++ "\":\n\n" ++ n.text ++ "\n",
+    },
+  }
+}
+
+test "a notice is addressed to the author" = {
+  let _ <- Test.fake Mailer
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- commentNotice { to: me, title: "Hi", name: "Ann", text: "Yes." }
+  let sent <- Db.from Sent |> Db.all
+  Task.succeed (List.map (\s -> { to: s.to, subject: s.subject }) sent == [{ to: Text.Email "me@example.com", subject: "New comment on Hi" }])
+}

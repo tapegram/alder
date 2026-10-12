@@ -1,0 +1,63 @@
+module Notes.Index
+
+import Note
+import User
+import Layout
+
+page "/" { } requires user
+
+type Model = { notes: List Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <- Db.from Note |> Db.where (Note.owner.eq session.user) |> Db.orderBy Note.created.desc |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Add form NewNote
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Shell heading="My notes" theme={session.theme}>
+    <ul id="notes">
+      {for note in model.notes -> <Row note={note} />}
+    </ul>
+    <section class="new">
+      <h2>New note</h2>
+      <form submit={Add}>
+        <Errors form />
+        <Input field="title" label="Title" />
+        <Errors field="title" />
+        <Textarea field="body" label="Text" />
+        <button>Save</button>
+      </form>
+    </section>
+  </Layout.Shell>
+
+Row : { note: Note } -> Html Msg
+Row props =
+  <li>
+    <h3><a class="title" href={Notes.Show { id: props.note.id }}>{props.note.title}</a></h3>
+    <small>{Time.format "Jan 2" props.note.created}</small>
+  </li>
+
+test "a new note is listed" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let r <- Test.submit NewNote { title: Text.NonEmpty "Milk", body: "" }
+  Task.succeed (Test.texts "#notes .title" r.doc == ["Milk"])
+}

@@ -1,0 +1,22 @@
+module Access
+
+import User
+import Order
+
+-- role is the user's role; a user with no row (a stale session) has the least.
+role : User.UserId -> Query User.Role
+role id = {
+  let found <- Db.from User |> Db.where (User.id.eq id) |> Db.first
+  Query.succeed (Maybe.withDefault Staff (Maybe.map (\u -> u.role) found))
+}
+
+-- order is the order with that id, when the user may see it: their own, or any if a Manager.
+order : User.UserId -> Order.OrderId -> Query (Maybe Order)
+order user id = {
+  let found <- Db.get Order id
+  let r <- role user
+  Query.succeed (match found {
+    Just o -> if o.owner == user || r == Manager then Just o else Nothing,
+    Nothing -> Nothing,
+  })
+}
