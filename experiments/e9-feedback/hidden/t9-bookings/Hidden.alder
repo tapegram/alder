@@ -1,0 +1,142 @@
+module Hidden
+
+-- E9 hidden acceptance tests for T9 (booking rooms). They use only the names the task's Names
+-- block fixes; the model never sees them. "Today" is the test clock's date (book 10: the clock
+-- starts at 2026-01-01 and only ticks seconds), so `Date.today` gives the same day the app sees.
+
+import User
+import Room
+import Booking
+
+test "a booking through the room's form is stored and listed" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let r <- Test.submit Rooms.Show.NewBooking { from: Date.addDays 1 today, to: Date.addDays 3 today }
+  let stored <- Db.from Booking |> Db.where (Booking.owner.eq me) |> Db.count
+  let mine <- Test.get (Bookings.Index {})
+  Task.succeed ({ answer: r.answer, name: Test.text "#name" r.doc, from: Test.texts "#bookings .from" r.doc, to: Test.texts "#bookings .to" r.doc, stored: stored, rooms: Test.texts "#mine .room" mine.doc, starts: Test.texts "#mine .from" mine.doc } == { answer: Redirected (Rooms.Show { id: room }), name: Just "Blue", from: ["2026-01-02"], to: ["2026-01-04"], stored: 1, rooms: ["Blue"], starts: ["2026-01-02"] })
+}
+
+-- [from, to) is half-open: a booking may start on another's `to` date or end on its `from`
+-- date; one sharing a single day is refused with a message for the whole form. Another room's
+-- bookings never conflict.
+test "an overlapping booking is refused and not stored; touching ones are stored" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let green <- Db.insert Room { name: Text.NonEmpty "Green" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: room, owner: other, from: Date.addDays 5 today, to: Date.addDays 8 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let late <- Test.submit Rooms.Show.NewBooking { from: Date.addDays 7 today, to: Date.addDays 9 today }
+  let early <- Test.submit Rooms.Show.NewBooking { from: Date.addDays 4 today, to: Date.addDays 6 today }
+  let inside <- Test.submit Rooms.Show.NewBooking { from: Date.addDays 6 today, to: Date.addDays 7 today }
+  let refused <- Db.from Booking |> Db.count
+  let after <- Test.submit Rooms.Show.NewBooking { from: Date.addDays 8 today, to: Date.addDays 10 today }
+  let before <- Test.submit Rooms.Show.NewBooking { from: Date.addDays 3 today, to: Date.addDays 5 today }
+  let _ <- Test.get (Rooms.Show { id: green })
+  let elsewhere <- Test.submit Rooms.Show.NewBooking { from: Date.addDays 5 today, to: Date.addDays 8 today }
+  let stored <- Db.from Booking |> Db.count
+  let formError = \a -> match a {
+    FormRejected errors -> List.any (\e -> e.field == "") errors,
+    _ -> False,
+  }
+  Task.succeed ({ late: formError late.answer, early: formError early.answer, inside: formError inside.answer, refused: refused, after: after.answer, before: before.answer, elsewhere: elsewhere.answer, stored: stored } == { late: True, early: True, inside: True, refused: 1, after: Redirected (Rooms.Show { id: room }), before: Redirected (Rooms.Show { id: room }), elsewhere: Redirected (Rooms.Show { id: green }), stored: 4 })
+}
+
+test "a booking whose to is not after its from is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let same <- Test.submit Rooms.Show.NewBooking { from: Date.addDays 3 today, to: Date.addDays 3 today }
+  let backwards <- Test.submit Rooms.Show.NewBooking { from: Date.addDays 3 today, to: Date.addDays 2 today }
+  let stored <- Db.from Booking |> Db.count
+  let formError = \a -> match a {
+    FormRejected errors -> List.any (\e -> e.field == "") errors,
+    _ -> False,
+  }
+  Task.succeed ({ same: formError same.answer, backwards: formError backwards.answer, stored: stored } == { same: True, backwards: True, stored: 0 })
+}
+
+-- The next free date: the first date from today on that no booking holds. A booking that ended
+-- before today is ignored; back-to-back bookings are skipped together; a gap later on does not
+-- matter when today is free.
+test "the rooms list shows each room's next free date" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let today <- Date.today
+  let a <- Db.insert Room { name: Text.NonEmpty "A" }
+  let b <- Db.insert Room { name: Text.NonEmpty "B" }
+  let c <- Db.insert Room { name: Text.NonEmpty "C" }
+  let d <- Db.insert Room { name: Text.NonEmpty "D" }
+  let _ <- Db.insert Booking { room: b, owner: me, from: Date.addDays 2 today, to: Date.addDays 3 today }
+  let _ <- Db.insert Booking { room: b, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Db.insert Booking { room: b, owner: me, from: Date.addDays 4 today, to: Date.addDays 6 today }
+  let _ <- Db.insert Booking { room: c, owner: me, from: Date.addDays 1 today, to: Date.addDays 4 today }
+  let _ <- Db.insert Booking { room: d, owner: me, from: Date.addDays (0 - 3) today, to: today }
+  let _ <- Db.insert Booking { room: d, owner: me, from: today, to: Date.addDays 1 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Rooms.Index {})
+  Task.succeed ({ names: Test.texts "#rooms .name" page.doc, free: Test.texts "#rooms .free" page.doc, items: Test.count "#rooms li" page.doc } == { names: ["A", "B", "C", "D"], free: ["2026-01-01", "2026-01-04", "2026-01-01", "2026-01-02"], items: 4 })
+}
+
+test "the owner cancels a booking before its from date" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let id <- Db.insert Booking { room: room, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Show { id: id })
+  let r <- Test.click Bookings.Show.Cancel
+  let left <- Db.from Booking |> Db.count
+  Task.succeed ({ room: Test.text "#room" page.doc, from: Test.text "#from" page.doc, to: Test.text "#to" page.doc, button: Test.has "#cancel" page.doc, answer: r.answer, mine: Test.count "#mine li" r.doc, left: left } == { room: Just "Blue", from: Just "2026-01-02", to: Just "2026-01-03", button: True, answer: Redirected (Bookings.Index {}), mine: 0, left: 0 })
+}
+
+-- From its from date on, a booking has no Cancel button; a Cancel from a page loaded the day
+-- before (here: the page is held, then the booking is moved to start today) is refused, however
+-- the app refuses it, and the booking stays.
+test "a booking that has started cannot be cancelled, even from a stale page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let started <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 2 today }
+  let soon <- Db.insert Booking { room: room, owner: me, from: Date.addDays 3 today, to: Date.addDays 4 today }
+  let _ <- Test.login { user: Just me }
+  let now <- Test.get (Bookings.Show { id: started })
+  let _ <- Test.get (Bookings.Show { id: soon })
+  let _ <- Db.update Booking soon (\b -> { b | from: today, to: Date.addDays 1 today })
+  let r <- Test.click Bookings.Show.Cancel
+  let left <- Db.from Booking |> Db.count
+  let refused = match r.answer {
+    PageMissing -> True,
+    RequestFailed _ -> True,
+    FormRejected _ -> True,
+    Rerendered -> True,
+    _ -> False,
+  }
+  Task.succeed ({ button: Test.has "#cancel" now.doc, refused: refused, left: left } == { button: False, refused: True, left: 2 })
+}
+
+-- A stranger opens the owner's booking by its address, and posts the Cancel of a page the owner
+-- held (the cookie swapped): both are a 404, and the booking stays.
+test "another user's booking is missing, and so is its Cancel" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let stranger <- Db.insert User { email: Text.Email "stranger@example.com", name: Text.NonEmpty "Stranger", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let id <- Db.insert Booking { room: room, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let _ <- Test.login { user: Just stranger }
+  let opened <- Test.open (Bookings.Show { id: id })
+  let list <- Test.get (Bookings.Index {})
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Bookings.Show { id: id })
+  let _ <- Test.login { user: Just stranger }
+  let r <- Test.click Bookings.Show.Cancel
+  let left <- Db.from Booking |> Db.count
+  Task.succeed ({ opened: opened.answer, mine: Test.count "#mine li" list.doc, cancel: r.answer, left: left } == { opened: PageMissing, mine: 0, cancel: PageMissing, left: 1 })
+}

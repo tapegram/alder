@@ -1,0 +1,135 @@
+module Hidden
+
+-- E9 hidden acceptance tests for T6 (a small shop's orders): E8's, with the stale-page test
+-- relaxed (see the last test). They use only the names the task's
+-- Names block fixes; the model never sees them.
+
+import User
+import Product
+import Order
+import Line
+
+test "an order's page shows its total over two lines" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let ink <- Db.insert Product { name: Text.NonEmpty "Ink", price: Int.NonNegative 400 }
+  let id <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: id, product: pen, quantity: Int.Positive 3 }
+  let _ <- Db.insert Line { order: id, product: ink, quantity: Int.Positive 2 }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Orders.Show { id: id })
+  Task.succeed ({ answer: r.answer, total: Test.text "#total" r.doc, status: Test.text "#status" r.doc } == { answer: Shown, total: Just "1250", status: Just "Open" })
+}
+
+test "the list shows each of the user's orders with its status and total" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let mine <- Db.insert Order { owner: me, status: Paid }
+  let _ <- Db.insert Line { order: mine, product: pen, quantity: Int.Positive 4 }
+  let theirs <- Db.insert Order { owner: other }
+  let _ <- Db.insert Line { order: theirs, product: pen, quantity: Int.Positive 1 }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Orders.Index {})
+  Task.succeed ({ answer: r.answer, items: Test.count "#orders li" r.doc, totals: Test.texts "#orders .total" r.doc, statuses: Test.texts "#orders .status" r.doc } == { answer: Shown, items: 1, totals: ["600"], statuses: ["Paid"] })
+}
+
+test "a new order, a line added through its form, then paid" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Index {})
+  let created <- Test.click Orders.Index.Create
+  let found <- Db.from Order |> Db.where (Order.owner.eq me) |> Db.first
+  let order <- match found {
+    Just x -> Task.succeed x,
+    Nothing -> Task.fail "the New order button made no order for the user",
+  }
+  let added <- Test.submit (Orders.Show.AddLine { product: pen }) { quantity: Int.Positive 2 }
+  let paid <- Test.click Orders.Show.Pay
+  Task.succeed ({ created: created.answer, empty: Test.text "#total" created.doc, added: added.answer, total: Test.text "#total" added.doc, paid: paid.answer, status: Test.text "#status" paid.doc, form: Test.has "input[name=quantity]" paid.doc } == { created: Redirected (Orders.Show { id: order.id }), empty: Just "0", added: Redirected (Orders.Show { id: order.id }), total: Just "300", paid: Redirected (Orders.Show { id: order.id }), status: Just "Paid", form: False })
+}
+
+-- A Paid order's page offers no form to add a line: the browser could not post one.
+test "a Paid order has no add-line form" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let paid <- Db.insert Order { owner: me, status: Paid }
+  let open <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let p <- Test.open (Orders.Show { id: paid })
+  let o <- Test.open (Orders.Show { id: open })
+  Task.succeed ({ paid: p.answer, paidForm: Test.has "input[name=quantity]" p.doc, open: o.answer, openForm: Test.has "input[name=quantity]" o.doc } == { paid: Shown, paidForm: False, open: Shown, openForm: True })
+}
+
+test "a cancelled order says so and takes no lines" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let id <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: id })
+  let r <- Test.click Orders.Show.Cancel
+  Task.succeed ({ answer: r.answer, status: Test.text "#status" r.doc, form: Test.has "input[name=quantity]" r.doc } == { answer: Redirected (Orders.Show { id: id }), status: Just "Cancelled", form: False })
+}
+
+test "another user's order is missing for Staff and shown to a Manager" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let staff <- Db.insert User { email: Text.Email "staff@example.com", name: Text.NonEmpty "Staff", passwordHash: "" }
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let id <- Db.insert Order { owner: owner }
+  let _ <- Test.login { user: Just staff }
+  let asStaff <- Test.open (Orders.Show { id: id })
+  let _ <- Test.login { user: Just boss }
+  let asManager <- Test.open (Orders.Show { id: id })
+  Task.succeed ({ staff: asStaff.answer, manager: asManager.answer, total: Test.text "#total" asManager.doc } == { staff: PageMissing, manager: Shown, total: Just "0" })
+}
+
+test "the products page is missing for Staff and shown to a Manager" = {
+  let staff <- Db.insert User { email: Text.Email "staff@example.com", name: Text.NonEmpty "Staff", passwordHash: "" }
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let _ <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let _ <- Test.login { user: Just staff }
+  let asStaff <- Test.open (Products.Index {})
+  let _ <- Test.login { user: Just boss }
+  let asManager <- Test.open (Products.Index {})
+  Task.succeed ({ staff: asStaff.answer, manager: asManager.answer, names: Test.texts "#products .name" asManager.doc } == { staff: PageMissing, manager: Shown, names: ["Pen"] })
+}
+
+test "a Manager adds a product and deactivates it" = {
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let _ <- Test.login { user: Just boss }
+  let _ <- Test.get (Products.Index {})
+  let added <- Test.submit Products.Index.NewProduct { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let found <- Db.from Product |> Db.first
+  let product <- match found {
+    Just x -> Task.succeed x,
+    Nothing -> Task.fail "the form added no product",
+  }
+  let toggled <- Test.click (Products.Index.Toggle { id: product.id })
+  let after <- Db.get Product product.id
+  Task.succeed ({ added: added.answer, names: Test.texts "#products .name" added.doc, active: product.active, toggled: toggled.answer, after: Maybe.map (\p -> p.active) after } == { added: Redirected (Products.Index {}), names: ["Pen"], active: True, toggled: Redirected (Products.Index {}), after: Just False })
+}
+
+-- A stale page: the order's page is held while it was Open, then the order is paid elsewhere.
+-- The add-line form still on the held page must be refused by the server, and no line is stored.
+-- The task asks for the behaviour, not a mechanism, so every refusal counts: a 404, a failure,
+-- or a Reject (`FormRejected`, or `Rerendered` when the re-rendered page no longer draws the
+-- form); only a `Redirected` (the app's answer to an accepted line) or a `Shown` is not one.
+test "a line posted from a stale page of an order paid meanwhile is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let id <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: id })
+  let _ <- Db.update Order id (\o -> { o | status: Paid })
+  let r <- Test.submit (Orders.Show.AddLine { product: pen }) { quantity: Int.Positive 1 }
+  let lines <- Db.from Line |> Db.count
+  let refused = match r.answer {
+    PageMissing -> True,
+    RequestFailed _ -> True,
+    FormRejected _ -> True,
+    Rerendered -> True,
+    _ -> False,
+  }
+  Task.succeed ({ refused: refused, lines: lines } == { refused: True, lines: 0 })
+}
