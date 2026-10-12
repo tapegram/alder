@@ -1,0 +1,86 @@
+module Products.Index
+
+import Product
+import User
+import Layout
+
+page "/products" { } requires user
+
+type Model = { products: List Product }
+
+listAll : Query Model
+listAll = {
+  let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+  Query.succeed { products: products }
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let me <- Db.get User session.user
+  if User.isManager me then listAll else Query.notFound
+}
+
+form NewProduct = {
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+}
+
+msg Add form NewProduct
+msg Toggle { id: Product.ProductId }
+
+toggle : Product.ProductId -> Task Nav
+toggle id = {
+  let found <- Db.get Product id
+  match found {
+    Just prod -> {
+      let _ <- Db.update Product prod.id (\x -> { x | active: not x.active })
+      Task.succeed (Redirect (Products.Index {}))
+    },
+    Nothing -> Task.notFound,
+  }
+}
+
+add : NewProduct -> Task Nav
+add f = {
+  let _ <- Db.insert Product { name: f.name, price: f.price }
+  Task.succeed (Redirect (Products.Index {}))
+}
+
+act : Msg -> Task Nav
+act msg = match msg {
+  Add p -> add p.form,
+  Toggle p -> toggle p.id,
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = {
+  let me <- Db.get User session.user
+  if User.isManager me then act msg else Task.notFound
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Products">
+    <h1>Products</h1>
+
+    <form submit={Add}>
+      <Errors form />
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <Input field="price" label="Price (cents)" />
+      <Errors field="price" />
+      <button>Add product</button>
+    </form>
+
+    <ul id="products">
+      {for pr in model.products ->
+        <li>
+          <span class="name">{pr.name}</span>
+          <span class="price">{Text.fromInt pr.price}</span>
+          <span class="active">{if pr.active then "Active" else "Inactive"}</span>
+          <button click={Toggle { id: pr.id }}>{if pr.active then "Deactivate" else "Activate"}</button>
+        </li>}
+    </ul>
+
+    <a href={Orders.Index {}}>Back</a>
+  </Layout.Page>

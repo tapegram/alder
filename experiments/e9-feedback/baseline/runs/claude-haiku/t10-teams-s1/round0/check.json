@@ -1,0 +1,2 @@
+{"code": "E0001", "severity": "error", "file": "app/Invites/Index.alder", "line": 23, "col": 70, "endLine": 23, "endCol": 71, "message": "in the definition of `load`: expected `}`, got `,`; the last expression of a block is its result and takes no `,`"}
+{"code": "E0001", "severity": "error", "file": "app/Teams/Show.alder", "line": 24, "col": 81, "endLine": 24, "endCol": 82, "message": "in the definition of `load`: expected `}`, got `,`; the last expression of a block is its result and takes no `,`"}

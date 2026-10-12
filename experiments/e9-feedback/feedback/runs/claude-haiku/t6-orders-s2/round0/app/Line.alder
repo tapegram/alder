@@ -1,0 +1,32 @@
+module Line
+
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+-- One line of an order, with the product it names and its cost in cents.
+type LineRow = { product: Product, quantity: Int, cost: Int }
+
+mkRow : Product -> Line -> LineRow
+mkRow p line = { product: p, quantity: line.quantity, cost: line.quantity * p.price }
+
+rowOf : List Product -> Line -> Maybe LineRow
+rowOf products line = Maybe.map (\p -> mkRow p line) (List.find (\p -> p.id == line.product) products)
+
+rowsOf : List Product -> List Line -> List LineRow
+rowsOf products lines = List.filterMap (rowOf products) lines
+
+totalOf : List LineRow -> Int
+totalOf rows = List.sum (List.map (\r -> r.cost) rows)
+
+-- The total in cents of the given lines: quantity times price, summed.
+orderTotal : List Product -> List Line -> Int
+orderTotal products lines = totalOf (rowsOf products lines)

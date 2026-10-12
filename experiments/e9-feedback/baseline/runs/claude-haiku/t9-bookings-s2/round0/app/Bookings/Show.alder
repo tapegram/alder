@@ -1,0 +1,86 @@
+module Bookings.Show
+
+import Room
+import Booking
+import Layout
+import User
+
+page "/bookings/{id}" { id: Booking.BookingId } requires user
+
+type Model = { booking: Booking, room: Room, today: Date }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Booking params.id
+  match found {
+    Just b -> if b.owner == session.user then showBooking b else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+showBooking : Booking -> Query Model
+showBooking b = {
+  let room <- Db.get Room b.room
+  let today <- Date.today
+  match room {
+    Just r -> Query.succeed { booking: b, room: r, today: today },
+    Nothing -> Query.notFound,
+  }
+}
+
+msg Cancel
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Cancel p -> {
+    let today <- Date.today
+    cancelBooking today model.booking
+  },
+}
+
+-- The server checks the date again: a Cancel sent from a page loaded earlier is refused, and the
+-- booking stays (the page is shown again, without its Cancel button).
+cancelBooking : Date -> Booking -> Task Nav
+cancelBooking today booking =
+  if Booking.cancellable today booking then deleteBooking booking
+  else Task.succeed Rerender
+
+deleteBooking : Booking -> Task Nav
+deleteBooking booking = {
+  let _ <- Db.delete Booking booking.id
+  Task.succeed (Redirect (Bookings.Index {}))
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Booking">
+    <h1 id="room">{model.room.name}</h1>
+    <p><span id="from">{Date.toText model.booking.from}</span> to <span id="to">{Date.toText model.booking.to}</span></p>
+    {if Booking.cancellable model.today model.booking then <button id="cancel" click={Cancel}>Cancel</button> else Html.none}
+    <a href={Bookings.Index {}}>Back to my bookings</a>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "the owner cancels a booking before its first day" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let id <- Db.insert Booking { room: room, owner: me, from: Date.addDays 3 today, to: Date.addDays 5 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Show { id: id })
+  let r <- Test.click Cancel
+  let after <- Db.get Booking id
+  Task.succeed ({ shown: Test.has "#cancel" page.doc, answer: r.answer, kept: Maybe.isJust after } == { shown: True, answer: Redirected (Bookings.Index {}), kept: False })
+}
+
+test "a booking whose first day is today cannot be cancelled" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let id <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Show { id: id })
+  let r <- Test.run (update Cancel page.model { user: me })
+  let after <- Db.get Booking id
+  Task.succeed ({ shown: Test.has "#cancel" page.doc, value: r.value, kept: Maybe.isJust after } == { shown: False, value: Ok Rerender, kept: True })
+}

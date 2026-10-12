@@ -1,0 +1,3 @@
+{"code": "E0001", "severity": "error", "file": "app/Invites/Index.alder", "line": 60, "col": 110, "endLine": 60, "endCol": 111, "message": "in the definition of `update`: expected `->`, got `_`"}
+{"code": "E0001", "severity": "error", "file": "app/Invites/Index.alder", "line": 60, "col": 112, "endLine": 60, "endCol": 114, "message": "in the definition of `update`: expected `)`, got `->`"}
+{"code": "E0001", "severity": "error", "file": "app/Invites/Index.alder", "line": 60, "col": 117, "endLine": 60, "endCol": 118, "message": "in the definition of `update`: expected `}`, got `)`"}

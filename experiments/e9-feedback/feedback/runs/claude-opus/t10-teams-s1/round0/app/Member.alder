@@ -1,0 +1,13 @@
+module Member
+
+import Team
+import User
+
+type MemberId = brand Text
+
+-- One row per member who is not the owner: the owner has no Member row.
+table Member {
+  id: MemberId @id,
+  team: Team.TeamId @ref Team,
+  user: User.UserId @ref User,
+}

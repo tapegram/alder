@@ -1,0 +1,18 @@
+module Room
+
+type RoomId = brand Text
+
+table Room {
+  id: RoomId @id,
+  name: Text.NonEmpty,
+}
+
+-- The name of the room with this id among the given rooms, or "".
+nameOf : List Room -> RoomId -> Text
+nameOf rooms id = {
+  let found = List.find (\r -> r.id == id) rooms
+  match found {
+    Just r -> Text.trim r.name,
+    Nothing -> "",
+  }
+}

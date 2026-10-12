@@ -1,0 +1,2 @@
+{"code": "E0001", "severity": "error", "file": "app/Booking.alder", "line": 21, "col": 5, "endLine": 21, "endCol": 6, "message": "expected a declaration, got `(`"}
+{"code": "E0001", "severity": "error", "file": "app/Booking.alder", "line": 25, "col": 1, "endLine": 25, "endCol": 7, "message": "expected end of line after declaration, got `sample`"}

@@ -1,0 +1,1 @@
+{"code": "E0003", "severity": "error", "file": "app/Invites/Index.alder", "line": 132, "col": 12, "endLine": 132, "endCol": 14, "message": "expected Task _, got User.UserId"}

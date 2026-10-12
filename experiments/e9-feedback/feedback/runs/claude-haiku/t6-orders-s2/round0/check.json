@@ -1,0 +1,2 @@
+{"code": "E0202", "severity": "error", "file": "app/Orders/Show.alder", "line": 64, "col": 22, "endLine": 64, "endCol": 28, "message": "type `Status` belongs to module `Order`; write `Order.Status`", "fix": {"line": 64, "col": 22, "endLine": 64, "endCol": 28, "replace": "Order.Status"}}
+{"code": "E0202", "severity": "error", "file": "app/Orders/Show.alder", "line": 68, "col": 23, "endLine": 68, "endCol": 29, "message": "type `Status` belongs to module `Order`; write `Order.Status`", "fix": {"line": 68, "col": 23, "endLine": 68, "endCol": 29, "replace": "Order.Status"}}

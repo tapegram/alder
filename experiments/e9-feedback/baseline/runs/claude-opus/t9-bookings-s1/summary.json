@@ -1,0 +1,828 @@
+{
+ "model": "claude-opus",
+ "task": "t9-bookings",
+ "retries": 2,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 2,
+  "test": true,
+  "mutate": true,
+  "hidden": "experiments/e9-feedback/hidden",
+  "condition": "baseline",
+  "sample": "s1"
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 10,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 155.9,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "opus",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 20,
+    "failed": 0,
+    "results": [
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 2.533
+     },
+     {
+      "module": "Auth.Login",
+      "name": "the login page is shown to a visitor",
+      "ok": true,
+      "left": "{ answer: Shown, heading: Just \"Log in\", user: Nothing }",
+      "right": "{ answer: Shown, heading: Just \"Log in\", user: Nothing }",
+      "trace": [
+       "Test.open Auth.Login"
+      ],
+      "ms": 0.689
+     },
+     {
+      "module": "Booking",
+      "name": "the next free date skips back-to-back bookings",
+      "ok": true,
+      "left": "2026-01-05",
+      "right": "2026-01-05",
+      "trace": [
+       "Date.today"
+      ],
+      "ms": 0.417
+     },
+     {
+      "module": "Booking",
+      "name": "a room without bookings is free today",
+      "ok": true,
+      "left": "2026-01-01",
+      "right": "2026-01-01",
+      "trace": [
+       "Date.today"
+      ],
+      "ms": 0.32
+     },
+     {
+      "module": "Booking",
+      "name": "a later booking leaves today free",
+      "ok": true,
+      "left": "2026-01-01",
+      "right": "2026-01-01",
+      "trace": [
+       "Date.today"
+      ],
+      "ms": 0.298
+     },
+     {
+      "module": "Booking",
+      "name": "a booking holds its from date but not its to date",
+      "ok": true,
+      "left": "[True, True, False]",
+      "right": "[True, True, False]",
+      "trace": [
+       "Date.today"
+      ],
+      "ms": 0.316
+     },
+     {
+      "module": "Booking",
+      "name": "a booking can be cancelled only before its from date",
+      "ok": true,
+      "left": "[True, False, False]",
+      "right": "[True, False, False]",
+      "trace": [
+       "Date.today"
+      ],
+      "ms": 0.295
+     },
+     {
+      "module": "Booking",
+      "name": "overlapping counts only the same room's overlapping bookings",
+      "ok": true,
+      "left": "[1, 0, 0, 0]",
+      "right": "[1, 0, 0, 0]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Room",
+       "Db.insert Room",
+       "Date.today",
+       "Db.insert Booking",
+       "Db.count Booking",
+       "Db.count Booking",
+       "Db.count Booking",
+       "Db.count Booking"
+      ],
+      "ms": 0.468
+     },
+     {
+      "module": "Bookings.Index",
+      "name": "only my bookings are listed, ordered by from",
+      "ok": true,
+      "left": "{ rooms: [\"Ash\", \"Oak\"], froms: [\"2026-01-02\", \"2026-01-06\"], items: 2 }",
+      "right": "{ rooms: [\"Ash\", \"Oak\"], froms: [\"2026-01-02\", \"2026-01-06\"], items: 2 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Room",
+       "Db.insert Room",
+       "Date.today",
+       "Db.insert Booking",
+       "Db.insert Booking",
+       "Db.insert Booking",
+       "Test.login",
+       "Test.get Bookings.Index",
+       "Db.all Booking",
+       "Db.all Room"
+      ],
+      "ms": 0.505
+     },
+     {
+      "module": "Bookings.Index",
+      "name": "a visitor is sent to log in from the bookings",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Bookings.Index"
+      ],
+      "ms": 0.308
+     },
+     {
+      "module": "Bookings.Show",
+      "name": "the owner cancels a booking before its from date",
+      "ok": true,
+      "left": "{ room: Just \"Oak\", from: Just \"2026-01-02\", to: Just \"2026-01-04\", button: True, answer: Redirected /bookings, gone: True }",
+      "right": "{ room: Just \"Oak\", from: Just \"2026-01-02\", to: Just \"2026-01-04\", button: True, answer: Redirected /bookings, gone: True }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Room",
+       "Date.today",
+       "Db.insert Booking",
+       "Test.login",
+       "Test.get Bookings.Show",
+       "Db.get Booking",
+       "Db.get Room",
+       "Date.today",
+       "Test.click Bookings.Show.Cancel",
+       "Db.get Booking",
+       "Db.get Room",
+       "Date.today",
+       "Date.today",
+       "Db.delete Booking",
+       "Db.all Booking",
+       "Db.all Room",
+       "Db.get Booking"
+      ],
+      "ms": 1.203
+     },
+     {
+      "module": "Bookings.Show",
+      "name": "a booking whose from date is today cannot be cancelled",
+      "ok": true,
+      "left": "{ button: False, value: Ok (Reject \"A booking cannot be cancelled once it has started.\"), stays: Just 2026-01-01 }",
+      "right": "{ button: False, value: Ok (Reject \"A booking cannot be cancelled once it has started.\"), stays: Just 2026-01-01 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Room",
+       "Date.today",
+       "Db.insert Booking",
+       "Test.login",
+       "Test.get Bookings.Show",
+       "Db.get Booking",
+       "Db.get Room",
+       "Date.today",
+       "Test.run",
+       "Date.today",
+       "Db.get Booking"
+      ],
+      "ms": 0.296
+     },
+     {
+      "module": "Bookings.Show",
+      "name": "a booking is not found for anyone but its owner",
+      "ok": true,
+      "left": "{ visitor: Redirected /login, stranger: PageMissing }",
+      "right": "{ visitor: Redirected /login, stranger: PageMissing }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Room",
+       "Date.today",
+       "Db.insert Booking",
+       "Test.open Bookings.Show",
+       "Test.login",
+       "Test.open Bookings.Show",
+       "Db.get Booking"
+      ],
+      "ms": 0.299
+     },
+     {
+      "module": "Rooms.Index",
+      "name": "a visitor is sent to log in from the rooms",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Rooms.Index"
+      ],
+      "ms": 0.29
+     },
+     {
+      "module": "Rooms.Index",
+      "name": "rooms are listed by name with their next free date",
+      "ok": true,
+      "left": "{ names: [\"Ash\", \"Elm\", \"Oak\"], free: [\"2026-01-01\", \"2026-01-01\", \"2026-01-04\"], items: 3 }",
+      "right": "{ names: [\"Ash\", \"Elm\", \"Oak\"], free: [\"2026-01-01\", \"2026-01-01\", \"2026-01-04\"], items: 3 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Room",
+       "Db.insert Room",
+       "Db.insert Room",
+       "Date.today",
+       "Db.insert Booking",
+       "Db.insert Booking",
+       "Db.insert Booking",
+       "Test.login",
+       "Test.get Rooms.Index",
+       "Date.today",
+       "Db.all Room",
+       "Db.all Booking"
+      ],
+      "ms": 0.448
+     },
+     {
+      "module": "Rooms.Show",
+      "name": "an overlapping booking is refused, one starting on the other's to date is stored",
+      "ok": true,
+      "left": "{ clash: FormRejected [{ field: \"\", message: \"The room is already booked on those dates.\" }], afterClash: 1, adjacent: Redirected /rooms/MjSe3p_LtZS4Js9-TUBL, afterAdjacent: 2, froms: [\"2026-01-02\", \"2026-01-04\"], tos: [\"2026-01-04\", \"2026-01-06\"] }",
+      "right": "{ clash: FormRejected [{ field: \"\", message: \"The room is already booked on those dates.\" }], afterClash: 1, adjacent: Redirected /rooms/MjSe3p_LtZS4Js9-TUBL, afterAdjacent: 2, froms: [\"2026-01-02\", \"2026-01-04\"], tos: [\"2026-01-04\", \"2026-01-06\"] }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Room",
+       "Date.today",
+       "Db.insert Booking",
+       "Test.login",
+       "Test.get Rooms.Show",
+       "Db.get Room",
+       "Db.all Booking",
+       "Test.submit NewBooking",
+       "Db.get Room",
+       "Db.all Booking",
+       "Db.count Booking",
+       "Db.get Room",
+       "Db.all Booking",
+       "Db.count Booking",
+       "Test.submit NewBooking",
+       "Db.get Room",
+       "Db.all Booking",
+       "Db.count Booking",
+       "Db.insert Booking",
+       "Db.get Room",
+       "Db.all Booking",
+       "Db.count Booking"
+      ],
+      "ms": 0.699
+     },
+     {
+      "module": "Rooms.Show",
+      "name": "a booking that ends on another's from date is stored",
+      "ok": true,
+      "left": "{ answer: Redirected /rooms/OCCD41aHa6xTojxlZFhL, rows: 2 }",
+      "right": "{ answer: Redirected /rooms/OCCD41aHa6xTojxlZFhL, rows: 2 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Room",
+       "Date.today",
+       "Db.insert Booking",
+       "Test.login",
+       "Test.get Rooms.Show",
+       "Db.get Room",
+       "Db.all Booking",
+       "Test.submit NewBooking",
+       "Db.get Room",
+       "Db.all Booking",
+       "Db.count Booking",
+       "Db.insert Booking",
+       "Db.get Room",
+       "Db.all Booking",
+       "Db.count Booking"
+      ],
+      "ms": 0.535
+     },
+     {
+      "module": "Rooms.Show",
+      "name": "a booking whose to is not after its from is refused",
+      "ok": true,
+      "left": "{ same: FormRejected [{ field: \"\", message: \"The to date must be after the from date.\" }], backwards: FormRejected [{ field: \"\", message: \"The to date must be after the from date.\" }], rows: 0 }",
+      "right": "{ same: FormRejected [{ field: \"\", message: \"The to date must be after the from date.\" }], backwards: FormRejected [{ field: \"\", message: \"The to date must be after the from date.\" }], rows: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Room",
+       "Date.today",
+       "Test.login",
+       "Test.get Rooms.Show",
+       "Db.get Room",
+       "Db.all Booking",
+       "Test.submit NewBooking",
+       "Db.get Room",
+       "Db.all Booking",
+       "Db.get Room",
+       "Db.all Booking",
+       "Test.submit NewBooking",
+       "Db.get Room",
+       "Db.all Booking",
+       "Db.get Room",
+       "Db.all Booking",
+       "Db.count Booking"
+      ],
+      "ms": 0.542
+     },
+     {
+      "module": "Rooms.Show",
+      "name": "bookings of different rooms never conflict",
+      "ok": true,
+      "left": "{ answer: Redirected /rooms/Hv38QRuSf6gvobNEu7Ha, rows: 1, name: Just \"Ash\", shown: 1 }",
+      "right": "{ answer: Redirected /rooms/Hv38QRuSf6gvobNEu7Ha, rows: 1, name: Just \"Ash\", shown: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Room",
+       "Db.insert Room",
+       "Date.today",
+       "Db.insert Booking",
+       "Test.login",
+       "Test.get Rooms.Show",
+       "Db.get Room",
+       "Db.all Booking",
+       "Test.submit NewBooking",
+       "Db.get Room",
+       "Db.all Booking",
+       "Db.count Booking",
+       "Db.insert Booking",
+       "Db.get Room",
+       "Db.all Booking",
+       "Db.count Booking"
+      ],
+      "ms": 0.523
+     },
+     {
+      "module": "Rooms.Show",
+      "name": "an unknown room is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Rooms.Show",
+       "Db.get Room"
+      ],
+      "ms": 0.3
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.8292682926829268,
+    "killed": 34,
+    "survived": 7,
+    "suppressed": 0,
+    "skipped": 9,
+    "survivors": [
+     {
+      "module": "Auth.Login",
+      "file": "app/Auth/Login.alder",
+      "decl": "update",
+      "line": 40,
+      "col": 9,
+      "kind": "session put dropped",
+      "before": "let _ <- Session.put (\\s -> { s | user: Just id })",
+      "after": "let _ <- Task.succeed ()"
+     },
+     {
+      "module": "Auth.Login",
+      "file": "app/Auth/Login.alder",
+      "decl": "update",
+      "line": 41,
+      "col": 23,
+      "kind": "redirect \u2192 rerender",
+      "before": "Redirect (Rooms.Index {})",
+      "after": "Rerender"
+     },
+     {
+      "module": "Auth.Login",
+      "file": "app/Auth/Login.alder",
+      "decl": "update",
+      "line": 43,
+      "col": 32,
+      "kind": "reject \u2192 rerender",
+      "before": "Reject \"Email or password is incorrect.\"",
+      "after": "Rerender"
+     },
+     {
+      "module": "Booking",
+      "file": "app/Booking.alder",
+      "decl": "Booking",
+      "line": 10,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "room @ref Room @restrict",
+      "after": "room @ref Room @cascade"
+     },
+     {
+      "module": "Booking",
+      "file": "app/Booking.alder",
+      "decl": "Booking",
+      "line": 11,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "owner @ref User @restrict",
+      "after": "owner @ref User @cascade"
+     },
+     {
+      "module": "Rooms.Index",
+      "file": "app/Rooms/Index.alder",
+      "decl": "load",
+      "line": 23,
+      "col": 38,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Booking.from.asc",
+      "after": "Db.orderBy Booking.from.desc"
+     },
+     {
+      "module": "Rooms.Show",
+      "file": "app/Rooms/Show.alder",
+      "decl": "requires",
+      "line": 8,
+      "col": 40,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = User.UserId \"mutant\")"
+     }
+    ]
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "opus",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "mutation": {
+  "score": 0.8292682926829268,
+  "killed": 34,
+  "survived": 7,
+  "suppressed": 0,
+  "skipped": 9,
+  "survivors": [
+   {
+    "module": "Auth.Login",
+    "file": "app/Auth/Login.alder",
+    "decl": "update",
+    "line": 40,
+    "col": 9,
+    "kind": "session put dropped",
+    "before": "let _ <- Session.put (\\s -> { s | user: Just id })",
+    "after": "let _ <- Task.succeed ()"
+   },
+   {
+    "module": "Auth.Login",
+    "file": "app/Auth/Login.alder",
+    "decl": "update",
+    "line": 41,
+    "col": 23,
+    "kind": "redirect \u2192 rerender",
+    "before": "Redirect (Rooms.Index {})",
+    "after": "Rerender"
+   },
+   {
+    "module": "Auth.Login",
+    "file": "app/Auth/Login.alder",
+    "decl": "update",
+    "line": 43,
+    "col": 32,
+    "kind": "reject \u2192 rerender",
+    "before": "Reject \"Email or password is incorrect.\"",
+    "after": "Rerender"
+   },
+   {
+    "module": "Booking",
+    "file": "app/Booking.alder",
+    "decl": "Booking",
+    "line": 10,
+    "col": 3,
+    "kind": "cascade \u2194 restrict",
+    "before": "room @ref Room @restrict",
+    "after": "room @ref Room @cascade"
+   },
+   {
+    "module": "Booking",
+    "file": "app/Booking.alder",
+    "decl": "Booking",
+    "line": 11,
+    "col": 3,
+    "kind": "cascade \u2194 restrict",
+    "before": "owner @ref User @restrict",
+    "after": "owner @ref User @cascade"
+   },
+   {
+    "module": "Rooms.Index",
+    "file": "app/Rooms/Index.alder",
+    "decl": "load",
+    "line": 23,
+    "col": 38,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Booking.from.asc",
+    "after": "Db.orderBy Booking.from.desc"
+   },
+   {
+    "module": "Rooms.Show",
+    "file": "app/Rooms/Show.alder",
+    "decl": "requires",
+    "line": 8,
+    "col": 40,
+    "kind": "requires dropped",
+    "before": "requires user",
+    "after": "served without user (user = User.UserId \"mutant\")"
+   }
+  ]
+ },
+ "hidden": {
+  "passed": 7,
+  "failed": 0,
+  "results": [
+   {
+    "module": "Hidden",
+    "name": "a booking through the room's form is stored and listed",
+    "ok": true,
+    "left": "{ answer: Redirected /rooms/P-7hQkak6iGIz-T68R2B, name: Just \"Blue\", from: [\"2026-01-02\"], to: [\"2026-01-04\"], stored: 1, rooms: [\"Blue\"], starts: [\"2026-01-02\"] }",
+    "right": "{ answer: Redirected /rooms/P-7hQkak6iGIz-T68R2B, name: Just \"Blue\", from: [\"2026-01-02\"], to: [\"2026-01-04\"], stored: 1, rooms: [\"Blue\"], starts: [\"2026-01-02\"] }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Room",
+     "Date.today",
+     "Test.login",
+     "Test.get Rooms.Show",
+     "Db.get Room",
+     "Db.all Booking",
+     "Test.submit NewBooking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Db.count Booking",
+     "Db.insert Booking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Db.count Booking",
+     "Test.get Bookings.Index",
+     "Db.all Booking",
+     "Db.all Room"
+    ],
+    "ms": 3.632
+   },
+   {
+    "module": "Hidden",
+    "name": "an overlapping booking is refused and not stored; touching ones are stored",
+    "ok": true,
+    "left": "{ late: True, early: True, inside: True, refused: 1, after: Redirected /rooms/76xufE2MQl4Q0-2ujZ-1, before: Redirected /rooms/76xufE2MQl4Q0-2ujZ-1, elsewhere: Redirected /rooms/rLhQ2AUbFcNj9V8DoB9B, stored: 4 }",
+    "right": "{ late: True, early: True, inside: True, refused: 1, after: Redirected /rooms/76xufE2MQl4Q0-2ujZ-1, before: Redirected /rooms/76xufE2MQl4Q0-2ujZ-1, elsewhere: Redirected /rooms/rLhQ2AUbFcNj9V8DoB9B, stored: 4 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Room",
+     "Db.insert Room",
+     "Date.today",
+     "Db.insert Booking",
+     "Test.login",
+     "Test.get Rooms.Show",
+     "Db.get Room",
+     "Db.all Booking",
+     "Test.submit NewBooking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Db.count Booking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Test.submit NewBooking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Db.count Booking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Test.submit NewBooking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Db.count Booking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Db.count Booking",
+     "Test.submit NewBooking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Db.count Booking",
+     "Db.insert Booking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Test.submit NewBooking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Db.count Booking",
+     "Db.insert Booking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Test.get Rooms.Show",
+     "Db.get Room",
+     "Db.all Booking",
+     "Test.submit NewBooking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Db.count Booking",
+     "Db.insert Booking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Db.count Booking"
+    ],
+    "ms": 2.548
+   },
+   {
+    "module": "Hidden",
+    "name": "a booking whose to is not after its from is refused",
+    "ok": true,
+    "left": "{ same: True, backwards: True, stored: 0 }",
+    "right": "{ same: True, backwards: True, stored: 0 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Room",
+     "Date.today",
+     "Test.login",
+     "Test.get Rooms.Show",
+     "Db.get Room",
+     "Db.all Booking",
+     "Test.submit NewBooking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Test.submit NewBooking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Db.get Room",
+     "Db.all Booking",
+     "Db.count Booking"
+    ],
+    "ms": 0.751
+   },
+   {
+    "module": "Hidden",
+    "name": "the rooms list shows each room's next free date",
+    "ok": true,
+    "left": "{ names: [\"A\", \"B\", \"C\", \"D\"], free: [\"2026-01-01\", \"2026-01-04\", \"2026-01-01\", \"2026-01-02\"], items: 4 }",
+    "right": "{ names: [\"A\", \"B\", \"C\", \"D\"], free: [\"2026-01-01\", \"2026-01-04\", \"2026-01-01\", \"2026-01-02\"], items: 4 }",
+    "trace": [
+     "Db.insert User",
+     "Date.today",
+     "Db.insert Room",
+     "Db.insert Room",
+     "Db.insert Room",
+     "Db.insert Room",
+     "Db.insert Booking",
+     "Db.insert Booking",
+     "Db.insert Booking",
+     "Db.insert Booking",
+     "Db.insert Booking",
+     "Db.insert Booking",
+     "Test.login",
+     "Test.get Rooms.Index",
+     "Date.today",
+     "Db.all Room",
+     "Db.all Booking"
+    ],
+    "ms": 0.612
+   },
+   {
+    "module": "Hidden",
+    "name": "the owner cancels a booking before its from date",
+    "ok": true,
+    "left": "{ room: Just \"Blue\", from: Just \"2026-01-02\", to: Just \"2026-01-03\", button: True, answer: Redirected /bookings, mine: 0, left: 0 }",
+    "right": "{ room: Just \"Blue\", from: Just \"2026-01-02\", to: Just \"2026-01-03\", button: True, answer: Redirected /bookings, mine: 0, left: 0 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Room",
+     "Date.today",
+     "Db.insert Booking",
+     "Test.login",
+     "Test.get Bookings.Show",
+     "Db.get Booking",
+     "Db.get Room",
+     "Date.today",
+     "Test.click Bookings.Show.Cancel",
+     "Db.get Booking",
+     "Db.get Room",
+     "Date.today",
+     "Date.today",
+     "Db.delete Booking",
+     "Db.all Booking",
+     "Db.all Room",
+     "Db.count Booking"
+    ],
+    "ms": 0.621
+   },
+   {
+    "module": "Hidden",
+    "name": "a booking that has started cannot be cancelled, even from a stale page",
+    "ok": true,
+    "left": "{ answer: Rerendered, button: False, left: 2 }",
+    "right": "{ answer: Rerendered, button: False, left: 2 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Room",
+     "Date.today",
+     "Db.insert Booking",
+     "Db.insert Booking",
+     "Test.login",
+     "Test.get Bookings.Show",
+     "Db.get Booking",
+     "Db.get Room",
+     "Date.today",
+     "Test.get Bookings.Show",
+     "Db.get Booking",
+     "Db.get Room",
+     "Date.today",
+     "Db.update Booking",
+     "Test.click Bookings.Show.Cancel",
+     "Db.get Booking",
+     "Db.get Room",
+     "Date.today",
+     "Date.today",
+     "Db.get Booking",
+     "Db.get Room",
+     "Date.today",
+     "Db.count Booking"
+    ],
+    "ms": 0.613
+   },
+   {
+    "module": "Hidden",
+    "name": "another user's booking is missing, and so is its Cancel",
+    "ok": true,
+    "left": "{ opened: PageMissing, mine: 0, cancel: PageMissing, left: 1 }",
+    "right": "{ opened: PageMissing, mine: 0, cancel: PageMissing, left: 1 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Room",
+     "Date.today",
+     "Db.insert Booking",
+     "Test.login",
+     "Test.open Bookings.Show",
+     "Db.get Booking",
+     "Test.get Bookings.Index",
+     "Db.all Booking",
+     "Db.all Room",
+     "Test.login",
+     "Test.get Bookings.Show",
+     "Db.get Booking",
+     "Db.get Room",
+     "Date.today",
+     "Test.login",
+     "Test.click Bookings.Show.Cancel",
+     "Db.get Booking",
+     "Db.count Booking"
+    ],
+    "ms": 0.858
+   }
+  ],
+  "exit": 0
+ },
+ "hidden_pass": "7/7"
+}

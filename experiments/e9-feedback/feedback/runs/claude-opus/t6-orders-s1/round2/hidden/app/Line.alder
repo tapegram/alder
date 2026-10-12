@@ -1,0 +1,77 @@
+module Line
+
+import Order
+import Product
+import User
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+-- lineTotal is quantity × price in cents; a line whose product is not in the list counts 0.
+lineTotal : List Product -> Line -> Int
+lineTotal products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  match found {
+    Just p -> line.quantity * p.price,
+    Nothing -> 0,
+  }
+}
+
+total : List Product -> List Line -> Int
+total products lines = List.sum (List.map (lineTotal products) lines)
+
+productName : List Product -> Line -> Text
+productName products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  match found {
+    Just p -> Text.trim p.name,
+    Nothing -> "",
+  }
+}
+
+test "total sums quantity times price" =
+  total [
+    { id: Product.ProductId "tea", name: Text.NonEmpty "Tea", price: Int.NonNegative 500, active: True },
+    { id: Product.ProductId "cup", name: Text.NonEmpty "Cup", price: Int.NonNegative 250, active: True },
+  ] [
+    { id: LineId "a", order: Order.OrderId "o", product: Product.ProductId "tea", quantity: Int.Positive 2 },
+    { id: LineId "b", order: Order.OrderId "o", product: Product.ProductId "cup", quantity: Int.Positive 1 },
+  ] == 1250
+
+test "an empty order totals zero" =
+  total [] [] == 0
+
+test "productName finds the line's product" =
+  productName [
+    { id: Product.ProductId "cup", name: Text.NonEmpty "Cup", price: Int.NonNegative 250, active: True },
+    { id: Product.ProductId "tea", name: Text.NonEmpty "Tea", price: Int.NonNegative 500, active: True },
+  ] { id: LineId "a", order: Order.OrderId "o", product: Product.ProductId "tea", quantity: Int.Positive 2 } == "Tea"
+
+-- `order` is `@ref Order @cascade`: an order's lines go with it.
+test "deleting an order deletes its lines" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 500 }
+  let id <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: id, product: tea, quantity: Int.Positive 2 }
+  let r <- Test.run (Db.delete Order id)
+  let n <- Db.from Line |> Db.count
+  Task.succeed ({ value: r.value, lines: n } == { value: Ok (), lines: 0 })
+}
+
+-- `product` is `@ref Product` with the default rule, `@restrict`: a product that a line names
+-- cannot be deleted, and the line stays.
+test "a product on a line cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 500 }
+  let id <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: id, product: tea, quantity: Int.Positive 2 }
+  let r <- Test.run (Db.delete Product tea)
+  let n <- Db.from Line |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, lines: n } == { deleted: Nothing, lines: 1 })
+}

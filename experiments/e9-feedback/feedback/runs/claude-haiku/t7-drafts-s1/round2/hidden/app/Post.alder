@@ -1,0 +1,44 @@
+module Post
+
+import User
+
+type PostId = brand Text
+type Slug = brand Text where (\s -> isSlug s)
+
+table Post {
+  id: PostId @id,
+  slug: Slug @unique,
+  title: Text.NonEmpty,
+  body: Text,
+  author: User.UserId @ref User,
+  created: Time @created,
+  published: Bool = False,
+}
+
+bySlug : Slug -> Query (Maybe Post)
+bySlug slug = Db.from Post |> Db.where (Post.slug.eq slug) |> Db.first
+
+-- isSlug is the rule a Slug keeps: lowercase letters, digits and hyphens, at least one.
+isSlug : Text -> Bool
+isSlug s = Text.matches "^[a-z0-9-]+$" s
+
+test "a slug is lowercase letters, digits and hyphens" =
+  List.map isSlug ["hello-world", "post-2", "Hello", "a b", "", "x/y"] == [True, True, False, False, False, False]
+
+-- bySlug finds the post with the slug asked for, not the first post in the table.
+test "bySlug finds the post with that slug" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Slug "one", title: Text.NonEmpty "One", body: "", author: author }
+  let _ <- Db.insert Post { slug: Slug "two", title: Text.NonEmpty "Two", body: "", author: author }
+  let found <- bySlug (Slug "two")
+  Task.succeed (Maybe.map (\p -> p.title) found == Just (Text.NonEmpty "Two"))
+}
+
+-- A user who still has posts cannot be deleted: `author` is `@ref User` with the default rule.
+test "a user with posts cannot be deleted" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Slug "kept", title: Text.NonEmpty "Kept", body: "", author: author }
+  let r <- Test.run (Db.delete User author)
+  let posts <- Db.from Post |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, posts: posts } == { deleted: Nothing, posts: 1 })
+}

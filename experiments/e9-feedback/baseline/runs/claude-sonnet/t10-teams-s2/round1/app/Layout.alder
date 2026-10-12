@@ -1,0 +1,30 @@
+module Layout
+
+Page : { title: Text, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+    </head>
+    <body>
+      <main>{props.children}</main>
+    </body>
+  </html>
+
+Authed : { title: Text, children: List (Html a) } -> Html a
+Authed props =
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+    </head>
+    <body>
+      <nav>
+        <a href={Teams.Index {}}>Teams</a>
+        <a href={Invites.Index {}}>Invites</a>
+        <button click={App.Logout}>Log out</button>
+      </nav>
+      <main>{props.children}</main>
+    </body>
+  </html>

@@ -1,0 +1,26 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- Whether booking b holds a day of the half-open range [from, to): the two overlap.
+clashes : Date -> Date -> Booking -> Bool
+clashes from to b = b.from < to && from < b.to
+
+-- The first day, from `day` on, that no booking holds.
+freeFrom : Date -> List Booking -> Date
+freeFrom day bookings =
+  match List.find (\b -> b.from <= day && day < b.to) bookings {
+    Just b -> freeFrom b.to bookings,
+    Nothing -> day,
+  }

@@ -1,0 +1,42 @@
+module Bookings.Index
+
+import Room
+import Booking
+import User
+import Layout
+
+page "/bookings" { } requires user
+
+type Row = { booking: Booking, roomName: Text }
+
+type Model = { rows: List Row }
+
+roomName : Room -> Text
+roomName r = r.name
+
+row : List Room -> Booking -> Row
+row rooms b = { booking: b, roomName: Maybe.withDefault "?" (Maybe.map roomName (List.find (\r -> r.id == b.room) rooms)) }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let mine <- Db.from Booking |> Db.where (Booking.owner.eq session.user) |> Db.orderBy Booking.from.asc |> Db.all
+  let rooms <- Db.from Room |> Db.all
+  Query.succeed { rows: List.map (row rooms) mine }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="My bookings">
+    <nav>
+      <a href={Rooms.Index {}}>Rooms</a>
+      <a href={Bookings.Index {}}>My bookings</a>
+      <button click={App.Logout}>Log out</button>
+    </nav>
+    <h1>My bookings</h1>
+    <ul id="mine">
+      {for r in model.rows ->
+        <li>
+          <a href={Bookings.Show { id: r.booking.id }}><span class="room">{r.roomName}</span> <span class="from">{Date.toText r.booking.from}</span></a>
+        </li>}
+    </ul>
+  </Layout.Page>

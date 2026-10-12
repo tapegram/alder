@@ -1,0 +1,32 @@
+module User
+
+type UserId = brand Text
+
+-- Anyone, logged in or not, can read and comment. An Author can also write posts: the Admin
+-- pages are a 404 for a Reader.
+type Role = Reader | Author
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  role: Role = Reader,
+  created: Time @created,
+}
+
+-- author is the user with that id when they are an Author, and Nothing for a Reader (or no
+-- user): the one role check of the Admin pages and of the front page's Write link.
+author : UserId -> Query (Maybe User)
+author id = Db.from User |> Db.where (User.id.eq id) |> Db.where (User.role.eq Author) |> Db.first
+
+-- Only an Author is found, and only the one asked for: a Reader gets Nothing, and another
+-- Author is not the user who was asked for.
+test "author finds only an Author, and only the one asked for" = {
+  let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
+  let a <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "", role: Author }
+  let b <- Db.insert User { email: Text.Email "b@example.com", name: Text.NonEmpty "B", passwordHash: "", role: Author }
+  let ofReader <- author reader
+  let ofB <- author b
+  Task.succeed ({ reader: Maybe.map (\u -> u.id) ofReader, b: Maybe.map (\u -> u.id) ofB } == { reader: Nothing, b: Just b })
+}

@@ -1,0 +1,36 @@
+module Rooms.Index
+
+import Room
+import Booking
+import Layout
+
+page "/rooms" { } requires user
+
+type Row = { room: Room, free: Date }
+
+type Model = { rows: List Row }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let today <- Date.today
+  let rooms <- Db.from Room |> Db.orderBy Room.name.asc |> Db.all
+  let bookings <- Db.from Booking |> Db.where (Booking.to.gt today) |> Db.all
+  Query.succeed { rows: List.map (rowOf today bookings) rooms }
+}
+
+rowOf : Date -> List Booking -> Room -> Row
+rowOf today bookings room =
+  { room: room, free: Booking.nextFree today (List.filter (\b -> b.room == room.id) bookings) }
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Member title="Rooms">
+    <h1>Rooms</h1>
+    <ul id="rooms">
+      {for row in model.rows ->
+        <li>
+          <a class="name" href={Rooms.Show { id: row.room.id }}>{row.room.name}</a>
+          <span class="free">{Date.toText row.free}</span>
+        </li>}
+    </ul>
+  </Layout.Member>

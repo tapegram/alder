@@ -1,0 +1,45 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+clashMessage : Text
+clashMessage = "This room is already booked for part of those dates."
+
+backwardsMessage : Text
+backwardsMessage = "The booking must end after it starts."
+
+-- A booking holds its `from` date up to, but not including, its `to` date.
+holds : Booking -> Date -> Bool
+holds b d = b.from <= d && d < b.to
+
+overlaps : Date -> Date -> Booking -> Bool
+overlaps start finish b = start < b.to && b.from < finish
+
+-- Why a booking of [start, finish) next to the room's existing bookings is refused, if it is.
+refusal : Date -> Date -> List Booking -> Maybe Text
+refusal start finish existing = {
+  let backwards = not (start < finish)
+  let clash = List.any (overlaps start finish) existing
+  if backwards then Just backwardsMessage else if clash then Just clashMessage else Nothing
+}
+
+-- The first date, today or later, that none of the bookings holds.
+nextFree : Date -> List Booking -> Date
+nextFree today bookings = {
+  let sorted = List.sortByText (\b -> Date.toText b.from) bookings
+  List.foldl (\b free -> if holds b free then b.to else free) today sorted
+}
+
+canCancel : Date -> Booking -> Bool
+canCancel today b = today < b.from

@@ -1,0 +1,2 @@
+{"code": "E0001", "severity": "error", "file": "app/Line.alder", "line": 36, "col": 5, "endLine": 36, "endCol": 6, "message": "expected a declaration, got `[`"}
+{"code": "E0001", "severity": "error", "file": "app/Line.alder", "line": 39, "col": 1, "endLine": 39, "endCol": 5, "message": "expected end of line after declaration, got `test`"}

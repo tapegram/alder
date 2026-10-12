@@ -1,0 +1,96 @@
+module Invites.Index
+
+import Invite
+import Team
+import Member
+import User
+import Layout
+
+page "/invites" { } requires user
+
+type Waiting = { id: Invite.InviteId, team: Text }
+
+type Model = { invites: List Waiting }
+
+toWaiting : Invite -> Team -> Waiting
+toWaiting invite team = { id: invite.id, team: team.name }
+
+waitingOf : Invite -> Query (Maybe Waiting)
+waitingOf invite = Query.map (\t -> Maybe.map (toWaiting invite) t) (Db.get Team invite.team)
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get User session.user
+  match found {
+    Nothing -> Query.notFound,
+    Just me -> {
+      let invites <- Db.from Invite |> Db.where (Invite.email.eq me.email) |> Db.where (Invite.status.eq Pending) |> Db.all
+      let rows <- Query.all (List.map waitingOf invites)
+      Query.succeed { invites: List.filterMap (\r -> r) rows },
+    },
+  }
+}
+
+msg Accept { id: Invite.InviteId }
+msg Decline { id: Invite.InviteId }
+
+-- The invite must be waiting and addressed to the session's user; otherwise it is a 404.
+waiting : Invite.InviteId -> User.UserId -> Task Invite
+waiting id user = {
+  let found <- Db.get Invite id
+  let me <- Db.get User user
+  let mine = Maybe.map (\u -> u.email) me
+  match found {
+    Just inv -> if mine == Just (inv.email) && inv.status == Pending then Task.succeed inv else Task.notFound,
+    Nothing -> Task.notFound,
+  }
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Accept p -> {
+    let inv <- waiting p.id session.user
+    let _ <- Db.update Invite inv.id (\i -> { i | status: Accepted })
+    let _ <- Member.add inv.team session.user
+    Task.succeed (Redirect (Teams.Show { id: inv.team }))
+  },
+  Decline p -> {
+    let inv <- waiting p.id session.user
+    let _ <- Db.update Invite inv.id (\i -> { i | status: Declined })
+    Task.succeed (Redirect (Invites.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Invites">
+    <h1>Invites</h1>
+    <ul id="invites">
+      {for i in model.invites ->
+        <li>
+          <span class="team">{i.team}</span>
+          <button click={Accept { id: i.id }}>Accept</button>
+          <button click={Decline { id: i.id }}>Decline</button>
+        </li>}
+    </ul>
+    <a href={Teams.Index {}}>Teams</a>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "accepting an invite makes the team visible, declining does not" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let crew <- Db.insert Team { name: Text.NonEmpty "Crew", owner: owner }
+  let club <- Db.insert Team { name: Text.NonEmpty "Club", owner: owner }
+  let yes <- Db.insert Invite { team: crew, email: Text.Email "ann@example.com", status: Pending }
+  let no <- Db.insert Invite { team: club, email: Text.Email "ann@example.com", status: Pending }
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Invites.Index {})
+  let _ <- Test.click (Decline { id: no })
+  let accepted <- Test.click (Accept { id: yes })
+  let teams <- Test.get (Teams.Index {})
+  let crewPage <- Test.open (Teams.Show { id: crew })
+  let clubPage <- Test.open (Teams.Show { id: club })
+  let invites <- Test.get (Invites.Index {})
+  Task.succeed ({ accepted: accepted.answer, names: Test.texts "#teams .name" teams.doc, crew: crewPage.answer, club: clubPage.answer, waiting: Test.count "#invites li" invites.doc } == { accepted: Redirected (Teams.Show { id: crew }), names: ["Crew"], crew: Shown, club: PageMissing, waiting: 0 })
+}

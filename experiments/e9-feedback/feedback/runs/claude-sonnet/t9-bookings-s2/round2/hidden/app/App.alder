@@ -1,0 +1,38 @@
+module App
+
+import User
+import Layout
+
+session { user: Maybe User.UserId }
+
+login = Auth.Login
+
+msg Logout
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing })
+    Task.succeed (Redirect (Auth.Login {}))
+  },
+}
+
+error : Error -> Html Never
+error err =
+  <Layout.Page title="Error" nav={False}>
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html Never
+notFound =
+  <Layout.Page title="Not found" nav={False}>
+    <h1>Not found</h1>
+  </Layout.Page>
+
+-- A Rerender of a page that requires a user would also end at the login page, so only a test of
+-- `update` itself tells Redirect from Rerender, and a dropped Session.put shows in the trace.
+test "Logout clears the user and goes to log in" = {
+  let r <- Test.run (update Logout { user: Just (User.UserId "me") })
+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] })
+}

@@ -1,0 +1,23 @@
+module Member
+
+import Team
+import User
+
+type MemberId = brand Text
+
+table Member {
+  id: MemberId @id,
+  team: Team.TeamId @ref Team,
+  user: User.UserId @ref User,
+}
+
+-- Makes `user` a member of `team`, unless they already are or already own it. An accepted
+-- invite calls this, so the same person accepting twice, or the owner accepting, adds no row.
+add : Team.TeamId -> User.UserId -> Task Unit
+add team user = {
+  let owner <- Db.get Team team
+  let existing <- Db.from Member |> Db.where (Member.team.eq team) |> Db.where (Member.user.eq user) |> Db.count
+  let isOwner = (Maybe.map (\t -> t.owner == user) owner) ?? False
+  let _ <- if isOwner || existing > 0 then Task.succeed () else Task.map (\m -> ()) (Db.insert Member { team: team, user: user })
+  Task.succeed ()
+}

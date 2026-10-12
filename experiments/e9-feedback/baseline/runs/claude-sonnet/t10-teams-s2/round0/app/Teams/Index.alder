@@ -1,0 +1,60 @@
+module Teams.Index
+
+import Team
+import Member
+import User
+import Layout
+
+page "/teams" { } requires user
+
+type Model = { teams: List Team }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let memberships <- Db.from Member |> Db.where (Member.user.eq session.user) |> Db.all
+  let ids = List.map (\m -> m.team) memberships
+  let teams <-
+    Db.from Team
+      |> Db.where (Db.or [Team.owner.eq session.user, Team.id.in ids])
+      |> Db.orderBy Team.name.asc
+      |> Db.all
+  Query.succeed { teams: teams }
+}
+
+form NewTeam = {
+  name: Text.NonEmpty,
+}
+
+msg Create form NewTeam
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Team { name: p.form.name, owner: session.user }
+    Task.succeed (Redirect (Teams.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Authed title="Teams">
+    <h1>Teams</h1>
+    <ul id="teams">
+      {for t in model.teams ->
+        <li><a class="name" href={Teams.Show { id: t.id }}>{t.name}</a></li>}
+    </ul>
+    <form submit={Create}>
+      <Input field="name" label="Team name" />
+      <Errors field="name" />
+      <button>Create</button>
+    </form>
+  </Layout.Authed>
+
+test "creating a team makes the user its owner" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Teams.Index {})
+  let r <- Test.submit NewTeam { name: Text.NonEmpty "Core" }
+  let page <- Test.get (Teams.Index {})
+  Task.succeed ({ name: Test.text "#name" r.doc, members: Test.texts "#members .name" r.doc, teams: Test.texts "#teams .name" page.doc } == { name: Just "Core", members: ["Me"], teams: ["Core"] })
+}

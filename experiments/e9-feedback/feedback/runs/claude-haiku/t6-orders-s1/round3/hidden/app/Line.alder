@@ -1,0 +1,60 @@
+module Line
+
+import Order
+import Product
+import User
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+-- lineAmount is what one line costs: its quantity times its product's price in cents. Nothing
+-- when the product is not in the list.
+lineAmount : Line -> List Product -> Maybe Int
+lineAmount line products =
+  Maybe.map (\p -> line.quantity * p.price) (List.find (\p -> p.id == line.product) products)
+
+-- orderTotal sums, in cents, the lines that belong to one order.
+orderTotal : Order.OrderId -> List Line -> List Product -> Int
+orderTotal id lines products =
+  lines
+    |> List.filter (\l -> l.order == id)
+    |> List.filterMap (\l -> lineAmount l products)
+    |> List.sum
+
+test "an order's total is the sum of its lines" =
+  orderTotal (Order.OrderId "o1") [
+    { id: LineId "l1", order: Order.OrderId "o1", product: Product.ProductId "p1", quantity: Int.Positive 2 },
+    { id: LineId "l2", order: Order.OrderId "o1", product: Product.ProductId "p2", quantity: Int.Positive 1 },
+    { id: LineId "l3", order: Order.OrderId "o2", product: Product.ProductId "p1", quantity: Int.Positive 9 },
+  ] [
+    { id: Product.ProductId "p1", name: Text.NonEmpty "Tea", price: Int.NonNegative 500, active: True },
+    { id: Product.ProductId "p2", name: Text.NonEmpty "Cup", price: Int.NonNegative 250, active: True },
+  ] == 1250
+
+-- A product that an order's line names cannot be deleted: the reference's default rule refuses.
+test "a product on an order cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 500 }
+  let id <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: id, product: tea, quantity: Int.Positive 1 }
+  let r <- Test.run (Db.delete Product tea)
+  let lines <- Db.from Line |> Db.count
+  Task.succeed ({ refused: Result.toMaybe r.value == Nothing, lines: lines } == { refused: True, lines: 1 })
+}
+
+-- Deleting an order deletes its lines: the reference's rule is @cascade.
+test "deleting an order deletes its lines" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 500 }
+  let id <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: id, product: tea, quantity: Int.Positive 1 }
+  let _ <- Db.delete Order id
+  let lines <- Db.from Line |> Db.count
+  Task.succeed (lines == 0)
+}

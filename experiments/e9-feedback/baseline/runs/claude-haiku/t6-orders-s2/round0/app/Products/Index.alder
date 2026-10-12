@@ -1,0 +1,88 @@
+module Products.Index
+
+import Product
+import User
+import Layout
+
+page "/products" { } requires user
+
+type Model = { products: List Product }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let me <- Db.get User session.user
+  match me {
+    Just u -> if u.role == Manager then listAll else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+listAll : Query Model
+listAll = {
+  let rows <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+  Query.succeed { products: rows }
+}
+
+form NewProduct = {
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+}
+
+msg Add form NewProduct
+msg Toggle { id: Product.ProductId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Product { name: p.form.name, price: p.form.price }
+    Task.succeed (Redirect (Products.Index {}))
+  },
+  Toggle p -> {
+    let found <- Db.get Product p.id
+    match found {
+      Just pr -> {
+        let _ <- Db.update Product pr.id (\x -> { x | active: not x.active })
+        Task.succeed (Redirect (Products.Index {}))
+      },
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Products">
+    <h1>Products</h1>
+    <form submit={Add}>
+      <Errors form />
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <Input field="price" label="Price (cents)" />
+      <Errors field="price" />
+      <button>Add</button>
+    </form>
+    <ul id="products">
+      {for p in model.products ->
+        <li>
+          <span class="name">{p.name}</span>
+          <span class="price">{Text.fromInt p.price}</span>
+          {if p.active then <span>active</span> else <span>inactive</span>}
+          <button click={Toggle { id: p.id }}>{if p.active then "Deactivate" else "Activate"}</button>
+        </li>}
+    </ul>
+  </Layout.Page>
+
+test "a staff user cannot open the product list" = {
+  let me <- Db.insert User { email: Text.Email "staff@example.com", name: Text.NonEmpty "Sam", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Products.Index {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a manager sees the products" = {
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let _ <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 150 }
+  let _ <- Test.login { user: Just boss }
+  let page <- Test.get (Products.Index {})
+  Task.succeed (Test.texts ".name" page.doc == ["Tea"])
+}

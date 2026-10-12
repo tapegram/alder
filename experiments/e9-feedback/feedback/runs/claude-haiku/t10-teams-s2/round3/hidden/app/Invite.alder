@@ -1,0 +1,35 @@
+module Invite
+
+import Team
+import User
+
+type InviteId = brand Text
+
+type Status = Pending | Accepted | Declined
+
+table Invite {
+  id: InviteId @id,
+  team: Team.TeamId @ref Team,
+  email: Text.Email,
+  status: Status = Pending,
+}
+
+-- An invite made without a status is pending: the default applies on insert.
+test "a new invite is pending" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let crew <- Db.insert Team { name: Text.NonEmpty "Crew", owner: owner }
+  let id <- Db.insert Invite { team: crew, email: Text.Email "ann@example.com" }
+  let after <- Db.get Invite id
+  Task.succeed (Maybe.map (\i -> i.status) after == Just Pending)
+}
+
+-- An invite refers to its team with the default rule, @restrict: a team with an invite cannot be
+-- deleted, and the invite stays.
+test "a team with an invite cannot be deleted" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let crew <- Db.insert Team { name: Text.NonEmpty "Crew", owner: owner }
+  let _ <- Db.insert Invite { team: crew, email: Text.Email "ann@example.com" }
+  let r <- Test.run (Db.delete Team crew)
+  let left <- Db.from Invite |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, invites: left } == { deleted: Nothing, invites: 1 })
+}

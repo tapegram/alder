@@ -1,0 +1,38 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+-- A booking holds its room from `from` up to, but not including, `to`.
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- The bookings of a room that hold a day in the half-open range [startDate, endDate).
+overlapping : Room.RoomId -> Date -> Date -> Query (Maybe Booking)
+overlapping room startDate endDate =
+  Db.from Booking
+    |> Db.where (Booking.room.eq room)
+    |> Db.where (Booking.from.lt endDate)
+    |> Db.where (Booking.to.gt startDate)
+    |> Db.first
+
+-- If a booking holds `day`, the day after it ends; otherwise `day`.
+skipBooking : Booking -> Date -> Date
+skipBooking b day = if b.from <= day && b.to > day then b.to else day
+
+-- The first day, from `today` on, that none of the bookings holds. The bookings must be
+-- ordered by `from`, as `Db.orderBy Booking.from.asc` gives them.
+nextFree : Date -> List Booking -> Date
+nextFree today bookings = List.foldl skipBooking today bookings
+
+test "back-to-back bookings leave the next day free" = {
+  let today <- Date.today
+  Task.succeed (nextFree today [{ id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: today, to: Date.addDays 2 today }, { id: BookingId "b", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays 2 today, to: Date.addDays 4 today }] == Date.addDays 4 today)
+}

@@ -1,0 +1,2 @@
+{"code": "E0011", "severity": "error", "file": "app/Booking.alder", "line": 26, "col": 41, "endLine": 26, "endCol": 52, "message": "brand constructor `RoomId` can only be used in module `Room` or inside a `test`"}
+{"code": "E0011", "severity": "error", "file": "app/Booking.alder", "line": 26, "col": 65, "endLine": 26, "endCol": 76, "message": "brand constructor `UserId` can only be used in module `User` or inside a `test`"}

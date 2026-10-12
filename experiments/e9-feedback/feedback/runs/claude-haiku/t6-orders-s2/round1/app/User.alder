@@ -1,0 +1,27 @@
+module User
+
+type UserId = brand Text
+
+type Role = Staff | Manager
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  role: Role = Staff,
+  created: Time @created,
+}
+
+-- Whether the user is a Manager. A visitor who is not logged in is not one.
+isManager : Maybe User -> Bool
+isManager found = match found {
+  Just u -> u.role == Manager,
+  Nothing -> False,
+}
+
+test "a Manager is a manager" =
+  isManager (Just { id: UserId "u1", email: Text.Email "boss@example.com", name: Text.NonEmpty "Ann", passwordHash: "", role: Manager, created: Time.epoch }) == True
+
+test "a Staff user is not a manager" =
+  isManager (Just { id: UserId "u2", email: Text.Email "sam@example.com", name: Text.NonEmpty "Sam", passwordHash: "", role: Staff, created: Time.epoch }) == False

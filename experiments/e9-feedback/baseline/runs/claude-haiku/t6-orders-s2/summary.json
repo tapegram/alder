@@ -1,0 +1,1162 @@
+{
+ "model": "claude-haiku",
+ "task": "t6-orders",
+ "retries": 2,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 2,
+  "test": true,
+  "mutate": true,
+  "hidden": "experiments/e9-feedback/hidden",
+  "condition": "baseline",
+  "sample": "s2"
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 10,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 186.0,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "haiku",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 9,
+    "failed": 0,
+    "results": [
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 2.85
+     },
+     {
+      "module": "Order",
+      "name": "an open order's total is the sum over its two lines",
+      "ok": true,
+      "left": "375",
+      "right": "375",
+      "trace": [],
+      "ms": 0.001
+     },
+     {
+      "module": "Orders.Index",
+      "name": "a new order is Open and empty",
+      "ok": true,
+      "left": "{ status: Just \"Open\", total: Just \"0\" }",
+      "right": "{ status: Just \"Open\", total: Just \"0\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Orders.Index",
+       "Db.all Order",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.get User",
+       "Test.click Orders.Index.Create",
+       "Db.all Order",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.get User",
+       "Db.insert Order",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 1.099
+     },
+     {
+      "module": "Orders.Show",
+      "name": "an open order's total is over its lines",
+      "ok": true,
+      "left": "{ total: Just \"375\", status: Just \"Open\" }",
+      "right": "{ total: Just \"375\", status: Just \"Open\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Db.insert Line",
+       "Db.insert Line",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.721
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a line added to a paid order is refused",
+      "ok": true,
+      "left": "{ answer: RequestFailed \"the order is not open\", lines: 0 }",
+      "right": "{ answer: RequestFailed \"the order is not open\", lines: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.update Order",
+       "Test.submit NewLine",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.get Product",
+       "Db.count Line"
+      ],
+      "ms": 0.753
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a staff user cannot open another user's order",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.login",
+       "Test.open Orders.Show",
+       "Db.get Order",
+       "Db.get User"
+      ],
+      "ms": 0.503
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a manager opens another user's order",
+      "ok": true,
+      "left": "Just \"Open\"",
+      "right": "Just \"Open\"",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.818
+     },
+     {
+      "module": "Products.Index",
+      "name": "a staff user cannot open the product list",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Products.Index",
+       "Db.get User"
+      ],
+      "ms": 0.397
+     },
+     {
+      "module": "Products.Index",
+      "name": "a manager sees the products",
+      "ok": true,
+      "left": "[\"Tea\"]",
+      "right": "[\"Tea\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Test.login",
+       "Test.get Products.Index",
+       "Db.get User",
+       "Db.all Product"
+      ],
+      "ms": 0.456
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.35294117647058826,
+    "killed": 18,
+    "survived": 33,
+    "suppressed": 1,
+    "skipped": 15,
+    "survivors": [
+     {
+      "module": "Auth.Login",
+      "file": "app/Auth/Login.alder",
+      "decl": "update",
+      "line": 40,
+      "col": 9,
+      "kind": "session put dropped",
+      "before": "let _ <- Session.put (\\s -> { s | user: Just id })",
+      "after": "let _ <- Task.succeed ()"
+     },
+     {
+      "module": "Auth.Login",
+      "file": "app/Auth/Login.alder",
+      "decl": "update",
+      "line": 41,
+      "col": 23,
+      "kind": "redirect \u2192 rerender",
+      "before": "Redirect (Orders.Index {})",
+      "after": "Rerender"
+     },
+     {
+      "module": "Auth.Login",
+      "file": "app/Auth/Login.alder",
+      "decl": "update",
+      "line": 43,
+      "col": 32,
+      "kind": "reject \u2192 rerender",
+      "before": "Reject \"Email or password is incorrect.\"",
+      "after": "Rerender"
+     },
+     {
+      "module": "Order",
+      "file": "app/Order.alder",
+      "decl": "Order",
+      "line": 11,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "owner @ref User @restrict",
+      "after": "owner @ref User @cascade"
+     },
+     {
+      "module": "Order",
+      "file": "app/Order.alder",
+      "decl": "statusLabel",
+      "line": 22,
+      "col": 17,
+      "kind": "arm swapped",
+      "before": "match s { Open -> \"Open\", Paid -> \"Paid\", Cancelled -> \"Cancelled\" }",
+      "after": "the Paid and Cancelled bodies swapped"
+     },
+     {
+      "module": "Line",
+      "file": "app/Line.alder",
+      "decl": "Line",
+      "line": 10,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "order @ref Order @cascade",
+      "after": "order @ref Order @restrict"
+     },
+     {
+      "module": "Line",
+      "file": "app/Line.alder",
+      "decl": "Line",
+      "line": 11,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "product @ref Product @restrict",
+      "after": "product @ref Product @cascade"
+     },
+     {
+      "module": "Orders.Index",
+      "file": "app/Orders/Index.alder",
+      "decl": "requires",
+      "line": 9,
+      "col": 14,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = User.UserId \"mutant\")"
+     },
+     {
+      "module": "Orders.Index",
+      "file": "app/Orders/Index.alder",
+      "decl": "load",
+      "line": 22,
+      "col": 10,
+      "kind": "where dropped",
+      "before": "Db.where (Order.owner.eq session.user)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Orders.Index",
+      "file": "app/Orders/Index.alder",
+      "decl": "load",
+      "line": 23,
+      "col": 10,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Order.created.desc",
+      "after": "Db.orderBy Order.created.asc"
+     },
+     {
+      "module": "Orders.Index",
+      "file": "app/Orders/Index.alder",
+      "decl": "load",
+      "line": 30,
+      "col": 32,
+      "kind": "bool flipped",
+      "before": "False",
+      "after": "True"
+     },
+     {
+      "module": "Orders.Index",
+      "file": "app/Orders/Index.alder",
+      "decl": "load",
+      "line": 30,
+      "col": 56,
+      "kind": "operator flipped",
+      "before": "u.role == Manager",
+      "after": "u.role != Manager"
+     },
+     {
+      "module": "Orders.Index",
+      "file": "app/Orders/Index.alder",
+      "decl": "rowOf",
+      "line": 36,
+      "col": 60,
+      "kind": "operator flipped",
+      "before": "l.order == o.id",
+      "after": "l.order != o.id"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "requires",
+      "line": 9,
+      "col": 43,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = User.UserId \"mutant\")"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "load",
+      "line": 22,
+      "col": 35,
+      "kind": "bool flipped",
+      "before": "False",
+      "after": "True"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "update",
+      "line": 46,
+      "col": 28,
+      "kind": "arm swapped",
+      "before": "match msg { AddLine _ -> \u2026, Pay _ -> moveTo model Paid, Cancel _ -> \u2026 }",
+      "after": "the Pay _ and Cancel _ bodies swapped"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "update",
+      "line": 49,
+      "col": 36,
+      "kind": "bool flipped",
+      "before": "False",
+      "after": "True"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "update",
+      "line": 50,
+      "col": 79,
+      "kind": "guard dropped",
+      "before": "if not active then \u2026 else \u2026",
+      "after": "the fail arm dropped"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "update",
+      "line": 50,
+      "col": 82,
+      "kind": "not dropped",
+      "before": "not active",
+      "after": "active"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "update",
+      "line": 51,
+      "col": 7,
+      "kind": "write replaced",
+      "before": "let _ <- Db.insert Line {\u2026}",
+      "after": "let _ <- Task.succeed (Line.LineId \"mutant\")"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "update",
+      "line": 52,
+      "col": 21,
+      "kind": "redirect \u2192 rerender",
+      "before": "Redirect (Orders.Show { id: model.order.id })",
+      "after": "Rerender"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "moveTo",
+      "line": 60,
+      "col": 21,
+      "kind": "guard dropped",
+      "before": "if model.order.status != Open then \u2026 else \u2026",
+      "after": "the fail arm dropped"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "moveTo",
+      "line": 60,
+      "col": 24,
+      "kind": "operator flipped",
+      "before": "model.order.status != Open",
+      "after": "model.order.status == Open"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "moveTo",
+      "line": 61,
+      "col": 3,
+      "kind": "write replaced",
+      "before": "let _ <- Db.update Order model.order.id (\\o -> { o | status: next })",
+      "after": "let _ <- Task.succeed ()"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "moveTo",
+      "line": 62,
+      "col": 17,
+      "kind": "redirect \u2192 rerender",
+      "before": "Redirect (Orders.Show { id: model.order.id })",
+      "after": "Rerender"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "productName",
+      "line": 67,
+      "col": 32,
+      "kind": "operator flipped",
+      "before": "p.id == line.product",
+      "after": "p.id != line.product"
+     },
+     {
+      "module": "Products.Index",
+      "file": "app/Products/Index.alder",
+      "decl": "requires",
+      "line": 7,
+      "col": 22,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = User.UserId \"mutant\")"
+     },
+     {
+      "module": "Products.Index",
+      "file": "app/Products/Index.alder",
+      "decl": "listAll",
+      "line": 22,
+      "col": 34,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Product.name.asc",
+      "after": "Db.orderBy Product.name.desc"
+     },
+     {
+      "module": "Products.Index",
+      "file": "app/Products/Index.alder",
+      "decl": "update",
+      "line": 37,
+      "col": 5,
+      "kind": "write replaced",
+      "before": "let _ <- Db.insert Product { name: p.form.name, price: p.form.price }",
+      "after": "let _ <- Task.succeed (Product.ProductId \"mutant\")"
+     },
+     {
+      "module": "Products.Index",
+      "file": "app/Products/Index.alder",
+      "decl": "update",
+      "line": 38,
+      "col": 19,
+      "kind": "redirect \u2192 rerender",
+      "before": "Redirect (Products.Index {})",
+      "after": "Rerender"
+     },
+     {
+      "module": "Products.Index",
+      "file": "app/Products/Index.alder",
+      "decl": "update",
+      "line": 44,
+      "col": 9,
+      "kind": "write replaced",
+      "before": "let _ <- Db.update Product pr.id (\\x -> { x | active: not x.active })",
+      "after": "let _ <- Task.succeed ()"
+     },
+     {
+      "module": "Products.Index",
+      "file": "app/Products/Index.alder",
+      "decl": "update",
+      "line": 44,
+      "col": 63,
+      "kind": "not dropped",
+      "before": "not x.active",
+      "after": "x.active"
+     },
+     {
+      "module": "Products.Index",
+      "file": "app/Products/Index.alder",
+      "decl": "update",
+      "line": 45,
+      "col": 23,
+      "kind": "redirect \u2192 rerender",
+      "before": "Redirect (Products.Index {})",
+      "after": "Rerender"
+     }
+    ]
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "haiku",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "mutation": {
+  "score": 0.35294117647058826,
+  "killed": 18,
+  "survived": 33,
+  "suppressed": 1,
+  "skipped": 15,
+  "survivors": [
+   {
+    "module": "Auth.Login",
+    "file": "app/Auth/Login.alder",
+    "decl": "update",
+    "line": 40,
+    "col": 9,
+    "kind": "session put dropped",
+    "before": "let _ <- Session.put (\\s -> { s | user: Just id })",
+    "after": "let _ <- Task.succeed ()"
+   },
+   {
+    "module": "Auth.Login",
+    "file": "app/Auth/Login.alder",
+    "decl": "update",
+    "line": 41,
+    "col": 23,
+    "kind": "redirect \u2192 rerender",
+    "before": "Redirect (Orders.Index {})",
+    "after": "Rerender"
+   },
+   {
+    "module": "Auth.Login",
+    "file": "app/Auth/Login.alder",
+    "decl": "update",
+    "line": 43,
+    "col": 32,
+    "kind": "reject \u2192 rerender",
+    "before": "Reject \"Email or password is incorrect.\"",
+    "after": "Rerender"
+   },
+   {
+    "module": "Order",
+    "file": "app/Order.alder",
+    "decl": "Order",
+    "line": 11,
+    "col": 3,
+    "kind": "cascade \u2194 restrict",
+    "before": "owner @ref User @restrict",
+    "after": "owner @ref User @cascade"
+   },
+   {
+    "module": "Order",
+    "file": "app/Order.alder",
+    "decl": "statusLabel",
+    "line": 22,
+    "col": 17,
+    "kind": "arm swapped",
+    "before": "match s { Open -> \"Open\", Paid -> \"Paid\", Cancelled -> \"Cancelled\" }",
+    "after": "the Paid and Cancelled bodies swapped"
+   },
+   {
+    "module": "Line",
+    "file": "app/Line.alder",
+    "decl": "Line",
+    "line": 10,
+    "col": 3,
+    "kind": "cascade \u2194 restrict",
+    "before": "order @ref Order @cascade",
+    "after": "order @ref Order @restrict"
+   },
+   {
+    "module": "Line",
+    "file": "app/Line.alder",
+    "decl": "Line",
+    "line": 11,
+    "col": 3,
+    "kind": "cascade \u2194 restrict",
+    "before": "product @ref Product @restrict",
+    "after": "product @ref Product @cascade"
+   },
+   {
+    "module": "Orders.Index",
+    "file": "app/Orders/Index.alder",
+    "decl": "requires",
+    "line": 9,
+    "col": 14,
+    "kind": "requires dropped",
+    "before": "requires user",
+    "after": "served without user (user = User.UserId \"mutant\")"
+   },
+   {
+    "module": "Orders.Index",
+    "file": "app/Orders/Index.alder",
+    "decl": "load",
+    "line": 22,
+    "col": 10,
+    "kind": "where dropped",
+    "before": "Db.where (Order.owner.eq session.user)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Orders.Index",
+    "file": "app/Orders/Index.alder",
+    "decl": "load",
+    "line": 23,
+    "col": 10,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Order.created.desc",
+    "after": "Db.orderBy Order.created.asc"
+   },
+   {
+    "module": "Orders.Index",
+    "file": "app/Orders/Index.alder",
+    "decl": "load",
+    "line": 30,
+    "col": 32,
+    "kind": "bool flipped",
+    "before": "False",
+    "after": "True"
+   },
+   {
+    "module": "Orders.Index",
+    "file": "app/Orders/Index.alder",
+    "decl": "load",
+    "line": 30,
+    "col": 56,
+    "kind": "operator flipped",
+    "before": "u.role == Manager",
+    "after": "u.role != Manager"
+   },
+   {
+    "module": "Orders.Index",
+    "file": "app/Orders/Index.alder",
+    "decl": "rowOf",
+    "line": 36,
+    "col": 60,
+    "kind": "operator flipped",
+    "before": "l.order == o.id",
+    "after": "l.order != o.id"
+   },
+   {
+    "module": "Orders.Show",
+    "file": "app/Orders/Show.alder",
+    "decl": "requires",
+    "line": 9,
+    "col": 43,
+    "kind": "requires dropped",
+    "before": "requires user",
+    "after": "served without user (user = User.UserId \"mutant\")"
+   },
+   {
+    "module": "Orders.Show",
+    "file": "app/Orders/Show.alder",
+    "decl": "load",
+    "line": 22,
+    "col": 35,
+    "kind": "bool flipped",
+    "before": "False",
+    "after": "True"
+   },
+   {
+    "module": "Orders.Show",
+    "file": "app/Orders/Show.alder",
+    "decl": "update",
+    "line": 46,
+    "col": 28,
+    "kind": "arm swapped",
+    "before": "match msg { AddLine _ -> \u2026, Pay _ -> moveTo model Paid, Cancel _ -> \u2026 }",
+    "after": "the Pay _ and Cancel _ bodies swapped"
+   },
+   {
+    "module": "Orders.Show",
+    "file": "app/Orders/Show.alder",
+    "decl": "update",
+    "line": 49,
+    "col": 36,
+    "kind": "bool flipped",
+    "before": "False",
+    "after": "True"
+   },
+   {
+    "module": "Orders.Show",
+    "file": "app/Orders/Show.alder",
+    "decl": "update",
+    "line": 50,
+    "col": 79,
+    "kind": "guard dropped",
+    "before": "if not active then \u2026 else \u2026",
+    "after": "the fail arm dropped"
+   },
+   {
+    "module": "Orders.Show",
+    "file": "app/Orders/Show.alder",
+    "decl": "update",
+    "line": 50,
+    "col": 82,
+    "kind": "not dropped",
+    "before": "not active",
+    "after": "active"
+   },
+   {
+    "module": "Orders.Show",
+    "file": "app/Orders/Show.alder",
+    "decl": "update",
+    "line": 51,
+    "col": 7,
+    "kind": "write replaced",
+    "before": "let _ <- Db.insert Line {\u2026}",
+    "after": "let _ <- Task.succeed (Line.LineId \"mutant\")"
+   },
+   {
+    "module": "Orders.Show",
+    "file": "app/Orders/Show.alder",
+    "decl": "update",
+    "line": 52,
+    "col": 21,
+    "kind": "redirect \u2192 rerender",
+    "before": "Redirect (Orders.Show { id: model.order.id })",
+    "after": "Rerender"
+   },
+   {
+    "module": "Orders.Show",
+    "file": "app/Orders/Show.alder",
+    "decl": "moveTo",
+    "line": 60,
+    "col": 21,
+    "kind": "guard dropped",
+    "before": "if model.order.status != Open then \u2026 else \u2026",
+    "after": "the fail arm dropped"
+   },
+   {
+    "module": "Orders.Show",
+    "file": "app/Orders/Show.alder",
+    "decl": "moveTo",
+    "line": 60,
+    "col": 24,
+    "kind": "operator flipped",
+    "before": "model.order.status != Open",
+    "after": "model.order.status == Open"
+   },
+   {
+    "module": "Orders.Show",
+    "file": "app/Orders/Show.alder",
+    "decl": "moveTo",
+    "line": 61,
+    "col": 3,
+    "kind": "write replaced",
+    "before": "let _ <- Db.update Order model.order.id (\\o -> { o | status: next })",
+    "after": "let _ <- Task.succeed ()"
+   },
+   {
+    "module": "Orders.Show",
+    "file": "app/Orders/Show.alder",
+    "decl": "moveTo",
+    "line": 62,
+    "col": 17,
+    "kind": "redirect \u2192 rerender",
+    "before": "Redirect (Orders.Show { id: model.order.id })",
+    "after": "Rerender"
+   },
+   {
+    "module": "Orders.Show",
+    "file": "app/Orders/Show.alder",
+    "decl": "productName",
+    "line": 67,
+    "col": 32,
+    "kind": "operator flipped",
+    "before": "p.id == line.product",
+    "after": "p.id != line.product"
+   },
+   {
+    "module": "Products.Index",
+    "file": "app/Products/Index.alder",
+    "decl": "requires",
+    "line": 7,
+    "col": 22,
+    "kind": "requires dropped",
+    "before": "requires user",
+    "after": "served without user (user = User.UserId \"mutant\")"
+   },
+   {
+    "module": "Products.Index",
+    "file": "app/Products/Index.alder",
+    "decl": "listAll",
+    "line": 22,
+    "col": 34,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Product.name.asc",
+    "after": "Db.orderBy Product.name.desc"
+   },
+   {
+    "module": "Products.Index",
+    "file": "app/Products/Index.alder",
+    "decl": "update",
+    "line": 37,
+    "col": 5,
+    "kind": "write replaced",
+    "before": "let _ <- Db.insert Product { name: p.form.name, price: p.form.price }",
+    "after": "let _ <- Task.succeed (Product.ProductId \"mutant\")"
+   },
+   {
+    "module": "Products.Index",
+    "file": "app/Products/Index.alder",
+    "decl": "update",
+    "line": 38,
+    "col": 19,
+    "kind": "redirect \u2192 rerender",
+    "before": "Redirect (Products.Index {})",
+    "after": "Rerender"
+   },
+   {
+    "module": "Products.Index",
+    "file": "app/Products/Index.alder",
+    "decl": "update",
+    "line": 44,
+    "col": 9,
+    "kind": "write replaced",
+    "before": "let _ <- Db.update Product pr.id (\\x -> { x | active: not x.active })",
+    "after": "let _ <- Task.succeed ()"
+   },
+   {
+    "module": "Products.Index",
+    "file": "app/Products/Index.alder",
+    "decl": "update",
+    "line": 44,
+    "col": 63,
+    "kind": "not dropped",
+    "before": "not x.active",
+    "after": "x.active"
+   },
+   {
+    "module": "Products.Index",
+    "file": "app/Products/Index.alder",
+    "decl": "update",
+    "line": 45,
+    "col": 23,
+    "kind": "redirect \u2192 rerender",
+    "before": "Redirect (Products.Index {})",
+    "after": "Rerender"
+   }
+  ]
+ },
+ "hidden": {
+  "passed": 9,
+  "failed": 0,
+  "results": [
+   {
+    "module": "Hidden",
+    "name": "an order's page shows its total over two lines",
+    "ok": true,
+    "left": "{ answer: Shown, total: Just \"1250\", status: Just \"Open\" }",
+    "right": "{ answer: Shown, total: Just \"1250\", status: Just \"Open\" }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Product",
+     "Db.insert Product",
+     "Db.insert Order",
+     "Db.insert Line",
+     "Db.insert Line",
+     "Test.login",
+     "Test.open Orders.Show",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product"
+    ],
+    "ms": 3.942
+   },
+   {
+    "module": "Hidden",
+    "name": "the list shows each of the user's orders with its status and total",
+    "ok": true,
+    "left": "{ answer: Shown, items: 1, totals: [\"600\"], statuses: [\"Paid\"] }",
+    "right": "{ answer: Shown, items: 1, totals: [\"600\"], statuses: [\"Paid\"] }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Product",
+     "Db.insert Order",
+     "Db.insert Line",
+     "Db.insert Order",
+     "Db.insert Line",
+     "Test.login",
+     "Test.open Orders.Index",
+     "Db.all Order",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.get User"
+    ],
+    "ms": 0.824
+   },
+   {
+    "module": "Hidden",
+    "name": "a new order, a line added through its form, then paid",
+    "ok": true,
+    "left": "{ created: Redirected /orders/ufOrgCD8hnlczzOWtRJj, empty: Just \"0\", added: Redirected /orders/ufOrgCD8hnlczzOWtRJj, total: Just \"300\", paid: Redirected /orders/ufOrgCD8hnlczzOWtRJj, status: Just \"Paid\", form: False }",
+    "right": "{ created: Redirected /orders/ufOrgCD8hnlczzOWtRJj, empty: Just \"0\", added: Redirected /orders/ufOrgCD8hnlczzOWtRJj, total: Just \"300\", paid: Redirected /orders/ufOrgCD8hnlczzOWtRJj, status: Just \"Paid\", form: False }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Product",
+     "Test.login",
+     "Test.get Orders.Index",
+     "Db.all Order",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.get User",
+     "Test.click Orders.Index.Create",
+     "Db.all Order",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.get User",
+     "Db.insert Order",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.first Order",
+     "Test.submit NewLine",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.get Product",
+     "Db.insert Line",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Test.click Orders.Show.Pay",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.update Order",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product"
+    ],
+    "ms": 2.07
+   },
+   {
+    "module": "Hidden",
+    "name": "a Paid order has no add-line form",
+    "ok": true,
+    "left": "{ paid: Shown, paidForm: False, open: Shown, openForm: True }",
+    "right": "{ paid: Shown, paidForm: False, open: Shown, openForm: True }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Product",
+     "Db.insert Order",
+     "Db.insert Order",
+     "Test.login",
+     "Test.open Orders.Show",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Test.open Orders.Show",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product"
+    ],
+    "ms": 0.809
+   },
+   {
+    "module": "Hidden",
+    "name": "a cancelled order says so and takes no lines",
+    "ok": true,
+    "left": "{ answer: Redirected /orders/L7rQgu6YA9F-jlw_IKaY, status: Just \"Cancelled\", form: False }",
+    "right": "{ answer: Redirected /orders/L7rQgu6YA9F-jlw_IKaY, status: Just \"Cancelled\", form: False }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Product",
+     "Db.insert Order",
+     "Test.login",
+     "Test.get Orders.Show",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Test.click Orders.Show.Cancel",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.update Order",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product"
+    ],
+    "ms": 0.802
+   },
+   {
+    "module": "Hidden",
+    "name": "another user's order is missing for Staff and shown to a Manager",
+    "ok": true,
+    "left": "{ staff: PageMissing, manager: Shown, total: Just \"0\" }",
+    "right": "{ staff: PageMissing, manager: Shown, total: Just \"0\" }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Order",
+     "Test.login",
+     "Test.open Orders.Show",
+     "Db.get Order",
+     "Db.get User",
+     "Test.login",
+     "Test.open Orders.Show",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product"
+    ],
+    "ms": 0.634
+   },
+   {
+    "module": "Hidden",
+    "name": "the products page is missing for Staff and shown to a Manager",
+    "ok": true,
+    "left": "{ staff: PageMissing, manager: Shown, names: [\"Pen\"] }",
+    "right": "{ staff: PageMissing, manager: Shown, names: [\"Pen\"] }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Product",
+     "Test.login",
+     "Test.open Products.Index",
+     "Db.get User",
+     "Test.login",
+     "Test.open Products.Index",
+     "Db.get User",
+     "Db.all Product"
+    ],
+    "ms": 0.557
+   },
+   {
+    "module": "Hidden",
+    "name": "a Manager adds a product and deactivates it",
+    "ok": true,
+    "left": "{ added: Redirected /products, names: [\"Pen\"], active: True, toggled: Redirected /products, after: Just False }",
+    "right": "{ added: Redirected /products, names: [\"Pen\"], active: True, toggled: Redirected /products, after: Just False }",
+    "trace": [
+     "Db.insert User",
+     "Test.login",
+     "Test.get Products.Index",
+     "Db.get User",
+     "Db.all Product",
+     "Test.submit NewProduct",
+     "Db.get User",
+     "Db.all Product",
+     "Db.insert Product",
+     "Db.get User",
+     "Db.all Product",
+     "Db.first Product",
+     "Test.click Products.Index.Toggle",
+     "Db.get User",
+     "Db.all Product",
+     "Db.get Product",
+     "Db.update Product",
+     "Db.get User",
+     "Db.all Product",
+     "Db.get Product"
+    ],
+    "ms": 0.829
+   },
+   {
+    "module": "Hidden",
+    "name": "a line posted from a stale page of an order paid meanwhile is refused",
+    "ok": true,
+    "left": "{ answer: RequestFailed \"the order is not open\", lines: 0 }",
+    "right": "{ answer: RequestFailed \"the order is not open\", lines: 0 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Product",
+     "Db.insert Order",
+     "Test.login",
+     "Test.get Orders.Show",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.update Order",
+     "Test.submit NewLine",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.get Product",
+     "Db.count Line"
+    ],
+    "ms": 0.684
+   }
+  ],
+  "exit": 0
+ },
+ "hidden_pass": "9/9"
+}

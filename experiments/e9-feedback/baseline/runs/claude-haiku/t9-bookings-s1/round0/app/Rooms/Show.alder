@@ -1,0 +1,89 @@
+module Rooms.Show
+
+import Room
+import Booking
+import User
+import Layout
+
+page "/rooms/{id}" { id: Room.RoomId } requires user
+
+type Model = { room: Room, bookings: List Booking }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Room params.id
+  match found {
+    Just room -> roomPage room,
+    Nothing -> Query.notFound,
+  }
+}
+
+roomPage : Room -> Query Model
+roomPage room = {
+  let bookings <-
+    Db.from Booking
+      |> Db.where (Booking.room.eq room.id)
+      |> Db.orderBy Booking.from.asc
+      |> Db.all
+  Query.succeed { room: room, bookings: bookings }
+}
+
+form NewBooking = {
+  from: Date,
+  to: Date,
+}
+
+msg Book form NewBooking
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Book p -> {
+    let booked <- Db.from Booking |> Db.where (Booking.room.eq model.room.id) |> Db.all
+    book model.room.id session.user p.form booked
+  },
+}
+
+-- A booking must end after it starts and must not overlap a booking of the room. A refused
+-- booking stores nothing; the form shows the message.
+book : Room.RoomId -> User.UserId -> NewBooking -> List Booking -> Task Nav
+book room user f booked =
+  if f.to <= f.from then Task.succeed (Reject "The end date must be after the start date.") else if List.any (Booking.clashes f.from f.to) booked then Task.succeed (Reject "The room is already booked for some of those days.") else store room user f
+
+store : Room.RoomId -> User.UserId -> NewBooking -> Task Nav
+store room user f = {
+  let _ <- Db.insert Booking { room: room, owner: user, from: f.from, to: f.to }
+  Task.succeed (Redirect (Rooms.Show { id: room }))
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.room.name}>
+    <h1 id="name">{model.room.name}</h1>
+    <ul id="bookings">
+      {for b in model.bookings ->
+        <li><span class="from">{Date.toText b.from}</span> to <span class="to">{Date.toText b.to}</span></li>}
+    </ul>
+    <form submit={Book}>
+      <Errors form />
+      <Input field="from" label="From" />
+      <Errors field="from" />
+      <Input field="to" label="To" />
+      <Errors field="to" />
+      <button>Book</button>
+    </form>
+    <a href={Rooms.Index {}}>All rooms</a>
+  </Layout.Page>
+
+test "an overlapping booking is refused and a back-to-back one is stored" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: room, owner: me, from: Date.addDays 1 today, to: Date.addDays 3 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let clash <- Test.submit NewBooking { from: Date.addDays 2 today, to: Date.addDays 4 today }
+  let stored <- Db.from Booking |> Db.count
+  let adjacent <- Test.submit NewBooking { from: Date.addDays 3 today, to: Date.addDays 5 today }
+  let total <- Db.from Booking |> Db.count
+  Task.succeed ({ clash: clash.answer, stored: stored, adjacent: adjacent.answer, total: total } == { clash: FormRejected [{ field: "", message: "The room is already booked for some of those days." }], stored: 1, adjacent: Redirected (Rooms.Show { id: room }), total: 2 })
+}

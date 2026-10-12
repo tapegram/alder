@@ -1,0 +1,137 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+-- A booking holds its room from `from` up to, but not including, `to`.
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- The bookings of a room that hold a day in the half-open range [startDate, endDate).
+overlapping : Room.RoomId -> Date -> Date -> Query (Maybe Booking)
+overlapping room startDate endDate =
+  Db.from Booking
+    |> Db.where (Booking.room.eq room)
+    |> Db.where (Booking.from.lt endDate)
+    |> Db.where (Booking.to.gt startDate)
+    |> Db.first
+
+-- If a booking holds `day`, the day after it ends; otherwise `day`.
+skipBooking : Booking -> Date -> Date
+skipBooking b day = if b.from <= day && b.to > day then b.to else day
+
+-- The first day, from `today` on, that none of the bookings holds. The bookings must be
+-- ordered by `from`, as `Db.orderBy Booking.from.asc` gives them.
+nextFree : Date -> List Booking -> Date
+nextFree today bookings = List.foldl skipBooking today bookings
+
+test "back-to-back bookings leave the next day free" = {
+  let today <- Date.today
+  Task.succeed (nextFree today [{ id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: today, to: Date.addDays 2 today }, { id: BookingId "b", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays 2 today, to: Date.addDays 4 today }] == Date.addDays 4 today)
+}
+
+test "a booking that starts today holds today" = {
+  let today <- Date.today
+  let held : Booking = { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: today, to: Date.addDays 2 today }
+  Task.succeed (nextFree today [held] == Date.addDays 2 today)
+}
+
+test "a booking that began before today and holds it moves the day past its end" = {
+  let today <- Date.today
+  let held : Booking = { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays (-2) today, to: Date.addDays 2 today }
+  Task.succeed (nextFree today [held] == Date.addDays 2 today)
+}
+
+test "a booking that starts later leaves today free" = {
+  let today <- Date.today
+  let later : Booking = { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays 5 today, to: Date.addDays 7 today }
+  Task.succeed (nextFree today [later] == today)
+}
+
+test "a booking that ended yesterday leaves today free" = {
+  let today <- Date.today
+  let past : Booking = { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays (-3) today, to: Date.addDays (-1) today }
+  Task.succeed (nextFree today [past] == today)
+}
+
+-- A booking that ends on `day` does not hold it. The mutant that writes `b.to >= day` returns
+-- the same day here, since the booking's end is `day` itself: no input tells the two apart.
+test "a booking that ends today leaves today free" = {
+  let today <- Date.today
+  let ended : Booking = { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays (-2) today, to: today }
+  Task.succeed (nextFree today [ended] == today)
+}
+
+-- Refusing an overlap looks at the room's bookings only, and at their days.
+test "overlapping finds a booking that holds one of the days" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 2 today, to: Date.addDays 5 today }
+  let taken <- overlapping blue (Date.addDays 4 today) (Date.addDays 8 today)
+  Task.succeed (Maybe.isJust taken)
+}
+
+test "overlapping finds a booking inside the query" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 3 today, to: Date.addDays 4 today }
+  let taken <- overlapping blue (Date.addDays 1 today) (Date.addDays 6 today)
+  Task.succeed (Maybe.isJust taken)
+}
+
+test "overlapping ignores a booking of another room" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let red <- Db.insert Room { name: Text.NonEmpty "Red" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 2 today, to: Date.addDays 5 today }
+  let taken <- overlapping red (Date.addDays 3 today) (Date.addDays 4 today)
+  Task.succeed (Maybe.isJust taken == False)
+}
+
+test "overlapping ignores a booking that ends on the query's first day" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: blue, owner: me, from: today, to: Date.addDays 2 today }
+  let taken <- overlapping blue (Date.addDays 2 today) (Date.addDays 4 today)
+  Task.succeed (Maybe.isJust taken == False)
+}
+
+test "overlapping ignores a booking that starts on the query's last day" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 4 today, to: Date.addDays 6 today }
+  let taken <- overlapping blue (Date.addDays 2 today) (Date.addDays 4 today)
+  Task.succeed (Maybe.isJust taken == False)
+}
+
+test "a room with bookings cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let b <- Db.insert Booking { room: blue, owner: me, from: today, to: Date.addDays 1 today }
+  let r <- Test.run (Db.delete Room blue)
+  let left <- Db.get Booking b
+  Task.succeed ({ deleted: Result.toMaybe r.value, booking: Maybe.isJust left } == { deleted: Nothing, booking: True })
+}
+
+test "a user with bookings cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let b <- Db.insert Booking { room: blue, owner: me, from: today, to: Date.addDays 1 today }
+  let r <- Test.run (Db.delete User me)
+  let left <- Db.get Booking b
+  Task.succeed ({ deleted: Result.toMaybe r.value, booking: Maybe.isJust left } == { deleted: Nothing, booking: True })
+}

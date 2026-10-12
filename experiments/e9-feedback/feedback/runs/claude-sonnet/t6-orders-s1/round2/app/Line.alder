@@ -1,0 +1,67 @@
+module Line
+
+import Order
+import Product
+import User
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+priceOf : Product.ProductId -> List Product -> Int
+priceOf id products = match (List.find (\p -> p.id == id) products) {
+  Just p -> p.price,
+  Nothing -> 0,
+}
+
+productName : Product.ProductId -> List Product -> Text
+productName id products = match (List.find (\p -> p.id == id) products) {
+  Just p -> p.name,
+  Nothing -> "",
+}
+
+total : List Line -> List Product -> Int
+total lines products =
+  lines
+    |> List.map (\l -> l.quantity * priceOf l.product products)
+    |> List.sum
+
+test "productName and priceOf pick the product with that id" =
+  { name: productName (Product.ProductId "b") [
+      { id: Product.ProductId "a", name: Text.NonEmpty "Tea", price: Int.NonNegative 250, active: True },
+      { id: Product.ProductId "b", name: Text.NonEmpty "Cake", price: Int.NonNegative 500, active: True },
+    ],
+    price: priceOf (Product.ProductId "a") [
+      { id: Product.ProductId "b", name: Text.NonEmpty "Cake", price: Int.NonNegative 500, active: True },
+      { id: Product.ProductId "a", name: Text.NonEmpty "Tea", price: Int.NonNegative 250, active: True },
+    ],
+    missing: productName (Product.ProductId "z") [] } == { name: "Cake", price: 250, missing: "" }
+
+-- `order` is `@cascade`: deleting an order deletes its lines and leaves the product.
+test "deleting an order deletes its lines" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: order, product: tea, quantity: Int.Positive 2 }
+  let _ <- Db.delete Order order
+  let n <- Db.from Line |> Db.count
+  let p <- Db.get Product tea
+  Task.succeed ({ lines: n, product: Maybe.map (\x -> x.name) p } == { lines: 0, product: Just (Text.NonEmpty "Tea") })
+}
+
+-- `product` is `@restrict`: a product that a line refers to cannot be deleted.
+test "a product used by a line cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: order, product: tea, quantity: Int.Positive 2 }
+  let r <- Test.run (Db.delete Product tea)
+  let n <- Db.from Line |> Db.count
+  let p <- Db.get Product tea
+  Task.succeed ({ deleted: Result.toMaybe r.value, lines: n, product: Maybe.map (\x -> x.name) p } == { deleted: Nothing, lines: 1, product: Just (Text.NonEmpty "Tea") })
+}

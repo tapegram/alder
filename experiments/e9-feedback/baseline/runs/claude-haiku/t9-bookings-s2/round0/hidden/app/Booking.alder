@@ -1,0 +1,56 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- Two half-open spans [aFrom, aTo) and [bFrom, bTo) share a day.
+clash : Date -> Date -> Date -> Date -> Bool
+clash aFrom aTo bFrom bTo = aFrom < bTo && bFrom < aTo
+
+-- Whether the span [start, stop) shares a day with the booking.
+overlaps : Date -> Date -> Booking -> Bool
+overlaps start stop b = clash start stop b.from b.to
+
+-- A booking can be cancelled while its first day is still ahead.
+cancellable : Date -> Booking -> Bool
+cancellable today b = today < b.from
+
+-- The first day, from `day` on, that no booking holds. A booking holds its days from `from` up to,
+-- but not including, `to`, so a booking that starts on another's `to` leaves no gap.
+freeFrom : Date -> List Booking -> Date
+freeFrom day bookings = {
+  let busy = List.find (\b -> b.from <= day && day < b.to) bookings
+  match busy {
+    Just b -> freeFrom b.to bookings,
+    Nothing -> day,
+  }
+}
+
+test "a booking starting on another's last day does not clash" = {
+  let today <- Date.today
+  Task.succeed (not (clash today (Date.addDays 3 today) (Date.addDays 3 today) (Date.addDays 5 today)))
+}
+
+test "overlapping spans clash" = {
+  let today <- Date.today
+  Task.succeed (clash today (Date.addDays 3 today) (Date.addDays 2 today) (Date.addDays 5 today))
+}
+
+test "back-to-back bookings leave the day after them free" = {
+  let today <- Date.today
+  let spans : List Booking = [
+    { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: today, to: Date.addDays 2 today },
+    { id: BookingId "b", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays 2 today, to: Date.addDays 5 today },
+  ]
+  Task.succeed (freeFrom today spans == Date.addDays 5 today)
+}

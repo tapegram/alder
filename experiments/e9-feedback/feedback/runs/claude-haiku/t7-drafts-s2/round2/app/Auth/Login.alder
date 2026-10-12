@@ -1,0 +1,68 @@
+module Auth.Login
+
+import User
+import Layout
+
+-- Password checking is outside the language: a capability implemented in Go.
+capability Password {
+  verify : { email: Text.Email, password: Text } -> Task (Maybe User.UserId),
+}
+
+page "/login" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+form Credentials = {
+  email: Text.Email,
+  password: Text.Secret,
+}
+
+msg Submit form Credentials
+
+-- signIn is the decision after the password check: a matching user is stored in the session and
+-- sent to the to-do list; no match refuses the form with the message. It is a separate function
+-- so that tests can check it without calling the Password capability.
+signIn : Maybe User.UserId -> Task Nav
+signIn found = match found {
+  Just id -> {
+    let _ <- Session.put (\s -> { s | user: Just id })
+    Task.succeed (Redirect (Posts.Index {}))
+  },
+  Nothing -> Task.succeed (Reject "Email or password is incorrect."),
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let found <- Password.verify { email: p.form.email, password: p.form.password }
+    signIn found
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Log in">
+    <h1>Log in</h1>
+    <form submit={Submit}>
+      <Errors form />
+      <Input field="email" label="Email" />
+      <Errors field="email" />
+      <Input field="password" label="Password" />
+      <Errors field="password" />
+      <button>Log in</button>
+    </form>
+  </Layout.Page>
+
+test "signing in stores the user and goes to the list" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let r <- Test.run (signIn (Just me))
+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok (Redirect (Posts.Index {})), trace: ["Session.put"] })
+}
+
+test "a refused sign-in is rejected with the form's message" = {
+  let r <- Test.run (signIn Nothing)
+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok (Reject "Email or password is incorrect."), trace: [] })
+}

@@ -1,0 +1,140 @@
+module Rooms.Show
+
+import Room
+import Booking
+import Layout
+import User
+
+page "/rooms/{id}" { id: Room.RoomId } requires user
+
+type Model = { room: Room, bookings: List Booking }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Room params.id
+  let bookings <- Db.from Booking |> Db.where (Booking.room.eq params.id) |> Db.orderBy Booking.from.asc |> Db.all
+  match found {
+    Just room -> Query.succeed { room: room, bookings: bookings },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewBooking = {
+  from: Date,
+  to: Date,
+}
+
+msg Book form NewBooking
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Book p -> {
+    let existing <- Db.from Booking |> Db.where (Booking.room.eq model.room.id) |> Db.all
+    book model.room.id session.user p.form.from p.form.to existing
+  },
+}
+
+-- Stores the booking when its last day is after its first and no booking of the room holds one
+-- of its days; otherwise the form is shown again with the reason.
+book : Room.RoomId -> User.UserId -> Date -> Date -> List Booking -> Task Nav
+book room owner start stop existing =
+  if stop <= start then Task.succeed (Reject "The booking must end after it starts.") else if not (Booking.fits start stop existing) then Task.succeed (Reject "This room is already booked on some of those days.") else {
+    let _ <- Db.insert Booking { room: room, owner: owner, from: start, to: stop }
+    Task.succeed (Redirect (Rooms.Show { id: room }))
+  }
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.room.name}>
+    <h1 id="name">{model.room.name}</h1>
+    <ul id="bookings">
+      {for b in model.bookings ->
+        <li>
+          <span class="from">{Date.toText b.from}</span>
+          <span class="to">{Date.toText b.to}</span>
+        </li>}
+    </ul>
+    <form submit={Book}>
+      <Errors form />
+      <Input field="from" label="From" />
+      <Errors field="from" />
+      <Input field="to" label="To" />
+      <Errors field="to" />
+      <button>Book</button>
+    </form>
+    <a href={Rooms.Index {}}>All rooms</a>
+  </Layout.Page>
+
+test "an overlapping booking is refused and not stored" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let _ <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 3 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let r <- Test.submit NewBooking { from: Date.addDays 2 today, to: Date.addDays 5 today }
+  let count <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.count
+  Task.succeed ({ answer: r.answer, count: count } == { answer: FormRejected [{ field: "", message: "This room is already booked on some of those days." }], count: 1 })
+}
+
+test "a booking may start on the day another ends" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let _ <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 3 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let r <- Test.submit NewBooking { from: Date.addDays 3 today, to: Date.addDays 5 today }
+  let count <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.count
+  Task.succeed ({ answer: r.answer, count: count } == { answer: Redirected (Rooms.Show { id: room }), count: 2 })
+}
+
+test "a booking must end after it starts" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let r <- Test.submit NewBooking { from: Date.addDays 2 today, to: Date.addDays 2 today }
+  let count <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.count
+  Task.succeed ({ answer: r.answer, count: count } == { answer: FormRejected [{ field: "", message: "The booking must end after it starts." }], count: 0 })
+}
+
+test "bookings of another room do not conflict" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let oak <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let pine <- Db.insert Room { name: Text.NonEmpty "Pine" }
+  let _ <- Db.insert Booking { room: pine, owner: me, from: today, to: Date.addDays 3 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: oak })
+  let r <- Test.submit NewBooking { from: today, to: Date.addDays 3 today }
+  let count <- Db.from Booking |> Db.where (Booking.room.eq oak) |> Db.count
+  Task.succeed ({ answer: r.answer, count: count } == { answer: Redirected (Rooms.Show { id: oak }), count: 1 })
+}
+
+test "a room lists only its own bookings, in order of their start" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let oak <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let pine <- Db.insert Room { name: Text.NonEmpty "Pine" }
+  let _ <- Db.insert Booking { room: oak, owner: me, from: Date.addDays 5 today, to: Date.addDays 6 today }
+  let _ <- Db.insert Booking { room: oak, owner: me, from: Date.addDays 2 today, to: Date.addDays 3 today }
+  let _ <- Db.insert Booking { room: pine, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Rooms.Show { id: oak })
+  Task.succeed ({ count: Test.count "#bookings li" page.doc, froms: Test.texts ".from" page.doc } == { count: 2, froms: [Date.toText (Date.addDays 2 today), Date.toText (Date.addDays 5 today)] })
+}
+
+test "a visitor is sent to log in from a room" = {
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let r <- Test.open (Rooms.Show { id: room })
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "a room that does not exist is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Rooms.Show { id: Room.RoomId "nope" })
+  Task.succeed (r.answer == PageMissing)
+}

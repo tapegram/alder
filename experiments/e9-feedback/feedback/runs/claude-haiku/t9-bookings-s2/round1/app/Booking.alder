@@ -1,0 +1,111 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- The bookings of one room, in order of their start.
+bookingsOf : Room.RoomId -> List Booking -> List Booking
+bookingsOf room bookings =
+  List.sortByText (\b -> Date.toText b.from) (List.filter (\b -> b.room == room) bookings)
+
+-- Moves the day past a booking that holds it: a booking holds its days from `from` up to `to`.
+-- The comparison `day < b.to` cannot be `day <= b.to` in a way any input can tell apart: when
+-- `day` is `b.to` the booking does not hold it, and skipping to `b.to` leaves `day` where it is.
+skip : Booking -> Date -> Date
+skip b day = if b.from <= day && day < b.to then b.to else day
+
+-- The first date, from `today` on, that none of the room's bookings holds. The bookings are
+-- taken in order of their start, so one pass past each booking is enough.
+nextFree : Date -> Room.RoomId -> List Booking -> Date
+nextFree today room bookings = List.foldl skip today (bookingsOf room bookings)
+
+-- Whether a booking from `start` up to `stop` may be stored beside `existing`, the bookings of
+-- its room. A booking may start on the day another one ends.
+fits : Date -> Date -> List Booking -> Bool
+fits start stop existing =
+  start < stop && not (List.any (\b -> start < b.to && b.from < stop) existing)
+
+test "a room's next free date skips back-to-back bookings" = {
+  let today <- Date.today
+  let room = Room.RoomId "oak"
+  let first : Booking = { id: BookingId "a", room: room, owner: User.UserId "u", from: today, to: Date.addDays 2 today }
+  let second : Booking = { id: BookingId "b", room: room, owner: User.UserId "u", from: Date.addDays 2 today, to: Date.addDays 4 today }
+  Task.succeed (nextFree today room [second, first] == Date.addDays 4 today && nextFree today room [] == today)
+}
+
+test "a booking that holds today is skipped" = {
+  let today <- Date.today
+  let room = Room.RoomId "oak"
+  let held : Booking = { id: BookingId "a", room: room, owner: User.UserId "u", from: today, to: Date.addDays 2 today }
+  Task.succeed (nextFree today room [held] == Date.addDays 2 today)
+}
+
+test "a booking that ends today does not hold it" = {
+  let today <- Date.today
+  let room = Room.RoomId "oak"
+  let ended : Booking = { id: BookingId "a", room: room, owner: User.UserId "u", from: Date.addDays (-2) today, to: today }
+  Task.succeed (nextFree today room [ended] == today)
+}
+
+test "a booking that starts later does not move the free date" = {
+  let today <- Date.today
+  let room = Room.RoomId "oak"
+  let later : Booking = { id: BookingId "a", room: room, owner: User.UserId "u", from: Date.addDays 5 today, to: Date.addDays 7 today }
+  Task.succeed (nextFree today room [later] == today)
+}
+
+test "another room's bookings do not hold a room's days" = {
+  let today <- Date.today
+  let room = Room.RoomId "oak"
+  let other : Booking = { id: BookingId "a", room: Room.RoomId "pine", owner: User.UserId "u", from: today, to: Date.addDays 2 today }
+  Task.succeed (nextFree today room [other] == today)
+}
+
+test "a booking may start on the day another ends" = {
+  let today <- Date.today
+  let room = Room.RoomId "oak"
+  let first : Booking = { id: BookingId "a", room: room, owner: User.UserId "u", from: today, to: Date.addDays 2 today }
+  Task.succeed (fits (Date.addDays 2 today) (Date.addDays 3 today) [first] && not (fits today (Date.addDays 1 today) [first]))
+}
+
+test "a booking may end on the day another starts" = {
+  let today <- Date.today
+  let room = Room.RoomId "oak"
+  let later : Booking = { id: BookingId "a", room: room, owner: User.UserId "u", from: Date.addDays 3 today, to: Date.addDays 5 today }
+  Task.succeed (fits today (Date.addDays 3 today) [later])
+}
+
+test "a booking must end after it starts" = {
+  let today <- Date.today
+  Task.succeed (not (fits today today []) && not (fits (Date.addDays 2 today) today []))
+}
+
+test "a room with bookings cannot be deleted" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let id <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 1 today }
+  let r <- Test.run (Db.delete Room room)
+  let after <- Db.get Booking id
+  Task.succeed ({ deleted: Result.toMaybe r.value, booking: Maybe.map (\b -> b.id) after } == { deleted: Nothing, booking: Just id })
+}
+
+test "a user with bookings cannot be deleted" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let id <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 1 today }
+  let r <- Test.run (Db.delete User me)
+  let after <- Db.get Booking id
+  Task.succeed ({ deleted: Result.toMaybe r.value, booking: Maybe.map (\b -> b.id) after } == { deleted: Nothing, booking: Just id })
+}

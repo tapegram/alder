@@ -1,0 +1,28 @@
+module Order
+
+import User
+
+type OrderId = brand Text
+
+type Status = Open | Paid | Cancelled
+
+table Order {
+  id: OrderId @id,
+  owner: User.UserId @ref User,
+  status: Status = Open,
+  created: Time @created,
+}
+
+statusText : Status -> Text
+statusText s = match s {
+  Open -> "Open",
+  Paid -> "Paid",
+  Cancelled -> "Cancelled",
+}
+
+-- canSee: an order is visible to its owner and to managers. A visitor with no user sees nothing.
+canSee : Maybe User -> Order -> Bool
+canSee me o = match me {
+  Just u -> o.owner == u.id || u.role == Manager,
+  Nothing -> False,
+}

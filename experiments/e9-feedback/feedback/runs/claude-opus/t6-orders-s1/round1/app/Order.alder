@@ -1,0 +1,34 @@
+module Order
+
+import User
+
+type OrderId = brand Text
+
+type Status = Open | Paid | Cancelled
+
+table Order {
+  id: OrderId @id,
+  owner: User.UserId @ref User,
+  status: Status = Open,
+  created: Time @created,
+}
+
+statusLabel : Status -> Text
+statusLabel status = match status {
+  Open -> "Open",
+  Paid -> "Paid",
+  Cancelled -> "Cancelled",
+}
+
+test "each status has its label" =
+  List.map statusLabel [Open, Paid, Cancelled] == ["Open", "Paid", "Cancelled"]
+
+-- `owner` is `@ref User` with the default rule, `@restrict`: a user who still has orders cannot
+-- be deleted, and the orders stay.
+test "a user with orders cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Order { owner: me }
+  let r <- Test.run (Db.delete User me)
+  let after <- Db.get Order id
+  Task.succeed ({ deleted: Result.toMaybe r.value, status: Maybe.map (\o -> o.status) after } == { deleted: Nothing, status: Just Open })
+}

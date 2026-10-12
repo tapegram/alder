@@ -1,0 +1,68 @@
+module Orders.Index
+
+import Order
+import Line
+import Product
+import Layout
+import User
+
+page "/" { } requires user
+
+type Row = { order: Order, total: Int }
+
+type Model = {
+  orders: List Row,
+  manager: Bool,
+}
+
+orderRow : List Product -> List Line -> Order -> Row
+orderRow products lines order = {
+  order: order,
+  total: Line.orderTotal products (List.filter (\l -> l.order == order.id) lines),
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let me <- Db.get User session.user
+  let orders <-
+    Db.from Order
+      |> Db.where (Order.owner.eq session.user)
+      |> Db.orderBy Order.created.desc
+      |> Db.all
+  let lines <- Db.from Line |> Db.all
+  let products <- Db.from Product |> Db.all
+  Query.succeed { orders: List.map (orderRow products lines) orders, manager: User.isManager me }
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Order { owner: session.user }
+    Task.succeed (Redirect (Orders.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Orders" manager={model.manager}>
+    <h1>Orders</h1>
+    <button click={Create}>New order</button>
+    <ul id="orders">
+      {for row in model.orders ->
+        <li>
+          <a href={Orders.Show { id: row.order.id }}>Details</a>
+          <span class="status">{Order.statusText row.order.status}</span>
+          <span class="total">{Text.fromInt row.total}</span>
+        </li>}
+    </ul>
+  </Layout.Page>
+
+msg Create
+
+test "a new order starts open and empty" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Index {})
+  let r <- Test.click Create
+  Task.succeed ({ status: Test.text "#status" r.doc, total: Test.text "#total" r.doc } == { status: Just "Open", total: Just "0" })
+}

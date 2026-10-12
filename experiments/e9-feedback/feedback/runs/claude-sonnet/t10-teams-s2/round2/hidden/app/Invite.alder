@@ -1,0 +1,26 @@
+module Invite
+
+import User
+import Team
+
+type InviteId = brand Text
+
+type Status = Pending | Accepted | Declined
+
+table Invite {
+  id: InviteId @id,
+  team: Team.TeamId @ref Team,
+  email: Text.Email,
+  status: Status = Pending,
+}
+
+-- `team` is `@ref Team` with the default rule, `@restrict`: a team with an invite cannot be
+-- deleted, and the invite stays.
+test "a team with an invite cannot be deleted" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let team <- Db.insert Team { name: Text.NonEmpty "Core", owner: owner }
+  let inv <- Db.insert Invite { team: team, email: Text.Email "bob@example.com" }
+  let r <- Test.run (Db.delete Team team)
+  let after <- Db.get Invite inv
+  Task.succeed ({ deleted: Result.toMaybe r.value, invite: Maybe.map (\i -> i.email) after } == { deleted: Nothing, invite: Just (Text.Email "bob@example.com") })
+}

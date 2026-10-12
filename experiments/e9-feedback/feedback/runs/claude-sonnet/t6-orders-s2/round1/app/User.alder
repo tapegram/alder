@@ -1,0 +1,33 @@
+module User
+
+type UserId = brand Text
+
+type Role = Staff | Manager
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  role: Role = Staff,
+  created: Time @created,
+}
+
+isManager : Maybe User -> Bool
+isManager me = match me {
+  Just u -> u.role == Manager,
+  Nothing -> False,
+}
+
+test "only a manager is a manager" =
+  {
+    manager: isManager (Just { id: UserId "m", email: Text.Email "m@example.com", name: Text.NonEmpty "M", passwordHash: "", role: Manager, created: Time.epoch }),
+    staff: isManager (Just { id: UserId "s", email: Text.Email "s@example.com", name: Text.NonEmpty "S", passwordHash: "", role: Staff, created: Time.epoch }),
+    nobody: isManager Nothing,
+  } == { manager: True, staff: False, nobody: False }
+
+test "a new user is staff" = {
+  let id <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let after <- Db.get User id
+  Task.succeed (Maybe.map (\u -> u.role) after == Just Staff)
+}

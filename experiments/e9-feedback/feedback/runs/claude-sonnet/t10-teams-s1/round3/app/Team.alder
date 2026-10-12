@@ -1,0 +1,21 @@
+module Team
+
+import User
+
+type TeamId = brand Text
+
+table Team {
+  id: TeamId @id,
+  name: Text.NonEmpty,
+  owner: User.UserId @ref User,
+}
+
+-- `owner` is `@ref User` with the default rule, `@restrict`: an owner with teams cannot be
+-- deleted, and the team stays.
+test "a user who owns a team cannot be deleted" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let _ <- Db.insert Team { name: Text.NonEmpty "Alpha", owner: owner }
+  let r <- Test.run (Db.delete User owner)
+  let n <- Db.from Team |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, teams: n } == { deleted: Nothing, teams: 1 })
+}

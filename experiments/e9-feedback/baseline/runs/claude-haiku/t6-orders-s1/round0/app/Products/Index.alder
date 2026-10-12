@@ -1,0 +1,76 @@
+module Products.Index
+
+import Product
+import User
+import Layout
+
+page "/products" { } requires user
+
+type Model = { products: List Product }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let me <- Db.get User session.user
+  let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+  if User.isManager me then Query.succeed { products: products } else Query.notFound
+}
+
+form NewProduct = {
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+}
+
+msg Add form NewProduct
+msg Toggle { id: Product.ProductId }
+
+-- asManager ends the request with a 404 unless the session's user is a manager.
+asManager : User.UserId -> Task Unit
+asManager userId = {
+  let me <- Db.get User userId
+  if User.isManager me then Task.succeed () else Task.notFound
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- asManager session.user
+    let _ <- Db.insert Product { name: p.form.name, price: p.form.price }
+    Task.succeed (Redirect (Products.Index {}))
+  },
+  Toggle p -> {
+    let _ <- asManager session.user
+    let found <- Db.get Product p.id
+    match found {
+      Just product -> {
+        let _ <- Db.update Product product.id (\x -> { x | active: not product.active })
+        Task.succeed (Redirect (Products.Index {}))
+      },
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Products">
+    <h1>Products</h1>
+    <form submit={Add}>
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <Input field="price" label="Price (cents)" />
+      <Errors field="price" />
+      <button>Add product</button>
+    </form>
+    <ul id="products">
+      {for p in model.products -> <Item product={p} />}
+    </ul>
+    <a href={Orders.Index {}}>Orders</a>
+  </Layout.Page>
+
+Item : { product: Product } -> Html Msg
+Item props =
+  <li class={if props.product.active then "active" else "inactive"}>
+    <span class="name">{props.product.name}</span>
+    <span class="price">{Text.fromInt props.product.price}</span>
+    <button click={Toggle { id: props.product.id }}>{if props.product.active then "Deactivate" else "Activate"}</button>
+  </li>

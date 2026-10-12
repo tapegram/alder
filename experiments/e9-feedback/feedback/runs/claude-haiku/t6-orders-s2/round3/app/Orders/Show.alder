@@ -1,0 +1,324 @@
+module Orders.Show
+
+import Order
+import Line
+import Product
+import Layout
+import User
+
+page "/orders/{id}" { id: Order.OrderId } requires user
+
+type Model = {
+  order: Order,
+  manager: Bool,
+  lines: List Line.LineRow,
+  total: Int,
+  products: List Product,
+}
+
+-- The order as the page shows it: its lines, their total, and the products that can be added.
+shown : Bool -> Order -> Query Model
+shown manager order = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq order.id) |> Db.all
+  let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+  Query.succeed {
+    order: order,
+    manager: manager,
+    lines: Line.rowsOf products lines,
+    total: Line.orderTotal products lines,
+    products: List.filter (\p -> p.active) products,
+  }
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Order params.id
+  let me <- Db.get User session.user
+  let manager = User.isManager me
+  match found {
+    Just order -> if order.owner == session.user || manager then shown manager order else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewLine = {
+  quantity: Int.Positive,
+}
+
+msg AddLine { product: Product.ProductId } form NewLine
+msg Pay
+msg Cancel
+
+-- Adding a line is refused unless the order is still Open and the product is active; the
+-- check runs here, so a page loaded while the order was Open cannot add to a Paid one.
+-- The two Reject answers below are not seen by a user: a refused line leaves the page without
+-- the form that sent it (an order that is not Open has no forms, and an inactive product has
+-- none), so the page is drawn again without the text and the answer is Rerendered, the same as
+-- for Rerender. No input tells Reject from Rerender here; the refusals are tested by their
+-- answer and by the lines they leave behind.
+addLine : Order -> Product -> Int.Positive -> Task Nav
+addLine order product quantity =
+  if order.status != Open then Task.succeed (Reject "This order is no longer open.") else if product.active then addRow order product quantity else Task.succeed (Reject "That product is no longer for sale.")
+
+addRow : Order -> Product -> Int.Positive -> Task Nav
+addRow order product quantity = {
+  let _ <- Db.insert Line { order: order.id, product: product.id, quantity: quantity }
+  Task.succeed (Redirect (Orders.Show { id: order.id }))
+}
+
+setStatus : Order -> Order.Status -> Task Nav
+setStatus order status =
+  if order.status == Open then saveStatus order status else Task.succeed (Redirect (Orders.Show { id: order.id }))
+
+saveStatus : Order -> Order.Status -> Task Nav
+saveStatus order status = {
+  let _ <- Db.update Order order.id (\o -> { o | status: status })
+  Task.succeed (Redirect (Orders.Show { id: order.id }))
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddLine p -> {
+    let found <- Db.get Product p.product
+    match found {
+      Just product -> addLine model.order product p.form.quantity,
+      Nothing -> Task.notFound,
+    }
+  },
+  Pay p -> setStatus model.order Paid,
+  Cancel p -> setStatus model.order Cancelled,
+}
+
+-- The forms and buttons of an Open order: one form per active product, and the two buttons.
+Actions : { products: List Product } -> Html Msg
+Actions props =
+  <div class="actions">
+    {for p in props.products ->
+      <form submit={AddLine { product: p.id }}>
+        <Errors form />
+        <span>{p.name}</span>
+        <Input field="quantity" label="Quantity" />
+        <Errors field="quantity" />
+        <button>Add</button>
+      </form>}
+    <button click={Pay}>Mark paid</button>
+    <button click={Cancel}>Cancel order</button>
+  </div>
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Order" manager={model.manager}>
+    <h1>Order</h1>
+    <p>Status: <span id="status">{Order.statusText model.order.status}</span></p>
+    <ul id="lines">
+      {for row in model.lines ->
+        <li>{row.product.name}: {Text.fromInt row.quantity} x {Text.fromInt row.cost}</li>}
+    </ul>
+    <p>Total: <span id="total">{Text.fromInt model.total}</span></p>
+    {if model.order.status == Open then <Actions products={model.products} /> else Html.none}
+    <a href={Orders.Index {}}>Back to orders</a>
+  </Layout.Page>
+
+test "an open order's total is the sum of its lines" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let cake <- Db.insert Product { name: Text.NonEmpty "Cake", price: Int.NonNegative 1000 }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: order })
+  let _ <- Test.submit (AddLine { product: tea }) { quantity: Int.Positive 2 }
+  let r <- Test.submit (AddLine { product: cake }) { quantity: Int.Positive 1 }
+  Task.succeed ({ total: Test.text "#total" r.doc, lines: Test.count "#lines li" r.doc } == { total: Just "1500", lines: 2 })
+}
+
+test "a line cannot be added to a paid order" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: order })
+  let _ <- Db.update Order order (\o -> { o | status: Paid })
+  let r <- Test.submit (AddLine { product: tea }) { quantity: Int.Positive 1 }
+  let lines <- Db.from Line |> Db.count
+  Task.succeed ({ lines: lines, status: Test.text "#status" r.doc } == { lines: 0, status: Just "Paid" })
+}
+
+test "a staff user cannot open another user's order" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let order <- Db.insert Order { owner: owner }
+  let _ <- Test.login { user: Just other }
+  let r <- Test.open (Orders.Show { id: order })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a manager can open another user's order" = {
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let order <- Db.insert Order { owner: owner }
+  let _ <- Test.login { user: Just boss }
+  let page <- Test.get (Orders.Show { id: order })
+  Task.succeed (Test.text "#status" page.doc == Just "Open")
+}
+
+test "a visitor is sent to log in" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let order <- Db.insert Order { owner: me }
+  let r <- Test.open (Orders.Show { id: order })
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "an owner can open their own order" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Orders.Show { id: order })
+  Task.succeed (r.answer == Shown)
+}
+
+test "an unknown order is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Orders.Show { id: Order.OrderId "nope" })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a page lists only its own order's lines" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let cake <- Db.insert Product { name: Text.NonEmpty "Cake", price: Int.NonNegative 1000 }
+  let a <- Db.insert Order { owner: me }
+  let b <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: a, product: tea, quantity: Int.Positive 2 }
+  let _ <- Db.insert Line { order: b, product: cake, quantity: Int.Positive 1 }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.get (Orders.Show { id: a })
+  Task.succeed ({ total: Test.text "#total" r.doc, lines: Test.count "#lines li" r.doc } == { total: Just "500", lines: 1 })
+}
+
+test "the page's model holds its own lines and the products by name" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let cake <- Db.insert Product { name: Text.NonEmpty "Cake", price: Int.NonNegative 1000 }
+  let a <- Db.insert Order { owner: me }
+  let b <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: a, product: tea, quantity: Int.Positive 2 }
+  let _ <- Db.insert Line { order: b, product: cake, quantity: Int.Positive 1 }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Orders.Show { id: a })
+  Task.succeed ({ lines: List.length page.model.lines, names: List.map (\p -> p.name) page.model.products } == { lines: 1, names: [Text.NonEmpty "Cake", Text.NonEmpty "Tea"] })
+}
+
+test "products are offered by name, active ones only" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let _ <- Db.insert Product { name: Text.NonEmpty "Cake", price: Int.NonNegative 1000 }
+  let _ <- Db.insert Product { name: Text.NonEmpty "Bread", price: Int.NonNegative 300, active: False }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.get (Orders.Show { id: order })
+  Task.succeed (Test.texts "form > span" r.doc == ["Cake", "Tea"])
+}
+
+test "adding a line answers with a redirect to the order" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: order })
+  let r <- Test.submit (AddLine { product: tea }) { quantity: Int.Positive 1 }
+  Task.succeed (r.answer == Redirected (Orders.Show { id: order }))
+}
+
+test "a product deactivated after the page was loaded is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: order })
+  let _ <- Db.update Product tea (\p -> { p | active: False })
+  let r <- Test.submit (AddLine { product: tea }) { quantity: Int.Positive 1 }
+  let lines <- Db.from Line |> Db.count
+  Task.succeed ({ answer: r.answer, lines: lines } == { answer: Rerendered, lines: 0 })
+}
+
+test "a product that is gone cannot be added" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: order })
+  let _ <- Db.delete Product tea
+  let r <- Test.submit (AddLine { product: tea }) { quantity: Int.Positive 1 }
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "Mark paid sets the status to Paid" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: order })
+  let r <- Test.click Pay
+  let after <- Db.get Order order
+  Task.succeed ({ answer: r.answer, status: Maybe.map (\o -> o.status) after } == { answer: Redirected (Orders.Show { id: order }), status: Just Paid })
+}
+
+test "Cancel sets the status to Cancelled" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: order })
+  let r <- Test.click Cancel
+  let after <- Db.get Order order
+  Task.succeed ({ answer: r.answer, status: Maybe.map (\o -> o.status) after } == { answer: Redirected (Orders.Show { id: order }), status: Just Cancelled })
+}
+
+test "Pay and Cancel answer with a redirect, not a rerender" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let order <- Db.insert Order { owner: me }
+  let model = { order: { id: order, owner: me, status: Open, created: Time.epoch }, manager: False, lines: [], total: 0, products: [] }
+  let paid <- Test.run (update Pay model { user: me })
+  let cancelled <- Test.run (update Cancel model { user: me })
+  Task.succeed ({ paid: paid.value, cancelled: cancelled.value } == { paid: Ok (Redirect (Orders.Show { id: order })), cancelled: Ok (Redirect (Orders.Show { id: order })) })
+}
+
+test "a stale Cancel does not change a paid order" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: order })
+  let _ <- Db.update Order order (\o -> { o | status: Paid })
+  let r <- Test.click Cancel
+  let after <- Db.get Order order
+  Task.succeed ({ answer: r.answer, status: Maybe.map (\o -> o.status) after } == { answer: Redirected (Orders.Show { id: order }), status: Just Paid })
+}
+
+test "only an open order shows its actions" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let openOrder <- Db.insert Order { owner: me }
+  let paidOrder <- Db.insert Order { owner: me, status: Paid }
+  let _ <- Test.login { user: Just me }
+  let a <- Test.get (Orders.Show { id: openOrder })
+  let b <- Test.get (Orders.Show { id: paidOrder })
+  Task.succeed ({ open: Test.count "div.actions" a.doc, paid: Test.count "div.actions" b.doc } == { open: 1, paid: 0 })
+}
+
+test "deleting an order deletes its lines" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: order, product: tea, quantity: Int.Positive 1 }
+  let _ <- Db.delete Order order
+  let left <- Db.from Line |> Db.count
+  Task.succeed (left == 0)
+}
+
+test "a product with lines cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: order, product: tea, quantity: Int.Positive 1 }
+  let r <- Test.run (Db.delete Product tea)
+  let lines <- Db.from Line |> Db.count
+  Task.succeed ({ refused: Result.toMaybe r.value == Nothing, lines: lines } == { refused: True, lines: 1 })
+}

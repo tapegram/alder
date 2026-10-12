@@ -1,0 +1,29 @@
+module Order
+
+import User
+
+type OrderId = brand Text
+
+type Status = Open | Paid | Cancelled
+
+table Order {
+  id: OrderId @id,
+  owner: User.UserId @ref User,
+  status: Status = Open,
+  created: Time @created,
+}
+
+type Priced = { quantity: Int.Positive, price: Int.NonNegative }
+
+total : List Priced -> Int
+total items = List.sum (List.map (\i -> i.quantity * i.price) items)
+
+statusLabel : Status -> Text
+statusLabel s = match s {
+  Open -> "Open",
+  Paid -> "Paid",
+  Cancelled -> "Cancelled",
+}
+
+test "an open order's total is the sum over its two lines" =
+  total [{ quantity: Int.Positive 2, price: Int.NonNegative 150 }, { quantity: Int.Positive 1, price: Int.NonNegative 75 }] == 375

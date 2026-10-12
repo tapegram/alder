@@ -1,0 +1,138 @@
+module Products.Index
+
+import Product
+import User
+import Layout
+
+page "/products" { } requires user
+
+type Model = { products: List Product }
+
+listAll : Query Model
+listAll = {
+  let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+  Query.succeed { products: products }
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let me <- Db.get User session.user
+  if User.isManager me then listAll else Query.notFound
+}
+
+form NewProduct = {
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+}
+
+msg Add form NewProduct
+msg Toggle { id: Product.ProductId }
+
+toggle : Product.ProductId -> Task Nav
+toggle id = {
+  let found <- Db.get Product id
+  match found {
+    Just prod -> {
+      let _ <- Db.update Product prod.id (\x -> { x | active: not x.active })
+      Task.succeed (Redirect (Products.Index {}))
+    },
+    Nothing -> Task.notFound,
+  }
+}
+
+add : NewProduct -> Task Nav
+add f = {
+  let _ <- Db.insert Product { name: f.name, price: f.price }
+  Task.succeed (Redirect (Products.Index {}))
+}
+
+act : Msg -> Task Nav
+act msg = match msg {
+  Add p -> add p.form,
+  Toggle p -> toggle p.id,
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = {
+  let me <- Db.get User session.user
+  if User.isManager me then act msg else Task.notFound
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Products">
+    <h1>Products</h1>
+
+    <form submit={Add}>
+      <Errors form />
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <Input field="price" label="Price (cents)" />
+      <Errors field="price" />
+      <button>Add product</button>
+    </form>
+
+    <ul id="products">
+      {for pr in model.products ->
+        <li>
+          <span class="name">{pr.name}</span>
+          <span class="price">{Text.fromInt pr.price}</span>
+          <span class="active">{if pr.active then "Active" else "Inactive"}</span>
+          <button click={Toggle { id: pr.id }}>{if pr.active then "Deactivate" else "Activate"}</button>
+        </li>}
+    </ul>
+
+    <a href={Orders.Index {}}>Back</a>
+  </Layout.Page>
+
+test "a visitor is sent to log in from the products page" = {
+  let r <- Test.open (Products.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "a staff user gets not found on the products page" = {
+  let staff <- Db.insert User { email: Text.Email "staff@example.com", name: Text.NonEmpty "Staff", passwordHash: "" }
+  let _ <- Test.login { user: Just staff }
+  let r <- Test.open (Products.Index {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a manager sees every product ordered by name" = {
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let _ <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let _ <- Db.insert Product { name: Text.NonEmpty "Cake", price: Int.NonNegative 500, active: False }
+  let _ <- Test.login { user: Just boss }
+  let r <- Test.open (Products.Index {})
+  Task.succeed ({ answer: r.answer, names: Test.texts ".name" r.doc } == { answer: Shown, names: ["Cake", "Tea"] })
+}
+
+test "a manager toggles a product on and off" = {
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let p <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let _ <- Test.login { user: Just boss }
+  let _ <- Test.get (Products.Index {})
+  let r1 <- Test.click (Toggle { id: p })
+  let mid <- Db.get Product p
+  let r2 <- Test.click (Toggle { id: p })
+  let end <- Db.get Product p
+  Task.succeed ({ a1: r1.answer, a2: r2.answer, mid: Maybe.map (\x -> x.active) mid, end: Maybe.map (\x -> x.active) end } == { a1: Redirected (Products.Index {}), a2: Redirected (Products.Index {}), mid: Just False, end: Just True })
+}
+
+test "a manager adds a product through the form" = {
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let _ <- Test.login { user: Just boss }
+  let _ <- Test.get (Products.Index {})
+  let r <- Test.submit NewProduct { name: Text.NonEmpty "Cake", price: Int.NonNegative 500 }
+  let all <- Db.from Product |> Db.all
+  Task.succeed ({ answer: r.answer, names: Test.texts ".name" r.doc, prices: List.map (\x -> x.price) all, actives: List.map (\x -> x.active) all } == { answer: Redirected (Products.Index {}), names: ["Cake"], prices: [Int.NonNegative 500], actives: [True] })
+}
+
+test "a staff user cannot toggle or add by posting messages" = {
+  let staff <- Db.insert User { email: Text.Email "staff@example.com", name: Text.NonEmpty "Staff", passwordHash: "" }
+  let p <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let r1 <- Test.run (update (Toggle { id: p }) { products: [] } { user: staff })
+  let r2 <- Test.run (update (Add { form: { name: Text.NonEmpty "Cake", price: Int.NonNegative 500 } }) { products: [] } { user: staff })
+  let after <- Db.get Product p
+  let n <- Db.from Product |> Db.count
+  Task.succeed ({ a: r1.value, b: r2.value, active: Maybe.map (\x -> x.active) after, count: n } == { a: Err "not found", b: Err "not found", active: Just True, count: 1 })
+}

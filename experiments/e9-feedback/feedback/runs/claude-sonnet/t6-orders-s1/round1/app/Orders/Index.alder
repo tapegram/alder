@@ -1,0 +1,106 @@
+module Orders.Index
+
+import Order
+import Line
+import Product
+import User
+import Layout
+
+page "/" { } requires user
+
+type Model = {
+  orders: List Order,
+  lines: List Line,
+  products: List Product,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let orders <-
+    Db.from Order
+      |> Db.where (Order.owner.eq session.user)
+      |> Db.orderBy Order.created.desc
+      |> Db.all
+  let lines <-
+    Db.from Line
+      |> Db.where (Line.order.in (List.map (\o -> o.id) orders))
+      |> Db.all
+  let products <-
+    Db.from Product
+      |> Db.where (Product.id.in (List.map (\l -> l.product) lines))
+      |> Db.all
+  Query.succeed { orders: orders, lines: lines, products: products }
+}
+
+msg Create
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Order { owner: session.user }
+    Task.succeed (Redirect (Orders.Show { id: id }))
+  },
+}
+
+orderTotal : Model -> Order -> Int
+orderTotal model o =
+  Line.total (List.filter (\l -> l.order == o.id) model.lines) model.products
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Orders">
+    <h1>Orders</h1>
+
+    <button click={Create}>New order</button>
+
+    <ul id="orders">
+      {for o in model.orders ->
+        <li>
+          <a href={Orders.Show { id: o.id }}>{Time.format "2006-01-02 15:04:05" o.created}</a>
+          <span class="status">{Order.statusLabel o.status}</span>
+          <span class="total">{Text.fromInt (orderTotal model o)}</span>
+        </li>}
+    </ul>
+
+    <p><a href={Products.Index {}}>Products</a></p>
+
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "a visitor is sent to log in from the orders list" = {
+  let r <- Test.open (Orders.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "the list shows my orders, newest first, with status and total" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let cake <- Db.insert Product { name: Text.NonEmpty "Cake", price: Int.NonNegative 500 }
+  let o1 <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: o1, product: tea, quantity: Int.Positive 2 }
+  let _ <- Db.insert Line { order: o1, product: cake, quantity: Int.Positive 1 }
+  let o2 <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: o2, product: tea, quantity: Int.Positive 3 }
+  let _ <- Db.update Order o2 (\x -> { x | status: Paid })
+  let o3 <- Db.insert Order { owner: me }
+  let _ <- Db.update Order o3 (\x -> { x | status: Cancelled })
+  let theirs <- Db.insert Order { owner: other }
+  let _ <- Db.insert Line { order: theirs, product: cake, quantity: Int.Positive 4 }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Orders.Index {})
+  Task.succeed ({ statuses: Test.texts "#orders .status" page.doc, totals: Test.texts "#orders .total" page.doc, items: Test.count "#orders li" page.doc } == { statuses: ["Cancelled", "Paid", "Open"], totals: ["0", "750", "1000"], items: 3 })
+}
+
+test "creating an order makes an empty open order of mine and shows it" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Index {})
+  let r <- Test.click Create
+  let created <- Db.from Order |> Db.all
+  let ids = List.map (\o -> o.id) created
+  let owners = List.map (\o -> o.owner) created
+  let statuses = List.map (\o -> o.status) created
+  let expected = Maybe.map (\i -> Redirected (Orders.Show { id: i })) (List.head ids)
+  Task.succeed ({ answer: Just r.answer, owners: owners, statuses: statuses, status: Test.text "#status" r.doc } == { answer: expected, owners: [me], statuses: [Open], status: Just "Open" })
+}

@@ -1,0 +1,53 @@
+module Rooms.Index
+
+import Room
+import Booking
+import Layout
+import User
+
+page "/rooms" { } requires user
+
+type Row = { room: Room, free: Date }
+
+type Model = { rows: List Row }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let rooms <- Db.from Room |> Db.orderBy Room.name.asc |> Db.all
+  let bookings <- Db.from Booking |> Db.all
+  let today <- Date.today
+  Query.succeed { rows: List.map (row today bookings) rooms }
+}
+
+inRoom : Room.RoomId -> Booking -> Bool
+inRoom id booking = booking.room == id
+
+row : Date -> List Booking -> Room -> Row
+row today bookings room = { room: room, free: Booking.nextFree today (List.filter (inRoom room.id) bookings) }
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Rooms">
+    <h1>Rooms</h1>
+    <nav>
+      <a href={Rooms.Index {}}>Rooms</a>
+      <a href={Bookings.Index {}}>My bookings</a>
+    </nav>
+    <ul id="rooms">
+      {for r in model.rows ->
+        <li><a class="name" href={Rooms.Show { id: r.room.id }}>{r.room.name}</a> free from <span class="free">{Date.toText r.free}</span></li>}
+    </ul>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "each room is listed by name with its next free date" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let oak <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let ash <- Db.insert Room { name: Text.NonEmpty "Ash" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: oak, owner: me, from: Date.addDays 2 today, to: Date.addDays 4 today }
+  let _ <- Db.insert Booking { room: oak, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Rooms.Index {})
+  Task.succeed ({ names: Test.texts "#rooms .name" page.doc, free: Test.texts "#rooms .free" page.doc } == { names: ["Ash", "Oak"], free: [Date.toText today, Date.toText (Date.addDays 4 today)] })
+}

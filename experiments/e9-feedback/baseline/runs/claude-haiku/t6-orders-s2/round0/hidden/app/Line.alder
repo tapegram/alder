@@ -1,0 +1,28 @@
+module Line
+
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+priced : List Line -> List Product -> List Order.Priced
+priced lines products = List.filterMap (priceOf products) lines
+
+priceOf : List Product -> Line -> Maybe Order.Priced
+priceOf products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  match found {
+    Just p -> {
+      let item : Order.Priced = { quantity: line.quantity, price: p.price }
+      Just item
+    },
+    Nothing -> Nothing,
+  }
+}

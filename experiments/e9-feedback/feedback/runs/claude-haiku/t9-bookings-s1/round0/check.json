@@ -1,0 +1,2 @@
+{"code": "E0001", "severity": "error", "file": "app/Bookings/Show.alder", "line": 44, "col": 33, "endLine": 44, "endCol": 34, "message": "in the definition of `update`: expected `}`, got `,`; the last expression of a block is its result and takes no `,`"}
+{"code": "E0001", "severity": "error", "file": "app/Rooms/Show.alder", "line": 48, "col": 6, "endLine": 48, "endCol": 7, "message": "in the definition of `update`: expected `}`, got `,`; the last expression of a block is its result and takes no `,`"}

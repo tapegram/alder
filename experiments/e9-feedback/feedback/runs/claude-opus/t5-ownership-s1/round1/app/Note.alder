@@ -1,0 +1,23 @@
+module Note
+
+import User
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  title: Text.NonEmpty,
+  body: Text,
+  owner: User.UserId @ref User,
+  created: Time @created,
+}
+
+-- `owner` is `@ref User` with the default rule, `@restrict`: a user who still has notes cannot
+-- be deleted, and the notes stay.
+test "a user with notes cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "text", owner: me }
+  let r <- Test.run (Db.delete User me)
+  let after <- Db.get Note id
+  Task.succeed ({ deleted: Result.toMaybe r.value, note: Maybe.map (\n -> n.title) after } == { deleted: Nothing, note: Just (Text.NonEmpty "Mine") })
+}

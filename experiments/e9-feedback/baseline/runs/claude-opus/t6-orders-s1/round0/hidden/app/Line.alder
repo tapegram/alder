@@ -1,0 +1,38 @@
+module Line
+
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+-- lineTotal is quantity × price in cents; a line whose product is not among products counts 0.
+lineTotal : List Product -> Line -> Int
+lineTotal products line = {
+  let amounts = products |> List.filter (\p -> p.id == line.product) |> List.map (\p -> line.quantity * p.price)
+  List.sum amounts
+}
+
+-- sumLines is the total of these lines in cents.
+sumLines : List Product -> List Line -> Int
+sumLines products lines = List.sum (List.map (lineTotal products) lines)
+
+-- orderTotal is the total of the lines that belong to one order.
+orderTotal : List Product -> List Line -> Order.OrderId -> Int
+orderTotal products lines id = sumLines products (List.filter (\l -> l.order == id) lines)
+
+test "orderTotal sums quantity times price over the order's lines" =
+  orderTotal [
+    { id: Product.ProductId "tea", name: Text.NonEmpty "Tea", price: Int.NonNegative 450, active: True },
+    { id: Product.ProductId "cup", name: Text.NonEmpty "Cup", price: Int.NonNegative 350, active: True },
+  ] [
+    { id: LineId "a", order: Order.OrderId "o", product: Product.ProductId "tea", quantity: Int.Positive 2 },
+    { id: LineId "b", order: Order.OrderId "o", product: Product.ProductId "cup", quantity: Int.Positive 1 },
+    { id: LineId "c", order: Order.OrderId "other", product: Product.ProductId "cup", quantity: Int.Positive 5 },
+  ] (Order.OrderId "o") == 1250

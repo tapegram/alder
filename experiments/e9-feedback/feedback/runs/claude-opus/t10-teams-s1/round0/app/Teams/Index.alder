@@ -1,0 +1,90 @@
+module Teams.Index
+
+import Team
+import Member
+import User
+import Layout
+
+page "/teams" { } requires user
+
+type Model = { teams: List Team }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let memberships <- Db.from Member |> Db.where (Member.user.eq session.user) |> Db.all
+  let teams <-
+    Db.from Team
+      |> Db.where (Db.or [Team.owner.eq session.user, Team.id.in (List.map (\m -> m.team) memberships)])
+      |> Db.orderBy Team.name.asc
+      |> Db.all
+  Query.succeed { teams: teams }
+}
+
+form NewTeam = {
+  name: Text.NonEmpty,
+}
+
+msg Create form NewTeam
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Team { name: p.form.name, owner: session.user }
+    Task.succeed (Redirect (Teams.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Teams">
+    <nav>
+      <a href={Teams.Index {}}>Teams</a>
+      <a href={Invites.Index {}}>Invites</a>
+      <button click={App.Logout}>Log out</button>
+    </nav>
+
+    <h1>Teams</h1>
+
+    <ul id="teams">
+      {for team in model.teams ->
+        <li><a class="name" href={Teams.Show { id: team.id }}>{team.name}</a></li>}
+    </ul>
+
+    <form submit={Create}>
+      <Errors form />
+      <Input field="name" label="New team" />
+      <Errors field="name" />
+      <button>Create</button>
+    </form>
+  </Layout.Page>
+
+test "creating a team makes the user its owner" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Teams.Index {})
+  let r <- Test.submit NewTeam { name: Text.NonEmpty "Rockets" }
+  let found <- Db.from Team |> Db.first
+  let page <- Test.get (Teams.Index {})
+  Task.succeed ({ answer: Just r.answer, name: Test.text "#name" r.doc, owner: Maybe.map (\t -> t.owner) found, teams: Test.texts "#teams .name" page.doc } == { answer: Maybe.map (\t -> Redirected (Teams.Show { id: t.id })) found, name: Just "Rockets", owner: Just me, teams: ["Rockets"] })
+}
+
+test "an empty team name is rejected" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Teams.Index {})
+  let r <- Test.submitRaw NewTeam [{ name: "name", value: "" }]
+  let rows <- Db.from Team |> Db.count
+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: FormRejected [{ field: "name", message: "must not be empty" }], rows: 0 })
+}
+
+test "the list has the teams the user owns or is a member of, by name" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Team { name: Text.NonEmpty "Zebra", owner: me }
+  let _ <- Db.insert Team { name: Text.NonEmpty "Middle", owner: other }
+  let alpha <- Db.insert Team { name: Text.NonEmpty "Alpha", owner: other }
+  let _ <- Db.insert Member { team: alpha, user: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Teams.Index {})
+  Task.succeed ({ names: Test.texts "#teams .name" page.doc, items: Test.count "#teams li" page.doc } == { names: ["Alpha", "Zebra"], items: 2 })
+}

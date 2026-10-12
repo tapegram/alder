@@ -1,0 +1,18 @@
+module Layout
+
+Page : { title: Text, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+    </head>
+    <body>
+      <nav>
+        <a href={Rooms.Index {}}>Rooms</a>
+        <a href={Bookings.Index {}}>Your bookings</a>
+        <button click={App.Logout}>Log out</button>
+      </nav>
+      <main>{props.children}</main>
+    </body>
+  </html>

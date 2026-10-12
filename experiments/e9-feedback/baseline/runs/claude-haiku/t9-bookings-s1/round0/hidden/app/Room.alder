@@ -1,0 +1,8 @@
+module Room
+
+type RoomId = brand Text
+
+table Room {
+  id: RoomId @id,
+  name: Text.NonEmpty,
+}

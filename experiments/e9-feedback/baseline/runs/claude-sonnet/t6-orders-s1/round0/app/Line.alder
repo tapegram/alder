@@ -1,0 +1,37 @@
+module Line
+
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+priceOf : Product.ProductId -> List Product -> Int
+priceOf id products = {
+  let found = List.find (\p -> p.id == id) products
+  match found {
+    Just p -> Int.abs p.price,
+    Nothing -> 0,
+  }
+}
+
+nameOf : Product.ProductId -> List Product -> Text
+nameOf id products = {
+  let found = List.find (\p -> p.id == id) products
+  match found {
+    Just p -> Text.trim p.name,
+    Nothing -> "?",
+  }
+}
+
+lineTotal : Line -> List Product -> Int
+lineTotal line products = line.quantity * priceOf line.product products
+
+total : List Line -> List Product -> Int
+total lines products = List.sum (List.map (\l -> lineTotal l products) lines)

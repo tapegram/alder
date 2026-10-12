@@ -1,0 +1,33 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- How many bookings of the room hold a day of [fromDate, toDate). A booking holds its from date
+-- up to, but not including, its to date, so two ranges overlap when each starts before the other ends.
+conflicts : Room.RoomId -> Date -> Date -> Query Int
+conflicts roomId fromDate toDate =
+  Db.from Booking
+    |> Db.where (Booking.room.eq roomId)
+    |> Db.where (Booking.from.lt toDate)
+    |> Db.where (Booking.to.gt fromDate)
+    |> Db.count
+
+-- The first date, today or later, that none of the bookings holds.
+nextFree : Date -> List Booking -> Date
+nextFree today bookings =
+  List.foldl (\b d -> if b.from <= d && d < b.to then b.to else d) today (List.sortByText (\b -> Date.toText b.from) bookings)
+
+-- A booking can be cancelled only while today is before its from date.
+canCancel : Date -> Booking -> Bool
+canCancel today booking = today < booking.from

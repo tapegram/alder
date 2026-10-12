@@ -1,0 +1,131 @@
+module Invites.Index
+
+import Invite
+import Team
+import Member
+import User
+import Layout
+
+page "/invites" { } requires user
+
+type Waiting = {
+  id: Invite.InviteId,
+  teamName: Text,
+}
+
+type Model = {
+  invites: List Waiting,
+}
+
+msg Accept { id: Invite.InviteId }
+msg Decline { id: Invite.InviteId }
+
+toWaiting : Invite -> Team -> Waiting
+toWaiting invite team = { id: invite.id, teamName: team.name }
+
+waitingOf : Invite -> Query (Maybe Waiting)
+waitingOf invite = {
+  let team <- Db.get Team invite.team
+  Query.succeed (Maybe.map (toWaiting invite) team)
+}
+
+addressedTo : Invite -> Maybe User -> Bool
+addressedTo invite me = Maybe.withDefault False (Maybe.map (\u -> u.email == invite.email) me)
+
+waitingFor : User.UserId -> Query (List Waiting)
+waitingFor uid = {
+  let me <- Db.get User uid
+  match me {
+    Nothing -> Query.succeed [],
+    Just u -> {
+      let rows <- Db.from Invite |> Db.where (Invite.email.eq u.email) |> Db.where (Invite.status.eq Pending) |> Db.all
+      let items <- Query.all (List.map waitingOf rows)
+      Query.succeed (List.filterMap (\w -> w) items)
+    },
+  }
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let waiting <- waitingFor session.user
+  Query.succeed { invites: waiting }
+}
+
+-- waitingInvite is the invite a message names, when it is addressed to the session's user and
+-- still waiting; otherwise the request is a 404.
+waitingInvite : Invite.InviteId -> Session -> Task Invite
+waitingInvite id session = {
+  let found <- Db.get Invite id
+  let me <- Db.get User session.user
+  match found {
+    Just invite -> if invite.status == Pending && addressedTo invite me then Task.succeed invite else Task.notFound,
+    Nothing -> Task.notFound,
+  }
+}
+
+-- joinTeam makes the user a member, unless they own the team or already are one.
+joinTeam : Invite -> User.UserId -> Task Unit
+joinTeam invite uid = {
+  let team <- Db.get Team invite.team
+  let row <- Db.from Member |> Db.where (Member.team.eq invite.team) |> Db.where (Member.user.eq uid) |> Db.first
+  let owner = Maybe.withDefault False (Maybe.map (\t -> t.owner == uid) team)
+  if owner || Maybe.isJust row then Task.succeed () else {
+    let _ <- Db.insert Member { team: invite.team, user: uid }
+    Task.succeed ()
+  }
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Accept p -> {
+    let invite <- waitingInvite p.id session
+    let _ <- joinTeam invite session.user
+    let _ <- Db.update Invite invite.id (\i -> { i | status: Accepted })
+    Task.succeed (Redirect (Teams.Show { id: invite.team }))
+  },
+  Decline p -> {
+    let invite <- waitingInvite p.id session
+    let _ <- Db.update Invite invite.id (\i -> { i | status: Declined })
+    Task.succeed (Redirect (Invites.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Invites">
+    <h1>Invites</h1>
+    <ul id="invites">
+      {for w in model.invites ->
+        <li>
+          <span class="team">{w.teamName}</span>
+          <button click={Accept { id: w.id }}>Accept</button>
+          <button click={Decline { id: w.id }}>Decline</button>
+        </li>}
+    </ul>
+  </Layout.Page>
+
+test "accepting an invite makes the team visible" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let team <- Db.insert Team { name: Text.NonEmpty "Club", owner: owner }
+  let invite <- Db.insert Invite { team: team, email: Text.Email "me@example.com" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Invites.Index {})
+  let r <- Test.click (Accept { id: invite })
+  let teams <- Test.get (Teams.Index {})
+  let opened <- Test.open (Teams.Show { id: team })
+  Task.succeed ({ answer: r.answer, listed: Test.texts "#teams .name" teams.doc, open: opened.answer } == { answer: Redirected (Teams.Show { id: team }), listed: ["Club"], open: Shown })
+}
+
+test "declining an invite does not open the team" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let team <- Db.insert Team { name: Text.NonEmpty "Club", owner: owner }
+  let invite <- Db.insert Invite { team: team, email: Text.Email "me@example.com" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Invites.Index {})
+  let r <- Test.click (Decline { id: invite })
+  let teams <- Test.get (Teams.Index {})
+  let opened <- Test.open (Teams.Show { id: team })
+  Task.succeed ({ answer: r.answer, waiting: Test.count "#invites li" r.doc, open: opened.answer, listed: Test.texts "#teams .name" teams.doc } == { answer: Redirected (Invites.Index {}), waiting: 0, open: PageMissing, listed: [] })
+}

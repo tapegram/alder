@@ -1,0 +1,80 @@
+module Bookings.Index
+
+import Room
+import Booking
+import Layout
+import User
+
+page "/bookings" { } requires user
+
+type Row = { id: Booking.BookingId, room: Text, from: Date, to: Date }
+
+type Model = { rows: List Row }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let mine <-
+    Db.from Booking
+      |> Db.where (Booking.owner.eq session.user)
+      |> Db.orderBy Booking.from.asc
+      |> Db.all
+  let rows <- Query.all (List.map rowFor mine)
+  Query.succeed { rows: rows }
+}
+
+rowFor : Booking -> Query Row
+rowFor b = {
+  let found <- Db.get Room b.room
+  match found {
+    Just r -> Query.succeed { id: b.id, room: r.name, from: b.from, to: b.to },
+    Nothing -> Query.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Your bookings">
+    <h1>Your bookings</h1>
+    <ul id="mine">
+      {for row in model.rows ->
+        <li><a href={Bookings.Show { id: row.id }}><span class="room">{row.room}</span> <span class="from">{Date.toText row.from}</span></a></li>}
+    </ul>
+  </Layout.Page>
+
+test "a visitor is sent to log in from your bookings" = {
+  let visitor <- Test.open (Bookings.Index {})
+  Task.succeed (visitor.answer == Redirected (Auth.Login {}))
+}
+
+test "your bookings list only your own" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let _ <- Db.insert Booking { room: blue, owner: other, from: Date.addDays 3 today, to: Date.addDays 4 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Index {})
+  Task.succeed (Test.count "#mine li" page.doc == 1)
+}
+
+test "your bookings are listed in order of their start" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 5 today, to: Date.addDays 6 today }
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Index {})
+  Task.succeed (Test.texts "#mine .from" page.doc == [Date.toText (Date.addDays 1 today), Date.toText (Date.addDays 5 today)])
+}
+
+test "your bookings name their room" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Index {})
+  Task.succeed (Test.texts "#mine .room" page.doc == ["Blue"])
+}

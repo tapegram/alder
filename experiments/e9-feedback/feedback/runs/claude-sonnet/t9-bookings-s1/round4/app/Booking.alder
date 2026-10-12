@@ -1,0 +1,69 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+-- A booking holds its room from `from` up to, but not including, `to`.
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- The first date, `today` or later, that none of the (non-overlapping) bookings holds.
+-- Note: `b.to > d` and `b.to >= d` cannot be told apart: when `b.to == d` the step returns
+-- `b.to`, which is `d` itself, so the result is the same either way.
+nextFree : Date -> List Booking -> Date
+nextFree today bookings = {
+  let step : Booking -> Date -> Date = \b d -> if b.from <= d && b.to > d then b.to else d
+  let sorted = List.sortByText (\b -> Date.toText b.from) bookings
+  List.foldl step today sorted
+}
+
+test "next free date skips back-to-back bookings" = {
+  let today <- Date.today
+  let sample : Date -> Date -> Booking = \f t -> { id: BookingId "x", room: Room.RoomId "r", owner: User.UserId "u", from: f, to: t }
+  let a = Date.addDays 2 today
+  let b = Date.addDays 5 today
+  Task.succeed ({
+    none: nextFree today [],
+    back: nextFree today [sample a b, sample today a],
+    gap: nextFree today [sample a b],
+    later: nextFree today [sample b (Date.addDays 7 today), sample today a],
+  } == { none: today, back: b, gap: today, later: a })
+}
+
+test "next free date with past and running bookings" = {
+  let today <- Date.today
+  let sample : Date -> Date -> Booking = \f t -> { id: BookingId "x", room: Room.RoomId "r", owner: User.UserId "u", from: f, to: t }
+  let past = nextFree today [sample (Date.addDays (-5) today) (Date.addDays (-2) today)]
+  let ended = nextFree today [sample (Date.addDays (-2) today) today]
+  let running = nextFree today [sample (Date.addDays (-1) today) (Date.addDays 2 today)]
+  Task.succeed ({ past: past, ended: ended, running: running } == { past: today, ended: today, running: Date.addDays 2 today })
+}
+
+-- `room` and `owner` are `@ref` with the default rule, `@restrict`: a room or a user that still
+-- has a booking cannot be deleted, and the booking stays.
+test "a room with a booking cannot be deleted" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let id <- Db.insert Booking { room: room, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let r <- Test.run (Db.delete Room room)
+  let after <- Db.get Booking id
+  Task.succeed ({ deleted: Result.toMaybe r.value, stays: Maybe.isJust after } == { deleted: Nothing, stays: True })
+}
+
+test "a user with a booking cannot be deleted" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let id <- Db.insert Booking { room: room, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let r <- Test.run (Db.delete User me)
+  let after <- Db.get Booking id
+  Task.succeed ({ deleted: Result.toMaybe r.value, stays: Maybe.isJust after } == { deleted: Nothing, stays: True })
+}

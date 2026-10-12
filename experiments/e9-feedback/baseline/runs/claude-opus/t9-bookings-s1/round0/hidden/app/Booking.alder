@@ -1,0 +1,84 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- A booking holds its room from its `from` date up to, but not including, its `to` date.
+holds : Date -> Booking -> Bool
+holds day booking = booking.from <= day && day < booking.to
+
+-- nextFree is the first date, `today` or later, that none of the bookings (of one room) holds.
+nextFree : Date -> List Booking -> Date
+nextFree today bookings =
+  bookings
+    |> List.sortByText (\b -> Date.toText b.from)
+    |> List.foldl (\b day -> if holds day b then b.to else day) today
+
+-- overlapping counts the bookings of a room that hold some date of start..stop (stop excluded).
+overlapping : Room.RoomId -> Date -> Date -> Query Int
+overlapping room start stop =
+  Db.from Booking
+    |> Db.where (Booking.room.eq room)
+    |> Db.where (Booking.from.lt stop)
+    |> Db.where (Booking.to.gt start)
+    |> Db.count
+
+-- A booking can be cancelled while today is before its `from` date.
+cancellable : Date -> Booking -> Bool
+cancellable today booking = today < booking.from
+
+test "the next free date skips back-to-back bookings" = {
+  let today <- Date.today
+  Task.succeed (nextFree today [
+    { id: BookingId "b", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays 2 today, to: Date.addDays 4 today },
+    { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: today, to: Date.addDays 2 today },
+    { id: BookingId "c", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays 5 today, to: Date.addDays 6 today },
+  ] == Date.addDays 4 today)
+}
+
+test "a room without bookings is free today" = {
+  let today <- Date.today
+  Task.succeed (nextFree today [] == today)
+}
+
+test "a later booking leaves today free" = {
+  let today <- Date.today
+  Task.succeed (nextFree today [
+    { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays 1 today, to: Date.addDays 3 today },
+  ] == today)
+}
+
+test "a booking holds its from date but not its to date" = {
+  let today <- Date.today
+  let b : Booking = { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: today, to: Date.addDays 2 today }
+  Task.succeed ([holds today b, holds (Date.addDays 1 today) b, holds (Date.addDays 2 today) b] == [True, True, False])
+}
+
+test "a booking can be cancelled only before its from date" = {
+  let today <- Date.today
+  let b : Booking = { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays 1 today, to: Date.addDays 2 today }
+  Task.succeed ([cancellable today b, cancellable (Date.addDays 1 today) b, cancellable (Date.addDays 2 today) b] == [True, False, False])
+}
+
+test "overlapping counts only the same room's overlapping bookings" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let oak <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let ash <- Db.insert Room { name: Text.NonEmpty "Ash" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: oak, owner: me, from: Date.addDays 1 today, to: Date.addDays 3 today }
+  let inside <- overlapping oak (Date.addDays 2 today) (Date.addDays 4 today)
+  let after <- overlapping oak (Date.addDays 3 today) (Date.addDays 5 today)
+  let before <- overlapping oak today (Date.addDays 1 today)
+  let other <- overlapping ash (Date.addDays 1 today) (Date.addDays 3 today)
+  Task.succeed ([inside, after, before, other] == [1, 0, 0, 0])
+}

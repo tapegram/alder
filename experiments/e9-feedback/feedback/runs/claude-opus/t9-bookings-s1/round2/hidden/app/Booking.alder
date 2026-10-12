@@ -1,0 +1,81 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+-- A booking holds its room from `from` up to, but not including, `to`.
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- advance moves a day held by the booking to the booking's end; any other day stays.
+advance : Booking -> Date -> Date
+advance booking day = if booking.from <= day && day < booking.to then booking.to else day
+
+fromText : Booking -> Text
+fromText booking = Date.toText booking.from
+
+-- nextFree is the first date, today or later, that none of the bookings (of one room) holds.
+nextFree : Date -> List Booking -> Date
+nextFree today bookings = bookings |> List.sortByText fromText |> List.foldl advance today
+
+-- A booking can be cancelled while today is before its `from` date.
+cancellable : Date -> Booking -> Bool
+cancellable today booking = today < booking.from
+
+-- The surviving mutant `day < booking.to → day <= booking.to` in `advance` is an equivalent
+-- mutant: `<` and `<=` differ only when `day == booking.to`, and then the `then` branch
+-- (`booking.to`) and the `else` branch (`day`) are the same date, so no input tells them apart.
+
+test "the next free date of a room with back-to-back bookings" = {
+  let today <- Date.today
+  let free = nextFree today [
+    { id: BookingId "b", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays 2 today, to: Date.addDays 5 today },
+    { id: BookingId "c", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays 7 today, to: Date.addDays 9 today },
+    { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: today, to: Date.addDays 2 today },
+  ]
+  Task.succeed (free == Date.addDays 5 today)
+}
+
+test "a room booked only later or earlier is free today" = {
+  let today <- Date.today
+  let free = nextFree today [
+    { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays 1 today, to: Date.addDays 3 today },
+    { id: BookingId "b", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays (-3) today, to: today },
+  ]
+  Task.succeed (free == today)
+}
+
+test "a booking is cancellable only before its from date" = {
+  let today <- Date.today
+  let booking : Booking = { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: Date.addDays 1 today, to: Date.addDays 3 today }
+  Task.succeed ([cancellable today booking, cancellable (Date.addDays 1 today) booking, cancellable (Date.addDays 2 today) booking] == [True, False, False])
+}
+
+-- `room` and `owner` are `@ref` with the default rule, `@restrict`: a room or a user that still
+-- has bookings cannot be deleted, and the bookings stay.
+test "a room with bookings cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let id <- Db.insert Booking { room: room, owner: me, from: Date.addDays 1 today, to: Date.addDays 3 today }
+  let r <- Test.run (Db.delete Room room)
+  let after <- Db.get Booking id
+  Task.succeed ({ deleted: Result.toMaybe r.value, stored: Maybe.isJust after } == { deleted: Nothing, stored: True })
+}
+
+test "a user with bookings cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let id <- Db.insert Booking { room: room, owner: me, from: Date.addDays 1 today, to: Date.addDays 3 today }
+  let r <- Test.run (Db.delete User me)
+  let after <- Db.get Booking id
+  Task.succeed ({ deleted: Result.toMaybe r.value, stored: Maybe.isJust after } == { deleted: Nothing, stored: True })
+}

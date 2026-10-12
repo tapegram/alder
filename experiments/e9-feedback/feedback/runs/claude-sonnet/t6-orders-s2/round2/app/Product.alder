@@ -1,0 +1,16 @@
+module Product
+
+type ProductId = brand Text
+
+table Product {
+  id: ProductId @id,
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+  active: Bool = True,
+}
+
+test "a new product is active" = {
+  let id <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let after <- Db.get Product id
+  Task.succeed (Maybe.map (\p -> p.active) after == Just True)
+}

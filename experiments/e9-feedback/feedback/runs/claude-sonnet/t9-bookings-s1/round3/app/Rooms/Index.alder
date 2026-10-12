@@ -1,0 +1,64 @@
+module Rooms.Index
+
+import Room
+import Booking
+import Layout
+import User
+
+page "/rooms" { } requires user
+
+type Row = { room: Room, free: Date }
+
+type Model = { rows: List Row }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let today <- Date.today
+  let rooms <- Db.from Room |> Db.orderBy Room.name.asc |> Db.all
+  let bookings <- Db.from Booking |> Db.where (Booking.to.gt today) |> Db.all
+  Query.succeed { rows: List.map (rowOf today bookings) rooms }
+}
+
+rowOf : Date -> List Booking -> Room -> Row
+rowOf today bookings room =
+  { room: room, free: Booking.nextFree today (List.filter (\b -> b.room == room.id) bookings) }
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Member title="Rooms">
+    <h1>Rooms</h1>
+    <ul id="rooms">
+      {for row in model.rows ->
+        <li>
+          <a class="name" href={Rooms.Show { id: row.room.id }}>{row.room.name}</a>
+          <span class="free">{Date.toText row.free}</span>
+        </li>}
+    </ul>
+  </Layout.Member>
+
+test "a visitor is sent to log in from the rooms" = {
+  let r <- Test.open (Rooms.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+-- Note: the `Db.where (Booking.to.gt today)` in `load` cannot be told apart by a test: a booking
+-- whose `to` is not after today never moves the next free date (`nextFree` only advances past a
+-- booking that holds the current date), so dropping the condition gives the same page.
+test "rooms are listed by name with their next free date" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let red <- Db.insert Room { name: Text.NonEmpty "Red" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 2 today, to: Date.addDays 4 today }
+  let _ <- Db.insert Booking { room: blue, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Db.insert Booking { room: red, owner: me, from: Date.addDays (-5) today, to: Date.addDays (-2) today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Rooms.Index {})
+  Task.succeed ({
+    names: Test.texts "#rooms .name" page.doc,
+    frees: Test.texts "#rooms .free" page.doc,
+  } == {
+    names: ["Blue", "Red"],
+    frees: [Date.toText (Date.addDays 4 today), Date.toText today],
+  })
+}

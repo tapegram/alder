@@ -1,0 +1,1 @@
+{"code": "E0001", "severity": "error", "file": "app/Products/Index.alder", "line": 17, "col": 43, "endLine": 17, "endCol": 44, "message": "in the definition of `load`: expected `}`, got `,`; the last expression of a block is its result and takes no `,`"}

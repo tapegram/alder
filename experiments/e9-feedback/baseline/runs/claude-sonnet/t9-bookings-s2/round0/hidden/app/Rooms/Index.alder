@@ -1,0 +1,55 @@
+module Rooms.Index
+
+import Room
+import Booking
+import User
+import Layout
+
+page "/rooms" { } requires user
+
+type Entry = { room: Room, free: Date }
+
+type Model = { entries: List Entry }
+
+entry : Date -> List Booking -> Room -> Entry
+entry today bookings r = { room: r, free: Booking.nextFree today (List.filter (\b -> b.room == r.id) bookings) }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let today <- Date.today
+  let rooms <- Db.from Room |> Db.orderBy Room.name.asc |> Db.all
+  let bookings <- Db.from Booking |> Db.all
+  Query.succeed { entries: List.map (entry today bookings) rooms }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Rooms">
+    <nav>
+      <a href={Rooms.Index {}}>Rooms</a>
+      <a href={Bookings.Index {}}>My bookings</a>
+      <button click={App.Logout}>Log out</button>
+    </nav>
+    <h1>Rooms</h1>
+    <ul id="rooms">
+      {for e in model.entries ->
+        <li>
+          <a class="name" href={Rooms.Show { id: e.room.id }}>{e.room.name}</a>
+          <span class="free">{Date.toText e.free}</span>
+        </li>}
+    </ul>
+  </Layout.Page>
+
+test "the next free date of rooms with back-to-back bookings" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let a <- Db.insert Room { name: Text.NonEmpty "A" }
+  let b <- Db.insert Room { name: Text.NonEmpty "B" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: a, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Db.insert Booking { room: a, owner: me, from: Date.addDays 2 today, to: Date.addDays 5 today }
+  let _ <- Db.insert Booking { room: b, owner: me, from: Date.addDays (-3) today, to: today }
+  let _ <- Db.insert Booking { room: b, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Rooms.Index {})
+  Task.succeed (Test.texts "#rooms .free" page.doc == [Date.toText (Date.addDays 5 today), Date.toText today])
+}

@@ -1,0 +1,21 @@
+module User
+
+type UserId = brand Text
+
+type Role = Staff | Manager
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  role: Role = Staff,
+  created: Time @created,
+}
+
+-- isManager: only a manager may see every order and change the products. A visitor is not one.
+isManager : Maybe User -> Bool
+isManager me = match me {
+  Just u -> u.role == Manager,
+  Nothing -> False,
+}

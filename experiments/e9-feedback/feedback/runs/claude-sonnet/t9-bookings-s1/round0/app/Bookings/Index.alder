@@ -1,0 +1,46 @@
+module Bookings.Index
+
+import Room
+import Booking
+import Layout
+
+page "/bookings" { } requires user
+
+type Row = { booking: Booking, roomName: Text }
+
+type Model = { rows: List Row }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let bookings <-
+    Db.from Booking
+      |> Db.where (Booking.owner.eq session.user)
+      |> Db.orderBy Booking.from.asc
+      |> Db.all
+  let rooms <- Db.from Room |> Db.all
+  Query.succeed { rows: List.map (rowOf rooms) bookings }
+}
+
+rowOf : List Room -> Booking -> Row
+rowOf rooms b = {
+  let found = List.find (\r -> r.id == b.room) rooms
+  let name = match found {
+    Just r -> Text.trim r.name,
+    Nothing -> "",
+  }
+  { booking: b, roomName: name }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Member title="My bookings">
+    <h1>My bookings</h1>
+    <ul id="mine">
+      {for row in model.rows ->
+        <li>
+          <span class="room">{row.roomName}</span>
+          <span class="from">{Date.toText row.booking.from}</span>
+          <a href={Bookings.Show { id: row.booking.id }}>Details</a>
+        </li>}
+    </ul>
+  </Layout.Member>

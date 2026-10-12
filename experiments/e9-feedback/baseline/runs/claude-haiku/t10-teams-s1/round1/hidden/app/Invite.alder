@@ -1,0 +1,14 @@
+module Invite
+
+import Team
+
+type InviteId = brand Text
+
+type Status = Pending | Accepted | Declined
+
+table Invite {
+  id: InviteId @id,
+  team: Team.TeamId @ref Team,
+  email: Text.Email,
+  status: Status = Pending,
+}

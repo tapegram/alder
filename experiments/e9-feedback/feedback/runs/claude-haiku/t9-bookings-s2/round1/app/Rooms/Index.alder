@@ -1,0 +1,65 @@
+module Rooms.Index
+
+import Room
+import Booking
+import Layout
+import User
+
+page "/rooms" { } requires user
+
+-- A room with the first date, from today on, that none of its bookings holds.
+type Listing = { room: Room, free: Date }
+
+type Model = { rows: List Listing }
+
+listing : Date -> List Booking -> Room -> Listing
+listing today bookings room = { room: room, free: Booking.nextFree today room.id bookings }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let today <- Date.today
+  let rooms <- Db.from Room |> Db.orderBy Room.name.asc |> Db.all
+  let bookings <- Db.from Booking |> Db.all
+  Query.succeed { rows: List.map (listing today bookings) rooms }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Rooms">
+    <h1>Rooms</h1>
+    <ul id="rooms">
+      {for row in model.rows ->
+        <li>
+          <a class="name" href={Rooms.Show { id: row.room.id }}>{row.room.name}</a>
+          <span class="free">{Date.toText row.free}</span>
+        </li>}
+    </ul>
+  </Layout.Page>
+
+test "the next free date follows back-to-back bookings" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let _ <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Db.insert Booking { room: room, owner: me, from: Date.addDays 2 today, to: Date.addDays 4 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Rooms.Index {})
+  Task.succeed (Test.texts ".free" page.doc == [Date.toText (Date.addDays 4 today)])
+}
+
+test "rooms are listed by name, each with its own next free date" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let birch <- Db.insert Room { name: Text.NonEmpty "Birch" }
+  let aspen <- Db.insert Room { name: Text.NonEmpty "Aspen" }
+  let _ <- Db.insert Booking { room: birch, owner: me, from: today, to: Date.addDays 3 today }
+  let _ <- Db.insert Booking { room: aspen, owner: me, from: Date.addDays 5 today, to: Date.addDays 6 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Rooms.Index {})
+  Task.succeed ({ names: Test.texts ".name" page.doc, free: Test.texts ".free" page.doc } == { names: ["Aspen", "Birch"], free: [Date.toText today, Date.toText (Date.addDays 3 today)] })
+}
+
+test "a visitor is sent to log in from the rooms" = {
+  let r <- Test.open (Rooms.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

@@ -1,0 +1,67 @@
+module Rooms.Index
+
+import Room
+import Booking
+import User
+import Layout
+
+page "/rooms" { } requires user
+
+type Row = {
+  room: Room,
+  free: Date,
+}
+
+type Model = {
+  rows: List Row,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let today <- Date.today
+  let rooms <- Db.from Room |> Db.orderBy Room.name.asc |> Db.all
+  let bookings <- Db.from Booking |> Db.orderBy Booking.from.asc |> Db.all
+  Query.succeed { rows: List.map (row today bookings) rooms }
+}
+
+-- row is a room with its next free date: only the room's own bookings count.
+row : Date -> List Booking -> Room -> Row
+row today bookings room =
+  { room: room, free: Booking.nextFree today (List.filter (\b -> b.room == room.id) bookings) }
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Rooms">
+    <h1>Rooms</h1>
+    <nav>
+      <a href={Rooms.Index {}}>Rooms</a>
+      <a href={Bookings.Index {}}>My bookings</a>
+    </nav>
+    <ul id="rooms">
+      {for r in model.rows ->
+        <li>
+          <a class="name" href={Rooms.Show { id: r.room.id }}>{r.room.name}</a>
+          <span class="free">{Date.toText r.free}</span>
+        </li>}
+    </ul>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "a visitor is sent to log in from the rooms" = {
+  let r <- Test.open (Rooms.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "rooms are listed by name with their next free date" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let oak <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let ash <- Db.insert Room { name: Text.NonEmpty "Ash" }
+  let elm <- Db.insert Room { name: Text.NonEmpty "Elm" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: oak, owner: me, from: Date.addDays 2 today, to: Date.addDays 3 today }
+  let _ <- Db.insert Booking { room: oak, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Db.insert Booking { room: ash, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Rooms.Index {})
+  Task.succeed ({ names: Test.texts "#rooms .name" page.doc, free: Test.texts "#rooms .free" page.doc, items: Test.count "#rooms > li" page.doc } == { names: ["Ash", "Elm", "Oak"], free: [Date.toText today, Date.toText today, Date.toText (Date.addDays 3 today)], items: 3 })
+}

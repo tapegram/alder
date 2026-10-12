@@ -1,0 +1,45 @@
+module Line
+
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+-- nameOf is the name of the product a line names, or a placeholder when that product is gone.
+nameOf : List Product -> Line -> Text
+nameOf products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  match found {
+    Just p -> p.name,
+    Nothing -> "(removed product)",
+  }
+}
+
+-- amount is one line's price in cents: its quantity times its product's price.
+amount : List Product -> Line -> Int
+amount products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  match found {
+    Just p -> line.quantity * p.price,
+    Nothing -> 0,
+  }
+}
+
+-- total is an order's price in cents: the sum over its lines.
+total : List Product -> List Line -> Int
+total products lines = List.sum (List.map (amount products) lines)
+
+-- orderTotal reads an order's lines and products and gives the order's total.
+orderTotal : Order -> Query Int
+orderTotal o = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq o.id) |> Db.all
+  let products <- Db.from Product |> Db.all
+  Query.succeed (total products lines)
+}

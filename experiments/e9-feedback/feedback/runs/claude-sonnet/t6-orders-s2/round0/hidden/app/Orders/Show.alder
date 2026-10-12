@@ -1,0 +1,161 @@
+module Orders.Show
+
+import Order
+import Line
+import Product
+import User
+import Layout
+
+page "/orders/{id}" { id: Order.OrderId } requires user
+
+type Item = { name: Text, quantity: Int, cost: Int }
+
+type Model = {
+  order: Order,
+  items: List Item,
+  active: List Product,
+  total: Int,
+}
+
+item : List Product -> Line -> Item
+item products line = {
+  name: Maybe.map (\p -> Text.trim p.name) (List.find (\p -> p.id == line.product) products) ?? "?",
+  quantity: Int.abs line.quantity,
+  cost: line.quantity * Line.priceOf products line.product,
+}
+
+build : Order -> Query Model
+build order = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq order.id) |> Db.all
+  let products <- Db.from Product |> Db.all
+  Query.succeed {
+    order: order,
+    items: List.map (item products) lines,
+    active: List.filter (\p -> p.active) products,
+    total: Line.total products lines,
+  }
+}
+
+-- Another user's order is a 404 unless the viewer is a Manager.
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Order params.id
+  match found {
+    Nothing -> Query.notFound,
+    Just order -> {
+      let ok <- Order.canView order session.user
+      if ok then build order else Query.notFound
+    },
+  }
+}
+
+form NewLine = { quantity: Int.Positive }
+
+msg AddLine { product: Product.ProductId } form NewLine
+msg Pay
+msg Cancel
+
+-- The order's status is read again here, so a form from a page loaded while the order was
+-- Open is still refused once it is not.
+isOpen : Order.OrderId -> Task Bool
+isOpen id = {
+  let found <- Db.get Order id
+  Task.succeed (Maybe.map (\o -> o.status == Open) found ?? False)
+}
+
+finish : Order.OrderId -> Order.Status -> Task Nav
+finish id status = {
+  let ok <- isOpen id
+  if ok then {
+    let _ <- Db.update Order id (\o -> { o | status: status })
+    Task.succeed (Redirect (Orders.Show { id: id }))
+  } else Task.succeed (Reject "This order is not open.")
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddLine p -> {
+    let ok <- isOpen model.order.id
+    let found <- Db.get Product p.product
+    let usable = Maybe.map (\x -> x.active) found ?? False
+    if ok && usable then {
+      let _ <- Db.insert Line { order: model.order.id, product: p.product, quantity: p.form.quantity }
+      Task.succeed (Redirect (Orders.Show { id: model.order.id }))
+    } else Task.succeed (Reject "This order is not open, or the product is not available.")
+  },
+  Pay p -> finish model.order.id Paid,
+  Cancel p -> finish model.order.id Cancelled,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Order">
+    <h1>Order</h1>
+    <p>Status: <span id="status">{Order.statusLabel model.order.status}</span></p>
+
+    <ul id="lines">
+      {for i in model.items ->
+        <li>{i.name} x {Text.fromInt i.quantity} = {Text.fromInt i.cost}</li>}
+    </ul>
+
+    <p>Total: <span id="total">{Text.fromInt model.total}</span></p>
+
+    {if model.order.status == Open then
+      <div id="controls">
+        {for prod in model.active ->
+          <form submit={AddLine { product: prod.id }}>
+            <Errors form />
+            <h3>{prod.name}</h3>
+            <Input field="quantity" label="Quantity" />
+            <Errors field="quantity" />
+            <button>Add line</button>
+          </form>}
+        <button click={Pay}>Mark paid</button>
+        <button click={Cancel}>Cancel order</button>
+      </div>
+    else Html.none}
+
+    <a href={Orders.Index {}}>Back</a>
+  </Layout.Page>
+
+test "an open order's total sums its lines" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let cake <- Db.insert Product { name: Text.NonEmpty "Cake", price: Int.NonNegative 100 }
+  let o <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: o, product: tea, quantity: Int.Positive 2 }
+  let _ <- Db.insert Line { order: o, product: cake, quantity: Int.Positive 3 }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Orders.Show { id: o })
+  Task.succeed ({ total: Test.text "#total" page.doc, status: Test.text "#status" page.doc, model: page.model.total } == { total: Just "800", status: Just "Open", model: 800 })
+}
+
+test "adding a line to a paid order is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let o <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Orders.Show { id: o })
+  let _ <- Db.update Order o (\x -> { x | status: Paid })
+  let r <- Test.run (update (AddLine { product: tea, form: { quantity: Int.Positive 1 } }) page.model { user: me })
+  let n <- Db.from Line |> Db.count
+  Task.succeed ({ value: r.value, lines: n } == { value: Ok (Reject "This order is not open, or the product is not available."), lines: 0 })
+}
+
+test "a staff user does not find another user's order" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let o <- Db.insert Order { owner: owner }
+  let _ <- Test.login { user: Just other }
+  let r <- Test.open (Orders.Show { id: o })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a manager finds another user's order" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let o <- Db.insert Order { owner: owner }
+  let _ <- Test.login { user: Just boss }
+  let r <- Test.open (Orders.Show { id: o })
+  Task.succeed (r.answer == Shown)
+}

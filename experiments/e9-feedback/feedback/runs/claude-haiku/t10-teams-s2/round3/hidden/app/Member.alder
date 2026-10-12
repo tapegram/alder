@@ -1,0 +1,105 @@
+module Member
+
+import Team
+import User
+
+type MemberId = brand Text
+
+table Member {
+  id: MemberId @id,
+  team: Team.TeamId @ref Team,
+  user: User.UserId @ref User,
+}
+
+-- Makes `user` a member of `team`, unless they already are or already own it. An accepted
+-- invite calls this, so the same person accepting twice, or the owner accepting, adds no row.
+add : Team.TeamId -> User.UserId -> Task Unit
+add team user = {
+  let owner <- Db.get Team team
+  let existing <- Db.from Member |> Db.where (Member.team.eq team) |> Db.where (Member.user.eq user) |> Db.count
+  let isOwner = (Maybe.map (\t -> t.owner == user) owner) ?? False
+  let _ <- if isOwner || existing > 0 then Task.succeed () else Task.map (\m -> ()) (Db.insert Member { team: team, user: user })
+  Task.succeed ()
+}
+
+test "adding a member adds one row" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let crew <- Db.insert Team { name: Text.NonEmpty "Crew", owner: owner }
+  let _ <- add crew ann
+  let rows <- Db.from Member |> Db.where (Member.team.eq crew) |> Db.where (Member.user.eq ann) |> Db.count
+  Task.succeed (rows == 1)
+}
+
+test "the owner is not added as a member" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let crew <- Db.insert Team { name: Text.NonEmpty "Crew", owner: owner }
+  let _ <- add crew owner
+  let rows <- Db.from Member |> Db.where (Member.team.eq crew) |> Db.count
+  Task.succeed (rows == 0)
+}
+
+test "adding a member twice adds one row" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let crew <- Db.insert Team { name: Text.NonEmpty "Crew", owner: owner }
+  let _ <- add crew ann
+  let _ <- add crew ann
+  let rows <- Db.from Member |> Db.where (Member.team.eq crew) |> Db.count
+  Task.succeed (rows == 1)
+}
+
+-- Another member of the same team does not stop a new one from joining.
+test "another member does not block a new one" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let crew <- Db.insert Team { name: Text.NonEmpty "Crew", owner: owner }
+  let _ <- add crew ann
+  let _ <- add crew bob
+  let bobRows <- Db.from Member |> Db.where (Member.team.eq crew) |> Db.where (Member.user.eq bob) |> Db.count
+  Task.succeed (bobRows == 1)
+}
+
+-- A membership of another team does not stop joining this one.
+test "membership of another team does not block" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let crew <- Db.insert Team { name: Text.NonEmpty "Crew", owner: owner }
+  let club <- Db.insert Team { name: Text.NonEmpty "Club", owner: owner }
+  let _ <- add crew ann
+  let _ <- add club ann
+  let inClub <- Db.from Member |> Db.where (Member.team.eq club) |> Db.where (Member.user.eq ann) |> Db.count
+  Task.succeed (inClub == 1)
+}
+
+-- Adding to a team that does not exist is refused, and no row is written. The owner check then
+-- finds no team, so it must not count as the owner (a False default, not True).
+test "a team that does not exist gets no member" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let r <- Test.run (add (Team.TeamId "nope") ann)
+  let rows <- Db.from Member |> Db.count
+  Task.succeed ({ refused: Result.toMaybe r.value == Nothing, rows: rows } == { refused: True, rows: 0 })
+}
+
+-- The team reference is @restrict: a team with a member cannot be deleted.
+test "a team with a member cannot be deleted" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let crew <- Db.insert Team { name: Text.NonEmpty "Crew", owner: owner }
+  let _ <- add crew ann
+  let r <- Test.run (Db.delete Team crew)
+  let left <- Db.from Member |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, members: left } == { deleted: Nothing, members: 1 })
+}
+
+-- The user reference is @restrict: a user who is a member cannot be deleted.
+test "a user who is a member cannot be deleted" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let crew <- Db.insert Team { name: Text.NonEmpty "Crew", owner: owner }
+  let _ <- add crew ann
+  let r <- Test.run (Db.delete User ann)
+  let left <- Db.from Member |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, members: left } == { deleted: Nothing, members: 1 })
+}

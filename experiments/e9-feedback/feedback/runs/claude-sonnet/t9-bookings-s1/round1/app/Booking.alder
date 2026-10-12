@@ -1,0 +1,38 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+-- A booking holds its room from `from` up to, but not including, `to`.
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- The first date, `today` or later, that none of the (non-overlapping) bookings holds.
+nextFree : Date -> List Booking -> Date
+nextFree today bookings = {
+  let step : Booking -> Date -> Date = \b d -> if b.from <= d && b.to > d then b.to else d
+  let sorted = List.sortByText (\b -> Date.toText b.from) bookings
+  List.foldl step today sorted
+}
+
+sample : Date -> Date -> Booking
+sample f t = { id: BookingId "x", room: Room.RoomId "r", owner: User.UserId "u", from: f, to: t }
+
+test "next free date skips back-to-back bookings" = {
+  let today <- Date.today
+  let a = Date.addDays 2 today
+  let b = Date.addDays 5 today
+  Task.succeed ({
+    none: nextFree today [],
+    back: nextFree today [sample a b, sample today a],
+    gap: nextFree today [sample a b],
+    later: nextFree today [sample b (Date.addDays 7 today), sample today a],
+  } == { none: today, back: b, gap: today, later: a })
+}

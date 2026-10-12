@@ -1,0 +1,58 @@
+module Teams.Index
+
+import Team
+import Member
+import User
+import Layout
+
+page "/teams" { } requires user
+
+type Model = {
+  teams: List Team,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let owned <- Db.from Team |> Db.where (Team.owner.eq session.user) |> Db.all
+  let memberships <- Db.from Member |> Db.where (Member.user.eq session.user) |> Db.all
+  let joined <- Query.all (List.map (\m -> Db.get Team m.team) memberships)
+  let teams = List.sortByText (\t -> t.name) (owned ++ List.filterMap (\t -> t) joined)
+  Query.succeed { teams: teams }
+}
+
+form NewTeam = {
+  name: Text.NonEmpty,
+}
+
+msg Create form NewTeam
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Team { name: p.form.name, owner: session.user }
+    Task.succeed (Redirect (Teams.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Teams">
+    <h1>Teams</h1>
+    <ul id="teams">
+      {for t in model.teams ->
+        <li><a href={Teams.Show { id: t.id }}><span class="name">{t.name}</span></a></li>}
+    </ul>
+    <form submit={Create}>
+      <Input field="name" label="New team name" />
+      <Errors field="name" />
+      <button>Create team</button>
+    </form>
+  </Layout.Page>
+
+test "creating a team opens its page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Teams.Index {})
+  let r <- Test.submit NewTeam { name: Text.NonEmpty "Club" }
+  Task.succeed (Test.text "#name" r.doc == Just "Club")
+}

@@ -1,0 +1,1 @@
+{"code": "E0001", "severity": "error", "file": "app/User.alder", "line": 24, "col": 5, "endLine": 24, "endCol": 7, "message": "expected a declaration, got `==`"}

@@ -1,0 +1,56 @@
+module Rooms.Index
+
+import Room
+import Booking
+import Layout
+import User
+
+page "/rooms" { } requires user
+
+type RoomRow = { room: Room, free: Date }
+
+type Model = { rows: List RoomRow }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let today <- Date.today
+  let rooms <-
+    Db.from Room
+      |> Db.orderBy Room.name.asc
+      |> Db.all
+  let rows <- Query.all (List.map (roomRow today) rooms)
+  Query.succeed { rows: rows }
+}
+
+roomRow : Date -> Room -> Query RoomRow
+roomRow today room = {
+  let bookings <-
+    Db.from Booking
+      |> Db.where (Booking.room.eq room.id)
+      |> Db.all
+  Query.succeed { room: room, free: Booking.freeFrom today bookings }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Rooms">
+    <h1>Rooms</h1>
+    <ul id="rooms">
+      {for r in model.rows ->
+        <li>
+          <a class="name" href={Rooms.Show { id: r.room.id }}>{r.room.name}</a>
+          free from <span class="free">{Date.toText r.free}</span>
+        </li>}
+    </ul>
+  </Layout.Page>
+
+test "the next free date skips back-to-back bookings" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Db.insert Booking { room: room, owner: me, from: Date.addDays 2 today, to: Date.addDays 4 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Rooms.Index {})
+  Task.succeed (Test.text "#rooms .free" page.doc == Just (Date.toText (Date.addDays 4 today)))
+}

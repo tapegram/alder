@@ -1,0 +1,74 @@
+module Bookings.Index
+
+import Room
+import Booking
+import Layout
+import User
+
+page "/bookings" { } requires user
+
+type Row = { booking: Booking, roomName: Text }
+
+type Model = { rows: List Row }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let bookings <-
+    Db.from Booking
+      |> Db.where (Booking.owner.eq session.user)
+      |> Db.orderBy Booking.from.asc
+      |> Db.all
+  let rooms <- Db.from Room |> Db.all
+  Query.succeed { rows: List.map (rowOf rooms) bookings }
+}
+
+rowOf : List Room -> Booking -> Row
+rowOf rooms b = {
+  let found = List.find (\r -> r.id == b.room) rooms
+  let name = match found {
+    Just r -> Text.trim r.name,
+    Nothing -> "",
+  }
+  { booking: b, roomName: name }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Member title="My bookings">
+    <h1>My bookings</h1>
+    <ul id="mine">
+      {for row in model.rows ->
+        <li>
+          <span class="room">{row.roomName}</span>
+          <span class="from">{Date.toText row.booking.from}</span>
+          <a href={Bookings.Show { id: row.booking.id }}>Details</a>
+        </li>}
+    </ul>
+  </Layout.Member>
+
+test "a visitor is sent to log in from the list" = {
+  let r <- Test.open (Bookings.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "my bookings are listed by from date with the room's name" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let red <- Db.insert Room { name: Text.NonEmpty "Red" }
+  let _ <- Db.insert Booking { room: red, owner: me, from: Date.addDays 5 today, to: Date.addDays 6 today }
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let _ <- Db.insert Booking { room: blue, owner: other, from: Date.addDays 3 today, to: Date.addDays 4 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Index {})
+  Task.succeed ({
+    rooms: Test.texts "#mine .room" page.doc,
+    froms: Test.texts "#mine .from" page.doc,
+    links: Test.count "#mine a" page.doc,
+  } == {
+    rooms: ["Blue", "Red"],
+    froms: [Date.toText (Date.addDays 1 today), Date.toText (Date.addDays 5 today)],
+    links: 2,
+  })
+}

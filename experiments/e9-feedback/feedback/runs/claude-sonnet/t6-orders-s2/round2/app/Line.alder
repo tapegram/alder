@@ -1,0 +1,59 @@
+module Line
+
+import Order
+import Product
+import User
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+priceOf : List Product -> Product.ProductId -> Int
+priceOf products id = {
+  let found = List.find (\p -> p.id == id) products
+  Maybe.map (\p -> Int.abs p.price) found ?? 0
+}
+
+total : List Product -> List Line -> Int
+total products lines =
+  List.sum (List.map (\l -> l.quantity * priceOf products l.product) lines)
+
+test "total sums quantity times price over the lines" =
+  (total [
+      { id: Product.ProductId "p1", name: Text.NonEmpty "Tea", price: Int.NonNegative 250, active: True },
+      { id: Product.ProductId "p2", name: Text.NonEmpty "Cake", price: Int.NonNegative 100, active: False },
+    ] [
+      { id: LineId "l1", order: Order.OrderId "o", product: Product.ProductId "p1", quantity: Int.Positive 2 },
+      { id: LineId "l2", order: Order.OrderId "o", product: Product.ProductId "p2", quantity: Int.Positive 3 },
+    ]) == 800
+
+test "total of no lines is zero" =
+  total [] [] == 0
+
+test "priceOf finds the product's price, and is zero for an unknown one" =
+  { found: priceOf [{ id: Product.ProductId "p1", name: Text.NonEmpty "Tea", price: Int.NonNegative 250, active: True }] (Product.ProductId "p1"), unknown: priceOf [] (Product.ProductId "x") } == { found: 250, unknown: 0 }
+
+test "deleting an order deletes its lines" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let o <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: o, product: tea, quantity: Int.Positive 1 }
+  let _ <- Db.delete Order o
+  let n <- Db.from Line |> Db.count
+  Task.succeed (n == 0)
+}
+
+test "a product with lines cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let o <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: o, product: tea, quantity: Int.Positive 1 }
+  let r <- Test.run (Db.delete Product tea)
+  let n <- Db.from Line |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, lines: n } == { deleted: Nothing, lines: 1 })
+}

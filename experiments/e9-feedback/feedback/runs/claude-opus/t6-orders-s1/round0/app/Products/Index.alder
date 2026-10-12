@@ -1,0 +1,116 @@
+module Products.Index
+
+import Product
+import Layout
+import User
+
+page "/products" { } requires user
+
+type Model = { products: List Product }
+
+-- Only a Manager is served this page; to a Staff user it is a 404.
+load : Params -> Session -> Query Model
+load params session = {
+  let me <- Db.get User session.user
+  if User.isManager me then listing else Query.notFound
+}
+
+listing : Query Model
+listing = {
+  let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+  Query.succeed { products: products }
+}
+
+form NewProduct = {
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+}
+
+msg Add form NewProduct
+msg Toggle { id: Product.ProductId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- requireManager session
+    let _ <- Db.insert Product { name: p.form.name, price: p.form.price }
+    Task.succeed (Redirect (Products.Index {}))
+  },
+  Toggle p -> {
+    let _ <- requireManager session
+    let product <- existing p.id
+    let _ <- Db.update Product product.id (\x -> { x | active: not x.active })
+    Task.succeed (Redirect (Products.Index {}))
+  },
+}
+
+-- requireManager is the session's user when a Manager; otherwise the message is a 404.
+requireManager : Session -> Task User
+requireManager session = {
+  let me <- Db.get User session.user
+  match me {
+    Just u -> if u.role == Manager then Task.succeed u else Task.notFound,
+    Nothing -> Task.notFound,
+  }
+}
+
+existing : Product.ProductId -> Task Product
+existing id = {
+  let found <- Db.get Product id
+  match found {
+    Just product -> Task.succeed product,
+    Nothing -> Task.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Products">
+    <h1>Products</h1>
+
+    <ul id="products">
+      {for product in model.products ->
+        <li class={if product.active then "active" else "inactive"}>
+          <span class="name">{product.name}</span>
+          <span class="price">{Text.fromInt product.price}</span>
+          <button click={Toggle { id: product.id }}>{if product.active then "Deactivate" else "Activate"}</button>
+        </li>}
+    </ul>
+
+    <form submit={Add}>
+      <Errors form />
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <Input field="price" label="Price in cents" />
+      <Errors field="price" />
+      <button>Add</button>
+    </form>
+
+    <a href={Orders.Index {}}>Orders</a>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "a Staff user does not find the products page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Products.Index {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a Manager adds a product" = {
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let _ <- Test.login { user: Just boss }
+  let _ <- Test.get (Products.Index {})
+  let r <- Test.submit NewProduct { name: Text.NonEmpty "Tea", price: Int.NonNegative 500 }
+  Task.succeed ({ answer: r.answer, names: Test.texts "#products .name" r.doc } == { answer: Redirected (Products.Index {}), names: ["Tea"] })
+}
+
+test "a Manager toggles a product" = {
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 500 }
+  let _ <- Test.login { user: Just boss }
+  let _ <- Test.get (Products.Index {})
+  let r <- Test.click (Toggle { id: tea })
+  let after <- Db.get Product tea
+  Task.succeed ({ answer: r.answer, active: Maybe.map (\p -> p.active) after } == { answer: Redirected (Products.Index {}), active: Just False })
+}

@@ -1,0 +1,25 @@
+module Member
+
+import Team
+import User
+
+type MemberId = brand Text
+
+table Member {
+  id: MemberId @id,
+  team: Team.TeamId @ref Team,
+  user: User.UserId @ref User,
+}
+
+-- Both references keep the default rule, `@restrict`: a team or a user that still has a
+-- membership cannot be deleted, and the membership stays.
+test "a team or a user with a membership cannot be deleted" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let u <- Db.insert User { email: Text.Email "u@example.com", name: Text.NonEmpty "U", passwordHash: "" }
+  let team <- Db.insert Team { name: Text.NonEmpty "Alpha", owner: owner }
+  let _ <- Db.insert Member { team: team, user: u }
+  let t <- Test.run (Db.delete Team team)
+  let x <- Test.run (Db.delete User u)
+  let n <- Db.from Member |> Db.count
+  Task.succeed ({ team: Result.toMaybe t.value, user: Result.toMaybe x.value, members: n } == { team: Nothing, user: Nothing, members: 1 })
+}

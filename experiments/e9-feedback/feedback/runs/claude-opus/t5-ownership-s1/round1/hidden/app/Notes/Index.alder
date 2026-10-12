@@ -1,0 +1,136 @@
+module Notes.Index
+
+import Note
+import Layout
+import User
+
+page "/" { } requires user
+
+type Model = { notes: List Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <-
+    Db.from Note
+      |> Db.where (Note.owner.eq session.user)
+      |> Db.orderBy Note.created.desc
+      |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Add form NewNote
+msg Delete { id: Note.NoteId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+  Delete p -> {
+    let note <- owned p.id session
+    let _ <- Db.delete Note note.id
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+}
+
+-- The id in a message comes from the request: only the owner's note is found, anything else is
+-- a 404.
+owned : Note.NoteId -> Session -> Task Note
+owned id session = {
+  let found <- Db.get Note id
+  match found {
+    Just note -> if note.owner == session.user then Task.succeed note else Task.notFound,
+    Nothing -> Task.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Notes">
+    <h1>Notes</h1>
+
+    <form submit={Add}>
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Input field="body" label="Body" />
+      <Errors field="body" />
+      <button>Add</button>
+    </form>
+
+    <ul id="notes">
+      {for note in model.notes ->
+        <li>
+          <a class="title" href={Notes.Show { id: note.id }}>{note.title}</a>
+          <button click={Delete { id: note.id }}>Delete</button>
+        </li>}
+    </ul>
+
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "deleting another user's note is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "secret", owner: me }
+  let stranger = User.UserId "someone-else"
+  let r <- Test.run (update (Delete { id: id }) { notes: [] } { user: stranger })
+  let after <- Db.get Note id
+  Task.succeed ({ value: r.value, trace: r.trace, note: Maybe.map (\n -> n.title) after } == { value: Err "not found", trace: ["Db.get Note"], note: Just (Text.NonEmpty "Mine") })
+}
+
+test "deleting a missing note is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let r <- Test.run (update (Delete { id: Note.NoteId "missing" }) { notes: [] } { user: me })
+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Err "not found", trace: ["Db.get Note"] })
+}
+
+test "the owner can delete a note" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "text", owner: me }
+  let r <- Test.run (update (Delete { id: id }) { notes: [] } { user: me })
+  let after <- Db.get Note id
+  Task.succeed ({ value: r.value, trace: r.trace, note: Maybe.map (\n -> n.title) after } == { value: Ok (Redirect (Notes.Index {})), trace: ["Db.get Note", "Db.delete Note"], note: Nothing })
+}
+
+test "adding a note through the page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let added <- Test.submit NewNote { title: Text.NonEmpty "Milk", body: "Buy two" }
+  let page <- Test.get (Notes.Index {})
+  Task.succeed ({ answer: added.answer, titles: Test.texts "#notes a.title" page.doc, bodies: List.map (\n -> n.body) page.model.notes } == { answer: Redirected (Notes.Index {}), titles: ["Milk"], bodies: ["Buy two"] })
+}
+
+test "the list shows only the user's own notes" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Mine", body: "a", owner: me }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Theirs", body: "b", owner: other }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Notes.Index {})
+  Task.succeed ({ titles: Test.texts "#notes a.title" page.doc, items: Test.count "#notes > li" page.doc } == { titles: ["Mine"], items: 1 })
+}
+
+test "the newest note is listed first" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Note { title: Text.NonEmpty "First", body: "a", owner: me }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Second", body: "b", owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Notes.Index {})
+  Task.succeed (Test.texts "#notes a.title" page.doc == ["Second", "First"])
+}
+
+test "deleting a note through the page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "a", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let r <- Test.click (Delete { id: id })
+  let after <- Db.get Note id
+  Task.succeed ({ answer: r.answer, items: Test.count "#notes li" r.doc, note: Maybe.map (\n -> n.title) after } == { answer: Redirected (Notes.Index {}), items: 0, note: Nothing })
+}

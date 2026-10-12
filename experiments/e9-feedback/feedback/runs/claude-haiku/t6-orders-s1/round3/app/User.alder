@@ -1,0 +1,30 @@
+module User
+
+type UserId = brand Text
+
+type Role = Staff | Manager
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  role: Role = Staff,
+  created: Time @created,
+}
+
+-- roleOf is the role of the user with this id. A missing user gets the least power, Staff.
+roleOf : UserId -> Query Role
+roleOf id = {
+  let found <- Db.get User id
+  match found {
+    Just u -> Query.succeed u.role,
+    Nothing -> Query.succeed Staff,
+  }
+}
+
+test "a new user is staff" = {
+  let u <- Db.insert User { email: Text.Email "new@example.com", name: Text.NonEmpty "New", passwordHash: "" }
+  let role <- roleOf u
+  Task.succeed (role == Staff)
+}

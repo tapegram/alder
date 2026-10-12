@@ -1,0 +1,151 @@
+module Hidden
+
+-- E9 hidden acceptance tests for T10 (teams and invites). They use only the names the task's
+-- Names block fixes; the model never sees them.
+
+import User
+import Team
+import Member
+import Invite
+
+test "a team page is for its owner and members only" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let sam <- Db.insert User { email: Text.Email "sam@example.com", name: Text.NonEmpty "Sam", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: bob }
+  let _ <- Db.insert Member { team: red, user: bob }
+  let _ <- Db.insert Member { team: blue, user: ann }
+  let _ <- Test.login { user: Just sam }
+  let stranger <- Test.open (Teams.Show { id: red })
+  let samTeams <- Test.get (Teams.Index {})
+  let _ <- Test.login { user: Just ann }
+  let owner <- Test.open (Teams.Show { id: red })
+  let annTeams <- Test.get (Teams.Index {})
+  let _ <- Test.login { user: Just bob }
+  let member <- Test.open (Teams.Show { id: red })
+  Task.succeed ({ stranger: stranger.answer, samTeams: Test.count "#teams li" samTeams.doc, owner: owner.answer, name: Test.text "#name" owner.doc, members: Test.texts "#members .name" owner.doc, annTeams: Test.texts "#teams .name" annTeams.doc, member: member.answer, seen: Test.texts "#members .name" member.doc } == { stranger: PageMissing, samTeams: 0, owner: Shown, name: Just "Red", members: ["Ann", "Bob"], annTeams: ["Blue", "Red"], member: Shown, seen: ["Ann", "Bob"] })
+}
+
+test "only the owner has Remove buttons, and none for themselves" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let cid <- Db.insert User { email: Text.Email "cid@example.com", name: Text.NonEmpty "Cid", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let _ <- Db.insert Member { team: red, user: cid }
+  let _ <- Db.insert Member { team: red, user: bob }
+  let _ <- Test.login { user: Just ann }
+  let owner <- Test.get (Teams.Show { id: red })
+  let _ <- Test.login { user: Just bob }
+  let member <- Test.get (Teams.Show { id: red })
+  Task.succeed ({ members: Test.texts "#members .name" owner.doc, owner: Test.count "#members .remove" owner.doc, member: Test.count "#members .remove" member.doc } == { members: ["Ann", "Bob", "Cid"], owner: 2, member: 0 })
+}
+
+test "the owner removes a member, who then loses the team" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let cid <- Db.insert User { email: Text.Email "cid@example.com", name: Text.NonEmpty "Cid", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let _ <- Db.insert Member { team: red, user: bob }
+  let _ <- Db.insert Member { team: red, user: cid }
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Teams.Show { id: red })
+  let r <- Test.click (Teams.Show.Remove { user: bob })
+  let _ <- Test.login { user: Just bob }
+  let after <- Test.open (Teams.Show { id: red })
+  let teams <- Test.get (Teams.Index {})
+  Task.succeed ({ answer: r.answer, members: Test.texts "#members .name" r.doc, after: after.answer, teams: Test.count "#teams li" teams.doc } == { answer: Redirected (Teams.Show { id: red }), members: ["Ann", "Cid"], after: PageMissing, teams: 0 })
+}
+
+-- A stale page: the owner's page (with its Remove buttons) is held, the cookie is swapped to a
+-- member's, and the member's browser posts the owner's Remove. The member may see the team, but
+-- not change it: a 404, and the other member stays.
+test "a member's Remove from the owner's page is not found" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let cid <- Db.insert User { email: Text.Email "cid@example.com", name: Text.NonEmpty "Cid", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let _ <- Db.insert Member { team: red, user: bob }
+  let _ <- Db.insert Member { team: red, user: cid }
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Teams.Show { id: red })
+  let _ <- Test.login { user: Just bob }
+  let r <- Test.click (Teams.Show.Remove { user: cid })
+  let left <- Db.from Member |> Db.where (Member.user.eq cid) |> Db.count
+  Task.succeed ({ answer: r.answer, left: left } == { answer: PageMissing, left: 1 })
+}
+
+-- The owner has no Remove button for themselves. The server must refuse one anyway: Ann's page
+-- is held with its Remove for Bob; the team is then handed to Bob (Bob's Member row goes, Ann
+-- gets one, so the owner still has no Member row), and Bob, now the owner, posts that Remove of
+-- himself. It must change nothing: only that invariant is asserted; the server's answer,
+-- whatever it is, is printed on both sides of a failure for the scorer.
+test "the owner cannot remove themselves, even from a stale page" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let row <- Db.insert Member { team: red, user: bob }
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Teams.Show { id: red })
+  let _ <- Db.update Team red (\t -> { t | owner: bob })
+  let _ <- Db.delete Member row
+  let _ <- Db.insert Member { team: red, user: ann }
+  let _ <- Test.login { user: Just bob }
+  let r <- Test.click (Teams.Show.Remove { user: bob })
+  let rows <- Db.from Member |> Db.where (Member.team.eq red) |> Db.count
+  let team <- Db.get Team red
+  let page <- Test.get (Teams.Show { id: red })
+  Task.succeed ({ answer: r.answer, rows: rows, owner: Maybe.map (\t -> t.owner) team, members: Test.texts "#members .name" page.doc } == { answer: r.answer, rows: 1, owner: Just bob, members: ["Bob", "Ann"] })
+}
+
+test "an invite, accepted, makes the team visible" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Teams.Show { id: red })
+  let sent <- Test.submit Teams.Show.NewInvite { email: Text.Email "bob@example.com" }
+  let found <- Db.from Invite |> Db.where (Invite.email.eq (Text.Email "bob@example.com")) |> Db.first
+  let invite <- match found {
+    Just i -> Task.succeed i,
+    Nothing -> Task.fail "the invite form stored no Invite for bob@example.com",
+  }
+  let _ <- Test.login { user: Just bob }
+  let before <- Test.get (Teams.Index {})
+  let invites <- Test.get (Invites.Index {})
+  let accepted <- Test.click (Invites.Index.Accept { id: invite.id })
+  let teams <- Test.get (Teams.Index {})
+  let after <- Test.get (Invites.Index {})
+  Task.succeed ({ sent: sent.answer, status: invite.team == red && invite.status == Pending, before: Test.count "#teams li" before.doc, invites: Test.texts "#invites .team" invites.doc, accepted: accepted.answer, members: Test.texts "#members .name" accepted.doc, teams: Test.texts "#teams .name" teams.doc, after: Test.count "#invites li" after.doc } == { sent: Redirected (Teams.Show { id: red }), status: True, before: 0, invites: ["Red"], accepted: Redirected (Teams.Show { id: red }), members: ["Ann", "Bob"], teams: ["Red"], after: 0 })
+}
+
+test "an invite, declined, leaves the team closed" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let sam <- Db.insert User { email: Text.Email "sam@example.com", name: Text.NonEmpty "Sam", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let id <- Db.insert Invite { team: red, email: Text.Email "bob@example.com" }
+  let _ <- Test.login { user: Just sam }
+  let samInvites <- Test.get (Invites.Index {})
+  let _ <- Test.login { user: Just bob }
+  let _ <- Test.get (Invites.Index {})
+  let declined <- Test.click (Invites.Index.Decline { id: id })
+  let teams <- Test.get (Teams.Index {})
+  let page <- Test.open (Teams.Show { id: red })
+  let members <- Db.from Member |> Db.count
+  Task.succeed ({ sam: Test.count "#invites li" samInvites.doc, declined: declined.answer, left: Test.count "#invites li" declined.doc, teams: Test.count "#teams li" teams.doc, page: page.answer, members: members } == { sam: 0, declined: Redirected (Invites.Index {}), left: 0, teams: 0, page: PageMissing, members: 0 })
+}
+
+test "a team created on /teams is its creator's" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Teams.Index {})
+  let r <- Test.submit Teams.Index.NewTeam { name: Text.NonEmpty "Red" }
+  let found <- Db.from Team |> Db.where (Team.owner.eq ann) |> Db.first
+  let team <- match found {
+    Just t -> Task.succeed t,
+    Nothing -> Task.fail "the form created no team owned by its creator",
+  }
+  let list <- Test.get (Teams.Index {})
+  Task.succeed ({ answer: r.answer, name: Test.text "#name" r.doc, members: Test.texts "#members .name" r.doc, teams: Test.texts "#teams .name" list.doc } == { answer: Redirected (Teams.Show { id: team.id }), name: Just "Red", members: ["Ann"], teams: ["Red"] })
+}

@@ -1,0 +1,47 @@
+module Bookings.Index
+
+import Room
+import Booking
+import Layout
+
+page "/bookings" { } requires user
+
+type Item = { booking: Booking, room: Text }
+
+type Model = { items: List Item }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let bookings <- Db.from Booking |> Db.where (Booking.owner.eq session.user) |> Db.orderBy Booking.from.asc |> Db.all
+  let rooms <- Db.from Room |> Db.all
+  Query.succeed { items: List.map (toItem rooms) bookings }
+}
+
+toItem : List Room -> Booking -> Item
+toItem rooms booking = { booking: booking, room: roomName rooms booking.room }
+
+roomName : List Room -> Room.RoomId -> Text
+roomName rooms id = {
+  let found = List.find (\r -> r.id == id) rooms
+  match found {
+    Just r -> r.name,
+    Nothing -> "(removed room)",
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="My bookings">
+    <h1>My bookings</h1>
+    <ul id="mine">
+      {for item in model.items ->
+        <li>
+          <a href={Bookings.Show { id: item.booking.id }}>
+            <span class="room">{item.room}</span>
+            <span class="from">{Date.toText item.booking.from}</span>
+          </a>
+        </li>}
+    </ul>
+    <a href={Rooms.Index {}}>Rooms</a>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>

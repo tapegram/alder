@@ -1,0 +1,35 @@
+module Member
+
+import Team
+import User
+
+type MemberId = brand Text
+
+-- One row per member who is not the owner: the owner has no Member row.
+table Member {
+  id: MemberId @id,
+  team: Team.TeamId @ref Team,
+  user: User.UserId @ref User,
+}
+
+-- Both references have the default rule, `@restrict`: neither a team that still has members nor
+-- a user who is still a member can be deleted, and the membership stays.
+test "a team with members cannot be deleted" = {
+  let owner <- Db.insert User { email: Text.Email "olive@example.com", name: Text.NonEmpty "Olive", passwordHash: "" }
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let team <- Db.insert Team { name: Text.NonEmpty "Rockets", owner: owner }
+  let id <- Db.insert Member { team: team, user: ann }
+  let r <- Test.run (Db.delete Team team)
+  let after <- Db.get Member id
+  Task.succeed ({ deleted: Result.toMaybe r.value, member: Maybe.map (\m -> m.user) after } == { deleted: Nothing, member: Just ann })
+}
+
+test "a user who is a member cannot be deleted" = {
+  let owner <- Db.insert User { email: Text.Email "olive@example.com", name: Text.NonEmpty "Olive", passwordHash: "" }
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let team <- Db.insert Team { name: Text.NonEmpty "Rockets", owner: owner }
+  let id <- Db.insert Member { team: team, user: ann }
+  let r <- Test.run (Db.delete User ann)
+  let after <- Db.get Member id
+  Task.succeed ({ deleted: Result.toMaybe r.value, member: Maybe.map (\m -> m.team) after } == { deleted: Nothing, member: Just team })
+}

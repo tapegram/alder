@@ -1,0 +1,61 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+overlapMessage : Text
+overlapMessage = "The room is already booked for some of these dates."
+
+badRangeMessage : Text
+badRangeMessage = "The end date must be after the start date."
+
+-- The first date, day or later, that none of the bookings holds.
+-- A booking holds its dates from `from` up to, not including, `to`.
+nextFree : Date -> List Booking -> Date
+nextFree day bookings = {
+  let holding = List.find (\b -> b.from <= day && day < b.to) bookings
+  match holding {
+    Just b -> nextFree b.to bookings,
+    Nothing -> day,
+  }
+}
+
+-- A booking can be cancelled only while today is before its from date.
+canCancel : Date -> Booking -> Bool
+canCancel today booking = today < booking.from
+
+test "next free date skips back-to-back bookings" = {
+  let today <- Date.today
+  let me = User.UserId "u"
+  let room = Room.RoomId "r"
+  Task.succeed (nextFree today [
+    { id: BookingId "a", room: room, owner: me, from: Date.addDays (-3) today, to: Date.addDays (-1) today },
+    { id: BookingId "b", room: room, owner: me, from: today, to: Date.addDays 2 today },
+    { id: BookingId "c", room: room, owner: me, from: Date.addDays 2 today, to: Date.addDays 5 today },
+    { id: BookingId "d", room: room, owner: me, from: Date.addDays 7 today, to: Date.addDays 9 today },
+  ] == Date.addDays 5 today)
+}
+
+test "next free date of a room without bookings is today" = {
+  let today <- Date.today
+  Task.succeed (nextFree today [] == today)
+}
+
+test "a booking can be cancelled only before its from date" = {
+  let today <- Date.today
+  let me = User.UserId "u"
+  let room = Room.RoomId "r"
+  let later = { id: BookingId "a", room: room, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let starting = { id: BookingId "b", room: room, owner: me, from: today, to: Date.addDays 2 today }
+  Task.succeed ({ later: canCancel today later, starting: canCancel today starting } == { later: True, starting: False })
+}

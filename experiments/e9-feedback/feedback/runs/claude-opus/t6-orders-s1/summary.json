@@ -1,0 +1,2255 @@
+{
+ "model": "claude-opus",
+ "task": "t6-orders",
+ "retries": 2,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 2,
+  "test": true,
+  "mutate": true,
+  "feedback": 2,
+  "hidden": "experiments/e9-feedback/hidden",
+  "condition": "feedback",
+  "sample": "s1"
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 10,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 156.4,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "opus",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 18,
+    "failed": 0,
+    "results": [
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 2.819
+     },
+     {
+      "module": "Order",
+      "name": "each status has its label",
+      "ok": true,
+      "left": "[\"Open\", \"Paid\", \"Cancelled\"]",
+      "right": "[\"Open\", \"Paid\", \"Cancelled\"]",
+      "trace": [],
+      "ms": 0.093
+     },
+     {
+      "module": "Line",
+      "name": "total sums quantity times price",
+      "ok": true,
+      "left": "1250",
+      "right": "1250",
+      "trace": [],
+      "ms": 0.022
+     },
+     {
+      "module": "Line",
+      "name": "an empty order totals zero",
+      "ok": true,
+      "left": "0",
+      "right": "0",
+      "trace": [],
+      "ms": 0
+     },
+     {
+      "module": "Orders.Index",
+      "name": "creating an order opens it, empty",
+      "ok": true,
+      "left": "{ orders: 1, status: Just \"Open\", total: Just \"0\" }",
+      "right": "{ orders: 1, status: Just \"Open\", total: Just \"0\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Orders.Index",
+       "Db.get User",
+       "Db.all Order",
+       "Db.all Line",
+       "Db.all Product",
+       "Test.click Orders.Index.Create",
+       "Db.get User",
+       "Db.all Order",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.insert Order",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.count Order"
+      ],
+      "ms": 1.175
+     },
+     {
+      "module": "Orders.Index",
+      "name": "the list shows my orders with status and total, newest first",
+      "ok": true,
+      "left": "{ statuses: [\"Paid\", \"Open\"], totals: [\"750\", \"1250\"], items: 2 }",
+      "right": "{ statuses: [\"Paid\", \"Open\"], totals: [\"750\", \"1250\"], items: 2 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Db.insert Order",
+       "Db.insert Order",
+       "Db.insert Line",
+       "Db.insert Line",
+       "Db.insert Line",
+       "Test.login",
+       "Test.get Orders.Index",
+       "Db.get User",
+       "Db.all Order",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.726
+     },
+     {
+      "module": "Orders.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Orders.Index"
+      ],
+      "ms": 0.474
+     },
+     {
+      "module": "Orders.Show",
+      "name": "an Open order's total over two lines",
+      "ok": true,
+      "left": "{ status: Just \"Open\", total: Just \"1250\", model: 1250 }",
+      "right": "{ status: Just \"Open\", total: Just \"1250\", model: 1250 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Db.insert Line",
+       "Db.insert Line",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 1.352
+     },
+     {
+      "module": "Orders.Show",
+      "name": "adding a line through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /orders/Wkj84CVgxRFUpkNorAtv, total: Just \"1500\" }",
+      "right": "{ answer: Redirected /orders/Wkj84CVgxRFUpkNorAtv, total: Just \"1500\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Test.submit NewLine",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.get Order",
+       "Db.get Product",
+       "Db.insert Line",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 1.085
+     },
+     {
+      "module": "Orders.Show",
+      "name": "adding a line to a Paid order is refused",
+      "ok": true,
+      "left": "{ answer: Rerendered, lines: 0, status: Just \"Paid\" }",
+      "right": "{ answer: Rerendered, lines: 0, status: Just \"Paid\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.update Order",
+       "Test.submit NewLine",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.get Order",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.count Line"
+      ],
+      "ms": 0.868
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a Paid order's page has no forms or buttons",
+      "ok": true,
+      "left": "{ actions: False, status: Just \"Paid\" }",
+      "right": "{ actions: False, status: Just \"Paid\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.55
+     },
+     {
+      "module": "Orders.Show",
+      "name": "paying an order",
+      "ok": true,
+      "left": "{ answer: Redirected /orders/Z2RI5Nu7BAw1MUYpvR4R, status: Just \"Paid\" }",
+      "right": "{ answer: Redirected /orders/Z2RI5Nu7BAw1MUYpvR4R, status: Just \"Paid\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Test.click Orders.Show.Pay",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.get Order",
+       "Db.update Order",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.623
+     },
+     {
+      "module": "Orders.Show",
+      "name": "cancelling an order",
+      "ok": true,
+      "left": "{ answer: Redirected /orders/NxHqkeha_Z6SGx_jH5Gu, status: Just \"Cancelled\" }",
+      "right": "{ answer: Redirected /orders/NxHqkeha_Z6SGx_jH5Gu, status: Just \"Cancelled\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Test.click Orders.Show.Cancel",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.get Order",
+       "Db.update Order",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.619
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a Staff user opening another user's order is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.login",
+       "Test.open Orders.Show",
+       "Db.get Order",
+       "Db.get User"
+      ],
+      "ms": 0.421
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a Manager opening another user's order sees it",
+      "ok": true,
+      "left": "{ answer: Shown, status: Just \"Open\" }",
+      "right": "{ answer: Shown, status: Just \"Open\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.login",
+       "Test.open Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.428
+     },
+     {
+      "module": "Products.Index",
+      "name": "a Staff user does not find the products page",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Products.Index",
+       "Db.get User"
+      ],
+      "ms": 0.393
+     },
+     {
+      "module": "Products.Index",
+      "name": "a Manager adds a product",
+      "ok": true,
+      "left": "{ answer: Redirected /products, names: [\"Tea\"] }",
+      "right": "{ answer: Redirected /products, names: [\"Tea\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Products.Index",
+       "Db.get User",
+       "Db.all Product",
+       "Test.submit NewProduct",
+       "Db.get User",
+       "Db.all Product",
+       "Db.get User",
+       "Db.insert Product",
+       "Db.get User",
+       "Db.all Product"
+      ],
+      "ms": 0.602
+     },
+     {
+      "module": "Products.Index",
+      "name": "a Manager toggles a product",
+      "ok": true,
+      "left": "{ answer: Redirected /products, active: Just False }",
+      "right": "{ answer: Redirected /products, active: Just False }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Test.login",
+       "Test.get Products.Index",
+       "Db.get User",
+       "Db.all Product",
+       "Test.click Products.Index.Toggle",
+       "Db.get User",
+       "Db.all Product",
+       "Db.get User",
+       "Db.get Product",
+       "Db.update Product",
+       "Db.get User",
+       "Db.all Product",
+       "Db.get Product"
+      ],
+      "ms": 0.61
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.6666666666666666,
+    "killed": 34,
+    "survived": 17,
+    "suppressed": 1,
+    "skipped": 19,
+    "survivors": [
+     {
+      "module": "User",
+      "file": "app/User.alder",
+      "decl": "isManager",
+      "line": 20,
+      "col": 14,
+      "kind": "bool flipped",
+      "before": "False",
+      "after": "True"
+     },
+     {
+      "module": "Auth.Login",
+      "file": "app/Auth/Login.alder",
+      "decl": "update",
+      "line": 40,
+      "col": 9,
+      "kind": "session put dropped",
+      "before": "let _ <- Session.put (\\s -> { s | user: Just id })",
+      "after": "let _ <- Task.succeed ()"
+     },
+     {
+      "module": "Auth.Login",
+      "file": "app/Auth/Login.alder",
+      "decl": "update",
+      "line": 41,
+      "col": 23,
+      "kind": "redirect \u2192 rerender",
+      "before": "Redirect (Orders.Index {})",
+      "after": "Rerender"
+     },
+     {
+      "module": "Auth.Login",
+      "file": "app/Auth/Login.alder",
+      "decl": "update",
+      "line": 43,
+      "col": 32,
+      "kind": "reject \u2192 rerender",
+      "before": "Reject \"Email or password is incorrect.\"",
+      "after": "Rerender"
+     },
+     {
+      "module": "Order",
+      "file": "app/Order.alder",
+      "decl": "Order",
+      "line": 11,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "owner @ref User @restrict",
+      "after": "owner @ref User @cascade"
+     },
+     {
+      "module": "Line",
+      "file": "app/Line.alder",
+      "decl": "Line",
+      "line": 10,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "order @ref Order @cascade",
+      "after": "order @ref Order @restrict"
+     },
+     {
+      "module": "Line",
+      "file": "app/Line.alder",
+      "decl": "Line",
+      "line": 11,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "product @ref Product @restrict",
+      "after": "product @ref Product @cascade"
+     },
+     {
+      "module": "Line",
+      "file": "app/Line.alder",
+      "decl": "productName",
+      "line": 30,
+      "col": 32,
+      "kind": "operator flipped",
+      "before": "p.id == line.product",
+      "after": "p.id != line.product"
+     },
+     {
+      "module": "Orders.Index",
+      "file": "app/Orders/Index.alder",
+      "decl": "load",
+      "line": 26,
+      "col": 32,
+      "kind": "where dropped",
+      "before": "Db.where (Line.order.in (List.map (\\o -> o.id) orders))",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "requires",
+      "line": 9,
+      "col": 43,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = User.UserId \"mutant\")"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "details",
+      "line": 31,
+      "col": 32,
+      "kind": "where dropped",
+      "before": "Db.where (Line.order.eq order.id)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "details",
+      "line": 32,
+      "col": 38,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Product.name.asc",
+      "after": "Db.orderBy Product.name.desc"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "update",
+      "line": 51,
+      "col": 96,
+      "kind": "reject \u2192 rerender",
+      "before": "Reject \"This order is no longer open.\"",
+      "after": "Rerender"
+     },
+     {
+      "module": "Orders.Show",
+      "file": "app/Orders/Show.alder",
+      "decl": "sellable",
+      "line": 71,
+      "col": 21,
+      "kind": "guard dropped",
+      "before": "if product.active then Task.succeed product else Task.notFound",
+      "after": "the notFound arm dropped"
+     },
+     {
+      "module": "Products.Index",
+      "file": "app/Products/Index.alder",
+      "decl": "requires",
+      "line": 7,
+      "col": 22,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = User.UserId \"mutant\")"
+     },
+     {
+      "module": "Products.Index",
+      "file": "app/Products/Index.alder",
+      "decl": "listing",
+      "line": 20,
+      "col": 38,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Product.name.asc",
+      "after": "Db.orderBy Product.name.desc"
+     },
+     {
+      "module": "Products.Index",
+      "file": "app/Products/Index.alder",
+      "decl": "requireManager",
+      "line": 52,
+      "col": 15,
+      "kind": "guard dropped",
+      "before": "if u.role == Manager then Task.succeed u else Task.notFound",
+      "after": "the notFound arm dropped"
+     }
+    ]
+   },
+   "app_ir_sha256": "2266d008b1b2890b3e4eb3bb873370432855c1aac34fe29d2168b75f69c18061"
+  },
+  {
+   "n": 1,
+   "files": 10,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 165.5,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "opus",
+   "app_ir_sha256": "2266d008b1b2890b3e4eb3bb873370432855c1aac34fe29d2168b75f69c18061",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 35,
+    "failed": 0,
+    "results": [
+     {
+      "module": "User",
+      "name": "a user without a row is not a manager",
+      "ok": true,
+      "left": "False",
+      "right": "False",
+      "trace": [],
+      "ms": 0.019
+     },
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 3.206
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 0.935
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /, user: Just \"Zaom9X8c20tQJvwb6HvJ\", title: Just \"Orders\" }",
+      "right": "{ answer: Redirected /, user: Just \"Zaom9X8c20tQJvwb6HvJ\", title: Just \"Orders\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Session.put",
+       "Db.get User",
+       "Db.all Order",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.982
+     },
+     {
+      "module": "Auth.Login",
+      "name": "a visitor is sent to log in, and can log out",
+      "ok": true,
+      "left": "{ visitor: Redirected /login, out: Redirected /login, user: Nothing }",
+      "right": "{ visitor: Redirected /login, out: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.open Orders.Index",
+       "Test.login",
+       "Test.get Orders.Index",
+       "Db.get User",
+       "Db.all Order",
+       "Db.all Line",
+       "Db.all Product",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.769
+     },
+     {
+      "module": "Order",
+      "name": "each status has its label",
+      "ok": true,
+      "left": "[\"Open\", \"Paid\", \"Cancelled\"]",
+      "right": "[\"Open\", \"Paid\", \"Cancelled\"]",
+      "trace": [],
+      "ms": 0.098
+     },
+     {
+      "module": "Order",
+      "name": "a user with orders cannot be deleted",
+      "ok": true,
+      "left": "{ deleted: Nothing, status: Just Open }",
+      "right": "{ deleted: Nothing, status: Just Open }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.run",
+       "Db.delete User",
+       "Db.get Order"
+      ],
+      "ms": 0.572
+     },
+     {
+      "module": "Line",
+      "name": "total sums quantity times price",
+      "ok": true,
+      "left": "1250",
+      "right": "1250",
+      "trace": [],
+      "ms": 0.005
+     },
+     {
+      "module": "Line",
+      "name": "an empty order totals zero",
+      "ok": true,
+      "left": "0",
+      "right": "0",
+      "trace": [],
+      "ms": 0
+     },
+     {
+      "module": "Line",
+      "name": "productName finds the line's product",
+      "ok": true,
+      "left": "\"Tea\"",
+      "right": "\"Tea\"",
+      "trace": [],
+      "ms": 0.005
+     },
+     {
+      "module": "Line",
+      "name": "deleting an order deletes its lines",
+      "ok": true,
+      "left": "{ value: Ok (), lines: 0 }",
+      "right": "{ value: Ok (), lines: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Db.insert Line",
+       "Test.run",
+       "Db.delete Order",
+       "Db.count Line"
+      ],
+      "ms": 0.572
+     },
+     {
+      "module": "Line",
+      "name": "a product on a line cannot be deleted",
+      "ok": true,
+      "left": "{ deleted: Nothing, lines: 1 }",
+      "right": "{ deleted: Nothing, lines: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Db.insert Line",
+       "Test.run",
+       "Db.delete Product",
+       "Db.count Line"
+      ],
+      "ms": 0.875
+     },
+     {
+      "module": "Orders.Index",
+      "name": "creating an order opens it, empty",
+      "ok": true,
+      "left": "{ orders: 1, status: Just \"Open\", total: Just \"0\" }",
+      "right": "{ orders: 1, status: Just \"Open\", total: Just \"0\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Orders.Index",
+       "Db.get User",
+       "Db.all Order",
+       "Db.all Line",
+       "Db.all Product",
+       "Test.click Orders.Index.Create",
+       "Db.get User",
+       "Db.all Order",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.insert Order",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.count Order"
+      ],
+      "ms": 1.059
+     },
+     {
+      "module": "Orders.Index",
+      "name": "the list shows my orders with status and total, newest first",
+      "ok": true,
+      "left": "{ statuses: [\"Paid\", \"Open\"], totals: [\"750\", \"1250\"], items: 2 }",
+      "right": "{ statuses: [\"Paid\", \"Open\"], totals: [\"750\", \"1250\"], items: 2 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Db.insert Order",
+       "Db.insert Order",
+       "Db.insert Line",
+       "Db.insert Line",
+       "Db.insert Line",
+       "Test.login",
+       "Test.get Orders.Index",
+       "Db.get User",
+       "Db.all Order",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.809
+     },
+     {
+      "module": "Orders.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Orders.Index"
+      ],
+      "ms": 0.456
+     },
+     {
+      "module": "Orders.Show",
+      "name": "an Open order's total over two lines",
+      "ok": true,
+      "left": "{ status: Just \"Open\", total: Just \"1250\", model: 1250 }",
+      "right": "{ status: Just \"Open\", total: Just \"1250\", model: 1250 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Db.insert Line",
+       "Db.insert Line",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.639
+     },
+     {
+      "module": "Orders.Show",
+      "name": "adding a line through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /orders/JbqHKhNk8dItoAQwnL6Q, total: Just \"1500\" }",
+      "right": "{ answer: Redirected /orders/JbqHKhNk8dItoAQwnL6Q, total: Just \"1500\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Test.submit NewLine",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.get Order",
+       "Db.get Product",
+       "Db.insert Line",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.677
+     },
+     {
+      "module": "Orders.Show",
+      "name": "adding a line to a Paid order is refused",
+      "ok": true,
+      "left": "{ answer: Rerendered, lines: 0, status: Just \"Paid\" }",
+      "right": "{ answer: Rerendered, lines: 0, status: Just \"Paid\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.update Order",
+       "Test.submit NewLine",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.get Order",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.count Line"
+      ],
+      "ms": 0.697
+     },
+     {
+      "module": "Orders.Show",
+      "name": "AddLine on a Paid order answers Reject and writes nothing",
+      "ok": true,
+      "left": "{ value: Ok (Reject \"This order is no longer open.\"), lines: 0 }",
+      "right": "{ value: Ok (Reject \"This order is no longer open.\"), lines: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.run",
+       "Db.get Order",
+       "Db.count Line"
+      ],
+      "ms": 0.414
+     },
+     {
+      "module": "Orders.Show",
+      "name": "AddLine with an inactive product is not found",
+      "ok": true,
+      "left": "{ value: Err \"not found\", lines: 0 }",
+      "right": "{ value: Err \"not found\", lines: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.run",
+       "Db.get Order",
+       "Db.get Product",
+       "Db.count Line"
+      ],
+      "ms": 0.417
+     },
+     {
+      "module": "Orders.Show",
+      "name": "an order shows only its own lines, with product names",
+      "ok": true,
+      "left": "{ products: [\"Tea\"], quantities: [\"2\"], total: Just \"1000\" }",
+      "right": "{ products: [\"Tea\"], quantities: [\"2\"], total: Just \"1000\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Db.insert Order",
+       "Db.insert Line",
+       "Db.insert Line",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.574
+     },
+     {
+      "module": "Orders.Show",
+      "name": "active products are offered by name",
+      "ok": true,
+      "left": "[\"Cup\", \"Tea\"]",
+      "right": "[\"Cup\", \"Tea\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Product",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.493
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a Paid order's page has no forms or buttons",
+      "ok": true,
+      "left": "{ actions: False, status: Just \"Paid\" }",
+      "right": "{ actions: False, status: Just \"Paid\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.453
+     },
+     {
+      "module": "Orders.Show",
+      "name": "paying an order",
+      "ok": true,
+      "left": "{ answer: Redirected /orders/4LiwV9s5Av4VwFKO-3jU, status: Just \"Paid\" }",
+      "right": "{ answer: Redirected /orders/4LiwV9s5Av4VwFKO-3jU, status: Just \"Paid\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Test.click Orders.Show.Pay",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.get Order",
+       "Db.update Order",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.612
+     },
+     {
+      "module": "Orders.Show",
+      "name": "cancelling an order",
+      "ok": true,
+      "left": "{ answer: Redirected /orders/HhUeLy58_tBiWf3lhqq0, status: Just \"Cancelled\" }",
+      "right": "{ answer: Redirected /orders/HhUeLy58_tBiWf3lhqq0, status: Just \"Cancelled\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Test.click Orders.Show.Cancel",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.get Order",
+       "Db.update Order",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 1.074
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a visitor is sent to log in from an order",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.open Orders.Show"
+      ],
+      "ms": 0.571
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a Staff user opening another user's order is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.login",
+       "Test.open Orders.Show",
+       "Db.get Order",
+       "Db.get User"
+      ],
+      "ms": 0.426
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a Manager opening another user's order sees it",
+      "ok": true,
+      "left": "{ answer: Shown, status: Just \"Open\" }",
+      "right": "{ answer: Shown, status: Just \"Open\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.login",
+       "Test.open Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.431
+     },
+     {
+      "module": "Products.Index",
+      "name": "a Staff user does not find the products page",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Products.Index",
+       "Db.get User"
+      ],
+      "ms": 0.427
+     },
+     {
+      "module": "Products.Index",
+      "name": "a visitor is sent to log in from the products page",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Products.Index"
+      ],
+      "ms": 0.402
+     },
+     {
+      "module": "Products.Index",
+      "name": "a Manager adds a product",
+      "ok": true,
+      "left": "{ answer: Redirected /products, names: [\"Tea\"] }",
+      "right": "{ answer: Redirected /products, names: [\"Tea\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Products.Index",
+       "Db.get User",
+       "Db.all Product",
+       "Test.submit NewProduct",
+       "Db.get User",
+       "Db.all Product",
+       "Db.get User",
+       "Db.insert Product",
+       "Db.get User",
+       "Db.all Product"
+      ],
+      "ms": 0.592
+     },
+     {
+      "module": "Products.Index",
+      "name": "a Manager toggles a product",
+      "ok": true,
+      "left": "{ answer: Redirected /products, active: Just False }",
+      "right": "{ answer: Redirected /products, active: Just False }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Test.login",
+       "Test.get Products.Index",
+       "Db.get User",
+       "Db.all Product",
+       "Test.click Products.Index.Toggle",
+       "Db.get User",
+       "Db.all Product",
+       "Db.get User",
+       "Db.get Product",
+       "Db.update Product",
+       "Db.get User",
+       "Db.all Product",
+       "Db.get Product"
+      ],
+      "ms": 0.597
+     },
+     {
+      "module": "Products.Index",
+      "name": "products are listed by name",
+      "ok": true,
+      "left": "[\"Cup\", \"Tea\"]",
+      "right": "[\"Cup\", \"Tea\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Product",
+       "Test.login",
+       "Test.get Products.Index",
+       "Db.get User",
+       "Db.all Product"
+      ],
+      "ms": 0.442
+     },
+     {
+      "module": "Products.Index",
+      "name": "Add by a Staff user is not found",
+      "ok": true,
+      "left": "{ value: Err \"not found\", products: 0 }",
+      "right": "{ value: Err \"not found\", products: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Test.run",
+       "Db.get User",
+       "Db.count Product"
+      ],
+      "ms": 0.372
+     },
+     {
+      "module": "Products.Index",
+      "name": "Toggle by a Staff user is not found",
+      "ok": true,
+      "left": "{ value: Err \"not found\", active: Just True }",
+      "right": "{ value: Err \"not found\", active: Just True }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Test.run",
+       "Db.get User",
+       "Db.get Product"
+      ],
+      "ms": 0.349
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.9803921568627451,
+    "killed": 50,
+    "survived": 1,
+    "suppressed": 1,
+    "skipped": 19,
+    "survivors": [
+     {
+      "module": "Orders.Index",
+      "file": "app/Orders/Index.alder",
+      "decl": "load",
+      "line": 29,
+      "col": 32,
+      "kind": "where dropped",
+      "before": "Db.where (Line.order.in (List.map (\\o -> o.id) orders))",
+      "after": "the condition dropped"
+     }
+    ]
+   },
+   "feedback": 1
+  },
+  {
+   "n": 2,
+   "files": 10,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 90.0,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "opus",
+   "app_ir_sha256": "2266d008b1b2890b3e4eb3bb873370432855c1aac34fe29d2168b75f69c18061",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 35,
+    "failed": 0,
+    "results": [
+     {
+      "module": "User",
+      "name": "a user without a row is not a manager",
+      "ok": true,
+      "left": "False",
+      "right": "False",
+      "trace": [],
+      "ms": 0.014
+     },
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 2.296
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 0.534
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /, user: Just \"iP7JYgN_d4VfZCpRkXrn\", title: Just \"Orders\" }",
+      "right": "{ answer: Redirected /, user: Just \"iP7JYgN_d4VfZCpRkXrn\", title: Just \"Orders\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Session.put",
+       "Db.get User",
+       "Db.all Order",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.394
+     },
+     {
+      "module": "Auth.Login",
+      "name": "a visitor is sent to log in, and can log out",
+      "ok": true,
+      "left": "{ visitor: Redirected /login, out: Redirected /login, user: Nothing }",
+      "right": "{ visitor: Redirected /login, out: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.open Orders.Index",
+       "Test.login",
+       "Test.get Orders.Index",
+       "Db.get User",
+       "Db.all Order",
+       "Db.all Line",
+       "Db.all Product",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.672
+     },
+     {
+      "module": "Order",
+      "name": "each status has its label",
+      "ok": true,
+      "left": "[\"Open\", \"Paid\", \"Cancelled\"]",
+      "right": "[\"Open\", \"Paid\", \"Cancelled\"]",
+      "trace": [],
+      "ms": 0.09
+     },
+     {
+      "module": "Order",
+      "name": "a user with orders cannot be deleted",
+      "ok": true,
+      "left": "{ deleted: Nothing, status: Just Open }",
+      "right": "{ deleted: Nothing, status: Just Open }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.run",
+       "Db.delete User",
+       "Db.get Order"
+      ],
+      "ms": 0.433
+     },
+     {
+      "module": "Line",
+      "name": "total sums quantity times price",
+      "ok": true,
+      "left": "1250",
+      "right": "1250",
+      "trace": [],
+      "ms": 0.003
+     },
+     {
+      "module": "Line",
+      "name": "an empty order totals zero",
+      "ok": true,
+      "left": "0",
+      "right": "0",
+      "trace": [],
+      "ms": 0
+     },
+     {
+      "module": "Line",
+      "name": "productName finds the line's product",
+      "ok": true,
+      "left": "\"Tea\"",
+      "right": "\"Tea\"",
+      "trace": [],
+      "ms": 0.003
+     },
+     {
+      "module": "Line",
+      "name": "deleting an order deletes its lines",
+      "ok": true,
+      "left": "{ value: Ok (), lines: 0 }",
+      "right": "{ value: Ok (), lines: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Db.insert Line",
+       "Test.run",
+       "Db.delete Order",
+       "Db.count Line"
+      ],
+      "ms": 0.347
+     },
+     {
+      "module": "Line",
+      "name": "a product on a line cannot be deleted",
+      "ok": true,
+      "left": "{ deleted: Nothing, lines: 1 }",
+      "right": "{ deleted: Nothing, lines: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Db.insert Line",
+       "Test.run",
+       "Db.delete Product",
+       "Db.count Line"
+      ],
+      "ms": 0.354
+     },
+     {
+      "module": "Orders.Index",
+      "name": "creating an order opens it, empty",
+      "ok": true,
+      "left": "{ orders: 1, status: Just \"Open\", total: Just \"0\" }",
+      "right": "{ orders: 1, status: Just \"Open\", total: Just \"0\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Orders.Index",
+       "Db.get User",
+       "Db.all Order",
+       "Db.all Line",
+       "Db.all Product",
+       "Test.click Orders.Index.Create",
+       "Db.get User",
+       "Db.all Order",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.insert Order",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.count Order"
+      ],
+      "ms": 0.516
+     },
+     {
+      "module": "Orders.Index",
+      "name": "the list shows my orders with status and total, newest first",
+      "ok": true,
+      "left": "{ statuses: [\"Paid\", \"Open\"], totals: [\"750\", \"1250\"], items: 2 }",
+      "right": "{ statuses: [\"Paid\", \"Open\"], totals: [\"750\", \"1250\"], items: 2 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Db.insert Order",
+       "Db.insert Order",
+       "Db.insert Line",
+       "Db.insert Line",
+       "Db.insert Line",
+       "Test.login",
+       "Test.get Orders.Index",
+       "Db.get User",
+       "Db.all Order",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.467
+     },
+     {
+      "module": "Orders.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Orders.Index"
+      ],
+      "ms": 0.282
+     },
+     {
+      "module": "Orders.Show",
+      "name": "an Open order's total over two lines",
+      "ok": true,
+      "left": "{ status: Just \"Open\", total: Just \"1250\", model: 1250 }",
+      "right": "{ status: Just \"Open\", total: Just \"1250\", model: 1250 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Db.insert Line",
+       "Db.insert Line",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.432
+     },
+     {
+      "module": "Orders.Show",
+      "name": "adding a line through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /orders/IIzTuT-XtuYcyg00tII1, total: Just \"1500\" }",
+      "right": "{ answer: Redirected /orders/IIzTuT-XtuYcyg00tII1, total: Just \"1500\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Test.submit NewLine",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.get Order",
+       "Db.get Product",
+       "Db.insert Line",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.492
+     },
+     {
+      "module": "Orders.Show",
+      "name": "adding a line to a Paid order is refused",
+      "ok": true,
+      "left": "{ answer: Rerendered, lines: 0, status: Just \"Paid\" }",
+      "right": "{ answer: Rerendered, lines: 0, status: Just \"Paid\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.update Order",
+       "Test.submit NewLine",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.get Order",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.count Line"
+      ],
+      "ms": 0.535
+     },
+     {
+      "module": "Orders.Show",
+      "name": "AddLine on a Paid order answers Reject and writes nothing",
+      "ok": true,
+      "left": "{ value: Ok (Reject \"This order is no longer open.\"), lines: 0 }",
+      "right": "{ value: Ok (Reject \"This order is no longer open.\"), lines: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.run",
+       "Db.get Order",
+       "Db.count Line"
+      ],
+      "ms": 0.325
+     },
+     {
+      "module": "Orders.Show",
+      "name": "AddLine with an inactive product is not found",
+      "ok": true,
+      "left": "{ value: Err \"not found\", lines: 0 }",
+      "right": "{ value: Err \"not found\", lines: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.run",
+       "Db.get Order",
+       "Db.get Product",
+       "Db.count Line"
+      ],
+      "ms": 0.296
+     },
+     {
+      "module": "Orders.Show",
+      "name": "an order shows only its own lines, with product names",
+      "ok": true,
+      "left": "{ products: [\"Tea\"], quantities: [\"2\"], total: Just \"1000\" }",
+      "right": "{ products: [\"Tea\"], quantities: [\"2\"], total: Just \"1000\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Db.insert Order",
+       "Db.insert Line",
+       "Db.insert Line",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.411
+     },
+     {
+      "module": "Orders.Show",
+      "name": "active products are offered by name",
+      "ok": true,
+      "left": "[\"Cup\", \"Tea\"]",
+      "right": "[\"Cup\", \"Tea\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Product",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.358
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a Paid order's page has no forms or buttons",
+      "ok": true,
+      "left": "{ actions: False, status: Just \"Paid\" }",
+      "right": "{ actions: False, status: Just \"Paid\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.342
+     },
+     {
+      "module": "Orders.Show",
+      "name": "paying an order",
+      "ok": true,
+      "left": "{ answer: Redirected /orders/s6WWnOD45zyGLaH36xuy, status: Just \"Paid\" }",
+      "right": "{ answer: Redirected /orders/s6WWnOD45zyGLaH36xuy, status: Just \"Paid\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Test.click Orders.Show.Pay",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.get Order",
+       "Db.update Order",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.462
+     },
+     {
+      "module": "Orders.Show",
+      "name": "cancelling an order",
+      "ok": true,
+      "left": "{ answer: Redirected /orders/vq2yA9WZ7a4iNfU_5rjx, status: Just \"Cancelled\" }",
+      "right": "{ answer: Redirected /orders/vq2yA9WZ7a4iNfU_5rjx, status: Just \"Cancelled\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.login",
+       "Test.get Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Test.click Orders.Show.Cancel",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product",
+       "Db.get Order",
+       "Db.update Order",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.432
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a visitor is sent to log in from an order",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.open Orders.Show"
+      ],
+      "ms": 0.315
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a Staff user opening another user's order is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.login",
+       "Test.open Orders.Show",
+       "Db.get Order",
+       "Db.get User"
+      ],
+      "ms": 0.787
+     },
+     {
+      "module": "Orders.Show",
+      "name": "a Manager opening another user's order sees it",
+      "ok": true,
+      "left": "{ answer: Shown, status: Just \"Open\" }",
+      "right": "{ answer: Shown, status: Just \"Open\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Order",
+       "Test.login",
+       "Test.open Orders.Show",
+       "Db.get Order",
+       "Db.get User",
+       "Db.all Line",
+       "Db.all Product"
+      ],
+      "ms": 0.437
+     },
+     {
+      "module": "Products.Index",
+      "name": "a Staff user does not find the products page",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Products.Index",
+       "Db.get User"
+      ],
+      "ms": 0.334
+     },
+     {
+      "module": "Products.Index",
+      "name": "a visitor is sent to log in from the products page",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Products.Index"
+      ],
+      "ms": 0.29
+     },
+     {
+      "module": "Products.Index",
+      "name": "a Manager adds a product",
+      "ok": true,
+      "left": "{ answer: Redirected /products, names: [\"Tea\"] }",
+      "right": "{ answer: Redirected /products, names: [\"Tea\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Products.Index",
+       "Db.get User",
+       "Db.all Product",
+       "Test.submit NewProduct",
+       "Db.get User",
+       "Db.all Product",
+       "Db.get User",
+       "Db.insert Product",
+       "Db.get User",
+       "Db.all Product"
+      ],
+      "ms": 0.421
+     },
+     {
+      "module": "Products.Index",
+      "name": "a Manager toggles a product",
+      "ok": true,
+      "left": "{ answer: Redirected /products, active: Just False }",
+      "right": "{ answer: Redirected /products, active: Just False }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Test.login",
+       "Test.get Products.Index",
+       "Db.get User",
+       "Db.all Product",
+       "Test.click Products.Index.Toggle",
+       "Db.get User",
+       "Db.all Product",
+       "Db.get User",
+       "Db.get Product",
+       "Db.update Product",
+       "Db.get User",
+       "Db.all Product",
+       "Db.get Product"
+      ],
+      "ms": 0.462
+     },
+     {
+      "module": "Products.Index",
+      "name": "products are listed by name",
+      "ok": true,
+      "left": "[\"Cup\", \"Tea\"]",
+      "right": "[\"Cup\", \"Tea\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Db.insert Product",
+       "Test.login",
+       "Test.get Products.Index",
+       "Db.get User",
+       "Db.all Product"
+      ],
+      "ms": 0.333
+     },
+     {
+      "module": "Products.Index",
+      "name": "Add by a Staff user is not found",
+      "ok": true,
+      "left": "{ value: Err \"not found\", products: 0 }",
+      "right": "{ value: Err \"not found\", products: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Test.run",
+       "Db.get User",
+       "Db.count Product"
+      ],
+      "ms": 0.296
+     },
+     {
+      "module": "Products.Index",
+      "name": "Toggle by a Staff user is not found",
+      "ok": true,
+      "left": "{ value: Err \"not found\", active: Just True }",
+      "right": "{ value: Err \"not found\", active: Just True }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Product",
+       "Test.run",
+       "Db.get User",
+       "Db.get Product"
+      ],
+      "ms": 0.288
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.9803921568627451,
+    "killed": 50,
+    "survived": 1,
+    "suppressed": 1,
+    "skipped": 19,
+    "survivors": [
+     {
+      "module": "Orders.Index",
+      "file": "app/Orders/Index.alder",
+      "decl": "load",
+      "line": 29,
+      "col": 32,
+      "kind": "where dropped",
+      "before": "Db.where (Line.order.in (List.map (\\o -> o.id) orders))",
+      "after": "the condition dropped"
+     }
+    ]
+   },
+   "feedback": 2
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "opus",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "mutation": {
+  "score": 0.9803921568627451,
+  "killed": 50,
+  "survived": 1,
+  "suppressed": 1,
+  "skipped": 19,
+  "survivors": [
+   {
+    "module": "Orders.Index",
+    "file": "app/Orders/Index.alder",
+    "decl": "load",
+    "line": 29,
+    "col": 32,
+    "kind": "where dropped",
+    "before": "Db.where (Line.order.in (List.map (\\o -> o.id) orders))",
+    "after": "the condition dropped"
+   }
+  ]
+ },
+ "score_before": 0.6666666666666666,
+ "score_after": 0.9803921568627451,
+ "feedback_rounds": 2,
+ "feedback_end": "feedback rounds exhausted",
+ "hidden_round": 2,
+ "hidden": {
+  "passed": 9,
+  "failed": 0,
+  "results": [
+   {
+    "module": "Hidden",
+    "name": "an order's page shows its total over two lines",
+    "ok": true,
+    "left": "{ answer: Shown, total: Just \"1250\", status: Just \"Open\" }",
+    "right": "{ answer: Shown, total: Just \"1250\", status: Just \"Open\" }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Product",
+     "Db.insert Product",
+     "Db.insert Order",
+     "Db.insert Line",
+     "Db.insert Line",
+     "Test.login",
+     "Test.open Orders.Show",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product"
+    ],
+    "ms": 4.055
+   },
+   {
+    "module": "Hidden",
+    "name": "the list shows each of the user's orders with its status and total",
+    "ok": true,
+    "left": "{ answer: Shown, items: 1, totals: [\"600\"], statuses: [\"Paid\"] }",
+    "right": "{ answer: Shown, items: 1, totals: [\"600\"], statuses: [\"Paid\"] }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Product",
+     "Db.insert Order",
+     "Db.insert Line",
+     "Db.insert Order",
+     "Db.insert Line",
+     "Test.login",
+     "Test.open Orders.Index",
+     "Db.get User",
+     "Db.all Order",
+     "Db.all Line",
+     "Db.all Product"
+    ],
+    "ms": 0.832
+   },
+   {
+    "module": "Hidden",
+    "name": "a new order, a line added through its form, then paid",
+    "ok": true,
+    "left": "{ created: Redirected /orders/FCPfR-mgYx1XWVB6ZGVK, empty: Just \"0\", added: Redirected /orders/FCPfR-mgYx1XWVB6ZGVK, total: Just \"300\", paid: Redirected /orders/FCPfR-mgYx1XWVB6ZGVK, status: Just \"Paid\", form: False }",
+    "right": "{ created: Redirected /orders/FCPfR-mgYx1XWVB6ZGVK, empty: Just \"0\", added: Redirected /orders/FCPfR-mgYx1XWVB6ZGVK, total: Just \"300\", paid: Redirected /orders/FCPfR-mgYx1XWVB6ZGVK, status: Just \"Paid\", form: False }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Product",
+     "Test.login",
+     "Test.get Orders.Index",
+     "Db.get User",
+     "Db.all Order",
+     "Db.all Line",
+     "Db.all Product",
+     "Test.click Orders.Index.Create",
+     "Db.get User",
+     "Db.all Order",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.insert Order",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.first Order",
+     "Test.submit NewLine",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.get Order",
+     "Db.get Product",
+     "Db.insert Line",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Test.click Orders.Show.Pay",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.get Order",
+     "Db.update Order",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product"
+    ],
+    "ms": 2.25
+   },
+   {
+    "module": "Hidden",
+    "name": "a Paid order has no add-line form",
+    "ok": true,
+    "left": "{ paid: Shown, paidForm: False, open: Shown, openForm: True }",
+    "right": "{ paid: Shown, paidForm: False, open: Shown, openForm: True }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Product",
+     "Db.insert Order",
+     "Db.insert Order",
+     "Test.login",
+     "Test.open Orders.Show",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Test.open Orders.Show",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product"
+    ],
+    "ms": 0.886
+   },
+   {
+    "module": "Hidden",
+    "name": "a cancelled order says so and takes no lines",
+    "ok": true,
+    "left": "{ answer: Redirected /orders/kHaxM1JQDh_8tfNpASaG, status: Just \"Cancelled\", form: False }",
+    "right": "{ answer: Redirected /orders/kHaxM1JQDh_8tfNpASaG, status: Just \"Cancelled\", form: False }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Product",
+     "Db.insert Order",
+     "Test.login",
+     "Test.get Orders.Show",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Test.click Orders.Show.Cancel",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.get Order",
+     "Db.update Order",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product"
+    ],
+    "ms": 0.816
+   },
+   {
+    "module": "Hidden",
+    "name": "another user's order is missing for Staff and shown to a Manager",
+    "ok": true,
+    "left": "{ staff: PageMissing, manager: Shown, total: Just \"0\" }",
+    "right": "{ staff: PageMissing, manager: Shown, total: Just \"0\" }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Order",
+     "Test.login",
+     "Test.open Orders.Show",
+     "Db.get Order",
+     "Db.get User",
+     "Test.login",
+     "Test.open Orders.Show",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product"
+    ],
+    "ms": 0.627
+   },
+   {
+    "module": "Hidden",
+    "name": "the products page is missing for Staff and shown to a Manager",
+    "ok": true,
+    "left": "{ staff: PageMissing, manager: Shown, names: [\"Pen\"] }",
+    "right": "{ staff: PageMissing, manager: Shown, names: [\"Pen\"] }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Product",
+     "Test.login",
+     "Test.open Products.Index",
+     "Db.get User",
+     "Test.login",
+     "Test.open Products.Index",
+     "Db.get User",
+     "Db.all Product"
+    ],
+    "ms": 0.566
+   },
+   {
+    "module": "Hidden",
+    "name": "a Manager adds a product and deactivates it",
+    "ok": true,
+    "left": "{ added: Redirected /products, names: [\"Pen\"], active: True, toggled: Redirected /products, after: Just False }",
+    "right": "{ added: Redirected /products, names: [\"Pen\"], active: True, toggled: Redirected /products, after: Just False }",
+    "trace": [
+     "Db.insert User",
+     "Test.login",
+     "Test.get Products.Index",
+     "Db.get User",
+     "Db.all Product",
+     "Test.submit NewProduct",
+     "Db.get User",
+     "Db.all Product",
+     "Db.get User",
+     "Db.insert Product",
+     "Db.get User",
+     "Db.all Product",
+     "Db.first Product",
+     "Test.click Products.Index.Toggle",
+     "Db.get User",
+     "Db.all Product",
+     "Db.get User",
+     "Db.get Product",
+     "Db.update Product",
+     "Db.get User",
+     "Db.all Product",
+     "Db.get Product"
+    ],
+    "ms": 0.846
+   },
+   {
+    "module": "Hidden",
+    "name": "a line posted from a stale page of an order paid meanwhile is refused",
+    "ok": true,
+    "left": "{ answer: Rerendered, lines: 0 }",
+    "right": "{ answer: Rerendered, lines: 0 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Product",
+     "Db.insert Order",
+     "Test.login",
+     "Test.get Orders.Show",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.update Order",
+     "Test.submit NewLine",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.get Order",
+     "Db.get Order",
+     "Db.get User",
+     "Db.all Line",
+     "Db.all Product",
+     "Db.count Line"
+    ],
+    "ms": 0.66
+   }
+  ],
+  "exit": 0
+ },
+ "hidden_pass": "9/9"
+}
