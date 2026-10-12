@@ -1,0 +1,75 @@
+module Hidden
+
+-- E8 hidden acceptance tests for T7 (drafts on the blog). They use only the names the task's
+-- Names block fixes (and the blog's own, which the task keeps); the model never sees them.
+
+import User
+import Post
+
+test "a new post is a draft: on the dashboard, not on the front page" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "public", title: Text.NonEmpty "Public", body: "", published: True, author: author }
+  let _ <- Test.login { user: Just author }
+  let _ <- Test.get (Admin {})
+  let _ <- Test.submit Admin.NewPost { slug: Post.Slug "secret", title: Text.NonEmpty "Secret", body: "Not yet." }
+  let dashboard <- Test.open (Admin {})
+  let front <- Test.open (Posts.Index {})
+  Task.succeed ({ drafts: Test.texts "#drafts .title" dashboard.doc, front: Test.texts "ul.posts a" front.doc } == { drafts: ["Secret"], front: ["Public"] })
+}
+
+test "the dashboard's drafts are only the author's drafts" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "public", title: Text.NonEmpty "Public", body: "", published: True, author: author }
+  let _ <- Db.insert Post { slug: Post.Slug "mine", title: Text.NonEmpty "Mine", body: "", author: author }
+  let _ <- Db.insert Post { slug: Post.Slug "theirs", title: Text.NonEmpty "Theirs", body: "", author: other }
+  let _ <- Test.login { user: Just author }
+  let r <- Test.open (Admin {})
+  Task.succeed ({ answer: r.answer, drafts: Test.texts "#drafts .title" r.doc } == { answer: Shown, drafts: ["Mine"] })
+}
+
+test "a search does not find a draft" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "soup", title: Text.NonEmpty "Tomato soup", body: "", published: True, author: author }
+  let _ <- Db.insert Post { slug: Post.Slug "secret", title: Text.NonEmpty "Tomato secret", body: "tomato", author: author }
+  let _ <- Test.login { user: Just author }
+  let byAddress <- Test.open (Posts.Index { q: "tomato" })
+  let _ <- Test.get (Posts.Index {})
+  let byForm <- Test.submit Posts.Index.SearchForm { q: "secret" }
+  Task.succeed ({ address: Test.texts "ul.posts a" byAddress.doc, form: Test.texts "ul.posts a" byForm.doc } == { address: ["Tomato soup"], form: [] })
+}
+
+test "a draft's page is missing for a visitor and a reader" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "secret", title: Text.NonEmpty "Secret", body: "", author: author }
+  let visitor <- Test.open (Posts.Show { slug: Post.Slug "secret" })
+  let _ <- Test.login { user: Just reader }
+  let asReader <- Test.open (Posts.Show { slug: Post.Slug "secret" })
+  let _ <- Test.login { user: Just other }
+  let asOther <- Test.open (Posts.Show { slug: Post.Slug "secret" })
+  Task.succeed ({ visitor: visitor.answer, reader: asReader.answer, other: asOther.answer } == { visitor: PageMissing, reader: PageMissing, other: PageMissing })
+}
+
+test "a draft's page is shown to its author" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "secret", title: Text.NonEmpty "Secret", body: "", author: author }
+  let _ <- Test.login { user: Just author }
+  let r <- Test.open (Posts.Show { slug: Post.Slug "secret" })
+  Task.succeed (r.answer == Shown)
+}
+
+test "publishing a draft from the dashboard shows it to everyone" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
+  let id <- Db.insert Post { slug: Post.Slug "secret", title: Text.NonEmpty "Secret", body: "", author: author }
+  let _ <- Test.login { user: Just author }
+  let _ <- Test.get (Admin {})
+  let published <- Test.click (Admin.Publish { id: id })
+  let _ <- Test.login { user: Just reader }
+  let front <- Test.open (Posts.Index {})
+  let found <- Test.open (Posts.Index { q: "secret" })
+  let page <- Test.open (Posts.Show { slug: Post.Slug "secret" })
+  Task.succeed ({ answer: published.answer, drafts: Test.texts "#drafts .title" published.doc, front: Test.texts "ul.posts a" front.doc, found: Test.texts "ul.posts a" found.doc, page: page.answer } == { answer: Redirected (Admin {}), drafts: [], front: ["Secret"], found: ["Secret"], page: Shown })
+}
