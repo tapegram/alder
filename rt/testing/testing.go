@@ -492,7 +492,8 @@ const (
 // flags win), prints the report to out/err, returns the exit code: 0 all passed, 1 a failure, 2 a usage error.
 //
 // The report has one entry per case (WriteResult), printed as the case finishes, and ends with
-// `N passed, M failed`. With --json stdout has one JSON object per case and nothing else; the
+// `N passed, M failed`; an app with no tests at all (not a -run that selects none) is followed in
+// text mode, without --mutate, by noTestsHint. With --json stdout has one JSON object per case and nothing else; the
 // summary goes to err. A case running for slowAfter (10 s) prints `still running M "name" (10s)`
 // on err, and again every 10 s.
 //
@@ -686,6 +687,9 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 		return 1
 	}
 	if !*mutating {
+		if len(cases) == 0 && !*asJSON {
+			fmt.Fprintln(out, noTestsHint)
+		}
 		return 0
 	}
 	if len(run) == 0 {

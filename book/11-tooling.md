@@ -629,7 +629,15 @@ Chapter 13, "The REPL", shows how it works.
 declaration of the app in `dir` (default `.`) and prints one line per
 test as it finishes, `ok   M "name"` or `FAIL M "name"` with the reasons
 indented under it, then `N passed, M failed`. Chapter 10 explains the
-tests and the report.
+tests and the report. An app with no tests at all passes (exit 0), and
+its summary is followed by a hint, since a suite of nothing kills no
+mutant (`--json` prints no hint):
+
+```text
+$ alder test
+0 passed, 0 failed
+no tests: `alder test --mutate` would score 0 (chapter 10)
+```
 
 ```text
 $ alder test examples/todos -run Toggle

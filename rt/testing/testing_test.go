@@ -506,16 +506,23 @@ func TestMain_TaskFailurePrintsErrorAndTrace(t *testing.T) {
 	}
 }
 
+// An app with no tests prints the summary and a hint (text mode only); a -run that selects none
+// of an app's tests prints only the summary.
 func TestMain_NoCases(t *testing.T) {
 	t.Setenv("ALDER_TEST_RUN", "")
 	t.Setenv("ALDER_TEST_JSON", "")
 	out, _, code := runMain(t, nil)
-	if out != "0 passed, 0 failed\n" || code != 0 {
+	if out != "0 passed, 0 failed\nno tests: `alder test --mutate` would score 0 (chapter 10)\n" || code != 0 {
 		t.Fatalf("code %d %q", code, out)
 	}
 	out, errs, code := runMain(t, nil, "--json")
-	if out != "" || code != 0 || !strings.Contains(errs, "0 passed, 0 failed") {
+	if out != "" || code != 0 || errs != "0 passed, 0 failed\n" {
 		t.Fatalf("json: code %d out %q err %q", code, out, errs)
+	}
+	t.Setenv("ALDER_TEST_RUN", "zzz")
+	out, _, code = runMain(t, []Case{{Module: "M", Name: "n", Pure: func() bool { return true }}})
+	if out != "0 passed, 0 failed\n" || code != 0 {
+		t.Fatalf("-run none: code %d %q", code, out)
 	}
 }
 
