@@ -842,19 +842,21 @@ func TestBook(t *testing.T) {
 }
 
 // TestBook_Scaffold (RF4): chapter 2 quotes every file `alder new guestbook` writes, each as
-// it is (scaffoldDrift), chapter 1 quotes what `alder new guestbook` prints, and the scaffold
+// it is (scaffoldDrift), chapters 1 and 11 quote what `alder new guestbook` prints, and the scaffold
 // checks clean and passes its tests.
 func TestBook_Scaffold(t *testing.T) {
 	bin := alder(t)
 	for _, msg := range scaffoldDrift("02-tour.md", "book/02-tour.md") {
 		t.Error(msg)
 	}
-	ch1, err := os.ReadFile("01-why.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(ch1), "$ alder new guestbook\n"+newOutput+"```") {
-		t.Errorf("book/01-why.md does not quote what `alder new guestbook` prints, which is:\n%s", newOutput)
+	for _, ch := range []string{"01-why.md", "11-tooling.md"} {
+		b, err := os.ReadFile(ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(b), "$ alder new guestbook\n"+newOutput+"```") {
+			t.Errorf("book/%s does not quote what `alder new guestbook` prints, which is:\n%s", ch, newOutput)
+		}
 	}
 	for _, c := range []struct {
 		args []string

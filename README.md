@@ -9,12 +9,22 @@ executable with SQLite inside.
 
 ## Install
 
+From a checkout (the way that works today; Go 1.27+ is needed either way):
+
+```
+git clone https://github.com/tapegram/alder.git
+cd alder
+go build -o ~/bin/alder ./cmd/alder    # ~/bin on your PATH; alder version prints devel+<commit>
+```
+
+Once a release is published:
+
 - **Release archive**: download `alder_<version>_<os>_<arch>.tar.gz` for your platform
   (macOS or Linux, amd64 or arm64) from this repository's Releases, unpack it and put `alder`
   on your `PATH`.
 - **Homebrew**: `brew install tapegram/alder/alder` (the tap `tapegram/homebrew-alder`).
-- **Container image** (for CI): `ghcr.io/tapegram/alder:<version>`, Go's image with `alder` in
-  it.
+- **Container image** (for CI): `ghcr.io/tapegram/alder:<version>` (e.g. `:0.1.0`), Go's image
+  with `alder` in it.
 
 Alder needs **Go 1.27 or newer** on your `PATH`: it generates Go and builds it. The first
 build on a machine downloads `modernc.org/sqlite` once through Go's module proxy; later builds

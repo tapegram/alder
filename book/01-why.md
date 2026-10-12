@@ -69,7 +69,22 @@ Without JavaScript the same app works as full page loads.
 ## Installing
 
 Alder is one program, `alder`, the compiler and every tool around it.
-Install it one of three ways:
+Today it is built from a checkout of its repository; once a release is
+published, three more ways install it without one.
+
+**From a checkout** (the way that works now). With Go installed (below):
+
+```
+git clone https://github.com/tapegram/alder.git
+cd alder
+go build -o ~/bin/alder ./cmd/alder
+```
+
+Put `~/bin` on your `PATH` (or pick another directory that is on it).
+`alder version` then prints `devel+<commit>` (the commit you built)
+instead of a version. Pull and run the `go build` again to update.
+
+**Once a release is published:**
 
 - **A release archive.** Each release on GitHub
   (`github.com/tapegram/alder`, under Releases) has an archive per
@@ -87,20 +102,26 @@ Install it one of three ways:
   ```
 
   Homebrew installs Go with it.
-- **The container image**, for CI: `ghcr.io/tapegram/alder:<version>` is
-  Go's official image with `alder` added, so a pipeline can check, test and
-  build an app without installing anything:
+- **The container image**, for CI: `ghcr.io/tapegram/alder:<version>`
+  (the version without its `v`, such as `:0.1.0`) is Go's official image
+  with `alder` added, so a pipeline can check, test and build an app
+  without installing anything:
 
   ```
-  docker run --rm -v "$PWD":/app -w /app ghcr.io/tapegram/alder:<version> alder test
+  docker run --rm -v "$PWD":/app -w /app ghcr.io/tapegram/alder:0.1.0 alder test
   ```
+
+  A fresh container has an empty Go module cache, so each run would
+  download `modernc.org/sqlite` again (below); mount a cache directory at
+  `/go/pkg/mod` (`-v "$HOME/go/pkg/mod":/go/pkg/mod`, or your CI's cache)
+  to keep later runs offline.
 
 There is no `go install`: the compiler's Go module is named `alder`, not
 its GitHub address, so the go command cannot fetch it by that address
 (chapter 13, "The runtime travels with the compiler", says why the name
 stays).
 
-**Go is the one prerequisite.** `alder` turns your app into Go and runs
+**Go is the one prerequisite**, whichever way you install. `alder` turns your app into Go and runs
 `go build` on it, so `alder build`, `alder test`, `alder run`, `alder eval`
 and `alder repl` need the `go` command on your `PATH`, version **1.27 or
 newer** (from `go.dev/dl`, or your package manager). `alder new`, `alder

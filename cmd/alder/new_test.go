@@ -161,8 +161,11 @@ func TestNew_Refusals(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if code, _, errs := runNew(t, file); code != 1 || !strings.Contains(errs, "exists and is not empty") {
+	if code, _, errs := runNew(t, file); code != 1 || errs != "alder new: `"+file+"` is a file: choose another name\n" {
 		t.Errorf("a file: exit %d, %q", code, errs)
+	}
+	if code, _, errs := runNew(t, ""); code != 2 || errs != "alder new: the app needs a name, such as `alder new guestbook`\n" {
+		t.Errorf("alder new \"\": exit %d, %q", code, errs)
 	}
 	for _, args := range [][]string{nil, {"a", "b"}, {"--force", "a"}, {"-x"}} {
 		if code, _, errs := runNew(t, args...); code != 2 || !strings.HasPrefix(errs, "usage: alder new") {

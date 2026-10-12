@@ -130,8 +130,8 @@ the app's name. What it does, in order:
    alder new: `9lives` is not a valid app name: use letters, digits and `-`, starting with a letter (it names the directory, the built binary and the app's Go module)
    ```
 
-2. **Checks the directory**: it must not exist, or be empty. `alder new`
-   never writes over anything:
+2. **Checks the directory**: it must not exist, or be empty (a file of
+   that name is refused as one). `alder new` never writes over anything:
 
    ```
    $ alder new guestbook
@@ -145,8 +145,9 @@ the app's name. What it does, in order:
 4. **Writes a `go.mod`, only inside another Go module.** It walks up from
    the new directory's parent looking for a `go.mod`; when it finds one,
    the app gets the `go.mod` of "Project layout" above (`module <name>`,
-   `go 1.27`, and a comment saying why), and the listing gains the line
-   `go.mod keeps the app out of the Go module of <that go.mod>`.
+   `go 1.27`, and a comment saying why), and the output gains `  go.mod`
+   in the list of files and, after it, the line `go.mod keeps the app out
+   of the Go module of <that go.mod>`.
 5. **Runs the migration generator** on the new app, the same code as
    `alder migrate`, so `migrations/0001_initial.sql` and
    `migrations/schema.json` are exactly what `alder migrate` would write;
@@ -158,9 +159,10 @@ It exits 0 when the app is written; 1 for a refused name or directory;
 wrote). `alder new` does not need Go: the first command that does is
 `alder test` or `alder build`.
 
-The scaffold and chapter 2 cannot drift apart: `go test ./book` runs the
+The scaffold and the book cannot drift apart: `go test ./book` runs the
 built `alder new guestbook` and requires chapter 2 to quote every file it
-writes, as it is (`TestBook_Scaffold`), and the tests of `alder new`
+writes, as it is, and chapters 1 and 11 to quote its output above
+(`TestBook_Scaffold`), and the tests of `alder new`
 (`cmd/alder/new_test.go`) build, test and serve the scaffold from a
 directory outside this repository, both outside any Go module and inside
 one. Its two tests kill all three of its mutants (score 1.00), and the

@@ -298,8 +298,10 @@ CREATE TABLE "Entry__Entry" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NUL
 ```
 
 The header says which tables the database had before (`from`, here none)
-and has after (`to`), as hashes of `schema.json`, the tables as the last
-migration left them:
+and has after (`to`), each as the start of a hash of the tables' `CREATE
+TABLE` statements, sorted. `schema.json` records the tables as the last
+migration left them, so the next migration's `from` can be worked out
+from it:
 
 ```json file=guestbook/migrations/schema.json
 {
@@ -388,6 +390,11 @@ ok   Home "entries are listed newest first"
 2 passed, 0 failed
 ```
 
+On a machine that has never built an Alder app, the first `alder test`
+starts with the line `fetching modernc.org/sqlite (first build on this
+machine)` and takes longer, around 15 seconds (chapter 1, "Installing");
+after that it takes a second or two.
+
 `alder test --mutate` measures the tests. It makes small changes to the
 program, called **mutants**, each one a plausible mistake (here: the
 insert replaced by nothing, the redirect turned into a re-render, the
@@ -425,9 +432,10 @@ dev server on 127.0.0.1:8080 → app on 127.0.0.1:56970
 (The server's log lines also carry the date and time; they are left out
 here.) The first start applies `0001_initial` to the development database,
 `build/guestbook/dev.db`. Sign the guestbook in the browser and the log
-shows each effect the request ran: `Db.all Entry` for the page, then
-`Db.insert Entry` and `Db.all Entry` for the post and the page it
-redirects to. Chapter 11 explains each command; the warning is about
+shows each effect the requests ran: `Db.all Entry` for the page; for the
+post, `Db.all Entry` again (the runtime loads the page's model before it
+calls `update`) and `Db.insert Entry`; then `Db.all Entry` for the page
+the post redirects to. Chapter 11 explains each command; the warning is about
 production, where `ALDER_SECRET` must be set (chapter 6).
 
 ## The to-do app

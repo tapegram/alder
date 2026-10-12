@@ -1,8 +1,8 @@
 // Package scaffold holds the app `alder new` writes: the guestbook of the Alder book's chapter 2
 // (an empty session, an error and a not-found page, a layout, one table, one page with a form
 // and two tests through the browser, a stylesheet, a .gitignore, an adapters/ directory
-// explained by its README and a README of the commands). The files are embedded from files/; the name of the app is
-// substituted for {{name}}. The migrations are not here: `alder new` writes them by running the
+// explained by its README and a README of the commands). The files are embedded from files/;
+// the name of the app is substituted for {{name}}. The migrations are not here: `alder new` writes them by running the
 // migration generator on these files, so they are what `alder migrate` would write.
 package scaffold
 
@@ -72,12 +72,16 @@ var nameRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
 // Go module, the app's own Go module, so it must be all three.
 func ValidName(name string) bool { return nameRE.MatchString(name) }
 
-// ErrNotEmpty is CheckTarget's refusal of a directory that already has something in it.
-var ErrNotEmpty = errors.New("exists and is not empty")
+// ErrNotEmpty is CheckTarget's refusal of a directory that already has something in it, and
+// ErrIsFile its refusal of a file.
+var (
+	ErrNotEmpty = errors.New("exists and is not empty")
+	ErrIsFile   = errors.New("is a file")
+)
 
 // CheckTarget reports whether dir can receive a new app: it does not exist, or it is an empty
 // directory. A directory with anything in it is ErrNotEmpty (nothing of a user's is ever
-// overwritten); a file there is ErrNotEmpty too.
+// overwritten); a file there is ErrIsFile.
 func CheckTarget(dir string) error {
 	fi, err := os.Stat(dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -87,7 +91,7 @@ func CheckTarget(dir string) error {
 		return err
 	}
 	if !fi.IsDir() {
-		return ErrNotEmpty
+		return ErrIsFile
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {

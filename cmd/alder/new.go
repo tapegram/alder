@@ -35,6 +35,10 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 		fmt.Fprintln(stderr, newUsage)
 		return 2
 	}
+	if args[0] == "" {
+		fmt.Fprintln(stderr, "alder new: the app needs a name, such as `alder new guestbook`")
+		return 2
+	}
 	dir := filepath.Clean(args[0])
 	name := filepath.Base(dir)
 	if !scaffold.ValidName(name) {
@@ -43,6 +47,9 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	if err := scaffold.CheckTarget(dir); errors.Is(err, scaffold.ErrNotEmpty) {
 		fmt.Fprintf(stderr, "alder new: `%s` exists and is not empty: choose another name, or empty it first\n", dir)
+		return 1
+	} else if errors.Is(err, scaffold.ErrIsFile) {
+		fmt.Fprintf(stderr, "alder new: `%s` is a file: choose another name\n", dir)
 		return 1
 	} else if err != nil {
 		fmt.Fprintf(stderr, "alder new: %v\n", err)
