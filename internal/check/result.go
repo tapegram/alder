@@ -44,6 +44,9 @@ type PageInfo struct {
 	Params   *types.Record
 	Msg      *types.Union
 	Requires string
+	// Roles are the page's `requires user, role R | S` constructors, nil for none (or when the
+	// clause is in error: E0027).
+	Roles []string
 	// Session is the narrowed session of a `requires` page (<page>.Session, see narrow), nil
 	// for a page without `requires`, whose code sees App's session.
 	Session *types.Record

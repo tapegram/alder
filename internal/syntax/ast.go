@@ -85,7 +85,7 @@ type Field struct {
 }
 type Attr struct {
 	Node
-	Name string // id | ref | created | updated | unique | cascade | restrict | setNull | renamed
+	Name string // id | ref | created | updated | unique | cascade | restrict | setNull | renamed | owner
 	Arg  string // table name for ref; the old name for renamed (`@renamed "heading"` → heading)
 }
 type PageDecl struct {
@@ -94,6 +94,10 @@ type PageDecl struct {
 	Params       *RecordType
 	Requires     string
 	RequiresSpan diag.Span // the `requires field` clause; zero when absent
+	// Roles are the constructors of `requires user, role R | S` (["R", "S"]), nil for none;
+	// RolesSpan is the `role R | S` clause. `requires role R` (no field) leaves Requires "".
+	Roles     []string
+	RolesSpan diag.Span
 }
 type MsgDecl struct {
 	Node

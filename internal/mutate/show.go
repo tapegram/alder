@@ -271,6 +271,16 @@ func (p *printer) expr(e ir.Expr) string {
 		return "Db.update " + x.Table.Name + " " + p.atom(x.ID) + " " + p.atom(x.Fn)
 	case *ir.DbDelete:
 		return "Db.delete " + x.Table.Name + " " + p.atom(x.ID)
+	case *ir.DbMine:
+		return "Db.mine " + x.Table.Name
+	case *ir.DbGetMine:
+		return "Db.getMine " + x.Table.Name + " " + p.atom(x.ID)
+	case *ir.DbUpdateMine:
+		return "Db.updateMine " + x.Table.Name + " " + p.atom(x.ID) + " " + p.atom(x.Fn)
+	case *ir.DbDeleteMine:
+		return "Db.deleteMine " + x.Table.Name + " " + p.atom(x.ID)
+	case *ir.DbInsertMine:
+		return "Db.insertMine " + x.Table.Name + " " + p.atom(x.Row)
 	case *ir.TableRef:
 		return x.Table.Name
 	case *ir.ColumnRef:

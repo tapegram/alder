@@ -168,6 +168,10 @@ type Table struct {
 	OnDelete         map[string]string
 	InsertFields     []string // the fields `Db.insert` takes: all but @id, @created, @updated
 	RenamedFrom      string   // the table's old name from `table Post @renamed "Article"`, "" for none
+	// Owner is the `@owner` column (a `@ref` of the session's user type, never Maybe), "" for
+	// none; it is in InsertFields (Db.insert takes it), and Db.insertMine's row is InsertFields
+	// without it. It changes nothing in the stored schema (migrate ignores it).
+	Owner string
 }
 
 // Form is a `form` declaration; Record is also in its module's Types.
@@ -190,6 +194,13 @@ type Page struct {
 	Params       *RecordType
 	Requires     string // session field the page requires, "" for none
 	RequiresPos  Pos    // the `requires f` clause; zero when Requires is ""
+	// Roles are the constructors of `requires user, role R | S` (["R", "S"]), nil for none:
+	// constructors of the union of App's session field `role` (never Maybe; the page session's
+	// `role` is that union as App's is). The route answers 404 when the session's role is none
+	// of them, after the `requires user` redirect and before load. RolesPos is the `role R…`
+	// clause; zero when Roles is nil. Requires is "user" whenever Roles is set.
+	Roles        []string
+	RolesPos     Pos
 	Session      *RecordType
 	Model        *RecordType
 	Msgs         []*Msg
@@ -234,7 +245,7 @@ type Fake struct {
 
 // Pos is a source position (1-based line and column) of the expression a node was lowered from.
 // The node kinds a mutant can target carry one (If, Match, Op, Lit, Update, Ctor, Call, EffBind,
-// DbSelect, DbInsert, DbUpdate, DbDelete, Cond, Ord); it is the zero Pos for a node Lower made
+// DbSelect, DbInsert, DbUpdate, DbDelete, the scoped Db*Mine nodes, Cond, Ord); it is the zero Pos for a node Lower made
 // up (a default filled into a literal keeps its declaration's). Dump never prints it.
 type Pos struct{ Line, Col int }
 
@@ -706,6 +717,60 @@ type DbDelete struct {
 	Pos   Pos
 	Table *Table
 	ID    Expr
+}
+
+// ---- Scoped operations (M11): the Db.*Mine functions of a table with an `@owner` column
+// (Table.Owner). The checker accepts them only in a page module whose page `requires user`
+// (load, update, view and helper values), so the session's `user` is there, narrowed to the
+// user id: each is the unscoped operation with the predicate `Owner = session.user`. A row
+// that is not the session user's answers as a missing one (not found), never an error.
+
+// DbMine is `Db.mine Table`: a Select t value (Db.from Table filtered on the owner). It is
+// never run itself: Db.where/orderBy/limit/offset over it make a DbSelect whose Base is the
+// DbMine, and Db.all/first/count over it (or over such a DbSelect) make a DbSelect or DbRun
+// as for any Select value.
+type DbMine struct {
+	Typed
+	Pos   Pos
+	Table *Table
+}
+
+// DbGetMine is `Db.getMine Table ID`: a Query t, the row when it exists and is the session
+// user's, else Query.notFound (the page answers 404, as for a missing row).
+type DbGetMine struct {
+	Typed
+	Pos   Pos
+	Table *Table
+	ID    Expr
+}
+
+// DbUpdateMine is `Db.updateMine Table ID Fn`, a Task Unit; Fn has type t -> t. One UPDATE with
+// `id = ? AND owner = ?`: no row changed is Task.notFound.
+type DbUpdateMine struct {
+	Typed
+	Pos   Pos
+	Table *Table
+	ID    Expr
+	Fn    Expr
+}
+
+// DbDeleteMine is `Db.deleteMine Table ID`, a Task Unit: one DELETE with `id = ? AND owner = ?`;
+// no row deleted is Task.notFound.
+type DbDeleteMine struct {
+	Typed
+	Pos   Pos
+	Table *Table
+	ID    Expr
+}
+
+// DbInsertMine is `Db.insertMine Table Row`, a Task of the new row's id. Row is a record of the
+// table's InsertFields without Owner (an anonymous record type, defaults filled, as DbInsert's);
+// the Owner column is the session's user.
+type DbInsertMine struct {
+	Typed
+	Pos   Pos
+	Table *Table
+	Row   Expr
 }
 
 // TableRef is a table used as a value other than as the table argument of a Db function

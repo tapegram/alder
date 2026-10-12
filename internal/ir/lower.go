@@ -17,7 +17,7 @@ import (
 func Lower(prog *names.Program, res *check.Result) *Program {
 	l := &lowerer{prog: prog, res: res, out: &Program{},
 		records: map[string]*RecordType{}, unions: map[string]*UnionType{}, values: map[string]*Value{},
-		pages: map[string]*Page{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, tables: map[string]*Table{}, caps: map[string]*Capability{}, fakes: map[*syntax.FakeDecl]*Fake{}, fakesByCap: map[string]*Fake{}, inserts: map[*types.Record]string{}, insertRTs: map[*Table]*RecordType{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, brands: map[string]*Brand{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
+		pages: map[string]*Page{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, tables: map[string]*Table{}, caps: map[string]*Capability{}, fakes: map[*syntax.FakeDecl]*Fake{}, fakesByCap: map[string]*Fake{}, inserts: map[*types.Record]insertOf{}, insertRTs: map[insertOf]*RecordType{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, brands: map[string]*Brand{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
 	l.declareTypes()
 	l.declareValues()
 	l.declareCaps() // before bodies: a body's CapCall points at its Capability
@@ -106,10 +106,11 @@ type lowerer struct {
 	// fakesByCap the same by capability key "Module.Capability", for Test.fake
 	fakes      map[*syntax.FakeDecl]*Fake
 	fakesByCap map[string]*Fake
-	// inserts maps the erased (anonymous) record of a table's `Insert t` to the table;
-	// insertRTs holds the RecordType of each, made on first use (insertRecord)
-	inserts   map[*types.Record]string // → "Module.Table"
-	insertRTs map[*Table]*RecordType
+	// inserts maps the erased (anonymous) record of a table's `Insert t` (or `InsertMine t`,
+	// Db.insertMine's) to the table; insertRTs holds the RecordType of each, made on first use
+	// (insertRecord)
+	inserts   map[*types.Record]insertOf
+	insertRTs map[insertOf]*RecordType
 	erased    map[*types.Record]*types.Record
 	erasedU   map[*types.Union]*types.Union
 	// wrappers are the { value: T } payload records made for non-record constructor arguments
@@ -203,10 +204,11 @@ func (l *lowerer) eraseT(t types.Type) types.Type {
 			return r
 		}
 		r := &types.Record{Module: t.Module, Name: t.Name, Anonymous: t.Anonymous, Params: t.Params}
-		if tb := l.insertTable(t); tb != "" {
-			// `Insert t` (the checker's record "Insert T") is the anonymous record of its fields
+		if ins, ok := l.insertTable(t); ok {
+			// `Insert t` (the checker's record "Insert T", or "InsertMine T") is the anonymous
+			// record of its fields
 			r = &types.Record{Anonymous: true}
-			l.inserts[r] = tb
+			l.inserts[r] = ins
 		}
 		l.erased[t] = r
 		for _, f := range t.Fields {
@@ -249,34 +251,57 @@ func (l *lowerer) eraseList(ts []types.Type) []types.Type {
 	return out
 }
 
-// insertTable is the key of the table whose `Insert t` record rec is (the checker names it
-// "Insert T"), or "".
-func (l *lowerer) insertTable(rec *types.Record) string {
-	if rec.Anonymous || !strings.HasPrefix(rec.Name, "Insert ") {
-		return ""
-	}
-	k := key(rec.Module, strings.TrimPrefix(rec.Name, "Insert "))
-	if info := l.res.Tables[k]; info == nil || info.Insert != rec {
-		return ""
-	}
-	return k
+// insertOf names an insert record: its table's key, and whether it is Db.insertMine's (the
+// table's InsertFields without its Owner).
+type insertOf struct {
+	table string // "Module.Table"
+	mine  bool
 }
 
-// insertRecord is the RecordType of table tb's insert record: its InsertFields, with the
-// table's field defaults, so a literal that omits a defaulted field gets its default.
-func (l *lowerer) insertRecord(tb *Table) *RecordType {
-	if rt, ok := l.insertRTs[tb]; ok {
+// insertTable says whose insert record rec is (the checker names `Insert t` "Insert T", and
+// `InsertMine t` "InsertMine T"); ok is false for any other record.
+func (l *lowerer) insertTable(rec *types.Record) (insertOf, bool) {
+	if rec.Anonymous {
+		return insertOf{}, false
+	}
+	for _, c := range []struct {
+		prefix string
+		mine   bool
+	}{{"Insert ", false}, {"InsertMine ", true}} {
+		name, ok := strings.CutPrefix(rec.Name, c.prefix)
+		if !ok {
+			continue
+		}
+		k := key(rec.Module, name)
+		info := l.res.Tables[k]
+		if info == nil || (!c.mine && info.Insert != rec) || (c.mine && info.InsertMine != rec) {
+			return insertOf{}, false
+		}
+		return insertOf{k, c.mine}, true
+	}
+	return insertOf{}, false
+}
+
+// insertRecord is the RecordType of an insert record: its table's InsertFields (without Owner
+// for Db.insertMine's), with the table's field defaults, so a literal that omits a defaulted
+// field gets its default.
+func (l *lowerer) insertRecord(ins insertOf) *RecordType {
+	if rt, ok := l.insertRTs[ins]; ok {
 		return rt
 	}
+	tb := l.tables[ins.table]
 	rt := &RecordType{}
 	for _, n := range tb.InsertFields {
+		if ins.mine && n == tb.Owner {
+			continue
+		}
 		for _, f := range tb.Record.Fields {
 			if f.Name == n {
 				rt.Fields = append(rt.Fields, f)
 			}
 		}
 	}
-	l.insertRTs[tb] = rt
+	l.insertRTs[ins] = rt
 	return rt
 }
 
@@ -311,8 +336,8 @@ func (l *lowerer) recordType(t types.Type) *RecordType {
 	if !ok {
 		panic(fmt.Sprintf("ir: record value of non-record type %s", types.String(t)))
 	}
-	if k, ok := l.inserts[rec]; ok {
-		return l.insertRecord(l.tables[k])
+	if ins, ok := l.inserts[rec]; ok {
+		return l.insertRecord(ins)
 	}
 	if !rec.Anonymous && rec.Name != "" {
 		if rt, ok := l.records[key(rec.Module, rec.Name)]; ok {
@@ -439,7 +464,7 @@ func (l *lowerer) declareTypes() {
 		// module's Types; a fake's is not: it exists only in test builds)
 		lowerTable := func(d *syntax.TableDecl, rt *RecordType) *Table {
 			info := l.res.Tables[key(name, d.Name)]
-			t := &Table{Module: name, Name: d.Name, Record: rt, IDField: info.IDField}
+			t := &Table{Module: name, Name: d.Name, Record: rt, IDField: info.IDField, Owner: info.Owner}
 			for _, f := range info.Insert.Fields {
 				t.InsertFields = append(t.InsertFields, f.Name)
 			}
@@ -539,6 +564,9 @@ func (l *lowerer) declareTypes() {
 			pg := &Page{Module: name, Path: info.Decl.Path, Requires: info.Requires}
 			if info.Requires != "" {
 				pg.RequiresPos = posOf(info.Decl.RequiresSpan)
+			}
+			if len(info.Roles) > 0 {
+				pg.Roles, pg.RolesPos = info.Roles, posOf(info.Decl.RolesSpan)
 			}
 			pg.Params = addRecord("Params", info.Params, info.Decl.Params.Fields)
 			pg.Msgs = l.declareMsgs(mod, name, info.Msg, m)

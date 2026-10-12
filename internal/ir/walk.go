@@ -77,6 +77,14 @@ func Children(e Expr) []Expr {
 		return []Expr{x.ID, x.Fn}
 	case *DbDelete:
 		return []Expr{x.ID}
+	case *DbGetMine:
+		return []Expr{x.ID}
+	case *DbUpdateMine:
+		return []Expr{x.ID, x.Fn}
+	case *DbDeleteMine:
+		return []Expr{x.ID}
+	case *DbInsertMine:
+		return []Expr{x.Row}
 	case *Cond:
 		return append([]Expr{x.Value}, x.Subs...)
 	case *CapCall:
@@ -96,7 +104,7 @@ func Children(e Expr) []Expr {
 	case *TestClick:
 		return []Expr{x.Params}
 	}
-	return nil // Lit, Var, Hole, HText, EffNotFound, ColumnRef, TableRef, Ord, TestTrace, TestFake
+	return nil // Lit, Var, Hole, HText, EffNotFound, ColumnRef, TableRef, Ord, TestTrace, TestFake, DbMine
 }
 
 func matchChildren(x *Match) []Expr {

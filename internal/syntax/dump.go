@@ -80,6 +80,9 @@ func dump(sb *strings.Builder, n any) {
 		if x.Requires != "" {
 			sb.WriteString(" requires " + x.Requires)
 		}
+		if len(x.Roles) > 0 {
+			sb.WriteString(" role " + strings.Join(x.Roles, " | "))
+		}
 		sb.WriteByte(')')
 	case *MsgDecl:
 		fmt.Fprintf(sb, "(msg %s", x.Name)

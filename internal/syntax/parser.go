@@ -273,8 +273,19 @@ func (p *Parser) parseDecl() Decl {
 		pop()
 		if p.atKeyword("requires") {
 			rt := p.advance()
-			d.Requires = p.expect(LIdent, "session field").Text
-			d.RequiresSpan = p.spanFrom(rt)
+			if !p.atRole() {
+				d.Requires = p.expect(LIdent, "session field").Text
+				d.RequiresSpan = p.spanFrom(rt)
+				if p.at(Comma) {
+					p.advance()
+					if !p.atRole() {
+						p.errorAt(p.tok, "expected `role R` after `requires "+d.Requires+",`, got "+describe(p.tok))
+					}
+				}
+			}
+			if p.atRole() {
+				d.Roles, d.RolesSpan = p.parseRoles()
+			}
 		}
 		d.Span = p.spanFrom(start)
 		return d
@@ -599,6 +610,23 @@ func (p *Parser) parseTypeDecl() Decl {
 	}
 	d.Span = p.spanFrom(start)
 	return d
+}
+
+// atRole reports whether the parser is at the `role R` clause of a page's `requires`: the name
+// `role` followed by a constructor (`requires role` alone names a session field `role`).
+func (p *Parser) atRole() bool {
+	return p.at(LIdent) && p.tok.Text == "role" && p.peekIs(UIdent)
+}
+
+// parseRoles parses `role R` or `role R | S | …` at `role`.
+func (p *Parser) parseRoles() ([]string, diag.Span) {
+	start := p.advance()
+	roles := []string{p.expect(UIdent, "role constructor").Text}
+	for p.at(Pipe) {
+		p.advance()
+		roles = append(roles, p.expect(UIdent, "role constructor").Text)
+	}
+	return roles, p.spanFrom(start)
 }
 
 // parseAttr parses `@name`, `@ref Table` or `@renamed "old"` (a plain string: no

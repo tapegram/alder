@@ -304,6 +304,16 @@ func (l *lowerer) build(h *effHead, args []Expr, t types.Type) Expr {
 		return &DbUpdate{Typed: Typed{t}, Pos: h.pos, Table: table(0), ID: args[1], Fn: args[2]}
 	case "Db.delete":
 		return &DbDelete{Typed: Typed{t}, Pos: h.pos, Table: table(0), ID: args[1]}
+	case "Db.mine":
+		return &DbMine{Typed: Typed{t}, Pos: h.pos, Table: table(0)}
+	case "Db.getMine":
+		return &DbGetMine{Typed: Typed{t}, Pos: h.pos, Table: table(0), ID: args[1]}
+	case "Db.updateMine":
+		return &DbUpdateMine{Typed: Typed{t}, Pos: h.pos, Table: table(0), ID: args[1], Fn: args[2]}
+	case "Db.deleteMine":
+		return &DbDeleteMine{Typed: Typed{t}, Pos: h.pos, Table: table(0), ID: args[1]}
+	case "Db.insertMine":
+		return &DbInsertMine{Typed: Typed{t}, Pos: h.pos, Table: table(0), Row: args[1]}
 	}
 	panic(fmt.Sprintf("ir: stdlib function %s at %s has no lowering", h.name, h.at))
 }

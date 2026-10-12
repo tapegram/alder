@@ -71,6 +71,9 @@ func Dump(p *Program) string {
 		if pg.Requires != "" {
 			x.items = append(x.items, atoms("requires", pg.Requires))
 		}
+		if len(pg.Roles) > 0 {
+			x.items = append(x.items, atoms(append([]string{"roles"}, pg.Roles...)...))
+		}
 		if pg.Session != nil && pg.Session != p.Session {
 			x.items = append(x.items, atoms("session", d.rt(pg.Session)))
 		}
@@ -122,7 +125,7 @@ func Dump(p *Program) string {
 	return sb.String()
 }
 
-// table is a table's form: (table M.T (id f) (created f)? (updated f)? (unique f…)?
+// table is a table's form: (table M.T (id f) (created f)? (updated f)? (unique f…)? (owner f)?
 // (ref f M.T rule?)… (insert f…)).
 func table(t *Table) *sx {
 	items := []*sx{atom("table"), atom(t.Module + "." + t.Name), atoms("id", t.IDField)}
@@ -134,6 +137,9 @@ func table(t *Table) *sx {
 	}
 	if len(t.Unique) > 0 {
 		items = append(items, atoms(append([]string{"unique"}, t.Unique...)...))
+	}
+	if t.Owner != "" {
+		items = append(items, atoms("owner", t.Owner))
 	}
 	for _, f := range t.Record.Fields {
 		if r := t.Refs[f.Name]; r != "" {
@@ -515,6 +521,16 @@ func (d *dumper) expr(e Expr) *sx {
 		return list(2, atom("db-update"), atom(tableName(x.Table)), d.expr(x.ID), d.expr(x.Fn))
 	case *DbDelete:
 		return list(2, atom("db-delete"), atom(tableName(x.Table)), d.expr(x.ID))
+	case *DbMine:
+		return atoms("db-mine", tableName(x.Table))
+	case *DbGetMine:
+		return list(2, atom("db-get-mine"), atom(tableName(x.Table)), d.expr(x.ID))
+	case *DbUpdateMine:
+		return list(2, atom("db-update-mine"), atom(tableName(x.Table)), d.expr(x.ID), d.expr(x.Fn))
+	case *DbDeleteMine:
+		return list(2, atom("db-delete-mine"), atom(tableName(x.Table)), d.expr(x.ID))
+	case *DbInsertMine:
+		return list(2, atom("db-insert-mine"), atom(tableName(x.Table)), d.expr(x.Row))
 	case *ColumnRef:
 		return atoms("col", tableName(x.Table), x.Field)
 	case *TableRef:

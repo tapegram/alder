@@ -350,3 +350,38 @@ func TestParse_NonOperatorLineDoesNotContinue(t *testing.T) {
 		t.Errorf("diags %v", diags)
 	}
 }
+
+// TestParse_RulesSurface (M11): `@owner` in any position among a field's attributes, and the
+// `role` clause of a page's `requires`, alone, after `user`, and with several constructors.
+func TestParse_RulesSurface(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{"table Todo {\n  owner: User.UserId @owner @ref User @cascade,\n}", "(field owner User.UserId @owner @ref User @cascade)"},
+		{"table Todo {\n  owner: User.UserId @ref User @owner,\n}", "(field owner User.UserId @ref User @owner)"},
+		{`page "/a" { } requires user`, "(page \"/a\" {} requires user)"},
+		{`page "/a" { } requires user, role Author`, "(page \"/a\" {} requires user role Author)"},
+		{`page "/a" { } requires user, role Author | Admin`, "(page \"/a\" {} requires user role Author | Admin)"},
+		{`page "/a" { } requires role Author`, "(page \"/a\" {} role Author)"},
+		{"page \"/a\" { } requires role\ntype Model = { }", "(page \"/a\" {} requires role)"},
+	} {
+		m, diags := ParseFile("m.alder", []byte("module M\n\n"+c.src+"\n"))
+		if len(diags) > 0 {
+			t.Errorf("%q: %v", c.src, diags)
+			continue
+		}
+		if got := Dump(m); !strings.Contains(got, c.want) {
+			t.Errorf("%q: dump %s lacks %s", c.src, got, c.want)
+		}
+	}
+	m, _ := ParseFile("m.alder", []byte("module M\n\npage \"/a\" { } requires user, role Author | Admin\n"))
+	pd := m.Decls[0].(*PageDecl)
+	if pd.Requires != "user" || strings.Join(pd.Roles, ",") != "Author,Admin" {
+		t.Fatalf("page: requires %q roles %v", pd.Requires, pd.Roles)
+	}
+	if r, s := pd.RequiresSpan, pd.RolesSpan; r.Start.Col != 15 || r.End.Col != 28 || s.Start.Col != 30 || s.End.Col != 49 {
+		t.Fatalf("spans: requires %+v roles %+v", r, s)
+	}
+	_, diags := ParseFile("m.alder", []byte("module M\n\npage \"/a\" { } requires user, Author\n"))
+	if len(diags) == 0 || !strings.Contains(diags[0].Message, "expected `role R` after `requires user,`") {
+		t.Fatalf("diags: %v", diags)
+	}
+}

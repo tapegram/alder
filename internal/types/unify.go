@@ -12,6 +12,10 @@ type TableInfo struct {
 	IDType       Type
 	Insert       *Record
 	Columns      map[string]Type // field → field type
+	// Owner is the `@owner` column ("" when none); InsertMine, for a table with one, is the
+	// record `Db.insertMine` takes: Insert's fields without Owner (named "InsertMine T").
+	Owner      string
+	InsertMine *Record
 }
 
 type Unifier struct {
@@ -53,7 +57,8 @@ func (u *Unifier) prune(t Type) Type {
 	}
 }
 
-// Apply substitutes bound variables and normalizes Id/Insert over known tables.
+// Apply substitutes bound variables and normalizes Id/Insert/InsertMine over known tables.
+// `InsertMine t` is the checker's type of `Db.insertMine`'s row (never written in source).
 func (u *Unifier) Apply(t Type) Type {
 	t = u.prune(t)
 	switch t := t.(type) {
@@ -62,13 +67,16 @@ func (u *Unifier) Apply(t Type) Type {
 		for i, a := range t.Args {
 			args[i] = u.Apply(a)
 		}
-		if (t.Con == "Id" || t.Con == "Insert") && len(args) == 1 {
+		if (t.Con == "Id" || t.Con == "Insert" || t.Con == "InsertMine") && len(args) == 1 {
 			if r, ok := args[0].(*Record); ok {
 				if info := u.Table(r); info != nil {
-					if t.Con == "Id" {
+					switch {
+					case t.Con == "Id":
 						return info.IDType
+					case t.Con == "InsertMine" && info.InsertMine != nil:
+						return info.InsertMine
 					}
-					return info.Insert
+					return info.Insert // `InsertMine t` of a table without `@owner`: E0025 says so
 				}
 			}
 		}
