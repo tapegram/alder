@@ -1727,7 +1727,7 @@ class FeedbackTests(unittest.TestCase):
         self.assertNotIn("build", r1)
         rd1 = (self.exp / "runs/fake/t/round1").resolve()
         self.assertNotIn(f"test --mutate --json {rd1}", self.commands())   # no mutate run on a rejected round
-        self.assertIn("Your previous answer changed app code; it was not accepted. Only `test` declarations may change.", model.prompts[2])
+        self.assertIn("Your previous answer changed app code; it was not accepted. Only `test` and `fake` declarations may change.", model.prompts[2])
         self.assertNotIn("(value App.x : Int () 2)", model.prompts[2])   # the accepted app, not the edit
         self.assertEqual((self.exp / "runs/fake/t/round2/app/App.alder").read_text(), "(module App)\n(value App.x : Int () 1)\n")
         self.assertEqual((s["score_before"], s["score_after"], s["feedback_rounds"]), (0.7, 0.8, 2))

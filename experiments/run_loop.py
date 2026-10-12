@@ -869,7 +869,7 @@ FEEDBACK_HEADER = "====================  MUTATION FEEDBACK  ====================
 FEEDBACK_TEXT = ("Your tests pass, but {s} of {n} mutants survived (score {score:.2f}). Each line below is a change to your app "
                  "that no test noticed. Add a test, in the named module, that fails on it. Do not edit app code to remove a mutant. "
                  "Only if no input can tell a survivor apart, say why in one comment.")
-APP_CHANGED = "Your previous answer changed app code; it was not accepted. Only `test` declarations may change."
+APP_CHANGED = "Your previous answer changed app code; it was not accepted. Only `test` and `fake` declarations may change."
 APP_CHANGED_REASON = "app code changed in a feedback round: only tests may change"
 
 
