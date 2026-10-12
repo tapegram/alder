@@ -1,0 +1,54 @@
+module Home
+
+import Entry
+import Layout
+
+page "/" { }
+
+type Model = { entries: List Entry }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let entries <- Db.from Entry |> Db.orderBy Entry.created.desc |> Db.all
+  Query.succeed { entries: entries }
+}
+
+form Sign = {
+  name: Text.NonEmpty,
+  message: Text.NonEmpty,
+}
+
+msg Submit form Sign
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
+    Task.succeed (Redirect (Home {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Guestbook">
+    <h1>Guestbook</h1>
+
+    <form submit={Submit}>
+      <Input field="name" label="Your name" />
+      <Errors field="name" />
+      <Input field="message" label="Message" />
+      <Errors field="message" />
+      <button>Sign</button>
+    </form>
+
+    <ul id="entries">
+      {for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}
+    </ul>
+  </Layout.Page>
+
+test "signing adds an entry" = {
+  let _ <- Test.get (Home {})
+  let signed <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
+  let page <- Test.get (Home {})
+  Task.succeed ({ answer: signed.answer, entries: Test.count "#entries li" page.doc } == { answer: Redirected (Home {}), entries: 1 })
+}
