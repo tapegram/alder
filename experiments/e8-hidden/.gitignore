@@ -1,0 +1,4 @@
+alder
+logs/*.log
+*/runs/**/build/
+*/runs/**/adapters/
