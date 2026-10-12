@@ -688,12 +688,33 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
                 sources[path] = text
     previous = ""
     if sources or theirs:  # every model call is a fresh process: the retry must carry the files it asks to fix
-        section = lambda files: "\n".join(f"--- file: {path} ---\n{files[path].rstrip(chr(10))}\n" for path in sorted(files))
+        section = file_section
         previous = "\n\n====================  YOUR PREVIOUS ANSWER  ====================\n" + section(sources)
         if theirs:
             previous += "\n" + PROVIDED_ADAPTERS + "\n\n" + section(theirs)
     return (task + previous + "\n\n====================  COMPILER FEEDBACK  ====================\n" + feedback +
             "\n\nFix every error. Output every file again, in full, each preceded by `--- file: app/<path> ---`. No explanation, only files.")
+
+
+def file_section(files) -> str:
+    """{path: text} as `--- file: path ---` sections, by path: how a prompt shows files."""
+    return "\n".join(f"--- file: {path} ---\n{files[path].rstrip(chr(10))}\n" for path in sorted(files))
+
+
+BASE_APP = "====================  THE APP YOU ARE CHANGING  ===================="
+
+
+def first_prompt(task: str, base_dir, show_adapters=False, provided=None) -> str:
+    """Round 0's prompt: the task, and with a `--base` (base_dir, the export) every app/**/*.alder of
+    it under THE APP YOU ARE CHANGING (the retry prompt's file form), then, in an --adapters run, the
+    base's adapters apart as provided. Without a base, the task alone."""
+    if base_dir is None:
+        return task
+    app = {f.relative_to(base_dir).as_posix(): f.read_text() for f in (pathlib.Path(base_dir) / "app").rglob("*.alder")}
+    out = task + "\n\n" + BASE_APP + "\n" + file_section(app)
+    if show_adapters and provided:
+        out += "\n" + PROVIDED_ADAPTERS + "\n\n" + file_section(provided)
+    return out
 
 
 def write_round(round_dir: pathlib.Path, prev_dir, text: str, files: dict, base_dir=None):
@@ -792,11 +813,11 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     if seed is not None:
         summary["base_commit"] = seed[1]
     summary.update(model.summary_fields())
-    user = task_text
     prev = pathlib.Path(seed[0]) if seed is not None else None
     provided = {}   # the base's adapters, as exported: shown apart in a retry (provided, not the model's)
     if prev is not None and (prev / "adapters").is_dir():
         provided = {f.relative_to(prev).as_posix(): f.read_text() for f in adapter_files(prev)}
+    user = first_prompt(task_text, prev, show_adapters=adapters, provided=provided)   # with --base: the app it changes
 
     def harness_error(reason):
         summary["outcome"] = "harness_error"

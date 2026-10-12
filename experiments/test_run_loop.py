@@ -1448,6 +1448,38 @@ class HiddenTests(unittest.TestCase):
                          ["0001_initial.sql", "0002_add_views.sql", "schema.json"])   # the base's and the round's own migration
         self.assertEqual(sorted(f.name for f in (sc / "app").iterdir()), ["App.alder", "Hidden.alder"])
 
+
+    @unittest.skipUnless(shutil.which("git"), "git is not on PATH")
+    def test_base_app_in_the_first_prompt_only(self):
+        todos = pathlib.Path(__file__).resolve().parent.parent / "examples" / "todos"
+        stub = hidden_stub(self.tmp, checks=[(1, ERR), (0, "")], hidden_test=(0, HIDDEN_PASS3.replace("false", "true"), ""))
+        model = rl.FakeModel([GOOD, GOOD])
+        s = rl.run_one(self.exp, model, "fake", "t", "TASK", "sys", stub, retries=1, base=todos, build=True, test=True, hidden=self.hidden)
+        self.assertEqual((s["outcome"], s["hidden_pass"]), ("pass", "3/3"))
+        p0, p1 = model.prompts
+        self.assertTrue(p0.startswith("TASK\n\n" + rl.BASE_APP + "\n--- file: app/"))
+        exported, _ = rl.export_base(todos)
+        try:
+            files = sorted(f.relative_to(exported).as_posix() for f in (exported / "app").rglob("*.alder"))
+            self.assertTrue(files)
+            for f in files:   # every base file, in full, in the retry prompt's form
+                self.assertIn(f"--- file: {f} ---\n" + (exported / f).read_text().rstrip("\n") + "\n", p0)
+        finally:
+            rl.remove_export(exported)
+        self.assertNotIn("provided, not yours", p0)   # adapters are listed only in an --adapters run
+        self.assertNotIn(rl.BASE_APP, p1)   # the retry is unchanged: it carries the round's files
+        self.assertIn("YOUR PREVIOUS ANSWER", p1)
+        for p in (p0, p1):
+            self.assertNotIn("SECRET_HIDDEN_MARK", p)
+            self.assertNotIn("app/Hidden.alder", p)
+        # without --base, round 0 is the task alone
+        model = rl.FakeModel([GOOD])
+        rl.run_one(self.exp, model, "fake", "u", "TASK", "sys", hidden_stub(self.tmp), retries=0)
+        self.assertEqual(model.prompts, ["TASK"])
+        # with --adapters the base's adapters follow, apart, as provided
+        self.assertIn(rl.PROVIDED_ADAPTERS + "\n\n--- file: adapters/x/x.go ---\npackage x\n",
+                      rl.first_prompt("T", pathlib.Path(self.tmp), show_adapters=True, provided={"adapters/x/x.go": "package x\n"}))
+
 class ReportE7Tests(unittest.TestCase):
     def test_report_e7_condition_tables_unchanged(self):
         """E7's scores.md merges one table per condition by hand; each generated row is in it."""
