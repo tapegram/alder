@@ -641,7 +641,9 @@ a password input, and it comes back empty.
 `Reject t` renders the same way, with `t` in `<Errors form />` of the form
 that sent the message. Unlike a form error, the `update` that rejected ran
 and committed. A message without a form that ends in `Reject` is answered
-like `Rerender`, and the text is not shown.
+like `Rerender`, and the text is not shown. So is a `Reject` whose form
+the re-rendered page no longer draws (a stale page: the state changed
+after it was loaded).
 
 ### With and without JavaScript
 

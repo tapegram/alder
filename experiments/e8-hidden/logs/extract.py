@@ -4,6 +4,10 @@
   extract.py migrate    -> per T7/T8 round: migrate file, steps, drops_data
   extract.py cells      -> one line per cell: cond model task sample outcome rounds own-tests hidden
   extract.py tests      -> own tests per cell: count in the final round, and names (for H2)
+  extract.py newtests   -> per cell: tests in the final round's app/, how many of them the base app does not have
+                           (T4-T6: all), and how many base tests are gone (for H2)
+  extract.py basetests  -> T7/T8: of the base app's tests, how many the final round kept with a different body,
+                           and how many it removed (for the H2 confounds)
 Run from the repository root or anywhere; reads experiments/e8-hidden/{with,without}/runs/*/*/summary.json."""
 import json, re, sys, pathlib
 TEST = re.compile(r'^test "((?:[^"\\\\]|\\\\.)*)"', re.M)

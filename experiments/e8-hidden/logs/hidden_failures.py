@@ -9,7 +9,7 @@ STALE = "a line posted from a stale page of an order paid meanwhile is refused"
 # (task, test name) -> (class, note); a cell-specific key (cond, model, task, sample, name) wins.
 CLASSES = {
     ("t6-orders", STALE): ("other",
-        "refused with `Reject \"…\"` in `update` after re-reading the order; no line stored. The re-rendered Paid page "
+        "refused with `Reject \"…\"` after checking the current order (re-read in `update`, or the model `load` rebuilt for the request); no line stored. The re-rendered Paid page "
         "has no add-line form, so the text has nowhere to show and the answer is `Rerendered` (probe, findings §2), "
         "which the test does not accept (only `PageMissing`/`RequestFailed`): the test is stricter than the task text"),
 }

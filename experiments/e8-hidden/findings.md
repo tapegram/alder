@@ -61,7 +61,7 @@ left:  { refused: False, lines: 0 }
 right: { refused: True, lines: 0 }
 ```
 
-`lines: 0` means **no program stored the line.** Each program re-reads the order in `update` and refuses. But each refuses with `Reject`, a successful answer that re-renders the page with a message, instead of `Task.fail` or `Task.notFound`:
+`lines: 0` means **no program stored the line.** Each program checks the current order (re-read in `update`, or the model `load` rebuilt for the request) and refuses. But each refuses with `Reject`, a successful answer that re-renders the page with a message, instead of `Task.fail` or `Task.notFound`:
 
 ```alder
 -- without/runs/claude-opus/t6-orders-s1/round0/app/Orders/Show.alder
@@ -106,7 +106,7 @@ No program renamed a fixed name, added a field to a fixed table, or put a fixed 
 
 ## 3. H2: with vs without the tests paragraph
 
-**T4–T6 (the clean comparison).** The table gives the own tests written (the tests in the final round; there is no base, so all of them are the model's) and the hidden results:
+**T4–T6.** T4 and T5 are the clean comparison. T6 is confounded: its `with` paragraph carries an implementation hint ("say in a comment whether you chose `Task.fail` or `Task.notFound`") that its `without` text lacks (§7). The table gives the own tests written (the tests in the final round; there is no base, so all of them are the model's) and the hidden results:
 
 | Model | Condition | T4 tests (s1, s2) | T5 tests | T6 tests | Cells with ≥ 1 test | Hidden T4–T6 | Rounds T4–T6 |
 |---|---|---|---|---|---|---|---|
@@ -125,7 +125,7 @@ No program renamed a fixed name, added a field to a fixed table, or put a fixed 
   - All five `with` T6 programs refuse a line on a non-Open order with `Task.fail`, and use `Task.notFound` for a missing or foreign order.
   - All five `without` programs use `Reject`, and none uses `Task.fail` (`grep` over the final `Orders/Show.alder`s *(hand-scored)*).
   - The cause is plain in the paragraph: "adding a line to a Paid order is refused (say in a comment whether you chose `Task.fail` or `Task.notFound`, and why)". This does not ask for a test; it names the mechanism, and the models followed it. Sonnet's `with` s1 comment: "Refusal is `Task.fail`, not `Task.notFound`: the order exists and the user may see it; the request conflicts with its state. A 404 would claim the order is missing. Failing rolls back everything, so nothing is written."
-  - So the measured H2 effect on T4–T6 (hidden 100% vs 96%) is the paragraph's hint meeting the hidden test's strictness (§2), not a better program. On T4 and T5 the hidden results are identical in both conditions: all pass.
+  - So the hidden difference on T6 (100% vs 89%, 9/9 vs 8/9 per cell) is the paragraph's hint meeting the hidden test's strictness (§2), not a better program, and T6 is not evidence about the tests paragraph as such. On the clean tasks, T4 and T5, the hidden results are identical in both conditions: all pass.
 - **Rounds.** Retries are rare in both conditions. On T4–T6, `with` had 1 retry (Haiku T4 s1: an own test failed in r0). `without` had 3, all for check errors: Haiku T4 s1 (E0201), T5 s2 (E0002 + E0201) and T6 s1 (E0001). Writing tests did not cost Claude retries here.
 
 **T7, T8 (confounded; reported apart).** The README's confounds, as they occurred:
@@ -146,7 +146,7 @@ No program renamed a fixed name, added a field to a fixed table, or put a fixed 
 - *The retry prompt showing test output* did not happen in `without`: no `without` T7/T8 round built and then failed its tests. The one `without` T7/T8 retry (Sonnet T7 s1) was for check errors, E0003 ×5. All five were inside the tests it had written unasked: "expected Task _, got Query Posts.Show.Model; … `Test.run` takes a Task".
 - Hidden: T7 and T8 pass every test in both conditions (T7 35/35 and T8 25/25 per condition).
 
-**H2 verdict.** The paragraph changes how many tests a model writes: strongly for Sonnet, mildly for Haiku and Opus. It changes the program exactly where it names an implementation choice (T6's `Task.fail`/`Task.notFound`). Where it only asks for tests, the hidden results do not move.
+**H2 verdict.** The paragraph changes how many tests a model writes: strongly for Sonnet, mildly for Haiku and Opus. It changes the program exactly where it names an implementation choice (T6's `Task.fail`/`Task.notFound`, a confound, not the paragraph's effect). Where it only asks for tests (T4, T5; T7, T8 with their confounds), no effect on the hidden results was detected. **Power caveat:** with at most two samples per cell, and every clean cell at the ceiling (8/8), this run could not have detected a behaviour effect of the paragraph; the result is "no effect detected", not "no effect".
 
 ## 4. H3: T7 migrations
 
@@ -157,6 +157,7 @@ The harness ran `alder migrate` in every T7 round whose only errors were E0019. 
 | 7: `with` Haiku s1, s2, Sonnet s1 (r0 and r1), Opus; `without` Haiku s2, Sonnet s1, s2 | `rebuild table Post: Post.published: new column filled with 0` | none |
 | 3: `with` Sonnet s2; `without` Haiku s1, Opus | the same, plus `Post: column order changed (ALTER TABLE only appends)` | none |
 
+- **What H3 measured.** The Names block fixed the field, its default and "no other table changes" (`table Post` gains exactly one field, `published: Bool = False`). So H3 measured compliance with a lossless spec, not migration judgement: no model had to decide how to keep data.
 - **No migration dropped data: 0 / 10 cells, 0 / 11 rounds.** Every model added exactly `published: Bool = False` (the Names block's field) and changed no other table. So the lossy change of the alt solution (`reference-alt/t7-drafts` removes a field) never occurred. Existing posts become drafts (filled with 0), which the task text allows.
 - **Column order.** Three programs put `published` before the last field of `Post`. `alder migrate` rebuilds the table in either case and says so. It is harmless, but it is a migration step the author did not ask for.
 - **T8:** no round of any cell ran a migration (no E0019), so the tables stayed as they were, as the Names block asks. The fake's `Mail.Sent` needs no migration.
@@ -183,14 +184,14 @@ E7's picture (Haiku and Sonnet 10 / 10) extends to Opus and to hidden tests: on 
 
 - **T5 passed, a first.**
   - Round 0, 1,453 generated tokens: a clean check, a build, and **8 / 8 hidden**. That includes both stale-page Delete tests, so its `update` checks the owner and the row.
-  - It wrote **no tests**, although its `with` text asks for them. The harness passed it anyway (`r0 ✓ 0`: `--test` passes a program with no tests; `RUN.md`).
+  - It wrote **no tests**, although its `with` text asks for them. The harness passed it anyway (`r0 ✓ 0`: `--test` passes a program with no tests; `RUN.md`). This matters for the comparison with E7, where 39% of Qwen's errors were inside its tests: the T5 that passed avoided the part where Qwen erred most. Its T6, which failed, did write tests (4 in the final round).
   - In E7 no Qwen round of any task checked clean (0 / 10).
 - **T6 failed**, 26 → 20 → 17 errors.
   - r0: a missing `Layout` module (E0002), missing imports (E0201) and 18 qualified constructors (E0203, "constructors are not qualified; write `Paid`").
-  - r1 and r2: type errors (E0003: `Text.fromInt` missing on an `Order.Status` in markup, a `Query` used as a `List`, `Product.price` called as a function) and E0402 (`let … <-` in a pure block).
+  - r1 and r2: type errors and E0402 (`let … <-` in a pure block). The E0003s, per round: "cannot infer the record type of `l`; add a type annotation" ×4, "expected Order, got Order.OrderId" ×3, an `Order.Status` put in markup with no conversion to text ×2, `Product.price` called as a function ×2, a `Query` used as a `List`.
   - Hidden tests skipped: no round checked clean.
 - **Conditions.** The `reference` prompt (41,990 tokens) plus the task, `num_ctx` 65,536 (E7: 32,768; a deviation), `num_predict` 8192. No truncation and no warning.
-- **Two cells are an anecdote, not a rate.** T5 is the smallest task, and E7's T5 failed with 3 and 16 final errors. Three things changed for T5 since E7: the book (M5), the Names block (which spells out every module, table and page signature) and the larger window. This run cannot separate them.
+- **Two cells are an anecdote, not a rate.** T5 is the smallest task, and E7's T5 failed in both conditions (`reference` 10 → 13 → 3, `full` 2 → 13 → 16). E7's `full` condition already ran at 65,536, which weakens the larger window as the explanation. Other things changed for T5 since E7: the book (M5), the Names block (which spells out every module, table and page signature), the improved E0002 message for a missing module ("there is no `app/Layout.alder` … write the module or remove the import"), and no tests written. This run cannot separate them.
 
 ## 7. Harness and protocol notes
 
@@ -201,9 +202,11 @@ E7's picture (Haiku and Sonnet 10 / 10) extends to Opus and to hidden tests: on 
   - The brief's seven failure classes, not the README's four.
   - One driver script (`logs/matrix.sh`) for the ten later invocations.
   - The session's commit trailers.
-- **The run found a defect in the material.** T6's stale-page hidden test accepts only `PageMissing`/`RequestFailed` (§2). The protocol forbids fixing it mid-run, so it was not fixed, and the scores are reported as recorded.
+- **The run found two defects in the material.** The protocol forbids fixing them mid-run, so they were not fixed, and the scores are reported as recorded.
+  1. T6's stale-page hidden test accepts only `PageMissing`/`RequestFailed` (§2).
+  2. T6's `with` tests paragraph still names the mechanism ("say in a comment whether you chose `Task.fail` or `Task.notFound`"). Task 1's fix round moved the refusal sentence into the body of both conditions but left this hint in the paragraph, so T6 is not a clean H2 comparison (§3).
 - **`--test` with zero tests passes.** That is fine for `without`. For `with` it means the tests paragraph is not enforced (Qwen T5).
-- **`Rerendered` for a `Reject` whose form is gone.** This contradicts chapter 10's answer table ("`FormRejected errors` | `submit`: … or `update` answered `Reject`"): `rt/testing/browser.go` decides by whether the new page shows errors. The book or the runtime should change (§8).
+- **`Rerendered` for a `Reject` whose form is gone.** This contradicts chapter 10's answer table ("`FormRejected errors` | `submit`: … or `update` answered `Reject`"): `rt/testing/browser.go` decides by whether the new page shows errors. The case of a form with no `<Errors form />` is already documented (chapter 10, the `FormRejected` bullets and "How the browser works"); the undocumented case is a form missing from the re-rendered page (§8).
 - **The run is near the ceiling.** 365 / 370 for Claude means the hidden tests measure little beyond "Claude follows a fully named spec". Showing variance with hidden tests needs harder or less specified tasks (§8).
 
 ## 8. What changes because of this
@@ -215,13 +218,13 @@ For the controller; nothing here was changed during the experiment.
    - fix the refusal in the Names block ("refused with `Task.fail`", or "a 404").
 
    Prefer the first: the task asks for a behaviour (nothing stored), not a mechanism. Also add a third reference, or a mutant, that refuses with `Reject`, so the gate exercises the choice the text leaves open.
-2. **Book: chapter 10's answer table and chapter 6's `Reject`** (evidence: the probe, `rt/testing/browser.go`). Either:
+2. **Book: chapter 10's answer table and chapter 6's `Reject`** (evidence: the probe, `rt/testing/browser.go`). The table contradicts the runtime only for a form missing from the re-rendered page; a form without `<Errors form />` is documented. Either:
    - say that a `Reject` from a form the re-rendered page no longer has is answered `Rerendered`, and its text is not shown; or
    - change the runtime so the text is not lost (show it in `<Errors form />` of the page, or answer it like a refused request).
 
    Today a user who posts from a stale page sees the page change under them, with no message. Decide which, then add the case to chapter 6's "refuse without changing anything" paragraph: a stale-page refusal (the state changed after the page was loaded) is where `Reject` silently drops its text.
 3. **Agent reference: when to refuse with what.** With no hint, Haiku, Sonnet and Opus all chose `Reject` for "an order that is not Open". With the hint, all chose `Task.fail`. Models follow whichever the text names (§3), so the reference should give one rule for a well-formed request that the current state forbids: for example, "`Reject` if the page still shows the form; otherwise `Task.fail`", or the reverse.
-4. **Task texts: keep implementation hints out of the tests paragraph** (evidence: §3, T6). "Say whether you chose `Task.fail` or `Task.notFound`" changed every program. It belongs in the body of both conditions or in neither. For H2, a tests paragraph that only names behaviours to test changed nothing measurable in the hidden results (T4, T5, T7, T8).
+4. **Task texts: keep implementation hints out of the tests paragraph** (evidence: §3, T6). "Say whether you chose `Task.fail` or `Task.notFound`" changed every program. It belongs in the body of both conditions or in neither. For H2, where the paragraph only names behaviours to test (T4, T5, T7, T8), no change in the hidden results was detected, at a power that could not have detected one (§3).
 5. **Harness: flag "tests asked, none written"** (evidence: Qwen T5 `with`, `r0 ✓ 0`). Record `own_tests: 0` in the summary and show it in the report, without failing the round: `r0 ✓ 0` already appears, but a `with` cell with 0 tests should read as a miss.
 6. **The next experiment should be harder, not larger** (evidence: §1 and §5: 365 / 370, and the three models are indistinguishable). Options, in order:
    1. tasks with less fixed (only the pages and the session), so the hidden tests must work through the browser alone, which the stale-page technique already supports;
@@ -229,5 +232,7 @@ For the controller; nothing here was changed during the experiment.
    3. a language change that lets a test build another page's message (Task 1's report), so forged requests can be tested directly.
 
    Keep `--hidden` and the two-reference gate, and add a solution that refuses by `Reject` to the gate (item 1).
+
+   E8 gives no evidence for or against the roadmap candidates (jobs; mutation testing), beyond having used hand-made mutants to gate the experiment's own material.
 7. **Migrations are not a problem at this size** (evidence: §4: 0 / 11 rounds with `DROPS DATA`, and no migration at all in T8). The `column order changed` note is informational; nothing needs to change. H3 needs a task where the obvious schema is lossy (item 6).
-8. **Prompt size.** The book roughly doubled since E7 (`sizes.md`): 61k tokens for `full`, 42k for `reference`. Claude was unaffected, but any small local model now needs a 64k window even for `reference`. If Qwen stays (T5 is its first pass), either cut `--reference` further (the growth is chapters 7, 8 and 10; chapters 11–14 are not in the prompt) or add a smaller agent prompt as a condition.
+8. **Prompt size.** The book roughly doubled since E7 (`sizes.md`): 61k tokens for `full`, 42k for `reference`. Its effect on Claude was not measured (one prompt, results at the ceiling). For local models it is a constraint, not a lever: the `reference` prompt (41,990 tokens) is over a 32k window, so any local-model condition now needs 64k, and E7 found that cutting the prompt is not what helps Qwen. If Qwen stays, choose its window and prompt as conditions of the experiment (the growth is chapters 7, 8 and 10; chapters 11–14 are not in the prompt), not as a fix.

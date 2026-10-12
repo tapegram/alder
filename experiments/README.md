@@ -201,7 +201,7 @@ Paths in `--- file: ... ---` markers are normalized (`X.alder` and `./app/X.alde
 
 **`--condition LABEL`** records an experimental condition (E8: `with`, `without` the tests paragraph) as `harness.condition`. **`--sample LABEL`** (letters, digits, `_ . -`) runs a repeated sample into its own directory, `runs/<model>/<task>-<LABEL>/`, and records `harness.sample`; `task` stays the task's name and the hidden tests stay `DIR/<task>/`. The harness's `seed` is the base export, not a sampling seed: Claude models sample as they do, and a second sample is a second run.
 
-The E8 fields, on a `--build --test --hidden` run (`with`, sample `s1`):
+The E8 fields, on a `--build --test --hidden` run (`with`, sample `s1`); an illustrative record (the test names and counts are made up; the real E8 runs are in `e8-hidden/*/runs/`):
 
 ```json
 {"model": "claude-sonnet", "task": "t5-ownership", "outcome": "pass", "final_pass": true,

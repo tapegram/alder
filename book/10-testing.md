@@ -927,9 +927,9 @@ type Answer = Shown
 | Answer | When | The page the browser then holds |
 |---|---|---|
 | `Shown` | `get`/`open`: the page was shown | that page |
-| `Rerendered` | `submit`/`click`: `update` answered `Rerender` | the page re-rendered, with the new data |
+| `Rerendered` | `submit`/`click`: `update` answered `Rerender`; or `Reject` when the re-rendered page shows no errors (its form has no `<Errors form />`, or the page no longer draws that form) | the page re-rendered, with the new data |
 | `Redirected p` | a `Redirect p`, or a `requires` sending a visitor to the login page | `p`, which the browser requested in turn |
-| `FormRejected errors` | `submit`: the form did not decode, or `update` answered `Reject` | the page with the form re-rendered: the values typed and the errors |
+| `FormRejected errors` | `submit`: the form did not decode, or `update` answered `Reject` and the re-rendered form shows the text in its `<Errors form />` | the page with the form re-rendered: the values typed and the errors |
 | `PageMissing` | a 404: `Query.notFound`, `Task.notFound`, no such page | `App.notFound` |
 | `RequestFailed text` | the request failed (a `Task.fail`, a Go panic): a 500 | `App.error` |
 
@@ -1119,6 +1119,13 @@ those lists show:
   page looks unchanged, and the answer is `Rerendered`. The compiler
   warns about such a form when its message's arm of `update` can answer
   `Reject` (W0005).
+- a form the re-rendered page no longer draws shows no `Reject` text
+  either. A page held while an order was Open, the order paid meanwhile,
+  and its add-line form posted: `update` answers `Reject`, but the Paid
+  order's page has no add-line form, so the text has nowhere to go; the
+  answer is `Rerendered`, and a user sees the page change with no
+  message. W0005 cannot see this (it depends on the data). When such a
+  refusal must be visible, answer `Task.notFound` or `Task.fail` instead.
 
 The messages are the decoders' (chapter 6): "must not be empty" for a
 `Text.NonEmpty`, "must be a date (YYYY-MM-DD)", "must be a whole
