@@ -938,6 +938,32 @@ says which compiler wrote it:
 The other generated files keep the header without a version. An argument
 after `version` is a usage error (exit 2).
 
+### Cutting a release
+
+A version is cut by pushing a tag: `git tag v0.1.0 && git push origin
+v0.1.0`. The tag starts `.github/workflows/release.yml`, which runs
+GoReleaser with `.goreleaser.yaml`. It builds `cmd/alder` with
+`CGO_ENABLED=0` (the SQLite driver is pure Go) for macOS and Linux on
+amd64 and arm64, and for Windows on amd64 (it builds; running alder on
+Windows is untested). Each binary goes into an archive named
+`alder_<version>_<os>_<arch>.tar.gz` (`.zip` for Windows) with the LICENSE
+and README, listed in `alder_<version>_checksums.txt`. GoReleaser then
+writes the GitHub release, its notes taken from the commits since the
+previous tag; pushes a Homebrew formula to `tapegram/homebrew-alder` (so
+`brew install tapegram/alder/alder` works, and the formula's test runs
+`alder version`); and pushes the container image
+`ghcr.io/tapegram/alder:<version>`, Go's official image plus the binary,
+for CI pipelines that run `alder test` and `alder build`. No `-ldflags`
+are passed: the go command records the tag as the module version when it
+builds at a clean tag, which is what `alder version` prints.
+
+Pushing the formula needs a token GitHub Actions does not have by
+default: before the first tag, create the repository secret
+`HOMEBREW_TAP_TOKEN`, a token allowed to write to `tapegram/homebrew-alder`.
+`goreleaser release --snapshot --clean --skip=docker` builds every archive
+locally into `dist/` and publishes nothing; a snapshot is not at a tag, so
+its `alder version` prints `devel+<commit>`.
+
 ## Diagnostics
 
 Every diagnostic has a stable code, a location, a one-line message, and,
