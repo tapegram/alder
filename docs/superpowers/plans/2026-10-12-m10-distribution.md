@@ -24,7 +24,7 @@
 ## Review Focus
 
 1. **A stale `build/<app>/rt/` from an older compiler**: expected — every build refreshes the directory (adds, replaces, removes), so a file deleted upstream cannot linger and break `go build`. Test in Task 1 (plant a stray file; build; it is gone).
-2. **`go install …@latest` binary vs release binary vs checkout**: `alder version` prints a sensible string in all three (module version / `devel+<commit>` / `(devel)`); the generated header carries it. Test in Task 1 (checkout and a `go install` from the local path with `GOFLAGS=-mod=mod`) and Task 3 (snapshot release binary).
+2. **`go install …@latest` binary vs release binary vs checkout**: `alder version` prints a sensible string in all three (module version / `devel+<commit>` / `(devel)`); the generated header carries it. Test in Task 1 (checkout and a a `git archive` build without VCS info) and Task 3 (snapshot release binary).
 3. **`alder new` inside another Go module** (as `examples/` is): the scaffold gets a `go.mod` that keeps it out of the parent module (the examples' trick); outside any module, no `go.mod`. Test in Task 2 (both placements).
 4. **The scaffold and chapter 2 drift**: expected — the verifier builds the scaffold with the built binary and compares its files with chapter 2's `part=` blocks, so a change to either fails `go test ./book`. Test in Task 2.
 5. **CI on a clean runner**: the workflow installs Go only, builds the binary, runs the gate incl. the examples (which fetch modernc once) and the out-of-tree build; a failure there is the signal that something still depends on the checkout. Test in Task 3 (the workflow must be green on the first push).
