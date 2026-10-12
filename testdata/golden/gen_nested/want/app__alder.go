@@ -3,8 +3,9 @@
 package app
 
 import (
-	_ "alder/rt" // initialized before this package (rt/tether.go)
+	"alder/rt"
 	"alder/rt/db"
+	"reflect"
 )
 
 // Tables describes every table of the app, in module order then declaration order, for db.Ensure.
@@ -27,4 +28,9 @@ type Caps struct{}
 // field is). It is exported for alder test's main; Serve uses it too.
 func (Caps) Registry() map[string]any {
 	return map[string]any{}
+}
+
+// init registers the constructor names of every union of the app, for rt.Show.
+func init() {
+	rt.RegisterUnion(reflect.TypeOf(tag__Deep__Shape(0)), []string{"Circle", "Square", "Tri"})
 }

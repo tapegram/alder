@@ -3269,8 +3269,12 @@ func TestGen_Mutate(t *testing.T) {
 // by two branches) are emitted once per shared node (share.go): the plain build grows linearly,
 // within 300 bytes per arm, and every arm, each fallback path and the final fallback compute the
 // right value. (Each place used to emit its own copy: 2^12 copies of the last arms, 1.49 MB.)
+// A named catch-all arm's body, shared under each Case's own `let name = subject` (a Maybe
+// match, a union match, a name shadowing a parameter), is emitted per place: the fixture's
+// `test`s, which pass with the emitter before share.go, pass through rtesting.Run.
 func TestGen_Nested(t *testing.T) {
-	const dir, arms = "../../testdata/golden/gen_nested", 24
+	const dir, depth = "../../testdata/golden/gen_nested", 12
+	const arms = 2*depth + 12 // pick and route, then the named catch-all matches
 	files := emit(t, dir)
 	if size := len(files["Deep_alder.go"]); size > 300*arms {
 		t.Errorf("Deep_alder.go is %d bytes: more than 300 bytes per arm (%d arms)", size, arms)
@@ -3329,7 +3333,7 @@ func check(t *testing.T, name string, set []int, want int64) {
 
 func TestNested(t *testing.T) {
 `)
-	for k := 0; k < arms/2; k++ {
+	for k := 0; k < depth; k++ {
 		want := 2*k + 1 + (k+1)*100
 		fmt.Fprintf(&b, "\tcheck(t, \"arm %d\", []int{%d, %d}, %d)\n", k, k, k+1, want)
 		if k >= 2 { // arm k-2 fails at its second test, arm k-1 at its first
@@ -3338,6 +3342,26 @@ func TestNested(t *testing.T) {
 	}
 	b.WriteString("\tcheck(t, \"fallback\", nil, 0)\n\tcheck(t, \"fallback after second-test failures\", []int{0, 2, 4, 6, 8, 10, 12}, 0)\n}\n")
 	runGo(t, files, b.String())
+	runGo(t, emitWith(t, dir, true), `package app
+
+import (
+	"testing"
+
+	rtesting "alder/rt/testing"
+)
+
+func TestAlderTests(t *testing.T) {
+	rs := rtesting.Run(Tests, rtesting.Options{Tables: Tables, Session: TestSession(), Caps: Caps{}.Registry()})
+	if len(rs) != 15 {
+		t.Fatalf("%d results, want 15", len(rs))
+	}
+	for i, r := range rs {
+		if !r.OK {
+			t.Errorf("%s: %+v", Tests[i].Name, r)
+		}
+	}
+}
+`)
 }
 
 // TestGen_MutateNested: a mutant of an If, a Match or an operator is emitted in place, its

@@ -39,6 +39,45 @@ type Deep__Hops struct {
 	H12 rt.Result[string, int64]
 }
 
+type Deep__Shape struct {
+	Tag    tag__Deep__Shape
+	Circle *payload__Deep__Shape__Circle
+	Square *payload__Deep__Shape__Square
+	Tri    *payload__Deep__Shape__Tri
+}
+
+type tag__Deep__Shape uint8
+
+const (
+	is__Deep__Shape__Circle tag__Deep__Shape = 0
+	is__Deep__Shape__Square tag__Deep__Shape = 1
+	is__Deep__Shape__Tri    tag__Deep__Shape = 2
+)
+
+type payload__Deep__Shape__Circle struct {
+	Value int64
+}
+
+type payload__Deep__Shape__Square struct {
+	Value int64
+}
+
+type payload__Deep__Shape__Tri struct {
+	Value int64
+}
+
+func Deep__Shape__Circle__(v int64) Deep__Shape {
+	return Deep__Shape{Tag: is__Deep__Shape__Circle, Circle: &payload__Deep__Shape__Circle{Value: v}}
+}
+
+func Deep__Shape__Square__(v int64) Deep__Shape {
+	return Deep__Shape{Tag: is__Deep__Shape__Square, Square: &payload__Deep__Shape__Square{Value: v}}
+}
+
+func Deep__Shape__Tri__(v int64) Deep__Shape {
+	return Deep__Shape{Tag: is__Deep__Shape__Tri, Tri: &payload__Deep__Shape__Tri{Value: v}}
+}
+
 func Deep__pick(r Deep__Row) int64 {
 	_fb1 := func() int64 {
 		_fb2 := func() int64 {
@@ -327,4 +366,109 @@ func Deep__route(h Deep__Hops) eff.Task[int64] {
 		return _fb1()
 	}
 	return _fb1()
+}
+
+func Deep__orZero(m rt.Maybe[int64]) int64 {
+	if m.Ok {
+		_m1 := m.Val
+		switch _m1 {
+		case 1:
+			return 1
+		default:
+			other := m
+			if rt.Eq(other, rt.Nothing[int64]()) {
+				return 0
+			}
+			return 2
+		}
+	}
+	other := m
+	if rt.Eq(other, rt.Nothing[int64]()) {
+		return 0
+	}
+	return 2
+}
+
+func Deep__scaled(s Deep__Shape, z int64) int64 {
+	switch s.Tag {
+	case is__Deep__Shape__Circle:
+		_m4 := s.Circle.Value
+		switch _m4 {
+		case 1:
+			return 1
+		default:
+			v := s
+			if z > 5 {
+				switch v.Tag {
+				case is__Deep__Shape__Circle:
+					n := v.Circle.Value
+					return n
+				case is__Deep__Shape__Square:
+					n := v.Square.Value
+					return n * 10
+				case is__Deep__Shape__Tri:
+					n := v.Tri.Value
+					return n * 100
+				}
+				panic("unreachable")
+			}
+			return z
+		}
+	default:
+		v := s
+		if z > 5 {
+			switch v.Tag {
+			case is__Deep__Shape__Circle:
+				n := v.Circle.Value
+				return n
+			case is__Deep__Shape__Square:
+				n := v.Square.Value
+				return n * 10
+			case is__Deep__Shape__Tri:
+				n := v.Tri.Value
+				return n * 100
+			}
+			panic("unreachable")
+		}
+		return z
+	}
+}
+
+func Deep__shadow(u Deep__Shape, w Deep__Shape) int64 {
+	switch w.Tag {
+	case is__Deep__Shape__Square:
+		_m4 := w.Square.Value
+		switch _m4 {
+		case 2:
+			return 2
+		default:
+			u := w
+			switch u.Tag {
+			case is__Deep__Shape__Circle:
+				n := u.Circle.Value
+				return n
+			case is__Deep__Shape__Square:
+				n := u.Square.Value
+				return n + 1000
+			case is__Deep__Shape__Tri:
+				n := u.Tri.Value
+				return 0 - n
+			}
+			panic("unreachable")
+		}
+	default:
+		u := w
+		switch u.Tag {
+		case is__Deep__Shape__Circle:
+			n := u.Circle.Value
+			return n
+		case is__Deep__Shape__Square:
+			n := u.Square.Value
+			return n + 1000
+		case is__Deep__Shape__Tri:
+			n := u.Tri.Value
+			return 0 - n
+		}
+		panic("unreachable")
+	}
 }

@@ -69,3 +69,43 @@ route h = match h {
   { h11: (Ok a), h12: (Ok b) } -> Task.succeed (a + b + 1200),
   _ -> Task.notFound,
 }
+
+-- A named catch-all arm's body is shared too, but each Case (and the Default) binds the name
+-- with its own `let`: such a body uses a name bound below the Match, so it is emitted per place.
+
+type Shape = Circle Int | Square Int | Tri Int
+
+orZero : Maybe Int -> Int
+orZero m = match m {
+  Just 1 -> 1,
+  other -> if other == Nothing then 0 else 2,
+}
+
+scaled : Shape -> Int -> Int
+scaled s z = match s {
+  Circle 1 -> 1,
+  v -> if z > 5 then (match v { Circle n -> n, Square n -> n * 10, Tri n -> n * 100 }) else z,
+}
+
+-- The catch-all's name shadows a parameter.
+shadow : Shape -> Shape -> Int
+shadow u w = match w {
+  Square 2 -> 2,
+  u -> match u { Circle n -> n, Square n -> n + 1000, Tri n -> 0 - n },
+}
+
+test "orZero Just 1" = orZero (Just 1) == 1
+test "orZero Nothing" = orZero Nothing == 0
+test "orZero Just 3" = orZero (Just 3) == 2
+test "scaled Circle 1" = scaled (Circle 1) 9 == 1
+test "scaled Circle 2" = scaled (Circle 2) 9 == 2
+test "scaled Square" = scaled (Square 3) 9 == 30
+test "scaled Tri" = scaled (Tri 4) 9 == 400
+test "scaled small z" = scaled (Square 3) 1 == 1
+test "shadow Square 2" = shadow (Circle 0) (Square 2) == 2
+test "shadow Square 3" = shadow (Circle 0) (Square 3) == 1003
+test "shadow Circle" = shadow (Tri 0) (Circle 7) == 7
+test "shadow Tri" = shadow (Circle 0) (Tri 5) == 0 - 5
+test "pick arm 0" = pick { f0: Just 1, f1: Just 2, f2: Nothing, f3: Nothing, f4: Nothing, f5: Nothing, f6: Nothing, f7: Nothing, f8: Nothing, f9: Nothing, f10: Nothing, f11: Nothing, f12: Nothing } == 103
+test "pick arm 11 after a second-test failure" = pick { f0: Nothing, f1: Nothing, f2: Nothing, f3: Nothing, f4: Nothing, f5: Nothing, f6: Nothing, f7: Nothing, f8: Nothing, f9: Just 1, f10: Nothing, f11: Just 2, f12: Just 3 } == 1205
+test "pick fallback" = pick { f0: Just 1, f1: Nothing, f2: Just 1, f3: Nothing, f4: Just 1, f5: Nothing, f6: Just 1, f7: Nothing, f8: Just 1, f9: Nothing, f10: Just 1, f11: Nothing, f12: Just 1 } == 0
