@@ -20,7 +20,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Fills the Go build cache (GOCACHE) and the module cache once per OS and commit, and saves
+  # them under a key naming the commit; every other job restores them first (falling back to
+  # the newest cache for the same go.sum). setup-go's own cache is keyed by go.sum alone, so it
+  # was saved once, by whichever job finished first, and never updated again.
+  warm:
+    name: warm (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-
+      - name: build everything, the test binaries included
+        run: |
+          go build ./...
+          go vet ./...
+          go test -count=1 -run '^$' ./... > /dev/null
+          go build -o "$RUNNER_TEMP/alder" ./cmd/alder
+      - name: build examples/todos (the generated app's dependencies, modernc's sqlite among them)
+        working-directory: examples/todos
+        run: $RUNNER_TEMP/alder build .
+      - uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-${{ github.sha }}
+
   lint:
+    needs: warm
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -28,7 +71,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache-dependency-path: go.sum
+          cache: false
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-
       - name: gofmt
         run: |
           out=$(gofmt -l $(git ls-files '*.go'))
@@ -45,6 +96,7 @@ jobs:
         run: python3 book/site/test_site.py
 
   test:
+    needs: warm
     name: test (${{ matrix.os }}, ${{ matrix.part }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -58,7 +110,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache-dependency-path: go.sum
+          cache: false
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-
       - name: go test ./cmd/alder (includes TestDist_OutOfTree)
         if: matrix.part == 'cmd/alder'
         run: go test ./cmd/alder -count=1
@@ -67,6 +127,7 @@ jobs:
         run: go test $(go list ./... | grep -v '^alder/cmd/alder$') -count=1
 
   examples:
+    needs: warm
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -78,7 +139,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache-dependency-path: go.sum
+          cache: false
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-
       - name: build alder
         run: |
           go build -o "$RUNNER_TEMP/bin/alder" ./cmd/alder
