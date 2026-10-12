@@ -1,0 +1,67 @@
+module Notes.Index
+
+import Note
+import Layout
+
+page "/" { } requires user
+
+type Model = { notes: List Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <-
+    Db.from Note
+      |> Db.where (Note.owner.eq session.user)
+      |> Db.orderBy Note.created.desc
+      |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Add form NewNote
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Notes" theme={session.theme}>
+    <h1>Notes</h1>
+
+    <form submit={Add}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <button>Add</button>
+    </form>
+
+    <ul id="notes">
+      {for note in model.notes -> <Item note={note} />}
+    </ul>
+  </Layout.Page>
+
+Item : { note: Note } -> Html Msg
+Item props =
+  <li>
+    <a class="title" href={Notes.Show { id: props.note.id }}>{props.note.title}</a>
+  </li>
+
+test "adding a note through the page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let added <- Test.submit NewNote { title: Text.NonEmpty "Milk", body: "" }
+  let page <- Test.get (Notes.Index {})
+  Task.succeed ({ answer: added.answer, titles: Test.texts "a.title" page.doc } == { answer: Redirected (Notes.Index {}), titles: ["Milk"] })
+}

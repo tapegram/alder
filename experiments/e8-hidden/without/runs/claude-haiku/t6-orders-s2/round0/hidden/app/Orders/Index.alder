@@ -1,0 +1,60 @@
+module Orders.Index
+
+import Order
+import Line
+import User
+import Layout
+
+page "/" { } requires user
+
+type OrderRow = { order: Order, total: Int }
+
+type Model = {
+  rows: List OrderRow,
+  manager: Bool,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let orders <-
+    Db.from Order
+      |> Db.where (Order.owner.eq session.user)
+      |> Db.orderBy Order.created.desc
+      |> Db.all
+  let rows <- Query.all (List.map orderRow orders)
+  let manager <- User.isManager session.user
+  Query.succeed { rows: rows, manager: manager }
+}
+
+orderRow : Order -> Query OrderRow
+orderRow order = {
+  let total <- Line.orderTotal order.id
+  Query.succeed { order: order, total: total }
+}
+
+msg Create
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Order { owner: session.user }
+    Task.succeed (Redirect (Orders.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Orders">
+    <h1>Orders</h1>
+    <button click={Create}>New order</button>
+    <ul id="orders">
+      {for r in model.rows ->
+        <li>
+          <a href={Orders.Show { id: r.order.id }}>Order</a>
+          <span class="status">{Order.statusLabel r.order.status}</span>
+          <span class="total">{Text.fromInt r.total}</span>
+        </li>}
+    </ul>
+    {if model.manager then <a href={Products.Index {}}>Products</a> else Html.none}
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>

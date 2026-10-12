@@ -1,0 +1,19 @@
+module Layout
+
+import Theme
+
+Page : { title: Text, theme: Theme, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+    </head>
+    <body class={if props.theme == Dark then Just "dark" else Nothing}>
+      <nav>
+        <button id="theme" click={App.SwitchTheme}>{if props.theme == Dark then "Switch to light" else "Switch to dark"}</button>
+        <button click={App.Logout}>Log out</button>
+      </nav>
+      <main>{props.children}</main>
+    </body>
+  </html>

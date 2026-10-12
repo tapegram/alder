@@ -1,0 +1,28 @@
+module Line
+
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+-- amount is what one line costs in cents: its quantity times its product's price. A line whose
+-- product is not in the list costs 0.
+amount : List Product -> Line -> Int
+amount products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  match found {
+    Just p -> line.quantity * p.price,
+    Nothing -> 0,
+  }
+}
+
+-- total is the sum of the amounts of the lines, in cents.
+total : List Product -> List Line -> Int
+total products lines = List.sum (List.map (amount products) lines)

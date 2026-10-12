@@ -1,0 +1,723 @@
+{
+ "model": "claude-haiku",
+ "task": "t8-notify",
+ "retries": 2,
+ "base": "examples/blog",
+ "harness": {
+  "build": true,
+  "retries": 2,
+  "test": true,
+  "migrate": true,
+  "hidden": "experiments/e8-hidden/hidden",
+  "condition": "without",
+  "sample": "s1"
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 12,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 22.8,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "haiku",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 30,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Post",
+      "name": "a slug is lowercase letters, digits and hyphens",
+      "ok": true,
+      "left": "[True, True, False, False, False, False]",
+      "right": "[True, True, False, False, False, False]",
+      "trace": [],
+      "ms": 0.137
+     },
+     {
+      "module": "Post",
+      "name": "a draft is not visible",
+      "ok": true,
+      "left": "[False, False, True, True]",
+      "right": "[False, False, True, True]",
+      "trace": [],
+      "ms": 0.869
+     },
+     {
+      "module": "Admin",
+      "name": "a Reader cannot open the admin page",
+      "ok": true,
+      "left": "{ reader: Err \"not found\", author: Ok \"HkpE08EyFgd1rfGcNLbp\" }",
+      "right": "{ reader: Err \"not found\", author: Ok \"HkpE08EyFgd1rfGcNLbp\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Test.run",
+       "Db.first User",
+       "Test.run",
+       "Db.first User",
+       "Db.all Post"
+      ],
+      "ms": 0.82
+     },
+     {
+      "module": "Admin",
+      "name": "creating a post redirects to its edit page",
+      "ok": true,
+      "trace": [
+       "Db.insert User",
+       "Db.first User",
+       "Db.all Post",
+       "Test.run",
+       "Db.first Post",
+       "Db.insert Post",
+       "Db.first Post"
+      ],
+      "ms": 0.722
+     },
+     {
+      "module": "Admin",
+      "name": "a taken slug is refused",
+      "ok": true,
+      "left": "{ value: Ok (Reject \"Another post has that slug.\"), posts: 1 }",
+      "right": "{ value: Ok (Reject \"Another post has that slug.\"), posts: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.first User",
+       "Db.all Post",
+       "Test.run",
+       "Db.first Post",
+       "Db.count Post"
+      ],
+      "ms": 0.662
+     },
+     {
+      "module": "Admin",
+      "name": "the admin page needs an Author",
+      "ok": true,
+      "left": "{ visitor: Redirected /login, reader: PageMissing }",
+      "right": "{ visitor: Redirected /login, reader: PageMissing }",
+      "trace": [
+       "Db.insert User",
+       "Test.open Admin",
+       "Test.login",
+       "Test.open Admin",
+       "Db.first User"
+      ],
+      "ms": 0.845
+     },
+     {
+      "module": "Admin",
+      "name": "an Author logs out from the admin page",
+      "ok": true,
+      "left": "{ heading: Just \"Your posts\", out: Redirected /login, user: Nothing }",
+      "right": "{ heading: Just \"Your posts\", out: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin",
+       "Db.first User",
+       "Db.all Post",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 1.32
+     },
+     {
+      "module": "Comment",
+      "name": "a name or comment has text and a bound",
+      "ok": true,
+      "left": "[True, False, False, True, False]",
+      "right": "[True, False, False, True, False]",
+      "trace": [],
+      "ms": 0.746
+     },
+     {
+      "module": "Posts.Index",
+      "name": "the front page lists only published posts, newest first",
+      "ok": true,
+      "left": "[\"Second\", \"First\"]",
+      "right": "[\"Second\", \"First\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.all Post"
+      ],
+      "ms": 0.656
+     },
+     {
+      "module": "Posts.Index",
+      "name": "search matches title or body",
+      "ok": true,
+      "left": "{ count: 2, title: True, body: True }",
+      "right": "{ count: 2, title: True, body: True }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.all Post"
+      ],
+      "ms": 0.598
+     },
+     {
+      "module": "Posts.Index",
+      "name": "a `%` in the query is literal",
+      "ok": true,
+      "left": "[\"100% done\"]",
+      "right": "[\"100% done\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.all Post"
+      ],
+      "ms": 0.577
+     },
+     {
+      "module": "Posts.Index",
+      "name": "page 99 is empty",
+      "ok": true,
+      "left": "[{ page: 1, posts: 10, hasMore: True }, { page: 2, posts: 1, hasMore: False }, { page: 99, posts: 0, hasMore: False }, { page: 1, posts: 10, hasMore: True }]",
+      "right": "[{ page: 1, posts: 10, hasMore: True }, { page: 2, posts: 1, hasMore: False }, { page: 99, posts: 0, hasMore: False }, { page: 1, posts: 10, hasMore: True }]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.all Post",
+       "Db.all Post",
+       "Db.all Post",
+       "Db.all Post"
+      ],
+      "ms": 0.782
+     },
+     {
+      "module": "Posts.Index",
+      "name": "a negative page is page 1",
+      "ok": true,
+      "left": "1",
+      "right": "1",
+      "trace": [
+       "Db.all Post"
+      ],
+      "ms": 0.491
+     },
+     {
+      "module": "Posts.Index",
+      "name": "a `_` in the query is literal",
+      "ok": true,
+      "left": "[\"snake_case\"]",
+      "right": "[\"snake_case\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.all Post"
+      ],
+      "ms": 0.537
+     },
+     {
+      "module": "Posts.Index",
+      "name": "a long query is cut",
+      "ok": true,
+      "left": "\"tomato tomato tomato tomato tomato tomato tomato tomato tomato tomato tomato tomato tomato tomato to\"",
+      "right": "\"tomato tomato tomato tomato tomato tomato tomato tomato tomato tomato tomato tomato tomato tomato to\"",
+      "trace": [
+       "Db.all Post"
+      ],
+      "ms": 0.497
+     },
+     {
+      "module": "Posts.Index",
+      "name": "a search answers with the first page of its results",
+      "ok": true,
+      "left": "Redirect /?q=soup",
+      "right": "Redirect /?q=soup",
+      "trace": [
+       "Db.all Post"
+      ],
+      "ms": 0.482
+     },
+     {
+      "module": "Posts.Index",
+      "name": "only an Author sees the Write link",
+      "ok": true,
+      "left": "[False, False, True]",
+      "right": "[False, False, True]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.all Post",
+       "Db.all Post",
+       "Db.first User",
+       "Db.all Post",
+       "Db.first User"
+      ],
+      "ms": 0.606
+     },
+     {
+      "module": "Posts.Index",
+      "name": "the second page links back to the first",
+      "ok": true,
+      "left": "{ firstPosts: 10, next: Just \"/?page=2\", secondPosts: 1, prev: Just \"/\", more: False }",
+      "right": "{ firstPosts: 10, next: Just \"/?page=2\", secondPosts: 1, prev: Just \"/\", more: False }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Test.get Posts.Index",
+       "Db.all Post",
+       "Test.get Posts.Index",
+       "Db.all Post"
+      ],
+      "ms": 0.796
+     },
+     {
+      "module": "Posts.Index",
+      "name": "a search through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /?q=tomato, titles: [\"Soup\"], query: Just \"tomato\" }",
+      "right": "{ answer: Redirected /?q=tomato, titles: [\"Soup\"], query: Just \"tomato\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Test.get Posts.Index",
+       "Db.all Post",
+       "Test.submit SearchForm",
+       "Db.all Post",
+       "Db.all Post"
+      ],
+      "ms": 0.73
+     },
+     {
+      "module": "Admin.Edit",
+      "name": "deleting a post deletes its comments",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /admin), trace: [\"Db.delete Post\"], posts: 0, comments: 0 }",
+      "right": "{ value: Ok (Redirect /admin), trace: [\"Db.delete Post\"], posts: 0, comments: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Comment",
+       "Db.insert Comment",
+       "Db.first User",
+       "Db.get Post",
+       "Test.run",
+       "Db.delete Post",
+       "Db.count Post",
+       "Db.count Comment"
+      ],
+      "ms": 0.596
+     },
+     {
+      "module": "Admin.Edit",
+      "name": "another author's post is not found",
+      "ok": true,
+      "left": "Err \"not found\"",
+      "right": "Err \"not found\"",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.run",
+       "Db.first User",
+       "Db.get Post"
+      ],
+      "ms": 0.532
+     },
+     {
+      "module": "Admin.Edit",
+      "name": "a demoted author cannot edit",
+      "ok": true,
+      "left": "{ before: Ok \"mlDhyluW2jiSZA7qUgTb\", after: Err \"not found\" }",
+      "right": "{ before: Ok \"mlDhyluW2jiSZA7qUgTb\", after: Err \"not found\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.run",
+       "Db.first User",
+       "Db.get Post",
+       "Db.update User",
+       "Test.run",
+       "Db.first User",
+       "Db.get Post"
+      ],
+      "ms": 0.532
+     },
+     {
+      "module": "Admin.Edit",
+      "name": "Publish shows the post on the front page; Unpublish hides it",
+      "ok": true,
+      "left": "{ published: 1, unpublished: 0 }",
+      "right": "{ published: 1, unpublished: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.first User",
+       "Db.get Post",
+       "Db.update Post",
+       "Db.all Post",
+       "Db.first User",
+       "Db.get Post",
+       "Db.update Post",
+       "Db.all Post"
+      ],
+      "ms": 0.618
+     },
+     {
+      "module": "Posts.Show",
+      "name": "a draft is not found for a reader",
+      "ok": true,
+      "left": "{ reader: Err \"not found\", nobody: Err \"not found\" }",
+      "right": "{ reader: Err \"not found\", nobody: Err \"not found\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.run",
+       "Db.first Post",
+       "Test.run",
+       "Db.first Post"
+      ],
+      "ms": 0.501
+     },
+     {
+      "module": "Posts.Show",
+      "name": "a draft is shown to its author",
+      "ok": true,
+      "left": "{ title: \"Draft\", body: <p>Not <em>yet</em>.</p> }",
+      "right": "{ title: \"Draft\", body: <p>Not <em>yet</em>.</p> }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.first Post",
+       "Markdown.render",
+       "Db.all Comment"
+      ],
+      "ms": 0.512
+     },
+     {
+      "module": "Posts.Show",
+      "name": "a post's body is rendered through the Markdown capability",
+      "ok": true,
+      "left": "{ body: Not *yet*., rendered: True }",
+      "right": "{ body: Not *yet*., rendered: True }",
+      "trace": [
+       "Test.fake Markdown",
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.first Post",
+       "Markdown.render",
+       "Db.all Comment",
+       "Test.trace"
+      ],
+      "ms": 0.466
+     },
+     {
+      "module": "Posts.Show",
+      "name": "a comment on a draft is refused",
+      "ok": true,
+      "left": "{ value: Err \"not found\", comments: 0 }",
+      "right": "{ value: Err \"not found\", comments: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.first Post",
+       "Markdown.render",
+       "Db.all Comment",
+       "Test.run",
+       "Db.count Comment"
+      ],
+      "ms": 0.484
+     },
+     {
+      "module": "Posts.Show",
+      "name": "a comment is listed oldest first",
+      "ok": true,
+      "left": "[\"First!\", \"Second.\"]",
+      "right": "[\"First!\", \"Second.\"]",
+      "trace": [
+       "Test.fake Mailer",
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.first Post",
+       "Markdown.render",
+       "Db.all Comment",
+       "Db.insert Comment",
+       "Db.get User",
+       "Mailer.send",
+       "Db.insert Sent",
+       "Db.insert Comment",
+       "Db.get User",
+       "Mailer.send",
+       "Db.insert Sent",
+       "Db.first Post",
+       "Markdown.render",
+       "Db.all Comment"
+      ],
+      "ms": 0.557
+     },
+     {
+      "module": "Posts.Show",
+      "name": "a comment emails the post's author",
+      "ok": true,
+      "left": "[{ to: \"author@example.com\", subject: \"New comment on Hello world\" }]",
+      "right": "[{ to: \"author@example.com\", subject: \"New comment on Hello world\" }]",
+      "trace": [
+       "Test.fake Mailer",
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.first Post",
+       "Markdown.render",
+       "Db.all Comment",
+       "Db.insert Comment",
+       "Db.get User",
+       "Mailer.send",
+       "Db.insert Sent",
+       "Db.all Sent"
+      ],
+      "ms": 0.525
+     },
+     {
+      "module": "Posts.Show",
+      "name": "an empty comment is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"body\", message: \"is not valid\" }], author: Just \"Ann\", comments: 0 }",
+      "right": "{ answer: FormRejected [{ field: \"body\", message: \"is not valid\" }], author: Just \"Ann\", comments: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.get Posts.Show",
+       "Db.first Post",
+       "Markdown.render",
+       "Db.all Comment",
+       "Test.submitRaw NewComment",
+       "Db.first Post",
+       "Markdown.render",
+       "Db.all Comment",
+       "Db.count Comment"
+      ],
+      "ms": 0.609
+     }
+    ],
+    "exit": 0
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "base_commit": "87c82d58a19cdffe4cdb356db389c3dba97d0eac",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "haiku",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "hidden": {
+  "passed": 5,
+  "failed": 0,
+  "results": [
+   {
+    "module": "Hidden",
+    "name": "a comment emails the post's author through Mailer.send",
+    "ok": true,
+    "left": "{ answer: Redirected /posts/hello, traced: True, sent: [{ to: \"author@example.com\", subject: \"New comment on Hello world\" }] }",
+    "right": "{ answer: Redirected /posts/hello, traced: True, sent: [{ to: \"author@example.com\", subject: \"New comment on Hello world\" }] }",
+    "trace": [
+     "Test.fake Mailer",
+     "Db.insert User",
+     "Db.insert Post",
+     "Test.get Posts.Show",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Test.submit NewComment",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Db.insert Comment",
+     "Db.get User",
+     "Mailer.send",
+     "Db.insert Sent",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Test.trace",
+     "Db.all Sent"
+    ],
+    "ms": 1.827
+   },
+   {
+    "module": "Hidden",
+    "name": "the mail's body has the commenter's name and the comment",
+    "ok": true,
+    "left": "[{ name: True, comment: True }]",
+    "right": "[{ name: True, comment: True }]",
+    "trace": [
+     "Test.fake Mailer",
+     "Db.insert User",
+     "Db.insert Post",
+     "Test.get Posts.Show",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Test.submit NewComment",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Db.insert Comment",
+     "Db.get User",
+     "Mailer.send",
+     "Db.insert Sent",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Db.all Sent"
+    ],
+    "ms": 0.859
+   },
+   {
+    "module": "Hidden",
+    "name": "the mail goes to the author of the post commented on",
+    "ok": true,
+    "left": "[{ to: \"bob@example.com\", subject: \"New comment on Bob's post\" }]",
+    "right": "[{ to: \"bob@example.com\", subject: \"New comment on Bob's post\" }]",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Post",
+     "Db.insert Post",
+     "Test.fake Mailer",
+     "Test.login",
+     "Test.get Posts.Show",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Test.submit NewComment",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Db.insert Comment",
+     "Db.get User",
+     "Mailer.send",
+     "Db.insert Sent",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Db.all Sent"
+    ],
+    "ms": 1.384
+   },
+   {
+    "module": "Hidden",
+    "name": "each comment sends one mail",
+    "ok": true,
+    "left": "{ mails: 2, comments: 2 }",
+    "right": "{ mails: 2, comments: 2 }",
+    "trace": [
+     "Test.fake Mailer",
+     "Db.insert User",
+     "Db.insert Post",
+     "Test.get Posts.Show",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Test.submit NewComment",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Db.insert Comment",
+     "Db.get User",
+     "Mailer.send",
+     "Db.insert Sent",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Test.submit NewComment",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Db.insert Comment",
+     "Db.get User",
+     "Mailer.send",
+     "Db.insert Sent",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Db.count Sent",
+     "Db.count Comment"
+    ],
+    "ms": 0.995
+   },
+   {
+    "module": "Hidden",
+    "name": "a rejected comment sends no mail",
+    "ok": true,
+    "left": "{ rejected: True, mails: 0 }",
+    "right": "{ rejected: True, mails: 0 }",
+    "trace": [
+     "Test.fake Mailer",
+     "Db.insert User",
+     "Db.insert Post",
+     "Test.get Posts.Show",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Test.submitRaw NewComment",
+     "Db.first Post",
+     "Markdown.render",
+     "Db.all Comment",
+     "Db.count Sent"
+    ],
+    "ms": 0.548
+   }
+  ],
+  "exit": 0
+ },
+ "hidden_pass": "5/5"
+}

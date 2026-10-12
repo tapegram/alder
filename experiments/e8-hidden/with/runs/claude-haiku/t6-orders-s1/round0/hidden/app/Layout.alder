@@ -1,0 +1,28 @@
+module Layout
+
+import User
+
+Page : { title: Text, role: Maybe User.Role, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+      <link rel="stylesheet" href={Url.external "/static/app.css"} />
+    </head>
+    <body>
+      {match props.role {
+        Nothing -> Html.none,
+        Just role -> <Menu role={role} />,
+      }}
+      <main>{props.children}</main>
+    </body>
+  </html>
+
+Menu : { role: User.Role } -> Html a
+Menu props =
+  <nav>
+    <a href={Orders.Index {}}>Orders</a>
+    {if props.role == Manager then <a href={Products.Index {}}>Products</a> else Html.none}
+    <button click={App.Logout}>Log out</button>
+  </nav>

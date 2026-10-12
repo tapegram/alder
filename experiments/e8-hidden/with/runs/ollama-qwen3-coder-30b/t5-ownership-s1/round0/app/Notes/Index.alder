@@ -1,0 +1,71 @@
+module Notes.Index
+
+import Note
+import Layout
+import User
+
+page "/" { } requires user
+
+type Model = { notes: List Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <- Db.from Note |> Db.where (Note.owner.eq session.user) |> Db.orderBy Note.created.desc |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Add form NewNote
+msg Delete { id: Note.NoteId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+  Delete p -> {
+    let note <- owned p.id session
+    let _ <- Db.delete Note note.id
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+}
+
+-- owned is the note a message names, when the session's user owns it; otherwise the message is
+-- a 404.
+owned : Note.NoteId -> Session -> Task Note
+owned id session = {
+  let found <- Db.get Note id
+  match found {
+    Just note -> if note.owner == session.user then Task.succeed note else Task.notFound,
+    Nothing -> Task.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Notes">
+    <h1>Notes</h1>
+
+    <form submit={Add}>
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <button>Add</button>
+    </form>
+
+    <ul id="notes">
+      {for note in model.notes ->
+        <li>
+          <a href={Notes.Show { id: note.id }} class="title">{note.title}</a>
+          <button click={Delete { id: note.id }}>Delete</button>
+        </li>}
+    </ul>
+
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>

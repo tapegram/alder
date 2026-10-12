@@ -1,0 +1,5 @@
+{"code": "E0003", "severity": "error", "file": "app/Posts/Show.alder", "line": 109, "col": 30, "endLine": 109, "endCol": 78, "message": "expected Task _, got Query Posts.Show.Model; a Query runs inside a test's block: `let x <- q`; `Test.run` takes a Task"}
+{"code": "E0003", "severity": "error", "file": "app/Posts/Show.alder", "line": 110, "col": 28, "endLine": 110, "endCol": 79, "message": "expected Task _, got Query Posts.Show.Model; a Query runs inside a test's block: `let x <- q`; `Test.run` takes a Task"}
+{"code": "E0003", "severity": "error", "file": "app/Posts/Show.alder", "line": 111, "col": 29, "endLine": 111, "endCol": 81, "message": "expected Task _, got Query Posts.Show.Model; a Query runs inside a test's block: `let x <- q`; `Test.run` takes a Task"}
+{"code": "E0003", "severity": "error", "file": "app/Posts/Show.alder", "line": 112, "col": 32, "endLine": 112, "endCol": 38, "message": "cannot infer the record type of `m`; add a type annotation"}
+{"code": "E0003", "severity": "error", "file": "app/Posts/Show.alder", "line": 112, "col": 32, "endLine": 112, "endCol": 44, "message": "cannot infer the record type of `m.post`; add a type annotation"}

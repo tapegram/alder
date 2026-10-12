@@ -1,0 +1,21 @@
+module User
+
+type UserId = brand Text
+
+type Role = Staff | Manager
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  role: Role = Staff,
+  created: Time @created,
+}
+
+-- isManager is whether the user a session names exists and is a Manager.
+isManager : Maybe User -> Bool
+isManager found = match found {
+  Just u -> u.role == Manager,
+  Nothing -> False,
+}

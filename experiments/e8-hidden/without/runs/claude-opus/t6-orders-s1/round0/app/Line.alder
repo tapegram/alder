@@ -1,0 +1,27 @@
+module Line
+
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+-- subtotal is quantity × price for one line, in cents.
+subtotal : List Product -> Line -> Int
+subtotal products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  match found {
+    Just p -> line.quantity * p.price,
+    Nothing -> 0,
+  }
+}
+
+-- total is the sum of the lines' subtotals, in cents.
+total : List Product -> List Line -> Int
+total products lines = lines |> List.map (subtotal products) |> List.sum

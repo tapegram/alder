@@ -1,0 +1,12 @@
+module Product
+
+import User
+
+type ProductId = brand Text
+
+table Product {
+  id: ProductId @id,
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+  active: Bool = True,
+}

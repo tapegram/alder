@@ -1,0 +1,115 @@
+module Orders.Show
+
+import Order
+import Line
+import Product
+import User
+import Layout
+
+page "/orders/{id}" { id: Order.OrderId } requires user
+
+type Model = {
+  order: Order,
+  lines: List Line.LineView,
+  total: Int,
+  products: List Product,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Order params.id
+  let manager <- User.isManager session.user
+  match found {
+    Just order -> if order.owner == session.user || manager then viewOf order else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+-- The model of an order the user may see: its lines, its total, and the active products to add.
+viewOf : Order -> Query Model
+viewOf order = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq order.id) |> Db.all
+  let views <- Query.all (List.map Line.lineView lines)
+  let products <-
+    Db.from Product
+      |> Db.where (Product.active.eq True)
+      |> Db.orderBy Product.name.asc
+      |> Db.all
+  Query.succeed { order: order, lines: views, total: List.sum (List.map (\v -> v.cost) views), products: products }
+}
+
+form NewLine = {
+  quantity: Int.Positive,
+}
+
+msg AddLine { product: Product.ProductId } form NewLine
+msg Pay
+msg Cancel
+
+-- Adds a line, if the order is still Open and the product is active. The order is read again
+-- here, so a form from a page loaded while the order was Open is still refused once it is Paid.
+addLine : Order.OrderId -> Product.ProductId -> Int.Positive -> Task Nav
+addLine orderId productId quantity = {
+  let order <- Db.get Order orderId
+  let product <- Db.get Product productId
+  let isOpen = match order { Just o -> o.status == Open, Nothing -> False }
+  let sellable = match product { Just pr -> pr.active, Nothing -> False }
+  if not isOpen then Task.succeed (Reject "This order is no longer open.") else if not sellable then Task.succeed (Reject "That product is not for sale.") else Task.map (\u -> Redirect (Orders.Show { id: orderId })) (Db.insert Line { order: orderId, product: productId, quantity: quantity })
+}
+
+-- Marks an Open order with the given status; an order that is no longer Open is refused.
+setStatus : Order.OrderId -> Order.Status -> Task Nav
+setStatus id next = {
+  let found <- Db.get Order id
+  let isOpen = match found { Just o -> o.status == Open, Nothing -> False }
+  if isOpen then Task.map (\u -> Redirect (Orders.Show { id: id })) (Db.update Order id (\o -> { o | status: next })) else Task.succeed (Reject "This order is no longer open.")
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddLine p -> addLine model.order.id p.product p.form.quantity,
+  Pay p -> setStatus model.order.id Paid,
+  Cancel p -> setStatus model.order.id Cancelled,
+}
+
+AddForms : { products: List Product } -> Html Msg
+AddForms props =
+  <ul>
+    {for p in props.products ->
+      <li>
+        <form submit={AddLine { product: p.id }}>
+          <Errors form />
+          <span>{p.name}</span>
+          <Input field="quantity" label="Quantity" />
+          <Errors field="quantity" />
+          <button>Add</button>
+        </form>
+      </li>}
+  </ul>
+
+-- The forms and buttons of an order; they are shown only while the order is Open.
+Actions : { isOpen: Bool, products: List Product } -> Html Msg
+Actions props =
+  <div>
+    {if props.isOpen then <AddForms products={props.products} /> else Html.none}
+    {if props.isOpen then <button click={Pay}>Mark paid</button> else Html.none}
+    {if props.isOpen then <button click={Cancel}>Cancel order</button> else Html.none}
+  </div>
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Order">
+    <h1>Order</h1>
+    <p>Status: <span id="status">{Order.statusLabel model.order.status}</span></p>
+    <ul id="lines">
+      {for l in model.lines ->
+        <li>
+          <span class="name">{l.name}</span>
+          <span class="quantity">{Text.fromInt l.quantity}</span>
+          <span class="cost">{Text.fromInt l.cost}</span>
+        </li>}
+    </ul>
+    <p>Total: <span id="total">{Text.fromInt model.total}</span></p>
+    <Actions isOpen={model.order.status == Open} products={model.products} />
+    <a href={Orders.Index {}}>Back</a>
+  </Layout.Page>

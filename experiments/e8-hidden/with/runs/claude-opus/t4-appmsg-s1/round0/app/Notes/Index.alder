@@ -1,0 +1,105 @@
+module Notes.Index
+
+import Note
+import Layout
+import User
+import Theme
+
+page "/" { } requires user
+
+type Model = { notes: List Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <-
+    Db.from Note
+      |> Db.where (Note.owner.eq session.user)
+      |> Db.orderBy Note.created.desc
+      |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Add form NewNote
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Notes" theme={session.theme}>
+    <h1>Notes</h1>
+
+    <form submit={Add}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <button>Add</button>
+    </form>
+
+    <ul id="notes">
+      {for note in model.notes ->
+        <li><a class="title" href={Notes.Show { id: note.id }}>{note.title}</a></li>}
+    </ul>
+  </Layout.Page>
+
+test "adding a note through the page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me, theme: Light }
+  let _ <- Test.get (Notes.Index {})
+  let added <- Test.submit NewNote { title: Text.NonEmpty "First", body: "hello" }
+  let page <- Test.get (Notes.Index {})
+  Task.succeed ({ answer: added.answer, titles: Test.texts "#notes a.title" page.doc, items: Test.count "#notes > li" page.doc } == { answer: Redirected (Notes.Index {}), titles: ["First"], items: 1 })
+}
+
+test "the list shows only my notes" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Mine", body: "", owner: me }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Theirs", body: "", owner: other }
+  let _ <- Test.login { user: Just me, theme: Light }
+  let page <- Test.get (Notes.Index {})
+  Task.succeed (Test.texts "#notes a.title" page.doc == ["Mine"])
+}
+
+test "the theme flips" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me, theme: Light }
+  let before <- Test.get (Notes.Index {})
+  let _ <- Test.click App.SwitchTheme
+  let dark <- Test.get (Notes.Index {})
+  let _ <- Test.click App.SwitchTheme
+  let light <- Test.get (Notes.Index {})
+  Task.succeed ({
+    before: Test.text "#theme" before.doc,
+    beforeDark: Test.has "body.dark" before.doc,
+    theme: dark.session.theme,
+    dark: Test.has "body.dark" dark.doc,
+    label: Test.text "#theme" dark.doc,
+    user: dark.session.user,
+    again: light.session.theme,
+    lightDark: Test.has "body.dark" light.doc,
+    lightLabel: Test.text "#theme" light.doc,
+  } == {
+    before: Just "Switch to dark",
+    beforeDark: False,
+    theme: Dark,
+    dark: True,
+    label: Just "Switch to light",
+    user: Just me,
+    again: Light,
+    lightDark: False,
+    lightLabel: Just "Switch to dark",
+  })
+}

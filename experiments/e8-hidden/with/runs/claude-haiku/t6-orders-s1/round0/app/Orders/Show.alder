@@ -1,0 +1,161 @@
+module Orders.Show
+
+import Order
+import Line
+import Product
+import User
+import Layout
+
+page "/orders/{id}" { id: Order.OrderId } requires user
+
+type Model = {
+  order: Order,
+  lines: List Line.LineRow,
+  total: Int,
+  products: List Product,
+  role: User.Role,
+}
+
+form NewLine = {
+  quantity: Int.Positive,
+}
+
+msg AddLine { product: Product.ProductId } form NewLine
+msg Pay
+msg Cancel
+
+-- A user may see an order that is theirs, and a Manager may see any order.
+mayOpen : Order -> User -> Bool
+mayOpen order u = order.owner == u.id || u.role == Manager
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Order params.id
+  let me <- Db.get User session.user
+  match found {
+    Nothing -> Query.notFound,
+    Just order -> openFor order me,
+  }
+}
+
+-- openFor is the order's page for the user, or a 404 when the user may not see it.
+openFor : Order -> Maybe User -> Query Model
+openFor order me = match me {
+  Nothing -> Query.notFound,
+  Just u -> if mayOpen order u then openPage order u else Query.notFound,
+}
+
+openPage : Order -> User -> Query Model
+openPage order u = {
+  let lines <- Line.rowsOf order.id
+  let total <- Line.orderTotal order.id
+  let products <- Db.from Product |> Db.where (Product.active.eq True) |> Db.orderBy Product.name.asc |> Db.all
+  Query.succeed { order: order, lines: lines, total: total, products: products, role: u.role }
+}
+
+-- openOrder is the order as it is now, for a change by the signed-in user. The page may have
+-- been loaded while the order was still Open, so the status is read again here.
+openOrder : Order.OrderId -> Session -> Task Order
+openOrder id session = {
+  let found <- Db.get Order id
+  let me <- Db.get User session.user
+  match found {
+    Nothing -> Task.notFound,
+    Just order -> changeable order me,
+  }
+}
+
+-- A refused change to an order that is no longer Open is Task.fail, not Task.notFound: the order
+-- exists and the user may see it, so a 404 would be a false answer. The failure rolls back.
+changeable : Order -> Maybe User -> Task Order
+changeable order me = match me {
+  Nothing -> Task.notFound,
+  Just u -> if not (mayOpen order u) then Task.notFound else if order.status == Open then Task.succeed order else Task.fail "the order is not open",
+}
+
+activeProduct : Product.ProductId -> Task Product
+activeProduct id = {
+  let found <- Db.get Product id
+  match found {
+    Nothing -> Task.notFound,
+    Just product -> if product.active then Task.succeed product else Task.fail "the product is not active",
+  }
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddLine p -> {
+    let order <- openOrder model.order.id session
+    let product <- activeProduct p.product
+    let _ <- Db.insert Line { order: order.id, product: product.id, quantity: p.form.quantity }
+    Task.succeed (Redirect (Orders.Show { id: order.id }))
+  },
+  Pay p -> {
+    let order <- openOrder model.order.id session
+    let _ <- Db.update Order order.id (\o -> { o | status: Paid })
+    Task.succeed (Redirect (Orders.Show { id: order.id }))
+  },
+  Cancel p -> {
+    let order <- openOrder model.order.id session
+    let _ <- Db.update Order order.id (\o -> { o | status: Cancelled })
+    Task.succeed (Redirect (Orders.Show { id: order.id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Order" role={Just model.role}>
+    <h1>Order</h1>
+    <p>Status: <span id="status">{Order.statusLabel model.order.status}</span></p>
+    <p>Total: <span id="total">{Text.fromInt model.total}</span></p>
+    <ul id="lines">
+      {for l in model.lines -> <li>{l.name} x {Text.fromInt l.quantity}, {Text.fromInt l.cost}</li>}
+    </ul>
+    {if model.order.status == Open then <Adding products={model.products} /> else Html.none}
+  </Layout.Page>
+
+Adding : { products: List Product } -> Html Msg
+Adding props =
+  <div>
+    <h2>Add a line</h2>
+    {for p in props.products ->
+      <form submit={AddLine { product: p.id }}>
+        <Errors form />
+        <span>{p.name} at {Text.fromInt p.price} each</span>
+        <Input field="quantity" label="Quantity" />
+        <Errors field="quantity" />
+        <button>Add</button>
+      </form>}
+    <button click={Pay}>Mark paid</button>
+    <button click={Cancel}>Cancel order</button>
+  </div>
+
+test "adding a line to a paid order is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let order <- Db.insert Order { owner: me }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: order })
+  let _ <- Db.update Order order (\o -> { o | status: Paid })
+  let r <- Test.submit (AddLine { product: tea }) { quantity: Int.Positive 1 }
+  let lines <- Db.from Line |> Db.count
+  Task.succeed ({ answer: r.answer, lines: lines } == { answer: RequestFailed "the order is not open", lines: 0 })
+}
+
+test "a staff user cannot open another user's order" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let staff <- Db.insert User { email: Text.Email "staff@example.com", name: Text.NonEmpty "Staff", passwordHash: "" }
+  let order <- Db.insert Order { owner: owner }
+  let _ <- Test.login { user: Just staff }
+  let r <- Test.open (Orders.Show { id: order })
+  Task.succeed ({ answer: r.answer } == { answer: PageMissing })
+}
+
+test "a manager opens another user's order" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let order <- Db.insert Order { owner: owner }
+  let _ <- Test.login { user: Just boss }
+  let page <- Test.get (Orders.Show { id: order })
+  Task.succeed ({ status: Test.text "#status" page.doc, total: Test.text "#total" page.doc } == { status: Just "Open", total: Just "0" })
+}

@@ -1,0 +1,145 @@
+module Orders.Show
+
+import Order
+import Line
+import Product
+import User
+import Totals
+import Layout
+
+page "/orders/{id}" { id: Order.OrderId } requires user
+
+type Item = { line: Line, name: Text, subtotal: Int }
+
+type Model = {
+  order: Order,
+  items: List Item,
+  total: Int,
+  active: List Product,
+}
+
+canSee : Order -> Session -> Query Bool
+canSee o session = {
+  let viewer <- Db.get User session.user
+  match viewer {
+    Just u -> Query.succeed (o.owner == session.user || u.role == Manager),
+    Nothing -> Query.succeed False,
+  }
+}
+
+itemFor : List Product -> Line -> Item
+itemFor products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  match found {
+    Just p -> { line: line, name: p.name, subtotal: Totals.lineTotal products line },
+    Nothing -> { line: line, name: "?", subtotal: 0 },
+  }
+}
+
+show : Order -> Query Model
+show o = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq o.id) |> Db.all
+  let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+  Query.succeed {
+    order: o,
+    items: List.map (itemFor products) lines,
+    total: Totals.total lines products,
+    active: List.filter (\p -> p.active) products,
+  }
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Order params.id
+  match found {
+    Nothing -> Query.notFound,
+    Just o -> {
+      let allowed <- canSee o session
+      if allowed then show o else Query.notFound
+    },
+  }
+}
+
+form NewLine = {
+  quantity: Int.Positive,
+}
+
+msg AddLine { product: Product.ProductId } form NewLine
+msg Pay
+msg Cancel
+
+isOpen : Order.OrderId -> Task Bool
+isOpen id = {
+  let found <- Db.get Order id
+  match found {
+    Just o -> Task.succeed (o.status == Open),
+    Nothing -> Task.succeed False,
+  }
+}
+
+insertLine : Order.OrderId -> Product.ProductId -> Int.Positive -> Task Nav
+insertLine id product quantity = {
+  let _ <- Db.insert Line { order: id, product: product, quantity: quantity }
+  Task.succeed (Redirect (Orders.Show { id: id }))
+}
+
+addLine : Order.OrderId -> Product.ProductId -> Int.Positive -> Task Nav
+addLine id product quantity = {
+  let ok <- isOpen id
+  let found <- Db.get Product product
+  match found {
+    Just prod -> if ok && prod.active then insertLine id product quantity else Task.succeed (Reject "This order is not open."),
+    Nothing -> Task.notFound,
+  }
+}
+
+change : Order.OrderId -> Order.Status -> Task Nav
+change id status = {
+  let _ <- Db.update Order id (\o -> { o | status: status })
+  Task.succeed (Redirect (Orders.Show { id: id }))
+}
+
+setStatus : Order.OrderId -> Order.Status -> Task Nav
+setStatus id status = {
+  let ok <- isOpen id
+  if ok then change id status else Task.succeed (Reject "This order is not open.")
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddLine p -> addLine model.order.id p.product p.form.quantity,
+  Pay p -> setStatus model.order.id Paid,
+  Cancel p -> setStatus model.order.id Cancelled,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Order">
+    <h1>Order</h1>
+    <p>Status: <span id="status">{Order.statusLabel model.order.status}</span></p>
+    <p>Total: <span id="total">{Text.fromInt model.total}</span></p>
+    <ul id="lines">
+      {for item in model.items ->
+        <li>
+          <span class="name">{item.name}</span>
+          x
+          <span class="quantity">{Text.fromInt item.line.quantity}</span>
+          =
+          <span class="subtotal">{Text.fromInt item.subtotal}</span>
+        </li>}
+    </ul>
+    {if model.order.status == Open then
+      <div id="actions">
+        {for p in model.active ->
+          <form submit={AddLine { product: p.id }}>
+            <Errors form />
+            <Input field="quantity" label={p.name} />
+            <Errors field="quantity" />
+            <button>Add</button>
+          </form>}
+        <button click={Pay}>Mark paid</button>
+        <button click={Cancel}>Mark cancelled</button>
+      </div>
+    else Html.none}
+    <a href={Orders.Index {}}>Back</a>
+  </Layout.Page>

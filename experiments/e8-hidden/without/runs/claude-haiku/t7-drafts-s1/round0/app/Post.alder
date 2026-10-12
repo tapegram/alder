@@ -1,0 +1,26 @@
+module Post
+
+import User
+
+type PostId = brand Text
+type Slug = brand Text where (\s -> isSlug s)
+
+table Post {
+  id: PostId @id,
+  slug: Slug @unique,
+  title: Text.NonEmpty,
+  body: Text,
+  published: Bool = False,
+  author: User.UserId @ref User,
+  created: Time @created,
+}
+
+bySlug : Slug -> Query (Maybe Post)
+bySlug slug = Db.from Post |> Db.where (Post.slug.eq slug) |> Db.first
+
+-- isSlug is the rule a Slug keeps: lowercase letters, digits and hyphens, at least one.
+isSlug : Text -> Bool
+isSlug s = Text.matches "^[a-z0-9-]+$" s
+
+test "a slug is lowercase letters, digits and hyphens" =
+  List.map isSlug ["hello-world", "post-2", "Hello", "a b", "", "x/y"] == [True, True, False, False, False, False]

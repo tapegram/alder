@@ -1,0 +1,93 @@
+module Orders.Index
+
+import Order
+import Line
+import Product
+import Layout
+import User
+
+page "/" { } requires user
+
+type Row = { order: Order, total: Int }
+
+type Model = {
+  rows: List Row,
+  manager: Bool,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let orders <-
+    Db.from Order
+      |> Db.where (Order.owner.eq session.user)
+      |> Db.orderBy Order.created.desc
+      |> Db.all
+  let lines <-
+    Db.from Line
+      |> Db.where (Line.order.in (List.map (\o -> o.id) orders))
+      |> Db.all
+  let products <- Db.from Product |> Db.all
+  let viewer <- Db.get User session.user
+  Query.succeed { rows: List.map (row products lines) orders, manager: User.isManager viewer }
+}
+
+row : List Product -> List Line -> Order -> Row
+row products lines order =
+  { order: order, total: Line.total products (List.filter (\l -> l.order == order.id) lines) }
+
+msg Create
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Order { owner: session.user }
+    Task.succeed (Redirect (Orders.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Orders">
+    <h1>Orders</h1>
+
+    <nav>
+      {if model.manager then <a href={Products.Index {}}>Products</a> else Html.none}
+    </nav>
+
+    <button click={Create}>New order</button>
+
+    <ul id="orders">
+      {for r in model.rows ->
+        <li>
+          <a href={Orders.Show { id: r.order.id }}>{Time.format "Jan 2, 2006 15:04" r.order.created}</a>
+          {" "}
+          <span class="status">{Order.statusLabel r.order.status}</span>
+          {" "}
+          <span class="total">{Text.fromInt r.total}</span>
+        </li>}
+    </ul>
+
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "a created order is listed Open with total 0" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Index {})
+  let _ <- Test.click Create
+  let page <- Test.get (Orders.Index {})
+  Task.succeed ({ statuses: Test.texts "#orders .status" page.doc, totals: Test.texts "#orders .total" page.doc } == { statuses: ["Open"], totals: ["0"] })
+}
+
+test "the list shows each order's total and only my orders" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 450 }
+  let mine <- Db.insert Order { owner: me }
+  let theirs <- Db.insert Order { owner: other }
+  let _ <- Db.insert Line { order: mine, product: tea, quantity: Int.Positive 3 }
+  let _ <- Db.insert Line { order: theirs, product: tea, quantity: Int.Positive 1 }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Orders.Index {})
+  Task.succeed ({ items: Test.count "#orders li" page.doc, totals: Test.texts "#orders .total" page.doc } == { items: 1, totals: ["1350"] })
+}

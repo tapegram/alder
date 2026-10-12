@@ -1,0 +1,34 @@
+module Notes.Show
+
+import Note
+import Layout
+import User
+
+page "/notes/{id}" { id: Note.NoteId } requires user
+
+type Model = { note: Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Note params.id
+  match found {
+    Just note -> if note.owner == session.user then Query.succeed { note: note } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.note.title}>
+    <h1 id="title">{model.note.title}</h1>
+    <p id="body">{model.note.body}</p>
+    <a href={Notes.Index {}}>Back</a>
+  </Layout.Page>
+
+test "a stranger cannot see my note" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "private", owner: me }
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let show <- Test.open (Notes.Show { id: id })
+  Task.succeed (show.answer == PageMissing)
+}

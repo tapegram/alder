@@ -1,0 +1,85 @@
+module Products.Index
+
+import User
+import Product
+import Layout
+
+page "/products" { } requires user
+
+type Model = {
+  products: List Product,
+}
+
+-- Only a Manager sees this page; for a Staff user it is a 404.
+load : Params -> Session -> Query Model
+load params session = {
+  let viewer <- Db.get User session.user
+  let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+  if User.isManager viewer then Query.succeed { products: products } else Query.notFound
+}
+
+form NewProduct = {
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+}
+
+msg Add form NewProduct
+msg Toggle { id: Product.ProductId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- manager session
+    let _ <- Db.insert Product { name: p.form.name, price: p.form.price }
+    Task.succeed (Redirect (Products.Index {}))
+  },
+  Toggle p -> {
+    let _ <- manager session
+    let found <- Db.get Product p.id
+    match found {
+      Just product -> toggle product,
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+-- manager checks the session's user again in `update`: a message can be posted without the page.
+manager : Session -> Task Unit
+manager session = {
+  let viewer <- Db.get User session.user
+  if User.isManager viewer then Task.succeed () else Task.notFound
+}
+
+toggle : Product -> Task Nav
+toggle product = {
+  let _ <- Db.update Product product.id (\x -> { x | active: not x.active })
+  Task.succeed (Redirect (Products.Index {}))
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Products">
+    <h1>Products</h1>
+
+    <form submit={Add}>
+      <Errors form />
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <Input field="price" label="Price in cents" />
+      <Errors field="price" />
+      <button>Add product</button>
+    </form>
+
+    <ul id="products">
+      {for product in model.products ->
+        <li class={if product.active then "active" else "inactive"}>
+          <span class="name">{product.name}</span>
+          {" "}
+          <span class="price">{Text.fromInt product.price}</span>
+          <button click={Toggle { id: product.id }}>{if product.active then "Deactivate" else "Activate"}</button>
+        </li>}
+    </ul>
+
+    <a href={Orders.Index {}}>Orders</a>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>

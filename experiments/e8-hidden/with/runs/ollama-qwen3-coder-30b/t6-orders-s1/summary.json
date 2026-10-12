@@ -1,0 +1,80 @@
+{
+ "model": "ollama-qwen3-coder-30b",
+ "task": "t6-orders",
+ "retries": 2,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 2,
+  "test": true,
+  "hidden": "experiments/e8-hidden/hidden",
+  "condition": "with",
+  "sample": "s1",
+  "num_ctx": 65536,
+  "num_predict": 8192
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 9,
+   "exit": 1,
+   "errors": 26,
+   "warnings": 1,
+   "codes": {
+    "E0002": 5,
+    "E0201": 3,
+    "E0203": 18
+   },
+   "rejected": [],
+   "seconds": 121.7,
+   "tokens": 3027,
+   "stderr": "",
+   "prompt_eval_count": 43318,
+   "eval_count": 3027,
+   "done_reason": "stop"
+  },
+  {
+   "n": 1,
+   "files": 10,
+   "exit": 1,
+   "errors": 20,
+   "warnings": 2,
+   "codes": {
+    "E0003": 18,
+    "E0402": 2
+   },
+   "rejected": [],
+   "seconds": 162.2,
+   "tokens": 3113,
+   "stderr": "",
+   "prompt_eval_count": 48047,
+   "eval_count": 3113,
+   "done_reason": "stop"
+  },
+  {
+   "n": 2,
+   "files": 10,
+   "exit": 1,
+   "errors": 17,
+   "warnings": 1,
+   "codes": {
+    "E0003": 15,
+    "E0402": 2
+   },
+   "rejected": [],
+   "seconds": 156.7,
+   "tokens": 3119,
+   "stderr": "",
+   "prompt_eval_count": 47879,
+   "eval_count": 3119,
+   "done_reason": "stop"
+  }
+ ],
+ "final_pass": false,
+ "outcome": "fail",
+ "hidden": {
+  "skipped": "the final round did not check clean (17 errors)"
+ },
+ "hidden_pass": null
+}

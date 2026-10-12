@@ -1,0 +1,22 @@
+{"code": "E0003", "severity": "error", "file": "app/Orders/Index.alder", "line": 23, "col": 3, "endLine": 23, "endCol": 9, "message": "constructor `Create` carries a value; write `Create x`"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Index.alder", "line": 36, "col": 53, "endLine": 36, "endCol": 65, "message": "expected Text, Html or List Html in `{\u2026}`, got Order.Status"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Index.alder", "line": 36, "col": 70, "endLine": 36, "endCol": 81, "message": "expected Text, Html or List Html in `{\u2026}`, got Int", "fix": {"line": 36, "col": 70, "endLine": 36, "endCol": 81, "replace": "Text.fromInt (total order)"}}
+{"code": "E0402", "severity": "error", "file": "app/Orders/Index.alder", "line": 42, "col": 3, "endLine": 42, "endCol": 75, "message": "`let lines <-` is only allowed in a block that returns `Query` or `Task`"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Index.alder", "line": 43, "col": 29, "endLine": 43, "endCol": 39, "message": "cannot infer the record type of `l`; add a type annotation"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Index.alder", "line": 43, "col": 29, "endLine": 43, "endCol": 82, "message": "expected Int, got _"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Index.alder", "line": 43, "col": 42, "endLine": 43, "endCol": 55, "message": "`Product.price` is not a function; it has type `Column Product Int.NonNegative`"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Index.alder", "line": 43, "col": 72, "endLine": 43, "endCol": 81, "message": "cannot infer the record type of `l`; add a type annotation"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Show.alder", "line": 77, "col": 21, "endLine": 77, "endCol": 39, "message": "expected Text, Html or List Html in `{\u2026}`, got Order.Status"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Show.alder", "line": 78, "col": 20, "endLine": 78, "endCol": 37, "message": "expected Text, Html or List Html in `{\u2026}`, got Int", "fix": {"line": 78, "col": 20, "endLine": 78, "endCol": 37, "replace": "Text.fromInt (total model.order)"}}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Show.alder", "line": 81, "col": 25, "endLine": 81, "endCol": 39, "message": "expected List _, got Query (List Product)"}
+{"code": "W0003", "severity": "warning", "file": "app/Orders/Show.alder", "line": 82, "col": 11, "endLine": 85, "endCol": 17, "message": "form field `quantity` has no `<Errors field=\"quantity\">` and the form no `<Errors form />`: its decoding errors would not be shown"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Show.alder", "line": 82, "col": 44, "endLine": 82, "endCol": 54, "message": "cannot infer the record type of `product`; add a type annotation"}
+{"code": "E0402", "severity": "error", "file": "app/Orders/Show.alder", "line": 94, "col": 3, "endLine": 94, "endCol": 75, "message": "`let lines <-` is only allowed in a block that returns `Query` or `Task`"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Show.alder", "line": 95, "col": 29, "endLine": 95, "endCol": 39, "message": "cannot infer the record type of `l`; add a type annotation"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Show.alder", "line": 95, "col": 29, "endLine": 95, "endCol": 82, "message": "expected Int, got _"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Show.alder", "line": 95, "col": 42, "endLine": 95, "endCol": 55, "message": "`Product.price` is not a function; it has type `Column Product Int.NonNegative`"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Show.alder", "line": 95, "col": 72, "endLine": 95, "endCol": 81, "message": "cannot infer the record type of `l`; add a type annotation"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Show.alder", "line": 105, "col": 69, "endLine": 105, "endCol": 74, "message": "expected Order, got Order.OrderId"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Show.alder", "line": 114, "col": 69, "endLine": 114, "endCol": 74, "message": "expected Order, got Order.OrderId"}
+{"code": "E0003", "severity": "error", "file": "app/Orders/Show.alder", "line": 123, "col": 69, "endLine": 123, "endCol": 74, "message": "expected Order, got Order.OrderId"}
+{"code": "W0001", "severity": "warning", "file": "app/Products/Index.alder", "line": 6, "col": 1, "endLine": 6, "endCol": 12, "message": "import `Line` is unused"}

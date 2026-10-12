@@ -1,0 +1,87 @@
+module Hidden
+
+-- E8 hidden acceptance tests for T4 (notes with a theme switch). They use only the names the
+-- task's Names block fixes; the model never sees them.
+
+import User
+import Note
+import Theme
+
+test "the theme starts light and the list's button switches it to dark" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let before <- Test.open (Notes.Index {})
+  let after <- Test.click App.SwitchTheme
+  Task.succeed ({ dark: Test.has "body.dark" before.doc, label: Test.text "#theme" before.doc, after: Test.has "body.dark" after.doc, afterLabel: Test.text "#theme" after.doc, session: after.session.theme } == { dark: False, label: Just "Switch to dark", after: True, afterLabel: Just "Switch to light", session: Dark })
+}
+
+test "the theme stays in the session from page to page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", body: "", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let _ <- Test.click App.SwitchTheme
+  let show <- Test.open (Notes.Show { id: id })
+  let list <- Test.open (Notes.Index {})
+  Task.succeed ({ show: Test.has "body.dark" show.doc, list: Test.has "body.dark" list.doc, session: list.session.theme } == { show: True, list: True, session: Dark })
+}
+
+test "a note's page switches the theme there and back" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", body: "", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Show { id: id })
+  let once <- Test.click App.SwitchTheme
+  let twice <- Test.click App.SwitchTheme
+  Task.succeed ({ once: Test.has "body.dark" once.doc, twice: Test.has "body.dark" twice.doc, title: Test.text "#title" twice.doc, label: Test.text "#theme" twice.doc } == { once: True, twice: False, title: Just "Milk", label: Just "Switch to dark" })
+}
+
+test "a visitor switches the theme on the login page" = {
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.click App.SwitchTheme
+  Task.succeed ({ dark: Test.has "body.dark" r.doc, session: r.session.theme, user: r.session.user } == { dark: True, session: Dark, user: Nothing })
+}
+
+test "logging out from the list" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let out <- Test.click App.Logout
+  let after <- Test.open (Notes.Index {})
+  Task.succeed ({ out: out.answer, user: out.session.user, after: after.answer } == { out: Redirected (Auth.Login {}), user: Nothing, after: Redirected (Auth.Login {}) })
+}
+
+test "logging out from a note's page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", body: "", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Show { id: id })
+  let out <- Test.click App.Logout
+  let after <- Test.open (Notes.Show { id: id })
+  Task.succeed ({ out: out.answer, user: out.session.user, after: after.answer } == { out: Redirected (Auth.Login {}), user: Nothing, after: Redirected (Auth.Login {}) })
+}
+
+test "another user's note is missing" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "", owner: me }
+  let _ <- Test.login { user: Just other }
+  let r <- Test.open (Notes.Show { id: id })
+  let list <- Test.open (Notes.Index {})
+  Task.succeed ({ answer: r.answer, items: Test.count "#notes li" list.doc } == { answer: PageMissing, items: 0 })
+}
+
+test "a note is added on the list and edited on its page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let added <- Test.submit Notes.Index.NewNote { title: Text.NonEmpty "Milk", body: "Two litres." }
+  let found <- Db.from Note |> Db.where (Note.owner.eq me) |> Db.first
+  let note <- match found {
+    Just x -> Task.succeed x,
+    Nothing -> Task.fail "the form added no note owned by the user",
+  }
+  let _ <- Test.get (Notes.Show { id: note.id })
+  let saved <- Test.submit Notes.Show.EditNote { title: Text.NonEmpty "Oat milk", body: "One litre." }
+  Task.succeed ({ added: added.answer, titles: Test.texts "#notes .title" added.doc, saved: saved.answer, title: Test.text "#title" saved.doc, body: Test.text "#body" saved.doc } == { added: Redirected (Notes.Index {}), titles: ["Milk"], saved: Redirected (Notes.Show { id: note.id }), title: Just "Oat milk", body: Just "One litre." })
+}

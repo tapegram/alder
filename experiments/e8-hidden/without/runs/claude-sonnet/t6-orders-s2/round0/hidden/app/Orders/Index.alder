@@ -1,0 +1,59 @@
+module Orders.Index
+
+import Order
+import Line
+import Product
+import Layout
+
+page "/" { } requires user
+
+type Row = { order: Order, total: Int }
+
+type Model = { orders: List Row }
+
+row : List Product -> List Line -> Order -> Row
+row products lines o = {
+  order: o,
+  total: Line.total products (List.filter (\l -> l.order == o.id) lines),
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let orders <-
+    Db.from Order
+      |> Db.where (Order.owner.eq session.user)
+      |> Db.orderBy Order.created.desc
+      |> Db.all
+  let lines <- Db.from Line |> Db.where (Line.order.in (List.map (\o -> o.id) orders)) |> Db.all
+  let products <- Db.from Product |> Db.all
+  Query.succeed { orders: List.map (row products lines) orders }
+}
+
+msg Create
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Order { owner: session.user }
+    Task.succeed (Redirect (Orders.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Orders">
+    <h1>Orders</h1>
+
+    <button click={Create}>New order</button>
+
+    <ul id="orders">
+      {for r in model.orders ->
+        <li>
+          <a href={Orders.Show { id: r.order.id }}>{Time.format "2006-01-02 15:04:05" r.order.created}</a>
+          <span class="status">{Order.statusLabel r.order.status}</span>
+          <span class="total">{Text.fromInt r.total}</span>
+        </li>}
+    </ul>
+
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>

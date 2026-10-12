@@ -1,0 +1,71 @@
+module Hidden
+
+-- E8 hidden acceptance tests for T8 (a comment emails the post's author). They use only the names
+-- the task's Names block fixes (and the blog's own, which the task keeps); the model never sees
+-- them. Every test installs the fixed fake, whose table `Mail.Sent` keeps what was sent.
+
+import User
+import Post
+import Comment
+import Mail
+
+test "a comment emails the post's author through Mailer.send" = {
+  let _ <- Test.fake Mailer
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello world", body: "", published: True, author: author }
+  let _ <- Test.get (Posts.Show { slug: Post.Slug "hello" })
+  let r <- Test.submit Posts.Show.NewComment { author: Comment.Name "Ann", body: Comment.Body "Lovely post." }
+  let steps <- Test.trace
+  let sent <- Db.from Mail.Sent |> Db.all
+  Task.succeed ({ answer: r.answer, traced: List.member "Mailer.send" steps, sent: List.map (\m -> { to: m.to, subject: m.subject }) sent } == { answer: Redirected (Posts.Show { slug: Post.Slug "hello" }), traced: True, sent: [{ to: Text.Email "author@example.com", subject: "New comment on Hello world" }] })
+}
+
+test "the mail's body has the commenter's name and the comment" = {
+  let _ <- Test.fake Mailer
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello world", body: "", published: True, author: author }
+  let _ <- Test.get (Posts.Show { slug: Post.Slug "hello" })
+  let _ <- Test.submit Posts.Show.NewComment { author: Comment.Name "Ann Smith", body: Comment.Body "Lovely post, thanks." }
+  let sent <- Db.from Mail.Sent |> Db.all
+  Task.succeed (List.map (\m -> { name: Text.contains "Ann Smith" m.body, comment: Text.contains "Lovely post, thanks." m.body }) sent == [{ name: True, comment: True }])
+}
+
+test "the mail goes to the author of the post commented on" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "", role: Author }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "", role: Author }
+  let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
+  let _ <- Db.insert Post { slug: Post.Slug "anns", title: Text.NonEmpty "Ann's post", body: "", published: True, author: ann }
+  let _ <- Db.insert Post { slug: Post.Slug "bobs", title: Text.NonEmpty "Bob's post", body: "", published: True, author: bob }
+  let _ <- Test.fake Mailer
+  let _ <- Test.login { user: Just reader }
+  let _ <- Test.get (Posts.Show { slug: Post.Slug "bobs" })
+  let _ <- Test.submit Posts.Show.NewComment { author: Comment.Name "Reader", body: Comment.Body "Hi Bob." }
+  let sent <- Db.from Mail.Sent |> Db.all
+  Task.succeed (List.map (\m -> { to: m.to, subject: m.subject }) sent == [{ to: Text.Email "bob@example.com", subject: "New comment on Bob's post" }])
+}
+
+test "each comment sends one mail" = {
+  let _ <- Test.fake Mailer
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello world", body: "", published: True, author: author }
+  let _ <- Test.get (Posts.Show { slug: Post.Slug "hello" })
+  let _ <- Test.submit Posts.Show.NewComment { author: Comment.Name "Ann", body: Comment.Body "First." }
+  let _ <- Test.submit Posts.Show.NewComment { author: Comment.Name "Bob", body: Comment.Body "Second." }
+  let mails <- Db.from Mail.Sent |> Db.count
+  let comments <- Db.from Comment |> Db.count
+  Task.succeed ({ mails: mails, comments: comments } == { mails: 2, comments: 2 })
+}
+
+test "a rejected comment sends no mail" = {
+  let _ <- Test.fake Mailer
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello world", body: "", published: True, author: author }
+  let _ <- Test.get (Posts.Show { slug: Post.Slug "hello" })
+  let r <- Test.submitRaw Posts.Show.NewComment [{ name: "author", value: "Ann" }, { name: "body", value: "" }]
+  let mails <- Db.from Mail.Sent |> Db.count
+  let rejected = match r.answer {
+    FormRejected _ -> True,
+    _ -> False,
+  }
+  Task.succeed ({ rejected: rejected, mails: mails } == { rejected: True, mails: 0 })
+}

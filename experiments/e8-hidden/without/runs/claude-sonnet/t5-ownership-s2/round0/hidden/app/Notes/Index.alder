@@ -1,0 +1,77 @@
+module Notes.Index
+
+import Note
+import Layout
+
+page "/" { } requires user
+
+type Model = { notes: List Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <-
+    Db.from Note
+      |> Db.where (Note.owner.eq session.user)
+      |> Db.orderBy Note.created.desc
+      |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Add form NewNote
+msg Delete { id: Note.NoteId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+  Delete p -> {
+    let note <- owned p.id session
+    let _ <- Db.delete Note note.id
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+}
+
+-- The id in a message comes from the request: a note that is missing or someone else's is a 404.
+owned : Note.NoteId -> Session -> Task Note
+owned id session = {
+  let found <- Db.get Note id
+  match found {
+    Just note -> if note.owner == session.user then Task.succeed note else Task.notFound,
+    Nothing -> Task.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Notes">
+    <h1>Notes</h1>
+
+    <form submit={Add}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Input field="body" label="Body" />
+      <Errors field="body" />
+      <button>Add</button>
+    </form>
+
+    <ul id="notes">
+      {for note in model.notes -> <Item note={note} />}
+    </ul>
+
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+Item : { note: Note } -> Html Msg
+Item props =
+  <li>
+    <a class="title" href={Notes.Show { id: props.note.id }}>{props.note.title}</a>
+    <button click={Delete { id: props.note.id }}>Delete</button>
+  </li>

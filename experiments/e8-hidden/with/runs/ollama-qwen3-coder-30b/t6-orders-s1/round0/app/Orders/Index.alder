@@ -1,0 +1,52 @@
+module Orders.Index
+
+import Order
+import Layout
+import User
+
+page "/" { } requires user
+
+type Model = { orders: List Order }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let orders <- Db.from Order |> Db.where (Order.owner.eq session.user) |> Db.orderBy Order.created.desc |> Db.all
+  Query.succeed { orders: orders }
+}
+
+msg Create
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create -> {
+    let id <- Db.insert Order { owner: session.user }
+    Task.succeed (Redirect (Orders.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Orders">
+    <h1>Orders</h1>
+    <button click={Create}>New Order</button>
+    <ul id="orders">
+      {for order in model.orders ->
+        <li><a href={Orders.Show { id: order.id }}>{order.status} - {total order}</a></li>}
+    </ul>
+  </Layout.Page>
+
+total : Order -> Int
+total order = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq order.id) |> Db.all
+  List.sum (List.map (\l -> l.quantity * Product.price (Db.get Product l.product)) lines)
+}
+
+test "an open order's total is computed correctly" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: User.Staff }
+  let product <- Db.insert Product { name: Text.NonEmpty "Widget", price: Int.NonNegative 100 }
+  let order <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: order, product: product, quantity: Int.Positive 3 }
+  let _ <- Db.insert Line { order: order, product: product, quantity: Int.Positive 2 }
+  let total <- Db.from Order |> Db.where (Order.id.eq order) |> Db.first
+  Task.succeed (Maybe.map (\o -> o.status) total == Just Order.Open)
+}

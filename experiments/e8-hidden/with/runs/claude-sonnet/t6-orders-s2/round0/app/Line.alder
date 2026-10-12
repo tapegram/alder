@@ -1,0 +1,50 @@
+module Line
+
+import Order
+import Product
+import User
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+-- quantity x price of one line, in cents
+cost : List Product -> Line -> Int
+cost products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  match found {
+    Just p -> line.quantity * p.price,
+    Nothing -> 0,
+  }
+}
+
+total : List Product -> List Line -> Int
+total products lines = List.sum (List.map (cost products) lines)
+
+productName : List Product -> Line -> Text
+productName products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  match found {
+    Just p -> Text.trim p.name,
+    Nothing -> "?",
+  }
+}
+
+test "an open order's total sums quantity times price" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let oid <- Db.insert Order { owner: me }
+  let a <- Db.insert Product { name: Text.NonEmpty "A", price: Int.NonNegative 500 }
+  let b <- Db.insert Product { name: Text.NonEmpty "B", price: Int.NonNegative 250 }
+  let _ <- Db.insert Line { order: oid, product: a, quantity: Int.Positive 2 }
+  let _ <- Db.insert Line { order: oid, product: b, quantity: Int.Positive 3 }
+  let lines <- Db.from Line |> Db.where (Line.order.eq oid) |> Db.all
+  let products <- Db.from Product |> Db.all
+  let found <- Db.get Order oid
+  let status = Maybe.map (\o -> o.status) found
+  Task.succeed ({ status: status, total: total products lines } == { status: Just Open, total: 1750 })
+}

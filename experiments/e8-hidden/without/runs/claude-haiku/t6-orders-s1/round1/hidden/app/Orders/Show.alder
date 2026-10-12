@@ -1,0 +1,132 @@
+module Orders.Show
+
+import Order
+import Product
+import Line
+import User
+import Layout
+
+page "/orders/{id}" { id: Order.OrderId } requires user
+
+type LineRow = { name: Text, quantity: Int, amount: Int }
+
+type Model = {
+  order: Order,
+  lines: List LineRow,
+  products: List Product,
+  total: Int,
+}
+
+-- Only the order's owner, or a Manager, may see it; anyone else gets a 404.
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Order params.id
+  let me <- Db.get User session.user
+  let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+  let lines <- Db.from Line |> Db.where (Line.order.eq params.id) |> Db.all
+  match found {
+    Just order -> if order.owner == session.user || User.isManager me then Query.succeed { order: order, lines: List.map (lineRow products) lines, products: products, total: Line.total products lines } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+lineRow : List Product -> Line -> LineRow
+lineRow products line =
+  { name: productName products line.product, quantity: line.quantity, amount: Line.amount products line }
+
+productName : List Product -> Product.ProductId -> Text
+productName products id = {
+  let found = List.find (\p -> p.id == id) products
+  match found {
+    Just p -> p.name,
+    Nothing -> "(removed)",
+  }
+}
+
+isOpenOrder : Maybe Order -> Bool
+isOpenOrder found = match found {
+  Just o -> o.status == Open,
+  Nothing -> False,
+}
+
+isActive : Maybe Product -> Bool
+isActive found = match found {
+  Just p -> p.active,
+  Nothing -> False,
+}
+
+refusal : Maybe Order -> Text
+refusal found =
+  if isOpenOrder found then "That product is not available." else "This order is no longer open."
+
+form NewLine = {
+  quantity: Int.Positive,
+}
+
+msg AddLine { product: Product.ProductId } form NewLine
+msg Pay
+msg Cancel
+
+-- Every change re-reads the order, so a refused change is refused on the current state.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddLine p -> {
+    let found <- Db.get Order model.order.id
+    let product <- Db.get Product p.product
+    if isOpenOrder found && isActive product then {
+      let _ <- Db.insert Line { order: model.order.id, product: p.product, quantity: p.form.quantity }
+      Task.succeed (Redirect (Orders.Show { id: model.order.id }))
+    } else Task.succeed (Reject (refusal found))
+  },
+  Pay p -> setStatus model.order.id Paid,
+  Cancel p -> setStatus model.order.id Cancelled,
+}
+
+-- setStatus changes an Open order; any other order is left alone and the page is shown again.
+setStatus : Order.OrderId -> Order.Status -> Task Nav
+setStatus id status = {
+  let found <- Db.get Order id
+  if isOpenOrder found then {
+    let _ <- Db.update Order id (\o -> { o | status: status })
+    Task.succeed (Redirect (Orders.Show { id: id }))
+  } else Task.succeed (Redirect (Orders.Show { id: id }))
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Order">
+    <h1>Order</h1>
+    <p>Status <span id="status">{Order.statusLabel model.order.status}</span></p>
+    <ul id="lines">
+      {for line in model.lines -> <LineItem line={line} />}
+    </ul>
+    <p>Total <span id="total">{Text.fromInt model.total}</span></p>
+    {if model.order.status == Open then <AddForms products={model.products} /> else Html.none}
+    {if model.order.status == Open then <div><button click={Pay}>Mark paid</button> <button click={Cancel}>Cancel order</button></div> else Html.none}
+    <p><a href={Orders.Index {}}>Back to orders</a></p>
+  </Layout.Page>
+
+LineItem : { line: LineRow } -> Html Msg
+LineItem props =
+  <li>
+    <span class="name">{props.line.name}</span>
+    <span class="quantity">{Text.fromInt props.line.quantity}</span>
+    <span class="amount">{Text.fromInt props.line.amount}</span>
+  </li>
+
+AddForms : { products: List Product } -> Html Msg
+AddForms props =
+  <div>
+    <h2>Add a line</h2>
+    {for p in (List.filter (\x -> x.active) props.products) -> <AddForm product={p} />}
+  </div>
+
+AddForm : { product: Product } -> Html Msg
+AddForm props =
+  <form submit={AddLine { product: props.product.id }}>
+    <p>{props.product.name}</p>
+    <Errors form />
+    <Input field="quantity" label="Quantity" />
+    <Errors field="quantity" />
+    <button>Add</button>
+  </form>

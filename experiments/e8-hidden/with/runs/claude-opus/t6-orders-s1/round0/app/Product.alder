@@ -1,0 +1,13 @@
+module Product
+
+type ProductId = brand Text
+
+table Product {
+  id: ProductId @id,
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+  active: Bool = True,
+}
+
+activeOnly : List Product -> List Product
+activeOnly products = List.filter (\p -> p.active) products

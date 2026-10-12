@@ -1,0 +1,155 @@
+module Orders.Show
+
+import User
+import Product
+import Order
+import Line
+import Layout
+
+page "/orders/{id}" { id: Order.OrderId } requires user
+
+type Item = {
+  name: Text.NonEmpty,
+  quantity: Int.Positive,
+  subtotal: Int,
+}
+
+type Model = {
+  order: Order,
+  items: List Item,
+  total: Int,
+  products: List Product,
+}
+
+-- The order is shown to its owner and to a Manager; to anyone else it is a 404.
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Order params.id
+  let viewer <- Db.get User session.user
+  match found {
+    Just order -> if order.owner == session.user || User.isManager viewer then details order else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+details : Order -> Query Model
+details order = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq order.id) |> Db.all
+  let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+  Query.succeed {
+    order: order,
+    items: List.filterMap (item products) lines,
+    total: Line.total products lines,
+    products: List.filter (\p -> p.active) products,
+  }
+}
+
+item : List Product -> Line -> Maybe Item
+item products line =
+  List.find (\p -> p.id == line.product) products
+    |> Maybe.map (toItem line)
+
+toItem : Line -> Product -> Item
+toItem line product =
+  { name: product.name, quantity: line.quantity, subtotal: line.quantity * product.price }
+
+form NewLine = {
+  quantity: Int.Positive,
+}
+
+msg AddLine { product: Product.ProductId } form NewLine
+msg Pay
+msg Cancel
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddLine p -> {
+    let order <- current model session
+    match order.status {
+      Open -> addLine order p.product p.form.quantity,
+      Paid -> Task.succeed (Reject "This order is no longer open."),
+      Cancelled -> Task.succeed (Reject "This order is no longer open."),
+    }
+  },
+  Pay p -> {
+    let order <- current model session
+    if order.status == Open then setStatus order Paid else Task.succeed (Redirect (Orders.Show { id: order.id }))
+  },
+  Cancel p -> {
+    let order <- current model session
+    if order.status == Open then setStatus order Cancelled else Task.succeed (Redirect (Orders.Show { id: order.id }))
+  },
+}
+
+-- current reads the page's order again, inside the task: its status is the stored one, not the
+-- one the page was rendered with, and the session's user must own it or be a Manager.
+current : Model -> Session -> Task Order
+current model session = {
+  let found <- Db.get Order model.order.id
+  let viewer <- Db.get User session.user
+  match found {
+    Just order -> if order.owner == session.user || User.isManager viewer then Task.succeed order else Task.notFound,
+    Nothing -> Task.notFound,
+  }
+}
+
+addLine : Order -> Product.ProductId -> Int.Positive -> Task Nav
+addLine order productId quantity = {
+  let found <- Db.get Product productId
+  match found {
+    Just product -> if product.active then insertLine order product quantity else Task.succeed (Reject "That product is not available."),
+    Nothing -> Task.notFound,
+  }
+}
+
+insertLine : Order -> Product -> Int.Positive -> Task Nav
+insertLine order product quantity = {
+  let _ <- Db.insert Line { order: order.id, product: product.id, quantity: quantity }
+  Task.succeed (Redirect (Orders.Show { id: order.id }))
+}
+
+setStatus : Order -> Order.Status -> Task Nav
+setStatus order status = {
+  let _ <- Db.update Order order.id (\o -> { o | status: status })
+  Task.succeed (Redirect (Orders.Show { id: order.id }))
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Order">
+    <h1>Order</h1>
+
+    <p>Status: <span id="status">{Order.statusLabel model.order.status}</span></p>
+
+    <ul id="lines">
+      {for i in model.items ->
+        <li>
+          <span class="name">{i.name}</span>
+          {" "}
+          <span class="quantity">{Text.fromInt i.quantity}</span>
+          {" "}
+          <span class="subtotal">{Text.fromInt i.subtotal}</span>
+        </li>}
+    </ul>
+
+    <p>Total: <span id="total">{Text.fromInt model.total}</span></p>
+
+    {if model.order.status == Open then
+      <section id="controls">
+        <h2>Add a line</h2>
+        {for product in model.products ->
+          <form submit={AddLine { product: product.id }}>
+            <span class="product">{product.name}</span>
+            <Errors form />
+            <Input field="quantity" label="Quantity" />
+            <Errors field="quantity" />
+            <button>Add</button>
+          </form>}
+        <button click={Pay}>Mark paid</button>
+        <button click={Cancel}>Cancel order</button>
+      </section>
+    else Html.none}
+
+    <a href={Orders.Index {}}>Back to orders</a>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>

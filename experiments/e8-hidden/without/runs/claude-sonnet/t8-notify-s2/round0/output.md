@@ -1,0 +1,205 @@
+--- file: app/Mail.alder ---
+module Mail
+
+type SentId = brand Text
+
+-- Sending email is outside the language: a capability implemented in Go.
+capability Mailer {
+  send : { to: Text.Email, subject: Text, body: Text } -> Task Unit,
+}
+
+-- In a test, `Test.fake Mailer` replaces the adapter with this: each email is kept as a row.
+fake Mailer {
+  table Sent {
+    id: SentId @id,
+    to: Text.Email,
+    subject: Text,
+    body: Text,
+  }
+
+  send args = {
+    let _ <- Db.insert Sent { to: args.to, subject: args.subject, body: args.body }
+    Task.succeed ()
+  }
+}
+
+--- file: app/Posts/Show.alder ---
+module Posts.Show
+
+import Post
+import User
+import Comment
+import Markdown
+import Mail
+import Layout
+
+page "/posts/{slug}" { slug: Post.Slug }
+
+type Model = {
+  post: Post,
+  body: Html Never,
+  comments: List Comment,
+}
+
+-- load finds the post by its slug. A draft is a 404 for everyone but its author, so a reader
+-- cannot tell a draft from a slug that was never used.
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Post.bySlug params.slug
+  match found {
+    Just post ->
+      if Post.visible session.user post then {
+        let body <- Markdown.render post.body
+        let comments <-
+          Db.from Comment
+            |> Db.where (Comment.post.eq post.id)
+            |> Db.orderBy Comment.created.asc
+            |> Db.all
+        Query.succeed { post: post, body: body, comments: comments }
+      } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewComment = {
+  author: Comment.Name,
+  body: Comment.Body,
+}
+
+-- The message carries no post id: the page's slug names the post, and `load` has checked that
+-- the session may see it, so a comment on a draft is a 404 before `update` runs.
+msg AddComment form NewComment
+
+-- Storing a comment also emails the post's author: one message through the Mailer capability.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddComment p ->
+    if model.post.published then {
+      let _ <- Db.insert Comment { post: model.post.id, author: p.form.author, body: p.form.body }
+      let found <- Db.get User model.post.author
+      let _ <- match found {
+        Just u -> Mailer.send {
+          to: u.email,
+          subject: "New comment on {model.post.title}",
+          body: "{p.form.author} commented on \"{model.post.title}\":\n\n{p.form.body}",
+        },
+        Nothing -> Task.succeed (),
+      }
+      Task.succeed (Redirect (Posts.Show { slug: model.post.slug }))
+    } else Task.notFound,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.post.title}>
+    <article>
+      <h1>{model.post.title}</h1>
+      {if model.post.published then Html.none else <p class="draft">Draft: only you can see this post.</p>}
+      <div class="body">{model.body}</div>
+    </article>
+
+    <section class="comments">
+      <h2>Comments</h2>
+      <ul>
+        {for c in model.comments ->
+          <li>
+            <p class="who">{c.author}</p>
+            <p>{c.body}</p>
+          </li>}
+      </ul>
+      {if model.post.published then
+        <form submit={AddComment}>
+          <Errors form />
+          <Input field="author" label="Name" />
+          <Errors field="author" />
+          <Textarea field="body" label="Comment" />
+          <Errors field="body" />
+          <button>Comment</button>
+        </form>
+      else Html.none}
+    </section>
+
+    <a href={Posts.Index {}}>All posts</a>
+  </Layout.Page>
+
+test "a draft is not found for a reader" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
+  let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "", author: author }
+  let asReader <- Test.run {
+    let m <- load { slug: Post.Slug "draft" } { user: Just reader }
+    Task.succeed m.post.title
+  }
+  let asNobody <- Test.run {
+    let m <- load { slug: Post.Slug "draft" } { user: Nothing }
+    Task.succeed m.post.title
+  }
+  Task.succeed ({ reader: asReader.value, nobody: asNobody.value } == { reader: Err "not found", nobody: Err "not found" })
+}
+
+-- The body goes through the real Markdown adapter (adapters/markdown/markdown.go).
+test "a draft is shown to its author" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "Not *yet*.", author: author }
+  let m <- load { slug: Post.Slug "draft" } { user: Just author }
+  Task.succeed ({ title: m.post.title, body: m.body } == { title: Text.NonEmpty "Draft", body: <p>Not <em>yet</em>.</p> })
+}
+
+-- The same page with the Markdown capability faked (`fake Markdown` in app/Markdown.alder):
+-- the body arrives as plain text, so the test is about where `load` puts it, not about Markdown.
+test "a post's body is rendered through the Markdown capability" = {
+  let _ <- Test.fake Markdown
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "Not *yet*.", published: True, author: author }
+  let m <- load { slug: Post.Slug "hello" } { user: Nothing }
+  let steps <- Test.trace
+  Task.succeed ({ body: m.body, rendered: List.member "Markdown.render" steps } == { body: Html.text "Not *yet*.", rendered: True })
+}
+
+-- A draft's page is a 404 for a reader, so its comment form cannot be posted; `update` refuses
+-- a comment on a draft as well, whoever sends it.
+test "a comment on a draft is refused" = {
+  let _ <- Test.fake Mailer
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "", author: author }
+  let model <- load { slug: Post.Slug "draft" } { user: Just author }
+  let r <- Test.run (update (AddComment { form: { author: Comment.Name "Ann", body: Comment.Body "First!" } }) model { user: Nothing })
+  let comments <- Db.from Comment |> Db.count
+  let sent <- Db.from Mail.Sent |> Db.count
+  Task.succeed ({ value: r.value, comments: comments, sent: sent } == { value: Err "not found", comments: 0, sent: 0 })
+}
+
+test "a comment is listed oldest first" = {
+  let _ <- Test.fake Mailer
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", published: True, author: author }
+  let before <- load { slug: Post.Slug "hello" } { user: Nothing }
+  let _ <- update (AddComment { form: { author: Comment.Name "Ann", body: Comment.Body "First!" } }) before { user: Nothing }
+  let _ <- update (AddComment { form: { author: Comment.Name "Bob", body: Comment.Body "Second." } }) before { user: Nothing }
+  let after <- load { slug: Post.Slug "hello" } { user: Nothing }
+  Task.succeed (List.map (\c -> c.body) after.comments == [Comment.Body "First!", Comment.Body "Second."])
+}
+
+-- A comment emails the post's author once, with the title in the subject.
+test "a comment emails the post's author" = {
+  let _ <- Test.fake Mailer
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello world", body: "", published: True, author: author }
+  let model <- load { slug: Post.Slug "hello" } { user: Nothing }
+  let _ <- update (AddComment { form: { author: Comment.Name "Ann", body: Comment.Body "First!" } }) model { user: Nothing }
+  let sent <- Db.from Mail.Sent |> Db.all
+  Task.succeed (List.map (\s -> { to: s.to, subject: s.subject }) sent == [{ to: Text.Email "author@example.com", subject: "New comment on Hello world" }])
+}
+
+-- An empty comment, posted as the form's inputs would send it: the form is re-rendered with the
+-- error beside the field, no comment is stored, and no email is sent.
+test "an empty comment is rejected" = {
+  let _ <- Test.fake Mailer
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", published: True, author: author }
+  let _ <- Test.get (Posts.Show { slug: Post.Slug "hello" })
+  let r <- Test.submitRaw NewComment [{ name: "author", value: "Ann" }, { name: "body", value: "" }]
+  let comments <- Db.from Comment |> Db.count
+  let sent <- Db.from Mail.Sent |> Db.count
+  Task.succeed ({ answer: r.answer, author: Test.attr "value" "input[name=author]" r.doc, comments: comments, sent: sent } == { answer: FormRejected [{ field: "body", message: "is not valid" }], author: Just "Ann", comments: 0, sent: 0 })
+}

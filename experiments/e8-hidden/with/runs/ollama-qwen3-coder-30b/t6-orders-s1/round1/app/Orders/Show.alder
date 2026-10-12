@@ -1,0 +1,125 @@
+module Orders.Show
+
+import Order
+import Layout
+import Product
+import User
+import Line
+
+page "/orders/{id}" { id: Order.OrderId } requires user
+
+type Model = { order: Order, lines: List Line }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Order params.id
+  match found {
+    Just order -> {
+      let owner <- Db.from User |> Db.where (User.id.eq order.owner) |> Db.first
+      match owner {
+        Just u -> if u.role == Manager || u.id == session.user then {
+          let lines <- Db.from Line |> Db.where (Line.order.eq params.id) |> Db.all
+          Query.succeed { order: order, lines: lines }
+        } else Query.notFound,
+        Nothing -> Query.notFound,
+      }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewLine = {
+  quantity: Int.Positive,
+}
+
+msg AddLine { product: Product.ProductId } form NewLine
+msg Pay
+msg Cancel
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddLine p -> {
+    let order <- Db.get Order model.order.id
+    match order {
+      Just o -> if o.status == Open then {
+        let _ <- Db.insert Line { order: model.order.id, product: p.product, quantity: p.form.quantity }
+        Task.succeed (Redirect (Orders.Show { id: model.order.id }))
+      } else Task.notFound,
+      Nothing -> Task.notFound,
+    }
+  },
+  Pay p -> {
+    let order <- Db.get Order model.order.id
+    match order {
+      Just o -> if o.status == Open then {
+        let _ <- Db.update Order o.id (\t -> { t | status: Paid })
+        Task.succeed (Redirect (Orders.Show { id: model.order.id }))
+      } else Task.notFound,
+      Nothing -> Task.notFound,
+    }
+  },
+  Cancel p -> {
+    let order <- Db.get Order model.order.id
+    match order {
+      Just o -> if o.status == Open then {
+        let _ <- Db.update Order o.id (\t -> { t | status: Cancelled })
+        Task.succeed (Redirect (Orders.Show { id: model.order.id }))
+      } else Task.notFound,
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Order">
+    <h1>Order</h1>
+    <p id="status">{model.order.status}</p>
+    <p id="total">{total model.order}</p>
+    {if model.order.status == Open then
+      <div>
+        {for product in activeProducts ->
+          <form submit={AddLine { product: product.id }}>
+            <Input field="quantity" label="Quantity" />
+            <button>Add</button>
+          </form>}
+        <button click={Pay}>Pay</button>
+        <button click={Cancel}>Cancel</button>
+      </div>
+    else Html.none}
+  </Layout.Page>
+
+total : Order -> Int
+total order = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq order.id) |> Db.all
+  List.sum (List.map (\l -> l.quantity * Product.price (Db.get Product l.product)) lines)
+}
+
+activeProducts : Query (List Product)
+activeProducts = Db.from Product |> Db.where (Product.active.eq True) |> Db.all
+
+test "adding a line to a paid order is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Staff }
+  let product <- Db.insert Product { name: Text.NonEmpty "Widget", price: Int.NonNegative 100 }
+  let order <- Db.insert Order { owner: me, status: Paid }
+  let r <- Test.run (update (AddLine { product: product }) { order: order, lines: [] } { user: me })
+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Err "not found", trace: ["Db.get Order"] })
+}
+
+test "a staff user opening another user's order is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Staff }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "", role: Staff }
+  let product <- Db.insert Product { name: Text.NonEmpty "Widget", price: Int.NonNegative 100 }
+  let order <- Db.insert Order { owner: other, status: Open }
+  let r <- Test.run (update (AddLine { product: product }) { order: order, lines: [] } { user: me })
+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Err "not found", trace: ["Db.get Order"] })
+}
+
+test "a manager opening another user's order is allowed" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Manager }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "", role: Staff }
+  let product <- Db.insert Product { name: Text.NonEmpty "Widget", price: Int.NonNegative 100 }
+  let order <- Db.insert Order { owner: other, status: Open }
+  let r <- Test.run (update (AddLine { product: product }) { order: order, lines: [] } { user: me })
+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok Rerender, trace: ["Db.get Order", "Db.insert Line"] })
+}

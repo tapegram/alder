@@ -1,0 +1,51 @@
+module Line
+
+import User
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+type LineRow = { name: Text, quantity: Int, cost: Int }
+
+-- rowOf is what a line shows: its product's name, its quantity, and its cost in cents.
+rowOf : Line -> Query LineRow
+rowOf line = {
+  let found <- Db.get Product line.product
+  match found {
+    Just p -> Query.succeed { name: p.name, quantity: line.quantity, cost: line.quantity * p.price },
+    Nothing -> Query.succeed { name: "(removed)", quantity: line.quantity, cost: 0 },
+  }
+}
+
+-- rowsOf is the lines of one order.
+rowsOf : Order.OrderId -> Query (List LineRow)
+rowsOf orderId = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq orderId) |> Db.all
+  Query.all (List.map rowOf lines)
+}
+
+-- orderTotal is the sum of an order's lines in cents, whatever the order's status.
+orderTotal : Order.OrderId -> Query Int
+orderTotal orderId = {
+  let rows <- rowsOf orderId
+  Query.succeed (List.sum (List.map (\r -> r.cost) rows))
+}
+
+test "an open order's total is the sum of its lines" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let order <- Db.insert Order { owner: me }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let cake <- Db.insert Product { name: Text.NonEmpty "Cake", price: Int.NonNegative 400 }
+  let _ <- Db.insert Line { order: order, product: tea, quantity: Int.Positive 2 }
+  let _ <- Db.insert Line { order: order, product: cake, quantity: Int.Positive 1 }
+  let total <- orderTotal order
+  Task.succeed (total == 900)
+}

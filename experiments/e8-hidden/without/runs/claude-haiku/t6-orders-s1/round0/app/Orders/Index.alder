@@ -1,0 +1,55 @@
+module Orders.Index
+
+import Order
+import Line
+import Product
+import Layout
+
+page "/" { } requires user
+
+type OrderRow = { id: Order.OrderId, status: Order.Status, total: Int }
+
+type Model = { orders: List OrderRow }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let orders <- Db.from Order |> Db.where (Order.owner.eq session.user) |> Db.orderBy Order.created.desc |> Db.all
+  let ids = List.map (\o -> o.id) orders
+  let lines <- Db.from Line |> Db.where (Line.order.in ids) |> Db.all
+  let products <- Db.from Product |> Db.all
+  Query.succeed { orders: List.map (orderRow products lines) orders }
+}
+
+orderRow : List Product -> List Line -> Order -> OrderRow
+orderRow products lines order =
+  { id: order.id, status: order.status, total: Line.total products (List.filter (\l -> l.order == order.id) lines) }
+
+msg Create
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Order { owner: session.user }
+    Task.succeed (Redirect (Orders.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Orders">
+    <h1>Orders</h1>
+    <button click={Create}>New order</button>
+    <ul id="orders">
+      {for o in model.orders -> <OrderItem order={o} />}
+    </ul>
+    <p><a href={Products.Index {}}>Products</a></p>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+OrderItem : { order: OrderRow } -> Html Msg
+OrderItem props =
+  <li>
+    <a href={Orders.Show { id: props.order.id }}>View</a>
+    <span class="status">{Order.statusLabel props.order.status}</span>
+    <span class="total">{Text.fromInt props.order.total}</span>
+  </li>

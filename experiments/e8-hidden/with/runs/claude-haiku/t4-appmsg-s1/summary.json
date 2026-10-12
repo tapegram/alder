@@ -1,0 +1,586 @@
+{
+ "model": "claude-haiku",
+ "task": "t4-appmsg",
+ "retries": 2,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 2,
+  "test": true,
+  "hidden": "experiments/e8-hidden/hidden",
+  "condition": "with",
+  "sample": "s1"
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 8,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 108.0,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "haiku",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 10,
+    "failed": 1,
+    "results": [
+     {
+      "module": "Theme",
+      "name": "flip alternates",
+      "ok": true,
+      "left": "Light",
+      "right": "Light",
+      "trace": [],
+      "ms": 0.095
+     },
+     {
+      "module": "Theme",
+      "name": "flip switches to dark",
+      "ok": true,
+      "left": "Dark",
+      "right": "Dark",
+      "trace": [],
+      "ms": 0.004
+     },
+     {
+      "module": "Auth.Login",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Notes.Index"
+      ],
+      "ms": 1.925
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging out sends the visitor to log in",
+      "ok": true,
+      "left": "{ answer: Redirected /login, user: Nothing }",
+      "right": "{ answer: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.all Note",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.353
+     },
+     {
+      "module": "Notes.Index",
+      "name": "adding a note through the page",
+      "ok": true,
+      "left": "{ answer: Redirected /, titles: [\"Milk\"] }",
+      "right": "{ answer: Redirected /, titles: [\"Milk\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.all Note",
+       "Test.submit NewNote",
+       "Db.all Note",
+       "Db.insert Note",
+       "Db.all Note",
+       "Test.get Notes.Index",
+       "Db.all Note"
+      ],
+      "ms": 0.352
+     },
+     {
+      "module": "Notes.Index",
+      "name": "the list shows only my notes",
+      "ok": true,
+      "left": "[\"Mine\"]",
+      "right": "[\"Mine\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.all Note"
+      ],
+      "ms": 0.428
+     },
+     {
+      "module": "Notes.Index",
+      "name": "the theme button flips the theme",
+      "ok": false,
+      "left": "{ answer: Redirected /, label: Just \"Switch to light\", dark: True, theme: Dark }",
+      "right": "{ answer: Rerendered, label: Just \"Switch to light\", dark: True, theme: Dark }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.all Note",
+       "Test.click App.SwitchTheme",
+       "Session.put",
+       "Db.all Note"
+      ],
+      "ms": 0.485
+     },
+     {
+      "module": "Notes.Show",
+      "name": "the owner sees the note",
+      "ok": true,
+      "left": "{ answer: Shown, title: Just \"Milk\", body: Just \"2 litres\" }",
+      "right": "{ answer: Shown, title: Just \"Milk\", body: Just \"2 litres\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.login",
+       "Test.open Notes.Show",
+       "Db.get Note"
+      ],
+      "ms": 0.29
+     },
+     {
+      "module": "Notes.Show",
+      "name": "a user cannot see another user's note",
+      "ok": true,
+      "left": "{ answer: PageMissing, title: Nothing }",
+      "right": "{ answer: PageMissing, title: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.login",
+       "Test.open Notes.Show",
+       "Db.get Note"
+      ],
+      "ms": 0.215
+     },
+     {
+      "module": "Notes.Show",
+      "name": "saving an edit changes the note",
+      "ok": true,
+      "left": "{ answer: Redirected /notes/LJ3p6Cx408cWrRo6h8f0, title: Just \"Oat milk\" }",
+      "right": "{ answer: Redirected /notes/LJ3p6Cx408cWrRo6h8f0, title: Just \"Oat milk\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.login",
+       "Test.get Notes.Show",
+       "Db.get Note",
+       "Test.submit EditNote",
+       "Db.get Note",
+       "Db.update Note",
+       "Db.get Note",
+       "Db.get Note"
+      ],
+      "ms": 0.322
+     },
+     {
+      "module": "Notes.Show",
+      "name": "deleting a note removes it",
+      "ok": true,
+      "left": "{ answer: Redirected /, left: 0 }",
+      "right": "{ answer: Redirected /, left: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.login",
+       "Test.get Notes.Show",
+       "Db.get Note",
+       "Test.click Notes.Show.Delete",
+       "Db.get Note",
+       "Db.delete Note",
+       "Db.all Note",
+       "Db.count Note"
+      ],
+      "ms": 0.319
+     }
+    ],
+    "exit": 1
+   },
+   "test_output": "ok   Theme \"flip alternates\"\nok   Theme \"flip switches to dark\"\nok   Auth.Login \"a visitor is sent to log in\"\nok   Auth.Login \"logging out sends the visitor to log in\"\nok   Notes.Index \"adding a note through the page\"\nok   Notes.Index \"the list shows only my notes\"\nFAIL Notes.Index \"the theme button flips the theme\"\n  left:  { answer: Redirected /, label: Just \"Switch to light\", dark: True, theme: Dark }\n  right: { answer: Rerendered, label: Just \"Switch to light\", dark: True, theme: Dark }\n  trace: [\"Db.insert User\", \"Test.login\", \"Test.get Notes.Index\", \"Db.all Note\", \"Test.click App.SwitchTheme\", \"Session.put\", \"Db.all Note\"]\nok   Notes.Show \"the owner sees the note\"\nok   Notes.Show \"a user cannot see another user's note\"\nok   Notes.Show \"saving an edit changes the note\"\nok   Notes.Show \"deleting a note removes it\"\n10 passed, 1 failed\n"
+  },
+  {
+   "n": 1,
+   "files": 8,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 15.6,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.295 (Claude Code)",
+   "model": "haiku",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 11,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Theme",
+      "name": "flip alternates",
+      "ok": true,
+      "left": "Light",
+      "right": "Light",
+      "trace": [],
+      "ms": 0.091
+     },
+     {
+      "module": "Theme",
+      "name": "flip switches to dark",
+      "ok": true,
+      "left": "Dark",
+      "right": "Dark",
+      "trace": [],
+      "ms": 0.003
+     },
+     {
+      "module": "Auth.Login",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Notes.Index"
+      ],
+      "ms": 1.714
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging out sends the visitor to log in",
+      "ok": true,
+      "left": "{ answer: Redirected /login, user: Nothing }",
+      "right": "{ answer: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.all Note",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.348
+     },
+     {
+      "module": "Notes.Index",
+      "name": "adding a note through the page",
+      "ok": true,
+      "left": "{ answer: Redirected /, titles: [\"Milk\"] }",
+      "right": "{ answer: Redirected /, titles: [\"Milk\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.all Note",
+       "Test.submit NewNote",
+       "Db.all Note",
+       "Db.insert Note",
+       "Db.all Note",
+       "Test.get Notes.Index",
+       "Db.all Note"
+      ],
+      "ms": 0.367
+     },
+     {
+      "module": "Notes.Index",
+      "name": "the list shows only my notes",
+      "ok": true,
+      "left": "[\"Mine\"]",
+      "right": "[\"Mine\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.all Note"
+      ],
+      "ms": 0.467
+     },
+     {
+      "module": "Notes.Index",
+      "name": "the theme button flips the theme",
+      "ok": true,
+      "left": "{ answer: Redirected /, label: Just \"Switch to light\", dark: True, theme: Dark }",
+      "right": "{ answer: Redirected /, label: Just \"Switch to light\", dark: True, theme: Dark }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.all Note",
+       "Test.click App.SwitchTheme",
+       "Session.put",
+       "Db.all Note"
+      ],
+      "ms": 0.291
+     },
+     {
+      "module": "Notes.Show",
+      "name": "the owner sees the note",
+      "ok": true,
+      "left": "{ answer: Shown, title: Just \"Milk\", body: Just \"2 litres\" }",
+      "right": "{ answer: Shown, title: Just \"Milk\", body: Just \"2 litres\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.login",
+       "Test.open Notes.Show",
+       "Db.get Note"
+      ],
+      "ms": 0.224
+     },
+     {
+      "module": "Notes.Show",
+      "name": "a user cannot see another user's note",
+      "ok": true,
+      "left": "{ answer: PageMissing, title: Nothing }",
+      "right": "{ answer: PageMissing, title: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.login",
+       "Test.open Notes.Show",
+       "Db.get Note"
+      ],
+      "ms": 0.201
+     },
+     {
+      "module": "Notes.Show",
+      "name": "saving an edit changes the note",
+      "ok": true,
+      "left": "{ answer: Redirected /notes/PObOGQDj2NbW77VPiukJ, title: Just \"Oat milk\" }",
+      "right": "{ answer: Redirected /notes/PObOGQDj2NbW77VPiukJ, title: Just \"Oat milk\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.login",
+       "Test.get Notes.Show",
+       "Db.get Note",
+       "Test.submit EditNote",
+       "Db.get Note",
+       "Db.update Note",
+       "Db.get Note",
+       "Db.get Note"
+      ],
+      "ms": 0.31
+     },
+     {
+      "module": "Notes.Show",
+      "name": "deleting a note removes it",
+      "ok": true,
+      "left": "{ answer: Redirected /, left: 0 }",
+      "right": "{ answer: Redirected /, left: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.login",
+       "Test.get Notes.Show",
+       "Db.get Note",
+       "Test.click Notes.Show.Delete",
+       "Db.get Note",
+       "Db.delete Note",
+       "Db.all Note",
+       "Db.count Note"
+      ],
+      "ms": 0.296
+     }
+    ],
+    "exit": 0
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "haiku",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "hidden": {
+  "passed": 8,
+  "failed": 0,
+  "results": [
+   {
+    "module": "Hidden",
+    "name": "the theme starts light and the list's button switches it to dark",
+    "ok": true,
+    "left": "{ dark: False, label: Just \"Switch to dark\", after: True, afterLabel: Just \"Switch to light\", session: Dark }",
+    "right": "{ dark: False, label: Just \"Switch to dark\", after: True, afterLabel: Just \"Switch to light\", session: Dark }",
+    "trace": [
+     "Db.insert User",
+     "Test.login",
+     "Test.open Notes.Index",
+     "Db.all Note",
+     "Test.click App.SwitchTheme",
+     "Session.put",
+     "Db.all Note"
+    ],
+    "ms": 2.054
+   },
+   {
+    "module": "Hidden",
+    "name": "the theme stays in the session from page to page",
+    "ok": true,
+    "left": "{ show: True, list: True, session: Dark }",
+    "right": "{ show: True, list: True, session: Dark }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.get Notes.Index",
+     "Db.all Note",
+     "Test.click App.SwitchTheme",
+     "Session.put",
+     "Db.all Note",
+     "Test.open Notes.Show",
+     "Db.get Note",
+     "Test.open Notes.Index",
+     "Db.all Note"
+    ],
+    "ms": 0.539
+   },
+   {
+    "module": "Hidden",
+    "name": "a note's page switches the theme there and back",
+    "ok": true,
+    "left": "{ once: True, twice: False, title: Just \"Milk\", label: Just \"Switch to dark\" }",
+    "right": "{ once: True, twice: False, title: Just \"Milk\", label: Just \"Switch to dark\" }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.get Notes.Show",
+     "Db.get Note",
+     "Test.click App.SwitchTheme",
+     "Session.put",
+     "Db.get Note",
+     "Test.click App.SwitchTheme",
+     "Session.put",
+     "Db.get Note"
+    ],
+    "ms": 0.877
+   },
+   {
+    "module": "Hidden",
+    "name": "a visitor switches the theme on the login page",
+    "ok": true,
+    "left": "{ dark: True, session: Dark, user: Nothing }",
+    "right": "{ dark: True, session: Dark, user: Nothing }",
+    "trace": [
+     "Test.get Auth.Login",
+     "Test.click App.SwitchTheme",
+     "Session.put"
+    ],
+    "ms": 0.354
+   },
+   {
+    "module": "Hidden",
+    "name": "logging out from the list",
+    "ok": true,
+    "left": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "right": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "trace": [
+     "Db.insert User",
+     "Test.login",
+     "Test.get Notes.Index",
+     "Db.all Note",
+     "Test.click App.Logout",
+     "Session.put",
+     "Test.open Notes.Index"
+    ],
+    "ms": 0.328
+   },
+   {
+    "module": "Hidden",
+    "name": "logging out from a note's page",
+    "ok": true,
+    "left": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "right": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.get Notes.Show",
+     "Db.get Note",
+     "Test.click App.Logout",
+     "Session.put",
+     "Test.open Notes.Show"
+    ],
+    "ms": 0.301
+   },
+   {
+    "module": "Hidden",
+    "name": "another user's note is missing",
+    "ok": true,
+    "left": "{ answer: PageMissing, items: 0 }",
+    "right": "{ answer: PageMissing, items: 0 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.open Notes.Show",
+     "Db.get Note",
+     "Test.open Notes.Index",
+     "Db.all Note"
+    ],
+    "ms": 0.258
+   },
+   {
+    "module": "Hidden",
+    "name": "a note is added on the list and edited on its page",
+    "ok": true,
+    "left": "{ added: Redirected /, titles: [\"Milk\"], saved: Redirected /notes/199CD92JGwgAWqCuo71j, title: Just \"Oat milk\", body: Just \"One litre.\" }",
+    "right": "{ added: Redirected /, titles: [\"Milk\"], saved: Redirected /notes/199CD92JGwgAWqCuo71j, title: Just \"Oat milk\", body: Just \"One litre.\" }",
+    "trace": [
+     "Db.insert User",
+     "Test.login",
+     "Test.get Notes.Index",
+     "Db.all Note",
+     "Test.submit NewNote",
+     "Db.all Note",
+     "Db.insert Note",
+     "Db.all Note",
+     "Db.first Note",
+     "Test.get Notes.Show",
+     "Db.get Note",
+     "Test.submit EditNote",
+     "Db.get Note",
+     "Db.update Note",
+     "Db.get Note"
+    ],
+    "ms": 0.472
+   }
+  ],
+  "exit": 0
+ },
+ "hidden_pass": "8/8"
+}

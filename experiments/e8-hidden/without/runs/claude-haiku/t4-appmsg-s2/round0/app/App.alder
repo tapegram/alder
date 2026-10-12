@@ -1,0 +1,37 @@
+module App
+
+import User
+import Theme
+import Layout
+
+session { user: Maybe User.UserId, theme: Theme = Light }
+
+login = Auth.Login
+
+msg SwitchTheme
+msg Logout
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  SwitchTheme p -> {
+    let _ <- Session.put (\s -> { s | theme: Theme.toggle s.theme })
+    Task.succeed Rerender
+  },
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing })
+    Task.succeed (Redirect (Auth.Login {}))
+  },
+}
+
+error : Error -> Html Never
+error err =
+  <Layout.Page title="Error" theme={Light}>
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html Never
+notFound =
+  <Layout.Page title="Not found" theme={Light}>
+    <h1>Not found</h1>
+  </Layout.Page>

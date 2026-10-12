@@ -1,0 +1,44 @@
+module Line
+
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+-- lineCents is quantity × price for one line, in cents; the product is looked up in the list.
+lineCents : List Product -> Line -> Int
+lineCents products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  match found {
+    Just p -> line.quantity * p.price,
+    Nothing -> 0,
+  }
+}
+
+total : List Product -> List Line -> Int
+total products lines = lines |> List.map (lineCents products) |> List.sum
+
+productName : List Product -> Line -> Text
+productName products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  match found {
+    Just p -> "{p.name}",
+    Nothing -> "",
+  }
+}
+
+test "total sums quantity times price" =
+  total [
+    { id: Product.ProductId "tea", name: Text.NonEmpty "Tea", price: Int.NonNegative 450, active: True },
+    { id: Product.ProductId "mug", name: Text.NonEmpty "Mug", price: Int.NonNegative 350, active: True },
+  ] [
+    { id: LineId "a", order: Order.OrderId "o", product: Product.ProductId "tea", quantity: Int.Positive 2 },
+    { id: LineId "b", order: Order.OrderId "o", product: Product.ProductId "mug", quantity: Int.Positive 1 },
+  ] == 1250

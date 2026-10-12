@@ -1,0 +1,27 @@
+module Totals
+
+import Order
+import Line
+import Product
+
+lineTotal : List Product -> Line -> Int
+lineTotal products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  match found {
+    Just p -> line.quantity * p.price,
+    Nothing -> 0,
+  }
+}
+
+total : List Line -> List Product -> Int
+total lines products =
+  lines
+    |> List.map (lineTotal products)
+    |> List.sum
+
+forOrder : Order.OrderId -> Query Int
+forOrder id = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq id) |> Db.all
+  let products <- Db.from Product |> Db.all
+  Query.succeed (total lines products)
+}

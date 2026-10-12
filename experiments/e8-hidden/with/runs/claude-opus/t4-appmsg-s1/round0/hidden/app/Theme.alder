@@ -1,0 +1,13 @@
+module Theme
+
+type Theme = Light | Dark
+
+flip : Theme -> Theme
+flip theme = match theme {
+  Light -> Dark,
+  Dark -> Light,
+}
+
+test "flip turns light into dark" = flip Light == Dark
+
+test "flip alternates" = flip (flip Light) == Light

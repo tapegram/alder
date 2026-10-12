@@ -1,0 +1,28 @@
+module Line
+
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+-- What one line costs in cents: its quantity times its product's price (0 if the product is gone).
+lineCost : List Product -> Line -> Int
+lineCost products line = {
+  let found = products |> List.find (\p -> p.id == line.product)
+  found |> Maybe.map (\p -> p.price * line.quantity) |> Maybe.withDefault 0
+}
+
+-- The total in cents of an order's lines.
+totalOf : Order.OrderId -> Query Int
+totalOf id = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq id) |> Db.all
+  let products <- Db.from Product |> Db.all
+  Query.succeed (List.sum (List.map (lineCost products) lines))
+}

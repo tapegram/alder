@@ -1,0 +1,133 @@
+module Orders.Show
+
+import Order
+import Line
+import Product
+import User
+import Layout
+
+page "/orders/{id}" { id: Order.OrderId } requires user
+
+type Entry = { name: Text.NonEmpty, quantity: Int.Positive, subtotal: Int }
+
+type Model = {
+  order: Order,
+  entries: List Entry,
+  total: Int,
+  products: List Product,
+}
+
+mkEntry : Line -> Product -> Entry
+mkEntry line p = { name: p.name, quantity: line.quantity, subtotal: line.quantity * p.price }
+
+entryOf : List Product -> Line -> Maybe Entry
+entryOf products line =
+  Maybe.map (mkEntry line) (List.find (\p -> p.id == line.product) products)
+
+build : Order -> Query Model
+build order = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq order.id) |> Db.all
+  let products <- Db.from Product |> Db.all
+  let active <- Db.from Product |> Db.where (Product.active.eq True) |> Db.orderBy Product.name.asc |> Db.all
+  Query.succeed {
+    order: order,
+    entries: List.filterMap (entryOf products) lines,
+    total: Line.total products lines,
+    products: active,
+  }
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Order params.id
+  match found {
+    Nothing -> Query.notFound,
+    Just order -> {
+      let me <- Db.get User session.user
+      if order.owner == session.user || User.isManager me then build order else Query.notFound
+    },
+  }
+}
+
+form NewLine = {
+  quantity: Int.Positive,
+}
+
+msg AddLine { product: Product.ProductId } form NewLine
+msg Pay
+msg Cancel
+
+backToOrder : Model -> Nav
+backToOrder model = Redirect (Orders.Show { id: model.order.id })
+
+insertLine : Model -> Product.ProductId -> Int.Positive -> Task Nav
+insertLine model productId quantity = {
+  let found <- Db.get Product productId
+  match found {
+    Nothing -> Task.notFound,
+    Just prod -> {
+      if prod.active then addLine model prod quantity else Task.succeed (Reject "This product is not available.")
+    },
+  }
+}
+
+addLine : Model -> Product -> Int.Positive -> Task Nav
+addLine model prod quantity = {
+  let _ <- Db.insert Line { order: model.order.id, product: prod.id, quantity: quantity }
+  Task.succeed (backToOrder model)
+}
+
+applyStatus : Model -> Order.Status -> Task Nav
+applyStatus model status = {
+  let _ <- Db.update Order model.order.id (\o -> { o | status: status })
+  Task.succeed (backToOrder model)
+}
+
+setStatus : Model -> Order.Status -> Task Nav
+setStatus model status =
+  if model.order.status != Open
+    then Task.succeed (Reject "This order is not open.")
+    else applyStatus model status
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddLine p ->
+    if model.order.status != Open
+      then Task.succeed (Reject "This order is not open.")
+      else insertLine model p.product p.form.quantity,
+  Pay p -> setStatus model Paid,
+  Cancel p -> setStatus model Cancelled,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Order">
+    <h1>Order</h1>
+    <p>Status: <span id="status">{Order.statusLabel model.order.status}</span></p>
+
+    <ul id="lines">
+      {for e in model.entries ->
+        <li>
+          <span class="name">{e.name}</span> x <span class="quantity">{Text.fromInt e.quantity}</span> = <span class="subtotal">{Text.fromInt e.subtotal}</span>
+        </li>}
+    </ul>
+
+    <p>Total: <span id="total">{Text.fromInt model.total}</span></p>
+
+    {if model.order.status == Open then
+      <div id="actions">
+        {for p in model.products ->
+          <form submit={AddLine { product: p.id }}>
+            <span class="product">{p.name}</span>
+            <Errors form />
+            <Input field="quantity" label="Quantity" />
+            <Errors field="quantity" />
+            <button>Add</button>
+          </form>}
+        <button click={Pay}>Mark paid</button>
+        <button click={Cancel}>Cancel order</button>
+      </div>
+    else Html.none}
+
+    <a href={Orders.Index {}}>Back</a>
+  </Layout.Page>

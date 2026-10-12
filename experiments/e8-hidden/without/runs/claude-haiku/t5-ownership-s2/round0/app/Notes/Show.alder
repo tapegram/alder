@@ -1,0 +1,42 @@
+module Notes.Show
+
+import Note
+import User
+import Layout
+
+page "/notes/{id}" { id: Note.NoteId } requires user
+
+type Model = { note: Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Note params.id
+  match found {
+    Just note -> if note.owner == session.user then Query.succeed { note: note } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.note.title}>
+    <h1 id="title">{model.note.title}</h1>
+    <p id="body">{model.note.body}</p>
+    <a href={Notes.Index {}}>Back</a>
+  </Layout.Page>
+
+test "a note shows its title and body" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", body: "2 litres", owner: me }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.get (Notes.Show { id: id })
+  Task.succeed ({ title: Test.text "#title" r.doc, body: Test.text "#body" r.doc } == { title: Just "Milk", body: Just "2 litres" })
+}
+
+test "a stranger cannot see my note" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", body: "", owner: me }
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let show <- Test.open (Notes.Show { id: id })
+  Task.succeed (show.answer == PageMissing)
+}

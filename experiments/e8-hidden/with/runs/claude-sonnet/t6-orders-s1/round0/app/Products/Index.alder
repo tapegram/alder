@@ -1,0 +1,69 @@
+module Products.Index
+
+import Product
+import User
+import Layout
+
+page "/products" { } requires user
+
+type Model = { products: List Product }
+
+loadAll : Query Model
+loadAll = {
+  let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+  Query.succeed { products: products }
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let me <- Db.get User session.user
+  if User.isManager me then loadAll else Query.notFound
+}
+
+form NewProduct = {
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+}
+
+msg Add form NewProduct
+msg Toggle { id: Product.ProductId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Product { name: p.form.name, price: p.form.price }
+    Task.succeed (Redirect (Products.Index {}))
+  },
+  Toggle p -> {
+    let found <- Db.get Product p.id
+    match found {
+      Just prod -> {
+        let _ <- Db.update Product prod.id (\x -> { x | active: not x.active })
+        Task.succeed (Redirect (Products.Index {}))
+      },
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Products">
+    <h1>Products</h1>
+    <form submit={Add}>
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <Input field="price" label="Price in cents" />
+      <Errors field="price" />
+      <button>Add product</button>
+    </form>
+    <ul id="products">
+      {for prod in model.products ->
+        <li>
+          <span class="name">{prod.name}</span>
+          <span class="price">{Text.fromInt prod.price}</span>
+          <span class="active">{if prod.active then "active" else "inactive"}</span>
+          <button click={Toggle { id: prod.id }}>{if prod.active then "Deactivate" else "Activate"}</button>
+        </li>}
+    </ul>
+  </Layout.Page>

@@ -1,0 +1,39 @@
+module Line
+
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+type LineView = { name: Text, quantity: Int, cost: Int }
+
+-- The cost of one line: its quantity times the product's price now.
+lineCost : Line -> Query Int
+lineCost line = {
+  let found <- Db.get Product line.product
+  Query.succeed (match found { Just p -> line.quantity * p.price, Nothing -> 0 })
+}
+
+-- One line as the order page shows it.
+lineView : Line -> Query LineView
+lineView line = {
+  let found <- Db.get Product line.product
+  let name : Text = match found { Just p -> p.name, Nothing -> "(removed product)" }
+  let cost <- lineCost line
+  Query.succeed { name: name, quantity: line.quantity, cost: cost }
+}
+
+-- The total of an order in cents: the sum of quantity times price over its lines.
+orderTotal : Order.OrderId -> Query Int
+orderTotal id = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq id) |> Db.all
+  let costs <- Query.all (List.map lineCost lines)
+  Query.succeed (List.sum costs)
+}

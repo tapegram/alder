@@ -1,0 +1,36 @@
+module Totals
+
+import Order
+import Line
+import Product
+import User
+
+lineValue : List Product -> Line -> Int
+lineValue products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  match found {
+    Just p -> line.quantity * p.price,
+    Nothing -> 0,
+  }
+}
+
+total : List Product -> List Line -> Int
+total products lines = lines |> List.map (lineValue products) |> List.sum
+
+orderTotal : Order.OrderId -> Query Int
+orderTotal oid = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq oid) |> Db.all
+  let products <- Db.from Product |> Db.all
+  Query.succeed (total products lines)
+}
+
+test "an open order's total over two lines" = {
+  let me <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 250 }
+  let ink <- Db.insert Product { name: Text.NonEmpty "Ink", price: Int.NonNegative 1000 }
+  let oid <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: oid, product: pen, quantity: Int.Positive 2 }
+  let _ <- Db.insert Line { order: oid, product: ink, quantity: Int.Positive 1 }
+  let n <- orderTotal oid
+  Task.succeed (n == 1000 + 500)
+}
