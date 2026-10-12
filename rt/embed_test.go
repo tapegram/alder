@@ -83,11 +83,19 @@ func TestDistModule(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go is not on PATH")
 	}
-	out, err := exec.Command("go", "list", "-deps", "-f", "{{with .Module}}{{.Path}}{{end}}", "./...").Output()
-	if err != nil {
-		t.Fatalf("go list: %v", err)
+	// The runtime's dependencies differ by platform (modernc.org/libc uses go-isatty and
+	// go-strftime on darwin, not on linux), and an app is built wherever alder runs: a module is
+	// used if some release target (.goreleaser.yaml) uses it.
+	var used []string
+	for _, target := range [][2]string{{"darwin", "amd64"}, {"darwin", "arm64"}, {"linux", "amd64"}, {"linux", "arm64"}, {"windows", "amd64"}} {
+		cmd := exec.Command("go", "list", "-deps", "-f", "{{with .Module}}{{.Path}}{{end}}", "./...")
+		cmd.Env = append(os.Environ(), "GOOS="+target[0], "GOARCH="+target[1], "CGO_ENABLED=0")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("go list (%s/%s): %v", target[0], target[1], err)
+		}
+		used = append(used, strings.Fields(string(out))...)
 	}
-	used := strings.Fields(string(out))
 	mod, err := os.ReadFile("../go.mod")
 	if err != nil {
 		t.Fatal(err)
