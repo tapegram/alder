@@ -126,9 +126,9 @@ for task in "${TASKS[@]}"; do
       k=$(echo "$line" | sed -E 's/^([0-9]+) mutants: ([0-9]+) killed.*/\2/')
       exact=$(awk -v k="$k" -v n="$n" 'BEGIN { if (n == 0) print "1.000"; else printf "%.3f", k / n }')
       score="$k/$n $exact"
+      sbad=0
       if ! awk -v k="$k" -v n="$n" -v m="$MIN" 'BEGIN { exit !(n == 0 || k / n >= m) }'; then
-        score="$score!"
-        bad=1
+        sbad=1
       fi
       survivors=$(sed -n '/^survived:/,$p' "$dir.mutate.log" | sed '1d' | grep -E '^  ')
       if [ -n "$survivors" ]; then
@@ -136,22 +136,21 @@ for task in "${TASKS[@]}"; do
         report="--- $sol/$task: survivors"$'\n'"$survivors"
         if [ ! -f "$just" ]; then
           report="$report"$'\n'"    (no SURVIVORS.md)"
-          score="$score!"
-          bad=1
+          sbad=1
         else
           # Each survivor's "module decl:line kind" must be named in SURVIVORS.md.
           while IFS= read -r s; do
             key=$(echo "$s" | awk '{ sub(/^ +/, ""); split($0, a, /  +/); print a[1] " " a[2] " " a[3] }')
             if ! grep -qF "$key" "$just"; then
               report="$report"$'\n'"    (not justified in SURVIVORS.md: $key)"
-              score="$score!"
-              bad=1
+              sbad=1
             fi
           done <<<"$survivors"
           report="$report"$'\n'"--- $sol/$task: SURVIVORS.md"$'\n'"$(cat "$just")"
         fi
         SURV_REPORT+=("$report")
       fi
+      [ "$sbad" -eq 0 ] || { score="$score!"; bad=1; }
     fi
 
     cp "$hidden" "$dir/app/Hidden.alder"

@@ -102,3 +102,14 @@ test "accept and decline through the page" = {
   let n <- Db.get Invite no
   Task.succeed ({ a: a.answer, d: d.answer, rows: List.map (\m -> { team: m.team, user: m.user }) rows, y: Maybe.map (\i -> i.status) y, n: Maybe.map (\i -> i.status) n } == { a: Redirected (Teams.Show { id: red }), d: Redirected (Invites.Index {}), rows: [{ team: red, user: bob }], y: Just Accepted, n: Just Declined })
 }
+
+test "the invites page reads only the invited teams" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let _ <- Db.insert Team { name: Text.NonEmpty "Blue", owner: ann }
+  let _ <- Db.insert Invite { team: red, email: Text.Email "bob@example.com" }
+  let _ <- Test.login { user: Just bob }
+  let page <- Test.get (Invites.Index {})
+  Task.succeed (List.map (\t -> t.name) page.model.teams == [Text.NonEmpty "Red"])
+}

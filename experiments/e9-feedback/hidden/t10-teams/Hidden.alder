@@ -78,7 +78,8 @@ test "a member's Remove from the owner's page is not found" = {
 -- The owner has no Remove button for themselves. The server must refuse one anyway: Ann's page
 -- is held with its Remove for Bob; the team is then handed to Bob (Bob's Member row goes, Ann
 -- gets one, so the owner still has no Member row), and Bob, now the owner, posts that Remove of
--- himself. However the app refuses it (anything but a redirect), nothing changes.
+-- himself. It must change nothing: only that invariant is asserted; the server's answer,
+-- whatever it is, is printed on both sides of a failure for the scorer.
 test "the owner cannot remove themselves, even from a stale page" = {
   let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
   let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
@@ -94,14 +95,7 @@ test "the owner cannot remove themselves, even from a stale page" = {
   let rows <- Db.from Member |> Db.where (Member.team.eq red) |> Db.count
   let team <- Db.get Team red
   let page <- Test.get (Teams.Show { id: red })
-  let refused = match r.answer {
-    PageMissing -> True,
-    RequestFailed _ -> True,
-    FormRejected _ -> True,
-    Rerendered -> True,
-    _ -> False,
-  }
-  Task.succeed ({ refused: refused, rows: rows, owner: Maybe.map (\t -> t.owner) team, members: Test.texts "#members .name" page.doc } == { refused: True, rows: 1, owner: Just bob, members: ["Bob", "Ann"] })
+  Task.succeed ({ answer: r.answer, rows: rows, owner: Maybe.map (\t -> t.owner) team, members: Test.texts "#members .name" page.doc } == { answer: r.answer, rows: 1, owner: Just bob, members: ["Bob", "Ann"] })
 }
 
 test "an invite, accepted, makes the team visible" = {

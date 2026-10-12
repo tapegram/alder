@@ -110,10 +110,13 @@ The protocol is E8's:
     body's refusal sentence stays: "Adding a line to an order that is not
     Open is refused by the server, even when the form comes from a page
     loaded while the order was still Open."
-  - The stale-page hidden test is relaxed. It now asks that no line is
-    stored and that the answer is not `Redirected` to a page that shows
-    the line. It accepts `PageMissing`, `RequestFailed`, `FormRejected` and
-    `Rerendered`.
+  - The stale-page hidden test is relaxed to the invariant only: no line
+    is stored. Any answer the server gives (a 404, a failure, a `Reject`,
+    a redirect back) is accepted. The compared record carries
+    `answer: r.answer` on both sides, so a failure prints what the server
+    answered, for the scorer. T9's and T10's stale-page refusals (a
+    started booking's Cancel, the owner's own Remove) are written the same
+    way.
   - `reference-alt/t6-orders` now refuses that line with
     `Reject "This order is closed: no line was added."`. The Paid order's
     page no longer draws the form, so the answer is `Rerendered`. E8's
@@ -137,8 +140,8 @@ The protocol is E8's:
 | **T5** ownership | E8's 8 (unchanged) |
 | **T6** orders | E8's 9, the last one relaxed (above) |
 | **T7** drafts | E8's 7 (unchanged) |
-| **T9** bookings | 7: a booking through the room's form (`Book`) is `Redirected (Rooms.Show {…})` and listed on the room (`#bookings .from`, `.to`) and on `/bookings` (`#mine .room`, `.from`); a booking that overlaps (late, early, inside) is `FormRejected` with a form-level error and not stored, while ones touching it on either side, and the same dates in another room, are stored; a `to` not after `from` is refused; `/rooms` (`#rooms .name`, `.free`) gives each room's next free date (back-to-back bookings skipped together, a past booking ignored, a later gap irrelevant); the owner cancels before `from` (`#cancel`, `Cancel`, `Redirected (Bookings.Index {})`); a booking from today has no `#cancel`, and a Cancel from a page held before the booking moved to today is refused (any answer but a redirect) and the booking stays; another user's booking is `PageMissing`, and so is its Cancel posted with a swapped cookie |
-| **T10** teams | 8: a team page is `PageMissing` for a non-member and shown to the owner and a member (`#members .name`, owner first); `/teams` lists owned and joined teams by name; only the owner has `.remove` buttons, and none for themselves; the owner removes a member, who then gets `PageMissing` and an empty `/teams`; a member's Remove posted from the owner's held page (cookie swapped) is `PageMissing` and changes nothing; the owner's own Remove is refused even from a stale page (the team handed over after the page was loaded); an invite sent with `NewInvite` and accepted on `/invites` (`#invites .team`, `Accept`) makes the team visible; a declined one (`Decline`) leaves it closed, and another user does not see it; a team created with `NewTeam` is its creator's |
+| **T9** bookings | 7: a booking through the room's form (`Book`) is `Redirected (Rooms.Show {…})` and listed on the room (`#bookings .from`, `.to`) and on `/bookings` (`#mine .room`, `.from`); a booking that overlaps (late, early, inside) is `FormRejected` with a form-level error and not stored, while ones touching it on either side, and the same dates in another room, are stored; a `to` not after `from` is refused; `/rooms` (`#rooms .name`, `.free`) gives each room's next free date (back-to-back bookings skipped together, a past booking ignored, a later gap irrelevant); the owner cancels before `from` (`#cancel`, `Cancel`, `Redirected (Bookings.Index {})`); a booking from today has no `#cancel`, and a Cancel from a page held before the booking moved to today is refused: the booking stays (only that is asserted, whatever the answer); another user's booking is `PageMissing`, and so is its Cancel posted with a swapped cookie |
+| **T10** teams | 8: a team page is `PageMissing` for a non-member and shown to the owner and a member (`#members .name`, owner first); `/teams` lists owned and joined teams by name; only the owner has `.remove` buttons, and none for themselves; the owner removes a member, who then gets `PageMissing` and an empty `/teams`; a member's Remove posted from the owner's held page (cookie swapped) is `PageMissing` and changes nothing; the owner's own Remove, posted from a stale page (the team handed over after the page was loaded), changes nothing (only that is asserted, whatever the answer); an invite sent with `NewInvite` and accepted on `/invites` (`#invites .team`, `Accept`) makes the team visible; a declined one (`Decline`) leaves it closed, and another user does not see it; a team created with `NewTeam` is its creator's |
 
 "Today" in T9 is the test clock's date. The clock starts at 2026-01-01 and
 ticks only seconds (book 10, "Where an effect test runs"), so `Date.today`
@@ -164,21 +167,52 @@ copy of the solution.
 | T10: team page without the membership check | 5/8 |
 | T10: no owner check in `update` (a member may Remove and invite) | 7/8 |
 | T10: Decline makes a member too | 7/8 |
-| T10 (alt): the owner's own Remove answers a redirect | 7/8 |
 
-One mutant is not caught, by design. The reference's explicit
+Four mutants are not caught, by design. Three refuse by redirecting back
+with nothing changed, which no task text forbids, so they pass:
+
+| Mutant | Hidden tests passed |
+|---|---|
+| T6 (alt): a closed order's AddLine answers `Redirect (Orders.Index {})` | 9/9 |
+| T9: a started booking's Cancel answers a redirect to the booking | 7/7 |
+| T10: the owner's own Remove answers a redirect (reference and alt) | 8/8 |
+
+In the fourth, the reference's explicit
 `p.user == model.team.owner` refusal can be removed. The owner has no
 `Member` row (the Names block says so), so that Remove finds no row and is
 a 404 anyway. The task asks for the refusal, and the hidden test checks the
 refusal, not the line of code (8/8). The reference's own tests kill this
 mutant by its message.
 
+## Calibration: the tests asked only
+
+A model that writes exactly the tests its tests paragraph names, and no
+more, does not reach the references' scores. To show by how much, each
+reference's app was scored with only those tests: every other test
+deleted, and the asked ones written as a careful model would. For T7, the
+blog base's 25 tests stay, since a model receives them with the app.
+`findings.md` reads the baseline H1 scores against this line. The tests,
+the score, the survivors and how to reproduce them are in
+`reference/<task>/ASKED.md`.
+
+| Task | Tests | Score | Survivors: authorization | data | flow | logic | schema |
+|---|---|---|---|---|---|---|---|
+| T5 ownership | 3 | 3/15 = 0.20 | 2 | 5 | 4 | 0 | 1 |
+| T6 orders | 3 | 8/46 = 0.17 | 5 | 12 | 11 | 5 | 5 |
+| T7 drafts | 25 base + 3 | 38/57 = 0.67 | 3 | 8 | 4 | 3 | 1 |
+| T9 bookings | 4 | 15/40 = 0.38 | 6 | 12 | 4 | 1 | 2 |
+| T10 teams | 4 | 15/44 = 0.34 | 4 | 14 | 7 | 0 | 4 |
+
+The classes are book 10's. `session put dropped` counts as data; the
+logout and login mutants (`App`, `Auth.Login`; 4–5 per task) survive everywhere,
+because no paragraph asks for those tests.
+
 ## Layout
 
 | Path | What it is |
 |---|---|
 | `tasks/<task>.md` | the task texts, one per task |
-| `reference/<task>/`, `reference-alt/<task>/` | the two solutions per task, each with its own tests. T7's are complete blog copies with `migrations/` and the blog's `adapters/`; the others have only `app/`. `SURVIVORS.md`, where present, justifies each survivor. |
+| `reference/<task>/`, `reference-alt/<task>/` | the two solutions per task, each with its own tests. `reference/<task>/ASKED.md` holds the tests-asked-only calibration. T7's are complete blog copies with `migrations/` and the blog's `adapters/`; the others have only `app/`. `SURVIVORS.md`, where present, justifies each survivor. |
 | `hidden/<task>/Hidden.alder` | the hidden tests (`module Hidden`) |
 | `verify.sh` | the gate |
 
@@ -221,7 +255,7 @@ t7-drafts     reference-alt  ok     ok     32/32    7/7      51/54 0.944        
 t9-bookings   reference      ok     ok     14/14    7/7      40/40 1.000        -
 t9-bookings   reference-alt  ok     ok     11/11    7/7      39/39 1.000        -
 t10-teams     reference      ok     ok     14/14    8/8      44/44 1.000        -
-t10-teams     reference-alt  ok     ok     11/11    8/8      47/48 0.979        -
+t10-teams     reference-alt  ok     ok     12/12    8/8      48/48 1.000        -
 ```
 
 The survivors are all equivalent mutants:
@@ -229,6 +263,4 @@ The survivors are all equivalent mutants:
 - **T7, both solutions.** The blog's three (book 10, "Mutants that are the
   same program"): the two page-clamp `operator flipped`, and the
   `limit dropped` of `Posts.Index.load`.
-- **`reference-alt/t10-teams`.** One `where dropped`: `Invites.Index`
-  reads every team instead of the invites' teams. It looks each team up by
-  id, so the page is the same.
+Every other solution kills every mutant.

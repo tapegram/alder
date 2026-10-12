@@ -60,7 +60,8 @@ further tables or fields.
   in an element with `id="members"`, one `<li>` per member, the owner first
   and then the others ordered by name; inside it, an element with
   `class="name"` has the user's name as its whole text. The Remove button
-  has `class="remove"` and sends `msg Remove { user: User.UserId }`.
+  sits inside its member's `<li>`, has `class="remove"`, and sends
+  `msg Remove { user: User.UserId }`.
   `form NewInvite = { email: Text.Email }` is posted by
   `msg SendInvite form NewInvite`. Both answer
   `Redirect (Teams.Show { id: … })` (the same team).

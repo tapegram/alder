@@ -98,8 +98,9 @@ test "the owner cancels a booking before its from date" = {
 }
 
 -- From its from date on, a booking has no Cancel button; a Cancel from a page loaded the day
--- before (here: the page is held, then the booking is moved to start today) is refused, however
--- the app refuses it, and the booking stays.
+-- before (here: the page is held, then the booking is moved to start today) is refused: the
+-- booking stays. Only that invariant is asserted; the server's answer, whatever it is, is
+-- printed on both sides of a failure for the scorer.
 test "a booking that has started cannot be cancelled, even from a stale page" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
@@ -112,14 +113,7 @@ test "a booking that has started cannot be cancelled, even from a stale page" = 
   let _ <- Db.update Booking soon (\b -> { b | from: today, to: Date.addDays 1 today })
   let r <- Test.click Bookings.Show.Cancel
   let left <- Db.from Booking |> Db.count
-  let refused = match r.answer {
-    PageMissing -> True,
-    RequestFailed _ -> True,
-    FormRejected _ -> True,
-    Rerendered -> True,
-    _ -> False,
-  }
-  Task.succeed ({ button: Test.has "#cancel" now.doc, refused: refused, left: left } == { button: False, refused: True, left: 2 })
+  Task.succeed ({ answer: r.answer, button: Test.has "#cancel" now.doc, left: left } == { answer: r.answer, button: False, left: 2 })
 }
 
 -- A stranger opens the owner's booking by its address, and posts the Cancel of a page the owner
