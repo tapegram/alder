@@ -255,6 +255,7 @@ func (g *gen) appSource(p *ir.Program, migrations bool) string {
 	if g.tests {
 		g.testsTable(&b, p)
 		fakesTable(&b, p)
+		g.mutantsTable(&b, p) // a mutate build only
 	}
 	unionsInit(&b, p)
 	if p.Session != nil {

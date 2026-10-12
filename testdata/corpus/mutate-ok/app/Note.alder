@@ -1,0 +1,29 @@
+module Note
+
+-- The mutation-testing fixture (alder test --mutate): every mutant of the app has a test that
+-- kills it, one behaviour per test; cmd/alder's TestTest_Mutate leaves each test out in turn.
+
+import User
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  title: Text,
+  pinned: Bool = False,
+  owner: User.UserId @ref User @cascade,
+}
+
+label : Note -> Text
+label note = if note.pinned then "pinned" else "plain"
+
+test "a pinned note is labelled pinned" =
+  label { id: NoteId "a", title: "x", pinned: True, owner: User.UserId "u" } == "pinned"
+
+test "deleting a user deletes their notes" = {
+  let me <- Db.insert User { name: "Me" }
+  let _ <- Db.insert Note { title: "x", owner: me }
+  let _ <- Db.delete User me
+  let n <- Db.from Note |> Db.count
+  Task.succeed (n == 0)
+}

@@ -44,6 +44,14 @@ type Options struct {
 	// fields nil and does not import a package that has none of the others, so a call of one
 	// fails "not wired in tests". Emit refuses it in a production build, which wires every one.
 	Unwired map[string]bool
+	// Mutate, with Tests (alder test --mutate), compiles every mutant mutate.Collect finds
+	// into the test build as a switch on the package variable Mutant (mutation.go): each
+	// mutated node is emitted as `switch Mutant { case id: <its replacement> }` before the
+	// original, a page's `requires` serves a placeholder under its id, and app__alder.go
+	// holds Mutant, Mutants (the table rtesting runs, with each schema mutant's tables) and
+	// the refused counts. Every constant becomes a thunk, so a mutant reaches it at run time.
+	// Without it nothing of this is emitted.
+	Mutate bool
 }
 
 // Emit returns the generated files: one "<Module>_alder.go" per module ('.' → "__"),
@@ -63,6 +71,12 @@ func Emit(p *ir.Program, opts Options) (files map[string][]byte, err error) {
 	}()
 	g := newGen(p)
 	g.indexFakes(p, opts.Tests)
+	if opts.Mutate {
+		if !opts.Tests {
+			return nil, fmt.Errorf("gen: Mutate without Tests")
+		}
+		g.indexMutants(p)
+	}
 	files = map[string][]byte{"go.mod": []byte(goMod(opts.RepoPath))}
 	declared := map[string]string{} // Go name → module declaring it
 	for _, m := range p.Modules {
@@ -189,6 +203,8 @@ type gen struct {
 	// variables (selector), in order of first use (selectorOrder)
 	selectors     map[string]string
 	selectorOrder []string
+	// mutation is the mutate build's state (Options.Mutate; nil otherwise): mutation.go
+	mutation *mutation
 }
 
 // indexFakes records p's fakes for module and app emission. In a test build the unions their

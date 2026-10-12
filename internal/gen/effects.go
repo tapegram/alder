@@ -2,6 +2,7 @@ package gen
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -116,6 +117,9 @@ func isEffNode(e ir.Expr) bool {
 
 // task is effect expression e (of type Query a or Task a) as a Go eff.Task[A].
 func (f *fn) task(e ir.Expr, s *scope) string {
+	if ms := f.mutantsOf(e); ms != nil { // a mutate build (mutation.go)
+		return f.switchedExpr(e, ms, "eff.Task["+GoType(effResult(e.Type()))+"]", s, f.task)
+	}
 	if isEffNode(e) {
 		c, isTask := f.effNode(e, s)
 		if !isTask {
@@ -531,27 +535,10 @@ func (g *gen) tableDecl(w *strings.Builder, tb *ir.Table) {
 
 	// the descriptor
 	fmt.Fprintf(w, "var %s = &db.Table[%s]{\nName: %s,\nColumns: []db.Column{\n", tableName(tb.Module, tb.Name), rec, strconv.Quote(tb.Module+"."+tb.Name))
-	unique := map[string]bool{}
-	for _, u := range tb.Unique {
-		unique[u] = true
-	}
 	var enc []string
 	var dec strings.Builder
 	for i, fd := range tb.Record.Fields {
-		col := "{Name: " + strconv.Quote(fd.Name) + ", " + columnKind(fd.Type)
-		if unique[fd.Name] {
-			col += ", Unique: true"
-		}
-		if ref := tb.Refs[fd.Name]; ref != "" {
-			col += ", Ref: " + strconv.Quote(ref)
-			switch tb.OnDelete[fd.Name] { // @restrict, the default, is db.Restrict, the zero value
-			case "cascade":
-				col += ", OnDelete: db.Cascade"
-			case "setNull":
-				col += ", OnDelete: db.SetNull"
-			}
-		}
-		fmt.Fprintf(w, "%s},\n", col)
+		fmt.Fprintf(w, "%s,\n", columnLit(tb, fd))
 		enc = append(enc, encode(fd.Type, "r."+Field(fd.Name)))
 		d := ""
 		if a := maybeArg(fd.Type); a != nil {
@@ -579,6 +566,24 @@ func (g *gen) tableDecl(w *strings.Builder, tb *ir.Table) {
 	id := Field(tb.IDField)
 	fmt.Fprintf(w, "ReadID: func(r %s) string { return r.%s },\n", rec, id)
 	fmt.Fprintf(w, "SetID: func(r %s, id string) %s {\nr.%s = id\nreturn r\n},\n}\n\n", rec, rec, id)
+}
+
+// columnLit is the db.Column literal of table tb's field fd.
+func columnLit(tb *ir.Table, fd ir.FieldT) string {
+	col := "{Name: " + strconv.Quote(fd.Name) + ", " + columnKind(fd.Type)
+	if slices.Contains(tb.Unique, fd.Name) {
+		col += ", Unique: true"
+	}
+	if ref := tb.Refs[fd.Name]; ref != "" {
+		col += ", Ref: " + strconv.Quote(ref)
+		switch tb.OnDelete[fd.Name] { // @restrict, the default, is db.Restrict, the zero value
+		case "cascade":
+			col += ", OnDelete: db.Cascade"
+		case "setNull":
+			col += ", OnDelete: db.SetNull"
+		}
+	}
+	return col + "}"
 }
 
 // enumDecl writes the function naming a value of payload-less union u (stored in a table).

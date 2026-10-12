@@ -19,6 +19,7 @@ import (
 	"alder/internal/check"
 	"alder/internal/diag"
 	"alder/internal/ir"
+	"alder/internal/mutate"
 	"alder/internal/names"
 	"alder/internal/syntax"
 	"alder/internal/types"
@@ -81,8 +82,15 @@ func emit(t *testing.T, dir string) map[string][]byte {
 // emitWith is emit, a test build (Options.Tests) when tests is set.
 func emitWith(t *testing.T, dir string, tests bool) map[string][]byte {
 	t.Helper()
+	return emitOpts(t, dir, Options{Tests: tests})
+}
+
+// emitOpts is emit with o (RepoPath and Migrations filled in).
+func emitOpts(t *testing.T, dir string, o Options) map[string][]byte {
+	t.Helper()
 	sqls, _ := filepath.Glob(filepath.Join(dir, "migrations", "*.sql"))
-	files, err := Emit(lowerDir(t, dir), Options{RepoPath: repoPath(t), Migrations: len(sqls) > 0, Tests: tests})
+	o.RepoPath, o.Migrations = repoPath(t), len(sqls) > 0
+	files, err := Emit(lowerDir(t, dir), o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,6 +220,10 @@ func mapsKeys(m map[string][]byte) []string {
 // want_prod/ is the production build of the same app.
 var testBuildGoldens = map[string]bool{"gen_fakes": true, "gen_browser": true}
 
+// mutateBuildGoldens are the gen goldens whose want/ is a mutate build (Options.Mutate, a test
+// build) and whose want_prod/ is the production build of the same app.
+var mutateBuildGoldens = map[string]bool{"gen_mutate": true}
+
 func TestGenGolden(t *testing.T) {
 	dirs, _ := filepath.Glob("../../testdata/golden/gen_*")
 	n := 0
@@ -221,16 +233,19 @@ func TestGenGolden(t *testing.T) {
 		}
 		n++
 		type variant struct {
-			want  string
-			tests bool
+			want string
+			opts Options
 		}
-		variants := []variant{{"want", false}}
+		variants := []variant{{"want", Options{}}}
 		if testBuildGoldens[filepath.Base(dir)] {
-			variants = []variant{{"want", true}, {"want_prod", false}}
+			variants = []variant{{"want", Options{Tests: true}}, {"want_prod", Options{}}}
+		}
+		if mutateBuildGoldens[filepath.Base(dir)] {
+			variants = []variant{{"want", Options{Tests: true, Mutate: true}}, {"want_prod", Options{}}}
 		}
 		for _, v := range variants {
 			t.Run(filepath.Base(dir)+"/"+v.want, func(t *testing.T) {
-				goldenCompare(t, emitWith(t, dir, v.tests), filepath.Join(dir, v.want))
+				goldenCompare(t, emitOpts(t, dir, v.opts), filepath.Join(dir, v.want))
 			})
 		}
 	}
@@ -3195,5 +3210,52 @@ func TestCapsPackage_Unwired(t *testing.T) {
 	}
 	if _, err := Emit(p, Options{Unwired: map[string]bool{"Mail.Mailer": true}}); err == nil || !strings.Contains(err.Error(), "production") {
 		t.Errorf("production build with unwired: %v", err)
+	}
+}
+
+// TestGen_Mutate: the mutate build (Options.Mutate) of every mutate fixture, of the examples
+// and of the mutation-testing corpus apps vets — every mutant compiled into the one build is
+// well-typed Go — and lists every mutant mutate.Collect finds; Mutate needs Tests; and the
+// production build of each is the build without Mutate (no switch, no table).
+func TestGen_Mutate(t *testing.T) {
+	dirs, _ := filepath.Glob("../../testdata/mutate/*")
+	dirs = append(dirs, "../../examples/todos", "../../examples/blog", "../../testdata/corpus/mutate-ok", "../../testdata/corpus/mutate-crash")
+	for _, dir := range dirs {
+		t.Run(filepath.Base(dir), func(t *testing.T) {
+			t.Parallel()
+			files := emitOpts(t, dir, Options{Tests: true, Mutate: true})
+			ms, _ := mutate.Collect(lowerDir(t, dir))
+			app := string(files[appFile])
+			if got := strings.Count(app, "{ID: "); got != len(ms) {
+				t.Fatalf("Mutants has %d entries, want %d", got, len(ms))
+			}
+			for _, m := range ms {
+				if m.Node == nil && m.Page == nil {
+					continue
+				}
+				needle := fmt.Sprintf("case %d:\n", m.ID)
+				if m.Page != nil {
+					needle = fmt.Sprintf("Mutant == %d {", m.ID)
+				}
+				found := false
+				for name, src := range files {
+					if strings.HasSuffix(name, ".go") && strings.Contains(string(src), needle) {
+						found = true
+					}
+				}
+				if !found {
+					t.Errorf("mutant %d (%s %s:%d %s) has no switch", m.ID, m.Module, m.Decl, m.Line, m.Kind)
+				}
+			}
+			vet(t, files)
+			for name, src := range emitOpts(t, dir, Options{}) {
+				if strings.Contains(string(src), "Mutant") {
+					t.Errorf("the production build's %s mentions Mutant", name)
+				}
+			}
+		})
+	}
+	if _, err := Emit(lowerDir(t, "../../testdata/corpus/mutate-ok"), Options{RepoPath: repoPath(t), Mutate: true}); err == nil {
+		t.Fatal("Mutate without Tests: no error")
 	}
 }

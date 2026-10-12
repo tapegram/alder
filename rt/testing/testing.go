@@ -190,6 +190,8 @@ type CaseResult struct {
 	Error        string
 	Trace        []string
 	Ms           float64
+
+	panicked bool // the case panicked (not a task's failure): a mutant it kills is "crashed"
 }
 
 // Options configure Run. Run, when set, selects the cases whose `Module "Name"` it matches;
@@ -334,7 +336,7 @@ func runCase(c Case, o Options) (r CaseResult) {
 	case o.schemaErr != "":
 		errText = o.schemaErr
 	case c.Pure != nil:
-		ok, errText = guard(c.Pure)
+		ok, errText, r.panicked = guard(c.Pure)
 	case c.Task != nil:
 		ctx := context.Background()
 		if !o.Deadline.IsZero() {
@@ -357,7 +359,7 @@ func runCase(c Case, o Options) (r CaseResult) {
 		if o.Routes != nil {
 			env.Ctx = withBrowser(env, o.Routes, o.Web)
 		}
-		ok, errText = guard(func() bool {
+		ok, errText, r.panicked = guard(func() bool {
 			v, err := eff.Run(env, eff.KTask, c.Task())
 			if err != nil {
 				panic(runErr{err})
@@ -387,14 +389,15 @@ func runCase(c Case, o Options) (r CaseResult) {
 // runErr carries a task's error out of guard's function.
 type runErr struct{ err error }
 
-// guard calls f and turns a panic into failure text.
-func guard(f func() bool) (ok bool, errText string) {
+// guard calls f and turns a panic into failure text; panicked is true for a panic that is not
+// a task's error (runErr).
+func guard(f func() bool) (ok bool, errText string, panicked bool) {
 	defer func() {
 		if p := recover(); p != nil {
-			ok = false
+			ok, panicked = false, true
 			switch x := p.(type) {
 			case runErr:
-				errText = x.err.Error()
+				errText, panicked = x.err.Error(), false
 			case error:
 				errText = x.Error()
 			default:
@@ -402,7 +405,7 @@ func guard(f func() bool) (ok bool, errText string) {
 			}
 		}
 	}()
-	return f(), ""
+	return f(), "", false
 }
 
 // QuoteName is a test name as the text report prints it: in double quotes, escaped
@@ -502,17 +505,66 @@ const (
 //
 // routes and webOpts are the app's routes and router options (Options.Routes and Options.Web),
 // which each task test's browser serves; nil routes: no browser (a build without them).
+//
+// With --mutate (or EnvMutate=1; a mutate build, whose main called SetMutants first) the run
+// goes on, when every selected test passed, with the mutants (mutate.go): the report then ends
+// with `N mutants: K killed, S survived  (score X.XX)` and the survivors, or with --json the
+// objects {"mutants": […]} and {"score", …} on stdout. A failing suite ends instead with
+// "tests fail: fix them before measuring mutants" (exit 1), no selected test with "no tests:
+// nothing can kill a mutant" (exit 1 with --min, else 0), each where the summary goes.
+// --min R (EnvMin) exits 1 when the score is below R; -timeout d (EnvTimeout, default 10s)
+// bounds each mutant's run; --mutate-from k (EnvMutateFrom) starts at mutant k, skipping the
+// suite's own run, and EnvMutateLog names the log of decided mutants (see mutate.go for the
+// continuation after a crash).
 func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migration, caps map[string]any, session any, routes []web.Route, webOpts web.Options, args []string, out, err io.Writer) int {
 	started := time.Now()
 	fs := flag.NewFlagSet("alder test", flag.ContinueOnError)
 	fs.SetOutput(err)
 	runPat := fs.String("run", os.Getenv("ALDER_TEST_RUN"), "run only the tests whose `Module \"name\"` matches this regexp")
 	asJSON := fs.Bool("json", os.Getenv("ALDER_TEST_JSON") == "1", "print one JSON object per test")
+	mutating := fs.Bool("mutate", os.Getenv(EnvMutate) == "1", "after the tests pass, run them once per mutant (a mutate build)")
+	minText := fs.String("min", os.Getenv(EnvMin), "with --mutate, exit 1 when the mutation score is below this")
+	timeoutText := fs.String("timeout", os.Getenv(EnvTimeout), "with --mutate, how long one mutant's run may take (default 10s)")
+	fromText := fs.String("mutate-from", os.Getenv(EnvMutateFrom), "with --mutate, the id of the first mutant to run (above 1: the tests' own run is skipped)")
 	if e := fs.Parse(args); e != nil {
 		return 2
 	}
 	if fs.NArg() > 0 {
 		fmt.Fprintf(err, "alder test: unexpected argument %q\n", fs.Arg(0))
+		return 2
+	}
+	minScore, from, mutantTimeout := -1.0, 1, defaultMutantTimeout
+	if *minText != "" {
+		v, e := strconv.ParseFloat(*minText, 64)
+		if e != nil || v < 0 || v > 1 {
+			fmt.Fprintf(err, "alder test: bad --min %q: want a score from 0 to 1, such as 0.8\n", *minText)
+			return 2
+		}
+		minScore = v
+	}
+	if *mutating {
+		if mutation.active == nil {
+			fmt.Fprintln(err, "alder test: --mutate: this test program was not built with mutants")
+			return 2
+		}
+		if *fromText != "" {
+			v, e := strconv.Atoi(*fromText)
+			if e != nil || v < 1 {
+				fmt.Fprintf(err, "alder test: bad --mutate-from %q\n", *fromText)
+				return 2
+			}
+			from = v
+		}
+		if *timeoutText != "" {
+			d, e := time.ParseDuration(*timeoutText)
+			if e != nil || d <= 0 {
+				fmt.Fprintf(err, "alder test: bad -timeout %q\n", *timeoutText)
+				return 2
+			}
+			mutantTimeout = d
+		}
+	} else if minScore >= 0 {
+		fmt.Fprintln(err, "alder test: --min needs --mutate")
 		return 2
 	}
 	if os.Getenv(EnvStdinEOF) == "1" {
@@ -531,7 +583,7 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 		}
 		o.Run = re
 	}
-	timeout := os.Getenv(EnvTimeout)
+	timeout := *timeoutText
 	if d := os.Getenv(EnvDeadline); d != "" {
 		t, e := time.Parse(time.RFC3339Nano, d)
 		if e != nil {
@@ -551,13 +603,17 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 
 	run := selected(cases, o)
 	passed, failed := 0, 0
-	summary := func() {
-		line := fmt.Sprintf("%d passed, %d failed\n", passed, failed)
+	// report writes a report line: on out, or with --json on err (out holds JSON only)
+	report := func(line string) {
 		if *asJSON {
 			io.WriteString(err, line)
 		} else {
 			io.WriteString(out, line)
 		}
+	}
+	summary := func() { report(fmt.Sprintf("%d passed, %d failed\n", passed, failed)) }
+	if *mutating && from > 1 { // the tests passed in an earlier run of the program
+		return mutate(run, o, mutantRun{timeout: mutantTimeout, status: status, log: os.Getenv(EnvMutateLog), from: from}, minScore, *asJSON, out, err)
 	}
 	var deadline <-chan time.Time
 	if !o.Deadline.IsZero() {
@@ -614,6 +670,42 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 	}
 	summary()
 	if failed > 0 {
+		if *mutating {
+			report(testsFailText + "\n")
+		}
+		return 1
+	}
+	if !*mutating {
+		return 0
+	}
+	if len(run) == 0 {
+		report(noTestsText + "\n")
+		if minScore >= 0 {
+			return 1
+		}
+		return 0
+	}
+	return mutate(run, o, mutantRun{timeout: mutantTimeout, status: status, log: os.Getenv(EnvMutateLog), from: from}, minScore, *asJSON, out, err)
+}
+
+// mutate is Main's mutation run over the selected cases, after they passed: the mutants, the
+// report, and the exit code (1 below minScore when that is not negative; ExitMutantTimedOut
+// when a mutant timed out under a log: runMutants).
+func mutate(run []Case, o Options, r mutantRun, minScore float64, asJSON bool, out, errw io.Writer) int {
+	outcomes, stop, err := runMutants(run, o, r)
+	if err != nil {
+		fmt.Fprintf(errw, "alder test: %v\n", err)
+		return 2
+	}
+	if stop {
+		return ExitMutantTimedOut
+	}
+	sc, err := writeMutationReport(out, outcomes, asJSON)
+	if err != nil {
+		fmt.Fprintf(errw, "alder test: writing the report: %v\n", err)
+		return 2
+	}
+	if minScore >= 0 && sc < minScore {
 		return 1
 	}
 	return 0

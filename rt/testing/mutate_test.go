@@ -1,0 +1,218 @@
+package rtesting
+
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"alder/rt/db"
+	"alder/rt/eff"
+	"alder/rt/web"
+)
+
+// The mutate build's Mutant, as the generated code has it.
+var active int
+
+// mutantCases are cases whose behaviour depends on the active mutant: "a" fails under 1, "b"
+// panics under 2, "c" hangs under 3, "d" (a task) breaks a unique column under 5, whose
+// Tables make title @unique; nothing notices 4.
+func mutantCases() []Case {
+	return []Case{
+		{Module: "M", Name: "a", Pure: func() bool { return active != 1 }},
+		{Module: "M", Name: "b", Pure: func() bool {
+			if active == 2 {
+				var m map[string]int
+				m["x"] = 1 // a Go runtime panic, as a crashing mutant's would be
+			}
+			return true
+		}},
+		{Module: "M", Name: "c", Pure: func() bool {
+			if active == 3 {
+				time.Sleep(time.Hour)
+			}
+			return true
+		}},
+		{Module: "N", Name: "d", Task: func() eff.Task[bool] {
+			return then(insertStep("Db.insert T", "x"), then(insertStep("Db.insert T", "x"), eff.Pure(true)))
+		}},
+	}
+}
+
+func setMutants(t *testing.T) {
+	t.Helper()
+	unique := tb.Desc()
+	unique.Columns = []db.Column{{Name: "id", Type: db.CText}, {Name: "title", Type: db.CText, Unique: true}}
+	SetMutants(&active, []Mutant{
+		{ID: 1, Module: "M", Decl: "f", Kind: "bool flipped", Line: 3, Before: "True", After: "False"},
+		{ID: 2, Module: "M", Decl: "g", Kind: "arm swapped", Line: 10, Before: "match x { … }", After: "the arms swapped"},
+		{ID: 3, Module: "M", Decl: "loop", Kind: "condition negated", Line: 12, Before: "if done", After: "if not done"},
+		{ID: 4, Module: "Todos.Index", Decl: "update", Kind: "redirect → rerender", Line: 37, Before: "Redirect (Todos.Index {})", After: "Rerender"},
+		{ID: 5, Module: "T", Decl: "T", Kind: "default changed", Line: 4, Before: "title = \"\"", After: "title = \"x\"", Tables: []db.TableDesc{unique}},
+	}, 2, 3)
+	t.Cleanup(func() { SetMutants(nil, nil, 0, 0) })
+	for _, k := range []string{"ALDER_TEST_RUN", "ALDER_TEST_JSON", EnvMutate, EnvMin, EnvTimeout, EnvMutateFrom, EnvMutateLog, EnvDeadline, EnvStatus} {
+		t.Setenv(k, "")
+	}
+}
+
+func runMutate(cs []Case, args ...string) (string, string, int) {
+	var out, errb bytes.Buffer
+	code := Main(cs, tables, nil, nil, nil, nil, nil, web.Options{}, append([]string{"--mutate", "-timeout", "300ms"}, args...), &out, &errb)
+	return out.String(), errb.String(), code
+}
+
+// TestMutate_KillsAndReport: a mutant is killed by a failing test (by that test), by a panic
+// (crashed), by the timeout (timed out: the run goes on) and by a schema change made with
+// Ensure; the survivor is listed with its columns aligned; the score is over the mutants that
+// ran, the refused ones apart.
+func TestMutate_KillsAndReport(t *testing.T) {
+	setMutants(t)
+	start := time.Now()
+	out, errs, code := runMutate(mutantCases())
+	if code != 0 {
+		t.Fatalf("exit %d\n%s\n%s", code, out, errs)
+	}
+	want := `ok   M "a"
+ok   M "b"
+ok   M "c"
+ok   N "d"
+4 passed, 0 failed
+5 mutants: 4 killed, 1 survived  (score 0.80)
+survived:
+  Todos.Index   update:37   redirect → rerender   Redirect (Todos.Index {}) → Rerender
+`
+	if out != want {
+		t.Fatalf("report:\n%s\nwant:\n%s", out, want)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatalf("the run took %v: the hanging mutant was not cut off", time.Since(start))
+	}
+
+	out, _, code = runMutate(mutantCases(), "--json")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 6 {
+		t.Fatalf("want 4 test objects, the mutants and the score:\n%s", out)
+	}
+	var ms struct{ Mutants []map[string]any }
+	if err := json.Unmarshal([]byte(lines[4]), &ms); err != nil {
+		t.Fatal(err)
+	}
+	got := []string{}
+	for _, m := range ms.Mutants {
+		b, _ := json.Marshal(m)
+		got = append(got, string(b))
+	}
+	wantMs := []string{
+		`{"after":"False","before":"True","by":"M \"a\"","decl":"f","id":1,"killed":true,"kind":"bool flipped","line":3,"module":"M","note":""}`,
+		`{"after":"the arms swapped","before":"match x { … }","by":"M \"b\"","decl":"g","id":2,"killed":true,"kind":"arm swapped","line":10,"module":"M","note":"crashed"}`,
+		`{"after":"if not done","before":"if done","by":"M \"c\"","decl":"loop","id":3,"killed":true,"kind":"condition negated","line":12,"module":"M","note":"timed out"}`,
+		`{"after":"Rerender","before":"Redirect (Todos.Index {})","by":"","decl":"update","id":4,"killed":false,"kind":"redirect → rerender","line":37,"module":"Todos.Index","note":""}`,
+		`{"after":"title = \"x\"","before":"title = \"\"","by":"N \"d\"","decl":"T","id":5,"killed":true,"kind":"default changed","line":4,"module":"T","note":"","tables":"ensure"}`,
+	}
+	if strings.Join(got, "\n") != strings.Join(wantMs, "\n") {
+		t.Fatalf("mutants:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(wantMs, "\n"))
+	}
+	if lines[5] != `{"score":0.8,"killed":4,"survived":1,"suppressed":2,"skipped":3}` {
+		t.Fatalf("score object: %s", lines[5])
+	}
+	if active != 0 {
+		t.Fatalf("Mutant left at %d", active)
+	}
+}
+
+// TestMutate_Min: --min exits 1 below the score (the same report), 0 at or above it; without
+// --mutate it is a usage error.
+func TestMutate_Min(t *testing.T) {
+	setMutants(t)
+	cs := mutantCases()[:1] // only mutant 1 is killed: 1/5
+	out, _, code := runMutate(cs, "--min", "0.5")
+	if code != 1 || !strings.Contains(out, "5 mutants: 1 killed, 4 survived  (score 0.20)\n") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	if _, _, code = runMutate(cs, "--min", "0.2"); code != 0 {
+		t.Fatalf("--min 0.2 at score 0.2: exit %d", code)
+	}
+	var o, e bytes.Buffer
+	if code := Main(cs, tables, nil, nil, nil, nil, nil, web.Options{}, []string{"--min", "0.5"}, &o, &e); code != 2 || !strings.Contains(e.String(), "--min needs --mutate") {
+		t.Fatalf("--min alone: exit %d %s", code, e.String())
+	}
+	if _, errs, code := runMutate(cs, "--min", "2"); code != 2 || !strings.Contains(errs, "bad --min") {
+		t.Fatalf("--min 2: exit %d %s", code, errs)
+	}
+}
+
+// TestMutate_RunNarrows: mutants are judged by the selected tests only.
+func TestMutate_RunNarrows(t *testing.T) {
+	setMutants(t)
+	out, _, code := runMutate(mutantCases(), "-run", `M "[ab]"`)
+	if code != 0 || !strings.Contains(out, "2 passed, 0 failed\n5 mutants: 2 killed, 3 survived  (score 0.40)\n") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+}
+
+// TestMutate_Refusals: a suite that fails measures nothing (after its normal report); no tests
+// measure nothing either (exit 1 only with --min).
+func TestMutate_Refusals(t *testing.T) {
+	setMutants(t)
+	cs := append(mutantCases(), Case{Module: "M", Name: "broken", Pure: func() bool { return false }})
+	out, _, code := runMutate(cs)
+	if code != 1 || !strings.HasSuffix(out, "FAIL M \"broken\"\n4 passed, 1 failed\ntests fail: fix them before measuring mutants\n") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	out, errs, code := runMutate(cs, "--json")
+	if code != 1 || strings.Contains(out, "tests fail") || !strings.HasSuffix(errs, "tests fail: fix them before measuring mutants\n") {
+		t.Fatalf("--json: exit %d\n%s\n%s", code, out, errs)
+	}
+	out, _, code = runMutate(nil)
+	if code != 0 || out != "0 passed, 0 failed\nno tests: nothing can kill a mutant\n" {
+		t.Fatalf("no tests: exit %d\n%s", code, out)
+	}
+	if _, _, code = runMutate(nil, "--min", "0.5"); code != 1 {
+		t.Fatalf("no tests with --min: exit %d", code)
+	}
+	var o, e bytes.Buffer
+	SetMutants(nil, nil, 0, 0)
+	if code := Main(nil, tables, nil, nil, nil, nil, nil, web.Options{}, []string{"--mutate"}, &o, &e); code != 2 || !strings.Contains(e.String(), "not built with mutants") {
+		t.Fatalf("no mutants registered: exit %d %s", code, e.String())
+	}
+}
+
+// TestMutate_Continuation: with a log, a timed-out mutant ends the program (logged, exit
+// ExitMutantTimedOut); the next run, from the next id, skips the suite's run, reads the log and
+// reports every mutant; a status line names the mutant and case running.
+func TestMutate_Continuation(t *testing.T) {
+	setMutants(t)
+	dir := t.TempDir()
+	log, status := filepath.Join(dir, "log"), filepath.Join(dir, "status")
+	t.Setenv(EnvMutateLog, log)
+	t.Setenv(EnvStatus, status)
+	out, _, code := runMutate(mutantCases())
+	if code != ExitMutantTimedOut || !strings.HasSuffix(out, "4 passed, 0 failed\n") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	logged, err := ReadMutantLog(log)
+	if err != nil || len(logged) != 3 || logged[3].Note != "timed out" {
+		t.Fatalf("log %v %v", logged, err)
+	}
+	t.Setenv(EnvMutateFrom, "4")
+	out, _, code = runMutate(mutantCases())
+	if code != 0 || out != "5 mutants: 4 killed, 1 survived  (score 0.80)\nsurvived:\n  Todos.Index   update:37   redirect → rerender   Redirect (Todos.Index {}) → Rerender\n" {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	if b, _ := os.ReadFile(status); len(b) != 0 {
+		t.Fatalf("status left %q", b)
+	}
+	if id, mod, name, ok := ParseMutantStatus(MutantStatus(7, "Todos.Index", "a\tb")); !ok || id != 7 || mod != "Todos.Index" || name != "a\tb" {
+		t.Fatalf("status round trip: %d %q %q %v", id, mod, name, ok)
+	}
+	if _, _, _, ok := ParseMutantStatus("M\tname\n"); ok {
+		t.Fatal("a test's status line read as a mutant's")
+	}
+}

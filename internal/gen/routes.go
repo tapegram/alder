@@ -364,7 +364,9 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	fmt.Fprintf(b, `func %[1]s(rq *web.Request, params %[2]s, keep any) (%[3]s, %[4]s, *web.Response) {
 	var model %[3]s
 	app := rq.Env.Session.(%[5]s)
-	if !app.%[6]s.Ok {
+`, pageFunc(m), GoName(m, "Params"), model, session, app)
+	g.requiresPlaceholder(b, pg, "app") // a mutate build's requires dropped (mutation.go)
+	fmt.Fprintf(b, `	if !app.%[6]s.Ok {
 		r := web.RedirectResponse(rq.Login, keep)
 		return model, %[4]s{}, &r
 	}

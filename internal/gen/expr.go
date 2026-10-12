@@ -134,6 +134,10 @@ func (f *fn) ret(w *strings.Builder, e ir.Expr, s *scope) { f.retK(w, e, s, nil)
 // returned (the body of a Let, each branch of a Match or If), nil meaning f.code. An effect
 // Bind's continuation uses it to return its body as a Task (effects.go).
 func (f *fn) retK(w *strings.Builder, e ir.Expr, s *scope, k func(ir.Expr, *scope) string) {
+	if ms := f.mutantsOf(e); ms != nil { // a mutate build (mutation.go)
+		f.switched(w, e, ms, s, k)
+		return
+	}
 	switch x := e.(type) {
 	case *ir.Let:
 		if x.Name == "_" || uses(x.Body, x.Name) == 0 {
@@ -220,6 +224,9 @@ func untypedInt(e ir.Expr) bool {
 
 // expr is e as a Go expression and its precedence.
 func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
+	if ms := f.mutantsOf(e); ms != nil { // a mutate build (mutation.go)
+		return f.switchedExpr(e, ms, GoType(e.Type()), s, nil), precAtom
+	}
 	switch x := e.(type) {
 	case *ir.Lit:
 		return lit(x)
@@ -717,11 +724,11 @@ func (f *fn) op(x *ir.Op, s *scope) (string, int) {
 func (f *fn) binary(op string, x *ir.Op, s *scope) (string, int) {
 	p := binPrec[op]
 	l, r := f.operand(x.L, s, p), f.operand(x.R, s, p+1)
-	if arith[op] {
-		if constExpr(x.L) && constExpr(x.R) {
+	if arith[op] { // a switched operand (a mutate build) is no constant: it keeps its switch
+		if constExpr(x.L) && constExpr(x.R) && f.mutantsOf(x.L) == nil {
 			l = numValue(x.L, l)
 		}
-		if op == "/" || op == "%" {
+		if (op == "/" || op == "%") && f.mutantsOf(x.R) == nil {
 			r = numValue(x.R, r)
 		}
 	}

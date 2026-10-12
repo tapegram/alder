@@ -1,0 +1,19 @@
+module Calc
+
+-- The mutation-testing fixture for mutants that do not end (alder test --mutate): `True`
+-- flipped in loop recurses until the stack overflows, which ends the test program (the
+-- mutant is killed as crashed and the run goes on in a new program); `if fast` negated in work
+-- computes fib 60, which takes hours (killed as timed out).
+
+loop : Int -> Bool -> Int
+loop n stop = if stop then n else loop (n + 1) True
+
+fib : Int -> Int
+fib n = if n < 2 then n else fib (n - 1) + fib (n - 2)
+
+work : Bool -> Int
+work fast = fib (if fast then 10 else 60)
+
+test "loop stops after one step" = loop 0 False == 1
+
+test "work is fib 10" = work True == 55
