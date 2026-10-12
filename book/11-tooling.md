@@ -636,7 +636,7 @@ mutant (`--json` prints no hint):
 ```text
 $ alder test
 0 passed, 0 failed
-no tests: `alder test --mutate` would score 0 (chapter 10)
+no tests: `alder test --mutate` kills nothing (chapter 10)
 ```
 
 ```text

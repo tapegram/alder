@@ -512,7 +512,7 @@ func TestMain_NoCases(t *testing.T) {
 	t.Setenv("ALDER_TEST_RUN", "")
 	t.Setenv("ALDER_TEST_JSON", "")
 	out, _, code := runMain(t, nil)
-	if out != "0 passed, 0 failed\nno tests: `alder test --mutate` would score 0 (chapter 10)\n" || code != 0 {
+	if out != "0 passed, 0 failed\nno tests: `alder test --mutate` kills nothing (chapter 10)\n" || code != 0 {
 		t.Fatalf("code %d %q", code, out)
 	}
 	out, errs, code := runMain(t, nil, "--json")
