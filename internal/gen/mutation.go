@@ -30,7 +30,8 @@ import (
 // eff.Task[A]. A node the IR shares between several places (a table field's default, which
 // every record literal omitting the field holds) is switched everywhere it is emitted, tests
 // included. `requires dropped` is in the page's route (pageFunc): under its id, a session
-// without the field is served with the placeholder instead of the redirect. Schema mutants
+// without the field is served with the placeholder instead of the redirect; `role dropped`
+// too: under its id the role check lets every role through (roleDropped). Schema mutants
 // carry their tables: the full Tables with the mutated table's descriptor rendered from the
 // mutant's clone (mutantsTable), which rtesting creates with db.Ensure.
 
@@ -39,6 +40,7 @@ type mutation struct {
 	all      []mutate.Mutant
 	byNode   map[ir.Expr][]mutate.Mutant  // the mutants replacing a node, by pointer
 	requires map[*ir.Page][]mutate.Mutant // requires dropped, by page
+	roles    map[*ir.Page][]mutate.Mutant // role dropped, by page
 	// equivalent and skipped count the refused mutants by category
 	equivalent, skipped int
 	// bare are the nodes whose original is being emitted (inside their own switch)
@@ -52,11 +54,13 @@ type mutation struct {
 // calls) would never be seen.
 func (g *gen) indexMutants(p *ir.Program) {
 	ms, refused := mutate.Collect(p)
-	m := &mutation{all: ms, byNode: map[ir.Expr][]mutate.Mutant{}, requires: map[*ir.Page][]mutate.Mutant{}, bare: map[ir.Expr]bool{}, subst: map[ir.Expr]string{}}
+	m := &mutation{all: ms, byNode: map[ir.Expr][]mutate.Mutant{}, requires: map[*ir.Page][]mutate.Mutant{}, roles: map[*ir.Page][]mutate.Mutant{}, bare: map[ir.Expr]bool{}, subst: map[ir.Expr]string{}}
 	for _, x := range ms {
 		switch {
 		case x.Kind == mutate.RequiresDropped:
 			m.requires[x.Page] = append(m.requires[x.Page], x)
+		case x.Kind == mutate.RoleDropped:
+			m.roles[x.Page] = append(m.roles[x.Page], x)
 		case x.Node != nil:
 			m.byNode[x.Node] = append(m.byNode[x.Node], x)
 		}
@@ -323,6 +327,20 @@ func (g *gen) requiresPlaceholder(b *strings.Builder, pg *ir.Page, app string) {
 		fmt.Fprintf(b, "\tif !%s.%s.Ok && Mutant == %d {\n\t\t%s.%s = rt.Just(%s)\n\t}\n", app, Field(pg.Requires), m.ID,
 			app, Field(pg.Requires), f.code(m.Replacement, newScope()))
 	}
+}
+
+// roleDropped is the prefix of page pg's role check (roleRefused) that lets every role through
+// under the id of each of its `role dropped` mutants: "Mutant != 12 && ", "" outside a mutate
+// build.
+func (g *gen) roleDropped(pg *ir.Page) string {
+	if g.mutation == nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, m := range g.mutation.roles[pg] {
+		fmt.Fprintf(&b, "Mutant != %d && ", m.ID)
+	}
+	return b.String()
 }
 
 // mutantsTable writes Mutant, Mutants (rtesting.Mutant, in id order; a schema mutant with the

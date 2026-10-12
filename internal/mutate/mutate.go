@@ -46,6 +46,8 @@ const (
 	SessionPutDropped  = "session put dropped"
 	DefaultChanged     = "default changed"
 	CascadeRestrict    = "cascade ↔ restrict"
+	ScopeDropped       = "scope dropped" // M11: not yet collected
+	RoleDropped        = "role dropped"  // M11: not yet collected
 )
 
 // Mutant is one mutation point. Module and Decl name where it is (Decl is the value's name,

@@ -301,6 +301,7 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 		return f.html(e, s), precAtom // html.go
 	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.CapCall,
 		*ir.DbGet, *ir.DbSelect, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete,
+		*ir.DbMine, *ir.DbGetMine, *ir.DbUpdateMine, *ir.DbDeleteMine, *ir.DbInsertMine,
 		*ir.ColumnRef, *ir.TableRef, *ir.Cond, *ir.Ord, *ir.TestRun, *ir.TestTrace, *ir.TestFake,
 		*ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick:
 		return f.effect(e, s), precAtom // effects.go

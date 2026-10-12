@@ -1,11 +1,42 @@
 module Admin.Users
 
+import User
+
+-- The re-read idiom: besides the cookie's role, `load` reads the user's row, so a role changed
+-- since login applies at once.
 page "/admin/users" { } requires user, role Admin
 
 type Model = { }
 
 load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+load params session = {
+  let me <- Db.get User session.user
+  match me {
+    Just u -> if u.role == Admin then Query.succeed { } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
 
 view : Model -> Session -> Html Msg
-view model session = <p>users</p>
+view model session = <html><body><h1>users</h1></body></html>
+
+test "an admin is served" = {
+  let me <- Db.insert User { name: "Me", role: Admin }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let r <- Test.open (Admin.Users {})
+  Task.succeed (r.answer == Shown)
+}
+
+-- promoted since login: the cookie still says Reader, so the page is not found until they log
+-- in again (the row alone does not let them in)
+test "a promoted reader needs to log in again" = {
+  let me <- Db.insert User { name: "Me", role: Admin }
+  let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.open (Admin.Users {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a visitor is sent to log in from the users page" = {
+  let r <- Test.open (Admin.Users {})
+  Task.succeed (r.answer == Redirected (Login {}))
+}

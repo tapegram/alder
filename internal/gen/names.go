@@ -24,6 +24,8 @@ import (
 //	tableName   table__M__Table             a table's descriptor (*db.Table)
 //	insertName  insert__M__Table            a table's insert record type (Db.insert's row)
 //	insertVals  insertvals__M__Table        the column values of an insert record
+//	insertMineName insertmine__M__Table     a table's Db.insertMine row type (without the owner)
+//	insertMineVals insertminevals__M__Table the column values of a Db.insertMine row
 //	enumName    name__M__Union              the constructor name of a payload-less union value
 //	                                        stored in a table column
 //	checkName   check__M__Brand             a brand's `where` check (func(v Base) bool)
@@ -81,7 +83,7 @@ import (
 //  2. ctorName is GoName(M, Union) + "__" + Ctor + "__": it ends in "__", which no GoName does
 //     (an identifier never ends in "__"). Stripping that "__", Ctor is the text after the last
 //     "__" (Ctor has no "__" and does not start with '_'), and the rest is a GoName (1).
-//  3. payloadName, tagType, tagConst, widenName, tableName, insertName, insertVals, enumName,
+//  3. payloadName, tagType, tagConst, widenName, tableName, insertName, insertVals, insertMineName, insertMineVals, enumName,
 //     checkName, decodeName, encodeName, selector__N, pageFunc, paramsFunc, updateFunc, testFunc, fakeName, fakeEntry and the
 //     route__/session__ helpers start with a lower-case word and "__". No GoName or ctorName does (they start with
 //     an upper-case module segment); no local does (a local contains "__" only at its end, or
@@ -220,6 +222,13 @@ func insertName(module, table string) string { return "insert__" + GoName(module
 
 // insertVals is the function giving an insert record's column values ("insertvals__Todo__Todo").
 func insertVals(module, table string) string { return "insertvals__" + GoName(module, table) }
+
+// insertMineName is table M.T's Db.insertMine row type ("insertmine__Todo__Todo").
+func insertMineName(module, table string) string { return "insertmine__" + GoName(module, table) }
+
+// insertMineVals is the function giving a Db.insertMine row's column values, the owner's nil
+// ("insertminevals__Todo__Todo").
+func insertMineVals(module, table string) string { return "insertminevals__" + GoName(module, table) }
 
 // capName is capability M.C's interface ("Cap__Auth__Login__Password").
 func capName(module, capability string) string { return "Cap__" + GoName(module, capability) }

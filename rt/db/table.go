@@ -76,6 +76,11 @@ type Table[T any] struct {
 	Decode  func([]any) (T, error)
 	ReadID  func(T) string
 	SetID   func(T, string) T
+	// Owner is the `@owner` column ("" for none) and User, for such a table, the signed-in user
+	// of an app session value (the Env's Session), false when there is none: the scoped
+	// operations (Mine, GetMineRow, …) act for that user. Neither is part of the stored schema.
+	Owner string
+	User  func(session any) (string, bool)
 }
 
 // TableDesc is a Table without its Go type, for Ensure.
@@ -105,7 +110,10 @@ func literal(s string) string { return `'` + strings.ReplaceAll(s, `'`, `''`) + 
 // Select is data; the store turns it into SQL. Build one with From and the
 // functions below; they never modify their argument.
 type Select[T any] struct {
-	Table  *Table[T]
+	Table *Table[T]
+	// Mine (Db.mine) adds the condition `Owner = <the signed-in user>` when the select runs (All,
+	// First, CountRows: the user is the running effect's); SQL refuses to render it unresolved.
+	Mine   bool
 	Where  []Cond
 	Order  []Order
 	Limit  *int64
@@ -216,6 +224,9 @@ type SQL struct {
 // constructors), and so do <, <=, >, >= on one.
 func (s Select[T]) SQL() SQL {
 	var out SQL
+	if s.Mine {
+		out.Err = fmt.Errorf("db: %w: a Db.mine select rendered without its owner (run it with All, First or CountRows)", eff.ErrInternal)
+	}
 	var cols []Column
 	if s.Table != nil {
 		cols = s.Table.Columns

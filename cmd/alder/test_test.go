@@ -492,6 +492,58 @@ test "get a page that is not found" = {
 	}
 }
 
+// TestTest_Rules runs the rules-ok corpus app (M11, declared rules: an `@owner` table, the five
+// scoped operations, `requires user, role R`) under `alder test`:
+// a stranger's Test.open of my todo is PageMissing; a Reader on an Author page is PageMissing; a
+// visitor is Redirected to the login page; a stale page's click on another's row is not found
+// and changes nothing (a write before it in the Task undone: RF2); a helper using Db.mine from a
+// test without Test.login fails with "Db.mine Todo: no signed-in user"; a demoted admin still
+// passes the cookie's role check while the re-read idiom's page is not found (RF3).
+func TestTest_Rules(t *testing.T) {
+	needGoTool(t)
+	src, err := filepath.Abs("../../testdata/corpus/rules-ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inTemp(t)
+	copyDir(t, src, "rules-ok")
+	code, stdout, stderr := runTest(t, "rules-ok")
+	for _, want := range []string{
+		"ok   Todos.Show \"a stranger's open of my todo is not found\"\n",
+		"ok   Admin.Index \"a reader on an author page is not found\"\n",
+		"ok   Todos.Index \"a visitor is sent to log in\"\n",
+		"ok   Todos.Index \"a stranger's toggle on a stale page is not found\"\n",
+		"ok   Todos.Index \"a stranger's duplicate on a stale page is not found and undone\"\n",
+		"ok   Todos.Index \"a scoped update of another's row fails the whole task\"\n",
+		"ok   Todos.Index \"a scoped helper needs a signed-in user\"\n",
+		"ok   Admin.Index \"a demoted admin still passes the cookie check\"\n",
+		"26 passed, 0 failed\n",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("missing %q in\n%s\nstderr: %s", want, stdout, stderr)
+		}
+	}
+	if code != 0 {
+		t.Fatalf("exit %d\n%s\n%s", code, stdout, stderr)
+	}
+
+	// the helper form outside Test.run: the test fails with the operation's text
+	index := filepath.Join("rules-ok", "app", "Todos", "Index.alder")
+	b, err := os.ReadFile(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper := "\ntest \"a helper without a signed-in user\" = {\n  let ts <- recent |> Db.all\n  Task.succeed (List.length ts == 0)\n}\n"
+	if err := os.WriteFile(index, append(b, helper...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, _ = runTest(t, "rules-ok", "-run", "helper without")
+	want := "FAIL Todos.Index \"a helper without a signed-in user\"\n  error: Db.mine Todo: no signed-in user\n  trace: [\"Db.mine Todo\", \"Db.all Todo\"]\n0 passed, 1 failed\n"
+	if code != 1 || stdout != want {
+		t.Fatalf("exit %d\n%s\nwant:\n%s", code, stdout, want)
+	}
+}
+
 func TestTest_Usage(t *testing.T) {
 	inTemp(t)
 	for _, args := range [][]string{

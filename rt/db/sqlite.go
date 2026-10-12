@@ -156,11 +156,22 @@ func colList(cols []Column) string {
 
 // Get reads row id of table (a table passed to Ensure) in Columns order.
 func (s *SQLite) Get(ctx context.Context, tx Tx, table string, id string) ([]any, bool, error) {
+	return s.GetWhere(ctx, tx, table, id, "", nil)
+}
+
+// GetWhere reads row id of table when its column col also holds val (col "" for no such
+// condition): one SELECT … WHERE id = ? AND col = ?.
+func (s *SQLite) GetWhere(ctx context.Context, tx Tx, table string, id string, col string, val any) ([]any, bool, error) {
 	d, err := s.desc(table)
 	if err != nil {
 		return nil, false, err
 	}
-	rows, err := s.Query(ctx, tx, table, d.Columns, SQL{Where: quote(d.ID) + " = ?", Args: []any{id}})
+	sel := SQL{Where: quote(d.ID) + " = ?", Args: []any{id}}
+	if col != "" {
+		sel.Where += " AND " + quote(col) + " = ?"
+		sel.Args = append(sel.Args, val)
+	}
+	rows, err := s.Query(ctx, tx, table, d.Columns, sel)
 	if err != nil || len(rows) == 0 {
 		return nil, false, err
 	}
@@ -263,12 +274,20 @@ func (s *SQLite) Insert(ctx context.Context, tx Tx, table string, cols []Column,
 // Update implements Store.Update. The id and the table's @created column
 // (as passed to Ensure) are never rewritten.
 func (s *SQLite) Update(ctx context.Context, tx Tx, table string, cols []Column, idCol, updatedCol, id string, vals []any, now time.Time) error {
+	_, err := s.UpdateWhere(ctx, tx, table, cols, idCol, updatedCol, id, "", nil, vals, now)
+	return err
+}
+
+// UpdateWhere implements Store.UpdateWhere: one statement, UPDATE … SET … WHERE id = ? [AND
+// col = ?], whose rows-affected count it returns. The id and the table's @created column (as
+// passed to Ensure) are never rewritten.
+func (s *SQLite) UpdateWhere(ctx context.Context, tx Tx, table string, cols []Column, idCol, updatedCol, id, col string, val any, vals []any, now time.Time) (int64, error) {
 	if len(vals) != len(cols) {
-		return fmt.Errorf("db: update %s: %d values for %d columns", table, len(vals), len(cols))
+		return 0, fmt.Errorf("db: update %s: %d values for %d columns", table, len(vals), len(cols))
 	}
 	q, err := s.on(tx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	created := ""
 	if d, err := s.desc(table); err == nil {
@@ -287,33 +306,55 @@ func (s *SQLite) Update(ctx context.Context, tx Tx, table string, cols []Column,
 		}
 		sets = append(sets, quote(c.Name)+" = ?")
 	}
-	if len(sets) == 0 {
-		return nil
+	if len(sets) == 0 { // nothing to rewrite: the statement still says whether the row is there
+		sets = append(sets, quote(idCol)+" = "+quote(idCol))
 	}
 	args = append(args, id)
-	stmt := "UPDATE " + quote(SQLName(table)) + " SET " + strings.Join(sets, ", ") + " WHERE " + quote(idCol) + " = ?"
-	if _, err := q.ExecContext(ctx, stmt, args...); err != nil {
-		return s.refErr(ctx, q, table, cols, vals, uniqueErr(table, err))
+	where := quote(idCol) + " = ?"
+	if col != "" {
+		where += " AND " + quote(col) + " = ?"
+		args = append(args, val)
 	}
-	return nil
+	stmt := "UPDATE " + quote(SQLName(table)) + " SET " + strings.Join(sets, ", ") + " WHERE " + where
+	res, err := q.ExecContext(ctx, stmt, args...)
+	if err != nil {
+		return 0, s.refErr(ctx, q, table, cols, vals, uniqueErr(table, err))
+	}
+	return res.RowsAffected()
 }
 
 // Delete implements Store.Delete; a missing row is not an error.
 func (s *SQLite) Delete(ctx context.Context, tx Tx, table string, idCol, id string) error {
+	_, err := s.DeleteWhere(ctx, tx, table, idCol, id, "", nil)
+	return err
+}
+
+// DeleteWhere implements Store.DeleteWhere: one statement, DELETE … WHERE id = ? [AND col = ?],
+// whose rows-affected count it returns.
+func (s *SQLite) DeleteWhere(ctx context.Context, tx Tx, table string, idCol, id, col string, val any) (int64, error) {
 	q, err := s.on(tx)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	_, err = q.ExecContext(ctx, "DELETE FROM "+quote(SQLName(table))+" WHERE "+quote(idCol)+" = ?", id)
+	where := quote(idCol) + " = ?"
+	args := []any{id}
+	if col != "" {
+		where += " AND " + quote(col) + " = ?"
+		args = append(args, val)
+	}
+	res, err := q.ExecContext(ctx, "DELETE FROM "+quote(SQLName(table))+" WHERE "+where, args...)
 	if isForeignKey(err) {
 		// SQLite does not say which row blocks. A `@restrict` row referring to this one directly
 		// is named by its table and column; else it is one a `@cascade` chain reaches.
 		if by := s.restrictReferrer(ctx, q, table, id); by != "" {
-			return &eff.ErrFail{Msg: shortName(table) + " " + id + " is referenced by a row of " + by}
+			return 0, &eff.ErrFail{Msg: shortName(table) + " " + id + " is referenced by a row of " + by}
 		}
-		return &eff.ErrFail{Msg: shortName(table) + " " + id + " is referenced by another row, directly or through rows that `@cascade` would delete with it"}
+		return 0, &eff.ErrFail{Msg: shortName(table) + " " + id + " is referenced by another row, directly or through rows that `@cascade` would delete with it"}
 	}
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // restrictReferrer is "Comment (`Comment.post`)" for the first table, by name, with a

@@ -34,6 +34,13 @@ import (
 //	                   leaves nil; Db.update and Db.delete produce struct{}{}
 //	DbSelect (a value) db.Offset(n, db.Limit(n, db.OrderBy(o, db.Where(c, db.From(table)))))
 //	                   built on Base when set
+//	DbMine             db.Mine(table): a Select whose owner predicate db.All/First/CountRows add
+//	                   from the running effect's session (the trace notes "Db.mine Todo")
+//	DbGetMine, …       eff.Call("Db.getMine Todo", false, func(_e) { return db.GetMineRow(…, id) }),
+//	                   Db.updateMine/deleteMine/insertMine likewise (db.UpdateMineRow,
+//	                   DeleteMineRow, InsertMineRow with insertminevals__M__T(row)): write true;
+//	                   the user is the session of _e (the descriptor's User), a row that is not
+//	                   the user's eff.ErrNotFound
 //	Cond               db.CEq("col", enc(v)), …; and/or of a literal list: db.CAnd([]db.Cond{…}),
 //	                   of a list value: db.CAnd(list) (CAnd of none is true, COr of none false)
 //	Ord                db.Asc("col") / db.Desc("col")
@@ -80,6 +87,8 @@ func (f *fn) effect(e ir.Expr, s *scope) string {
 		return strconv.Quote(x.Field)
 	case *ir.TableRef:
 		return tableName(x.Table.Module, x.Table.Name)
+	case *ir.DbMine:
+		return "db.Mine(" + tableName(x.Table.Module, x.Table.Name) + ")"
 	}
 	c, isTask := f.effNode(e, s)
 	if isQuery(e.Type()) && isTask {
@@ -107,7 +116,7 @@ func isEffNode(e ir.Expr) bool {
 	switch x := e.(type) {
 	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.CapCall,
 		*ir.DbGet, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete, *ir.TestRun, *ir.TestTrace, *ir.TestFake,
-		*ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick:
+		*ir.DbGetMine, *ir.DbUpdateMine, *ir.DbDeleteMine, *ir.DbInsertMine, *ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick:
 		return true
 	case *ir.DbSelect:
 		return x.Terminal != ir.SelNone
@@ -205,6 +214,34 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 		tb := x.Table
 		return f.dbCall("Db.delete "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
 			return "struct{}{}, db.DeleteRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " + f.code(x.ID, c) + ")"
+		}), true
+	case *ir.DbGetMine:
+		tb := x.Table
+		return f.dbCall("Db.getMine "+tb.Name, false, x.Ty, s, func(env string, c *scope) string {
+			return "db.GetMineRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " + f.code(x.ID, c) + ")"
+		}), true
+	case *ir.DbInsertMine:
+		tb := x.Table
+		return f.dbCall("Db.insertMine "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
+			row := ""
+			if r, ok := x.Row.(*ir.Record); ok { // always a literal (the checker): name its type by the alias
+				row = f.record(r, insertMineName(tb.Module, tb.Name), c)
+			} else {
+				row = f.code(x.Row, c)
+			}
+			return "db.InsertMineRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " +
+				insertMineVals(tb.Module, tb.Name) + "(" + row + "), " + env + ".Now())"
+		}), true
+	case *ir.DbUpdateMine:
+		tb := x.Table
+		return f.dbCall("Db.updateMine "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
+			return "struct{}{}, db.UpdateMineRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " +
+				f.code(x.ID, c) + ", " + f.code(x.Fn, c) + ", " + env + ".Now())"
+		}), true
+	case *ir.DbDeleteMine:
+		tb := x.Table
+		return f.dbCall("Db.deleteMine "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
+			return "struct{}{}, db.DeleteMineRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " + f.code(x.ID, c) + ")"
 		}), true
 	case *ir.CapCall:
 		cp := x.Cap
@@ -538,6 +575,9 @@ func (g *gen) tableDecl(w *strings.Builder, tb *ir.Table) {
 		r = "_"
 	}
 	fmt.Fprintf(w, "func %s(%s %s) []any {\nreturn []any{%s}\n}\n\n", insertVals(tb.Module, tb.Name), r, ins, strings.Join(vals, ", "))
+	if tb.Owner != "" {
+		g.insertMineDecl(w, tb, field)
+	}
 
 	// the descriptor
 	fmt.Fprintf(w, "var %s = &db.Table[%s]{\nName: %s,\nColumns: []db.Column{\n", tableName(tb.Module, tb.Name), rec, strconv.Quote(tb.Module+"."+tb.Name))
@@ -571,7 +611,65 @@ func (g *gen) tableDecl(w *strings.Builder, tb *ir.Table) {
 		rec, n, n, dec.String())
 	id := Field(tb.IDField)
 	fmt.Fprintf(w, "ReadID: func(r %s) string { return r.%s },\n", rec, id)
-	fmt.Fprintf(w, "SetID: func(r %s, id string) %s {\nr.%s = id\nreturn r\n},\n}\n\n", rec, rec, id)
+	fmt.Fprintf(w, "SetID: func(r %s, id string) %s {\nr.%s = id\nreturn r\n},\n", rec, rec, id)
+	if tb.Owner != "" {
+		fmt.Fprintf(w, "Owner: %s,\nUser: %s,\n", strconv.Quote(tb.Owner), g.sessionUser())
+	}
+	w.WriteString("}\n\n")
+}
+
+// insertMineDecl writes table tb's Db.insertMine row type, insertmine__M__T (an alias of the
+// anonymous struct Lower gives the row: the InsertFields without the owner column), and its
+// column values function, insertminevals__M__T, which leaves the owner column nil for
+// db.InsertMineRow to fill with the signed-in user.
+func (g *gen) insertMineDecl(w *strings.Builder, tb *ir.Table, field func(string) ir.FieldT) {
+	var fs []string
+	inserted := map[string]bool{}
+	for _, n := range tb.InsertFields {
+		if n != tb.Owner {
+			fs = append(fs, Field(n)+" "+GoType(field(n).Type))
+			inserted[n] = true
+		}
+	}
+	ins := insertMineName(tb.Module, tb.Name)
+	if len(fs) == 0 {
+		fmt.Fprintf(w, "type %s = struct{}\n\n", ins)
+	} else {
+		fmt.Fprintf(w, "type %s = struct {\n%s\n}\n\n", ins, strings.Join(fs, "\n"))
+	}
+	var vals []string
+	for _, fd := range tb.Record.Fields {
+		if inserted[fd.Name] {
+			vals = append(vals, encode(fd.Type, "r."+Field(fd.Name)))
+		} else {
+			vals = append(vals, "nil")
+		}
+	}
+	r := "r"
+	if len(fs) == 0 {
+		r = "_"
+	}
+	fmt.Fprintf(w, "func %s(%s %s) []any {\nreturn []any{%s}\n}\n\n", insertMineVals(tb.Module, tb.Name), r, ins, strings.Join(vals, ", "))
+}
+
+// sessionUser is the descriptor's User function of a table with an `@owner` column: the
+// signed-in user of App's session value s (the running effect's Env.Session), false when s is
+// no App session or its `user` is Nothing.
+func (g *gen) sessionUser() string {
+	if g.session == nil {
+		return "func(any) (string, bool) { return \"\", false }"
+	}
+	app := GoName(g.session.Module, g.session.Name)
+	for _, fd := range g.session.Fields {
+		if fd.Name != "user" {
+			continue
+		}
+		if maybeArg(fd.Type) != nil {
+			return "func(s any) (string, bool) {\na, ok := s.(" + app + ")\nreturn a.User.Val, ok && a.User.Ok\n}"
+		}
+		return "func(s any) (string, bool) {\na, ok := s.(" + app + ")\nreturn a.User, ok\n}"
+	}
+	return "func(any) (string, bool) { return \"\", false }"
 }
 
 // columnLit is the db.Column literal of table tb's field fd.

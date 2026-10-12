@@ -8,4 +8,4 @@ load : Params -> Session -> Query Model
 load params session = Query.succeed { }
 
 view : Model -> Session -> Html Msg
-view model session = <p>log in</p>
+view model session = <html><body><h1>log in</h1></body></html>

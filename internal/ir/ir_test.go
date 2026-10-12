@@ -687,7 +687,7 @@ func TestIR_Rules(t *testing.T) {
 			walk(v.Body)
 		}
 	}
-	if fmt.Sprint(seen) != "map[deleteMine:1 getMine:2 insertMine:1 mine:2 updateMine:1]" {
+	if fmt.Sprint(seen) != "map[deleteMine:1 getMine:2 insertMine:2 mine:2 updateMine:2]" {
 		t.Errorf("scoped nodes: %v", seen)
 	}
 }

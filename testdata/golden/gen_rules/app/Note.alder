@@ -1,0 +1,13 @@
+module Note
+
+import User
+
+type NoteId = brand Text
+
+-- The declared rules' codegen (M11): an `@owner` table, its scoped operations, a role page.
+table Note {
+  id: NoteId @id,
+  title: Text,
+  pinned: Bool = False,
+  owner: User.UserId @ref User @owner,
+}

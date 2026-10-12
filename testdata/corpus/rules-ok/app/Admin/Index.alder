@@ -2,6 +2,7 @@ module Admin.Index
 
 import User
 
+-- A role check is a cookie check: the role is the one the session got at login.
 page "/admin" { } requires user, role Author | Admin
 
 type Model = { }
@@ -14,4 +15,34 @@ roleOf : Session -> User.Role
 roleOf session = session.role
 
 view : Model -> Session -> Html Msg
-view model session = <p>{User.roleName (roleOf session)}</p>
+view model session = <html><body><p id="role">{User.roleName (roleOf session)}</p></body></html>
+
+test "an author is served" = {
+  let me <- Db.insert User { name: "Me", role: Author }
+  let _ <- Test.login { user: Just me, role: Author }
+  let page <- Test.get (Admin.Index {})
+  Task.succeed (Test.text "#role" page.doc == Just "author")
+}
+
+test "a reader on an author page is not found" = {
+  let me <- Db.insert User { name: "Me" }
+  let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.open (Admin.Index {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a visitor is sent to log in from the admin page" = {
+  let r <- Test.open (Admin.Index {})
+  Task.succeed (r.answer == Redirected (Login {}))
+}
+
+-- The stale cookie: an admin demoted since logging in still passes the role check here (until
+-- they log in again); Admin.Users re-reads the user's row and does not serve them.
+test "a demoted admin still passes the cookie check" = {
+  let me <- Db.insert User { name: "Me", role: Admin }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let _ <- Db.update User me (\u -> { u | role: Reader })
+  let index <- Test.open (Admin.Index {})
+  let users <- Test.open (Admin.Users {})
+  Task.succeed ({ index: index.answer, users: users.answer } == { index: Shown, users: PageMissing })
+}

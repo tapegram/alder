@@ -15,7 +15,8 @@ import (
 // the step's result record ({ model | answer, session, doc }), S App's Session (struct{}
 // without an App module):
 //
-//	TestLogin      "Test.login": BrowserOf(_e).Login(session)
+//	TestLogin      "Test.login": BrowserOf(_e).Login(session), and the test's own session becomes
+//	               session (_e.Session), so the scoped Db operations a test runs act for that user
 //	TestGet        "Test.get M" / "Test.open M": _p := params; _r, _err := _b.GetPage(rt.PageURL(
 //	               page(_p)), "<requires>") (Open for open); for get, the model the page's GET
 //	               rendered (the route's rq.Model, through web.Options.Served):
@@ -49,7 +50,9 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 	case *ir.TestLogin:
 		return f.callStmts("Test.login", true, t, s, func(env string, c *scope) string {
 			err := f.temp(c, "_err")
-			return "if " + err + " := rtesting.BrowserOf(" + env + ").Login(" + f.code(x.Session, c) + "); " + err + " != nil {\nreturn struct{}{}, " + err + "\n}\nreturn struct{}{}, nil\n"
+			// the session is the test's own first (a failed step restores it: eff.Run)
+			return env + ".Session = " + f.code(x.Session, c) + "\n" +
+				"if " + err + " := rtesting.BrowserOf(" + env + ").Login(" + env + ".Session); " + err + " != nil {\nreturn struct{}{}, " + err + "\n}\nreturn struct{}{}, nil\n"
 		})
 	case *ir.TestGet:
 		name := "Test.get "

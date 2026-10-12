@@ -251,7 +251,7 @@ var testBuildGoldens = map[string]bool{"gen_fakes": true, "gen_browser": true}
 
 // mutateBuildGoldens are the gen goldens whose want/ is a mutate build (Options.Mutate, a test
 // build) and whose want_prod/ is the production build of the same app.
-var mutateBuildGoldens = map[string]bool{"gen_mutate": true}
+var mutateBuildGoldens = map[string]bool{"gen_mutate": true, "gen_rules": true}
 
 func TestGenGolden(t *testing.T) {
 	dirs, _ := filepath.Glob("../../testdata/golden/gen_*")
@@ -3269,7 +3269,7 @@ func TestCapsPackage_Unwired(t *testing.T) {
 // production build of each is the build without Mutate (no switch, no table).
 func TestGen_Mutate(t *testing.T) {
 	dirs, _ := filepath.Glob("../../testdata/mutate/*")
-	dirs = append(dirs, "../../examples/todos", "../../examples/blog", "../../testdata/corpus/mutate-ok", "../../testdata/corpus/mutate-crash")
+	dirs = append(dirs, "../../examples/todos", "../../examples/blog", "../../testdata/corpus/mutate-ok", "../../testdata/corpus/mutate-crash", "../../testdata/corpus/rules-ok")
 	for _, dir := range dirs {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
 			t.Parallel()
@@ -3286,7 +3286,7 @@ func TestGen_Mutate(t *testing.T) {
 				// a switch's case, or an If's or a Match's test of Mutant (mutatedIf, mutatedMatch)
 				needles := []string{fmt.Sprintf("case %d:\n", m.ID), fmt.Sprintf("Mutant == %d ", m.ID), fmt.Sprintf("Mutant != %d ", m.ID), fmt.Sprintf("(Mutant == %d)", m.ID)}
 				if m.Page != nil {
-					needles = []string{fmt.Sprintf("Mutant == %d {", m.ID)}
+					needles = []string{fmt.Sprintf("Mutant == %d {", m.ID), fmt.Sprintf("Mutant != %d && ", m.ID)} // requires, role dropped
 				}
 				found := false
 				for name, src := range files {

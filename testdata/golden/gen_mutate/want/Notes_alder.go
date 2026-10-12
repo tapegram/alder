@@ -168,7 +168,8 @@ func test__Notes__2() eff.Task[bool] {
 					}(), Owner: other}), _e4.Now())
 				}), func(_ string) eff.Task[bool] {
 					return eff.Bind(eff.Call("Test.login", true, func(_e5 *eff.Env) (struct{}, error) {
-						if _err6 := rtesting.BrowserOf(_e5).Login(App__Session{User: rt.Just[string](me)}); _err6 != nil {
+						_e5.Session = App__Session{User: rt.Just[string](me)}
+						if _err6 := rtesting.BrowserOf(_e5).Login(_e5.Session); _err6 != nil {
 							return struct{}{}, _err6
 						}
 						return struct{}{}, nil
@@ -225,7 +226,8 @@ func test__Notes__3() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me)}); _err3 != nil {
+			_e2.Session = App__Session{User: rt.Just[string](me)}
+			if _err3 := rtesting.BrowserOf(_e2).Login(_e2.Session); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil
@@ -340,7 +342,8 @@ func test__Notes__4() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me)}); _err3 != nil {
+			_e2.Session = App__Session{User: rt.Just[string](me)}
+			if _err3 := rtesting.BrowserOf(_e2).Login(_e2.Session); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil
@@ -417,7 +420,8 @@ func test__Notes__5() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me)}); _err3 != nil {
+			_e2.Session = App__Session{User: rt.Just[string](me)}
+			if _err3 := rtesting.BrowserOf(_e2).Login(_e2.Session); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil

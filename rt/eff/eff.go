@@ -282,3 +282,19 @@ func CapError(name string, err error) error {
 	}
 	return &ErrCapability{Name: name, Err: err}
 }
+
+// Note records name as a step of the Call running now, taken before it: it is logged at level
+// "effect" and put in Trace just before the Call's own name (appended when Trace is empty). A
+// store operation uses it for a part of its work the trace names apart: db.All on a Db.mine
+// select notes `Db.mine Todo`, so the trace reads ["Db.mine Todo", "Db.all Todo"].
+func (e *Env) Note(name string) {
+	if e.Log != nil {
+		e.Log("effect", name)
+	}
+	if n := len(e.Trace); n > 0 {
+		t := make([]string, 0, n+1) // a new array: a slice of the old one held elsewhere keeps its names
+		e.Trace = append(append(append(t, e.Trace[:n-1]...), name), e.Trace[n-1])
+		return
+	}
+	e.Trace = append(e.Trace, name)
+}

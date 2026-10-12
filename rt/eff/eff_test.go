@@ -509,3 +509,29 @@ func TestCapError(t *testing.T) {
 		t.Fatal("failures pass through unchanged")
 	}
 }
+
+// Note puts a step before the running Call's own name in the trace, and logs it.
+func TestEnv_Note(t *testing.T) {
+	var logged []string
+	env := &Env{Log: func(level, msg string) { logged = append(logged, level+" "+msg) }}
+	held := []string(nil)
+	task := Call("Db.all Todo", false, func(e *Env) (int, error) {
+		held = e.Trace // a slice of the trace held elsewhere keeps its names
+		e.Note("Db.mine Todo")
+		return 1, nil
+	})
+	if _, err := RunQuery(env, Q(task)); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(env.Trace, ",") != "Db.mine Todo,Db.all Todo" || strings.Join(held, ",") != "Db.all Todo" {
+		t.Fatalf("trace %q, held %q", env.Trace, held)
+	}
+	if strings.Join(logged, ",") != "effect Db.all Todo,effect Db.mine Todo" {
+		t.Fatalf("log %q", logged)
+	}
+	empty := &Env{}
+	empty.Note("x")
+	if strings.Join(empty.Trace, ",") != "x" {
+		t.Fatalf("empty trace: %q", empty.Trace)
+	}
+}

@@ -27,6 +27,16 @@ type Store interface {
 	// column from vals (Columns order), setting updatedCol (if any) to now.
 	Update(ctx context.Context, tx Tx, table string, cols []Column, idCol, updatedCol, id string, vals []any, now time.Time) error
 	Delete(ctx context.Context, tx Tx, table string, idCol, id string) error
+	// GetWhere is Get of row id when its column col also holds val (col "" for no condition):
+	// Db.getMine's one SELECT … WHERE id = ? AND owner = ?.
+	GetWhere(ctx context.Context, tx Tx, table string, id string, col string, val any) (row []any, found bool, err error)
+	// UpdateWhere is Update of row id when its column col also holds val, as one UPDATE …
+	// WHERE id = ? AND col = ? (col "" for no condition), returning the rows it changed (0 or
+	// 1): Db.updateMine's write, the owner predicate in the statement itself.
+	UpdateWhere(ctx context.Context, tx Tx, table string, cols []Column, idCol, updatedCol, id, col string, val any, vals []any, now time.Time) (int64, error)
+	// DeleteWhere is Delete of row id when its column col also holds val, as one DELETE …
+	// WHERE id = ? AND col = ?, returning the rows it deleted (0 or 1): Db.deleteMine's.
+	DeleteWhere(ctx context.Context, tx Tx, table string, idCol, id, col string, val any) (int64, error)
 }
 
 // Tx is a Store's transaction.
@@ -104,6 +114,14 @@ func (readOnly) Update(context.Context, Tx, string, []Column, string, string, st
 
 func (readOnly) Delete(context.Context, Tx, string, string, string) error { return errQueryWrite }
 
+func (readOnly) UpdateWhere(context.Context, Tx, string, []Column, string, string, string, string, any, []any, time.Time) (int64, error) {
+	return 0, errQueryWrite
+}
+
+func (readOnly) DeleteWhere(context.Context, Tx, string, string, string, string, any) (int64, error) {
+	return 0, errQueryWrite
+}
+
 // beginFailed is the Tx TxOf returns when beginning the transaction failed.
 type beginFailed struct{ err error }
 
@@ -148,6 +166,10 @@ func All[T any](ctx context.Context, st Store, tx Tx, s Select[T]) ([]T, error) 
 	if err := txErr(tx); err != nil {
 		return nil, err
 	}
+	s, err := scoped(ctx, s)
+	if err != nil {
+		return nil, err
+	}
 	q := s.SQL()
 	if q.Err != nil {
 		return nil, q.Err
@@ -185,6 +207,10 @@ func First[T any](ctx context.Context, st Store, tx Tx, s Select[T]) (rt.Maybe[T
 // and offset).
 func CountRows[T any](ctx context.Context, st Store, tx Tx, s Select[T]) (int64, error) {
 	if err := txErr(tx); err != nil {
+		return 0, err
+	}
+	s, err := scoped(ctx, s)
+	if err != nil {
 		return 0, err
 	}
 	q := s.SQL()
@@ -227,4 +253,155 @@ func DeleteRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id stri
 		return err
 	}
 	return st.Delete(ctx, tx, t.Name, t.ID, id)
+}
+
+// ---- the scoped operations (Db.mine, getMine, updateMine, deleteMine, insertMine)
+//
+// A table with an `@owner` column has Table.Owner and Table.User set. The user each scoped
+// operation acts for is the ambient session's: Table.User of the Session of the Env running
+// with ctx (eff.EnvFrom) — in a served request the session cookie's, in a test the test's
+// (Test.login, Session.put). Without a signed-in user the operation fails with
+// "Db.mine Todo: no signed-in user" (an *eff.ErrFail), never an empty result. A row that is
+// not the user's answers as a missing one: eff.ErrNotFound (a 404 in a route; in a Task the
+// whole transaction rolls back, as for any not-found).
+
+// owner is the signed-in user the scoped operation op ("Db.mine") on t acts for.
+func owner[T any](ctx context.Context, t *Table[T], op string) (string, error) {
+	name := op + " " + shortName(t.Name)
+	if t.Owner == "" || t.User == nil {
+		return "", fmt.Errorf("db: %w: %s: the table has no owner column", eff.ErrInternal, name)
+	}
+	var session any
+	if e := eff.EnvFrom(ctx); e != nil {
+		session = e.Session
+	}
+	u, ok := t.User(session)
+	if !ok {
+		return "", &eff.ErrFail{Msg: name + ": no signed-in user"}
+	}
+	return u, nil
+}
+
+// Mine is Db.mine: the rows of t whose owner is the signed-in user. The predicate is added when
+// the select runs (All, First, CountRows), from the session of the running effect, which notes
+// the step `Db.mine T` in its trace.
+func Mine[T any](t *Table[T]) Select[T] { return Select[T]{Table: t, Mine: true} }
+
+// scoped is s with Mine's owner predicate, `owner = ?`, as its first condition.
+func scoped[T any](ctx context.Context, s Select[T]) (Select[T], error) {
+	if !s.Mine {
+		return s, nil
+	}
+	if e := eff.EnvFrom(ctx); e != nil {
+		e.Note("Db.mine " + shortName(s.Table.Name))
+	}
+	u, err := owner(ctx, s.Table, "Db.mine")
+	if err != nil {
+		return s, err
+	}
+	s.Mine = false
+	s.Where = append([]Cond{CEq(s.Table.Owner, u)}, s.Where...)
+	return s, nil
+}
+
+// GetMineRow is Db.getMine: row id when it is the signed-in user's, in one SELECT … WHERE id = ?
+// AND owner = ?; eff.ErrNotFound when it is missing or someone else's.
+func GetMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string) (T, error) {
+	var zero T
+	if err := txErr(tx); err != nil {
+		return zero, err
+	}
+	u, err := owner(ctx, t, "Db.getMine")
+	if err != nil {
+		return zero, err
+	}
+	row, found, err := st.GetWhere(ctx, tx, t.Name, id, t.Owner, u)
+	if err != nil {
+		return zero, err
+	}
+	if !found {
+		return zero, eff.ErrNotFound
+	}
+	v, err := t.Decode(row)
+	if err != nil {
+		return zero, fmt.Errorf("db: decode %s: %w", t.Name, err)
+	}
+	return v, nil
+}
+
+// UpdateMineRow is Db.updateMine: inside the Task's transaction, read row id with the owner
+// predicate (SELECT … WHERE id = ? AND owner = ?), apply f, and write it back with the
+// predicate again (UPDATE … WHERE id = ? AND owner = ?), checking one row changed; @updated is
+// set to now. A row that is missing or someone else's, at either step, is eff.ErrNotFound and
+// nothing is written. An f that changes the id fails with *eff.ErrFail.
+func UpdateMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string, f func(T) T, now time.Time) error {
+	if err := txErr(tx); err != nil {
+		return err
+	}
+	u, err := owner(ctx, t, "Db.updateMine")
+	if err != nil {
+		return err
+	}
+	row, found, err := st.GetWhere(ctx, tx, t.Name, id, t.Owner, u)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return eff.ErrNotFound
+	}
+	cur, err := t.Decode(row)
+	if err != nil {
+		return fmt.Errorf("db: decode %s: %w", t.Name, err)
+	}
+	next := f(cur)
+	if t.ReadID(next) != id {
+		return &eff.ErrFail{Msg: fmt.Sprintf("Db.updateMine %s: update may not change the id", shortName(t.Name))}
+	}
+	n, err := st.UpdateWhere(ctx, tx, t.Name, t.Columns, t.ID, t.Updated, id, t.Owner, u, t.Encode(next), now)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return eff.ErrNotFound
+	}
+	return nil
+}
+
+// DeleteMineRow is Db.deleteMine: one DELETE … WHERE id = ? AND owner = ?; no row deleted (missing,
+// or someone else's) is eff.ErrNotFound.
+func DeleteMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string) error {
+	if err := txErr(tx); err != nil {
+		return err
+	}
+	u, err := owner(ctx, t, "Db.deleteMine")
+	if err != nil {
+		return err
+	}
+	n, err := st.DeleteWhere(ctx, tx, t.Name, t.ID, id, t.Owner, u)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return eff.ErrNotFound
+	}
+	return nil
+}
+
+// InsertMineRow is Db.insertMine: InsertRow with the owner column (nil in vals) filled with the
+// signed-in user.
+func InsertMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], vals []any, now time.Time) (string, error) {
+	if err := txErr(tx); err != nil {
+		return "", err
+	}
+	u, err := owner(ctx, t, "Db.insertMine")
+	if err != nil {
+		return "", err
+	}
+	vals = append([]any(nil), vals...)
+	for i, c := range t.Columns {
+		if c.Name == t.Owner && i < len(vals) {
+			vals[i] = u
+		}
+	}
+	return st.Insert(ctx, tx, t.Name, t.Columns, t.ID, t.Created, t.Updated, vals, now)
 }

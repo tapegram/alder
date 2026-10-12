@@ -12,3 +12,11 @@ table Todo {
   owner: User.UserId @ref User @cascade @owner,
   created: Time @created,
 }
+
+test "deleting a user deletes their todos" = {
+  let me <- Db.insert User { name: "Me" }
+  let _ <- Db.insert Todo { title: "a", owner: me }
+  let _ <- Db.delete User me
+  let n <- Db.from Todo |> Db.count
+  Task.succeed (n == 0)
+}

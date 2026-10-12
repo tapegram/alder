@@ -196,6 +196,9 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	if pg.Requires != "" {
 		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
 	}
+	if pg.Roles != nil {
+		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), the role (404), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
+	}
 	b.WriteString(comment(fmt.Sprintf("%s serves page %s, GET %s (book 06): %s", routeFunc(m, ""), m, pg.Path, steps)))
 	fmt.Fprintf(b, `func %s() web.Route {
 	return web.Route{Method: "GET", Pattern: %s, Handle: func(rq *web.Request) web.Response {
@@ -360,17 +363,30 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 		}
 		fs = append(fs, Field(f.Name)+": "+v)
 	}
-	b.WriteString(comment(fmt.Sprintf("%s runs page %s for rq up to its model: `requires %s` (a 303 to App.login, storing keep, when the session's %s is Nothing), then load (with params and the narrowed session). It returns the model and the session view and update take, or the response that ends the request, which stores keep (the session a successful update left, or nil).", pageFunc(m), m, pg.Requires, pg.Requires)))
+	roles := ""
+	if pg.Roles != nil {
+		roles = fmt.Sprintf(", then `role %s` (404, App.notFound, as for a missing row, when the session's role is not one of them: a cookie check, read when the user logged in)", strings.Join(pg.Roles, " | "))
+	}
+	b.WriteString(comment(fmt.Sprintf("%s runs page %s for rq up to its model: `requires %s` (a 303 to App.login, storing keep, when the session's %s is Nothing)%s, then load (with params and the narrowed session). It returns the model and the session view and update take, or the response that ends the request, which stores keep (the session a successful update left, or nil).", pageFunc(m), m, pg.Requires, pg.Requires, roles)))
 	fmt.Fprintf(b, `func %[1]s(rq *web.Request, params %[2]s, keep any) (%[3]s, %[4]s, *web.Response) {
 	var model %[3]s
 	app := rq.Env.Session.(%[5]s)
 `, pageFunc(m), GoName(m, "Params"), model, session, app)
 	g.requiresPlaceholder(b, pg, "app") // a mutate build's requires dropped (mutation.go)
-	fmt.Fprintf(b, `	if !app.%[6]s.Ok {
+	fmt.Fprintf(b, `	if !app.%[1]s.Ok {
 		r := web.RedirectResponse(rq.Login, keep)
-		return model, %[4]s{}, &r
+		return model, %[2]s{}, &r
 	}
-	session := %[4]s{%[7]s}
+`, Field(pg.Requires), session)
+	if pg.Roles != nil {
+		fmt.Fprintf(b, `	if %s {
+		r := web.NotFoundResponse(html.None())
+		r.Session = keep
+		return model, %s{}, &r
+	}
+`, g.roleRefused(p, pg, "app"), session)
+	}
+	fmt.Fprintf(b, `	session := %[4]s{%[7]s}
 	model, err := eff.RunQuery(rq.Env, %[8]s(params, session))
 	if err != nil {
 		r := route__fail(err)
@@ -381,6 +397,30 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 }
 
 `, pageFunc(m), GoName(m, "Params"), model, session, app, Field(pg.Requires), strings.Join(fs, ", "), GoName(m, "load"))
+}
+
+// roleRefused is the Go condition under which page pg's `requires user, role R | …` refuses
+// the App session app: its role is none of the page's roles. In a mutate build each `role
+// dropped` mutant of the page lets every role through under its id (mutation.go).
+func (g *gen) roleRefused(p *ir.Program, pg *ir.Page, app string) string {
+	var u *types.Union
+	for _, f := range p.Session.Fields {
+		if f.Name == "role" {
+			u, _ = f.Type.(*types.Union)
+		}
+	}
+	if u == nil {
+		panic("gen: page " + pg.Module + " has roles but App's session has no union field `role`")
+	}
+	var is []string
+	for _, r := range pg.Roles {
+		is = append(is, app+".Role.Tag == "+tagConst(u.Module, u.Name, r))
+	}
+	cond := "!(" + strings.Join(is, " || ") + ")"
+	if len(is) == 1 {
+		cond = app + ".Role.Tag != " + tagConst(u.Module, u.Name, pg.Roles[0])
+	}
+	return g.roleDropped(pg) + cond
 }
 
 // appRoutes writes the decoders and routes of App's messages, and update__App.

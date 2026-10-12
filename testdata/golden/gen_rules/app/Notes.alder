@@ -1,0 +1,57 @@
+module Notes
+
+import Note
+
+page "/notes" { } requires user
+
+type Model = { notes: List Note, pinned: Int }
+
+mine : Select Note
+mine = Db.mine Note |> Db.limit 5
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <- mine |> Db.all
+  let pinned <- Db.mine Note |> Db.where (Note.pinned.eq True) |> Db.count
+  Query.succeed { notes: notes, pinned: pinned }
+}
+
+form NewNote = {
+  title: Text,
+}
+
+msg Add form NewNote
+msg Pin { id: Note.NoteId }
+msg Remove { id: Note.NoteId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insertMine Note { title: p.form.title }
+    Task.succeed Rerender
+  },
+  Pin p -> {
+    let n <- Db.getMine Note p.id
+    let _ <- Db.updateMine Note n.id (\x -> { x | pinned: True })
+    Task.succeed Rerender
+  },
+  Remove p -> {
+    let _ <- wipe p.id
+    Task.succeed Rerender
+  },
+}
+
+-- a scoped operation as a function value
+wipe : Note.NoteId -> Task Unit
+wipe = Db.deleteMine Note
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html><body>
+    <form submit={Add}>
+      <Input field="title" label="Title" />
+      <Errors form />
+      <button>Add</button>
+    </form>
+    <ul>{for n in model.notes -> <li><button click={Pin { id: n.id }}>{n.title}</button><button click={Remove { id: n.id }}>x</button></li>}</ul>
+  </body></html>

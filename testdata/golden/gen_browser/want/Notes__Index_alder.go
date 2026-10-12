@@ -251,7 +251,8 @@ func test__Notes__Index__1() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err3 != nil {
+			_e2.Session = App__Session{User: rt.Just[string](me), Visits: 0}
+			if _err3 := rtesting.BrowserOf(_e2).Login(_e2.Session); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil
@@ -344,7 +345,8 @@ func test__Notes__Index__2() eff.Task[bool] {
 			return db.InsertRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Note__Note, insertvals__Note__Note(insert__Note__Note{Title: "Milk", Done: false, Owner: me}), _e2.Now())
 		}), func(id string) eff.Task[bool] {
 			return eff.Bind(eff.Call("Test.login", true, func(_e3 *eff.Env) (struct{}, error) {
-				if _err4 := rtesting.BrowserOf(_e3).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err4 != nil {
+				_e3.Session = App__Session{User: rt.Just[string](me), Visits: 0}
+				if _err4 := rtesting.BrowserOf(_e3).Login(_e3.Session); _err4 != nil {
 					return struct{}{}, _err4
 				}
 				return struct{}{}, nil
@@ -436,7 +438,8 @@ func test__Notes__Index__3() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err3 != nil {
+			_e2.Session = App__Session{User: rt.Just[string](me), Visits: 0}
+			if _err3 := rtesting.BrowserOf(_e2).Login(_e2.Session); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil
@@ -553,7 +556,8 @@ func test__Notes__Index__4() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err3 != nil {
+			_e2.Session = App__Session{User: rt.Just[string](me), Visits: 0}
+			if _err3 := rtesting.BrowserOf(_e2).Login(_e2.Session); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil
@@ -636,7 +640,8 @@ func test__Notes__Index__5() eff.Task[bool] {
 			return db.InsertRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Note__Note, insertvals__Note__Note(insert__Note__Note{Title: "Milk", Done: false, Owner: me}), _e2.Now())
 		}), func(id string) eff.Task[bool] {
 			return eff.Bind(eff.Call("Test.login", true, func(_e3 *eff.Env) (struct{}, error) {
-				if _err4 := rtesting.BrowserOf(_e3).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err4 != nil {
+				_e3.Session = App__Session{User: rt.Just[string](me), Visits: 0}
+				if _err4 := rtesting.BrowserOf(_e3).Login(_e3.Session); _err4 != nil {
 					return struct{}{}, _err4
 				}
 				return struct{}{}, nil
@@ -738,7 +743,8 @@ func test__Notes__Index__6() eff.Task[bool] {
 			return db.InsertRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Note__Note, insertvals__Note__Note(insert__Note__Note{Title: "Milk", Done: false, Owner: me}), _e2.Now())
 		}), func(_ string) eff.Task[bool] {
 			return eff.Bind(eff.Call("Test.login", true, func(_e3 *eff.Env) (struct{}, error) {
-				if _err4 := rtesting.BrowserOf(_e3).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err4 != nil {
+				_e3.Session = App__Session{User: rt.Just[string](me), Visits: 0}
+				if _err4 := rtesting.BrowserOf(_e3).Login(_e3.Session); _err4 != nil {
 					return struct{}{}, _err4
 				}
 				return struct{}{}, nil
@@ -809,7 +815,8 @@ func test__Notes__Index__7() eff.Task[bool] {
 			return db.InsertRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Note__Note, insertvals__Note__Note(insert__Note__Note{Title: "Milk", Done: false, Owner: me}), _e2.Now())
 		}), func(id string) eff.Task[bool] {
 			return eff.Bind(eff.Call("Test.login", true, func(_e3 *eff.Env) (struct{}, error) {
-				if _err4 := rtesting.BrowserOf(_e3).Login(App__Session{User: rt.Just[string]("stranger"), Visits: 0}); _err4 != nil {
+				_e3.Session = App__Session{User: rt.Just[string]("stranger"), Visits: 0}
+				if _err4 := rtesting.BrowserOf(_e3).Login(_e3.Session); _err4 != nil {
 					return struct{}{}, _err4
 				}
 				return struct{}{}, nil
@@ -854,7 +861,8 @@ func test__Notes__Index__8() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err3 != nil {
+			_e2.Session = App__Session{User: rt.Just[string](me), Visits: 0}
+			if _err3 := rtesting.BrowserOf(_e2).Login(_e2.Session); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil
@@ -925,7 +933,8 @@ func test__Notes__Index__9() eff.Task[bool] {
 				return db.InsertRow(_e3.Ctx, _e3.Store.(db.Store), db.TxOf(_e3), table__Note__Note, insertvals__Note__Note(insert__Note__Note{Title: "B", Done: false, Owner: me}), _e3.Now())
 			}), func(b string) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.login", true, func(_e4 *eff.Env) (struct{}, error) {
-					if _err5 := rtesting.BrowserOf(_e4).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err5 != nil {
+					_e4.Session = App__Session{User: rt.Just[string](me), Visits: 0}
+					if _err5 := rtesting.BrowserOf(_e4).Login(_e4.Session); _err5 != nil {
 						return struct{}{}, _err5
 					}
 					return struct{}{}, nil
@@ -1026,7 +1035,8 @@ func test__Notes__Index__10() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err3 != nil {
+			_e2.Session = App__Session{User: rt.Just[string](me), Visits: 0}
+			if _err3 := rtesting.BrowserOf(_e2).Login(_e2.Session); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil
@@ -1104,7 +1114,8 @@ func test__Notes__Index__11() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err3 != nil {
+			_e2.Session = App__Session{User: rt.Just[string](me), Visits: 0}
+			if _err3 := rtesting.BrowserOf(_e2).Login(_e2.Session); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil
@@ -1217,7 +1228,8 @@ func test__Notes__Index__12() eff.Task[bool] {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.login", true, func(_e2 *eff.Env) (struct{}, error) {
-			if _err3 := rtesting.BrowserOf(_e2).Login(App__Session{User: rt.Just[string](me), Visits: 0}); _err3 != nil {
+			_e2.Session = App__Session{User: rt.Just[string](me), Visits: 0}
+			if _err3 := rtesting.BrowserOf(_e2).Login(_e2.Session); _err3 != nil {
 				return struct{}{}, _err3
 			}
 			return struct{}{}, nil

@@ -16,3 +16,6 @@ roleName role = match role {
   Author -> "author",
   Admin -> "admin",
 }
+
+test "every role has its name" =
+  List.map roleName [Reader, Author, Admin] == ["reader", "author", "admin"]

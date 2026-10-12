@@ -76,6 +76,8 @@ func TestGoNameInjective(t *testing.T) {
 			add(tableName(m, n), "table "+m+"."+n)
 			add(insertName(m, n), "insert "+m+"."+n)
 			add(insertVals(m, n), "insertvals "+m+"."+n)
+			add(insertMineName(m, n), "insertmine "+m+"."+n)
+			add(insertMineVals(m, n), "insertminevals "+m+"."+n)
 			add(capName(m, n), "capability "+m+"."+n)
 			add(enumName(m, n), "enum "+m+"."+n)
 			add(checkName(m, n), "brand check "+m+"."+n)
@@ -111,7 +113,7 @@ func TestGoNameInjective(t *testing.T) {
 		}
 	}
 	// locals: never a package-level name, nor an imported package's name
-	for _, n := range append(lowers, "type", "go", "rt", "std", "time", "math", "html", "len", "any", "eff", "db", "context", "fmt", "table", "cap", "name", "insert", "insertvals",
+	for _, n := range append(lowers, "type", "go", "rt", "std", "time", "math", "html", "len", "any", "eff", "db", "context", "fmt", "table", "cap", "name", "insert", "insertvals", "insertmine", "insertminevals",
 		"url", "web", "http", "json", "errors", "strings", "check", "decode", "page", "update", "route", "session", "params", "test", "rtesting", "fake", "fakeentry", "env", "zero") {
 		l := local(n)
 		if _, ok := seen[l]; ok {

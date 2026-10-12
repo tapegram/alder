@@ -2,12 +2,13 @@ module App
 
 import User
 
+-- The declared rules (M11): the session carries the user and their role, set at login.
 session { user: Maybe User.UserId, role: User.Role = Reader }
 
 login = Login
 
 error : Error -> Html Never
-error err = <p>error</p>
+error err = <html><body><h1>error</h1></body></html>
 
 notFound : Html Never
-notFound = <p>not found</p>
+notFound = <html><body><h1>not found</h1></body></html>

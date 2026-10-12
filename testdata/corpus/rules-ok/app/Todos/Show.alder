@@ -1,6 +1,7 @@
 module Todos.Show
 
 import Todo
+import User
 
 page "/todos/{id}" { id: Todo.TodoId } requires user
 
@@ -13,4 +14,28 @@ load params session = {
 }
 
 view : Model -> Session -> Html Msg
-view model session = <h1>{model.todo.title}</h1>
+view model session = <html><body><h1>{model.todo.title}</h1></body></html>
+
+test "the owner sees their todo" = {
+  let me <- Db.insert User { name: "Me" }
+  let id <- Db.insert Todo { title: "Milk", owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Todos.Show { id: id })
+  Task.succeed (page.model.todo.title == "Milk")
+}
+
+test "a stranger's open of my todo is not found" = {
+  let me <- Db.insert User { name: "Me" }
+  let bob <- Db.insert User { name: "Bob" }
+  let id <- Db.insert Todo { title: "Milk", owner: me }
+  let _ <- Test.login { user: Just bob }
+  let r <- Test.open (Todos.Show { id: id })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a visitor is sent to log in from a todo" = {
+  let me <- Db.insert User { name: "Me" }
+  let id <- Db.insert Todo { title: "Milk", owner: me }
+  let r <- Test.open (Todos.Show { id: id })
+  Task.succeed (r.answer == Redirected (Login {}))
+}
