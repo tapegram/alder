@@ -14,7 +14,11 @@ hidden tests passed, with "(check: CODES)" when the hidden module did not compil
 program, or `— (skipped: reason)`; a `Condition` column (first) when any summary has
 `harness.condition`, rows then grouped by it (stable: within a condition, the order read);
 `harness.sample` is folded into the task as the run directory shows it (`t5-ownership-s1`).
-Without those fields the table is as before. Several EXP_DIRs make one table."""
+Without those fields the table is as before. Several EXP_DIRs make one table.
+
+M9: a `Mut` column (after `Hidden`, before `Result`) when any summary has `mutation` (run with
+`--mutate`): `k/n` mutants killed of those that ran, or `— (error)` when the mutation run failed;
+`—` for a row without one. Without it the table is as before (E5–E8 regenerate unchanged)."""
 import json, pathlib, sys
 
 
@@ -25,6 +29,7 @@ def rows(summaries):
         task = f"{s['task']}-{h['sample']}" if h.get("sample") else s["task"]
         r = {"model": s["model"], "task": task, "error": s["error"], "pass": s["final_pass"],
              "condition": h.get("condition"), "hidden": hidden_cell(s["hidden"]) if "hidden" in s else None,
+             "mutation": mutation_cell(s["mutation"]) if "mutation" in s else None,
              "r0": None, "r1": None, "codes0": {}, "codes1": {},
              "harness": "harness" in s, "compiler_bug": bool(s.get("compiler_bug")),
              "outcome": s.get("outcome"), "bug_kind": s.get("compiler_bug_kind"), "rounds": [], "tests": []}
@@ -52,6 +57,12 @@ def hidden_cell(h):
     elif h.get("reason"):
         out += f" ({cell_text(h['reason'])[:60]})"
     return out
+
+
+def mutation_cell(m):
+    if "error" in m:
+        return "— (error)"
+    return f"{m['killed']}/{m['killed'] + m['survived']}"
 
 
 def cell_text(t):
@@ -90,6 +101,7 @@ def markdown_rounds(rs):
     cols = [f"r{i}" for i in range(n)]
     tests = any(r.get("tests") for r in rs)   # a Tests column only for runs with --test: E6 regenerates unchanged
     hidden = any(r.get("hidden") is not None for r in rs)   # E8 --hidden; absent before: E5–E7 unchanged
+    mut = any(r.get("mutation") is not None for r in rs)   # M9 --mutate; absent before: E5–E8 unchanged
     cond = any(r.get("condition") is not None for r in rs)
     if cond:   # grouped by condition, in the order each condition first appears
         order = {}
@@ -97,19 +109,21 @@ def markdown_rounds(rs):
             order.setdefault(r.get("condition"), len(order))
         rs = sorted(rs, key=lambda r: order[r.get("condition")])
     lines = ["| " + ("Condition | " if cond else "") + "Model | Task | " + " | ".join(cols) + (" | Tests" if tests else "")
-             + (" | Hidden" if hidden else "") + " | Result | Codes |",
-             "|" + ("---|" if cond else "") + "---|---|" + "---|" * n + ("---|" if tests else "") + ("---|" if hidden else "") + "---|---|"]
+             + (" | Hidden" if hidden else "") + (" | Mut" if mut else "") + " | Result | Codes |",
+             "|" + ("---|" if cond else "") + "---|---|" + "---|" * n + ("---|" if tests else "") + ("---|" if hidden else "")
+             + ("---|" if mut else "") + "---|---|"]
     for r in rs:
         lead = (f"| {r.get('condition') or '—'} " if cond else "") + f"| {r['model']} | {r['task']} | "
         if r["error"]:
             lines.append(lead + " | ".join("—" for _ in cols) + (" | —" if tests else "") + (" | " + (r.get("hidden") or "—") if hidden else "")
-                         + f" | ERROR: {r['error'][:60]} | |")
+                         + (" | " + (r.get("mutation") or "—") if mut else "") + f" | ERROR: {r['error'][:60]} | |")
             continue
         cells = [c for c, _ in r["rounds"]] + ["—"] * (n - len(r["rounds"]))
         codes = "; ".join(f"r{i}: {fmt_codes(c)}" for i, (_, c) in enumerate(r["rounds"]) if c) or "—"
         tcell = (" | " + ("; ".join(r["tests"]) or "—")) if tests else ""
         hcell = (" | " + (r.get("hidden") or "—")) if hidden else ""
-        lines.append(lead + " | ".join(cells) + tcell + hcell + f" | {result(r)} | {codes} |")
+        mcell = (" | " + (r.get("mutation") or "—")) if mut else ""
+        lines.append(lead + " | ".join(cells) + tcell + hcell + mcell + f" | {result(r)} | {codes} |")
     return "\n".join(lines) + "\n"
 
 

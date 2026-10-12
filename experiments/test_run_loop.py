@@ -1497,5 +1497,102 @@ class ReportE7Tests(unittest.TestCase):
                 row = line if cond == "full" else line.replace(" | fail |", " | — | fail |")   # reference had no Tests column
                 self.assertIn(f"| {cond} {row}", merged)
 
+MUTANTS = (json.dumps({"mutants": [
+    {"id": 1, "module": "Todo", "decl": "Todo", "line": 12, "kind": "default changed", "before": "done = False", "after": "done = True",
+     "killed": True, "by": "Todos.Index \"Toggle flips done\"", "note": "", "tables": "ensure"},
+    {"id": 2, "module": "Todos.Index", "decl": "load", "line": 19, "kind": "orderBy reversed", "before": "a", "after": "b",
+     "killed": False, "by": "", "note": ""}]}) + "\n"
+    + json.dumps({"score": 0.5, "killed": 1, "survived": 1, "suppressed": 2, "skipped": 3}) + "\n")
+
+def mutate_stub(tmp, mutate_exit=0, mutate_out=MUTANTS, tests=PASS2, tests_exit=0):
+    """A stub `alder`: check and build succeed, `test --json` prints tests, `test --mutate --json`
+    prints mutate_out and exits mutate_exit (tests_exit for the others); every call is logged."""
+    calls = pathlib.Path(tmp) / "mutate-calls"
+    q = lambda t: json.dumps(t).replace("`", "\\`")
+    path = stub_alder(tmp, "\n".join([
+        f'echo "$*" >> {calls}',
+        'if [ "$1" = check ] || [ "$1" = build ]; then exit 0; fi',
+        f'case " $* " in *" --mutate "*) printf %b {q(mutate_out)}; echo "mutate stderr" 1>&2; exit {mutate_exit};; esac',
+        f'printf %b {q(tests)}; exit {tests_exit}']))
+    stub = StubPath(path)
+    stub.calls = calls
+    return stub
+
+class MutateTests(unittest.TestCase):
+    """M9: --mutate records the passing round's mutation score; report_loop's Mut column."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.exp = pathlib.Path(self.tmp) / "exp"
+        (self.exp / "tasks").mkdir(parents=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def test_mutate_requires_test(self):
+        import contextlib, io
+        (self.exp / "prompt.md").write_text("sys")
+        (self.exp / "tasks" / "t.md").write_text("task")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit):
+            rl.main(["--exp", str(self.exp), "--model", "ollama:x", "--task", "t", "--alder", "/nonexistent", "--build", "--mutate"])
+        self.assertIn("--mutate requires --test", err.getvalue())
+        with self.assertRaises(ValueError):
+            rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", pathlib.Path("/nonexistent"), build=True, mutate=True)
+
+    def test_passing_round_records_mutation(self):
+        alder = mutate_stub(self.tmp)
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", alder, retries=1, build=True, test=True, mutate=True)
+        self.assertEqual(s["outcome"], "pass")
+        self.assertEqual(s["harness"], {"build": True, "retries": 1, "test": True, "mutate": True})
+        want = {"score": 0.5, "killed": 1, "survived": 1, "suppressed": 2, "skipped": 3,
+                "survivors": [{"module": "Todos.Index", "decl": "load", "line": 19, "kind": "orderBy reversed"}]}
+        self.assertEqual(s["mutation"], want)
+        self.assertEqual(s["rounds"][0]["mutation"], want)
+        rd = (self.exp / "runs/fake/t/round0").resolve()
+        self.assertEqual(alder.calls.read_text().splitlines()[-1], f"test --mutate --json {rd}")
+
+    def test_mutation_never_changes_the_outcome(self):
+        alder = mutate_stub(self.tmp, mutate_exit=2, mutate_out='{"error": "boom"}\n')
+        model = rl.FakeModel([GOOD, GOOD])
+        s = rl.run_one(self.exp, model, "fake", "t", "task", "sys", alder, retries=1, build=True, test=True, mutate=True)
+        self.assertEqual((s["outcome"], len(model.prompts)), ("pass", 1))
+        self.assertIn("alder test --mutate exited 2", s["mutation"]["error"])
+        self.assertIn("mutate stderr", (self.exp / "runs/fake/t/round0/mutate.stderr.txt").read_text())
+
+    def test_no_mutation_without_flag_or_when_tests_fail(self):
+        alder = mutate_stub(self.tmp)
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", alder, retries=0, build=True, test=True)
+        self.assertNotIn("mutation", s)
+        self.assertNotIn("mutate", s["harness"])
+        self.assertNotIn("--mutate", alder.calls.read_text())
+        shutil.rmtree(self.exp / "runs")
+        alder = mutate_stub(self.tmp, tests=FAIL1, tests_exit=1)
+        os.remove(alder.calls)
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", alder, retries=0, build=True, test=True, mutate=True)
+        self.assertEqual(s["outcome"], "fail")
+        self.assertNotIn("mutation", s)
+        self.assertNotIn("--mutate", alder.calls.read_text())
+
+    def test_parse_mutation(self):
+        self.assertIsNone(rl.parse_mutation(PASS2))
+        self.assertEqual(rl.parse_mutation(PASS2 + MUTANTS)["killed"], 1)
+
+    def test_report_mut_column(self):
+        import report_loop as rp
+        rd = {"n": 0, "errors": 0, "codes": {}, "files": 5, "exit": 0, "seconds": 1.0, "warnings": 0, "stderr": "",
+              "build": {"ok": True, "exit": 0, "stderr": ""}, "tests": {"passed": 2, "failed": 0, "results": []}}
+        h = {"build": True, "retries": 1, "test": True, "mutate": True}
+        ss = [{"model": "m", "task": "t", "error": None, "final_pass": True, "outcome": "pass", "harness": h, "rounds": [rd],
+               "mutation": {"score": 0.5, "killed": 1, "survived": 1, "suppressed": 0, "skipped": 0, "survivors": []}},
+              {"model": "m", "task": "u", "error": None, "final_pass": True, "outcome": "pass", "harness": h, "rounds": [rd],
+               "mutation": {"error": "x"}},
+              {"model": "m", "task": "v", "error": None, "final_pass": False, "outcome": "fail", "harness": h, "rounds": [rd]}]
+        md = rp.markdown(rp.rows(ss))
+        self.assertIn("| Model | Task | r0 | Tests | Mut | Result | Codes |", md)
+        self.assertIn("| m | t | 0 (build ✓) | r0 ✓ 2 | 1/2 | pass |", md)
+        self.assertIn("| m | u | 0 (build ✓) | r0 ✓ 2 | — (error) | pass |", md)
+        self.assertIn("| m | v | 0 (build ✓) | r0 ✓ 2 | — | fail |", md)
+        self.assertNotIn("Mut", rp.markdown(rp.rows([{k: v for k, v in ss[0].items() if k != "mutation"}])))
+
 if __name__ == "__main__":
     unittest.main()

@@ -3,12 +3,14 @@
 
 Usage:
   run_loop.py --exp DIR --model ollama:NAME|claude:NAME --task NAME [--retries 1] [--prompt prompt.md] [--alder BIN]
-              [--base APPDIR] [--build [--test] [--hidden DIR]] [--migrate] [--adapters] [--num-ctx N]
+              [--base APPDIR] [--build [--test [--mutate]] [--hidden DIR]] [--migrate] [--adapters] [--num-ctx N]
               [--condition LABEL] [--sample LABEL]
 
 Writes DIR/runs/<model>/<task>/round<N>/{output.md,check.json,app/...} and DIR/runs/<model>/<task>/summary.json.
 With --build, a round whose check is clean also runs `alder build --emit` (output in round<N>/build/);
-with --test too, a round that built also runs `alder test --json` and passes only if every test does.
+with --test too, a round that built also runs `alder test --json` and passes only if every test does;
+with --mutate too (opt-in), the round whose tests passed also runs `alder test --mutate --json`, recorded
+as summary.mutation (score, killed, survived, suppressed, skipped, survivors) — a measurement, never a prompt.
 --base DIR seeds round 0 from DIR/app (and DIR/adapters and DIR/migrations, when there are) as
 committed (`git archive HEAD`), never from the working tree. --migrate: a round whose only check
 errors are E0019 (the tables changed since the last migration) runs `alder migrate` and checks
@@ -350,6 +352,49 @@ def run_test(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = 600)
         msg = f"{alder}: {e}"
         return None, [], msg, "", msg
     return p.returncode, parse_tests(p.stdout), p.stderr, p.stdout, unknown_exit("test", p.returncode)
+
+
+MUTATE_TIMEOUT = 1800   # seconds for `alder test --mutate`: one run of the suite per mutant
+
+
+def parse_mutation(stdout: str):
+    """The mutation record in `alder test --mutate --json`'s stdout: {score, killed, survived,
+    suppressed, skipped, survivors: [{module, decl, line, kind}]} from its {"mutants": […]} object
+    and its final {"score", …} one; None when either is missing."""
+    mutants, score = None, None
+    for line in stdout.splitlines():
+        d = _json_or_none(line)
+        if isinstance(d, dict) and isinstance(d.get("mutants"), list):
+            mutants = d["mutants"]
+        elif isinstance(d, dict) and "score" in d and "killed" in d:
+            score = d
+    if mutants is None or score is None:
+        return None
+    return {"score": score["score"], "killed": score["killed"], "survived": score["survived"],
+            "suppressed": score.get("suppressed", 0), "skipped": score.get("skipped", 0),
+            "survivors": [{"module": m.get("module"), "decl": m.get("decl"), "line": m.get("line"), "kind": m.get("kind")}
+                          for m in mutants if not m.get("killed")]}
+
+
+def run_mutate(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = MUTATE_TIMEOUT):
+    """`alder test --mutate --json <round_dir>` in round_dir (run_proc), after the round's tests
+    passed. Returns (record, stderr, stdout): record is parse_mutation's, or {"error": reason} when
+    the run did not report a score (a timeout, a binary that cannot start, an exit other than 0, a
+    report without the score); never raises."""
+    rd = round_dir.resolve()
+    try:
+        p = run_proc([str(pathlib.Path(alder).resolve()), "test", "--mutate", "--json", str(rd)], timeout, cwd=rd)
+    except subprocess.TimeoutExpired:
+        msg = f"alder test --mutate timed out after {timeout}s"
+        return {"error": msg}, msg, ""
+    except OSError as e:
+        msg = f"{alder}: {e}"
+        return {"error": msg}, msg, ""
+    rec = parse_mutation(p.stdout)
+    if p.returncode != 0 or rec is None:
+        why = (p.stderr.strip().splitlines() or [""])[-1] or "no score in its report"
+        return {"error": f"alder test --mutate exited {p.returncode}: {why}"[:500]}, p.stderr, p.stdout
+    return rec, p.stderr, p.stdout
 
 
 def test_report(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = 600) -> str:
@@ -744,7 +789,7 @@ def write_round(round_dir: pathlib.Path, prev_dir, text: str, files: dict, base_
 def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, task_text: str,
             system: str, alder: pathlib.Path, retries: int = 1, base=None, build: bool = False, seed=None,
             test: bool = False, adapters: bool = False, migrate: bool = False, hidden=None,
-            condition=None, sample=None) -> dict:
+            condition=None, sample=None, mutate: bool = False) -> dict:
     """`base`, if given, is a directory inside a git repository whose `app/` as committed (`git archive
     HEAD`, never the working tree) seeds round 0 (for tasks that modify an existing app). `seed`, if
     given, is that export already made, `export_base(base)` (the exported base and its commit): main
@@ -765,6 +810,12 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     build problem or a crash outside any test, after a clean build) is a compiler bug, kind "test"
     — or "hang" when its stderr says the tests timed out, as when the 600 s limit kills it —
     with its stderr in round<N>/test.stderr.txt; the task stops.
+
+    With `mutate` (requires `test`; ValueError otherwise), the round whose tests passed also runs
+    `alder test --mutate --json` (run_mutate): `summary["mutation"]` (and the round's "mutation")
+    is {score, killed, survived, suppressed, skipped, survivors: [{module, decl, line, kind}]}, or
+    {"error": reason} with its output in round<N>/mutate.stderr.txt. It is a measurement: it never
+    reaches a prompt and never changes `outcome`.
 
     With `migrate`, a round whose check fails with E0019 alone (the app's tables changed since the
     base's last migration) runs `alder migrate` (run_migrate) and checks again; `rnd["migrate"]`
@@ -790,13 +841,15 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     as `harness.condition` and `harness.sample`; `sample` also names the run directory `<task>-<sample>`."""
     if test and not build:
         raise ValueError("--test requires --build")
+    if mutate and not test:
+        raise ValueError("--mutate requires --test")
     if hidden is not None and not build:
         raise ValueError("--hidden requires --build")
     if base and seed is None:
         seed = export_base(base)
         try:
             return run_one(exp, model, model_label, task_name, task_text, system, alder, retries, base, build, seed=seed, test=test, adapters=adapters,
-                           migrate=migrate, hidden=hidden, condition=condition, sample=sample)
+                           migrate=migrate, hidden=hidden, condition=condition, sample=sample, mutate=mutate)
         finally:
             remove_export(seed[0])
     run_dir = exp / "runs" / model_label / (f"{task_name}-{sample}" if sample else task_name)
@@ -805,6 +858,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     summary = {"model": model_label, "task": task_name, "retries": retries, "base": str(base) if base else None,
                "harness": {"build": build, "retries": retries, **({"test": True} if test else {}), **({"adapters": True} if adapters else {}),
                            **({"migrate": True} if migrate else {}),
+                           **({"mutate": True} if mutate else {}),
                            **({"hidden": str(hidden)} if hidden is not None else {}),
                            **({"condition": condition} if condition is not None else {}),
                            **({"sample": sample} if sample is not None else {}),
@@ -941,6 +995,11 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                     test_output = test_report(alder, round_dir)[:TEST_OUTPUT_MAX]
                     rnd["test_output"] = test_output
                     clean = False
+        if clean and mutate:   # a measurement of the passing program's tests: never a prompt
+            mrec, mstderr, mstdout = run_mutate(alder, round_dir)
+            rnd["mutation"] = summary["mutation"] = mrec
+            if "error" in mrec:
+                (round_dir / "mutate.stderr.txt").write_text(mstderr + (("\n--- stdout ---\n" + mstdout) if mstdout.strip() else ""))
         if clean:
             summary["final_pass"] = True
             summary["outcome"] = "pass"
@@ -977,6 +1036,8 @@ def main(argv=None):
     ap.add_argument("--build", action="store_true", help="after a clean check, run `alder build --emit`; the run passes only if it succeeds (exit 2 = compiler bug, stop)")
     ap.add_argument("--test", action="store_true", help="with --build: after a successful build, run `alder test --json`; the run passes only if every test passes "
                                                         "(exit 1 = retry with the report, exit 2 = compiler bug, stop)")
+    ap.add_argument("--mutate", action="store_true", help="with --test: the round whose tests passed also runs `alder test --mutate --json`; "
+                                                          "recorded as summary.mutation (score, survivors), never a prompt (opt-in: one run of the suite per mutant)")
     ap.add_argument("--migrate", action="store_true", help="a round whose only check errors are E0019 runs `alder migrate` and checks again; "
                                                            "the new file's step and DROPS DATA lines are recorded in the round (E8)")
     ap.add_argument("--adapters", action="store_true", help="WARNING: executes Go code the model wrote, on this machine, unsandboxed. Opt-in: accept "
@@ -990,6 +1051,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.test and not a.build:
         ap.error("--test requires --build")
+    if a.mutate and not a.test:
+        ap.error("--mutate requires --test")
     if a.hidden is not None:
         if not a.build:
             ap.error("--hidden requires --build")
@@ -1019,7 +1082,8 @@ def run_all(a, seed):
         for task in a.task:
             task_text = (exp / "tasks" / f"{task}.md").read_text()
             s = run_one(exp, model, label, task, task_text, system, alder, a.retries, base=a.base, build=a.build, seed=seed,
-                        test=a.test, adapters=a.adapters, migrate=a.migrate, hidden=a.hidden, condition=a.condition, sample=a.sample)
+                        test=a.test, adapters=a.adapters, migrate=a.migrate, hidden=a.hidden, condition=a.condition, sample=a.sample,
+                        mutate=a.mutate)
             status = ("ERROR " + s["error"] if s["error"]
                       else f"harness-error ({s['harness_error']})" if s["outcome"] == "harness_error"
                       else s["outcome"].replace("_", "-"))
@@ -1030,7 +1094,9 @@ def run_all(a, seed):
                 if r.get("warning"):
                     print(f"  warning: round {r['n']}: {r['warning']}", file=sys.stderr)
             hid = "" if "hidden" not in s else (f"; hidden {s['hidden_pass']}" if s["hidden_pass"] else f"; hidden skipped: {s['hidden']['skipped']}")
-            print(f"{label} {task}{'-' + a.sample if a.sample else ''}: {status} ({counts} errors{hid})")
+            mut = "" if "mutation" not in s else (f"; mutants {s['mutation']['killed']}/{s['mutation']['killed'] + s['mutation']['survived']}"
+                                                   if "error" not in s["mutation"] else "; mutants: error")
+            print(f"{label} {task}{'-' + a.sample if a.sample else ''}: {status} ({counts} errors{hid}{mut})")
             if s["outcome"] == "harness_error":   # the model unavailable, or check/build broken: not a measurement
                 failed += 1
     return 1 if failed else 0
