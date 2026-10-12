@@ -7,7 +7,8 @@
 The label is hand-scored: a test that fails on some mutant cannot be a tautology, so `attribute.py`'s kill
 evidence settles real vs wrong-module for those; every test that kills no mutant was read, and its label and
 reason are in HAND.
-usage: python3 experiments/e9-feedback/logs/survivors.py > /tmp/generated.md
+usage: python3 experiments/e9-feedback/logs/survivors.py > experiments/e9-feedback/survivors.md
+(the header and section 5, hand-written, are logs/survivors-head.md and logs/survivors-claims.md)
 """
 import json, os, sys
 from collections import Counter
@@ -53,6 +54,8 @@ HAND = {
 
 
 def main():
+    here = os.path.dirname(os.path.abspath(__file__))
+    print(open(os.path.join(here, "survivors-head.md")).read(), end="")
     print("## 1. Final survivors (generated)\n")
     print("The last accepted round's survivors, every cell. `class` is book 10's (logs/extract.py `CLASS`).\n")
     extract.mode_survivors()
@@ -120,6 +123,7 @@ def main():
     print("|---|---|")
     for k, v in ends.most_common():
         print(f"| {k} | {v} |")
+    print(open(os.path.join(here, "survivors-claims.md")).read(), end="")
 
 
 if __name__ == "__main__":

@@ -90,16 +90,18 @@ retry both failed.
 
 | Model | Own pass | Hidden | First-pass score, all cells (mean, range) | `baseline` score (mean) | `feedback` before → after (mean) |
 |---|---|---|---|---|---|
-| Claude Haiku | 20 / 20 | 156 / 160 | 0.52 (0.28–0.71) | 0.53 | 0.50 → 0.90 |
-| Claude Sonnet | 20 / 20 | 160 / 160 | 0.51 (0.20–0.69) | 0.52 | 0.51 → 0.91 |
+| Claude Haiku | 20 / 20 | 152 / 156 | 0.52 (0.28–0.71) | 0.53 | 0.50 → 0.90 |
+| Claude Sonnet | 20 / 20 | 156 / 156 | 0.51 (0.20–0.69) | 0.52 | 0.51 → 0.91 |
 | Claude Opus | 10 / 10 | 78 / 78 | 0.73 (0.67–0.83) | 0.74 | 0.72 → 0.96 |
 
 - **Own tests:** 50 / 50 pass.
 - **Hidden:** 386 / 390. All four failures are the same Haiku T10 test (§4).
 - **H1:** the first-pass score is about half for Haiku and Sonnet and about three quarters for Opus. It is above the
-  calibration line on every task but T7 (§2).
-- **H2:** feedback raised the score in 23 of 25 cells (mean +0.37), to at least 0.9 in 21 and to 1.00 in 8. The two
-  cells that did not move are the two whose feedback rounds failed to compile or pass (§3).
+  calibration line on every task except T7, where Haiku and Sonnet are at the line (within one mutant), and T6, where
+  one Sonnet cell is on it (§2).
+- **H2:** feedback raised the score in 23 of 25 cells (mean of `score_after − score_before` over the 25 `feedback`
+  cells: +0.37), to at least 0.9 in 21 and to 1.00 in 8. The two cells that did not move are the two whose feedback
+  rounds and retries failed (§3).
 - **Fed-back tests** *(hand-scored)*: of 355, 350 are real and 5 wrong-module. There are no tautologies.
 
 A `feedback` cell's first-pass score is measured exactly as a `baseline` cell's score is; the two conditions differ
@@ -123,9 +125,9 @@ First-pass scores against the calibration line. Each entry lists the `baseline` 
 - Every cell is above its line on T5, T9 and T10.
 - **T6.** Sonnet's `baseline/claude-sonnet/t6-orders-s1` (0.20, 4 tests) sits on the line: it wrote the tests the
   paragraph named and no more.
-- **T7.** 2 of the 8 Haiku and Sonnet first passes are below the line (0.66 against 0.67):
-  `feedback/claude-haiku/t7-drafts-s2` and `feedback/claude-sonnet/t7-drafts-s2`. The other six are within 0.04 of
-  it. The blog's 25 base tests carry T7; the models added 4–7 of their own.
+- **T7.** Haiku and Sonnet are at the line, within one mutant: 2 of their 8 first passes are just below it (0.66
+  against 0.67: `feedback/claude-haiku/t7-drafts-s2`, `feedback/claude-sonnet/t7-drafts-s2`), the other six within
+  0.04 above it. The blog's 25 base tests carry T7; the models added 4–7 of their own.
 - **Opus** is 0.03–0.56 above the line everywhere (0.67–0.83). The smallest margin is on T7.
 
 **Test counts follow the same order.** Own tests at the first pass, with the 25 base tests subtracted on T7: Haiku
@@ -166,12 +168,21 @@ Read as tests not written:
 - **Order and redirects.** The order of a list, and where a form's answer goes, are seldom asserted.
 - **Ownership is tested.** The owner checks the tasks name are mostly killed (`guard dropped`, the `==`/`!=` of an
   owner comparison), as E7's probe found.
-- **Login is never tested.** In every one of the 50 first passes, all three `Auth.Login update` mutants survived (75
-  of 75 in the `baseline` cells): no model logged in through the form unprompted.
-  - Each task's paragraph ends with "Do not write tests that call the `Password` capability".
-  - The login arms sit after `Password.verify`, so a test reaches them only with `Test.fake Password` (book 10; the
-    references use it).
-- **Logout.** The `App` logout mutants survived in 13 of 25 `baseline` cells.
+- **Login is never tested, and the task text forbids it (a material defect).** Each task's paragraph ends with "Do not
+  write tests that call the `Password` capability". The login arms sit after `Password.verify`, so a test reaches
+  them only through the form with `Test.fake Password`. The book's own words (book 10, "logging in through the
+  form") say that test "calls the `Password` capability", so the sentence, read literally, bans it. The references'
+  tests use `Test.fake Password`, so the authors meant the real adapter: the text is ambiguous. The evidence that the
+  models read it as a ban, and not merely as "not asked":
+  - 23 of the 50 first passes declared the example's `fake Password` (21 with its comment "In a test, `Test.fake
+    Password` puts this in the adapter's place"), yet **0** called `Test.fake Password` in a test;
+  - 9 kept a test in `Auth.Login` that is not a login test;
+  - with feedback, 3 cells refused or worked around it (§3).
+
+  Not being asked is a confound on its own (`cascade ↔ restrict`, also never asked, was killed 5 / 60), so "all three
+  login mutants survived all 50 first passes" alone would not show it. E8's texts carry the identical sentence. The
+  fix belongs in E10's material: "do not call the real `Password` adapter; `Test.fake Password` is fine".
+- **Logout.** 13 `App` logout mutants survived, in 9 of the 25 `baseline` cells.
 
 ## 3. H2: feeding the survivors back
 
@@ -183,10 +194,11 @@ Read as tests not written:
 | Sonnet | 9 | 0.53 | 0.90 | 0.98 |
 | Opus | 5 | 0.72 | 0.95 | 0.96 |
 
-The prompt shows at most 10 survivor lines, but the models did not stop there. 18 cells had more than 10 survivors at
-the first pass. In 14 of them, the first accepted feedback round killed more than 10. Two examples:
+The prompt shows at most 10 survivor lines, but the models did not stop there. 18 of the 23 completed cells had more
+than 10 survivors at the first pass. In 14 of them, the first accepted feedback round killed more than 10. Two
+examples:
 
-- `feedback/claude-haiku/t6-orders-s1` killed 31 of 38, with 27 new tests;
+- `feedback/claude-haiku/t6-orders-s1` killed 34 of 38, with 27 new tests;
 - `feedback/claude-sonnet/t6-orders-s1` killed 27 of 39.
 
 | Model | Cells | Rose | Mean before → after | ≥ 0.9 after | 1.00 after | Tests added in accepted rounds |
@@ -200,8 +212,8 @@ the first pass. In 14 of them, the first accepted feedback round killed more tha
 The 39 accepted rounds added 355 tests: 350 *real*, 5 *wrong-module*, **0 tautologies**. The tautology risk
 (Review Focus 1) did not occur. The real ones break down as follows:
 
-- **298 kill a survivor of their own module** when run alone.
-- **36 kill only mutants that other tests already kill.** These restate an existing check, often as a browser
+- **297 kill a survivor of their own module** when run alone.
+- **37 kill only mutants that other tests already kill.** These restate an existing check, often as a browser
   version of an `update` test.
 - **16 kill no mutant.** Each was read by hand. Most check behaviour that no operator changes: six unknown-id tests
   (`PageMissing` or `Err "not found"`), pure-function boundary cases, markup. Two are positive-only checks that a
@@ -222,9 +234,10 @@ the prompt named:
 example `feedback/claude-haiku/t5-ownership-s1` r2, "logging in through the form"). Of the other five, two are the
 failed cells. The other three show what the Password sentence costs:
 
-- `feedback/claude-opus/t7-drafts-s1` and `feedback/claude-opus/t10-teams-s1` left the three login mutants and called
-  them unkillable: "only a test that calls the Password capability could tell them apart, and this app's tests may
-  not call it". Opus killed the same three mutants in T6 and T9 with the fake.
+- `feedback/claude-opus/t7-drafts-s1` left the three login mutants and called them unkillable: "only a test that
+  calls the Password capability could tell them apart, and this app's tests do not call it".
+- `feedback/claude-opus/t10-teams-s1` did the same: "this app's tests may not call it, so no permitted test can tell
+  them apart". Opus killed the same three mutants in T6 and T9 with the fake.
 - `feedback/claude-haiku/t7-drafts-s2` r2 refactored `Auth.Login` (a `signIn` function) so the arms could be tested
   without the capability. The round was rejected (below).
 
@@ -236,12 +249,12 @@ failed cells. The other three show what the Password sentence costs:
   branches give the same date.
 - **6 are plausible.** Each is a `where` that only narrows a read the code filters again, or a default that a
   reference rule makes unreachable.
-- **5 are wrong.**
-  - Four are the login arms, each citing the Password sentence. Haiku's and Sonnet's were contradicted by their own
-    next round, which killed the arms (`feedback/claude-haiku/t7-drafts-s1` r2, `feedback/claude-sonnet/t10-teams-s1`
-    r3).
-  - The fifth, in a failed round, says `Reject` cannot be told from `Rerender`. A test of `update` sees the `Nav`
-    value, so it can.
+- **4 are text-induced.** All four are the login arms, and each cites the Password sentence, which literally bans the
+  only test that kills them (§2). They are wrong about the program and right about the text. Haiku's and Sonnet's
+  were contradicted by their own next round, which killed the arms (`feedback/claude-haiku/t7-drafts-s1` r2,
+  `feedback/claude-sonnet/t10-teams-s1` r3).
+- **1 is wrong.** In a failed round, it says `Reject` cannot be told from `Rerender`. A test of `update` sees the
+  `Nav` value, so it can.
 
 ### The frozen-app rule rejected one round of 45
 
@@ -257,13 +270,13 @@ app hash.
 5 of the 45 rounds failed, in 3 cells. The retry fired 3 times and passed once (`survivors.md` §3):
 
 - `feedback/claude-haiku/t10-teams-s1` r1 failed with E0003; its retry was accepted.
-- `feedback/claude-haiku/t6-orders-s2` r2 failed with E0001×2, then its retry with E0003×2 (a record not annotated as
-  `Model`).
-- `feedback/claude-sonnet/t6-orders-s2` r1 failed with E0001×2. Its retry then failed 1 of its own 40 tests: the new
-  test expected 1 form where the page draws 3.
+- `feedback/claude-haiku/t6-orders-s2` r2 failed with E0001×2. Its retry joined the lines, then failed with E0003×2
+  (a record not annotated as `Model`).
+- `feedback/claude-sonnet/t6-orders-s2` r1 failed with E0001×2. Its retry parenthesised the arguments, then failed 1
+  of its own 40 tests: the new test expected `forms: 1` where the page draws 3.
 
-Both E0001 failures are the same construct: a test applies a pure function to list literals that start on the next
-lines.
+Both first failures (E0001) are the same construct: a test applies a pure function to list literals that start on
+the next lines.
 
 ```alder
 test "total sums quantity times price over the lines" =
@@ -272,8 +285,9 @@ test "total sums quantity times price over the lines" =
 ```
 
 Book 3 says an expression continues onto the next line only when the line ends with an operator, when the next line
-begins with `|>` or an operator, or inside unclosed brackets. So the parser ends the application at `total`. Two of
-the 25 cells (8%) ended on this rule and kept their first-pass scores (0.42 and 0.31).
+begins with `|>` or an operator, or inside unclosed brackets. So the parser ends the application at `total`. E0001
+cost each of the two cells its first feedback round; the retry prompt carried the diagnostic well enough that both
+retries fixed it. Each cell then failed on something else and kept its first-pass score (0.42 and 0.31).
 
 ### Power
 
@@ -291,9 +305,11 @@ left:  { answer: Rerendered, members: ["Ann", "Cid"], after: PageMissing, teams:
 right: { answer: Redirected /teams/…, members: ["Ann", "Cid"], after: PageMissing, teams: 0 }
 ```
 
-The member is removed and loses the team; only the answer differs. The Names block says that Remove and SendInvite
-"Both answer `Redirect (Teams.Show { id: … })`", but Haiku's `Remove` answers `Rerender` (class *redirect*,
-*hand-scored*).
+The member is removed and loses the team; only the answer differs. Haiku's `Remove` answers `Rerender`, where the
+task wants `Redirect (Teams.Show { id: … })` (class *redirect*, *hand-scored*). The Names block's sentence is
+ambiguous: "Both answer `Redirect (Teams.Show { id: … })`" follows the `NewInvite` form and `SendInvite` message, so
+"both" can be read as that form and message, not Remove and SendInvite. Haiku misread it in 4 of 4 cells; Sonnet and
+Opus did not.
 
 Mutation testing cannot see this:
 
@@ -350,45 +366,36 @@ tests.
   calls in 25 cells. The `feedback` condition made 79: 34 until the first pass and 45 feedback rounds. Each accepted
   feedback round also re-ran the suite once per mutant.
 - **Trailers.** The commits carry the session's trailers (`Claude Opus 5.5`), not the brief's.
-- **The attribution.** Kills were first keyed by line. That under-counted kills when a round added a `fake` above a
-  declaration, so they are now keyed by content (`RUN.md`, deviations).
+- **The attribution.** Kills were first keyed by line, which under-counted when a round added a `fake` above a
+  declaration; then by content, which merged two mutants with the same text. They are now matched by module,
+  declaration, operator and rank in source order, over each round's full mutant list (`RUN.md`, deviations).
 
 ## 7. What changes because of this
 
-### The task texts: the E8 lesson about hints, again
+### The task texts: a material defect, and the E8 lesson about hints again
 
-"Do not write tests that call the `Password` capability" was meant to keep tests off the real Go adapter. The models
-read it as a ban on login tests:
-
-- all 50 first passes left all three login mutants;
-- 4 of the 5 wrong equivalence claims cite the sentence;
-- the only rejected round was a workaround for it.
-
-The text should say what is wanted, for example "log in through the form with `Test.fake Password` (chapter 10);
-never the real adapter". E8 found the same thing from the other side: a sentence that names a mechanism decides what
-the model does.
+"Do not write tests that call the `Password` capability" was meant to keep tests off the real Go adapter. The book
+calls the fake-based login test one that "calls the `Password` capability", so the sentence literally bans it, and the
+models obeyed (§2): 23 of 50 first passes declared the example's fake, 0 used it. Four of the five equivalence claims
+that are not right about the program cite the sentence, and the only rejected round was a workaround for it. E8's
+texts carry the same sentence. E10's material should say "do not call the real `Password` adapter; `Test.fake
+Password` is fine". E8 found the same thing from the other side: a sentence that names a mechanism decides what the
+model does.
 
 The Haiku T10 redirect (§4) suggests a second fix: one message, one redirect line. "Both answer …", placed after the
-second message, was misread in 4 of 4 Haiku cells and in no Sonnet or Opus cell.
+form and message of the invite, was misread in 4 of 4 Haiku cells and in no Sonnet or Opus cell.
 
 ### The reference and the book
 
 Book 10 already has "A surviving mutant is a test you have not written". These models never ran `alder` themselves:
-the harness gives them no tools. So the data cannot say whether a louder sentence would help. It does say what the loop
-does: one feedback round took Haiku and Sonnet from about 0.5 to 0.9, with real tests.
+the harness gives them no tools. So the data cannot say whether a louder sentence would help. It does say what the
+loop does: one feedback round took Haiku and Sonnet from about 0.5 to 0.9, with real tests.
 
-The book's examples could add the tests every first pass lacked:
-
-- a login through the form with the fake;
-- a visitor redirected from each `requires user` page;
-- a delete refused by `@restrict`;
-- the order of a list.
-
-Their operators account for 221 of the 475 `baseline` survivors: `cascade ↔ restrict` 55, `requires dropped` 53, the
-login arms 75, `orderBy reversed` 38.
-
-Chapter 3's continuation rule needs an example of the failing shape, a function applied to arguments on the next
-lines. It cost 2 of the 25 feedback cells.
+The tests every first pass lacked are already in the prompt's book and example: a login through the form with the
+fake, a visitor redirected from a `requires user` page, a delete refused by `@restrict`, the order of a list. The
+models do not carry the example's tests over unless the task paragraph asks for them or the loop feeds the survivors
+back. The levers are the task paragraph, the loop, or the reference's emphasis (what it presents as the tests every
+page needs), not new examples.
 
 ### The language and the tool
 
@@ -399,10 +406,15 @@ lines. It cost 2 of the 25 feedback cells.
     4 cells);
   - the blog's page clamp and its over-fetch limit (T7, 5 cells).
 
-  Together they are 19 of the 45 survivors left in the 23 completed feedback cells. Suppressing them would make 1.00
-  mean "every test written".
-- **The continuation rule.** The parser could accept an indented argument line, or E0001 could name the rule. Either
-  is a language decision; the data only shows the cost.
+  Together they are 19 of the 45 survivors left in the 23 completed feedback cells. (A twentieth that looks like
+  them, `List.length found > perPage` → `>=` in `feedback/claude-haiku/t7-drafts-s2`, is killable: exactly
+  `perPage` posts.) Suppressing them would make 1.00 mean "every test written".
+- **The continuation rule: the parser and the book disagree.** Book 3 says a line continues when the next line
+  begins with an operator. The parser (`internal/syntax/parser_expr.go`) continues only on `|>`, `||`, `&&`, `+`,
+  `-` and `++`. `==`, `!=`, `<`, `<=`, `>`, `>=`, `*`, `/`, `%` and `??` do not continue. Repro: `f 1` then
+  `    == 1` on the next line gives E0001 "expected a declaration, got `==`", as in `baseline/claude-sonnet/t6-orders-s2`
+  r0. That is a separate compiler task, not this branch. The other shape (arguments on the next lines, §3) is what
+  the book says; there, E0001 could name the rule.
 - **The frozen-app rule** is right as a measurement rule. A loop for real use might allow a refactor that keeps
   behaviour, such as the rejected `signIn` extraction. E9 cannot tell such a refactor from a weakening.
 
@@ -417,8 +429,9 @@ lines. It cost 2 of the 25 feedback cells.
 
 ### Roadmap candidates
 
-- **Generators and admin.** A generator that emits a page with its `requires`, its delete rules and the login form
-  could emit the matching tests too. These are exactly the survivors every model left (§2).
+- **Generators and admin.** A hypothesis, untested here: a generator that emits a page with its `requires`, its
+  delete rules and the login form could emit the matching tests too, covering operators the first passes killed
+  least (`cascade ↔ restrict` 5 / 60, `requires dropped` 17 / 70).
 - **Jobs and distribution.** E9 has no data on them.
 
 ## What this run does not show
@@ -427,4 +440,9 @@ lines. It cost 2 of the 25 feedback cells.
   differed.
 - **Per-task differences between models.** Each model has at most two samples per task.
 - **Whether the plausible equivalence claims hold.** They were checked by reasoning about the code, not by a probe.
+- **A held-out score.** The after-score is measured on the very mutants that were fed back, so it rises partly by
+  construction. The only held-out evidence is that 14 of the 18 cells with more than 10 survivors killed more than the
+  10 shown.
+- **A between-condition effect.** `baseline` and `feedback` cells are different samples. H2 is the within-cell
+  before → after.
 - **The cost in tokens.** The harness does not record it for Claude.

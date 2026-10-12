@@ -90,6 +90,9 @@ write to separate run directories; at most two Claude invocations overlapped (Op
    `logs/opus.sh`. `logs/matrix.log` records the stop.
 3. **Commit trailers** are the session's attribution lines (`Co-Authored-By: Claude Opus 5.5`), as in E8 and Tasks 1–3,
    not the brief's "Claude Fable 5.1".
-4. **The attribution's survivor identity** is by content (module, declaration, operator, before, after), not by line:
-   a feedback round that adds a `fake` or a test above a declaration moves its lines. The first pass of
-   `logs/attribute.py` keyed by line and under-counted kills; the committed `attribution.jsonl` is the content-keyed run.
+4. **The attribution's survivor identity.** A mutant is matched across a cell's rounds by module, declaration,
+   operator and its rank among those in source order, over each round's full mutant list (`logs/attribute.py`
+   re-runs `--mutate` on every accepted round). Lines move when a round adds a test or a `fake` above a declaration,
+   ids move when a fake adds a mutant, and `before` text can be respelled with the same IR, so none of those is a key.
+   A first line-keyed pass under-counted kills; a later content-keyed one merged two mutants with the same text
+   (fix round: one test moved from real-kills-a-survivor to real-redundant).

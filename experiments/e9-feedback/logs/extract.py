@@ -151,7 +151,20 @@ def tests_of(app):
 
 
 def skey(v):
-    return (v["module"], v["decl"], v["kind"], v["before"], v["after"])
+    # module, declaration, operator: lines move and `before` text can be respelled between rounds
+    return (v["module"], v["decl"], v["kind"])
+
+
+def killed_between(prev, cur):
+    """Survivors of `prev` not surviving in `cur`, as a multiset difference over skey (in source order)."""
+    left = Counter(skey(v) for v in cur)
+    out = []
+    for v in sorted(prev, key=lambda v: (v["file"], v["line"], v["col"])):
+        if left[skey(v)]:
+            left[skey(v)] -= 1
+        else:
+            out.append(v)
+    return out
 
 
 def mode_fedback():
@@ -166,7 +179,7 @@ def mode_fedback():
             continue
         base_round = d["rounds"][n0]
         base_tests = tests_of(os.path.join(path, f"round{n0}", "app"))
-        prev_surv = {skey(v): v for v in base_round["mutation"].get("survivors", [])}
+        prev_surv = base_round["mutation"].get("survivors", [])
         print(f"first passing round r{n0}: {ks(base_round['mutation'])}, {len(base_tests)} tests")
         accepted_tests = base_tests
         for r in fb:
@@ -185,8 +198,7 @@ def mode_fedback():
                          f"tests {tt.get('passed')}/{(tt.get('passed') or 0) + (tt.get('failed') or 0)}")
             killed = []
             if st == "accepted":
-                cur = {skey(v) for v in r["mutation"].get("survivors", [])}
-                killed = [v for k, v in prev_surv.items() if k not in cur]
+                killed = killed_between(prev_surv, r["mutation"].get("survivors", []))
                 extra = f" — {ks(r['mutation'])} score {sc(r['mutation'].get('score'))}"
             print(f"\n### r{r['n']} (feedback {r['feedback']}): {st}{extra}")
             print(f"new tests {len(new)}, changed {len(changed)}, removed {len(gone)}")
@@ -200,7 +212,7 @@ def mode_fedback():
                 print(f"\n{tag} {f} :: {name}\n```alder\n{src}\n```")
             if st == "accepted":
                 accepted_tests = now
-                prev_surv = {skey(v): v for v in r["mutation"].get("survivors", [])}
+                prev_surv = r["mutation"].get("survivors", [])
 
 
 CLAIM_RE = re.compile(r"equivalent|no input|cannot be (told|distinguish)|can't be (told|distinguish)|"
