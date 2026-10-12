@@ -95,7 +95,7 @@ const (
 	noTestsText    = "no tests: nothing can kill a mutant"
 	noRunMatchText = "no test matches -run: nothing can kill a mutant"
 	// noTestsHint follows the summary of a plain `alder test` of an app that has no tests.
-	noTestsHint = "no tests: `alder test --mutate` would score 0 (chapter 10)"
+	noTestsHint = "no tests: `alder test --mutate` kills nothing (chapter 10)"
 )
 
 // baselineFactor times the suite's own run (the baseline) is the least time a mutant's run gets.
