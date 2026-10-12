@@ -16,6 +16,8 @@ Write a complete new Alder app (not the todo app) for personal notes:
   the reference.
 
 **Names.** Use exactly these names; anything not listed here is your choice.
+The tables are exactly the ones below, with exactly these fields: add no
+further tables or fields.
 
 - `app/User.alder`: module `User`, `type UserId = brand Text`, and
   `table User { id: UserId @id, email: Text.Email @unique, name: Text.NonEmpty, passwordHash: Text, created: Time @created }`.

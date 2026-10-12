@@ -40,14 +40,13 @@ test "a new order, a line added through its form, then paid" = {
   let _ <- Test.get (Orders.Index {})
   let created <- Test.click Orders.Index.Create
   let found <- Db.from Order |> Db.where (Order.owner.eq me) |> Db.first
-  match found {
-    Just order -> {
-      let added <- Test.submit (Orders.Show.AddLine { product: pen }) { quantity: Int.Positive 2 }
-      let paid <- Test.click Orders.Show.Pay
-      Task.succeed ({ created: created.answer, empty: Test.text "#total" created.doc, added: added.answer, total: Test.text "#total" added.doc, paid: paid.answer, status: Test.text "#status" paid.doc, form: Test.has "input[name=quantity]" paid.doc } == { created: Redirected (Orders.Show { id: order.id }), empty: Just "0", added: Redirected (Orders.Show { id: order.id }), total: Just "300", paid: Redirected (Orders.Show { id: order.id }), status: Just "Paid", form: False })
-    },
+  let order <- match found {
+    Just x -> Task.succeed x,
     Nothing -> Task.fail "the New order button made no order for the user",
   }
+  let added <- Test.submit (Orders.Show.AddLine { product: pen }) { quantity: Int.Positive 2 }
+  let paid <- Test.click Orders.Show.Pay
+  Task.succeed ({ created: created.answer, empty: Test.text "#total" created.doc, added: added.answer, total: Test.text "#total" added.doc, paid: paid.answer, status: Test.text "#status" paid.doc, form: Test.has "input[name=quantity]" paid.doc } == { created: Redirected (Orders.Show { id: order.id }), empty: Just "0", added: Redirected (Orders.Show { id: order.id }), total: Just "300", paid: Redirected (Orders.Show { id: order.id }), status: Just "Paid", form: False })
 }
 
 -- A Paid order's page offers no form to add a line: the browser could not post one.
@@ -101,12 +100,31 @@ test "a Manager adds a product and deactivates it" = {
   let _ <- Test.get (Products.Index {})
   let added <- Test.submit Products.Index.NewProduct { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
   let found <- Db.from Product |> Db.first
-  match found {
-    Just product -> {
-      let toggled <- Test.click (Products.Index.Toggle { id: product.id })
-      let after <- Db.get Product product.id
-      Task.succeed ({ added: added.answer, names: Test.texts "#products .name" added.doc, active: product.active, toggled: toggled.answer, after: Maybe.map (\p -> p.active) after } == { added: Redirected (Products.Index {}), names: ["Pen"], active: True, toggled: Redirected (Products.Index {}), after: Just False })
-    },
+  let product <- match found {
+    Just x -> Task.succeed x,
     Nothing -> Task.fail "the form added no product",
   }
+  let toggled <- Test.click (Products.Index.Toggle { id: product.id })
+  let after <- Db.get Product product.id
+  Task.succeed ({ added: added.answer, names: Test.texts "#products .name" added.doc, active: product.active, toggled: toggled.answer, after: Maybe.map (\p -> p.active) after } == { added: Redirected (Products.Index {}), names: ["Pen"], active: True, toggled: Redirected (Products.Index {}), after: Just False })
+}
+
+-- A stale page: the order's page is held while it was Open, then the order is paid elsewhere.
+-- The add-line form still on the held page must be refused by the server (a 404 or a failure,
+-- either is accepted), and no line is stored.
+test "a line posted from a stale page of an order paid meanwhile is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let id <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: id })
+  let _ <- Db.update Order id (\o -> { o | status: Paid })
+  let r <- Test.submit (Orders.Show.AddLine { product: pen }) { quantity: Int.Positive 1 }
+  let lines <- Db.from Line |> Db.count
+  let refused = match r.answer {
+    PageMissing -> True,
+    RequestFailed _ -> True,
+    _ -> False,
+  }
+  Task.succeed ({ refused: refused, lines: lines } == { refused: True, lines: 0 })
 }

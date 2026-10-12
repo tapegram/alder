@@ -77,12 +77,11 @@ test "a note is added on the list and edited on its page" = {
   let _ <- Test.get (Notes.Index {})
   let added <- Test.submit Notes.Index.NewNote { title: Text.NonEmpty "Milk", body: "Two litres." }
   let found <- Db.from Note |> Db.where (Note.owner.eq me) |> Db.first
-  match found {
-    Just note -> {
-      let _ <- Test.get (Notes.Show { id: note.id })
-      let saved <- Test.submit Notes.Show.EditNote { title: Text.NonEmpty "Oat milk", body: "One litre." }
-      Task.succeed ({ added: added.answer, titles: Test.texts "#notes .title" added.doc, saved: saved.answer, title: Test.text "#title" saved.doc, body: Test.text "#body" saved.doc } == { added: Redirected (Notes.Index {}), titles: ["Milk"], saved: Redirected (Notes.Show { id: note.id }), title: Just "Oat milk", body: Just "One litre." })
-    },
+  let note <- match found {
+    Just x -> Task.succeed x,
     Nothing -> Task.fail "the form added no note owned by the user",
   }
+  let _ <- Test.get (Notes.Show { id: note.id })
+  let saved <- Test.submit Notes.Show.EditNote { title: Text.NonEmpty "Oat milk", body: "One litre." }
+  Task.succeed ({ added: added.answer, titles: Test.texts "#notes .title" added.doc, saved: saved.answer, title: Test.text "#title" saved.doc, body: Test.text "#body" saved.doc } == { added: Redirected (Notes.Index {}), titles: ["Milk"], saved: Redirected (Notes.Show { id: note.id }), title: Just "Oat milk", body: Just "One litre." })
 }

@@ -21,7 +21,8 @@ that a post can be a draft:
 Every name the app already has (modules, pages, forms, messages, fields,
 the `ul.posts` list of the front page) stays as it is.
 
-- `app/Post.alder`: `table Post` gains the field `published: Bool = False`.
+- `app/Post.alder`: `table Post` gains exactly one field,
+  `published: Bool = False`, and no other table changes.
 - `app/App.alder`: the session stays exactly `session { user: Maybe User.UserId }`.
 - `app/Admin.alder` (page `Admin`, `/admin`, the dashboard): the author's
   drafts, and only those, are listed inside an element with `id="drafts"`;

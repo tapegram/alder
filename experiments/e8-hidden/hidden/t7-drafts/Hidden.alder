@@ -73,3 +73,17 @@ test "publishing a draft from the dashboard shows it to everyone" = {
   let page <- Test.open (Posts.Show { slug: Post.Slug "secret" })
   Task.succeed ({ answer: published.answer, drafts: Test.texts "#drafts .title" published.doc, front: Test.texts "ul.posts a" front.doc, found: Test.texts "ul.posts a" found.doc, page: page.answer } == { answer: Redirected (Admin {}), drafts: [], front: ["Secret"], found: ["Secret"], page: Shown })
 }
+
+-- A forged Publish: the author's dashboard is held (with its Publish buttons), then the cookie
+-- becomes another author's, so the click posts the draft's id as them. `update` must refuse it.
+test "another author's Publish, from a dashboard the author held, is missing" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "", role: Author }
+  let id <- Db.insert Post { slug: Post.Slug "secret", title: Text.NonEmpty "Secret", body: "", author: author }
+  let _ <- Test.login { user: Just author }
+  let _ <- Test.get (Admin {})
+  let _ <- Test.login { user: Just other }
+  let r <- Test.click (Admin.Publish { id: id })
+  let front <- Test.open (Posts.Index {})
+  Task.succeed ({ answer: r.answer, front: Test.texts "ul.posts a" front.doc } == { answer: PageMissing, front: [] })
+}

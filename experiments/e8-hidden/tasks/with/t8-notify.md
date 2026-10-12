@@ -16,7 +16,8 @@ that when someone comments on a post, the post's author gets an email:
 
 **Names.** Use exactly these names; anything not listed here is your choice.
 Every name the app already has (modules, pages, forms, messages, fields)
-stays as it is.
+stays as it is, and the tables stay as they are (the fake's `Sent` table
+apart).
 
 - `app/Mail.alder` is module `Mail`, and declares exactly this (it may add
   imports and further declarations):

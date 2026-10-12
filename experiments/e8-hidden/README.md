@@ -17,6 +17,17 @@ the program does what the task asked.
   paragraph) and `without` (the same text minus that paragraph, with no
   mention of tests anywhere). Compare the hidden pass rates and the own tests
   written.
+
+  H2 has confounds. It is clean on T4, T5 and T6: their `without` texts ask
+  for the same behaviour, and no base code has tests. On T7 and T8 it is not:
+  - The change breaks some of the base app's own tests. On T7, posts inserted
+    without `published: True` are now drafts. On T8, the tests that post a
+    comment call `Mailer` without its fake.
+  - So even a `without` run's round 0 can fail `--test`. From round 1 on, its
+    retry prompt shows the failing tests' output. The model then works on
+    tests although its text never asked for any.
+
+  Report T7 and T8 apart from T4–T6 for H2.
 - **H3, migrations.** A schema-change task (T7) yields a migration that loses
   no data. The harness's `--migrate` records each round's migration steps and
   any `DROPS DATA` line.
@@ -25,15 +36,20 @@ the program does what the task asked.
 
 - **Five tasks.** T4 app messages, T5 ownership and T6 orders are E7's tasks
   (the same behaviour asked) with a **Names** block added. T7 drafts and T8
-  notify modify the blog app. T7 is a schema change and runs with
-  `--migrate`. T8 adds a fixed `Mailer` capability with a fixed `fake`.
+  notify modify the blog app. T7 is a schema change. Both run with
+  `--migrate`, so a table change is recorded rather than being a dead end.
+  T8 adds a fixed `Mailer` capability with a fixed `fake`.
 - **Names block.** Each task text fixes every identifier a hidden test uses:
   - page modules, paths and parameters (types and defaults);
   - forms, their fields and types, and the message that posts each;
   - messages and their parameters;
   - `App`'s session, verbatim;
   - the redirect after each successful post;
-  - the tables the tests insert rows into, verbatim;
+  - the tables the tests insert rows into, verbatim, with "add no further
+    fields" (T4–T6), "gains exactly one field, and no other table changes"
+    (T7) or "the tables stay as they are" (T8). A test's `Db.insert` lists
+    every field without a default, so an extra field fails every test that
+    inserts into that table;
   - an `id` or `class` for every element a test reads, as "the whole text of
     an element with `id="total"`". Only the attribute is fixed, never the tag
     or the nesting.
@@ -109,7 +125,7 @@ Additional flags by task:
 |---|---|
 | T4, T5, T6 | no base. The `Password` capability's Go is not the model's; test builds run unwired. |
 | T7 | `--base experiments/e8-hidden/base/blog-nodrafts --migrate` |
-| T8 | `--base examples/blog` |
+| T8 | `--base examples/blog --migrate` |
 
 The task texts are `tasks/<condition>/<task>.md`. Each condition gets its own
 experiment directory (`with/`, `without/`, with `tasks -> ../tasks/<cond>`, as
@@ -145,29 +161,43 @@ Order of runs:
 | Task | Hidden tests |
 |---|---|
 | **T4** app messages | 8: the theme starts light and the list's `#theme` button switches it to dark (`body.dark`, the button's text, `session.theme`); the theme stays in the session from page to page (`Notes.Show`, `Notes.Index`); a note's page switches it there and back; a visitor switches it on `/login`; logging out from the list, and from a note's page, is `Redirected (Auth.Login {})` with `user: Nothing`, and the page then sends you to log in; another user's note is `PageMissing` and not listed; a note added on the list (`NewNote`) and edited on its page (`EditNote`), with the fixed redirects |
-| **T5** ownership | 6: a visitor is sent to log in; the list (`#notes li`, `#notes .title`) shows only the user's notes; a note added through `NewNote` is the user's, and another user's list stays empty; the owner opens a note (`#title`, `#body`); another user's note is `PageMissing`; the owner deletes from the list (`Delete { id }`, `Redirected (Notes.Index {})`) |
-| **T6** orders | 8: an order's page shows `#total` over two lines (`1250`) and `#status`; the list shows each of the user's orders with `.status` and `.total` and no one else's; a new order (`Create`), a line added through `AddLine { product }`, then `Pay`, each with its redirect, with no `quantity` input left after paying; a Paid order has no add-line form (`Test.has "input[name=quantity]"`) while an Open one has; `Cancel` shows `Cancelled` and removes the form; another user's order is `PageMissing` for Staff and `Shown` for a Manager; `/products` is `PageMissing` for Staff and `Shown` for a Manager (`#products .name`); a Manager adds a product (`NewProduct`) and toggles it inactive (`Toggle { id }`) |
-| **T7** drafts | 6: a post created through `Admin.NewPost` is a draft, listed in `#drafts .title` and absent from `ul.posts`; the dashboard's drafts are only the author's drafts; a search, by address (`Posts.Index { q }`) or through `SearchForm`, does not find a draft; a draft's page is `PageMissing` for a visitor, a reader and another author; it is `Shown` to its author; `Admin.Publish { id }` answers `Redirected (Admin {})`, empties `#drafts`, and puts the post on the front page, in a search and on its page for a reader |
+| **T5** ownership | 8: a visitor is sent to log in; the list (`#notes li`, `#notes .title`) shows only the user's notes; a note added through `NewNote` is the user's, and another user's list stays empty; the owner opens a note (`#title`, `#body`); another user's note is `PageMissing`; the owner deletes from the list (`Delete { id }`, `Redirected (Notes.Index {})`); a stranger's Delete posted from a page the owner held is `PageMissing` and the note stays; a Delete of a note deleted meanwhile is `PageMissing` |
+| **T6** orders | 9: an order's page shows `#total` over two lines (`1250`) and `#status`; the list shows each of the user's orders with `.status` and `.total` and no one else's; a new order (`Create`), a line added through `AddLine { product }`, then `Pay`, each with its redirect, with no `quantity` input left after paying; a Paid order has no add-line form (`Test.has "input[name=quantity]"`) while an Open one has; `Cancel` shows `Cancelled` and removes the form; another user's order is `PageMissing` for Staff and `Shown` for a Manager; `/products` is `PageMissing` for Staff and `Shown` for a Manager (`#products .name`); a Manager adds a product (`NewProduct`) and toggles it inactive (`Toggle { id }`); a line posted from a stale page of an order paid meanwhile is refused (`PageMissing` or `RequestFailed`) and stores nothing |
+| **T7** drafts | 7: a post created through `Admin.NewPost` is a draft, listed in `#drafts .title` and absent from `ul.posts`; the dashboard's drafts are only the author's drafts; a search, by address (`Posts.Index { q }`) or through `SearchForm`, does not find a draft; a draft's page is `PageMissing` for a visitor, a reader and another author; it is `Shown` to its author; `Admin.Publish { id }` answers `Redirected (Admin {})`, empties `#drafts`, and puts the post on the front page, in a search and on its page for a reader; another author's Publish, posted from a dashboard the author held, is `PageMissing` and the post stays off the front page |
 | **T8** notify | 5, each with `Test.fake Mailer`: a comment through `NewComment` is `Redirected` to the post and emails the post's author (`"Mailer.send"` in the trace; one `Mail.Sent` row, `to` the author's email, subject `New comment on Hello world`); the body contains the commenter's name and the comment; the mail goes to the author of the post commented on, not to anyone else; each comment sends one mail; a rejected comment (`submitRaw` with an empty body) sends none |
+
+### Forged and stale requests
+
+The browser posts only controls the held page renders, and a stranger's page
+has no button for someone else's row. A test outside the page module cannot
+build the page's message and call `update` either: that is E0002, "`Delete`
+belongs to page `Notes.Index`".
+
+A stale page gets around both. A hidden test holds a page as its owner sees
+it, then changes what the server knows, and clicks:
+
+- **Swapping the cookie (T5 Delete, T7 Publish).** The test holds the
+  owner's page, swaps the cookie to a stranger's with `Test.login`, then
+  clicks the owner's button. The click posts the owner's id as the stranger,
+  and must be `PageMissing` with nothing changed.
+- **Changing a row (T6 AddLine, T5 Delete).** The test holds the page, then
+  changes the row with `Db.update` (the order is paid) or `Db.delete` (the
+  note is gone), then posts the form or button still on the held page. The
+  server must refuse it. For T6 the text asks only that the server refuse
+  the line, so `PageMissing` and `RequestFailed` both count.
+
+Taking the owner check out of T5's Delete, T7's Publish or T6's Open check
+makes these tests fail (see the mutants under "Verify").
 
 ### What a hidden test cannot check
 
-- **A message carrying another user's id (T5's Delete, T7's Publish).** The
-  browser posts only what the held page renders. A stranger's page never
-  shows a Delete or Publish button for someone else's row, so no browser
-  test can post one. A test outside the page module cannot build the
-  page's message to call `update` directly either: E0002, "`Delete` belongs
-  to page `Notes.Index`". So the 404 on a forged Delete (T5) or Publish (T7)
-  is asked by the text, but only the model's own tests can check it. The
-  hidden tests check the visible half: the list shows only the user's rows,
-  and the page of someone else's row is `PageMissing`.
-- **Refusing a line on a Paid order (T6).** The same holds. The hidden test
-  checks that the Paid page offers no form. Whether `update` refuses a
-  forged post (`Task.fail` or `Task.notFound`) is the model's choice and its
-  own test.
 - **Ordering (newest first).** The test clock stands still, so rows inserted
   in one test share a `created` time and their order is not defined. No
   hidden test asserts an order.
+- **A missing or different `fake Mailer` (T8).** The hidden module's first
+  error is then E0002, "module `Mail` has no `Sent`", not E0003 ("`Test.fake`
+  wants a capability with a `fake`"). Every T8 hidden test fails as
+  `naming`.
 
 ## Layout
 
@@ -182,7 +212,7 @@ Order of runs:
 ## Verify
 
 ```text
-experiments/e8-hidden/verify.sh [task ...]           # ALDER=path/to/alder to skip `go run`
+experiments/e8-hidden/verify.sh [task ...]           # ALDER=path/to/alder to use that compiler instead of building ./cmd/alder
 ```
 
 For each task and solution it copies the solution to a scratch directory and
@@ -209,12 +239,12 @@ compiler, the blog, a reference or a hidden module.
 task           solution       check  build  own        hidden   drops
 t4-appmsg      reference      ok     ok     6/6        8/8      -
 t4-appmsg      reference-alt  ok     ok     3/3        8/8      -
-t5-ownership   reference      ok     ok     5/5        6/6      -
-t5-ownership   reference-alt  ok     ok     2/2        6/6      -
-t6-orders      reference      ok     ok     7/7        8/8      -
-t6-orders      reference-alt  ok     ok     3/3        8/8      -
-t7-drafts      reference      ok     ok     30/30      6/6      no
-t7-drafts      reference-alt  ok     ok     25/25      6/6      yes
+t5-ownership   reference      ok     ok     5/5        8/8      -
+t5-ownership   reference-alt  ok     ok     2/2        8/8      -
+t6-orders      reference      ok     ok     7/7        9/9      -
+t6-orders      reference-alt  ok     ok     3/3        9/9      -
+t7-drafts      reference      ok     ok     30/30      7/7      no
+t7-drafts      reference-alt  ok     ok     25/25      7/7      yes
 t8-notify      reference      ok     ok     30/30      5/5      no
 t8-notify      reference-alt  ok     ok     30/30      5/5      no
 ```
@@ -225,7 +255,11 @@ fail some hidden tests:
 | Mutant | Hidden tests passed |
 |---|---|
 | T4: the theme class on `<html>` | 4/8 |
-| T5: the list not filtered by owner | 4/6 |
-| T6: no Manager exception | 7/8 |
-| T7: drafts not filtered from the front page | 4/6 |
+| T5: the list not filtered by owner | 6/8 |
+| T5: Delete without the owner check | 7/8 |
+| T6: no Manager exception | 8/9 |
+| T6: AddLine without the Open check | 8/9 |
+| T7: drafts not filtered from the front page | 4/7 |
+| T7: Publish without the owner check (reference) | 6/7 |
+| T7: Publish without the owner check (reference-alt) | 6/7 |
 | T8: a different subject | 3/5 |

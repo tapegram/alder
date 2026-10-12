@@ -16,6 +16,8 @@ shop:
   total. While the order is Open: a form adds a line (choose an active
   product, give a quantity), and buttons mark it Paid or Cancelled. Another
   user's order is 404 — unless the logged-in user is a Manager.
+- Adding a line to an order that is not Open is refused by the server, even
+  when the form comes from a page loaded while the order was still Open.
 - `/products` requires login and a Manager: it lists every product, has a
   form to add one, and a button per product to toggle active. A Staff user
   gets 404.
@@ -23,6 +25,8 @@ shop:
   module as in the reference.
 
 **Names.** Use exactly these names; anything not listed here is your choice.
+The tables are exactly the ones below, with exactly these fields: add no
+further tables or fields.
 
 - `app/User.alder`: module `User`, `type UserId = brand Text`,
   `type Role = Staff | Manager`, and
