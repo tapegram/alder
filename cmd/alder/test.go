@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -21,10 +22,14 @@ import (
 )
 
 // testUsage is the usage line of `alder test`.
-const testUsage = "usage: alder test [dir] [-run re] [-timeout d] [--json]"
+const testUsage = "usage: alder test [dir] [-run re] [-timeout d] [--json] [--mutate [--min R]]"
 
 // defaultTestTimeout bounds one `alder test` run (every test together) unless -timeout says.
 const defaultTestTimeout = 5 * time.Minute
+
+// defaultMutateTimeout bounds, with --mutate, each run of the suite: the tests' own, and each
+// mutant's (rtesting.Main's per-mutant deadline), unless -timeout says.
+const defaultMutateTimeout = 10 * time.Second
 
 // testGrace is how long after the deadline `alder test` waits for the test program to report
 // the test that timed out before it kills the program itself.
@@ -37,11 +42,15 @@ const testGrace = 5 * time.Second
 // environment (ALDER_TEST_RUN, ALDER_TEST_JSON). With withCaps (scratch.Checked.WiresAdapters)
 // the capabilities are the app's adapters, as the generated caps package wires them
 // (caps.Caps(): a capability whose adapter is missing is left unwired); otherwise none is
-// wired, and a test that calls one without Test.fake fails.
-func testMain(withCaps bool) string {
+// wired, and a test that calls one without Test.fake fails. With mutate (a mutate build:
+// scratch.Options.Mutate) it first registers the build's mutants (rtesting.SetMutants).
+func testMain(withCaps, mutate bool) string {
 	imp, caps := "", "app.Caps{}.Registry()"
 	if withCaps {
 		imp, caps = "\t\"app/caps\"\n", "caps.Caps().Registry()"
+	}
+	if mutate {
+		caps += "\n\trtesting.SetMutants(&app.Mutant, app.Mutants, app.MutantsSuppressed, app.MutantsSkipped)"
 	}
 	return `package main
 
@@ -59,7 +68,7 @@ func main() {
 `
 }
 
-// runTestTo is `alder test [dir] [-run re] [-timeout d] [--json]`: it compiles the app at dir
+// runTestTo is `alder test [dir] [-run re] [-timeout d] [--json] [--mutate [--min R]]`: it compiles the app at dir
 // (default ".") with a main that runs its `test` declarations (testMain) into
 // build/<app>/scratch/test, runs it, and passes the program's report through as it is written:
 // one entry per test as the test finishes and a summary, or with --json one JSON object per
@@ -81,6 +90,14 @@ func main() {
 // The adapters are checked as alder build checks them, with the same messages, except that a
 // capability without an adapter is not refused: it runs unwired (a test that calls it without
 // Test.fake fails "not wired in tests"), and a warning listing each one goes to stderr first.
+//
+// --mutate builds the mutate build instead (scratch.Options.Mutate, into
+// build/<app>/scratch/mutate) and, when the selected tests pass, runs them once per mutant
+// (rtesting.Main): the report ends with the mutation score and the survivors, one line each,
+// or with --json the mutants' object and the score's. -timeout (default 10s with --mutate)
+// then bounds each run of the suite, the tests' own and each mutant's, not the whole run; a
+// mutant that crashes the program is killed and the run goes on (runTests). --min R exits 1
+// when the score is below R (it needs --mutate).
 //
 // Exit 0 when every selected test passed; 1 for a failing, crashed or timed-out test, a check
 // error, a typed hole, adapters refused or that do not compile with the app (alder build's
@@ -105,12 +122,19 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 		}
 	}()
 	dir, haveDir, runPat, timeout := ".", false, "", defaultTestTimeout
-	timeoutArg := ""
+	timeoutArg, mutate, minArg := "", false, ""
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
 		case a == "--json" || a == "-json":
 			jsonOut = true
+		case a == "--mutate" || a == "-mutate":
+			mutate = true
+		case (a == "--min" || a == "-min") && i+1 < len(args):
+			i++
+			minArg = args[i]
+		case strings.HasPrefix(a, "-min=") || strings.HasPrefix(a, "--min="):
+			_, minArg, _ = strings.Cut(a, "=")
 		case (a == "-run" || a == "--run") && i+1 < len(args):
 			i++
 			runPat = args[i]
@@ -126,6 +150,20 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 			return 2
 		default:
 			dir, haveDir = a, true
+		}
+	}
+	if mutate {
+		timeout = defaultMutateTimeout
+	}
+	if minArg != "" {
+		v, err := strconv.ParseFloat(minArg, 64)
+		switch {
+		case !mutate:
+			fail("--min needs --mutate")
+			return 2
+		case err != nil || v < 0 || v > 1:
+			fail(fmt.Sprintf("bad --min %q: want a score from 0 to 1, such as 0.8", minArg))
+			return 2
 		}
 	}
 	if timeoutArg != "" {
@@ -146,7 +184,11 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 	}
 
 	checked := scratch.Check(dir, nil)
-	b := scratch.CompileCheckedWith(context.Background(), checked, testMain(checked.WiresAdapters()), "test", "", scratch.Options{Tests: true})
+	purpose := "test"
+	if mutate {
+		purpose = "mutate" // its own directory: a mutate build never replaces the plain test build
+	}
+	b := scratch.CompileCheckedWith(context.Background(), checked, testMain(checked.WiresAdapters(), mutate), purpose, "", scratch.Options{Tests: true, Mutate: mutate})
 	defer b.Close()
 	io.WriteString(stderr, b.Warning) // capabilities without adapters run unwired
 	if b.Err != nil {
@@ -162,8 +204,15 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 		}
 		return 1
 	}
-	return runTests(b, runPat, timeout, jsonOut, stdout, stderr, fail)
+	var mut *mutateRun
+	if mutate {
+		mut = &mutateRun{min: minArg}
+	}
+	return runTests(b, runPat, timeout, mut, jsonOut, stdout, stderr, fail)
 }
+
+// mutateRun is what runTests needs for --mutate: the --min text ("" for none).
+type mutateRun struct{ min string }
 
 // hasError reports whether ds holds an error.
 func hasError(ds []diag.Diagnostic) bool {
@@ -176,10 +225,23 @@ func hasError(ds []diag.Diagnostic) bool {
 }
 
 // runTests runs the built test program b (see runTestTo) and returns the exit code.
-func runTests(b scratch.Build, runPat string, timeout time.Duration, jsonOut bool, stdout, stderr io.Writer, fail func(string)) int {
+//
+// With mut (--mutate) the program runs the suite and then every mutant, -timeout bounding each
+// run of the suite (the program's own deadlines: rtesting.Main), and this process lets it run as
+// long as it needs. A mutant that ends the program (a stack overflow, a fatal error) is logged
+// as killed, `crashed`, by the test the status file names, and a timed-out one ends it after
+// logging itself (rtesting.ExitMutantTimedOut); either way the program is run again from the
+// next mutant (rtesting.EnvMutateFrom), until a run finishes the last mutant and prints the
+// report from the log (rtesting.EnvMutateLog).
+func runTests(b scratch.Build, runPat string, timeout time.Duration, mut *mutateRun, jsonOut bool, stdout, stderr io.Writer, fail func(string)) int {
 	status := filepath.Join(b.Dir, "status")
 	os.Remove(status)
 	defer os.Remove(status)
+	mutantLog := filepath.Join(b.Dir, "mutants.log")
+	if mut != nil {
+		os.Remove(mutantLog)
+		defer os.Remove(mutantLog)
+	}
 	// the program's stdin: it exits at end of file, which comes when this process closes the
 	// write end below or dies
 	pr, pw, err := os.Pipe()
@@ -190,64 +252,102 @@ func runTests(b scratch.Build, runPat string, timeout time.Duration, jsonOut boo
 	defer pr.Close()
 	defer pw.Close()
 
-	deadline := time.Now().Add(timeout)
-	env := []string{"ALDER_TEST_RUN=" + runPat, "ALDER_TEST_JSON=",
-		rtesting.EnvDeadline + "=" + deadline.Format(time.RFC3339Nano),
-		rtesting.EnvTimeout + "=" + timeout.String(),
-		rtesting.EnvStatus + "=" + status,
-		rtesting.EnvStdinEOF + "=1"}
-	if jsonOut {
-		env[1] = "ALDER_TEST_JSON=1"
-	}
 	// the program runs in its own process group: an interrupt reaches alder test alone, which
 	// kills the group and stops
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	errTimeout := fmt.Errorf("the tests timed out after %v", timeout)
-	ctx, cancel := context.WithDeadlineCause(sigCtx, deadline.Add(testGrace), errTimeout)
-	defer cancel()
-	crash := &crashFilter{w: stderr}
 	counted := &resultCounter{w: stdout, json: jsonOut}
-	exit := scratch.RunStream(ctx, b, env, pr, counted, crash)
-	crash.flush()
-	if sigCtx.Err() != nil {
-		fmt.Fprintln(stderr, "alder test: interrupted")
-		return 1
-	}
-	if exit == 0 || exit == 1 {
-		crash.passKept()
-		return exit
-	}
-	timedOut := context.Cause(ctx) == errTimeout
-	if mod, name, ok := readStatus(status); ok {
-		msg := crash.summary()
-		if timedOut {
-			msg = "timed out after " + timeout.String()
-		}
-		rtesting.WriteResult(stdout, rtesting.CaseResult{Module: mod, Name: name, Error: msg}, jsonOut)
-		if timedOut {
-			fmt.Fprintf(stderr, "alder test: %v\n", errTimeout)
-		} else {
-			fmt.Fprintf(stderr, "alder test: the test program crashed running %s %s; no later test ran\n", mod, rtesting.QuoteName(name))
-		}
-		// the summary the program could not print: the results it streamed and this failure
-		summary := fmt.Sprintf("%d passed, %d failed\n", counted.passed, counted.failed+1)
+	for from := 1; ; {
+		deadline := time.Now().Add(timeout)
+		env := []string{"ALDER_TEST_RUN=" + runPat, "ALDER_TEST_JSON=",
+			rtesting.EnvTimeout + "=" + timeout.String(),
+			rtesting.EnvStatus + "=" + status,
+			rtesting.EnvStdinEOF + "=1"}
 		if jsonOut {
-			io.WriteString(stderr, summary)
-		} else {
-			io.WriteString(stdout, summary)
+			env[1] = "ALDER_TEST_JSON=1"
 		}
-		return 1
-	}
-	switch {
-	case exit == 2 && !crash.crashed: // the program's own usage error, already on stderr
+		if from == 1 { // the suite's own run
+			env = append(env, rtesting.EnvDeadline+"="+deadline.Format(time.RFC3339Nano))
+		}
+		errTimeout := fmt.Errorf("the tests timed out after %v", timeout)
+		ctx, cancel := context.WithDeadlineCause(sigCtx, deadline.Add(testGrace), errTimeout)
+		if mut != nil {
+			env = append(env, rtesting.EnvMutate+"=1", rtesting.EnvMin+"="+mut.min, rtesting.EnvMutateLog+"="+mutantLog,
+				rtesting.EnvMutateFrom+"="+strconv.Itoa(from))
+			cancel()
+			ctx, cancel = context.WithCancel(sigCtx) // the program bounds each run itself
+		}
+		os.Remove(status)
+		crash := &crashFilter{w: stderr}
+		exit := scratch.RunStream(ctx, b, env, pr, counted, crash)
+		crash.flush()
+		timedOut := context.Cause(ctx) == errTimeout
+		cancel()
+		if sigCtx.Err() != nil {
+			fmt.Fprintln(stderr, "alder test: interrupted")
+			return 1
+		}
+		if mut != nil && exit == rtesting.ExitMutantTimedOut { // logged by the program
+			logged, err := rtesting.ReadMutantLog(mutantLog)
+			if err != nil {
+				fail(err.Error())
+				return 2
+			}
+			next := from
+			for id := range logged {
+				next = max(next, id+1)
+			}
+			if next == from {
+				fail("the test program stopped running mutants without logging one")
+				return 2
+			}
+			from = next
+			continue
+		}
+		if exit == 0 || exit == 1 {
+			crash.passKept()
+			return exit
+		}
+		line, _ := os.ReadFile(status)
+		if id, mod, name, ok := rtesting.ParseMutantStatus(string(line)); mut != nil && ok {
+			// the mutant crashed the program: it is killed, and the run goes on after it
+			if err := rtesting.LogMutant(mutantLog, rtesting.MutantOutcome{ID: id, Killed: true, By: mod + " " + rtesting.QuoteName(name), Note: "crashed"}); err != nil {
+				fail(err.Error())
+				return 2
+			}
+			from = id + 1
+			continue
+		}
+		if mod, name, ok := readStatus(status); ok {
+			msg := crash.summary()
+			if timedOut {
+				msg = "timed out after " + timeout.String()
+			}
+			rtesting.WriteResult(stdout, rtesting.CaseResult{Module: mod, Name: name, Error: msg}, jsonOut)
+			if timedOut {
+				fmt.Fprintf(stderr, "alder test: %v\n", errTimeout)
+			} else {
+				fmt.Fprintf(stderr, "alder test: the test program crashed running %s %s; no later test ran\n", mod, rtesting.QuoteName(name))
+			}
+			// the summary the program could not print: the results it streamed and this failure
+			summary := fmt.Sprintf("%d passed, %d failed\n", counted.passed, counted.failed+1)
+			if jsonOut {
+				io.WriteString(stderr, summary)
+			} else {
+				io.WriteString(stdout, summary)
+			}
+			return 1
+		}
+		switch {
+		case exit == 2 && !crash.crashed: // the program's own usage error, already on stderr
+			return 2
+		case timedOut:
+			fail(errTimeout.Error())
+			return 1
+		}
+		fail("the test program stopped: " + crash.summary())
 		return 2
-	case timedOut:
-		fail(errTimeout.Error())
-		return 1
 	}
-	fail("the test program stopped: " + crash.summary())
-	return 2
 }
 
 // resultCounter passes the test program's standard output through and counts the results in

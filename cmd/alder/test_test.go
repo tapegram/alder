@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -761,5 +762,181 @@ func TestTest_AdapterRefusals(t *testing.T) {
 	code, _, stderr = runTest(t, dir)
 	if code != 1 || !strings.Contains(stderr, "adapters/go.mod: adapters/ is part of the generated module; delete it") {
 		t.Fatalf("go.mod: exit %d\nstderr: %s", code, stderr)
+	}
+}
+
+// mutateOK copies the mutation-testing corpus app (testdata/corpus/mutate-ok: one test per
+// behaviour, each killing one mutant) into the temporary working directory as "mutate-ok",
+// appending extra to app/Note.alder.
+func mutateOK(t *testing.T, extra string) string {
+	t.Helper()
+	src, err := filepath.Abs("../../testdata/corpus/mutate-ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inTemp(t)
+	copyDir(t, src, "mutate-ok")
+	if extra != "" {
+		f, err := os.OpenFile(filepath.Join("mutate-ok", "app", "Note.alder"), os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		if _, err := f.WriteString(extra); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return "mutate-ok"
+}
+
+// mutateOKTests are the mutate-ok app's tests, as -run matches them.
+var mutateOKTests = []string{
+	`Note "a pinned note is labelled pinned"`,
+	`Note "deleting a user deletes their notes"`,
+	`Notes "a visitor is sent to log in"`,
+	`Notes "I see only my notes"`,
+	`Notes "adding a note stores it"`,
+	`Notes "adding a note goes back to the list"`,
+	`Notes "a new note is not pinned"`,
+}
+
+// TestTest_Mutate: `alder test --mutate` on an app with one test per behaviour kills every
+// mutant; leaving one test out (-run selects the others) leaves exactly its mutant, one case
+// per operator class; --json, --min and the refusals.
+func TestTest_Mutate(t *testing.T) {
+	needGoTool(t)
+	dir := mutateOK(t, "")
+	code, stdout, stderr := runTest(t, dir, "--mutate")
+	want := `ok   Note "a pinned note is labelled pinned"
+ok   Note "deleting a user deletes their notes"
+ok   Notes "a visitor is sent to log in"
+ok   Notes "I see only my notes"
+ok   Notes "adding a note stores it"
+ok   Notes "adding a note goes back to the list"
+ok   Notes "a new note is not pinned"
+7 passed, 0 failed
+7 mutants: 7 killed, 0 survived  (score 1.00)
+`
+	if code != 0 || stdout != want {
+		t.Fatalf("exit %d\nstdout:\n%s\nwant:\n%s\nstderr: %s", code, stdout, want, stderr)
+	}
+
+	without := func(left string) string {
+		var keep []string
+		for _, k := range mutateOKTests {
+			if k != left {
+				keep = append(keep, regexp.QuoteMeta(k))
+			}
+		}
+		return "^(" + strings.Join(keep, "|") + ")$"
+	}
+	for _, c := range []struct{ class, left, survivor string }{
+		{"authorization", `Notes "a visitor is sent to log in"`, `  Notes   requires:6   requires dropped   requires user → served without user (user = User.UserId "mutant")`},
+		{"data", `Notes "I see only my notes"`, `  Notes   load:12   where dropped   Db.where (Note.owner.eq session.user) → the condition dropped`},
+		{"flow", `Notes "adding a note goes back to the list"`, `  Notes   update:26   redirect → rerender   Redirect (Notes {}) → Rerender`},
+		{"logic", `Note "a pinned note is labelled pinned"`, `  Note   label:18   condition negated   if note.pinned → if not note.pinned`},
+		{"schema", `Notes "a new note is not pinned"`, `  Note   Note:13   default changed   pinned = False → pinned = True`},
+	} {
+		t.Run(c.class, func(t *testing.T) {
+			code, stdout, stderr := runTest(t, dir, "--mutate", "-run", without(c.left))
+			want := "6 passed, 0 failed\n7 mutants: 6 killed, 1 survived  (score 0.86)\nsurvived:\n" + c.survivor + "\n"
+			if code != 0 || !strings.HasSuffix(stdout, want) {
+				t.Fatalf("exit %d\nstdout:\n%s\nwant suffix:\n%s\nstderr: %s", code, stdout, want, stderr)
+			}
+		})
+	}
+
+	// --min: below the score exits 1 with the same report; at or above it 0
+	run := without(`Notes "a new note is not pinned"`)
+	if code, stdout, _ := runTest(t, dir, "--mutate", "--min", "0.9", "-run", run); code != 1 || !strings.Contains(stdout, "(score 0.86)\nsurvived:\n") {
+		t.Fatalf("--min 0.9: exit %d\n%s", code, stdout)
+	}
+	if code, _, _ := runTest(t, dir, "--mutate", "--min=0.85", "-run", run); code != 0 {
+		t.Fatalf("--min 0.85: exit %d", code)
+	}
+	if code, _, stderr := runTest(t, dir, "--min", "0.5"); code != 2 || !strings.Contains(stderr, "--min needs --mutate") {
+		t.Fatalf("--min without --mutate: exit %d %s", code, stderr)
+	}
+
+	// --json: the tests' objects, the mutants, the score
+	code, stdout, stderr = runTest(t, dir, "--mutate", "--json", "-run", run)
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if code != 0 || len(lines) != 8 {
+		t.Fatalf("--json: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	var ms struct {
+		Mutants []struct {
+			ID           int
+			Module, Decl string
+			Line         int
+			Kind         string
+			Killed       bool
+			By, Note     string
+			Tables       string
+		}
+	}
+	if err := json.Unmarshal([]byte(lines[6]), &ms); err != nil || len(ms.Mutants) != 7 {
+		t.Fatalf("mutants object %q: %v", lines[6], err)
+	}
+	if m := ms.Mutants[0]; m.Kind != "default changed" || m.Killed || m.By != "" || m.Tables != "ensure" {
+		t.Fatalf("mutant 1: %+v", m)
+	}
+	if m := ms.Mutants[3]; m.Kind != "requires dropped" || !m.Killed || m.By != `Notes "a visitor is sent to log in"` || m.Tables != "" {
+		t.Fatalf("mutant 4: %+v", m)
+	}
+	if lines[7] != `{"score":0.8571428571428571,"killed":6,"survived":1,"suppressed":0,"skipped":0}` {
+		t.Fatalf("score object %s", lines[7])
+	}
+
+	// no tests selected: nothing can kill a mutant (exit 1 only with --min)
+	if code, stdout, _ := runTest(t, dir, "--mutate", "-run", "nothing matches"); code != 0 || stdout != "0 passed, 0 failed\nno tests: nothing can kill a mutant\n" {
+		t.Fatalf("no tests: exit %d\n%s", code, stdout)
+	}
+	if code, _, _ := runTest(t, dir, "--mutate", "--min", "0.5", "-run", "nothing matches"); code != 1 {
+		t.Fatalf("no tests with --min: exit %d", code)
+	}
+}
+
+// TestTest_MutateFailingSuite: a suite that does not pass measures nothing: the normal report,
+// then the refusal.
+func TestTest_MutateFailingSuite(t *testing.T) {
+	needGoTool(t)
+	dir := mutateOK(t, "\ntest \"broken\" = label { id: NoteId \"a\", title: \"x\", pinned: False, owner: User.UserId \"u\" } == \"pinned\"\n")
+	code, stdout, stderr := runTest(t, dir, "--mutate")
+	if code != 1 || !strings.Contains(stdout, "FAIL Note \"broken\"\n") || !strings.HasSuffix(stdout, "7 passed, 1 failed\ntests fail: fix them before measuring mutants\n") {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, stdout, stderr)
+	}
+}
+
+// TestTest_MutateCrashAndHang: a mutant that overflows the stack ends the test program; it is
+// killed as crashed and the run goes on in a new program from the next mutant. A mutant that
+// computes for hours is killed at -timeout as timed out, and the run goes on too.
+func TestTest_MutateCrashAndHang(t *testing.T) {
+	needGoTool(t)
+	src, err := filepath.Abs("../../testdata/corpus/mutate-crash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inTemp(t)
+	copyDir(t, src, "mutate-crash")
+	start := time.Now()
+	code, stdout, stderr := runTest(t, "mutate-crash", "--mutate", "-timeout", "2s", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, stdout, stderr)
+	}
+	if d := time.Since(start); d > time.Minute {
+		t.Fatalf("the run took %v", d)
+	}
+	if strings.Contains(stderr, "stack overflow") || strings.Contains(stderr, "goroutine ") {
+		t.Fatalf("the crash report reached stderr:\n%s", stderr)
+	}
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	want := `{"mutants":[` +
+		`{"id":1,"module":"Calc","decl":"loop","line":9,"kind":"condition negated","before":"if stop","after":"if not stop","killed":true,"by":"Calc \"loop stops after one step\"","note":""},` +
+		`{"id":2,"module":"Calc","decl":"loop","line":9,"kind":"bool flipped","before":"True","after":"False","killed":true,"by":"Calc \"loop stops after one step\"","note":"crashed"},` +
+		`{"id":3,"module":"Calc","decl":"fib","line":12,"kind":"operator flipped","before":"n < 2","after":"n <= 2","killed":true,"by":"Calc \"work is fib 10\"","note":""},` +
+		`{"id":4,"module":"Calc","decl":"work","line":15,"kind":"condition negated","before":"if fast","after":"if not fast","killed":true,"by":"Calc \"work is fib 10\"","note":"timed out"}]}`
+	if len(lines) != 4 || lines[2] != want || lines[3] != `{"score":1,"killed":4,"survived":0,"suppressed":0,"skipped":1}` {
+		t.Fatalf("stdout:\n%s\nwant mutants:\n%s", stdout, want)
 	}
 }

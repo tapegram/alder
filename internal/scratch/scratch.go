@@ -154,6 +154,9 @@ type Options struct {
 	// their tables (FakeTables) and Test.fake's capability swap are compiled in. Without it the
 	// generated module is production-shaped, as `alder build`'s: no test code at all.
 	Tests bool
+	// Mutate, with Tests, makes the mutate build of `alder test --mutate` (gen.Options.Mutate):
+	// every mutant compiled in as a switch on app.Mutant, and the table app.Mutants.
+	Mutate bool
 }
 
 // CompileCheckedWith is CompileChecked with options, stopped when ctx is done: `go vet` and `go
@@ -236,7 +239,7 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 			return b
 		}
 	}
-	files, err := gen.Emit(p, gen.Options{RepoPath: repo, Migrations: buildkit.HasMigrations(appDir), Tests: o.Tests, Unwired: unwired})
+	files, err := gen.Emit(p, gen.Options{RepoPath: repo, Migrations: buildkit.HasMigrations(appDir), Tests: o.Tests, Mutate: o.Mutate, Unwired: unwired})
 	if err != nil {
 		b.Err = fmt.Errorf("internal error: %v", err)
 		return b
