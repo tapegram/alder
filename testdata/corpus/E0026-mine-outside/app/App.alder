@@ -1,0 +1,24 @@
+module App
+
+import User
+import Todo
+
+session { user: Maybe User.UserId, role: User.Role = Reader }
+
+login = Login
+
+msg Clear { id: Todo.TodoId }
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Clear p -> {
+    let _ <- Db.deleteMine Todo p.id
+    Task.succeed Rerender
+  },
+}
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>not found</p>

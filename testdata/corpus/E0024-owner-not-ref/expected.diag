@@ -1,0 +1,2 @@
+app/Note.alder:9:22 E0024 `@owner` must mark a `@ref` column of the session's user type `User.UserId`; `owner` is `User.UserId` without `@ref`
+app/Todo.alder:7:14 E0024 `@owner` must mark a `@ref` column of the session's user type `User.UserId`; `price` is `Int`

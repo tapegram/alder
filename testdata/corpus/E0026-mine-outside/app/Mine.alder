@@ -1,0 +1,22 @@
+module Mine
+
+import Todo
+
+page "/mine" { } requires user
+
+type Model = { count: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let n <- Db.mine Todo |> Db.count
+  Query.succeed { count: n }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Text.fromInt model.count}</p>
+
+-- a test has no session: it reaches the page through the browser steps
+test "counting" = {
+  let n <- Db.mine Todo |> Db.count
+  Task.succeed (n == 0)
+}

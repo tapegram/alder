@@ -44,6 +44,11 @@ type Checker struct {
 	// widenedFrom is the narrowed session type of each expression in Result.Widened
 	widenedFrom map[syntax.Expr]types.Type
 
+	// scopedUses are the scoped Db operations of the body being checked (checkScopedTables);
+	// scopedReported the places E0026 was reported at
+	scopedUses     []scopedUse
+	scopedReported map[diag.Span]bool
+
 	usesSessionPut bool // some module calls Session.put
 	opts           Options
 	// poisonedTop are the InferModule values whose inferred type is poisoned, and
@@ -151,6 +156,7 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 	if c.appMsg == nil {
 		c.appMsg = &types.Union{Module: "App", Name: "Msg"}
 	}
+	c.checkOwners() // `@owner` columns need App's session
 	for _, name := range prog.Order {
 		mc := c.ctx(prog.Modules[name])
 		if prog.IsPageModule(name) {

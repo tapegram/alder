@@ -417,6 +417,8 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 				mc.checkRef(f, a, ft, fake)
 			case "renamed":
 				// checkTableAttrs reports a malformed or self-naming `@renamed`
+			case "owner":
+				// checkOwners validates it once App's session is known (E0024)
 			case "unique", "cascade", "restrict":
 				// checkDeleteRules reports a delete rule without `@ref`, before it, or a second one
 			case "setNull":
@@ -828,6 +830,9 @@ func (mc *modCtx) definePage() {
 		}
 		info.Session = narrow(c.session, pd.Requires, mc.m.Name)
 		mc.session = info.Session
+	}
+	if len(pd.Roles) > 0 {
+		mc.checkRoles(pd, info)
 	}
 	for _, d := range c.live(mc.m) {
 		if md, ok := d.(*syntax.MsgDecl); ok {

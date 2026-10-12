@@ -1,0 +1,17 @@
+module Admin.Index
+
+import User
+
+page "/admin" { } requires user, role Author | Admin
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+-- the page's session.role is App's role union
+roleOf : Session -> User.Role
+roleOf session = session.role
+
+view : Model -> Session -> Html Msg
+view model session = <p>{User.roleName (roleOf session)}</p>

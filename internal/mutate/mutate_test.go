@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -311,5 +312,45 @@ func TestIsHtml(t *testing.T) {
 	}
 	if isHtml(&types.Fun{Params: []types.Type{html}, Result: types.Int}) {
 		t.Error("a function taking Html and returning Int is not view code")
+	}
+}
+
+// The scoped Db nodes (M11) are walked like the unscoped ones: Collect does not stop at them
+// (no operator targets them yet), and the printer names them as written.
+func TestCollect_ScopedNodes(t *testing.T) {
+	p := lower(t, "../../testdata/corpus/rules-ok")
+	ms, _ := Collect(p)
+	var shown []string
+	for _, m := range p.Modules {
+		for _, v := range m.Values {
+			var walk func(e ir.Expr)
+			walk = func(e ir.Expr) {
+				switch e.(type) {
+				case *ir.DbMine, *ir.DbGetMine, *ir.DbUpdateMine, *ir.DbDeleteMine, *ir.DbInsertMine:
+					shown = append(shown, line(m.Name, e, id))
+				}
+				for _, k := range ir.Children(e) {
+					if !isNil(k) {
+						walk(k)
+					}
+				}
+			}
+			walk(v.Body)
+		}
+	}
+	want := []string{"Db.mine Todo", "Db.mine Todo", "Db.insertMine Todo { title: p.form.title }", "Db.deleteMine Todo p.id"}
+	for _, w := range want {
+		if !slices.Contains(shown, w) {
+			t.Errorf("printed %q, want %q among them", shown, w)
+		}
+	}
+	found := false
+	for _, m := range ms {
+		if m.Module == "Todos.Index" && m.Kind == BoolFlipped {
+			found = true // `Todo.done.eq False` under Db.mine's DbSelect is reached
+		}
+	}
+	if !found {
+		t.Errorf("no mutant inside the scoped select: %v", table(ms, nil))
 	}
 }

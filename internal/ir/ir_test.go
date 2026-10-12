@@ -629,3 +629,65 @@ func TestPositions(t *testing.T) {
 		}
 	}
 }
+
+// TestIR_Rules (M11): the corpus app rules-ok lowers its `@owner` column to Table.Owner, its
+// role pages to Page.Roles, and the five scoped operations to their nodes: Db.mine a Select
+// value (a DbSelect's Base, or a DbRun's Select through a helper), Db.insertMine's row without
+// the owner column. Its dump is reviewed by hand in testdata/golden/ir_rules.ir.
+func TestIR_Rules(t *testing.T) {
+	p := lowerDir(t, "../../testdata/corpus/rules-ok")
+	compareGolden(t, "../../testdata/golden/ir_rules.ir", Dump(p))
+	for _, tb := range p.Tables {
+		want := map[string]string{"Todo": "owner", "User": ""}[tb.Name]
+		if tb.Owner != want {
+			t.Errorf("table %s: Owner %q, want %q", tb.Name, tb.Owner, want)
+		}
+	}
+	roles := map[string]string{}
+	for _, pg := range p.Pages {
+		roles[pg.Module] = strings.Join(pg.Roles, "|")
+		if len(pg.Roles) > 0 && (pg.Requires != "user" || pg.RolesPos.Line == 0) {
+			t.Errorf("page %s: requires %q, roles at %+v", pg.Module, pg.Requires, pg.RolesPos)
+		}
+	}
+	if roles["Admin.Index"] != "Author|Admin" || roles["Admin.Users"] != "Admin" || roles["Todos.Index"] != "" {
+		t.Errorf("roles: %v", roles)
+	}
+	seen := map[string]int{}
+	var walk func(e Expr)
+	walk = func(e Expr) {
+		switch x := e.(type) {
+		case *DbMine:
+			seen["mine"]++
+		case *DbGetMine:
+			seen["getMine"]++
+		case *DbUpdateMine:
+			seen["updateMine"]++
+		case *DbDeleteMine:
+			seen["deleteMine"]++
+		case *DbInsertMine:
+			seen["insertMine"]++
+			rec := x.Row.(*Record)
+			var names []string
+			for _, f := range rec.Fields {
+				names = append(names, f.Name)
+			}
+			if strings.Join(names, " ") != "title done" {
+				t.Errorf("insertMine row: %v", names)
+			}
+		}
+		for _, k := range Children(e) {
+			if k != nil {
+				walk(k)
+			}
+		}
+	}
+	for _, m := range p.Modules {
+		for _, v := range m.Values {
+			walk(v.Body)
+		}
+	}
+	if fmt.Sprint(seen) != "map[deleteMine:1 getMine:2 insertMine:1 mine:2 updateMine:1]" {
+		t.Errorf("scoped nodes: %v", seen)
+	}
+}

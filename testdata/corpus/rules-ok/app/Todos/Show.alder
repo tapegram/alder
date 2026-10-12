@@ -1,0 +1,16 @@
+module Todos.Show
+
+import Todo
+
+page "/todos/{id}" { id: Todo.TodoId } requires user
+
+type Model = { todo: Todo }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todo <- Db.getMine Todo params.id
+  Query.succeed { todo: todo }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <h1>{model.todo.title}</h1>

@@ -1,0 +1,1 @@
+app/Admin.alder:3:34 E0027 `Editor` is not a constructor of this session's `role` type `User.Role` (Reader, Author, Admin)

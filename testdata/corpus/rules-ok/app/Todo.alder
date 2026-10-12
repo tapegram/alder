@@ -1,0 +1,14 @@
+module Todo
+
+import User
+
+type TodoId = brand Text
+
+-- `@owner` after `@ref` and its delete rule; Db.insertMine takes every insert field but it.
+table Todo {
+  id: TodoId @id,
+  title: Text,
+  done: Bool = False,
+  owner: User.UserId @ref User @cascade @owner,
+  created: Time @created,
+}

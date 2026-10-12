@@ -282,6 +282,7 @@ func (mc *modCtx) reportHoles() {
 	}
 	mc.holes = nil
 	mc.c.checkDbTables()
+	mc.c.checkScopedTables()
 	mc.c.checkInferredDictKeys()
 }
 
@@ -629,13 +630,18 @@ func (mc *modCtx) checkRecordLit(x *syntax.RecordLit, rec *types.Record, env *en
 	for _, fi := range x.Fields {
 		f, ok := byName[fi.Name]
 		if !ok {
-			if strings.HasPrefix(rec.Name, "Insert ") {
-				if info := c.tables[c.key(rec.Module, strings.TrimPrefix(rec.Name, "Insert "))]; info != nil {
-					if _, isCol := info.Columns[fi.Name]; isCol {
+			if info, mine := c.insertRecordTable(rec); info != nil {
+				if _, isCol := info.Columns[fi.Name]; isCol {
+					switch {
+					case mine && fi.Name == info.Owner:
+						c.errorf(diag.TypeMismatch, fi.Span, "`%s` is set by `Db.insertMine`", fi.Name)
+					case mine:
+						c.errorf("E0501", fi.Span, "`Db.insertMine` never takes `%s`; it is generated", fi.Name)
+					default:
 						c.errorf("E0501", fi.Span, "`Db.insert` never takes `%s`; it is generated", fi.Name)
-						mc.infer(fi.Value, env, eff)
-						continue
 					}
+					mc.infer(fi.Value, env, eff)
+					continue
 				}
 			}
 			c.errorf(diag.UnknownName, fi.Span, "no field `%s` on `%s`", fi.Name, types.String(rec))
@@ -682,7 +688,7 @@ func (mc *modCtx) checkRecordLit(x *syntax.RecordLit, rec *types.Record, env *en
 // boundaryRecord reports whether rec's defaults apply to its literals: a table's `Insert T`, a
 // form, or a page's or message's parameters.
 func (c *Checker) boundaryRecord(rec *types.Record) bool {
-	if name, ok := strings.CutPrefix(rec.Name, "Insert "); ok && c.tables[c.key(rec.Module, name)] != nil {
+	if info, _ := c.insertRecordTable(rec); info != nil {
 		return true
 	}
 	return c.forms[c.key(rec.Module, rec.Name)] != nil || c.paramRecs[c.key(rec.Module, rec.Name)]
@@ -937,6 +943,9 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 		}
 		if x.Ref.Module == "Session" && x.Ref.Name == "put" {
 			c.usesSessionPut = true
+		}
+		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Db" && scopedOps[x.Ref.Name] {
+			return mc.inferScoped(x)
 		}
 		if t, ok := c.values[c.key(x.Ref.Module, x.Ref.Name)]; ok {
 			return c.u.Instantiate(t)

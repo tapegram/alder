@@ -108,6 +108,10 @@ const (
 	FakeTable      = "E0021" // a fake's table used outside tests and the fake
 	TableDefault   = "E0022"
 	BadSelector    = "E0023" // a selector literal of a Test query that does not parse
+	OwnerColumn    = "E0024" // an `@owner` that is not one `@ref` column of the session's user type
+	NoOwner        = "E0025" // a scoped Db operation on a table without `@owner`
+	ScopedOutside  = "E0026" // a scoped Db operation outside a module whose page `requires user`
+	RoleClause     = "E0027" // `requires … role R` without `user`, or without a session `role` union having R
 	UnreachableArm = "E0310"
 	UnusedImport   = "W0001"
 	UnshownErrors  = "W0003"

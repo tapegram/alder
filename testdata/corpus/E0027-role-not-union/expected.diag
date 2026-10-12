@@ -1,0 +1,1 @@
+app/Admin.alder:3:34 E0027 this session's `role` field is `Text`, not a union: write `role: Role = …` with `type Role = Reader | Author`

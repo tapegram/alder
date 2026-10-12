@@ -1,0 +1,10 @@
+module Todo
+
+import User
+
+type TodoId = brand Text
+
+table Todo {
+  id: TodoId @id,
+  owner: User.UserId @ref User @owner,
+}

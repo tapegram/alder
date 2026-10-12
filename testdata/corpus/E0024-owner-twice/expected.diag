@@ -1,0 +1,1 @@
+app/Todo.alder:10:23 E0024 a table has one `@owner` column: `Todo` marks `owner` and `editor`

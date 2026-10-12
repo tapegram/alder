@@ -1,0 +1,2 @@
+app/Home.alder:11:16 E0025 `Todo` has no `@owner` column, so `Db.mine Todo` has nothing to scope by
+app/Home.alder:12:12 E0025 `Todo` has no `@owner` column, so `Db.getMine Todo` has nothing to scope by

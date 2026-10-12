@@ -1,0 +1,24 @@
+module Home
+
+import Todo
+
+page "/" { } requires user
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+msg Add
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insertMine Todo { title: "milk", owner: session.user }
+    let _ <- Db.insertMine Todo { title: "eggs", created: Time.epoch }
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>home</p>

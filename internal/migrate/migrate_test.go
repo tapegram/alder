@@ -807,3 +807,67 @@ func TestFromProgramIgnoresFakeTables(t *testing.T) {
 		}
 	}
 }
+
+// RF5 (M11): `@owner` changes nothing in the stored schema: the same app with and without it
+// has the same schema, hash and snapshot; and with `@renamed` on the owner column, the rename
+// is still the column's.
+func TestOwnerLeavesSchema(t *testing.T) {
+	files := map[string]string{
+		"App.alder":  "module App\n\nimport User\n\nsession { user: Maybe User.UserId }\n\nerror : Error -> Html Never\nerror err = <p>error</p>\n\nnotFound : Html Never\nnotFound = <p>not found</p>\n",
+		"User.alder": "module User\n\ntype UserId = brand Text\n\ntable User {\n  id: UserId @id,\n  name: Text,\n}\n",
+		"Todo.alder": "module Todo\n\nimport User\n\ntype TodoId = brand Text\n\ntable Todo {\n  id: TodoId @id,\n  title: Text,\n  owner: User.UserId @ref User%s,\n}\n",
+	}
+	schemaOf := func(attrs string) (Schema, string) {
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for name, src := range files {
+			if name == "Todo.alder" {
+				src = fmt.Sprintf(src, attrs)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "app", name), []byte(src), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		p := programIR(t, dir)
+		for _, tb := range p.Tables {
+			if tb.Name == "Todo" && (tb.Owner != "") != strings.Contains(attrs, "@owner") {
+				t.Fatalf("%q: Owner %q", attrs, tb.Owner)
+			}
+		}
+		s := FromProgram(p)
+		h, err := s.Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, "schema.json")
+		if err := WriteSnapshot(path, s); err != nil {
+			t.Fatal(err)
+		}
+		b, _ := os.ReadFile(path)
+		return s, h + "\n" + string(b)
+	}
+	_, without := schemaOf("")
+	for _, attrs := range []string{" @owner", " @cascade @owner", " @owner @cascade"} {
+		plain := strings.ReplaceAll(attrs, " @owner", "")
+		_, base := schemaOf(plain)
+		if _, with := schemaOf(attrs); with != base {
+			t.Errorf("%q: the schema differs from %q's:\n%s\n%s", attrs, plain, with, base)
+		}
+	}
+	if _, with := schemaOf(" @owner"); with != without {
+		t.Errorf("@owner changed the schema:\n%s\n%s", with, without)
+	}
+	files["Todo.alder"] = strings.Replace(files["Todo.alder"], "  owner:", "  author:", 1)
+	s, _ := schemaOf(" @owner @renamed \"owner\"")
+	renamed := ""
+	for _, c := range s.table("Todo.Todo").Columns {
+		if c.Name == "author" {
+			renamed = c.RenamedFrom
+		}
+	}
+	if renamed != "owner" {
+		t.Errorf("author: RenamedFrom %q, want owner", renamed)
+	}
+}
