@@ -1,0 +1,92 @@
+# The gate on every push and pull request (book chapter 11, "Cutting a release", and the M10
+# plan's Global Constraints). The runner installs Go only: anything that still depends on a
+# checkout of this repository at a fixed path fails here (TestDist_OutOfTree builds both examples
+# from a temporary directory with only the alder binary and go on PATH).
+#
+# Jobs run in parallel: `lint` (gofmt, vet, the Python tests), `test` (go test, split in two
+# because cmd/alder's tests take most of the time) and `examples` (check, build and test both
+# example apps with the built binary), the last two on Linux and macOS.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: gofmt
+        run: |
+          out=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$out" ]; then echo "gofmt -l lists:"; echo "$out"; exit 1; fi
+      - name: go vet
+        run: go vet ./...
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: experiments (python3 -m unittest)
+        working-directory: experiments
+        run: python3 -m unittest
+      - name: docs site (book/site/test_site.py)
+        run: python3 book/site/test_site.py
+
+  test:
+    name: test (${{ matrix.os }}, ${{ matrix.part }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        part: [cmd/alder, rest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: go test ./cmd/alder (includes TestDist_OutOfTree)
+        if: matrix.part == 'cmd/alder'
+        run: go test ./cmd/alder -count=1
+      - name: go test (every other package, the book included)
+        if: matrix.part == 'rest'
+        run: go test $(go list ./... | grep -v '^alder/cmd/alder$') -count=1
+
+  examples:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: build alder
+        run: |
+          go build -o "$RUNNER_TEMP/bin/alder" ./cmd/alder
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: alder version
+      - name: examples/todos
+        working-directory: examples/todos
+        run: alder check . && alder build . && alder test .
+      - name: examples/blog
+        working-directory: examples/blog
+        run: alder check . && alder build . && alder test .

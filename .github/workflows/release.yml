@@ -1,0 +1,45 @@
+# Cutting a release (book chapter 11): pushing a tag vX.Y.Z runs GoReleaser (.goreleaser.yaml),
+# which builds the archives and checksums, writes the GitHub release, pushes the Homebrew
+# formula to tapegram/homebrew-alder and pushes ghcr.io/tapegram/alder:X.Y.Z.
+#
+# Before the first tag, create the repository secret HOMEBREW_TAP_TOKEN: a fine-grained
+# personal access token with "Contents: read and write" on tapegram/homebrew-alder
+# (GITHUB_TOKEN can write only to this repository). GITHUB_TOKEN covers the release and the
+# container image (packages: write).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the changelog needs the previous tag
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

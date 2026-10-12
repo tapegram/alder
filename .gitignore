@@ -4,3 +4,5 @@ experiments/**/runs/*/raw/
 experiments/*/alder
 __pycache__/
 build/
+/dist/
+/site/
