@@ -1,5 +1,13 @@
-1  Note   Note:8    default changed  rank = 0 → rank = 1
-2  Note   Note:9    default changed  pinned = False → pinned = True
-3  Notes  churn:8   write replaced   let id <- Db.insert Note { title: t } → let id <- Task.succeed (Note.NoteId "mutant")
-4  Notes  churn:9   write replaced   let _ <- Db.update Note id (\n -> { n | rank: 1 }) → let _ <- Task.succeed ()
-5  Notes  churn:10  write replaced   let _ <- Db.delete Note id → let _ <- Task.succeed ()
+1   Note   Note:8        default changed     rank = 0 → rank = 1
+2   Note   Note:9        default changed     pinned = False → pinned = True
+3   Notes  churn:8       write replaced      let id <- Db.insert Note { title: t } → let id <- Task.succeed (Note.NoteId "mutant")
+4   Notes  churn:9       write replaced      let _ <- Db.update Note id (\n -> { n | rank: 1 }) → let _ <- Task.succeed ()
+5   Notes  churn:10      write replaced      let _ <- Db.delete Note id → let _ <- Task.succeed ()
+6   Own    Own:10        cascade ↔ restrict  owner @ref User @restrict → owner @ref User @cascade
+7   Owned  requires:5    requires dropped    requires user → served without user (user = User.UserId "mutant")
+8   Owned  churnMine:15  write replaced      let id <- Db.insertMine Own { title: t } → let id <- Task.succeed (Own.OwnId "mutant")
+9   Owned  churnMine:16  write replaced      let _ <- Db.updateMine Own id (\o -> { o | title: "x" }) → let _ <- Task.succeed ()
+10  Owned  churnMine:16  scope dropped       Db.updateMine Own id (\o -> { o | title: "x" }) → Db.update Own id (\o -> { o | title: "x" }), not found when missing
+11  Owned  churnMine:17  write replaced      let _ <- Db.deleteMine Own id → let _ <- Task.succeed ()
+12  Owned  churnMine:17  scope dropped       Db.deleteMine Own id → Db.delete Own id, not found when missing
+-   Owned  churnMine:15  scope dropped       skipped: the owner comes from the session either way

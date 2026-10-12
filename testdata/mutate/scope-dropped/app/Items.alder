@@ -1,0 +1,46 @@
+module Items
+
+import Item
+
+page "/items" { } requires user
+
+type Model = { items: List Item, n: Int }
+
+-- Db.mine as a helper value, and composed in place
+latest : Select Item
+latest = Db.mine Item |> Db.limit 3
+
+load : Params -> Session -> Query Model
+load params session = {
+  let items <- latest |> Db.all
+  let n <- Db.mine Item |> Db.count
+  Query.succeed { items: items, n: n }
+}
+
+msg Add
+msg Rename { id: Item.ItemId }
+msg Remove { id: Item.ItemId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insertMine Item { title: "new" }
+    Task.succeed Rerender
+  },
+  Rename p -> {
+    let item <- Db.getMine Item p.id
+    let _ <- Db.updateMine Item item.id (\i -> { i | title: "renamed" })
+    Task.succeed Rerender
+  },
+  Remove p -> {
+    let _ <- wipe p.id
+    Task.succeed Rerender
+  },
+}
+
+-- the function as a value: its Lambda's body is the scoped node
+wipe : Item.ItemId -> Task Unit
+wipe = Db.deleteMine Item
+
+view : Model -> Session -> Html Msg
+view model session = <p>Items</p>

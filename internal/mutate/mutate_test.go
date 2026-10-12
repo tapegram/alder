@@ -111,10 +111,11 @@ func TestGolden(t *testing.T) {
 		"condition-negated": ConditionNegated, "operator-flipped": OperatorFlipped, "bool-flipped": BoolFlipped,
 		"default-changed": DefaultChanged, "cascade-restrict": CascadeRestrict,
 		"not-dropped": NotDropped, "session-put-dropped": SessionPutDropped,
+		"scope-dropped": ScopeDropped, "role-dropped": RoleDropped,
 	}
 	// the kinds the spec gives a suppression rule (plus the rulings': requires, cascade's setNull)
 	refusable := map[string]bool{RequiresDropped: true, GuardDropped: true, ArmSwapped: true, OrderByReversed: true,
-		ConditionNegated: true, OperatorFlipped: true, DefaultChanged: true, CascadeRestrict: true}
+		ConditionNegated: true, OperatorFlipped: true, DefaultChanged: true, CascadeRestrict: true, ScopeDropped: true}
 	covered := map[string]bool{}
 	for _, dir := range dirs {
 		name := filepath.Base(dir)
@@ -155,7 +156,7 @@ func TestGolden(t *testing.T) {
 // TestNeverInTestsFakesViews: no mutant's node is reachable from a test, a fake entry, a view,
 // a component or an Html value, except a default's (shared by every literal omitting it).
 func TestNeverInTestsFakesViews(t *testing.T) {
-	for _, dir := range []string{"../../testdata/mutate/scope", "../../testdata/mutate/all", "../../examples/blog"} {
+	for _, dir := range []string{"../../testdata/mutate/scope", "../../testdata/mutate/all", "../../examples/blog", "../../testdata/mutate/scope-dropped", "../../testdata/corpus/rules-ok"} {
 		p := lower(t, dir)
 		ms, _ := Collect(p)
 		forbidden := map[ir.Expr]bool{}
@@ -196,7 +197,7 @@ func TestNeverInTestsFakesViews(t *testing.T) {
 			if m.Node != nil && forbidden[m.Node] && m.Kind != DefaultChanged {
 				t.Errorf("%s: mutant %d (%s %s) is inside a test, fake or view", dir, m.ID, m.Kind, m.Before)
 			}
-			if m.Replacement == nil && m.Kind != CascadeRestrict {
+			if m.Replacement == nil && m.Kind != CascadeRestrict && m.Kind != RoleDropped {
 				t.Errorf("%s: mutant %d (%s) has no Replacement", dir, m.ID, m.Kind)
 			}
 			if m.Replacement != nil && m.Node != nil && m.Replacement.Type() != m.Node.Type() && types.String(m.Replacement.Type()) != types.String(m.Node.Type()) {
@@ -315,8 +316,8 @@ func TestIsHtml(t *testing.T) {
 	}
 }
 
-// The scoped Db nodes (M11) are walked like the unscoped ones: Collect does not stop at them
-// (no operator targets them yet), and the printer names them as written.
+// The scoped Db nodes (M11) are walked like the unscoped ones: Collect descends into them (a
+// mutant inside a Db.mine select is collected), and the printer names them as written.
 func TestCollect_ScopedNodes(t *testing.T) {
 	p := lower(t, "../../testdata/corpus/rules-ok")
 	ms, _ := Collect(p)

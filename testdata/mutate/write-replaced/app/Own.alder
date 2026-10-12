@@ -1,0 +1,11 @@
+module Own
+
+import User
+
+type OwnId = brand Text
+
+table Own {
+  id: OwnId @id,
+  title: Text,
+  owner: User.UserId @ref User @owner,
+}

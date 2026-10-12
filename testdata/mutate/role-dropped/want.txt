@@ -1,0 +1,5 @@
+1  Admin  requires:4  requires dropped  requires user → served without user (user = User.UserId "mutant")
+2  Admin  requires:4  role dropped      requires user, role Admin → requires user
+3  Home   requires:4  requires dropped  requires user → served without user (user = User.UserId "mutant")
+4  Staff  requires:4  requires dropped  requires user → served without user (user = User.UserId "mutant")
+5  Staff  requires:4  role dropped      requires user, role Author | Admin → requires user

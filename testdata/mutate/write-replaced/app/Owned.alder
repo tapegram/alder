@@ -1,0 +1,22 @@
+module Owned
+
+import Own
+
+page "/owned" { } requires user
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+-- A mutant per scoped write step too (M11).
+churnMine : Text -> Task Own.OwnId
+churnMine t = {
+  let id <- Db.insertMine Own { title: t }
+  let _ <- Db.updateMine Own id (\o -> { o | title: "x" })
+  let _ <- Db.deleteMine Own id
+  Task.succeed id
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>Owned</p>

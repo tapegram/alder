@@ -45,7 +45,7 @@ func page__Admin(rq *web.Request, params Admin__Params, keep any) (Admin__Model,
 		r := web.RedirectResponse(rq.Login, keep)
 		return model, Admin__Session{}, &r
 	}
-	if !(app.Role.Tag == is__User__Role__Author || app.Role.Tag == is__User__Role__Admin) {
+	if Mutant != 2 && !(app.Role.Tag == is__User__Role__Author || app.Role.Tag == is__User__Role__Admin) {
 		r := web.NotFoundResponse(html.None())
 		r.Session = keep
 		return model, Admin__Session{}, &r
@@ -174,7 +174,7 @@ func decode__Notes__RemoveParams(q url.Values) (r Notes__RemoveParams, errs []we
 func page__Notes(rq *web.Request, params Notes__Params, keep any) (Notes__Model, Notes__Session, *web.Response) {
 	var model Notes__Model
 	app := rq.Env.Session.(App__Session)
-	if !app.User.Ok && Mutant == 4 {
+	if !app.User.Ok && Mutant == 5 {
 		app.User = rt.Just("mutant")
 	}
 	if !app.User.Ok {

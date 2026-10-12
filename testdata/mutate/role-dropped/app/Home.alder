@@ -1,0 +1,12 @@
+module Home
+
+-- No role clause: no role mutant.
+page "/" { } requires user
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session = <p>Home</p>

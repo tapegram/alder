@@ -46,8 +46,8 @@ const (
 	SessionPutDropped  = "session put dropped"
 	DefaultChanged     = "default changed"
 	CascadeRestrict    = "cascade ↔ restrict"
-	ScopeDropped       = "scope dropped" // M11: not yet collected
-	RoleDropped        = "role dropped"  // M11: not yet collected
+	ScopeDropped       = "scope dropped"
+	RoleDropped        = "role dropped"
 )
 
 // Mutant is one mutation point. Module and Decl name where it is (Decl is the value's name,
@@ -57,7 +57,7 @@ const (
 // columns; After describes the change where a rendering would mislead).
 //
 // What the mutant does, by kind:
-//   - Node set (every kind but requires dropped and cascade ↔ restrict): the expression Node, a
+//   - Node set (every kind but requires dropped, role dropped and cascade ↔ restrict): the expression Node, a
 //     node of the program's IR (compare by pointer), is replaced by Replacement, an expression
 //     of the same type built only from existing IR node kinds. Replacement never contains Node
 //     itself; it may share Node's subexpressions (which may carry mutants of their own). A Node
@@ -65,6 +65,13 @@ const (
 //   - requires dropped: Page is the page and Field its `requires` field (a brand over Text);
 //     Node is nil and Replacement is the placeholder the field gets when the session lacks it
 //     (a Text Lit "mutant", the brand being erased).
+//   - role dropped: Page is the page whose `requires user, role R | …` is dropped to `requires
+//     user` (any signed-in user is served); Node and Replacement are nil.
+//   - scope dropped: Node is a scoped Db node and Replacement its unscoped twin: `Db.mine T` →
+//     `Db.from T` (a DbSelect); `Db.getMine T id` → `Db.get T id` bound and matched, Nothing →
+//     Query.notFound; `Db.updateMine`/`Db.deleteMine` → `Db.get T id`, then on Just the unscoped
+//     write, on Nothing Task.notFound (not found only when the row is missing). `Db.insertMine`
+//     is skipped: the owner comes from the session either way.
 //   - default changed: Node is the table field's Default expression (the one node every record
 //     literal that omits the field shares) and Replacement the changed literal; Table is a clone
 //     of the table whose field Field has that Default (and DefaultLit).
@@ -117,6 +124,9 @@ func Collect(p *ir.Program) ([]Mutant, []Suppressed) {
 		c.module = m.Name
 		if pg := pages[m.Name]; pg != nil && pg.Requires != "" {
 			c.requires(pg)
+			if pg.Roles != nil {
+				c.roles(pg)
+			}
 		}
 		for _, t := range p.Tables {
 			if t.Module == m.Name {
@@ -196,6 +206,14 @@ func (c *collector) requires(pg *ir.Page) {
 		After:  "served without " + pg.Requires + " (" + pg.Requires + " = " + placeholder + ")",
 		Page:   pg, Field: pg.Requires,
 		Replacement: &ir.Lit{Typed: ir.Typed{Ty: types.Text}, Kind: ir.LitText, Text: "mutant"}})
+}
+
+// roles drops a page's `role R | …`: the page serves any signed-in user.
+func (c *collector) roles(pg *ir.Page) {
+	c.decl = "requires"
+	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RoleDropped, Line: pg.RolesPos.Line, Col: pg.RolesPos.Col,
+		Before: "requires " + pg.Requires + ", role " + strings.Join(pg.Roles, " | "),
+		After:  "requires " + pg.Requires, Page: pg})
 }
 
 func (c *collector) table(t *ir.Table) {
@@ -424,6 +442,8 @@ func (c *collector) walk(e ir.Expr) {
 		c.updateFields(x)
 	case *ir.Ctor:
 		c.nav(x)
+	case *ir.DbMine, *ir.DbGetMine, *ir.DbUpdateMine, *ir.DbDeleteMine, *ir.DbInsertMine:
+		c.scope(e)
 	}
 	for _, k := range ir.Children(e) {
 		if r, ok := e.(*ir.Record); ok && isDefaultValue(r, k) {
@@ -687,6 +707,12 @@ func (c *collector) write(x *ir.EffBind) {
 		tb = w.Table
 	case *ir.DbDelete:
 		tb = w.Table
+	case *ir.DbInsertMine:
+		tb = w.Table
+	case *ir.DbUpdateMine:
+		tb = w.Table
+	case *ir.DbDeleteMine:
+		tb = w.Table
 	default:
 		return
 	}
@@ -696,7 +722,9 @@ func (c *collector) write(x *ir.EffBind) {
 	}
 	var value *ir.Lit
 	shown := "()"
-	if _, isInsert := x.Effect.(*ir.DbInsert); isInsert {
+	_, isInsert := x.Effect.(*ir.DbInsert)
+	_, isInsertMine := x.Effect.(*ir.DbInsertMine)
+	if isInsert || isInsertMine {
 		if !isText(result) {
 			c.skip(WriteReplaced, x.Pos.Line, "the table's id is not Text")
 			return
@@ -718,6 +746,62 @@ func (c *collector) write(x *ir.EffBind) {
 	}
 	c.add(WriteReplaced, x.Pos, x.Effect, repl,
 		line(c.module, x.Effect, wrapped("let "+name+" <- ", "")), "let "+name+" <- Task.succeed "+shown)
+}
+
+// scope drops the owner predicate of a scoped Db node (see Mutant).
+func (c *collector) scope(e ir.Expr) {
+	switch x := e.(type) {
+	case *ir.DbMine:
+		r := &ir.DbSelect{Typed: x.Typed, Pos: x.Pos, Table: x.Table}
+		c.add(ScopeDropped, x.Pos, x, r, c.show(x), "Db.from "+x.Table.Name)
+	case *ir.DbGetMine:
+		get, body := gotOrNotFound(x.Table, x.ID, x.Ty, func(row ir.Expr) ir.Expr {
+			return &ir.EffPure{Typed: ir.Typed{Ty: x.Ty}, Kind: ir.EffQuery, Value: row}
+		})
+		c.add(ScopeDropped, x.Pos, x, body, c.show(x), line(c.module, get, wrapped("", ", Nothing → Query.notFound")))
+	case *ir.DbUpdateMine:
+		w := &ir.DbUpdate{Typed: x.Typed, Pos: x.Pos, Table: x.Table, ID: x.ID, Fn: x.Fn}
+		_, body := gotOrNotFound(x.Table, x.ID, x.Ty, func(ir.Expr) ir.Expr { return w })
+		c.add(ScopeDropped, x.Pos, x, body, c.show(x), line(c.module, w, wrapped("", ", not found when missing")))
+	case *ir.DbDeleteMine:
+		w := &ir.DbDelete{Typed: x.Typed, Pos: x.Pos, Table: x.Table, ID: x.ID}
+		_, body := gotOrNotFound(x.Table, x.ID, x.Ty, func(ir.Expr) ir.Expr { return w })
+		c.add(ScopeDropped, x.Pos, x, body, c.show(x), line(c.module, w, wrapped("", ", not found when missing")))
+	case *ir.DbInsertMine:
+		c.skip(ScopeDropped, x.Pos.Line, "the owner comes from the session either way")
+	}
+}
+
+// gotOrNotFound is `Db.get tb id` (get) and the effect of type ty running it: on `Just row` the
+// effect then builds from row, on Nothing not found (Query.notFound or Task.notFound, as ty).
+func gotOrNotFound(tb *ir.Table, id ir.Expr, ty types.Type, then func(row ir.Expr) ir.Expr) (*ir.DbGet, ir.Expr) {
+	rec := &types.Record{Module: tb.Module, Name: tb.Name}
+	for _, f := range tb.Record.Fields {
+		rec.Fields = append(rec.Fields, types.Field{Name: f.Name, Type: f.Type})
+	}
+	maybe := &types.Union{Module: "Prelude", Name: "Maybe", Args: []types.Type{rec}}
+	kind, query := ir.EffTask, &types.App{Con: "Query", Args: []types.Type{maybe}}
+	if app, ok := ty.(*types.App); ok && app.Con == "Query" {
+		kind = ir.EffQuery
+	}
+	get := &ir.DbGet{Typed: ir.Typed{Ty: query}, Table: tb, ID: id}
+	row := &ir.Var{Typed: ir.Typed{Ty: rec}, Kind: ir.VarLocal}
+	body := then(row)
+	// the names bound around body capture none of its free variables (the id, the update's fn)
+	fresh := func(base string) string {
+		n := base
+		for i := 2; uses(body, n) > 0; i++ {
+			n = base + strconv.Itoa(i)
+		}
+		return n
+	}
+	row.Name = fresh("row")
+	found := &ir.Var{Typed: ir.Typed{Ty: maybe}, Kind: ir.VarLocal, Name: fresh("found")}
+	m := &ir.Match{Typed: ir.Typed{Ty: ty}, Kind: ir.MatchUnion, Subject: found, Cases: []ir.Case{
+		{Tag: "Just", Binds: []ir.Bind{{Name: row.Name, Field: "value", Type: rec}}, Body: body},
+		{Tag: "Nothing", Body: &ir.EffNotFound{Typed: ir.Typed{Ty: ty}}},
+	}}
+	return get, &ir.EffBind{Typed: ir.Typed{Ty: ty}, Kind: kind, Effect: get, Param: &ir.Param{Name: found.Name, Type: maybe}, Body: m}
 }
 
 // sessionPut replaces a `let _ <- Session.put f` step by Task.succeed ().

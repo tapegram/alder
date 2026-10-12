@@ -70,10 +70,16 @@ func widen__Notes__Session(s Notes__Session) App__Session {
 }
 
 func Notes__mine() db.Select[Note__Note] {
-	_h1 := db.Mine(table__Note__Note)
+	_h1 := func() db.Select[Note__Note] {
+		switch Mutant {
+		case 7:
+			return db.From(table__Note__Note)
+		}
+		return db.Mine(table__Note__Note)
+	}()
 	_ = _h1
 	switch Mutant {
-	case 5:
+	case 6:
 		return _h1
 	}
 	return db.Limit(5, _h1)
@@ -84,10 +90,16 @@ func Notes__load(params Notes__Params, session Notes__Session) eff.Query[Notes__
 		return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), Notes__mine())
 	}), func(notes []Note__Note) eff.Task[Notes__Model] {
 		return eff.Bind(func() eff.Task[int64] {
-			_h2 := db.Mine(table__Note__Note)
+			_h2 := func() db.Select[Note__Note] {
+				switch Mutant {
+				case 9:
+					return db.From(table__Note__Note)
+				}
+				return db.Mine(table__Note__Note)
+			}()
 			_ = _h2
 			switch Mutant {
-			case 6:
+			case 8:
 				return eff.Call("Db.count Note", false, func(_e3 *eff.Env) (int64, error) {
 					return db.CountRows(_e3.Ctx, _e3.Store.(db.Store), db.TxOf(_e3), _h2)
 				})
@@ -95,7 +107,7 @@ func Notes__load(params Notes__Params, session Notes__Session) eff.Query[Notes__
 			return eff.Call("Db.count Note", false, func(_e4 *eff.Env) (int64, error) {
 				return db.CountRows(_e4.Ctx, _e4.Store.(db.Store), db.TxOf(_e4), db.Where(db.CEq("pinned", db.EncodeBool(func() bool {
 					switch Mutant {
-					case 7:
+					case 10:
 						return false
 					}
 					return true
@@ -111,33 +123,78 @@ func Notes__update(msg Notes__Msg, model Notes__Model, session Notes__Session) e
 	switch msg.Tag {
 	case is__Notes__Msg__Add:
 		p := *msg.Add
-		return eff.Bind(eff.Call("Db.insertMine Note", true, func(_e1 *eff.Env) (string, error) {
-			return db.InsertMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, insertminevals__Note__Note(insertmine__Note__Note{Title: p.Form.Title, Pinned: func() bool {
-				switch Mutant {
-				case 2:
-					return true
-				}
-				return false
-			}()}), _e1.Now())
-		}), func(_ string) eff.Task[rt.Nav] {
+		return eff.Bind(func() eff.Task[string] {
+			switch Mutant {
+			case 11:
+				return eff.Pure("mutant")
+			}
+			return eff.Call("Db.insertMine Note", true, func(_e1 *eff.Env) (string, error) {
+				return db.InsertMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, insertminevals__Note__Note(insertmine__Note__Note{Title: p.Form.Title, Pinned: func() bool {
+					switch Mutant {
+					case 3:
+						return true
+					}
+					return false
+				}()}), _e1.Now())
+			})
+		}(), func(_ string) eff.Task[rt.Nav] {
 			return eff.Pure(rt.Rerender())
 		})
 	case is__Notes__Msg__Pin:
 		p := *msg.Pin
-		return eff.Bind(eff.Call("Db.getMine Note", false, func(_e2 *eff.Env) (Note__Note, error) {
-			return db.GetMineRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Note__Note, p.Id)
-		}), func(n Note__Note) eff.Task[rt.Nav] {
-			return eff.Bind(eff.Call("Db.updateMine Note", true, func(_e3 *eff.Env) (struct{}, error) {
-				return struct{}{}, db.UpdateMineRow(_e3.Ctx, _e3.Store.(db.Store), db.TxOf(_e3), table__Note__Note, n.Id, func(x Note__Note) Note__Note {
-					return Note__Note{Id: x.Id, Title: x.Title, Pinned: func() bool {
-						switch Mutant {
-						case 8:
-							return false
+		return eff.Bind(func() eff.Task[Note__Note] {
+			switch Mutant {
+			case 12:
+				return eff.Bind(eff.Call("Db.get Note", false, func(_e2 *eff.Env) (rt.Maybe[Note__Note], error) {
+					return db.GetRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Note__Note, p.Id)
+				}), func(found rt.Maybe[Note__Note]) eff.Task[Note__Note] {
+					if found.Ok {
+						row := found.Val
+						return eff.Pure(row)
+					}
+					return eff.NotFound[Note__Note]()
+				})
+			}
+			return eff.Call("Db.getMine Note", false, func(_e3 *eff.Env) (Note__Note, error) {
+				return db.GetMineRow(_e3.Ctx, _e3.Store.(db.Store), db.TxOf(_e3), table__Note__Note, p.Id)
+			})
+		}(), func(n Note__Note) eff.Task[rt.Nav] {
+			return eff.Bind(func() eff.Task[struct{}] {
+				switch Mutant {
+				case 13:
+					return eff.Pure(struct{}{})
+				case 14:
+					return eff.Bind(eff.Call("Db.get Note", false, func(_e4 *eff.Env) (rt.Maybe[Note__Note], error) {
+						return db.GetRow(_e4.Ctx, _e4.Store.(db.Store), db.TxOf(_e4), table__Note__Note, n.Id)
+					}), func(found rt.Maybe[Note__Note]) eff.Task[struct{}] {
+						if found.Ok {
+							return eff.Call("Db.update Note", true, func(_e5 *eff.Env) (struct{}, error) {
+								return struct{}{}, db.UpdateRow(_e5.Ctx, _e5.Store.(db.Store), db.TxOf(_e5), table__Note__Note, n.Id, func(x Note__Note) Note__Note {
+									return Note__Note{Id: x.Id, Title: x.Title, Pinned: func() bool {
+										switch Mutant {
+										case 15:
+											return false
+										}
+										return true
+									}(), Owner: x.Owner}
+								}, _e5.Now())
+							})
 						}
-						return true
-					}(), Owner: x.Owner}
-				}, _e3.Now())
-			}), func(_ struct{}) eff.Task[rt.Nav] {
+						return eff.NotFound[struct{}]()
+					})
+				}
+				return eff.Call("Db.updateMine Note", true, func(_e6 *eff.Env) (struct{}, error) {
+					return struct{}{}, db.UpdateMineRow(_e6.Ctx, _e6.Store.(db.Store), db.TxOf(_e6), table__Note__Note, n.Id, func(x Note__Note) Note__Note {
+						return Note__Note{Id: x.Id, Title: x.Title, Pinned: func() bool {
+							switch Mutant {
+							case 15:
+								return false
+							}
+							return true
+						}(), Owner: x.Owner}
+					}, _e6.Now())
+				})
+			}(), func(_ struct{}) eff.Task[rt.Nav] {
 				return eff.Pure(rt.Rerender())
 			})
 		})
@@ -151,8 +208,21 @@ func Notes__update(msg Notes__Msg, model Notes__Model, session Notes__Session) e
 }
 
 func Notes__wipe(_m1 string) eff.Task[struct{}] {
-	return eff.Call("Db.deleteMine Note", true, func(_e1 *eff.Env) (struct{}, error) {
-		return struct{}{}, db.DeleteMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, _m1)
+	switch Mutant {
+	case 16:
+		return eff.Bind(eff.Call("Db.get Note", false, func(_e1 *eff.Env) (rt.Maybe[Note__Note], error) {
+			return db.GetRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, _m1)
+		}), func(found rt.Maybe[Note__Note]) eff.Task[struct{}] {
+			if found.Ok {
+				return eff.Call("Db.delete Note", true, func(_e2 *eff.Env) (struct{}, error) {
+					return struct{}{}, db.DeleteRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Note__Note, _m1)
+				})
+			}
+			return eff.NotFound[struct{}]()
+		})
+	}
+	return eff.Call("Db.deleteMine Note", true, func(_e3 *eff.Env) (struct{}, error) {
+		return struct{}{}, db.DeleteMineRow(_e3.Ctx, _e3.Store.(db.Store), db.TxOf(_e3), table__Note__Note, _m1)
 	})
 }
 

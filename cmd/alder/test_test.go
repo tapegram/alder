@@ -493,12 +493,13 @@ test "get a page that is not found" = {
 }
 
 // TestTest_Rules runs the rules-ok corpus app (M11, declared rules: an `@owner` table, the five
-// scoped operations, `requires user, role R`) under `alder test`:
+// scoped operations, `requires user, role R`) under `alder test` and `alder test --mutate`:
 // a stranger's Test.open of my todo is PageMissing; a Reader on an Author page is PageMissing; a
 // visitor is Redirected to the login page; a stale page's click on another's row is not found
 // and changes nothing (a write before it in the Task undone: RF2); a helper using Db.mine from a
 // test without Test.login fails with "Db.mine Todo: no signed-in user"; a demoted admin still
-// passes the cookie's role check while the re-read idiom's page is not found (RF3).
+// passes the cookie's role check while the re-read idiom's page is not found (RF3). Every
+// mutant, `scope dropped` and `role dropped` among them, is killed.
 func TestTest_Rules(t *testing.T) {
 	needGoTool(t)
 	src, err := filepath.Abs("../../testdata/corpus/rules-ok")
@@ -525,6 +526,25 @@ func TestTest_Rules(t *testing.T) {
 	}
 	if code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, stdout, stderr)
+	}
+
+	code, stdout, stderr = runTest(t, "rules-ok", "--mutate")
+	if code != 0 || !strings.HasSuffix(stdout, "26 passed, 0 failed\n31 mutants: 31 killed, 0 survived  (score 1.00)\n") {
+		t.Fatalf("--mutate: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	// without the tests that look at a stranger or a role, exactly those mutants survive
+	code, stdout, _ = runTest(t, "rules-ok", "--mutate", "-run", `^(?:User|Todo |Admin\.Index "(an author|a visitor)|Admin\.Users "(an admin|a visitor)|Todos\.Index "(a visitor|adding|toggling|renaming|removing|duplicating)|Todos\.Show "(the owner|a visitor))`)
+	for _, want := range []string{
+		"  Admin.Index   requires:6   role dropped       requires user, role Author | Admin → requires user\n",
+		"  Admin.Users   requires:7   role dropped       requires user, role Admin → requires user\n",
+		"  Todos.Index   update:39    scope dropped      Db.updateMine Todo p.id (\\t -> { t | done: not t.done }) → Db.update Todo p.id (\\t -> { t | done: not t.done }), not found when missing\n",
+		"  Todos.Index   update:43    scope dropped      Db.getMine Todo p.id → Db.get Todo p.id, Nothing → Query.notFound\n",
+		"  Todos.Index   update:48    scope dropped      Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing\n",
+		"  Todos.Show    load:12      scope dropped      Db.getMine Todo params.id → Db.get Todo params.id, Nothing → Query.notFound\n",
+	} {
+		if code != 0 || !strings.Contains(stdout, want) {
+			t.Errorf("exit %d: missing survivor %q in\n%s", code, want, stdout)
+		}
 	}
 
 	// the helper form outside Test.run: the test fails with the operation's text

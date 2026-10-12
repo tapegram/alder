@@ -1,0 +1,17 @@
+module Show
+
+import Item
+
+page "/items/{id}" { id: Item.ItemId } requires user
+
+type Model = { item: Item }
+
+-- a Query: the replacement is Db.get matched, Nothing → Query.notFound
+load : Params -> Session -> Query Model
+load params session = {
+  let item <- Db.getMine Item params.id
+  Query.succeed { item: item }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{model.item.title}</p>

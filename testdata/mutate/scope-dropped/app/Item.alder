@@ -1,0 +1,11 @@
+module Item
+
+import User
+
+type ItemId = brand Text
+
+table Item {
+  id: ItemId @id,
+  title: Text,
+  owner: User.UserId @ref User @owner,
+}
