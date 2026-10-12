@@ -357,10 +357,21 @@ def run_test(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = 600)
 MUTATE_TIMEOUT = 1800   # seconds for `alder test --mutate`: one run of the suite per mutant
 
 
+SURVIVOR_KEYS = ("module", "file", "decl", "line", "col", "kind", "before", "after")
+
+# The lines `alder test --mutate` ends with when no test ran, so nothing could kill a mutant.
+NO_TESTS_LINES = ("no tests: nothing can kill a mutant", "no test matches -run: nothing can kill a mutant")
+
+
+def no_tests_record():
+    """The mutation record of a passing round that has no tests: a measured outcome, score 0."""
+    return {"no_tests": True, "score": 0.0, "killed": 0, "survived": 0, "suppressed": 0, "skipped": 0, "survivors": []}
+
+
 def parse_mutation(stdout: str):
     """The mutation record in `alder test --mutate --json`'s stdout: {score, killed, survived,
-    suppressed, skipped, survivors: [{module, decl, line, kind}]} from its {"mutants": […]} object
-    and its final {"score", …} one; None when either is missing."""
+    suppressed, skipped, survivors: [{module, file, decl, line, col, kind, before, after}]} from
+    its {"mutants": […]} object and its final {"score", …} one; None when either is missing."""
     mutants, score = None, None
     for line in stdout.splitlines():
         d = _json_or_none(line)
@@ -372,15 +383,15 @@ def parse_mutation(stdout: str):
         return None
     return {"score": score["score"], "killed": score["killed"], "survived": score["survived"],
             "suppressed": score.get("suppressed", 0), "skipped": score.get("skipped", 0),
-            "survivors": [{"module": m.get("module"), "decl": m.get("decl"), "line": m.get("line"), "kind": m.get("kind")}
-                          for m in mutants if not m.get("killed")]}
+            "survivors": [{k: m.get(k) for k in SURVIVOR_KEYS} for m in mutants if not m.get("killed")]}
 
 
 def run_mutate(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = MUTATE_TIMEOUT):
     """`alder test --mutate --json <round_dir>` in round_dir (run_proc), after the round's tests
-    passed. Returns (record, stderr, stdout): record is parse_mutation's, or {"error": reason} when
-    the run did not report a score (a timeout, a binary that cannot start, an exit other than 0, a
-    report without the score); never raises."""
+    passed. Returns (record, stderr, stdout): record is parse_mutation's, no_tests_record() when
+    the run says no test ran (a measured outcome, score 0), or {"error": reason} when the run did
+    not report a score (a timeout, a binary that cannot start, an exit other than 0, a report
+    without the score); never raises."""
     rd = round_dir.resolve()
     try:
         p = run_proc([str(pathlib.Path(alder).resolve()), "test", "--mutate", "--json", str(rd)], timeout, cwd=rd)
@@ -391,6 +402,8 @@ def run_mutate(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = MU
         msg = f"{alder}: {e}"
         return {"error": msg}, msg, ""
     rec = parse_mutation(p.stdout)
+    if p.returncode == 0 and rec is None and any(l.strip() in NO_TESTS_LINES for l in (p.stdout + "\n" + p.stderr).splitlines()):
+        return no_tests_record(), p.stderr, p.stdout
     if p.returncode != 0 or rec is None:
         why = (p.stderr.strip().splitlines() or [""])[-1] or "no score in its report"
         return {"error": f"alder test --mutate exited {p.returncode}: {why}"[:500]}, p.stderr, p.stdout
@@ -813,7 +826,8 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
 
     With `mutate` (requires `test`; ValueError otherwise), the round whose tests passed also runs
     `alder test --mutate --json` (run_mutate): `summary["mutation"]` (and the round's "mutation")
-    is {score, killed, survived, suppressed, skipped, survivors: [{module, decl, line, kind}]}, or
+    is {score, killed, survived, suppressed, skipped, survivors: [{module, file, decl, line, col,
+    kind, before, after}]}, {"no_tests": true, "score": 0, …} when the round has no tests, or
     {"error": reason} with its output in round<N>/mutate.stderr.txt. It is a measurement: it never
     reaches a prompt and never changes `outcome`.
 

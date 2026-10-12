@@ -17,7 +17,8 @@ program, or `— (skipped: reason)`; a `Condition` column (first) when any summa
 Without those fields the table is as before. Several EXP_DIRs make one table.
 
 M9: a `Mut` column (after `Hidden`, before `Result`) when any summary has `mutation` (run with
-`--mutate`): `k/n` mutants killed of those that ran, or `— (error)` when the mutation run failed;
+`--mutate`): `k/n` mutants killed of those that ran, `0 (no tests)` when the round had no tests,
+or `— (error)` when the mutation run failed;
 `—` for a row without one. Without it the table is as before (E5–E8 regenerate unchanged)."""
 import json, pathlib, sys
 
@@ -62,6 +63,8 @@ def hidden_cell(h):
 def mutation_cell(m):
     if "error" in m:
         return "— (error)"
+    if m.get("no_tests"):
+        return "0 (no tests)"
     return f"{m['killed']}/{m['killed'] + m['survived']}"
 
 

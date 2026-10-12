@@ -1500,7 +1500,8 @@ class ReportE7Tests(unittest.TestCase):
 MUTANTS = (json.dumps({"mutants": [
     {"id": 1, "module": "Todo", "decl": "Todo", "line": 12, "kind": "default changed", "before": "done = False", "after": "done = True",
      "killed": True, "by": "Todos.Index \"Toggle flips done\"", "note": "", "tables": "ensure"},
-    {"id": 2, "module": "Todos.Index", "decl": "load", "line": 19, "kind": "orderBy reversed", "before": "a", "after": "b",
+    {"id": 2, "module": "Todos.Index", "file": "app/Todos/Index.alder", "decl": "load", "line": 19, "col": 8,
+     "kind": "orderBy reversed", "before": "a", "after": "b",
      "killed": False, "by": "", "note": ""}]}) + "\n"
     + json.dumps({"score": 0.5, "killed": 1, "survived": 1, "suppressed": 2, "skipped": 3}) + "\n")
 
@@ -1545,7 +1546,8 @@ class MutateTests(unittest.TestCase):
         self.assertEqual(s["outcome"], "pass")
         self.assertEqual(s["harness"], {"build": True, "retries": 1, "test": True, "mutate": True})
         want = {"score": 0.5, "killed": 1, "survived": 1, "suppressed": 2, "skipped": 3,
-                "survivors": [{"module": "Todos.Index", "decl": "load", "line": 19, "kind": "orderBy reversed"}]}
+                "survivors": [{"module": "Todos.Index", "file": "app/Todos/Index.alder", "decl": "load", "line": 19, "col": 8,
+                               "kind": "orderBy reversed", "before": "a", "after": "b"}]}
         self.assertEqual(s["mutation"], want)
         self.assertEqual(s["rounds"][0]["mutation"], want)
         rd = (self.exp / "runs/fake/t/round0").resolve()
@@ -1572,6 +1574,18 @@ class MutateTests(unittest.TestCase):
         self.assertEqual(s["outcome"], "fail")
         self.assertNotIn("mutation", s)
         self.assertNotIn("--mutate", alder.calls.read_text())
+
+    def test_no_tests_is_an_outcome(self):
+        """A passing round without tests measures score 0 (no_tests), not an error."""
+        for line in rl.NO_TESTS_LINES:
+            shutil.rmtree(self.exp / "runs", ignore_errors=True)
+            alder = mutate_stub(self.tmp, mutate_out=line + "\n")
+            s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", alder, retries=0, build=True, test=True, mutate=True)
+            self.assertEqual(s["mutation"], rl.no_tests_record())
+            self.assertEqual((s["mutation"]["no_tests"], s["mutation"]["score"]), (True, 0.0))
+            self.assertEqual(s["outcome"], "pass")
+        import report_loop as rp
+        self.assertEqual(rp.mutation_cell(rl.no_tests_record()), "0 (no tests)")
 
     def test_parse_mutation(self):
         self.assertIsNone(rl.parse_mutation(PASS2))
