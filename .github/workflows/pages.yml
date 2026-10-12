@@ -1,0 +1,45 @@
+# The docs site (book/site/build.py) on GitHub Pages: built from the book at each release tag,
+# and on demand (Actions -> pages -> Run workflow). Pages must be enabled once with "Source:
+# GitHub Actions" (Settings -> Pages). While the repository is private the site is reachable
+# only by people with access to it (and Pages on a private repository needs a paid plan).
+name: pages
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: test the site builder
+        run: python3 book/site/test_site.py
+      - name: build site/
+        run: python3 book/site/build.py
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
