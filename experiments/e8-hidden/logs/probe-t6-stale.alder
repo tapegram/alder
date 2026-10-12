@@ -1,0 +1,18 @@
+-- Probe (E8 findings §2): the hidden T6 stale-page test, ending in the answer itself. Appended to a copy of
+-- <run>/round<N>/hidden/app/Hidden.alder and run with `alder test -run probe`; in all five failing cells it reports `left: Rerendered`.
+test "probe stale page of an order paid meanwhile is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let id <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: id })
+  let _ <- Db.update Order id (\o -> { o | status: Paid })
+  let r <- Test.submit (Orders.Show.AddLine { product: pen }) { quantity: Int.Positive 1 }
+  let lines <- Db.from Line |> Db.count
+  let refused = match r.answer {
+    PageMissing -> True,
+    RequestFailed _ -> True,
+    _ -> False,
+  }
+  Task.succeed (r.answer == PageMissing)
+}
