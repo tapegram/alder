@@ -393,6 +393,53 @@ Those are fewer and change less, and a small suite in a real browser,
 planned for a later milestone, is to cover them; the many tests stay in
 memory.
 
+### Tests are measured by mutants, not line coverage **(decided M9; tested: both examples)**
+
+`alder test --mutate` (chapter 10, "Mutation testing") measures a suite
+by how many deliberately broken copies of the app it catches. Three
+choices shaped it.
+
+**A mutation score, not line coverage.** Line coverage counts the lines
+that ran. In Alder nearly every line runs: the checker makes each
+`match` complete, and one browser test that opens a page runs all of
+its `load` and `view`. A line that runs is not a line that is checked.
+The to-do app's nine tests ran every line of `Todos.Index.load` and
+still let its order be reversed, and no test opened the todo page
+without logging in. The score counts what the tests would catch, and
+each survivor is the test that is missing, written out as module, line
+and change. That is feedback a person or an agent can act on at once,
+where a coverage percentage only says "more". On the examples it found
+real gaps: 15 survivors in the to-do app (9 new tests, score 0.55 →
+1.00) and 17 in the blog (10 new tests, 0.70 → 0.95, the 3 left
+equivalent).
+
+**A curated set of operators, not every possible edit.** Generic
+mutation tools change any operator or constant anywhere, and produce
+thousands of mutants, many of them programs that do not compile, crash
+at once, or mean nothing in particular. Alder's eighteen operators are
+each a bug that a server-rendered app can have and a user would notice:
+a `requires` missing, an ownership check dropped, a write that does
+nothing, a filter or an order wrong, a redirect that is a re-render, a
+delete rule changed. Each works on the typed IR and makes a well-typed
+mutant by construction, so all of them compile into one test build.
+Each is named for what it breaks, so a survivor's line reads as a
+sentence about the app. The to-do app has 33, the blog 56; once the
+test build is made, a run of either takes about a second.
+
+**No annotation to silence a survivor.** Many tools let a comment mark
+a mutant as accepted. Alder has none. The compiler refuses the mutants
+it can prove equivalent (a few structural rules, chapter 10, "What is
+never a mutant"); every other survivor stays in the report. An
+annotation would make the score whatever the annotations say, and an
+agent under pressure to raise a score would annotate rather than test.
+A legitimate survivor, like the blog's three equivalent ones, is
+explained where a reader looks (`examples/blog/README.md`) and kept
+visible; `--min` is then set to the score the app has reached.
+
+`--mutate` is opt-in, and plain `alder test` is unchanged: it costs one
+more build and a run of the suite per mutant, which is for CI and for
+the moment a feature's tests are written, not for every edit.
+
 ## Experiments
 
 Each experiment has a directory under `experiments/` with its prompt,

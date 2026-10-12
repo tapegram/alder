@@ -69,6 +69,7 @@ alder run            build and run with the dev database, reloading on change
 alder eval <expr>    evaluate an expression against the app: value : Type
 alder repl           a session: let, evaluate, :type, :run, :run!, :html, :reload
 alder test           run every `test`, each against a fresh database: ok/FAIL
+                     (--mutate: and once per mutant: the mutation score)
 alder migrate        write the next migration after a change to the tables
 alder fmt            rewrite every file in canonical format
 alder dump <path>    print a file's tokens, AST, or an app's IR
@@ -624,7 +625,7 @@ Chapter 13, "The REPL", shows how it works.
 
 ### `alder test`
 
-`alder test [dir] [-run re] [-timeout d] [--json]` runs every `test`
+`alder test [dir] [-run re] [-timeout d] [--json] [--mutate [--min R]]` runs every `test`
 declaration of the app in `dir` (default `.`) and prints one line per
 test as it finishes, `ok   M "name"` or `FAIL M "name"` with the reasons
 indented under it, then `N passed, M failed`. Chapter 10 explains the
@@ -640,9 +641,10 @@ ok   Todos.Index "Toggle by another user is not found"
 - `-run re` runs only the tests whose `Module "name"` matches the
   regular expression `re` (Go's syntax). A pattern that matches nothing
   runs nothing: `0 passed, 0 failed`, exit 0.
-- `-timeout d` bounds the whole run (a Go duration; default `5m`). The
-  test running when the time is up fails with `error: timed out after d`
-  and no later test runs. A test still running after ten seconds is
+- `-timeout d` bounds the whole run (a Go duration; default `5m`; with
+  `--mutate`, default `10s`, it bounds each run, the tests' own and each
+  mutant's). The test running when the time is up fails with `error:
+  timed out after d` and no later test runs. A test still running after ten seconds is
   announced on standard error: `still running M "name" (10s)`.
 - `--json` prints one JSON object per test on standard output, and
   nothing else; the summary line goes to standard error. An object has
@@ -660,7 +662,30 @@ ok   Todos.Index "Toggle by another user is not found"
   `{"error":"<message>"}`, the message also on standard error. Only a
   usage error (an unknown flag) prints no JSON.
 
-Exit codes: 0 when every selected test passed; 1 when a test failed,
+- `--mutate` measures the tests (chapter 10, "Mutation testing"): when
+  the selected tests pass, it runs them again once per mutant of the app,
+  each a small well-typed change the compiler makes (a `requires`
+  dropped, a write replaced, an order reversed), and adds to the report
+  `N mutants: K killed, S survived  (score X.XX)` and, under
+  `survived:`, one line per survivor: module, `declaration:line`,
+  operator, and the code before `→` after. A mutant is killed by the
+  first test that fails against it, crashes or runs out of time. When a
+  selected test fails, the report ends with `tests fail: fix them before
+  measuring mutants` (exit 1); with no test selected, `no tests: nothing
+  can kill a mutant` (exit 0, or 1 with `--min`). The build is `build/<app>/scratch/mutate/`, beside
+  the plain test build, which it never replaces. With `--json`, after
+  the per-test objects come `{"mutants":[…]}` (each with `id`, `module`,
+  `decl`, `line`, `kind`, `before`, `after`, `killed`, `by`, `note`, and
+  `"tables":"ensure"` for a schema mutant) and `{"score":…, "killed":…,
+  "survived":…, "suppressed":…, "skipped":…}`; the refusals go to
+  standard error there.
+- `--min R` (with `--mutate` only; `R` from 0 to 1, such as `0.8`) exits
+  1 when the exact score is below `R`, after the same report. Without
+  it, `--mutate`'s exit code is the tests'. `--min` without `--mutate`,
+  or an `R` outside 0 to 1, is a usage error (exit 2).
+
+Exit codes: 0 when every selected test passed; 1 when a test failed
+(with `--mutate`, also when the score is below `--min`),
 timed out (`-timeout`) or crashed the test program (a stack overflow,
 say: that test is reported as a `FAIL` with the crash's first lines and
 no later test runs), when the app has a check error or a typed hole (the

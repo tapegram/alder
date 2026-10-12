@@ -3011,10 +3011,218 @@ the linker leaves their code out: `go tool nm` on a built app lists no
 names in a string rather than a map for the same reason: a map would be
 built when the binary starts.)
 
+### Mutation testing
+
+Chapter 10, section 11, shows `alder test --mutate` from the outside.
+Inside, it is three pieces: `internal/mutate` decides the mutants, the
+emitter compiles all of them into one test program, and `rt/testing`
+runs the suite once per mutant.
+
+**Which mutants.** `mutate.Collect(p *ir.Program)` walks the typed IR
+(section 6) and returns the mutants and the refused ones. A mutant is a
+`mutate.Mutant`. It has:
+
+- its `ID`;
+- where it is: `Module`, `Decl` and `Line`;
+- its `Kind`, the operator's name;
+- `Before` and `After`, the code as one line each, printed back from
+  the IR by `internal/mutate/show.go` and shortened at 80 columns;
+- the change itself.
+
+For most operators the change is a pair of IR nodes. `Node` is the node
+to replace (an `If`, an `Op`, a `DbSelect`, the effect of a `let … <-`
+step). `Replacement` is a new node of the same type, built from the
+existing node kinds: a `DbSelect` without one `where`, an `If` whose
+condition is wrapped in `not`, an `EffPure` of a placeholder for a
+write. Since the replacement has the node's type, every mutant is
+well-typed, and the checker's work is not undone. `requires dropped`
+names the `Page` instead, and the schema operators carry `Table`, a
+clone of the table with the change.
+
+To say where a survivor is, the lowerer records each mutated node's
+source position (`ir.Pos`, a line and a column). The IR dump leaves
+positions out, so its goldens did not change. Collect visits the
+modules in the program's order (imports first, otherwise alphabetical).
+In each module it takes a page's `requires` first, then the tables
+field by field, then each value's body in pre-order, numbering from 1.
+It never enters a `test`, a `fake`, a `view`, a component, or a value
+whose result has `Html` in it. A change it refuses is a
+`mutate.Suppressed` with a `Category` (`equivalent` or `skipped`) and a
+`Why`.
+
+**Mutant schemata: every mutant in one build.** Building the app once
+per mutant would cost a `go build` each, seconds times 33. Instead,
+`gen.Options{Tests: true, Mutate: true}` (which only `alder test
+--mutate` sets) makes the emitter compile each mutated node with its
+replacements in front of it, behind a switch on one package variable.
+This technique is called *mutant schemata*. `Todo.countOpen` in the
+plain test build (`build/todos/scratch/test/Todo_alder.go`) is
+
+```go
+func Todo__countOpen(todos []Todo__Todo) int64 {
+	return std.ListLength(std.ListFilter(func(t Todo__Todo) bool {
+		return !t.Done
+	}, todos))
+}
+```
+
+In the mutate build (`build/todos/scratch/mutate/Todo_alder.go`), where
+mutant 14 is `not dropped` on `not t.done`, it is
+
+```go
+func Todo__countOpen(todos []Todo__Todo) int64 {
+	return std.ListLength(std.ListFilter(func(t Todo__Todo) bool {
+		switch Mutant {
+		case 14:
+			return t.Done
+		}
+		return !t.Done
+	}, todos))
+}
+```
+
+`Mutant` is 0 in a normal run, so the code runs as written. Set to 14,
+the filter keeps the done todos instead. This is the mutant that the
+strengthened "countOpen ignores done todos" kills: its three todos then
+give 1, not 2.
+
+The emitter switches a node in three places, and all three do nothing
+when `Mutate` is unset:
+
+- where a node is emitted as Go statements that return its value (the
+  form above);
+- where it is a Go expression (the same switch inside `func() T { …
+  }()`);
+- where it is an effect in a task's step (the closure's type is
+  `eff.Task[A]`).
+
+While it emits the original after the switch, it marks the node so that
+it is not wrapped again. A node that the IR shares between places is
+switched in each. A table field's default, for example, is one node in
+every record literal that leaves the field out, tests' literals
+included, which is what makes a `default changed` mutant reach every
+insert.
+
+`requires dropped` is in the route, not in a function body. Before the
+check that sends a visitor to log in, `Todos.Index`'s route
+(`routes__alder.go`) has
+
+```go
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok && Mutant == 15 {
+		app.User = rt.Just("mutant")
+	}
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, keep)
+		return model, Todos__Index__Session{}, &r
+	}
+```
+
+so under mutant 15 a session without a user gets the placeholder user
+`"mutant"`, and the check that follows lets the request through.
+
+One more change: in a mutate build every constant is a function. A plain
+build computes a constant once, as a Go package variable. The blog has
+
+```go
+var Posts__Index__perPage int64 = 10
+```
+
+A package variable is computed when the program starts, before any
+mutant is switched on, so a mutant inside it would never be seen. In
+the mutate build it is
+
+```go
+func Posts__Index__perPage() int64 {
+	return 10
+}
+```
+
+and its uses call `Posts__Index__perPage()`.
+
+**The table of mutants.** `app__alder.go` also gets
+
+```go
+// Mutant is the mutant the running suite switches on (alder test --mutate): an id of Mutants, 0 for none.
+var Mutant int
+```
+
+and `Mutants`, one `rtesting.Mutant` per mutant in id order, such as
+
+```go
+	{ID: 7, Module: "Todo", Decl: "Todo", Kind: "cascade ↔ restrict", Line: 14, Before: "owner @ref User @restrict", After: "owner @ref User @cascade", Tables: []db.TableDesc{table__User__User.Desc(), {Name: "Todo.Todo", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "title", Type: db.CText}, {Name: "done", Type: db.CBool}, {Name: "due", Type: db.CDate, Nullable: true}, {Name: "owner", Type: db.CText, Ref: "User.User", OnDelete: db.Cascade}, {Name: "created", Type: db.CTime}}, ID: "id", Created: "created"}}},
+	{ID: 17, Module: "Todos.Index", Decl: "load", Kind: "orderBy reversed", Line: 19, Before: "Db.orderBy Todo.created.desc", After: "Db.orderBy Todo.created.asc"},
+```
+
+A schema mutant carries `Tables`: the app's table descriptors, with its
+own table's descriptor rendered from the mutant's clone (here `owner`'s
+`OnDelete: db.Cascade`). The last line has the refused mutants' counts:
+
+```go
+// MutantsSuppressed and MutantsSkipped count the mutants refused as equivalent and as not applicable.
+var MutantsSuppressed, MutantsSkipped = 2, 8
+```
+
+The test program's `main` registers the table before running the tests:
+
+```go
+rtesting.SetMutants(&app.Mutant, app.Mutants, app.MutantsSuppressed, app.MutantsSkipped)
+```
+
+A production build has none of this. `TestGen_Mutate`
+(`internal/gen/gen_test.go`) builds every mutation fixture, both
+examples and both corpus apps with `Mutate`, and vets each. It checks
+that every mutant has its switch and that no production build mentions
+`Mutant`.
+
+**How a kill is decided.** `rtesting.Main` with `--mutate` first runs
+the suite as usual. If a test fails, it prints `tests fail: fix them
+before measuring mutants` and stops. Otherwise `runMutant`
+(`rt/testing/mutate.go`) does this for each mutant in turn:
+
+1. It sets `Mutant` to the mutant's id (and back to 0 afterwards).
+2. For a schema mutant, it replaces the tables each test's database is
+   made from with the mutant's `Tables`, made by `db.Ensure`, and drops
+   the migrations, so the changed rule is what the test meets (the JSON
+   says `"tables":"ensure"`).
+3. It starts one timer for the mutant, `-timeout` (10 s by default).
+4. It runs the selected tests in order, each in a goroutine with its
+   own fresh database, as plain `alder test` does. The first test that
+   fails kills the mutant, and is its `by`. A test that panics (a Go
+   runtime error, say) kills it with the note `crashed`. When the timer
+   fires first, the running test kills it with the note `timed out`. If
+   every test passes, the mutant survived.
+
+The score is the number of killed mutants divided by the number of
+mutants that ran (1 when none ran), and `--min` compares that exact
+number.
+
+**When a mutant ends the program.** Some mutants cannot be caught in a
+goroutine. A stack overflow is a Go fatal error, which no `recover`
+sees, and a test that loops for ever cannot be stopped from outside its
+goroutine. So `alder test` runs the program with two files in
+`build/<app>/scratch/mutate/`:
+
+- Before each test, the program writes `#id`, the module and the test's
+  name to the status file.
+- After each mutant, it appends one JSON line, the mutant's outcome, to
+  `mutants.log` (`ALDER_TEST_MUTATE_LOG`).
+
+A timed-out mutant is logged, and then the program exits with code 3
+(`rtesting.ExitMutantTimedOut`). If instead the program dies while the
+status file names a mutant, `alder test` logs that mutant as killed,
+`crashed`, by the test the status names. Either way `alder test` runs
+the program again with `ALDER_TEST_MUTATE_FROM` set to the next id,
+which skips the suite's own run and starts there. The run that reaches
+the last mutant reads the log and prints the whole report. A crash in
+the suite's own run is reported as plain `alder test` reports one,
+followed by `tests fail: fix them before measuring mutants`.
+
 ### What is still to come
 
 M4a added `alder eval` and the book verifier, M4b `alder test`, M4c
-the REPL, M5b migrations, M5c fakes and M5e the browser (above). See the design spec,
+the REPL, M5b migrations, M5c fakes, M5e the browser and M9 mutation
+testing (above). See the design spec,
 [`docs/superpowers/specs/2026-10-09-m4-test-repl-design.md`](../docs/superpowers/specs/2026-10-09-m4-test-repl-design.md),
 "Milestones".
 

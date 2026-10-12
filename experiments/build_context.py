@@ -37,7 +37,7 @@ HUMAN_SECTIONS = {
     "08": ["How tables are stored"],
     "10": ["2. Running the tests", "6. What a trace says",
            "7. Choosing tests, and output for programs", "10. How the browser works",
-           "11. What cannot be tested yet"],
+           "12. What cannot be tested yet"],
 }
 
 # The `### ` subsections of a dropped section that --reference keeps, by chapter and `## `
@@ -60,9 +60,17 @@ KEEP_SUBSECTIONS = {
 # due date, two messages posting one form), the bad-input example, the refused click and the ownership narrative, the
 # refused selector, and the comparison with a view (with a Doc's failure report and "when to use
 # which"), and the case for testing through the browser at all. Chapter 9's step and query signatures repeat chapter 10's.
+# Chapter 10's "11. Mutation testing" keeps the command and its report (the to-do app's real
+# survivors, before and after), the operators, the rule with its two worked survivors, the
+# legitimate survivors (the logout redirect, the equivalent mutants) and `--min`; it drops why a
+# mutation score (the case against line coverage), what is never a mutant (the suppression
+# rules: an agent sees only their counts), `-run`/`-timeout`/`--json` (as section 7 is dropped)
+# and how ids and lines change, all for a human reader.
 DROP_SUBSECTIONS = {
     "09": {"Test": ["Browser steps and queries"]},
-    "10": {"9. Testing through the browser": ["Why through the browser", "Step by step", "`Test.get` and `Test.open`: requesting a page",
+    "10": {"11. Mutation testing": ["Why a mutation score", "What is never a mutant", "`-run`, `-timeout` and `--json`",
+                                    "Ids and lines change with the code"],
+           "9. Testing through the browser": ["Why through the browser", "Step by step", "`Test.get` and `Test.open`: requesting a page",
                                               "More forms", "Bad input, an example", "Clicks that fail", "A selector the compiler refuses",
                                               "Comparing a page with its view"]},
 }

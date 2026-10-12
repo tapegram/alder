@@ -246,7 +246,25 @@ class BuildContextTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("\n## 8. Faking a capability\n", out)
         self.assertIn("fake Stripe {", out)
-        self.assertNotIn("\n## 11. What cannot be tested yet\n", out)
+        self.assertNotIn("\n## 12. What cannot be tested yet\n", out)
+
+    def test_real_reference_keeps_mutation_testing(self):
+        # agents run `alder test --mutate` and read its survivors: the command, the report's
+        # shape, the operators and the rule stay; the case for a mutation score and the
+        # suppression rules go
+        bc.HUMAN_SECTIONS = self.saved
+        bc.DROP_SUBSECTIONS = self.saved_drop
+        code, out, _ = self.run_main("--reference", "--chapters", "10", "--book", str(bc.BOOK))
+        self.assertEqual(code, 0)
+        self.assertIn("\n## 11. Mutation testing\n", out)
+        for kept in ("alder test --mutate [--min R] [--json] [-run re] [-timeout d] [dir]",
+                     "33 mutants: 18 killed, 15 survived  (score 0.55)", "| `requires dropped` |",
+                     "### A surviving mutant is a test you have not written", "test \"a visitor is sent to log in from a todo\"",
+                     "### Survivors that are not gaps", "### `--min` in CI"):
+            self.assertIn(kept, out)
+        for gone in ("### Why a mutation score", "### What is never a mutant", "line coverage", '"tables":"ensure"',
+                     "### Ids and lines change with the code"):
+            self.assertNotIn(gone, out)
 
     def test_real_reference_keeps_browser_steps(self):
         # agents write browser tests: chapter 10's "Testing through the browser" (the step table,
