@@ -440,6 +440,41 @@ visible; `--min` is then set to the score the app has reached.
 more build and a run of the suite per mutant, which is for CI and for
 the moment a feature's tests are written, not for every edit.
 
+### The runtime is embedded, not fetched **(decided M10; tested: the out-of-tree build)**
+
+Generated code needs the runtime's source to compile (chapter 13,
+section 8, "The runtime travels with the compiler"). There were two ways
+to get it to a machine that has no checkout of this repository: publish
+the runtime as a Go module that `go build` downloads, or carry it inside
+the `alder` binary and write it next to each app. Alder carries it.
+
+**The runtime always matches the compiler.** The generated code and the
+runtime are two halves of one program: the emitter calls `rt` functions
+by name, with the arguments the runtime of the same commit expects. A
+downloaded runtime would be some version a `go.mod` names, and an `alder`
+binary one or two releases older or newer than it would generate calls
+that do not compile, or that compile and mean something else. Written
+out by the binary that generated the code, the runtime is the one the
+code was generated for, every time; a build directory left by another
+version is refreshed, not mixed.
+
+**Nothing depends on where the repository lives.** A fetched module is
+named by its download address, and that address would be written into
+every generated file. The embedded runtime keeps the name `alder`, which
+no proxy is asked for, and the generated `go.mod` says `replace alder =>
+./rt`. The repository can be private, renamed or moved without touching
+an app.
+
+**A build works offline.** Only the runtime's own dependency,
+`modernc.org/sqlite`, comes from Go's module proxy, once per machine
+(chapter 11, "The runtime in `build/<app>/rt/`"); after that, nothing
+is downloaded.
+
+The cost is small: the binary grows by about 0.4 MB, and each build
+directory holds a copy of the runtime's source (about 440 KB on disk).
+Go itself stays a prerequisite: `alder build` and `alder test` run `go
+build`, and adapters are Go, so there is no Alder without Go installed.
+
 ## Experiments
 
 Each experiment has a directory under `experiments/` with its prompt,

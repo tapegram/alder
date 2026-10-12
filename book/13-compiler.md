@@ -2738,7 +2738,7 @@ and `Doc` and `Answer` types of the Prelude that the checker lets only a
 test name (E0003 elsewhere). The queries are ordinary functions of
 `stdlib/Test.alder`, with one extra check: a selector argument written
 as a literal is parsed with the runtime's own selector parser
-(`internal/selector`, shared by the checker and `rt/html`), and a text
+(`rt/selector`, shared by the checker and `rt/html`), and a text
 that does not parse is E0023, at the literal.
 
 **The IR.** Each step lowers to a node of its own (`internal/ir`):
@@ -3004,10 +3004,10 @@ production build of a fixture app using every step has none of
 `Web()`, the routes' `rq.Model = model`, the router's two hooks, left
 unset, and the `Alder-Status` header on a Datastar answer that is a 404
 or a 500, which Datastar's client ignores. `rt/html` imports
-`internal/selector` (for `Select`), so the package is part of every
+`rt/selector` (for `Select`), so the package is part of every
 app's build, but nothing in production calls `Parse` or `Select`, and
 the linker leaves their code out: `go tool nm` on a built app lists no
-`internal/selector` symbol. (The selector package keeps the HTML element
+`rt/selector` symbol. (The selector package keeps the HTML element
 names in a string rather than a map for the same reason: a map would be
 built when the binary starts.)
 
@@ -3282,11 +3282,121 @@ the last mutant reads the log and prints the whole report. A crash in
 the suite's own run is reported as plain `alder test` reports one,
 followed by `tests fail: fix them before measuring mutants`.
 
+### The runtime travels with the compiler
+
+The generated code imports the runtime, so a build needs the runtime's
+source next to it: Go compiles a program from source, its libraries
+included. Until M10 the generated `go.mod` said `replace alder =>
+"/path/to/the/checkout"`, and an app built only where this repository
+was checked out. Now the runtime is inside the `alder` binary, and every
+build writes it out.
+
+**Embedding.** Go can put files into a program while compiling it: a
+`//go:embed` comment above a variable names files of the package's
+directory, and the compiler stores their bytes in the binary, readable at
+run time through the variable (an `embed.FS`, a small read-only file
+system). The standard library's signatures already travel this way
+(`stdlib/embed.go`: `//go:embed *.alder`). The runtime's embed is
+`rt/embed.go`:
+
+```go
+//go:embed core.go nav.go show.go tether.go
+//go:embed datastar/datastar.go datastar/datastar.js datastar/VERSION
+//go:embed db/encode.go db/migrate.go db/sqlite.go db/store.go db/table.go
+…
+//go:embed dist/go.mod.txt dist/go.sum.txt
+var Files embed.FS
+```
+
+Three rules of `go:embed` shape it. A pattern can name only files in the
+package's own directory and below it, never `..`: so the embed is in
+package `rt` itself, the root of the runtime, and the selector parser that
+`rt/html` shares with the checker had to move into the runtime
+(`internal/selector` became `rt/selector`) to be inside. A pattern cannot
+leave files out, and `*.go` would take the tests too: so the list names
+every file. And a pattern cannot reach into another module, which a
+directory holding a file named `go.mod` is: so the runtime module's
+`go.mod` and `go.sum` are stored as `dist/go.mod.txt` and
+`dist/go.sum.txt`. An explicit list can fall behind, so a test holds it
+to the repository: `TestFiles_Complete` (`rt/embed_test.go`) compares the
+embedded files with `git ls-files rt` without the tests, `testdata/` and
+`embed.go` itself, and fails on a file added to `rt/` and not to the list.
+`TestDistModule` checks that the two `dist/` files equal the repository's
+`go.mod` and `go.sum`, and that every module `go.mod` requires is used by a
+package of `rt/`: the repository's dependencies are the runtime's (the
+compiler links SQLite too, but only because the migration generator,
+`internal/migrate`, imports the runtime's `rt/db` for its table types),
+so the copy lists nothing the runtime does not need. The embed costs the
+binary about 0.4 MB.
+
+**Writing it out.** `buildkit.WriteRuntime(dst)`
+(`internal/buildkit/buildkit.go`) writes `Files` into `dst/rt/` as the
+module `alder`: `dist/go.mod.txt` becomes `rt/go.mod`, `dist/go.sum.txt`
+`rt/go.sum`, and every other file keeps its path under `rt/rt/`. The
+doubled `rt` is how Go finds packages: an import path is the module's
+name followed by the package's directory inside the module, so with the
+module `alder` rooted at `build/todos/rt/`, the import `alder/rt/html` is
+the directory `build/todos/rt/rt/html/`. It writes `dst/go.sum` too, a
+copy of the runtime's, since the app module's only outside dependencies
+are the runtime's: with it Go can check every download, and a build
+needs no network once Go's module cache holds `modernc.org/sqlite`.
+`alder build` calls it right after writing the generated files, and the
+scratch runner (`scratch.CompileCheckedWith`) does the same in its own
+directory, so `alder test`, `eval` and the REPL build the same runtime as
+`alder build`.
+
+It refreshes rather than adds. It first walks `dst/rt/` and deletes every
+file the embedded copy does not have (and the directories that leaves
+empty), then writes each file whose content differs, leaving the rest
+alone. Without the deletion, a file of an older runtime would stay and
+be compiled with the new ones: `TestBuild_Todos`
+(`cmd/alder/build_test.go`) plants `build/todos/rt/rt/web/gone.go`, which
+does not compile, and the build succeeds because it is gone.
+`TestWriteRuntime` (`internal/buildkit/buildkit_test.go`) checks the
+rest: stray files and directories removed, an edited file restored, an
+unchanged file not rewritten.
+
+The generated `go.mod` is a constant now (`goMod` in
+`internal/gen/gen.go`):
+
+```
+module app
+
+go 1.27
+
+require alder v0.0.0
+
+replace alder => ./rt
+```
+
+`require alder v0.0.0` says the app needs the module `alder`, at a
+version that does not matter, and `replace` says where its source is,
+relative to the `go.mod`, so the directory can move. A `replace` to a
+directory is final: Go reads the module from there and never asks a
+proxy for it.
+
+**Why the module is still called `alder`.** A Go module's name is
+usually where it can be downloaded, such as `github.com/someone/alder`.
+The runtime is never downloaded, so its name needs to be that of no
+place, and `alder` is that: a name without a dot, which Go would not even
+try to fetch. Had the runtime taken the repository's hosting address as
+its name, every generated file would import it by that address (`import
+"github.com/someone/alder/rt/html"`), and moving the repository would
+change every app's generated code. With `alder` and a `replace`, the
+generated code names nothing outside the build directory.
+
+`TestDist_OutOfTree` (`cmd/alder/dist_test.go`) tests the whole: it
+builds the `alder` binary, copies both examples to a temporary directory
+outside the checkout, and runs `alder check`, `alder build` and `alder
+test` there with a `PATH` that holds only that binary and Go; it then
+checks that no file under `build/` contains the checkout's path and that
+the built app answers `GET /`.
+
 ### What is still to come
 
 M4a added `alder eval` and the book verifier, M4b `alder test`, M4c
-the REPL, M5b migrations, M5c fakes, M5e the browser and M9 mutation
-testing (above). See the design spec,
+the REPL, M5b migrations, M5c fakes, M5e the browser, M9 mutation
+testing and M10 the embedded runtime (above). See the design spec,
 [`docs/superpowers/specs/2026-10-09-m4-test-repl-design.md`](../docs/superpowers/specs/2026-10-09-m4-test-repl-design.md),
 "Milestones".
 
@@ -3309,8 +3419,9 @@ hand, and git ignores it.
 
 `build/todos/` has one Go file per module, named after the module with `.`
 replaced by `__` and `_alder.go` added (`Todos__Index_alder.go` for
-`Todos.Index`), plus two app-wide files and a `go.mod` that points back at
-this repository for `rt`. `app__alder.go` holds the lists of section 8
+`Todos.Index`), plus two app-wide files and a `go.mod` that finds the
+runtime in `rt/` beside it (section 8, "The runtime travels with the
+compiler"). `app__alder.go` holds the lists of section 8
 (`Tables`, `Capabilities`), the `Caps` struct the generated `caps` package fills, `Options`,
 `Serve` (which checks the capabilities, opens the database, creates the
 tables and returns `web.NewRouter(Routes, …)`), `Web` (the router's
@@ -3329,8 +3440,9 @@ ending in `_test.go` is a test, and one whose name ends in `_linux` or
 `_amd64` (before the first `.`) is compiled only on Linux or only on that
 processor. A module named `Foo_test` or `Bar_linux` is a fine Alder module,
 and `Foo_test_alder.go` and `Bar_linux_alder.go` are ordinary files to Go.
-Every Go file starts with `// Code generated by alder; DO NOT EDIT.`, and
-the build runs `go vet` on the package before saying `wrote`. Before
+Every Go file starts with `// Code generated by alder; DO NOT EDIT.`
+(`app__alder.go`'s names the compiler's version too: `// Code generated by
+alder devel+0be85a2f5d31; DO NOT EDIT.`, chapter 11), and the build runs `go vet` on the package before saying `wrote`. Before
 writing, the build deletes the `.go` files in `build/<app>/` that start
 with that line (and `go.mod`), so a module you removed or renamed leaves
 no file behind; files you put there yourself are kept.

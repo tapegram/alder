@@ -9,8 +9,10 @@ the app every time you save a file and reloads the browser. As of M4a,
 verifies this book's Alder blocks: its modules and declarations are
 type-checked, its `eval=` and `error=` expressions are evaluated, and its
 other expressions are parsed. As of M4b, `alder test` runs the app's
-tests. As of M5b, `alder migrate` writes the app's migrations. `fmt`,
-holes beyond W0002 and `query` are planned.
+tests. As of M5b, `alder migrate` writes the app's migrations. As of
+M10, the runtime travels inside the `alder` binary, so a build needs
+only `alder` and Go, and `alder version` says which alder you have.
+`fmt`, holes beyond W0002 and `query` are planned.
 
 ## Project layout
 
@@ -74,6 +76,7 @@ alder migrate        write the next migration after a change to the tables
 alder fmt            rewrite every file in canonical format
 alder dump <path>    print a file's tokens, AST, or an app's IR
 alder explain <id>   explain a diagnostic code
+alder version        print alder's version and the Go it was built with
 ```
 
 ### `alder build`
@@ -98,7 +101,9 @@ part of `dir` once it is made absolute (so `alder build .` inside
    When the app has capabilities, this includes the wiring,
    `build/<app>/caps/caps__alder.go`: a package `caps` whose
    `func Caps() app.Caps` calls each adapter's constructor (chapter 7
-   quotes the blog's).
+   quotes the blog's). It also writes the runtime the generated code
+   imports into `build/<app>/rt/` ("The runtime in `build/<app>/rt/`",
+   below).
 3. Replace `build/<app>/adapters/` with a copy of the whole
    `<dir>/adapters/` tree (every file in every directory: helper
    packages, Go test files and `testdata/` included; a file that is gone
@@ -230,8 +235,8 @@ in flight up to 5 seconds to finish, and exits 0.
 
 `build/<app>/` then holds the generated package (one
 `<Module>_alder.go` per module, `app__alder.go`, `routes__alder.go`,
-`go.mod`), `caps/` (when the app has capabilities), `cmd/main.go`,
-`adapters/`, `static/` and the executable.
+`go.mod`, `go.sum`), `rt/` (the runtime), `caps/` (when the app has
+capabilities), `cmd/main.go`, `adapters/`, `static/` and the executable.
 Chapter 13, section 9, reads them.
 
 ### `alder run`
@@ -810,8 +815,9 @@ any other test.
 ### `alder build --emit`
 
 `alder build --emit` writes the generated Go to `build/<app>/` and vets it,
-and stops there: it copies nothing and builds no executable, so it needs
-no adapters and does not look for them. (It still writes `caps/` for an
+and stops there: it copies nothing of the app's (it writes the runtime,
+`rt/`, which the vet needs) and builds no executable, so it needs no
+adapters and does not look for them. (It still writes `caps/` for an
 app with capabilities, but vets only the app's package, the Go files at
 the top of `build/<app>/`: `caps/` imports adapters it has not copied.) Chapter 13 walks through what it generates and why: see [How the compiler works](13-compiler.md).
 It replaces only the files it generated; anything else in `build/<app>/` is
@@ -839,11 +845,77 @@ tokens means parse errors (they are still printed) and with `--ir` means
 any check error or a hole (the IR is not printed); and 2 on a usage or I/O
 failure, including `--ir` given a file. Chapter 13 reads these dumps.
 
-The generated `go.mod` points at the alder repository, which holds the
-runtime the code imports (`replace alder => "<path>"`). The `alder` binary
-finds the repository it was built from; set `ALDER_ROOT` to the
-repository's path when the binary was built elsewhere or moved, or to use
-another checkout's runtime.
+### The runtime in `build/<app>/rt/`
+
+The generated Go calls a library, the runtime (`alder/rt`,
+`alder/rt/html`, … : chapter 13, section 8), and the generated `go.mod`
+says where it is:
+
+```
+module app
+
+go 1.27
+
+require alder v0.0.0
+
+replace alder => ./rt
+```
+
+`alder` is the runtime's Go module, and `./rt` is `build/<app>/rt/`,
+which every build writes from a copy of the runtime the `alder` binary
+carries inside itself. So a build needs the `alder` binary and Go and
+nothing else: no checkout of Alder's repository, and the runtime always
+matches the compiler that generated the code. `build/<app>/rt/` holds the
+module's `go.mod` and `go.sum` and, under `rt/rt/`, its packages
+(`build/todos/rt/rt/html/html.go` is the `rt/html` of chapter 13: an
+import path is the module's name followed by the package's directory in
+it). `alder test`, `alder eval` and the REPL write the same into their
+own build directories (`build/<app>/scratch/test/rt/`, …).
+
+Every build rewrites the directory: a file that the binary's copy does
+not have is deleted, so a `build/` left by an older alder never mixes two
+runtimes, and a file you edited there is put back. Edit the runtime in the
+repository, never in `build/`. Because the `replace` path is relative, you
+can move or copy `build/<app>/` and build it again there with `go build
+./cmd`.
+
+The runtime needs Go modules from outside: `modernc.org/sqlite`, SQLite
+written in Go, and the few it uses. `build/<app>/go.sum` (and
+`rt/go.sum`) list their checksums. The first build on a machine downloads
+them once, through Go's module proxy, into Go's module cache; every build
+after that is offline (`GOPROXY=off alder build` succeeds).
+
+### `alder version`
+
+```
+$ alder version
+alder devel+0be85a2f5d31 (go 1.27.1)
+```
+
+`alder version` prints which alder this is and the version of Go it was
+built with. The version comes from what the go command records in every
+binary it builds (`runtime/debug.ReadBuildInfo`, read by
+`internal/version`):
+
+- a released binary, or one installed with `go install …@v0.1.0`, gives
+  its module version: `alder v0.1.0 (go 1.27.1)`;
+- one built in a checkout of the repository (`go build ./cmd/alder`, `go
+  install ./cmd/alder`) gives `devel+` and the first twelve hex digits of
+  the commit, with `-dirty` added when the checkout had uncommitted
+  changes, as above;
+- one built with no version control information (`go build
+  -buildvcs=false`, or from a copy of the sources outside git) gives
+  `(devel)`.
+
+The same string heads the generated `app__alder.go`, so a build directory
+says which compiler wrote it:
+
+```go
+// Code generated by alder devel+0be85a2f5d31; DO NOT EDIT.
+```
+
+The other generated files keep the header without a version. An argument
+after `version` is a usage error (exit 2).
 
 ## Diagnostics
 
