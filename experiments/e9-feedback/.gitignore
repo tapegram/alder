@@ -1,1 +1,6 @@
 build/
+alder
+logs/*.log
+*/runs/**/build/
+*/runs/**/adapters/
+*/runs/**/hidden/build/
