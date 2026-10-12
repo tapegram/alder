@@ -15,6 +15,8 @@ list is the sharpest feedback an agent can get about its tests.
 
 ## Decisions recorded (2026-10-12)
 
+- Amended after the Task 1 review (2026-10-12): `not dropped`, `session put dropped`, `arm swapped` per adjacent pair, a union default flips to the next constructor; `condition negated` skipped on a flippable operator; `suppressed` (equivalent) and `skipped` (not applicable) are reported apart.
+
 - **A curated, domain-aware operator set** (user chose A): about fifteen
   operators on typed IR nodes, each producing a well-typed mutant by
   construction, each named by what it breaks. No generic expression
@@ -71,15 +73,17 @@ survived:
 | data | `update field dropped` | `Update` with ≥ 2 fields | one field's update removed |
 | flow | `redirect → rerender` | `Ctor Redirect` of `Nav` | `Rerender` |
 | flow | `reject → rerender` | `Ctor Reject` of `Nav` | `Rerender` |
-| flow | `arm swapped` | `Match` with two arms of the same type and different bodies | the two bodies swapped |
+| flow | `arm swapped` | each adjacent pair of `Match` arms of the same type with different bodies (one mutant per pair) | the two bodies swapped |
 | logic | `condition negated` | `If.Cond` | `not cond` |
 | logic | `operator flipped` | `Op` with `==`/`!=`, `<`/`<=`, `>`/`>=`, `&&`/`\|\|` | the paired operator |
 | logic | `bool flipped` | `Lit` of `Bool` in a non-test, non-view body | the other literal |
-| schema | `default changed` | a table field default | `False`↔`True`, `0`→`1`, `""`→`"x"`, `Nothing`→(skipped) |
+| logic | `not dropped` | `not e` (a `Call` of Prelude `not`) outside tests/view | `e` |
+| data | `session put dropped` | a `Session.put` step | the step becomes `Task.succeed ()` |
+| schema | `default changed` | a table field default | `False`↔`True`, `0`→`1`, `""`→`"x"`, a union default → the next constructor in declaration order (`Reader`→`Author`), `Nothing`→(skipped) |
 | schema | `cascade ↔ restrict` | a `@ref` delete rule | the other rule |
 
 Structural suppression (refused, counted as `suppressed` in the JSON, never
-listed): a `guard dropped` whose surviving arm uses a binding the guard
+listed; operator-not-applicable cases are a separate `skipped` count): `condition negated` when the condition is an operator `operator flipped` already covers (the two mutants would be the same program); a `guard dropped` whose surviving arm uses a binding the guard
 introduced (unscopable); `arm swapped` with identical bodies; `orderBy reversed` under a
 `Db.get`/`Db.first` with a `where` on the id; `where dropped` when the
 only condition is the id equality of a `Db.get` (`Db.get` has no `where`:
