@@ -70,11 +70,12 @@ type matcher struct {
 	l    *lowerer
 	t    types.Type // the type of the whole match
 	html bool       // build HMatch: the bodies are HTML
+	pos  Pos        // the match expression's: every Match its tree is made of has it
 }
 
-// match lowers `match subject { arms }` of type t.
-func (l *lowerer) match(subject syntax.Expr, arms []*syntax.Arm, t types.Type, html bool) Expr {
-	m := &matcher{l: l, t: t, html: html}
+// match lowers `match subject { arms }` of type t, written at at.
+func (l *lowerer) match(subject syntax.Expr, arms []*syntax.Arm, t types.Type, html bool, at Pos) Expr {
+	m := &matcher{l: l, t: t, html: html, pos: at}
 	subj := l.expr(subject)
 	st := l.typeOf(subject)
 	var rows []row
@@ -196,7 +197,7 @@ func (m *matcher) pattern(subj Expr, st types.Type, pat syntax.Pattern, lets []b
 
 // build makes the Match (or HMatch) on subj with cases; dflt is used unless cases cover every tag.
 func (m *matcher) build(subj Expr, st types.Type, kind MatchKind, cases []Case, dflt Expr) Expr {
-	out := &Match{Typed: Typed{m.t}, Kind: kind, Subject: subj, Cases: cases}
+	out := &Match{Typed: Typed{m.t}, Pos: m.pos, Kind: kind, Subject: subj, Cases: cases}
 	complete := false
 	switch kind {
 	case MatchUnion:

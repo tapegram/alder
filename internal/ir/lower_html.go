@@ -22,7 +22,7 @@ func (l *lowerer) htmlNode(e syntax.Expr) Expr {
 	case *syntax.HtmlIf:
 		return &HIf{Typed: Typed{l.typeOf(x)}, Cond: l.expr(x.Cond), Then: l.htmlNode(x.Then), Else: l.htmlNode(x.Else)}
 	case *syntax.HtmlMatch:
-		return l.match(x.Subject, x.Arms, l.typeOf(x), true)
+		return l.match(x.Subject, x.Arms, l.typeOf(x), true, posOf(x.Span))
 	}
 	t := l.typeOf(e)
 	return &HExpr{Typed: Typed{t}, Expr: l.expr(e), Kind: hexprKind(t)}

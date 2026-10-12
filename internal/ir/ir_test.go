@@ -512,3 +512,116 @@ func walkTestFakes(e Expr, out *[]*TestFake) {
 		}
 	}
 }
+
+// TestPositions: the node kinds a mutant targets carry the line and column of their source
+// (todos example), and the insert row's omitted default is the table field's own Default node.
+func TestPositions(t *testing.T) {
+	p := lowerDir(t, "../../examples/todos")
+	var index *Module
+	for _, m := range p.Modules {
+		if m.Name == "Todos.Index" {
+			index = m
+		}
+	}
+	value := func(m *Module, name string) *Value {
+		for _, v := range m.Values {
+			if v.Name == name {
+				return v
+			}
+		}
+		t.Fatalf("no value %s.%s", m.Name, name)
+		return nil
+	}
+	got := map[string][]Pos{}
+	var visit func(e Expr)
+	visit = func(e Expr) {
+		switch x := e.(type) {
+		case nil:
+		case *EffBind:
+			got["bind"] = append(got["bind"], x.Pos)
+			visit(x.Effect)
+			visit(x.Body)
+		case *Let:
+			visit(x.Value)
+			visit(x.Body)
+		case *Match:
+			got["match"] = append(got["match"], x.Pos)
+			visit(x.Subject)
+			for _, c := range x.Cases {
+				visit(c.Body)
+			}
+			visit(x.Default)
+		case *If:
+			got["if"] = append(got["if"], x.Pos)
+			visit(x.Cond)
+			visit(x.Then)
+			visit(x.Else)
+		case *Op:
+			got["op"] = append(got["op"], x.Pos)
+		case *DbGet:
+		case *DbSelect:
+			got["select"] = append(got["select"], x.Pos)
+			for _, w := range x.Where {
+				got["cond"] = append(got["cond"], w.(*Cond).Pos)
+			}
+			for _, o := range x.Order {
+				got["ord"] = append(got["ord"], o.(*Ord).Pos)
+			}
+		case *DbInsert:
+			got["insert"] = append(got["insert"], x.Pos)
+		case *DbUpdate:
+			got["update"] = append(got["update"], x.Pos)
+			visit(x.Fn.(*Lambda).Body)
+		case *DbDelete:
+			got["delete"] = append(got["delete"], x.Pos)
+		case *Update:
+			got["record-update"] = append(got["record-update"], x.Pos)
+		case *EffPure:
+			if c, ok := x.Value.(*Ctor); ok {
+				got["ctor "+c.Name] = append(got["ctor "+c.Name], c.Pos)
+			}
+		}
+	}
+	visit(value(index, "owned").Body)
+	visit(value(index, "load").Body)
+	visit(value(index, "update").Body)
+	want := map[string][]Pos{
+		"bind":          {{56, 3}, {16, 3}, {36, 5}, {40, 5}, {41, 5}, {45, 5}, {46, 5}},
+		"match":         {{57, 3}, {34, 28}},
+		"if":            {{58, 18}},
+		"op":            {{58, 21}},
+		"select":        {{17, 5}},
+		"cond":          {{18, 20}},
+		"ord":           {{19, 21}},
+		"insert":        {{36, 14}},
+		"update":        {{41, 14}},
+		"record-update": {{41, 44}},
+		"delete":        {{46, 14}},
+		"ctor Redirect": {{37, 19}},
+		"ctor Rerender": {{42, 18}, {47, 18}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("positions:\n got %v\nwant %v", got, want)
+	}
+	for _, pg := range p.Pages {
+		if pg.Module == "Todos.Index" && pg.RequiresPos != (Pos{7, 40}) {
+			t.Fatalf("RequiresPos = %v", pg.RequiresPos)
+		}
+	}
+	// the default of Todo.done: a Lit at its declaration, shared by the insert row that omits it
+	var done FieldT
+	for _, f := range p.Tables[1].Record.Fields {
+		if f.Name == "done" {
+			done = f
+		}
+	}
+	if lit, ok := done.Default.(*Lit); !ok || lit.Pos != (Pos{12, 16}) || done.Pos != (Pos{12, 3}) {
+		t.Fatalf("Todo.done: default %#v, field pos %v", done.Default, done.Pos)
+	}
+	ins := value(index, "update").Body.(*Match).Cases[0].Body.(*Let).Body.(*EffBind).Effect.(*DbInsert)
+	for _, f := range ins.Row.(*Record).Fields {
+		if f.Name == "done" && f.Value != done.Default {
+			t.Fatalf("the insert row's done is %#v, not the table's default node", f.Value)
+		}
+	}
+}

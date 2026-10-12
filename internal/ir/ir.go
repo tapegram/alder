@@ -106,6 +106,7 @@ type FieldT struct {
 	Brand       *Brand
 	DefaultLit  *string
 	RenamedFrom string
+	Pos         Pos // the field's declaration; zero for a field Lower made up
 }
 
 // UnionType is a union's declaration. Params are its type parameter names (`Maybe a` → ["a"]).
@@ -188,6 +189,7 @@ type Page struct {
 	Module, Path string
 	Params       *RecordType
 	Requires     string // session field the page requires, "" for none
+	RequiresPos  Pos    // the `requires f` clause; zero when Requires is ""
 	Session      *RecordType
 	Model        *RecordType
 	Msgs         []*Msg
@@ -230,6 +232,12 @@ type Fake struct {
 
 // ---- Expressions
 
+// Pos is a source position (1-based line and column) of the expression a node was lowered from.
+// The node kinds a mutant can target carry one (If, Match, Op, Lit, Update, Ctor, EffBind,
+// DbSelect, DbInsert, DbUpdate, DbDelete, Cond, Ord); it is the zero Pos for a node Lower made
+// up (a default filled into a literal keeps its declaration's). Dump never prints it.
+type Pos struct{ Line, Col int }
+
 // Expr is an expression; Type is its (brand-erased) type.
 type Expr interface{ Type() types.Type }
 
@@ -251,6 +259,7 @@ const (
 // Lit is a literal; the field matching Kind holds its value.
 type Lit struct {
 	Typed
+	Pos   Pos
 	Kind  LitKind
 	Int   int64
 	Float float64
@@ -313,6 +322,7 @@ type FieldInit struct {
 // Update is `{ base | f: v }`: a copy of Base with Fields replaced.
 type Update struct {
 	Typed
+	Pos    Pos
 	Base   Expr
 	Fields []FieldInit
 }
@@ -329,6 +339,7 @@ type Field struct {
 // { value: … } for a wrapped non-record payload).
 type Ctor struct {
 	Typed
+	Pos     Pos
 	U       *UnionType
 	Name    string
 	Payload Expr
@@ -369,6 +380,7 @@ const (
 // see lowerMatch in lower_match.go for the rules.
 type Match struct {
 	Typed
+	Pos     Pos
 	Kind    MatchKind
 	Subject Expr
 	Cases   []Case
@@ -394,6 +406,7 @@ type Bind struct {
 // If is a conditional expression.
 type If struct {
 	Typed
+	Pos              Pos
 	Cond, Then, Else Expr
 }
 
@@ -411,6 +424,7 @@ type Let struct {
 // equality) and `??` (it is the Maybe).
 type Op struct {
 	Typed
+	Pos      Pos
 	Kind     string
 	L, R     Expr
 	OperandT types.Type
@@ -578,6 +592,7 @@ type EffPure struct {
 // Effect's type is `Query T` or `Task T` for Param's T; it may be a Query in a Task bind.
 type EffBind struct {
 	Typed
+	Pos    Pos // the `let … <-` statement's
 	Kind   EffKind
 	Effect Expr
 	Param  *Param
@@ -645,6 +660,7 @@ const (
 // last application is kept.
 type DbSelect struct {
 	Typed
+	Pos           Pos // the pipeline's first step (`Db.from`, or the step extending Base)
 	Table         *Table
 	Base          Expr
 	Where         []Expr
@@ -665,6 +681,7 @@ type DbRun struct {
 // InsertFields (an anonymous record type; a record literal has every field, defaults filled).
 type DbInsert struct {
 	Typed
+	Pos   Pos
 	Table *Table
 	Row   Expr
 }
@@ -672,6 +689,7 @@ type DbInsert struct {
 // DbUpdate is `Db.update Table ID Fn`, a Task Unit; Fn has type t -> t.
 type DbUpdate struct {
 	Typed
+	Pos   Pos
 	Table *Table
 	ID    Expr
 	Fn    Expr
@@ -680,6 +698,7 @@ type DbUpdate struct {
 // DbDelete is `Db.delete Table ID`, a Task Unit.
 type DbDelete struct {
 	Typed
+	Pos   Pos
 	Table *Table
 	ID    Expr
 }
@@ -712,6 +731,7 @@ type ColumnRef struct {
 // (`List.map Todo.owner.eq ids`) is wrapped in a Lambda whose body is the Cond.
 type Cond struct {
 	Typed
+	Pos   Pos
 	Kind  string
 	Col   *ColumnRef
 	Value Expr
@@ -721,6 +741,7 @@ type Cond struct {
 // Ord is `Todo.created.asc` / `.desc` (type Order t).
 type Ord struct {
 	Typed
+	Pos  Pos
 	Col  *ColumnRef
 	Desc bool
 }

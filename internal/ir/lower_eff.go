@@ -24,6 +24,7 @@ type effHead struct {
 	cap   *Capability
 	entry string
 	at    string
+	pos   Pos
 }
 
 // effHead returns the head fn is, or nil when fn is an ordinary callee.
@@ -34,10 +35,10 @@ func (l *lowerer) effHead(fn syntax.Expr) *effHead {
 		case syntax.RefStd:
 			switch x.Ref.Module {
 			case "Query", "Task", "Db":
-				return &effHead{name: x.Ref.Module + "." + x.Ref.Name, ft: l.typeOf(x), at: pos(x.Span)}
+				return &effHead{name: x.Ref.Module + "." + x.Ref.Name, ft: l.typeOf(x), at: pos(x.Span), pos: posOf(x.Span)}
 			case "Test":
 				if x.Ref.Name == "run" || x.Ref.Name == "trace" { // the queries are ordinary calls
-					return &effHead{name: x.Ref.Module + "." + x.Ref.Name, ft: l.typeOf(x), at: pos(x.Span)}
+					return &effHead{name: x.Ref.Module + "." + x.Ref.Name, ft: l.typeOf(x), at: pos(x.Span), pos: posOf(x.Span)}
 				}
 			}
 		case syntax.RefCapability:
@@ -49,7 +50,7 @@ func (l *lowerer) effHead(fn syntax.Expr) *effHead {
 			if c == nil {
 				panic(fmt.Sprintf("ir: unknown capability %s.%s at %s", x.Ref.Module, x.Module, pos(x.Span)))
 			}
-			return &effHead{name: "capability", ft: l.typeOf(x), cap: c, entry: x.Name, at: pos(x.Span)}
+			return &effHead{name: "capability", ft: l.typeOf(x), cap: c, entry: x.Name, at: pos(x.Span), pos: posOf(x.Span)}
 		}
 	case *syntax.Access:
 		if app, ok := l.typeOf(x.Expr).(*types.App); ok && app.Con == "Column" {
@@ -57,7 +58,7 @@ func (l *lowerer) effHead(fn syntax.Expr) *effHead {
 			if !ok {
 				panic(fmt.Sprintf("ir: column method .%s at %s is not applied to a column written as Table.field (not supported)", x.Field, pos(x.Span)))
 			}
-			return &effHead{name: "column", ft: l.typeOf(x), col: col, meth: x.Field, at: pos(x.Span)}
+			return &effHead{name: "column", ft: l.typeOf(x), col: col, meth: x.Field, at: pos(x.Span), pos: posOf(x.Span)}
 		}
 	}
 	return nil
@@ -236,11 +237,11 @@ func (l *lowerer) build(h *effHead, args []Expr, t types.Type) Expr {
 	case "column":
 		switch h.meth {
 		case "asc", "desc":
-			return &Ord{Typed: Typed{t}, Col: h.col, Desc: h.meth == "desc"}
+			return &Ord{Typed: Typed{t}, Pos: h.pos, Col: h.col, Desc: h.meth == "desc"}
 		case "isNothing", "isJust":
-			return &Cond{Typed: Typed{t}, Kind: h.meth, Col: h.col}
+			return &Cond{Typed: Typed{t}, Pos: h.pos, Kind: h.meth, Col: h.col}
 		}
-		return &Cond{Typed: Typed{t}, Kind: h.meth, Col: h.col, Value: args[0]}
+		return &Cond{Typed: Typed{t}, Pos: h.pos, Kind: h.meth, Col: h.col, Value: args[0]}
 	case "capability":
 		return &CapCall{Typed: Typed{t}, Cap: h.cap, Entry: h.entry, Args: args}
 	case "Query.succeed", "Task.succeed":
@@ -260,21 +261,21 @@ func (l *lowerer) build(h *effHead, args []Expr, t types.Type) Expr {
 	case "Db.get":
 		return &DbGet{Typed: Typed{t}, Table: table(0), ID: args[1]}
 	case "Db.from":
-		return &DbSelect{Typed: Typed{t}, Table: table(0)}
+		return &DbSelect{Typed: Typed{t}, Pos: h.pos, Table: table(0)}
 	case "Db.where":
-		s := l.extend(args[1], table(1), t)
+		s := l.extend(args[1], table(1), t, h.pos)
 		s.Where = append(s.Where, args[0])
 		return s
 	case "Db.orderBy":
-		s := l.extend(args[1], table(1), t)
+		s := l.extend(args[1], table(1), t, h.pos)
 		s.Order = append(s.Order, args[0])
 		return s
 	case "Db.limit":
-		s := l.extend(args[1], table(1), t)
+		s := l.extend(args[1], table(1), t, h.pos)
 		s.Limit = args[0]
 		return s
 	case "Db.offset":
-		s := l.extend(args[1], table(1), t)
+		s := l.extend(args[1], table(1), t, h.pos)
 		s.Offset = args[0]
 		return s
 	case "Db.all", "Db.first", "Db.count":
@@ -286,7 +287,7 @@ func (l *lowerer) build(h *effHead, args []Expr, t types.Type) Expr {
 		}
 		return &DbRun{Typed: Typed{t}, Select: args[0], Terminal: term}
 	case "Db.and", "Db.or":
-		c := &Cond{Typed: Typed{t}, Kind: h.name[len("Db."):]}
+		c := &Cond{Typed: Typed{t}, Pos: h.pos, Kind: h.name[len("Db."):]}
 		if list, ok := args[0].(*List); ok {
 			c.Subs = append([]Expr{}, list.Elems...)
 		} else {
@@ -294,24 +295,25 @@ func (l *lowerer) build(h *effHead, args []Expr, t types.Type) Expr {
 		}
 		return c
 	case "Db.not":
-		return &Cond{Typed: Typed{t}, Kind: "not", Subs: []Expr{args[0]}}
+		return &Cond{Typed: Typed{t}, Pos: h.pos, Kind: "not", Subs: []Expr{args[0]}}
 	case "Db.insert":
-		return &DbInsert{Typed: Typed{t}, Table: table(0), Row: args[1]}
+		return &DbInsert{Typed: Typed{t}, Pos: h.pos, Table: table(0), Row: args[1]}
 	case "Db.update":
-		return &DbUpdate{Typed: Typed{t}, Table: table(0), ID: args[1], Fn: args[2]}
+		return &DbUpdate{Typed: Typed{t}, Pos: h.pos, Table: table(0), ID: args[1], Fn: args[2]}
 	case "Db.delete":
-		return &DbDelete{Typed: Typed{t}, Table: table(0), ID: args[1]}
+		return &DbDelete{Typed: Typed{t}, Pos: h.pos, Table: table(0), ID: args[1]}
 	}
 	panic(fmt.Sprintf("ir: stdlib function %s at %s has no lowering", h.name, h.at))
 }
 
 // extend is the select s extended by one more step: a copy of s when it is a pipeline written in
-// place (a DbSelect not yet run), else a DbSelect of table tb whose Base is s.
-func (l *lowerer) extend(s Expr, tb *Table, t types.Type) *DbSelect {
+// place (a DbSelect not yet run), else a DbSelect of table tb whose Base is s, at the step's
+// position at.
+func (l *lowerer) extend(s Expr, tb *Table, t types.Type, at Pos) *DbSelect {
 	if d, ok := s.(*DbSelect); ok && d.Terminal == SelNone {
 		return copySelect(d, t)
 	}
-	return &DbSelect{Typed: Typed{t}, Table: tb, Base: s}
+	return &DbSelect{Typed: Typed{t}, Pos: at, Table: tb, Base: s}
 }
 
 // copySelect copies d with type t; the copy's lists do not share d's arrays.

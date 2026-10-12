@@ -537,6 +537,9 @@ func (l *lowerer) declareTypes() {
 		}
 		if info := l.res.Pages[name]; info != nil {
 			pg := &Page{Module: name, Path: info.Decl.Path, Requires: info.Requires}
+			if info.Requires != "" {
+				pg.RequiresPos = posOf(info.Decl.RequiresSpan)
+			}
 			pg.Params = addRecord("Params", info.Params, info.Decl.Params.Fields)
 			pg.Msgs = l.declareMsgs(mod, name, info.Msg, m)
 			pg.Model = l.records[key(name, "Model")]
@@ -608,6 +611,9 @@ func (l *lowerer) recordFields(module string, rt *RecordType, t types.Type, fiel
 	}
 	for i, f := range rec.Fields {
 		rt.Fields = append(rt.Fields, FieldT{Name: f.Name, Type: l.erase(f.Type), Brand: l.fieldBrand(f.Type)})
+		if i < len(fields) && fields[i].Name == f.Name {
+			rt.Fields[i].Pos = posOf(fields[i].Span)
+		}
 		if i < len(fields) && fields[i].Name == f.Name && fields[i].Default != nil {
 			l.defaults = append(l.defaults, pendingDefault{module, rt, i, fields[i]})
 		}
@@ -847,6 +853,9 @@ func (l *lowerer) bindType(site interface{ GetSpan() diag.Span }) types.Type {
 	l.unpoisoned(t, site.GetSpan())
 	return l.erase(t)
 }
+
+// posOf is the start of span s as a Pos.
+func posOf(s diag.Span) Pos { return Pos{s.Start.Line, s.Start.Col} }
 
 func pos(s diag.Span) string { return fmt.Sprintf("%s:%d:%d", s.File, s.Start.Line, s.Start.Col) }
 

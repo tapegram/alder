@@ -19,13 +19,13 @@ func (l *lowerer) expr(e syntax.Expr) Expr {
 func (l *lowerer) exprOf(e syntax.Expr) Expr {
 	switch x := e.(type) {
 	case *syntax.IntLit:
-		return &Lit{Typed: Typed{l.typeOf(x)}, Kind: LitInt, Int: x.Value}
+		return &Lit{Typed: Typed{l.typeOf(x)}, Pos: posOf(x.Span), Kind: LitInt, Int: x.Value}
 	case *syntax.FloatLit:
-		return &Lit{Typed: Typed{l.typeOf(x)}, Kind: LitFloat, Float: x.Value}
+		return &Lit{Typed: Typed{l.typeOf(x)}, Pos: posOf(x.Span), Kind: LitFloat, Float: x.Value}
 	case *syntax.BoolLit:
-		return &Lit{Typed: Typed{l.typeOf(x)}, Kind: LitBool, Bool: x.Value}
+		return &Lit{Typed: Typed{l.typeOf(x)}, Pos: posOf(x.Span), Kind: LitBool, Bool: x.Value}
 	case *syntax.UnitLit:
-		return &Lit{Typed: Typed{l.typeOf(x)}, Kind: LitUnit}
+		return &Lit{Typed: Typed{l.typeOf(x)}, Pos: posOf(x.Span), Kind: LitUnit}
 	case *syntax.StrLit:
 		return l.str(x)
 	case *syntax.ListLit:
@@ -38,7 +38,7 @@ func (l *lowerer) exprOf(e syntax.Expr) Expr {
 		t := l.typeOf(x)
 		return l.record(x, l.recordType(t), t)
 	case *syntax.RecordUpdate:
-		out := &Update{Typed: Typed{l.typeOf(x)}, Base: l.expr(x.Base)}
+		out := &Update{Typed: Typed{l.typeOf(x)}, Pos: posOf(x.Span), Base: l.expr(x.Base)}
 		for _, f := range x.Fields {
 			out.Fields = append(out.Fields, FieldInit{Name: f.Name, Value: l.expr(f.Value)})
 		}
@@ -68,16 +68,16 @@ func (l *lowerer) exprOf(e syntax.Expr) Expr {
 		out.Body = l.expr(x.Body)
 		return out
 	case *syntax.If:
-		return &If{Typed: Typed{l.typeOf(x)}, Cond: l.expr(x.Cond), Then: l.expr(x.Then), Else: l.expr(x.Else)}
+		return &If{Typed: Typed{l.typeOf(x)}, Pos: posOf(x.Span), Cond: l.expr(x.Cond), Then: l.expr(x.Then), Else: l.expr(x.Else)}
 	case *syntax.Match:
-		return l.match(x.Subject, x.Arms, l.typeOf(x), false)
+		return l.match(x.Subject, x.Arms, l.typeOf(x), false, posOf(x.Span))
 	case *syntax.Block:
 		return l.block(x.Stmts, x.Result, l.typeOf(x))
 	case *syntax.BinOp:
 		if x.Op == "|>" {
 			return l.pipe(x)
 		}
-		return &Op{Typed: Typed{l.typeOf(x)}, Kind: x.Op, L: l.expr(x.L), R: l.expr(x.R), OperandT: l.typeOf(x.L)}
+		return &Op{Typed: Typed{l.typeOf(x)}, Pos: posOf(x.Span), Kind: x.Op, L: l.expr(x.L), R: l.expr(x.R), OperandT: l.typeOf(x.L)}
 	case *syntax.HoleExpr:
 		return &Hole{Typed: Typed{l.typeOf(x)}, Name: x.Name}
 	case *syntax.Element, *syntax.HtmlText, *syntax.HtmlExpr, *syntax.HtmlFor, *syntax.HtmlIf, *syntax.HtmlMatch:
@@ -96,7 +96,7 @@ func (l *lowerer) str(x *syntax.StrLit) Expr {
 		text.WriteString(p.Text)
 	}
 	if !interpolated {
-		return &Lit{Typed: Typed{t}, Kind: LitText, Text: text.String()}
+		return &Lit{Typed: Typed{t}, Pos: posOf(x.Span), Kind: LitText, Text: text.String()}
 	}
 	out := &Str{Typed: Typed{t}}
 	for _, p := range x.Parts {
@@ -169,12 +169,12 @@ func (l *lowerer) ctorRef(x *syntax.CtorRef) Expr {
 			return l.eta(fn, func(arg Expr) Expr { return arg })
 		}
 		if isFn {
-			return l.eta(fn, func(arg Expr) Expr { return l.ctor(fn.Result, x.Ref.Name, arg, nil) })
+			return l.eta(fn, func(arg Expr) Expr { return l.ctor(fn.Result, x.Ref.Name, arg, nil, posOf(x.Span)) })
 		}
 		// no payload, or a message whose payload the runtime supplies (only a `form`)
 		u := l.union(t.(*types.Union))
 		ct := u.ctorT(x.Ref.Name)
-		out := &Ctor{Typed: Typed{t}, U: u, Name: x.Ref.Name}
+		out := &Ctor{Typed: Typed{t}, Pos: posOf(x.Span), U: u, Name: x.Ref.Name}
 		if ct.Payload != nil {
 			out.Payload = &Record{Typed: Typed{l.payloadType(t, x.Ref.Name)}, T: ct.Payload}
 		}
@@ -212,12 +212,12 @@ func (l *lowerer) payloadType(t types.Type, name string) types.Type {
 
 // ctor builds constructor name of union type t. lit, when non-nil, is the record literal the
 // payload was written as (lowered against the payload's RecordType, so it shares it); otherwise
-// arg is the lowered payload (nil for none).
-func (l *lowerer) ctor(t types.Type, name string, arg Expr, lit *syntax.RecordLit) Expr {
+// arg is the lowered payload (nil for none). at is the position of the constructor's source.
+func (l *lowerer) ctor(t types.Type, name string, arg Expr, lit *syntax.RecordLit, at Pos) Expr {
 	u := l.union(t.(*types.Union))
 	ct := u.ctorT(name)
 	pt := l.payloadType(t, name)
-	out := &Ctor{Typed: Typed{t}, U: u, Name: name}
+	out := &Ctor{Typed: Typed{t}, Pos: at, U: u, Name: name}
 	if lit != nil {
 		arg = l.record(lit, ct.Payload, pt)
 	}
@@ -267,10 +267,10 @@ func (l *lowerer) app(fn syntax.Expr, args []syntax.Expr, piped Expr, t types.Ty
 			u := l.union(t.(*types.Union))
 			if piped == nil && len(args) == 1 && !l.wrappers[u.ctorT(ct.Ref.Name).Payload] {
 				if lit, isLit := args[0].(*syntax.RecordLit); isLit {
-					return l.ctor(t, ct.Ref.Name, nil, lit)
+					return l.ctor(t, ct.Ref.Name, nil, lit, posOf(ct.Span))
 				}
 			}
-			return l.ctor(t, ct.Ref.Name, lower()[0], nil)
+			return l.ctor(t, ct.Ref.Name, lower()[0], nil, posOf(ct.Span))
 		}
 		panic(fmt.Sprintf("ir: table %s at %s applied as a function", ct.Name, pos(ct.Span)))
 	}
@@ -293,7 +293,7 @@ func (l *lowerer) pipe(x *syntax.BinOp) Expr {
 		if lit, isLit := x.L.(*syntax.RecordLit); isLit {
 			t := l.typeOf(x)
 			if payload := l.union(t.(*types.Union)).ctorT(ct.Ref.Name).Payload; payload != nil && !l.wrappers[payload] {
-				return l.ctor(t, ct.Ref.Name, nil, lit)
+				return l.ctor(t, ct.Ref.Name, nil, lit, posOf(x.Span))
 			}
 		}
 	}
@@ -312,7 +312,7 @@ func (l *lowerer) block(stmts []*syntax.LetStmt, result syntax.Expr, t types.Typ
 	}
 	s := stmts[0]
 	if s.Bind {
-		b := &EffBind{Typed: Typed{t}, Kind: l.effKind(t, pos(s.Span)), Effect: l.expr(s.Expr)}
+		b := &EffBind{Typed: Typed{t}, Pos: posOf(s.Span), Kind: l.effKind(t, pos(s.Span)), Effect: l.expr(s.Expr)}
 		if s.Name != "_" {
 			b.Param = &Param{Name: s.Name, Type: l.bindType(s)}
 		}
