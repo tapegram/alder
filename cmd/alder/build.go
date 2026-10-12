@@ -14,11 +14,14 @@ import (
 	"alder/internal/gen"
 	"alder/internal/ir"
 	"alder/internal/names"
+	"alder/internal/version"
 )
 
 // runBuildTo is `alder build [--emit] [dir]`: check the app in dir and, when it has no errors
 // and no holes, lower it and emit its Go into build/<app>/ (app is dir's base name), the module
-// "app". With --emit it stops there, after vetting that package. Without, it builds the app's
+// "app", with the runtime it requires in build/<app>/rt/ (buildkit.WriteRuntime: the copy
+// embedded in this binary, refreshed on every build). With --emit it stops there, after vetting
+// that package. Without, it builds the app's
 // executable build/<app>/<app>: it checks that dir/adapters/ has an adapter for every
 // capability (buildkit.CheckAdapters: capability X of module A.B is `func BX()` of package
 // adapters/a/; every missing one is printed, and nothing is written), copies the whole
@@ -87,11 +90,6 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 		fmt.Fprintf(stderr, "alder build: %v\n", err)
 		return "", 2
 	}
-	repo, err := buildkit.RepoRoot()
-	if err != nil {
-		fmt.Fprintf(stderr, "alder build: %v\n", err)
-		return "", 2
-	}
 
 	prog, res, bag, ioErrs := checkedApp(dir)
 	if reportLoadErrs("alder build", ioErrs, stderr) {
@@ -124,7 +122,7 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 	if !emit && !buildkit.CheckAdapters(dir, p.Caps, stderr) {
 		return "", 1
 	}
-	files, err := gen.Emit(p, gen.Options{RepoPath: repo, Migrations: buildkit.HasMigrations(dir)})
+	files, err := gen.Emit(p, gen.Options{Version: version.String(), Migrations: buildkit.HasMigrations(dir)})
 	if err != nil {
 		fmt.Fprintf(stderr, "alder build: internal error: %v\n", err)
 		return "", 2
@@ -133,6 +131,10 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 		out = filepath.Join("build", name)
 	}
 	if err := buildkit.WriteGenerated(out, files); err != nil {
+		fmt.Fprintf(stderr, "alder build: %v\n", err)
+		return "", 2
+	}
+	if err := buildkit.WriteRuntime(out); err != nil {
 		fmt.Fprintf(stderr, "alder build: %v\n", err)
 		return "", 2
 	}

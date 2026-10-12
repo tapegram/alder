@@ -1,0 +1,26 @@
+package rt
+
+import "embed"
+
+// Files is the runtime as the compiler ships it: every Go source file of the module's rt/ tree
+// (not the tests, not testdata), the Datastar script with its VERSION, and the module files of
+// the runtime's own module "alder" (dist/go.mod.txt, dist/go.sum.txt: a directory holding a
+// file named go.mod would be another module, which go:embed refuses). buildkit.WriteRuntime
+// writes it next to every generated app, so a build needs no checkout of the repository.
+//
+// The list is explicit because a pattern cannot leave the _test.go files out; a test
+// (TestFiles_Complete) checks it against `git ls-files rt`, so a file added to the runtime
+// without being listed here fails. This file itself is not listed: the written copy of package
+// rt does not embed anything.
+//
+//go:embed core.go nav.go show.go tether.go
+//go:embed datastar/datastar.go datastar/datastar.js datastar/VERSION
+//go:embed db/encode.go db/migrate.go db/sqlite.go db/store.go db/table.go
+//go:embed eff/eff.go eff/run.go
+//go:embed html/diff.go html/html.go html/parse.go html/state.go
+//go:embed selector/selector.go
+//go:embed std/date.go std/dict.go std/effects.go std/html.go std/list.go std/maybe.go std/num.go std/result.go std/text.go
+//go:embed testing/browser.go testing/mutate.go testing/steps.go testing/testing.go
+//go:embed web/decode.go web/request.go web/router.go web/session.go
+//go:embed dist/go.mod.txt dist/go.sum.txt
+var Files embed.FS

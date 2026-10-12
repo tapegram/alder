@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"strings"
 
-	"alder/internal/selector"
 	"alder/rt"
+	"alder/rt/selector"
 )
 
 // Parse parses markup that Render produced (the parser is for the renderer's own output, which
@@ -324,8 +324,8 @@ func normalize(ns []Node) []Node {
 	return out
 }
 
-// Selector is a parsed selector of the subset (package alder/internal/selector, which generated
-// code cannot import: it is re-exported here).
+// Selector is a parsed selector of the subset (package alder/rt/selector, shared with the
+// checker), re-exported here so its users (rt/testing) need import only rt/html.
 type Selector = selector.Selector
 
 // ParseSelector parses s as a selector of the subset: a tag, `#id`, `.class`, `[attr]`,

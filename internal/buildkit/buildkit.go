@@ -1,20 +1,22 @@
 // Package buildkit holds the pieces of turning an app directory into a Go executable that
 // `alder build`, `alder run`, `alder dump` and the scratch-module runner (internal/scratch) share:
-// loading and checking the app, writing the generated module, copying the app's adapters and
-// static files next to it, and running the go command there.
+// loading and checking the app, writing the generated module and the runtime it requires
+// (WriteRuntime), copying the app's adapters and static files next to it, and running the go
+// command there.
 package buildkit
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -24,6 +26,7 @@ import (
 	"alder/internal/names"
 	"alder/internal/syntax"
 	"alder/internal/types"
+	"alder/rt"
 )
 
 // GeneratedHeader starts every Go file gen emits; only such files are ever deleted.
@@ -209,18 +212,98 @@ func isGenerated(path string) (bool, error) {
 	return strings.HasPrefix(line, GeneratedHeader), nil
 }
 
-// RepoRoot is the alder repository the generated go.mod points at (replace alder => …):
-// $ALDER_ROOT when set, else the source tree this binary was built from.
-func RepoRoot() (string, error) {
-	if r := os.Getenv("ALDER_ROOT"); r != "" {
-		return filepath.Abs(r)
+// RuntimeDir is the directory, inside a generated module, that WriteRuntime writes the runtime's
+// module into; the generated go.mod says `replace alder => ./rt`.
+const RuntimeDir = "rt"
+
+// WriteRuntime writes the runtime embedded in this binary (rt.Files) into dst/rt/ as the module
+// alder that the generated module in dst requires: dist/go.mod.txt and dist/go.sum.txt become
+// rt/go.mod and rt/go.sum, the module's root, and every other file keeps its path in the
+// repository under it, so the package alder/rt is rt/rt/, alder/rt/html is rt/rt/html/, and so on
+// (an import path is the module's name followed by the package's directory in the module). It
+// also writes dst/go.sum (the same sums: the app module's dependencies are the runtime's), so
+// `go build` needs no network once the module cache holds modernc.org/sqlite.
+//
+// It refreshes rather than adds: a file under dst/rt/ that the embedded runtime does not have
+// (one an older compiler wrote, or anyone else's) is removed, with the directories left empty,
+// so the copy is always exactly this compiler's runtime. A file whose content is already right
+// is not rewritten.
+func WriteRuntime(dst string) error {
+	want := map[string][]byte{} // path under dst/rt (slash-separated) → content
+	err := fs.WalkDir(rt.Files, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := rt.Files.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		switch path {
+		case "dist/go.mod.txt":
+			path = "go.mod"
+		case "dist/go.sum.txt":
+			path = "go.sum"
+		default:
+			path = "rt/" + path
+		}
+		want[path] = b
+		return nil
+	})
+	if err != nil {
+		return err
 	}
-	_, file, _, ok := runtime.Caller(0)
-	if ok {
-		root := filepath.Dir(filepath.Dir(filepath.Dir(file))) // internal/buildkit/buildkit.go → repository
-		if b, err := os.ReadFile(filepath.Join(root, "go.mod")); err == nil && strings.HasPrefix(string(b), "module alder\n") {
-			return root, nil
+	if want["go.mod"] == nil || want["go.sum"] == nil {
+		return errors.New("internal error: the embedded runtime has no go.mod or go.sum")
+	}
+	root := filepath.Join(dst, RuntimeDir)
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return err
+	}
+	if !IsDir(root) {
+		return fmt.Errorf("%s is not a directory", root)
+	}
+	// remove what the runtime does not have, deepest first so emptied directories go too
+	var dirs []string
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		switch {
+		case d.IsDir():
+			if rel != "." {
+				dirs = append(dirs, path)
+			}
+		case want[rel] == nil || !d.Type().IsRegular():
+			return os.Remove(path)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	for _, d := range slices.Backward(dirs) {
+		os.Remove(d) // only when empty
+	}
+	for _, rel := range slices.Sorted(maps.Keys(want)) {
+		if err := writeIfChanged(filepath.Join(root, filepath.FromSlash(rel)), want[rel]); err != nil {
+			return err
 		}
 	}
-	return "", errors.New("cannot find the alder repository for the generated go.mod; set ALDER_ROOT")
+	return writeIfChanged(filepath.Join(dst, "go.sum"), want["go.sum"])
+}
+
+// writeIfChanged writes b to path (creating its directory) unless path already holds b.
+func writeIfChanged(path string, b []byte) error {
+	if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, b) {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, b, 0o644)
 }

@@ -65,6 +65,8 @@ func main() {
 			}
 		}()
 		os.Exit(replMain(os.Args[2:], os.Stdin, os.Stdout, os.Stderr, interrupt, terminate))
+	case "version":
+		os.Exit(runVersionTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "explain":
 		if len(os.Args) < 3 {
 			usage()
@@ -85,7 +87,7 @@ func main() {
 func usage() { usageTo(os.Stderr) }
 
 func usageTo(w io.Writer) {
-	fmt.Fprintln(w, "usage: alder check [dir] [--json] | alder build [--emit] [dir] | alder run [dir] | alder dump [--tokens|--ast|--ir] <file.alder | dir> | alder eval [dir] [--run] [--json] [--module Name] <expr | -> | alder test [dir] [-run re] [-timeout d] [--json] [--mutate [--min R]] | alder repl [dir] [--module Name] | alder migrate [dir] [--name slug] [--dry-run] | alder explain <code>")
+	fmt.Fprintln(w, "usage: alder check [dir] [--json] | alder build [--emit] [dir] | alder run [dir] | alder dump [--tokens|--ast|--ir] <file.alder | dir> | alder eval [dir] [--run] [--json] [--module Name] <expr | -> | alder test [dir] [-run re] [-timeout d] [--json] [--mutate [--min R]] | alder repl [dir] [--module Name] | alder migrate [dir] [--name slug] [--dry-run] | alder explain <code> | alder version")
 }
 
 func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {

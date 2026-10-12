@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"alder/internal/diag"
-	"alder/internal/selector"
 	"alder/internal/syntax"
 	"alder/internal/types"
+	"alder/rt/selector"
 )
 
 // BadSelector is E0023: a selector literal of a `Test` query that does not parse.

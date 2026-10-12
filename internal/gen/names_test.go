@@ -151,11 +151,11 @@ func TestEmit_RejectsDuplicates(t *testing.T) {
 	val := func(module, name string) *ir.Value {
 		return &ir.Value{Module: module, Name: name, Type: types.Int, Body: &ir.Lit{Typed: ir.Typed{Ty: types.Int}, Kind: ir.LitInt, Int: 1}}
 	}
-	_, err := Emit(&ir.Program{Modules: []*ir.Module{{Name: "A", Values: []*ir.Value{val("A", "x")}}, {Name: "A", Values: []*ir.Value{val("A", "y")}}}}, Options{RepoPath: "/r"})
+	_, err := Emit(&ir.Program{Modules: []*ir.Module{{Name: "A", Values: []*ir.Value{val("A", "x")}}, {Name: "A", Values: []*ir.Value{val("A", "y")}}}}, Options{})
 	if err == nil || !strings.Contains(err.Error(), "two modules are emitted to A_alder.go") {
 		t.Errorf("duplicate file: err = %v", err)
 	}
-	_, err = Emit(&ir.Program{Modules: []*ir.Module{{Name: "A", Values: []*ir.Value{val("A", "x"), val("A", "x")}}}}, Options{RepoPath: "/r"})
+	_, err = Emit(&ir.Program{Modules: []*ir.Module{{Name: "A", Values: []*ir.Value{val("A", "x"), val("A", "x")}}}}, Options{})
 	if err == nil || !strings.Contains(err.Error(), "A__x is declared twice") {
 		t.Errorf("duplicate name: err = %v", err)
 	}
@@ -221,7 +221,7 @@ func TestAdapterCollision(t *testing.T) {
 		t.Errorf("Auth.Login.Password and Auth.Signup.Password collide: %v %v", a, b)
 	}
 	p := &ir.Program{Caps: []*ir.Capability{{Module: "A.BC", Name: "D"}, {Module: "A.B", Name: "CD"}}}
-	_, err := Emit(p, Options{RepoPath: "/r"})
+	_, err := Emit(p, Options{})
 	want := "gen: internal naming error: capabilities A.BC.D and A.B.CD both need func BCD in adapters/a/ (rename one of them)"
 	if err == nil || err.Error() != want {
 		t.Errorf("Emit: err = %v, want %s", err, want)

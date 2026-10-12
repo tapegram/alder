@@ -23,6 +23,7 @@ import (
 	"alder/internal/names"
 	"alder/internal/syntax"
 	"alder/internal/types"
+	"alder/internal/version"
 )
 
 // Module is a module held in memory. Name is its module name ("Scratch" when empty) and, with
@@ -116,11 +117,12 @@ const Timeout = 60 * time.Second
 //     (*AdapterError: the user's, as a check error is), generated or caller Go that does not
 //     vet, and go build failures; its message carries Go's output.
 //   - Compile writes only under out (the generated module "app" with its caps/ when it wires
-//     the adapters (Checked.WiresAdapters), adapters/, static/ and
-//     migrations/ copied from the app, cmd/main.go and the executable out/scratch) and the
-//     lock file <out>.lock; it never touches build/<app> itself. Nothing is written when the
-//     check fails, and the previous executable in out stays until a new one is built, so a
-//     failed Compile leaves the last good one runnable.
+//     the adapters (Checked.WiresAdapters), the runtime it requires in rt/ with go.sum
+//     (buildkit.WriteRuntime), adapters/, static/ and migrations/ copied from the app,
+//     cmd/main.go and the executable out/scratch) and the lock file <out>.lock; it never
+//     touches build/<app> itself. Nothing is written when the check fails, and the previous
+//     executable in out stays until a new one is built, so a failed Compile leaves the last
+//     good one runnable.
 //   - Compiles into one out serialize: Compile takes an exclusive lock on <out>.lock (flock;
 //     the kernel drops it if the process dies) before writing, waiting while another holds it
 //     (CompileCheckedWith's ctx ends the wait; its Options.Waiting is told), and a Runnable
@@ -209,11 +211,6 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 		}
 	}()
 
-	repo, err := buildkit.RepoRoot()
-	if err != nil {
-		b.Err = err
-		return b
-	}
 	p := ir.Lower(prog, res)
 	adapters := filepath.Join(appDir, "adapters")
 	hasAdapters := buildkit.HasAdapters(appDir)
@@ -239,7 +236,7 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 			return b
 		}
 	}
-	files, err := gen.Emit(p, gen.Options{RepoPath: repo, Migrations: buildkit.HasMigrations(appDir), Tests: o.Tests, Mutate: o.Mutate, Unwired: unwired})
+	files, err := gen.Emit(p, gen.Options{Version: version.String(), Migrations: buildkit.HasMigrations(appDir), Tests: o.Tests, Mutate: o.Mutate, Unwired: unwired})
 	if err != nil {
 		b.Err = fmt.Errorf("internal error: %v", err)
 		return b
@@ -248,6 +245,10 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 		delete(files, gen.CapsFile) // nothing to wire: the main uses app.Caps{}
 	}
 	if err := buildkit.WriteGenerated(b.Dir, files); err != nil {
+		b.Err = err
+		return b
+	}
+	if err := buildkit.WriteRuntime(b.Dir); err != nil {
 		b.Err = err
 		return b
 	}
