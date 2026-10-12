@@ -1737,6 +1737,17 @@ class FeedbackTests(unittest.TestCase):
         self.assertEqual((s["score_before"], s["score_after"], s["feedback_rounds"], s["outcome"]), (0.7, 0.7, 1, "pass"))
         self.assertEqual(s["mutation"]["score"], 0.7)
 
+    def test_fake_added_is_accepted(self):
+        fake = ("--- file: app/App.alder ---\n(module App)\n(value App.x : Int () 1)\n"
+                "(fake App.Mailer\n  (tables)\n  (entries (entry App.send : Text () (pure task \"KILLS (\"))))\n")
+        s, model = self.run1([FB_T0, fake + fb_tests("(test-run (test-fake App.Mailer))")], feedback=1)
+        self.assertNotIn("rejected_reason", s["rounds"][1])
+        self.assertEqual((s["score_before"], s["score_after"]), (0.7, 0.8))
+        # a helper value beside the tests is still app code
+        helper = fb_tests("(test-eq (global AppTest.helper) 1)") + "(value AppTest.helper : Int () 1)\n"
+        s, model = self.run1([FB_T0, helper], feedback=1, task="u")
+        self.assertEqual(s["rounds"][1]["rejected_reason"], rl.APP_CHANGED_REASON)
+
     def test_at_most_n_feedback_rounds(self):
         s, model = self.run1([FB_T0, FB_TAUT, FB_TAUT, FB_TAUT], feedback=2)
         self.assertEqual((len(model.prompts), s["feedback_rounds"], len(s["rounds"])), (3, 2, 3))
@@ -1822,7 +1833,8 @@ class FeedbackTests(unittest.TestCase):
 
     def test_strip_tests(self):
         dump = ('(module App)\n(value App.x : Int () 1)\n(test "a (" pure (test-eq "\\")(" 1))\n'
-                '(test "b" task\n  (test-run\n    (pure task ())))\n(module AppTest)\n(test-like App.y)\n(page App "/x" (params))\n')
+                '(test "b" task\n  (test-run\n    (pure task ())))\n(module AppTest)\n(test-like App.y)\n(page App "/x" (params))\n'
+                '(fake App.Mailer\n  (tables)\n  (entries (entry App.send : Text () (pure task ()))))\n')
         self.assertEqual(rl.strip_tests(dump), '(value App.x : Int () 1)\n(test-like App.y)\n(page App "/x" (params))\n')
         with self.assertRaises(ValueError):
             rl.strip_tests("(value App.x (")

@@ -459,8 +459,9 @@ def survivor_block(survivors, limit: int = SURVIVOR_LINES_MAX) -> str:
 
 def strip_tests(dump: str) -> str:
     """The top-level forms of `alder dump --ir`'s output, one per line as printed, without the
-    `(test …)` forms (a module's tests) and the `(module M)` headers (a module holding only tests
-    adds one; every other form names its module itself). Strings (`"…"`, Go-quoted: `\\"` and `\\\\`
+    `(test …)` forms (a module's tests), the `(fake …)` forms (test-only code, never in a production
+    build: a feedback round may add one to install with `Test.fake`) and the `(module M)` headers (a
+    module holding only tests adds one; every other form names its module itself). Strings (`"…"`, Go-quoted: `\\"` and `\\\\`
     escapes) may hold parentheses. Raises ValueError when the parentheses do not balance."""
     kept, depth, start, i, n = [], 0, None, 0, len(dump)
     while i < n:
@@ -482,7 +483,7 @@ def strip_tests(dump: str) -> str:
             if depth == 0:
                 form = dump[start:i + 1]
                 head = re.match(r"\(([^\s()]*)", form).group(1)
-                if head not in ("test", "module"):
+                if head not in ("test", "fake", "module"):
                     kept.append(form)
         i += 1
     if depth != 0:
@@ -965,7 +966,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     mutation has survivors (no error, not no_tests), up to N feedback rounds follow, each prompted
     by feedback_prompt (the ruled survivor text, at most 10 survivor lines, the last accepted
     round's files) and written over the last accepted round. A feedback round that checks clean
-    must keep the app: app_ir (`alder dump --ir`, `(test …)` forms stripped, sha256) equal to the
+    must keep the app: app_ir (`alder dump --ir`, `(test …)` and `(fake …)` forms stripped, sha256) equal to the
     passing round's (`app_ir_sha256`), else it is rejected (`rejected_reason`, no build, no
     mutate) and the next feedback round's prompt says so (APP_CHANGED). One that builds and passes
     is accepted: its `mutation` becomes the summary's, its score `score_after`; zero survivors
