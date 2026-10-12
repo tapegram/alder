@@ -24,16 +24,43 @@ func (p *Parser) binary(start Token, op string, l, r Expr) Expr {
 
 // atOpAfterNL reports whether the next line begins with one of kinds (an operator continuing
 // the expression). The parser position is left unchanged when it returns false.
+//
+// A `<` continues only when whitespace follows it (`< x`): `<` followed by a letter or `/`
+// starts an element, so a block whose last line is `<p>…</p>` is not read as a comparison.
 func (p *Parser) atOpAfterNL(kinds ...Kind) bool {
 	save, saveTok := p.mark()
 	p.skipNL()
 	for _, k := range kinds {
-		if p.at(k) {
+		if p.at(k) && (k != Lt || p.ltIsOperator()) {
 			return true
 		}
 	}
 	p.restore(save, saveTok)
 	return false
+}
+
+// ltIsOperator reports whether the current `<` token is followed by whitespace in the source.
+func (p *Parser) ltIsOperator() bool {
+	i := p.tok.Offset + 1
+	if i >= len(p.lx.src) {
+		return false
+	}
+	switch p.lx.src[i] {
+	case ' ', '\t', '\r', '\n':
+		return true
+	}
+	return false
+}
+
+// cmpKinds are the comparison operators' token kinds, for line continuation.
+var cmpKinds = []Kind{EqEq, NotEq, Lt, Le, Gt, Ge}
+
+// atCmp reports whether a comparison operator is next, on this line or beginning the next.
+func (p *Parser) atCmp() bool {
+	if _, ok := cmpOps[p.tok.Kind]; ok {
+		return true
+	}
+	return p.at(NL) && p.atOpAfterNL(cmpKinds...)
 }
 
 func (p *Parser) parsePipe() Expr {
@@ -50,7 +77,7 @@ func (p *Parser) parsePipe() Expr {
 func (p *Parser) parseDefault() Expr {
 	start := p.tok
 	l := p.parseOr()
-	if p.at(Question2) {
+	if p.at(Question2) || (p.at(NL) && p.atOpAfterNL(Question2)) {
 		p.advance()
 		p.skipNL()
 		return p.binary(start, "??", l, p.parseDefault())
@@ -85,11 +112,12 @@ var cmpOps = map[Kind]string{EqEq: "==", NotEq: "!=", Lt: "<", Le: "<=", Gt: ">"
 func (p *Parser) parseCmp() Expr {
 	start := p.tok
 	l := p.parseAdd()
-	if op, ok := cmpOps[p.tok.Kind]; ok {
+	if p.atCmp() {
+		op := cmpOps[p.tok.Kind]
 		p.advance()
 		p.skipNL()
 		r := p.parseAdd()
-		if _, again := cmpOps[p.tok.Kind]; again {
+		if p.atCmp() {
 			p.errorAt(p.tok, "comparisons do not chain; use `&&`")
 		}
 		return p.binary(start, op, l, r)
@@ -111,7 +139,7 @@ func (p *Parser) parseAdd() Expr {
 func (p *Parser) parseMul() Expr {
 	start := p.tok
 	l := p.parseApp()
-	for p.at(Star) || p.at(Slash) || p.at(Percent) {
+	for p.at(Star) || p.at(Slash) || p.at(Percent) || (p.at(NL) && p.atOpAfterNL(Star, Slash, Percent)) {
 		op := p.advance().Text
 		p.skipNL()
 		l = p.binary(start, op, l, p.parseApp())

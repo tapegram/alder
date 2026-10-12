@@ -296,3 +296,57 @@ func TestParse_FakeEntriesAndTables(t *testing.T) {
 		t.Fatalf("fake as a name: %+v", diags)
 	}
 }
+
+// dumpBody parses `module V` plus src and dumps the last declaration's body.
+func dumpBody(t *testing.T, src string) string {
+	t.Helper()
+	m, diags := ParseString("V.alder", "module V\n"+src)
+	if len(diags) != 0 {
+		t.Fatalf("%q: unexpected diagnostics: %v", src, diags)
+	}
+	return Dump(m.Decls[len(m.Decls)-1].(*ValueDecl).Body)
+}
+
+// Every binary operator continues the expression when it begins the next line (book chapter 3).
+func TestParse_ContinuationEveryOperator(t *testing.T) {
+	for _, op := range []string{"|>", "??", "||", "&&", "==", "!=", "<", "<=", ">", ">=", "+", "-", "++", "*", "/", "%"} {
+		oneLine := dumpBody(t, "v = f 1 "+op+" 2\n")
+		split := dumpBody(t, "v =\n  f 1\n    "+op+" 2\n")
+		if split != oneLine {
+			t.Errorf("%s on the next line:\n got %s\nwant %s", op, split, oneLine)
+		}
+	}
+}
+
+// A comparison begun on the next line still does not chain.
+func TestParse_ContinuedComparisonDoesNotChain(t *testing.T) {
+	_, diags := ParseString("V.alder", "module V\nv =\n  a\n    == b\n    == c\n")
+	if len(diags) == 0 || !strings.Contains(diags[0].Message, "comparisons do not chain") {
+		t.Errorf("diags %v", diags)
+	}
+}
+
+// `<` continues only when whitespace follows it; `<` followed by a letter or `/` starts an
+// element, so a block's last line `<p>…</p>` is the block's result, not `x < p`.
+func TestParse_LtContinuationVersusElement(t *testing.T) {
+	got := dumpBody(t, "v = {\n  let x = f 1\n  <p>{x}</p>\n}\n")
+	if !strings.Contains(got, "(el p") || strings.Contains(got, "<") {
+		t.Errorf("element line read as a comparison: %s", got)
+	}
+	if got := dumpBody(t, "v =\n  a\n    < b\n"); got != dumpBody(t, "v = a < b\n") {
+		t.Errorf("`< b` did not continue: %s", got)
+	}
+	// `<` with no space before a name is an element, so it cannot continue: the old E0001.
+	_, diags := ParseString("V.alder", "module V\nv =\n  a\n    <b\n")
+	if len(diags) == 0 || diags[0].Code != "E0001" {
+		t.Errorf("`<b` on the next line: %v", diags)
+	}
+}
+
+// A line that begins with something that is not an operator is still not a continuation.
+func TestParse_NonOperatorLineDoesNotContinue(t *testing.T) {
+	_, diags := ParseString("V.alder", "module V\nv =\n  f 1\n    = 2\n")
+	if len(diags) == 0 || diags[0].Code != "E0001" || !strings.Contains(diags[0].Message, "expected a declaration, got `=`") {
+		t.Errorf("diags %v", diags)
+	}
+}

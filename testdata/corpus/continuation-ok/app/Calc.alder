@@ -1,0 +1,78 @@
+module Calc
+
+-- Every binary operator continues an expression when it begins the next line (book chapter 3).
+
+eq : Int -> Bool
+eq n =
+  n + 1
+    == 2
+
+ne : Int -> Bool
+ne n =
+  n
+    != 2
+
+lt : Int -> Bool
+lt n =
+  n
+    < 2
+
+le : Int -> Bool
+le n =
+  n
+    <= 2
+
+gt : Int -> Bool
+gt n =
+  n
+    > 2
+
+ge : Int -> Bool
+ge n =
+  n
+    >= 2
+
+mul : Int -> Int
+mul n =
+  n
+    * 2
+
+divide : Int -> Int
+divide n =
+  n
+    / 2
+
+rem : Int -> Int
+rem n =
+  n
+    % 2
+
+orDefault : Maybe Int -> Int
+orDefault m =
+  m
+    ?? 0
+
+both : Int -> Bool
+both n =
+  n > 0
+    && n < 10
+    || n == 20
+
+total : Int -> Int
+total n =
+  n
+    + 1
+    - 2
+    |> mul
+
+joined : Text -> Text
+joined s =
+  s
+    ++ "!"
+
+-- `<` followed by a letter starts an element: the block's last line is the element, not `count < p`.
+shown : Int -> Html Never
+shown n = {
+  let count = Text.fromInt (mul n)
+  <p>{count}</p>
+}

@@ -268,8 +268,38 @@ function whose body is a single expression does not need a block.
 
 Whitespace is not significant except that statements in a block are
 separated by newlines. An expression may continue onto the next line
-when the line ends with an operator or the next line begins with `|>`,
-an operator, or is inside unclosed brackets.
+when the line ends with an operator, when it is inside unclosed brackets,
+or when the next line begins with a binary operator: `|>`, `??`, `||`,
+`&&`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `+`, `-`, `++`, `*`, `/` or `%`.
+
+```alder eval=True
+List.length [1, 2, 3]
+  == 3
+```
+
+A line that begins with anything else starts something new, so `f 1`
+followed by a line `    = 2` is E0001.
+
+`<` is the one operator that can also begin a line of markup. A line
+that begins with `<` and then whitespace (`< x`) continues the
+comparison; a line that begins with `<` and then a letter or `/` (`<li>`,
+`</ul>`) starts an element. So write a comparison continued on the next
+line with a space after the `<`:
+
+```alder eval=True
+List.length [1, 2, 3]
+  < 10
+```
+
+and a block whose last line is an element ends with that element, not
+with a comparison:
+
+```alder eval=<p>3</p>
+{
+  let count = List.length [1, 2, 3]
+  <p>{Text.fromInt count}</p>
+}
+```
 
 ## Reserved words
 
