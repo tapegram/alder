@@ -1608,5 +1608,263 @@ class MutateTests(unittest.TestCase):
         self.assertIn("| m | v | 0 (build ✓) | r0 ✓ 2 | — | fail |", md)
         self.assertNotIn("Mut", rp.markdown(rp.rows([{k: v for k, v in ss[0].items() if k != "mutation"}])))
 
+FB_SURVIVORS = [
+    {"module": "Todos.Index", "file": "app/Todos/Index.alder", "decl": "load", "line": 19, "col": 8, "kind": "orderBy reversed",
+     "before": "Db.orderBy Todo.created.desc", "after": "Db.orderBy Todo.created.asc"},
+    {"module": "Todo", "file": "app/Todo.alder", "decl": "countOpen", "line": 7, "col": 3, "kind": "condition negated",
+     "before": "not t.done", "after": "t.done"},
+    {"module": "Todos.Index", "file": "app/Todos/Index.alder", "decl": "update", "line": 30, "col": 5, "kind": "boolean flipped",
+     "before": "True", "after": "False"}]
+FB_BLOCK = ("  Todos.Index   load:19       orderBy reversed    Db.orderBy Todo.created.desc → Db.orderBy Todo.created.asc\n"
+            "  Todos.Index   update:30     boolean flipped     True → False\n"
+            "  Todo          countOpen:7   condition negated   not t.done → t.done")
+FB_RULED = ("Your tests pass, but {s} of 10 mutants survived (score {x}). Each line below is a change to your app that no test noticed. "
+            "Add a test, in the named module, that fails on it. Do not edit app code to remove a mutant. "
+            "Only if no input can tell a survivor apart, say why in one comment.")
+
+FB_STUB = r"""
+import json, os, pathlib, sys
+SURV, CALLS, PASS, FAIL, FAIL_TEXT, HIDDEN = %r, %r, %r, %r, %r, %r
+a = sys.argv[1:]
+with open(CALLS, "a") as f:
+    f.write(os.getcwd() + "|" + " ".join(a) + "\n")
+def text(d):
+    return "".join(p.read_text() for p in sorted(pathlib.Path(d, "app").rglob("*.alder")))
+if a[0] in ("check", "build"):
+    sys.exit(0)
+if a[:2] == ["dump", "--ir"]:
+    sys.stdout.write(text(a[2])); sys.exit(0)
+if a[0] == "test" and a[1] == "-run":
+    sys.stdout.write("".join(json.dumps({"module": "Hidden", "name": n, "ok": True}) + "\n" for n in HIDDEN)); sys.exit(0)
+if a[0] == "test" and a[1] == "--mutate":
+    surv = SURV[min(text(a[3]).count("KILLS"), len(SURV)):]
+    ms = [{"id": i, "module": "App", "killed": True} for i in range(10 - len(surv))] + [dict(m, killed=False) for m in surv]
+    print(json.dumps({"mutants": ms}))
+    print(json.dumps({"score": (10 - len(surv)) / 10, "killed": 10 - len(surv), "survived": len(surv), "suppressed": 0, "skipped": 0}))
+    sys.exit(0)
+if a[0] == "test" and a[1] == "--json":
+    bad = "FAILTEST" in text(a[2])
+    sys.stdout.write(FAIL if bad else PASS); sys.exit(1 if bad else 0)
+if a[0] == "test":
+    sys.stdout.write(FAIL_TEXT); sys.exit(1)
+sys.exit(2)
+"""
+
+def feedback_stub(tmp):
+    """A stub `alder` (Python) for --feedback: check and build succeed; `dump --ir DIR` prints the
+    round's app/*.alder (written as IR forms: `(test …)` lines are the tests); `test --mutate --json`
+    reports 10 mutants, FB_SURVIVORS surviving less one per `KILLS` in the round's files; `test
+    --json` passes unless a file says FAILTEST; `test -run` passes every hidden test. Calls logged."""
+    calls = pathlib.Path(tmp) / "fb-calls"
+    calls.write_text("")
+    path = pathlib.Path(tmp) / "alder-fb-stub"
+    path.write_text(f"#!{sys.executable}\n" + FB_STUB % (FB_SURVIVORS, str(calls), PASS2, FAIL1, FAIL1_TEXT, HIDDEN_NAMES))
+    path.chmod(0o755)
+    stub = StubPath(path)
+    stub.calls = calls
+    return stub
+
+FB_APP = "--- file: app/App.alder ---\n(module App)\n(value App.x : Int () 1)\n"
+FB_T0 = FB_APP + '--- file: app/AppTest.alder ---\n(module AppTest)\n(test "x is one" pure (test-eq (global App.x) 1))\n'
+def fb_tests(*bodies):   # a feedback answer: the test module only, with these tests added
+    return ('--- file: app/AppTest.alder ---\n(module AppTest)\n(test "x is one" pure (test-eq (global App.x) 1))\n'
+            + "".join(f'(test "t{i}" pure\n  {b})\n' for i, b in enumerate(bodies)))
+FB_KILL1 = fb_tests('(test-eq (str "KILLS )( \\" (") 1)')   # parentheses and a quote inside a string
+FB_KILL3 = fb_tests('(test-eq "KILLS KILLS KILLS" 1)')
+FB_TAUT = fb_tests("(test-eq True True)")
+FB_EDIT = "--- file: app/App.alder ---\n(module App)\n(value App.x : Int () 2)\n" + fb_tests('(test-eq "KILLS" 1)')
+
+class FeedbackTests(unittest.TestCase):
+    """E9: --feedback N feeds a passing round's survivors back; feedback rounds may change tests only."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.exp = pathlib.Path(self.tmp) / "exp"
+        (self.exp / "tasks").mkdir(parents=True)
+        self.hidden = pathlib.Path(self.tmp) / "hidden"
+        (self.hidden / "t").mkdir(parents=True)
+        (self.hidden / "t" / "Hidden.alder").write_text(HIDDEN_MODULE)
+        self.alder = feedback_stub(self.tmp)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def run1(self, answers, feedback=2, task="t", **kw):
+        model = rl.FakeModel(answers)
+        s = rl.run_one(self.exp, model, "fake", task, "TASK", "sys", self.alder, retries=1, build=True, test=True, mutate=True,
+                       feedback=feedback, **kw)
+        return s, model
+
+    def commands(self):
+        return [l.split("|", 1)[1] for l in self.alder.calls.read_text().splitlines()]
+
+    def test_real_test_raises_the_score(self):
+        s, model = self.run1([FB_T0, FB_KILL1], feedback=1)
+        self.assertEqual((s["outcome"], s["score_before"], s["score_after"], s["feedback_rounds"]), ("pass", 0.7, 0.8, 1))
+        self.assertEqual(s["harness"]["feedback"], 1)
+        self.assertEqual(s["feedback_end"], "feedback rounds exhausted")
+        self.assertEqual([r.get("feedback") for r in s["rounds"]], [None, 1])
+        self.assertEqual(s["rounds"][1]["mutation"]["survived"], 2)
+        self.assertEqual(s["mutation"], s["rounds"][1]["mutation"])   # the last accepted round's
+        self.assertEqual(s["rounds"][0]["app_ir_sha256"], s["rounds"][1]["app_ir_sha256"])
+        p = model.prompts[1]
+        self.assertTrue(p.startswith("TASK\n\n" + rl.FEEDBACK_HEADER + "\n" + FB_RULED.format(s=3, x="0.70") + "\n\n" + FB_BLOCK + "\n\n"
+                                     "====================  YOUR PREVIOUS ANSWER  ====================\n"), p)
+        self.assertIn('--- file: app/AppTest.alder ---\n(module AppTest)\n(test "x is one"', p)
+        self.assertNotIn(rl.APP_CHANGED, p)
+        self.assertNotIn("COMPILER FEEDBACK", p)
+
+    def test_tautology_leaves_the_score(self):
+        s, model = self.run1([FB_T0, FB_TAUT], feedback=1)
+        self.assertEqual((s["score_before"], s["score_after"], s["feedback_rounds"], len(s["rounds"])), (0.7, 0.7, 1, 2))
+        self.assertEqual(s["rounds"][1]["mutation"]["survived"], 3)
+        self.assertTrue((self.exp / "runs/fake/t/round1/app/AppTest.alder").read_text().count("(test ") == 2)
+
+    def test_app_edit_is_rejected(self):
+        s, model = self.run1([FB_T0, FB_EDIT, FB_KILL1], feedback=2)
+        r1 = s["rounds"][1]
+        self.assertEqual(r1["rejected_reason"], "app code changed in a feedback round: only tests may change")
+        self.assertNotIn("mutation", r1)
+        self.assertNotIn("build", r1)
+        rd1 = (self.exp / "runs/fake/t/round1").resolve()
+        self.assertNotIn(f"test --mutate --json {rd1}", self.commands())   # no mutate run on a rejected round
+        self.assertIn("Your previous answer changed app code; it was not accepted. Only `test` declarations may change.", model.prompts[2])
+        self.assertNotIn("(value App.x : Int () 2)", model.prompts[2])   # the accepted app, not the edit
+        self.assertEqual((self.exp / "runs/fake/t/round2/app/App.alder").read_text(), "(module App)\n(value App.x : Int () 1)\n")
+        self.assertEqual((s["score_before"], s["score_after"], s["feedback_rounds"]), (0.7, 0.8, 2))
+        self.assertNotIn("rejected_reason", s["rounds"][2])
+        # the last feedback round rejected: the score stays the last accepted round's
+        s, model = self.run1([FB_T0, FB_EDIT], feedback=1, task="u")
+        self.assertEqual((s["score_before"], s["score_after"], s["feedback_rounds"], s["outcome"]), (0.7, 0.7, 1, "pass"))
+        self.assertEqual(s["mutation"]["score"], 0.7)
+
+    def test_at_most_n_feedback_rounds(self):
+        s, model = self.run1([FB_T0, FB_TAUT, FB_TAUT, FB_TAUT], feedback=2)
+        self.assertEqual((len(model.prompts), s["feedback_rounds"], len(s["rounds"])), (3, 2, 3))
+        self.assertEqual(s["feedback_end"], "feedback rounds exhausted")
+
+    def test_early_stop_at_zero_survivors(self):
+        s, model = self.run1([FB_T0, FB_KILL3, FB_TAUT], feedback=2)
+        self.assertEqual((len(model.prompts), s["feedback_rounds"], s["score_after"], s["feedback_end"]), (2, 1, 1.0, "no survivors"))
+
+    def test_failed_feedback_round_ends_the_cell(self):
+        s, model = self.run1([FB_T0, fb_tests("FAILTEST"), FB_KILL1], feedback=2)
+        self.assertEqual((len(model.prompts), s["feedback_rounds"], s["score_after"], s["outcome"]), (2, 1, 0.7, "pass"))
+        self.assertEqual(s["feedback_end"], "a feedback round failed")
+        self.assertNotIn("mutation", s["rounds"][1])
+
+    def test_no_feedback_without_survivors_or_tests(self):
+        s, model = self.run1([FB_T0 + '(test "k" pure (test-eq "KILLS KILLS KILLS" 1))\n', FB_TAUT], feedback=2)
+        self.assertEqual((len(model.prompts), s["feedback_rounds"], s["score_before"], s["score_after"]), (1, 0, 1.0, 1.0))
+        self.assertEqual(s["feedback_end"], "no survivors")
+        # a failing cell: no scores
+        model = rl.FakeModel([FB_T0 + "FAILTEST\n", FB_T0 + "FAILTEST\n"])
+        s = rl.run_one(self.exp, model, "fake", "u", "TASK", "sys", self.alder, retries=1, build=True, test=True, mutate=True, feedback=2)
+        self.assertEqual((s["outcome"], s["score_before"], s["score_after"], s["feedback_rounds"]), ("fail", None, None, 0))
+
+    def test_hidden_runs_once_and_never_in_a_prompt(self):
+        s, model = self.run1([FB_T0, FB_KILL1, FB_EDIT], feedback=2, hidden=self.hidden)
+        runs = [c for c in self.commands() if c.startswith("test -run")]
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(s["hidden_pass"], "3/3")
+        self.assertEqual(s["hidden_round"], 1)   # the last accepted round: round 2 changed the app
+        self.assertTrue((self.exp / "runs/fake/t/round1/hidden").exists())
+        self.assertFalse((self.exp / "runs/fake/t/round0/hidden").exists())
+        self.assertFalse((self.exp / "runs/fake/t/round2/hidden").exists())
+        self.assertEqual(len(model.prompts), 3)
+        for p in model.prompts:
+            self.assertNotIn("SECRET_HIDDEN_MARK", p)
+            self.assertNotIn("Hidden", p)
+            for n in HIDDEN_NAMES:
+                self.assertNotIn(n, p)
+
+    def test_feedback_requires_mutate(self):
+        import contextlib, io
+        (self.exp / "prompt.md").write_text("sys")
+        (self.exp / "tasks" / "t.md").write_text("task")
+        for bad, msg in ((["--build", "--test", "--feedback", "2"], "--feedback requires --test --mutate"),
+                         (["--feedback", "2"], "--feedback requires --test --mutate"),
+                         (["--build", "--test", "--mutate", "--feedback", "0"], "--feedback N: N must be at least 1")):
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as cm:
+                rl.main(["--exp", str(self.exp), "--model", "ollama:x", "--task", "t", "--alder", "/nonexistent", *bad])
+            self.assertEqual(cm.exception.code, 2)
+            self.assertIn(msg, err.getvalue())
+        with self.assertRaises(ValueError):
+            rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", self.alder, build=True, test=True, feedback=2)
+        seen = []
+        saved = rl.run_one
+        rl.run_one = lambda *a, **kw: seen.append(kw) or {"error": None, "outcome": "pass", "rounds": []}
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                rl.main(["--exp", str(self.exp), "--model", "ollama:x", "--task", "t", "--alder", "/nonexistent", "--build", "--test",
+                         "--mutate", "--feedback", "2"])
+        finally:
+            rl.run_one = saved
+        self.assertEqual(seen[0]["feedback"], 2)
+
+    def test_survivor_block_format_and_cut(self):
+        self.assertEqual(rl.survivor_block(FB_SURVIVORS), FB_BLOCK)
+        mk = lambda mod, i: {"module": mod, "file": "", "decl": f"d{i}", "line": i, "col": 1, "kind": "k", "before": "a", "after": "b"}
+        many = [mk("A", i) for i in range(4)] + [mk("B", i) for i in range(6)] + [mk("C", i) for i in range(3)]
+        lines = rl.survivor_block(many).split("\n")
+        self.assertEqual(len(lines), 11)
+        self.assertEqual([l.split()[0] for l in lines[:10]], ["B"] * 6 + ["A"] * 4)   # most survivors first
+        self.assertEqual(lines[0], "  B   d0:0   k   a → b")
+        self.assertEqual(lines[10], "  (and 3 more)")
+        # several survivors of one kind on a line: each named by its column too
+        two = [dict(mk("A", 3), col=5), dict(mk("A", 3), col=9), mk("A", 4)]
+        self.assertEqual(rl.survivor_block(two).split("\n"), ["  A   d3:3:5   k   a → b", "  A   d3:3:9   k   a → b", "  A   d4:4     k   a → b"])
+        # an arm swap's line is elided at 120 columns, keeping the after
+        arm = dict(mk("A", 1), kind="arm swapped", before="match x { " + "y" * 200 + " }", after="arms 1 and 2 swapped")
+        line = rl.survivor_block([arm])
+        self.assertEqual(len(line), 120)
+        self.assertTrue(line.endswith("… → arms 1 and 2 swapped"))
+
+    def test_strip_tests(self):
+        dump = ('(module App)\n(value App.x : Int () 1)\n(test "a (" pure (test-eq "\\")(" 1))\n'
+                '(test "b" task\n  (test-run\n    (pure task ())))\n(module AppTest)\n(test-like App.y)\n(page App "/x" (params))\n')
+        self.assertEqual(rl.strip_tests(dump), '(value App.x : Int () 1)\n(test-like App.y)\n(page App "/x" (params))\n')
+        with self.assertRaises(ValueError):
+            rl.strip_tests("(value App.x (")
+
+    @unittest.skipUnless(shutil.which("go"), "go is not on PATH")
+    def test_strip_tests_on_a_real_dump(self):
+        root = pathlib.Path(__file__).resolve().parent.parent
+        binp = pathlib.Path(self.tmp) / "alder"
+        subprocess.run(["go", "build", "-o", str(binp), "./cmd/alder"], cwd=root, check=True)
+        app = pathlib.Path(self.tmp) / "todos"
+        shutil.copytree(root / "examples" / "todos" / "app", app / "app")
+        h0, _, _ = rl.app_ir(binp, app)
+        self.assertIsNotNone(h0)
+        login = app / "app" / "Todo.alder"
+        login.write_text(login.read_text() + '\ntest "added in feedback (with a paren" =\n  Text.length "a)(b" == 4\n')
+        h1, _, _ = rl.app_ir(binp, app)
+        self.assertEqual(h0, h1)   # a test added: the app is unchanged
+        login.write_text(login.read_text() + '\nextra : Int\nextra = 1\n')
+        h2, _, _ = rl.app_ir(binp, app)
+        self.assertNotEqual(h0, h2)   # a value added: the app changed
+
+    def test_report_score_column(self):
+        import report_loop as rp
+        rd = {"n": 0, "errors": 0, "codes": {}, "files": 5, "exit": 0, "seconds": 1.0, "warnings": 0, "stderr": "",
+              "build": {"ok": True, "exit": 0, "stderr": ""}, "tests": {"passed": 2, "failed": 0, "results": []}}
+        rej = {**{k: v for k, v in rd.items() if k not in ("build", "tests")}, "n": 1, "feedback": 1, "rejected_reason": rl.APP_CHANGED_REASON}
+        h = {"build": True, "retries": 1, "test": True, "mutate": True}
+        mut = lambda sc, k, sv: {"score": sc, "killed": k, "survived": sv, "suppressed": 0, "skipped": 0, "survivors": []}
+        ss = [{"model": "m", "task": "t", "error": None, "final_pass": True, "outcome": "pass", "harness": {**h, "feedback": 2},
+               "rounds": [rd, rej, {**rd, "n": 2, "feedback": 2}], "mutation": mut(0.8, 8, 2), "score_before": 0.7, "score_after": 0.8,
+               "feedback_rounds": 2},
+              {"model": "m", "task": "u", "error": None, "final_pass": True, "outcome": "pass", "harness": h, "rounds": [rd],
+               "mutation": mut(0.5, 1, 1)},
+              {"model": "m", "task": "v", "error": None, "final_pass": False, "outcome": "fail", "harness": {**h, "feedback": 2},
+               "rounds": [rd], "score_before": None, "score_after": None, "feedback_rounds": 0}]
+        md = rp.markdown(rp.rows(ss))
+        self.assertIn("| Model | Task | r0 | r1 | r2 | Tests | Score | Result | Codes |", md)
+        self.assertIn("| m | t | 0 (build ✓) | 0 (app changed) | 0 (build ✓) | r0 ✓ 2; r2 ✓ 2 | 0.70 → 0.80 | pass |", md)
+        self.assertIn("| m | u | 0 (build ✓) | — | — | r0 ✓ 2 | 0.50 | pass |", md)
+        self.assertIn("| m | v | 0 (build ✓) | — | — | r0 ✓ 2 | — | fail |", md)
+        self.assertNotIn("Mut", md)
+        self.assertIn("| Mut |", rp.markdown(rp.rows(ss[1:2])))   # without feedback: M9's column as before
+
 if __name__ == "__main__":
     unittest.main()

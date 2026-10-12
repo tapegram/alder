@@ -3,14 +3,17 @@
 
 Usage:
   run_loop.py --exp DIR --model ollama:NAME|claude:NAME --task NAME [--retries 1] [--prompt prompt.md] [--alder BIN]
-              [--base APPDIR] [--build [--test [--mutate]] [--hidden DIR]] [--migrate] [--adapters] [--num-ctx N]
+              [--base APPDIR] [--build [--test [--mutate [--feedback N]]] [--hidden DIR]] [--migrate] [--adapters] [--num-ctx N]
               [--condition LABEL] [--sample LABEL]
 
 Writes DIR/runs/<model>/<task>/round<N>/{output.md,check.json,app/...} and DIR/runs/<model>/<task>/summary.json.
 With --build, a round whose check is clean also runs `alder build --emit` (output in round<N>/build/);
 with --test too, a round that built also runs `alder test --json` and passes only if every test does;
 with --mutate too (opt-in), the round whose tests passed also runs `alder test --mutate --json`, recorded
-as summary.mutation (score, killed, survived, suppressed, skipped, survivors) — a measurement, never a prompt.
+as summary.mutation (score, killed, survived, suppressed, skipped, survivors) — a measurement, never a prompt
+unless --feedback N (E9): after the first passing round with survivors, up to N feedback rounds whose prompt
+carries them; a feedback round may change `test` declarations only (its IR without tests, hashed, must equal
+the passing round's), else it is rejected; summary.score_before, score_after, feedback_rounds, feedback_end.
 --base DIR seeds round 0 from DIR/app (and DIR/adapters and DIR/migrations, when there are) as
 committed (`git archive HEAD`), never from the working tree. --migrate: a round whose only check
 errors are E0019 (the tables changed since the last migration) runs `alder migrate` and checks
@@ -410,6 +413,105 @@ def run_mutate(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = MU
     return rec, p.stderr, p.stdout
 
 
+SURVIVOR_LINES_MAX = 10   # survivor lines a feedback prompt carries
+SURVIVOR_WIDTH = 120      # `alder test --mutate` elides an arm swap's line at this many columns
+
+
+def _survivor_line(cols: str, m) -> str:
+    """rt/testing's survivorLine: `cols before → after`, an arm swap's elided at SURVIVOR_WIDTH by
+    shortening its before (the whole match), so the after stays whole; from its end when that is not enough."""
+    before, after = str(m.get("before") or ""), str(m.get("after") or "")
+    line = cols + before + " → " + after
+    if m.get("kind") != "arm swapped" or len(line) <= SURVIVOR_WIDTH:
+        return line
+    keep = len(before) - (len(line) - SURVIVOR_WIDTH) - 1
+    if keep >= 20:
+        return cols + before[:keep] + "… → " + after
+    return line[:SURVIVOR_WIDTH - 1] + "…"
+
+
+def survivor_block(survivors, limit: int = SURVIVOR_LINES_MAX) -> str:
+    """At most `limit` survivors as `alder test --mutate`'s text report prints them
+    (`  Module   Decl:Line   kind   before → after`, columns aligned, `Decl:Line:Col` when several
+    survivors of one kind share a line), grouped by module, the module with most survivors first
+    (ties: the report's order), each module's in the report's order; `  (and K more)` when cut."""
+    groups = {}
+    for m in survivors:
+        groups.setdefault(m.get("module"), []).append(m)
+    order = sorted(groups, key=lambda mod: -len(groups[mod]))   # stable: ties keep the report's order
+    shown = [m for mod in order for m in groups[mod]][:limit]
+    cols = {}
+    for m in survivors:
+        cols.setdefault((m.get("module"), m.get("kind"), m.get("line")), set()).add(m.get("col"))
+    rows = []
+    for m in shown:
+        where = f"{m.get('decl')}:{m.get('line')}"
+        if len(cols[(m.get("module"), m.get("kind"), m.get("line"))]) > 1 and (m.get("col") or 0) > 0:
+            where += f":{m.get('col')}"
+        rows.append((str(m.get("module")), where, str(m.get("kind"))))
+    width = [max((len(r[k]) for r in rows), default=0) for k in range(3)]
+    lines = [_survivor_line("  " + "".join(c + " " * (width[k] - len(c) + 3) for k, c in enumerate(r)), m)
+             for r, m in zip(rows, shown)]
+    if len(survivors) > len(shown):
+        lines.append(f"  (and {len(survivors) - len(shown)} more)")
+    return "\n".join(lines)
+
+
+def strip_tests(dump: str) -> str:
+    """The top-level forms of `alder dump --ir`'s output, one per line as printed, without the
+    `(test …)` forms (a module's tests) and the `(module M)` headers (a module holding only tests
+    adds one; every other form names its module itself). Strings (`"…"`, Go-quoted: `\\"` and `\\\\`
+    escapes) may hold parentheses. Raises ValueError when the parentheses do not balance."""
+    kept, depth, start, i, n = [], 0, None, 0, len(dump)
+    while i < n:
+        c = dump[i]
+        if c == '"':   # a string: skip to its closing quote
+            i += 1
+            while i < n and dump[i] != '"':
+                i += 2 if dump[i] == "\\" else 1
+            if i >= n:
+                raise ValueError("an unterminated string in the IR dump")
+        elif c == "(":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth < 0:
+                raise ValueError("unbalanced parentheses in the IR dump")
+            if depth == 0:
+                form = dump[start:i + 1]
+                head = re.match(r"\(([^\s()]*)", form).group(1)
+                if head not in ("test", "module"):
+                    kept.append(form)
+        i += 1
+    if depth != 0:
+        raise ValueError("unbalanced parentheses in the IR dump")
+    return "".join(f + "\n" for f in kept)
+
+
+def app_ir(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = 600):
+    """The hash of the round's app: `alder dump --ir <round_dir>` with the tests stripped
+    (strip_tests), sha256 hex. Returns (hash, exit, reason): hash None when the dump did not run
+    (reason says why: a Hang for a timeout), exited non-zero (exit 1: the program does not check
+    or has holes) or does not parse; never raises."""
+    import hashlib
+    rd = pathlib.Path(round_dir).resolve()
+    try:
+        p = run_proc([str(pathlib.Path(alder).resolve()), "dump", "--ir", str(rd)], timeout, cwd=rd)
+    except subprocess.TimeoutExpired:
+        return None, None, Hang(f"{alder}: dump --ir timed out after {timeout}s")
+    except OSError as e:
+        return None, None, f"{alder}: {e}"
+    if p.returncode != 0:
+        why = (p.stderr.strip().splitlines() or [""])[-1]
+        return None, p.returncode, f"alder dump --ir exited {p.returncode}: {why}"[:500]
+    try:
+        return hashlib.sha256(strip_tests(p.stdout).encode()).hexdigest(), 0, None
+    except ValueError as e:
+        return None, 0, f"alder dump --ir: {e}"
+
+
 def test_report(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = 600) -> str:
     """`alder test <round_dir>` without --json, run once more after a failing `--json` run: the
     text report (stdout, then stderr) is what the retry prompt carries; never raises."""
@@ -736,7 +838,16 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
         hint = go_refusal_hint(rejected, round_dir)
         if hint:
             feedback += "\n\n" + hint
-    theirs = {}
+    previous = previous_answer(round_dir, sources, show_adapters, provided)
+    return (task + previous + "\n\n====================  COMPILER FEEDBACK  ====================\n" + feedback +
+            "\n\nFix every error. Output every file again, in full, each preceded by `--- file: app/<path> ---`. No explanation, only files.")
+
+
+def previous_answer(round_dir: pathlib.Path, sources, show_adapters=False, provided=None) -> str:
+    """The YOUR PREVIOUS ANSWER section of a retry: sources ({path: text}, the round's app files),
+    and in an --adapters run the round's adapters (those still equal to the base's, `provided`,
+    apart, as provided, not yours); "" when there is nothing to show."""
+    sources, theirs = dict(sources), {}
     if show_adapters:
         for f in adapter_files(round_dir):
             path, text = f.relative_to(round_dir).as_posix(), f.read_text()
@@ -746,12 +857,31 @@ def retry_prompt(task: str, round_dir: pathlib.Path, diags, stderr: str, nfiles:
                 sources[path] = text
     previous = ""
     if sources or theirs:  # every model call is a fresh process: the retry must carry the files it asks to fix
-        section = file_section
-        previous = "\n\n====================  YOUR PREVIOUS ANSWER  ====================\n" + section(sources)
+        previous = "\n\n====================  YOUR PREVIOUS ANSWER  ====================\n" + file_section(sources)
         if theirs:
-            previous += "\n" + PROVIDED_ADAPTERS + "\n\n" + section(theirs)
-    return (task + previous + "\n\n====================  COMPILER FEEDBACK  ====================\n" + feedback +
-            "\n\nFix every error. Output every file again, in full, each preceded by `--- file: app/<path> ---`. No explanation, only files.")
+            previous += "\n" + PROVIDED_ADAPTERS + "\n\n" + file_section(theirs)
+    return previous
+
+
+FEEDBACK_HEADER = "====================  MUTATION FEEDBACK  ===================="
+# E9's survivor prompt (binding, verbatim): S of N mutants, the score X.XX
+FEEDBACK_TEXT = ("Your tests pass, but {s} of {n} mutants survived (score {score:.2f}). Each line below is a change to your app "
+                 "that no test noticed. Add a test, in the named module, that fails on it. Do not edit app code to remove a mutant. "
+                 "Only if no input can tell a survivor apart, say why in one comment.")
+APP_CHANGED = "Your previous answer changed app code; it was not accepted. Only `test` declarations may change."
+APP_CHANGED_REASON = "app code changed in a feedback round: only tests may change"
+
+
+def feedback_prompt(task: str, round_dir: pathlib.Path, mutation, rejected=False, show_adapters=False, provided=None) -> str:
+    """A feedback round's prompt (--feedback): the task; under MUTATION FEEDBACK, APP_CHANGED when
+    the round before was rejected, then FEEDBACK_TEXT and survivor_block of the last accepted
+    round's `mutation`; then that round's files as YOUR PREVIOUS ANSWER (retry_prompt's form)."""
+    sources = {str(f.relative_to(round_dir)): f.read_text() for f in (round_dir / "app").rglob("*.alder")}
+    s, n = mutation["survived"], mutation["killed"] + mutation["survived"]
+    return (task + "\n\n" + FEEDBACK_HEADER + "\n" + (APP_CHANGED + "\n\n" if rejected else "")
+            + FEEDBACK_TEXT.format(s=s, n=n, score=mutation["score"]) + "\n\n" + survivor_block(mutation["survivors"])
+            + previous_answer(round_dir, sources, show_adapters, provided)
+            + "\n\nOutput every file again, in full, each preceded by `--- file: app/<path> ---`. No explanation, only files.")
 
 
 def file_section(files) -> str:
@@ -802,7 +932,7 @@ def write_round(round_dir: pathlib.Path, prev_dir, text: str, files: dict, base_
 def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, task_text: str,
             system: str, alder: pathlib.Path, retries: int = 1, base=None, build: bool = False, seed=None,
             test: bool = False, adapters: bool = False, migrate: bool = False, hidden=None,
-            condition=None, sample=None, mutate: bool = False) -> dict:
+            condition=None, sample=None, mutate: bool = False, feedback=None) -> dict:
     """`base`, if given, is a directory inside a git repository whose `app/` as committed (`git archive
     HEAD`, never the working tree) seeds round 0 (for tasks that modify an existing app). `seed`, if
     given, is that export already made, `export_base(base)` (the exported base and its commit): main
@@ -829,7 +959,21 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     is {score, killed, survived, suppressed, skipped, survivors: [{module, file, decl, line, col,
     kind, before, after}]}, {"no_tests": true, "score": 0, …} when the round has no tests, or
     {"error": reason} with its output in round<N>/mutate.stderr.txt. It is a measurement: it never
-    reaches a prompt and never changes `outcome`.
+    reaches a prompt and never changes `outcome` — except with `feedback`.
+
+    With `feedback` N (requires `mutate`; ValueError otherwise; E9): when the passing round's
+    mutation has survivors (no error, not no_tests), up to N feedback rounds follow, each prompted
+    by feedback_prompt (the ruled survivor text, at most 10 survivor lines, the last accepted
+    round's files) and written over the last accepted round. A feedback round that checks clean
+    must keep the app: app_ir (`alder dump --ir`, `(test …)` forms stripped, sha256) equal to the
+    passing round's (`app_ir_sha256`), else it is rejected (`rejected_reason`, no build, no
+    mutate) and the next feedback round's prompt says so (APP_CHANGED). One that builds and passes
+    is accepted: its `mutation` becomes the summary's, its score `score_after`; zero survivors
+    ends the feedback. One that fails (check, build, tests, mutation error) ends it with no retry;
+    a compiler bug, harness error or model error in a feedback round ends it too, without changing
+    `outcome` (the pass stands). Each feedback round has `feedback`: k (1…N). The summary records
+    `score_before` (the passing round's score), `score_after` (the last accepted round's),
+    `feedback_rounds` (rounds run) and `feedback_end` (why they stopped); `harness.feedback` is N.
 
     With `migrate`, a round whose check fails with E0019 alone (the app's tables changed since the
     base's last migration) runs `alder migrate` (run_migrate) and checks again; `rnd["migrate"]`
@@ -851,19 +995,23 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     round run — the hidden acceptance tests `hidden/<task_name>/*.alder` run on a scratch copy of it
     (run_hidden) when it checked clean and built; `summary["hidden"]` is their record, or
     {"skipped": reason}, and `summary["hidden_pass"]` is "k/n" (None when skipped). They never
-    reach a prompt, and `outcome` stays the own tests'. `condition` and `sample` are labels recorded
+    reach a prompt, and `outcome` stays the own tests'. With `feedback`, the round they run on is the
+    last accepted one (`summary["hidden_round"]`), once, after every feedback round. `condition` and `sample` are labels recorded
     as `harness.condition` and `harness.sample`; `sample` also names the run directory `<task>-<sample>`."""
     if test and not build:
         raise ValueError("--test requires --build")
     if mutate and not test:
         raise ValueError("--mutate requires --test")
+    if feedback is not None and not mutate:
+        raise ValueError("--feedback requires --test --mutate")
     if hidden is not None and not build:
         raise ValueError("--hidden requires --build")
     if base and seed is None:
         seed = export_base(base)
         try:
             return run_one(exp, model, model_label, task_name, task_text, system, alder, retries, base, build, seed=seed, test=test, adapters=adapters,
-                           migrate=migrate, hidden=hidden, condition=condition, sample=sample, mutate=mutate)
+                           migrate=migrate, hidden=hidden, condition=condition, sample=sample, mutate=mutate,
+                           feedback=feedback)
         finally:
             remove_export(seed[0])
     run_dir = exp / "runs" / model_label / (f"{task_name}-{sample}" if sample else task_name)
@@ -873,6 +1021,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                "harness": {"build": build, "retries": retries, **({"test": True} if test else {}), **({"adapters": True} if adapters else {}),
                            **({"migrate": True} if migrate else {}),
                            **({"mutate": True} if mutate else {}),
+                           **({"feedback": feedback} if feedback is not None else {}),
                            **({"hidden": str(hidden)} if hidden is not None else {}),
                            **({"condition": condition} if condition is not None else {}),
                            **({"sample": sample} if sample is not None else {}),
@@ -896,13 +1045,17 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
         summary["outcome"] = "compiler_bug"
         summary["compiler_bug_kind"] = kind
 
-    for n in range(retries + 1):
+    def play(n, user, prev, frozen=None):
+        """Round n: generate from `user`, write the round over prev, check (migrate), build, test,
+        mutate. With `frozen` (a feedback round: the accepted app's app_ir hash), a round that
+        checked clean must have that hash, or it is rejected before its build. Returns (rnd,
+        round_dir, status, info): status "clean" (info None), "failed" (info: retry_prompt's
+        arguments), "rejected" (info None) or "stop" (info: ("model", message), ("compiler_bug",
+        kind) or ("harness_error", reason); rnd None for the model)."""
         try:
             text, meta = model.generate(system, user)
         except ModelError as e:
-            summary["error"] = str(e)
-            harness_error(f"model: {e}")
-            break
+            return None, None, "stop", ("model", str(e))
         round_dir = run_dir / f"round{n}"
         cut = bool(meta.get("truncated")) or meta.get("done_reason") == "length"
         files, rejected, cut_off_file = split_answer(text, adapters=adapters, cut_off=cut)
@@ -923,17 +1076,18 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
         if cut_off_file:
             rnd["cut_off_file"] = cut_off_file
         summary["rounds"].append(rnd)
+
+        def stop(kind, arg):
+            return rnd, round_dir, "stop", (kind, arg)
+
         if isinstance(reason, Hang):   # the checker hung on the model's program
             (round_dir / "check.stderr.txt").write_text(stderr)
-            compiler_bug("hang")
-            break
+            return stop("compiler_bug", "hang")
         if reason is not None:   # the check did not run as a check: no verdict on the model's program
-            harness_error(reason)
-            break
+            return stop("harness_error", reason)
         if exit_code == 2 and "internal error" in stderr:   # the checker panicked: never the model's fault
             (round_dir / "check.stderr.txt").write_text(stderr)
-            compiler_bug("internal_error")
-            break
+            return stop("compiler_bug", "internal_error")
         migrate_output = None
         if migrate and exit_code == 1 and set(codes) == {"E0019"}:   # only the tables are ahead of the migrations
             mexit, record, mstdout, mstderr, reason = run_migrate(alder, round_dir)
@@ -942,17 +1096,13 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             if mexit != 0:
                 (round_dir / "migrate.stderr.txt").write_text(mstderr + (("\n--- stdout ---\n" + mstdout) if mstdout.strip() else ""))
                 if isinstance(reason, Hang):
-                    compiler_bug("hang")
-                    break
+                    return stop("compiler_bug", "hang")
                 if reason is not None:
-                    harness_error(reason)
-                    break
+                    return stop("harness_error", reason)
                 if mexit != 1:
                     if "internal error" in mstderr:
-                        compiler_bug("migrate")
-                    else:
-                        harness_error(f"alder migrate exited {mexit}: {mstderr.strip()[:500]}")
-                    break
+                        return stop("compiler_bug", "migrate")
+                    return stop("harness_error", f"alder migrate exited {mexit}: {mstderr.strip()[:500]}")
                 migrate_output = (mstdout + mstderr)[:TEST_OUTPUT_MAX]
             else:   # check again: the round goes on with the migrated app
                 exit_code, diags, stderr, reason = run_check(alder, round_dir)
@@ -965,12 +1115,24 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                             "warnings": sum(1 for d in diags if d["severity"] == "warning"), "codes": codes, "stderr": stderr[:2000]})
                 if isinstance(reason, Hang):
                     (round_dir / "check.stderr.txt").write_text(stderr)
-                    compiler_bug("hang")
-                    break
+                    return stop("compiler_bug", "hang")
                 if reason is not None:
-                    harness_error(reason)
-                    break
+                    return stop("harness_error", reason)
         clean = exit_code == 0 and rnd["errors"] == 0 and not rnd.get("truncated")   # a cut-off answer fails its round
+        if clean and frozen is not None:   # a feedback round may change tests only
+            h, dexit, why = app_ir(alder, round_dir)
+            if h is None:
+                rnd["app_ir"] = {"error": why}
+                if isinstance(why, Hang):
+                    return stop("compiler_bug", "hang")
+                if dexit != 1:
+                    return stop("harness_error", why)
+                clean = False   # exit 1: holes, or a program dump refuses; an ordinary failed round
+            else:
+                rnd["app_ir_sha256"] = h
+                if h != frozen:
+                    rnd["rejected_reason"] = APP_CHANGED_REASON
+                    return rnd, round_dir, "rejected", None
         build_output = None
         if clean and build:
             bexit, bstderr, bstdout, reason = run_build(alder, round_dir)
@@ -979,14 +1141,11 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                 build_output = bstderr + (("\n" + bstdout) if bstdout.strip() else "")
                 (round_dir / "build.stderr.txt").write_text(bstderr + (("\n--- stdout ---\n" + bstdout) if bstdout.strip() else ""))
                 if isinstance(reason, Hang):   # the build hung: the compiler's
-                    compiler_bug("hang")
-                    break
+                    return stop("compiler_bug", "hang")
                 if reason is not None:   # did not start, or killed: neither the model's nor the compiler's
-                    harness_error(reason)
-                    break
+                    return stop("harness_error", reason)
                 if bexit != 1:   # 2: internal error / does not vet — the compiler's fault
-                    compiler_bug("build")
-                    break
+                    return stop("compiler_bug", "build")
                 clean = False
         test_output = None
         if clean and test:
@@ -997,33 +1156,102 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             if texit != 0:
                 (round_dir / "test.stderr.txt").write_text(tstderr + (("\n--- stdout ---\n" + tstdout) if tstdout.strip() else ""))
                 if isinstance(reason, Hang):   # alder test ran past the harness's limit
-                    compiler_bug("hang")
-                    break
+                    return stop("compiler_bug", "hang")
                 if reason is not None:
-                    harness_error(reason)
-                    break
+                    return stop("harness_error", reason)
                 if texit != 1:   # 2: a build problem or a crash outside any test, after a clean build
-                    compiler_bug("hang" if "timed out" in tstderr else "test")
-                    break
-                else:
-                    test_output = test_report(alder, round_dir)[:TEST_OUTPUT_MAX]
-                    rnd["test_output"] = test_output
-                    clean = False
-        if clean and mutate:   # a measurement of the passing program's tests: never a prompt
+                    return stop("compiler_bug", "hang" if "timed out" in tstderr else "test")
+                test_output = test_report(alder, round_dir)[:TEST_OUTPUT_MAX]
+                rnd["test_output"] = test_output
+                clean = False
+        if clean and mutate:   # a measurement of the passing program's tests (fed back only with --feedback)
             mrec, mstderr, mstdout = run_mutate(alder, round_dir)
-            rnd["mutation"] = summary["mutation"] = mrec
+            rnd["mutation"] = mrec
             if "error" in mrec:
                 (round_dir / "mutate.stderr.txt").write_text(mstderr + (("\n--- stdout ---\n" + mstdout) if mstdout.strip() else ""))
         if clean:
+            return rnd, round_dir, "clean", None
+        return rnd, round_dir, "failed", dict(
+            diags=diags, stderr=stderr, nfiles=nfiles, rejected=rejected, build_output=build_output, test_output=test_output,
+            truncated=getattr(model, "NUM_PREDICT", None) if rnd.get("truncated") else None,
+            cut_off_file=cut_off_file, show_adapters=adapters, provided=provided, migrate_output=migrate_output)
+
+    passed = None   # (rnd, round_dir) of the round that passed
+    for n in range(retries + 1):
+        rnd, round_dir, status, info = play(n, user, prev)
+        if status == "stop":
+            kind, arg = info
+            if kind == "model":
+                summary["error"] = arg
+                harness_error(f"model: {arg}")
+            elif kind == "compiler_bug":
+                compiler_bug(arg)
+            else:
+                harness_error(arg)
+            break
+        if status == "clean":
+            if "mutation" in rnd:
+                summary["mutation"] = rnd["mutation"]
             summary["final_pass"] = True
             summary["outcome"] = "pass"
+            passed = (rnd, round_dir)
             break
-        user = retry_prompt(task_text, round_dir, diags, stderr, nfiles, rejected, build_output=build_output,
-                            test_output=test_output, truncated=getattr(model, "NUM_PREDICT", None) if rnd.get("truncated") else None,
-                            cut_off_file=cut_off_file, show_adapters=adapters, provided=provided, migrate_output=migrate_output)
+        user = retry_prompt(task_text, round_dir, **info)
         prev = round_dir
+    accepted = passed   # the round whose app and score count: the pass, then each accepted feedback round
+    if feedback is not None:
+        m = passed[0].get("mutation", {}) if passed else {}
+        scored = passed is not None and "error" not in m
+        summary["score_before"] = summary["score_after"] = m["score"] if scored else None
+        summary["feedback_rounds"] = 0
+        if passed is None:
+            end = "no passing round"
+        elif not scored:
+            end = "the mutation run failed"
+        elif m.get("no_tests"):
+            end = "no tests"
+        elif m["survived"] == 0:
+            end = "no survivors"
+        else:
+            frozen, _, why = app_ir(alder, passed[1])
+            if frozen is None:
+                end = f"harness error: the passing round's IR: {why}"
+            else:
+                passed[0]["app_ir_sha256"] = frozen
+                end, was_rejected = "feedback rounds exhausted", False
+                for k in range(feedback):
+                    user = feedback_prompt(task_text, accepted[1], accepted[0]["mutation"], rejected=was_rejected,
+                                           show_adapters=adapters, provided=provided)
+                    rnd, round_dir, status, info = play(summary["rounds"][-1]["n"] + 1, user, accepted[1], frozen=frozen)
+                    if rnd is not None:
+                        rnd["feedback"] = k + 1
+                        summary["feedback_rounds"] += 1
+                    if status == "stop":   # the cell keeps its pass and its last accepted score
+                        kind, arg = info
+                        end = {"model": f"harness error: model: {arg}", "compiler_bug": f"compiler bug ({arg})"}.get(kind, f"harness error: {arg}")
+                        break
+                    if status == "rejected":
+                        was_rejected = True
+                        continue
+                    if status == "failed":
+                        end = "a feedback round failed"
+                        break
+                    if "error" in rnd["mutation"]:
+                        end = "the mutation run failed"
+                        break
+                    accepted, was_rejected = (rnd, round_dir), False
+                    summary["mutation"] = rnd["mutation"]
+                    summary["score_after"] = rnd["mutation"]["score"]
+                    if rnd["mutation"]["survived"] == 0:
+                        end = "no survivors"
+                        break
+        summary["feedback_end"] = end
     if hidden is not None:   # after the final round: never seen by the model
-        last = summary["rounds"][-1] if summary["rounds"] else None
+        if feedback is not None and accepted is not None:   # the accepted app: a feedback round changes tests only
+            last = accepted[0]
+            summary["hidden_round"] = last["n"]
+        else:
+            last = summary["rounds"][-1] if summary["rounds"] else None
         skip = final_round_skip(last)
         if skip is None:
             h = run_hidden(alder, run_dir / f"round{last['n']}", pathlib.Path(hidden) / task_name)
@@ -1052,6 +1280,8 @@ def main(argv=None):
                                                         "(exit 1 = retry with the report, exit 2 = compiler bug, stop)")
     ap.add_argument("--mutate", action="store_true", help="with --test: the round whose tests passed also runs `alder test --mutate --json`; "
                                                           "recorded as summary.mutation (score, survivors), never a prompt (opt-in: one run of the suite per mutant)")
+    ap.add_argument("--feedback", type=int, default=None, metavar="N", help="with --test --mutate (E9): after the first passing round with surviving mutants, "
+                                                                            "up to N feedback rounds whose prompt lists them; a round that changes app code (not only tests) is rejected")
     ap.add_argument("--migrate", action="store_true", help="a round whose only check errors are E0019 runs `alder migrate` and checks again; "
                                                            "the new file's step and DROPS DATA lines are recorded in the round (E8)")
     ap.add_argument("--adapters", action="store_true", help="WARNING: executes Go code the model wrote, on this machine, unsandboxed. Opt-in: accept "
@@ -1067,6 +1297,11 @@ def main(argv=None):
         ap.error("--test requires --build")
     if a.mutate and not a.test:
         ap.error("--mutate requires --test")
+    if a.feedback is not None:
+        if not (a.test and a.mutate):
+            ap.error("--feedback requires --test --mutate")
+        if a.feedback < 1:
+            ap.error("--feedback N: N must be at least 1")
     if a.hidden is not None:
         if not a.build:
             ap.error("--hidden requires --build")
@@ -1097,7 +1332,7 @@ def run_all(a, seed):
             task_text = (exp / "tasks" / f"{task}.md").read_text()
             s = run_one(exp, model, label, task, task_text, system, alder, a.retries, base=a.base, build=a.build, seed=seed,
                         test=a.test, adapters=a.adapters, migrate=a.migrate, hidden=a.hidden, condition=a.condition, sample=a.sample,
-                        mutate=a.mutate)
+                        mutate=a.mutate, **({"feedback": a.feedback} if a.feedback is not None else {}))
             status = ("ERROR " + s["error"] if s["error"]
                       else f"harness-error ({s['harness_error']})" if s["outcome"] == "harness_error"
                       else s["outcome"].replace("_", "-"))
@@ -1110,10 +1345,17 @@ def run_all(a, seed):
             hid = "" if "hidden" not in s else (f"; hidden {s['hidden_pass']}" if s["hidden_pass"] else f"; hidden skipped: {s['hidden']['skipped']}")
             mut = "" if "mutation" not in s else (f"; mutants {s['mutation']['killed']}/{s['mutation']['killed'] + s['mutation']['survived']}"
                                                    if "error" not in s["mutation"] else "; mutants: error")
-            print(f"{label} {task}{'-' + a.sample if a.sample else ''}: {status} ({counts} errors{hid}{mut})")
+            fb = "" if "feedback_rounds" not in s else (
+                f"; score {fmt_score(s['score_before'])} → {fmt_score(s['score_after'])} after {s['feedback_rounds']} feedback round"
+                f"{'' if s['feedback_rounds'] == 1 else 's'} ({s['feedback_end']})")
+            print(f"{label} {task}{'-' + a.sample if a.sample else ''}: {status} ({counts} errors{hid}{mut}{fb})")
             if s["outcome"] == "harness_error":   # the model unavailable, or check/build broken: not a measurement
                 failed += 1
     return 1 if failed else 0
+
+
+def fmt_score(x):
+    return "—" if x is None else f"{x:.2f}"
 
 
 def build_alder(exp: pathlib.Path) -> pathlib.Path:

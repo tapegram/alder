@@ -19,7 +19,12 @@ Without those fields the table is as before. Several EXP_DIRs make one table.
 M9: a `Mut` column (after `Hidden`, before `Result`) when any summary has `mutation` (run with
 `--mutate`): `k/n` mutants killed of those that ran, `0 (no tests)` when the round had no tests,
 or `— (error)` when the mutation run failed;
-`—` for a row without one. Without it the table is as before (E5–E8 regenerate unchanged)."""
+`—` for a row without one. Without it the table is as before (E5–E8 regenerate unchanged).
+
+E9: when any summary has `harness.feedback` (run with `--feedback N`), a `Score` column takes
+`Mut`'s place: `before → after` (`score_before`, `score_after`, two decimals) for a summary with
+feedback, the score alone for one without (a baseline cell), `0 (no tests)`, `— (error)`, or `—`.
+A feedback round rejected for changing app code shows `errors (app changed)` in its round column."""
 import json, pathlib, sys
 
 
@@ -31,6 +36,7 @@ def rows(summaries):
         r = {"model": s["model"], "task": task, "error": s["error"], "pass": s["final_pass"],
              "condition": h.get("condition"), "hidden": hidden_cell(s["hidden"]) if "hidden" in s else None,
              "mutation": mutation_cell(s["mutation"]) if "mutation" in s else None,
+             "feedback": "feedback" in h, "score": score_cell(s),
              "r0": None, "r1": None, "codes0": {}, "codes1": {},
              "harness": "harness" in s, "compiler_bug": bool(s.get("compiler_bug")),
              "outcome": s.get("outcome"), "bug_kind": s.get("compiler_bug_kind"), "rounds": [], "tests": []}
@@ -40,6 +46,8 @@ def rows(summaries):
             cell = str(rd["errors"])
             if "build" in rd:
                 cell += " (build ✓)" if rd["build"]["ok"] else " (build ✗)"
+            elif rd.get("rejected_reason"):   # E9: a feedback round that changed app code
+                cell += " (app changed)"
             r["rounds"].append((cell, rd["codes"]))
             if "tests" in rd:
                 t = rd["tests"]
@@ -66,6 +74,22 @@ def mutation_cell(m):
     if m.get("no_tests"):
         return "0 (no tests)"
     return f"{m['killed']}/{m['killed'] + m['survived']}"
+
+
+def score_cell(s):
+    """E9's Score cell: `before → after` with feedback, else the mutation score alone."""
+    m = s.get("mutation")
+    if m is not None and "error" in m and s.get("score_before") is None:
+        return "— (error)"
+    if m is not None and m.get("no_tests"):
+        return "0 (no tests)"
+    if "feedback_rounds" in s:
+        if s.get("score_before") is None:
+            return "—"
+        return f"{s['score_before']:.2f} → {s['score_after']:.2f}"
+    if m is None:
+        return "—"
+    return f"{m['score']:.2f}"
 
 
 def cell_text(t):
@@ -105,6 +129,9 @@ def markdown_rounds(rs):
     tests = any(r.get("tests") for r in rs)   # a Tests column only for runs with --test: E6 regenerates unchanged
     hidden = any(r.get("hidden") is not None for r in rs)   # E8 --hidden; absent before: E5–E7 unchanged
     mut = any(r.get("mutation") is not None for r in rs)   # M9 --mutate; absent before: E5–E8 unchanged
+    score = any(r.get("feedback") for r in rs)   # E9 --feedback: Score replaces Mut
+    if score:
+        mut = False
     cond = any(r.get("condition") is not None for r in rs)
     if cond:   # grouped by condition, in the order each condition first appears
         order = {}
@@ -112,21 +139,23 @@ def markdown_rounds(rs):
             order.setdefault(r.get("condition"), len(order))
         rs = sorted(rs, key=lambda r: order[r.get("condition")])
     lines = ["| " + ("Condition | " if cond else "") + "Model | Task | " + " | ".join(cols) + (" | Tests" if tests else "")
-             + (" | Hidden" if hidden else "") + (" | Mut" if mut else "") + " | Result | Codes |",
+             + (" | Hidden" if hidden else "") + (" | Mut" if mut else "") + (" | Score" if score else "") + " | Result | Codes |",
              "|" + ("---|" if cond else "") + "---|---|" + "---|" * n + ("---|" if tests else "") + ("---|" if hidden else "")
-             + ("---|" if mut else "") + "---|---|"]
+             + ("---|" if mut else "") + ("---|" if score else "") + "---|---|"]
     for r in rs:
         lead = (f"| {r.get('condition') or '—'} " if cond else "") + f"| {r['model']} | {r['task']} | "
         if r["error"]:
             lines.append(lead + " | ".join("—" for _ in cols) + (" | —" if tests else "") + (" | " + (r.get("hidden") or "—") if hidden else "")
-                         + (" | " + (r.get("mutation") or "—") if mut else "") + f" | ERROR: {r['error'][:60]} | |")
+                         + (" | " + (r.get("mutation") or "—") if mut else "") + (" | " + r["score"] if score else "")
+                         + f" | ERROR: {r['error'][:60]} | |")
             continue
         cells = [c for c, _ in r["rounds"]] + ["—"] * (n - len(r["rounds"]))
         codes = "; ".join(f"r{i}: {fmt_codes(c)}" for i, (_, c) in enumerate(r["rounds"]) if c) or "—"
         tcell = (" | " + ("; ".join(r["tests"]) or "—")) if tests else ""
         hcell = (" | " + (r.get("hidden") or "—")) if hidden else ""
         mcell = (" | " + (r.get("mutation") or "—")) if mut else ""
-        lines.append(lead + " | ".join(cells) + tcell + hcell + mcell + f" | {result(r)} | {codes} |")
+        scell = (" | " + r["score"]) if score else ""
+        lines.append(lead + " | ".join(cells) + tcell + hcell + mcell + scell + f" | {result(r)} | {codes} |")
     return "\n".join(lines) + "\n"
 
 
