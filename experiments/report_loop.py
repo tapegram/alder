@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Aggregate run_loop summaries into a Markdown table.  Usage: report_loop.py EXP_DIR
+"""Aggregate run_loop summaries into a Markdown table.  Usage: report_loop.py EXP_DIR [EXP_DIR ...]
 
 Summaries written since M3d carry `harness`; they get one column per round (`r0 … rN`, each
 `errors` or `errors (build ✓|✗)`) and a `Result` of pass / fail / compiler-bug / harness-error
@@ -7,14 +7,24 @@ Summaries written since M3d carry `harness`; they get one column per round (`r0 
 panic)" from `compiler_bug_kind`; kind "test", `alder test` exiting 2, is plain compiler-bug as
 "build" is). When any summary has rounds run with `--test`, a `Tests` column follows the rounds:
 per round that ran tests, `rN ✓ N` (all N passed) or `rN ✗ M/N` (M of N failed). Older summaries (E5) without `harness` keep the original
-two-round table, so their scores.md regenerates unchanged."""
+two-round table, so their scores.md regenerates unchanged.
+
+E8: a `Hidden` column (before `Result`) when any summary has `hidden` (run with `--hidden`): `k/n`
+hidden tests passed, with "(check: CODES)" when the hidden module did not compile against the
+program, or `— (skipped: reason)`; a `Condition` column (first) when any summary has
+`harness.condition`, rows then grouped by it (stable: within a condition, the order read);
+`harness.sample` is folded into the task as the run directory shows it (`t5-ownership-s1`).
+Without those fields the table is as before. Several EXP_DIRs make one table."""
 import json, pathlib, sys
 
 
 def rows(summaries):
     out = []
     for s in summaries:
-        r = {"model": s["model"], "task": s["task"], "error": s["error"], "pass": s["final_pass"],
+        h = s.get("harness") or {}
+        task = f"{s['task']}-{h['sample']}" if h.get("sample") else s["task"]
+        r = {"model": s["model"], "task": task, "error": s["error"], "pass": s["final_pass"],
+             "condition": h.get("condition"), "hidden": hidden_cell(s["hidden"]) if "hidden" in s else None,
              "r0": None, "r1": None, "codes0": {}, "codes1": {},
              "harness": "harness" in s, "compiler_bug": bool(s.get("compiler_bug")),
              "outcome": s.get("outcome"), "bug_kind": s.get("compiler_bug_kind"), "rounds": [], "tests": []}
@@ -31,6 +41,21 @@ def rows(summaries):
                 r["tests"].append(f"r{rd['n']} ✓ {total}" if t["failed"] == 0 else f"r{rd['n']} ✗ {t['failed']}/{total}")
         out.append(r)
     return out
+
+
+def hidden_cell(h):
+    if "skipped" in h:
+        return f"— (skipped: {cell_text(h['skipped'])})"
+    out = f"{h['passed']}/{h['passed'] + h['failed']}"
+    if h.get("check", {}).get("codes"):   # the hidden module did not compile against the program
+        out += f" (check: {fmt_codes(h['check']['codes'])})"
+    elif h.get("reason"):
+        out += f" ({cell_text(h['reason'])[:60]})"
+    return out
+
+
+def cell_text(t):
+    return str(t).replace("|", "\\|").replace("\n", " ")
 
 
 def fmt_codes(c):
@@ -64,23 +89,35 @@ def markdown_rounds(rs):
     n = max([len(r["rounds"]) for r in rs] + [1])
     cols = [f"r{i}" for i in range(n)]
     tests = any(r.get("tests") for r in rs)   # a Tests column only for runs with --test: E6 regenerates unchanged
-    lines = ["| Model | Task | " + " | ".join(cols) + (" | Tests" if tests else "") + " | Result | Codes |",
-             "|---|---|" + "---|" * n + ("---|" if tests else "") + "---|---|"]
+    hidden = any(r.get("hidden") is not None for r in rs)   # E8 --hidden; absent before: E5–E7 unchanged
+    cond = any(r.get("condition") is not None for r in rs)
+    if cond:   # grouped by condition, in the order each condition first appears
+        order = {}
+        for r in rs:
+            order.setdefault(r.get("condition"), len(order))
+        rs = sorted(rs, key=lambda r: order[r.get("condition")])
+    lines = ["| " + ("Condition | " if cond else "") + "Model | Task | " + " | ".join(cols) + (" | Tests" if tests else "")
+             + (" | Hidden" if hidden else "") + " | Result | Codes |",
+             "|" + ("---|" if cond else "") + "---|---|" + "---|" * n + ("---|" if tests else "") + ("---|" if hidden else "") + "---|---|"]
     for r in rs:
+        lead = (f"| {r.get('condition') or '—'} " if cond else "") + f"| {r['model']} | {r['task']} | "
         if r["error"]:
-            lines.append(f"| {r['model']} | {r['task']} | " + " | ".join("—" for _ in cols) + (" | —" if tests else "")
+            lines.append(lead + " | ".join("—" for _ in cols) + (" | —" if tests else "") + (" | " + (r.get("hidden") or "—") if hidden else "")
                          + f" | ERROR: {r['error'][:60]} | |")
             continue
         cells = [c for c, _ in r["rounds"]] + ["—"] * (n - len(r["rounds"]))
         codes = "; ".join(f"r{i}: {fmt_codes(c)}" for i, (_, c) in enumerate(r["rounds"]) if c) or "—"
         tcell = (" | " + ("; ".join(r["tests"]) or "—")) if tests else ""
-        lines.append(f"| {r['model']} | {r['task']} | " + " | ".join(cells) + tcell + f" | {result(r)} | {codes} |")
+        hcell = (" | " + (r.get("hidden") or "—")) if hidden else ""
+        lines.append(lead + " | ".join(cells) + tcell + hcell + f" | {result(r)} | {codes} |")
     return "\n".join(lines) + "\n"
 
 
 def main():
-    exp = pathlib.Path(sys.argv[1])
-    summaries = [json.loads(p.read_text()) for p in sorted(exp.glob("runs/*/*/summary.json"))]
+    if len(sys.argv) < 2:
+        raise SystemExit("usage: report_loop.py EXP_DIR [EXP_DIR ...]")
+    summaries = [json.loads(p.read_text()) for exp in map(pathlib.Path, sys.argv[1:])
+                 for p in sorted(exp.glob("runs/*/*/summary.json"))]
     print(markdown(rows(summaries)), end="")
 
 

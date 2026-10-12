@@ -1200,5 +1200,231 @@ class MigrateTests(unittest.TestCase):
         finally:
             rl.remove_export(exported)
 
+HIDDEN_MODULE = ('module Hidden\n\nimport Notes.Index\n\n-- SECRET_HIDDEN_MARK\ntest "a note is listed" =\n  Test.equal 1 1\n\n'
+                 'test "a stranger gets 404" = {\n  Test.equal 2 2\n}\n\ntest "the form \\"Add\\" posts" =\n  Test.equal 3 3\n')
+HIDDEN_NAMES = ["a note is listed", "a stranger gets 404", 'the form "Add" posts']
+E0002 = json.dumps({"code": "E0002", "severity": "error", "file": "app/Hidden.alder", "line": 3, "col": 8, "endLine": 3, "endCol": 19,
+                    "message": "no module Notes.Index"}) + "\n"
+
+def hidden_stub(tmp, checks=((0, ""),), hidden_check=(0, ""), own_test=(0, PASS2, ""), hidden_test=(0, "", "")):
+    """A stub `alder` for --hidden: `check DIR` answers checks[i] for the i-th check of a round, and
+    hidden_check for the check of a scratch copy (DIR ending in /hidden); `build` succeeds; `test`
+    without -run answers own_test (exit, json, stderr), with -run hidden_test; `migrate DIR` writes
+    DIR/migrations/0002_add_views.sql. Every call is logged as `$PWD|$*`."""
+    tmp = pathlib.Path(tmp)
+    count, calls = tmp / "hid-count", tmp / "hid-calls"
+    count.write_text("0")
+    calls.write_text("")
+    q = lambda t: json.dumps(t).replace("`", "\\`")
+    lines = ["#!/bin/sh", f'echo "$PWD|$*" >> {calls}',
+             'if [ "$1" = migrate ]; then mkdir -p "$2/migrations" && printf %b ' + q(MIGRATION_0002) + ' > "$2/migrations/0002_add_views.sql"; exit 0; fi',
+             'if [ "$1" = build ]; then exit 0; fi',
+             'if [ "$1" = check ]; then',
+             f'  case "$2" in */hidden) printf %b {q(hidden_check[1])}; exit {hidden_check[0]};; esac',
+             f'  n=$(cat {count}); echo $((n+1)) > {count}']
+    for i, (exit_code, out) in enumerate(checks):
+        lines.append(f'  if [ "$n" = "{i}" ]; then printf %b {q(out)}; exit {exit_code}; fi')
+    lines += ["  exit 2", "fi",
+              '[ "$1" = test ] || exit 2',
+              f'if [ "$2" = -run ]; then printf %b {q(hidden_test[1])}; printf %b {q(hidden_test[2])} 1>&2; exit {hidden_test[0]}; fi',
+              f'printf %b {q(own_test[1])}; printf %b {q(own_test[2])} 1>&2; exit {own_test[0]}']
+    path = tmp / "alder-hidden-stub"
+    path.write_text("\n".join(lines) + "\n")
+    path.chmod(0o755)
+    stub = StubPath(path)
+    stub.calls = calls
+    return stub
+
+HIDDEN_PASS3 = tline("Hidden", HIDDEN_NAMES[0], True) + tline("Hidden", HIDDEN_NAMES[1], True) + tline("Hidden", HIDDEN_NAMES[2], False, left="0", right="1")
+
+class HiddenTests(unittest.TestCase):
+    """E8: --hidden runs acceptance tests the model never sees after the final round; --condition, --sample."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.exp = pathlib.Path(self.tmp) / "exp"
+        (self.exp / "tasks").mkdir(parents=True)
+        self.hidden = pathlib.Path(self.tmp) / "hidden"
+        (self.hidden / "t").mkdir(parents=True)
+        (self.hidden / "t" / "Hidden.alder").write_text(HIDDEN_MODULE)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def calls(self, stub):
+        return [tuple(l.split("|", 1)) for l in stub.calls.read_text().splitlines()]
+
+    def test_hidden_test_names_parsed_statically(self):
+        f = self.hidden / "t" / "Hidden.alder"
+        self.assertEqual(rl.hidden_test_names([f]), HIDDEN_NAMES)
+        other = self.hidden / "t" / "Helper.alder"
+        other.write_text('module Helper\n\ntest "not hidden" =\n  Test.equal 1 1\n')
+        self.assertEqual(rl.hidden_test_names([f, other]), HIDDEN_NAMES)
+
+    def test_hidden_pass(self):
+        stub = hidden_stub(self.tmp, hidden_test=(1, HIDDEN_PASS3, ""))
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", stub, retries=1, build=True, test=True,
+                       hidden=self.hidden)
+        self.assertEqual(s["outcome"], "pass")   # the own tests' verdict; the hidden tests never change it
+        h = s["hidden"]
+        self.assertEqual((h["passed"], h["failed"], h["exit"]), (2, 1, 1))
+        self.assertEqual([(r["name"], r["ok"]) for r in h["results"]], list(zip(HIDDEN_NAMES, [True, True, False])))
+        self.assertEqual(h["results"][2]["left"], "0")
+        self.assertEqual(s["hidden_pass"], "2/3")
+        self.assertEqual(s["harness"]["hidden"], str(self.hidden))
+        rd = self.exp / "runs/fake/t/round0"
+        self.assertFalse((rd / "app" / "Hidden.alder").exists())   # the model's files are untouched
+        self.assertEqual((rd / "hidden" / "app" / "Hidden.alder").read_text(), HIDDEN_MODULE)
+        self.assertEqual((rd / "hidden" / "app" / "App.alder").read_text(), (rd / "app" / "App.alder").read_text())
+        scratch = (rd / "hidden").resolve()
+        calls = self.calls(stub)
+        self.assertEqual([a.split()[0] for _, a in calls], ["check", "build", "test", "check", "test"])
+        self.assertEqual(calls[3][1], f"check {rd / 'hidden'} --json")
+        self.assertEqual((pathlib.Path(calls[4][0]).resolve(), calls[4][1]), (scratch, f"test -run ^Hidden  --json {scratch}"))
+        self.assertEqual(json.loads((self.exp / "runs/fake/t/summary.json").read_text())["hidden_pass"], "2/3")
+
+    def test_hidden_compile_failure_fails_every_test_with_reason(self):
+        args = dict(retries=0, build=True, test=True)
+        plain = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "u", "task", "sys", hidden_stub(self.tmp), **args)
+        stub = hidden_stub(self.tmp, hidden_check=(1, E0002))
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", stub, hidden=self.hidden, **args)
+        h = s["hidden"]
+        reason = "app/Hidden.alder:3:8: error[E0002]: no module Notes.Index"
+        self.assertEqual((h["passed"], h["failed"], h["reason"]), (0, 3, reason))
+        self.assertEqual(h["results"], [{"name": n, "ok": False, "reason": reason} for n in HIDDEN_NAMES])
+        self.assertEqual(h["check"], {"exit": 1, "codes": {"E0002": 1}})
+        self.assertEqual(s["hidden_pass"], "0/3")
+        self.assertNotIn("-run", stub.calls.read_text())   # no hidden test run after a failed check
+        # the own-tests fields are those of the same run without --hidden
+        self.assertEqual((s["outcome"], s["final_pass"], s["rounds"][0]["tests"]),
+                         (plain["outcome"], plain["final_pass"], plain["rounds"][0]["tests"]))
+        import report_loop as rp
+        self.assertIn("| 0/3 (check: E0002) | pass |", rp.markdown(rp.rows([s])))
+
+    def test_hidden_crash_fails_every_test(self):
+        stub = hidden_stub(self.tmp, hidden_test=(2, '{"error": "the test program stopped: boom"}\n', "alder test: the test program stopped: boom\n"))
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", stub, retries=0, build=True, test=True,
+                       hidden=self.hidden)
+        self.assertEqual(s["outcome"], "pass")
+        self.assertEqual((s["hidden"]["failed"], s["hidden"]["reason"], s["hidden"]["exit"]), (3, "the test program stopped: boom", 2))
+        self.assertEqual(s["hidden_pass"], "0/3")
+        self.assertIn("boom", (self.exp / "runs/fake/t/round0/hidden/test.stderr.txt").read_text())
+
+    def test_hidden_skipped_when_never_built(self):
+        fa = FakeAlder(self.tmp, [(1, ERR, "")], [])
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", fa.path, retries=0, build=True, hidden=self.hidden)
+        self.assertEqual(s["hidden"], {"skipped": "the final round did not check clean (1 errors)"})
+        self.assertIsNone(s["hidden_pass"])
+        fa = FakeAlder(self.tmp, [(0, "", "")], [(1, "alder build: the program has 1 typed hole(s)\n")])
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "u", "task", "sys", fa.path, retries=0, build=True, hidden=self.hidden)
+        self.assertEqual(s["hidden"], {"skipped": "the final round did not build"})
+        self.assertEqual([a.split()[0] for _, a in fa.log()], ["check", "build"])   # nothing ran for the hidden tests
+        self.assertFalse((self.exp / "runs/fake/u/round0/hidden").exists())
+        import report_loop as rp
+        self.assertIn("| — (skipped: the final round did not build) | fail |", rp.markdown(rp.rows([s])))
+        with self.assertRaises(ValueError):
+            rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "v", "task", "sys", fa.path, retries=0, hidden=self.hidden)
+
+    def test_hidden_module_never_in_a_prompt(self):
+        stub = hidden_stub(self.tmp, checks=[(1, ERR), (0, "")], own_test=(0, PASS2, ""), hidden_test=(0, HIDDEN_PASS3.replace("false", "true"), ""))
+        model = rl.FakeModel([GOOD, GOOD])
+        s = rl.run_one(self.exp, model, "fake", "t", "TASK", "sys", stub, retries=2, build=True, test=True, hidden=self.hidden)
+        self.assertEqual((s["outcome"], len(model.prompts), s["hidden_pass"]), ("pass", 2, "3/3"))
+        self.assertIn("YOUR PREVIOUS ANSWER", model.prompts[1])
+        for p in model.prompts:
+            self.assertNotIn("SECRET_HIDDEN_MARK", p)
+            self.assertNotIn("Hidden", p)
+            for n in HIDDEN_NAMES:
+                self.assertNotIn(n, p)
+        self.assertFalse((self.exp / "runs/fake/t/round0/hidden").exists())   # only the final round gets them
+        self.assertTrue((self.exp / "runs/fake/t/round1/hidden/app/Hidden.alder").exists())
+        # a failing final round that built: the hidden tests still run, after the last retry
+        stub = hidden_stub(self.tmp, checks=[(0, ""), (0, "")], own_test=(1, FAIL1, ""), hidden_test=(1, HIDDEN_PASS3, ""))
+        model = rl.FakeModel([GOOD, GOOD])
+        s = rl.run_one(self.exp, model, "fake", "u", "TASK", "sys", stub, retries=1, build=True, test=True, hidden=self.hidden)
+        self.assertEqual((s["outcome"], s["hidden_pass"]), ("fail", "2/3"))
+        self.assertNotIn("SECRET_HIDDEN_MARK", model.prompts[1])
+        self.assertTrue((self.exp / "runs/fake/u/round1/hidden").exists())
+        self.assertFalse((self.exp / "runs/fake/u/round0/hidden").exists())
+
+    def test_condition_and_sample_recorded(self):
+        stub = hidden_stub(self.tmp, hidden_test=(0, HIDDEN_PASS3.replace("false", "true"), ""))
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", stub, retries=0, build=True, test=True,
+                       hidden=self.hidden, condition="without", sample="s2")
+        self.assertEqual((s["harness"]["condition"], s["harness"]["sample"], s["task"]), ("without", "s2", "t"))
+        self.assertTrue((self.exp / "runs/fake/t-s2/summary.json").exists())
+        self.assertFalse((self.exp / "runs/fake/t").exists())
+        self.assertTrue((self.exp / "runs/fake/t-s2/round0/hidden/app/Hidden.alder").exists())   # hidden/<task>, not <task>-<sample>
+        plain = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "u", "task", "sys", hidden_stub(self.tmp), retries=0, build=True)
+        for k in ("condition", "sample", "hidden"):
+            self.assertNotIn(k, plain["harness"])
+        self.assertNotIn("hidden", plain)
+        import report_loop as rp
+        with_ = {**s, "harness": {**s["harness"], "condition": "with"}}
+        md = rp.markdown(rp.rows([s, plain, with_]))
+        lines = md.splitlines()
+        self.assertEqual(lines[0], "| Condition | Model | Task | r0 | Tests | Hidden | Result | Codes |")
+        self.assertEqual(lines[1], "|---|---|---|---|---|---|---|---|")
+        self.assertEqual(lines[2], "| without | fake | t-s2 | 0 (build ✓) | r0 ✓ 2 | 3/3 | pass | — |")
+        self.assertEqual(lines[3], "| — | fake | u | 0 (build ✓) | — | — | pass | — |")
+        self.assertEqual(lines[4], "| with | fake | t-s2 | 0 (build ✓) | r0 ✓ 2 | 3/3 | pass | — |")
+        # the flags reach run_one
+        (self.exp / "prompt.md").write_text("sys")
+        (self.exp / "tasks" / "t.md").write_text("task")
+        seen = []
+        saved = rl.run_one
+        rl.run_one = lambda *a, **kw: seen.append(kw) or {"error": None, "outcome": "pass", "rounds": []}
+        try:
+            import contextlib, io
+            with contextlib.redirect_stdout(io.StringIO()):
+                rl.main(["--exp", str(self.exp), "--model", "ollama:x", "--task", "t", "--alder", "/nonexistent", "--build", "--test",
+                         "--hidden", str(self.hidden), "--condition", "with", "--sample", "s1"])
+        finally:
+            rl.run_one = saved
+        self.assertEqual((seen[0]["hidden"], seen[0]["condition"], seen[0]["sample"]), (str(self.hidden), "with", "s1"))
+        import contextlib, io
+        for bad in (["--hidden", str(self.hidden)], ["--build", "--hidden", str(self.tmp)], ["--build", "--sample", "a/b"]):
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as cm:
+                rl.main(["--exp", str(self.exp), "--model", "ollama:x", "--task", "t", "--alder", "/nonexistent", *bad])
+            self.assertEqual(cm.exception.code, 2)
+
+    @unittest.skipUnless(shutil.which("git"), "git is not on PATH")
+    def test_hidden_with_base_copies_adapters_and_migrations(self):
+        repo = pathlib.Path(self.tmp) / "repo"
+        for d in ("app", "adapters/auth", "migrations"):
+            (repo / "ex" / d).mkdir(parents=True)
+        (repo / "ex" / "app" / "App.alder").write_text("module App\n")
+        (repo / "ex" / "adapters" / "auth" / "password.go").write_text("package auth\n")
+        (repo / "ex" / "migrations" / "0001_initial.sql").write_text("-- alder migration 0001_initial\n")
+        (repo / "ex" / "migrations" / "schema.json").write_text("{}\n")
+        git(repo, "init", "-q")
+        git(repo, "add", ".")
+        git(repo, "commit", "-q", "-m", "base")
+        stub = hidden_stub(self.tmp, checks=[(1, E0019), (0, "")], hidden_test=(0, HIDDEN_PASS3.replace("false", "true"), ""))
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", stub, retries=0, base=repo / "ex",
+                       build=True, test=True, migrate=True, hidden=self.hidden)
+        self.assertEqual((s["outcome"], s["hidden_pass"]), ("pass", "3/3"))
+        sc = self.exp / "runs/fake/t/round0/hidden"
+        self.assertEqual((sc / "adapters" / "auth" / "password.go").read_text(), "package auth\n")
+        self.assertEqual(sorted(f.name for f in (sc / "migrations").iterdir()),
+                         ["0001_initial.sql", "0002_add_views.sql", "schema.json"])   # the base's and the round's own migration
+        self.assertEqual(sorted(f.name for f in (sc / "app").iterdir()), ["App.alder", "Hidden.alder"])
+
+class ReportE7Tests(unittest.TestCase):
+    def test_report_e7_condition_tables_unchanged(self):
+        """E7's scores.md merges one table per condition by hand; each generated row is in it."""
+        import report_loop as rp
+        here = pathlib.Path(__file__).resolve().parent / "e7-prompt-tests"
+        merged = (here / "scores.md").read_text() if (here / "scores.md").exists() else ""
+        for cond in ("full", "reference"):
+            ss = [json.loads(p.read_text()) for p in sorted((here / cond).glob("runs/*/*/summary.json"))]
+            if not ss:
+                self.skipTest("no E7 runs")
+            md = rp.markdown(rp.rows(ss))
+            self.assertNotIn("Hidden", md)
+            self.assertNotIn("Condition", md)
+            for line in md.splitlines()[2:]:
+                row = line if cond == "full" else line.replace(" | fail |", " | — | fail |")   # reference had no Tests column
+                self.assertIn(f"| {cond} {row}", merged)
+
 if __name__ == "__main__":
     unittest.main()

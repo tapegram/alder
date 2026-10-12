@@ -3,7 +3,8 @@
 
 Usage:
   run_loop.py --exp DIR --model ollama:NAME|claude:NAME --task NAME [--retries 1] [--prompt prompt.md] [--alder BIN]
-              [--base APPDIR] [--build [--test]] [--migrate] [--adapters] [--num-ctx N]
+              [--base APPDIR] [--build [--test] [--hidden DIR]] [--migrate] [--adapters] [--num-ctx N]
+              [--condition LABEL] [--sample LABEL]
 
 Writes DIR/runs/<model>/<task>/round<N>/{output.md,check.json,app/...} and DIR/runs/<model>/<task>/summary.json.
 With --build, a round whose check is clean also runs `alder build --emit` (output in round<N>/build/);
@@ -13,6 +14,10 @@ committed (`git archive HEAD`), never from the working tree. --migrate: a round 
 errors are E0019 (the tables changed since the last migration) runs `alder migrate` and checks
 again, recording the new file's `-- step:` / `-- DROPS DATA:` lines in the round. --adapters (opt-in) also accepts adapters/<dir>/<name>.go
 sections (one package level: capability X of module A.B is adapters/a/, func BX) and lets build and test run them. WARNING: it executes Go the model wrote, unsandboxed. --num-ctx sets Ollama's context window.
+--hidden DIR (with --build): after the final round, if it checked clean and built, DIR/<task>/*.alder
+run on a scratch copy of it (round<N>/hidden/) with `alder test -run '^Hidden '`; summary.hidden and
+summary.hidden_pass record them, never a prompt. --condition and --sample are labels (harness.condition,
+harness.sample); --sample also suffixes the run directory: runs/<model>/<task>-<LABEL>/.
 summary.json's `outcome` is pass, fail, compiler_bug or harness_error (see README "Outcomes").
 """
 import argparse, io, json, os, pathlib, posixpath, re, shutil, signal, subprocess, sys, tarfile, tempfile, time, urllib.request
@@ -388,6 +393,109 @@ def run_migrate(alder: pathlib.Path, round_dir: pathlib.Path, timeout: float = 6
     return p.returncode, record, p.stdout, p.stderr, unknown_exit("migrate", p.returncode)
 
 
+HIDDEN_RUN = "^Hidden "   # `alder test -run`: the tests of module Hidden (`Hidden "name"`) only
+TEST_HEADER_RE = re.compile(r'^test\s+"((?:[^"\\]|\\.)*)"\s*=', re.M)
+MODULE_RE = re.compile(r"^module\s+(\S+)", re.M)
+
+
+def hidden_test_names(files):
+    """The names of the `test "…" =` declarations in those of `files` (paths) whose module is
+    `Hidden`, read statically (the count a hidden module that does not compile is scored by)."""
+    names = []
+    for f in files:
+        text = pathlib.Path(f).read_text()
+        m = MODULE_RE.search(text)
+        if m and m.group(1) == "Hidden":
+            names += [n.replace('\\"', '"').replace("\\\\", "\\") for n in TEST_HEADER_RE.findall(text)]
+    return names
+
+
+def hidden_failed(names, reason, **extra):
+    """Every hidden test failed for one reason (a hidden module that does not compile, a crash)."""
+    return {"passed": 0, "failed": len(names), "reason": reason,
+            "results": [{"name": n, "ok": False, "reason": reason} for n in names], **extra}
+
+
+def final_round_skip(rnd):
+    """Why the hidden tests cannot run on this final round (None when they can): it must have
+    checked clean and built."""
+    if rnd is None:
+        return "no round (the model gave no answer)"
+    if rnd.get("truncated"):
+        return "the final round was cut off"
+    if rnd.get("exit") != 0 or rnd.get("errors"):
+        return f"the final round did not check clean ({rnd.get('errors', 0)} errors)"
+    if "build" not in rnd:
+        return "the final round was not built"
+    if not rnd["build"].get("ok"):
+        return "the final round did not build"
+    return None
+
+
+def run_hidden(alder: pathlib.Path, round_dir: pathlib.Path, hidden_src: pathlib.Path):
+    """The hidden acceptance tests on a round that checked clean and built: a scratch copy of the
+    round (round_dir/hidden/{app,adapters,migrations}; the round's own files are untouched) with
+    hidden_src/*.alder copied into its app/, `alder check`, then `alder test -run '^Hidden ' --json`.
+    Returns the record {"passed", "failed", "results", "exit"}: a hidden module that does not check
+    or a run that crashes fails every hidden test (counted statically) with the first diagnostic or
+    the error as `reason`."""
+    scratch = round_dir / "hidden"
+    if scratch.exists():
+        shutil.rmtree(scratch)
+    shutil.copytree(round_dir / "app", scratch / "app")
+    for extra in ("adapters", "migrations"):   # the base's adapters and the round's migrations (--base, --migrate)
+        if (round_dir / extra).is_dir():
+            shutil.copytree(round_dir / extra, scratch / extra)
+    copied, replaced = [], []
+    for f in sorted(pathlib.Path(hidden_src).glob("*.alder")):
+        dst = scratch / "app" / f.name
+        if dst.exists():
+            replaced.append(f"app/{f.name}")
+        shutil.copyfile(f, dst)
+        copied.append(dst)
+    names = hidden_test_names(copied)
+    extra = {"replaced": replaced} if replaced else {}
+    exit_code, diags, stderr, reason = run_check(alder, scratch)
+    if reason is not None:
+        return hidden_failed(names, f"alder check: {reason}", exit=None, check={"exit": exit_code, "codes": {}}, **extra)
+    errors = [d for d in diags if d["severity"] == "error"]
+    if exit_code != 0 or errors:
+        codes = {}
+        for d in errors:
+            codes[d["code"]] = codes.get(d["code"], 0) + 1
+        first = errors[0] if errors else None
+        why = (f"{first['file']}:{first['line']}:{first['col']}: error[{first['code']}]: {first['message']}" if first
+               else (stderr.strip().splitlines() or [f"alder check exited {exit_code}"])[0])
+        return hidden_failed(names, why, exit=None, check={"exit": exit_code, "codes": codes}, **extra)
+    sd = scratch.resolve()
+    try:
+        p = run_proc([str(pathlib.Path(alder).resolve()), "test", "-run", HIDDEN_RUN, "--json", str(sd)], 600, cwd=sd)
+    except subprocess.TimeoutExpired:
+        return hidden_failed(names, "alder test timed out after 600s", exit=None, **extra)
+    except OSError as e:
+        return hidden_failed(names, f"{alder}: {e}", exit=None, **extra)
+    if p.returncode != 0:
+        (scratch / "test.stderr.txt").write_text(p.stderr + (("\n--- stdout ---\n" + p.stdout) if p.stdout.strip() else ""))
+    results = [r for r in parse_tests(p.stdout) if r.get("module", "Hidden") == "Hidden"]
+    if p.returncode not in (0, 1) or (not results and names):   # a crash outside any test, a build problem
+        err = next((d["error"] for d in map(_json_or_none, p.stdout.splitlines()) if isinstance(d, dict) and "error" in d), None)
+        why = err or (p.stderr.strip().splitlines() or [f"alder test exited {p.returncode}"])[0]
+        return hidden_failed(names, why, exit=p.returncode, **extra)
+    return {"passed": sum(1 for r in results if r.get("ok") is True),
+            "failed": sum(1 for r in results if r.get("ok") is not True),
+            "results": results, "exit": p.returncode, **extra}
+
+
+def _json_or_none(line):
+    line = line.strip()
+    if not line.startswith("{"):
+        return None
+    try:
+        return json.loads(line)
+    except json.JSONDecodeError:
+        return None
+
+
 MIGRATE_REFUSED = ("Your change to the tables needs a migration, and `alder migrate` could not write one for it; "
                    "change the tables so it can (its output is below).")
 
@@ -600,7 +708,8 @@ def write_round(round_dir: pathlib.Path, prev_dir, text: str, files: dict, base_
 
 def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, task_text: str,
             system: str, alder: pathlib.Path, retries: int = 1, base=None, build: bool = False, seed=None,
-            test: bool = False, adapters: bool = False, migrate: bool = False) -> dict:
+            test: bool = False, adapters: bool = False, migrate: bool = False, hidden=None,
+            condition=None, sample=None) -> dict:
     """`base`, if given, is a directory inside a git repository whose `app/` as committed (`git archive
     HEAD`, never the working tree) seeds round 0 (for tasks that modify an existing app). `seed`, if
     given, is that export already made, `export_base(base)` (the exported base and its commit): main
@@ -636,22 +745,34 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
 
     `outcome` is set on every path: pass, fail, compiler_bug, or harness_error when the harness
     itself failed (the model was unavailable; check or build could not start, or exited with a code
-    alder never uses), with the reason in `harness_error`; the task stops there."""
+    alder never uses), with the reason in `harness_error`; the task stops there.
+
+    With `hidden` (a directory; requires `build`), after the final round — the pass, or the last
+    round run — the hidden acceptance tests `hidden/<task_name>/*.alder` run on a scratch copy of it
+    (run_hidden) when it checked clean and built; `summary["hidden"]` is their record, or
+    {"skipped": reason}, and `summary["hidden_pass"]` is "k/n" (None when skipped). They never
+    reach a prompt, and `outcome` stays the own tests'. `condition` and `sample` are labels recorded
+    as `harness.condition` and `harness.sample`; `sample` also names the run directory `<task>-<sample>`."""
     if test and not build:
         raise ValueError("--test requires --build")
+    if hidden is not None and not build:
+        raise ValueError("--hidden requires --build")
     if base and seed is None:
         seed = export_base(base)
         try:
             return run_one(exp, model, model_label, task_name, task_text, system, alder, retries, base, build, seed=seed, test=test, adapters=adapters,
-                           migrate=migrate)
+                           migrate=migrate, hidden=hidden, condition=condition, sample=sample)
         finally:
             remove_export(seed[0])
-    run_dir = exp / "runs" / model_label / task_name
+    run_dir = exp / "runs" / model_label / (f"{task_name}-{sample}" if sample else task_name)
     if run_dir.exists():
         shutil.rmtree(run_dir)
     summary = {"model": model_label, "task": task_name, "retries": retries, "base": str(base) if base else None,
                "harness": {"build": build, "retries": retries, **({"test": True} if test else {}), **({"adapters": True} if adapters else {}),
                            **({"migrate": True} if migrate else {}),
+                           **({"hidden": str(hidden)} if hidden is not None else {}),
+                           **({"condition": condition} if condition is not None else {}),
+                           **({"sample": sample} if sample is not None else {}),
                            **({"num_ctx": model.NUM_CTX, "num_predict": model.NUM_PREDICT} if isinstance(model, OllamaModel) else {})}, "error": None, "rounds": [], "final_pass": False,
                "outcome": "fail"}
     if seed is not None:
@@ -793,6 +914,16 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                             test_output=test_output, truncated=getattr(model, "NUM_PREDICT", None) if rnd.get("truncated") else None,
                             cut_off_file=cut_off_file, show_adapters=adapters, provided=provided, migrate_output=migrate_output)
         prev = round_dir
+    if hidden is not None:   # after the final round: never seen by the model
+        last = summary["rounds"][-1] if summary["rounds"] else None
+        skip = final_round_skip(last)
+        if skip is None:
+            h = run_hidden(alder, run_dir / f"round{last['n']}", pathlib.Path(hidden) / task_name)
+            summary["hidden"] = h
+            summary["hidden_pass"] = f"{h['passed']}/{h['passed'] + h['failed']}"
+        else:
+            summary["hidden"] = {"skipped": skip}
+            summary["hidden_pass"] = None
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=1) + "\n")
     return summary
@@ -816,10 +947,22 @@ def main(argv=None):
     ap.add_argument("--adapters", action="store_true", help="WARNING: executes Go code the model wrote, on this machine, unsandboxed. Opt-in: accept "
                                                             "`--- file: adapters/<dir>/<name>.go ---` sections (one package level, as chapter 7's rule names it: capability X of "
                                                             "module A.B is adapters/a/, func BX), write them into the round's adapters/ and let build/test run them")
+    ap.add_argument("--hidden", default=None, metavar="DIR", help="with --build: after the final round, run the hidden acceptance tests DIR/<task>/*.alder "
+                                                                  "on a scratch copy of it (`alder test -run '^Hidden '`); recorded as summary.hidden (E8)")
+    ap.add_argument("--condition", default=None, metavar="LABEL", help="a label for the experimental condition, recorded as harness.condition")
+    ap.add_argument("--sample", default=None, metavar="LABEL", help="a sample label: the run goes to runs/<model>/<task>-LABEL/, recorded as harness.sample")
     ap.add_argument("--num-ctx", type=int, default=None, help=f"Ollama's num_ctx for this invocation (default {OllamaModel.NUM_CTX}); recorded as harness.num_ctx")
     a = ap.parse_args(argv)
     if a.test and not a.build:
         ap.error("--test requires --build")
+    if a.hidden is not None:
+        if not a.build:
+            ap.error("--hidden requires --build")
+        for task in a.task:
+            if not sorted(pathlib.Path(a.hidden, task).glob("*.alder")):
+                ap.error(f"--hidden {a.hidden}: no {task}/*.alder")
+    if a.sample is not None and not re.fullmatch(r"[A-Za-z0-9_.-]+", a.sample):
+        ap.error("--sample LABEL: letters, digits, '_', '.', '-' only")
     seed = None
     if a.base:   # first: a --base outside git is a usage error before any work
         seed = export_base(pathlib.Path(a.base))
@@ -841,7 +984,7 @@ def run_all(a, seed):
         for task in a.task:
             task_text = (exp / "tasks" / f"{task}.md").read_text()
             s = run_one(exp, model, label, task, task_text, system, alder, a.retries, base=a.base, build=a.build, seed=seed,
-                        test=a.test, adapters=a.adapters, migrate=a.migrate)
+                        test=a.test, adapters=a.adapters, migrate=a.migrate, hidden=a.hidden, condition=a.condition, sample=a.sample)
             status = ("ERROR " + s["error"] if s["error"]
                       else f"harness-error ({s['harness_error']})" if s["outcome"] == "harness_error"
                       else s["outcome"].replace("_", "-"))
@@ -851,7 +994,8 @@ def run_all(a, seed):
             for r in s["rounds"]:
                 if r.get("warning"):
                     print(f"  warning: round {r['n']}: {r['warning']}", file=sys.stderr)
-            print(f"{label} {task}: {status} ({counts} errors)")
+            hid = "" if "hidden" not in s else (f"; hidden {s['hidden_pass']}" if s["hidden_pass"] else f"; hidden skipped: {s['hidden']['skipped']}")
+            print(f"{label} {task}{'-' + a.sample if a.sample else ''}: {status} ({counts} errors{hid})")
             if s["outcome"] == "harness_error":   # the model unavailable, or check/build broken: not a measurement
                 failed += 1
     return 1 if failed else 0
