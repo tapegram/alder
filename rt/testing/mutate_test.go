@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"alder/rt/db"
 	"alder/rt/eff"
@@ -50,7 +51,7 @@ func setMutants(t *testing.T) {
 		{ID: 1, Module: "M", Decl: "f", Kind: "bool flipped", Line: 3, Before: "True", After: "False"},
 		{ID: 2, Module: "M", Decl: "g", Kind: "arm swapped", Line: 10, Before: "match x { … }", After: "the arms swapped"},
 		{ID: 3, Module: "M", Decl: "loop", Kind: "condition negated", Line: 12, Before: "if done", After: "if not done"},
-		{ID: 4, Module: "Todos.Index", Decl: "update", Kind: "redirect → rerender", Line: 37, Before: "Redirect (Todos.Index {})", After: "Rerender"},
+		{ID: 4, Module: "Todos.Index", Decl: "update", Kind: "redirect → rerender", File: "app/Todos/Index.alder", Line: 37, Col: 9, Before: "Redirect (Todos.Index {})", After: "Rerender"},
 		{ID: 5, Module: "T", Decl: "T", Kind: "default changed", Line: 4, Before: "title = \"\"", After: "title = \"x\"", Tables: []db.TableDesc{unique}},
 	}, 2, 3)
 	t.Cleanup(func() { SetMutants(nil, nil, 0, 0) })
@@ -81,7 +82,7 @@ ok   M "b"
 ok   M "c"
 ok   N "d"
 4 passed, 0 failed
-5 mutants: 4 killed, 1 survived  (score 0.80)
+5 mutants: 4 killed (of which 1 timed out), 1 survived  (score 0.80)
 survived:
   Todos.Index   update:37   redirect → rerender   Redirect (Todos.Index {}) → Rerender
 `
@@ -110,11 +111,11 @@ survived:
 		got = append(got, string(b))
 	}
 	wantMs := []string{
-		`{"after":"False","before":"True","by":"M \"a\"","decl":"f","id":1,"killed":true,"kind":"bool flipped","line":3,"module":"M","note":""}`,
-		`{"after":"the arms swapped","before":"match x { … }","by":"M \"b\"","decl":"g","id":2,"killed":true,"kind":"arm swapped","line":10,"module":"M","note":"crashed"}`,
-		`{"after":"if not done","before":"if done","by":"M \"c\"","decl":"loop","id":3,"killed":true,"kind":"condition negated","line":12,"module":"M","note":"timed out"}`,
-		`{"after":"Rerender","before":"Redirect (Todos.Index {})","by":"","decl":"update","id":4,"killed":false,"kind":"redirect → rerender","line":37,"module":"Todos.Index","note":""}`,
-		`{"after":"title = \"x\"","before":"title = \"\"","by":"N \"d\"","decl":"T","id":5,"killed":true,"kind":"default changed","line":4,"module":"T","note":"","tables":"ensure"}`,
+		`{"after":"False","before":"True","by":"M \"a\"","col":0,"decl":"f","file":"","id":1,"killed":true,"kind":"bool flipped","line":3,"module":"M","note":""}`,
+		`{"after":"the arms swapped","before":"match x { … }","by":"M \"b\"","col":0,"decl":"g","file":"","id":2,"killed":true,"kind":"arm swapped","line":10,"module":"M","note":"crashed"}`,
+		`{"after":"if not done","before":"if done","by":"M \"c\"","col":0,"decl":"loop","file":"","id":3,"killed":true,"kind":"condition negated","line":12,"module":"M","note":"timed out"}`,
+		`{"after":"Rerender","before":"Redirect (Todos.Index {})","by":"","col":9,"decl":"update","file":"app/Todos/Index.alder","id":4,"killed":false,"kind":"redirect → rerender","line":37,"module":"Todos.Index","note":""}`,
+		`{"after":"title = \"x\"","before":"title = \"\"","by":"N \"d\"","col":0,"decl":"T","file":"","id":5,"killed":true,"kind":"default changed","line":4,"module":"T","note":"","tables":"ensure"}`,
 	}
 	if strings.Join(got, "\n") != strings.Join(wantMs, "\n") {
 		t.Fatalf("mutants:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(wantMs, "\n"))
@@ -148,12 +149,108 @@ func TestMutate_Min(t *testing.T) {
 	}
 }
 
-// TestMutate_RunNarrows: mutants are judged by the selected tests only.
+// TestMutate_RunNarrows: mutants are judged by the selected tests only; a -run that selects
+// none says so (not "no tests").
 func TestMutate_RunNarrows(t *testing.T) {
 	setMutants(t)
 	out, _, code := runMutate(mutantCases(), "-run", `M "[ab]"`)
 	if code != 0 || !strings.Contains(out, "2 passed, 0 failed\n5 mutants: 2 killed, 3 survived  (score 0.40)\n") {
 		t.Fatalf("exit %d\n%s", code, out)
+	}
+	out, _, code = runMutate(mutantCases(), "-run", `nothing`)
+	if code != 0 || out != "0 passed, 0 failed\nno test matches -run: nothing can kill a mutant\n" {
+		t.Fatalf("-run matching nothing: exit %d\n%s", code, out)
+	}
+}
+
+// TestMutate_SurvivorLines: survivors of one kind at different columns of a line are told
+// apart by their column (not those of one node, told apart by their change); an arm swap's line
+// is elided at 120 columns, its before shortened so the after, which names the swap, stays whole
+// (and from its end when that is not enough).
+func TestMutate_SurvivorLines(t *testing.T) {
+	setMutants(t)
+	long := "match step { Go -> \"a long body of the first arm\", Stop -> \"a long body of the second arm\", Wait -> \"the third\" }"
+	SetMutants(&active, []Mutant{
+		{ID: 1, Module: "M", Decl: "f", Kind: "operator flipped", Line: 13, Col: 7, Before: "a < b", After: "a <= b"},
+		{ID: 2, Module: "M", Decl: "f", Kind: "operator flipped", Line: 13, Col: 20, Before: "c > d", After: "c >= d"},
+		{ID: 3, Module: "M", Decl: "u", Kind: "update field dropped", Line: 14, Col: 5, Before: "{ t | a: 1, b: 2 }", After: "{ t | b: 2 }"},
+		{ID: 4, Module: "M", Decl: "u", Kind: "update field dropped", Line: 14, Col: 5, Before: "{ t | a: 1, b: 2 }", After: "{ t | a: 1 }"},
+		{ID: 5, Module: "M", Decl: "g", Kind: "arm swapped", Line: 20, Col: 3, Before: long, After: "the Go and Stop bodies swapped"},
+		{ID: 6, Module: "M", Decl: "g", Kind: "arm swapped", Line: 20, Col: 3, Before: long, After: long},
+	}, 0, 0)
+	out, _, code := runMutate([]Case{{Module: "M", Name: "a", Pure: func() bool { return true }}})
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
+	want := []string{
+		"  M   f:13:7    operator flipped       a < b → a <= b",
+		"  M   f:13:20   operator flipped       c > d → c >= d",
+		"  M   u:14      update field dropped   { t | a: 1, b: 2 } → { t | b: 2 }",
+		"  M   u:14      update field dropped   { t | a: 1, b: 2 } → { t | a: 1 }",
+	}
+	if strings.Join(lines[4:8], "\n") != strings.Join(want, "\n") {
+		t.Fatalf("survivors:\n%s\nwant:\n%s", strings.Join(lines[4:8], "\n"), strings.Join(want, "\n"))
+	}
+	named := lines[8]
+	if utf8.RuneCountInString(named) != 120 || !strings.HasSuffix(named, "… → the Go and Stop bodies swapped") ||
+		!strings.HasPrefix(named, "  M   g:20      arm swapped            match step { Go") {
+		t.Fatalf("arm swap line (%d columns): %q", utf8.RuneCountInString(named), named)
+	}
+	if whole := lines[9]; utf8.RuneCountInString(whole) != 120 || !strings.HasSuffix(whole, "…") {
+		t.Fatalf("arm swap line (%d columns): %q", utf8.RuneCountInString(whole), whole)
+	}
+}
+
+// TestMutate_RelativeDeadline: a mutant's time is 3 × the suite's own run when that is more than
+// -timeout: a suite near the timeout warns, and a mutant a little slower than the suite (over
+// -timeout, under 3 × the baseline) survives instead of timing out.
+func TestMutate_RelativeDeadline(t *testing.T) {
+	setMutants(t)
+	SetMutants(&active, []Mutant{{ID: 1, Module: "M", Decl: "f", Kind: "bool flipped", Line: 3, Before: "True", After: "False"}}, 0, 0)
+	slow := Case{Module: "M", Name: "slow", Pure: func() bool {
+		if active == 1 {
+			time.Sleep(400 * time.Millisecond)
+		} else {
+			time.Sleep(200 * time.Millisecond)
+		}
+		return true
+	}}
+	out, errs, code := runMutate([]Case{slow})
+	if code != 0 || !strings.HasSuffix(out, "1 mutants: 0 killed, 1 survived  (score 0.00)\nsurvived:\n  M   f:3   bool flipped   True → False\n") {
+		t.Fatalf("exit %d\n%s\n%s", code, out, errs)
+	}
+	if !strings.Contains(errs, "over half the -timeout 300ms: each mutant gets ") {
+		t.Fatalf("no warning: %q", errs)
+	}
+	if got := mutantLimit(10*time.Second, 7*time.Second); got != 21*time.Second {
+		t.Fatalf("limit of a 7s suite under 10s: %v", got)
+	}
+	if got := mutantLimit(10*time.Second, time.Second); got != 10*time.Second {
+		t.Fatalf("limit of a 1s suite under 10s: %v", got)
+	}
+}
+
+// TestMutate_TimeFirst: when a case's result and the end of the mutant's time are both there,
+// the time decides (a timeout, not a plain kill); a result that comes after the deadline is a
+// timeout too.
+func TestMutate_TimeFirst(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		done, up := make(chan CaseResult, 1), make(chan time.Time, 1)
+		done <- CaseResult{OK: false}
+		up <- time.Now()
+		if _, isUp, finished := await(done, up, time.Now().Add(time.Hour)); !isUp || !finished {
+			t.Fatalf("both ready: up %v, finished %v", isUp, finished)
+		}
+	}
+	done := make(chan CaseResult, 1)
+	done <- CaseResult{OK: false}
+	if _, isUp, _ := await(done, make(chan time.Time), time.Now().Add(-time.Millisecond)); !isUp {
+		t.Fatal("a result after the deadline: not a timeout")
+	}
+	done <- CaseResult{OK: false}
+	if _, isUp, _ := await(done, make(chan time.Time), time.Now().Add(time.Hour)); isUp {
+		t.Fatal("a result before the deadline: a timeout")
 	}
 }
 
@@ -228,7 +325,7 @@ func TestMutate_Continuation(t *testing.T) {
 	}
 	t.Setenv(EnvMutateFrom, "4")
 	out, _, code = runMutate(mutantCases())
-	if code != 0 || out != "5 mutants: 4 killed, 1 survived  (score 0.80)\nsurvived:\n  Todos.Index   update:37   redirect → rerender   Redirect (Todos.Index {}) → Rerender\n" {
+	if code != 0 || out != "5 mutants: 4 killed (of which 1 timed out), 1 survived  (score 0.80)\nsurvived:\n  Todos.Index   update:37   redirect → rerender   Redirect (Todos.Index {}) → Rerender\n" {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	if b, _ := os.ReadFile(status); len(b) != 0 {

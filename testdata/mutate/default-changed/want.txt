@@ -4,5 +4,6 @@
 4  Item  Item:14  default changed  pinned = False → pinned = True
 5  Item  Item:16  default changed  kind = Plain → kind = Fancy
 6  Item  Item:17  default changed  size = Large → size = Small
+7  Tag   Tag:11   default changed  hits = 0 → hits = 1
 -  Item  Item:15  default changed  skipped: a Maybe default
 -  Item  Item:18  default changed  equivalent: no Db.insert omits it: the default never applies

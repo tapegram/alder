@@ -64,14 +64,7 @@ var table__Note__Note = &db.Table[Note__Note]{
 }
 
 func Note__label(note Note__Note) string {
-	switch Mutant {
-	case 3:
-		if !note.Pinned {
-			return "pinned"
-		}
-		return "plain"
-	}
-	if note.Pinned {
+	if (Mutant == 3) != (note.Pinned) {
 		return "pinned"
 	}
 	return "plain"

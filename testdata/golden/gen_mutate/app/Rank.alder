@@ -1,0 +1,22 @@
+module Rank
+
+-- The mutants emitted in place: an arm swap selects the arm by number, a guard drop picks the
+-- other arm, a flipped `&&` and a dropped `not` share their operands, hoisted once.
+
+type Size = Small | Medium | Large
+
+rank : Size -> Int
+rank s = match s {
+  Small -> 1,
+  Medium -> 2,
+  Large -> 3,
+}
+
+checked : Maybe Int -> Task Int
+checked m = match m {
+  Nothing -> Task.fail "none",
+  Just _ -> Task.succeed 1,
+}
+
+both : Int -> Int -> Bool
+both a b = not (a > 0 && b > 0)

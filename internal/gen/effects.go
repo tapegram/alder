@@ -117,6 +117,12 @@ func isEffNode(e ir.Expr) bool {
 
 // task is effect expression e (of type Query a or Task a) as a Go eff.Task[A].
 func (f *fn) task(e ir.Expr, s *scope) string {
+	if h, ok := f.hoisted(e); ok { // a mutate build (mutation.go)
+		if isQuery(e.Type()) {
+			return "eff.T(" + h + ")"
+		}
+		return h
+	}
 	if ms := f.mutantsOf(e); ms != nil { // a mutate build (mutation.go)
 		return f.switchedExpr(e, ms, "eff.Task["+GoType(effResult(e.Type()))+"]", s, f.task)
 	}

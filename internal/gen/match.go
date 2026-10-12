@@ -52,7 +52,7 @@ func (f *fn) match(w *strings.Builder, x *ir.Match, s *scope, k func(ir.Expr, *s
 			}
 			if x.Default != nil {
 				w.WriteString("default:\n")
-				f.retK(w, x.Default, s.child(), k)
+				f.defaultBody(w, x, s.child(), k)
 			}
 			w.WriteString("}\n")
 			if x.Default == nil {
@@ -80,7 +80,7 @@ func (f *fn) match(w *strings.Builder, x *ir.Match, s *scope, k func(ir.Expr, *s
 		}
 		if x.Default != nil {
 			w.WriteString("default:\n")
-			f.retK(w, x.Default, s.child(), k)
+			f.defaultBody(w, x, s.child(), k)
 		}
 		w.WriteString("}\n")
 		if x.Default == nil {
@@ -107,16 +107,25 @@ func (f *fn) match(w *strings.Builder, x *ir.Match, s *scope, k func(ir.Expr, *s
 			f.caseBody(w, x, c, subj, s.child(), k)
 		}
 		w.WriteString("default:\n")
-		f.retK(w, x.Default, s.child(), k)
+		f.defaultBody(w, x, s.child(), k)
 		w.WriteString("}\n")
 	}
+}
+
+// defaultBody returns the default of x (or, for a moved arm of a mutated match, jumps: jumps).
+func (f *fn) defaultBody(w *strings.Builder, x *ir.Match, s *scope, k func(ir.Expr, *scope) string) {
+	if j, ok := f.jumps[x][len(x.Cases)]; ok {
+		w.WriteString(j)
+		return
+	}
+	f.retK(w, x.Default, s, k)
 }
 
 // twoWay emits a match over a two-tag kind: an `if` for the first case, then the second case (the
 // tags are then covered) or the default.
 func (f *fn) twoWay(w *strings.Builder, x *ir.Match, s *scope, k func(ir.Expr, *scope) string, subj string, test func(tag string) string) {
 	if len(x.Cases) == 0 {
-		f.retK(w, x.Default, s, k)
+		f.defaultBody(w, x, s, k)
 		return
 	}
 	fmt.Fprintf(w, "if %s {\n", cond(test(x.Cases[0].Tag)))
@@ -126,7 +135,7 @@ func (f *fn) twoWay(w *strings.Builder, x *ir.Match, s *scope, k func(ir.Expr, *
 	case len(x.Cases) > 1:
 		f.caseBody(w, x, x.Cases[1], subj, s, k)
 	case x.Default != nil:
-		f.retK(w, x.Default, s, k)
+		f.defaultBody(w, x, s, k)
 	default:
 		w.WriteString("panic(\"unreachable\")\n")
 	}
@@ -147,6 +156,14 @@ func litTag(t types.Type, tag string) string {
 
 // caseBody binds the case's parts and returns its body.
 func (f *fn) caseBody(w *strings.Builder, x *ir.Match, c ir.Case, subj string, s *scope, k func(ir.Expr, *scope) string) {
+	for i := range x.Cases { // a moved arm of a mutated match (mutation.go) jumps, binding nothing
+		if x.Cases[i].Tag == c.Tag && x.Cases[i].Body == c.Body {
+			if j, ok := f.jumps[x][i]; ok {
+				w.WriteString(j)
+				return
+			}
+		}
+	}
 	access := map[string]string{}
 	for _, b := range c.Binds {
 		access[b.Name] = f.partAccess(x, c.Tag, b.Field, subj)

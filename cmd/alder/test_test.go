@@ -898,7 +898,7 @@ ok   Notes "a new note is not pinned"
 	}
 
 	// no tests selected: nothing can kill a mutant (exit 1 only with --min)
-	if code, stdout, _ := runTest(t, dir, "--mutate", "-run", "nothing matches"); code != 0 || stdout != "0 passed, 0 failed\nno tests: nothing can kill a mutant\n" {
+	if code, stdout, _ := runTest(t, dir, "--mutate", "-run", "nothing matches"); code != 0 || stdout != "0 passed, 0 failed\nno test matches -run: nothing can kill a mutant\n" {
 		t.Fatalf("no tests: exit %d\n%s", code, stdout)
 	}
 	if code, _, _ := runTest(t, dir, "--mutate", "--min", "0.5", "-run", "nothing matches"); code != 1 {
@@ -958,11 +958,12 @@ func TestTest_MutateCrashAndHang(t *testing.T) {
 	}
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	want := `{"mutants":[` +
-		`{"id":1,"module":"Calc","decl":"loop","line":9,"kind":"condition negated","before":"if stop","after":"if not stop","killed":true,"by":"Calc \"loop stops after one step\"","note":""},` +
-		`{"id":2,"module":"Calc","decl":"loop","line":9,"kind":"bool flipped","before":"True","after":"False","killed":true,"by":"Calc \"loop stops after one step\"","note":"crashed"},` +
-		`{"id":3,"module":"Calc","decl":"fib","line":12,"kind":"operator flipped","before":"n < 2","after":"n <= 2","killed":true,"by":"Calc \"work is fib 10\"","note":""},` +
-		`{"id":4,"module":"Calc","decl":"work","line":15,"kind":"condition negated","before":"if fast","after":"if not fast","killed":true,"by":"Calc \"work is fib 10\"","note":"timed out"}]}`
-	if len(lines) != 4 || lines[2] != want || lines[3] != `{"score":1,"killed":4,"survived":0,"suppressed":0,"skipped":1}` {
+		`{"id":1,"module":"Calc","file":"app/Calc.alder","decl":"loop","line":9,"col":15,"kind":"condition negated","before":"if stop","after":"if not stop","killed":true,"by":"Calc \"loop stops after one step\"","note":""},` +
+		`{"id":2,"module":"Calc","file":"app/Calc.alder","decl":"loop","line":9,"col":48,"kind":"bool flipped","before":"True","after":"False","killed":true,"by":"Calc \"loop stops after one step\"","note":"crashed"},` +
+		`{"id":3,"module":"Calc","file":"app/Calc.alder","decl":"fib","line":12,"col":9,"kind":"condition negated","before":"if n < 2","after":"if not (n < 2)","killed":true,"by":"Calc \"work is fib 10\"","note":""},` +
+		`{"id":4,"module":"Calc","file":"app/Calc.alder","decl":"fib","line":12,"col":12,"kind":"operator flipped","before":"n < 2","after":"n <= 2","killed":true,"by":"Calc \"work is fib 10\"","note":""},` +
+		`{"id":5,"module":"Calc","file":"app/Calc.alder","decl":"work","line":15,"col":18,"kind":"condition negated","before":"if fast","after":"if not fast","killed":true,"by":"Calc \"work is fib 10\"","note":"timed out"}]}`
+	if len(lines) != 4 || lines[2] != want || lines[3] != `{"score":1,"killed":5,"survived":0,"suppressed":0,"skipped":0}` {
 		t.Fatalf("stdout:\n%s\nwant mutants:\n%s", stdout, want)
 	}
 }

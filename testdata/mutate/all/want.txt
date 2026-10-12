@@ -5,12 +5,12 @@
 5   Auth.Login   update:43       reject → rerender     Reject "Email or password is incorrect." → Rerender
 6   Todo         Todo:12         default changed       done = False → done = True
 7   Todo         Todo:14         cascade ↔ restrict    owner @ref User @restrict → owner @ref User @cascade
-8   Todo         matches:19      arm swapped           match filter { All -> True, Active -> not todo.done, Completed -> todo.done } → match filter { All -> not todo.done, Active -> True, Completed -> todo.done }
-9   Todo         matches:19      arm swapped           match filter { All -> True, Active -> not todo.done, Completed -> todo.done } → match filter { All -> True, Active -> todo.done, Completed -> not todo.done }
+8   Todo         matches:19      arm swapped           match filter { All -> True, Active -> not todo.done, Completed -> todo.done } → the All and Active bodies swapped
+9   Todo         matches:19      arm swapped           match filter { All -> True, Active -> not todo.done, Completed -> todo.done } → the Active and Completed bodies swapped
 10  Todo         matches:20      bool flipped          True → False
 11  Todo         matches:21      not dropped           not todo.done → todo.done
-12  Todo         filterLabel:26  arm swapped           match filter { All -> "All", Active -> "Active", Completed -> "Completed" } → match filter { All -> "Active", Active -> "All", Completed -> "Completed" }
-13  Todo         filterLabel:26  arm swapped           match filter { All -> "All", Active -> "Active", Completed -> "Completed" } → match filter { All -> "All", Active -> "Completed", Completed -> "Active" }
+12  Todo         filterLabel:26  arm swapped           match filter { All -> "All", Active -> "Active", Completed -> "Completed" } → the All and Active bodies swapped
+13  Todo         filterLabel:26  arm swapped           match filter { All -> "All", Active -> "Active", Completed -> "Completed" } → the Active and Completed bodies swapped
 14  Todo         countOpen:33    not dropped           not t.done → t.done
 15  Todos.Index  requires:7      requires dropped      requires user → served without user (user = User.UserId "mutant")
 16  Todos.Index  load:18         where dropped         Db.where (Todo.owner.eq session.user) → the condition dropped
@@ -34,10 +34,10 @@
 -   Auth.Login   update:38       arm swapped           skipped: unscopable: an arm uses what the match binds
 -   Todos.Index  update:34       arm swapped           skipped: unscopable: an arm uses what the match binds
 -   Todos.Index  update:34       arm swapped           skipped: unscopable: an arm uses what the match binds
--   Todos.Index  owned:57        guard dropped         equivalent: unscopable: the other arm uses what the match binds
+-   Todos.Index  owned:57        guard dropped         skipped: unscopable: the other arm uses what the match binds
 -   Todos.Index  owned:57        arm swapped           skipped: unscopable: an arm uses what the match binds
 -   Todos.Index  owned:58        condition negated     skipped: operator flipped makes the same program
--   Todos.Show   load:13         guard dropped         equivalent: unscopable: the other arm uses what the match binds
+-   Todos.Show   load:13         guard dropped         skipped: unscopable: the other arm uses what the match binds
 -   Todos.Show   load:13         arm swapped           skipped: unscopable: an arm uses what the match binds
 -   Todos.Show   load:14         condition negated     skipped: operator flipped makes the same program
 -   Todos.Show   update:30       arm swapped           skipped: unscopable: an arm uses what the match binds

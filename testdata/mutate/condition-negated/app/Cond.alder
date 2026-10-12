@@ -11,9 +11,17 @@ size n = if big n then "big" else "small"
 both : Bool -> Bool -> Int
 both a b = if a && b then 1 else 0
 
--- Skipped: negating a comparison is the program `operator flipped` makes.
+-- A mutant: negating `<` is `>=`, which operator flipped (`<=`) does not make.
 small : Int -> Text
 small n = if n < 3 then "small" else "big"
+
+-- Skipped: negating `==` is the program operator flipped makes (`!=`).
+zero : Int -> Text
+zero n = if n == 0 then "none" else "some"
+
+-- Skipped: negating `not e` is the program not dropped makes.
+odd : Bool -> Text
+odd b = if not b then "no" else "yes"
 
 -- Refused: a literal condition.
 fixed : Int

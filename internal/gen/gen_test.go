@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"alder/internal/check"
 	"alder/internal/diag"
@@ -3233,14 +3234,17 @@ func TestGen_Mutate(t *testing.T) {
 				if m.Node == nil && m.Page == nil {
 					continue
 				}
-				needle := fmt.Sprintf("case %d:\n", m.ID)
+				// a switch's case, or an If's or a Match's test of Mutant (mutatedIf, mutatedMatch)
+				needles := []string{fmt.Sprintf("case %d:\n", m.ID), fmt.Sprintf("Mutant == %d ", m.ID), fmt.Sprintf("Mutant != %d ", m.ID), fmt.Sprintf("(Mutant == %d)", m.ID)}
 				if m.Page != nil {
-					needle = fmt.Sprintf("Mutant == %d {", m.ID)
+					needles = []string{fmt.Sprintf("Mutant == %d {", m.ID)}
 				}
 				found := false
 				for name, src := range files {
-					if strings.HasSuffix(name, ".go") && strings.Contains(string(src), needle) {
-						found = true
+					for _, needle := range needles {
+						if strings.HasSuffix(name, ".go") && strings.Contains(string(src), needle) {
+							found = true
+						}
 					}
 				}
 				if !found {
@@ -3257,5 +3261,80 @@ func TestGen_Mutate(t *testing.T) {
 	}
 	if _, err := Emit(lowerDir(t, "../../testdata/corpus/mutate-ok"), Options{RepoPath: repoPath(t), Mutate: true}); err == nil {
 		t.Fatal("Mutate without Tests: no error")
+	}
+}
+
+// TestGen_MutateNested: a mutant of an If, a Match or an operator is emitted in place, its
+// subtrees once (mutatedIf, mutatedMatch, hoist), so the mutate build of nested mutated code
+// grows with the number of mutants, not with the number of programs they make: a 12-deep
+// else-if validation chain (two mutants per level), a 12-deep `&&` chain and a 12-deep chain
+// of matches (two arm swaps per level) stay within a few hundred bytes per mutant of the plain
+// test build, and type-check quickly. (Each replacement used to re-emit the whole subtree:
+// 3^12 copies of the chain's tail.)
+func TestGen_MutateNested(t *testing.T) {
+	const depth = 12
+	var b strings.Builder
+	b.WriteString("module Form\n\ntype Row = {\n")
+	for i := 1; i <= depth; i++ {
+		fmt.Fprintf(&b, "  f%d: Text,\n", i)
+	}
+	b.WriteString("}\n\ntype Step = Go | Stop | Wait\n\nvalidate : Row -> Task Text\nvalidate r =\n")
+	for i := 1; i <= depth; i++ {
+		pre := "  else "
+		if i == 1 {
+			pre = "  "
+		}
+		fmt.Fprintf(&b, "%sif Text.isEmpty r.f%d then Task.fail \"f%d is empty\"\n", pre, i, i)
+	}
+	b.WriteString("  else Task.succeed r.f1\n\nfull : Row -> Bool\nfull r =\n  ")
+	for i := 1; i <= depth; i++ {
+		if i > 1 {
+			b.WriteString(" && ")
+		}
+		fmt.Fprintf(&b, "r.f%d != \"\"", i)
+	}
+	b.WriteString("\n\nwalk : List Step -> Int\nwalk steps =\n")
+	for i := 1; i <= depth; i++ {
+		ind := strings.Repeat("  ", 2*i-1)
+		fmt.Fprintf(&b, "%smatch List.head (List.drop %d steps) ?? Go {\n%s  Go -> %d,\n%s  Stop -> %d,\n%s  Wait ->\n", ind, i, ind, 10*i, ind, 10*i+1, ind)
+	}
+	fmt.Fprintf(&b, "%s0\n", strings.Repeat("  ", 2*depth+1))
+	for i := depth; i >= 1; i-- {
+		fmt.Fprintf(&b, "%s}\n", strings.Repeat("  ", 2*i-1))
+	}
+	b.WriteString("\ntest \"a full row\" = full { ")
+	for i := 1; i <= depth; i++ {
+		if i > 1 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "f%d: \"x\"", i)
+	}
+	b.WriteString(" }\n")
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "app", "Form.alder"), []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ms, _ := mutate.Collect(lowerDir(t, dir))
+	if len(ms) < 5*depth {
+		t.Fatalf("%d mutants, want at least %d", len(ms), 5*depth)
+	}
+	plain := emitOpts(t, dir, Options{Tests: true})
+	start := time.Now()
+	files := emitOpts(t, dir, Options{Tests: true, Mutate: true})
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("the mutate build took %v to emit", d)
+	}
+	size, base := len(files["Form_alder.go"]), len(plain["Form_alder.go"])
+	if size > base+300*len(ms) {
+		t.Errorf("Form_alder.go is %d bytes in the mutate build, %d in the test build: more than 300 bytes per mutant (%d)", size, base, len(ms))
+	}
+	t.Logf("%d mutants; Form_alder.go: %d bytes (test build %d)", len(ms), size, base)
+	start = time.Now()
+	vet(t, files)
+	if d := time.Since(start); d > 60*time.Second {
+		t.Errorf("the mutate build took %v to vet", d)
 	}
 }

@@ -42,6 +42,7 @@ func init() {
 	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
 	rt.RegisterUnion(reflect.TypeOf(tag__Login__Msg(0)), []string{})
 	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Msg(0)), []string{"Add"})
+	rt.RegisterUnion(reflect.TypeOf(tag__Rank__Size(0)), []string{"Small", "Medium", "Large"})
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that

@@ -28,7 +28,8 @@ const testUsage = "usage: alder test [dir] [-run re] [-timeout d] [--json] [--mu
 const defaultTestTimeout = 5 * time.Minute
 
 // defaultMutateTimeout bounds, with --mutate, each run of the suite: the tests' own, and each
-// mutant's (rtesting.Main's per-mutant deadline), unless -timeout says.
+// mutant's (rtesting.Main's per-mutant deadline, at least 3 × the tests' own run), unless
+// -timeout says.
 const defaultMutateTimeout = 10 * time.Second
 
 // testGrace is how long after the deadline `alder test` waits for the test program to report
@@ -95,7 +96,8 @@ func main() {
 // build/<app>/scratch/mutate) and, when the selected tests pass, runs them once per mutant
 // (rtesting.Main): the report ends with the mutation score and the survivors, one line each,
 // or with --json the mutants' object and the score's. -timeout (default 10s with --mutate)
-// then bounds each run of the suite, the tests' own and each mutant's, not the whole run; a
+// then bounds each run of the suite, the tests' own and each mutant's (given at least 3 × the
+// tests' own time), not the whole run; a
 // mutant that crashes the program is killed and the run goes on (runTests). --min R exits 1
 // when the score is below R (it needs --mutate).
 //

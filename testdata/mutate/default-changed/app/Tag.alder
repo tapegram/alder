@@ -1,0 +1,18 @@
+module Tag
+
+-- The only literal omitting hits is the `Insert Tag` a helper returns: it still relies on the
+-- default, so default changed is a mutant (not refused as never applying).
+
+type TagId = brand Text
+
+table Tag {
+  id: TagId @id,
+  name: Text,
+  hits: Int = 0,
+}
+
+fresh : Text -> Insert Tag
+fresh n = { name: n }
+
+add : Text -> Task TagId
+add n = Db.insert Tag (fresh n)

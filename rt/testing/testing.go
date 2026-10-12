@@ -511,9 +511,10 @@ const (
 // with `N mutants: K killed, S survived  (score X.XX)` and the survivors, or with --json the
 // objects {"mutants": […]} and {"score", …} on stdout. A failing suite ends instead with
 // "tests fail: fix them before measuring mutants" (exit 1), no selected test with "no tests:
-// nothing can kill a mutant" (exit 1 with --min, else 0), each where the summary goes.
-// --min R (EnvMin) exits 1 when the score is below R; -timeout d (EnvTimeout, default 10s)
-// bounds each mutant's run; --mutate-from k (EnvMutateFrom) starts at mutant k, skipping the
+// nothing can kill a mutant" ("no test matches -run: …" when -run selected none; exit 1 with
+// --min, else 0), each where the summary goes. --min R (EnvMin) exits 1 when the score is
+// below R; -timeout d (EnvTimeout, default 10s) bounds each mutant's run, which gets at least
+// 3 × the suite's own run (warned about when that is over half of d); --mutate-from k (EnvMutateFrom) starts at mutant k, skipping the
 // suite's own run, and EnvMutateLog names the log of decided mutants (see mutate.go for the
 // continuation after a crash).
 func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migration, caps map[string]any, session any, routes []web.Route, webOpts web.Options, args []string, out, err io.Writer) int {
@@ -612,8 +613,9 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 		}
 	}
 	summary := func() { report(fmt.Sprintf("%d passed, %d failed\n", passed, failed)) }
+	mutantLog := os.Getenv(EnvMutateLog)
 	if *mutating && from > 1 { // the tests passed in an earlier run of the program
-		return mutate(run, o, mutantRun{timeout: mutantTimeout, status: status, log: os.Getenv(EnvMutateLog), from: from}, minScore, *asJSON, out, err)
+		return mutate(run, o, mutantRun{timeout: mutantTimeout, baseline: readBaseline(mutantLog), status: status, log: mutantLog, from: from}, minScore, *asJSON, out, err)
 	}
 	var deadline <-chan time.Time
 	if !o.Deadline.IsZero() {
@@ -621,6 +623,7 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 		defer timer.Stop()
 		deadline = timer.C
 	}
+	suiteStart := time.Now()
 	for i, c := range run {
 		if status != "" {
 			if e := os.WriteFile(status, []byte(c.Module+"\t"+c.Name+"\n"), 0o644); e != nil {
@@ -674,6 +677,7 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 			return 2
 		}
 	}
+	baseline := time.Since(suiteStart)
 	summary()
 	if failed > 0 {
 		if *mutating {
@@ -685,13 +689,27 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 		return 0
 	}
 	if len(run) == 0 {
-		report(noTestsText + "\n")
+		if o.Run != nil && len(cases) > 0 {
+			report(noRunMatchText + "\n")
+		} else {
+			report(noTestsText + "\n")
+		}
 		if minScore >= 0 {
 			return 1
 		}
 		return 0
 	}
-	return mutate(run, o, mutantRun{timeout: mutantTimeout, status: status, log: os.Getenv(EnvMutateLog), from: from}, minScore, *asJSON, out, err)
+	if baseline > mutantTimeout/2 {
+		fmt.Fprintf(err, "alder test: the tests took %s, over half the -timeout %s: each mutant gets %s (%d × the tests' time)\n",
+			baseline.Round(100*time.Millisecond), mutantTimeout, mutantLimit(mutantTimeout, baseline).Round(100*time.Millisecond), baselineFactor)
+	}
+	if mutantLog != "" {
+		if e := LogMutant(mutantLog, MutantOutcome{BaselineMs: float64(baseline.Microseconds()) / 1000}); e != nil {
+			fmt.Fprintf(err, "alder test: %v\n", e)
+			return 2
+		}
+	}
+	return mutate(run, o, mutantRun{timeout: mutantTimeout, baseline: baseline, status: status, log: mutantLog, from: from}, minScore, *asJSON, out, err)
 }
 
 // mutate is Main's mutation run over the selected cases, after they passed: the mutants, the

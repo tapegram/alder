@@ -44,6 +44,9 @@ var binPrec = map[string]int{
 type fn struct {
 	g     *gen
 	temps int
+	// jumps are, while a mutated match is emitted (mutatedMatch), the statements its moved arms
+	// are emitted as, by arm index (the cases, then the default)
+	jumps map[*ir.Match]map[int]string
 }
 
 // temp declares a fresh temporary in s ("_a1", "_u2", …) and returns its Go name.
@@ -134,6 +137,13 @@ func (f *fn) ret(w *strings.Builder, e ir.Expr, s *scope) { f.retK(w, e, s, nil)
 // returned (the body of a Let, each branch of a Match or If), nil meaning f.code. An effect
 // Bind's continuation uses it to return its body as a Task (effects.go).
 func (f *fn) retK(w *strings.Builder, e ir.Expr, s *scope, k func(ir.Expr, *scope) string) {
+	if _, ok := f.hoisted(e); ok { // a mutate build (mutation.go): a value, rendered by k
+		if k == nil {
+			k = f.code
+		}
+		fmt.Fprintf(w, "return %s\n", k(e, s))
+		return
+	}
 	if ms := f.mutantsOf(e); ms != nil { // a mutate build (mutation.go)
 		f.switched(w, e, ms, s, k)
 		return
@@ -148,10 +158,18 @@ func (f *fn) retK(w *strings.Builder, e ir.Expr, s *scope, k func(ir.Expr, *scop
 		fmt.Fprintf(w, "%s := %s\n", s.declare(x.Name), v)
 		f.retK(w, x.Body, s, k)
 	case *ir.Match:
+		if ms := f.localMutants(x); ms != nil { // a mutate build (mutation.go)
+			f.mutatedMatch(w, x, ms, s, k)
+			return
+		}
 		f.match(w, x, s, k)
 	case *ir.HMatch:
 		f.match(w, (*ir.Match)(x), s, k)
 	case *ir.If:
+		if ms := f.localMutants(x); ms != nil { // a mutate build (mutation.go)
+			f.mutatedIf(w, x, ms, s, k)
+			return
+		}
 		f.ifElse(w, x.Cond, x.Then, x.Else, s, k)
 	case *ir.HIf:
 		f.ifElse(w, x.Cond, x.Then, x.Else, s, k)
@@ -224,6 +242,9 @@ func untypedInt(e ir.Expr) bool {
 
 // expr is e as a Go expression and its precedence.
 func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
+	if h, ok := f.hoisted(e); ok { // a mutate build (mutation.go)
+		return h, precAtom
+	}
 	if ms := f.mutantsOf(e); ms != nil { // a mutate build (mutation.go)
 		return f.switchedExpr(e, ms, GoType(e.Type()), s, nil), precAtom
 	}

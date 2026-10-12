@@ -20,6 +20,7 @@ package mutate
 import (
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"alder/internal/ir"
 	"alder/internal/types"
@@ -48,8 +49,9 @@ const (
 )
 
 // Mutant is one mutation point. Module and Decl name where it is (Decl is the value's name,
-// "requires" for a page's requires, the table's name for a schema mutant) and Line its source
-// line; Before and After are one-line renderings of the code and of the change (elided at 80
+// "requires" for a page's requires, the table's name for a schema mutant), File is the module's
+// source file and Line and Col the mutated code's position in it (for a schema mutant, the
+// field's); Before and After are one-line renderings of the code and of the change (elided at 80
 // columns; After describes the change where a rendering would mislead).
 //
 // What the mutant does, by kind:
@@ -69,19 +71,25 @@ const (
 type Mutant struct {
 	ID                 int
 	Module, Decl, Kind string
-	Line               int
+	File               string // the module's source file, "app/Posts/Index.alder"
+	Line, Col          int
 	Before, After      string
 	Node               ir.Expr
 	Replacement        ir.Expr
 	Page               *ir.Page
 	Table              *ir.Table
 	Field              string
+	// Arms, for a Match's arm swapped, are the indices of the swapped arms (i, i+1); for a
+	// Match's guard dropped, the guard arm's and the other's (the cases in order, then the
+	// default), the Replacement being the other arm's body lifted out of its case.
+	Arms []int
 }
 
 // Suppressed is a mutant the mutator refused. Category is Equivalent for the spec's structural
-// suppression rules (the mutant would be the same program, or cannot be scoped), Skipped where
-// the operator does not apply (no placeholder, no paired rule, a Maybe default, …); Task 2
-// reports the two counts apart. Why says which rule.
+// suppression rules (the mutant would provably be the same program: a literal condition, identical
+// arms, …), Skipped where the operator does not apply (no placeholder, no paired rule, a Maybe
+// default, an arm that cannot be scoped, another operator making the same program, …); the
+// report counts the two apart. Why says which rule.
 type Suppressed struct {
 	Kind, Module, Decl string
 	Line               int
@@ -123,6 +131,7 @@ func Collect(p *ir.Program) ([]Mutant, []Suppressed) {
 	}
 	for i := range c.out {
 		c.out[i].ID = i + 1
+		c.out[i].File = "app/" + strings.ReplaceAll(c.out[i].Module, ".", "/") + ".alder"
 	}
 	return c.out, c.supp
 }
@@ -136,8 +145,8 @@ type collector struct {
 	supp         []Suppressed
 }
 
-func (c *collector) add(kind string, line int, node, repl ir.Expr, before, after string) {
-	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: kind, Line: line,
+func (c *collector) add(kind string, at ir.Pos, node, repl ir.Expr, before, after string) {
+	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: kind, Line: at.Line, Col: at.Col,
 		Before: before, After: after, Node: node, Replacement: repl})
 }
 
@@ -180,7 +189,7 @@ func (c *collector) requires(pg *ir.Page) {
 	if field.Brand.Module != c.module {
 		placeholder = field.Brand.Module + "." + placeholder
 	}
-	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RequiresDropped, Line: line,
+	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RequiresDropped, Line: line, Col: pg.RequiresPos.Col,
 		Before: "requires " + pg.Requires,
 		After:  "served without " + pg.Requires + " (" + pg.Requires + " = " + placeholder + ")",
 		Page:   pg, Field: pg.Requires,
@@ -250,7 +259,7 @@ func (c *collector) defaultChanged(t *ir.Table, i int) {
 		clone.Record.Fields[i].Default = r
 		litSQL := "'" + strings.ReplaceAll(next, "'", "''") + "'"
 		clone.Record.Fields[i].DefaultLit = &litSQL
-		c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: DefaultChanged, Line: line,
+		c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: DefaultChanged, Line: line, Col: f.Pos.Col,
 			Before: f.Name + " = " + d.Name, After: f.Name + " = " + next,
 			Node: f.Default, Replacement: r, Table: clone, Field: f.Name})
 		return
@@ -266,7 +275,7 @@ func (c *collector) defaultChanged(t *ir.Table, i int) {
 	clone.Record.Fields[i].Default = repl
 	litSQL := sqlLit(repl)
 	clone.Record.Fields[i].DefaultLit = &litSQL
-	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: DefaultChanged, Line: line,
+	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: DefaultChanged, Line: line, Col: f.Pos.Col,
 		Before: f.Name + " = " + lit(f.Default.(*ir.Lit)), After: f.Name + " = " + lit(repl),
 		Node: f.Default, Replacement: repl, Table: clone, Field: f.Name})
 }
@@ -303,7 +312,7 @@ func (c *collector) cascade(t *ir.Table, f ir.FieldT, ref string) {
 		}
 		return f.Name + " @ref " + ref[strings.LastIndexByte(ref, '.')+1:] + " @" + r
 	}
-	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: CascadeRestrict, Line: line,
+	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: CascadeRestrict, Line: line, Col: f.Pos.Col,
 		Before: show(rule), After: show(other), Table: clone, Field: f.Name})
 }
 
@@ -336,9 +345,10 @@ func sqlLit(l *ir.Lit) string {
 	return "'" + strings.ReplaceAll(l.Text, "'", "''") + "'"
 }
 
-// countDefaults counts, for every app table field's Default, the Db.insert rows of the app's
-// code (values and components; not tests, not fakes) whose record literal omits the field: such a
-// literal holds that very node.
+// countDefaults counts, for every app table field's Default, its occurrences in the app's code
+// (values and components; not tests, not fakes). Lower fills a field's default only into a
+// record literal that omits the field (a Db.insert row, an `Insert T` a helper returns, …), so
+// each occurrence is a literal that relies on it.
 func countDefaults(p *ir.Program) map[ir.Expr]int {
 	n := map[ir.Expr]int{}
 	for _, t := range p.Tables {
@@ -351,19 +361,17 @@ func countDefaults(p *ir.Program) map[ir.Expr]int {
 	seen := map[ir.Expr]bool{}
 	var visit func(e ir.Expr)
 	visit = func(e ir.Expr) {
-		if isNil(e) || seen[e] {
+		if isNil(e) {
+			return
+		}
+		if _, isDefault := n[e]; isDefault {
+			n[e]++
+			return
+		}
+		if seen[e] {
 			return
 		}
 		seen[e] = true
-		if ins, ok := e.(*ir.DbInsert); ok {
-			if r, ok := ins.Row.(*ir.Record); ok {
-				for _, f := range r.Fields {
-					if _, isDefault := n[f.Value]; isDefault {
-						n[f.Value]++
-					}
-				}
-			}
-		}
 		for _, k := range ir.Children(e) {
 			visit(k)
 		}
@@ -401,7 +409,7 @@ func (c *collector) walk(e ir.Expr) {
 		if x.Kind == ir.LitBool {
 			r := *x
 			r.Bool = !x.Bool
-			c.add(BoolFlipped, x.Pos.Line, x, &r, lit(x), lit(&r))
+			c.add(BoolFlipped, x.Pos, x, &r, lit(x), lit(&r))
 		}
 	case *ir.DbSelect:
 		c.selectOps(x)
@@ -452,7 +460,7 @@ func (c *collector) guardIf(x *ir.If) {
 	if okE {
 		other, g = x.Then, ge
 	}
-	c.add(GuardDropped, x.Pos.Line, x, other, lineFirst(c.module, x, id, x.Then, x.Else), "the "+g+" arm dropped")
+	c.add(GuardDropped, x.Pos, x, other, lineFirst(c.module, x, id, x.Then, x.Else), "the "+g+" arm dropped")
 }
 
 // arm is one arm of a Match: a Case (with its Binds) or the Default.
@@ -507,17 +515,22 @@ func (c *collector) guardMatch(x *ir.Match) {
 	if ok0 == ok1 {
 		return
 	}
-	other, g := as[1], g0
+	other, g, arms := as[1], g0, []int{0, 1}
 	if ok1 {
-		other, g = as[0], g1
+		other, g, arms = as[0], g1, []int{1, 0}
 	}
 	body, ok := other.lifted()
 	if !ok {
-		c.suppress(GuardDropped, x.Pos.Line, "unscopable: the other arm uses what the match binds")
+		c.skip(GuardDropped, x.Pos.Line, "unscopable: the other arm uses what the match binds")
 		return
 	}
-	c.add(GuardDropped, x.Pos.Line, x, body, c.show(x), "the "+g+" arm dropped")
+	c.add(GuardDropped, x.Pos, x, body, c.show(x), "the "+g+" arm dropped")
+	c.out[len(c.out)-1].Arms = arms
 }
+
+// swapShown is the most columns an arm swap's Before and After take together before After names
+// the swap instead of showing the whole match again.
+const swapShown = 80
 
 // swap makes one mutant per adjacent pair of arms (all arms of a match have its type).
 func (c *collector) swap(x *ir.Match) {
@@ -550,7 +563,8 @@ func (c *collector) swapPair(x *ir.Match, as []arm, i int) {
 	set(i, b1)
 	set(i+1, b0)
 	before, after := c.show(x), c.show(&r)
-	if before == after { // the bodies were elided alike: say what changed
+	// the bodies were elided alike, or the two matches make too long a line: say what changed
+	if before == after || utf8.RuneCountInString(before)+utf8.RuneCountInString(after) > swapShown {
 		p := &printer{home: c.module, elided: map[ir.Expr]bool{}}
 		tag := func(a arm) string {
 			if a.c == nil {
@@ -561,7 +575,8 @@ func (c *collector) swapPair(x *ir.Match, as []arm, i int) {
 		}
 		after = "the " + tag(as[i]) + " and " + tag(as[i+1]) + " bodies swapped"
 	}
-	c.add(ArmSwapped, x.Pos.Line, x, &r, before, after)
+	c.add(ArmSwapped, x.Pos, x, &r, before, after)
+	c.out[len(c.out)-1].Arms = []int{i, i + 1}
 }
 
 var notFn = &ir.Var{Typed: ir.Typed{Ty: &types.Fun{Params: []types.Type{types.Bool}, Result: types.Bool}},
@@ -572,19 +587,22 @@ func (c *collector) negate(x *ir.If) {
 		c.suppress(ConditionNegated, x.Pos.Line, "a literal condition")
 		return
 	}
-	if op, isOp := x.Cond.(*ir.Op); isOp && comparisons[op.Kind] {
+	if op, isOp := x.Cond.(*ir.Op); isOp && (op.Kind == "==" || op.Kind == "!=") {
 		c.skip(ConditionNegated, x.Pos.Line, "operator flipped makes the same program")
+		return
+	}
+	if call, isCall := x.Cond.(*ir.Call); isCall && isStd(call.Fn, "Prelude", "not") {
+		c.skip(ConditionNegated, x.Pos.Line, "not dropped makes the same program")
 		return
 	}
 	r := *x
 	r.Cond = &ir.Call{Typed: ir.Typed{Ty: types.Bool}, Fn: notFn, Args: []ir.Expr{x.Cond}}
-	c.add(ConditionNegated, x.Pos.Line, x, &r,
+	c.add(ConditionNegated, x.Pos, x, &r,
 		line(c.module, x.Cond, wrapped("if ", "")), line(c.module, x.Cond, argument("if not ", x.Cond, "")))
 }
 
-// comparisons are the operators whose flip is the negation: negating such a condition would
-// be the same program as flipping it.
-var comparisons = map[string]bool{"==": true, "!=": true, "<": true, "<=": true, ">": true, ">=": true}
+// Negating an `==` or `!=` condition is the program flipping its operator makes (`<` flips to
+// `<=`, not to its negation `>=`, so an ordering condition is negated too).
 
 var flips = map[string]string{"==": "!=", "!=": "==", "<": "<=", "<=": "<", ">": ">=", ">=": ">", "&&": "||", "||": "&&"}
 
@@ -599,21 +617,21 @@ func (c *collector) flip(x *ir.Op) {
 	}
 	r := *x
 	r.Kind = to
-	c.add(OperatorFlipped, x.Pos.Line, x, &r, c.show(x), c.show(&r))
+	c.add(OperatorFlipped, x.Pos, x, &r, c.show(x), c.show(&r))
 }
 
 func (c *collector) selectOps(x *ir.DbSelect) {
-	step := func(ps []ir.Pos, i int) int {
+	step := func(ps []ir.Pos, i int) ir.Pos {
 		if i < len(ps) && ps[i].Line > 0 {
-			return ps[i].Line
+			return ps[i]
 		}
-		return x.Pos.Line
+		return x.Pos
 	}
-	at := func(p ir.Pos) int {
+	at := func(p ir.Pos) ir.Pos {
 		if p.Line > 0 {
-			return p.Line
+			return p
 		}
-		return x.Pos.Line
+		return x.Pos
 	}
 	for i, w := range x.Where {
 		r := *x
@@ -626,7 +644,7 @@ func (c *collector) selectOps(x *ir.DbSelect) {
 			continue
 		}
 		if x.Terminal == ir.SelFirst && whereOnID(x) {
-			c.suppress(OrderByReversed, step(x.OrderPos, i), "the where pins one row by its id")
+			c.suppress(OrderByReversed, step(x.OrderPos, i).Line, "the where pins one row by its id")
 			continue
 		}
 		rev := *ord
@@ -696,7 +714,7 @@ func (c *collector) write(x *ir.EffBind) {
 	if x.Param != nil {
 		name = x.Param.Name
 	}
-	c.add(WriteReplaced, x.Pos.Line, x.Effect, repl,
+	c.add(WriteReplaced, x.Pos, x.Effect, repl,
 		line(c.module, x.Effect, wrapped("let "+name+" <- ", "")), "let "+name+" <- Task.succeed "+shown)
 }
 
@@ -715,7 +733,7 @@ func (c *collector) sessionPut(x *ir.EffBind) {
 	if x.Param != nil {
 		name = x.Param.Name
 	}
-	c.add(SessionPutDropped, x.Pos.Line, call, repl,
+	c.add(SessionPutDropped, x.Pos, call, repl,
 		line(c.module, call, wrapped("let "+name+" <- ", "")), "let "+name+" <- Task.succeed ()")
 }
 
@@ -724,7 +742,7 @@ func (c *collector) notDropped(x *ir.Call) {
 	if !isStd(x.Fn, "Prelude", "not") || len(x.Args) != 1 {
 		return
 	}
-	c.add(NotDropped, x.Pos.Line, x, x.Args[0], c.show(x), c.show(x.Args[0]))
+	c.add(NotDropped, x.Pos, x, x.Args[0], c.show(x), c.show(x.Args[0]))
 }
 
 func isStd(e ir.Expr, module, name string) bool {
@@ -746,7 +764,7 @@ func (c *collector) updateFields(x *ir.Update) {
 	for i := range x.Fields {
 		r := *x
 		r.Fields = append(append([]ir.FieldInit(nil), x.Fields[:i]...), x.Fields[i+1:]...)
-		c.add(UpdateFieldDropped, x.Pos.Line, x, &r, c.show(x), c.show(&r))
+		c.add(UpdateFieldDropped, x.Pos, x, &r, c.show(x), c.show(&r))
 	}
 }
 
@@ -764,7 +782,7 @@ func (c *collector) nav(x *ir.Ctor) {
 		return
 	}
 	r := &ir.Ctor{Typed: x.Typed, Pos: x.Pos, U: x.U, Name: "Rerender"}
-	c.add(kind, x.Pos.Line, x, r, c.show(x), "Rerender")
+	c.add(kind, x.Pos, x, r, c.show(x), "Rerender")
 }
 
 // ---- helpers
