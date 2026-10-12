@@ -1757,11 +1757,23 @@ class FeedbackTests(unittest.TestCase):
         s, model = self.run1([FB_T0, FB_KILL3, FB_TAUT], feedback=2)
         self.assertEqual((len(model.prompts), s["feedback_rounds"], s["score_after"], s["feedback_end"]), (2, 1, 1.0, "no survivors"))
 
-    def test_failed_feedback_round_ends_the_cell(self):
+    def test_failed_feedback_round_gets_one_retry(self):
         s, model = self.run1([FB_T0, fb_tests("FAILTEST"), FB_KILL1], feedback=2)
-        self.assertEqual((len(model.prompts), s["feedback_rounds"], s["score_after"], s["outcome"]), (2, 1, 0.7, "pass"))
-        self.assertEqual(s["feedback_end"], "a feedback round failed")
+        self.assertEqual((len(model.prompts), s["feedback_rounds"], s["score_after"], s["outcome"]), (3, 2, 0.8, "pass"))
         self.assertNotIn("mutation", s["rounds"][1])
+        self.assertEqual(s["rounds"][2]["feedback"], 2)
+        p = model.prompts[2]   # the main loop's retry, after the same survivors
+        self.assertTrue(p.startswith("TASK\n\n" + rl.FEEDBACK_HEADER + "\n" + FB_RULED.format(s=3, x="0.70") + "\n\n" + FB_BLOCK + "\n\n"
+                                     "====================  YOUR PREVIOUS ANSWER  ====================\n"), p)
+        self.assertIn("FAILTEST", p)   # the failed round's files
+        self.assertIn(rl.TESTS_FAILED + "\n\n====================  TEST OUTPUT  ====================\n" + FAIL1_TEXT.strip(), p)
+        # the retry fails too: the feedback ends, the score the last accepted one
+        s, model = self.run1([FB_T0, fb_tests("FAILTEST"), fb_tests("FAILTEST again"), FB_KILL1], feedback=3, task="u")
+        self.assertEqual((len(model.prompts), s["feedback_rounds"], s["score_after"], s["outcome"]), (3, 2, 0.7, "pass"))
+        self.assertEqual(s["feedback_end"], "a feedback round failed twice")
+        # the retry counts against N
+        s, model = self.run1([FB_T0, fb_tests("FAILTEST"), FB_KILL1], feedback=1, task="v")
+        self.assertEqual((len(model.prompts), s["feedback_end"], s["score_after"]), (2, "feedback rounds exhausted", 0.7))
 
     def test_no_feedback_without_survivors_or_tests(self):
         s, model = self.run1([FB_T0 + '(test "k" pure (test-eq "KILLS KILLS KILLS" 1))\n', FB_TAUT], feedback=2)

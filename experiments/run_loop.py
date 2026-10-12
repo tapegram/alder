@@ -873,14 +873,20 @@ APP_CHANGED = "Your previous answer changed app code; it was not accepted. Only 
 APP_CHANGED_REASON = "app code changed in a feedback round: only tests may change"
 
 
-def feedback_prompt(task: str, round_dir: pathlib.Path, mutation, rejected=False, show_adapters=False, provided=None) -> str:
-    """A feedback round's prompt (--feedback): the task; under MUTATION FEEDBACK, APP_CHANGED when
-    the round before was rejected, then FEEDBACK_TEXT and survivor_block of the last accepted
-    round's `mutation`; then that round's files as YOUR PREVIOUS ANSWER (retry_prompt's form)."""
-    sources = {str(f.relative_to(round_dir)): f.read_text() for f in (round_dir / "app").rglob("*.alder")}
+def feedback_intro(task: str, mutation, rejected=False) -> str:
+    """The task; under MUTATION FEEDBACK, APP_CHANGED when the round before was rejected, then
+    FEEDBACK_TEXT and survivor_block of `mutation` (the last accepted round's)."""
     s, n = mutation["survived"], mutation["killed"] + mutation["survived"]
     return (task + "\n\n" + FEEDBACK_HEADER + "\n" + (APP_CHANGED + "\n\n" if rejected else "")
-            + FEEDBACK_TEXT.format(s=s, n=n, score=mutation["score"]) + "\n\n" + survivor_block(mutation["survivors"])
+            + FEEDBACK_TEXT.format(s=s, n=n, score=mutation["score"]) + "\n\n" + survivor_block(mutation["survivors"]))
+
+
+def feedback_prompt(task: str, round_dir: pathlib.Path, mutation, rejected=False, show_adapters=False, provided=None) -> str:
+    """A feedback round's prompt (--feedback): feedback_intro, then the last accepted round's files
+    as YOUR PREVIOUS ANSWER (retry_prompt's form). The retry of a failed feedback round is instead
+    retry_prompt(feedback_intro(…), the failed round, …): its diagnostics or test output too."""
+    sources = {str(f.relative_to(round_dir)): f.read_text() for f in (round_dir / "app").rglob("*.alder")}
+    return (feedback_intro(task, mutation, rejected)
             + previous_answer(round_dir, sources, show_adapters, provided)
             + "\n\nOutput every file again, in full, each preceded by `--- file: app/<path> ---`. No explanation, only files.")
 
@@ -970,7 +976,9 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     passing round's (`app_ir_sha256`), else it is rejected (`rejected_reason`, no build, no
     mutate) and the next feedback round's prompt says so (APP_CHANGED). One that builds and passes
     is accepted: its `mutation` becomes the summary's, its score `score_after`; zero survivors
-    ends the feedback. One that fails (check, build, tests, mutation error) ends it with no retry;
+    ends the feedback. One that fails (check, build, tests) gets one retry within the N: retry_prompt
+    with its diagnostics or test output, after feedback_intro (the same survivors), written over the
+    failed round; a second failure in a row ends the feedback; a mutation error ends it at once;
     a compiler bug, harness error or model error in a feedback round ends it too, without changing
     `outcome` (the pass stands). Each feedback round has `feedback`: k (1…N). The summary records
     `score_before` (the passing round's score), `score_after` (the last accepted round's),
@@ -1219,11 +1227,17 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                 end = f"harness error: the passing round's IR: {why}"
             else:
                 passed[0]["app_ir_sha256"] = frozen
-                end, was_rejected = "feedback rounds exhausted", False
+                end, was_rejected, failed = "feedback rounds exhausted", False, None
                 for k in range(feedback):
-                    user = feedback_prompt(task_text, accepted[1], accepted[0]["mutation"], rejected=was_rejected,
-                                           show_adapters=adapters, provided=provided)
-                    rnd, round_dir, status, info = play(summary["rounds"][-1]["n"] + 1, user, accepted[1], frozen=frozen)
+                    if failed is not None:   # the retry of a failed feedback round: its diagnostics, the same survivors
+                        fdir, finfo = failed
+                        user = retry_prompt(feedback_intro(task_text, accepted[0]["mutation"]), fdir, **finfo)
+                        over = fdir
+                    else:
+                        user = feedback_prompt(task_text, accepted[1], accepted[0]["mutation"], rejected=was_rejected,
+                                               show_adapters=adapters, provided=provided)
+                        over = accepted[1]
+                    rnd, round_dir, status, info = play(summary["rounds"][-1]["n"] + 1, user, over, frozen=frozen)
                     if rnd is not None:
                         rnd["feedback"] = k + 1
                         summary["feedback_rounds"] += 1
@@ -1232,15 +1246,18 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                         end = {"model": f"harness error: model: {arg}", "compiler_bug": f"compiler bug ({arg})"}.get(kind, f"harness error: {arg}")
                         break
                     if status == "rejected":
-                        was_rejected = True
+                        was_rejected, failed = True, None
                         continue
                     if status == "failed":
-                        end = "a feedback round failed"
-                        break
+                        if failed is not None:   # its retry failed too
+                            end = "a feedback round failed twice"
+                            break
+                        failed = (round_dir, info)
+                        continue
                     if "error" in rnd["mutation"]:
                         end = "the mutation run failed"
                         break
-                    accepted, was_rejected = (rnd, round_dir), False
+                    accepted, was_rejected, failed = (rnd, round_dir), False, None
                     summary["mutation"] = rnd["mutation"]
                     summary["score_after"] = rnd["mutation"]["score"]
                     if rnd["mutation"]["survived"] == 0:
