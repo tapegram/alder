@@ -141,6 +141,7 @@ into a new directory:
 ```
 $ alder new guestbook
 created guestbook/
+  .gitignore
   README.md
   adapters/README.md
   app/App.alder
@@ -164,6 +165,7 @@ The name is the directory, and the name of the server `alder build`
 makes, so it is letters, digits and `-`, starting with a letter; `alder
 new` will not write into a directory that already has something in it.
 Run the five commands it prints, from the new directory: the app checks,
-its one test passes, the mutation score says what that test misses, and
+its two tests pass, every mutant `alder test --mutate` makes is killed
+(score 1.00), and
 `alder run` serves it at `http://localhost:8080`. Chapter 2 reads every
 file `alder new` wrote; chapter 11 has the details of each command.

@@ -16,4 +16,4 @@ Run these from this directory:
 - `migrations/`: the database's migrations, written by `alder migrate` after a change to a table.
 - `static/`: files served as they are, at `/static/…`.
 - `adapters/`: the Go behind the app's capabilities (none yet).
-- `build/`: what `alder build` writes; not source.
+- `build/`: what `alder build` writes; not source (`.gitignore` keeps it, and the databases, out of git).

@@ -16,6 +16,7 @@ chapter, so what you read here is exactly what you get):
 
 ```
 guestbook/
+  .gitignore                    keeps build/ and the databases out of git
   README.md                     the commands to try
   adapters/README.md            where Go code would go (none yet)
   app/App.alder                 the session and the error pages
@@ -163,7 +164,7 @@ test "signing adds an entry" = {
 }
 ```
 
-The page ends with its test. It goes through the page the way a person
+The page ends with its two tests. The first goes through the page the way a person
 would, in an in-memory browser: it opens `/` (`Test.get`), fills in and
 posts the form (`Test.submit Sign { … }`), and opens the page again. The
 answer to the post must be the redirect `update` makes, and the page must
@@ -171,6 +172,22 @@ then list one entry: `Test.count "#entries li"` counts the `<li>` inside
 `<ul id="entries">`. Each test runs against a fresh, empty database, so
 the one entry is the one the test signed. Chapter 10 explains every
 `Test.` function.
+
+```alder part=guestbook/Home
+test "entries are listed newest first" = {
+  let _ <- Test.get (Home {})
+  let _ <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "First" }
+  let _ <- Test.submit Sign { name: Text.NonEmpty "Grace", message: Text.NonEmpty "Second" }
+  let page <- Test.get (Home {})
+  Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
+}
+```
+
+The second checks the order: it signs twice and reads the names in the
+order the page lists them (`Test.texts "#entries b"` is the text of every
+`<b>` inside the list), newest first. The first test cannot tell: one
+entry is in order either way. "Running it" below shows how you find out
+that such a test is needed.
 
 ### The layout and the app
 
@@ -202,7 +219,8 @@ compiler, never a string.
 `app/App.alder` is the one module every app has: it declares the session,
 what the server keeps for a visitor between requests (this app keeps
 nothing: `session { }`; the to-do app below keeps who is logged in), and
-the two pages the runtime shows when something goes wrong.
+the two pages the runtime shows when something goes wrong, which use
+`Layout.Page` too, so they look like the rest of the app.
 
 ```alder part=guestbook/App
 module App
@@ -317,6 +335,21 @@ migration left them:
 When you change a table, `alder check` says that the tables no longer
 match the last migration, and `alder migrate` writes the next one.
 
+`.gitignore` keeps out of git what is not source: `build/`, where
+`alder build` writes the server and `alder run` its development database,
+and the SQLite files a server started from the app's directory keeps
+there:
+
+```text file=guestbook/.gitignore
+# What alder writes, not source: build/ (the server, and alder run's database build/<name>/dev.db)
+# and the SQLite files a server started from this directory keeps here (<name>.db and its
+# -wal and -shm files).
+build/
+*.db
+*.db-wal
+*.db-shm
+```
+
 The README repeats the commands:
 
 ```markdown file=guestbook/README.md
@@ -338,7 +371,7 @@ Run these from this directory:
 - `migrations/`: the database's migrations, written by `alder migrate` after a change to a table.
 - `static/`: files served as they are, at `/static/…`.
 - `adapters/`: the Go behind the app's capabilities (none yet).
-- `build/`: what `alder build` writes; not source.
+- `build/`: what `alder build` writes; not source (`.gitignore` keeps it, and the databases, out of git).
 ```
 
 ### Running it
@@ -351,44 +384,29 @@ $ cd guestbook
 $ alder check
 $ alder test
 ok   Home "signing adds an entry"
-1 passed, 0 failed
+ok   Home "entries are listed newest first"
+2 passed, 0 failed
 ```
 
 `alder test --mutate` measures the tests. It makes small changes to the
-program, called **mutants**, each one a plausible mistake, and runs the
+program, called **mutants**, each one a plausible mistake (here: the
+insert replaced by nothing, the redirect turned into a re-render, the
+order reversed), and runs the
 tests against each. A mutant the tests notice is killed; one they do not
 notice survived, and each survivor names a test that is missing:
 
 ```
 $ alder test --mutate
 ok   Home "signing adds an entry"
-1 passed, 0 failed
-3 mutants: 2 killed, 1 survived  (score 0.67)
-survived:
-  Home   load:12   orderBy reversed   Db.orderBy Entry.created.desc → Db.orderBy Entry.created.asc
+ok   Home "entries are listed newest first"
+2 passed, 0 failed
+3 mutants: 3 killed, 0 survived  (score 1.00)
 ```
 
-Nothing checks that the newest entry comes first: the one test signs one
-entry, and one entry is in order either way. This test, added at the end
-of `app/Home.alder`, signs twice and reads the names in the order the
-page lists them (`Test.texts "#entries b"` is the text of every `<b>`
-inside the list):
-
-```alder fragment
-test "the newest entry is listed first" = {
-  let _ <- Test.get (Home {})
-  let _ <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "First" }
-  let _ <- Test.submit Sign { name: Text.NonEmpty "Grace", message: Text.NonEmpty "Second" }
-  let page <- Test.get (Home {})
-  Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
-}
-```
-
-With it, `alder test --mutate` prints `2 passed, 0 failed` and `3
-mutants: 3 killed, 0 survived  (score 1.00)`. Writing it is a good first
-change to make. (It is shown as an excerpt: the book quotes the scaffold
-as `alder new` writes it, with its one test. Chapter 10, "Mutation
-testing", explains the rest.)
+Without the second test, the order reversed (`Entry.created.desc`
+changed to `.asc`) would survive, and the run would end `3 mutants: 2
+killed, 1 survived  (score 0.67)` with that survivor named under
+`survived:`. Chapter 10, "Mutation testing", explains the rest.
 
 `alder build` writes the server, one executable with SQLite inside it, and
 `alder run` builds it, starts it in development mode on

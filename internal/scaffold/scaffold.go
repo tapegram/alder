@@ -1,7 +1,7 @@
 // Package scaffold holds the app `alder new` writes: the guestbook of the Alder book's chapter 2
 // (an empty session, an error and a not-found page, a layout, one table, one page with a form
-// and a test through the browser, a stylesheet, an adapters/ directory explained by its README
-// and a README of the commands). The files are embedded from files/; the name of the app is
+// and two tests through the browser, a stylesheet, a .gitignore, an adapters/ directory
+// explained by its README and a README of the commands). The files are embedded from files/; the name of the app is
 // substituted for {{name}}. The migrations are not here: `alder new` writes them by running the
 // migration generator on these files, so they are what `alder migrate` would write.
 package scaffold
@@ -17,7 +17,7 @@ import (
 	"strings"
 )
 
-//go:embed files
+//go:embed all:files
 var files embed.FS
 
 // goModTemplate is the go.mod written only when the app is inside another Go module (see

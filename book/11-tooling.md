@@ -88,14 +88,16 @@ alder version        print alder's version and the Go it was built with
 `alder new <name>` writes a new app into the directory `<name>`: the
 guestbook that chapter 2 tours, with an empty session and the two error
 pages (`app/App.alder`), a layout (`app/Layout.alder`), one table
-(`app/Entry.alder`), one page with a form and a test through the browser
-(`app/Home.alder`), a stylesheet, an `adapters/` directory that holds only
+(`app/Entry.alder`), one page with a form and two tests through the browser
+(`app/Home.alder`), a stylesheet, a `.gitignore` (`build/` and the
+SQLite files), an `adapters/` directory that holds only
 a README saying what goes there, a `README.md` with the five commands, and
 its first migration:
 
 ```
 $ alder new guestbook
 created guestbook/
+  .gitignore
   README.md
   adapters/README.md
   app/App.alder
@@ -161,8 +163,8 @@ built `alder new guestbook` and requires chapter 2 to quote every file it
 writes, as it is (`TestBook_Scaffold`), and the tests of `alder new`
 (`cmd/alder/new_test.go`) build, test and serve the scaffold from a
 directory outside this repository, both outside any Go module and inside
-one. Its one test leaves one mutant alive (score 0.67): the order of the
-entries, which chapter 2 shows how to test.
+one. Its two tests kill all three of its mutants (score 1.00), and the
+tests of `alder new` fail if that ever drops.
 
 ### `alder build`
 

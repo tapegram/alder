@@ -24,7 +24,7 @@ chapter 1, "Installing", has the details.
 ## A first app
 
 ```
-alder new guestbook      # write a small app: a guestbook with one page, one table, one test
+alder new guestbook      # write a small app: a guestbook with one page, one table, two tests
 cd guestbook
 alder check              # type-check it
 alder test               # run its tests

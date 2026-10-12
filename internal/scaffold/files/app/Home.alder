@@ -52,3 +52,11 @@ test "signing adds an entry" = {
   let page <- Test.get (Home {})
   Task.succeed ({ answer: signed.answer, entries: Test.count "#entries li" page.doc } == { answer: Redirected (Home {}), entries: 1 })
 }
+
+test "entries are listed newest first" = {
+  let _ <- Test.get (Home {})
+  let _ <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "First" }
+  let _ <- Test.submit Sign { name: Text.NonEmpty "Grace", message: Text.NonEmpty "Second" }
+  let page <- Test.get (Home {})
+  Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
+}

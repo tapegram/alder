@@ -59,6 +59,7 @@ func tree(t *testing.T, dir string) []string {
 }
 
 var scaffoldFiles = []string{
+	".gitignore",
 	"README.md",
 	"adapters/README.md",
 	"app/App.alder",
@@ -197,7 +198,7 @@ func TestNew_InsideModule(t *testing.T) {
 	if !strings.Contains(gomod, "\nmodule guestbook\n\ngo 1.27\n") || !strings.HasPrefix(gomod, "// This go.mod only keeps the app out of the Go module around it") {
 		t.Errorf("go.mod:\n%s", gomod)
 	}
-	if got := tree(t, dir); !slices.Equal(got, append(slices.Clone(scaffoldFiles[:6]), append([]string{"go.mod"}, scaffoldFiles[6:]...)...)) {
+	if got := tree(t, dir); !slices.Equal(got, append(slices.Clone(scaffoldFiles[:7]), append([]string{"go.mod"}, scaffoldFiles[7:]...)...)) {
 		t.Errorf("files: %v", got)
 	}
 	adapter := filepath.Join(dir, "adapters", "x", "x.go")
@@ -224,7 +225,7 @@ func TestNew_InsideModule(t *testing.T) {
 }
 
 // TestNew_OutOfTree: the scaffold made by the built binary, with PATH holding only it and Go,
-// checks, tests (one test), reports a mutation score, builds and serves `/`, in both placements:
+// checks, tests (two tests), kills every mutant (score 1.00), builds and serves `/`, in both placements:
 // outside any Go module and inside one (RF3).
 func TestNew_OutOfTree(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
@@ -304,7 +305,7 @@ func TestNew_OutOfTree(t *testing.T) {
 			if out := alder(app, "check"); out != "" {
 				t.Errorf("alder check printed %q", out)
 			}
-			if out := alder(app, "test"); out != "ok   Home \"signing adds an entry\"\n1 passed, 0 failed\n" {
+			if out := alder(app, "test"); out != "ok   Home \"signing adds an entry\"\nok   Home \"entries are listed newest first\"\n2 passed, 0 failed\n" {
 				t.Errorf("alder test printed:\n%s", out)
 			}
 			out = alder(app, "test", "--mutate")
@@ -313,6 +314,9 @@ func TestNew_OutOfTree(t *testing.T) {
 				t.Fatalf("alder test --mutate printed no score:\n%s", out)
 			}
 			t.Logf("the scaffold's mutation score: %s", m[0])
+			if m[3] != "0" || m[4] != "1.00" { // a first app's tests kill every mutant of it
+				t.Errorf("the scaffold's mutants are not all killed:\n%s", out)
+			}
 			if out := alder(app, "build"); out != "wrote build/guestbook/guestbook\n" {
 				t.Errorf("alder build printed %q", out)
 			}

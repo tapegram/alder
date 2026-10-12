@@ -843,7 +843,7 @@ func TestBook(t *testing.T) {
 
 // TestBook_Scaffold (RF4): chapter 2 quotes every file `alder new guestbook` writes, each as
 // it is (scaffoldDrift), chapter 1 quotes what `alder new guestbook` prints, and the scaffold
-// checks clean and passes its one test.
+// checks clean and passes its tests.
 func TestBook_Scaffold(t *testing.T) {
 	bin := alder(t)
 	for _, msg := range scaffoldDrift("02-tour.md", "book/02-tour.md") {
@@ -861,7 +861,7 @@ func TestBook_Scaffold(t *testing.T) {
 		want string
 	}{
 		{[]string{"check"}, ""},
-		{[]string{"test"}, "ok   Home \"signing adds an entry\"\n1 passed, 0 failed\n"},
+		{[]string{"test"}, "ok   Home \"signing adds an entry\"\nok   Home \"entries are listed newest first\"\n2 passed, 0 failed\n"},
 	} {
 		cmd := exec.Command(bin, c.args...)
 		cmd.Dir = scaffoldApp
