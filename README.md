@@ -54,3 +54,5 @@ alder run                # serve it on http://localhost:8080, rebuilding on ever
 ## License
 
 Apache-2.0, see [LICENSE](LICENSE). Copyright 2026 Tavish Pegram.
+
+[![CI](https://github.com/tapegram/alder/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tapegram/alder/actions/workflows/ci.yml)
