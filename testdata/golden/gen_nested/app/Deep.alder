@@ -1,0 +1,71 @@
+module Deep
+
+-- Nested patterns with a shared fallback, 12 arms deep: an arm that fails at either of its
+-- two tests continues with the arms after it, so the decision tree shares each arm's fallback
+-- between two branches. The generated Go emits each shared fallback once (gen/share.go).
+
+type Row = {
+  f0: Maybe Int,
+  f1: Maybe Int,
+  f2: Maybe Int,
+  f3: Maybe Int,
+  f4: Maybe Int,
+  f5: Maybe Int,
+  f6: Maybe Int,
+  f7: Maybe Int,
+  f8: Maybe Int,
+  f9: Maybe Int,
+  f10: Maybe Int,
+  f11: Maybe Int,
+  f12: Maybe Int,
+}
+
+type Hops = {
+  h0: Result Text Int,
+  h1: Result Text Int,
+  h2: Result Text Int,
+  h3: Result Text Int,
+  h4: Result Text Int,
+  h5: Result Text Int,
+  h6: Result Text Int,
+  h7: Result Text Int,
+  h8: Result Text Int,
+  h9: Result Text Int,
+  h10: Result Text Int,
+  h11: Result Text Int,
+  h12: Result Text Int,
+}
+
+pick : Row -> Int
+pick r = match r {
+  { f0: (Just a), f1: (Just b) } -> a + b + 100,
+  { f1: (Just a), f2: (Just b) } -> a + b + 200,
+  { f2: (Just a), f3: (Just b) } -> a + b + 300,
+  { f3: (Just a), f4: (Just b) } -> a + b + 400,
+  { f4: (Just a), f5: (Just b) } -> a + b + 500,
+  { f5: (Just a), f6: (Just b) } -> a + b + 600,
+  { f6: (Just a), f7: (Just b) } -> a + b + 700,
+  { f7: (Just a), f8: (Just b) } -> a + b + 800,
+  { f8: (Just a), f9: (Just b) } -> a + b + 900,
+  { f9: (Just a), f10: (Just b) } -> a + b + 1000,
+  { f10: (Just a), f11: (Just b) } -> a + b + 1100,
+  { f11: (Just a), f12: (Just b) } -> a + b + 1200,
+  _ -> 0,
+}
+
+route : Hops -> Task Int
+route h = match h {
+  { h0: (Ok a), h1: (Ok b) } -> Task.succeed (a + b + 100),
+  { h1: (Ok a), h2: (Ok b) } -> Task.succeed (a + b + 200),
+  { h2: (Ok a), h3: (Ok b) } -> Task.succeed (a + b + 300),
+  { h3: (Ok a), h4: (Ok b) } -> Task.succeed (a + b + 400),
+  { h4: (Ok a), h5: (Ok b) } -> Task.succeed (a + b + 500),
+  { h5: (Ok a), h6: (Ok b) } -> Task.succeed (a + b + 600),
+  { h6: (Ok a), h7: (Ok b) } -> Task.succeed (a + b + 700),
+  { h7: (Ok a), h8: (Ok b) } -> Task.succeed (a + b + 800),
+  { h8: (Ok a), h9: (Ok b) } -> Task.succeed (a + b + 900),
+  { h9: (Ok a), h10: (Ok b) } -> Task.succeed (a + b + 1000),
+  { h10: (Ok a), h11: (Ok b) } -> Task.succeed (a + b + 1100),
+  { h11: (Ok a), h12: (Ok b) } -> Task.succeed (a + b + 1200),
+  _ -> Task.notFound,
+}

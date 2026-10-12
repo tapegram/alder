@@ -34,6 +34,8 @@ func (f *fn) match(w *strings.Builder, x *ir.Match, s *scope, k func(ir.Expr, *s
 		fmt.Fprintf(w, "%s := %s\n", t, subj)
 		subj, p = t, precAtom
 	}
+	f.declareShared(w, x, s, k)
+	defer f.dropShared(x)
 	if p < precAtom {
 		subj = "(" + subj + ")"
 	}
@@ -176,7 +178,7 @@ func (f *fn) caseBody(w *strings.Builder, x *ir.Match, c ir.Case, subj string, s
 	body := c.Body
 	for {
 		l, ok := body.(*ir.Let)
-		if !ok {
+		if _, shared := f.share.names[body]; !ok || shared { // a shared Let is called, whole
 			break
 		}
 		v, ok := l.Value.(*ir.Var)

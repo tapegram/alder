@@ -47,6 +47,8 @@ type fn struct {
 	// jumps are, while a mutated match is emitted (mutatedMatch), the statements its moved arms
 	// are emitted as, by arm index (the cases, then the default)
 	jumps map[*ir.Match]map[int]string
+	// share is the decision-tree nodes a match shares between branches (share.go)
+	share sharing
 }
 
 // temp declares a fresh temporary in s ("_a1", "_u2", …) and returns its Go name.
@@ -137,6 +139,10 @@ func (f *fn) ret(w *strings.Builder, e ir.Expr, s *scope) { f.retK(w, e, s, nil)
 // returned (the body of a Let, each branch of a Match or If), nil meaning f.code. An effect
 // Bind's continuation uses it to return its body as a Task (effects.go).
 func (f *fn) retK(w *strings.Builder, e ir.Expr, s *scope, k func(ir.Expr, *scope) string) {
+	if name, ok := f.share.names[e]; ok { // a shared subtree, declared once (share.go)
+		fmt.Fprintf(w, "return %s()\n", name)
+		return
+	}
 	if _, ok := f.hoisted(e); ok { // a mutate build (mutation.go): a value, rendered by k
 		if k == nil {
 			k = f.code

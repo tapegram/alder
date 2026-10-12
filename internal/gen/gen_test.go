@@ -3264,6 +3264,82 @@ func TestGen_Mutate(t *testing.T) {
 	}
 }
 
+// TestGen_Nested: nested patterns with a shared fallback (the gen_nested golden: two matches of
+// 12 arms, each arm testing two fields, so each arm's fallback — the arms after it — is shared
+// by two branches) are emitted once per shared node (share.go): the plain build grows linearly,
+// within 300 bytes per arm, and every arm, each fallback path and the final fallback compute the
+// right value. (Each place used to emit its own copy: 2^12 copies of the last arms, 1.49 MB.)
+func TestGen_Nested(t *testing.T) {
+	const dir, arms = "../../testdata/golden/gen_nested", 24
+	files := emit(t, dir)
+	if size := len(files["Deep_alder.go"]); size > 300*arms {
+		t.Errorf("Deep_alder.go is %d bytes: more than 300 bytes per arm (%d arms)", size, arms)
+	}
+	vet(t, emitOpts(t, dir, Options{Tests: true, Mutate: true}))
+	var b strings.Builder
+	b.WriteString(`package app
+
+import (
+	"reflect"
+	"testing"
+
+	"alder/rt"
+	"alder/rt/eff"
+)
+
+// row is a Row whose fields js are Just their index, the others Nothing.
+func row(js ...int) Deep__Row {
+	var r Deep__Row
+	v := reflect.ValueOf(&r).Elem()
+	for i := 0; i < v.NumField(); i++ {
+		v.Field(i).Set(reflect.ValueOf(rt.Nothing[int64]()))
+	}
+	for _, i := range js {
+		v.Field(i).Set(reflect.ValueOf(rt.Just(int64(i))))
+	}
+	return r
+}
+
+// hops is a Hops whose fields oks are Ok their index, the others Err.
+func hops(oks ...int) Deep__Hops {
+	var h Deep__Hops
+	v := reflect.ValueOf(&h).Elem()
+	for i := 0; i < v.NumField(); i++ {
+		v.Field(i).Set(reflect.ValueOf(rt.Err[string, int64]("no")))
+	}
+	for _, i := range oks {
+		v.Field(i).Set(reflect.ValueOf(rt.Ok[string, int64](int64(i))))
+	}
+	return h
+}
+
+func check(t *testing.T, name string, set []int, want int64) {
+	t.Helper()
+	if got := Deep__pick(row(set...)); got != want {
+		t.Errorf("pick %s %v = %d, want %d", name, set, got, want)
+	}
+	got, err := eff.Run(&eff.Env{}, eff.KTask, Deep__route(hops(set...)))
+	switch {
+	case want == 0 && err != eff.ErrNotFound:
+		t.Errorf("route %s %v = %d, %v, want not found", name, set, got, err)
+	case want != 0 && (err != nil || got != want):
+		t.Errorf("route %s %v = %d, %v, want %d", name, set, got, err, want)
+	}
+}
+
+func TestNested(t *testing.T) {
+`)
+	for k := 0; k < arms/2; k++ {
+		want := 2*k + 1 + (k+1)*100
+		fmt.Fprintf(&b, "\tcheck(t, \"arm %d\", []int{%d, %d}, %d)\n", k, k, k+1, want)
+		if k >= 2 { // arm k-2 fails at its second test, arm k-1 at its first
+			fmt.Fprintf(&b, "\tcheck(t, \"arm %d after a second-test failure\", []int{%d, %d, %d}, %d)\n", k, k-2, k, k+1, want)
+		}
+	}
+	b.WriteString("\tcheck(t, \"fallback\", nil, 0)\n\tcheck(t, \"fallback after second-test failures\", []int{0, 2, 4, 6, 8, 10, 12}, 0)\n}\n")
+	runGo(t, files, b.String())
+}
+
 // TestGen_MutateNested: a mutant of an If, a Match or an operator is emitted in place, its
 // subtrees once (mutatedIf, mutatedMatch, hoist), so the mutate build of nested mutated code
 // grows with the number of mutants, not with the number of programs they make: a 12-deep
