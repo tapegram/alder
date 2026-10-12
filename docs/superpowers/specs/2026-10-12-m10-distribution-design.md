@@ -80,8 +80,10 @@ works only from a checkout: the standard library is embedded
 - GitHub Actions: `ci.yml` on push and PR (gofmt, vet, `go test ./...`,
   the examples' check/build/test, `go test ./book`, the experiments'
   unittest), `release.yml` on a `v*` tag running GoReleaser.
-- `go install github.com/tapegram/alder/cmd/alder@latest` works once the
-  repository is public; until then releases are the way.
+- `go install` is NOT supported: the root module stays `alder` (renaming it
+  to the GitHub path would churn every import and the embedded runtime's
+  module identity); distribution is release binaries, Homebrew and the
+  container image (ruled 2026-10-12 after Task 1).
 - The first tag is the user's call; the plan ends with a successful
   `goreleaser release --snapshot` locally and the workflows green on a
   push.
