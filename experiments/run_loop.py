@@ -400,14 +400,17 @@ MODULE_RE = re.compile(r"^module\s+(\S+)", re.M)
 
 def hidden_test_names(files):
     """The names of the `test "…" =` declarations in those of `files` (paths) whose module is
-    `Hidden`, read statically (the count a hidden module that does not compile is scored by)."""
-    names = []
+    `Hidden`, read statically (the count a hidden module that does not compile is scored by), as
+    the source spells them, escapes kept: `alder test --json` reports a name so (`the form \\"Add\\"`).
+    None when no file is module Hidden."""
+    names, found = [], False
     for f in files:
         text = pathlib.Path(f).read_text()
         m = MODULE_RE.search(text)
         if m and m.group(1) == "Hidden":
-            names += [n.replace('\\"', '"').replace("\\\\", "\\") for n in TEST_HEADER_RE.findall(text)]
-    return names
+            found = True
+            names += TEST_HEADER_RE.findall(text)
+    return names if found else None
 
 
 def hidden_failed(names, reason, **extra):
@@ -454,6 +457,10 @@ def run_hidden(alder: pathlib.Path, round_dir: pathlib.Path, hidden_src: pathlib
         shutil.copyfile(f, dst)
         copied.append(dst)
     names = hidden_test_names(copied)
+    if names is None:   # an authoring error, never a valid empty success
+        return {"skipped": "no module Hidden"}
+    if not names:
+        return {"skipped": "no hidden tests"}
     extra = {"replaced": replaced} if replaced else {}
     exit_code, diags, stderr, reason = run_check(alder, scratch)
     if reason is not None:
@@ -481,6 +488,13 @@ def run_hidden(alder: pathlib.Path, round_dir: pathlib.Path, hidden_src: pathlib
         err = next((d["error"] for d in map(_json_or_none, p.stdout.splitlines()) if isinstance(d, dict) and "error" in d), None)
         why = err or (p.stderr.strip().splitlines() or [f"alder test exited {p.returncode}"])[0]
         return hidden_failed(names, why, exit=p.returncode, **extra)
+    seen = {r.get("name") for r in results}
+    missing = [n for n in names if n not in seen]
+    if missing:   # a crash or a timeout stops the run: the tests after it ran not, and count as failed
+        failing = [r for r in results if r.get("ok") is not True]
+        why = (next((r.get("error") for r in reversed(failing) if r.get("error")), None)
+               or (p.stderr.strip().splitlines() or [f"alder test exited {p.returncode}"])[-1])
+        results = results + [{"name": n, "ok": False, "reason": f"not run: {why}"} for n in missing]
     return {"passed": sum(1 for r in results if r.get("ok") is True),
             "failed": sum(1 for r in results if r.get("ok") is not True),
             "results": results, "exit": p.returncode, **extra}
@@ -920,7 +934,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
         if skip is None:
             h = run_hidden(alder, run_dir / f"round{last['n']}", pathlib.Path(hidden) / task_name)
             summary["hidden"] = h
-            summary["hidden_pass"] = f"{h['passed']}/{h['passed'] + h['failed']}"
+            summary["hidden_pass"] = None if "skipped" in h else f"{h['passed']}/{h['passed'] + h['failed']}"
         else:
             summary["hidden"] = {"skipped": skip}
             summary["hidden_pass"] = None

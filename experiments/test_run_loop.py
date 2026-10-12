@@ -1202,7 +1202,7 @@ class MigrateTests(unittest.TestCase):
 
 HIDDEN_MODULE = ('module Hidden\n\nimport Notes.Index\n\n-- SECRET_HIDDEN_MARK\ntest "a note is listed" =\n  Test.equal 1 1\n\n'
                  'test "a stranger gets 404" = {\n  Test.equal 2 2\n}\n\ntest "the form \\"Add\\" posts" =\n  Test.equal 3 3\n')
-HIDDEN_NAMES = ["a note is listed", "a stranger gets 404", 'the form "Add" posts']
+HIDDEN_NAMES = ["a note is listed", "a stranger gets 404", 'the form \\"Add\\" posts']   # as the source spells it, as `alder test --json` reports it
 E0002 = json.dumps({"code": "E0002", "severity": "error", "file": "app/Hidden.alder", "line": 3, "col": 8, "endLine": 3, "endCol": 19,
                     "message": "no module Notes.Index"}) + "\n"
 
@@ -1215,19 +1215,23 @@ def hidden_stub(tmp, checks=((0, ""),), hidden_check=(0, ""), own_test=(0, PASS2
     count, calls = tmp / "hid-count", tmp / "hid-calls"
     count.write_text("0")
     calls.write_text("")
-    q = lambda t: json.dumps(t).replace("`", "\\`")
+    files = iter(range(1000))
+    def q(t):   # the text verbatim: written to a file the stub cats (no shell or printf escapes)
+        f = tmp / f"hid-out-{next(files)}"
+        f.write_text(t)
+        return f
     lines = ["#!/bin/sh", f'echo "$PWD|$*" >> {calls}',
-             'if [ "$1" = migrate ]; then mkdir -p "$2/migrations" && printf %b ' + q(MIGRATION_0002) + ' > "$2/migrations/0002_add_views.sql"; exit 0; fi',
+             'if [ "$1" = migrate ]; then mkdir -p "$2/migrations" && cat ' + str(q(MIGRATION_0002)) + ' > "$2/migrations/0002_add_views.sql"; exit 0; fi',
              'if [ "$1" = build ]; then exit 0; fi',
              'if [ "$1" = check ]; then',
-             f'  case "$2" in */hidden) printf %b {q(hidden_check[1])}; exit {hidden_check[0]};; esac',
+             f'  case "$2" in */hidden) cat {q(hidden_check[1])}; exit {hidden_check[0]};; esac',
              f'  n=$(cat {count}); echo $((n+1)) > {count}']
     for i, (exit_code, out) in enumerate(checks):
-        lines.append(f'  if [ "$n" = "{i}" ]; then printf %b {q(out)}; exit {exit_code}; fi')
+        lines.append(f'  if [ "$n" = "{i}" ]; then cat {q(out)}; exit {exit_code}; fi')
     lines += ["  exit 2", "fi",
               '[ "$1" = test ] || exit 2',
-              f'if [ "$2" = -run ]; then printf %b {q(hidden_test[1])}; printf %b {q(hidden_test[2])} 1>&2; exit {hidden_test[0]}; fi',
-              f'printf %b {q(own_test[1])}; printf %b {q(own_test[2])} 1>&2; exit {own_test[0]}']
+              f'if [ "$2" = -run ]; then cat {q(hidden_test[1])}; cat {q(hidden_test[2])} 1>&2; exit {hidden_test[0]}; fi',
+              f'cat {q(own_test[1])}; cat {q(own_test[2])} 1>&2; exit {own_test[0]}']
     path = tmp / "alder-hidden-stub"
     path.write_text("\n".join(lines) + "\n")
     path.chmod(0o755)
@@ -1259,6 +1263,40 @@ class HiddenTests(unittest.TestCase):
         other = self.hidden / "t" / "Helper.alder"
         other.write_text('module Helper\n\ntest "not hidden" =\n  Test.equal 1 1\n')
         self.assertEqual(rl.hidden_test_names([f, other]), HIDDEN_NAMES)
+        self.assertIsNone(rl.hidden_test_names([other]))
+        self.assertEqual(HIDDEN_NAMES[2], 'the form \\"Add\\" posts')   # escapes kept: matches the run's names
+
+    def test_hidden_crash_midway_keeps_the_denominator(self):
+        # the second test crashes the program: alder test reports it failed and runs no later test
+        out = (tline("Hidden", HIDDEN_NAMES[0], True)
+               + json.dumps({"module": "Hidden", "name": HIDDEN_NAMES[1], "ok": False, "error": "stack overflow", "trace": [], "ms": 1}) + "\n")
+        (self.hidden / "t" / "Hidden.alder").write_text(HIDDEN_MODULE + '\ntest "a fourth" =\n  Test.equal 4 4\n')
+        stub = hidden_stub(self.tmp, hidden_test=(1, out, "alder test: 1 passed, 1 failed\n"))
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", stub, retries=0, build=True, test=True,
+                       hidden=self.hidden)
+        h = s["hidden"]
+        self.assertEqual((h["passed"], h["failed"], s["hidden_pass"]), (1, 3, "1/4"))
+        self.assertEqual(h["results"][2:], [{"name": HIDDEN_NAMES[2], "ok": False, "reason": "not run: stack overflow"},
+                                            {"name": "a fourth", "ok": False, "reason": "not run: stack overflow"}])
+        # an escaped name that did run is matched, not counted again
+        out2 = out + tline("Hidden", HIDDEN_NAMES[2], True)
+        stub = hidden_stub(self.tmp, hidden_test=(1, out2, ""))
+        h = rl.run_hidden(stub, self.exp / "runs/fake/t/round0", self.hidden / "t")
+        self.assertEqual([(r["name"], r["ok"]) for r in h["results"]],
+                         [(HIDDEN_NAMES[0], True), (HIDDEN_NAMES[1], False), (HIDDEN_NAMES[2], True), ("a fourth", False)])
+        self.assertEqual((h["passed"], h["failed"]), (2, 2))
+
+    def test_hidden_without_tests_or_module_is_skipped(self):
+        stub = hidden_stub(self.tmp, checks=[(0, ""), (0, "")])
+        (self.hidden / "t" / "Hidden.alder").write_text("module Hidden\n\nx : Int\nx = 1\n")
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "t", "task", "sys", stub, retries=0, build=True, hidden=self.hidden)
+        self.assertEqual((s["hidden"], s["hidden_pass"]), ({"skipped": "no hidden tests"}, None))
+        (self.hidden / "t" / "Hidden.alder").write_text('module Acceptance\n\ntest "a" =\n  Test.equal 1 1\n')
+        s = rl.run_one(self.exp, rl.FakeModel([GOOD]), "fake", "u", "task", "sys", stub, retries=0, build=True, hidden=self.hidden)
+        self.assertEqual((s["hidden"], s["hidden_pass"]), ({"skipped": "no module Hidden"}, None))
+        self.assertNotIn("-run", stub.calls.read_text())
+        import report_loop as rp
+        self.assertIn("| — (skipped: no module Hidden) |", rp.markdown(rp.rows([s])))
 
     def test_hidden_pass(self):
         stub = hidden_stub(self.tmp, hidden_test=(1, HIDDEN_PASS3, ""))
@@ -1338,6 +1376,7 @@ class HiddenTests(unittest.TestCase):
         self.assertFalse((self.exp / "runs/fake/t/round0/hidden").exists())   # only the final round gets them
         self.assertTrue((self.exp / "runs/fake/t/round1/hidden/app/Hidden.alder").exists())
         # a failing final round that built: the hidden tests still run, after the last retry
+        shutil.copytree(self.hidden / "t", self.hidden / "u")
         stub = hidden_stub(self.tmp, checks=[(0, ""), (0, "")], own_test=(1, FAIL1, ""), hidden_test=(1, HIDDEN_PASS3, ""))
         model = rl.FakeModel([GOOD, GOOD])
         s = rl.run_one(self.exp, model, "fake", "u", "TASK", "sys", stub, retries=1, build=True, test=True, hidden=self.hidden)
