@@ -91,6 +91,14 @@ const (
 	noTestsText   = "no tests: nothing can kill a mutant"
 )
 
+// mutateTimeoutHint ends the timeout message of a suite that ran out of --mutate's default
+// -timeout, which is shorter than a plain run's (5m).
+const mutateTimeoutHint = " (--mutate's default 10s; raise it with -timeout)"
+
+// TestsFailText is the line that ends a --mutate run whose tests did not pass, unmutated; alder
+// test prints it too when the test program crashed in that run.
+const TestsFailText = testsFailText
+
 // MutantOutcome is a decided mutant: killed (by the case By, `Module "name"`; Note "crashed"
 // or "timed out" when it was killed that way) or not. It is a line of the EnvMutateLog file.
 type MutantOutcome struct {

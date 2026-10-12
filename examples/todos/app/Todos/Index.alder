@@ -150,3 +150,20 @@ test "a stranger cannot see my todo" = {
   let show <- Test.open (Todos.Show { id: id })
   Task.succeed ({ items: Test.count "li" page.doc, show: show.answer } == { items: 0, show: PageMissing })
 }
+
+test "Delete removes the todo" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let r <- Test.run (update (Delete { id: id }) { filter: All, todos: [] } { user: me })
+  let after <- Db.get Todo id
+  Task.succeed ({ value: r.value, todo: Maybe.map (\t -> t.title) after } == { value: Ok Rerender, todo: Nothing })
+}
+
+test "the newest todo is listed first" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "First", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Second", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Todos.Index {})
+  Task.succeed (Test.texts "li a" page.doc == ["Second", "First"])
+}

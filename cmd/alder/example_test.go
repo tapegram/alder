@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
@@ -152,12 +153,57 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Admin.Edit "another author's post is not found"`,
 		`ok   Admin.Edit "a demoted author cannot edit"`,
 		`ok   Admin.Edit "Publish shows the post on the front page; Unpublish hides it"`,
-		"29 passed, 0 failed\n",
+		`ok   Post "bySlug finds the post with that slug"`,
+		`ok   Post "an author with posts cannot be deleted"`,
+		`ok   Admin "the admin page lists the author's own posts, newest first"`,
+		`ok   Posts.Index "a page that is exactly full has no next page"`,
+		`ok   Posts.Index "logging out from the front page goes to log in"`,
+		`ok   Admin.Edit "a visitor is sent to log in"`,
+		`ok   Admin.Edit "saving changes the title and the body"`,
+		`ok   Posts.Show "commenting through the form"`,
+		`ok   Auth.Login "an unknown email is rejected"`,
+		`ok   Auth.Login "logging in through the form"`,
+		"39 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("alder test examples/blog lacks %q:\n%s", want, out)
 		}
 	}
+	mutationAtLeast(t, "blog", blogMutationScore)
+}
+
+// The mutation scores examples/todos/README.md and examples/blog/README.md record (`alder test
+// --mutate`, rounded down to two decimals): a change to an example that lets a mutant survive
+// which its tests used to kill fails TestExample_*.
+const (
+	todosMutationScore = 1.00
+	blogMutationScore  = 0.94
+)
+
+// mutationAtLeast runs `alder test --mutate --json dir` and fails t when the score is below min.
+func mutationAtLeast(t *testing.T, dir string, min float64) {
+	t.Helper()
+	code, out, errs := runTest(t, dir, "--mutate", "--json")
+	if code != 0 {
+		t.Fatalf("alder test --mutate %s: exit %d\nout: %s\nerr: %s", dir, code, out, errs)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	var score struct{ Score *float64 }
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &score); err != nil || score.Score == nil {
+		t.Fatalf("alder test --mutate --json %s: no score on the last line:\n%s", dir, out)
+	}
+	if *score.Score < min {
+		t.Errorf("alder test --mutate %s: score %.4f, below the recorded %.2f:\n%s", dir, *score.Score, min, out)
+	}
+}
+
+// TestExample_TodosMutation: examples/todos keeps the mutation score its README records (every
+// mutant killed), measured on a copy so the build lands in a temporary directory.
+func TestExample_TodosMutation(t *testing.T) {
+	needGoTool(t)
+	inTemp(t)
+	copyDir(t, todosDir(t), "todos")
+	mutationAtLeast(t, "todos", todosMutationScore)
 }
 
 // prodHasNoTests fails t when the production module build/<name> (alder build's) carries test

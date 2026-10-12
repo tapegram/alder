@@ -8,6 +8,15 @@ capability Password {
   verify : { email: Text.Email, password: Text } -> Task (Maybe User.UserId),
 }
 
+-- In a test, `Test.fake Password` puts this in the adapter's place: it accepts any user who has
+-- a row, whatever the password, so a test can log in through the form below (book 10).
+fake Password {
+  verify args = {
+    let found <- Db.from User |> Db.where (User.email.eq args.email) |> Db.first
+    Task.succeed (Maybe.map (\u -> u.id) found)
+  }
+}
+
 page "/login" { }
 
 type Model = { }
@@ -49,3 +58,20 @@ view model session =
       <button>Log in</button>
     </form>
   </Layout.Page>
+
+-- Logging in through the form, with the fake: an unknown email is rejected with the form's
+-- message, and a known one stores the user in the session and goes to the front page.
+test "an unknown email is rejected" = {
+  let _ <- Test.fake Password
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.submit Credentials { email: Text.Email "nobody@example.com", password: Text.Secret "secret" }
+  Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: FormRejected [{ field: "", message: "Email or password is incorrect." }], user: Nothing })
+}
+
+test "logging in through the form" = {
+  let _ <- Test.fake Password
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.submit Credentials { email: Text.Email "me@example.com", password: Text.Secret "secret" }
+  Task.succeed ({ answer: r.answer, user: r.session.user, title: Test.text "h1" r.doc } == { answer: Redirected (Posts.Index {}), user: Just me, title: Just "Blog" })
+}

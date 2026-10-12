@@ -36,4 +36,24 @@ test "countOpen ignores done todos" =
   countOpen [
     { id: TodoId "a", title: Text.NonEmpty "x", done: False, due: Nothing, owner: User.UserId "u", created: Time.epoch },
     { id: TodoId "b", title: Text.NonEmpty "y", done: True, due: Nothing, owner: User.UserId "u", created: Time.epoch },
-  ] == 1
+    { id: TodoId "c", title: Text.NonEmpty "z", done: False, due: Nothing, owner: User.UserId "u", created: Time.epoch },
+  ] == 2
+
+test "Active keeps only open todos" =
+  List.map (\t -> t.title) (List.filter (matches Active) [
+    { id: TodoId "a", title: Text.NonEmpty "x", done: False, due: Nothing, owner: User.UserId "u", created: Time.epoch },
+    { id: TodoId "b", title: Text.NonEmpty "y", done: True, due: Nothing, owner: User.UserId "u", created: Time.epoch },
+  ]) == [Text.NonEmpty "x"]
+
+test "each filter has its label" =
+  List.map filterLabel [All, Active, Completed] == ["All", "Active", "Completed"]
+
+-- `owner` is `@ref User` with the default rule, `@restrict`: a user who still has todos cannot
+-- be deleted, and the todos stay.
+test "a user with todos cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let r <- Test.run (Db.delete User me)
+  let after <- Db.get Todo id
+  Task.succeed ({ deleted: Result.toMaybe r.value, todo: Maybe.map (\t -> t.title) after } == { deleted: Nothing, todo: Just (Text.NonEmpty "Milk") })
+}

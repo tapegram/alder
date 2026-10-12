@@ -150,3 +150,12 @@ test "an empty comment is rejected" = {
   let comments <- Db.from Comment |> Db.count
   Task.succeed ({ answer: r.answer, author: Test.attr "value" "input[name=author]" r.doc, comments: comments } == { answer: FormRejected [{ field: "body", message: "is not valid" }], author: Just "Ann", comments: 0 })
 }
+
+test "commenting through the form" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", published: True, author: author }
+  let _ <- Test.get (Posts.Show { slug: Post.Slug "hello" })
+  let r <- Test.submit NewComment { author: Comment.Name "Ann", body: Comment.Body "First!" }
+  let page <- Test.get (Posts.Show { slug: Post.Slug "hello" })
+  Task.succeed ({ answer: r.answer, who: Test.texts ".comments .who" page.doc } == { answer: Redirected (Posts.Show { slug: Post.Slug "hello" }), who: ["Ann"] })
+}

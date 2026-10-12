@@ -331,6 +331,9 @@ func runTests(b scratch.Build, runPat string, timeout time.Duration, mut *mutate
 			}
 			// the summary the program could not print: the results it streamed and this failure
 			summary := fmt.Sprintf("%d passed, %d failed\n", counted.passed, counted.failed+1)
+			if mut != nil { // the suite's own run crashed: there is nothing to measure
+				summary += rtesting.TestsFailText + "\n"
+			}
 			if jsonOut {
 				io.WriteString(stderr, summary)
 			} else {

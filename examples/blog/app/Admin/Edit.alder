@@ -130,3 +130,20 @@ test "Publish shows the post on the front page; Unpublish hides it" = {
   let unpublished <- Posts.Index.load { page: 1, q: "" } { user: Nothing }
   Task.succeed ({ published: List.length published.posts, unpublished: List.length unpublished.posts } == { published: 1, unpublished: 0 })
 }
+
+-- The page through the browser: a visitor is sent to log in; the author saves the form.
+test "a visitor is sent to log in" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
+  let visitor <- Test.open (Admin.Edit { id: id })
+  Task.succeed (visitor.answer == Redirected (Auth.Login {}))
+}
+
+test "saving changes the title and the body" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
+  let _ <- Test.login { user: Just author }
+  let _ <- Test.get (Admin.Edit { id: id })
+  let r <- Test.submit EditPost { title: Text.NonEmpty "Hello again", body: "More." }
+  Task.succeed ({ answer: r.answer, heading: Test.text "h1" r.doc, body: Test.text "textarea[name=body]" r.doc } == { answer: Rerendered, heading: Just "Hello again", body: Just "More." })
+}

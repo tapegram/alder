@@ -653,7 +653,13 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 				if rest := len(run) - i - 1; rest > 0 {
 					note = fmt.Sprintf("; %d did not run", rest)
 				}
+				if *mutating && mutantTimeout == defaultMutantTimeout {
+					note += mutateTimeoutHint
+				}
 				fmt.Fprintf(err, "alder test: the tests timed out after %s%s\n", timeout, note)
+				if *mutating {
+					report(testsFailText + "\n")
+				}
 				return 1
 			}
 		}

@@ -157,6 +157,31 @@ func TestMutate_RunNarrows(t *testing.T) {
 	}
 }
 
+// TestMutate_SuiteTimesOut: under --mutate a suite that runs out of time unmutated measures
+// nothing either: the timeout's report, then the refusal; at --mutate's default -timeout the
+// message says how to raise it.
+func TestMutate_SuiteTimesOut(t *testing.T) {
+	setMutants(t)
+	cs := append(mutantCases(), Case{Module: "M", Name: "slow", Pure: func() bool { time.Sleep(time.Hour); return true }})
+	for _, tc := range []struct {
+		args []string
+		hint bool
+	}{{nil, true}, {[]string{"-timeout", "300ms"}, false}} {
+		t.Setenv(EnvDeadline, time.Now().Add(300*time.Millisecond).Format(time.RFC3339Nano))
+		var out, errb bytes.Buffer
+		code := Main(cs, tables, nil, nil, nil, nil, nil, web.Options{}, append([]string{"--mutate"}, tc.args...), &out, &errb)
+		if code != 1 || !strings.HasSuffix(out.String(), "4 passed, 1 failed\ntests fail: fix them before measuring mutants\n") {
+			t.Fatalf("%v: exit %d\n%s", tc.args, code, out.String())
+		}
+		if got := strings.Contains(errb.String(), "the tests timed out after "); !got {
+			t.Fatalf("%v: stderr %q", tc.args, errb.String())
+		}
+		if got := strings.HasSuffix(errb.String(), " (--mutate's default 10s; raise it with -timeout)\n"); got != tc.hint {
+			t.Fatalf("%v: hint %v, want %v: stderr %q", tc.args, got, tc.hint, errb.String())
+		}
+	}
+}
+
 // TestMutate_Refusals: a suite that fails measures nothing (after its normal report); no tests
 // measure nothing either (exit 1 only with --min).
 func TestMutate_Refusals(t *testing.T) {

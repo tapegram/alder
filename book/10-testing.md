@@ -21,7 +21,8 @@ test "countOpen ignores done todos" =
   Todo.countOpen [
     { id: Todo.TodoId "a", title: Text.NonEmpty "x", done: False, due: Nothing, owner: User.UserId "u", created: Time.epoch },
     { id: Todo.TodoId "b", title: Text.NonEmpty "y", done: True, due: Nothing, owner: User.UserId "u", created: Time.epoch },
-  ] == 1
+    { id: Todo.TodoId "c", title: Text.NonEmpty "z", done: False, due: Nothing, owner: User.UserId "u", created: Time.epoch },
+  ] == 2
 ```
 
 Inside `Todo` the names are written unqualified (`countOpen`,
@@ -69,16 +70,25 @@ and prints one line per test. In the repository:
 
 ```text
 $ alder test examples/todos
+ok   App "Logout clears the user and goes to log in"
 ok   Auth.Login "an unknown email is rejected"
 ok   Auth.Login "logging in through the form"
 ok   Auth.Login "a visitor is sent to log in, and can log out"
 ok   Todo "countOpen ignores done todos"
+ok   Todo "Active keeps only open todos"
+ok   Todo "each filter has its label"
+ok   Todo "a user with todos cannot be deleted"
 ok   Todos.Index "Toggle flips done"
 ok   Todos.Index "Toggle by another user is not found"
 ok   Todos.Index "adding a todo through the page"
 ok   Todos.Index "toggling a todo through the page"
 ok   Todos.Index "a stranger cannot see my todo"
-9 passed, 0 failed
+ok   Todos.Index "Delete removes the todo"
+ok   Todos.Index "the newest todo is listed first"
+ok   Todos.Show "a visitor is sent to log in from a todo"
+ok   Todos.Show "saving changes the title and the due date"
+ok   Todos.Show "deleting from the todo's page"
+18 passed, 0 failed
 ```
 
 Each line names the module and the test, and is printed as soon as that
@@ -113,10 +123,14 @@ prefixes. Both compile; both are wrong:
 
 ```text
 $ alder test examples/todos
+ok   App "Logout clears the user and goes to log in"
 ok   Auth.Login "an unknown email is rejected"
 ok   Auth.Login "logging in through the form"
 ok   Auth.Login "a visitor is sent to log in, and can log out"
 ok   Todo "countOpen ignores done todos"
+ok   Todo "Active keeps only open todos"
+ok   Todo "each filter has its label"
+ok   Todo "a user with todos cannot be deleted"
 FAIL Todo "an empty list has one open todo"
   left:  0
   right: 1
@@ -125,11 +139,16 @@ ok   Todos.Index "Toggle by another user is not found"
 ok   Todos.Index "adding a todo through the page"
 ok   Todos.Index "toggling a todo through the page"
 ok   Todos.Index "a stranger cannot see my todo"
+ok   Todos.Index "Delete removes the todo"
+ok   Todos.Index "the newest todo is listed first"
 FAIL Todos.Index "Toggle only updates"
   left:  ["Db.get Todo", "Db.update Todo"]
   right: ["Db.update Todo"]
   trace: ["Db.insert User", "Db.insert Todo", "Test.run", "Db.get Todo", "Db.update Todo"]
-9 passed, 2 failed
+ok   Todos.Show "a visitor is sent to log in from a todo"
+ok   Todos.Show "saving changes the title and the due date"
+ok   Todos.Show "deleting from the todo's page"
+18 passed, 2 failed
 ```
 
 A failing test is `FAIL`, followed by indented lines that say why:
@@ -447,7 +466,7 @@ error.
 
 ```text
 $ alder test examples/todos --json -run countOpen
-{"module":"Todo","name":"countOpen ignores done todos","ok":true,"left":"1","right":"1","trace":[],"ms":0.009}
+{"module":"Todo","name":"countOpen ignores done todos","ok":true,"left":"2","right":"2","trace":[],"ms":0.01}
 1 passed, 0 failed
 ```
 

@@ -131,6 +131,36 @@ test "a draft is not visible" = {
 The second test builds a `Post` by hand, `created` included, with
 `Time.epoch` as a fixed time (chapter 10).
 
+The last two were added when `alder test --mutate` (chapter 10,
+"Mutation testing") showed that no test noticed `bySlug` losing its
+`where`, or `author` becoming `@ref User @cascade`. The first inserts two
+posts and asks for the second, which a `bySlug` without the `where` would
+not find first. The second deletes an author who has a post: under the
+default rule, `@restrict`, the delete fails and the post stays, so
+`Result.toMaybe` of the result is `Nothing`. The error's text names a
+generated id, which differs from run to run, so the test does not
+compare it.
+
+```alder part=blog/Post
+test "bySlug finds the post with that slug" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Slug "first", title: Text.NonEmpty "First", body: "", author: author }
+  let _ <- Db.insert Post { slug: Slug "second", title: Text.NonEmpty "Second", body: "", author: author }
+  let found <- bySlug (Slug "second")
+  Task.succeed (Maybe.map (\p -> p.title) found == Just (Text.NonEmpty "Second"))
+}
+
+-- `author` is `@ref User` with the default rule, `@restrict`: an author who still has posts
+-- cannot be deleted, and the posts stay.
+test "an author with posts cannot be deleted" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
+  let r <- Test.run (Db.delete User author)
+  let posts <- Db.from Post |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, posts: posts } == { deleted: Nothing, posts: 1 })
+}
+```
+
 ## A role checked in `load`: `Admin` and `Admin.Edit`
 
 `User` declares `type Role = Reader | Author` and a column
@@ -308,6 +338,32 @@ block, because `Test.run` takes a `Task` and `load` is a `Query`. The
 last reads the front page through `Posts.Index.load`, which a test may
 call once its module imports `Posts.Index`.
 
+Two more go through the page, and were added after `alder test --mutate`
+showed what nothing checked: that a visitor who opens an edit page is
+sent to log in (with `requires user` deleted, the page would be served to
+them), and that Save stores both fields. The second posts the form and
+reads the page it re-renders: the heading and the text area now hold
+what was saved.
+
+```alder part=blog/Admin.Edit
+-- The page through the browser: a visitor is sent to log in; the author saves the form.
+test "a visitor is sent to log in" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
+  let visitor <- Test.open (Admin.Edit { id: id })
+  Task.succeed (visitor.answer == Redirected (Auth.Login {}))
+}
+
+test "saving changes the title and the body" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
+  let _ <- Test.login { user: Just author }
+  let _ <- Test.get (Admin.Edit { id: id })
+  let r <- Test.submit EditPost { title: Text.NonEmpty "Hello again", body: "More." }
+  Task.succeed ({ answer: r.answer, heading: Test.text "h1" r.doc, body: Test.text "textarea[name=body]" r.doc } == { answer: Rerendered, heading: Just "Hello again", body: Just "More." })
+}
+```
+
 ## A capability in `load`: `Posts.Show`
 
 `app/Markdown.alder` declares `capability Markdown` with one entry,
@@ -468,17 +524,20 @@ view model session =
 
 ## Its tests
 
-`alder test examples/blog` runs twenty-nine tests in six modules:
+`alder test examples/blog` runs thirty-nine tests in seven modules:
 
 ```text
 $ alder test examples/blog
 ok   Post "a slug is lowercase letters, digits and hyphens"
 ok   Post "a draft is not visible"
+ok   Post "bySlug finds the post with that slug"
+ok   Post "an author with posts cannot be deleted"
 ok   Admin "a Reader cannot open the admin page"
 ok   Admin "creating a post redirects to its edit page"
 ok   Admin "a taken slug is refused"
 ok   Admin "the admin page needs an Author"
 ok   Admin "an Author logs out from the admin page"
+ok   Admin "the admin page lists the author's own posts, newest first"
 ok   Comment "a name or comment has text and a bound"
 ok   Posts.Index "the front page lists only published posts, newest first"
 ok   Posts.Index "search matches title or body"
@@ -491,17 +550,24 @@ ok   Posts.Index "a search answers with the first page of its results"
 ok   Posts.Index "only an Author sees the Write link"
 ok   Posts.Index "the second page links back to the first"
 ok   Posts.Index "a search through the form"
+ok   Posts.Index "a page that is exactly full has no next page"
+ok   Posts.Index "logging out from the front page goes to log in"
 ok   Admin.Edit "deleting a post deletes its comments"
 ok   Admin.Edit "another author's post is not found"
 ok   Admin.Edit "a demoted author cannot edit"
 ok   Admin.Edit "Publish shows the post on the front page; Unpublish hides it"
+ok   Admin.Edit "a visitor is sent to log in"
+ok   Admin.Edit "saving changes the title and the body"
+ok   Auth.Login "an unknown email is rejected"
+ok   Auth.Login "logging in through the form"
 ok   Posts.Show "a draft is not found for a reader"
 ok   Posts.Show "a draft is shown to its author"
 ok   Posts.Show "a post's body is rendered through the Markdown capability"
 ok   Posts.Show "a comment on a draft is refused"
 ok   Posts.Show "a comment is listed oldest first"
 ok   Posts.Show "an empty comment is rejected"
-29 passed, 0 failed
+ok   Posts.Show "commenting through the form"
+39 passed, 0 failed
 ```
 
 The `Posts.Index` tests call `load` the way the runtime does, with
@@ -625,6 +691,45 @@ typed, and gets `FormRejected [{ field: "body", message: "is not valid" }]`:
 `Comment.Body` is a brand with a `where` rule, and a value its rule
 refuses is "is not valid" (a `Text.NonEmpty` field would say "must not
 be empty").
+
+Ten tests were written after `alder test --mutate` (chapter 10, "Mutation
+testing") ran on the blog: before them, 17 of its 56 mutants survived;
+after, 3 do, and those three cannot be killed (chapter 10 explains why).
+`Post`'s two and `Admin.Edit`'s two are above. `Admin`'s "the admin page
+lists the author's own posts, newest first" inserts another author's post
+between two of the author's own. `Posts.Show`'s "commenting through the
+form" checks that a comment redirects back to the post. `Auth.Login`
+gained the to-do app's `fake Password` and its two login tests, which
+check the session's `user` after a login and the form's message after a
+wrong one. `Posts.Index` gained the last two:
+
+With exactly ten posts,
+one full page, there is no next page; `hasMore` written with `>=` would
+say there is, and only a test with exactly `perPage` posts tells `>`
+from `>=`. The front page is the one page with a Log out button that a
+visitor may also open, so logging out from it shows whether `App.Logout`
+redirects: a `Rerender` would show the front page again, where every
+other Log out button sits on a page that sends a visitor to log in
+anyway.
+
+```alder part=blog/Posts.Index
+test "a page that is exactly full has no next page" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Task.all (List.map (\n -> Db.insert Post { slug: Post.Slug ("post-" ++ Text.fromInt n), title: Text.NonEmpty "A post", body: "", published: True, author: author }) (List.range 1 10))
+  let model <- load { page: 1, q: "" } { user: Nothing }
+  Task.succeed ({ posts: List.length model.posts, hasMore: model.hasMore } == { posts: 10, hasMore: False })
+}
+
+-- The front page is the one page with a Log out button that a visitor may also see, so logging
+-- out from it shows whether `App.Logout` redirects: a Rerender would show the front page again.
+test "logging out from the front page goes to log in" = {
+  let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
+  let _ <- Test.login { user: Just reader }
+  let _ <- Test.get (Posts.Index {})
+  let out <- Test.click App.Logout
+  Task.succeed ({ out: out.answer, user: out.session.user } == { out: Redirected (Auth.Login {}), user: Nothing })
+}
+```
 
 ## Run it
 

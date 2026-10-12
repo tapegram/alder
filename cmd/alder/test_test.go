@@ -62,7 +62,16 @@ func TestTest_Todos(t *testing.T) {
 		`ok   Todos.Index "adding a todo through the page"`,
 		`ok   Todos.Index "toggling a todo through the page"`,
 		`ok   Todos.Index "a stranger cannot see my todo"`,
-		"9 passed, 0 failed\n",
+		`ok   App "Logout clears the user and goes to log in"`,
+		`ok   Todo "Active keeps only open todos"`,
+		`ok   Todo "each filter has its label"`,
+		`ok   Todo "a user with todos cannot be deleted"`,
+		`ok   Todos.Index "Delete removes the todo"`,
+		`ok   Todos.Index "the newest todo is listed first"`,
+		`ok   Todos.Show "a visitor is sent to log in from a todo"`,
+		`ok   Todos.Show "saving changes the title and the due date"`,
+		`ok   Todos.Show "deleting from the todo's page"`,
+		"18 passed, 0 failed\n",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
@@ -77,7 +86,7 @@ func TestTest_Failing(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	for _, want := range []string{"FAIL Todo \"wrong\"\n  left:  0\n  right: 1\n", "9 passed, 1 failed\n"} {
+	for _, want := range []string{"FAIL Todo \"wrong\"\n  left:  0\n  right: 1\n", "18 passed, 1 failed\n"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
 		}
@@ -92,7 +101,7 @@ func TestTest_JSON(t *testing.T) {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
-	if len(lines) != 9 {
+	if len(lines) != 18 {
 		t.Fatalf("want one line per test, got %d:\n%s", len(lines), stdout)
 	}
 	for _, l := range lines {
@@ -108,10 +117,10 @@ func TestTest_JSON(t *testing.T) {
 			t.Errorf("want a passing test with module and name: %s", l)
 		}
 	}
-	if !strings.Contains(lines[4], `"name":"Toggle flips done"`) || !strings.Contains(lines[4], `"trace":["Db.insert User","Db.insert Todo","Test.run","Db.get Todo","Db.update Todo","Db.get Todo"]`) {
-		t.Errorf("the effect test's line lacks its trace: %s", lines[4])
+	if !strings.Contains(lines[8], `"name":"Toggle flips done"`) || !strings.Contains(lines[8], `"trace":["Db.insert User","Db.insert Todo","Test.run","Db.get Todo","Db.update Todo","Db.get Todo"]`) {
+		t.Errorf("the effect test's line lacks its trace: %s", lines[8])
 	}
-	if stderr != "9 passed, 0 failed\n" {
+	if stderr != "18 passed, 0 failed\n" {
 		t.Errorf("stderr %q, want the summary", stderr)
 	}
 }
@@ -905,6 +914,23 @@ func TestTest_MutateFailingSuite(t *testing.T) {
 	code, stdout, stderr := runTest(t, dir, "--mutate")
 	if code != 1 || !strings.Contains(stdout, "FAIL Note \"broken\"\n") || !strings.HasSuffix(stdout, "7 passed, 1 failed\ntests fail: fix them before measuring mutants\n") {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, stdout, stderr)
+	}
+}
+
+// TestTest_MutateSuiteCrashes: a suite whose own (unmutated) run crashes the test program
+// measures nothing either: the crash's report, then the refusal (with --json on stderr, after
+// the summary).
+func TestTest_MutateSuiteCrashes(t *testing.T) {
+	needGoTool(t)
+	dir := mutateOK(t, "\nspin : Int -> Int\nspin n = spin (n + 1) + 1\n\ntest \"overflow\" = spin 0 == 1\n")
+	code, stdout, stderr := runTest(t, dir, "--mutate")
+	if code != 1 || !strings.Contains(stdout, "FAIL Note \"overflow\"\n  error: fatal error: stack overflow") || !strings.HasSuffix(stdout, " passed, 1 failed\ntests fail: fix them before measuring mutants\n") ||
+		!strings.Contains(stderr, "crashed running Note \"overflow\"") {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, stdout, stderr)
+	}
+	code, stdout, stderr = runTest(t, dir, "--mutate", "--json")
+	if code != 1 || strings.Contains(stdout, "tests fail") || !strings.HasSuffix(stderr, " passed, 1 failed\ntests fail: fix them before measuring mutants\n") {
+		t.Fatalf("--json: exit %d\nstdout:\n%s\nstderr: %s", code, stdout, stderr)
 	}
 }
 

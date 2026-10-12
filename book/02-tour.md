@@ -233,7 +233,7 @@ test "Toggle by another user is not found" = {
 }
 ```
 
-The last three tests go through the page itself, as a user would: they log
+The next three tests go through the page itself, as a user would: they log
 in, open the page, post its form, click its buttons, and read what the page
 shows (`#summary` is the `<p id="summary">` above). The form posted by
 `Test.submit NewTodo` and the button clicked by `Test.click (Toggle { id:
@@ -275,6 +275,30 @@ test "a stranger cannot see my todo" = {
 }
 ```
 
+The last two were written after `alder test --mutate` (chapter 10,
+"Mutation testing") showed that nothing checked them: that `Delete`
+really deletes, and that the newest todo comes first. `Test.texts "li a"`
+is the text of every link inside a list item, in page order: the titles.
+
+```alder part=Todos.Index
+test "Delete removes the todo" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let r <- Test.run (update (Delete { id: id }) { filter: All, todos: [] } { user: me })
+  let after <- Db.get Todo id
+  Task.succeed ({ value: r.value, todo: Maybe.map (\t -> t.title) after } == { value: Ok Rerender, todo: Nothing })
+}
+
+test "the newest todo is listed first" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "First", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Second", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Todos.Index {})
+  Task.succeed (Test.texts "li a" page.doc == ["Second", "First"])
+}
+```
+
 ## What the compiler checked
 
 Reading this module, the compiler verified that: every `href` points at a
@@ -288,13 +312,16 @@ that needed a test.
 
 - `app/Todos/Show.alder`: a detail page with an edit form. It uses
   `Query.notFound` when the todo doesn't exist or belongs to someone else.
+  Its tests send a visitor to log in, save the form and delete the todo
+  through the page.
 - `app/Auth/Login.alder`: the login page. It declares a `Password`
   capability, implemented in Go, and uses `Session.put` to sign the user
   in. A wrong password returns `Reject`, which re-renders the form with a
   message. Beside the capability is a `fake Password` for tests, and three
   tests that log in and out through the form and the button.
 - `app/App.alder`: the session record, the error pages, and the app-level
-  `Logout` message, which any page can send with `click={App.Logout}`.
+  `Logout` message, which any page can send with `click={App.Logout}`,
+  with a test of its `update`.
 - `app/User.alder`, `app/Layout.alder`: the user table and a page layout
   component.
 

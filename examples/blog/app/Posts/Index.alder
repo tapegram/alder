@@ -180,3 +180,20 @@ test "a search through the form" = {
   let r <- Test.submit SearchForm { q: "tomato" }
   Task.succeed ({ answer: r.answer, titles: Test.texts "ul.posts a" r.doc, query: Test.attr "value" "input[name=q]" r.doc } == { answer: Redirected (Posts.Index { page: 1, q: "tomato" }), titles: ["Soup"], query: Just "tomato" })
 }
+
+test "a page that is exactly full has no next page" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Task.all (List.map (\n -> Db.insert Post { slug: Post.Slug ("post-" ++ Text.fromInt n), title: Text.NonEmpty "A post", body: "", published: True, author: author }) (List.range 1 10))
+  let model <- load { page: 1, q: "" } { user: Nothing }
+  Task.succeed ({ posts: List.length model.posts, hasMore: model.hasMore } == { posts: 10, hasMore: False })
+}
+
+-- The front page is the one page with a Log out button that a visitor may also see, so logging
+-- out from it shows whether `App.Logout` redirects: a Rerender would show the front page again.
+test "logging out from the front page goes to log in" = {
+  let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
+  let _ <- Test.login { user: Just reader }
+  let _ <- Test.get (Posts.Index {})
+  let out <- Test.click App.Logout
+  Task.succeed ({ out: out.answer, user: out.session.user } == { out: Redirected (Auth.Login {}), user: Nothing })
+}

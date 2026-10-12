@@ -2011,14 +2011,14 @@ a test build has (`gen.Options.Tests`; a production build, `alder
 build`'s, emits none of what this section shows), and the main.
 
 **Each test is a function.** Section 7's emitter turns the N-th `test`
-of module M into `test__M__N`. `Todo`'s one test,
-`test "countOpen ignores done todos" = countOpen [ … ] == 1` (two todos,
+of module M into `test__M__N`. `Todo`'s first test,
+`test "countOpen ignores done todos" = countOpen [ … ] == 2` (three todos,
 one done), is emitted into `build/todos/scratch/test/Todo_alder.go` as
 
 ```go
 // test__Todo__1 is test "countOpen ignores done todos" of module Todo.
 func test__Todo__1() bool {
-	return rtesting.Eq(Todo__countOpen([]Todo__Todo{Todo__Todo{Id: "a", Title: "x", Done: false, Due: rt.Nothing[rt.Date](), Owner: "u", Created: std.TimeEpoch()}, Todo__Todo{Id: "b", Title: "y", Done: true, Due: rt.Nothing[rt.Date](), Owner: "u", Created: std.TimeEpoch()}}), int64(1))
+	return rtesting.Eq(Todo__countOpen([]Todo__Todo{Todo__Todo{Id: "a", Title: "x", Done: false, Due: rt.Nothing[rt.Date](), Owner: "u", Created: std.TimeEpoch()}, Todo__Todo{Id: "b", Title: "y", Done: true, Due: rt.Nothing[rt.Date](), Owner: "u", Created: std.TimeEpoch()}, Todo__Todo{Id: "c", Title: "z", Done: false, Due: rt.Nothing[rt.Date](), Owner: "u", Created: std.TimeEpoch()}}), int64(2))
 }
 ```
 
@@ -2037,15 +2037,24 @@ test starts from:
 ```go
 // Tests are the app's `test` declarations in module order then declaration order, for alder test (rtesting.Main).
 var Tests = []rtesting.Case{
+	{Module: "App", Name: "Logout clears the user and goes to log in", Task: test__App__1},
 	{Module: "Auth.Login", Name: "an unknown email is rejected", Task: test__Auth__Login__1},
 	{Module: "Auth.Login", Name: "logging in through the form", Task: test__Auth__Login__2},
 	{Module: "Auth.Login", Name: "a visitor is sent to log in, and can log out", Task: test__Auth__Login__3},
 	{Module: "Todo", Name: "countOpen ignores done todos", Pure: test__Todo__1},
+	{Module: "Todo", Name: "Active keeps only open todos", Pure: test__Todo__2},
+	{Module: "Todo", Name: "each filter has its label", Pure: test__Todo__3},
+	{Module: "Todo", Name: "a user with todos cannot be deleted", Task: test__Todo__4},
 	{Module: "Todos.Index", Name: "Toggle flips done", Task: test__Todos__Index__1},
 	{Module: "Todos.Index", Name: "Toggle by another user is not found", Task: test__Todos__Index__2},
 	{Module: "Todos.Index", Name: "adding a todo through the page", Task: test__Todos__Index__3},
 	{Module: "Todos.Index", Name: "toggling a todo through the page", Task: test__Todos__Index__4},
 	{Module: "Todos.Index", Name: "a stranger cannot see my todo", Task: test__Todos__Index__5},
+	{Module: "Todos.Index", Name: "Delete removes the todo", Task: test__Todos__Index__6},
+	{Module: "Todos.Index", Name: "the newest todo is listed first", Task: test__Todos__Index__7},
+	{Module: "Todos.Show", Name: "a visitor is sent to log in from a todo", Task: test__Todos__Show__1},
+	{Module: "Todos.Show", Name: "saving changes the title and the due date", Task: test__Todos__Show__2},
+	{Module: "Todos.Show", Name: "deleting from the todo's page", Task: test__Todos__Show__3},
 }
 
 // TestSession is the session a test runs with: App's session with every field at its default (nil without an App module).
