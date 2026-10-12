@@ -86,10 +86,9 @@ Run T7 with `--base experiments/e8-hidden/base/blog-nodrafts`. T8 runs on
 `--base examples/blog`.
 
 The chapters in the prompt (3–10) and its example (todos) never show the
-blog. A model sees the blog app only through the task text: T7 and T8 list
-the base's `app/` in full, under "The blog app as it is now". The harness's
-user prompt in round 0 is the task text alone, and `--base` only seeds the
-files. `verify.sh` checks that the listing still matches the base.
+blog. Round 0's prompt shows the base app's files under "THE APP YOU ARE
+CHANGING" (the harness, Task 2). The T7 and T8 texts refer to the blog
+"shown after this task" and do not list it themselves.
 
 ## Matrix and run protocol
 
@@ -200,9 +199,7 @@ prints one row:
 It also checks the task texts:
 
 - each `without` text is its `with` text minus the tests paragraph;
-- a `without` text never says "test" outside the T7/T8 app listing (the blog's
-  own code contains tests: that is the app as it is, not an instruction);
-- the T7/T8 listings match their bases.
+- a `without` text never says "test".
 
 It exits 1 when anything differs from what is expected: every cell green,
 `DROPS DATA` only on `reference-alt/t7-drafts`. Run it after any change to the

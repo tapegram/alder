@@ -41,12 +41,10 @@ alder() {
 
 fail=0
 
-# The task texts: `without` is `with` minus its tests paragraph (and mentions no test outside the
-# app listing), and the app listed in T7/T8 is the base's app/ as it is in this tree.
+# The task texts: `without` is `with` minus its tests paragraph, and mentions no test.
 python3 - "$HERE" "$ROOT" <<'EOF' || fail=1
 import pathlib, re, sys
 here, root = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
-bases = {"t7-drafts": here / "base/blog-nodrafts/app", "t8-notify": root / "examples/blog/app"}
 bad = []
 for w in sorted((here / "tasks/with").glob("*.md")):
     wo = here / "tasks/without" / w.name
@@ -54,15 +52,8 @@ for w in sorted((here / "tasks/with").glob("*.md")):
     m = re.search(r"^Also write tests.*?\n\n", a, re.S | re.M)
     if not m or a[:m.start()] + a[m.end():] != b:
         bad.append(f"{wo.name}: not `with` minus its tests paragraph")
-    if re.search(r"test", b.split("\n## The blog app as it is now")[0], re.I):
+    if re.search(r"test", b, re.I):
         bad.append(f"{wo.name}: mentions tests")
-    base = bases.get(w.stem)
-    if base:
-        for text, name in ((a, "with"), (b, "without")):
-            listed = dict(re.findall(r"^==== (app/\S+) ====\n\n```alder\n(.*?)\n```$", text, re.S | re.M))
-            files = {f.relative_to(base.parent).as_posix(): f.read_text().rstrip() for f in base.rglob("*.alder")}
-            if listed != files:
-                bad.append(f"{name}/{w.name}: the listed app differs from {base} ({sorted(set(listed) ^ set(files)) or 'contents'})")
 for line in bad:
     print("verify.sh: task text:", line, file=sys.stderr)
 sys.exit(1 if bad else 0)
