@@ -1,6 +1,7 @@
 module Home
 
 import Todo
+import User
 
 page "/" { } requires user
 
@@ -16,9 +17,16 @@ update msg model session = match msg {
   Add p -> {
     let _ <- Db.insertMine Todo { title: "milk", owner: session.user }
     let _ <- Db.insertMine Todo { title: "eggs", created: Time.epoch }
+    let _ <- Db.insertMine Todo (rowFor session.user)
+    let _ <- { title: "jam" } |> Db.insertMine Todo
+    let _ <- Task.all (List.map (Db.insertMine Todo) [])
+    let _ <- Db.insertMine Todo { done: True }
     Task.succeed Rerender
   },
 }
+
+rowFor : User.UserId -> Insert Todo
+rowFor u = { title: "tea", owner: u }
 
 view : Model -> Session -> Html Msg
 view model session = <p>home</p>

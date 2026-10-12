@@ -1,0 +1,19 @@
+module Public
+
+import Todo
+import Todos.Index
+import Todos.Show
+
+page "/public" { }
+
+type Model = { todos: List Todo, more: List Todo }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todos <- Todos.Index.recent |> Db.all
+  let more <- Todos.Show.shown
+  Query.succeed { todos: todos, more: more }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>public</p>

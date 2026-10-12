@@ -1,0 +1,1 @@
+app/Admin.alder:3:34 E0027 this session's `role` field is `Maybe User.Role`: the role must be a union, not `Maybe`

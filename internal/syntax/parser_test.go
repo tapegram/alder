@@ -380,8 +380,16 @@ func TestParse_RulesSurface(t *testing.T) {
 	if r, s := pd.RequiresSpan, pd.RolesSpan; r.Start.Col != 15 || r.End.Col != 28 || s.Start.Col != 30 || s.End.Col != 49 {
 		t.Fatalf("spans: requires %+v roles %+v", r, s)
 	}
-	_, diags := ParseFile("m.alder", []byte("module M\n\npage \"/a\" { } requires user, Author\n"))
-	if len(diags) == 0 || !strings.Contains(diags[0].Message, "expected `role R` after `requires user,`") {
-		t.Fatalf("diags: %v", diags)
+	for _, c := range []struct{ src, want string }{
+		{"requires user, Author", "expected `role R` after `requires user,`"},
+		{"requires user role Admin", "expected `,` between `requires user` and `role`: write `requires user, role R`"},
+		{"requires role Admin, user", "`user` goes first: write `requires user, role R` with unqualified constructors"},
+		{"requires user, role User.Admin", "write `requires user, role R` with unqualified constructors"},
+		{"requires user, role Author | User.Admin", "write `requires user, role R` with unqualified constructors"},
+	} {
+		_, diags := ParseFile("m.alder", []byte("module M\n\npage \"/a\" { } "+c.src+"\n\ntype Model = { }\n"))
+		if len(diags) != 1 || !strings.Contains(diags[0].Message, c.want) {
+			t.Errorf("%s: diags %v, want one with %q", c.src, diags, c.want)
+		}
 	}
 }

@@ -46,21 +46,9 @@ func (mc *modCtx) checkBodies() {
 	for _, d := range c.live(mc.m) {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
-			if d.Sig == nil && d.Body != nil && mc.infersTopLevel() {
-				mc.inferTopLevel(d)
-				continue
-			}
-			if d.Sig == nil && d.Body != nil {
-				mc.inferSig(d)
-				continue
-			}
-			sig, ok := c.values[c.key(mc.m.Name, d.Name)]
-			if !ok || d.Body == nil {
-				continue
-			}
-			mc.inUpdate = (mc.page != nil && d.Name == "update") || (mc.isApp && d.Name == "update")
-			mc.checkValue(d, sig)
-			mc.inUpdate = false
+			mc.value = d.Name
+			mc.checkValueDecl(d)
+			mc.value = ""
 		case *syntax.FakeDecl:
 			mc.checkFakeEntries(d)
 		case *syntax.TestDecl:
@@ -82,6 +70,26 @@ func (mc *modCtx) checkBodies() {
 		}
 	}
 	mc.checkPage() // Task 11; no-op for non-page modules
+}
+
+// checkValueDecl checks the body of top-level value d.
+func (mc *modCtx) checkValueDecl(d *syntax.ValueDecl) {
+	c := mc.c
+	if d.Sig == nil && d.Body != nil && mc.infersTopLevel() {
+		mc.inferTopLevel(d)
+		return
+	}
+	if d.Sig == nil && d.Body != nil {
+		mc.inferSig(d)
+		return
+	}
+	sig, ok := c.values[c.key(mc.m.Name, d.Name)]
+	if !ok || d.Body == nil {
+		return
+	}
+	mc.inUpdate = (mc.page != nil && d.Name == "update") || (mc.isApp && d.Name == "update")
+	mc.checkValue(d, sig)
+	mc.inUpdate = false
 }
 
 // checkValue checks the body of value d against its signature sig.
@@ -644,7 +652,7 @@ func (mc *modCtx) checkRecordLit(x *syntax.RecordLit, rec *types.Record, env *en
 					continue
 				}
 			}
-			c.errorf(diag.UnknownName, fi.Span, "no field `%s` on `%s`", fi.Name, types.String(rec))
+			c.errorf(diag.UnknownName, fi.Span, "no field `%s` on `%s`", fi.Name, c.recordLabel(rec))
 			mc.infer(fi.Value, env, eff)
 			continue
 		}
@@ -677,11 +685,11 @@ func (mc *modCtx) checkRecordLit(x *syntax.RecordLit, rec *types.Record, env *en
 	const why = "a default applies only to an insert, the session cookie, a page or message parameter, or a form, not to a literal"
 	switch {
 	case len(missing) > 0 && len(missing) == len(defaulted):
-		c.errorf(diag.TypeMismatch, x.Span, "record literal for `%s` is missing `%s` (%s)", rec.Name, strings.Join(missing, "`, `"), why)
+		c.errorf(diag.TypeMismatch, x.Span, "record literal for `%s` is missing `%s` (%s)", c.recordLabelName(rec), strings.Join(missing, "`, `"), why)
 	case len(defaulted) > 0:
-		c.errorf(diag.TypeMismatch, x.Span, "record `%s` is missing field(s): %s (for `%s`, %s)", types.String(rec), strings.Join(missing, ", "), strings.Join(defaulted, "`, `"), why)
+		c.errorf(diag.TypeMismatch, x.Span, "record `%s` is missing field(s): %s (for `%s`, %s)", c.recordLabel(rec), strings.Join(missing, ", "), strings.Join(defaulted, "`, `"), why)
 	case len(missing) > 0:
-		c.errorf(diag.TypeMismatch, x.Span, "record `%s` is missing field(s): %s", types.String(rec), strings.Join(missing, ", "))
+		c.errorf(diag.TypeMismatch, x.Span, "record `%s` is missing field(s): %s", c.recordLabel(rec), strings.Join(missing, ", "))
 	}
 }
 
@@ -867,7 +875,7 @@ func (mc *modCtx) inferExpr(e syntax.Expr, env *env, eff effect) types.Type {
 				}
 			}
 			if !found {
-				c.errorf(diag.UnknownName, fi.Span, "no field `%s` on `%s`", fi.Name, types.String(rec))
+				c.errorf(diag.UnknownName, fi.Span, "no field `%s` on `%s`", fi.Name, c.recordLabel(rec))
 				mc.infer(fi.Value, env, eff)
 			}
 		}
@@ -946,6 +954,9 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 		}
 		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Db" && scopedOps[x.Ref.Name] {
 			return mc.inferScoped(x)
+		}
+		if x.Ref.Kind == syntax.RefValue {
+			mc.scopedRef(x)
 		}
 		if t, ok := c.values[c.key(x.Ref.Module, x.Ref.Name)]; ok {
 			return c.u.Instantiate(t)
@@ -1212,6 +1223,11 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 					return info.Union
 				}
 			}
+		}
+	}
+	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Db" && v.Ref.Name == "insertMine" {
+		if r := mc.insertMineCall(x, v, pipe, env, eff); r != nil {
+			return r
 		}
 	}
 	// E0101: Db.get T x with x not an id

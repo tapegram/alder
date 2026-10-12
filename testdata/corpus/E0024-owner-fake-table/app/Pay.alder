@@ -1,0 +1,15 @@
+module Pay
+
+capability Stripe {
+  charge : Int -> Task Int,
+}
+
+fake Stripe {
+  table Charge {
+    id: ChargeId @id,
+    price: Int @owner,
+  }
+  charge n = Task.succeed n
+}
+
+type ChargeId = brand Text

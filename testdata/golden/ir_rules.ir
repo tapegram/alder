@@ -126,6 +126,10 @@
             (ctor Todos.Index.Msg.Toggle
               (record ToggleParams (id (field id (var t))))))
           (hexpr text (field title (var t))))))))
+(test "a test may use the scoped operations" task
+  (bind task n : Int
+    (db-run count (db-mine Todo.Todo))
+    (pure task (test-eq (var n) 0))))
 (module Todos.Show)
 (record Todos.Show.Model (todo Todo))
 (record Todos.Show.Params (id Text))

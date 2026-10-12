@@ -1,0 +1,1 @@
+app/Home.alder:12:40 E0026 in `fake Counter`'s `count`: `Db.mine` cannot be used in a fake: a fake has no session

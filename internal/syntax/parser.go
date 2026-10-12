@@ -276,15 +276,24 @@ func (p *Parser) parseDecl() Decl {
 			if !p.atRole() {
 				d.Requires = p.expect(LIdent, "session field").Text
 				d.RequiresSpan = p.spanFrom(rt)
-				if p.at(Comma) {
+				switch {
+				case p.at(Comma):
 					p.advance()
 					if !p.atRole() {
 						p.errorAt(p.tok, "expected `role R` after `requires "+d.Requires+",`, got "+describe(p.tok))
 					}
+				case p.atRole():
+					p.errorAt(p.tok, "expected `,` between `requires "+d.Requires+"` and `role`: write `requires "+d.Requires+", role R`")
 				}
 			}
 			if p.atRole() {
 				d.Roles, d.RolesSpan = p.parseRoles()
+				if p.at(Comma) && d.Requires == "" { // `requires role Admin, user`
+					p.errorAt(p.tok, "`user` goes first: write `requires user, role R` with unqualified constructors")
+					for !p.at(NL) && !p.at(EOF) {
+						p.advance()
+					}
+				}
 			}
 		}
 		d.Span = p.spanFrom(start)
@@ -621,10 +630,19 @@ func (p *Parser) atRole() bool {
 // parseRoles parses `role R` or `role R | S | …` at `role`.
 func (p *Parser) parseRoles() ([]string, diag.Span) {
 	start := p.advance()
-	roles := []string{p.expect(UIdent, "role constructor").Text}
-	for p.at(Pipe) {
-		p.advance()
+	var roles []string
+	for {
 		roles = append(roles, p.expect(UIdent, "role constructor").Text)
+		if p.at(Dot) { // `role User.Admin`
+			p.errorAt(p.tok, "a role is a constructor of the session's `role` type, unqualified: write `requires user, role R` with unqualified constructors")
+			for p.at(Dot) || p.at(UIdent) {
+				p.advance()
+			}
+		}
+		if !p.at(Pipe) {
+			break
+		}
+		p.advance()
 	}
 	return roles, p.spanFrom(start)
 }

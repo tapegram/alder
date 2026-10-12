@@ -16,6 +16,7 @@ insert : Table t -> Insert t -> Task (Id t)
 update : Table t -> Id t -> (t -> t) -> Task Unit
 delete : Table t -> Id t -> Task Unit
 -- Scoped operations: a table with an `@owner` column, in a page module whose page `requires user`
+
 -- `Db.from t` keeping the session user's rows (`owner = session.user`)
 mine : Table t -> Select t
 -- the row when it exists and is the session user's; otherwise Query.notFound
@@ -24,5 +25,5 @@ getMine : Table t -> Id t -> Query t
 updateMine : Table t -> Id t -> (t -> t) -> Task Unit
 -- one DELETE with `id = ? AND owner = ?`; no row deleted is Task.notFound
 deleteMine : Table t -> Id t -> Task Unit
--- the owner column is filled from the session; the row names every other insert field
+-- the row is `Insert t` without the owner column, written as a record literal in the call; the owner is the session's user
 insertMine : Table t -> Insert t -> Task (Id t)

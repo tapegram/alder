@@ -1,2 +1,6 @@
-app/Home.alder:17:50 E0003 `owner` is set by `Db.insertMine`
-app/Home.alder:18:50 E0501 `Db.insertMine` never takes `created`; it is generated
+app/Home.alder:18:50 E0003 `owner` is set by `Db.insertMine`
+app/Home.alder:19:50 E0501 `Db.insertMine` never takes `created`; it is generated
+app/Home.alder:20:34 E0003 `Db.insertMine` takes its row as a record literal: write the record literal in the `Db.insertMine` call (its row is `Insert Todo` without `owner`)
+app/Home.alder:21:14 E0003 `Db.insertMine` takes its row as a record literal: write the record literal in the `Db.insertMine` call (its row is `Insert Todo` without `owner`)
+app/Home.alder:22:34 E0003 `Db.insertMine` takes its row as a record literal: write the record literal in the `Db.insertMine` call (its row is `Insert Todo` without `owner`)
+app/Home.alder:23:33 E0003 record `Insert Todo` without `owner` is missing field(s): title

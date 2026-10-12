@@ -1,4 +1,3 @@
 app/App.alder:15:14 E0026 `Db.deleteMine` needs a page that `requires user`: `App` is not a page
-app/Mine.alder:20:12 E0026 `Db.mine` needs a page that `requires user`: a `test` has no session; reach the page through `Test.open` or `Test.click`
 app/Public.alder:11:16 E0026 `Db.mine` needs a page that `requires user`: `Public` does not
 app/Todo.alder:14:13 E0026 `Db.mine` needs a page that `requires user`: `Todo` is not a page

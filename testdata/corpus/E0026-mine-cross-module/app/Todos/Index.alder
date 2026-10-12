@@ -1,0 +1,26 @@
+module Todos.Index
+
+import Todo
+
+page "/" { } requires user
+
+type Model = { todos: List Todo }
+
+recent : Select Todo
+recent = Db.mine Todo |> Db.limit 10
+
+-- uses Db.deleteMine through another value of the module
+wipe : Todo.TodoId -> Task Unit
+wipe id = wipeOne id
+
+wipeOne : Todo.TodoId -> Task Unit
+wipeOne id = Db.deleteMine Todo id
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todos <- recent |> Db.all
+  Query.succeed { todos: todos }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>todos</p>

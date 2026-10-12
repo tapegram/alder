@@ -48,6 +48,14 @@ type Checker struct {
 	// scopedReported the places E0026 was reported at
 	scopedUses     []scopedUse
 	scopedReported map[diag.Span]bool
+	// scopedDirect maps each value ("Module.name") of a `requires user` page module that uses a
+	// scoped operation itself (or another module's value that does) to the first such operation;
+	// scopedEdges are its module-internal references (from, to); scopedUsing is their closure
+	// (propagateScoped). insertMineRows are the `Db.insertMine` references insertMineCall saw.
+	scopedDirect   map[string]string
+	scopedEdges    [][2]string
+	scopedUsing    map[string]string
+	insertMineRows map[*syntax.Var]bool
 
 	usesSessionPut bool // some module calls Session.put
 	opts           Options
@@ -92,6 +100,7 @@ type modCtx struct {
 	form     *formCtx
 	inUpdate bool
 	inTest   bool
+	value    string               // the top-level value whose body is being checked, "" for none
 	testBody syntax.Expr          // the body of the `test` being checked (inTest)
 	testName string               // the name of the `test` being checked (inTest)
 	runArgs  map[syntax.Expr]bool // the arguments of `Test.run` calls (their mismatches get a hint)
@@ -178,6 +187,7 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 			continue // resolution failed: its bodies would only cascade
 		}
 		c.ctx(prog.Modules[name]).checkBodies()
+		c.propagateScoped()
 	}
 	// App rules need every module's bodies checked first (Session.put usage)
 	if app := prog.Modules["App"]; app != nil && !prog.Failed["App"] {

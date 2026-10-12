@@ -1,0 +1,18 @@
+module User
+
+type UserId = brand Text
+
+type Role = Reader | Author | Admin
+
+table User {
+  id: UserId @id,
+  name: Text,
+  role: Role = Reader,
+}
+
+roleName : Role -> Text
+roleName role = match role {
+  Reader -> "reader",
+  Author -> "author",
+  Admin -> "admin",
+}

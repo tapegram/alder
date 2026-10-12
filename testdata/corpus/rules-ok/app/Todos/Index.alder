@@ -52,3 +52,9 @@ view model session =
   <ul>
     {for t in model.todos -> <li><button click={Toggle { id: t.id }}>{t.title}</button></li>}
   </ul>
+
+-- a test has a session (Test.login, Session.put): the scoped operations may run in it
+test "a test may use the scoped operations" = {
+  let n <- Db.mine Todo |> Db.count
+  Task.succeed (n == 0)
+}

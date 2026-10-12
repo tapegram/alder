@@ -1,1 +1,2 @@
 app/Admin.alder:3:34 E0027 `Editor` is not a constructor of this session's `role` type `User.Role` (Reader, Author, Admin)
+app/Admin2.alder:3:36 E0027 `role` names `Admin` twice

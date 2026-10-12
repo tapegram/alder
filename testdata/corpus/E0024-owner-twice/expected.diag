@@ -1,1 +1,2 @@
+app/Note.alder:9:39 E0024 a field takes one `@owner`
 app/Todo.alder:10:23 E0024 a table has one `@owner` column: `Todo` marks `owner` and `editor`

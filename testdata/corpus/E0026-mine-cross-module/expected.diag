@@ -1,0 +1,3 @@
+app/App.alder:16:14 E0026 `Todos.Index.wipe` uses `Db.deleteMine`, which needs a page that `requires user`: `App` is not a page
+app/Public.alder:13:16 E0026 `Todos.Index.recent` uses `Db.mine`, which needs a page that `requires user`: `Public` does not
+app/Public.alder:14:15 E0026 `Todos.Show.shown` uses `Db.mine`, which needs a page that `requires user`: `Public` does not

@@ -1,0 +1,21 @@
+module Todos.Show
+
+import Todo
+import Todos.Index
+
+page "/todos" { } requires user
+
+type Model = { todos: List Todo }
+
+-- another `requires user` page module may use Todos.Index's scoped values
+shown : Query (List Todo)
+shown = Todos.Index.recent |> Db.all
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todos <- shown
+  Query.succeed { todos: todos }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>todos</p>
