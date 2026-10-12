@@ -1,0 +1,8 @@
+module Logic
+
+-- A mutant per `not`.
+open : Bool -> Bool
+open done = not done
+
+neither : Bool -> Bool -> Bool
+neither a b = not (a || b)

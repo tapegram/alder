@@ -1,8 +1,19 @@
 module Cond
 
--- A mutant.
+big : Int -> Bool
+big n = n > 3
+
+-- A mutant: the condition is a call.
 size : Int -> Text
-size n = if n > 3 then "big" else "small"
+size n = if big n then "big" else "small"
+
+-- A mutant: `&&` is flipped to `||`, which is not the negation.
+both : Bool -> Bool -> Int
+both a b = if a && b then 1 else 0
+
+-- Skipped: negating a comparison is the program `operator flipped` makes.
+small : Int -> Text
+small n = if n < 3 then "small" else "big"
 
 -- Refused: a literal condition.
 fixed : Int

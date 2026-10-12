@@ -3,7 +3,11 @@ module Notes
 import Note
 
 firstTen : Query (List Note)
-firstTen = Db.from Note |> Db.orderBy Note.rank.asc |> Db.limit 10 |> Db.all
+firstTen =
+  Db.from Note
+    |> Db.orderBy Note.rank.asc
+    |> Db.limit 10
+    |> Db.all
 
 -- No limit, no mutant.
 all : Query Int

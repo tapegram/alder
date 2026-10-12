@@ -1,32 +1,43 @@
-1   App          update:16   redirect → rerender   Redirect (Auth.Login {}) → Rerender
-2   Auth.Login   update:41   redirect → rerender   Redirect (Todos.Index {}) → Rerender
-3   Auth.Login   update:43   reject → rerender     Reject "Email or password is incorrect." → Rerender
-4   Todo         Todo:12     default changed       done = False → done = True
-5   Todo         Todo:14     cascade ↔ restrict    owner @ref User @restrict → owner @ref User @cascade
-6   Todo         matches:20  bool flipped          True → False
-7   Todos.Index  requires:7  requires dropped      requires user → served without user (user = User.UserId "mutant")
-8   Todos.Index  load:18     where dropped         Db.where (Todo.owner.eq session.user) → the condition dropped
-9   Todos.Index  load:19     orderBy reversed      Db.orderBy Todo.created.desc → Db.orderBy Todo.created.asc
-10  Todos.Index  update:36   write replaced        let _ <- Db.insert Todo {…} → let _ <- Task.succeed (Todo.TodoId "mutant")
-11  Todos.Index  update:37   redirect → rerender   Redirect (Todos.Index { filter: model.filter }) → Rerender
-12  Todos.Index  update:41   write replaced        let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done }) → let _ <- Task.succeed ()
-13  Todos.Index  update:46   write replaced        let _ <- Db.delete Todo todo.id → let _ <- Task.succeed ()
-14  Todos.Index  owned:58    guard dropped         if todo.owner == session.user then Task.succeed todo else Task.notFound → the notFound arm dropped
-15  Todos.Index  owned:58    condition negated     if todo.owner == session.user → if not (todo.owner == session.user)
-16  Todos.Index  owned:58    operator flipped      todo.owner == session.user → todo.owner != session.user
-17  Todos.Show   requires:6  requires dropped      requires user → served without user (user = User.UserId "mutant")
-18  Todos.Show   load:14     guard dropped         if todo.owner == session.user then … else Query.notFound → the notFound arm dropped
-19  Todos.Show   load:14     condition negated     if todo.owner == session.user → if not (todo.owner == session.user)
-20  Todos.Show   load:14     operator flipped      todo.owner == session.user → todo.owner != session.user
-21  Todos.Show   update:32   write replaced        let _ <- Db.update Todo model.todo.id … → let _ <- Task.succeed ()
-22  Todos.Show   update:32   update field dropped  { t | title: p.form.title, due: p.form.due } → { t | due: p.form.due }
-23  Todos.Show   update:32   update field dropped  { t | title: p.form.title, due: p.form.due } → { t | title: p.form.title }
-24  Todos.Show   update:33   redirect → rerender   Redirect (Todos.Index {}) → Rerender
-25  Todos.Show   update:36   write replaced        let _ <- Db.delete Todo model.todo.id → let _ <- Task.succeed ()
-26  Todos.Show   update:37   redirect → rerender   Redirect (Todos.Index {}) → Rerender
--   Auth.Login   update:38   arm swapped           suppressed: unscopable: an arm uses what the match binds
--   Todos.Index  owned:57    guard dropped         suppressed: unscopable: the other arm uses what the match binds
--   Todos.Index  owned:57    arm swapped           suppressed: unscopable: an arm uses what the match binds
--   Todos.Show   load:13     guard dropped         suppressed: unscopable: the other arm uses what the match binds
--   Todos.Show   load:13     arm swapped           suppressed: unscopable: an arm uses what the match binds
--   Todos.Show   update:30   arm swapped           suppressed: unscopable: an arm uses what the match binds
+1   App          update:15       session put dropped   let _ <- Session.put (\s -> { s | user: Nothing }) → let _ <- Task.succeed ()
+2   App          update:16       redirect → rerender   Redirect (Auth.Login {}) → Rerender
+3   Auth.Login   update:40       session put dropped   let _ <- Session.put (\s -> { s | user: Just id }) → let _ <- Task.succeed ()
+4   Auth.Login   update:41       redirect → rerender   Redirect (Todos.Index {}) → Rerender
+5   Auth.Login   update:43       reject → rerender     Reject "Email or password is incorrect." → Rerender
+6   Todo         Todo:12         default changed       done = False → done = True
+7   Todo         Todo:14         cascade ↔ restrict    owner @ref User @restrict → owner @ref User @cascade
+8   Todo         matches:19      arm swapped           match filter { All -> True, Active -> not todo.done, Completed -> todo.done } → match filter { All -> not todo.done, Active -> True, Completed -> todo.done }
+9   Todo         matches:19      arm swapped           match filter { All -> True, Active -> not todo.done, Completed -> todo.done } → match filter { All -> True, Active -> todo.done, Completed -> not todo.done }
+10  Todo         matches:20      bool flipped          True → False
+11  Todo         matches:21      not dropped           not todo.done → todo.done
+12  Todo         filterLabel:26  arm swapped           match filter { All -> "All", Active -> "Active", Completed -> "Completed" } → match filter { All -> "Active", Active -> "All", Completed -> "Completed" }
+13  Todo         filterLabel:26  arm swapped           match filter { All -> "All", Active -> "Active", Completed -> "Completed" } → match filter { All -> "All", Active -> "Completed", Completed -> "Active" }
+14  Todo         countOpen:33    not dropped           not t.done → t.done
+15  Todos.Index  requires:7      requires dropped      requires user → served without user (user = User.UserId "mutant")
+16  Todos.Index  load:18         where dropped         Db.where (Todo.owner.eq session.user) → the condition dropped
+17  Todos.Index  load:19         orderBy reversed      Db.orderBy Todo.created.desc → Db.orderBy Todo.created.asc
+18  Todos.Index  update:36       write replaced        let _ <- Db.insert Todo {…} → let _ <- Task.succeed (Todo.TodoId "mutant")
+19  Todos.Index  update:37       redirect → rerender   Redirect (Todos.Index { filter: model.filter }) → Rerender
+20  Todos.Index  update:41       write replaced        let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done }) → let _ <- Task.succeed ()
+21  Todos.Index  update:41       not dropped           not t.done → t.done
+22  Todos.Index  update:46       write replaced        let _ <- Db.delete Todo todo.id → let _ <- Task.succeed ()
+23  Todos.Index  owned:58        guard dropped         if todo.owner == session.user then Task.succeed todo else Task.notFound → the notFound arm dropped
+24  Todos.Index  owned:58        operator flipped      todo.owner == session.user → todo.owner != session.user
+25  Todos.Show   requires:6      requires dropped      requires user → served without user (user = User.UserId "mutant")
+26  Todos.Show   load:14         guard dropped         if todo.owner == session.user then … else Query.notFound → the notFound arm dropped
+27  Todos.Show   load:14         operator flipped      todo.owner == session.user → todo.owner != session.user
+28  Todos.Show   update:32       write replaced        let _ <- Db.update Todo model.todo.id … → let _ <- Task.succeed ()
+29  Todos.Show   update:32       update field dropped  { t | title: p.form.title, due: p.form.due } → { t | due: p.form.due }
+30  Todos.Show   update:32       update field dropped  { t | title: p.form.title, due: p.form.due } → { t | title: p.form.title }
+31  Todos.Show   update:33       redirect → rerender   Redirect (Todos.Index {}) → Rerender
+32  Todos.Show   update:36       write replaced        let _ <- Db.delete Todo model.todo.id → let _ <- Task.succeed ()
+33  Todos.Show   update:37       redirect → rerender   Redirect (Todos.Index {}) → Rerender
+-   Auth.Login   update:38       arm swapped           skipped: unscopable: an arm uses what the match binds
+-   Todos.Index  update:34       arm swapped           skipped: unscopable: an arm uses what the match binds
+-   Todos.Index  update:34       arm swapped           skipped: unscopable: an arm uses what the match binds
+-   Todos.Index  owned:57        guard dropped         equivalent: unscopable: the other arm uses what the match binds
+-   Todos.Index  owned:57        arm swapped           skipped: unscopable: an arm uses what the match binds
+-   Todos.Index  owned:58        condition negated     skipped: operator flipped makes the same program
+-   Todos.Show   load:13         guard dropped         equivalent: unscopable: the other arm uses what the match binds
+-   Todos.Show   load:13         arm swapped           skipped: unscopable: an arm uses what the match binds
+-   Todos.Show   load:14         condition negated     skipped: operator flipped makes the same program
+-   Todos.Show   update:30       arm swapped           skipped: unscopable: an arm uses what the match binds

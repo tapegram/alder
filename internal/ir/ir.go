@@ -233,7 +233,7 @@ type Fake struct {
 // ---- Expressions
 
 // Pos is a source position (1-based line and column) of the expression a node was lowered from.
-// The node kinds a mutant can target carry one (If, Match, Op, Lit, Update, Ctor, EffBind,
+// The node kinds a mutant can target carry one (If, Match, Op, Lit, Update, Ctor, Call, EffBind,
 // DbSelect, DbInsert, DbUpdate, DbDelete, Cond, Ord); it is the zero Pos for a node Lower made
 // up (a default filled into a literal keeps its declaration's). Dump never prints it.
 type Pos struct{ Line, Col int }
@@ -285,6 +285,7 @@ type Var struct {
 // Call is a saturated call: len(Args) equals the callee's parameter count.
 type Call struct {
 	Typed
+	Pos  Pos // the callee's
 	Fn   Expr
 	Args []Expr
 }
@@ -667,6 +668,10 @@ type DbSelect struct {
 	Order         []Expr
 	Limit, Offset Expr
 	Terminal      SelTerminal
+	// the position of each step: WherePos[i] is the `Db.where` applying Where[i], OrderPos[i]
+	// the `Db.orderBy` applying Order[i], LimitPos and OffsetPos the kept `Db.limit`/`Db.offset`
+	WherePos, OrderPos  []Pos
+	LimitPos, OffsetPos Pos
 }
 
 // DbRun is Db.all/first/count applied to a Select value that is not a pipeline written in place

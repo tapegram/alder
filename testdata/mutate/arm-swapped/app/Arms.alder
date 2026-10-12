@@ -28,7 +28,7 @@ size m = match m {
   Nothing -> 0,
 }
 
--- Three arms: no mutant.
+-- Three arms: a mutant per adjacent pair.
 sign : Int -> Text
 sign n = match n {
   0 -> "zero",

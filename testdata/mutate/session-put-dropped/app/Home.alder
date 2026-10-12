@@ -1,0 +1,24 @@
+module Home
+
+import User
+
+page "/" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+msg Login { id: User.UserId }
+
+-- A mutant: logging in no longer stores the user.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Login p -> {
+    let _ <- Session.put (\s -> { s | user: Just p.id })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>Home</p>

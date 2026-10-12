@@ -1,3 +1,3 @@
-1  Home  update:16  condition negated  if p.form.name == "" → if not (p.form.name == "")
-2  Home  update:16  operator flipped   p.form.name == "" → p.form.name != ""
-3  Home  update:16  reject → rerender  Reject "a name is required" → Rerender
+1  Home  update:16  operator flipped   p.form.name == "" → p.form.name != ""
+2  Home  update:16  reject → rerender  Reject "a name is required" → Rerender
+-  Home  update:16  condition negated  skipped: operator flipped makes the same program

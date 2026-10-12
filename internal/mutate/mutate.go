@@ -6,7 +6,9 @@
 // Collect walks every non-test module in IR order: per module, a page's `requires` first, then
 // its tables (field by field), then its values in declaration order, each body in pre-order.
 // Mutant ids are 1-based in that order, so they are stable across runs of the same program; an
-// edit renumbers the mutants after it.
+// edit renumbers the mutants after it. Module order is the program's (names.Program.Order):
+// import-topological, dependencies first, roots alphabetical. So adding an import can move a
+// module, renumbering the mutants of modules the edit never touched.
 //
 // Never mutated: test bodies, fake entries, `view`, components and any value whose result is
 // Html, HTML nodes inside other values, brands' `where` checks, the stdlib. A node Lower shares
@@ -39,6 +41,8 @@ const (
 	ConditionNegated   = "condition negated"
 	OperatorFlipped    = "operator flipped"
 	BoolFlipped        = "bool flipped"
+	NotDropped         = "not dropped"
+	SessionPutDropped  = "session put dropped"
 	DefaultChanged     = "default changed"
 	CascadeRestrict    = "cascade ↔ restrict"
 )
@@ -74,13 +78,22 @@ type Mutant struct {
 	Field              string
 }
 
-// Suppressed is a mutant the mutator refused: it is provably equivalent, or cannot be made
-// well-typed (Why says which).
+// Suppressed is a mutant the mutator refused. Category is Equivalent for the spec's structural
+// suppression rules (the mutant would be the same program, or cannot be scoped), Skipped where
+// the operator does not apply (no placeholder, no paired rule, a Maybe default, …); Task 2
+// reports the two counts apart. Why says which rule.
 type Suppressed struct {
 	Kind, Module, Decl string
 	Line               int
+	Category           string
 	Why                string
 }
+
+// The categories of a Suppressed.
+const (
+	Equivalent = "equivalent"
+	Skipped    = "skipped"
+)
 
 // Collect returns the program's mutants, ids assigned, and the refused ones.
 func Collect(p *ir.Program) ([]Mutant, []Suppressed) {
@@ -128,8 +141,14 @@ func (c *collector) add(kind string, line int, node, repl ir.Expr, before, after
 		Before: before, After: after, Node: node, Replacement: repl})
 }
 
+// suppress refuses an equivalent mutant (the spec's suppression rules).
 func (c *collector) suppress(kind string, line int, why string) {
-	c.supp = append(c.supp, Suppressed{Kind: kind, Module: c.module, Decl: c.decl, Line: line, Why: why})
+	c.supp = append(c.supp, Suppressed{Kind: kind, Module: c.module, Decl: c.decl, Line: line, Category: Equivalent, Why: why})
+}
+
+// skip records that an operator does not apply here.
+func (c *collector) skip(kind string, line int, why string) {
+	c.supp = append(c.supp, Suppressed{Kind: kind, Module: c.module, Decl: c.decl, Line: line, Category: Skipped, Why: why})
 }
 
 func (c *collector) show(e ir.Expr) string { return line(c.module, e, id) }
@@ -154,7 +173,7 @@ func (c *collector) requires(pg *ir.Page) {
 		}
 	}
 	if field == nil || field.Brand == nil || !isText(field.Brand.Base) {
-		c.suppress(RequiresDropped, line, "field is not a Text brand")
+		c.skip(RequiresDropped, line, "field is not a Text brand")
 		return
 	}
 	placeholder := field.Brand.Name + ` "mutant"`
@@ -200,19 +219,43 @@ func (c *collector) defaultChanged(t *ir.Table, i int) {
 				r.Text = "y"
 			}
 		default:
-			c.suppress(DefaultChanged, line, "a Unit default")
+			c.skip(DefaultChanged, line, "a Unit default")
 			return
 		}
 		repl = &r
 	case *ir.Ctor:
 		if d.U.Module == "Prelude" && d.U.Name == "Maybe" {
-			c.suppress(DefaultChanged, line, "a Maybe default")
-		} else {
-			c.suppress(DefaultChanged, line, "a constructor default")
+			c.skip(DefaultChanged, line, "a Maybe default")
+			return
 		}
+		// a union default: the next constructor in declaration order, the first after the last
+		next := ""
+		for j, ct := range d.U.Ctors {
+			if ct.Name == d.Name {
+				if n := d.U.Ctors[(j+1)%len(d.U.Ctors)]; n.Payload == nil {
+					next = n.Name
+				}
+			}
+		}
+		if next == "" || next == d.Name || d.Payload != nil {
+			c.skip(DefaultChanged, line, "no next constructor without a value")
+			return
+		}
+		if c.defaultUses[f.Default] == 0 {
+			c.suppress(DefaultChanged, line, "no Db.insert omits it: the default never applies")
+			return
+		}
+		r := &ir.Ctor{Typed: d.Typed, Pos: d.Pos, U: d.U, Name: next}
+		clone := cloneTable(t)
+		clone.Record.Fields[i].Default = r
+		litSQL := "'" + strings.ReplaceAll(next, "'", "''") + "'"
+		clone.Record.Fields[i].DefaultLit = &litSQL
+		c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: DefaultChanged, Line: line,
+			Before: f.Name + " = " + d.Name, After: f.Name + " = " + next,
+			Node: f.Default, Replacement: r, Table: clone, Field: f.Name})
 		return
 	default:
-		c.suppress(DefaultChanged, line, "not a literal default")
+		c.skip(DefaultChanged, line, "not a literal default")
 		return
 	}
 	if c.defaultUses[f.Default] == 0 {
@@ -238,7 +281,7 @@ func (c *collector) cascade(t *ir.Table, f ir.FieldT, ref string) {
 	case "cascade":
 		other = ""
 	default:
-		c.suppress(CascadeRestrict, line, "a @"+rule+" rule has no paired rule")
+		c.skip(CascadeRestrict, line, "a @"+rule+" rule has no paired rule")
 		return
 	}
 	clone := cloneTable(t)
@@ -293,9 +336,9 @@ func sqlLit(l *ir.Lit) string {
 	return "'" + strings.ReplaceAll(l.Text, "'", "''") + "'"
 }
 
-// countDefaults counts, for every app table field's Default, its occurrences in every
-// expression of the program (values, components, tests, fakes): a record literal that omits the
-// field holds that very node.
+// countDefaults counts, for every app table field's Default, the Db.insert rows of the app's
+// code (values and components; not tests, not fakes) whose record literal omits the field: such a
+// literal holds that very node.
 func countDefaults(p *ir.Program) map[ir.Expr]int {
 	n := map[ir.Expr]int{}
 	for _, t := range p.Tables {
@@ -305,16 +348,23 @@ func countDefaults(p *ir.Program) map[ir.Expr]int {
 			}
 		}
 	}
+	seen := map[ir.Expr]bool{}
 	var visit func(e ir.Expr)
 	visit = func(e ir.Expr) {
-		if isNil(e) {
+		if isNil(e) || seen[e] {
 			return
 		}
-		if _, ok := n[e]; ok {
-			n[e]++
-			return
+		seen[e] = true
+		if ins, ok := e.(*ir.DbInsert); ok {
+			if r, ok := ins.Row.(*ir.Record); ok {
+				for _, f := range r.Fields {
+					if _, isDefault := n[f.Value]; isDefault {
+						n[f.Value]++
+					}
+				}
+			}
 		}
-		for _, k := range kids(e) {
+		for _, k := range ir.Children(e) {
 			visit(k)
 		}
 	}
@@ -323,14 +373,6 @@ func countDefaults(p *ir.Program) map[ir.Expr]int {
 			visit(v.Body)
 		}
 		for _, v := range m.Components {
-			visit(v.Body)
-		}
-		for _, t := range m.Tests {
-			visit(t.Body)
-		}
-	}
-	for _, f := range p.Fakes {
-		for _, v := range f.Entries {
 			visit(v.Body)
 		}
 	}
@@ -365,12 +407,15 @@ func (c *collector) walk(e ir.Expr) {
 		c.selectOps(x)
 	case *ir.EffBind:
 		c.write(x)
+		c.sessionPut(x)
+	case *ir.Call:
+		c.notDropped(x)
 	case *ir.Update:
 		c.updateFields(x)
 	case *ir.Ctor:
 		c.nav(x)
 	}
-	for _, k := range kids(e) {
+	for _, k := range ir.Children(e) {
 		if r, ok := e.(*ir.Record); ok && isDefaultValue(r, k) {
 			continue
 		}
@@ -407,7 +452,7 @@ func (c *collector) guardIf(x *ir.If) {
 	if okE {
 		other, g = x.Then, ge
 	}
-	c.add(GuardDropped, x.Pos.Line, x, other, c.show(x), "the "+g+" arm dropped")
+	c.add(GuardDropped, x.Pos.Line, x, other, lineFirst(c.module, x, id, x.Then, x.Else), "the "+g+" arm dropped")
 }
 
 // arm is one arm of a Match: a Case (with its Binds) or the Default.
@@ -474,15 +519,19 @@ func (c *collector) guardMatch(x *ir.Match) {
 	c.add(GuardDropped, x.Pos.Line, x, body, c.show(x), "the "+g+" arm dropped")
 }
 
+// swap makes one mutant per adjacent pair of arms (all arms of a match have its type).
 func (c *collector) swap(x *ir.Match) {
 	as := arms(x)
-	if len(as) != 2 {
-		return
+	for i := 0; i+1 < len(as); i++ {
+		c.swapPair(x, as, i)
 	}
-	b0, ok0 := as[0].lifted()
-	b1, ok1 := as[1].lifted()
+}
+
+func (c *collector) swapPair(x *ir.Match, as []arm, i int) {
+	b0, ok0 := as[i].lifted()
+	b1, ok1 := as[i+1].lifted()
 	if !ok0 || !ok1 {
-		c.suppress(ArmSwapped, x.Pos.Line, "unscopable: an arm uses what the match binds")
+		c.skip(ArmSwapped, x.Pos.Line, "unscopable: an arm uses what the match binds")
 		return
 	}
 	if text(b0) == text(b1) {
@@ -491,15 +540,15 @@ func (c *collector) swap(x *ir.Match) {
 	}
 	r := *x
 	r.Cases = append([]ir.Case(nil), x.Cases...)
-	set := func(i int, body ir.Expr) {
-		if i < len(r.Cases) {
-			r.Cases[i].Body = body
+	set := func(j int, body ir.Expr) {
+		if j < len(r.Cases) {
+			r.Cases[j].Body = body
 		} else {
 			r.Default = body
 		}
 	}
-	set(0, b1)
-	set(1, b0)
+	set(i, b1)
+	set(i+1, b0)
 	before, after := c.show(x), c.show(&r)
 	if before == after { // the bodies were elided alike: say what changed
 		p := &printer{home: c.module, elided: map[ir.Expr]bool{}}
@@ -510,7 +559,7 @@ func (c *collector) swap(x *ir.Match) {
 			pat, _ := p.pattern(x, *a.c)
 			return pat
 		}
-		after = "the " + tag(as[0]) + " and " + tag(as[1]) + " bodies swapped"
+		after = "the " + tag(as[i]) + " and " + tag(as[i+1]) + " bodies swapped"
 	}
 	c.add(ArmSwapped, x.Pos.Line, x, &r, before, after)
 }
@@ -523,11 +572,19 @@ func (c *collector) negate(x *ir.If) {
 		c.suppress(ConditionNegated, x.Pos.Line, "a literal condition")
 		return
 	}
+	if op, isOp := x.Cond.(*ir.Op); isOp && comparisons[op.Kind] {
+		c.skip(ConditionNegated, x.Pos.Line, "operator flipped makes the same program")
+		return
+	}
 	r := *x
 	r.Cond = &ir.Call{Typed: ir.Typed{Ty: types.Bool}, Fn: notFn, Args: []ir.Expr{x.Cond}}
 	c.add(ConditionNegated, x.Pos.Line, x, &r,
 		line(c.module, x.Cond, wrapped("if ", "")), line(c.module, x.Cond, argument("if not ", x.Cond, "")))
 }
+
+// comparisons are the operators whose flip is the negation: negating such a condition would
+// be the same program as flipping it.
+var comparisons = map[string]bool{"==": true, "!=": true, "<": true, "<=": true, ">": true, ">=": true}
 
 var flips = map[string]string{"==": "!=", "!=": "==", "<": "<=", "<=": "<", ">": ">=", ">=": ">", "&&": "||", "||": "&&"}
 
@@ -546,24 +603,22 @@ func (c *collector) flip(x *ir.Op) {
 }
 
 func (c *collector) selectOps(x *ir.DbSelect) {
-	line0 := x.Pos.Line
-	at := func(e ir.Expr) int {
-		switch y := e.(type) {
-		case *ir.Cond:
-			if y.Pos.Line > 0 {
-				return y.Pos.Line
-			}
-		case *ir.Ord:
-			if y.Pos.Line > 0 {
-				return y.Pos.Line
-			}
+	step := func(ps []ir.Pos, i int) int {
+		if i < len(ps) && ps[i].Line > 0 {
+			return ps[i].Line
 		}
-		return line0
+		return x.Pos.Line
+	}
+	at := func(p ir.Pos) int {
+		if p.Line > 0 {
+			return p.Line
+		}
+		return x.Pos.Line
 	}
 	for i, w := range x.Where {
 		r := *x
 		r.Where = append(append([]ir.Expr(nil), x.Where[:i]...), x.Where[i+1:]...)
-		c.add(WhereDropped, at(w), x, &r, line(c.module, w, argument("Db.where ", w, "")), "the condition dropped")
+		c.add(WhereDropped, step(x.WherePos, i), x, &r, line(c.module, w, argument("Db.where ", w, "")), "the condition dropped")
 	}
 	for i, o := range x.Order {
 		ord, ok := o.(*ir.Ord)
@@ -571,7 +626,7 @@ func (c *collector) selectOps(x *ir.DbSelect) {
 			continue
 		}
 		if x.Terminal == ir.SelFirst && whereOnID(x) {
-			c.suppress(OrderByReversed, at(o), "the where pins one row by its id")
+			c.suppress(OrderByReversed, step(x.OrderPos, i), "the where pins one row by its id")
 			continue
 		}
 		rev := *ord
@@ -579,17 +634,17 @@ func (c *collector) selectOps(x *ir.DbSelect) {
 		r := *x
 		r.Order = append([]ir.Expr(nil), x.Order...)
 		r.Order[i] = &rev
-		c.add(OrderByReversed, at(o), x, &r, "Db.orderBy "+c.show(ord), "Db.orderBy "+c.show(&rev))
+		c.add(OrderByReversed, step(x.OrderPos, i), x, &r, "Db.orderBy "+c.show(ord), "Db.orderBy "+c.show(&rev))
 	}
 	if x.Limit != nil {
 		r := *x
 		r.Limit = nil
-		c.add(LimitDropped, line0, x, &r, line(c.module, x.Limit, argument("Db.limit ", x.Limit, "")), "no limit")
+		c.add(LimitDropped, at(x.LimitPos), x, &r, line(c.module, x.Limit, argument("Db.limit ", x.Limit, "")), "no limit")
 	}
 	if x.Offset != nil {
 		r := *x
 		r.Offset = nil
-		c.add(OffsetDropped, line0, x, &r, line(c.module, x.Offset, argument("Db.offset ", x.Offset, "")), "no offset")
+		c.add(OffsetDropped, at(x.OffsetPos), x, &r, line(c.module, x.Offset, argument("Db.offset ", x.Offset, "")), "no offset")
 	}
 }
 
@@ -623,7 +678,7 @@ func (c *collector) write(x *ir.EffBind) {
 	shown := "()"
 	if _, isInsert := x.Effect.(*ir.DbInsert); isInsert {
 		if !isText(result) {
-			c.suppress(WriteReplaced, x.Pos.Line, "the table's id is not Text")
+			c.skip(WriteReplaced, x.Pos.Line, "the table's id is not Text")
 			return
 		}
 		value = &ir.Lit{Typed: ir.Typed{Ty: result}, Kind: ir.LitText, Text: "mutant"}
@@ -643,6 +698,38 @@ func (c *collector) write(x *ir.EffBind) {
 	}
 	c.add(WriteReplaced, x.Pos.Line, x.Effect, repl,
 		line(c.module, x.Effect, wrapped("let "+name+" <- ", "")), "let "+name+" <- Task.succeed "+shown)
+}
+
+// sessionPut replaces a `let _ <- Session.put f` step by Task.succeed ().
+func (c *collector) sessionPut(x *ir.EffBind) {
+	call, ok := x.Effect.(*ir.Call)
+	if !ok || !isStd(call.Fn, "Session", "put") {
+		return
+	}
+	result := types.Type(types.Unit)
+	if app, ok := call.Type().(*types.App); ok && len(app.Args) == 1 {
+		result = app.Args[0]
+	}
+	repl := &ir.EffPure{Typed: ir.Typed{Ty: call.Type()}, Kind: ir.EffTask, Value: &ir.Lit{Typed: ir.Typed{Ty: result}, Kind: ir.LitUnit}}
+	name := "_"
+	if x.Param != nil {
+		name = x.Param.Name
+	}
+	c.add(SessionPutDropped, x.Pos.Line, call, repl,
+		line(c.module, call, wrapped("let "+name+" <- ", "")), "let "+name+" <- Task.succeed ()")
+}
+
+// notDropped replaces `not e` by e.
+func (c *collector) notDropped(x *ir.Call) {
+	if !isStd(x.Fn, "Prelude", "not") || len(x.Args) != 1 {
+		return
+	}
+	c.add(NotDropped, x.Pos.Line, x, x.Args[0], c.show(x), c.show(x.Args[0]))
+}
+
+func isStd(e ir.Expr, module, name string) bool {
+	v, ok := e.(*ir.Var)
+	return ok && v.Kind == ir.VarStd && v.Module == module && v.Name == name
 }
 
 func qualify(home, module, name string) string {
@@ -687,7 +774,8 @@ func isText(t types.Type) bool {
 	return ok && con.Name == "Text"
 }
 
-// isHtml reports whether a value's final result is Html.
+// isHtml reports whether a value's final result type contains Html anywhere (`Html m`,
+// `List (Html m)`, a record with an Html field, …): such a value is view code.
 func isHtml(t types.Type) bool {
 	for {
 		fn, ok := t.(*types.Fun)
@@ -696,8 +784,37 @@ func isHtml(t types.Type) bool {
 		}
 		t = fn.Result
 	}
-	app, ok := t.(*types.App)
-	return ok && app.Con == "Html"
+	return containsHtml(t, map[types.Type]bool{})
+}
+
+func containsHtml(t types.Type, seen map[types.Type]bool) bool {
+	if t == nil || seen[t] {
+		return false
+	}
+	seen[t] = true
+	var parts []types.Type
+	switch x := t.(type) {
+	case *types.App:
+		if x.Con == "Html" {
+			return true
+		}
+		parts = x.Args
+	case *types.Union:
+		parts = x.Args
+	case *types.Record:
+		for _, f := range x.Fields {
+			parts = append(parts, f.Type)
+		}
+		parts = append(parts, x.Args...)
+	case *types.Fun:
+		parts = append(append(parts, x.Params...), x.Result)
+	}
+	for _, p := range parts {
+		if containsHtml(p, seen) {
+			return true
+		}
+	}
+	return false
 }
 
 func isHtmlNode(e ir.Expr) bool {
@@ -770,7 +887,7 @@ func uses(e ir.Expr, name string) int {
 		return n
 	}
 	n := 0
-	for _, k := range kids(e) {
+	for _, k := range ir.Children(e) {
 		if !isNil(k) {
 			n += uses(k, name)
 		}
@@ -793,127 +910,4 @@ cases:
 		n += uses(c.Body, name)
 	}
 	return n
-}
-
-// kids lists the direct subexpressions of e in IR order (nil entries possible), as gen's
-// children does.
-func kids(e ir.Expr) []ir.Expr {
-	switch x := e.(type) {
-	case *ir.Call:
-		return append([]ir.Expr{x.Fn}, x.Args...)
-	case *ir.Partial:
-		return append([]ir.Expr{x.Fn}, x.Given...)
-	case *ir.Lambda:
-		return []ir.Expr{x.Body}
-	case *ir.Record:
-		return fieldValues(x.Fields)
-	case *ir.Update:
-		return append([]ir.Expr{x.Base}, fieldValues(x.Fields)...)
-	case *ir.Field:
-		return []ir.Expr{x.Expr}
-	case *ir.Ctor:
-		return []ir.Expr{x.Payload}
-	case *ir.List:
-		return x.Elems
-	case *ir.PageRef:
-		return []ir.Expr{x.Params}
-	case *ir.Match:
-		return matchKids(x)
-	case *ir.HMatch:
-		return matchKids((*ir.Match)(x))
-	case *ir.If:
-		return []ir.Expr{x.Cond, x.Then, x.Else}
-	case *ir.Let:
-		return []ir.Expr{x.Value, x.Body}
-	case *ir.Op:
-		return []ir.Expr{x.L, x.R}
-	case *ir.Str:
-		return x.Parts
-	case *ir.Widen:
-		return []ir.Expr{x.Expr}
-	case *ir.Elem:
-		return append(attrValues(x.Attrs), x.Children...)
-	case *ir.Comp:
-		out := x.Children
-		if x.Props != nil {
-			out = append([]ir.Expr{x.Props}, out...)
-		}
-		return out
-	case *ir.HExpr:
-		return []ir.Expr{x.Expr}
-	case *ir.HFor:
-		return []ir.Expr{x.List, x.Body}
-	case *ir.HIf:
-		return []ir.Expr{x.Cond, x.Then, x.Else}
-	case *ir.Input:
-		return []ir.Expr{x.LabelExpr, x.Value}
-	case *ir.FormEl:
-		return append(attrValues(x.Attrs), x.Children...)
-	case *ir.EffPure:
-		return []ir.Expr{x.Value}
-	case *ir.EffBind:
-		return []ir.Expr{x.Effect, x.Body}
-	case *ir.EffMap:
-		return []ir.Expr{x.Fn, x.Effect}
-	case *ir.EffAll:
-		return []ir.Expr{x.Effects}
-	case *ir.EffFail:
-		return []ir.Expr{x.Message}
-	case *ir.DbGet:
-		return []ir.Expr{x.ID}
-	case *ir.DbSelect:
-		out := append([]ir.Expr{x.Base}, x.Where...)
-		return append(append(out, x.Order...), x.Limit, x.Offset)
-	case *ir.DbRun:
-		return []ir.Expr{x.Select}
-	case *ir.DbInsert:
-		return []ir.Expr{x.Row}
-	case *ir.DbUpdate:
-		return []ir.Expr{x.ID, x.Fn}
-	case *ir.DbDelete:
-		return []ir.Expr{x.ID}
-	case *ir.Cond:
-		return append([]ir.Expr{x.Value}, x.Subs...)
-	case *ir.CapCall:
-		return x.Args
-	case *ir.TestRun:
-		return []ir.Expr{x.Task}
-	case *ir.TestEq:
-		return []ir.Expr{x.Left, x.Right}
-	case *ir.TestLogin:
-		return []ir.Expr{x.Session}
-	case *ir.TestGet:
-		return []ir.Expr{x.Params}
-	case *ir.TestSubmit:
-		return []ir.Expr{x.Params, x.Record}
-	case *ir.TestSubmitRaw:
-		return []ir.Expr{x.Params, x.Fields}
-	case *ir.TestClick:
-		return []ir.Expr{x.Params}
-	}
-	return nil
-}
-
-func matchKids(x *ir.Match) []ir.Expr {
-	out := []ir.Expr{x.Subject}
-	for _, c := range x.Cases {
-		out = append(out, c.Body)
-	}
-	return append(out, x.Default)
-}
-
-func fieldValues(fs []ir.FieldInit) []ir.Expr {
-	var out []ir.Expr
-	for _, f := range fs {
-		out = append(out, f.Value)
-	}
-	return out
-}
-
-func attrValues(as []ir.HAttr) []ir.Expr {
-	var out []ir.Expr
-	for _, a := range as {
-		out = append(out, a.Value)
-	}
-	return out
 }

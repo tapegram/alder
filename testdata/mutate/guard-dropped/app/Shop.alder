@@ -30,3 +30,7 @@ pick found = match found {
 -- No guard: both arms fail.
 both : Bool -> Task Int
 both b = if b then Task.notFound else Task.fail "x"
+
+-- Long arms are elided before the condition.
+owns : Order -> Text -> Task Text
+owns order user = if order.owner == user then Task.succeed (order.owner ++ " owns an order of " ++ Text.fromInt order.total) else Task.fail "not the owner of this order"

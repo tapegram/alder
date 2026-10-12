@@ -1,0 +1,3 @@
+module User
+
+type UserId = brand Text

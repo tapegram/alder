@@ -1,5 +1,8 @@
-1  Notes  pageOf:6  orderBy reversed  Db.orderBy Note.rank.asc → Db.orderBy Note.rank.desc
-2  Notes  pageOf:6  limit dropped     Db.limit 10 → no limit
-3  Notes  pageOf:6  offset dropped    Db.offset (n * 10) → no offset
--  Note   Note:8    default changed   suppressed: no Db.insert omits it: the default never applies
--  Note   Note:9    default changed   suppressed: no Db.insert omits it: the default never applies
+1  Notes  pageOf:8   orderBy reversed  Db.orderBy Note.rank.asc → Db.orderBy Note.rank.desc
+2  Notes  pageOf:9   limit dropped     Db.limit 10 → no limit
+3  Notes  pageOf:10  offset dropped    Db.offset (n * 10) → no offset
+4  Notes  later:17   where dropped     Db.where (Note.pinned.eq False) → the condition dropped
+5  Notes  later:18   offset dropped    Db.offset n → no offset
+6  Notes  later:17   bool flipped      False → True
+-  Note   Note:8     default changed   equivalent: no Db.insert omits it: the default never applies
+-  Note   Note:9     default changed   equivalent: no Db.insert omits it: the default never applies

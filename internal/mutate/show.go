@@ -23,11 +23,22 @@ const width = 80
 
 // line renders e (in module home) as wrap(rendering), elided to width columns.
 func line(home string, e ir.Expr, wrap func(string) string) string {
+	return lineFirst(home, e, wrap)
+}
+
+// lineFirst is line, eliding the subexpressions first (in order) before any other: a guard's
+// arms go before its condition.
+func lineFirst(home string, e ir.Expr, wrap func(string) string, first ...ir.Expr) string {
 	p := &printer{home: home, elided: map[ir.Expr]bool{}}
 	for {
 		s := wrap(p.expr(e))
 		if utf8.RuneCountInString(s) <= width {
 			return s
+		}
+		if len(first) > 0 {
+			p.elided[first[0]] = true
+			first = first[1:]
+			continue
 		}
 		// elide the largest subexpression not elided yet (the first one, on a tie)
 		var best ir.Expr
@@ -42,7 +53,7 @@ func line(home string, e ir.Expr, wrap func(string) string) string {
 					best, bestLen = x, n
 				}
 			}
-			for _, c := range kids(x) {
+			for _, c := range ir.Children(x) {
 				visit(c, false)
 			}
 		}
@@ -65,15 +76,22 @@ func argument(prefix string, e ir.Expr, suffix string) func(string) string {
 }
 
 // text is the full rendering of e, fully qualified: two expressions with the same text are
-// the same expression (for the suppression rules).
+// the same expression (for the suppression rules). A rendering that loses information (HTML,
+// a node kind the printer does not spell out) is replaced by a text unique to e, so it never
+// equals another's.
 func text(e ir.Expr) string {
 	p := &printer{elided: map[ir.Expr]bool{}}
-	return p.expr(e)
+	s := p.expr(e)
+	if p.lossy {
+		return fmt.Sprintf("\x00lossy %p", e)
+	}
+	return s
 }
 
 type printer struct {
 	home   string
 	elided map[ir.Expr]bool
+	lossy  bool // set when a rendering left something out (HTML, an unknown kind)
 }
 
 func (p *printer) qual(module, name string) string {
@@ -283,10 +301,13 @@ func (p *printer) expr(e ir.Expr) string {
 	case *ir.CapCall:
 		return x.Cap.Name + "." + x.Entry + p.args(x.Args)
 	case *ir.Elem:
+		p.lossy = true
 		return "<" + x.Tag + ">"
 	case *ir.HText, *ir.HExpr, *ir.HFor, *ir.HIf, *ir.HMatch, *ir.Comp, *ir.Input, *ir.FormEl:
+		p.lossy = true
 		return "<…>"
 	}
+	p.lossy = true
 	return strings.TrimPrefix(fmt.Sprintf("%T", e), "*ir.")
 }
 
@@ -454,8 +475,8 @@ func (p *printer) pattern(m *ir.Match, c ir.Case) (string, ir.Expr) {
 	for _, b := range c.Binds {
 		n := names[b.Name]
 		if n == "" {
-			n = "_"
-			if uses(body, b.Name) > 0 {
+			n = "_" // unnamed, or a temporary a nested pattern reads
+			if uses(body, b.Name) > 0 && !isTemp(b.Name) {
 				n = b.Name
 			}
 		}

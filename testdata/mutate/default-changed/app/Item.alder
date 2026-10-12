@@ -4,6 +4,8 @@ type ItemId = brand Text
 
 type Kind = Plain | Fancy
 
+type Size = Small | Large
+
 table Item {
   id: ItemId @id,
   title: Text = "",
@@ -12,9 +14,16 @@ table Item {
   pinned: Bool = False,
   due: Maybe Date = Nothing,
   kind: Kind = Plain,
+  size: Size = Large,
   score: Int = 5,
 }
 
 -- Every insert sets score, so its default never applies (refused); the others are omitted.
 add : Int -> Task ItemId
 add s = Db.insert Item { score: s }
+
+-- A test's insert omits score, but only the app's inserts count.
+test "a test's insert does not count" = {
+  let _ <- Db.insert Item { }
+  Task.succeed True
+}

@@ -1,0 +1,22 @@
+module App
+
+import User
+
+session { user: Maybe User.UserId }
+
+msg Logout
+
+-- A mutant: logging out no longer clears the user.
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing })
+    Task.succeed (Redirect (Home {}))
+  },
+}
+
+error : Error -> Html Never
+error err = <p>Error</p>
+
+notFound : Html Never
+notFound = <p>Not found</p>

@@ -283,7 +283,7 @@ func (l *lowerer) app(fn syntax.Expr, args []syntax.Expr, piped Expr, t types.Ty
 	if len(all) < len(ft.Params) {
 		return &Partial{Typed: Typed{t}, Fn: callee, Given: all, Missing: len(ft.Params) - len(all)}
 	}
-	return &Call{Typed: Typed{t}, Fn: callee, Args: all}
+	return &Call{Typed: Typed{t}, Pos: posOf(fn.GetSpan()), Fn: callee, Args: all}
 }
 
 // pipe lowers `l |> f a…` to the application of f to a… and then l.

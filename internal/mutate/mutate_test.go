@@ -52,14 +52,14 @@ func errs(bag *diag.Bag) string {
 }
 
 // table renders the mutant table: `id  module  decl:line  kind  before → after`, then each
-// refused mutant as `-  module  decl:line  kind  suppressed: why`, in aligned columns.
+// refused mutant as `-  module  decl:line  kind  equivalent|skipped: why`, in aligned columns.
 func table(ms []Mutant, ss []Suppressed) string {
 	var rows [][]string
 	for _, m := range ms {
 		rows = append(rows, []string{strconv.Itoa(m.ID), m.Module, m.Decl + ":" + strconv.Itoa(m.Line), m.Kind, m.Before + " → " + m.After})
 	}
 	for _, s := range ss {
-		rows = append(rows, []string{"-", s.Module, s.Decl + ":" + strconv.Itoa(s.Line), s.Kind, "suppressed: " + s.Why})
+		rows = append(rows, []string{"-", s.Module, s.Decl + ":" + strconv.Itoa(s.Line), s.Kind, s.Category + ": " + s.Why})
 	}
 	widths := make([]int, 4)
 	for _, r := range rows {
@@ -109,6 +109,7 @@ func TestGolden(t *testing.T) {
 		"redirect-rerender": RedirectRerender, "reject-rerender": RejectRerender, "arm-swapped": ArmSwapped,
 		"condition-negated": ConditionNegated, "operator-flipped": OperatorFlipped, "bool-flipped": BoolFlipped,
 		"default-changed": DefaultChanged, "cascade-restrict": CascadeRestrict,
+		"not-dropped": NotDropped, "session-put-dropped": SessionPutDropped,
 	}
 	// the kinds the spec gives a suppression rule (plus the rulings': requires, cascade's setNull)
 	refusable := map[string]bool{RequiresDropped: true, GuardDropped: true, ArmSwapped: true, OrderByReversed: true,
@@ -163,7 +164,7 @@ func TestNeverInTestsFakesViews(t *testing.T) {
 				return
 			}
 			forbidden[e] = true
-			for _, k := range kids(e) {
+			for _, k := range ir.Children(e) {
 				mark(k)
 			}
 		}
@@ -217,7 +218,7 @@ func contains(e, node ir.Expr) bool {
 	if e == node {
 		return true
 	}
-	for _, k := range kids(e) {
+	for _, k := range ir.Children(e) {
 		if contains(k, node) {
 			return true
 		}
@@ -280,5 +281,35 @@ func TestIDsStable(t *testing.T) {
 		if got.Decl != m.Decl || got.Kind != m.Kind || got.Before != m.Before || got.Line != m.Line+lines {
 			t.Errorf("mutant %d changed: %+v → %+v", m.ID, m, got)
 		}
+	}
+}
+
+// TestLossyText: two renderings that leave HTML out never compare equal, so an arm swap or a
+// flip is not refused for bodies that differ only inside HTML.
+func TestLossyText(t *testing.T) {
+	a := &ir.Elem{Tag: "p", Children: []ir.Expr{&ir.HText{Text: "yes"}}}
+	b := &ir.Elem{Tag: "p", Children: []ir.Expr{&ir.HText{Text: "no"}}}
+	if text(a) == text(b) || text(&ir.List{Elems: []ir.Expr{a}}) == text(&ir.List{Elems: []ir.Expr{b}}) {
+		t.Fatal("lossy renderings compare equal")
+	}
+	if text(&ir.Lit{Kind: ir.LitInt, Int: 1}) != text(&ir.Lit{Kind: ir.LitInt, Int: 1}) {
+		t.Fatal("equal literals compare unequal")
+	}
+}
+
+// TestIsHtml: a result type containing Html anywhere is view code.
+func TestIsHtml(t *testing.T) {
+	html := &types.App{Con: "Html", Args: []types.Type{&types.Param{Name: "m"}}}
+	for _, ty := range []types.Type{
+		html,
+		&types.Fun{Params: []types.Type{types.Int}, Result: &types.App{Con: "List", Args: []types.Type{html}}},
+		&types.Record{Anonymous: true, Fields: []types.Field{{Name: "title", Type: types.Text}, {Name: "body", Type: html}}},
+	} {
+		if !isHtml(ty) {
+			t.Errorf("isHtml(%s) = false", types.String(ty))
+		}
+	}
+	if isHtml(&types.Fun{Params: []types.Type{html}, Result: types.Int}) {
+		t.Error("a function taking Html and returning Int is not view code")
 	}
 }

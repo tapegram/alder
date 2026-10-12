@@ -1,5 +1,7 @@
 1  Arms  label:5      arm swapped  match b { True -> "yes", False -> "no" } → match b { True -> "no", False -> "yes" }
 2  Arms  some:12      arm swapped  match m { Just _ -> 1, Nothing -> 0 } → match m { Just _ -> 0, Nothing -> 1 }
-3  Arms  describe:41  arm swapped  match b { True -> …, False -> … } → the True and False bodies swapped
--  Arms  same:19      arm swapped  suppressed: identical bodies
--  Arms  size:26      arm swapped  suppressed: unscopable: an arm uses what the match binds
+3  Arms  sign:33      arm swapped  match n { 0 -> "zero", 1 -> "one", _ -> "many" } → match n { 0 -> "one", 1 -> "zero", _ -> "many" }
+4  Arms  sign:33      arm swapped  match n { 0 -> "zero", 1 -> "one", _ -> "many" } → match n { 0 -> "zero", 1 -> "many", _ -> "one" }
+5  Arms  describe:41  arm swapped  match b { True -> …, False -> … } → the True and False bodies swapped
+-  Arms  same:19      arm swapped  equivalent: identical bodies
+-  Arms  size:26      arm swapped  skipped: unscopable: an arm uses what the match binds

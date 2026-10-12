@@ -1,4 +1,8 @@
-1  Cond  size:5   condition negated  if n > 3 → if not (n > 3)
-2  Cond  size:5   operator flipped   n > 3 → n >= 3
-3  Cond  fixed:9  bool flipped       True → False
--  Cond  fixed:9  condition negated  suppressed: a literal condition
+1  Cond  big:4     operator flipped   n > 3 → n >= 3
+2  Cond  size:8    condition negated  if big n → if not (big n)
+3  Cond  both:12   condition negated  if a && b → if not (a && b)
+4  Cond  both:12   operator flipped   a && b → a || b
+5  Cond  small:16  operator flipped   n < 3 → n <= 3
+6  Cond  fixed:20  bool flipped       True → False
+-  Cond  small:16  condition negated  skipped: operator flipped makes the same program
+-  Cond  fixed:20  condition negated  equivalent: a literal condition

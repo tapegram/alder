@@ -265,18 +265,20 @@ func (l *lowerer) build(h *effHead, args []Expr, t types.Type) Expr {
 	case "Db.where":
 		s := l.extend(args[1], table(1), t, h.pos)
 		s.Where = append(s.Where, args[0])
+		s.WherePos = append(s.WherePos, h.pos)
 		return s
 	case "Db.orderBy":
 		s := l.extend(args[1], table(1), t, h.pos)
 		s.Order = append(s.Order, args[0])
+		s.OrderPos = append(s.OrderPos, h.pos)
 		return s
 	case "Db.limit":
 		s := l.extend(args[1], table(1), t, h.pos)
-		s.Limit = args[0]
+		s.Limit, s.LimitPos = args[0], h.pos
 		return s
 	case "Db.offset":
 		s := l.extend(args[1], table(1), t, h.pos)
-		s.Offset = args[0]
+		s.Offset, s.OffsetPos = args[0], h.pos
 		return s
 	case "Db.all", "Db.first", "Db.count":
 		term := map[string]SelTerminal{"Db.all": SelAll, "Db.first": SelFirst, "Db.count": SelCount}[h.name]
@@ -322,6 +324,8 @@ func copySelect(d *DbSelect, t types.Type) *DbSelect {
 	c.Ty = t
 	c.Where = slices.Clone(d.Where)
 	c.Order = slices.Clone(d.Order)
+	c.WherePos = slices.Clone(d.WherePos)
+	c.OrderPos = slices.Clone(d.OrderPos)
 	return &c
 }
 

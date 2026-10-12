@@ -567,6 +567,8 @@ func TestPositions(t *testing.T) {
 			for _, o := range x.Order {
 				got["ord"] = append(got["ord"], o.(*Ord).Pos)
 			}
+			got["where-step"] = append(got["where-step"], x.WherePos...)
+			got["order-step"] = append(got["order-step"], x.OrderPos...)
 		case *DbInsert:
 			got["insert"] = append(got["insert"], x.Pos)
 		case *DbUpdate:
@@ -593,6 +595,8 @@ func TestPositions(t *testing.T) {
 		"select":        {{17, 5}},
 		"cond":          {{18, 20}},
 		"ord":           {{19, 21}},
+		"where-step":    {{18, 10}},
+		"order-step":    {{19, 10}},
 		"insert":        {{36, 14}},
 		"update":        {{41, 14}},
 		"record-update": {{41, 44}},

@@ -1,4 +1,4 @@
-1  Notes  firstTen:6  orderBy reversed  Db.orderBy Note.rank.asc → Db.orderBy Note.rank.desc
-2  Notes  firstTen:6  limit dropped     Db.limit 10 → no limit
--  Note   Note:8      default changed   suppressed: no Db.insert omits it: the default never applies
--  Note   Note:9      default changed   suppressed: no Db.insert omits it: the default never applies
+1  Notes  firstTen:8  orderBy reversed  Db.orderBy Note.rank.asc → Db.orderBy Note.rank.desc
+2  Notes  firstTen:9  limit dropped     Db.limit 10 → no limit
+-  Note   Note:8      default changed   equivalent: no Db.insert omits it: the default never applies
+-  Note   Note:9      default changed   equivalent: no Db.insert omits it: the default never applies

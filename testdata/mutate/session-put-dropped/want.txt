@@ -1,0 +1,3 @@
+1  App   update:13  session put dropped  let _ <- Session.put (\s -> { s | user: Nothing }) → let _ <- Task.succeed ()
+2  App   update:14  redirect → rerender  Redirect (Home {}) → Rerender
+3  Home  update:18  session put dropped  let _ <- Session.put (\s -> { s | user: Just p.id }) → let _ <- Task.succeed ()
