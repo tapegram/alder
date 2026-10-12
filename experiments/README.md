@@ -139,7 +139,7 @@ Tasks are chosen to exercise different things:
 
 From E8 each task text has a **Names** block fixing every name a hidden test uses (page modules, paths and params; forms, fields and the message each posts; messages; `App`'s session shape; the redirect after each post; the `id`/`class` of each element a test reads). E8's task texts are in `e8-hidden/tasks/{with,without}/`.
 
-The canonical task texts for the next experiments are in `experiments/tasks/` (T2–T6 copied from `e7-prompt-tests/tasks/`; E7's own `tasks/` stay as they were run). T2 there is reworded after E7's runaway: "Output only the files you add or change: not the files you leave as they are, not the standard library, nothing outside `app/`."
+The canonical task texts for the next experiments are in `experiments/tasks/` (T2–T6 copied from `e7-prompt-tests/tasks/`; E7's own `tasks/` stay as they were run). T2 there is reworded after E7's runaway: "Output only the files you add or change: not the files you leave as they are, not the standard library, nothing outside `app/`." After E9 it holds E9's T5, T6, T7, T9 and T10 with E9's two text fixes (the Password sentence, T10's redirect lines); `tasks/README.md` lists them, and E10 runs these texts.
 
 From E7 every task ends with a tests paragraph ("Also write tests … `alder test` must pass. Do not write tests that call the `Password` capability.") naming what to test.
 

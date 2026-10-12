@@ -15,8 +15,9 @@ Write a complete new Alder app (not the todo app) for a personal blog:
 
 Also write tests (`test "…" = …`, chapter 10) in the modules they test: an
 unpublished post is not found for a reader; a comment with an empty author
-is refused; `/` lists only published posts, newest first. `alder test`
-must pass. Do not write tests that call the `Password` capability.
+is refused; `/` lists only published posts, newest first. `alder test` must
+pass. Do not call the real `Password` adapter from a test; installing the
+fake with `Test.fake Password` is fine.
 
 Output every file, in full, each preceded by a line
 `--- file: app/<path> ---`. No explanation, only files.

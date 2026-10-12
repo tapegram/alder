@@ -16,9 +16,9 @@ Write a complete new Alder app (not the todo app) for personal notes:
   the reference.
 
 Also write tests (`test "…" = …`, chapter 10) in the modules they test: a
-user cannot see another user's note (not found); the theme flips.
-`alder test` must pass. Do not write tests that call the `Password`
-capability.
+user cannot see another user's note (not found); the theme flips. `alder
+test` must pass. Do not call the real `Password` adapter from a test;
+installing the fake with `Test.fake Password` is fine.
 
 Output every file, in full, each preceded by a line
 `--- file: app/<path> ---`. No explanation, only files.
