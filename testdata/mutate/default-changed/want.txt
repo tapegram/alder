@@ -1,0 +1,7 @@
+1  Item  Item:9   default changed  title = "" → title = "x"
+2  Item  Item:10  default changed  rank = 0 → rank = 1
+3  Item  Item:11  default changed  weight = 1.5 → weight = 2.5
+4  Item  Item:12  default changed  pinned = False → pinned = True
+-  Item  Item:13  default changed  suppressed: a Maybe default
+-  Item  Item:14  default changed  suppressed: a constructor default
+-  Item  Item:15  default changed  suppressed: no Db.insert omits it: the default never applies

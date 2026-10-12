@@ -1,0 +1,2 @@
+1  Home  helper:17  operator flipped   n > 1 → n >= 1
+2  Home  load:24    condition negated  if helper 2 → if not (helper 2)

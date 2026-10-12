@@ -1,0 +1,14 @@
+module Mine
+
+import User
+
+-- A mutant: the session's user is a brand over Text, so the page can be served with a placeholder.
+page "/mine" { } requires user
+
+type Model = { user: User.UserId }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { user: session.user }
+
+view : Model -> Session -> Html Msg
+view model session = <p>Mine</p>

@@ -1,0 +1,5 @@
+1  Notes  pageOf:6  orderBy reversed  Db.orderBy Note.rank.asc → Db.orderBy Note.rank.desc
+2  Notes  pageOf:6  limit dropped     Db.limit 10 → no limit
+3  Notes  pageOf:6  offset dropped    Db.offset (n * 10) → no offset
+-  Note   Note:8    default changed   suppressed: no Db.insert omits it: the default never applies
+-  Note   Note:9    default changed   suppressed: no Db.insert omits it: the default never applies

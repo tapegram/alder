@@ -1,0 +1,15 @@
+module Notes
+
+import Note
+
+-- One mutant per order.
+newest : Query (List Note)
+newest = Db.from Note |> Db.orderBy Note.created.desc |> Db.orderBy Note.rank.asc |> Db.all
+
+-- Refused: Db.first with a where on the id finds one row whatever the order.
+byId : Note.NoteId -> Query (Maybe Note)
+byId id = Db.from Note |> Db.where (Note.id.eq id) |> Db.orderBy Note.rank.asc |> Db.first
+
+-- A mutant: Db.first without a where on the id.
+top : Query (Maybe Note)
+top = Db.from Note |> Db.orderBy Note.rank.desc |> Db.first

@@ -1,0 +1,4 @@
+1  Calc  small:6   operator flipped  n < 10 → n <= 10
+2  Calc  later:10  operator flipped  (n >= 3) && (n != 7) → (n >= 3) || (n != 7)
+3  Calc  later:10  operator flipped  n >= 3 → n > 3
+4  Calc  later:10  operator flipped  n != 7 → n == 7

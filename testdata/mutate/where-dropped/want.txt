@@ -1,0 +1,7 @@
+1  Notes  pinnedTitled:7  where dropped     Db.where (Note.title.eq t) → the condition dropped
+2  Notes  pinnedTitled:7  where dropped     Db.where (Note.pinned.eq True) → the condition dropped
+3  Notes  pinnedTitled:7  bool flipped      True → False
+4  Notes  ranked:11       where dropped     Db.where (Note.rank.gt 0) → the condition dropped
+5  Notes  base:14         orderBy reversed  Db.orderBy Note.rank.asc → Db.orderBy Note.rank.desc
+-  Note   Note:8          default changed   suppressed: no Db.insert omits it: the default never applies
+-  Note   Note:9          default changed   suppressed: no Db.insert omits it: the default never applies

@@ -1,0 +1,7 @@
+1  Ops  inRange:5  operator flipped  ((lo <= n) && (n < 100)) || (n == 0) → ((lo <= n) && (n < 100)) && (n == 0)
+2  Ops  inRange:5  operator flipped  (lo <= n) && (n < 100) → (lo <= n) || (n < 100)
+3  Ops  inRange:5  operator flipped  lo <= n → lo < n
+4  Ops  inRange:5  operator flipped  n < 100 → n <= 100
+5  Ops  inRange:5  operator flipped  n == 0 → n != 0
+6  Ops  differs:8  operator flipped  a != b → a == b
+-  Ops  always:12  operator flipped  suppressed: both operands are the same expression

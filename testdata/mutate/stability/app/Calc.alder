@@ -1,0 +1,12 @@
+module Calc
+
+-- The id-stability fixture: mutate_test adds a declaration at the marker.
+
+small : Int -> Bool
+small n = n < 10
+
+-- ADD HERE
+later : Int -> Bool
+later n = n >= 3 && n != 7
+
+test "small" = small 3 == True

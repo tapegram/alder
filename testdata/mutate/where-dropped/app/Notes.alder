@@ -1,0 +1,14 @@
+module Notes
+
+import Note
+
+-- One mutant per condition.
+pinnedTitled : Text -> Query (List Note)
+pinnedTitled t = Db.from Note |> Db.where (Note.title.eq t) |> Db.where (Note.pinned.eq True) |> Db.all
+
+-- A select extending another: only its own condition.
+ranked : Query (List Note)
+ranked = base |> Db.where (Note.rank.gt 0) |> Db.all
+
+base : Select Note
+base = Db.from Note |> Db.orderBy Note.rank.asc

@@ -1,0 +1,11 @@
+module Counter
+
+type Counter = { count: Int, label: Text, open: Bool }
+
+-- A mutant per field.
+bump : Counter -> Counter
+bump c = { c | count: c.count + 1, label: "bumped" }
+
+-- One field: no mutant.
+close : Counter -> Counter
+close c = { c | open: c.open && c.count > 0 }

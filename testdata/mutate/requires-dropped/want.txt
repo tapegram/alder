@@ -1,0 +1,2 @@
+1  Mine     requires:6  requires dropped  requires user → served without user (user = User.UserId "mutant")
+-  Counted  requires:4  requires dropped  suppressed: field is not a Text brand

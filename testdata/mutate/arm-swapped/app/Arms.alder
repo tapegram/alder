@@ -1,0 +1,44 @@
+module Arms
+
+-- A mutant.
+label : Bool -> Text
+label b = match b {
+  True -> "yes",
+  False -> "no",
+}
+
+-- A mutant: the wildcard arm binds nothing.
+some : Maybe Int -> Int
+some m = match m {
+  Just _ -> 1,
+  Nothing -> 0,
+}
+
+-- Refused: identical bodies.
+same : Bool -> Text
+same b = match b {
+  True -> "x",
+  False -> "x",
+}
+
+-- Refused: `n` cannot move to the Nothing arm (unscopable).
+size : Maybe Int -> Int
+size m = match m {
+  Just n -> n,
+  Nothing -> 0,
+}
+
+-- Three arms: no mutant.
+sign : Int -> Text
+sign n = match n {
+  0 -> "zero",
+  1 -> "one",
+  _ -> "many",
+}
+
+-- Long bodies elide alike, so After names the swap instead.
+describe : Bool -> Text
+describe b = match b {
+  True -> "a long body that does not fit on one line" ++ " with the other one",
+  False -> "another long body that does not fit either" ++ " with the first",
+}

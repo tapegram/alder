@@ -1,0 +1,9 @@
+module Cond
+
+-- A mutant.
+size : Int -> Text
+size n = if n > 3 then "big" else "small"
+
+-- Refused: a literal condition.
+fixed : Int
+fixed = if True then 1 else 2

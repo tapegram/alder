@@ -1,0 +1,12 @@
+module Post
+
+import User
+
+type PostId = brand Text
+
+table Post {
+  id: PostId @id,
+  author: User.UserId @ref User,
+  reviewer: User.UserId @ref User @cascade,
+  editor: Maybe User.UserId @ref User @setNull,
+}

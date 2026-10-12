@@ -1,0 +1,4 @@
+1  Flag  Flag:8    default changed  on = False → on = True
+2  Flag  ready:13  bool flipped     True → False
+3  Flag  flags:16  bool flipped     False → True
+4  Flag  flags:16  bool flipped     True → False

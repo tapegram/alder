@@ -1,0 +1,49 @@
+module Home
+
+-- Only `helper` and `load` are mutated: never a test, a fake, a view, a component, a value
+-- whose result is Html, or a brand's `where`.
+
+type Small = brand Int where (\n -> n < 10 && True)
+
+capability Clock {
+  now : Task Int,
+}
+
+fake Clock {
+  now = if True then Task.succeed (1 + 1) else Task.notFound
+}
+
+helper : Int -> Bool
+helper n = n > 1
+
+page "/" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: if helper 2 then 1 else 0 }
+
+view : Model -> Session -> Html Msg
+view model session =
+  <div>
+    {if model.n == 1 && True then "one" else "other"}
+    <Badge on={model.n > 0} />
+    {row (model.n >= 2)}
+  </div>
+
+Badge : { on: Bool } -> Html m
+Badge props = <span>{if props.on == True then "on" else "off"}</span>
+
+row : Bool -> Html m
+row b = match b {
+  True -> <p>yes</p>,
+  False -> <p>no</p>,
+}
+
+test "helper" = helper 2 == True && (False || 1 < 2)
+
+test "with the fake" = {
+  let _ <- Test.fake Clock
+  let n <- Clock.now
+  Task.succeed (if n == 2 then True else False)
+}

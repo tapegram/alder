@@ -1,0 +1,11 @@
+module Note
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  title: Text,
+  rank: Int = 0,
+  pinned: Bool = False,
+  created: Time @created,
+}

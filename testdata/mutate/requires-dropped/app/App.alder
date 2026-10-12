@@ -1,0 +1,13 @@
+module App
+
+import User
+
+session { user: Maybe User.UserId, visits: Maybe Int }
+
+login = Login
+
+error : Error -> Html Never
+error err = <p>Error</p>
+
+notFound : Html Never
+notFound = <p>Not found</p>

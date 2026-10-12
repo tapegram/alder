@@ -1,0 +1,20 @@
+module Home
+
+page "/" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+form Name = { name: Text }
+
+msg Save form Name
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> if p.form.name == "" then Task.succeed (Reject "a name is required") else Task.succeed Rerender,
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>Home</p>

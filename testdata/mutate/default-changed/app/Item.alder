@@ -1,0 +1,20 @@
+module Item
+
+type ItemId = brand Text
+
+type Kind = Plain | Fancy
+
+table Item {
+  id: ItemId @id,
+  title: Text = "",
+  rank: Int = 0,
+  weight: Float = 1.5,
+  pinned: Bool = False,
+  due: Maybe Date = Nothing,
+  kind: Kind = Plain,
+  score: Int = 5,
+}
+
+-- Every insert sets score, so its default never applies (refused); the others are omitted.
+add : Int -> Task ItemId
+add s = Db.insert Item { score: s }

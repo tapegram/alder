@@ -1,0 +1,10 @@
+1  Shop  check:7   guard dropped      if order.owner == user then Task.succeed order.total else Task.notFound → the notFound arm dropped
+2  Shop  check:7   condition negated  if order.owner == user → if not (order.owner == user)
+3  Shop  check:7   operator flipped   order.owner == user → order.owner != user
+4  Shop  flag:11   guard dropped      match ok { True -> Task.succeed 1, False -> Task.fail "not ok" } → the fail arm dropped
+5  Shop  flag:11   arm swapped        match ok { True -> Task.succeed 1, False -> Task.fail "not ok" } → match ok { True -> Task.fail "not ok", False -> Task.succeed 1 }
+6  Shop  known:18  guard dropped      match found { Nothing -> Query.notFound, Just _ -> Query.succeed 0 } → the notFound arm dropped
+7  Shop  known:18  arm swapped        match found { Nothing -> Query.notFound, Just _ -> Query.succeed 0 } → match found { Nothing -> Query.succeed 0, Just _ -> Query.notFound }
+8  Shop  both:32   condition negated  if b → if not b
+-  Shop  pick:25   guard dropped      suppressed: unscopable: the other arm uses what the match binds
+-  Shop  pick:25   arm swapped        suppressed: unscopable: an arm uses what the match binds

@@ -1,0 +1,2 @@
+1  Home  update:14  arm swapped          match msg { Save _ -> …, Stay _ -> Task.succeed Rerender } → match msg { Save _ -> Task.succeed Rerender, Stay _ -> … }
+2  Home  update:15  redirect → rerender  Redirect (Home {}) → Rerender

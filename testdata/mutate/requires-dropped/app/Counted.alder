@@ -1,0 +1,12 @@
+module Counted
+
+-- Refused: `visits` is an Int, which has no placeholder.
+page "/counted" { } requires visits
+
+type Model = { visits: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { visits: session.visits }
+
+view : Model -> Session -> Html Msg
+view model session = <p>Counted</p>

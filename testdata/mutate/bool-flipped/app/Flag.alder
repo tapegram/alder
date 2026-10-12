@@ -1,0 +1,21 @@
+module Flag
+
+type FlagId = brand Text
+
+table Flag {
+  id: FlagId @id,
+  name: Text,
+  on: Bool = False,
+}
+
+-- A mutant per literal.
+ready : Bool
+ready = True
+
+flags : { a: Bool, b: Bool }
+flags = { a: False, b: True }
+
+-- The insert omits `on`: its default False is the table's (a `default changed` mutant), not
+-- this value's, so no `bool flipped` here.
+add : Text -> Task FlagId
+add n = Db.insert Flag { name: n }

@@ -1,0 +1,4 @@
+1  Cond  size:5   condition negated  if n > 3 → if not (n > 3)
+2  Cond  size:5   operator flipped   n > 3 → n >= 3
+3  Cond  fixed:9  bool flipped       True → False
+-  Cond  fixed:9  condition negated  suppressed: a literal condition

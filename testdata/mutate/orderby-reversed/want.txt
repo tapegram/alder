@@ -1,0 +1,7 @@
+1  Notes  newest:7  orderBy reversed  Db.orderBy Note.created.desc → Db.orderBy Note.created.asc
+2  Notes  newest:7  orderBy reversed  Db.orderBy Note.rank.asc → Db.orderBy Note.rank.desc
+3  Notes  byId:11   where dropped     Db.where (Note.id.eq id) → the condition dropped
+4  Notes  top:15    orderBy reversed  Db.orderBy Note.rank.desc → Db.orderBy Note.rank.asc
+-  Note   Note:8    default changed   suppressed: no Db.insert omits it: the default never applies
+-  Note   Note:9    default changed   suppressed: no Db.insert omits it: the default never applies
+-  Notes  byId:11   orderBy reversed  suppressed: the where pins one row by its id

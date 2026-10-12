@@ -1,0 +1,5 @@
+1  Note   Note:8    default changed  rank = 0 → rank = 1
+2  Note   Note:9    default changed  pinned = False → pinned = True
+3  Notes  churn:8   write replaced   let id <- Db.insert Note { title: t } → let id <- Task.succeed (Note.NoteId "mutant")
+4  Notes  churn:9   write replaced   let _ <- Db.update Note id (\n -> { n | rank: 1 }) → let _ <- Task.succeed ()
+5  Notes  churn:10  write replaced   let _ <- Db.delete Note id → let _ <- Task.succeed ()

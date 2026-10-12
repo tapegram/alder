@@ -1,0 +1,16 @@
+module Ops
+
+-- One mutant per comparison or connective.
+inRange : Int -> Int -> Bool
+inRange lo n = lo <= n && n < 100 || n == 0
+
+differs : Text -> Text -> Bool
+differs a b = a != b
+
+-- Refused: both operands are the same expression.
+always : Int -> Bool
+always n = n == n
+
+-- Arithmetic: no mutant.
+sum : Int -> Int -> Int
+sum a b = a + b * 2

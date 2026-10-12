@@ -1,0 +1,6 @@
+module Notes
+
+import Note
+
+pageOf : Int -> Query (List Note)
+pageOf n = Db.from Note |> Db.orderBy Note.rank.asc |> Db.limit 10 |> Db.offset (n * 10) |> Db.all

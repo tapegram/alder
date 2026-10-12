@@ -1,0 +1,16 @@
+module Notes
+
+import Note
+
+-- A mutant per write step.
+churn : Text -> Task Note.NoteId
+churn t = {
+  let id <- Db.insert Note { title: t }
+  let _ <- Db.update Note id (\n -> { n | rank: 1 })
+  let _ <- Db.delete Note id
+  Task.succeed id
+}
+
+-- Not a step (the block's result): no mutant.
+remove : Note.NoteId -> Task Unit
+remove id = Db.delete Note id

@@ -1,0 +1,32 @@
+module Shop
+
+type Order = { owner: Text, total: Int }
+
+-- A mutant: the if's notFound arm.
+check : Order -> Text -> Task Int
+check order user = if order.owner == user then Task.succeed order.total else Task.notFound
+
+-- A mutant: the match's fail arm; the other arm binds nothing.
+flag : Bool -> Task Int
+flag ok = match ok {
+  True -> Task.succeed 1,
+  False -> Task.fail "not ok",
+}
+
+-- A mutant: the wildcard binds nothing the other arm uses.
+known : Maybe Order -> Query Int
+known found = match found {
+  Nothing -> Query.notFound,
+  Just _ -> Query.succeed 0,
+}
+
+-- Refused: the other arm uses `order`, which only the match binds (unscopable).
+pick : Maybe Order -> Task Int
+pick found = match found {
+  Just order -> Task.succeed order.total,
+  Nothing -> Task.notFound,
+}
+
+-- No guard: both arms fail.
+both : Bool -> Task Int
+both b = if b then Task.notFound else Task.fail "x"
