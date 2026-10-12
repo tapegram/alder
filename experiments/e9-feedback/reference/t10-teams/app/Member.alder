@@ -1,0 +1,54 @@
+module Member
+
+import User
+import Team
+import Invite
+
+type MemberId = brand Text
+
+-- One row per member who is not the owner: a user who accepted an invite.
+table Member {
+  id: MemberId @id,
+  team: Team.TeamId @ref Team,
+  user: User.UserId @ref User,
+}
+
+-- row is the user's Member row in the team, if any.
+row : Team.TeamId -> User.UserId -> Query (Maybe Member)
+row team user = Db.from Member |> Db.where (Member.team.eq team) |> Db.where (Member.user.eq user) |> Db.first
+
+test "row is the user's row in that team" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: ann }
+  let _ <- Db.insert Member { team: blue, user: bob }
+  let _ <- Db.insert Member { team: red, user: ann }
+  let want <- Db.insert Member { team: red, user: bob }
+  let found <- row red bob
+  Task.succeed (Maybe.map (\m -> m.id) found == Just want)
+}
+
+-- Every reference keeps the default `@restrict`: a user who owns a team or is a member, and a
+-- team with members or invites, cannot be deleted while those rows exist.
+test "users and teams with rows that point at them stay" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let cid <- Db.insert User { email: Text.Email "cid@example.com", name: Text.NonEmpty "Cid", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let dan <- Db.insert User { email: Text.Email "dan@example.com", name: Text.NonEmpty "Dan", passwordHash: "" }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: cid }
+  let _ <- Db.insert Team { name: Text.NonEmpty "Gray", owner: dan }
+  let _ <- Db.insert Member { team: red, user: bob }
+  let _ <- Db.insert Invite { team: blue, email: Text.Email "x@example.com" }
+  let _ <- Test.run (Db.delete User dan)
+  let _ <- Test.run (Db.delete User ann)
+  let _ <- Test.run (Db.delete User bob)
+  let _ <- Test.run (Db.delete Team red)
+  let _ <- Test.run (Db.delete Team blue)
+  let users <- Db.from User |> Db.count
+  let teams <- Db.from Team |> Db.count
+  let members <- Db.from Member |> Db.count
+  let invites <- Db.from Invite |> Db.count
+  Task.succeed ({ users: users, teams: teams, members: members, invites: invites } == { users: 4, teams: 3, members: 1, invites: 1 })
+}

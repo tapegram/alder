@@ -1,0 +1,15 @@
+module Invite
+
+import Team
+
+type InviteId = brand Text
+
+type Status = Pending | Accepted | Declined
+
+-- An invite is to an email, not to a user: the user may sign up later.
+table Invite {
+  id: InviteId @id,
+  team: Team.TeamId @ref Team,
+  email: Text.Email,
+  status: Status = Pending,
+}

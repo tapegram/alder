@@ -1,0 +1,69 @@
+module Teams.Index
+
+import User
+import Team
+import Member
+import Layout
+
+page "/teams" { } requires user
+
+type Model = { teams: List Team }
+
+-- Owned teams and joined teams are read apart and merged, then sorted by name.
+load : Params -> Session -> Query Model
+load params session = {
+  let owned <- Db.from Team |> Db.where (Team.owner.eq session.user) |> Db.all
+  let rows <- Db.from Member |> Db.where (Member.user.eq session.user) |> Db.all
+  let joined <- Db.from Team |> Db.where (Team.id.in (List.map (\m -> m.team) rows)) |> Db.all
+  Query.succeed { teams: List.sortByText (\t -> t.name) (List.append owned joined) }
+}
+
+form NewTeam = {
+  name: Text.NonEmpty,
+}
+
+msg Create form NewTeam
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Team { name: p.form.name, owner: session.user }
+    Task.succeed (Redirect (Teams.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Shell heading="Teams">
+    <nav><a href={Invites.Index {}}>Invites</a> <form submit={App.Logout}><button>Log out</button></form></nav>
+    {if List.isEmpty model.teams then <p>No teams yet.</p> else Html.none}
+    <ol id="teams">
+      {for t in model.teams ->
+        <li><a href={Teams.Show { id: t.id }}><strong class="name">{t.name}</strong></a></li>}
+    </ol>
+    <h2>New team</h2>
+    <form submit={Create}>
+      <Errors form />
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <button>Create</button>
+    </form>
+  </Layout.Shell>
+
+test "teams: login, owned and joined by name, created through the form" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let visitor <- Test.open (Teams.Index {})
+  let mine <- Db.insert Team { name: Text.NonEmpty "Zinc", owner: ann }
+  let joined <- Db.insert Team { name: Text.NonEmpty "Blue", owner: bob }
+  let _ <- Db.insert Team { name: Text.NonEmpty "Gold", owner: bob }
+  let other <- Db.insert Team { name: Text.NonEmpty "Iron", owner: bob }
+  let _ <- Db.insert Member { team: other, user: bob }
+  let _ <- Db.insert Member { team: joined, user: ann }
+  let _ <- Test.login { user: Just ann }
+  let before <- Test.get (Teams.Index {})
+  let made <- Test.submit NewTeam { name: Text.NonEmpty "Mint" }
+  let after <- Test.get (Teams.Index {})
+  let mint <- Db.from Team |> Db.where (Team.name.eq (Text.NonEmpty "Mint")) |> Db.first
+  Task.succeed ({ visitor: visitor.answer, before: Test.texts "#teams .name" before.doc, made: made.answer == Redirected (Teams.Show { id: Maybe.withDefault mine (Maybe.map (\t -> t.id) mint) }), owner: Maybe.map (\t -> t.owner) mint, after: Test.texts "#teams .name" after.doc } == { visitor: Redirected (Auth.Login {}), before: ["Blue", "Zinc"], made: True, owner: Just ann, after: ["Blue", "Mint", "Zinc"] })
+}

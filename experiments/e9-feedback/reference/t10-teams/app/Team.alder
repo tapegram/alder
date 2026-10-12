@@ -1,0 +1,12 @@
+module Team
+
+import User
+
+type TeamId = brand Text
+
+-- A team belongs to its owner, the user who created it.
+table Team {
+  id: TeamId @id,
+  name: Text.NonEmpty,
+  owner: User.UserId @ref User,
+}

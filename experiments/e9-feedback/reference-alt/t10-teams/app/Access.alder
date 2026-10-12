@@ -1,0 +1,20 @@
+module Access
+
+import User
+import Team
+import Member
+
+-- Where a user stands with a team.
+type Standing = Owns | Belongs | Outside
+
+standing : Team -> List Member -> User.UserId -> Standing
+standing team members user =
+  if team.owner == user then Owns
+  else if List.any (\m -> m.user == user) members then Belongs
+  else Outside
+
+test "the owner owns, a member belongs, anyone else is outside" = {
+  let team : Team = { id: Team.TeamId "t", name: Text.NonEmpty "Red", owner: User.UserId "ann" }
+  let rows : List Member = [{ id: Member.MemberId "m", team: Team.TeamId "t", user: User.UserId "bob" }]
+  Task.succeed (List.map (standing team rows) [User.UserId "ann", User.UserId "bob", User.UserId "sam"] == [Owns, Belongs, Outside])
+}

@@ -1,0 +1,13 @@
+module Markdown
+
+-- Rendering a post's body is outside the language: a capability implemented in Go
+-- (adapters/markdown/markdown.go), which builds the HTML node by node, so a post cannot inject markup.
+capability Markdown {
+  render : Text -> Query (Html Never),
+}
+
+-- In a test, `let _ <- Test.fake Markdown` replaces the adapter with this: the body as plain
+-- text, so a test about a page asserts on the page, not on how Markdown is rendered.
+fake Markdown {
+  render text = Query.succeed (Html.text text)
+}

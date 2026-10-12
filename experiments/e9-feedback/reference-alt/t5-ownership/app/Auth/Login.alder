@@ -1,0 +1,67 @@
+module Auth.Login
+
+import User
+import Layout
+
+-- Password checking is outside the language: a capability implemented in Go.
+capability Password {
+  verify : { email: Text.Email, password: Text } -> Task (Maybe User.UserId),
+}
+
+-- The tests' stand-in for the Go adapter: any user with a row is let in.
+fake Password {
+  verify args = {
+    let users <- Db.from User |> Db.where (User.email.eq args.email) |> Db.all
+    Task.succeed (List.head (List.map (\u -> u.id) users))
+  }
+}
+
+page "/login" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+form Credentials = {
+  email: Text.Email,
+  password: Text.Secret,
+}
+
+msg Submit form Credentials
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let found <- Password.verify { email: p.form.email, password: p.form.password }
+    match found {
+      Just id -> {
+        let _ <- Session.put (\s -> { s | user: Just id })
+        Task.succeed (Redirect (Notes.Index {}))
+      },
+      Nothing -> Task.succeed (Reject "Email or password is incorrect."),
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Shell heading="Log in">
+    <form submit={Submit}>
+      <Errors form />
+      <Input field="email" label="Email" />
+      <Errors field="email" />
+      <Input field="password" label="Password" />
+      <Errors field="password" />
+      <button>Log in</button>
+    </form>
+  </Layout.Shell>
+
+test "logging in, and a wrong email" = {
+  let _ <- Test.fake Password
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.get (Auth.Login {})
+  let bad <- Test.submit Credentials { email: Text.Email "who@example.com", password: Text.Secret "x" }
+  let good <- Test.submit Credentials { email: Text.Email "me@example.com", password: Text.Secret "x" }
+  Task.succeed ({ bad: bad.answer, good: good.answer, user: good.session.user } == { bad: FormRejected [{ field: "", message: "Email or password is incorrect." }], good: Redirected (Notes.Index {}), user: Just me })
+}

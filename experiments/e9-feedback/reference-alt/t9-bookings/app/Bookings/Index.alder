@@ -1,0 +1,52 @@
+module Bookings.Index
+
+import User
+import Room
+import Booking
+import Layout
+
+page "/bookings" { } requires user
+
+type Model = { bookings: List Booking, rooms: List Room }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let bookings <- Db.from Booking |> Db.where (Booking.owner.eq session.user) |> Db.orderBy Booking.from.asc |> Db.all
+  let rooms <- Db.from Room |> Db.all
+  Query.succeed { bookings: bookings, rooms: rooms }
+}
+
+roomName : List Room -> Booking -> Text
+roomName rooms b = match List.find (\r -> r.id == b.room) rooms {
+  Just r -> r.name,
+  Nothing -> "?",
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Shell heading="My bookings">
+    <ul id="mine">
+      {for b in model.bookings ->
+        <li>
+          <strong class="room">{roomName model.rooms b}</strong>
+          <span>from <time class="from">{Date.toText b.from}</time></span>
+          <a href={Bookings.Show { id: b.id }}>Open</a>
+        </li>}
+    </ul>
+    <a href={Rooms.Index {}}>Rooms</a>
+  </Layout.Shell>
+
+test "my bookings: login, mine only, by date, with the room's name" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let today <- Date.today
+  let visitor <- Test.open (Bookings.Index {})
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let red <- Db.insert Room { name: Text.NonEmpty "Red" }
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 6 today, to: Date.addDays 7 today }
+  let _ <- Db.insert Booking { room: red, owner: me, from: Date.addDays 2 today, to: Date.addDays 3 today }
+  let _ <- Db.insert Booking { room: red, owner: other, from: Date.addDays 4 today, to: Date.addDays 5 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Index {})
+  Task.succeed ({ visitor: visitor.answer, rooms: Test.texts "#mine .room" page.doc, from: Test.texts "#mine .from" page.doc } == { visitor: Redirected (Auth.Login {}), rooms: ["Red", "Blue"], from: ["2026-01-03", "2026-01-07"] })
+}

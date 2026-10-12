@@ -1,0 +1,93 @@
+module Rooms.Show
+
+import User
+import Room
+import Booking
+import Layout
+
+page "/rooms/{id}" { id: Room.RoomId } requires user
+
+type Model = { room: Room, bookings: List Booking }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Room params.id
+  match found {
+    Just room -> {
+      let bookings <- Db.from Booking |> Db.where (Booking.room.eq room.id) |> Db.orderBy Booking.from.asc |> Db.all
+      Query.succeed { room: room, bookings: bookings }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewBooking = {
+  from: Date,
+  to: Date,
+}
+
+msg Book form NewBooking
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Book p ->
+    if p.form.to <= p.form.from then Task.succeed (Reject "A booking must end after the day it starts.")
+    else {
+      let taken <- Booking.clash model.room.id p.form.from p.form.to
+      match taken {
+        Just _ -> Task.succeed (Reject "The room is already booked on some of those days."),
+        Nothing -> {
+          let _ <- Db.insert Booking { room: model.room.id, owner: session.user, from: p.form.from, to: p.form.to }
+          Task.succeed (Redirect (Rooms.Show { id: model.room.id }))
+        },
+      }
+    },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.room.name}>
+    <h1 id="name">{model.room.name}</h1>
+    <ul id="bookings">
+      {for b in model.bookings ->
+        <li><span class="from">{Date.toText b.from}</span> to <span class="to">{Date.toText b.to}</span></li>}
+    </ul>
+    <form submit={Book}>
+      <Errors form />
+      <Input field="from" label="From" />
+      <Errors field="from" />
+      <Input field="to" label="To (not included)" />
+      <Errors field="to" />
+      <button>Book</button>
+    </form>
+    <a href={Rooms.Index {}}>All rooms</a>
+  </Layout.Page>
+
+test "booking through the form lists the room's bookings by date" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let green <- Db.insert Room { name: Text.NonEmpty "Green" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: green, owner: me, from: today, to: Date.addDays 1 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: blue })
+  let later <- Test.submit NewBooking { from: Date.addDays 5 today, to: Date.addDays 6 today }
+  let sooner <- Test.submit NewBooking { from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let mine <- Db.from Booking |> Db.where (Booking.room.eq blue) |> Db.where (Booking.owner.eq me) |> Db.count
+  Task.succeed ({ later: later.answer, sooner: sooner.answer, from: Test.texts "#bookings .from" sooner.doc, mine: mine } == { later: Redirected (Rooms.Show { id: blue }), sooner: Redirected (Rooms.Show { id: blue }), from: ["2026-01-02", "2026-01-06"], mine: 2 })
+}
+
+test "an overlapping booking, or one that ends before it starts, is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 5 today, to: Date.addDays 8 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: blue })
+  let overlap <- Test.submit NewBooking { from: Date.addDays 7 today, to: Date.addDays 9 today }
+  let empty <- Test.submit NewBooking { from: Date.addDays 2 today, to: Date.addDays 2 today }
+  let backwards <- Test.submit NewBooking { from: Date.addDays 2 today, to: Date.addDays 1 today }
+  let touching <- Test.submit NewBooking { from: Date.addDays 8 today, to: Date.addDays 9 today }
+  let stored <- Db.from Booking |> Db.count
+  Task.succeed ({ overlap: overlap.answer, empty: empty.answer, backwards: backwards.answer, touching: touching.answer, stored: stored } == { overlap: FormRejected [{ field: "", message: "The room is already booked on some of those days." }], empty: FormRejected [{ field: "", message: "A booking must end after the day it starts." }], backwards: FormRejected [{ field: "", message: "A booking must end after the day it starts." }], touching: Redirected (Rooms.Show { id: blue }), stored: 2 })
+}

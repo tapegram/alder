@@ -1,0 +1,89 @@
+module Rooms.Show
+
+import User
+import Room
+import Booking
+import Layout
+
+page "/rooms/{id}" { id: Room.RoomId } requires user
+
+type Model = { room: Room, bookings: List Booking }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let room <- Db.from Room |> Db.where (Room.id.eq params.id) |> Db.first
+  match room {
+    Nothing -> Query.notFound,
+    Just r -> {
+      let bookings <- Booking.ofRoom r.id
+      Query.succeed { room: r, bookings: bookings }
+    },
+  }
+}
+
+form NewBooking = {
+  from: Date,
+  to: Date,
+}
+
+msg Book form NewBooking
+
+-- `model.bookings` is read by `load` for this very request, so the overlap check sees every
+-- booking of the room as it is now.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Book p -> match problem p.form model.bookings {
+    Just text -> Task.succeed (Reject text),
+    Nothing -> {
+      let _ <- Db.insert Booking { room: model.room.id, owner: session.user, from: p.form.from, to: p.form.to }
+      Task.succeed (Redirect (Rooms.Show { id: model.room.id }))
+    },
+  },
+}
+
+problem : NewBooking -> List Booking -> Maybe Text
+problem range bookings =
+  if range.from >= range.to then Just "The end date must come after the start date."
+  else if List.any (Booking.overlaps range.from range.to) bookings then Just "Those dates overlap another booking of this room."
+  else Nothing
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Shell heading={model.room.name}>
+    <p>Room: <strong id="name">{model.room.name}</strong></p>
+    <section>
+      <h2>Booked</h2>
+      <ul id="bookings">
+        {for b in model.bookings ->
+          <li><time class="from">{Date.toText b.from}</time> – <time class="to">{Date.toText b.to}</time></li>}
+      </ul>
+    </section>
+    <section>
+      <h2>Book it</h2>
+      <form submit={Book}>
+        <Errors form />
+        <Input field="from" label="First day" />
+        <Errors field="from" />
+        <Input field="to" label="Day after the last" />
+        <Errors field="to" />
+        <button>Book</button>
+      </form>
+    </section>
+  </Layout.Shell>
+
+test "a room's page: login, its own bookings, booking and refusals" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let today <- Date.today
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let green <- Db.insert Room { name: Text.NonEmpty "Green" }
+  let _ <- Db.insert Booking { room: green, owner: me, from: today, to: Date.addDays 9 today }
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 5 today, to: Date.addDays 8 today }
+  let visitor <- Test.open (Rooms.Show { id: green })
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Rooms.Show { id: green })
+  let ok <- Test.submit NewBooking { from: Date.addDays 9 today, to: Date.addDays 10 today }
+  let clash <- Test.submit NewBooking { from: Date.addDays 2 today, to: Date.addDays 3 today }
+  let flat <- Test.submit NewBooking { from: Date.addDays 12 today, to: Date.addDays 12 today }
+  let greens <- Db.from Booking |> Db.where (Booking.room.eq green) |> Db.count
+  Task.succeed ({ visitor: visitor.answer, name: Test.text "#name" page.doc, from: Test.texts "#bookings .from" page.doc, ok: ok.answer, clash: clash.answer, flat: flat.answer, greens: greens } == { visitor: Redirected (Auth.Login {}), name: Just "Green", from: ["2026-01-01"], ok: Redirected (Rooms.Show { id: green }), clash: FormRejected [{ field: "", message: "Those dates overlap another booking of this room." }], flat: FormRejected [{ field: "", message: "The end date must come after the start date." }], greens: 2 })
+}

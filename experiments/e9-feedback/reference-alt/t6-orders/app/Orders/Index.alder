@@ -1,0 +1,72 @@
+module Orders.Index
+
+import User
+import Order
+import Money
+import Layout
+
+page "/" { } requires user
+
+type Model = { rows: List { order: Order, total: Int } }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let orders <- Db.from Order |> Db.where (Order.owner.eq session.user) |> Db.orderBy Order.created.desc |> Db.all
+  let rows <- Query.all (List.map withTotal orders)
+  Query.succeed { rows: rows }
+}
+
+withTotal : Order -> Query { order: Order, total: Int }
+withTotal order = {
+  let ls <- Money.lines order.id
+  Query.succeed { order: order, total: Money.sum ls }
+}
+
+msg Create
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Order { owner: session.user }
+    Task.succeed (Redirect (Orders.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Shell heading="Orders">
+    <form submit={Create}><button>Start a new order</button></form>
+    <ul id="orders">
+      {for row in model.rows ->
+        <li>
+          <div class="row">
+            <a href={Orders.Show { id: row.order.id }}>{Time.format "Jan 2 15:04" row.order.created}</a>
+            — <em class="status">{statusText row.order.status}</em>
+            — <strong class="total">{Text.fromInt row.total}</strong> cents
+          </div>
+        </li>}
+    </ul>
+    <form submit={App.Logout}><button>Log out</button></form>
+  </Layout.Shell>
+
+statusText : Order.Status -> Text
+statusText s = match s {
+  Open -> "Open",
+  Paid -> "Paid",
+  Cancelled -> "Cancelled",
+}
+
+test "the list: login required, own orders only, newest first, a new order opens" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let visitor <- Test.open (Orders.Index {})
+  let _ <- Db.insert Order { owner: me, status: Cancelled }
+  let _ <- Db.insert Order { owner: me, status: Paid }
+  let _ <- Db.insert Order { owner: other, status: Paid }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Index {})
+  let r <- Test.click Create
+  let made <- Db.from Order |> Db.where (Order.status.eq Open) |> Db.all
+  let list <- Test.get (Orders.Index {})
+  Task.succeed ({ visitor: visitor.answer, answer: r.answer, made: List.map (\o -> Orders.Show { id: o.id }) made, statuses: Test.texts "#orders .status" list.doc } == { visitor: Redirected (Auth.Login {}), answer: Redirected (Orders.Show { id: Maybe.withDefault (Order.OrderId "") (List.head (List.map (\o -> o.id) made)) }), made: [Orders.Show { id: Maybe.withDefault (Order.OrderId "") (List.head (List.map (\o -> o.id) made)) }], statuses: ["Open", "Paid", "Cancelled"] })
+}

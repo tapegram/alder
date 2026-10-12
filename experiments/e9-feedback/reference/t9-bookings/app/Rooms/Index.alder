@@ -1,0 +1,63 @@
+module Rooms.Index
+
+import User
+import Room
+import Booking
+import Layout
+
+page "/rooms" { } requires user
+
+type Row = { room: Room, free: Date }
+
+type Model = { rows: List Row }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let rooms <- Db.from Room |> Db.orderBy Room.name.asc |> Db.all
+  let rows <- Query.all (List.map row rooms)
+  Query.succeed { rows: rows }
+}
+
+row : Room -> Query Row
+row room = {
+  let free <- Booking.nextFree room.id
+  Query.succeed { room: room, free: free }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Rooms">
+    <h1>Rooms</h1>
+    <ul id="rooms">
+      {for r in model.rows ->
+        <li>
+          <a class="name" href={Rooms.Show { id: r.room.id }}>{r.room.name}</a>
+          free from <span class="free">{Date.toText r.free}</span>
+        </li>}
+    </ul>
+    <a href={Bookings.Index {}}>My bookings</a>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "a visitor is sent to log in from every page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let id <- Db.insert Booking { room: blue, owner: me, from: today, to: Date.addDays 1 today }
+  let rooms <- Test.open (Rooms.Index {})
+  let room <- Test.open (Rooms.Show { id: blue })
+  let mine <- Test.open (Bookings.Index {})
+  let one <- Test.open (Bookings.Show { id: id })
+  Task.succeed (List.all (\a -> a == Redirected (Auth.Login {})) [rooms.answer, room.answer, mine.answer, one.answer])
+}
+
+test "the rooms are listed by name, each with its next free date" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let green <- Db.insert Room { name: Text.NonEmpty "Green" }
+  let _ <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: green, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Rooms.Index {})
+  Task.succeed ({ names: Test.texts "#rooms .name" page.doc, free: Test.texts "#rooms .free" page.doc } == { names: ["Blue", "Green"], free: ["2026-01-01", "2026-01-03"] })
+}

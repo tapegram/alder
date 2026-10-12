@@ -1,0 +1,87 @@
+module Booking
+
+import User
+import Room
+
+type BookingId = brand Text
+
+-- A booking holds its room from `from` up to, but not including, `to`.
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- clash is a booking of the room that shares a date with [from, to): one that starts before the
+-- new one ends and ends after it starts.
+clash : Room.RoomId -> Date -> Date -> Query (Maybe Booking)
+clash room from to =
+  Db.from Booking
+    |> Db.where (Booking.room.eq room)
+    |> Db.where (Booking.from.lt to)
+    |> Db.where (Booking.to.gt from)
+    |> Db.first
+
+-- holds is whether the booking holds the room on that date.
+holds : Date -> Booking -> Bool
+holds day b = b.from <= day && day < b.to
+
+-- nextFree is the first date, `today` or later, that none of the room's bookings holds. A free
+-- date is either today or the day a booking ends, so only those are tried, earliest first.
+nextFree : Room.RoomId -> Query Date
+nextFree room = {
+  let today <- Date.today
+  let current <-
+    Db.from Booking
+      |> Db.where (Booking.room.eq room)
+      |> Db.where (Booking.to.gt today)
+      |> Db.orderBy Booking.to.asc
+      |> Db.all
+  let candidates = [today] ++ List.map (\b -> b.to) current
+  Query.succeed (Maybe.withDefault today (List.find (\day -> not (List.any (holds day) current)) candidates))
+}
+
+test "clash finds only a booking of the same room that shares a day" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let green <- Db.insert Room { name: Text.NonEmpty "Green" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 5 today, to: Date.addDays 8 today }
+  let _ <- Db.insert Booking { room: green, owner: me, from: Date.addDays 1 today, to: Date.addDays 3 today }
+  let overlap <- clash blue (Date.addDays 7 today) (Date.addDays 9 today)
+  let after <- clash blue (Date.addDays 8 today) (Date.addDays 9 today)
+  let before <- clash blue (Date.addDays 3 today) (Date.addDays 5 today)
+  let elsewhere <- clash blue (Date.addDays 1 today) (Date.addDays 3 today)
+  Task.succeed ({ overlap: Maybe.isJust overlap, after: Maybe.isJust after, before: Maybe.isJust before, elsewhere: Maybe.isJust elsewhere } == { overlap: True, after: False, before: False, elsewhere: False })
+}
+
+test "the next free date skips back-to-back bookings and ignores past ones" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let green <- Db.insert Room { name: Text.NonEmpty "Green" }
+  let red <- Db.insert Room { name: Text.NonEmpty "Red" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 2 today, to: Date.addDays 3 today }
+  let _ <- Db.insert Booking { room: blue, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 4 today, to: Date.addDays 6 today }
+  let _ <- Db.insert Booking { room: green, owner: me, from: Date.addDays (0 - 4) today, to: Date.addDays (0 - 1) today }
+  let _ <- Db.insert Booking { room: green, owner: me, from: today, to: Date.addDays 1 today }
+  let _ <- Db.insert Booking { room: red, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let b <- nextFree blue
+  let g <- nextFree green
+  let r <- nextFree red
+  Task.succeed (List.map Date.toText [b, g, r] == ["2026-01-04", "2026-01-02", "2026-01-01"])
+}
+
+test "a room or a user with bookings cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: blue, owner: me, from: today, to: Date.addDays 1 today }
+  let room <- Test.run (Db.delete Room blue)
+  let user <- Test.run (Db.delete User me)
+  let left <- Db.from Booking |> Db.count
+  Task.succeed ({ room: Result.toMaybe room.value, user: Result.toMaybe user.value, left: left } == { room: Nothing, user: Nothing, left: 1 })
+}

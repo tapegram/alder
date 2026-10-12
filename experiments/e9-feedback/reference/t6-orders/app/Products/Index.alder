@@ -1,0 +1,99 @@
+module Products.Index
+
+import User
+import Product
+import Layout
+
+page "/products" { } requires user
+
+type Model = { products: List Product }
+
+-- Only a Manager may see the products; a Staff user gets the 404 of a page that does not exist.
+-- Every message runs after this `load`, so `update` needs no check of its own.
+load : Params -> Session -> Query Model
+load params session = {
+  let manager <- User.isManager session.user
+  if manager then {
+    let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+    Query.succeed { products: products }
+  } else Query.notFound
+}
+
+form NewProduct = {
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+}
+
+msg Add form NewProduct
+msg Toggle { id: Product.ProductId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Product { name: p.form.name, price: p.form.price }
+    Task.succeed (Redirect (Products.Index {}))
+  },
+  Toggle p -> {
+    let found <- Db.get Product p.id
+    match found {
+      Just product -> {
+        let _ <- Db.update Product product.id (\x -> { x | active: not x.active })
+        Task.succeed (Redirect (Products.Index {}))
+      },
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Products">
+    <h1>Products</h1>
+    <ul id="products">
+      {for product in model.products ->
+        <li class={if product.active then "active" else "inactive"}>
+          <span class="name">{product.name}</span>
+          <span class="price">{Text.fromInt product.price}</span>
+          <button click={Toggle { id: product.id }}>{if product.active then "Deactivate" else "Activate"}</button>
+        </li>}
+    </ul>
+    <form submit={Add}>
+      <Errors form />
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <Input field="price" label="Price (cents)" />
+      <Errors field="price" />
+      <button>Add product</button>
+    </form>
+    <a href={Orders.Index {}}>Orders</a>
+  </Layout.Page>
+
+test "a Staff user does not get the products page" = {
+  let staff <- Db.insert User { email: Text.Email "staff@example.com", name: Text.NonEmpty "Staff", passwordHash: "" }
+  let _ <- Test.login { user: Just staff }
+  let r <- Test.open (Products.Index {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a visitor is sent to log in from the products" = {
+  let r <- Test.open (Products.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "a Manager adds a product, sees them by name, and toggles one off and on" = {
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let _ <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let _ <- Test.login { user: Just boss }
+  let _ <- Test.get (Products.Index {})
+  let added <- Test.submit NewProduct { name: Text.NonEmpty "Ink", price: Int.NonNegative 400 }
+  let found <- Db.from Product |> Db.where (Product.name.eq (Text.NonEmpty "Ink")) |> Db.first
+  let ink <- match found {
+    Just x -> Task.succeed x,
+    Nothing -> Task.fail "no Ink",
+  }
+  let off <- Test.click (Toggle { id: ink.id })
+  let afterOff <- Db.get Product ink.id
+  let _ <- Test.click (Toggle { id: ink.id })
+  let afterOn <- Db.get Product ink.id
+  Task.succeed ({ added: added.answer, names: Test.texts "#products .name" added.doc, price: ink.price, off: off.answer, afterOff: Maybe.map (\p -> p.active) afterOff, afterOn: Maybe.map (\p -> p.active) afterOn } == { added: Redirected (Products.Index {}), names: ["Ink", "Pen"], price: Int.NonNegative 400, off: Redirected (Products.Index {}), afterOff: Just False, afterOn: Just True })
+}

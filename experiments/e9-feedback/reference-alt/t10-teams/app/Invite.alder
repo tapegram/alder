@@ -1,0 +1,56 @@
+module Invite
+
+import User
+import Team
+import Member
+
+type InviteId = brand Text
+
+type Status = Pending | Accepted | Declined
+
+table Invite {
+  id: InviteId @id,
+  team: Team.TeamId @ref Team,
+  email: Text.Email,
+  status: Status = Pending,
+}
+
+-- open is the invite with that id when it still waits and is to `email`.
+open : Text.Email -> InviteId -> Query (Maybe Invite)
+open email id =
+  Db.from Invite
+    |> Db.where (Invite.id.eq id)
+    |> Db.where (Invite.email.eq email)
+    |> Db.where (Invite.status.eq Pending)
+    |> Db.first
+
+test "open finds only a waiting invite to that email" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let _ <- Db.insert Invite { team: red, email: Text.Email "bob@example.com", status: Declined }
+  let toCid <- Db.insert Invite { team: red, email: Text.Email "cid@example.com" }
+  let toBob <- Db.insert Invite { team: red, email: Text.Email "bob@example.com" }
+  let declined <- Db.insert Invite { team: red, email: Text.Email "bob@example.com", status: Declined }
+  let a <- open (Text.Email "bob@example.com") toBob
+  let b <- open (Text.Email "bob@example.com") toCid
+  let c <- open (Text.Email "bob@example.com") declined
+  Task.succeed ([Maybe.map (\i -> i.id) a, Maybe.map (\i -> i.id) b, Maybe.map (\i -> i.id) c] == [Just toBob, Nothing, Nothing])
+}
+
+test "rows keep what they point at" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let dan <- Db.insert User { email: Text.Email "dan@example.com", name: Text.NonEmpty "Dan", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: ann }
+  let _ <- Db.insert Team { name: Text.NonEmpty "Gray", owner: dan }
+  let _ <- Db.insert Member.Member { team: red, user: bob }
+  let _ <- Db.insert Invite { team: blue, email: Text.Email "x@example.com" }
+  let gone <- Test.run (Db.delete User dan)
+  let member <- Test.run (Db.delete User bob)
+  let withMember <- Test.run (Db.delete Team red)
+  let withInvite <- Test.run (Db.delete Team blue)
+  let teams <- Db.from Team |> Db.count
+  let users <- Db.from User |> Db.count
+  Task.succeed ({ teams: teams, users: users } == { teams: 3, users: 3 })
+}

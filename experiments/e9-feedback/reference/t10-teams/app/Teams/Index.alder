@@ -1,0 +1,87 @@
+module Teams.Index
+
+import User
+import Team
+import Member
+import Layout
+
+page "/teams" { } requires user
+
+type Model = { teams: List Team }
+
+-- The teams the user owns, and those the user is a member of, in one query.
+load : Params -> Session -> Query Model
+load params session = {
+  let memberships <- Db.from Member |> Db.where (Member.user.eq session.user) |> Db.all
+  let teams <-
+    Db.from Team
+      |> Db.where (Db.or [Team.owner.eq session.user, Team.id.in (List.map (\m -> m.team) memberships)])
+      |> Db.orderBy Team.name.asc
+      |> Db.all
+  Query.succeed { teams: teams }
+}
+
+form NewTeam = {
+  name: Text.NonEmpty,
+}
+
+msg Create form NewTeam
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Team { name: p.form.name, owner: session.user }
+    Task.succeed (Redirect (Teams.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Teams">
+    <h1>Your teams</h1>
+    <ul id="teams">
+      {for team in model.teams ->
+        <li><a class="name" href={Teams.Show { id: team.id }}>{team.name}</a></li>}
+    </ul>
+    <form submit={Create}>
+      <Errors form />
+      <Input field="name" label="Team name" />
+      <Errors field="name" />
+      <button>Create team</button>
+    </form>
+    <a href={Invites.Index {}}>Invites</a>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "a visitor is sent to log in from every page" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let teams <- Test.open (Teams.Index {})
+  let team <- Test.open (Teams.Show { id: red })
+  let invites <- Test.open (Invites.Index {})
+  Task.succeed (List.all (\a -> a == Redirected (Auth.Login {})) [teams.answer, team.answer, invites.answer])
+}
+
+test "the list: teams owned and joined, by name, no one else's" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let cid <- Db.insert User { email: Text.Email "cid@example.com", name: Text.NonEmpty "Cid", passwordHash: "" }
+  let _ <- Db.insert Team { name: Text.NonEmpty "Amber", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: bob }
+  let green <- Db.insert Team { name: Text.NonEmpty "Green", owner: cid }
+  let _ <- Db.insert Team { name: Text.NonEmpty "Zinc", owner: cid }
+  let _ <- Db.insert Member { team: green, user: bob }
+  let _ <- Db.insert Member { team: blue, user: ann }
+  let _ <- Test.login { user: Just ann }
+  let page <- Test.get (Teams.Index {})
+  Task.succeed (Test.texts "#teams .name" page.doc == ["Amber", "Blue"])
+}
+
+test "creating a team opens its page, owned by its creator" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Teams.Index {})
+  let r <- Test.submit NewTeam { name: Text.NonEmpty "Red" }
+  let teams <- Db.from Team |> Db.where (Team.owner.eq ann) |> Db.all
+  Task.succeed ({ answer: r.answer, teams: List.map (\t -> Teams.Show { id: t.id }) teams } == { answer: Redirected (Teams.Show { id: Maybe.withDefault (Team.TeamId "") (List.head (List.map (\t -> t.id) teams)) }), teams: [Teams.Show { id: Maybe.withDefault (Team.TeamId "") (List.head (List.map (\t -> t.id) teams)) }] })
+}

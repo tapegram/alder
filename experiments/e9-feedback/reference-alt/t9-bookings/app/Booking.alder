@@ -1,0 +1,83 @@
+module Booking
+
+import User
+import Room
+
+type BookingId = brand Text
+
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- covers is whether the booking holds its room on `day`: from `from` up to the day before `to`.
+covers : Date -> Booking -> Bool
+covers day b = day >= b.from && day < b.to
+
+-- overlaps is whether two ranges share a day.
+overlaps : Date -> Date -> Booking -> Bool
+overlaps from to b = from < b.to && b.from < to
+
+-- firstFree walks forward a day at a time from `day` until no booking covers it. Each step moves
+-- one day and the bookings are finite, so the walk ends.
+firstFree : Date -> List Booking -> Date
+firstFree day bookings = if List.any (covers day) bookings then firstFree (Date.addDays 1 day) bookings else day
+
+-- ofRoom is the room's bookings, earliest first.
+ofRoom : Room.RoomId -> Query (List Booking)
+ofRoom room = Db.from Booking |> Db.where (Booking.room.eq room) |> Db.orderBy Booking.from.asc |> Db.all
+
+-- mine is the booking with that id when `user` made it.
+mine : User.UserId -> BookingId -> Query (Maybe Booking)
+mine user id = Db.from Booking |> Db.where (Booking.id.eq id) |> Db.where (Booking.owner.eq user) |> Db.first
+
+-- day n is n days after 1970-01-01: dates for the tests of the pure helpers above.
+day : Int -> Date
+day n = Date.addDays n (Time.toDate Time.epoch)
+
+-- span room owner a z is a booking of [day a, day z).
+span : Room.RoomId -> User.UserId -> Int -> Int -> Booking
+span room owner a z = { id: BookingId "b", room: room, owner: owner, from: day a, to: day z }
+
+test "a booking covers its from day, not its to day" = {
+  Task.succeed (List.map (\n -> covers (day n) (span (Room.RoomId "r") (User.UserId "u") 2 4)) [1, 2, 3, 4] == [False, True, True, False])
+}
+
+test "ranges that touch do not overlap" = {
+  let b = span (Room.RoomId "r") (User.UserId "u") 5 8
+  Task.succeed ([overlaps (day 7) (day 9) b, overlaps (day 4) (day 6) b, overlaps (day 8) (day 9) b, overlaps (day 3) (day 5) b] == [True, True, False, False])
+}
+
+test "the first free day walks past back-to-back bookings" = {
+  let at = span (Room.RoomId "r") (User.UserId "u")
+  Task.succeed ([firstFree (day 0) [at 0 2, at 2 3, at 4 6], firstFree (day 0) [at 1 3], firstFree (day 0) []] == [day 3, day 0, day 0])
+}
+
+test "ofRoom and mine read the right rows" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let green <- Db.insert Room { name: Text.NonEmpty "Green" }
+  let late <- Db.insert Booking { room: blue, owner: me, from: day 5, to: day 6 }
+  let early <- Db.insert Booking { room: blue, owner: other, from: day 1, to: day 2 }
+  let _ <- Db.insert Booking { room: green, owner: me, from: day 1, to: day 2 }
+  let blues <- ofRoom blue
+  let mineLate <- mine me late
+  let mineEarly <- mine me early
+  Task.succeed ({ blues: List.map (\b -> b.id) blues, late: Maybe.map (\b -> b.id) mineLate, early: mineEarly } == { blues: [early, late], late: Just late, early: Nothing })
+}
+
+test "rooms and users with bookings stay" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let _ <- Db.insert Booking { room: blue, owner: me, from: day 1, to: day 2 }
+  let _ <- Test.run (Db.delete Room blue)
+  let _ <- Test.run (Db.delete User me)
+  let rooms <- Db.from Room |> Db.count
+  let users <- Db.from User |> Db.count
+  let bookings <- Db.from Booking |> Db.count
+  Task.succeed ({ rooms: rooms, users: users, bookings: bookings } == { rooms: 1, users: 1, bookings: 1 })
+}
