@@ -11,7 +11,8 @@ type-checked, its `eval=` and `error=` expressions are evaluated, and its
 other expressions are parsed. As of M4b, `alder test` runs the app's
 tests. As of M5b, `alder migrate` writes the app's migrations. As of
 M10, the runtime travels inside the `alder` binary, so a build needs
-only `alder` and Go, and `alder version` says which alder you have.
+only `alder` and Go, `alder version` says which alder you have, and
+`alder new` writes a new app to start from.
 `fmt`, holes beyond W0002 and `query` are planned.
 
 ## Project layout
@@ -60,11 +61,14 @@ module todos
 go 1.27
 ```
 
-An app that is not inside a Go module doesn't need one.
+An app that is not inside a Go module doesn't need one. `alder new`
+(below) decides for you: it looks for a `go.mod` above the new directory
+and writes the app's own only when it finds one.
 
 ## Commands
 
 ```
+alder new <name>     write a new app, the guestbook, into the directory <name>
 alder check          type-check everything; milliseconds; no output on success
 alder build          check, generate Go, go build → ./build/myapp/myapp
 alder run            build and run with the dev database, reloading on change
@@ -78,6 +82,87 @@ alder dump <path>    print a file's tokens, AST, or an app's IR
 alder explain <id>   explain a diagnostic code
 alder version        print alder's version and the Go it was built with
 ```
+
+### `alder new`
+
+`alder new <name>` writes a new app into the directory `<name>`: the
+guestbook that chapter 2 tours, with an empty session and the two error
+pages (`app/App.alder`), a layout (`app/Layout.alder`), one table
+(`app/Entry.alder`), one page with a form and a test through the browser
+(`app/Home.alder`), a stylesheet, an `adapters/` directory that holds only
+a README saying what goes there, a `README.md` with the five commands, and
+its first migration:
+
+```
+$ alder new guestbook
+created guestbook/
+  README.md
+  adapters/README.md
+  app/App.alder
+  app/Entry.alder
+  app/Home.alder
+  app/Layout.alder
+  migrations/0001_initial.sql
+  migrations/schema.json
+  static/app.css
+
+next:
+  cd guestbook
+  alder check            # type-check the app
+  alder test             # run its tests
+  alder test --mutate    # measure the tests
+  alder build            # build the server, build/guestbook/guestbook
+  alder run              # serve on http://localhost:8080, rebuilding on every save
+```
+
+The argument may be a path (`alder new apps/guestbook`); its last part is
+the app's name. What it does, in order:
+
+1. **Checks the name**: letters, digits and `-`, starting with a letter,
+   because it names the directory, the server (`build/<name>/<name>`) and,
+   inside another Go module, the app's own Go module. Anything else is
+   refused, and nothing is written:
+
+   ```
+   $ alder new 9lives
+   alder new: `9lives` is not a valid app name: use letters, digits and `-`, starting with a letter (it names the directory, the built binary and the app's Go module)
+   ```
+
+2. **Checks the directory**: it must not exist, or be empty. `alder new`
+   never writes over anything:
+
+   ```
+   $ alder new guestbook
+   alder new: `guestbook` exists and is not empty: choose another name, or empty it first
+   ```
+
+3. **Writes the files.** They are embedded in the `alder` binary
+   (`internal/scaffold/files/`, read with Go's `embed`, like the runtime;
+   chapter 13), and the app's name is put where a file mentions it (the
+   README's title and commands).
+4. **Writes a `go.mod`, only inside another Go module.** It walks up from
+   the new directory's parent looking for a `go.mod`; when it finds one,
+   the app gets the `go.mod` of "Project layout" above (`module <name>`,
+   `go 1.27`, and a comment saying why), and the listing gains the line
+   `go.mod keeps the app out of the Go module of <that go.mod>`.
+5. **Runs the migration generator** on the new app, the same code as
+   `alder migrate`, so `migrations/0001_initial.sql` and
+   `migrations/schema.json` are exactly what `alder migrate` would write;
+   running `alder migrate` right after says `no changes since
+   0001_initial`.
+
+It exits 0 when the app is written; 1 for a refused name or directory;
+2 for a usage error or a file it cannot write (it then removes what it
+wrote). `alder new` does not need Go: the first command that does is
+`alder test` or `alder build`.
+
+The scaffold and chapter 2 cannot drift apart: `go test ./book` runs the
+built `alder new guestbook` and requires chapter 2 to quote every file it
+writes, as it is (`TestBook_Scaffold`), and the tests of `alder new`
+(`cmd/alder/new_test.go`) build, test and serve the scaffold from a
+directory outside this repository, both outside any Go module and inside
+one. Its one test leaves one mutant alive (score 0.67): the order of the
+entries, which chapter 2 shows how to test.
 
 ### `alder build`
 

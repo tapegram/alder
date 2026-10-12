@@ -65,3 +65,105 @@ Without JavaScript the same app works as full page loads.
   need a rich client, Alder is the wrong tool.
 - Not an ORM. The database layer covers CRUD and filtering; anything else is
   a capability implemented in Go.
+
+## Installing
+
+Alder is one program, `alder`, the compiler and every tool around it.
+Install it one of three ways:
+
+- **A release archive.** Each release on GitHub
+  (`github.com/tapegram/alder`, under Releases) has an archive per
+  platform, named `alder_<version>_<os>_<arch>.tar.gz`: `darwin` (macOS)
+  and `linux`, each for `amd64` (Intel and AMD) and `arm64` (Apple silicon,
+  ARM servers), and a `.zip` for `windows_amd64`, which builds but is
+  untested. Unpack it and put `alder` in a directory on your `PATH`
+  (`/usr/local/bin`, or `~/bin`). A checksums file sits next to the
+  archives.
+- **Homebrew** (macOS and Linux): the tap is
+  `tapegram/homebrew-alder`.
+
+  ```
+  brew install tapegram/alder/alder
+  ```
+
+  Homebrew installs Go with it.
+- **The container image**, for CI: `ghcr.io/tapegram/alder:<version>` is
+  Go's official image with `alder` added, so a pipeline can check, test and
+  build an app without installing anything:
+
+  ```
+  docker run --rm -v "$PWD":/app -w /app ghcr.io/tapegram/alder:<version> alder test
+  ```
+
+There is no `go install`: the compiler's Go module is named `alder`, not
+its GitHub address, so the go command cannot fetch it by that address
+(chapter 13, "The runtime travels with the compiler", says why the name
+stays).
+
+**Go is the one prerequisite.** `alder` turns your app into Go and runs
+`go build` on it, so `alder build`, `alder test`, `alder run`, `alder eval`
+and `alder repl` need the `go` command on your `PATH`, version **1.27 or
+newer** (from `go.dev/dl`, or your package manager). `alder new`, `alder
+check`, `alder migrate` and `alder dump` do not use it. Nothing else is
+needed: the runtime your app is built on is inside the `alder` binary,
+and SQLite is compiled into every app.
+
+Check what you have (here, a binary of the release `v0.1.0`):
+
+```
+$ alder version
+alder v0.1.0 (go 1.27.1)
+$ go version
+go version go1.27.1 darwin/arm64
+```
+
+`alder version` prints the version and the Go it was built with; a
+binary built from a checkout of the repository says `devel+<commit>`
+instead of a version (chapter 11, "`alder version`").
+
+The first build on a machine downloads one thing: `modernc.org/sqlite`,
+the SQLite the runtime uses, written in Go, with the few modules it needs,
+through Go's module proxy. The build says so on its first line:
+
+```
+fetching modernc.org/sqlite (first build on this machine)
+```
+
+Go keeps the download in its module cache, so every later build, of any
+app, is offline. Without network access that first build stops with an
+error that says what it needed (chapter 11).
+
+## Your first app
+
+`alder new` writes a small, complete app to start from, a guestbook,
+into a new directory:
+
+```
+$ alder new guestbook
+created guestbook/
+  README.md
+  adapters/README.md
+  app/App.alder
+  app/Entry.alder
+  app/Home.alder
+  app/Layout.alder
+  migrations/0001_initial.sql
+  migrations/schema.json
+  static/app.css
+
+next:
+  cd guestbook
+  alder check            # type-check the app
+  alder test             # run its tests
+  alder test --mutate    # measure the tests
+  alder build            # build the server, build/guestbook/guestbook
+  alder run              # serve on http://localhost:8080, rebuilding on every save
+```
+
+The name is the directory, and the name of the server `alder build`
+makes, so it is letters, digits and `-`, starting with a letter; `alder
+new` will not write into a directory that already has something in it.
+Run the five commands it prints, from the new directory: the app checks,
+its one test passes, the mutation score says what that test misses, and
+`alder run` serves it at `http://localhost:8080`. Chapter 2 reads every
+file `alder new` wrote; chapter 11 has the details of each command.

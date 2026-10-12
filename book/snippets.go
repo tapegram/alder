@@ -349,3 +349,57 @@ func JoinParts(parts []Snippet) (src string, lines []int) {
 	}
 	return b.String(), lines
 }
+
+// A FileBlock is a fenced block that quotes a whole file of an example app that is not an Alder
+// module: its info string has a word `file=<example>/<path>` (```css file=guestbook/static/app.css).
+// Its source must be the file, byte for byte.
+type FileBlock struct {
+	Line    int    // the line of the opening fence
+	Example string // the example app, e.g. "guestbook"
+	Path    string // the file's path in the app, slash-separated, e.g. "static/app.css"
+	Source  string // the lines between the fences, each ending in "\n"
+}
+
+// ExtractFiles returns the file= blocks of the Markdown file at path, in order. A file= word
+// without an example and a path is an error.
+func ExtractFiles(path string) ([]FileBlock, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var out []FileBlock
+	var cur *FileBlock
+	var src strings.Builder
+	inFence := false
+	for i, l := range strings.Split(string(b), "\n") {
+		fence := strings.HasPrefix(l, "```")
+		switch {
+		case cur != nil && fence:
+			cur.Source = src.String()
+			out = append(out, *cur)
+			cur, inFence = nil, false
+		case cur != nil:
+			src.WriteString(l + "\n")
+		case inFence && fence:
+			inFence = false
+		case fence:
+			inFence = true
+			for _, w := range strings.Fields(strings.TrimPrefix(l, "```")) {
+				f, ok := strings.CutPrefix(w, "file=")
+				if !ok {
+					continue
+				}
+				ex, p, ok := strings.Cut(f, "/")
+				if !ok || !exampleRE.MatchString(ex) || p == "" {
+					return nil, fmt.Errorf("%s:%d: file= wants <example>/<path>, such as guestbook/static/app.css, got %q", path, i+1, f)
+				}
+				cur = &FileBlock{Line: i + 1, Example: ex, Path: p}
+				src.Reset()
+			}
+		}
+	}
+	if cur != nil {
+		return out, fmt.Errorf("%s:%d: unterminated file= block", path, cur.Line)
+	}
+	return out, nil
+}

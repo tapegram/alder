@@ -32,11 +32,24 @@ var (
 	// todosApp is examples/todos, absolute; exampleModules are its modules except App.
 	todosApp, _    = filepath.Abs("../examples/todos")
 	exampleModules []string
+	// scaffoldApp is the app `alder new guestbook` wrote with the built binary (the example
+	// ScaffoldExample), and newOutput what it printed.
+	scaffoldApp string
+	newOutput   string
 )
+
+// ScaffoldExample is the example name under which chapter 2 quotes the scaffold `alder new`
+// writes (```alder part=guestbook/Home, ```css file=guestbook/static/app.css): it is not a
+// directory under examples/ but the output of the built binary, so the chapter and the
+// generator cannot drift apart (TestBook_Scaffold).
+const ScaffoldExample = "guestbook"
 
 // exampleApp is the directory of the example app named ex (a directory under examples/),
 // absolute.
 func exampleApp(ex string) string {
+	if ex == ScaffoldExample {
+		return scaffoldApp
+	}
 	if ex == DefaultExample {
 		return todosApp
 	}
@@ -69,6 +82,20 @@ func alder(t *testing.T) string {
 			buildErr = fmt.Errorf("building alder: %v\n%s", err, out)
 			return
 		}
+		// the scaffold, as a user makes it: `alder new guestbook` in an empty directory
+		work := filepath.Join(tmpRoot, "scaffold")
+		if err := os.MkdirAll(work, 0o755); err != nil {
+			buildErr = err
+			return
+		}
+		cmd = exec.Command(alderBin, "new", ScaffoldExample)
+		cmd.Dir = work
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			buildErr = fmt.Errorf("alder new %s: %v\n%s", ScaffoldExample, err, out)
+			return
+		}
+		scaffoldApp, newOutput = filepath.Join(work, ScaffoldExample), string(out)
 		filepath.WalkDir(filepath.Join(todosApp, "app"), func(p string, d fs.DirEntry, err error) error {
 			if err == nil && !d.IsDir() && strings.HasSuffix(p, ".alder") {
 				rel, _ := filepath.Rel(filepath.Join(todosApp, "app"), p)
@@ -811,6 +838,205 @@ func TestBook(t *testing.T) {
 			}
 			total.fragments = append(total.fragments, r.fragments...)
 		})
+	}
+}
+
+// TestBook_Scaffold (RF4): chapter 2 quotes every file `alder new guestbook` writes, each as
+// it is (scaffoldDrift), chapter 1 quotes what `alder new guestbook` prints, and the scaffold
+// checks clean and passes its one test.
+func TestBook_Scaffold(t *testing.T) {
+	bin := alder(t)
+	for _, msg := range scaffoldDrift("02-tour.md", "book/02-tour.md") {
+		t.Error(msg)
+	}
+	ch1, err := os.ReadFile("01-why.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(ch1), "$ alder new guestbook\n"+newOutput+"```") {
+		t.Errorf("book/01-why.md does not quote what `alder new guestbook` prints, which is:\n%s", newOutput)
+	}
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"check"}, ""},
+		{[]string{"test"}, "ok   Home \"signing adds an entry\"\n1 passed, 0 failed\n"},
+	} {
+		cmd := exec.Command(bin, c.args...)
+		cmd.Dir = scaffoldApp
+		out, err := cmd.CombinedOutput()
+		if err != nil || string(out) != c.want {
+			t.Errorf("alder %s in the scaffold: %v\n%s", strings.Join(c.args, " "), err, out)
+		}
+	}
+}
+
+// scaffoldDrift compares chapter (reported as display) with the scaffold at scaffoldApp: every
+// file of it but go.mod (written only inside another Go module) must be quoted, a module by
+// its part=guestbook/<Module> blocks (joined, the same line for line but blank lines) and any
+// other file by one file=guestbook/<path> block (the same byte for byte); a quoted file the
+// scaffold does not have fails too. It returns a message per difference.
+func scaffoldDrift(chapter, display string) []string {
+	var msgs []string
+	files := map[string]bool{}
+	err := filepath.WalkDir(scaffoldApp, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(scaffoldApp, p)
+		rel = filepath.ToSlash(rel)
+		switch {
+		case d.IsDir() && rel == "build":
+			return filepath.SkipDir
+		case !d.IsDir() && rel != "go.mod":
+			files[rel] = false
+		}
+		return nil
+	})
+	if err != nil {
+		return []string{err.Error()}
+	}
+	snips, err := Extract(chapter)
+	if err != nil {
+		return []string{err.Error()}
+	}
+	parts := map[string][]Snippet{}
+	var order []string
+	for _, s := range snips {
+		exp, err := Expectation(s.Info)
+		if err != nil || exp.Kind != Part || exp.Example != ScaffoldExample {
+			continue
+		}
+		if _, ok := parts[exp.Module]; !ok {
+			order = append(order, exp.Module)
+		}
+		parts[exp.Module] = append(parts[exp.Module], s)
+	}
+	for _, m := range order {
+		rel := "app/" + strings.ReplaceAll(m, ".", "/") + ".alder"
+		src, _ := JoinParts(parts[m])
+		if msg := sameAsExample(ScaffoldExample, m, src); msg != "" {
+			msgs = append(msgs, fmt.Sprintf("%s:%d: %s", display, parts[m][0].Line, msg))
+		}
+		files[rel] = true // quoted (rightly or not: a difference is reported once)
+	}
+	blocks, err := ExtractFiles(chapter)
+	if err != nil {
+		return append(msgs, err.Error())
+	}
+	for _, b := range blocks {
+		if b.Example != ScaffoldExample {
+			continue
+		}
+		quoted, ok := files[b.Path]
+		switch {
+		case !ok:
+			msgs = append(msgs, fmt.Sprintf("%s:%d: file=%s/%s: alder new writes no such file", display, b.Line, b.Example, b.Path))
+			continue
+		case quoted:
+			msgs = append(msgs, fmt.Sprintf("%s:%d: file=%s/%s is quoted twice", display, b.Line, b.Example, b.Path))
+			continue
+		}
+		want, err := os.ReadFile(filepath.Join(scaffoldApp, filepath.FromSlash(b.Path)))
+		if err != nil {
+			return append(msgs, err.Error())
+		}
+		if b.Source != string(want) {
+			msgs = append(msgs, fmt.Sprintf("%s:%d: file=%s/%s differs from what alder new writes (internal/scaffold/files/%s, or the migration generator):\n%s", display, b.Line, b.Example, b.Path, b.Path, firstDiff(b.Source, string(want))))
+		}
+		files[b.Path] = true
+	}
+	var missing []string
+	for f, quoted := range files {
+		if !quoted {
+			missing = append(missing, f)
+		}
+	}
+	sort.Strings(missing)
+	for _, f := range missing {
+		how := "a ```<lang> file=" + ScaffoldExample + "/" + f + " block"
+		if strings.HasSuffix(f, ".alder") {
+			how = "```alder part=" + ScaffoldExample + "/" + strings.ReplaceAll(strings.TrimSuffix(strings.TrimPrefix(f, "app/"), ".alder"), "/", ".") + " blocks"
+		}
+		msgs = append(msgs, fmt.Sprintf("%s: alder new writes %s, which the chapter does not quote as it is: add %s", display, f, how))
+	}
+	return msgs
+}
+
+// firstDiff names the first line where got and want differ.
+func firstDiff(got, want string) string {
+	g, w := strings.Split(got, "\n"), strings.Split(want, "\n")
+	for i := 0; i < max(len(g), len(w)); i++ {
+		var gl, wl string
+		if i < len(g) {
+			gl = g[i]
+		}
+		if i < len(w) {
+			wl = w[i]
+		}
+		if gl != wl {
+			return fmt.Sprintf("  line %d: the book has %q, the file %q", i+1, gl, wl)
+		}
+	}
+	return "  (the same lines)"
+}
+
+// TestBook_ScaffoldDrift proves scaffoldDrift fails: a chapter that quotes every scaffold file
+// passes; one changed line of a file= block, one changed line of a module and one file left out
+// are each one failure.
+func TestBook_ScaffoldDrift(t *testing.T) {
+	alder(t)
+	var full strings.Builder
+	err := filepath.WalkDir(scaffoldApp, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			if d != nil && d.IsDir() && d.Name() == "build" {
+				return filepath.SkipDir
+			}
+			return err
+		}
+		rel, _ := filepath.Rel(scaffoldApp, p)
+		rel = filepath.ToSlash(rel)
+		if rel == "go.mod" {
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if m, ok := strings.CutSuffix(strings.TrimPrefix(rel, "app/"), ".alder"); ok {
+			fmt.Fprintf(&full, "```alder part=guestbook/%s\n%s```\n\n", strings.ReplaceAll(m, "/", "."), b)
+		} else {
+			fmt.Fprintf(&full, "```text file=guestbook/%s\n%s```\n\n", rel, b)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chapter := func(md string) []string {
+		p := filepath.Join(t.TempDir(), "ch.md")
+		if err := os.WriteFile(p, []byte(md), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return scaffoldDrift(p, "ch.md")
+	}
+	if msgs := chapter(full.String()); len(msgs) != 0 {
+		t.Fatalf("every file quoted: %v", msgs)
+	}
+	md := full.String()
+	for _, c := range []struct{ name, old, new, want string }{
+		{"a file= line", "max-width: 40rem;", "max-width: 50rem;", "file=guestbook/static/app.css differs"},
+		{"a module line", "<h1>Guestbook</h1>", "<h1>Visitors</h1>", "the part=guestbook/Home blocks joined differ"},
+		{"a file left out", "```text file=guestbook/adapters/README.md", "```text", "alder new writes adapters/README.md, which the chapter does not quote"},
+	} {
+		if !strings.Contains(md, c.old) {
+			t.Fatalf("%s: the chapter lacks %q", c.name, c.old)
+		}
+		msgs := chapter(strings.Replace(md, c.old, c.new, 1))
+		if len(msgs) != 1 || !strings.Contains(msgs[0], c.want) {
+			t.Errorf("%s: %v", c.name, msgs)
+		}
 	}
 }
 
