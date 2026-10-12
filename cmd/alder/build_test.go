@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -423,5 +424,45 @@ func TestBuild_MissingAdapterNamesApp(t *testing.T) {
 		"capability `App.Clock` needs `adapters/app/` with `func Clock() app.Cap__App__Clock`\n"
 	if code != 1 || stdout != "" || stderr != want {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %q\nwant %q", code, stdout, stderr, want)
+	}
+}
+
+// The first build on a machine downloads the runtime's dependencies (modernc.org/sqlite); when
+// that cannot happen (here GOPROXY=off with an empty module cache) alder build and alder test
+// say so as the machine's problem, exit 1, never as an internal error. With a warm cache a
+// build prints nothing extra.
+func TestBuild_DependencyDownload(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go is not on PATH")
+	}
+	src, err := filepath.Abs("../../examples/todos")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := t.TempDir()
+	copyDir(t, src, filepath.Join(tmp, "todos"))
+	os.RemoveAll(filepath.Join(tmp, "todos", "build"))
+	t.Chdir(tmp)
+
+	// warm (the machine's own cache): no fetching line, nothing on stderr
+	code, stdout, stderr := runBuild(t, "todos")
+	if code != 0 || stderr != "" || stdout != "wrote build/todos/todos\n" {
+		t.Fatalf("warm build: exit %d\nstdout: %q\nstderr: %q", code, stdout, stderr)
+	}
+
+	t.Setenv("GOMODCACHE", t.TempDir())
+	t.Setenv("GOPROXY", "off")
+	os.RemoveAll("build")
+	want := "could not download the runtime's dependency modernc.org/sqlite through Go's module proxy (GOPROXY=off); the first build on a machine needs network access:\n"
+	code, stdout, stderr = runBuild(t, "todos")
+	if code != 1 || strings.Contains(stderr, "internal error") ||
+		!strings.HasPrefix(stderr, buildkit.FetchingLine+"\nalder build: "+want) || !strings.Contains(stderr, "GOPROXY=off") {
+		t.Fatalf("offline first build: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	var out, errb bytes.Buffer
+	code = runTestTo([]string{"todos"}, &out, &errb)
+	if code != 1 || strings.Contains(errb.String(), "internal error") ||
+		!strings.HasPrefix(errb.String(), buildkit.FetchingLine+"\nalder test: "+want) {
+		t.Fatalf("offline first test: exit %d\nstdout: %s\nstderr: %s", code, out.String(), errb.String())
 	}
 }

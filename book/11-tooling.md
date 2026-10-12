@@ -882,8 +882,29 @@ can move or copy `build/<app>/` and build it again there with `go build
 The runtime needs Go modules from outside: `modernc.org/sqlite`, SQLite
 written in Go, and the few it uses. `build/<app>/go.sum` (and
 `rt/go.sum`) list their checksums. The first build on a machine downloads
-them once, through Go's module proxy, into Go's module cache; every build
-after that is offline (`GOPROXY=off alder build` succeeds).
+them once, through Go's module proxy, into Go's module cache, and says so
+first on standard error:
+
+```
+fetching modernc.org/sqlite (first build on this machine)
+```
+
+Every build after that is offline (`GOPROXY=off alder build` succeeds)
+and prints no such line. Before `go vet` and `go build`, every build runs
+`go mod download` for the runtime's requirements with the network off,
+which takes milliseconds when the cache has them; only when that fails
+does it print the line and download (`buildkit.DownloadDeps`). When the
+download fails too (no network, `GOPROXY=off`, a proxy that refuses), the
+build stops with exit 1 and Go's own reason:
+
+```
+alder build: could not download the runtime's dependency modernc.org/sqlite through Go's module proxy (GOPROXY=off); the first build on a machine needs network access:
+go: module lookup disabled by GOPROXY=off
+```
+
+(Go repeats its line once per module.) `alder test` and `alder eval` say
+the same after their own prefix and exit 1; the REPL prints it and waits
+for the next entry.
 
 ### `alder version`
 
@@ -897,8 +918,8 @@ built with. The version comes from what the go command records in every
 binary it builds (`runtime/debug.ReadBuildInfo`, read by
 `internal/version`):
 
-- a released binary, or one installed with `go install …@v0.1.0`, gives
-  its module version: `alder v0.1.0 (go 1.27.1)`;
+- a released binary (a release archive, or Homebrew's) gives its module
+  version: `alder v0.1.0 (go 1.27.1)`;
 - one built in a checkout of the repository (`go build ./cmd/alder`, `go
   install ./cmd/alder`) gives `devel+` and the first twelve hex digits of
   the commit, with `-dirty` added when the checkout had uncommitted

@@ -114,7 +114,8 @@ const Timeout = 60 * time.Second
 //   - Binary is "" when Diags hold an error or a typed hole (W0002), or when Err is set. Err is
 //     set only for I/O failures, an extra module named like an app or stdlib module
 //     (*ModuleExistsError), adapters that are refused or do not compile with the app
-//     (*AdapterError: the user's, as a check error is), generated or caller Go that does not
+//     (*AdapterError: the user's, as a check error is), the runtime's dependencies that cannot
+//     be downloaded (*buildkit.DownloadError: the machine's), generated or caller Go that does not
 //     vet, and go build failures; its message carries Go's output.
 //   - Compile writes only under out (the generated module "app" with its caps/ when it wires
 //     the adapters (Checked.WiresAdapters), the runtime it requires in rt/ with go.sum
@@ -151,6 +152,11 @@ type Options struct {
 	// Waiting, when set, is called once when another process (or Build) holds the lock on the
 	// output directory, before CompileCheckedWith waits for it (a done ctx ends the wait).
 	Waiting func()
+	// Fetching, when set, is called once before the runtime's dependencies are downloaded into
+	// Go's module cache (buildkit.DownloadDeps), which happens on a machine's first build; the
+	// commands print buildkit.FetchingLine. A failed download is Build.Err, a
+	// *buildkit.DownloadError.
+	Fetching func()
 	// Tests makes a test build (gen.Options.Tests, for `alder test`, `alder eval` and the REPL,
 	// whose scratch mains use app.TestSession()): the app's tests (Tests, TestSession), its fakes,
 	// their tables (FakeTables) and Test.fake's capability swap are compiled in. Without it the
@@ -250,6 +256,10 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 	}
 	if err := buildkit.WriteRuntime(b.Dir); err != nil {
 		b.Err = err
+		return b
+	}
+	if err := buildkit.DownloadDeps(ctx, b.Dir, o.Fetching); err != nil {
+		b.Err = err // a *buildkit.DownloadError: the machine's network, not the program
 		return b
 	}
 	if err := buildkit.CopyAdapters(adapters, filepath.Join(b.Dir, "adapters"), hasAdapters); err != nil {

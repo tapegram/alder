@@ -87,6 +87,11 @@ func GoCmd(dir string, args ...string) ([]byte, error) {
 // go into a fresh directory (GOTMPDIR, under os.TempDir) that GoCmdContext removes when the
 // command returns, however it ends: a killed go cannot remove its own go-build* directory.
 func GoCmdContext(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	return goCmdEnv(ctx, dir, nil, args...)
+}
+
+// goCmdEnv is GoCmdContext with env added to the go command's environment (last, so it wins).
+func goCmdEnv(ctx context.Context, dir string, env []string, args ...string) ([]byte, error) {
 	tmp, err := os.MkdirTemp("", "alder-go-")
 	if err != nil {
 		return nil, err
@@ -95,7 +100,7 @@ func GoCmdContext(ctx context.Context, dir string, args ...string) ([]byte, erro
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.WaitDelay = 2 * time.Second // a compiler it started may hold the output a moment longer
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "GOTMPDIR="+tmp)
+	cmd.Env = append(append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "GOTMPDIR="+tmp), env...)
 	return cmd.CombinedOutput()
 }
 
@@ -295,6 +300,85 @@ func WriteRuntime(dst string) error {
 		}
 	}
 	return writeIfChanged(filepath.Join(dst, "go.sum"), want["go.sum"])
+}
+
+// FetchingLine is what a build prints (on standard error) before DownloadDeps downloads the
+// runtime's dependencies, which happens once per machine (per Go module cache).
+const FetchingLine = "fetching modernc.org/sqlite (first build on this machine)"
+
+// DownloadError is DownloadDeps' error: the runtime's dependencies are not in Go's module cache
+// and could not be downloaded. It is the environment's fault (no network, GOPROXY=off, a proxy
+// that refuses), not the program's and not the compiler's: the commands exit 1.
+type DownloadError struct {
+	Proxy string // GOPROXY as the go command sees it
+	Out   string // the go command's output
+}
+
+func (e *DownloadError) Error() string {
+	return fmt.Sprintf("could not download the runtime's dependency modernc.org/sqlite through Go's module proxy (GOPROXY=%s); the first build on a machine needs network access:\n%s",
+		e.Proxy, strings.TrimRight(e.Out, "\n"))
+}
+
+// DownloadDeps makes sure the modules the runtime requires (the requirements of the go.mod
+// WriteRuntime wrote into dir/rt) are in Go's module cache, before go vet or go build in dir
+// would fail on them with an error that looks like the compiler's. It first asks with the
+// network off (`GOPROXY=off go mod download <modules>`), which succeeds at once on a machine
+// that has built an app before; only when that fails does it call fetching (when set) and
+// download them through the configured proxy. Its error is a *DownloadError, or ctx's.
+func DownloadDeps(ctx context.Context, dir string, fetching func()) error {
+	mods, err := runtimeRequires(filepath.Join(dir, RuntimeDir, "go.mod"))
+	if err != nil {
+		return err
+	}
+	if len(mods) == 0 {
+		return nil
+	}
+	args := append([]string{"mod", "download"}, mods...)
+	if _, err := goCmdEnv(ctx, dir, []string{"GOPROXY=off"}, args...); err == nil {
+		return nil
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if fetching != nil {
+		fetching()
+	}
+	out, err := GoCmdContext(ctx, dir, args...)
+	if err == nil {
+		return nil
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	proxy, perr := GoCmdContext(ctx, dir, "env", "GOPROXY")
+	if perr != nil {
+		proxy = []byte("?")
+	}
+	return &DownloadError{Proxy: strings.TrimSpace(string(proxy)), Out: string(out)}
+}
+
+// runtimeRequires lists the module paths the go.mod at path requires.
+func runtimeRequires(path string) ([]string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var mods []string
+	inBlock := false
+	for _, line := range strings.Split(string(b), "\n") {
+		f := strings.Fields(line)
+		switch {
+		case len(f) == 2 && f[0] == "require" && f[1] == "(":
+			inBlock = true
+		case len(f) > 0 && f[0] == ")":
+			inBlock = false
+		case len(f) >= 3 && f[0] == "require":
+			mods = append(mods, f[1])
+		case inBlock && len(f) >= 2 && !strings.HasPrefix(f[0], "//"):
+			mods = append(mods, f[0])
+		}
+	}
+	return mods, nil
 }
 
 // writeIfChanged writes b to path (creating its directory) unless path already holds b.

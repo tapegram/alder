@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -20,8 +21,9 @@ import (
 // runBuildTo is `alder build [--emit] [dir]`: check the app in dir and, when it has no errors
 // and no holes, lower it and emit its Go into build/<app>/ (app is dir's base name), the module
 // "app", with the runtime it requires in build/<app>/rt/ (buildkit.WriteRuntime: the copy
-// embedded in this binary, refreshed on every build). With --emit it stops there, after vetting
-// that package. Without, it builds the app's
+// embedded in this binary, refreshed on every build) and its dependencies in Go's module cache
+// (buildkit.DownloadDeps: downloaded once per machine, with the line buildkit.FetchingLine; a
+// failed download is exit 1). With --emit it stops there, after vetting that package. Without, it builds the app's
 // executable build/<app>/<app>: it checks that dir/adapters/ has an adapter for every
 // capability (buildkit.CheckAdapters: capability X of module A.B is `func BX()` of package
 // adapters/a/; every missing one is printed, and nothing is written), copies the whole
@@ -136,6 +138,14 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 	}
 	if err := buildkit.WriteRuntime(out); err != nil {
 		fmt.Fprintf(stderr, "alder build: %v\n", err)
+		return "", 2
+	}
+	fetching := func() { fmt.Fprintln(stderr, buildkit.FetchingLine) }
+	if err := buildkit.DownloadDeps(context.Background(), out, fetching); err != nil {
+		fmt.Fprintf(stderr, "alder build: %v\n", err)
+		if de := (*buildkit.DownloadError)(nil); errors.As(err, &de) {
+			return "", 1 // the machine's network or proxy, not the program or the compiler
+		}
 		return "", 2
 	}
 	if err := buildkit.CopyMigrations(filepath.Join(dir, "migrations"), filepath.Join(out, "migrations")); err != nil {

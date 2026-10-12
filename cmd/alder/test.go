@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"alder/internal/buildkit"
 	"alder/internal/diag"
 	"alder/internal/scratch"
 	rtesting "alder/rt/testing"
@@ -190,13 +191,16 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 	if mutate {
 		purpose = "mutate" // its own directory: a mutate build never replaces the plain test build
 	}
-	b := scratch.CompileCheckedWith(context.Background(), checked, testMain(checked.WiresAdapters(), mutate), purpose, "", scratch.Options{Tests: true, Mutate: mutate})
+	b := scratch.CompileCheckedWith(context.Background(), checked, testMain(checked.WiresAdapters(), mutate), purpose, "", scratch.Options{Tests: true, Mutate: mutate, Fetching: func() { fmt.Fprintln(stderr, buildkit.FetchingLine) }})
 	defer b.Close()
 	io.WriteString(stderr, b.Warning) // capabilities without adapters run unwired
 	if b.Err != nil {
 		fail(b.Err.Error())
 		if adapters := (*scratch.AdapterError)(nil); errors.As(b.Err, &adapters) {
 			return 1 // the user's adapters, as alder build says
+		}
+		if de := (*buildkit.DownloadError)(nil); errors.As(b.Err, &de) {
+			return 1 // the machine's network, as alder build says
 		}
 		return 2
 	}

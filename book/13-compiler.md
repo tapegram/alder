@@ -3324,8 +3324,9 @@ embedded files with `git ls-files rt` without the tests, `testdata/` and
 `TestDistModule` checks that the two `dist/` files equal the repository's
 `go.mod` and `go.sum`, and that every module `go.mod` requires is used by a
 package of `rt/`: the repository's dependencies are the runtime's (the
-compiler links SQLite too, but only because the migration generator,
-`internal/migrate`, imports the runtime's `rt/db` for its table types),
+compiler links SQLite too, but only because it uses the runtime's
+`rt/db`: the migration generator, buildkit's migration check, eval's
+dev-database hint),
 so the copy lists nothing the runtime does not need. The embed costs the
 binary about 0.4 MB.
 
@@ -3340,8 +3341,11 @@ the directory `build/todos/rt/rt/html/`. It writes `dst/go.sum` too, a
 copy of the runtime's, since the app module's only outside dependencies
 are the runtime's: with it Go can check every download, and a build
 needs no network once Go's module cache holds `modernc.org/sqlite`.
-`alder build` calls it right after writing the generated files, and the
-scratch runner (`scratch.CompileCheckedWith`) does the same in its own
+`alder build` calls it right after writing the generated files, then
+`buildkit.DownloadDeps`, which makes sure Go's module cache holds the
+runtime's requirements before `go vet` could fail on them in a way that
+looks like the compiler's fault (chapter 11 shows its one line and its
+error); the scratch runner (`scratch.CompileCheckedWith`) does the same in its own
 directory, so `alder test`, `eval` and the REPL build the same runtime as
 `alder build`.
 

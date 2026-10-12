@@ -10,8 +10,8 @@ import (
 	"strings"
 )
 
-// String is this binary's version: the module version of a released or `go install`ed binary
-// ("v0.1.0"); "devel+<commit>" (the first 12 hex digits, "-dirty" appended when the checkout had
+// String is this binary's version: the module version of a released binary (release archive or
+// Homebrew: "v0.1.0"); "devel+<commit>" (the first 12 hex digits, "-dirty" appended when the checkout had
 // uncommitted changes) for a binary built in a checkout, whose module version is a pseudo-version
 // or none; "(devel)" when the binary records neither.
 func String() string {
@@ -35,7 +35,7 @@ var pseudo = regexp.MustCompile(`[-.]\d{14}-[0-9a-f]{12}(\+dirty)?$`)
 func FromBuildInfo(bi *debug.BuildInfo) string {
 	v := bi.Main.Version
 	if v != "" && v != "(devel)" && !pseudo.MatchString(v) && !strings.HasSuffix(v, "+dirty") {
-		return v // a released or `go install …@version` binary
+		return v // a released binary (release archive or Homebrew)
 	}
 	var rev string
 	dirty := false

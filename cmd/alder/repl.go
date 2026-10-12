@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"alder/internal/buildkit"
 	"alder/internal/diag"
 	"alder/internal/scratch"
 	"alder/internal/snippets"
@@ -641,7 +642,7 @@ func (r *repl) run(checked scratch.Checked, kind mainKind, sig types.Type, lets 
 		env = append(env, "ALDER_EVAL_DB="+dbPath)
 	}
 	mainGo := scratchMain(kind, kind != mainPure && checked.WiresAdapters(), evalIt(r.modName, sig))
-	b := scratch.CompileCheckedWith(ctx, checked, mainGo, "repl", r.work, scratch.Options{NoVet: !r.vet, Tests: true})
+	b := scratch.CompileCheckedWith(ctx, checked, mainGo, "repl", r.work, scratch.Options{NoVet: !r.vet, Tests: true, Fetching: func() { fmt.Fprintln(r.stderr, buildkit.FetchingLine) }})
 	defer b.Close()
 	if ctx.Err() != nil {
 		return failf("interrupted")

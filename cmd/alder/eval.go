@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 
+	"alder/internal/buildkit"
 	"alder/internal/diag"
 	"alder/internal/gen"
 	"alder/internal/scratch"
@@ -199,7 +200,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	// CompileCheckedWith builds what was checked above (no second check) under the lock, which
 	// the Build holds until Close; another eval of the app holding it is waited for, said once
 	waiting := func() { fmt.Fprintln(stderr, "alder eval: waiting for another alder eval of this app…") }
-	b := scratch.CompileCheckedWith(sigCtx, checked, mainGo, "eval", filepath.Join(appBuild, "scratch", "eval"), scratch.Options{Waiting: waiting, Tests: true})
+	b := scratch.CompileCheckedWith(sigCtx, checked, mainGo, "eval", filepath.Join(appBuild, "scratch", "eval"), scratch.Options{Waiting: waiting, Tests: true, Fetching: func() { fmt.Fprintln(stderr, buildkit.FetchingLine) }})
 	defer b.Close()
 	if sigCtx.Err() != nil {
 		return failf(1, "alder eval: interrupted")
@@ -208,6 +209,9 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	if b.Err != nil {
 		if adapters := (*scratch.AdapterError)(nil); errors.As(b.Err, &adapters) {
 			return failf(1, "alder eval: %v", b.Err) // the user's adapters, as alder build says
+		}
+		if de := (*buildkit.DownloadError)(nil); errors.As(b.Err, &de) {
+			return failf(1, "alder eval: %v", b.Err) // the machine's network, as alder build says
 		}
 		return failf(2, "alder eval: %v", b.Err)
 	}
