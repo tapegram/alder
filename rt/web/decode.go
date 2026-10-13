@@ -29,6 +29,8 @@ const (
 	MsgEmail    = "must be an email address"
 	MsgURL      = "must be a URL"
 	MsgSecret   = "must not be empty"
+	// MsgOption is a `<Select options={…}>` value the page did not offer (chapter 5).
+	MsgOption = "must be one of the options"
 )
 
 // Text returns the raw first value of name, untrimmed (refinements decide what is valid).

@@ -888,9 +888,58 @@ func (g *adminGen) newPage(at *adminTable) {
 	}
 	tests = append(tests, TestData{Name: quote("creating " + article(at.noun) + " adds it, with the values submitted"), Lines: tb.lines,
 		Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
+	tests = append(tests, g.notOffered(at, mod, imports, false)...)
 	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return mod + " {}" })...)
 	b.WriteString(testsText(tests))
 	g.file(mod, imports, b.String())
+}
+
+// notOffered are the tests that a New (or Edit) page refuses, for each reference, a row id its
+// select did not offer (a request crafted by hand): the field error "must be one of the
+// options" (chapter 5), and nothing written. The other fields are sent valid: a reference the
+// first option's id, read from the page.
+func (g *adminGen) notOffered(at *adminTable, mod string, imports *importSet, edit bool) []TestData {
+	var tests []TestData
+	for _, c := range at.refs {
+		tb := g.tb(mod, imports, true)
+		page := mod + " {}"
+		target := ""
+		if edit {
+			target = tb.insertRow(at.t, "", nil, false)
+			page = pageLit(mod, []string{"id: " + target})
+		}
+		g.optionRows(tb, at)
+		tb.let("let page <- Test.get (%s)", page)
+		var raw []string
+		for _, d := range at.editable {
+			v := quote(rawSample(d.Type))
+			switch {
+			case d == c:
+				v = quote("missing")
+			case d.Ref != "" && g.p.TableNamed(d.Ref) != nil && !d.Maybe:
+				v = d.Name + "Id"
+				tb.let("let %s = Maybe.withDefault \"\" (Test.attr \"value\" \"select[name=%s] option\" page.doc)", v, d.Name)
+			}
+			raw = append(raw, fmt.Sprintf("{ name: %s, value: %s }", quote(d.Name), v))
+		}
+		tb.let("let r <- Test.submitRaw %s [%s]", at.formName(), strings.Join(raw, ", "))
+		rejected := fmt.Sprintf("FormRejected [{ field: %s, message: \"must be one of the options\" }]", quote(c.Name))
+		result := ""
+		if edit {
+			tb.let("let after <- Db.get %s %s", at.t.Name, target)
+			was := "Nothing" // the row's value, as the test inserted it: a Maybe's Nothing, else the first row
+			if !c.Maybe {
+				was = tb.rows[g.p.TableNamed(c.Ref).Module][0].v
+			}
+			result = fmt.Sprintf("{ answer: r.answer, %s: Maybe.map (\\row -> row.%s) after } == { answer: %s, %s: Just %s }",
+				c.Name, c.Name, rejected, c.Name, was)
+		} else {
+			tb.let("let rows <- Db.from %s |> Db.count", at.t.Name)
+			result = fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", rejected, tb.counts[at.t.Module])
+		}
+		tests = append(tests, TestData{Name: quote(article(strings.ToLower(Humanize(c.Name))) + " not offered is refused"), Lines: tb.lines, Result: result})
+	}
+	return tests
 }
 
 // valueOf is the value given to field name among values ("name: value").
@@ -1025,6 +1074,7 @@ func (g *adminGen) edit(at *adminTable) {
 	lhs, rhs = append(lhs, optLines[0]...), append(rhs, optLines[1]...)
 	tests = append(tests, TestData{Name: quote("saving changes every field"), Lines: tb.lines,
 		Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
+	tests = append(tests, g.notOffered(at, mod, imports, true)...)
 	tests = append(tests, g.missingTest(at, mod, imports))
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
 		return pageLit(mod, []string{"id: " + tb.insertRow(t, "", nil, false)})

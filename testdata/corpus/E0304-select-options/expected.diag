@@ -1,8 +1,10 @@
-app/Index.alder:35:7 E0304 `<al-select>` needs a union field, or `options={…}` for a field of `Text` or a brand of `Text`; `owner` has type `Index.OwnerId`
-app/Index.alder:36:31 E0304 `options` belongs on `<Select>` or `<al-select>`, not on `<al-input>`
-app/Index.alder:37:40 E0304 field `kind` is a union, whose options are its constructors; `options` is for a field of `Text` or a brand of `Text`, such as a row's id
-app/Index.alder:38:41 E0304 `options` needs a field of `Text` or a brand of `Text`, such as a row's id; `count` has type `Int`
-app/Index.alder:39:51 E0003 expected Text.NonEmpty, got Text
-app/Index.alder:39:63 E0003 expected Text, got Int
-  fix 39:63-39:64 Text.fromInt (1)
-app/Index.alder:40:51 E0003 expected Index.OwnerId, got Text
+app/Index.alder:30:72 E0304 `options` must be written in the page's `view`, which the runtime runs again from the model to check a submitted value; `<al-select>` is in `Picker`
+app/Index.alder:38:7 E0304 `<al-select>` needs a union field, or `options={…}` for a field of `Text` or a brand of `Text`; `owner` has type `Index.OwnerId`
+app/Index.alder:39:31 E0304 `options` belongs on `<Select>` or `<al-select>`, not on `<al-input>`
+app/Index.alder:40:40 E0304 field `kind` is a union, whose options are its constructors; `options` is for a field of `Text` or a brand of `Text`, such as a row's id
+app/Index.alder:41:41 E0304 `options` needs a field of `Text` or a brand of `Text`, such as a row's id; `count` has type `Int`
+app/Index.alder:42:51 E0003 expected Text.NonEmpty, got Text
+app/Index.alder:42:63 E0003 expected Text, got Int
+  fix 42:63-42:64 Text.fromInt (1)
+app/Index.alder:43:51 E0003 expected Index.OwnerId, got Text
+app/Index.alder:44:126 E0304 `options` may use only the view's parameters (`model`, `session`): `owners` is bound inside the view, and the runtime computes the options again from the model when the form is submitted; put the list in the model

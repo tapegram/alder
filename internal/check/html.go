@@ -502,8 +502,14 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 			c.errorf("E0304", options.GetSpan(), "`options` needs a field of `Text` or a brand of `Text`, such as a row's id; `%s` has type `%s`", fieldName, types.String(ft))
 			mc.infer(options, env, eff)
 		case options != nil:
-			// the options are the values the field may take, each with its label
+			// the options are the values the field may take, each with its label; a submitted value
+			// that is not one of them is refused, so the runtime computes them again on submit
+			if mc.page == nil || mc.value != "view" {
+				c.errorf("E0304", options.GetSpan(), "`options` must be written in the page's `view`, which the runtime runs again from the model to check a submitted value; `<%s>` is in `%s`", x.Tag, map[bool]string{true: mc.value, false: "a component"}[mc.value != ""])
+			}
+			mc.options, mc.optionsBad = env, map[string]bool{}
 			mc.check(options, &types.App{Con: "List", Args: []types.Type{&types.Record{Anonymous: true, Fields: []types.Field{{Name: "value", Type: inner}, {Name: "label", Type: types.Text}}}}}, env, eff)
+			mc.options, mc.optionsBad = nil, nil
 		case !isUnion:
 			c.errorf("E0304", x.Span, "`<%s>` needs a union field, or `options={…}` for a field of `Text` or a brand of `Text`; `%s` has type `%s`", x.Tag, fieldName, types.String(ft))
 		}
@@ -516,6 +522,26 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 		got := c.u.Apply(mc.infer(value, env, eff))
 		if c.u.Check(got, ft) != nil && c.u.Check(got, mc.maybeOf(ft)) != nil {
 			mc.mismatch(value.GetSpan(), got, ft)
+		}
+	}
+}
+
+// optionsVar reports E0304 for local variable x of an options expression (checked in env) that
+// is bound inside the view rather than by it (a `for`, `let` or `match` binding): the runtime
+// computes the options again from the view's parameters alone. Names bound inside the
+// expression itself (a lambda's) are fine.
+func (mc *modCtx) optionsVar(x *syntax.Var, env *env) {
+	inside := true // env frames below the options expression's own
+	for f := env; f != nil; f = f.parent {
+		if f == mc.options {
+			inside = false
+		}
+		if _, ok := f.vars[x.Name]; ok {
+			if !inside && f.parent != nil && !mc.optionsBad[x.Name] {
+				mc.optionsBad[x.Name] = true
+				mc.c.errorf("E0304", x.Span, "`options` may use only the view's parameters (`model`, `session`): `%s` is bound inside the view, and the runtime computes the options again from the model when the form is submitted; put the list in the model", x.Name)
+			}
+			return
 		}
 	}
 }

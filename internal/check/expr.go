@@ -935,6 +935,9 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 	c := mc.c
 	switch x.Ref.Kind {
 	case syntax.RefLocal:
+		if mc.options != nil {
+			mc.optionsVar(x, env)
+		}
 		if t, ok := env.lookup(x.Name); ok {
 			return t
 		}

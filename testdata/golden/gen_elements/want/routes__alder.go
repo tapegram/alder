@@ -6,6 +6,7 @@ import (
 	"alder/rt"
 	"alder/rt/eff"
 	"alder/rt/html"
+	"alder/rt/std"
 	"alder/rt/web"
 	"errors"
 	"net/url"
@@ -74,6 +75,62 @@ func page__Index(rq *web.Request, params Index__Params, keep any) (Index__Model,
 	return model, session, nil
 }
 
+// choices__Index__NewPost__Owner computes again the options page Index's view offers for field
+// owner of form Index.NewPost, to check a posted value (chapter 5).
+func choices__Index__NewPost__Owner(model Index__Model, session App__Session) []struct {
+	Value string
+	Label string
+} {
+	return model.People
+}
+
+// choices__Index__NewPost__Reviewer computes again the options page Index's view offers for field
+// reviewer of form Index.NewPost, to check a posted value (chapter 5).
+func choices__Index__NewPost__Reviewer(model Index__Model, session App__Session) []struct {
+	Value string
+	Label string
+} {
+	return std.ListMap(func(p struct {
+		Value string
+		Label string
+	}) struct {
+		Value string
+		Label string
+	} {
+		return struct {
+			Value string
+			Label string
+		}{Value: p.Value, Label: p.Label}
+	}, model.People)
+}
+
+// options__Index are the field errors of values posted on form (a page Index form) that its
+// `options={…}` selects did not offer: "must be one of the options" (chapter 5). The options are
+// computed again from the model, loaded for the message as for the page.
+func options__Index(form string, values map[string]string, model Index__Model, session App__Session) []web.FieldError {
+	var errs []web.FieldError
+	switch form {
+	case "Index.NewPost":
+		if !html.Offered(values["owner"], html.Choices(choices__Index__NewPost__Owner(model, session), func(_o struct {
+			Value string
+			Label string
+		}) html.Choice {
+			return html.Choice{Value: _o.Value, Label: _o.Label}
+		}), false) {
+			errs = append(errs, web.FieldError{Field: "owner", Message: web.MsgOption})
+		}
+		if !html.Offered(values["reviewer"], html.Choices(choices__Index__NewPost__Reviewer(model, session), func(_o struct {
+			Value string
+			Label string
+		}) html.Choice {
+			return html.Choice{Value: _o.Value, Label: _o.Label}
+		}), true) {
+			errs = append(errs, web.FieldError{Field: "reviewer", Message: web.MsgOption})
+		}
+	}
+	return errs
+}
+
 // params__Index are page Index's parameters as text for its message URLs
 // (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
 func params__Index(_ Index__Params) []rt.KV {
@@ -91,6 +148,12 @@ func update__Index(rq *web.Request, params Index__Params, msg Index__Msg, st *ht
 	model, session, stop := page__Index(rq, params, nil)
 	if stop != nil {
 		return *stop
+	}
+	if st != nil {
+		if errs := options__Index(st.Form, st.Values, model, session); errs != nil {
+			st.Errors, st.PageParams = route__errors(errs), params__Index(params)
+			return web.PageResponse(Index__view(model, session), st, nil, true)
+		}
 	}
 	nav, err := eff.Run(rq.Env, eff.KTask, Index__update(msg, model, session))
 	if err != nil {

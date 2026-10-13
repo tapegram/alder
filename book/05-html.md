@@ -283,9 +283,26 @@ value the field could not hold: with `author: User.UserId`, `{ value:
 brand's check included, like any other input's. The select starts with
 an empty option only when the field may be left empty (a `Maybe`, a
 field with a default); otherwise the first option is chosen until the
-user picks another. Nothing checks that the submitted value is one of
-the options: a request can be crafted by hand, and an id that names no
-row fails the task that writes it (chapter 8, "Writing").
+user picks another.
+
+A request can be crafted by hand, so the browser's list is not a
+guarantee: someone can post an id the page never offered, such as
+another table's id, an id that names no row, or a row this user may
+not see. The runtime therefore checks the value against the options
+when the form is submitted. `load` runs before every message (chapter
+6), so the model is there again, and the generated code computes the
+`options` expression again from it. A value that is not one of the
+options is a field error, "must be one of the options", answered like
+the decoder's: the page is drawn again with the error under the select
+and `update` does not run. An empty value passes only when the select
+offers the empty option. To make that recomputation possible,
+`options` may use only the view's parameters (`model` and `session`)
+and names it binds itself, such as a lambda's `\u`: a select inside a
+`for` that takes its options from the loop's variable is E0304, as is
+a name a `let` or a `match` arm of the view binds, and so is a select
+with `options` in a component, whose props the runtime
+cannot compute from the model. Put the list in the model and the select
+in the page's `view`.
 
 A `<form submit={M}>` where `M` has no `form` type is allowed; it contains
 no bound inputs, only a button.

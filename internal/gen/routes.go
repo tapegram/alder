@@ -157,6 +157,16 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 		}
 	}
 	g.pageFunc(b, p, pg)
+	checks := ""
+	if hasUpdate && g.optionChecks(b, pg) {
+		checks = fmt.Sprintf(`	if st != nil {
+		if errs := %s(st.Form, st.Values, model, session); errs != nil {
+			st.Errors, st.PageParams = route__errors(errs), %s(params)
+			return web.PageResponse(%s(model, session), st, nil, true)
+		}
+	}
+`, optionsFunc(m), paramsFunc(m), GoName(m, "view"))
+	}
 	keep := func(k string) string { return ", " + k }
 	g.paramsKVs(b, pg)
 	if hasUpdate {
@@ -166,7 +176,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	if stop != nil {
 		return *stop
 	}
-	nav, err := eff.Run(rq.Env, eff.KTask, %[6]s(msg, model, session))
+%[11]s	nav, err := eff.Run(rq.Env, eff.KTask, %[6]s(msg, model, session))
 	if err != nil {
 		return route__fail(err)
 	}
@@ -188,7 +198,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	return web.PageResponse(%[8]s(model, session), st, rq.Env.Session, true)
 }
 
-`, updateFunc(m), GoName(m, "Params"), GoName(m, "Msg"), pageFunc(m), keep("nil"), GoName(m, "update"), keep("rq.Env.Session"), GoName(m, "view"), paramsFunc(m), strconv.Quote(pg.Path))
+`, updateFunc(m), GoName(m, "Params"), GoName(m, "Msg"), pageFunc(m), keep("nil"), GoName(m, "update"), keep("rq.Env.Session"), GoName(m, "view"), paramsFunc(m), strconv.Quote(pg.Path), checks)
 	}
 
 	// the GET route
@@ -266,6 +276,117 @@ func msgHasParams(msg *ir.Msg) bool {
 		}
 	}
 	return false
+}
+
+// optionInput is a `<Select options={…}>` of a page's view: the form ("M.F") and field it binds,
+// its options' expression, the name of the Go function computing them again, and whether a blank
+// value is allowed (a Maybe field, a field with a default).
+type optionInput struct {
+	form, field string
+	input       *ir.Input
+	fn          string
+	blank       bool
+}
+
+// optionInputs are the selects with `options={…}` in page pg's view, in the order they come. A
+// field drawn by two selects (in two branches of an `if`) has both: a value either offers is
+// accepted.
+func optionInputs(pg *ir.Page) []optionInput {
+	var out []optionInput
+	if pg.View == nil {
+		return out
+	}
+	n := map[string]int{}
+	var visit func(e ir.Expr)
+	visit = func(e ir.Expr) {
+		if e == nil {
+			return
+		}
+		if x, ok := e.(*ir.Input); ok && x.Kind == ir.InputSelect && x.Options != nil && x.Form != nil {
+			key := x.Form.Module + "." + x.Form.Name
+			blank := false
+			for _, fd := range x.Form.Record.Fields {
+				if fd.Name == x.Field {
+					u, isMaybe := fd.Type.(*types.Union)
+					blank = fd.Default != nil || (isMaybe && u.Module == "Prelude" && u.Name == "Maybe")
+				}
+			}
+			fn := "choices__" + GoName(pg.Module, x.Form.Name) + "__" + Field(x.Field)
+			if n[key+"."+x.Field]++; n[key+"."+x.Field] > 1 {
+				fn += strconv.Itoa(n[key+"."+x.Field])
+			}
+			out = append(out, optionInput{key, x.Field, x, fn, blank})
+		}
+		for _, k := range ir.Children(e) {
+			if k != nil {
+				visit(k)
+			}
+		}
+	}
+	visit(pg.View.Body)
+	return out
+}
+
+// optionsFunc checks the posted values of page M's selects with `options={…}` ("options__M").
+func optionsFunc(module string) string { return "options__" + strings.ReplaceAll(module, ".", "__") }
+
+// optionChecks writes, for page pg whose view has selects with `options={…}`, a function per
+// select computing its options again from the view's parameters (as the view does), and
+// options__M: the field errors of the values posted on form st.Form that its selects did not
+// offer. update__M calls it once the page is loaded, before update. It reports whether it wrote
+// them.
+func (g *gen) optionChecks(b *strings.Builder, pg *ir.Page) bool {
+	ft, ok := pg.View.Type.(*types.Fun)
+	ins := optionInputs(pg)
+	if !ok || len(ins) == 0 {
+		return false
+	}
+	m := pg.Module
+	for _, oi := range ins {
+		v := &ir.Value{Module: m, Name: "choices", Params: pg.View.Params, Body: oi.input.Options,
+			Type: &types.Fun{Params: ft.Params, Result: oi.input.Options.Type()}}
+		b.WriteString(comment(fmt.Sprintf("%s computes again the options page %s's view offers for field %s of form %s, to check a posted value (chapter 5).", oi.fn, m, oi.field, oi.form)))
+		g.valueAs(b, v, oi.fn)
+	}
+	model, session := GoName(m, "Model"), GoName(pg.Session.Module, pg.Session.Name)
+	b.WriteString(comment(fmt.Sprintf("%s are the field errors of values posted on form (a page %s form) that its `options={…}` selects did not offer: \"must be one of the options\" (chapter 5). The options are computed again from the model, loaded for the message as for the page.", optionsFunc(m), m)))
+	fmt.Fprintf(b, "func %s(form string, values map[string]string, model %s, session %s) []web.FieldError {\nvar errs []web.FieldError\nswitch form {\n", optionsFunc(m), model, session)
+	var forms []string
+	byForm := map[string][]optionInput{}
+	for _, oi := range ins {
+		if byForm[oi.form] == nil {
+			forms = append(forms, oi.form)
+		}
+		byForm[oi.form] = append(byForm[oi.form], oi)
+	}
+	for _, form := range forms {
+		fmt.Fprintf(b, "case %s:\n", strconv.Quote(form))
+		var fields []string
+		byField := map[string][]optionInput{}
+		for _, oi := range byForm[form] {
+			if byField[oi.field] == nil {
+				fields = append(fields, oi.field)
+			}
+			byField[oi.field] = append(byField[oi.field], oi)
+		}
+		for _, field := range fields {
+			var lists []string
+			for _, oi := range byField[field] {
+				elem := GoType(oi.input.Options.Type().(*types.App).Args[0])
+				lists = append(lists, fmt.Sprintf("html.Choices(%s(model, session), func(_o %s) html.Choice { return html.Choice{Value: _o.%s, Label: _o.%s} })", oi.fn, elem, Field("value"), Field("label")))
+			}
+			choices := lists[0]
+			if len(lists) > 1 {
+				for _, l := range lists[1:] {
+					choices = "append(" + choices + ", " + l + "...)"
+				}
+			}
+			fmt.Fprintf(b, "if !html.Offered(values[%s], %s, %t) {\nerrs = append(errs, web.FieldError{Field: %s, Message: web.MsgOption})\n}\n",
+				strconv.Quote(field), choices, byField[field][0].blank, strconv.Quote(field))
+		}
+	}
+	b.WriteString("}\nreturn errs\n}\n\n")
+	return true
 }
 
 // msgBody writes the part of message msg's handler (of module m) after the page's parameters:

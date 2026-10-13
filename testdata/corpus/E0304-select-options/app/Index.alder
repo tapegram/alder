@@ -26,6 +26,9 @@ update msg model session = match msg {
   Submit p -> Task.succeed Rerender,
 }
 
+Picker : { owners: List { value: OwnerId, label: Text } } -> Html Msg
+Picker props = <form submit={Submit}><al-select field="owner" options={props.owners} /></form>
+
 view : Model -> Session -> Html Msg
 view model session =
   <main>
@@ -38,5 +41,6 @@ view model session =
       <al-select field="count" options={[{ value: 1, label: "one" }]} />
       <al-select field="title" options={[{ value: "a", label: 1 }]} />
       <al-select field="owner" options={[{ value: "a", label: "A" }]} />
+      {for owners in [model.owners] -> <al-select field="owner" options={List.map (\o -> { value: o.value, label: o.label }) owners} />}
     </form>
   </main>

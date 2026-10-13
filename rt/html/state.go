@@ -71,6 +71,21 @@ func Choices[T any](xs []T, f func(T) Choice) []Choice {
 	return out
 }
 
+// Offered reports whether value, submitted for a select with `options={…}`, is one of choices
+// (the options computed again from the model when the form is posted), or "" where blank is
+// allowed (a Maybe field, a field with a default).
+func Offered(value string, choices []Choice, blank bool) bool {
+	if value == "" && blank {
+		return true
+	}
+	for _, c := range choices {
+		if c.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
 // Input is a deferred form control: it is built when rendered. Without a matching FormState it
 // renders a <label> holding the label text and the control with its initial Value, or for
 // "errors" an empty <ul class="errors" data-errors="field|form">. With a FormState that matches

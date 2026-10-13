@@ -172,3 +172,21 @@ func TestHTML_DictKeyIsMarkup(t *testing.T) {
 		t.Error("different markup, same key")
 	}
 }
+
+// TestHTML_Offered: a posted select value is accepted only when one of the options has it, or
+// when it is blank and blank is allowed.
+func TestHTML_Offered(t *testing.T) {
+	cs := []Choice{{"u1", "Ann"}, {"u2", "Bob"}}
+	for _, c := range []struct {
+		value string
+		blank bool
+		want  bool
+	}{
+		{"u1", false, true}, {"u2", true, true}, {"", true, true},
+		{"", false, false}, {"u3", true, false}, {"Ann", false, false}, {" u1", false, false}, {"';--", false, false},
+	} {
+		if got := Offered(c.value, cs, c.blank); got != c.want {
+			t.Errorf("Offered(%q, blank %v) = %v, want %v", c.value, c.blank, got, c.want)
+		}
+	}
+}

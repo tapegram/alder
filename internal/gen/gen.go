@@ -119,6 +119,9 @@ func Emit(p *ir.Program, opts Options) (files map[string][]byte, err error) {
 		if err != nil {
 			return nil, fmt.Errorf("gen: %s: %v\n%s", routesFile, err, src)
 		}
+		if routes, err = format.Source(routes); err != nil { // twice, as a module's file (a function literal's struct parameter)
+			return nil, fmt.Errorf("gen: %s: %v", routesFile, err)
+		}
 		if _, dup := files[routesFile]; dup {
 			return nil, fmt.Errorf("gen: a module is emitted to %s", routesFile)
 		}

@@ -73,6 +73,17 @@ test "creating a tag adds it, with the values submitted" = {
   Task.succeed ({ answers: List.map (\row -> Redirected (Admin.Tag.Show { id: row.id })) rows, rows: List.map (\row -> { name: row.name, post: row.post }) rows, posts: Test.texts "select[name=post] option" page.doc } == { answers: [r.answer], rows: [{ name: Text.NonEmpty "name-1", post: post2 }], posts: ["title-1", "title-2"] })
 }
 
+test "a post not offered is refused" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
+  let page <- Test.get (Admin.Tag.New {})
+  let r <- Test.submitRaw TagForm [{ name: "name", value: "x" }, { name: "post", value: "missing" }]
+  let rows <- Db.from Tag |> Db.count
+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: FormRejected [{ field: "post", message: "must be one of the options" }], rows: 0 })
+}
+
 test "a visitor is sent to log in" = {
   let r <- Test.open (Admin.Tag.New {})
   Task.succeed (r.answer == Redirected (Auth.Login {}))

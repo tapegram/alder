@@ -127,6 +127,12 @@ type modCtx struct {
 	// cookieLit is the record literal `Test.login` is applied to: the cookie's value, so the
 	// session's defaults apply to it (a boundary, like an insert or a form).
 	cookieLit *syntax.RecordLit
+	// options is the env a `<Select options={…}>` expression is checked in, while it is: the
+	// expression may use only the page view's parameters (and what it binds itself), since the
+	// runtime computes it again, from the model, when the form is submitted.
+	options *env
+	// optionsBad are the names an options expression used that it may not, reported once each.
+	optionsBad map[string]bool
 }
 
 // Options adjust what Program accepts.

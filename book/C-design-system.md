@@ -405,6 +405,9 @@ A select, on a field whose type is a union of constructors without
 arguments (chapter 5, "Forms and inputs"): one option per constructor.
 On a field of `Text` or a brand of it, `options={…}` (a `List { value:
 …, label: Text }`) gives the options instead: a row's id and its label.
+A submitted value that is not one of them is refused with the field
+error "must be one of the options": the runtime computes the options
+again from the model when the form is posted (chapter 5).
 
 | Attribute | Type | Default | Meaning |
 |---|---|---|---|
