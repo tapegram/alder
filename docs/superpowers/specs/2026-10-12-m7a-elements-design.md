@@ -1,4 +1,4 @@
-# M7a: Custom elements and the `al` design system (first tier) — Design
+# M7a: Custom elements and the `alder-ui` design system (first tier) — Design
 
 Date: 2026-10-12. Status: approved in conversation; the M7a plan argues from
 this. Related: the M3 spec's M7 paragraph (Web Awesome, the manifest
@@ -9,7 +9,7 @@ the admin, which emit these components).
 
 Alder's checker learns custom elements from a Custom Elements Manifest, so
 a web-component design system is checked like built-in HTML; and Alder
-ships its own light-DOM design system, `al` (elements `<al-button>` …), as
+ships its own light-DOM design system, `alder-ui` (elements `<al-button>` …), as
 a separate open-source library vendored into the compiler, so a fresh app
 looks finished with zero setup and the generated admin (M12) has something
 to be built from.
@@ -24,8 +24,9 @@ to be built from.
   to `build/<app>/static/al/`; `Layout` links `/static/al/al.css`; an app
   that does not link it renders the elements unstyled but they still check.
 - **A separate repository, vendored at a tag; the Alder book chapter is
-  the library's documentation** (C). Prefix `al-`; library and repository
-  name `al` (`github.com/tapegram/al`, private at first, Apache-2.0).
+  the library's documentation** (C). Prefix `al-` for the elements; the library and
+  repository are named `alder-ui` (`github.com/tapegram/alder-ui`, private
+  at first, Apache-2.0); the CSS bundle stays `al.css`.
 - The first tier is CSS-only: `al-button`, `al-input`, `al-textarea`,
   `al-select`, `al-checkbox`, `al-table`, `al-card`, `al-badge`,
   `al-alert`, `al-pagination`, `al-stack`, `al-page`. Light DOM, shadcn's
@@ -64,7 +65,7 @@ to be built from.
 - Rendering: custom elements render as written (light DOM); the Datastar
   morph is unaffected; attribute escaping as for any element.
 
-## The `al` library (repository `tapegram/al`)
+## The `alder-ui` library (repository `tapegram/alder-ui`)
 
 - Layout: `tokens.css` (shadcn's variables, light + dark via
   `prefers-color-scheme` and `[data-theme]`), `components/<name>.css` (+
@@ -126,7 +127,7 @@ to be built from.
 - Chapter 5 (HTML) gains "Custom elements": the manifest, E0028, the
   escape list, slots, the built-in system and how to add Web Awesome
   (its manifest at the fixed path, its assets in `static/`).
-- A new chapter "The al design system" (after chapter 6 or as 6b):
+- A new chapter "The alder-ui design system" (after chapter 6 or as 6b):
   tokens and themes, every element with its attributes and a verified
   block per element quoting the library's demo (the book's checker renders
   each demo block through `alder check` on a module that uses it, and a
