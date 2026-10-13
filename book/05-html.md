@@ -15,7 +15,7 @@ nothing has type `Html Never`.
 
 Elements are written as in HTML. Every element is closed: `<li>...</li>` or
 `<br />`. Tag names are the standard HTML5 set; an unknown tag is a compile
-error.
+error. A tag with a hyphen is a custom element (below).
 
 ## Expressions in HTML
 
@@ -275,6 +275,121 @@ empty.
 Each `<Input>` is wrapped in a `<label>` holding its `label` text.
 A plain `<input>` inside a `<form submit={...}>` is a compile error; use
 `<Input>`.
+
+## Custom elements
+
+A tag with a hyphen in its name is a *custom element*: an element a
+JavaScript or CSS library defines, such as Web Awesome's `<wa-button>` or
+Alder's own `<al-button>`. The browser treats an element it has no
+definition for as a plain inline box, so a typo in a custom tag would
+render quietly wrong. Alder checks custom elements the way it checks
+built-in ones, against a *Custom Elements Manifest*: a JSON file in a
+format the web-components world shares (`custom-elements.json`, schema
+1.0.0), which lists each element's tag, attributes and slots. Libraries
+publish one; tools generate one from a library's source.
+
+The checker reads two manifests:
+
+- the manifest of `alder-ui`, Alder's own design system, built into the
+  compiler: `al-button`, `al-input`, `al-textarea`, `al-select`,
+  `al-checkbox`, `al-table`, `al-card`, `al-badge`, `al-alert`,
+  `al-pagination`, `al-stack` and `al-page` are always available, with no
+  file to write;
+- the app's `elements/custom-elements.json`, if there is one, next to
+  `app/`: copy a library's manifest there (Web Awesome ships one) to use
+  its elements. Its own files (scripts, stylesheets) go in `static/` and
+  are linked from your layout, as for any stylesheet.
+
+When both declare a tag, the app's entry wins whole: a project can
+redefine `al-button` with its own attributes, and then only those are
+accepted.
+
+A custom element renders as written, its children inside it. Its
+attributes take the same values as any element's (`Text`, `Maybe Text`,
+`{expr}`):
+
+```alder eval=<al-badge variant="secondary">New</al-badge>
+<al-badge variant="secondary">New</al-badge>
+```
+
+A tag no manifest declares is E0028:
+
+```alder error=E0028 "unknown element `<wa-button>`: declare custom elements in `elements/custom-elements.json` (chapter 5)"
+<wa-button variant="brand">Go</wa-button>
+```
+
+So is an attribute the element's entry does not list. The message lists
+the ones it does, in the manifest's order:
+
+```alder error=E0028 "`<al-button>` has no attribute `tone`; it has `variant`, `size`, `disabled`, `type`"
+<al-button tone="loud">Go</al-button>
+```
+
+A few attributes are accepted on every custom element without being
+declared: the global ones, `id`, `class`, `style`, `slot`, `hidden`,
+`title`, `lang`, `dir`, `tabindex`, `role`, `data-*` and `aria-*`, and
+Alder's own `click`, `submit` and `href`, which mean what they mean
+anywhere (a message, a page). An attribute the manifest types `boolean`
+is written bare or with a `Bool`; a quoted value is refused, because a
+browser treats `disabled="false"` as disabled:
+
+```alder error=E0028 "`<al-button>` attribute `disabled` is boolean: write `disabled` or `disabled={expr}`"
+<al-button disabled="false">Go</al-button>
+```
+
+### Slots
+
+An element with *slots* places its children by name: a child with
+`slot="header"` goes where the element puts its header, and children
+without `slot` fill the default slot. `slot="x"` on a child must name a
+slot its parent declares; the message lists the named ones (the default
+slot is not listed):
+
+```alder eval=<al-card><h2 slot="header">Notes</h2><p>Body</p></al-card>
+<al-card>
+  <h2 slot="header">Notes</h2>
+  <p>Body</p>
+</al-card>
+```
+
+```alder error=E0028 "`<al-card>` has no slot `aside`; it has `header`, `footer`, `actions`"
+<al-card>
+  <p slot="aside">Side</p>
+</al-card>
+```
+
+Events are not checked: Alder's `click` and `submit` are messages, not
+DOM events (chapter 6).
+
+### The input elements
+
+`al-input`, `al-textarea`, `al-select` and `al-checkbox` are the design
+system's form controls, and inside a `<form submit>` they are Alder's
+bound inputs too: `<al-input field="title" label="Title" />` is
+`<Input field="title" label="Title" />` drawn by the design system.
+`field`, `label` and `value` mean exactly what they mean on `<Input>`
+(the same rules and errors, E0304); `al-textarea` is a `<Textarea>`,
+`al-select` a `<Select>` (a union field), and `al-checkbox` an `<Input>`
+on a `Bool` field. Their other attributes come from the manifest
+(`placeholder`, `help`, `disabled`).
+
+The element renders around the control, followed by the field's error
+list, so it needs no `<Errors field>` of its own (and the form's
+`<Errors form />` does not repeat its errors). After a failed submission
+the element carries `invalid`, which the stylesheet uses to colour it:
+
+```html
+<al-input label="Title" placeholder="A title"><label>Title<input name="title" type="text" required placeholder="A title" /></label><ul class="errors" data-errors="title"></ul></al-input>
+<al-input label="Title" placeholder="A title" invalid><label>Title<input name="title" type="text" required placeholder="A title" /></label><ul class="errors" data-errors="title"><li>must not be empty</li></ul></al-input>
+```
+
+The element's `disabled` and `placeholder` are copied onto the native
+control, so they work with no stylesheet at all. Outside a form, and
+without `field`, an `al-input` is an ordinary custom element around
+whatever input you write inside it. Only the built-in elements wrap
+Alder's inputs: a third party's `<wa-input>` is an ordinary custom
+element, and inside a `<form submit>` it holds no bound input (use
+`<Input>` in it).
 
 ## Partial updates
 

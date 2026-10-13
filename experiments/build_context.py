@@ -97,8 +97,20 @@ DROP_SUBSECTIONS = {
 # facts about whose session a test runs with and the failure line, without its transcript and
 # its worked test of `Db.mine`, and says where an effect test runs in one paragraph; "A
 # stranger's todo" keeps one test, the stale page's; chapter 6's re-read idiom keeps its helper
-# and says how `load` uses it.
+# and says how `load` uses it. Chapter 5's "Custom elements" (M7a) keeps its rules in one
+# paragraph, and the input elements in another, without the manifest's story and the examples;
+# its click-button paragraph keeps the fact, not the markup.
 TRIMS = {
+    "05": [("A `<button click={…}>` works with and without JavaScript.", "`data-*` and `aria-*` attributes take `Text`.",
+            "A `<button click={…}>` works with and without JavaScript (chapter 6); a\n`click` on any other element needs JavaScript.\n\n"),
+           ("## Custom elements\n", "## Partial updates",
+            "## Custom elements\n\nA tag with a hyphen is a custom element, declared by the built-in\n"
+            "`alder-ui` manifest or the app's `elements/custom-elements.json`\n"
+            "(which wins over it). E0028: an undeclared tag, attribute or `slot=\"x\"`,\n"
+            "or a quoted value on a boolean attribute. Always accepted: `id`, `class`, `style`, `slot`, `hidden`,\n`title`, `lang`, `dir`, "
+            "`tabindex`, `role`, `data-*`, `aria-*`, `click`,\n`submit`, `href`.\n\n"
+            "In a `<form submit>`, `<al-input field=\"f\" />` is `<Input>` (E0304 rules),\n`al-textarea` `<Textarea>`, "
+            "`al-select` `<Select>`, `al-checkbox` `<Input>`\non a `Bool`; each renders its own error list.\n\n")],
     "06": [("and, in `Admin.Edit`,\n\n```alder fragment\nload params session = {\n  let author <- User.isAuthor", "Every message of the page runs `load` first",
             "which each admin page's `load` calls first, answering `Query.notFound`\nwhen it is `False`. "),
            ("A row `load` already found with `Db.getMine` is not one of the cases:", "### The rules and a replicated database",

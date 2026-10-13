@@ -346,7 +346,8 @@ class BuildContextTests(unittest.TestCase):
                      "So a test that calls `update` or `load` itself", "Db.updateMine Todo: no signed-in user",
                      "`update` call is not checked", "error[E0026]: `Db.mine` needs a page that `requires user`: `Public` does not",
                      "isAuthor : UserId -> Query Bool", "`2026-01-01T00:00:00Z`", "chapter 6, \"Rules\",\nexplains them",
-                     "write the scoped form; it costs "):
+                     "write the scoped form; it costs ", "`elements/custom-elements.json`", "`data-*`, `aria-*`, `click`",
+                     "`al-checkbox` `<Input>`\non a `Bool`"):
             self.assertIn(kept, out)
         for gone in ("$ alder test examples/todos -run 'without a login'", "module Public",
                      "Db.mine       : Table t -> Select t", "The to-do list's page uses four of them\n(`examples", "\n### When the app starts\n",

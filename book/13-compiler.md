@@ -388,6 +388,43 @@ checker can't guess which fields you need, and `?todo` is a typed hole.
 Applying the fix leaves you with a warning that tells you what to write:
 `warning[W0002]: hole ?todo has type Float`.
 
+**HTML** is checked element by element (`internal/check/html.go`). A
+lower-case tag must be one of the HTML5 tags listed in `htmlTags`; an
+attribute's value is checked against the type its name calls for (a
+`Text`, a `Bool` for `disabled`, a page for `href`, a message for
+`click`). A tag with a hyphen is a **custom element**, and there the
+checker has no list of its own: it asks the manifests
+(`internal/check/elements.go`). Before any body is checked,
+`loadElements` builds one table of custom elements from two Custom
+Elements Manifests. The first is `alder-ui`'s, which the compiler carries
+inside itself: `rt/al/custom-elements.json` is embedded in the binary
+with the runtime (`rt/embed.go`), and `internal/elements` parses it once
+(`elements.Builtin`). The second is the app's
+`elements/custom-elements.json`, which `names.Load` reads along with the
+`.alder` files (`Program.ElementsManifest`), so the checker itself never
+touches the disk. `elements.Merge` puts them in one map by tag, the app's
+entry replacing the built-in one for a tag both declare. A manifest is a
+large format (classes, members, events, CSS parts); `internal/elements`
+decodes only the part the checker uses: each declaration's `tagName`,
+its attributes' names and `type.text` (`boolean` marks a boolean
+attribute), and its slots' names. `customElement` then looks the tag up
+(E0028 when it is missing), checks each attribute against the entry or
+the short escape list of global attributes (`elements.Escaped`), and
+each child's `slot="…"` against the entry's slots.
+
+Four of the built-in elements are more than markup. `al-input`,
+`al-textarea`, `al-select` and `al-checkbox` inside a `<form submit>` are
+Alder's bound inputs: `wrappedInput` hands their `field`, `label` and
+`value` to `formControl`, the same function that checks `<Input>`,
+`<Textarea>` and `<Select>`, so the rules and the error messages are
+shared rather than copied. The checker records each such element in
+`Result.Wrapped`, with the component it stands for. The IR stage reads
+that record and lowers the element to the same `Input` node an `<Input>`
+becomes, with `Wrap` set to the tag; the runtime's `rt/html` then draws
+the element around the control and the field's error list, setting
+`invalid` when there are errors (chapter 5, "The input elements"). The
+decision is made once, by the checker, and every later stage follows it.
+
 The checker's output is a `check.Result` (`internal/check/result.go`). It
 records the type of every expression (`Types`, keyed by AST node), the type
 of every variable at the place it is introduced (`Binds`), every

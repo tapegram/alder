@@ -30,6 +30,8 @@ myapp/
     auth/
       password.go     -- package auth: func LoginPassword() (module Auth.Login, capability Password)
     internal/         -- Go helpers your adapters share (optional; never wired)
+  elements/
+    custom-elements.json  -- the custom elements the app uses besides alder-ui's (optional)
   static/             -- files served under /static/ (stylesheets, images)
   go.mod              -- needed only inside another Go module (below)
   build/              -- generated, never edited
@@ -43,6 +45,15 @@ capabilities, plus any helper directories. `static/`
 is optional: `examples/todos/static/app.css` is served at
 `/static/app.css`, and the layout links it with
 `<link rel="stylesheet" href={Url.external "/static/app.css"} />`.
+`elements/custom-elements.json` is optional too: a Custom Elements
+Manifest declaring the third-party custom elements the app's markup uses
+(chapter 5, "Custom elements"). Every command that checks the app reads
+it; the design system's own elements (`al-…`) need no file. A file that
+does not parse is E0028 at the file, with the reason:
+
+```
+elements/custom-elements.json:4:36: error[E0028]: `elements/custom-elements.json`: invalid character '}' looking for beginning of object key string
+```
 
 The `go.mod` is there for Go, not for Alder. Go treats a directory that
 holds `.go` files as part of the nearest Go module above it. If your app
@@ -1101,6 +1112,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0025 | a scoped operation on a table without `@owner`: "`Todo` has no `@owner` column, so `Db.mine Todo` has nothing to scope by" (the operation as written: `Db.getMine Todo`, …) | — |
 | E0026 | a scoped operation where there is no signed-in user: "`Db.mine` needs a page that `requires user`: `Public` does not", "`Db.deleteMine` needs a page that `requires user`: `App` is not a page"; through a value of another module, at the use: "`Todos.Index.recent` uses `Db.mine`, which needs a page that `requires user`: `Public` does not"; in a fake: "`Db.mine` cannot be used in a fake: a fake has no session" | — |
 | E0027 | a role clause the session cannot answer (`requires user, role R`): "`role` needs `user` first", "this session has no `role` field", "this session's `role` field is `Text`, not a union: write `role: Role = …` with `type Role = Reader \| Author`", "this session's `role` field is `Maybe User.Role`: the role must be a union, not `Maybe`", "`Editor` is not a constructor of this session's `role` type `User.Role` (Reader, Author, Admin)", "`role` names `Admin` twice" | — |
+| E0028 | a custom element (a tag with a hyphen) the manifests do not vouch for (chapter 5, "Custom elements"): "unknown element `<wa-button>`: declare custom elements in `elements/custom-elements.json` (chapter 5)"; an attribute neither declared nor on the escape list: "`<al-button>` has no attribute `tone`; it has `variant`, `size`, `disabled`, `type`" ("it declares none" for an element without attributes); a quoted value on a boolean attribute: "`<al-button>` attribute `disabled` is boolean: write `disabled` or `disabled={expr}`"; a `slot` its parent does not declare: "`<al-card>` has no slot `aside`; it has `header`, `footer`, `actions`" ("it has only the default slot", "it declares no slots"); a manifest file that does not parse, at the file: "`elements/custom-elements.json`: no `modules`" or the JSON reader's reason | — |
 | E0101 | `Db.get T x` where `x` is not `Id T` | `Db.from T \|> Db.where (T.<col>.eq x) \|> Db.first` when a column of `x`'s type exists |
 | E0102 | field access on a `Maybe` | `match` skeleton |
 | E0201 | name from a module that isn't imported | `import M` |
