@@ -873,13 +873,18 @@ func loadedMine(pg *ir.Page) map[string]*ir.Table {
 	return out
 }
 
-// putsSession reports whether e calls Session.put anywhere: a scoped write after it acts for the
-// session it put, which may not be the user load read the row for.
+// putsSession reports whether e may put the session: it calls Session.put, or uses a value of
+// the app whose type is a Task (or a function to one), which may put it (conservatively, any such
+// helper). A scoped write after a put acts for the session it put, which may not be the user load
+// read the row for.
 func putsSession(e ir.Expr) bool {
 	if isNil(e) {
 		return false
 	}
-	if call, ok := e.(*ir.Call); ok && isStd(call.Fn, "Session", "put") {
+	if isStd(e, "Session", "put") {
+		return true
+	}
+	if v, ok := e.(*ir.Var); ok && v.Kind == ir.VarGlobal && isTaskType(v.Ty) {
 		return true
 	}
 	for _, k := range ir.Children(e) {
@@ -888,6 +893,21 @@ func putsSession(e ir.Expr) bool {
 		}
 	}
 	return false
+}
+
+// isTaskType reports whether t is a Task or a function whose result (after all its parameters)
+// is one.
+func isTaskType(t types.Type) bool {
+	for {
+		switch x := t.(type) {
+		case *types.Fun:
+			t = x.Result
+		case *types.App:
+			return x.Con == "Task"
+		default:
+			return false
+		}
+	}
 }
 
 func isModel(model, t *ir.RecordType) bool {

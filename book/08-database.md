@@ -523,9 +523,10 @@ Read those lines before you commit. A migration you have not shared yet
 can be thrown away: delete the file, restore the snapshot with
 `git checkout migrations/schema.json`, change the tables, and run
 `alder migrate` again. Once a migration has run against a database you
-keep, never edit or delete it; write the next one instead. (A file whose
-statements were edited is caught when it runs: "When the app starts",
-below.)
+keep, never edit or delete it; write the next one instead. (A file
+whose statements were edited is caught when the app applies it, at
+startup: the tables do not come out as its header says, and the app
+refuses to start; `alder test` runs every file, so it finds it first.)
 
 The file's name comes from its steps (`add_summary`, `change_post` for
 a rebuild), or from `--name some_name`. With nothing changed,
