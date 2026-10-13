@@ -1,5 +1,6 @@
 /* The guestbook's own rules, served at /static/app.css. The design system,
-   /static/al/al.css, styles the page, the card, the fields and the button. */
-form { display: grid; gap: 1rem; }
+   /static/al/al.css, styles the page, the card, the fields and the button.
+   form._alder-click is the form Alder wraps round a click button: not a grid. */
+form:not(._alder-click) { display: grid; gap: 1rem; }
 #entries { padding-left: 1.25rem; }
 li { margin: 0.25rem 0; }

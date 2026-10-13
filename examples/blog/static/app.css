@@ -12,22 +12,15 @@ header a {
   text-decoration: none;
 }
 
-/* A `click` button is wrapped in a form of its own (so it works without
-   JavaScript); keep it in line with the text around it. */
-form._alder-click {
-  display: inline;
-}
-
+/* Not the form Alder wraps round a `click` button (so it works without
+   JavaScript): the design system gives that one display: contents. */
 form:not(._alder-click) {
   display: grid;
   gap: 1rem;
 }
 
-/* The form-level errors sit in an <al-alert>, shown only when there are some. */
-al-alert:has(> ul.errors:empty) {
-  display: none;
-}
-
+/* The form-level errors sit in an <al-alert>; the design system hides the
+   alert while the list is empty. */
 al-alert > ul.errors {
   margin: 0;
   padding-left: 1.25rem;

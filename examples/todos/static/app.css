@@ -2,12 +2,8 @@
    /static/al/al.css, styles the page, the cards, the fields, the buttons and
    the badges; these place them. */
 
-/* A `click` button is wrapped in a form of its own (so it works without
-   JavaScript); keep it in line with the text around it. */
-form._alder-click {
-  display: inline;
-}
-
+/* Not the form Alder wraps round a `click` button (so it works without
+   JavaScript): the design system gives that one display: contents. */
 form:not(._alder-click) {
   display: grid;
   gap: 1rem;

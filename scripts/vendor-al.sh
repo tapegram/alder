@@ -5,11 +5,11 @@
 # manifest the checker reads), with the tag written to rt/al/VERSION. Nothing
 # fetches at build time; the copy is committed and embedded by rt/embed.go.
 # Uses `gh repo clone` when gh is installed (the repository may be private),
-# else `git clone`.
+# else `git clone`. Reads the manifest's version with python3's json module.
 set -eu
 
 if [ $# -ne 1 ]; then
-	echo "usage: scripts/vendor-al.sh <tag>   (for example v0.1.1)" >&2
+	echo "usage: scripts/vendor-al.sh <tag>   (for example v0.1.2)" >&2
 	exit 2
 fi
 tag=$1
@@ -25,7 +25,7 @@ else
 	git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$tag" "https://github.com/$repo" "$tmp/alder-ui"
 fi
 
-version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$tmp/alder-ui/custom-elements.json")
+version=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("version", ""))' "$tmp/alder-ui/custom-elements.json")
 if [ "$version" != "$tag" ]; then
 	echo "vendor-al: the manifest at $tag says version \"$version\"" >&2
 	exit 1

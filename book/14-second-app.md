@@ -334,9 +334,9 @@ The page is built from the design system's elements (Appendix C): the
 status is an `<al-badge>`, the form sits in an `<al-card>` whose
 `actions` slot holds the buttons, and the form's own error (a `Reject`)
 appears in an `<al-alert variant="destructive">`, which Alder gives
-`role="alert"` so a screen reader announces it. The app's stylesheet
-hides that alert while its list is empty (`al-alert:has(> ul.errors:empty)
-{ display: none }`).
+`role="alert"` so a screen reader announces it. The design system hides
+that alert while its list is empty (`al-alert:has(> ul.errors:empty)
+{ display: none }`, in `al.css` since alder-ui v0.1.2).
 
 ```alder part=blog/Admin.Edit
 test "deleting a post deletes its comments" = {

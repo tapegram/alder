@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "version": "v0.1.1",
+  "version": "v0.1.2",
   "modules": [
     {
       "kind": "javascript-module",
@@ -101,7 +101,7 @@
               "type": {
                 "text": "string"
               },
-              "description": "A hint shown under the input (drawn from the attribute, in the muted colour)."
+              "description": "A hint shown under the input (in the muted colour: the `<small class=\"help\">` child Alder renders, or else drawn from the attribute)."
             }
           ]
         }
@@ -153,7 +153,7 @@
               "type": {
                 "text": "string"
               },
-              "description": "A hint shown under the textarea (drawn from the attribute, in the muted colour)."
+              "description": "A hint shown under the textarea (in the muted colour: the `<small class=\"help\">` child Alder renders, or else drawn from the attribute)."
             }
           ]
         }
@@ -198,7 +198,7 @@
               "type": {
                 "text": "string"
               },
-              "description": "A hint shown under the select (drawn from the attribute, in the muted colour). Added in alder-ui v0.1.0."
+              "description": "A hint shown under the select (in the muted colour: the `<small class=\"help\">` child Alder renders, or else drawn from the attribute). Added in alder-ui v0.1.0."
             }
           ]
         }
@@ -243,7 +243,7 @@
               "type": {
                 "text": "string"
               },
-              "description": "A hint shown under the checkbox (drawn from the attribute, in the muted colour). Added in alder-ui v0.1.0."
+              "description": "A hint shown under the checkbox (in the muted colour: the `<small class=\"help\">` child Alder renders, or else drawn from the attribute). Added in alder-ui v0.1.0."
             }
           ]
         }

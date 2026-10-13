@@ -1,4 +1,4 @@
-/*! alder-ui v0.1.1 | Apache-2.0 | https://github.com/tapegram/alder-ui
+/*! alder-ui v0.1.2 | Apache-2.0 | https://github.com/tapegram/alder-ui
  * Built by scripts/build.py from tokens.css and components/; do not edit. */
 
 @layer al {
@@ -342,17 +342,28 @@ al-button:has(> :is(button, a))[disabled] {
   opacity: 1;
 }
 
+/* Alder's click form: without JavaScript, a `click` button is submitted by a
+   <form class="_alder-click" method="post"> that Alder wraps round the
+   <al-button>. The form must not take part in layout (a row of buttons stays
+   a row; a grid or flex parent places the button, not the form). The class
+   is Alder's; on any other page the rule matches nothing. */
+form._alder-click {
+  display: contents;
+}
+
 /* ---- components/al-input.css ---- */
 
 /*
  * al-input. Alder renders
  *   <al-input label="Title" help="…" invalid>
  *     <label>Title<input name="title" …></label>
+ *     <small class="help" id="help-title">…</small>
  *     <ul class="errors" data-errors="title"><li>…</li></ul>
  *   </al-input>
- * The label text is the real <label> (not attr(label)); help comes from the
- * attribute; the errors list shows in the destructive colour. A label beside
- * the control (<label for> + <input id>) works too.
+ * The label text is the real <label> (not attr(label)); help is the
+ * <small class="help"> (or, without it, drawn from the attribute); the
+ * errors list shows in the destructive colour. A label beside the control
+ * (<label for> + <input id>) works too.
  */
 
 al-input {
@@ -419,6 +430,19 @@ al-input[help]::after {
   font-size: var(--al-text-sm);
 }
 
+/* The markup form, which Alder renders: <small class="help" id="help-…">
+   after the label, named by the control's aria-describedby so a screen
+   reader announces it. The attribute's text is then not drawn again. */
+al-input > .help {
+  order: 1;
+  color: var(--muted-foreground);
+  font-size: var(--al-text-sm);
+}
+
+al-input:has(> .help)::after {
+  content: none;
+}
+
 al-input ul.errors {
   order: 2;
   margin: 0;
@@ -439,11 +463,13 @@ al-input ul.errors:empty {
  * al-textarea. Alder renders
  *   <al-textarea label="Title" help="…" invalid>
  *     <label>Title<textarea name="title" …></label>
+ *     <small class="help" id="help-title">…</small>
  *     <ul class="errors" data-errors="title"><li>…</li></ul>
  *   </al-textarea>
- * The label text is the real <label> (not attr(label)); help comes from the
- * attribute; the errors list shows in the destructive colour. A label beside
- * the control (<label for> + <textarea id>) works too.
+ * The label text is the real <label> (not attr(label)); help is the
+ * <small class="help"> (or, without it, drawn from the attribute); the
+ * errors list shows in the destructive colour. A label beside the control
+ * (<label for> + <textarea id>) works too.
  */
 
 al-textarea {
@@ -511,6 +537,19 @@ al-textarea[help]::after {
   font-size: var(--al-text-sm);
 }
 
+/* The markup form, which Alder renders: <small class="help" id="help-…">
+   after the label, named by the control's aria-describedby so a screen
+   reader announces it. The attribute's text is then not drawn again. */
+al-textarea > .help {
+  order: 1;
+  color: var(--muted-foreground);
+  font-size: var(--al-text-sm);
+}
+
+al-textarea:has(> .help)::after {
+  content: none;
+}
+
 al-textarea ul.errors {
   order: 2;
   margin: 0;
@@ -531,6 +570,7 @@ al-textarea ul.errors:empty {
  * al-select. Alder renders
  *   <al-select label="Kind" invalid>
  *     <label>Kind<select name="kind">…</select></label>
+ *     <small class="help" id="help-kind">…</small>   (when help is given)
  *     <ul class="errors" data-errors="kind"><li>…</li></ul>
  *   </al-select>
  * The native <select> keeps its own arrow and keyboard behaviour.
@@ -595,6 +635,19 @@ al-select[help]::after {
   font-size: var(--al-text-sm);
 }
 
+/* The markup form, which Alder renders: <small class="help" id="help-…">
+   after the label, named by the control's aria-describedby so a screen
+   reader announces it. The attribute's text is then not drawn again. */
+al-select > .help {
+  order: 1;
+  color: var(--muted-foreground);
+  font-size: var(--al-text-sm);
+}
+
+al-select:has(> .help)::after {
+  content: none;
+}
+
 al-select ul.errors {
   order: 2;
   margin: 0;
@@ -615,6 +668,7 @@ al-select ul.errors:empty {
  * al-checkbox. Alder renders
  *   <al-checkbox label="Done">
  *     <label>Done<input type="checkbox" name="done" value="True"></label>
+ *     <small class="help" id="help-done">…</small>   (when help is given)
  *     <ul class="errors" data-errors="done"></ul>
  *   </al-checkbox>
  * The box is drawn before the text (row-reverse), whatever the source order.
@@ -680,6 +734,19 @@ al-checkbox[help]::after {
   order: 1;
   color: var(--muted-foreground);
   font-size: var(--al-text-sm);
+}
+
+/* The markup form, which Alder renders: <small class="help" id="help-…">
+   after the label, named by the control's aria-describedby so a screen
+   reader announces it. The attribute's text is then not drawn again. */
+al-checkbox > .help {
+  order: 1;
+  color: var(--muted-foreground);
+  font-size: var(--al-text-sm);
+}
+
+al-checkbox:has(> .help)::after {
+  content: none;
 }
 
 al-checkbox ul.errors {
@@ -929,6 +996,13 @@ al-alert > .al-alert-dismiss:hover {
 al-alert > .al-alert-dismiss:focus-visible {
   outline: var(--al-ring-width) solid var(--ring);
   outline-offset: var(--al-ring-offset);
+}
+
+/* An alert that holds only an empty errors list (Alder's
+   <al-alert variant="destructive"><Errors form /></al-alert>, before any
+   error) is not drawn: no empty coloured box. */
+al-alert:has(> ul.errors:empty) {
+  display: none;
 }
 
 /* ---- components/al-pagination.css ---- */
