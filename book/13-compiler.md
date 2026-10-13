@@ -424,6 +424,35 @@ becomes, with `Wrap` set to the tag; the runtime's `rt/html` then draws
 the element around the control and the field's error list, setting
 `invalid` when there are errors (chapter 5, "The input elements"). The
 decision is made once, by the checker, and every later stage follows it.
+When the field has errors, `Control.build` also gives the native control
+`aria-invalid="true"` and `aria-describedby="errors-<field>"`, and the
+error list that `id`. Those are for screen readers: `aria-invalid` says
+the value was refused, and `aria-describedby` names the element whose
+text describes the control, so the messages are read with it. The `id`
+appears only with errors, because a page of per-row forms repeats field
+names and an `id` must be unique in a page.
+
+Two more built-in elements get something from the renderer, recorded the
+same way in `Result.Rendered` by `rendered` (also in
+`internal/check/elements.go`). A custom element is not a button: the
+browser gives it no keyboard focus, Enter does nothing on it, and a form
+does not submit through it. So an `<al-button>` with `click`, `submit`,
+`type` or `href`, and no `<button>` or `<a>` child of its own, is
+recorded as `"button"` or `"a"`, and the IR stage (`completeBuiltin` in
+`internal/ir/lower_html.go`) rewrites it into two nested elements: the
+`<al-button>` with its styling attributes, and inside it a real
+`<button>` (with the `click`, a `type`, and a copy of `disabled`) or
+`<a>` (with the `href`) holding the children. Everything after the IR
+sees two ordinary elements. The one place that knows about the pair is
+the renderer's click button (`clickButton` in `rt/html/html.go`; chapter 6,
+"With and without JavaScript"):
+its no-JavaScript form must wrap the whole `<al-button>`, not the
+`<button>` alone, or the stylesheet's `al-button > button` would no
+longer match. An `<al-alert>` without `role` whose `variant` is written
+as a literal is recorded as `"status"` or `"alert"`, and the IR stage
+adds that `role`, so a screen reader announces the message when it
+appears. Each rule is checked only for the built-in entry: an app that
+redefines `al-button` in its own manifest gets its element as written.
 
 The checker's output is a `check.Result` (`internal/check/result.go`). It
 records the type of every expression (`Types`, keyed by AST node), the type
@@ -1290,7 +1319,9 @@ tree is an `html.MsgAttr`, a value that is only turned into text now: its
 page's parameters with `_p.` in front (`MsgRef.URL` in `rt/core.go`). A
 `<button>` with a `click` is rendered as a click button here too: the
 renderer knows whether it is inside a `<form>`, and wraps the button in a
-form of its own when it is not (chapter 6, "With and without JavaScript").
+form of its own when it is not (chapter 6, "With and without JavaScript");
+the Done button is the `<button>` the compiler put inside an
+`<al-button>` (section 5), and the form wraps the `<al-button>` whole.
 Last, `document` writes `<!doctype html>` and the page, with the Datastar
 script tag put after `<head>`. The answer begins like this (without the
 `Date` and `Content-Length` headers, and with the page cut after
@@ -1307,7 +1338,7 @@ Content-Type: text/html; charset=utf-8
 and has the Done button with its message URL:
 
 ```html
-<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="@post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;})"><button type="submit">Done</button></form>
+<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="@post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;})"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
 ```
 
 The `&#39;` and `&amp;` are the escaping of section 8's first part: the
@@ -3622,6 +3653,7 @@ system). The standard library's signatures already travel this way
 
 ```go
 //go:embed core.go nav.go show.go tether.go
+//go:embed al/al.css al/custom-elements.json al/VERSION
 //go:embed datastar/datastar.go datastar/datastar.js datastar/VERSION
 //go:embed db/encode.go db/migrate.go db/sqlite.go db/store.go db/table.go
 …
@@ -3651,6 +3683,15 @@ dev-database hint),
 so the copy lists nothing the runtime does not need. The embed costs the
 binary about 0.4 MB.
 
+The design system travels the same way. `rt/al/` holds `al.css`,
+`custom-elements.json` and `VERSION`, a copy of one release of the
+`alder-ui` repository (`scripts/vendor-al.sh <tag>` makes it), and the
+second `//go:embed` line of `rt/embed.go` names them. The checker reads
+the manifest from `rt.Files` (above, section 5); a build copies the two
+assets into the app's static directory (below). `TestDesignSystemVersion`
+(`rt/embed_test.go`) checks that `VERSION`, the manifest's `version` and
+the stylesheet's first line name the same release.
+
 **Writing it out.** `buildkit.WriteRuntime(dst)`
 (`internal/buildkit/buildkit.go`) writes `Files` into `dst/rt/` as the
 module `alder`: `dist/go.mod.txt` becomes `rt/go.mod`, `dist/go.sum.txt`
@@ -3669,6 +3710,18 @@ looks like the compiler's fault (chapter 11 shows its one line and its
 error); the scratch runner (`scratch.CompileCheckedWith`) does the same in its own
 directory, so `alder test`, `eval` and the REPL build the same runtime as
 `alder build`.
+
+The static files go next to it: `buildkit.CopyStatic(src, dst)` replaces
+`build/<app>/static/` with a copy of the app's `static/`, then calls
+`WriteDesignSystem`, which writes `al/al.css` and
+`al/custom-elements.json` from `rt.Files` into it. Every build has them,
+whether or not the app has a `static/` directory, and `alder run` serves
+the build's copy (it copies again when a file under `static/` changes,
+before reloading the browser). The router (`serveStatic` in
+`rt/web/router.go`) adds `Cache-Control: public, max-age=31536000,
+immutable` to a file under `/static/al/`: the browser keeps it a year
+without asking again, which is safe because its content changes only
+with the compiler, as `datastar.js`'s does.
 
 It refreshes rather than adds. It first walks `dst/rt/` and deletes every
 file the embedded copy does not have (and the directories that leaves

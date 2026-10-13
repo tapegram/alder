@@ -899,7 +899,7 @@ page's parameters to every message URL it writes. This is the Done button
 of `GET /?filter=Active`, as the running app sends it:
 
 ```html
-<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="@post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;})"><button type="submit">Done</button></form>
+<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="@post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;})"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
 ```
 
 (A `click` button is wrapped in a form of its own so that it works without
@@ -1069,7 +1069,11 @@ rendered inside a form of its own, as the Done button above shows: without
 Datastar the browser posts that form to the message URL; with it, Datastar
 posts it on submit. The wrapper has the class `_alder-click`; give it
 `form._alder-click { display: inline }` in your stylesheet to keep the
-button in line (the to-do app's `static/app.css` does). Inside a
+button in line (the to-do app's `static/app.css` does). The Done button is
+an `<al-button>` (Appendix C), which the compiler renders with a real
+`<button>` inside it; the wrapping form then goes around the whole
+`<al-button>`, so the design system's stylesheet still finds the button
+as the element's child. Inside a
 `<form submit>`, where forms cannot nest, a `click` button is a submit
 button with its own target instead:
 

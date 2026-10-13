@@ -335,24 +335,53 @@ class BuildContextTests(unittest.TestCase):
 
     def test_real_reference_cut(self):
         # M11's final review cut the reference to at most 44k tokens (len/4, with the example):
-        # the rules' facts stay, their repeated quotes and transcripts go
+        # the rules' facts stay, their repeated quotes and transcripts go. M7a raised the budget
+        # to 46k for the design system's element table (Appendix C, one line per element).
         bc.HUMAN_SECTIONS, bc.KEEP_SUBSECTIONS = self.saved, self.saved_keep
         bc.DROP_SUBSECTIONS, bc.TRIMS = self.saved_drop, self.saved_trims
         code, out, _ = self.run_main("--reference", "--chapters", ",".join(bc.DEFAULT_CHAPTERS), "--book", str(bc.BOOK),
                                      "--example", str(bc.EXAMPLE))
         self.assertEqual(code, 0)
-        self.assertLessEqual(len(out) // 4, 44000, "the reference is at most 44k tokens (len/4)")
+        self.assertLessEqual(len(out) // 4, 46000, "the reference is at most 46k tokens (len/4)")
         for kept in ("**`Test.login s`** sets it to `s`", "**`Session.put`**, in the test", "A login through the login page's form",
                      "So a test that calls `update` or `load` itself", "Db.updateMine Todo: no signed-in user",
                      "`update` call is not checked", "error[E0026]: `Db.mine` needs a page that `requires user`: `Public` does not",
                      "isAuthor : UserId -> Query Bool", "`2026-01-01T00:00:00Z`", "chapter 6, \"Rules\",\nexplains them",
                      "write the scoped form; it costs ", "`elements/custom-elements.json`", "`data-*`, `aria-*`, `click`",
-                     "`al-checkbox` `<Input>`\non a `Bool`"):
+                     "`al-checkbox` `<Input>`\non a `Bool`", "`/static/al/al.css`",
+                     "- `al-button` variant=primary*|secondary|outline|ghost|destructive, size=sm|md*|lg, disabled!, type=button*|submit / default\n",
+                     "- `al-card` (none) / header, default, footer, actions\n", "- `al-input` label, placeholder, disabled!, invalid!, help\n"):
             self.assertIn(kept, out)
         for gone in ("$ alder test examples/todos -run 'without a login'", "module Public",
                      "Db.mine       : Table t -> Select t", "The to-do list's page uses four of them\n(`examples", "\n### When the app starts\n",
                      "let author <- User.isAuthor session.user"):
             self.assertNotIn(gone, out)
+
+
+class ElementTableTest(unittest.TestCase):
+    def test_from_the_appendix(self):
+        # the table is read from Appendix C's attribute tables and Slots: lines
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            book = pathlib.Path(d)
+            (book / bc.DESIGN_SYSTEM).write_text(
+                "# C\n\n## The elements\n\n### `al-x`\n\nText.\n\n"
+                "| Attribute | Type | Default | Meaning |\n|---|---|---|---|\n"
+                "| `tone` | `\"a\" \\| \"b\"` | `\"b\"` | the tone |\n| `off` | `boolean` | `false` | off |\n"
+                "| `label` | `string` | — | a label |\n\nSlots: `head`, default (the body).\n\n"
+                "### `al-y`\n\nNo attributes.\n\nSlots: none.\n\n## Where it lives\n\n| `al-z` | no |\n")
+            out = bc.element_table(book)
+        self.assertIn("- `al-x` tone=a|b*, off!, label / head, default\n", out)
+        self.assertIn("- `al-y` (none)\n", out)
+        self.assertNotIn("al-z", out)
+
+    def test_missing_appendix(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d, contextlib.redirect_stderr(io.StringIO()) as err:
+            with self.assertRaises(SystemExit) as e:
+                bc.element_table(pathlib.Path(d))
+        self.assertEqual(e.exception.code, 2)
+        self.assertIn("C-design-system.md", err.getvalue())
 
 
 if __name__ == "__main__":

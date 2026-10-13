@@ -259,6 +259,54 @@ def drop_sections(path, text, headings, keep=None, drop=None):
     return "".join(out)
 
 
+# Appendix C's elements, compact (M7a): --reference appends one line per `al-` element (its
+# attributes, then its slots) to chapter 5's "Custom elements", read from the appendix's
+# attribute tables and "Slots:" lines (which the book's tests hold to the vendored manifest).
+DESIGN_SYSTEM = "C-design-system.md"
+ELEMENT_TABLE_BEFORE = "## Partial updates"
+
+
+def element_table(book):
+    """The compact element table from book/C-design-system.md: a short header, then per element
+    `al-x attr, flag!, choice=a*|b|c / slot, default` (`!` boolean, `*` the default choice)."""
+    path = book / DESIGN_SYSTEM
+    if not path.exists():
+        print(f"build_context.py: --reference: {path} is missing (the element table comes from it)", file=sys.stderr)
+        raise SystemExit(2)
+    rows, tag = [], None
+    for line in path.read_text().splitlines():
+        m = re.match(r"^### `(al-[a-z-]+)`$", line)
+        if m:
+            tag = m.group(1)
+            rows.append([tag, [], ""])
+            continue
+        if line.startswith("## ") or line.startswith("### "):
+            tag = None
+        if tag is None:
+            continue
+        if line.startswith("| `"):
+            cells = [c.strip() for c in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
+            name, typ, default = (c.strip("`").replace("\\|", "|") for c in cells[:3])
+            if typ == "boolean":
+                attr = name + "!"
+            elif '"' in typ:
+                choices = [c.strip().strip('"') for c in typ.split("|")]
+                d = default.strip('"')
+                attr = name + "=" + "|".join(c + ("*" if c == d else "") for c in choices)
+            else:
+                attr = name
+            rows[-1][1].append(attr)
+        elif line.startswith("Slots: "):
+            slots = re.sub(r" \(.*?\)", "", line[len("Slots: "):].rstrip(".")).replace("`", "")
+            rows[-1][2] = "" if slots == "none" else " / " + slots
+    out = ["The built-in elements (Appendix C; `!` boolean, `*` default, slots after `/`). Link\n"
+           "`/static/al/al.css` in the layout (every build serves it). An `<al-button>` with `click`,\n"
+           "`submit`, `type` or `href` renders a real `<button>`/`<a>` inside; `<al-alert>` gets `role`.\n\n"]
+    for tag, attrs, slots in rows:
+        out.append(f"- `{tag}` {', '.join(attrs) or '(none)'}{slots}\n")
+    return "".join(out) + "\n"
+
+
 def build(chapters, book, example, reference):
     out = [HEADER]
     for ch in chapters:
@@ -270,6 +318,12 @@ def build(chapters, book, example, reference):
                 text = drop_sections(f, text, HUMAN_SECTIONS.get(ch, []), KEEP_SUBSECTIONS.get(ch), DROP_SUBSECTIONS.get(ch))
             if reference:
                 text = ERROR_MODULE.sub(error_text, text)
+            if reference and ch == "05":
+                if ELEMENT_TABLE_BEFORE not in text:
+                    print(f'build_context.py: --reference: {f} has no "{ELEMENT_TABLE_BEFORE}" '
+                          f"(update ELEMENT_TABLE_BEFORE to match the book)", file=sys.stderr)
+                    raise SystemExit(2)
+                text = text.replace(ELEMENT_TABLE_BEFORE, element_table(book) + ELEMENT_TABLE_BEFORE, 1)
             out.append(text)
             out.append("\n")
     if example is not None:

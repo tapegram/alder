@@ -45,6 +45,9 @@ capabilities, plus any helper directories. `static/`
 is optional: `examples/todos/static/app.css` is served at
 `/static/app.css`, and the layout links it with
 `<link rel="stylesheet" href={Url.external "/static/app.css"} />`.
+`static/al/` is the compiler's: every build writes the design system's
+stylesheet and manifest there (below), so a file of yours under
+`static/al/` with one of their names is replaced.
 `elements/custom-elements.json` is optional too: a Custom Elements
 Manifest declaring the third-party custom elements the app's markup uses
 (chapter 5, "Custom elements"). Every command that checks the app reads
@@ -208,7 +211,11 @@ part of `dir` once it is made absolute (so `alder build .` inside
    `<dir>/adapters/` tree (every file in every directory: helper
    packages, Go test files and `testdata/` included; a file that is gone
    from yours is removed from the copy), and `build/<app>/static/` with a
-   copy of `<dir>/static/`.
+   copy of `<dir>/static/`. Into that copy it writes `al/al.css` and
+   `al/custom-elements.json`, the `alder-ui` design system's stylesheet and
+   manifest (Appendix C), from the copy the binary carries; the server
+   then serves them at `/static/al/…` with the same immutable cache
+   header as Datastar's script, and the app's own files with none.
 4. Write `build/<app>/cmd/main.go`, the program's `main`, which imports
    `"app/caps"` when the app has capabilities.
 5. Run `go vet` on the whole module, then `go build`, which writes
@@ -379,7 +386,8 @@ without the address in your browser changing.
 
 The app runs in development mode (`ALDER_DEV=1`, see the table above),
 with its database at `build/<app>/dev.db` (`ALDER_DB`) and the static
-files straight from your `<dir>/static/` (`ALDER_STATIC`). `ALDER_SECRET`
+files from the build's copy, `build/<app>/static/` (`ALDER_STATIC`): your
+`<dir>/static/` with the design system's `al/` written into it. `ALDER_SECRET`
 and the rest of your environment are passed on to it. Because it is in
 development mode, a dev database that does not match the app is dropped
 and created again, empty (chapter 8, "Migrations"); an app with
@@ -397,7 +405,7 @@ depends on what changed:
 |---|---|
 | a `.alder` file under `app/` (or add or delete one) | check, build, start the new app, reload the browser |
 | any file under `adapters/`, in any directory (not an editor's swap, backup or lock file, a name starting with `.`, or a symbolic link) | the same |
-| any file under `static/` | reload the browser only: the app reads those files as it serves them, so nothing is rebuilt |
+| any file under `static/` | copy `static/` into the build again (with `al/`), then reload the browser: the app reads those files as it serves them, so nothing is rebuilt |
 | anything else | nothing |
 
 Several saves close together (a "save all" in your editor, say) count as
@@ -436,7 +444,7 @@ the dev server sends:
 2. **Clear.** After a good build, the box is emptied.
 3. **Reload.** Then the page reloads itself, and you see the new app.
 
-A change under `static/` sends only the reload. A page whose connection
+A change under `static/` sends only the reload, after the copy. A page whose connection
 was cut (the network dropped, or you restarted `alder run`) connects
 again by itself; if it is from an older build by then, it is told to
 reload at once. Each open tab of the app holds one such connection the
@@ -971,6 +979,18 @@ module's `go.mod` and `go.sum` and, under `rt/rt/`, its packages
 import path is the module's name followed by the package's directory in
 it). `alder test`, `alder eval` and the REPL write the same into their
 own build directories (`build/<app>/scratch/test/rt/`, …).
+
+Among the runtime's files is the design system, under `rt/al/`: the
+stylesheet `al.css`, the manifest `custom-elements.json` the checker
+reads, and `VERSION`, the `alder-ui` release they were copied from. They
+are *vendored*: a copy of the library's files at one tag, kept in Alder's
+repository and embedded in the binary, so no build fetches anything. In
+the repository, `scripts/vendor-al.sh <tag>` replaces the copy with the
+library's release `<tag>` (it clones `github.com/tapegram/alder-ui` at
+the tag, copies the two files and writes `VERSION`); a test fails if
+`VERSION`, the manifest's `version` and the stylesheet's banner disagree,
+and the book's tests fail if Appendix C's tables no longer match the
+manifest.
 
 Every build rewrites the directory: a file that the binary's copy does
 not have is deleted, so a `build/` left by an older alder never mixes two

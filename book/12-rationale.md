@@ -554,6 +554,52 @@ directory holds a copy of the runtime's source (about 440 KB on disk).
 Go itself stays a prerequisite: `alder build` and `alder test` run `go
 build`, and adapters are Go, so there is no Alder without Go installed.
 
+### A design system in the box: light DOM, tokens, a manifest, vendored **(decided M7a; tested: the scaffold and both examples)**
+
+Every web app needs buttons, fields, cards and tables, and an agent
+asked to write one either writes the CSS again each time or invents
+class names that drift between pages. Alder ships one small design
+system, `alder-ui` (Appendix C), and the checker knows its elements.
+Four choices shaped it.
+
+**Light DOM, not shadow DOM.** A web component library usually puts each
+component's insides in a shadow root, which hides them from the page's
+CSS and from forms. Alder renders every page on the server and lets
+Datastar morph the new `<body>` into the old one (chapter 6); a shadow
+root built by JavaScript would be outside both. A light-DOM element is
+just a tag with a stylesheet: it renders with JavaScript off, a
+`<label>` inside it labels an input inside it, a `<button>` inside it
+submits its form, and the morph sees every node. The price is that the
+library cannot hide its structure: the markup is part of the API, which
+is why the renderer writes the input elements' insides itself and why
+`<al-button>` gets a real `<button>` (chapter 13, section 5).
+
+**Tokens, not themes in code.** Every colour, radius and space is a CSS
+custom property, named as shadcn/ui names them. A theme is a dozen
+lines of CSS, a dark theme is the same names with other values, and a
+team's own brand is an override on `:root`. The library's tests compute
+every pairing's contrast from the token values, so a token change that
+breaks AA fails there, not in a user's browser. The whole library sits
+in a CSS layer so an app's own rules always win without `!important`.
+
+**A manifest, not a hard-coded list.** The checker learns custom
+elements from a Custom Elements Manifest, the format the web-components
+world already publishes, instead of a list compiled into Alder. The
+design system is one manifest the compiler embeds; Web Awesome or any
+other library is another, copied into `elements/`. The same check (an
+unknown tag, attribute or slot is E0028) covers both, and the app's
+entry wins, so a team can redefine `al-button`. An agent gets the
+element list from the same file a person reads.
+
+**Vendored at a tag, not fetched.** The library lives in its own
+repository, so it can be used from any stack and tested on its own. Alder
+copies one tagged release into `rt/al/` and embeds it, for the reasons
+the runtime is embedded: the stylesheet the checker's manifest describes
+is the one every build serves, a build works offline, and no app's
+markup depends on a CDN being up. Updating is a deliberate step,
+`scripts/vendor-al.sh <tag>`, and the book's test of Appendix C's tables
+against the manifest makes the documentation part of that step.
+
 ## Experiments
 
 Each experiment has a directory under `experiments/` with its prompt,

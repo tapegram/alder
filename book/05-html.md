@@ -288,6 +288,12 @@ format the web-components world shares (`custom-elements.json`, schema
 1.0.0), which lists each element's tag, attributes and slots. Libraries
 publish one; tools generate one from a library's source.
 
+**Alder's own elements, the `al-` design system that every app can use,
+are documented in [Appendix C, "The alder-ui design
+system"](C-design-system.md)**: how to link its stylesheet, its tokens
+and themes, and every element with its attributes and examples. This
+section is about custom elements in general.
+
 The checker reads two manifests:
 
 - the manifest of `alder-ui`, Alder's own design system, built into the
@@ -304,9 +310,12 @@ When both declare a tag, the app's entry wins whole: a project can
 redefine `al-button` with its own attributes, and then only those are
 accepted.
 
-A custom element renders as written, its children inside it. Its
-attributes take the same values as any element's (`Text`, `Maybe Text`,
-`{expr}`):
+A custom element renders as written, its children inside it (three of
+the built-in ones get a little more from the renderer: an `<al-button>`
+with something to do gets a real `<button>` or `<a>` inside it, the input
+elements below get their control, and an `<al-alert>` its ARIA role;
+Appendix C). Its attributes take the same values as any element's
+(`Text`, `Maybe Text`, `{expr}`):
 
 ```alder eval=<al-badge variant="secondary">New</al-badge>
 <al-badge variant="secondary">New</al-badge>
