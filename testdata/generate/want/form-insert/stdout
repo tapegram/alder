@@ -1,0 +1,58 @@
+edited app/Home.alder
+--- a/app/Home.alder
++++ b/app/Home.alder
+@@ -20,12 +20,23 @@
+ 
+ msg Submit form Sign
+ 
++form Quick = {
++  name: Text.NonEmpty,
++  message: Text.NonEmpty,
++}
++
++msg SubmitQuick form Quick
++
+ update : Msg -> Model -> Session -> Task Nav
+ update msg model session = match msg {
+   Submit p -> {
+     let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
+     Task.succeed (Redirect (Home {}))
+   },
++  SubmitQuick p -> {
++    let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
++    Task.succeed (Redirect (Home {}))
++  },
+ }
+ 
+ view : Model -> Session -> Html Msg
+@@ -40,6 +51,12 @@
+         <al-input field="message" label="Message" />
+         <al-button type="submit">Sign</al-button>
+       </form>
++      <form submit={SubmitQuick}>
++        <al-alert variant="destructive"><Errors form /></al-alert>
++        <al-input field="name" label="Name" />
++        <al-textarea field="message" label="Message" />
++        <al-button type="submit">Quick</al-button>
++      </form>
+     </al-card>
+ 
+     <ul id="entries">
+@@ -61,3 +78,17 @@
+   let page <- Test.get (Home {})
+   Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
+ }
++
++test "submitting Quick adds a row" = {
++  let _ <- Test.get (Home {})
++  let r <- Test.submit Quick { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
++  let rows <- Db.from Entry |> Db.count
++  Task.succeed ({ answer: r.answer, rows: rows } == { answer: Redirected (Home {}), rows: 1 })
++}
++
++test "Quick refuses an empty name" = {
++  let _ <- Test.get (Home {})
++  let r <- Test.submitRaw Quick [{ name: "name", value: "" }, { name: "message", value: "x" }]
++  let rows <- Db.from Entry |> Db.count
++  Task.succeed ({ answer: r.answer, rows: rows } == { answer: FormRejected [{ field: "name", message: "must not be empty" }], rows: 0 })
++}

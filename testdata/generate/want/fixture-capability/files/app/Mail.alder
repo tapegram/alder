@@ -1,0 +1,17 @@
+module Mail
+
+-- `send` is implemented in Go, by `adapters/mail/` (`func Mail`), which
+-- `alder new capability` wrote to return an error until you write it (book chapter 7).
+capability Mail {
+  send : { to: Text.Email, subject: Text } -> Task Unit,
+}
+
+-- In a test, `let _ <- Test.fake Mail` replaces the adapter with this fake (book chapter 10).
+fake Mail {
+  send args = ?send
+}
+
+test "the fake Mail is installed" = {
+  let _ <- Test.fake Mail
+  Task.succeed True
+}

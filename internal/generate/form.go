@@ -1,0 +1,315 @@
+package generate
+
+import (
+	"fmt"
+	"strings"
+
+	"alder/internal/types"
+)
+
+// FormData is the data of form.tmpl.
+type FormData struct {
+	Name   string   // the form: "Contact"
+	Msg    string   // the message that posts it: "SubmitContact"
+	Fields []string // as declared: "name: Text.NonEmpty"
+	Inputs []string // one wrapped input per field: `<al-input field="name" label="Name" />`
+	Label  string   // the card's heading and the button's text: "Contact"
+}
+
+// snippet executes template name with data, untidied and without a final newline.
+func snippet(name string, data any) string {
+	var b strings.Builder
+	if err := templates.ExecuteTemplate(&b, name, data); err != nil {
+		panic(fmt.Sprintf("generate: template %s: %v", name, err))
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// FormOptions are the options of `alder new form`.
+type FormOptions struct {
+	Page   string // the page module
+	Name   string
+	Fields []FieldSpec
+	Into   string // --into T: the table the arm inserts into
+}
+
+// NewForm generates `alder new form`: in the page module, `form <Name>`, `msg Submit<Name> form
+// <Name>`, an `update` arm (an insert into the table the fields match by name and type, or
+// --into's; else the typed hole `?submit<Name>` : Task Nav), the form in `view` (inside its last
+// `al-card`, or in a card of its own at the end of the root element), and two browser tests: a
+// valid submission (its answer, and the row inserted), and an empty required field
+// (FormRejected, nothing inserted).
+func NewForm(p *Program, o FormOptions) ([]Edit, error) {
+	pg, m, err := pageModule(p, o.Page)
+	if err != nil {
+		return nil, err
+	}
+	if !IsUpperIdent(o.Name) {
+		return nil, Refusef("`%s` is not a form name: a form is named by a capitalised identifier, such as `Contact`", o.Name)
+	}
+	msg := "Submit" + o.Name
+	for _, n := range []string{o.Name, msg} {
+		if declared(m.Syntax, n) {
+			return nil, Refusef("`%s` already declares `%s`: choose another form name", o.Page, n)
+		}
+	}
+	if len(o.Fields) == 0 {
+		return nil, Refusef("a form needs at least one field: `alder new form %s %s title:Text.NonEmpty`", o.Page, o.Name)
+	}
+	seen := map[string]bool{}
+	d := FormData{Name: o.Name, Msg: msg, Label: Humanize(o.Name)}
+	for _, f := range o.Fields {
+		if seen[f.Name] {
+			return nil, Refusef("field `%s` is given twice", f.Name)
+		}
+		seen[f.Name] = true
+		d.Fields = append(d.Fields, f.Source())
+	}
+	imports := newImports(o.Page, p.Std)
+	for _, f := range o.Fields {
+		typeImports(imports, f.Type, p)
+	}
+
+	// the probe: the form declared in the page, to read its fields' types
+	e := newSrcEdit(m.Source)
+	addImports(e, m.Syntax, imports.list())
+	e.appendText("\n" + snippet("form_decl", d))
+	probe, err := Probe(p.Dir, []Edit{{Path: m.File, Body: e.result()}})
+	if err != nil {
+		return nil, err
+	}
+	if r := probe.errorsIn(m.File); r != nil {
+		return nil, r
+	}
+	rec := probe.Res.Forms[o.Page+"."+o.Name]
+	if rec == nil || len(rec.Fields) != len(o.Fields) {
+		return nil, Refusef("internal error: the form %s was not checked", o.Name)
+	}
+	ftypes := map[string]types.Type{}
+	for _, f := range rec.Fields {
+		ftypes[f.Name] = f.Type
+		d.Inputs = append(d.Inputs, input(f.Name, f.Type))
+	}
+
+	// the table the arm inserts into
+	var into *Table
+	requiresUser := pg.Requires != ""
+	if o.Into != "" {
+		if into = p.TableNamed(o.Into); into == nil {
+			return nil, Refusef("`--into %s`: `%s` is not a table of this app (its tables: %s)", o.Into, o.Into, tableNames(p))
+		}
+	} else {
+		for _, t := range p.Tables {
+			if fieldsFit(t, rec.Fields, requiresUser) {
+				into = t
+				break
+			}
+		}
+	}
+
+	e = newSrcEdit(m.Source)
+	redirect, answer := "Rerender", "Rerendered"
+	if !hasRequiredParams(pg) {
+		redirect, answer = "Redirect ("+pageLit(o.Page, nil)+")", "Redirected ("+pageLit(o.Page, nil)+")"
+	}
+	var arm string
+	if into != nil {
+		imports.add(into.Module)
+		var inits []string
+		for _, f := range o.Fields {
+			inits = append(inits, f.Name+": p.form."+f.Name)
+		}
+		op := "Db.insert"
+		if requiresUser && into.Owner != "" {
+			op = "Db.insertMine"
+		}
+		arm = fmt.Sprintf("%s p -> {\n  let _ <- %s %s { %s }\n  Task.succeed (%s)\n},", msg, op, into.Name, strings.Join(inits, ", "), redirect)
+		if redirect == "Rerender" {
+			arm = strings.Replace(arm, "Task.succeed (Rerender)", "Task.succeed Rerender", 1)
+		}
+	} else {
+		arm = fmt.Sprintf("%s p -> ?%s,", msg, LowerFirst(msg))
+	}
+	if err := addDecls(e, m, o.Page, snippet("form_decls", d), arm); err != nil {
+		return nil, err
+	}
+	markup := snippet("form_markup", d)
+	if err := addToView(e, m, o.Page, markup, d.Label); err != nil {
+		return nil, err
+	}
+
+	// the tests
+	tb := newTestBuilder(p, o.Page, imports)
+	if requiresUser {
+		tb.login(roleOf(pg))
+	}
+	page := tb.pageValue(pg)
+	setup := tb.lines
+	rowsBefore := 0
+	if into != nil {
+		rowsBefore = tb.counts[into.Module]
+	}
+	var values []string
+	for _, f := range rec.Fields {
+		values = append(values, f.Name+": "+tb.sample(f.Type, f.Name, 1))
+	}
+	valid := append(append([]string{}, tb.lines...), "let _ <- Test.get ("+page+")", fmt.Sprintf("let r <- Test.submit %s { %s }", o.Name, strings.Join(values, ", ")))
+	tests := []TestData{}
+	if into != nil {
+		valid = append(valid, "let rows <- Db.from "+into.Name+" |> Db.count")
+		tests = append(tests, TestData{Name: quote("submitting " + o.Name + " adds a row"), Lines: valid,
+			Result: fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", answer, rowsBefore+1)})
+	} else {
+		tests = append(tests, TestData{Name: quote("submitting " + o.Name), Lines: valid, Result: "r.answer == ?expected"})
+	}
+	// an empty required field
+	for _, f := range rec.Fields {
+		msgText := emptyMessage(f.Type)
+		if msgText == "" {
+			continue
+		}
+		var raw []string
+		for _, g := range rec.Fields {
+			v := rawSample(g.Type)
+			if g.Name == f.Name {
+				v = ""
+			}
+			raw = append(raw, fmt.Sprintf("{ name: %s, value: %s }", quote(g.Name), quote(v)))
+		}
+		lines := append(append([]string{}, setup...), "let _ <- Test.get ("+page+")", fmt.Sprintf("let r <- Test.submitRaw %s [%s]", o.Name, strings.Join(raw, ", ")))
+		rejected := fmt.Sprintf("FormRejected [{ field: %s, message: %s }]", quote(f.Name), quote(msgText))
+		res := "r.answer == " + rejected
+		if into != nil {
+			lines = append(lines, "let rows <- Db.from "+into.Name+" |> Db.count")
+			res = fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", rejected, rowsBefore)
+		}
+		tests = append(tests, TestData{Name: quote(o.Name + " refuses an empty " + f.Name), Lines: lines, Result: res})
+		break
+	}
+	if err := addTests(e, m, tests); err != nil {
+		return nil, err
+	}
+	addImports(e, m.Syntax, imports.list())
+	return []Edit{{Path: m.File, Body: e.result()}}, nil
+}
+
+// pageModule is page module name, refused when it is not one of the app's pages.
+func pageModule(p *Program, name string) (*Page, *Module, error) {
+	pg := p.PageNamed(name)
+	if pg == nil {
+		if p.Modules[name] != nil {
+			return nil, nil, Refusef("`%s` is not a page (it has no `page` declaration): `alder new page %s /path` makes one", name, name)
+		}
+		return nil, nil, Refusef("there is no page `%s`: `alder new page %s /path` makes one", name, name)
+	}
+	return pg, p.Modules[name], nil
+}
+
+// roleOf is the role a test signs in with to see page pg: its first, or "".
+func roleOf(pg *Page) string {
+	if len(pg.Roles) > 0 {
+		return pg.Roles[0]
+	}
+	return ""
+}
+
+// hasRequiredParams reports whether page pg has a parameter without a default.
+func hasRequiredParams(pg *Page) bool {
+	for _, par := range pg.Params {
+		if !par.HasDefault {
+			return true
+		}
+	}
+	return false
+}
+
+// fieldsFit reports whether a form with fields inserts a row of t: every field is a column of
+// t of the same type, and every column an insert must name is a field (but the `@owner` one,
+// when the page requires a user: Db.insertMine names it).
+func fieldsFit(t *Table, fields []types.Field, requiresUser bool) bool {
+	byName := map[string]types.Type{}
+	for _, f := range fields {
+		c := t.Column(f.Name)
+		if c == nil || c.ID || c.Created || c.Updated || types.String(c.Type) != types.String(f.Type) {
+			return false
+		}
+		byName[f.Name] = f.Type
+	}
+	for _, c := range t.Columns {
+		if c.Required() && byName[c.Name] == nil && !(c.Owner && requiresUser) {
+			return false
+		}
+	}
+	return true
+}
+
+// input is the wrapped input of a form field: `al-select` for a union, `al-checkbox` for a
+// Bool, `al-textarea` for a Text field named body, message or description, `al-input` else.
+func input(name string, t types.Type) string {
+	elem, _ := unMaybe(t)
+	k, _, u := kindOf(elem)
+	tag := "al-input"
+	switch {
+	case u != nil:
+		tag = "al-select"
+	case k == KindBool:
+		tag = "al-checkbox"
+	case k == KindText && (name == "body" || name == "message" || name == "description"):
+		tag = "al-textarea"
+	}
+	return fmt.Sprintf("<%s field=%s label=%s />", tag, quote(name), quote(Humanize(name)))
+}
+
+// addDecls inserts decls (a page's new `form`/`msg` declarations) and arm (a new arm of its
+// `update`): before `update` with the arm added to its match, or, for a page without
+// messages yet, before `view` with a new `update` holding the arm.
+func addDecls(e *srcEdit, m *Module, page, decls, arm string) error {
+	line, ind, has, ok := updateArmSpot(e, m.Syntax)
+	if !ok {
+		return Refusef("`%s`'s `update` is not `match msg { … }` written over several lines: add the arm yourself", page)
+	}
+	if has {
+		e.insertBefore(declStart(e, valueDecl(m.Syntax, "update")), decls+"\n")
+		e.insertBefore(line, indent(arm, ind))
+		return nil
+	}
+	view := valueDecl(m.Syntax, "view")
+	if view == nil {
+		return Refusef("`%s` has no `view`", page)
+	}
+	e.insertBefore(declStart(e, view), decls+"\n\n"+snippet("update", indent(arm, "  "))+"\n")
+	return nil
+}
+
+// addToView inserts markup into module m's view: a form (label is its card's heading) inside
+// the view's last `al-card`, or in a card of its own at the end of the root element; a button
+// (label "") at the end of the root element.
+func addToView(e *srcEdit, m *Module, page, markup, label string) error {
+	spot, ok := findViewSpot(e, m.Syntax, label == "")
+	if !ok {
+		return Refusef("`%s`'s `view` is not one element over several lines: add the markup yourself", page)
+	}
+	switch {
+	case label == "": // a button, after a blank line, as the root's sections are
+		e.insertBefore(spot.Line, "\n"+indent(markup, spot.Indent))
+		return nil
+	case spot.InCard:
+		e.insertBefore(spot.Line, indent(markup, spot.Indent))
+		return nil
+	}
+	card := snippet("card", map[string]string{"Label": label, "Body": indent(markup, "  ")})
+	e.insertBefore(spot.Line, "\n"+indent(card, spot.Indent))
+	return nil
+}
+
+// addTests appends tests to module m, refusing a test name m already has.
+func addTests(e *srcEdit, m *Module, tests []TestData) error {
+	for _, t := range tests {
+		name := strings.Trim(t.Name, `"`)
+		if testNamed(m.Syntax, name) {
+			return Refusef("`%s` already has a test %s: rename it first", m.Name, t.Name)
+		}
+		e.appendText("\n" + snippet("test", t))
+	}
+	return nil
+}

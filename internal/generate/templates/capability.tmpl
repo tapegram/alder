@@ -1,0 +1,20 @@
+[[- define "capability" -]]
+-- `[[.Entry]]` is implemented in Go, by `adapters/[[.Package]]/` (`func [[.Func]]`), which
+-- `alder new capability` wrote to return an error until you write it (book chapter 7).
+capability [[.Name]] {
+  [[.Entry]] : [[.Type]],
+}
+
+-- In a test, `let _ <- Test.fake [[.Name]]` replaces the adapter with this fake (book chapter 10).
+fake [[.Name]] {
+  [[.Entry]][[range .Params]] [[.]][[end]] = ?[[.Entry]]
+}
+[[- end]]
+
+[[- define "capability_module" -]]
+module [[.Module]]
+
+[[range .Imports]]import [[.]]
+[[end]]
+[[template "capability" .]]
+[[- end]]

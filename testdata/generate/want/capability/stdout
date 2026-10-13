@@ -1,0 +1,5 @@
+wrote adapters/weather/weather.go
+wrote app/Weather.alder
+app/Weather.alder:11:18: warning[W0002]: in `fake Weather`'s `current`: hole ?current has type Query (Maybe Float)
+    current args = ?current
+                   ^^^^^^^

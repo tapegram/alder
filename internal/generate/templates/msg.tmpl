@@ -1,0 +1,7 @@
+[[- define "msg_decl" -]]
+msg [[.Name]][[if .Fields]] { [[range $i, $f := .Fields]][[if $i]], [[end]][[$f]][[end]] }[[end]]
+[[- end]]
+
+[[- define "msg_button" -]]
+<al-button click={[[.Click]]}>[[.Label]]</al-button>
+[[- end]]

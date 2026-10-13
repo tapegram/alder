@@ -1,0 +1,44 @@
+edited app/Home.alder
+--- a/app/Home.alder
++++ b/app/Home.alder
+@@ -20,12 +20,15 @@
+ 
+ msg Submit form Sign
+ 
++msg Clear
++
+ update : Msg -> Model -> Session -> Task Nav
+ update msg model session = match msg {
+   Submit p -> {
+     let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
+     Task.succeed (Redirect (Home {}))
+   },
++  Clear p -> ?clear,
+ }
+ 
+ view : Model -> Session -> Html Msg
+@@ -45,6 +48,8 @@
+     <ul id="entries">
+       {for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}
+     </ul>
++
++    <al-button click={Clear}>Clear</al-button>
+   </Layout.Page>
+ 
+ test "signing adds an entry" = {
+@@ -61,3 +66,9 @@
+   let page <- Test.get (Home {})
+   Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
+ }
++
++test "pressing Clear" = {
++  let _ <- Test.get (Home {})
++  let r <- Test.click Clear
++  Task.succeed (r.answer == ?expected)
++}
+app/Home.alder:31:14: warning[W0002]: hole ?clear has type Task Nav
+    Clear p -> ?clear,
+               ^^^^^
+app/Home.alder:73:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^

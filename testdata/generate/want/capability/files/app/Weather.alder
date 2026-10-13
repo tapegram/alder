@@ -1,0 +1,17 @@
+module Weather
+
+-- `current` is implemented in Go, by `adapters/weather/` (`func Weather`), which
+-- `alder new capability` wrote to return an error until you write it (book chapter 7).
+capability Weather {
+  current : { city: Text } -> Query (Maybe Float),
+}
+
+-- In a test, `let _ <- Test.fake Weather` replaces the adapter with this fake (book chapter 10).
+fake Weather {
+  current args = ?current
+}
+
+test "the fake Weather is installed" = {
+  let _ <- Test.fake Weather
+  Task.succeed True
+}

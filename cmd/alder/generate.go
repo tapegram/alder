@@ -307,16 +307,53 @@ func runNewTableTo(args []string, stdout, stderr io.Writer) int {
 }
 
 // runNewAdminTo is `alder new admin`, which arrives with the admin generator (M12 Task 2).
-func runNewAdminTo(args []string, stdout, stderr io.Writer) int { return notYet("admin", stderr) }
-
-// notYet is the answer of a generator that is not here yet.
-func notYet(kind string, stderr io.Writer) int {
-	fmt.Fprintf(stderr, "alder new %s: not available yet\n", kind)
+func runNewAdminTo(args []string, stdout, stderr io.Writer) int {
+	fmt.Fprintln(stderr, "alder new admin: not available yet")
 	return 2
 }
 
-func runNewFormTo(args []string, stdout, stderr io.Writer) int { return notYet("form", stderr) }
-func runNewMsgTo(args []string, stdout, stderr io.Writer) int  { return notYet("msg", stderr) }
+const newFormUsage = "usage: alder new form <Page module> <Name> <field>:<Type>[=default] … [--into T] [--dir app] [--json] [--dry-run]"
+
+// runNewFormTo is `alder new form`.
+func runNewFormTo(args []string, stdout, stderr io.Writer) int {
+	g, err := parseGenArgs(args, []string{"into"}, nil, nil)
+	if err != nil || len(g.pos) < 2 {
+		return genUsage(stderr, newFormUsage, err)
+	}
+	fields, ok := parseFields(g, g.pos[2:], false, "alder new form", stdout, stderr)
+	if !ok {
+		return 1
+	}
+	o := generate.FormOptions{Page: g.pos[0], Name: g.pos[1], Fields: fields, Into: g.flag("into")}
+	return runGenerator("alder new form", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) { return generate.NewForm(p, o) }, stdout, stderr)
+}
+
+const newMsgUsage = "usage: alder new msg <Page module> <Name> [<field>:<Type> …] [--dir app] [--json] [--dry-run]"
+
+// runNewMsgTo is `alder new msg`.
+func runNewMsgTo(args []string, stdout, stderr io.Writer) int {
+	g, err := parseGenArgs(args, nil, nil, nil)
+	if err != nil || len(g.pos) < 2 {
+		return genUsage(stderr, newMsgUsage, err)
+	}
+	fields, ok := parseFields(g, g.pos[2:], false, "alder new msg", stdout, stderr)
+	if !ok {
+		return 1
+	}
+	return runGenerator("alder new msg", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
+		return generate.NewMsg(p, g.pos[0], g.pos[1], fields)
+	}, stdout, stderr)
+}
+
+const newCapabilityUsage = "usage: alder new capability <Module> <entry> \"<Type>\" [--dir app] [--json] [--dry-run]"
+
+// runNewCapabilityTo is `alder new capability`.
 func runNewCapabilityTo(args []string, stdout, stderr io.Writer) int {
-	return notYet("capability", stderr)
+	g, err := parseGenArgs(args, nil, nil, nil)
+	if err != nil || len(g.pos) != 3 {
+		return genUsage(stderr, newCapabilityUsage, err)
+	}
+	return runGenerator("alder new capability", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
+		return generate.NewCapability(p, g.pos[0], g.pos[1], g.pos[2])
+	}, stdout, stderr)
 }

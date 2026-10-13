@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/format"
 	"maps"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -741,3 +742,68 @@ import (
 	}
 	return src
 }
+
+// AdapterStub is the Go file `alder new capability` writes for capability c (internal/generate):
+// package pkg (the package of adapters/AdapterPkg(c.Module)/) with the constructor the rule
+// names, AdapterFunc(c.Module, c.Name), returning a value whose methods are the capability's
+// entries, as capDecl declares them, each returning its result's zero value and the error "not
+// implemented" until its author writes it (the step then fails with
+// "<Capability>.<entry>: not implemented"). It is gofmt'ed.
+func AdapterStub(c *ir.Capability, pkg string) ([]byte, error) {
+	fn := AdapterFunc(c.Module, c.Name)
+	impl := "adapter" + fn
+	var b strings.Builder
+	fmt.Fprintf(&b, "// Package %s holds the Go adapter of capability %s.%s, written by\n", pkg, c.Module, c.Name)
+	b.WriteString("// `alder new capability`: each method returns an error until you write it (the Alder book,\n// chapter 7, \"Implementing a capability\").\n")
+	fmt.Fprintf(&b, "package %s\n\nIMPORTS\n\n", pkg)
+	fmt.Fprintf(&b, "// %s is the adapter of %s.%s.\nfunc %s() app.%s { return %s{} }\n\n", fn, c.Module, c.Name, fn, capName(c.Module, c.Name), impl)
+	fmt.Fprintf(&b, "// %s implements %s.%s.\ntype %s struct{}\n", impl, c.Module, c.Name, impl)
+	for _, e := range c.Entries {
+		params := []string{"ctx context.Context"}
+		res := e.Type
+		if ft, ok := e.Type.(*types.Fun); ok {
+			if p, _ := capArg(e.Type); p != nil {
+				params = append(params, "args app."+argsName(c.Module, c.Name, e.Name))
+			} else {
+				for i, p := range ft.Params {
+					params = append(params, "a"+strconv.Itoa(i+1)+" "+appQualified(GoType(p)))
+				}
+			}
+			res = ft.Result
+		}
+		rt := appQualified(GoType(effResult(res)))
+		fmt.Fprintf(&b, "\n// %s is %s.%s: not implemented yet.\nfunc (%s) %s(%s) (%s, error) {\n\tvar zero %s\n\treturn zero, errors.New(\"not implemented\")\n}\n",
+			Field(e.Name), c.Name, e.Name, impl, Field(e.Name), strings.Join(params, ", "), rt, rt)
+	}
+	src := b.String()
+	imports := []string{"context", "errors"}
+	_, code, _ := strings.Cut(src, "IMPORTS")
+	for _, m := range stubPkg.FindAllStringSubmatch(code, -1) {
+		path := map[string]string{"rt": "alder/rt", "html": "alder/rt/html", "time": "time", "db": "alder/rt/db", "eff": "alder/rt/eff", "app": "app"}[m[1]]
+		if !slices.Contains(imports, path) {
+			imports = append(imports, path)
+		}
+	}
+	slices.Sort(imports)
+	var std, mod []string
+	for _, im := range imports {
+		if strings.Contains(im, "/") || im == "app" {
+			mod = append(mod, strconv.Quote(im))
+		} else {
+			std = append(std, strconv.Quote(im))
+		}
+	}
+	block := "import (\n" + strings.Join(std, "\n") + "\n\n" + strings.Join(mod, "\n") + "\n)"
+	return format.Source([]byte(strings.Replace(src, "IMPORTS", block, 1)))
+}
+
+// appQualified qualifies the generated package's names in a Go type written inside it
+// (GoType's), for code outside it: `Post__Status` → `app.Post__Status`.
+func appQualified(t string) string {
+	return appName.ReplaceAllString(t, "${1}app.$2")
+}
+
+var appName = regexp.MustCompile(`(^|[^.\w])([A-Z]\w*__\w+)`)
+
+// stubPkg finds the packages a stub's code uses.
+var stubPkg = regexp.MustCompile(`\b(rt|html|time|db|eff|app)\.[A-Z]`)

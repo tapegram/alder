@@ -1,0 +1,71 @@
+edited app/Home.alder
+--- a/app/Home.alder
++++ b/app/Home.alder
+@@ -2,6 +2,7 @@
+ 
+ import Layout
+ import Post
++import Tag
+ import User
+ 
+ page "/" { } requires user
+@@ -21,12 +22,23 @@
+ 
+ msg Submit form Write
+ 
++form Tagging = {
++  name: Text.NonEmpty,
++  post: Post.PostId,
++}
++
++msg SubmitTagging form Tagging
++
+ update : Msg -> Model -> Session -> Task Nav
+ update msg model session = match msg {
+   Submit p -> {
+     let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
+     Task.succeed (Redirect (Home {}))
+   },
++  SubmitTagging p -> {
++    let _ <- Db.insert Tag { name: p.form.name, post: p.form.post }
++    Task.succeed (Redirect (Home {}))
++  },
+ }
+ 
+ view : Model -> Session -> Html Msg
+@@ -46,6 +58,12 @@
+         <al-textarea field="body" label="Body" />
+         <al-button type="submit">Write</al-button>
+       </form>
++      <form submit={SubmitTagging}>
++        <al-alert variant="destructive"><Errors form /></al-alert>
++        <al-input field="name" label="Name" />
++        <al-input field="post" label="Post" />
++        <al-button type="submit">Tagging</al-button>
++      </form>
+     </al-card>
+ 
+     <al-button variant="outline" click={App.Logout}>Log out</al-button>
+@@ -68,3 +86,22 @@
+   let page <- Test.get (Home {})
+   Task.succeed (Test.texts "#posts li" page.doc == ["Mine"])
+ }
++
++test "submitting Tagging adds a row" = {
++  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
++  let _ <- Test.login { user: Just me }
++  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
++  let _ <- Test.get (Home {})
++  let r <- Test.submit Tagging { name: Text.NonEmpty "name-1", post: post1 }
++  let rows <- Db.from Tag |> Db.count
++  Task.succeed ({ answer: r.answer, rows: rows } == { answer: Redirected (Home {}), rows: 1 })
++}
++
++test "Tagging refuses an empty name" = {
++  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
++  let _ <- Test.login { user: Just me }
++  let _ <- Test.get (Home {})
++  let r <- Test.submitRaw Tagging [{ name: "name", value: "" }, { name: "post", value: "x" }]
++  let rows <- Db.from Tag |> Db.count
++  Task.succeed ({ answer: r.answer, rows: rows } == { answer: FormRejected [{ field: "name", message: "must not be empty" }], rows: 0 })
++}

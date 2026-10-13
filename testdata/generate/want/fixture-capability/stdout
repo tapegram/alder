@@ -1,0 +1,5 @@
+wrote adapters/mail/mail.go
+wrote app/Mail.alder
+app/Mail.alder:11:15: warning[W0002]: in `fake Mail`'s `send`: hole ?send has type Task Unit
+    send args = ?send
+                ^^^^

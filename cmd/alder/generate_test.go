@@ -158,11 +158,19 @@ var genCases = []genCase{
 	{name: "page-show", base: "scaffold", args: []string{"new", "page", "Entries.Show", "/entries", "--show", "Entry"}, tests: 4},
 	{name: "page-from", base: "scaffold", args: []string{"new", "page", "Dash", "/dash", "--from", "Entry"}, tests: 3},
 	{name: "table", base: "scaffold", args: []string{"new", "table", "Tag", "name:Text.NonEmpty@unique", "entry:Entry.EntryId@ref=Entry@cascade", "note:Maybe Text", "pinned:Bool=False"}, tests: 2},
+	{name: "form-insert", base: "scaffold", args: []string{"new", "form", "Home", "Quick", "name:Text.NonEmpty", "message:Text.NonEmpty"}, tests: 4},
+	{name: "form-hole", base: "scaffold", args: []string{"new", "form", "Home", "Contact", "email:Text.Email", "topic:Text"}},
+	{name: "msg", base: "scaffold", args: []string{"new", "msg", "Home", "Clear"}},
+	{name: "capability", base: "scaffold", args: []string{"new", "capability", "Weather", "current", "{ city: Text } -> Query (Maybe Float)"}},
 
 	{name: "fixture-page-list-mine", base: "fixture", args: []string{"new", "page", "Posts.Index", "/posts", "--list", "Post", "--requires", "user"}, tests: 6},
 	{name: "fixture-page-show-role", base: "fixture", args: []string{"new", "page", "Users.Show", "/users", "--show", "User", "--role", "Admin"}, tests: 7},
 	{name: "fixture-page-from", base: "fixture", args: []string{"new", "page", "Dash", "/dash", "--from", "Post", "Tag", "--requires", "user"}, tests: 6},
 	{name: "fixture-table", base: "fixture", args: []string{"new", "table", "Like", "post:Post.PostId@ref=Post@cascade", "owner:User.UserId@ref=User@owner"}, tests: 5},
+	{name: "fixture-form-mine", base: "fixture", args: []string{"new", "form", "Home", "Quick", "title:Text.NonEmpty", "body:Text"}, tests: 7},
+	{name: "fixture-form-ref", base: "fixture", args: []string{"new", "form", "Home", "Tagging", "name:Text.NonEmpty", "post:Post.PostId"}, tests: 7},
+	{name: "fixture-msg-params", base: "fixture", args: []string{"new", "msg", "Home", "Feature", "id:Post.PostId"}},
+	{name: "fixture-capability", base: "fixture", args: []string{"new", "capability", "Mail", "send", "{ to: Text.Email, subject: Text } -> Task Unit"}},
 }
 
 // TestGenerate runs every case of genCases.
@@ -200,6 +208,25 @@ func TestGenerate(t *testing.T) {
 	}
 }
 
+// TestGenerate_DoesNotCheck (Review Focus 1): a command whose result does not check writes
+// nothing, prints the checker's diagnostics and exits 1; after the mistake is corrected the
+// same command works.
+func TestGenerate_DoesNotCheck(t *testing.T) {
+	dir := genApp(t, "fixture")
+	before := appFiles(t, dir)
+	code, out, errs := alderIn(t, dir, "", "new", "form", "Home", "Bad", "title:Int", "--into", "Post")
+	if code != 1 || errs != "alder new form: the result does not check (the errors above): nothing was written\n" ||
+		!strings.Contains(out, "error[E0003]: expected Text.NonEmpty, got Int") {
+		t.Errorf("a form that does not fit its table: exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
+	}
+	if len(changedFiles(before, appFiles(t, dir))) != 0 {
+		t.Errorf("a refused form wrote files")
+	}
+	if code, _, errs := alderIn(t, dir, "", "new", "form", "Home", "Bad", "title:Text.NonEmpty", "body:Text", "--into", "Post"); code != 0 {
+		t.Errorf("the corrected form: exit %d: %s", code, errs)
+	}
+}
+
 // TestGenerate_Refusals: each refusal is one sentence on standard error, exit 1, nothing
 // written.
 func TestGenerate_Refusals(t *testing.T) {
@@ -221,6 +248,12 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "table", "Entry", "x:Int"}, "", "alder new table: module `Entry` exists (`app/Entry.alder`): a generator never overwrites a file; choose another table name"},
 		{"scaffold", []string{"new", "table", "Tag", "id:Int"}, "", "alder new table: field `id`: the generator writes the id, `id: TagId @id`; leave it out"},
 		{"scaffold", []string{"new", "table", "Tag", "name"}, "", "alder new table: `name` is not a field: write `name:Type`, such as `title:Text.NonEmpty`"},
+		{"scaffold", []string{"new", "form", "Home", "Sign", "name:Text"}, "", "alder new form: `Home` already declares `Sign`: choose another form name"},
+		{"scaffold", []string{"new", "form", "Entry", "Sign", "name:Text"}, "", "alder new form: `Entry` is not a page (it has no `page` declaration): `alder new page Entry /path` makes one"},
+		{"scaffold", []string{"new", "form", "Home", "Contact", "name:Text", "--into", "Post"}, "", "alder new form: `--into Post`: `Post` is not a table of this app (its tables: Entry)"},
+		{"scaffold", []string{"new", "msg", "Home", "Submit"}, "", "alder new msg: `Home` already declares `Submit`: choose another message name"},
+		{"scaffold", []string{"new", "msg", "Nowhere", "Go"}, "", "alder new msg: there is no page `Nowhere`: `alder new page Nowhere /path` makes one"},
+		{"scaffold", []string{"new", "capability", "Weather", "now", "Query Float ->"}, "", "alder new capability: `Query Float ->` is not a type: "},
 	} {
 		dir := genApp(t, c.base)
 		before := appFiles(t, dir)

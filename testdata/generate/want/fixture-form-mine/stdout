@@ -1,0 +1,62 @@
+edited app/Home.alder
+--- a/app/Home.alder
++++ b/app/Home.alder
+@@ -21,12 +21,23 @@
+ 
+ msg Submit form Write
+ 
++form Quick = {
++  title: Text.NonEmpty,
++  body: Text,
++}
++
++msg SubmitQuick form Quick
++
+ update : Msg -> Model -> Session -> Task Nav
+ update msg model session = match msg {
+   Submit p -> {
+     let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
+     Task.succeed (Redirect (Home {}))
+   },
++  SubmitQuick p -> {
++    let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
++    Task.succeed (Redirect (Home {}))
++  },
+ }
+ 
+ view : Model -> Session -> Html Msg
+@@ -46,6 +57,12 @@
+         <al-textarea field="body" label="Body" />
+         <al-button type="submit">Write</al-button>
+       </form>
++      <form submit={SubmitQuick}>
++        <al-alert variant="destructive"><Errors form /></al-alert>
++        <al-input field="title" label="Title" />
++        <al-textarea field="body" label="Body" />
++        <al-button type="submit">Quick</al-button>
++      </form>
+     </al-card>
+ 
+     <al-button variant="outline" click={App.Logout}>Log out</al-button>
+@@ -68,3 +85,21 @@
+   let page <- Test.get (Home {})
+   Task.succeed (Test.texts "#posts li" page.doc == ["Mine"])
+ }
++
++test "submitting Quick adds a row" = {
++  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
++  let _ <- Test.login { user: Just me }
++  let _ <- Test.get (Home {})
++  let r <- Test.submit Quick { title: Text.NonEmpty "title-1", body: "body-1" }
++  let rows <- Db.from Post |> Db.count
++  Task.succeed ({ answer: r.answer, rows: rows } == { answer: Redirected (Home {}), rows: 1 })
++}
++
++test "Quick refuses an empty title" = {
++  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
++  let _ <- Test.login { user: Just me }
++  let _ <- Test.get (Home {})
++  let r <- Test.submitRaw Quick [{ name: "title", value: "" }, { name: "body", value: "x" }]
++  let rows <- Db.from Post |> Db.count
++  Task.succeed ({ answer: r.answer, rows: rows } == { answer: FormRejected [{ field: "title", message: "must not be empty" }], rows: 0 })
++}

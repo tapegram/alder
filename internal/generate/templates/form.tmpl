@@ -1,0 +1,37 @@
+[[- define "form_decl" -]]
+form [[.Name]] = {
+[[- range .Fields]]
+  [[.]],
+[[- end]]
+}
+[[- end]]
+
+[[- define "form_decls" -]]
+[[template "form_decl" .]]
+
+msg [[.Msg]] form [[.Name]]
+[[- end]]
+
+[[- define "form_markup" -]]
+<form submit={[[.Msg]]}>
+  <al-alert variant="destructive"><Errors form /></al-alert>
+[[- range .Inputs]]
+  [[.]]
+[[- end]]
+  <al-button type="submit">[[.Label]]</al-button>
+</form>
+[[- end]]
+
+[[- define "card" -]]
+<al-card>
+  <h2 slot="header">[[.Label]]</h2>
+[[.Body]]
+</al-card>
+[[- end]]
+
+[[- define "update" -]]
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+[[.]]
+}
+[[- end]]

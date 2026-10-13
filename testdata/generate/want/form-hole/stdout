@@ -1,0 +1,59 @@
+edited app/Home.alder
+--- a/app/Home.alder
++++ b/app/Home.alder
+@@ -20,12 +20,20 @@
+ 
+ msg Submit form Sign
+ 
++form Contact = {
++  email: Text.Email,
++  topic: Text,
++}
++
++msg SubmitContact form Contact
++
+ update : Msg -> Model -> Session -> Task Nav
+ update msg model session = match msg {
+   Submit p -> {
+     let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
+     Task.succeed (Redirect (Home {}))
+   },
++  SubmitContact p -> ?submitContact,
+ }
+ 
+ view : Model -> Session -> Html Msg
+@@ -40,6 +48,12 @@
+         <al-input field="message" label="Message" />
+         <al-button type="submit">Sign</al-button>
+       </form>
++      <form submit={SubmitContact}>
++        <al-alert variant="destructive"><Errors form /></al-alert>
++        <al-input field="email" label="Email" />
++        <al-input field="topic" label="Topic" />
++        <al-button type="submit">Contact</al-button>
++      </form>
+     </al-card>
+ 
+     <ul id="entries">
+@@ -61,3 +75,15 @@
+   let page <- Test.get (Home {})
+   Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
+ }
++
++test "submitting Contact" = {
++  let _ <- Test.get (Home {})
++  let r <- Test.submit Contact { email: Text.Email "email-1@example.com", topic: "topic-1" }
++  Task.succeed (r.answer == ?expected)
++}
++
++test "Contact refuses an empty email" = {
++  let _ <- Test.get (Home {})
++  let r <- Test.submitRaw Contact [{ name: "email", value: "" }, { name: "topic", value: "x" }]
++  Task.succeed (r.answer == FormRejected [{ field: "email", message: "must be an email address" }])
++}
+app/Home.alder:36:22: warning[W0002]: hole ?submitContact has type Task Nav
+    SubmitContact p -> ?submitContact,
+                       ^^^^^^^^^^^^^
+app/Home.alder:82:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^
