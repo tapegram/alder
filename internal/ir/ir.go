@@ -560,6 +560,11 @@ type Input struct {
 	LabelExpr Expr
 	Value     Expr
 	BareForm  bool
+	// Wrap is the built-in input element written around the control (`al-input` for
+	// `<al-input field="title">`), "" for a form component; WrapAttrs are that element's own
+	// attributes, as written (not `field`, `label`, `value`).
+	Wrap      string
+	WrapAttrs []HAttr
 }
 
 // FormEl is `<form submit={…}>`. Attrs include the AttrSubmit attribute holding the message

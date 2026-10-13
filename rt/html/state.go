@@ -40,6 +40,11 @@ type Control struct {
 	Value    string   // the initial value as text ("True" checks a checkbox), "" for none
 	Options  []string // a select's options: the union's constructor names
 	Secret   bool     // a Text.Secret field: type="password", and no value is ever rendered
+	// Wrap is the design system's input element written around the control ("al-input",
+	// "al-textarea", "al-select", "al-checkbox"), "" for none; WrapAttrs are its attributes as
+	// written (see Input).
+	Wrap      string
+	WrapAttrs []Attr
 }
 
 // Input is a deferred form control: it is built when rendered. Without a matching FormState it
@@ -50,6 +55,16 @@ type Control struct {
 // st.FormError for `<Errors form />`, then the errors of every field that has no `<Errors field>`
 // in that form, prefixed with the field's name). Submitted values and messages are escaped like
 // any text.
+//
+// A control with a Wrap renders inside that element, followed by the field's own error list
+// (as `<Errors field>` renders it, so the field's errors are not repeated on the form's list):
+//
+//	<al-input label="Title" placeholder="…" invalid><label>Title<input name="title" … /></label><ul class="errors" data-errors="title"><li>…</li></ul></al-input>
+//
+// The element carries `label` (the label text, when there is one), then WrapAttrs in order,
+// then `invalid` exactly when the field has errors (or `invalid` is written and true). The
+// control also gets the element's `placeholder` (not on a select or checkbox) and `disabled`,
+// so they work without the design system's stylesheet.
 func Input(c Control) Node { return Node{kind: kCtrl, control: &c} }
 
 func (c *Control) build(st *FormState, active bool, orphan []string) Node {
@@ -108,8 +123,41 @@ func (c *Control) build(st *FormState, active bool, orphan []string) Node {
 		}
 		control = El("input", attrs)
 	}
-	if c.Label == "" {
-		return El("label", nil, control)
+	if c.Wrap != "" {
+		control.attrs = append(control.attrs, c.forwarded()...)
 	}
-	return El("label", nil, Text(c.Label), control)
+	label := El("label", nil, control)
+	if c.Label != "" {
+		label = El("label", nil, Text(c.Label), control)
+	}
+	if c.Wrap == "" {
+		return label
+	}
+	errs := (&Control{Kind: "errors", Form: c.Form, Name: c.Name}).build(st, active, nil)
+	attrs := []Attr{{Name: "label", Value: c.Label, Omit: c.Label == ""}}
+	invalid := len(errs.children) > 0
+	for _, a := range c.WrapAttrs {
+		if a.Name == "invalid" {
+			invalid = invalid || !a.Omit
+			continue
+		}
+		attrs = append(attrs, a)
+	}
+	attrs = append(attrs, B("invalid", invalid))
+	return El(c.Wrap, attrs, label, errs)
+}
+
+// forwarded are the wrapping element's attributes its native control takes too: `disabled`,
+// and `placeholder` on a text input or textarea.
+func (c *Control) forwarded() []Attr {
+	var out []Attr
+	for _, a := range c.WrapAttrs {
+		switch {
+		case a.Name == "disabled":
+			out = append(out, B("disabled", !a.Omit))
+		case a.Name == "placeholder" && c.Kind != "select" && c.Type != "checkbox":
+			out = append(out, a)
+		}
+	}
+	return out
 }

@@ -439,6 +439,9 @@ func (d *dumper) expr(e Expr) *sx {
 		if x.Value != nil {
 			items = append(items, list(1, atom("value"), d.expr(x.Value)))
 		}
+		if x.Wrap != "" {
+			items = append(items, list(2, append([]*sx{atom("wrap"), atom(x.Wrap)}, d.attrs(x.WrapAttrs)...)...))
+		}
 		return list(head, items...)
 	case *EffPure:
 		return list(2, atom("pure"), atom(effKinds[x.Kind]), d.expr(x.Value))

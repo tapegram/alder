@@ -19,7 +19,8 @@ import (
 //	Comp     M__Card(struct{…}{Title: …, Children: []html.Node{…}})
 //	Input    html.Input(html.Control{…}), derived from the bound form field's type, with Form
 //	         "<Module>.<Form>" (matched by the request's html.FormState) and Secret for a
-//	         Text.Secret field
+//	         Text.Secret field; a wrapped one (`<al-input field="…">`) adds Wrap: "al-input"
+//	         and WrapAttrs, the element's other attributes
 //	FormEl   html.FormTo(ref, []html.Attr{…}, children...)
 //
 // Attributes:
@@ -378,7 +379,8 @@ func (f *fn) comp(x *ir.Comp, s *scope) string {
 	return GoName(x.Fn.Module, x.Fn.Name) + "(" + typ + "{" + strings.Join(inits, ", ") + "})"
 }
 
-// input renders <Input>, <Textarea>, <Select> or <Errors> from the bound form field's type.
+// input renders <Input>, <Textarea>, <Select> or <Errors> from the bound form field's type, and
+// a built-in input element wrapping one (al-checkbox is an <Input> on a Bool field).
 func (f *fn) input(x *ir.Input, s *scope) string {
 	kind := map[ir.InputKind]string{ir.InputInput: "input", ir.InputTextarea: "textarea", ir.InputSelect: "select", ir.InputErrors: "errors"}[x.Kind]
 	out := []string{"Kind: " + strconv.Quote(kind)}
@@ -453,6 +455,12 @@ func (f *fn) input(x *ir.Input, s *scope) string {
 	}
 	if secret {
 		out = append(out, "Secret: true")
+	}
+	if x.Wrap != "" {
+		out = append(out, "Wrap: "+strconv.Quote(x.Wrap))
+		if len(x.WrapAttrs) > 0 {
+			out = append(out, "WrapAttrs: "+f.attrs(x.WrapAttrs, s))
+		}
 	}
 	return "html.Input(html.Control{" + strings.Join(out, ", ") + "})"
 }

@@ -44,9 +44,12 @@ func (l *lowerer) element(x *syntax.Element) Expr {
 	t := l.typeOf(x)
 	if x.Ref.Kind == syntax.RefComponent {
 		if x.Ref.Module == "Prelude" {
-			return l.input(x, t)
+			return l.input(x, x.Tag, t)
 		}
 		return l.component(x, t)
+	}
+	if kind, ok := l.res.Wrapped[x]; ok { // <al-input field="…">: the form control in its element
+		return l.input(x, kind, t)
 	}
 	var submit *syntax.HtmlAttr
 	var attrs []HAttr
@@ -155,11 +158,13 @@ func propsType(rt *RecordType) types.Type {
 	return rec
 }
 
-// input lowers <Input>, <Textarea>, <Select> and <Errors>, bound to the enclosing form.
-func (l *lowerer) input(x *syntax.Element, t types.Type) Expr {
+// input lowers <Input>, <Textarea>, <Select> and <Errors>, bound to the enclosing form, and a
+// built-in input element wrapping one (check.Result.Wrapped: kind "Input", "Textarea",
+// "Select" or "Checkbox"), whose tag and other attributes become Wrap and WrapAttrs.
+func (l *lowerer) input(x *syntax.Element, kind string, t types.Type) Expr {
 	out := &Input{Typed: Typed{t}, Form: l.form}
-	switch x.Tag {
-	case "Input":
+	switch kind {
+	case "Input", "Checkbox":
 		out.Kind = InputInput
 	case "Textarea":
 		out.Kind = InputTextarea
@@ -167,6 +172,9 @@ func (l *lowerer) input(x *syntax.Element, t types.Type) Expr {
 		out.Kind = InputSelect
 	case "Errors":
 		out.Kind = InputErrors
+	}
+	if kind != x.Tag {
+		out.Wrap = x.Tag
 	}
 	for _, a := range x.Attrs {
 		switch a.Name {
@@ -181,7 +189,13 @@ func (l *lowerer) input(x *syntax.Element, t types.Type) Expr {
 		case "value":
 			out.Value = l.expr(a.Value)
 		case "form":
-			out.BareForm = true
+			if out.Wrap == "" {
+				out.BareForm = true
+			}
+		default:
+			if out.Wrap != "" {
+				out.WrapAttrs = append(out.WrapAttrs, l.attr(a))
+			}
 		}
 	}
 	return out

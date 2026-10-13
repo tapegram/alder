@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1.0.0",
+  "readme": "",
+  "modules": [
+    {
+      "kind": "javascript-module",
+      "path": "components/button/button.js",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "WaButton",
+          "tagName": "wa-button",
+          "customElement": true,
+          "attributes": [
+            { "name": "variant", "type": { "text": "'neutral' | 'brand' | 'danger'" }, "default": "'neutral'", "fieldName": "variant" },
+            { "name": "loading", "type": { "text": "boolean" }, "default": "false" }
+          ],
+          "slots": [
+            { "name": "", "description": "The button's label." },
+            { "name": "start", "description": "An element before the label." }
+          ],
+          "cssParts": [{ "name": "base" }],
+          "events": [{ "name": "wa-focus" }]
+        },
+        { "kind": "function", "name": "registerIcon" }
+      ]
+    }
+  ]
+}

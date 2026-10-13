@@ -209,3 +209,38 @@ func TestRenderWith_OrphanFieldErrorsOnTheFormList(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// Review Focus 2 (M7a): a wrapped control renders its element around the label and control,
+// then the field's own error list with the markup `<Errors field>` has (ul.errors,
+// data-errors); `invalid` is set exactly when the field has errors; the element's `disabled`
+// and `placeholder` reach the native control; the form's list does not repeat the field's
+// errors.
+func TestRenderWith_WrappedControl(t *testing.T) {
+	n := FormTo(newTodo, nil,
+		Input(Control{Kind: "errors", Form: "F"}),
+		Input(Control{Kind: "input", Form: "F", Name: "title", Type: "text", Label: "Title", Required: true, Wrap: "al-input",
+			WrapAttrs: []Attr{A("placeholder", "A title"), B("disabled", false), A("help", "Short")}}),
+		Input(Control{Kind: "input", Form: "F", Name: "done", Type: "checkbox", Wrap: "al-checkbox", WrapAttrs: []Attr{B("disabled", true)}}),
+		Input(Control{Kind: "select", Form: "F", Name: "kind", Label: "Kind", Required: true, Options: []string{"A", "B"}, Wrap: "al-select", WrapAttrs: []Attr{B("invalid", true)}}),
+	)
+	initial := `<form method="post" action="/_m/Todos/Add" data-on:submit="@post(&#39;/_m/Todos/Add&#39;, {contentType: &#39;form&#39;})">` +
+		`<ul class="errors" data-errors="form"></ul>` +
+		`<al-input label="Title" placeholder="A title" help="Short"><label>Title<input name="title" type="text" required placeholder="A title" /></label><ul class="errors" data-errors="title"></ul></al-input>` +
+		`<al-checkbox disabled><label><input name="done" type="checkbox" value="True" disabled /></label><ul class="errors" data-errors="done"></ul></al-checkbox>` +
+		`<al-select label="Kind" invalid><label>Kind<select name="kind" required><option value="A">A</option><option value="B">B</option></select></label><ul class="errors" data-errors="kind"></ul></al-select>` +
+		`</form>`
+	if got := Render(n); got != initial {
+		t.Errorf("without errors:\n got %s\nwant %s", got, initial)
+	}
+	st := posted("F", newTodo, FormState{Values: map[string]string{"title": "", "done": "True"},
+		Errors: map[string][]string{"title": {"must not be empty"}}})
+	failed := `<form method="post" action="/_m/Todos/Add" data-on:submit="@post(&#39;/_m/Todos/Add&#39;, {contentType: &#39;form&#39;})">` +
+		`<ul class="errors" data-errors="form"></ul>` +
+		`<al-input label="Title" placeholder="A title" help="Short" invalid><label>Title<input name="title" type="text" required placeholder="A title" /></label><ul class="errors" data-errors="title"><li>must not be empty</li></ul></al-input>` +
+		`<al-checkbox disabled><label><input name="done" type="checkbox" value="True" checked disabled /></label><ul class="errors" data-errors="done"></ul></al-checkbox>` +
+		`<al-select label="Kind" invalid><label>Kind<select name="kind" required><option value="A">A</option><option value="B">B</option></select></label><ul class="errors" data-errors="kind"></ul></al-select>` +
+		`</form>`
+	if got := RenderWith(n, st); got != failed {
+		t.Errorf("with errors:\n got %s\nwant %s", got, failed)
+	}
+}

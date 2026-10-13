@@ -257,16 +257,17 @@ func (r *renderer) url(m *rt.MsgRef) string {
 }
 
 // orphanErrors are the field errors of st that no <Errors field="…"> of its form inside form
-// shows, each prefixed with its field's name, fields in name order: `<Errors form />` lists
-// them after the form's own error, so no decoding error is dropped silently.
+// shows (nor a wrapped control, such as <al-input field="…">, which lists its own), each
+// prefixed with its field's name, fields in name order: `<Errors form />` lists them after the
+// form's own error, so no decoding error is dropped silently.
 func orphanErrors(form Node, st *FormState) []string {
 	shown := map[string]bool{}
 	var walk func(Node)
 	walk = func(n Node) {
 		switch n.kind {
 		case kCtrl:
-			if c := n.control; c.Kind == "errors" && c.Name != "" && c.Form == st.Form {
-				shown[c.Name] = true
+			if c := n.control; (c.Kind == "errors" || c.Wrap != "") && c.Name != "" && c.Form == st.Form {
+				shown[c.Name] = true // a wrapped control shows its field's errors itself
 			}
 		case kElem, kFrag:
 			for _, c := range n.children {
