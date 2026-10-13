@@ -60,5 +60,7 @@ like the original program.
   `perPage`. Without the limit the query reads every matching post, which is slower, but the
   page is the same.
 
-The run also refuses 1 mutant it can prove equivalent and skips 3 that do not apply; neither
-count is part of the score.
+The run also refuses 5 mutants it can prove equivalent (`User.role`'s default, which no row
+leaves out, and the `scope dropped` of `Admin.Edit`'s four scoped writes of `model.post.id`,
+which its `load` read with `Db.getMine`) and skips 3 that do not apply; neither count is part
+of the score.

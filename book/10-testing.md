@@ -1706,11 +1706,11 @@ survived:
   Todo          filterLabel:28   arm swapped            match filter { All ->… → the Active and Completed bodies swapped
   Todos.Index   load:18          orderBy reversed       Db.orderBy Todo.created.desc → Db.orderBy Todo.created.asc
   Todos.Show    requires:7       requires dropped       requires user → served without user (user = User.UserId "mutant")
-  Todos.Show    update:32        write replaced         let _ <- Db.update Todo model.todo.id … → let _ <- Task.succeed ()
+  Todos.Show    update:32        write replaced         let _ <- Db.updateMine Todo model.todo.id … → let _ <- Task.succeed ()
   Todos.Show    update:32        update field dropped   { t | title: p.form.title, due: p.form.due } → { t | due: p.form.due }
   Todos.Show    update:32        update field dropped   { t | title: p.form.title, due: p.form.due } → { t | title: p.form.title }
   Todos.Show    update:33        redirect → rerender    Redirect (Todos.Index {}) → Rerender
-  Todos.Show    update:36        write replaced         let _ <- Db.delete Todo model.todo.id → let _ <- Task.succeed ()
+  Todos.Show    update:36        write replaced         let _ <- Db.deleteMine Todo model.todo.id → let _ <- Task.succeed ()
   Todos.Show    update:37        redirect → rerender    Redirect (Todos.Index {}) → Rerender
 ```
 
@@ -1889,7 +1889,13 @@ are reported apart, in `--json`'s last object (below):
   flipped` whose two sides are the same expression; and a `default
   changed` on a field that no record of the app's code leaves out (no
   `Db.insert` row, no `Insert T` a helper builds), so the default never
-  applies (the blog's `User.role`, which only tests rely on).
+  applies (the blog's `User.role`, which only tests rely on); and a
+  `scope dropped` of a `Db.updateMine` or `Db.deleteMine` in a page's
+  `update` whose id is `model.f.id`, where the page's `load` filled `f`
+  with a row of the same table read by `Db.getMine` ("load fetched it
+  with getMine": every message runs `load` first, so the id is always
+  the user's own row; not in an `update` that calls `Session.put`,
+  which could change the user in between).
 - **Skipped** (`skipped`): the operator does not apply, or another
   operator already makes the same program. A `condition negated` of `if
   a == b` (or `!=`) is skipped, because `operator flipped` already makes
@@ -1903,9 +1909,11 @@ are reported apart, in `--json`'s last object (below):
   well-typed change; and `Db.insertMine` has no `scope dropped`, since
   the owner comes from the session either way.
 
-The to-do app has none suppressed and 5 skipped (4 arm swaps of `msg`
-and `found` matches whose arms use what they bind, and the `scope
-dropped` of `Db.insertMine`); the blog 1 and 3.
+The to-do app has 2 suppressed (the `scope dropped` of `Todos.Show`'s
+`Db.updateMine` and `Db.deleteMine` of `model.todo.id`) and 5 skipped (4
+arm swaps of `msg` and `found` matches whose arms use what they bind,
+and the `scope dropped` of `Db.insertMine`); the blog 5 (`User.role`'s
+default, and `Admin.Edit`'s four writes of `model.post.id`) and 3.
 
 ### Survivors that are not gaps
 
@@ -1941,14 +1949,14 @@ open, so there a browser test kills the same mutant.)
 
 ### Mutants that are the same program
 
-After its ten new tests, the blog keeps three survivors (here and
-below, `…` stands for the 39 `ok` lines):
+After its ten new tests (and those of its rules), the blog keeps three
+survivors (here and below, `…` stands for the 42 `ok` lines):
 
 ```text
 $ alder test --mutate examples/blog
 …
-39 passed, 0 failed
-58 mutants: 55 killed, 3 survived  (score 0.95)
+42 passed, 0 failed
+63 mutants: 60 killed, 3 survived  (score 0.95)
 survived:
   Posts.Index   load:30:17   operator flipped   params.page < 1 → params.page <= 1
   Posts.Index   load:30:48   operator flipped   params.page > lastPage → params.page >= lastPage
@@ -1986,14 +1994,14 @@ it the exit code is the tests'.
 ### The exact score
 
 With no survivor the report ends at the score line. The comparison
-uses the exact score, not the two decimals printed: the blog's is 55 /
-58 = 0.948…, printed as 0.95, so
+uses the exact score, not the two decimals printed: the blog's is 60 /
+63 = 0.952…, printed as 0.95, so
 
 ```text
-$ alder test --mutate --min 0.95 examples/blog
+$ alder test --mutate --min 0.953 examples/blog
 …
-39 passed, 0 failed
-58 mutants: 55 killed, 3 survived  (score 0.95)
+42 passed, 0 failed
+63 mutants: 60 killed, 3 survived  (score 0.95)
 survived:
   Posts.Index   load:30:17   operator flipped   params.page < 1 → params.page <= 1
   Posts.Index   load:30:48   operator flipped   params.page > lastPage → params.page >= lastPage
@@ -2002,11 +2010,11 @@ $ echo $?
 1
 ```
 
-while `--min 0.94` passes. A CI job runs `alder test --mutate --min R`
+while `--min 0.95` passes. A CI job runs `alder test --mutate --min R`
 with `R` at the score the app has reached, so a change that lets a
 mutant survive fails the build. The examples do this in the Go test
 suite: `TestExample_TodosMutation` and `TestExample_Blog` require at
-least 1.00 and 0.94, and the number of mutants their READMEs record.
+least 1.00 and 0.95, and the number of mutants their READMEs record.
 Without `--min`, the exit code is the tests'.
 
 ### `-run`, `-timeout` and `--json`
@@ -2065,7 +2073,7 @@ to-do app's run, two of the 32:
 and the last line:
 
 ```text
-{"score":1,"killed":32,"survived":0,"suppressed":0,"skipped":5}
+{"score":1,"killed":32,"survived":0,"suppressed":2,"skipped":5}
 ```
 
 `score` is exact here (1 when every mutant was killed). `"tables":

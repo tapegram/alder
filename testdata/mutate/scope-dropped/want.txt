@@ -1,15 +1,30 @@
-1   Item   Item:10     cascade ↔ restrict  owner @ref User @restrict → owner @ref User @cascade
-2   Items  requires:5  requires dropped    requires user → served without user (user = User.UserId "mutant")
-3   Items  latest:11   limit dropped       Db.limit 3 → no limit
-4   Items  latest:11   scope dropped       Db.mine Item → Db.from Item
-5   Items  load:16     scope dropped       Db.mine Item → Db.from Item
-6   Items  update:27   write replaced      let _ <- Db.insertMine Item { title: "new" } → let _ <- Task.succeed (Item.ItemId "mutant")
-7   Items  update:31   scope dropped       Db.getMine Item p.id → Db.get Item p.id, not found when missing
-8   Items  update:32   write replaced      let _ <- Db.updateMine Item item.id (\i -> { i | title: "renamed" }) → let _ <- Task.succeed ()
-9   Items  update:32   scope dropped       Db.updateMine Item item.id (\i -> { i | title: "renamed" }) → Db.update Item item.id (\i -> { i | title: "renamed" }), not found when missing
-10  Items  wipe:43     scope dropped       Db.deleteMine Item _m1 → Db.delete Item _m1, not found when missing
-11  Show   requires:5  requires dropped    requires user → served without user (user = User.UserId "mutant")
-12  Show   load:12     scope dropped       Db.getMine Item params.id → Db.get Item params.id, not found when missing
--   Items  update:25   arm swapped         skipped: unscopable: an arm uses what the match binds
--   Items  update:25   arm swapped         skipped: unscopable: an arm uses what the match binds
--   Items  update:27   scope dropped       skipped: the owner comes from the session either way
+1   Item    Item:10     cascade ↔ restrict   owner @ref User @restrict → owner @ref User @cascade
+2   Items   requires:5  requires dropped     requires user → served without user (user = User.UserId "mutant")
+3   Items   latest:11   limit dropped        Db.limit 3 → no limit
+4   Items   latest:11   scope dropped        Db.mine Item → Db.from Item
+5   Items   load:16     scope dropped        Db.mine Item → Db.from Item
+6   Items   update:27   write replaced       let _ <- Db.insertMine Item { title: "new" } → let _ <- Task.succeed (Item.ItemId "mutant")
+7   Items   update:31   scope dropped        Db.getMine Item p.id → Db.get Item p.id, not found when missing
+8   Items   update:32   write replaced       let _ <- Db.updateMine Item item.id (\i -> { i | title: "renamed" }) → let _ <- Task.succeed ()
+9   Items   update:32   scope dropped        Db.updateMine Item item.id (\i -> { i | title: "renamed" }) → Db.update Item item.id (\i -> { i | title: "renamed" }), not found when missing
+10  Items   wipe:43     scope dropped        Db.deleteMine Item _m1 → Db.delete Item _m1, not found when missing
+11  Peek    requires:5  requires dropped     requires user → served without user (user = User.UserId "mutant")
+12  Peek    update:24   write replaced       let _ <- Db.updateMine Item model.item.id (\i -> { i | title: "peeked" }) → let _ <- Task.succeed ()
+13  Peek    update:24   scope dropped        Db.updateMine Item model.item.id (\i -> { i | title: "peeked" }) → Db.update Item model.item.id …, not found when missing
+14  Show    requires:5  requires dropped     requires user → served without user (user = User.UserId "mutant")
+15  Show    load:12     scope dropped        Db.getMine Item params.id → Db.get Item params.id, not found when missing
+16  Show    update:25   arm swapped          match msg { Rename _ -> …, Remove _ -> … } → the Rename _ and Remove _ bodies swapped
+17  Show    update:27   write replaced       let _ <- Db.updateMine Item model.item.id (\i -> { i | title: "renamed" }) → let _ <- Task.succeed ()
+18  Show    update:31   write replaced       let _ <- Db.deleteMine Item model.item.id → let _ <- Task.succeed ()
+19  Switch  requires:5  requires dropped     requires user → served without user (user = User.UserId "mutant")
+20  Switch  load:11     scope dropped        Db.getMine Item params.id → Db.get Item params.id, not found when missing
+21  Switch  update:22   session put dropped  let _ <- Session.put (\s -> { s | user: Nothing }) → let _ <- Task.succeed ()
+22  Switch  update:23   write replaced       let _ <- Db.deleteMine Item model.item.id → let _ <- Task.succeed ()
+23  Switch  update:23   scope dropped        Db.deleteMine Item model.item.id → Db.delete Item model.item.id, not found when missing
+-   Items   update:25   arm swapped          skipped: unscopable: an arm uses what the match binds
+-   Items   update:25   arm swapped          skipped: unscopable: an arm uses what the match binds
+-   Items   update:27   scope dropped        skipped: the owner comes from the session either way
+-   Peek    load:13     guard dropped        skipped: unscopable: the other arm uses what the match binds
+-   Peek    load:13     arm swapped          skipped: unscopable: an arm uses what the match binds
+-   Show    update:27   scope dropped        equivalent: load fetched it with getMine
+-   Show    update:31   scope dropped        equivalent: load fetched it with getMine

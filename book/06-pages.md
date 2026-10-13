@@ -700,15 +700,22 @@ there, and still right in these places:
 - **Pages for a role that acts on everyone's rows**, such as an admin
   page `requires user, role Admin` that deletes any post. The role is
   the rule there, and the page says so on its `page` line.
-- **A row `load` already found with `Db.getMine`.** `Todos.Show`'s
-  messages carry no id: they act on `model.todo`, which its `load` read
-  with `Db.getMine`, and every message runs that `load` first. So its
-  `update` writes `Db.update Todo model.todo.id …` and cannot reach
-  another row.
 - **Giving a row away**, which `Db.updateMine` never does.
 
 On an owned table outside those cases, an unscoped operation means the
 check is yours to write again, and a test is yours to write for it.
+
+A row `load` already found with `Db.getMine` is not one of the cases:
+write the scoped form; it costs nothing. `Todos.Show`'s messages carry
+no id: they act on `model.todo`, which its `load` read with
+`Db.getMine`, and every message runs that `load` first. A plain
+`Db.update Todo model.todo.id …` could reach no other row either, but
+`Todos.Show` writes `Db.updateMine Todo model.todo.id …` and
+`Db.deleteMine Todo model.todo.id`, and so does the blog's
+`Admin.Edit`. `alder test --mutate` knows that there the two forms are
+the same program, and makes no `scope dropped` mutant of such a write
+(chapter 10, "What is never a mutant"), so the scoped form asks for no
+extra test.
 
 ### The rules and a replicated database
 
@@ -721,14 +728,19 @@ built to fit:
   answer them.
 - **Role checks never read the database.** The role is in the signed
   cookie, so a role page costs no query anywhere.
-- **Scoped writes carry the predicate.** `Db.updateMine` and
-  `Db.deleteMine` put `AND "owner" = ?` in the `UPDATE` or `DELETE`
-  itself, and count the rows it changed. A hand-written check reads
-  first and writes after, and between the two (a read from a replica
-  that is behind, or another request in between) the row may have
-  changed. With the predicate in the write, the primary decides
-  ownership in the same statement that writes, so there is no gap.
-  Chapter 13 shows the SQL.
+- **Scoped writes carry the predicate.** `Db.deleteMine` is one
+  `DELETE … WHERE "id" = ? AND "owner" = ?`. `Db.updateMine` is a
+  predicated read then a predicated write (`UPDATE … WHERE "id" = ? AND
+  "owner" = ?`), both in the `Task`'s transaction, on the primary. Each
+  counts the rows it changed. A hand-written check that reads on a
+  replica and writes on the primary can approve a write the primary
+  would refuse, when the replica is behind or another request changed
+  the row in between. With the predicate in the write, the primary
+  decides ownership where it writes. (The pattern of `Todos.Show`, a
+  `Db.getMine` in `load` and then a write of `model.todo.id`, has that
+  gap only if the row changes owner between the two; written with the
+  scoped form, as the examples do, it has none.) Chapter 13 shows the
+  SQL.
 
 ## The request lifecycle
 

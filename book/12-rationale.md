@@ -216,7 +216,7 @@ option chosen at each `Db.delete`. Then the table that holds the
 reference is the one place that says what happens, whichever page
 deletes, and SQLite carries the rule out inside the delete statement.
 The blog's `Comment.post` is `@ref Post @cascade`. `Admin.Edit`'s
-`Delete` is one `Db.delete Post`, and its test checks that the trace has
+`Delete` is one `Db.deleteMine Post`, and its test checks that the trace has
 that one step and that no comment is left. `@restrict` is the default
 because it loses nothing: a delete the author did not think through
 fails, and leaves no row without the row it refers to.
@@ -504,12 +504,19 @@ primary that takes writes). The rules were shaped so that nothing about
 them has to change then. Scoped reads are predicates in a `SELECT`
 (`WHERE "owner" = ?`), which any replica can serve. Role checks read
 the cookie and no database at all. Scoped writes carry the predicate in
-the statement that writes (`UPDATE … WHERE "id" = ? AND "owner" = ?`,
-then a check of the rows it changed), so ownership is decided on the
-primary, atomically with the write. A hand-written check reads first
-and writes after; on a replica that is behind, or with another request
-between the two, the read can approve a write the primary would refuse.
-The predicate in the write closes that gap. Choosing a tenant (one
+the statements that write: `Db.deleteMine` is one `DELETE … WHERE "id"
+= ? AND "owner" = ?`, and `Db.updateMine` a predicated read then a
+predicated write (`UPDATE … WHERE "id" = ? AND "owner" = ?`), both in
+the `Task`'s transaction; each counts the rows it changed. So ownership
+is decided on the primary, in the transaction that writes. A
+hand-written check that reads on a replica and writes on the primary
+can approve a write the primary would refuse, when the replica is
+behind or another request came between. The predicate in the write
+closes that gap. A page that read its row with `Db.getMine` in `load`
+and writes `model.x.id` has the gap only if the row changes owner in
+between, which is why the examples write the scoped form there too: it
+costs nothing, and the mutation tool counts it as the same program
+(chapter 10). Choosing a tenant (one
 database per customer) is a separate, later layer.
 
 ### The runtime is embedded, not fetched **(decided M10; tested: the out-of-tree build)**

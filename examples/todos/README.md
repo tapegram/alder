@@ -38,5 +38,6 @@ The nine tests that closed the gaps, each named for what it kills:
   field dropped, and the redirect after it.
 - `Todos.Show "deleting from the todo's page"`: that page's delete, and its redirect.
 
-No mutant survives. The run also skips 5 mutants that do not apply (and refuses none as
-provably equivalent); neither count is part of the score.
+No mutant survives. The run also refuses 2 mutants as provably equivalent (the `scope dropped`
+of `Todos.Show`'s `Db.updateMine` and `Db.deleteMine` of `model.todo.id`, which its `load` read
+with `Db.getMine`) and skips 5 that do not apply; neither count is part of the score.

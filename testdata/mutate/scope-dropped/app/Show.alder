@@ -15,3 +15,20 @@ load params session = {
 
 view : Model -> Session -> Html Msg
 view model session = <p>{model.item.title}</p>
+
+-- load read the item with Db.getMine and every message runs load first: a scoped write of
+-- model.item.id is the user's own row either way, so its `scope dropped` is equivalent
+msg Rename
+msg Remove
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Rename p -> {
+    let _ <- Db.updateMine Item model.item.id (\i -> { i | title: "renamed" })
+    Task.succeed Rerender
+  },
+  Remove p -> {
+    let _ <- Db.deleteMine Item model.item.id
+    Task.succeed Rerender
+  },
+}

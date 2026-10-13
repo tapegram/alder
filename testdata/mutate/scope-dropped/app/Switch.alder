@@ -1,0 +1,29 @@
+module Switch
+
+import Item
+
+page "/switch/{id}" { id: Item.ItemId } requires user
+
+type Model = { item: Item }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let item <- Db.getMine Item params.id
+  Query.succeed { item: item }
+}
+
+msg Drop
+
+-- a Session.put in update: the scoped write after it acts for the session it put, not the user
+-- load read the item for, so its `scope dropped` is a mutant
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Drop p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing })
+    let _ <- Db.deleteMine Item model.item.id
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{model.item.title}</p>

@@ -15,7 +15,8 @@ type Model = { post: Post }
 -- post, like a missing one, with a 404. The page `requires user, role Author`, the same gate as
 -- the Admin page, and re-reads the user's row as it does (User.isAuthor), so an author made a
 -- Reader is turned away at once. The messages carry no id: they act on `model.post`, which this
--- `load` has found (as the to-do example's Todos.Show does), and every message runs it first.
+-- `load` has found (as the to-do example's Todos.Show does), and every message runs it first; the
+-- writes are the scoped forms all the same, which cost nothing.
 load : Params -> Session -> Query Model
 load params session = {
   let author <- User.isAuthor session.user
@@ -38,20 +39,20 @@ msg Delete
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Save p -> {
-    let _ <- Db.update Post model.post.id (\post -> { post | title: p.form.title, body: p.form.body })
+    let _ <- Db.updateMine Post model.post.id (\post -> { post | title: p.form.title, body: p.form.body })
     Task.succeed Rerender
   },
   Publish p -> {
-    let _ <- Db.update Post model.post.id (\post -> { post | published: True })
+    let _ <- Db.updateMine Post model.post.id (\post -> { post | published: True })
     Task.succeed Rerender
   },
   Unpublish p -> {
-    let _ <- Db.update Post model.post.id (\post -> { post | published: False })
+    let _ <- Db.updateMine Post model.post.id (\post -> { post | published: False })
     Task.succeed Rerender
   },
   -- The post's comments go with it: Comment.post is `@ref Post @cascade`.
   Delete p -> {
-    let _ <- Db.delete Post model.post.id
+    let _ <- Db.deleteMine Post model.post.id
     Task.succeed (Redirect (Admin {}))
   },
 }
@@ -92,7 +93,7 @@ test "deleting a post deletes its comments" = {
   let r <- Test.run (update Delete model { user: author, role: Author })
   let posts <- Db.from Post |> Db.count
   let comments <- Db.from Comment |> Db.count
-  Task.succeed ({ value: r.value, trace: r.trace, posts: posts, comments: comments } == { value: Ok (Redirect (Admin {})), trace: ["Db.delete Post"], posts: 0, comments: 0 })
+  Task.succeed ({ value: r.value, trace: r.trace, posts: posts, comments: comments } == { value: Ok (Redirect (Admin {})), trace: ["Db.deleteMine Post"], posts: 0, comments: 0 })
 }
 
 -- Another author is let through the role check, but `Db.getMine` finds no post of theirs with

@@ -1,0 +1,30 @@
+module Peek
+
+import Item
+
+page "/peek/{id}" { id: Item.ItemId } requires user
+
+type Model = { item: Item }
+
+-- load reads the item unscoped: anyone's item, so the scoped write's `scope dropped` is a mutant
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Item params.id
+  match found {
+    Just item -> Query.succeed { item: item },
+    Nothing -> Query.notFound,
+  }
+}
+
+msg Rename
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Rename p -> {
+    let _ <- Db.updateMine Item model.item.id (\i -> { i | title: "peeked" })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{model.item.title}</p>

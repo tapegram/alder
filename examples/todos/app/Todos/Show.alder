@@ -21,19 +21,19 @@ form EditTodo = {
 
 -- `Db.getMine` finds the todo only when it is the session's user's: anyone else's, like a missing
 -- one, is a 404. The messages carry no id: the page's parameter names the todo, and every message
--- runs after this `load`, so `update` acts on `model.todo` with the plain `Db.update` (book 06,
--- "Rules").
+-- runs after this `load`, so `update` acts on `model.todo`. It still writes the scoped forms: they
+-- cost nothing, and say what the page means (book 06, "Rules").
 msg Save form EditTodo
 msg Delete
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Save p -> {
-    let _ <- Db.update Todo model.todo.id (\t -> { t | title: p.form.title, due: p.form.due })
+    let _ <- Db.updateMine Todo model.todo.id (\t -> { t | title: p.form.title, due: p.form.due })
     Task.succeed (Redirect (Todos.Index {}))
   },
   Delete p -> {
-    let _ <- Db.delete Todo model.todo.id
+    let _ <- Db.deleteMine Todo model.todo.id
     Task.succeed (Redirect (Todos.Index {}))
   },
 }

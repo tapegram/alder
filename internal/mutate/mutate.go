@@ -71,7 +71,10 @@ const (
 //     `Db.from T` (a DbSelect); `Db.getMine T id` → `Db.get T id` bound and matched, Nothing →
 //     Query.notFound; `Db.updateMine`/`Db.deleteMine` → `Db.get T id`, then on Just the unscoped
 //     write, on Nothing Task.notFound (not found only when the row is missing). `Db.insertMine`
-//     is skipped: the owner comes from the session either way.
+//     is skipped: the owner comes from the session either way. A `Db.updateMine`/`Db.deleteMine`
+//     in a page's update whose id is `model.f.id`, where the page's load filled f with a row of
+//     the same table read by `Db.getMine`, is suppressed as equivalent ("load fetched it with
+//     getMine"): every message runs load first, so the id is always the user's own row.
 //   - default changed: Node is the table field's Default expression (the one node every record
 //     literal that omits the field shares) and Replacement the changed literal; Table is a clone
 //     of the table whose field Field has that Default (and DefaultLit).
@@ -138,6 +141,10 @@ func Collect(p *ir.Program) ([]Mutant, []Suppressed) {
 				continue
 			}
 			c.decl = v.Name
+			c.loaded, c.modelParam = nil, ""
+			if pg := pages[m.Name]; pg != nil && pg.Update == v && len(v.Params) >= 2 && binds(v.Body, v.Params[1].Name) == 0 && !putsSession(v.Body) {
+				c.loaded, c.modelParam = loadedMine(pg), v.Params[1].Name
+			}
 			c.walk(v.Body)
 		}
 	}
@@ -155,6 +162,10 @@ type collector struct {
 	defaultUses  map[ir.Expr]int // a table field's Default → its occurrences in expressions
 	out          []Mutant
 	supp         []Suppressed
+	// loaded and modelParam, while the walk is in a page's update: the model fields its load
+	// fills with a row read by Db.getMine (loadedMine), and update's model parameter
+	loaded     map[string]*ir.Table
+	modelParam string
 }
 
 func (c *collector) add(kind string, at ir.Pos, node, repl ir.Expr, before, after string) {
@@ -760,16 +771,176 @@ func (c *collector) scope(e ir.Expr) {
 		})
 		c.add(ScopeDropped, x.Pos, x, body, c.show(x), line(c.module, get, wrapped("", ", not found when missing")))
 	case *ir.DbUpdateMine:
+		if c.fetchedMine(x.Table, x.ID) {
+			c.suppress(ScopeDropped, x.Pos.Line, "load fetched it with getMine")
+			return
+		}
 		w := &ir.DbUpdate{Typed: x.Typed, Pos: x.Pos, Table: x.Table, ID: x.ID, Fn: x.Fn}
 		_, body := gotOrNotFound(x.Table, x.ID, x.Ty, func(ir.Expr) ir.Expr { return w })
 		c.add(ScopeDropped, x.Pos, x, body, c.show(x), line(c.module, w, wrapped("", ", not found when missing")))
 	case *ir.DbDeleteMine:
+		if c.fetchedMine(x.Table, x.ID) {
+			c.suppress(ScopeDropped, x.Pos.Line, "load fetched it with getMine")
+			return
+		}
 		w := &ir.DbDelete{Typed: x.Typed, Pos: x.Pos, Table: x.Table, ID: x.ID}
 		_, body := gotOrNotFound(x.Table, x.ID, x.Ty, func(ir.Expr) ir.Expr { return w })
 		c.add(ScopeDropped, x.Pos, x, body, c.show(x), line(c.module, w, wrapped("", ", not found when missing")))
 	case *ir.DbInsertMine:
 		c.skip(ScopeDropped, x.Pos.Line, "the owner comes from the session either way")
 	}
+}
+
+// fetchedMine reports whether id, the id of a scoped write to tb in a page's update, is
+// `model.f.id` where the page's load filled f with a row of tb it read with Db.getMine. Every
+// message runs load first, so that row is the signed-in user's: the unscoped write could reach
+// no other row, and its `scope dropped` mutant is the same program (equivalent).
+func (c *collector) fetchedMine(tb *ir.Table, id ir.Expr) bool {
+	outer, ok := id.(*ir.Field)
+	if !ok || c.loaded == nil || outer.Name != tb.IDField {
+		return false
+	}
+	inner, ok := outer.Expr.(*ir.Field)
+	if !ok {
+		return false
+	}
+	v, ok := inner.Expr.(*ir.Var)
+	if !ok || v.Kind != ir.VarLocal || v.Name != c.modelParam {
+		return false
+	}
+	t := c.loaded[inner.Name]
+	return t != nil && t.Module == tb.Module && t.Name == tb.Name
+}
+
+// loadedMine is, for page pg, the model fields its load fills with a row it read with
+// Db.getMine, and that row's table: a field f such that every record of the page's Model type
+// that load builds sets f to a local bound once, by `let x <- Db.getMine T …`. Load building no
+// such record (a helper makes the model), or a record update of the model, gives none.
+func loadedMine(pg *ir.Page) map[string]*ir.Table {
+	if pg.Load == nil || pg.Model == nil {
+		return nil
+	}
+	mine := map[string]*ir.Table{} // a local bound by Db.getMine → its table
+	var models []*ir.Record
+	updated := false
+	var visit func(e ir.Expr)
+	visit = func(e ir.Expr) {
+		if isNil(e) {
+			return
+		}
+		switch x := e.(type) {
+		case *ir.EffBind:
+			if g, ok := x.Effect.(*ir.DbGetMine); ok && x.Param != nil {
+				mine[x.Param.Name] = g.Table
+			}
+		case *ir.Record:
+			if isModel(pg.Model, x.T) {
+				models = append(models, x)
+			}
+		case *ir.Update:
+			if r, ok := x.Ty.(*types.Record); ok && r.Module == pg.Model.Module && r.Name == pg.Model.Name {
+				updated = true
+			}
+		}
+		for _, k := range ir.Children(e) {
+			visit(k)
+		}
+	}
+	visit(pg.Load.Body)
+	if updated || len(models) == 0 {
+		return nil
+	}
+	out := map[string]*ir.Table{}
+	for _, f := range pg.Model.Fields {
+		var tb *ir.Table
+		for i, r := range models {
+			var t *ir.Table
+			for _, fi := range r.Fields {
+				if v, ok := fi.Value.(*ir.Var); ok && fi.Name == f.Name && v.Kind == ir.VarLocal && binds(pg.Load.Body, v.Name) == 1 {
+					t = mine[v.Name]
+				}
+			}
+			if t == nil || (i > 0 && t != tb) {
+				tb = nil
+				break
+			}
+			tb = t
+		}
+		if tb != nil {
+			out[f.Name] = tb
+		}
+	}
+	return out
+}
+
+// putsSession reports whether e calls Session.put anywhere: a scoped write after it acts for the
+// session it put, which may not be the user load read the row for.
+func putsSession(e ir.Expr) bool {
+	if isNil(e) {
+		return false
+	}
+	if call, ok := e.(*ir.Call); ok && isStd(call.Fn, "Session", "put") {
+		return true
+	}
+	for _, k := range ir.Children(e) {
+		if putsSession(k) {
+			return true
+		}
+	}
+	return false
+}
+
+func isModel(model, t *ir.RecordType) bool {
+	return t != nil && (t == model || (t.Module == model.Module && t.Name == model.Name))
+}
+
+// binds counts the bindings of local name in e: lets, lambda parameters, pattern bindings, for
+// variables and `let … <-`.
+func binds(e ir.Expr, name string) int {
+	if isNil(e) {
+		return 0
+	}
+	n := 0
+	switch x := e.(type) {
+	case *ir.Let:
+		if x.Name == name {
+			n++
+		}
+	case *ir.Lambda:
+		for _, p := range x.Params {
+			if p.Name == name {
+				n++
+			}
+		}
+	case *ir.Match:
+		n += bindsCases(x.Cases, name)
+	case *ir.HMatch:
+		n += bindsCases(x.Cases, name)
+	case *ir.HFor:
+		if x.Var == name {
+			n++
+		}
+	case *ir.EffBind:
+		if x.Param != nil && x.Param.Name == name {
+			n++
+		}
+	}
+	for _, k := range ir.Children(e) {
+		n += binds(k, name)
+	}
+	return n
+}
+
+func bindsCases(cs []ir.Case, name string) int {
+	n := 0
+	for _, c := range cs {
+		for _, b := range c.Binds {
+			if b.Name == name {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // gotOrNotFound is `Db.get tb id` (get) and the effect of type ty running it: on `Just row` the

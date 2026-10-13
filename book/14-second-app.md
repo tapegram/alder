@@ -230,7 +230,8 @@ type Model = { post: Post }
 -- post, like a missing one, with a 404. The page `requires user, role Author`, the same gate as
 -- the Admin page, and re-reads the user's row as it does (User.isAuthor), so an author made a
 -- Reader is turned away at once. The messages carry no id: they act on `model.post`, which this
--- `load` has found (as the to-do example's Todos.Show does), and every message runs it first.
+-- `load` has found (as the to-do example's Todos.Show does), and every message runs it first; the
+-- writes are the scoped forms all the same, which cost nothing.
 load : Params -> Session -> Query Model
 load params session = {
   let author <- User.isAuthor session.user
@@ -274,28 +275,30 @@ msg Delete
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Save p -> {
-    let _ <- Db.update Post model.post.id (\post -> { post | title: p.form.title, body: p.form.body })
+    let _ <- Db.updateMine Post model.post.id (\post -> { post | title: p.form.title, body: p.form.body })
     Task.succeed Rerender
   },
   Publish p -> {
-    let _ <- Db.update Post model.post.id (\post -> { post | published: True })
+    let _ <- Db.updateMine Post model.post.id (\post -> { post | published: True })
     Task.succeed Rerender
   },
   Unpublish p -> {
-    let _ <- Db.update Post model.post.id (\post -> { post | published: False })
+    let _ <- Db.updateMine Post model.post.id (\post -> { post | published: False })
     Task.succeed Rerender
   },
   -- The post's comments go with it: Comment.post is `@ref Post @cascade`.
   Delete p -> {
-    let _ <- Db.delete Post model.post.id
+    let _ <- Db.deleteMine Post model.post.id
     Task.succeed (Redirect (Admin {}))
   },
 }
 ```
 
 No message carries an id: each acts on `model.post`, which `load` has
-found with `Db.getMine`, so no request can name another post, and the
-writes can be the plain `Db.update` and `Db.delete` (chapter 6, "Rules").
+found with `Db.getMine`, so no request can name another post. The writes
+are still the scoped `Db.updateMine` and `Db.deleteMine`: they cost
+nothing, and `alder test --mutate` counts them as the same program as
+the plain ones here, so they ask for no extra test (chapter 6, "Rules").
 `Delete` makes one write, and `@cascade` deletes the comments.
 
 ```alder part=blog/Admin.Edit
@@ -337,7 +340,7 @@ test "deleting a post deletes its comments" = {
   let r <- Test.run (update Delete model { user: author, role: Author })
   let posts <- Db.from Post |> Db.count
   let comments <- Db.from Comment |> Db.count
-  Task.succeed ({ value: r.value, trace: r.trace, posts: posts, comments: comments } == { value: Ok (Redirect (Admin {})), trace: ["Db.delete Post"], posts: 0, comments: 0 })
+  Task.succeed ({ value: r.value, trace: r.trace, posts: posts, comments: comments } == { value: Ok (Redirect (Admin {})), trace: ["Db.deleteMine Post"], posts: 0, comments: 0 })
 }
 
 -- Another author is let through the role check, but `Db.getMine` finds no post of theirs with
@@ -393,7 +396,7 @@ test "Publish shows the post on the front page; Unpublish hides it" = {
 ```
 
 The first test deletes a post with two comments through `update`. Its
-trace has one step, `Db.delete Post`, since SQLite deletes the comments
+trace has one step, `Db.deleteMine Post`, since SQLite deletes the comments
 in that statement (chapter 8, "Writing"). It calls `load` and `update`
 directly, with a session record, but `Db.getMine` in `load` acts for the
 test's own session, the one `Test.login` set, not for that record

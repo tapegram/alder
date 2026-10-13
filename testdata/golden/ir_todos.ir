@@ -737,7 +737,7 @@
       (let p : SaveParams
         (var _m1)
         (bind task _
-          (db-update Todo.Todo
+          (db-update-mine Todo.Todo
             (field id (field todo (var model)))
             (lambda (t : Todo)
               (update (var t)
@@ -751,7 +751,7 @@
                     (record Todos.Index.Params (filter (ctor Todo.Filter.All)))))))))))
     (case Delete
       (bind task _
-        (db-delete Todo.Todo (field id (field todo (var model))))
+        (db-delete-mine Todo.Todo (field id (field todo (var model))))
         (pure task
           (ctor Prelude.Nav.Redirect
             (record
