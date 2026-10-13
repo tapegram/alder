@@ -85,8 +85,10 @@ func (l *lowerer) element(x *syntax.Element) Expr {
 //	"a"                <al-button …><a href=…>children</a></al-button>
 //
 // The inner `<button>` takes `click` and `type` (as written, else "button") and a copy of
-// `disabled`, which stays on the element for its style;
-// the inner `<a>` takes `href`. Every other attribute stays on the element.
+// `disabled`, which stays on the element for its style; the inner `<a>` takes `href`. Every
+// other attribute stays on the element. A link cannot be disabled, so a disabled one renders
+// as `<a aria-disabled="true">` without `href` (m2); when `disabled` is computed, both are
+// rendered under an `if`.
 func completeBuiltin(el *Elem, r string) {
 	text := func(s string) Expr { return &Lit{Typed: Typed{types.Text}, Kind: LitText, Text: s} }
 	switch r {
@@ -95,8 +97,11 @@ func completeBuiltin(el *Elem, r string) {
 		return
 	}
 	var outer, inner []HAttr
-	var typ *HAttr
+	var typ, disabled *HAttr
 	for _, a := range el.Attrs {
+		if a.Name == "disabled" {
+			disabled = &a
+		}
 		switch {
 		case a.Name == "href" && r == "a", a.Name == "click":
 			inner = append(inner, a)
@@ -118,7 +123,20 @@ func completeBuiltin(el *Elem, r string) {
 		inner = append([]HAttr{kind}, inner...)
 	}
 	el.Attrs = outer
-	el.Children = []Expr{&Elem{Typed: el.Typed, Tag: r, Attrs: inner, Children: el.Children}}
+	link := &Elem{Typed: el.Typed, Tag: r, Attrs: inner, Children: el.Children}
+	if r != "a" || disabled == nil {
+		el.Children = []Expr{link}
+		return
+	}
+	off := &Elem{Typed: el.Typed, Tag: "a", Attrs: []HAttr{{Name: "aria-disabled", Kind: AttrText, Value: text("true")}}, Children: el.Children}
+	switch v, ok := disabled.Value.(*Lit); {
+	case ok && v.Kind == LitBool && v.Bool:
+		el.Children = []Expr{off}
+	case ok && v.Kind == LitBool:
+		el.Children = []Expr{link}
+	default:
+		el.Children = []Expr{&HIf{Typed: el.Typed, Cond: disabled.Value, Then: off, Else: link}}
+	}
 }
 
 func (l *lowerer) children(cs []syntax.Expr) []Expr {

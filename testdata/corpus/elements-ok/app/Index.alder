@@ -45,6 +45,8 @@ view model session =
         <div slot="actions">
           <al-button variant="ghost" click={Clear} disabled>Clear</al-button>
           <al-button href={Index {}} variant="outline">Home</al-button>
+          <al-button href={Index {}} disabled>Gone</al-button>
+          <al-button href={Index {}} disabled={model.saving}>Maybe</al-button>
           <al-button variant="secondary"><button type="button" click={Clear}>Own</button></al-button>
           <al-button variant="ghost">Presentational</al-button>
           <wa-button variant="brand" loading={model.saving} title="Third party">

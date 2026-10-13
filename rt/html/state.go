@@ -1,6 +1,10 @@
 package html
 
-import "alder/rt"
+import (
+	"strings"
+
+	"alder/rt"
+)
 
 // FormState is what a re-render after a failed form decode or a Reject carries. Form is the
 // Alder form's name ("Todos.Index.NewTodo") and Msg the key of the message that posted it
@@ -59,15 +63,17 @@ type Control struct {
 // A control with a Wrap renders inside that element, followed by the field's own error list
 // (as `<Errors field>` renders it, so the field's errors are not repeated on the form's list):
 //
-//	<al-input label="Title" placeholder="…" invalid><label>Title<input name="title" … /></label><ul class="errors" data-errors="title"><li>…</li></ul></al-input>
+//	<al-input label="Title" placeholder="…" help="…" invalid><label>Title<input name="title" … /></label><small class="help" id="help-title">…</small><ul class="errors" data-errors="title"><li>…</li></ul></al-input>
 //
 // The element carries `label` (the label text, when there is one), then WrapAttrs in order,
 // then `invalid` exactly when the field has errors (or `invalid` is written and true). The
 // control also gets the element's `placeholder` (not on a select or checkbox) and `disabled`,
 // so they work without the design system's stylesheet, and `aria-invalid="true"` when the
-// element is invalid. When the field has errors, the list gets `id="errors-<field>"` and the
-// control `aria-describedby` naming it, so a screen reader reads the messages with the control
-// (only then: two per-row forms with the same field would otherwise repeat the id).
+// element is invalid. A `help` text renders as `<small class="help" id="help-<field>">` after
+// the label (the stylesheet then does not draw the attribute again). When the field has errors,
+// the list gets `id="errors-<field>"` (only then: two per-row forms with the same field would
+// otherwise repeat the id). The control's `aria-describedby` names the help, then the errors,
+// whichever are present, so a screen reader reads them with the control.
 func Input(c Control) Node { return Node{kind: kCtrl, control: &c} }
 
 func (c *Control) build(st *FormState, active bool, orphan []string) Node {
@@ -133,10 +139,17 @@ func (c *Control) build(st *FormState, active bool, orphan []string) Node {
 	attrs := []Attr{{Name: "label", Value: c.Label, Omit: c.Label == ""}}
 	hasErrs := len(errs.children) > 0
 	invalid := hasErrs
+	var described []string
+	var help []Node
 	for _, a := range c.WrapAttrs {
 		if a.Name == "invalid" {
 			invalid = invalid || !a.Omit
 			continue
+		}
+		if a.Name == "help" && !a.Omit && a.Value != "" { // read with the control, not only seen
+			id := "help-" + c.Name
+			help = append(help, El("small", []Attr{A("class", "help"), A("id", id)}, Text(a.Value)))
+			described = append(described, id)
 		}
 		attrs = append(attrs, a)
 	}
@@ -145,10 +158,14 @@ func (c *Control) build(st *FormState, active bool, orphan []string) Node {
 	control.attrs = append(control.attrs, Attr{Name: "aria-invalid", Value: "true", Omit: !invalid})
 	if hasErrs { // the id only when there are errors: per-row forms share field names
 		id := "errors-" + c.Name
-		control.attrs = append(control.attrs, A("aria-describedby", id))
 		errs.attrs = append(errs.attrs, A("id", id))
+		described = append(described, id)
 	}
-	return El(c.Wrap, attrs, labelled(c.Label, control), errs)
+	if len(described) > 0 {
+		control.attrs = append(control.attrs, A("aria-describedby", strings.Join(described, " ")))
+	}
+	children := append([]Node{labelled(c.Label, control)}, help...)
+	return El(c.Wrap, attrs, append(children, errs)...)
 }
 
 // labelled is the <label> holding text (when there is any) and control.

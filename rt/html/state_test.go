@@ -242,7 +242,7 @@ func TestRenderWith_WrappedControl(t *testing.T) {
 	)
 	initial := `<form method="post" action="/_m/Todos/Add" data-on:submit="@post(&#39;/_m/Todos/Add&#39;, {contentType: &#39;form&#39;})">` +
 		`<ul class="errors" data-errors="form"></ul>` +
-		`<al-input label="Title" placeholder="A title" help="Short"><label>Title<input name="title" type="text" required placeholder="A title" /></label><ul class="errors" data-errors="title"></ul></al-input>` +
+		`<al-input label="Title" placeholder="A title" help="Short"><label>Title<input name="title" type="text" required placeholder="A title" aria-describedby="help-title" /></label><small class="help" id="help-title">Short</small><ul class="errors" data-errors="title"></ul></al-input>` +
 		`<al-checkbox disabled><label><input name="done" type="checkbox" value="True" disabled /></label><ul class="errors" data-errors="done"></ul></al-checkbox>` +
 		`<al-select label="Kind" invalid><label>Kind<select name="kind" required aria-invalid="true"><option value="A">A</option><option value="B">B</option></select></label><ul class="errors" data-errors="kind"></ul></al-select>` +
 		`</form>`
@@ -253,7 +253,7 @@ func TestRenderWith_WrappedControl(t *testing.T) {
 		Errors: map[string][]string{"title": {"must not be empty"}}})
 	failed := `<form method="post" action="/_m/Todos/Add" data-on:submit="@post(&#39;/_m/Todos/Add&#39;, {contentType: &#39;form&#39;})">` +
 		`<ul class="errors" data-errors="form"></ul>` +
-		`<al-input label="Title" placeholder="A title" help="Short" invalid><label>Title<input name="title" type="text" required placeholder="A title" aria-invalid="true" aria-describedby="errors-title" /></label><ul class="errors" data-errors="title" id="errors-title"><li>must not be empty</li></ul></al-input>` +
+		`<al-input label="Title" placeholder="A title" help="Short" invalid><label>Title<input name="title" type="text" required placeholder="A title" aria-invalid="true" aria-describedby="help-title errors-title" /></label><small class="help" id="help-title">Short</small><ul class="errors" data-errors="title" id="errors-title"><li>must not be empty</li></ul></al-input>` +
 		`<al-checkbox disabled><label><input name="done" type="checkbox" value="True" checked disabled /></label><ul class="errors" data-errors="done"></ul></al-checkbox>` +
 		`<al-select label="Kind" invalid><label>Kind<select name="kind" required aria-invalid="true"><option value="A">A</option><option value="B">B</option></select></label><ul class="errors" data-errors="kind"></ul></al-select>` +
 		`</form>`
