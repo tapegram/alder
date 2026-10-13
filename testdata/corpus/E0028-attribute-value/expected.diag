@@ -1,0 +1,3 @@
+app/Index.alder:12:17 E0028 `<al-stack>` attribute `gap` is one of `sm`, `md`, `lg`
+app/Index.alder:13:24 E0028 `<al-button>` attribute `variant` is one of `primary`, `secondary`, `outline`, `ghost`, `destructive`
+app/Index.alder:14:23 E0028 `<al-badge>` attribute `variant` is one of `default`, `secondary`, `outline`, `destructive`

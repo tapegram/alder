@@ -1,0 +1,21 @@
+module Index
+
+import Ui
+
+page "/" { }
+
+type Model = { open: Bool }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { open: True }
+
+view : Model -> Session -> Html Msg
+view model session =
+  <al-card>
+    <div>
+      <p slot="header">Inside a div</p>
+    </div>
+    <section>{if model.open then <p slot="footer">Through if</p> else <p>Closed</p>}</section>
+    <h2 slot="header">Direct child: fine</h2>
+    <Ui.Card><h2 slot="header">A component's children are not slot-checked</h2></Ui.Card>
+  </al-card>

@@ -105,6 +105,7 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 	if !htmlTags[x.Tag] {
 		c.errorf(diag.UnknownName, x.Span, "unknown element `<%s>`", x.Tag)
 	}
+	mc.misplacedSlots(x)
 	if (x.Tag == "input" || x.Tag == "textarea" || x.Tag == "select") && mc.form != nil {
 		c.errorf("E0304", x.Span, "plain `<%s>` inside `<form submit>`; use `<%s field=\"…\">`", x.Tag, map[string]string{"input": "Input", "textarea": "Textarea", "select": "Select"}[x.Tag])
 	}
@@ -129,6 +130,13 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 		mc.htmlNode(ch, m, env, eff)
 	}
 	mc.form = saved
+	if pushed != nil {
+		for _, e := range pushed.errorsFor {
+			if tag, ok := pushed.wrapped[e.field]; ok {
+				c.errorf(diag.CustomElement, e.span, "`<%s field=\"%s\">` already shows the errors of `%s`; remove `<Errors field=\"%s\" />`", tag, e.field, e.field, e.field)
+			}
+		}
+	}
 	if pushed != nil && !pushed.formErrors && pushed.msg != nil && c.mayReject(pushed.msg.Ref.Module, pushed.msg.Ref.Name) {
 		c.bag.Warn(diag.UnshownReject, x.Span, "`%s` can answer `Reject`, but this form has no `<Errors form />`: the user never sees the rejection text", pushed.msg.Ref.Name)
 	}
@@ -446,6 +454,7 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 			mc.form.shown = map[string]bool{}
 		}
 		mc.form.shown[fieldName] = true
+		mc.form.errorsFor = append(mc.form.errorsFor, errorsAt{fieldName, x.Span})
 	}
 	if fieldName == "" {
 		c.errorf("E0304", x.Span, "`<%s>` needs `field=\"…\"`", x.Tag)
@@ -503,5 +512,37 @@ func (mc *modCtx) walkUnchecked(x *syntax.Element, m types.Type, env *env, eff e
 	}
 	for _, ch := range x.Children {
 		mc.htmlNode(ch, m, env, eff)
+	}
+}
+
+// misplacedSlots reports a literal `slot="…"` on a child element of plain element x (looking
+// through `if`, `for` and `match`): a slot names a slot of the enclosing custom element, so the
+// child must be the custom element's own (E0028). A component's children are not looked at.
+func (mc *modCtx) misplacedSlots(x *syntax.Element) {
+	var visit func(e syntax.Expr)
+	visit = func(e syntax.Expr) {
+		switch ch := e.(type) {
+		case *syntax.Element:
+			if ch.Ref.Kind == syntax.RefComponent || isUpperName(ch.Tag) {
+				return
+			}
+			for _, a := range ch.Attrs {
+				if name, ok := literalText(a.Value); a.Name == "slot" && a.Value != nil && ok {
+					mc.c.errorf(diag.CustomElement, a.Span, "`slot` names a slot of the enclosing custom element; `<%s slot=\"%s\">` is inside `<%s>`", ch.Tag, name, x.Tag)
+				}
+			}
+		case *syntax.HtmlIf:
+			visit(ch.Then)
+			visit(ch.Else)
+		case *syntax.HtmlFor:
+			visit(ch.Body)
+		case *syntax.HtmlMatch:
+			for _, arm := range ch.Arms {
+				visit(arm.Body)
+			}
+		}
+	}
+	for _, ch := range x.Children {
+		visit(ch)
 	}
 }

@@ -1,0 +1,2 @@
+app/Index.alder:19:12 E0028 `submit` belongs on `<form>`; use `type="submit"` inside `<form submit>`
+app/Index.alder:20:16 E0028 `submit` belongs on `<form>`; use `type="submit"` inside `<form submit>`

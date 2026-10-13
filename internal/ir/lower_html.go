@@ -84,8 +84,8 @@ func (l *lowerer) element(x *syntax.Element) Expr {
 //	"button"           <al-button …><button type="…" data-on:click=… disabled>children</button></al-button>
 //	"a"                <al-button …><a href=…>children</a></al-button>
 //
-// The inner `<button>` takes `click` and `type` (written, or "submit" when the element has
-// `submit`, else "button") and a copy of `disabled`, which stays on the element for its style;
+// The inner `<button>` takes `click` and `type` (as written, else "button") and a copy of
+// `disabled`, which stays on the element for its style;
 // the inner `<a>` takes `href`. Every other attribute stays on the element.
 func completeBuiltin(el *Elem, r string) {
 	text := func(s string) Expr { return &Lit{Typed: Typed{types.Text}, Kind: LitText, Text: s} }
@@ -96,7 +96,6 @@ func completeBuiltin(el *Elem, r string) {
 	}
 	var outer, inner []HAttr
 	var typ *HAttr
-	submit := false
 	for _, a := range el.Attrs {
 		switch {
 		case a.Name == "href" && r == "a", a.Name == "click":
@@ -108,17 +107,13 @@ func completeBuiltin(el *Elem, r string) {
 			inner = append(inner, a)
 			outer = append(outer, a)
 		default:
-			submit = submit || a.Name == "submit"
 			outer = append(outer, a)
 		}
 	}
 	if r == "button" {
 		kind := HAttr{Name: "type", Kind: AttrText, Value: text("button")}
-		switch {
-		case typ != nil:
+		if typ != nil {
 			kind = *typ
-		case submit:
-			kind.Value = text("submit")
 		}
 		inner = append([]HAttr{kind}, inner...)
 	}

@@ -95,7 +95,7 @@ func Index__view(model Index__Model, session App__Session) html.Node {
 			html.El("div", []html.Attr{html.A("slot", "actions")},
 				html.El("al-button", []html.Attr{html.A("variant", "ghost"), html.B("disabled", true)}, html.El("button", []html.Attr{html.A("type", "button"), html.MsgAttr("data-on:click", rt.MsgRef{Module: "Index", Msg: "Clear"}), html.B("disabled", true)}, html.Text("Clear"))),
 				html.El("al-button", []html.Attr{html.A("variant", "outline")}, html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Page{Path: "/"}))}, html.Text("Home"))),
-				html.El("al-button", []html.Attr{html.A("variant", "secondary"), html.MsgAttr("data-on:click", rt.MsgRef{Module: "Index", Msg: "Clear"})}, html.El("button", []html.Attr{html.A("type", "button")}, html.Text("Own"))),
+				html.El("al-button", []html.Attr{html.A("variant", "secondary")}, html.El("button", []html.Attr{html.A("type", "button"), html.MsgAttr("data-on:click", rt.MsgRef{Module: "Index", Msg: "Clear"})}, html.Text("Own"))),
 				html.El("al-button", []html.Attr{html.A("variant", "ghost")}, html.Text("Presentational")),
 				html.El("wa-button", []html.Attr{html.A("variant", "brand"), html.B("loading", model.Saving), html.A("title", "Third party")},
 					html.El("span", []html.Attr{html.A("slot", "start")}, html.Text("*")),

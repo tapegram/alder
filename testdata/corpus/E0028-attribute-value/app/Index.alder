@@ -1,0 +1,18 @@
+module Index
+
+page "/" { }
+
+type Model = { tone: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { tone: "outline" }
+
+view : Model -> Session -> Html Msg
+view model session =
+  <al-stack gap="xl">
+    <al-button variant="destuctive">Delete</al-button>
+    <al-badge variant="primary">New</al-badge>
+    <al-badge variant={model.tone}>Computed values are not checked</al-badge>
+    <al-badge variant="outline">Fine</al-badge>
+    <al-pagination page="2" pages="5"></al-pagination>
+  </al-stack>

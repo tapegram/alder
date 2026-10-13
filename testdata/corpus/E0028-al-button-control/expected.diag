@@ -1,0 +1,8 @@
+app/Index.alder:25:27 E0028 `<al-button>` renders its own `<button>` for `click`; move `click` onto your `<button>`, or drop the child
+app/Index.alder:26:32 E0028 `<al-button>` renders its own `<a>` for `href`; move `href` onto your `<a>`, or drop the child
+app/Index.alder:27:36 E0028 `<al-button>` renders its own `<button>` for `type`; move `type` onto your `<button>`, or drop the child
+app/Index.alder:28:47 E0028 `<al-button>` renders its own `<button>` for `click`; move `click` onto your `<button>`, or drop the child
+app/Index.alder:29:52 E0028 `<al-button>` renders its own `<button>` for `click`; move `click` onto your `<button>`, or drop the child
+app/Index.alder:30:27 E0028 `<al-button>` renders its own `<button>` for `click`; move `click` onto your `<button>`, or drop the child
+app/Index.alder:31:27 E0028 `<al-button>` with `click` takes text and inline markup only; an `Html` value may contain a control — write the `<button>` yourself
+app/Index.alder:32:27 E0028 `<al-button>` with `click` takes text and inline markup only; an `Html` value may contain a control — write the `<button>` yourself

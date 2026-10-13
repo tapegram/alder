@@ -1,0 +1,4 @@
+module Ui
+
+Icon : { name: Text } -> Html a
+Icon props = <span class="icon">{props.name}</span>

@@ -148,14 +148,32 @@ func TestMerge_AppWins(t *testing.T) {
 }
 
 func TestEscaped(t *testing.T) {
-	for _, n := range []string{"id", "class", "style", "slot", "hidden", "title", "lang", "dir", "tabindex", "role", "data-x", "aria-label", "click", "submit", "href"} {
+	for _, n := range []string{"id", "class", "style", "slot", "hidden", "title", "lang", "dir", "tabindex", "role", "data-x", "aria-label", "click", "href"} {
 		if !Escaped(n) {
 			t.Errorf("%s not escaped", n)
 		}
 	}
-	for _, n := range []string{"name", "value", "field", "label", "type", "disabled", "onclick", "data", "aria", "src"} {
+	for _, n := range []string{"name", "value", "field", "label", "type", "disabled", "onclick", "data", "aria", "src", "submit"} {
 		if Escaped(n) {
 			t.Errorf("%s escaped", n)
+		}
+	}
+}
+
+func TestAttrValues(t *testing.T) {
+	for typ, want := range map[string]string{
+		`"sm" | "md" | "lg"`: "sm,md,lg",
+		`"primary"`:          "primary",
+		` 'a'|'b' `:          "a,b",
+		`string`:             "",
+		`"sm" | string`:      "",
+		`number`:             "",
+		`boolean`:            "",
+		`"a" | "b`:           "",
+		``:                   "",
+	} {
+		if got := strings.Join(Attr{Type: typ}.Values(), ","); got != want {
+			t.Errorf("Values(%q) = %q, want %q", typ, got, want)
 		}
 	}
 }

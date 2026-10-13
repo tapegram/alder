@@ -3,6 +3,7 @@ package check
 
 import (
 	"errors"
+	"slices"
 	"strings"
 
 	"alder/internal/diag"
@@ -57,14 +58,104 @@ func (mc *modCtx) customElement(x *syntax.Element, m types.Type, env *env, eff e
 		mc.customAttr(x, el, a, m, env, eff)
 	}
 	mc.checkSlots(x, el)
-	if el.Builtin {
+	for _, ch := range x.Children {
+		mc.htmlNode(ch, m, env, eff)
+	}
+	if el.Builtin && (x.Tag != "al-button" || mc.alButton(x)) {
 		if r := rendered(x); r != "" {
 			c.res.Rendered[x] = r
 		}
 	}
-	for _, ch := range x.Children {
-		mc.htmlNode(ch, m, env, eff)
+}
+
+// interactiveTags are the elements an `<al-button>` that renders its own control must not
+// contain: a control inside a control is invalid HTML, and both would answer the click.
+var interactiveTags = map[string]bool{"button": true, "a": true, "input": true, "select": true, "textarea": true}
+
+// alButton checks the built-in `<al-button>` x, whose children are already checked, and reports
+// whether the renderer may complete it. Given `click`, `type` or `href`, it renders its own
+// `<button>` or `<a>` (rendered), so it takes `href` or `click`, not both, and its children,
+// looked at through `if`, `for` and `match` and inside other elements, hold no control (an
+// interactive tag, or any element with `click`) and no `Html` value or component, which may
+// hold one: text and inline markup only.
+func (mc *modCtx) alButton(x *syntax.Element) bool {
+	c := mc.c
+	if hasHTMLAttr(x, "href") && hasHTMLAttr(x, "click") {
+		c.errorf(diag.CustomElement, x.Span, "`<%s>` takes `href` or `click`, not both", x.Tag)
+		return false
 	}
+	attr, own := "", "button"
+	switch {
+	case hasHTMLAttr(x, "href"):
+		attr, own = "href", "a"
+	case hasHTMLAttr(x, "click"):
+		attr = "click"
+	case hasHTMLAttr(x, "type"):
+		attr = "type"
+	default:
+		return true // presentational, or around the author's own control
+	}
+	ok := true
+	control := func(span diag.Span) {
+		c.errorf(diag.CustomElement, span, "`<%s>` renders its own `<%s>` for `%s`; move `%s` onto your `<%s>`, or drop the child", x.Tag, own, attr, attr, own)
+		ok = false
+	}
+	value := func(span diag.Span) {
+		c.errorf(diag.CustomElement, span, "`<%s>` with `%s` takes text and inline markup only; an `Html` value may contain a control — write the `<%s>` yourself", x.Tag, attr, own)
+		ok = false
+	}
+	var visit func(e syntax.Expr)
+	visit = func(e syntax.Expr) {
+		switch ch := e.(type) {
+		case nil, *syntax.HtmlText:
+		case *syntax.Element:
+			switch {
+			case ch.Ref.Kind == syntax.RefComponent || isUpperName(ch.Tag):
+				value(ch.Span)
+			case interactiveTags[ch.Tag] || hasHTMLAttr(ch, "click"):
+				control(ch.Span)
+			default:
+				for _, g := range ch.Children {
+					visit(g)
+				}
+			}
+		case *syntax.HtmlIf:
+			visit(ch.Then)
+			visit(ch.Else)
+		case *syntax.HtmlFor:
+			visit(ch.Body)
+		case *syntax.HtmlMatch:
+			for _, arm := range ch.Arms {
+				visit(arm.Body)
+			}
+		case *syntax.HtmlExpr:
+			if mc.htmlValue(ch.Expr) {
+				value(ch.Span)
+			}
+		default: // an expression as an `if` branch or `match` arm, such as `Html.none`
+			if mc.htmlValue(ch) {
+				value(ch.GetSpan())
+			}
+		}
+	}
+	for _, ch := range x.Children {
+		visit(ch)
+	}
+	return ok
+}
+
+// htmlValue reports whether expression e, already checked, is an `Html` or `List Html` value
+// other than `Html.none` (which renders nothing): a value that may hold a control.
+func (mc *modCtx) htmlValue(e syntax.Expr) bool {
+	if v, ok := e.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Html" && v.Ref.Name == "none" {
+		return false
+	}
+	t, ok := mc.c.res.Types[e]
+	if !ok {
+		return false
+	}
+	app, ok := mc.c.u.Apply(t).(*types.App)
+	return ok && (app.Con == "Html" || app.Con == "List")
 }
 
 // wrappedInput checks a built-in input element that is the form control kind (Input, Textarea,
@@ -91,6 +182,10 @@ func (mc *modCtx) wrappedInput(x *syntax.Element, el *elements.Element, kind str
 					mc.form.shown = map[string]bool{}
 				}
 				mc.form.shown[name] = true
+				if mc.form.wrapped == nil {
+					mc.form.wrapped = map[string]string{}
+				}
+				mc.form.wrapped[name] = x.Tag
 			}
 		}
 	}
@@ -107,6 +202,13 @@ func (mc *modCtx) wrappedInput(x *syntax.Element, el *elements.Element, kind str
 // any element); anything else is E0028.
 func (mc *modCtx) customAttr(x *syntax.Element, el *elements.Element, a *syntax.HtmlAttr, m types.Type, env *env, eff effect) {
 	c := mc.c
+	if a.Name == "submit" { // a custom element is not a form: the control would be dead
+		c.errorf(diag.CustomElement, a.Span, "`submit` belongs on `<form>`; use `type=\"submit\"` inside `<form submit>`")
+		if a.Value != nil {
+			mc.infer(a.Value, env, eff)
+		}
+		return
+	}
 	if d := el.Attr(a.Name); d != nil {
 		switch {
 		case d.Boolean() && a.Value == nil:
@@ -120,6 +222,11 @@ func (mc *modCtx) customAttr(x *syntax.Element, el *elements.Element, a *syntax.
 			c.errorf(diag.TypeMismatch, a.Span, "attribute `%s` needs a value", a.Name)
 		default:
 			mc.textAttr(a, env, eff)
+			if vals := d.Values(); vals != nil {
+				if v, ok := literalText(a.Value); ok && !slices.Contains(vals, v) {
+					c.errorf(diag.CustomElement, a.Value.GetSpan(), "`<%s>` attribute `%s` is one of `%s`", x.Tag, a.Name, strings.Join(vals, "`, `"))
+				}
+			}
 		}
 		return
 	}
@@ -186,10 +293,11 @@ func (mc *modCtx) checkSlots(x *syntax.Element, el *elements.Element) {
 
 // rendered is what the renderer adds to built-in element x (Result.Rendered), "" for nothing.
 //
-// An `<al-button>` given `click`, `submit`, `type` or `href` gets a real control inside it,
-// unless the author wrote one (a `<button>` or `<a>` child): "a" for `href`, else "button". A
-// custom element is not focusable and a form does not submit through it, so without this the
-// button would need JavaScript and could not be reached from the keyboard.
+// An `<al-button>` given `click`, `type` or `href` gets a real control inside it: "a" for
+// `href`, else "button" (alButton has checked that its children hold none). A custom element is
+// not focusable and a form does not submit through it, so without this the button would need
+// JavaScript and could not be reached from the keyboard. Without those attributes it is
+// presentational, or styles the `<button>` or `<a>` the author wrote inside it.
 //
 // An `<al-alert>` without `role` gets the live-region role its variant implies: "status" for
 // info (the default) and success, "alert" for warning and destructive. A computed variant gets
@@ -197,15 +305,10 @@ func (mc *modCtx) checkSlots(x *syntax.Element, el *elements.Element) {
 func rendered(x *syntax.Element) string {
 	switch x.Tag {
 	case "al-button":
-		for _, ch := range x.Children {
-			if e, ok := ch.(*syntax.Element); ok && (e.Tag == "button" || e.Tag == "a") {
-				return ""
-			}
-		}
 		if hasHTMLAttr(x, "href") {
 			return "a"
 		}
-		for _, n := range []string{"click", "submit", "type"} {
+		for _, n := range []string{"click", "type"} {
 			if hasHTMLAttr(x, n) {
 				return "button"
 			}

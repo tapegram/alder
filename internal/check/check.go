@@ -96,7 +96,17 @@ type formCtx struct {
 	// shown are the fields with an <Errors field>; formErrors is set by an <Errors form />
 	shown      map[string]bool
 	formErrors bool
-	msg        *syntax.CtorRef // the submit message's constructor (W0005), nil when not a message
+	// wrapped maps each field a wrapped input element shows to its tag; errorsFor are the
+	// `<Errors field>` written in the form (m1: one of a wrapped field is redundant, E0028)
+	wrapped   map[string]string
+	errorsFor []errorsAt
+	msg       *syntax.CtorRef // the submit message's constructor (W0005), nil when not a message
+}
+
+// errorsAt is an `<Errors field="…">` in a form: its field and where it is.
+type errorsAt struct {
+	field string
+	span  diag.Span
 }
 
 type modCtx struct {

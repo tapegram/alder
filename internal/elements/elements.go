@@ -48,6 +48,21 @@ type Attr struct {
 // Boolean reports whether a takes no value (its type is `boolean`).
 func (a Attr) Boolean() bool { return strings.TrimSpace(a.Type) == "boolean" }
 
+// Values is the closed set of values a takes when its type is a union of quoted literals
+// (`"sm" | "md" | "lg"`), in order; nil for any other type (`string`, `number`, a union with
+// `string`), whose values are not checked.
+func (a Attr) Values() []string {
+	var out []string
+	for _, part := range strings.Split(a.Type, "|") {
+		p := strings.TrimSpace(part)
+		if len(p) < 2 || (p[0] != '"' && p[0] != '\'') || p[len(p)-1] != p[0] || strings.ContainsAny(p[1:len(p)-1], "\"'") {
+			return nil
+		}
+		out = append(out, p[1:len(p)-1])
+	}
+	return out
+}
+
 // Attr is e's attribute name, or nil.
 func (e *Element) Attr(name string) *Attr {
 	for i := range e.Attrs {
@@ -242,13 +257,14 @@ func Merge(builtin, app *Manifest) *Manifest {
 
 // Escaped reports whether attribute name may be written on any custom element without its
 // manifest declaring it: the global attributes `id`, `class`, `style`, `slot`, `hidden`,
-// `title`, `lang`, `dir`, `tabindex`, `role`, `data-*` and `aria-*`, and Alder's own `click`,
-// `submit` and `href`. (A wrapped input's `field`, `label` and `value` are the checker's: see
-// WrappedInputs.)
+// `title`, `lang`, `dir`, `tabindex`, `role`, `data-*` and `aria-*`, and Alder's own `click`
+// and `href`. (A wrapped input's `field`, `label` and `value` are the checker's: see
+// WrappedInputs. `submit` belongs on `<form>` only: the checker rejects it on a custom
+// element.)
 func Escaped(name string) bool {
 	switch name {
 	case "id", "class", "style", "slot", "hidden", "title", "lang", "dir", "tabindex", "role",
-		"click", "submit", "href":
+		"click", "href":
 		return true
 	}
 	return strings.HasPrefix(name, "data-") || strings.HasPrefix(name, "aria-")

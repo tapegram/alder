@@ -35,8 +35,8 @@ type Result struct {
 	// element.
 	Wrapped map[*syntax.Element]string
 	// Rendered maps each built-in element the renderer completes (chapter 13) to what it adds:
-	// "button" or "a" for an `<al-button>` with `click`, `submit`, `type` or `href` and no
-	// `<button>`/`<a>` child (the real control is rendered inside it), "status" or "alert" for
+	// "button" or "a" for an `<al-button>` with `click`, `type` or `href` (the real control is
+	// rendered inside it; the checker has refused a control among its children), "status" or "alert" for
 	// an `<al-alert>` without `role` whose `variant` is a literal or absent (the role it gets).
 	Rendered map[*syntax.Element]string
 	Holes    int            // count of W0002 reported

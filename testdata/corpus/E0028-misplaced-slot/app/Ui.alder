@@ -1,0 +1,4 @@
+module Ui
+
+Card : { children: List (Html a) } -> Html a
+Card props = <al-card>{props.children}</al-card>

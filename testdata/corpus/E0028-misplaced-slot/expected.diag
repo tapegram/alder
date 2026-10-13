@@ -1,0 +1,2 @@
+app/Index.alder:16:10 E0028 `slot` names a slot of the enclosing custom element; `<p slot="header">` is inside `<div>`
+app/Index.alder:18:37 E0028 `slot` names a slot of the enclosing custom element; `<p slot="footer">` is inside `<section>`
