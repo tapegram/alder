@@ -210,6 +210,7 @@ holes (W0002) with their types among them.
 | `alder edit table <T> rename-field <old> <new>` | the field renamed, with `@renamed "old"` (chapter 8), and its migration |
 | `alder edit table <T> drop-field <field>` | the field removed, and its migration |
 | `alder fill <Module>.<decl>[.<arm>] -` | the declaration's hole (`--hole ?name` when it has several) replaced by the expression on standard input; `Module."test name"` names a test, `Module.update.Msg` an arm. `alder fill --list` lists every hole: `Home update.Clear ?clear : Task Nav` |
+| `alder new admin [--module Admin] [--path /admin]` | the admin, under `app/Admin/`: a dashboard (`/admin`: a card per table, its count and newest five rows), a layout with a nav of the tables, and per table `T` a list (`/admin/t`: search, sort by any column, 25 to a page), a page per row, a new and an edit form (`<al-select options>` of the referenced table's rows for a reference) and a delete page (what goes with the row; refused while a `@restrict` reference holds it). Every page `requires user, role Admin` and has browser tests; the parts that follow the schema are owned regions, between `-- @admin begin <name>` and `-- @admin end`. It needs a session whose `role` has an `Admin` constructor |
 
 A generator never overwrites anything and never writes a result that
 does not check. It refuses, with one sentence on standard error, exit

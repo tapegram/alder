@@ -184,6 +184,7 @@ var genCases = []genCase{
 	{name: "fixture-edit-add", base: "fixture", args: []string{"edit", "table", "Post", "add-field", "summary:Maybe Text"}, breaks: true},
 	{name: "fixture-edit-rename", base: "fixture", args: []string{"edit", "table", "Post", "rename-field", "body", "text"}, breaks: true},
 	{name: "fixture-edit-drop", base: "fixture", args: []string{"edit", "table", "Tag", "drop-field", "created"}, test: true},
+	{name: "fixture-admin", base: "fixture", args: []string{"new", "admin"}, test: true},
 }
 
 // TestGenerate runs every case of genCases.
