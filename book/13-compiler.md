@@ -1703,23 +1703,23 @@ else's, and both must be a 404.)
 
 **The role check.** A page with `role R` gets one more check in its
 route function, after the `requires user` redirect and before `load`.
-The blog's `page__Admin` (`build/blog/routes__alder.go`):
+The blog's `page__Write` (`build/blog/routes__alder.go`):
 
 ```go
-func page__Admin(rq *web.Request, params Admin__Params, keep any) (Admin__Model, Admin__Session, *web.Response) {
-	var model Admin__Model
+func page__Write(rq *web.Request, params Write__Params, keep any) (Write__Model, Write__Session, *web.Response) {
+	var model Write__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
 		r := web.RedirectResponse(rq.Login, keep)
-		return model, Admin__Session{}, &r
+		return model, Write__Session{}, &r
 	}
 	if app.Role.Tag != is__User__Role__Author {
 		r := web.NotFoundResponse(html.None())
 		r.Session = keep
-		return model, Admin__Session{}, &r
+		return model, Write__Session{}, &r
 	}
-	session := Admin__Session{User: app.User.Val, Role: app.Role}
-	model, err := eff.RunQuery(rq.Env, Admin__load(params, session))
+	session := Write__Session{User: app.User.Val, Role: app.Role}
+	model, err := eff.RunQuery(rq.Env, Write__load(params, session))
 ```
 
 `app.Role` is the session's union value; its `Tag` is compared with the
@@ -1727,7 +1727,7 @@ constructor's tag (with `role Author | Admin`, the test is
 `!(… == Author || … == Admin)`). A wrong role is the not-found page,
 before any query runs: the check costs no database read. Every handler
 of the page, its `GET` and each message's `POST`, goes through
-`page__Admin` first, so a message is checked the same way. The page's
+`page__Write` first, so a message is checked the same way. The page's
 `Session` carries `Role` beside the narrowed `User`.
 
 ### The dev server
@@ -3498,17 +3498,17 @@ check that sends a visitor to log in, `Todos.Index`'s route
 so under mutant 15 a session without a user gets the placeholder user
 `"mutant"`, and the check that follows lets the request through. `role
 dropped` is in the route too, in the role check that follows the
-`requires` check (section 8, "The rules"). The blog's `Admin` page has
+`requires` check (section 8, "The rules"). The blog's `Write` page has
 
 ```go
-	if Mutant != 7 && app.Role.Tag != is__User__Role__Author {
+	if Mutant != 158 && app.Role.Tag != is__User__Role__Author {
 		r := web.NotFoundResponse(html.None())
 		r.Session = keep
-		return model, Admin__Session{}, &r
+		return model, Write__Session{}, &r
 	}
 ```
 
-so under mutant 7 every signed-in user passes. `scope dropped` replaces
+so under mutant 158 every signed-in user passes. `scope dropped` replaces
 a scoped node with the unscoped one, built from existing IR nodes so it
 has the same type: `Db.mine T` becomes `Db.from T`, and
 `Db.updateMine T id f` becomes a `Db.get`, then a `match` on its result

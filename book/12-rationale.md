@@ -203,7 +203,7 @@ returned ids (an effect test). It checked, built and passed with no
 friction. The probe showed why. A row never exists before its insert,
 so the id `Db.insert` returns is simply the next step's value. Addresses
 use the slug, a second column with `@unique` and a refined brand
-(chapter 14's `Post`). The blog is built the same way. `Admin` checks
+(chapter 14's `Post`). The blog is built the same way. `Write` checks
 `Post.bySlug` before it inserts, so a taken slug is a `Reject`, not a
 500, and then redirects to the new id's edit page. A user-chosen `@id`
 is declined, unless an experiment shows agents fumbling the lookup.
@@ -215,7 +215,7 @@ default) or `@setNull` on the `@ref` field (chapter 8). It is not an
 option chosen at each `Db.delete`. Then the table that holds the
 reference is the one place that says what happens, whichever page
 deletes, and SQLite carries the rule out inside the delete statement.
-The blog's `Comment.post` is `@ref Post @cascade`. `Admin.Edit`'s
+The blog's `Comment.post` is `@ref Post @cascade`. `Write.Edit`'s
 `Delete` is one `Db.deleteMine Post`, and its test checks that the trace has
 that one step and that no comment is left. `@restrict` is the default
 because it loses nothing: a delete the author did not think through
@@ -447,7 +447,7 @@ the moment a feature's tests are written, not for every edit.
 Every app with a login wrote two checks by hand: "this row is mine"
 (the to-do app's `owned` helper, the blog's `post.author ==
 session.user`) and "this user has role R" (the blog's `User.author`
-lookup in every Admin `load`). Both are now declarations (chapter 6,
+lookup in every author page's `load`). Both are now declarations (chapter 6,
 "Rules"): `@owner` on a table's column, five scoped `Db` operations, and
 `requires user, role R` on a page. Five choices shaped them.
 
@@ -904,7 +904,7 @@ believes is right.
   (Author) checked in `load`, an owned row (a post, by `author`), and a
   second table reached through it (comments, by `post`). It needed no
   `owned` helper, because none of its messages carries an id. Each page
-  names its row in its route (`/admin/{id}`, `/posts/{slug}`), `load`
+  names its row in its route (`/write/{id}`, `/posts/{slug}`), `load`
   checks the role, ownership or visibility, and every message acts on
   `model.post`. A comment is reached only through a post that `load`
   found visible, and `update` refuses a comment on a draft as well. So

@@ -6,7 +6,9 @@ joined by a reference, two kinds of user, a capability that `load`
 calls, pages of results, and a search. This chapter covers only what is
 new; the rules are in chapters 6 to 10.
 
-The blog has eleven modules in `examples/blog/app/`:
+The blog has eleven modules of its own in `examples/blog/app/`, and
+the seventeen of a site admin that `alder new admin` generated in
+`app/Admin/` (chapter 15 tours them):
 
 | Module | What it is |
 |---|---|
@@ -16,8 +18,9 @@ The blog has eleven modules in `examples/blog/app/`:
 | `Markdown` | A capability that turns a post's body into HTML |
 | `Posts.Index` | `/`: the published posts, a page at a time, and a search |
 | `Posts.Show` | `/posts/{slug}`: one post, its comments, a comment form |
-| `Admin` | `/admin`: an author's own posts, and a form for a new one |
-| `Admin.Edit` | `/admin/{id}`: edit, publish, unpublish or delete a post |
+| `Write` | `/write`: an author's own posts, and a form for a new one |
+| `Write.Edit` | `/write/{id}`: edit, publish, unpublish or delete a post |
+| `Admin.…` | `/admin`: every table's rows, to list, search, create, edit and delete, for an Admin; generated (chapter 15) |
 
 Four modules are shown in full, piece by piece: `go test ./book` checks
 that the pieces of each equal its file in `examples/blog`, blank lines
@@ -83,7 +86,7 @@ import User
 type PostId = brand Text
 type Slug = brand Text where (\s -> isSlug s)
 
--- `author` is the table's `@owner`: on the Admin pages, `Db.mine Post`, `Db.getMine Post` and
+-- `author` is the table's `@owner`: on the Write pages, `Db.mine Post`, `Db.getMine Post` and
 -- `Db.insertMine Post` read and write only the signed-in author's posts (book 06, "Rules").
 table Post {
   id: PostId @id,
@@ -167,10 +170,12 @@ test "an author with posts cannot be deleted" = {
 }
 ```
 
-## A role in the session: `Admin` and `Admin.Edit`
+## A role in the session: `Write` and `Write.Edit`
 
-`User` declares `type Role = Reader | Author` and a column
-`role: Role = Reader`. The role a page asks for is the one in the
+`User` declares `type Role = Reader | Author | Admin` and a column
+`role: Role = Reader`. (`Admin` is the generated admin's role, chapter
+15; the author's pages are `Write`, at `/write`, so that the admin can
+have `/admin`.) The role a page asks for is the one in the
 session: `App` declares the session with a `role` field beside `user`,
 
 ```alder fragment
@@ -190,10 +195,10 @@ them in the session:
 ```
 
 `App.Logout` sets it back to `Reader` with the user (`{ s | user:
-Nothing, role: Reader }`). Both Admin pages declare
+Nothing, role: Reader }`). Both Write pages declare
 
 ```alder fragment
-page "/admin" { } requires user, role Author
+page "/write" { } requires user, role Author
 ```
 
 `requires user` sends a visitor to log in, as before; `role Author` then
@@ -205,15 +210,15 @@ it. So both pages also re-read the user's row in `load` (chapter 6,
 "Rules"; a test below shows it). Every message of the page goes through the same check, so
 `update` needs none of its own.
 
-`Admin`'s `load` lists the author's own posts with `Db.mine Post |>
+`Write`'s `load` lists the author's own posts with `Db.mine Post |>
 Db.orderBy Post.created.desc |> Db.all`, and its message `Create` stores
 a new one with `Db.insertMine Post { slug: …, title: …, body: … }`, which
 fills `author` from the session. `Create` first looks the slug up with
 `Post.bySlug` and answers `Reject` if it is taken, where the insert would
 fail on `@unique` with a 500 page. The edit page, in full:
 
-```alder part=blog/Admin.Edit
-module Admin.Edit
+```alder part=blog/Write.Edit
+module Write.Edit
 
 import Post
 import Comment
@@ -222,13 +227,13 @@ import Layout
 import Posts.Index
 import Auth.Login
 
-page "/admin/{id}" { id: Post.PostId } requires user, role Author
+page "/write/{id}" { id: Post.PostId } requires user, role Author
 
 type Model = { post: Post }
 
 -- load finds the post when the session's user wrote it: `Db.getMine` answers anyone else's
 -- post, like a missing one, with a 404. The page `requires user, role Author`, the same gate as
--- the Admin page, and re-reads the user's row as it does (User.isAuthor), so an author made a
+-- the Write page, and re-reads the user's row as it does (User.isAuthor), so an author made a
 -- Reader is turned away at once. The messages carry no id: they act on `model.post`, which this
 -- `load` has found (as the to-do example's Todos.Show does), and every message runs it first; the
 -- writes are the scoped forms all the same, which cost nothing.
@@ -261,7 +266,7 @@ small query. Then `Db.getMine Post params.id` is the post when its
 author's post is a 404, like a missing one. (`Auth.Login` is imported
 for a test below, which logs in through its form.)
 
-```alder part=blog/Admin.Edit
+```alder part=blog/Write.Edit
 form EditPost = {
   title: Text.NonEmpty,
   body: Text,
@@ -289,7 +294,7 @@ update msg model session = match msg {
   -- The post's comments go with it: Comment.post is `@ref Post @cascade`.
   Delete p -> {
     let _ <- Db.deleteMine Post model.post.id
-    Task.succeed (Redirect (Admin {}))
+    Task.succeed (Redirect (Write {}))
   },
 }
 ```
@@ -301,7 +306,7 @@ nothing, and `alder test --mutate` counts them as the same program as
 the plain ones here, so they ask for no extra test (chapter 6, "Rules").
 `Delete` makes one write, and `@cascade` deletes the comments.
 
-```alder part=blog/Admin.Edit
+```alder part=blog/Write.Edit
 view : Model -> Session -> Html Msg
 view model session =
   <Layout.Page title={"Edit: " ++ model.post.title}>
@@ -325,7 +330,7 @@ view model session =
         <al-button variant="destructive" click={Delete}>Delete</al-button>
       </div>
     </al-card>
-    <a href={Admin {}}>All your posts</a>
+    <a href={Write {}}>All your posts</a>
   </Layout.Page>
 ```
 
@@ -337,7 +342,7 @@ appears in an `<al-alert variant="destructive">`, which Alder gives
 that alert while its list is empty (`al-alert:has(> ul.errors:empty)
 { display: none }`, in `al.css` since alder-ui v0.1.2).
 
-```alder part=blog/Admin.Edit
+```alder part=blog/Write.Edit
 test "deleting a post deletes its comments" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", published: True, author: author }
@@ -348,7 +353,7 @@ test "deleting a post deletes its comments" = {
   let r <- Test.run (update Delete model { user: author, role: Author })
   let posts <- Db.from Post |> Db.count
   let comments <- Db.from Comment |> Db.count
-  Task.succeed ({ value: r.value, trace: r.trace, posts: posts, comments: comments } == { value: Ok (Redirect (Admin {})), trace: ["Db.deleteMine Post"], posts: 0, comments: 0 })
+  Task.succeed ({ value: r.value, trace: r.trace, posts: posts, comments: comments } == { value: Ok (Redirect (Write {})), trace: ["Db.deleteMine Post"], posts: 0, comments: 0 })
 }
 
 -- Another author is let through the role check, but `Db.getMine` finds no post of theirs with
@@ -358,7 +363,7 @@ test "another author's post is not found" = {
   let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "", role: Author }
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
   let _ <- Test.login { user: Just other, role: Author }
-  let r <- Test.open (Admin.Edit { id: id })
+  let r <- Test.open (Write.Edit { id: id })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -372,12 +377,12 @@ test "a demoted author is turned away at once" = {
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
   let _ <- Test.get (Auth.Login {})
   let _ <- Test.submit Auth.Login.Credentials { email: Text.Email "author@example.com", password: Text.Secret "secret" }
-  let before <- Test.open (Admin.Edit { id: id })
+  let before <- Test.open (Write.Edit { id: id })
   let _ <- Db.update User author (\u -> { u | role: Reader })
-  let stale <- Test.open (Admin.Edit { id: id })
+  let stale <- Test.open (Write.Edit { id: id })
   let _ <- Test.get (Auth.Login {})
   let _ <- Test.submit Auth.Login.Credentials { email: Text.Email "author@example.com", password: Text.Secret "secret" }
-  let fresh <- Test.open (Admin.Edit { id: id })
+  let fresh <- Test.open (Write.Edit { id: id })
   Task.succeed ({ before: before.answer, stale: stale.answer, fresh: fresh.answer } == { before: Shown, stale: PageMissing, fresh: PageMissing })
 }
 
@@ -385,7 +390,7 @@ test "a promoted reader logs in again before editing" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Author }
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: me }
   let _ <- Test.login { user: Just me, role: Reader }
-  let r <- Test.open (Admin.Edit { id: id })
+  let r <- Test.open (Write.Edit { id: id })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -434,13 +439,13 @@ what was saved, and the post's status is still the `<al-badge>` reading
 Draft (a re-render replaces the page's `<body>`, custom elements and
 all).
 
-```alder part=blog/Admin.Edit
+```alder part=blog/Write.Edit
 -- The page through the browser: a visitor is sent to log in; the author saves the form, and the
 -- page rerenders with its design-system elements (the status is an <al-badge>).
 test "a visitor is sent to log in" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
-  let visitor <- Test.open (Admin.Edit { id: id })
+  let visitor <- Test.open (Write.Edit { id: id })
   Task.succeed (visitor.answer == Redirected (Auth.Login {}))
 }
 
@@ -448,7 +453,7 @@ test "saving changes the title and the body" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
   let _ <- Test.login { user: Just author, role: Author }
-  let _ <- Test.get (Admin.Edit { id: id })
+  let _ <- Test.get (Write.Edit { id: id })
   let r <- Test.submit EditPost { title: Text.NonEmpty "Hello again", body: "More." }
   Task.succeed ({ answer: r.answer, heading: Test.text "h1" r.doc, body: Test.text "textarea[name=body]" r.doc, status: Test.text "al-badge" r.doc } == { answer: Rerendered, heading: Just "Hello again", body: Just "More.", status: Just "Draft" })
 }
@@ -511,7 +516,7 @@ Both query parameters have defaults, so `/`, `/?page=2` and
 -- load reads one page of published posts, newest first, matching `q` when it is not blank; `q`
 -- is cut to 100 characters. It asks for one post more than a page holds: if that one comes back
 -- there is a next page (`hasMore`), and it is dropped from the list. `canWrite` shows the link
--- to the Admin page to an Author only.
+-- to the Write page to an Author only.
 load : Params -> Session -> Query Model
 load params session = {
   let page = if params.page < 1 then 1 else if params.page > lastPage then lastPage else params.page
@@ -604,7 +609,7 @@ view model session =
     </al-pagination>
 
     {match session.user {
-      Just _ -> <div class="account">{if model.canWrite then <a href={Admin {}}>Write</a> else Html.none} <al-button variant="outline" size="sm" click={App.Logout}>Log out</al-button></div>,
+      Just _ -> <div class="account">{if model.canWrite then <a href={Write {}}>Write</a> else Html.none} <al-button variant="outline" size="sm" click={App.Logout}>Log out</al-button></div>,
       Nothing -> <p><a href={Auth.Login {}}>Log in</a></p>,
     }}
   </Layout.Page>
@@ -618,23 +623,19 @@ otherwise draw from its `page` and `pages` attributes).
 
 ## Its tests
 
-`alder test examples/blog` runs forty-two tests in seven modules:
+`alder test examples/blog` runs 124 tests: the 82 of the generated
+admin (chapter 15), and forty-two in seven modules, which `-run` picks
+out (it matches each test's `Module "name"`):
 
 ```text
-$ alder test examples/blog
+$ alder test examples/blog -run '^(Post|Comment|Auth|Posts|Write)[. ]'
 ok   Post "a slug is lowercase letters, digits and hyphens"
 ok   Post "a draft is not visible"
 ok   Post "bySlug finds the post with that slug"
 ok   Post "an author with posts cannot be deleted"
-ok   Admin "a Reader cannot open the admin page"
-ok   Admin "creating a post redirects to its edit page"
-ok   Admin "a taken slug is refused"
-ok   Admin "the admin page needs an Author"
-ok   Admin "a demoted author cannot open the admin page"
-ok   Admin "a promoted reader logs in again first"
-ok   Admin "an Author logs out from the admin page"
-ok   Admin "the admin page lists the author's own posts, newest first"
 ok   Comment "a name or comment has text and a bound"
+ok   Auth.Login "an unknown email is rejected"
+ok   Auth.Login "logging in through the form"
 ok   Posts.Index "the front page lists only published posts, newest first"
 ok   Posts.Index "search matches title or body"
 ok   Posts.Index "a `%` in the query is literal"
@@ -648,15 +649,6 @@ ok   Posts.Index "the second page links back to the first"
 ok   Posts.Index "a search through the form"
 ok   Posts.Index "a page that is exactly full has no next page"
 ok   Posts.Index "logging out from the front page goes to log in"
-ok   Auth.Login "an unknown email is rejected"
-ok   Auth.Login "logging in through the form"
-ok   Admin.Edit "deleting a post deletes its comments"
-ok   Admin.Edit "another author's post is not found"
-ok   Admin.Edit "a demoted author is turned away at once"
-ok   Admin.Edit "a promoted reader logs in again before editing"
-ok   Admin.Edit "Publish shows the post on the front page; Unpublish hides it"
-ok   Admin.Edit "a visitor is sent to log in"
-ok   Admin.Edit "saving changes the title and the body"
 ok   Posts.Show "a draft is not found for a reader"
 ok   Posts.Show "a draft is shown to its author"
 ok   Posts.Show "a post's body is rendered through the Markdown capability"
@@ -664,6 +656,21 @@ ok   Posts.Show "a comment on a draft is refused"
 ok   Posts.Show "a comment is listed oldest first"
 ok   Posts.Show "an empty comment is rejected"
 ok   Posts.Show "commenting through the form"
+ok   Write "a Reader cannot open the write page"
+ok   Write "creating a post redirects to its edit page"
+ok   Write "a taken slug is refused"
+ok   Write "the write page needs an Author"
+ok   Write "a demoted author cannot open the write page"
+ok   Write "a promoted reader logs in again first"
+ok   Write "an Author logs out from the write page"
+ok   Write "the write page lists the author's own posts, newest first"
+ok   Write.Edit "deleting a post deletes its comments"
+ok   Write.Edit "another author's post is not found"
+ok   Write.Edit "a demoted author is turned away at once"
+ok   Write.Edit "a promoted reader logs in again before editing"
+ok   Write.Edit "Publish shows the post on the front page; Unpublish hides it"
+ok   Write.Edit "a visitor is sent to log in"
+ok   Write.Edit "saving changes the title and the body"
 42 passed, 0 failed
 ```
 
@@ -779,12 +786,12 @@ one second later each time. Changing `desc` to `asc` in `load` fails
 this test, and flipping it in `Posts.Show` fails "a comment is listed
 oldest first".
 
-Three more tests go through the browser. `Admin`'s "the admin page needs
-an Author" opens `/admin` as a visitor (`Redirected (Auth.Login {})`:
+Three more tests go through the browser. `Write`'s "the write page needs
+an Author" opens `/write` as a visitor (`Redirected (Auth.Login {})`:
 `requires user` sends them to log in) and as a logged-in Reader
 (`PageMissing`: the role check's 404); "an Author logs out from the
-admin page" clicks the page's `App.Logout` button and finds the
-session's `user` gone. "a Reader cannot open the admin page" logs in as
+write page" clicks the page's `App.Logout` button and finds the
+session's `user` gone. "a Reader cannot open the write page" logs in as
 each role in turn, with `Test.login { user: Just reader, role: Reader }`
 and then as the Author: the Reader gets `PageMissing`, the Author the
 page (`Shown`). `Posts.Show`'s "an empty comment is rejected" posts the comment
@@ -797,7 +804,9 @@ be empty").
 Ten tests were written after `alder test --mutate` (chapter 10, "Mutation
 testing") ran on the blog: before them, 17 of its 58 mutants survived;
 after, 3 do, and those three cannot be killed (chapter 10 explains why).
-`Post`'s two and `Admin.Edit`'s two are above. `Admin`'s "the admin page
+The generated admin, which came later, adds 119 mutants, and its own
+tests kill every one (chapter 15).
+`Post`'s two and `Write.Edit`'s two are above. `Write`'s "the write page
 lists the author's own posts, newest first" inserts another author's post
 between two of the author's own. `Posts.Show`'s "commenting through the
 form" checks that a comment redirects back to the post. `Auth.Login`
@@ -844,18 +853,21 @@ $ alder run examples/blog
 `alder run` serves the app in dev mode (`ALDER_DEV=1`, chapter 11). In
 dev mode only, the stub of `Password` (`adapters/auth/password.go`,
 `func LoginPassword()`, as for the to-do app) accepts
-two accounts, both with the password `password`, and creates each one's
+three accounts, all with the password `password`, and creates each one's
 `User` row on its first login:
 
 - `author@example.com` is an Author: "Write" on the front page opens
-  `/admin`, to create, publish and delete posts.
-- `reader@example.com` is a Reader: it can comment, and every `/admin`
-  page is a 404 for it.
+  `/write`, to create, publish and delete posts.
+- `reader@example.com` is a Reader: it can comment, and every `/write`
+  and `/admin` page is a 404 for it.
+- `admin@example.com` is an Admin: `/admin` opens the generated admin
+  (chapter 15), where every post, comment and user can be changed.
 
 Outside dev mode the stub refuses every login and logs that it must be
 replaced, as it must before the blog faces the internet.
 
 The blog's tables come from `examples/blog/migrations/` (chapter 8,
 "Migrations"): `0001_initial.sql` creates them, and `alder run` and
-`alder test` apply it. After a change to a `table`, run `alder migrate`;
+`alder test` apply it, and `0002_admin_role.sql` adds `Admin` to the
+roles a `role` column may hold. After a change to a `table`, run `alder migrate`;
 until then `alder check` reports E0019.

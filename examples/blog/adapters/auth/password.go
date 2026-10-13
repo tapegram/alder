@@ -25,18 +25,20 @@ type devAccount struct {
 	email, name, role string
 }
 
-// The two accounts the development stub accepts, both with the password "password", so the
-// blog can be tried as each kind of user: author@example.com is an Author (it can open /admin
-// and write posts), reader@example.com is a Reader (it can comment; /admin is a 404 for it).
+// The three accounts the development stub accepts, all with the password "password", so the
+// blog can be tried as each kind of user: author@example.com is an Author (it can open /write
+// and write posts), reader@example.com is a Reader (it can comment; /write and /admin are a 404
+// for it), admin@example.com is an Admin (it can open the generated admin, /admin; book 15).
 var devAccounts = []devAccount{
 	{email: "author@example.com", name: "Author", role: "Author"},
 	{email: "reader@example.com", name: "Reader", role: "Reader"},
+	{email: "admin@example.com", name: "Admin", role: "Admin"},
 }
 
 const devPassword = "password"
 
 // password is a development stub of Auth.Login.Password: in dev mode (ALDER_DEV=1, which
-// `alder run` sets) it accepts the two devAccounts with the password "password" and nobody else;
+// `alder run` sets) it accepts the three devAccounts with the password "password" and nobody else;
 // outside dev mode it refuses every login. Replace it before deploying the app.
 type password struct{}
 

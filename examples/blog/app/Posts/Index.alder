@@ -24,7 +24,7 @@ lastPage = 1000000
 -- load reads one page of published posts, newest first, matching `q` when it is not blank; `q`
 -- is cut to 100 characters. It asks for one post more than a page holds: if that one comes back
 -- there is a next page (`hasMore`), and it is dropped from the list. `canWrite` shows the link
--- to the Admin page to an Author only.
+-- to the Write page to an Author only.
 load : Params -> Session -> Query Model
 load params session = {
   let page = if params.page < 1 then 1 else if params.page > lastPage then lastPage else params.page
@@ -85,7 +85,7 @@ view model session =
     </al-pagination>
 
     {match session.user {
-      Just _ -> <div class="account">{if model.canWrite then <a href={Admin {}}>Write</a> else Html.none} <al-button variant="outline" size="sm" click={App.Logout}>Log out</al-button></div>,
+      Just _ -> <div class="account">{if model.canWrite then <a href={Write {}}>Write</a> else Html.none} <al-button variant="outline" size="sm" click={App.Logout}>Log out</al-button></div>,
       Nothing -> <p><a href={Auth.Login {}}>Log in</a></p>,
     }}
   </Layout.Page>

@@ -5,7 +5,7 @@ import User
 type PostId = brand Text
 type Slug = brand Text where (\s -> isSlug s)
 
--- `author` is the table's `@owner`: on the Admin pages, `Db.mine Post`, `Db.getMine Post` and
+-- `author` is the table's `@owner`: on the Write pages, `Db.mine Post`, `Db.getMine Post` and
 -- `Db.insertMine Post` read and write only the signed-in author's posts (book 06, "Rules").
 table Post {
   id: PostId @id,

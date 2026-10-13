@@ -144,29 +144,36 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Posts.Show "a comment on a draft is refused"`,
 		`ok   Posts.Show "a comment is listed oldest first"`,
 		`ok   Posts.Show "an empty comment is rejected"`,
-		`ok   Admin "a Reader cannot open the admin page"`,
-		`ok   Admin "creating a post redirects to its edit page"`,
-		`ok   Admin "a taken slug is refused"`,
-		`ok   Admin "the admin page needs an Author"`,
-		`ok   Admin "an Author logs out from the admin page"`,
-		`ok   Admin.Edit "deleting a post deletes its comments"`,
-		`ok   Admin.Edit "another author's post is not found"`,
-		`ok   Admin.Edit "a demoted author is turned away at once"`,
-		`ok   Admin.Edit "a promoted reader logs in again before editing"`,
-		`ok   Admin "a demoted author cannot open the admin page"`,
-		`ok   Admin "a promoted reader logs in again first"`,
-		`ok   Admin.Edit "Publish shows the post on the front page; Unpublish hides it"`,
+		`ok   Write "a Reader cannot open the write page"`,
+		`ok   Write "creating a post redirects to its edit page"`,
+		`ok   Write "a taken slug is refused"`,
+		`ok   Write "the write page needs an Author"`,
+		`ok   Write "an Author logs out from the write page"`,
+		`ok   Write.Edit "deleting a post deletes its comments"`,
+		`ok   Write.Edit "another author's post is not found"`,
+		`ok   Write.Edit "a demoted author is turned away at once"`,
+		`ok   Write.Edit "a promoted reader logs in again before editing"`,
+		`ok   Write "a demoted author cannot open the write page"`,
+		`ok   Write "a promoted reader logs in again first"`,
+		`ok   Write.Edit "Publish shows the post on the front page; Unpublish hides it"`,
 		`ok   Post "bySlug finds the post with that slug"`,
 		`ok   Post "an author with posts cannot be deleted"`,
-		`ok   Admin "the admin page lists the author's own posts, newest first"`,
+		`ok   Write "the write page lists the author's own posts, newest first"`,
 		`ok   Posts.Index "a page that is exactly full has no next page"`,
 		`ok   Posts.Index "logging out from the front page goes to log in"`,
-		`ok   Admin.Edit "a visitor is sent to log in"`,
-		`ok   Admin.Edit "saving changes the title and the body"`,
+		`ok   Write.Edit "a visitor is sent to log in"`,
+		`ok   Write.Edit "saving changes the title and the body"`,
 		`ok   Posts.Show "commenting through the form"`,
 		`ok   Auth.Login "an unknown email is rejected"`,
 		`ok   Auth.Login "logging in through the form"`,
-		"42 passed, 0 failed\n",
+		// the generated admin (`alder new admin`, book 15), a few of its 82 tests
+		`ok   Admin.Index "the dashboard counts the posts and lists the newest five"`,
+		`ok   Admin.Index "a Reader gets no page"`,
+		`ok   Admin.Post.Index "searching finds the rows that contain the text"`,
+		`ok   Admin.Post.New "an author not offered is refused"`,
+		`ok   Admin.Post.Delete "the page counts the rows that go with it"`,
+		`ok   Admin.User.Delete "a user that posts refer to is not deleted"`,
+		"124 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("alder test examples/blog lacks %q:\n%s", want, out)
@@ -176,14 +183,14 @@ func TestExample_Blog(t *testing.T) {
 }
 
 // The mutation scores examples/todos/README.md and examples/blog/README.md record (`alder test
-// --mutate`, rounded down to two decimals: the blog's is 60 / 63 = 0.952) and their numbers of
+// --mutate`, rounded down to two decimals: the blog's is 179 / 182 = 0.983) and their numbers of
 // mutants: a change to an example that lets a mutant survive which its tests used to kill, or
 // that changes the mutants made of it, fails TestExample_*.
 const (
 	todosMutationScore = 1.00
-	blogMutationScore  = 0.95
+	blogMutationScore  = 0.98
 	todosMutants       = 32
-	blogMutants        = 63
+	blogMutants        = 182
 )
 
 // mutationAtLeast runs `alder test --mutate --json dir` and fails t when the score is below min

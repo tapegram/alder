@@ -679,7 +679,7 @@ isAuthor id = {
 }
 ```
 
-and, in `Admin.Edit`,
+and, in `Write.Edit`,
 
 ```alder fragment
 load params session = {
@@ -718,7 +718,7 @@ no id: they act on `model.todo`, which its `load` read with
 `Db.update Todo model.todo.id …` could reach no other row either, but
 `Todos.Show` writes `Db.updateMine Todo model.todo.id …` and
 `Db.deleteMine Todo model.todo.id`, and so does the blog's
-`Admin.Edit`. `alder test --mutate` knows that there the two forms are
+`Write.Edit`. `alder test --mutate` knows that there the two forms are
 the same program, and makes no `scope dropped` mutant of such a write
 (chapter 10, "What is never a mutant"), so the scoped form asks for no
 extra test.

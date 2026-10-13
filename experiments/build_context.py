@@ -115,7 +115,7 @@ TRIMS = {
             "In a `<form submit>`, `<al-input field=\"f\" />` is `<Input>` (E0304 rules),\n`al-textarea` `<Textarea>`, "
             "`al-select` `<Select>`, `al-checkbox` `<Input>`\non a `Bool`; each renders its `help` and its own error list\n"
             "(an `<Errors field>` for it is E0028).\n\n")],
-    "06": [("and, in `Admin.Edit`,\n\n```alder fragment\nload params session = {\n  let author <- User.isAuthor", "Every message of the page runs `load` first",
+    "06": [("and, in `Write.Edit`,\n\n```alder fragment\nload params session = {\n  let author <- User.isAuthor", "Every message of the page runs `load` first",
             "which each admin page's `load` calls first, answering `Query.notFound`\nwhen it is `False`. "),
            ("A row `load` already found with `Db.getMine` is not one of the cases:", "### The rules and a replicated database",
             "A row `load` already found with `Db.getMine` is not one of the cases:\nwrite the scoped form; it costs "

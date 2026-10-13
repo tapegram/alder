@@ -1,4 +1,4 @@
-module Admin.Edit
+module Write.Edit
 
 import Post
 import Comment
@@ -7,13 +7,13 @@ import Layout
 import Posts.Index
 import Auth.Login
 
-page "/admin/{id}" { id: Post.PostId } requires user, role Author
+page "/write/{id}" { id: Post.PostId } requires user, role Author
 
 type Model = { post: Post }
 
 -- load finds the post when the session's user wrote it: `Db.getMine` answers anyone else's
 -- post, like a missing one, with a 404. The page `requires user, role Author`, the same gate as
--- the Admin page, and re-reads the user's row as it does (User.isAuthor), so an author made a
+-- the Write page, and re-reads the user's row as it does (User.isAuthor), so an author made a
 -- Reader is turned away at once. The messages carry no id: they act on `model.post`, which this
 -- `load` has found (as the to-do example's Todos.Show does), and every message runs it first; the
 -- writes are the scoped forms all the same, which cost nothing.
@@ -53,7 +53,7 @@ update msg model session = match msg {
   -- The post's comments go with it: Comment.post is `@ref Post @cascade`.
   Delete p -> {
     let _ <- Db.deleteMine Post model.post.id
-    Task.succeed (Redirect (Admin {}))
+    Task.succeed (Redirect (Write {}))
   },
 }
 
@@ -80,7 +80,7 @@ view model session =
         <al-button variant="destructive" click={Delete}>Delete</al-button>
       </div>
     </al-card>
-    <a href={Admin {}}>All your posts</a>
+    <a href={Write {}}>All your posts</a>
   </Layout.Page>
 
 test "deleting a post deletes its comments" = {
@@ -93,7 +93,7 @@ test "deleting a post deletes its comments" = {
   let r <- Test.run (update Delete model { user: author, role: Author })
   let posts <- Db.from Post |> Db.count
   let comments <- Db.from Comment |> Db.count
-  Task.succeed ({ value: r.value, trace: r.trace, posts: posts, comments: comments } == { value: Ok (Redirect (Admin {})), trace: ["Db.deleteMine Post"], posts: 0, comments: 0 })
+  Task.succeed ({ value: r.value, trace: r.trace, posts: posts, comments: comments } == { value: Ok (Redirect (Write {})), trace: ["Db.deleteMine Post"], posts: 0, comments: 0 })
 }
 
 -- Another author is let through the role check, but `Db.getMine` finds no post of theirs with
@@ -103,7 +103,7 @@ test "another author's post is not found" = {
   let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "", role: Author }
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
   let _ <- Test.login { user: Just other, role: Author }
-  let r <- Test.open (Admin.Edit { id: id })
+  let r <- Test.open (Write.Edit { id: id })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -117,12 +117,12 @@ test "a demoted author is turned away at once" = {
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
   let _ <- Test.get (Auth.Login {})
   let _ <- Test.submit Auth.Login.Credentials { email: Text.Email "author@example.com", password: Text.Secret "secret" }
-  let before <- Test.open (Admin.Edit { id: id })
+  let before <- Test.open (Write.Edit { id: id })
   let _ <- Db.update User author (\u -> { u | role: Reader })
-  let stale <- Test.open (Admin.Edit { id: id })
+  let stale <- Test.open (Write.Edit { id: id })
   let _ <- Test.get (Auth.Login {})
   let _ <- Test.submit Auth.Login.Credentials { email: Text.Email "author@example.com", password: Text.Secret "secret" }
-  let fresh <- Test.open (Admin.Edit { id: id })
+  let fresh <- Test.open (Write.Edit { id: id })
   Task.succeed ({ before: before.answer, stale: stale.answer, fresh: fresh.answer } == { before: Shown, stale: PageMissing, fresh: PageMissing })
 }
 
@@ -130,7 +130,7 @@ test "a promoted reader logs in again before editing" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Author }
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: me }
   let _ <- Test.login { user: Just me, role: Reader }
-  let r <- Test.open (Admin.Edit { id: id })
+  let r <- Test.open (Write.Edit { id: id })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -152,7 +152,7 @@ test "Publish shows the post on the front page; Unpublish hides it" = {
 test "a visitor is sent to log in" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
-  let visitor <- Test.open (Admin.Edit { id: id })
+  let visitor <- Test.open (Write.Edit { id: id })
   Task.succeed (visitor.answer == Redirected (Auth.Login {}))
 }
 
@@ -160,7 +160,7 @@ test "saving changes the title and the body" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
   let _ <- Test.login { user: Just author, role: Author }
-  let _ <- Test.get (Admin.Edit { id: id })
+  let _ <- Test.get (Write.Edit { id: id })
   let r <- Test.submit EditPost { title: Text.NonEmpty "Hello again", body: "More." }
   Task.succeed ({ answer: r.answer, heading: Test.text "h1" r.doc, body: Test.text "textarea[name=body]" r.doc, status: Test.text "al-badge" r.doc } == { answer: Rerendered, heading: Just "Hello again", body: Just "More.", status: Just "Draft" })
 }

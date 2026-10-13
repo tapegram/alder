@@ -1762,11 +1762,13 @@ examples/todos`, whose four tests open no page, the to-do app's four
   Todos.Show    load:13      scope dropped          Db.getMine Todo params.id → Db.get Todo params.id, not found when missing
 ```
 
-and from the blog's (chapter 14), with only `Post`'s tests run:
+and from the blog's (chapter 14), with only `Post`'s tests run, its
+author pages' two (the report has the same line, `role Admin`, for each
+page of its generated admin, chapter 15):
 
 ```text
-  Admin         requires:12   role dropped           requires user, role Author → requires user
-  Admin.Edit    requires:10   role dropped           requires user, role Author → requires user
+  Write                  requires:12      role dropped           requires user, role Author → requires user
+  Write.Edit             requires:10      role dropped           requires user, role Author → requires user
 ```
 
 "Not found when missing" is the replacement's whole behaviour: the
@@ -1913,7 +1915,8 @@ The to-do app has 2 suppressed (the `scope dropped` of `Todos.Show`'s
 `Db.updateMine` and `Db.deleteMine` of `model.todo.id`) and 5 skipped (4
 arm swaps of `msg` and `found` matches whose arms use what they bind,
 and the `scope dropped` of `Db.insertMine`); the blog 5 (`User.role`'s
-default, and `Admin.Edit`'s four writes of `model.post.id`) and 3.
+default, and `Write.Edit`'s four writes of `model.post.id`) and 31 (3 in
+its own pages, 28 in its generated admin).
 
 ### Survivors that are not gaps
 

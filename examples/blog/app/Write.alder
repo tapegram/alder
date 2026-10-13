@@ -1,4 +1,4 @@
-module Admin
+module Write
 
 import Post
 import User
@@ -9,7 +9,7 @@ import Layout
 -- of the page is checked the same way, so `update` needs no check of its own. The session's role
 -- is the one read at login, and lasts until logout (or the session's 30 days), so `load` also
 -- re-reads the user's row (User.isAuthor): an author made a Reader gets the 404 at once.
-page "/admin" { } requires user, role Author
+page "/write" { } requires user, role Author
 
 type Model = {
   posts: List Post,
@@ -45,7 +45,7 @@ update msg model session = match msg {
       Just _ -> Task.succeed (Reject "Another post has that slug."),
       Nothing -> {
         let id <- Db.insertMine Post { slug: p.form.slug, title: p.form.title, body: p.form.body }
-        Task.succeed (Redirect (Admin.Edit { id: id }))
+        Task.succeed (Redirect (Write.Edit { id: id }))
       },
     }
   },
@@ -64,7 +64,7 @@ view model session =
         <tbody>
           {for post in model.posts ->
             <tr>
-              <td><a href={Admin.Edit { id: post.id }}>{post.title}</a></td>
+              <td><a href={Write.Edit { id: post.id }}>{post.title}</a></td>
               <td>{if post.published then <al-badge>Published</al-badge> else <al-badge variant="secondary">Draft</al-badge>}</td>
             </tr>}
         </tbody>
@@ -86,13 +86,13 @@ view model session =
   </Layout.Page>
 
 -- The role is the session's: `Test.login` gives it, as logging in does from the user's row.
-test "a Reader cannot open the admin page" = {
+test "a Reader cannot open the write page" = {
   let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Test.login { user: Just reader, role: Reader }
-  let asReader <- Test.open (Admin {})
+  let asReader <- Test.open (Write {})
   let _ <- Test.login { user: Just author, role: Author }
-  let asAuthor <- Test.open (Admin {})
+  let asAuthor <- Test.open (Write {})
   Task.succeed ({ reader: asReader.answer, author: asAuthor.answer } == { reader: PageMissing, author: Shown })
 }
 
@@ -103,7 +103,7 @@ test "creating a post redirects to its edit page" = {
   let r <- Test.run (update (Create { form: { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "Hi." } }) model { user: author, role: Author })
   let created <- Post.bySlug (Post.Slug "hello")
   match created {
-    Just post -> Task.succeed ({ value: r.value, published: post.published } == { value: Ok (Redirect (Admin.Edit { id: post.id })), published: False }),
+    Just post -> Task.succeed ({ value: r.value, published: post.published } == { value: Ok (Redirect (Write.Edit { id: post.id })), published: False }),
     Nothing -> Task.fail "no post has the slug hello",
   }
 }
@@ -118,22 +118,22 @@ test "a taken slug is refused" = {
   Task.succeed ({ value: r.value, posts: posts } == { value: Ok (Reject "Another post has that slug."), posts: 1 })
 }
 
--- The admin page through the browser: a visitor is sent to log in; a Reader who is logged in
+-- The write page through the browser: a visitor is sent to log in; a Reader who is logged in
 -- gets the 404; an Author gets the page, and can log out from it.
-test "the admin page needs an Author" = {
+test "the write page needs an Author" = {
   let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
-  let visitor <- Test.open (Admin {})
+  let visitor <- Test.open (Write {})
   let _ <- Test.login { user: Just reader }
-  let asReader <- Test.open (Admin {})
+  let asReader <- Test.open (Write {})
   Task.succeed ({ visitor: visitor.answer, reader: asReader.answer } == { visitor: Redirected (Auth.Login {}), reader: PageMissing })
 }
 
 -- The cookie still says Author, but the row has been made a Reader: the re-read turns them away.
-test "a demoted author cannot open the admin page" = {
+test "a demoted author cannot open the write page" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Test.login { user: Just author, role: Author }
   let _ <- Db.update User author (\u -> { u | role: Reader })
-  let r <- Test.open (Admin {})
+  let r <- Test.open (Write {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -142,19 +142,19 @@ test "a demoted author cannot open the admin page" = {
 test "a promoted reader logs in again first" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Author }
   let _ <- Test.login { user: Just me, role: Reader }
-  let r <- Test.open (Admin {})
+  let r <- Test.open (Write {})
   Task.succeed (r.answer == PageMissing)
 }
 
-test "an Author logs out from the admin page" = {
+test "an Author logs out from the write page" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Test.login { user: Just author, role: Author }
-  let page <- Test.get (Admin {})
+  let page <- Test.get (Write {})
   let out <- Test.click App.Logout
   Task.succeed ({ heading: Test.text "h1" page.doc, out: out.answer, user: out.session.user } == { heading: Just "Your posts", out: Redirected (Auth.Login {}), user: Nothing })
 }
 
-test "the admin page lists the author's own posts, newest first" = {
+test "the write page lists the author's own posts, newest first" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "", role: Author }
   let _ <- Db.insert Post { slug: Post.Slug "first", title: Text.NonEmpty "First", body: "", author: author }

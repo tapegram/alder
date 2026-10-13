@@ -2,10 +2,11 @@ module User
 
 type UserId = brand Text
 
--- Anyone, logged in or not, can read and comment. An Author can also write posts: the Admin
--- pages `requires user, role Author`, so they are a 404 for a Reader. The session holds the
--- role the user had when they logged in (App's `session`).
-type Role = Reader | Author
+-- Anyone, logged in or not, can read and comment. An Author can also write posts: the Write
+-- pages `requires user, role Author`, so they are a 404 for a Reader. An Admin manages every
+-- table through the generated admin (app/Admin/, `requires user, role Admin`; book 15). The
+-- session holds the role the user had when they logged in (App's `session`).
+type Role = Reader | Author | Admin
 
 table User {
   id: UserId @id,
@@ -17,7 +18,7 @@ table User {
 }
 
 -- isAuthor is the re-read idiom (book 06, "Rules"): whether the user's row says Author now, not
--- the role the session got at login. The Admin pages call it in their `load`, so an author made a
+-- the role the session got at login. The Write pages call it in their `load`, so an author made a
 -- Reader is turned away at once, without waiting for them to log in again.
 isAuthor : UserId -> Query Bool
 isAuthor id = {
