@@ -1,0 +1,460 @@
+{
+  "schemaVersion": "1.0.0",
+  "version": "v0.0.0-placeholder",
+  "modules": [
+    {
+      "kind": "javascript-module",
+      "path": "components/al-button.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlButton",
+          "tagName": "al-button",
+          "customElement": true,
+          "description": "A button: the native `<button>` inside it, or the element itself, styled by variant and size.",
+          "attributes": [
+            {
+              "name": "variant",
+              "type": {
+                "text": "\"primary\" | \"secondary\" | \"outline\" | \"ghost\" | \"destructive\""
+              },
+              "description": "The button's look.",
+              "default": "\"primary\""
+            },
+            {
+              "name": "size",
+              "type": {
+                "text": "\"sm\" | \"md\" | \"lg\""
+              },
+              "description": "The button's size."
+            },
+            {
+              "name": "disabled",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Shows the button as disabled."
+            },
+            {
+              "name": "type",
+              "type": {
+                "text": "\"button\" | \"submit\""
+              },
+              "description": "The kind of the button."
+            }
+          ],
+          "slots": [
+            {
+              "name": "",
+              "description": "The button's label."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-input.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlInput",
+          "tagName": "al-input",
+          "customElement": true,
+          "description": "A labelled text input; Alder renders the `<input>` and its errors list inside it.",
+          "attributes": [
+            {
+              "name": "label",
+              "type": {
+                "text": "string"
+              },
+              "description": "The input's label text."
+            },
+            {
+              "name": "placeholder",
+              "type": {
+                "text": "string"
+              },
+              "description": "The input's placeholder text."
+            },
+            {
+              "name": "disabled",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Disables the input."
+            },
+            {
+              "name": "invalid",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Marks the field as having errors (set by Alder's renderer when the field has errors)."
+            },
+            {
+              "name": "help",
+              "type": {
+                "text": "string"
+              },
+              "description": "A hint shown under the input."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-textarea.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlTextarea",
+          "tagName": "al-textarea",
+          "customElement": true,
+          "description": "A labelled multi-line input; Alder renders the `<textarea>` and its errors list inside it.",
+          "attributes": [
+            {
+              "name": "label",
+              "type": {
+                "text": "string"
+              },
+              "description": "The textarea's label text."
+            },
+            {
+              "name": "placeholder",
+              "type": {
+                "text": "string"
+              },
+              "description": "The textarea's placeholder text."
+            },
+            {
+              "name": "disabled",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Disables the textarea."
+            },
+            {
+              "name": "invalid",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Marks the field as having errors (set by Alder's renderer when the field has errors)."
+            },
+            {
+              "name": "help",
+              "type": {
+                "text": "string"
+              },
+              "description": "A hint shown under the textarea."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-select.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlSelect",
+          "tagName": "al-select",
+          "customElement": true,
+          "description": "A labelled select; Alder renders the `<select>` and its errors list inside it.",
+          "attributes": [
+            {
+              "name": "label",
+              "type": {
+                "text": "string"
+              },
+              "description": "The select's label text."
+            },
+            {
+              "name": "disabled",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Disables the select."
+            },
+            {
+              "name": "invalid",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Marks the field as having errors (set by Alder's renderer when the field has errors)."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-checkbox.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlCheckbox",
+          "tagName": "al-checkbox",
+          "customElement": true,
+          "description": "A labelled checkbox; Alder renders the `<input type=\"checkbox\">` inside it.",
+          "attributes": [
+            {
+              "name": "label",
+              "type": {
+                "text": "string"
+              },
+              "description": "The checkbox's label text."
+            },
+            {
+              "name": "disabled",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Disables the checkbox."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-table.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlTable",
+          "tagName": "al-table",
+          "customElement": true,
+          "description": "Styles the `<table>` inside it.",
+          "attributes": [
+            {
+              "name": "striped",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Shades every other row."
+            },
+            {
+              "name": "dense",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Tightens the cell padding."
+            }
+          ],
+          "slots": [
+            {
+              "name": "",
+              "description": "The `<table>`."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-card.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlCard",
+          "tagName": "al-card",
+          "customElement": true,
+          "description": "A card: a bordered surface with an optional header, footer and actions.",
+          "attributes": [],
+          "slots": [
+            {
+              "name": "header",
+              "description": "The card's title area."
+            },
+            {
+              "name": "",
+              "description": "The card's body."
+            },
+            {
+              "name": "footer",
+              "description": "The card's footer."
+            },
+            {
+              "name": "actions",
+              "description": "The card's buttons."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-badge.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlBadge",
+          "tagName": "al-badge",
+          "customElement": true,
+          "description": "A small label for a status or a count.",
+          "attributes": [
+            {
+              "name": "variant",
+              "type": {
+                "text": "\"default\" | \"secondary\" | \"outline\" | \"destructive\""
+              },
+              "description": "The badge's look."
+            }
+          ],
+          "slots": [
+            {
+              "name": "",
+              "description": "The badge's text."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-alert.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlAlert",
+          "tagName": "al-alert",
+          "customElement": true,
+          "description": "A message box for information, success, a warning or an error.",
+          "attributes": [
+            {
+              "name": "variant",
+              "type": {
+                "text": "\"info\" | \"success\" | \"warning\" | \"destructive\""
+              },
+              "description": "The alert's kind."
+            },
+            {
+              "name": "title",
+              "type": {
+                "text": "string"
+              },
+              "description": "The alert's heading."
+            },
+            {
+              "name": "dismissible",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Shows a dismiss button (with the optional enhancement script)."
+            }
+          ],
+          "slots": [
+            {
+              "name": "",
+              "description": "The alert's message."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-pagination.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlPagination",
+          "tagName": "al-pagination",
+          "customElement": true,
+          "description": "Lays out the links of a paged list; the app renders the links.",
+          "attributes": [
+            {
+              "name": "page",
+              "type": {
+                "text": "number"
+              },
+              "description": "The current page, from 1."
+            },
+            {
+              "name": "pages",
+              "type": {
+                "text": "number"
+              },
+              "description": "The number of pages."
+            }
+          ],
+          "slots": [
+            {
+              "name": "prev",
+              "description": "The link to the previous page."
+            },
+            {
+              "name": "next",
+              "description": "The link to the next page."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-stack.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlStack",
+          "tagName": "al-stack",
+          "customElement": true,
+          "description": "Lays its children out in a row or a column with a gap.",
+          "attributes": [
+            {
+              "name": "gap",
+              "type": {
+                "text": "\"sm\" | \"md\" | \"lg\""
+              },
+              "description": "The space between the children."
+            },
+            {
+              "name": "direction",
+              "type": {
+                "text": "\"row\" | \"column\""
+              },
+              "description": "The stacking direction."
+            }
+          ],
+          "slots": [
+            {
+              "name": "",
+              "description": "The stacked children."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-page.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlPage",
+          "tagName": "al-page",
+          "customElement": true,
+          "description": "The page's content frame: a centred column of a set width.",
+          "attributes": [
+            {
+              "name": "width",
+              "type": {
+                "text": "\"narrow\" | \"normal\" | \"wide\""
+              },
+              "description": "The frame's maximum width."
+            }
+          ],
+          "slots": [
+            {
+              "name": "",
+              "description": "The page's content."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

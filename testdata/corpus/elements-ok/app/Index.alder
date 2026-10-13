@@ -1,0 +1,59 @@
+module Index
+
+page "/" { }
+
+type Kind = Note | Task
+
+type Model = { saving: Bool, page: Int, label: Maybe Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { saving: False, page: 1, label: Nothing }
+
+form NewPost = {
+  title: Text.NonEmpty,
+  body: Text,
+  kind: Kind,
+  done: Bool,
+}
+
+msg Submit form NewPost
+msg Clear
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> Task.succeed Rerender,
+  Clear p -> Task.succeed Rerender,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <al-page width="narrow" id="main" class="x" data-test="page" aria-label="Posts">
+    <al-stack gap="md" direction="column">
+      <al-alert variant="info" title="Hello" dismissible role="status">Welcome</al-alert>
+      <al-card>
+        <h2 slot="header">New post <al-badge variant="secondary">draft</al-badge></h2>
+        <form submit={Submit}>
+          <Errors form />
+          <al-input field="title" label="Title" placeholder="A title" help="Short is good" disabled={model.saving} />
+          <al-textarea field="body" label="Body" placeholder="Say it" />
+          <al-select field="kind" label="Kind" />
+          <al-checkbox field="done" label="Done" />
+          <al-button type="submit" variant="primary" size="lg" disabled={model.saving}>Save</al-button>
+        </form>
+        <div slot="actions">
+          <al-button variant="ghost" click={Clear} disabled>Clear</al-button>
+          <wa-button variant="brand" loading={model.saving} title="Third party">
+            <span slot="start">*</span>
+            Go
+          </wa-button>
+        </div>
+        {if model.saving then <p slot="footer">Saving…</p> else <p slot="footer">Ready</p>}
+      </al-card>
+      <al-table striped dense={model.saving} style="width: 100%"><table><tr><td>1</td></tr></table></al-table>
+      <al-pagination page="1" pages="3" lang="en" dir="ltr" tabindex="0" hidden={False}>
+        <a slot="prev" href={Index {}}>Previous</a>
+        <a slot="next" href={Index {}}>Next</a>
+      </al-pagination>
+      <al-input label={model.label}><input name="q" /></al-input>
+    </al-stack>
+  </al-page>

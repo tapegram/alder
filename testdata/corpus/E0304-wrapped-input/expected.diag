@@ -1,0 +1,9 @@
+app/Index.alder:27:5 E0304 `<al-input>` must be inside `<form submit={…}>`
+app/Index.alder:29:7 E0304 form `NewPost` has no field `nope`; fields: title, kind
+app/Index.alder:30:7 E0304 field `kind` is a union; use `<al-select>` for `Index.Kind`
+app/Index.alder:31:7 E0304 `<al-select>` needs a union field; `title` has type `Text.NonEmpty`
+app/Index.alder:32:7 E0304 `<al-checkbox>` needs a Bool field; `title` has type `Text.NonEmpty`
+app/Index.alder:33:7 E0304 `<al-textarea>` needs `field="…"`
+app/Index.alder:34:31 E0028 `<al-input>` has no attribute `form`; it has `label`, `placeholder`, `disabled`, `invalid`, `help`
+app/Index.alder:35:38 E0003 expected Text.NonEmpty, got Int
+app/Index.alder:36:7 E0304 `<al-input field=…>` takes no children: Alder renders its label, control and errors list

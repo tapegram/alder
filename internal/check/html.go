@@ -98,6 +98,10 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 		mc.walkUnchecked(x, m, env, eff)
 		return
 	}
+	if strings.Contains(x.Tag, "-") {
+		mc.customElement(x, m, env, eff)
+		return
+	}
 	if !htmlTags[x.Tag] {
 		c.errorf(diag.UnknownName, x.Span, "unknown element `<%s>`", x.Tag)
 	}
@@ -288,16 +292,22 @@ func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effe
 	case boolAttrs[a.Name]:
 		mc.check(a.Value, types.Bool, env, eff)
 	default:
-		got := c.u.Apply(mc.infer(a.Value, env, eff))
-		if c.u.Check(got, types.Text) == nil {
-			return
-		}
-		if c.u.Check(got, mc.maybeOf(types.Text)) == nil {
-			return
-		}
-		d := mc.mismatch(a.Value.GetSpan(), got, types.Text)
-		mc.annotateMismatch(d, a.Value, got, types.Text)
+		mc.textAttr(a, env, eff)
 	}
+}
+
+// textAttr checks the value of an ordinary attribute: Text, or Maybe Text (omitted for Nothing).
+func (mc *modCtx) textAttr(a *syntax.HtmlAttr, env *env, eff effect) {
+	c := mc.c
+	got := c.u.Apply(mc.infer(a.Value, env, eff))
+	if c.u.Check(got, types.Text) == nil {
+		return
+	}
+	if c.u.Check(got, mc.maybeOf(types.Text)) == nil {
+		return
+	}
+	d := mc.mismatch(a.Value.GetSpan(), got, types.Text)
+	mc.annotateMismatch(d, a.Value, got, types.Text)
 }
 
 // checkMessage checks a click/submit value: a page message (against m) or an app-level message.
@@ -384,6 +394,14 @@ func (mc *modCtx) component(x *syntax.Element, m types.Type, env *env, eff effec
 
 // formComponent checks <Input>, <Textarea>, <Select>, <Errors>.
 func (mc *modCtx) formComponent(x *syntax.Element, env *env, eff effect) {
+	mc.formControl(x, x.Tag, x.Attrs, env, eff)
+}
+
+// formControl checks the form control x of kind "Input", "Textarea", "Select", "Errors" or
+// "Checkbox" (an `<Input>` on a Bool field) with attributes attrs: a form component, or a
+// built-in input element that wraps one (`<al-input>`, whose other attributes are its own).
+// Messages name x's tag as written.
+func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.HtmlAttr, env *env, eff effect) {
 	c := mc.c
 	if mc.form == nil {
 		c.errorf("E0304", x.Span, "`<%s>` must be inside `<form submit={…}>`", x.Tag)
@@ -392,7 +410,7 @@ func (mc *modCtx) formComponent(x *syntax.Element, env *env, eff effect) {
 	var fieldName string
 	var value syntax.Expr
 	bareForm := false
-	for _, a := range x.Attrs {
+	for _, a := range attrs {
 		if a.Value == nil && a.Name != "form" {
 			c.errorf("E0304", a.Span, "`<%s>` attribute `%s` needs a value", x.Tag, a.Name)
 			continue
@@ -419,11 +437,11 @@ func (mc *modCtx) formComponent(x *syntax.Element, env *env, eff effect) {
 		c.errorf("E0304", x.Span, "`<form submit={%s}>` has no form type; `<%s>` needs a message declared with `form F`", mc.form.submit, x.Tag)
 		return
 	}
-	if x.Tag == "Errors" && bareForm {
+	if kind == "Errors" && bareForm {
 		mc.form.formErrors = true
 		return
 	}
-	if x.Tag == "Errors" && fieldName != "" {
+	if kind == "Errors" && fieldName != "" {
 		if mc.form.shown == nil {
 			mc.form.shown = map[string]bool{}
 		}
@@ -450,14 +468,22 @@ func (mc *modCtx) formComponent(x *syntax.Element, env *env, eff effect) {
 		inner = in
 	}
 	isUnion := func() bool { u, ok := inner.(*types.Union); return ok && isScalar(u) }()
-	switch x.Tag {
+	selectTag := "Select"
+	if strings.HasPrefix(x.Tag, "al-") {
+		selectTag = "al-select"
+	}
+	switch kind {
 	case "Input", "Textarea":
 		if isUnion {
-			c.errorf("E0304", x.Span, "field `%s` is a union; use `<Select>` for `%s`", fieldName, types.String(inner))
+			c.errorf("E0304", x.Span, "field `%s` is a union; use `<%s>` for `%s`", fieldName, selectTag, types.String(inner))
 		}
 	case "Select":
 		if !isUnion {
-			c.errorf("E0304", x.Span, "`<Select>` needs a union field; `%s` has type `%s`", fieldName, types.String(ft))
+			c.errorf("E0304", x.Span, "`<%s>` needs a union field; `%s` has type `%s`", x.Tag, fieldName, types.String(ft))
+		}
+	case "Checkbox":
+		if !isCon(inner, "Bool") {
+			c.errorf("E0304", x.Span, "`<%s>` needs a Bool field; `%s` has type `%s`", x.Tag, fieldName, types.String(ft))
 		}
 	}
 	if value != nil {

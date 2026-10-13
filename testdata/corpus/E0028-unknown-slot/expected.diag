@@ -1,0 +1,2 @@
+app/Index.alder:21:8 E0028 `<al-card>` has no slot `aside`; it has `header`, `footer`, `actions`
+app/Index.alder:22:22 E0028 `<al-button>` has no slot `icon`; it has only the default slot

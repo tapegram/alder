@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0.0",
+  "modules": [
+    {
+      "kind": "javascript-module",
+      "path": "my-button.js",
+      "declarations": [
+        { "kind": "class", "name": "MyButton", "tagName": "al-button", "customElement": true,
+          "attributes": [ { "name": "tone", "type": { "text": "string" } } ] }
+      ]
+    }
+  ]
+}

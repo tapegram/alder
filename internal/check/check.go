@@ -3,6 +3,7 @@ package check
 
 import (
 	"alder/internal/diag"
+	"alder/internal/elements"
 	"alder/internal/names"
 	"alder/internal/syntax"
 	"alder/internal/types"
@@ -31,7 +32,12 @@ type Checker struct {
 	session    *types.Record
 	appMsg     *types.Union
 	losers     map[syntax.Decl]bool
-	defaults   []pendingDefault // field defaults, checked after value signatures // duplicate declarations (E0009), skipped after declareTypeNames
+	// elements are the custom elements a program may use: the embedded `alder-ui` manifest's
+	// and the app's elements/custom-elements.json's (loadElements); appElementsBad is set when
+	// the app's file does not parse, so elements only it could declare are not reported again
+	elements       *elements.Manifest
+	appElementsBad bool
+	defaults       []pendingDefault // field defaults, checked after value signatures // duplicate declarations (E0009), skipped after declareTypeNames
 
 	// typesDefined is set once every record has its fields (after pass 2); early are the generic
 	// record instances made before, refreshed then.
@@ -134,7 +140,7 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 		types: map[string]types.Type{}, values: map[string]types.Type{}, ctors: map[string]*ctorInfo{},
 		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, paramRecs: map[string]bool{}, caps: map[string]map[string]types.Type{}, pages: map[string]*pageInfo{}, losers: map[syntax.Decl]bool{},
 		anonDefaults: map[*syntax.Field]bool{}, fakes: map[string]*syntax.FakeDecl{}, fakeTables: map[string]string{}, fakeUses: map[diag.Span]bool{},
-		res:         &Result{Types: map[syntax.Expr]types.Type{}, Binds: map[any]types.Type{}, DefaultModules: map[syntax.Expr]string{}, Widened: map[syntax.Expr]*types.Record{}},
+		res:         &Result{Types: map[syntax.Expr]types.Type{}, Binds: map[any]types.Type{}, DefaultModules: map[syntax.Expr]string{}, Widened: map[syntax.Expr]*types.Record{}, Wrapped: map[*syntax.Element]string{}},
 		widenedFrom: map[syntax.Expr]types.Type{}, ambiguousErr: map[*syntax.CtorRef]bool{}}
 	c.declareStd()
 	// pass 1: placeholders for every declared type in every module (app + std)
@@ -143,6 +149,7 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 	}
 	quiet := c.reservePrelude()
 	checkStart := len(bag.Items)
+	c.loadElements()
 	// App's Session exists from here on, so a type may name it (`{ s: Session }`); defineApp
 	// fills its fields in pass 3.
 	c.session = &types.Record{Module: "App", Name: "Session"}

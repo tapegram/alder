@@ -29,6 +29,11 @@ type Result struct {
 	// where App's Session is expected to App's Session record: the expression's own recorded
 	// type is the narrowed record, and Lower wraps it in a widening conversion.
 	Widened map[syntax.Expr]*types.Record
+	// Wrapped maps each built-in input element that wraps a form control (`<al-input
+	// field="title">`, chapter 5) to the form component it is: "Input", "Textarea", "Select" or
+	// "Checkbox" (an `<Input>` on a Bool field). An element absent from it is an ordinary custom
+	// element.
+	Wrapped map[*syntax.Element]string
 	Holes   int            // count of W0002 reported
 	U       *types.Unifier // for Apply on stored types
 }

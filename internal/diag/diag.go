@@ -112,6 +112,7 @@ const (
 	NoOwner        = "E0025" // a scoped Db operation on a table without `@owner`
 	ScopedOutside  = "E0026" // a scoped Db operation outside a module whose page `requires user`
 	RoleClause     = "E0027" // `requires … role R` without `user`, or without a session `role` union having R
+	CustomElement  = "E0028" // a custom element, attribute or slot no manifest declares, or a manifest that does not parse
 	UnreachableArm = "E0310"
 	UnusedImport   = "W0001"
 	UnshownErrors  = "W0003"

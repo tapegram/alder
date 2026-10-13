@@ -1,0 +1,22 @@
+module Index
+
+page "/" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 1 }
+
+msg Go
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Go p -> Task.succeed Rerender,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <main>
+    <al-button tone="x">Ok</al-button>
+    <al-button variant="primary">Refused</al-button>
+  </main>

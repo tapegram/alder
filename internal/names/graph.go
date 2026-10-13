@@ -2,6 +2,8 @@
 package names
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -36,13 +38,18 @@ type Program struct {
 	quiet   map[string]bool // modules that used a stdNamed module's missing name: Failed, silently
 	// ParseFailed is set by Load when any file had a syntax error; such a program must not be checked.
 	ParseFailed bool
+	// ElementsManifest is the content of the app's elements/custom-elements.json (the custom
+	// elements it declares, chapter 5), read by Load; nil when the file does not exist. The
+	// checker parses it (internal/elements).
+	ElementsManifest []byte
 }
 
 // Load parses every .alder file under dir/app and adds the modules extra, parsed by the caller
 // from memory (their File is what the caller named them, e.g. "Scratch.alder", and their parse
 // diagnostics are the caller's), after the directory's; duplicate, cycle and naming rules apply
-// to them as to the rest. I/O failures (unreadable directory or file) are returned separately as
-// ioErrs; the caller must not check a program that failed to load.
+// to them as to the rest. It also reads dir/elements/custom-elements.json, if there is one
+// (Program.ElementsManifest). I/O failures (unreadable directory or file) are returned
+// separately as ioErrs; the caller must not check a program that failed to load.
 func Load(dir string, std map[string]*syntax.Module, extra ...*syntax.Module) (*Program, *diag.Bag, []error) {
 	var ioErrs []error
 	bag := &diag.Bag{}
@@ -71,6 +78,11 @@ func Load(dir string, std map[string]*syntax.Module, extra ...*syntax.Module) (*
 	mods = append(mods, extra...)
 	prog, b2 := Build(mods, std)
 	prog.ParseFailed = parseFailed
+	if data, err := os.ReadFile(filepath.Join(dir, "elements", "custom-elements.json")); err == nil {
+		prog.ElementsManifest = data
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		ioErrs = append(ioErrs, err)
+	}
 	bag.Items = append(bag.Items, b2.Items...)
 	return prog, bag, ioErrs
 }

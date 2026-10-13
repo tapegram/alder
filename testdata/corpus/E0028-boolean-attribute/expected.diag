@@ -1,0 +1,3 @@
+app/Index.alder:20:16 E0028 `<al-button>` attribute `disabled` is boolean: write `disabled` or `disabled={expr}`
+app/Index.alder:21:24 E0003 expected Bool, got Int
+app/Index.alder:22:15 E0003 attribute `variant` needs a value

@@ -1,0 +1,2 @@
+app/Index.alder:21:16 E0028 `<al-button>` has no attribute `tone`; it has `variant`, `size`, `disabled`, `type`
+elements/custom-elements.json:4:36 E0028 `elements/custom-elements.json`: invalid character '}' looking for beginning of object key string

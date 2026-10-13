@@ -1,0 +1,23 @@
+module Index
+
+page "/" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 1 }
+
+msg Go
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Go p -> Task.succeed Rerender,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <al-card>
+    <h2 slot="header">Title</h2>
+    <p slot="aside">Side</p>
+    <al-button><span slot="icon">*</span>Go</al-button>
+  </al-card>

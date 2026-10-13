@@ -1,0 +1,38 @@
+module Index
+
+page "/" { }
+
+type Kind = Note | Task
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 1 }
+
+form NewPost = {
+  title: Text.NonEmpty,
+  kind: Kind,
+}
+
+msg Submit form NewPost
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> Task.succeed Rerender,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <main>
+    <al-input field="title" label="Outside" />
+    <form submit={Submit}>
+      <al-input field="nope" label="Title" />
+      <al-input field="kind" />
+      <al-select field="title" />
+      <al-checkbox field="title" />
+      <al-textarea label="Body" />
+      <al-input field="title" form />
+      <al-input field="title" value={3} />
+      <al-input field="title"><b>x</b></al-input>
+    </form>
+  </main>
