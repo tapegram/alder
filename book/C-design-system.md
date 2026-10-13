@@ -47,8 +47,14 @@ server `alder build` makes, and the one `alder run` starts, serve them at
 `/static/al/al.css` and `/static/al/custom-elements.json`. You do not
 copy them into your `static/` directory; Alder writes them, from the
 copy inside the compiler (a file of yours at `static/al/al.css` would be
-replaced). Both are served with a long-lived, immutable cache header,
-like Datastar's script: they change only when the compiler does.
+replaced). Their address stays the same when you upgrade Alder, so they
+are not cached for good: both are served with `Cache-Control: no-cache`
+and an `ETag`, a hash of their content. The browser keeps its copy but
+asks each time whether it is still current, and the server answers `304
+Not Modified` (no body) until a new compiler ships a new stylesheet.
+Datastar's script is different: its address carries its version
+(`/_alder/datastar-v1.0.0.js`), so it is cached for a year without
+asking.
 
 A page uses them by linking the stylesheet in its `<head>`, as the
 layout `alder new` writes does:
@@ -166,11 +172,20 @@ the block's expected value.
 
 Every element also takes the attributes any custom element takes: `id`,
 `class`, `style`, `slot`, `hidden`, `title`, `lang`, `dir`, `tabindex`,
-`role`, `data-*` and `aria-*`, and Alder's `click`, `submit` and `href`
-(chapter 5, "Custom elements"). A `boolean` attribute is written bare
-(`disabled`) or with a `Bool` (`disabled={model.saving}`). An attribute
-whose type lists quoted values takes one of them; the checker accepts
-any `Text` there, and an unknown value is simply not styled.
+`role`, `data-*` and `aria-*`, and Alder's `click` and `href` (chapter 5,
+"Custom elements"); `submit` belongs on `<form>` and is refused on an
+element (E0028). A `boolean` attribute is written bare (`disabled`) or
+with a `Bool` (`disabled={model.saving}`). An attribute whose type lists
+quoted values takes one of them: a literal outside the list, such as
+`variant="destuctive"`, is E0028, and the message lists the values. A
+computed value (`variant={…}`) is not checked; an unknown one is simply
+not styled.
+
+A child with `slot="…"` must be the element's own child (through an
+`if`, `for` or `match`, not inside a `<div>`), and name one of its
+slots. The children you pass to a component of your own are not checked
+against the element it puts them in: `<Ui.Card><p slot="aside">…</p></Ui.Card>`
+renders the wrong slot quietly (chapter 5, "Slots").
 
 ### `al-button`
 
@@ -188,9 +203,9 @@ Slots: default.
 A custom element is not a button to the browser: it cannot take the
 keyboard's focus, Enter does nothing on it, and a form does not submit
 through it. So when you give an `<al-button>` something to do (`click`,
-`submit`, `type` or `href`), Alder renders a real control inside it: a
-`<button>` for `click`, `submit` and `type`, an `<a>` for `href`. The
-element keeps its other attributes and gives the control its look:
+`type` or `href`), Alder renders a real control inside it: a `<button>`
+for `click` and `type`, an `<a>` for `href`. The element keeps its other
+attributes and gives the control its look:
 
 ```alder eval=<al-stack direction="row" gap="sm"><al-button type="submit"><button type="submit">Save</button></al-button><al-button variant="secondary" type="button"><button type="button">Secondary</button></al-button><al-button variant="outline"><a href="/">Cancel</a></al-button><al-button variant="ghost" type="button"><button type="button">Ghost</button></al-button><al-button variant="destructive" type="submit"><button type="submit">Delete</button></al-button></al-stack>
 <al-stack direction="row" gap="sm">
@@ -203,8 +218,8 @@ element keeps its other attributes and gives the control its look:
 ```
 
 The inner `<button>` gets `type="submit"` when you write
-`type="submit"` (or `submit`), and `type="button"` otherwise, so a
-button with a `click` inside a form does not submit the form.
+`type="submit"`, and `type="button"` otherwise, so a button with a
+`click` inside a form does not submit the form.
 `disabled` is copied onto the inner button, so the keyboard and the form
 skip it, and stays on the element, which dims:
 
@@ -225,8 +240,34 @@ button stays the element's child and keeps the look:
 <al-button variant="outline" size="sm" click={App.Logout}>Log out</al-button>
 ```
 
-(The form is a block, so give it `form._alder-click { display: inline }`
-in your stylesheet to keep such buttons in a line, as the examples do.)
+`form._alder-click` is that form's class, and the stylesheet gives it
+`display: contents`: the form takes no part in the layout, so a row of
+such buttons stays a row, and a grid or flex parent places the button.
+A `form` rule of your own should leave it alone:
+`form:not(._alder-click) { display: grid }`, as the stylesheet
+`alder new` writes does.
+
+Because the element renders its own control, what goes inside it is
+text and inline markup only. A control inside (a `<button>`, `<a>`,
+`<input>`, `<select>`, `<textarea>`, or any element with `click`),
+written directly or through an `if`, `for` or `match`, would be a
+button inside a button, and both would answer the click:
+
+```alder error=E0028 "`<al-button>` renders its own `<button>` for `click`; move `click` onto your `<button>`, or drop the child"
+<al-button click={App.Logout}><button>Log out</button></al-button>
+```
+
+An `Html` value or a component inside is refused for the same reason,
+since it may hold a control (`Html.none` is fine, and so is a `Text`
+expression): "`<al-button>` with `click` takes text and inline markup
+only; an `Html` value may contain a control — write the `<button>`
+yourself". And an `<al-button>` takes `href` or `click`, not both: one
+would navigate and the other post.
+
+A `disabled` link is not a link: `<al-button href={…} disabled>` renders
+`<a aria-disabled="true">` with no `href`, so it goes nowhere and a
+screen reader says it is unavailable (with `disabled={expr}`, the
+renderer picks one of the two when the page is rendered).
 
 An `<al-button>` with nothing to do renders as written. It looks like a
 button and is not one, which suits a label inside something that is
@@ -236,8 +277,8 @@ clickable already:
 <al-button variant="ghost">Looks like a button</al-button>
 ```
 
-If you write the `<button>` or `<a>` yourself, Alder leaves the element
-alone:
+If you write the `<button>` or `<a>` yourself, with its `click` or
+`href` on it and none on the element, Alder leaves the element alone:
 
 ```alder eval=<al-button variant="outline"><a href="/?filter=Active">Open todos</a></al-button>
 <al-button variant="outline"><a href={Todos.Index { filter: Active }}>Open todos</a></al-button>
@@ -254,7 +295,7 @@ errors.
 | `placeholder` | `string` | — | the input's placeholder, copied onto it |
 | `disabled` | `boolean` | `false` | disables the input and dims the field |
 | `invalid` | `boolean` | `false` | colours the border and focus ring as an error; Alder sets it |
-| `help` | `string` | — | a hint drawn under the input |
+| `help` | `string` | — | a hint under the input, rendered as `<small class="help">` |
 
 Slots: none.
 
@@ -304,29 +345,37 @@ view model session =
 The name field renders as:
 
 ```html
-<al-input label="Name" placeholder="Ada Lovelace" help="As it appears on your posts"><label>Name<input name="name" type="text" required placeholder="Ada Lovelace" /></label><ul class="errors" data-errors="name"></ul></al-input>
+<al-input label="Name" placeholder="Ada Lovelace" help="As it appears on your posts"><label>Name<input name="name" type="text" required placeholder="Ada Lovelace" aria-describedby="help-name" /></label><small class="help" id="help-name">As it appears on your posts</small><ul class="errors" data-errors="name"></ul></al-input>
 ```
 
 The `<label>` holds the text and the input, so clicking the text focuses
 the input, and a screen reader names the input by it. The `label`
 attribute repeats the text for other tools; the stylesheet does not draw
-it. The `help` text is drawn from the attribute, under the input. The
-`<ul class="errors">` is the field's error list, empty until a
+it. The `help` text is a real element, `<small class="help"
+id="help-<field>">`, after the label, and the input's `aria-describedby`
+names it, so a screen reader reads the hint with the field (text drawn
+by CSS alone would not be read). It is there only when you write `help`;
+the stylesheet then does not draw the attribute's text a second time.
+The `<ul class="errors">` is the field's error list, empty until a
 submission fails. When it does, the page is rendered again with the
 submitted value and the messages:
 
 ```html
-<al-input label="Name" placeholder="Ada Lovelace" help="As it appears on your posts" invalid><label>Name<input name="name" type="text" required placeholder="Ada Lovelace" aria-invalid="true" aria-describedby="errors-name" /></label><ul class="errors" data-errors="name" id="errors-name"><li>must not be empty</li></ul></al-input>
+<al-input label="Name" placeholder="Ada Lovelace" help="As it appears on your posts" invalid><label>Name<input name="name" type="text" required placeholder="Ada Lovelace" aria-invalid="true" aria-describedby="help-name errors-name" /></label><small class="help" id="help-name">As it appears on your posts</small><ul class="errors" data-errors="name" id="errors-name"><li>must not be empty</li></ul></al-input>
 ```
 
 Three things changed. The element has `invalid`, which the stylesheet
 uses to colour the field. The input has `aria-invalid="true"`, which
 tells a screen reader the value was refused. And the list has an `id`,
-`errors-<field>`, which the input's `aria-describedby` names, so the
-screen reader reads the messages along with the field. (The `id` is
-there only while the list has messages: a page with one form per row,
-such as a list of todos, repeats each field name, and an `id` must be
-unique.) The `ul.errors[data-errors=…]` list is the same one
+`errors-<field>`, which the input's `aria-describedby` now names after
+the help, so the screen reader reads the messages along with the field.
+(The `id` is there only while the list has messages: a page with one
+form per row, such as a list of todos, repeats each field name, and an
+`id` must be unique.) An `id` or `aria-*` attribute you write on the
+element stays on the element; it is not forwarded to the input, whose
+ids are derived from the field's name as above. Since the element shows
+the field's errors, an `<Errors field="name" />` beside it is refused
+(E0028). The `ul.errors[data-errors=…]` list is the same one
 `<Errors field>` renders, so tests that look for it (chapter 10) find it
 either way.
 
@@ -340,7 +389,7 @@ A multi-line field, rendered like `al-input` around a `<textarea>`.
 | `placeholder` | `string` | — | the textarea's placeholder, copied onto it |
 | `disabled` | `boolean` | `false` | disables the textarea and dims the field |
 | `invalid` | `boolean` | `false` | colours the border and focus ring as an error; Alder sets it |
-| `help` | `string` | — | a hint drawn under the textarea |
+| `help` | `string` | — | a hint under the textarea, rendered as `<small class="help">` |
 
 Slots: none.
 
@@ -360,7 +409,7 @@ arguments (chapter 5, "Forms and inputs"): one option per constructor.
 | `label` | `string` | — | the label text |
 | `disabled` | `boolean` | `false` | disables the select and dims the field |
 | `invalid` | `boolean` | `false` | colours the border and focus ring as an error; Alder sets it |
-| `help` | `string` | — | a hint drawn under the select |
+| `help` | `string` | — | a hint under the select, rendered as `<small class="help">` |
 
 Slots: none.
 
@@ -377,7 +426,7 @@ A checkbox, on a `Bool` field. The box is drawn before its text.
 | `label` | `string` | — | the label text |
 | `disabled` | `boolean` | `false` | disables the checkbox and dims it |
 | `invalid` | `boolean` | `false` | outlines the box as an error; Alder sets it |
-| `help` | `string` | — | a hint drawn under the checkbox |
+| `help` | `string` | — | a hint under the checkbox, rendered as `<small class="help">` |
 
 Slots: none.
 
@@ -482,11 +531,20 @@ A `role` you write is kept, and so is its absence when the variant is
 computed (`variant={…}`): then the renderer cannot know it, and you
 write the `role` yourself.
 
+An alert that holds nothing but an empty error list is hidden by the
+stylesheet (`al-alert:has(> ul.errors:empty) { display: none }`), so
+`<al-alert variant="destructive"><Errors form /></al-alert>` shows a red
+box only after a failed submission (the blog's forms do this, chapter
+14).
+
 `dismissible` only makes room: the button that closes the alert comes
 from the library's optional script, `components/al-alert.js`, which
 Alder does not ship. Datastar's morph would remove a button a script
 added, so in an Alder page render your own: an `<al-button>` with a
-`click` that changes the model.
+`click`. The model is not kept between requests (`load` builds it again
+for every render), so the message must record the dismissal where `load`
+will find it, in the session or in the database, and answer `Rerender`;
+`load` then leaves the alert out.
 
 ### `al-pagination`
 
@@ -571,9 +629,12 @@ you then do yourself is the native control inside `<al-button>`: write
 `<al-button variant="primary"><button type="submit">Save</button></al-button>`
 (or an `<a>` inside), and the button takes the element's look and works
 without JavaScript. The input elements expect the markup this appendix
-shows, a `<label>` around the control and an optional
-`<ul class="errors">` after it; a `<label for>` beside the control works
-too.
+shows, a `<label>` around the control, then an optional
+`<small class="help">` (name its `id` in the control's
+`aria-describedby`) and an optional `<ul class="errors">`; a
+`<label for>` beside the control works too. Two rules are there for
+Alder's markup and match nothing else: `form._alder-click` (the click
+form, `display: contents`) and the empty-errors alert above.
 
 ## Where it lives
 

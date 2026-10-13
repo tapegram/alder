@@ -146,9 +146,12 @@ is rendered inside a small form of its own that posts the message:
 <form method="post" action="/_m/App/Logout" class="_alder-click" data-on:submit="@post(&#39;/_m/App/Logout&#39;, {contentType: &#39;form&#39;})"><button type="submit">Log out</button></form>
 ```
 
-A form is a block element, so give the wrapper
-`form._alder-click { display: inline }` in your stylesheet to keep such
-buttons in line with the text around them. Inside a `<form submit>` (forms
+The design system's stylesheet (Appendix C) gives that wrapper
+`form._alder-click { display: contents }`, so it takes no part in the
+layout and the button sits in line with the text around it. Without
+`al.css`, write that rule in your own stylesheet; and write a rule of
+your own for forms as `form:not(._alder-click) { … }`, so it does not
+catch the wrapper (the stylesheet `alder new` writes does). Inside a `<form submit>` (forms
 cannot nest) a `click` button is a submit button with its own
 `formaction` instead. A `click` on any other element, such as a `<li>`,
 needs JavaScript. Chapter 6, "With and without JavaScript", has the
@@ -306,6 +309,47 @@ The checker reads two manifests:
   its elements. Its own files (scripts, stylesheets) go in `static/` and
   are linked from your layout, as for any stylesheet.
 
+For example, to use Web Awesome's `<wa-button>`, the app's manifest
+needs at least this (a library's real manifest has much more, which the
+checker ignores):
+
+```json
+{
+  "schemaVersion": "1.0.0",
+  "modules": [
+    {
+      "kind": "javascript-module",
+      "path": "components/button/button.js",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "WaButton",
+          "tagName": "wa-button",
+          "customElement": true,
+          "attributes": [
+            { "name": "variant", "type": { "text": "'neutral' | 'brand' | 'success' | 'warning' | 'danger'" } },
+            { "name": "size", "type": { "text": "'small' | 'medium' | 'large'" } },
+            { "name": "disabled", "type": { "text": "boolean" } }
+          ],
+          "slots": [{ "name": "" }, { "name": "start" }, { "name": "end" }]
+        }
+      ]
+    }
+  ]
+}
+```
+
+and the layout loads the library, its stylesheet and its script, from
+`static/` or from its CDN, in the `<head>`:
+
+```alder fragment
+<link rel="stylesheet" href={Url.external "/static/webawesome/styles/webawesome.css"} />
+<script type="module" src="/static/webawesome/webawesome.loader.js"></script>
+```
+
+With both, `<wa-button variant="brand" size="small">Go</wa-button>` checks,
+and `variant="primary"` or `<span slot="icon">` inside it is E0028.
+
 When both declare a tag, the app's entry wins whole: a project can
 redefine `al-button` with its own attributes, and then only those are
 accepted.
@@ -337,14 +381,32 @@ the ones it does, in the manifest's order:
 A few attributes are accepted on every custom element without being
 declared: the global ones, `id`, `class`, `style`, `slot`, `hidden`,
 `title`, `lang`, `dir`, `tabindex`, `role`, `data-*` and `aria-*`, and
-Alder's own `click`, `submit` and `href`, which mean what they mean
-anywhere (a message, a page). An attribute the manifest types `boolean`
-is written bare or with a `Bool`; a quoted value is refused, because a
-browser treats `disabled="false"` as disabled:
+Alder's own `click` and `href`, which mean what they mean anywhere (a
+message, a page). `submit` is not among them: a custom element is not a
+form, so nothing would ever submit it.
+
+```alder error=E0028 "`submit` belongs on `<form>`; use `type=\"submit\"` inside `<form submit>`"
+<al-button submit={Save}>Save</al-button>
+```
+
+An attribute the manifest types `boolean` is written bare or with a
+`Bool`; a quoted value is refused, because a browser treats
+`disabled="false"` as disabled:
 
 ```alder error=E0028 "`<al-button>` attribute `disabled` is boolean: write `disabled` or `disabled={expr}`"
 <al-button disabled="false">Go</al-button>
 ```
+
+An attribute whose manifest type is a list of quoted values
+(`"sm" | "md" | "lg"`) takes one of them. A literal value is checked, and
+the message lists the values:
+
+```alder error=E0028 "`<al-badge>` attribute `variant` is one of `default`, `secondary`, `outline`, `destructive`"
+<al-badge variant="destuctive">Failed</al-badge>
+```
+
+A computed value (`variant={…}`) is any `Text`: it is not checked, and an
+unknown one is simply not styled.
 
 ### Slots
 
@@ -367,6 +429,22 @@ slot is not listed):
 </al-card>
 ```
 
+A slot is filled only by a direct child (an `if`, `for` or `match` in
+between is fine), so `slot` on a child of a plain element is refused:
+
+```alder error=E0028 "`slot` names a slot of the enclosing custom element; `<p slot=\"header\">` is inside `<div>`"
+<al-card>
+  <div><p slot="header">Notes</p></div>
+</al-card>
+```
+
+One limit: the children you pass to a component are not checked against
+the slots of the element it puts them in. In
+`<Ui.Card><p slot="aside">…</p></Ui.Card>`, where `Ui.Card` renders
+`<al-card>{props.children}</al-card>`, the checker sees only the
+component's call, so a wrong slot name there renders quietly in the
+default slot.
+
 Events are not checked: Alder's `click` and `submit` are messages, not
 DOM events (chapter 6).
 
@@ -382,18 +460,31 @@ bound inputs too: `<al-input field="title" label="Title" />` is
 on a `Bool` field. Their other attributes come from the manifest
 (`placeholder`, `help`, `disabled`).
 
-The element renders around the control, followed by the field's error
-list, so it needs no `<Errors field>` of its own (and the form's
-`<Errors form />` does not repeat its errors). After a failed submission
-the element carries `invalid`, which the stylesheet uses to colour it:
+The element renders around the control, then its `help` text, then the
+field's error list. So it needs no `<Errors field>` of its own; writing
+one for the same field is E0028 (`<al-input field="title">` already shows
+the errors of `title`), and the form's `<Errors form />` does not repeat
+its errors. `<al-input field="title" label="Title" placeholder="A title"
+help="Short is good" />` renders as the first line below, and after a
+failed submission as the second (the book's tests render both and
+compare):
 
 ```html
-<al-input label="Title" placeholder="A title"><label>Title<input name="title" type="text" required placeholder="A title" /></label><ul class="errors" data-errors="title"></ul></al-input>
-<al-input label="Title" placeholder="A title" invalid><label>Title<input name="title" type="text" required placeholder="A title" /></label><ul class="errors" data-errors="title"><li>must not be empty</li></ul></al-input>
+<al-input label="Title" placeholder="A title" help="Short is good"><label>Title<input name="title" type="text" required placeholder="A title" aria-describedby="help-title" /></label><small class="help" id="help-title">Short is good</small><ul class="errors" data-errors="title"></ul></al-input>
+<al-input label="Title" placeholder="A title" help="Short is good" invalid><label>Title<input name="title" type="text" required placeholder="A title" aria-invalid="true" aria-describedby="help-title errors-title" /></label><small class="help" id="help-title">Short is good</small><ul class="errors" data-errors="title" id="errors-title"><li>must not be empty</li></ul></al-input>
 ```
 
-The element's `disabled` and `placeholder` are copied onto the native
-control, so they work with no stylesheet at all. Outside a form, and
+The help is a real `<small class="help" id="help-<field>">`, which the
+control's `aria-describedby` names, so a screen reader reads it with the
+field. After the failure the element carries `invalid`, which the
+stylesheet uses to colour it; the control has `aria-invalid="true"`; and
+the error list gets the `id` `errors-<field>`, which `aria-describedby`
+names too (only while there are errors: one form per row would repeat
+the `id`). The element's `disabled` and `placeholder` are copied onto
+the native control, so they work with no stylesheet at all. Other
+attributes, an `id` or `aria-*` included, stay on the element: they are
+not forwarded to the control, which is named by its `<label>` and
+described by the ids Alder derives from the field's name. Outside a form, and
 without `field`, an `al-input` is an ordinary custom element around
 whatever input you write inside it. Only the built-in elements wrap
 Alder's inputs: a third party's `<wa-input>` is an ordinary custom

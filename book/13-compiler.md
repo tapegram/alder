@@ -409,8 +409,12 @@ decodes only the part the checker uses: each declaration's `tagName`,
 its attributes' names and `type.text` (`boolean` marks a boolean
 attribute), and its slots' names. `customElement` then looks the tag up
 (E0028 when it is missing), checks each attribute against the entry or
-the short escape list of global attributes (`elements.Escaped`), and
-each child's `slot="…"` against the entry's slots.
+the short escape list of global attributes (`elements.Escaped`; `submit`
+is refused outright), a literal value against the entry's list of
+quoted values when its type is one (`Attr.Values`), and each child's
+`slot="…"` against the entry's slots. A plain element's children are
+looked at too (`misplacedSlots` in `html.go`): a `slot` there names no
+slot of anything, so it is E0028.
 
 Four of the built-in elements are more than markup. `al-input`,
 `al-textarea`, `al-select` and `al-checkbox` inside a `<form submit>` are
@@ -424,25 +428,36 @@ becomes, with `Wrap` set to the tag; the runtime's `rt/html` then draws
 the element around the control and the field's error list, setting
 `invalid` when there are errors (chapter 5, "The input elements"). The
 decision is made once, by the checker, and every later stage follows it.
-When the field has errors, `Control.build` also gives the native control
-`aria-invalid="true"` and `aria-describedby="errors-<field>"`, and the
-error list that `id`. Those are for screen readers: `aria-invalid` says
-the value was refused, and `aria-describedby` names the element whose
-text describes the control, so the messages are read with it. The `id`
-appears only with errors, because a page of per-row forms repeats field
-names and an `id` must be unique in a page.
+A `help` attribute becomes a `<small class="help" id="help-<field>">`
+after the label. When the field has errors, `Control.build` also gives
+the native control `aria-invalid="true"`, and the error list the `id`
+`errors-<field>`. The control's `aria-describedby` names the help, then
+the errors list, whichever are there. Those are for screen readers:
+`aria-invalid` says the value was refused, and `aria-describedby` names
+the elements whose text describes the control, so the hint and the
+messages are read with it. The errors `id` appears only with errors,
+because a page of per-row forms repeats field names and an `id` must be
+unique in a page. The `formCtx` also records which fields a wrapped
+input shows, so an `<Errors field>` for one of them is E0028.
 
 Two more built-in elements get something from the renderer, recorded the
 same way in `Result.Rendered` by `rendered` (also in
 `internal/check/elements.go`). A custom element is not a button: the
 browser gives it no keyboard focus, Enter does nothing on it, and a form
-does not submit through it. So an `<al-button>` with `click`, `submit`,
-`type` or `href`, and no `<button>` or `<a>` child of its own, is
-recorded as `"button"` or `"a"`, and the IR stage (`completeBuiltin` in
-`internal/ir/lower_html.go`) rewrites it into two nested elements: the
-`<al-button>` with its styling attributes, and inside it a real
-`<button>` (with the `click`, a `type`, and a copy of `disabled`) or
-`<a>` (with the `href`) holding the children. Everything after the IR
+does not submit through it. So an `<al-button>` with `click`, `type` or
+`href` is recorded as `"button"` or `"a"`, and the IR stage
+(`completeBuiltin` in `internal/ir/lower_html.go`) rewrites it into two
+nested elements: the `<al-button>` with its styling attributes, and
+inside it a real `<button>` (with the `click`, a `type`, and a copy of
+`disabled`) or `<a>` (with the `href`; a disabled one gets
+`aria-disabled="true"` and no `href`, under an `HIf` when `disabled` is
+computed) holding the children. Before recording it, `alButton` checks
+that the children cannot put a control inside that control: it walks
+them through `if`, `for` and `match` and into nested elements, and
+reports E0028 for an interactive tag or an element with `click`, and for
+an `Html`-typed expression or a component (their markup is not known
+until run time; the expression's type is in `Result.Types`, since the
+children are checked first). It also refuses `href` with `click`. Everything after the IR
 sees two ordinary elements. The one place that knows about the pair is
 the renderer's click button (`clickButton` in `rt/html/html.go`; chapter 6,
 "With and without JavaScript"):
@@ -1332,7 +1347,7 @@ HTTP/1.1 200 OK
 Content-Type: text/html; charset=utf-8
 
 <!doctype html>
-<html><head><script type="module" src="/_alder/datastar.js"></script><meta charset="utf-8" /><title>Todos</title>
+<html><head><script type="module" src="/_alder/datastar-v1.0.0.js"></script><meta charset="utf-8" /><title>Todos</title>
 ```
 
 and has the Done button with its message URL:
@@ -2032,8 +2047,8 @@ same two elements, with the error already in the box and `b` set to the
 current generation (empty before the first build), so it too reloads
 by itself once a build succeeds, whether it hears the broadcast or
 reconnects after it. Since there is then no app to serve the
-Datastar script it loads, the dev server serves `/_alder/datastar.js`
-itself in that state.
+Datastar script it loads, the dev server serves
+`/_alder/datastar-v1.0.0.js` (`datastar.ScriptPath`) itself in that state.
 
 **Stopping.** On Ctrl-C, `runRunTo` closes `done`, which ends the
 watcher, the worker's wait, the monitors and every open `/_dev/reload`
@@ -3653,7 +3668,7 @@ system). The standard library's signatures already travel this way
 
 ```go
 //go:embed core.go nav.go show.go tether.go
-//go:embed al/al.css al/custom-elements.json al/VERSION
+//go:embed al/al.go al/al.css al/custom-elements.json al/VERSION
 //go:embed datastar/datastar.go datastar/datastar.js datastar/VERSION
 //go:embed db/encode.go db/migrate.go db/sqlite.go db/store.go db/table.go
 …
@@ -3718,10 +3733,16 @@ The static files go next to it: `buildkit.CopyStatic(src, dst)` replaces
 whether or not the app has a `static/` directory, and `alder run` serves
 the build's copy (it copies again when a file under `static/` changes,
 before reloading the browser). The router (`serveStatic` in
-`rt/web/router.go`) adds `Cache-Control: public, max-age=31536000,
-immutable` to a file under `/static/al/`: the browser keeps it a year
-without asking again, which is safe because its content changes only
-with the compiler, as `datastar.js`'s does.
+`rt/web/router.go`) answers `/static/al/al.css` and
+`/static/al/custom-elements.json` from the runtime's own embedded copy
+(`rt/al/al.go`, package `al`, which embeds the two files again so the
+written runtime has them) with `Cache-Control: no-cache` and a strong
+`ETag`, a SHA-256 of the bytes computed once; `http.ServeContent` answers
+a matching `If-None-Match` with `304 Not Modified`. An immutable header
+would be wrong there: the address stays `/static/al/al.css` across
+compiler upgrades, so a browser would keep an old stylesheet for a year.
+The Datastar script can be immutable because its address,
+`datastar.ScriptPath`, carries `datastar.Version`.
 
 It refreshes rather than adds. It first walks `dst/rt/` and deletes every
 file the embedded copy does not have (and the directories that leaves

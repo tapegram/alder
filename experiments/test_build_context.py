@@ -347,7 +347,8 @@ class BuildContextTests(unittest.TestCase):
                      "So a test that calls `update` or `load` itself", "Db.updateMine Todo: no signed-in user",
                      "`update` call is not checked", "error[E0026]: `Db.mine` needs a page that `requires user`: `Public` does not",
                      "isAuthor : UserId -> Query Bool", "`2026-01-01T00:00:00Z`", "chapter 6, \"Rules\",\nexplains them",
-                     "write the scoped form; it costs ", "`elements/custom-elements.json`", "`data-*`, `aria-*`, `click`",
+                     "write the scoped form; it costs ", "`elements/custom-elements.json`", "`data-*`, `aria-*`, `click`", "`submit` on any custom element", "a literal outside an attribute's quoted values",
+                     "`slot` on\na child of a plain element", "takes `href` or `click`, not both",
                      "`al-checkbox` `<Input>`\non a `Bool`", "`/static/al/al.css`",
                      "- `al-button` variant=primary*|secondary|outline|ghost|destructive, size=sm|md*|lg, disabled!, type=button*|submit / default\n",
                      "- `al-card` (none) / header, default, footer, actions\n", "- `al-input` label, placeholder, disabled!, invalid!, help\n"):

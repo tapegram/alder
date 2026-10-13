@@ -837,9 +837,10 @@ gets.
 `web.NewRouter` in `rt/web/router.go` is the app's HTTP handler. For each
 request it does these things, in order:
 
-1. `GET /_alder/datastar.js` is answered with the Datastar script, which
-   is built into the binary (`rt/datastar/datastar.js`, version in
-   `rt/datastar/VERSION`).
+1. `GET /_alder/datastar-v1.0.0.js` is answered with the Datastar script,
+   which is built into the binary (`rt/datastar/datastar.js`, version in
+   `rt/datastar/VERSION`). The version is in the address, so the browser
+   may keep the script for good: a new Datastar is a new address.
 2. `GET /static/<file>` is answered with that file from your app's
    `static/` directory. Directories are never listed, and a path with `..`
    in it is refused.
@@ -857,7 +858,7 @@ request it does these things, in order:
 
 A Go panic anywhere in the request becomes a 500 page rendered with
 `App.error`. The router also puts the Datastar script tag,
-`<script type="module" src="/_alder/datastar.js"></script>`, right after
+`<script type="module" src="/_alder/datastar-v1.0.0.js"></script>`, right after
 the `<head>` of every page it writes (on a page without `<head>`, right
 after `<html>`; without that, before `</body>`), so your layout stays plain
 Alder.
@@ -1067,9 +1068,11 @@ message carries its parameters in the URL, and its body is ignored.
 A `click` button works without JavaScript too. Outside a form, it is
 rendered inside a form of its own, as the Done button above shows: without
 Datastar the browser posts that form to the message URL; with it, Datastar
-posts it on submit. The wrapper has the class `_alder-click`; give it
-`form._alder-click { display: inline }` in your stylesheet to keep the
-button in line (the to-do app's `static/app.css` does). The Done button is
+posts it on submit. The wrapper has the class `_alder-click`; the design system's
+stylesheet gives it `display: contents`, so it takes no part in the
+layout and the button stays in line (without `al.css`, write that rule
+yourself, and keep your own `form` rules off it with
+`form:not(._alder-click)`, as the to-do app's `static/app.css` does). The Done button is
 an `<al-button>` (Appendix C), which the compiler renders with a real
 `<button>` inside it; the wrapping form then goes around the whole
 `<al-button>`, so the design system's stylesheet still finds the button

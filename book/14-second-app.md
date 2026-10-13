@@ -307,8 +307,7 @@ view model session =
   <Layout.Page title={"Edit: " ++ model.post.title}>
     <h1>{model.post.title}</h1>
     <p>
-      {if model.post.published then <al-badge>Published</al-badge> else <al-badge variant="secondary">Draft</al-badge>}
-      · <a href={Posts.Show { slug: model.post.slug }}>View</a>
+      {if model.post.published then <al-badge>Published</al-badge> else <al-badge variant="secondary">Draft</al-badge>} · <a href={Posts.Show { slug: model.post.slug }}>View</a>
     </p>
 
     <al-card>

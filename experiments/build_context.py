@@ -106,11 +106,15 @@ TRIMS = {
            ("## Custom elements\n", "## Partial updates",
             "## Custom elements\n\nA tag with a hyphen is a custom element, declared by the built-in\n"
             "`alder-ui` manifest or the app's `elements/custom-elements.json`\n"
-            "(which wins over it). E0028: an undeclared tag, attribute or `slot=\"x\"`,\n"
-            "or a quoted value on a boolean attribute. Always accepted: `id`, `class`, `style`, `slot`, `hidden`,\n`title`, `lang`, `dir`, "
-            "`tabindex`, `role`, `data-*`, `aria-*`, `click`,\n`submit`, `href`.\n\n"
+            "(which wins over it). E0028: an undeclared tag, attribute or `slot=\"x\"`; a quoted\n"
+            "value on a boolean attribute; a literal outside an attribute's quoted values (computed\n"
+            "ones are unchecked); `submit` on any custom element (it belongs on `<form>`); `slot` on\n"
+            "a child of a plain element (a component's children are not slot-checked). Always accepted:\n"
+            "`id`, `class`, `style`, `slot`, `hidden`,\n`title`, `lang`, `dir`, "
+            "`tabindex`, `role`, `data-*`, `aria-*`, `click`, `href`.\n\n"
             "In a `<form submit>`, `<al-input field=\"f\" />` is `<Input>` (E0304 rules),\n`al-textarea` `<Textarea>`, "
-            "`al-select` `<Select>`, `al-checkbox` `<Input>`\non a `Bool`; each renders its own error list.\n\n")],
+            "`al-select` `<Select>`, `al-checkbox` `<Input>`\non a `Bool`; each renders its `help` and its own error list\n"
+            "(an `<Errors field>` for it is E0028).\n\n")],
     "06": [("and, in `Admin.Edit`,\n\n```alder fragment\nload params session = {\n  let author <- User.isAuthor", "Every message of the page runs `load` first",
             "which each admin page's `load` calls first, answering `Query.notFound`\nwhen it is `False`. "),
            ("A row `load` already found with `Db.getMine` is not one of the cases:", "### The rules and a replicated database",
@@ -301,7 +305,9 @@ def element_table(book):
             rows[-1][2] = "" if slots == "none" else " / " + slots
     out = ["The built-in elements (Appendix C; `!` boolean, `*` default, slots after `/`). Link\n"
            "`/static/al/al.css` in the layout (every build serves it). An `<al-button>` with `click`,\n"
-           "`submit`, `type` or `href` renders a real `<button>`/`<a>` inside; `<al-alert>` gets `role`.\n\n"]
+           "`type` or `href` renders a real `<button>`/`<a>` inside, so its children are text and inline\n"
+           "markup only (no control, `Html` value or component) and it takes `href` or `click`, not both\n"
+           "(E0028); `<al-alert>` gets `role`.\n\n"]
     for tag, attrs, slots in rows:
         out.append(f"- `{tag}` {', '.join(attrs) or '(none)'}{slots}\n")
     return "".join(out) + "\n"

@@ -65,7 +65,7 @@ view model session =
           {for post in model.posts ->
             <tr>
               <td><a href={Admin.Edit { id: post.id }}>{post.title}</a></td>
-              <td>{if post.published then <al-badge>published</al-badge> else <al-badge variant="secondary">draft</al-badge>}</td>
+              <td>{if post.published then <al-badge>Published</al-badge> else <al-badge variant="secondary">Draft</al-badge>}</td>
             </tr>}
         </tbody>
       </table>
