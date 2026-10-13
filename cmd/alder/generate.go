@@ -115,11 +115,22 @@ type genJSON struct {
 	Notes       []string              `json:"migration,omitempty"`
 	Written     bool                  `json:"written"`
 	Error       string                `json:"error,omitempty"`
+	// Skipped and UpToDate are `alder regen admin`'s: the pages it did not recreate (deleted;
+	// --all writes them), and whether it had nothing to do.
+	Skipped  *[]string `json:"skipped,omitempty"`
+	UpToDate *bool     `json:"upToDate,omitempty"`
 }
 
 // runGenerator ends every generator: it applies edits (computed by gen, from the loaded app)
 // with o, then reports. cmd names the command in messages ("alder new page").
 func runGenerator(cmd string, g genArgs, o generate.Options, gen func(p *generate.Program) ([]generate.Edit, error), stdout, stderr io.Writer) (code int) {
+	return runGeneratorWith(cmd, g, o, nil, gen, nil, stdout, stderr)
+}
+
+// runGeneratorWith is runGenerator with the app loaded by load (nil: generate.Load, or
+// LoadWithErrors for o.WriteDespiteErrors), and --json's object completed by extra (nil for
+// none) before it is written.
+func runGeneratorWith(cmd string, g genArgs, o generate.Options, load func(dir string) (*generate.Program, error), gen func(p *generate.Program) ([]generate.Edit, error), extra func(*genJSON), stdout, stderr io.Writer) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(stderr, "%s: internal error: %v\n", cmd, r)
@@ -127,31 +138,38 @@ func runGenerator(cmd string, g genArgs, o generate.Options, gen func(p *generat
 		}
 	}()
 	o.DryRun = g.dry
-	load := generate.Load
-	if o.WriteDespiteErrors {
-		load = generate.LoadWithErrors
+	if load == nil {
+		load = generate.Load
+		if o.WriteDespiteErrors {
+			load = generate.LoadWithErrors
+		}
 	}
 	p, err := load(g.dir)
 	if err != nil {
-		return genReport(cmd, g, nil, err, stdout, stderr)
+		return genReport(cmd, g, nil, err, extra, stdout, stderr)
 	}
 	edits, err := gen(p)
 	if err != nil {
-		return genReport(cmd, g, nil, err, stdout, stderr)
+		return genReport(cmd, g, nil, err, extra, stdout, stderr)
 	}
 	res, err := generate.Apply(g.dir, edits, o)
-	return genReport(cmd, g, res, err, stdout, stderr)
+	return genReport(cmd, g, res, err, extra, stdout, stderr)
 }
 
 // genReport prints a generator's result (res, which may be nil) and its refusal or error, and
-// returns the exit code: 0, 1 for a refusal, 2 for anything else.
-func genReport(cmd string, g genArgs, res *generate.Result, err error, stdout, stderr io.Writer) int {
+// returns the exit code: 0, 1 for a refusal, 2 for anything else. extra, when not nil, completes
+// --json's object.
+func genReport(cmd string, g genArgs, res *generate.Result, err error, extra func(*genJSON), stdout, stderr io.Writer) int {
 	var ref *generate.Refusal
 	refused := errors.As(err, &ref)
 	if err != nil && !refused {
 		fmt.Fprintf(stderr, "%s: %v\n", cmd, err)
 		if g.json {
-			writeJSON(stdout, genJSON{Files: []generate.FileChange{}, Diagnostics: []json.RawMessage{}, Holes: []generate.Hole{}, Error: err.Error()})
+			out := genJSON{Files: []generate.FileChange{}, Diagnostics: []json.RawMessage{}, Holes: []generate.Hole{}, Error: err.Error()}
+			if extra != nil {
+				extra(&out)
+			}
+			writeJSON(stdout, out)
 		}
 		return 2
 	}
@@ -183,6 +201,9 @@ func genReport(cmd string, g genArgs, res *generate.Result, err error, stdout, s
 		}
 		for i, n := range out.Notes {
 			out.Notes[i] = strings.TrimSpace(n)
+		}
+		if extra != nil {
+			extra(&out)
 		}
 		writeJSON(stdout, out)
 	} else {
@@ -289,7 +310,7 @@ func parseFields(g genArgs, args []string, table bool, cmd string, stdout, stder
 	for _, a := range args {
 		f, err := generate.ParseField(a, table)
 		if err != nil {
-			genReport(cmd, g, nil, generate.Refusef("%v", err), stdout, stderr)
+			genReport(cmd, g, nil, generate.Refusef("%v", err), nil, stdout, stderr)
 			return nil, false
 		}
 		fields = append(fields, f)

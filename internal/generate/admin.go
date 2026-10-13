@@ -63,7 +63,16 @@ func adminCheck(p *Program, o AdminOptions) (AdminOptions, error) {
 }
 
 // adminDir is the directory of the admin's modules: "app/Admin".
-func adminDir(o AdminOptions) string { return "app/" + strings.ReplaceAll(o.Module, ".", "/") }
+func adminDir(o AdminOptions) string { return AdminDir(o.Module) }
+
+// AdminDir is the directory of the modules of the admin named module ("" is the default,
+// "Admin"): "app/Admin".
+func AdminDir(module string) string {
+	if module == "" {
+		module = "Admin"
+	}
+	return "app/" + strings.ReplaceAll(module, ".", "/")
+}
 
 // NewAdmin generates `alder new admin`: every file of the admin, created. It refuses an app
 // without the role (AdminNeeds) and an admin directory that exists (regen updates it).

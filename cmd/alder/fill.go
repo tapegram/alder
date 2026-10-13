@@ -46,7 +46,7 @@ func fillList(g genArgs, stdout, stderr io.Writer) int {
 	if err != nil {
 		var ref *generate.Refusal
 		if errors.As(err, &ref) {
-			return genReport("alder fill", g, nil, err, stdout, stderr)
+			return genReport("alder fill", g, nil, err, nil, stdout, stderr)
 		}
 		fmt.Fprintf(stderr, "alder fill: %v\n", err)
 		return 2

@@ -118,7 +118,7 @@ func TestAdmin_DryRunJSON(t *testing.T) {
 		}
 	}
 	code, out, _ = alderIn(t, dir, "", "regen", "admin", "--json")
-	if code != 0 || !strings.Contains(out, `"files":[]`) {
+	if code != 0 || !strings.Contains(out, `"files":[]`) || !strings.Contains(out, `"skipped":[],"upToDate":true}`) {
 		t.Errorf("regen --json after new: exit %d\n%s", code, out)
 	}
 	before = appFiles(t, dir)
@@ -187,7 +187,9 @@ func outside(t *testing.T, src string) string {
 // table; `regen` writes the field into Post's list, show page and forms and the table's pages
 // into the admin, and leaves every customisation byte for byte. The app checks and its tests,
 // the author's among them, pass; a second regen has nothing to do. A page the author deleted
-// stays deleted, unless --all.
+// stays deleted, unless --all. A field renamed, which breaks the admin's regions, and a page
+// deleted that another links to, which breaks the app: regen checks what it writes, not the app
+// it starts from (errors in the admin's files).
 func TestAdmin_Regen(t *testing.T) {
 	needGoTool(t)
 	dir := genApp(t, "fixture")
@@ -302,6 +304,9 @@ test "the list counts each post's words" = {
 	if ch := changedFiles(after, appFiles(t, dir)); len(ch) != 0 {
 		t.Errorf("a second regen wrote %v", slices.Sorted(maps.Keys(ch)))
 	}
+	if code, out, _ := alderIn(t, dir, "", "regen", "admin", "--json"); code != 0 || !strings.Contains(out, `"skipped":["app/Admin/Tag/Delete.alder"],"upToDate":true}`) {
+		t.Errorf("a second regen --json: exit %d\n%s", code, out)
+	}
 	// --dry-run, then --all writes the deleted page again
 	if code, out, _ := alderIn(t, dir, "", "regen", "admin", "--all", "--dry-run"); code != 0 || !strings.HasPrefix(out, "would write app/Admin/Tag/Delete.alder\n") || !strings.HasSuffix(out, "dry run: nothing written\n") {
 		t.Errorf("regen --all --dry-run: exit %d\n%s", code, out)
@@ -311,6 +316,36 @@ test "the list counts each post's words" = {
 	}
 	if code, out, errs := alderIn(t, dir, "", "regen", "admin", "--all"); code != 0 || out != "wrote app/Admin/Tag/Delete.alder\n" {
 		t.Errorf("regen --all: exit %d\n%s%s", code, out, errs)
+	}
+
+	// a field renamed: the admin no longer checks, but its errors are all in the regions regen
+	// rewrites, so regen runs, and the app checks after it
+	if code, out, errs := alderIn(t, dir, "", "edit", "table", "Post", "rename-field", "views", "hits"); code != 0 {
+		t.Fatalf("alder edit table rename-field: exit %d\n%s%s", code, out, errs)
+	}
+	if code, out, _ := alderIn(t, dir, "", "check"); code == 0 || !strings.Contains(out, "app/Admin/Post/") {
+		t.Fatalf("the admin checks after the rename: exit %d\n%s", code, out)
+	}
+	if code, out, errs := alderIn(t, dir, "", "regen", "admin"); code != 0 || !strings.Contains(out, "edited app/Admin/Post/Index.alder\n") {
+		t.Fatalf("regen after rename-field: exit %d\n%s%s", code, out, errs)
+	}
+	if code, out, errs := alderIn(t, dir, "", "check"); code != 0 || strings.Contains(out, "error") {
+		t.Fatalf("the admin does not check after regen: exit %d\n%s%s", code, out, errs)
+	}
+	if s := file("app/Admin/Post/Show.alder"); !strings.Contains(s, "<dt>Hits</dt>") || strings.Contains(s, "views") {
+		t.Errorf("Post's show page after the rename:\n%s", s)
+	}
+	// a page deleted that another links to: the app does not check; regen without --all leaves
+	// it deleted and is refused (the result does not check), --all writes it again
+	os.Remove(filepath.Join(dir, "app", "Admin", "Post", "Edit.alder"))
+	if code, _, errs := alderIn(t, dir, "", "regen", "admin"); code != 1 || !strings.Contains(errs, "does not check") {
+		t.Errorf("regen with a linked page deleted: exit %d\n%s", code, errs)
+	}
+	if code, out, errs := alderIn(t, dir, "", "regen", "admin", "--all"); code != 0 || out != "wrote app/Admin/Post/Edit.alder\n" {
+		t.Errorf("regen --all with a linked page deleted: exit %d\n%s%s", code, out, errs)
+	}
+	if code, out, errs := alderIn(t, dir, "", "test"); code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") {
+		t.Fatalf("alder test after the rename and --all: exit %d\n%s%s", code, out, errs)
 	}
 }
 
