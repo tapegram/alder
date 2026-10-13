@@ -95,7 +95,8 @@
           "type": "Enum",
           "enum": [
             "Reader",
-            "Author"
+            "Author",
+            "Admin"
           ],
           "default": "'Reader'"
         },

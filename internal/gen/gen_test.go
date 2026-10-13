@@ -1901,7 +1901,7 @@ func TestTodos(t *testing.T) {
 	if nav := login("pw"); nav.Tag != rt.NavRedirect || nav.Page.Path != "/" {
 		t.Fatalf("login: %+v", nav)
 	}
-	calls("login", "Password.verify", "Password.verify", "Session.put")
+	calls("login", "Password.verify", "Password.verify", "Db.get User", "Session.put") // the login reads the row for its role
 	app := env.Session.(App__Session)
 	if !app.User.Ok || app.User.Val != uid {
 		t.Fatalf("login did not set the session user: %+v", app)
@@ -2871,7 +2871,7 @@ func TestTodosShow(t *testing.T) {
 		{Todos__Index__Msg__Submit__(Todos__Index__SubmitParams{Form: Todos__Index__NewTodo{Title: "Milk", Due: due}}),
 			"Submit { form: { title: \"Milk\", due: Just 2026-10-09 } }"},
 		{App__Msg__Logout__, "Logout"},
-		{App__Session{User: rt.Just("u1")}, "{ user: Just \"u1\" }"},
+		{App__Session{User: rt.Just("u1")}, "{ user: Just \"u1\", role: Member }"}, // a union's zero value is its first constructor
 		{Todos__Index__Model{Filter: Todo__Filter__Active__, Todos: []Todo__Todo{{Id: "1", Title: "a", Created: time.Unix(0, 0)}}},
 			"{ filter: Active, todos: [{ id: \"1\", title: \"a\", done: False, due: Nothing, owner: \"\", created: 1970-01-01T00:00:00Z }] }"},
 	} {

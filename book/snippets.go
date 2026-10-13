@@ -72,6 +72,11 @@ const (
 	// replacing its file; the first piece starts with its `module` line. A walk through one
 	// module, piece by piece, is checked whole this way.
 	Part
+	// Written: the block is a file as a command of the chapter left it (```alder
+	// written=<state>/<path>, after a ```text command=<state> block): TestBook_Commands compares
+	// it, byte for byte, with the file in that state's app; the verifier does not check it again,
+	// since the command that wrote it checked the app.
+	Written
 )
 
 func (k ExpectKind) String() string {
@@ -86,6 +91,8 @@ func (k ExpectKind) String() string {
 		return "fragment"
 	case Part:
 		return "part"
+	case Written:
+		return "written"
 	}
 	return fmt.Sprintf("ExpectKind(%d)", int(k))
 }
@@ -98,7 +105,8 @@ type Expect struct {
 	// Message is, for Error, a part of the expected diagnostic's message ("" for any message)
 	Message string
 	Module  string // Part: the module the block is a piece of
-	Example string // Part: the example app it belongs to, a directory under examples/ ("todos" by default)
+	Example string // Part: the example app it belongs to, a directory under examples/ ("todos" by default); Written: the state
+	Path    string // Written: the file's path in the state's app, slash-separated ("app/About.alder")
 }
 
 // DefaultExample is the example app a plain ```alder part=<Module> block belongs to, and the
@@ -147,6 +155,12 @@ func Expectation(info string) (Expect, error) {
 			e.Message = m
 		}
 		return e, nil
+	case strings.HasPrefix(rest, "written="):
+		st, p, ok := strings.Cut(strings.TrimPrefix(rest, "written="), "/")
+		if !ok || !exampleRE.MatchString(st) || p == "" || strings.Contains(p, " ") {
+			return Expect{}, fmt.Errorf("written= wants <state>/<path>, such as guestbook/app/About.alder, got %q", strings.TrimPrefix(rest, "written="))
+		}
+		return Expect{Kind: Written, Example: st, Path: p}, nil
 	case strings.HasPrefix(rest, "part="):
 		m := strings.TrimPrefix(rest, "part=")
 		ex := DefaultExample
@@ -161,7 +175,7 @@ func Expectation(info string) (Expect, error) {
 		}
 		return Expect{Kind: Part, Module: m, Example: ex}, nil
 	}
-	return Expect{}, fmt.Errorf("unknown fence expectation %q (want eval=, error=, part= or fragment)", rest)
+	return Expect{}, fmt.Errorf("unknown fence expectation %q (want eval=, error=, part=, written= or fragment)", rest)
 }
 
 // Extract returns the ```alder blocks of the Markdown file at path, in order.
@@ -402,4 +416,89 @@ func ExtractFiles(path string) ([]FileBlock, error) {
 		return out, fmt.Errorf("%s:%d: unterminated file= block", path, cur.Line)
 	}
 	return out, nil
+}
+
+// A CommandBlock is a fenced block of chapter 15's kind (any language): a command and what it
+// prints, its info string having a word `command=<state>` (```text command=guestbook), or a file
+// as the commands before it left it, `written=<state>/<path>` (```alder
+// written=guestbook/app/About.alder). A state is an app the chapter's commands change in order:
+// `guestbook`, a copy of what `alder new guestbook` writes, or the name of an example app, a copy
+// of examples/<name>. A command block's first line is `$ alder …`; when it ends in `<<'EOF'`,
+// the lines up to `EOF` are its standard input; the rest is what it prints, standard output then
+// standard error, where a line `…` stands for any number of lines.
+type CommandBlock struct {
+	Line   int    // the line of the opening fence
+	State  string // the app the block runs in, or quotes
+	Path   string // written=: the file's path in the app; "" for a command
+	Source string // the lines between the fences, each ending in "\n"
+}
+
+// ExtractCommands returns the command= and written= blocks of the Markdown file at path, in
+// order. A malformed command= or written= word is an error.
+func ExtractCommands(path string) ([]CommandBlock, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var out []CommandBlock
+	var cur *CommandBlock
+	var src strings.Builder
+	inFence := false
+	for i, l := range strings.Split(string(b), "\n") {
+		fence := strings.HasPrefix(l, "```")
+		switch {
+		case cur != nil && fence:
+			cur.Source = src.String()
+			out = append(out, *cur)
+			cur, inFence = nil, false
+		case cur != nil:
+			src.WriteString(l + "\n")
+		case inFence && fence:
+			inFence = false
+		case fence:
+			inFence = true
+			for _, w := range strings.Fields(strings.TrimPrefix(l, "```")) {
+				if st, ok := strings.CutPrefix(w, "command="); ok {
+					if !exampleRE.MatchString(st) {
+						return nil, fmt.Errorf("%s:%d: command= wants a state, such as guestbook or blog, got %q", path, i+1, st)
+					}
+					cur = &CommandBlock{Line: i + 1, State: st}
+				} else if f, ok := strings.CutPrefix(w, "written="); ok {
+					st, p, ok := strings.Cut(f, "/")
+					if !ok || !exampleRE.MatchString(st) || p == "" {
+						return nil, fmt.Errorf("%s:%d: written= wants <state>/<path>, such as guestbook/app/About.alder, got %q", path, i+1, f)
+					}
+					cur = &CommandBlock{Line: i + 1, State: st, Path: p}
+				}
+			}
+			if cur != nil {
+				src.Reset()
+			}
+		}
+	}
+	if cur != nil {
+		return out, fmt.Errorf("%s:%d: unterminated command= or written= block", path, cur.Line)
+	}
+	return out, nil
+}
+
+// MatchOutput reports whether got is what a command block says it prints, want: the same lines,
+// where a line of want that is `…` alone matches any number of lines of got (none included).
+func MatchOutput(want, got string) bool {
+	return matchLines(strings.Split(want, "\n"), strings.Split(got, "\n"))
+}
+
+func matchLines(want, got []string) bool {
+	if len(want) == 0 {
+		return len(got) == 0
+	}
+	if want[0] == "…" {
+		for k := 0; k <= len(got); k++ {
+			if matchLines(want[1:], got[k:]) {
+				return true
+			}
+		}
+		return false
+	}
+	return len(got) > 0 && got[0] == want[0] && matchLines(want[1:], got[1:])
 }

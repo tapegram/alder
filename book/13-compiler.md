@@ -3791,6 +3791,80 @@ test` there with a `PATH` that holds only that binary and Go; it then
 checks that no file under `build/` contains the checkout's path and that
 the built app answers `GET /`.
 
+### The generators: copy, check, write
+
+Chapter 15's commands are the compiler's front end used the other way
+round: instead of reading source to make Go, they make source. They live
+in `internal/generate/`, and every one ends in the same function,
+`generate.Apply(appDir, edits, options)`.
+
+A generator first loads the app as `alder check` does (`generate.Load`:
+the names of section 4 and the checker of section 5) and turns what it
+needs into plain facts, a `generate.Program`: the tables with their
+columns, types and attributes, the pages with their paths and
+`requires`, the session's `user` and `role`. From those facts it
+computes a list of **edits**: a file to create, with its text; a file to
+change, with its whole new text; or, for the admin, new bodies for the
+owned regions of a file. The small generators fill templates
+(`internal/generate/templates/*.tmpl`, Go's `text/template`, embedded in
+the binary with `embed` like the runtime; their delimiters are `[[ ]]`,
+since Alder's own braces would read as template actions). The admin
+builds its text in Go (`internal/generate/admin.go`): it needs
+decisions per column (a select for a reference, a checkbox for a
+`Bool`, a count for a `@unique`) that templates express badly. Code
+that goes into an existing file is placed by looking at the parsed
+module: a new declaration before `update`, an arm before the `}` of its
+`match`, a form inside the view's last `al-card`.
+
+`Apply` then does what chapter 15 calls copy, check, write. It copies
+the app into a temporary directory (all but `build/`, `.git` and the
+databases), applies the edits there, runs the migration generator on
+the copy when the command changed a table, and checks the copy with the
+same loader and checker. If the copy has an error, `Apply` returns a
+refusal carrying the copy's diagnostics, and the app was never touched.
+Otherwise it writes each file the copy changed back into the app, and
+returns what it did: the files, a unified diff of each edited one
+(`generate.UnifiedDiff`, a longest-common-subsequence diff with three
+lines of context), the diagnostics in the files the command changed, and
+the holes. With `--dry-run` it stops before writing.
+
+**Holes.** A hole `?name` parses as an expression of its own (section
+3), and the checker gives it the type its place demands and reports it
+as W0002 with that type. `generate.HoleIndex` turns those warnings into
+addresses: the module, the declaration that encloses the hole's
+position, the arm when the declaration is `update`. `alder fill` parses
+standard input with `syntax.ParseExpr`, refuses anything after one
+expression, puts the expression where the hole's span is (wrapped in
+parentheses where it would otherwise bind differently, indented to its
+place), and hands that edit to `Apply`: the checker then decides.
+
+**Regions.** A region is found by scanning a file's lines for its
+markers (`generate.Regions`): a `-- @admin begin <name>` line, the lines
+after it, and the next `-- @admin end`. A missing or doubled marker is
+an error before anything else happens. `alder regen admin` generates the
+whole admin again in memory from the app as it is now, then for each
+file on disk builds an edit that replaces the body of each named region
+with the same region's body from the fresh version; lines outside the
+regions are never part of an edit. A file whose regions are already
+equal produces no edit, which is why a second run says there is nothing
+to do. Errors in the admin's own files do not stop it (a renamed field
+breaks them, inside the regions it is about to rewrite), but the result
+goes through `Apply` like every other command's, and must check.
+
+**Options checked on submit.** For a page whose view has a `<Select
+options={…}>`, section 7 emits two more functions. One per select,
+`choices__<Page>__<Form>__<field>`, is the `options` expression compiled
+as a function of the view's parameters, the model and the session. The
+other, `options__<Page>`, takes the posted form's values and returns a
+field error, `web.MsgOption` ("must be one of the options"), for each
+value that `html.Offered` does not find among the choices (the empty
+value only when the select offers an empty option). A message's
+handler calls it after `load` has run for the message and before
+`update`, so the options are computed from the same model the page
+would draw; a field error is answered like a decoder's error. This is
+why `options` may use only the view's parameters: a name bound by a
+`for` or a `let` of the view would not exist outside the view.
+
 ### What is still to come
 
 M4a added `alder eval` and the book verifier, M4b `alder test`, M4c

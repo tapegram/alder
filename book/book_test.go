@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -226,6 +227,8 @@ func verify(t *testing.T, path, display string) report {
 			}
 			parts[key] = append(parts[key], s)
 			lastPart = key
+		case Written:
+			v.r.counts["written"]++ // TestBook_Commands compares it with the file a command wrote
 		case Fragment:
 			v.r.counts["fragment"]++
 			v.r.fragments = append(v.r.fragments, fmt.Sprintf("%s:%d", display, s.Line))
@@ -727,6 +730,9 @@ func TestBook_Expectations(t *testing.T) {
 		{info: "alder part=blog/", bad: true},
 		{info: "alder part=blog/post", bad: true},
 		{info: "alder part=a/b/Post", bad: true},
+		{info: "alder written=guestbook/app/About.alder", want: Expect{Kind: Written, Example: "guestbook", Path: "app/About.alder"}},
+		{info: "alder written=guestbook", bad: true},
+		{info: "alder written=Guestbook/app/About.alder", bad: true},
 		{info: "alder error=oops", bad: true},
 		{info: "alder eval=", bad: true},
 		{info: "alder frag", bad: true},
@@ -819,9 +825,9 @@ func TestBook(t *testing.T) {
 			nj, _ := strconv.Atoi(lj)
 			return fi < fj || fi == fj && ni < nj
 		})
-		t.Logf("%d blocks: checked %d (%d of them expressions, parsed only), part= %d, eval= %d, error= %d, fragment %d (module %d, decls %d, signatures %d, expr %d) in %v",
+		t.Logf("%d blocks: checked %d (%d of them expressions, parsed only), part= %d, eval= %d, error= %d, written= %d (TestBook_Commands), fragment %d (module %d, decls %d, signatures %d, expr %d) in %v",
 			total.counts["module"]+total.counts["decls"]+total.counts["signatures"]+total.counts["expr"],
-			total.counts["checked"], total.counts["parsed"], total.counts["part"], total.counts["eval"], total.counts["error"], total.counts["fragment"],
+			total.counts["checked"], total.counts["parsed"], total.counts["part"], total.counts["eval"], total.counts["error"], total.counts["written"], total.counts["fragment"],
 			total.counts["module"], total.counts["decls"], total.counts["signatures"], total.counts["expr"],
 			time.Since(start).Round(time.Millisecond))
 		for _, f := range total.fragments {
@@ -1170,5 +1176,257 @@ func TestBook_PartOfAnotherExample(t *testing.T) {
 	r = verify(t, p, "nope.md")
 	if len(r.failures) != 1 || !strings.Contains(r.failures[0], "there is no example app examples/nope") {
 		t.Errorf("an example that does not exist: failures %v", r.failures)
+	}
+}
+
+// TestBook_Commands runs the transcripts of the book (chapter 15's): every ```… command=<state>
+// block runs its `alder` command, with the block's standard input, in that state's app (a copy
+// of the scaffold, or of an example, made at the chapter's first block of that state and changed
+// by each command after it, in order), and what the command prints must be the block's text
+// (MatchOutput); every written=<state>/<path> block must be that file of the app as the commands
+// before it left it, byte for byte. So the chapter cannot show a command, an output or a written
+// file the generators do not produce.
+func TestBook_Commands(t *testing.T) {
+	bin := alder(t)
+	chapters, err := filepath.Glob("*.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, ch := range chapters {
+		msgs, k := runCommands(t, bin, ch, "book/"+ch)
+		for _, m := range msgs {
+			t.Error(m)
+		}
+		n += k
+	}
+	if n == 0 {
+		t.Error("no chapter has a command= block")
+	}
+	t.Logf("%d command= and written= blocks", n)
+}
+
+// runCommands runs the command= and written= blocks of chapter (reported as display) and returns
+// a message per difference, and the number of blocks.
+func runCommands(t *testing.T, bin, chapter, display string) ([]string, int) {
+	t.Helper()
+	blocks, err := ExtractCommands(chapter)
+	if err != nil {
+		return []string{err.Error()}, 0
+	}
+	var msgs []string
+	states := map[string]string{} // state -> its app's directory
+	for _, b := range blocks {
+		dir, ok := states[b.State]
+		if !ok {
+			src := exampleApp(b.State)
+			if fi, err := os.Stat(filepath.Join(src, "app")); err != nil || !fi.IsDir() {
+				msgs = append(msgs, fmt.Sprintf("%s:%d: %s is not an app: a state is guestbook (the scaffold) or an example under examples/", display, b.Line, b.State))
+				continue
+			}
+			dir = filepath.Join(t.TempDir(), b.State)
+			if err := copyApp(src, dir); err != nil {
+				t.Fatal(err)
+			}
+			states[b.State] = dir
+		}
+		if b.Path != "" {
+			got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(b.Path)))
+			switch {
+			case err != nil:
+				msgs = append(msgs, fmt.Sprintf("%s:%d: written=%s/%s: the commands before it wrote no such file", display, b.Line, b.State, b.Path))
+			case string(got) != b.Source:
+				msgs = append(msgs, fmt.Sprintf("%s:%d: written=%s/%s differs from the file the commands before it left:\n%s", display, b.Line, b.State, b.Path, firstDiff(b.Source, string(got))))
+			}
+			continue
+		}
+		args, stdin, want, err := parseCommand(b.Source)
+		if err != nil {
+			msgs = append(msgs, fmt.Sprintf("%s:%d: %v", display, b.Line, err))
+			continue
+		}
+		cmd := exec.Command(bin, args...)
+		cmd.Dir = dir
+		cmd.Stdin = strings.NewReader(stdin)
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		if err := cmd.Run(); err != nil {
+			if _, exit := err.(*exec.ExitError); !exit {
+				t.Fatal(err)
+			}
+		}
+		if got := stdout.String() + stderr.String(); !MatchOutput(want, got) {
+			msgs = append(msgs, fmt.Sprintf("%s:%d: `alder %s` printed what the block does not show:\n%s\nit printed:\n%s", display, b.Line, strings.Join(args, " "), firstDiff(want, got), got))
+		}
+	}
+	return msgs, len(blocks)
+}
+
+// copyApp copies the app at src to dst, leaving out build/ and the SQLite files.
+func copyApp(src, dst string) error {
+	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(src, p)
+		if d.IsDir() {
+			if rel == "build" {
+				return filepath.SkipDir
+			}
+			return os.MkdirAll(filepath.Join(dst, rel), 0o755)
+		}
+		if strings.Contains(d.Name(), ".db") {
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(dst, rel), b, 0o644)
+	})
+}
+
+// parseCommand splits a command block's source into the arguments after `$ alder`, its
+// standard input (a here-document: the first line ends in `<<'EOF'`, and the lines up to `EOF`
+// are the input) and the output it shows.
+func parseCommand(src string) (args []string, stdin, want string, err error) {
+	lines := strings.SplitAfter(src, "\n")
+	first := strings.TrimSuffix(lines[0], "\n")
+	rest, ok := strings.CutPrefix(first, "$ alder ")
+	if !ok {
+		return nil, "", "", fmt.Errorf("a command= block starts with `$ alder …`, not %q", first)
+	}
+	args, err = shellWords(rest)
+	if err != nil {
+		return nil, "", "", err
+	}
+	lines = lines[1:]
+	if n := len(args); n > 0 && strings.HasPrefix(args[n-1], "<<") {
+		delim := strings.Trim(strings.TrimPrefix(args[n-1], "<<"), "'\"")
+		args = args[:n-1]
+		var in strings.Builder
+		for {
+			if len(lines) == 0 {
+				return nil, "", "", fmt.Errorf("the here-document has no %s line", delim)
+			}
+			l := lines[0]
+			lines = lines[1:]
+			if strings.TrimSuffix(l, "\n") == delim {
+				break
+			}
+			in.WriteString(l)
+		}
+		stdin = in.String()
+	}
+	return args, stdin, strings.Join(lines, ""), nil
+}
+
+// shellWords splits s as a shell does a simple command: words separated by spaces, '…' taken
+// as it is, "…" with \" and \\ escapes, and a backslash outside quotes escaping the next byte.
+func shellWords(s string) ([]string, error) {
+	var words []string
+	var w strings.Builder
+	in := false // inside a word
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == ' ':
+			if in {
+				words = append(words, w.String())
+				w.Reset()
+				in = false
+			}
+		case c == '\'':
+			j := strings.IndexByte(s[i+1:], '\'')
+			if j < 0 {
+				return nil, fmt.Errorf("an unterminated ' in %q", s)
+			}
+			w.WriteString(s[i+1 : i+1+j])
+			i += j + 1
+			in = true
+		case c == '"':
+			i++
+			for ; i < len(s) && s[i] != '"'; i++ {
+				if s[i] == '\\' && i+1 < len(s) && (s[i+1] == '"' || s[i+1] == '\\') {
+					i++
+				}
+				w.WriteByte(s[i])
+			}
+			if i == len(s) {
+				return nil, fmt.Errorf("an unterminated \" in %q", s)
+			}
+			in = true
+		case c == '\\' && i+1 < len(s):
+			i++
+			w.WriteByte(s[i])
+			in = true
+		default:
+			w.WriteByte(c)
+			in = true
+		}
+	}
+	if in {
+		words = append(words, w.String())
+	}
+	return words, nil
+}
+
+// TestBook_CommandParts: the pieces of a command block, and the `…` of MatchOutput.
+func TestBook_CommandParts(t *testing.T) {
+	args, stdin, want, err := parseCommand("$ alder fill 'Home.\"a test\"' - --hole \"?x y\" <<'EOF'\n{ a: 1 }\nEOF\nedited app/Home.alder\n")
+	if err != nil || !slices.Equal(args, []string{"fill", `Home."a test"`, "-", "--hole", "?x y"}) || stdin != "{ a: 1 }\n" || want != "edited app/Home.alder\n" {
+		t.Errorf("parseCommand: %q %q %q %v", args, stdin, want, err)
+	}
+	for _, bad := range []string{"alder check\n", "$ go test\n", "$ alder fill x - <<'EOF'\n1\n", "$ alder new page 'About\n"} {
+		if _, _, _, err := parseCommand(bad); err == nil {
+			t.Errorf("parseCommand(%q): no error", bad)
+		}
+	}
+	for _, c := range []struct {
+		want, got string
+		ok        bool
+	}{
+		{"a\nb\n", "a\nb\n", true},
+		{"a\nb\n", "a\nc\n", false},
+		{"a\n…\nd\n", "a\nb\nc\nd\n", true},
+		{"a\n…\nd\n", "a\nd\n", true},
+		{"a\n…\nd\n", "a\nb\nc\n", false},
+		{"…\nz\n", "x\ny\nz\n", true},
+		{"", "", true},
+		{"", "x\n", false},
+	} {
+		if MatchOutput(c.want, c.got) != c.ok {
+			t.Errorf("MatchOutput(%q, %q) = %v", c.want, c.got, !c.ok)
+		}
+	}
+}
+
+// TestBook_CommandsFail proves runCommands fails: a command with its output and the file it
+// wrote passes, and a wrong output line, a wrong line of a written file and a state that is no
+// app are a failure each.
+func TestBook_CommandsFail(t *testing.T) {
+	bin := alder(t)
+	about := "module About\n\nimport Layout\n\npage \"/about\" { }\n\ntype Model = { }\n\n" +
+		"load : Params -> Session -> Query Model\nload params session = Query.succeed { }\n\n" +
+		"view : Model -> Session -> Html Msg\nview model session =\n  <Layout.Page title=\"About\">\n    <h1>About</h1>\n  </Layout.Page>\n\n" +
+		"test \"the page is shown\" = {\n  let r <- Test.open (About {})\n" +
+		"  Task.succeed ({ answer: r.answer, heading: Test.text \"h1\" r.doc } == { answer: Shown, heading: Just \"About\" })\n}\n"
+	newPage := "```text command=guestbook\n$ alder new page About /about\nwrote app/About.alder\n```\n\n"
+	ch := filepath.Join(t.TempDir(), "15-x.md")
+	for _, c := range []struct {
+		name, chapter string
+		fails         int
+	}{
+		{"right", newPage + "```alder written=guestbook/app/About.alder\n" + about + "```\n\n```text command=guestbook\n$ alder check\n```\n", 0},
+		{"wrong output", "```text command=guestbook\n$ alder new page About /about\nwrote app/Home.alder\n```\n", 1},
+		{"wrong file", newPage + "```alder written=guestbook/app/About.alder\n" + strings.Replace(about, "<h1>About</h1>", "<h1>Us</h1>", 1) + "```\n", 1},
+		{"no such state", "```text command=nowhere\n$ alder check\n```\n", 1},
+	} {
+		if err := os.WriteFile(ch, []byte(c.chapter), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if msgs, _ := runCommands(t, bin, ch, c.name); len(msgs) != c.fails {
+			t.Errorf("%s: %d failures, want %d: %q", c.name, len(msgs), c.fails, msgs)
+		}
 	}
 }

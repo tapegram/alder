@@ -662,15 +662,12 @@ view : Model -> Session -> Html Msg
 view model session = <p>reports</p>
 ```
 
-**Generated pages say the same.** `alder new page Reports /reports
---requires user` writes the clause for you, and `--role Admin` adds
-`, role Admin` (and implies `--requires user`); the generated tests
-then include "a visitor is sent to log in" and one for a user of
-another role (chapter 15). The whole of `alder new admin`'s admin is
-built on this clause: every page it writes `requires user, role Admin`,
-which is why it needs a session `role` with an `Admin` constructor
-(both examples have one: the to-do app's `Member | Admin`, the blog's
-`Reader | Author | Admin`), and why it writes no check of its own.
+**Generated pages say the same.** `alder new page … --requires user`
+writes the clause, and `--role R` adds `, role R` (and implies
+`--requires user`), each with its test (chapter 15). Every page of
+`alder new admin`'s admin `requires user, role Admin`: so it needs a
+session `role` with an `Admin` constructor, and writes no check of its
+own.
 
 **A role is read at login.** The check reads the session cookie and
 nothing else, so it costs no query. A role in the cookie lasts until
@@ -795,8 +792,6 @@ module App
 import User
 import Layout
 
--- `role` is copied from the user's row at login (Auth.Login); the generated admin's pages
--- `requires user, role Admin` read it from here (book 06, "Rules"). Logging out makes it Member.
 session { user: Maybe User.UserId, role: User.Role = Member }
 
 login = Auth.Login

@@ -181,6 +181,25 @@ not exist. Follow it exactly.
 ====================  ALDER REFERENCE  ====================
 """
 
+# The command table (book 15, chapter 11's "The generators"): one line per command with its
+# flags, so an agent driving the app from the command line (E11) has the whole surface; the
+# chapters themselves (11, 15) are for a human reader and are not in the reference.
+COMMANDS = """
+====================  COMMANDS  ====================
+Each checks a copy of the app, writing only if it checks; none overwrites. All take --dir D,
+--dry-run, --json. A hole stops `alder test`: new, fill, then test.
+alder new page <Module> <path> [--list T | --show T | --from T …] [--requires user] [--role R]
+alder new table <Name> <field>:<Type>[=default][@ref=T][@cascade|@restrict|@setNull][@owner][@unique] …
+alder new form <Page> <Name> <field>:<Type> … [--into T]
+alder new msg <Page> <Name> [<field>:<Type> …]
+alder new capability <Module> <entry> "<Type>"
+alder edit table <T> add-field <f> | rename-field <old> <new> | drop-field <f> [--strict]
+alder fill <Module>.<decl>[.<arm>] - [--hole ?name]   (stdin: one expression); fill --list
+alder new admin [--module Admin] [--path /admin]   (needs a session role with Admin)
+alder regen admin [--module Admin] [--path /admin] [--all]
+
+"""
+
 EXAMPLE_HEADER = """
 ====================  EXAMPLE APP: examples/todos  ====================
 A complete, correct Alder application. Match its style exactly.
@@ -314,7 +333,7 @@ def element_table(book):
 
 
 def build(chapters, book, example, reference):
-    out = [HEADER]
+    out = [HEADER, COMMANDS]
     for ch in chapters:
         for f in sorted(book.glob(f"{ch}-*.md")):
             text = f.read_text()

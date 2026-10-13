@@ -600,6 +600,63 @@ markup depends on a CDN being up. Updating is a deliberate step,
 `scripts/vendor-al.sh <tag>`, and the book's test of Appendix C's tables
 against the manifest makes the documentation part of that step.
 
+### Generators in the compiler, writing plain files, refusing rather than overwriting **(decided M12; tested: the fixture's goldens and scores, both examples' admins)**
+
+Chapter 15's commands write pages, tables, forms, messages,
+capabilities and an admin. Five choices shaped them.
+
+**In the compiler, not beside it.** A generator has to know the
+language: what a table's id is called, which fields an insert must name,
+which imports a page needs, how the checker will read what it writes. A
+generator outside the compiler, a template pack in some other tool,
+would keep a second copy of that knowledge, and the two would drift. In
+`alder`, the generators read the app through the same loader and checker
+as `alder check`, and the result is checked again before it is written,
+so a generator cannot produce code the compiler rejects. Tools that wrap
+Alder, an agent's harness or an Olifant pack, call these commands and
+read their `--json`, rather than learn the syntax.
+
+**Plain files, not a framework.** What a generator writes is ordinary
+Alder: no base class, no runtime magic, no file that must not be
+touched. A reader opens a generated page and reads it as chapter 6 reads
+any page; the checker, the tests and the mutation score treat it like
+code typed by hand. The price is that a generated page cannot be
+updated for you once you have changed it. For an ordinary page that is
+right: from its first edit it says what you want, and nothing could know
+which of its lines still follow the table.
+
+**Regions only for the admin.** The admin is the exception: a
+projection of the tables, mostly left as written, which must follow
+every change to them. So its schema-shaped parts sit between marker
+comments, `-- @admin begin <name>` and `-- @admin end`, and `alder regen
+admin` rewrites only those, leaving every other line, and every test the
+author added after a region, as it was. Markers everywhere would turn
+every page into a file half owned by a tool; markers nowhere would leave
+the admin behind the tables, or make regenerating it destroy work. The
+markers make the line between the tool's text and the author's visible
+in the file.
+
+**Refuse, never overwrite; refuse, never write what does not check.** A
+generator that overwrote a file could destroy work it cannot see; one
+that wrote code with errors would hand a problem to the next person, or
+agent, without the context that made it. Every command applies its
+change to a copy, checks the copy, and writes only when the copy checks;
+a file or a name that exists is refused with one sentence. The single
+exception is `alder edit table`, whose breakage is the point: the
+errors it prints are the to-do list of the change, and `--strict`
+refuses instead.
+
+**A select checks that its value was offered.** The admin's forms pick
+a referenced row from `<Select options={…}>`. A request can be crafted,
+so the browser's list proves nothing; the database's reference check
+would catch an id that names no row, but not a row of the right table
+that this page never offered (a page that offers only some rows, a
+user's own say, would leak the rest). So the runtime computes the
+options again on submit, from the model `load` gives the message, and a
+value outside them is a field error. Computing them again requires that
+`options` depend only on the model and the session, which is the one
+rule the checker adds to it.
+
 ## Experiments
 
 Each experiment has a directory under `experiments/` with its prompt,

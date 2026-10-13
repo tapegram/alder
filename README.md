@@ -43,11 +43,32 @@ alder build              # build the server, build/guestbook/guestbook
 alder run                # serve it on http://localhost:8080, rebuilding on every save
 ```
 
+Then grow it from the command line. Every generator writes plain, checked Alder with its
+tests, and refuses rather than overwrite or write what does not check:
+
+```
+alder new page About /about                          # a page
+alder new table Reply entry:Entry.EntryId@ref=Entry@cascade message:Text.NonEmpty
+alder new page Replies /replies --list Reply         # a page of a table's rows
+alder new form Replies NewReply entry:Entry.EntryId message:Text.NonEmpty
+```
+
+## A generated admin
+
+`alder new admin` writes a Django-class admin for every table, as plain Alder files with their
+browser tests: a dashboard, and per table a list (search, sort, pages), a page per row, forms
+to create and edit (references as selects of the referenced rows) and a delete page that
+counts what goes with the row and refuses what the database would. Every page `requires user,
+role Admin`. When the tables change, `alder regen admin` rewrites only the admin's owned
+regions and keeps what you changed around them. Both examples carry one, committed exactly as
+the command wrote it, and its tests kill all of its mutants. The book's chapter 15 tours it.
+
 ## More
 
 - [The Alder book](book/README.md): the language, its tools, how the compiler works and why
   it is designed this way. Chapter 2 walks through the guestbook file by file.
-- [`examples/`](examples/): two complete apps, a to-do list and a blog.
+- [`examples/`](examples/): two complete apps, a to-do list and a blog, each with a generated
+  admin at `/admin`.
 - [`experiments/`](experiments/): the prompts, outputs and scores of running models against
   the language.
 

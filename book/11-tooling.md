@@ -86,6 +86,8 @@ and writes the app's own only when it finds one.
 ```
 alder new <name>     write a new app, the guestbook, into the directory <name>
 alder new <kind> …   generate a page, table, form, msg or capability in the app
+alder new admin      generate an admin of every table, under app/Admin/
+alder regen admin    rewrite the admin's owned regions after the tables change
 alder edit table …   add, rename or drop a table's field, with its migration
 alder fill <decl> -  fill a typed hole with the expression on standard input
 alder check          type-check everything; milliseconds; no output on success
@@ -204,14 +206,19 @@ holes (W0002) with their types among them.
 | (its tests) | written to kill the mutants of the code beside them (chapter 10): the rows newest first, 20 a page, another user's rows absent (`Db.mine`) or not found (`Db.getMine`), a visitor sent to log in, a user of another role given no page |
 | `alder new table <Name> <field>:<Type> …` | `app/<Name>.alder`: `table <Name>` with its id brand, the fields, `created` and `updated`, a test of each reference's delete rule; and its migration, as `alder migrate` writes it. A field is `name:Type[=default][@attr[=arg]]…`: `done:Bool=False`, `post:Post.PostId@ref=Post@cascade`, `"note:Maybe Text"` |
 | `alder new form <Page> <Name> <field>:<Type> …` | in the page: `form <Name>`, `msg Submit<Name> form <Name>`, its arm of `update` (an insert into the table whose columns the fields are, by name and type, or `--into T`'s; else the hole `?submit<Name>`), the form in `view` (wrapped inputs, `<Errors form />` in an `al-alert`), and two browser tests |
-| `alder new msg <Page> <Name> [<field>:<Type> …]` | in the page: `msg <Name>`, its arm (the hole `?<name>`), an `al-button` that sends it at the end of the view, and a test whose expected answer is the hole `?expected` |
+| `alder new msg <Page> <Name> [<field>:<Type> …]` | in the page: `msg <Name>`, its arm (the hole `?<name>`), an `al-button` that sends it at the end of the view, and a test that clicks it and reads the page again, whose verdict is the hole `?expected : Bool` |
 | `alder new capability <Module> <entry> "<Type>"` | the capability (named after the module's last segment) with its entry, a `fake` whose entry is the hole `?<entry>`, a test that installs the fake, and the adapter, `adapters/<segment>/<capability>_<entry>.go`, whose methods return "not implemented" |
 | `alder edit table <T> add-field <field>` | the field, after the table's last, and its migration |
 | `alder edit table <T> rename-field <old> <new>` | the field renamed, with `@renamed "old"` (chapter 8), and its migration |
 | `alder edit table <T> drop-field <field>` | the field removed, and its migration |
 | `alder fill <Module>.<decl>[.<arm>] -` | the declaration's hole (`--hole ?name` when it has several) replaced by the expression on standard input; `Module."test name"` names a test, `Module.update.Msg` an arm. `alder fill --list` lists every hole: `Home update.Clear ?clear : Task Nav` |
-| `alder new admin [--module Admin] [--path /admin]` | the admin, under `app/Admin/`: a dashboard (`/admin`: a card per table, its count and newest five rows), a layout with a nav of the tables, and per table `T` a list (`/admin/t`: search, sort by any column, 25 to a page), a page per row, a new and an edit form (`<al-select options>` of the referenced table's rows for a reference) and a delete page (what goes with the row; refused while a `@restrict` reference holds it). Every page `requires user, role Admin` and has browser tests; the parts that follow the schema are owned regions, between `-- @admin begin <name>` and `-- @admin end`. It needs a session whose `role` has an `Admin` constructor |
+| `alder new admin [--module Admin] [--path /admin]` | refused unless the session has a `user` and a `role` whose type has an `Admin` constructor (the sentence says what to add); never edits `App` or the login. The admin, under `app/Admin/`, every file headed by two comment lines naming the command (and, from a release build, its version: `(alder v0.1.0)`; a checkout's `devel+<commit>` is left out, so the files do not change with every commit): a dashboard (`/admin`: a card per table, its count and newest five rows), a layout with a nav of the tables, and per table `T` a list (`/admin/t`: search, sort by any column, 25 to a page), a page per row, a new and an edit form (`<al-select options>` of the referenced table's rows for a reference) and a delete page (what goes with the row; refused while a `@restrict` reference holds it). Every page `requires user, role Admin` and has browser tests; the parts that follow the schema are owned regions, between `-- @admin begin <name>` and `-- @admin end`. It needs a session whose `role` has an `Admin` constructor |
 | `alder regen admin [--all]` | the admin's owned regions, regenerated from the app as it is now (a field added, a table added): only the lines between the markers change, so a heading, a column or a test the author added outside them stays as it is. A file the author deleted is not written again unless `--all`; a table added since (one the nav does not link to) gets its pages. Errors in the admin's own files do not stop it, since a field renamed or dropped breaks them inside the regions it rewrites; errors elsewhere do, and what it writes must check. A second run says `nothing to do: the admin is up to date`; with `--json`, `"skipped"` lists the pages not written again and `"upToDate"` says there was nothing to do. A marker without its pair is refused, naming the file and the region |
+
+A hole stops `alder test` (`alder test: no tests ran (fill the
+hole)`), so after `new msg`, `new capability`, and a `new form` whose
+fields fit no table, the order is new, fill, test: `alder fill` each hole
+(`alder fill --list` lists them), then run the tests.
 
 A generator never overwrites anything and never writes a result that
 does not check. It refuses, with one sentence on standard error, exit
@@ -980,6 +987,8 @@ says what to expect:
 | `alder eval=<value>` | `alder eval examples/todos -` prints exactly `<value>` (the rest of the fence line) |
 | `alder error=<CODE> "<text>"` | compiling (or, for expressions, evaluating) the block reports diagnostic `<CODE>` in the block itself, its message containing `<text>` (optional) |
 | `alder part=<Module>` | one piece of a module shown piece by piece (the tour's `Todos.Index`): a chapter's `part=` blocks of one module, consecutive among its `part=` blocks, are joined in order and checked as that module, replacing the example's; when the example has that module, the joined pieces must also equal its file, blank lines aside |
+| ```` ```text command=<state> ```` | a transcript (chapter 15): the first line is `$ alder …`, run in the state's app (`guestbook`, a copy of the scaffold, or an example's name, a copy of `examples/<name>`), which the chapter's commands change in order; a line ending in `<<'EOF'` takes the lines up to `EOF` as standard input; the rest of the block must be what the command prints, standard output then standard error, a line `…` standing for any lines (`TestBook_Commands`) |
+| `alder written=<state>/<path>` (any language) | the file at `<path>` in the state's app as the commands before it left it, byte for byte |
 | `alder part=<example>/<Module>` | the same for a module of another example app, `examples/<example>` (chapter 14's `part=blog/Posts.Index`): the joined pieces are checked as that module in a copy of that example, and must equal its file, blank lines aside. `part=<Module>` alone means `part=todos/<Module>`; every other block is checked against `examples/todos` |
 | `alder fragment` | not checked: a deliberate excerpt, such as one arm of an `update`; listed by `go test -v ./book` |
 

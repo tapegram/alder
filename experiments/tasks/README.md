@@ -14,3 +14,7 @@ failed the hidden test (§4, §7); the Names block now gives `msg Remove` and `m
 Since M11 (book 06, "Rules") a task's Names block may name the declared rules where it names an owned table or a
 role page (`@owner`, `Db.mine`, `Db.getMine`, `Db.updateMine`, `Db.deleteMine`, `Db.insertMine`, `requires user,
 role R`); E10 decides whether it does, and the texts above, as E8/E9 ran them, name none.
+
+Since M12 (book 15) E11, "CLI-only development", consumes the generators instead of free-form edits: `alder new
+page/table/form/msg/capability`, `alder edit table`, `alder fill` (the one free-text channel: one checked expression
+per typed hole) and `alder new admin`/`alder regen admin`, reading their `--json`; the reference's command table lists them.

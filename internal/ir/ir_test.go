@@ -87,9 +87,33 @@ func TestIRGolden(t *testing.T) {
 }
 
 // TestIR_Todos lowers the real example app: it must not panic (a missing recorded type is a
-// checker bug), and its dump is reviewed by hand in testdata/golden/ir_todos.ir.
+// checker bug), and its dump is reviewed by hand in testdata/golden/ir_todos.ir. The admin
+// `alder new admin` generated in it (app/Admin/, book 15) is left out: it is the generator's
+// output, tested by its own goldens, and its pages have no update of their own.
 func TestIR_Todos(t *testing.T) {
-	p := lowerDir(t, "../../examples/todos")
+	dir := t.TempDir()
+	src := "../../examples/todos"
+	err := filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(src, path)
+		if d.IsDir() {
+			if rel == "build" || rel == filepath.Join("app", "Admin") {
+				return filepath.SkipDir
+			}
+			return os.MkdirAll(filepath.Join(dir, rel), 0o755)
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(dir, rel), b, 0o644)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := lowerDir(t, dir)
 	got := Dump(p)
 	compareGolden(t, "../../testdata/golden/ir_todos.ir", got)
 	for _, want := range []string{"(value Todos.Index.view ", "(component Todos.Index.Item ", "(component Layout.Page ",

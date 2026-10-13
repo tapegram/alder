@@ -1,10 +1,12 @@
 (module User)
+(union User.Role (Member) (Admin))
 (record User.User
   (id Text)
   (email Text)
   (name Text)
   (passwordHash Text)
-  (created Time))
+  (created Time)
+  (role Role = (ctor User.Role.Member)))
 (module Layout)
 (component Layout.Page : { title: Text, children: List (Html a) } -> Html a (props)
   (elem html
@@ -21,7 +23,9 @@
       (elem al-page (attr width text "narrow")
         (elem main (hexpr list (field children (var props))))))))
 (module App)
-(record App.Session (user Maybe Text))
+(record App.Session
+  (user Maybe Text)
+  (role User.Role = (ctor User.Role.Member)))
 (union App.Msg (Logout))
 (value App.update : Msg -> Session -> Task Nav (msg session)
   (match union (var msg)
@@ -29,7 +33,9 @@
       (bind task _
         (call (std Session.put)
           (lambda (s : Session)
-            (update (var s) (user (ctor Prelude.Maybe.Nothing)))))
+            (update (var s)
+              (user (ctor Prelude.Maybe.Nothing))
+              (role (ctor User.Role.Member)))))
         (pure task
           (ctor Prelude.Nav.Redirect
             (record (value (page-ref Auth.Login (record Auth.Login.Params))))))))))
@@ -45,7 +51,9 @@
     (test-run
       (call (global App.update)
         (ctor App.Msg.Logout)
-        (record Session (user (ctor Prelude.Maybe.Just (record (value "me")))))))
+        (record Session
+          (user (ctor Prelude.Maybe.Just (record (value "me"))))
+          (role (ctor User.Role.Admin)))))
     (pure task
       (test-eq
         (record (value (field value (var r))) (trace (field trace (var r))))
@@ -58,6 +66,35 @@
                     (record
                       (value (page-ref Auth.Login (record Auth.Login.Params)))))))))
           (trace (list "Session.put")))))))
+(test "Logout makes the role Member" task
+  (bind task me : Text
+    (db-insert User.User
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor User.Role.Admin))))
+    (bind task _
+      (test-login
+        (record Session
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+          (role (ctor User.Role.Admin))))
+      (bind task _
+        (test-get Todos.Index
+          (record Todos.Index.Params (filter (ctor Todo.Filter.All))))
+        (bind task out : { answer: Answer, session: Session, doc: Doc }
+          (test-click App.Logout)
+          (pure task
+            (test-eq
+              (record
+                (out (field answer (var out)))
+                (role (field role (field session (var out)))))
+              (record
+                (out
+                  (ctor Prelude.Answer.Redirected
+                    (record
+                      (value (page-ref Auth.Login (record Auth.Login.Params))))))
+                (role (ctor User.Role.Member))))))))))
 (module Auth.Login)
 (record Auth.Login.Model)
 (record Auth.Login.Credentials (email Text) (password Text))
@@ -80,19 +117,29 @@
             (case Just (bind _m1 value : Text)
               (let id : Text
                 (var _m1)
-                (bind task _
-                  (call (std Session.put)
-                    (lambda (s : App.Session)
-                      (update (var s)
-                        (user
-                          (ctor Prelude.Maybe.Just (record (value (var id))))))))
-                  (pure task
-                    (ctor Prelude.Nav.Redirect
-                      (record
-                        (value
-                          (page-ref Todos.Index
-                            (record Todos.Index.Params
-                              (filter (ctor Todo.Filter.All)))))))))))
+                (bind task found : Maybe User
+                  (db-get User.User (var id))
+                  (let role : User.Role
+                    (call (std Maybe.withDefault)
+                      (ctor User.Role.Member)
+                      (call (std Maybe.map)
+                        (lambda (u : User) (field role (var u)))
+                        (var found)))
+                    (bind task _
+                      (call (std Session.put)
+                        (lambda (s : App.Session)
+                          (update (var s)
+                            (user
+                              (ctor Prelude.Maybe.Just
+                                (record (value (var id)))))
+                            (role (var role)))))
+                      (pure task
+                        (ctor Prelude.Nav.Redirect
+                          (record
+                            (value
+                              (page-ref Todos.Index
+                                (record Todos.Index.Params
+                                  (filter (ctor Todo.Filter.All)))))))))))))
             (case Nothing
               (pure task
                 (ctor Prelude.Nav.Reject
@@ -138,7 +185,11 @@
     (test-fake Auth.Login.Password)
     (bind task me : Text
       (db-insert User.User
-        (record (email "me@example.com") (name "Me") (passwordHash "")))
+        (record
+          (email "me@example.com")
+          (name "Me")
+          (passwordHash "")
+          (role (ctor User.Role.Member))))
       (bind task _
         (test-get Auth.Login (record Params))
         (bind task r : { answer: Answer, session: App.Session, doc: Doc }
@@ -160,17 +211,41 @@
                             (filter (ctor Todo.Filter.All))))))))
                 (user (ctor Prelude.Maybe.Just (record (value (var me)))))
                 (title (ctor Prelude.Maybe.Just (record (value "Todos"))))))))))))
+(test "logging in copies the role from the user's row" task
+  (bind task _
+    (test-fake Auth.Login.Password)
+    (bind task _
+      (db-insert User.User
+        (record
+          (email "admin@example.com")
+          (name "Admin")
+          (passwordHash "")
+          (role (ctor User.Role.Admin))))
+      (bind task _
+        (test-get Auth.Login (record Params))
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+          (test-submit Auth.Login.Credentials Submit
+            (record Credentials (email "admin@example.com") (password "secret")))
+          (pure task
+            (test-eq
+              (field role (field session (var r)))
+              (ctor User.Role.Admin))))))))
 (test "a visitor is sent to log in, and can log out" task
   (bind task me : Text
     (db-insert User.User
-      (record (email "me@example.com") (name "Me") (passwordHash "")))
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor User.Role.Member))))
     (bind task visitor : { answer: Answer, session: App.Session, doc: Doc }
       (test-open Todos.Index
         (record Todos.Index.Params (filter (ctor Todo.Filter.All))))
       (bind task _
         (test-login
           (record App.Session
-            (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+            (role (ctor User.Role.Member))))
         (bind task _
           (test-get Todos.Index
             (record Todos.Index.Params (filter (ctor Todo.Filter.All))))
@@ -274,7 +349,11 @@
 (test "a user with todos cannot be deleted" task
   (bind task me : Text
     (db-insert User.User
-      (record (email "me@example.com") (name "Me") (passwordHash "")))
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor User.Role.Member))))
     (bind task id : Text
       (db-insert Todo.Todo
         (record
@@ -308,7 +387,7 @@
   (Submit SubmitParams)
   (Toggle ToggleParams)
   (Delete DeleteParams))
-(record Todos.Index.Session (user Text))
+(record Todos.Index.Session (user Text) (role User.Role))
 (value Todos.Index.load : Params -> Session -> Query Model (params session)
   (bind query todos : List Todo
     (db-select Todo.Todo
@@ -431,7 +510,11 @@
 (test "Toggle flips done" task
   (bind task me : Text
     (db-insert User.User
-      (record (email "me@example.com") (name "Me") (passwordHash "")))
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor User.Role.Member))))
     (bind task id : Text
       (db-insert Todo.Todo
         (record
@@ -442,13 +525,14 @@
       (bind task _
         (test-login
           (record App.Session
-            (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+            (role (ctor User.Role.Member))))
         (bind task r : { value: Result Text Nav, trace: List Text }
           (test-run
             (call (global Todos.Index.update)
               (ctor Todos.Index.Msg.Toggle (record ToggleParams (id (var id))))
               (record Model (filter (ctor Todo.Filter.All)) (todos (list)))
-              (record Session (user (var me)))))
+              (record Session (user (var me)) (role (ctor User.Role.Member)))))
           (bind task after : Maybe Todo
             (db-get Todo.Todo (var id))
             (let done : Maybe Bool
@@ -464,7 +548,11 @@
 (test "Toggle by another user is not found" task
   (bind task me : Text
     (db-insert User.User
-      (record (email "me@example.com") (name "Me") (passwordHash "")))
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor User.Role.Member))))
     (bind task id : Text
       (db-insert Todo.Todo
         (record
@@ -475,13 +563,15 @@
       (bind task _
         (test-login
           (record App.Session
-            (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+            (role (ctor User.Role.Member))))
         (bind task _
           (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
           (bind task _
             (test-login
               (record App.Session
-                (user (ctor Prelude.Maybe.Just (record (value "someone-else"))))))
+                (user (ctor Prelude.Maybe.Just (record (value "someone-else"))))
+                (role (ctor User.Role.Member))))
             (bind task r : { answer: Answer, session: App.Session, doc: Doc }
               (test-click Todos.Index.Toggle
                 (record ToggleParams (id (var id))))
@@ -501,7 +591,11 @@
 (test "Delete by another user is not found" task
   (bind task me : Text
     (db-insert User.User
-      (record (email "me@example.com") (name "Me") (passwordHash "")))
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor User.Role.Member))))
     (bind task id : Text
       (db-insert Todo.Todo
         (record
@@ -512,13 +606,15 @@
       (bind task _
         (test-login
           (record App.Session
-            (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+            (role (ctor User.Role.Member))))
         (bind task _
           (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
           (bind task _
             (test-login
               (record App.Session
-                (user (ctor Prelude.Maybe.Just (record (value "someone-else"))))))
+                (user (ctor Prelude.Maybe.Just (record (value "someone-else"))))
+                (role (ctor User.Role.Member))))
             (bind task r : { answer: Answer, session: App.Session, doc: Doc }
               (test-click Todos.Index.Delete
                 (record DeleteParams (id (var id))))
@@ -538,11 +634,16 @@
 (test "adding a todo through the page" task
   (bind task me : Text
     (db-insert User.User
-      (record (email "me@example.com") (name "Me") (passwordHash "")))
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor User.Role.Member))))
     (bind task _
       (test-login
         (record App.Session
-          (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+          (role (ctor User.Role.Member))))
       (bind task _
         (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
         (bind task added : { answer: Answer, session: App.Session, doc: Doc }
@@ -573,7 +674,11 @@
 (test "toggling a todo through the page" task
   (bind task me : Text
     (db-insert User.User
-      (record (email "me@example.com") (name "Me") (passwordHash "")))
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor User.Role.Member))))
     (bind task id : Text
       (db-insert Todo.Todo
         (record
@@ -584,7 +689,8 @@
       (bind task _
         (test-login
           (record App.Session
-            (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+            (role (ctor User.Role.Member))))
         (bind task _
           (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
           (bind task r : { answer: Answer, session: App.Session, doc: Doc }
@@ -603,7 +709,11 @@
 (test "a stranger cannot see my todo" task
   (bind task me : Text
     (db-insert User.User
-      (record (email "me@example.com") (name "Me") (passwordHash "")))
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor User.Role.Member))))
     (bind task id : Text
       (db-insert Todo.Todo
         (record
@@ -614,7 +724,8 @@
       (bind task _
         (test-login
           (record App.Session
-            (user (ctor Prelude.Maybe.Just (record (value "someone-else"))))))
+            (user (ctor Prelude.Maybe.Just (record (value "someone-else"))))
+            (role (ctor User.Role.Member))))
         (bind task page : { model: Model, session: App.Session, doc: Doc }
           (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
           (bind task show : { answer: Answer, session: App.Session, doc: Doc }
@@ -628,7 +739,11 @@
 (test "Delete removes the todo" task
   (bind task me : Text
     (db-insert User.User
-      (record (email "me@example.com") (name "Me") (passwordHash "")))
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor User.Role.Member))))
     (bind task id : Text
       (db-insert Todo.Todo
         (record
@@ -639,13 +754,14 @@
       (bind task _
         (test-login
           (record App.Session
-            (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+            (role (ctor User.Role.Member))))
         (bind task r : { value: Result Text Nav, trace: List Text }
           (test-run
             (call (global Todos.Index.update)
               (ctor Todos.Index.Msg.Delete (record DeleteParams (id (var id))))
               (record Model (filter (ctor Todo.Filter.All)) (todos (list)))
-              (record Session (user (var me)))))
+              (record Session (user (var me)) (role (ctor User.Role.Member)))))
           (bind task after : Maybe Todo
             (db-get Todo.Todo (var id))
             (pure task
@@ -664,7 +780,11 @@
 (test "the newest todo is listed first" task
   (bind task me : Text
     (db-insert User.User
-      (record (email "me@example.com") (name "Me") (passwordHash "")))
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor User.Role.Member))))
     (bind task _
       (db-insert Todo.Todo
         (record
@@ -682,7 +802,8 @@
         (bind task _
           (test-login
             (record App.Session
-              (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+              (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+              (role (ctor User.Role.Member))))
           (bind task page : { model: Model, session: App.Session, doc: Doc }
             (test-get Todos.Index
               (record Params (filter (ctor Todo.Filter.All))))
@@ -693,10 +814,18 @@
 (test "Db.mine is what Me sees" task
   (bind task me : Text
     (db-insert User.User
-      (record (email "me@example.com") (name "Me") (passwordHash "")))
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor User.Role.Member))))
     (bind task other : Text
       (db-insert User.User
-        (record (email "other@example.com") (name "Other") (passwordHash "")))
+        (record
+          (email "other@example.com")
+          (name "Other")
+          (passwordHash "")
+          (role (ctor User.Role.Member))))
       (bind task _
         (db-insert Todo.Todo
           (record
@@ -721,7 +850,8 @@
             (bind task _
               (test-login
                 (record App.Session
-                  (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+                  (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+                  (role (ctor User.Role.Member))))
               (bind task r : { value: Result Text Int, trace: List Text }
                 (test-run
                   (bind task n : Int
@@ -741,7 +871,7 @@
 (record Todos.Show.Params (id Text))
 (record Todos.Show.SaveParams (form EditTodo))
 (union Todos.Show.Msg (Save SaveParams) (Delete))
-(record Todos.Show.Session (user Text))
+(record Todos.Show.Session (user Text) (role User.Role))
 (value Todos.Show.load : Params -> Session -> Query Model (params session)
   (bind query todo : Todo
     (db-get-mine Todo.Todo (field id (var params)))
@@ -803,7 +933,11 @@
 (test "a visitor is sent to log in from a todo" task
   (bind task me : Text
     (db-insert User.User
-      (record (email "me@example.com") (name "Me") (passwordHash "")))
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor User.Role.Member))))
     (bind task id : Text
       (db-insert Todo.Todo
         (record
@@ -821,7 +955,11 @@
 (test "saving changes the title and the due date" task
   (bind task me : Text
     (db-insert User.User
-      (record (email "me@example.com") (name "Me") (passwordHash "")))
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor User.Role.Member))))
     (bind task id : Text
       (db-insert Todo.Todo
         (record
@@ -832,7 +970,8 @@
       (bind task _
         (test-login
           (record App.Session
-            (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+            (role (ctor User.Role.Member))))
         (bind task _
           (test-get Todos.Show (record Params (id (var id))))
           (bind task r : { answer: Answer, session: App.Session, doc: Doc }
@@ -867,7 +1006,11 @@
 (test "deleting from the todo's page" task
   (bind task me : Text
     (db-insert User.User
-      (record (email "me@example.com") (name "Me") (passwordHash "")))
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor User.Role.Member))))
     (bind task id : Text
       (db-insert Todo.Todo
         (record
@@ -878,7 +1021,8 @@
       (bind task _
         (test-login
           (record App.Session
-            (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+            (role (ctor User.Role.Member))))
         (bind task _
           (test-get Todos.Show (record Params (id (var id))))
           (bind task r : { answer: Answer, session: App.Session, doc: Doc }
@@ -906,7 +1050,7 @@
   (id id)
   (created created)
   (unique email)
-  (insert email name passwordHash))
+  (insert email name passwordHash role))
 (table Todo.Todo
   (id id)
   (created created)
