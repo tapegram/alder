@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"alder/rt/al"
 	"alder/rt/datastar"
 	"alder/rt/eff"
 	"alder/rt/html"
@@ -171,8 +172,13 @@ func TestRouter_StaticAndScript(t *testing.T) {
 	h := NewRouter(nil, testOpts(func(o *Options) { o.StaticDir = dir }))
 
 	w := serve(h, httptest.NewRequest("GET", datastar.ScriptPath, nil))
-	if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "application/javascript") || w.Body.Len() == 0 {
-		t.Fatalf("script: %d %q", w.Code, w.Header().Get("Content-Type"))
+	if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "application/javascript") || w.Body.Len() == 0 ||
+		w.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" || !strings.Contains(datastar.ScriptPath, datastar.Version) {
+		t.Fatalf("script %s: %d %q %q", datastar.ScriptPath, w.Code, w.Header().Get("Content-Type"), w.Header().Get("Cache-Control"))
+	}
+	// The unversioned path of earlier releases is gone: an ordinary unknown path.
+	if w := serve(h, httptest.NewRequest("GET", "/_alder/datastar.js", nil)); w.Code != 404 {
+		t.Fatalf("old script path: %d", w.Code)
 	}
 	w = serve(h, httptest.NewRequest("GET", "/static/app.css", nil))
 	if w.Code != 200 || w.Body.String() != "body{color:red}" || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/css") {
@@ -184,17 +190,40 @@ func TestRouter_StaticAndScript(t *testing.T) {
 	if w := serve(h, httptest.NewRequest("GET", "/static/img/a.txt", nil)); w.Code != 200 || w.Body.String() != "a" {
 		t.Fatalf("nested static: %d", w.Code)
 	}
-	// The design system's assets (static/al/, written by every build) change only with the
-	// compiler: immutable, like datastar.js. A missing one is a plain 404.
+	// The design system's assets (static/al/, written by every build) keep their URL across
+	// compiler upgrades: served from the runtime's embedded copy with no-cache and a strong
+	// ETag, so the browser revalidates and gets a 304 while nothing changed. An app's own file
+	// under static/al/ is served like any static file (not immutable); a missing one is a 404.
 	if err := os.MkdirAll(filepath.Join(dir, "al"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "al", "al.css"), []byte(":root{}"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "al", "mine.css"), []byte(".mine{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	css, etag, _ := al.File("al.css")
+	for _, name := range al.Names {
+		w = serve(h, httptest.NewRequest("GET", "/static/al/"+name, nil))
+		if w.Code != 200 || w.Header().Get("Cache-Control") != "no-cache" || !strings.HasPrefix(w.Header().Get("ETag"), `"`) {
+			t.Fatalf("%s: %d %q %q", name, w.Code, w.Header().Get("Cache-Control"), w.Header().Get("ETag"))
+		}
+	}
 	w = serve(h, httptest.NewRequest("GET", "/static/al/al.css", nil))
-	if w.Code != 200 || w.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/css") {
-		t.Fatalf("al.css: %d %q %q", w.Code, w.Header().Get("Cache-Control"), w.Header().Get("Content-Type"))
+	if w.Header().Get("ETag") != etag || w.Body.String() != string(css) || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/css") {
+		t.Fatalf("al.css: %q %q (%d bytes)", w.Header().Get("ETag"), w.Header().Get("Content-Type"), w.Body.Len())
+	}
+	req := httptest.NewRequest("GET", "/static/al/al.css", nil)
+	req.Header.Set("If-None-Match", etag)
+	if w := serve(h, req); w.Code != http.StatusNotModified || w.Body.Len() != 0 {
+		t.Fatalf("If-None-Match: %d (%d bytes)", w.Code, w.Body.Len())
+	}
+	req = httptest.NewRequest("GET", "/static/al/al.css", nil)
+	req.Header.Set("If-None-Match", `"stale"`)
+	if w := serve(h, req); w.Code != 200 || w.Body.Len() != len(css) {
+		t.Fatalf("stale If-None-Match: %d", w.Code)
+	}
+	w = serve(h, httptest.NewRequest("GET", "/static/al/mine.css", nil))
+	if w.Code != 200 || w.Body.String() != ".mine{}" || w.Header().Get("Cache-Control") != "" || w.Header().Get("ETag") != "" {
+		t.Fatalf("app file under al/: %d %q %q", w.Code, w.Header().Get("Cache-Control"), w.Header().Get("ETag"))
 	}
 	if w := serve(h, httptest.NewRequest("GET", "/static/al/missing.css", nil)); w.Code != 404 || w.Header().Get("Cache-Control") != "" {
 		t.Fatalf("missing al file: %d %q", w.Code, w.Header().Get("Cache-Control"))

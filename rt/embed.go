@@ -5,7 +5,7 @@ import "embed"
 // Files is the runtime as the compiler ships it: every Go source file of the module's rt/ tree
 // (not the tests, not testdata), the Datastar script with its VERSION, the `alder-ui` design
 // system (al/: its stylesheet, its Custom Elements Manifest, which the checker reads through
-// internal/elements, and its VERSION), and the module files of the runtime's own module "alder"
+// internal/elements, its VERSION, and al.go, which embeds the first two for rt/web to serve), and the module files of the runtime's own module "alder"
 // (dist/go.mod.txt, dist/go.sum.txt: a directory holding a file named go.mod would be another
 // module, which go:embed refuses). buildkit.WriteRuntime writes it next to every generated app,
 // so a build needs no checkout of the repository.
@@ -16,7 +16,7 @@ import "embed"
 // rt does not embed anything.
 //
 //go:embed core.go nav.go show.go tether.go
-//go:embed al/al.css al/custom-elements.json al/VERSION
+//go:embed al/al.go al/al.css al/custom-elements.json al/VERSION
 //go:embed datastar/datastar.go datastar/datastar.js datastar/VERSION
 //go:embed db/encode.go db/migrate.go db/sqlite.go db/store.go db/table.go
 //go:embed eff/eff.go eff/run.go

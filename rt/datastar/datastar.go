@@ -18,14 +18,16 @@ import (
 // version in datastar.js's first line (checked by the tests).
 const Version = "v1.0.0"
 
-// ScriptPath is where Handler is mounted by rt/web.
-const ScriptPath = "/_alder/datastar.js"
+// ScriptPath is where Handler is mounted by rt/web: versioned, so the immutable cache policy is
+// safe (a new Datastar is a new URL). The unversioned /_alder/datastar.js of earlier releases is
+// gone: a request for it is an ordinary unknown path (404).
+const ScriptPath = "/_alder/datastar-" + Version + ".js"
 
 //go:embed datastar.js
 var script []byte
 
 // Handler serves the embedded datastar.js with a long-lived, immutable cache policy (the
-// content changes only with Version). Mount it at ScriptPath.
+// content changes only with Version, which ScriptPath carries). Mount it at ScriptPath.
 func Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
@@ -35,8 +37,8 @@ func Handler() http.Handler {
 	})
 }
 
-// ScriptTag is the <script type="module" src="/_alder/datastar.js"></script> element a page's
-// <head> carries.
+// ScriptTag is the <script type="module" src="/_alder/datastar-v1.0.0.js"></script> element (the
+// path is ScriptPath) a page's <head> carries.
 func ScriptTag() html.Node {
 	return html.El("script", []html.Attr{html.A("type", "module"), html.A("src", ScriptPath)})
 }

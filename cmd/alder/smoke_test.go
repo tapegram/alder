@@ -63,7 +63,7 @@ func TestBuild_BinarySmoke(t *testing.T) {
 	if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "text/html; charset=utf-8" {
 		t.Fatalf("GET /login = %d %q:\n%s", res.StatusCode, res.Header.Get("Content-Type"), body)
 	}
-	for _, f := range []string{`<form method="post" action="/_m/Auth.Login/Submit"`, `type="password"`, `src="/_alder/datastar.js"`} {
+	for _, f := range []string{`<form method="post" action="/_m/Auth.Login/Submit"`, `type="password"`, `src="/_alder/datastar-v1.0.0.js"`} {
 		if !strings.Contains(body, f) {
 			t.Fatalf("GET /login lacks %q:\n%s", f, body)
 		}

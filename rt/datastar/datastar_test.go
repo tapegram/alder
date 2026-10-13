@@ -64,7 +64,7 @@ func TestVersionMatchesFile(t *testing.T) {
 }
 
 func TestScriptTag(t *testing.T) {
-	if got := html.Render(ScriptTag()); got != `<script type="module" src="/_alder/datastar.js"></script>` {
+	if got := html.Render(ScriptTag()); got != `<script type="module" src="/_alder/datastar-v1.0.0.js"></script>` {
 		t.Fatal(got)
 	}
 }

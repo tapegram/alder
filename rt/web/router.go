@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"runtime/debug"
 	"slices"
 	"strconv"
@@ -20,6 +19,7 @@ import (
 	"time"
 
 	rtpkg "alder/rt"
+	"alder/rt/al"
 	"alder/rt/datastar"
 	"alder/rt/eff"
 	"alder/rt/html"
@@ -114,8 +114,8 @@ type segment struct {
 }
 
 // NewRouter returns the app's http.Handler. For each request it: recovers panics (→ 500 via
-// ErrorDoc); serves the Datastar script at datastar.ScriptPath and Options.StaticDir under
-// /static/; matches method and pattern, the most specific pattern first (a literal segment
+// ErrorDoc); serves the Datastar script at datastar.ScriptPath (versioned, immutable),
+// Options.StaticDir under /static/, and the design system at /static/al/ (no-cache, ETag); matches method and pattern, the most specific pattern first (a literal segment
 // before a parameter, left to right; equally specific ones in declaration order), a trailing
 // slash tolerated (anything unmatched, including a GET to a POST-only path, is a 404 rendered
 // with NotFoundDoc); reads a POST body
@@ -672,18 +672,22 @@ func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if strings.HasPrefix(r.URL.Path, designSystemPrefix) {
-		rel := filepath.FromSlash(strings.TrimPrefix(r.URL.Path, staticPrefix))
-		if st, err := os.Stat(filepath.Join(rt.opts.StaticDir, rel)); err == nil && st.Mode().IsRegular() {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		}
+	if data, etag, ok := al.File(strings.TrimPrefix(r.URL.Path, designSystemPrefix)); ok && strings.HasPrefix(r.URL.Path, designSystemPrefix) {
+		h := w.Header()
+		h.Set("Cache-Control", "no-cache")
+		h.Set("ETag", etag)
+		http.ServeContent(w, r, r.URL.Path, time.Time{}, bytes.NewReader(data)) // 304 on If-None-Match
+		return
 	}
 	rt.static.ServeHTTP(w, r)
 }
 
 // designSystemPrefix is where every build writes the `alder-ui` assets (buildkit
-// WriteDesignSystem). They change only with the compiler, as datastar.js does, and are served
-// with the same immutable cache policy.
+// WriteDesignSystem). Its two files (al.Names) are served from the runtime's embedded copy,
+// the same bytes, with `Cache-Control: no-cache` and a strong ETag hashed from them once:
+// the URL stays /static/al/al.css across compiler upgrades, so a browser must revalidate (a
+// 304 when nothing changed) rather than keep a stale stylesheet for a year. Any other file
+// there is the app's and is served like the rest of static/.
 const designSystemPrefix = staticPrefix + "al/"
 
 // filesOnly is a FileSystem in which directories do not exist: no listings, no index pages.

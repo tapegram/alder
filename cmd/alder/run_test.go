@@ -263,7 +263,7 @@ const wantReload = "event: datastar-patch-elements\ndata: selector body\ndata: m
 func TestRun_ServesAndInjectsSubscriber(t *testing.T) {
 	r := startRun(t)
 	body := get(t, r.base+"/login")
-	for _, want := range []string{`<body><div id="_alder_errors" data-ignore-morph></div><div data-init=`, "/_alder/datastar.js", `type="password"`} {
+	for _, want := range []string{`<body><div id="_alder_errors" data-ignore-morph></div><div data-init=`, "/_alder/datastar-v1.0.0.js", `type="password"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("GET /login lacks %q:\n%s", want, body)
 		}
@@ -331,7 +331,7 @@ func TestRun_EditReloads(t *testing.T) {
 }
 
 // The child serves the build's static directory: the app's static/ and the design system's
-// assets (/static/al/al.css, immutable). Saving a static file copies it again and reloads,
+// assets (/static/al/al.css, no-cache with an ETag). Saving a static file copies it again and reloads,
 // without a rebuild (the generation is unchanged).
 func TestRun_ServesStaticAndDesignSystem(t *testing.T) {
 	r := startRun(t)
@@ -342,7 +342,7 @@ func TestRun_ServesStaticAndDesignSystem(t *testing.T) {
 	}
 	b, _ := io.ReadAll(res.Body)
 	res.Body.Close()
-	if res.StatusCode != 200 || res.Header.Get("Cache-Control") != "public, max-age=31536000, immutable" || !strings.Contains(string(b), "alder-ui") {
+	if res.StatusCode != 200 || res.Header.Get("Cache-Control") != "no-cache" || res.Header.Get("ETag") == "" || !strings.Contains(string(b), "alder-ui") {
 		t.Fatalf("GET /static/al/al.css = %d %q %.60q", res.StatusCode, res.Header.Get("Cache-Control"), b)
 	}
 	get(t, r.base+"/static/al/custom-elements.json")
@@ -469,7 +469,7 @@ func TestRun_RuntimeCrashThenRecovers(t *testing.T) {
 		t.Fatalf("overlay lacks the crash message:\n%s", overlay)
 	}
 	body := getStatus(t, r.base+"/login", http.StatusBadGateway)
-	for _, want := range []string{`<div id="_alder_errors" data-ignore-morph><pre class="_alder-errors">alder run: the app exited (signal: killed)`, "/_alder/datastar.js"} {
+	for _, want := range []string{`<div id="_alder_errors" data-ignore-morph><pre class="_alder-errors">alder run: the app exited (signal: killed)`, "/_alder/datastar-v1.0.0.js"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the 502 page lacks %q:\n%s", want, body)
 		}
