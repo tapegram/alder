@@ -306,3 +306,54 @@ test "the list counts each post's words" = {
 		t.Errorf("regen --all: exit %d\n%s%s", code, out, errs)
 	}
 }
+
+// TestAdmin_Columns: the admin of tables beyond the fixture's: a Date, an Int with a default, a
+// Float, a Maybe Text, a Maybe reference that is set to Nothing (`@setNull`), a Time no form
+// edits (the insert's time), a union of another module; and a `@restrict` reference down a
+// `@cascade` (a Flag on a Comment, which goes with its Post), which refuses the Post's delete
+// too. The app checks, its tests pass, and they kill the admin's mutants.
+func TestAdmin_Columns(t *testing.T) {
+	needGoTool(t)
+	if testing.Short() {
+		t.Skip("runs every mutant")
+	}
+	dir := genApp(t, "fixture")
+	for _, args := range [][]string{
+		{"new", "table", "Event", "title:Text.NonEmpty", "when:Date", "count:Int=0", "price:Float", "note:Maybe Text", "post:Maybe Post.PostId@ref=Post@setNull", "at:Time", "kind:Post.Status"},
+		{"new", "table", "Flag", "comment:Comment.CommentId@ref=Comment", "reason:Text"},
+		{"new", "admin"},
+	} {
+		if code, out, errs := alderIn(t, dir, "", args...); code != 0 {
+			t.Fatalf("alder %s: exit %d\n%s%s", strings.Join(args, " "), code, out, errs)
+		}
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Post", "Delete.alder"))
+	for _, want := range []string{
+		"let flagsOfComments <- Db.from Flag |> Db.where (Flag.comment.in (List.map (\\row -> row.id) commentsRows)) |> Db.count",
+		"let events <- Db.from Event |> Db.where (Event.post.eq (Just params.id)) |> Db.count",
+		"blockers model = model.flagsOfComments + model.tags",
+		`test "a post with comments that flags refer to is not deleted"`,
+		"<dt>Events that lose their post</dt>",
+	} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("Admin.Post.Delete lacks %q:\n%s", want, b)
+		}
+	}
+	b, _ = os.ReadFile(filepath.Join(dir, "app", "Admin", "Event", "New.alder"))
+	for _, want := range []string{"let now <- Time.now", "at: now", `<al-input field="count" label="Count" value={0} />`, `<al-select field="post" label="Post" options=`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("Admin.Event.New lacks %q:\n%s", want, b)
+		}
+	}
+	var out, errb bytes.Buffer
+	code := runTestTo([]string{dir, "--mutate"}, &out, &errb)
+	m := scoreRe.FindStringSubmatch(out.String())
+	if code != 0 || m == nil {
+		t.Fatalf("alder test --mutate: exit %d\n%s%s", code, out.String(), errb.String())
+	}
+	t.Logf("%s", m[0])
+	if m[4] < "0.95" {
+		_, survivors, _ := strings.Cut(out.String(), "survived:\n")
+		t.Errorf("score %s < 0.95; survivors:\n%s", m[4], survivors)
+	}
+}

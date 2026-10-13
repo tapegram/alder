@@ -188,7 +188,8 @@ type adminTable struct {
 type referrer struct {
 	t     *Table
 	col   *Column
-	field string // the Delete page's model field counting them: "comments"
+	field string    // the Delete page's model field counting them: "comments"
+	via   *referrer // for a reference down a chain, the @cascade reference whose rows it refers to
 }
 
 func (g *adminGen) table(t *Table) *adminTable {
@@ -210,8 +211,13 @@ func (g *adminGen) table(t *Table) *adminTable {
 			}
 		}
 	}
-	// the columns that refer to t, named after their table (and their column, when the table
-	// refers to t twice)
+	at.referrer = g.referrersOf(t)
+	return at
+}
+
+// referrersOf are the columns that refer to t, named after their table (and their column,
+// when the table refers to t twice).
+func (g *adminGen) referrersOf(t *Table) []*referrer {
 	count := map[string]int{}
 	var refs []*referrer
 	for _, other := range g.p.Tables {
@@ -228,8 +234,32 @@ func (g *adminGen) table(t *Table) *adminTable {
 			r.field += UpperFirst(r.col.Name)
 		}
 	}
-	at.referrer = refs
-	return at
+	return refs
+}
+
+// chained are the `@restrict` references to the rows a `@cascade` reference r deletes with
+// its row: they refuse that row's delete as well (chapter 8: the blocking row can be further
+// down a chain). One step down the chain; r's own table referring to itself is left out.
+func (g *adminGen) chained(r *referrer, top *Table) []*referrer {
+	if r.col.OnDelete != "cascade" || r.t == top {
+		return nil
+	}
+	var out []*referrer
+	for _, c := range g.referrersOf(r.t) {
+		if c.col.OnDelete == "restrict" && c.t != r.t {
+			out = append(out, &referrer{t: c.t, col: c.col, field: c.field + "Of" + UpperFirst(r.field)})
+		}
+	}
+	return out
+}
+
+// eqID is the condition that column c of table t holds the id in expr: `T.c.eq id`, or with a
+// Maybe column `T.c.eq (Just id)`.
+func eqID(t *Table, c *Column, expr string) string {
+	if c.Maybe {
+		return t.Name + "." + c.Name + ".eq (Just " + expr + ")"
+	}
+	return t.Name + "." + c.Name + ".eq " + expr
 }
 
 // file adds a generated file: the header, the module line, the imports region, then body.
@@ -426,7 +456,7 @@ func (g *adminGen) gateTests(mod string, imports *importSet, pageOf func(tb *tes
 		tb.login(role)
 		page := pageOf(tb)
 		tb.let("let r <- Test.open (%s)", page)
-		tests = append(tests, TestData{Name: quote("a " + role + " gets no page"), Lines: tb.lines, Result: "r.answer == PageMissing"})
+		tests = append(tests, TestData{Name: quote(article(role) + " gets no page"), Lines: tb.lines, Result: "r.answer == PageMissing"})
 		break
 	}
 	return tests
@@ -869,7 +899,7 @@ func (g *adminGen) newPage(at *adminTable) {
 	if len(at.editable) == 0 {
 		lhs, rhs = lhs[:1], rhs[:1]
 	}
-	tests = append(tests, TestData{Name: quote("creating a " + at.noun + " adds it, with the values submitted"), Lines: tb.lines,
+	tests = append(tests, TestData{Name: quote("creating " + article(at.noun) + " adds it, with the values submitted"), Lines: tb.lines,
 		Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
 	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return mod + " {}" })...)
 	b.WriteString(testsText(tests))
@@ -886,28 +916,27 @@ func valueOf(values []string, name string) string {
 	return ""
 }
 
-// optionRows inserts, for each reference of at's forms, a second row of the referenced table
-// (after the one the memo keeps), and returns the comparisons that the select offers both, in
-// label order: the left and right sides' fields.
+// optionRows inserts rows of each table at's forms refer to until there are two (the first the
+// one the memo keeps, so the row a test inserted before refers to it), and returns the
+// comparisons that each select offers them, in label order (after an empty option for a
+// Maybe): the left and right sides' fields.
 func (g *adminGen) optionRows(tb *testBuilder, at *adminTable) [2][]string {
 	var out [2][]string
-	done := map[string]bool{}
 	for _, c := range at.refs {
 		rt := g.p.TableNamed(c.Ref)
-		if !done[rt.Module] {
-			done[rt.Module] = true
-			first := tb.columnValue(at.t, c, 1) // the memo's row (inserted now, if none was)
-			_ = first
-			tb.insertRow(rt, "", nil, false)
+		for len(tb.rows[rt.Module]) < 2 {
+			tb.insertRow(rt, "", nil, true)
 		}
 		var labels []string
-		for i, r := range tb.rows[rt.Module] {
-			_ = r
+		if c.Maybe {
+			labels = append(labels, `""`)
+		}
+		for i := range tb.rows[rt.Module] {
 			labels = append(labels, quote(rawText(rt.Label(), i+1)))
 		}
 		if rt.Label().ID {
 			out[0] = append(out[0], fmt.Sprintf("%s: Test.count \"select[name=%s] option\" page.doc", optionsField(c), c.Name))
-			out[1] = append(out[1], fmt.Sprintf("%s: %d", optionsField(c), len(tb.rows[rt.Module])))
+			out[1] = append(out[1], fmt.Sprintf("%s: %d", optionsField(c), len(labels)))
 			continue
 		}
 		out[0] = append(out[0], fmt.Sprintf("%s: Test.texts \"select[name=%s] option\" page.doc", optionsField(c), c.Name))
@@ -1070,29 +1099,49 @@ func (g *adminGen) delete(at *adminTable) {
 
 	var model, loads, counts, blockers []string
 	fields := []string{"row: row"}
+	var chains []*referrer // the @restrict references down a @cascade, each counted
 	for _, r := range at.referrer {
 		imports.add(r.t.Module)
 		model = append(model, r.field+": Int,")
-		loads = append(loads, fmt.Sprintf("let %s <- Db.from %s |> Db.where (%s.%s.eq %sparams.id) |> Db.count", r.field, r.t.Name, r.t.Name, r.col.Name, map[bool]string{true: "Just ", false: ""}[r.col.Maybe]))
-		if r.col.Maybe {
-			loads[len(loads)-1] = strings.Replace(loads[len(loads)-1], "Just params.id", "(Just params.id)", 1)
+		sel := fmt.Sprintf("Db.from %s |> Db.where (%s)", r.t.Name, eqID(r.t, r.col, "params.id"))
+		chained := g.chained(r, t)
+		if len(chained) == 0 {
+			loads = append(loads, fmt.Sprintf("let %s <- %s |> Db.count", r.field, sel))
+			fields = append(fields, r.field+": "+r.field)
+		} else { // the rows themselves: the rows that refer to them are counted too
+			loads = append(loads, fmt.Sprintf("let %sRows <- %s |> Db.all", r.field, sel))
+			fields = append(fields, r.field+": List.length "+r.field+"Rows")
 		}
-		fields = append(fields, r.field+": "+r.field)
 		what := map[string]string{
 			"cascade":  "%s deleted with it",
-			"setNull":  "%s that lose their " + Humanize(r.col.Name),
+			"setNull":  "%s that lose their " + strings.ToLower(Humanize(r.col.Name)),
 			"restrict": "%s that keep it from being deleted",
 		}[r.col.OnDelete]
 		counts = append(counts, "<dt>"+fmt.Sprintf(what, UpperFirst(Plural(strings.ToLower(Humanize(r.t.Name)))))+"</dt>", fmt.Sprintf("<dd id=%s>{Text.fromInt model.%s}</dd>", quote(r.field), r.field))
 		if r.col.OnDelete == "restrict" {
 			blockers = append(blockers, "model."+r.field)
 		}
+		for _, c := range chained {
+			imports.add(c.t.Module)
+			ids := "List.map (\\row -> row." + r.t.IDField + ") " + r.field + "Rows"
+			if c.col.Maybe {
+				ids = "List.map (\\row -> Just row." + r.t.IDField + ") " + r.field + "Rows"
+			}
+			model = append(model, c.field+": Int,")
+			loads = append(loads, fmt.Sprintf("let %s <- Db.from %s |> Db.where (%s.%s.in (%s)) |> Db.count", c.field, c.t.Name, c.t.Name, c.col.Name, ids))
+			fields = append(fields, c.field+": "+c.field)
+			counts = append(counts, "<dt>"+UpperFirst(Plural(strings.ToLower(Humanize(c.t.Name))))+" of those "+Plural(strings.ToLower(Humanize(r.t.Name)))+" that keep it from being deleted</dt>",
+				fmt.Sprintf("<dd id=%s>{Text.fromInt model.%s}</dd>", quote(c.field), c.field))
+			blockers = append(blockers, "model."+c.field)
+			chains = append(chains, &referrer{t: c.t, col: c.col, field: c.field})
+			chains[len(chains)-1].via = r
+		}
 	}
 	loads = append([]string{"let found <- Db.get " + t.Name + " params.id"}, loads...)
 	loads = append(loads, "match found {", "  Just row -> Query.succeed { "+strings.Join(fields, ", ")+" },", "  Nothing -> Query.notFound,", "}")
 	block := []string{
-		"-- blockers counts the rows that keep this one from being deleted: the `@restrict` references to",
-		"-- it, which the database would refuse the delete for.",
+		"-- blockers counts the rows that keep this one from being deleted, which the database would",
+		"-- refuse the delete for: the `@restrict` references to it, or to a row deleted with it.",
 		"blockers : Model -> Int",
 		"blockers model = 0",
 	}
@@ -1162,7 +1211,7 @@ update msg model session = match msg {
 		lhs = append(lhs, "kept: Maybe.map (\\row -> row."+t.IDField+") kept")
 		rhs = append(rhs, "kept: Just "+other)
 	}
-	tests = append(tests, TestData{Name: quote("deleting a " + at.noun + " nothing refers to"), Lines: tb.lines,
+	tests = append(tests, TestData{Name: quote("deleting " + article(at.noun) + " nothing refers to"), Lines: tb.lines,
 		Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
 
 	// what goes with it: the cascade and setNull references counted, another row's not
@@ -1202,9 +1251,22 @@ update msg model session = match msg {
 		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"id: " + target}))
 		tb.let("let r <- Test.submit Confirm { }")
 		tb.let("let kept <- Db.get %s %s", t.Name, target)
-		tests = append(tests, TestData{Name: quote("a " + at.noun + " that " + Plural(strings.ToLower(Humanize(r.t.Name))) + " refer to is not deleted"), Lines: tb.lines,
+		tests = append(tests, TestData{Name: quote(article(at.noun) + " that " + Plural(strings.ToLower(Humanize(r.t.Name))) + " refer to is not deleted"), Lines: tb.lines,
 			Result: fmt.Sprintf("{ count: Test.text \"#%s\" page.doc, buttons: Test.count \"#delete button\" page.doc, answer: r.answer, kept: Maybe.map (\\row -> row.%s) kept } == { count: Just \"1\", buttons: 0, answer: FormRejected [{ field: \"\", message: %s }], kept: Just %s }",
 				r.field, t.IDField, quote(rejectText(at)), target)})
+	}
+	// a @restrict reference down a @cascade refuses too
+	for _, c := range chains {
+		tb = g.tb(mod, imports, true)
+		target := tb.insertRow(t, "", nil, true)
+		mid := tb.insertRow(c.via.t, "", map[string]string{c.via.col.Name: maybeJust(c.via.col, target)}, false)
+		tb.insertRow(c.t, "_", map[string]string{c.col.Name: maybeJust(c.col, mid)}, false)
+		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"id: " + target}))
+		tb.let("let r <- Test.submit Confirm { }")
+		tb.let("let kept <- Db.get %s %s", t.Name, target)
+		tests = append(tests, TestData{Name: quote(article(at.noun) + " with " + Plural(strings.ToLower(Humanize(c.via.t.Name))) + " that " + Plural(strings.ToLower(Humanize(c.t.Name))) + " refer to is not deleted"), Lines: tb.lines,
+			Result: fmt.Sprintf("{ count: Test.text \"#%s\" page.doc, buttons: Test.count \"#delete button\" page.doc, answer: r.answer, kept: Maybe.map (\\row -> row.%s) kept } == { count: Just \"1\", buttons: 0, answer: FormRejected [{ field: \"\", message: %s }], kept: Just %s }",
+				c.field, t.IDField, quote(rejectText(at)), target)})
 	}
 	tests = append(tests, g.missingTest(at, mod, imports))
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
@@ -1223,6 +1285,15 @@ func indentAll(lines []string, prefix string) []string {
 	return out
 }
 
+// article is noun after "a" or "an" ("an" before a, e, i, o; "a user", as most words in u
+// sound).
+func article(noun string) string {
+	if noun != "" && strings.ContainsRune("aeioAEIO", rune(noun[0])) {
+		return "an " + noun
+	}
+	return "a " + noun
+}
+
 // rejectText is the Delete page's refusal.
 func rejectText(at *adminTable) string {
 	return "This " + at.noun + " cannot be deleted while other rows refer to it."
@@ -1236,10 +1307,19 @@ func maybeJust(c *Column, v string) string {
 	return v
 }
 
-// referrers inserts one row of every table that refers to at's table, referring to row.
+// referrers inserts one row of every table that refers to at's table, referring to row, and
+// one of every table down a chain that refers to those.
 func (g *adminGen) referrers(tb *testBuilder, at *adminTable, row, _ string) {
 	for _, r := range at.referrer {
-		tb.insertRow(r.t, "_", map[string]string{r.col.Name: maybeJust(r.col, row)}, false)
+		chained := g.chained(r, at.t)
+		if len(chained) == 0 {
+			tb.insertRow(r.t, "_", map[string]string{r.col.Name: maybeJust(r.col, row)}, false)
+			continue
+		}
+		mid := tb.insertRow(r.t, "", map[string]string{r.col.Name: maybeJust(r.col, row)}, false)
+		for _, c := range chained {
+			tb.insertRow(c.t, "_", map[string]string{c.col.Name: maybeJust(c.col, mid)}, false)
+		}
 	}
 }
 

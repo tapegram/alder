@@ -34,8 +34,8 @@ load params session = {
 }
 
 -- @admin begin blockers
--- blockers counts the rows that keep this one from being deleted: the `@restrict` references to
--- it, which the database would refuse the delete for.
+-- blockers counts the rows that keep this one from being deleted, which the database would
+-- refuse the delete for: the `@restrict` references to it, or to a row deleted with it.
 blockers : Model -> Int
 blockers model = model.comments + model.posts
 -- @admin end
