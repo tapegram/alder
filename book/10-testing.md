@@ -67,18 +67,22 @@ same text.
 ## 2. Running the tests
 
 `alder test` checks the app, compiles it with its tests, runs every test
-and prints one line per test. In the repository:
+and prints one line per test. In the repository, the to-do app has 76:
+its own 22, and the 54 of the admin that `alder new admin` generated for
+it (chapter 15). `-run` (section 7) picks out the app's own, by module:
 
 ```text
-$ alder test examples/todos
-ok   App "Logout clears the user and goes to log in"
-ok   Auth.Login "an unknown email is rejected"
-ok   Auth.Login "logging in through the form"
-ok   Auth.Login "a visitor is sent to log in, and can log out"
+$ alder test examples/todos -run '^(App|Auth|Todo)'
 ok   Todo "countOpen ignores done todos"
 ok   Todo "Active keeps only open todos"
 ok   Todo "each filter has its label"
 ok   Todo "a user with todos cannot be deleted"
+ok   App "Logout clears the user and goes to log in"
+ok   App "Logout makes the role Member"
+ok   Auth.Login "an unknown email is rejected"
+ok   Auth.Login "logging in through the form"
+ok   Auth.Login "logging in copies the role from the user's row"
+ok   Auth.Login "a visitor is sent to log in, and can log out"
 ok   Todos.Index "Toggle flips done"
 ok   Todos.Index "Toggle by another user is not found"
 ok   Todos.Index "Delete by another user is not found"
@@ -91,7 +95,7 @@ ok   Todos.Index "Db.mine is what Me sees"
 ok   Todos.Show "a visitor is sent to log in from a todo"
 ok   Todos.Show "saving changes the title and the due date"
 ok   Todos.Show "deleting from the todo's page"
-20 passed, 0 failed
+22 passed, 0 failed
 ```
 
 Each line names the module and the test, and is printed as soon as that
@@ -118,7 +122,7 @@ test "Toggle reads, then writes" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me })
+  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me, role: Member })
   Task.succeed (r.trace == ["Db.get Todo", "Db.update Todo"])
 }
 ```
@@ -127,11 +131,7 @@ In their modules they are written without the `Todo.` and `Todos.Index.`
 prefixes. Both compile; both are wrong:
 
 ```text
-$ alder test examples/todos
-ok   App "Logout clears the user and goes to log in"
-ok   Auth.Login "an unknown email is rejected"
-ok   Auth.Login "logging in through the form"
-ok   Auth.Login "a visitor is sent to log in, and can log out"
+$ alder test examples/todos -run '^(App|Auth|Todo)'
 ok   Todo "countOpen ignores done todos"
 ok   Todo "Active keeps only open todos"
 ok   Todo "each filter has its label"
@@ -139,6 +139,12 @@ ok   Todo "a user with todos cannot be deleted"
 FAIL Todo "an empty list has one open todo"
   left:  0
   right: 1
+ok   App "Logout clears the user and goes to log in"
+ok   App "Logout makes the role Member"
+ok   Auth.Login "an unknown email is rejected"
+ok   Auth.Login "logging in through the form"
+ok   Auth.Login "logging in copies the role from the user's row"
+ok   Auth.Login "a visitor is sent to log in, and can log out"
 ok   Todos.Index "Toggle flips done"
 ok   Todos.Index "Toggle by another user is not found"
 ok   Todos.Index "Delete by another user is not found"
@@ -155,7 +161,7 @@ FAIL Todos.Index "Toggle reads, then writes"
 ok   Todos.Show "a visitor is sent to log in from a todo"
 ok   Todos.Show "saving changes the title and the due date"
 ok   Todos.Show "deleting from the todo's page"
-20 passed, 2 failed
+22 passed, 2 failed
 ```
 
 A failing test is `FAIL`, followed by indented lines that say why:
@@ -223,7 +229,7 @@ test "Toggle flips done" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me })
+  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me, role: Member })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.updateMine Todo"], done: Just True })
@@ -249,8 +255,9 @@ Line by line:
    (`load` is not called; `update` only needs a value of the type), and
    the session. `Todos.Index` `requires user`, so its `Session` is a type
    of its own whose `user` is a `UserId`, not a `Maybe` (chapter 6). The
-   record literal `{ user: me }` is that type because it is
-   written where `update` expects one. Bound to a name first by a `let`
+   record literal `{ user: me, role: Member }` names every field, the
+   role too (a literal gets no defaults: chapter 6, "Rules"), and is that
+   type because it is written where `update` expects one. Bound to a name first by a `let`
    without an annotation, it would be a plain record, which `update`
    does not accept. This record is `update`'s `session` argument, which
    the page's own code may read; the scoped operations do not read it
@@ -274,7 +281,7 @@ test "Toggle by a stranger is not found" = {
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let stranger = User.UserId "someone-else"
   let _ <- Test.login { user: Just stranger }
-  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger })
+  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger, role: Member })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ value: r.value, trace: r.trace, done: done } == { value: Err "not found", trace: ["Db.updateMine Todo"], done: Just False })
@@ -1445,7 +1452,7 @@ test "the page and its view agree" = {
   let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
   let page <- Test.get (Todos.Index { filter: Active })
-  Task.succeed ({ same: page.doc == Test.doc (Todos.Index.view page.model { user: me }), links: Test.texts "nav a" page.doc, titles: Test.texts "#todos a" page.doc, items: Test.count "#todos > li" page.doc } == { same: True, links: ["All", "Active", "Completed"], titles: ["Milk"], items: 1 })
+  Task.succeed ({ same: page.doc == Test.doc (Todos.Index.view page.model { user: me, role: Member }), links: Test.texts "nav a" page.doc, titles: Test.texts "#todos a" page.doc, items: Test.count "#todos > li" page.doc } == { same: True, links: ["All", "Active", "Completed"], titles: ["Milk"], items: 1 })
 }
 ```
 
@@ -1453,7 +1460,7 @@ When a test's last `==` compares two `Doc`s that differ, the report does
 not print the two documents. It names the first element whose content
 differs, its path from the body, and shows that element on each side.
 Had the test compared the page with a view of an empty model,
-`page.doc == Test.doc (Todos.Index.view { page.model | todos: [] } { user: me })`,
+`page.doc == Test.doc (Todos.Index.view { page.model | todos: [] } { user: me, role: Member })`,
 it would print:
 
 ```text
@@ -1756,10 +1763,10 @@ examples/todos`, whose four tests open no page, the to-do app's four
 `scope dropped` survivors:
 
 ```text
-  Todos.Index   load:17      scope dropped          Db.mine Todo → Db.from Todo
-  Todos.Index   update:42    scope dropped          Db.updateMine Todo p.id (\t -> { t | done: not t.done }) → Db.update Todo p.id (\t -> { t | done: not t.done }), not found when missing
-  Todos.Index   update:46    scope dropped          Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing
-  Todos.Show    load:13      scope dropped          Db.getMine Todo params.id → Db.get Todo params.id, not found when missing
+  Todos.Index         load:17         scope dropped          Db.mine Todo → Db.from Todo
+  Todos.Index         update:42       scope dropped          Db.updateMine Todo p.id (\t -> { t | done: not t.done }) → Db.update Todo p.id (\t -> { t | done: not t.done }), not found when missing
+  Todos.Index         update:46       scope dropped          Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing
+  Todos.Show          load:13         scope dropped          Db.getMine Todo params.id → Db.get Todo params.id, not found when missing
 ```
 
 and from the blog's (chapter 14), with only `Post`'s tests run, its
@@ -1874,6 +1881,16 @@ ok   Todos.Show "deleting from the todo's page"
 32 mutants: 32 killed, 0 survived  (score 1.00)
 ```
 
+That was the app at the end of this section's work. M12 then gave its
+session a `role` and generated an admin for it (chapter 15). The role
+added four mutants to the app's own code: two survived the twenty
+tests, the `update field dropped` of `role` in logout's and login's
+`Session.put`, and two more tests kill them, `App "Logout makes the role
+Member"` and `Auth.Login "logging in copies the role from the user's
+row"`. The admin brought 76 mutants and 54 tests of its own, which kill
+every one. The whole run now ends `112 mutants: 112 killed, 0 survived
+(score 1.00)`.
+
 ### What is never a mutant
 
 Mutants are made only in the app's own code: the `load`, `update`,
@@ -1911,10 +1928,12 @@ are reported apart, in `--json`'s last object (below):
   well-typed change; and `Db.insertMine` has no `scope dropped`, since
   the owner comes from the session either way.
 
-The to-do app has 2 suppressed (the `scope dropped` of `Todos.Show`'s
-`Db.updateMine` and `Db.deleteMine` of `model.todo.id`) and 5 skipped (4
-arm swaps of `msg` and `found` matches whose arms use what they bind,
-and the `scope dropped` of `Db.insertMine`); the blog 5 (`User.role`'s
+The to-do app has 3 suppressed (the `scope dropped` of `Todos.Show`'s
+`Db.updateMine` and `Db.deleteMine` of `model.todo.id`, and `User.role`'s
+default, which no row of the app's code leaves out) and 23 skipped (in
+its own code, 4 arm swaps of `msg` and `found` matches whose arms use
+what they bind, and the `scope dropped` of `Db.insertMine`; 18 in its
+generated admin); the blog 5 (`User.role`'s
 default, and `Write.Edit`'s four writes of `model.post.id`) and 31 (3 in
 its own pages, 28 in its generated admin).
 
@@ -2033,13 +2052,14 @@ ok   Todo "Active keeps only open todos"
 ok   Todo "each filter has its label"
 ok   Todo "a user with todos cannot be deleted"
 4 passed, 0 failed
-32 mutants: 7 killed, 25 survived  (score 0.22)
+112 mutants: 7 killed, 105 survived  (score 0.06)
 survived:
 …
 ```
 
-(25 survivor lines follow, the four `scope dropped` of "The operators"
-among them.) This is useful while writing the tests of
+(105 survivor lines follow: the four `scope dropped` of "The operators"
+among them, and all 76 of the generated admin's, which only its own
+tests kill.) This is useful while writing the tests of
 one module, but the score that counts is the whole suite's.
 
 `-timeout d` bounds each run of the tests: the plain run first, then each
@@ -2058,7 +2078,7 @@ mutant. If the plain run itself runs out of time, the message says
 `(--mutate's default 10s; raise it with -timeout)`. A `-run` that
 selects no test ends with `no test matches -run: nothing can kill a
 mutant`. Mutants run one after another, each with a fresh database
-per test; the to-do app's 32 take under a second once the build is made,
+per test; the to-do app's 112 take a few seconds once the build is made,
 because each mutant stops at the first test that fails.
 
 `--json` prints the per-test objects as usual, then one object listing
@@ -2066,17 +2086,17 @@ every mutant, then one with the totals. A mutant's object has its `id`,
 `module`, `file`, `decl`, `line`, `col` (the column), `kind`, `before`,
 `after`, whether it was `killed`, `by` which test (the first that
 failed), and a `note` (`"crashed"`, `"timed out"`, or empty). From the
-to-do app's run, two of the 32:
+to-do app's run, two of the 112:
 
 ```text
-{"id":16,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"load","line":18,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
-{"id":7,"module":"Todo","file":"app/Todo.alder","decl":"Todo","line":16,"col":3,"kind":"cascade ↔ restrict","before":"owner @ref User @restrict","after":"owner @ref User @cascade","killed":true,"by":"Todo \"a user with todos cannot be deleted\"","note":"","tables":"ensure"}
+{"id":96,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"load","line":18,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
+{"id":2,"module":"Todo","file":"app/Todo.alder","decl":"Todo","line":16,"col":3,"kind":"cascade ↔ restrict","before":"owner @ref User @restrict","after":"owner @ref User @cascade","killed":true,"by":"Todo \"a user with todos cannot be deleted\"","note":"","tables":"ensure"}
 ```
 
 and the last line:
 
 ```text
-{"score":1,"killed":32,"survived":0,"suppressed":2,"skipped":5}
+{"score":1,"killed":112,"survived":0,"suppressed":3,"skipped":23}
 ```
 
 `score` is exact here (1 when every mutant was killed). `"tables":
@@ -2101,8 +2121,9 @@ for its new tests, its mutants kept their ids (then 25 to 33), since
 `Todos.Show` already came after `User`, but each moved down one line:
 `requires:6` became `requires:7`, `update:32` became `update:33`. When
 the app later adopted the rules of chapter 6, the edits to `Todos.Index`
-renumbered everything after them again: `Todos.Show`'s mutants are now
-25 to 32. Ids
+renumbered everything after them again: `Todos.Show`'s mutants became
+25 to 32. M12's role and generated admin come before it in import
+order, so they are now 105 to 112. Ids
 and lines are for reading one report; to compare runs, compare what
 survived.
 

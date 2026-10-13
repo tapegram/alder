@@ -116,7 +116,7 @@ TRIMS = {
             "`al-select` `<Select>`, `al-checkbox` `<Input>`\non a `Bool`; each renders its `help` and its own error list\n"
             "(an `<Errors field>` for it is E0028).\n\n")],
     "06": [("and, in `Write.Edit`,\n\n```alder fragment\nload params session = {\n  let author <- User.isAuthor", "Every message of the page runs `load` first",
-            "which each admin page's `load` calls first, answering `Query.notFound`\nwhen it is `False`. "),
+            "which each Write page's `load` calls first, answering `Query.notFound`\nwhen it is `False`. "),
            ("A row `load` already found with `Db.getMine` is not one of the cases:", "### The rules and a replicated database",
             "A row `load` already found with `Db.getMine` is not one of the cases:\nwrite the scoped form; it costs "
             "nothing (`Todos.Show` writes\n`Db.updateMine Todo model.todo.id …`, and the mutation tool counts it\nas "
@@ -335,6 +335,10 @@ def build(chapters, book, example, reference):
     if example is not None:
         out.append(EXAMPLE_HEADER)
         for f in sorted(example.rglob("*.alder")):
+            # the admin `alder new admin` generated (app/Admin/, book 15) is left out: it is the
+            # generator's output, not an example to write by hand, and it would double the prompt
+            if f.relative_to(example).parts[0] == "Admin":
+                continue
             rel = f.relative_to(example.parent)
             out.append(f"\n--- file: {rel} ---\n")
             out.append(f.read_text())

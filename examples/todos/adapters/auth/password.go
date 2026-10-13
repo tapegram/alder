@@ -20,15 +20,24 @@ import (
 // LoginPassword is the adapter of Auth.Login.Password.
 func LoginPassword() app.Cap__Auth__Login__Password { return password{} }
 
-// The one account the development stub accepts.
-const (
-	devEmail    = "a@b.c"
-	devPassword = "password"
-)
+// devAccount is one account the development stub accepts.
+type devAccount struct {
+	email, name, role string
+}
+
+// The two accounts the development stub accepts, both with the password "password": a@b.c is
+// a Member, with a to-do list of its own; admin@b.c is an Admin, who can also open the generated
+// admin at /admin (book 15).
+var devAccounts = []devAccount{
+	{email: "a@b.c", name: "Developer", role: "Member"},
+	{email: "admin@b.c", name: "Admin", role: "Admin"},
+}
+
+const devPassword = "password"
 
 // password is a development stub of Auth.Login.Password: in dev mode (ALDER_DEV=1, which
-// `alder run` sets) it accepts a@b.c with the password "password" and nobody else; outside dev
-// mode it refuses every login. Replace it before deploying the app.
+// `alder run` sets) it accepts the devAccounts with the password "password" and nobody else;
+// outside dev mode it refuses every login. Replace it before deploying the app.
 type password struct{}
 
 // refusing logs, once, that the stub is refusing every login because the app is not in dev mode.
@@ -46,23 +55,28 @@ func devMode() bool {
 	return false
 }
 
-// Verify returns the id of the development account's User row for a@b.c and "password" in dev
-// mode, and Nothing for anything else.
+// Verify returns the id of the development account's User row for one of devAccounts and
+// "password" in dev mode, and Nothing for anything else.
 func (password) Verify(ctx context.Context, args app.Args__Auth__Login__Password__Verify) (rt.Maybe[string], error) {
-	if !devMode() || args.Email != devEmail || args.Password != devPassword {
+	if !devMode() || args.Password != devPassword {
 		return rt.Nothing[string](), nil
 	}
-	id, err := devUser(ctx)
-	if err != nil {
-		return rt.Nothing[string](), err
+	for _, acc := range devAccounts {
+		if args.Email == acc.email {
+			id, err := devUser(ctx, acc)
+			if err != nil {
+				return rt.Nothing[string](), err
+			}
+			return rt.Just(id), nil
+		}
 	}
-	return rt.Just(id), nil
+	return rt.Nothing[string](), nil
 }
 
-// devUser is the id of the development account's User row, created on first use: a todo's
+// devUser is the id of acc's User row, created on first use: a todo's
 // owner refers to a User (`owner: User.UserId @ref User`), so the id must name a row. It reads
 // and writes in the running Task's transaction (db.StoreFrom, db.TxFrom).
-func devUser(ctx context.Context) (string, error) {
+func devUser(ctx context.Context, acc devAccount) (string, error) {
 	st, tx := db.StoreFrom(ctx), db.TxFrom(ctx)
 	if st == nil {
 		return "", errors.New("auth: the context carries no store")
@@ -74,7 +88,7 @@ func devUser(ctx context.Context) (string, error) {
 		}
 	}
 	table := &db.Table[struct{}]{Name: users.Name, Columns: users.Columns}
-	rows, err := st.Query(ctx, tx, users.Name, users.Columns, db.Where(db.CEq("email", devEmail), db.From(table)).SQL())
+	rows, err := st.Query(ctx, tx, users.Name, users.Columns, db.Where(db.CEq("email", acc.email), db.From(table)).SQL())
 	if err != nil {
 		return "", err
 	}
@@ -86,11 +100,13 @@ func devUser(ctx context.Context) (string, error) {
 				return db.DecodeText(rows[0][i])
 			}
 		case "email":
-			vals[i] = devEmail
+			vals[i] = acc.email
 		case "name":
-			vals[i] = "Developer"
+			vals[i] = acc.name
 		case "passwordHash":
 			vals[i] = ""
+		case "role":
+			vals[i] = acc.role
 		}
 	}
 	return st.Insert(ctx, tx, users.Name, users.Columns, users.ID, users.Created, users.Updated, vals, time.Now())

@@ -36,8 +36,12 @@ update msg model session = match msg {
   Submit p -> {
     let found <- Password.verify { email: p.form.email, password: p.form.password }
     match found {
+      -- The session keeps the user and their role as the row has it now: a role changed later
+      -- applies when they next log in.
       Just id -> {
-        let _ <- Session.put (\s -> { s | user: Just id })
+        let found <- Db.get User id
+        let role = Maybe.withDefault Member (Maybe.map (\u -> u.role) found)
+        let _ <- Session.put (\s -> { s | user: Just id, role: role })
         Task.succeed (Redirect (Todos.Index {}))
       },
       Nothing -> Task.succeed (Reject "Email or password is incorrect."),
@@ -74,6 +78,15 @@ test "logging in through the form" = {
   let _ <- Test.get (Auth.Login {})
   let r <- Test.submit Credentials { email: Text.Email "me@example.com", password: Text.Secret "secret" }
   Task.succeed ({ answer: r.answer, user: r.session.user, title: Test.text "h1" r.doc } == { answer: Redirected (Todos.Index {}), user: Just me, title: Just "Todos" })
+}
+
+-- The session gets the role the user's row has: an Admin logs in as an Admin.
+test "logging in copies the role from the user's row" = {
+  let _ <- Test.fake Password
+  let _ <- Db.insert User { email: Text.Email "admin@example.com", name: Text.NonEmpty "Admin", passwordHash: "", role: Admin }
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.submit Credentials { email: Text.Email "admin@example.com", password: Text.Secret "secret" }
+  Task.succeed (r.session.role == Admin)
 }
 
 test "a visitor is sent to log in, and can log out" = {

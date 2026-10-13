@@ -3486,7 +3486,7 @@ check that sends a visitor to log in, `Todos.Index`'s route
 
 ```go
 	app := rq.Env.Session.(App__Session)
-	if !app.User.Ok && Mutant == 15 {
+	if !app.User.Ok && Mutant == 95 {
 		app.User = rt.Just("mutant")
 	}
 	if !app.User.Ok {
@@ -3495,7 +3495,7 @@ check that sends a visitor to log in, `Todos.Index`'s route
 	}
 ```
 
-so under mutant 15 a session without a user gets the placeholder user
+so under mutant 95 a session without a user gets the placeholder user
 `"mutant"`, and the check that follows lets the request through. `role
 dropped` is in the route too, in the role check that follows the
 `requires` check (section 8, "The rules"). The blog's `Write` page has

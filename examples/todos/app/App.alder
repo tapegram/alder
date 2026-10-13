@@ -3,7 +3,9 @@ module App
 import User
 import Layout
 
-session { user: Maybe User.UserId }
+-- `role` is copied from the user's row at login (Auth.Login); the generated admin's pages
+-- `requires user, role Admin` read it from here (book 06, "Rules"). Logging out makes it Member.
+session { user: Maybe User.UserId, role: User.Role = Member }
 
 login = Auth.Login
 
@@ -12,7 +14,7 @@ msg Logout
 update : Msg -> Session -> Task Nav
 update msg session = match msg {
   Logout p -> {
-    let _ <- Session.put (\s -> { s | user: Nothing })
+    let _ <- Session.put (\s -> { s | user: Nothing, role: Member })
     Task.succeed (Redirect (Auth.Login {}))
   },
 }
@@ -33,6 +35,15 @@ notFound =
 -- Logging out from a page that `requires user` ends at the login page either way: a Rerender of
 -- that page redirects there too. Only a test of `update` itself tells Redirect from Rerender.
 test "Logout clears the user and goes to log in" = {
-  let r <- Test.run (update Logout { user: Just (User.UserId "me") })
+  let r <- Test.run (update Logout { user: Just (User.UserId "me"), role: Admin })
   Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] })
+}
+
+-- Logging out also makes the role Member again: an Admin who logs out is no longer one.
+test "Logout makes the role Member" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Admin }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let _ <- Test.get (Todos.Index {})
+  let out <- Test.click Logout
+  Task.succeed ({ out: out.answer, role: out.session.role } == { out: Redirected (Auth.Login {}), role: Member })
 }

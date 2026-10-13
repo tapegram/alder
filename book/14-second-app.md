@@ -868,6 +868,5 @@ replaced, as it must before the blog faces the internet.
 
 The blog's tables come from `examples/blog/migrations/` (chapter 8,
 "Migrations"): `0001_initial.sql` creates them, and `alder run` and
-`alder test` apply it, and `0002_admin_role.sql` adds `Admin` to the
-roles a `role` column may hold. After a change to a `table`, run `alder migrate`;
+`alder test` apply it. After a change to a `table`, run `alder migrate`;
 until then `alder check` reports E0019.

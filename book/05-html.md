@@ -430,7 +430,7 @@ message, a page). `submit` is not among them: a custom element is not a
 form, so nothing would ever submit it.
 
 ```alder error=E0028 "`submit` belongs on `<form>`; use `type=\"submit\"` inside `<form submit>`"
-<al-button submit={Save}>Save</al-button>
+<al-button submit={App.Logout}>Log out</al-button>
 ```
 
 An attribute the manifest types `boolean` is written bare or with a

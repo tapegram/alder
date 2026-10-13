@@ -643,14 +643,15 @@ page "/admin/users" { } requires user, role Author | Admin
   `update` call is not checked.
 
 The rules for the clause (E0027): `role` needs `user` first (`requires
-role Author` alone is an error); the session must have a field `role`;
-it must be a union, not `Maybe`; and each name must be one of its
-constructors. In the to-do app, whose session has no role:
+role Author` alone is an error); the session must have a field `role`
+(else: "this session has no `role` field"); it must be a union, not
+`Maybe`; and each name must be one of its constructors. In the to-do
+app, whose roles are `Member` and `Admin`:
 
-```alder error=E0027 "this session has no `role` field"
-module Admin
+```alder error=E0027 "`Author` is not a constructor of this session's `role` type"
+module Reports
 
-page "/admin" { } requires user, role Admin
+page "/reports" { } requires user, role Author
 
 type Model = { }
 
@@ -658,8 +659,18 @@ load : Params -> Session -> Query Model
 load params session = Query.succeed { }
 
 view : Model -> Session -> Html Msg
-view model session = <p>admin</p>
+view model session = <p>reports</p>
 ```
+
+**Generated pages say the same.** `alder new page Reports /reports
+--requires user` writes the clause for you, and `--role Admin` adds
+`, role Admin` (and implies `--requires user`); the generated tests
+then include "a visitor is sent to log in" and one for a user of
+another role (chapter 15). The whole of `alder new admin`'s admin is
+built on this clause: every page it writes `requires user, role Admin`,
+which is why it needs a session `role` with an `Admin` constructor
+(both examples have one: the to-do app's `Member | Admin`, the blog's
+`Reader | Author | Admin`), and why it writes no check of its own.
 
 **A role is read at login.** The check reads the session cookie and
 nothing else, so it costs no query. A role in the cookie lasts until
@@ -668,7 +679,7 @@ renew the cookie: "The session cookie", below). Until then an author
 demoted to Reader still passes `requires user, role Author`, and a
 Reader promoted to Author must log in again. A page where a demotion
 must apply at once also reads the user's row in its `load`, the
-**re-read idiom**, as the blog's admin pages do with a helper in `User`
+**re-read idiom**, as the blog's Write pages do with a helper in `User`
 (`examples/blog/app/User.alder`):
 
 ```alder fragment
@@ -784,7 +795,9 @@ module App
 import User
 import Layout
 
-session { user: Maybe User.UserId }
+-- `role` is copied from the user's row at login (Auth.Login); the generated admin's pages
+-- `requires user, role Admin` read it from here (book 06, "Rules"). Logging out makes it Member.
+session { user: Maybe User.UserId, role: User.Role = Member }
 
 login = Auth.Login
 
@@ -793,7 +806,7 @@ msg Logout
 update : Msg -> Session -> Task Nav
 update msg session = match msg {
   Logout p -> {
-    let _ <- Session.put (\s -> { s | user: Nothing })
+    let _ <- Session.put (\s -> { s | user: Nothing, role: Member })
     Task.succeed (Redirect (Auth.Login {}))
   },
 }

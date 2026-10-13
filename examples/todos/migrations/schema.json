@@ -60,6 +60,15 @@
         {
           "name": "created",
           "type": "Time"
+        },
+        {
+          "name": "role",
+          "type": "Enum",
+          "enum": [
+            "Member",
+            "Admin"
+          ],
+          "default": "'Member'"
         }
       ]
     }

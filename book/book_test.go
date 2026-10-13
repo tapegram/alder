@@ -29,7 +29,8 @@ var (
 	buildOnce sync.Once
 	alderBin  string
 	buildErr  error
-	// todosApp is examples/todos, absolute; exampleModules are its modules except App.
+	// todosApp is examples/todos, absolute; exampleModules are its modules except App and the
+	// generated admin's.
 	todosApp, _    = filepath.Abs("../examples/todos")
 	exampleModules []string
 	// scaffoldApp is the app `alder new guestbook` wrote with the built binary (the example
@@ -100,7 +101,10 @@ func alder(t *testing.T) string {
 			if err == nil && !d.IsDir() && strings.HasSuffix(p, ".alder") {
 				rel, _ := filepath.Rel(filepath.Join(todosApp, "app"), p)
 				name := strings.ReplaceAll(strings.TrimSuffix(rel, ".alder"), string(filepath.Separator), ".")
-				if name != "App" {
+				// the generated admin's modules (app/Admin/, chapter 15) are left out: their
+				// messages (Create, Save, Remove) repeat from table to table, so one module that
+				// imported them all would declare each twice, and no block uses them
+				if name != "App" && name != "Admin" && !strings.HasPrefix(name, "Admin.") {
 					exampleModules = append(exampleModules, name)
 				}
 			}

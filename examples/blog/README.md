@@ -88,8 +88,10 @@ steps, from the blog before the admin:
 1. `User.Role` gains `Admin` (`type Role = Reader | Author | Admin`). The session already had
    `role: User.Role = Reader`, set at login from the user's row (`Auth.Login`), which is what
    `alder new admin` needs.
-2. `alder migrate --name admin_role` writes `migrations/0002_admin_role.sql` (the column's
-   `CHECK` gains `'Admin'`).
+2. `migrations/0001_initial.sql` is written again from the tables (`rm migrations/*` and
+   `alder migrate`): an example keeps one migration, since it has no data to keep. An app with
+   data runs `alder migrate` instead, which rebuilds `User` with `'Admin'` in the column's
+   `CHECK`.
 3. `alder new admin` writes the admin:
 
    ```

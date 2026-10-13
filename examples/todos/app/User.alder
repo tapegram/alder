@@ -2,10 +2,16 @@ module User
 
 type UserId = brand Text
 
+-- A Member keeps their own to-do list. An Admin can also open the admin that `alder new admin`
+-- generated (app/Admin/, every page `requires user, role Admin`; book 15). The session holds
+-- the role the user had when they logged in (App's `session`, set by Auth.Login).
+type Role = Member | Admin
+
 table User {
   id: UserId @id,
   email: Text.Email @unique,
   name: Text.NonEmpty,
   passwordHash: Text,
   created: Time @created,
+  role: Role = Member,
 }

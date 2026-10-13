@@ -925,7 +925,9 @@ believes is right.
   *Decided (M4d): the example changed, the language did not.* The theme
   switch left the example's skeleton for chapter 6's "App-level
   messages", where it is the worked example; the example's session is
-  `{ user: Maybe User.UserId }`, and its tests write `{ user: me }`. A
+  `{ user: Maybe User.UserId }`, and its tests write `{ user: me }`
+  (since M12 it also holds a `role`, for the generated admin, and they
+  write `{ user: me, role: Member }`). A
   record literal, a session's included, still names every field (M5e's
   one exception: the literal `Test.login` stores in the cookie, whose
   defaults are the cookie's): no `Test.session`. Implicit

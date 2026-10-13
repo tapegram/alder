@@ -12,6 +12,18 @@ Run these from this directory:
     alder build            # build the server, build/{{name}}/{{name}}
     alder run              # build, serve on http://localhost:8080, rebuild on every save
 
+Then grow it from the command line. Each of these writes plain Alder with its tests, and only
+if the app still checks (chapter 15):
+
+    alder new page About /about                    # a page
+    alder new table Reply entry:Entry.EntryId@ref=Entry@cascade message:Text.NonEmpty
+    alder new page Replies /replies --list Reply   # a page of a table's rows
+    alder new admin                                # an admin of every table, at /admin
+
+`alder new admin` needs someone to let in: a session with a logged-in `user` and a `role` whose
+type has an `Admin` constructor (`role: User.Role = Member`, with `type Role = Member | Admin`),
+set at login. The guestbook has no login yet; chapter 6, "Rules", shows what to add.
+
 - `app/`: the Alder modules, one per file (`Home` is the page at `/`, `Entry` its table).
 - `migrations/`: the database's migrations, written by `alder migrate` after a change to a table.
 - `static/`: files served as they are, at `/static/…`.

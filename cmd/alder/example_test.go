@@ -189,7 +189,7 @@ func TestExample_Blog(t *testing.T) {
 const (
 	todosMutationScore = 1.00
 	blogMutationScore  = 0.98
-	todosMutants       = 32
+	todosMutants       = 112
 	blogMutants        = 182
 )
 

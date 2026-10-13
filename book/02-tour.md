@@ -359,7 +359,8 @@ build/
 *.db-shm
 ```
 
-The README repeats the commands:
+The README repeats the commands, and names the next ones, the
+generators of chapter 15:
 
 ```markdown file=guestbook/README.md
 # guestbook
@@ -375,6 +376,18 @@ Run these from this directory:
     alder test --mutate    # measure the tests: which changes to the app do they miss?
     alder build            # build the server, build/guestbook/guestbook
     alder run              # build, serve on http://localhost:8080, rebuild on every save
+
+Then grow it from the command line. Each of these writes plain Alder with its tests, and only
+if the app still checks (chapter 15):
+
+    alder new page About /about                    # a page
+    alder new table Reply entry:Entry.EntryId@ref=Entry@cascade message:Text.NonEmpty
+    alder new page Replies /replies --list Reply   # a page of a table's rows
+    alder new admin                                # an admin of every table, at /admin
+
+`alder new admin` needs someone to let in: a session with a logged-in `user` and a `role` whose
+type has an `Admin` constructor (`role: User.Role = Member`, with `type Role = Member | Admin`),
+set at login. The guestbook has no login yet; chapter 6, "Rules", shows what to add.
 
 - `app/`: the Alder modules, one per file (`Home` is the page at `/`, `Entry` its table).
 - `migrations/`: the database's migrations, written by `alder migrate` after a change to a table.
@@ -667,7 +680,7 @@ test "Toggle flips done" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: me })
+  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: me, role: Member })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.updateMine Todo"], done: Just True })
@@ -755,7 +768,7 @@ test "Delete removes the todo" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let r <- Test.run (update (Delete { id: id }) { filter: All, todos: [] } { user: me })
+  let r <- Test.run (update (Delete { id: id }) { filter: All, todos: [] } { user: me, role: Member })
   let after <- Db.get Todo id
   Task.succeed ({ value: r.value, todo: Maybe.map (\t -> t.title) after } == { value: Ok Rerender, todo: Nothing })
 }
@@ -805,14 +818,18 @@ that `requires user`. None of that needed a test.
   through the page.
 - `app/Auth/Login.alder`: the login page. It declares a `Password`
   capability, implemented in Go, and uses `Session.put` to sign the user
-  in. A wrong password returns `Reject`, which re-renders the form with a
-  message. Beside the capability is a `fake Password` for tests, and three
-  tests that log in and out through the form and the button.
-- `app/App.alder`: the session record, the error pages, and the app-level
-  `Logout` message, which any page can send with `click={App.Logout}`,
-  with a test of its `update`.
-- `app/User.alder`, `app/Layout.alder`: the user table and a page layout
-  component.
+  in, with the role their row has. A wrong password returns `Reject`,
+  which re-renders the form with a message. Beside the capability is a
+  `fake Password` for tests, and four tests that log in and out through
+  the form and the button.
+- `app/App.alder`: the session record (the user, and their role: a
+  `Member`, or an `Admin`), the error pages, and the app-level `Logout`
+  message, which any page can send with `click={App.Logout}`, with two
+  tests of it.
+- `app/User.alder`, `app/Layout.alder`: the user table, with its `role`
+  column, and a page layout component.
+- `app/Admin/`: an admin for every table, for a user whose role is
+  `Admin`, which one command wrote: `alder new admin` (chapter 15).
 
 A second example, `examples/blog`, adds what this app never needed: a
 second table that refers to the first, a user role, a capability called
