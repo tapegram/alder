@@ -81,6 +81,67 @@ func NewAdmin(p *Program, o AdminOptions) ([]Edit, error) {
 	return edits, nil
 }
 
+// RegenAdmin generates `alder regen admin`: every file of the admin computed afresh, and for
+// each one that exists, its owned regions written back where they changed (Edit.Replace); a
+// file that does not exist is created when all is set, or when no file of its table's pages
+// exists yet (a table added since), and is otherwise left out (the author deleted it): skipped
+// names those. Nothing to change is no edit at all. A file whose markers are broken is refused.
+func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []string, err error) {
+	o, err = adminCheck(p, o)
+	if err != nil {
+		return nil, nil, err
+	}
+	dir := adminDir(o)
+	if _, err := os.Stat(filepath.Join(p.Dir, filepath.FromSlash(dir))); err != nil {
+		return nil, nil, Refusef("there is no admin in `%s/`: `alder new admin` generates one (name another with --module)", dir)
+	}
+	files, order := AdminFiles(p, o)
+	exists := func(path string) bool {
+		_, err := os.Stat(filepath.Join(p.Dir, filepath.FromSlash(path)))
+		return err == nil
+	}
+	for _, path := range order {
+		fresh := files[path]
+		if !exists(path) {
+			tdir := filepath.Dir(filepath.FromSlash(path))
+			newTable := false
+			if tdir != filepath.FromSlash(dir) { // a table's page: new when none of its pages exists
+				entries, _ := os.ReadDir(filepath.Join(p.Dir, tdir))
+				newTable = len(entries) == 0
+			}
+			if all || newTable {
+				edits = append(edits, Edit{Path: path, Create: true, Body: fresh})
+			} else {
+				skipped = append(skipped, path)
+			}
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(p.Dir, filepath.FromSlash(path)))
+		if err != nil {
+			return nil, nil, err
+		}
+		cur := string(b)
+		names, err := Regions.Names(cur)
+		if err != nil {
+			return nil, nil, Refusef("`%s`: %v", path, err)
+		}
+		var replace []Region
+		for _, name := range names {
+			body, ok, _ := Regions.Body(fresh, name)
+			if !ok { // a region the generator no longer writes: the author's now
+				continue
+			}
+			if old, _, _ := Regions.Body(cur, name); old != body {
+				replace = append(replace, Region{Name: name, Body: body})
+			}
+		}
+		if len(replace) > 0 {
+			edits = append(edits, Edit{Path: path, Replace: replace})
+		}
+	}
+	return edits, skipped, nil
+}
+
 // AdminFiles is every file of the admin, by path, and the paths in the order they are written.
 func AdminFiles(p *Program, o AdminOptions) (map[string]string, []string) {
 	g := &adminGen{p: p, o: o, files: map[string]string{}}

@@ -40,7 +40,7 @@ func genApp(t *testing.T, base string) string {
 	return dir
 }
 
-// alderIn runs the alder command args (new, edit, fill, check or test) on the app in dir, with
+// alderIn runs the alder command args (new, edit, fill, regen, check or test) on the app in dir, with
 // stdin as standard input.
 func alderIn(t *testing.T, dir, stdin string, args ...string) (int, string, string) {
 	t.Helper()
@@ -54,6 +54,8 @@ func alderIn(t *testing.T, dir, stdin string, args ...string) (int, string, stri
 		code = runEditTo(withDir, &out, &errb)
 	case "fill":
 		code = runFillTo(withDir, strings.NewReader(stdin), &out, &errb)
+	case "regen":
+		code = runRegenTo(withDir, &out, &errb)
 	case "check":
 		code = runCheckTo([]string{dir}, &out, &errb)
 	case "test":
