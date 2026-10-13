@@ -196,20 +196,20 @@ func (e *e2e) session() (App__Session, string) {
 }
 
 // decodeCookie decodes the cookie value v: its signed payload (base64url before the ".") is
-// {"exp": <unix seconds>, "session": <the codec's JSON>}; it returns the session and its JSON.
-// The expiry must lie about 30 days ahead.
+// {"iss": <unix seconds>, "session": <the codec's JSON>}; it returns the session and its JSON.
+// The issued time must be about now (the cookie expires 30 days after it).
 func decodeCookie(t *testing.T, v string) (App__Session, string) {
 	t.Helper()
 	_, raw := cookiePayload(t, v)
 	var env struct {
-		Exp     int64           `json:"exp"`
+		Iss     int64           `json:"iss"`
 		Session json.RawMessage `json:"session"`
 	}
 	if err := json.Unmarshal(raw, &env); err != nil {
 		t.Fatalf("cookie payload %s: %v", raw, err)
 	}
-	if d := time.Until(time.Unix(env.Exp, 0)); d < 29*24*time.Hour || d > 31*24*time.Hour {
-		t.Fatalf("cookie payload %s: exp is %v away, want 30 days", raw, d)
+	if d := time.Since(time.Unix(env.Iss, 0)); d < -time.Minute || d > time.Minute {
+		t.Fatalf("cookie payload %s: issued %v ago, want now", raw, d)
 	}
 	s, err := session__codec{}.Decode(env.Session)
 	if err != nil {
@@ -399,9 +399,9 @@ func TestE2E_Todos(t *testing.T) {
 		`<script type="module" src="/_alder/datastar.js"></script>`,
 		`<title>Log in</title>`, `<ul class="errors" data-errors="form"></ul>`)
 	r.html(t)
-	if s, raw := r.cookieSet(t); s.User.Ok {
-		t.Fatalf("anonymous session %s", raw)
-	}
+	// a visitor's session is the default: nothing to store (the cookie is stored only when a
+	// response changes the session or runs Session.put)
+	r.noCookie(t)
 	loginSubmit := msgURL(t, r.body, "/_m/Auth.Login/Submit", "")
 
 	// 3. wrong password: Reject on the form, the password not echoed
@@ -434,8 +434,11 @@ func TestE2E_Todos(t *testing.T) {
 	r.want(t, 200, `<h1>Todos</h1>`, `<form method="post" action="/_m/Todos.Index/Submit`, `name="title"`, `<ul id="todos"></ul>`, `<p id="summary">0 open</p>`,
 		`<a href="/" aria-current="page">All</a>`, `<a href="/?filter=Active">Active</a>`)
 	r.html(t)
-	if s, _ := r.cookieSet(t); s.User.Val != uid {
-		t.Fatalf("GET / stored user %q, want %q", s.User.Val, uid)
+	// a page view leaves the session as it was: no Set-Cookie, so the cookie keeps the time it
+	// was issued at login (no sliding renewal)
+	r.noCookie(t)
+	if s, _ := e.session(); s.User.Val != uid {
+		t.Fatalf("the jar's user %q, want %q", s.User.Val, uid)
 	}
 	submit := msgURL(t, r.body, "/_m/Todos.Index/Submit", "")
 	r = e.do("GET", "/?filter=Active", nil)
@@ -453,7 +456,7 @@ func TestE2E_Todos(t *testing.T) {
 	r.lacks(t, `data-errors="title"><li>`)
 	r = e.do("POST", submit, url.Values{"title": {"Milk"}, "due": {"2026-10-12"}}, datastarHdr)
 	r.navigate(t, "/")
-	r.cookieSet(t)
+	r.noCookie(t) // the update did not change the session
 	r = e.do("GET", "/", nil)
 	r.want(t, 200, `<span class="due">Oct 12</span>`, `<p id="summary">1 open</p>`)
 	m := todoHref.FindAllStringSubmatch(r.body, -1)
@@ -483,7 +486,7 @@ func TestE2E_Todos(t *testing.T) {
 	if strings.Contains(r.body, "<head>") || strings.Contains(r.body, "<!doctype") {
 		t.Fatalf("patch carries the document:\n%s", r.body)
 	}
-	r.cookieSet(t)
+	r.noCookie(t)
 	// from the Completed view (the todo is done), without JavaScript: the browser posts the
 	// click button's form; the Rerender is a 303 back to the page (Post/Redirect/Get), which
 	// shows the toggle
@@ -492,7 +495,7 @@ func TestE2E_Todos(t *testing.T) {
 	toggle = msgURL(t, r.body, "/_m/Todos.Index/Toggle", id)
 	r = e.do("POST", toggle, url.Values{})
 	r.redirect(t, "/?filter=Completed")
-	r.cookieSet(t)
+	r.noCookie(t)
 	t.Run("RerenderKeepsFilter", func(t *testing.T) {
 		if !strings.Contains(toggle, "_p.filter=Completed") {
 			t.Fatalf("the Toggle URL does not carry the page's filter: %s", toggle)

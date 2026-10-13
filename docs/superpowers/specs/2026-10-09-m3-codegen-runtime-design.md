@@ -523,15 +523,16 @@ Each milestone gets its own implementation plan.
   SIGTERM, shuts down gracefully (5 s for requests in flight, exit 0).
 - Session cookie format: `alder_session` = base64url(P) "." base64url(
   HMAC-SHA256(key, P)), unpadded, where the signed payload P is
-  `{"exp":<unix seconds>,"session":<session JSON>}` (M3c final fix wave,
-  I6); signed, not encrypted (a `Text.Secret` must never be stored in the
+  `{"iss":<unix seconds>,"session":<session JSON>}` (M3c final fix wave,
+  I6; `exp` became `iss` in the M11 final fix wave, I1); signed, not encrypted (a `Text.Secret` must never be stored in the
   session). The session JSON is an object keyed by Go field name; a
   payload-less union is stored by constructor name; decode starts from the
   defaults and a missing or undecodable field keeps its default; a cookie
-  that does not verify, whose `exp` has passed, or that has no `exp` is
-  the default session. `exp` is the time of the store plus 30 days,
-  renewed on every store, so the server revokes a copied cookie after 30
-  days whatever the browser does. Key: `ALDER_SECRET` of at least 16
+  that does not verify, issued 30 days ago or more, or that has no `iss` is
+  the default session. `iss` is the time of the store; the cookie is
+  stored only when a response changes the session (absolute lifetime, no
+  sliding renewal: M11 final fix wave, I1), so the server revokes a copied
+  cookie 30 days after the session last changed whatever the browser does. Key: `ALDER_SECRET` of at least 16
   bytes. Outside dev mode a missing or shorter secret is refused:
   `web.CheckSecret`, called first by the generated `Serve`, returns
   "ALDER_SECRET must be set to at least 16 bytes outside dev mode
@@ -539,10 +540,11 @@ Each milestone gets its own implementation plan.
   panics on it (M3c final fix wave, C2). Only in dev mode is the public dev
   key used, with a warning logged once at startup. Attributes: `HttpOnly`, `SameSite=Lax`,
   `Path=/`, `Max-Age` 30 days, `Secure` under TLS or
-  `X-Forwarded-Proto: https`. Stored on every rendered `GET` and every
-  answer after a successful `update`; on a 404/500 only when a successful
-  `Task` left a session before the re-load failed; never after a form
-  decode error or a failed `Task`.
+  `X-Forwarded-Proto: https`. Stored only when the response's session
+  differs from the request's: after a successful `update` that changed
+  it (also on a 404/500 when a successful `Task` left a session before
+  the re-load failed); never on a `GET` that leaves it as it was, after a
+  form decode error or a failed `Task`.
 - Datastar error patches: under `Datastar-Request: true`, a 404 or 500
   (including an unknown route and a recovered panic) is answered like a
   `Rerender`, status 200 with one `datastar-patch-elements` event of the

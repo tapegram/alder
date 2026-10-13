@@ -628,6 +628,9 @@ page "/admin/users" { } requires user, role Author | Admin
   `update` need no check of their own.
 - `role Author | Admin` lets either in.
 - Inside the page, `session.role` has the union's type, as everywhere.
+- The route checks `requires` and the role. A test of them goes through
+  the browser (`Test.open`, `Test.click`, chapter 10); a direct `load` or
+  `update` call is not checked.
 
 The rules for the clause (E0027): `role` needs `user` first (`requires
 role Author` alone is an error); the session must have a field `role`;
@@ -650,24 +653,42 @@ view model session = <p>admin</p>
 
 **A role is read at login.** The check reads the session cookie and
 nothing else: it costs no database query. The price is that a role
-changed in the database applies when the user next logs in. An author
-demoted to Reader still passes `requires user, role Author` until then,
-and a Reader promoted to Author must log in again to get in. For most
-pages that is right. A page where it must apply at once also reads the
-user's row in its `load`, the **re-read idiom**:
+changed in the database applies when the user next logs in. A role in
+the cookie lasts until logout, or the session's 30-day lifetime from
+login: visiting a page does not renew the cookie ("The session cookie",
+below), so a user who keeps using the app still logs in again within 30
+days. Until then an author demoted to Reader still passes `requires
+user, role Author`, and a Reader promoted to Author must log in again to
+get in. A page where a demotion must apply at once also reads the user's
+row in its `load`, the **re-read idiom**. The blog's admin pages do, with
+a helper in `User` (`examples/blog/app/User.alder`):
 
 ```alder fragment
-load params session = {
-  let me <- Db.get User session.user
-  match me {
-    Just u -> if u.role == Author then Query.succeed { } else Query.notFound,
-    Nothing -> Query.notFound,
-  }
+isAuthor : UserId -> Query Bool
+isAuthor id = {
+  let me <- Db.get User id
+  Query.succeed (Maybe.map (\u -> u.role) me == Just Author)
 }
 ```
 
-The blog's test "a demoted author can edit until they log in again"
-(chapter 14) shows both: the cookie passes, the row says Reader.
+and, in `Admin.Edit`,
+
+```alder fragment
+load params session = {
+  let author <- User.isAuthor session.user
+  if author then {
+    let post <- Db.getMine Post params.id
+    Query.succeed { post: post }
+  } else Query.notFound
+}
+```
+
+Every message of the page runs `load` first, so its messages are turned
+away too. The blog's test "a demoted author is turned away at once"
+(chapter 14) shows it: the cookie still says Author, the row says Reader,
+and the page is a 404. The role clause stays: a Reader promoted since
+their login is still turned away by it until they log in again, and it
+keeps a Reader's request from reaching `load` at all.
 
 ### When to use the unscoped forms
 
@@ -895,13 +916,14 @@ it, both in unpadded base64url (`Sign` in `rt/web/session.go`). After
 logging in to the to-do app, the first part decodes to
 
 ```json
-{"exp":1794165032,"session":{"User":{"Ok":true,"Val":"oV5Et5NZUPszOeLnOSSB"}}}
+{"iss":1791573032,"session":{"User":{"Ok":true,"Val":"oV5Et5NZUPszOeLnOSSB"}}}
 ```
 
-`session` is the session. `exp` is when the cookie stops counting, in
-seconds since 1970: 30 days after the session was last stored. The server
-checks it itself, so a copied cookie is no good after that, whatever the
-browser keeps, and a cookie without `exp` is no session at all.
+`session` is the session. `iss` is when it was issued, in seconds since
+1970: the moment a response last changed the session, such as the login.
+The cookie stops counting 30 days after that. The server checks it
+itself, so a copied cookie is no good after that, whatever the browser
+keeps, and a cookie without `iss` is no session at all.
 
 A union without payloads, such as the `Theme` of "App-level messages"
 above, is stored by its constructor's name (`"Theme":"Dark"`), so
@@ -934,19 +956,25 @@ Anyone can forge a session signed with that key, which is why production
 needs its own.
 
 The cookie is `HttpOnly` (page scripts cannot read it), `SameSite=Lax`,
-`Path=/`, and lasts 30 days from the last time it was stored (its
-`Max-Age`, and the `exp` signed into it). It is
+`Path=/`, and lasts 30 days from the time it was issued (its
+`Max-Age`, and the `iss` signed into it). It is
 `Secure` when the request came over HTTPS, or carries the header
-`X-Forwarded-Proto: https` (set by a proxy in front of the server). It is stored:
+`X-Forwarded-Proto: https` (set by a proxy in front of the server).
 
-- on every page a `GET` renders;
-- on every answer to a message whose `update` succeeded, whether a page, a
-  303 or a navigation event;
-- on a 404 or 500 only when an `update` succeeded and the page then failed
-  to load again: what the `update` committed is kept.
-
-It is not stored when a form fails to decode or a `Task` fails, since
-neither changed the session.
+The cookie is stored only when the answer **changes** the session: after
+an `update` whose `Session.put` ran (even one that wrote the value the
+session already had, such as logging in again as the same user) or that
+left a different session, whether the answer is a page, a 303 or a
+navigation event; and on a 404 or 500 when such an `update` succeeded
+and the page then failed to load again (what the `update` committed is
+kept). A stored cookie is issued then, for a fresh 30 days. Any other
+answer sends no cookie: a page view, a form that fails to decode, a
+failed `Task`. The browser keeps the cookie it has, with its issued
+time, so visiting does not renew a session: a user who keeps using the
+app still logs in again 30 days after logging in. The lifetime is
+absolute on purpose. Whatever the login wrote into the session, such as
+a role (above), lasts until logout or 30 days after it was written, and
+no longer.
 
 ### Form errors
 

@@ -151,7 +151,10 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Admin "an Author logs out from the admin page"`,
 		`ok   Admin.Edit "deleting a post deletes its comments"`,
 		`ok   Admin.Edit "another author's post is not found"`,
-		`ok   Admin.Edit "a demoted author can edit until they log in again"`,
+		`ok   Admin.Edit "a demoted author is turned away at once"`,
+		`ok   Admin.Edit "a promoted reader logs in again before editing"`,
+		`ok   Admin "a demoted author cannot open the admin page"`,
+		`ok   Admin "a promoted reader logs in again first"`,
 		`ok   Admin.Edit "Publish shows the post on the front page; Unpublish hides it"`,
 		`ok   Post "bySlug finds the post with that slug"`,
 		`ok   Post "an author with posts cannot be deleted"`,
@@ -163,7 +166,7 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Posts.Show "commenting through the form"`,
 		`ok   Auth.Login "an unknown email is rejected"`,
 		`ok   Auth.Login "logging in through the form"`,
-		"39 passed, 0 failed\n",
+		"42 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("alder test examples/blog lacks %q:\n%s", want, out)
@@ -173,14 +176,14 @@ func TestExample_Blog(t *testing.T) {
 }
 
 // The mutation scores examples/todos/README.md and examples/blog/README.md record (`alder test
-// --mutate`, rounded down to two decimals: the blog's is 55 / 58 = 0.948) and their numbers of
+// --mutate`, rounded down to two decimals: the blog's is 60 / 63 = 0.952) and their numbers of
 // mutants: a change to an example that lets a mutant survive which its tests used to kill, or
 // that changes the mutants made of it, fails TestExample_*.
 const (
 	todosMutationScore = 1.00
-	blogMutationScore  = 0.94
+	blogMutationScore  = 0.95
 	todosMutants       = 32
-	blogMutants        = 58
+	blogMutants        = 63
 )
 
 // mutationAtLeast runs `alder test --mutate --json dir` and fails t when the score is below min

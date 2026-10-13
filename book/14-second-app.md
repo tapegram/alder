@@ -199,9 +199,10 @@ page "/admin" { } requires user, role Author
 `requires user` sends a visitor to log in, as before; `role Author` then
 answers a 404 to a logged-in Reader, the same 404 as a page that does not
 exist, before `load` runs. The check reads the cookie and nothing else,
-so it costs no query. It is the role at login: a user demoted since keeps
-their old role until they log in again (chapter 6, "Rules"; a test below
-shows it). Every message of the page goes through the same check, so
+so it costs no query. It is the role at login, and the cookie keeps it
+until logout or the session's 30 days: a user demoted since still passes
+it. So both pages also re-read the user's row in `load` (chapter 6,
+"Rules"; a test below shows it). Every message of the page goes through the same check, so
 `update` needs none of its own.
 
 `Admin`'s `load` lists the author's own posts with `Db.mine Post |>
@@ -227,20 +228,37 @@ type Model = { post: Post }
 
 -- load finds the post when the session's user wrote it: `Db.getMine` answers anyone else's
 -- post, like a missing one, with a 404. The page `requires user, role Author`, the same gate as
--- the Admin page. The messages carry no id: they act on `model.post`, which this `load` has
--- found (as the to-do example's Todos.Show does).
+-- the Admin page, and re-reads the user's row as it does (User.isAuthor), so an author made a
+-- Reader is turned away at once. The messages carry no id: they act on `model.post`, which this
+-- `load` has found (as the to-do example's Todos.Show does), and every message runs it first.
 load : Params -> Session -> Query Model
 load params session = {
-  let post <- Db.getMine Post params.id
-  Query.succeed { post: post }
+  let author <- User.isAuthor session.user
+  if author then {
+    let post <- Db.getMine Post params.id
+    Query.succeed { post: post }
+  } else Query.notFound
 }
 ```
 
-`load` is one line: `Db.getMine Post params.id` is the post when its
+`load` first re-reads the user's row with `User.isAuthor`, the re-read
+idiom of chapter 6, whose body is
+
+```alder fragment
+isAuthor : UserId -> Query Bool
+isAuthor id = {
+  let me <- Db.get User id
+  Query.succeed (Maybe.map (\u -> u.role) me == Just Author)
+}
+```
+
+The role check already passed, but on the cookie's role, which is the
+one read at login and lasts until logout (or the session's 30 days). The
+re-read makes a role taken away in the database apply at once, for one
+small query. Then `Db.getMine Post params.id` is the post when its
 `author` is the session's user, and not found otherwise, so another
-author's post is a 404, like a missing one. The role was checked before
-`load` ran. (`Auth.Login` is imported for a test below, which logs in
-through its form.)
+author's post is a 404, like a missing one. (`Auth.Login` is imported
+for a test below, which logs in through its form.)
 
 ```alder part=blog/Admin.Edit
 form EditPost = {
@@ -333,28 +351,31 @@ test "another author's post is not found" = {
   Task.succeed (r.answer == PageMissing)
 }
 
--- The role is the one the session got at login. An author made a Reader since then still passes
--- `requires user, role Author`, until they log in again, when the role is read from their row.
--- A page that must not wait for that re-reads the row in its `load` (book 06, "Rules"):
---
---   let me <- Db.get User session.user
---   if Maybe.map (\u -> u.role) me == Just Author then … else Query.notFound
---
--- `stillAuthor` below is that check, which the test runs against the demoted row.
-test "a demoted author can edit until they log in again" = {
+-- The role is the one the session got at login, and the cookie keeps it until logout (or the
+-- session's 30 days). An author made a Reader since then still passes `requires user, role
+-- Author`, but `load` re-reads their row (User.isAuthor): the page is a 404 at once, and so is
+-- every message, since each runs `load` first. After a new login the cookie says Reader too.
+test "a demoted author is turned away at once" = {
   let _ <- Test.fake Auth.Login.Password
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
   let _ <- Test.get (Auth.Login {})
   let _ <- Test.submit Auth.Login.Credentials { email: Text.Email "author@example.com", password: Text.Secret "secret" }
+  let before <- Test.open (Admin.Edit { id: id })
   let _ <- Db.update User author (\u -> { u | role: Reader })
   let stale <- Test.open (Admin.Edit { id: id })
-  let me <- Db.get User author
-  let stillAuthor = Maybe.map (\u -> u.role) me == Just Author
   let _ <- Test.get (Auth.Login {})
   let _ <- Test.submit Auth.Login.Credentials { email: Text.Email "author@example.com", password: Text.Secret "secret" }
   let fresh <- Test.open (Admin.Edit { id: id })
-  Task.succeed ({ stale: stale.answer, stillAuthor: stillAuthor, fresh: fresh.answer } == { stale: Shown, stillAuthor: False, fresh: PageMissing })
+  Task.succeed ({ before: before.answer, stale: stale.answer, fresh: fresh.answer } == { before: Shown, stale: PageMissing, fresh: PageMissing })
+}
+
+test "a promoted reader logs in again before editing" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Author }
+  let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: me }
+  let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.open (Admin.Edit { id: id })
+  Task.succeed (r.answer == PageMissing)
 }
 
 test "Publish shows the post on the front page; Unpublish hides it" = {
@@ -382,15 +403,16 @@ another author's post as that author: the role check passes, and
 
 The third is the stale role. The author logs in through the login form
 (with `Auth.Login`'s `fake Password`, chapter 10), which stores their
-role, `Author`, in the session. Then their row is changed to `Reader`.
-The edit page still opens (`stale` is `Shown`): the cookie says Author,
-and the role check reads only the cookie. The row, read the way a
-re-reading `load` would read it, says otherwise (`stillAuthor` is
-`False`). After a second login the session holds the row's role, and
-the page is a 404. The comment above the test shows the re-read idiom a
-page uses when a role change must apply at once. The last test reads the
-front page through `Posts.Index.load`, which a test may call once its
-module imports `Posts.Index`.
+role, `Author`, in the session, and the edit page opens. Then their row
+is changed to `Reader`. The cookie still says Author, so the role check
+passes, but `load` re-reads the row and the page is a 404 (`stale` is
+`PageMissing`) at once. After a second login the session holds the row's
+role too. The fourth is the other way round: a row made Author whose
+cookie still says Reader is turned away by the role check, until they
+log in again (without it, the re-read alone would let them in, and
+`alder test --mutate` reports the `role dropped` mutant as surviving).
+The last test reads the front page through `Posts.Index.load`, which a
+test may call once its module imports `Posts.Index`.
 
 Two more go through the page, and were added after `alder test --mutate`
 showed what nothing checked: that a visitor who opens an edit page is
@@ -575,7 +597,7 @@ view model session =
 
 ## Its tests
 
-`alder test examples/blog` runs thirty-nine tests in seven modules:
+`alder test examples/blog` runs forty-two tests in seven modules:
 
 ```text
 $ alder test examples/blog
@@ -587,6 +609,8 @@ ok   Admin "a Reader cannot open the admin page"
 ok   Admin "creating a post redirects to its edit page"
 ok   Admin "a taken slug is refused"
 ok   Admin "the admin page needs an Author"
+ok   Admin "a demoted author cannot open the admin page"
+ok   Admin "a promoted reader logs in again first"
 ok   Admin "an Author logs out from the admin page"
 ok   Admin "the admin page lists the author's own posts, newest first"
 ok   Comment "a name or comment has text and a bound"
@@ -607,7 +631,8 @@ ok   Auth.Login "an unknown email is rejected"
 ok   Auth.Login "logging in through the form"
 ok   Admin.Edit "deleting a post deletes its comments"
 ok   Admin.Edit "another author's post is not found"
-ok   Admin.Edit "a demoted author can edit until they log in again"
+ok   Admin.Edit "a demoted author is turned away at once"
+ok   Admin.Edit "a promoted reader logs in again before editing"
 ok   Admin.Edit "Publish shows the post on the front page; Unpublish hides it"
 ok   Admin.Edit "a visitor is sent to log in"
 ok   Admin.Edit "saving changes the title and the body"
@@ -618,7 +643,7 @@ ok   Posts.Show "a comment on a draft is refused"
 ok   Posts.Show "a comment is listed oldest first"
 ok   Posts.Show "an empty comment is rejected"
 ok   Posts.Show "commenting through the form"
-39 passed, 0 failed
+42 passed, 0 failed
 ```
 
 The `Posts.Index` tests call `load` the way the runtime does, with

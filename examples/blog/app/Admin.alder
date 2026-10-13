@@ -6,7 +6,9 @@ import Layout
 
 -- Only an Author is let in: `role Author` is checked against the session before `load` runs,
 -- and a Reader who is logged in gets the same 404 as a page that does not exist. Every message
--- of the page is checked the same way, so `update` needs no check of its own.
+-- of the page is checked the same way, so `update` needs no check of its own. The session's role
+-- is the one read at login, and lasts until logout (or the session's 30 days), so `load` also
+-- re-reads the user's row (User.isAuthor): an author made a Reader gets the 404 at once.
 page "/admin" { } requires user, role Author
 
 type Model = {
@@ -17,11 +19,14 @@ type Model = {
 -- table's `@owner`) is the session's user.
 load : Params -> Session -> Query Model
 load params session = {
-  let posts <-
-    Db.mine Post
-      |> Db.orderBy Post.created.desc
-      |> Db.all
-  Query.succeed { posts: posts }
+  let author <- User.isAuthor session.user
+  if author then {
+    let posts <-
+      Db.mine Post
+        |> Db.orderBy Post.created.desc
+        |> Db.all
+    Query.succeed { posts: posts }
+  } else Query.notFound
 }
 
 form NewPost = {
@@ -115,6 +120,24 @@ test "the admin page needs an Author" = {
   let _ <- Test.login { user: Just reader }
   let asReader <- Test.open (Admin {})
   Task.succeed ({ visitor: visitor.answer, reader: asReader.answer } == { visitor: Redirected (Auth.Login {}), reader: PageMissing })
+}
+
+-- The cookie still says Author, but the row has been made a Reader: the re-read turns them away.
+test "a demoted author cannot open the admin page" = {
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Test.login { user: Just author, role: Author }
+  let _ <- Db.update User author (\u -> { u | role: Reader })
+  let r <- Test.open (Admin {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+-- The other way round: the row says Author, but the cookie still says Reader. The role check
+-- reads the cookie, so they log in again first.
+test "a promoted reader logs in again first" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Author }
+  let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.open (Admin {})
+  Task.succeed (r.answer == PageMissing)
 }
 
 test "an Author logs out from the admin page" = {

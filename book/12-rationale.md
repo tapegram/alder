@@ -483,10 +483,13 @@ on every request. Keeping it in the signed cookie makes the check free
 (no query) and makes it happen before `load`, in the route, where it
 covers the page's messages too, so no `load` or `update` repeats it. The
 cost is staleness: a role changed in the database applies at the next
-login. For an author's desk that is acceptable, and the pages where it
-is not have the re-read idiom, a `Db.get User session.user` in `load`
-(chapter 6). The blog's test "a demoted author can edit until they log
-in again" makes the trade visible rather than hiding it.
+login. A role in the cookie lasts until logout, or the session's 30-day
+lifetime from login: the cookie is stored only when the session changes,
+so a user who keeps visiting does not keep an old role forever. The
+pages where even that is too long have the re-read idiom, a `Db.get User
+session.user` in `load` (chapter 6); the blog's admin pages use it, and
+its test "a demoted author is turned away at once" shows a demotion
+applying on the next request.
 
 **Why never the owner column.** `Db.updateMine` drops the owner from
 its `SET` list: whatever `f` returns, the row stays the user's. Without

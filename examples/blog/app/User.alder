@@ -15,3 +15,12 @@ table User {
   role: Role = Reader,
   created: Time @created,
 }
+
+-- isAuthor is the re-read idiom (book 06, "Rules"): whether the user's row says Author now, not
+-- the role the session got at login. The Admin pages call it in their `load`, so an author made a
+-- Reader is turned away at once, without waiting for them to log in again.
+isAuthor : UserId -> Query Bool
+isAuthor id = {
+  let me <- Db.get User id
+  Query.succeed (Maybe.map (\u -> u.role) me == Just Author)
+}

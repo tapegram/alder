@@ -282,12 +282,13 @@ func TestRun_ServesAndInjectsSubscriber(t *testing.T) {
 	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/login" {
 		t.Fatalf("GET / = %d %q, want 303 /login", res.StatusCode, res.Header.Get("Location"))
 	}
-	if res, err = c.Get(r.base + "/login"); err != nil {
+	// (a page view stores no cookie; a Session.put, here App.Logout's, does)
+	if res, err = c.Post(r.base+"/_m/App/Logout", "application/x-www-form-urlencoded", nil); err != nil {
 		t.Fatal(err)
 	}
 	res.Body.Close()
 	if !strings.HasPrefix(res.Header.Get("Set-Cookie"), "alder_session=") {
-		t.Fatalf("GET /login Set-Cookie %q", res.Header.Get("Set-Cookie"))
+		t.Fatalf("POST /_m/App/Logout Set-Cookie %q", res.Header.Get("Set-Cookie"))
 	}
 	// the app's Datastar answers (server-sent events) stream through, with the overlay target
 	req, _ := http.NewRequest("GET", r.base+"/nope", nil)

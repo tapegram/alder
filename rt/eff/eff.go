@@ -155,16 +155,20 @@ func Call[T any](name string, write bool, fn func(*Env) (T, error)) Task[T] {
 // appends to Trace; Transaction sets Tx when a Task's transaction is begun;
 // everything else is for Call functions.
 type Env struct {
-	Ctx     context.Context         // checked before each Call; nil means never cancelled; carries the Env while Run runs
-	Store   Store                   // nil: Tasks run with no transaction (Tx stays nil)
-	Tx      Tx                      // the running Task's transaction once begun (Transaction); nil in a Query
-	Session any                     // the app's session value; SessionPut replaces it
-	Caps    map[string]any          // "Auth.Login.Password" → implementation
-	Now     func() time.Time        // the clock
-	Log     func(level, msg string) // level is "info", "warn" or "effect"; nil: no log
-	Trace   []string                // every Call name in order (dev log / tests)
-	Kind    Kind                    // the kind of the effect Run is running (set by Run, restored when it returns)
-	Within  *Within                 // nil: a Task begins its own transaction on Store; else it runs inside Within.Tx (Run)
+	Ctx     context.Context // checked before each Call; nil means never cancelled; carries the Env while Run runs
+	Store   Store           // nil: Tasks run with no transaction (Tx stays nil)
+	Tx      Tx              // the running Task's transaction once begun (Transaction); nil in a Query
+	Session any             // the app's session value; SessionPut replaces it
+	// SessionPut is set by Session.put (and restored with Session when its Task fails): the
+	// router then stores the session cookie, issued anew, even when the value is unchanged —
+	// logging in again as the same user starts a new 30-day lifetime.
+	SessionPut bool
+	Caps       map[string]any          // "Auth.Login.Password" → implementation
+	Now        func() time.Time        // the clock
+	Log        func(level, msg string) // level is "info", "warn" or "effect"; nil: no log
+	Trace      []string                // every Call name in order (dev log / tests)
+	Kind       Kind                    // the kind of the effect Run is running (set by Run, restored when it returns)
+	Within     *Within                 // nil: a Task begins its own transaction on Store; else it runs inside Within.Tx (Run)
 
 	beginTx func() (Tx, error) // set by Run for a Task with a Store: begins Tx
 	active  bool               // Run is running (RunInner may run inside it); restored when it returns

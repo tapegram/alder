@@ -58,6 +58,7 @@ func TaskFail[T any](msg string) eff.Task[T] { return eff.Fail[T](msg) }
 func SessionPut[S any](f func(S) S) eff.Task[struct{}] {
 	return eff.Call("Session.put", true, func(e *eff.Env) (struct{}, error) {
 		e.Session = f(e.Session.(S))
+		e.SessionPut = true
 		return struct{}{}, nil
 	})
 }

@@ -123,7 +123,7 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 			env.Log("warn", "rollback: "+err.Error())
 		}
 	}
-	session := env.Session
+	session, put := env.Session, env.SessionPut
 	done := false
 	defer func() {
 		tx := env.Tx
@@ -132,7 +132,7 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 			if tx != nil {
 				undo(tx)
 			}
-			env.Session = session
+			env.Session, env.SessionPut = session, put
 		}
 	}()
 
@@ -148,7 +148,7 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 			if tx != nil {
 				undo(tx)
 			}
-			env.Session = session
+			env.Session, env.SessionPut = session, put
 		}
 		return zero, err
 	}

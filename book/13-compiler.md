@@ -1243,8 +1243,11 @@ func params__Todos__Index(p Todos__Index__Params) []rt.KV {
 ```
 
 `rt.QueryKV` marks the pair to be left out when the value is the default,
-`All`. Back in the router, `write` signs the session and sets the cookie,
-then calls `html.RenderWith(node, state)`. Every message attribute in the
+`All`. Back in the router, `write` compares the answer's session with the
+one the request carried (`setSession`): a page view leaves it as it was,
+so no cookie is set, and the browser keeps the one the login stored, with
+its issued time (chapter 6, "The session cookie"). Then it calls
+`html.RenderWith(node, state)`. Every message attribute in the
 tree is an `html.MsgAttr`, a value that is only turned into text now: its
 `rt.MsgRef` (module, message, the message's own parameters) is given the
 page's parameters with `_p.` in front (`MsgRef.URL` in `rt/core.go`). A
@@ -1259,7 +1262,6 @@ script tag put after `<head>`. The answer begins like this (without the
 ```
 HTTP/1.1 200 OK
 Content-Type: text/html; charset=utf-8
-Set-Cookie: alder_session=eyJleHAiOjE3OTQxNjUwMzIsInNlc3Npb24iOnsiVXNlciI6eyJPayI6dHJ1ZSwiVmFsIjoib1Y1RXQ1TlpVUHN6T2VMbk9TU0IifX19.K74dmYmShNDDHvaHP5wlwizxAZgG8yLfVwLnYee1aCw; Path=/; Expires=Sun, 08 Nov 2026 19:10:32 GMT; Max-Age=2592000; HttpOnly; SameSite=Lax
 
 <!doctype html>
 <html><head><script type="module" src="/_alder/datastar.js"></script><meta charset="utf-8" /><title>Todos</title>
@@ -1339,7 +1341,8 @@ This is chapter 6's lifecycle, line by line:
 5. `PageResponse(…, true)` asks for a patch.
 
 The router's `write` sees a 200 with `Patch` set and `rq.Datastar` true.
-It sets the cookie, renders the page, cuts out its `<body>…</body>`
+The task left the session as it was, so it sets no cookie. It renders
+the page, cuts out its `<body>…</body>`
 (`bodyOf`), and calls `datastar.PatchBody`, which writes one server-sent
 event: the event name, two lines that say what to replace and how, and one
 `data: elements` line for each line of the body. The answer is
@@ -1348,7 +1351,6 @@ event: the event name, two lines that say what to replace and how, and one
 HTTP/1.1 200 OK
 Cache-Control: no-cache
 Content-Type: text/event-stream
-Set-Cookie: alder_session=…; Path=/; Expires=…; Max-Age=2592000; HttpOnly; SameSite=Lax
 
 event: datastar-patch-elements
 data: selector body

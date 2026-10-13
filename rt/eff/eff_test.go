@@ -357,7 +357,7 @@ func TestRun_LazyBegin(t *testing.T) {
 // with; a successful one — whatever its result — keeps its changes.
 func TestRun_SessionRollback(t *testing.T) {
 	put := func(v int) Task[struct{}] {
-		return Call("Session.put", true, func(e *Env) (struct{}, error) { e.Session = v; return struct{}{}, nil })
+		return Call("Session.put", true, func(e *Env) (struct{}, error) { e.Session, e.SessionPut = v, true; return struct{}{}, nil })
 	}
 	then := func(t2 Task[int]) Task[int] { return Bind(put(2), func(struct{}) Task[int] { return t2 }) }
 	for name, prog := range map[string]Task[int]{
@@ -367,8 +367,8 @@ func TestRun_SessionRollback(t *testing.T) {
 	} {
 		e := env(&fakeStore{})
 		e.Session = 1
-		if _, err := Run(e, KTask, prog); err == nil || e.Session != 1 {
-			t.Errorf("%s: err=%v session=%v, want 1", name, err, e.Session)
+		if _, err := Run(e, KTask, prog); err == nil || e.Session != 1 || e.SessionPut {
+			t.Errorf("%s: err=%v session=%v put=%v, want 1, no put", name, err, e.Session, e.SessionPut)
 		}
 	}
 	e := env(&fakeStore{})
@@ -380,8 +380,11 @@ func TestRun_SessionRollback(t *testing.T) {
 	if e.Session != 1 {
 		t.Errorf("panic: session=%v, want 1", e.Session)
 	}
-	if _, err := Run(e, KTask, then(Pure(0))); err != nil || e.Session != 2 {
-		t.Errorf("success: err=%v session=%v, want 2", err, e.Session)
+	if e.SessionPut {
+		t.Error("panic: SessionPut kept")
+	}
+	if _, err := Run(e, KTask, then(Pure(0))); err != nil || e.Session != 2 || !e.SessionPut {
+		t.Errorf("success: err=%v session=%v put=%v, want 2 and a put", err, e.Session, e.SessionPut)
 	}
 }
 

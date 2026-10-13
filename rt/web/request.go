@@ -35,6 +35,8 @@ type Request struct {
 	// other request): Options.Served hands it to an Alder test's browser, so Test.get gives the
 	// model the page showed without running its load again.
 	Model any
+
+	sessionEnc []byte // the codec's encoding of Session: a response's session equal to it is not stored again
 }
 
 // Response is what a handler returns; build it with the constructors below. Status decides its
@@ -45,7 +47,7 @@ type Response struct {
 	State    *html.FormState // nil or the form state to render with
 	Location string          // Redirect
 	Patch    bool            // Page: answer a Datastar request with a body patch
-	Session  any             // to store in the cookie (nil = unchanged)
+	Session  any             // to store in the cookie (nil, or equal to the request's: unchanged, not stored)
 	Err      error           // Error
 }
 
@@ -56,7 +58,8 @@ func PageResponse(doc html.Node, st *html.FormState, session any, patch bool) Re
 }
 
 // RedirectResponse is a 303 See Other to location; for a Datastar request, a 200 SSE event that
-// navigates the browser there (datastar.Navigate). A non-nil session is stored either way.
+// navigates the browser there (datastar.Navigate). A non-nil session that differs from the
+// request's is stored either way.
 func RedirectResponse(location string, session any) Response {
 	return Response{Status: http.StatusSeeOther, Location: location, Session: session}
 }

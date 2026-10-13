@@ -68,8 +68,18 @@ func TestBuild_BinarySmoke(t *testing.T) {
 			t.Fatalf("GET /login lacks %q:\n%s", f, body)
 		}
 	}
-	if !strings.HasPrefix(res.Header.Get("Set-Cookie"), "alder_session=") {
-		t.Fatalf("GET /login Set-Cookie %q", res.Header.Get("Set-Cookie"))
+	// a visitor's page view leaves the session as it was: no cookie (M11 final I1)
+	if sc := res.Header.Get("Set-Cookie"); sc != "" {
+		t.Fatalf("GET /login Set-Cookie %q, want none", sc)
+	}
+	// a Session.put (App.Logout's) stores it
+	out2, err := c.Post("http://"+a+"/_m/App/Logout", "application/x-www-form-urlencoded", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out2.Body.Close()
+	if !strings.HasPrefix(out2.Header.Get("Set-Cookie"), "alder_session=") {
+		t.Fatalf("POST /_m/App/Logout Set-Cookie %q", out2.Header.Get("Set-Cookie"))
 	}
 	// the copied stylesheet is served from beside the executable
 	if res, body := get("/static/app.css"); res.StatusCode != http.StatusOK || body == "" {

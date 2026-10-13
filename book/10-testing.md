@@ -317,6 +317,10 @@ to a function. What sets that session:
   own steps (a `Test.run (update …)`, a `Db.mine` in the test body) do
   not.
 
+The route checks `requires` and the role (chapter 6); a test of them
+goes through the browser (`Test.open`, `Test.click`, section 9); a
+direct `update` call is not checked.
+
 So a test that calls `update` or `load` itself, with a session record,
 signs in with `Test.login` first; the record is still `update`'s
 argument, and must have the page's `Session` type, but it does not choose
@@ -1761,7 +1765,7 @@ examples/todos`, whose four tests open no page, the to-do app's four
 and from the blog's (chapter 14), with only `Post`'s tests run:
 
 ```text
-  Admin         requires:10   role dropped           requires user, role Author → requires user
+  Admin         requires:12   role dropped           requires user, role Author → requires user
   Admin.Edit    requires:10   role dropped           requires user, role Author → requires user
 ```
 
@@ -1773,10 +1777,11 @@ either way"), but its write can be replaced. Each of these is killed by
 a test that acts as a stranger or as the wrong role: in the to-do app,
 "a stranger cannot see my todo" (the list and the todo's page),
 "Toggle by another user is not found" and "Delete by another user is not
-found"; in the blog, "a Reader cannot open the admin page", "a demoted
-author can edit until they log in again", "the admin page lists the
-author's own posts, newest first" and "another author's post is not
-found".
+found"; in the blog, "a promoted reader logs in again first" and "a
+promoted reader logs in again before editing" (the row says Author, the
+cookie still Reader: the pages also re-read the row, so only the role
+check turns them away), "the admin page lists the author's own posts,
+newest first" and "another author's post is not found".
 
 ### A surviving mutant is a test you have not written
 

@@ -67,10 +67,10 @@ func TestE2E_RejectKeepsWrites(t *testing.T) {
 			t.Fatal(err)
 		}
 		var env struct {
-			Exp     int64           `json:"exp"`
+			Iss     int64           `json:"iss"`
 			Session json.RawMessage `json:"session"`
 		}
-		if err := json.Unmarshal(raw, &env); err != nil || env.Exp == 0 {
+		if err := json.Unmarshal(raw, &env); err != nil || env.Iss == 0 {
 			t.Fatalf("cookie payload %s: %v", raw, err)
 		}
 		s, err := session__codec{}.Decode(env.Session)
@@ -94,8 +94,9 @@ func TestE2E_RejectKeepsWrites(t *testing.T) {
 		t.Fatalf("GET / = %d:\n%s", res.StatusCode, body)
 	}
 	has(body, `<ul id="names"></ul>`, `<p id="adds">0</p>`, `<ul class="errors" data-errors="form"></ul>`)
-	if s := session(res); s.N != 0 {
-		t.Fatalf("n = %d", s.N)
+	// the default session, unchanged: not stored
+	if sc := res.Header.Get("Set-Cookie"); sc != "" {
+		t.Fatalf("GET / stored the session: %q", sc)
 	}
 
 	// post to the URL the form renders (no Referer: a page message carries its page's params)

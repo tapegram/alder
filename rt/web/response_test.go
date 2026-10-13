@@ -55,7 +55,7 @@ func TestResponse_PageFullHTML(t *testing.T) {
 		t.Fatalf("cookie %+v", c)
 	}
 	payload, ok := Verify(key, c.Value)
-	if !ok || string(payload) != `{"exp":2593000,"session":{"User":"ada"}}` {
+	if !ok || string(payload) != `{"iss":1000,"session":{"User":"ada"}}` {
 		t.Fatalf("cookie payload %q %v", payload, ok)
 	}
 

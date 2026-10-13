@@ -6,18 +6,22 @@ test` take this directory; chapter 11 explains each command.
 
 ## Mutation score
 
-`alder test --mutate examples/blog` (book 10, "Mutation testing"): 58 mutants.
+`alder test --mutate examples/blog` (book 10, "Mutation testing"): 63 mutants.
 
 - Before: 29 tests, 41 killed, 17 survived (score 0.71), recorded before the app declared its
   rules.
-- After: 39 tests, 55 killed, 3 survived (score 0.95). `TestExample_Blog` fails if the score
-  drops below 0.94, the exact 0.948 rounded down, or the number of mutants is not 58.
+- After: 42 tests, 60 killed, 3 survived (score 0.95). `TestExample_Blog` fails if the score
+  drops below 0.95, the exact 0.952 rounded down, or the number of mutants is not 63.
 
 The rules are declared (book 06, "Rules"): `Post.author` is the table's `@owner`, the session
 holds the user's `role` from login, and `Admin` and `Admin.Edit` `requires user, role Author`.
-Their new mutants are killed: the two `role dropped` by `Admin "a Reader cannot open the admin
-page"` and `Admin.Edit "a demoted author can edit until they log in again"` (whose second login
-reads the Reader role from the row); the two `scope dropped` (`Db.mine Post`, `Db.getMine Post`)
+The cookie keeps the role until logout (or the session's 30 days), so both pages' `load` also
+re-read the user's row (`User.isAuthor`, the re-read idiom): a demoted author is turned away at
+once. Their new mutants are killed: the two `role dropped` by `Admin "a promoted reader logs in
+again first"` and `Admin.Edit "a promoted reader logs in again before editing"` (the row says
+Author, the cookie still Reader: only the role check turns them away); the re-reads by `Admin "a
+demoted author cannot open the admin page"` and `Admin.Edit "a demoted author is turned away at
+once"`; the two `scope dropped` (`Db.mine Post`, `Db.getMine Post`)
 by `Admin "the admin page lists the author's own posts, newest first"` and `Admin.Edit "another
 author's post is not found"`; the dropped `role` of the login's and the logout's `Session.put` by
 `Auth.Login "logging in through the form"` and `Posts.Index "logging out from the front page

@@ -13,12 +13,16 @@ type Model = { post: Post }
 
 -- load finds the post when the session's user wrote it: `Db.getMine` answers anyone else's
 -- post, like a missing one, with a 404. The page `requires user, role Author`, the same gate as
--- the Admin page. The messages carry no id: they act on `model.post`, which this `load` has
--- found (as the to-do example's Todos.Show does).
+-- the Admin page, and re-reads the user's row as it does (User.isAuthor), so an author made a
+-- Reader is turned away at once. The messages carry no id: they act on `model.post`, which this
+-- `load` has found (as the to-do example's Todos.Show does), and every message runs it first.
 load : Params -> Session -> Query Model
 load params session = {
-  let post <- Db.getMine Post params.id
-  Query.succeed { post: post }
+  let author <- User.isAuthor session.user
+  if author then {
+    let post <- Db.getMine Post params.id
+    Query.succeed { post: post }
+  } else Query.notFound
 }
 
 form EditPost = {
@@ -102,28 +106,31 @@ test "another author's post is not found" = {
   Task.succeed (r.answer == PageMissing)
 }
 
--- The role is the one the session got at login. An author made a Reader since then still passes
--- `requires user, role Author`, until they log in again, when the role is read from their row.
--- A page that must not wait for that re-reads the row in its `load` (book 06, "Rules"):
---
---   let me <- Db.get User session.user
---   if Maybe.map (\u -> u.role) me == Just Author then … else Query.notFound
---
--- `stillAuthor` below is that check, which the test runs against the demoted row.
-test "a demoted author can edit until they log in again" = {
+-- The role is the one the session got at login, and the cookie keeps it until logout (or the
+-- session's 30 days). An author made a Reader since then still passes `requires user, role
+-- Author`, but `load` re-reads their row (User.isAuthor): the page is a 404 at once, and so is
+-- every message, since each runs `load` first. After a new login the cookie says Reader too.
+test "a demoted author is turned away at once" = {
   let _ <- Test.fake Auth.Login.Password
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
   let _ <- Test.get (Auth.Login {})
   let _ <- Test.submit Auth.Login.Credentials { email: Text.Email "author@example.com", password: Text.Secret "secret" }
+  let before <- Test.open (Admin.Edit { id: id })
   let _ <- Db.update User author (\u -> { u | role: Reader })
   let stale <- Test.open (Admin.Edit { id: id })
-  let me <- Db.get User author
-  let stillAuthor = Maybe.map (\u -> u.role) me == Just Author
   let _ <- Test.get (Auth.Login {})
   let _ <- Test.submit Auth.Login.Credentials { email: Text.Email "author@example.com", password: Text.Secret "secret" }
   let fresh <- Test.open (Admin.Edit { id: id })
-  Task.succeed ({ stale: stale.answer, stillAuthor: stillAuthor, fresh: fresh.answer } == { stale: Shown, stillAuthor: False, fresh: PageMissing })
+  Task.succeed ({ before: before.answer, stale: stale.answer, fresh: fresh.answer } == { before: Shown, stale: PageMissing, fresh: PageMissing })
+}
+
+test "a promoted reader logs in again before editing" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Author }
+  let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: me }
+  let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.open (Admin.Edit { id: id })
+  Task.succeed (r.answer == PageMissing)
 }
 
 test "Publish shows the post on the front page; Unpublish hides it" = {
