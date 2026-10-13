@@ -30,17 +30,17 @@ edited app/Home.alder
          <al-button type="submit">Write</al-button>
        </form>
 +      <form submit={SubmitQuick}>
-+        <al-alert variant="destructive"><Errors form /></al-alert>
 +        <al-input field="title" label="Title" />
 +        <al-textarea field="body" label="Body" />
++        <al-alert variant="destructive"><Errors form /></al-alert>
 +        <al-button type="submit">Quick</al-button>
 +      </form>
      </al-card>
  
      <al-button variant="outline" click={App.Logout}>Log out</al-button>
-@@ -68,3 +85,21 @@
-   let page <- Test.get (Home {})
-   Task.succeed (Test.texts "#posts li" page.doc == ["Mine"])
+@@ -83,3 +100,21 @@
+   let out <- Test.click App.Logout
+   Task.succeed ({ answer: out.answer, user: out.session.user, role: out.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, role: Reader })
  }
 +
 +test "submitting Quick adds a row" = {
@@ -48,8 +48,8 @@ edited app/Home.alder
 +  let _ <- Test.login { user: Just me }
 +  let _ <- Test.get (Home {})
 +  let r <- Test.submit Quick { title: Text.NonEmpty "title-1", body: "body-1" }
-+  let rows <- Db.from Post |> Db.count
-+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: Redirected (Home {}), rows: 1 })
++  let rows <- Db.from Post |> Db.all
++  Task.succeed ({ answer: r.answer, rows: List.map (\row -> { title: row.title, body: row.body, status: row.status, featured: row.featured }) rows } == { answer: Redirected (Home {}), rows: [{ title: Text.NonEmpty "title-1", body: "body-1", status: Draft, featured: False }] })
 +}
 +
 +test "Quick refuses an empty title" = {

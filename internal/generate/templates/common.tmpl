@@ -13,7 +13,8 @@ page "[[.Path]]" [[.Params]][[.Requires]]
 [[- end]]
 
 [[- define "test" -]]
-test [[.Name]] = {
+[[range .Comment]]-- [[.]]
+[[end]]test [[.Name]] = {
 [[range .Lines]]  [[.]]
 [[end]]  [[.Succeed]]
 }

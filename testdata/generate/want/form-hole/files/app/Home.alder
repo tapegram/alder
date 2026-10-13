@@ -49,9 +49,9 @@ view model session =
         <al-button type="submit">Sign</al-button>
       </form>
       <form submit={SubmitContact}>
-        <al-alert variant="destructive"><Errors form /></al-alert>
         <al-input field="email" label="Email" />
         <al-input field="topic" label="Topic" />
+        <al-alert variant="destructive"><Errors form /></al-alert>
         <al-button type="submit">Contact</al-button>
       </form>
     </al-card>

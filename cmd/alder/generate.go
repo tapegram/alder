@@ -78,7 +78,8 @@ func parseGenArgs(args []string, valued, multi, bools []string) (genArgs, error)
 			if hasVal {
 				g.flags[name] = append(g.flags[name], val)
 			}
-			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			// up to the next flag, or a path (`--from Post Tag /dash`)
+			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") && !strings.HasPrefix(args[i+1], "/") {
 				i++
 				g.flags[name] = append(g.flags[name], args[i])
 			}
@@ -175,13 +176,17 @@ func genReport(cmd string, g genArgs, res *generate.Result, err error, stdout, s
 			}
 		}
 		if refused {
-			out.Error = ref.Msg
+			out.Error = strings.Replace(ref.Msg, " (the errors above)", "", 1) // they are in "diagnostics"
 			out.Written = false
+			out.Files, out.Diff = []generate.FileChange{}, "" // nothing was written
+		}
+		for i, n := range out.Notes {
+			out.Notes[i] = strings.TrimSpace(n)
 		}
 		writeJSON(stdout, out)
 	} else {
 		if res != nil {
-			io.WriteString(stdout, res.RenderText())
+			io.WriteString(stdout, res.RenderText(refused))
 		} else if refused {
 			for _, d := range ref.Diags {
 				fmt.Fprint(stdout, diag.RenderText(d, ref.Sources[d.Span.File]))
@@ -211,7 +216,15 @@ func writeJSON(w io.Writer, v any) {
 // (ir.LowerTables), so a table edit that breaks code elsewhere still gets its migration. A
 // table declaration with errors is refused with them; a change no migration can make is
 // refused with `alder migrate`'s reason. The notes are the migration's steps.
-func migrateCopy(dir string) ([]string, error) {
+func migrateCopy(dir string) ([]string, error) { return migrateCopyNamed("")(dir) }
+
+// migrateCopyNamed is migrateCopy with the migration named slug ("" derives it from its steps,
+// as `alder migrate` does).
+func migrateCopyNamed(slug string) func(dir string) ([]string, error) {
+	return func(dir string) ([]string, error) { return migrateCopyAs(dir, slug) }
+}
+
+func migrateCopyAs(dir, slug string) ([]string, error) {
 	prog, res, bag, ioErrs := buildkit.LoadChecked(dir, nil)
 	if len(ioErrs) > 0 {
 		return nil, ioErrs[0]
@@ -223,11 +236,17 @@ func migrateCopy(dir string) ([]string, error) {
 		return nil, &generate.Refusal{Msg: "the result does not check (the errors above): nothing was written", Diags: errs, Sources: buildkit.Sources(prog)}
 	}
 	p, err := ir.LowerTables(prog, res)
-	if err != nil {
-		return nil, generate.Refusef("the tables do not lower for a migration (%v): run `alder check` on the result", err)
+	if err != nil { // a table names something that does not check (an import that is missing, say)
+		var errs []diag.Diagnostic
+		for _, d := range bag.Items {
+			if d.Severity == "error" {
+				errs = append(errs, d)
+			}
+		}
+		return nil, &generate.Refusal{Msg: "the result does not check (the errors above): nothing was written", Diags: errs, Sources: buildkit.Sources(prog)}
 	}
 	var out, errb bytes.Buffer
-	if code := writeMigration(dir, migrate.FromProgram(p), "", false, &out, &errb); code != 0 {
+	if code := writeMigration(dir, migrate.FromProgram(p), slug, false, &out, &errb); code != 0 {
 		msg := strings.TrimSpace(out.String() + errb.String())
 		var lines []string
 		for _, l := range strings.Split(msg, "\n") {

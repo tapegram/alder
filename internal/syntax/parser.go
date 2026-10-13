@@ -47,6 +47,20 @@ func Tokens(file string, src []byte) ([]Token, []diag.Diagnostic) {
 	return trace, p.finish()
 }
 
+// ParseExpr parses src as one expression, as `alder fill` reads its standard input. more is
+// what follows the expression, named as an error message names a token ("`,`", "`test`"), or ""
+// when the expression is the whole of src (blank lines and comments aside).
+func ParseExpr(file string, src []byte) (e Expr, diags []diag.Diagnostic, more string, at diag.Pos) {
+	p := newParser(file, src, false, nil)
+	p.skipNL()
+	e = p.parseExpr()
+	p.skipNL()
+	if !p.at(EOF) {
+		more, at = describe(p.tok), p.posOf(p.tok)
+	}
+	return e, p.finish(), more, at
+}
+
 // ParseSignatures parses stdlib signature files: bodies are optional and `type X a` may be opaque.
 func ParseSignatures(file string, src []byte) (*Module, []diag.Diagnostic) {
 	p := newParser(file, src, true, nil)
@@ -94,7 +108,11 @@ func (p *Parser) spanFrom(start Token) diag.Span {
 	return diag.Span{File: p.file, Start: p.posOf(start), End: end}
 }
 func (p *Parser) spanTok(t Token) diag.Span {
-	return diag.Span{File: p.file, Start: p.posOf(t), End: diag.Pos{Line: t.Line, Col: t.Col + max(1, len(t.Text))}}
+	width := len(t.Text)
+	if t.Kind == Hole { // the token's text is the name, without its `?`
+		width++
+	}
+	return diag.Span{File: p.file, Start: p.posOf(t), End: diag.Pos{Line: t.Line, Col: t.Col + max(1, width)}}
 }
 
 // in pushes a parse context ("a form field", "the definition of `x`") and returns its pop.

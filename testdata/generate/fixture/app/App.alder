@@ -31,3 +31,10 @@ notFound =
   <Layout.Page title="Not found">
     <h1>Not found</h1>
   </Layout.Page>
+
+-- From a page that `requires user` a Rerender ends at the login page too; only a test of
+-- `update` itself tells Redirect from Rerender.
+test "Logout goes to log in" = {
+  let r <- Test.run (update Logout { user: Just (User.UserId "me"), role: Admin })
+  Task.succeed (r.value == Ok (Redirect (Auth.Login {})))
+}

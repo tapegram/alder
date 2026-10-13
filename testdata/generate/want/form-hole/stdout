@@ -27,9 +27,9 @@ edited app/Home.alder
          <al-button type="submit">Sign</al-button>
        </form>
 +      <form submit={SubmitContact}>
-+        <al-alert variant="destructive"><Errors form /></al-alert>
 +        <al-input field="email" label="Email" />
 +        <al-input field="topic" label="Topic" />
++        <al-alert variant="destructive"><Errors form /></al-alert>
 +        <al-button type="submit">Contact</al-button>
 +      </form>
      </al-card>
@@ -53,7 +53,7 @@ edited app/Home.alder
 +}
 app/Home.alder:36:22: warning[W0002]: hole ?submitContact has type Task Nav
     SubmitContact p -> ?submitContact,
-                       ^^^^^^^^^^^^^
+                       ^^^^^^^^^^^^^^
 app/Home.alder:82:29: warning[W0002]: hole ?expected has type Answer
     Task.succeed (r.answer == ?expected)
-                              ^^^^^^^^
+                              ^^^^^^^^^

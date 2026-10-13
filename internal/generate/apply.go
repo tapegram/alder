@@ -170,6 +170,9 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 		case berr != nil:
 			res.Files = append(res.Files, FileChange{rel, "created"})
 			changed[rel] = true
+			if o.DryRun { // what would be written, in full
+				res.Diff += strings.Replace(UnifiedDiff(rel, "", string(now)), "--- a/"+rel+"\n", "--- /dev/null\n", 1)
+			}
 		case !bytes.Equal(before, now):
 			res.Files = append(res.Files, FileChange{rel, "edited"})
 			changed[rel] = true
@@ -261,14 +264,22 @@ func writeFile(path, text string) error {
 }
 
 // RenderText renders the result as the commands print it: one line per file (`wrote app/X.alder`,
-// `edited app/Y.alder`), the migration's steps under its file, the diff of the edited files,
-// then the diagnostics (as `alder check` renders them).
-func (r *Result) RenderText() string {
+// `edited app/Y.alder`; under --dry-run `would write`, `would edit`), the migration's steps under
+// its file, the diff of the edited files (under --dry-run also the created ones, in full), then
+// the diagnostics (as `alder check` renders them). A refused result (refused) is its
+// diagnostics alone: nothing was written, so no file is named.
+func (r *Result) RenderText(refused bool) string {
 	var b strings.Builder
+	if refused {
+		for _, d := range r.Diagnostics {
+			b.WriteString(diag.RenderText(d, r.Sources[d.Span.File]))
+		}
+		return b.String()
+	}
 	for _, f := range r.Files {
-		verb := "wrote"
+		verb := map[bool]string{true: "wrote", false: "would write"}[r.Written]
 		if f.Action == "edited" {
-			verb = "edited"
+			verb = map[bool]string{true: "edited", false: "would edit"}[r.Written]
 		}
 		fmt.Fprintf(&b, "%s %s\n", verb, f.Path)
 		if strings.HasPrefix(f.Path, "migrations/") && strings.HasSuffix(f.Path, ".sql") {

@@ -54,12 +54,13 @@ type ColData struct{ Label, Cell string }
 // they are read, the card's heading, the markup of a row.
 type FromList struct{ Field, T, Select, Title, Cell string }
 
-// TestData is a generated test: its name (quoted), the statements of its block, and the
-// expression its `Task.succeed` gives, a `==` (written in parentheses).
+// TestData is a generated test: its name (quoted), the statements of its block, the expression
+// its `Task.succeed` gives (a `==`, written in parentheses), and a comment above it.
 type TestData struct {
-	Name   string
-	Lines  []string
-	Result string
+	Name    string
+	Lines   []string
+	Result  string
+	Comment []string // lines of a comment above the test, without `-- `
 }
 
 // Succeed is the test's last line: `Task.succeed (<Result>)`, or without the parentheses when
@@ -97,6 +98,12 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	if !strings.HasPrefix(o.Path, "/") {
 		return nil, Refusef("`%s` is not a path: a page's path starts with `/`, such as `/posts`", o.Path)
 	}
+	if o.Show != "" {
+		o.Path = strings.TrimSuffix(o.Path, "/{id}") // `--show T` adds it; given, it is the same page
+		if o.Path == "" {
+			o.Path = "/"
+		}
+	}
 	if strings.ContainsAny(o.Path, "{}:") {
 		return nil, Refusef("`%s` has a parameter: give the path without it (`--show T` adds `/{id}`), or write the page's `page` line yourself", o.Path)
 	}
@@ -110,6 +117,9 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		return nil, Refusef("choose one of --list, --show and --from: a page generated with --list shows one table's rows, --show one row, --from several tables")
 	}
 	if o.Role != "" {
+		if p.Session == nil || p.Session.User == nil || p.Session.Role == nil {
+			return nil, Refusef("`--role %s` needs a session with a `user` field and a `role` field whose type is a union (`session { user: Maybe User.UserId, role: User.Role = Reader }` in `App`): this app's session has %s", o.Role, missingSession(p))
+		}
 		o.Requires = "user"
 	}
 	if o.Requires != "" && o.Requires != "user" {
@@ -120,9 +130,6 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	}
 	if o.Role != "" {
 		r := p.Session.Role
-		if r == nil {
-			return nil, Refusef("`--role %s` needs a session with a `role` field whose type is a union (`role: User.Role = Reader`): this app's session has none", o.Role)
-		}
 		if !contains1(r.Ctors, o.Role) {
 			return nil, Refusef("`--role %s`: `%s` is not a constructor of the session's `role` type `%s` (%s)", o.Role, o.Role, types.String(r.Type), strings.Join(r.Ctors, ", "))
 		}
@@ -143,13 +150,17 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		}
 	}
 	d.Open, d.Close = rootTags(p, d.Title, imports)
-	tb := newTestBuilder(p, o.Module, imports)
-	login := func() {
+	// newTest starts a test's builder, signed in as the page requires
+	newTest := func() *testBuilder {
+		tb := newTestBuilder(p, o.Module, imports)
 		if o.Requires != "" {
 			tb.login(o.Role)
 		}
+		return tb
 	}
+	heading := fmt.Sprintf("Test.text \"h1\" r.doc } == { answer: Shown, heading: Just %s }", quote(d.Title))
 	tmpl := "page.tmpl"
+	var pageOf func(tb *testBuilder) string // the page value a test opens
 	switch {
 	case o.List != "":
 		t, err := table(o.List)
@@ -166,12 +177,37 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 				d.Cols = append(d.Cols, ColData{Humanize(c.Name), cell(c, "row."+c.Name, imports)})
 			}
 		}
-		login()
-		tb.insert(t, false)
-		tb.insert(t, false)
-		tb.let("let r <- Test.open (%s)", pageLit(o.Module, nil))
-		d.Tests = append(d.Tests, TestData{Name: quote("the list shows every row"), Lines: tb.lines,
-			Result: fmt.Sprintf("{ answer: r.answer, rows: Test.count \"al-table tbody tr\" r.doc } == { answer: Shown, rows: %d }", tb.counts[t.Module])})
+		mine := o.Requires != "" && t.Owner != ""
+		pageOf = func(*testBuilder) string { return pageLit(o.Module, nil) }
+
+		// the rows, newest first (and, read with Db.mine, not another user's)
+		tb := newTest()
+		tb.insert(t, true)
+		tb.insert(t, true)
+		name := "the list shows the rows, newest first"
+		if mine {
+			tb.insertRow(t, "", map[string]string{t.Owner: tb.otherUser()}, false)
+			name = "the list shows my rows, newest first"
+		}
+		tb.let("let page <- Test.get (%s)", pageLit(o.Module, nil))
+		result := fmt.Sprintf("List.map (\\row -> row.%s) page.model.rows == [%s]", t.IDField, strings.Join(tb.visible(t, mine), ", "))
+		if t.Created == "" { // ordered by id, which is random: the rows, in any order
+			result = fmt.Sprintf("List.length page.model.rows == %d", len(tb.visible(t, mine)))
+		}
+		d.Tests = append(d.Tests, TestData{Name: quote(name), Lines: tb.lines, Result: result})
+
+		// 20 rows a page
+		tb = newTest()
+		tb.bulkInsert(t, 21, "")
+		if mine { // another user's rows are not counted either
+			tb.bulkInsert(t, 20, tb.otherUser())
+		}
+		total := len(tb.visible(t, mine)) + tb.bulk[t.Module]
+		tb.let("let first <- Test.get (%s)", pageLit(o.Module, nil))
+		tb.let("let second <- Test.get (%s)", pageLit(o.Module, []string{"page: 2"}))
+		pages := (total + 19) / 20
+		d.Tests = append(d.Tests, TestData{Name: quote("the list has 20 rows a page"), Lines: tb.lines,
+			Result: fmt.Sprintf("{ first: List.length first.model.rows, second: List.length second.model.rows, pages: Test.texts \"al-pagination span\" first.doc } == { first: 20, second: %d, pages: [\"Previous\", \"Page 1 of %d\"] }", min(20, total-20), pages)})
 	case o.Show != "":
 		t, err := table(o.Show)
 		if err != nil {
@@ -180,6 +216,7 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		imports.add(t.Module)
 		tmpl = "page_show.tmpl"
 		d.Title = Humanize(t.Name)
+		heading = fmt.Sprintf("Test.text \"h1\" r.doc } == { answer: Shown, heading: Just %s }", quote(d.Title))
 		d.Open, d.Close = rootTags(p, d.Title, imports)
 		d.Path = strings.TrimSuffix(o.Path, "/") + "/{id}"
 		importTypes(imports, t.IDType)
@@ -188,27 +225,34 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		for _, c := range t.Columns {
 			d.Cols = append(d.Cols, ColData{Humanize(c.Name), cell(c, "model.row."+c.Name, imports)})
 		}
-		login()
+		pageOf = func(tb *testBuilder) string { return pageLit(o.Module, []string{"id: " + tb.insert(t, true)}) }
+
+		tb := newTest()
 		row := tb.insert(t, true)
 		tb.let("let r <- Test.open (%s)", pageLit(o.Module, []string{"id: " + row}))
 		label := t.Label()
 		result := fmt.Sprintf("{ answer: r.answer, fields: Test.count \"dd\" r.doc } == { answer: Shown, fields: %d }", len(t.Columns))
 		if !label.ID {
-			n := tb.counts[t.Module]
 			result = fmt.Sprintf("{ answer: r.answer, %s: List.member %s (Test.texts \"dd\" r.doc) } == { answer: Shown, %s: True }",
-				label.Name, quote(rawText(label, n)), label.Name)
+				label.Name, quote(rawText(label, tb.counts[t.Module])), label.Name)
 		}
 		d.Tests = append(d.Tests, TestData{Name: quote("the page shows the row"), Lines: tb.lines, Result: result})
-		tb2 := newTestBuilder(p, o.Module, imports)
-		if o.Requires != "" {
-			tb2.login(o.Role)
+
+		tb = newTest()
+		missing := tb.brandCtor(t.IDType.(*types.Brand)) + " " + quote("missing")
+		tb.let("let r <- Test.open (%s)", pageLit(o.Module, []string{"id: " + missing}))
+		d.Tests = append(d.Tests, TestData{Name: quote("a missing row is not found"), Lines: tb.lines, Result: "r.answer == PageMissing"})
+
+		if d.Mine { // read with Db.getMine: another user's row is not found either
+			tb = newTest()
+			theirs := tb.insertRow(t, "", map[string]string{t.Owner: tb.otherUser()}, false)
+			tb.let("let r <- Test.open (%s)", pageLit(o.Module, []string{"id: " + theirs}))
+			d.Tests = append(d.Tests, TestData{Name: quote("another user's row is not found"), Lines: tb.lines, Result: "r.answer == PageMissing"})
 		}
-		missing := tb2.brandCtor(t.IDType.(*types.Brand)) + " " + quote("missing")
-		tb2.let("let r <- Test.open (%s)", pageLit(o.Module, []string{"id: " + missing}))
-		d.Tests = append(d.Tests, TestData{Name: quote("a missing row is not found"), Lines: tb2.lines, Result: "r.answer == PageMissing"})
 	case len(o.From) > 0:
 		tmpl = "page_from.tmpl"
 		seen := map[string]bool{}
+		var tables []*Table
 		for _, name := range o.From {
 			t, err := table(name)
 			if err != nil {
@@ -218,23 +262,72 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 				return nil, Refusef("`--from %s` is given twice", name)
 			}
 			seen[name] = true
+			tables = append(tables, t)
 			imports.add(t.Module)
 			label := t.Label()
 			d.Lists = append(d.Lists, FromList{Field: Plural(LowerFirst(t.Name)), T: recordName(t, o.Module), Select: selectOf(t, o.Module, o.Requires != ""),
 				Title: Humanize(Plural(LowerFirst(t.Name))), Cell: cell(label, "row."+label.Name, imports)})
 		}
-		login()
-		tb.let("let r <- Test.open (%s)", pageLit(o.Module, nil))
-		d.Tests = append(d.Tests, TestData{Name: quote("the page is shown"), Lines: tb.lines,
-			Result: fmt.Sprintf("{ answer: r.answer, heading: Test.text \"h1\" r.doc } == { answer: Shown, heading: Just %s }", quote(d.Title))})
+		pageOf = func(*testBuilder) string { return pageLit(o.Module, nil) }
+
+		// each table's rows (read with Db.mine: mine, not another user's)
+		tb := newTest()
+		lhs, rhs := []string{"heading: Test.text \"h1\" page.doc"}, []string{"heading: Just " + quote(d.Title)}
+		for i, t := range tables {
+			field := d.Lists[i].Field
+			tb.insert(t, true)
+			if o.Requires != "" && t.Owner != "" {
+				tb.insertRow(t, "", map[string]string{t.Owner: tb.otherUser()}, false)
+			}
+			lhs = append(lhs, fmt.Sprintf("%s: Test.count \"#%s li\" page.doc", field, field))
+			rhs = append(rhs, fmt.Sprintf("%s: %d", field, len(tb.visible(t, o.Requires != "" && t.Owner != ""))))
+		}
+		tb.let("let page <- Test.get (%s)", pageLit(o.Module, nil))
+		d.Tests = append(d.Tests, TestData{Name: quote("the page shows each table's rows"), Lines: tb.lines,
+			Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
 	default:
-		login()
+		pageOf = func(*testBuilder) string { return pageLit(o.Module, nil) }
+		tb := newTest()
 		tb.let("let r <- Test.open (%s)", pageLit(o.Module, nil))
-		d.Tests = append(d.Tests, TestData{Name: quote("the page is shown"), Lines: tb.lines,
-			Result: fmt.Sprintf("{ answer: r.answer, heading: Test.text \"h1\" r.doc } == { answer: Shown, heading: Just %s }", quote(d.Title))})
+		d.Tests = append(d.Tests, TestData{Name: quote("the page is shown"), Lines: tb.lines, Result: "{ answer: r.answer, heading: " + heading})
+	}
+
+	// who may not see the page: a visitor is sent to log in; a user of another role gets a 404
+	if o.Requires != "" && p.Login != "" {
+		tb := newTestBuilder(p, o.Module, imports)
+		tb.let("let r <- Test.open (%s)", pageOf(tb))
+		d.Tests = append(d.Tests, TestData{Name: quote("a visitor is sent to log in"), Lines: tb.lines, Result: "r.answer == Redirected (" + pageLit(p.Login, nil) + ")"})
+	}
+	if o.Role != "" {
+		if other := otherRole(p, o.Role); other != "" {
+			tb := newTestBuilder(p, o.Module, imports)
+			tb.login(other)
+			tb.let("let r <- Test.open (%s)", pageOf(tb))
+			d.Tests = append(d.Tests, TestData{Name: quote("a user who is not " + o.Role + " gets no page"), Lines: tb.lines, Result: "r.answer == PageMissing"})
+		}
 	}
 	d.Imports = imports.list()
 	return []Edit{{Path: file, Create: true, Body: render(tmpl, d)}}, nil
+}
+
+// otherRole is a constructor of the session's role other than role, "" when there is none.
+func otherRole(p *Program, role string) string {
+	for _, c := range p.Session.Role.Ctors {
+		if c != role {
+			return c
+		}
+	}
+	return ""
+}
+
+// missingSession says what the session lacks for a role: "no `user` field", "no `role` field".
+func missingSession(p *Program) string {
+	switch {
+	case p.Session == nil || p.Session.User == nil:
+		return "no `user` field"
+	default:
+		return "no `role` field whose type is a union"
+	}
 }
 
 // rawText is the text a sample value of column c shows on a page (testBuilder.sample's).

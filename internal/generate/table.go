@@ -15,10 +15,11 @@ type TableData struct {
 	Name    string
 	Imports []string
 	Fields  []string
+	Tests   []TestData // one per reference with a delete rule (`@cascade`, `@restrict`)
 }
 
 // NewTable generates `alder new table`: app/<Name>.alder with the table, its id brand, the
-// fields given and `created`/`updated`. The migration is the caller's (Options.Migrate). It
+// fields given and `created`/`updated`, and a test of each reference's delete rule. The migration is the caller's (Options.Migrate). It
 // refuses a name that is not a table name or whose module exists, a field given twice, and the
 // fields the generator writes itself.
 func NewTable(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
@@ -50,7 +51,52 @@ func NewTable(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
 		d.Fields = append(d.Fields, f.Source())
 	}
 	d.Imports = imports.list()
-	return []Edit{{Path: FileOf(name), Create: true, Body: render("table.tmpl", d)}}, nil
+	file := FileOf(name)
+
+	// the tests of its delete rules, from the checked table
+	probe, err := Probe(p.Dir, []Edit{{Path: file, Create: true, Body: render("table.tmpl", d)}})
+	if err != nil {
+		return nil, err
+	}
+	if r := probe.errorsIn(file); r != nil {
+		return nil, r
+	}
+	if t := probe.TableNamed(name); t != nil {
+		d.Tests = deleteRuleTests(probe, t, imports)
+	}
+	d.Imports = imports.list()
+	return []Edit{{Path: file, Create: true, Body: render("table.tmpl", d)}}, nil
+}
+
+// deleteRuleTests are the tests of t's references' delete rules (chapter 8): with `@cascade`,
+// deleting the row referred to deletes t's row; with `@restrict` (the default), the delete
+// fails and the row stays. Each refers to a row of its own (target), so nothing else holds it.
+func deleteRuleTests(p *Program, t *Table, imports *importSet) []TestData {
+	var tests []TestData
+	for _, c := range t.Columns {
+		r := p.TableNamed(c.Ref)
+		if r == nil || r == t || (c.OnDelete != "cascade" && c.OnDelete != "restrict") {
+			continue
+		}
+		tb := newTestBuilder(p, t.Module, imports)
+		target := tb.insertRow(r, "target", nil, false)
+		val := target
+		if c.Maybe {
+			val = "Just " + target
+		}
+		tb.insertRow(t, "_", map[string]string{c.Name: val}, false)
+		if c.OnDelete == "cascade" {
+			tb.let("let _ <- Db.delete %s %s", r.Name, target)
+			tb.let("let left <- Db.from %s |> Db.count", t.Name)
+			tests = append(tests, TestData{Name: quote("deleting its " + c.Name + " deletes a " + t.Name), Lines: tb.lines, Result: "left == 0"})
+			continue
+		}
+		tb.let("let r <- Test.run (Db.delete %s %s)", r.Name, target)
+		tb.let("let left <- Db.from %s |> Db.count", t.Name)
+		tests = append(tests, TestData{Name: quote("a " + t.Name + " keeps its " + c.Name + " from being deleted"), Lines: tb.lines,
+			Result: "{ deleted: Result.toMaybe r.value, left: left } == { deleted: Nothing, left: 1 }"})
+	}
+	return tests
 }
 
 // typeImports imports the modules a type written as text names (`Post.PostId` → Post; `Maybe

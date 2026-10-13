@@ -18,7 +18,7 @@ view model session =
 
     <al-card>
       <h2 slot="header">[[.Title]]</h2>
-      <ul>
+      <ul id="[[.Field]]">
         {for row in model.[[.Field]] -> <li>[[.Cell]]</li>}
       </ul>
     </al-card>

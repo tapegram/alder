@@ -29,6 +29,7 @@ type Program struct {
 	Tables  []*Table           // sorted by module name
 	Pages   []*Page            // sorted by module name
 	Session *Session           // App's session; nil without an App module
+	Login   string             // the page App's `login` names ("Auth.Login"), "" for none
 	// Layout is whether module Layout has a component Page (`Layout.Page`): generated pages
 	// wrap their view in it, else in a bare `<al-page>`.
 	Layout bool
@@ -203,6 +204,13 @@ func newProgram(dir string, prog *names.Program, res *check.Result, diags []diag
 		}
 	}
 	p.Session = p.session()
+	if app := p.Modules["App"]; app != nil {
+		for _, d := range app.Syntax.Decls {
+			if ld, ok := d.(*syntax.LoginDecl); ok {
+				p.Login = ld.Page
+			}
+		}
+	}
 	return p
 }
 

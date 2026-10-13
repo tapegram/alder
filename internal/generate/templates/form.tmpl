@@ -14,10 +14,10 @@ msg [[.Msg]] form [[.Name]]
 
 [[- define "form_markup" -]]
 <form submit={[[.Msg]]}>
-  <al-alert variant="destructive"><Errors form /></al-alert>
 [[- range .Inputs]]
   [[.]]
 [[- end]]
+  <al-alert variant="destructive"><Errors form /></al-alert>
   <al-button type="submit">[[.Label]]</al-button>
 </form>
 [[- end]]

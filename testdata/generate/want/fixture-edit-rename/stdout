@@ -19,23 +19,35 @@ app/Comment.alder:19:30: error[E0003]: record `Post.Insert Post` is missing fiel
 app/Comment.alder:19:62: error[E0002]: no field `body` on `Post.Insert Post`
     let post <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
                                                                ^^^^^^^^
+app/Comment.alder:29:30: error[E0003]: record `Post.Insert Post` is missing field(s): text
+    let post <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: author }
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/Comment.alder:29:62: error[E0002]: no field `body` on `Post.Insert Post`
+    let post <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: author }
+                                                               ^^^^^^^^
 app/Home.alder:27:33: error[E0003]: record `Insert Post` without `author` is missing field(s): text
       let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/Home.alder:27:56: error[E0002]: no field `body` on `Insert Post` without `author`
       let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
                                                          ^^^^^^^^^^^^^^^^^
-app/Home.alder:65:27: error[E0003]: record `Post.Insert Post` is missing field(s): text
-    let _ <- Db.insert Post { title: Text.NonEmpty "Mine", body: "", author: me }
-                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Home.alder:65:58: error[E0002]: no field `body` on `Post.Insert Post`
-    let _ <- Db.insert Post { title: Text.NonEmpty "Mine", body: "", author: me }
-                                                           ^^^^^^^^
 app/Home.alder:66:27: error[E0003]: record `Post.Insert Post` is missing field(s): text
+    let _ <- Db.insert Post { title: Text.NonEmpty "First", body: "", author: me }
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/Home.alder:66:59: error[E0002]: no field `body` on `Post.Insert Post`
+    let _ <- Db.insert Post { title: Text.NonEmpty "First", body: "", author: me }
+                                                            ^^^^^^^^
+app/Home.alder:67:27: error[E0003]: record `Post.Insert Post` is missing field(s): text
     let _ <- Db.insert Post { title: Text.NonEmpty "Theirs", body: "", author: other }
                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Home.alder:66:60: error[E0002]: no field `body` on `Post.Insert Post`
+app/Home.alder:67:60: error[E0002]: no field `body` on `Post.Insert Post`
     let _ <- Db.insert Post { title: Text.NonEmpty "Theirs", body: "", author: other }
+                                                             ^^^^^^^^
+app/Home.alder:68:27: error[E0003]: record `Post.Insert Post` is missing field(s): text
+    let _ <- Db.insert Post { title: Text.NonEmpty "Second", body: "", author: me }
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/Home.alder:68:60: error[E0002]: no field `body` on `Post.Insert Post`
+    let _ <- Db.insert Post { title: Text.NonEmpty "Second", body: "", author: me }
                                                              ^^^^^^^^
 app/Post.alder:24:28: error[E0003]: record `Post.Insert Post` is missing field(s): text
     let id <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
@@ -43,3 +55,15 @@ app/Post.alder:24:28: error[E0003]: record `Post.Insert Post` is missing field(s
 app/Post.alder:24:60: error[E0002]: no field `body` on `Post.Insert Post`
     let id <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
                                                              ^^^^^^^^
+app/Post.alder:31:27: error[E0003]: record `Post.Insert Post` is missing field(s): text
+    let _ <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/Post.alder:31:59: error[E0002]: no field `body` on `Post.Insert Post`
+    let _ <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
+                                                            ^^^^^^^^
+app/Tag.alder:18:30: error[E0003]: record `Post.Insert Post` is missing field(s): text
+    let post <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/Tag.alder:18:62: error[E0002]: no field `body` on `Post.Insert Post`
+    let post <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
+                                                               ^^^^^^^^

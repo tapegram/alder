@@ -26,7 +26,7 @@ func EditTable(p *Program, table, op string, args []string) ([]Edit, error) {
 		}
 		f, err := ParseField(args[0], true)
 		if err != nil {
-			return nil, err
+			return nil, Refusef("%v", err)
 		}
 		if t.Column(f.Name) != nil {
 			return nil, Refusef("`%s` already has a field `%s`", table, f.Name)

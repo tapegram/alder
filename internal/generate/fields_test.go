@@ -51,6 +51,9 @@ func TestParseField(t *testing.T) {
 		{"title:Text@unique=yes", true, "`@unique` takes no argument"},
 		{"title:Text@index", true, "`@index` is not an attribute"},
 		{"title:Text@unique", false, "a form field takes no attributes"},
+		{"n:Int=1, evil: Text", true, "field `n`: the default `1, evil: Text` is not one expression"},
+		{"n:Int=(1", true, "field `n`: the default `(1` is not one expression"},
+		{"p:Post.PostId@ref=Post }", true, "`@ref=Post }`: a table is named by a capitalised identifier"},
 	} {
 		_, err := ParseField(c.arg, c.table)
 		if err == nil || !strings.Contains(err.Error(), c.want) {

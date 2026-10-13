@@ -144,3 +144,7 @@ func indent(text, prefix string) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// Snake is an identifier in lower case with `_` between its words: "publishedAt" →
+// "published_at" (a file or migration name).
+func Snake(name string) string { return strings.ReplaceAll(strings.ToLower(Humanize(name)), " ", "_") }

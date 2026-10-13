@@ -26,19 +26,23 @@ edited app/Home.alder
    </Layout.Page>
  
  test "signing adds an entry" = {
-@@ -61,3 +66,9 @@
+@@ -61,3 +66,13 @@
    let page <- Test.get (Home {})
    Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
  }
 +
++-- Fill ?expected with what pressing Clear must do, so that a test fails when the arm
++-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
++-- changed (`after`, read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.
 +test "pressing Clear" = {
 +  let _ <- Test.get (Home {})
 +  let r <- Test.click Clear
-+  Task.succeed (r.answer == ?expected)
++  let after <- Test.get (Home {})
++  Task.succeed ?expected
 +}
 app/Home.alder:31:14: warning[W0002]: hole ?clear has type Task Nav
     Clear p -> ?clear,
-               ^^^^^
-app/Home.alder:73:29: warning[W0002]: hole ?expected has type Answer
-    Task.succeed (r.answer == ?expected)
-                              ^^^^^^^^
+               ^^^^^^
+app/Home.alder:77:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^

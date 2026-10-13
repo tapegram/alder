@@ -11,7 +11,8 @@ fake Weather {
   current args = ?current
 }
 
-test "the fake Weather is installed" = {
+-- It proves the fake compiles and installs; tests of what the capability does use it.
+test "the Weather fake installs" = {
   let _ <- Test.fake Weather
   Task.succeed True
 }

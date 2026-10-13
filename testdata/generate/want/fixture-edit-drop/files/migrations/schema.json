@@ -59,6 +59,11 @@
           "default": "'Draft'"
         },
         {
+          "name": "featured",
+          "type": "Bool",
+          "default": "0"
+        },
+        {
           "name": "author",
           "type": "Text",
           "ref": "User.User"
@@ -76,7 +81,6 @@
     {
       "name": "Tag.Tag",
       "id": "id",
-      "created": "created",
       "columns": [
         {
           "name": "id",
@@ -91,10 +95,6 @@
           "name": "post",
           "type": "Text",
           "ref": "Post.Post"
-        },
-        {
-          "name": "created",
-          "type": "Time"
         }
       ]
     },

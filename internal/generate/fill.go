@@ -3,6 +3,8 @@ package generate
 import (
 	"strings"
 	"unicode"
+
+	"alder/internal/syntax"
 )
 
 // Fill generates `alder fill <Module>.<decl>[.<arm>] -`: the typed hole of that declaration
@@ -17,6 +19,11 @@ func Fill(p *Program, address, hole, expr string) ([]Edit, *Hole, error) {
 	}
 	if strings.TrimSpace(expr) == "" {
 		return nil, nil, Refusef("standard input is empty: write the expression that fills the hole")
+	}
+	if _, ds, more, at := syntax.ParseExpr("stdin", []byte(expr)); more != "" {
+		return nil, nil, Refusef("`alder fill` takes one expression; found more after it: %s at line %d, column %d of standard input", more, at.Line, at.Col)
+	} else if len(ds) > 0 {
+		return nil, nil, Refusef("`alder fill` takes one expression; standard input does not parse as one: %s (line %d, column %d)", ds[0].Message, ds[0].Span.Start.Line, ds[0].Span.Start.Col)
 	}
 	mod, decl, arm, err := parseAddress(p, address)
 	if err != nil {
@@ -50,12 +57,10 @@ func Fill(p *Program, address, hole, expr string) ([]Edit, *Hole, error) {
 		return nil, nil, Refusef("internal error: the hole ?%s is not on one line", h.Name)
 	}
 	l := lines[sp.Start.Line-1]
-	// the hole is `?name` at the span's start (the span itself may stop short of the name's end)
-	at := sp.Start.Col - 1
-	if at < 0 || !strings.HasPrefix(l[min(at, len(l)):], "?"+h.Name) {
+	if sp.Start.Col < 1 || sp.End.Col-1 > len(l) || l[sp.Start.Col-1:sp.End.Col-1] != "?"+h.Name {
 		return nil, nil, Refusef("internal error: the hole ?%s is not where the checker says", h.Name)
 	}
-	before, after := l[:at], l[at+1+len(h.Name):]
+	before, after := l[:sp.Start.Col-1], l[sp.End.Col-1:]
 	if needsParens(before, after, expr) {
 		expr = "(" + expr + ")"
 	}

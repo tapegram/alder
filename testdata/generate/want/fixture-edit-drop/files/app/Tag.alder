@@ -1,0 +1,22 @@
+module Tag
+
+import Post
+import User
+
+type TagId = brand Text
+
+-- A tagged post cannot be deleted until its tags are (`@restrict`).
+table Tag {
+  id: TagId @id,
+  name: Text.NonEmpty @unique,
+  post: Post.PostId @ref Post @restrict,
+}
+
+test "a tagged post cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let post <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
+  let _ <- Db.insert Tag { name: Text.NonEmpty "news", post: post }
+  let r <- Test.run (Db.delete Post post)
+  let tags <- Db.from Tag |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, tags: tags } == { deleted: Nothing, tags: 1 })
+}

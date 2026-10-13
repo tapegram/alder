@@ -155,11 +155,33 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 	}
 	valid := append(append([]string{}, tb.lines...), "let _ <- Test.get ("+page+")", fmt.Sprintf("let r <- Test.submit %s { %s }", o.Name, strings.Join(values, ", ")))
 	tests := []TestData{}
-	if into != nil {
+	switch {
+	case into != nil && rowsBefore == 0:
+		// the row as inserted: each field's value, and the defaults of the columns the form leaves out
+		var got, want []string
+		for i, f := range rec.Fields {
+			if into.Column(f.Name) != nil {
+				got = append(got, f.Name+": row."+f.Name)
+				want = append(want, values[i])
+			}
+		}
+		for _, c := range into.Columns {
+			if c.HasDefault && !c.ID && !c.Created && !c.Updated && ftypes[c.Name] == nil {
+				if c.Union != nil {
+					imports.add(c.Union.Module)
+				}
+				got = append(got, c.Name+": row."+c.Name)
+				want = append(want, c.Name+": "+c.Default)
+			}
+		}
+		valid = append(valid, "let rows <- Db.from "+into.Name+" |> Db.all")
+		tests = append(tests, TestData{Name: quote("submitting " + o.Name + " adds a row"), Lines: valid,
+			Result: fmt.Sprintf("{ answer: r.answer, rows: List.map (\\row -> { %s }) rows } == { answer: %s, rows: [{ %s }] }", strings.Join(got, ", "), answer, strings.Join(want, ", "))})
+	case into != nil:
 		valid = append(valid, "let rows <- Db.from "+into.Name+" |> Db.count")
 		tests = append(tests, TestData{Name: quote("submitting " + o.Name + " adds a row"), Lines: valid,
 			Result: fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", answer, rowsBefore+1)})
-	} else {
+	default:
 		tests = append(tests, TestData{Name: quote("submitting " + o.Name), Lines: valid, Result: "r.answer == ?expected"})
 	}
 	// an empty required field

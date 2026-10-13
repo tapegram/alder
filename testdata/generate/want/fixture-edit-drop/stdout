@@ -1,15 +1,15 @@
-edited app/Post.alder
-wrote migrations/0002_drop_featured.sql
-  drop column Post.featured
-!! DROPS DATA: column Post.featured
+edited app/Tag.alder
+wrote migrations/0002_drop_created.sql
+  drop column Tag.created
+!! DROPS DATA: column Tag.created
 edited migrations/schema.json
---- a/app/Post.alder
-+++ b/app/Post.alder
-@@ -13,7 +13,6 @@
-   title: Text.NonEmpty,
-   body: Text,
-   status: Status = Draft,
--  featured: Bool = False,
-   author: User.UserId @ref User @owner,
-   created: Time @created,
-   updated: Time @updated,
+--- a/app/Tag.alder
++++ b/app/Tag.alder
+@@ -10,7 +10,6 @@
+   id: TagId @id,
+   name: Text.NonEmpty @unique,
+   post: Post.PostId @ref Post @restrict,
+-  created: Time @created,
+ }
+ 
+ test "a tagged post cannot be deleted" = {

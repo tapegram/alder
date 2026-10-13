@@ -5,10 +5,14 @@ type Model = { rows: List [[.T]], page: Int, pages: Int }
 perPage : Int
 perPage = 20
 
+-- lastPage bounds `page`, so `(page - 1) * perPage` cannot overflow.
+lastPage : Int
+lastPage = 1000000
+
 -- load reads one page of the rows, newest first, and how many pages there are.
 load : Params -> Session -> Query Model
 load params session = {
-  let page = Int.max 1 params.page
+  let page = Int.clamp { min: 1, max: lastPage } params.page
   let rows <-
     [[.Select]]
       |> Db.orderBy [[.T]].[[.Order]].desc

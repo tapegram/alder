@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+
+	"alder/internal/syntax"
 )
 
 // The field syntax of the generators' command lines: one argument per field,
@@ -76,6 +78,9 @@ func ParseField(arg string, table bool) (FieldSpec, error) {
 		if f.Default == "" {
 			return f, fmt.Errorf("field `%s` has an empty default: write `%s:%s=value` or leave out the `=`", name, name, f.Type)
 		}
+		if _, ds, more, _ := syntax.ParseExpr("default", []byte(f.Default)); len(ds) > 0 || more != "" || strings.Contains(f.Default, "\n") {
+			return f, fmt.Errorf("field `%s`: the default `%s` is not one expression", name, f.Default)
+		}
 	}
 	if attrs != "" {
 		if !table {
@@ -91,6 +96,10 @@ func ParseField(arg string, table bool) (FieldSpec, error) {
 				return f, fmt.Errorf("field `%s`: `@%s` takes an argument: `@%s=%s`", name, an, an, map[string]string{"ref": "Table", "renamed": "old"}[an])
 			case !takes && hasArg:
 				return f, fmt.Errorf("field `%s`: `@%s` takes no argument", name, an)
+			case an == "ref" && !IsUpperIdent(arg):
+				return f, fmt.Errorf("field `%s`: `@ref=%s`: a table is named by a capitalised identifier, such as `@ref=Post`", name, arg)
+			case an == "renamed" && !IsLowerIdent(arg) && !IsUpperIdent(arg):
+				return f, fmt.Errorf("field `%s`: `@renamed=%s`: the old name is an identifier, such as `@renamed=body`", name, arg)
 			}
 			f.Attrs = append(f.Attrs, AttrSpec{an, arg})
 		}

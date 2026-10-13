@@ -10,10 +10,14 @@ type Model = { rows: List Entry, page: Int, pages: Int }
 perPage : Int
 perPage = 20
 
+-- lastPage bounds `page`, so `(page - 1) * perPage` cannot overflow.
+lastPage : Int
+lastPage = 1000000
+
 -- load reads one page of the rows, newest first, and how many pages there are.
 load : Params -> Session -> Query Model
 load params session = {
-  let page = Int.max 1 params.page
+  let page = Int.clamp { min: 1, max: lastPage } params.page
   let rows <-
     Db.from Entry
       |> Db.orderBy Entry.created.desc
@@ -52,9 +56,16 @@ view model session =
     </al-pagination>
   </Layout.Page>
 
-test "the list shows every row" = {
-  let _ <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
-  let _ <- Db.insert Entry { name: Text.NonEmpty "name-2", message: Text.NonEmpty "message-2" }
-  let r <- Test.open (Entries.Index {})
-  Task.succeed ({ answer: r.answer, rows: Test.count "al-table tbody tr" r.doc } == { answer: Shown, rows: 2 })
+test "the list shows the rows, newest first" = {
+  let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
+  let entry2 <- Db.insert Entry { name: Text.NonEmpty "name-2", message: Text.NonEmpty "message-2" }
+  let page <- Test.get (Entries.Index {})
+  Task.succeed (List.map (\row -> row.id) page.model.rows == [entry2, entry1])
+}
+
+test "the list has 20 rows a page" = {
+  let _ <- Task.all (List.map (\n -> Db.insert Entry { name: Text.NonEmpty ("name-" ++ Text.fromInt n), message: Text.NonEmpty ("message-" ++ Text.fromInt n) }) (List.range 1 21))
+  let first <- Test.get (Entries.Index {})
+  let second <- Test.get (Entries.Index { page: 2 })
+  Task.succeed ({ first: List.length first.model.rows, second: List.length second.model.rows, pages: Test.texts "al-pagination span" first.doc } == { first: 20, second: 1, pages: ["Previous", "Page 1 of 2"] })
 }

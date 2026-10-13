@@ -3,6 +3,8 @@ package generate
 import (
 	"fmt"
 	"strings"
+
+	"alder/internal/types"
 )
 
 // MsgData is the data of msg.tmpl: the message, its parameters as declared (`id: Post.PostId`),
@@ -18,8 +20,9 @@ type MsgData struct {
 // NewMsg generates `alder new msg`: `msg <Name> { … }` in the page module, an `update` arm
 // whose body is the typed hole `?<name>` : Task Nav, an `al-button` sending it at the end of
 // the view's root element (its parameters' values are holes `?<name><Field>`), and a browser
-// test that presses it and compares the answer with the hole `?expected` (Rerendered or
-// Redirected …, the author's to choose when filling the arm).
+// test that presses it (a parameter that is a table's id names a row the test inserts), reads
+// again the row (or the page) the arm may change, and ends in the hole `?expected` : Bool, with
+// a comment saying what to assert, so that the filled arm's mutants are killable.
 func NewMsg(p *Program, page, name string, fields []FieldSpec) ([]Edit, error) {
 	pg, m, err := pageModule(p, page)
 	if err != nil {
@@ -55,17 +58,44 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec) ([]Edit, error) {
 	if err := addToView(e, m, page, snippet("msg_button", d), ""); err != nil {
 		return nil, err
 	}
+	// the test presses the button, then reads again what the arm may change: the row a
+	// parameter names (inserted for the test), else the page; what to compare is the author's
 	tb := newTestBuilder(p, page, imports)
 	if pg.Requires != "" {
 		tb.login(roleOf(pg))
 	}
 	pv := tb.pageValue(pg)
-	click := d.Click
-	if len(holes) > 0 {
-		click = "(" + click + ")"
+	click := name
+	var reread string
+	if len(fields) > 0 {
+		var args []string
+		for _, f := range fields {
+			v := "?" + LowerFirst(name) + UpperFirst(f.Name)
+			for _, t := range p.Tables {
+				if f.Type == types.StringIn(t.IDType, page) {
+					if v = tb.ids[t.Module]; v == "" { // the page's row, when it shows one
+						v = tb.insert(t, true)
+					}
+					if reread == "" {
+						reread = "let after <- Db.get " + t.Name + " " + v
+					}
+				}
+			}
+			args = append(args, f.Name+": "+v)
+		}
+		click = "(" + name + " { " + strings.Join(args, ", ") + " })"
 	}
-	lines := append(tb.lines, "let _ <- Test.get ("+pv+")", "let r <- Test.click "+click)
-	if err := addTests(e, m, []TestData{{Name: quote("pressing " + name), Lines: lines, Result: "r.answer == ?expected"}}); err != nil {
+	if reread == "" {
+		reread = "let after <- Test.get (" + pv + ")"
+	}
+	lines := append(tb.lines, "let _ <- Test.get ("+pv+")", "let r <- Test.click "+click, reread)
+	test := TestData{Name: quote("pressing " + name), Lines: lines, Result: "?expected",
+		Comment: []string{
+			"Fill ?expected with what pressing " + name + " must do, so that a test fails when the arm",
+			"does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it",
+			"changed (`after`, read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.",
+		}}
+	if err := addTests(e, m, []TestData{test}); err != nil {
 		return nil, err
 	}
 	addImports(e, m.Syntax, imports.list())

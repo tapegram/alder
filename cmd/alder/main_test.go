@@ -88,3 +88,15 @@ func TestCLI_BadFlag(t *testing.T) {
 		}
 	}
 }
+
+// TestCLI_HoleSpanJSON: W0002's span covers the whole hole, `?` and name.
+func TestCLI_HoleSpanJSON(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "app"), 0o755)
+	os.WriteFile(filepath.Join(dir, "app", "X.alder"), []byte("module X\n\nx : Int\nx = 1 + ?count\n"), 0o644)
+	code, out, _ := run(t, dir, "--json")
+	want := `{"code":"W0002","severity":"warning","file":"app/X.alder","line":4,"col":9,"endLine":4,"endCol":15,"message":"hole ?count has type Int"}`
+	if code != 0 || strings.TrimSpace(out) != want {
+		t.Errorf("exit %d\n%s\nwant\n%s", code, out, want)
+	}
+}

@@ -38,17 +38,17 @@ edited app/Home.alder
          <al-button type="submit">Write</al-button>
        </form>
 +      <form submit={SubmitTagging}>
-+        <al-alert variant="destructive"><Errors form /></al-alert>
 +        <al-input field="name" label="Name" />
 +        <al-input field="post" label="Post" />
++        <al-alert variant="destructive"><Errors form /></al-alert>
 +        <al-button type="submit">Tagging</al-button>
 +      </form>
      </al-card>
  
      <al-button variant="outline" click={App.Logout}>Log out</al-button>
-@@ -68,3 +86,22 @@
-   let page <- Test.get (Home {})
-   Task.succeed (Test.texts "#posts li" page.doc == ["Mine"])
+@@ -83,3 +101,22 @@
+   let out <- Test.click App.Logout
+   Task.succeed ({ answer: out.answer, user: out.session.user, role: out.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, role: Reader })
  }
 +
 +test "submitting Tagging adds a row" = {
@@ -57,8 +57,8 @@ edited app/Home.alder
 +  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
 +  let _ <- Test.get (Home {})
 +  let r <- Test.submit Tagging { name: Text.NonEmpty "name-1", post: post1 }
-+  let rows <- Db.from Tag |> Db.count
-+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: Redirected (Home {}), rows: 1 })
++  let rows <- Db.from Tag |> Db.all
++  Task.succeed ({ answer: r.answer, rows: List.map (\row -> { name: row.name, post: row.post }) rows } == { answer: Redirected (Home {}), rows: [{ name: Text.NonEmpty "name-1", post: post1 }] })
 +}
 +
 +test "Tagging refuses an empty name" = {

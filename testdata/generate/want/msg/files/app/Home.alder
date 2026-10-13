@@ -67,8 +67,12 @@ test "entries are listed newest first" = {
   Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
 }
 
+-- Fill ?expected with what pressing Clear must do, so that a test fails when the arm
+-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
+-- changed (`after`, read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.
 test "pressing Clear" = {
   let _ <- Test.get (Home {})
   let r <- Test.click Clear
-  Task.succeed (r.answer == ?expected)
+  let after <- Test.get (Home {})
+  Task.succeed ?expected
 }

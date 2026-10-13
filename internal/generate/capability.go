@@ -55,7 +55,7 @@ func NewCapability(p *Program, module, entry, typ string) ([]Edit, error) {
 	}
 	imports := newImports(module, p.Std)
 	typeImports(imports, d.Type, p)
-	install := TestData{Name: quote("the fake " + d.Name + " is installed"), Lines: []string{"let _ <- Test.fake " + d.Name}, Result: "True"}
+	install := TestData{Name: quote("the " + d.Name + " fake installs"), Comment: []string{"It proves the fake compiles and installs; tests of what the capability does use it."}, Lines: []string{"let _ <- Test.fake " + d.Name}, Result: "True"}
 
 	var edit Edit
 	if m := p.Modules[module]; m != nil {
@@ -99,7 +99,8 @@ func NewCapability(p *Program, module, entry, typ string) ([]Edit, error) {
 	if err != nil {
 		return nil, fmt.Errorf("internal error: the adapter stub does not format: %v", err)
 	}
-	return []Edit{edit, {Path: "adapters/" + d.Package + "/" + strings.ToLower(d.Func) + ".go", Create: true, Body: string(stub)}}, nil
+	file := strings.ToLower(d.Name) + "_" + Snake(entry) + ".go" // weather_current.go
+	return []Edit{edit, {Path: "adapters/" + d.Package + "/" + file, Create: true, Body: string(stub)}}, nil
 }
 
 // entryArity is the number of parameters of a capability entry of type typ (0 for an entry that

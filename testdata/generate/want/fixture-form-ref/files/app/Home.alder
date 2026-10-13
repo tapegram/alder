@@ -59,9 +59,9 @@ view model session =
         <al-button type="submit">Write</al-button>
       </form>
       <form submit={SubmitTagging}>
-        <al-alert variant="destructive"><Errors form /></al-alert>
         <al-input field="name" label="Name" />
         <al-input field="post" label="Post" />
+        <al-alert variant="destructive"><Errors form /></al-alert>
         <al-button type="submit">Tagging</al-button>
       </form>
     </al-card>
@@ -69,22 +69,37 @@ view model session =
     <al-button variant="outline" click={App.Logout}>Log out</al-button>
   </Layout.Page>
 
-test "writing a post lists it" = {
+test "writing a post lists it, a draft" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Home {})
   let r <- Test.submit Write { title: Text.NonEmpty "Hello", body: "" }
-  Task.succeed ({ answer: r.answer, posts: Test.texts "#posts li" r.doc } == { answer: Redirected (Home {}), posts: ["Hello"] })
+  let posts <- Db.from Post |> Db.all
+  Task.succeed ({ answer: r.answer, listed: Test.texts "#posts li" r.doc, posts: List.map (\p -> { status: p.status, featured: p.featured, author: p.author }) posts } == { answer: Redirected (Home {}), listed: ["Hello"], posts: [{ status: Draft, featured: False, author: me }] })
 }
 
-test "only my posts are listed" = {
+test "only my posts are listed, newest first" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
   let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other" }
-  let _ <- Db.insert Post { title: Text.NonEmpty "Mine", body: "", author: me }
+  let _ <- Db.insert Post { title: Text.NonEmpty "First", body: "", author: me }
   let _ <- Db.insert Post { title: Text.NonEmpty "Theirs", body: "", author: other }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Second", body: "", author: me }
   let _ <- Test.login { user: Just me }
   let page <- Test.get (Home {})
-  Task.succeed (Test.texts "#posts li" page.doc == ["Mine"])
+  Task.succeed (Test.texts "#posts li" page.doc == ["Second", "First"])
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Home {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "logging out signs the user out" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", role: Admin }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let _ <- Test.get (Home {})
+  let out <- Test.click App.Logout
+  Task.succeed ({ answer: out.answer, user: out.session.user, role: out.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, role: Reader })
 }
 
 test "submitting Tagging adds a row" = {
@@ -93,8 +108,8 @@ test "submitting Tagging adds a row" = {
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let _ <- Test.get (Home {})
   let r <- Test.submit Tagging { name: Text.NonEmpty "name-1", post: post1 }
-  let rows <- Db.from Tag |> Db.count
-  Task.succeed ({ answer: r.answer, rows: rows } == { answer: Redirected (Home {}), rows: 1 })
+  let rows <- Db.from Tag |> Db.all
+  Task.succeed ({ answer: r.answer, rows: List.map (\row -> { name: row.name, post: row.post }) rows } == { answer: Redirected (Home {}), rows: [{ name: Text.NonEmpty "name-1", post: post1 }] })
 }
 
 test "Tagging refuses an empty name" = {

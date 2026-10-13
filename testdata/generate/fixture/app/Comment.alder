@@ -22,3 +22,13 @@ test "deleting a post deletes its comments" = {
   let left <- Db.from Comment |> Db.count
   Task.succeed (left == 0)
 }
+
+test "a commenter cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author" }
+  let post <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: author }
+  let _ <- Db.insert Comment { post: post, author: me, body: Text.NonEmpty "Nice" }
+  let r <- Test.run (Db.delete User me)
+  let left <- Db.from Comment |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, left: left } == { deleted: Nothing, left: 1 })
+}

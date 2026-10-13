@@ -15,15 +15,23 @@ type testBuilder struct {
 	home    string
 	imports *importSet
 	lines   []string
-	ids     map[string]string // table module → the variable holding the id of a row of it
-	counts  map[string]int    // rows of each table inserted so far
-	me      string            // the signed-in user's id, "" before login
-	today   bool              // `let today <- Date.today` was written
-	taken   map[string]bool   // variable names in use
+	ids     map[string]string   // table module → the variable holding the id of a row of it
+	counts  map[string]int      // rows of each table inserted so far
+	rows    map[string][]rowRef // table module → its named rows, in insertion order
+	bulk    map[string]int      // table module → rows inserted by bulkInsert for the signed-in user (or ownerless)
+	me      string              // the signed-in user's id, "" before login
+	other   string              // another user's id, "" until otherUser
+	today   bool                // `let today <- Date.today` was written
+	taken   map[string]bool     // variable names in use
 }
 
+// rowRef is a named row a test inserted, and its owner's variable ("" for a table without
+// `@owner`).
+type rowRef struct{ v, owner string }
+
 func newTestBuilder(p *Program, home string, imports *importSet) *testBuilder {
-	return &testBuilder{p: p, home: home, imports: imports, ids: map[string]string{}, counts: map[string]int{}, taken: map[string]bool{}}
+	return &testBuilder{p: p, home: home, imports: imports, ids: map[string]string{}, counts: map[string]int{},
+		rows: map[string][]rowRef{}, bulk: map[string]int{}, taken: map[string]bool{}}
 }
 
 // let adds a statement.
@@ -51,13 +59,29 @@ func (b *testBuilder) user() string {
 	s := b.p.Session
 	if s != nil && s.UserTable != "" {
 		if t := b.p.TableNamed(s.UserTable); t != nil {
-			b.me = b.insertAs(t, "me")
+			b.me = b.insertRow(t, "me", nil, true)
 			return b.me
 		}
 	}
 	elem, _ := unMaybe(s.User.Type)
 	b.me = "(" + b.sample(elem, "me", 1) + ")"
 	return b.me
+}
+
+// otherUser is the id of a second user, a stranger to the signed-in one.
+func (b *testBuilder) otherUser() string {
+	if b.other != "" {
+		return b.other
+	}
+	b.user()
+	s := b.p.Session
+	if t := b.p.TableNamed(s.UserTable); t != nil {
+		b.other = b.insertRow(t, "other", nil, false)
+		return b.other
+	}
+	elem, _ := unMaybe(s.User.Type)
+	b.other = "(" + b.sample(elem, "other", 1) + ")"
+	return b.other
 }
 
 // login signs the user in (Test.login), with role when it is not "".
@@ -75,34 +99,119 @@ func (b *testBuilder) login(role string) {
 // variable holding its id ("_" when not named). The owner column is the signed-in user.
 func (b *testBuilder) insert(t *Table, named bool) string {
 	if named {
-		return b.insertAs(t, "")
+		return b.insertRow(t, "", nil, true)
 	}
-	return b.insertAs(t, "_")
+	return b.insertRow(t, "_", nil, true)
 }
 
-// insertAs is insert, the id in variable v ("" for a fresh name, "_" for none).
-func (b *testBuilder) insertAs(t *Table, v string) string {
+// insertRow inserts a row of t into variable v ("" for a fresh name after the table, "_" for
+// none), its columns over's values where over has one, else sample values (a reference: the
+// row memo keeps for its table, else one inserted now). With memo, a named row becomes the one
+// later references to t use, unless one was named before.
+func (b *testBuilder) insertRow(t *Table, v string, over map[string]string, memo bool) string {
 	b.imports.add(t.Module)
 	b.counts[t.Module]++
 	n := b.counts[t.Module]
 	var fields []string
+	owner := ""
 	for _, c := range t.Columns {
-		if !c.Required() {
+		val, ok := over[c.Name]
+		if !ok && !c.Required() {
 			continue
 		}
-		fields = append(fields, c.Name+": "+b.columnValue(t, c, n))
+		if !ok {
+			val = b.columnValue(t, c, n)
+		}
+		if c.Owner {
+			owner = val
+		}
+		fields = append(fields, c.Name+": "+val)
 	}
 	if v == "" {
 		v = LowerFirst(t.Name) + fmt.Sprint(n)
 	}
 	if v != "_" {
 		v = b.fresh(v)
-		if b.ids[t.Module] == "" {
+		if memo && b.ids[t.Module] == "" {
 			b.ids[t.Module] = v
 		}
+		b.rows[t.Module] = append(b.rows[t.Module], rowRef{v, owner})
 	}
 	b.let("let %s <- Db.insert %s { %s }", v, t.Name, strings.Join(fields, ", "))
 	return v
+}
+
+// bulkInsert inserts k rows of t in one step (`Task.all` over `List.range`), each with sample
+// values numbered by the row, after the rows of t inserted before (so `@unique` columns
+// differ), the owner owner when t has one (the signed-in user for ""), every reference the row
+// memo keeps.
+func (b *testBuilder) bulkInsert(t *Table, k int, owner string) {
+	b.imports.add(t.Module)
+	from, to := b.counts[t.Module]+1, b.counts[t.Module]+k
+	var fields []string
+	for _, c := range t.Columns {
+		if !c.Required() {
+			continue
+		}
+		var val string
+		switch {
+		case c.Owner && owner != "":
+			val = owner
+		case c.Ref != "":
+			val = b.columnValue(t, c, from)
+		default:
+			val = b.sampleN(c.Type, c.Name)
+		}
+		fields = append(fields, c.Name+": "+val)
+	}
+	b.counts[t.Module] += k
+	if owner == "" || owner == b.me {
+		b.bulk[t.Module] += k
+	}
+	b.let("let _ <- Task.all (List.map (\\n -> Db.insert %s { %s }) (List.range %d %d))", t.Name, strings.Join(fields, ", "), from, to)
+}
+
+// visible are the named rows of t the signed-in user sees: all of them, or with mine (a page
+// reading t with Db.mine) those the user owns; newest first.
+func (b *testBuilder) visible(t *Table, mine bool) []string {
+	var out []string
+	rows := b.rows[t.Module]
+	for i := len(rows) - 1; i >= 0; i-- {
+		if !mine || rows[i].owner == b.me {
+			out = append(out, rows[i].v)
+		}
+	}
+	return out
+}
+
+// sampleN is a sample value of type t for a field named field, an expression of the row number
+// `n` (bulkInsert's), distinct for distinct rows where the type allows.
+func (b *testBuilder) sampleN(t types.Type, field string) string {
+	text := quote(strings.ToLower(field)+"-") + " ++ Text.fromInt n"
+	switch x := t.(type) {
+	case *types.Con:
+		switch x.Name {
+		case "Text":
+			return text
+		case "Int":
+			return "n"
+		case "Float":
+			return "Int.toFloat n"
+		}
+	case *types.Brand:
+		switch x.Module + "." + x.Name {
+		case "Text.Email":
+			return b.brandCtor(x) + " (" + text + " ++ \"@example.com\")"
+		case "Text.Url":
+			return b.brandCtor(x) + " (\"https://example.com/\" ++ " + text + ")"
+		}
+		if k, _, _ := kindOf(x); k == KindText || k == KindInt {
+			if inner := b.sampleN(x.Base, field); inner != "" {
+				return b.brandCtor(x) + " (" + inner + ")"
+			}
+		}
+	}
+	return b.sample(t, field, 1)
 }
 
 // columnValue is a sample value for column c of the n-th inserted row of t.

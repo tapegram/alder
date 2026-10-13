@@ -201,10 +201,11 @@ holes (W0002) with their types among them.
 | Command | What it writes |
 |---|---|
 | `alder new page <Module> <path>` | `app/<Module>.alder`: the page, its `Model`, `load` and `view` in the app's layout, and a browser test. `--list T`: a table of `T`'s rows (`al-table`, badges for Bool and unions), 20 to a page with `al-pagination`; `--show T`: one row, at `<path>/{id}`, and a test of a missing one; `--from T …`: every row of each table, a card each; `--requires user` and `--role R` add the clause, and `--list` reads an `@owner` table with `Db.mine` |
-| `alder new table <Name> <field>:<Type> …` | `app/<Name>.alder`: `table <Name>` with its id brand, the fields, `created` and `updated`; and its migration, as `alder migrate` writes it. A field is `name:Type[=default][@attr[=arg]]…`: `done:Bool=False`, `post:Post.PostId@ref=Post@cascade`, `"note:Maybe Text"` |
+| (its tests) | written to kill the mutants of the code beside them (chapter 10): the rows newest first, 20 a page, another user's rows absent (`Db.mine`) or not found (`Db.getMine`), a visitor sent to log in, a user of another role given no page |
+| `alder new table <Name> <field>:<Type> …` | `app/<Name>.alder`: `table <Name>` with its id brand, the fields, `created` and `updated`, a test of each reference's delete rule; and its migration, as `alder migrate` writes it. A field is `name:Type[=default][@attr[=arg]]…`: `done:Bool=False`, `post:Post.PostId@ref=Post@cascade`, `"note:Maybe Text"` |
 | `alder new form <Page> <Name> <field>:<Type> …` | in the page: `form <Name>`, `msg Submit<Name> form <Name>`, its arm of `update` (an insert into the table whose columns the fields are, by name and type, or `--into T`'s; else the hole `?submit<Name>`), the form in `view` (wrapped inputs, `<Errors form />` in an `al-alert`), and two browser tests |
 | `alder new msg <Page> <Name> [<field>:<Type> …]` | in the page: `msg <Name>`, its arm (the hole `?<name>`), an `al-button` that sends it at the end of the view, and a test whose expected answer is the hole `?expected` |
-| `alder new capability <Module> <entry> "<Type>"` | the capability (named after the module's last segment) with its entry, a `fake` whose entry is the hole `?<entry>`, a test that installs the fake, and the adapter, `adapters/<segment>/`, whose methods return "not implemented" |
+| `alder new capability <Module> <entry> "<Type>"` | the capability (named after the module's last segment) with its entry, a `fake` whose entry is the hole `?<entry>`, a test that installs the fake, and the adapter, `adapters/<segment>/<capability>_<entry>.go`, whose methods return "not implemented" |
 | `alder edit table <T> add-field <field>` | the field, after the table's last, and its migration |
 | `alder edit table <T> rename-field <old> <new>` | the field renamed, with `@renamed "old"` (chapter 8), and its migration |
 | `alder edit table <T> drop-field <field>` | the field removed, and its migration |
@@ -229,12 +230,16 @@ instead. A change no migration can make (a new field that is neither a `Maybe`
 nor given a default, which the rows already stored could not be filled
 with) is refused with `alder migrate`'s reason.
 
-`--dry-run` prints the same and writes nothing (its last line is `dry
-run: nothing written`). `--json` prints one object:
+`--dry-run` writes nothing and says what it would write: `would write`
+and `would edit` lines, the diff of the edited files and the created
+ones in full (as a diff from `/dev/null`), the diagnostics, and last
+`dry run: nothing written`. A refusal prints only the diagnostics
+before its sentence: nothing was written, so no file is named. `--json` prints one object:
 `{"files":[{"path":…,"action":"created"|"edited"}],"diff":…,
 "diagnostics":[…],"holes":[{"module":…,"decl":…,"arm":…,"name":…,"type":…,"file":…,"line":…,"col":…}],
 "written":…}`, with `"migration"` (the steps) when one was written and
-`"error"` (the sentence) for a refusal. The words `page`, `table`,
+`"error"` (the sentence; the diagnostics are in `"diagnostics"`) for a
+refusal. The words `page`, `table`,
 `form`, `msg`, `capability` and `admin` name generators, so `alder new`
 refuses them as app names.
 

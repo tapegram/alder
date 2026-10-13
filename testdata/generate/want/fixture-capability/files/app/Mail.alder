@@ -11,7 +11,8 @@ fake Mail {
   send args = ?send
 }
 
-test "the fake Mail is installed" = {
+-- It proves the fake compiles and installs; tests of what the capability does use it.
+test "the Mail fake installs" = {
   let _ <- Test.fake Mail
   Task.succeed True
 }

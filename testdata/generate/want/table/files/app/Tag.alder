@@ -13,3 +13,11 @@ table Tag {
   created: Time @created,
   updated: Time @updated,
 }
+
+test "deleting its entry deletes a Tag" = {
+  let target <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
+  let _ <- Db.insert Tag { name: Text.NonEmpty "name-1", entry: target, note: Nothing }
+  let _ <- Db.delete Entry target
+  let left <- Db.from Tag |> Db.count
+  Task.succeed (left == 0)
+}

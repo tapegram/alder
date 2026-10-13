@@ -393,3 +393,16 @@ func TestParse_RulesSurface(t *testing.T) {
 		}
 	}
 }
+
+// TestParse_HoleSpan: a hole's span covers its `?` and its whole name (the token's text is the
+// name alone), so W0002's caret marks `?count` and a tool can replace exactly the hole.
+func TestParse_HoleSpan(t *testing.T) {
+	m, diags := ParseFile("M.alder", []byte("module M\n\nx : Int\nx = 1 + ?count\n"))
+	if len(diags) != 0 {
+		t.Fatal(diags)
+	}
+	h := m.Decls[0].(*ValueDecl).Body.(*BinOp).R.(*HoleExpr)
+	if sp := h.Span; sp.Start.Line != 4 || sp.Start.Col != 9 || sp.End.Line != 4 || sp.End.Col != 15 {
+		t.Errorf("span of ?count: %d:%d-%d:%d, want 4:9-4:15", sp.Start.Line, sp.Start.Col, sp.End.Line, sp.End.Col)
+	}
+}

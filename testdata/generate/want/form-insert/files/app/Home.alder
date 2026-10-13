@@ -52,9 +52,9 @@ view model session =
         <al-button type="submit">Sign</al-button>
       </form>
       <form submit={SubmitQuick}>
-        <al-alert variant="destructive"><Errors form /></al-alert>
         <al-input field="name" label="Name" />
         <al-textarea field="message" label="Message" />
+        <al-alert variant="destructive"><Errors form /></al-alert>
         <al-button type="submit">Quick</al-button>
       </form>
     </al-card>
@@ -82,8 +82,8 @@ test "entries are listed newest first" = {
 test "submitting Quick adds a row" = {
   let _ <- Test.get (Home {})
   let r <- Test.submit Quick { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
-  let rows <- Db.from Entry |> Db.count
-  Task.succeed ({ answer: r.answer, rows: rows } == { answer: Redirected (Home {}), rows: 1 })
+  let rows <- Db.from Entry |> Db.all
+  Task.succeed ({ answer: r.answer, rows: List.map (\row -> { name: row.name, message: row.message }) rows } == { answer: Redirected (Home {}), rows: [{ name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }] })
 }
 
 test "Quick refuses an empty name" = {
