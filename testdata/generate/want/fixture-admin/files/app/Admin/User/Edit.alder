@@ -40,9 +40,21 @@ update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Save p -> {
     -- @admin begin update
-    let _ <- Db.update User model.row.id (\row -> { row | email: p.form.email, name: p.form.name, role: p.form.role })
+    let emailTaken <- Db.from User |> Db.where (Db.and [
+      User.email.eq p.form.email,
+      User.id.ne model.row.id,
+    ]) |> Db.count
+    if emailTaken > 0 then
+      Task.succeed (Reject "A user with this email exists.")
+    else {
+      let _ <- Db.update User model.row.id (\row -> { row |
+        email: p.form.email,
+        name: p.form.name,
+        role: p.form.role,
+      })
+      Task.succeed (Redirect (Admin.User.Show { id: model.row.id }))
+    }
     -- @admin end
-    Task.succeed (Redirect (Admin.User.Show { id: model.row.id }))
   },
 }
 
@@ -69,11 +81,53 @@ view model session =
 test "saving changes every field" = {
   let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
   let _ <- Test.login { user: Just me, role: Admin }
-  let user2 <- Db.insert User { email: Text.Email "email-2@example.com", name: Text.NonEmpty "name-2" }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
   let page <- Test.get (Admin.User.Edit { id: user2 })
-  let r <- Test.submit UserForm { email: Text.Email "email-3@example.com", name: Text.NonEmpty "name-3", role: Admin }
+  let r <- Test.submit UserForm {
+    email: Text.Email "email-3@example.com",
+    name: Text.NonEmpty "name-3",
+    role: Admin,
+  }
   let after <- Db.get User user2
-  Task.succeed ({ answer: r.answer, row: Maybe.map (\row -> { email: row.email, name: row.name, role: row.role }) after } == { answer: Redirected (Admin.User.Show { id: user2 }), row: Just { email: Text.Email "email-3@example.com", name: Text.NonEmpty "name-3", role: Admin } })
+  Task.succeed ({
+    answer: r.answer,
+    row: Maybe.map (\row -> { email: row.email, name: row.name, role: row.role }) after,
+  } == {
+    answer: Redirected (Admin.User.Show { id: user2 }),
+    row: Just {
+      email: Text.Email "email-3@example.com",
+      name: Text.NonEmpty "name-3",
+      role: Admin,
+    },
+  })
+}
+
+test "saving an email another user has is refused" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
+  let _ <- Db.insert User { email: Text.Email "email-3@example.com", name: Text.NonEmpty "name-3" }
+  let before <- Db.get User user2
+  let _ <- Test.get (Admin.User.Edit { id: user2 })
+  let r <- Test.submit UserForm {
+    email: Text.Email "email-3@example.com",
+    name: Text.NonEmpty "name-4",
+    role: Admin,
+  }
+  let after <- Db.get User user2
+  Task.succeed ({
+    answer: r.answer,
+    row: after,
+  } == {
+    answer: FormRejected [{ field: "", message: "A user with this email exists." }],
+    row: before,
+  })
 }
 
 test "a missing row is not found" = {
@@ -84,7 +138,10 @@ test "a missing row is not found" = {
 }
 
 test "a visitor is sent to log in" = {
-  let user1 <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let user1 <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+  }
   let r <- Test.open (Admin.User.Edit { id: user1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
@@ -92,7 +149,10 @@ test "a visitor is sent to log in" = {
 test "a Reader gets no page" = {
   let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
   let _ <- Test.login { user: Just me, role: Reader }
-  let user2 <- Db.insert User { email: Text.Email "email-2@example.com", name: Text.NonEmpty "name-2" }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
   let r <- Test.open (Admin.User.Edit { id: user2 })
   Task.succeed (r.answer == PageMissing)
 }

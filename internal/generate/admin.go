@@ -49,8 +49,11 @@ func adminCheck(p *Program, o AdminOptions) (AdminOptions, error) {
 	if !IsModuleName(o.Module) {
 		return o, Refusef("`--module %s` is not a module name: write capitalised names joined by dots, such as `Admin`", o.Module)
 	}
+	if !strings.HasPrefix(o.Path, "/") {
+		return o, Refusef("`--path %s` must begin with `/`, such as `/admin`", o.Path)
+	}
 	o.Path = strings.TrimSuffix(o.Path, "/")
-	if !strings.HasPrefix(o.Path, "/") || strings.ContainsAny(o.Path, "{}: ?#") {
+	if o.Path == "" || strings.ContainsAny(o.Path, "{}: ?#") {
 		return o, Refusef("`--path %s` is not a path without parameters, such as `/admin`", o.Path)
 	}
 	if len(p.Tables) == 0 {
@@ -83,9 +86,9 @@ func NewAdmin(p *Program, o AdminOptions) ([]Edit, error) {
 
 // RegenAdmin generates `alder regen admin`: every file of the admin computed afresh, and for
 // each one that exists, its owned regions written back where they changed (Edit.Replace); a
-// file that does not exist is created when all is set, or when no file of its table's pages
-// exists yet (a table added since), and is otherwise left out (the author deleted it): skipped
-// names those. Nothing to change is no edit at all. A file whose markers are broken is refused.
+// file that does not exist is created when all is set, or when its table is new (the layout's
+// nav region has no link to its list: a table added since), and is otherwise left out (the
+// author deleted it): skipped names those. Nothing to change is no edit at all. A file whose markers are broken is refused.
 func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []string, err error) {
 	o, err = adminCheck(p, o)
 	if err != nil {
@@ -96,6 +99,17 @@ func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []s
 		return nil, nil, Refusef("there is no admin in `%s/`: `alder new admin` generates one (name another with --module)", dir)
 	}
 	files, order := AdminFiles(p, o)
+	// a table is new when the nav does not link to its list: its pages are all written
+	nav, navOK := "", false
+	if b, err := os.ReadFile(filepath.Join(p.Dir, filepath.FromSlash(FileOf(o.Module+".Layout")))); err == nil {
+		nav, navOK, _ = Regions.Body(string(b), "nav")
+	}
+	tableOf := map[string]string{} // a table page's path: the expression of its list page
+	for _, t := range p.Tables {
+		for _, kind := range []string{"Index", "Show", "New", "Edit", "Delete"} {
+			tableOf[FileOf(o.Module+"."+t.Module+"."+kind)] = o.Module + "." + t.Module + ".Index {}"
+		}
+	}
 	exists := func(path string) bool {
 		_, err := os.Stat(filepath.Join(p.Dir, filepath.FromSlash(path)))
 		return err == nil
@@ -103,11 +117,14 @@ func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []s
 	for _, path := range order {
 		fresh := files[path]
 		if !exists(path) {
-			tdir := filepath.Dir(filepath.FromSlash(path))
 			newTable := false
-			if tdir != filepath.FromSlash(dir) { // a table's page: new when none of its pages exists
-				entries, _ := os.ReadDir(filepath.Join(p.Dir, tdir))
-				newTable = len(entries) == 0
+			if list, ok := tableOf[path]; ok { // a table's page: new when the nav has no link to the table
+				if navOK {
+					newTable = !strings.Contains(nav, "{"+list+"}")
+				} else { // no nav to read (the layout deleted): new when none of its pages exists
+					entries, _ := os.ReadDir(filepath.Join(p.Dir, filepath.Dir(filepath.FromSlash(path))))
+					newTable = len(entries) == 0
+				}
 			}
 			if all || newTable {
 				edits = append(edits, Edit{Path: path, Create: true, Body: fresh})
@@ -188,8 +205,7 @@ type adminTable struct {
 type referrer struct {
 	t     *Table
 	col   *Column
-	field string    // the Delete page's model field counting them: "comments"
-	via   *referrer // for a reference down a chain, the @cascade reference whose rows it refers to
+	field string // the Delete page's model field counting them: "comments"
 }
 
 func (g *adminGen) table(t *Table) *adminTable {
@@ -237,21 +253,63 @@ func (g *adminGen) referrersOf(t *Table) []*referrer {
 	return refs
 }
 
-// chained are the `@restrict` references to the rows a `@cascade` reference r deletes with
-// its row: they refuse that row's delete as well (chapter 8: the blocking row can be further
-// down a chain). One step down the chain; r's own table referring to itself is left out.
-func (g *adminGen) chained(r *referrer, top *Table) []*referrer {
-	if r.col.OnDelete != "cascade" || r.t == top {
-		return nil
+// node is a reference in the closure of what deleting a row does: a column that refers to the
+// row (parent nil), or to the rows a `@cascade` node deletes with it (parent that node).
+type node struct {
+	t      *Table
+	col    *Column
+	field  string // the Delete page's model field counting its rows: "flagsOfComments"
+	parent *node
+	kids   []*node // for a @cascade: the @cascade and @restrict references down from it that lead to a @restrict
+}
+
+// closure is the tree of the references to table at: each of at.referrer, and below each
+// `@cascade` one the references to the rows it deletes, down the whole chain (chapter 8: a row
+// that refuses the delete can be any number of steps down). A deeper reference is kept when it
+// is a `@restrict` or leads to one. A column is not followed twice on one path, so a cycle (a
+// table that refers to itself) is followed once round: the tree is bounded by the schema. A
+// table's `@restrict` reference to itself, under a cascade of that table, is left out.
+func (g *adminGen) closure(at *adminTable) []*node {
+	var nodes []*node
+	for _, r := range at.referrer {
+		n := &node{t: r.t, col: r.col, field: r.field}
+		g.expand(n, map[*Column]bool{r.col: true})
+		nodes = append(nodes, n)
 	}
-	var out []*referrer
-	for _, c := range g.referrersOf(r.t) {
-		if c.col.OnDelete == "restrict" && c.t != r.t {
-			out = append(out, &referrer{t: c.t, col: c.col, field: c.field + "Of" + UpperFirst(r.field)})
+	return nodes
+}
+
+// expand adds node n's kids: when n is a @cascade, the references to its table not on path.
+func (g *adminGen) expand(n *node, path map[*Column]bool) {
+	if n.col.OnDelete != "cascade" {
+		return
+	}
+	for _, c := range g.referrersOf(n.t) {
+		if path[c.col] || (c.col.OnDelete != "cascade" && c.col.OnDelete != "restrict") || (c.col.OnDelete == "restrict" && c.t == n.t) {
+			continue
 		}
+		k := &node{t: c.t, col: c.col, field: c.field + "Of" + UpperFirst(n.field), parent: n}
+		path[c.col] = true
+		g.expand(k, path)
+		delete(path, c.col)
+		if c.col.OnDelete == "restrict" || len(k.kids) > 0 {
+			n.kids = append(n.kids, k)
+		}
+	}
+}
+
+// walk is nodes and their kids, each before its kids.
+func walk(nodes []*node) []*node {
+	var out []*node
+	for _, n := range nodes {
+		out = append(out, n)
+		out = append(out, walk(n.kids)...)
 	}
 	return out
 }
+
+// pluralOf is table t's rows in a sentence: "comments".
+func pluralOf(t *Table) string { return Plural(strings.ToLower(Humanize(t.Name))) }
 
 // eqID is the condition that column c of table t holds the id in expr: `T.c.eq id`, or with a
 // Maybe column `T.c.eq (Just id)`.
@@ -358,7 +416,7 @@ func (g *adminGen) dashboard() {
 	b.WriteString("type Model = { cards: List Card }\n\n")
 	b.WriteString("-- recent is how many of a table's newest rows its card lists.\nrecent : Int\nrecent = 5\n\n")
 	b.WriteString("load : Params -> Session -> Query Model\nload params session = {\n")
-	b.WriteString(regionAt("  ", "cards", body) + "\n}\n\n")
+	b.WriteString(regionAt("  ", "cards", wrapAll(body)) + "\n}\n\n")
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
 	fmt.Fprintf(&b, "  %s\n    <h1>Admin</h1>\n\n", open)
 	b.WriteString(`    <al-stack gap="md">
@@ -391,6 +449,10 @@ func (g *adminGen) dashboard() {
 			}
 			lhs = append(lhs, fmt.Sprintf("rows: Test.texts \"#%s li\" page.doc", at.plural))
 			rhs = append(rhs, "rows: ["+strings.Join(labels, ", ")+"]")
+		} else if t.Created != "" { // the label is the id: the newest rows, by the pages they link to
+			tb.let("let newest <- Db.from %s |> Db.orderBy %s.%s.desc |> Db.limit %d |> Db.all", t.Name, t.Name, t.Created, recentRows)
+			lhs = append(lhs, fmt.Sprintf("rows: List.map (\\card -> List.map (\\row -> row.href) card.rows) (List.filter (\\card -> card.key == %s) page.model.cards)", quote(at.plural)))
+			rhs = append(rhs, fmt.Sprintf("rows: [List.map (\\row -> %s { id: row.%s }) newest]", at.page("Show"), t.IDField))
 		} else {
 			lhs = append(lhs, fmt.Sprintf("rows: Test.count \"#%s li\" page.doc", at.plural))
 			rhs = append(rhs, fmt.Sprintf("rows: %d", recentRows))
@@ -456,24 +518,120 @@ func testsText(tests []TestData) string {
 	for _, t := range tests {
 		parts = append(parts, snippet("test", t))
 	}
-	return "\n" + RegionBegin + "tests\n" + strings.Join(parts, "\n\n") + "\n" + RegionEnd + "\n"
+	return "\n" + RegionBegin + "tests\n" + wrap(strings.Join(parts, "\n\n")) + "\n" + RegionEnd + "\n"
 }
 
 // ---- a table's pages
 
 // adminCell is the markup showing column c of row (an expression): a reference as a link to
-// the referenced row's admin page, the others as the list pages show them.
+// the referenced row's admin page, labelled by that row's label (model.labels, from the
+// page's region `labels`) or, when its table has none, its id; the others as the list pages
+// show them.
 func (g *adminGen) adminCell(c *Column, row string, imports *importSet) string {
 	if c.Ref != "" {
 		if rt := g.p.TableNamed(c.Ref); rt != nil {
 			show := g.o.Module + "." + rt.Module + ".Show"
-			if c.Maybe {
-				return "{match " + row + "." + c.Name + " { Just v -> <a href={" + show + " { id: v }}>{v}</a>, Nothing -> Html.none }}"
+			text := func(id string) string {
+				if rt.Label().ID {
+					return id
+				}
+				return labelFunc(c) + " model.labels " + id
 			}
-			return "<a href={" + show + " { id: " + row + "." + c.Name + " }}>{" + row + "." + c.Name + "}</a>"
+			if c.Maybe {
+				return "{match " + row + "." + c.Name + " { Just v -> <a href={" + show + " { id: v }}>{" + text("v") + "}</a>, Nothing -> Html.none }}"
+			}
+			return "<a href={" + show + " { id: " + row + "." + c.Name + " }}>{" + text(row+"."+c.Name) + "}</a>"
 		}
 	}
 	return cell(c, row+"."+c.Name, imports)
+}
+
+// labelFunc is the function naming the row reference column c refers to: "authorLabel".
+func labelFunc(c *Column) string { return c.Name + "Label" }
+
+// labelled are the columns of at's table whose cells show the label of the row they refer to:
+// its references to a table whose rows have a label other than their id.
+func (g *adminGen) labelled(at *adminTable) []*Column {
+	var out []*Column
+	for _, c := range at.t.Columns {
+		if rt := g.p.TableNamed(c.Ref); c.Ref != "" && rt != nil && !rt.Label().ID {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// labels is the region `labels` of at's list and show pages: the type Labels, the rows its
+// references name (a field per column, as optionsField), labelsOf reading them for the rows a
+// page shows (`.in` their ids), and a function per column naming a row by its label.
+func (g *adminGen) labels(at *adminTable, mod string, imports *importSet) []string {
+	t := at.t
+	cols := g.labelled(at)
+	var fields, loads, inits, funcs []string
+	for _, c := range cols {
+		rt := g.p.TableNamed(c.Ref)
+		imports.add(rt.Module)
+		importTypes(imports, rt.IDType)
+		fields = append(fields, optionsField(c)+": List "+rt.Name)
+		ids := "List.map (\\row -> row." + c.Name + ") rows"
+		if c.Maybe {
+			ids = "List.filterMap (\\row -> row." + c.Name + ") rows"
+		}
+		loads = append(loads, fmt.Sprintf("  let %s <- Db.from %s |> Db.where (%s.%s.in (%s)) |> Db.all", optionsField(c), rt.Name, rt.Name, rt.IDField, ids))
+		inits = append(inits, optionsField(c)+": "+optionsField(c))
+		noun := strings.ToLower(Humanize(rt.Name))
+		funcs = append(funcs, "",
+			fmt.Sprintf("-- %s is the label of the %s id names (the id itself if it names none).", labelFunc(c), noun),
+			fmt.Sprintf("%s : Labels -> %s -> Text", labelFunc(c), types.StringIn(rt.IDType, mod)),
+			fmt.Sprintf("%s labels id = match List.find (\\r -> r.%s == id) labels.%s {", labelFunc(c), rt.IDField, optionsField(c)),
+			"  Just r -> "+textOf(rt.Label(), "r."+rt.Label().Name)+",",
+			"  Nothing -> id,",
+			"}")
+	}
+	out := []string{"-- Labels are the rows the references of the rows shown name: their links show their labels."}
+	if len(cols) == 0 {
+		return append(out, "type Labels = { }", "", "labelsOf : List "+t.Name+" -> Query Labels", "labelsOf rows = Query.succeed { }")
+	}
+	out = append(out, "type Labels = { "+strings.Join(fields, ", ")+" }", "",
+		"-- labelsOf reads the rows that rows refer to.",
+		"labelsOf : List "+t.Name+" -> Query Labels", "labelsOf rows = {")
+	out = append(out, loads...)
+	out = append(out, "  Query.succeed { "+strings.Join(inits, ", ")+" }", "}")
+	return append(out, funcs...)
+}
+
+// labelChecks are a test's comparisons that the page loaded the labels of the rows its
+// references name, and only those, and names a row by its label (left and right sides'
+// fields), with the rows they need: for each labelled column to another table, one more row of
+// that table, which nothing shown refers to. model is the page's model expression.
+func (g *adminGen) labelChecks(tb *testBuilder, at *adminTable, model string) [2][]string {
+	var out [2][]string
+	for _, c := range g.labelled(at) {
+		rt := g.p.TableNamed(c.Ref)
+		if rt == at.t || len(tb.rows[rt.Module]) == 0 && !c.Maybe {
+			continue
+		}
+		first, firstID := "", ""
+		if len(tb.rows[rt.Module]) > 0 {
+			first, firstID = rawText(rt.Label(), 1), tb.rows[rt.Module][0].v
+		}
+		extra := tb.insertRow(rt, "", nil, false)
+		n := 1
+		if c.Maybe { // the rows shown refer to none: the label of the extra row, from labels holding it
+			n = 0
+			all := tb.fresh(optionsField(c) + "All")
+			tb.let("let %s <- Db.from %s |> Db.all", all, rt.Name)
+			out[0] = append(out[0], fmt.Sprintf("%s: %s { %s.labels | %s: %s } %s", labelFunc(c), labelFunc(c), model, optionsField(c), all, extra))
+			out[1] = append(out[1], labelFunc(c)+": "+quote(rawText(rt.Label(), tb.counts[rt.Module])))
+		}
+		out[0] = append(out[0], fmt.Sprintf("%s: List.length %s.labels.%s", optionsField(c), model, optionsField(c)))
+		out[1] = append(out[1], fmt.Sprintf("%s: %d", optionsField(c), n))
+		if !c.Maybe { // the label of the row the rows shown refer to
+			out[0] = append(out[0], fmt.Sprintf("%s: %s %s.labels %s", labelFunc(c), labelFunc(c), model, firstID))
+			out[1] = append(out[1], labelFunc(c)+": "+quote(first))
+		}
+	}
+	return out
 }
 
 func (g *adminGen) index(at *adminTable) {
@@ -527,8 +685,9 @@ func (g *adminGen) index(at *adminTable) {
 		shown = append([]*Column{at.label}, cols...)
 	}
 	for _, c := range shown {
-		headers = append(headers, fmt.Sprintf("<th><a href={%s { q: model.q, sort: %s, dir: if model.sort == %s && model.dir == \"asc\" then \"desc\" else \"asc\" }}>%s</a></th>",
-			mod, quote(c.Name), quote(c.Name), Humanize(c.Name)))
+		headers = append(headers, "<th>", fmt.Sprintf("  <a href={%s {", mod), "    q: model.q,", "    sort: "+quote(c.Name)+",",
+			fmt.Sprintf("    dir: if model.sort == %s && model.dir == \"asc\" then \"desc\" else \"asc\",", quote(c.Name)),
+			"  }}>"+Humanize(c.Name)+"</a>", "</th>")
 		cellText := g.adminCell(c, "row", imports)
 		if c == at.label {
 			cellText = "<a href={" + at.page("Show") + " { id: row." + t.IDField + " }}>{" + textOf(c, "row."+c.Name) + "}</a>"
@@ -538,9 +697,8 @@ func (g *adminGen) index(at *adminTable) {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "page %s { q: Text = \"\", sort: Text = %s, dir: Text = \"desc\", page: Int = 1 }%s\n\n", quote(at.path), quote(order), adminRequires)
-	fmt.Fprintf(&b, "type Model = { rows: List %s, q: Text, sort: Text, dir: Text, page: Int, pages: Int, count: Int }\n\n", t.Name)
+	fmt.Fprintf(&b, "type Model = {\n  rows: List %s,\n  labels: Labels,\n  q: Text,\n  sort: Text,\n  dir: Text,\n  page: Int,\n  pages: Int,\n  count: Int,\n}\n\n", t.Name)
 	b.WriteString("perPage : Int\nperPage = 25\n\n")
-	b.WriteString("-- lastPage bounds `page`, so `(page - 1) * perPage` cannot overflow.\nlastPage : Int\nlastPage = 1000000\n\n")
 	b.WriteString(regionAt("", "search", search) + "\n\n")
 	b.WriteString(regionAt("", "sorts", sorts) + "\n\n")
 	newest := "newest first"
@@ -555,23 +713,37 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
   Nothing -> %s.%s.desc,
 }
 
--- load reads one page of the rows that match the search, in the order asked for, and how many
--- match.
+-- load reads how many rows match the search, and one page of them (the last, for a page past it),
+-- in the order asked for. The search text is cut to 200 characters (Text.slice): a text over
+-- 10,000 bytes would fail the query (chapter 8, "Search").
 load : Params -> Session -> Query Model
 load params session = {
-  let page = Int.clamp { min: 1, max: lastPage } params.page
+  let q = Text.slice 0 200 params.q
+  let count <- Db.from %s |> Db.where (search q) |> Db.count
+  let pages = Int.max 1 ((count + perPage - 1) / perPage)
+  let page = Int.clamp { min: 1, max: pages } params.page
   let rows <-
     Db.from %s
-      |> Db.where (search params.q)
+      |> Db.where (search q)
       |> Db.orderBy (order params.sort params.dir)
       |> Db.limit perPage
       |> Db.offset ((page - 1) * perPage)
       |> Db.all
-  let count <- Db.from %s |> Db.where (search params.q) |> Db.count
-  Query.succeed { rows: rows, q: params.q, sort: params.sort, dir: params.dir, page: page, pages: Int.max 1 ((count + perPage - 1) / perPage), count: count }
+  let labels <- labelsOf rows
+  Query.succeed {
+    rows: rows,
+    labels: labels,
+    q: q,
+    sort: params.sort,
+    dir: params.dir,
+    page: page,
+    pages: pages,
+    count: count,
+  }
 }
 
 `, t.Name, t.Name, order, t.Name, t.Name)
+	b.WriteString(regionAt("", "labels", wrapAll(g.labels(at, mod, imports))) + "\n\n")
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n", open, at.title)
 	fmt.Fprintf(&b, `    <al-stack direction="row" gap="sm">
@@ -583,7 +755,7 @@ load params session = {
       <al-button href={%s {}}>New %s</al-button>
     </al-stack>
 
-    <p id="count">{Text.fromInt model.count} rows</p>
+    <p id="count">{if model.count == 1 then "1 row" else Text.fromInt model.count ++ " rows"}</p>
 
     <al-table>
       <table>
@@ -616,14 +788,20 @@ load params session = {
 	tb := g.tb(mod, imports, true)
 	tb.insert(t, true)
 	tb.insert(t, true)
+	checks := g.labelChecks(tb, at, "page.model")
 	tb.let("let page <- Test.get (%s {})", mod)
-	if t.Created != "" {
-		tests = append(tests, TestData{Name: quote("the list shows every row, newest first"), Lines: tb.lines,
-			Result: ids("page") + " == [" + strings.Join(tb.visible(t, false), ", ") + "]"})
-	} else {
-		tests = append(tests, TestData{Name: quote("the list shows every row"), Lines: tb.lines,
-			Result: fmt.Sprintf("List.length page.model.rows == %d", len(tb.visible(t, false)))})
+	lhs, rhs := []string{"rows: " + ids("page")}, []string{"rows: [" + strings.Join(tb.visible(t, false), ", ") + "]"}
+	name := "the list shows every row, newest first"
+	if t.Created == "" {
+		lhs, rhs = []string{"rows: List.length page.model.rows"}, []string{fmt.Sprintf("rows: %d", len(tb.visible(t, false)))}
+		name = "the list shows every row"
 	}
+	if len(checks[0]) > 0 {
+		name += ", and the labels of the rows they refer to"
+	}
+	lhs, rhs = append(lhs, checks[0]...), append(rhs, checks[1]...)
+	tests = append(tests, TestData{Name: quote(name), Lines: tb.lines,
+		Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
 
 	// sorting: a column whose order is the reverse of the rows' (and of every other column's)
 	if sc := sortColumn(t); sc != nil {
@@ -653,8 +831,15 @@ load params session = {
 		q := rawText(sc, tb.counts[t.Module])
 		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"q: " + quote(q)}))
 		tests = append(tests, TestData{Name: quote("searching finds the rows that contain the text"), Lines: tb.lines,
-			Result: fmt.Sprintf("{ rows: %s, count: page.model.count } == { rows: [%s], count: 1 }", ids("page"), match)})
+			Result: fmt.Sprintf("{ rows: %s, count: Test.text \"#count\" page.doc } == { rows: [%s], count: Just \"1 row\" }", ids("page"), match)})
 	}
+
+	// a search text too long for the database is cut, not a failure
+	tb = g.tb(mod, imports, true)
+	tb.let("let long = Text.join \"\" (List.map (\\n -> \"z\") (List.range 1 20000))")
+	tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"q: long"}))
+	tests = append(tests, TestData{Name: quote("a search text of 20,000 characters is cut to 200"), Lines: tb.lines,
+		Result: "{ q: Text.length page.model.q, rows: List.length page.model.rows } == { q: 200, rows: 0 }"})
 
 	// 25 rows a page
 	tb = g.tb(mod, imports, true)
@@ -662,8 +847,10 @@ load params session = {
 	total := len(tb.visible(t, false)) + tb.bulk[t.Module]
 	tb.let("let first <- Test.get (%s {})", mod)
 	tb.let("let second <- Test.get (%s)", pageLit(mod, []string{"page: 2"}))
-	tests = append(tests, TestData{Name: quote("the list has 25 rows a page"), Lines: tb.lines,
-		Result: fmt.Sprintf("{ first: List.length first.model.rows, second: List.length second.model.rows, pages: Test.texts \"al-pagination span\" first.doc } == { first: 25, second: %d, pages: [\"Previous\", \"Page 1 of %d\"] }", total-25, (total+24)/25)})
+	tb.let("let past <- Test.get (%s)", pageLit(mod, []string{"page: 9"}))
+	tests = append(tests, TestData{Name: quote("the list has 25 rows a page, and a page past the last is the last"), Lines: tb.lines,
+		Result: fmt.Sprintf("{ first: List.length first.model.rows, second: List.length second.model.rows, past: { page: past.model.page, rows: List.length past.model.rows }, count: Test.text \"#count\" first.doc, pages: Test.texts \"al-pagination span\" first.doc } == { first: 25, second: %d, past: { page: %d, rows: %d }, count: Just \"%d rows\", pages: [\"Previous\", \"Page 1 of %d\"] }",
+			total-25, (total+24)/25, total-25, total, (total+24)/25)})
 
 	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return mod + " {}" })...)
 	b.WriteString(testsText(tests))
@@ -711,17 +898,21 @@ func (g *adminGen) show(at *adminTable) {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "page %s { id: %s }%s\n\n", pathLit(at.path+"/{id}"), types.StringIn(t.IDType, mod), adminRequires)
-	fmt.Fprintf(&b, "type Model = { row: %s }\n\n", t.Name)
+	fmt.Fprintf(&b, "type Model = { row: %s, labels: Labels }\n\n", t.Name)
 	fmt.Fprintf(&b, `load : Params -> Session -> Query Model
 load params session = {
   let found <- Db.get %s params.id
   match found {
-    Just row -> Query.succeed { row: row },
+    Just row -> {
+      let labels <- labelsOf [row]
+      Query.succeed { row: row, labels: labels }
+    },
     Nothing -> Query.notFound,
   }
 }
 
 `, t.Name)
+	b.WriteString(regionAt("", "labels", wrapAll(g.labels(at, mod, imports))) + "\n\n")
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n      <dl>\n%s\n      </dl>\n", open, title, regionAt("        ", "fields", fields))
 	fmt.Fprintf(&b, `      <div slot="actions">
@@ -736,13 +927,18 @@ load params session = {
 	var tests []TestData
 	tb := g.tb(mod, imports, true)
 	row := tb.insertRow(t, "", nil, false)
+	k := tb.counts[t.Module]
+	checks := g.labelChecks(tb, at, "page.model")
 	tb.let("let r <- Test.open (%s)", pageLit(mod, []string{"id: " + row}))
-	result := fmt.Sprintf("{ answer: r.answer, fields: Test.count \"dd\" r.doc } == { answer: Shown, fields: %d }", len(t.Columns))
+	lhs, rhs := []string{"answer: r.answer", "fields: Test.count \"dd\" r.doc"}, []string{"answer: Shown", fmt.Sprintf("fields: %d", len(t.Columns))}
 	if !at.label.ID {
-		result = fmt.Sprintf("{ answer: r.answer, %s: List.member %s (Test.texts \"dd\" r.doc) } == { answer: Shown, %s: True }",
-			at.label.Name, quote(rawText(at.label, tb.counts[t.Module])), at.label.Name)
+		lhs[1], rhs[1] = fmt.Sprintf("%s: List.member %s (Test.texts \"dd\" r.doc)", at.label.Name, quote(rawText(at.label, k))), at.label.Name+": True"
 	}
-	tests = append(tests, TestData{Name: quote("the page shows the row"), Lines: tb.lines, Result: result})
+	if len(checks[0]) > 0 { // the model, for the labels it loaded
+		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"id: " + row}))
+	}
+	lhs, rhs = append(lhs, checks[0]...), append(rhs, checks[1]...)
+	tests = append(tests, TestData{Name: quote("the page shows the row"), Lines: tb.lines, Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
 	tests = append(tests, g.missingTest(at, mod, imports))
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
 		return pageLit(mod, []string{"id: " + tb.insertRow(t, "", nil, false)})
@@ -840,17 +1036,19 @@ func (g *adminGen) newPage(at *adminTable) {
 	for _, c := range at.nowCols {
 		inits = append(inits, c.Name+": now")
 	}
-	insert = append(insert, fmt.Sprintf("let id <- Db.insert %s { %s }", t.Name, strings.Join(inits, ", ")))
+	insert = append(insert, g.unique(at, "", []string{
+		fmt.Sprintf("let id <- Db.insert %s { %s }", t.Name, strings.Join(inits, ", ")),
+		fmt.Sprintf("Task.succeed (Redirect (%s { id: id }))", at.page("Show")),
+	})...)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "page %s { }%s\n\n", quote(at.path+"/new"), adminRequires)
 	b.WriteString("type Model = {\n" + regionAt("  ", "model", model) + "\n}\n\n")
-	b.WriteString("load : Params -> Session -> Query Model\nload params session = {\n" + regionAt("  ", "load", loads) + "\n}\n\n")
+	b.WriteString("load : Params -> Session -> Query Model\nload params session = {\n" + regionAt("  ", "load", wrapAll(loads)) + "\n}\n\n")
 	b.WriteString(regionAt("", "form", form) + "\n\n")
 	fmt.Fprintf(&b, "msg Create form %s\n\n", at.formName())
 	b.WriteString("update : Msg -> Model -> Session -> Task Nav\nupdate msg model session = match msg {\n  Create p -> {\n")
-	b.WriteString(regionAt("    ", "insert", insert) + "\n")
-	fmt.Fprintf(&b, "    Task.succeed (Redirect (%s { id: id }))\n  },\n}\n\n", at.page("Show"))
+	b.WriteString(regionAt("    ", "insert", wrapAll(insert)) + "\n  },\n}\n\n")
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n      <form submit={Create}>\n%s\n", open, UpperFirst(title), regionAt("        ", "inputs", inputs))
 	b.WriteString("        <al-alert variant=\"destructive\"><Errors form /></al-alert>\n        <al-button type=\"submit\">Create</al-button>\n      </form>\n    </al-card>\n")
@@ -860,6 +1058,9 @@ func (g *adminGen) newPage(at *adminTable) {
 	var tests []TestData
 	tb := g.tb(mod, imports, true)
 	optLines := g.optionRows(tb, at)
+	if len(at.uniques()) > 0 && tb.counts[t.Module] == 0 { // a row whose values the new one's differ from: no false "exists"
+		tb.insertRow(t, "_", nil, false)
+	}
 	k := tb.counts[t.Module]
 	var values, got, want []string
 	for _, c := range at.editable {
@@ -888,6 +1089,7 @@ func (g *adminGen) newPage(at *adminTable) {
 	}
 	tests = append(tests, TestData{Name: quote("creating " + article(at.noun) + " adds it, with the values submitted"), Lines: tb.lines,
 		Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
+	tests = append(tests, g.uniqueTests(at, mod, imports, false)...)
 	tests = append(tests, g.notOffered(at, mod, imports, false)...)
 	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return mod + " {}" })...)
 	b.WriteString(testsText(tests))
@@ -938,6 +1140,107 @@ func (g *adminGen) notOffered(at *adminTable, mod string, imports *importSet, ed
 			result = fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", rejected, tb.counts[at.t.Module])
 		}
 		tests = append(tests, TestData{Name: quote(article(strings.ToLower(Humanize(c.Name))) + " not offered is refused"), Lines: tb.lines, Result: result})
+	}
+	return tests
+}
+
+// uniques are the columns of at's forms that are `@unique`.
+func (at *adminTable) uniques() []*Column {
+	var out []*Column
+	for _, c := range at.editable {
+		if c.Unique {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// takenText is the refusal of a form whose `@unique` column c holds a value another row has.
+func takenText(at *adminTable, c *Column) string {
+	return UpperFirst(article(at.noun)) + " with this " + strings.ToLower(Humanize(c.Name)) + " exists."
+}
+
+// unique is an arm's body, write (the write and the redirect), guarded for each `@unique`
+// column of at's form by a count of the rows that already hold the submitted value (other than
+// the row self, on an Edit page): such a value answers `Reject`, which the form shows, where the
+// database would refuse the write with an error (a 500).
+func (g *adminGen) unique(at *adminTable, self string, write []string) []string {
+	cols := at.uniques()
+	if len(cols) == 0 {
+		return write
+	}
+	t := at.t
+	var out []string
+	for _, c := range cols {
+		conds := []string{t.Name + "." + c.Name + ".eq p.form." + c.Name}
+		if c.Maybe { // no value is never taken: `.ne Nothing` matches no row without one
+			conds = append(conds, t.Name+"."+c.Name+".ne Nothing")
+		}
+		if self != "" {
+			conds = append(conds, t.Name+"."+t.IDField+".ne "+self)
+		}
+		cond := conds[0]
+		if len(conds) > 1 {
+			cond = "Db.and [" + strings.Join(conds, ", ") + "]"
+		}
+		out = append(out, fmt.Sprintf("let %sTaken <- Db.from %s |> Db.where (%s) |> Db.count", c.Name, t.Name, cond))
+	}
+	for i, c := range cols {
+		lead := "else if"
+		if i == 0 {
+			lead = "if"
+		}
+		out = append(out, fmt.Sprintf("%s %sTaken > 0 then", lead, c.Name), "  Task.succeed (Reject "+quote(takenText(at, c))+")")
+	}
+	out = append(out, "else {")
+	out = append(out, indentAll(write, "  ")...)
+	return append(out, "}")
+}
+
+// uniqueTests are the tests that a New (or Edit) page refuses a value of a `@unique` column
+// that another row holds: the form's error, and nothing written.
+func (g *adminGen) uniqueTests(at *adminTable, mod string, imports *importSet, edit bool) []TestData {
+	var tests []TestData
+	t := at.t
+	for _, c := range at.uniques() {
+		tb := g.tb(mod, imports, true)
+		page := mod + " {}"
+		target := ""
+		if edit {
+			target = tb.insertRow(t, "", nil, false)
+			page = pageLit(mod, []string{"id: " + target})
+		}
+		g.optionRows(tb, at)
+		taken := g.submitValue(tb, at, c, tb.counts[t.Module]+1)
+		tb.insertRow(t, "_", map[string]string{c.Name: taken}, false)
+		k := tb.counts[t.Module]
+		var values []string
+		for _, d := range at.editable {
+			v := g.submitValue(tb, at, d, k+1)
+			if edit {
+				v = g.changedValue(tb, at, d, k+1)
+			}
+			if d == c {
+				v = taken
+			}
+			values = append(values, d.Name+": "+v)
+		}
+		if edit {
+			tb.let("let before <- Db.get %s %s", t.Name, target)
+		}
+		tb.let("let _ <- Test.get (%s)", page)
+		tb.let("let r <- Test.submit %s { %s }", at.formName(), strings.Join(values, ", "))
+		rejected := fmt.Sprintf("FormRejected [{ field: \"\", message: %s }]", quote(takenText(at, c)))
+		col := strings.ToLower(Humanize(c.Name))
+		if edit {
+			tb.let("let after <- Db.get %s %s", t.Name, target)
+			tests = append(tests, TestData{Name: quote("saving " + article(col) + " another " + at.noun + " has is refused"), Lines: tb.lines,
+				Result: fmt.Sprintf("{ answer: r.answer, row: after } == { answer: %s, row: before }", rejected)})
+			continue
+		}
+		tb.let("let rows <- Db.from %s |> Db.count", t.Name)
+		tests = append(tests, TestData{Name: quote(article(at.noun) + " with " + article(col) + " that exists is refused"), Lines: tb.lines,
+			Result: fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", rejected, k)})
 	}
 	return tests
 }
@@ -1038,12 +1341,12 @@ func (g *adminGen) edit(at *adminTable) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "page %s { id: %s }%s\n\n", pathLit(at.path+"/{id}/edit"), types.StringIn(t.IDType, mod), adminRequires)
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + regionAt("  ", "model", model) + "\n}\n\n")
-	b.WriteString("load : Params -> Session -> Query Model\nload params session = {\n" + regionAt("  ", "load", loads) + "\n}\n\n")
+	b.WriteString("load : Params -> Session -> Query Model\nload params session = {\n" + regionAt("  ", "load", wrapAll(loads)) + "\n}\n\n")
 	b.WriteString(regionAt("", "form", form) + "\n\n")
 	fmt.Fprintf(&b, "msg Save form %s\n\n", at.formName())
 	b.WriteString("update : Msg -> Model -> Session -> Task Nav\nupdate msg model session = match msg {\n  Save p -> {\n")
-	b.WriteString(regionAt("    ", "update", []string{upd}) + "\n")
-	fmt.Fprintf(&b, "    Task.succeed (Redirect (%s { id: model.row.%s }))\n  },\n}\n\n", at.page("Show"), t.IDField)
+	save := g.unique(at, "model.row."+t.IDField, []string{upd, fmt.Sprintf("Task.succeed (Redirect (%s { id: model.row.%s }))", at.page("Show"), t.IDField)})
+	b.WriteString(regionAt("    ", "update", wrapAll(save)) + "\n  },\n}\n\n")
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n      <form submit={Save}>\n%s\n", open, UpperFirst(title), regionAt("        ", "inputs", inputs))
 	b.WriteString("        <al-alert variant=\"destructive\"><Errors form /></al-alert>\n        <al-button type=\"submit\">Save</al-button>\n      </form>\n    </al-card>\n")
@@ -1074,6 +1377,7 @@ func (g *adminGen) edit(at *adminTable) {
 	lhs, rhs = append(lhs, optLines[0]...), append(rhs, optLines[1]...)
 	tests = append(tests, TestData{Name: quote("saving changes every field"), Lines: tb.lines,
 		Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
+	tests = append(tests, g.uniqueTests(at, mod, imports, true)...)
 	tests = append(tests, g.notOffered(at, mod, imports, true)...)
 	tests = append(tests, g.missingTest(at, mod, imports))
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
@@ -1136,42 +1440,46 @@ func (g *adminGen) delete(at *adminTable) {
 
 	var model, loads, counts, blockers []string
 	fields := []string{"row: row"}
-	var chains []*referrer // the @restrict references down a @cascade, each counted
-	for _, r := range at.referrer {
-		imports.add(r.t.Module)
-		model = append(model, r.field+": Int,")
-		sel := fmt.Sprintf("Db.from %s |> Db.where (%s)", r.t.Name, eqID(r.t, r.col, "params.id"))
-		chained := g.chained(r, t)
-		if len(chained) == 0 {
-			loads = append(loads, fmt.Sprintf("let %s <- %s |> Db.count", r.field, sel))
-			fields = append(fields, r.field+": "+r.field)
-		} else { // the rows themselves: the rows that refer to them are counted too
-			loads = append(loads, fmt.Sprintf("let %sRows <- %s |> Db.all", r.field, sel))
-			fields = append(fields, r.field+": List.length "+r.field+"Rows")
-		}
-		what := map[string]string{
-			"cascade":  "%s deleted with it",
-			"setNull":  "%s that lose their " + strings.ToLower(Humanize(r.col.Name)),
-			"restrict": "%s that keep it from being deleted",
-		}[r.col.OnDelete]
-		counts = append(counts, "<dt>"+fmt.Sprintf(what, UpperFirst(Plural(strings.ToLower(Humanize(r.t.Name)))))+"</dt>", fmt.Sprintf("<dd id=%s>{Text.fromInt model.%s}</dd>", quote(r.field), r.field))
-		if r.col.OnDelete == "restrict" {
-			blockers = append(blockers, "model."+r.field)
-		}
-		for _, c := range chained {
-			imports.add(c.t.Module)
-			ids := "List.map (\\row -> row." + r.t.IDField + ") " + r.field + "Rows"
-			if c.col.Maybe {
-				ids = "List.map (\\row -> Just row." + r.t.IDField + ") " + r.field + "Rows"
+	var chains []*node // the @restrict references down a @cascade, each counted
+	nodes := g.closure(at)
+	for _, n := range walk(nodes) {
+		imports.add(n.t.Module)
+		model = append(model, n.field+": Int,")
+		cond := eqID(n.t, n.col, "params.id")
+		if n.parent != nil { // the rows that refer to the rows its parent deletes
+			ids := "List.map (\\row -> row." + n.parent.t.IDField + ") " + n.parent.field + "Rows"
+			if n.col.Maybe {
+				ids = "List.map (\\row -> Just row." + n.parent.t.IDField + ") " + n.parent.field + "Rows"
 			}
-			model = append(model, c.field+": Int,")
-			loads = append(loads, fmt.Sprintf("let %s <- Db.from %s |> Db.where (%s.%s.in (%s)) |> Db.count", c.field, c.t.Name, c.t.Name, c.col.Name, ids))
-			fields = append(fields, c.field+": "+c.field)
-			counts = append(counts, "<dt>"+UpperFirst(Plural(strings.ToLower(Humanize(c.t.Name))))+" of those "+Plural(strings.ToLower(Humanize(r.t.Name)))+" that keep it from being deleted</dt>",
-				fmt.Sprintf("<dd id=%s>{Text.fromInt model.%s}</dd>", quote(c.field), c.field))
-			blockers = append(blockers, "model."+c.field)
-			chains = append(chains, &referrer{t: c.t, col: c.col, field: c.field})
-			chains[len(chains)-1].via = r
+			cond = fmt.Sprintf("%s.%s.in (%s)", n.t.Name, n.col.Name, ids)
+		}
+		sel := fmt.Sprintf("Db.from %s |> Db.where (%s)", n.t.Name, cond)
+		if len(n.kids) == 0 {
+			loads = append(loads, fmt.Sprintf("let %s <- %s |> Db.count", n.field, sel))
+			fields = append(fields, n.field+": "+n.field)
+		} else { // the rows themselves: the rows that refer to them are counted too
+			loads = append(loads, fmt.Sprintf("let %sRows <- %s |> Db.all", n.field, sel))
+			fields = append(fields, n.field+": List.length "+n.field+"Rows")
+		}
+		var what string
+		if n.parent == nil {
+			what = fmt.Sprintf(map[string]string{
+				"cascade":  "%s deleted with it",
+				"setNull":  "%s that lose their " + strings.ToLower(Humanize(n.col.Name)),
+				"restrict": "%s that keep it from being deleted",
+			}[n.col.OnDelete], UpperFirst(pluralOf(n.t)))
+		} else {
+			what = UpperFirst(pluralOf(n.t)) + " of those " + pluralOf(n.parent.t) + map[string]string{
+				"cascade":  " deleted with it",
+				"restrict": " that keep it from being deleted",
+			}[n.col.OnDelete]
+		}
+		counts = append(counts, "<dt>"+what+"</dt>", fmt.Sprintf("<dd id=%s>{Text.fromInt model.%s}</dd>", quote(n.field), n.field))
+		if n.col.OnDelete == "restrict" {
+			blockers = append(blockers, "model."+n.field)
+			if n.parent != nil {
+				chains = append(chains, n)
+			}
 		}
 	}
 	loads = append([]string{"let found <- Db.get " + t.Name + " params.id"}, loads...)
@@ -1191,7 +1499,7 @@ func (g *adminGen) delete(at *adminTable) {
 	fmt.Fprintf(&b, "page %s { id: %s }%s\n\n", pathLit(at.path+"/{id}/delete"), types.StringIn(t.IDType, mod), adminRequires)
 	b.WriteString("-- The row, and how many rows of each table refer to it.\n")
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + regionAt("  ", "model", model) + "\n}\n\n")
-	b.WriteString("load : Params -> Session -> Query Model\nload params session = {\n" + regionAt("  ", "load", loads) + "\n}\n\n")
+	b.WriteString("load : Params -> Session -> Query Model\nload params session = {\n" + regionAt("  ", "load", wrapAll(loads)) + "\n}\n\n")
 	b.WriteString(regionAt("", "blockers", block) + "\n\n")
 	b.WriteString("-- Delete takes no input: the form is the button, and the place a refusal is shown.\nform Confirm = { }\n\nmsg Remove form Confirm\n\n")
 	remove := []string{
@@ -1211,7 +1519,7 @@ func (g *adminGen) delete(at *adminTable) {
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Remove p -> {
-` + regionAt("    ", "remove", remove) + `
+` + regionAt("    ", "remove", wrapAll(remove)) + `
   },
 }
 
@@ -1292,18 +1600,38 @@ update msg model session = match msg {
 			Result: fmt.Sprintf("{ count: Test.text \"#%s\" page.doc, buttons: Test.count \"#delete button\" page.doc, answer: r.answer, kept: Maybe.map (\\row -> row.%s) kept } == { count: Just \"1\", buttons: 0, answer: FormRejected [{ field: \"\", message: %s }], kept: Just %s }",
 				r.field, t.IDField, quote(rejectText(at)), target)})
 	}
-	// a @restrict reference down a @cascade refuses too
+	// a @restrict reference down a @cascade, any number of steps, refuses too
 	for _, c := range chains {
 		tb = g.tb(mod, imports, true)
 		target := tb.insertRow(t, "", nil, true)
-		mid := tb.insertRow(c.via.t, "", map[string]string{c.via.col.Name: maybeJust(c.via.col, target)}, false)
-		tb.insertRow(c.t, "_", map[string]string{c.col.Name: maybeJust(c.col, mid)}, false)
+		var path []*node
+		for n := c.parent; n != nil; n = n.parent {
+			path = append([]*node{n}, path...)
+		}
+		row := target
+		name := article(at.noun)
+		var levels, ones []string
+		for _, n := range path {
+			row = tb.insertRow(n.t, "", map[string]string{n.col.Name: maybeJust(n.col, row)}, false)
+			name += " with " + pluralOf(n.t)
+			if n.parent != nil {
+				levels = append(levels, fmt.Sprintf("Test.text \"#%s\" page.doc", n.field))
+				ones = append(ones, "Just \"1\"")
+			}
+		}
+		tb.insertRow(c.t, "_", map[string]string{c.col.Name: maybeJust(c.col, row)}, false)
 		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"id: " + target}))
 		tb.let("let r <- Test.submit Confirm { }")
 		tb.let("let kept <- Db.get %s %s", t.Name, target)
-		tests = append(tests, TestData{Name: quote(article(at.noun) + " with " + Plural(strings.ToLower(Humanize(c.via.t.Name))) + " that " + Plural(strings.ToLower(Humanize(c.t.Name))) + " refer to is not deleted"), Lines: tb.lines,
-			Result: fmt.Sprintf("{ count: Test.text \"#%s\" page.doc, buttons: Test.count \"#delete button\" page.doc, answer: r.answer, kept: Maybe.map (\\row -> row.%s) kept } == { count: Just \"1\", buttons: 0, answer: FormRejected [{ field: \"\", message: %s }], kept: Just %s }",
-				c.field, t.IDField, quote(rejectText(at)), target)})
+		lhs := fmt.Sprintf("count: Test.text \"#%s\" page.doc, ", c.field)
+		rhs := "count: Just \"1\", "
+		if len(levels) > 0 { // the rows deleted with it on the way down are counted as well
+			lhs += "levels: [" + strings.Join(levels, ", ") + "], "
+			rhs += "levels: [" + strings.Join(ones, ", ") + "], "
+		}
+		tests = append(tests, TestData{Name: quote(name + " that " + pluralOf(c.t) + " refer to is not deleted"), Lines: tb.lines,
+			Result: fmt.Sprintf("{ %sbuttons: Test.count \"#delete button\" page.doc, answer: r.answer, kept: Maybe.map (\\row -> row.%s) kept } == { %sbuttons: 0, answer: FormRejected [{ field: \"\", message: %s }], kept: Just %s }",
+				lhs, t.IDField, rhs, quote(rejectText(at)), target)})
 	}
 	tests = append(tests, g.missingTest(at, mod, imports))
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
@@ -1345,21 +1673,115 @@ func maybeJust(c *Column, v string) string {
 }
 
 // referrers inserts one row of every table that refers to at's table, referring to row, and
-// one of every table down a chain that refers to those.
+// down the closure one row of every table that refers to those.
 func (g *adminGen) referrers(tb *testBuilder, at *adminTable, row string) {
-	for _, r := range at.referrer {
-		chained := g.chained(r, at.t)
-		if len(chained) == 0 {
-			tb.insertRow(r.t, "_", map[string]string{r.col.Name: maybeJust(r.col, row)}, false)
-			continue
+	var insert func(n *node, row string)
+	insert = func(n *node, row string) {
+		if len(n.kids) == 0 {
+			tb.insertRow(n.t, "_", map[string]string{n.col.Name: maybeJust(n.col, row)}, false)
+			return
 		}
-		mid := tb.insertRow(r.t, "", map[string]string{r.col.Name: maybeJust(r.col, row)}, false)
-		for _, c := range chained {
-			tb.insertRow(c.t, "_", map[string]string{c.col.Name: maybeJust(c.col, mid)}, false)
+		mid := tb.insertRow(n.t, "", map[string]string{n.col.Name: maybeJust(n.col, row)}, false)
+		for _, k := range n.kids {
+			insert(k, mid)
 		}
+	}
+	for _, n := range g.closure(at) {
+		insert(n, row)
 	}
 }
 
 // pathLit is a page's path as its `page` line writes it: in quotes, its `{id}` a parameter
 // (quote would escape the brace, making it literal text).
 func pathLit(path string) string { return `"` + path + `"` }
+
+// wrapAll is lines, each wrapped (wrapLine).
+func wrapAll(lines []string) []string {
+	var out []string
+	for _, l := range lines {
+		out = append(out, wrapLine(l)...)
+	}
+	return out
+}
+
+// maxLine is the width the admin's code and tests are wrapped to: chapter 15 quotes them.
+const maxLine = 100
+
+// wrap is text with each line longer than maxLine broken (wrapLine).
+func wrap(text string) string {
+	var out []string
+	for _, l := range strings.Split(text, "\n") {
+		out = append(out, wrapLine(l)...)
+	}
+	return strings.Join(out, "\n")
+}
+
+// wrapLine breaks a line longer than maxLine at its outermost record and list literals: each
+// one's elements on lines of their own, indented one step, with a trailing comma; then the
+// lines that are still too long, the same way. A comment, markup, and a line with no literal
+// of two or more elements stay as they are.
+func wrapLine(line string) []string {
+	body := strings.TrimLeft(line, " ")
+	ind := line[:len(line)-len(body)]
+	if len(line) <= maxLine || strings.HasPrefix(body, "--") || strings.HasPrefix(body, "<") {
+		return []string{line}
+	}
+	type group struct {
+		open, close int
+		items       []string
+	}
+	var groups []group
+	depth, outer, start := 0, -1, 0 // depth of brackets of any kind; outer: the open {/[ group's depth
+	var items []string
+	for i := 0; i < len(body); i++ {
+		switch ch := body[i]; ch {
+		case '"':
+			for i++; i < len(body) && body[i] != '"'; i++ {
+				if body[i] == '\\' {
+					i++
+				}
+			}
+		case '{', '[', '(':
+			if outer < 0 && ch != '(' {
+				outer, start, items = depth, i+1, nil
+				groups = append(groups, group{open: i})
+			}
+			depth++
+		case '}', ']', ')':
+			depth--
+			if outer >= 0 && depth == outer {
+				items = append(items, strings.TrimSpace(body[start:i]))
+				groups[len(groups)-1].close, groups[len(groups)-1].items = i, items
+				outer = -1
+			}
+		case ',':
+			if outer >= 0 && depth == outer+1 {
+				items = append(items, strings.TrimSpace(body[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	var out []string
+	from := 0
+	for _, g := range groups {
+		if g.close == 0 || len(g.items) < 2 {
+			continue
+		}
+		open := body[from : g.open+1]
+		if head, rest, ok := strings.Cut(g.items[0], " | "); ok && IsLowerIdent(head) { // { row | f: v, … }: `row |` opens it
+			open += " " + head + " |"
+			g.items[0] = rest
+		}
+		out = append(out, ind+open)
+		for _, it := range g.items {
+			if it != "" {
+				out = append(out, wrapLine(ind+"  "+it+",")...)
+			}
+		}
+		from = g.close
+	}
+	if from == 0 {
+		return []string{line}
+	}
+	return append(out, ind+body[from:])
+}

@@ -9,16 +9,27 @@ import User
 
 page "/admin/user/{id}" { id: User.UserId } requires user, role Admin
 
-type Model = { row: User }
+type Model = { row: User, labels: Labels }
 
 load : Params -> Session -> Query Model
 load params session = {
   let found <- Db.get User params.id
   match found {
-    Just row -> Query.succeed { row: row },
+    Just row -> {
+      let labels <- labelsOf [row]
+      Query.succeed { row: row, labels: labels }
+    },
     Nothing -> Query.notFound,
   }
 }
+
+-- @admin begin labels
+-- Labels are the rows the references of the rows shown name: their links show their labels.
+type Labels = { }
+
+labelsOf : List User -> Query Labels
+labelsOf rows = Query.succeed { }
+-- @admin end
 
 view : Model -> Session -> Html Msg
 view model session =
@@ -52,9 +63,18 @@ view model session =
 test "the page shows the row" = {
   let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
   let _ <- Test.login { user: Just me, role: Admin }
-  let user2 <- Db.insert User { email: Text.Email "email-2@example.com", name: Text.NonEmpty "name-2" }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
   let r <- Test.open (Admin.User.Show { id: user2 })
-  Task.succeed ({ answer: r.answer, email: List.member "email-2@example.com" (Test.texts "dd" r.doc) } == { answer: Shown, email: True })
+  Task.succeed ({
+    answer: r.answer,
+    email: List.member "email-2@example.com" (Test.texts "dd" r.doc),
+  } == {
+    answer: Shown,
+    email: True,
+  })
 }
 
 test "a missing row is not found" = {
@@ -65,7 +85,10 @@ test "a missing row is not found" = {
 }
 
 test "a visitor is sent to log in" = {
-  let user1 <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let user1 <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+  }
   let r <- Test.open (Admin.User.Show { id: user1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
@@ -73,7 +96,10 @@ test "a visitor is sent to log in" = {
 test "a Reader gets no page" = {
   let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
   let _ <- Test.login { user: Just me, role: Reader }
-  let user2 <- Db.insert User { email: Text.Email "email-2@example.com", name: Text.NonEmpty "name-2" }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
   let r <- Test.open (Admin.User.Show { id: user2 })
   Task.succeed (r.answer == PageMissing)
 }

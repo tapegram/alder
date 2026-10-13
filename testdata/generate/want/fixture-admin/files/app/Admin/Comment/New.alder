@@ -42,8 +42,8 @@ update msg model session = match msg {
   Create p -> {
     -- @admin begin insert
     let id <- Db.insert Comment { post: p.form.post, author: p.form.author, body: p.form.body }
-    -- @admin end
     Task.succeed (Redirect (Admin.Comment.Show { id: id }))
+    -- @admin end
   },
 }
 
@@ -71,11 +71,24 @@ test "creating a comment adds it, with the values submitted" = {
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
-  let user2 <- Db.insert User { email: Text.Email "email-2@example.com", name: Text.NonEmpty "name-2" }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
   let page <- Test.get (Admin.Comment.New {})
   let r <- Test.submit CommentForm { post: post2, author: user2, body: Text.NonEmpty "body-1" }
   let rows <- Db.from Comment |> Db.all
-  Task.succeed ({ answers: List.map (\row -> Redirected (Admin.Comment.Show { id: row.id })) rows, rows: List.map (\row -> { post: row.post, author: row.author, body: row.body }) rows, posts: Test.texts "select[name=post] option" page.doc, authors: Test.texts "select[name=author] option" page.doc } == { answers: [r.answer], rows: [{ post: post2, author: user2, body: Text.NonEmpty "body-1" }], posts: ["title-1", "title-2"], authors: ["email-1@example.com", "email-2@example.com"] })
+  Task.succeed ({
+    answers: List.map (\row -> Redirected (Admin.Comment.Show { id: row.id })) rows,
+    rows: List.map (\row -> { post: row.post, author: row.author, body: row.body }) rows,
+    posts: Test.texts "select[name=post] option" page.doc,
+    authors: Test.texts "select[name=author] option" page.doc,
+  } == {
+    answers: [r.answer],
+    rows: [{ post: post2, author: user2, body: Text.NonEmpty "body-1" }],
+    posts: ["title-1", "title-2"],
+    authors: ["email-1@example.com", "email-2@example.com"],
+  })
 }
 
 test "a post not offered is refused" = {
@@ -83,12 +96,25 @@ test "a post not offered is refused" = {
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
-  let user2 <- Db.insert User { email: Text.Email "email-2@example.com", name: Text.NonEmpty "name-2" }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
   let page <- Test.get (Admin.Comment.New {})
   let authorId = Maybe.withDefault "" (Test.attr "value" "select[name=author] option" page.doc)
-  let r <- Test.submitRaw CommentForm [{ name: "post", value: "missing" }, { name: "author", value: authorId }, { name: "body", value: "x" }]
+  let r <- Test.submitRaw CommentForm [
+    { name: "post", value: "missing" },
+    { name: "author", value: authorId },
+    { name: "body", value: "x" },
+  ]
   let rows <- Db.from Comment |> Db.count
-  Task.succeed ({ answer: r.answer, rows: rows } == { answer: FormRejected [{ field: "post", message: "must be one of the options" }], rows: 0 })
+  Task.succeed ({
+    answer: r.answer,
+    rows: rows,
+  } == {
+    answer: FormRejected [{ field: "post", message: "must be one of the options" }],
+    rows: 0,
+  })
 }
 
 test "an author not offered is refused" = {
@@ -96,12 +122,25 @@ test "an author not offered is refused" = {
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
-  let user2 <- Db.insert User { email: Text.Email "email-2@example.com", name: Text.NonEmpty "name-2" }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
   let page <- Test.get (Admin.Comment.New {})
   let postId = Maybe.withDefault "" (Test.attr "value" "select[name=post] option" page.doc)
-  let r <- Test.submitRaw CommentForm [{ name: "post", value: postId }, { name: "author", value: "missing" }, { name: "body", value: "x" }]
+  let r <- Test.submitRaw CommentForm [
+    { name: "post", value: postId },
+    { name: "author", value: "missing" },
+    { name: "body", value: "x" },
+  ]
   let rows <- Db.from Comment |> Db.count
-  Task.succeed ({ answer: r.answer, rows: rows } == { answer: FormRejected [{ field: "author", message: "must be one of the options" }], rows: 0 })
+  Task.succeed ({
+    answer: r.answer,
+    rows: rows,
+  } == {
+    answer: FormRejected [{ field: "author", message: "must be one of the options" }],
+    rows: 0,
+  })
 }
 
 test "a visitor is sent to log in" = {

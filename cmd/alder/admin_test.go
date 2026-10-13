@@ -50,9 +50,10 @@ func TestAdmin_Refusals(t *testing.T) {
 		{genApp(t, "scaffold"), []string{"new", "admin"}, "alder new admin: " + generate.AdminNeeds},
 		{withAdmin, []string{"new", "admin"}, "alder new admin: `app/Admin/` exists: `alder regen admin` updates the admin in it; to generate another, choose another `--module`"},
 		{genApp(t, "fixture"), []string{"regen", "admin"}, "alder regen admin: there is no admin in `app/Admin/`: `alder new admin` generates one (name another with --module)"},
-		{broken, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Post/Index.alder`: region `cells` has no end marker (region `tests` begins at line 120, inside it)"},
+		{broken, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Post/Index.alder`: region `cells` has no end marker (region `tests` begins at line 199, inside it)"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--module", "admin"}, "alder new admin: `--module admin` is not a module name: write capitalised names joined by dots, such as `Admin`"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--path", "/admin/{id}"}, "alder new admin: `--path /admin/{id}` is not a path without parameters, such as `/admin`"},
+		{genApp(t, "fixture"), []string{"new", "admin", "--path", "admin"}, "alder new admin: `--path admin` must begin with `/`, such as `/admin`"},
 	} {
 		before := appFiles(t, c.dir)
 		code, out, errs := alderIn(t, c.dir, "", c.args...)
@@ -242,6 +243,12 @@ test "the list counts each post's words" = {
 	if code, out, errs := alderIn(t, dir, "", "new", "table", "Like", "post:Post.PostId@ref=Post@cascade", "owner:User.UserId@ref=User@owner"); code != 0 {
 		t.Fatalf("alder new table: exit %d\n%s%s", code, out, errs)
 	}
+	// a file of the author's in the new table's directory: the table is still new (the nav has
+	// no link to it), and gets its pages
+	if err := os.MkdirAll(filepath.Join(dir, "app", "Admin", "Like"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write("app/Admin/Like/notes.txt", "likes: to do\n")
 	mid := appFiles(t, dir)
 	code, out, errs := alderIn(t, dir, "", "regen", "admin")
 	if code != 0 {
@@ -265,13 +272,13 @@ test "the list counts each post's words" = {
 	}
 	// the new field, in the list, the show page and both forms; the new table, in the nav and the dashboard
 	for p, wants := range map[string][]string{
-		index:                         {"<h1>Every post</h1>", "<th>Words</th>", `{ name: "views", asc: Post.views.asc, desc: Post.views.desc },`, ">Views</a></th>", "<td>{Text.fromInt row.views}</td>", "test \"the list counts each post's words\""},
+		index:                         {"<h1>Every post</h1>", "<th>Words</th>", `{ name: "views", asc: Post.views.asc, desc: Post.views.desc },`, "}}>Views</a>", "<td>{Text.fromInt row.views}</td>", "test \"the list counts each post's words\""},
 		"app/Admin/Post/Show.alder":   {"<dt>Views</dt>"},
 		"app/Admin/Post/New.alder":    {"  views: Int,", `<al-input field="views" label="Views" value={0} />`, "views: p.form.views"},
 		"app/Admin/Post/Edit.alder":   {"  views: Int,", `<al-input field="views" label="Views" value={model.row.views} />`, "views: p.form.views"},
 		"app/Admin/Post/Delete.alder": {"likes: Int,", `<dd id="likes">`},
 		"app/Admin/Layout.alder":      {"<a href={Admin.Like.Index {}}>Likes</a>"},
-		"app/Admin/Index.alder":       {`{ key: "likes", title: "Likes"`},
+		"app/Admin/Index.alder":       {`key: "likes",`, `title: "Likes",`},
 	} {
 		for _, w := range wants {
 			if !strings.Contains(after[p], w) {
@@ -309,9 +316,9 @@ test "the list counts each post's words" = {
 
 // TestAdmin_Columns: the admin of tables beyond the fixture's: a Date, an Int with a default, a
 // Float, a Maybe Text, a Maybe reference that is set to Nothing (`@setNull`), a Time no form
-// edits (the insert's time), a union of another module; and a `@restrict` reference down a
-// `@cascade` (a Flag on a Comment, which goes with its Post), which refuses the Post's delete
-// too. The app checks, its tests pass, and they kill the admin's mutants.
+// edits (the insert's time), a union of another module; and `@restrict` references down
+// `@cascade`s (a Flag on a Comment, which goes with its Post; a Report on a Reply, which goes
+// with its Comment), which refuse the Post's delete too. The app checks, its tests pass, and they kill the admin's mutants.
 func TestAdmin_Columns(t *testing.T) {
 	needGoTool(t)
 	if testing.Short() {
@@ -321,6 +328,8 @@ func TestAdmin_Columns(t *testing.T) {
 	for _, args := range [][]string{
 		{"new", "table", "Event", "title:Text.NonEmpty", "when:Date", "count:Int=0", "price:Float", "note:Maybe Text", "post:Maybe Post.PostId@ref=Post@setNull", "at:Time", "kind:Post.Status"},
 		{"new", "table", "Flag", "comment:Comment.CommentId@ref=Comment", "reason:Text"},
+		{"new", "table", "Reply", "comment:Comment.CommentId@ref=Comment@cascade", "body:Text"},
+		{"new", "table", "Report", "reply:Reply.ReplyId@ref=Reply", "reason:Text"},
 		{"new", "admin"},
 	} {
 		if code, out, errs := alderIn(t, dir, "", args...); code != 0 {
@@ -331,8 +340,13 @@ func TestAdmin_Columns(t *testing.T) {
 	for _, want := range []string{
 		"let flagsOfComments <- Db.from Flag |> Db.where (Flag.comment.in (List.map (\\row -> row.id) commentsRows)) |> Db.count",
 		"let events <- Db.from Event |> Db.where (Event.post.eq (Just params.id)) |> Db.count",
-		"blockers model = model.flagsOfComments + model.tags",
+		"let repliesOfCommentsRows <- Db.from Reply |> Db.where (Reply.comment.in (List.map (\\row -> row.id) commentsRows)) |> Db.all",
+		"let reportsOfRepliesOfComments <- Db.from Report |> Db.where (Report.reply.in (List.map (\\row -> row.id) repliesOfCommentsRows)) |> Db.count",
+		"blockers model = model.flagsOfComments + model.reportsOfRepliesOfComments + model.tags",
+		"<dt>Replies of those comments deleted with it</dt>",
+		"<dt>Reports of those replies that keep it from being deleted</dt>",
 		`test "a post with comments that flags refer to is not deleted"`,
+		`test "a post with comments with replies that reports refer to is not deleted"`,
 		"<dt>Events that lose their post</dt>",
 	} {
 		if !strings.Contains(string(b), want) {

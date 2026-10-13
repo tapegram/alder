@@ -11,16 +11,38 @@ import User
 
 page "/admin/tag/{id}" { id: Tag.TagId } requires user, role Admin
 
-type Model = { row: Tag }
+type Model = { row: Tag, labels: Labels }
 
 load : Params -> Session -> Query Model
 load params session = {
   let found <- Db.get Tag params.id
   match found {
-    Just row -> Query.succeed { row: row },
+    Just row -> {
+      let labels <- labelsOf [row]
+      Query.succeed { row: row, labels: labels }
+    },
     Nothing -> Query.notFound,
   }
 }
+
+-- @admin begin labels
+-- Labels are the rows the references of the rows shown name: their links show their labels.
+type Labels = { posts: List Post }
+
+-- labelsOf reads the rows that rows refer to.
+labelsOf : List Tag -> Query Labels
+labelsOf rows = {
+  let posts <- Db.from Post |> Db.where (Post.id.in (List.map (\row -> row.post) rows)) |> Db.all
+  Query.succeed { posts: posts }
+}
+
+-- postLabel is the label of the post id names (the id itself if it names none).
+postLabel : Labels -> Post.PostId -> Text
+postLabel labels id = match List.find (\r -> r.id == id) labels.posts {
+  Just r -> r.title,
+  Nothing -> id,
+}
+-- @admin end
 
 view : Model -> Session -> Html Msg
 view model session =
@@ -35,7 +57,7 @@ view model session =
         <dt>Name</dt>
         <dd>{model.row.name}</dd>
         <dt>Post</dt>
-        <dd><a href={Admin.Post.Show { id: model.row.post }}>{model.row.post}</a></dd>
+        <dd><a href={Admin.Post.Show { id: model.row.post }}>{postLabel model.labels model.row.post}</a></dd>
         <dt>Created</dt>
         <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
         -- @admin end
@@ -54,8 +76,20 @@ test "the page shows the row" = {
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let tag1 <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post1 }
+  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
   let r <- Test.open (Admin.Tag.Show { id: tag1 })
-  Task.succeed ({ answer: r.answer, name: List.member "name-1" (Test.texts "dd" r.doc) } == { answer: Shown, name: True })
+  let page <- Test.get (Admin.Tag.Show { id: tag1 })
+  Task.succeed ({
+    answer: r.answer,
+    name: List.member "name-1" (Test.texts "dd" r.doc),
+    posts: List.length page.model.labels.posts,
+    postLabel: postLabel page.model.labels post1,
+  } == {
+    answer: Shown,
+    name: True,
+    posts: 1,
+    postLabel: "title-1",
+  })
 }
 
 test "a missing row is not found" = {

@@ -100,7 +100,15 @@ test "deleting a post nothing refers to" = {
   let r <- Test.submit Confirm { }
   let gone <- Db.get Post post1
   let kept <- Db.get Post post2
-  Task.succeed ({ answer: r.answer, gone: Maybe.map (\row -> row.id) gone, kept: Maybe.map (\row -> row.id) kept } == { answer: Redirected (Admin.Post.Index {}), gone: Nothing, kept: Just post2 })
+  Task.succeed ({
+    answer: r.answer,
+    gone: Maybe.map (\row -> row.id) gone,
+    kept: Maybe.map (\row -> row.id) kept,
+  } == {
+    answer: Redirected (Admin.Post.Index {}),
+    gone: Nothing,
+    kept: Just post2,
+  })
 }
 
 test "the page counts the rows that go with it" = {
@@ -122,7 +130,17 @@ test "a post that tags refer to is not deleted" = {
   let page <- Test.get (Admin.Post.Delete { id: post1 })
   let r <- Test.submit Confirm { }
   let kept <- Db.get Post post1
-  Task.succeed ({ count: Test.text "#tags" page.doc, buttons: Test.count "#delete button" page.doc, answer: r.answer, kept: Maybe.map (\row -> row.id) kept } == { count: Just "1", buttons: 0, answer: FormRejected [{ field: "", message: "This post cannot be deleted while other rows refer to it." }], kept: Just post1 })
+  Task.succeed ({
+    count: Test.text "#tags" page.doc,
+    buttons: Test.count "#delete button" page.doc,
+    answer: r.answer,
+    kept: Maybe.map (\row -> row.id) kept,
+  } == {
+    count: Just "1",
+    buttons: 0,
+    answer: FormRejected [{ field: "", message: "This post cannot be deleted while other rows refer to it." }],
+    kept: Just post1,
+  })
 }
 
 test "a missing row is not found" = {

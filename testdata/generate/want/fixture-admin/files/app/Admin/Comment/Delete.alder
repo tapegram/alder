@@ -84,7 +84,13 @@ test "deleting a comment nothing refers to" = {
   let _ <- Test.get (Admin.Comment.Delete { id: comment1 })
   let r <- Test.submit Confirm { }
   let gone <- Db.get Comment comment1
-  Task.succeed ({ answer: r.answer, gone: Maybe.map (\row -> row.id) gone } == { answer: Redirected (Admin.Comment.Index {}), gone: Nothing })
+  Task.succeed ({
+    answer: r.answer,
+    gone: Maybe.map (\row -> row.id) gone,
+  } == {
+    answer: Redirected (Admin.Comment.Index {}),
+    gone: Nothing,
+  })
 }
 
 test "a missing row is not found" = {

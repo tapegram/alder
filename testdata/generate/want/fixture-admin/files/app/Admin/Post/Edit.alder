@@ -45,9 +45,15 @@ update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Save p -> {
     -- @admin begin update
-    let _ <- Db.update Post model.row.id (\row -> { row | title: p.form.title, body: p.form.body, status: p.form.status, featured: p.form.featured, author: p.form.author })
-    -- @admin end
+    let _ <- Db.update Post model.row.id (\row -> { row |
+      title: p.form.title,
+      body: p.form.body,
+      status: p.form.status,
+      featured: p.form.featured,
+      author: p.form.author,
+    })
     Task.succeed (Redirect (Admin.Post.Show { id: model.row.id }))
+    -- @admin end
   },
 }
 
@@ -77,22 +83,66 @@ test "saving changes every field" = {
   let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let user2 <- Db.insert User { email: Text.Email "email-2@example.com", name: Text.NonEmpty "name-2" }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
   let page <- Test.get (Admin.Post.Edit { id: post1 })
-  let r <- Test.submit PostForm { title: Text.NonEmpty "title-2", body: "body-2", status: Published, featured: True, author: user2 }
+  let r <- Test.submit PostForm {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    status: Published,
+    featured: True,
+    author: user2,
+  }
   let after <- Db.get Post post1
-  Task.succeed ({ answer: r.answer, row: Maybe.map (\row -> { title: row.title, body: row.body, status: row.status, featured: row.featured, author: row.author }) after, authors: Test.texts "select[name=author] option" page.doc } == { answer: Redirected (Admin.Post.Show { id: post1 }), row: Just { title: Text.NonEmpty "title-2", body: "body-2", status: Published, featured: True, author: user2 }, authors: ["email-1@example.com", "email-2@example.com"] })
+  Task.succeed ({
+    answer: r.answer,
+    row: Maybe.map (\row -> {
+      title: row.title,
+      body: row.body,
+      status: row.status,
+      featured: row.featured,
+      author: row.author,
+    }) after,
+    authors: Test.texts "select[name=author] option" page.doc,
+  } == {
+    answer: Redirected (Admin.Post.Show { id: post1 }),
+    row: Just {
+      title: Text.NonEmpty "title-2",
+      body: "body-2",
+      status: Published,
+      featured: True,
+      author: user2,
+    },
+    authors: ["email-1@example.com", "email-2@example.com"],
+  })
 }
 
 test "an author not offered is refused" = {
   let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let user2 <- Db.insert User { email: Text.Email "email-2@example.com", name: Text.NonEmpty "name-2" }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
   let page <- Test.get (Admin.Post.Edit { id: post1 })
-  let r <- Test.submitRaw PostForm [{ name: "title", value: "x" }, { name: "body", value: "x" }, { name: "status", value: "Draft" }, { name: "featured", value: "True" }, { name: "author", value: "missing" }]
+  let r <- Test.submitRaw PostForm [
+    { name: "title", value: "x" },
+    { name: "body", value: "x" },
+    { name: "status", value: "Draft" },
+    { name: "featured", value: "True" },
+    { name: "author", value: "missing" },
+  ]
   let after <- Db.get Post post1
-  Task.succeed ({ answer: r.answer, author: Maybe.map (\row -> row.author) after } == { answer: FormRejected [{ field: "author", message: "must be one of the options" }], author: Just me })
+  Task.succeed ({
+    answer: r.answer,
+    author: Maybe.map (\row -> row.author) after,
+  } == {
+    answer: FormRejected [{ field: "author", message: "must be one of the options" }],
+    author: Just me,
+  })
 }
 
 test "a missing row is not found" = {
