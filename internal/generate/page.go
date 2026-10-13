@@ -6,6 +6,7 @@ import (
 	"strings"
 	"text/template"
 
+	"alder/internal/check"
 	"alder/internal/types"
 )
 
@@ -106,6 +107,9 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	}
 	if strings.ContainsAny(o.Path, "{}:") {
 		return nil, Refusef("`%s` has a parameter: give the path without it (`--show T` adds `/{id}`), or write the page's `page` line yourself", o.Path)
+	}
+	if why := check.PagePathProblem(o.Path); why != "" {
+		return nil, Refusef("`%s` is not a page path: it %s; %s", o.Path, why, check.PagePathRule)
 	}
 	kinds := 0
 	for _, set := range []bool{o.List != "", o.Show != "", len(o.From) > 0} {

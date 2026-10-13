@@ -1,0 +1,1 @@
+app/Evil.alder:3:1 E0029 page path `/a?b=1` has a query (`?`): a page's query parameters are its `{ … }` fields without a `{param}` segment; a path is `/` followed by segments of letters, digits, `.`, `_`, `~`, `-` or `{param}`

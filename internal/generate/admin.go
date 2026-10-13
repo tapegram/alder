@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"alder/internal/check"
 	"alder/internal/types"
 )
 
@@ -55,6 +56,9 @@ func adminCheck(p *Program, o AdminOptions) (AdminOptions, error) {
 	o.Path = strings.TrimSuffix(o.Path, "/")
 	if o.Path == "" || strings.ContainsAny(o.Path, "{}: ?#") {
 		return o, Refusef("`--path %s` is not a path without parameters, such as `/admin`", o.Path)
+	}
+	if why := check.PagePathProblem(o.Path); why != "" {
+		return o, Refusef("`--path %s` is not a page path: it %s; %s", o.Path, why, check.PagePathRule)
 	}
 	if len(p.Tables) == 0 {
 		return o, Refusef("this app has no tables: the admin has nothing to show (`alder new table` makes one)")

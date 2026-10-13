@@ -2,6 +2,7 @@
 package check
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -1025,6 +1026,10 @@ func (c *Checker) checkPagePaths() {
 		if pd == nil || !c.prog.IsPageModule(name) {
 			continue
 		}
+		if why := PagePathProblem(pd.Path); why != "" {
+			c.errorf(diag.PagePath, pd.Span, "page path `%s` %s; %s", pd.Path, why, PagePathRule)
+			continue
+		}
 		shape := pathShape(pd.Path)
 		if first, ok := seen[shape]; ok {
 			c.errorf(diag.DuplicatePage, pd.Span, "pages `%s` and `%s` both answer `%s`; give one of them another path", first, name, pd.Path)
@@ -1032,6 +1037,75 @@ func (c *Checker) checkPagePaths() {
 		}
 		seen[shape] = name
 	}
+}
+
+// PagePathRule is what a page path is (E0029), as its message and `alder new page` say it.
+const PagePathRule = "a path is `/` followed by segments of letters, digits, `.`, `_`, `~`, `-` or `{param}`"
+
+// PagePathProblem is what keeps path from being a path the router can serve, as words after
+// "page path `…`" ("has an empty segment"), or "" when nothing does: a path is a single
+// leading `/` and segments of `[A-Za-z0-9._~-]+` or a whole `{param}`, with no empty segment
+// (`//evil.com`), no `.` or `..` (a browser resolves them away), and no query, fragment, space,
+// quote or backslash. A trailing `/` is allowed: the router serves `/x/` as `/x` (E0016).
+func PagePathProblem(path string) string {
+	if !strings.HasPrefix(path, "/") {
+		return "does not begin with `/`"
+	}
+	if path == "/" {
+		return ""
+	}
+	segs := strings.Split(strings.TrimSuffix(path[1:], "/"), "/")
+	for _, s := range segs {
+		for _, r := range s {
+			switch {
+			case r == ' ':
+				return "has a space"
+			case r == '?':
+				return "has a query (`?`): a page's query parameters are its `{ … }` fields without a `{param}` segment"
+			case r == '#':
+				return "has a fragment (`#`)"
+			case r < 0x21 || r > 0x7e:
+				return fmt.Sprintf("has the character %q", r)
+			}
+		}
+	}
+	for _, s := range segs {
+		switch {
+		case s == "":
+			return "has an empty segment"
+		case s == "." || s == "..":
+			return "has the segment `" + s + "`, which a browser resolves away"
+		case strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}") && len(s) > 2 && plainSegment(s[1:len(s)-1], false):
+		case plainSegment(s, true):
+		case strings.ContainsAny(s, "{}"):
+			return "has the segment `" + s + "`, which is neither a name nor a whole `{param}`"
+		default:
+			for _, r := range s {
+				if !segmentRune(r) {
+					return "has the character `" + string(r) + "`"
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// plainSegment reports whether s is a path segment of letters, digits, `_` and (literal, a
+// segment rather than a parameter's name) `.`, `~`, `-`.
+func plainSegment(s string, literal bool) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !segmentRune(r) || !literal && (r == '.' || r == '~' || r == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+func segmentRune(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '~' || r == '-'
 }
 
 // pathShape is path as the router matches it: every `{param}` segment as `{}`, no trailing

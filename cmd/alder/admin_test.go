@@ -77,6 +77,7 @@ func TestAdmin_Refusals(t *testing.T) {
 		{broken, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Post/Index.alder`: region `cells` has no end marker (region `tests` begins at line 199, inside it)"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--module", "admin"}, "alder new admin: `--module admin` is not a module name: write capitalised names joined by dots, such as `Admin`"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--path", "/admin/{id}"}, "alder new admin: `--path /admin/{id}` is not a path without parameters, such as `/admin`"},
+		{genApp(t, "fixture"), []string{"new", "admin", "--path", "//evil.com"}, "alder new admin: `--path //evil.com` is not a page path: it has an empty segment; a path is `/` followed by segments of letters, digits, `.`, `_`, `~`, `-` or `{param}`"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--path", "admin"}, "alder new admin: `--path admin` must begin with `/`, such as `/admin`"},
 	} {
 		before := appFiles(t, c.dir)

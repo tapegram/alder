@@ -113,6 +113,7 @@ const (
 	ScopedOutside  = "E0026" // a scoped Db operation outside a module whose page `requires user`
 	RoleClause     = "E0027" // `requires … role R` without `user`, or without a session `role` union having R
 	CustomElement  = "E0028" // a custom element, attribute or slot no manifest declares, or a manifest that does not parse
+	PagePath       = "E0029" // a `page "…"` path the router cannot serve: an empty segment, a space, a query, a quote…
 	UnreachableArm = "E0310"
 	UnusedImport   = "W0001"
 	UnshownErrors  = "W0003"

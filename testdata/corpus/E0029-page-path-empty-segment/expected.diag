@@ -1,0 +1,1 @@
+app/Evil.alder:3:1 E0029 page path `//evil.com` has an empty segment; a path is `/` followed by segments of letters, digits, `.`, `_`, `~`, `-` or `{param}`

@@ -1,0 +1,11 @@
+module Evil
+
+page "/a/.." { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session = <h1>Evil</h1>

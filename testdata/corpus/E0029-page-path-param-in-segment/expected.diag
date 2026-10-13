@@ -1,0 +1,1 @@
+app/Evil.alder:3:1 E0029 page path `/a{id}` has the segment `a{id}`, which is neither a name nor a whole `{param}`; a path is `/` followed by segments of letters, digits, `.`, `_`, `~`, `-` or `{param}`
