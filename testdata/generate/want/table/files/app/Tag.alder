@@ -1,0 +1,15 @@
+module Tag
+
+import Entry
+
+type TagId = brand Text
+
+table Tag {
+  id: TagId @id,
+  name: Text.NonEmpty @unique,
+  entry: Entry.EntryId @ref Entry @cascade,
+  note: Maybe Text,
+  pinned: Bool = False,
+  created: Time @created,
+  updated: Time @updated,
+}

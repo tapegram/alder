@@ -1,0 +1,13 @@
+module Tag
+
+import Post
+
+type TagId = brand Text
+
+-- A tagged post cannot be deleted until its tags are (`@restrict`).
+table Tag {
+  id: TagId @id,
+  name: Text.NonEmpty @unique,
+  post: Post.PostId @ref Post @restrict,
+  created: Time @created,
+}

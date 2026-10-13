@@ -1,0 +1,27 @@
+module Post
+
+import User
+
+type PostId = brand Text
+
+type Status = Draft | Published
+
+-- `author` is the table's `@owner`: a page that `requires user` reads and writes only the
+-- signed-in user's posts with `Db.mine Post` and the other scoped operations.
+table Post {
+  id: PostId @id,
+  title: Text.NonEmpty,
+  body: Text,
+  status: Status = Draft,
+  featured: Bool = False,
+  author: User.UserId @ref User @owner,
+  created: Time @created,
+  updated: Time @updated,
+}
+
+test "a new post is a draft" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let id <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
+  let post <- Db.get Post id
+  Task.succeed (Maybe.map (\p -> p.status) post == Just Draft)
+}

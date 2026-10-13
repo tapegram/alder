@@ -1,0 +1,70 @@
+module Home
+
+import Layout
+import Post
+import User
+
+page "/" { } requires user
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <- Db.mine Post |> Db.orderBy Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form Write = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Submit form Write
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
+    Task.succeed (Redirect (Home {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Your posts">
+    <h1>Your posts</h1>
+
+    <ul id="posts">
+      {for post in model.posts -> <li>{post.title}</li>}
+    </ul>
+
+    <al-card>
+      <h2 slot="header">Write a post</h2>
+      <form submit={Submit}>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-input field="title" label="Title" />
+        <al-textarea field="body" label="Body" />
+        <al-button type="submit">Write</al-button>
+      </form>
+    </al-card>
+
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "writing a post lists it" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Home {})
+  let r <- Test.submit Write { title: Text.NonEmpty "Hello", body: "" }
+  Task.succeed ({ answer: r.answer, posts: Test.texts "#posts li" r.doc } == { answer: Redirected (Home {}), posts: ["Hello"] })
+}
+
+test "only my posts are listed" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other" }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Mine", body: "", author: me }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Theirs", body: "", author: other }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Home {})
+  Task.succeed (Test.texts "#posts li" page.doc == ["Mine"])
+}

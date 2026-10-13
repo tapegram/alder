@@ -1,0 +1,32 @@
+module Dash
+
+import Entry
+import Layout
+
+page "/dash" { }
+
+type Model = { entries: List Entry }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let entries <- Db.from Entry |> Db.all
+  Query.succeed { entries: entries }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Dash">
+    <h1>Dash</h1>
+
+    <al-card>
+      <h2 slot="header">Entries</h2>
+      <ul>
+        {for row in model.entries -> <li>{row.name}</li>}
+      </ul>
+    </al-card>
+  </Layout.Page>
+
+test "the page is shown" = {
+  let r <- Test.open (Dash {})
+  Task.succeed ({ answer: r.answer, heading: Test.text "h1" r.doc } == { answer: Shown, heading: Just "Dash" })
+}

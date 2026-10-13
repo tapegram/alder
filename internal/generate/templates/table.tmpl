@@ -1,0 +1,14 @@
+module [[.Name]]
+
+[[range .Imports]]import [[.]]
+[[end]]
+type [[.Name]]Id = brand Text
+
+table [[.Name]] {
+  id: [[.Name]]Id @id,
+[[- range .Fields]]
+  [[.]],
+[[- end]]
+  created: Time @created,
+  updated: Time @updated,
+}

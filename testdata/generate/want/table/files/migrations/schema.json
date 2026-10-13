@@ -1,0 +1,69 @@
+{
+  "format": "1",
+  "tables": [
+    {
+      "name": "Entry.Entry",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        },
+        {
+          "name": "message",
+          "type": "Text"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "Tag.Tag",
+      "id": "id",
+      "created": "created",
+      "updated": "updated",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "name",
+          "type": "Text",
+          "unique": true
+        },
+        {
+          "name": "entry",
+          "type": "Text",
+          "ref": "Entry.Entry",
+          "onDelete": "cascade"
+        },
+        {
+          "name": "note",
+          "type": "Text",
+          "nullable": true
+        },
+        {
+          "name": "pinned",
+          "type": "Bool",
+          "default": "0"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        },
+        {
+          "name": "updated",
+          "type": "Time"
+        }
+      ]
+    }
+  ]
+}

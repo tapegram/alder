@@ -1,0 +1,322 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"strings"
+
+	"alder/internal/buildkit"
+	"alder/internal/diag"
+	"alder/internal/generate"
+	"alder/internal/ir"
+	"alder/internal/migrate"
+)
+
+// The generators: `alder new page|table|form|msg|capability`, `alder edit table` and `alder
+// fill` (book chapter 15). Each reads the app in --dir (default "."), computes its edits
+// (internal/generate), applies them to a copy of the app, checks the copy as `alder check`
+// does, and writes the files only when the copy checks (generate.Apply). It prints the files
+// written (`wrote app/X.alder`, `edited app/Y.alder`), the unified diff of the edited ones and
+// the copy's diagnostics, its typed holes among them; --json prints the same as one JSON object;
+// --dry-run writes nothing. A refusal is one sentence on standard error, exit 1, nothing
+// written; usage errors exit 2.
+
+// genArgs are a generator's command line: --dir, --json and --dry-run, which every generator
+// takes, the positional arguments, and the other flags with their values.
+type genArgs struct {
+	dir   string
+	json  bool
+	dry   bool
+	pos   []string
+	flags map[string][]string
+}
+
+// parseGenArgs splits args. valued names the flags that take a value (`--list T` or
+// `--list=T`); multi, those that take every argument up to the next flag (`--from A B`);
+// boolean flags besides --json and --dry-run are in bools. An unknown flag is an error.
+func parseGenArgs(args []string, valued, multi, bools []string) (genArgs, error) {
+	g := genArgs{dir: ".", flags: map[string][]string{}}
+	is := func(set []string, name string) bool {
+		for _, s := range set {
+			if s == name {
+				return true
+			}
+		}
+		return false
+	}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "-" || !strings.HasPrefix(a, "-") {
+			g.pos = append(g.pos, a)
+			continue
+		}
+		name, val, hasVal := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(a, "-"), "-"), "=")
+		switch {
+		case name == "json" && !hasVal:
+			g.json = true
+		case name == "dry-run" && !hasVal:
+			g.dry = true
+		case is(bools, name) && !hasVal:
+			g.flags[name] = append(g.flags[name], "")
+		case name == "dir" || is(valued, name):
+			if !hasVal {
+				if i+1 >= len(args) {
+					return g, fmt.Errorf("--%s needs a value", name)
+				}
+				i++
+				val = args[i]
+			}
+			if name == "dir" {
+				g.dir = val
+			} else {
+				g.flags[name] = append(g.flags[name], val)
+			}
+		case is(multi, name):
+			if hasVal {
+				g.flags[name] = append(g.flags[name], val)
+			}
+			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				i++
+				g.flags[name] = append(g.flags[name], args[i])
+			}
+			if len(g.flags[name]) == 0 {
+				return g, fmt.Errorf("--%s needs at least one value", name)
+			}
+		default:
+			return g, fmt.Errorf("unknown flag %s", a)
+		}
+	}
+	return g, nil
+}
+
+// flag is the last value of flag name, or "".
+func (g genArgs) flag(name string) string {
+	if v := g.flags[name]; len(v) > 0 {
+		return v[len(v)-1]
+	}
+	return ""
+}
+
+// has reports whether boolean flag name was given.
+func (g genArgs) has(name string) bool { return len(g.flags[name]) > 0 }
+
+// genJSON is the --json output of a generator: the spec's {files, diff, diagnostics, holes},
+// the migration's steps, whether the files were written, and the refusal's sentence.
+type genJSON struct {
+	Files       []generate.FileChange `json:"files"`
+	Diff        string                `json:"diff"`
+	Diagnostics []json.RawMessage     `json:"diagnostics"`
+	Holes       []generate.Hole       `json:"holes"`
+	Notes       []string              `json:"migration,omitempty"`
+	Written     bool                  `json:"written"`
+	Error       string                `json:"error,omitempty"`
+}
+
+// runGenerator ends every generator: it applies edits (computed by gen, from the loaded app)
+// with o, then reports. cmd names the command in messages ("alder new page").
+func runGenerator(cmd string, g genArgs, o generate.Options, gen func(p *generate.Program) ([]generate.Edit, error), stdout, stderr io.Writer) (code int) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(stderr, "%s: internal error: %v\n", cmd, r)
+			code = 2
+		}
+	}()
+	o.DryRun = g.dry
+	load := generate.Load
+	if o.WriteDespiteErrors {
+		load = generate.LoadWithErrors
+	}
+	p, err := load(g.dir)
+	if err != nil {
+		return genReport(cmd, g, nil, err, stdout, stderr)
+	}
+	edits, err := gen(p)
+	if err != nil {
+		return genReport(cmd, g, nil, err, stdout, stderr)
+	}
+	res, err := generate.Apply(g.dir, edits, o)
+	return genReport(cmd, g, res, err, stdout, stderr)
+}
+
+// genReport prints a generator's result (res, which may be nil) and its refusal or error, and
+// returns the exit code: 0, 1 for a refusal, 2 for anything else.
+func genReport(cmd string, g genArgs, res *generate.Result, err error, stdout, stderr io.Writer) int {
+	var ref *generate.Refusal
+	refused := errors.As(err, &ref)
+	if err != nil && !refused {
+		fmt.Fprintf(stderr, "%s: %v\n", cmd, err)
+		if g.json {
+			writeJSON(stdout, genJSON{Files: []generate.FileChange{}, Diagnostics: []json.RawMessage{}, Holes: []generate.Hole{}, Error: err.Error()})
+		}
+		return 2
+	}
+	if res == nil && refused && ref.Result != nil {
+		res = ref.Result
+	}
+	if g.json {
+		out := genJSON{Files: []generate.FileChange{}, Diagnostics: []json.RawMessage{}, Holes: []generate.Hole{}}
+		if res != nil {
+			out.Files, out.Diff, out.Notes, out.Written = res.Files, res.Diff, res.Notes, res.Written
+			if out.Files == nil {
+				out.Files = []generate.FileChange{}
+			}
+			for _, d := range res.Diagnostics {
+				out.Diagnostics = append(out.Diagnostics, json.RawMessage(diag.RenderJSON(d)))
+			}
+			if res.Holes != nil {
+				out.Holes = res.Holes
+			}
+		} else if refused {
+			for _, d := range ref.Diags {
+				out.Diagnostics = append(out.Diagnostics, json.RawMessage(diag.RenderJSON(d)))
+			}
+		}
+		if refused {
+			out.Error = ref.Msg
+			out.Written = false
+		}
+		writeJSON(stdout, out)
+	} else {
+		if res != nil {
+			io.WriteString(stdout, res.RenderText())
+		} else if refused {
+			for _, d := range ref.Diags {
+				fmt.Fprint(stdout, diag.RenderText(d, ref.Sources[d.Span.File]))
+			}
+		}
+		if res != nil && !refused && g.dry {
+			fmt.Fprintln(stdout, "dry run: nothing written")
+		}
+	}
+	if refused {
+		fmt.Fprintf(stderr, "%s: %s\n", cmd, ref.Msg)
+		return 1
+	}
+	return 0
+}
+
+// writeJSON writes v as one line of JSON, HTML characters unescaped (the diff and the
+// diagnostics quote `<al-card>`, `->` and `&&`).
+func writeJSON(w io.Writer, v any) {
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	enc.Encode(v)
+}
+
+// migrateCopy is the generators' Options.Migrate: `alder migrate`'s generator (writeMigration)
+// run on the copy of the app in dir, its tables read from their declarations alone
+// (ir.LowerTables), so a table edit that breaks code elsewhere still gets its migration. A
+// table declaration with errors is refused with them; a change no migration can make is
+// refused with `alder migrate`'s reason. The notes are the migration's steps.
+func migrateCopy(dir string) ([]string, error) {
+	prog, res, bag, ioErrs := buildkit.LoadChecked(dir, nil)
+	if len(ioErrs) > 0 {
+		return nil, ioErrs[0]
+	}
+	if res == nil {
+		return nil, nil // a parse error: the check after this reports it
+	}
+	if errs := generate.TableErrors(prog, bag.Items); len(errs) > 0 {
+		return nil, &generate.Refusal{Msg: "the result does not check (the errors above): nothing was written", Diags: errs, Sources: buildkit.Sources(prog)}
+	}
+	p, err := ir.LowerTables(prog, res)
+	if err != nil {
+		return nil, generate.Refusef("the tables do not lower for a migration (%v): run `alder check` on the result", err)
+	}
+	var out, errb bytes.Buffer
+	if code := writeMigration(dir, migrate.FromProgram(p), "", false, &out, &errb); code != 0 {
+		msg := strings.TrimSpace(out.String() + errb.String())
+		var lines []string
+		for _, l := range strings.Split(msg, "\n") {
+			lines = append(lines, strings.TrimPrefix(l, "alder migrate: "))
+		}
+		return nil, generate.Refusef("the migration generator refuses the change: %s", strings.Join(lines, "; "))
+	}
+	var notes []string
+	for _, l := range strings.Split(out.String(), "\n") {
+		if strings.HasPrefix(l, "  ") || strings.HasPrefix(l, "!! ") {
+			notes = append(notes, l)
+		}
+	}
+	return notes, nil
+}
+
+// newGenerators are `alder new`'s generators, by kind; their names are not app names.
+var newGenerators = map[string]func(args []string, stdout, stderr io.Writer) int{
+	"page":       runNewPageTo,
+	"table":      runNewTableTo,
+	"form":       runNewFormTo,
+	"msg":        runNewMsgTo,
+	"capability": runNewCapabilityTo,
+	"admin":      runNewAdminTo,
+}
+
+// genUsage prints a generator's usage line and returns 2.
+func genUsage(stderr io.Writer, usage string, err error) int {
+	if err != nil {
+		fmt.Fprintf(stderr, "%v\n", err)
+	}
+	fmt.Fprintln(stderr, usage)
+	return 2
+}
+
+// parseFields parses field arguments; a bad one is refused (reported, false).
+func parseFields(g genArgs, args []string, table bool, cmd string, stdout, stderr io.Writer) ([]generate.FieldSpec, bool) {
+	var fields []generate.FieldSpec
+	for _, a := range args {
+		f, err := generate.ParseField(a, table)
+		if err != nil {
+			genReport(cmd, g, nil, generate.Refusef("%v", err), stdout, stderr)
+			return nil, false
+		}
+		fields = append(fields, f)
+	}
+	return fields, true
+}
+
+const newPageUsage = "usage: alder new page <Module> <path> [--list T | --show T | --from T …] [--requires user] [--role R] [--dir app] [--json] [--dry-run]"
+
+// runNewPageTo is `alder new page`.
+func runNewPageTo(args []string, stdout, stderr io.Writer) int {
+	g, err := parseGenArgs(args, []string{"list", "show", "requires", "role"}, []string{"from"}, nil)
+	if err != nil || len(g.pos) != 2 {
+		return genUsage(stderr, newPageUsage, err)
+	}
+	o := generate.PageOptions{Module: g.pos[0], Path: g.pos[1], List: g.flag("list"), Show: g.flag("show"), From: g.flags["from"], Requires: g.flag("requires"), Role: g.flag("role")}
+	return runGenerator("alder new page", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) { return generate.NewPage(p, o) }, stdout, stderr)
+}
+
+const newTableUsage = "usage: alder new table <Name> <field>:<Type>[=default][@attr[=arg]…] … [--dir app] [--json] [--dry-run]"
+
+// runNewTableTo is `alder new table`.
+func runNewTableTo(args []string, stdout, stderr io.Writer) int {
+	g, err := parseGenArgs(args, nil, nil, nil)
+	if err != nil || len(g.pos) < 1 {
+		return genUsage(stderr, newTableUsage, err)
+	}
+	fields, ok := parseFields(g, g.pos[1:], true, "alder new table", stdout, stderr)
+	if !ok {
+		return 1
+	}
+	return runGenerator("alder new table", g, generate.Options{Migrate: migrateCopy}, func(p *generate.Program) ([]generate.Edit, error) {
+		return generate.NewTable(p, g.pos[0], fields)
+	}, stdout, stderr)
+}
+
+// runNewAdminTo is `alder new admin`, which arrives with the admin generator (M12 Task 2).
+func runNewAdminTo(args []string, stdout, stderr io.Writer) int { return notYet("admin", stderr) }
+
+// notYet is the answer of a generator that is not here yet.
+func notYet(kind string, stderr io.Writer) int {
+	fmt.Fprintf(stderr, "alder new %s: not available yet\n", kind)
+	return 2
+}
+
+func runNewFormTo(args []string, stdout, stderr io.Writer) int { return notYet("form", stderr) }
+func runNewMsgTo(args []string, stdout, stderr io.Writer) int  { return notYet("msg", stderr) }
+func runNewCapabilityTo(args []string, stdout, stderr io.Writer) int {
+	return notYet("capability", stderr)
+}

@@ -1,0 +1,24 @@
+module Comment
+
+import Post
+import User
+
+type CommentId = brand Text
+
+-- A post's comments go with it (`@cascade`).
+table Comment {
+  id: CommentId @id,
+  post: Post.PostId @ref Post @cascade,
+  author: User.UserId @ref User,
+  body: Text.NonEmpty,
+  created: Time @created,
+}
+
+test "deleting a post deletes its comments" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let post <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
+  let _ <- Db.insert Comment { post: post, author: me, body: Text.NonEmpty "Nice" }
+  let _ <- Db.delete Post post
+  let left <- Db.from Comment |> Db.count
+  Task.succeed (left == 0)
+}

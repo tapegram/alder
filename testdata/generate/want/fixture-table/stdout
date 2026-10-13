@@ -1,0 +1,6 @@
+wrote app/Like.alder
+wrote migrations/0002_create_like.sql
+  create table Like
+  add index on Like.owner
+  add index on Like.post
+edited migrations/schema.json

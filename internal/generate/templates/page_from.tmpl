@@ -1,0 +1,27 @@
+[[- template "header" .]]
+
+type Model = { [[range $i, $l := .Lists]][[if $i]], [[end]][[$l.Field]]: List [[$l.T]][[end]] }
+
+load : Params -> Session -> Query Model
+load params session = {
+[[- range .Lists]]
+  let [[.Field]] <- [[.Select]] |> Db.all
+[[- end]]
+  Query.succeed { [[range $i, $l := .Lists]][[if $i]], [[end]][[$l.Field]]: [[$l.Field]][[end]] }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  [[.Open]]
+    <h1>[[.Title]]</h1>
+[[- range .Lists]]
+
+    <al-card>
+      <h2 slot="header">[[.Title]]</h2>
+      <ul>
+        {for row in model.[[.Field]] -> <li>[[.Cell]]</li>}
+      </ul>
+    </al-card>
+[[- end]]
+  [[.Close]]
+[[template "tests" .]]

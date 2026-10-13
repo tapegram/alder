@@ -1,0 +1,60 @@
+module Entries.Index
+
+import Entry
+import Layout
+
+page "/entries" { page: Int = 1 }
+
+type Model = { rows: List Entry, page: Int, pages: Int }
+
+perPage : Int
+perPage = 20
+
+-- load reads one page of the rows, newest first, and how many pages there are.
+load : Params -> Session -> Query Model
+load params session = {
+  let page = Int.max 1 params.page
+  let rows <-
+    Db.from Entry
+      |> Db.orderBy Entry.created.desc
+      |> Db.limit perPage
+      |> Db.offset ((page - 1) * perPage)
+      |> Db.all
+  let count <- Db.from Entry |> Db.count
+  Query.succeed { rows: rows, page: page, pages: Int.max 1 ((count + perPage - 1) / perPage) }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Entries">
+    <h1>Entries</h1>
+
+    <al-table>
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Message</th><th>Created</th></tr>
+        </thead>
+        <tbody>
+          {for row in model.rows ->
+            <tr>
+              <td>{row.name}</td>
+              <td>{row.message}</td>
+              <td>{Time.format "Jan 2, 2006" row.created}</td>
+            </tr>}
+        </tbody>
+      </table>
+    </al-table>
+
+    <al-pagination role="navigation" aria-label="Pages">
+      {if model.page > 1 then <a slot="prev" href={Entries.Index { page: model.page - 1 }} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
+      <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
+      {if model.page < model.pages then <a slot="next" href={Entries.Index { page: model.page + 1 }} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
+    </al-pagination>
+  </Layout.Page>
+
+test "the list shows every row" = {
+  let _ <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
+  let _ <- Db.insert Entry { name: Text.NonEmpty "name-2", message: Text.NonEmpty "message-2" }
+  let r <- Test.open (Entries.Index {})
+  Task.succeed ({ answer: r.answer, rows: Test.count "al-table tbody tr" r.doc } == { answer: Shown, rows: 2 })
+}

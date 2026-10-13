@@ -1,0 +1,14 @@
+module Like
+
+import Post
+import User
+
+type LikeId = brand Text
+
+table Like {
+  id: LikeId @id,
+  post: Post.PostId @ref Post @cascade,
+  owner: User.UserId @ref User @owner,
+  created: Time @created,
+  updated: Time @updated,
+}

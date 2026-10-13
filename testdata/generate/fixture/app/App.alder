@@ -1,0 +1,33 @@
+module App
+
+import Layout
+import User
+
+-- The fixture of the generators' tests (cmd/alder/generate_test.go): a session with a user and
+-- a role, copied from the user's row when they log in (Auth.Login).
+session { user: Maybe User.UserId, role: User.Role = Reader }
+
+login = Auth.Login
+
+msg Logout
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing, role: Reader })
+    Task.succeed (Redirect (Auth.Login {}))
+  },
+}
+
+error : Error -> Html Never
+error err =
+  <Layout.Page title="Error">
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html Never
+notFound =
+  <Layout.Page title="Not found">
+    <h1>Not found</h1>
+  </Layout.Page>

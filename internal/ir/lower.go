@@ -15,9 +15,7 @@ import (
 // Lower builds the IR of a program the checker accepted without errors. A missing recorded type
 // is a checker bug and panics with the node and its position.
 func Lower(prog *names.Program, res *check.Result) *Program {
-	l := &lowerer{prog: prog, res: res, out: &Program{},
-		records: map[string]*RecordType{}, unions: map[string]*UnionType{}, values: map[string]*Value{},
-		pages: map[string]*Page{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, tables: map[string]*Table{}, caps: map[string]*Capability{}, fakes: map[*syntax.FakeDecl]*Fake{}, fakesByCap: map[string]*Fake{}, inserts: map[*types.Record]insertOf{}, insertRTs: map[insertOf]*RecordType{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, brands: map[string]*Brand{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
+	l := newLowerer(prog, res)
 	l.declareTypes()
 	l.declareValues()
 	l.declareCaps() // before bodies: a body's CapCall points at its Capability
@@ -36,6 +34,29 @@ func Lower(prog *names.Program, res *check.Result) *Program {
 	}
 	l.lowerTests()
 	return l.out
+}
+
+// LowerTables is the first step of Lower alone: the program's declared types, its tables among
+// them, with nothing of its values' bodies. It is for the migration generator of `alder edit
+// table` (internal/generate), which plans the migration of a table edit even when the edit
+// breaks code elsewhere (an insert that lacks the new field): the tables need only the
+// declarations to check. A declaration the checker refused can make lowering fail; that is
+// returned as an error, not a panic.
+func LowerTables(prog *names.Program, res *check.Result) (p *Program, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			p, err = nil, fmt.Errorf("%v", r)
+		}
+	}()
+	l := newLowerer(prog, res)
+	l.declareTypes()
+	return l.out, nil
+}
+
+func newLowerer(prog *names.Program, res *check.Result) *lowerer {
+	return &lowerer{prog: prog, res: res, out: &Program{},
+		records: map[string]*RecordType{}, unions: map[string]*UnionType{}, values: map[string]*Value{},
+		pages: map[string]*Page{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, tables: map[string]*Table{}, caps: map[string]*Capability{}, fakes: map[*syntax.FakeDecl]*Fake{}, fakesByCap: map[string]*Fake{}, inserts: map[*types.Record]insertOf{}, insertRTs: map[insertOf]*RecordType{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, brands: map[string]*Brand{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
 }
 
 // lowerTests lowers every module's `test` declarations into Module.Tests, marking the `==` each

@@ -14,7 +14,7 @@ import (
 )
 
 // newUsage is the usage line of `alder new`.
-const newUsage = "usage: alder new <name>  (or a path ending in the name: alder new apps/<name>)"
+const newUsage = "usage: alder new <name>  (or a path ending in the name: alder new apps/<name>), or alder new page|table|form|msg|capability … (a generator)"
 
 // runNewTo is `alder new <dir>`: it writes the scaffold (internal/scaffold, the book's
 // guestbook) into dir, whose last element is the app's name, then runs the migration generator
@@ -31,6 +31,11 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 			code = 2
 		}
 	}()
+	if len(args) > 0 {
+		if run, ok := newGenerators[args[0]]; ok {
+			return run(args[1:], stdout, stderr)
+		}
+	}
 	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
 		fmt.Fprintln(stderr, newUsage)
 		return 2
@@ -41,6 +46,10 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	dir := filepath.Clean(args[0])
 	name := filepath.Base(dir)
+	if _, ok := newGenerators[name]; ok {
+		fmt.Fprintf(stderr, "alder new: `%s` names a generator (`alder new %s …`), so it cannot name an app: choose another name\n", name, name)
+		return 1
+	}
 	if !scaffold.ValidName(name) {
 		fmt.Fprintf(stderr, "alder new: `%s` is not a valid app name: use letters, digits and `-`, starting with a letter (it names the directory, the built binary and the app's Go module)\n", name)
 		return 1

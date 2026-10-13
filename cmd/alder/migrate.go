@@ -85,8 +85,15 @@ func runMigrateTo(args []string, stdout, stderr io.Writer) (code int) {
 	if bag.HasErrors() || res == nil {
 		return 1
 	}
-	cur := migrate.FromProgram(ir.Lower(prog, res))
+	return writeMigration(dir, migrate.FromProgram(ir.Lower(prog, res)), name, dry, stdout, stderr)
+}
 
+// writeMigration is the second half of runMigrateTo: it plans the migration from the schema of
+// dir/migrations to cur, the app's tables, and writes it (or, with dry, prints it), with
+// runMigrateTo's output and exit codes. `alder new table` and `alder edit table` call it on
+// their copy of the app (internal/generate's Options.Migrate), where cur comes from the
+// tables alone (ir.LowerTables).
+func writeMigration(dir string, cur migrate.Schema, name string, dry bool, stdout, stderr io.Writer) int {
 	mdir := filepath.Join(dir, "migrations")
 	snap := filepath.Join(mdir, "schema.json")
 	old, last, code := previous(mdir, stderr)

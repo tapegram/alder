@@ -1,0 +1,49 @@
+[[- template "header" .]]
+
+type Model = { rows: List [[.T]], page: Int, pages: Int }
+
+perPage : Int
+perPage = 20
+
+-- load reads one page of the rows, newest first, and how many pages there are.
+load : Params -> Session -> Query Model
+load params session = {
+  let page = Int.max 1 params.page
+  let rows <-
+    [[.Select]]
+      |> Db.orderBy [[.T]].[[.Order]].desc
+      |> Db.limit perPage
+      |> Db.offset ((page - 1) * perPage)
+      |> Db.all
+  let count <- [[.Select]] |> Db.count
+  Query.succeed { rows: rows, page: page, pages: Int.max 1 ((count + perPage - 1) / perPage) }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  [[.Open]]
+    <h1>[[.Title]]</h1>
+
+    <al-table>
+      <table>
+        <thead>
+          <tr>[[range .Cols]]<th>[[.Label]]</th>[[end]]</tr>
+        </thead>
+        <tbody>
+          {for row in model.rows ->
+            <tr>
+[[- range .Cols]]
+              <td>[[.Cell]]</td>
+[[- end]]
+            </tr>}
+        </tbody>
+      </table>
+    </al-table>
+
+    <al-pagination role="navigation" aria-label="Pages">
+      {if model.page > 1 then <a slot="prev" href={[[.Module]] { page: model.page - 1 }} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
+      <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
+      {if model.page < model.pages then <a slot="next" href={[[.Module]] { page: model.page + 1 }} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
+    </al-pagination>
+  [[.Close]]
+[[template "tests" .]]

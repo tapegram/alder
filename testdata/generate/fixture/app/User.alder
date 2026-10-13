@@ -1,0 +1,13 @@
+module User
+
+type UserId = brand Text
+
+type Role = Reader | Admin
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  role: Role = Reader,
+  created: Time @created,
+}

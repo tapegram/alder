@@ -1,0 +1,20 @@
+[[- define "header" -]]
+module [[.Module]]
+
+[[range .Imports]]import [[.]]
+[[end]]
+page "[[.Path]]" [[.Params]][[.Requires]]
+[[- end]]
+
+[[- define "tests" -]]
+[[range .Tests]]
+[[template "test" .]]
+[[end]]
+[[- end]]
+
+[[- define "test" -]]
+test [[.Name]] = {
+[[range .Lines]]  [[.]]
+[[end]]  [[.Succeed]]
+}
+[[- end]]
