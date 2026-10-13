@@ -121,8 +121,10 @@ page "/admin" { } requires user, role Author
   `DbUpdateMine`, `DbDeleteMine`, `DbInsertMine` (or flags on the
   existing nodes — implementer's call, said in the report).
 - gen: the predicate in SQL (`WHERE owner = ?` with the session's user);
-  `updateMine`/`deleteMine` as one statement with `AND owner = ?` and a
-  rows-affected check → `eff.ErrNotFound`; the route's role check
+  `deleteMine` as one statement with `AND owner = ?`, `updateMine` as a
+  predicated read then a predicated write (`AND owner = ?` in both), both
+  in the Task's transaction; each with a rows-affected check →
+  `eff.ErrNotFound` (wording corrected in the final fix wave, m1); the route's role check
   (before `load`, after the `requires user` redirect).
 - Runtime: `db.UpdateWhere`/`DeleteWhere` with an owner predicate
   returning rows affected (or the existing update path extended).

@@ -542,7 +542,8 @@ uses a scoped operation, used from somewhere the operation itself would
 be refused, is E0026 at that use ("`Todos.Index.recent` uses `Db.mine`,
 which needs a page that `requires user`: `Public` does not"). A `fake`
 (chapter 10) has no session either: "`Db.mine` cannot be used in a fake:
-a fake has no session". Tests may use them (below).
+a fake has no session" (an excerpt: the message begins with where the
+use is, such as "in `fake Counter`'s `count`:"). Tests may use them (below).
 
 A table without `@owner` has nothing to scope by (E0025):
 
@@ -612,8 +613,17 @@ Just id -> {
 },
 ```
 
-and logging out puts it back: `{ s | user: Nothing, role: Reader }`. A
-page for authors only says so on its `page` line:
+and logging out puts it back: `{ s | user: Nothing, role: Reader }`.
+
+Adding `role` to the session changes the tests. A session record a test
+writes for `load` or `update` is a record literal, and names every
+field: `{ user: author }` becomes `{ user: author, role: Author }`, or
+E0003 says `role` is missing (a default applies at the boundaries, not
+to a literal: "Example: a theme switch", above). `Test.login`'s record
+is a boundary, the cookie's value, so `Test.login { user: Just me }` may
+leave `role` out and gets its default, `Reader`.
+
+A page for authors only says so on its `page` line:
 
 ```alder fragment
 page "/admin" { } requires user, role Author
@@ -652,16 +662,14 @@ view model session = <p>admin</p>
 ```
 
 **A role is read at login.** The check reads the session cookie and
-nothing else: it costs no database query. The price is that a role
-changed in the database applies when the user next logs in. A role in
-the cookie lasts until logout, or the session's 30-day lifetime from
-login: visiting a page does not renew the cookie ("The session cookie",
-below), so a user who keeps using the app still logs in again within 30
-days. Until then an author demoted to Reader still passes `requires
-user, role Author`, and a Reader promoted to Author must log in again to
-get in. A page where a demotion must apply at once also reads the user's
-row in its `load`, the **re-read idiom**. The blog's admin pages do, with
-a helper in `User` (`examples/blog/app/User.alder`):
+nothing else, so it costs no query. A role in the cookie lasts until
+logout, or the session's 30-day lifetime from login (visiting does not
+renew the cookie: "The session cookie", below). Until then an author
+demoted to Reader still passes `requires user, role Author`, and a
+Reader promoted to Author must log in again. A page where a demotion
+must apply at once also reads the user's row in its `load`, the
+**re-read idiom**, as the blog's admin pages do with a helper in `User`
+(`examples/blog/app/User.alder`):
 
 ```alder fragment
 isAuthor : UserId -> Query Bool
@@ -684,11 +692,9 @@ load params session = {
 ```
 
 Every message of the page runs `load` first, so its messages are turned
-away too. The blog's test "a demoted author is turned away at once"
-(chapter 14) shows it: the cookie still says Author, the row says Reader,
-and the page is a 404. The role clause stays: a Reader promoted since
-their login is still turned away by it until they log in again, and it
-keeps a Reader's request from reaching `load` at all.
+away too: the blog's test "a demoted author is turned away at once"
+(chapter 14). The role clause stays: it turns away a Reader promoted
+since their login, and keeps a Reader's request from reaching `load`.
 
 ### When to use the unscoped forms
 

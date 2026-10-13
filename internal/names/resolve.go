@@ -830,6 +830,13 @@ func (r *resolver) expr(e syntax.Expr, sc *Scope) {
 				}
 			}
 			r.expr(a, sc)
+			// table position: the first argument of a `Db.` operation is a table, and a table
+			// wins over a constructor of the same name (`Db.from Member` with a `Member` role)
+			if v, ok := e.Fn.(*syntax.Var); ok && i == 0 && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Db" {
+				if ct, ok := a.(*syntax.CtorRef); ok && ct.Ref.Kind == syntax.RefCtor && ct.Table.Kind == syntax.RefTable {
+					ct.Ref, ct.Table = ct.Table, syntax.Ref{}
+				}
+			}
 		}
 	case *syntax.Lambda:
 		c := sc.child()
@@ -1136,6 +1143,19 @@ func (r *resolver) loginPage() string {
 	return "Auth.Login"
 }
 
+// tableAlt is the table a bare name also names, as the resolver would resolve it were it no
+// constructor (this module's table, or the table of an imported module of that name), or the
+// zero Ref. A constructor of the same name stays the resolution; CtorRef.Table records the table.
+func (r *resolver) tableAlt(name string) syntax.Ref {
+	if r.ms.tables[name] {
+		return syntax.Ref{Kind: syntax.RefTable, Module: r.m.Name, Name: name}
+	}
+	if s, ok := r.importedScope(name); ok && s.tables[name] && r.p.Modules[name] != nil {
+		return syntax.Ref{Kind: syntax.RefTable, Module: name, Name: name}
+	}
+	return syntax.Ref{}
+}
+
 func (r *resolver) ctor(c *syntax.CtorRef) {
 	full := c.Name
 	if c.Module != "" {
@@ -1144,11 +1164,13 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 	if c.Module == "" {
 		if _, ok := r.ms.ctors[c.Name]; ok || r.ms.brands[c.Name] {
 			c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: r.m.Name, Name: c.Name}
+			c.Table = r.tableAlt(c.Name)
 			return
 		}
 		if r.p.scopes["Prelude"] != nil {
 			if _, ok := r.p.scopes["Prelude"].ctors[c.Name]; ok {
 				c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: "Prelude", Name: c.Name}
+				c.Table = r.tableAlt(c.Name)
 				return
 			}
 		}
@@ -1165,6 +1187,7 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 		if len(found) == 1 {
 			r.ms.used[found[0]] = true
 			c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: found[0], Name: c.Name}
+			c.Table = r.tableAlt(c.Name)
 			return
 		}
 		if r.p.IsPageModule(c.Name) {

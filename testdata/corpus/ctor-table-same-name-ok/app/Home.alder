@@ -1,0 +1,46 @@
+module Home
+
+-- `Member` is both a constructor of `User.Role` and the table of module `Member`: in table
+-- position (`Db.from Member`, `Db.insert Member`) and where a `Table` is expected (`countOf
+-- Member`) it is the table; where a `User.Role` is expected (a record field, `==` with a role,
+-- a list of roles, `Test.login`) it is the constructor.
+
+import User
+import Member
+
+page "/" { } requires user
+
+type Model = { n: Int, r: User.Role, member: Bool }
+
+countOf : Table Member -> Query Int
+countOf t = Db.from t |> Db.count
+
+load : Params -> Session -> Query Model
+load params session = {
+  let n <- Db.from Member |> Db.count
+  let m <- countOf Member
+  let roles = [Reader, Member]
+  Query.succeed { n: n + m, r: Member, member: session.role == Member && Member != session.role && List.length roles == 2 }
+}
+
+msg Join
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Join p -> {
+    let _ <- Session.put (\s -> { s | role: Member })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Text.fromInt model.n}</p>
+
+test "a member" = {
+  let me <- Db.insert User { name: "me", role: Member }
+  let _ <- Db.insert Member { user: me }
+  let _ <- Test.login { user: Just me, role: Member }
+  let r <- Test.open (Home {})
+  let n <- Db.from Member |> Db.count
+  Task.succeed (r.answer == Shown && n == 1)
+}

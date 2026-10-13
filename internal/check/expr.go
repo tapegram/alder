@@ -553,6 +553,9 @@ func (mc *modCtx) checkExpr(e syntax.Expr, expected types.Type, env *env, eff ef
 		mc.holes = append(mc.holes, holeNote{x.Name, expected, x.Span})
 		return
 	}
+	if ct, ok := ambiguousCtor(e); ok {
+		mc.resolveByType(ct, expected)
+	}
 	var got types.Type
 	if app, ok := e.(*syntax.App); ok {
 		got = mc.inferApp(app, env, eff, nil, expected)
@@ -883,6 +886,9 @@ func (mc *modCtx) inferExpr(e syntax.Expr, env *env, eff effect) types.Type {
 	case *syntax.Var:
 		return mc.inferVar(x, env)
 	case *syntax.CtorRef:
+		if _, ok := ambiguousCtor(x); ok {
+			mc.resolveByType(x, nil)
+		}
 		return mc.inferCtor(x, false)
 	case *syntax.Access:
 		return mc.inferAccess(x, env, eff)
@@ -999,9 +1005,49 @@ func (c *Checker) isMessageUnion(u *types.Union) bool {
 	return ok && p.Msg == u
 }
 
+// ambiguousCtor reports whether e is a bare name the resolver made a constructor that also names
+// a table in scope (CtorRef.Table), not yet resolved by resolveByType.
+func ambiguousCtor(e syntax.Expr) (*syntax.CtorRef, bool) {
+	ct, ok := e.(*syntax.CtorRef)
+	return ct, ok && ct.Ref.Kind == syntax.RefCtor && ct.Table.Kind == syntax.RefTable
+}
+
+// resolveByType resolves ct, a name that is both a constructor and a table, by the type t
+// expected of it: `Table _` is the table, the constructor's own union is the constructor, and
+// anything else, an unknown type (nil, or a variable) included, is E0002 naming both (the
+// reference then has type Err). Either way ct is no longer ambiguous.
+func (mc *modCtx) resolveByType(ct *syntax.CtorRef, t types.Type) {
+	c := mc.c
+	table := ct.Table
+	ct.Table = syntax.Ref{}
+	if t != nil {
+		t = c.u.Apply(t)
+	}
+	if app, ok := t.(*types.App); ok && app.Con == "Table" {
+		ct.Ref = table
+		return
+	}
+	info, ok := c.ctors[c.key(ct.Ref.Module, ct.Ref.Name)]
+	if !ok {
+		return // a brand constructor, or one already reported: left as resolved
+	}
+	if u, ok := t.(*types.Union); ok && info.Union != nil && u.Module == info.Union.Module && u.Name == info.Union.Name {
+		return
+	}
+	if t != nil && types.IsErr(t) {
+		return
+	}
+	union := types.StringIn(info.Union, mc.m.Name)
+	c.errorf(diag.UnknownName, ct.Span, "`%s` is both a constructor of `%s` and a table: write `%s` for the constructor only where a `%s` is expected, or qualify the table `%s.%s`", ct.Name, union, ct.Name, union, table.Module, table.Name)
+	c.ambiguousErr[ct] = true
+}
+
 // inferCtor types a constructor reference. applied=true means the reference is the head of an application.
 func (mc *modCtx) inferCtor(x *syntax.CtorRef, applied bool) types.Type {
 	c := mc.c
+	if c.ambiguousErr[x] {
+		return types.Err
+	}
 	switch x.Ref.Kind {
 	case syntax.RefPage:
 		info, ok := c.pages[x.Ref.Module]
@@ -1375,8 +1421,22 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 		mc.check(x.R, types.Bool, env, eff)
 		return types.Bool
 	case "==", "!=":
-		l := c.u.Apply(mc.infer(x.L, env, eff))
-		r := c.u.Apply(mc.infer(x.R, env, eff))
+		// a name that is both a constructor and a table takes the other side's type
+		var l, r types.Type
+		if ct, ok := ambiguousCtor(x.L); ok {
+			if _, both := ambiguousCtor(x.R); !both {
+				r = c.u.Apply(mc.infer(x.R, env, eff))
+				mc.resolveByType(ct, r)
+				l = c.u.Apply(mc.infer(x.L, env, eff))
+			}
+		}
+		if l == nil {
+			l = c.u.Apply(mc.infer(x.L, env, eff))
+			if ct, ok := ambiguousCtor(x.R); ok {
+				mc.resolveByType(ct, l)
+			}
+			r = c.u.Apply(mc.infer(x.R, env, eff))
+		}
 		if err := c.u.Unify(l, r); err != nil {
 			c.errorf(diag.TypeMismatch, x.Span, "cannot compare `%s` with `%s`: `==` needs both sides to have the same type", types.String(l), types.String(r))
 		} else if lt := c.u.Apply(l); containsFun(lt) {

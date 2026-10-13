@@ -36,6 +36,17 @@ be imported, and imports may not form a cycle.
 must therefore be unique across a module's imports and the standard library;
 a clash is a compile error.
 
+A constructor may share its name with a table, which a role makes likely
+(`type Role = Reader | Member` beside `table Member`). Then the type
+expected decides: where a table is expected, as the first argument of a
+`Db.` operation (`Db.from Member`) or a `Table Member` parameter, it is
+the table; where the union is expected (`role: Member` in a session
+record, `session.role == Member`), the constructor. Anywhere else (an
+unannotated `let who = Member`) it is an error naming both: "`Member` is
+both a constructor of `User.Role` and a table: write `Member` for the
+constructor only where a `User.Role` is expected, or qualify the table
+`Member.Member`".
+
 Everything a module defines is visible to other modules, with one exception:
 a brand's constructor (see chapter 4). There is no `export` list.
 

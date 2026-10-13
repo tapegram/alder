@@ -67,14 +67,18 @@ class BuildContextTests(unittest.TestCase):
         self.saved = bc.HUMAN_SECTIONS
         self.saved_keep = bc.KEEP_SUBSECTIONS
         self.saved_drop = bc.DROP_SUBSECTIONS
+        self.saved_trims = bc.TRIMS
         bc.HUMAN_SECTIONS = {"06": ["How a request runs"], "07": ["How effects run"]}
         bc.KEEP_SUBSECTIONS = {}
         bc.DROP_SUBSECTIONS = {}
+        bc.TRIMS = {}
 
     def tearDown(self):
         bc.HUMAN_SECTIONS = self.saved
+        bc.TRIMS = self.saved_trims
         bc.KEEP_SUBSECTIONS = self.saved_keep
         bc.DROP_SUBSECTIONS = self.saved_drop
+        bc.TRIMS = self.saved_trims
         shutil.rmtree(self.tmp)
 
     def run_main(self, *args):
@@ -150,6 +154,36 @@ class BuildContextTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn('"## Running effects"', err)
 
+    def test_reference_trims_spans(self):
+        # TRIMS replaces the text from a start up to an end, in --reference only
+        bc.TRIMS = {"06": [("Page text.", "## How a request runs", "Short.\n\n")]}
+        code, out, _ = self.run_main("--reference", "--chapters", "06")
+        self.assertEqual(code, 0)
+        self.assertIn("## A page module\n\nShort.\n\n## The `App` module", out)
+        self.assertNotIn("not a heading (inside a fence)", out)
+        code, out, _ = self.run_main("--chapters", "06")
+        self.assertIn("Page text.", out)
+        # a start that is missing, or an end that does not follow it, exits 2 naming it
+        for span in (("Pages text.", "## The", ""), ("App text.", "## A page module", "")):
+            bc.TRIMS = {"06": [span]}
+            code, out, err = self.run_main("--reference", "--chapters", "06")
+            self.assertEqual(code, 2)
+            self.assertEqual(out, "")
+            self.assertIn(repr(span[0]), err)
+            self.assertIn("TRIMS", err)
+
+    def test_reference_renders_module_error_blocks(self):
+        # an `error=` block of a whole module becomes its error text; an expression's stays
+        (self.book / "06-pages.md").write_text(CH06 + '\nRefused:\n\n```alder error=E0026 "`Db.mine` needs a page"\nmodule Public\n\nx = 1\n```\n\n'
+                                              '```alder error=E0003 "same type"\n1 == "a"\n```\n')
+        code, out, _ = self.run_main("--reference", "--chapters", "06")
+        self.assertEqual(code, 0)
+        self.assertIn("Refused:\n\n```text\nerror[E0026]: `Db.mine` needs a page\n```\n", out)
+        self.assertNotIn("module Public", out)
+        self.assertIn('```alder error=E0003 "same type"\n1 == "a"\n```', out)
+        code, out, _ = self.run_main("--chapters", "06")
+        self.assertIn("module Public", out)
+
     def test_reference_only_selected_chapters(self):
         code, out, _ = self.run_main("--reference", "--chapters", "06")
         self.assertEqual(code, 0)
@@ -211,6 +245,7 @@ class BuildContextTests(unittest.TestCase):
         # an agent implementing a capability needs where its adapter goes and what it is called:
         # chapter 7's "The rule" stays, the rest of "Implementing a capability" goes
         bc.HUMAN_SECTIONS = self.saved
+        bc.TRIMS = self.saved_trims
         bc.KEEP_SUBSECTIONS = self.saved_keep
         code, out, _ = self.run_main("--reference", "--chapters", "07", "--book", str(bc.BOOK))
         self.assertEqual(code, 0)
@@ -233,6 +268,7 @@ class BuildContextTests(unittest.TestCase):
         # agents need the E0019 -> `alder migrate` workflow: chapter 8's "Migrations" stays in
         # the reference, "How tables are stored" goes
         bc.HUMAN_SECTIONS = self.saved
+        bc.TRIMS = self.saved_trims
         code, out, _ = self.run_main("--reference", "--chapters", "08", "--book", str(bc.BOOK))
         self.assertEqual(code, 0)
         self.assertIn("\n## Migrations\n", out)
@@ -242,6 +278,7 @@ class BuildContextTests(unittest.TestCase):
         # agents write fakes and install them: chapter 10's "Faking a capability" stays in the
         # reference, "What cannot be tested yet" goes
         bc.HUMAN_SECTIONS = self.saved
+        bc.TRIMS = self.saved_trims
         code, out, _ = self.run_main("--reference", "--chapters", "10", "--book", str(bc.BOOK))
         self.assertEqual(code, 0)
         self.assertIn("\n## 8. Faking a capability\n", out)
@@ -253,6 +290,7 @@ class BuildContextTests(unittest.TestCase):
         # shape, the operators and the rule stay; the case for a mutation score and the
         # suppression rules go
         bc.HUMAN_SECTIONS = self.saved
+        bc.TRIMS = self.saved_trims
         bc.DROP_SUBSECTIONS = self.saved_drop
         code, out, _ = self.run_main("--reference", "--chapters", "10", "--book", str(bc.BOOK))
         self.assertEqual(code, 0)
@@ -276,6 +314,7 @@ class BuildContextTests(unittest.TestCase):
         # agents write browser tests: chapter 10's "Testing through the browser" (the step table,
         # the rules, the texts) stays in the reference, "How the browser works" goes
         bc.HUMAN_SECTIONS = self.saved
+        bc.TRIMS = self.saved_trims
         bc.DROP_SUBSECTIONS = self.saved_drop
         code, out, _ = self.run_main("--reference", "--chapters", "09,10", "--book", str(bc.BOOK))
         self.assertEqual(code, 0)
@@ -286,12 +325,34 @@ class BuildContextTests(unittest.TestCase):
         # drops the walkthrough, the further examples and chapter 9's repeated signatures
         for kept in ("test \"adding a todo through the page\"", "| `FormRejected errors` |", "| `Maybe a` | blank",
                      "### What a failed step says", "has no button or form for", "has no input `due`",
-                     "test \"a stranger cannot see my todo\"", "| `ul > li` |", "\n### The rules\n",
+                     "test \"Toggle by another user is not found\"", "| `ul > li` |", "\n### The rules\n",
                      "## Test\n", "Test.run : Task a"):
             self.assertIn(kept, out)
         for gone in ("### Step by step", "module Drafts", "test \"a todo with a due date\"", "1. Insert a user, as any effect test does.",
-                     "When to use which", "test \"a misspelt selector\"", "Test.login     : Session -> Task Unit"):
+                     "When to use which", "test \"a misspelt selector\"", "Test.login     : Session -> Task Unit",
+                     "test \"a stranger cannot see my todo\"", "FAIL Todos.Index \"a stranger clicks my todo\""):
             self.assertNotIn(gone, out)
+
+    def test_real_reference_cut(self):
+        # M11's final review cut the reference to at most 44k tokens (len/4, with the example):
+        # the rules' facts stay, their repeated quotes and transcripts go
+        bc.HUMAN_SECTIONS, bc.KEEP_SUBSECTIONS = self.saved, self.saved_keep
+        bc.DROP_SUBSECTIONS, bc.TRIMS = self.saved_drop, self.saved_trims
+        code, out, _ = self.run_main("--reference", "--chapters", ",".join(bc.DEFAULT_CHAPTERS), "--book", str(bc.BOOK),
+                                     "--example", str(bc.EXAMPLE))
+        self.assertEqual(code, 0)
+        self.assertLessEqual(len(out) // 4, 44000, "the reference is at most 44k tokens (len/4)")
+        for kept in ("**`Test.login s`** sets it to `s`", "**`Session.put`**, in the test", "A login through the login page's form",
+                     "So a test that calls `update` or `load` itself", "Db.updateMine Todo: no signed-in user",
+                     "`update` call is not checked", "error[E0026]: `Db.mine` needs a page that `requires user`: `Public` does not",
+                     "isAuthor : UserId -> Query Bool", "`2026-01-01T00:00:00Z`", "chapter 6, \"Rules\",\nexplains them",
+                     "write the scoped form; it costs "):
+            self.assertIn(kept, out)
+        for gone in ("$ alder test examples/todos -run 'without a login'", "module Public",
+                     "Db.mine       : Table t -> Select t", "The to-do list's page uses four of them\n(`examples", "\n### When the app starts\n",
+                     "let author <- User.isAuthor session.user"):
+            self.assertNotIn(gone, out)
+
 
 if __name__ == "__main__":
     unittest.main()

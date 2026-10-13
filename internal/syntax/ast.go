@@ -226,6 +226,12 @@ type CtorRef struct { // capitalized name in expression position: Just, Normal, 
 	Module string
 	Name   string
 	Ref    Ref
+	// Table is set (Kind RefTable) when a bare name the resolver made a constructor also names a
+	// table this module can see (`Member` of `type Role = Reader | Member` and `table Member`):
+	// in table position (the first argument of a `Db.` operation) the resolver picks the table;
+	// elsewhere the checker picks by the type expected there, and reports E0002 when it is
+	// neither (or unknown).
+	Table Ref
 }
 type Access struct {
 	Node

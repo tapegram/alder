@@ -7,8 +7,9 @@ Usage: build_context.py [--chapters 03,04,...] [--no-example] [--reference] [--b
 --reference drops the sections written for humans (HUMAN_SECTIONS, by exact `## ` heading),
 except the `### ` subsections of a dropped section listed in KEEP_SUBSECTIONS, which stay under
 the section's heading; and from a section it keeps, the `### ` subsections listed in
-DROP_SUBSECTIONS (the inverse). A listed heading missing from its chapter exits 2 naming it, so
-a renamed section never silently builds the wrong prompt. --size prints the prompt's size instead of the prompt: characters and
+DROP_SUBSECTIONS (the inverse); it shortens the spans TRIMS lists, and renders an `error=` block of
+a whole module as its error text alone. A listed heading or span missing from its chapter exits 2
+naming it, so a renamed section never silently builds the wrong prompt. --size prints the prompt's size instead of the prompt: characters and
 len/4; with --count ollama:MODEL also Ollama's prompt_eval_count for the prompt alone (one
 /api/chat call, the prompt as the system message, num_predict 1).
 """
@@ -72,8 +73,12 @@ KEEP_SUBSECTIONS = {
 # human reader. Chapter 6's "Rules" (M11) stays whole for an agent (`@owner`, the five scoped
 # operations, the not-found answer, where they may be used, whose session, roles, the unscoped
 # forms) but for its last subsection, the case for the design on a replicated database.
+# Chapter 8's "Migrations" drops "When the app starts" (M11 final review, the reference cut):
+# how the runtime applies the files and what it refuses, the inside, like "How tables are
+# stored"; the workflow an agent follows (E0019, `alder migrate`, the files) stays.
 DROP_SUBSECTIONS = {
     "06": {"Rules": ["The rules and a replicated database"]},
+    "08": {"Migrations": ["When the app starts"]},
     "09": {"Test": ["Browser steps and queries"]},
     "10": {"11. Mutation testing": ["Why a mutation score", "The rules' mutants in a report", "How the two tests kill them", "All fourteen, and one killed by luck", "What is never a mutant",
                                     "The logout redirect", "Mutants that are the same program", "The exact score",
@@ -82,6 +87,75 @@ DROP_SUBSECTIONS = {
                                               "More forms", "Bad input, an example", "Clicks that fail", "A selector the compiler refuses",
                                               "Comparing a page with its view"]},
 }
+
+# Spans of text --reference shortens in a chapter (before dropping sections), by chapter: (start, end,
+# replacement), the text from start up to (not including) end replaced by replacement; each start
+# must occur once in the chapter and end after it, or the tool exits 2 naming it. They shorten
+# what an agent needs in fewer words (final review of M11, the reference cut): chapter 6 points
+# at the example app instead of quoting its load and update; chapter 8's "Your own rows" points at
+# chapter 6 (chapter 9 lists the signatures); chapter 10's "Tests that use the rules" keeps the
+# facts about whose session a test runs with and the failure line, without its transcript and
+# its worked test of `Db.mine`, and says where an effect test runs in one paragraph; "A
+# stranger's todo" keeps one test, the stale page's; chapter 6's re-read idiom keeps its helper
+# and says how `load` uses it.
+TRIMS = {
+    "06": [("and, in `Admin.Edit`,\n\n```alder fragment\nload params session = {\n  let author <- User.isAuthor", "Every message of the page runs `load` first",
+            "which each admin page's `load` calls first, answering `Query.notFound`\nwhen it is `False`. "),
+           ("A row `load` already found with `Db.getMine` is not one of the cases:", "### The rules and a replicated database",
+            "A row `load` already found with `Db.getMine` is not one of the cases:\nwrite the scoped form; it costs "
+            "nothing (`Todos.Show` writes\n`Db.updateMine Todo model.todo.id …`, and the mutation tool counts it\nas "
+            "the same program as the unscoped one there).\n\n"),
+           ("The to-do list's page uses four of them\n", "Why `update` needs them as much as `load` does",
+            "The to-do list's page uses four of them, and `Todos.Show` reads its todo with the fifth\n"
+            "(`examples/todos/app/Todos/Index.alder` and `Todos/Show.alder`, in the example app below).\n\n")],
+    "08": [("A table with an `@owner` column (above) also has five **scoped**\n", "## How tables are stored",
+            "A table with an `@owner` column (above) also has five **scoped**\noperations, `Db.mine`, "
+            "`Db.getMine`, `Db.updateMine`, `Db.deleteMine` and\n`Db.insertMine`, for the pages of a signed-in "
+            "user: chapter 6, \"Rules\",\nexplains them, and chapter 9 lists their types.\n\n")],
+    "10": [("Without a signed-in user a scoped step fails, and says why.", "**Where an effect test runs.**",
+            "Without a signed-in user a scoped step fails, saying so (`Err\n\"Db.updateMine Todo: no signed-in user\"`); "
+            "it never answers as if the user\nhad no rows. A test may use the scoped operations itself too, after\n"
+            "`Test.login`.\n\n"),
+           ("**Where an effect test runs.** Every effect test gets a world of its own:", "A pure test (section 1) touches none of this",
+            "**Where an effect test runs.** Each effect test gets a fresh, empty\nin-memory SQLite database with the "
+            "app's tables; its block runs as one\n`Task`, in one transaction, and sees its own writes. `Time.now` and "
+            "the\n`@created` a `Db.insert` fills read a clock that starts at\n`2026-01-01T00:00:00Z` and advances one "
+            "second per read, so the rows a\ntest creates are ordered. The app's capabilities are wired to their\n"
+            "adapters as in `alder build`; one without an adapter is a warning, and\ncalling it unfaked fails the test "
+            "(\"capability Auth.Login.Password is\nnot wired in tests\"); `Test.fake` replaces one (section 8). The "
+            "test's\nsession starts as `App`'s, every field at its default, and its browser\n(section 9) holds no page "
+            "and no cookie.\n\n"),
+           ("**Who may toggle a todo.** Chapter 6's rule", "My list is open in the browser;",
+            "**Who may toggle a todo.** Chapter 6's rule, \"Rules\", says that a user\nwho posts `Toggle` with "
+            "someone else's todo id gets a 404. A stranger's\nown list offers no button for my todo, but a page can "
+            "be out of date. "),
+           ("\"Delete by another user is not\nfound\" does the same with the Delete button.", "### Reading the page: queries",
+            "\"Delete by another user is not\nfound\" does the same with the Delete button.\n\n")],
+}
+
+# A `alder error=CODE "text"` block of a whole module (written to show the compiler refusing it)
+# is rendered by --reference as the error alone, `error[CODE]: text`, in a text block: the
+# prose around it says what the module does wrong.
+ERROR_MODULE = re.compile(r'^```alder error=(E\d+) "([^\n]*)"\nmodule [^\n]*\n.*?^```\n', re.S | re.M)
+
+
+def error_text(m):
+    return "```text\nerror[" + m.group(1) + "]: " + m.group(2) + "\n```\n"
+
+
+def trim(path, text, spans):
+    """text with each (start, end, replacement) of spans applied; exits 2 naming a span whose start
+    is not found exactly once or whose end does not follow it."""
+    for start, end, repl in spans:
+        i = text.find(start)
+        j = text.find(end, i + len(start)) if i >= 0 else -1
+        if i < 0 or text.count(start) != 1 or j < 0:
+            print(f'build_context.py: --reference: {path} has no single span from {start!r} to {end!r} '
+                  f"(update TRIMS to match the book)", file=sys.stderr)
+            raise SystemExit(2)
+        text = text[:i] + repl + text[j:]
+    return text
+
 
 HEADER = """You are writing code in Alder, a small language for server-rendered web
 apps. Alder is not Elm, not TypeScript, and not any language you have seen
@@ -178,8 +252,12 @@ def build(chapters, book, example, reference):
     for ch in chapters:
         for f in sorted(book.glob(f"{ch}-*.md")):
             text = f.read_text()
+            if reference:
+                text = trim(f, text, TRIMS.get(ch, []))
             if reference and (ch in HUMAN_SECTIONS or ch in DROP_SUBSECTIONS):
                 text = drop_sections(f, text, HUMAN_SECTIONS.get(ch, []), KEEP_SUBSECTIONS.get(ch), DROP_SUBSECTIONS.get(ch))
+            if reference:
+                text = ERROR_MODULE.sub(error_text, text)
             out.append(text)
             out.append("\n")
     if example is not None:

@@ -1,0 +1,2 @@
+app/Home.alder:14:13 E0002 `Member` is both a constructor of `User.Role` and a table: write `Member` for the constructor only where a `User.Role` is expected, or qualify the table `Member.Member`
+app/Home.alder:15:48 E0002 `Member` is both a constructor of `User.Role` and a table: write `Member` for the constructor only where a `User.Role` is expected, or qualify the table `Member.Member`

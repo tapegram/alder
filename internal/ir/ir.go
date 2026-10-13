@@ -744,8 +744,9 @@ type DbGetMine struct {
 	ID    Expr
 }
 
-// DbUpdateMine is `Db.updateMine Table ID Fn`, a Task Unit; Fn has type t -> t. One UPDATE with
-// `id = ? AND owner = ?`: no row changed is Task.notFound.
+// DbUpdateMine is `Db.updateMine Table ID Fn`, a Task Unit; Fn has type t -> t. A predicated read
+// then a predicated write (`id = ? AND owner = ?` in both), in the Task's transaction: no row
+// found or changed is Task.notFound.
 type DbUpdateMine struct {
 	Typed
 	Pos   Pos

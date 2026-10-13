@@ -14,7 +14,7 @@
 
 - Exactly the spec's surface and texts; `@owner` on exactly one `@ref` column of the session's user type; scoped operations legal only where `session.user` is narrowed (a page that `requires user` and its module's values); scoped reads/writes of a row that is not yours answer not-found; `insertMine` forbids naming the owner column.
 - `@owner` and roles change nothing in the stored schema or migrations (`schema.json` unchanged for both examples; `alder migrate` says no changes after the examples adopt `@owner`).
-- Scoped writes are one SQL statement with the owner predicate and a rows-affected check (never read-then-write).
+- Scoped writes carry the owner predicate and a rows-affected check: `deleteMine` is one statement (`DELETE … WHERE id = ? AND owner = ?`); `updateMine` is a predicated read then a predicated write (`UPDATE … WHERE id = ? AND owner = ?`), both in the Task's transaction (never an unpredicated read-then-write). (Wording corrected in the final fix wave, m1.)
 - The trace names the operations as written (`Db.mine Todo`, …).
 - Both examples adopt the rules; their behaviour and test outcomes are unchanged except where tests referred to removed helpers; mutation scores stay ≥ today's (todos 1.00; blog 0.95 or better).
 - Gate: `gofmt -l $(git ls-files '*.go')` empty; `go vet ./...`; `go test ./... -count=1`; both examples check/build/test + `--mutate`; `(cd experiments && python3 -m unittest)`; `go test ./book -count=1`.

@@ -1,0 +1,10 @@
+module Member
+
+import User
+
+type MemberId = brand Text
+
+table Member {
+  id: MemberId @id,
+  user: User.UserId @ref User,
+}
