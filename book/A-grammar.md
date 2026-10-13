@@ -16,13 +16,15 @@ unionBody   = ["|"] ctor {"|" ctor} ;
 ctor        = uname [atype] ;
 brandType   = "brand" uname ["where" expr] ;
 
-pageDecl    = "page" string recordType ["requires" lname] ;
+pageDecl    = "page" string recordType ["requires" lname ["," "role" uname {"|" uname}]] ;
+                                    (* the role clause: after "requires user" only, E0027 *)
 msgDecl     = "msg" uname [recordType] ["form" uname] ;
 formDecl    = "form" uname "=" "{" {fieldDef ","} [fieldDef] "}" ;
 tableDecl   = "table" uname [renamed] "{" {fieldDef {attr} ","} [fieldDef {attr}] "}" ;
 fieldDef    = lname ":" type ["=" expr] ;   (* in a table: the default is a literal, E0022 *)
 attr        = "@id" | "@ref" uname | "@created" | "@updated" | "@unique"
             | "@cascade" | "@restrict" | "@setNull"    (* a delete rule: after "@ref T" only *)
+            | "@owner"                                 (* one per table, on a "@ref" of the user: E0024 *)
             | renamed ;
 renamed     = "@renamed" string ;   (* the old name; a plain string, no "{…}" *)
 capDecl     = "capability" uname "{" {lname ":" type ","} [lname ":" type] "}" ;

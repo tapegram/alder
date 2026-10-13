@@ -16,7 +16,7 @@ type Model = { filter: Todo.Filter, todos: List Todo }
 
 load : Params -> Session -> Query Model
 load params session = {
-  let todos <- Db.from Todo |> Db.where (Todo.owner.eq session.user) |> Db.all
+  let todos <- Db.mine Todo |> Db.all
   Query.succeed { filter: params.filter, todos: todos }
 }
 
@@ -31,24 +31,18 @@ msg Toggle { id: Todo.TodoId }
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
+  -- The id in a message comes from the request: `Db.updateMine` changes the todo only when it
+  -- is the signed-in user's, and answers 404 otherwise ("Rules", below).
   Toggle p -> {
-    let todo <- owned p.id session
-    let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
+    let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
     Task.succeed Rerender
   },
 }
-
--- The id in a message comes from the request: check that it is the user's ("Authorize in
--- `update` too", below).
-owned : Todo.TodoId -> Session -> Task Todo
-owned id session = {
-  let found <- Db.get Todo id
-  match found {
-    Just todo -> if todo.owner == session.user then Task.succeed todo else Task.notFound,
-    Nothing -> Task.notFound,
-  }
-}
 ```
+
+`Db.mine Todo` and `Db.updateMine` are the to-do table's **scoped**
+operations: they read and write only the todos of the signed-in user,
+because the table marks its `owner` column `@owner` ("Rules", below).
 
 The compiler checks that each page module has exactly: one `page`, one
 `Model`, one `load`, one `view`, and, if it has any `msg`, one `update`.
@@ -81,7 +75,9 @@ page "/admin" { } requires user
   `/todos/{id}`.
 - `requires` names a field of `Session` whose type is `Maybe a`. The page is
   served only when that field is `Just`; otherwise the runtime redirects to
-  the page named in `App.login`. Inside this module `session.<field>` has type
+  the page named in `App.login`. `requires user, role Author` adds a role:
+  the page is also a 404 for a signed-in user whose session's `role` is
+  not `Author` ("Rules", below). Inside this module `session.<field>` has type
   `a`, not `Maybe a`. The page's `Session` is then a type of its own, and it
   can be passed wherever the app's `Session` is expected (to a function in a
   shared module, say), where the field is `Just` its value again. The other
@@ -348,40 +344,370 @@ query, then `Reject` or the writes). Only a failed `Task` (`Task.fail`,
 `Task.notFound`, a `@unique` violation, a capability error) undoes its
 writes and its session changes (chapter 7).
 
-## Authorize in `update` too
+## Rules
 
-`load`'s checks cover the page, not the ids a message carries. The to-do
-list's `load` reads only the user's own todos, so the page never shows
-anyone else's; but `Toggle { id }` puts the id in the message's URL, and
-anyone can post `/_m/Todos.Index/Toggle?id=` with an id that is not theirs.
-`update` must check it again. The example does it with a helper that ends
-in `Task.notFound` (a 404) when the row is missing or someone else's:
+Most apps with a login have two rules about who may do what. A row
+belongs to a user, and only that user may see or change it: a todo, a
+draft post. And some pages are only for users with a role: an author's
+desk, an admin page. Alder lets you **declare** both rules, and then the
+shortest thing to write is the correct one: no check to remember, so no
+check to forget.
+
+### Ownership: `@owner`
+
+A table says which of its columns names the row's owner. In the to-do
+app (`examples/todos/app/Todo.alder`):
 
 ```alder fragment
-owned : Todo.TodoId -> Session -> Task Todo
-owned id session = {
-  let found <- Db.get Todo id
-  match found {
-    Just todo -> if todo.owner == session.user then Task.succeed todo else Task.notFound,
-    Nothing -> Task.notFound,
-  }
-}
-
-update msg model session = match msg {
-  Toggle p -> {
-    let todo <- owned p.id session
-    let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
-    Task.succeed Rerender
-  },
-  ...
+table Todo {
+  id: TodoId @id,
+  title: Text.NonEmpty,
+  done: Bool = False,
+  due: Maybe Date,
+  owner: User.UserId @ref User @owner,
+  created: Time @created,
 }
 ```
 
-When the page's own parameter names the thing, let the message carry no
-id at all and act on what `load` checked. `Todos.Show` declares
-`msg Save form EditTodo` and `msg Delete`, and its `update` writes
-`model.todo.id`: the page's `{id}` was authorized by `load`, and a message
-cannot name another row.
+`owner: User.UserId @ref User` was already there: each todo refers to a
+user. `@owner` adds one thing: "this column is whose row it is". The
+rules for it:
+
+- A table has at most one `@owner` column.
+- It must be a `@ref` to the user table, of the type of the session's
+  `user` field without its `Maybe` (`session { user: Maybe User.UserId }`
+  means `User.UserId`), so the column and the session can be compared.
+- The app's session must have a `user` field.
+
+Anything else is E0024 (the exact texts are in chapter 11). `@owner`
+changes nothing in the database: the column and its
+reference are what they were, and no migration is needed (chapter 8).
+
+### Reading and writing your own rows
+
+A table with an `@owner` column has five **scoped** operations in `Db`
+(chapter 9). Each one does what its unscoped twin does, but only to rows
+whose owner is the signed-in user:
+
+| Operation | Type | What it does |
+|---|---|---|
+| `Db.mine Todo` | `Select Todo` | The rows whose `owner` is the signed-in user. It is a `Select`, like `Db.from Todo`, so `Db.where`, `Db.orderBy`, `Db.limit`, `Db.all`, `Db.count` and the rest apply to it |
+| `Db.getMine Todo id` | `Query Todo` | The row with that id, when it is the user's; otherwise not found |
+| `Db.updateMine Todo id f` | `Task Unit` | Changes the row with `f`, when it is the user's; otherwise not found |
+| `Db.deleteMine Todo id` | `Task Unit` | Deletes the row, when it is the user's; otherwise not found |
+| `Db.insertMine Todo { … }` | `Task TodoId` | Inserts a row whose owner is the user |
+
+The to-do list's page uses four of them
+(`examples/todos/app/Todos/Index.alder`):
+
+```alder fragment
+load params session = {
+  let todos <-
+    Db.mine Todo
+      |> Db.orderBy Todo.created.desc
+      |> Db.all
+  Query.succeed { filter: params.filter, todos: List.filter (Todo.matches params.filter) todos }
+}
+
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insertMine Todo { title: p.form.title, due: p.form.due }
+    Task.succeed (Redirect (Todos.Index { filter: model.filter }))
+  },
+  Toggle p -> {
+    let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
+    Task.succeed Rerender
+  },
+  Delete p -> {
+    let _ <- Db.deleteMine Todo p.id
+    Task.succeed Rerender
+  },
+}
+```
+
+and the todo's own page, `Todos.Show`, reads its todo with the fifth:
+
+```alder fragment
+load params session = {
+  let todo <- Db.getMine Todo params.id
+  Query.succeed { todo: todo }
+}
+```
+
+Why `update` needs them as much as `load` does: `load` decides what the
+page shows, but a message carries its own parameters. `Toggle { id }`
+puts the id in the message's URL (`/_m/Todos.Index/Toggle?id=…`), and
+anyone signed in can post that URL with an id that is not theirs. With
+`Db.updateMine` the id is only ever one of the user's own todos.
+
+Two details:
+
+**`Db.insertMine` takes its row as a record literal**, written in the
+call, with every field but the owner: the owner is the session's user.
+Naming it is an error:
+
+```alder error=E0003 "`owner` is set by `Db.insertMine`"
+module Quick
+
+import Todo
+
+page "/quick" { } requires user
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+msg Add { title: Text.NonEmpty }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insertMine Todo { title: p.title, due: Nothing, owner: session.user }
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>quick</p>
+```
+
+and so is passing a row built elsewhere: "`Db.insertMine` takes its row
+as a record literal: write the record literal in the `Db.insertMine`
+call (its row is `Insert Todo` without `owner`)". Fields with a default
+(`done`) may be left out, as with `Db.insert`.
+
+**`Db.updateMine` never changes the owner.** If `f` returns the row with
+another `owner`, the rest of its changes are written and the owner stays
+as it was: a scoped write cannot give a row away. A page that transfers
+rows writes that with `Db.update` ("When to use the unscoped forms",
+below).
+
+### What a stranger gets
+
+A row that exists but belongs to someone else is answered exactly as a
+row that does not exist: **not found**.
+
+- In `load`, `Db.getMine` of another user's id is `Query.notFound`: the
+  page is a 404, `App.notFound`.
+- In `update`, `Db.updateMine` or `Db.deleteMine` of another user's id
+  is `Task.notFound`. The whole `Task` fails, so everything it did before
+  is rolled back too, writes and `Session.put` alike (chapter 7), and the
+  answer is a 404.
+- `Db.mine` simply has no such row in it.
+
+There is no arm to write for the stranger's case and so no arm to get
+wrong, and a stranger cannot tell someone else's todo from an id that
+was never used: the answer gives nothing away. A page that wants to
+answer differently (a 403 page, say) uses the unscoped operation and
+writes its own check.
+
+### Where they may be used
+
+A scoped operation needs a signed-in user, so it is allowed only where
+the compiler knows there is one: in a page module whose page `requires
+user`. That covers the module's `load`, `update` and `view`, and its
+helper values, such as
+
+```alder fragment
+recent : Select Todo
+recent = Db.mine Todo |> Db.orderBy Todo.created.desc |> Db.limit 5
+```
+
+Anywhere else, it is E0026: in a page without `requires user`,
+
+```alder error=E0026 "`Db.mine` needs a page that `requires user`: `Public` does not"
+module Public
+
+import Todo
+
+page "/public" { }
+
+type Model = { open: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let n <- Db.mine Todo |> Db.count
+  Query.succeed { open: n }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Text.fromInt model.open}</p>
+```
+
+and in a module that is not a page at all, `App` included ("`Db.deleteMine`
+needs a page that `requires user`: `App` is not a page"). The rule
+follows a helper across modules: a value of a `requires user` page that
+uses a scoped operation, used from somewhere the operation itself would
+be refused, is E0026 at that use ("`Todos.Index.recent` uses `Db.mine`,
+which needs a page that `requires user`: `Public` does not"). A `fake`
+(chapter 10) has no session either: "`Db.mine` cannot be used in a fake:
+a fake has no session". Tests may use them (below).
+
+A table without `@owner` has nothing to scope by (E0025):
+
+```alder error=E0025 "`User` has no `@owner` column, so `Db.mine User` has nothing to scope by"
+module Account
+
+import User
+
+page "/account" { } requires user
+
+type Model = { users: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let n <- Db.mine User |> Db.count
+  Query.succeed { users: n }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Text.fromInt model.users}</p>
+```
+
+### Whose session
+
+A scoped operation acts for the user of the **running** request or
+test, the session the runtime holds while it runs the effect. It does
+not read the `session` argument of `load` or `update`. In a served
+request the two are the same session, so the difference never shows.
+It shows in two places:
+
+- **A test** that calls `update` (or `load`) itself, with a session
+  record it wrote, does not choose the user that way: the scoped
+  operations act for the test's own session, which `Test.login` sets
+  (chapter 10, "Tests that use the rules"). A test that never logged in
+  has no user, and a scoped operation fails with `Db.mine Todo: no
+  signed-in user` (or `Db.getMine Todo: …`, and so on). It never quietly
+  returns nothing.
+- **`Session.put`** in the middle of an `update` changes the user for
+  every scoped operation after it in the same `Task`: they act for the
+  session as it now is.
+
+### Roles: `requires user, role R`
+
+A role lives in the session, beside the user. The blog
+(`examples/blog`) has two, declared in `User`:
+
+```alder fragment
+type Role = Reader | Author
+```
+
+The user table has a column `role: Role = Reader`, and `App`'s session
+has a field for it:
+
+```alder fragment
+session { user: Maybe User.UserId, role: User.Role = Reader }
+```
+
+The login page copies the role from the user's row when it signs them
+in (`examples/blog/app/Auth/Login.alder`):
+
+```alder fragment
+Just id -> {
+  let found <- Db.get User id
+  let role = Maybe.withDefault Reader (Maybe.map (\u -> u.role) found)
+  let _ <- Session.put (\s -> { s | user: Just id, role: role })
+  Task.succeed (Redirect (Posts.Index {}))
+},
+```
+
+and logging out puts it back: `{ s | user: Nothing, role: Reader }`. A
+page for authors only says so on its `page` line:
+
+```alder fragment
+page "/admin" { } requires user, role Author
+page "/admin/users" { } requires user, role Author | Admin
+```
+
+- `requires user` comes first: a visitor is sent to log in, as always.
+- Then the role: a signed-in user whose session's `role` is not one of
+  those named gets a 404, the same `App.notFound` page as a missing row,
+  so a Reader cannot even tell the page exists. This is checked before
+  `load` runs, and before every message of the page, so `load` and
+  `update` need no check of their own.
+- `role Author | Admin` lets either in.
+- Inside the page, `session.role` has the union's type, as everywhere.
+
+The rules for the clause (E0027): `role` needs `user` first (`requires
+role Author` alone is an error); the session must have a field `role`;
+it must be a union, not `Maybe`; and each name must be one of its
+constructors. In the to-do app, whose session has no role:
+
+```alder error=E0027 "this session has no `role` field"
+module Admin
+
+page "/admin" { } requires user, role Admin
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session = <p>admin</p>
+```
+
+**A role is read at login.** The check reads the session cookie and
+nothing else: it costs no database query. The price is that a role
+changed in the database applies when the user next logs in. An author
+demoted to Reader still passes `requires user, role Author` until then,
+and a Reader promoted to Author must log in again to get in. For most
+pages that is right. A page where it must apply at once also reads the
+user's row in its `load`, the **re-read idiom**:
+
+```alder fragment
+load params session = {
+  let me <- Db.get User session.user
+  match me {
+    Just u -> if u.role == Author then Query.succeed { } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+```
+
+The blog's test "a demoted author can edit until they log in again"
+(chapter 14) shows both: the cookie passes, the row says Reader.
+
+### When to use the unscoped forms
+
+`Db.from`, `Db.get`, `Db.update`, `Db.delete` and `Db.insert` are still
+there, and still right in these places:
+
+- **Rows that are anyone's to read.** The blog's front page lists
+  everyone's published posts with `Db.from Post`.
+- **Pages for a role that acts on everyone's rows**, such as an admin
+  page `requires user, role Admin` that deletes any post. The role is
+  the rule there, and the page says so on its `page` line.
+- **A row `load` already found with `Db.getMine`.** `Todos.Show`'s
+  messages carry no id: they act on `model.todo`, which its `load` read
+  with `Db.getMine`, and every message runs that `load` first. So its
+  `update` writes `Db.update Todo model.todo.id …` and cannot reach
+  another row.
+- **Giving a row away**, which `Db.updateMine` never does.
+
+On an owned table outside those cases, an unscoped operation means the
+check is yours to write again, and a test is yours to write for it.
+
+### The rules and a replicated database
+
+An app may one day run on a database with read replicas near its users
+and one primary that takes the writes, as Turso offers. The rules are
+built to fit:
+
+- **Scoped reads are predicates.** `Db.mine` and `Db.getMine` are plain
+  `SELECT`s with `"owner" = ?` in the `WHERE` clause, so any replica can
+  answer them.
+- **Role checks never read the database.** The role is in the signed
+  cookie, so a role page costs no query anywhere.
+- **Scoped writes carry the predicate.** `Db.updateMine` and
+  `Db.deleteMine` put `AND "owner" = ?` in the `UPDATE` or `DELETE`
+  itself, and count the rows it changed. A hand-written check reads
+  first and writes after, and between the two (a read from a replica
+  that is behind, or another request in between) the row may have
+  changed. With the predicate in the write, the primary decides
+  ownership in the same statement that writes, so there is no gap.
+  Chapter 13 shows the SQL.
 
 ## The request lifecycle
 
@@ -389,6 +715,7 @@ cannot name another row.
 GET  /path
   1. decode route parameters      → 404 on failure
   2. check `requires`             → redirect to App.login on failure
+     check `role R`, if declared  → 404 when the session's role is not R
   3. load                         → Query, run by the runtime
   4. view (with the session)      → HTML
 
@@ -398,6 +725,7 @@ POST (generated message URL)
   3. decode the form, if any → on failure: requires, load, view with the
      errors, and stop (update is not called)
   4. check `requires`             → redirect to App.login on failure
+     check `role R`, if declared  → 404 when the session's role is not R
   5. load                         → Model
   6. update                       → Task, run by the runtime
   7. Rerender: load → view → patch (without JavaScript: 303 to the page)

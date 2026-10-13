@@ -34,11 +34,11 @@ The same shape works for `Task`:
 ```alder fragment
 update msg model session = match msg {
   Submit p -> {
-    let id <- Db.insert Todo { title: p.form.title, due: p.form.due, owner: session.user }
+    let id <- Db.insertMine Todo { title: p.form.title, due: p.form.due }
     Task.succeed (Redirect (Todos.Show { id: id }))
   },
   Toggle p -> {
-    let todo <- owned p.id session  -- the user's todo, or a 404 (chapter 6)
+    let todo <- Db.getMine Todo p.id  -- the user's todo, or a 404 (chapter 6, "Rules")
     let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
     Task.succeed Rerender
   },
@@ -96,7 +96,9 @@ fail on its own (database down, email rejected). A failed task stops
 `Session.put` changes), and the runtime renders `App.error`.
 `Task.notFound` fails the same way but answers 404 with `App.notFound`:
 use it when a message names something that is not there, or not the
-user's (chapter 6, "Authorize in `update` too"). A task that
+user's. The scoped operations of chapter 6, "Rules" (`Db.getMine`,
+`Db.updateMine`, `Db.deleteMine`) fail this way by themselves when the
+row is missing or someone else's. A task that
 ends in `Reject` has not failed: its writes and session changes are kept
 (chapter 6). There is no `try`/`catch`:
 if a failure should be handled, the capability returns a `Result` instead
@@ -243,18 +245,21 @@ on. The
 
 ```alder fragment
 Toggle p -> {
-  let todo <- owned p.id session
+  let todo <- Db.getMine Todo p.id
   let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
   Task.succeed Rerender
 },
 ```
 
-is a `bind` whose first part is `owned p.id session` (itself a `bind`: the
-`call` named `Db.get Todo`, then a `match` that ends in `pure todo` or in
-`notFound`) and whose continuation is a second `bind`: the `call` named
-`Db.update Todo`, then `pure Rerender`. `Run` performs the read, checks
-the owner, performs the update, then returns `Rerender`; when `owned` ends
-in `notFound`, it stops there and nothing is written. Nothing is batched,
+is a `bind` whose first part is the `call` named `Db.getMine Todo`
+(which ends in the todo, or in `notFound` when it is missing or someone
+else's) and whose continuation is a second `bind`: the `call` named
+`Db.update Todo`, then `pure Rerender`. `Run` performs the read, then the
+update, then returns `Rerender`; when the read ends in `notFound`, it
+stops there and nothing is written. (The to-do app writes this arm as
+one step, `Db.updateMine`, which reads and writes with the owner in the
+statement: chapter 13 shows it. The two-step form is here to show a
+continuation.) Nothing is batched,
 reordered or run in parallel: steps run in the order the block lists
 them, one at a time.
 
@@ -267,7 +272,8 @@ earlier writes. A `Task` that never touches the database (it only calls
 capability or HTTP call made before the first database step holds no
 database lock: other requests' tasks run meanwhile. If the task produces
 its result, `Run` commits the transaction, if one was begun. If it fails
-in any way (`Task.fail`, `Db.update` on a row that doesn't exist,
+in any way (`Task.fail`, `Db.update` on a row that doesn't exist, a
+scoped operation on a row that is not the user's,
 `Query.notFound`, `Task.notFound`, an error from the database or a capability, or a Go
 panic), `Run` rolls the transaction back instead. `Db.get` finding
 nothing is not a failure: it produces `Nothing`. Either every write of an
@@ -281,15 +287,19 @@ succeeds keeps its session changes, and so does one producing `Reject`
 
 **A `Query` has no transaction and cannot write.** `Run` runs a `Query`
 directly against the database. A step marked as a write (`Db.insert`,
-`Db.update`, `Db.delete`, `Session.put`, a capability entry that returns a
+`Db.update`, `Db.delete`, their scoped forms `Db.insertMine`,
+`Db.updateMine` and `Db.deleteMine`, `Session.put`, a capability entry that returns a
 `Task`) is refused with an internal error if a `Query` ever reaches it.
 The checker already makes that impossible (E0401); the runtime checks
 again so that a compiler bug can't turn a page view into a write.
 
 **Every step is traced.** Before it runs a `call`, `Run` appends the
 step's name to `Env.Trace` and logs it at level `effect`. The `Toggle`
-above leaves the trace `["Db.get Todo", "Db.update Todo"]`: `owned`'s
-read, then the update. The `Add` arm of
+above leaves the trace `["Db.getMine Todo", "Db.update Todo"]`: the
+scoped read, then the update. A scoped operation is traced as written
+(`Db.updateMine Todo`), and `Db.mine Todo` adds its own name before the
+step that runs it: `Db.mine Todo |> Db.all` traces `["Db.mine Todo",
+"Db.all Todo"]`. The `Add` arm of
 `testdata/golden/gen_effects/app/Index.alder`, which inserts a row and
 then logs, leaves `["Db.insert Todo" "Log.info"]`. The trace is the dev
 log of what a request did, and what a test can compare (chapter 10).

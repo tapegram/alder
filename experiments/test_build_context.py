@@ -258,18 +258,19 @@ class BuildContextTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("\n## 11. Mutation testing\n", out)
         for kept in ("alder test --mutate [--min R] [--json] [-run re] [-timeout d] [dir]",
-                     "33 mutants: 18 killed, 15 survived  (score 0.55)", "| `requires dropped` |",
+                     "32 mutants: 18 killed, 14 survived  (score 0.56)", "| `requires dropped` |",
                      "### A surviving mutant is a test you have not written", "test \"a visitor is sent to log in from a todo\"",
                      "### Survivors that are not gaps", "### `--min` in CI"):
             self.assertIn(kept, out)
         for gone in ("### Why a mutation score", "### What is never a mutant", "line coverage", '"tables":"ensure"',
-                     "### Ids and lines change with the code", "### All fifteen, and one killed by luck",
+                     "### Ids and lines change with the code", "### All fourteen, and one killed by luck",
                      "### The logout redirect", "### Mutants that are the same program", "### The exact score",
                      "ok   Todo \"countOpen ignores done todos\""):
             self.assertNotIn(gone, out)
-        self.assertIn("33 mutants: 33 killed, 0 survived  (score 1.00)", out)   # the run after: its score line only
+        self.assertIn("32 mutants: 32 killed, 0 survived  (score 1.00)", out)   # the run after: its score line only
         section = out[out.index("\n## 11. Mutation testing\n"):].split("====================  EXAMPLE")[0].rstrip("\n")
-        self.assertLessEqual(len(section), 6500, "the reference keeps at most 6.5k characters of chapter 10's section 11")
+        # 6.5k until M11, whose two operators (`role dropped`, `scope dropped`) are two more rows
+        self.assertLessEqual(len(section), 6600, "the reference keeps at most 6.6k characters of chapter 10's section 11")
 
     def test_real_reference_keeps_browser_steps(self):
         # agents write browser tests: chapter 10's "Testing through the browser" (the step table,

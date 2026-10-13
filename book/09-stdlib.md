@@ -255,6 +255,20 @@ knows them:
 | `.isNothing`, `.isJust` | `Maybe` | `Condition t` |
 | `.asc`, `.desc` | any | `Order t` |
 
+The scoped operations of `Db`, for a table with an `@owner` column, used
+only in a page module whose page `requires user` (chapter 6, "Rules";
+chapter 8, "Your own rows"). Each acts for the signed-in user of the
+running request or test, and without one fails with "`Db.mine Todo: no
+signed-in user`" (the operation and table as written):
+
+| Function | Type | |
+|---|---|---|
+| `Db.mine` | `Table t -> Select t` | the rows whose owner is the user; a `Select` like `Db.from t` |
+| `Db.getMine` | `Table t -> Id t -> Query t` | the user's row; not found when it is missing or someone else's |
+| `Db.updateMine` | `Table t -> Id t -> (t -> t) -> Task Unit` | changes the user's row; not found otherwise; never changes the owner |
+| `Db.deleteMine` | `Table t -> Id t -> Task Unit` | deletes the user's row; not found otherwise |
+| `Db.insertMine` | `Table t -> Insert t -> Task (Id t)` | inserts a row owned by the user; the row is a record literal in the call, without the owner column |
+
 `Query.notFound` and `Task.notFound` (both
 `: Query a` / `: Task a`, no arguments) stop the effect and answer 404 with
 `App.notFound`; a `Task` that ends in `Task.notFound` is rolled back like

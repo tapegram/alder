@@ -81,15 +81,17 @@ ok   Todo "each filter has its label"
 ok   Todo "a user with todos cannot be deleted"
 ok   Todos.Index "Toggle flips done"
 ok   Todos.Index "Toggle by another user is not found"
+ok   Todos.Index "Delete by another user is not found"
 ok   Todos.Index "adding a todo through the page"
 ok   Todos.Index "toggling a todo through the page"
 ok   Todos.Index "a stranger cannot see my todo"
 ok   Todos.Index "Delete removes the todo"
 ok   Todos.Index "the newest todo is listed first"
+ok   Todos.Index "Db.mine is what Me sees"
 ok   Todos.Show "a visitor is sent to log in from a todo"
 ok   Todos.Show "saving changes the title and the due date"
 ok   Todos.Show "deleting from the todo's page"
-18 passed, 0 failed
+20 passed, 0 failed
 ```
 
 Each line names the module and the test, and is printed as soon as that
@@ -107,15 +109,17 @@ Here is the same app with two wrong tests added: one at the end of
 test "an empty list has one open todo" = Todo.countOpen [] == 1
 ```
 
-and one at the end of `Todos.Index` that expects `Toggle` to make a
-single step (sections 3 to 6 explain effect tests and traces):
+and one at the end of `Todos.Index` that expects `Toggle` to read the
+todo and then write it, in two steps (sections 3 to 6 explain effect
+tests and traces):
 
 ```alder
-test "Toggle only updates" = {
+test "Toggle reads, then writes" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
   let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me })
-  Task.succeed (r.trace == ["Db.update Todo"])
+  Task.succeed (r.trace == ["Db.get Todo", "Db.update Todo"])
 }
 ```
 
@@ -137,19 +141,21 @@ FAIL Todo "an empty list has one open todo"
   right: 1
 ok   Todos.Index "Toggle flips done"
 ok   Todos.Index "Toggle by another user is not found"
+ok   Todos.Index "Delete by another user is not found"
 ok   Todos.Index "adding a todo through the page"
 ok   Todos.Index "toggling a todo through the page"
 ok   Todos.Index "a stranger cannot see my todo"
 ok   Todos.Index "Delete removes the todo"
 ok   Todos.Index "the newest todo is listed first"
-FAIL Todos.Index "Toggle only updates"
-  left:  ["Db.get Todo", "Db.update Todo"]
-  right: ["Db.update Todo"]
-  trace: ["Db.insert User", "Db.insert Todo", "Test.run", "Db.get Todo", "Db.update Todo"]
+ok   Todos.Index "Db.mine is what Me sees"
+FAIL Todos.Index "Toggle reads, then writes"
+  left:  ["Db.updateMine Todo"]
+  right: ["Db.get Todo", "Db.update Todo"]
+  trace: ["Db.insert User", "Db.insert Todo", "Test.login", "Test.run", "Db.updateMine Todo"]
 ok   Todos.Show "a visitor is sent to log in from a todo"
 ok   Todos.Show "saving changes the title and the due date"
 ok   Todos.Show "deleting from the todo's page"
-18 passed, 2 failed
+20 passed, 2 failed
 ```
 
 A failing test is `FAIL`, followed by indented lines that say why:
@@ -216,10 +222,11 @@ blocks of this chapter are, the page's names are qualified:
 test "Toggle flips done" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
   let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
-  Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.get Todo", "Db.update Todo"], done: Just True })
+  Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.updateMine Todo"], done: Just True })
 }
 ```
 
@@ -232,7 +239,12 @@ Line by line:
    needs, the rows they refer to included. `Db.insert` returns the new
    row's id, `me`.
 2. Insert a todo owned by `me`; its id is `id`.
-3. Run `update` under `Test.run` (section 4) and call the outcome `r`.
+3. Sign `me` in. `Toggle` uses `Db.updateMine` (chapter 6, "Rules"),
+   which acts for the user of the session the test is running with, and
+   `Test.login` sets that session (and the browser's cookie, section 9).
+   Without this line the step would fail with `Db.updateMine Todo: no
+   signed-in user`.
+4. Run `update` under `Test.run` (section 4) and call the outcome `r`.
    `update` takes the message (`Toggle` for that todo), the page's model
    (`load` is not called; `update` only needs a value of the type), and
    the session. `Todos.Index` `requires user`, so its `Session` is a type
@@ -240,46 +252,114 @@ Line by line:
    record literal `{ user: me }` is that type because it is
    written where `update` expects one. Bound to a name first by a `let`
    without an annotation, it would be a plain record, which `update`
-   does not accept.
-4. Read the todo again, and take its `done` (`after` is a `Maybe Todo`:
+   does not accept. This record is `update`'s `session` argument, which
+   the page's own code may read; the scoped operations do not read it
+   (step 3, and "Tests that use the rules", below).
+5. Read the todo again, and take its `done` (`after` is a `Maybe Todo`:
    `Nothing` if the row were gone).
-5. The verdict, as one `==` between two records: `update` read the todo
-   and updated it, and the stored todo is now done. Putting everything
+6. The verdict, as one `==` between two records: `update` made one
+   step, the scoped write, and the stored todo is now done. Putting everything
    the test checks into one record, rather than joining several `==`
    with `&&`, means a failure prints both records whole (section 2).
 
-The second test is the authorization rule of chapter 6, "Authorize in
-`update` too": a user who posts `Toggle` with someone else's todo id gets
-a 404 and changes nothing.
+The second test is the ownership rule of chapter 6, "Rules": a user who
+posts `Toggle` with someone else's todo id gets a 404 and changes
+nothing. The example tests it through the browser (section 9, "Who may
+toggle a todo"); here it is through `update` itself, the stranger signed
+in with `Test.login`:
 
 ```alder
-test "Toggle by another user is not found" = {
+test "Toggle by a stranger is not found" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let stranger = User.UserId "someone-else"
+  let _ <- Test.login { user: Just stranger }
   let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
-  Task.succeed ({ value: r.value, trace: r.trace, done: done } == { value: Err "not found", trace: ["Db.get Todo"], done: Just False })
+  Task.succeed ({ value: r.value, trace: r.trace, done: done } == { value: Err "not found", trace: ["Db.updateMine Todo"], done: Just False })
 }
 ```
 
 The session's user, `stranger`, is not a row and need not be: a session
-holds an id, not a reference the database checks. `owned` reads
-the todo, sees another owner and stops with `Task.notFound`; the update
-never runs. If someone deleted the owner check from `owned`, this test
-would say exactly what went wrong:
+holds an id, not a reference the database checks. `Db.updateMine` finds
+no todo with that id whose owner is `stranger`, and stops with
+`Task.notFound`; nothing is written. If `Toggle` used the unscoped
+`Db.update` instead, this test would say exactly what went wrong:
 
 ```text
-$ alder test examples/todos -run another
-FAIL Todos.Index "Toggle by another user is not found"
-  left:  { value: Ok Rerender, trace: ["Db.get Todo", "Db.update Todo"], done: Just True }
-  right: { value: Err "not found", trace: ["Db.get Todo"], done: Just False }
-  trace: ["Db.insert User", "Db.insert Todo", "Test.run", "Db.get Todo", "Db.update Todo", "Db.get Todo"]
+$ alder test examples/todos -run 'by a stranger'
+FAIL Todos.Index "Toggle by a stranger is not found"
+  left:  { value: Ok Rerender, trace: ["Db.update Todo"], done: Just True }
+  right: { value: Err "not found", trace: ["Db.updateMine Todo"], done: Just False }
+  trace: ["Db.insert User", "Db.insert Todo", "Test.login", "Test.run", "Db.update Todo", "Db.get Todo"]
 0 passed, 1 failed
 ```
 
 The stranger's `Toggle` succeeded, the update ran, and the todo is done.
+
+### Tests that use the rules
+
+The scoped operations of chapter 6 (`Db.mine`, `Db.getMine`,
+`Db.updateMine`, `Db.deleteMine`, `Db.insertMine`) act for the session
+the test is running with, never for a session record the test passes
+to a function. What sets that session:
+
+- **`Test.login s`** sets it to `s`, as well as the browser's cookie
+  (section 9). This is the way to choose the user.
+- **`Session.put`**, in the test or inside an `update` it runs, changes
+  it for every later step: a scoped operation after it acts for the
+  new user.
+- **A login through the login page's form** (`Test.submit` of its
+  `Credentials`) signs the user into the **browser** only: the page's
+  `Session.put` ran in the request, and the router stored the result in
+  the cookie. The browser's next requests act for that user; the test's
+  own steps (a `Test.run (update …)`, a `Db.mine` in the test body) do
+  not.
+
+So a test that calls `update` or `load` itself, with a session record,
+signs in with `Test.login` first; the record is still `update`'s
+argument, and must have the page's `Session` type, but it does not choose
+the user. Without a signed-in user a scoped step fails, and says why.
+Here is "Toggle flips done" without its `Test.login` line, expecting
+`Ok Rerender`:
+
+```text
+$ alder test examples/todos -run 'without a login'
+FAIL Todos.Index "Toggle without a login"
+  left:  { value: Err "Db.updateMine Todo: no signed-in user", trace: ["Db.updateMine Todo"] }
+  right: { value: Ok Rerender, trace: ["Db.updateMine Todo"] }
+  trace: ["Db.insert User", "Db.insert Todo", "Test.run", "Db.updateMine Todo"]
+0 passed, 1 failed
+```
+
+It never answers as if the user had no rows.
+
+A test may also use the scoped operations itself. The to-do page's last
+test counts what `Me` sees:
+
+```alder
+test "Db.mine is what Me sees" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Bread", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Eggs", due: Nothing, owner: other }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.run {
+    let n <- Db.mine Todo |> Db.count
+    Task.succeed n
+  }
+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok 2, trace: ["Db.mine Todo", "Db.count Todo"] })
+}
+```
+
+Its trace shows how `Db.mine` is recorded. `Db.mine Todo` is a
+`Select`, a description that runs nothing (chapter 8), so it is not a
+step of its own; when the `Db.count` that runs it starts, the runtime
+notes `Db.mine Todo` just before the count's own name. The other four
+are steps, named as written: `Db.getMine Todo`, `Db.updateMine Todo`,
+`Db.deleteMine Todo`, `Db.insertMine Todo`.
 
 **Where an effect test runs.** Every effect test gets a world of its own:
 
@@ -316,10 +396,12 @@ The stranger's `Toggle` succeeded, the update ran, and the todo is done.
     trace: ["Password.verify"]
   ```
 
-- **The app's default session.** A test's `Session.put` starts from
-  `App`'s session with every field at its default (here
-  `{ user: Nothing }`). A test of `update` passes the
-  session it wants as an argument, as above.
+- **The app's default session.** A test's session starts as `App`'s
+  session with every field at its default (here `{ user: Nothing }`).
+  `Test.login` and `Session.put` change it; it is the session the
+  scoped operations act for (above). A test of `update` also passes a
+  session record as `update`'s argument, which the page's own code
+  reads.
 - **A browser.** A page held and a session cookie, both empty at the
   start, for the steps of section 9.
 
@@ -356,19 +438,20 @@ and `t`'s writes become part of the test's. Here is the second test as
 the database sees it:
 
 ```text
-test "Toggle by another user is not found"   (a fresh database in memory)
+test "Toggle by a stranger is not found"   (a fresh database in memory)
 
-  BEGIN                                       first database step: the transaction opens
+  BEGIN                                     first database step: the transaction opens
   │ Db.insert User
   │ Db.insert Todo
+  │ Test.login                              the test's session: the stranger
   │ Test.run ── SAVEPOINT alder_t1
-  │             │ Db.get Todo                 owned: the todo is someone else's
-  │             │ Task.notFound               update fails
-  │             └ ROLLBACK TO alder_t1        undo update's writes (it made none)
-  │               RELEASE alder_t1            r.value = Err "not found"
-  │ Db.get Todo                               the todo is still there, not done
-  COMMIT                                      the verdict was produced
-                                              then the database is thrown away
+  │             │ Db.updateMine Todo        no todo with that id is the stranger's
+  │             │ Task.notFound             update fails
+  │             └ ROLLBACK TO alder_t1      undo update's writes (it made none)
+  │               RELEASE alder_t1          r.value = Err "not found"
+  │ Db.get Todo                             the todo is still there, not done
+  COMMIT                                    the verdict was produced
+                                            then the database is thrown away
 ```
 
 Savepoints nest, so `Test.run` inside `Test.run` works the same way. A
@@ -417,7 +500,9 @@ before it runs (chapter 7, "Every step is traced"). The names:
 
 - a database step is its function and table: `"Db.insert User"`,
   `"Db.get Todo"`, `"Db.update Todo"`, `"Db.delete Todo"`,
-  `"Db.count Todo"`;
+  `"Db.count Todo"`, and the scoped ones as written,
+  `"Db.updateMine Todo"`; `Db.mine Todo`, which is not a step, is noted
+  as `"Db.mine Todo"` just before the step that runs it;
 - a capability call is the capability and its function, as the calling
   module writes them: `"Password.verify"`;
 - `Test.run` is a step itself, `"Test.run"`, in the test's trace;
@@ -429,9 +514,9 @@ before it runs (chapter 7, "Every step is traced"). The names:
 The steps inside a `Test.run` appear twice: in `r.trace`, which holds
 only them, and in the test's own trace, after `"Test.run"`, even when
 the run failed and its writes were undone. That is why the report of
-"Toggle only updates" above has the trace
-`["Db.insert User", "Db.insert Todo", "Test.run", "Db.get Todo", "Db.update Todo"]`
-while its `r.trace` was `["Db.get Todo", "Db.update Todo"]`. Compare
+"Toggle reads, then writes" above has the trace
+`["Db.insert User", "Db.insert Todo", "Test.login", "Test.run", "Db.updateMine Todo"]`
+while its `r.trace` was `["Db.updateMine Todo"]`. Compare
 `r.trace` when the question is what `update` did; the test's own trace
 is what the report prints to help you find out why a test failed.
 
@@ -883,7 +968,7 @@ $ alder test examples/todos -run "adding a todo"
 FAIL Todos.Index "adding a todo through the page"
   left:  { answer: Redirected /, todos: ["Milk"], summary: Just "1 open" }
   right: { answer: Redirected /, todos: ["Milk"], summary: Just "2 open" }
-  trace: ["Db.insert User", "Test.login", "Test.get Todos.Index", "Db.all Todo", "Test.submit NewTodo", "Db.all Todo", "Db.insert Todo", "Db.all Todo", "Test.get Todos.Index", "Db.all Todo"]
+  trace: ["Db.insert User", "Test.login", "Test.get Todos.Index", "Db.mine Todo", "Db.all Todo", "Test.submit NewTodo", "Db.mine Todo", "Db.all Todo", "Db.insertMine Todo", "Db.mine Todo", "Db.all Todo", "Test.get Todos.Index", "Db.mine Todo", "Db.all Todo"]
 0 passed, 1 failed
 ```
 
@@ -891,7 +976,9 @@ A page value prints as its address: `Redirected /` is
 `Redirected (Todos.Index {})`, whose `filter` is the default and so not
 in the URL. Two page values are equal when their addresses are. The
 trace is each step's name, then the effects of the requests it made
-(section 10 explains why `Db.all Todo` comes before the insert).
+(section 10 explains why `Db.all Todo` comes before the insert; each
+`Db.mine Todo` is the note `load`'s scoped read leaves before its
+`Db.all`, section 3).
 
 ### `Test.get` and `Test.open`: requesting a page
 
@@ -967,7 +1054,9 @@ name `NotFound` for a constructor of its own. The six names are kept for
 ### `Test.login`, `requires`, and the session
 
 `Test.login s` signs `s` into the browser's cookie, as the router would
-after a `Session.put`; `s` is checked against `App`'s `session` record
+after a `Session.put`, and makes `s` the test's own session too, the one
+the scoped operations of chapter 6 act for (section 3, "Tests that use
+the rules"); `s` is checked against `App`'s `session` record
 when the test compiles (`{ }` in an app without a session). It is the
 cookie's value, so a field with a default may be left out: with
 `session { user: Maybe UserId, visits: Int = 0 }`,
@@ -991,7 +1080,9 @@ test "logging in through the form" = {
 ```
 
 The page's `update` called the fake and `Session.put`; the browser kept
-the cookie, followed the redirect with it, and holds the list. With an
+the cookie, followed the redirect with it, and holds the list. (That
+login is the browser's: the test's own session is still the one it
+started with, so a `Db.mine` in the test body would have no user.) With an
 email that has no row the fake answers `Nothing`, `update` answers
 `Reject "Email or password is incorrect."`, and the answer is
 `FormRejected [{ field: "", message: "Email or password is incorrect." }]`.
@@ -1208,32 +1299,53 @@ test "clicking a form's message" = {
 }
 ```
 
-**Who may toggle a todo.** Chapter 6's rule, "Authorize in `update`
-too", says that a user who posts `Toggle` with someone else's
-todo id gets a 404. Section 3 tests that by calling `update` with a
-stranger's session. Through the browser, the same attempt (a test that
-logs in as the stranger, gets the list, and clicks `Toggle { id: id }`
-expecting `PageMissing`) does not get that far:
+### A stranger's todo
+
+**Who may toggle a todo.** Chapter 6's rule, "Rules", says that a user
+who posts `Toggle` with someone else's todo id gets a 404. A stranger
+who logs in and gets the list has no way to do that through the page (a
+test that logs in as the stranger, gets the list, and clicks `Toggle {
+id: id }` expecting `PageMissing` does not get that far):
 
 ```text
 FAIL Todos.Index "a stranger clicks my todo"
-  error: the page / has no button or form for Todos.Index.Toggle { id: "tZy4DmaadTQ3si86vA7B" }
-  trace: ["Db.insert User", "Db.insert Todo", "Test.login", "Test.get Todos.Index", "Db.all Todo", "Test.click Todos.Index.Toggle"]
+  error: the page / has no button or form for Todos.Index.Toggle { id: "vTJh-0JAjgrsF9WiOyhe" }
+  trace: ["Db.insert User", "Db.insert Todo", "Test.login", "Test.get Todos.Index", "Db.mine Todo", "Db.all Todo", "Test.click Todos.Index.Toggle"]
 ```
 
 The stranger's list shows only the stranger's todos, so there is no
 Toggle button for mine to press; the browser sends nothing, and the test
 fails. (The id is random, and differs on each run. Had the stranger's
 list shown todos of their own, the text would end with the ones it
-offers: " (the page has Toggle for id: …)".) That is the right answer,
-and it is why both tests are kept: the page does not offer the action,
-and section 3's test shows that `update` refuses it to anyone who posts
-it anyway, without a page.
+offers: " (the page has Toggle for id: …)".) That is the right answer:
+the page does not offer the action.
 
-### A stranger's todo
+But a page can be out of date. My list is open in the browser; then
+someone else logs in on it (the cookie changes, the page held does not)
+and presses my todo's button. The example tests exactly that:
 
-Through the browser, the ownership test is written with what a stranger
-can do, open the todo's address:
+```alder
+test "Toggle by another user is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let r <- Test.click (Todos.Index.Toggle { id: id })
+  let after <- Db.get Todo id
+  Task.succeed ({ answer: r.answer, done: Maybe.map (\t -> t.done) after } == { answer: PageMissing, done: Just False })
+}
+```
+
+The click posts my page's Toggle button with the stranger's cookie. The
+request runs `load` for the stranger, then `update`, where
+`Db.updateMine` finds no todo of the stranger's with that id:
+`PageMissing`, and the todo is not done. "Delete by another user is not
+found" does the same with the Delete button. Section 3's "Toggle by a
+stranger is not found" asks the same question of `update` directly.
+
+The ownership test is also written with what a stranger can do on a
+fresh page, open the todo's address:
 
 ```alder
 test "a stranger cannot see my todo" = {
@@ -1246,8 +1358,9 @@ test "a stranger cannot see my todo" = {
 }
 ```
 
-The stranger's list has no `<li>`, and `Todos.Show`'s `load` answers the
-todo's page with `Query.notFound`: `PageMissing`.
+The stranger's list has no `<li>` (`Db.mine Todo` has none of mine), and
+`Todos.Show`'s `load` reads the todo with `Db.getMine`, which answers
+not found for a todo that is someone else's: `PageMissing`.
 
 ### Reading the page: queries
 
@@ -1341,10 +1454,10 @@ it would print:
 
 ```text
 FAIL Todos.Index "the page and an empty view"
-  left:  <ul id="todos"><li class=""><form method="post" action="/_m/Todos.Index/Toggle?id=YivaANfICyEevYmgeIK_" class="_alder-c…
+  left:  <ul id="todos"><li class=""><form method="post" action="/_m/Todos.Index/Toggle?id=ZjFUNWta6zynlqJZb2jc" class="_alder-c…
   right: <ul id="todos"></ul>
   note:  the documents differ at body > main > ul#todos: left 1 child <li>, right 0
-  trace: ["Db.insert User", "Db.insert Todo", "Test.login", "Test.get Todos.Index", "Db.all Todo"]
+  trace: ["Db.insert User", "Db.insert Todo", "Test.login", "Test.get Todos.Index", "Db.mine Todo", "Db.all Todo"]
 ```
 
 Each side is cut to 120 characters. The path names each element by its
@@ -1471,21 +1584,21 @@ test "adding a todo through the page"   (a fresh database in memory)
   │ Db.insert User
   │ Test.login                             the cookie; no request
   │ Test.get                               GET /
-  │   Db.all Todo                          load reads in the test's transaction
+  │   Db.mine Todo, Db.all Todo            load reads in the test's transaction
   │ Test.submit                            POST /_m/Todos.Index/Submit
-  │   Db.all Todo                          load, for update's model
+  │   Db.mine Todo, Db.all Todo            load, for update's model
   │   SAVEPOINT alder_t1                   update is a Task
-  │   │ Db.insert Todo
+  │   │ Db.insertMine Todo
   │   └ RELEASE alder_t1                   it succeeded: the insert is the test's now
-  │   Db.all Todo                          GET /: the redirect, followed
+  │   Db.mine Todo, Db.all Todo            GET /: the redirect, followed
   │ Test.get                               GET /
-  │   Db.all Todo
+  │   Db.mine Todo, Db.all Todo
   COMMIT                                   the verdict
 ```
 
 When an `update` fails, its savepoint is rolled back (`ROLLBACK TO`),
 so its writes are gone and the test's are not. This is also why the
-trace shows `Db.all Todo` before `Db.insert Todo`: a message's request
+trace shows `Db.all Todo` before `Db.insertMine Todo`: a message's request
 runs the page's `load` first, to give `update` its model (chapter 6,
 "How a request runs").
 
@@ -1554,7 +1667,8 @@ stranger cannot see my todo" runs `Todos.Index.load`, `Db.orderBy`
 included, and nothing in it notices if the order is backwards.
 
 A **mutant** is a copy of the app with one small, deliberate bug: a
-`requires` removed, a write that does nothing, an order reversed. If some
+`requires` removed, a write that does nothing, an order reversed, a
+scoped operation made unscoped. If some
 test fails when it runs against the mutant, the mutant is **killed**.
 If every test still passes, it **survived**, and that is a bug the tests
 would have let through. The **mutation score** is the share of mutants
@@ -1575,20 +1689,19 @@ alder test --mutate [--min R] [--json] [-run re] [-timeout d] [dir]
 It runs the tests as `alder test` does; if one fails, it stops with
 `tests fail: fix them before measuring mutants`. Otherwise it runs them
 again once per mutant. The to-do app before the tests this section adds
-(its nine `ok` lines and `9 passed, 0 failed` first):
+(its eleven `ok` lines and `11 passed, 0 failed` first):
 
 ```text
-33 mutants: 18 killed, 15 survived  (score 0.55)
+32 mutants: 18 killed, 14 survived  (score 0.56)
 survived:
   App           update:16        redirect → rerender    Redirect (Auth.Login {}) → Rerender
-  Todo          Todo:14          cascade ↔ restrict     owner @ref User @restrict → owner @ref User @cascade
-  Todo          matches:19       arm swapped            match filter { All ->… → the Active and Completed bodies swapped
-  Todo          matches:21       not dropped            not todo.done → todo.done
-  Todo          filterLabel:26   arm swapped            match filter { All -> "All"… → the All and Active bodies swapped
-  Todo          filterLabel:26   arm swapped            match filter { All ->… → the Active and Completed bodies swapped
-  Todos.Index   load:19          orderBy reversed       Db.orderBy Todo.created.desc → Db.orderBy Todo.created.asc
-  Todos.Index   update:46        write replaced         let _ <- Db.delete Todo todo.id → let _ <- Task.succeed ()
-  Todos.Show    requires:6       requires dropped       requires user → served without user (user = User.UserId "mutant")
+  Todo          Todo:16          cascade ↔ restrict     owner @ref User @restrict → owner @ref User @cascade
+  Todo          matches:21       arm swapped            match filter { All ->… → the Active and Completed bodies swapped
+  Todo          matches:23       not dropped            not todo.done → todo.done
+  Todo          filterLabel:28   arm swapped            match filter { All -> "All"… → the All and Active bodies swapped
+  Todo          filterLabel:28   arm swapped            match filter { All ->… → the Active and Completed bodies swapped
+  Todos.Index   load:18          orderBy reversed       Db.orderBy Todo.created.desc → Db.orderBy Todo.created.asc
+  Todos.Show    requires:7       requires dropped       requires user → served without user (user = User.UserId "mutant")
   Todos.Show    update:32        write replaced         let _ <- Db.update Todo model.todo.id … → let _ <- Task.succeed ()
   Todos.Show    update:32        update field dropped   { t | title: p.form.title, due: p.form.due } → { t | due: p.form.due }
   Todos.Show    update:32        update field dropped   { t | title: p.form.title, due: p.form.due } → { t | title: p.form.title }
@@ -1597,20 +1710,22 @@ survived:
   Todos.Show    update:37        redirect → rerender    Redirect (Todos.Index {}) → Rerender
 ```
 
-A test failed for 18 of the 33 mutants: the score is 18 / 33. A
-survivor's line gives its module; `declaration:line` (`load:19` is line
-19 of `app/Todos/Index.alder`; `load:30:17` adds the column when the
+A test failed for 18 of the 32 mutants: the score is 18 / 32. A
+survivor's line gives its module; `declaration:line` (`load:18` is line
+18 of `app/Todos/Index.alder`; `load:30:17` adds the column when the
 line has mutants of that kind in two places); the operator; and the code
 before `→` after, shortened with `…` (an arm swap names its arms).
 
 ### The operators
 
-Each mutant comes from one of eighteen **operators**, named by what it
+Each mutant comes from one of twenty **operators**, named by what it
 breaks, in five classes; every mutant is well-typed:
 
 | Class | Operator | What it changes |
 |---|---|---|
 | authorization | `requires dropped` | A page's `requires user` no longer redirects a visitor, who is served as `User.UserId "mutant"` (for a field that is a brand over `Text`) |
+| authorization | `role dropped` | `requires user, role R` becomes `requires user` |
+| authorization | `scope dropped` | `Db.mine T` becomes `Db.from T`; the other scoped operations act on anyone's row |
 | authorization | `guard dropped` | An `if` or `match` with one arm ending in `Task.notFound`, `Query.notFound` or `Task.fail` becomes its other arm: the check is gone |
 | data | `where dropped` | One `Db.where` of a query removed |
 | data | `orderBy reversed` | A `Db.orderBy`'s `asc` and `desc` swapped |
@@ -1629,10 +1744,44 @@ breaks, in five classes; every mutant is well-typed:
 | schema | `default changed` | A table field's default: `False`↔`True`, a number → one more, `""`→`"x"`, a union's constructor → the next one |
 | schema | `cascade ↔ restrict` | A reference's delete rule, `@cascade`↔`@restrict` |
 
+### The rules' mutants in a report
+
+The two operators for the declared rules of chapter 6 ("Rules") read
+like this in a report. From `alder test --mutate -run '^Todo '
+examples/todos`, whose four tests open no page, the to-do app's four
+`scope dropped` survivors:
+
+```text
+  Todos.Index   load:17      scope dropped          Db.mine Todo → Db.from Todo
+  Todos.Index   update:42    scope dropped          Db.updateMine Todo p.id (\t -> { t | done: not t.done }) → Db.update Todo p.id (\t -> { t | done: not t.done }), not found when missing
+  Todos.Index   update:46    scope dropped          Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing
+  Todos.Show    load:13      scope dropped          Db.getMine Todo params.id → Db.get Todo params.id, not found when missing
+```
+
+and from the blog's (chapter 14), with only `Post`'s tests run:
+
+```text
+  Admin         requires:10   role dropped           requires user, role Author → requires user
+  Admin.Edit    requires:10   role dropped           requires user, role Author → requires user
+```
+
+"Not found when missing" is the replacement's whole behaviour: the
+mutant still answers 404 for an id that names no row, so only a test
+with someone else's row tells it from the app. `Db.insertMine` gets no
+`scope dropped` mutant (it is skipped, "the owner comes from the session
+either way"), but its write can be replaced. Each of these is killed by
+a test that acts as a stranger or as the wrong role: in the to-do app,
+"a stranger cannot see my todo" (the list and the todo's page),
+"Toggle by another user is not found" and "Delete by another user is not
+found"; in the blog, "a Reader cannot open the admin page", "a demoted
+author can edit until they log in again", "the admin page lists the
+author's own posts, newest first" and "another author's post is not
+found".
+
 ### A surviving mutant is a test you have not written
 
 Each survivor is a behaviour no test checks: write the test that would
-notice. `Todos.Show requires:6` says the todo page could be served to a
+notice. `Todos.Show requires:7` says the todo page could be served to a
 visitor; nothing opened it as one. The test, in `app/Todos/Show.alder`:
 
 ```alder
@@ -1660,18 +1809,17 @@ test "saving changes the title and the due date" = {
 }
 ```
 
-Nine tests, now in the example, kill all fifteen: the report then ends
-`33 mutants: 33 killed, 0 survived  (score 1.00)`.
+Nine tests, now in the example, kill all fourteen: the report then ends
+`32 mutants: 32 killed, 0 survived  (score 1.00)`.
 
 ### How the two tests kill them
 
 Against the app the visitor is `Redirected (Auth.Login {})`. Against the
 `requires dropped` mutant the page is served as the user `"mutant"`,
-`load` finds a todo that user does not own, and the answer is
-`PageMissing`: the test fails, and the mutant is killed. (The survivor
-was on line 6 then; the `import User` the new tests needed has moved it
-to line 7.) `Todos.Index` has the same `requires`, and its mutant was
-killed already, by "a visitor is sent to log in, and can log out".
+`load`'s `Db.getMine` finds no todo of that user's with the id, and the
+answer is `PageMissing`: the test fails, and the mutant is killed.
+`Todos.Index` has the same `requires`, and its mutant was killed
+already, by "a visitor is sent to log in, and can log out".
 
 The second test reads the row back with `Db.get`, so a save that wrote
 nothing, or left a field out, shows in `title` or `due`; and it checks
@@ -1680,10 +1828,10 @@ Date`, which is the field's type.) In the module the form is written
 `EditTodo`; this chapter's blocks are checked as a module of their own,
 so it is qualified here.
 
-### All fifteen, and one killed by luck
+### All fourteen, and one killed by luck
 
 `examples/todos/README.md` lists each of the nine tests with the
-survivors it kills. Two are worth a word. `Todo countOpen:33 not
+survivors it kills. Two are worth a word. `Todo countOpen:35 not
 dropped` (`not t.done → t.done`) was killed even before, but only by
 luck: the old "countOpen ignores done todos" counted one open todo and
 one done one, so counting the done ones instead also gave 1; only
@@ -1705,16 +1853,18 @@ ok   Todo "each filter has its label"
 ok   Todo "a user with todos cannot be deleted"
 ok   Todos.Index "Toggle flips done"
 ok   Todos.Index "Toggle by another user is not found"
+ok   Todos.Index "Delete by another user is not found"
 ok   Todos.Index "adding a todo through the page"
 ok   Todos.Index "toggling a todo through the page"
 ok   Todos.Index "a stranger cannot see my todo"
 ok   Todos.Index "Delete removes the todo"
 ok   Todos.Index "the newest todo is listed first"
+ok   Todos.Index "Db.mine is what Me sees"
 ok   Todos.Show "a visitor is sent to log in from a todo"
 ok   Todos.Show "saving changes the title and the due date"
 ok   Todos.Show "deleting from the todo's page"
-18 passed, 0 failed
-33 mutants: 33 killed, 0 survived  (score 1.00)
+20 passed, 0 failed
+32 mutants: 32 killed, 0 survived  (score 1.00)
 ```
 
 ### What is never a mutant
@@ -1741,14 +1891,16 @@ are reported apart, in `--json`'s last object (below):
   `if a != b`; so is one of `if not e`, which `not dropped` makes. (An
   ordering condition is negated: `<` flips to `<=`, while its negation is
   `>=`.) A `guard dropped` or an `arm swapped` is skipped where an arm
-  uses what its pattern binds (in `Todos.Index.owned`, `Just todo -> …
-  todo …` cannot move out of its case, nor trade bodies with `Nothing ->
-  …`); a `requires` on a field that is not a brand over `Text`, a `Maybe`
-  default and an `@setNull` rule have no well-typed change.
+  uses what its pattern binds (in `Todos.Index.update`, the `Toggle p`
+  arm uses `p`, so it cannot trade bodies with the `Delete p` arm, whose
+  `p` is another record); a `requires` on a field that is not a brand
+  over `Text`, a `Maybe` default and an `@setNull` rule have no
+  well-typed change; and `Db.insertMine` has no `scope dropped`, since
+  the owner comes from the session either way.
 
-The to-do app has none suppressed and 10 skipped (6 arm swaps, 2 negated
-equalities, the guards of `owned` and of `Todos.Show.load`); the blog 1
-and 7.
+The to-do app has none suppressed and 5 skipped (4 arm swaps of `msg`
+and `found` matches whose arms use what they bind, and the `scope
+dropped` of `Db.insertMine`); the blog 1 and 3.
 
 ### Survivors that are not gaps
 
@@ -1865,12 +2017,13 @@ ok   Todo "Active keeps only open todos"
 ok   Todo "each filter has its label"
 ok   Todo "a user with todos cannot be deleted"
 4 passed, 0 failed
-33 mutants: 7 killed, 26 survived  (score 0.21)
+32 mutants: 7 killed, 25 survived  (score 0.22)
 survived:
 …
 ```
 
-(26 survivor lines follow.) This is useful while writing the tests of
+(25 survivor lines follow, the four `scope dropped` of "The operators"
+among them.) This is useful while writing the tests of
 one module, but the score that counts is the whole suite's.
 
 `-timeout d` bounds each run of the tests: the plain run first, then each
@@ -1889,7 +2042,7 @@ mutant. If the plain run itself runs out of time, the message says
 `(--mutate's default 10s; raise it with -timeout)`. A `-run` that
 selects no test ends with `no test matches -run: nothing can kill a
 mutant`. Mutants run one after another, each with a fresh database
-per test; the to-do app's 33 take under a second once the build is made,
+per test; the to-do app's 32 take under a second once the build is made,
 because each mutant stops at the first test that fails.
 
 `--json` prints the per-test objects as usual, then one object listing
@@ -1897,17 +2050,17 @@ every mutant, then one with the totals. A mutant's object has its `id`,
 `module`, `file`, `decl`, `line`, `col` (the column), `kind`, `before`,
 `after`, whether it was `killed`, `by` which test (the first that
 failed), and a `note` (`"crashed"`, `"timed out"`, or empty). From the
-to-do app's run, two of the 33:
+to-do app's run, two of the 32:
 
 ```text
-{"id":17,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"load","line":19,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
-{"id":7,"module":"Todo","file":"app/Todo.alder","decl":"Todo","line":14,"col":3,"kind":"cascade ↔ restrict","before":"owner @ref User @restrict","after":"owner @ref User @cascade","killed":true,"by":"Todo \"a user with todos cannot be deleted\"","note":"","tables":"ensure"}
+{"id":16,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"load","line":18,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
+{"id":7,"module":"Todo","file":"app/Todo.alder","decl":"Todo","line":16,"col":3,"kind":"cascade ↔ restrict","before":"owner @ref User @restrict","after":"owner @ref User @cascade","killed":true,"by":"Todo \"a user with todos cannot be deleted\"","note":"","tables":"ensure"}
 ```
 
 and the last line:
 
 ```text
-{"score":1,"killed":33,"survived":0,"suppressed":0,"skipped":10}
+{"score":1,"killed":32,"survived":0,"suppressed":0,"skipped":5}
 ```
 
 `score` is exact here (1 when every mutant was killed). `"tables":
@@ -1928,9 +2081,12 @@ every mutant after it, and moves the lines. Modules come in import order
 (a module after those it imports, otherwise alphabetical), so adding an
 import can move a whole module and renumber mutants in code the edit
 never touched. When the to-do app's `Todos.Show` gained `import User`
-for its new tests, its mutants kept their ids, 25 to 33, since
+for its new tests, its mutants kept their ids (then 25 to 33), since
 `Todos.Show` already came after `User`, but each moved down one line:
-`requires:6` became `requires:7`, `update:32` became `update:33`. Ids
+`requires:6` became `requires:7`, `update:32` became `update:33`. When
+the app later adopted the rules of chapter 6, the edits to `Todos.Index`
+renumbered everything after them again: `Todos.Show`'s mutants are now
+25 to 32. Ids
 and lines are for reading one report; to compare runs, compare what
 survived.
 

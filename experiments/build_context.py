@@ -57,21 +57,25 @@ KEEP_SUBSECTIONS = {
 # `submitRaw` and `FormRejected`, the toggle and the stranger's examples, the queries and selectors,
 # the list of every failure text and the rules; it drops the walkthrough of the first example
 # and its failing report, the prose of `Test.get`/`Test.open`, the further form examples (the
-# due date, two messages posting one form), the bad-input example, the refused click and the ownership narrative, the
+# due date, two messages posting one form), the bad-input example, the refused click, the
 # refused selector, and the comparison with a view (with a Doc's failure report and "when to use
 # which"), and the case for testing through the browser at all. Chapter 9's step and query signatures repeat chapter 10's.
 # Chapter 10's "11. Mutation testing" keeps the command and the score and survivor lines of the
 # to-do app's run before its new tests, the operators, the rule with its two worked tests (and the
 # score line after them), the three sentences on survivors that are not gaps and `--min` in one
-# sentence (at most 6.5k characters in all: test_build_context checks); it drops why a mutation
-# score (the case against line coverage), all fifteen survivors with the countOpen story and the
+# sentence (at most 6.6k characters in all: test_build_context checks); it drops why a mutation
+# score (the case against line coverage), the reports of the rules' mutants (M11), all fourteen
+# survivors with the countOpen story and the
 # run after, what is never a mutant (the suppression rules: an agent sees only their counts), the
 # logout redirect and the equivalent mutants in detail, the exact score with its transcript,
 # `-run`/`-timeout`/`--json` (as section 7 is dropped) and how ids and lines change, all for a
-# human reader.
+# human reader. Chapter 6's "Rules" (M11) stays whole for an agent (`@owner`, the five scoped
+# operations, the not-found answer, where they may be used, whose session, roles, the unscoped
+# forms) but for its last subsection, the case for the design on a replicated database.
 DROP_SUBSECTIONS = {
+    "06": {"Rules": ["The rules and a replicated database"]},
     "09": {"Test": ["Browser steps and queries"]},
-    "10": {"11. Mutation testing": ["Why a mutation score", "How the two tests kill them", "All fifteen, and one killed by luck", "What is never a mutant",
+    "10": {"11. Mutation testing": ["Why a mutation score", "The rules' mutants in a report", "How the two tests kill them", "All fourteen, and one killed by luck", "What is never a mutant",
                                     "The logout redirect", "Mutants that are the same program", "The exact score",
                                     "`-run`, `-timeout` and `--json`", "Ids and lines change with the code"],
            "9. Testing through the browser": ["Why through the browser", "Step by step", "`Test.get` and `Test.open`: requesting a page",

@@ -13,7 +13,7 @@ table Todo {
   title: Text.NonEmpty,
   done: Bool = False,
   due: Maybe Date,
-  owner: User.UserId @ref User,
+  owner: User.UserId @ref User @owner,
   created: Time @created,
 }
 ```
@@ -29,6 +29,13 @@ table Todo {
 - A field with a default may be omitted on insert, but not from a
   literal of the row type: a `Todo` written out names every field.
 - `@unique` marks a field that must be unique.
+- `@owner` marks the one field that names the row's owner: a `@ref` to
+  the user table, of the session's user type. It gives the table the
+  scoped operations `Db.mine`, `Db.getMine`, `Db.updateMine`,
+  `Db.deleteMine` and `Db.insertMine` ("Your own rows", under Writing; chapter
+  6, "Rules"). It changes nothing in the database: the column is stored,
+  indexed and referenced exactly as without it, so adding or removing
+  `@owner` makes no migration.
 - Field types: `Int`, `Float`, `Bool`, `Text`, `Date`, `Time`, brands of
   those, unions with no payloads, and `Maybe` of any of those. Nothing
   nested; model nesting with a second table and `@ref`.
@@ -300,6 +307,27 @@ table Note {
   body: Text,
 }
 ```
+
+### Your own rows
+
+A table with an `@owner` column (above) also has five **scoped**
+operations, for the pages of a signed-in user:
+
+```alder fragment
+Db.mine       : Table t -> Select t                  -- Db.from t, only the user's rows
+Db.getMine    : Table t -> Id t -> Query t           -- the user's row, else not found
+Db.updateMine : Table t -> Id t -> (t -> t) -> Task Unit
+Db.deleteMine : Table t -> Id t -> Task Unit
+Db.insertMine : Table t -> Insert t -> Task (Id t)   -- the row without its owner, as a literal
+```
+
+They act for the user of the running request (or test), and answer a
+row that is someone else's as a missing one: not found, a 404.
+`Db.getMine` is a `Query t`, not a `Query (Maybe t)`: there is nothing
+to match, because a missing row ends the page. They are allowed only in
+a page module whose page `requires user`. Chapter 6, "Rules", explains
+them in full, and chapter 13 shows their SQL: each puts `"owner" = ?` in
+its statement.
 
 ## How tables are stored
 

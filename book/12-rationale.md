@@ -411,19 +411,21 @@ and change. That is feedback a person or an agent can act on at once,
 where a coverage percentage only says "more". On the examples it found
 real gaps: 15 survivors in the to-do app (9 new tests, score 0.55 →
 1.00) and 17 in the blog (10 new tests, 0.71 → 0.95, the 3 left
-equivalent).
+equivalent). (Since the to-do app declared its rules, M11, the same
+nine tests close 14 of 32: chapter 10.)
 
 **A curated set of operators, not every possible edit.** Generic
 mutation tools change any operator or constant anywhere, and produce
 thousands of mutants, many of them programs that do not compile, crash
-at once, or mean nothing in particular. Alder's eighteen operators are
+at once, or mean nothing in particular. Alder's twenty operators are
 each a bug that a server-rendered app can have and a user would notice:
-a `requires` missing, an ownership check dropped, a write that does
+a `requires` missing, an ownership check dropped, a role or an
+ownership rule dropped (`role dropped`, `scope dropped`, M11), a write that does
 nothing, a filter or an order wrong, a redirect that is a re-render, a
 delete rule changed. Each works on the typed IR and makes a well-typed
 mutant by construction, so all of them compile into one test build.
 Each is named for what it breaks, so a survivor's line reads as a
-sentence about the app. The to-do app has 33, the blog 56; once the
+sentence about the app. The to-do app has 32, the blog 58; once the
 test build is made, a run of either takes about a second.
 
 **No annotation to silence a survivor.** Many tools let a comment mark
@@ -439,6 +441,73 @@ visible; `--min` is then set to the score the app has reached.
 `--mutate` is opt-in, and plain `alder test` is unchanged: it costs one
 more build and a run of the suite per mutant, which is for CI and for
 the moment a feature's tests are written, not for every edit.
+
+### Rules are declared: `@owner` and session roles **(decided M11; tested: both examples)**
+
+Every app with a login wrote two checks by hand: "this row is mine"
+(the to-do app's `owned` helper, the blog's `post.author ==
+session.user`) and "this user has role R" (the blog's `User.author`
+lookup in every Admin `load`). Both are now declarations (chapter 6,
+"Rules"): `@owner` on a table's column, five scoped `Db` operations, and
+`requires user, role R` on a page. Five choices shaped them.
+
+**Why declared.** A check written by hand is a check that can be left
+out, and E5 and E6 showed agents leaving it out exactly when the example
+did (E5: two of three T4 apps updated any id they were sent). E9's
+tests mostly did kill the owner checks the tasks named (`guard dropped`
+50 of 62), so the risk is less an untested check than one never
+written. With the rule on
+the table, the shortest code is the correct code: `Db.updateMine Todo
+p.id f` is shorter than reading the row, comparing its owner and writing
+it, and there is no `if` to forget or get backwards. The compiler adds
+what a convention cannot: a scoped operation compiles only where a
+signed-in user exists (E0026), so it cannot be used where it would mean
+nothing. The rule stays explicit at each use, though: the operations
+have their own names, and `Db.from` and `Db.get` keep their meaning on
+an owned table. A table-wide filter that silently changed `Db.get` was
+considered and rejected: an admin page that must see every row would
+then need an escape hatch, and a reader could not tell from `Db.get
+Todo id` which rows it can see. Page-level sugar (`owns`) is left for
+later, if the operations prove too verbose.
+
+**Why not-found.** A scoped read or write of a row that is someone
+else's answers exactly as a missing row: a 404. There is then no
+outcome for the page to handle and no branch to drop, so the mutation
+operator has nothing to remove except the scope itself (`scope dropped`),
+and a test of it is one stranger's request. It also leaks nothing: a
+403 would tell a stranger that the id exists. A page that wants another
+answer writes the unscoped operation and its own check, and says so.
+
+**Why the session for roles.** A role could be read from the user's row
+on every request. Keeping it in the signed cookie makes the check free
+(no query) and makes it happen before `load`, in the route, where it
+covers the page's messages too, so no `load` or `update` repeats it. The
+cost is staleness: a role changed in the database applies at the next
+login. For an author's desk that is acceptable, and the pages where it
+is not have the re-read idiom, a `Db.get User session.user` in `load`
+(chapter 6). The blog's test "a demoted author can edit until they log
+in again" makes the trade visible rather than hiding it.
+
+**Why never the owner column.** `Db.updateMine` drops the owner from
+its `SET` list: whatever `f` returns, the row stays the user's. Without
+that, `f` could hand the row to another user, and a scoped write, the
+operation that exists to keep rows where they belong, would be the one
+way to move them. Moving a row is a different action, and gets the
+unscoped `Db.update` on a page written for it.
+
+**The replica argument.** Alder's database is SQLite now, and may become
+a replicated one (Turso: replicas that serve reads near the user, one
+primary that takes writes). The rules were shaped so that nothing about
+them has to change then. Scoped reads are predicates in a `SELECT`
+(`WHERE "owner" = ?`), which any replica can serve. Role checks read
+the cookie and no database at all. Scoped writes carry the predicate in
+the statement that writes (`UPDATE … WHERE "id" = ? AND "owner" = ?`,
+then a check of the rows it changed), so ownership is decided on the
+primary, atomically with the write. A hand-written check reads first
+and writes after; on a replica that is behind, or with another request
+between the two, the read can approve a write the primary would refuse.
+The predicate in the write closes that gap. Choosing a tenant (one
+database per customer) is a separate, later layer.
 
 ### The runtime is embedded, not fetched **(decided M10; tested: the out-of-tree build)**
 
@@ -684,7 +753,12 @@ example shows
 agents what a test of the rule looks like. Writing the tests also
 corrected the book: chapter 7 said `Toggle` traces `["Db.update Todo"]`,
 but `owned`'s read comes first, and the trace is
-`["Db.get Todo", "Db.update Todo"]`.
+`["Db.get Todo", "Db.update Todo"]`. (Since M11 the rule is declared,
+`owned` is gone, and `Toggle` traces `["Db.updateMine Todo"]`: the
+check is in the one statement. The test now goes through the browser,
+a stranger pressing my todo's button on a page still open, and a
+scoped write cannot run without a signed-in test session: "Rules are
+declared", above.)
 
 ### E7: prompt size, tests in the loop
 
@@ -751,7 +825,9 @@ believes is right.
   an effect block?
 - Is `Query.notFound` the right way to 404 from `load`? (`update` has the
   same in `Task.notFound`, M3c.)
-- Should the language help with row ownership? The to-do example had
+- Should the language help with row ownership? *Decided (M11): yes,
+  declared ("Rules are declared: `@owner` and session roles", above;
+  chapter 6, "Rules").* What follows is the history that led there. The to-do example had
   `load` checking that the user owns the page's todo, but `update` acting
   on the ids its messages carried, unchecked: any user could toggle or
   delete anyone's todo by posting an id (found in the M3c review, fixed

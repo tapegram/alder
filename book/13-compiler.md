@@ -1153,10 +1153,10 @@ SQLite store, calls `Ensure`, and runs its `load` and `update` with
 `eff.Run`: log in, add, toggle, delete, an add that is rolled back by a
 later `Task.fail`, a log out whose session change is undone by a later
 `Task.fail`, and a log out. After each one it checks the database and the
-trace of the steps that ran, `calls("toggle", "Db.get Todo", "Db.update
-Todo")` (the to-do app's `Toggle` first reads the row to check its owner,
-chapter 6): exactly the kind of check chapter 10 promises `alder test`
-will make.
+trace of the steps that ran, `calls("toggle", "Db.updateMine Todo")`
+(the to-do app's `Toggle` is one scoped write, chapter 6, "Rules"; "The
+rules", below, shows what it does): exactly the kind of check chapter 10
+promises `alder test` will make.
 
 ### A request: `GET` and `POST`
 
@@ -1321,12 +1321,13 @@ This is chapter 6's lifecycle, line by line:
 1. `page__Todos__Index` checks `requires` and runs `load`, so `update`
    gets the same `Model` the page showed.
 2. `eff.Run` with `eff.KTask` runs the `Toggle` arm much as "A `Task`:
-   `Toggle`" did, with one step more in front: `owned` reads the row
-   (`Db.get Todo`, which begins the transaction) and checks that its
-   `owner` is the session's user, then one `UPDATE`, a commit, and `Nav`
-   `Rerender`. If the task failed, `route__fail` answers 500, or 404 for
-   `Task.notFound` (an id that is missing or someone else's), and nothing
-   is stored, since `Run` already rolled back the writes and the session.
+   `Toggle`" did, as one step, `Db.updateMine Todo`: it reads the row
+   with the owner in the `WHERE` (which begins the transaction), writes
+   it with the owner in the `WHERE` again, then a commit, and `Nav`
+   `Rerender` ("The rules", below). If the task failed, `route__fail`
+   answers 500, or 404 for `Task.notFound` (an id that is missing or
+   someone else's), and nothing is stored, since `Run` already rolled
+   back the writes and the session.
 3. Under Datastar, `Rerender` takes the `default` branch: an empty
    `FormState`, then the page's parameters, so the re-rendered buttons
    carry `_p.filter=Active` again. (Without Datastar it stops at
@@ -1378,7 +1379,7 @@ Location: /?filter=Active
 
 The browser then `GET`s `/?filter=Active`, so its address bar shows the
 list, not the message URL, and a refresh does not post again. If the id
-names no row, or another user's, `owned` ends in `Task.notFound`, and under
+names no row, or another user's, `Db.updateMine` ends in `Task.notFound`, and under
 Datastar the 404 page's body arrives the same way as a re-render, as a 200
 event.
 
@@ -1411,6 +1412,238 @@ and ends with `</body>\n\n`, that a `Redirect` under Datastar is exactly
 the navigation event above, that a `Toggle` sent without JavaScript from
 `/?filter=Completed` is a 303 back to that filter, and that another user
 posting the messages with a@b.c's id gets 404 every time.
+
+### The rules: scoped operations and roles
+
+Chapter 6, "Rules", declares two rules: `@owner` on a table, used by the
+five scoped `Db` operations, and `requires user, role R` on a page. This
+part follows them through the compiler and the runtime, with the to-do
+app (`Todo.owner @owner`) and the blog (`role Author`).
+
+**The checker.** `@owner` is checked once `App`'s session is known
+(`checkOwners`, `internal/check/rules.go`): the session must have a
+`user` field, and the marked column must be a `@ref` of that field's
+type without the `Maybe`, one per table (E0024). The column's name
+becomes the table's `Owner`. A reference to one of the five operations
+is checked where it is written (`inferVar` sends `Db.mine` and the others
+to `inferScoped`), against the module being checked: it is legal in a
+page module whose page `requires user`, and in a `test`; anywhere else
+it is E0026. A top-level value that uses one legally is marked, and the
+mark follows references to it within its module (`propagateScoped`, a
+fixpoint), so a use of the value from a module where the operation
+itself would be refused is E0026 at that use. After a body is typed,
+each operation's table argument must have an `Owner` (E0025,
+`checkScopedTables`).
+`Db.insertMine`'s row is typed as `InsertMine T`, a type that is never
+written in source: `Insert T` without the owner column. Its literal may
+not name the owner (E0003), and a row that is not a literal in the call
+is refused, so the row can only be what is written there. The role
+clause is checked by `checkRoles`, called from `definePage` (E0027): `user` first, a `role` field
+of the session whose type is a union and not a `Maybe`, and each name
+one of its constructors.
+
+**The IR.** Five nodes of their own, not flags on `DbGet` or `DbUpdate`,
+so that every later stage has to say what it does with them:
+`DbMine{Table}`, a `Select` value; `DbGetMine{Table, ID}`;
+`DbUpdateMine{Table, ID, Fn}`; `DbDeleteMine{Table, ID}`;
+`DbInsertMine{Table, Row}`. A pipeline that starts from `Db.mine` is an
+ordinary `DbSelect` whose `Base` is the `DbMine`. The to-do list's
+`load` (`alder dump --ir examples/todos`, as in `testdata/golden/ir_todos.ir`):
+
+```
+(value Todos.Index.load : Params -> Session -> Query Model (params session)
+  (bind query todos : List Todo
+    (db-select Todo.Todo
+      (base (db-mine Todo.Todo))
+      (order (ord (col Todo.Todo created) desc))
+      all)
+```
+
+and its `Toggle` arm:
+
+```
+        (bind task _
+          (db-update-mine Todo.Todo
+            (field id (var p))
+            (lambda (t : Todo)
+              (update (var t)
+                (done (call (std Prelude.not) (field done (var t)))))))
+          (pure task (ctor Prelude.Nav.Rerender)))))
+```
+
+The table records its owner, `(owner owner)`, and a page its roles,
+`(roles Author)`. Nothing else in the IR changes.
+
+**The Go.** The table's descriptor (`Todo_alder.go`) gets two fields:
+
+```go
+	Owner: "owner",
+	User: func(s any) (string, bool) {
+		a, ok := s.(App__Session)
+		return a.User.Val, ok && a.User.Ok
+	},
+```
+
+`Owner` is the column; `User` takes a session and says who is signed in,
+if anyone. The operations are emitted like the unscoped ones, a `Call`
+over a typed helper of `rt/db`. `load`'s `Db.mine Todo` is the `Select`
+`db.Mine(table__Todo__Todo)`, with the order on top:
+
+```go
+func Todos__Index__load(params Todos__Index__Params, session Todos__Index__Session) eff.Query[Todos__Index__Model] {
+	return eff.Q(eff.Bind(eff.Call("Db.all Todo", false, func(_e1 *eff.Env) ([]Todo__Todo, error) {
+		return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.OrderBy(db.Desc("created"), db.Mine(table__Todo__Todo)))
+```
+
+`Toggle` is one step:
+
+```go
+	case is__Todos__Index__Msg__Toggle:
+		p := *msg.Toggle
+		return eff.Bind(eff.Call("Db.updateMine Todo", true, func(_e2 *eff.Env) (struct{}, error) {
+			return struct{}{}, db.UpdateMineRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Todo__Todo, p.Id, func(t Todo__Todo) Todo__Todo {
+				return Todo__Todo{Id: t.Id, Title: t.Title, Done: !t.Done, Due: t.Due, Owner: t.Owner, Created: t.Created}
+			}, _e2.Now())
+		}), func(_ struct{}) eff.Task[rt.Nav] {
+			return eff.Pure(rt.Rerender())
+		})
+```
+
+and `Submit`'s `Db.insertMine` builds the row without its owner, a Go
+struct of its own (`insertmine__Todo__Todo`), which
+`insertminevals__Todo__Todo` turns into the column values with a `nil`
+where the owner goes:
+
+```go
+		return eff.Bind(eff.Call("Db.insertMine Todo", true, func(_e1 *eff.Env) (string, error) {
+			return db.InsertMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Todo__Todo, insertminevals__Todo__Todo(insertmine__Todo__Todo{Title: p.Form.Title, Done: false, Due: p.Form.Due}), _e1.Now())
+```
+
+Notice what none of these is given: the user. `update`'s `session` is
+not passed to `UpdateMineRow`, and `load`'s is not in the `Select`.
+
+**Whose user: the ambient session.** Each helper asks `owner`
+(`rt/db/store.go`) for the user. `owner` takes the `Env` that is running
+the effect from the context (`eff.EnvFrom(ctx)`, the same way a
+capability finds it: chapter 7), reads its `Session`, and hands it to the
+descriptor's `User`. In a served request `Env.Session` is the session
+from the cookie; in a test, the test's session, which `Test.login` and
+`Session.put` set (chapter 10, "Tests that use the rules"). Since
+`Session.put` writes `Env.Session`, a scoped step after it acts for the
+new user. With no `Env`, or `User` answering false, the step fails with
+an `*eff.ErrFail` whose text is the operation and table: `Db.mine Todo:
+no signed-in user`. Reading the user at run time, not from an argument,
+is what lets a helper value such as `recent = Db.mine Todo |> Db.limit
+5` (a Go package variable, built once) mean "the current user's" at each
+use.
+
+`db.Mine(t)` is a `Select` with a flag, `Mine: true`, and no condition
+yet. `All`, `First` and `CountRows` resolve it as they start (`scoped`):
+they get the user from `owner`, put `CEq(owner, user)` in front of the
+select's conditions, and call `Env.Note("Db.mine Todo")`, which logs the
+name and puts it into the trace just before the running step's own
+name. That is why a trace reads `["Db.mine Todo", "Db.all Todo"]`: the
+note is not a step (no `Call` ran for it), but it says which select the
+step ran. `Select.SQL` refuses a `Mine` select that was not resolved, so
+an unscoped query can never be made from one by mistake.
+
+**The SQL.** With a store that logged each statement, the to-do app's
+tests sent these (every value is a `?`):
+
+- `Db.mine Todo |> Db.orderBy Todo.created.desc |> Db.all`, the list's
+  `load`:
+
+  ```
+  SELECT "id", "title", "done", "due", "owner", "created" FROM "Todo__Todo" WHERE "owner" = ? ORDER BY "created" DESC
+  ```
+
+- `Db.mine Todo |> Db.count`, the test "Db.mine is what Me sees":
+
+  ```
+  SELECT COUNT(*) FROM (SELECT 1 FROM "Todo__Todo" WHERE "owner" = ?)
+  ```
+
+- `Db.getMine Todo params.id`, `Todos.Show`'s `load` (`GetMineRow`, through
+  the store's `GetWhere`):
+
+  ```
+  SELECT "id", "title", "done", "due", "owner", "created" FROM "Todo__Todo" WHERE "id" = ? AND "owner" = ?
+  ```
+
+  No row is `eff.ErrNotFound`, so the page is a 404.
+
+- `Db.updateMine Todo p.id f`, `Toggle` (`UpdateMineRow`), two
+  statements in the `Task`'s transaction:
+
+  ```
+  SELECT "id", "title", "done", "due", "owner", "created" FROM "Todo__Todo" WHERE "id" = ? AND "owner" = ?
+  UPDATE "Todo__Todo" SET "title" = ?, "done" = ?, "due" = ? WHERE "id" = ? AND "owner" = ?
+  ```
+
+- `Db.deleteMine Todo p.id`, `Delete` (`DeleteMineRow`, through
+  `DeleteWhere`), one statement:
+
+  ```
+  DELETE FROM "Todo__Todo" WHERE "id" = ? AND "owner" = ?
+  ```
+
+- `Db.insertMine Todo { … }`, `Submit` (`InsertMineRow`): the same
+  `INSERT` as `Db.insert`, with the user put in the owner's place:
+
+  ```
+  INSERT INTO "Todo__Todo" ("id", "title", "done", "due", "owner", "created") VALUES (?, ?, ?, ?, ?, ?)
+  ```
+
+When a stranger pressed my todo's Toggle ("Toggle by another user is
+not found"), only the `SELECT … AND "owner" = ?` ran: it found nothing,
+and no `UPDATE` was sent.
+
+**The rows-affected check.** `UpdateMineRow` reads the row first because
+`f` is a function of the row: it needs the current values to compute
+the new ones. It checks that `f` kept the id, then writes. The `UPDATE`
+carries the owner predicate again, and the store's `UpdateWhere` returns
+how many rows the statement changed (`RowsAffected` of the result). If
+that is 0 (the row was deleted or changed hands between the two
+statements), the step is `eff.ErrNotFound` like a missing row, and the
+`Task` rolls back. So ownership is decided by the statement that writes,
+on the database that writes, whatever the read saw (chapter 6, "The
+rules and a replicated database"). The `SET` list leaves out the id,
+`@created` and the owner: `UpdateMineRow` removes the owner's column and
+value before it calls `UpdateWhere`, so an `f` that changes `owner`
+writes everything else and the row stays the user's. `DeleteMineRow`
+needs no read: its one `DELETE` carries the predicate, and 0 rows
+deleted is `eff.ErrNotFound`. (`Db.delete` of a missing row is not an
+error; `Db.deleteMine`'s is, since it cannot tell missing from someone
+else's, and both must be a 404.)
+
+**The role check.** A page with `role R` gets one more check in its
+route function, after the `requires user` redirect and before `load`.
+The blog's `page__Admin` (`build/blog/routes__alder.go`):
+
+```go
+func page__Admin(rq *web.Request, params Admin__Params, keep any) (Admin__Model, Admin__Session, *web.Response) {
+	var model Admin__Model
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, keep)
+		return model, Admin__Session{}, &r
+	}
+	if app.Role.Tag != is__User__Role__Author {
+		r := web.NotFoundResponse(html.None())
+		r.Session = keep
+		return model, Admin__Session{}, &r
+	}
+	session := Admin__Session{User: app.User.Val, Role: app.Role}
+	model, err := eff.RunQuery(rq.Env, Admin__load(params, session))
+```
+
+`app.Role` is the session's union value; its `Tag` is compared with the
+constructor's tag (with `role Author | Admin`, the test is
+`!(… == Author || … == Admin)`). A wrong role is the not-found page,
+before any query runs: the check costs no database read. Every handler
+of the page, its `GET` and each message's `POST`, goes through
+`page__Admin` first, so a message is checked the same way. The page's
+`Session` carries `Role` beside the narrowed `User`.
 
 ### The dev server
 
@@ -2047,11 +2280,13 @@ var Tests = []rtesting.Case{
 	{Module: "Todo", Name: "a user with todos cannot be deleted", Task: test__Todo__4},
 	{Module: "Todos.Index", Name: "Toggle flips done", Task: test__Todos__Index__1},
 	{Module: "Todos.Index", Name: "Toggle by another user is not found", Task: test__Todos__Index__2},
-	{Module: "Todos.Index", Name: "adding a todo through the page", Task: test__Todos__Index__3},
-	{Module: "Todos.Index", Name: "toggling a todo through the page", Task: test__Todos__Index__4},
-	{Module: "Todos.Index", Name: "a stranger cannot see my todo", Task: test__Todos__Index__5},
-	{Module: "Todos.Index", Name: "Delete removes the todo", Task: test__Todos__Index__6},
-	{Module: "Todos.Index", Name: "the newest todo is listed first", Task: test__Todos__Index__7},
+	{Module: "Todos.Index", Name: "Delete by another user is not found", Task: test__Todos__Index__3},
+	{Module: "Todos.Index", Name: "adding a todo through the page", Task: test__Todos__Index__4},
+	{Module: "Todos.Index", Name: "toggling a todo through the page", Task: test__Todos__Index__5},
+	{Module: "Todos.Index", Name: "a stranger cannot see my todo", Task: test__Todos__Index__6},
+	{Module: "Todos.Index", Name: "Delete removes the todo", Task: test__Todos__Index__7},
+	{Module: "Todos.Index", Name: "the newest todo is listed first", Task: test__Todos__Index__8},
+	{Module: "Todos.Index", Name: "Db.mine is what Me sees", Task: test__Todos__Index__9},
 	{Module: "Todos.Show", Name: "a visitor is sent to log in from a todo", Task: test__Todos__Show__1},
 	{Module: "Todos.Show", Name: "saving changes the title and the due date", Task: test__Todos__Show__2},
 	{Module: "Todos.Show", Name: "deleting from the todo's page", Task: test__Todos__Show__3},
@@ -2178,28 +2413,28 @@ results into the record Alder sees. From `test__Todos__Index__1`
 (re-indented):
 
 ```go
-	return eff.Bind(eff.Call("Test.run", true, func(_e3 *eff.Env) (struct {
+	return eff.Bind(eff.Call("Test.run", true, func(_e5 *eff.Env) (struct {
 		Value rt.Result[string, rt.Nav]
 		Trace []string
 	}, error) {
-		_v4, _msg5, _ok6, _tr7, _err8 := rtesting.Inner(_e3, Todos__Index__update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: id}), Todos__Index__Model{Filter: Todo__Filter__All__, Todos: []Todo__Todo{}}, Todos__Index__Session{User: me}))
-		if _err8 != nil {
-			var _z10 struct {
+		_v6, _msg7, _ok8, _tr9, _err10 := rtesting.Inner(_e5, Todos__Index__update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: id}), Todos__Index__Model{Filter: Todo__Filter__All__, Todos: []Todo__Todo{}}, Todos__Index__Session{User: me}))
+		if _err10 != nil {
+			var _z12 struct {
 				Value rt.Result[string, rt.Nav]
 				Trace []string
 			}
-			return _z10, _err8
+			return _z12, _err10
 		}
-		_r9 := struct {
+		_r11 := struct {
 			Value rt.Result[string, rt.Nav]
 			Trace []string
-		}{Trace: _tr7}
-		if _ok6 {
-			_r9.Value = rt.Ok[string, rt.Nav](_v4)
+		}{Trace: _tr9}
+		if _ok8 {
+			_r11.Value = rt.Ok[string, rt.Nav](_v6)
 		} else {
-			_r9.Value = rt.Err[string, rt.Nav](_msg5)
+			_r11.Value = rt.Err[string, rt.Nav](_msg7)
 		}
-		return _r9, nil
+		return _r11, nil
 	}), func(r struct {
 ```
 
@@ -2751,7 +2986,7 @@ nil for an `App` message). The queries stay ordinary calls.
 function to run; every browser step is one, named as the trace shows it,
 marked as a write, whose function asks the test's browser to do the
 step and packs its result into the record Alder sees. From
-`test__Todos__Index__3`, "adding a todo through the page"
+`test__Todos__Index__4`, "adding a todo through the page"
 (`Todos__Index_alder.go`, re-indented), the `Test.submit` step:
 
 ```go
@@ -3053,7 +3288,7 @@ whose result has `Html` in it. A change it refuses is a
 `Why`.
 
 **Mutant schemata: every mutant in one build.** Building the app once
-per mutant would cost a `go build` each, seconds times 33. Instead,
+per mutant would cost a `go build` each, seconds times 32. Instead,
 `gen.Options{Tests: true, Mutate: true}` (which only `alder test
 --mutate` sets) makes the emitter compile each mutated node with its
 replacements in front of it, behind a switch on one package variable.
@@ -3105,18 +3340,18 @@ is in the mutate build
 
 ```go
 	page := func() int64 {
-		if (Mutant == 19) != (func() bool {
+		if (Mutant == 18) != (func() bool {
 			switch Mutant {
-			case 20:
+			case 19:
 				return params.Page <= 1
 			}
 			return params.Page < 1
 		}()) {
 			return 1
 		}
-		if (Mutant == 21) != (func() bool {
+		if (Mutant == 20) != (func() bool {
 			switch Mutant {
-			case 22:
+			case 21:
 				return params.Page >= Posts__Index__lastPage()
 			}
 			return params.Page > Posts__Index__lastPage()
@@ -3127,8 +3362,8 @@ is in the mutate build
 	}()
 ```
 
-where 19 and 21 are `condition negated` (`(Mutant == 19) != c` is `not
-c` under 19 and `c` otherwise) and 20 and 22 the flipped comparisons. A
+where 18 and 20 are `condition negated` (`(Mutant == 18) != c` is `not
+c` under 18 and `c` otherwise) and 19 and 21 the flipped comparisons. A
 `guard dropped` on an `if` is `Mutant != k && c` (or `Mutant == k ||
 c`). A `match` with mutants emits each arm's body once: it first finds
 the arm, and an arm that a mutant moves gives its number instead of its
@@ -3176,7 +3411,54 @@ check that sends a visitor to log in, `Todos.Index`'s route
 ```
 
 so under mutant 15 a session without a user gets the placeholder user
-`"mutant"`, and the check that follows lets the request through.
+`"mutant"`, and the check that follows lets the request through. `role
+dropped` is in the route too, in the role check that follows the
+`requires` check (section 8, "The rules"). The blog's `Admin` page has
+
+```go
+	if Mutant != 7 && app.Role.Tag != is__User__Role__Author {
+		r := web.NotFoundResponse(html.None())
+		r.Session = keep
+		return model, Admin__Session{}, &r
+	}
+```
+
+so under mutant 7 every signed-in user passes. `scope dropped` replaces
+a scoped node with the unscoped one, built from existing IR nodes so it
+has the same type: `Db.mine T` becomes `Db.from T`, and
+`Db.updateMine T id f` becomes a `Db.get`, then a `match` on its result
+that runs `Db.update T id f` for `Just _` and `Task.notFound` for
+`Nothing`, so the mutant is "not found" only for a missing row. The
+to-do app's `Toggle`, mutant 21, in the mutate build:
+
+```go
+			switch Mutant {
+			case 20:
+				return eff.Pure(struct{}{})
+			case 21:
+				return eff.Bind(eff.Call("Db.get Todo", false, func(_e2 *eff.Env) (rt.Maybe[Todo__Todo], error) {
+					return db.GetRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Todo__Todo, p.Id)
+				}), func(found rt.Maybe[Todo__Todo]) eff.Task[struct{}] {
+					if found.Ok {
+						return eff.Call("Db.update Todo", true, func(_e3 *eff.Env) (struct{}, error) {
+							return struct{}{}, db.UpdateRow(_e3.Ctx, _e3.Store.(db.Store), db.TxOf(_e3), table__Todo__Todo, p.Id, func(t Todo__Todo) Todo__Todo {
+								…
+							}, _e3.Now())
+						})
+					}
+					return eff.NotFound[struct{}]()
+				})
+			}
+			return eff.Call("Db.updateMine Todo", true, func(_e4 *eff.Env) (struct{}, error) {
+```
+
+(20 is `write replaced` on the same step; `…` is the record the function
+builds, with mutant 22's `not dropped` inside it.) The names `found` and
+`row` the replacements bind are made fresh when the wrapped code already
+uses them. `Db.getMine` becomes a `Db.get` whose `Nothing` is
+`Query.notFound`, and `Db.deleteMine` a `Db.get` then `Db.delete`;
+`Db.insertMine` has none, since the owner comes from the session either
+way.
 
 One more change: in a mutate build every constant is a function. A plain
 build computes a constant once, as a Go package variable. The blog has
@@ -3210,8 +3492,8 @@ var Mutant int
 and `Mutants`, one `rtesting.Mutant` per mutant in id order, such as
 
 ```go
-	{ID: 7, Module: "Todo", Decl: "Todo", Kind: "cascade ↔ restrict", File: "app/Todo.alder", Line: 14, Col: 3, Before: "owner @ref User @restrict", After: "owner @ref User @cascade", Tables: []db.TableDesc{table__User__User.Desc(), {Name: "Todo.Todo", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "title", Type: db.CText}, {Name: "done", Type: db.CBool}, {Name: "due", Type: db.CDate, Nullable: true}, {Name: "owner", Type: db.CText, Ref: "User.User", OnDelete: db.Cascade}, {Name: "created", Type: db.CTime}}, ID: "id", Created: "created"}}},
-	{ID: 17, Module: "Todos.Index", Decl: "load", Kind: "orderBy reversed", File: "app/Todos/Index.alder", Line: 19, Col: 10, Before: "Db.orderBy Todo.created.desc", After: "Db.orderBy Todo.created.asc"},
+	{ID: 7, Module: "Todo", Decl: "Todo", Kind: "cascade ↔ restrict", File: "app/Todo.alder", Line: 16, Col: 3, Before: "owner @ref User @restrict", After: "owner @ref User @cascade", Tables: []db.TableDesc{table__User__User.Desc(), {Name: "Todo.Todo", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "title", Type: db.CText}, {Name: "done", Type: db.CBool}, {Name: "due", Type: db.CDate, Nullable: true}, {Name: "owner", Type: db.CText, Ref: "User.User", OnDelete: db.Cascade}, {Name: "created", Type: db.CTime}}, ID: "id", Created: "created"}}},
+	{ID: 16, Module: "Todos.Index", Decl: "load", Kind: "orderBy reversed", File: "app/Todos/Index.alder", Line: 18, Col: 10, Before: "Db.orderBy Todo.created.desc", After: "Db.orderBy Todo.created.asc"},
 ```
 
 A schema mutant carries `Tables`: the app's table descriptors, with its
@@ -3220,7 +3502,7 @@ own table's descriptor rendered from the mutant's clone (here `owner`'s
 
 ```go
 // MutantsSuppressed and MutantsSkipped count the mutants refused as equivalent and as not applicable.
-var MutantsSuppressed, MutantsSkipped = 0, 10
+var MutantsSuppressed, MutantsSkipped = 0, 5
 ```
 
 The test program's `main` registers the table before running the tests:
