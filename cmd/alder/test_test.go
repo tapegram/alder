@@ -59,6 +59,7 @@ func TestTest_Todos(t *testing.T) {
 		`ok   Todo "countOpen ignores done todos"`,
 		`ok   Todos.Index "Toggle flips done"`,
 		`ok   Todos.Index "Toggle by another user is not found"`,
+		`ok   Todos.Index "Delete by another user is not found"`,
 		`ok   Todos.Index "adding a todo through the page"`,
 		`ok   Todos.Index "toggling a todo through the page"`,
 		`ok   Todos.Index "a stranger cannot see my todo"`,
@@ -68,10 +69,11 @@ func TestTest_Todos(t *testing.T) {
 		`ok   Todo "a user with todos cannot be deleted"`,
 		`ok   Todos.Index "Delete removes the todo"`,
 		`ok   Todos.Index "the newest todo is listed first"`,
+		`ok   Todos.Index "Db.mine is what Me sees"`,
 		`ok   Todos.Show "a visitor is sent to log in from a todo"`,
 		`ok   Todos.Show "saving changes the title and the due date"`,
 		`ok   Todos.Show "deleting from the todo's page"`,
-		"18 passed, 0 failed\n",
+		"20 passed, 0 failed\n",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
@@ -86,7 +88,7 @@ func TestTest_Failing(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	for _, want := range []string{"FAIL Todo \"wrong\"\n  left:  0\n  right: 1\n", "18 passed, 1 failed\n"} {
+	for _, want := range []string{"FAIL Todo \"wrong\"\n  left:  0\n  right: 1\n", "20 passed, 1 failed\n"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
 		}
@@ -101,7 +103,7 @@ func TestTest_JSON(t *testing.T) {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
-	if len(lines) != 18 {
+	if len(lines) != 20 {
 		t.Fatalf("want one line per test, got %d:\n%s", len(lines), stdout)
 	}
 	for _, l := range lines {
@@ -117,10 +119,10 @@ func TestTest_JSON(t *testing.T) {
 			t.Errorf("want a passing test with module and name: %s", l)
 		}
 	}
-	if !strings.Contains(lines[8], `"name":"Toggle flips done"`) || !strings.Contains(lines[8], `"trace":["Db.insert User","Db.insert Todo","Test.run","Db.get Todo","Db.update Todo","Db.get Todo"]`) {
+	if !strings.Contains(lines[8], `"name":"Toggle flips done"`) || !strings.Contains(lines[8], `"trace":["Db.insert User","Db.insert Todo","Test.login","Test.run","Db.updateMine Todo","Db.get Todo"]`) {
 		t.Errorf("the effect test's line lacks its trace: %s", lines[8])
 	}
-	if stderr != "18 passed, 0 failed\n" {
+	if stderr != "20 passed, 0 failed\n" {
 		t.Errorf("stderr %q, want the summary", stderr)
 	}
 }

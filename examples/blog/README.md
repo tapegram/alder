@@ -8,16 +8,28 @@ test` take this directory; chapter 11 explains each command.
 
 `alder test --mutate examples/blog` (book 10, "Mutation testing"): 58 mutants.
 
-- Before: 29 tests, 41 killed, 17 survived (score 0.71).
+- Before: 29 tests, 41 killed, 17 survived (score 0.71), recorded before the app declared its
+  rules.
 - After: 39 tests, 55 killed, 3 survived (score 0.95). `TestExample_Blog` fails if the score
   drops below 0.94, the exact 0.948 rounded down, or the number of mutants is not 58.
+
+The rules are declared (book 06, "Rules"): `Post.author` is the table's `@owner`, the session
+holds the user's `role` from login, and `Admin` and `Admin.Edit` `requires user, role Author`.
+Their new mutants are killed: the two `role dropped` by `Admin "a Reader cannot open the admin
+page"` and `Admin.Edit "a demoted author can edit until they log in again"` (whose second login
+reads the Reader role from the row); the two `scope dropped` (`Db.mine Post`, `Db.getMine Post`)
+by `Admin "the admin page lists the author's own posts, newest first"` and `Admin.Edit "another
+author's post is not found"`; the dropped `role` of the login's and the logout's `Session.put` by
+`Auth.Login "logging in through the form"` and `Posts.Index "logging out from the front page
+goes to log in"`.
 
 The ten tests that closed the gaps:
 
 - `Post "bySlug finds the post with that slug"`: `bySlug`'s `where` dropped.
 - `Post "an author with posts cannot be deleted"`: `author @ref User` changed to `@cascade`.
 - `Admin "the admin page lists the author's own posts, newest first"`: the admin list's `where`
-  dropped, and its `orderBy` reversed.
+  dropped (now its `Db.mine Post` made `Db.from Post`, a `scope dropped`), and its `orderBy`
+  reversed.
 - `Posts.Index "a page that is exactly full has no next page"`: `>` flipped to `>=` in
   `hasMore`.
 - `Posts.Index "logging out from the front page goes to log in"`: logout's `Redirect →
@@ -44,5 +56,5 @@ like the original program.
   `perPage`. Without the limit the query reads every matching post, which is slower, but the
   page is the same.
 
-The run also refuses 1 mutant it can prove equivalent and skips 7 that do not apply; neither
+The run also refuses 1 mutant it can prove equivalent and skips 3 that do not apply; neither
 count is part of the score.

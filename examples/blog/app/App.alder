@@ -3,7 +3,10 @@ module App
 import User
 import Layout
 
-session { user: Maybe User.UserId }
+-- `role` is the user's role, copied from their row when they log in (Auth.Login): the Admin
+-- pages' `requires user, role Author` reads it from here, never from the database (book 06,
+-- "Rules"). A visitor, and anyone who logs out, is a Reader.
+session { user: Maybe User.UserId, role: User.Role = Reader }
 
 login = Auth.Login
 
@@ -12,7 +15,7 @@ msg Logout
 update : Msg -> Session -> Task Nav
 update msg session = match msg {
   Logout p -> {
-    let _ <- Session.put (\s -> { s | user: Nothing })
+    let _ <- Session.put (\s -> { s | user: Nothing, role: Reader })
     Task.succeed (Redirect (Auth.Login {}))
   },
 }

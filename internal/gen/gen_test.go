@@ -1928,7 +1928,7 @@ func TestTodos(t *testing.T) {
 	if err != nil || nav.Tag != rt.NavRedirect || nav.Page.Path != "/" {
 		t.Fatalf("add: %+v, %v", nav, err)
 	}
-	calls("add", "Db.insert Todo")
+	calls("add", "Db.insertMine Todo") // the owner comes from the session (env.Session)
 	todos := load(Todo__Filter__All__)
 	if len(todos) != 1 {
 		t.Fatalf("after add: %d todos", len(todos))
@@ -1947,7 +1947,7 @@ func TestTodos(t *testing.T) {
 	if err != nil || nav.Tag != rt.NavRerender {
 		t.Fatalf("toggle: %+v, %v", nav, err)
 	}
-	calls("toggle", "Db.get Todo", "Db.update Todo") // the ownership check, then the write
+	calls("toggle", "Db.updateMine Todo") // one statement: WHERE id = ? AND owner = ?
 	if todos = load(Todo__Filter__All__); len(todos) != 1 || !todos[0].Done {
 		t.Fatalf("after toggle: %+v", todos)
 	}
@@ -1961,22 +1961,25 @@ func TestTodos(t *testing.T) {
 	if err != nil || shown.Todo.Title != "Buy milk" {
 		t.Fatalf("show: %+v, %v", shown, err)
 	}
-	calls("Show.load", "Db.get Todo")
+	calls("Show.load", "Db.getMine Todo")
 	if _, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: "nope"}, Todos__Show__Session{User: uid})); err != eff.ErrNotFound {
 		t.Fatalf("show missing: err = %v, want ErrNotFound", err)
 	}
-	if _, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: td.Id}, Todos__Show__Session{User: "someone else"})); err != eff.ErrNotFound {
-		t.Fatalf("show other's: err = %v, want ErrNotFound", err)
-	}
 
-	// toggling a todo that does not exist, or another user's, is Task.notFound (a 404)
+	// toggling a todo that does not exist is Task.notFound (a 404)
 	if _, err := update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: "nope"})); err != eff.ErrNotFound {
 		t.Fatalf("toggle missing: err = %v, want ErrNotFound", err)
 	}
-	other := Todos__Index__Session{User: "someone else"}
-	if _, err := eff.Run(env, eff.KTask, Todos__Index__update(Todos__Index__Msg__Delete__(Todos__Index__DeleteParams{Id: td.Id}), model, other)); err != eff.ErrNotFound {
+	// so is another user's: the scoped operations act for the ambient session (env.Session), not
+	// for the session argument
+	env.Session = App__Session{User: rt.Just("someone else")}
+	if _, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: td.Id}, Todos__Show__Session{User: uid})); err != eff.ErrNotFound {
+		t.Fatalf("show other's: err = %v, want ErrNotFound", err)
+	}
+	if _, err := eff.Run(env, eff.KTask, Todos__Index__update(Todos__Index__Msg__Delete__(Todos__Index__DeleteParams{Id: td.Id}), model, session)); err != eff.ErrNotFound {
 		t.Fatalf("delete other's: err = %v, want ErrNotFound", err)
 	}
+	env.Session = app
 
 	// rollback: an add followed by a failure leaves no row
 	failing := eff.Bind(Todos__Index__update(add, model, session), func(rt.Nav) eff.Task[rt.Nav] { return eff.Fail[rt.Nav]("boom") })
@@ -1994,11 +1997,11 @@ func TestTodos(t *testing.T) {
 	if err != nil || nav.Tag != rt.NavRerender {
 		t.Fatalf("delete: %+v, %v", nav, err)
 	}
-	calls("delete", "Db.get Todo", "Db.delete Todo")
+	calls("delete", "Db.deleteMine Todo")
 	if n := len(load(Todo__Filter__All__)); n != 0 {
 		t.Fatalf("after delete: %d todos", n)
 	}
-	calls("load", "Db.all Todo")
+	calls("load", "Db.mine Todo", "Db.all Todo")
 
 	// a Task that fails after Session.put leaves the session as it was (I1); a successful one
 	// that touches no table begins no transaction (I2: the in-memory store's single connection

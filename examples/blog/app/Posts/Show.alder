@@ -90,11 +90,11 @@ test "a draft is not found for a reader" = {
   let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
   let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "", author: author }
   let asReader <- Test.run {
-    let m <- load { slug: Post.Slug "draft" } { user: Just reader }
+    let m <- load { slug: Post.Slug "draft" } { user: Just reader, role: Reader }
     Task.succeed m.post.title
   }
   let asNobody <- Test.run {
-    let m <- load { slug: Post.Slug "draft" } { user: Nothing }
+    let m <- load { slug: Post.Slug "draft" } { user: Nothing, role: Reader }
     Task.succeed m.post.title
   }
   Task.succeed ({ reader: asReader.value, nobody: asNobody.value } == { reader: Err "not found", nobody: Err "not found" })
@@ -104,7 +104,7 @@ test "a draft is not found for a reader" = {
 test "a draft is shown to its author" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "Not *yet*.", author: author }
-  let m <- load { slug: Post.Slug "draft" } { user: Just author }
+  let m <- load { slug: Post.Slug "draft" } { user: Just author, role: Author }
   Task.succeed ({ title: m.post.title, body: m.body } == { title: Text.NonEmpty "Draft", body: <p>Not <em>yet</em>.</p> })
 }
 
@@ -114,7 +114,7 @@ test "a post's body is rendered through the Markdown capability" = {
   let _ <- Test.fake Markdown
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "Not *yet*.", published: True, author: author }
-  let m <- load { slug: Post.Slug "hello" } { user: Nothing }
+  let m <- load { slug: Post.Slug "hello" } { user: Nothing, role: Reader }
   let steps <- Test.trace
   Task.succeed ({ body: m.body, rendered: List.member "Markdown.render" steps } == { body: Html.text "Not *yet*.", rendered: True })
 }
@@ -124,8 +124,8 @@ test "a post's body is rendered through the Markdown capability" = {
 test "a comment on a draft is refused" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "", author: author }
-  let model <- load { slug: Post.Slug "draft" } { user: Just author }
-  let r <- Test.run (update (AddComment { form: { author: Comment.Name "Ann", body: Comment.Body "First!" } }) model { user: Nothing })
+  let model <- load { slug: Post.Slug "draft" } { user: Just author, role: Author }
+  let r <- Test.run (update (AddComment { form: { author: Comment.Name "Ann", body: Comment.Body "First!" } }) model { user: Nothing, role: Reader })
   let comments <- Db.from Comment |> Db.count
   Task.succeed ({ value: r.value, comments: comments } == { value: Err "not found", comments: 0 })
 }
@@ -133,10 +133,10 @@ test "a comment on a draft is refused" = {
 test "a comment is listed oldest first" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", published: True, author: author }
-  let before <- load { slug: Post.Slug "hello" } { user: Nothing }
-  let _ <- update (AddComment { form: { author: Comment.Name "Ann", body: Comment.Body "First!" } }) before { user: Nothing }
-  let _ <- update (AddComment { form: { author: Comment.Name "Bob", body: Comment.Body "Second." } }) before { user: Nothing }
-  let after <- load { slug: Post.Slug "hello" } { user: Nothing }
+  let before <- load { slug: Post.Slug "hello" } { user: Nothing, role: Reader }
+  let _ <- update (AddComment { form: { author: Comment.Name "Ann", body: Comment.Body "First!" } }) before { user: Nothing, role: Reader }
+  let _ <- update (AddComment { form: { author: Comment.Name "Bob", body: Comment.Body "Second." } }) before { user: Nothing, role: Reader }
+  let after <- load { slug: Post.Slug "hello" } { user: Nothing, role: Reader }
   Task.succeed (List.map (\c -> c.body) after.comments == [Comment.Body "First!", Comment.Body "Second."])
 }
 

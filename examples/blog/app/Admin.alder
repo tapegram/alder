@@ -4,30 +4,24 @@ import Post
 import User
 import Layout
 
-page "/admin" { } requires user
+-- Only an Author is let in: `role Author` is checked against the session before `load` runs,
+-- and a Reader who is logged in gets the same 404 as a page that does not exist. Every message
+-- of the page is checked the same way, so `update` needs no check of its own.
+page "/admin" { } requires user, role Author
 
 type Model = {
-  author: User,
   posts: List Post,
 }
 
--- load lets only an Author in: a Reader who is logged in gets the same 404 as a page that does
--- not exist. Every message of the page runs after this `load`, so `update` needs no check of
--- its own.
+-- load lists the signed-in author's own posts: `Db.mine Post` is the posts whose `author` (the
+-- table's `@owner`) is the session's user.
 load : Params -> Session -> Query Model
 load params session = {
-  let me <- User.author session.user
-  match me {
-    Just user -> {
-      let posts <-
-        Db.from Post
-          |> Db.where (Post.author.eq user.id)
-          |> Db.orderBy Post.created.desc
-          |> Db.all
-      Query.succeed { author: user, posts: posts }
-    },
-    Nothing -> Query.notFound,
-  }
+  let posts <-
+    Db.mine Post
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
 }
 
 form NewPost = {
@@ -45,7 +39,7 @@ update msg model session = match msg {
     match taken {
       Just _ -> Task.succeed (Reject "Another post has that slug."),
       Nothing -> {
-        let id <- Db.insert Post { slug: p.form.slug, title: p.form.title, body: p.form.body, author: model.author.id }
+        let id <- Db.insertMine Post { slug: p.form.slug, title: p.form.title, body: p.form.body }
         Task.succeed (Redirect (Admin.Edit { id: id }))
       },
     }
@@ -80,24 +74,22 @@ view model session =
     <button click={App.Logout}>Log out</button>
   </Layout.Page>
 
+-- The role is the session's: `Test.login` gives it, as logging in does from the user's row.
 test "a Reader cannot open the admin page" = {
   let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
-  let asReader <- Test.run {
-    let m <- load {} { user: reader }
-    Task.succeed m.author.id
-  }
-  let asAuthor <- Test.run {
-    let m <- load {} { user: author }
-    Task.succeed m.author.id
-  }
-  Task.succeed ({ reader: asReader.value, author: asAuthor.value } == { reader: Err "not found", author: Ok author })
+  let _ <- Test.login { user: Just reader, role: Reader }
+  let asReader <- Test.open (Admin {})
+  let _ <- Test.login { user: Just author, role: Author }
+  let asAuthor <- Test.open (Admin {})
+  Task.succeed ({ reader: asReader.answer, author: asAuthor.answer } == { reader: PageMissing, author: Shown })
 }
 
 test "creating a post redirects to its edit page" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
-  let model <- load {} { user: author }
-  let r <- Test.run (update (Create { form: { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "Hi." } }) model { user: author })
+  let _ <- Test.login { user: Just author, role: Author }
+  let model <- load {} { user: author, role: Author }
+  let r <- Test.run (update (Create { form: { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "Hi." } }) model { user: author, role: Author })
   let created <- Post.bySlug (Post.Slug "hello")
   match created {
     Just post -> Task.succeed ({ value: r.value, published: post.published } == { value: Ok (Redirect (Admin.Edit { id: post.id })), published: False }),
@@ -108,8 +100,9 @@ test "creating a post redirects to its edit page" = {
 test "a taken slug is refused" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
-  let model <- load {} { user: author }
-  let r <- Test.run (update (Create { form: { slug: Post.Slug "hello", title: Text.NonEmpty "Again", body: "" } }) model { user: author })
+  let _ <- Test.login { user: Just author, role: Author }
+  let model <- load {} { user: author, role: Author }
+  let r <- Test.run (update (Create { form: { slug: Post.Slug "hello", title: Text.NonEmpty "Again", body: "" } }) model { user: author, role: Author })
   let posts <- Db.from Post |> Db.count
   Task.succeed ({ value: r.value, posts: posts } == { value: Ok (Reject "Another post has that slug."), posts: 1 })
 }
@@ -126,7 +119,7 @@ test "the admin page needs an Author" = {
 
 test "an Author logs out from the admin page" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
-  let _ <- Test.login { user: Just author }
+  let _ <- Test.login { user: Just author, role: Author }
   let page <- Test.get (Admin {})
   let out <- Test.click App.Logout
   Task.succeed ({ heading: Test.text "h1" page.doc, out: out.answer, user: out.session.user } == { heading: Just "Your posts", out: Redirected (Auth.Login {}), user: Nothing })
@@ -138,6 +131,7 @@ test "the admin page lists the author's own posts, newest first" = {
   let _ <- Db.insert Post { slug: Post.Slug "first", title: Text.NonEmpty "First", body: "", author: author }
   let _ <- Db.insert Post { slug: Post.Slug "theirs", title: Text.NonEmpty "Theirs", body: "", author: other }
   let _ <- Db.insert Post { slug: Post.Slug "second", title: Text.NonEmpty "Second", body: "", author: author }
-  let model <- load {} { user: author }
+  let _ <- Test.login { user: Just author, role: Author }
+  let model <- load {} { user: author, role: Author }
   Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "Second", Text.NonEmpty "First"])
 }

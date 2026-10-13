@@ -39,11 +39,7 @@ load params session = {
       |> Db.limit (perPage + 1)
       |> Db.offset ((page - 1) * perPage)
       |> Db.all
-  let me <- match session.user {
-    Just id -> User.author id,
-    Nothing -> Query.succeed Nothing,
-  }
-  let canWrite = me != Nothing
+  let canWrite = session.role == Author
   Query.succeed { page: page, q: q, posts: List.take perPage found, hasMore: List.length found > perPage, canWrite: canWrite }
 }
 
@@ -98,7 +94,7 @@ test "the front page lists only published posts, newest first" = {
   let _ <- Db.insert Post { slug: Post.Slug "first", title: Text.NonEmpty "First", body: "", published: True, author: author }
   let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "", author: author }
   let _ <- Db.insert Post { slug: Post.Slug "second", title: Text.NonEmpty "Second", body: "", published: True, author: author }
-  let model <- load { page: 1, q: "" } { user: Nothing }
+  let model <- load { page: 1, q: "" } { user: Nothing, role: Reader }
   Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "Second", Text.NonEmpty "First"])
 }
 
@@ -107,7 +103,7 @@ test "search matches title or body" = {
   let _ <- Db.insert Post { slug: Post.Slug "tomatoes", title: Text.NonEmpty "Tomato season", body: "It is here.", published: True, author: author }
   let _ <- Db.insert Post { slug: Post.Slug "soup", title: Text.NonEmpty "Soup", body: "Use ripe tomatoes.", published: True, author: author }
   let _ <- Db.insert Post { slug: Post.Slug "trains", title: Text.NonEmpty "Trains", body: "Fast ones.", published: True, author: author }
-  let model <- load { page: 1, q: "TOMATO" } { user: Nothing }
+  let model <- load { page: 1, q: "TOMATO" } { user: Nothing, role: Reader }
   let titles = List.map (\p -> p.title) model.posts
   Task.succeed ({ count: List.length titles, title: List.member (Text.NonEmpty "Tomato season") titles, body: List.member (Text.NonEmpty "Soup") titles } == { count: 2, title: True, body: True })
 }
@@ -116,20 +112,20 @@ test "a `%` in the query is literal" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Db.insert Post { slug: Post.Slug "done", title: Text.NonEmpty "100% done", body: "", published: True, author: author }
   let _ <- Db.insert Post { slug: Post.Slug "ways", title: Text.NonEmpty "1000 ways", body: "", published: True, author: author }
-  let model <- load { page: 1, q: "100%" } { user: Nothing }
+  let model <- load { page: 1, q: "100%" } { user: Nothing, role: Reader }
   Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "100% done"])
 }
 
 test "page 99 is empty" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Task.all (List.map (\n -> Db.insert Post { slug: Post.Slug ("post-" ++ Text.fromInt n), title: Text.NonEmpty "A post", body: "", published: True, author: author }) (List.range 1 11))
-  let pages <- Query.all (List.map (\n -> load { page: n, q: "" } { user: Nothing }) [1, 2, 99, 0])
+  let pages <- Query.all (List.map (\n -> load { page: n, q: "" } { user: Nothing, role: Reader }) [1, 2, 99, 0])
   let seen = List.map (\m -> { page: m.page, posts: List.length m.posts, hasMore: m.hasMore }) pages
   Task.succeed (seen == [{ page: 1, posts: 10, hasMore: True }, { page: 2, posts: 1, hasMore: False }, { page: 99, posts: 0, hasMore: False }, { page: 1, posts: 10, hasMore: True }])
 }
 
 test "a negative page is page 1" = {
-  let model <- load { page: -3, q: "" } { user: Nothing }
+  let model <- load { page: -3, q: "" } { user: Nothing, role: Reader }
   Task.succeed (model.page == 1)
 }
 
@@ -137,7 +133,7 @@ test "a `_` in the query is literal" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Db.insert Post { slug: Post.Slug "snake", title: Text.NonEmpty "snake_case", body: "", published: True, author: author }
   let _ <- Db.insert Post { slug: Post.Slug "camel", title: Text.NonEmpty "snakeYcase", body: "", published: True, author: author }
-  let model <- load { page: 1, q: "e_c" } { user: Nothing }
+  let model <- load { page: 1, q: "e_c" } { user: Nothing, role: Reader }
   Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "snake_case"])
 }
 
@@ -145,20 +141,20 @@ test "a `_` in the query is literal" = {
 -- that a search costs the length of every post times the length of the query.
 test "a long query is cut" = {
   let long = Text.join "" (List.map (\n -> "tomato ") (List.range 1 100))
-  let model <- load { page: 1, q: long } { user: Nothing }
+  let model <- load { page: 1, q: long } { user: Nothing, role: Reader }
   Task.succeed (model.q == Text.slice 0 100 long)
 }
 
 test "a search answers with the first page of its results" = {
-  let model <- load { page: 3, q: "" } { user: Nothing }
-  let nav <- update (Search { form: { q: "soup" } }) model { user: Nothing }
+  let model <- load { page: 3, q: "" } { user: Nothing, role: Reader }
+  let nav <- update (Search { form: { q: "soup" } }) model { user: Nothing, role: Reader }
   Task.succeed (nav == Redirect (Posts.Index { page: 1, q: "soup" }))
 }
 
 test "only an Author sees the Write link" = {
   let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
-  let pages <- Query.all (List.map (\user -> load { page: 1, q: "" } { user: user }) [Nothing, Just reader, Just author])
+  let pages <- Query.all [load { page: 1, q: "" } { user: Nothing, role: Reader }, load { page: 1, q: "" } { user: Just reader, role: Reader }, load { page: 1, q: "" } { user: Just author, role: Author }]
   Task.succeed (List.map (\m -> m.canWrite) pages == [False, False, True])
 }
 
@@ -184,16 +180,17 @@ test "a search through the form" = {
 test "a page that is exactly full has no next page" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let _ <- Task.all (List.map (\n -> Db.insert Post { slug: Post.Slug ("post-" ++ Text.fromInt n), title: Text.NonEmpty "A post", body: "", published: True, author: author }) (List.range 1 10))
-  let model <- load { page: 1, q: "" } { user: Nothing }
+  let model <- load { page: 1, q: "" } { user: Nothing, role: Reader }
   Task.succeed ({ posts: List.length model.posts, hasMore: model.hasMore } == { posts: 10, hasMore: False })
 }
 
 -- The front page is the one page with a Log out button that a visitor may also see, so logging
 -- out from it shows whether `App.Logout` redirects: a Rerender would show the front page again.
+-- Logging out also leaves the session's role at Reader.
 test "logging out from the front page goes to log in" = {
-  let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
-  let _ <- Test.login { user: Just reader }
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Test.login { user: Just author, role: Author }
   let _ <- Test.get (Posts.Index {})
   let out <- Test.click App.Logout
-  Task.succeed ({ out: out.answer, user: out.session.user } == { out: Redirected (Auth.Login {}), user: Nothing })
+  Task.succeed ({ out: out.answer, user: out.session.user, role: out.session.role } == { out: Redirected (Auth.Login {}), user: Nothing, role: Reader })
 }

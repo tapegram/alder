@@ -3,7 +3,8 @@ module User
 type UserId = brand Text
 
 -- Anyone, logged in or not, can read and comment. An Author can also write posts: the Admin
--- pages are a 404 for a Reader.
+-- pages `requires user, role Author`, so they are a 404 for a Reader. The session holds the
+-- role the user had when they logged in (App's `session`).
 type Role = Reader | Author
 
 table User {
@@ -14,8 +15,3 @@ table User {
   role: Role = Reader,
   created: Time @created,
 }
-
--- author is the user with that id when they are an Author, and Nothing for a Reader (or no
--- user): the one role check of the Admin pages and of the front page's Write link.
-author : UserId -> Query (Maybe User)
-author id = Db.from User |> Db.where (User.id.eq id) |> Db.where (User.role.eq Author) |> Db.first

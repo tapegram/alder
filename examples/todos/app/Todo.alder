@@ -6,12 +6,14 @@ type TodoId = brand Text
 
 type Filter = All | Active | Completed
 
+-- `owner` is the table's `@owner`: `Db.mine Todo`, `Db.getMine`, `Db.updateMine`, `Db.deleteMine`
+-- and `Db.insertMine` read and write only the signed-in user's todos (book 06, "Rules").
 table Todo {
   id: TodoId @id,
   title: Text.NonEmpty,
   done: Bool = False,
   due: Maybe Date,
-  owner: User.UserId @ref User,
+  owner: User.UserId @ref User @owner,
   created: Time @created,
 }
 

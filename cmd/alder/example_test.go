@@ -151,7 +151,7 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Admin "an Author logs out from the admin page"`,
 		`ok   Admin.Edit "deleting a post deletes its comments"`,
 		`ok   Admin.Edit "another author's post is not found"`,
-		`ok   Admin.Edit "a demoted author cannot edit"`,
+		`ok   Admin.Edit "a demoted author can edit until they log in again"`,
 		`ok   Admin.Edit "Publish shows the post on the front page; Unpublish hides it"`,
 		`ok   Post "bySlug finds the post with that slug"`,
 		`ok   Post "an author with posts cannot be deleted"`,
@@ -179,7 +179,7 @@ func TestExample_Blog(t *testing.T) {
 const (
 	todosMutationScore = 1.00
 	blogMutationScore  = 0.94
-	todosMutants       = 33
+	todosMutants       = 32
 	blogMutants        = 58
 )
 

@@ -14,8 +14,7 @@ type Model = {
 load : Params -> Session -> Query Model
 load params session = {
   let todos <-
-    Db.from Todo
-      |> Db.where (Todo.owner.eq session.user)
+    Db.mine Todo
       |> Db.orderBy Todo.created.desc
       |> Db.all
   Query.succeed { filter: params.filter, todos: List.filter (Todo.matches params.filter) todos }
@@ -33,31 +32,20 @@ msg Delete { id: Todo.TodoId }
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Submit p -> {
-    let _ <- Db.insert Todo { title: p.form.title, due: p.form.due, owner: session.user }
+    let _ <- Db.insertMine Todo { title: p.form.title, due: p.form.due }
     Task.succeed (Redirect (Todos.Index { filter: model.filter }))
   },
+  -- A message's id comes from the request: anyone can post `Toggle` with another user's id.
+  -- `Db.updateMine` and `Db.deleteMine` change the row only when it is the session's user's;
+  -- any other id, like a missing one, is a 404 (book 06, "Rules").
   Toggle p -> {
-    let todo <- owned p.id session
-    let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
+    let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
     Task.succeed Rerender
   },
   Delete p -> {
-    let todo <- owned p.id session
-    let _ <- Db.delete Todo todo.id
+    let _ <- Db.deleteMine Todo p.id
     Task.succeed Rerender
   },
-}
-
--- owned is the todo a message names, when the session's user owns it; otherwise the message is
--- a 404. `load` only lists the user's todos, but a message's id comes from the request: anyone
--- can post `Toggle` with another user's id, so `update` checks it again.
-owned : Todo.TodoId -> Session -> Task Todo
-owned id session = {
-  let found <- Db.get Todo id
-  match found {
-    Just todo -> if todo.owner == session.user then Task.succeed todo else Task.notFound,
-    Nothing -> Task.notFound,
-  }
 }
 
 view : Model -> Session -> Html Msg
@@ -104,20 +92,37 @@ Item props =
 test "Toggle flips done" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
   let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: me })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
-  Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.get Todo", "Db.update Todo"], done: Just True })
+  Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.updateMine Todo"], done: Just True })
 }
 
+-- A stranger's own page lists none of my todos, but a message's id comes from the request.
+-- Here my page is still open in the browser when a stranger logs in on it and presses my todo's
+-- Toggle: `Db.updateMine` finds no todo of the stranger's with that id, so the answer is a 404
+-- and nothing changes.
 test "Toggle by another user is not found" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
-  let stranger = User.UserId "someone-else"
-  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let r <- Test.click (Toggle { id: id })
   let after <- Db.get Todo id
-  let done = Maybe.map (\t -> t.done) after
-  Task.succeed ({ value: r.value, trace: r.trace, done: done } == { value: Err "not found", trace: ["Db.get Todo"], done: Just False })
+  Task.succeed ({ answer: r.answer, done: Maybe.map (\t -> t.done) after } == { answer: PageMissing, done: Just False })
+}
+
+test "Delete by another user is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let r <- Test.click (Delete { id: id })
+  let after <- Db.get Todo id
+  Task.succeed ({ answer: r.answer, todo: Maybe.map (\t -> t.title) after } == { answer: PageMissing, todo: Just (Text.NonEmpty "Milk") })
 }
 
 -- The same page through the browser: the test logs in, opens the page, and uses the form and
@@ -154,6 +159,7 @@ test "a stranger cannot see my todo" = {
 test "Delete removes the todo" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
   let r <- Test.run (update (Delete { id: id }) { filter: All, todos: [] } { user: me })
   let after <- Db.get Todo id
   Task.succeed ({ value: r.value, todo: Maybe.map (\t -> t.title) after } == { value: Ok Rerender, todo: Nothing })
@@ -166,4 +172,20 @@ test "the newest todo is listed first" = {
   let _ <- Test.login { user: Just me }
   let page <- Test.get (Todos.Index {})
   Task.succeed (Test.texts "li a" page.doc == ["Second", "First"])
+}
+
+-- A test may use the scoped operations itself: they act for the test's session, which
+-- `Test.login` sets. `Db.mine Todo` is what Me sees, and not the other user's todo.
+test "Db.mine is what Me sees" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Bread", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Eggs", due: Nothing, owner: other }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.run {
+    let n <- Db.mine Todo |> Db.count
+    Task.succeed n
+  }
+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok 2, trace: ["Db.mine Todo", "Db.count Todo"] })
 }

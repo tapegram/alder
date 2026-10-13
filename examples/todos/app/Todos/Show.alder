@@ -10,11 +10,8 @@ type Model = { todo: Todo }
 
 load : Params -> Session -> Query Model
 load params session = {
-  let found <- Db.get Todo params.id
-  match found {
-    Just todo -> if todo.owner == session.user then Query.succeed { todo: todo } else Query.notFound,
-    Nothing -> Query.notFound,
-  }
+  let todo <- Db.getMine Todo params.id
+  Query.succeed { todo: todo }
 }
 
 form EditTodo = {
@@ -22,8 +19,10 @@ form EditTodo = {
   due: Maybe Date,
 }
 
--- The messages carry no id: the page's parameter names the todo, and `load` has checked that
--- the session's user owns it, so `update` acts on `model.todo` (book 06, "Authorize in update").
+-- `Db.getMine` finds the todo only when it is the session's user's: anyone else's, like a missing
+-- one, is a 404. The messages carry no id: the page's parameter names the todo, and every message
+-- runs after this `load`, so `update` acts on `model.todo` with the plain `Db.update` (book 06,
+-- "Rules").
 msg Save form EditTodo
 msg Delete
 

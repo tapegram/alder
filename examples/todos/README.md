@@ -6,11 +6,20 @@ each command.
 
 ## Mutation score
 
-`alder test --mutate examples/todos` (book 10, "Mutation testing"): 33 mutants.
+`alder test --mutate examples/todos` (book 10, "Mutation testing"): 32 mutants.
 
-- Before: 9 tests, 18 killed, 15 survived (score 0.55).
-- After: 18 tests, 33 killed, 0 survived (score 1.00). `TestExample_TodosMutation` fails if
-  the score drops below 1.00 or the number of mutants is not 33.
+- Before: 11 tests, 18 killed, 14 survived (score 0.56).
+- After: 20 tests, 32 killed, 0 survived (score 1.00). `TestExample_TodosMutation` fails if
+  the score drops below 1.00 or the number of mutants is not 32.
+
+The ownership rules are declared (book 06, "Rules"): `Todo.owner` is the table's `@owner`, and
+the pages use `Db.mine`, `Db.getMine`, `Db.updateMine`, `Db.deleteMine` and `Db.insertMine`.
+Their four `scope dropped` mutants (each scoped operation made unscoped) are killed by the
+ownership tests among the eleven: `Todos.Index "a stranger cannot see my todo"` (the list's
+`Db.mine` and `Todos.Show`'s `Db.getMine`), `Todos.Index "Toggle by another user is not found"`
+and `Todos.Index "Delete by another user is not found"` (a stranger presses my todo's button on
+a page still open in the browser). `Db.insertMine` has no `scope dropped` mutant: the owner
+comes from the session either way.
 
 The nine tests that closed the gaps, each named for what it kills:
 
@@ -21,12 +30,13 @@ The nine tests that closed the gaps, each named for what it kills:
   1, not 2), `Todo "Active keeps only open todos"` and `Todo "each filter has its label"`: the
   swapped `match` arms and the dropped `not` of `matches` and `filterLabel`.
 - `Todo "a user with todos cannot be deleted"`: `owner @ref User` changed to `@cascade`.
-- `Todos.Index "Delete removes the todo"`: the delete replaced by `Task.succeed ()`.
+- `Todos.Index "Delete removes the todo"`: the delete replaced by `Task.succeed ()` (now also
+  killed by `"Delete by another user is not found"`, which expects a 404 and gets a Rerender).
 - `Todos.Index "the newest todo is listed first"`: `Db.orderBy` reversed.
 - `Todos.Show "a visitor is sent to log in from a todo"`: `requires user` dropped.
 - `Todos.Show "saving changes the title and the due date"`: the save replaced, each updated
   field dropped, and the redirect after it.
 - `Todos.Show "deleting from the todo's page"`: that page's delete, and its redirect.
 
-No mutant survives. The run also skips 10 mutants that do not apply (and refuses none as
+No mutant survives. The run also skips 5 mutants that do not apply (and refuses none as
 provably equivalent); neither count is part of the score.

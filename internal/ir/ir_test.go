@@ -514,14 +514,18 @@ func walkTestFakes(e Expr, out *[]*TestFake) {
 }
 
 // TestPositions: the node kinds a mutant targets carry the line and column of their source
-// (todos example), and the insert row's omitted default is the table field's own Default node.
+// (the todos example's scoped operations and plain writes, the blog's conditions), and the insert
+// row's omitted default is the table field's own Default node.
 func TestPositions(t *testing.T) {
 	p := lowerDir(t, "../../examples/todos")
-	var index *Module
-	for _, m := range p.Modules {
-		if m.Name == "Todos.Index" {
-			index = m
+	module := func(p *Program, name string) *Module {
+		for _, m := range p.Modules {
+			if m.Name == name {
+				return m
+			}
 		}
+		t.Fatalf("no module %s", name)
+		return nil
 	}
 	value := func(m *Module, name string) *Value {
 		for _, v := range m.Values {
@@ -532,6 +536,7 @@ func TestPositions(t *testing.T) {
 		t.Fatalf("no value %s.%s", m.Name, name)
 		return nil
 	}
+	index, show := module(p, "Todos.Index"), module(p, "Todos.Show")
 	got := map[string][]Pos{}
 	var visit func(e Expr)
 	visit = func(e Expr) {
@@ -558,17 +563,33 @@ func TestPositions(t *testing.T) {
 			visit(x.Else)
 		case *Op:
 			got["op"] = append(got["op"], x.Pos)
+			visit(x.L)
+			visit(x.R)
 		case *DbGet:
 		case *DbSelect:
 			got["select"] = append(got["select"], x.Pos)
+			visit(x.Base)
 			for _, w := range x.Where {
-				got["cond"] = append(got["cond"], w.(*Cond).Pos)
+				if c, ok := w.(*Cond); ok { // not a variable holding one
+					got["cond"] = append(got["cond"], c.Pos)
+				}
 			}
 			for _, o := range x.Order {
 				got["ord"] = append(got["ord"], o.(*Ord).Pos)
 			}
 			got["where-step"] = append(got["where-step"], x.WherePos...)
 			got["order-step"] = append(got["order-step"], x.OrderPos...)
+		case *DbMine:
+			got["mine"] = append(got["mine"], x.Pos)
+		case *DbGetMine:
+			got["get-mine"] = append(got["get-mine"], x.Pos)
+		case *DbInsertMine:
+			got["insert-mine"] = append(got["insert-mine"], x.Pos)
+		case *DbUpdateMine:
+			got["update-mine"] = append(got["update-mine"], x.Pos)
+			visit(x.Fn.(*Lambda).Body)
+		case *DbDeleteMine:
+			got["delete-mine"] = append(got["delete-mine"], x.Pos)
 		case *DbInsert:
 			got["insert"] = append(got["insert"], x.Pos)
 		case *DbUpdate:
@@ -584,25 +605,27 @@ func TestPositions(t *testing.T) {
 			}
 		}
 	}
-	visit(value(index, "owned").Body)
 	visit(value(index, "load").Body)
 	visit(value(index, "update").Body)
+	visit(value(show, "load").Body)
+	visit(value(show, "update").Body)
 	want := map[string][]Pos{
-		"bind":          {{56, 3}, {16, 3}, {36, 5}, {40, 5}, {41, 5}, {45, 5}, {46, 5}},
-		"match":         {{57, 3}, {34, 28}},
-		"if":            {{58, 18}},
-		"op":            {{58, 21}},
-		"select":        {{17, 5}},
-		"cond":          {{18, 20}},
-		"ord":           {{19, 21}},
-		"where-step":    {{18, 10}},
-		"order-step":    {{19, 10}},
-		"insert":        {{36, 14}},
-		"update":        {{41, 14}},
-		"record-update": {{41, 44}},
-		"delete":        {{46, 14}},
-		"ctor Redirect": {{37, 19}},
-		"ctor Rerender": {{42, 18}, {47, 18}},
+		"bind":          {{16, 3}, {35, 5}, {42, 5}, {46, 5}, {13, 3}, {32, 5}, {36, 5}},
+		"match":         {{33, 28}, {30, 28}},
+		"select":        {{18, 10}}, // the step that extends the Base
+		"mine":          {{17, 5}},
+		"where-step":    nil,
+		"ord":           {{18, 21}},
+		"order-step":    {{18, 10}},
+		"insert-mine":   {{35, 14}},
+		"update-mine":   {{42, 14}},
+		"record-update": {{42, 45}, {32, 50}},
+		"delete-mine":   {{46, 14}},
+		"get-mine":      {{13, 15}},
+		"update":        {{32, 14}},
+		"delete":        {{36, 14}},
+		"ctor Redirect": {{36, 19}, {33, 19}, {37, 19}},
+		"ctor Rerender": {{43, 18}, {47, 18}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("positions:\n got %v\nwant %v", got, want)
@@ -619,14 +642,32 @@ func TestPositions(t *testing.T) {
 			done = f
 		}
 	}
-	if lit, ok := done.Default.(*Lit); !ok || lit.Pos != (Pos{12, 16}) || done.Pos != (Pos{12, 3}) {
+	if lit, ok := done.Default.(*Lit); !ok || lit.Pos != (Pos{14, 16}) || done.Pos != (Pos{14, 3}) {
 		t.Fatalf("Todo.done: default %#v, field pos %v", done.Default, done.Pos)
 	}
-	ins := value(index, "update").Body.(*Match).Cases[0].Body.(*Let).Body.(*EffBind).Effect.(*DbInsert)
+	ins := value(index, "update").Body.(*Match).Cases[0].Body.(*Let).Body.(*EffBind).Effect.(*DbInsertMine)
 	for _, f := range ins.Row.(*Record).Fields {
 		if f.Name == "done" && f.Value != done.Default {
 			t.Fatalf("the insert row's done is %#v, not the table's default node", f.Value)
 		}
+	}
+
+	// the blog's front page: its `where` steps and conditions, its `if`s and operators
+	blog := lowerDir(t, "../../examples/blog")
+	got = map[string][]Pos{}
+	visit(value(module(blog, "Posts.Index"), "load").Body)
+	want = map[string][]Pos{
+		"bind":       {{34, 3}},
+		"if":         {{30, 14}, {30, 45}, {33, 5}},
+		"op":         {{30, 17}, {30, 48}, {42, 18}},
+		"select":     {{35, 5}},
+		"cond":       {{36, 20}}, // the second `Db.where` takes a variable, `matching`
+		"ord":        {{38, 21}},
+		"where-step": {{36, 10}, {37, 10}},
+		"order-step": {{38, 10}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("blog positions:\n got %v\nwant %v", got, want)
 	}
 }
 

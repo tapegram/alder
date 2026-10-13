@@ -36,8 +36,12 @@ update msg model session = match msg {
   Submit p -> {
     let found <- Password.verify { email: p.form.email, password: p.form.password }
     match found {
+      -- The session keeps the user and their role as the row has it now: a role changed later
+      -- applies when they next log in.
       Just id -> {
-        let _ <- Session.put (\s -> { s | user: Just id })
+        let found <- Db.get User id
+        let role = Maybe.withDefault Reader (Maybe.map (\u -> u.role) found)
+        let _ <- Session.put (\s -> { s | user: Just id, role: role })
         Task.succeed (Redirect (Posts.Index {}))
       },
       Nothing -> Task.succeed (Reject "Email or password is incorrect."),
@@ -60,7 +64,8 @@ view model session =
   </Layout.Page>
 
 -- Logging in through the form, with the fake: an unknown email is rejected with the form's
--- message, and a known one stores the user in the session and goes to the front page.
+-- message, and a known one stores the user and their role in the session and goes to the front
+-- page.
 test "an unknown email is rejected" = {
   let _ <- Test.fake Password
   let _ <- Test.get (Auth.Login {})
@@ -70,8 +75,8 @@ test "an unknown email is rejected" = {
 
 test "logging in through the form" = {
   let _ <- Test.fake Password
-  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Author }
   let _ <- Test.get (Auth.Login {})
   let r <- Test.submit Credentials { email: Text.Email "me@example.com", password: Text.Secret "secret" }
-  Task.succeed ({ answer: r.answer, user: r.session.user, title: Test.text "h1" r.doc } == { answer: Redirected (Posts.Index {}), user: Just me, title: Just "Blog" })
+  Task.succeed ({ answer: r.answer, user: r.session.user, role: r.session.role, title: Test.text "h1" r.doc } == { answer: Redirected (Posts.Index {}), user: Just me, role: Author, title: Just "Blog" })
 }

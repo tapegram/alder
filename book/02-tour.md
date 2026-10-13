@@ -457,12 +457,14 @@ type TodoId = brand Text
 
 type Filter = All | Active | Completed
 
+-- `owner` is the table's `@owner`: `Db.mine Todo`, `Db.getMine`, `Db.updateMine`, `Db.deleteMine`
+-- and `Db.insertMine` read and write only the signed-in user's todos (book 06, "Rules").
 table Todo {
   id: TodoId @id,
   title: Text.NonEmpty,
   done: Bool = False,
   due: Maybe Date,
-  owner: User.UserId @ref User,
+  owner: User.UserId @ref User @owner,
   created: Time @created,
 }
 
@@ -491,6 +493,10 @@ but only this module can make one from a plain `Text`. Everywhere else, a
 `TodoId` comes from a route, a form, or a database row, so it is always a
 real id. `title: Text.NonEmpty` means an empty title can't exist in the
 table, and the form that creates todos will refuse one before any code runs.
+`owner: User.UserId @ref User` says each todo belongs to a user, and
+`@owner` makes that the rule of the table: the pages read and write todos
+through `Db`'s scoped operations, which act only on the signed-in user's
+rows (below; chapter 6, "Rules").
 
 ### The page
 
@@ -522,8 +528,7 @@ type Model = {
 load : Params -> Session -> Query Model
 load params session = {
   let todos <-
-    Db.from Todo
-      |> Db.where (Todo.owner.eq session.user)
+    Db.mine Todo
       |> Db.orderBy Todo.created.desc
       |> Db.all
   Query.succeed { filter: params.filter, todos: List.filter (Todo.matches params.filter) todos }
@@ -532,7 +537,9 @@ load params session = {
 
 `load` builds the Model for one request. It returns a `Query`: a description
 of reads that the runtime performs. `let todos <- ...` binds the result of a
-read. Because it is a `Query`, nothing in `load` can write.
+read. Because it is a `Query`, nothing in `load` can write. `Db.mine Todo`
+is the todos whose `owner` is the session's user, newest first here: the
+page can only ever list the user's own.
 
 ```alder part=Todos.Index
 form NewTodo = {
@@ -552,31 +559,20 @@ URL. `Submit` carries a form; the other two carry an id. Together they make up t
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Submit p -> {
-    let _ <- Db.insert Todo { title: p.form.title, due: p.form.due, owner: session.user }
+    let _ <- Db.insertMine Todo { title: p.form.title, due: p.form.due }
     Task.succeed (Redirect (Todos.Index { filter: model.filter }))
   },
+  -- A message's id comes from the request: anyone can post `Toggle` with another user's id.
+  -- `Db.updateMine` and `Db.deleteMine` change the row only when it is the session's user's;
+  -- any other id, like a missing one, is a 404 (book 06, "Rules").
   Toggle p -> {
-    let todo <- owned p.id session
-    let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
+    let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
     Task.succeed Rerender
   },
   Delete p -> {
-    let todo <- owned p.id session
-    let _ <- Db.delete Todo todo.id
+    let _ <- Db.deleteMine Todo p.id
     Task.succeed Rerender
   },
-}
-
--- owned is the todo a message names, when the session's user owns it; otherwise the message is
--- a 404. `load` only lists the user's todos, but a message's id comes from the request: anyone
--- can post `Toggle` with another user's id, so `update` checks it again.
-owned : Todo.TodoId -> Session -> Task Todo
-owned id session = {
-  let found <- Db.get Todo id
-  match found {
-    Just todo -> if todo.owner == session.user then Task.succeed todo else Task.notFound,
-    Nothing -> Task.notFound,
-  }
 }
 ```
 
@@ -584,10 +580,12 @@ owned id session = {
 next. `Rerender` re-runs `load` and `view` and patches the page in place.
 `Redirect` is a real HTTP redirect, used after a create so a refresh doesn't
 resubmit. The `match` must handle every `msg`, or the module won't compile.
-`owned` checks that the todo a message names belongs to the user before
-`Toggle` or `Delete` touches it: a message's id comes from the request, so
-`update` must not trust it (`Task.notFound` answers 404; chapter 6,
-"Authorize in `update` too").
+`Db.insertMine` stores the new todo with the session's user as its
+`owner` (the record does not name `owner`; it may not). `Db.updateMine` and
+`Db.deleteMine` act on the todo a message names only when it is the
+user's: a message's id comes from the request, so `update` must not trust
+it, and a todo that is someone else's answers exactly as a missing one
+does, with a 404 (chapter 6, "Rules").
 
 ```alder part=Todos.Index
 view : Model -> Session -> Html Msg
@@ -646,30 +644,49 @@ due date shows nothing there: `Html.none` renders nothing. `click={Toggle
 { id: ... }}` sends a message; it compiles to a POST (and, with Datastar, an
 in-place patch of the page; chapter 6, "How a request runs").
 
-The module ends with its tests. The first two each insert a user and a
-todo into a fresh, empty database, send `update` a `Toggle`, and check
-what happened: the owner's toggle reads the todo and updates it; another
-user's is a 404 and changes nothing. Chapter 10 explains them line by
-line.
+The module ends with its tests. The first inserts a user and a todo into
+a fresh, empty database, logs in as that user, sends `update` a `Toggle`,
+and checks what happened: the trace is the one scoped write, and the todo
+is done. The next two are a stranger's attempt: my list is still open in
+the browser when a stranger logs in on it and presses my todo's buttons.
+Each answer is a 404 (`PageMissing`), and the todo is as it was. Chapter
+10 explains them line by line.
 
 ```alder part=Todos.Index
 test "Toggle flips done" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
   let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: me })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
-  Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.get Todo", "Db.update Todo"], done: Just True })
+  Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.updateMine Todo"], done: Just True })
 }
 
+-- A stranger's own page lists none of my todos, but a message's id comes from the request.
+-- Here my page is still open in the browser when a stranger logs in on it and presses my todo's
+-- Toggle: `Db.updateMine` finds no todo of the stranger's with that id, so the answer is a 404
+-- and nothing changes.
 test "Toggle by another user is not found" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
-  let stranger = User.UserId "someone-else"
-  let r <- Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let r <- Test.click (Toggle { id: id })
   let after <- Db.get Todo id
-  let done = Maybe.map (\t -> t.done) after
-  Task.succeed ({ value: r.value, trace: r.trace, done: done } == { value: Err "not found", trace: ["Db.get Todo"], done: Just False })
+  Task.succeed ({ answer: r.answer, done: Maybe.map (\t -> t.done) after } == { answer: PageMissing, done: Just False })
+}
+
+test "Delete by another user is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let r <- Test.click (Delete { id: id })
+  let after <- Db.get Todo id
+  Task.succeed ({ answer: r.answer, todo: Maybe.map (\t -> t.title) after } == { answer: PageMissing, todo: Just (Text.NonEmpty "Milk") })
 }
 ```
 
@@ -677,10 +694,10 @@ The next three tests go through the page itself, as a user would: they log
 in, open the page, post its form, click its buttons, and read what the page
 shows (`#summary` is the `<p id="summary">` above). The form posted by
 `Test.submit NewTodo` and the button clicked by `Test.click (Toggle { id:
-id })` must be on the page the test holds, so a stranger, whose page lists
-none of my todos, has nothing to click; the todo's own page is a 404 for
-them (`PageMissing`). Chapter 10, "Testing through the browser", explains each
-step.
+id })` must be on the page the test holds, so a stranger who opens the list
+afresh, whose page lists none of my todos, has nothing to click; the todo's
+own page is a 404 for them (`PageMissing`). Chapter 10, "Testing through the
+browser", explains each step.
 
 ```alder part=Todos.Index
 -- The same page through the browser: the test logs in, opens the page, and uses the form and
@@ -715,15 +732,19 @@ test "a stranger cannot see my todo" = {
 }
 ```
 
-The last two were written after `alder test --mutate` (chapter 10,
+The next two were written after `alder test --mutate` (chapter 10,
 "Mutation testing") showed that nothing checked them: that `Delete`
 really deletes, and that the newest todo comes first. `Test.texts "li a"`
 is the text of every link inside a list item, in page order: the titles.
+The last shows the scoped read on its own: a test may use `Db.mine` too,
+and it acts for the user `Test.login` signed in, so it counts Me's two
+todos and not the other user's one.
 
 ```alder part=Todos.Index
 test "Delete removes the todo" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
   let r <- Test.run (update (Delete { id: id }) { filter: All, todos: [] } { user: me })
   let after <- Db.get Todo id
   Task.succeed ({ value: r.value, todo: Maybe.map (\t -> t.title) after } == { value: Ok Rerender, todo: Nothing })
@@ -737,6 +758,22 @@ test "the newest todo is listed first" = {
   let page <- Test.get (Todos.Index {})
   Task.succeed (Test.texts "li a" page.doc == ["Second", "First"])
 }
+
+-- A test may use the scoped operations itself: they act for the test's session, which
+-- `Test.login` sets. `Db.mine Todo` is what Me sees, and not the other user's todo.
+test "Db.mine is what Me sees" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Bread", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Eggs", due: Nothing, owner: other }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.run {
+    let n <- Db.mine Todo |> Db.count
+    Task.succeed n
+  }
+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok 2, trace: ["Db.mine Todo", "Db.count Todo"] })
+}
 ```
 
 ### What the compiler checked
@@ -745,13 +782,15 @@ Reading this module, the compiler verified that: every `href` points at a
 real page with the right parameters; every `click` and `submit` is a message
 of this page; every message has an `update` arm; the form's fields match
 the `NewTodo` type; `load` performs no writes; `session.user` is always
-present; `title` is never empty; and every `match` is complete. None of
-that needed a test.
+present; `title` is never empty; every `match` is complete; and the
+scoped operations are used only on a table with an `@owner`, in a page
+that `requires user`. None of that needed a test.
 
 ### The rest of the app
 
-- `app/Todos/Show.alder`: a detail page with an edit form. It uses
-  `Query.notFound` when the todo doesn't exist or belongs to someone else.
+- `app/Todos/Show.alder`: a detail page with an edit form. Its `load`
+  reads the todo with `Db.getMine`, which answers 404 when the todo
+  doesn't exist or belongs to someone else.
   Its tests send a visitor to log in, save the form and delete the todo
   through the page.
 - `app/Auth/Login.alder`: the login page. It declares a `Password`
