@@ -178,8 +178,26 @@ func TestRouter_StaticAndScript(t *testing.T) {
 	if w.Code != 200 || w.Body.String() != "body{color:red}" || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/css") {
 		t.Fatalf("static: %d %q %q", w.Code, w.Header().Get("Content-Type"), w.Body.String())
 	}
+	if w.Header().Get("Cache-Control") != "" {
+		t.Fatalf("the app's own static file is not immutable: %q", w.Header().Get("Cache-Control"))
+	}
 	if w := serve(h, httptest.NewRequest("GET", "/static/img/a.txt", nil)); w.Code != 200 || w.Body.String() != "a" {
 		t.Fatalf("nested static: %d", w.Code)
+	}
+	// The design system's assets (static/al/, written by every build) change only with the
+	// compiler: immutable, like datastar.js. A missing one is a plain 404.
+	if err := os.MkdirAll(filepath.Join(dir, "al"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "al", "al.css"), []byte(":root{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w = serve(h, httptest.NewRequest("GET", "/static/al/al.css", nil))
+	if w.Code != 200 || w.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/css") {
+		t.Fatalf("al.css: %d %q %q", w.Code, w.Header().Get("Cache-Control"), w.Header().Get("Content-Type"))
+	}
+	if w := serve(h, httptest.NewRequest("GET", "/static/al/missing.css", nil)); w.Code != 404 || w.Header().Get("Cache-Control") != "" {
+		t.Fatalf("missing al file: %d %q", w.Code, w.Header().Get("Cache-Control"))
 	}
 	for _, path := range []string{
 		"/static/../go.mod", "/static/../secret.txt", "/static/%2e%2e/secret.txt",

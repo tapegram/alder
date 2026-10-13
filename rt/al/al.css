@@ -1,0 +1,1067 @@
+/*! alder-ui v0.1.1 | Apache-2.0 | https://github.com/tapegram/alder-ui
+ * Built by scripts/build.py from tokens.css and components/; do not edit. */
+
+@layer al {
+
+/* ---- tokens.css ---- */
+
+/*
+ * alder-ui tokens.
+ *
+ * Colour tokens use shadcn/ui's names and its default (slate) values, written
+ * as full hsl() colours so components can use them directly: var(--primary).
+ * Three values differ from shadcn's defaults so every pairing passes WCAG AA
+ * (test/check.py computes the ratios): light --destructive is darker, and
+ * --input is darker in both themes so field borders reach 3:1.
+ *
+ * Tokens prefixed --al- are alder-ui's own: the soft colours for alerts, the
+ * error text colour, spacing, type, sizes and the focus ring.
+ *
+ * Themes: light by default; dark when the OS asks for it, unless the page (or
+ * a subtree) says data-theme="light"; data-theme="dark" forces dark.
+ *
+ * In al.css everything sits in @layer al, so any unlayered CSS of yours wins
+ * whatever its specificity. To re-theme:
+ *   :root { --primary: …; }                 both themes
+ *   [data-theme="dark"] { --primary: …; }   the forced dark theme; for the
+ *   OS-driven one, repeat it in
+ *   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { … } }
+ */
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(222.2 84% 4.9%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222.2 84% 4.9%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(222.2 84% 4.9%);
+  --primary: hsl(222.2 47.4% 11.2%);
+  --primary-foreground: hsl(210 40% 98%);
+  --secondary: hsl(210 40% 96.1%);
+  --secondary-foreground: hsl(222.2 47.4% 11.2%);
+  --muted: hsl(210 40% 96.1%);
+  --muted-foreground: hsl(215.4 16.3% 46.9%);
+  --accent: hsl(210 40% 96.1%);
+  --accent-foreground: hsl(222.2 47.4% 11.2%);
+  --destructive: hsl(0 72.2% 50.6%);
+  --destructive-foreground: hsl(210 40% 98%);
+  --border: hsl(214.3 31.8% 91.4%);
+  --input: hsl(215 16% 57%);
+  --ring: hsl(222.2 84% 4.9%);
+
+  --al-destructive-text: hsl(0 72.2% 50.6%);
+  --al-info-soft: hsl(214 100% 97%);
+  --al-info-soft-foreground: hsl(224 76% 33%);
+  --al-info-border: hsl(213 97% 87%);
+  --al-success-soft: hsl(138 76% 97%);
+  --al-success-soft-foreground: hsl(144 61% 20%);
+  --al-success-border: hsl(141 79% 85%);
+  --al-warning-soft: hsl(48 100% 96%);
+  --al-warning-soft-foreground: hsl(22 78% 26%);
+  --al-warning-border: hsl(48 97% 77%);
+  --al-destructive-soft: hsl(0 86% 97%);
+  --al-destructive-soft-foreground: hsl(0 70% 35%);
+  --al-destructive-border: hsl(0 96% 89%);
+  --al-shadow-sm: 0 1px 2px 0 hsl(222.2 84% 4.9% / 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --background: hsl(222.2 84% 4.9%);
+    --foreground: hsl(210 40% 98%);
+    --card: hsl(222.2 84% 4.9%);
+    --card-foreground: hsl(210 40% 98%);
+    --popover: hsl(222.2 84% 4.9%);
+    --popover-foreground: hsl(210 40% 98%);
+    --primary: hsl(210 40% 98%);
+    --primary-foreground: hsl(222.2 47.4% 11.2%);
+    --secondary: hsl(217.2 32.6% 17.5%);
+    --secondary-foreground: hsl(210 40% 98%);
+    --muted: hsl(217.2 32.6% 17.5%);
+    --muted-foreground: hsl(215 20.2% 65.1%);
+    --accent: hsl(217.2 32.6% 17.5%);
+    --accent-foreground: hsl(210 40% 98%);
+    --destructive: hsl(0 62.8% 30.6%);
+    --destructive-foreground: hsl(210 40% 98%);
+    --border: hsl(217.2 32.6% 17.5%);
+    --input: hsl(215 20% 40%);
+    --ring: hsl(212.7 26.8% 83.9%);
+
+    --al-destructive-text: hsl(0 90% 70%);
+    --al-info-soft: hsl(222 47% 14%);
+    --al-info-soft-foreground: hsl(213 94% 78%);
+    --al-info-border: hsl(217 60% 30%);
+    --al-success-soft: hsl(150 40% 11%);
+    --al-success-soft-foreground: hsl(142 69% 68%);
+    --al-success-border: hsl(145 45% 25%);
+    --al-warning-soft: hsl(35 60% 11%);
+    --al-warning-soft-foreground: hsl(45 93% 65%);
+    --al-warning-border: hsl(35 60% 28%);
+    --al-destructive-soft: hsl(0 50% 12%);
+    --al-destructive-soft-foreground: hsl(0 94% 82%);
+    --al-destructive-border: hsl(0 55% 32%);
+    --al-shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.5);
+  }
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --background: hsl(222.2 84% 4.9%);
+  --foreground: hsl(210 40% 98%);
+  --card: hsl(222.2 84% 4.9%);
+  --card-foreground: hsl(210 40% 98%);
+  --popover: hsl(222.2 84% 4.9%);
+  --popover-foreground: hsl(210 40% 98%);
+  --primary: hsl(210 40% 98%);
+  --primary-foreground: hsl(222.2 47.4% 11.2%);
+  --secondary: hsl(217.2 32.6% 17.5%);
+  --secondary-foreground: hsl(210 40% 98%);
+  --muted: hsl(217.2 32.6% 17.5%);
+  --muted-foreground: hsl(215 20.2% 65.1%);
+  --accent: hsl(217.2 32.6% 17.5%);
+  --accent-foreground: hsl(210 40% 98%);
+  --destructive: hsl(0 62.8% 30.6%);
+  --destructive-foreground: hsl(210 40% 98%);
+  --border: hsl(217.2 32.6% 17.5%);
+  --input: hsl(215 20% 40%);
+  --ring: hsl(212.7 26.8% 83.9%);
+
+  --al-destructive-text: hsl(0 90% 70%);
+  --al-info-soft: hsl(222 47% 14%);
+  --al-info-soft-foreground: hsl(213 94% 78%);
+  --al-info-border: hsl(217 60% 30%);
+  --al-success-soft: hsl(150 40% 11%);
+  --al-success-soft-foreground: hsl(142 69% 68%);
+  --al-success-border: hsl(145 45% 25%);
+  --al-warning-soft: hsl(35 60% 11%);
+  --al-warning-soft-foreground: hsl(45 93% 65%);
+  --al-warning-border: hsl(35 60% 28%);
+  --al-destructive-soft: hsl(0 50% 12%);
+  --al-destructive-soft-foreground: hsl(0 94% 82%);
+  --al-destructive-border: hsl(0 55% 32%);
+  --al-shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.5);
+}
+
+/* Theme-independent tokens. */
+:root {
+  --radius: 0.5rem;
+  --al-radius-sm: calc(var(--radius) - 2px);
+  --al-radius-full: 9999px;
+  --al-border-width: 1px;
+
+  --al-space-0-5: 0.125rem;
+  --al-space-1: 0.25rem;
+  --al-space-1-5: 0.375rem;
+  --al-space-2: 0.5rem;
+  --al-space-3: 0.75rem;
+  --al-space-4: 1rem;
+  --al-space-6: 1.5rem;
+  --al-space-8: 2rem;
+  --al-space-10: 2.5rem;
+
+  --al-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --al-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --al-text-xs: 0.75rem;
+  --al-text-sm: 0.875rem;
+  --al-text-base: 1rem;
+  --al-text-lg: 1.125rem;
+  --al-leading: 1.5;
+  --al-leading-tight: 1.25;
+  --al-weight-normal: 400;
+  --al-weight-medium: 500;
+  --al-weight-semibold: 600;
+
+  --al-control-h-sm: 2.25rem;
+  --al-control-h-md: 2.5rem;
+  --al-control-h-lg: 2.75rem;
+  --al-checkbox-size: 1rem;
+
+  --al-width-narrow: 40rem;
+  --al-width-normal: 56rem;
+  --al-width-wide: 80rem;
+
+  --al-ring-width: 2px;
+  --al-ring-offset: 2px;
+  --al-disabled-opacity: 0.5;
+  --al-duration: 150ms;
+}
+
+/* Base: the page takes the theme's colours and type. */
+:root,
+[data-theme] {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+:root {
+  font-family: var(--al-font-sans);
+  line-height: var(--al-leading);
+}
+
+/* ---- components/al-button.css ---- */
+
+/*
+ * al-button. One look, three forms:
+ *   <al-button variant="primary"><button type="submit">Save</button></al-button>
+ *     the native button inside takes the look and works with no JavaScript
+ *     (the element itself then draws nothing, so there is no double border);
+ *   <al-button variant="outline"><a href="/posts">All posts</a></al-button>
+ *     a link that looks like a button;
+ *   <al-button variant="primary">Save</al-button>
+ *     presentational: the element draws the look, but it is not a button
+ *     until a framework adds the role, focus and Enter/Space handling.
+ * The variant sets private colour properties; every form reads them.
+ * Hovers mix the background toward a theme colour (never toward
+ * transparent), so the text keeps its contrast; test/check.py computes it.
+ */
+
+al-button {
+  --_al-bg: var(--primary);
+  --_al-fg: var(--primary-foreground);
+  --_al-border: var(--primary);
+  --_al-hover: color-mix(in srgb, var(--primary) 90%, var(--primary-foreground));
+  --_al-h: var(--al-control-h-md);
+  --_al-px: var(--al-space-4);
+  --_al-text: var(--al-text-sm);
+}
+
+al-button[variant="secondary"] {
+  --_al-bg: var(--secondary);
+  --_al-fg: var(--secondary-foreground);
+  --_al-border: var(--secondary);
+  --_al-hover: color-mix(in srgb, var(--secondary) 94%, var(--foreground));
+}
+
+al-button[variant="outline"] {
+  --_al-bg: var(--background);
+  --_al-fg: var(--foreground);
+  --_al-border: var(--input);
+  --_al-hover: var(--accent);
+}
+
+al-button[variant="ghost"] {
+  --_al-bg: transparent;
+  --_al-fg: var(--foreground);
+  --_al-border: transparent;
+  --_al-hover: var(--accent);
+}
+
+al-button[variant="destructive"] {
+  --_al-bg: var(--destructive);
+  --_al-fg: var(--destructive-foreground);
+  --_al-border: var(--destructive);
+  --_al-hover: color-mix(in srgb, var(--destructive) 90%, var(--foreground));
+}
+
+al-button[size="sm"] {
+  --_al-h: var(--al-control-h-sm);
+  --_al-px: var(--al-space-3);
+}
+
+al-button[size="md"] {
+  --_al-h: var(--al-control-h-md);
+  --_al-px: var(--al-space-4);
+}
+
+al-button[size="lg"] {
+  --_al-h: var(--al-control-h-lg);
+  --_al-px: var(--al-space-8);
+  --_al-text: var(--al-text-base);
+}
+
+al-button,
+al-button > :is(button, a) {
+  display: inline-flex;
+  inline-size: fit-content;
+  align-items: center;
+  justify-content: center;
+  gap: var(--al-space-2);
+  box-sizing: border-box;
+  min-height: var(--_al-h);
+  margin: 0;
+  padding: 0 var(--_al-px);
+  border: var(--al-border-width) solid var(--_al-border);
+  border-radius: var(--radius);
+  background: var(--_al-bg);
+  color: var(--_al-fg);
+  font-family: var(--al-font-sans);
+  font-size: var(--_al-text);
+  font-weight: var(--al-weight-medium);
+  line-height: var(--al-leading-tight);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--al-duration);
+}
+
+al-button > :is(button, a) {
+  appearance: none;
+}
+
+al-button > a:any-link {
+  color: var(--_al-fg);
+}
+
+/* The native forms: the element only holds the button or link. */
+al-button:has(> :is(button, a)) {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: auto;
+}
+
+al-button:not(:has(> :is(button, a))):hover,
+al-button > :is(button, a):hover {
+  background: var(--_al-hover);
+}
+
+al-button:focus-visible,
+al-button > :is(button, a):focus-visible {
+  outline: var(--al-ring-width) solid var(--ring);
+  outline-offset: var(--al-ring-offset);
+}
+
+al-button[disabled],
+al-button[disabled] > :is(button, a),
+al-button > button:disabled {
+  opacity: var(--al-disabled-opacity);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* In the native forms only the child dims, not the element too. */
+al-button:has(> :is(button, a))[disabled] {
+  opacity: 1;
+}
+
+/* ---- components/al-input.css ---- */
+
+/*
+ * al-input. Alder renders
+ *   <al-input label="Title" help="…" invalid>
+ *     <label>Title<input name="title" …></label>
+ *     <ul class="errors" data-errors="title"><li>…</li></ul>
+ *   </al-input>
+ * The label text is the real <label> (not attr(label)); help comes from the
+ * attribute; the errors list shows in the destructive colour. A label beside
+ * the control (<label for> + <input id>) works too.
+ */
+
+al-input {
+  display: grid;
+  gap: var(--al-space-1-5);
+  font-family: var(--al-font-sans);
+  font-size: var(--al-text-sm);
+  color: var(--foreground);
+}
+
+al-input label {
+  display: grid;
+  gap: var(--al-space-1-5);
+  order: 0;
+  font-weight: var(--al-weight-medium);
+  line-height: var(--al-leading-tight);
+}
+
+al-input input {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--al-control-h-md);
+  padding: 0 var(--al-space-3);
+  margin: 0;
+  border: var(--al-border-width) solid var(--input);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: var(--al-text-sm);
+  font-weight: var(--al-weight-normal);
+  line-height: var(--al-leading);
+}
+
+al-input input::placeholder {
+  color: var(--muted-foreground);
+}
+
+al-input input:focus-visible {
+  outline: var(--al-ring-width) solid var(--ring);
+  outline-offset: var(--al-ring-offset);
+}
+
+al-input[invalid] input {
+  border-color: var(--al-destructive-text);
+}
+
+al-input[invalid] input:focus-visible {
+  outline-color: var(--al-destructive-text);
+}
+
+/* Dim once: the whole field when the element is disabled, or just the
+   control when only it is. */
+al-input[disabled],
+al-input:not([disabled]) input:disabled {
+  cursor: not-allowed;
+  opacity: var(--al-disabled-opacity);
+}
+
+al-input[help]::after {
+  content: attr(help);
+  order: 1;
+  color: var(--muted-foreground);
+  font-size: var(--al-text-sm);
+}
+
+al-input ul.errors {
+  order: 2;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--al-destructive-text);
+  font-size: var(--al-text-sm);
+  font-weight: var(--al-weight-medium);
+}
+
+al-input ul.errors:empty {
+  display: none;
+}
+
+/* ---- components/al-textarea.css ---- */
+
+/*
+ * al-textarea. Alder renders
+ *   <al-textarea label="Title" help="…" invalid>
+ *     <label>Title<textarea name="title" …></label>
+ *     <ul class="errors" data-errors="title"><li>…</li></ul>
+ *   </al-textarea>
+ * The label text is the real <label> (not attr(label)); help comes from the
+ * attribute; the errors list shows in the destructive colour. A label beside
+ * the control (<label for> + <textarea id>) works too.
+ */
+
+al-textarea {
+  display: grid;
+  gap: var(--al-space-1-5);
+  font-family: var(--al-font-sans);
+  font-size: var(--al-text-sm);
+  color: var(--foreground);
+}
+
+al-textarea label {
+  display: grid;
+  gap: var(--al-space-1-5);
+  order: 0;
+  font-weight: var(--al-weight-medium);
+  line-height: var(--al-leading-tight);
+}
+
+al-textarea textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: calc(var(--al-control-h-md) * 2);
+  padding: var(--al-space-2) var(--al-space-3);
+  resize: vertical;
+  margin: 0;
+  border: var(--al-border-width) solid var(--input);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: var(--al-text-sm);
+  font-weight: var(--al-weight-normal);
+  line-height: var(--al-leading);
+}
+
+al-textarea textarea::placeholder {
+  color: var(--muted-foreground);
+}
+
+al-textarea textarea:focus-visible {
+  outline: var(--al-ring-width) solid var(--ring);
+  outline-offset: var(--al-ring-offset);
+}
+
+al-textarea[invalid] textarea {
+  border-color: var(--al-destructive-text);
+}
+
+al-textarea[invalid] textarea:focus-visible {
+  outline-color: var(--al-destructive-text);
+}
+
+/* Dim once: the whole field when the element is disabled, or just the
+   control when only it is. */
+al-textarea[disabled],
+al-textarea:not([disabled]) textarea:disabled {
+  cursor: not-allowed;
+  opacity: var(--al-disabled-opacity);
+}
+
+al-textarea[help]::after {
+  content: attr(help);
+  order: 1;
+  color: var(--muted-foreground);
+  font-size: var(--al-text-sm);
+}
+
+al-textarea ul.errors {
+  order: 2;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--al-destructive-text);
+  font-size: var(--al-text-sm);
+  font-weight: var(--al-weight-medium);
+}
+
+al-textarea ul.errors:empty {
+  display: none;
+}
+
+/* ---- components/al-select.css ---- */
+
+/*
+ * al-select. Alder renders
+ *   <al-select label="Kind" invalid>
+ *     <label>Kind<select name="kind">…</select></label>
+ *     <ul class="errors" data-errors="kind"><li>…</li></ul>
+ *   </al-select>
+ * The native <select> keeps its own arrow and keyboard behaviour.
+ */
+
+al-select {
+  display: grid;
+  gap: var(--al-space-1-5);
+  font-family: var(--al-font-sans);
+  font-size: var(--al-text-sm);
+  color: var(--foreground);
+}
+
+al-select label {
+  display: grid;
+  gap: var(--al-space-1-5);
+  order: 0;
+  font-weight: var(--al-weight-medium);
+  line-height: var(--al-leading-tight);
+}
+
+al-select select {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--al-control-h-md);
+  margin: 0;
+  padding: 0 var(--al-space-3);
+  border: var(--al-border-width) solid var(--input);
+  border-radius: var(--radius);
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: var(--al-text-sm);
+  font-weight: var(--al-weight-normal);
+}
+
+al-select select:focus-visible {
+  outline: var(--al-ring-width) solid var(--ring);
+  outline-offset: var(--al-ring-offset);
+}
+
+al-select[invalid] select {
+  border-color: var(--al-destructive-text);
+}
+
+al-select[invalid] select:focus-visible {
+  outline-color: var(--al-destructive-text);
+}
+
+/* Dim once: the whole field when the element is disabled, or just the
+   control when only it is. */
+al-select[disabled],
+al-select:not([disabled]) select:disabled {
+  cursor: not-allowed;
+  opacity: var(--al-disabled-opacity);
+}
+
+al-select[help]::after {
+  content: attr(help);
+  order: 1;
+  color: var(--muted-foreground);
+  font-size: var(--al-text-sm);
+}
+
+al-select ul.errors {
+  order: 2;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--al-destructive-text);
+  font-size: var(--al-text-sm);
+  font-weight: var(--al-weight-medium);
+}
+
+al-select ul.errors:empty {
+  display: none;
+}
+
+/* ---- components/al-checkbox.css ---- */
+
+/*
+ * al-checkbox. Alder renders
+ *   <al-checkbox label="Done">
+ *     <label>Done<input type="checkbox" name="done" value="True"></label>
+ *     <ul class="errors" data-errors="done"></ul>
+ *   </al-checkbox>
+ * The box is drawn before the text (row-reverse), whatever the source order.
+ * invalid (set by Alder when the field has errors) outlines the box in the
+ * destructive colour.
+ */
+
+al-checkbox {
+  display: grid;
+  gap: var(--al-space-1-5);
+  justify-items: start;
+  font-family: var(--al-font-sans);
+  font-size: var(--al-text-sm);
+  color: var(--foreground);
+}
+
+al-checkbox label {
+  display: inline-flex;
+  order: 0;
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--al-space-2);
+  font-weight: var(--al-weight-medium);
+  line-height: var(--al-leading-tight);
+  cursor: pointer;
+}
+
+al-checkbox input[type="checkbox"] {
+  flex: none;
+  width: var(--al-checkbox-size);
+  height: var(--al-checkbox-size);
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: inherit;
+}
+
+al-checkbox input[type="checkbox"]:focus-visible {
+  outline: var(--al-ring-width) solid var(--ring);
+  outline-offset: var(--al-ring-offset);
+}
+
+/* Dim once: the whole field, or just the label holding a disabled box. */
+al-checkbox[disabled],
+al-checkbox:not([disabled]) label:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: var(--al-disabled-opacity);
+}
+
+al-checkbox[invalid] input[type="checkbox"] {
+  outline: var(--al-border-width) solid var(--al-destructive-text);
+  outline-offset: var(--al-border-width);
+  accent-color: var(--al-destructive-text);
+}
+
+al-checkbox[invalid] input[type="checkbox"]:focus-visible {
+  outline: var(--al-ring-width) solid var(--al-destructive-text);
+  outline-offset: var(--al-ring-offset);
+}
+
+al-checkbox[help]::after {
+  content: attr(help);
+  order: 1;
+  color: var(--muted-foreground);
+  font-size: var(--al-text-sm);
+}
+
+al-checkbox ul.errors {
+  order: 2;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--al-destructive-text);
+  font-size: var(--al-text-sm);
+  font-weight: var(--al-weight-medium);
+}
+
+al-checkbox ul.errors:empty {
+  display: none;
+}
+
+/* ---- components/al-table.css ---- */
+
+/*
+ * al-table styles the <table> you put inside it:
+ *   <al-table striped><table>…</table></al-table>
+ * The element scrolls sideways when the table is wider than the page.
+ */
+
+al-table {
+  display: block;
+  overflow-x: auto;
+  border: var(--al-border-width) solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--al-font-sans);
+  font-size: var(--al-text-sm);
+  color: var(--foreground);
+}
+
+al-table table {
+  width: 100%;
+  border-collapse: collapse;
+  caption-side: bottom;
+}
+
+al-table caption {
+  padding: var(--al-space-3);
+  color: var(--muted-foreground);
+}
+
+al-table th,
+al-table td {
+  padding: var(--al-space-3) var(--al-space-4);
+  border-bottom: var(--al-border-width) solid var(--border);
+  text-align: start;
+  vertical-align: middle;
+}
+
+al-table th {
+  color: var(--muted-foreground);
+  font-weight: var(--al-weight-medium);
+}
+
+al-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+al-table[striped] tbody tr:nth-child(even) {
+  background: var(--muted);
+}
+
+al-table[dense] th,
+al-table[dense] td {
+  padding: var(--al-space-1-5) var(--al-space-3);
+}
+
+/* ---- components/al-card.css ---- */
+
+/*
+ * al-card: a bordered surface. Children are placed by slot, whatever their
+ * source order: header, the body (no slot), footer, then actions.
+ */
+
+al-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--al-space-4);
+  padding: var(--al-space-6);
+  border: var(--al-border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: var(--al-shadow-sm);
+  font-family: var(--al-font-sans);
+}
+
+al-card > * {
+  margin-block: 0;
+}
+
+al-card > [slot="header"] {
+  order: -1;
+  font-size: var(--al-text-lg);
+  font-weight: var(--al-weight-semibold);
+  line-height: var(--al-leading-tight);
+}
+
+al-card > [slot="footer"] {
+  order: 1;
+  color: var(--muted-foreground);
+  font-size: var(--al-text-sm);
+}
+
+al-card > [slot="actions"] {
+  order: 2;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--al-space-2);
+}
+
+/* ---- components/al-badge.css ---- */
+
+/* al-badge: a small pill for a status or a count. */
+
+al-badge {
+  display: inline-flex;
+  inline-size: fit-content;
+  align-items: center;
+  padding: var(--al-space-0-5) var(--al-space-2);
+  border: var(--al-border-width) solid var(--primary);
+  border-radius: var(--al-radius-full);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-family: var(--al-font-sans);
+  font-size: var(--al-text-xs);
+  font-weight: var(--al-weight-semibold);
+  line-height: var(--al-leading);
+  white-space: nowrap;
+}
+
+al-badge[variant="default"] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+al-badge[variant="secondary"] {
+  border-color: var(--secondary);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+al-badge[variant="outline"] {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--foreground);
+}
+
+al-badge[variant="destructive"] {
+  border-color: var(--destructive);
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+}
+
+/* ---- components/al-alert.css ---- */
+
+/*
+ * al-alert: a message box. The heading attribute is drawn as its heading.
+ * Write role="alert" (warning, destructive) or role="status" (info,
+ * success) on the element yourself: CSS cannot add a role. dismissible
+ * makes room for the close button that the optional al-alert.js adds.
+ */
+
+al-alert {
+  display: block;
+  position: relative;
+  padding: var(--al-space-4);
+  border: var(--al-border-width) solid var(--al-info-border);
+  border-radius: var(--radius);
+  background: var(--al-info-soft);
+  color: var(--al-info-soft-foreground);
+  font-family: var(--al-font-sans);
+  font-size: var(--al-text-sm);
+  line-height: var(--al-leading);
+}
+
+al-alert[variant="info"] {
+  border-color: var(--al-info-border);
+  background: var(--al-info-soft);
+  color: var(--al-info-soft-foreground);
+}
+
+al-alert[variant="success"] {
+  border-color: var(--al-success-border);
+  background: var(--al-success-soft);
+  color: var(--al-success-soft-foreground);
+}
+
+al-alert[variant="warning"] {
+  border-color: var(--al-warning-border);
+  background: var(--al-warning-soft);
+  color: var(--al-warning-soft-foreground);
+}
+
+al-alert[variant="destructive"] {
+  border-color: var(--al-destructive-border);
+  background: var(--al-destructive-soft);
+  color: var(--al-destructive-soft-foreground);
+}
+
+al-alert[heading]::before {
+  content: attr(heading);
+  display: block;
+  margin-bottom: var(--al-space-1);
+  font-weight: var(--al-weight-semibold);
+  line-height: var(--al-leading-tight);
+}
+
+al-alert > :first-child {
+  margin-top: 0;
+}
+
+al-alert > :last-child {
+  margin-bottom: 0;
+}
+
+al-alert[dismissible] {
+  padding-inline-end: var(--al-space-10);
+}
+
+al-alert > .al-alert-dismiss {
+  position: absolute;
+  top: var(--al-space-2);
+  inset-inline-end: var(--al-space-2);
+  margin: 0;
+  padding: var(--al-space-1) var(--al-space-2);
+  border: 0;
+  border-radius: var(--al-radius-sm);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: var(--al-text-base);
+  line-height: var(--al-leading-tight);
+  cursor: pointer;
+}
+
+al-alert > .al-alert-dismiss:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+al-alert > .al-alert-dismiss:focus-visible {
+  outline: var(--al-ring-width) solid var(--ring);
+  outline-offset: var(--al-ring-offset);
+}
+
+/* ---- components/al-pagination.css ---- */
+
+/*
+ * al-pagination lays out the links the app renders:
+ *   <al-pagination page="2" pages="5">
+ *     <a slot="prev" href="?page=1">Previous</a>
+ *     <a slot="next" href="?page=3">Next</a>
+ *   </al-pagination>
+ * prev, then "Page 2 of 5" (from the attributes), then next. A slot with no
+ * page to go to can be <span slot="prev" aria-disabled="true">. Children
+ * without a slot (your own "Page 2 of 5", page links) go in the middle and
+ * replace the generated text.
+ */
+
+al-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--al-space-4);
+  font-family: var(--al-font-sans);
+  font-size: var(--al-text-sm);
+  color: var(--foreground);
+}
+
+al-pagination > [slot="prev"] {
+  order: 0;
+}
+
+al-pagination[page][pages]::after {
+  content: "Page " attr(page) " of " attr(pages);
+  order: 1;
+  color: var(--muted-foreground);
+}
+
+al-pagination > :not([slot]) {
+  order: 1;
+}
+
+al-pagination:has(> :not([slot]))::after {
+  content: none;
+}
+
+al-pagination > [slot="next"] {
+  order: 2;
+}
+
+al-pagination > [slot="prev"],
+al-pagination > [slot="next"] {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: var(--al-control-h-sm);
+  padding: 0 var(--al-space-3);
+  border: var(--al-border-width) solid var(--input);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--foreground);
+  font-weight: var(--al-weight-medium);
+  text-decoration: none;
+}
+
+al-pagination > a[slot]:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+al-pagination > a[slot]:focus-visible {
+  outline: var(--al-ring-width) solid var(--ring);
+  outline-offset: var(--al-ring-offset);
+}
+
+al-pagination > [slot][aria-disabled="true"] {
+  opacity: var(--al-disabled-opacity);
+  pointer-events: none;
+}
+
+/* ---- components/al-stack.css ---- */
+
+/* al-stack: children in a column (default) or a wrapping row, with a gap. */
+
+al-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--al-space-4);
+}
+
+al-stack[direction="column"] {
+  flex-direction: column;
+}
+
+al-stack[direction="row"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+al-stack[gap="sm"] {
+  gap: var(--al-space-2);
+}
+
+al-stack[gap="md"] {
+  gap: var(--al-space-4);
+}
+
+al-stack[gap="lg"] {
+  gap: var(--al-space-8);
+}
+
+/* ---- components/al-page.css ---- */
+
+/* al-page: the content frame, a centred column of a set maximum width. */
+
+al-page {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--al-width-normal);
+  margin-inline: auto;
+  padding: var(--al-space-8) var(--al-space-4);
+}
+
+al-page[width="narrow"] {
+  max-width: var(--al-width-narrow);
+}
+
+al-page[width="normal"] {
+  max-width: var(--al-width-normal);
+}
+
+al-page[width="wide"] {
+  max-width: var(--al-width-wide);
+}
+
+}

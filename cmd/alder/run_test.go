@@ -330,6 +330,34 @@ func TestRun_EditReloads(t *testing.T) {
 	quiet(t, r.subscribe(t), time.Second)
 }
 
+// The child serves the build's static directory: the app's static/ and the design system's
+// assets (/static/al/al.css, immutable). Saving a static file copies it again and reloads,
+// without a rebuild (the generation is unchanged).
+func TestRun_ServesStaticAndDesignSystem(t *testing.T) {
+	r := startRun(t)
+	gen := generation(t, get(t, r.base+"/login"))
+	res, err := http.Get(r.base + "/static/al/al.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != 200 || res.Header.Get("Cache-Control") != "public, max-age=31536000, immutable" || !strings.Contains(string(b), "alder-ui") {
+		t.Fatalf("GET /static/al/al.css = %d %q %.60q", res.StatusCode, res.Header.Get("Cache-Control"), b)
+	}
+	get(t, r.base+"/static/al/custom-elements.json")
+	events := r.subscribe(t)
+	edit(t, r.dir, "static/app.css", "body {", "body.edited {")
+	waitFor(t, events, wantReload, 30*time.Second)
+	if css := get(t, r.base+"/static/app.css"); !strings.Contains(css, "body.edited {") {
+		t.Fatalf("the edited static file is not served:\n%.200s", css)
+	}
+	if g := generation(t, get(t, r.base+"/login")); g != gen {
+		t.Fatalf("a static change rebuilt the app: generation %q, was %q", g, gen)
+	}
+	get(t, r.base+"/static/al/al.css")
+}
+
 // A type error is overlaid (escaped) while the old build keeps serving; fixing it clears the
 // overlay, then reloads.
 func TestRun_ErrorThenFixReloads(t *testing.T) {

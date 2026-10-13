@@ -60,7 +60,11 @@ func (l *lowerer) element(x *syntax.Element) Expr {
 		}
 	}
 	if submit == nil {
-		return &Elem{Typed: Typed{t}, Tag: x.Tag, Attrs: attrs, Children: l.children(x.Children)}
+		el := &Elem{Typed: Typed{t}, Tag: x.Tag, Attrs: attrs, Children: l.children(x.Children)}
+		if r, ok := l.res.Rendered[x]; ok {
+			completeBuiltin(el, r)
+		}
+		return el
 	}
 	out := &FormEl{Typed: Typed{t}, Attrs: attrs}
 	out.Msg, out.Page = l.submitted(submit.Value)
@@ -72,6 +76,54 @@ func (l *lowerer) element(x *syntax.Element) Expr {
 	out.Children = l.children(x.Children)
 	l.form = saved
 	return out
+}
+
+// completeBuiltin adds what the renderer writes for built-in element el (check.Result.Rendered):
+//
+//	"status", "alert"  the role on an `<al-alert>`: role="status" or role="alert"
+//	"button"           <al-button …><button type="…" data-on:click=… disabled>children</button></al-button>
+//	"a"                <al-button …><a href=…>children</a></al-button>
+//
+// The inner `<button>` takes `click` and `type` (written, or "submit" when the element has
+// `submit`, else "button") and a copy of `disabled`, which stays on the element for its style;
+// the inner `<a>` takes `href`. Every other attribute stays on the element.
+func completeBuiltin(el *Elem, r string) {
+	text := func(s string) Expr { return &Lit{Typed: Typed{types.Text}, Kind: LitText, Text: s} }
+	switch r {
+	case "status", "alert":
+		el.Attrs = append(el.Attrs, HAttr{Name: "role", Kind: AttrText, Value: text(r)})
+		return
+	}
+	var outer, inner []HAttr
+	var typ *HAttr
+	submit := false
+	for _, a := range el.Attrs {
+		switch {
+		case a.Name == "href" && r == "a", a.Name == "click":
+			inner = append(inner, a)
+		case a.Name == "type":
+			typ = &a
+			outer = append(outer, a)
+		case a.Name == "disabled" && r == "button":
+			inner = append(inner, a)
+			outer = append(outer, a)
+		default:
+			submit = submit || a.Name == "submit"
+			outer = append(outer, a)
+		}
+	}
+	if r == "button" {
+		kind := HAttr{Name: "type", Kind: AttrText, Value: text("button")}
+		switch {
+		case typ != nil:
+			kind = *typ
+		case submit:
+			kind.Value = text("submit")
+		}
+		inner = append([]HAttr{kind}, inner...)
+	}
+	el.Attrs = outer
+	el.Children = []Expr{&Elem{Typed: el.Typed, Tag: r, Attrs: inner, Children: el.Children}}
 }
 
 func (l *lowerer) children(cs []syntax.Expr) []Expr {

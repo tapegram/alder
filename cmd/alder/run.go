@@ -32,8 +32,8 @@ import (
 // runRunTo is `alder run [dir]`: a development server for the app in dir. It builds the app
 // (buildApp), runs its executable as a child process on a free port, and serves on ALDER_ADDR
 // (default localhost:8080: the app behind it runs in development mode) a reverse proxy to it. While it runs, a save under app/ (*.alder),
-// adapters/ (any file: the whole tree is copied) or migrations/ (`alder migrate`) rebuilds the app and reloads the browser; a change under static/ only reloads
-// it; a check or build error is shown in the browser (an overlay) and on stderr while the last
+// adapters/ (any file: the whole tree is copied) or migrations/ (`alder migrate`) rebuilds the app and reloads the browser; a change under static/ only
+// copies static/ again into the build (with static/al/, the design system's assets) and reloads it; a check or build error is shown in the browser (an overlay) and on stderr while the last
 // good build keeps serving. See devServer for the lifecycle. It returns when stop is closed,
 // after stopping the child: 0, or 2 for a usage error or when it cannot listen.
 func runRunTo(args []string, stdout, stderr io.Writer, stop <-chan struct{}) int {
@@ -162,6 +162,7 @@ type devServer struct {
 	wg       sync.WaitGroup
 	nonce    string // this dev server's part of every generation
 	started  int    // children started so far (the worker's)
+	static   string // the build's static directory the child serves (the worker's); "" before the first build
 
 	mu        sync.Mutex
 	child     *child                   // the current child; nil before the first good build or after it exited
@@ -358,6 +359,12 @@ func (d *devServer) work(changed <-chan change) {
 			fmt.Fprintf(d.stderr, "alder run: rebuilding %s\n", d.app)
 			d.rebuild()
 		} else {
+			if d.static != "" { // the child serves the build's copy: refresh it first
+				if err := buildkit.CopyStatic(filepath.Join(d.dir, "static"), d.static); err != nil {
+					d.fail("alder run: " + err.Error())
+					continue
+				}
+			}
 			d.mu.Lock()
 			d.broadcast(reloadEvent)
 			d.mu.Unlock()
@@ -382,11 +389,8 @@ func (d *devServer) rebuild() {
 		return
 	}
 	dir := filepath.Dir(binary)
-	static, err := filepath.Abs(filepath.Join(d.dir, "static"))
-	if err != nil {
-		d.fail("alder run: " + err.Error())
-		return
-	}
+	static := filepath.Join(dir, "static") // the build's copy: the app's static/ and static/al/
+	d.static = static
 	d.started++
 	gen := fmt.Sprintf("%s-%d", d.nonce, d.started)
 	c, err := startChild(binary, filepath.Join(dir, "dev.db"), static, gen, d.stderr)

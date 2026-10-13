@@ -2,6 +2,7 @@ package rt
 
 import (
 	"bytes"
+	"encoding/json"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -117,5 +118,39 @@ func TestDistModule(t *testing.T) {
 		if req != "" && !slices.Contains(used, req) {
 			t.Errorf("go.mod requires %s, which no package of rt/ uses: the runtime's module would list a dependency it does not have", req)
 		}
+	}
+}
+
+// TestDesignSystemVersion: the vendored `alder-ui` snapshot (al/, written by
+// scripts/vendor-al.sh <tag>) is one release: VERSION names the tag, the manifest's `version`
+// field and the stylesheet's banner say the same.
+func TestDesignSystemVersion(t *testing.T) {
+	v, err := Files.ReadFile("al/VERSION")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tag := strings.TrimSpace(string(v))
+	if !strings.HasPrefix(tag, "v") || strings.Contains(tag, "placeholder") {
+		t.Fatalf("al/VERSION is %q, want a release tag", tag)
+	}
+	manifest, err := Files.ReadFile("al/custom-elements.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(manifest, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m.Version != tag {
+		t.Errorf("al/custom-elements.json says version %q, al/VERSION %q", m.Version, tag)
+	}
+	css, err := Files.ReadFile("al/al.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(css, []byte("/*! alder-ui "+tag+" ")) {
+		t.Errorf("al/al.css begins %.40q, want the banner of alder-ui %s", css, tag)
 	}
 }

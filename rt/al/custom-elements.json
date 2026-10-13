@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "version": "v0.0.0-placeholder",
+  "version": "v0.1.1",
   "modules": [
     {
       "kind": "javascript-module",
@@ -11,14 +11,14 @@
           "name": "AlButton",
           "tagName": "al-button",
           "customElement": true,
-          "description": "A button: the native `<button>` inside it, or the element itself, styled by variant and size.",
+          "description": "A button, styled by variant and size. Put a native `<button>` (or an `<a>`) inside it: that works with no JavaScript. The element alone (`<al-button>Save</al-button>`) is presentational: it looks like a button but needs a framework to give it a role, focus and Enter/Space handling.",
           "attributes": [
             {
               "name": "variant",
               "type": {
                 "text": "\"primary\" | \"secondary\" | \"outline\" | \"ghost\" | \"destructive\""
               },
-              "description": "The button's look.",
+              "description": "The button's look: `primary` (filled), `secondary` (soft), `outline` (bordered), `ghost` (no border until hover) or `destructive` (for deleting).",
               "default": "\"primary\""
             },
             {
@@ -26,21 +26,24 @@
               "type": {
                 "text": "\"sm\" | \"md\" | \"lg\""
               },
-              "description": "The button's size."
+              "description": "The button's height and padding.",
+              "default": "\"md\""
             },
             {
               "name": "disabled",
               "type": {
                 "text": "boolean"
               },
-              "description": "Shows the button as disabled."
+              "description": "Shows the button as disabled and stops pointer clicks. In the native-button form, also put `disabled` on the `<button>` so the keyboard and forms skip it.",
+              "default": "false"
             },
             {
               "name": "type",
               "type": {
                 "text": "\"button\" | \"submit\""
               },
-              "description": "The kind of the button."
+              "description": "The kind of the button, for frameworks that render the native `<button>` from it (Alder: `submit` inside a form). It does not change the look.",
+              "default": "\"button\""
             }
           ],
           "slots": [
@@ -61,42 +64,44 @@
           "name": "AlInput",
           "tagName": "al-input",
           "customElement": true,
-          "description": "A labelled text input; Alder renders the `<input>` and its errors list inside it.",
+          "description": "A labelled text input. Alder renders the `<label>`, the `<input>` and the `ul.errors` list inside it.",
           "attributes": [
             {
               "name": "label",
               "type": {
                 "text": "string"
               },
-              "description": "The input's label text."
+              "description": "The input's label text. Alder renders it as a real `<label>` around the input; the stylesheet does not draw this attribute."
             },
             {
               "name": "placeholder",
               "type": {
                 "text": "string"
               },
-              "description": "The input's placeholder text."
+              "description": "The input's placeholder text, copied onto the `<input>` (drawn in the muted colour)."
             },
             {
               "name": "disabled",
               "type": {
                 "text": "boolean"
               },
-              "description": "Disables the input."
+              "description": "Disables the input (copied onto the `<input>`) and dims the field.",
+              "default": "false"
             },
             {
               "name": "invalid",
               "type": {
                 "text": "boolean"
               },
-              "description": "Marks the field as having errors (set by Alder's renderer when the field has errors)."
+              "description": "Marks the field as having errors: the border and focus ring take the destructive colour. Alder's renderer sets it when the field has errors.",
+              "default": "false"
             },
             {
               "name": "help",
               "type": {
                 "text": "string"
               },
-              "description": "A hint shown under the input."
+              "description": "A hint shown under the input (drawn from the attribute, in the muted colour)."
             }
           ]
         }
@@ -111,42 +116,44 @@
           "name": "AlTextarea",
           "tagName": "al-textarea",
           "customElement": true,
-          "description": "A labelled multi-line input; Alder renders the `<textarea>` and its errors list inside it.",
+          "description": "A labelled multi-line input. Alder renders the `<label>`, the `<textarea>` and the `ul.errors` list inside it.",
           "attributes": [
             {
               "name": "label",
               "type": {
                 "text": "string"
               },
-              "description": "The textarea's label text."
+              "description": "The textarea's label text. Alder renders it as a real `<label>` around the textarea; the stylesheet does not draw this attribute."
             },
             {
               "name": "placeholder",
               "type": {
                 "text": "string"
               },
-              "description": "The textarea's placeholder text."
+              "description": "The textarea's placeholder text, copied onto the `<textarea>`."
             },
             {
               "name": "disabled",
               "type": {
                 "text": "boolean"
               },
-              "description": "Disables the textarea."
+              "description": "Disables the textarea (copied onto the `<textarea>`) and dims the field.",
+              "default": "false"
             },
             {
               "name": "invalid",
               "type": {
                 "text": "boolean"
               },
-              "description": "Marks the field as having errors (set by Alder's renderer when the field has errors)."
+              "description": "Marks the field as having errors: the border and focus ring take the destructive colour. Alder's renderer sets it when the field has errors.",
+              "default": "false"
             },
             {
               "name": "help",
               "type": {
                 "text": "string"
               },
-              "description": "A hint shown under the textarea."
+              "description": "A hint shown under the textarea (drawn from the attribute, in the muted colour)."
             }
           ]
         }
@@ -161,28 +168,37 @@
           "name": "AlSelect",
           "tagName": "al-select",
           "customElement": true,
-          "description": "A labelled select; Alder renders the `<select>` and its errors list inside it.",
+          "description": "A labelled select. Alder renders the `<label>`, the `<select>` and the `ul.errors` list inside it.",
           "attributes": [
             {
               "name": "label",
               "type": {
                 "text": "string"
               },
-              "description": "The select's label text."
+              "description": "The select's label text. Alder renders it as a real `<label>` around the select; the stylesheet does not draw this attribute."
             },
             {
               "name": "disabled",
               "type": {
                 "text": "boolean"
               },
-              "description": "Disables the select."
+              "description": "Disables the select (copied onto the `<select>`) and dims the field.",
+              "default": "false"
             },
             {
               "name": "invalid",
               "type": {
                 "text": "boolean"
               },
-              "description": "Marks the field as having errors (set by Alder's renderer when the field has errors)."
+              "description": "Marks the field as having errors: the border and focus ring take the destructive colour. Alder's renderer sets it when the field has errors.",
+              "default": "false"
+            },
+            {
+              "name": "help",
+              "type": {
+                "text": "string"
+              },
+              "description": "A hint shown under the select (drawn from the attribute, in the muted colour). Added in alder-ui v0.1.0."
             }
           ]
         }
@@ -197,21 +213,37 @@
           "name": "AlCheckbox",
           "tagName": "al-checkbox",
           "customElement": true,
-          "description": "A labelled checkbox; Alder renders the `<input type=\"checkbox\">` inside it.",
+          "description": "A labelled checkbox. Alder renders the `<label>` around the `<input type=\"checkbox\">`, and the `ul.errors` list, inside it.",
           "attributes": [
             {
               "name": "label",
               "type": {
                 "text": "string"
               },
-              "description": "The checkbox's label text."
+              "description": "The checkbox's label text. Alder renders it as a real `<label>` around the checkbox; the stylesheet does not draw this attribute."
             },
             {
               "name": "disabled",
               "type": {
                 "text": "boolean"
               },
-              "description": "Disables the checkbox."
+              "description": "Disables the checkbox (copied onto the `<input>`) and dims it.",
+              "default": "false"
+            },
+            {
+              "name": "invalid",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Marks the field as having errors: the box is outlined in the destructive colour. Alder's renderer sets it when the field has errors. Added in v0.1.1.",
+              "default": "false"
+            },
+            {
+              "name": "help",
+              "type": {
+                "text": "string"
+              },
+              "description": "A hint shown under the checkbox (drawn from the attribute, in the muted colour). Added in alder-ui v0.1.0."
             }
           ]
         }
@@ -226,21 +258,23 @@
           "name": "AlTable",
           "tagName": "al-table",
           "customElement": true,
-          "description": "Styles the `<table>` inside it.",
+          "description": "Styles the `<table>` inside it: header, borders, padding; scrolls sideways when wide.",
           "attributes": [
             {
               "name": "striped",
               "type": {
                 "text": "boolean"
               },
-              "description": "Shades every other row."
+              "description": "Shades every other body row in the muted colour.",
+              "default": "false"
             },
             {
               "name": "dense",
               "type": {
                 "text": "boolean"
               },
-              "description": "Tightens the cell padding."
+              "description": "Tightens the cell padding.",
+              "default": "false"
             }
           ],
           "slots": [
@@ -261,7 +295,7 @@
           "name": "AlCard",
           "tagName": "al-card",
           "customElement": true,
-          "description": "A card: a bordered surface with an optional header, footer and actions.",
+          "description": "A card: a bordered surface with an optional header, footer and actions, placed by slot.",
           "attributes": [],
           "slots": [
             {
@@ -293,14 +327,15 @@
           "name": "AlBadge",
           "tagName": "al-badge",
           "customElement": true,
-          "description": "A small label for a status or a count.",
+          "description": "A small pill for a status or a count.",
           "attributes": [
             {
               "name": "variant",
               "type": {
                 "text": "\"default\" | \"secondary\" | \"outline\" | \"destructive\""
               },
-              "description": "The badge's look."
+              "description": "The badge's look: `default` (filled), `secondary` (soft), `outline` (bordered) or `destructive`.",
+              "default": "\"default\""
             }
           ],
           "slots": [
@@ -321,28 +356,30 @@
           "name": "AlAlert",
           "tagName": "al-alert",
           "customElement": true,
-          "description": "A message box for information, success, a warning or an error.",
+          "description": "A message box for information, success, a warning or an error. Write `role=\"alert\"` or `role=\"status\"` on it.",
           "attributes": [
             {
               "name": "variant",
               "type": {
                 "text": "\"info\" | \"success\" | \"warning\" | \"destructive\""
               },
-              "description": "The alert's kind."
+              "description": "The alert's kind, which sets its colours: `info`, `success`, `warning` or `destructive`.",
+              "default": "\"info\""
             },
             {
-              "name": "title",
+              "name": "heading",
               "type": {
                 "text": "string"
               },
-              "description": "The alert's heading."
+              "description": "The alert's heading, drawn in bold above the message. (Renamed from `title` in v0.1.1: `title` is the global tooltip attribute.)"
             },
             {
               "name": "dismissible",
               "type": {
                 "text": "boolean"
               },
-              "description": "Shows a dismiss button (with the optional enhancement script)."
+              "description": "Makes room for a dismiss button; the optional `al-alert.js` module adds the button.",
+              "default": "false"
             }
           ],
           "slots": [
@@ -363,14 +400,14 @@
           "name": "AlPagination",
           "tagName": "al-pagination",
           "customElement": true,
-          "description": "Lays out the links of a paged list; the app renders the links.",
+          "description": "Lays out the previous and next links of a paged list, with \"Page N of M\" between them; the app renders the links.",
           "attributes": [
             {
               "name": "page",
               "type": {
                 "text": "number"
               },
-              "description": "The current page, from 1."
+              "description": "The current page, from 1. With `pages`, shown as \"Page 2 of 5\" between the links."
             },
             {
               "name": "pages",
@@ -383,11 +420,15 @@
           "slots": [
             {
               "name": "prev",
-              "description": "The link to the previous page."
+              "description": "The link to the previous page (or a `<span aria-disabled=\"true\">` on the first page)."
+            },
+            {
+              "name": "",
+              "description": "Optional middle content, such as your own \"Page 2 of 5\" text or page links; when present it replaces the generated text. Added in v0.1.1."
             },
             {
               "name": "next",
-              "description": "The link to the next page."
+              "description": "The link to the next page (or a `<span aria-disabled=\"true\">` on the last page)."
             }
           ]
         }
@@ -402,21 +443,23 @@
           "name": "AlStack",
           "tagName": "al-stack",
           "customElement": true,
-          "description": "Lays its children out in a row or a column with a gap.",
+          "description": "Lays its children out in a column or a wrapping row, with a gap.",
           "attributes": [
             {
               "name": "gap",
               "type": {
                 "text": "\"sm\" | \"md\" | \"lg\""
               },
-              "description": "The space between the children."
+              "description": "The space between the children: `sm`, `md` or `lg`.",
+              "default": "\"md\""
             },
             {
               "name": "direction",
               "type": {
                 "text": "\"row\" | \"column\""
               },
-              "description": "The stacking direction."
+              "description": "The stacking direction: `column` (top to bottom) or `row` (left to right, wrapping).",
+              "default": "\"column\""
             }
           ],
           "slots": [
@@ -437,14 +480,15 @@
           "name": "AlPage",
           "tagName": "al-page",
           "customElement": true,
-          "description": "The page's content frame: a centred column of a set width.",
+          "description": "The page's content frame: a centred column of a set maximum width.",
           "attributes": [
             {
               "name": "width",
               "type": {
                 "text": "\"narrow\" | \"normal\" | \"wide\""
               },
-              "description": "The frame's maximum width."
+              "description": "The frame's maximum width: `narrow` (40rem), `normal` (56rem) or `wide` (80rem).",
+              "default": "\"normal\""
             }
           ],
           "slots": [

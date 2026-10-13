@@ -34,8 +34,13 @@ type Result struct {
 	// "Checkbox" (an `<Input>` on a Bool field). An element absent from it is an ordinary custom
 	// element.
 	Wrapped map[*syntax.Element]string
-	Holes   int            // count of W0002 reported
-	U       *types.Unifier // for Apply on stored types
+	// Rendered maps each built-in element the renderer completes (chapter 13) to what it adds:
+	// "button" or "a" for an `<al-button>` with `click`, `submit`, `type` or `href` and no
+	// `<button>`/`<a>` child (the real control is rendered inside it), "status" or "alert" for
+	// an `<al-alert>` without `role` whose `variant` is a literal or absent (the role it gets).
+	Rendered map[*syntax.Element]string
+	Holes    int            // count of W0002 reported
+	U        *types.Unifier // for Apply on stored types
 }
 
 // CtorInfo is a union constructor: the union it builds and its payload type (nil for none).

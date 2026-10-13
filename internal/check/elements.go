@@ -57,6 +57,11 @@ func (mc *modCtx) customElement(x *syntax.Element, m types.Type, env *env, eff e
 		mc.customAttr(x, el, a, m, env, eff)
 	}
 	mc.checkSlots(x, el)
+	if el.Builtin {
+		if r := rendered(x); r != "" {
+			c.res.Rendered[x] = r
+		}
+	}
 	for _, ch := range x.Children {
 		mc.htmlNode(ch, m, env, eff)
 	}
@@ -177,6 +182,56 @@ func (mc *modCtx) checkSlots(x *syntax.Element, el *elements.Element) {
 	for _, ch := range x.Children {
 		visit(ch)
 	}
+}
+
+// rendered is what the renderer adds to built-in element x (Result.Rendered), "" for nothing.
+//
+// An `<al-button>` given `click`, `submit`, `type` or `href` gets a real control inside it,
+// unless the author wrote one (a `<button>` or `<a>` child): "a" for `href`, else "button". A
+// custom element is not focusable and a form does not submit through it, so without this the
+// button would need JavaScript and could not be reached from the keyboard.
+//
+// An `<al-alert>` without `role` gets the live-region role its variant implies: "status" for
+// info (the default) and success, "alert" for warning and destructive. A computed variant gets
+// none: the author writes `role` then.
+func rendered(x *syntax.Element) string {
+	switch x.Tag {
+	case "al-button":
+		for _, ch := range x.Children {
+			if e, ok := ch.(*syntax.Element); ok && (e.Tag == "button" || e.Tag == "a") {
+				return ""
+			}
+		}
+		if hasHTMLAttr(x, "href") {
+			return "a"
+		}
+		for _, n := range []string{"click", "submit", "type"} {
+			if hasHTMLAttr(x, n) {
+				return "button"
+			}
+		}
+	case "al-alert":
+		if hasHTMLAttr(x, "role") {
+			return ""
+		}
+		variant := "info"
+		for _, a := range x.Attrs {
+			if a.Name == "variant" {
+				v, ok := literalText(a.Value)
+				if !ok {
+					return ""
+				}
+				variant = v
+			}
+		}
+		switch variant {
+		case "info", "success":
+			return "status"
+		case "warning", "destructive":
+			return "alert"
+		}
+	}
+	return ""
 }
 
 // hasHTMLAttr reports whether x has an attribute name.

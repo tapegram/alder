@@ -29,7 +29,9 @@ view : Model -> Session -> Html Msg
 view model session =
   <al-page width="narrow" id="main" class="x" data-test="page" aria-label="Posts">
     <al-stack gap="md" direction="column">
-      <al-alert variant="info" title="Hello" dismissible role="status">Welcome</al-alert>
+      <al-alert variant="info" heading="Hello" dismissible role="status">Welcome</al-alert>
+      <al-alert variant="destructive" heading="Oops">Failed</al-alert>
+      <al-alert>Plain</al-alert>
       <al-card>
         <h2 slot="header">New post <al-badge variant="secondary">draft</al-badge></h2>
         <form submit={Submit}>
@@ -42,6 +44,9 @@ view model session =
         </form>
         <div slot="actions">
           <al-button variant="ghost" click={Clear} disabled>Clear</al-button>
+          <al-button href={Index {}} variant="outline">Home</al-button>
+          <al-button variant="secondary" click={Clear}><button type="button">Own</button></al-button>
+          <al-button variant="ghost">Presentational</al-button>
           <wa-button variant="brand" loading={model.saving} title="Third party">
             <span slot="start">*</span>
             Go

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"slices"
 	"strconv"
@@ -671,8 +672,19 @@ func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if strings.HasPrefix(r.URL.Path, designSystemPrefix) {
+		rel := filepath.FromSlash(strings.TrimPrefix(r.URL.Path, staticPrefix))
+		if st, err := os.Stat(filepath.Join(rt.opts.StaticDir, rel)); err == nil && st.Mode().IsRegular() {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
+	}
 	rt.static.ServeHTTP(w, r)
 }
+
+// designSystemPrefix is where every build writes the `alder-ui` assets (buildkit
+// WriteDesignSystem). They change only with the compiler, as datastar.js does, and are served
+// with the same immutable cache policy.
+const designSystemPrefix = staticPrefix + "al/"
 
 // filesOnly is a FileSystem in which directories do not exist: no listings, no index pages.
 type filesOnly struct{ fs http.FileSystem }

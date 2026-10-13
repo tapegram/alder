@@ -126,16 +126,44 @@ func IsDir(path string) bool {
 	return err == nil && st.IsDir()
 }
 
-// CopyStatic replaces dst with a copy of the directory src, or removes it when src does not
-// exist.
+// CopyStatic replaces dst with a copy of the directory src (nothing when src does not exist),
+// then writes the design system's assets into it (WriteDesignSystem): every build serves
+// /static/al/al.css, whether or not the app has a static directory of its own.
 func CopyStatic(src, dst string) error {
 	if err := os.RemoveAll(dst); err != nil {
 		return err
 	}
-	if !IsDir(src) {
-		return nil
+	if IsDir(src) {
+		if err := os.CopyFS(dst, os.DirFS(src)); err != nil {
+			return err
+		}
 	}
-	return os.CopyFS(dst, os.DirFS(src))
+	return WriteDesignSystem(dst)
+}
+
+// DesignSystemFiles are the `alder-ui` assets (rt/al/, vendored by scripts/vendor-al.sh) every
+// build writes under static/al/: the stylesheet a page links as /static/al/al.css, and the
+// Custom Elements Manifest the checker reads (served too, for other tools).
+var DesignSystemFiles = []string{"al.css", "custom-elements.json"}
+
+// WriteDesignSystem writes DesignSystemFiles into staticDir/al/ from the embedded runtime. The
+// directory is the compiler's: a file of the app's own static/al/ with one of these names is
+// replaced.
+func WriteDesignSystem(staticDir string) error {
+	dir := filepath.Join(staticDir, "al")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for _, name := range DesignSystemFiles {
+		b, err := rt.Files.ReadFile("al/" + name)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), b, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // WriteGenerated replaces the generated files in dir with files: it deletes go.mod and every Go

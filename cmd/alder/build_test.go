@@ -144,7 +144,7 @@ func TestBuild_Todos(t *testing.T) {
 	if err != nil || st.Mode()&0o111 == 0 {
 		t.Fatalf("no executable build/todos/todos: %v", err)
 	}
-	for _, f := range []string{"adapters/auth/password.go", "caps/caps__alder.go", "static/app.css", "cmd/main.go", "routes__alder.go"} {
+	for _, f := range []string{"adapters/auth/password.go", "caps/caps__alder.go", "static/app.css", "static/al/al.css", "static/al/custom-elements.json", "cmd/main.go", "routes__alder.go"} {
 		if _, err := os.Stat(filepath.Join(out, f)); err != nil {
 			t.Errorf("build/todos/%s: %v", f, err)
 		}
@@ -399,7 +399,7 @@ func TestBuildTo_OutDir(t *testing.T) {
 	if code != 0 || path != filepath.Join(out, "todos") {
 		t.Fatalf("exit %d path %q\nstdout: %s\nstderr: %s", code, path, stdout.String(), stderr.String())
 	}
-	for _, f := range []string{"todos", "cmd/main.go", "App_alder.go", "adapters/auth/password.go", "caps/caps__alder.go", "static/app.css"} {
+	for _, f := range []string{"todos", "cmd/main.go", "App_alder.go", "adapters/auth/password.go", "caps/caps__alder.go", "static/app.css", "static/al/al.css"} {
 		if _, err := os.Stat(filepath.Join(out, f)); err != nil {
 			t.Errorf("%s: %v", f, err)
 		}

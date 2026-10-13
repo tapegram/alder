@@ -64,7 +64,10 @@ type Control struct {
 // The element carries `label` (the label text, when there is one), then WrapAttrs in order,
 // then `invalid` exactly when the field has errors (or `invalid` is written and true). The
 // control also gets the element's `placeholder` (not on a select or checkbox) and `disabled`,
-// so they work without the design system's stylesheet.
+// so they work without the design system's stylesheet, and `aria-invalid="true"` when the
+// element is invalid. When the field has errors, the list gets `id="errors-<field>"` and the
+// control `aria-describedby` naming it, so a screen reader reads the messages with the control
+// (only then: two per-row forms with the same field would otherwise repeat the id).
 func Input(c Control) Node { return Node{kind: kCtrl, control: &c} }
 
 func (c *Control) build(st *FormState, active bool, orphan []string) Node {
@@ -123,19 +126,13 @@ func (c *Control) build(st *FormState, active bool, orphan []string) Node {
 		}
 		control = El("input", attrs)
 	}
-	if c.Wrap != "" {
-		control.attrs = append(control.attrs, c.forwarded()...)
-	}
-	label := El("label", nil, control)
-	if c.Label != "" {
-		label = El("label", nil, Text(c.Label), control)
-	}
 	if c.Wrap == "" {
-		return label
+		return labelled(c.Label, control)
 	}
 	errs := (&Control{Kind: "errors", Form: c.Form, Name: c.Name}).build(st, active, nil)
 	attrs := []Attr{{Name: "label", Value: c.Label, Omit: c.Label == ""}}
-	invalid := len(errs.children) > 0
+	hasErrs := len(errs.children) > 0
+	invalid := hasErrs
 	for _, a := range c.WrapAttrs {
 		if a.Name == "invalid" {
 			invalid = invalid || !a.Omit
@@ -144,7 +141,22 @@ func (c *Control) build(st *FormState, active bool, orphan []string) Node {
 		attrs = append(attrs, a)
 	}
 	attrs = append(attrs, B("invalid", invalid))
-	return El(c.Wrap, attrs, label, errs)
+	control.attrs = append(control.attrs, c.forwarded()...)
+	control.attrs = append(control.attrs, Attr{Name: "aria-invalid", Value: "true", Omit: !invalid})
+	if hasErrs { // the id only when there are errors: per-row forms share field names
+		id := "errors-" + c.Name
+		control.attrs = append(control.attrs, A("aria-describedby", id))
+		errs.attrs = append(errs.attrs, A("id", id))
+	}
+	return El(c.Wrap, attrs, labelled(c.Label, control), errs)
+}
+
+// labelled is the <label> holding text (when there is any) and control.
+func labelled(text string, control Node) Node {
+	if text == "" {
+		return El("label", nil, control)
+	}
+	return El("label", nil, Text(text), control)
 }
 
 // forwarded are the wrapping element's attributes its native control takes too: `disabled`,

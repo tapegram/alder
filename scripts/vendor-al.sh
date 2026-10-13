@@ -1,0 +1,38 @@
+#!/bin/sh
+# vendor-al.sh <tag>: copy the alder-ui design system at <tag> into rt/al/.
+#
+# A plain copy at a tag: al.css (the bundle) and custom-elements.json (the
+# manifest the checker reads), with the tag written to rt/al/VERSION. Nothing
+# fetches at build time; the copy is committed and embedded by rt/embed.go.
+# Uses `gh repo clone` when gh is installed (the repository may be private),
+# else `git clone`.
+set -eu
+
+if [ $# -ne 1 ]; then
+	echo "usage: scripts/vendor-al.sh <tag>   (for example v0.1.1)" >&2
+	exit 2
+fi
+tag=$1
+repo=tapegram/alder-ui
+here=$(cd "$(dirname "$0")/.." && pwd)
+dest=$here/rt/al
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+if command -v gh >/dev/null 2>&1; then
+	gh repo clone "$repo" "$tmp/alder-ui" -- -c advice.detachedHead=false --quiet --depth 1 --branch "$tag"
+else
+	git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$tag" "https://github.com/$repo" "$tmp/alder-ui"
+fi
+
+version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$tmp/alder-ui/custom-elements.json")
+if [ "$version" != "$tag" ]; then
+	echo "vendor-al: the manifest at $tag says version \"$version\"" >&2
+	exit 1
+fi
+
+mkdir -p "$dest"
+cp "$tmp/alder-ui/al.css" "$dest/al.css"
+cp "$tmp/alder-ui/custom-elements.json" "$dest/custom-elements.json"
+printf '%s\n' "$tag" >"$dest/VERSION"
+echo "vendored alder-ui $tag into rt/al/"
