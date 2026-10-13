@@ -1,10 +1,5 @@
-/* The guestbook's stylesheet, served at /static/app.css. */
-body {
-  font-family: system-ui, sans-serif;
-  max-width: 40rem;
-  margin: 2rem auto;
-  padding: 0 1rem;
-}
-label { display: block; margin: 0.5rem 0; }
-input, button { font: inherit; }
+/* The guestbook's own rules, served at /static/app.css. The design system,
+   /static/al/al.css, styles the page, the card, the fields and the button. */
+form { display: grid; gap: 1rem; }
+#entries { padding-left: 1.25rem; }
 li { margin: 0.25rem 0; }

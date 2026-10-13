@@ -414,7 +414,7 @@ func TestE2E_Todos(t *testing.T) {
 	}
 	// an invalid email: a field error, update (and so Verify) not called
 	r = e.do("POST", loginSubmit, url.Values{"email": {"x"}, "password": {"hunter2"}})
-	r.want(t, 200, `<ul class="errors" data-errors="email"><li>must be an email address</li></ul>`, `value="x"`, `<ul class="errors" data-errors="form"></ul>`)
+	r.want(t, 200, `<ul class="errors" data-errors="email" id="errors-email"><li>must be an email address</li></ul>`, `aria-describedby="errors-email"`, `value="x"`, `<ul class="errors" data-errors="form"></ul>`)
 	r.lacks(t, "hunter2")
 	r.noCookie(t)
 	if n := e.caps.callCount(); n != 1 {
@@ -448,17 +448,17 @@ func TestE2E_Todos(t *testing.T) {
 
 	// 6. form errors re-render with the values; a valid todo redirects
 	r = e.do("POST", submit, url.Values{"title": {""}})
-	r.want(t, 200, `<ul class="errors" data-errors="title"><li>must not be empty</li></ul>`, `<ul id="todos"></ul>`)
+	r.want(t, 200, `<al-input label="What needs doing?" invalid>`, `<ul class="errors" data-errors="title" id="errors-title"><li>must not be empty</li></ul>`, `<ul id="todos"></ul>`)
 	r.html(t)
 	r.noCookie(t)
 	r = e.do("POST", submit, url.Values{"title": {"Milk"}, "due": {"2026-13-01"}})
-	r.want(t, 200, `<ul class="errors" data-errors="due"><li>must be a date (YYYY-MM-DD)</li></ul>`, `value="Milk"`, `value="2026-13-01"`, `<ul id="todos"></ul>`)
-	r.lacks(t, `data-errors="title"><li>`)
+	r.want(t, 200, `<ul class="errors" data-errors="due" id="errors-due"><li>must be a date (YYYY-MM-DD)</li></ul>`, `value="Milk"`, `value="2026-13-01"`, `<ul id="todos"></ul>`)
+	r.lacks(t, `data-errors="title" id="errors-title"><li>`)
 	r = e.do("POST", submit, url.Values{"title": {"Milk"}, "due": {"2026-10-12"}}, datastarHdr)
 	r.navigate(t, "/")
 	r.noCookie(t) // the update did not change the session
 	r = e.do("GET", "/", nil)
-	r.want(t, 200, `<span class="due">Oct 12</span>`, `<p id="summary">1 open</p>`)
+	r.want(t, 200, `<al-badge variant="outline" class="due">Oct 12</al-badge>`, `<p id="summary">1 open</p>`)
 	m := todoHref.FindAllStringSubmatch(r.body, -1)
 	if len(m) != 1 {
 		t.Fatalf("%d Milk rows, want 1:\n%s", len(m), r.body)
@@ -468,7 +468,7 @@ func TestE2E_Todos(t *testing.T) {
 	// a click button works without JavaScript: a form of its own posting the message, which
 	// Datastar posts on submit
 	q := url.QueryEscape(id)
-	r.want(t, 200, `<li class=""><form method="post" action="/_m/Todos.Index/Toggle?id=`+q+`" class="_alder-click" data-on:submit="@post(&#39;/_m/Todos.Index/Toggle?id=`+q+`&#39;, {contentType: &#39;form&#39;})"><button type="submit">Done</button></form>`)
+	r.want(t, 200, `<li class=""><form method="post" action="/_m/Todos.Index/Toggle?id=`+q+`" class="_alder-click" data-on:submit="@post(&#39;/_m/Todos.Index/Toggle?id=`+q+`&#39;, {contentType: &#39;form&#39;})"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>`)
 
 	// 7. Toggle under Datastar: an SSE patch of <body> with the toggled row; without: a 303 to the
 	// page
@@ -476,7 +476,7 @@ func TestE2E_Todos(t *testing.T) {
 	r.sse(t)
 	for _, f := range []string{
 		`<ul id="todos"><li class="done"><form method="post" action="/_m/Todos.Index/Toggle?id=` + q + `" class="_alder-click"`,
-		`>Undo</button></form><a href="/todos/` + id + `">Milk</a>`,
+		`>Undo</button></al-button></form><a href="/todos/` + id + `">Milk</a>`,
 		`<p id="summary">0 open</p>`,
 	} {
 		if !strings.Contains(r.body, f) {
@@ -504,7 +504,7 @@ func TestE2E_Todos(t *testing.T) {
 		r.want(t, 200, `<a href="/?filter=Completed" aria-current="page">Completed</a>`, `<ul id="todos"></ul>`, `<p id="summary">0 open</p>`)
 	})
 	r = e.do("GET", "/", nil)
-	r.want(t, 200, `<li class=""><form`, `>Done</button></form><a href="/todos/`+id+`">Milk</a>`, `<p id="summary">1 open</p>`)
+	r.want(t, 200, `<li class=""><form`, `>Done</button></al-button></form><a href="/todos/`+id+`">Milk</a>`, `<p id="summary">1 open</p>`)
 	r = e.do("GET", "/?filter=Completed", nil)
 	r.want(t, 200, `<ul id="todos"></ul>`)
 
@@ -565,7 +565,7 @@ func TestE2E_Todos(t *testing.T) {
 		r.want(t, 200, `<h1>Not found</h1>`)
 	}
 	r = e.do("GET", "/", nil)
-	r.want(t, 200, `>Done</button></form><a href="/todos/`+breadID+`">Bread</a>`, `<p id="summary">1 open</p>`)
+	r.want(t, 200, `>Done</button></al-button></form><a href="/todos/`+breadID+`">Bread</a>`, `<p id="summary">1 open</p>`)
 	r.lacks(t, "pwned")
 	// the owner can: Show's messages act on the page's todo (no id of their own)
 	r = e.do("GET", "/todos/"+url.PathEscape(breadID), nil)

@@ -228,7 +228,8 @@ func TestNew_InsideModule(t *testing.T) {
 }
 
 // TestNew_OutOfTree: the scaffold made by the built binary, with PATH holding only it and Go,
-// checks, tests (two tests), kills every mutant (score 1.00), builds and serves `/`, in both placements:
+// checks, tests (two tests), kills every mutant (score 1.00), builds and serves `/` (with the
+// design system: /static/al/al.css linked and served immutable, the button a native one), in both placements:
 // outside any Go module and inside one (RF3).
 func TestNew_OutOfTree(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
@@ -333,6 +334,21 @@ func TestNew_OutOfTree(t *testing.T) {
 			res.Body.Close()
 			if res.StatusCode != http.StatusOK || !strings.Contains(string(body), "<h1>Guestbook</h1>") || !strings.Contains(string(body), `<ul id="entries">`) {
 				t.Fatalf("GET / = %d:\n%s", res.StatusCode, body)
+			}
+			// the design system: linked, used, and its button a real submit button
+			for _, want := range []string{`<link rel="stylesheet" href="/static/al/al.css" />`, `<al-page width="narrow">`, "<al-card>",
+				`<al-input label="Your name"><label>Your name<input name="name"`, `<al-button type="submit"><button type="submit">Sign</button></al-button>`} {
+				if !strings.Contains(string(body), want) {
+					t.Errorf("GET / lacks %s:\n%s", want, body)
+				}
+			}
+			if res, err = c.Get("http://" + r.addr + "/static/al/al.css"); err != nil {
+				t.Fatal(err)
+			}
+			css, _ := io.ReadAll(res.Body)
+			res.Body.Close()
+			if res.StatusCode != http.StatusOK || res.Header.Get("Cache-Control") != "public, max-age=31536000, immutable" || !strings.Contains(string(css), "al-button") {
+				t.Errorf("GET /static/al/al.css = %d %q (%d bytes)", res.StatusCode, res.Header.Get("Cache-Control"), len(css))
 			}
 			if code := r.stop(t, os.Interrupt); code != 0 {
 				t.Fatalf("after SIGINT: exit %d; stderr:\n%s", code, r.stderr.String())

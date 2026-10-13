@@ -53,13 +53,13 @@ view model session =
   <Layout.Page title="Todos">
     <h1>Todos</h1>
 
-    <form submit={Submit}>
-      <Input field="title" label="What needs doing?" />
-      <Errors field="title" />
-      <Input field="due" label="Due" />
-      <Errors field="due" />
-      <button>Add</button>
-    </form>
+    <al-card>
+      <form submit={Submit}>
+        <al-input field="title" label="What needs doing?" />
+        <al-input field="due" label="Due" />
+        <al-button type="submit">Add</al-button>
+      </form>
+    </al-card>
 
     <nav>
       {for f in [All, Active, Completed] ->
@@ -74,19 +74,19 @@ view model session =
 
     <p id="summary">{Text.fromInt (Todo.countOpen model.todos)} open</p>
 
-    <button click={App.Logout}>Log out</button>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
   </Layout.Page>
 
 Item : { todo: Todo } -> Html Msg
 Item props =
   <li class={if props.todo.done then "done" else ""}>
-    <button click={Toggle { id: props.todo.id }}>{if props.todo.done then "Undo" else "Done"}</button>
+    <al-button variant="secondary" size="sm" click={Toggle { id: props.todo.id }}>{if props.todo.done then "Undo" else "Done"}</al-button>
     <a href={Todos.Show { id: props.todo.id }}>{props.todo.title}</a>
     {match props.todo.due {
-      Just d -> <span class="due">{Date.format "Jan 2" d}</span>,
+      Just d -> <al-badge variant="outline" class="due">{Date.format "Jan 2" d}</al-badge>,
       Nothing -> Html.none,
     }}
-    <button click={Delete { id: props.todo.id }}>Delete</button>
+    <al-button variant="ghost" size="sm" click={Delete { id: props.todo.id }}>Delete</al-button>
   </li>
 
 test "Toggle flips done" = {

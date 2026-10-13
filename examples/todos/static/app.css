@@ -1,46 +1,22 @@
-/* The to-do app's stylesheet, served at /static/app.css. */
+/* The to-do app's own rules, served at /static/app.css. The design system,
+   /static/al/al.css, styles the page, the cards, the fields, the buttons and
+   the badges; these place them. */
 
-body {
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
-  max-width: 40rem;
-  margin: 2rem auto;
-  padding: 0 1rem;
-  color: #1f2328;
-  background: #ffffff;
-}
-
-a {
-  color: #0969da;
-}
-
-label {
-  display: block;
-  margin: 0.5rem 0;
-}
-
-input,
-textarea,
-select {
-  font: inherit;
-  margin-left: 0.5rem;
-}
-
-/* A `click` button is wrapped in a form of its own (so it works without JavaScript); keep it in
-   line with the text around it. */
+/* A `click` button is wrapped in a form of its own (so it works without
+   JavaScript); keep it in line with the text around it. */
 form._alder-click {
   display: inline;
 }
 
-button {
-  font: inherit;
-  margin: 0.25rem 0.5rem 0.25rem 0;
-  padding: 0.25rem 0.75rem;
-  cursor: pointer;
+form:not(._alder-click) {
+  display: grid;
+  gap: 1rem;
 }
 
-nav a {
-  margin-right: 0.75rem;
+nav {
+  display: flex;
+  gap: 0.75rem;
+  margin: 1.5rem 0 0.5rem;
 }
 
 nav a[aria-current="page"] {
@@ -52,22 +28,26 @@ ul#todos {
   padding: 0;
 }
 
+ul#todos li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
 li.done a {
   text-decoration: line-through;
-  color: #6e7781;
+  color: var(--muted-foreground);
 }
 
-.due {
-  margin-left: 0.5rem;
-  color: #6e7781;
-}
-
-.errors {
-  color: #cf222e;
-  margin: 0.25rem 0;
+/* The form-level list (`<Errors form />`); a field's list is the design
+   system's. */
+ul.errors[data-errors="form"] {
+  color: var(--al-destructive-text);
+  margin: 0;
   padding-left: 1.25rem;
 }
 
-.errors:empty {
+ul.errors:empty {
   display: none;
 }

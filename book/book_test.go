@@ -1028,7 +1028,7 @@ func TestBook_ScaffoldDrift(t *testing.T) {
 	}
 	md := full.String()
 	for _, c := range []struct{ name, old, new, want string }{
-		{"a file= line", "max-width: 40rem;", "max-width: 50rem;", "file=guestbook/static/app.css differs"},
+		{"a file= line", "gap: 1rem;", "gap: 2rem;", "file=guestbook/static/app.css differs"},
 		{"a module line", "<h1>Guestbook</h1>", "<h1>Visitors</h1>", "the part=guestbook/Home blocks joined differ"},
 		{"a file left out", "```text file=guestbook/adapters/README.md", "```text", "alder new writes adapters/README.md, which the chapter does not quote"},
 	} {

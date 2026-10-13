@@ -62,9 +62,9 @@ view model session =
     <h1>Blog</h1>
 
     <form submit={Search} class="search">
-      <Input field="q" label="Search" value={model.q} />
-      <Errors form />
-      <button>Search</button>
+      <al-input field="q" label="Search" value={model.q} />
+      <al-alert variant="destructive"><Errors form /></al-alert>
+      <al-button type="submit" variant="secondary">Search</al-button>
     </form>
 
     {if List.isEmpty model.posts then
@@ -78,13 +78,14 @@ view model session =
           </li>}
       </ul>}
 
-    <nav class="pages">
-      {if model.page > 1 then <a href={Posts.Index { page: model.page - 1, q: model.q }} rel="prev">Newer</a> else Html.none}
-      {if model.hasMore then <a href={Posts.Index { page: model.page + 1, q: model.q }} rel="next">Older</a> else Html.none}
-    </nav>
+    <al-pagination role="navigation" aria-label="Pages">
+      {if model.page > 1 then <a slot="prev" href={Posts.Index { page: model.page - 1, q: model.q }} rel="prev">Newer</a> else <span slot="prev" aria-disabled="true">Newer</span>}
+      <span>Page {Text.fromInt model.page}</span>
+      {if model.hasMore then <a slot="next" href={Posts.Index { page: model.page + 1, q: model.q }} rel="next">Older</a> else <span slot="next" aria-disabled="true">Older</span>}
+    </al-pagination>
 
     {match session.user {
-      Just _ -> <p>{if model.canWrite then <a href={Admin {}}>Write</a> else Html.none} <button click={App.Logout}>Log out</button></p>,
+      Just _ -> <div class="account">{if model.canWrite then <a href={Admin {}}>Write</a> else Html.none} <al-button variant="outline" size="sm" click={App.Logout}>Log out</al-button></div>,
       Nothing -> <p><a href={Auth.Login {}}>Log in</a></p>,
     }}
   </Layout.Page>

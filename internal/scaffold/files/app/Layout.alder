@@ -6,9 +6,12 @@ Page props =
     <head>
       <meta charset="utf-8" />
       <title>{props.title}</title>
+      <link rel="stylesheet" href={Url.external "/static/al/al.css"} />
       <link rel="stylesheet" href={Url.external "/static/app.css"} />
     </head>
     <body>
-      <main>{props.children}</main>
+      <al-page width="narrow">
+        <main>{props.children}</main>
+      </al-page>
     </body>
   </html>

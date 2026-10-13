@@ -147,7 +147,8 @@ func TestRenderWith_StateOnlyOnThePostingForm(t *testing.T) {
 // A click button works without JavaScript (I3): outside a form it is wrapped in a form of its
 // own posting the message (Datastar posts it on submit); inside a form it is a submit button
 // with its own formaction, which Datastar posts on click, preventing the form's submission. A
-// `type` the view wrote is replaced. Other elements keep data-on:click.
+// `type` the view wrote is replaced. An <al-button> holding one is wrapped whole. Other
+// elements keep data-on:click.
 func TestRender_ClickButtons(t *testing.T) {
 	m := rt.MsgRef{Module: "Todos", Msg: "Toggle", Params: []rt.KV{{Key: "id", Value: "a b"}}}
 	st := &FormState{PageParams: []rt.KV{{Key: "filter", Value: "Active"}}}
@@ -162,6 +163,21 @@ func TestRender_ClickButtons(t *testing.T) {
 	want = `<button type="submit" formaction="` + u + `" formmethod="post" formnovalidate data-on:click__prevent="@post(&#39;` + u + `&#39;)">Delete</button><button>Save</button></form>`
 	if !strings.HasSuffix(got, want) || strings.Count(got, "<form") != 1 {
 		t.Fatalf("inside a form:\n got %s\nwant …%s", got, want)
+	}
+	// the design system's button (what `<al-button click={…}>` compiles to): the form goes around
+	// the <al-button>, so the button stays its child; inside a form, the formaction button
+	alButton := El("al-button", []Attr{A("variant", "ghost"), B("disabled", false)},
+		El("button", []Attr{A("type", "button"), MsgAttr("data-on:click", m), B("disabled", false)}, Text("Done")))
+	got = RenderWith(alButton, st)
+	want = `<form method="post" action="` + u + `" class="_alder-click" data-on:submit="@post(&#39;` + u + `&#39;, {contentType: &#39;form&#39;})">` +
+		`<al-button variant="ghost"><button type="submit">Done</button></al-button></form>`
+	if got != want {
+		t.Fatalf("al-button outside a form:\n got %s\nwant %s", got, want)
+	}
+	got = RenderWith(FormTo(newTodo, nil, alButton), st)
+	want = `<al-button variant="ghost"><button type="submit" formaction="` + u + `" formmethod="post" formnovalidate data-on:click__prevent="@post(&#39;` + u + `&#39;)">Done</button></al-button></form>`
+	if !strings.HasSuffix(got, want) || strings.Count(got, "<form") != 1 {
+		t.Fatalf("al-button inside a form:\n got %s\nwant …%s", got, want)
 	}
 	got = RenderWith(El("li", []Attr{MsgAttr("data-on:click", m)}, Text("row")), st)
 	if got != `<li data-on:click="@post(&#39;`+u+`&#39;)">row</li>` {

@@ -56,27 +56,33 @@ view model session =
   <Layout.Page title="Your posts">
     <h1>Your posts</h1>
 
-    <ul class="posts">
-      {for post in model.posts ->
-        <li>
-          <a href={Admin.Edit { id: post.id }}>{post.title}</a>
-          {if post.published then Html.none else <span class="draft">draft</span>}
-        </li>}
-    </ul>
+    <al-table>
+      <table>
+        <thead>
+          <tr><th>Title</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {for post in model.posts ->
+            <tr>
+              <td><a href={Admin.Edit { id: post.id }}>{post.title}</a></td>
+              <td>{if post.published then <al-badge>published</al-badge> else <al-badge variant="secondary">draft</al-badge>}</td>
+            </tr>}
+        </tbody>
+      </table>
+    </al-table>
 
-    <h2>New post</h2>
-    <form submit={Create}>
-      <Errors form />
-      <Input field="slug" label="Slug (lowercase letters, digits and hyphens)" />
-      <Errors field="slug" />
-      <Input field="title" label="Title" />
-      <Errors field="title" />
-      <Textarea field="body" label="Body (Markdown)" />
-      <Errors field="body" />
-      <button>Create draft</button>
-    </form>
+    <al-card>
+      <h2 slot="header">New post</h2>
+      <form submit={Create}>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-input field="slug" label="Slug" help="Lowercase letters, digits and hyphens" />
+        <al-input field="title" label="Title" />
+        <al-textarea field="body" label="Body (Markdown)" />
+        <al-button type="submit">Create draft</al-button>
+      </form>
+    </al-card>
 
-    <button click={App.Logout}>Log out</button>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
   </Layout.Page>
 
 -- The role is the session's: `Test.login` gives it, as logging in does from the user's row.

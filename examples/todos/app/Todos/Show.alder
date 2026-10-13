@@ -42,15 +42,17 @@ view : Model -> Session -> Html Msg
 view model session =
   <Layout.Page title={model.todo.title}>
     <h1>{model.todo.title}</h1>
-    <form submit={Save}>
-      <Input field="title" label="Title" value={model.todo.title} />
-      <Errors field="title" />
-      <Input field="due" label="Due" value={model.todo.due} />
-      <Errors field="due" />
-      <button>Save</button>
-    </form>
-    <button click={Delete}>Delete</button>
-    <a href={Todos.Index {}}>Back</a>
+    <al-card>
+      <form submit={Save}>
+        <al-input field="title" label="Title" value={model.todo.title} />
+        <al-input field="due" label="Due" value={model.todo.due} />
+        <al-button type="submit">Save</al-button>
+      </form>
+      <div slot="actions">
+        <al-button variant="ghost" href={Todos.Index {}}>Back</al-button>
+        <al-button variant="destructive" click={Delete}>Delete</al-button>
+      </div>
+    </al-card>
   </Layout.Page>
 
 -- The page through the browser: a visitor is sent to log in; the owner saves the form and

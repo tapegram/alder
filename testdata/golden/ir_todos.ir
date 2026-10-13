@@ -13,8 +13,13 @@
       (elem title (hexpr text (field title (var props))))
       (elem link
         (attr rel text "stylesheet")
+        (attr href href (call (std Url.external) "/static/al/al.css")))
+      (elem link
+        (attr rel text "stylesheet")
         (attr href href (call (std Url.external) "/static/app.css"))))
-    (elem body (elem main (hexpr list (field children (var props)))))))
+    (elem body
+      (elem al-page (attr width text "narrow")
+        (elem main (hexpr list (field children (var props))))))))
 (module App)
 (record App.Session (user Maybe Text))
 (union App.Msg (Logout))
@@ -96,14 +101,15 @@
   (comp Layout.Page
     (record (title "Log in"))
     (elem h1 (htext "Log in"))
-    (form-el Auth.Login.Submit
-      (attr submit submit (ctor Auth.Login.Msg.Submit (record SubmitParams)))
-      (input Errors Credentials form)
-      (input Input Credentials field=email label="Email")
-      (input Errors Credentials field=email)
-      (input Input Credentials field=password label="Password")
-      (input Errors Credentials field=password)
-      (elem button (htext "Log in")))))
+    (elem al-card
+      (form-el Auth.Login.Submit
+        (attr submit submit (ctor Auth.Login.Msg.Submit (record SubmitParams)))
+        (input Errors Credentials form)
+        (input Input Credentials field=email label="Email" (wrap al-input))
+        (input Input Credentials field=password label="Password"
+          (wrap al-input))
+        (elem al-button (attr type text "submit")
+          (elem button (attr type text "submit") (htext "Log in")))))))
 (test "an unknown email is rejected" task
   (bind task _
     (test-fake Auth.Login.Password)
@@ -355,13 +361,14 @@
   (comp Layout.Page
     (record (title "Todos"))
     (elem h1 (htext "Todos"))
-    (form-el Todos.Index.Submit
-      (attr submit submit (ctor Todos.Index.Msg.Submit (record SubmitParams)))
-      (input Input NewTodo field=title label="What needs doing?")
-      (input Errors NewTodo field=title)
-      (input Input NewTodo field=due label="Due")
-      (input Errors NewTodo field=due)
-      (elem button (htext "Add")))
+    (elem al-card
+      (form-el Todos.Index.Submit
+        (attr submit submit (ctor Todos.Index.Msg.Submit (record SubmitParams)))
+        (input Input NewTodo field=title label="What needs doing?"
+          (wrap al-input))
+        (input Input NewTodo field=due label="Due" (wrap al-input))
+        (elem al-button (attr type text "submit")
+          (elem button (attr type text "submit") (htext "Add")))))
     (elem nav
       (hfor f : Todo.Filter
         (list
@@ -385,17 +392,23 @@
         (call (std Text.fromInt)
           (call (global Todo.countOpen) (field todos (var model)))))
       (htext " open"))
-    (elem button (attr click click (ctor App.Msg.Logout)) (htext "Log out"))))
+    (elem al-button (attr variant text "outline")
+      (elem button
+        (attr type text "button")
+        (attr click click (ctor App.Msg.Logout))
+        (htext "Log out")))))
 (component Todos.Index.Item : { todo: Todo } -> Html Msg (props)
   (elem li
     (attr class text (if (field done (field todo (var props))) "done" ""))
-    (elem button
-      (attr click click
-        (ctor Todos.Index.Msg.Toggle
-          (record ToggleParams (id (field id (field todo (var props)))))))
-      (hif (field done (field todo (var props)))
-        (hexpr text "Undo")
-        (hexpr text "Done")))
+    (elem al-button (attr variant text "secondary") (attr size text "sm")
+      (elem button
+        (attr type text "button")
+        (attr click click
+          (ctor Todos.Index.Msg.Toggle
+            (record ToggleParams (id (field id (field todo (var props)))))))
+        (hif (field done (field todo (var props)))
+          (hexpr text "Undo")
+          (hexpr text "Done"))))
     (elem a
       (attr href href
         (page-ref Todos.Show
@@ -405,14 +418,16 @@
       (case Just (bind _m1 value : Date)
         (let d : Date
           (var _m1)
-          (elem span (attr class text "due")
+          (elem al-badge (attr variant text "outline") (attr class text "due")
             (hexpr text (call (std Date.format) "Jan 2" (var d))))))
       (case Nothing (hexpr html (std Html.none))))
-    (elem button
-      (attr click click
-        (ctor Todos.Index.Msg.Delete
-          (record DeleteParams (id (field id (field todo (var props)))))))
-      (htext "Delete"))))
+    (elem al-button (attr variant text "ghost") (attr size text "sm")
+      (elem button
+        (attr type text "button")
+        (attr click click
+          (ctor Todos.Index.Msg.Delete
+            (record DeleteParams (id (field id (field todo (var props)))))))
+        (htext "Delete")))))
 (test "Toggle flips done" task
   (bind task me : Text
     (db-insert User.User
@@ -762,22 +777,29 @@
   (comp Layout.Page
     (record (title (field title (field todo (var model)))))
     (elem h1 (hexpr text (field title (field todo (var model)))))
-    (form-el Todos.Show.Save
-      (attr submit submit (ctor Todos.Show.Msg.Save (record SaveParams)))
-      (input Input EditTodo field=title label="Title"
-        (value (field title (field todo (var model)))))
-      (input Errors EditTodo field=title)
-      (input Input EditTodo field=due label="Due"
-        (value (field due (field todo (var model)))))
-      (input Errors EditTodo field=due)
-      (elem button (htext "Save")))
-    (elem button (attr click click (ctor Todos.Show.Msg.Delete))
-      (htext "Delete"))
-    (elem a
-      (attr href href
-        (page-ref Todos.Index
-          (record Todos.Index.Params (filter (ctor Todo.Filter.All)))))
-      (htext "Back"))))
+    (elem al-card
+      (form-el Todos.Show.Save
+        (attr submit submit (ctor Todos.Show.Msg.Save (record SaveParams)))
+        (input Input EditTodo field=title label="Title"
+          (value (field title (field todo (var model))))
+          (wrap al-input))
+        (input Input EditTodo field=due label="Due"
+          (value (field due (field todo (var model))))
+          (wrap al-input))
+        (elem al-button (attr type text "submit")
+          (elem button (attr type text "submit") (htext "Save"))))
+      (elem div (attr slot text "actions")
+        (elem al-button (attr variant text "ghost")
+          (elem a
+            (attr href href
+              (page-ref Todos.Index
+                (record Todos.Index.Params (filter (ctor Todo.Filter.All)))))
+            (htext "Back")))
+        (elem al-button (attr variant text "destructive")
+          (elem button
+            (attr type text "button")
+            (attr click click (ctor Todos.Show.Msg.Delete))
+            (htext "Delete")))))))
 (test "a visitor is sent to log in from a todo" task
   (bind task me : Text
     (db-insert User.User

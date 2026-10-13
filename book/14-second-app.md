@@ -307,27 +307,36 @@ view model session =
   <Layout.Page title={"Edit: " ++ model.post.title}>
     <h1>{model.post.title}</h1>
     <p>
-      {if model.post.published then "Published" else "Draft"}
+      {if model.post.published then <al-badge>Published</al-badge> else <al-badge variant="secondary">Draft</al-badge>}
       · <a href={Posts.Show { slug: model.post.slug }}>View</a>
     </p>
 
-    <form submit={Save}>
-      <Errors form />
-      <Input field="title" label="Title" value={model.post.title} />
-      <Errors field="title" />
-      <Textarea field="body" label="Body (Markdown)" value={model.post.body} />
-      <Errors field="body" />
-      <button>Save</button>
-    </form>
-
-    {if model.post.published then
-      <button click={Unpublish}>Unpublish</button>
-    else
-      <button click={Publish}>Publish</button>}
-    <button click={Delete}>Delete</button>
+    <al-card>
+      <form submit={Save}>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-input field="title" label="Title" value={model.post.title} />
+        <al-textarea field="body" label="Body (Markdown)" value={model.post.body} />
+        <al-button type="submit">Save</al-button>
+      </form>
+      <div slot="actions">
+        {if model.post.published then
+          <al-button variant="secondary" click={Unpublish}>Unpublish</al-button>
+        else
+          <al-button variant="secondary" click={Publish}>Publish</al-button>}
+        <al-button variant="destructive" click={Delete}>Delete</al-button>
+      </div>
+    </al-card>
     <a href={Admin {}}>All your posts</a>
   </Layout.Page>
 ```
+
+The page is built from the design system's elements (Appendix C): the
+status is an `<al-badge>`, the form sits in an `<al-card>` whose
+`actions` slot holds the buttons, and the form's own error (a `Reject`)
+appears in an `<al-alert variant="destructive">`, which Alder gives
+`role="alert"` so a screen reader announces it. The app's stylesheet
+hides that alert while its list is empty (`al-alert:has(> ul.errors:empty)
+{ display: none }`).
 
 ```alder part=blog/Admin.Edit
 test "deleting a post deletes its comments" = {
@@ -422,10 +431,13 @@ showed what nothing checked: that a visitor who opens an edit page is
 sent to log in (with `requires user` deleted, the page would be served to
 them), and that Save stores both fields. The second posts the form and
 reads the page it re-renders: the heading and the text area now hold
-what was saved.
+what was saved, and the post's status is still the `<al-badge>` reading
+Draft (a re-render replaces the page's `<body>`, custom elements and
+all).
 
 ```alder part=blog/Admin.Edit
--- The page through the browser: a visitor is sent to log in; the author saves the form.
+-- The page through the browser: a visitor is sent to log in; the author saves the form, and the
+-- page rerenders with its design-system elements (the status is an <al-badge>).
 test "a visitor is sent to log in" = {
   let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
   let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author }
@@ -439,7 +451,7 @@ test "saving changes the title and the body" = {
   let _ <- Test.login { user: Just author, role: Author }
   let _ <- Test.get (Admin.Edit { id: id })
   let r <- Test.submit EditPost { title: Text.NonEmpty "Hello again", body: "More." }
-  Task.succeed ({ answer: r.answer, heading: Test.text "h1" r.doc, body: Test.text "textarea[name=body]" r.doc } == { answer: Rerendered, heading: Just "Hello again", body: Just "More." })
+  Task.succeed ({ answer: r.answer, heading: Test.text "h1" r.doc, body: Test.text "textarea[name=body]" r.doc, status: Test.text "al-badge" r.doc } == { answer: Rerendered, heading: Just "Hello again", body: Just "More.", status: Just "Draft" })
 }
 ```
 
@@ -570,9 +582,9 @@ view model session =
     <h1>Blog</h1>
 
     <form submit={Search} class="search">
-      <Input field="q" label="Search" value={model.q} />
-      <Errors form />
-      <button>Search</button>
+      <al-input field="q" label="Search" value={model.q} />
+      <al-alert variant="destructive"><Errors form /></al-alert>
+      <al-button type="submit" variant="secondary">Search</al-button>
     </form>
 
     {if List.isEmpty model.posts then
@@ -586,17 +598,24 @@ view model session =
           </li>}
       </ul>}
 
-    <nav class="pages">
-      {if model.page > 1 then <a href={Posts.Index { page: model.page - 1, q: model.q }} rel="prev">Newer</a> else Html.none}
-      {if model.hasMore then <a href={Posts.Index { page: model.page + 1, q: model.q }} rel="next">Older</a> else Html.none}
-    </nav>
+    <al-pagination role="navigation" aria-label="Pages">
+      {if model.page > 1 then <a slot="prev" href={Posts.Index { page: model.page - 1, q: model.q }} rel="prev">Newer</a> else <span slot="prev" aria-disabled="true">Newer</span>}
+      <span>Page {Text.fromInt model.page}</span>
+      {if model.hasMore then <a slot="next" href={Posts.Index { page: model.page + 1, q: model.q }} rel="next">Older</a> else <span slot="next" aria-disabled="true">Older</span>}
+    </al-pagination>
 
     {match session.user {
-      Just _ -> <p>{if model.canWrite then <a href={Admin {}}>Write</a> else Html.none} <button click={App.Logout}>Log out</button></p>,
+      Just _ -> <div class="account">{if model.canWrite then <a href={Admin {}}>Write</a> else Html.none} <al-button variant="outline" size="sm" click={App.Logout}>Log out</al-button></div>,
       Nothing -> <p><a href={Auth.Login {}}>Log in</a></p>,
     }}
   </Layout.Page>
 ```
+
+The page's links to the next and previous pages go in `<al-pagination>`'s
+`prev` and `next` slots, a dimmed `<span>` standing in when there is no
+such page; the default slot holds the app's own "Page N" (the page does
+not count the results, so it cannot say "of M", which the element would
+otherwise draw from its `page` and `pages` attributes).
 
 ## Its tests
 

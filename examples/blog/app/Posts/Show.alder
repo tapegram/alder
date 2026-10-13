@@ -57,7 +57,7 @@ view model session =
   <Layout.Page title={model.post.title}>
     <article>
       <h1>{model.post.title}</h1>
-      {if model.post.published then Html.none else <p class="draft">Draft: only you can see this post.</p>}
+      {if model.post.published then Html.none else <al-alert heading="Draft">Only you can see this post.</al-alert>}
       <div class="body">{model.body}</div>
     </article>
 
@@ -71,14 +71,14 @@ view model session =
           </li>}
       </ul>
       {if model.post.published then
-        <form submit={AddComment}>
-          <Errors form />
-          <Input field="author" label="Name" />
-          <Errors field="author" />
-          <Textarea field="body" label="Comment" />
-          <Errors field="body" />
-          <button>Comment</button>
-        </form>
+        <al-card>
+          <form submit={AddComment}>
+            <al-alert variant="destructive"><Errors form /></al-alert>
+            <al-input field="author" label="Name" />
+            <al-textarea field="body" label="Comment" />
+            <al-button type="submit">Comment</al-button>
+          </form>
+        </al-card>
       else Html.none}
     </section>
 

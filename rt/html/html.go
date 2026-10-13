@@ -136,8 +136,13 @@ func (n Node) AlderKey() string { return Render(n) }
 //	<button type="submit" formaction="<url>" formmethod="post" formnovalidate data-on:click__prevent="@post('<url>')" …>
 //
 // Without JavaScript the browser then posts the enclosing form's fields too, which a message
-// without a form ignores; with it, Datastar posts no fields. Any other element with a click
-// renders data-on:click="@post('<url>')" and needs JavaScript.
+// without a form ignores; with it, Datastar posts no fields. A click button that is the one
+// child of an `<al-button>` (as the compiler renders `<al-button click={…}>`) is written the
+// same way with the form outside the `<al-button>`:
+//
+//	<form … class="_alder-click" …><al-button variant="…"><button type="submit" …>…</button></al-button></form>
+//
+// Any other element with a click renders data-on:click="@post('<url>')" and needs JavaScript.
 func RenderWith(n Node, st *FormState) string {
 	var b strings.Builder
 	r := renderer{b: &b, st: st}
@@ -170,7 +175,13 @@ func (r *renderer) render(n Node) {
 	case kElem:
 		if n.tag == "button" {
 			if m := clickMsg(n.attrs); m != nil {
-				r.clickButton(n, m)
+				r.clickButton(n, m, nil)
+				return
+			}
+		}
+		if n.tag == "al-button" && len(n.children) == 1 && n.children[0].kind == kElem && n.children[0].tag == "button" {
+			if m := clickMsg(n.children[0].attrs); m != nil { // the design system's button: the form goes around it
+				r.clickButton(n.children[0], m, &n)
 				return
 			}
 		}
@@ -224,8 +235,10 @@ func (r *renderer) open(tag string, attrs []Attr) {
 	b.WriteByte('>')
 }
 
-// clickButton writes button n, whose click posts message m (see RenderWith).
-func (r *renderer) clickButton(n Node, m *rt.MsgRef) {
+// clickButton writes button n, whose click posts message m (see RenderWith). outer, when not
+// nil, is the `<al-button>` whose one child n is: it is written around the button, inside the
+// form, so the stylesheet's `al-button > button` still finds the button as its child.
+func (r *renderer) clickButton(n Node, m *rt.MsgRef, outer *Node) {
 	url := r.url(m)
 	attrs := []Attr{A("type", "submit")}
 	if r.inForm {
@@ -238,6 +251,11 @@ func (r *renderer) clickButton(n Node, m *rt.MsgRef) {
 		}
 	}
 	button := Node{kind: kElem, tag: "button", attrs: attrs, children: n.children}
+	if outer != nil {
+		o := *outer
+		o.children = []Node{button}
+		button = o
+	}
 	if r.inForm {
 		saved := *r
 		r.render(button)

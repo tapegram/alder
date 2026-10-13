@@ -347,9 +347,9 @@ func TestRun_ServesStaticAndDesignSystem(t *testing.T) {
 	}
 	get(t, r.base+"/static/al/custom-elements.json")
 	events := r.subscribe(t)
-	edit(t, r.dir, "static/app.css", "body {", "body.edited {")
+	edit(t, r.dir, "static/app.css", "ul#todos {", "ul#todos.edited {")
 	waitFor(t, events, wantReload, 30*time.Second)
-	if css := get(t, r.base+"/static/app.css"); !strings.Contains(css, "body.edited {") {
+	if css := get(t, r.base+"/static/app.css"); !strings.Contains(css, "ul#todos.edited {") {
 		t.Fatalf("the edited static file is not served:\n%.200s", css)
 	}
 	if g := generation(t, get(t, r.base+"/login")); g != gen {

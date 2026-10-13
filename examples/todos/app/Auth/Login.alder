@@ -49,14 +49,14 @@ view : Model -> Session -> Html Msg
 view model session =
   <Layout.Page title="Log in">
     <h1>Log in</h1>
-    <form submit={Submit}>
-      <Errors form />
-      <Input field="email" label="Email" />
-      <Errors field="email" />
-      <Input field="password" label="Password" />
-      <Errors field="password" />
-      <button>Log in</button>
-    </form>
+    <al-card>
+      <form submit={Submit}>
+        <Errors form />
+        <al-input field="email" label="Email" />
+        <al-input field="password" label="Password" />
+        <al-button type="submit">Log in</al-button>
+      </form>
+    </al-card>
   </Layout.Page>
 
 -- Logging in through the form, with the fake: an unknown email is rejected with the form's
