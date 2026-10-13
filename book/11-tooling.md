@@ -12,7 +12,9 @@ other expressions are parsed. As of M4b, `alder test` runs the app's
 tests. As of M5b, `alder migrate` writes the app's migrations. As of
 M10, the runtime travels inside the `alder` binary, so a build needs
 only `alder` and Go, `alder version` says which alder you have, and
-`alder new` writes a new app to start from.
+`alder new` writes a new app to start from. As of M12, `alder new
+page|table|form|msg|capability`, `alder edit table` and `alder fill`
+generate the app's code.
 `fmt`, holes beyond W0002 and `query` are planned.
 
 ## Project layout
@@ -83,6 +85,9 @@ and writes the app's own only when it finds one.
 
 ```
 alder new <name>     write a new app, the guestbook, into the directory <name>
+alder new <kind> …   generate a page, table, form, msg or capability in the app
+alder edit table …   add, rename or drop a table's field, with its migration
+alder fill <decl> -  fill a typed hole with the expression on standard input
 alder check          type-check everything; milliseconds; no output on success
 alder build          check, generate Go, go build → ./build/myapp/myapp
 alder run            build and run with the dev database, reloading on change
@@ -181,6 +186,57 @@ writes, as it is, and chapters 1 and 11 to quote its output above
 directory outside this repository, both outside any Go module and inside
 one. Its two tests kill all three of its mutants (score 1.00), and the
 tests of `alder new` fail if that ever drops.
+
+### The generators: `alder new <kind>`, `alder edit table`, `alder fill`
+
+As of M12, the app's own code can be generated from the command line,
+as plain Alder that the checker verifies and browser tests cover
+(chapter 15 walks through each command). Each command reads the app in
+`--dir` (default `.`), applies its change to a copy of the app, checks
+the copy as `alder check` does, and only then writes the files; it
+prints them (`wrote app/About.alder`, `edited app/Home.alder`), the
+unified diff of every edited one, and the copy's diagnostics, its typed
+holes (W0002) with their types among them.
+
+| Command | What it writes |
+|---|---|
+| `alder new page <Module> <path>` | `app/<Module>.alder`: the page, its `Model`, `load` and `view` in the app's layout, and a browser test. `--list T`: a table of `T`'s rows (`al-table`, badges for Bool and unions), 20 to a page with `al-pagination`; `--show T`: one row, at `<path>/{id}`, and a test of a missing one; `--from T …`: every row of each table, a card each; `--requires user` and `--role R` add the clause, and `--list` reads an `@owner` table with `Db.mine` |
+| `alder new table <Name> <field>:<Type> …` | `app/<Name>.alder`: `table <Name>` with its id brand, the fields, `created` and `updated`; and its migration, as `alder migrate` writes it. A field is `name:Type[=default][@attr[=arg]]…`: `done:Bool=False`, `post:Post.PostId@ref=Post@cascade`, `"note:Maybe Text"` |
+| `alder new form <Page> <Name> <field>:<Type> …` | in the page: `form <Name>`, `msg Submit<Name> form <Name>`, its arm of `update` (an insert into the table whose columns the fields are, by name and type, or `--into T`'s; else the hole `?submit<Name>`), the form in `view` (wrapped inputs, `<Errors form />` in an `al-alert`), and two browser tests |
+| `alder new msg <Page> <Name> [<field>:<Type> …]` | in the page: `msg <Name>`, its arm (the hole `?<name>`), an `al-button` that sends it at the end of the view, and a test whose expected answer is the hole `?expected` |
+| `alder new capability <Module> <entry> "<Type>"` | the capability (named after the module's last segment) with its entry, a `fake` whose entry is the hole `?<entry>`, a test that installs the fake, and the adapter, `adapters/<segment>/`, whose methods return "not implemented" |
+| `alder edit table <T> add-field <field>` | the field, after the table's last, and its migration |
+| `alder edit table <T> rename-field <old> <new>` | the field renamed, with `@renamed "old"` (chapter 8), and its migration |
+| `alder edit table <T> drop-field <field>` | the field removed, and its migration |
+| `alder fill <Module>.<decl>[.<arm>] -` | the declaration's hole (`--hole ?name` when it has several) replaced by the expression on standard input; `Module."test name"` names a test, `Module.update.Msg` an arm. `alder fill --list` lists every hole: `Home update.Clear ?clear : Task Nav` |
+
+A generator never overwrites anything and never writes a result that
+does not check. It refuses, with one sentence on standard error, exit
+1 and nothing written, when a file or a name it would write exists,
+when a table, page or role it names does not, and when the copy has
+errors (printed first, as `alder check` prints them):
+
+```
+alder new page: module `Home` exists (`app/Home.alder`): a generator never overwrites a file; choose another module name
+alder new form: the result does not check (the errors above): nothing was written
+```
+
+`alder edit table` is the exception: a change to a table breaks the code
+that uses it (an insert that lacks a new field without a default, a use
+of a dropped one), and those errors, printed with their files and lines,
+are the to-do list, so the edit is written anyway; `--strict` refuses it
+instead. A change no migration can make (a new field that is neither a `Maybe`
+nor given a default, which the rows already stored could not be filled
+with) is refused with `alder migrate`'s reason.
+
+`--dry-run` prints the same and writes nothing (its last line is `dry
+run: nothing written`). `--json` prints one object:
+`{"files":[{"path":…,"action":"created"|"edited"}],"diff":…,
+"diagnostics":[…],"holes":[{"module":…,"decl":…,"arm":…,"name":…,"type":…,"file":…,"line":…,"col":…}],
+"written":…}`, with `"migration"` (the steps) when one was written and
+`"error"` (the sentence) for a refusal. The words `page`, `table`,
+`form`, `msg`, `capability` and `admin` name generators, so `alder new`
+refuses them as app names.
 
 ### `alder build`
 
@@ -1168,7 +1224,9 @@ reports each one as warning W0002 with its expected type:
 app/Todos/Index.alder:40:18: warning[W0002]: hole ?count has type Int
 ```
 
-Listing the values in scope that could fill a hole is planned.
+`alder fill --list` lists every hole with its module, declaration and
+type, and `alder fill` fills one (above, "The generators"). Listing the
+values in scope that could fill a hole is planned.
 
 ## Queries
 

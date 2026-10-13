@@ -1,0 +1,15 @@
+edited app/Post.alder
+wrote migrations/0002_drop_featured.sql
+  drop column Post.featured
+!! DROPS DATA: column Post.featured
+edited migrations/schema.json
+--- a/app/Post.alder
++++ b/app/Post.alder
+@@ -13,7 +13,6 @@
+   title: Text.NonEmpty,
+   body: Text,
+   status: Status = Draft,
+-  featured: Bool = False,
+   author: User.UserId @ref User @owner,
+   created: Time @created,
+   updated: Time @updated,

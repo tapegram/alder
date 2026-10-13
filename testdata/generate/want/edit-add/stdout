@@ -1,0 +1,15 @@
+edited app/Entry.alder
+wrote migrations/0002_add_note.sql
+  add column Entry.note
+edited migrations/schema.json
+--- a/app/Entry.alder
++++ b/app/Entry.alder
+@@ -7,4 +7,5 @@
+   name: Text.NonEmpty,
+   message: Text.NonEmpty,
+   created: Time @created,
++  note: Maybe Text,
+ }
+app/Home.alder:26:30: error[E0003]: record `Entry.Insert Entry` is missing field(s): note
+      let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

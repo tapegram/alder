@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -49,6 +51,10 @@ func alderIn(t *testing.T, dir, stdin string, args ...string) (int, string, stri
 	switch args[0] {
 	case "new":
 		code = runNewTo(withDir, &out, &errb)
+	case "edit":
+		code = runEditTo(withDir, &out, &errb)
+	case "fill":
+		code = runFillTo(withDir, strings.NewReader(stdin), &out, &errb)
 	case "check":
 		code = runCheckTo([]string{dir}, &out, &errb)
 	case "test":
@@ -159,9 +165,13 @@ var genCases = []genCase{
 	{name: "page-from", base: "scaffold", args: []string{"new", "page", "Dash", "/dash", "--from", "Entry"}, tests: 3},
 	{name: "table", base: "scaffold", args: []string{"new", "table", "Tag", "name:Text.NonEmpty@unique", "entry:Entry.EntryId@ref=Entry@cascade", "note:Maybe Text", "pinned:Bool=False"}, tests: 2},
 	{name: "form-insert", base: "scaffold", args: []string{"new", "form", "Home", "Quick", "name:Text.NonEmpty", "message:Text.NonEmpty"}, tests: 4},
-	{name: "form-hole", base: "scaffold", args: []string{"new", "form", "Home", "Contact", "email:Text.Email", "topic:Text"}},
-	{name: "msg", base: "scaffold", args: []string{"new", "msg", "Home", "Clear"}},
-	{name: "capability", base: "scaffold", args: []string{"new", "capability", "Weather", "current", "{ city: Text } -> Query (Maybe Float)"}},
+	{name: "form-hole", base: "scaffold", args: []string{"new", "form", "Home", "Contact", "email:Text.Email", "topic:Text"}, tests: 4,
+		fills: [][2]string{{"Home.update.SubmitContact", "Task.succeed Rerender"}, {`Home."submitting Contact"`, "Rerendered"}}},
+	{name: "msg", base: "scaffold", args: []string{"new", "msg", "Home", "Clear"}, tests: 3,
+		fills: [][2]string{{"Home.update.Clear", "{\n  let _ <- Log.info \"cleared\"\n  Task.succeed Rerender\n}"}, {`Home."pressing Clear"`, "Rerendered"}}},
+	{name: "capability", base: "scaffold", args: []string{"new", "capability", "Weather", "current", "{ city: Text } -> Query (Maybe Float)"}, tests: 3,
+		fills: [][2]string{{"Weather.Weather.current", "Query.succeed (Just 21.5)"}}},
+	{name: "edit-add", base: "scaffold", args: []string{"edit", "table", "Entry", "add-field", "note:Maybe Text"}, breaks: true},
 
 	{name: "fixture-page-list-mine", base: "fixture", args: []string{"new", "page", "Posts.Index", "/posts", "--list", "Post", "--requires", "user"}, tests: 6},
 	{name: "fixture-page-show-role", base: "fixture", args: []string{"new", "page", "Users.Show", "/users", "--show", "User", "--role", "Admin"}, tests: 7},
@@ -170,7 +180,11 @@ var genCases = []genCase{
 	{name: "fixture-form-mine", base: "fixture", args: []string{"new", "form", "Home", "Quick", "title:Text.NonEmpty", "body:Text"}, tests: 7},
 	{name: "fixture-form-ref", base: "fixture", args: []string{"new", "form", "Home", "Tagging", "name:Text.NonEmpty", "post:Post.PostId"}, tests: 7},
 	{name: "fixture-msg-params", base: "fixture", args: []string{"new", "msg", "Home", "Feature", "id:Post.PostId"}},
-	{name: "fixture-capability", base: "fixture", args: []string{"new", "capability", "Mail", "send", "{ to: Text.Email, subject: Text } -> Task Unit"}},
+	{name: "fixture-capability", base: "fixture", args: []string{"new", "capability", "Mail", "send", "{ to: Text.Email, subject: Text } -> Task Unit"}, tests: 6,
+		fills: [][2]string{{"Mail.Mail.send", "Task.succeed ()"}}},
+	{name: "fixture-edit-add", base: "fixture", args: []string{"edit", "table", "Post", "add-field", "summary:Maybe Text"}, breaks: true},
+	{name: "fixture-edit-rename", base: "fixture", args: []string{"edit", "table", "Post", "rename-field", "body", "text"}, breaks: true},
+	{name: "fixture-edit-drop", base: "fixture", args: []string{"edit", "table", "Post", "drop-field", "featured"}, tests: 5},
 }
 
 // TestGenerate runs every case of genCases.
@@ -208,6 +222,38 @@ func TestGenerate(t *testing.T) {
 	}
 }
 
+// TestGenerate_EditTableBreaks (Review Focus 2): a field without a default added to a table
+// that is inserted in several places is written, with its migration, and every insert that
+// now lacks it is printed with its file and line; --strict refuses the same edit and writes
+// nothing.
+func TestGenerate_EditTableBreaks(t *testing.T) {
+	dir := genApp(t, "fixture")
+	before := appFiles(t, dir)
+	code, out, errs := alderIn(t, dir, "", "edit", "table", "Post", "add-field", "summary:Maybe Text", "--strict")
+	if code != 1 || errs != "alder edit table: the result does not check (the errors above): nothing was written\n" {
+		t.Errorf("--strict: exit %d, stderr %q", code, errs)
+	}
+	if !strings.Contains(out, "app/Home.alder:") || len(changedFiles(before, appFiles(t, dir))) != 0 {
+		t.Errorf("--strict wrote files or printed no diagnostics:\n%s", out)
+	}
+	code, out, errs = alderIn(t, dir, "", "edit", "table", "Post", "add-field", "summary:Maybe Text")
+	if code != 0 || errs != "" {
+		t.Fatalf("exit %d, stderr %q", code, errs)
+	}
+	written := changedFiles(before, appFiles(t, dir))
+	if got := slices.Sorted(maps.Keys(written)); !slices.Equal(got, []string{"app/Post.alder", "migrations/0002_add_summary.sql", "migrations/schema.json"}) {
+		t.Errorf("written: %v", got)
+	}
+	// the inserts of Post: three in Home (its update's Db.insertMine and two in a test), one in
+	// Post's test, one in Comment's
+	for file, n := range map[string]int{"app/Home.alder": 3, "app/Post.alder": 1, "app/Comment.alder": 1} {
+		re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(file) + `:\d+:\d+: error\[E0003\]: record .* is missing field\(s\): summary$`)
+		if got := len(re.FindAllString(out, -1)); got != n {
+			t.Errorf("%d inserts printed in %s, want %d:\n%s", got, file, n, out)
+		}
+	}
+}
+
 // TestGenerate_DoesNotCheck (Review Focus 1): a command whose result does not check writes
 // nothing, prints the checker's diagnostics and exits 1; after the mistake is corrected the
 // same command works.
@@ -224,6 +270,25 @@ func TestGenerate_DoesNotCheck(t *testing.T) {
 	}
 	if code, _, errs := alderIn(t, dir, "", "new", "form", "Home", "Bad", "title:Text.NonEmpty", "body:Text", "--into", "Post"); code != 0 {
 		t.Errorf("the corrected form: exit %d: %s", code, errs)
+	}
+
+	// fill: an expression of the wrong type
+	dir = genApp(t, "scaffold")
+	if code, _, errs := alderIn(t, dir, "", "new", "msg", "Home", "Clear"); code != 0 {
+		t.Fatalf("alder new msg: %s", errs)
+	}
+	before = appFiles(t, dir)
+	code, out, errs = alderIn(t, dir, "42\n", "fill", `Home."pressing Clear"`, "-")
+	if code != 1 || errs != "alder fill: the result does not check (the errors above): nothing was written\n" ||
+		!strings.Contains(out, "cannot compare `Answer` with `Int`") {
+		t.Errorf("fill with a wrong type: exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
+	}
+	if len(changedFiles(before, appFiles(t, dir))) != 0 {
+		t.Errorf("a refused fill wrote files")
+	}
+	code, out, _ = alderIn(t, dir, "Rerendered\n", "fill", `Home."pressing Clear"`, "-")
+	if code != 0 || !strings.Contains(out, "+  Task.succeed (r.answer == Rerendered)\n") {
+		t.Errorf("fill: exit %d\n%s", code, out)
 	}
 }
 
@@ -254,6 +319,15 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "msg", "Home", "Submit"}, "", "alder new msg: `Home` already declares `Submit`: choose another message name"},
 		{"scaffold", []string{"new", "msg", "Nowhere", "Go"}, "", "alder new msg: there is no page `Nowhere`: `alder new page Nowhere /path` makes one"},
 		{"scaffold", []string{"new", "capability", "Weather", "now", "Query Float ->"}, "", "alder new capability: `Query Float ->` is not a type: "},
+		{"scaffold", []string{"edit", "table", "Entry", "drop-field", "id"}, "", "alder edit table: `id` is the id of `Entry`: a table keeps its id"},
+		{"scaffold", []string{"edit", "table", "Entry", "drop-field", "nope"}, "", "alder edit table: `Entry` has no field `nope` (its fields: id, name, message, created)"},
+		{"scaffold", []string{"edit", "table", "Entry", "add-field", "name:Text"}, "", "alder edit table: `Entry` already has a field `name`"},
+		{"scaffold", []string{"edit", "table", "Entry", "rename-field", "name", "message"}, "", "alder edit table: `Entry` already has a field `message`"},
+		{"scaffold", []string{"edit", "table", "Nope", "drop-field", "x"}, "", "alder edit table: `Nope` is not a table of this app (its tables: Entry)"},
+		{"fixture", []string{"edit", "table", "Post", "add-field", "views:Int"}, "", "alder edit table: the migration generator refuses the change: Post.views: a new non-null column needs a default (`= 0`) so existing rows can be filled"},
+		{"scaffold", []string{"fill", "Home.update", "-"}, "Task.succeed Rerender", "alder fill: `Home.update` has no typed hole (`alder fill --list` lists the app's holes)"},
+		{"scaffold", []string{"fill", "Nope.update", "-"}, "x", "alder fill: `Nope.update` names no module of this app: write `Module.decl`, such as `Home.update`"},
+		{"scaffold", []string{"fill", "Home.update", "-"}, "\n", "alder fill: standard input is empty: write the expression that fills the hole"},
 	} {
 		dir := genApp(t, c.base)
 		before := appFiles(t, dir)
@@ -266,6 +340,19 @@ func TestGenerate_Refusals(t *testing.T) {
 		}
 	}
 
+	// two holes in one declaration, and a hole not there
+	dir := genApp(t, "scaffold")
+	alderIn(t, dir, "", "new", "msg", "Home", "Pin", "id:Entry.EntryId")
+	if code, _, errs := alderIn(t, dir, "Rerendered", "fill", `Home."pressing Pin"`, "-"); code != 1 || errs != "alder fill: `Home.\"pressing Pin\"` has 2 holes (?pinId, ?expected): name one with --hole\n" {
+		t.Errorf("two holes: exit %d, %q", code, errs)
+	}
+	if code, _, errs := alderIn(t, dir, "x", "fill", `Home."pressing Pin"`, "-", "--hole", "?nope"); code != 1 || errs != "alder fill: `Home.\"pressing Pin\"` has no hole `?nope` (it has ?pinId, ?expected)\n" {
+		t.Errorf("no such hole: exit %d, %q", code, errs)
+	}
+	if code, out, _ := alderIn(t, dir, "Rerendered", "fill", `Home."pressing Pin"`, "-", "--hole", "?expected"); code != 0 || !strings.Contains(out, "r.answer == Rerendered") {
+		t.Errorf("--hole: exit %d\n%s", code, out)
+	}
+
 	// the generators' names are not app names
 	base := t.TempDir()
 	if code, _, errs := runNew(t, filepath.Join(base, "page")); code != 1 || errs != "alder new: `page` names a generator (`alder new page …`), so it cannot name an app: choose another name\n" {
@@ -273,6 +360,55 @@ func TestGenerate_Refusals(t *testing.T) {
 	}
 	if code, _, errs := runNew(t, "page"); code != 2 || !strings.HasPrefix(errs, "usage: alder new page <Module> <path>") {
 		t.Errorf("alder new page alone: exit %d, %q", code, errs)
+	}
+}
+
+// TestGenerate_JSON: --json is one object, {files, diff, diagnostics, holes, written}, with
+// the refusal's sentence in "error".
+func TestGenerate_JSON(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	code, out, _ := alderIn(t, dir, "", "new", "msg", "Home", "Clear", "--json")
+	if code != 0 || strings.Count(out, "\n") != 1 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	var got struct {
+		Files []struct{ Path, Action string }
+		Diff  string
+		Diags []struct {
+			Code, Severity, File, Message string
+			Line, Col                     int
+		} `json:"diagnostics"`
+		Holes []struct {
+			Module, Decl, Arm, Name, Type, File string
+			Line, Col                           int
+		}
+		Written bool
+		Error   string
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if len(got.Files) != 1 || got.Files[0].Path != "app/Home.alder" || got.Files[0].Action != "edited" || !strings.HasPrefix(got.Diff, "--- a/app/Home.alder\n+++ b/app/Home.alder\n@@ ") || !got.Written || got.Error != "" {
+		t.Errorf("result: %+v", got)
+	}
+	if len(got.Diags) != 2 || got.Diags[0].Code != "W0002" || got.Diags[0].Message != "hole ?clear has type Task Nav" {
+		t.Errorf("diagnostics: %+v", got.Diags)
+	}
+	if len(got.Holes) != 2 || got.Holes[0].Module != "Home" || got.Holes[0].Decl != "update" || got.Holes[0].Arm != "Clear" || got.Holes[0].Name != "clear" || got.Holes[0].Type != "Task Nav" ||
+		got.Holes[1].Decl != `"pressing Clear"` || got.Holes[1].Type != "Answer" {
+		t.Errorf("holes: %+v", got.Holes)
+	}
+	code, out, errs := alderIn(t, dir, "", "new", "page", "Home", "/x", "--json")
+	if code != 1 || !strings.Contains(out, `"error":"module `+"`Home`"+` exists`) || !strings.Contains(out, `"files":[]`) || !strings.Contains(out, `"written":false`) || errs == "" {
+		t.Errorf("a refusal: exit %d\n%s%s", code, out, errs)
+	}
+	code, out, _ = alderIn(t, dir, "", "fill", "--list", "--json")
+	if code != 0 || !strings.HasPrefix(out, `{"holes":[{"module":"Home","decl":"update","arm":"Clear","name":"clear","type":"Task Nav"`) {
+		t.Errorf("fill --list --json: exit %d\n%s", code, out)
+	}
+	code, out, _ = alderIn(t, dir, "", "fill", "--list")
+	if code != 0 || out != "Home update.Clear ?clear : Task Nav\nHome \"pressing Clear\" ?expected : Answer\n" {
+		t.Errorf("fill --list: exit %d\n%s", code, out)
 	}
 }
 

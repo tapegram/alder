@@ -67,6 +67,10 @@ func main() {
 		os.Exit(replMain(os.Args[2:], os.Stdin, os.Stdout, os.Stderr, interrupt, terminate))
 	case "new":
 		os.Exit(runNewTo(os.Args[2:], os.Stdout, os.Stderr))
+	case "edit":
+		os.Exit(runEditTo(os.Args[2:], os.Stdout, os.Stderr))
+	case "fill":
+		os.Exit(runFillTo(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	case "version":
 		os.Exit(runVersionTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "explain":
@@ -89,7 +93,7 @@ func main() {
 func usage() { usageTo(os.Stderr) }
 
 func usageTo(w io.Writer) {
-	fmt.Fprintln(w, "usage: alder new <name> | alder check [dir] [--json] | alder build [--emit] [dir] | alder run [dir] | alder dump [--tokens|--ast|--ir] <file.alder | dir> | alder eval [dir] [--run] [--json] [--module Name] <expr | -> | alder test [dir] [-run re] [-timeout d] [--json] [--mutate [--min R]] | alder repl [dir] [--module Name] | alder migrate [dir] [--name slug] [--dry-run] | alder explain <code> | alder version")
+	fmt.Fprintln(w, "usage: alder new <name> | alder new page|table|form|msg|capability … | alder edit table <T> … | alder fill <Module>.<decl> - | alder check [dir] [--json] | alder build [--emit] [dir] | alder run [dir] | alder dump [--tokens|--ast|--ir] <file.alder | dir> | alder eval [dir] [--run] [--json] [--module Name] <expr | -> | alder test [dir] [-run re] [-timeout d] [--json] [--mutate [--min R]] | alder repl [dir] [--module Name] | alder migrate [dir] [--name slug] [--dry-run] | alder explain <code> | alder version")
 }
 
 func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {
