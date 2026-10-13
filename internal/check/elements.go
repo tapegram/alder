@@ -159,7 +159,7 @@ func (mc *modCtx) htmlValue(e syntax.Expr) bool {
 }
 
 // wrappedInput checks a built-in input element that is the form control kind (Input, Textarea,
-// Select, Checkbox): `field`, `label` and `value` exactly as on that form component, its other
+// Select, Checkbox): `field`, `label`, `value` (and a select's `options`) exactly as on that form component, its other
 // attributes as the manifest declares them. The renderer writes the control and the field's
 // errors list inside it, so the field's errors are shown (W0003) and it takes no children.
 func (mc *modCtx) wrappedInput(x *syntax.Element, el *elements.Element, kind string, m types.Type, env *env, eff effect) {
@@ -168,7 +168,7 @@ func (mc *modCtx) wrappedInput(x *syntax.Element, el *elements.Element, kind str
 	var formAttrs []*syntax.HtmlAttr
 	for _, a := range x.Attrs {
 		switch a.Name {
-		case "field", "label", "value":
+		case "field", "label", "value", "options":
 			formAttrs = append(formAttrs, a)
 		default:
 			mc.customAttr(x, el, a, m, env, eff)

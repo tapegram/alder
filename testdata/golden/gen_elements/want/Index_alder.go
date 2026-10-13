@@ -6,6 +6,7 @@ import (
 	"alder/rt"
 	"alder/rt/eff"
 	"alder/rt/html"
+	"alder/rt/std"
 )
 
 type Index__Kind struct {
@@ -27,13 +28,19 @@ type Index__Model struct {
 	Saving bool
 	Page   int64
 	Label  rt.Maybe[string]
+	People []struct {
+		Value string
+		Label string
+	}
 }
 
 type Index__NewPost struct {
-	Title string
-	Body  string
-	Kind  Index__Kind
-	Done  bool
+	Title    string
+	Body     string
+	Kind     Index__Kind
+	Done     bool
+	Owner    string
+	Reviewer rt.Maybe[string]
 }
 
 type Index__Params struct{}
@@ -61,7 +68,16 @@ func Index__Msg__Submit__(v Index__SubmitParams) Index__Msg {
 var Index__Msg__Clear__ = Index__Msg{Tag: is__Index__Msg__Clear}
 
 func Index__load(params Index__Params, session App__Session) eff.Query[Index__Model] {
-	return eff.Q(eff.Pure(Index__Model{Saving: false, Page: 1, Label: rt.Nothing[string]()}))
+	return eff.Q(eff.Pure(Index__Model{Saving: false, Page: 1, Label: rt.Nothing[string](), People: []struct {
+		Value string
+		Label string
+	}{struct {
+		Value string
+		Label string
+	}{Value: "ann", Label: "Ann"}, struct {
+		Value string
+		Label string
+	}{Value: "bob", Label: "Bob"}}}))
 }
 
 func Index__update(msg Index__Msg, model Index__Model, session App__Session) eff.Task[rt.Nav] {
@@ -90,6 +106,29 @@ func Index__view(model Index__Model, session App__Session) html.Node {
 				html.Input(html.Control{Kind: "textarea", Form: "Index.NewPost", Name: "body", Label: "Body", Wrap: "al-textarea", WrapAttrs: []html.Attr{html.A("placeholder", "Say it")}}),
 				html.Input(html.Control{Kind: "select", Form: "Index.NewPost", Name: "kind", Label: "Kind", Required: true, Options: []string{"Note", "Task"}, Wrap: "al-select"}),
 				html.Input(html.Control{Kind: "input", Form: "Index.NewPost", Name: "done", Type: "checkbox", Label: "Done", Wrap: "al-checkbox"}),
+				html.Input(html.Control{Kind: "select", Form: "Index.NewPost", Name: "owner", Label: "Owner", Value: "bob", Choices: html.Choices(model.People, func(_o struct {
+					Value string
+					Label string
+				}) html.Choice {
+					return html.Choice{Value: _o.Value, Label: _o.Label}
+				}), Wrap: "al-select"}),
+				html.Input(html.Control{Kind: "select", Form: "Index.NewPost", Name: "reviewer", Label: "Reviewer", Choices: html.Choices(std.ListMap(func(p struct {
+					Value string
+					Label string
+				}) struct {
+					Value string
+					Label string
+				} {
+					return struct {
+						Value string
+						Label string
+					}{Value: p.Value, Label: p.Label}
+				}, model.People), func(_o struct {
+					Value string
+					Label string
+				}) html.Choice {
+					return html.Choice{Value: _o.Value, Label: _o.Label}
+				}), Blank: true, Wrap: "al-select"}),
 				html.El("al-button", []html.Attr{html.A("type", "submit"), html.A("variant", "primary"), html.A("size", "lg"), html.B("disabled", model.Saving)}, html.El("button", []html.Attr{html.A("type", "submit"), html.B("disabled", model.Saving)}, html.Text("Save"))),
 			),
 			html.El("div", []html.Attr{html.A("slot", "actions")},

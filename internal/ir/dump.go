@@ -439,6 +439,9 @@ func (d *dumper) expr(e Expr) *sx {
 		if x.Value != nil {
 			items = append(items, list(1, atom("value"), d.expr(x.Value)))
 		}
+		if x.Options != nil {
+			items = append(items, list(1, atom("options"), d.expr(x.Options)))
+		}
 		if x.Wrap != "" {
 			items = append(items, list(2, append([]*sx{atom("wrap"), atom(x.Wrap)}, d.attrs(x.WrapAttrs)...)...))
 		}

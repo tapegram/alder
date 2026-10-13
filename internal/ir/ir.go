@@ -559,7 +559,11 @@ type Input struct {
 	Label     string
 	LabelExpr Expr
 	Value     Expr
-	BareForm  bool
+	// Options is a select's `options={…}`, a `List { value: …, label: Text }` of the values a
+	// field of Text (or a brand of it) may take; nil for a union's select, whose options are
+	// its constructors.
+	Options  Expr
+	BareForm bool
 	// Wrap is the built-in input element written around the control (`al-input` for
 	// `<al-input field="title">`), "" for a form component; WrapAttrs are that element's own
 	// attributes, as written (not `field`, `label`, `value`).

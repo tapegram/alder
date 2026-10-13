@@ -49,6 +49,14 @@ func decode__Index__NewPost(v url.Values) (r Index__NewPost, errs []web.FieldErr
 		r.Kind = Index__Kind{Tag: tag__Index__Kind(i)}
 	}
 	r.Done = web.Bool(v, "done")
+	if s, ok := web.Text(v, "owner", false); !ok {
+		errs = append(errs, web.Missing("owner"))
+	} else {
+		r.Owner = s
+	}
+	if s, _ := web.Text(v, "reviewer", false); s != "" {
+		r.Reviewer = rt.Just(s)
+	}
 	return r, errs
 }
 

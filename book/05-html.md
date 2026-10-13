@@ -247,6 +247,7 @@ Which component to use depends on the field's type:
 | `Text` meant to be long | `<Textarea>` | `<textarea>` |
 | `Bool` | `<Input>` | checkbox |
 | union with no payloads | `<Select>` | `<select>` with one option per constructor, labeled by its name |
+| `Text`, brands of `Text` (a row's id) | `<Select options={…}>` | `<select>` with one option per element of the list |
 | `Maybe` of any of these | same as the inner type | not `required` |
 
 The browser's `required` is set exactly when the decoder refuses a blank
@@ -259,6 +260,32 @@ everything: the browser's checks are a convenience.
 
 `value={...}` on any of them takes the field's own type (`value={model.todo.priority}`
 for a `Select` over `Priority`), or `Maybe` of it.
+
+A `<Select>` on a field of `Text` or a brand of it takes its options from
+a list instead: `options={…}` is a `List { value: T, label: Text }`, where
+`T` is the field's type without its `Maybe`. Each element is one
+`<option>`, its `value` the text submitted and its `label` the text shown.
+This is how a form picks a row of another table: the field is the row's
+id, and `load` reads the rows to choose from (the admin of chapter 15
+does this for every reference):
+
+```alder
+<form submit={Submit}>
+  <Select field="author" label="Author" options={List.map (\u -> { value: u.id, label: u.name }) model.users} />
+  <button>Save</button>
+</form>
+```
+
+The list's values have the field's type, so an option cannot offer a
+value the field could not hold: with `author: User.UserId`, `{ value:
+"x", label: "X" }` is E0003, since only `User` makes a `UserId` (chapter
+4, "Brands"). The submitted text is decoded as the field's type, the
+brand's check included, like any other input's. The select starts with
+an empty option only when the field may be left empty (a `Maybe`, a
+field with a default); otherwise the first option is chosen until the
+user picks another. Nothing checks that the submitted value is one of
+the options: a request can be crafted by hand, and an id that names no
+row fails the task that writes it (chapter 8, "Writing").
 
 A `<form submit={M}>` where `M` has no `form` type is allowed; it contains
 no bound inputs, only a button.

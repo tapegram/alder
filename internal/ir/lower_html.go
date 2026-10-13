@@ -253,6 +253,8 @@ func (l *lowerer) input(x *syntax.Element, kind string, t types.Type) Expr {
 			}
 		case "value":
 			out.Value = l.expr(a.Value)
+		case "options":
+			out.Options = l.expr(a.Value)
 		case "form":
 			if out.Wrap == "" {
 				out.BareForm = true

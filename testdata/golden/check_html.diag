@@ -16,7 +16,7 @@ app/Pg.alder:38:7 E0304 form `F` has no field `nope`; fields: title, kind
 app/Pg.alder:39:7 E0304 field `kind` is a union; use `<Select>` for `Pg.Kind`
 app/Pg.alder:41:7 E0304 plain `<input>` inside `<form submit>`; use `<Input field="…">`
 app/Pg.alder:42:28 E0304 `<Input>` attribute `label` needs a value
-app/Pg.alder:43:7 E0304 `<Select>` needs a union field; `title` has type `Text.NonEmpty`
+app/Pg.alder:43:7 E0304 `<Select>` needs a union field, or `options={…}` for a field of `Text` or a brand of `Text`; `title` has type `Text.NonEmpty`
 app/Pg.alder:44:45 E0003 expected Text.NonEmpty, got Int
 app/Pg.alder:55:25 E0003 expected Text, got Int
   fix 55:25-55:32 Text.fromInt (model.n)

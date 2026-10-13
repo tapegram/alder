@@ -403,6 +403,8 @@ From the page above:
 
 A select, on a field whose type is a union of constructors without
 arguments (chapter 5, "Forms and inputs"): one option per constructor.
+On a field of `Text` or a brand of it, `options={…}` (a `List { value:
+…, label: Text }`) gives the options instead: a row's id and its label.
 
 | Attribute | Type | Default | Meaning |
 |---|---|---|---|

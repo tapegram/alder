@@ -408,8 +408,9 @@ func (f *fn) input(x *ir.Input, s *scope) string {
 	// with a default (blank is the default), a checkbox, or Text that accepts "" (plain Text and
 	// a brand of it other than the stdlib's NonEmpty, Email, Url and Secret)
 	required := !hasDefault
+	blank := hasDefault // a select with options offers an empty choice when the field may be left empty
 	if u, ok := ft.(*types.Union); ok && u.Module == "Prelude" && u.Name == "Maybe" {
-		ft, required = u.Args[0], false
+		ft, required, blank = u.Args[0], false, true
 	}
 	if GoType(ft) == "string" && !blankRefused(brand) {
 		required = false
@@ -448,7 +449,14 @@ func (f *fn) input(x *ir.Input, s *scope) string {
 	if x.Value != nil {
 		out = append(out, "Value: "+f.text(x.Value, s))
 	}
-	if x.Kind == ir.InputSelect {
+	if x.Kind == ir.InputSelect && x.Options != nil {
+		// `options={…}`: a List { value, label } whose values are text (the field is Text or a brand of it)
+		elem := GoType(x.Options.Type().(*types.App).Args[0])
+		out = append(out, "Choices: html.Choices("+f.code(x.Options, s)+", func(_o "+elem+") html.Choice { return html.Choice{Value: _o."+Field("value")+", Label: _o."+Field("label")+"} })")
+		if blank {
+			out = append(out, "Blank: true")
+		}
+	} else if x.Kind == ir.InputSelect {
 		if names := ctorNames(ft); names != nil {
 			out = append(out, "Options: []string{"+strings.Join(names, ", ")+"}")
 		}

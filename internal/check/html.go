@@ -416,7 +416,7 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 		return
 	}
 	var fieldName string
-	var value syntax.Expr
+	var value, options syntax.Expr
 	bareForm := false
 	for _, a := range attrs {
 		if a.Value == nil && a.Name != "form" {
@@ -435,6 +435,13 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 			mc.check(a.Value, types.Text, env, eff)
 		case "value":
 			value = a.Value
+		case "options":
+			if kind != "Select" {
+				c.errorf("E0304", a.Span, "`options` belongs on `<Select>` or `<al-select>`, not on `<%s>`", x.Tag)
+				mc.infer(a.Value, env, eff)
+				continue
+			}
+			options = a.Value
 		case "form":
 			bareForm = true
 		default:
@@ -487,8 +494,18 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 			c.errorf("E0304", x.Span, "field `%s` is a union; use `<%s>` for `%s`", fieldName, selectTag, types.String(inner))
 		}
 	case "Select":
-		if !isUnion {
-			c.errorf("E0304", x.Span, "`<%s>` needs a union field; `%s` has type `%s`", x.Tag, fieldName, types.String(ft))
+		switch {
+		case options != nil && isUnion:
+			c.errorf("E0304", options.GetSpan(), "field `%s` is a union, whose options are its constructors; `options` is for a field of `Text` or a brand of `Text`, such as a row's id", fieldName)
+			mc.infer(options, env, eff)
+		case options != nil && !isTextLike(inner):
+			c.errorf("E0304", options.GetSpan(), "`options` needs a field of `Text` or a brand of `Text`, such as a row's id; `%s` has type `%s`", fieldName, types.String(ft))
+			mc.infer(options, env, eff)
+		case options != nil:
+			// the options are the values the field may take, each with its label
+			mc.check(options, &types.App{Con: "List", Args: []types.Type{&types.Record{Anonymous: true, Fields: []types.Field{{Name: "value", Type: inner}, {Name: "label", Type: types.Text}}}}}, env, eff)
+		case !isUnion:
+			c.errorf("E0304", x.Span, "`<%s>` needs a union field, or `options={…}` for a field of `Text` or a brand of `Text`; `%s` has type `%s`", x.Tag, fieldName, types.String(ft))
 		}
 	case "Checkbox":
 		if !isCon(inner, "Bool") {
@@ -501,6 +518,14 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 			mc.mismatch(value.GetSpan(), got, ft)
 		}
 	}
+}
+
+// isTextLike reports whether t is Text or a brand of Text: a field `<Select options>` binds.
+func isTextLike(t types.Type) bool {
+	if b, ok := t.(*types.Brand); ok {
+		t = b.Base
+	}
+	return isCon(t, "Text") || types.IsErr(t)
 }
 
 // walkUnchecked still visits the attribute values and children of an element whose own check cannot run.

@@ -43,12 +43,32 @@ type Control struct {
 	Required bool     // the decoder refuses a blank value: not a Maybe, no default, not a checkbox, not plain Text
 	Value    string   // the initial value as text ("True" checks a checkbox), "" for none
 	Options  []string // a select's options: the union's constructor names
-	Secret   bool     // a Text.Secret field: type="password", and no value is ever rendered
+	// Choices are a select's options when it has `options={…}` (a field of Text or a brand of
+	// it, such as a row's id): each one's value and label. Blank says whether the list starts
+	// with an empty option: for a field that may be left empty (a Maybe, a field with a
+	// default); otherwise the first choice is selected until one is chosen.
+	Choices []Choice
+	Blank   bool
+	Secret  bool // a Text.Secret field: type="password", and no value is ever rendered
 	// Wrap is the design system's input element written around the control ("al-input",
 	// "al-textarea", "al-select", "al-checkbox"), "" for none; WrapAttrs are its attributes as
 	// written (see Input).
 	Wrap      string
 	WrapAttrs []Attr
+}
+
+// Choice is one option of a select with `options={…}`: the value it submits and the label it
+// shows.
+type Choice struct{ Value, Label string }
+
+// Choices are the options of a select from the list xs its `options={…}` gives, each made by f
+// (the generated code's conversion of one `{ value, label }` record).
+func Choices[T any](xs []T, f func(T) Choice) []Choice {
+	out := make([]Choice, 0, len(xs))
+	for _, x := range xs {
+		out = append(out, f(x))
+	}
+	return out
 }
 
 // Input is a deferred form control: it is built when rendered. Without a matching FormState it
@@ -110,11 +130,14 @@ func (c *Control) build(st *FormState, active bool, orphan []string) Node {
 		control = El("textarea", []Attr{A("name", c.Name), B("required", c.Required)}, Text(value))
 	case "select":
 		var opts []Node
-		if !c.Required {
+		if (c.Choices == nil && !c.Required) || (c.Choices != nil && c.Blank) {
 			opts = append(opts, El("option", []Attr{A("value", "")}))
 		}
 		for _, o := range c.Options {
 			opts = append(opts, El("option", []Attr{A("value", o), B("selected", o == value)}, Text(o)))
+		}
+		for _, o := range c.Choices {
+			opts = append(opts, El("option", []Attr{A("value", o.Value), B("selected", o.Value == value)}, Text(o.Label)))
 		}
 		control = El("select", []Attr{A("name", c.Name), B("required", c.Required)}, opts...)
 	default:

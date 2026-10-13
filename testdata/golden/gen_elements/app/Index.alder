@@ -4,16 +4,18 @@ page "/" { }
 
 type Kind = Note | Task
 
-type Model = { saving: Bool, page: Int, label: Maybe Text }
+type Model = { saving: Bool, page: Int, label: Maybe Text, people: List { value: Text, label: Text } }
 
 load : Params -> Session -> Query Model
-load params session = Query.succeed { saving: False, page: 1, label: Nothing }
+load params session = Query.succeed { saving: False, page: 1, label: Nothing, people: [{ value: "ann", label: "Ann" }, { value: "bob", label: "Bob" }] }
 
 form NewPost = {
   title: Text.NonEmpty,
   body: Text,
   kind: Kind,
   done: Bool,
+  owner: Text,
+  reviewer: Maybe Text,
 }
 
 msg Submit form NewPost
@@ -40,6 +42,8 @@ view model session =
           <al-textarea field="body" label="Body" placeholder="Say it" />
           <al-select field="kind" label="Kind" />
           <al-checkbox field="done" label="Done" />
+          <al-select field="owner" label="Owner" options={model.people} value={"bob"} />
+          <al-select field="reviewer" label="Reviewer" options={List.map (\p -> { label: p.label, value: p.value }) model.people} />
           <al-button type="submit" variant="primary" size="lg" disabled={model.saving}>Save</al-button>
         </form>
         <div slot="actions">

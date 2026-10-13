@@ -51,7 +51,7 @@ func Children(e Expr) []Expr {
 	case *HIf:
 		return []Expr{x.Cond, x.Then, x.Else}
 	case *Input:
-		return append([]Expr{x.LabelExpr, x.Value}, attrValues(x.WrapAttrs)...)
+		return append([]Expr{x.LabelExpr, x.Value, x.Options}, attrValues(x.WrapAttrs)...)
 	case *FormEl:
 		return append(attrValues(x.Attrs), x.Children...)
 	case *EffPure:

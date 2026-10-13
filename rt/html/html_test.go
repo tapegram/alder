@@ -70,6 +70,13 @@ func TestHTML_Controls(t *testing.T) {
 			`<label><select name="color" required><option value="Red">Red</option><option value="Green" selected>Green</option></select></label>`},
 		{Control{Kind: "select", Name: "color", Options: []string{"Red"}},
 			`<label><select name="color"><option value=""></option><option value="Red">Red</option></select></label>`},
+		// options={…}: each choice's value and label; an empty choice first only when Blank
+		{Control{Kind: "select", Name: "author", Value: "u2", Choices: Choices([]string{"u1", "u2"}, func(id string) Choice { return Choice{Value: id, Label: "<" + id + ">"} })},
+			`<label><select name="author"><option value="u1">&lt;u1&gt;</option><option value="u2" selected>&lt;u2&gt;</option></select></label>`},
+		{Control{Kind: "select", Name: "reviewer", Blank: true, Choices: []Choice{{"u1", "Ann"}}},
+			`<label><select name="reviewer"><option value=""></option><option value="u1">Ann</option></select></label>`},
+		{Control{Kind: "select", Name: "author", Choices: Choices([]string{}, func(id string) Choice { return Choice{id, id} })},
+			`<label><select name="author"></select></label>`},
 		{Control{Kind: "errors", Name: "title"}, `<ul class="errors" data-errors="title"></ul>`},
 		{Control{Kind: "errors"}, `<ul class="errors" data-errors="form"></ul>`},
 	} {
