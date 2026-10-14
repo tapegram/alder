@@ -18,3 +18,10 @@ role R`); E10 decides whether it does, and the texts above, as E8/E9 ran them, n
 Since M12 (book 15) E11, "CLI-only development", consumes the generators instead of free-form edits: `alder new
 page/table/form/msg/capability`, `alder edit table`, `alder fill` (the one free-text channel: one checked expression
 per typed hole) and `alder new admin`/`alder regen admin`, reading their `--json`; the reference's command table lists them.
+
+E11 ran these eight texts unchanged (Haiku and Sonnet, one sample, `cli` and `files`; `e11-cli/findings.md`). Two
+findings about the texts: T4 has no Names block, while E8's hidden T4 tests (which E11 ran) use E8's names
+(`App.SwitchTheme`, `Notes.Show.EditNote`, …), so T4's hidden results measure names the text does not give (both
+`files` cells 5 / 8); and T6's `msg AddLine { product } form NewLine` cannot be built with the E11 commands (no
+command attaches a form to a message with parameters), so a `cli` run must leave the Names (Haiku T6: own tests
+pass, hidden 0 / 9).

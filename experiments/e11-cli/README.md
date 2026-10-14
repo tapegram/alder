@@ -35,12 +35,13 @@ command set's, and how does it compare with the file-emitting baseline on the sa
   command table and the fill rules); user prompt the task text (`experiments/tasks/`, unchanged),
   the rule "Build it with `alder` commands only; you may not write a file.", and `prompt-cli.md`
   (the format page, with the first ten commands of the T10 drill as the worked example).
-- **Baseline `files`**: E9's `baseline` cells for T5, T6, T7, T9, T10
-  (`e9-feedback/baseline/runs/`, reused); T2, T3, T4 run fresh here in file mode with the same
-  system prompt, one sample each (`baseline/runs/`).
-- **Models**: `claude:haiku`, `claude:sonnet`, `claude:opus` (recorded as `claude-haiku`, …, as in
-  E9) through the `claude` CLI with the harness's isolation flags; one sample (`s1`): 24 `cli` cells
-  + 9 baseline cells.
+- **Baseline `files`**: as designed, E9's `baseline` cells for T5–T10 reused and T2–T4 run fresh; as
+  run, all eight tasks were run fresh here in file mode with the same system prompt and budget, one
+  sample each (`baseline/runs/`). E9's cells are compared in `findings.md` §3.
+- **Models**: as designed, `claude:haiku`, `claude:sonnet`, `claude:opus`; as run, Haiku and Sonnet
+  only (Opus dropped for budget), recorded as `claude-haiku`, `claude-sonnet` as in E9, through the
+  `claude` CLI with the harness's isolation flags; one sample (`s1`): 16 `cli` cells + 16 baseline
+  cells.
 - **Hidden tests**: E9's for T5, T6, T7, T9, T10; E8's for T4; none for T2 and T3.
 - **Measured per cell**: pass and the round; hidden pass rate; mutation score and survivors;
   commands run / parsed; refusals by kind; stdin lines and the largest body; `--decl` uses; the
@@ -55,6 +56,30 @@ T2 ("Add a page to the example app") and T7 ("Change the blog app") change an ex
 `alder new <app> --bare`, and the prompt shows its files after the format page. The other six start
 bare.
 
+## Results
+
+The full write-up is `findings.md`. Matrix as run (2026-10-14): Haiku and Sonnet × the eight tasks × one
+sample, `cli` and `files`, 32 cells; Opus dropped for budget.
+
+- **Pass:** `files` 16 / 16, in 1–2 rounds; `cli` 12 / 16 (Haiku 7 / 8, Sonnet 5 / 8), in 4–6 rounds
+  (mean 4.8). The `cli` failures: both T4s, Sonnet T5 (its last round's own `alder test` failed one
+  generated test) and Sonnet T6 (never built).
+- **Hidden (T4–T10, 94 tests):** `files` 88 / 94 (T4 5 / 8 in both cells: the canonical T4 has no Names
+  block, E8's hidden T4 assumes one); `cli` 60 / 94 (Haiku T4 and T6: the hidden module does not
+  compile; Sonnet T4 and T6: never built).
+- **Mutation score**, the 12 cells passing in both: `cli` mean 0.80, `files` 0.67 (higher in 10 / 12),
+  because most `cli` tests are the generators' (112 of 150 in the passing bare-start cells).
+- **Structure:** all 82 `cli` rounds type-checked (`files` round 0: 7 / 16 failed `alder check`); 13 of
+  the 640 commands run were refused for a structural mistake (import, order, naming).
+- **Stalls (64 refusals, hand-classified):** 49 command misused (13 of them a lambda over the
+  parameters a page's `load`/`view`/`update` already binds), 8 body, 6 command missing (an `App`
+  message, a prop on `Layout.Page`, a form on a message with parameters), 1 tool hang (`alder fill` on
+  a body with `×`), 0 misread. `--json` and `--dry-run` were never used.
+
+To regenerate the tables: `python3 experiments/report_loop.py experiments/e11-cli` and `python3
+experiments/report_loop.py experiments/e11-cli/baseline` (E9's for comparison: `python3
+experiments/report_loop.py experiments/e9-feedback/baseline`).
+
 ## Layout
 
 | Path | What it is |
@@ -63,14 +88,19 @@ bare.
 | `prompt-cli.md` | the format page (every `cli` prompt carries it) |
 | `tasks` → `../tasks` | the canonical task texts |
 | `runs/<model>/<task>-s1/` | the `cli` cells: `round<N>/{output.md,script.txt,commands.jsonl,transcript.md,check.json,<app>/}`, `summary.json` |
-| `baseline/runs/<model>/<task>-s1/` | the fresh T2–T4 file cells |
+| `baseline/runs/<model>/<task>-s1/` | the file cells (all eight tasks, run fresh) |
+| `run-matrix.sh` | the runner the matrix used (`cli` or `files`; `MODELS` overrides the model list) |
+| `findings.md` | the results, the stall table, H1–H3, the command-set gaps |
 | `logs/` | one log per invocation |
 | `smoke/runs/` | the smoke cell (below) |
-| `alder` | the binary (git-ignored; its sha256 in `RUN.md` once the matrix runs) |
+| `alder` | the binary (git-ignored), built at `87c7b42`, sha256 `2e10458a…098a6d` (in full in `findings.md`) |
 
 ## Run
 
-From the repository root, after `go build -o experiments/e11-cli/alder ./cmd/alder` at the commit the
+The matrix ran as `experiments/e11-cli/run-matrix.sh cli` and `experiments/e11-cli/run-matrix.sh files`
+(models from `MODELS`, default `claude:haiku claude:sonnet`; a cell with a `summary.json` is skipped, so
+the script resumes). The loops below are what the design planned (with Opus; as run, without). From the
+repository root, after `go build -o experiments/e11-cli/alder ./cmd/alder` at the commit the
 matrix runs on:
 
 ```bash
@@ -91,7 +121,8 @@ for model in claude:haiku claude:sonnet claude:opus; do
 done
 ```
 
-The nine fresh baseline cells (file mode, E9's flags, the same system prompt and budget):
+The designed baseline cells (file mode, E9's flags, the same system prompt and budget); as run, `run-matrix.sh
+files` ran this for all eight tasks, with the `case` of the loop above:
 
 ```bash
 for model in claude:haiku claude:sonnet claude:opus; do

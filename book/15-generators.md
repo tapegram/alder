@@ -3683,6 +3683,24 @@ The experiment E11, "CLI-only development", measures this: an agent
 builds apps with these commands alone, reading their `--json` output,
 and never edits a file directly.
 
+Its first run (Haiku and Sonnet, the eight canonical tasks, one sample,
+each round's answer one script of commands;
+`experiments/e11-cli/findings.md`) confirms the first half and
+qualifies the rest. All 82
+rounds left an app that type-checked, where the same models writing
+files failed `alder check` in round 0 in 7 of 16 cells. But the
+mistakes did not vanish, they moved: 13 of the 640 commands run were
+refused for a structural slip (a type from a module not imported, a page
+named before the command that makes it, a name taken), and a refusal
+ends the round's script. So the commands passed 12 tasks of 16 in four
+to six rounds, the files 16 of 16 in one or two, and the hidden tests
+passed 60 of 94 against 88. Of the 64 refusals, 49 were commands
+misused, 13 of those one pattern (a lambda over the parameters a page's
+`load` or `view` already binds); 6 were commands that do not exist yet:
+a message in `App`, a prop on `Layout.Page`, a form posted by a message
+with its own parameters. The models never used `--json`: in a script,
+the output arrives a round late.
+
 The same commands are what another tool would wrap. Olifant, a generator
 engine, can drive Alder through a thin pack of its own: each Olifant
 command calls the matching `alder new`, `alder edit table`, `alder fill`
