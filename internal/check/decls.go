@@ -136,6 +136,12 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 					if mc.page != nil && t.Ref.Module == mc.m.Name {
 						return mc.page.Params
 					}
+					if c.prog.IsPageModule(t.Ref.Module) {
+						// a type declaration (resolved before the page's parameters are known),
+						// or another module's page: the record is the page's own, for its load
+						c.errorf(diag.TypeMismatch, t.Span, "`Params` is a page's parameter type and cannot be stored in another type; copy the fields you need (`type Model = { q: Text }`, filled with `params.q` in `load`)")
+						return types.Err
+					}
 				case "Msg":
 					if t.Ref.Module == "App" {
 						return c.appMsg

@@ -1,0 +1,1 @@
+app/Things/List.alder:5:24 E0003 `Params` is a page's parameter type and cannot be stored in another type; copy the fields you need (`type Model = { q: Text }`, filled with `params.q` in `load`)
