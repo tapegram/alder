@@ -263,16 +263,16 @@ func (r e2eResp) redirect(t *testing.T, loc string) {
 	}
 }
 
-// navigate checks a Datastar redirect (C1): status 200 and one datastar-patch-elements event
-// appending a self-removing script that assigns window.location to loc (a JSON string), and no
-// Location header (the client's fetch would follow it).
+// navigate checks a Datastar redirect to a page of this app (C1, M13): status 200, no Location
+// header (the client's fetch would follow it), and the target page served by the router itself:
+// the patch of its body, then a self-removing script pushing loc (a JSON string) to the history.
 func (r e2eResp) navigate(t *testing.T, loc string) {
 	t.Helper()
 	j, _ := json.Marshal(loc)
-	want := "event: datastar-patch-elements\ndata: selector body\ndata: mode append\n" +
-		`data: elements <script data-effect="el.remove()">window.location.assign(` + string(j) + `)</script>` + "\n\n"
-	if r.status != http.StatusOK || r.header.Get("Content-Type") != "text/event-stream" || r.header.Get("Location") != "" || r.body != want {
-		t.Fatalf("got %d %q Location %q body:\n%q\nwant a navigation to %s:\n%q", r.status, r.header.Get("Content-Type"), r.header.Get("Location"), r.body, loc, want)
+	push := `<script data-effect="el.remove()">(function(){history.pushState(null,"",` + string(j) + `);`
+	if r.status != http.StatusOK || r.header.Get("Content-Type") != "text/event-stream" || r.header.Get("Location") != "" ||
+		!strings.HasPrefix(r.body, "event: datastar-patch-elements\ndata: selector body\ndata: mode outer\ndata: elements <body>") || !strings.Contains(r.body, push) {
+		t.Fatalf("got %d %q Location %q body:\n%q\nwant the page at %s morphed in, then %s", r.status, r.header.Get("Content-Type"), r.header.Get("Location"), r.body, loc, push)
 	}
 }
 

@@ -441,10 +441,10 @@ func TestRouter_Specificity(t *testing.T) {
 	}
 }
 
-// The Datastar script goes into <head>; without one after <html>, else before </body>, else
-// first (M5).
+// The Datastar script and the boost (HeadTags) go into <head>; without one after <html>, else
+// before </body>, else first (M5, M13).
 func TestWithScript(t *testing.T) {
-	tag := html.Render(datastar.ScriptTag())
+	tag := HeadTags()
 	for page, want := range map[string]string{
 		`<html><head><title>t</title></head><body></body></html>`: `<html><head>` + tag + `<title>t</title></head><body></body></html>`,
 		`<html lang="en"><body><p>x</p></body></html>`:            `<html lang="en">` + tag + `<body><p>x</p></body></html>`,

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"alder/rt"
-	"alder/rt/datastar"
 	"alder/rt/html"
 )
 
@@ -42,7 +41,7 @@ func TestResponse_PageFullHTML(t *testing.T) {
 	if w.Code != 200 || w.Header().Get("Content-Type") != "text/html; charset=utf-8" {
 		t.Fatalf("status %d ct %q", w.Code, w.Header().Get("Content-Type"))
 	}
-	script := html.Render(datastar.ScriptTag())
+	script := HeadTags()
 	want := "<!doctype html>\n<html><head lang=\"en\">" + script + "<title>T</title></head><body>"
 	if !strings.HasPrefix(body, want) || !strings.HasSuffix(body, "</body></html>") {
 		t.Fatalf("body %q", body)
@@ -118,11 +117,13 @@ func TestResponse_PagePatchUnderDatastar(t *testing.T) {
 	}
 }
 
+// A message's page answered without the patch flag is a whole document even under Datastar (a
+// Datastar GET is a boosted navigation instead: boost_test.go).
 func TestResponse_PageNoPatchWithoutFlag(t *testing.T) {
-	h := NewRouter(one("GET", "/", func(rq *Request) Response {
+	h := NewRouter(one("POST", "/_m/A/B", func(rq *Request) Response {
 		return PageResponse(doc("full"), nil, nil, false)
 	}), testOpts(nil))
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest("POST", "/_m/A/B", nil)
 	req.Header.Set("Datastar-Request", "true")
 	w := serve(h, req)
 	if w.Code != 200 || w.Header().Get("Content-Type") != "text/html; charset=utf-8" || !strings.HasPrefix(w.Body.String(), "<!doctype html>\n<html><head>") {
@@ -138,14 +139,15 @@ func TestResponse_Redirect303(t *testing.T) {
 	if w.Code != 303 || w.Header().Get("Location") != "/todos?f=a&b" || sessionCookie(t, w) == nil || w.Body.Len() != 0 {
 		t.Fatalf("%d %q %q", w.Code, w.Header().Get("Location"), w.Body.String())
 	}
-	// Under Datastar (C1): a 200 SSE event navigating the browser, the session stored all the
-	// same; no Location (the client's fetch would follow it and patch the new page in place).
+	// Under Datastar (C1, M13): a 200 SSE answer, the session stored all the same; no Location
+	// (the client's fetch would follow it and patch the new page in place). The target is a
+	// page of this app, so the router serves it itself and answers with its morph and a history
+	// push (boost_test.go); here it has no route: the not-found page, Alder-Status 404.
 	req := httptest.NewRequest("POST", "/_m/Auth/Login", nil)
 	req.Header.Set("Datastar-Request", "true")
 	w = serve(h, req)
-	want := "event: datastar-patch-elements\ndata: selector body\ndata: mode append\n" +
-		`data: elements <script data-effect="el.remove()">window.location.assign("/todos?f=a\u0026b")</script>` + "\n\n"
-	if w.Code != 200 || w.Header().Get("Content-Type") != "text/event-stream" || w.Header().Get("Location") != "" || w.Body.String() != want || sessionCookie(t, w) == nil {
+	if w.Code != 200 || w.Header().Get("Content-Type") != "text/event-stream" || w.Header().Get("Location") != "" || sessionCookie(t, w) == nil ||
+		w.Header().Get(StatusHeader) != "404" || !strings.Contains(w.Body.String(), `history.pushState(null,"","/todos?f=a\u0026b")`) {
 		t.Fatalf("datastar: %d %q %q\n%q", w.Code, w.Header().Get("Content-Type"), w.Header().Get("Location"), w.Body.String())
 	}
 	// requires: the handler redirects to rq.Login with the session unchanged.
@@ -159,7 +161,7 @@ func TestResponse_Redirect303(t *testing.T) {
 	req = httptest.NewRequest("GET", "/secret", nil)
 	req.Header.Set("Datastar-Request", "true")
 	w = serve(h, req)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `window.location.assign("/login")`) || sessionCookie(t, w) != nil {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `history.pushState(null,"","/login")`) || sessionCookie(t, w) != nil {
 		t.Fatalf("login redirect under Datastar %d %q", w.Code, w.Body.String())
 	}
 }
@@ -196,7 +198,7 @@ func TestResponse_ErrorHidesTextInProd(t *testing.T) {
 				if !strings.Contains(body, "<p>Something went wrong</p><!-- error: db is - - down --></body>") {
 					t.Fatalf("ds=%v dev body %q", ds, body)
 				}
-			} else if strings.Contains(body, "down") || strings.Contains(body, "<!--") {
+			} else if strings.Contains(body, "db is") || strings.Contains(body, "<!--") {
 				t.Fatalf("ds=%v prod body leaks the error: %q", ds, body)
 			}
 			if len(logs) != 1 || logs[0] != "error: POST /_m/A/B: db is -- down" {

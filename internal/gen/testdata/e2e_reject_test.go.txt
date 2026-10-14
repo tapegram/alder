@@ -207,10 +207,12 @@ func TestE2E_AppRerenderToReferer(t *testing.T) {
 	navigate := func(loc string, hdr ...string) {
 		t.Helper()
 		res, body := reset(append(hdr, "Datastar-Request: true")...)
+		// a page of this app: the router serves it and answers with its morph and a history
+		// push of loc (M13 boosted navigation)
 		j, _ := json.Marshal(loc)
-		want := "event: datastar-patch-elements\ndata: selector body\ndata: mode append\n" +
-			`data: elements <script data-effect="el.remove()">window.location.assign(` + string(j) + `)</script>` + "\n\n"
-		if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "text/event-stream" || res.Header.Get("Location") != "" || body != want {
+		push := `<script data-effect="el.remove()">(function(){history.pushState(null,"",` + string(j) + `);`
+		if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "text/event-stream" || res.Header.Get("Location") != "" ||
+			!strings.HasPrefix(body, "event: datastar-patch-elements\ndata: selector body\ndata: mode outer\ndata: elements <body>") || !strings.Contains(body, push) {
 			t.Fatalf("Reset (Datastar) %q = %d %q Location %q:\n%q\nwant a navigation to %s", hdr, res.StatusCode, res.Header.Get("Content-Type"), res.Header.Get("Location"), body, loc)
 		}
 		if !strings.HasPrefix(res.Header.Get("Set-Cookie"), "alder_session=") {

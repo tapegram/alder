@@ -108,7 +108,7 @@ func TestPatchBody_CarriageReturnCannotInjectFields(t *testing.T) {
 // window.location; the URL is a JSON string with HTML-significant characters escaped.
 func TestNavigate_EventFormat(t *testing.T) {
 	rec := httptest.NewRecorder()
-	if err := Navigate(rec, "/?filter=Active&q=</script>\u2028"); err != nil {
+	if err := Navigate(rec, "/?filter=Active&q=</script>\u2028", Assign); err != nil {
 		t.Fatal(err)
 	}
 	want := "event: datastar-patch-elements\ndata: selector body\ndata: mode append\n" +
@@ -125,13 +125,13 @@ func TestNavigate_EventFormat(t *testing.T) {
 func TestNavigate_RefusesScriptURLs(t *testing.T) {
 	for _, u := range []string{"javascript:alert(document.cookie)", "JavaScript:x", "//evil.com", "data:text/html,x"} {
 		rec := httptest.NewRecorder()
-		err := Navigate(rec, u)
+		err := Navigate(rec, u, Assign)
 		if err == nil || !strings.HasPrefix(err.Error(), "refusing to navigate to ") || rec.Body.Len() != 0 || rec.Header().Get("Content-Type") != "" {
 			t.Fatalf("Navigate(%q): %v, %q", u, err, rec.Body.String())
 		}
 	}
 	rec := httptest.NewRecorder()
-	if err := Navigate(rec, "#"); err != nil || !strings.Contains(rec.Body.String(), `window.location.assign("#")`) {
+	if err := Navigate(rec, "#", Assign); err != nil || !strings.Contains(rec.Body.String(), `window.location.assign("#")`) {
 		t.Fatalf("Navigate(#): %v %q", err, rec.Body.String())
 	}
 }
@@ -144,5 +144,43 @@ func TestPatchEvent(t *testing.T) {
 	}
 	if got, want := string(PatchEvent("#x", "inner", "")), "event: datastar-patch-elements\ndata: selector #x\ndata: mode inner\ndata: elements \n\n"; got != want {
 		t.Errorf("PatchEvent empty = %q, want %q", got, want)
+	}
+}
+
+// Navigate's Push and Replace (M13): the history step after a body patch, in a self-removing
+// script; the URL a JSON string; a refused URL writes nothing.
+func TestNavigate_PushReplace(t *testing.T) {
+	rec := httptest.NewRecorder()
+	if err := Navigate(rec, "/p?a=1&b=</script>", Push); err != nil {
+		t.Fatal(err)
+	}
+	want := "event: datastar-patch-elements\ndata: selector body\ndata: mode append\n" +
+		`data: elements <script data-effect="el.remove()">(function(){history.pushState(null,"","/p?a=1\u0026b=\u003c/script\u003e");` +
+		`window._alderAt=location.pathname+location.search;document.body.tabIndex=-1;document.body.focus({preventScroll:true});` +
+		`var h=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));h?h.scrollIntoView():scrollTo(0,0)})()</script>` + "\n\n"
+	if got := rec.Body.String(); got != want {
+		t.Fatalf("push\ngot  %q\nwant %q", got, want)
+	}
+	rec = httptest.NewRecorder()
+	if err := Navigate(rec, "/p", Replace); err != nil {
+		t.Fatal(err)
+	}
+	if got := rec.Body.String(); !strings.Contains(got, `(function(){history.replaceState(history.state,"","/p");window._alderAt=`) ||
+		!strings.HasSuffix(got, `scrollTo(0,history.state&&history.state.alderY||0)})()</script>`+"\n\n") {
+		t.Fatalf("replace %q", got)
+	}
+	rec = httptest.NewRecorder()
+	if err := Navigate(rec, "javascript:x", Push); err == nil || rec.Body.Len() != 0 {
+		t.Fatalf("push of a script URL: %v %q", err, rec.Body.String())
+	}
+}
+
+func TestPatchTitle(t *testing.T) {
+	rec := httptest.NewRecorder()
+	if err := PatchTitle(rec, "A &amp; B"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := rec.Body.String(), "event: datastar-patch-elements\ndata: selector head > title\ndata: mode outer\ndata: elements <title>A &amp; B</title>\n\n"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }
