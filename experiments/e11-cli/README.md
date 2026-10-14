@@ -68,13 +68,16 @@ sample, `cli` and `files`, 32 cells; Opus dropped for budget.
   block, E8's hidden T4 assumes one); `cli` 60 / 94 (Haiku T4 and T6: the hidden module does not
   compile; Sonnet T4 and T6: never built).
 - **Mutation score**, the 12 cells passing in both: `cli` mean 0.80, `files` 0.67 (higher in 10 / 12),
-  because most `cli` tests are the generators' (112 of 150 in the passing bare-start cells).
+  because most `cli` tests are the generators' (112 of 150 in the passing bare-start cells, 19 of them
+  `new table`'s delete-rule tests, the rest `new form`'s, `new msg`'s, `new auth`'s and `--requires`').
 - **Structure:** all 82 `cli` rounds type-checked (`files` round 0: 7 / 16 failed `alder check`); 13 of
   the 640 commands run were refused for a structural mistake (import, order, naming).
+- **H3:** gaps in three task shapes (T4 had a reachable workaround; its stalls became misuses).
 - **Stalls (64 refusals, hand-classified):** 49 command misused (13 of them a lambda over the
   parameters a page's `load`/`view`/`update` already binds), 8 body, 6 command missing (an `App`
-  message, a prop on `Layout.Page`, a form on a message with parameters), 1 tool hang (`alder fill` on
-  a body with `×`), 0 misread. `--json` and `--dry-run` were never used.
+  message, a prop on `Layout.Page`, a form on a message with parameters), 1 tool hang (`alder fill` loops forever
+  on any 2-byte UTF-8 character after a non-name byte: `qualifiers` in `internal/generate/fill.go`
+  reads one byte as a rune; a compiler bug for the next fix batch), 0 misread. `--json` and `--dry-run` were never used.
 
 To regenerate the tables: `python3 experiments/report_loop.py experiments/e11-cli` and `python3
 experiments/report_loop.py experiments/e11-cli/baseline` (E9's for comparison: `python3

@@ -57,8 +57,9 @@ The stall classes (§6) are *hand-scored* from the transcripts.
   1–2; 4 cells failed (both T4s, Sonnet T5 and T6) where `files` passed all 16. Hidden: 60 / 94 against 88 / 94.
   The mutation score is higher in 10 of 12 comparable cells (mean 0.80 against 0.67), because the generators write
   tests: of the 150 tests the eight passing bare-start `cli` cells ran last, 38 came from the model's own
-  `alder new test`, the other 112 from `new form`, `new msg`, `new auth` and `--requires`. (§2, §3)
-- **H3: the command set is the ceiling in three task shapes; the reference is the larger gap.** Of 64 refusals, 6
+  `alder new test`, the other 112 from the generators (`new table`'s delete-rule tests, 19 of them; `new form`,
+  `new msg`, `new auth`, `--requires`). (§2, §3)
+- **H3: gaps in three task shapes; the reference is the larger gap.** Of 64 refusals, 6
   are "command missing" (an `App`-level message ×2, a prop on the layout ×2, a form posted by a message with
   parameters ×2), 49 "command misused", 8 a body that did not check or a test that failed, 1 a tool hang, 0 a misread
   task. The 6 missing-command refusals sit in the 4 cells that did not reach the task: both T4s and both T6s (Haiku
@@ -68,7 +69,10 @@ The stall classes (§6) are *hand-scored* from the transcripts.
 - **The models never used `--json` or `--dry-run`** (0 of 1,779 commands). `--help` was written twice (*Sonnet t6
   r5*) and never ran (the script stopped at its 2nd command). In a script round, output cannot steer the same round.
 - **A tool bug:** `alder fill --decl Orders.Show.view -` ran 600 s and was killed (*Haiku t6 r3*). Reproduced on a
-  copy of that round's app: the body hangs with `×` (U+00D7) in a text node and returns at once with `x`. (§6)
+  copy of that round's app: the body hangs on its `×` and returns at once with `x`. The cause: `qualifiers`
+  (`internal/generate/fill.go:179`) tests `unicode.IsUpper(rune(ch))` on one byte, so the first byte of any 2-byte
+  UTF-8 character (U+0080 and up) after a non-name byte (0xC3 reads as `Ã`) starts a name, `isNameByte` is false so
+  `j == i`, and `i = j - 1` never advances: an infinite loop. (§6)
 
 ## 2. Per task × model
 
@@ -162,7 +166,8 @@ the hidden tests passed (except E9's Haiku T10, 7 / 8: its `Remove`, a task-text
 
 **Why the `cli` scores are higher.** The suites are bigger and mostly generated. The eight passing `cli` cells that
 start bare (T3, T5, T6, T9, T10) ran 150 tests in their last round; the model's own `alder new test` commands that
-ran made 38 of them. The rest are the generators': `new auth`'s login tests and `App`'s logout test, a `--requires`
+ran made 38 of them. The other 112 are the generators': `new table`'s delete-rule tests (19, e.g. "deleting its post
+deletes a Comment"), `new auth`'s login tests and `App`'s logout test, a `--requires`
 page's "a visitor is sent to log in", `new form`'s "submitting X adds a row" and "X refuses an empty …", `new msg`'s
 "pressing Y" (their `?expected` holes filled by the model). The `files` cells on the same tasks ran 84 tests in all.
 Where most of the app is the base's (T2 on `examples/todos`, T7 on the blog), the scores are equal in both
@@ -212,7 +217,7 @@ switch: an app-level message, flipping the session's theme" (*Haiku t4 r2*), "ap
   `--param` with `--show` (*r1*, both), a test block without `Task.succeed` (*Haiku r4*), `fill --decl
   Notes.Index.Model` on a `--list` page whose generated `load` still builds `{ rows, page, pages }` (*Haiku r5*), the
   lambda pattern (*Sonnet r4*), `new form` on a one-line placeholder view (*Sonnet r5*). Haiku's last app has no
-  `Notes.Show`, no theme message and no theme in the layout; the hidden module's 14 E0002 errors are `App.SwitchTheme`
+  `Notes.Show` and no theme message; `Layout.Page` has no theme (the unused `Layout.shell` takes `dark`); the hidden module's 14 E0002 errors are `App.SwitchTheme`
   ×5, `Notes.Show` ×7, `Notes.Index.NewNote`, `Notes.Show.EditNote` (`alder check` re-run on a copy of
   `round5/appmsg/hidden`). Sonnet's last round left 4 holes and never built.
 
@@ -273,16 +278,17 @@ r1*, *Sonnet t10 r3*, *Sonnet t9 r2*, *Sonnet t5 r4*), and every hole left there
 
 Did the models know a hole stops `alder test` (the reference says so in one line)? Sonnet ran `alder test`
 mid-script with a hole left twice ("alder test: no tests ran (fill the hole)", *Sonnet t2 r2, t7 r1*). Five scripts
-ended with `alder fill --list` (*Haiku t10 r2; Sonnet t10 r3, t9 r2, t9 r3, t5 r4*), whose answer arrives a round
-later. `new auth` leaves `?afterLogin` twice (in `update` and in its test) unless a `/` page exists or `--to` names
+that ran contain `alder fill --list` (*Haiku t10 r2; Sonnet t10 r3, t9 r2, t9 r3, t5 r4*), the last command only in
+*Haiku t10 r2* and *Sonnet t9 r2*; in a script its answer can only steer the next round. `new auth` leaves `?afterLogin` twice (in `update` and in its test) unless a `/` page exists or `--to` names
 one; `--to` needs the page to exist, and a `--requires user` page needs the session `new auth` writes, so with the
 order the reference gives ("tables, `new auth`, pages, fills") both holes stay until the model fills them one by one.
 *Sonnet t6 r4*'s `alder fill Auth.Login - --hole ?afterLogin` was an attempt to fill both at once.
 
 ### 5.6 Did "a script that stops early" feed back well?
 
-For continuity, yes; for throughput, no. No refusal came from re-running a command an earlier round had run (the
-three "already declares/has" refusals hit generator-made names or the same script's own), and every next script
+For continuity, mostly; for throughput, no. One refusal came from re-running a command an earlier round had run:
+#56 (*Sonnet t6 r3*) re-sent the fill of `Orders.Index.update.Create` that *r2* had run, and the arm had no hole left.
+The three "already declares/has" refusals hit generator-made names or the same script's own, and every next script
 started from the refused command. But 64 of 82 rounds stopped early, and the scripts did not shrink: Haiku sent
 15–38-command scripts in *t4 r1–r5*, of which 1–6 ran. Of 1,779 commands written, 640 ran. `--dry-run` and
 `--json`, which exist to find a refusal without losing a round, were never used.
@@ -385,15 +391,21 @@ non-hole), **body** (the one expression does not check, or a test the round ran 
 600 s. The same body in *r4*, with `×` replaced by `x` and `<al-card>` by `<div>`, ran in 0.02 s. On a copy of
 `round3/orders`: the original body hangs (killed after 10 s); with only `×` → `x` it returns at once; with only
 `<al-card>` → `<div>` it still hangs. `alder dump --tokens` on a module with `{…} × {…}` in a `<p>` lexes
-`Text " × "` and returns, so the hang is past the lexer, in the `fill` path. A compiler bug.
+`Text " × "` and returns, so the hang is past the lexer, in the `fill` path. A compiler bug, with its cause:
+`qualifiers` in `internal/generate/fill.go` (line 179) applies `unicode.IsUpper(rune(ch))` to a single byte; the lead
+byte of a 2-byte UTF-8 character (U+0080 and up, here 0xC3 of `×`, read as `Ã`) after a non-name byte enters the
+name branch, `isNameByte` is false so `j == i`, and `i = j - 1` never advances. An infinite loop (~140 % CPU, flat
+memory) on any such character, not `×` alone: `é` or `·` after a space trigger it too.
 
-## 7. H3: the command set as the ceiling — the gap list
+## 7. H3: the command-set gaps
 
-H3 holds in the sense that every stall was classifiable (64 of 64, none a misread). "Command missing" is 6 of 64
-refusals (9 %), but those 6 sit in the four cells that did not reach the task, in three task shapes. The rest are
-misuses of commands that exist, and in 20 of the 49 (the lambda, the `new form` precondition, `--param` with
-`--show`, a `--list` page's `Model`) neither the reference's command table nor the refusal's sentence says what to
-do instead.
+Every stall was classifiable (64 of 64, none a misread). "Command missing" is 6 of 64 refusals (9 %), in three task
+shapes, and those 6 sit in the four cells that did not reach the task. The command set is not a hard ceiling there:
+T4 had a reachable workaround (§5.1), and its stalls became misuses. The rest are misuses of commands that exist; in
+15 of the 49 (the lambda ×13, a `--list` page's `Model` ×2) neither the reference's command table nor the refusal's
+sentence says what to do instead. For the `new form` precondition the refusal does say it ("add the markup
+yourself") and for `--param` with `--show` it names the alternative (`--blank`), but the reference's table states
+neither rule up front.
 
 ### No command (the input to the next milestone)
 
@@ -402,13 +414,13 @@ do instead.
 | A message declared in `App` (a button on every page) | T4: #13, #44 | `alder new msg App ToggleTheme` | `alder new msg App <Name> [fields]`: the constructor, an arm with a hole in `App.update` (as `new auth` does for `Logout`), a test with a hole; a line under `alder new msg` in the reference. |
 | A prop on `Layout.Page` (the body's class from the session) | T4: #14, #45 | `alder new decl Layout Shell "{ dark: Bool, … } -> Html a"` | `alder edit decl Layout.Page add-prop dark:Bool=False` (every `<Layout.Page …>` keeps checking with the default), or `new decl` accepting an upper-case component with a props record. |
 | A form posted by a message that has its own parameters | T6: #22, #55 (and *Haiku t6*'s 0 / 9 hidden) | `new msg Orders.Show AddLine product:…`, then `new form Orders.Show NewLine quantity:… --msg AddLine` | `new form … --msg M` attaching to an existing `msg M { … }` that has no form (writing `msg M { … } form F`), or `new msg … --form F`. |
-| Both `?afterLogin` holes, once the landing page exists | 10 of the 12 bare-start cells (all but the two T3s, which had a `/` page or used `--to`) filled `?afterLogin` by hand, up to twice; *Sonnet t6 r4*'s `fill Auth.Login - --hole ?afterLogin` (#57) | one command for the login's redirect and its test | `alder edit auth --to <Page>`: fills `?afterLogin` in `Auth.Login.update` and in its test. |
+| Both `?afterLogin` holes, once the landing page exists | 9 of the 12 bare-start cells filled `?afterLogin` by hand, up to twice (not the two T3s, which had a `/` page or used `--to`; Sonnet T4 only attempted it, refused for unknown `Notes.Index`, #42); *Sonnet t6 r4*'s `fill Auth.Login - --hole ?afterLogin` (#57) | one command for the login's redirect and its test | `alder edit auth --to <Page>`: fills `?afterLogin` in `Auth.Login.update` and in its test. |
 
 ### The command exists; the reference or the refusal did not make it findable
 
 | Misuse | Count | Proposed reference line or message |
 |---|---|---|
-| A lambda over the parameters a page's `load`/`view`/`update` (or `Layout.Page`) binds | 13 (11 cells, both models) | Reference, under `--blank` / `fill --decl`: "`load params session = ?load`: the parameters are bound; send the body, not `\params session -> …`" (the table's "fill a function with a lambda" is about `new decl`). Message: when the result is a lambda whose parameters repeat the declaration's, "the parameters `params session` are bound already: send the body without `\params session ->`". |
+| A lambda over the parameters a page's `load`/`view`/`update` (or `Layout.Page`) binds | 13, in 13 distinct cells (Haiku T2, T3, T5, T6, T9; Sonnet T10, T2, T3, T4, T5, T6, T7, T9) | Reference, under `--blank` / `fill --decl`: "`load params session = ?load`: the parameters are bound; send the body, not `\params session -> …`" (the table's "fill a function with a lambda" is about `new decl`). Message: when the result is a lambda whose parameters repeat the declaration's, "the parameters `params session` are bound already: send the body without `\params session ->`". |
 | `fill <address>` where there is no hole (a generated test, an arm, `Model`) | 8 | The test refusal should carry the arm refusal's hint: "to replace the test's block, `alder fill --decl 'M."name"' -`" (the arm message has it, #24, #40, #56; the test and `Model` ones do not, #7, #25, #28, #30, #49). |
 | A page or field used before the command that makes it; `--requires user` before `new auth` | 8 | Reference: "make the pages first (`--blank`), then fill: a body may name only what exists"; "`new auth` before any `--requires user` page" (the table's "Typical: tables, `new auth`, pages, fills" did not prevent #20, #31, #48). |
 | A whole test block into a generated test's `?expected` hole | 3 | Message: when a `Task Bool` block goes into a hole that is not a `Task`, "to replace the whole test, use `--decl`". |
@@ -431,7 +443,7 @@ a form's fields and a message's parameters, not only their presence.
 - **The worked example is T10's** (the first ten commands of the T10 drill, in `prompt-cli.md`). T10 was not the
   easiest `cli` task (Haiku 4 rounds, Sonnet 5).
 - **Haiku's long outputs.** Haiku wrote 289,445 characters of answer over its 40 `cli` rounds (Sonnet 219,639 over
-  42), scripts of up to 60 commands (*Haiku t10 r0*), up to 1,115 s of model time per cell (*Haiku t6*). The longer a
+  42), Haiku's scripts up to 60 commands (*Haiku t10 r0*; the longest script of any cell, 62 commands, is *Sonnet t6 r0*), up to 1,115 s of model time per cell (*Haiku t6*). The longer a
   script, the more a stop discards.
 - **The stop rule is strict by design.** A refused command ends the round, and a round cut short never passes even
   when its app does (e.g. *Haiku t3 r0*, *Sonnet t10 r0*, *Sonnet t7 r0* built and passed their tests while stopped).
@@ -439,12 +451,18 @@ a form's fields and a message's parameters, not only their presence.
 - **T4's hidden tests** assume E8's Names block, which the canonical T4 lacks (§2). **T2 and T3** have no hidden
   tests, so their `cli` passes rest on the tests alone, most of them generated; they were not hand-checked against
   the task text.
+- **The names check checks existence only.** It confirms that a page's messages and forms exist, not their fields
+  or parameters, which is why *Haiku t6* shows "ok" with hidden 0 / 9 (§5.2).
+- **One hand-scorer.** The stall classes of §6 were assigned by one reader, without a second scoring.
+- **The 600 s hang** (#23) cost *Haiku t6* a round (*r3*) to a tool bug, not the model.
 - **The baseline was re-run**, not reused (deviation 2): this run's `files` cells and E9's differ in system prompt;
   they agree closely (§3).
 
 ## 9. What to do next (the loop's next iteration)
 
-1. **Fix the `fill` hang** on `×` (§6, #23), with *Haiku t6 r3*'s body as the regression test.
+1. **Fix the `fill` hang** (§6, #23: `qualifiers` in `internal/generate/fill.go` reads one byte of a multi-byte
+   character as a rune and never advances), with *Haiku t6 r3*'s body and bodies with `é` and `·` as regression
+   tests. Ledgered as a compiler bug for the next fix batch; not fixed here.
 2. **The four commands** of §7 (an `App` message, a prop on `Layout.Page`, a form on a message with parameters,
    `edit auth --to`), each with a drill line; then **the reference lines and messages** of §7's second table, the
    lambda message first (13 of 64 refusals).
