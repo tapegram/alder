@@ -1,0 +1,9 @@
+alder fill --decl 'Posts.Show."NewComment refuses an empty author"' - <<'EOF'
+{
+  let _ <- Db.insert Post { title: Text.NonEmpty "Hello", slug: Slug.Slug "slug-1", body: "b", published: True }
+  let _ <- Test.get (Posts.Show { slug: Slug.Slug "slug-1" })
+  let r <- Test.submitRaw NewComment [{ name: "author", value: "" }, { name: "body", value: "x" }]
+  Task.succeed (r.answer == FormRejected [{ field: "author", message: "must not be empty" }])
+}
+EOF
+alder test

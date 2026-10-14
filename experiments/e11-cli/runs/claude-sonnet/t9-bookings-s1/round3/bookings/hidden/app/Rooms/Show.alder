@@ -1,0 +1,86 @@
+module Rooms.Show
+
+import Booking
+import Layout
+import Room
+import User
+
+page "/rooms/{id}" { id: Room.RoomId } requires user
+
+type Model = { room: Room, bookings: List Booking }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Room params.id
+  match found {
+    Just r -> {
+      let bs <- Db.from Booking |> Db.where (Booking.room.eq r.id) |> Db.orderBy Booking.from.asc |> Db.all
+      Query.succeed { room: r, bookings: bs }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewBooking = {
+  from: Date,
+  to: Date,
+}
+
+msg Book form NewBooking
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Book p -> {
+    let existing <- Db.from Booking |> Db.where (Booking.room.eq model.room.id) |> Db.all
+    if p.form.to <= p.form.from then Task.succeed (Reject "The end date must be after the start date.") else if Booking.conflicts p.form.from p.form.to existing then Task.succeed (Reject "That room is already booked in that period.") else {
+      let _ <- Db.insert Booking { room: model.room.id, owner: session.user, from: p.form.from, to: p.form.to }
+      Task.succeed (Redirect (Rooms.Show { id: model.room.id }))
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Room">
+    <h1 id="name">{model.room.name}</h1>
+    <ul id="bookings">
+      {for b in model.bookings ->
+        <li><span class="from">{Date.toText b.from}</span> <span class="to">{Date.toText b.to}</span></li>}
+    </ul>
+    <form submit={Book}>
+      <Errors form />
+      <al-input field="from" label="From" />
+      <al-input field="to" label="To" />
+      <al-button type="submit">Book</al-button>
+    </form>
+  </Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let room1 <- Db.insert Room { name: Text.NonEmpty "name-1" }
+  let r <- Test.open (Rooms.Show { id: room1 })
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "submitting NewBooking" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let room1 <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let _ <- Db.insert Booking { room: room1, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room1 })
+  let r <- Test.submit NewBooking { from: Date.addDays 2 today, to: Date.addDays 4 today }
+  let n <- Db.from Booking |> Db.count
+  Task.succeed ({ answer: r.answer, n: n } == { answer: Redirected (Rooms.Show { id: room1 }), n: 2 })
+}
+
+test "NewBooking refuses an empty from" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let room1 <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let _ <- Db.insert Booking { room: room1, owner: me, from: today, to: Date.addDays 3 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room1 })
+  let r <- Test.submit NewBooking { from: Date.addDays 1 today, to: Date.addDays 4 today }
+  let n <- Db.from Booking |> Db.count
+  Task.succeed ({ answer: r.answer, n: n } == { answer: FormRejected [{ field: "", message: "That room is already booked in that period." }], n: 1 })
+}

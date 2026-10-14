@@ -1,0 +1,330 @@
+{
+ "model": "claude-sonnet",
+ "task": "t4-appmsg",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "hidden": "experiments/e8-hidden/hidden",
+  "condition": "cli",
+  "sample": "s1",
+  "cli": true
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 4,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 2,
+   "codes": {},
+   "rejected": [],
+   "seconds": 66.8,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 32,
+    "executed": 3,
+    "refused": {
+     "kind": "exit1",
+     "line": 4,
+     "text": "alder fill Auth.Login.update --hole ?afterLogin - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 3,
+    "stdin_lines": 1,
+    "max_body": 1,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\nalder build: the program has 2 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 1,
+   "files": 6,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 2,
+   "codes": {},
+   "rejected": [],
+   "seconds": 20.4,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 8,
+    "executed": 3,
+    "refused": {
+     "kind": "exit1",
+     "line": 6,
+     "text": "alder new page Notes.Show /notes/{id} --show Note --requires user --param id:Note.NoteId",
+     "reason": "alder new page: --param goes with a page of its own or a --blank one: a --list, --show or --from page has its parameters made for it"
+    },
+    "complete": false,
+    "stopped_at": 3,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\nalder build: the program has 2 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 2,
+   "files": 7,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 2,
+   "codes": {},
+   "rejected": [],
+   "seconds": 57.8,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 32,
+    "executed": 5,
+    "refused": {
+     "kind": "exit1",
+     "line": 10,
+     "text": "alder new msg App ToggleTheme",
+     "reason": "alder new msg: `App` is not a page (it has no `page` declaration): `alder new page App /path` makes one"
+    },
+    "complete": false,
+    "stopped_at": 5,
+    "stdin_lines": 1,
+    "max_body": 1,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\nalder build: the program has 2 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 3,
+   "files": 7,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 2,
+   "codes": {},
+   "rejected": [],
+   "seconds": 59.9,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 36,
+    "executed": 7,
+    "refused": {
+     "kind": "exit1",
+     "line": 16,
+     "text": "alder new decl Layout Themed \"{ title: Text, dark: Bool, children: List (Html a) } -> Html a\"",
+     "reason": "alder new decl: `Themed` is not a value name: a value is named by a lower-case identifier, such as `waiting`"
+    },
+    "complete": false,
+    "stopped_at": 7,
+    "stdin_lines": 3,
+    "max_body": 1,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\nalder build: the program has 2 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 4,
+   "files": 8,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 6,
+   "codes": {},
+   "rejected": [],
+   "seconds": 63.9,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 31,
+    "executed": 5,
+    "refused": {
+     "kind": "exit1",
+     "line": 9,
+     "text": "alder fill Notes.Index.load - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 5,
+    "stdin_lines": 5,
+    "max_body": 4,
+    "decl_uses": 1
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\napp/Notes/Index.alder:10:23: warning[W0002]: hole ?load has type Query Notes.Index.Model\n  load params session = ?load\n                        ^^^^^\napp/Notes/Index.alder:13:22: warning[W0002]: hole ?view has type Html Notes.Index.Msg\n  view model session = ?view\n                       ^^^^^\napp/Notes/Show.alder:11:23: warning[W0002]: hole ?load has type Query Notes.Show.Model\n  load params session = ?load\n                        ^^^^^\napp/Notes/Show.alder:14:22: warning[W0002]: hole ?view has type Html Notes.Show.Msg\n  view model session = ?view\n                       ^^^^^\nalder build: the program has 6 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 5,
+   "files": 8,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 4,
+   "codes": {},
+   "rejected": [],
+   "seconds": 57.1,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 24,
+    "executed": 3,
+    "refused": {
+     "kind": "exit1",
+     "line": 11,
+     "text": "alder new form Notes.Index NewNote title:Text.NonEmpty body:Text --msg Submit",
+     "reason": "alder new form: `Notes.Index`'s `view` is not one element over several lines: add the markup yourself"
+    },
+    "complete": false,
+    "stopped_at": 3,
+    "stdin_lines": 5,
+    "max_body": 4,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\napp/Notes/Show.alder:11:23: warning[W0002]: hole ?load has type Query Notes.Show.Model\n  load params session = ?load\n                        ^^^^^\napp/Notes/Show.alder:14:22: warning[W0002]: hole ?view has type Html Notes.Show.Msg\n  view model session = ?view\n                       ^^^^^\nalder build: the program has 4 typed hole(s); fill them before building\n"
+   }
+  }
+ ],
+ "final_pass": false,
+ "outcome": "fail",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "sonnet",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "cli": {
+  "app_name": "appmsg",
+  "rounds": 6,
+  "complete": false,
+  "stopped_at": {
+   "round": 5,
+   "command": 3,
+   "line": 11,
+   "kind": "exit1"
+  },
+  "commands": 163,
+  "executed": 26,
+  "refused": {
+   "count": 6,
+   "kinds": {
+    "exit1": 6
+   },
+   "items": [
+    {
+     "round": 0,
+     "kind": "exit1",
+     "line": 4,
+     "text": "alder fill Auth.Login.update --hole ?afterLogin - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    {
+     "round": 1,
+     "kind": "exit1",
+     "line": 6,
+     "text": "alder new page Notes.Show /notes/{id} --show Note --requires user --param id:Note.NoteId",
+     "reason": "alder new page: --param goes with a page of its own or a --blank one: a --list, --show or --from page has its parameters made for it"
+    },
+    {
+     "round": 2,
+     "kind": "exit1",
+     "line": 10,
+     "text": "alder new msg App ToggleTheme",
+     "reason": "alder new msg: `App` is not a page (it has no `page` declaration): `alder new page App /path` makes one"
+    },
+    {
+     "round": 3,
+     "kind": "exit1",
+     "line": 16,
+     "text": "alder new decl Layout Themed \"{ title: Text, dark: Bool, children: List (Html a) } -> Html a\"",
+     "reason": "alder new decl: `Themed` is not a value name: a value is named by a lower-case identifier, such as `waiting`"
+    },
+    {
+     "round": 4,
+     "kind": "exit1",
+     "line": 9,
+     "text": "alder fill Notes.Index.load - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    {
+     "round": 5,
+     "kind": "exit1",
+     "line": 11,
+     "text": "alder new form Notes.Index NewNote title:Text.NonEmpty body:Text --msg Submit",
+     "reason": "alder new form: `Notes.Index`'s `view` is not one element over several lines: add the markup yourself"
+    }
+   ]
+  },
+  "stdin_lines": 15,
+  "max_body": 4,
+  "decl_uses": 1,
+  "names": null,
+  "setup": {
+   "argv": [
+    "alder",
+    "new",
+    "appmsg",
+    "--bare"
+   ],
+   "exit": 0,
+   "stdout": "created appmsg/\n  .gitignore\n  adapters/README.md\n  app/App.alder\n  app/Layout.alder\n  go.mod\n  static/app.css\ngo.mod keeps the app out of the Go module of /Users/tavishpegram/projects/alder/experiments/go.mod\n\nnext:\n  cd appmsg\n  alder new table \u2026      # the app's tables (chapter 15)\n  alder new page \u2026       # its pages\n  alder new auth         # a login\n  alder check            # type-check the app\n",
+   "stderr": ""
+  }
+ },
+ "hidden": {
+  "skipped": "the final round did not build"
+ },
+ "hidden_pass": null
+}

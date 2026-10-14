@@ -1,0 +1,99 @@
+module Auth.Login
+
+import User
+import Layout
+
+-- Password checking is outside the language: a capability implemented in Go.
+capability Password {
+  verify : { email: Text.Email, password: Text } -> Task (Maybe User.UserId),
+}
+
+-- In a test, `Test.fake Password` puts this in the adapter's place: it accepts any user who has
+-- a row, whatever the password, so a test can log in through the form below (book 10).
+fake Password {
+  verify args = {
+    let found <- Db.from User |> Db.where (User.email.eq args.email) |> Db.first
+    Task.succeed (Maybe.map (\u -> u.id) found)
+  }
+}
+
+page "/login" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+form Credentials = {
+  email: Text.Email,
+  password: Text.Secret,
+}
+
+msg Submit form Credentials
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let found <- Password.verify { email: p.form.email, password: p.form.password }
+    match found {
+      -- The session keeps the user and their role as the row has it now: a role changed later
+      -- applies when they next log in.
+      Just id -> {
+        let found <- Db.get User id
+        let role = Maybe.withDefault Member (Maybe.map (\u -> u.role) found)
+        let _ <- Session.put (\s -> { s | user: Just id, role: role })
+        Task.succeed (Redirect (Todos.Index {}))
+      },
+      Nothing -> Task.succeed (Reject "Email or password is incorrect."),
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Log in">
+    <h1>Log in</h1>
+    <al-card>
+      <form submit={Submit}>
+        <Errors form />
+        <al-input field="email" label="Email" />
+        <al-input field="password" label="Password" />
+        <al-button type="submit">Log in</al-button>
+      </form>
+    </al-card>
+  </Layout.Page>
+
+-- Logging in through the form, with the fake: an unknown email is rejected with the form's
+-- message, and a known one stores the user in the session and goes to the to-do list.
+test "an unknown email is rejected" = {
+  let _ <- Test.fake Password
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.submit Credentials { email: Text.Email "nobody@example.com", password: Text.Secret "secret" }
+  Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: FormRejected [{ field: "", message: "Email or password is incorrect." }], user: Nothing })
+}
+
+test "logging in through the form" = {
+  let _ <- Test.fake Password
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.submit Credentials { email: Text.Email "me@example.com", password: Text.Secret "secret" }
+  Task.succeed ({ answer: r.answer, user: r.session.user, title: Test.text "h1" r.doc } == { answer: Redirected (Todos.Index {}), user: Just me, title: Just "Todos" })
+}
+
+-- The session gets the role the user's row has: an Admin logs in as an Admin.
+test "logging in copies the role from the user's row" = {
+  let _ <- Test.fake Password
+  let _ <- Db.insert User { email: Text.Email "admin@example.com", name: Text.NonEmpty "Admin", passwordHash: "", role: Admin }
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.submit Credentials { email: Text.Email "admin@example.com", password: Text.Secret "secret" }
+  Task.succeed (r.session.role == Admin)
+}
+
+test "a visitor is sent to log in, and can log out" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let visitor <- Test.open (Todos.Index {})
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index {})
+  let out <- Test.click App.Logout
+  Task.succeed ({ visitor: visitor.answer, out: out.answer, user: out.session.user } == { visitor: Redirected (Auth.Login {}), out: Redirected (Auth.Login {}), user: Nothing })
+}

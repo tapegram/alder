@@ -1,0 +1,13 @@
+module Layout
+
+Page : { title: Text, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+    </head>
+    <body>
+      <main>{props.children}</main>
+    </body>
+  </html>

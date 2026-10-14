@@ -1,0 +1,22 @@
+app/Orders/Index.alder:20:22: warning[W0002]: hole ?view has type Html Orders.Index.Msg
+  view model session = ?view
+                       ^^^^^
+app/Orders/Show.alder:40:16: warning[W0002]: hole ?addLine has type Task Nav
+    AddLine p -> ?addLine,
+                 ^^^^^^^^
+app/Orders/Show.alder:41:12: warning[W0002]: hole ?pay has type Task Nav
+    Pay p -> ?pay,
+             ^^^^
+app/Orders/Show.alder:42:15: warning[W0002]: hole ?cancel has type Task Nav
+    Cancel p -> ?cancel,
+                ^^^^^^^
+app/Orders/Show.alder:78:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
+app/Orders/Show.alder:93:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Orders/Show.alder:108:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+alder build: the program has 7 typed hole(s); fill them before building

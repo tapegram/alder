@@ -1,0 +1,20 @@
+module Totals
+
+import Line
+import Product
+
+priceOf : Product.ProductId -> List Product -> Int
+priceOf pid products = match List.find (\p -> p.id == pid) products {
+  Just p -> Int.max 0 p.price,
+  Nothing -> 0,
+}
+
+nameOf : Product.ProductId -> List Product -> Text
+nameOf pid products = match List.find (\p -> p.id == pid) products {
+  Just p -> Text.trim p.name,
+  Nothing -> "",
+}
+
+sumLines : List Line -> List Product -> Int
+sumLines lines products =
+  List.sum (List.map (\l -> l.quantity * priceOf l.product products) lines)

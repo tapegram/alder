@@ -1,0 +1,49 @@
+module Line
+
+import User
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+type LineRow = { name: Text, quantity: Int, amount: Int }
+
+rowOf : Line -> Query LineRow
+rowOf line = {
+  let pid = line.product
+  let product <- Db.get Product pid
+  let name = Maybe.withDefault "?" (Maybe.map (\p -> Text.trim p.name) product)
+  let amount = Maybe.withDefault 0 (Maybe.map (\p -> line.quantity * p.price) product)
+  Query.succeed { name: name, quantity: line.quantity, amount: amount }
+}
+
+linesOf : Order.OrderId -> Query (List LineRow)
+linesOf orderId = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq orderId) |> Db.all
+  let rows <- Query.all (List.map rowOf lines)
+  Query.succeed rows
+}
+
+totalOf : Order.OrderId -> Query Int
+totalOf orderId = {
+  let rows <- linesOf orderId
+  Query.succeed (List.sum (List.map (\r -> r.amount) rows))
+}
+
+test "an order's total is the sum of its lines" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let order <- Db.insert Order { owner: me }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let mug <- Db.insert Product { name: Text.NonEmpty "Mug", price: Int.NonNegative 1000 }
+  let _ <- Db.insert Line { order: order, product: tea, quantity: Int.Positive 2 }
+  let _ <- Db.insert Line { order: order, product: mug, quantity: Int.Positive 1 }
+  let total <- totalOf order
+  Task.succeed (total == 1500)
+}

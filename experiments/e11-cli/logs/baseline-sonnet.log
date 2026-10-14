@@ -1,0 +1,8 @@
+claude-sonnet t2-newpage-s1: pass (0 (build ok) (tests 98/98) errors; mutants 160/161)
+claude-sonnet t3-newapp-s1: pass (2 → 0 (build ok) (tests 11/11) errors; mutants 16/25)
+claude-sonnet t4-appmsg-s1: pass (0 (build ok) (tests 7/7) errors; hidden 5/8; mutants 14/22)
+claude-sonnet t5-ownership-s1: pass (0 (build ok) (tests 7/7) errors; hidden 8/8; mutants 9/18)
+claude-sonnet t6-orders-s1: pass (0 (build ok) (tests 4/4) errors; hidden 9/9; mutants 12/50)
+claude-sonnet t7-drafts-s1: pass (0 (build ok) (tests 30/30) errors; hidden 7/7; mutants 36/53)
+claude-sonnet t9-bookings-s1: pass (0 (build ok) (tests 10/10) errors; hidden 7/7; mutants 23/40)
+claude-sonnet t10-teams-s1: pass (0 (build ok) (tests 8/8) errors; hidden 8/8; mutants 32/58)

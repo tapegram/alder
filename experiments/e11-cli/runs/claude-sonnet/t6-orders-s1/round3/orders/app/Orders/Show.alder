@@ -1,0 +1,65 @@
+module Orders.Show
+
+import Layout
+import Line
+import Order
+import Product
+import User
+
+page "/orders/{id}" { id: Order.OrderId } requires user
+
+type Model = { id: Order.OrderId, status: Order.Status, rows: List Line.Row, total: Int, choices: List Line.Choice }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Order params.id
+  let me <- Db.get User session.user
+  match found {
+    Nothing -> Query.notFound,
+    Just o -> if o.owner == session.user || User.isManager me then {
+      let lines <- Db.from Line |> Db.where (Line.order.eq o.id) |> Db.all
+      let products <- Db.from Product |> Db.all
+      Query.succeed { id: o.id, status: o.status, rows: Line.rows lines products, total: Line.total lines products, choices: Line.choices products }
+    } else Query.notFound,
+  }
+}
+
+msg AddLine { product: Product.ProductId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddLine p -> ?addLine,
+}
+
+view : Model -> Session -> Html Msg
+view model session = <Layout.Page title="Order">
+  <h1>Order</h1>
+  <p id="status">{Order.statusText model.status}</p>
+  <p id="total">{Text.fromInt model.total}</p>
+
+  <al-button click={AddLine { product: ?addLineProduct }}>Add line</al-button>
+</Layout.Page>
+
+imports : Bool
+imports = Order.isOpenName "x" && Line.total [] [] == 0 && Product.isFree 0 && User.isManager Nothing
+
+test "a visitor is sent to log in" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let order1 <- Db.insert Order { owner: me }
+  let r <- Test.open (Orders.Show { id: order1 })
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+-- Fill ?expected with what pressing AddLine must do, so that a test fails when the arm
+-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
+-- changed (`after`, the row read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.
+test "pressing AddLine" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let order1 <- Db.insert Order { owner: me }
+  let product1 <- Db.insert Product { name: Text.NonEmpty "name-1", price: Int.NonNegative 1 }
+  let _ <- Test.get (Orders.Show { id: order1 })
+  let r <- Test.click (AddLine { product: product1 })
+  let after <- Db.get Product product1
+  Task.succeed ?expected
+}

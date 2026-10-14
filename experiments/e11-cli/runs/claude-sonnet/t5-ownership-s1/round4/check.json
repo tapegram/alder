@@ -1,0 +1,1 @@
+{"code": "W0002", "severity": "warning", "file": "app/Auth/Login.alder", "line": 86, "col": 85, "endLine": 86, "endCol": 96, "message": "hole ?afterLogin has type Page"}

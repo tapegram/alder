@@ -1,0 +1,1 @@
+{"code": "W0002", "severity": "warning", "file": "app/Profile.alder", "line": 64, "col": 29, "endLine": 64, "endCol": 38, "message": "hole ?expected has type Answer"}

@@ -1,0 +1,264 @@
+```alder-cli
+# the Publish message on the dashboard
+alder new msg Admin Publish id:Post.PostId
+
+# the dashboard: drafts only, each with a Publish button; Publish checks the author
+alder fill --decl Admin.load - <<'EOF'
+{
+  let me <- User.author session.user
+  match me {
+    Just user -> {
+      let posts <-
+        Db.from Post
+          |> Db.where (Post.author.eq user.id)
+          |> Db.where (Post.published.eq False)
+          |> Db.orderBy Post.created.desc
+          |> Db.all
+      Query.succeed { author: user, posts: posts },
+    },
+    Nothing -> Query.notFound,
+  }
+}
+EOF
+alder fill --decl Admin.view - <<'EOF'
+<Layout.Page title="Your posts">
+    <h1>Your posts</h1>
+
+    <section id="drafts">
+      <h2>Drafts</h2>
+      <ul class="posts">
+        {for post in model.posts ->
+          <li>
+            <span class="title">{post.title}</span>
+            <a href={Admin.Edit { id: post.id }}>Edit</a>
+            <button click={Publish { id: post.id }}>Publish</button>
+          </li>}
+      </ul>
+    </section>
+
+    <h2>New post</h2>
+    <form submit={Create}>
+      <Errors form />
+      <Input field="slug" label="Slug (lowercase letters, digits and hyphens)" />
+      <Errors field="slug" />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Textarea field="body" label="Body (Markdown)" />
+      <Errors field="body" />
+      <button>Create post</button>
+    </form>
+
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+EOF
+alder fill --decl Admin.update - <<'EOF'
+match msg {
+  Create p -> {
+    let taken <- Post.bySlug p.form.slug
+    match taken {
+      Just _ -> Task.succeed (Reject "Another post has that slug."),
+      Nothing -> {
+        let id <- Db.insert Post { slug: p.form.slug, title: p.form.title, body: p.form.body, author: model.author.id }
+        Task.succeed (Redirect (Admin.Edit { id: id }))
+      },
+    }
+  },
+  Publish p -> {
+    let found <- Db.get Post p.id
+    let mine = Maybe.withDefault False (Maybe.map (\post -> post.author == model.author.id) found)
+    if mine then {
+      let _ <- Db.update Post p.id (\post -> { post | published: True })
+      Task.succeed (Redirect (Admin {}))
+    } else Task.notFound,
+  },
+}
+EOF
+
+# the post page: a draft is shown only to its author
+alder fill --decl Posts.Show.load - <<'EOF'
+{
+  let found <- Post.bySlug params.slug
+  match found {
+    Just post -> if post.published || session.user == Just post.author then {
+      let body <- Markdown.render post.body
+      let comments <-
+        Db.from Comment
+          |> Db.where (Comment.post.eq post.id)
+          |> Db.orderBy Comment.created.asc
+          |> Db.all
+      Query.succeed { post: post, body: body, comments: comments }
+    } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+EOF
+
+# existing front-page tests: their posts are now published
+alder fill --decl 'Posts.Index."the front page lists the posts, newest first"' - <<'EOF'
+{
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "first", title: Text.NonEmpty "First", body: "", author: author, published: True }
+  let _ <- Db.insert Post { slug: Post.Slug "second", title: Text.NonEmpty "Second", body: "", author: author, published: True }
+  let model <- load { page: 1, q: "" } { user: Nothing }
+  Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "Second", Text.NonEmpty "First"])
+}
+EOF
+alder fill --decl 'Posts.Index."search matches title or body"' - <<'EOF'
+{
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "tomatoes", title: Text.NonEmpty "Tomato season", body: "It is here.", author: author, published: True }
+  let _ <- Db.insert Post { slug: Post.Slug "soup", title: Text.NonEmpty "Soup", body: "Use ripe tomatoes.", author: author, published: True }
+  let _ <- Db.insert Post { slug: Post.Slug "trains", title: Text.NonEmpty "Trains", body: "Fast ones.", author: author, published: True }
+  let model <- load { page: 1, q: "TOMATO" } { user: Nothing }
+  let titles = List.map (\p -> p.title) model.posts
+  Task.succeed ({ count: List.length titles, title: List.member (Text.NonEmpty "Tomato season") titles, body: List.member (Text.NonEmpty "Soup") titles } == { count: 2, title: True, body: True })
+}
+EOF
+alder fill --decl 'Posts.Index."a `%` in the query is literal"' - <<'EOF'
+{
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "done", title: Text.NonEmpty "100% done", body: "", author: author, published: True }
+  let _ <- Db.insert Post { slug: Post.Slug "ways", title: Text.NonEmpty "1000 ways", body: "", author: author, published: True }
+  let model <- load { page: 1, q: "100%" } { user: Nothing }
+  Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "100% done"])
+}
+EOF
+alder fill --decl 'Posts.Index."page 99 is empty"' - <<'EOF'
+{
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Task.all (List.map (\n -> Db.insert Post { slug: Post.Slug ("post-" ++ Text.fromInt n), title: Text.NonEmpty "A post", body: "", author: author, published: True }) (List.range 1 11))
+  let pages <- Query.all (List.map (\n -> load { page: n, q: "" } { user: Nothing }) [1, 2, 99, 0])
+  let seen = List.map (\m -> { page: m.page, posts: List.length m.posts, hasMore: m.hasMore }) pages
+  Task.succeed (seen == [{ page: 1, posts: 10, hasMore: True }, { page: 2, posts: 1, hasMore: False }, { page: 99, posts: 0, hasMore: False }, { page: 1, posts: 10, hasMore: True }])
+}
+EOF
+alder fill --decl 'Posts.Index."a `_` in the query is literal"' - <<'EOF'
+{
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "snake", title: Text.NonEmpty "snake_case", body: "", author: author, published: True }
+  let _ <- Db.insert Post { slug: Post.Slug "camel", title: Text.NonEmpty "snakeYcase", body: "", author: author, published: True }
+  let model <- load { page: 1, q: "e_c" } { user: Nothing }
+  Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "snake_case"])
+}
+EOF
+alder fill --decl 'Posts.Index."the second page links back to the first"' - <<'EOF'
+{
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Task.all (List.map (\n -> Db.insert Post { slug: Post.Slug ("post-" ++ Text.fromInt n), title: Text.NonEmpty "A post", body: "", author: author, published: True }) (List.range 1 11))
+  let first <- Test.get (Posts.Index {})
+  let second <- Test.get (Posts.Index { page: 2 })
+  Task.succeed ({ firstPosts: Test.count "ul.posts li" first.doc, next: Test.attr "href" "a[rel=next]" first.doc, secondPosts: Test.count "ul.posts li" second.doc, prev: Test.attr "href" "a[rel=prev]" second.doc, more: Test.has "a[rel=next]" second.doc } == { firstPosts: 10, next: Just "/?page=2", secondPosts: 1, prev: Just "/", more: False })
+}
+EOF
+alder fill --decl 'Posts.Index."a search through the form"' - <<'EOF'
+{
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "soup", title: Text.NonEmpty "Soup", body: "Use ripe tomatoes.", author: author, published: True }
+  let _ <- Db.insert Post { slug: Post.Slug "trains", title: Text.NonEmpty "Trains", body: "Fast ones.", author: author, published: True }
+  let _ <- Test.get (Posts.Index {})
+  let r <- Test.submit SearchForm { q: "tomato" }
+  Task.succeed ({ answer: r.answer, titles: Test.texts "ul.posts a" r.doc, query: Test.attr "value" "input[name=q]" r.doc } == { answer: Redirected (Posts.Index { page: 1, q: "tomato" }), titles: ["Soup"], query: Just "tomato" })
+}
+EOF
+
+# the post page tests: their posts are now published
+alder fill --decl 'Posts.Show."a post'"'"'s body is rendered as Markdown"' - <<'EOF'
+{
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "Not *yet*.", author: author, published: True }
+  let m <- load { slug: Post.Slug "hello" } { user: Nothing }
+  Task.succeed ({ title: m.post.title, body: m.body } == { title: Text.NonEmpty "Hello", body: <p>Not <em>yet</em>.</p> })
+}
+EOF
+alder fill --decl 'Posts.Show."a post'"'"'s body is rendered through the Markdown capability"' - <<'EOF'
+{
+  let _ <- Test.fake Markdown
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "Not *yet*.", author: author, published: True }
+  let m <- load { slug: Post.Slug "hello" } { user: Nothing }
+  let steps <- Test.trace
+  Task.succeed ({ body: m.body, rendered: List.member "Markdown.render" steps } == { body: Html.text "Not *yet*.", rendered: True })
+}
+EOF
+alder fill --decl 'Posts.Show."a comment is listed oldest first"' - <<'EOF'
+{
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author, published: True }
+  let before <- load { slug: Post.Slug "hello" } { user: Nothing }
+  let _ <- update (AddComment { form: { author: Comment.Name "Ann", body: Comment.Body "First!" } }) before { user: Nothing }
+  let _ <- update (AddComment { form: { author: Comment.Name "Bob", body: Comment.Body "Second." } }) before { user: Nothing }
+  let after <- load { slug: Post.Slug "hello" } { user: Nothing }
+  Task.succeed (List.map (\c -> c.body) after.comments == [Comment.Body "First!", Comment.Body "Second."])
+}
+EOF
+alder fill --decl 'Posts.Show."an empty comment is rejected"' - <<'EOF'
+{
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "", author: author, published: True }
+  let _ <- Test.get (Posts.Show { slug: Post.Slug "hello" })
+  let r <- Test.submitRaw NewComment [{ name: "author", value: "Ann" }, { name: "body", value: "" }]
+  let comments <- Db.from Comment |> Db.count
+  Task.succeed ({ answer: r.answer, author: Test.attr "value" "input[name=author]" r.doc, comments: comments } == { answer: FormRejected [{ field: "body", message: "is not valid" }], author: Just "Ann", comments: 0 })
+}
+EOF
+
+# new tests: the front page and search leave drafts out
+alder new test Posts.Index "a draft is not on the front page"
+alder fill 'Posts.Index."a draft is not on the front page"' - <<'EOF'
+{
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "", author: author }
+  let _ <- Db.insert Post { slug: Post.Slug "live", title: Text.NonEmpty "Live", body: "", author: author, published: True }
+  let model <- load { page: 1, q: "" } { user: Nothing }
+  Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "Live"])
+}
+EOF
+alder new test Posts.Index "a draft is not found by a search"
+alder fill 'Posts.Index."a draft is not found by a search"' - <<'EOF'
+{
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "tomato-draft", title: Text.NonEmpty "Tomato draft", body: "Tomato.", author: author }
+  let _ <- Db.insert Post { slug: Post.Slug "tomato", title: Text.NonEmpty "Tomato", body: "", author: author, published: True }
+  let model <- load { page: 1, q: "tomato" } { user: Nothing }
+  Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "Tomato"])
+}
+EOF
+
+# new tests: a draft's page is a 404 for a reader and open to its author
+alder new test Posts.Show "a draft is not shown to a reader"
+alder fill 'Posts.Show."a draft is not shown to a reader"' - <<'EOF'
+{
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
+  let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "", author: author }
+  let _ <- Test.login { user: Just reader }
+  let page <- Test.open (Posts.Show { slug: Post.Slug "draft" })
+  Task.succeed (page.answer == PageMissing)
+}
+EOF
+alder new test Posts.Show "a draft is shown to its author"
+alder fill 'Posts.Show."a draft is shown to its author"' - <<'EOF'
+{
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "", author: author }
+  let _ <- Test.login { user: Just author }
+  let page <- Test.open (Posts.Show { slug: Post.Slug "draft" })
+  Task.succeed (page.answer == Shown)
+}
+EOF
+
+# new test: publishing a draft puts it on the front page
+alder new test Admin "publishing a draft puts it on the front page"
+alder fill 'Admin."publishing a draft puts it on the front page"' - <<'EOF'
+{
+  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let id <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "", author: author }
+  let _ <- Test.login { user: Just author }
+  let dashboard <- Test.get (Admin {})
+  let before <- Test.get (Posts.Index {})
+  let r <- Test.click (Publish { id: id })
+  let front <- Test.get (Posts.Index {})
+  Task.succeed ({ drafts: Test.texts "#drafts .title" dashboard.doc, answer: r.answer, before: Test.count "ul.posts li" before.doc, after: Test.texts "ul.posts a" front.doc } == { drafts: ["Draft"], answer: Redirected (Admin {}), before: 0, after: ["Draft"] })
+}
+EOF
+```

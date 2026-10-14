@@ -1,0 +1,124 @@
+module Teams.Show
+
+import Team
+import Member
+import Invite
+import User
+import Layout
+
+page "/teams/{id}" { id: Team.TeamId } requires user
+
+type Model = {
+  team: Team,
+  owner: User,
+  members: List User,
+  isOwner: Bool,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Team params.id
+  match found {
+    Nothing -> Query.notFound,
+    Just team -> {
+      let rows <- Db.from Member |> Db.where (Member.team.eq team.id) |> Db.all
+      let ownerRow <- Db.get User team.owner
+      let users <-
+        Db.from User
+          |> Db.where (User.id.in (List.map (\m -> m.user) rows))
+          |> Db.orderBy User.name.asc
+          |> Db.all
+      let isMember = List.any (\m -> m.user == session.user) rows
+      match ownerRow {
+        Nothing -> Query.notFound,
+        Just owner ->
+          if team.owner == session.user || isMember then
+            Query.succeed {
+              team: team,
+              owner: owner,
+              members: List.filter (\u -> u.id != team.owner) users,
+              isOwner: team.owner == session.user,
+            }
+          else Query.notFound,
+      }
+    },
+  }
+}
+
+form NewInvite = { email: Text.Email }
+
+msg SendInvite form NewInvite
+msg Remove { user: User.UserId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  SendInvite p ->
+    if model.isOwner then {
+      let _ <- Db.insert Invite { team: model.team.id, email: p.form.email }
+      Task.succeed (Redirect (Teams.Show { id: model.team.id }))
+    } else Task.notFound,
+  Remove p ->
+    if not model.isOwner || p.user == model.owner.id then Task.notFound else {
+      let rows <- Db.from Member |> Db.where (Member.team.eq model.team.id) |> Db.where (Member.user.eq p.user) |> Db.all
+      let _ <- Task.all (List.map (\m -> Db.delete Member m.id) rows)
+      Task.succeed (Redirect (Teams.Show { id: model.team.id }))
+    },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.team.name}>
+    <h1 id="name">{model.team.name}</h1>
+    <ul id="members">
+      <li><span class="name">{model.owner.name}</span></li>
+      {for u in model.members ->
+        <li>
+          <span class="name">{u.name}</span>
+          {if model.isOwner then <button class="remove" click={Remove { user: u.id }}>Remove</button> else Html.none}
+        </li>}
+    </ul>
+    {if model.isOwner then
+      <form submit={SendInvite}>
+        <Errors form />
+        <Input field="email" label="Invite by email" />
+        <button>Invite</button>
+      </form>
+    else Html.none}
+    <p><a href={Teams.Index {}}>Back</a></p>
+  </Layout.Page>
+
+test "a team's page is not found for a non-member" = {
+  let a <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let b <- Db.insert User { email: Text.Email "b@example.com", name: Text.NonEmpty "B", passwordHash: "" }
+  let team <- Db.insert Team { name: Text.NonEmpty "T", owner: a }
+  let _ <- Test.login { user: Just b }
+  let r <- Test.open (Teams.Show { id: team })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a member cannot remove another member" = {
+  let a <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let b <- Db.insert User { email: Text.Email "b@example.com", name: Text.NonEmpty "B", passwordHash: "" }
+  let c <- Db.insert User { email: Text.Email "c@example.com", name: Text.NonEmpty "C", passwordHash: "" }
+  let team <- Db.insert Team { name: Text.NonEmpty "T", owner: a }
+  let _ <- Db.insert Member { team: team, user: b }
+  let _ <- Db.insert Member { team: team, user: c }
+  let _ <- Test.login { user: Just b }
+  let page <- Test.get (Teams.Show { id: team })
+  let r <- Test.run (update (Remove { user: c }) page.model { user: b })
+  let n <- Db.from Member |> Db.where (Member.team.eq team) |> Db.count
+  Task.succeed ({ value: r.value, members: n, buttons: Test.count ".remove" page.doc } == { value: Err "not found", members: 2, buttons: 0 })
+}
+
+test "the owner removes a member but not themselves" = {
+  let a <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let b <- Db.insert User { email: Text.Email "b@example.com", name: Text.NonEmpty "B", passwordHash: "" }
+  let team <- Db.insert Team { name: Text.NonEmpty "T", owner: a }
+  let _ <- Db.insert Member { team: team, user: b }
+  let _ <- Test.login { user: Just a }
+  let page <- Test.get (Teams.Show { id: team })
+  let r <- Test.click (Remove { user: b })
+  let n <- Db.from Member |> Db.where (Member.team.eq team) |> Db.count
+  let self <- Test.run (update (Remove { user: a }) page.model { user: a })
+  Task.succeed ({ answer: r.answer, members: n, self: self.value } == { answer: Redirected (Teams.Show { id: team }), members: 0, self: Err "not found" })
+}

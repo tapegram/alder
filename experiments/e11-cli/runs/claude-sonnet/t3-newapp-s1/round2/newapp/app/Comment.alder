@@ -1,0 +1,23 @@
+module Comment
+
+import Post
+import Slug
+
+type CommentId = brand Text
+
+table Comment {
+  id: CommentId @id,
+  post: Post.PostId @ref Post @cascade,
+  author: Text.NonEmpty,
+  body: Text.NonEmpty,
+  created: Time @created,
+  updated: Time @updated,
+}
+
+test "deleting its post deletes a Comment" = {
+  let target <- Db.insert Post { title: Text.NonEmpty "title-1", slug: Slug.Slug "slug-1", body: "body-1" }
+  let _ <- Db.insert Comment { post: target, author: Text.NonEmpty "author-1", body: Text.NonEmpty "body-1" }
+  let _ <- Db.delete Post target
+  let left <- Db.from Comment |> Db.count
+  Task.succeed (left == 0)
+}

@@ -1,0 +1,84 @@
+module Profile
+
+import Todo
+import Layout
+import User
+
+page "/profile" { } requires user
+
+type Model = {
+  user: User,
+  todoCount: Int,
+  doneCount: Int,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get User session.user
+  let todoCount <- Db.mine Todo |> Db.count
+  let doneCount <- Db.mine Todo |> Db.where (Todo.done.eq True) |> Db.count
+  match found {
+    Just u -> Query.succeed { user: u, todoCount: todoCount, doneCount: doneCount },
+    Nothing -> Query.notFound,
+  }
+}
+
+form Rename = {
+  name: Text.NonEmpty,
+}
+
+msg Save form Rename
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> {
+    let _ <- Db.update User session.user (\u -> { u | name: p.form.name })
+    Task.succeed (Redirect (Profile {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Profile">
+    <h1>Profile</h1>
+
+    <al-card>
+      <p id="name">{model.user.name}</p>
+      <p id="email">{model.user.email}</p>
+      <p id="counts">{Text.fromInt model.todoCount} todos, {Text.fromInt model.doneCount} done</p>
+      <form submit={Save}>
+        <al-input field="name" label="Name" value={model.user.name} />
+        <Errors field="name" />
+        <al-button type="submit">Save</al-button>
+      </form>
+    </al-card>
+
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+    <a href={Todos.Index {}}>Back to todos</a>
+  </Layout.Page>
+
+test "load counts only the user's todos" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Bread", done: True, due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Eggs", done: True, due: Nothing, owner: other }
+  let _ <- Test.login { user: Just me }
+  let model <- load { } { user: me, role: Member }
+  Task.succeed ({ todos: model.todoCount, done: model.doneCount } == { todos: 2, done: 1 })
+}
+
+test "renaming to an empty name is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "name-1", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Profile {})
+  let r <- Test.submitRaw Rename [{ name: "name", value: "" }]
+  let after <- Db.get User me
+  Task.succeed ({
+    answer: r.answer,
+    name: Maybe.map (\u -> u.name) after,
+  } == {
+    answer: FormRejected [{ field: "name", message: "must not be empty" }],
+    name: Just (Text.NonEmpty "name-1"),
+  })
+}

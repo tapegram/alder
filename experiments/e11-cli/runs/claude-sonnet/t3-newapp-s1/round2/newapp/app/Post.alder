@@ -1,0 +1,15 @@
+module Post
+
+import Slug
+
+type PostId = brand Text
+
+table Post {
+  id: PostId @id,
+  title: Text.NonEmpty,
+  slug: Slug.Slug @unique,
+  body: Text,
+  published: Bool = False,
+  created: Time @created,
+  updated: Time @updated,
+}

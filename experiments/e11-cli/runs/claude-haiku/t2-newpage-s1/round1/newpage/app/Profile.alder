@@ -1,0 +1,73 @@
+module Profile
+
+import Layout
+import Todo
+import User
+
+page "/profile" { } requires user
+
+type Model = { name: Text, email: Text, total: Int, done: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get User session.user
+  let total <- Db.mine Todo |> Db.count
+  let done <- Db.mine Todo |> Db.where (Todo.done.eq True) |> Db.count
+  match found {
+    Just u -> Query.succeed { name: u.name, email: u.email, total: total, done: done },
+    Nothing -> Query.notFound,
+  }
+}
+
+form Rename = {
+  name: Text.NonEmpty,
+}
+
+msg SaveName form Rename
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  SaveName p -> {
+    let _ <- Db.update User session.user (\u -> { u | name: p.form.name })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <Layout.Page title="Profile">
+  <h1>{model.name}</h1>
+  <p>{model.email}</p>
+  <p>{Text.fromInt model.total} todos, {Text.fromInt model.done} done</p>
+  <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  <a href={Todos.Index {}}>Todos</a>
+
+  <al-card>
+    <h2 slot="header">Rename</h2>
+    <form submit={SaveName}>
+      <al-input field="name" label="Name" />
+      <al-alert variant="destructive"><Errors form /></al-alert>
+      <al-button type="submit">Rename</al-button>
+    </form>
+  </al-card>
+</Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Profile {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "submitting Rename" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Profile {})
+  let r <- Test.submit Rename { name: Text.NonEmpty "name-1" }
+  Task.succeed (r.answer == ?expected)
+}
+
+test "Rename refuses an empty name" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Profile {})
+  let r <- Test.submitRaw Rename [{ name: "name", value: "" }]
+  Task.succeed (r.answer == FormRejected [{ field: "name", message: "must not be empty" }])
+}

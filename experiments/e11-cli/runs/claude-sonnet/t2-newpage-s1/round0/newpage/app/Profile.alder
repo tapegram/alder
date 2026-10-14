@@ -1,0 +1,16 @@
+module Profile
+
+page "/profile" { } requires user
+
+type Model = { name: Text.NonEmpty, email: Text.Email, total: Int, finished: Int }
+
+load : Params -> Session -> Query Model
+load params session = ?load
+
+view : Model -> Session -> Html Msg
+view model session = ?view
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Profile {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

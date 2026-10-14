@@ -1,0 +1,60 @@
+module Bookings.Index
+
+import Booking
+import Room
+import Layout
+import User
+
+page "/bookings" { } requires user
+
+type Model = {
+  bookings: List Booking,
+  rooms: List Room,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let bookings <-
+    Db.from Booking
+      |> Db.where (Booking.owner.eq session.user)
+      |> Db.orderBy Booking.from.asc
+      |> Db.all
+  let rooms <- Db.from Room |> Db.all
+  Query.succeed { bookings: bookings, rooms: rooms }
+}
+
+roomName : List Room -> Booking -> Text
+roomName rooms b = {
+  let found = rooms |> List.find (\r -> r.id == b.room)
+  match found {
+    Just r -> Text.trim r.name,
+    Nothing -> "",
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="My bookings">
+    <h1>My bookings</h1>
+    <ul id="mine">
+      {for b in model.bookings ->
+        <li>
+          <a href={Bookings.Show { id: b.id }}>
+            <span class="room">{roomName model.rooms b}</span>
+          </a>
+          <span class="from">{Date.toText b.from}</span>
+        </li>}
+    </ul>
+  </Layout.Page>
+
+test "my bookings list my bookings only" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: room, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let _ <- Db.insert Booking { room: room, owner: other, from: Date.addDays 5 today, to: Date.addDays 6 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Index {})
+  Task.succeed ({ rooms: Test.texts "#mine .room" page.doc, items: Test.count "#mine li" page.doc } == { rooms: ["Oak"], items: 1 })
+}

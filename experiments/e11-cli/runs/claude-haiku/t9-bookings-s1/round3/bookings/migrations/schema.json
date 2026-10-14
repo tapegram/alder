@@ -1,0 +1,75 @@
+{
+  "format": "1",
+  "tables": [
+    {
+      "name": "Booking.Booking",
+      "id": "id",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "room",
+          "type": "Text",
+          "ref": "Room.Room"
+        },
+        {
+          "name": "owner",
+          "type": "Text",
+          "ref": "User.User"
+        },
+        {
+          "name": "from",
+          "type": "Date"
+        },
+        {
+          "name": "to",
+          "type": "Date"
+        }
+      ]
+    },
+    {
+      "name": "Room.Room",
+      "id": "id",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        }
+      ]
+    },
+    {
+      "name": "User.User",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "email",
+          "type": "Text",
+          "unique": true
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        },
+        {
+          "name": "passwordHash",
+          "type": "Text"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    }
+  ]
+}

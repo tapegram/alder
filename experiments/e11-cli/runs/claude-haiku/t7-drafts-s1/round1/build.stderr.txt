@@ -1,0 +1,10 @@
+app/Admin.alder:55:16: warning[W0002]: hole ?publish has type Task Nav
+    Publish p -> ?publish,
+                 ^^^^^^^^
+app/Admin.alder:84:37: warning[W0002]: hole ?publishId has type Post.PostId
+      <al-button click={Publish { id: ?publishId }}>Publish</al-button>
+                                      ^^^^^^^^^^
+app/Admin.alder:149:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+alder build: the program has 3 typed hole(s); fill them before building

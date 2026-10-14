@@ -1,0 +1,37 @@
+module Home
+
+import Layout
+import Post
+import User
+
+page "/" { }
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <-
+    Db.from Post
+      |> Db.where (Post.published.eq True)
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Blog">
+    <h1>Blog</h1>
+    <ul>
+      {for post in model.posts -> <li><a href={Posts { slug: post.slug }}>{post.title}</a></li>}
+    </ul>
+  </Layout.Page>
+
+test "lists only published posts newest first" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Post { title: Text.NonEmpty "First", slug: Post.Slug "first", body: "one", published: True, author: me }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Draft", slug: Post.Slug "draft", body: "two", author: me }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Second", slug: Post.Slug "second", body: "three", published: True, author: me }
+  let page <- Test.get (Home {})
+  Task.succeed (Test.texts "li a" page.doc == ["Second", "First"])
+}

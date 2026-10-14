@@ -1,0 +1,651 @@
+{
+ "model": "claude-haiku",
+ "task": "t3-newapp",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "condition": "cli",
+  "sample": "s1",
+  "cli": true
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 5,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 212.5,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 31,
+    "executed": 5,
+    "refused": {
+     "kind": "exit1",
+     "line": 8,
+     "text": "alder fill --decl Layout.Page - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 5,
+    "stdin_lines": 12,
+    "max_body": 12,
+    "decl_uses": 1
+   },
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 2,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Post",
+      "name": "a Post keeps its author from being deleted",
+      "ok": true,
+      "left": "{ deleted: Nothing, left: 1 }",
+      "right": "{ deleted: Nothing, left: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.run",
+       "Db.delete User",
+       "Db.count Post"
+      ],
+      "ms": 0.803
+     },
+     {
+      "module": "Comment",
+      "name": "deleting its post deletes a Comment",
+      "ok": true,
+      "left": "0",
+      "right": "0",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Comment",
+       "Db.delete Post",
+       "Db.count Comment"
+      ],
+      "ms": 0.452
+     }
+    ],
+    "exit": 0
+   }
+  },
+  {
+   "n": 1,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 3,
+   "codes": {},
+   "rejected": [],
+   "seconds": 105.4,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 31,
+    "executed": 30,
+    "refused": {
+     "kind": "exit1",
+     "line": 207,
+     "text": "alder new test Admin \"a visitor is sent to log in\"",
+     "reason": "alder new test: `Admin` already has a test \"a visitor is sent to log in\": choose another name"
+    },
+    "complete": false,
+    "stopped_at": 30,
+    "stdin_lines": 150,
+    "max_body": 21,
+    "decl_uses": 14
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Admin.alder:84:29: warning[W0002]: hole ?expected has type Answer\n    Task.succeed (r.answer == ?expected)\n                              ^^^^^^^^^\napp/Admin.alder:105:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\napp/Posts.alder:65:29: warning[W0002]: hole ?expected has type Answer\n    Task.succeed (r.answer == ?expected)\n                              ^^^^^^^^^\nalder build: the program has 3 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 2,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 3,
+   "codes": {},
+   "rejected": [],
+   "seconds": 16.1,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 3,
+    "executed": 1,
+    "refused": {
+     "kind": "exit1",
+     "line": 1,
+     "text": "alder fill 'Posts.\"submitting NewComment\"' - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 1,
+    "stdin_lines": 8,
+    "max_body": 8,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Admin.alder:84:29: warning[W0002]: hole ?expected has type Answer\n    Task.succeed (r.answer == ?expected)\n                              ^^^^^^^^^\napp/Admin.alder:105:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\napp/Posts.alder:65:29: warning[W0002]: hole ?expected has type Answer\n    Task.succeed (r.answer == ?expected)\n                              ^^^^^^^^^\nalder build: the program has 3 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 3,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 40.4,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 5,
+    "executed": 5,
+    "refused": null,
+    "complete": true,
+    "stopped_at": null,
+    "stdin_lines": 49,
+    "max_body": 12,
+    "decl_uses": 5
+   },
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 16,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Post",
+      "name": "a Post keeps its author from being deleted",
+      "ok": true,
+      "left": "{ deleted: Nothing, left: 1 }",
+      "right": "{ deleted: Nothing, left: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.run",
+       "Db.delete User",
+       "Db.count Post"
+      ],
+      "ms": 0.932
+     },
+     {
+      "module": "Admin",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Admin"
+      ],
+      "ms": 7.885
+     },
+     {
+      "module": "Admin",
+      "name": "submitting NewPost",
+      "ok": true,
+      "left": "{ answer: Rerendered, posts: 1 }",
+      "right": "{ answer: Rerendered, posts: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin",
+       "Db.all Post",
+       "Test.submit NewPost",
+       "Db.all Post",
+       "Db.insert Post",
+       "Db.all Post",
+       "Db.count Post"
+      ],
+      "ms": 0.789
+     },
+     {
+      "module": "Admin",
+      "name": "NewPost refuses an empty title",
+      "ok": true,
+      "left": "{ rejected: True, posts: 0 }",
+      "right": "{ rejected: True, posts: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin",
+       "Db.all Post",
+       "Test.submitRaw NewPost",
+       "Db.all Post",
+       "Db.count Post"
+      ],
+      "ms": 1.137
+     },
+     {
+      "module": "Admin",
+      "name": "pressing Toggle",
+      "ok": true,
+      "left": "{ answer: Rerendered, published: Just True }",
+      "right": "{ answer: Rerendered, published: Just True }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Post",
+       "Test.get Admin",
+       "Db.all Post",
+       "Test.click Admin.Toggle",
+       "Db.all Post",
+       "Db.get Post",
+       "Db.update Post",
+       "Db.all Post",
+       "Db.get Post"
+      ],
+      "ms": 0.756
+     },
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 0.458
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 0.543
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /, user: Just \"bLEdOkta7Q5zS_5l5g77\" }",
+      "right": "{ answer: Redirected /, user: Just \"bLEdOkta7Q5zS_5l5g77\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Session.put",
+       "Db.all Post"
+      ],
+      "ms": 0.544
+     },
+     {
+      "module": "Auth.Login",
+      "name": "a signed-in user logs out here",
+      "ok": true,
+      "left": "{ answer: Redirected /login, user: Nothing }",
+      "right": "{ answer: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Auth.Login",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.538
+     },
+     {
+      "module": "Comment",
+      "name": "deleting its post deletes a Comment",
+      "ok": true,
+      "left": "0",
+      "right": "0",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Comment",
+       "Db.delete Post",
+       "Db.count Comment"
+      ],
+      "ms": 0.459
+     },
+     {
+      "module": "Home",
+      "name": "lists only published posts newest first",
+      "ok": true,
+      "left": "[\"Second\", \"First\"]",
+      "right": "[\"Second\", \"First\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Test.get Home",
+       "Db.all Post"
+      ],
+      "ms": 0.525
+     },
+     {
+      "module": "Posts",
+      "name": "submitting NewComment",
+      "ok": true,
+      "left": "{ answer: Rerendered, comments: 1 }",
+      "right": "{ answer: Rerendered, comments: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.get Posts",
+       "Db.first Post",
+       "Db.all Comment",
+       "Test.submit NewComment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.insert Comment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.count Comment"
+      ],
+      "ms": 0.625
+     },
+     {
+      "module": "Posts",
+      "name": "NewComment refuses an empty author",
+      "ok": true,
+      "left": "{ rejected: True, comments: 0 }",
+      "right": "{ rejected: True, comments: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.get Posts",
+       "Db.first Post",
+       "Db.all Comment",
+       "Test.submitRaw NewComment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.count Comment"
+      ],
+      "ms": 0.657
+     },
+     {
+      "module": "Posts",
+      "name": "an unpublished post is not found for a reader",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.open Posts",
+       "Db.first Post",
+       "Db.all Comment"
+      ],
+      "ms": 0.657
+     },
+     {
+      "module": "Posts",
+      "name": "an unpublished post is shown to its author",
+      "ok": true,
+      "left": "Shown",
+      "right": "Shown",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.login",
+       "Test.open Posts",
+       "Db.first Post",
+       "Db.all Comment"
+      ],
+      "ms": 0.493
+     },
+     {
+      "module": "Posts",
+      "name": "a comment with an empty author is refused",
+      "ok": true,
+      "left": "{ rejected: True, comments: 0 }",
+      "right": "{ rejected: True, comments: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.get Posts",
+       "Db.first Post",
+       "Db.all Comment",
+       "Test.submitRaw NewComment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.count Comment"
+      ],
+      "ms": 0.518
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.8076923076923077,
+    "killed": 21,
+    "survived": 5,
+    "suppressed": 0,
+    "skipped": 7,
+    "survivors": [
+     {
+      "module": "Admin",
+      "file": "app/Admin.alder",
+      "decl": "load",
+      "line": 15,
+      "col": 10,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Post.created.desc",
+      "after": "Db.orderBy Post.created.asc"
+     },
+     {
+      "module": "Admin",
+      "file": "app/Admin.alder",
+      "decl": "update",
+      "line": 40,
+      "col": 9,
+      "kind": "guard dropped",
+      "before": "if post.author == session.user then \u2026 else Task.notFound",
+      "after": "the notFound arm dropped"
+     },
+     {
+      "module": "Posts",
+      "file": "app/Posts.alder",
+      "decl": "load",
+      "line": 14,
+      "col": 32,
+      "kind": "where dropped",
+      "before": "Db.where (Post.slug.eq params.slug)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Posts",
+      "file": "app/Posts.alder",
+      "decl": "load",
+      "line": 20,
+      "col": 14,
+      "kind": "where dropped",
+      "before": "Db.where (Comment.post.eq post.id)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Posts",
+      "file": "app/Posts.alder",
+      "decl": "load",
+      "line": 21,
+      "col": 14,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Comment.created.asc",
+      "after": "Db.orderBy Comment.created.desc"
+     }
+    ]
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "haiku",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "cli": {
+  "app_name": "newapp",
+  "rounds": 4,
+  "complete": true,
+  "stopped_at": null,
+  "commands": 70,
+  "executed": 41,
+  "refused": {
+   "count": 3,
+   "kinds": {
+    "exit1": 3
+   },
+   "items": [
+    {
+     "round": 0,
+     "kind": "exit1",
+     "line": 8,
+     "text": "alder fill --decl Layout.Page - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    {
+     "round": 1,
+     "kind": "exit1",
+     "line": 207,
+     "text": "alder new test Admin \"a visitor is sent to log in\"",
+     "reason": "alder new test: `Admin` already has a test \"a visitor is sent to log in\": choose another name"
+    },
+    {
+     "round": 2,
+     "kind": "exit1",
+     "line": 1,
+     "text": "alder fill 'Posts.\"submitting NewComment\"' - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    }
+   ]
+  },
+  "stdin_lines": 219,
+  "max_body": 21,
+  "decl_uses": 20,
+  "names": null,
+  "setup": {
+   "argv": [
+    "alder",
+    "new",
+    "newapp",
+    "--bare"
+   ],
+   "exit": 0,
+   "stdout": "created newapp/\n  .gitignore\n  adapters/README.md\n  app/App.alder\n  app/Layout.alder\n  go.mod\n  static/app.css\ngo.mod keeps the app out of the Go module of /Users/tavishpegram/projects/alder/experiments/go.mod\n\nnext:\n  cd newapp\n  alder new table \u2026      # the app's tables (chapter 15)\n  alder new page \u2026       # its pages\n  alder new auth         # a login\n  alder check            # type-check the app\n",
+   "stderr": ""
+  }
+ },
+ "mutation": {
+  "score": 0.8076923076923077,
+  "killed": 21,
+  "survived": 5,
+  "suppressed": 0,
+  "skipped": 7,
+  "survivors": [
+   {
+    "module": "Admin",
+    "file": "app/Admin.alder",
+    "decl": "load",
+    "line": 15,
+    "col": 10,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Post.created.desc",
+    "after": "Db.orderBy Post.created.asc"
+   },
+   {
+    "module": "Admin",
+    "file": "app/Admin.alder",
+    "decl": "update",
+    "line": 40,
+    "col": 9,
+    "kind": "guard dropped",
+    "before": "if post.author == session.user then \u2026 else Task.notFound",
+    "after": "the notFound arm dropped"
+   },
+   {
+    "module": "Posts",
+    "file": "app/Posts.alder",
+    "decl": "load",
+    "line": 14,
+    "col": 32,
+    "kind": "where dropped",
+    "before": "Db.where (Post.slug.eq params.slug)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Posts",
+    "file": "app/Posts.alder",
+    "decl": "load",
+    "line": 20,
+    "col": 14,
+    "kind": "where dropped",
+    "before": "Db.where (Comment.post.eq post.id)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Posts",
+    "file": "app/Posts.alder",
+    "decl": "load",
+    "line": 21,
+    "col": 14,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Comment.created.asc",
+    "after": "Db.orderBy Comment.created.desc"
+   }
+  ]
+ }
+}

@@ -1,0 +1,120 @@
+{
+  "format": "1",
+  "tables": [
+    {
+      "name": "Line.Line",
+      "id": "id",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "order",
+          "type": "Text",
+          "ref": "Order.Order",
+          "onDelete": "cascade"
+        },
+        {
+          "name": "product",
+          "type": "Text",
+          "ref": "Product.Product"
+        },
+        {
+          "name": "quantity",
+          "type": "Int"
+        }
+      ]
+    },
+    {
+      "name": "Order.Order",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "owner",
+          "type": "Text",
+          "ref": "User.User"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        },
+        {
+          "name": "status",
+          "type": "Enum",
+          "enum": [
+            "Open",
+            "Paid",
+            "Cancelled"
+          ],
+          "default": "'Open'"
+        }
+      ]
+    },
+    {
+      "name": "Product.Product",
+      "id": "id",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        },
+        {
+          "name": "price",
+          "type": "Int"
+        },
+        {
+          "name": "active",
+          "type": "Bool",
+          "default": "1"
+        }
+      ]
+    },
+    {
+      "name": "User.User",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "email",
+          "type": "Text",
+          "unique": true
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        },
+        {
+          "name": "passwordHash",
+          "type": "Text"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        },
+        {
+          "name": "role",
+          "type": "Enum",
+          "enum": [
+            "Staff",
+            "Manager"
+          ],
+          "default": "'Staff'"
+        }
+      ]
+    }
+  ]
+}

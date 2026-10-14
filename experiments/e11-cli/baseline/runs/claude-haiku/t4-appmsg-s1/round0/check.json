@@ -1,0 +1,2 @@
+{"code": "E0201", "severity": "error", "file": "app/Notes/Index.alder", "line": 58, "col": 23, "endLine": 58, "endCol": 27, "message": "module `User` is not imported", "fix": {"line": 5, "col": 1, "endLine": 5, "endCol": 1, "replace": "import User\n"}}
+{"code": "E0201", "severity": "error", "file": "app/Notes/Show.alder", "line": 55, "col": 23, "endLine": 55, "endCol": 27, "message": "module `User` is not imported", "fix": {"line": 5, "col": 1, "endLine": 5, "endCol": 1, "replace": "import User\n"}}

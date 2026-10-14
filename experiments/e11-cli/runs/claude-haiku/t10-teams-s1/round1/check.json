@@ -1,0 +1,4 @@
+{"code": "W0002", "severity": "warning", "file": "app/Auth/Login.alder", "line": 47, "col": 33, "endLine": 47, "endCol": 44, "message": "hole ?afterLogin has type Page"}
+{"code": "W0002", "severity": "warning", "file": "app/Auth/Login.alder", "line": 86, "col": 85, "endLine": 86, "endCol": 96, "message": "hole ?afterLogin has type Page"}
+{"code": "W0002", "severity": "warning", "file": "app/Teams/Index.alder", "line": 8, "col": 23, "endLine": 8, "endCol": 28, "message": "hole ?load has type Query Teams.Index.Model"}
+{"code": "W0002", "severity": "warning", "file": "app/Teams/Index.alder", "line": 11, "col": 22, "endLine": 11, "endCol": 27, "message": "hole ?view has type Html Teams.Index.Msg"}

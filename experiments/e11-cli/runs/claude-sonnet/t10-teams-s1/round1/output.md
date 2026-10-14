@@ -1,0 +1,261 @@
+```alder-cli
+# the login, then the pages
+alder new auth --users User
+alder new page Teams.Index /teams --list Team --requires user
+alder new page Teams.Show '/teams/{id}' --blank --param id:Team.TeamId --requires user
+alder new page Invites.Index /invites --blank --requires user
+
+# Teams.Index
+alder fill --decl Teams.Index.view - <<'EOF'
+\model session -> <p>x</p>
+EOF
+alder new form Teams.Index NewTeam name:Text.NonEmpty --msg Create
+alder fill --decl Teams.Index.Model - <<'EOF'
+{ teams: List Team }
+EOF
+alder fill --decl Teams.Index.load - <<'EOF'
+\params session -> {
+  let owned <- Db.from Team |> Db.where (Team.owner.eq session.user) |> Db.all
+  let mine <- Db.from Member |> Db.where (Member.user.eq session.user) |> Db.all
+  let viaMember <- Db.from Team |> Db.where (Team.id.in (List.map (\m -> m.team) mine)) |> Db.all
+  Query.succeed { teams: List.sortByText (\t -> t.name) (List.concat [owned, viaMember]) }
+}
+EOF
+alder fill --decl Teams.Index.update - <<'EOF'
+\msg model session -> match msg {
+  Create p -> {
+    let id <- Db.insert Team { name: p.form.name, owner: session.user }
+    Task.succeed (Redirect (Teams.Show { id: id }))
+  },
+}
+EOF
+alder fill --decl Teams.Index.view - <<'EOF'
+\model session ->
+  <Layout.Page title="Teams">
+    <h1>Teams</h1>
+    <ul id="teams">
+      {for t in model.teams -> <li><a class="name" href={Teams.Show { id: t.id }}>{t.name}</a></li>}
+    </ul>
+    <form submit={Create}>
+      <Errors form />
+      <al-input field="name" label="Team name" />
+      <al-button type="submit">Create</al-button>
+    </form>
+    <p><a href={Invites.Index {}}>Invites</a></p>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+EOF
+
+# Teams.Show
+alder fill --decl Teams.Show.Model - <<'EOF'
+{ team: Team, members: List User }
+EOF
+alder fill --decl Teams.Show.view - <<'EOF'
+\model session -> <p>x</p>
+EOF
+alder fill --decl Teams.Show.load - <<'EOF'
+\params session -> {
+  let found <- Db.get Team params.id
+  match found {
+    Nothing -> Query.notFound,
+    Just team -> {
+      let ms <- Db.from Member |> Db.where (Member.team.eq team.id) |> Db.all
+      let allowed = team.owner == session.user || List.any (\m -> m.user == session.user) ms
+      if allowed then {
+        let owner <- Db.get User team.owner
+        let users <- Db.from User |> Db.where (User.id.in (List.map (\m -> m.user) ms)) |> Db.all
+        Query.succeed { team: team, members: List.concat [Maybe.toList owner, List.sortByText (\u -> u.name) users] }
+      } else Query.notFound
+    },
+  }
+}
+EOF
+alder new form Teams.Show NewInvite email:Text.Email --msg SendInvite
+alder new msg Teams.Show Remove user:User.UserId
+alder fill --decl Teams.Show.update - <<'EOF'
+\msg model session -> match msg {
+  SendInvite p -> {
+    if model.team.owner == session.user then {
+      let _ <- Db.insert Invite { team: model.team.id, email: p.form.email }
+      Task.succeed (Redirect (Teams.Show { id: model.team.id }))
+    } else Task.notFound
+  },
+  Remove p -> {
+    if model.team.owner == session.user && p.user != model.team.owner then {
+      let rows <- Db.from Member |> Db.where (Member.team.eq model.team.id) |> Db.where (Member.user.eq p.user) |> Db.all
+      let _ <- Task.all (List.map (\m -> Db.delete Member m.id) rows)
+      Task.succeed (Redirect (Teams.Show { id: model.team.id }))
+    } else Task.notFound
+  },
+}
+EOF
+alder fill --decl Teams.Show.view - <<'EOF'
+\model session ->
+  <Layout.Page title={model.team.name}>
+    <h1 id="name">{model.team.name}</h1>
+    <ul id="members">
+      {for u in model.members ->
+        <li>
+          <span class="name">{u.name}</span>
+          {if session.user == model.team.owner && u.id != model.team.owner then <button class="remove" click={Remove { user: u.id }}>Remove</button> else Html.none}
+        </li>}
+    </ul>
+    {if session.user == model.team.owner then <form submit={SendInvite}><Errors form /><al-input field="email" label="Invite by email" /><al-button type="submit">Invite</al-button></form> else Html.none}
+    <p><a href={Teams.Index {}}>Teams</a></p>
+  </Layout.Page>
+EOF
+
+# Invites.Index
+alder fill --decl Invites.Index.Model - <<'EOF'
+{ invites: List { id: Invite.InviteId, team: Text } }
+EOF
+alder fill --decl Invites.Index.view - <<'EOF'
+\model session -> <p>x</p>
+EOF
+alder fill --decl Invites.Index.load - <<'EOF'
+\params session -> {
+  let me <- Db.get User session.user
+  match me {
+    Nothing -> Query.succeed { invites: [] },
+    Just u -> {
+      let invs <- Db.from Invite |> Db.where (Invite.email.eq u.email) |> Db.where (Invite.status.eq Pending) |> Db.all
+      let teams <- Db.from Team |> Db.where (Team.id.in (List.map (\i -> i.team) invs)) |> Db.all
+      Query.succeed { invites: List.filterMap (\i -> Maybe.map (\t -> { id: i.id, team: t.name }) (List.find (\t -> t.id == i.team) teams)) invs }
+    },
+  }
+}
+EOF
+alder new msg Invites.Index Accept id:Invite.InviteId
+alder new msg Invites.Index Decline id:Invite.InviteId
+alder fill --decl Invites.Index.update - <<'EOF'
+\msg model session -> match msg {
+  Accept p -> {
+    let me <- Db.get User session.user
+    let found <- Db.get Invite p.id
+    match me {
+      Nothing -> Task.notFound,
+      Just u -> match found {
+        Nothing -> Task.notFound,
+        Just inv -> if inv.status == Pending && inv.email == u.email then {
+          let team <- Db.get Team inv.team
+          let isOwner = Maybe.withDefault False (Maybe.map (\t -> t.owner == u.id) team)
+          let already <- Db.from Member |> Db.where (Member.team.eq inv.team) |> Db.where (Member.user.eq u.id) |> Db.count
+          let _ <- if already == 0 && not isOwner then Db.insert Member { team: inv.team, user: u.id } |> Task.map (\x -> ()) else Task.succeed ()
+          let _ <- Db.update Invite inv.id (\i -> { i | status: Accepted })
+          Task.succeed (Redirect (Teams.Show { id: inv.team }))
+        } else Task.notFound,
+      },
+    }
+  },
+  Decline p -> {
+    let me <- Db.get User session.user
+    let found <- Db.get Invite p.id
+    match me {
+      Nothing -> Task.notFound,
+      Just u -> match found {
+        Nothing -> Task.notFound,
+        Just inv -> if inv.status == Pending && inv.email == u.email then {
+          let _ <- Db.update Invite inv.id (\i -> { i | status: Declined })
+          Task.succeed (Redirect (Invites.Index {}))
+        } else Task.notFound,
+      },
+    }
+  },
+}
+EOF
+alder fill --decl Invites.Index.view - <<'EOF'
+\model session ->
+  <Layout.Page title="Invites">
+    <h1>Invites</h1>
+    <ul id="invites">
+      {for i in model.invites ->
+        <li>
+          <span class="team">{i.team}</span>
+          <button class="accept" click={Accept { id: i.id }}>Accept</button>
+          <button class="decline" click={Decline { id: i.id }}>Decline</button>
+        </li>}
+    </ul>
+    <p><a href={Teams.Index {}}>Teams</a></p>
+  </Layout.Page>
+EOF
+
+# tests
+alder new test Teams.Show "a team's page is not found for a non-member"
+alder fill 'Teams.Show."a team'"'"'s page is not found for a non-member"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let eve <- Db.insert User { email: Text.Email "eve@example.com", name: Text.NonEmpty "Eve", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let _ <- Test.login { user: Just eve }
+  let r <- Test.open (Teams.Show { id: red })
+  Task.succeed (r.answer == PageMissing)
+}
+EOF
+alder new test Teams.Show "a member cannot remove another member"
+alder fill 'Teams.Show."a member cannot remove another member"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let cat <- Db.insert User { email: Text.Email "cat@example.com", name: Text.NonEmpty "Cat", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let _ <- Db.insert Member { team: red, user: bob }
+  let _ <- Db.insert Member { team: red, user: cat }
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Teams.Show { id: red })
+  let _ <- Test.login { user: Just bob }
+  let r <- Test.click (Remove { user: cat })
+  let n <- Db.from Member |> Db.count
+  Task.succeed ({ answer: r.answer, members: n } == { answer: PageMissing, members: 2 })
+}
+EOF
+alder new test Teams.Show "the owner removes a member but not themselves"
+alder fill 'Teams.Show."the owner removes a member but not themselves"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let _ <- Db.insert Member { team: red, user: bob }
+  let _ <- Test.login { user: Just ann }
+  let page <- Test.get (Teams.Show { id: red })
+  let selfRun <- Test.run (update (Remove { user: ann }) page.model { user: ann })
+  let r <- Test.click (Remove { user: bob })
+  let n <- Db.from Member |> Db.count
+  let t <- Db.get Team red
+  Task.succeed ({ self: selfRun.value, answer: r.answer, members: n, kept: Maybe.map (\x -> x.owner) t } == { self: Err "not found", answer: Redirected (Teams.Show { id: red }), members: 0, kept: Just ann })
+}
+EOF
+alder new test Invites.Index "accepting an invite makes the team visible"
+alder fill 'Invites.Index."accepting an invite makes the team visible"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let inv <- Db.insert Invite { team: red, email: Text.Email "bob@example.com" }
+  let _ <- Test.login { user: Just bob }
+  let _ <- Test.get (Invites.Index {})
+  let r <- Test.click (Accept { id: inv })
+  let teams <- Test.get (Teams.Index {})
+  let show <- Test.open (Teams.Show { id: red })
+  Task.succeed ({ answer: r.answer, teams: Test.texts "#teams .name" teams.doc, show: show.answer } == { answer: Redirected (Teams.Show { id: red }), teams: ["Red"], show: Shown })
+}
+EOF
+alder new test Invites.Index "declining an invite keeps the team closed"
+alder fill 'Invites.Index."declining an invite keeps the team closed"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let inv <- Db.insert Invite { team: red, email: Text.Email "bob@example.com" }
+  let _ <- Test.login { user: Just bob }
+  let _ <- Test.get (Invites.Index {})
+  let r <- Test.click (Decline { id: inv })
+  let teams <- Test.get (Teams.Index {})
+  let show <- Test.open (Teams.Show { id: red })
+  let again <- Test.open (Invites.Index {})
+  Task.succeed ({ answer: r.answer, teams: Test.count "#teams li" teams.doc, show: show.answer, waiting: Test.count "#invites li" again.doc } == { answer: Redirected (Invites.Index {}), teams: 0, show: PageMissing, waiting: 0 })
+}
+EOF
+
+# where does the login go?
+alder fill --list
+```

@@ -1,0 +1,11 @@
+```alder-cli
+alder fill Auth.Login.update.Submit - --hole ?afterLogin <<'EOF'
+Orders.Index {}
+EOF
+alder fill Orders.Index."pressing Create" - --hole ?expected <<'EOF'
+Test.count "#orders li" after.doc == 1
+EOF
+alder fill --list
+alder new msg --help
+alder new form --help
+```

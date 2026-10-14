@@ -1,0 +1,34 @@
+```alder-cli
+alder fill --decl 'Auth.Login."logging in through the form"' - <<'EOF'
+{
+  let _ <- Test.fake Password
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.submit Credentials { email: Text.Email "me@example.com", password: Text.Secret "secret" }
+  Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (Notes.Index {}), user: Just me })
+}
+EOF
+alder new test Notes.Index "deleting another user's note is not found"
+alder fill --decl 'Notes.Index."deleting another user'"'"'s note is not found"' - <<'EOF'
+{
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "T", body: "b", owner: owner }
+  let _ <- Test.login { user: Just other }
+  let r <- Test.run (update (Delete { id: id }) { notes: [] } { user: other })
+  let after <- Db.get Note id
+  Task.succeed ({ value: r.value, kept: after != Nothing } == { value: Err "not found", kept: True })
+}
+EOF
+alder new test Notes.Index "deleting a missing note is not found"
+alder fill --decl 'Notes.Index."deleting a missing note is not found"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.run (update (Delete { id: Note.NoteId "missing" }) { notes: [] } { user: me })
+  Task.succeed (r.value == Err "not found")
+}
+EOF
+alder check
+alder test
+```

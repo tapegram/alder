@@ -1,0 +1,15 @@
+module Theme
+
+type Theme = Light | Dark
+
+isDark : Theme -> Bool
+isDark = \t -> t == Dark
+
+flip : Theme -> Theme
+flip = \t -> if t == Dark then Light else Dark
+
+light : Theme
+light = Light
+
+dark : Theme
+dark = Dark

@@ -1,0 +1,1 @@
+{"code": "W0001", "severity": "warning", "file": "app/App.alder", "line": 4, "col": 1, "endLine": 4, "endCol": 13, "message": "import `Theme` is unused"}

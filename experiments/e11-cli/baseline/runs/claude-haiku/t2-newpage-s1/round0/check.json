@@ -1,0 +1,1 @@
+{"code": "E0028", "severity": "error", "file": "app/Profile.alder", "line": 51, "col": 9, "endLine": 51, "endCol": 31, "message": "`<al-input field=\"name\">` already shows the errors of `name`; remove `<Errors field=\"name\" />`"}

@@ -1,0 +1,96 @@
+module Desk
+
+import Layout
+import Post
+import Slug
+import User
+
+page "/admin" { } requires user
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Slug.Slug,
+  body: Text,
+  published: Bool,
+}
+
+msg CreatePost form NewPost
+
+msg Toggle { id: Post.PostId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  CreatePost p -> {
+    let _ <- Db.insert Post { title: p.form.title, slug: p.form.slug, body: p.form.body, published: p.form.published }
+    Task.succeed (Redirect (Desk {}))
+  },
+  Toggle p -> ?toggle,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Admin">
+    <h1>Admin</h1>
+    <al-card>
+      <form submit={CreatePost}>
+        <al-input field="title" label="Title" />
+        <al-input field="slug" label="Slug" />
+        <al-textarea field="body" label="Body" />
+        <al-checkbox field="published" label="Published" />
+        <al-button type="submit">Create</al-button>
+      </form>
+    </al-card>
+    <ul id="posts">
+      {for p in model.posts ->
+        <li>
+          <a href={Posts.Show { slug: p.slug }}>{p.title}</a>
+          <span>{if p.published then "published" else "draft"}</span>
+          <al-button size="sm" click={Toggle { id: p.id }}>Toggle published</al-button>
+        </li>}
+    </ul>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Desk {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "submitting NewPost adds a row" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: Text.Secret "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Desk {})
+  let r <- Test.submit NewPost { title: Text.NonEmpty "title-1", slug: Slug.Slug "slug-1", body: "body-1", published: True }
+  let rows <- Db.from Post |> Db.all
+  Task.succeed ({ answer: r.answer, rows: List.map (\row -> { title: row.title, slug: row.slug, body: row.body, published: row.published }) rows } == { answer: Redirected (Desk {}), rows: [{ title: Text.NonEmpty "title-1", slug: Slug.Slug "slug-1", body: "body-1", published: True }] })
+}
+
+test "NewPost refuses an empty title" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: Text.Secret "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Desk {})
+  let r <- Test.submitRaw NewPost [{ name: "title", value: "" }, { name: "slug", value: "x" }, { name: "body", value: "x" }, { name: "published", value: "True" }]
+  let rows <- Db.from Post |> Db.count
+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: FormRejected [{ field: "title", message: "must not be empty" }], rows: 0 })
+}
+
+-- Fill ?expected with what pressing Toggle must do, so that a test fails when the arm
+-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
+-- changed (`after`, the row read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.
+test "pressing Toggle" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: Text.Secret "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", slug: Slug.Slug "slug-1", body: "body-1" }
+  let _ <- Test.get (Desk {})
+  let r <- Test.click (Toggle { id: post1 })
+  let after <- Db.get Post post1
+  Task.succeed ?expected
+}

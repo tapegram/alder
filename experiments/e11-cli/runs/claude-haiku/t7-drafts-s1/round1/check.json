@@ -1,0 +1,3 @@
+{"code": "W0002", "severity": "warning", "file": "app/Admin.alder", "line": 55, "col": 16, "endLine": 55, "endCol": 24, "message": "hole ?publish has type Task Nav"}
+{"code": "W0002", "severity": "warning", "file": "app/Admin.alder", "line": 84, "col": 37, "endLine": 84, "endCol": 47, "message": "hole ?publishId has type Post.PostId"}
+{"code": "W0002", "severity": "warning", "file": "app/Admin.alder", "line": 149, "col": 16, "endLine": 149, "endCol": 25, "message": "hole ?expected has type Bool"}

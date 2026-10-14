@@ -1,0 +1,460 @@
+{
+ "model": "claude-sonnet",
+ "task": "t3-newapp",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "condition": "files",
+  "sample": "s1"
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 9,
+   "exit": 1,
+   "errors": 2,
+   "warnings": 0,
+   "codes": {
+    "E0201": 2
+   },
+   "rejected": [],
+   "seconds": 60.6,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet"
+  },
+  {
+   "n": 1,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 23.5,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 11,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Admin.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Admin.Index"
+      ],
+      "ms": 7.495
+     },
+     {
+      "module": "Admin.Index",
+      "name": "the admin lists unpublished posts too",
+      "ok": true,
+      "left": "2",
+      "right": "2",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Test.login",
+       "Test.get Admin.Index",
+       "Db.all Post"
+      ],
+      "ms": 0.463
+     },
+     {
+      "module": "Admin.Index",
+      "name": "creating a post through the form",
+      "ok": true,
+      "left": "{ answer: Rerendered, n: 1 }",
+      "right": "{ answer: Rerendered, n: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.Index",
+       "Db.all Post",
+       "Test.submit NewPost",
+       "Db.all Post",
+       "Db.count Post",
+       "Db.insert Post",
+       "Db.all Post",
+       "Db.count Post"
+      ],
+      "ms": 0.382
+     },
+     {
+      "module": "Admin.Index",
+      "name": "Toggle publishes a post",
+      "ok": true,
+      "left": "{ answer: Rerendered, published: Just True }",
+      "right": "{ answer: Rerendered, published: Just True }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.login",
+       "Test.get Admin.Index",
+       "Db.all Post",
+       "Test.click Admin.Index.Toggle",
+       "Db.all Post",
+       "Db.get Post",
+       "Db.update Post",
+       "Db.all Post",
+       "Db.get Post"
+      ],
+      "ms": 0.88
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 0.277
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /admin, user: Just \"qG37UsPu_EGoAM-Mu2oV\" }",
+      "right": "{ answer: Redirected /admin, user: Just \"qG37UsPu_EGoAM-Mu2oV\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Session.put",
+       "Db.all Post"
+      ],
+      "ms": 0.283
+     },
+     {
+      "module": "Posts.Index",
+      "name": "the front page lists only published posts, newest first",
+      "ok": true,
+      "left": "[\"Second\", \"First\"]",
+      "right": "[\"Second\", \"First\"]",
+      "trace": [
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Test.get Posts.Index",
+       "Db.all Post"
+      ],
+      "ms": 0.237
+     },
+     {
+      "module": "Posts.Show",
+      "name": "an unpublished post is not found for a reader",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert Post",
+       "Test.open Posts.Show",
+       "Db.first Post"
+      ],
+      "ms": 0.209
+     },
+     {
+      "module": "Posts.Show",
+      "name": "an unpublished post is shown to the logged-in author",
+      "ok": true,
+      "left": "Shown",
+      "right": "Shown",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.login",
+       "Test.open Posts.Show",
+       "Db.first Post",
+       "Db.all Comment"
+      ],
+      "ms": 0.246
+     },
+     {
+      "module": "Posts.Show",
+      "name": "a comment with an empty author is refused",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"author\", message: \"must not be empty\" }], n: 0 }",
+      "right": "{ answer: FormRejected [{ field: \"author\", message: \"must not be empty\" }], n: 0 }",
+      "trace": [
+       "Db.insert Post",
+       "Test.get Posts.Show",
+       "Db.first Post",
+       "Db.all Comment",
+       "Test.submitRaw NewComment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.count Comment"
+      ],
+      "ms": 0.28
+     },
+     {
+      "module": "Posts.Show",
+      "name": "a valid comment is added",
+      "ok": true,
+      "left": "{ answer: Rerendered, n: 1 }",
+      "right": "{ answer: Rerendered, n: 1 }",
+      "trace": [
+       "Db.insert Post",
+       "Test.get Posts.Show",
+       "Db.first Post",
+       "Db.all Comment",
+       "Test.submit NewComment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.insert Comment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.count Comment"
+      ],
+      "ms": 0.311
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.64,
+    "killed": 16,
+    "survived": 9,
+    "suppressed": 1,
+    "skipped": 6,
+    "survivors": [
+     {
+      "module": "Admin.Index",
+      "file": "app/Admin/Index.alder",
+      "decl": "load",
+      "line": 15,
+      "col": 10,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Post.created.desc",
+      "after": "Db.orderBy Post.created.asc"
+     },
+     {
+      "module": "Admin.Index",
+      "file": "app/Admin/Index.alder",
+      "decl": "update",
+      "line": 33,
+      "col": 34,
+      "kind": "where dropped",
+      "before": "Db.where (Post.slug.eq p.form.slug)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Admin.Index",
+      "file": "app/Admin/Index.alder",
+      "decl": "update",
+      "line": 34,
+      "col": 37,
+      "kind": "reject \u2192 rerender",
+      "before": "Reject \"That slug is already used.\"",
+      "after": "Rerender"
+     },
+     {
+      "module": "App",
+      "file": "app/App.alder",
+      "decl": "update",
+      "line": 15,
+      "col": 5,
+      "kind": "session put dropped",
+      "before": "let _ <- Session.put (\\s -> { s | user: Nothing })",
+      "after": "let _ <- Task.succeed ()"
+     },
+     {
+      "module": "App",
+      "file": "app/App.alder",
+      "decl": "update",
+      "line": 16,
+      "col": 19,
+      "kind": "redirect \u2192 rerender",
+      "before": "Redirect (Auth.Login {})",
+      "after": "Rerender"
+     },
+     {
+      "module": "Comment",
+      "file": "app/Comment.alder",
+      "decl": "Comment",
+      "line": 9,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "post @ref Post @cascade",
+      "after": "post @ref Post @restrict"
+     },
+     {
+      "module": "Posts.Show",
+      "file": "app/Posts/Show.alder",
+      "decl": "load",
+      "line": 14,
+      "col": 32,
+      "kind": "where dropped",
+      "before": "Db.where (Post.slug.eq params.slug)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Posts.Show",
+      "file": "app/Posts/Show.alder",
+      "decl": "loadFor",
+      "line": 25,
+      "col": 10,
+      "kind": "where dropped",
+      "before": "Db.where (Comment.post.eq post.id)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Posts.Show",
+      "file": "app/Posts/Show.alder",
+      "decl": "loadFor",
+      "line": 26,
+      "col": 10,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Comment.created.asc",
+      "after": "Db.orderBy Comment.created.desc"
+     }
+    ]
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "sonnet",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "mutation": {
+  "score": 0.64,
+  "killed": 16,
+  "survived": 9,
+  "suppressed": 1,
+  "skipped": 6,
+  "survivors": [
+   {
+    "module": "Admin.Index",
+    "file": "app/Admin/Index.alder",
+    "decl": "load",
+    "line": 15,
+    "col": 10,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Post.created.desc",
+    "after": "Db.orderBy Post.created.asc"
+   },
+   {
+    "module": "Admin.Index",
+    "file": "app/Admin/Index.alder",
+    "decl": "update",
+    "line": 33,
+    "col": 34,
+    "kind": "where dropped",
+    "before": "Db.where (Post.slug.eq p.form.slug)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Admin.Index",
+    "file": "app/Admin/Index.alder",
+    "decl": "update",
+    "line": 34,
+    "col": 37,
+    "kind": "reject \u2192 rerender",
+    "before": "Reject \"That slug is already used.\"",
+    "after": "Rerender"
+   },
+   {
+    "module": "App",
+    "file": "app/App.alder",
+    "decl": "update",
+    "line": 15,
+    "col": 5,
+    "kind": "session put dropped",
+    "before": "let _ <- Session.put (\\s -> { s | user: Nothing })",
+    "after": "let _ <- Task.succeed ()"
+   },
+   {
+    "module": "App",
+    "file": "app/App.alder",
+    "decl": "update",
+    "line": 16,
+    "col": 19,
+    "kind": "redirect \u2192 rerender",
+    "before": "Redirect (Auth.Login {})",
+    "after": "Rerender"
+   },
+   {
+    "module": "Comment",
+    "file": "app/Comment.alder",
+    "decl": "Comment",
+    "line": 9,
+    "col": 3,
+    "kind": "cascade \u2194 restrict",
+    "before": "post @ref Post @cascade",
+    "after": "post @ref Post @restrict"
+   },
+   {
+    "module": "Posts.Show",
+    "file": "app/Posts/Show.alder",
+    "decl": "load",
+    "line": 14,
+    "col": 32,
+    "kind": "where dropped",
+    "before": "Db.where (Post.slug.eq params.slug)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Posts.Show",
+    "file": "app/Posts/Show.alder",
+    "decl": "loadFor",
+    "line": 25,
+    "col": 10,
+    "kind": "where dropped",
+    "before": "Db.where (Comment.post.eq post.id)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Posts.Show",
+    "file": "app/Posts/Show.alder",
+    "decl": "loadFor",
+    "line": 26,
+    "col": 10,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Comment.created.asc",
+    "after": "Db.orderBy Comment.created.desc"
+   }
+  ]
+ }
+}

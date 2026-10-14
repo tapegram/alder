@@ -1,0 +1,17 @@
+module User
+
+type UserId = brand Text
+
+type Role = Staff | Manager
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  created: Time @created,
+  role: Role = Staff,
+}
+
+isManager : Maybe User -> Bool
+isManager = \m -> Maybe.map (\u -> u.role) m == Just Manager

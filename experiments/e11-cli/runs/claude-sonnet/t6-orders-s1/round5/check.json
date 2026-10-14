@@ -1,0 +1,5 @@
+{"code": "W0002", "severity": "warning", "file": "app/Auth/Login.alder", "line": 86, "col": 85, "endLine": 86, "endCol": 96, "message": "hole ?afterLogin has type Page"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Index.alder", "line": 67, "col": 16, "endLine": 67, "endCol": 25, "message": "hole ?expected has type Bool"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Show.alder", "line": 31, "col": 16, "endLine": 31, "endCol": 24, "message": "hole ?addLine has type Task Nav"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Show.alder", "line": 40, "col": 40, "endLine": 40, "endCol": 55, "message": "hole ?addLineProduct has type Product.ProductId"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Show.alder", "line": 64, "col": 16, "endLine": 64, "endCol": 25, "message": "hole ?expected has type Bool"}

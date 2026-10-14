@@ -1,0 +1,16 @@
+app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page
+          Task.succeed (Redirect (?afterLogin))
+                                  ^^^^^^^^^^^
+app/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page
+    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })
+                                                                                      ^^^^^^^^^^^
+app/Notes/Index.alder:58:34: warning[W0002]: hole ?deleteId has type Note.NoteId
+    <al-button click={Delete { id: ?deleteId }}>Delete</al-button>
+                                   ^^^^^^^^^
+app/Notes/Index.alder:71:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
+app/Notes/Index.alder:92:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+alder build: the program has 5 typed hole(s); fill them before building

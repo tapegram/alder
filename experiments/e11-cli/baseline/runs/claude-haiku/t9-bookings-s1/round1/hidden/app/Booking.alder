@@ -1,0 +1,50 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+-- A booking holds its room from `from` up to, but not including, `to`.
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- The first day, from `today` on, that no booking in `bookings` holds. The bookings are walked in
+-- order of their first day; a booking that holds the current day moves it to that booking's `to`.
+freeFrom : Date -> List Booking -> Date
+freeFrom today bookings =
+  bookings
+    |> List.sortByText (\b -> Date.toText b.from)
+    |> List.foldl (\b cur -> if b.from <= cur && cur < b.to then b.to else cur) today
+
+-- Whether a room's bookings hold any day of [fromDay, toDay).
+clashes : Room.RoomId -> Date -> Date -> Query Bool
+clashes room fromDay toDay = {
+  let rows <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.all
+  Query.succeed (rows |> List.any (\b -> b.from < toDay && fromDay < b.to))
+}
+
+test "back-to-back bookings leave the next free date after both" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Db.insert Booking { room: room, owner: me, from: Date.addDays 2 today, to: Date.addDays 4 today }
+  let bookings <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.all
+  Task.succeed (freeFrom today bookings == Date.addDays 4 today)
+}
+
+test "a booking that starts on another's last day is not a clash" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 2 today }
+  let touching <- clashes room (Date.addDays 2 today) (Date.addDays 4 today)
+  let overlapping <- clashes room (Date.addDays 1 today) (Date.addDays 4 today)
+  Task.succeed ({ touching: touching, overlapping: overlapping } == { touching: False, overlapping: True })
+}

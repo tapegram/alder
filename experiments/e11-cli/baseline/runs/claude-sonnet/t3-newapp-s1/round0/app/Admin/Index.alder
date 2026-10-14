@@ -1,0 +1,107 @@
+module Admin.Index
+
+import Post
+import Layout
+
+page "/admin" { } requires user
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Post.Slug,
+  body: Text,
+  published: Bool,
+}
+
+msg Create form NewPost
+msg Toggle { id: Post.PostId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let taken <- Db.from Post |> Db.where (Post.slug.eq p.form.slug) |> Db.count
+    if taken > 0 then Task.succeed (Reject "That slug is already used.") else {
+      let _ <- Db.insert Post { slug: p.form.slug, title: p.form.title, body: p.form.body, published: p.form.published }
+      Task.succeed Rerender
+    }
+  },
+  Toggle p -> {
+    let found <- Db.get Post p.id
+    match found {
+      Nothing -> Task.notFound,
+      Just post -> {
+        let _ <- Db.update Post post.id (\x -> { x | published: not x.published })
+        Task.succeed Rerender
+      },
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Admin">
+    <h1>Admin</h1>
+    <form submit={Create}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Input field="slug" label="Slug" />
+      <Errors field="slug" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <Input field="published" label="Published" />
+      <Errors field="published" />
+      <button>Create</button>
+    </form>
+    <ul id="posts">
+      {for p in model.posts ->
+        <li>
+          <a href={Posts.Show { slug: p.slug }}>{p.title}</a>
+          <button click={Toggle { id: p.id }}>{if p.published then "Unpublish" else "Publish"}</button>
+        </li>}
+    </ul>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Admin.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "the admin lists unpublished posts too" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Post { slug: Post.Slug "a", title: Text.NonEmpty "A", body: "x", published: True }
+  let _ <- Db.insert Post { slug: Post.Slug "b", title: Text.NonEmpty "B", body: "y" }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Admin.Index {})
+  Task.succeed (Test.count "#posts li" page.doc == 2)
+}
+
+test "creating a post through the form" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Admin.Index {})
+  let r <- Test.submit NewPost { title: Text.NonEmpty "New", slug: Post.Slug "new", body: "b", published: True }
+  let n <- Db.from Post |> Db.count
+  Task.succeed ({ answer: r.answer, n: n } == { answer: Rerendered, n: 1 })
+}
+
+test "Toggle publishes a post" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Post { slug: Post.Slug "a", title: Text.NonEmpty "A", body: "x" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Admin.Index {})
+  let r <- Test.click (Toggle { id: id })
+  let after <- Db.get Post id
+  Task.succeed ({ answer: r.answer, published: Maybe.map (\p -> p.published) after } == { answer: Rerendered, published: Just True })
+}

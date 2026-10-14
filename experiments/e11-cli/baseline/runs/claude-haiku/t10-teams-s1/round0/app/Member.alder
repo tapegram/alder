@@ -1,0 +1,51 @@
+module Member
+
+import Team
+import User
+
+type MemberId = brand Text
+
+-- One row per member who is not the owner. The owner is the team's `owner` field.
+table Member {
+  id: MemberId @id,
+  team: Team.TeamId @ref Team,
+  user: User.UserId @ref User,
+}
+
+-- Whether the user may see the team: its owner, or one of its members.
+canSee : Team.TeamId -> User.UserId -> Query Bool
+canSee team who = {
+  let found <- Db.get Team team
+  let rows <- Db.from Member |> Db.where (Member.team.eq team) |> Db.where (Member.user.eq who) |> Db.all
+  let owned = Maybe.withDefault False (Maybe.map (\t -> t.owner == who) found)
+  Query.succeed (owned || not (List.isEmpty rows))
+}
+
+-- The teams the user owns or is a member of, by name.
+teamsOf : User.UserId -> Query (List Team)
+teamsOf who = {
+  let owned <- Db.from Team |> Db.where (Team.owner.eq who) |> Db.all
+  let rows <- Db.from Member |> Db.where (Member.user.eq who) |> Db.all
+  let joined <- Query.all (List.map (\m -> Db.get Team m.team) rows)
+  Query.succeed (List.sortByText (\t -> t.name) (owned ++ List.filterMap (\x -> x) joined))
+}
+
+-- Makes the user a member of the team, unless they own it or already are one.
+addMember : Team.TeamId -> User.UserId -> Task Unit
+addMember team who = {
+  let found <- Db.get Team team
+  let rows <- Db.from Member |> Db.where (Member.team.eq team) |> Db.where (Member.user.eq who) |> Db.all
+  let isOwner = Maybe.withDefault False (Maybe.map (\t -> t.owner == who) found)
+  if isOwner || not (List.isEmpty rows) then Task.succeed () else {
+    let _ <- Db.insert Member { team: team, user: who }
+    Task.succeed ()
+  }
+}
+
+-- Removes the user's membership rows of the team.
+removeMember : Team.TeamId -> User.UserId -> Task Unit
+removeMember team who = {
+  let rows <- Db.from Member |> Db.where (Member.team.eq team) |> Db.where (Member.user.eq who) |> Db.all
+  let _ <- Task.all (List.map (\r -> Db.delete Member r.id) rows)
+  Task.succeed ()
+}

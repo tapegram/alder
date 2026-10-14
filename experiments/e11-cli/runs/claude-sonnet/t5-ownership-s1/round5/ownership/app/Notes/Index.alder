@@ -1,0 +1,106 @@
+module Notes.Index
+
+import Layout
+import Note
+import User
+
+page "/" { } requires user
+
+type Model = { notes: List Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <- Db.from Note |> Db.where (Note.owner.eq session.user) |> Db.orderBy Note.created.desc |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Add form NewNote
+
+msg Delete { id: Note.NoteId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+  Delete p -> {
+    let found <- Db.get Note p.id
+    match found {
+      Just n -> if n.owner == session.user then {
+        let _ <- Db.delete Note p.id
+        Task.succeed (Redirect (Notes.Index {}))
+      } else Task.notFound,
+      Nothing -> Task.notFound,
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Notes">
+    <h1>Notes</h1>
+    <form submit={Add}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Textarea field="body" label="Body" />
+      <button>Add</button>
+    </form>
+    <ul id="notes">
+      {for n in model.notes -> <li><a class="title" href={Notes.Show { id: n.id }}>{n.title}</a><button click={Delete { id: n.id }}>Delete</button></li>}
+    </ul>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Notes.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "submitting NewNote" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let r <- Test.submit NewNote { title: Text.NonEmpty "title-1", body: "body-1" }
+  Task.succeed (r.answer == Redirected (Notes.Index {}))
+}
+
+test "NewNote refuses an empty title" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let r <- Test.submitRaw NewNote [{ name: "title", value: "" }, { name: "body", value: "x" }]
+  Task.succeed (r.answer == FormRejected [{ field: "title", message: "must not be empty" }])
+}
+
+test "pressing Delete" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let note1 <- Db.insert Note { title: Text.NonEmpty "title-1", body: "body-1", owner: me }
+  let _ <- Test.get (Notes.Index {})
+  let r <- Test.click (Delete { id: note1 })
+  let after <- Db.get Note note1
+  Task.succeed ({ answer: r.answer, gone: after == Nothing } == { answer: Redirected (Notes.Index {}), gone: True })
+}
+
+test "deleting another user's note is not found" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "T", body: "b", owner: owner }
+  let _ <- Test.login { user: Just other }
+  let r <- Test.run (update (Delete { id: id }) { notes: [] } { user: other })
+  let after <- Db.get Note id
+  Task.succeed ({ value: r.value, kept: after != Nothing } == { value: Err "not found", kept: True })
+}
+
+test "deleting a missing note is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.run (update (Delete { id: Note.NoteId "missing" }) { notes: [] } { user: me })
+  Task.succeed (r.value == Err "not found")
+}

@@ -1,0 +1,56 @@
+module Teams.Index
+
+import Team
+import Member
+import User
+import Layout
+
+page "/teams" { } requires user
+
+type Model = { teams: List Team }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let teams <- Member.teamsOf session.user
+  Query.succeed { teams: teams }
+}
+
+form NewTeam = {
+  name: Text.NonEmpty,
+}
+
+msg Create form NewTeam
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Team { name: p.form.name, owner: session.user }
+    Task.succeed (Redirect (Teams.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Teams">
+    <h1>Teams</h1>
+    <ul id="teams">
+      {for t in model.teams ->
+        <li><a class="name" href={Teams.Show { id: t.id }}>{t.name}</a></li>}
+    </ul>
+    <al-card>
+      <form submit={Create}>
+        <al-input field="name" label="New team" />
+        <al-button type="submit">Create team</al-button>
+      </form>
+    </al-card>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "creating a team lists it" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Teams.Index {})
+  let _ <- Test.submit NewTeam { name: Text.NonEmpty "Crew" }
+  let page <- Test.get (Teams.Index {})
+  Task.succeed (Test.texts ".name" page.doc == ["Crew"])
+}

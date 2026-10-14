@@ -1,0 +1,1 @@
+{"argv": ["alder", "new", "decl", "Layout", "Shell", "{ dark: Bool, title: Text, children: List (Html a) } -> Html a"], "stdin_lines": [], "exit": 1, "seconds": 0.01, "stdout": "", "stderr": "alder new decl: `Shell` is not a value name: a value is named by a lower-case identifier, such as `waiting`\n", "line": 2}

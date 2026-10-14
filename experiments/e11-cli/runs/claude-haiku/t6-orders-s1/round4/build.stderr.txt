@@ -1,0 +1,13 @@
+app/Orders/Index.alder:62:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Products/Index.alder:35:15: warning[W0002]: hole ?toggle has type Task Nav
+    Toggle p -> ?toggle,
+                ^^^^^^^
+app/Products/Index.alder:52:36: warning[W0002]: hole ?toggleId has type Product.ProductId
+      <al-button click={Toggle { id: ?toggleId }}>Toggle</al-button>
+                                     ^^^^^^^^^
+app/Products/Index.alder:88:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+alder build: the program has 4 typed hole(s); fill them before building

@@ -1,0 +1,23 @@
+module Layout
+
+Page : { title: Text, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+      <link rel="stylesheet" href={Url.external "/static/al/al.css"} />
+    </head>
+    <body>
+      <al-page width="narrow">
+        <main>
+          <nav>
+            <a href={Rooms.Index {}}>Rooms</a>
+            <a href={Bookings.Index {}}>My bookings</a>
+            <al-button variant="outline" click={App.Logout}>Log out</al-button>
+          </nav>
+          {props.children}
+        </main>
+      </al-page>
+    </body>
+  </html>

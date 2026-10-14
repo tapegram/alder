@@ -1,0 +1,105 @@
+module Rooms.Show
+
+import Room
+import Booking
+import Layout
+import User
+
+page "/rooms/{id}" { id: Room.RoomId } requires user
+
+type Model = {
+  room: Room,
+  bookings: List Booking,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Room params.id
+  match found {
+    Nothing -> Query.notFound,
+    Just room -> {
+      let bookings <-
+        Db.from Booking
+          |> Db.where (Booking.room.eq room.id)
+          |> Db.orderBy Booking.from.asc
+          |> Db.all
+      Query.succeed { room: room, bookings: bookings }
+    },
+  }
+}
+
+form NewBooking = {
+  from: Date,
+  to: Date,
+}
+
+msg Book form NewBooking
+
+book : Room.RoomId -> User.UserId -> Date -> Date -> Task Nav
+book room owner fromDay toDay = {
+  let _ <- Db.insert Booking { room: room, owner: owner, from: fromDay, to: toDay }
+  Task.succeed (Redirect (Rooms.Show { id: room }))
+}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Book p -> {
+    let clash <- Booking.clashes model.room.id p.form.from p.form.to
+    if p.form.to <= p.form.from then Task.succeed (Reject "The booking must end after it starts.") else if clash then Task.succeed (Reject "The room is already booked for part of those dates.") else book model.room.id session.user p.form.from p.form.to
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.room.name}>
+    <h1 id="name">{model.room.name}</h1>
+    <h2>Bookings</h2>
+    <ul id="bookings">
+      {for b in model.bookings ->
+        <li>
+          <span class="from">{Date.toText b.from}</span> to <span class="to">{Date.toText b.to}</span>
+        </li>}
+    </ul>
+    <al-card>
+      <form submit={Book}>
+        <Errors form />
+        <al-input field="from" label="From" />
+        <al-input field="to" label="To" />
+        <al-button type="submit">Book</al-button>
+      </form>
+    </al-card>
+  </Layout.Page>
+
+test "an overlapping booking is refused and not stored" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: room, owner: me, from: Date.addDays 2 today, to: Date.addDays 5 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let r <- Test.submit NewBooking { from: Date.addDays 4 today, to: Date.addDays 6 today }
+  let stored <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.count
+  Task.succeed ({ answer: r.answer, stored: stored } == { answer: FormRejected [{ field: "", message: "The room is already booked for part of those dates." }], stored: 1 })
+}
+
+test "a booking that starts on another's last day is stored" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: room, owner: me, from: Date.addDays 2 today, to: Date.addDays 5 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let r <- Test.submit NewBooking { from: Date.addDays 5 today, to: Date.addDays 7 today }
+  let stored <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.count
+  Task.succeed ({ answer: r.answer, stored: stored } == { answer: Redirected (Rooms.Show { id: room }), stored: 2 })
+}
+
+test "a booking that ends before it starts is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let r <- Test.submit NewBooking { from: Date.addDays 3 today, to: Date.addDays 3 today }
+  Task.succeed (r.answer == FormRejected [{ field: "", message: "The booking must end after it starts." }])
+}

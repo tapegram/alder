@@ -1,0 +1,14 @@
+module Note
+
+import User
+
+type NoteId = brand Text
+
+-- `owner` is the table's `@owner`: the scoped operations read and write only the signed-in user's notes.
+table Note {
+  id: NoteId @id,
+  title: Text.NonEmpty,
+  body: Text,
+  owner: User.UserId @ref User @owner,
+  created: Time @created,
+}

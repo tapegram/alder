@@ -1,0 +1,165 @@
+```alder-cli
+# the list: my notes only, newest first
+alder fill --decl Notes.Index.load - <<'EOF'
+\params session -> {
+  let notes <- Db.mine Note |> Db.orderBy Note.created.desc |> Db.all
+  Query.succeed { notes: notes }
+}
+EOF
+# temporary view (links to Notes.Index until Notes.Show exists)
+alder fill --decl Notes.Index.view - <<'EOF'
+\model session ->
+  <Layout.Page title="Notes">
+    <h1>Notes</h1>
+    <ul id="notes">
+      {for note in model.notes ->
+        <li>
+          <a class="title" href={Notes.Index {}}>{note.title}</a>
+          <al-button variant="ghost" size="sm" click={Delete { id: note.id }}>Delete</al-button>
+        </li>}
+    </ul>
+    <al-card>
+      <h2>New note</h2>
+      <form submit={Add}>
+        <Errors form />
+        <al-input field="title" label="Title" />
+        <al-textarea field="body" label="Body" />
+        <al-button type="submit">Add note</al-button>
+      </form>
+    </al-card>
+  </Layout.Page>
+EOF
+# the page of one note
+alder new page Notes.Show "/notes/{id}" --show Note --requires user
+alder fill --decl Notes.Show.Model - <<'EOF'
+{ note: Note }
+EOF
+alder fill --decl Notes.Show.load - <<'EOF'
+\params session -> {
+  let note <- Db.getMine Note params.id
+  Query.succeed { note: note }
+}
+EOF
+alder fill --decl Notes.Show.view - <<'EOF'
+\model session ->
+  <Layout.Page title={model.note.title}>
+    <h1 id="title">{model.note.title}</h1>
+    <p id="body">{model.note.body}</p>
+    <a href={Notes.Index {}}>Back to notes</a>
+  </Layout.Page>
+EOF
+# final list view, linking each note to its page
+alder fill --decl Notes.Index.view - <<'EOF'
+\model session ->
+  <Layout.Page title="Notes">
+    <h1>Notes</h1>
+    <ul id="notes">
+      {for note in model.notes ->
+        <li>
+          <a class="title" href={Notes.Show { id: note.id }}>{note.title}</a>
+          <al-button variant="ghost" size="sm" click={Delete { id: note.id }}>Delete</al-button>
+        </li>}
+    </ul>
+    <al-card>
+      <h2>New note</h2>
+      <form submit={Add}>
+        <Errors form />
+        <al-input field="title" label="Title" />
+        <al-textarea field="body" label="Body" />
+        <al-button type="submit">Add note</al-button>
+      </form>
+    </al-card>
+  </Layout.Page>
+EOF
+# delete: only the signed-in user's note; anyone else's or a missing one is 404
+alder fill Notes.Index.update.Delete - <<'EOF'
+{
+  let _ <- Db.deleteMine Note p.id
+  Task.succeed (Redirect (Notes.Index {}))
+}
+EOF
+# the login's redirect after logging in
+alder fill Auth.Login.update.Submit - --hole ?afterLogin <<'EOF'
+Notes.Index {}
+EOF
+alder fill 'Auth.Login."logging in through the form"' - --hole ?afterLogin <<'EOF'
+Notes.Index {}
+EOF
+# tests of Notes.Index
+alder fill 'Notes.Index."the list shows my rows, newest first"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let other <- Db.insert User { email: Text.Email "email-2@example.com", name: Text.NonEmpty "name-2", passwordHash: "passwordhash-2" }
+  let _ <- Db.insert Note { title: Text.NonEmpty "mine", body: "b", owner: me }
+  let _ <- Db.insert Note { title: Text.NonEmpty "theirs", body: "b", owner: other }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Notes.Index {})
+  Task.succeed (Test.texts "#notes a.title" page.doc == ["mine"])
+}
+EOF
+alder fill 'Notes.Index."pressing Delete"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let note1 <- Db.insert Note { title: Text.NonEmpty "title-1", body: "body-1", owner: me }
+  let _ <- Test.get (Notes.Index {})
+  let r <- Test.click (Delete { id: note1 })
+  let after <- Db.get Note note1
+  Task.succeed ({ answer: r.answer, gone: not (Maybe.isJust after) } == { answer: Redirected (Notes.Index {}), gone: True })
+}
+EOF
+alder new test Notes.Index "delete of a note by another user is not found"
+alder fill 'Notes.Index."delete of a note by another user is not found"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Theirs", body: "b", owner: other }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.run (update (Delete { id: id }) { notes: [] } { user: me })
+  let after <- Db.get Note id
+  Task.succeed ({ value: r.value, kept: Maybe.isJust after } == { value: Err "not found", kept: True })
+}
+EOF
+alder new test Notes.Index "delete of a missing note is not found"
+alder fill 'Notes.Index."delete of a missing note is not found"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.run (update (Delete { id: Note.NoteId "missing" }) { notes: [] } { user: me })
+  Task.succeed (r.value == Err "not found")
+}
+EOF
+alder new test Notes.Index "the owner can delete a note"
+alder fill 'Notes.Index."the owner can delete a note"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", body: "b", owner: me }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.run (update (Delete { id: id }) { notes: [] } { user: me })
+  let after <- Db.get Note id
+  Task.succeed ({ value: r.value, kept: Maybe.isJust after } == { value: Ok (Redirect (Notes.Index {})), kept: False })
+}
+EOF
+# tests of Notes.Show
+alder new test Notes.Show "a note of another user is not found"
+alder fill 'Notes.Show."a note of another user is not found"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", body: "2 litres", owner: other }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Notes.Show { id: id })
+  Task.succeed (r.answer == PageMissing)
+}
+EOF
+alder new test Notes.Show "the owner sees the note"
+alder fill 'Notes.Show."the owner sees the note"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", body: "2 litres", owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Notes.Show { id: id })
+  Task.succeed ({ title: Test.text "#title" page.doc, body: Test.text "#body" page.doc } == { title: Just "Milk", body: Just "2 litres" })
+}
+EOF
+```

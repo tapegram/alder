@@ -1,0 +1,13 @@
+app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page
+          Task.succeed (Redirect (?afterLogin))
+                                  ^^^^^^^^^^^
+app/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page
+    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })
+                                                                                      ^^^^^^^^^^^
+app/Notes/Index.alder:70:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
+app/Notes/Index.alder:91:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+alder build: the program has 4 typed hole(s); fill them before building

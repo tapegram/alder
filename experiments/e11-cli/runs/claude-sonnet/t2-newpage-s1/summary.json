@@ -1,0 +1,3751 @@
+{
+ "model": "claude-sonnet",
+ "task": "t2-newpage",
+ "retries": 5,
+ "base": "examples/todos",
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "condition": "cli",
+  "sample": "s1",
+  "cli": true
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 20,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 2,
+   "codes": {},
+   "rejected": [],
+   "seconds": 35.5,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 16,
+    "executed": 3,
+    "refused": {
+     "kind": "exit1",
+     "line": 5,
+     "text": "alder fill Profile.load - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 3,
+    "stdin_lines": 10,
+    "max_body": 9,
+    "decl_uses": 1
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Profile.alder:8:23: warning[W0002]: hole ?load has type Query Profile.Model\n  load params session = ?load\n                        ^^^^^\napp/Profile.alder:11:22: warning[W0002]: hole ?view has type Html Profile.Msg\n  view model session = ?view\n                       ^^^^^\nalder build: the program has 2 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 1,
+   "files": 20,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 17.3,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 11,
+    "executed": 3,
+    "refused": {
+     "kind": "exit1",
+     "line": 15,
+     "text": "alder new form Profile Rename name:Text.NonEmpty --msg SaveName",
+     "reason": "alder new form: `Profile`'s `view` is not one element over several lines: add the markup yourself"
+    },
+    "complete": false,
+    "stopped_at": 3,
+    "stdin_lines": 10,
+    "max_body": 9,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 93,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Todo",
+      "name": "countOpen ignores done todos",
+      "ok": true,
+      "left": "2",
+      "right": "2",
+      "trace": [],
+      "ms": 0.111
+     },
+     {
+      "module": "Todo",
+      "name": "Active keeps only open todos",
+      "ok": true,
+      "left": "[\"x\"]",
+      "right": "[\"x\"]",
+      "trace": [],
+      "ms": 0.031
+     },
+     {
+      "module": "Todo",
+      "name": "each filter has its label",
+      "ok": true,
+      "left": "[\"All\", \"Active\", \"Completed\"]",
+      "right": "[\"All\", \"Active\", \"Completed\"]",
+      "trace": [],
+      "ms": 0.084
+     },
+     {
+      "module": "Todo",
+      "name": "a user with todos cannot be deleted",
+      "ok": true,
+      "left": "{ deleted: Nothing, todo: Just \"Milk\" }",
+      "right": "{ deleted: Nothing, todo: Just \"Milk\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.run",
+       "Db.delete User",
+       "Db.get Todo"
+      ],
+      "ms": 1.271
+     },
+     {
+      "module": "Admin.Index",
+      "name": "the dashboard counts the todos and lists the newest five",
+      "ok": true,
+      "left": "{ count: Just \"6\", rows: [\"title-6\", \"title-5\", \"title-4\", \"title-3\", \"title-2\"] }",
+      "right": "{ count: Just \"6\", rows: [\"title-6\", \"title-5\", \"title-4\", \"title-3\", \"title-2\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Test.get Admin.Index",
+       "Db.get User",
+       "Db.all Todo",
+       "Db.count Todo",
+       "Db.all User",
+       "Db.count User"
+      ],
+      "ms": 14.245
+     },
+     {
+      "module": "Admin.Index",
+      "name": "the dashboard counts the users and lists the newest five",
+      "ok": true,
+      "left": "{ count: Just \"7\", rows: [\"email-7@example.com\", \"email-6@example.com\", \"email-5@example.com\", \"email-4@example.com\", \"email-3@example.com\"] }",
+      "right": "{ count: Just \"7\", rows: [\"email-7@example.com\", \"email-6@example.com\", \"email-5@example.com\", \"email-4@example.com\", \"email-3@example.com\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Test.get Admin.Index",
+       "Db.get User",
+       "Db.all Todo",
+       "Db.count Todo",
+       "Db.all User",
+       "Db.count User"
+      ],
+      "ms": 0.856
+     },
+     {
+      "module": "Admin.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Admin.Index"
+      ],
+      "ms": 0.513
+     },
+     {
+      "module": "Admin.Index",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Index"
+      ],
+      "ms": 1.035
+     },
+     {
+      "module": "Admin.Index",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Index",
+       "Db.get User"
+      ],
+      "ms": 0.516
+     },
+     {
+      "module": "Admin.Todo.Delete",
+      "name": "deleting a todo nothing refers to",
+      "ok": true,
+      "left": "{ answer: Redirected /admin/todo, gone: Nothing }",
+      "right": "{ answer: Redirected /admin/todo, gone: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Test.get Admin.Todo.Delete",
+       "Db.get User",
+       "Db.get Todo",
+       "Test.submit Confirm",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.delete Todo",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User",
+       "Db.get Todo"
+      ],
+      "ms": 0.849
+     },
+     {
+      "module": "Admin.Todo.Delete",
+      "name": "a missing row is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Todo.Delete",
+       "Db.get User",
+       "Db.get Todo"
+      ],
+      "ms": 0.403
+     },
+     {
+      "module": "Admin.Todo.Delete",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Delete"
+      ],
+      "ms": 0.339
+     },
+     {
+      "module": "Admin.Todo.Delete",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Delete"
+      ],
+      "ms": 0.333
+     },
+     {
+      "module": "Admin.Todo.Delete",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Delete",
+       "Db.get User"
+      ],
+      "ms": 0.32
+     },
+     {
+      "module": "Admin.Todo.Edit",
+      "name": "saving changes every field",
+      "ok": true,
+      "left": "{ answer: Redirected /admin/todo/30_jPG_L2PgCH6RuSfPP, row: Just { title: \"title-2\", done: True, due: Just 2026-01-01, owner: \"lcDMUE4DZjB1KKhFi3_o\" }, owners: [\"email-1@example.com\", \"email-2@example.com\"] }",
+      "right": "{ answer: Redirected /admin/todo/30_jPG_L2PgCH6RuSfPP, row: Just { title: \"title-2\", done: True, due: Just 2026-01-01, owner: \"lcDMUE4DZjB1KKhFi3_o\" }, owners: [\"email-1@example.com\", \"email-2@example.com\"] }",
+      "trace": [
+       "Date.today",
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert User",
+       "Test.get Admin.Todo.Edit",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User",
+       "Test.submit TodoForm",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User",
+       "Db.update Todo",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User",
+       "Db.get Todo"
+      ],
+      "ms": 0.62
+     },
+     {
+      "module": "Admin.Todo.Edit",
+      "name": "an owner not offered is refused",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"owner\", message: \"must be one of the options\" }], owner: Just \"4E7t6MfkoJpxqZswIvrv\" }",
+      "right": "{ answer: FormRejected [{ field: \"owner\", message: \"must be one of the options\" }], owner: Just \"4E7t6MfkoJpxqZswIvrv\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert User",
+       "Test.get Admin.Todo.Edit",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User",
+       "Test.submitRaw TodoForm",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User",
+       "Db.get Todo"
+      ],
+      "ms": 0.518
+     },
+     {
+      "module": "Admin.Todo.Edit",
+      "name": "a missing row is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Todo.Edit",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User"
+      ],
+      "ms": 0.381
+     },
+     {
+      "module": "Admin.Todo.Edit",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Edit"
+      ],
+      "ms": 0.423
+     },
+     {
+      "module": "Admin.Todo.Edit",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Edit"
+      ],
+      "ms": 0.329
+     },
+     {
+      "module": "Admin.Todo.Edit",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Edit",
+       "Db.get User"
+      ],
+      "ms": 0.335
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "the list shows every row, newest first, and the labels of the rows they refer to",
+      "ok": true,
+      "left": "{ rows: [\"zTpeUuFYbc_7WKn95IDB\", \"IVjzLKAC5R1OTbvZqrd8\"], owners: 1, ownerLabel: \"email-1@example.com\" }",
+      "right": "{ rows: [\"zTpeUuFYbc_7WKn95IDB\", \"IVjzLKAC5R1OTbvZqrd8\"], owners: 1, ownerLabel: \"email-1@example.com\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert User",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User"
+      ],
+      "ms": 0.716
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "sorting by title goes both ways",
+      "ok": true,
+      "left": "{ up: [\"Bw85qYY56Gs1C1lWOvAF\", \"AezkishvOzbODLdyTwxB\"], down: [\"AezkishvOzbODLdyTwxB\", \"Bw85qYY56Gs1C1lWOvAF\"], toggles: [\"desc\", \"asc\", \"asc\"] }",
+      "right": "{ up: [\"Bw85qYY56Gs1C1lWOvAF\", \"AezkishvOzbODLdyTwxB\"], down: [\"AezkishvOzbODLdyTwxB\", \"Bw85qYY56Gs1C1lWOvAF\"], toggles: [\"desc\", \"asc\", \"asc\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User"
+      ],
+      "ms": 0.946
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "searching finds the rows that contain the text",
+      "ok": true,
+      "left": "{ rows: [\"UtlnQiX0IvlSRlsme2-T\"], count: Just \"1 row\" }",
+      "right": "{ rows: [\"UtlnQiX0IvlSRlsme2-T\"], count: Just \"1 row\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User"
+      ],
+      "ms": 0.524
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "filtering by done lists the rows with that value",
+      "ok": true,
+      "left": "{ yes: [True, False], no: [False, True], count: True, chosen: [\"yes\"] }",
+      "right": "{ yes: [True, False], no: [False, True], count: True, chosen: [\"yes\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User"
+      ],
+      "ms": 0.572
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "a search text of 20,000 characters is cut to 200",
+      "ok": true,
+      "left": "{ q: 200, rows: 0 }",
+      "right": "{ q: 200, rows: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User"
+      ],
+      "ms": 1.031
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "the list has 25 rows a page, and a page past the last is the last",
+      "ok": true,
+      "left": "{ first: 25, second: 1, past: { page: 2, rows: 1 }, count: Just \"26 rows\", pages: [\"Previous\", \"Page 1 of 2\"] }",
+      "right": "{ first: 25, second: 1, past: { page: 2, rows: 1 }, count: Just \"26 rows\", pages: [\"Previous\", \"Page 1 of 2\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User"
+      ],
+      "ms": 0.999
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Admin.Todo.Index"
+      ],
+      "ms": 0.327
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Todo.Index"
+      ],
+      "ms": 0.314
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Todo.Index",
+       "Db.get User"
+      ],
+      "ms": 0.319
+     },
+     {
+      "module": "Admin.Todo.New",
+      "name": "creating a todo adds it, with the values submitted",
+      "ok": true,
+      "left": "{ answers: [Redirected /admin/todo/9gc93xByBotdaF2742pX], rows: [{ title: \"title-1\", done: True, due: Just 2026-01-01, owner: \"2K0yXx0l4IkcahSzrXhP\" }], owners: [\"email-1@example.com\", \"email-2@example.com\"] }",
+      "right": "{ answers: [Redirected /admin/todo/9gc93xByBotdaF2742pX], rows: [{ title: \"title-1\", done: True, due: Just 2026-01-01, owner: \"2K0yXx0l4IkcahSzrXhP\" }], owners: [\"email-1@example.com\", \"email-2@example.com\"] }",
+      "trace": [
+       "Date.today",
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.get Admin.Todo.New",
+       "Db.get User",
+       "Db.all User",
+       "Test.submit TodoForm",
+       "Db.get User",
+       "Db.all User",
+       "Db.insert Todo",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User",
+       "Db.all Todo"
+      ],
+      "ms": 0.522
+     },
+     {
+      "module": "Admin.Todo.New",
+      "name": "an owner not offered is refused",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"owner\", message: \"must be one of the options\" }], rows: 0 }",
+      "right": "{ answer: FormRejected [{ field: \"owner\", message: \"must be one of the options\" }], rows: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.get Admin.Todo.New",
+       "Db.get User",
+       "Db.all User",
+       "Test.submitRaw TodoForm",
+       "Db.get User",
+       "Db.all User",
+       "Db.count Todo"
+      ],
+      "ms": 0.457
+     },
+     {
+      "module": "Admin.Todo.New",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Admin.Todo.New"
+      ],
+      "ms": 0.498
+     },
+     {
+      "module": "Admin.Todo.New",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Todo.New"
+      ],
+      "ms": 0.456
+     },
+     {
+      "module": "Admin.Todo.New",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Todo.New",
+       "Db.get User"
+      ],
+      "ms": 0.356
+     },
+     {
+      "module": "Admin.Todo.Show",
+      "name": "the page shows the row",
+      "ok": true,
+      "left": "{ answer: Shown, title: True, owners: 1, ownerLabel: \"email-1@example.com\" }",
+      "right": "{ answer: Shown, title: True, owners: 1, ownerLabel: \"email-1@example.com\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert User",
+       "Test.open Admin.Todo.Show",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User",
+       "Test.get Admin.Todo.Show",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User"
+      ],
+      "ms": 0.436
+     },
+     {
+      "module": "Admin.Todo.Show",
+      "name": "a missing row is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Todo.Show",
+       "Db.get User",
+       "Db.get Todo"
+      ],
+      "ms": 0.318
+     },
+     {
+      "module": "Admin.Todo.Show",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Show"
+      ],
+      "ms": 0.328
+     },
+     {
+      "module": "Admin.Todo.Show",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Show"
+      ],
+      "ms": 0.32
+     },
+     {
+      "module": "Admin.Todo.Show",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Show",
+       "Db.get User"
+      ],
+      "ms": 0.32
+     },
+     {
+      "module": "Admin.User.Delete",
+      "name": "deleting a user nothing refers to",
+      "ok": true,
+      "left": "{ answer: Redirected /admin/user, gone: Nothing, kept: Just \"-F7T8WoLdcjNhaYbZ5si\" }",
+      "right": "{ answer: Redirected /admin/user, gone: Nothing, kept: Just \"-F7T8WoLdcjNhaYbZ5si\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.get Admin.User.Delete",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Test.submit Confirm",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.delete User",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.648
+     },
+     {
+      "module": "Admin.User.Delete",
+      "name": "a user that todos refer to is not deleted",
+      "ok": true,
+      "left": "{ count: Just \"1\", buttons: 0, answer: FormRejected [{ field: \"\", message: \"This user cannot be deleted while other rows refer to it.\" }], kept: Just \"JpplAtSbXP4GffBx1SRx\" }",
+      "right": "{ count: Just \"1\", buttons: 0, answer: FormRejected [{ field: \"\", message: \"This user cannot be deleted while other rows refer to it.\" }], kept: Just \"JpplAtSbXP4GffBx1SRx\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.get Admin.User.Delete",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Test.submit Confirm",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.get User"
+      ],
+      "ms": 0.484
+     },
+     {
+      "module": "Admin.User.Delete",
+      "name": "an Admin cannot delete their own account",
+      "ok": true,
+      "left": "{ says: [\"You cannot delete your own account.\"], buttons: 0, answer: FormRejected [{ field: \"\", message: \"You cannot delete your own account.\" }], kept: Just \"B5U_tT-oTLn7D4JiunPN\" }",
+      "right": "{ says: [\"You cannot delete your own account.\"], buttons: 0, answer: FormRejected [{ field: \"\", message: \"You cannot delete your own account.\" }], kept: Just \"B5U_tT-oTLn7D4JiunPN\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.User.Delete",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Test.submit Confirm",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.get User"
+      ],
+      "ms": 0.481
+     },
+     {
+      "module": "Admin.User.Delete",
+      "name": "a missing row is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.User.Delete",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo"
+      ],
+      "ms": 0.4
+     },
+     {
+      "module": "Admin.User.Delete",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Test.open Admin.User.Delete"
+      ],
+      "ms": 0.522
+     },
+     {
+      "module": "Admin.User.Delete",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.open Admin.User.Delete"
+      ],
+      "ms": 0.483
+     },
+     {
+      "module": "Admin.User.Delete",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.open Admin.User.Delete",
+       "Db.get User"
+      ],
+      "ms": 0.373
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "saving changes every field",
+      "ok": true,
+      "left": "{ answer: Redirected /admin/user/aSk1xGa2IrK67ggQqJte, row: Just { email: \"email-3@example.com\", name: \"name-3\", role: Admin } }",
+      "right": "{ answer: Redirected /admin/user/aSk1xGa2IrK67ggQqJte, row: Just { email: \"email-3@example.com\", name: \"name-3\", role: Admin } }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.get Admin.User.Edit",
+       "Db.get User",
+       "Db.get User",
+       "Test.submit UserForm",
+       "Db.get User",
+       "Db.get User",
+       "Db.count User",
+       "Db.update User",
+       "Db.get User",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.536
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "saving an email another user has is refused",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"A user with this email exists.\" }], row: Just { id: \"gUq--U_tMHOsoUM0hoT8\", email: \"email-2@example.com\", name: \"name-2\", passwordHash: \"passwordhash-2\", created: 2026-01-01T00:00:01Z, role: Member } }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"A user with this email exists.\" }], row: Just { id: \"gUq--U_tMHOsoUM0hoT8\", email: \"email-2@example.com\", name: \"name-2\", passwordHash: \"passwordhash-2\", created: 2026-01-01T00:00:01Z, role: Member } }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.get User",
+       "Test.get Admin.User.Edit",
+       "Db.get User",
+       "Db.get User",
+       "Test.submit UserForm",
+       "Db.get User",
+       "Db.get User",
+       "Db.count User",
+       "Db.get User",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.494
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "an Admin cannot change their own role",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"You cannot change your own role.\" }], row: Just { id: \"xLH6GWjpdgGjZsYeMk2A\", email: \"email-1@example.com\", name: \"name-1\", passwordHash: \"passwordhash-1\", created: 2026-01-01T00:00:00Z, role: Admin } }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"You cannot change your own role.\" }], row: Just { id: \"xLH6GWjpdgGjZsYeMk2A\", email: \"email-1@example.com\", name: \"name-1\", passwordHash: \"passwordhash-1\", created: 2026-01-01T00:00:00Z, role: Admin } }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.get User",
+       "Test.get Admin.User.Edit",
+       "Db.get User",
+       "Db.get User",
+       "Test.submit UserForm",
+       "Db.get User",
+       "Db.get User",
+       "Db.get User",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.465
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "an Admin saves their own account, the role unchanged",
+      "ok": true,
+      "left": "{ answer: Redirected /admin/user/QVXyXbRHhYAMboy_SPkM, row: Just { email: \"email-2@example.com\", name: \"name-2\", role: Admin } }",
+      "right": "{ answer: Redirected /admin/user/QVXyXbRHhYAMboy_SPkM, row: Just { email: \"email-2@example.com\", name: \"name-2\", role: Admin } }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.User.Edit",
+       "Db.get User",
+       "Db.get User",
+       "Test.submit UserForm",
+       "Db.get User",
+       "Db.get User",
+       "Db.count User",
+       "Db.update User",
+       "Db.get User",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.481
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "an Admin demotes another Admin",
+      "ok": true,
+      "left": "{ answer: Redirected /admin/user/c2YAPEBI2iMlmFLoGKUp, role: Just Member }",
+      "right": "{ answer: Redirected /admin/user/c2YAPEBI2iMlmFLoGKUp, role: Just Member }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.get Admin.User.Edit",
+       "Db.get User",
+       "Db.get User",
+       "Test.submit UserForm",
+       "Db.get User",
+       "Db.get User",
+       "Db.count User",
+       "Db.update User",
+       "Db.get User",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.517
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "a missing row is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.User.Edit",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.343
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Test.open Admin.User.Edit"
+      ],
+      "ms": 0.404
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.open Admin.User.Edit"
+      ],
+      "ms": 0.452
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.open Admin.User.Edit",
+       "Db.get User"
+      ],
+      "ms": 0.362
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "the list shows every row, newest first",
+      "ok": true,
+      "left": "{ rows: [\"MJfyfxSYa53tBP87D0mJ\", \"7X7l9kuDCX_0kxZRVhtQ\", \"Gi5nH74BkWmBnaP9gVQ7\"] }",
+      "right": "{ rows: [\"MJfyfxSYa53tBP87D0mJ\", \"7X7l9kuDCX_0kxZRVhtQ\", \"Gi5nH74BkWmBnaP9gVQ7\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User"
+      ],
+      "ms": 0.488
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "sorting by email goes both ways",
+      "ok": true,
+      "left": "{ up: [\"fRK99rRACNsZZQlwb9l5\", \"dP1I64yumjP5llJDNrhF\", \"CqXa5EQ-vzpWgjwtB1u0\"], down: [\"CqXa5EQ-vzpWgjwtB1u0\", \"dP1I64yumjP5llJDNrhF\", \"fRK99rRACNsZZQlwb9l5\"], toggles: [\"desc\", \"asc\", \"asc\"] }",
+      "right": "{ up: [\"fRK99rRACNsZZQlwb9l5\", \"dP1I64yumjP5llJDNrhF\", \"CqXa5EQ-vzpWgjwtB1u0\"], down: [\"CqXa5EQ-vzpWgjwtB1u0\", \"dP1I64yumjP5llJDNrhF\", \"fRK99rRACNsZZQlwb9l5\"], toggles: [\"desc\", \"asc\", \"asc\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User"
+      ],
+      "ms": 0.552
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "searching finds the rows that contain the text",
+      "ok": true,
+      "left": "{ rows: [\"NYkvalONlPrz22W8kNNq\"], count: Just \"1 row\" }",
+      "right": "{ rows: [\"NYkvalONlPrz22W8kNNq\"], count: Just \"1 row\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User"
+      ],
+      "ms": 0.459
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "filtering by role lists the rows with that value",
+      "ok": true,
+      "left": "{ admin: [True, False], count: True, chosen: [\"Admin\"] }",
+      "right": "{ admin: [True, False], count: True, chosen: [\"Admin\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User"
+      ],
+      "ms": 0.458
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "a search text of 20,000 characters is cut to 200",
+      "ok": true,
+      "left": "{ q: 200, rows: 0 }",
+      "right": "{ q: 200, rows: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User"
+      ],
+      "ms": 0.971
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "the list has 25 rows a page, and a page past the last is the last",
+      "ok": true,
+      "left": "{ first: 25, second: 2, past: { page: 2, rows: 2 }, count: Just \"27 rows\", pages: [\"Previous\", \"Page 1 of 2\"] }",
+      "right": "{ first: 25, second: 2, past: { page: 2, rows: 2 }, count: Just \"27 rows\", pages: [\"Previous\", \"Page 1 of 2\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User"
+      ],
+      "ms": 0.958
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Admin.User.Index"
+      ],
+      "ms": 0.313
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.User.Index"
+      ],
+      "ms": 0.33
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.User.Index",
+       "Db.get User"
+      ],
+      "ms": 0.347
+     },
+     {
+      "module": "Admin.User.New",
+      "name": "creating a user adds it, with the values submitted",
+      "ok": true,
+      "left": "{ answers: [Redirected /admin/user/IYkcDrJE1QWtuVrEPzMu], rows: [{ email: \"email-2@example.com\", name: \"name-2\", role: Admin, passwordHash: \"\" }] }",
+      "right": "{ answers: [Redirected /admin/user/IYkcDrJE1QWtuVrEPzMu], rows: [{ email: \"email-2@example.com\", name: \"name-2\", role: Admin, passwordHash: \"\" }] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.User.New",
+       "Db.get User",
+       "Test.submit UserForm",
+       "Db.get User",
+       "Db.count User",
+       "Db.insert User",
+       "Db.get User",
+       "Db.get User",
+       "Db.all User"
+      ],
+      "ms": 0.462
+     },
+     {
+      "module": "Admin.User.New",
+      "name": "a user with an email that exists is refused",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"A user with this email exists.\" }], rows: 2 }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"A user with this email exists.\" }], rows: 2 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.get Admin.User.New",
+       "Db.get User",
+       "Test.submit UserForm",
+       "Db.get User",
+       "Db.count User",
+       "Db.get User",
+       "Db.count User"
+      ],
+      "ms": 0.424
+     },
+     {
+      "module": "Admin.User.New",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Admin.User.New"
+      ],
+      "ms": 0.515
+     },
+     {
+      "module": "Admin.User.New",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.User.New"
+      ],
+      "ms": 0.343
+     },
+     {
+      "module": "Admin.User.New",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.User.New",
+       "Db.get User"
+      ],
+      "ms": 0.352
+     },
+     {
+      "module": "Admin.User.Show",
+      "name": "the page shows the row",
+      "ok": true,
+      "left": "{ answer: Shown, email: True }",
+      "right": "{ answer: Shown, email: True }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.open Admin.User.Show",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.376
+     },
+     {
+      "module": "Admin.User.Show",
+      "name": "a missing row is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.User.Show",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.32
+     },
+     {
+      "module": "Admin.User.Show",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Test.open Admin.User.Show"
+      ],
+      "ms": 0.327
+     },
+     {
+      "module": "Admin.User.Show",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.open Admin.User.Show"
+      ],
+      "ms": 0.324
+     },
+     {
+      "module": "Admin.User.Show",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.open Admin.User.Show",
+       "Db.get User"
+      ],
+      "ms": 0.335
+     },
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 0.289
+     },
+     {
+      "module": "App",
+      "name": "Logout makes the role Member",
+      "ok": true,
+      "left": "{ out: Redirected /login, role: Member }",
+      "right": "{ out: Redirected /login, role: Member }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.438
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 0.365
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /, user: Just \"l--asPeWMh9lhx_7tHWm\", title: Just \"Todos\" }",
+      "right": "{ answer: Redirected /, user: Just \"l--asPeWMh9lhx_7tHWm\", title: Just \"Todos\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Db.get User",
+       "Session.put",
+       "Db.mine Todo",
+       "Db.all Todo"
+      ],
+      "ms": 0.413
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in copies the role from the user's row",
+      "ok": true,
+      "left": "Admin",
+      "right": "Admin",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Db.get User",
+       "Session.put",
+       "Db.mine Todo",
+       "Db.all Todo"
+      ],
+      "ms": 0.407
+     },
+     {
+      "module": "Auth.Login",
+      "name": "a visitor is sent to log in, and can log out",
+      "ok": true,
+      "left": "{ visitor: Redirected /login, out: Redirected /login, user: Nothing }",
+      "right": "{ visitor: Redirected /login, out: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.open Todos.Index",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.547
+     },
+     {
+      "module": "Profile",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Profile"
+      ],
+      "ms": 0.467
+     },
+     {
+      "module": "Todos.Index",
+      "name": "Toggle flips done",
+      "ok": true,
+      "left": "{ trace: [\"Db.updateMine Todo\"], done: Just True }",
+      "right": "{ trace: [\"Db.updateMine Todo\"], done: Just True }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.run",
+       "Db.updateMine Todo",
+       "Db.get Todo"
+      ],
+      "ms": 0.378
+     },
+     {
+      "module": "Todos.Index",
+      "name": "Toggle by another user is not found",
+      "ok": true,
+      "left": "{ answer: PageMissing, done: Just False }",
+      "right": "{ answer: PageMissing, done: Just False }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.login",
+       "Test.click Todos.Index.Toggle",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Db.updateMine Todo",
+       "Db.get Todo"
+      ],
+      "ms": 0.476
+     },
+     {
+      "module": "Todos.Index",
+      "name": "Delete by another user is not found",
+      "ok": true,
+      "left": "{ answer: PageMissing, todo: Just \"Milk\" }",
+      "right": "{ answer: PageMissing, todo: Just \"Milk\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.login",
+       "Test.click Todos.Index.Delete",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Db.deleteMine Todo",
+       "Db.get Todo"
+      ],
+      "ms": 0.455
+     },
+     {
+      "module": "Todos.Index",
+      "name": "adding a todo through the page",
+      "ok": true,
+      "left": "{ answer: Redirected /, todos: [\"Milk\"], summary: Just \"1 open\" }",
+      "right": "{ answer: Redirected /, todos: [\"Milk\"], summary: Just \"1 open\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.submit NewTodo",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Db.insertMine Todo",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo"
+      ],
+      "ms": 0.476
+     },
+     {
+      "module": "Todos.Index",
+      "name": "toggling a todo through the page",
+      "ok": true,
+      "left": "{ answer: Rerendered, done: True, summary: Just \"0 open\" }",
+      "right": "{ answer: Rerendered, done: True, summary: Just \"0 open\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.click Todos.Index.Toggle",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Db.updateMine Todo",
+       "Db.mine Todo",
+       "Db.all Todo"
+      ],
+      "ms": 0.458
+     },
+     {
+      "module": "Todos.Index",
+      "name": "a stranger cannot see my todo",
+      "ok": true,
+      "left": "{ items: 0, show: PageMissing }",
+      "right": "{ items: 0, show: PageMissing }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.open Todos.Show",
+       "Db.getMine Todo"
+      ],
+      "ms": 0.367
+     },
+     {
+      "module": "Todos.Index",
+      "name": "Delete removes the todo",
+      "ok": true,
+      "left": "{ value: Ok Rerender, todo: Nothing }",
+      "right": "{ value: Ok Rerender, todo: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.run",
+       "Db.deleteMine Todo",
+       "Db.get Todo"
+      ],
+      "ms": 0.316
+     },
+     {
+      "module": "Todos.Index",
+      "name": "the newest todo is listed first",
+      "ok": true,
+      "left": "[\"Second\", \"First\"]",
+      "right": "[\"Second\", \"First\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo"
+      ],
+      "ms": 0.368
+     },
+     {
+      "module": "Todos.Index",
+      "name": "Db.mine is what Me sees",
+      "ok": true,
+      "left": "{ value: Ok 2, trace: [\"Db.mine Todo\", \"Db.count Todo\"] }",
+      "right": "{ value: Ok 2, trace: [\"Db.mine Todo\", \"Db.count Todo\"] }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.run",
+       "Db.mine Todo",
+       "Db.count Todo"
+      ],
+      "ms": 0.31
+     },
+     {
+      "module": "Todos.Show",
+      "name": "a visitor is sent to log in from a todo",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.open Todos.Show"
+      ],
+      "ms": 0.303
+     },
+     {
+      "module": "Todos.Show",
+      "name": "saving changes the title and the due date",
+      "ok": true,
+      "left": "{ answer: Redirected /, title: Just \"Bread\", due: Just 2026-10-12 }",
+      "right": "{ answer: Redirected /, title: Just \"Bread\", due: Just 2026-10-12 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.get Todos.Show",
+       "Db.getMine Todo",
+       "Test.submit EditTodo",
+       "Db.getMine Todo",
+       "Db.updateMine Todo",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Db.get Todo"
+      ],
+      "ms": 0.915
+     },
+     {
+      "module": "Todos.Show",
+      "name": "deleting from the todo's page",
+      "ok": true,
+      "left": "{ answer: Redirected /, todo: Nothing }",
+      "right": "{ answer: Redirected /, todo: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.get Todos.Show",
+       "Db.getMine Todo",
+       "Test.click Todos.Show.Delete",
+       "Db.getMine Todo",
+       "Db.deleteMine Todo",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Db.get Todo"
+      ],
+      "ms": 0.472
+     }
+    ],
+    "exit": 0
+   }
+  },
+  {
+   "n": 2,
+   "files": 20,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 1,
+   "codes": {},
+   "rejected": [],
+   "seconds": 18.2,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 9,
+    "executed": 9,
+    "refused": {
+     "kind": "exit1",
+     "line": 78,
+     "text": "alder test",
+     "reason": "app/Profile.alder:67:29: warning[W0002]: hole ?expected has type Answer"
+    },
+    "complete": false,
+    "stopped_at": 9,
+    "stdin_lines": 63,
+    "max_body": 28,
+    "decl_uses": 2
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Profile.alder:67:29: warning[W0002]: hole ?expected has type Answer\n    Task.succeed (r.answer == ?expected)\n                              ^^^^^^^^^\nalder build: the program has 1 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 3,
+   "files": 20,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 1,
+   "codes": {},
+   "rejected": [],
+   "seconds": 4.8,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 2,
+    "executed": 1,
+    "refused": {
+     "kind": "exit1",
+     "line": 1,
+     "text": "alder fill 'Profile.\"submitting Rename\"' - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 1,
+    "stdin_lines": 8,
+    "max_body": 8,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Profile.alder:67:29: warning[W0002]: hole ?expected has type Answer\n    Task.succeed (r.answer == ?expected)\n                              ^^^^^^^^^\nalder build: the program has 1 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 4,
+   "files": 20,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 3.6,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 2,
+    "executed": 2,
+    "refused": null,
+    "complete": true,
+    "stopped_at": null,
+    "stdin_lines": 1,
+    "max_body": 1,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 97,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Todo",
+      "name": "countOpen ignores done todos",
+      "ok": true,
+      "left": "2",
+      "right": "2",
+      "trace": [],
+      "ms": 0.021
+     },
+     {
+      "module": "Todo",
+      "name": "Active keeps only open todos",
+      "ok": true,
+      "left": "[\"x\"]",
+      "right": "[\"x\"]",
+      "trace": [],
+      "ms": 0.011
+     },
+     {
+      "module": "Todo",
+      "name": "each filter has its label",
+      "ok": true,
+      "left": "[\"All\", \"Active\", \"Completed\"]",
+      "right": "[\"All\", \"Active\", \"Completed\"]",
+      "trace": [],
+      "ms": 0.014
+     },
+     {
+      "module": "Todo",
+      "name": "a user with todos cannot be deleted",
+      "ok": true,
+      "left": "{ deleted: Nothing, todo: Just \"Milk\" }",
+      "right": "{ deleted: Nothing, todo: Just \"Milk\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.run",
+       "Db.delete User",
+       "Db.get Todo"
+      ],
+      "ms": 0.704
+     },
+     {
+      "module": "Admin.Index",
+      "name": "the dashboard counts the todos and lists the newest five",
+      "ok": true,
+      "left": "{ count: Just \"6\", rows: [\"title-6\", \"title-5\", \"title-4\", \"title-3\", \"title-2\"] }",
+      "right": "{ count: Just \"6\", rows: [\"title-6\", \"title-5\", \"title-4\", \"title-3\", \"title-2\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Test.get Admin.Index",
+       "Db.get User",
+       "Db.all Todo",
+       "Db.count Todo",
+       "Db.all User",
+       "Db.count User"
+      ],
+      "ms": 9.091
+     },
+     {
+      "module": "Admin.Index",
+      "name": "the dashboard counts the users and lists the newest five",
+      "ok": true,
+      "left": "{ count: Just \"7\", rows: [\"email-7@example.com\", \"email-6@example.com\", \"email-5@example.com\", \"email-4@example.com\", \"email-3@example.com\"] }",
+      "right": "{ count: Just \"7\", rows: [\"email-7@example.com\", \"email-6@example.com\", \"email-5@example.com\", \"email-4@example.com\", \"email-3@example.com\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Test.get Admin.Index",
+       "Db.get User",
+       "Db.all Todo",
+       "Db.count Todo",
+       "Db.all User",
+       "Db.count User"
+      ],
+      "ms": 0.795
+     },
+     {
+      "module": "Admin.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Admin.Index"
+      ],
+      "ms": 0.496
+     },
+     {
+      "module": "Admin.Index",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Index"
+      ],
+      "ms": 0.704
+     },
+     {
+      "module": "Admin.Index",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Index",
+       "Db.get User"
+      ],
+      "ms": 0.502
+     },
+     {
+      "module": "Admin.Todo.Delete",
+      "name": "deleting a todo nothing refers to",
+      "ok": true,
+      "left": "{ answer: Redirected /admin/todo, gone: Nothing }",
+      "right": "{ answer: Redirected /admin/todo, gone: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Test.get Admin.Todo.Delete",
+       "Db.get User",
+       "Db.get Todo",
+       "Test.submit Confirm",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.delete Todo",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User",
+       "Db.get Todo"
+      ],
+      "ms": 0.729
+     },
+     {
+      "module": "Admin.Todo.Delete",
+      "name": "a missing row is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Todo.Delete",
+       "Db.get User",
+       "Db.get Todo"
+      ],
+      "ms": 0.444
+     },
+     {
+      "module": "Admin.Todo.Delete",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Delete"
+      ],
+      "ms": 0.399
+     },
+     {
+      "module": "Admin.Todo.Delete",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Delete"
+      ],
+      "ms": 0.381
+     },
+     {
+      "module": "Admin.Todo.Delete",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Delete",
+       "Db.get User"
+      ],
+      "ms": 0.384
+     },
+     {
+      "module": "Admin.Todo.Edit",
+      "name": "saving changes every field",
+      "ok": true,
+      "left": "{ answer: Redirected /admin/todo/YO9GJpbmHjRPEGgqd4A6, row: Just { title: \"title-2\", done: True, due: Just 2026-01-01, owner: \"im8A7omrXv0uyRpAbt2w\" }, owners: [\"email-1@example.com\", \"email-2@example.com\"] }",
+      "right": "{ answer: Redirected /admin/todo/YO9GJpbmHjRPEGgqd4A6, row: Just { title: \"title-2\", done: True, due: Just 2026-01-01, owner: \"im8A7omrXv0uyRpAbt2w\" }, owners: [\"email-1@example.com\", \"email-2@example.com\"] }",
+      "trace": [
+       "Date.today",
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert User",
+       "Test.get Admin.Todo.Edit",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User",
+       "Test.submit TodoForm",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User",
+       "Db.update Todo",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User",
+       "Db.get Todo"
+      ],
+      "ms": 0.622
+     },
+     {
+      "module": "Admin.Todo.Edit",
+      "name": "an owner not offered is refused",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"owner\", message: \"must be one of the options\" }], owner: Just \"0z9lChXDl0bVKBZMbZtL\" }",
+      "right": "{ answer: FormRejected [{ field: \"owner\", message: \"must be one of the options\" }], owner: Just \"0z9lChXDl0bVKBZMbZtL\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert User",
+       "Test.get Admin.Todo.Edit",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User",
+       "Test.submitRaw TodoForm",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User",
+       "Db.get Todo"
+      ],
+      "ms": 0.523
+     },
+     {
+      "module": "Admin.Todo.Edit",
+      "name": "a missing row is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Todo.Edit",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User"
+      ],
+      "ms": 0.379
+     },
+     {
+      "module": "Admin.Todo.Edit",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Edit"
+      ],
+      "ms": 0.356
+     },
+     {
+      "module": "Admin.Todo.Edit",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Edit"
+      ],
+      "ms": 0.358
+     },
+     {
+      "module": "Admin.Todo.Edit",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Edit",
+       "Db.get User"
+      ],
+      "ms": 0.366
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "the list shows every row, newest first, and the labels of the rows they refer to",
+      "ok": true,
+      "left": "{ rows: [\"kqjYWgI06UDd6j9GwR5Q\", \"NIA4eJm02J5Rnh-DgslN\"], owners: 1, ownerLabel: \"email-1@example.com\" }",
+      "right": "{ rows: [\"kqjYWgI06UDd6j9GwR5Q\", \"NIA4eJm02J5Rnh-DgslN\"], owners: 1, ownerLabel: \"email-1@example.com\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert User",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User"
+      ],
+      "ms": 0.967
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "sorting by title goes both ways",
+      "ok": true,
+      "left": "{ up: [\"Ap_SbhQXJKWWwg4F-RVC\", \"0M7iK_1bM_sCJahlhAw1\"], down: [\"0M7iK_1bM_sCJahlhAw1\", \"Ap_SbhQXJKWWwg4F-RVC\"], toggles: [\"desc\", \"asc\", \"asc\"] }",
+      "right": "{ up: [\"Ap_SbhQXJKWWwg4F-RVC\", \"0M7iK_1bM_sCJahlhAw1\"], down: [\"0M7iK_1bM_sCJahlhAw1\", \"Ap_SbhQXJKWWwg4F-RVC\"], toggles: [\"desc\", \"asc\", \"asc\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User"
+      ],
+      "ms": 0.649
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "searching finds the rows that contain the text",
+      "ok": true,
+      "left": "{ rows: [\"2lA4ylwdj5PyHUcSCxTM\"], count: Just \"1 row\" }",
+      "right": "{ rows: [\"2lA4ylwdj5PyHUcSCxTM\"], count: Just \"1 row\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User"
+      ],
+      "ms": 0.51
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "filtering by done lists the rows with that value",
+      "ok": true,
+      "left": "{ yes: [True, False], no: [False, True], count: True, chosen: [\"yes\"] }",
+      "right": "{ yes: [True, False], no: [False, True], count: True, chosen: [\"yes\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User"
+      ],
+      "ms": 0.549
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "a search text of 20,000 characters is cut to 200",
+      "ok": true,
+      "left": "{ q: 200, rows: 0 }",
+      "right": "{ q: 200, rows: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User"
+      ],
+      "ms": 1.154
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "the list has 25 rows a page, and a page past the last is the last",
+      "ok": true,
+      "left": "{ first: 25, second: 1, past: { page: 2, rows: 1 }, count: Just \"26 rows\", pages: [\"Previous\", \"Page 1 of 2\"] }",
+      "right": "{ first: 25, second: 1, past: { page: 2, rows: 1 }, count: Just \"26 rows\", pages: [\"Previous\", \"Page 1 of 2\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User",
+       "Test.get Admin.Todo.Index",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.all Todo",
+       "Db.all User"
+      ],
+      "ms": 0.998
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Admin.Todo.Index"
+      ],
+      "ms": 0.314
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Todo.Index"
+      ],
+      "ms": 0.3
+     },
+     {
+      "module": "Admin.Todo.Index",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Todo.Index",
+       "Db.get User"
+      ],
+      "ms": 0.308
+     },
+     {
+      "module": "Admin.Todo.New",
+      "name": "creating a todo adds it, with the values submitted",
+      "ok": true,
+      "left": "{ answers: [Redirected /admin/todo/8IncjRdFj4iBx5OlAlyR], rows: [{ title: \"title-1\", done: True, due: Just 2026-01-01, owner: \"XHPpLsQS_-ovRCu2a0wk\" }], owners: [\"email-1@example.com\", \"email-2@example.com\"] }",
+      "right": "{ answers: [Redirected /admin/todo/8IncjRdFj4iBx5OlAlyR], rows: [{ title: \"title-1\", done: True, due: Just 2026-01-01, owner: \"XHPpLsQS_-ovRCu2a0wk\" }], owners: [\"email-1@example.com\", \"email-2@example.com\"] }",
+      "trace": [
+       "Date.today",
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.get Admin.Todo.New",
+       "Db.get User",
+       "Db.all User",
+       "Test.submit TodoForm",
+       "Db.get User",
+       "Db.all User",
+       "Db.insert Todo",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User",
+       "Db.all Todo"
+      ],
+      "ms": 0.474
+     },
+     {
+      "module": "Admin.Todo.New",
+      "name": "an owner not offered is refused",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"owner\", message: \"must be one of the options\" }], rows: 0 }",
+      "right": "{ answer: FormRejected [{ field: \"owner\", message: \"must be one of the options\" }], rows: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.get Admin.Todo.New",
+       "Db.get User",
+       "Db.all User",
+       "Test.submitRaw TodoForm",
+       "Db.get User",
+       "Db.all User",
+       "Db.count Todo"
+      ],
+      "ms": 0.574
+     },
+     {
+      "module": "Admin.Todo.New",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Admin.Todo.New"
+      ],
+      "ms": 0.338
+     },
+     {
+      "module": "Admin.Todo.New",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Todo.New"
+      ],
+      "ms": 0.62
+     },
+     {
+      "module": "Admin.Todo.New",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Todo.New",
+       "Db.get User"
+      ],
+      "ms": 0.434
+     },
+     {
+      "module": "Admin.Todo.Show",
+      "name": "the page shows the row",
+      "ok": true,
+      "left": "{ answer: Shown, title: True, owners: 1, ownerLabel: \"email-1@example.com\" }",
+      "right": "{ answer: Shown, title: True, owners: 1, ownerLabel: \"email-1@example.com\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Db.insert User",
+       "Test.open Admin.Todo.Show",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User",
+       "Test.get Admin.Todo.Show",
+       "Db.get User",
+       "Db.get Todo",
+       "Db.all User"
+      ],
+      "ms": 0.509
+     },
+     {
+      "module": "Admin.Todo.Show",
+      "name": "a missing row is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.Todo.Show",
+       "Db.get User",
+       "Db.get Todo"
+      ],
+      "ms": 0.361
+     },
+     {
+      "module": "Admin.Todo.Show",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Show"
+      ],
+      "ms": 0.359
+     },
+     {
+      "module": "Admin.Todo.Show",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Show"
+      ],
+      "ms": 0.344
+     },
+     {
+      "module": "Admin.Todo.Show",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Todo",
+       "Test.open Admin.Todo.Show",
+       "Db.get User"
+      ],
+      "ms": 0.338
+     },
+     {
+      "module": "Admin.User.Delete",
+      "name": "deleting a user nothing refers to",
+      "ok": true,
+      "left": "{ answer: Redirected /admin/user, gone: Nothing, kept: Just \"0sPGMbFMHewTmIPfRmyO\" }",
+      "right": "{ answer: Redirected /admin/user, gone: Nothing, kept: Just \"0sPGMbFMHewTmIPfRmyO\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.get Admin.User.Delete",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Test.submit Confirm",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.delete User",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.627
+     },
+     {
+      "module": "Admin.User.Delete",
+      "name": "a user that todos refer to is not deleted",
+      "ok": true,
+      "left": "{ count: Just \"1\", buttons: 0, answer: FormRejected [{ field: \"\", message: \"This user cannot be deleted while other rows refer to it.\" }], kept: Just \"GqolC4DxEB4BP83JU7BI\" }",
+      "right": "{ count: Just \"1\", buttons: 0, answer: FormRejected [{ field: \"\", message: \"This user cannot be deleted while other rows refer to it.\" }], kept: Just \"GqolC4DxEB4BP83JU7BI\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.get Admin.User.Delete",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Test.submit Confirm",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.get User"
+      ],
+      "ms": 0.506
+     },
+     {
+      "module": "Admin.User.Delete",
+      "name": "an Admin cannot delete their own account",
+      "ok": true,
+      "left": "{ says: [\"You cannot delete your own account.\"], buttons: 0, answer: FormRejected [{ field: \"\", message: \"You cannot delete your own account.\" }], kept: Just \"_uV8PO4EvUuaVSgwHPYa\" }",
+      "right": "{ says: [\"You cannot delete your own account.\"], buttons: 0, answer: FormRejected [{ field: \"\", message: \"You cannot delete your own account.\" }], kept: Just \"_uV8PO4EvUuaVSgwHPYa\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.User.Delete",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Test.submit Confirm",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo",
+       "Db.get User"
+      ],
+      "ms": 0.461
+     },
+     {
+      "module": "Admin.User.Delete",
+      "name": "a missing row is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.User.Delete",
+       "Db.get User",
+       "Db.get User",
+       "Db.count Todo"
+      ],
+      "ms": 0.347
+     },
+     {
+      "module": "Admin.User.Delete",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Test.open Admin.User.Delete"
+      ],
+      "ms": 0.312
+     },
+     {
+      "module": "Admin.User.Delete",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.open Admin.User.Delete"
+      ],
+      "ms": 0.318
+     },
+     {
+      "module": "Admin.User.Delete",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.open Admin.User.Delete",
+       "Db.get User"
+      ],
+      "ms": 0.477
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "saving changes every field",
+      "ok": true,
+      "left": "{ answer: Redirected /admin/user/ZrPsHlkm9E6E9J_O2lQa, row: Just { email: \"email-3@example.com\", name: \"name-3\", role: Admin } }",
+      "right": "{ answer: Redirected /admin/user/ZrPsHlkm9E6E9J_O2lQa, row: Just { email: \"email-3@example.com\", name: \"name-3\", role: Admin } }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.get Admin.User.Edit",
+       "Db.get User",
+       "Db.get User",
+       "Test.submit UserForm",
+       "Db.get User",
+       "Db.get User",
+       "Db.count User",
+       "Db.update User",
+       "Db.get User",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.819
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "saving an email another user has is refused",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"A user with this email exists.\" }], row: Just { id: \"IfoYIzbNLUAMc1ifT63S\", email: \"email-2@example.com\", name: \"name-2\", passwordHash: \"passwordhash-2\", created: 2026-01-01T00:00:01Z, role: Member } }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"A user with this email exists.\" }], row: Just { id: \"IfoYIzbNLUAMc1ifT63S\", email: \"email-2@example.com\", name: \"name-2\", passwordHash: \"passwordhash-2\", created: 2026-01-01T00:00:01Z, role: Member } }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.get User",
+       "Test.get Admin.User.Edit",
+       "Db.get User",
+       "Db.get User",
+       "Test.submit UserForm",
+       "Db.get User",
+       "Db.get User",
+       "Db.count User",
+       "Db.get User",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.555
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "an Admin cannot change their own role",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"You cannot change your own role.\" }], row: Just { id: \"Mo4PUIALtvR-lKPnEYim\", email: \"email-1@example.com\", name: \"name-1\", passwordHash: \"passwordhash-1\", created: 2026-01-01T00:00:00Z, role: Admin } }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"You cannot change your own role.\" }], row: Just { id: \"Mo4PUIALtvR-lKPnEYim\", email: \"email-1@example.com\", name: \"name-1\", passwordHash: \"passwordhash-1\", created: 2026-01-01T00:00:00Z, role: Admin } }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.get User",
+       "Test.get Admin.User.Edit",
+       "Db.get User",
+       "Db.get User",
+       "Test.submit UserForm",
+       "Db.get User",
+       "Db.get User",
+       "Db.get User",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.471
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "an Admin saves their own account, the role unchanged",
+      "ok": true,
+      "left": "{ answer: Redirected /admin/user/pYz6o_fbSWXady1_XVf9, row: Just { email: \"email-2@example.com\", name: \"name-2\", role: Admin } }",
+      "right": "{ answer: Redirected /admin/user/pYz6o_fbSWXady1_XVf9, row: Just { email: \"email-2@example.com\", name: \"name-2\", role: Admin } }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.User.Edit",
+       "Db.get User",
+       "Db.get User",
+       "Test.submit UserForm",
+       "Db.get User",
+       "Db.get User",
+       "Db.count User",
+       "Db.update User",
+       "Db.get User",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.475
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "an Admin demotes another Admin",
+      "ok": true,
+      "left": "{ answer: Redirected /admin/user/Ph7BHII2OR8HwvIL8qYh, role: Just Member }",
+      "right": "{ answer: Redirected /admin/user/Ph7BHII2OR8HwvIL8qYh, role: Just Member }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.get Admin.User.Edit",
+       "Db.get User",
+       "Db.get User",
+       "Test.submit UserForm",
+       "Db.get User",
+       "Db.get User",
+       "Db.count User",
+       "Db.update User",
+       "Db.get User",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.472
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "a missing row is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.User.Edit",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.319
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Test.open Admin.User.Edit"
+      ],
+      "ms": 0.309
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.open Admin.User.Edit"
+      ],
+      "ms": 0.302
+     },
+     {
+      "module": "Admin.User.Edit",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.open Admin.User.Edit",
+       "Db.get User"
+      ],
+      "ms": 0.325
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "the list shows every row, newest first",
+      "ok": true,
+      "left": "{ rows: [\"M7NO1YF8RW7rNvohUez4\", \"CQPt0xXjvYyA11PoZfv9\", \"CkIwnvuG8aeQ56C-6O-O\"] }",
+      "right": "{ rows: [\"M7NO1YF8RW7rNvohUez4\", \"CQPt0xXjvYyA11PoZfv9\", \"CkIwnvuG8aeQ56C-6O-O\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User"
+      ],
+      "ms": 0.587
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "sorting by email goes both ways",
+      "ok": true,
+      "left": "{ up: [\"RTn-2rg75xXcRN3SbgUC\", \"nHinaDS9E4u5jM5PeksB\", \"9Q0mt-WDPZGsdTWcKvvx\"], down: [\"9Q0mt-WDPZGsdTWcKvvx\", \"nHinaDS9E4u5jM5PeksB\", \"RTn-2rg75xXcRN3SbgUC\"], toggles: [\"desc\", \"asc\", \"asc\"] }",
+      "right": "{ up: [\"RTn-2rg75xXcRN3SbgUC\", \"nHinaDS9E4u5jM5PeksB\", \"9Q0mt-WDPZGsdTWcKvvx\"], down: [\"9Q0mt-WDPZGsdTWcKvvx\", \"nHinaDS9E4u5jM5PeksB\", \"RTn-2rg75xXcRN3SbgUC\"], toggles: [\"desc\", \"asc\", \"asc\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User"
+      ],
+      "ms": 0.648
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "searching finds the rows that contain the text",
+      "ok": true,
+      "left": "{ rows: [\"hDNVfWW1p9xeH1XLD9I2\"], count: Just \"1 row\" }",
+      "right": "{ rows: [\"hDNVfWW1p9xeH1XLD9I2\"], count: Just \"1 row\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User"
+      ],
+      "ms": 0.437
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "filtering by role lists the rows with that value",
+      "ok": true,
+      "left": "{ admin: [True, False], count: True, chosen: [\"Admin\"] }",
+      "right": "{ admin: [True, False], count: True, chosen: [\"Admin\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User"
+      ],
+      "ms": 0.426
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "a search text of 20,000 characters is cut to 200",
+      "ok": true,
+      "left": "{ q: 200, rows: 0 }",
+      "right": "{ q: 200, rows: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User"
+      ],
+      "ms": 1.027
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "the list has 25 rows a page, and a page past the last is the last",
+      "ok": true,
+      "left": "{ first: 25, second: 2, past: { page: 2, rows: 2 }, count: Just \"27 rows\", pages: [\"Previous\", \"Page 1 of 2\"] }",
+      "right": "{ first: 25, second: 2, past: { page: 2, rows: 2 }, count: Just \"27 rows\", pages: [\"Previous\", \"Page 1 of 2\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User",
+       "Test.get Admin.User.Index",
+       "Db.get User",
+       "Db.count User",
+       "Db.all User"
+      ],
+      "ms": 0.864
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Admin.User.Index"
+      ],
+      "ms": 0.288
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.User.Index"
+      ],
+      "ms": 0.284
+     },
+     {
+      "module": "Admin.User.Index",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.User.Index",
+       "Db.get User"
+      ],
+      "ms": 0.296
+     },
+     {
+      "module": "Admin.User.New",
+      "name": "creating a user adds it, with the values submitted",
+      "ok": true,
+      "left": "{ answers: [Redirected /admin/user/1zhiKwhGQIMyIvgxDsQL], rows: [{ email: \"email-2@example.com\", name: \"name-2\", role: Admin, passwordHash: \"\" }] }",
+      "right": "{ answers: [Redirected /admin/user/1zhiKwhGQIMyIvgxDsQL], rows: [{ email: \"email-2@example.com\", name: \"name-2\", role: Admin, passwordHash: \"\" }] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.User.New",
+       "Db.get User",
+       "Test.submit UserForm",
+       "Db.get User",
+       "Db.count User",
+       "Db.insert User",
+       "Db.get User",
+       "Db.get User",
+       "Db.all User"
+      ],
+      "ms": 0.398
+     },
+     {
+      "module": "Admin.User.New",
+      "name": "a user with an email that exists is refused",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"A user with this email exists.\" }], rows: 2 }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"A user with this email exists.\" }], rows: 2 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.get Admin.User.New",
+       "Db.get User",
+       "Test.submit UserForm",
+       "Db.get User",
+       "Db.count User",
+       "Db.get User",
+       "Db.count User"
+      ],
+      "ms": 0.378
+     },
+     {
+      "module": "Admin.User.New",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Admin.User.New"
+      ],
+      "ms": 0.271
+     },
+     {
+      "module": "Admin.User.New",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.User.New"
+      ],
+      "ms": 0.278
+     },
+     {
+      "module": "Admin.User.New",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.User.New",
+       "Db.get User"
+      ],
+      "ms": 0.294
+     },
+     {
+      "module": "Admin.User.Show",
+      "name": "the page shows the row",
+      "ok": true,
+      "left": "{ answer: Shown, email: True }",
+      "right": "{ answer: Shown, email: True }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.open Admin.User.Show",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.542
+     },
+     {
+      "module": "Admin.User.Show",
+      "name": "a missing row is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Admin.User.Show",
+       "Db.get User",
+       "Db.get User"
+      ],
+      "ms": 0.386
+     },
+     {
+      "module": "Admin.User.Show",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Test.open Admin.User.Show"
+      ],
+      "ms": 0.319
+     },
+     {
+      "module": "Admin.User.Show",
+      "name": "a Member gets no page, even one made Admin since logging in",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.open Admin.User.Show"
+      ],
+      "ms": 0.299
+     },
+     {
+      "module": "Admin.User.Show",
+      "name": "a demoted Admin is refused at once",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert User",
+       "Test.open Admin.User.Show",
+       "Db.get User"
+      ],
+      "ms": 0.307
+     },
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 0.284
+     },
+     {
+      "module": "App",
+      "name": "Logout makes the role Member",
+      "ok": true,
+      "left": "{ out: Redirected /login, role: Member }",
+      "right": "{ out: Redirected /login, role: Member }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.364
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 0.305
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /, user: Just \"qclzr8k1kAPgpKczPC69\", title: Just \"Todos\" }",
+      "right": "{ answer: Redirected /, user: Just \"qclzr8k1kAPgpKczPC69\", title: Just \"Todos\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Db.get User",
+       "Session.put",
+       "Db.mine Todo",
+       "Db.all Todo"
+      ],
+      "ms": 0.336
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in copies the role from the user's row",
+      "ok": true,
+      "left": "Admin",
+      "right": "Admin",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Db.get User",
+       "Session.put",
+       "Db.mine Todo",
+       "Db.all Todo"
+      ],
+      "ms": 0.32
+     },
+     {
+      "module": "Auth.Login",
+      "name": "a visitor is sent to log in, and can log out",
+      "ok": true,
+      "left": "{ visitor: Redirected /login, out: Redirected /login, user: Nothing }",
+      "right": "{ visitor: Redirected /login, out: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.open Todos.Index",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.331
+     },
+     {
+      "module": "Profile",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Profile"
+      ],
+      "ms": 0.246
+     },
+     {
+      "module": "Profile",
+      "name": "submitting Rename",
+      "ok": true,
+      "left": "Rerendered",
+      "right": "Rerendered",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Profile",
+       "Db.get User",
+       "Db.mine Todo",
+       "Db.count Todo",
+       "Db.mine Todo",
+       "Db.count Todo",
+       "Test.submit Rename",
+       "Db.get User",
+       "Db.mine Todo",
+       "Db.count Todo",
+       "Db.mine Todo",
+       "Db.count Todo",
+       "Db.update User",
+       "Db.get User",
+       "Db.mine Todo",
+       "Db.count Todo",
+       "Db.mine Todo",
+       "Db.count Todo"
+      ],
+      "ms": 0.854
+     },
+     {
+      "module": "Profile",
+      "name": "Rename refuses an empty name",
+      "ok": true,
+      "left": "FormRejected [{ field: \"name\", message: \"must not be empty\" }]",
+      "right": "FormRejected [{ field: \"name\", message: \"must not be empty\" }]",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Profile",
+       "Db.get User",
+       "Db.mine Todo",
+       "Db.count Todo",
+       "Db.mine Todo",
+       "Db.count Todo",
+       "Test.submitRaw Rename",
+       "Db.get User",
+       "Db.mine Todo",
+       "Db.count Todo",
+       "Db.mine Todo",
+       "Db.count Todo"
+      ],
+      "ms": 0.375
+     },
+     {
+      "module": "Profile",
+      "name": "load counts only the user's todos",
+      "ok": true,
+      "left": "{ total: 2, finished: 1 }",
+      "right": "{ total: 2, finished: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.get Profile",
+       "Db.get User",
+       "Db.mine Todo",
+       "Db.count Todo",
+       "Db.mine Todo",
+       "Db.count Todo"
+      ],
+      "ms": 0.32
+     },
+     {
+      "module": "Profile",
+      "name": "renaming to an empty name is refused",
+      "ok": true,
+      "left": "{ rejected: True, name: Just \"Me\" }",
+      "right": "{ rejected: True, name: Just \"Me\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Profile",
+       "Db.get User",
+       "Db.mine Todo",
+       "Db.count Todo",
+       "Db.mine Todo",
+       "Db.count Todo",
+       "Test.submitRaw Rename",
+       "Db.get User",
+       "Db.mine Todo",
+       "Db.count Todo",
+       "Db.mine Todo",
+       "Db.count Todo",
+       "Db.get User"
+      ],
+      "ms": 0.341
+     },
+     {
+      "module": "Todos.Index",
+      "name": "Toggle flips done",
+      "ok": true,
+      "left": "{ trace: [\"Db.updateMine Todo\"], done: Just True }",
+      "right": "{ trace: [\"Db.updateMine Todo\"], done: Just True }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.run",
+       "Db.updateMine Todo",
+       "Db.get Todo"
+      ],
+      "ms": 0.307
+     },
+     {
+      "module": "Todos.Index",
+      "name": "Toggle by another user is not found",
+      "ok": true,
+      "left": "{ answer: PageMissing, done: Just False }",
+      "right": "{ answer: PageMissing, done: Just False }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.login",
+       "Test.click Todos.Index.Toggle",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Db.updateMine Todo",
+       "Db.get Todo"
+      ],
+      "ms": 0.375
+     },
+     {
+      "module": "Todos.Index",
+      "name": "Delete by another user is not found",
+      "ok": true,
+      "left": "{ answer: PageMissing, todo: Just \"Milk\" }",
+      "right": "{ answer: PageMissing, todo: Just \"Milk\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.login",
+       "Test.click Todos.Index.Delete",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Db.deleteMine Todo",
+       "Db.get Todo"
+      ],
+      "ms": 0.358
+     },
+     {
+      "module": "Todos.Index",
+      "name": "adding a todo through the page",
+      "ok": true,
+      "left": "{ answer: Redirected /, todos: [\"Milk\"], summary: Just \"1 open\" }",
+      "right": "{ answer: Redirected /, todos: [\"Milk\"], summary: Just \"1 open\" }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.submit NewTodo",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Db.insertMine Todo",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo"
+      ],
+      "ms": 0.389
+     },
+     {
+      "module": "Todos.Index",
+      "name": "toggling a todo through the page",
+      "ok": true,
+      "left": "{ answer: Rerendered, done: True, summary: Just \"0 open\" }",
+      "right": "{ answer: Rerendered, done: True, summary: Just \"0 open\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.click Todos.Index.Toggle",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Db.updateMine Todo",
+       "Db.mine Todo",
+       "Db.all Todo"
+      ],
+      "ms": 0.487
+     },
+     {
+      "module": "Todos.Index",
+      "name": "a stranger cannot see my todo",
+      "ok": true,
+      "left": "{ items: 0, show: PageMissing }",
+      "right": "{ items: 0, show: PageMissing }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Test.open Todos.Show",
+       "Db.getMine Todo"
+      ],
+      "ms": 0.469
+     },
+     {
+      "module": "Todos.Index",
+      "name": "Delete removes the todo",
+      "ok": true,
+      "left": "{ value: Ok Rerender, todo: Nothing }",
+      "right": "{ value: Ok Rerender, todo: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.run",
+       "Db.deleteMine Todo",
+       "Db.get Todo"
+      ],
+      "ms": 0.295
+     },
+     {
+      "module": "Todos.Index",
+      "name": "the newest todo is listed first",
+      "ok": true,
+      "left": "[\"Second\", \"First\"]",
+      "right": "[\"Second\", \"First\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.get Todos.Index",
+       "Db.mine Todo",
+       "Db.all Todo"
+      ],
+      "ms": 0.31
+     },
+     {
+      "module": "Todos.Index",
+      "name": "Db.mine is what Me sees",
+      "ok": true,
+      "left": "{ value: Ok 2, trace: [\"Db.mine Todo\", \"Db.count Todo\"] }",
+      "right": "{ value: Ok 2, trace: [\"Db.mine Todo\", \"Db.count Todo\"] }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.run",
+       "Db.mine Todo",
+       "Db.count Todo"
+      ],
+      "ms": 0.282
+     },
+     {
+      "module": "Todos.Show",
+      "name": "a visitor is sent to log in from a todo",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.open Todos.Show"
+      ],
+      "ms": 0.266
+     },
+     {
+      "module": "Todos.Show",
+      "name": "saving changes the title and the due date",
+      "ok": true,
+      "left": "{ answer: Redirected /, title: Just \"Bread\", due: Just 2026-10-12 }",
+      "right": "{ answer: Redirected /, title: Just \"Bread\", due: Just 2026-10-12 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.get Todos.Show",
+       "Db.getMine Todo",
+       "Test.submit EditTodo",
+       "Db.getMine Todo",
+       "Db.updateMine Todo",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Db.get Todo"
+      ],
+      "ms": 0.379
+     },
+     {
+      "module": "Todos.Show",
+      "name": "deleting from the todo's page",
+      "ok": true,
+      "left": "{ answer: Redirected /, todo: Nothing }",
+      "right": "{ answer: Redirected /, todo: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Todo",
+       "Test.login",
+       "Test.get Todos.Show",
+       "Db.getMine Todo",
+       "Test.click Todos.Show.Delete",
+       "Db.getMine Todo",
+       "Db.deleteMine Todo",
+       "Db.mine Todo",
+       "Db.all Todo",
+       "Db.get Todo"
+      ],
+      "ms": 0.344
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.9875,
+    "killed": 158,
+    "survived": 2,
+    "suppressed": 3,
+    "skipped": 27,
+    "survivors": [
+     {
+      "module": "Profile",
+      "file": "app/Profile.alder",
+      "decl": "load",
+      "line": 15,
+      "col": 58,
+      "kind": "bool flipped",
+      "before": "True",
+      "after": "False"
+     },
+     {
+      "module": "Profile",
+      "file": "app/Profile.alder",
+      "decl": "update",
+      "line": 31,
+      "col": 5,
+      "kind": "write replaced",
+      "before": "let _ <- Db.update User session.user (\\u -> { u | name: p.form.name })",
+      "after": "let _ <- Task.succeed ()"
+     }
+    ]
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "base_commit": "87c7b427c0a6cab80118793ef16700f6c155325e",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "sonnet",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "cli": {
+  "app_name": "newpage",
+  "rounds": 5,
+  "complete": true,
+  "stopped_at": null,
+  "commands": 40,
+  "executed": 18,
+  "refused": {
+   "count": 4,
+   "kinds": {
+    "exit1": 4
+   },
+   "items": [
+    {
+     "round": 0,
+     "kind": "exit1",
+     "line": 5,
+     "text": "alder fill Profile.load - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    {
+     "round": 1,
+     "kind": "exit1",
+     "line": 15,
+     "text": "alder new form Profile Rename name:Text.NonEmpty --msg SaveName",
+     "reason": "alder new form: `Profile`'s `view` is not one element over several lines: add the markup yourself"
+    },
+    {
+     "round": 2,
+     "kind": "exit1",
+     "line": 78,
+     "text": "alder test",
+     "reason": "app/Profile.alder:67:29: warning[W0002]: hole ?expected has type Answer"
+    },
+    {
+     "round": 3,
+     "kind": "exit1",
+     "line": 1,
+     "text": "alder fill 'Profile.\"submitting Rename\"' - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    }
+   ]
+  },
+  "stdin_lines": 92,
+  "max_body": 28,
+  "decl_uses": 3,
+  "names": null
+ },
+ "mutation": {
+  "score": 0.9875,
+  "killed": 158,
+  "survived": 2,
+  "suppressed": 3,
+  "skipped": 27,
+  "survivors": [
+   {
+    "module": "Profile",
+    "file": "app/Profile.alder",
+    "decl": "load",
+    "line": 15,
+    "col": 58,
+    "kind": "bool flipped",
+    "before": "True",
+    "after": "False"
+   },
+   {
+    "module": "Profile",
+    "file": "app/Profile.alder",
+    "decl": "update",
+    "line": 31,
+    "col": 5,
+    "kind": "write replaced",
+    "before": "let _ <- Db.update User session.user (\\u -> { u | name: p.form.name })",
+    "after": "let _ <- Task.succeed ()"
+   }
+  ]
+ }
+}

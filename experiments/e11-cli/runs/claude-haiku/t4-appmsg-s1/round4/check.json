@@ -1,0 +1,2 @@
+{"code": "W0001", "severity": "warning", "file": "app/App.alder", "line": 4, "col": 1, "endLine": 4, "endCol": 13, "message": "import `Theme` is unused"}
+{"code": "W0002", "severity": "warning", "file": "app/App.alder", "line": 50, "col": 3, "endLine": 50, "endCol": 8, "message": "hole ?test has type Task Bool"}

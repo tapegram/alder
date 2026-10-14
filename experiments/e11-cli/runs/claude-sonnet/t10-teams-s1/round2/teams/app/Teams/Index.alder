@@ -1,0 +1,24 @@
+module Teams.Index
+
+import Member
+import Team
+
+page "/teams" { } requires user
+
+type Model = { teams: List Team }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let owned <- Db.from Team |> Db.where (Team.owner.eq session.user) |> Db.all
+  let mem <- Db.from Member |> Db.where (Member.user.eq session.user) |> Db.all
+  let joined <- Db.from Team |> Db.where (Team.id.in (List.map (\m -> m.team) mem)) |> Db.all
+  Query.succeed { teams: List.sortByText (\t -> t.name) (List.unique (owned ++ joined)) }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>x</p>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Teams.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

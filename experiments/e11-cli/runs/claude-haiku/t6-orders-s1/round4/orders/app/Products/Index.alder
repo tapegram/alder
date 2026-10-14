@@ -1,0 +1,89 @@
+module Products.Index
+
+import Layout
+import Product
+import User
+
+page "/products" { } requires user
+
+type Model = { products: List Product }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let mgr <- User.isManager session.user
+  if mgr then {
+    let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+    Query.succeed { products: products }
+  } else Query.notFound
+}
+
+form NewProduct = {
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+}
+
+msg Add form NewProduct
+
+msg Toggle { id: Product.ProductId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Product { name: p.form.name, price: p.form.price }
+    Task.succeed (Redirect (Products.Index {}))
+  },
+  Toggle p -> ?toggle,
+}
+
+view : Model -> Session -> Html Msg
+view model session = <Layout.Page title="Products">
+    <h1>Products</h1>
+
+    <al-card>
+      <h2 slot="header">New product</h2>
+      <form submit={Add}>
+        <al-input field="name" label="Name" />
+        <al-input field="price" label="Price" />
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-button type="submit">New product</al-button>
+      </form>
+    </al-card>
+
+    <al-button click={Toggle { id: ?toggleId }}>Toggle</al-button>
+  </Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Products.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "submitting NewProduct adds a row" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Products.Index {})
+  let r <- Test.submit NewProduct { name: Text.NonEmpty "name-1", price: Int.NonNegative 1 }
+  let rows <- Db.from Product |> Db.all
+  Task.succeed ({ answer: r.answer, rows: List.map (\row -> { name: row.name, price: row.price, active: row.active }) rows } == { answer: Redirected (Products.Index {}), rows: [{ name: Text.NonEmpty "name-1", price: Int.NonNegative 1, active: True }] })
+}
+
+test "NewProduct refuses an empty name" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Products.Index {})
+  let r <- Test.submitRaw NewProduct [{ name: "name", value: "" }, { name: "price", value: "1" }]
+  let rows <- Db.from Product |> Db.count
+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: FormRejected [{ field: "name", message: "must not be empty" }], rows: 0 })
+}
+
+-- Fill ?expected with what pressing Toggle must do, so that a test fails when the arm
+-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
+-- changed (`after`, the row read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.
+test "pressing Toggle" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let product1 <- Db.insert Product { name: Text.NonEmpty "name-1", price: Int.NonNegative 1 }
+  let _ <- Test.get (Products.Index {})
+  let r <- Test.click (Toggle { id: product1 })
+  let after <- Db.get Product product1
+  Task.succeed ?expected
+}

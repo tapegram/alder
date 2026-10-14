@@ -1,0 +1,95 @@
+module Auth.Login
+
+import Layout
+import User
+
+-- Password checking is outside the language: a capability implemented in Go, by
+-- adapters/auth/ (`func LoginPassword`, PBKDF2-SHA256), which `alder new auth` wrote (book 15).
+-- `hash` is the text to store in a User's `passwordHash`: a registration or a password
+-- change calls it.
+capability Password {
+  verify : { email: Text.Email, password: Text } -> Task (Maybe User.UserId),
+  hash : Text -> Task Text,
+}
+
+-- In a test, `Test.fake Password` puts this in the adapter's place: it accepts any user who has
+-- a row, whatever the password, so a test can log in through the form below (book 10).
+fake Password {
+  verify args = {
+    let found <- Db.from User |> Db.where (User.email.eq args.email) |> Db.first
+    Task.succeed (Maybe.map (\u -> u.id) found)
+  }
+
+  hash text = Task.succeed text
+}
+
+page "/login" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+form Credentials = {
+  email: Text.Email,
+  password: Text.Secret,
+}
+
+msg Submit form Credentials
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let found <- Password.verify { email: p.form.email, password: p.form.password }
+    match found {
+      Just id -> {
+        let _ <- Session.put (\s -> { s | user: Just id })
+        Task.succeed (Redirect (Teams.Index {}))
+      },
+      Nothing -> Task.succeed (Reject "Email or password is incorrect."),
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Log in">
+    <h1>Log in</h1>
+    <al-card>
+      <form submit={Submit}>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-input field="email" label="Email" />
+        <al-input field="password" label="Password" />
+        <al-button type="submit">Log in</al-button>
+      </form>
+    </al-card>
+    {match session.user {
+      Just _ -> <al-button variant="outline" click={App.Logout}>Log out</al-button>,
+      Nothing -> Html.none,
+    }}
+  </Layout.Page>
+
+-- Logging in through the form, with the fake: an unknown email is rejected with the form's
+-- message, and a known one puts the user in the session and goes to the page ?afterLogin names (fill it, here and in Submit's arm, once the page exists).
+test "an unknown email is rejected" = {
+  let _ <- Test.fake Password
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.submit Credentials { email: Text.Email "nobody@example.com", password: Text.Secret "secret" }
+  Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: FormRejected [{ field: "", message: "Email or password is incorrect." }], user: Nothing })
+}
+
+test "logging in through the form" = {
+  let _ <- Test.fake Password
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.submit Credentials { email: Text.Email "me@example.com", password: Text.Secret "secret" }
+  Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })
+}
+
+test "a signed-in user logs out here" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.click App.Logout
+  Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (Auth.Login {}), user: Nothing })
+}

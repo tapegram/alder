@@ -1,0 +1,28 @@
+module Profile
+
+import Layout
+import Todo
+import User
+
+page "/profile" { } requires user
+
+type Model = { name: Text.NonEmpty, email: Text.Email, total: Int, finished: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get User session.user
+  let total <- Db.mine Todo |> Db.count
+  let finished <- Db.mine Todo |> Db.where (Todo.done.eq True) |> Db.count
+  match found {
+    Just u -> Query.succeed { name: u.name, email: u.email, total: total, finished: finished },
+    Nothing -> Query.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <Layout.Page title="Profile"><h1>Profile</h1></Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Profile {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

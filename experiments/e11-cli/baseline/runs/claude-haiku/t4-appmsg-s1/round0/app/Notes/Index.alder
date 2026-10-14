@@ -1,0 +1,75 @@
+module Notes.Index
+
+import Note
+import Layout
+
+page "/" { } requires user
+
+type Model = {
+  notes: List Note,
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <-
+    Db.mine Note
+      |> Db.orderBy Note.created.desc
+      |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Create form NewNote
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insertMine Note { title: p.form.title, body: p.form.body }
+    Task.succeed (Redirect (Notes.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Notes" theme={session.theme}>
+    <h1>Notes</h1>
+
+    <al-card>
+      <form submit={Create}>
+        <Errors form />
+        <al-input field="title" label="Title" />
+        <al-textarea field="body" label="Body" />
+        <al-button type="submit">Add note</al-button>
+      </form>
+    </al-card>
+
+    <ul id="notes">
+      {for note in model.notes -> <li><a href={Notes.Show { id: note.id }}>{note.title}</a></li>}
+    </ul>
+
+    <p id="count">{Text.fromInt (List.length model.notes)} notes</p>
+  </Layout.Page>
+
+test "the list shows only my notes, newest first" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Old", body: "", owner: me }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Newer", body: "", owner: me }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Not mine", body: "", owner: other }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Notes.Index {})
+  Task.succeed (Test.texts "li a" page.doc == ["Newer", "Old"])
+}
+
+test "a new note is added to the list" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let _ <- Test.submit NewNote { title: Text.NonEmpty "Milk", body: "" }
+  let page <- Test.get (Notes.Index {})
+  Task.succeed (Test.texts "li a" page.doc == ["Milk"])
+}

@@ -1,0 +1,126 @@
+```alder-cli
+alder new page Profile /profile --blank --requires user
+alder fill --decl Profile.Model - <<'EOF'
+{ name: Text.NonEmpty, email: Text.Email, total: Int, finished: Int }
+EOF
+alder fill Profile.load - <<'EOF'
+\params session -> {
+  let found <- Db.get User session.user
+  let total <- Db.mine Todo |> Db.count
+  let finished <- Db.mine Todo |> Db.where (Todo.done.eq True) |> Db.count
+  match found {
+    Just u -> Query.succeed { name: u.name, email: u.email, total: total, finished: finished },
+    Nothing -> Query.notFound,
+  }
+}
+EOF
+alder fill Profile.view - <<'EOF'
+\model session ->
+  <Layout.Page title="Profile">
+    <h1>Profile</h1>
+    <p id="name">{model.name}</p>
+    <p id="email">{model.email}</p>
+    <p id="total">{Text.fromInt model.total}</p>
+    <p id="finished">{Text.fromInt model.finished}</p>
+  </Layout.Page>
+EOF
+alder new form Profile NameForm name:Text.NonEmpty --msg Rename
+alder fill --decl Profile.update - <<'EOF'
+\msg model session -> match msg {
+  Rename p -> {
+    let _ <- Db.update User session.user (\u -> { u | name: p.form.name })
+    Task.succeed (Redirect (Profile {}))
+  },
+}
+EOF
+alder fill --decl Profile.view - <<'EOF'
+\model session ->
+  <Layout.Page title="Profile">
+    <h1>Profile</h1>
+    <p id="name">{model.name}</p>
+    <p id="email">{model.email}</p>
+    <p id="total">{Text.fromInt model.total}</p>
+    <p id="finished">{Text.fromInt model.finished}</p>
+    <al-card>
+      <form submit={Rename}>
+        <Errors form />
+        <al-input field="name" label="Name" value={model.name} />
+        <al-button type="submit">Rename</al-button>
+      </form>
+    </al-card>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+    <a href={Todos.Index {}}>Back to todos</a>
+  </Layout.Page>
+EOF
+alder fill --decl Todos.Index.view - <<'EOF'
+\model session ->
+  <Layout.Page title="Todos">
+    <h1>Todos</h1>
+
+    <al-card>
+      <form submit={Submit}>
+        <al-input field="title" label="What needs doing?" />
+        <al-input field="due" label="Due" />
+        <al-button type="submit">Add</al-button>
+      </form>
+    </al-card>
+
+    <nav>
+      {for f in [All, Active, Completed] ->
+        <a href={Todos.Index { filter: f }} aria-current={if model.filter == f then Just "page" else Nothing}>
+          {Todo.filterLabel f}
+        </a>}
+    </nav>
+
+    <ul id="todos">
+      {for todo in model.todos -> <Item todo={todo} />}
+    </ul>
+
+    <p id="summary">{Text.fromInt (Todo.countOpen model.todos)} open</p>
+
+    <a id="profile" href={Profile {}}>Profile</a>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+EOF
+alder new test Profile "load counts only the signed in user todos"
+alder fill 'Profile."load counts only the signed in user todos"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", done: True, due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Bread", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Eggs", done: True, due: Nothing, owner: other }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Profile {})
+  Task.succeed ({ total: page.model.total, finished: page.model.finished } == { total: 2, finished: 1 })
+}
+EOF
+alder new test Profile "renaming to an empty name is refused"
+alder fill 'Profile."renaming to an empty name is refused"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Profile {})
+  let r <- Test.submitRaw NameForm [{ name: "name", value: "" }]
+  let after <- Db.get User me
+  let refused = match r.answer {
+    FormRejected errs -> List.length errs > 0,
+    _ -> False,
+  }
+  Task.succeed ({ refused: refused, name: Maybe.map (\u -> u.name) after } == { refused: True, name: Just (Text.NonEmpty "Me") })
+}
+EOF
+alder new test Profile "renaming changes the name"
+alder fill 'Profile."renaming changes the name"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Profile {})
+  let r <- Test.submit NameForm { name: Text.NonEmpty "New" }
+  let after <- Db.get User me
+  Task.succeed ({ answer: r.answer, name: Maybe.map (\u -> u.name) after } == { answer: Redirected (Profile {}), name: Just (Text.NonEmpty "New") })
+}
+EOF
+alder check
+alder test
+```

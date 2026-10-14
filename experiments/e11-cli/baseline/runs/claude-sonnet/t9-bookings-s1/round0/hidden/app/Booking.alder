@@ -1,0 +1,42 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+orderText : Text
+orderText = "The end date must be after the start date."
+
+overlapText : Text
+overlapText = "The room is already booked for those dates."
+
+startedText : Text
+startedText = "This booking has already started and cannot be cancelled."
+
+-- A booking holds its from date up to, but not including, its to date.
+overlaps : Date -> Date -> Booking -> Bool
+overlaps start end b = b.from < end && start < b.to
+
+refusal : Date -> Date -> List Booking -> Maybe Text
+refusal start end existing =
+  if end <= start then Just orderText else if List.any (overlaps start end) existing then Just overlapText else Nothing
+
+step : Booking -> Date -> Date
+step b d = if b.from <= d && d < b.to then b.to else d
+
+-- The first date, today or later, that none of the bookings holds.
+nextFree : Date -> List Booking -> Date
+nextFree today bookings =
+  List.foldl step today (List.sortByText (\b -> Date.toText b.from) bookings)
+
+canCancel : Date -> Booking -> Bool
+canCancel today b = today < b.from

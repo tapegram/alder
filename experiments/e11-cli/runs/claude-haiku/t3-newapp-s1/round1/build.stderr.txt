@@ -1,0 +1,10 @@
+app/Admin.alder:84:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
+app/Admin.alder:105:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Posts.alder:65:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
+alder build: the program has 3 typed hole(s); fill them before building

@@ -1,0 +1,25 @@
+module Orders.Index
+
+import Line
+import Order
+import Product
+
+page "/" { } requires user
+
+type Model = { orders: List Row }
+
+type Row = { id: Order.OrderId, status: Order.Status, total: Int }
+
+load : Params -> Session -> Query Model
+load params session = ?load
+
+view : Model -> Session -> Html Msg
+view model session = ?view
+
+imports : Bool
+imports = Order.isOpenName "x" && Line.total [] [] == 0 && Product.isFree 0
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Orders.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

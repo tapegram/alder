@@ -1,0 +1,63 @@
+module Notes.Index
+
+import Note
+import Layout
+import User
+
+page "/" { } requires user
+
+type Model = { notes: List Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <- Db.mine Note |> Db.orderBy Note.created.desc |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Submit form NewNote
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let id <- Db.insertMine Note { title: p.form.title, body: p.form.body }
+    Task.succeed (Redirect (Notes.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Notes" theme={session.theme}>
+    <h1>Notes</h1>
+    <form submit={Submit}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Textarea field="body" label="Body" />
+      <button>Add note</button>
+    </form>
+    <ul id="notes">
+      {for n in model.notes ->
+        <li><a href={Notes.Show { id: n.id }}>{n.title}</a></li>}
+    </ul>
+  </Layout.Page>
+
+test "the newest note is listed first" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Note { title: Text.NonEmpty "First", body: "", owner: me }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Second", body: "", owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Notes.Index {})
+  Task.succeed (Test.texts "li a" page.doc == ["Second", "First"])
+}
+
+test "logging out works from the list" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let out <- Test.click App.Logout
+  Task.succeed ({ answer: out.answer, user: out.session.user } == { answer: Redirected (Auth.Login {}), user: Nothing })
+}

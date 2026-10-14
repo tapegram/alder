@@ -1,0 +1,105 @@
+module Invites.Index
+
+import Invite
+import Member
+import Team
+import User
+import Layout
+
+page "/invites" { } requires user
+
+type Model = { invites: List Invite, teams: List Team }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let me <- Db.get User session.user
+  match me {
+    Nothing -> Query.notFound,
+    Just u -> {
+      let invites <-
+        Db.from Invite
+          |> Db.where (Invite.email.eq u.email)
+          |> Db.where (Invite.status.eq Pending)
+          |> Db.all
+      let teams <- Db.from Team |> Db.where (Team.id.in (List.map (\i -> i.team) invites)) |> Db.all
+      Query.succeed { invites: invites, teams: teams }
+    },
+  }
+}
+
+msg Accept { id: Invite.InviteId }
+msg Decline { id: Invite.InviteId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Accept p -> match List.find (\i -> i.id == p.id) model.invites {
+    Nothing -> Task.notFound,
+    Just inv -> {
+      let _ <- Db.update Invite inv.id (\i -> { i | status: Accepted })
+      let n <- Db.from Member |> Db.where (Member.team.eq inv.team) |> Db.where (Member.user.eq session.user) |> Db.count
+      let team <- Db.get Team inv.team
+      let ownsIt = Maybe.map (\t -> t.owner == session.user) team == Just True
+      let _ <-
+        if n == 0 && not ownsIt
+        then Task.map (\x -> ()) (Db.insert Member { team: inv.team, user: session.user })
+        else Task.succeed ()
+      Task.succeed (Redirect (Teams.Show { id: inv.team }))
+    },
+  },
+  Decline p -> match List.find (\i -> i.id == p.id) model.invites {
+    Nothing -> Task.notFound,
+    Just inv -> {
+      let _ <- Db.update Invite inv.id (\i -> { i | status: Declined })
+      Task.succeed (Redirect (Invites.Index {}))
+    },
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Invites">
+    <h1>Invites</h1>
+    <ul id="invites">
+      {for i in model.invites -> <Item invite={i} teams={model.teams} />}
+    </ul>
+    <p><a href={Teams.Index {}}>Teams</a></p>
+  </Layout.Page>
+
+Item : { invite: Invite, teams: List Team } -> Html Msg
+Item props =
+  <li>
+    {match List.find (\t -> t.id == props.invite.team) props.teams {
+      Just t -> <span class="team">{t.name}</span>,
+      Nothing -> Html.none,
+    }}
+    <button class="accept" click={Accept { id: props.invite.id }}>Accept</button>
+    <button class="decline" click={Decline { id: props.invite.id }}>Decline</button>
+  </li>
+
+test "accepting an invite makes the team visible" = {
+  let a <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let b <- Db.insert User { email: Text.Email "b@example.com", name: Text.NonEmpty "B", passwordHash: "" }
+  let team <- Db.insert Team { name: Text.NonEmpty "T", owner: a }
+  let inv <- Db.insert Invite { team: team, email: Text.Email "b@example.com" }
+  let _ <- Test.login { user: Just b }
+  let _ <- Test.get (Invites.Index {})
+  let r <- Test.click (Accept { id: inv })
+  let teams <- Test.get (Teams.Index {})
+  let show <- Test.open (Teams.Show { id: team })
+  let again <- Test.get (Invites.Index {})
+  Task.succeed ({ answer: r.answer, teams: Test.texts "#teams .name" teams.doc, show: show.answer, waiting: Test.count "#invites li" again.doc } == { answer: Redirected (Teams.Show { id: team }), teams: ["T"], show: Shown, waiting: 0 })
+}
+
+test "declining an invite keeps the team closed" = {
+  let a <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let b <- Db.insert User { email: Text.Email "b@example.com", name: Text.NonEmpty "B", passwordHash: "" }
+  let team <- Db.insert Team { name: Text.NonEmpty "T", owner: a }
+  let inv <- Db.insert Invite { team: team, email: Text.Email "b@example.com" }
+  let _ <- Test.login { user: Just b }
+  let _ <- Test.get (Invites.Index {})
+  let r <- Test.click (Decline { id: inv })
+  let teams <- Test.get (Teams.Index {})
+  let show <- Test.open (Teams.Show { id: team })
+  let again <- Test.get (Invites.Index {})
+  Task.succeed ({ answer: r.answer, teams: Test.count "#teams li" teams.doc, show: show.answer, waiting: Test.count "#invites li" again.doc } == { answer: Redirected (Invites.Index {}), teams: 0, show: PageMissing, waiting: 0 })
+}

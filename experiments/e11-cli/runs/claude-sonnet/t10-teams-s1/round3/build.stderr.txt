@@ -1,0 +1,19 @@
+app/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page
+    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })
+                                                                                      ^^^^^^^^^^^
+app/Invites/Index.alder:96:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Invites/Index.alder:110:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Teams/Index.alder:58:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
+app/Teams/Show.alder:88:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
+app/Teams/Show.alder:110:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+alder build: the program has 6 typed hole(s); fill them before building

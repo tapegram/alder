@@ -1,0 +1,31 @@
+module Home
+
+import Layout
+import Post
+import Slug
+
+page "/" { }
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <- Db.from Post |> Db.where (Post.published.eq True) |> Db.orderBy Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <Layout.Page title="Blog">
+  <h1>Blog</h1>
+  <ul id="posts">
+    {for p in model.posts -> <li><a href={Posts.Show { slug: p.slug }}>{p.title}</a></li>}
+  </ul>
+</Layout.Page>
+
+test "lists only published posts, newest first" = {
+  let _ <- Db.insert Post { title: Text.NonEmpty "First", slug: Slug.Slug "first", body: "a", published: True }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Draft", slug: Slug.Slug "draft", body: "b", published: False }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Second", slug: Slug.Slug "second", body: "c", published: True }
+  let page <- Test.get (Home {})
+  Task.succeed (Test.texts "#posts a" page.doc == ["Second", "First"])
+}

@@ -1,0 +1,31 @@
+app/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page
+    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })
+                                                                                      ^^^^^^^^^^^
+app/Orders/Index.alder:12:23: warning[W0002]: hole ?load has type Query Orders.Index.Model
+  load params session = ?load
+                        ^^^^^
+app/Orders/Index.alder:15:22: warning[W0002]: hole ?view has type Html Orders.Index.Msg
+  view model session = ?view
+                       ^^^^^
+app/Orders/Show.alder:35:12: warning[W0002]: hole ?pay has type Task Nav
+    Pay p -> ?pay,
+             ^^^^
+app/Orders/Show.alder:36:15: warning[W0002]: hole ?cancel has type Task Nav
+    Cancel p -> ?cancel,
+                ^^^^^^^
+app/Orders/Show.alder:37:16: warning[W0002]: hole ?addLine has type Task Nav
+    AddLine p -> ?addLine,
+                 ^^^^^^^^
+app/Orders/Show.alder:48:42: warning[W0002]: hole ?addLineProduct has type Product.ProductId
+      <al-button click={AddLine { product: ?addLineProduct }}>Add line</al-button>
+                                           ^^^^^^^^^^^^^^^
+app/Orders/Show.alder:70:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Orders/Show.alder:85:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Orders/Show.alder:99:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+alder build: the program has 10 typed hole(s); fill them before building

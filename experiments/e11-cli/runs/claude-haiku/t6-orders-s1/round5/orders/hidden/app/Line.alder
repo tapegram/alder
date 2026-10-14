@@ -1,0 +1,53 @@
+module Line
+
+import Order
+import Product
+import User
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+lineCost : List Product -> Line -> Int
+lineCost = \products line -> List.foldl (\p acc -> if p.id == line.product then line.quantity * p.price else acc) 0 products
+
+orderTotal : List Product -> List Line -> Int
+orderTotal = \products lines -> List.foldl (\l acc -> acc + lineCost products l) 0 lines
+
+test "deleting its order deletes a Line" = {
+  let user1 <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let target <- Db.insert Order { owner: user1 }
+  let product1 <- Db.insert Product { name: Text.NonEmpty "name-1", price: Int.NonNegative 1 }
+  let _ <- Db.insert Line { order: target, product: product1, quantity: Int.Positive 1 }
+  let _ <- Db.delete Order target
+  let left <- Db.from Line |> Db.count
+  Task.succeed (left == 0)
+}
+
+test "a Line keeps its product from being deleted" = {
+  let target <- Db.insert Product { name: Text.NonEmpty "name-1", price: Int.NonNegative 1 }
+  let user1 <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let order1 <- Db.insert Order { owner: user1 }
+  let _ <- Db.insert Line { order: order1, product: target, quantity: Int.Positive 1 }
+  let r <- Test.run (Db.delete Product target)
+  let left <- Db.from Line |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, left: left } == { deleted: Nothing, left: 1 })
+}
+
+test "an open order totals its lines" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let mug <- Db.insert Product { name: Text.NonEmpty "Mug", price: Int.NonNegative 1000 }
+  let o <- Db.insert Order { owner: ann }
+  let _ <- Db.insert Line { order: o, product: tea, quantity: Int.Positive 2 }
+  let _ <- Db.insert Line { order: o, product: mug, quantity: Int.Positive 1 }
+  let products <- Db.from Product |> Db.all
+  let lines <- Db.from Line |> Db.all
+  let row <- Db.get Order o
+  Task.succeed ({ total: orderTotal products lines, status: Maybe.map (\x -> x.status) row } == { total: 1500, status: Just Open })
+}

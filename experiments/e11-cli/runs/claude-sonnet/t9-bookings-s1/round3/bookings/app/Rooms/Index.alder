@@ -1,0 +1,31 @@
+module Rooms.Index
+
+import Booking
+import Layout
+import Room
+
+page "/rooms" { } requires user
+
+type Model = { rooms: List { id: Room.RoomId, name: Text, free: Date } }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let rooms <- Db.from Room |> Db.orderBy Room.name.asc |> Db.all
+  let bookings <- Db.from Booking |> Db.all
+  let today <- Date.today
+  Query.succeed { rooms: List.map (\r -> { id: r.id, name: r.name, free: Booking.nextFree today (List.filter (\b -> b.room == r.id) bookings) }) rooms }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <Layout.Page title="Rooms">
+  <h1>Rooms</h1>
+  <ul id="rooms">
+    {for r in model.rooms ->
+      <li><a class="name" href={Rooms.Show { id: r.id }}>{r.name}</a> <span class="free">{Date.toText r.free}</span></li>}
+  </ul>
+</Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Rooms.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

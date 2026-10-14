@@ -1,0 +1,50 @@
+```alder-cli
+# free Orders.Show of references so it can be recreated with a form on AddLine
+alder fill --decl Orders.Index.view - <<'EOF'
+<Layout.Page title="Orders">
+  <h1>Orders</h1>
+  <button click={Create}>New order</button>
+  <ul id="orders">
+    {for o in model.orders ->
+      <li>
+        <a href={Orders.Index {}}>Order</a>
+        <span class="status">{Order.statusText o.status}</span>
+        <span class="total">{Text.fromInt o.total}</span>
+      </li>}
+  </ul>
+</Layout.Page>
+EOF
+alder fill Orders.Index.update.Create - <<'EOF'
+{
+  let _ <- Db.insert Order { owner: session.user }
+  Task.succeed (Redirect (Orders.Index {}))
+}
+EOF
+alder remove page Orders.Show
+alder new page Orders.Show '/orders/{id}' --blank --param id:Order.OrderId --requires user
+alder fill --decl Orders.Show.Model - <<'EOF'
+{ id: Order.OrderId, status: Order.Status, rows: List Line.Row, total: Int, choices: List Line.Choice }
+EOF
+alder fill Orders.Show.load - <<'EOF'
+{
+  let found <- Db.get Order params.id
+  let me <- Db.get User session.user
+  match found {
+    Nothing -> Query.notFound,
+    Just o -> if o.owner == session.user || User.isManager me then {
+      let lines <- Db.from Line |> Db.where (Line.order.eq o.id) |> Db.all
+      let products <- Db.from Product |> Db.all
+      Query.succeed { id: o.id, status: o.status, rows: Line.rows lines products, total: Line.total lines products, choices: Line.choices products }
+    } else Query.notFound,
+  }
+}
+EOF
+alder fill Orders.Show.view - <<'EOF'
+<Layout.Page title="Order">
+  <h1>Order</h1>
+  <p id="status">{Order.statusText model.status}</p>
+  <p id="total">{Text.fromInt model.total}</p>
+</Layout.Page>
+EOF
+alder new form Orders.Show NewLine quantity:Int.Positive --msg AddLine
+```

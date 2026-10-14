@@ -1,0 +1,8 @@
+claude-sonnet t2-newpage-s1: pass (0 (build FAILED) → 0 (build ok) (tests 93/93) → 0 (build FAILED) → 0 (build FAILED) → 0 (build ok) (tests 97/97) errors; mutants 158/160; 18/40 commands, 4 refused)
+claude-sonnet t3-newapp-s1: pass (0 (build ok) (tests 0/0) → 0 (build FAILED) → 0 (build FAILED) → 0 (build ok) (tests 13/14) → 0 (build ok) (tests 14/14) errors; mutants 19/23; 38/93 commands, 4 refused)
+claude-sonnet t4-appmsg-s1: fail (0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) errors; hidden skipped: the final round did not build; 26/163 commands, 6 refused)
+claude-sonnet t5-ownership-s1: fail (0 (build ok) (tests 1/1) → 0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build ok) (tests 11/12) errors; hidden 8/8; 32/87 commands, 5 refused, names ok)
+claude-sonnet t6-orders-s1: fail (0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) errors; hidden skipped: the final round did not build; 51/189 commands, 6 refused, names differ)
+claude-sonnet t7-drafts-s1: pass (0 (build ok) (tests 25/25) → 0 (build FAILED) → 0 (build FAILED) → 0 (build ok) (tests 28/29) → 0 (build ok) (tests 29/29) errors; hidden 7/7; mutants 37/54; 30/54 commands, 4 refused, names ok)
+claude-sonnet t9-bookings-s1: pass (0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build ok) (tests 16/16) errors; hidden 7/7; mutants 27/42; 46/96 commands, 2 refused, names ok)
+claude-sonnet t10-teams-s1: pass (0 (build ok) (tests 4/4) → 0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build ok) (tests 23/23) errors; hidden 8/8; mutants 51/68; 57/149 commands, 3 refused, names ok)

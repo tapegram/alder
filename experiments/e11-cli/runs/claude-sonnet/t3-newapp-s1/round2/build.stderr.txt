@@ -1,0 +1,10 @@
+app/Desk.alder:35:15: warning[W0002]: hole ?toggle has type Task Nav
+    Toggle p -> ?toggle,
+                ^^^^^^^
+app/Desk.alder:95:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Posts/Show.alder:60:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
+alder build: the program has 3 typed hole(s); fill them before building

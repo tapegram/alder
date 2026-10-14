@@ -1,0 +1,8 @@
+{"code": "W0002", "severity": "warning", "file": "app/Auth/Login.alder", "line": 47, "col": 33, "endLine": 47, "endCol": 44, "message": "hole ?afterLogin has type Page"}
+{"code": "W0002", "severity": "warning", "file": "app/Auth/Login.alder", "line": 86, "col": 85, "endLine": 86, "endCol": 96, "message": "hole ?afterLogin has type Page"}
+{"code": "W0002", "severity": "warning", "file": "app/Bookings/Index.alder", "line": 8, "col": 23, "endLine": 8, "endCol": 28, "message": "hole ?load has type Query Bookings.Index.Model"}
+{"code": "W0002", "severity": "warning", "file": "app/Bookings/Index.alder", "line": 11, "col": 22, "endLine": 11, "endCol": 27, "message": "hole ?view has type Html Bookings.Index.Msg"}
+{"code": "W0002", "severity": "warning", "file": "app/Bookings/Show.alder", "line": 12, "col": 23, "endLine": 12, "endCol": 28, "message": "hole ?load has type Query Bookings.Show.Model"}
+{"code": "W0002", "severity": "warning", "file": "app/Bookings/Show.alder", "line": 15, "col": 22, "endLine": 15, "endCol": 27, "message": "hole ?view has type Html Bookings.Show.Msg"}
+{"code": "W0002", "severity": "warning", "file": "app/Rooms/Show.alder", "line": 33, "col": 13, "endLine": 33, "endCol": 18, "message": "hole ?book has type Task Nav"}
+{"code": "W0002", "severity": "warning", "file": "app/Rooms/Show.alder", "line": 64, "col": 29, "endLine": 64, "endCol": 38, "message": "hole ?expected has type Answer"}

@@ -1,0 +1,62 @@
+# the profile page's test of its load: it counts only the signed-in user's todos
+alder new test Profile "load counts only my todos"
+alder fill 'Profile."load counts only my todos"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let other <- Db.insert User { email: Text.Email "email-2@example.com", name: Text.NonEmpty "name-2", passwordHash: "passwordhash-2" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", done: True, due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Bread", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Eggs", due: Nothing, owner: other }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Profile {})
+  Task.succeed ({ total: page.model.total, done: page.model.done } == { total: 2, done: 1 })
+}
+EOF
+
+# the rename test: the hole is the answer the submit gives
+alder fill 'Profile."submitting Rename"' - --hole ?expected <<'EOF'
+Rerendered
+EOF
+
+# the empty-name refusal: the field's own error list shows it, under the name field
+alder fill 'Profile."Rename refuses an empty name"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Profile {})
+  let r <- Test.submitRaw Rename [{ name: "name", value: "" }]
+  let after <- Db.get User me
+  Task.succeed ({ answer: r.answer, name: Maybe.map (\u -> u.name) after } == { answer: FormRejected [{ field: "name", message: "must not be empty" }], name: Just (Text.NonEmpty "name-1") })
+}
+EOF
+
+# the link from the Index page to the profile
+alder fill --decl Todos.Index.view - <<'EOF'
+<Layout.Page title="Todos">
+    <h1>Todos</h1>
+
+    <al-card>
+      <form submit={Submit}>
+        <al-input field="title" label="What needs doing?" />
+        <al-input field="due" label="Due" />
+        <al-button type="submit">Add</al-button>
+      </form>
+    </al-card>
+
+    <nav>
+      {for f in [All, Active, Completed] ->
+        <a href={Todos.Index { filter: f }} aria-current={if model.filter == f then Just "page" else Nothing}>
+          {Todo.filterLabel f}
+        </a>}
+    </nav>
+
+    <ul id="todos">
+      {for todo in model.todos -> <Item todo={todo} />}
+    </ul>
+
+    <p id="summary">{Text.fromInt (Todo.countOpen model.todos)} open</p>
+
+    <a href={Profile {}}>Profile</a>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+EOF

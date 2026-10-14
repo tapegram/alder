@@ -1,0 +1,7 @@
+app/Bookings/Show.alder:72:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Rooms/Show.alder:80:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
+alder build: the program has 2 typed hole(s); fill them before building

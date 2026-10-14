@@ -1,0 +1,107 @@
+module Rooms.Show
+
+import Room
+import Booking
+import User
+import Layout
+
+page "/rooms/{id}" { id: Room.RoomId } requires user
+
+type Model = { room: Room, bookings: List Booking }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Room params.id
+  match found {
+    Just room -> {
+      let bookings <- Db.from Booking |> Db.where (Booking.room.eq params.id) |> Db.orderBy Booking.from.asc |> Db.all
+      Query.succeed { room: room, bookings: bookings }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewBooking = {
+  from: Date,
+  to: Date,
+}
+
+msg Book form NewBooking
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Book p -> {
+    let existing <- Db.from Booking |> Db.where (Booking.room.eq model.room.id) |> Db.all
+    match Booking.refusal p.form.from p.form.to existing {
+      Just why -> Task.succeed (Reject why),
+      Nothing -> {
+        let _ <- Db.insert Booking { room: model.room.id, owner: session.user, from: p.form.from, to: p.form.to }
+        Task.succeed (Redirect (Rooms.Show { id: model.room.id }))
+      },
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.room.name}>
+    <h1 id="name">{model.room.name}</h1>
+    <ul id="bookings">
+      {for b in model.bookings ->
+        <li><span class="from">{Date.toText b.from}</span> <span class="to">{Date.toText b.to}</span></li>}
+    </ul>
+    <form submit={Book}>
+      <Errors form />
+      <al-input field="from" label="From" />
+      <al-input field="to" label="To" />
+      <al-button type="submit">Book</al-button>
+    </form>
+    <a href={Rooms.Index {}}>All rooms</a>
+  </Layout.Page>
+
+test "an overlapping booking is refused and not stored" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 3 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let r <- Test.submit NewBooking { from: Date.addDays 2 today, to: Date.addDays 5 today }
+  let n <- Db.from Booking |> Db.count
+  Task.succeed ({ answer: r.answer, n: n } == { answer: FormRejected [{ field: "", message: Booking.overlapText }], n: 1 })
+}
+
+test "a booking starting on another's to date is stored" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 3 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let r <- Test.submit NewBooking { from: Date.addDays 3 today, to: Date.addDays 5 today }
+  let n <- Db.from Booking |> Db.count
+  Task.succeed ({ answer: r.answer, n: n } == { answer: Redirected (Rooms.Show { id: room }), n: 2 })
+}
+
+test "a booking whose to is not after its from is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let r <- Test.submit NewBooking { from: Date.addDays 2 today, to: Date.addDays 2 today }
+  let n <- Db.from Booking |> Db.count
+  Task.succeed ({ answer: r.answer, n: n } == { answer: FormRejected [{ field: "", message: Booking.orderText }], n: 0 })
+}
+
+test "bookings of different rooms never conflict" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let red <- Db.insert Room { name: Text.NonEmpty "Red" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: blue, owner: me, from: today, to: Date.addDays 3 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: red })
+  let r <- Test.submit NewBooking { from: today, to: Date.addDays 3 today }
+  Task.succeed (r.answer == Redirected (Rooms.Show { id: red }))
+}

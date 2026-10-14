@@ -1,0 +1,7 @@
+# What alder writes, not source: build/ (the server, and alder run's database build/<name>/dev.db)
+# and the SQLite files a server started from this directory keeps here (<name>.db and its
+# -wal and -shm files).
+build/
+*.db
+*.db-wal
+*.db-shm

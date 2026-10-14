@@ -1,0 +1,3 @@
+{"code": "W0002", "severity": "warning", "file": "app/Admin.alder", "line": 84, "col": 29, "endLine": 84, "endCol": 38, "message": "hole ?expected has type Answer"}
+{"code": "W0002", "severity": "warning", "file": "app/Admin.alder", "line": 105, "col": 16, "endLine": 105, "endCol": 25, "message": "hole ?expected has type Bool"}
+{"code": "W0002", "severity": "warning", "file": "app/Posts.alder", "line": 65, "col": 29, "endLine": 65, "endCol": 38, "message": "hole ?expected has type Answer"}

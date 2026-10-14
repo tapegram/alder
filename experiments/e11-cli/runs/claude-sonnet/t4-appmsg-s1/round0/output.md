@@ -1,0 +1,167 @@
+```alder-cli
+# users and login
+alder new table User email:Text.Email@unique name:Text.NonEmpty passwordHash:Text.Secret created:Time@created --no-timestamps
+alder new auth --users User
+alder fill Auth.Login.update --hole ?afterLogin - <<'EOF'
+Notes.Index {}
+EOF
+
+# theme in the session
+alder new type Theme "Theme = Light | Dark"
+alder edit session add-field theme:Theme.Theme=Light
+alder new msg App SwitchTheme
+alder fill --decl App.update - <<'EOF'
+\msg session -> match msg {
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing })
+    Task.succeed (Redirect (Auth.Login {}))
+  },
+  SwitchTheme p -> {
+    let _ <- Session.put (\s -> { s | theme: if s.theme == Dark then Light else Dark })
+    Task.succeed Rerender
+  },
+}
+EOF
+
+# layout with the theme and log out buttons
+alder new decl Layout Shell "{ title: Text, theme: Theme.Theme, children: List (Html a) } -> Html a"
+alder fill --decl Layout.Shell - <<'EOF'
+\props ->
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+    </head>
+    <body class={if props.theme == Dark then Just "dark" else Nothing}>
+      <nav>
+        <button click={App.SwitchTheme}>{if props.theme == Dark then "Switch to light" else "Switch to dark"}</button>
+        <button click={App.Logout}>Log out</button>
+      </nav>
+      <main>{props.children}</main>
+    </body>
+  </html>
+EOF
+
+# login view with the layout
+alder fill --decl Auth.Login.view - <<'EOF'
+\model session ->
+  <Layout.Shell title="Log in" theme={session.theme}>
+    <h1>Log in</h1>
+    <form submit={Submit}>
+      <Errors form />
+      <Input field="email" label="Email" />
+      <Input field="password" label="Password" />
+      <button>Log in</button>
+    </form>
+  </Layout.Shell>
+EOF
+
+# notes
+alder new table Note title:Text.NonEmpty body:Text owner:User.UserId@ref=User@owner
+
+# index page
+alder new page Notes.Index / --blank --requires user
+alder fill --decl Notes.Index.Model - <<'EOF'
+{ notes: List Note }
+EOF
+alder fill Notes.Index.load - <<'EOF'
+\params session -> {
+  let notes <- Db.mine Note |> Db.orderBy Note.created.desc |> Db.all
+  Query.succeed { notes: notes }
+}
+EOF
+alder fill Notes.Index.view - <<'EOF'
+\model session -> <p>notes</p>
+EOF
+alder new form Notes.Index NewNote title:Text.NonEmpty body:Text --msg Create
+alder fill --decl Notes.Index.view - <<'EOF'
+\model session ->
+  <Layout.Shell title="Notes" theme={session.theme}>
+    <h1>Notes</h1>
+    <form submit={Create}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Textarea field="body" label="Body" />
+      <button>Add</button>
+    </form>
+    <ul id="notes">
+      {for n in model.notes -> <li><a href={Notes.Show { id: n.id }}>{n.title}</a></li>}
+    </ul>
+  </Layout.Shell>
+EOF
+alder fill --decl Notes.Index.update - <<'EOF'
+\msg model session -> match msg {
+  Create p -> {
+    let _ <- Db.insertMine Note { title: p.form.title, body: p.form.body }
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+}
+EOF
+
+# show page
+alder new page Notes.Show '/notes/{id}' --blank --requires user --param id:Note.NoteId
+alder fill --decl Notes.Show.Model - <<'EOF'
+{ note: Note }
+EOF
+alder fill Notes.Show.load - <<'EOF'
+\params session -> {
+  let note <- Db.getMine Note params.id
+  Query.succeed { note: note }
+}
+EOF
+alder fill Notes.Show.view - <<'EOF'
+\model session -> <p>note</p>
+EOF
+alder new form Notes.Show EditNote title:Text.NonEmpty body:Text --msg Save
+alder new msg Notes.Show Delete
+alder fill --decl Notes.Show.view - <<'EOF'
+\model session ->
+  <Layout.Shell title={model.note.title} theme={session.theme}>
+    <h1>{model.note.title}</h1>
+    <form submit={Save}>
+      <Errors form />
+      <Input field="title" label="Title" value={model.note.title} />
+      <Textarea field="body" label="Body" value={model.note.body} />
+      <button>Save</button>
+    </form>
+    <button click={Delete}>Delete</button>
+    <a href={Notes.Index {}}>Back</a>
+  </Layout.Shell>
+EOF
+alder fill --decl Notes.Show.update - <<'EOF'
+\msg model session -> match msg {
+  Save p -> {
+    let _ <- Db.updateMine Note model.note.id (\n -> { n | title: p.form.title, body: p.form.body })
+    Task.succeed (Redirect (Notes.Show { id: model.note.id }))
+  },
+  Delete p -> {
+    let _ <- Db.deleteMine Note model.note.id
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+}
+EOF
+
+# tests
+alder new test Notes.Show "a user cannot see another user's note"
+alder fill 'Notes.Show."a user cannot see another user'"'"'s note"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: Text.Secret "hash" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: Text.Secret "hash" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Secret", body: "", owner: me }
+  let _ <- Test.login { user: Just other }
+  let r <- Test.open (Notes.Show { id: id })
+  Task.succeed (r.answer == PageMissing)
+}
+EOF
+alder new test App "the theme flips"
+alder fill 'App."the theme flips"' - <<'EOF'
+{
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.click SwitchTheme
+  let r2 <- Test.click SwitchTheme
+  Task.succeed ({ a: r.session.theme, b: r2.session.theme, cls: Test.attr "class" "body" r.doc } == { a: Dark, b: Light, cls: Just "dark" })
+}
+EOF
+alder fill --list
+alder check
+```

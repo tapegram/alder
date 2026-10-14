@@ -1,0 +1,38 @@
+{
+  "format": "1",
+  "tables": [
+    {
+      "name": "User.User",
+      "id": "id",
+      "created": "created",
+      "updated": "updated",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "email",
+          "type": "Text",
+          "unique": true
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        },
+        {
+          "name": "passwordHash",
+          "type": "Text"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        },
+        {
+          "name": "updated",
+          "type": "Time"
+        }
+      ]
+    }
+  ]
+}

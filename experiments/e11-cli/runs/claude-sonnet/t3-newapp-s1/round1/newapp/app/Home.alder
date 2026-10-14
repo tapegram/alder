@@ -1,0 +1,13 @@
+module Home
+
+import Post
+
+page "/" { }
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = ?load
+
+view : Model -> Session -> Html Msg
+view model session = ?view

@@ -1,0 +1,32 @@
+module Order
+
+import User
+
+type OrderId = brand Text
+
+type Status = Open | Paid | Cancelled
+
+table Order {
+  id: OrderId @id,
+  owner: User.UserId @ref User,
+  created: Time @created,
+  status: Status = Open,
+}
+
+statusText : Status -> Text
+statusText = \s -> match s {
+  Open -> "Open",
+  Paid -> "Paid",
+  Cancelled -> "Cancelled",
+}
+
+isOpenName : Text -> Bool
+isOpenName = \t -> t == "Open"
+
+test "a Order keeps its owner from being deleted" = {
+  let target <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Db.insert Order { owner: target }
+  let r <- Test.run (Db.delete User target)
+  let left <- Db.from Order |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, left: left } == { deleted: Nothing, left: 1 })
+}

@@ -1,0 +1,10 @@
+{"code": "W0002", "severity": "warning", "file": "app/Auth/Login.alder", "line": 86, "col": 85, "endLine": 86, "endCol": 96, "message": "hole ?afterLogin has type Page"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Index.alder", "line": 12, "col": 23, "endLine": 12, "endCol": 28, "message": "hole ?load has type Query Orders.Index.Model"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Index.alder", "line": 15, "col": 22, "endLine": 15, "endCol": 27, "message": "hole ?view has type Html Orders.Index.Msg"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Show.alder", "line": 35, "col": 12, "endLine": 35, "endCol": 16, "message": "hole ?pay has type Task Nav"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Show.alder", "line": 36, "col": 15, "endLine": 36, "endCol": 22, "message": "hole ?cancel has type Task Nav"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Show.alder", "line": 37, "col": 16, "endLine": 37, "endCol": 24, "message": "hole ?addLine has type Task Nav"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Show.alder", "line": 48, "col": 42, "endLine": 48, "endCol": 57, "message": "hole ?addLineProduct has type Product.ProductId"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Show.alder", "line": 70, "col": 16, "endLine": 70, "endCol": 25, "message": "hole ?expected has type Bool"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Show.alder", "line": 85, "col": 16, "endLine": 85, "endCol": 25, "message": "hole ?expected has type Bool"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Show.alder", "line": 99, "col": 16, "endLine": 99, "endCol": 25, "message": "hole ?expected has type Bool"}

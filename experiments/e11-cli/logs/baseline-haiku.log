@@ -1,0 +1,8 @@
+claude-haiku t2-newpage-s1: pass (1 → 0 (build ok) (tests 94/94) errors; mutants 157/161)
+claude-haiku t3-newapp-s1: pass (5 → 0 (build ok) (tests 8/8) errors; mutants 14/26)
+claude-haiku t4-appmsg-s1: pass (2 → 0 (build ok) (tests 11/11) errors; hidden 5/8; mutants 19/22)
+claude-haiku t5-ownership-s1: pass (1 → 0 (build ok) (tests 12/12) errors; hidden 8/8; mutants 17/20)
+claude-haiku t6-orders-s1: pass (0 (build ok) (tests 8/8) errors; hidden 9/9; mutants 18/48)
+claude-haiku t7-drafts-s1: pass (0 (build ok) (tests 30/30) errors; hidden 7/7; mutants 38/55)
+claude-haiku t9-bookings-s1: pass (2 → 0 (build ok) (tests 13/13) errors; hidden 7/7; mutants 24/41)
+claude-haiku t10-teams-s1: pass (1 → 0 (build ok) (tests 14/14) errors; hidden 8/8; mutants 30/55)

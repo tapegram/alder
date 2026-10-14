@@ -1,0 +1,63 @@
+module Orders.Index
+
+import Layout
+import Line
+import Order
+import Product
+import User
+
+page "/" { } requires user
+
+type Model = { orders: List Order, lines: List Line, products: List Product }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let orders <- Db.from Order |> Db.where (Order.owner.eq session.user) |> Db.orderBy Order.created.desc |> Db.all
+  let lines <- Db.from Line |> Db.all
+  let products <- Db.from Product |> Db.all
+  Query.succeed { orders: orders, lines: lines, products: products }
+}
+
+msg Create
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Order { owner: session.user }
+    Task.succeed (Redirect (Orders.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <Layout.Page title="Orders">
+    <h1>Orders</h1>
+    <ul id="orders">
+      {for o in model.orders ->
+        <li>
+          <a href={Orders.Show { id: o.id }}>Open order</a>
+          <span class="status">{Order.statusText o.status}</span>
+          <span class="total">{Text.fromInt (Line.orderTotal model.products (List.filter (\l -> l.order == o.id) model.lines))}</span>
+        </li>}
+    </ul>
+
+    <al-button click={Create}>Create</al-button>
+  </Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Orders.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+-- Fill ?expected with what pressing Create must do, so that a test fails when the arm
+-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
+-- changed (`after`: the page opened again, `after.answer` Shown, or PageMissing when the arm
+-- deleted the page's row, and `after.doc` its HTML), as
+-- `{ answer: r.answer, … } == { answer: Rerendered, … }`.
+test "pressing Create" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Index {})
+  let r <- Test.click Create
+  let after <- Test.open (Orders.Index {})
+  Task.succeed ?expected
+}

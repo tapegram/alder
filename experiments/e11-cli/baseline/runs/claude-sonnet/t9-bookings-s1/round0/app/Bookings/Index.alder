@@ -1,0 +1,53 @@
+module Bookings.Index
+
+import Room
+import Booking
+import User
+import Layout
+
+page "/bookings" { } requires user
+
+type Row = { id: Booking.BookingId, room: Text, from: Date }
+
+type Model = { rows: List Row }
+
+row : List Room -> Booking -> Row
+row rooms b = {
+  let found = List.find (\r -> r.id == b.room) rooms
+  { id: b.id, room: Maybe.withDefault "" (Maybe.map (\r -> Text.trim r.name) found), from: b.from }
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let bookings <- Db.from Booking |> Db.where (Booking.owner.eq session.user) |> Db.orderBy Booking.from.asc |> Db.all
+  let rooms <- Db.from Room |> Db.all
+  Query.succeed { rows: List.map (row rooms) bookings }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="My bookings">
+    <h1>My bookings</h1>
+    <ul id="mine">
+      {for r in model.rows ->
+        <li>
+          <a href={Bookings.Show { id: r.id }}><span class="room">{r.room}</span> <span class="from">{Date.toText r.from}</span></a>
+        </li>}
+    </ul>
+    <nav>
+      <a href={Rooms.Index {}}>Rooms</a>
+      <button click={App.Logout}>Log out</button>
+    </nav>
+  </Layout.Page>
+
+test "my bookings lists only my own" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 1 today }
+  let _ <- Db.insert Booking { room: room, owner: other, from: Date.addDays 4 today, to: Date.addDays 5 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Index {})
+  Task.succeed ({ rooms: Test.texts "#mine .room" page.doc, froms: Test.texts "#mine .from" page.doc } == { rooms: ["Blue"], froms: [Date.toText today] })
+}

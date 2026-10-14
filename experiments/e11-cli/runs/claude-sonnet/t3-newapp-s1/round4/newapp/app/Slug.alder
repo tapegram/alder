@@ -1,0 +1,3 @@
+module Slug
+
+type Slug = brand Text where Text.matches "^[a-z0-9-]+$"

@@ -1,0 +1,2 @@
+{"code": "W0002", "severity": "warning", "file": "app/Bookings/Show.alder", "line": 72, "col": 16, "endLine": 72, "endCol": 25, "message": "hole ?expected has type Bool"}
+{"code": "W0002", "severity": "warning", "file": "app/Rooms/Show.alder", "line": 80, "col": 29, "endLine": 80, "endCol": 38, "message": "hole ?expected has type Answer"}

@@ -1,0 +1,933 @@
+{
+ "model": "claude-haiku",
+ "task": "t4-appmsg",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "hidden": "experiments/e8-hidden/hidden",
+  "condition": "cli",
+  "sample": "s1",
+  "cli": true
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 5,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 2,
+   "codes": {},
+   "rejected": [],
+   "seconds": 115.4,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 33,
+    "executed": 4,
+    "refused": {
+     "kind": "exit1",
+     "line": 7,
+     "text": "alder edit session add-field theme:Theme=Light",
+     "reason": "alder edit session: the declaration the command edits does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 4,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\nalder build: the program has 2 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 1,
+   "files": 7,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 3,
+   "codes": {},
+   "rejected": [],
+   "seconds": 173.0,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 38,
+    "executed": 5,
+    "refused": {
+     "kind": "exit1",
+     "line": 10,
+     "text": "alder new page Notes.Show '/notes/{id}' --param id:Note.NoteId --show Note --requires user",
+     "reason": "alder new page: --param goes with a page of its own or a --blank one: a --list, --show or --from page has its parameters made for it"
+    },
+    "complete": false,
+    "stopped_at": 5,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/App.alder:4:1: warning[W0001]: import `Theme` is unused\n  import Theme\n  ^^^^^^^^^^^^\napp/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\nalder build: the program has 2 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 2,
+   "files": 7,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 1,
+   "codes": {},
+   "rejected": [],
+   "seconds": 209.4,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 25,
+    "executed": 3,
+    "refused": {
+     "kind": "exit1",
+     "line": 10,
+     "text": "alder new msg App ToggleTheme",
+     "reason": "alder new msg: `App` is not a page (it has no `page` declaration): `alder new page App /path` makes one"
+    },
+    "complete": false,
+    "stopped_at": 3,
+    "stdin_lines": 2,
+    "max_body": 1,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": "app/App.alder:4:1: warning[W0001]: import `Theme` is unused\n  import Theme\n  ^^^^^^^^^^^^\n"
+   },
+   "tests": {
+    "passed": 8,
+    "failed": 0,
+    "results": [
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 0.902
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 8.892
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /, user: Just \"ly0Ar4mjh39kQ1M6qbe7\" }",
+      "right": "{ answer: Redirected /, user: Just \"ly0Ar4mjh39kQ1M6qbe7\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Session.put",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.mine Note",
+       "Db.count Note"
+      ],
+      "ms": 1.253
+     },
+     {
+      "module": "Auth.Login",
+      "name": "a signed-in user logs out here",
+      "ok": true,
+      "left": "{ answer: Redirected /login, user: Nothing }",
+      "right": "{ answer: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Auth.Login",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.546
+     },
+     {
+      "module": "Note",
+      "name": "a Note keeps its owner from being deleted",
+      "ok": true,
+      "left": "{ deleted: Nothing, left: 1 }",
+      "right": "{ deleted: Nothing, left: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.run",
+       "Db.delete User",
+       "Db.count Note"
+      ],
+      "ms": 0.455
+     },
+     {
+      "module": "Notes.Index",
+      "name": "the list shows my rows, newest first",
+      "ok": true,
+      "left": "[\"ejnG58QOklL85hupmTpG\", \"i1vwdMyFlY7YME8AwfxS\"]",
+      "right": "[\"ejnG58QOklL85hupmTpG\", \"i1vwdMyFlY7YME8AwfxS\"]",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.mine Note",
+       "Db.count Note"
+      ],
+      "ms": 0.52
+     },
+     {
+      "module": "Notes.Index",
+      "name": "the list has 20 rows a page",
+      "ok": true,
+      "left": "{ first: 20, second: 1, pages: [\"Previous\", \"Page 1 of 2\"] }",
+      "right": "{ first: 20, second: 1, pages: [\"Previous\", \"Page 1 of 2\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert User",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.mine Note",
+       "Db.count Note",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.mine Note",
+       "Db.count Note"
+      ],
+      "ms": 0.909
+     },
+     {
+      "module": "Notes.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Notes.Index"
+      ],
+      "ms": 0.397
+     }
+    ],
+    "exit": 0
+   }
+  },
+  {
+   "n": 3,
+   "files": 7,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 1,
+   "codes": {},
+   "rejected": [],
+   "seconds": 199.5,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 33,
+    "executed": 1,
+    "refused": {
+     "kind": "exit1",
+     "line": 2,
+     "text": "alder new decl Layout Shell \"{ dark: Bool, title: Text, children: List (Html a) } -> Html a\"",
+     "reason": "alder new decl: `Shell` is not a value name: a value is named by a lower-case identifier, such as `waiting`"
+    },
+    "complete": false,
+    "stopped_at": 1,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": "app/App.alder:4:1: warning[W0001]: import `Theme` is unused\n  import Theme\n  ^^^^^^^^^^^^\n"
+   },
+   "tests": {
+    "passed": 8,
+    "failed": 0,
+    "results": [
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 0.559
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 5.872
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /, user: Just \"g3Lq0pOlPXtlHDtgQWx7\" }",
+      "right": "{ answer: Redirected /, user: Just \"g3Lq0pOlPXtlHDtgQWx7\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Session.put",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.mine Note",
+       "Db.count Note"
+      ],
+      "ms": 0.532
+     },
+     {
+      "module": "Auth.Login",
+      "name": "a signed-in user logs out here",
+      "ok": true,
+      "left": "{ answer: Redirected /login, user: Nothing }",
+      "right": "{ answer: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Auth.Login",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.947
+     },
+     {
+      "module": "Note",
+      "name": "a Note keeps its owner from being deleted",
+      "ok": true,
+      "left": "{ deleted: Nothing, left: 1 }",
+      "right": "{ deleted: Nothing, left: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.run",
+       "Db.delete User",
+       "Db.count Note"
+      ],
+      "ms": 0.394
+     },
+     {
+      "module": "Notes.Index",
+      "name": "the list shows my rows, newest first",
+      "ok": true,
+      "left": "[\"ZNfB-v4kK8IH86PRZv2s\", \"JmhuzzuGgpDTdHtaDMwV\"]",
+      "right": "[\"ZNfB-v4kK8IH86PRZv2s\", \"JmhuzzuGgpDTdHtaDMwV\"]",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.mine Note",
+       "Db.count Note"
+      ],
+      "ms": 0.402
+     },
+     {
+      "module": "Notes.Index",
+      "name": "the list has 20 rows a page",
+      "ok": true,
+      "left": "{ first: 20, second: 1, pages: [\"Previous\", \"Page 1 of 2\"] }",
+      "right": "{ first: 20, second: 1, pages: [\"Previous\", \"Page 1 of 2\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert User",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.mine Note",
+       "Db.count Note",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.mine Note",
+       "Db.count Note"
+      ],
+      "ms": 0.858
+     },
+     {
+      "module": "Notes.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Notes.Index"
+      ],
+      "ms": 0.351
+     }
+    ],
+    "exit": 0
+   }
+  },
+  {
+   "n": 4,
+   "files": 7,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 2,
+   "codes": {},
+   "rejected": [],
+   "seconds": 126.8,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 15,
+    "executed": 6,
+    "refused": {
+     "kind": "exit1",
+     "line": 11,
+     "text": "alder fill 'App.\"the theme flips\"' - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 6,
+    "stdin_lines": 3,
+    "max_body": 1,
+    "decl_uses": 2
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/App.alder:4:1: warning[W0001]: import `Theme` is unused\n  import Theme\n  ^^^^^^^^^^^^\napp/App.alder:50:3: warning[W0002]: hole ?test has type Task Bool\n    ?test\n    ^^^^^\nalder build: the program has 1 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 5,
+   "files": 7,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 1,
+   "codes": {},
+   "rejected": [],
+   "seconds": 142.0,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 32,
+    "executed": 4,
+    "refused": {
+     "kind": "exit1",
+     "line": 27,
+     "text": "alder fill --decl Notes.Index.Model - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 4,
+    "stdin_lines": 17,
+    "max_body": 15,
+    "decl_uses": 2
+   },
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": "app/App.alder:4:1: warning[W0001]: import `Theme` is unused\n  import Theme\n  ^^^^^^^^^^^^\n"
+   },
+   "tests": {
+    "passed": 9,
+    "failed": 0,
+    "results": [
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 0.595
+     },
+     {
+      "module": "App",
+      "name": "the theme flips",
+      "ok": true,
+      "left": "{ first: Dark, second: Light }",
+      "right": "{ first: Dark, second: Light }",
+      "trace": [],
+      "ms": 0.336
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 8.234
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /, user: Just \"au7Z8g6KSY7_wMwxKt1v\" }",
+      "right": "{ answer: Redirected /, user: Just \"au7Z8g6KSY7_wMwxKt1v\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Session.put",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.mine Note",
+       "Db.count Note"
+      ],
+      "ms": 0.538
+     },
+     {
+      "module": "Auth.Login",
+      "name": "a signed-in user logs out here",
+      "ok": true,
+      "left": "{ answer: Redirected /login, user: Nothing }",
+      "right": "{ answer: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Auth.Login",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.934
+     },
+     {
+      "module": "Note",
+      "name": "a Note keeps its owner from being deleted",
+      "ok": true,
+      "left": "{ deleted: Nothing, left: 1 }",
+      "right": "{ deleted: Nothing, left: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.run",
+       "Db.delete User",
+       "Db.count Note"
+      ],
+      "ms": 0.372
+     },
+     {
+      "module": "Notes.Index",
+      "name": "the list shows my rows, newest first",
+      "ok": true,
+      "left": "[\"yeJ38BjOrZGz0bh8974O\", \"utgTtK6zx60Cf2DTRPql\"]",
+      "right": "[\"yeJ38BjOrZGz0bh8974O\", \"utgTtK6zx60Cf2DTRPql\"]",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.mine Note",
+       "Db.count Note"
+      ],
+      "ms": 0.401
+     },
+     {
+      "module": "Notes.Index",
+      "name": "the list has 20 rows a page",
+      "ok": true,
+      "left": "{ first: 20, second: 1, pages: [\"Previous\", \"Page 1 of 2\"] }",
+      "right": "{ first: 20, second: 1, pages: [\"Previous\", \"Page 1 of 2\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert User",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.mine Note",
+       "Db.count Note",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.mine Note",
+       "Db.count Note"
+      ],
+      "ms": 0.754
+     },
+     {
+      "module": "Notes.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Notes.Index"
+      ],
+      "ms": 0.372
+     }
+    ],
+    "exit": 0
+   }
+  }
+ ],
+ "final_pass": false,
+ "outcome": "fail",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "haiku",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "cli": {
+  "app_name": "appmsg",
+  "rounds": 6,
+  "complete": false,
+  "stopped_at": {
+   "round": 5,
+   "command": 4,
+   "line": 27,
+   "kind": "exit1"
+  },
+  "commands": 176,
+  "executed": 23,
+  "refused": {
+   "count": 6,
+   "kinds": {
+    "exit1": 6
+   },
+   "items": [
+    {
+     "round": 0,
+     "kind": "exit1",
+     "line": 7,
+     "text": "alder edit session add-field theme:Theme=Light",
+     "reason": "alder edit session: the declaration the command edits does not check (the errors above): nothing was written"
+    },
+    {
+     "round": 1,
+     "kind": "exit1",
+     "line": 10,
+     "text": "alder new page Notes.Show '/notes/{id}' --param id:Note.NoteId --show Note --requires user",
+     "reason": "alder new page: --param goes with a page of its own or a --blank one: a --list, --show or --from page has its parameters made for it"
+    },
+    {
+     "round": 2,
+     "kind": "exit1",
+     "line": 10,
+     "text": "alder new msg App ToggleTheme",
+     "reason": "alder new msg: `App` is not a page (it has no `page` declaration): `alder new page App /path` makes one"
+    },
+    {
+     "round": 3,
+     "kind": "exit1",
+     "line": 2,
+     "text": "alder new decl Layout Shell \"{ dark: Bool, title: Text, children: List (Html a) } -> Html a\"",
+     "reason": "alder new decl: `Shell` is not a value name: a value is named by a lower-case identifier, such as `waiting`"
+    },
+    {
+     "round": 4,
+     "kind": "exit1",
+     "line": 11,
+     "text": "alder fill 'App.\"the theme flips\"' - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    {
+     "round": 5,
+     "kind": "exit1",
+     "line": 27,
+     "text": "alder fill --decl Notes.Index.Model - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    }
+   ]
+  },
+  "stdin_lines": 22,
+  "max_body": 15,
+  "decl_uses": 4,
+  "names": null,
+  "setup": {
+   "argv": [
+    "alder",
+    "new",
+    "appmsg",
+    "--bare"
+   ],
+   "exit": 0,
+   "stdout": "created appmsg/\n  .gitignore\n  adapters/README.md\n  app/App.alder\n  app/Layout.alder\n  go.mod\n  static/app.css\ngo.mod keeps the app out of the Go module of /Users/tavishpegram/projects/alder/experiments/go.mod\n\nnext:\n  cd appmsg\n  alder new table \u2026      # the app's tables (chapter 15)\n  alder new page \u2026       # its pages\n  alder new auth         # a login\n  alder check            # type-check the app\n",
+   "stderr": ""
+  }
+ },
+ "hidden": {
+  "passed": 0,
+  "failed": 8,
+  "reason": "app/Hidden.alder:14:27: error[E0002]: unknown `App.SwitchTheme`",
+  "results": [
+   {
+    "name": "the theme starts light and the list's button switches it to dark",
+    "ok": false,
+    "reason": "app/Hidden.alder:14:27: error[E0002]: unknown `App.SwitchTheme`"
+   },
+   {
+    "name": "the theme stays in the session from page to page",
+    "ok": false,
+    "reason": "app/Hidden.alder:14:27: error[E0002]: unknown `App.SwitchTheme`"
+   },
+   {
+    "name": "a note's page switches the theme there and back",
+    "ok": false,
+    "reason": "app/Hidden.alder:14:27: error[E0002]: unknown `App.SwitchTheme`"
+   },
+   {
+    "name": "a visitor switches the theme on the login page",
+    "ok": false,
+    "reason": "app/Hidden.alder:14:27: error[E0002]: unknown `App.SwitchTheme`"
+   },
+   {
+    "name": "logging out from the list",
+    "ok": false,
+    "reason": "app/Hidden.alder:14:27: error[E0002]: unknown `App.SwitchTheme`"
+   },
+   {
+    "name": "logging out from a note's page",
+    "ok": false,
+    "reason": "app/Hidden.alder:14:27: error[E0002]: unknown `App.SwitchTheme`"
+   },
+   {
+    "name": "another user's note is missing",
+    "ok": false,
+    "reason": "app/Hidden.alder:14:27: error[E0002]: unknown `App.SwitchTheme`"
+   },
+   {
+    "name": "a note is added on the list and edited on its page",
+    "ok": false,
+    "reason": "app/Hidden.alder:14:27: error[E0002]: unknown `App.SwitchTheme`"
+   }
+  ],
+  "exit": null,
+  "check": {
+   "exit": 1,
+   "codes": {
+    "E0002": 14
+   }
+  }
+ },
+ "hidden_pass": "0/8"
+}

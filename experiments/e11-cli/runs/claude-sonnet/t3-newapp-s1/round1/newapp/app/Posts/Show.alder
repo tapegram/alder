@@ -1,0 +1,13 @@
+module Posts.Show
+
+import Slug
+
+page "/posts/{slug}" { slug: Slug.Slug }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = ?load
+
+view : Model -> Session -> Html Msg
+view model session = ?view

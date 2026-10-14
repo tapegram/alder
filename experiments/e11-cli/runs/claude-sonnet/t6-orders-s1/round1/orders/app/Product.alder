@@ -1,0 +1,13 @@
+module Product
+
+type ProductId = brand Text
+
+table Product {
+  id: ProductId @id,
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+  active: Bool = True,
+}
+
+isFree : Int -> Bool
+isFree = \n -> n == 0
