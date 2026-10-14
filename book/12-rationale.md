@@ -657,6 +657,62 @@ value outside them is a field error. Computing them again requires that
 `options` depend only on the model and the session, which is the one
 rule the checker adds to it.
 
+### Links are boosted by default; the server still renders every page **(decided M13; tested: router and dev-server tests, both examples unchanged)**
+
+Before M13, every click on a link in an Alder app was a full page load,
+and so was nearly every message: most `update`s answer `Redirect`, which
+Datastar carried out with `window.location.assign`. Between two pages the
+browser painted a blank frame, white even in dark mode, while it fetched
+and revalidated the stylesheet. The app worked; it did not feel like
+one.
+
+The usual cure is a client-side app: a router in the browser, state kept
+there, pages drawn from JSON. Alder rejects that cure for the same
+reasons it renders on the server at all (chapter 1): one place where a
+page is computed, no second copy of the model in JavaScript, nothing an
+agent must keep in sync. M13 takes the smaller step that htmx calls
+`hx-boost` and Turbo calls Drive: the server still renders each page,
+whole, exactly as a page load would get it; the browser only changes how
+it applies the answer. A link becomes a Datastar `GET`, the answer is the
+page's `<body>` morphed into the current one plus its `<title>` and a
+history entry (chapter 6, "Links and navigation"), and a `Redirect` to a
+page of the app is answered with that page in the same response.
+
+**By default, not opt-in.** An opt-in attribute would be one more thing
+to remember on every link, and an agent writing pages would forget it,
+so the slow path would be the common one. Boosting changes nothing an
+app's code can observe: the page's handler runs the same way, its HTML
+is the same, the URL in the address bar is the same, and every test
+answer is the same (both examples' suites pass unchanged). What would
+make a boost wrong, a page that needs its own `<head>` or a link that
+must reload, is rare, and it has a one-attribute way out,
+`data-alder-reload`. Links to other sites, new tabs, downloads and
+modifier-key clicks are left to the browser, because there the browser's
+own behaviour is what the user asked for.
+
+**In the runtime, not in the language.** Nothing in Alder's syntax or
+types changed: a link is still `<a href={Page {…}}>`, and `Redirect`
+still names a page. The boost is a `<meta>` the router adds to every
+page, with Datastar attributes that listen on `window`; it lives in the
+`<head>`, which a morph never touches, so it survives every navigation.
+Datastar could express it, so Alder ships no script of its own for it.
+
+**The flash, three ways.** The morph removes the blank frame for every
+boosted click. For the loads that remain (the first page, a reload, an
+opted-out link), the router adds `<meta name="color-scheme" content="light
+dark">`, so the browser paints its first frame in the OS's scheme;
+`alder-ui` v0.1.3 opts pages into cross-document view transitions, so a
+load cross-fades where the browser supports them; and the stylesheet is
+cached for five minutes instead of revalidated on every load (chapter 11),
+so a load does not wait for the network before it paints.
+
+**What it costs.** A real browser now runs more of the app's navigation,
+and the in-memory test browser of chapter 10 models it rather than runs
+it: the boost's click handler is checked by reading its source, and its
+behaviour in a browser is left to a smoke suite with a real browser
+(M7b). A page whose script expects a fresh `window` on every page will
+see the old one: write `data-alder-reload` on the links to it.
+
 ## Experiments
 
 Each experiment has a directory under `experiments/` with its prompt,

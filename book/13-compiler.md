@@ -890,8 +890,11 @@ packages the generated code imports. There are seven.
   the outside.
 - **`rt/datastar`** (`rt/datastar/datastar.go`) serves the Datastar
   script, which is built into the binary, and writes the server-sent
-  events Alder answers with: `PatchBody`, which replaces the `<body>`, and
-  `Navigate`, which sends the browser to another URL.
+  events Alder answers with: `PatchBody`, which replaces the `<body>`;
+  `PatchTitle`, which replaces the `<title>`; and `Navigate`, which either
+  sends the browser to another URL or records a URL in its history. It
+  also holds the *boost* (`BoostTag`), the attributes that turn a click
+  on a link into a Datastar request.
 
 The generated program is small because the runtime is the library. All of
 `examples/todos` emits about 1,440 lines of Go across ten files, plus the
@@ -1468,12 +1471,126 @@ names no row, or another user's, `Db.updateMine` ends in `Task.notFound`, and un
 Datastar the 404 page's body arrives the same way as a re-render, as a 200
 event.
 
-A `Redirect` under Datastar is not a 303 either: `write` sends a 200 event
-from `datastar.Navigate` that appends a self-removing script calling
-`window.location.assign` with the URL, because the client's `fetch` would
-follow a 303 itself and leave the address bar behind. Clicking "Log out"
-on `/?filter=Active` (an App message whose `update` answers
-`Redirect (Auth.Login {})`) answers
+A `Redirect` under Datastar is not a 303 either, because the client's
+`fetch` would follow a 303 itself and leave the address bar behind. The
+next two parts, "A boosted link" and "A redirect, followed", show what
+the router sends instead: for a page of this app, the page itself.
+
+**A boosted link.** Every page the router writes whole carries, right
+after `<head>`, three tags (`HeadTags` in `rt/web/router.go`): the
+`color-scheme` meta, the Datastar script, and `datastar.BoostTag()`:
+
+```html
+<meta name="alder-boost" content="links"
+  data-init="window._alderAt = location.pathname + location.search"
+  data-on:click__window="…"
+  data-on:popstate__window="…" />
+```
+
+(shown on several lines; the quotes inside the attributes are escaped as
+`&#39;` in the real page). Datastar reads `data-*` attributes on every
+element of the document, the `<head>` included. `data-on:click__window`
+is a click listener on `window`, the outermost target, so it sees every
+click on the page after the page's own handlers have had theirs; and it
+is on an element in the `<head>`, which a body patch never touches, so
+the listener outlives every morph. Its expression, `datastar.BoostClick`,
+is plain JavaScript that Datastar compiles into a function (it rewrites
+`@get(` into a call of its `get` action, and `$name` into a signal, so the
+expression uses no `$`):
+
+```js
+if (evt.defaultPrevented || evt.button !== 0 || evt.metaKey || evt.ctrlKey || evt.shiftKey || evt.altKey) return;
+const a = evt.target.closest ? evt.target.closest('a[href]') : null;
+if (!a || a.hasAttribute('target') || a.hasAttribute('download') || a.hasAttribute('data-alder-reload')) return;
+const u = new URL(a.getAttribute('href'), document.baseURI);
+if (u.origin !== location.origin || (u.protocol !== 'http:' && u.protocol !== 'https:') || u.hash) return;
+evt.preventDefault();
+history.scrollRestoration = 'manual';
+history.replaceState({alderY: scrollY}, '');
+@get(u.pathname + u.search, {payload: {}})
+```
+
+Each `return` is one of chapter 6's exceptions, left to the browser. A
+click that gets past them is cancelled (`preventDefault`), the scroll
+position is saved in the state of the history entry being left, and
+Datastar sends `GET /posts/42?datastar=%7B%7D` with
+`Datastar-Request: true`. (Datastar always adds the page's signals to a
+`GET` as the parameter `datastar`; `payload: {}` makes them `{}`, and the
+router drops the parameter before it matches the route, so a page's
+parameters never see it.)
+
+`ServeHTTP` sees a Datastar `GET` and marks it as a navigation: the URL to
+record is the request's, and the mode is *push*. The route runs as for any
+`GET`, and `write`, finding a navigation, calls `morph` instead of writing
+a document. The blog's home page, boosted, answers
+
+```
+HTTP/1.1 200 OK
+Cache-Control: no-cache
+Content-Type: text/event-stream
+
+event: datastar-patch-elements
+data: selector body
+data: mode outer
+data: elements <body><al-page><header><a href="/">Blog</a></header><main><h1>Blog</h1>…</main></al-page></body>
+
+event: datastar-patch-elements
+data: selector head > title
+data: mode outer
+data: elements <title>Blog</title>
+
+event: datastar-patch-elements
+data: selector body
+data: mode append
+data: elements <script data-effect="el.remove()">(function(){history.pushState(null,"","/");window._alderAt=location.pathname+location.search;document.body.tabIndex=-1;document.body.focus({preventScroll:true});var h=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));h?h.scrollIntoView():scrollTo(0,0)})()</script>
+
+```
+
+Datastar applies the three events in order. The first morphs the body.
+The second replaces the `<title>`; its selector is `head > title`, so an
+SVG's `<title>` in the body is left alone (`titleOf` cuts the title out of
+the rendered page, and a page without one gets no title event). The third
+is `datastar.Navigate` in mode `Push`: a script appended to the body,
+which Datastar runs and which removes itself. It records the URL
+(`history.pushState`: the address bar changes, nothing loads), notes the
+path the page now shows in `window._alderAt`, makes the `<body>`
+focusable (`tabindex="-1"`) and focuses it, so keyboard and screen reader
+users start at the top of the new page, then scrolls to the top (or to
+the element a `#fragment` in the URL names). A 404 or 500 is answered with
+the same three events and the status in `Alder-Status`, as for a message.
+
+Back and Forward fire `popstate` on `window`. The boost's
+`data-on:popstate__window`, `datastar.BoostPopstate`, asks for the page
+again unless only the fragment changed:
+
+```js
+if (location.pathname + location.search !== window._alderAt) @get(location.pathname + location.search, {payload: {}, headers: {'Alder-History': 'replace'}})
+```
+
+The header `Alder-History: replace` makes the mode *replace*: the
+history entry exists already, so the script calls `history.replaceState`
+instead, and scrolls to the `alderY` the click saved in that entry
+(`history.scrollRestoration` is `manual`, so the browser does not scroll
+by itself before the page has come back).
+
+**A redirect, followed.** A `Redirect` under Datastar to a page of this
+app is followed by the router itself. `write` sees a 303 with
+`rq.Datastar` set and a Location that `followable` accepts (a path
+starting with `/`, not `//`, not the Datastar script, not a file under
+`/static/`), stores the session as for any 303, and calls `follow`.
+`follow` clones the request into a `GET` of the Location (no body, no
+form) and serves it through the same `serve` the router runs for a
+request from outside, with two differences: the request's session is the
+one the redirect just stored (the browser does not have the new cookie
+yet; it arrives with this answer), and the navigation to record is the
+Location, in mode push. The target's handler runs, `Options.Served` sees
+it (so a test's browser gets the target's model), and `write` answers
+with the target's morph. If the target redirects in turn, `follow`
+follows again; a GET that redirects when ten GETs of the chain are
+already behind it is a 500, logged for the request the browser sent
+(`more than 10 redirects in a row (the last to …)`), as the test browser
+counts them. Clicking "Log out" on `/?filter=Active` (an App message
+whose `update` answers `Redirect (Auth.Login {})`) answers
 
 ```
 HTTP/1.1 200 OK
@@ -1483,18 +1600,32 @@ Set-Cookie: alder_session=…; Path=/; Expires=…; Max-Age=2592000; HttpOnly; S
 
 event: datastar-patch-elements
 data: selector body
+data: mode outer
+data: elements <body>…the login page's body…</body>
+
+event: datastar-patch-elements
+data: selector head > title
+data: mode outer
+data: elements <title>Log in</title>
+
+event: datastar-patch-elements
+data: selector body
 data: mode append
-data: elements <script data-effect="el.remove()">window.location.assign("/login")</script>
+data: elements <script data-effect="el.remove()">(function(){history.pushState(null,"","/login");…})()</script>
 
 ```
+
+A Location that is not followable, another site's or `#`, is answered as
+before M13, with `datastar.Navigate` in mode `Assign`: one event whose
+script calls `window.location.assign` with the URL, a real navigation.
 
 `TestE2E_Todos` in `internal/gen/e2e_test.go` runs this whole scenario
 against the generated app on every `go test ./...`. Its program,
 `internal/gen/testdata/e2e_todos_test.go.txt`, checks that a Datastar
 answer starts with exactly
 `event: datastar-patch-elements\ndata: selector body\ndata: mode outer\ndata: elements <body>`
-and ends with `</body>\n\n`, that a `Redirect` under Datastar is exactly
-the navigation event above, that a `Toggle` sent without JavaScript from
+and ends with `</body>\n\n`, that a `Redirect` under Datastar is the
+target's body followed by the push of its URL, that a `Toggle` sent without JavaScript from
 `/?filter=Completed` is a 303 back to that filter, and that another user
 posting the messages with a@b.c's id gets 404 every time.
 
@@ -3261,9 +3392,14 @@ that sent it). `router.ServeHTTP` writes the answer into an
 - `404` and `500`: `PageMissing` and `RequestFailed`, holding the page served.
 - A Datastar answer (`text/event-stream`) is a list of events. A
   `datastar-patch-elements` event whose selector is `body` replaces the
-  held `<body>` with the one it carries; an event that runs
+  held `<body>` with the one it carries, and one whose selector is
+  `head > title` the held `<title>`; an event that runs
   `window.location.assign(…)`, Datastar's way of navigating, is followed
-  with a `GET`, as above. After a patch, the router's `Alder-Status`
+  with a `GET`, as above. An event that runs `history.pushState` (the
+  router followed a redirect itself, "A redirect, followed") makes its
+  URL the held page's address, and the answer is what the `GET` of it
+  would have given: `Redirected` with that page, or `PageMissing` or
+  `RequestFailed` by `Alder-Status`. After a patch, the router's `Alder-Status`
   header (set on a Datastar answer that is a 404 or a 500, which is
   otherwise a `200` patch like any other) gives `PageMissing` or `RequestFailed`;
   then a `<ul class="errors" data-errors="…">` with items in the page
@@ -3736,13 +3872,20 @@ before reloading the browser). The router (`serveStatic` in
 `rt/web/router.go`) answers `/static/al/al.css` and
 `/static/al/custom-elements.json` from the runtime's own embedded copy
 (`rt/al/al.go`, package `al`, which embeds the two files again so the
-written runtime has them) with `Cache-Control: no-cache` and a strong
-`ETag`, a SHA-256 of the bytes computed once; `http.ServeContent` answers
-a matching `If-None-Match` with `304 Not Modified`. An immutable header
-would be wrong there: the address stays `/static/al/al.css` across
+written runtime has them) with `web.DesignSystemCache`,
+`Cache-Control: public, max-age=300, stale-while-revalidate=86400`, and a
+strong `ETag`, a SHA-256 of the bytes computed once; `http.ServeContent`
+answers a matching `If-None-Match` with `304 Not Modified`. An immutable
+header would be wrong there: the address stays `/static/al/al.css` across
 compiler upgrades, so a browser would keep an old stylesheet for a year.
-The Datastar script can be immutable because its address,
-`datastar.ScriptPath`, carries `datastar.Version`.
+`no-cache`, what Alder sent before M13, made every page load wait for a
+round trip to revalidate the stylesheet before it could paint: in dark
+mode, a white frame. The five minutes of `max-age` let a load paint from
+the cache at once; after them, `stale-while-revalidate` lets the browser
+use its copy for up to a day while it revalidates in the background.
+The price is that for up to five minutes after an upgrade a browser may
+show the old stylesheet. The Datastar script can be immutable because its
+address, `datastar.ScriptPath`, carries `datastar.Version`.
 
 It refreshes rather than adds. It first walks `dst/rt/` and deletes every
 file the embedded copy does not have (and the directories that leaves

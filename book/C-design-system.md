@@ -48,10 +48,14 @@ server `alder build` makes, and the one `alder run` starts, serve them at
 copy them into your `static/` directory; Alder writes them, from the
 copy inside the compiler (a file of yours at `static/al/al.css` would be
 replaced). Their address stays the same when you upgrade Alder, so they
-are not cached for good: both are served with `Cache-Control: no-cache`
-and an `ETag`, a hash of their content. The browser keeps its copy but
-asks each time whether it is still current, and the server answers `304
-Not Modified` (no body) until a new compiler ships a new stylesheet.
+are not cached for good: both are served with
+`Cache-Control: public, max-age=300, stale-while-revalidate=86400` and an
+`ETag`, a hash of their content. The browser uses its copy for five
+minutes without asking, then keeps using it (for up to a day) while it
+asks in the background whether it is still current, and the server
+answers `304 Not Modified` (no body) until a new compiler ships a new
+stylesheet. Not asking before every page is what keeps a page load from
+waiting on the network before it paints (chapter 11 has the trade).
 Datastar's script is different: its address carries its version
 (`/_alder/datastar-v1.0.0.js`), so it is cached for a year without
 asking.
@@ -122,6 +126,35 @@ of the page: a dark card on a light page is
 `<al-card data-theme="dark">`. `data-theme` is an ordinary `data-`
 attribute, so the checker accepts it anywhere.
 
+### Between pages: no white flash
+
+In the dark theme, a page load used to show a white frame: the browser
+paints a blank page before the stylesheet has said the page is dark.
+Three things stop it, two of them Alder's and one the library's:
+
+- **The `color-scheme` meta.** The router puts
+  `<meta name="color-scheme" content="light dark" />` at the top of every
+  page's `<head>` (chapter 6), so the browser knows before any CSS
+  arrives that the page has a dark theme, and paints its first frame and
+  its blank canvas dark when the operating system is dark.
+- **Boosted links.** A click on a link of your app does not load a page
+  at all: the new `<body>` is morphed into the old one, and the `<head>`
+  and its stylesheet stay (chapter 6, "Links and navigation").
+- **View transitions.** Since v0.1.3 the library's `tokens.css` has
+
+  ```css
+  @view-transition {
+    navigation: auto;
+  }
+  ```
+
+  which opts every page into *cross-document view transitions*: when the
+  browser does load another page of the same site (the first visit, a
+  reload, a link with `data-alder-reload`), it shows the old page until
+  the new one is ready and cross-fades between them, instead of a blank
+  frame. Chrome and Edge (126 and later) and Safari (18.2 and later)
+  support it; other browsers ignore the rule, and load pages as before.
+
 ### Changing a token
 
 To change a token, set it in your own stylesheet:
@@ -157,7 +190,8 @@ CSS in a layer declared after it (`@layer al, app;`).
 ### Browser support
 
 The library uses only widely available CSS: custom properties, cascade
-layers, `color-mix()` and `:has()`. The last is the newest (Chrome and
+layers, `color-mix()` and `:has()` (and `@view-transition`, above, which
+a browser without it ignores). The last is the newest (Chrome and
 Edge 105, Safari 15.4, Firefox 121, all from 2023). It is what lets
 `<al-button>` hand its look to the `<button>` inside it; in an older
 browser that button shows its own border inside the element's.

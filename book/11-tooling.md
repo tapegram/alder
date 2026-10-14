@@ -284,12 +284,18 @@ part of `dir` once it is made absolute (so `alder build .` inside
    copy of `<dir>/static/`. Into that copy it writes `al/al.css` and
    `al/custom-elements.json`, the `alder-ui` design system's stylesheet and
    manifest (Appendix C), from the copy the binary carries; the server
-   then serves them at `/static/al/…` with `Cache-Control: no-cache` and
-   an `ETag` (a hash of the content): their address never changes, so the
-   browser asks each time and gets a `304 Not Modified` until a new
-   compiler ships new files. Datastar's script, whose address carries its
-   version, is the one file cached for good; the app's own files get no
-   cache header.
+   then serves them at `/static/al/…` with
+   `Cache-Control: public, max-age=300, stale-while-revalidate=86400` and
+   an `ETag` (a hash of the content). Their address carries no version
+   (it is `/static/al/al.css` whatever the compiler), so they cannot be
+   cached for good: a browser uses its copy for five minutes without
+   asking, then for up to a day more while it asks again in the
+   background, and the server answers `304 Not Modified` until a new
+   compiler ships new files. So for up to five minutes after you deploy a
+   new compiler, a browser may show the previous stylesheet; in exchange a
+   page load never waits on the network to paint. Datastar's script,
+   whose address carries its version, is the one file cached for good;
+   the app's own files get no cache header.
 4. Write `build/<app>/cmd/main.go`, the program's `main`, which imports
    `"app/caps"` when the app has capabilities.
 5. Run `go vet` on the whole module, then `go build`, which writes
