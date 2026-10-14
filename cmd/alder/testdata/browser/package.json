@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "The browser smoke test's dependency (cmd/alder/browser_test.go installs it into a cache directory).",
+  "dependencies": {
+    "playwright": "1.64.0"
+  }
+}

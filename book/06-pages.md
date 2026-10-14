@@ -870,16 +870,20 @@ request it does these things, in order:
 6. The route's handler runs, and its answer is written.
 
 A Go panic anywhere in the request becomes a 500 page rendered with
-`App.error`. The router also puts three tags right after the `<head>` of
-every page it writes (on a page without `<head>`, right after `<html>`;
-without that, before `</body>`), so your layout stays plain Alder:
+`App.error`. The router also adds three tags to the `<head>` of every
+page it writes, so your layout stays plain Alder. Right after `<head>`:
 `<meta name="color-scheme" content="light dark" />`, which tells the
 browser the page has a light and a dark theme, so even its first frame,
-painted before the stylesheet arrives, is dark in dark mode; the Datastar
-script tag,
-`<script type="module" src="/_alder/datastar-v1.0.0.js"></script>`; and
-the *boost*, a `<meta name="alder-boost">` whose attributes make the links
-of the page work without reloading it ("Links and navigation", below).
+painted before the stylesheet arrives, is dark in dark mode; and the
+Datastar script tag,
+`<script type="module" src="/_alder/datastar-v1.0.0.js"></script>`. Just
+before `</head>`: the *boost*, a `<meta name="alder-boost">` whose
+attributes make the links of the page work without reloading it ("Links
+and navigation", below). The boost is about a kilobyte, so it goes last:
+a `<meta charset>` at the top of your `<head>` stays within the first
+1024 bytes of the page, where the browser looks for it. On a page without
+`<head>`, all three go where the browser still reads them as the head:
+right after `<html>`, or else before `<body>`.
 
 ### One handler per message
 
@@ -1075,7 +1079,7 @@ data: elements <title>Log in</title>
 event: datastar-patch-elements
 data: selector body
 data: mode append
-data: elements <script data-effect="el.remove()">(function(){history.pushState(null,"","/login");…})()</script>
+data: elements <script data-effect="el.remove()">(function(){var u="/login";…history.pushState(null,"",u);…})()</script>
 
 ```
 
@@ -1201,8 +1205,15 @@ The `<head>` is never replaced, so the stylesheet is not loaded again and
 the page does not go blank in between: no white flash between two dark
 pages. Back and Forward work as usual. The boost listens for them too
 (the browser's `popstate` event): it asks for the page of the URL the
-browser went back to, and the answer replaces the history entry instead
-of adding one, and scrolls to where you were on that page.
+browser went back or forward to, and the answer replaces the history
+entry instead of adding one, and scrolls to where you were on that page.
+(The boost keeps each entry's scroll position in the entry's history
+state as you scroll, so both directions find it.)
+
+While a boosted page is on its way, the old page stays as it is: nothing
+says a click is pending, and if the server is down Datastar retries the
+request quietly instead of showing an error. A loading indicator is for
+a later version (M7b).
 
 The answer to a link whose page fails is the same three events with the
 `App.notFound` or `App.error` page as the body, and the status in the
@@ -1215,7 +1226,9 @@ The boost leaves these clicks to the browser:
 
 - a link to another site, or to a URL that is not `http:` or `https:`
   (`mailto:`, `tel:`);
-- a link with a `#fragment` (a jump within a page);
+- a link to a `#fragment` of the page you are on (a jump within the
+  page); a fragment of another page is boosted like any link, and the
+  browser then scrolls to it;
 - a link with a `target` (`target="_blank"` opens a new tab) or a
   `download` attribute;
 - a click with Ctrl, Cmd, Shift or Alt held (open in a new tab or

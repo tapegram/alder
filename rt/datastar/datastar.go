@@ -90,7 +90,10 @@ const HistoryHeader = "Alder-History"
 // site. Push and Replace follow a body patch of the page at url (the boosted navigation): Push
 // calls history.pushState and scrolls to the top (or to the element the URL's fragment names);
 // Replace calls history.replaceState and scrolls to where the entry was left (alderY, which the
-// boost's click handler records in the state of the entry it leaves). Both then make <body>
+// boost keeps in each entry's state as the page scrolls: BoostScroll). A url without a fragment
+// keeps the one the browser asked for, since the server never sees it: Push the clicked link's
+// (window._alderHash, set by BoostClick), Replace the current location's; that is also what a
+// browser does when a redirect's Location has no fragment. Both then make <body>
 // focusable (tabindex -1) and focus it, so a screen reader starts at the new page, and set
 // window._alderAt, the path and query the page shows (the popstate handler compares it, so a
 // fragment-only change refetches nothing).
@@ -109,10 +112,12 @@ func Navigate(w http.ResponseWriter, url string, mode History) error {
 	var js string
 	switch mode {
 	case Push:
-		js = `history.pushState(null,"",` + u + `);` + afterMorph +
+		js = `var u=` + u + `;if(u.indexOf("#")<0&&window._alderHash)u+=window._alderHash;window._alderHash="";` +
+			`history.pushState(null,"",u);` + afterMorph +
 			`var h=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));h?h.scrollIntoView():scrollTo(0,0)`
 	case Replace:
-		js = `history.replaceState(history.state,"",` + u + `);` + afterMorph +
+		js = `var u=` + u + `;if(u.indexOf("#")<0)u+=location.hash;` +
+			`history.replaceState(history.state,"",u);` + afterMorph +
 			`scrollTo(0,history.state&&history.state.alderY||0)`
 	default:
 		js = `window.location.assign(` + u + `)`
@@ -138,7 +143,9 @@ func PatchTitle(w http.ResponseWriter, text string) error {
 }
 
 // BoostClick is the expression of the boost's data-on:click__window attribute (BoostTag): a
-// click on a link of this site — same origin, http(s), no fragment — that nothing else handled
+// click on a link of this site — same origin, http(s), not a #fragment of the page shown (a
+// jump, left to the browser; a fragment of another page is kept in window._alderHash for the
+// push, which adds it to the URL) — that nothing else handled
 // (not defaultPrevented), with the main button and no modifier key, on an <a href> without
 // target, download or data-alder-reload, is run as a Datastar GET of the link's path and query
 // instead of a page load: the scroll position is recorded in the state of the entry being left
@@ -151,11 +158,19 @@ const BoostClick = `if (evt.defaultPrevented || evt.button !== 0 || evt.metaKey 
 	` const a = evt.target.closest ? evt.target.closest('a[href]') : null;` +
 	` if (!a || a.hasAttribute('target') || a.hasAttribute('download') || a.hasAttribute('data-alder-reload')) return;` +
 	` const u = new URL(a.getAttribute('href'), document.baseURI);` +
-	` if (u.origin !== location.origin || (u.protocol !== 'http:' && u.protocol !== 'https:') || u.hash) return;` +
+	` if (u.origin !== location.origin || (u.protocol !== 'http:' && u.protocol !== 'https:')) return;` +
+	` if (u.hash && u.pathname === location.pathname && u.search === location.search) return;` +
 	` evt.preventDefault();` +
+	` window._alderHash = u.hash;` +
 	` history.scrollRestoration = 'manual';` +
 	` history.replaceState({alderY: scrollY}, '');` +
 	` @get(u.pathname + u.search, {payload: {}})`
+
+// BoostScroll is the expression of the boost's data-on:scroll__window__throttle.200ms.trailing
+// attribute: the scroll position, kept in the state of the current history entry (alderY) as
+// the page scrolls (at most every 200 ms, and once after the last scroll), so Back and Forward
+// alike come back to where the entry was left (datastar.Replace).
+const BoostScroll = `history.replaceState(Object.assign({}, history.state, {alderY: scrollY}), '')`
 
 // BoostPopstate is the expression of the boost's data-on:popstate__window attribute: on back
 // or forward to an entry whose path or query differs from the page shown (window._alderAt), a
@@ -179,6 +194,7 @@ func BoostTag() html.Node {
 		html.A("data-init", BoostInit),
 		html.A("data-on:click__window", BoostClick),
 		html.A("data-on:popstate__window", BoostPopstate),
+		html.A("data-on:scroll__window__throttle.200ms.trailing", BoostScroll),
 	})
 }
 

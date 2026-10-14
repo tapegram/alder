@@ -149,11 +149,17 @@ Three things stop it, two of them Alder's and one the library's:
   ```
 
   which opts every page into *cross-document view transitions*: when the
-  browser does load another page of the same site (the first visit, a
-  reload, a link with `data-alder-reload`), it shows the old page until
-  the new one is ready and cross-fades between them, instead of a blank
-  frame. Chrome and Edge (126 and later) and Safari (18.2 and later)
-  support it; other browsers ignore the rule, and load pages as before.
+  browser goes from one document of the site to another of the same
+  origin (a link with `data-alder-reload`, a form that submits with
+  `GET`, Back or Forward to a page that was loaded rather than boosted),
+  it cross-fades from the old page to the new one. A first visit and a
+  reload have no old page of the site to fade from, so they get no
+  transition; for them the `color-scheme` meta is what keeps the first
+  frame dark. (While a new document loads, the browser keeps showing the
+  old one until the new one can paint; that is the browser's paint
+  holding, which happens with or without the rule. The transition is the
+  animation once it has painted.) Chrome and Edge (126 and later) and
+  Safari (18.2 and later) support it; other browsers ignore the rule.
 
 ### Changing a token
 

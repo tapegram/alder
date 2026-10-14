@@ -155,7 +155,8 @@ func TestNavigate_PushReplace(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "event: datastar-patch-elements\ndata: selector body\ndata: mode append\n" +
-		`data: elements <script data-effect="el.remove()">(function(){history.pushState(null,"","/p?a=1\u0026b=\u003c/script\u003e");` +
+		`data: elements <script data-effect="el.remove()">(function(){var u="/p?a=1\u0026b=\u003c/script\u003e";` +
+		`if(u.indexOf("#")<0&&window._alderHash)u+=window._alderHash;window._alderHash="";history.pushState(null,"",u);` +
 		`window._alderAt=location.pathname+location.search;document.body.tabIndex=-1;document.body.focus({preventScroll:true});` +
 		`var h=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));h?h.scrollIntoView():scrollTo(0,0)})()</script>` + "\n\n"
 	if got := rec.Body.String(); got != want {
@@ -165,7 +166,7 @@ func TestNavigate_PushReplace(t *testing.T) {
 	if err := Navigate(rec, "/p", Replace); err != nil {
 		t.Fatal(err)
 	}
-	if got := rec.Body.String(); !strings.Contains(got, `(function(){history.replaceState(history.state,"","/p");window._alderAt=`) ||
+	if got := rec.Body.String(); !strings.Contains(got, `(function(){var u="/p";if(u.indexOf("#")<0)u+=location.hash;history.replaceState(history.state,"",u);window._alderAt=`) ||
 		!strings.HasSuffix(got, `scrollTo(0,history.state&&history.state.alderY||0)})()</script>`+"\n\n") {
 		t.Fatalf("replace %q", got)
 	}

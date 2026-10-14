@@ -718,7 +718,7 @@ func (b *Browser) document(u string, w *httptest.ResponseRecorder) (Answer, erro
 // Datastar script tag the router injected are left out, so it is the page as the view renders it.
 func (b *Browser) hold(u, page string) error {
 	page = strings.TrimPrefix(page, "<!doctype html>\n")
-	page = strings.Replace(page, web.HeadTags(), "", 1)
+	page = web.StripHeadTags(page)
 	doc, err := html.Parse(page)
 	if err != nil {
 		return fmt.Errorf("the page at %s does not parse: %w", u, err)
@@ -878,25 +878,18 @@ func navigation(ev sseEvent) (string, bool) {
 }
 
 // pushOf is the URL of a history step (datastar.Navigate in mode Push or Replace) the router
-// ends a followed redirect's answer with.
+// ends a followed redirect's answer with: the script begins `(function(){var u=<JSON URL>;`.
 func pushOf(ev sseEvent) (string, bool) {
 	if ev.typ != "datastar-patch-elements" || ev.field("mode") != "append" {
 		return "", false
 	}
 	els := ev.field("elements")
-	_, rest, ok := strings.Cut(els, "history.pushState(null,\"\",")
-	if !ok {
-		_, rest, ok = strings.Cut(els, "history.replaceState(history.state,\"\",")
-	}
-	if !ok {
-		return "", false
-	}
-	end := strings.Index(rest, ");")
-	if end < 0 {
+	_, rest, ok := strings.Cut(els, "(function(){var u=")
+	if !ok || !(strings.Contains(rest, "history.pushState(") || strings.Contains(rest, "history.replaceState(")) {
 		return "", false
 	}
 	var u string
-	if json.Unmarshal([]byte(rest[:end]), &u) != nil {
+	if json.NewDecoder(strings.NewReader(rest)).Decode(&u) != nil {
 		return "", false
 	}
 	return u, true

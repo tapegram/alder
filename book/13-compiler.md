@@ -1476,15 +1476,19 @@ A `Redirect` under Datastar is not a 303 either, because the client's
 next two parts, "A boosted link" and "A redirect, followed", show what
 the router sends instead: for a page of this app, the page itself.
 
-**A boosted link.** Every page the router writes whole carries, right
-after `<head>`, three tags (`HeadTags` in `rt/web/router.go`): the
-`color-scheme` meta, the Datastar script, and `datastar.BoostTag()`:
+**A boosted link.** Every page the router writes whole carries three
+tags (`HeadTags` and `withScript` in `rt/web/router.go`): right after
+`<head>`, the `color-scheme` meta and the Datastar script; just before
+`</head>`, `datastar.BoostTag()`, last because it is about a kilobyte and
+would otherwise push a layout's `<meta charset>` out of the first 1024
+bytes, where the browser looks for it:
 
 ```html
 <meta name="alder-boost" content="links"
   data-init="window._alderAt = location.pathname + location.search"
   data-on:click__window="…"
-  data-on:popstate__window="…" />
+  data-on:popstate__window="…"
+  data-on:scroll__window__throttle.200ms.trailing="…" />
 ```
 
 (shown on several lines; the quotes inside the attributes are escaped as
@@ -1503,15 +1507,19 @@ if (evt.defaultPrevented || evt.button !== 0 || evt.metaKey || evt.ctrlKey || ev
 const a = evt.target.closest ? evt.target.closest('a[href]') : null;
 if (!a || a.hasAttribute('target') || a.hasAttribute('download') || a.hasAttribute('data-alder-reload')) return;
 const u = new URL(a.getAttribute('href'), document.baseURI);
-if (u.origin !== location.origin || (u.protocol !== 'http:' && u.protocol !== 'https:') || u.hash) return;
+if (u.origin !== location.origin || (u.protocol !== 'http:' && u.protocol !== 'https:')) return;
+if (u.hash && u.pathname === location.pathname && u.search === location.search) return;
 evt.preventDefault();
+window._alderHash = u.hash;
 history.scrollRestoration = 'manual';
 history.replaceState({alderY: scrollY}, '');
 @get(u.pathname + u.search, {payload: {}})
 ```
 
 Each `return` is one of chapter 6's exceptions, left to the browser. A
-click that gets past them is cancelled (`preventDefault`), the scroll
+click that gets past them is cancelled (`preventDefault`), the link's
+`#fragment`, if any, is kept in `window._alderHash` (a browser never
+sends the fragment to the server, so the push adds it back), the scroll
 position is saved in the state of the history entry being left, and
 Datastar sends `GET /posts/42?datastar=%7B%7D` with
 `Datastar-Request: true`. (Datastar always adds the page's signals to a
@@ -1542,17 +1550,19 @@ data: elements <title>Blog</title>
 event: datastar-patch-elements
 data: selector body
 data: mode append
-data: elements <script data-effect="el.remove()">(function(){history.pushState(null,"","/");window._alderAt=location.pathname+location.search;document.body.tabIndex=-1;document.body.focus({preventScroll:true});var h=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));h?h.scrollIntoView():scrollTo(0,0)})()</script>
+data: elements <script data-effect="el.remove()">(function(){var u="/";if(u.indexOf("#")<0&&window._alderHash)u+=window._alderHash;window._alderHash="";history.pushState(null,"",u);window._alderAt=location.pathname+location.search;document.body.tabIndex=-1;document.body.focus({preventScroll:true});var h=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));h?h.scrollIntoView():scrollTo(0,0)})()</script>
 
 ```
 
 Datastar applies the three events in order. The first morphs the body.
 The second replaces the `<title>`; its selector is `head > title`, so an
 SVG's `<title>` in the body is left alone (`titleOf` cuts the title out of
-the rendered page, and a page without one gets no title event). The third
-is `datastar.Navigate` in mode `Push`: a script appended to the body,
-which Datastar runs and which removes itself. It records the URL
-(`history.pushState`: the address bar changes, nothing loads), notes the
+the rendered page; a page without one sends `<title></title>`, so the old
+page's title does not stay). The third is `datastar.Navigate` in mode
+`Push`: a script appended to the body, which Datastar runs and which
+removes itself. It records the URL, with the clicked link's fragment
+added back when the URL has none of its own (`history.pushState`: the
+address bar changes, nothing loads), notes the
 path the page now shows in `window._alderAt`, makes the `<body>`
 focusable (`tabindex="-1"`) and focuses it, so keyboard and screen reader
 users start at the top of the new page, then scrolls to the top (or to
@@ -1569,9 +1579,16 @@ if (location.pathname + location.search !== window._alderAt) @get(location.pathn
 
 The header `Alder-History: replace` makes the mode *replace*: the
 history entry exists already, so the script calls `history.replaceState`
-instead, and scrolls to the `alderY` the click saved in that entry
-(`history.scrollRestoration` is `manual`, so the browser does not scroll
-by itself before the page has come back).
+instead (keeping the entry's fragment), and scrolls to the `alderY` in
+that entry's state (`history.scrollRestoration` is `manual`, so the
+browser does not scroll by itself before the page has come back). The
+fourth attribute, `datastar.BoostScroll`, keeps `alderY` up to date: on
+every `scroll` of the window, at most every 200 ms and once more after
+the last one (`__throttle.200ms.trailing`), it runs
+`history.replaceState(Object.assign({}, history.state, {alderY: scrollY}), '')`,
+writing the position into the current entry. So an entry has its
+position whichever way you leave it, by a click or by Back, and Back and
+Forward both return to it.
 
 **A redirect, followed.** A `Redirect` under Datastar to a page of this
 app is followed by the router itself. `write` sees a 303 with
@@ -1611,7 +1628,7 @@ data: elements <title>Log in</title>
 event: datastar-patch-elements
 data: selector body
 data: mode append
-data: elements <script data-effect="el.remove()">(function(){history.pushState(null,"","/login");…})()</script>
+data: elements <script data-effect="el.remove()">(function(){var u="/login";…history.pushState(null,"",u);…})()</script>
 
 ```
 

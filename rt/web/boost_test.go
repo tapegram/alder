@@ -30,8 +30,8 @@ func events(body string) []string {
 }
 
 const (
-	pushOpen    = `<script data-effect="el.remove()">(function(){history.pushState(null,"",`
-	replaceOpen = `<script data-effect="el.remove()">(function(){history.replaceState(history.state,"",`
+	pushOpen    = "push"
+	replaceOpen = "replace"
 )
 
 func bodyEvent(inner string) string {
@@ -45,9 +45,17 @@ func titleEvent(t string) string {
 // historyEvent checks ev is the history step of mode to the JSON string u.
 func historyEvent(t *testing.T, ev, open, u string) {
 	t.Helper()
-	prefix := "event: datastar-patch-elements\ndata: selector body\ndata: mode append\ndata: elements " + open + u + ");"
+	prefix := "event: datastar-patch-elements\ndata: selector body\ndata: mode append\ndata: elements " +
+		`<script data-effect="el.remove()">(function(){var u=` + u + ";"
 	if !strings.HasPrefix(ev, prefix) || !strings.HasSuffix(ev, "})()</script>") {
 		t.Fatalf("history event %q, want prefix %q", ev, prefix)
+	}
+	step := `history.pushState(null,"",u);`
+	if open == replaceOpen {
+		step = `history.replaceState(history.state,"",u);`
+	}
+	if !strings.Contains(ev, step) {
+		t.Fatalf("history event %q lacks %q", ev, step)
 	}
 	for _, part := range []string{"window._alderAt=location.pathname+location.search", "document.body.tabIndex=-1", "document.body.focus({preventScroll:true})"} {
 		if !strings.Contains(ev, part) {
@@ -84,15 +92,16 @@ func TestBoost_GetMorphsTitlePush(t *testing.T) {
 		t.Fatalf("query %v", got)
 	}
 	// Not boosted: the whole document, as before.
+	first, _ := HeadTags()
 	w = serve(h, httptest.NewRequest("GET", "/posts", nil))
-	if w.Code != 200 || !strings.HasPrefix(w.Body.String(), "<!doctype html>\n<html><head>"+HeadTags()+"<title>") {
+	if w.Code != 200 || !strings.HasPrefix(w.Body.String(), "<!doctype html>\n<html><head>"+first+"<title>") {
 		t.Fatalf("plain GET %d %q", w.Code, w.Body.String())
 	}
 }
 
 // Back/forward: the popstate handler's GET (Alder-History: replace) is answered alike, with
-// replaceState and the scroll restored instead of a push; a page without a <title> has no
-// title patch.
+// replaceState and the scroll restored instead of a push; a page without a <title> gets an
+// empty one, so the old page's title does not stay.
 func TestBoost_PopstateReplaces(t *testing.T) {
 	h := NewRouter(one("GET", "/a", func(rq *Request) Response {
 		return PageResponse(html.El("html", nil, html.El("body", nil, html.Text("A"))), nil, nil, false)
@@ -100,13 +109,13 @@ func TestBoost_PopstateReplaces(t *testing.T) {
 	req := dsGet("/a?datastar=%7B%7D")
 	req.Header.Set(datastar.HistoryHeader, "replace")
 	evs := events(serve(h, req).Body.String())
-	if len(evs) != 2 || evs[0] != bodyEvent("A") {
+	if len(evs) != 3 || evs[0] != bodyEvent("A") || evs[1] != titleEvent("") {
 		t.Fatalf("events %q", evs)
 	}
-	historyEvent(t, evs[1], replaceOpen, `"/a"`)
+	historyEvent(t, evs[2], replaceOpen, `"/a"`)
 	// two boosted navigations push twice; going back replaces (the entry exists already)
 	for range 2 {
-		if evs := events(serve(h, dsGet("/a")).Body.String()); !strings.Contains(evs[len(evs)-1], pushOpen) {
+		if evs := events(serve(h, dsGet("/a")).Body.String()); !strings.Contains(evs[len(evs)-1], `history.pushState(null,"",u)`) {
 			t.Fatalf("push %q", evs)
 		}
 	}
@@ -298,8 +307,9 @@ func TestBoost_ClickHandlerExclusions(t *testing.T) {
 		"a.hasAttribute('data-alder-reload')",
 		"u.origin !== location.origin",
 		"u.protocol !== 'http:' && u.protocol !== 'https:'", // mailto:, tel:, javascript:
-		"|| u.hash) return;",
-		"evt.preventDefault(); history.scrollRestoration = 'manual'; history.replaceState({alderY: scrollY}, ''); @get(u.pathname + u.search, {payload: {}})",
+		"if (u.hash && u.pathname === location.pathname && u.search === location.search) return;", // a jump on this page
+		"window._alderHash = u.hash;", // another page's fragment, added back by the push
+		"evt.preventDefault(); window._alderHash = u.hash; history.scrollRestoration = 'manual'; history.replaceState({alderY: scrollY}, ''); @get(u.pathname + u.search, {payload: {}})",
 	} {
 		if !strings.Contains(datastar.BoostClick, part) {
 			t.Errorf("BoostClick lacks %q", part)
@@ -320,22 +330,28 @@ func TestBoost_ClickHandlerExclusions(t *testing.T) {
 	}
 	// on window, so the listeners survive body patches; in <head>, which is never morphed
 	tag := html.Render(datastar.BoostTag())
-	for _, attr := range []string{`data-on:click__window="`, `data-on:popstate__window="`, `data-init="`} {
+	// the scroll position is kept in the current entry's state as the page scrolls, so Back and
+	// Forward both restore it
+	if want := "history.replaceState(Object.assign({}, history.state, {alderY: scrollY}), '')"; datastar.BoostScroll != want {
+		t.Errorf("BoostScroll = %q", datastar.BoostScroll)
+	}
+	for _, attr := range []string{`data-on:click__window="`, `data-on:popstate__window="`, `data-init="`, `data-on:scroll__window__throttle.200ms.trailing="`} {
 		if !strings.Contains(tag, attr) {
 			t.Errorf("BoostTag lacks %s: %s", attr, tag)
 		}
 	}
-	if !strings.Contains(HeadTags(), tag) {
+	if _, boost := HeadTags(); boost != tag {
 		t.Error("HeadTags lacks the boost")
 	}
 }
 
 // The flash (M13): every page served whole begins its <head> with the color-scheme meta, before
-// the Datastar script, so the first frame is painted in the OS's scheme.
+// the Datastar script, so the first frame is painted in the OS's scheme; the boost goes last,
+// before </head>, so a layout's <meta charset> stays in the first 1024 bytes.
 func TestBoost_ColorSchemeMeta(t *testing.T) {
 	h := NewRouter(one("GET", "/", func(rq *Request) Response { return PageResponse(doc("Home"), nil, nil, false) }), testOpts(nil))
 	body := serve(h, httptest.NewRequest("GET", "/", nil)).Body.String()
-	want := "<!doctype html>\n<html><head>" + `<meta name="color-scheme" content="light dark" />` + html.Render(datastar.ScriptTag()) + html.Render(datastar.BoostTag()) + "<title>Home</title>"
+	want := "<!doctype html>\n<html><head>" + `<meta name="color-scheme" content="light dark" />` + html.Render(datastar.ScriptTag()) + "<title>Home</title>" + html.Render(datastar.BoostTag()) + "</head>"
 	if !strings.HasPrefix(body, want) {
 		t.Fatalf("head %q", body)
 	}

@@ -621,18 +621,18 @@ func dropSignals(u *url.URL) {
 }
 
 // morph answers a boosted navigation (st.url set) with page: Alder-Status when status is not
-// 200, then the events — the patch of the page's <body> (the morph), of its <title> when it has
-// one, and the history step to st.url (datastar.Navigate in st.mode). Without st.url (a POST)
-// it is the body patch alone, as a 404/500 answered to a message always was.
+// 200, then the events — the patch of the page's <body> (the morph), of its <title> (empty when
+// it has none, so the old page's title does not stay), and the history step to st.url
+// (datastar.Navigate in st.mode). Without st.url (a POST) it is the body patch alone, as a
+// 404/500 answered to a message always was.
 func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status int, page string) {
 	if status != http.StatusOK {
 		w.Header().Set(StatusHeader, strconv.Itoa(status))
 	}
 	err := datastar.PatchBody(w, rt.dev(bodyOf(page)))
 	if err == nil && st.url != "" {
-		if t, ok := titleOf(page); ok {
-			err = datastar.PatchTitle(w, t)
-		}
+		t, _ := titleOf(page) // a page without a <title> empties the old one
+		err = datastar.PatchTitle(w, t)
 		if err == nil {
 			err = datastar.Navigate(w, st.url, st.mode)
 		}
@@ -740,36 +740,55 @@ func commentSafe(s string) string {
 	return s
 }
 
-// HeadTags is what the router inserts into every page it serves whole (withScript):
-// <meta name="color-scheme" content="light dark"> first, so the browser paints the page's
-// first frame (and the canvas behind a navigation) in the OS's scheme rather than white before
-// the stylesheet arrives; then the Datastar script tag and the boost (datastar.BoostTag: links
-// of this site become Datastar GETs answered with a morph). An Alder test's browser takes it
-// out again, so the page it holds is the page as the view renders it.
-func HeadTags() string {
-	return colorScheme + html.Render(datastar.ScriptTag()) + html.Render(datastar.BoostTag())
+// HeadTags is what the router inserts into every page it serves whole (withScript), in two
+// parts. The first goes right after the <head> start tag: <meta name="color-scheme"
+// content="light dark">, so the browser paints the page's first frame (and the canvas behind a
+// navigation) in the OS's scheme rather than white before the stylesheet arrives, then the
+// Datastar script tag. The second, the boost (datastar.BoostTag: links of this site become
+// Datastar GETs answered with a morph), goes just before </head>: it is about a kilobyte, and
+// placed first it would push a layout's <meta charset> past the first 1024 bytes, where a
+// browser looks for it.
+func HeadTags() (first, boost string) {
+	return colorScheme + html.Render(datastar.ScriptTag()), html.Render(datastar.BoostTag())
+}
+
+// StripHeadTags is page without what withScript inserted: an Alder test's browser holds the page
+// as the view renders it.
+func StripHeadTags(page string) string {
+	first, boost := HeadTags()
+	return strings.Replace(strings.Replace(page, first, "", 1), boost, "", 1)
 }
 
 // colorScheme is the color-scheme meta HeadTags begins with.
 var colorScheme = html.Render(html.El("meta", []html.Attr{html.A("name", "color-scheme"), html.A("content", "light dark")}))
 
-// withScript inserts HeadTags right after the first <head> start tag; without one, right after
-// the <html> start tag; without that, just before the last </body>; else at the start of the
-// page.
+// withScript inserts HeadTags: the first part right after the first <head> start tag and the
+// boost just before the </head> that follows it (right after the first part when there is
+// none). A page without <head> gets both together where the browser's parser still puts them
+// in the (implied) head, so the boost is never inside the <body> a patch replaces: right after
+// the <html> start tag; without that, just before the <body> start tag; else at the start of
+// the page.
 func withScript(page string) string {
-	tag := HeadTags()
-	for _, name := range []string{"head", "html"} {
-		if i := startTag(page, name); i >= 0 {
-			if j := strings.IndexByte(page[i:], '>'); j >= 0 {
-				k := i + j + 1
-				return page[:k] + tag + page[k:]
+	first, boost := HeadTags()
+	if i := startTag(page, "head"); i >= 0 {
+		if j := strings.IndexByte(page[i:], '>'); j >= 0 {
+			k := i + j + 1
+			if e := strings.Index(page[k:], "</head>"); e >= 0 {
+				return page[:k] + first + page[k:k+e] + boost + page[k+e:]
 			}
+			return page[:k] + first + boost + page[k:]
 		}
 	}
-	if i := strings.LastIndex(page, "</body>"); i >= 0 {
-		return page[:i] + tag + page[i:]
+	if i := startTag(page, "html"); i >= 0 {
+		if j := strings.IndexByte(page[i:], '>'); j >= 0 {
+			k := i + j + 1
+			return page[:k] + first + boost + page[k:]
+		}
 	}
-	return tag + page
+	if i := startTag(page, "body"); i >= 0 {
+		return page[:i] + first + boost + page[i:]
+	}
+	return first + boost + page
 }
 
 // reloadTags is what withReload inserts for the build generation gen: the element `alder run`

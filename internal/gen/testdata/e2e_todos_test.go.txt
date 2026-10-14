@@ -269,7 +269,7 @@ func (r e2eResp) redirect(t *testing.T, loc string) {
 func (r e2eResp) navigate(t *testing.T, loc string) {
 	t.Helper()
 	j, _ := json.Marshal(loc)
-	push := `<script data-effect="el.remove()">(function(){history.pushState(null,"",` + string(j) + `);`
+	push := `<script data-effect="el.remove()">(function(){var u=` + string(j) + `;`
 	if r.status != http.StatusOK || r.header.Get("Content-Type") != "text/event-stream" || r.header.Get("Location") != "" ||
 		!strings.HasPrefix(r.body, "event: datastar-patch-elements\ndata: selector body\ndata: mode outer\ndata: elements <body>") || !strings.Contains(r.body, push) {
 		t.Fatalf("got %d %q Location %q body:\n%q\nwant the page at %s morphed in, then %s", r.status, r.header.Get("Content-Type"), r.header.Get("Location"), r.body, loc, push)

@@ -1005,6 +1005,35 @@ A failure names the block's line, `book/03-syntax.md:120: E0003 …`, so a
 change to the language that leaves the book behind fails the build like
 any other test.
 
+### The browser smoke test
+
+Everything above runs without a browser: an app's own tests drive its
+pages in memory (chapter 10), and the compiler's tests talk to `alder
+run` over HTTP. What only a real browser can show, that Datastar applies
+the router's answers as chapter 6 says, is checked by one more test,
+which is not part of `go test ./...`:
+
+```
+go test -tags browser ./cmd/alder
+```
+
+The build tag `browser` turns on `cmd/alder/browser_test.go`. It serves
+the blog with `alder run` and drives a headless Chromium through
+Playwright (a browser-automation library for Node.js) with the script
+`cmd/alder/testdata/browser/smoke.cjs`, checking that:
+
+- a boosted click loads no document and changes the URL and the title;
+- Back and Forward restore the scroll position each page was left at;
+- the login form's `Redirect` is morphed in, with the session cookie;
+- a link to a missing page morphs the 404 page in.
+
+It takes a few seconds. It needs `node` on the `PATH` and Playwright with
+its Chromium. Playwright is looked for in `$ALDER_PLAYWRIGHT_DIR`, else
+`~/.cache/alder-playwright`, and installed there with `npm` when it is
+missing. The browser itself is installed once with
+`NODE_PATH=~/.cache/alder-playwright/node_modules npx playwright install chromium`.
+Without either, the test is skipped and says which is missing.
+
 ### `alder build --emit`
 
 `alder build --emit` writes the generated Go to `build/<app>/` and vets it,

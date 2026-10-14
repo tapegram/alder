@@ -32,8 +32,9 @@ import (
 //
 // and for App's messages update__App (Rerender and Reject redirect back to the Referer) and
 // Route__App__<Msg>. Routes lists every route: pages, then messages. The book's request
-// lifecycle (chapter 6) is the order of these steps. Under Datastar rt/web turns every 303 into
-// an SSE event navigating the browser (datastar.Navigate).
+// lifecycle (chapter 6) is the order of these steps. Under Datastar rt/web answers a 303 to a
+// page of the app with that page, served in-process and morphed in with a history push, and one
+// to another site with an SSE event navigating the browser (datastar.Navigate).
 //
 // A decoder reads each field with the rt/web helpers (web.Text, Int, Float, Date, Bool, Enum)
 // and collects web.FieldErrors:

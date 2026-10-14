@@ -41,8 +41,9 @@ func TestResponse_PageFullHTML(t *testing.T) {
 	if w.Code != 200 || w.Header().Get("Content-Type") != "text/html; charset=utf-8" {
 		t.Fatalf("status %d ct %q", w.Code, w.Header().Get("Content-Type"))
 	}
-	script := HeadTags()
-	want := "<!doctype html>\n<html><head lang=\"en\">" + script + "<title>T</title></head><body>"
+	first, boost := HeadTags()
+	script := first + boost
+	want := "<!doctype html>\n<html><head lang=\"en\">" + first + "<title>T</title>" + boost + "</head><body>"
 	if !strings.HasPrefix(body, want) || !strings.HasSuffix(body, "</body></html>") {
 		t.Fatalf("body %q", body)
 	}
@@ -147,7 +148,7 @@ func TestResponse_Redirect303(t *testing.T) {
 	req.Header.Set("Datastar-Request", "true")
 	w = serve(h, req)
 	if w.Code != 200 || w.Header().Get("Content-Type") != "text/event-stream" || w.Header().Get("Location") != "" || sessionCookie(t, w) == nil ||
-		w.Header().Get(StatusHeader) != "404" || !strings.Contains(w.Body.String(), `history.pushState(null,"","/todos?f=a\u0026b")`) {
+		w.Header().Get(StatusHeader) != "404" || !strings.Contains(w.Body.String(), `(function(){var u="/todos?f=a\u0026b";`) {
 		t.Fatalf("datastar: %d %q %q\n%q", w.Code, w.Header().Get("Content-Type"), w.Header().Get("Location"), w.Body.String())
 	}
 	// requires: the handler redirects to rq.Login with the session unchanged.
@@ -161,7 +162,7 @@ func TestResponse_Redirect303(t *testing.T) {
 	req = httptest.NewRequest("GET", "/secret", nil)
 	req.Header.Set("Datastar-Request", "true")
 	w = serve(h, req)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `history.pushState(null,"","/login")`) || sessionCookie(t, w) != nil {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `(function(){var u="/login";`) || sessionCookie(t, w) != nil {
 		t.Fatalf("login redirect under Datastar %d %q", w.Code, w.Body.String())
 	}
 }

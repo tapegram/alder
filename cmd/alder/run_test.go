@@ -65,25 +65,31 @@ func (s *syncBuffer) String() string {
 // the test ends.
 func startRun(t *testing.T) *devRun {
 	t.Helper()
+	return startRunApp(t, "todos")
+}
+
+// startRunApp is startRun of examples/<app>.
+func startRunApp(t *testing.T, app string) *devRun {
+	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go is not on PATH")
 	}
-	src, err := filepath.Abs("../../examples/todos")
+	src, err := filepath.Abs("../../examples/" + app)
 	if err != nil {
 		t.Fatal(err)
 	}
 	tmp := t.TempDir()
-	copyDir(t, src, filepath.Join(tmp, "todos"))
+	copyDir(t, src, filepath.Join(tmp, app))
 	t.Chdir(tmp)
 	t.Setenv("ALDER_ADDR", "127.0.0.1:0")
-	r := &devRun{dir: filepath.Join(tmp, "todos"), out: &syncBuffer{}, errs: &syncBuffer{},
+	r := &devRun{dir: filepath.Join(tmp, app), out: &syncBuffer{}, errs: &syncBuffer{},
 		done: make(chan struct{}), stopCh: make(chan struct{})}
 	devs := make(chan *devServer, 1)
 	onDevServer = func(d *devServer) { devs <- d }
 	t.Cleanup(func() { onDevServer = nil })
 	go func() {
 		defer close(r.done)
-		r.code = runRunTo([]string{"todos"}, r.out, r.errs, r.stopCh)
+		r.code = runRunTo([]string{app}, r.out, r.errs, r.stopCh)
 	}()
 	t.Cleanup(func() { r.stop(t) })
 	deadline := time.Now().Add(120 * time.Second)
@@ -322,19 +328,20 @@ func dsDo(t *testing.T, req *http.Request) (*http.Response, string) {
 }
 
 // Boosted navigation through the dev server (M13): a page's <head> begins with the color-scheme
-// meta, then the Datastar script and the boost; a
+// meta and the Datastar script, and ends with the boost; a
 // Datastar GET of a page (a boosted link, with Datastar's ?datastar= signals) is answered with
 // its body patch (overlay target and subscriber kept), its title and a history push; one whose
 // `requires` redirects pushes the login page; a message that redirects is answered with the
 // target's morph under Datastar, and with the 303 without it.
 func TestRun_BoostedNavigation(t *testing.T) {
 	r := startRun(t)
-	if page := get(t, r.base+"/login"); !strings.Contains(page, `<head><meta name="color-scheme" content="light dark" /><script type="module" src="/_alder/datastar-v1.0.0.js"></script><meta name="alder-boost" content="links" data-init=`) ||
+	if page := get(t, r.base+"/login"); !strings.Contains(page, `<head><meta name="color-scheme" content="light dark" /><script type="module" src="/_alder/datastar-v1.0.0.js"></script>`) ||
+		!regexp.MustCompile(`<meta name="alder-boost" content="links" data-init="[^"]*"[^>]*/></head>`).MatchString(page) ||
 		!strings.Contains(page, `data-on:click__window="if (evt.defaultPrevented`) {
 		t.Fatalf("GET /login lacks the boost:\n%s", page)
 	}
 	push := func(u string) string {
-		return `<script data-effect="el.remove()">(function(){history.pushState(null,"","` + u + `");`
+		return `<script data-effect="el.remove()">(function(){var u="` + u + `";`
 	}
 	for _, c := range []struct{ path, push string }{{"/login?datastar=%7B%7D", "/login"}, {"/", "/login"}} {
 		req, _ := http.NewRequest("GET", r.base+c.path, nil)
@@ -600,5 +607,15 @@ func TestRun_StopKillsChild(t *testing.T) {
 	}
 	if _, err := net.DialTimeout("tcp", strings.TrimPrefix(r.base, "http://"), time.Second); err == nil {
 		t.Fatal("the dev server still accepts connections after stop")
+	}
+}
+
+// The blog's layout begins its <head> with <meta charset>: the router's insertions keep it in
+// the first 1024 bytes, where a browser looks for it (the boost goes before </head>).
+func TestRun_CharsetEarly(t *testing.T) {
+	r := startRunApp(t, "blog")
+	page := get(t, r.base+"/")
+	if i := strings.Index(page, `<meta charset="utf-8" />`); i < 0 || i+len(`<meta charset="utf-8" />`) > 1024 {
+		t.Fatalf("<meta charset> at byte %d:\n%.1200s", i, page)
 	}
 }

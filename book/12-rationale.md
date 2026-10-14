@@ -700,11 +700,15 @@ Datastar could express it, so Alder ships no script of its own for it.
 **The flash, three ways.** The morph removes the blank frame for every
 boosted click. For the loads that remain (the first page, a reload, an
 opted-out link), the router adds `<meta name="color-scheme" content="light
-dark">`, so the browser paints its first frame in the OS's scheme;
-`alder-ui` v0.1.3 opts pages into cross-document view transitions, so a
-load cross-fades where the browser supports them; and the stylesheet is
-cached for five minutes instead of revalidated on every load (chapter 11),
-so a load does not wait for the network before it paints.
+dark">`, so the browser paints its first frame in the OS's scheme, even
+before the stylesheet arrives; `alder-ui` v0.1.3 opts pages into
+cross-document view transitions, so a navigation from one page of the
+site to another that is a real load (an opted-out link, Back or Forward
+to a page that was loaded) cross-fades where the browser supports them
+(a first visit or a reload has no old page to fade from); and the
+stylesheet is cached for five minutes instead of revalidated on every
+load (chapter 11), so a load does not wait for the network before it
+paints.
 
 **What it costs.** A real browser now runs more of the app's navigation,
 and the in-memory test browser of chapter 10 models it rather than runs

@@ -442,14 +442,17 @@ func TestRouter_Specificity(t *testing.T) {
 	}
 }
 
-// The Datastar script and the boost (HeadTags) go into <head>; without one after <html>, else
-// before </body>, else first (M5, M13).
+// The color-scheme meta and the Datastar script go right after <head>, the boost just before
+// </head>; without a <head>, all three after <html>, else before <body>, else first: where the
+// parser puts them in the (implied) head, never in the body a patch replaces (M5, M13).
 func TestWithScript(t *testing.T) {
-	tag := HeadTags()
+	first, boost := HeadTags()
+	tag := first + boost
 	for page, want := range map[string]string{
-		`<html><head><title>t</title></head><body></body></html>`: `<html><head>` + tag + `<title>t</title></head><body></body></html>`,
+		`<html><head><title>t</title></head><body></body></html>`: `<html><head>` + first + `<title>t</title>` + boost + `</head><body></body></html>`,
+		`<html><head><title>t</title><body></body></html>`:        `<html><head>` + tag + `<title>t</title><body></body></html>`,
 		`<html lang="en"><body><p>x</p></body></html>`:            `<html lang="en">` + tag + `<body><p>x</p></body></html>`,
-		`<body class="x"><p>x</p></body>`:                         `<body class="x"><p>x</p>` + tag + `</body>`,
+		`<body class="x"><p>x</p></body>`:                         tag + `<body class="x"><p>x</p></body>`,
 		`<p>bare</p>`:                                             tag + `<p>bare</p>`,
 		`<header>h</header><p>x</p>`:                              tag + `<header>h</header><p>x</p>`,
 	} {
