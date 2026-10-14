@@ -177,6 +177,47 @@ func TestAdmin_Mutate(t *testing.T) {
 	}
 }
 
+// TestAdmin_SelfGuard (Review Focus 4 of M13): on the user table's admin, the signed-in Admin
+// cannot delete their own row (the Delete page says why and has no button; Remove is
+// rejected) nor change their own role (Save is rejected); saving their own row with the role
+// unchanged, and demoting another Admin, are allowed. The generated tests say so, and pass.
+func TestAdmin_SelfGuard(t *testing.T) {
+	needGoTool(t)
+	dir := genApp(t, "fixture")
+	if code, out, errs := alderIn(t, dir, "", "new", "admin"); code != 0 {
+		t.Fatalf("alder new admin: exit %d\n%s%s", code, out, errs)
+	}
+	del, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "User", "Delete.alder"))
+	edit, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "User", "Edit.alder"))
+	for _, w := range []string{"own: session.user == row.id,", "if model.own then\n      Task.succeed (Reject \"You cannot delete your own account.\")", "{if model.own then <p>You cannot delete your own account.</p>"} {
+		if !strings.Contains(string(del), w) {
+			t.Errorf("Admin.User.Delete lacks %q:\n%s", w, del)
+		}
+	}
+	if w := "if session.user == model.row.id && p.form.role != model.row.role then\n      Task.succeed (Reject \"You cannot change your own role.\")"; !strings.Contains(string(edit), w) {
+		t.Errorf("Admin.User.Edit lacks %q:\n%s", w, edit)
+	}
+	// only the user table is guarded
+	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Post", "Delete.alder")); strings.Contains(string(b), "model.own") {
+		t.Errorf("Admin.Post.Delete has the user table's guard:\n%s", b)
+	}
+	code, out, errs := alderIn(t, dir, "", "test")
+	if code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") {
+		t.Fatalf("alder test: exit %d\n%s%s", code, out, errs)
+	}
+	for _, name := range []string{
+		`Admin.User.Delete "an Admin cannot delete their own account"`,
+		`Admin.User.Delete "deleting a user nothing refers to"`,
+		`Admin.User.Edit "an Admin cannot change their own role"`,
+		`Admin.User.Edit "an Admin saves their own account, the role unchanged"`,
+		`Admin.User.Edit "an Admin demotes another Admin"`,
+	} {
+		if !strings.Contains(out, "ok   "+name+"\n") {
+			t.Errorf("alder test did not pass %s:\n%s", name, out)
+		}
+	}
+}
+
 // outside is src with the lines of its owned regions left out (the markers kept): the author's
 // text.
 func outside(t *testing.T, src string) string {

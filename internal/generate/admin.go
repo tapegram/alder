@@ -1735,6 +1735,14 @@ func (g *adminGen) edit(at *adminTable) {
 	fmt.Fprintf(&b, "msg Save form %s\n\n", at.formName())
 	b.WriteString("update : Msg -> Model -> Session -> Task Nav\nupdate msg model session = match msg {\n  Save p -> {\n")
 	save := g.unique(at, "model.row."+t.IDField, []string{upd, fmt.Sprintf("Task.succeed (Redirect (%s { id: model.row.%s }))", at.page("Show"), t.IDField)})
+	role := g.ownRole(at)
+	if role != nil { // the signed-in user's own role is not changed: an Admin would lock themselves out
+		save = append([]string{
+			fmt.Sprintf("if %s && p.form.%s != model.row.%s then", g.isMe("model.row."+t.IDField), role.Name, role.Name),
+			"  Task.succeed (Reject " + quote(roleText) + ")",
+			"else {",
+		}, append(indentAll(save, "  "), "}")...)
+	}
 	b.WriteString(regionAt("    ", "update", wrapAll(save)) + "\n  },\n}\n\n")
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n      <form submit={Save}>\n%s\n", open, UpperFirst(title), regionAt("        ", "inputs", inputs))
@@ -1767,6 +1775,9 @@ func (g *adminGen) edit(at *adminTable) {
 	tests = append(tests, TestData{Name: quote("saving changes every field"), Lines: tb.lines,
 		Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
 	tests = append(tests, g.uniqueTests(at, mod, imports, true)...)
+	if role != nil {
+		tests = append(tests, g.ownRoleTests(at, mod, imports, role)...)
+	}
 	tests = append(tests, g.notOffered(at, mod, imports, true)...)
 	tests = append(tests, g.missingTest(at, mod, imports))
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
@@ -1774,6 +1785,80 @@ func (g *adminGen) edit(at *adminTable) {
 	})...)
 	b.WriteString(testsText(tests))
 	g.file(mod, imports, b.String())
+}
+
+// ownRole is the role column of the user table at, which its Edit page refuses to change on the
+// signed-in user's own row; nil for another table, or a role the form does not edit.
+func (g *adminGen) ownRole(at *adminTable) *Column {
+	if !g.isUserTable(at) || g.role == nil || !slices.Contains(at.editable, g.role) {
+		return nil
+	}
+	return g.role
+}
+
+// ownRoleTests are the tests of the Edit page's guard on the signed-in user's own role (Review
+// Focus 4 of M13): an Admin changing it is refused and nothing is written; an Admin saving their
+// own row with the role unchanged, and an Admin demoting another Admin, are not refused.
+func (g *adminGen) ownRoleTests(at *adminTable, mod string, imports *importSet, role *Column) []TestData {
+	t := at.t
+	other := ""
+	for _, ct := range role.Ctors {
+		if ct != "Admin" && other == "" {
+			other = ct
+		}
+	}
+	// values is a submission changing every field of target but the role, which is given r
+	values := func(tb *testBuilder, r string) string {
+		k := tb.counts[t.Module]
+		var vs []string
+		for _, c := range at.editable {
+			v := g.changedValue(tb, at, c, k+1)
+			if c == role {
+				v = maybeJust(c, r)
+			}
+			vs = append(vs, c.Name+": "+v)
+		}
+		return strings.Join(vs, ", ")
+	}
+	var tests []TestData
+
+	tb := g.tb(mod, imports, true)
+	me := tb.user()
+	g.optionRows(tb, at)
+	tb.let("let before <- Db.get %s %s", t.Name, me)
+	tb.let("let _ <- Test.get (%s)", pageLit(mod, []string{"id: " + me}))
+	tb.let("let r <- Test.submit %s { %s }", at.formName(), values(tb, other))
+	tb.let("let after <- Db.get %s %s", t.Name, me)
+	tests = append(tests, TestData{Name: quote("an Admin cannot change their own role"), Lines: tb.lines,
+		Result: fmt.Sprintf("{ answer: r.answer, row: after } == { answer: FormRejected [{ field: \"\", message: %s }], row: before }", quote(roleText))})
+
+	tb = g.tb(mod, imports, true)
+	me = tb.user()
+	g.optionRows(tb, at)
+	tb.let("let _ <- Test.get (%s)", pageLit(mod, []string{"id: " + me}))
+	vs := values(tb, "Admin")
+	tb.let("let r <- Test.submit %s { %s }", at.formName(), vs)
+	tb.let("let after <- Db.get %s %s", t.Name, me)
+	var got, want []string
+	for _, c := range at.editable {
+		got = append(got, c.Name+": row."+c.Name)
+		want = append(want, c.Name+": "+valueOf(strings.Split(vs, ", "), c.Name))
+	}
+	tests = append(tests, TestData{Name: quote("an Admin saves their own account, the role unchanged"), Lines: tb.lines,
+		Result: fmt.Sprintf("{ answer: r.answer, row: Maybe.map (\\row -> { %s }) after } == { answer: Redirected (%s { id: %s }), row: Just { %s } }",
+			strings.Join(got, ", "), at.page("Show"), me, strings.Join(want, ", "))})
+
+	tb = g.tb(mod, imports, true)
+	tb.user()
+	admin := tb.insertRow(t, "admin", map[string]string{role.Name: maybeJust(role, "Admin")}, false)
+	g.optionRows(tb, at)
+	tb.let("let _ <- Test.get (%s)", pageLit(mod, []string{"id: " + admin}))
+	tb.let("let r <- Test.submit %s { %s }", at.formName(), values(tb, other))
+	tb.let("let after <- Db.get %s %s", t.Name, admin)
+	tests = append(tests, TestData{Name: quote("an Admin demotes another Admin"), Lines: tb.lines,
+		Result: fmt.Sprintf("{ answer: r.answer, %s: Maybe.map (\\row -> row.%s) after } == { answer: Redirected (%s { id: %s }), %s: Just %s }",
+			role.Name, role.Name, at.page("Show"), admin, role.Name, maybeJust(role, other))})
+	return tests
 }
 
 // changedValue is a value for column c of the row a test inserted (the n-1-th sample) that
@@ -1879,6 +1964,11 @@ func (g *adminGen) delete(at *adminTable) {
 			}
 		}
 	}
+	own := g.isUserTable(at)
+	if own { // the signed-in user's own row is not deleted
+		model = append([]string{"own: Bool,"}, model...)
+		fields = append([]string{fields[0], "own: " + g.isMe("row."+t.IDField)}, fields[1:]...)
+	}
 	loads = append([]string{"let found <- Db.get " + t.Name + " params.id"}, loads...)
 	loads = append(loads, "match found {", "  Just row -> Query.succeed { "+strings.Join(fields, ", ")+" },", "  Nothing -> Query.notFound,", "}")
 	block := []string{
@@ -1912,17 +2002,22 @@ func (g *adminGen) delete(at *adminTable) {
 		"let _ <- Db.delete " + t.Name + " model.row." + t.IDField,
 		"Task.succeed (Redirect (" + at.page("Index") + " {}))",
 	}
-	if len(blockers) > 0 || len(children) > 0 { // refused while rows refer to it: the database would refuse with an error
+	if len(blockers) > 0 || len(children) > 0 || own { // refused while rows refer to it: the database would refuse with an error
 		var guard []string
+		lead := func() string {
+			if len(guard) > 0 {
+				return "else if"
+			}
+			return "if"
+		}
+		if own {
+			guard = append(guard, "if model.own then", "  Task.succeed (Reject "+quote(ownText)+")")
+		}
 		if len(children) > 0 {
-			guard = append(guard, "if children model > 0 then", "  Task.succeed (Reject "+quote(childrenText)+")")
+			guard = append(guard, lead()+" children model > 0 then", "  Task.succeed (Reject "+quote(childrenText)+")")
 		}
 		if len(blockers) > 0 {
-			lead := "if"
-			if len(guard) > 0 {
-				lead = "else if"
-			}
-			guard = append(guard, lead+" blockers model > 0 then", "  Task.succeed (Reject "+quote(rejectText(at))+")")
+			guard = append(guard, lead()+" blockers model > 0 then", "  Task.succeed (Reject "+quote(rejectText(at))+")")
 		}
 		remove = append(append(guard, "else {"), append(indentAll(remove, "  "), "}")...)
 	}
@@ -1944,6 +2039,10 @@ update msg model session = match msg {
 		button = `{if children model > 0 then <p>` + childrenText + `</p>
           else if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p>
           else <al-button variant="destructive" type="submit">Delete</al-button>}`
+	}
+	if own {
+		button = `{if model.own then <p>` + ownText + `</p>
+          else ` + strings.TrimPrefix(button, "{")
 	}
 	fmt.Fprintf(&b, `      <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>
@@ -2088,6 +2187,16 @@ update msg model session = match msg {
 			Result: fmt.Sprintf("{ %s, rows: rows } == { %s, rows: %d }", lhs, rhs, tb.counts[t.Module])})
 		break
 	}
+	if own { // the signed-in Admin's own row: the page says why there is no button, Remove refuses
+		tb = g.tb(mod, imports, true)
+		me := tb.user()
+		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"id: " + me}))
+		tb.let("let r <- Test.submit Confirm { }")
+		tb.let("let kept <- Db.get %s %s", t.Name, me)
+		tests = append(tests, TestData{Name: quote("an Admin cannot delete their own account"), Lines: tb.lines,
+			Result: fmt.Sprintf("{ says: Test.texts \"#delete p\" page.doc, buttons: Test.count \"#delete button\" page.doc, answer: r.answer, kept: Maybe.map (\\row -> row.%s) kept } == { says: [%s], buttons: 0, answer: FormRejected [{ field: \"\", message: %s }], kept: Just %s }",
+				t.IDField, quote(ownText), quote(ownText), me)})
+	}
 	tests = append(tests, g.missingTest(at, mod, imports))
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
 		return pageLit(mod, []string{"id: " + tb.insertRow(t, "", nil, false)})
@@ -2095,6 +2204,24 @@ update msg model session = match msg {
 	b.WriteString(testsText(tests))
 	g.file(mod, imports, b.String())
 }
+
+// ownText and roleText are the user table's refusals of the signed-in user's own row: its delete,
+// and a change of its role (Review Focus 4 of M13: an Admin cannot lock themselves out).
+const (
+	ownText  = "You cannot delete your own account."
+	roleText = "You cannot change your own role."
+)
+
+// isUserTable reports whether at is the table of the session's user: its admin guards the
+// signed-in user's own row.
+func (g *adminGen) isUserTable(at *adminTable) bool {
+	s := g.p.Session
+	return s != nil && s.User != nil && s.UserTable != "" && g.p.TableNamed(s.UserTable) == at.t
+}
+
+// isMe is the condition that the row whose id is expr is the signed-in user's (`requires user`
+// makes session.user the user's id, not a Maybe).
+func (g *adminGen) isMe(expr string) string { return "session.user == " + expr }
 
 // childrenText is the Delete page's refusal of a row with children (node.stop).
 const childrenText = "Delete its children first."

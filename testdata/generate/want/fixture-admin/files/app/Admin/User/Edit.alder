@@ -43,19 +43,23 @@ update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Save p -> {
     -- @admin begin update
-    let emailTaken <- Db.from User |> Db.where (Db.and [
-      User.email.eq p.form.email,
-      User.id.ne model.row.id,
-    ]) |> Db.count
-    if emailTaken > 0 then
-      Task.succeed (Reject "A user with this email exists.")
+    if session.user == model.row.id && p.form.role != model.row.role then
+      Task.succeed (Reject "You cannot change your own role.")
     else {
-      let _ <- Db.update User model.row.id (\row -> { row |
-        email: p.form.email,
-        name: p.form.name,
-        role: p.form.role,
-      })
-      Task.succeed (Redirect (Admin.User.Show { id: model.row.id }))
+      let emailTaken <- Db.from User |> Db.where (Db.and [
+        User.email.eq p.form.email,
+        User.id.ne model.row.id,
+      ]) |> Db.count
+      if emailTaken > 0 then
+        Task.succeed (Reject "A user with this email exists.")
+      else {
+        let _ <- Db.update User model.row.id (\row -> { row |
+          email: p.form.email,
+          name: p.form.name,
+          role: p.form.role,
+        })
+        Task.succeed (Redirect (Admin.User.Show { id: model.row.id }))
+      }
     }
     -- @admin end
   },
@@ -138,6 +142,85 @@ test "saving an email another user has is refused" = {
   } == {
     answer: FormRejected [{ field: "", message: "A user with this email exists." }],
     row: before,
+  })
+}
+
+test "an Admin cannot change their own role" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let before <- Db.get User me
+  let _ <- Test.get (Admin.User.Edit { id: me })
+  let r <- Test.submit UserForm {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    role: Reader,
+  }
+  let after <- Db.get User me
+  Task.succeed ({
+    answer: r.answer,
+    row: after,
+  } == {
+    answer: FormRejected [{ field: "", message: "You cannot change your own role." }],
+    row: before,
+  })
+}
+
+test "an Admin saves their own account, the role unchanged" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let _ <- Test.get (Admin.User.Edit { id: me })
+  let r <- Test.submit UserForm {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    role: Admin,
+  }
+  let after <- Db.get User me
+  Task.succeed ({
+    answer: r.answer,
+    row: Maybe.map (\row -> { email: row.email, name: row.name, role: row.role }) after,
+  } == {
+    answer: Redirected (Admin.User.Show { id: me }),
+    row: Just {
+      email: Text.Email "email-2@example.com",
+      name: Text.NonEmpty "name-2",
+      role: Admin,
+    },
+  })
+}
+
+test "an Admin demotes another Admin" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let admin <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    role: Admin,
+  }
+  let _ <- Test.get (Admin.User.Edit { id: admin })
+  let r <- Test.submit UserForm {
+    email: Text.Email "email-3@example.com",
+    name: Text.NonEmpty "name-3",
+    role: Reader,
+  }
+  let after <- Db.get User admin
+  Task.succeed ({
+    answer: r.answer,
+    role: Maybe.map (\row -> row.role) after,
+  } == {
+    answer: Redirected (Admin.User.Show { id: admin }),
+    role: Just Reader,
   })
 }
 
