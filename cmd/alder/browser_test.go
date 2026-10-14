@@ -19,12 +19,16 @@ import (
 // It serves the blog with `alder run` and drives a headless Chromium through
 // testdata/browser/smoke.cjs (Playwright): a boosted click loads no document and changes the
 // URL and the title; Back and Forward restore the scroll position; the login form's redirect
-// is morphed in with the session cookie; a link to a missing page morphs the 404 page in.
+// is morphed in with the session cookie; a link to a missing page morphs the 404 page in; a
+// slow post followed by a click ends on the click's page; a link to a file under /static/ is a
+// plain navigation.
 //
 // It needs node and Playwright with its Chromium. Playwright is looked for in
-// $ALDER_PLAYWRIGHT_DIR, else $HOME/.cache/alder-playwright, and installed there with npm
-// (testdata/browser/package.json) when missing; Chromium is Playwright's own
-// (`npx playwright install chromium`). Without them the test is skipped, saying why.
+// $ALDER_PLAYWRIGHT_DIR, else $HOME/.cache/alder-playwright; when it is missing the test is
+// skipped, unless ALDER_BROWSER_INSTALL=1 is set, which installs it there with npm
+// (testdata/browser/package.json: a download from the npm registry, so never implicit).
+// Chromium is Playwright's own (`npx playwright install chromium`). Without them the test is
+// skipped, saying why.
 func TestBrowser_BoostedNavigation(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -33,6 +37,9 @@ func TestBrowser_BoostedNavigation(t *testing.T) {
 	dir := playwrightDir(t)
 	nodePath := filepath.Join(dir, "node_modules")
 	if _, err := os.Stat(filepath.Join(nodePath, "playwright")); err != nil {
+		if os.Getenv("ALDER_BROWSER_INSTALL") != "1" {
+			t.Skip("Playwright is not installed in " + dir + ": set ALDER_BROWSER_INSTALL=1 to install it there with npm")
+		}
 		npm, err := exec.LookPath("npm")
 		if err != nil {
 			t.Skip("Playwright is not installed in " + dir + " and npm is not on PATH")

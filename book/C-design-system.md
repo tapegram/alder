@@ -276,7 +276,7 @@ without JavaScript"): with no JavaScript, the button submits a little
 form of its own. That form goes around the whole `<al-button>`, so the
 button stays the element's child and keeps the look:
 
-```alder eval=<form method="post" action="/_m/App/Logout" class="_alder-click" data-on:submit="@post(&#39;/_m/App/Logout&#39;, {contentType: &#39;form&#39;})"><al-button variant="outline" size="sm"><button type="submit">Log out</button></al-button></form>
+```alder eval=<form method="post" action="/_m/App/Logout" class="_alder-click" data-on:submit="window._alderAC?.abort();@post(&#39;/_m/App/Logout&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()})"><al-button variant="outline" size="sm"><button type="submit">Log out</button></al-button></form>
 <al-button variant="outline" size="sm" click={App.Logout}>Log out</al-button>
 ```
 

@@ -82,6 +82,33 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     s = await state();
     check('404: morphed in', s.path === '/posts/no-such-post' && s.title === 'Not found' && s.h1 === 'Not found', s);
     check('404: no document load', docs.length === 0 && s.marker, docs);
+
+    // a slow post, then a boosted click before its answer: the click's page stays — the two
+    // share one AbortController (window._alderAC), so the post's late answer is never applied
+    await link('/');
+    await page.click('#go');
+    await at('/');
+    await page.waitForFunction(() => document.title === 'Blog', null, { timeout: 5000 }).catch(() => {});
+    await page.route('**/_m/**', async (route) => {
+      const resp = await route.fetch();
+      await sleep(1500);
+      await route.fulfill({ response: resp }).catch(() => {});
+    });
+    await page.click('text=Log out');
+    await sleep(150);
+    await link('/posts/no-such-post');
+    await page.click('#go');
+    await sleep(2500);
+    s = await state();
+    check('a slow post then a click: the click wins', s.path === '/posts/no-such-post' && s.title === 'Not found', s);
+    check('a slow post then a click: no document load', docs.length === 0 && s.marker, docs);
+    await page.unroute('**/_m/**');
+
+    // a link to a file under /static/ is left to the browser: a document load, not a morph
+    await link('/static/x.pdf');
+    await page.click('#go');
+    await page.waitForURL('**/static/x.pdf', { timeout: 5000 }).catch(() => {});
+    check('a link to a file: a plain navigation', docs.some((d) => d === 'GET ' + BASE + '/static/x.pdf'), docs);
   } finally {
     await browser.close();
   }

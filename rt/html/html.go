@@ -64,7 +64,7 @@ func (a Attr) value(st *FormState) string {
 	url := a.msg.URL(page)
 	switch a.Name {
 	case "data-on:click":
-		return "@post('" + url + "')"
+		return ClickPost(url)
 	case "data-on:submit":
 		return SubmitPost(url)
 	}
@@ -243,7 +243,7 @@ func (r *renderer) clickButton(n Node, m *rt.MsgRef, outer *Node) {
 	attrs := []Attr{A("type", "submit")}
 	if r.inForm {
 		attrs = append(attrs, A("formaction", url), A("formmethod", "post"), B("formnovalidate", true),
-			A("data-on:click__prevent", "@post('"+url+"')"))
+			A("data-on:click__prevent", ClickPost(url)))
 	}
 	for _, a := range n.attrs {
 		if a.Name != "type" && a.Name != "data-on:click" {
@@ -369,5 +369,24 @@ func FormTo(m rt.MsgRef, attrs []Attr, children ...Node) Node {
 }
 
 // SubmitPost is the Datastar action of a form's data-on:submit: post the form's fields
-// url-encoded to action.
-func SubmitPost(action string) string { return "@post('" + action + "', {contentType: 'form'})" }
+// url-encoded to action, on the page's one navigation signal (Navigation).
+func SubmitPost(action string) string {
+	return abortNavigation + "@post('" + action + "', {contentType: 'form', " + Navigation + "})"
+}
+
+// ClickPost is the Datastar action of a click that posts a message (a data-on:click, a submit
+// button's formaction): post to url, on the page's one navigation signal (Navigation).
+func ClickPost(url string) string {
+	return abortNavigation + "@post('" + url + "', {" + Navigation + "})"
+}
+
+// Navigation is the request option every navigating Datastar request of a page shares — a
+// message's post (SubmitPost, ClickPost) and a boosted link's or a back/forward's GET
+// (datastar.BoostClick, BoostPopstate): one AbortController, window._alderAC, each request
+// aborting the one before it (abortNavigation) and starting a new one. Only the latest
+// navigation's answer is applied, so a slow post's answer cannot land after (and over) the
+// page a later click asked for. The dev server's reload stream does not use it.
+const Navigation = "requestCancellation: window._alderAC = new AbortController()"
+
+// abortNavigation, run before a navigating request, aborts the one in flight (Navigation).
+const abortNavigation = "window._alderAC?.abort();"

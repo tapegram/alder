@@ -145,26 +145,42 @@ func PatchTitle(w http.ResponseWriter, text string) error {
 // BoostClick is the expression of the boost's data-on:click__window attribute (BoostTag): a
 // click on a link of this site — same origin, http(s), not a #fragment of the page shown (a
 // jump, left to the browser; a fragment of another page is kept in window._alderHash for the
-// push, which adds it to the URL) — that nothing else handled
+// push, which adds it to the URL), not a file under /static/ or /_alder/ (a stylesheet, a
+// script, a PDF: a document of its own, not a page to morph in) — that nothing else handled
 // (not defaultPrevented), with the main button and no modifier key, on an <a href> without
 // target, download or data-alder-reload, is run as a Datastar GET of the link's path and query
 // instead of a page load: the scroll position is recorded in the state of the entry being left
 // (alderY, which a later Replace restores) and history.scrollRestoration set to manual (the
 // page comes back through a fetch, after the browser would have scrolled). Everything else —
-// another site, mailto:, tel:, javascript:, an in-page #fragment, a new tab, a download, an
-// opted-out link — is left to the browser. The GET carries an empty signal payload (Datastar
-// adds it as ?datastar={}; rt/web drops it).
+// another site, mailto:, tel:, javascript:, an in-page #fragment, a file, a new tab, a
+// download, an opted-out link — is left to the browser. The GET carries an empty signal
+// payload (Datastar adds it as ?datastar={}; rt/web drops it), the page's build (BuildHeader;
+// a page of an older build is reloaded instead) and the page's navigation signal
+// (html.Navigation: it aborts a request still in flight, a slow post's included).
 const BoostClick = `if (evt.defaultPrevented || evt.button !== 0 || evt.metaKey || evt.ctrlKey || evt.shiftKey || evt.altKey) return;` +
 	` const a = evt.target.closest ? evt.target.closest('a[href]') : null;` +
 	` if (!a || a.hasAttribute('target') || a.hasAttribute('download') || a.hasAttribute('data-alder-reload')) return;` +
 	` const u = new URL(a.getAttribute('href'), document.baseURI);` +
 	` if (u.origin !== location.origin || (u.protocol !== 'http:' && u.protocol !== 'https:')) return;` +
 	` if (u.hash && u.pathname === location.pathname && u.search === location.search) return;` +
+	` if (u.pathname.startsWith('/static/') || u.pathname.startsWith('/_alder/')) return;` +
 	` evt.preventDefault();` +
 	` window._alderHash = u.hash;` +
 	` history.scrollRestoration = 'manual';` +
 	` history.replaceState({alderY: scrollY}, '');` +
-	` @get(u.pathname + u.search, {payload: {}})`
+	` ` + abortNavigation +
+	` @get(u.pathname + u.search, {payload: {}, headers: {'` + BuildHeader + `': window._alderBuild}, ` + html.Navigation + `})`
+
+// abortNavigation aborts the navigating request in flight (html.Navigation).
+const abortNavigation = `window._alderAC?.abort();`
+
+// BuildHeader is the request header a boosted GET carries (BoostClick, BoostPopstate): the
+// build of the page that sent it, as its <meta name="alder-build"> says (rt/web: BuildMeta). The
+// <head> is never patched, so a tab open across a deploy keeps the old build's head — its
+// stylesheet link, its Datastar script, this boost — until a real page load; rt/web answers a
+// boosted GET whose build is not its own with a navigation (datastar.Assign), so the tab
+// reloads once, on its next click, and has the new head.
+const BuildHeader = "Alder-Build"
 
 // BoostScroll is the expression of the boost's data-on:scroll__window__throttle.200ms.trailing
 // attribute: the scroll position, kept in the state of the current history entry (alderY) as
@@ -175,28 +191,42 @@ const BoostScroll = `history.replaceState(Object.assign({}, history.state, {alde
 // BoostPopstate is the expression of the boost's data-on:popstate__window attribute: on back
 // or forward to an entry whose path or query differs from the page shown (window._alderAt), a
 // Datastar GET of it with HistoryHeader "replace", so its answer morphs the page in and
-// replaces the entry rather than pushing a new one.
-const BoostPopstate = `if (location.pathname + location.search !== window._alderAt)` +
-	` @get(location.pathname + location.search, {payload: {}, headers: {'` + HistoryHeader + `': 'replace'}})`
+// replaces the entry rather than pushing a new one; with the build and the navigation signal,
+// as BoostClick.
+const BoostPopstate = `if (location.pathname + location.search !== window._alderAt) {` +
+	abortNavigation +
+	` @get(location.pathname + location.search, {payload: {}, headers: {'` + HistoryHeader + `': 'replace', '` + BuildHeader + `': window._alderBuild}, ` + html.Navigation + `})}`
 
 // BoostInit is the expression of the boost's data-init attribute: the page loaded is the one
-// shown.
-const BoostInit = `window._alderAt = location.pathname + location.search`
+// shown, and its build is the one its <meta name="alder-build"> names ("" without one: no
+// check).
+const BoostInit = `window._alderAt = location.pathname + location.search;` +
+	` window._alderBuild = document.querySelector('meta[name=alder-build]')?.content || ''`
 
-// BoostTag is the element in a page's <head> that boosts its links: a <meta name="alder-boost">
-// whose Datastar attributes listen on window, so the listeners survive every body patch (the
-// <head> is never morphed) and see every click, in the bubble phase after the page's own
-// handlers (BoostClick, BoostPopstate, BoostInit).
-func BoostTag() html.Node {
-	return html.El("meta", []html.Attr{
-		html.A("name", "alder-boost"),
-		html.A("content", "links"),
-		html.A("data-init", BoostInit),
-		html.A("data-on:click__window", BoostClick),
-		html.A("data-on:popstate__window", BoostPopstate),
-		html.A("data-on:scroll__window__throttle.200ms.trailing", BoostScroll),
-	})
+// BoostTag is the element in a page's <head> that boosts its links, rendered: a <meta
+// name="alder-boost"> whose Datastar attributes listen on window, so the listeners survive
+// every body patch (the <head> is never morphed) and see every click, in the bubble phase after
+// the page's own handlers (BoostClick, BoostPopstate, BoostScroll, BoostInit). It is written
+// here rather than by rt/html, whose attributes escape ' too: the expressions' single quotes
+// stay as they are inside the double-quoted values (only &, " and < are escaped), which keeps
+// the tag, sent with every page, a few hundred bytes smaller.
+func BoostTag() string {
+	var b strings.Builder
+	b.WriteString(`<meta name="alder-boost" content="links"`)
+	for _, a := range [][2]string{
+		{"data-init", BoostInit},
+		{"data-on:click__window", BoostClick},
+		{"data-on:popstate__window", BoostPopstate},
+		{"data-on:scroll__window__throttle.200ms.trailing", BoostScroll},
+	} {
+		b.WriteString(" " + a[0] + `="` + boostEscaper.Replace(a[1]) + `"`)
+	}
+	b.WriteString(" />")
+	return b.String()
 }
+
+// boostEscaper escapes a double-quoted attribute value: &, " and <.
+var boostEscaper = strings.NewReplacer("&", "&amp;", `"`, "&quot;", "<", "&lt;")
 
 // patch writes one `datastar-patch-elements` event (PatchEvent) patching elements at selector
 // in mode.

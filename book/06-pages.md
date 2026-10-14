@@ -922,7 +922,7 @@ page's parameters to every message URL it writes. This is the Done button
 of `GET /?filter=Active`, as the running app sends it:
 
 ```html
-<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="@post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;})"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
+<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="window._alderAC?.abort();@post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()})"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
 ```
 
 (A `click` button is wrapped in a form of its own so that it works without
@@ -1113,8 +1113,12 @@ early and start a field of its own, so the renderer writes it as `&#13;`
 and `PatchBody` turns any line end into a plain newline first.
 
 The two kinds of message travel differently under Datastar. A form posts
-with `data-on:submit="@post('<url>', {contentType: 'form'})"`, so its
-fields arrive url-encoded and are decoded as the form. A `click` button's
+with `data-on:submit="window._alderAC?.abort();@post('<url>', {contentType:
+'form', requestCancellation: window._alderAC = new AbortController()})"`, so
+its fields arrive url-encoded and are decoded as the form. The
+`window._alderAC` part is the page's one navigation signal, shared with
+boosted links ("Links and navigation" below): a new post or click aborts
+the request still in flight, so a slow answer never lands over a newer page. A `click` button's
 message carries its parameters in the URL, and its body is ignored.
 
 A `click` button works without JavaScript too. Outside a form, it is

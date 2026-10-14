@@ -328,14 +328,15 @@ func dsDo(t *testing.T, req *http.Request) (*http.Response, string) {
 }
 
 // Boosted navigation through the dev server (M13): a page's <head> begins with the color-scheme
-// meta and the Datastar script, and ends with the boost; a
+// meta, the build's meta and the Datastar script, and ends with the boost; a
 // Datastar GET of a page (a boosted link, with Datastar's ?datastar= signals) is answered with
 // its body patch (overlay target and subscriber kept), its title and a history push; one whose
 // `requires` redirects pushes the login page; a message that redirects is answered with the
 // target's morph under Datastar, and with the 303 without it.
 func TestRun_BoostedNavigation(t *testing.T) {
 	r := startRun(t)
-	if page := get(t, r.base+"/login"); !strings.Contains(page, `<head><meta name="color-scheme" content="light dark" /><script type="module" src="/_alder/datastar-v1.0.0.js"></script>`) ||
+	if page := get(t, r.base+"/login"); !strings.Contains(page, `<head><meta name="color-scheme" content="light dark" /><meta name="alder-build" content="`) ||
+		!regexp.MustCompile(`<meta name="alder-build" content="[0-9a-f]{16}" /><script type="module" src="/_alder/datastar-v1.0.0.js"></script>`).MatchString(page) ||
 		!regexp.MustCompile(`<meta name="alder-boost" content="links" data-init="[^"]*"[^>]*/></head>`).MatchString(page) ||
 		!strings.Contains(page, `data-on:click__window="if (evt.defaultPrevented`) {
 		t.Fatalf("GET /login lacks the boost:\n%s", page)

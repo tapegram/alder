@@ -3,9 +3,12 @@ package web
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"mime"
 	"net/http"
@@ -258,6 +261,20 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}()
 
 	get := r.Method == http.MethodGet || r.Method == http.MethodHead
+	if get && datastar.IsDatastar(r) && (strings.HasPrefix(r.URL.Path, staticPrefix) || strings.HasPrefix(r.URL.Path, alderPrefix)) {
+		// a file, not a page: a boost of an older runtime (or a hand-made Datastar GET) asked
+		// for it to morph in; the browser loads it itself instead
+		rt.reload(w, r)
+		return
+	}
+	if get && datastar.IsDatastar(r) {
+		if b := r.Header.Get(datastar.BuildHeader); b != "" && b != BuildID() {
+			// a tab of another build: its <head> (stylesheet, scripts, boost) is that build's,
+			// and a morph keeps it; a real load of the URL brings this build's
+			rt.reload(w, r)
+			return
+		}
+	}
 	if get && r.URL.Path == datastar.ScriptPath {
 		rt.script.ServeHTTP(w, r)
 		return
@@ -275,6 +292,20 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rt.serve(w, r, st)
+}
+
+// alderPrefix is the runtime's own files' path (the Datastar script, datastar.ScriptPath).
+const alderPrefix = "/_alder/"
+
+// reload answers a Datastar GET with a real navigation to its URL (datastar.Assign): the
+// browser loads it as a document (a file under /static/ or /_alder/; a page asked for by a tab
+// of another build). Asked from a back/forward, the URL is the one the tab shows, which a
+// browser loads in place of the entry rather than as a new one.
+func (rt *router) reload(w http.ResponseWriter, r *http.Request) {
+	dropSignals(r.URL)
+	if err := datastar.Navigate(w, r.URL.RequestURI(), datastar.Assign); err != nil {
+		rt.log("error", fmt.Sprintf("%s %s: writing the navigation: %v", r.Method, r.URL.Path, err))
+	}
 }
 
 // hop is how a request is being served: origin is the request the client sent (the log line
@@ -603,16 +634,22 @@ func followable(loc string) bool {
 	return p != datastar.ScriptPath && !strings.HasPrefix(p, staticPrefix)
 }
 
-// dropSignals removes the `datastar` query parameter Datastar adds to every GET (its signals, as
-// JSON; the boost sends none) from u, leaving the other parameters as they were, in their order.
+// dropSignals removes the `datastar` query parameter Datastar adds to every GET — its signals,
+// as JSON, which for the boost's GETs is the empty payload {} — from u, leaving the other
+// parameters as they were, in their order. Only that one is dropped: a `datastar` parameter of
+// the page's own URL (/search?datastar=x) is kept.
 func dropSignals(u *url.URL) {
 	if u.RawQuery == "" {
 		return
 	}
 	var keep []string
+	dropped := false
 	for _, kv := range strings.Split(u.RawQuery, "&") {
-		k, _, _ := strings.Cut(kv, "=")
-		if k, err := url.QueryUnescape(k); err == nil && k == "datastar" {
+		k, v, _ := strings.Cut(kv, "=")
+		k, kerr := url.QueryUnescape(k)
+		v, verr := url.QueryUnescape(v)
+		if !dropped && kerr == nil && verr == nil && k == "datastar" && v == "{}" {
+			dropped = true
 			continue
 		}
 		keep = append(keep, kv)
@@ -749,8 +786,33 @@ func commentSafe(s string) string {
 // placed first it would push a layout's <meta charset> past the first 1024 bytes, where a
 // browser looks for it.
 func HeadTags() (first, boost string) {
-	return colorScheme + html.Render(datastar.ScriptTag()), html.Render(datastar.BoostTag())
+	return colorScheme + BuildMeta() + html.Render(datastar.ScriptTag()), datastar.BoostTag()
 }
+
+// BuildMeta is the <meta name="alder-build" content="…"> HeadTags carries: the build of the
+// binary serving the page (BuildID), which the boost sends back with each boosted GET
+// (datastar.BuildHeader).
+func BuildMeta() string {
+	return html.Render(html.El("meta", []html.Attr{html.A("name", "alder-build"), html.A("content", BuildID())}))
+}
+
+// BuildID is this binary's build: the first 16 hex digits of the SHA-256 of its executable
+// (the compiled app and the runtime in it), computed once. Two processes of the same binary —
+// a restart, a second replica — share it; a deploy of anything else changes it. When the
+// executable cannot be read it is a value made from the process's start time, which differs
+// on every start (a tab then reloads once more than it needs to, after a restart).
+var BuildID = sync.OnceValue(func() string {
+	if exe, err := os.Executable(); err == nil {
+		if f, err := os.Open(exe); err == nil {
+			defer f.Close()
+			h := sha256.New()
+			if _, err := io.Copy(h, f); err == nil {
+				return hex.EncodeToString(h.Sum(nil))[:16]
+			}
+		}
+	}
+	return "t" + strconv.FormatInt(time.Now().UnixNano(), 36)
+})
 
 // StripHeadTags is page without what withScript inserted: an Alder test's browser holds the page
 // as the view renders it.

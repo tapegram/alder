@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -265,11 +267,13 @@ func TestBoost_Followable(t *testing.T) {
 
 func TestBoost_DropSignals(t *testing.T) {
 	for in, want := range map[string]string{
-		"":                             "",
-		"datastar=%7B%7D":              "",
-		"b=2&datastar=%7B%7D&a=1":      "b=2&a=1",
-		"q=a%20b&datastar=x&datastar=": "q=a%20b",
-		"datastarx=1&x=datastar":       "datastarx=1&x=datastar",
+		"":                        "",
+		"datastar=%7B%7D":         "",
+		"b=2&datastar=%7B%7D&a=1": "b=2&a=1",
+		"q=a%20b&datastar=%7B%7D": "q=a%20b",
+		"datastar=x&a=1":          "datastar=x&a=1", // not the boost's: the page's own
+		"datastar=&a=1":           "datastar=&a=1",
+		"datastarx=1&x=datastar":  "datastarx=1&x=datastar",
 	} {
 		u := &url.URL{Path: "/", RawQuery: in}
 		if dropSignals(u); u.RawQuery != want {
@@ -309,7 +313,8 @@ func TestBoost_ClickHandlerExclusions(t *testing.T) {
 		"u.protocol !== 'http:' && u.protocol !== 'https:'", // mailto:, tel:, javascript:
 		"if (u.hash && u.pathname === location.pathname && u.search === location.search) return;", // a jump on this page
 		"window._alderHash = u.hash;", // another page's fragment, added back by the push
-		"evt.preventDefault(); window._alderHash = u.hash; history.scrollRestoration = 'manual'; history.replaceState({alderY: scrollY}, ''); @get(u.pathname + u.search, {payload: {}})",
+		"if (u.pathname.startsWith('/static/') || u.pathname.startsWith('/_alder/')) return;", // a file
+		"evt.preventDefault(); window._alderHash = u.hash; history.scrollRestoration = 'manual'; history.replaceState({alderY: scrollY}, ''); window._alderAC?.abort(); @get(u.pathname + u.search, {payload: {}, headers: {'Alder-Build': window._alderBuild}, requestCancellation: window._alderAC = new AbortController()})",
 	} {
 		if !strings.Contains(datastar.BoostClick, part) {
 			t.Errorf("BoostClick lacks %q", part)
@@ -319,7 +324,7 @@ func TestBoost_ClickHandlerExclusions(t *testing.T) {
 	if strings.Index(datastar.BoostClick, "evt.preventDefault()") < strings.LastIndex(datastar.BoostClick, "return;") {
 		t.Error("BoostClick prevents the default before its last exclusion")
 	}
-	if want := "if (location.pathname + location.search !== window._alderAt) @get(location.pathname + location.search, {payload: {}, headers: {'Alder-History': 'replace'}})"; datastar.BoostPopstate != want {
+	if want := "if (location.pathname + location.search !== window._alderAt) {window._alderAC?.abort(); @get(location.pathname + location.search, {payload: {}, headers: {'Alder-History': 'replace', 'Alder-Build': window._alderBuild}, requestCancellation: window._alderAC = new AbortController()})}"; datastar.BoostPopstate != want {
 		t.Errorf("BoostPopstate = %q", datastar.BoostPopstate)
 	}
 	// Datastar rewrites $name as a signal: the expressions must not use one.
@@ -329,7 +334,11 @@ func TestBoost_ClickHandlerExclusions(t *testing.T) {
 		}
 	}
 	// on window, so the listeners survive body patches; in <head>, which is never morphed
-	tag := html.Render(datastar.BoostTag())
+	tag := datastar.BoostTag()
+	// written by hand (m7): the expressions' single quotes are not escaped, & and " are
+	if strings.Contains(tag, "&#39;") || !strings.Contains(tag, "'a[href]'") || !strings.Contains(tag, "&amp;&amp;") {
+		t.Errorf("BoostTag escaping: %s", tag)
+	}
 	// the scroll position is kept in the current entry's state as the page scrolls, so Back and
 	// Forward both restore it
 	if want := "history.replaceState(Object.assign({}, history.state, {alderY: scrollY}), '')"; datastar.BoostScroll != want {
@@ -351,8 +360,61 @@ func TestBoost_ClickHandlerExclusions(t *testing.T) {
 func TestBoost_ColorSchemeMeta(t *testing.T) {
 	h := NewRouter(one("GET", "/", func(rq *Request) Response { return PageResponse(doc("Home"), nil, nil, false) }), testOpts(nil))
 	body := serve(h, httptest.NewRequest("GET", "/", nil)).Body.String()
-	want := "<!doctype html>\n<html><head>" + `<meta name="color-scheme" content="light dark" />` + html.Render(datastar.ScriptTag()) + "<title>Home</title>" + html.Render(datastar.BoostTag()) + "</head>"
+	want := "<!doctype html>\n<html><head>" + `<meta name="color-scheme" content="light dark" />` + `<meta name="alder-build" content="` + BuildID() + `" />` + html.Render(datastar.ScriptTag()) + "<title>Home</title>" + datastar.BoostTag() + "</head>"
 	if !strings.HasPrefix(body, want) {
 		t.Fatalf("head %q", body)
+	}
+}
+
+// I2: a file under /static/ or /_alder/ is not a page: a Datastar GET of one (the boost leaves
+// such links to the browser; an older boost did not) is answered with a real navigation to it.
+func TestBoost_FileLinkNavigates(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "x.pdf"), []byte("%PDF"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	opts := testOpts(nil)
+	opts.StaticDir = dir
+	h := NewRouter(one("GET", "/", func(rq *Request) Response { return PageResponse(doc("Home"), nil, nil, false) }), opts)
+	for _, path := range []string{"/static/x.pdf", "/static/al/al.css", datastar.ScriptPath} {
+		r := httptest.NewRequest("GET", path+"?datastar=%7B%7D", nil)
+		r.Header.Set("Datastar-Request", "true")
+		w := serve(h, r)
+		if got := w.Body.String(); !strings.Contains(got, "window.location.assign(\""+path+"\")") {
+			t.Errorf("%s: %q", path, got)
+		}
+	}
+	// without Datastar the file itself
+	if w := serve(h, httptest.NewRequest("GET", "/static/x.pdf", nil)); w.Body.String() != "%PDF" {
+		t.Errorf("plain GET: %q", w.Body.String())
+	}
+}
+
+// I8: a boosted GET from a page of another build (its Alder-Build header) is answered with a
+// real navigation to the URL, so the tab reloads once and gets this build's <head>; the same
+// build, or no header (a hand-made request), is the usual morph.
+func TestBoost_BuildMismatchReloads(t *testing.T) {
+	h := NewRouter(one("GET", "/p", func(rq *Request) Response { return PageResponse(doc("P"), nil, nil, false) }), testOpts(nil))
+	get := func(build string) string {
+		r := httptest.NewRequest("GET", "/p?a=1&datastar=%7B%7D", nil)
+		r.Header.Set("Datastar-Request", "true")
+		if build != "" {
+			r.Header.Set(datastar.BuildHeader, build)
+		}
+		return serve(h, r).Body.String()
+	}
+	if got := get("0123456789abcdef-old"); !strings.Contains(got, "window.location.assign(\"/p?a=1\")") || strings.Contains(got, "selector body\ndata: mode outer") {
+		t.Errorf("old build: %q", got)
+	}
+	for _, b := range []string{BuildID(), ""} {
+		if got := get(b); !strings.Contains(got, "data: selector body\ndata: mode outer") || !strings.Contains(got, "history.pushState") {
+			t.Errorf("build %q: %q", b, got)
+		}
+	}
+	if id := BuildID(); len(id) != 16 || id != BuildID() {
+		t.Errorf("BuildID %q", id)
+	}
+	if !strings.Contains(BuildMeta(), `<meta name="alder-build" content="`+BuildID()+`" />`) {
+		t.Errorf("BuildMeta %q", BuildMeta())
 	}
 }
