@@ -302,7 +302,8 @@ and names it binds itself, such as a lambda's `\u`: a select inside a
 a name a `let` or a `match` arm of the view binds, and so is a select
 with `options` in a component, whose props the runtime
 cannot compute from the model. Put the list in the model and the select
-in the page's `view`.
+in the page's `view`. The check ignores the view's `if`s: a select in a
+branch not drawn still offers its options to a crafted post.
 
 A `<form submit={M}>` where `M` has no `form` type is allowed; it contains
 no bound inputs, only a button.

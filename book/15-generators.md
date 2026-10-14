@@ -59,10 +59,15 @@ Every command does the same five things, in this order:
    the unified diff of each edited file, and the copy's diagnostics,
    among them its **holes** (warning W0002, below).
 
-This is called **copy, check, write**. It means that a generator can
-never leave your app in a state that does not check. A generator also
-never overwrites anything: when the file or the name it would write
-exists, it refuses with one sentence and writes nothing.
+This is called **copy, check, write**. It means that a generator never
+leaves your app in a state that does not check, with one exception by
+design: `alder edit table` writes a table change that breaks code
+elsewhere, and prints the list of places to fix ("Changing a table",
+below; `--strict` refuses instead). A generator also never overwrites
+anything: when the file or the name it would write exists, it refuses
+with one sentence and writes nothing; and when a file it is about to
+write changed since the command read the app, it writes nothing and says
+so.
 
 `--dry-run` does steps 1 to 4 and prints what it would write: `would
 write` and `would edit` lines, the diffs (a new file as a diff from
@@ -694,7 +699,9 @@ about your app's users, not a detail to generate. To meet it:
 Both examples do this. The to-do app's roles are `Member | Admin`; the
 blog's are `Reader | Author | Admin`, where an Author writes posts on
 the blog's own `Write` pages and an Admin manages everything through the
-generated admin. In the blog:
+generated admin. In the blog (this transcript is the blog's history, from
+before `app/Admin/` existed, so the book's test does not run it; the
+blog's README replays it, file for file):
 
 ```text
 $ alder new admin
@@ -783,7 +790,21 @@ isAdmin id = {
 ```
 
 The first two lines say where the file came from, and every file of the
-admin has them. The lines between `-- @admin begin <name>` and `-- @admin
+admin has them. They name no version, so the same app gives the same
+files from any build of `alder`.
+
+The region `access` is the admin's own check. The session's role is the
+one read at login, and the cookie keeps it until logout or its 30 days
+(chapter 6, "Rules"); an Admin demoted, or deleted, since would keep the
+admin all that time. So every page's `load` begins by asking `isAdmin`,
+which reads the user's row again, and answers `Query.notFound` when the
+row is gone or no longer says `Admin`; `load` runs before every message
+too, so a form posted by a demoted Admin is refused the same way. This
+is chapter 6's re-read idiom, generated. When the user table has no
+column holding the role, there is nothing to read again: `isAdmin` is
+`Query.succeed True`, the `page` line's role is the whole check, and the
+dashboard's test says that the cookie's role lasts until logout or its
+30 days. The lines between `-- @admin begin <name>` and `-- @admin
 end` are **owned regions**: the parts that follow the tables, which
 `alder regen admin` rewrites when the tables change ("Owned regions",
 below). Everything else is yours.
@@ -884,9 +905,11 @@ generated code is part of what the generator writes, so the tests follow
 the tables like the code does. Each table's card is tested with more rows
 than it shows, so that the count, the order and the limit of five are
 each checked;
-then come the rules: a visitor is sent to log in, a Reader gets
-`PageMissing`, and an Admin is let in by the role the cookie got at login
-(chapter 6, "A role is read at login").
+then come the rules: a visitor is sent to log in; a Reader gets
+`PageMissing`, even one whose row says Admin since, because the cookie's
+role, the one read at login, is what the `page` line checks (chapter 6,
+"A role is read at login"); and a demoted Admin, whose cookie still says
+Admin, is refused at once.
 
 ```alder part=blog/Admin.Index
 -- @admin begin tests
@@ -1932,21 +1955,46 @@ button. A `@restrict` reference further down a cascade (a comment that a
 third table's row would keep) is counted too, at every level, and
 blocks the delete like a direct one.
 
-**The generated admin's one limit** is a table that refers to itself
-with `@cascade` (a reply to a reply). The delete page follows such a
-reference one level down, not to any depth, since a query cannot
-recurse. When, below that level, a row is held by a `@restrict`
-reference, the page does not count it, and the delete fails in the
-database as any refused delete does. Neither example has such a table.
+**A tree.** A table that refers to itself with `@cascade` (a reply to a
+reply, a folder in a folder) is a tree: deleting a row deletes its
+children, theirs, and so on to any depth, which no query can follow, so
+the page cannot count every row a `@restrict` reference might hold far
+down. When such a delete can reach a `@restrict` reference (one to the
+table, or to a table its cascades reach), the delete page counts only the
+row's own children (the function `children`, in the region `blockers`),
+and deletes only a row without them: with children, it shows "Delete its
+children first." and no button, and `Remove` answers `Reject` with the
+same sentence. A row without children takes the usual path, its own
+`@restrict` references counted. So of a chain a → b → c whose last row a
+`@restrict` reference holds, a and b are refused for their children, c
+for the reference, and a childless row nothing refers to is deleted; the
+generated test checks the first and the last. A tree below another table
+(a post's nodes, which have nodes of their own) is counted the same way:
+the post is refused while its nodes have children. Only a table can refer
+to itself: a cycle through two tables would need each module to import
+the other, an import cycle (E0006). Without a `@restrict` in reach the
+database cascades the whole tree, and the page deletes as usual. Neither
+example has a tree.
 
 ### What the admin does not do
 
 It reads and writes every row with the unscoped operations (`Db.from`,
 `Db.get`, `Db.insert`, …), because the role is the rule there: an Admin
 acts on everyone's rows (chapter 6, "When to use the unscoped forms").
-It writes no check of its own, of the role or of ownership: the page's
-`requires user, role Admin` does that, in the route, before `load`
-runs, for the page and for every message. It loads every row of a
+It writes no check of ownership: the page's `requires user, role Admin`
+checks the role, in the route, before `load` runs, for the page and for
+every message, and `isAdmin` reads it again in `load`.
+
+It never shows or edits a secret. A column is a secret when its type is
+`Text.Secret`, or when its name, in any case, begins with `password`,
+ends in `hash`, or holds `token` or `secret` (`passwordHash`,
+`apiToken`, `clientSecret`): it is left out of the list, its search and
+its sorts, the row's page and both forms, and it never labels a row. An
+insert that must name one writes it empty (`""`, or `Nothing` for a
+`Maybe`), so a user the admin creates has no password until the app
+sets one; a secret of another type that an insert must name is refused,
+with a sentence asking for a default or a `Maybe`. The blog's
+`User.passwordHash` is such a column. It loads every row of a
 referenced table for a select, which is fine for the tables an admin
 usually manages, and offers no bulk actions and no permissions finer
 than one role.
@@ -2139,7 +2187,9 @@ The rules of `regen`:
   writes nothing.
 - **It does not bring back what you deleted.** A page you removed (say,
   a table's delete page) is listed as `not recreated app/Admin/Comment/Delete.alder
-  (deleted; --all writes it again)`; `--all` writes it again.
+  (deleted; --all writes it again)`; `--all` writes it again. Remove the
+  links to it as well (the Delete button of the table's `Show` page),
+  or the app no longer checks and `regen` refuses.
 - **It adds what is new.** A table added since the admin was generated
   (one the nav's region does not link to yet) gets its five pages, and
   its card and its link appear in the dashboard's and the nav's regions.

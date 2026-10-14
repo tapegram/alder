@@ -57,11 +57,13 @@ pages). `view` receives the session so that per-user presentation (theme,
 ```alder fragment
 page "/todos/{id}" { id: Todo.TodoId }
 page "/" { filter: Todo.Filter = All, q: Maybe Text }
-page "/admin" { } requires user
+page "/write" { } requires user
 ```
 
 - The path is a literal with `{name}` segments. Each segment must appear in
   the parameter record; parameters not in the path are query parameters.
+  Segments are letters, digits, `.`, `_`, `~`, `-`, or a whole `{param}`;
+  anything else (`//x`, a space, `?`) is E0029.
 - Parameter types must be one of: `Int`, `Text`, `Bool`, a brand of those,
   a union with no payloads, `Maybe` of those, or `List` of those.
 - A parameter with a default is optional in links and in the URL.
@@ -626,8 +628,8 @@ leave `role` out and gets its default, `Reader`.
 A page for authors only says so on its `page` line:
 
 ```alder fragment
-page "/admin" { } requires user, role Author
-page "/admin/users" { } requires user, role Author | Admin
+page "/write" { } requires user, role Author
+page "/write/drafts" { } requires user, role Author | Admin
 ```
 
 - `requires user` comes first: a visitor is sent to log in, as always.
@@ -666,8 +668,10 @@ view model session = <p>reports</p>
 writes the clause, and `--role R` adds `, role R` (and implies
 `--requires user`), each with its test (chapter 15). Every page of
 `alder new admin`'s admin `requires user, role Admin`: so it needs a
-session `role` with an `Admin` constructor, and writes no check of its
-own.
+session `role` with an `Admin` constructor; and when the user table
+holds the role, each of its pages also re-reads the user's row in
+`load`, the idiom below, so a demoted Admin is turned away at once
+(chapter 15, "The dashboard and the layout").
 
 **A role is read at login.** The check reads the session cookie and
 nothing else, so it costs no query. A role in the cookie lasts until

@@ -336,13 +336,20 @@ class BuildContextTests(unittest.TestCase):
     def test_real_reference_cut(self):
         # M11's final review cut the reference to at most 44k tokens (len/4, with the example):
         # the rules' facts stay, their repeated quotes and transcripts go. M7a raised the budget
-        # to 46k for the design system's element table (Appendix C, one line per element).
+        # to 46k for the design system's element table (Appendix C, one line per element); M12's final
+        # review cut it to 45k, with at least 1k to spare.
         bc.HUMAN_SECTIONS, bc.KEEP_SUBSECTIONS = self.saved, self.saved_keep
         bc.DROP_SUBSECTIONS, bc.TRIMS = self.saved_drop, self.saved_trims
         code, out, _ = self.run_main("--reference", "--chapters", ",".join(bc.DEFAULT_CHAPTERS), "--book", str(bc.BOOK),
                                      "--example", str(bc.EXAMPLE))
         self.assertEqual(code, 0)
-        self.assertLessEqual(len(out) // 4, 46000, "the reference is at most 46k tokens (len/4)")
+        self.assertLessEqual(len(out) // 4, 45000, "the reference is at most 45k tokens (len/4)")
+        # M12's final review: the scaffold, the fill addresses and the add-field warning are in;
+        # hand-written migration SQL and the theme switch are out
+        for added in ("alder new <app>   the guestbook", "Module.Fake.entry", "add-field without a default"):
+            self.assertIn(added, out)
+        for cut in ("### Statements you add", "### Example: a theme switch"):
+            self.assertNotIn(cut, out)
         for kept in ("**`Test.login s`** sets it to `s`", "**`Session.put`**, in the test", "A login through the login page's form",
                      "So a test that calls `update` or `load` itself", "Db.updateMine Todo: no signed-in user",
                      "`update` call is not checked", "error[E0026]: `Db.mine` needs a page that `requires user`: `Public` does not",

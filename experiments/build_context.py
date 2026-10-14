@@ -75,10 +75,14 @@ KEEP_SUBSECTIONS = {
 # forms) but for its last subsection, the case for the design on a replicated database.
 # Chapter 8's "Migrations" drops "When the app starts" (M11 final review, the reference cut):
 # how the runtime applies the files and what it refuses, the inside, like "How tables are
-# stored"; the workflow an agent follows (E0019, `alder migrate`, the files) stays.
+# stored"; the workflow an agent follows (E0019, `alder migrate`, the files) stays. It also drops
+# "Statements you add" (M12 final review): hand-written migration SQL, which an agent never
+# writes. Chapter 6's "Example: a theme switch" (a worked App message) goes too: the rules it
+# shows are stated in the section around it.
 DROP_SUBSECTIONS = {
-    "06": {"Rules": ["The rules and a replicated database"]},
-    "08": {"Migrations": ["When the app starts"]},
+    "06": {"Rules": ["The rules and a replicated database"],
+           "App-level messages": ["Example: a theme switch"]},
+    "08": {"Migrations": ["When the app starts", "Statements you add"]},
     "09": {"Test": ["Browser steps and queries"]},
     "10": {"11. Mutation testing": ["Why a mutation score", "The rules' mutants in a report", "How the two tests kill them", "All fourteen, and one killed by luck", "What is never a mutant",
                                     "The logout redirect", "Mutants that are the same program", "The exact score",
@@ -99,7 +103,8 @@ DROP_SUBSECTIONS = {
 # stranger's todo" keeps one test, the stale page's; chapter 6's re-read idiom keeps its helper
 # and says how `load` uses it. Chapter 5's "Custom elements" (M7a) keeps its rules in one
 # paragraph, and the input elements in another, without the manifest's story and the examples;
-# its click-button paragraph keeps the fact, not the markup.
+# its click-button paragraph keeps the fact, not the markup. Chapter 6's paragraph on generated
+# pages goes (COMMANDS lists the generators).
 TRIMS = {
     "05": [("A `<button click={…}>` works with and without JavaScript.", "`data-*` and `aria-*` attributes take `Text`.",
             "A `<button click={…}>` works with and without JavaScript (chapter 6); a\n`click` on any other element needs JavaScript.\n\n"),
@@ -121,6 +126,8 @@ TRIMS = {
             "A row `load` already found with `Db.getMine` is not one of the cases:\nwrite the scoped form; it costs "
             "nothing (`Todos.Show` writes\n`Db.updateMine Todo model.todo.id …`, and the mutation tool counts it\nas "
             "the same program as the unscoped one there).\n\n"),
+           ("**Generated pages say the same.**", "**A role is read at login.**",
+            ""),
            ("The to-do list's page uses four of them\n", "Why `update` needs them as much as `load` does",
             "The to-do list's page uses four of them, and `Todos.Show` reads its todo with the fifth\n"
             "(`examples/todos/app/Todos/Index.alder` and `Todos/Show.alder`, in the example app below).\n\n")],
@@ -186,15 +193,21 @@ not exist. Follow it exactly.
 # chapters themselves (11, 15) are for a human reader and are not in the reference.
 COMMANDS = """
 ====================  COMMANDS  ====================
-Each checks a copy of the app, writing only if it checks; none overwrites. All take --dir D,
---dry-run, --json. A hole stops `alder test`: new, fill, then test.
+alder new <app>   the guestbook: App, Layout, table Entry, page Home (a form, the entries), its
+tests, migration 0001; no login, user or role.
+The generators check a copy, writing only if it checks; none overwrites. All take --dir D,
+--dry-run, --json. A hole stops `alder test`: fill it.
 alder new page <Module> <path> [--list T | --show T | --from T …] [--requires user] [--role R]
 alder new table <Name> <field>:<Type>[=default][@ref=T][@cascade|@restrict|@setNull][@owner][@unique] …
 alder new form <Page> <Name> <field>:<Type> … [--into T]
 alder new msg <Page> <Name> [<field>:<Type> …]
 alder new capability <Module> <entry> "<Type>"
 alder edit table <T> add-field <f> | rename-field <old> <new> | drop-field <f> [--strict]
-alder fill <Module>.<decl>[.<arm>] - [--hole ?name]   (stdin: one expression); fill --list
+  add-field without a default (=Nothing for a Maybe) breaks every insert of T (tests too), which
+  no command fixes: give a default, or drop-field it
+alder fill <address> - [--hole ?name]   (the expression on stdin); fill --list. Addresses:
+  Module.decl, Module.update.Msg, Module."test name", Module.Fake.entry; an app module the
+  expression names (Member.x) is imported
 alder new admin [--module Admin] [--path /admin]   (needs a session role with Admin)
 alder regen admin [--module Admin] [--path /admin] [--all]
 
