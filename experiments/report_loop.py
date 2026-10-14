@@ -24,7 +24,12 @@ or `— (error)` when the mutation run failed;
 E9: when any summary has `harness.feedback` (run with `--feedback N`), a `Score` column takes
 `Mut`'s place: `before → after` (`score_before`, `score_after`, two decimals) for a summary with
 feedback, the score alone for one without (a baseline cell), `0 (no tests)`, `— (error)`, or `—`.
-A feedback round rejected for changing app code shows `errors (app changed)` in its round column."""
+A feedback round rejected for changing app code shows `errors (app changed)` in its round column.
+
+E11: when any summary has `cli` (run with `--cli`), six columns follow the Hidden/Mut/Score ones:
+`Cmds` (commands run / parsed, all rounds), `Refused` (count, and the kinds: `exit1×2, parse`),
+`Stdin` (here-document lines run), `Max body` (the largest, in lines), `--decl` (its uses) and
+`Names` (`ok`, `k differ`, or `—` for a task without a Names block)."""
 import json, pathlib, sys
 
 
@@ -36,7 +41,7 @@ def rows(summaries):
         r = {"model": s["model"], "task": task, "error": s["error"], "pass": s["final_pass"],
              "condition": h.get("condition"), "hidden": hidden_cell(s["hidden"]) if "hidden" in s else None,
              "mutation": mutation_cell(s["mutation"]) if "mutation" in s else None,
-             "feedback": "feedback" in h, "score": score_cell(s),
+             "feedback": "feedback" in h, "score": score_cell(s), "cli": cli_cells(s["cli"]) if "cli" in s else None,
              "r0": None, "r1": None, "codes0": {}, "codes1": {},
              "harness": "harness" in s, "compiler_bug": bool(s.get("compiler_bug")),
              "outcome": s.get("outcome"), "bug_kind": s.get("compiler_bug_kind"), "rounds": [], "tests": []}
@@ -55,6 +60,17 @@ def rows(summaries):
                 r["tests"].append(f"r{rd['n']} ✓ {total}" if t["failed"] == 0 else f"r{rd['n']} ✗ {t['failed']}/{total}")
         out.append(r)
     return out
+
+
+CLI_COLS = ("Cmds", "Refused", "Stdin", "Max body", "--decl", "Names")
+
+
+def cli_cells(c):
+    """E11's six cells from summary["cli"]."""
+    kinds = ", ".join(f"{k}×{v}" if v > 1 else k for k, v in sorted(c["refused"]["kinds"].items()))
+    names = "—" if not c.get("names") else "ok" if c["names"]["ok"] else f"{len(c['names']['mismatches'])} differ"
+    return [f"{c['executed']}/{c['commands']}", str(c["refused"]["count"]) + (f" ({kinds})" if kinds else ""),
+            str(c["stdin_lines"]), str(c["max_body"]), str(c["decl_uses"]), names]
 
 
 def hidden_cell(h):
@@ -132,6 +148,7 @@ def markdown_rounds(rs):
     score = any(r.get("feedback") for r in rs)   # E9 --feedback: Score replaces Mut
     if score:
         mut = False
+    cli = any(r.get("cli") is not None for r in rs)   # E11 --cli; absent before: E5–E10 unchanged
     cond = any(r.get("condition") is not None for r in rs)
     if cond:   # grouped by condition, in the order each condition first appears
         order = {}
@@ -139,14 +156,15 @@ def markdown_rounds(rs):
             order.setdefault(r.get("condition"), len(order))
         rs = sorted(rs, key=lambda r: order[r.get("condition")])
     lines = ["| " + ("Condition | " if cond else "") + "Model | Task | " + " | ".join(cols) + (" | Tests" if tests else "")
-             + (" | Hidden" if hidden else "") + (" | Mut" if mut else "") + (" | Score" if score else "") + " | Result | Codes |",
+             + (" | Hidden" if hidden else "") + (" | Mut" if mut else "") + (" | Score" if score else "") + ("".join(" | " + c for c in CLI_COLS) if cli else "") + " | Result | Codes |",
              "|" + ("---|" if cond else "") + "---|---|" + "---|" * n + ("---|" if tests else "") + ("---|" if hidden else "")
-             + ("---|" if mut else "") + ("---|" if score else "") + "---|---|"]
+             + ("---|" if mut else "") + ("---|" if score else "") + ("---|" * len(CLI_COLS) if cli else "") + "---|---|"]
     for r in rs:
         lead = (f"| {r.get('condition') or '—'} " if cond else "") + f"| {r['model']} | {r['task']} | "
         if r["error"]:
             lines.append(lead + " | ".join("—" for _ in cols) + (" | —" if tests else "") + (" | " + (r.get("hidden") or "—") if hidden else "")
                          + (" | " + (r.get("mutation") or "—") if mut else "") + (" | " + r["score"] if score else "")
+                         + ("".join(" | " + c for c in (r.get("cli") or ["—"] * len(CLI_COLS))) if cli else "")
                          + f" | ERROR: {r['error'][:60]} | |")
             continue
         cells = [c for c, _ in r["rounds"]] + ["—"] * (n - len(r["rounds"]))
@@ -155,7 +173,8 @@ def markdown_rounds(rs):
         hcell = (" | " + (r.get("hidden") or "—")) if hidden else ""
         mcell = (" | " + (r.get("mutation") or "—")) if mut else ""
         scell = (" | " + r["score"]) if score else ""
-        lines.append(lead + " | ".join(cells) + tcell + hcell + mcell + scell + f" | {result(r)} | {codes} |")
+        ccell = "".join(" | " + c for c in (r.get("cli") or ["—"] * len(CLI_COLS))) if cli else ""
+        lines.append(lead + " | ".join(cells) + tcell + hcell + mcell + scell + ccell + f" | {result(r)} | {codes} |")
     return "\n".join(lines) + "\n"
 
 

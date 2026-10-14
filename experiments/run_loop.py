@@ -4,7 +4,7 @@
 Usage:
   run_loop.py --exp DIR --model ollama:NAME|claude:NAME --task NAME [--retries 1] [--prompt prompt.md] [--alder BIN]
               [--base APPDIR] [--build [--test [--mutate [--feedback N]]] [--hidden DIR]] [--migrate] [--adapters] [--num-ctx N]
-              [--condition LABEL] [--sample LABEL]
+              [--condition LABEL] [--sample LABEL] [--cli [--cli-page FILE]]
 
 Writes DIR/runs/<model>/<task>/round<N>/{output.md,check.json,app/...} and DIR/runs/<model>/<task>/summary.json.
 With --build, a round whose check is clean also runs `alder build --emit` (output in round<N>/build/);
@@ -24,6 +24,9 @@ run on a scratch copy of it (round<N>/hidden/) with `alder test -run '^Hidden '`
 summary.hidden_pass record them, never a prompt. --condition and --sample are labels (harness.condition,
 harness.sample); --sample also suffixes the run directory: runs/<model>/<task>-<LABEL>/.
 summary.json's `outcome` is pass, fail, compiler_bug or harness_error (see README "Outcomes").
+--cli (E11; implies --build --test --mutate): each answer is one ```alder-cli script of `alder` commands, run on
+round<N>/<app>/ (round 0: `alder new <app> --bare`, or the --base), stopping at the first failure; round<N>/{script.txt,
+commands.jsonl,transcript.md}; a failed round's retry carries every transcript; summary.cli (see run_one, README "E11").
 """
 import argparse, io, json, os, pathlib, posixpath, re, shutil, signal, subprocess, sys, tarfile, tempfile, time, urllib.request
 
@@ -936,10 +939,384 @@ def write_round(round_dir: pathlib.Path, prev_dir, text: str, files: dict, base_
     return sum(1 for _ in (round_dir / "app").rglob("*.alder")), skipped
 
 
+# ---------------------------------------------------------------- E11: --cli (script rounds)
+
+CLI_RULE = "Build it with `alder` commands only; you may not write a file."
+CLI_CONTINUE = "Continue from here: the app is as the commands left it; send the next script."
+CLI_HEADER = "====================  WHAT YOUR SCRIPTS DID  ===================="
+CLI_FENCES = ("alder-cli", "sh")   # the script's fence; the format page names alder-cli and says sh is accepted
+CLI_MAX_COMMANDS = 80              # per round
+CLI_TIMEOUT = 600                  # seconds per command
+CLI_OUTPUT_MAX = 4000              # characters of one command's output in the transcript (commands.jsonl keeps it all)
+CLI_NOT_ALLOWED = {"run": "`alder run` starts a server, which never ends; it is not allowed here",
+                   "repl": "`alder repl` is interactive; use `alder eval` instead"}
+CLI_IGNORE = shutil.ignore_patterns("build", "hidden", "*.db", "*.db-wal", "*.db-shm")   # not carried to the next round
+
+
+def cli_app_name(task_name: str) -> str:
+    """The app's name for `alder new <app> --bare`: the task's stem after the first dash, letters only
+    (`t5-ownership` → `ownership`, `t10-teams` → `teams`)."""
+    stem = task_name.split("-", 1)[1] if "-" in task_name else task_name
+    return re.sub(r"[^a-z]", "", stem.lower()) or "app"
+
+
+def script_words(s: str):
+    """cmd/alder/drill_test.go's drillWords, ported: words separated by spaces (a space only, as
+    there), '…' and "…" taken as they are (no escapes). Raises ValueError on an unterminated quote."""
+    words, w, inw, i = [], [], False, 0
+    while i < len(s):
+        c = s[i]
+        if c == " ":
+            if inw:
+                words.append("".join(w))
+                w, inw = [], False
+        elif c in "'\"":
+            j = s.find(c, i + 1)
+            if j < 0:
+                raise ValueError(f"an unterminated {c}")
+            w.append(s[i + 1:j])
+            i = j
+            inw = True
+        else:
+            w.append(c)
+            inw = True
+        i += 1
+    if inw:
+        words.append("".join(w))
+    return words
+
+
+def parse_script(src: str):
+    """cmd/alder/drill_test.go's parseDrill, ported: one command a line, blank lines and lines
+    starting with `#` skipped; a command whose last word starts with `<<` (`<<'EOF'`) reads the
+    lines after it up to a line that is exactly the delimiter as its standard input.
+
+    Returns (steps, refusal): steps the commands parsed before any error, each {"line" (1-based
+    in the script), "args" (after `alder`), "stdin" (None or the body, each line ending in a
+    newline), "src" (the lines as written, here-document included)}; refusal None, or {"kind":
+    "not-a-command" | "parse", "line", "text", "reason"} for the first line the grammar refuses."""
+    lines = src.split("\n")
+    steps, i = [], 0
+    while i < len(lines):
+        l = lines[i]
+        if l.strip() == "" or l.startswith("#"):
+            i += 1
+            continue
+        try:
+            words = script_words(l)
+        except ValueError as e:
+            return steps, {"kind": "parse", "line": i + 1, "text": l, "reason": str(e)}
+        if len(words) < 2 or words[0] != "alder":
+            return steps, {"kind": "not-a-command", "line": i + 1, "text": l,
+                           "reason": "a step is an `alder` command (one `alder …` command a line)"}
+        st = {"line": i + 1, "args": words[1:], "stdin": None, "src": [l]}
+        if st["args"][-1].startswith("<<"):
+            delim = st["args"][-1][2:].strip("'\"")
+            st["args"] = st["args"][:-1]
+            body, start = [], i
+            i += 1
+            while True:
+                if i >= len(lines):
+                    return steps, {"kind": "parse", "line": start + 1, "text": l,
+                                   "reason": f"the here-document has no {delim} line"}
+                if lines[i] == delim:
+                    break
+                body.append(lines[i] + "\n")
+                st["src"].append(lines[i])
+                i += 1
+            st["src"].append(lines[i])
+            st["stdin"] = "".join(body)
+        st["src"] = "\n".join(st["src"])
+        steps.append(st)
+        i += 1
+    return steps, None
+
+
+FENCE_RE = re.compile(r"^\s*```+\s*([A-Za-z0-9_+.-]*)\s*$")
+
+
+def extract_script(text: str):
+    """The script in a model's answer: the body of its one fenced block tagged `alder-cli` or `sh`
+    (CLI_FENCES; other blocks are ignored). Returns (script, tag, refusal): refusal None, or a
+    {"kind": "parse", "line": 0, "text": "", "reason"} when there is no such block or more than one."""
+    blocks, cur, tag = [], None, None
+    for line in text.split("\n"):
+        m = FENCE_RE.match(line)
+        if cur is None:
+            if m:
+                cur, tag = [], m.group(1).lower()
+        elif m and not m.group(1):
+            blocks.append((tag, "\n".join(cur) + "\n"))
+            cur = None
+        else:
+            cur.append(line)
+    if cur is not None:   # an unclosed block runs to the end of the answer
+        blocks.append((tag, "\n".join(cur) + "\n"))
+    ours = [(t, b) for t, b in blocks if t in CLI_FENCES]
+    if len(ours) == 1:
+        return ours[0][1], ours[0][0], None
+    if not ours:
+        others = sorted({t or "untagged" for t, _ in blocks})
+        why = ("your answer has no ```alder-cli block" + (f" (it has: {', '.join(others)})" if others else "")
+               + (", and it has `--- file:` sections: you may not write files" if FILE_RE.search(text) else ""))
+    else:
+        why = f"your answer has {len(ours)} script blocks; send exactly one"
+    return None, None, {"kind": "parse", "line": 0, "text": "", "reason": why}
+
+
+def run_command(alder: pathlib.Path, args, stdin, cwd: pathlib.Path, timeout: float = CLI_TIMEOUT):
+    """One script command: `alder <args>` (the --alder binary for `alder`) in cwd, its standard input
+    the here-document (or nothing), in a process group of its own (killed on the timeout).
+    Returns {"argv", "stdin_lines", "exit", "seconds", "stdout", "stderr"} (+ "timeout": true;
+    exit None then, and for a binary that cannot start)."""
+    argv = [str(pathlib.Path(alder).resolve())] + list(args)
+    rec = {"argv": ["alder"] + list(args), "stdin_lines": stdin.splitlines() if stdin else [], "exit": None,
+           "seconds": 0.0, "stdout": "", "stderr": ""}
+    t0 = time.time()
+    try:
+        p = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+                             text=True, start_new_session=True, cwd=cwd)
+    except OSError as e:
+        rec["stderr"] = f"{alder}: {e}"
+        return rec
+    try:
+        out, err = p.communicate(input=stdin, timeout=timeout)
+        rec["exit"] = p.returncode
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        out, err = p.communicate()
+        rec["timeout"] = True
+        err = (err or "") + f"\n(the harness stopped this command after {timeout:g} s)\n"
+    rec["seconds"] = round(time.time() - t0, 2)
+    rec["stdout"], rec["stderr"] = (out or "")[:MAX_OUTPUT], (err or "")[:MAX_OUTPUT]
+    return rec
+
+
+def _first_line(*texts):
+    for t in texts:
+        for l in (t or "").splitlines():
+            if l.strip():
+                return l.strip()[:300]
+    return ""
+
+
+def execute_script(alder: pathlib.Path, steps, app_dir: pathlib.Path, cap: int = CLI_MAX_COMMANDS, timeout: float = CLI_TIMEOUT):
+    """Run the steps in order in app_dir, stopping at the first that fails. Returns (records,
+    refusal, stop): records one per command run (run_command's, with "line"); refusal None or
+    {"kind", "line", "text", "reason"} — kind "exit1" / "exit2" (alder's exit code; reason the
+    command's first stderr or stdout line), "timeout", "crash" (another exit), "not-a-command" (a
+    subcommand not allowed here: CLI_NOT_ALLOWED) or "cap" (more than `cap` commands); stop None or
+    ("compiler_bug", "command") for alder exiting 2 with "internal error"."""
+    records = []
+    for k, st in enumerate(steps):
+        text = st["src"].split("\n")[0]
+        if k >= cap:
+            return records, {"kind": "cap", "line": st["line"], "text": text,
+                             "reason": f"more than {cap} commands in one round; the rest were not run"}, None
+        if st["args"][0] in CLI_NOT_ALLOWED:
+            return records, {"kind": "not-a-command", "line": st["line"], "text": text,
+                             "reason": CLI_NOT_ALLOWED[st["args"][0]]}, None
+        rec = run_command(alder, st["args"], st["stdin"], app_dir, timeout)
+        rec["line"] = st["line"]
+        records.append(rec)
+        if rec["exit"] == 0:
+            continue
+        why = _first_line(rec["stderr"], rec["stdout"]) or f"exit {rec['exit']}"
+        if rec.get("timeout"):
+            kind = "timeout"
+        elif rec["exit"] in (1, 2):
+            kind = f"exit{rec['exit']}"
+        else:
+            kind = "crash"
+        stop = ("compiler_bug", "command") if rec["exit"] == 2 and "internal error" in rec["stderr"] else None
+        return records, {"kind": kind, "line": st["line"], "text": text, "reason": why}, stop
+    return records, None, None
+
+
+def _cut(text: str, limit: int = CLI_OUTPUT_MAX) -> str:
+    return text if len(text) <= limit else text[:limit] + f"\n… ({len(text) - limit} more characters cut)\n"
+
+
+def render_transcript(n: int, steps, records, refusal, verdict: str) -> str:
+    """The round's transcript (roundN/transcript.md), the text a retry carries: each command run as
+    written (here-document included), its output and exit code; the refusal in full; then the
+    harness's verdict on the app (`verdict`)."""
+    out = [f"### Round {n}", "", "```text"]
+    by_line = {st["line"]: st for st in steps}
+    for rec in records:
+        out.append("$ " + by_line[rec["line"]]["src"])
+        body = (rec["stdout"] + rec["stderr"]).rstrip("\n")
+        if body:
+            out.append(_cut(body).rstrip("\n"))
+        out.append(f"[exit {rec['exit'] if rec['exit'] is not None else '—'}]")
+    out.append("```")
+    if refusal:
+        where = f"line {refusal['line']} of your script: `{refusal['text']}`" if refusal.get("line") else "your answer"
+        if refusal["kind"] in ("exit1", "exit2", "timeout", "crash"):
+            msg = f"The harness stopped at {where}: it exited {records[-1]['exit']}" + (" (timed out)" if refusal["kind"] == "timeout" else "") + \
+                  ". The commands after it were not run."
+        elif refusal["kind"] == "cap":
+            msg = f"The harness stopped at {where}: {refusal['reason']}."
+        elif refusal.get("line"):
+            msg = f"The harness refused {where}: {refusal['reason']}. Nothing after it was run."
+        else:
+            msg = f"The harness refused your answer: {refusal['reason']}. No command was run."
+        out += ["", msg]
+    out += ["", verdict.rstrip("\n")]
+    return "\n".join(out) + "\n"
+
+
+def cli_verdict(info, refusal, sources) -> str:
+    """The harness's verdict on the round's app, for the transcript: check errors, the build's or the
+    tests' output, or that everything passes (and whether the round counts)."""
+    if info is None:
+        return "The harness ran `alder check`, `alder build` and `alder test` on the app: all pass." + (
+            "" if refusal is None else " The round still does not pass: the script stopped before its end.")
+    if info["diags"] and any(d["severity"] == "error" for d in info["diags"]):
+        errs = [d for d in info["diags"] if d["severity"] == "error"]
+        return "The harness ran `alder check` on the app:\n\n```text\n" + render_diags(errs, sources) + "\n```"
+    if info.get("build_output") is not None:
+        return BUILD_REFUSED + "\n\n```text\n" + info["build_output"].strip() + "\n```"
+    if info.get("migrate_output") is not None:
+        return MIGRATE_REFUSED + "\n\n```text\n" + info["migrate_output"].strip() + "\n```"
+    if info.get("test_output") is not None:
+        return TESTS_FAILED + "\n\n```text\n" + info["test_output"].strip() + "\n```"
+    if refusal is not None:
+        return ("The harness ran `alder check`, `alder build` and `alder test` on the app as the commands left it: "
+                "all pass, but the round does not: the script stopped before its end.")
+    return "The harness ran `alder check` on the app; it could not check it:\n\n```text\n" + (info.get("stderr") or "").strip() + "\n```"
+
+
+def cli_prompt(task: str, page: str, base_files=None, transcripts=()) -> str:
+    """A --cli round's prompt: the task, the rule sentence, the format page; with --base the app as
+    given (THE APP YOU ARE CHANGING); then, after a failed round, every round's transcript so far
+    and CLI_CONTINUE."""
+    out = task.rstrip("\n") + "\n\n" + CLI_RULE + "\n\n" + page.strip("\n") + "\n"
+    if base_files:
+        out += "\n" + BASE_APP + "\n" + file_section(base_files)
+    if transcripts:
+        out += "\n" + CLI_HEADER + "\n\n" + "\n".join(transcripts) + "\n" + CLI_CONTINUE + "\n"
+    return out
+
+
+def cli_round_record(script, tag, steps, records, refusal) -> dict:
+    """A --cli round's `cli` record: commands parsed and run, the refusal, stdin lines, the largest
+    here-document (lines), the `--decl` uses."""
+    ran = {r["line"] for r in records}
+    bodies = [len(st["stdin"].splitlines()) for st in steps if st["stdin"] is not None and st["line"] in ran]
+    return {"fence": tag, "commands": len(steps), "executed": len(records),
+            "refused": refusal, "stdin_lines": sum(bodies), "max_body": max(bodies, default=0),
+            "decl_uses": sum(1 for st in steps if st["line"] in ran and "--decl" in st["args"])}
+
+
+def cli_summary(rounds, app_name: str, names=None) -> dict:
+    """summary["cli"] from the rounds' `cli` records."""
+    recs = [r["cli"] for r in rounds if "cli" in r]
+    items = [dict(round=r["n"], **{k: r["cli"]["refused"][k] for k in ("kind", "line", "text", "reason")})
+             for r in rounds if r.get("cli", {}).get("refused")]
+    kinds = {}
+    for it in items:
+        kinds[it["kind"]] = kinds.get(it["kind"], 0) + 1
+    return {"app_name": app_name, "rounds": len(rounds),
+            "commands": sum(c["commands"] for c in recs), "executed": sum(c["executed"] for c in recs),
+            "refused": {"count": len(items), "kinds": kinds, "items": items},
+            "stdin_lines": sum(c["stdin_lines"] for c in recs), "max_body": max((c["max_body"] for c in recs), default=0),
+            "decl_uses": sum(c["decl_uses"] for c in recs), "names": names}
+
+
+# The names check (the drill's checkNames, ported to the task text: tables and their columns and
+# the session exactly; each named page's path, messages and forms present).
+
+def _columns(body: str):
+    cols = []
+    for part in re.split(r"[,\n]", re.sub(r"--[^\n]*", "", body)):
+        part = part.strip()
+        if ":" not in part:
+            continue
+        name, typ = part.split(":", 1)
+        typ = re.split(r"\s@|\s=\s|\s=$", " " + typ.strip() + " ", maxsplit=1)[0].strip()
+        cols.append(f"{name.strip()}: {' '.join(typ.split())}")
+    return cols
+
+
+def _names_of(module: str, text: str, decls: dict, line_start: bool):
+    a = "^" if line_start else r"(?<![\w.])"
+    flags = re.M if line_start else 0
+    for m in re.finditer(a + r"table\s+([A-Z]\w*)\s*\{([^}]*)\}", text, flags):
+        decls["tables"][m.group(1)] = sorted(_columns(m.group(2)))
+    m = re.search(a + r"session\s*\{([^}]*)\}", text, flags)
+    if m:
+        decls["session"] = sorted(_columns(m.group(1)))
+    m = re.search(a + r'page\s+"([^"]*)"', text, flags)
+    if m:
+        decls["pages"][module] = m.group(1)
+    for kind in ("msg", "form"):
+        for m in re.finditer(a + kind + r"\s+`?([A-Z]\w*)", text, flags):
+            decls[kind + "s"].setdefault(module, set()).add(m.group(1))
+
+
+def _empty_names():
+    return {"tables": {}, "session": None, "pages": {}, "msgs": {}, "forms": {}}
+
+
+def task_names(task_text: str):
+    """The names a task's Names block fixes, or None when it has none."""
+    m = re.search(r"\*\*Names\.\*\*(.*?)(?:\n\n(?!- )(?!  )|\Z)", task_text, re.S)
+    if not m:
+        return None
+    want = _empty_names()
+    for bullet in re.split(r"\n- ", "\n" + m.group(1)):
+        pm = re.match(r"\s*`app/([\w/]+)\.alder`", bullet)
+        if not pm:
+            continue
+        _names_of(pm.group(1).replace("/", "."), " ".join(bullet.split()), want, line_start=False)
+    return want
+
+
+def app_names(app_dir: pathlib.Path):
+    got = _empty_names()
+    for f in sorted((pathlib.Path(app_dir) / "app").rglob("*.alder")):
+        text = f.read_text()
+        mm = MODULE_RE.search(text)
+        _names_of(mm.group(1) if mm else f.stem, text, got, line_start=True)
+    return got
+
+
+def names_check(task_text: str, app_dir: pathlib.Path):
+    """The final app against the task's Names block (reported, never scored): {"ok", "matches",
+    "mismatches"}, or None for a task without one. Tables and their columns (`name: Type`, the type as
+    written, attributes and defaults dropped) and the session must be exactly the block's; each named
+    page must have its path, and its named messages and forms must exist."""
+    want = task_names(task_text)
+    if want is None:
+        return None
+    got = app_names(app_dir)
+    ok, bad = [], []
+    for t in sorted(set(want["tables"]) | (set(got["tables"]) if want["tables"] else set())):   # a block that lists no table (T7) fixes none
+        w, g = want["tables"].get(t), got["tables"].get(t)
+        (ok if w == g else bad).append(f"table {t}" + ("" if w == g else f": {g or 'missing'}, want {w or 'no such table'}"))
+    if want["session"] is not None:
+        (ok if want["session"] == got["session"] else bad).append(
+            "session" + ("" if want["session"] == got["session"] else f": {got['session']}, want {want['session']}"))
+    for mod, path in sorted(want["pages"].items()):
+        g = got["pages"].get(mod)
+        (ok if g == path else bad).append(f"page {mod} {path}" + ("" if g == path else f": {g or 'missing'}"))
+    for kind in ("msgs", "forms"):
+        for mod, names in sorted(want[kind].items()):
+            for nm in sorted(names):
+                has = nm in got[kind].get(mod, set())
+                (ok if has else bad).append(f"{kind[:-1]} {mod}.{nm}" + ("" if has else ": missing"))
+    return {"ok": not bad, "matches": ok, "mismatches": bad}
+
+
 def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, task_text: str,
             system: str, alder: pathlib.Path, retries: int = 1, base=None, build: bool = False, seed=None,
             test: bool = False, adapters: bool = False, migrate: bool = False, hidden=None,
-            condition=None, sample=None, mutate: bool = False, feedback=None) -> dict:
+            condition=None, sample=None, mutate: bool = False, feedback=None, cli: bool = False, cli_page: str = "") -> dict:
     """`base`, if given, is a directory inside a git repository whose `app/` as committed (`git archive
     HEAD`, never the working tree) seeds round 0 (for tasks that modify an existing app). `seed`, if
     given, is that export already made, `export_base(base)` (the exported base and its commit): main
@@ -1006,7 +1383,22 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     {"skipped": reason}, and `summary["hidden_pass"]` is "k/n" (None when skipped). They never
     reach a prompt, and `outcome` stays the own tests'. With `feedback`, the round they run on is the
     last accepted one (`summary["hidden_round"]`), once, after every feedback round. `condition` and `sample` are labels recorded
-    as `harness.condition` and `harness.sample`; `sample` also names the run directory `<task>-<sample>`."""
+    as `harness.condition` and `harness.sample`; `sample` also names the run directory `<task>-<sample>`.
+
+    With `cli` (E11; requires `build`, `test` and `mutate`; not with `feedback` or `adapters`), each
+    answer is one script of `alder` commands (extract_script, parse_script) run on the round's app,
+    round<N>/<app>/ (round 0: `alder new <app> --bare` in round0/, the app named by cli_app_name, or
+    with `base` the export copied there; then a copy of the previous round's app), in order, stopping
+    at the first that fails (execute_script). The round writes script.txt, commands.jsonl and
+    transcript.md and is scored as a files round on its app; it passes only if, besides, no line
+    was refused and every command ran. A failed round's retry is cli_prompt with every transcript so
+    far. The prompt is cli_prompt(task, cli_page). summary["cli"] is cli_summary's, with the names
+    check of the final round's app."""
+    if cli:
+        if not (build and test and mutate):
+            raise ValueError("--cli implies --build --test --mutate")
+        if feedback is not None or adapters:
+            raise ValueError("--cli does not take --feedback or --adapters")
     if test and not build:
         raise ValueError("--test requires --build")
     if mutate and not test:
@@ -1020,7 +1412,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
         try:
             return run_one(exp, model, model_label, task_name, task_text, system, alder, retries, base, build, seed=seed, test=test, adapters=adapters,
                            migrate=migrate, hidden=hidden, condition=condition, sample=sample, mutate=mutate,
-                           feedback=feedback)
+                           feedback=feedback, cli=cli, cli_page=cli_page)
         finally:
             remove_export(seed[0])
     run_dir = exp / "runs" / model_label / (f"{task_name}-{sample}" if sample else task_name)
@@ -1034,6 +1426,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                            **({"hidden": str(hidden)} if hidden is not None else {}),
                            **({"condition": condition} if condition is not None else {}),
                            **({"sample": sample} if sample is not None else {}),
+                           **({"cli": True} if cli else {}),
                            **({"num_ctx": model.NUM_CTX, "num_predict": model.NUM_PREDICT} if isinstance(model, OllamaModel) else {})}, "error": None, "rounds": [], "final_pass": False,
                "outcome": "fail"}
     if seed is not None:
@@ -1044,6 +1437,12 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
     if prev is not None and (prev / "adapters").is_dir():
         provided = {f.relative_to(prev).as_posix(): f.read_text() for f in adapter_files(prev)}
     user = first_prompt(task_text, prev, show_adapters=adapters, provided=provided)   # with --base: the app it changes
+    app_name, base_files, transcripts = (cli_app_name(task_name) if cli else None), None, []
+    if cli:
+        if prev is not None:
+            base_files = {f.relative_to(prev).as_posix(): f.read_text() for f in (prev / "app").rglob("*.alder")}
+        user = cli_prompt(task_text, cli_page, base_files)
+        summary["cli"] = {"app_name": app_name}
 
     def harness_error(reason):
         summary["outcome"] = "harness_error"
@@ -1066,11 +1465,19 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
         except ModelError as e:
             return None, None, "stop", ("model", str(e))
         round_dir = run_dir / f"round{n}"
+        if cli:
+            return play_cli(n, text, meta, round_dir, prev)
         cut = bool(meta.get("truncated")) or meta.get("done_reason") == "length"
         files, rejected, cut_off_file = split_answer(text, adapters=adapters, cut_off=cut)
         nfiles, skipped = write_round(round_dir, prev, text, files, base_dir=pathlib.Path(seed[0]) if seed is not None else None)
         rejected = rejected + skipped
-        exit_code, diags, stderr, reason = run_check(alder, round_dir)
+        return score(n, round_dir, round_dir, meta, nfiles, rejected, cut_off_file, frozen)
+
+    def score(n, round_dir, app_dir, meta, nfiles, rejected, cut_off_file, frozen=None, refused=False, extra=None):
+        """The round's verdict on app_dir (round_dir itself, or a --cli round's app): check (migrate),
+        build, test, mutate, as play describes; the round's records go in round_dir. With `refused`
+        (a --cli round whose script stopped early) the round fails even when all of them pass."""
+        exit_code, diags, stderr, reason = run_check(alder, app_dir)
         (round_dir / "check.json").write_text("\n".join(json.dumps(d) for d in diags) + ("\n" if diags else ""))
         codes = {}
         for d in diags:
@@ -1084,6 +1491,8 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                 rnd[k] = meta[k]
         if cut_off_file:
             rnd["cut_off_file"] = cut_off_file
+        if extra:
+            rnd.update(extra)
         summary["rounds"].append(rnd)
 
         def stop(kind, arg):
@@ -1099,7 +1508,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             return stop("compiler_bug", "internal_error")
         migrate_output = None
         if migrate and exit_code == 1 and set(codes) == {"E0019"}:   # only the tables are ahead of the migrations
-            mexit, record, mstdout, mstderr, reason = run_migrate(alder, round_dir)
+            mexit, record, mstdout, mstderr, reason = run_migrate(alder, app_dir)
             record["codes_before"] = codes
             rnd["migrate"] = record
             if mexit != 0:
@@ -1114,7 +1523,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                     return stop("harness_error", f"alder migrate exited {mexit}: {mstderr.strip()[:500]}")
                 migrate_output = (mstdout + mstderr)[:TEST_OUTPUT_MAX]
             else:   # check again: the round goes on with the migrated app
-                exit_code, diags, stderr, reason = run_check(alder, round_dir)
+                exit_code, diags, stderr, reason = run_check(alder, app_dir)
                 (round_dir / "check.json").write_text("\n".join(json.dumps(d) for d in diags) + ("\n" if diags else ""))
                 codes = {}
                 for d in diags:
@@ -1129,7 +1538,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                     return stop("harness_error", reason)
         clean = exit_code == 0 and rnd["errors"] == 0 and not rnd.get("truncated")   # a cut-off answer fails its round
         if clean and frozen is not None:   # a feedback round may change tests only
-            h, dexit, why = app_ir(alder, round_dir)
+            h, dexit, why = app_ir(alder, app_dir)
             if h is None:
                 rnd["app_ir"] = {"error": why}
                 if isinstance(why, Hang):
@@ -1144,7 +1553,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                     return rnd, round_dir, "rejected", None
         build_output = None
         if clean and build:
-            bexit, bstderr, bstdout, reason = run_build(alder, round_dir)
+            bexit, bstderr, bstdout, reason = run_build(alder, app_dir)
             rnd["build"] = {"ok": bexit == 0, "exit": bexit, "stderr": bstderr[-4000:]}
             if bexit != 0:
                 build_output = bstderr + (("\n" + bstdout) if bstdout.strip() else "")
@@ -1158,7 +1567,7 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                 clean = False
         test_output = None
         if clean and test:
-            texit, results, tstderr, tstdout, reason = run_test(alder, round_dir)
+            texit, results, tstderr, tstdout, reason = run_test(alder, app_dir)
             rnd["tests"] = {"passed": sum(1 for r in results if r.get("ok") is True),
                             "failed": sum(1 for r in results if r.get("ok") is not True),
                             "results": results, "exit": texit}
@@ -1170,11 +1579,13 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
                     return stop("harness_error", reason)
                 if texit != 1:   # 2: a build problem or a crash outside any test, after a clean build
                     return stop("compiler_bug", "hang" if "timed out" in tstderr else "test")
-                test_output = test_report(alder, round_dir)[:TEST_OUTPUT_MAX]
+                test_output = test_report(alder, app_dir)[:TEST_OUTPUT_MAX]
                 rnd["test_output"] = test_output
                 clean = False
+        if clean and refused:   # --cli: the app passes, but the script did not run to its end
+            clean = False
         if clean and mutate:   # a measurement of the passing program's tests (fed back only with --feedback)
-            mrec, mstderr, mstdout = run_mutate(alder, round_dir)
+            mrec, mstderr, mstdout = run_mutate(alder, app_dir)
             rnd["mutation"] = mrec
             if "error" in mrec:
                 (round_dir / "mutate.stderr.txt").write_text(mstderr + (("\n--- stdout ---\n" + mstdout) if mstdout.strip() else ""))
@@ -1184,6 +1595,50 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             diags=diags, stderr=stderr, nfiles=nfiles, rejected=rejected, build_output=build_output, test_output=test_output,
             truncated=getattr(model, "NUM_PREDICT", None) if rnd.get("truncated") else None,
             cut_off_file=cut_off_file, show_adapters=adapters, provided=provided, migrate_output=migrate_output)
+
+    def play_cli(n, text, meta, round_dir, prev):
+        """A --cli round: the app (round 0: `alder new <app> --bare`, or the base's export; else a
+        copy of prev, the previous round's app), the script run on it, the records, then score."""
+        round_dir.mkdir(parents=True, exist_ok=True)
+        (round_dir / "output.md").write_text(text[:MAX_OUTPUT])
+        app_dir = round_dir / app_name
+        if n == 0 and seed is None:
+            rec = run_command(alder, ["new", app_name, "--bare"], None, round_dir, CLI_TIMEOUT)
+            summary["cli"]["setup"] = {"argv": rec["argv"], "exit": rec["exit"], "stdout": rec["stdout"][:2000], "stderr": rec["stderr"][:2000]}
+            if rec["exit"] != 0:
+                summary["rounds"].append({"n": n, "files": 0})
+                return summary["rounds"][-1], round_dir, "stop", ("harness_error", f"alder new {app_name} --bare exited {rec['exit']}: {_first_line(rec['stderr'])}")
+        elif n == 0:   # --base: the export (app, adapters, migrations) is the app the script changes
+            for part in ("app", "adapters", "migrations"):
+                if (prev / part).is_dir():
+                    shutil.copytree(prev / part, app_dir / part)
+        else:
+            shutil.copytree(prev, app_dir, ignore=CLI_IGNORE)
+        script, tag, refusal = extract_script(text)
+        steps = []
+        if script is not None:
+            (round_dir / "script.txt").write_text(script)
+            steps, refusal = parse_script(script)
+        records, xrefusal, stop = execute_script(alder, steps, app_dir)
+        refusal = xrefusal or refusal   # a command that fails stops before any later parse error
+        with open(round_dir / "commands.jsonl", "w") as f:
+            for r in records:
+                f.write(json.dumps(r) + "\n")
+        crec = cli_round_record(script, tag, steps, records, refusal)
+        nfiles = sum(1 for _ in (app_dir / "app").rglob("*.alder"))
+        if stop is not None:
+            rnd = {"n": n, "files": nfiles, "seconds": meta.get("seconds", 0.0), "cli": crec}
+            summary["rounds"].append(rnd)
+            (round_dir / "transcript.md").write_text(render_transcript(n, steps, records, refusal, "The harness stopped: alder failed on its own (a compiler bug)."))
+            return rnd, round_dir, "stop", stop
+        rnd, _, status, info = score(n, round_dir, app_dir, meta, nfiles, [], None, refused=refusal is not None, extra={"cli": crec})
+        sources = {f.relative_to(app_dir).as_posix(): f.read_text() for f in (app_dir / "app").rglob("*.alder")}
+        verdict = (cli_verdict(info, refusal, sources) if status == "failed" else cli_verdict(None, refusal, sources) if status == "clean"
+                   else f"The harness stopped: {info[0].replace('_', ' ')} ({info[1]}).")
+        transcript = render_transcript(n, steps, records, refusal, verdict)
+        (round_dir / "transcript.md").write_text(transcript)
+        transcripts.append(transcript)
+        return rnd, round_dir, status, info
 
     passed = None   # (rnd, round_dir) of the round that passed
     for n in range(retries + 1):
@@ -1205,8 +1660,12 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             summary["outcome"] = "pass"
             passed = (rnd, round_dir)
             break
-        user = retry_prompt(task_text, round_dir, **info)
-        prev = round_dir
+        if cli:   # every transcript so far; the next round copies this round's app
+            user = cli_prompt(task_text, cli_page, base_files, transcripts)
+            prev = round_dir / app_name
+        else:
+            user = retry_prompt(task_text, round_dir, **info)
+            prev = round_dir
     accepted = passed   # the round whose app and score count: the pass, then each accepted feedback round
     if feedback is not None:
         m = passed[0].get("mutation", {}) if passed else {}
@@ -1272,12 +1731,18 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
             last = summary["rounds"][-1] if summary["rounds"] else None
         skip = final_round_skip(last)
         if skip is None:
-            h = run_hidden(alder, run_dir / f"round{last['n']}", pathlib.Path(hidden) / task_name)
+            h = run_hidden(alder, run_dir / f"round{last['n']}" / (app_name if cli else ""), pathlib.Path(hidden) / task_name)
             summary["hidden"] = h
             summary["hidden_pass"] = None if "skipped" in h else f"{h['passed']}/{h['passed'] + h['failed']}"
         else:
             summary["hidden"] = {"skipped": skip}
             summary["hidden_pass"] = None
+    if cli:
+        last = summary["rounds"][-1] if summary["rounds"] else None
+        final_app = run_dir / f"round{last['n']}" / app_name if last else None
+        names = names_check(task_text, final_app) if final_app is not None and (final_app / "app").is_dir() else None
+        summary["cli"] = {**cli_summary(summary["rounds"], app_name, names),
+                          **({"setup": summary["cli"]["setup"]} if "setup" in summary["cli"] else {})}
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=1) + "\n")
     return summary
@@ -1309,8 +1774,17 @@ def main(argv=None):
                                                                   "on a scratch copy of it (`alder test -run '^Hidden '`); recorded as summary.hidden (E8)")
     ap.add_argument("--condition", default=None, metavar="LABEL", help="a label for the experimental condition, recorded as harness.condition")
     ap.add_argument("--sample", default=None, metavar="LABEL", help="a sample label: the run goes to runs/<model>/<task>-LABEL/, recorded as harness.sample")
+    ap.add_argument("--cli", action="store_true", help="E11: each answer is one script of `alder` commands run on the round's app (round 0: "
+                                                       "`alder new <app> --bare`, or the --base); implies --build --test --mutate; not with --feedback or --adapters")
+    ap.add_argument("--cli-page", default=None, metavar="FILE", help="with --cli: the script-format page every prompt carries (default: EXP/prompt-cli.md)")
     ap.add_argument("--num-ctx", type=int, default=None, help=f"Ollama's num_ctx for this invocation (default {OllamaModel.NUM_CTX}); recorded as harness.num_ctx")
     a = ap.parse_args(argv)
+    if a.cli:
+        if a.feedback is not None or a.adapters:
+            ap.error("--cli does not take --feedback or --adapters")
+        a.build = a.test = a.mutate = True
+    elif a.cli_page is not None:
+        ap.error("--cli-page requires --cli")
     if a.test and not a.build:
         ap.error("--test requires --build")
     if a.mutate and not a.test:
@@ -1343,6 +1817,7 @@ def run_all(a, seed):
     system = (exp / a.prompt).read_text()
     alder = pathlib.Path(a.alder) if a.alder else build_alder(exp)
     failed = 0
+    cli_page = pathlib.Path(a.cli_page or exp / "prompt-cli.md").read_text() if a.cli else ""
     for spec in a.model:
         model = make_model(spec, a.num_ctx)
         label = spec.replace(":", "-").replace("/", "-")
@@ -1350,7 +1825,8 @@ def run_all(a, seed):
             task_text = (exp / "tasks" / f"{task}.md").read_text()
             s = run_one(exp, model, label, task, task_text, system, alder, a.retries, base=a.base, build=a.build, seed=seed,
                         test=a.test, adapters=a.adapters, migrate=a.migrate, hidden=a.hidden, condition=a.condition, sample=a.sample,
-                        mutate=a.mutate, **({"feedback": a.feedback} if a.feedback is not None else {}))
+                        mutate=a.mutate, **({"feedback": a.feedback} if a.feedback is not None else {}),
+                        **({"cli": True, "cli_page": cli_page} if a.cli else {}))
             status = ("ERROR " + s["error"] if s["error"]
                       else f"harness-error ({s['harness_error']})" if s["outcome"] == "harness_error"
                       else s["outcome"].replace("_", "-"))
@@ -1366,7 +1842,10 @@ def run_all(a, seed):
             fb = "" if "feedback_rounds" not in s else (
                 f"; score {fmt_score(s['score_before'])} → {fmt_score(s['score_after'])} after {s['feedback_rounds']} feedback round"
                 f"{'' if s['feedback_rounds'] == 1 else 's'} ({s['feedback_end']})")
-            print(f"{label} {task}{'-' + a.sample if a.sample else ''}: {status} ({counts} errors{hid}{mut}{fb})")
+            c = s.get("cli")
+            cl = "" if not c else (f"; {c['executed']}/{c['commands']} commands, {c['refused']['count']} refused"
+                                   + (f", names {'ok' if c['names']['ok'] else 'differ'}" if c.get("names") else ""))
+            print(f"{label} {task}{'-' + a.sample if a.sample else ''}: {status} ({counts} errors{hid}{mut}{fb}{cl})")
             if s["outcome"] == "harness_error":   # the model unavailable, or check/build broken: not a measurement
                 failed += 1
     return 1 if failed else 0
