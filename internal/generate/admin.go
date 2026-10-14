@@ -177,6 +177,10 @@ func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []s
 		if err != nil {
 			return nil, nil, Refusef("`%s`: %v", path, err)
 		}
+		if _, ok, _ := Regions.Body(fresh, "filters"); ok && !slices.Contains(names, "filters") && !strings.Contains(cur, "\nlistAt :") {
+			// a list from before the filters: its other regions now use what the region defines
+			return nil, nil, Refusef("`%s` has no region `filters`, which its list now needs (it was generated before the filters): delete it and run `alder regen admin --all` to write it again, then carry over your changes", path)
+		}
 		var replace []Region
 		for _, name := range names {
 			body, ok, _ := Regions.Body(fresh, name)
@@ -856,9 +860,7 @@ func (g *adminGen) index(at *adminTable) {
 		shown = append([]*Column{at.label}, cols...)
 	}
 	for _, c := range shown {
-		headers = append(headers, "<th>", fmt.Sprintf("  <a href={%s {", mod), "    q: model.q,", "    sort: "+quote(c.Name)+",",
-			fmt.Sprintf("    dir: if model.sort == %s && model.dir == \"asc\" then \"desc\" else \"asc\",", quote(c.Name)),
-			"  }}>"+Humanize(c.Name)+"</a>", "</th>")
+		headers = append(headers, fmt.Sprintf("<th><a href={listAt model %s (toggle model %s) 1}>%s</a></th>", quote(c.Name), quote(c.Name), Humanize(c.Name)))
 		cellText := g.adminCell(c, "row", imports)
 		if c == at.label {
 			cellText = "<a href={" + at.page("Show") + " { id: row." + t.IDField + " }}>{" + textOf(c, "row."+c.Name) + "}</a>"
@@ -866,11 +868,29 @@ func (g *adminGen) index(at *adminTable) {
 		cells = append(cells, "<td>"+cellText+"</td>")
 	}
 
+	filterCols := filterColumns(t)
+	params := []string{"q: Text = \"\""}
+	for _, c := range filterCols {
+		params = append(params, c.Name+": Text = \"\"")
+	}
+	params = append(params, "sort: Text = "+quote(order), "dir: Text = \"desc\"", "page: Int = 1")
+
 	var b strings.Builder
-	fmt.Fprintf(&b, "page %s { q: Text = \"\", sort: Text = %s, dir: Text = \"desc\", page: Int = 1 }%s\n\n", quote(at.path), quote(order), adminRequires)
-	fmt.Fprintf(&b, "type Model = {\n  rows: List %s,\n  labels: Labels,\n  q: Text,\n  sort: Text,\n  dir: Text,\n  page: Int,\n  pages: Int,\n  count: Int,\n}\n\n", t.Name)
+	b.WriteString(regionAt("", "params", wrapAll([]string{fmt.Sprintf("page %s { %s }%s", quote(at.path), strings.Join(params, ", "), adminRequires)})) + "\n\n")
+	fmt.Fprintf(&b, "type Model = {\n  rows: List %s,\n  labels: Labels,\n  q: Text,\n  filters: Filters,\n  sort: Text,\n  dir: Text,\n  page: Int,\n  pages: Int,\n  count: Int,\n}\n\n", t.Name)
 	b.WriteString("perPage : Int\nperPage = 25\n\n")
 	b.WriteString(regionAt("", "search", search) + "\n\n")
+	fmt.Fprintf(&b, `-- A Filter is one of the list's selects: the column it filters, the option chosen ("" for any),
+-- and each option's value in the address, its label, and the rows it selects.
+type Filter = {
+  name: Text,
+  label: Text,
+  value: Text,
+  options: List { value: Text, label: Text, rows: Condition %s },
+}
+
+`, t.Name)
+	b.WriteString(regionAt("", "filters", g.filters(at, mod, filterCols, imports)) + "\n\n")
 	b.WriteString(regionAt("", "sorts", sorts) + "\n\n")
 	newest := "newest first"
 	if order == t.IDField {
@@ -884,17 +904,23 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
   Nothing -> %s.%s.desc,
 }
 
--- load reads how many rows match the search, and one page of them (the last, for a page past it),
--- in the order asked for. The search text is cut to 200 characters (Text.slice): a text over
--- 10,000 bytes would fail the query (chapter 8, "Search").
+-- toggle is the direction a column's header sorts by: the other way round when the list is
+-- sorted by that column ascending.
+toggle : Model -> Text -> Text
+toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else "asc"
+
+-- load reads how many rows match the search and the filters, and one page of them (the last, for
+-- a page past it), in the order asked for. The search text is cut to 200 characters (Text.slice):
+-- a text over 10,000 bytes would fail the query (chapter 8, "Search").
 `, t.Name, t.Name, order)
 	b.WriteString(g.load(fmt.Sprintf(`  let q = Text.slice 0 200 params.q
-  let count <- Db.from %s |> Db.where (search q) |> Db.count
+  let f = chosen params
+  let count <- Db.from %s |> Db.where (Db.and [search q, filtered (filters f)]) |> Db.count
   let pages = Int.max 1 ((count + perPage - 1) / perPage)
   let page = Int.clamp { min: 1, max: pages } params.page
   let rows <-
     Db.from %s
-      |> Db.where (search q)
+      |> Db.where (Db.and [search q, filtered (filters f)])
       |> Db.orderBy (order params.sort params.dir)
       |> Db.limit perPage
       |> Db.offset ((page - 1) * perPage)
@@ -904,6 +930,7 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
     rows: rows,
     labels: labels,
     q: q,
+    filters: f,
     sort: params.sort,
     dir: params.dir,
     page: page,
@@ -916,8 +943,18 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
 	fmt.Fprintf(&b, `    <al-stack direction="row" gap="sm">
       <form method="get" action=%s>
         <input type="search" name="q" value={model.q} aria-label="Search" />
+        {for f in filters model.filters ->
+          <al-select label={f.label}>
+            <label>{f.label}
+              <select name={f.name}>
+                <option value="" selected={f.value == ""}>any</option>
+                {for o in f.options -> <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
+              </select>
+            </label>
+          </al-select>}
         <input type="hidden" name="sort" value={model.sort} />
         <input type="hidden" name="dir" value={model.dir} />
+        <al-button type="submit" variant="secondary">Search</al-button>
       </form>
       <al-button href={%s {}}>New %s</al-button>
     </al-stack>
@@ -941,11 +978,11 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
     </al-table>
 
     <al-pagination role="navigation" aria-label="Pages">
-      {if model.page > 1 then <a slot="prev" href={%s { q: model.q, sort: model.sort, dir: model.dir, page: model.page - 1 }} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
+      {if model.page > 1 then <a slot="prev" href={listAt model model.sort model.dir (model.page - 1)} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
       <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
-      {if model.page < model.pages then <a slot="next" href={%s { q: model.q, sort: model.sort, dir: model.dir, page: model.page + 1 }} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
+      {if model.page < model.pages then <a slot="next" href={listAt model model.sort model.dir (model.page + 1)} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
-`, quote(at.path), at.page("New"), at.noun, regionAt("            ", "headers", headers), regionAt("              ", "cells", cells), mod, mod)
+`, quote(at.path), at.page("New"), at.noun, regionAt("            ", "headers", headers), regionAt("              ", "cells", cells))
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	// the tests
@@ -986,8 +1023,21 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
 		if len(others) > 0 { // rows inserted before (the signed-in user, for the user table): sorted among them
 			up, down = sortedSample(others, first, second)
 		}
+		// a header sorts the other way round when the list is sorted by its column ascending
+		otherCol := ""
+		for _, c := range cols {
+			if c != sc && otherCol == "" {
+				otherCol = c.Name
+			}
+		}
+		lhs := fmt.Sprintf("up: %s, down: %s, toggles: [toggle up.model %s, toggle down.model %s", ids("up"), ids("down"), quote(sc.Name), quote(sc.Name))
+		rhs := fmt.Sprintf("up: [%s], down: [%s], toggles: [\"desc\", \"asc\"", strings.Join(up, ", "), strings.Join(down, ", "))
+		if otherCol != "" {
+			lhs += ", toggle up.model " + quote(otherCol)
+			rhs += ", \"asc\""
+		}
 		tests = append(tests, TestData{Name: quote("sorting by " + sc.Name + " goes both ways"), Lines: tb.lines,
-			Result: fmt.Sprintf("{ up: %s, down: %s } == { up: [%s], down: [%s] }", ids("up"), ids("down"), strings.Join(up, ", "), strings.Join(down, ", "))})
+			Result: "{ " + lhs + "] } == { " + rhs + "] }"})
 	}
 
 	// search
@@ -1001,6 +1051,8 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
 		tests = append(tests, TestData{Name: quote("searching finds the rows that contain the text"), Lines: tb.lines,
 			Result: fmt.Sprintf("{ rows: %s, count: Test.text \"#count\" page.doc } == { rows: [%s], count: Just \"1 row\" }", ids("page"), match)})
 	}
+
+	tests = append(tests, g.filterTests(at, mod, imports, filterCols)...)
 
 	// a search text too long for the database is cut, not a failure
 	tb = g.tb(mod, imports, true)
@@ -1023,6 +1075,163 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
 	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return mod + " {}" })...)
 	b.WriteString(testsText(tests))
 	g.file(mod, imports, b.String())
+}
+
+// filterColumns are the columns of t the list filters by, a select each: its Bool and union
+// columns (not a secret, nor one whose name is another of the list's parameters).
+func filterColumns(t *Table) []*Column {
+	var out []*Column
+	for _, c := range t.Columns {
+		if (c.Kind == KindBool || c.Union != nil) && !c.ID && c.Ref == "" && !c.Secret() && !slices.Contains([]string{"q", "sort", "dir", "page"}, c.Name) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// filterOption is an option of column c's filter: its value in the address, its label, and the
+// value of the column it selects.
+type filterOption struct{ value, label, col string }
+
+// filterOptions are the options of column c's filter (after "any", which the view adds): a
+// union's constructors, a Bool's yes and no; for a Maybe, the values in `Just`, then "none".
+func filterOptions(c *Column) []filterOption {
+	var out []filterOption
+	if c.Union != nil {
+		for _, ct := range c.Ctors {
+			out = append(out, filterOption{ct, ct, ct})
+		}
+	} else {
+		out = []filterOption{{"yes", "yes", "True"}, {"no", "no", "False"}}
+	}
+	if c.Maybe {
+		for i := range out {
+			out[i].col = "(Just " + out[i].col + ")"
+		}
+		out = append(out, filterOption{"none", "none", "Nothing"})
+	}
+	return out
+}
+
+// filters is the region `filters` of at's list: the type Filters (the option each filter has
+// chosen), chosen (them, from the page's parameters), filters (each filter with its options) and
+// listAt (a link to the list that keeps them).
+func (g *adminGen) filters(at *adminTable, mod string, cols []*Column, imports *importSet) []string {
+	t := at.t
+	var fields, from, keep []string
+	for _, c := range cols {
+		fields = append(fields, c.Name+": Text")
+		from = append(from, c.Name+": params."+c.Name)
+		keep = append(keep, c.Name+": model.filters."+c.Name)
+	}
+	rec := func(xs []string) string {
+		if len(xs) == 0 {
+			return "{ }"
+		}
+		return "{ " + strings.Join(xs, ", ") + " }"
+	}
+	none := "."
+	if len(cols) == 0 {
+		none = ": this table has none."
+	}
+	out := []string{
+		"-- Filters are the option each filter has chosen in the address (\"\" for any): a select for each",
+		"-- Bool and union column" + none,
+		"type Filters = " + rec(fields),
+		"",
+		"-- chosen is the filters' options in params.",
+		"chosen : Params -> Filters",
+		"chosen params = " + rec(from),
+		"",
+		"-- filters are the list's filters, each with the option f has chosen.",
+		"filters : Filters -> List Filter",
+	}
+	if len(cols) == 0 {
+		out = append(out, "filters f = []")
+	} else {
+		out = append(out, "filters f = [")
+		for _, c := range cols {
+			if c.Union != nil {
+				imports.add(c.Union.Module)
+			}
+			out = append(out, fmt.Sprintf("  { name: %s, label: %s, value: f.%s, options: [", quote(c.Name), quote(Humanize(c.Name)), c.Name))
+			for _, o := range filterOptions(c) {
+				out = append(out, fmt.Sprintf("    { value: %s, label: %s, rows: %s.%s.eq %s },", quote(o.value), quote(o.label), t.Name, c.Name, o.col))
+			}
+			out = append(out, "  ] },")
+		}
+		out = append(out, "]")
+	}
+	out = append(out, "",
+		"-- filtered is the rows that the option each filter has chosen selects (every row for \"\", or for",
+		"-- a value that is no option's).",
+		"filtered : List Filter -> Condition "+t.Name)
+	if len(cols) == 0 {
+		out = append(out, "filtered fs = Db.and []")
+	} else {
+		out = append(out, "filtered fs = Db.and (List.map (\\f -> match List.find (\\o -> o.value == f.value) f.options {",
+			"  Just o -> o.rows,",
+			"  Nothing -> Db.and [],",
+			"}) fs)")
+	}
+	keep = append([]string{"q: model.q"}, append(keep, "sort: sort", "dir: dir", "page: n")...)
+	out = append(out, "",
+		"-- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.",
+		"listAt : Model -> Text -> Text -> Int -> Page",
+		"listAt model sort dir n = "+mod+" "+rec(keep))
+	return wrapAll(out)
+}
+
+// filterTests are the tests of the list's filters: for its first Bool column and its first union
+// column, a row the option chosen selects is listed and counted, another is not, and the select
+// shows the option chosen.
+func (g *adminGen) filterTests(at *adminTable, mod string, imports *importSet, cols []*Column) []TestData {
+	var tests []TestData
+	for _, union := range []bool{false, true} {
+		for _, c := range cols {
+			if (c.Union != nil) != union {
+				continue
+			}
+			tests = append(tests, g.filterTest(at, mod, imports, c))
+			break
+		}
+	}
+	return tests
+}
+
+// filterTest is the test of column c's filter: two rows, the first with the value of the option
+// the test chooses, the second with another's; the first is listed and the second not, and the
+// select shows the option chosen. A Bool's filter is chosen both ways (yes, then no); a union's
+// at its last constructor (the first is the other row's).
+func (g *adminGen) filterTest(at *adminTable, mod string, imports *importSet, c *Column) TestData {
+	t := at.t
+	tb := g.tb(mod, imports, true)
+	opts := filterOptions(c)
+	pick, other := opts[0], opts[1]
+	if c.Union != nil {
+		tb.typeRef(c.Elem)
+		pick, other = opts[len(c.Ctors)-1], opts[0]
+	}
+	col := func(o filterOption) string { return strings.TrimSuffix(strings.TrimPrefix(o.col, "("), ")") }
+	first := tb.insertRow(t, "", map[string]string{c.Name: col(pick)}, false)
+	second := tb.insertRow(t, "", map[string]string{c.Name: col(other)}, false)
+	listed := func(page string) string {
+		return fmt.Sprintf("List.map (\\id -> List.member id (List.map (\\row -> row.%s) %s.model.rows)) [%s, %s]", t.IDField, page, first, second)
+	}
+	page := LowerFirst(strings.ReplaceAll(pick.value, " ", ""))
+	tb.let("let %s <- Test.get (%s)", page, pageLit(mod, []string{c.Name + ": " + quote(pick.value)}))
+	lhs := []string{page + ": " + listed(page)}
+	rhs := []string{page + ": [True, False]"}
+	if c.Union == nil {
+		tb.let("let %s <- Test.get (%s)", other.value, pageLit(mod, []string{c.Name + ": " + quote(other.value)}))
+		lhs = append(lhs, other.value+": "+listed(other.value))
+		rhs = append(rhs, other.value+": [False, True]")
+	}
+	lhs = append(lhs, fmt.Sprintf("count: %s.model.count == List.length %s.model.rows", page, page),
+		fmt.Sprintf("chosen: Test.texts \"select[name=%s] option[selected]\" %s.doc", c.Name, page))
+	rhs = append(rhs, "count: True", "chosen: ["+quote(pick.label)+"]")
+	return TestData{Name: quote("filtering by " + strings.ToLower(Humanize(c.Name)) + " lists the rows with that value"), Lines: tb.lines,
+		Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"}
 }
 
 // sortColumn is the column the sort test sorts by: the first text (else number or date) column
