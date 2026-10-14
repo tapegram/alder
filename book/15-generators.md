@@ -2621,42 +2621,51 @@ command is refused by the check.
 
 ## An app from the command line
 
-The commands above are enough to build an app without opening a file.
-The proof is a drill: the teams app of the experiment E9 (task T10:
-users own teams, invite people by email, and an invited user accepts or
-declines; only the owner and the members see a team, and only the owner
-changes it), built from `alder new teams` with `alder new`, `alder
-edit` and `alder fill` alone. The script below is the whole of it, every
-command and every expression filled. `cmd/alder/drill_test.go` replays
-it from `testdata/drill/t10-teams/script.txt` (and checks that the
-blocks of this section are that file): the app's own 27 tests pass;
-the 8 hidden acceptance tests E9 kept from its models pass, added as the
-E9 harness adds them; and `alder test --mutate` kills all 49 of its
-mutants. The guestbook the app started as is still there, at `/`.
+The commands above build an app without opening a file: every
+declaration's place, name and signature comes from a command, and every
+body is one checked expression given to `alder fill` (the exact count is
+at the end of this section). The proof is a drill: the teams app of the
+experiment E9 (task T10: users own teams, invite people by email, and an
+invited user accepts or declines; only the owner and the members see a
+team, and only the owner changes it), built from `alder new teams
+--bare` with `alder new`, `alder edit` and `alder fill` alone, with the
+task's exact names, tables and fields. The script below is the whole of
+it, every command and every expression filled. `cmd/alder/drill_test.go`
+replays it from `testdata/drill/t10-teams/script.txt` (and checks that
+the blocks of this section are that file); then it checks the app's
+tables, columns, session, pages, messages and forms against the task's
+Names block, runs the app's own 25 tests, adds the 8 hidden acceptance
+tests E9 kept from its models as the E9 harness adds them (all pass),
+and runs `alder test --mutate`, which kills all 46 of its mutants. A
+second drill, `testdata/drill/t9-bookings/script.txt` (T9: booking
+rooms, 52 commands; 20 tests, the 7 hidden ones pass, 41 of 41
+mutants killed), runs in the same test.
 
-The users first. The table is created with `passwordHash: Text`
-rather than letting `new auth` create it (as `Text.Secret`), because
-E9's tests insert users with `passwordHash: ""`; `new auth` uses a
-table that exists as it is:
+`--bare` leaves out the guestbook: the app starts as `App`, `Layout`,
+the stylesheet and `adapters/`, with no page and no table, so nothing
+the task does not name is left in it. The users first, with exactly the
+task's columns: `--no-timestamps` drops the `created`/`updated` pair
+`new table` adds by default, and `created:Time@created` puts back the one
+the task has. The table is made rather than left to `new auth` (which
+would make `passwordHash: Text.Secret`), because the task, and E9's
+tests, have `passwordHash: Text`; `new auth` uses a table that exists as
+it is:
 
 ```text
 # the users, and logging in
-alder new table User email:Text.Email@unique name:Text.NonEmpty passwordHash:Text
+alder new table User email:Text.Email@unique name:Text.NonEmpty passwordHash:Text created:Time@created --no-timestamps
 alder new auth --users User
 ```
 
-The tables. `Invite.status` needs its union first, and the union needs
-its module, which `new table` creates; so the table comes first and the
-column is added after the type, with a default, as a migration of its
-own:
+The tables. `Invite.status` needs its union, so the type comes first:
+`new type` creates the module, and `new table` adds the table to it:
 
 ```text
 # the tables
-alder new table Team name:Text.NonEmpty owner:User.UserId@ref=User
-alder new table Member team:Team.TeamId@ref=Team user:User.UserId@ref=User
-alder new table Invite team:Team.TeamId@ref=Team email:Text.Email
+alder new table Team name:Text.NonEmpty owner:User.UserId@ref=User --no-timestamps
+alder new table Member team:Team.TeamId@ref=Team user:User.UserId@ref=User --no-timestamps
 alder new type Invite "Status = Pending | Accepted | Declined"
-alder edit table Invite add-field status:Status=Pending
+alder new table Invite team:Team.TeamId@ref=Team email:Text.Email status:Status=Pending --no-timestamps
 ```
 
 One helper, `Member.row`, and its test. A function is declared with its
@@ -2694,12 +2703,28 @@ alder new page Teams.Show /teams --show Team --blank --requires user
 alder new page Invites.Index /invites --blank --requires user
 ```
 
+The login's page is there now. `new auth` ran before any page (the pages
+`requires user`, which needs the login), so where a login goes was the
+hole `?afterLogin`, in `Submit`'s arm and in its test; both are filled
+with the page:
+
+```text
+# where a login goes, now that the page is there (`alder new auth` left the hole ?afterLogin)
+alder fill Auth.Login.update.Submit - <<'EOF'
+Teams.Index {}
+EOF
+alder fill 'Auth.Login."logging in through the form"' - <<'EOF'
+Teams.Index {}
+EOF
+```
+
 `/teams`. `Model` first, by `--decl` (a type has no hole), then `load`
 by its hole, then the view by `--decl` (to put the markup on its own
 lines). The form `new form` adds fits no table (a `Team` needs an
 `owner` the form does not have), so its arm is a hole, filled with the
-insert; its generated test cannot know the new team's id, so it is
-rewritten with `--decl`:
+insert; `--msg Create` names its message as the task does (the default
+would be `SubmitNewTeam`); its generated test cannot know the new team's
+id, so it is rewritten with `--decl`:
 
 ```text
 # /teams: the teams a user owns or is a member of, by name, and a form for a new one
@@ -2728,8 +2753,8 @@ alder fill --decl Teams.Index.view - <<'EOF'
   <al-button variant="outline" click={App.Logout}>Log out</al-button>
 </Layout.Page>
 EOF
-alder new form Teams.Index NewTeam name:Text.NonEmpty
-alder fill Teams.Index.update.SubmitNewTeam - <<'EOF'
+alder new form Teams.Index NewTeam name:Text.NonEmpty --msg Create
+alder fill Teams.Index.update.Create - <<'EOF'
 {
   let id <- Db.insert Team { name: p.form.name, owner: session.user }
   Task.succeed (Redirect (Teams.Show { id: id }))
@@ -2811,7 +2836,7 @@ alder fill --decl Teams.Show.view - <<'EOF'
 </Layout.Page>
 EOF
 alder new msg Teams.Show Remove user:User.UserId --in-for u --when model.isOwner
-alder new form Teams.Show NewInvite email:Text.Email
+alder new form Teams.Show NewInvite email:Text.Email --msg SendInvite
 alder fill Teams.Show.update.Remove - <<'EOF'
 if not model.isOwner then Task.notFound
 else if p.user == model.team.owner then Task.fail "The owner cannot leave the team."
@@ -2826,7 +2851,7 @@ else {
   }
 }
 EOF
-alder fill Teams.Show.update.SubmitNewInvite - <<'EOF'
+alder fill Teams.Show.update.SendInvite - <<'EOF'
 if not model.isOwner then Task.notFound
 else {
   let _ <- Db.insert Invite { team: model.team.id, email: p.form.email }
@@ -2884,7 +2909,7 @@ alder fill 'Teams.Show."only the owner changes the team, and the owner cannot le
   let _ <- Db.insert Member { team: red, user: cid }
   let asBob <- load { id: red } { user: bob }
   let byMember <- Test.run (update (Remove { user: cid }) asBob { user: bob })
-  let inviteByMember <- Test.run (update (SubmitNewInvite { form: { email: Text.Email "x@example.com" } }) asBob { user: bob })
+  let inviteByMember <- Test.run (update (SendInvite { form: { email: Text.Email "x@example.com" } }) asBob { user: bob })
   let asAnn <- load { id: red } { user: ann }
   let self <- Test.run (update (Remove { user: ann }) asAnn { user: ann })
   let members <- Db.from Member |> Db.count
@@ -3054,7 +3079,17 @@ as a finding: `new auth` (no app with users could be built), `--blank`
 with `fill --decl` (no `Model` could change), and `new type`, `new
 decl`, `new test` with `--in-for` (a helper, a test, a row's button had
 no command). It needed `--when` too: the hidden tests count the Remove
-buttons a member sees, which must be none.
+buttons a member sees, which must be none. A second agent's drill (T9)
+found the rest, added in M13's last round: `--bare`, `--no-timestamps`,
+`--msg` and `--id` (to have the task's names, not the generators'),
+`alder remove page|table`, path parameters (`--param`, `--show T --by
+<column>`) and `alder edit session add-field`.
+
+What no command does yet: a page's `page` line (its `requires`, or a
+path changed after the page exists) and a module's imports are written
+only by the generators that create them (a fill imports what its
+expression names); a table or page is renamed by `remove` and a new
+command, not in place. Everything else an app has, these commands write.
 
 ## Changing a table: `alder edit table`
 

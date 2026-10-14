@@ -5,18 +5,111 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
+
+	"alder/internal/generate"
+	"alder/internal/types"
 )
 
-// The E11 drill (book 15, "An app from the command line"): testdata/drill/t10-teams/script.txt
-// builds the E9 teams app (T10) from `alder new teams` with `alder new`, `alder edit` and
-// `alder fill` only, no file edited by hand. TestDrill replays it; the app's own tests pass,
-// the E9 hidden tests for T10 pass once added to the app as the E9 harness adds them
-// (experiments/e9-feedback/verify.sh: app/Hidden.alder, `alder test -run '^Hidden '`), and its
-// tests score at least 0.90 under `alder test --mutate`.
+// The E11 drills (book 15, "An app from the command line"): testdata/drill/<task>/script.txt
+// builds an E9 app from `alder new <app> --bare` with `alder new`, `alder edit` and `alder
+// fill` only, no file edited by hand — T10 (teams) and T9 (bookings), each with its task's
+// exact names, tables and fields (experiments/tasks/, the Names block). TestDrill replays both;
+// each app has the task's names (drillNames), its own tests pass, the E9 hidden tests pass once
+// added to the app as the E9 harness adds them (experiments/e9-feedback/verify.sh:
+// app/Hidden.alder, `alder test -run '^Hidden '`), and its tests score at least 0.90 under
+// `alder test --mutate`.
 
 const drillScript = "../../testdata/drill/t10-teams/script.txt"
+
+// drill is one recorded drill: the task, the app's name, and the names the task fixes.
+type drill struct {
+	task, app string
+	names     drillNames
+}
+
+// drillNames are the names a task's Names block fixes: the tables and their columns
+// (`name: Type`, the type as written in the table's module), exactly; the session's fields,
+// exactly; the pages (module → path), exactly; each page's messages and forms, exactly.
+type drillNames struct {
+	tables  map[string][]string
+	session []string
+	pages   map[string]string
+	msgs    map[string][]string
+	forms   map[string][]string
+}
+
+var drills = []drill{
+	{task: "t10-teams", app: "teams", names: drillNames{
+		tables: map[string][]string{
+			"User":   {"id: UserId", "email: Text.Email", "name: Text.NonEmpty", "passwordHash: Text", "created: Time"},
+			"Team":   {"id: TeamId", "name: Text.NonEmpty", "owner: User.UserId"},
+			"Member": {"id: MemberId", "team: Team.TeamId", "user: User.UserId"},
+			"Invite": {"id: InviteId", "team: Team.TeamId", "email: Text.Email", "status: Status"},
+		},
+		session: []string{"user: Maybe User.UserId"},
+		pages:   map[string]string{"Teams.Index": "/teams", "Teams.Show": "/teams/{id}", "Invites.Index": "/invites", "Auth.Login": "/login"},
+		msgs:    map[string][]string{"Teams.Index": {"Create"}, "Teams.Show": {"Remove", "SendInvite"}, "Invites.Index": {"Accept", "Decline"}, "Auth.Login": {"Submit"}},
+		forms:   map[string][]string{"Teams.Index": {"NewTeam"}, "Teams.Show": {"NewInvite"}, "Auth.Login": {"Credentials"}},
+	}},
+	{task: "t9-bookings", app: "bookings", names: drillNames{
+		tables: map[string][]string{
+			"User":    {"id: UserId", "email: Text.Email", "name: Text.NonEmpty", "passwordHash: Text", "created: Time"},
+			"Room":    {"id: RoomId", "name: Text.NonEmpty"},
+			"Booking": {"id: BookingId", "room: Room.RoomId", "owner: User.UserId", "from: Date", "to: Date"},
+		},
+		session: []string{"user: Maybe User.UserId"},
+		pages:   map[string]string{"Rooms.Index": "/rooms", "Rooms.Show": "/rooms/{id}", "Bookings.Index": "/bookings", "Bookings.Show": "/bookings/{id}", "Auth.Login": "/login"},
+		msgs:    map[string][]string{"Rooms.Show": {"Book"}, "Bookings.Show": {"Cancel"}, "Auth.Login": {"Submit"}},
+		forms:   map[string][]string{"Rooms.Show": {"NewBooking"}, "Auth.Login": {"Credentials"}},
+	}},
+}
+
+// checkNames compares the app in dir with the names a task fixes.
+func checkNames(t *testing.T, dir string, want drillNames) {
+	t.Helper()
+	p, err := generate.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables := map[string][]string{}
+	for _, tb := range p.Tables {
+		for _, c := range tb.Columns {
+			tables[tb.Name] = append(tables[tb.Name], c.Name+": "+c.TypeIn(tb.Module))
+		}
+	}
+	if !reflect.DeepEqual(tables, want.tables) {
+		t.Errorf("tables:\n%v\nwant:\n%v", tables, want.tables)
+	}
+	var session []string
+	for _, f := range p.Session.Fields {
+		session = append(session, f.Name+": "+types.String(f.Type))
+	}
+	if !slices.Equal(session, want.session) || p.Login != "Auth.Login" {
+		t.Errorf("session %v, login %q; want %v, Auth.Login", session, p.Login, want.session)
+	}
+	pages, msgs, forms := map[string]string{}, map[string][]string{}, map[string][]string{}
+	for _, pg := range p.Pages {
+		pages[pg.Module] = pg.Path
+		if len(pg.Msgs) > 0 {
+			msgs[pg.Module] = pg.Msgs
+		}
+		if len(pg.Forms) > 0 {
+			forms[pg.Module] = pg.Forms
+		}
+	}
+	for _, c := range []struct {
+		what      string
+		got, want any
+	}{{"pages", pages, want.pages}, {"messages", msgs, want.msgs}, {"forms", forms, want.forms}} {
+		if !reflect.DeepEqual(c.got, c.want) {
+			t.Errorf("%s: %v, want %v", c.what, c.got, c.want)
+		}
+	}
+}
 
 // drillStep is one command of a drill script: its arguments after `alder` and its standard
 // input (a here-document: the lines after a `<<'EOF'` up to `EOF`).
@@ -96,69 +189,77 @@ func drillWords(s string) ([]string, error) {
 	return words, nil
 }
 
-// TestDrill replays the drill on a new app: every step succeeds; then the app checks, its own
-// tests pass, the hidden tests pass, and its tests score at least 0.90.
+// TestDrill replays each drill on a new bare app: every step succeeds; then the app checks, has
+// its task's names, its own tests pass, its tests score at least 0.90, and the hidden tests
+// pass.
 func TestDrill(t *testing.T) {
 	needGoTool(t)
 	if testing.Short() {
-		t.Skip("builds an app and runs its mutants")
+		t.Skip("builds apps and runs their mutants")
 	}
-	src, err := os.ReadFile(drillScript)
-	if err != nil {
-		t.Fatal(err)
-	}
-	steps, err := parseDrill(string(src))
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := filepath.Join(t.TempDir(), "teams")
-	if code, _, errs := runNew(t, dir); code != 0 {
-		t.Fatalf("alder new teams: %s", errs)
-	}
-	before := appFiles(t, dir)
-	for _, st := range steps {
-		code, out, errs := alderIn(t, dir, st.stdin, st.args...)
-		if code != 0 {
-			t.Fatalf("%s:%d: alder %s: exit %d\n%s%s", drillScript, st.line, strings.Join(st.args, " "), code, out, errs)
-		}
-		if st.args[0] == "test" && !strings.HasSuffix(out, " passed, 0 failed\n") {
-			t.Fatalf("%s:%d: alder test:\n%s", drillScript, st.line, out)
-		}
-	}
-	if code, out, errs := alderIn(t, dir, "", "check"); code != 0 || strings.Contains(out, "warning") {
-		t.Fatalf("alder check after the drill: exit %d\n%s%s", code, out, errs)
-	}
-	t.Logf("the drill: %d commands; %d files written", len(steps), len(changedFiles(before, appFiles(t, dir))))
+	for _, d := range drills {
+		t.Run(d.task, func(t *testing.T) {
+			t.Parallel()
+			script := "../../testdata/drill/" + d.task + "/script.txt"
+			src, err := os.ReadFile(script)
+			if err != nil {
+				t.Fatal(err)
+			}
+			steps, err := parseDrill(string(src))
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := filepath.Join(t.TempDir(), d.app)
+			if code, _, errs := runNew(t, dir, "--bare"); code != 0 {
+				t.Fatalf("alder new %s --bare: %s", d.app, errs)
+			}
+			before := appFiles(t, dir)
+			for _, st := range steps {
+				code, out, errs := alderIn(t, dir, st.stdin, st.args...)
+				if code != 0 {
+					t.Fatalf("%s:%d: alder %s: exit %d\n%s%s", script, st.line, strings.Join(st.args, " "), code, out, errs)
+				}
+				if st.args[0] == "test" && !strings.HasSuffix(out, " passed, 0 failed\n") {
+					t.Fatalf("%s:%d: alder test:\n%s", script, st.line, out)
+				}
+			}
+			if code, out, errs := alderIn(t, dir, "", "check"); code != 0 || strings.Contains(out, "warning") {
+				t.Fatalf("alder check after the drill: exit %d\n%s%s", code, out, errs)
+			}
+			t.Logf("the drill: %d commands; %d files written", len(steps), len(changedFiles(before, appFiles(t, dir))))
+			checkNames(t, dir, d.names)
 
-	// the score, on the app's own tests (before the hidden ones are added)
-	var out, errb bytes.Buffer
-	code := runTestTo([]string{dir, "--mutate"}, &out, &errb)
-	m := scoreRe.FindStringSubmatch(out.String())
-	if code != 0 || m == nil {
-		t.Fatalf("alder test --mutate: exit %d\n%s%s", code, out.String(), errb.String())
-	}
-	t.Logf("the drill's app: %s", m[0])
-	if m[4] < "0.90" {
-		_, survivors, _ := strings.Cut(out.String(), "survived:\n")
-		t.Errorf("score %s < 0.90; survivors:\n%s", m[4], survivors)
-	}
+			// the score, on the app's own tests (before the hidden ones are added)
+			var out, errb bytes.Buffer
+			code := runTestTo([]string{dir, "--mutate"}, &out, &errb)
+			m := scoreRe.FindStringSubmatch(out.String())
+			if code != 0 || m == nil {
+				t.Fatalf("alder test --mutate: exit %d\n%s%s", code, out.String(), errb.String())
+			}
+			t.Logf("the drill's app: %s", m[0])
+			if m[4] < "0.90" {
+				_, survivors, _ := strings.Cut(out.String(), "survived:\n")
+				t.Errorf("score %s < 0.90; survivors:\n%s", m[4], survivors)
+			}
 
-	// the hidden tests, as the E9 harness runs them
-	hidden, err := os.ReadFile("../../experiments/e9-feedback/hidden/t10-teams/Hidden.alder")
-	if err != nil {
-		t.Fatal(err)
+			// the hidden tests, as the E9 harness runs them
+			hidden, err := os.ReadFile("../../experiments/e9-feedback/hidden/" + d.task + "/Hidden.alder")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "app", "Hidden.alder"), hidden, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			total := strings.Count(string(hidden), "\ntest \"")
+			out.Reset()
+			errb.Reset()
+			code = runTestTo([]string{dir, "-run", "^Hidden "}, &out, &errb)
+			if want := fmt.Sprintf("%d passed, 0 failed\n", total); code != 0 || total == 0 || !strings.HasSuffix(out.String(), want) {
+				t.Fatalf("the hidden tests: exit %d, want %q\n%s%s", code, want, out.String(), errb.String())
+			}
+			t.Logf("the hidden tests: %d of %d pass", total, total)
+		})
 	}
-	if err := os.WriteFile(filepath.Join(dir, "app", "Hidden.alder"), hidden, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	total := strings.Count(string(hidden), "\ntest \"")
-	out.Reset()
-	errb.Reset()
-	code = runTestTo([]string{dir, "-run", "^Hidden "}, &out, &errb)
-	if want := fmt.Sprintf("%d passed, 0 failed\n", total); code != 0 || total == 0 || !strings.HasSuffix(out.String(), want) {
-		t.Fatalf("the hidden tests: exit %d, want %q\n%s%s", code, want, out.String(), errb.String())
-	}
-	t.Logf("the hidden tests: %d of %d pass", total, total)
 }
 
 // TestDrill_Chapter: chapter 15's "An app from the command line" shows the drill's script, as

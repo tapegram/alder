@@ -1,18 +1,18 @@
-# The E11 drill (book 15, "An app from the command line"): the E9 teams app (T10), built from
-# `alder new teams` with commands only. One command a line; a `fill` reads the lines after it
-# up to EOF. cmd/alder/drill_test.go replays it, then runs the app's tests, the E9 hidden
-# tests, and `alder test --mutate`.
+# The E11 drill (book 15, "An app from the command line"): the E9 teams app (T10), with the
+# task's exact names, tables and fields, built from `alder new teams --bare` with commands only.
+# One command a line; a `fill` reads the lines after it up to EOF. cmd/alder/drill_test.go
+# replays it, then checks the names, and runs the app's tests, the E9 hidden tests, and
+# `alder test --mutate`.
 
 # the users, and logging in
-alder new table User email:Text.Email@unique name:Text.NonEmpty passwordHash:Text
+alder new table User email:Text.Email@unique name:Text.NonEmpty passwordHash:Text created:Time@created --no-timestamps
 alder new auth --users User
 
 # the tables
-alder new table Team name:Text.NonEmpty owner:User.UserId@ref=User
-alder new table Member team:Team.TeamId@ref=Team user:User.UserId@ref=User
-alder new table Invite team:Team.TeamId@ref=Team email:Text.Email
+alder new table Team name:Text.NonEmpty owner:User.UserId@ref=User --no-timestamps
+alder new table Member team:Team.TeamId@ref=Team user:User.UserId@ref=User --no-timestamps
 alder new type Invite "Status = Pending | Accepted | Declined"
-alder edit table Invite add-field status:Status=Pending
+alder new table Invite team:Team.TeamId@ref=Team email:Text.Email status:Status=Pending --no-timestamps
 
 # a user's Member row in a team
 alder new decl Member row "Team.TeamId -> User.UserId -> Query (Maybe Member)"
@@ -38,6 +38,14 @@ EOF
 alder new page Teams.Index /teams --blank --requires user
 alder new page Teams.Show /teams --show Team --blank --requires user
 alder new page Invites.Index /invites --blank --requires user
+
+# where a login goes, now that the page is there (`alder new auth` left the hole ?afterLogin)
+alder fill Auth.Login.update.Submit - <<'EOF'
+Teams.Index {}
+EOF
+alder fill 'Auth.Login."logging in through the form"' - <<'EOF'
+Teams.Index {}
+EOF
 
 # /teams: the teams a user owns or is a member of, by name, and a form for a new one
 alder fill --decl Teams.Index.Model - <<'EOF'
@@ -65,8 +73,8 @@ alder fill --decl Teams.Index.view - <<'EOF'
   <al-button variant="outline" click={App.Logout}>Log out</al-button>
 </Layout.Page>
 EOF
-alder new form Teams.Index NewTeam name:Text.NonEmpty
-alder fill Teams.Index.update.SubmitNewTeam - <<'EOF'
+alder new form Teams.Index NewTeam name:Text.NonEmpty --msg Create
+alder fill Teams.Index.update.Create - <<'EOF'
 {
   let id <- Db.insert Team { name: p.form.name, owner: session.user }
   Task.succeed (Redirect (Teams.Show { id: id }))
@@ -139,7 +147,7 @@ alder fill --decl Teams.Show.view - <<'EOF'
 </Layout.Page>
 EOF
 alder new msg Teams.Show Remove user:User.UserId --in-for u --when model.isOwner
-alder new form Teams.Show NewInvite email:Text.Email
+alder new form Teams.Show NewInvite email:Text.Email --msg SendInvite
 alder fill Teams.Show.update.Remove - <<'EOF'
 if not model.isOwner then Task.notFound
 else if p.user == model.team.owner then Task.fail "The owner cannot leave the team."
@@ -154,7 +162,7 @@ else {
   }
 }
 EOF
-alder fill Teams.Show.update.SubmitNewInvite - <<'EOF'
+alder fill Teams.Show.update.SendInvite - <<'EOF'
 if not model.isOwner then Task.notFound
 else {
   let _ <- Db.insert Invite { team: model.team.id, email: p.form.email }
@@ -212,7 +220,7 @@ alder fill 'Teams.Show."only the owner changes the team, and the owner cannot le
   let _ <- Db.insert Member { team: red, user: cid }
   let asBob <- load { id: red } { user: bob }
   let byMember <- Test.run (update (Remove { user: cid }) asBob { user: bob })
-  let inviteByMember <- Test.run (update (SubmitNewInvite { form: { email: Text.Email "x@example.com" } }) asBob { user: bob })
+  let inviteByMember <- Test.run (update (SendInvite { form: { email: Text.Email "x@example.com" } }) asBob { user: bob })
   let asAnn <- load { id: red } { user: ann }
   let self <- Test.run (update (Remove { user: ann }) asAnn { user: ann })
   let members <- Db.from Member |> Db.count
