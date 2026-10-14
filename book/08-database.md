@@ -572,8 +572,8 @@ A conversion that cannot keep every value is marked `DROPS DATA` and
 says what is lost: `Float` to `Int` cuts off fractions; `Text` to `Int`
 keeps the leading whole number (`'12abc'` becomes `12`) and turns other
 text into `0`; a removed constructor deletes the rows that hold it (the
-line adds `(to keep them, add an UPDATE first)`: "Statements you add",
-below); a `Maybe` field made required replaces `Nothing` with the
+line adds `(to keep them, add an UPDATE first)`, a statement you write
+at the top of the file); a `Maybe` field made required replaces `Nothing` with the
 default, or, without one, deletes those rows. A change with no sensible conversion
 (`Date` to `Int`, say) is refused: remove the field and add one under a
 new name. Adding `@unique` to a column that holds duplicates fails when
@@ -634,7 +634,7 @@ before it stay applied, and nothing else changes. Word for word:
   `migration 0004_drop_excerpt does not produce the schema its header names (to <hash>, got <hash>): the file was edited; restore it from version control`.
 - A file deletes rows that other rows still point at:
   `migration 0003_change_user: rows in Post refer to rows this migration deletes: delete or re-point them first: add an UPDATE or DELETE at the top of 0003_change_user.sql (it was not applied)`
-  ("Statements you add", below).
+  (a statement you write at the top of the file).
 - The database has had a file this executable does not have, newer than
   all of its own (an older build started on a newer database):
   `migration 0005_add_tags is recorded as applied but its file is missing; this executable predates the database (it has had 0005_add_tags): deploy a build that includes it, or restore a backup taken before it`.

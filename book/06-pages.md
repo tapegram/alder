@@ -621,7 +621,7 @@ Adding `role` to the session changes the tests. A session record a test
 writes for `load` or `update` is a record literal, and names every
 field: `{ user: author }` becomes `{ user: author, role: Author }`, or
 E0003 says `role` is missing (a default applies at the boundaries, not
-to a literal: "Example: a theme switch", above). `Test.login`'s record
+to a literal, as the theme switch earlier in this chapter shows). `Test.login`'s record
 is a boundary, the cookie's value, so `Test.login { user: Just me }` may
 leave `role` out and gets its default, `Reader`.
 
