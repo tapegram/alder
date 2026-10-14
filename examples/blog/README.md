@@ -12,12 +12,12 @@ To try it: `alder run`, then log in at `/login` with the password `password` as
 
 ## Mutation score
 
-`alder test --mutate examples/blog` (book 10, "Mutation testing"): 182 mutants, 124 tests, 179
+`alder test --mutate examples/blog` (book 10, "Mutation testing"): 214 mutants, 139 tests, 211
 killed, 3 survived (score 0.98). `TestExample_Blog` fails if the score drops below 0.98, the
-exact 0.983 rounded down, or the number of mutants is not 182.
+exact 0.986 rounded down, or the number of mutants is not 214.
 
-- The generated admin (`app/Admin/`, "Replaying the admin" below): 119 mutants, all 119 killed
-  by its 82 generated tests, kept as `alder new admin` wrote them.
+- The generated admin (`app/Admin/`, "Replaying the admin" below): 151 mutants, all 151 killed
+  by its 97 generated tests, kept as `alder new admin` wrote them.
 - The rest of the blog: 63 mutants, 60 killed, 3 survived, as before the admin (below).
 
 The history of the rest:
@@ -91,7 +91,9 @@ steps, from the blog before the admin:
 2. `migrations/0001_initial.sql` is written again from the tables (`rm migrations/*` and
    `alder migrate`): an example keeps one migration, since it has no data to keep. An app with
    data runs `alder migrate` instead, which rebuilds `User` with `'Admin'` in the column's
-   `CHECK`.
+   `CHECK`. A `blog.db` that `alder run` made before this step no longer matches `0001`, and
+   the app refuses to start on it: delete it, or run once with `ALDER_DEV=1`, which recreates
+   the database empty (book 8).
 3. `alder new admin` writes the admin:
 
    ```
@@ -116,6 +118,10 @@ steps, from the blog before the admin:
    ```
 
 4. The development login (`adapters/auth/password.go`) gains `admin@example.com`, an Admin.
+
+The admin never shows or edits `User.passwordHash`, a secret by its name (book 15): a user it
+creates starts with an empty one. Every admin page reads the user's row again, so an Admin made
+a Reader is turned away at once.
 
 To check that the committed admin is still what the generator writes, in a copy of the blog:
 `rm -r app/Admin && alder new admin`, then `git diff --stat` shows nothing. After a change to a

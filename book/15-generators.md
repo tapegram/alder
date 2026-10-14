@@ -719,8 +719,8 @@ wrote app/Admin/User/Show.alder
 
 `examples/blog/app/Admin/` holds exactly these files, as the command
 wrote them; nobody has edited them, and the blog's README says how to
-check that by running it again. Its 82 tests pass, and they kill all of
-the admin's 119 mutants (chapter 10). For each table `T`, with `t` its
+check that by running it again. Its 97 tests pass, and they kill all of
+the admin's 151 mutants (chapter 10). For each table `T`, with `t` its
 name in lower case:
 
 | Module | Path | What it is |
@@ -749,6 +749,7 @@ module Admin.Layout
 
 -- @admin begin imports
 import Layout
+import User
 -- @admin end
 
 -- The admin's frame: the app's layout around a nav of every table's list.
@@ -767,6 +768,18 @@ Page props =
     </nav>
     {props.children}
   </Layout.Page>
+
+-- @admin begin access
+-- isAdmin is whether the signed-in user may use the admin, which every page's load asks (it runs
+-- before every message too). The session's role is the one read at login, and lasts until
+-- logout or the cookie's 30 days (chapter 6, "Rules"): the user table holds the role, so it is
+-- read again, and a user demoted or deleted since gets a 404 at once.
+isAdmin : User.UserId -> Query Bool
+isAdmin id = {
+  let me <- Db.get User id
+  Query.succeed (Maybe.map (\u -> u.role) me == Just Admin)
+}
+-- @admin end
 ```
 
 The first two lines say where the file came from, and every file of the
@@ -804,40 +817,43 @@ recent = 5
 
 load : Params -> Session -> Query Model
 load params session = {
-  -- @admin begin cards
-  let comments <- Db.from Comment |> Db.orderBy Comment.created.desc |> Db.limit recent |> Db.all
-  let commentCount <- Db.from Comment |> Db.count
-  let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.limit recent |> Db.all
-  let postCount <- Db.from Post |> Db.count
-  let users <- Db.from User |> Db.orderBy User.created.desc |> Db.limit recent |> Db.all
-  let userCount <- Db.from User |> Db.count
-  Query.succeed { cards: [
-    {
-      key: "comments",
-      title: "Comments",
-      href: Admin.Comment.Index {},
-      count: commentCount,
-      rows: List.map (\row -> {
-        label: row.author,
-        href: Admin.Comment.Show { id: row.id },
-      }) comments,
-    },
-    {
-      key: "posts",
-      title: "Posts",
-      href: Admin.Post.Index {},
-      count: postCount,
-      rows: List.map (\row -> { label: row.slug, href: Admin.Post.Show { id: row.id } }) posts,
-    },
-    {
-      key: "users",
-      title: "Users",
-      href: Admin.User.Index {},
-      count: userCount,
-      rows: List.map (\row -> { label: row.email, href: Admin.User.Show { id: row.id } }) users,
-    },
-  ] }
-  -- @admin end
+  let admin <- Admin.Layout.isAdmin session.user
+  if admin then {
+    -- @admin begin cards
+    let comments <- Db.from Comment |> Db.orderBy Comment.created.desc |> Db.limit recent |> Db.all
+    let commentCount <- Db.from Comment |> Db.count
+    let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.limit recent |> Db.all
+    let postCount <- Db.from Post |> Db.count
+    let users <- Db.from User |> Db.orderBy User.created.desc |> Db.limit recent |> Db.all
+    let userCount <- Db.from User |> Db.count
+    Query.succeed { cards: [
+      {
+        key: "comments",
+        title: "Comments",
+        href: Admin.Comment.Index {},
+        count: commentCount,
+        rows: List.map (\row -> {
+          label: row.author,
+          href: Admin.Comment.Show { id: row.id },
+        }) comments,
+      },
+      {
+        key: "posts",
+        title: "Posts",
+        href: Admin.Post.Index {},
+        count: postCount,
+        rows: List.map (\row -> { label: row.slug, href: Admin.Post.Show { id: row.id } }) posts,
+      },
+      {
+        key: "users",
+        title: "Users",
+        href: Admin.User.Index {},
+        count: userCount,
+        rows: List.map (\row -> { label: row.email, href: Admin.User.Show { id: row.id } }) users,
+      },
+    ] }
+    -- @admin end
+  } else Query.notFound
 }
 ```
 
@@ -879,6 +895,7 @@ test "the dashboard counts the comments and lists the newest five" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post {
@@ -907,6 +924,7 @@ test "the dashboard counts the posts and lists the newest five" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let _ <- Task.all (List.map (\n -> Db.insert Post {
@@ -930,6 +948,7 @@ test "the dashboard counts the users and lists the newest five" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let _ <- Task.all (List.map (\n -> Db.insert User {
@@ -953,32 +972,31 @@ test "the dashboard counts the users and lists the newest five" = {
   })
 }
 
--- `requires user, role Admin` reads the role in the session cookie, the one it got at login
--- (chapter 6, "Roles"), not the user's row: an Admin demoted since keeps the admin until they
--- log out. A page that must turn them away at once re-reads the row in its `load`.
-test "an Admin's role is the one the cookie got at login" = {
-  let me <- Db.insert User {
-    email: Text.Email "email-1@example.com",
-    name: Text.NonEmpty "name-1",
-    passwordHash: "passwordhash-1",
-  }
-  let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Index {})
-  Task.succeed (r.answer == Shown)
-}
-
 test "a visitor is sent to log in" = {
   let r <- Test.open (Admin.Index {})
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
-test "a Reader gets no page" = {
+test "a Reader gets no page, even one made Admin since logging in" = {
   let me <- Db.insert User {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.open (Admin.Index {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a demoted Admin is refused at once" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Reader,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
   let r <- Test.open (Admin.Index {})
   Task.succeed (r.answer == PageMissing)
 }
@@ -1059,28 +1077,31 @@ table, so both are regions.
 ```alder part=blog/Admin.Post.Index
 load : Params -> Session -> Query Model
 load params session = {
-  let q = Text.slice 0 200 params.q
-  let count <- Db.from Post |> Db.where (search q) |> Db.count
-  let pages = Int.max 1 ((count + perPage - 1) / perPage)
-  let page = Int.clamp { min: 1, max: pages } params.page
-  let rows <-
-    Db.from Post
-      |> Db.where (search q)
-      |> Db.orderBy (order params.sort params.dir)
-      |> Db.limit perPage
-      |> Db.offset ((page - 1) * perPage)
-      |> Db.all
-  let labels <- labelsOf rows
-  Query.succeed {
-    rows: rows,
-    labels: labels,
-    q: q,
-    sort: params.sort,
-    dir: params.dir,
-    page: page,
-    pages: pages,
-    count: count,
-  }
+  let admin <- Admin.Layout.isAdmin session.user
+  if admin then {
+    let q = Text.slice 0 200 params.q
+    let count <- Db.from Post |> Db.where (search q) |> Db.count
+    let pages = Int.max 1 ((count + perPage - 1) / perPage)
+    let page = Int.clamp { min: 1, max: pages } params.page
+    let rows <-
+      Db.from Post
+        |> Db.where (search q)
+        |> Db.orderBy (order params.sort params.dir)
+        |> Db.limit perPage
+        |> Db.offset ((page - 1) * perPage)
+        |> Db.all
+    let labels <- labelsOf rows
+    Query.succeed {
+      rows: rows,
+      labels: labels,
+      q: q,
+      sort: params.sort,
+      dir: params.dir,
+      page: page,
+      pages: pages,
+      count: count,
+    }
+  } else Query.notFound
 }
 
 -- @admin begin labels
@@ -1214,6 +1235,7 @@ test "the list shows every row, newest first, and the labels of the rows they re
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post {
@@ -1250,6 +1272,7 @@ test "sorting by slug goes both ways" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post {
@@ -1280,6 +1303,7 @@ test "searching finds the rows that contain the text" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post {
@@ -1309,6 +1333,7 @@ test "a search text of 20,000 characters is cut to 200" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let long = Text.join "" (List.map (\n -> "z") (List.range 1 20000))
@@ -1327,6 +1352,7 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let _ <- Task.all (List.map (\n -> Db.insert Post {
@@ -1358,13 +1384,26 @@ test "a visitor is sent to log in" = {
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
-test "a Reader gets no page" = {
+test "a Reader gets no page, even one made Admin since logging in" = {
   let me <- Db.insert User {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.open (Admin.Post.Index {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a demoted Admin is refused at once" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Reader,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
   let r <- Test.open (Admin.Post.Index {})
   Task.succeed (r.answer == PageMissing)
 }
@@ -1397,10 +1436,13 @@ type Model = {
 
 load : Params -> Session -> Query Model
 load params session = {
-  -- @admin begin load
-  let authors <- Db.from User |> Db.orderBy User.email.asc |> Db.all
-  Query.succeed { authors: authors }
-  -- @admin end
+  let admin <- Admin.Layout.isAdmin session.user
+  if admin then {
+    -- @admin begin load
+    let authors <- Db.from User |> Db.orderBy User.email.asc |> Db.all
+    Query.succeed { authors: authors }
+    -- @admin end
+  } else Query.notFound
 }
 
 -- @admin begin form
@@ -1493,6 +1535,7 @@ test "creating a post adds it, with the values submitted" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let user2 <- Db.insert User {
@@ -1537,6 +1580,7 @@ test "a post with a slug that exists is refused" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let user2 <- Db.insert User {
@@ -1575,6 +1619,7 @@ test "an author not offered is refused" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let user2 <- Db.insert User {
@@ -1605,13 +1650,26 @@ test "a visitor is sent to log in" = {
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
-test "a Reader gets no page" = {
+test "a Reader gets no page, even one made Admin since logging in" = {
   let me <- Db.insert User {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.open (Admin.Post.New {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a demoted Admin is refused at once" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Reader,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
   let r <- Test.open (Admin.Post.New {})
   Task.succeed (r.answer == PageMissing)
 }
@@ -1655,14 +1713,17 @@ type Model = {
 
 load : Params -> Session -> Query Model
 load params session = {
-  -- @admin begin load
-  let found <- Db.get User params.id
-  let posts <- Db.from Post |> Db.where (Post.author.eq params.id) |> Db.count
-  match found {
-    Just row -> Query.succeed { row: row, posts: posts },
-    Nothing -> Query.notFound,
-  }
-  -- @admin end
+  let admin <- Admin.Layout.isAdmin session.user
+  if admin then {
+    -- @admin begin load
+    let found <- Db.get User params.id
+    let posts <- Db.from Post |> Db.where (Post.author.eq params.id) |> Db.count
+    match found {
+      Just row -> Query.succeed { row: row, posts: posts },
+      Nothing -> Query.notFound,
+    }
+    -- @admin end
+  } else Query.notFound
 }
 
 -- @admin begin blockers
@@ -1738,6 +1799,7 @@ test "deleting a user nothing refers to" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let user2 <- Db.insert User {
@@ -1776,6 +1838,7 @@ test "a user that posts refer to is not deleted" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let user2 <- Db.insert User {
@@ -1810,6 +1873,7 @@ test "a missing row is not found" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let r <- Test.open (Admin.User.Delete { id: User.UserId "missing" })
@@ -1826,13 +1890,31 @@ test "a visitor is sent to log in" = {
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
-test "a Reader gets no page" = {
+test "a Reader gets no page, even one made Admin since logging in" = {
   let me <- Db.insert User {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let r <- Test.open (Admin.User.Delete { id: user2 })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a demoted Admin is refused at once" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Reader,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
@@ -2004,7 +2086,7 @@ edited app/Admin/Comment/Show.alder
  ]
  -- @admin end
  
-@@ -147,6 +148,13 @@
+@@ -150,6 +151,13 @@
                  dir: if model.sort == "created" && model.dir == "asc" then "desc" else "asc",
                }}>Created</a>
              </th>
@@ -2018,7 +2100,7 @@ edited app/Admin/Comment/Show.alder
              -- @admin end
            </tr>
          </thead>
-@@ -158,6 +166,7 @@
+@@ -161,6 +169,7 @@
                <td><a href={Admin.Comment.Show { id: row.id }}>{row.author}</a></td>
                <td>{row.body}</td>
                <td>{Time.format "Jan 2, 2006" row.created}</td>
@@ -2029,7 +2111,7 @@ edited app/Admin/Comment/Show.alder
 …
 --- a/app/Admin/Comment/Show.alder
 +++ b/app/Admin/Comment/Show.alder
-@@ -62,6 +62,8 @@
+@@ -65,6 +65,8 @@
          <dd>{model.row.body}</dd>
          <dt>Created</dt>
          <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>

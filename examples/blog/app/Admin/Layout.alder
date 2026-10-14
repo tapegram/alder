@@ -4,6 +4,7 @@ module Admin.Layout
 
 -- @admin begin imports
 import Layout
+import User
 -- @admin end
 
 -- The admin's frame: the app's layout around a nav of every table's list.
@@ -22,3 +23,15 @@ Page props =
     </nav>
     {props.children}
   </Layout.Page>
+
+-- @admin begin access
+-- isAdmin is whether the signed-in user may use the admin, which every page's load asks (it runs
+-- before every message too). The session's role is the one read at login, and lasts until
+-- logout or the cookie's 30 days (chapter 6, "Rules"): the user table holds the role, so it is
+-- read again, and a user demoted or deleted since gets a 404 at once.
+isAdmin : User.UserId -> Query Bool
+isAdmin id = {
+  let me <- Db.get User id
+  Query.succeed (Maybe.map (\u -> u.role) me == Just Admin)
+}
+-- @admin end

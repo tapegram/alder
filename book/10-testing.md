@@ -1887,8 +1887,8 @@ added four mutants to the app's own code: two survived the twenty
 tests, the `update field dropped` of `role` in logout's and login's
 `Session.put`, and two more tests kill them, `App "Logout makes the role
 Member"` and `Auth.Login "logging in copies the role from the user's
-row"`. The admin brought 76 mutants and 54 tests of its own, which kill
-every one. The whole run now ends `112 mutants: 112 killed, 0 survived
+row"`. The admin brought 98 mutants and 64 tests of its own, which kill
+every one. The whole run now ends `134 mutants: 134 killed, 0 survived
 (score 1.00)`.
 
 ### What is never a mutant
@@ -2052,13 +2052,13 @@ ok   Todo "Active keeps only open todos"
 ok   Todo "each filter has its label"
 ok   Todo "a user with todos cannot be deleted"
 4 passed, 0 failed
-112 mutants: 7 killed, 105 survived  (score 0.06)
+134 mutants: 7 killed, 127 survived  (score 0.05)
 survived:
 …
 ```
 
-(105 survivor lines follow: the four `scope dropped` of "The operators"
-among them, and all 76 of the generated admin's, which only its own
+(127 survivor lines follow: the four `scope dropped` of "The operators"
+among them, and all 98 of the generated admin's, which only its own
 tests kill.) This is useful while writing the tests of
 one module, but the score that counts is the whole suite's.
 
@@ -2078,7 +2078,7 @@ mutant. If the plain run itself runs out of time, the message says
 `(--mutate's default 10s; raise it with -timeout)`. A `-run` that
 selects no test ends with `no test matches -run: nothing can kill a
 mutant`. Mutants run one after another, each with a fresh database
-per test; the to-do app's 112 take a few seconds once the build is made,
+per test; the to-do app's 134 take a few seconds once the build is made,
 because each mutant stops at the first test that fails.
 
 `--json` prints the per-test objects as usual, then one object listing
@@ -2086,17 +2086,17 @@ every mutant, then one with the totals. A mutant's object has its `id`,
 `module`, `file`, `decl`, `line`, `col` (the column), `kind`, `before`,
 `after`, whether it was `killed`, `by` which test (the first that
 failed), and a `note` (`"crashed"`, `"timed out"`, or empty). From the
-to-do app's run, two of the 112:
+to-do app's run, two of the 134:
 
 ```text
-{"id":96,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"load","line":18,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
-{"id":2,"module":"Todo","file":"app/Todo.alder","decl":"Todo","line":16,"col":3,"kind":"cascade ↔ restrict","before":"owner @ref User @restrict","after":"owner @ref User @cascade","killed":true,"by":"Todo \"a user with todos cannot be deleted\"","note":"","tables":"ensure"}
+{"id":118,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"load","line":18,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
+{"id":3,"module":"Todo","file":"app/Todo.alder","decl":"Todo","line":16,"col":3,"kind":"cascade ↔ restrict","before":"owner @ref User @restrict","after":"owner @ref User @cascade","killed":true,"by":"Todo \"a user with todos cannot be deleted\"","note":"","tables":"ensure"}
 ```
 
 and the last line:
 
 ```text
-{"score":1,"killed":112,"survived":0,"suppressed":3,"skipped":23}
+{"score":1,"killed":134,"survived":0,"suppressed":3,"skipped":23}
 ```
 
 `score` is exact here (1 when every mutant was killed). `"tables":
@@ -2123,7 +2123,7 @@ for its new tests, its mutants kept their ids (then 25 to 33), since
 the app later adopted the rules of chapter 6, the edits to `Todos.Index`
 renumbered everything after them again: `Todos.Show`'s mutants became
 25 to 32. M12's role and generated admin come before it in import
-order, so they are now 105 to 112. Ids
+order, so they are now 127 to 134. Ids
 and lines are for reading one report; to compare runs, compare what
 survived.
 

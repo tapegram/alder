@@ -19,10 +19,13 @@ type Model = {
 
 load : Params -> Session -> Query Model
 load params session = {
-  -- @admin begin load
-  let posts <- Db.from Post |> Db.orderBy Post.slug.asc |> Db.all
-  Query.succeed { posts: posts }
-  -- @admin end
+  let admin <- Admin.Layout.isAdmin session.user
+  if admin then {
+    -- @admin begin load
+    let posts <- Db.from Post |> Db.orderBy Post.slug.asc |> Db.all
+    Query.succeed { posts: posts }
+    -- @admin end
+  } else Query.notFound
 }
 
 -- @admin begin form
@@ -69,6 +72,7 @@ test "creating a comment adds it, with the values submitted" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post {
@@ -106,6 +110,7 @@ test "a post not offered is refused" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post {
@@ -141,13 +146,26 @@ test "a visitor is sent to log in" = {
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
-test "a Reader gets no page" = {
+test "a Reader gets no page, even one made Admin since logging in" = {
   let me <- Db.insert User {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.open (Admin.Comment.New {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a demoted Admin is refused at once" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Reader,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
   let r <- Test.open (Admin.Comment.New {})
   Task.succeed (r.answer == PageMissing)
 }

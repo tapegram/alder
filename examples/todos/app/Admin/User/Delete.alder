@@ -20,14 +20,17 @@ type Model = {
 
 load : Params -> Session -> Query Model
 load params session = {
-  -- @admin begin load
-  let found <- Db.get User params.id
-  let todos <- Db.from Todo |> Db.where (Todo.owner.eq params.id) |> Db.count
-  match found {
-    Just row -> Query.succeed { row: row, todos: todos },
-    Nothing -> Query.notFound,
-  }
-  -- @admin end
+  let admin <- Admin.Layout.isAdmin session.user
+  if admin then {
+    -- @admin begin load
+    let found <- Db.get User params.id
+    let todos <- Db.from Todo |> Db.where (Todo.owner.eq params.id) |> Db.count
+    match found {
+      Just row -> Query.succeed { row: row, todos: todos },
+      Nothing -> Query.notFound,
+    }
+    -- @admin end
+  } else Query.notFound
 }
 
 -- @admin begin blockers
@@ -88,6 +91,7 @@ test "deleting a user nothing refers to" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let user2 <- Db.insert User {
@@ -121,6 +125,7 @@ test "a user that todos refer to is not deleted" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let user2 <- Db.insert User {
@@ -150,6 +155,7 @@ test "a missing row is not found" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let r <- Test.open (Admin.User.Delete { id: User.UserId "missing" })
@@ -166,13 +172,31 @@ test "a visitor is sent to log in" = {
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
-test "a Member gets no page" = {
+test "a Member gets no page, even one made Admin since logging in" = {
   let me <- Db.insert User {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Member }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let r <- Test.open (Admin.User.Delete { id: user2 })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a demoted Admin is refused at once" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Member,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",

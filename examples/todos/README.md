@@ -11,13 +11,13 @@ Member) or `admin@b.c` (an Admin: `/admin`). The accounts are the development st
 
 ## Mutation score
 
-`alder test --mutate examples/todos` (book 10, "Mutation testing"): 112 mutants, 76 tests, 112
+`alder test --mutate examples/todos` (book 10, "Mutation testing"): 134 mutants, 86 tests, 134
 killed, 0 survived (score 1.00). `TestExample_TodosMutation` fails if the score drops below
-1.00 or the number of mutants is not 112.
+1.00 or the number of mutants is not 134.
 
 - The app's own code: 36 mutants, all killed by its 22 tests (score 1.00).
-- The generated admin (`app/Admin/`, "Replaying the admin" below): 76 mutants, all killed by
-  its 54 generated tests, kept as `alder new admin` wrote them.
+- The generated admin (`app/Admin/`, "Replaying the admin" below): 98 mutants, all killed by
+  its 64 generated tests, kept as `alder new admin` wrote them.
 
 The history of the app's own code:
 
@@ -70,7 +70,10 @@ The steps, from the app before the admin:
    session, and `App.Logout` puts `Member` back.
 2. `migrations/0001_initial.sql` is written again from the tables (`rm migrations/*` and
    `alder migrate`): an example keeps one migration, since it has no data to keep. An app with
-   data runs `alder migrate` instead, which rebuilds `User` with the new column.
+   data runs `alder migrate` instead, which rebuilds `User` with the new column. A `todos.db`
+   that `alder run` made before this step no longer matches `0001`, and the app refuses to
+   start on it: delete it, or run once with `ALDER_DEV=1`, which recreates the database empty
+   (book 8).
 3. `alder new admin` writes the admin:
 
    ```

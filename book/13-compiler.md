@@ -3486,7 +3486,7 @@ check that sends a visitor to log in, `Todos.Index`'s route
 
 ```go
 	app := rq.Env.Session.(App__Session)
-	if !app.User.Ok && Mutant == 95 {
+	if !app.User.Ok && Mutant == 117 {
 		app.User = rt.Just("mutant")
 	}
 	if !app.User.Ok {
@@ -3495,20 +3495,20 @@ check that sends a visitor to log in, `Todos.Index`'s route
 	}
 ```
 
-so under mutant 95 a session without a user gets the placeholder user
+so under mutant 117 a session without a user gets the placeholder user
 `"mutant"`, and the check that follows lets the request through. `role
 dropped` is in the route too, in the role check that follows the
 `requires` check (section 8, "The rules"). The blog's `Write` page has
 
 ```go
-	if Mutant != 158 && app.Role.Tag != is__User__Role__Author {
+	if Mutant != 190 && app.Role.Tag != is__User__Role__Author {
 		r := web.NotFoundResponse(html.None())
 		r.Session = keep
 		return model, Write__Session{}, &r
 	}
 ```
 
-so under mutant 158 every signed-in user passes. `scope dropped` replaces
+so under mutant 190 every signed-in user passes. `scope dropped` replaces
 a scoped node with the unscoped one, built from existing IR nodes so it
 has the same type: `Db.mine T` becomes `Db.from T`, and
 `Db.updateMine T id f` becomes a `Db.get`, then a `match` on its result

@@ -22,40 +22,43 @@ recent = 5
 
 load : Params -> Session -> Query Model
 load params session = {
-  -- @admin begin cards
-  let comments <- Db.from Comment |> Db.orderBy Comment.created.desc |> Db.limit recent |> Db.all
-  let commentCount <- Db.from Comment |> Db.count
-  let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.limit recent |> Db.all
-  let postCount <- Db.from Post |> Db.count
-  let users <- Db.from User |> Db.orderBy User.created.desc |> Db.limit recent |> Db.all
-  let userCount <- Db.from User |> Db.count
-  Query.succeed { cards: [
-    {
-      key: "comments",
-      title: "Comments",
-      href: Admin.Comment.Index {},
-      count: commentCount,
-      rows: List.map (\row -> {
-        label: row.author,
-        href: Admin.Comment.Show { id: row.id },
-      }) comments,
-    },
-    {
-      key: "posts",
-      title: "Posts",
-      href: Admin.Post.Index {},
-      count: postCount,
-      rows: List.map (\row -> { label: row.slug, href: Admin.Post.Show { id: row.id } }) posts,
-    },
-    {
-      key: "users",
-      title: "Users",
-      href: Admin.User.Index {},
-      count: userCount,
-      rows: List.map (\row -> { label: row.email, href: Admin.User.Show { id: row.id } }) users,
-    },
-  ] }
-  -- @admin end
+  let admin <- Admin.Layout.isAdmin session.user
+  if admin then {
+    -- @admin begin cards
+    let comments <- Db.from Comment |> Db.orderBy Comment.created.desc |> Db.limit recent |> Db.all
+    let commentCount <- Db.from Comment |> Db.count
+    let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.limit recent |> Db.all
+    let postCount <- Db.from Post |> Db.count
+    let users <- Db.from User |> Db.orderBy User.created.desc |> Db.limit recent |> Db.all
+    let userCount <- Db.from User |> Db.count
+    Query.succeed { cards: [
+      {
+        key: "comments",
+        title: "Comments",
+        href: Admin.Comment.Index {},
+        count: commentCount,
+        rows: List.map (\row -> {
+          label: row.author,
+          href: Admin.Comment.Show { id: row.id },
+        }) comments,
+      },
+      {
+        key: "posts",
+        title: "Posts",
+        href: Admin.Post.Index {},
+        count: postCount,
+        rows: List.map (\row -> { label: row.slug, href: Admin.Post.Show { id: row.id } }) posts,
+      },
+      {
+        key: "users",
+        title: "Users",
+        href: Admin.User.Index {},
+        count: userCount,
+        rows: List.map (\row -> { label: row.email, href: Admin.User.Show { id: row.id } }) users,
+      },
+    ] }
+    -- @admin end
+  } else Query.notFound
 }
 
 view : Model -> Session -> Html Msg
@@ -80,6 +83,7 @@ test "the dashboard counts the comments and lists the newest five" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post {
@@ -108,6 +112,7 @@ test "the dashboard counts the posts and lists the newest five" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let _ <- Task.all (List.map (\n -> Db.insert Post {
@@ -131,6 +136,7 @@ test "the dashboard counts the users and lists the newest five" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let _ <- Task.all (List.map (\n -> Db.insert User {
@@ -154,32 +160,31 @@ test "the dashboard counts the users and lists the newest five" = {
   })
 }
 
--- `requires user, role Admin` reads the role in the session cookie, the one it got at login
--- (chapter 6, "Roles"), not the user's row: an Admin demoted since keeps the admin until they
--- log out. A page that must turn them away at once re-reads the row in its `load`.
-test "an Admin's role is the one the cookie got at login" = {
-  let me <- Db.insert User {
-    email: Text.Email "email-1@example.com",
-    name: Text.NonEmpty "name-1",
-    passwordHash: "passwordhash-1",
-  }
-  let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Index {})
-  Task.succeed (r.answer == Shown)
-}
-
 test "a visitor is sent to log in" = {
   let r <- Test.open (Admin.Index {})
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
-test "a Reader gets no page" = {
+test "a Reader gets no page, even one made Admin since logging in" = {
   let me <- Db.insert User {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
+    role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.open (Admin.Index {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a demoted Admin is refused at once" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Reader,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
   let r <- Test.open (Admin.Index {})
   Task.succeed (r.answer == PageMissing)
 }

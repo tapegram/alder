@@ -623,7 +623,7 @@ otherwise draw from its `page` and `pages` attributes).
 
 ## Its tests
 
-`alder test examples/blog` runs 124 tests: the 82 of the generated
+`alder test examples/blog` runs 139 tests: the 97 of the generated
 admin (chapter 15), and forty-two in seven modules, which `-run` picks
 out (it matches each test's `Module "name"`):
 
@@ -804,7 +804,7 @@ be empty").
 Ten tests were written after `alder test --mutate` (chapter 10, "Mutation
 testing") ran on the blog: before them, 17 of its 58 mutants survived;
 after, 3 do, and those three cannot be killed (chapter 10 explains why).
-The generated admin, which came later, adds 119 mutants, and its own
+The generated admin, which came later, adds 151 mutants, and its own
 tests kill every one (chapter 15).
 `Post`'s two and `Write.Edit`'s two are above. `Write`'s "the write page
 lists the author's own posts, newest first" inserts another author's post
