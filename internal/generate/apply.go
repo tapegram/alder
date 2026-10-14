@@ -12,6 +12,7 @@ import (
 
 	"alder/internal/buildkit"
 	"alder/internal/diag"
+	"alder/internal/syntax"
 )
 
 // Edit is one change a generator makes to the app: a file it creates (Create, with its Body), a
@@ -25,6 +26,10 @@ type Edit struct {
 	Body    string
 	Replace []Region
 	Delete  bool
+	// Guard, when set, are the lines (first, last) of the declaration the edit changes (the
+	// session, a table): an error located there refuses the edit even under
+	// Options.WriteDespiteErrors, whose to-do list is for breakage in other code.
+	Guard *[2]int
 }
 
 // Region is the new body of one owned region of a file (Task 2's `-- @admin begin <name>` …
@@ -210,6 +215,21 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 	for _, h := range HoleIndex(prog, bag.Items) {
 		if changed[h.File] {
 			res.Holes = append(res.Holes, h)
+		}
+	}
+	for _, e := range edits {
+		if e.Guard == nil {
+			continue
+		}
+		var own []diag.Diagnostic
+		for _, d := range res.Diagnostics {
+			if d.Severity == "error" && d.Span.File == e.Path && d.Span.Start.Line >= e.Guard[0] && d.Span.Start.Line <= e.Guard[1] {
+				own = append(own, d)
+			}
+		}
+		if len(own) > 0 {
+			res.Diagnostics = own
+			return res, &Refusal{Msg: "the declaration the command edits does not check (the errors above): nothing was written", Result: res}
 		}
 	}
 	if res.HasErrors() && !o.WriteDespiteErrors {
@@ -398,4 +418,20 @@ func (p *Program) errorsIn(file string) *Refusal {
 		return nil
 	}
 	return &Refusal{Msg: "the result does not check (the errors above): nothing was written", Diags: errs, Sources: buildkit.Sources(p.Prog)}
+}
+
+// declLines are the first and last lines of the first declaration of src (a file of the app,
+// path) that match picks, or nil when the file does not parse or has none: an Edit's Guard.
+func declLines(path, src string, match func(syntax.Decl) bool) *[2]int {
+	m, _ := syntax.ParseFile(path, []byte(src))
+	if m == nil {
+		return nil
+	}
+	for _, d := range m.Decls {
+		if match(d) {
+			sp := d.GetSpan()
+			return &[2]int{sp.Start.Line, sp.End.Line}
+		}
+	}
+	return nil
 }

@@ -414,6 +414,11 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "table", "Tag", "created:Time@created"}, "", "alder new table: field `created`: the generator writes `created: Time @created` and `updated: Time @updated`; leave them out, or give --no-timestamps"},
 		{"scaffold", []string{"edit", "session", "add-field", "theme:Text"}, "", "alder edit session: session field `theme` needs a default"},
 		{"fixture", []string{"edit", "session", "add-field", "role:Text=\"x\""}, "", "alder edit session: the session already has a field `role`"},
+		// an error in the edited declaration itself refuses, whatever the write-despite-errors policy
+		{"scaffold", []string{"edit", "session", "add-field", "bad:Theme=Nope"}, "", "alder edit session: the declaration the command edits does not check (the errors above): nothing was written"},
+		{"scaffold", []string{"edit", "session", "add-field", "n:Int=\"x\""}, "", "alder edit session: the declaration the command edits does not check (the errors above): nothing was written"},
+		{"scaffold", []string{"edit", "table", "Entry", "add-field", "bad:Theme=Nope"}, "", "alder edit table: the result does not check (the errors above): nothing was written"},
+		{"scaffold", []string{"edit", "table", "Entry", "add-field", "n:Int=\"x\""}, "", "alder edit table: the result does not check (the errors above): nothing was written"},
 		{"scaffold", []string{"remove", "table", "Entry"}, "", "alder remove table: table `Entry` is still used (the errors above): remove those uses first; nothing was removed"},
 		{"scaffold", []string{"remove", "page", "Entry"}, "", "alder remove page: `Entry` is not a page"},
 		{"scaffold", []string{"remove", "table", "Home"}, "", "alder remove table: `Home` is not a table of this app"},

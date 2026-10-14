@@ -2868,7 +2868,10 @@ edited app/App.alder
 
 A literal written over several lines is left, and shows in the check
 after the edit, which is written all the same (as `alder edit table`'s
-are; `--strict` refuses instead).
+are; `--strict` refuses instead). An error in the session itself is not
+breakage elsewhere: a type that does not exist, or a default of another
+type (`bad:Theme=Nope`, `n:Int="x"`), refuses the edit with the
+checker's errors, and nothing is written.
 
 **Removing.** `alder remove page <Module>` removes the page's file;
 `alder remove table <T>` removes the table's declaration, its id type
@@ -3380,7 +3383,10 @@ A change to a table breaks the code that uses it. A field added without
 a default must be named by every insert, and a field dropped must not
 be used anywhere. So `alder edit table` writes the change anyway, and
 prints what is broken, as a list of errors with their files and lines:
-the to-do list for whoever made the change. A note on each reply:
+the to-do list for whoever made the change. That is for breakage in
+other code only: an error in the table itself (the new field's type
+does not exist, its default is not of its type) refuses the edit with
+the checker's errors, and nothing is written. A note on each reply:
 
 ```text command=guestbook
 $ alder edit table Reply add-field "note:Maybe Text"

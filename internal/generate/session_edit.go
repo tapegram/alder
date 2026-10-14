@@ -11,9 +11,10 @@ import (
 // its type names imported into App. A session field needs a default (a new visitor's session,
 // and every cookie written before the field existed, take it), so a field without one is
 // refused, as is a name the session has and an App without a `session`. Session record literals
-// written elsewhere (a test's `update X model { user: me }`) lack the new field and no longer
-// check: they are the diagnostics the edit prints (the caller writes despite them, as `alder
-// edit table` does).
+// written elsewhere on one line are completed with the default; others lack the new field and
+// no longer check: they are the diagnostics the edit prints (the caller writes despite them, as
+// `alder edit table` does). An error in the session declaration itself (an unknown type, a
+// default of another type) refuses the edit (Edit.Guard): nothing is written.
 func EditSession(p *Program, op string, args []string) ([]Edit, error) {
 	if op != "add-field" || len(args) != 1 {
 		return nil, Refusef("`alder edit session` has one operation: `add-field <name>:<Type>=<default>`")
@@ -73,7 +74,16 @@ func EditSession(p *Program, op string, args []string) ([]Edit, error) {
 	typeImports(imports, f.Type, p)
 	addImports(e, app.Syntax, imports.list())
 	edits := []Edit{{Path: app.File, Body: e.result()}}
-	return completeSessionLiterals(p, edits, f.Name+": "+f.Default)
+	edits, err = completeSessionLiterals(p, edits, f.Name+": "+f.Default)
+	if err != nil {
+		return nil, err
+	}
+	for i := range edits { // an error in the session itself (the type, the default) refuses
+		if edits[i].Path == app.File {
+			edits[i].Guard = declLines(app.File, edits[i].Body, func(d syntax.Decl) bool { _, ok := d.(*syntax.SessionDecl); return ok })
+		}
+	}
+	return edits, nil
 }
 
 // completeSessionLiterals adds field (`theme: "light"`, the new field with its default) to the
