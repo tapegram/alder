@@ -34,10 +34,29 @@ func runFillTo(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "alder fill: %v\n", err)
 		return 2
 	}
-	return runGenerator("alder fill", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
-		edits, _, err := generate.Fill(p, g.pos[0], g.flag("hole"), string(src))
+	imports, file := []string{}, ""
+	code := runGeneratorWith("alder fill", g, generate.Options{}, nil, func(p *generate.Program) ([]generate.Edit, error) {
+		edits, _, added, err := generate.Fill(p, g.pos[0], g.flag("hole"), string(src))
+		if err == nil {
+			imports, file = append(imports, added...), edits[0].Path
+		}
 		return edits, err
+	}, func(out *genJSON) {
+		if out.Error != "" { // refused: nothing imported
+			imports = []string{}
+		}
+		out.Imports = &imports
 	}, stdout, stderr)
+	if code == 0 && !g.json {
+		verb := "added"
+		if g.dry {
+			verb = "would add"
+		}
+		for _, m := range imports {
+			fmt.Fprintf(stdout, "%s import %s to %s\n", verb, m, file)
+		}
+	}
+	return code
 }
 
 // fillList is `alder fill --list`.

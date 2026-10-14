@@ -11,23 +11,26 @@ import (
 // (its only one, or the one named hole, `?name` or `name`) replaced by expr, in parentheses
 // when the place needs them. Apply then writes it only if the app checks: the expression may
 // leave holes of its own, but not errors. It refuses an address that names no declaration with
-// a hole, a declaration with several holes and no hole named, and an empty expression.
-func Fill(p *Program, address, hole, expr string) ([]Edit, *Hole, error) {
+// a hole, a declaration with several holes and no hole named, and an empty expression. A module
+// of the app that expr names qualified (`Member.x`) and the hole's module does not import is
+// imported (imports: their names); a standard library module needs no import, and a name that
+// is not a module's is left to the check.
+func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, imports []string, err error) {
 	expr = strings.TrimRight(expr, " \t\r\n")
 	for strings.HasPrefix(expr, "\n") {
 		expr = expr[1:]
 	}
 	if strings.TrimSpace(expr) == "" {
-		return nil, nil, Refusef("standard input is empty: write the expression that fills the hole")
+		return nil, nil, nil, Refusef("standard input is empty: write the expression that fills the hole")
 	}
 	if _, ds, more, at := syntax.ParseExpr("stdin", []byte(expr)); more != "" {
-		return nil, nil, Refusef("`alder fill` takes one expression; found more after it: %s at line %d, column %d of standard input", more, at.Line, at.Col)
+		return nil, nil, nil, Refusef("`alder fill` takes one expression; found more after it: %s at line %d, column %d of standard input", more, at.Line, at.Col)
 	} else if len(ds) > 0 {
-		return nil, nil, Refusef("`alder fill` takes one expression; standard input does not parse as one: %s (line %d, column %d)", ds[0].Message, ds[0].Span.Start.Line, ds[0].Span.Start.Col)
+		return nil, nil, nil, Refusef("`alder fill` takes one expression; standard input does not parse as one: %s (line %d, column %d)", ds[0].Message, ds[0].Span.Start.Line, ds[0].Span.Start.Col)
 	}
 	mod, decl, arm, err := parseAddress(p, address)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	hole = strings.TrimPrefix(hole, "?")
 	var in, named []Hole
@@ -41,24 +44,24 @@ func Fill(p *Program, address, hole, expr string) ([]Edit, *Hole, error) {
 	}
 	switch {
 	case len(in) == 0:
-		return nil, nil, Refusef("`%s` has no typed hole (`alder fill --list` lists the app's holes)", address)
+		return nil, nil, nil, Refusef("`%s` has no typed hole (`alder fill --list` lists the app's holes)", address)
 	case len(named) == 0:
-		return nil, nil, Refusef("`%s` has no hole `?%s` (it has %s)", address, hole, holeNames(in))
+		return nil, nil, nil, Refusef("`%s` has no hole `?%s` (it has %s)", address, hole, holeNames(in))
 	case len(named) > 1 && hole == "":
-		return nil, nil, Refusef("`%s` has %d holes (%s): name one with --hole", address, len(named), holeNames(named))
+		return nil, nil, nil, Refusef("`%s` has %d holes (%s): name one with --hole", address, len(named), holeNames(named))
 	case len(named) > 1:
-		return nil, nil, Refusef("`%s` has %d holes named `?%s`: fill them one at a time by naming a declaration that holds one", address, len(named), hole)
+		return nil, nil, nil, Refusef("`%s` has %d holes named `?%s`: fill them one at a time by naming a declaration that holds one", address, len(named), hole)
 	}
-	h := named[0]
+	h = &named[0]
 	m := p.Modules[h.Module]
 	lines := strings.Split(strings.TrimSuffix(m.Source, "\n"), "\n")
 	sp := h.Span
 	if sp.Start.Line != sp.End.Line || sp.Start.Line > len(lines) {
-		return nil, nil, Refusef("internal error: the hole ?%s is not on one line", h.Name)
+		return nil, nil, nil, Refusef("internal error: the hole ?%s is not on one line", h.Name)
 	}
 	l := lines[sp.Start.Line-1]
 	if sp.Start.Col < 1 || sp.End.Col-1 > len(l) || l[sp.Start.Col-1:sp.End.Col-1] != "?"+h.Name {
-		return nil, nil, Refusef("internal error: the hole ?%s is not where the checker says", h.Name)
+		return nil, nil, nil, Refusef("internal error: the hole ?%s is not where the checker says", h.Name)
 	}
 	before, after := l[:sp.Start.Col-1], l[sp.End.Col-1:]
 	if needsParens(before, after, expr) {
@@ -71,8 +74,69 @@ func Fill(p *Program, address, hole, expr string) ([]Edit, *Hole, error) {
 			exprLines[i] = indentOf(l) + exprLines[i]
 		}
 	}
-	lines[sp.Start.Line-1] = before + strings.Join(exprLines, "\n") + after
-	return []Edit{{Path: m.File, Body: strings.Join(lines, "\n") + "\n"}}, &h, nil
+	e := newSrcEdit(m.Source)
+	e.replaceLine(sp.Start.Line, before+strings.Join(exprLines, "\n")+after)
+	have := map[string]bool{m.Name: true}
+	for _, im := range m.Syntax.Imports {
+		have[im.Module] = true
+	}
+	for _, q := range qualifiers(p, expr) {
+		if !have[q] {
+			have[q] = true
+			imports = append(imports, q)
+		}
+	}
+	addImports(e, m.Syntax, imports)
+	return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
+}
+
+// qualifiers are the modules of the app (not the standard library's) that expr names a value,
+// type or constructor of, qualified (`Member.x`, `Admin.Layout.isAdmin`): for each dotted name
+// outside strings and comments, the longest prefix of its capitalised segments that is a
+// module of the app, followed by one more segment. In first-use order.
+func qualifiers(p *Program, expr string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for i := 0; i < len(expr); i++ {
+		switch ch := expr[i]; {
+		case ch == '"':
+			if j := closing(expr, i); j > 0 {
+				i = j
+			} else {
+				return out
+			}
+		case ch == '-' && strings.HasPrefix(expr[i:], "--"):
+			for i < len(expr) && expr[i] != '\n' {
+				i++
+			}
+		case unicode.IsUpper(rune(ch)) && (i == 0 || !isNameByte(expr[i-1])):
+			j := i
+			for j < len(expr) && (isNameByte(expr[j]) || expr[j] == '.') {
+				j++
+			}
+			segs := strings.Split(strings.TrimRight(expr[i:j], "."), ".")
+			for k := len(segs) - 1; k >= 1; k-- {
+				name := strings.Join(segs[:k], ".")
+				if p.Modules[name] != nil && !p.Std[name] {
+					if !seen[name] {
+						seen[name] = true
+						out = append(out, name)
+					}
+					break
+				}
+			}
+			i = j - 1
+		case isNameByte(ch):
+			for i+1 < len(expr) && (isNameByte(expr[i+1]) || expr[i+1] == '.') {
+				i++
+			}
+		}
+	}
+	return out
+}
+
+func isNameByte(b byte) bool {
+	return b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
 }
 
 // parseAddress splits `Module.decl[.arm]`: the module is the longest prefix naming one of the

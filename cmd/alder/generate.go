@@ -118,6 +118,8 @@ type genJSON struct {
 	// --all writes them), and whether it had nothing to do.
 	Skipped  *[]string `json:"skipped,omitempty"`
 	UpToDate *bool     `json:"upToDate,omitempty"`
+	// Imports are `alder fill`'s: the modules it imported for the expression.
+	Imports *[]string `json:"imports,omitempty"`
 }
 
 // runGenerator ends every generator: it applies edits (computed by gen, from the loaded app)

@@ -561,10 +561,12 @@ app/Replies/Show.alder:78:16: warning[W0002]: hole ?expected has type Bool
                  ^^^^^^^^^
 ```
 
-`fill` indents the expression to fit where it goes. It writes only the
-expression: when it needs a module the page does not import, the
-checker says `module X is not imported` with a `fix: import X` line,
-and the import is yours to add. An address names one declaration: an arm
+`fill` indents the expression to fit where it goes. When the expression
+names a module of the app qualified, such as `Member.isAdmin`, and the
+page does not import it, `fill` adds the import and says so: `added
+import Member to app/Replies/Show.alder` (with `--json`, `"imports":
+["Member"]`). A standard library module needs no import, and a name
+that is not a module's is the checker's to report. An address names one declaration: an arm
 (`Replies.Show.update.Delete`), a test (`Replies.Show."pressing
 Delete"`) or any other top-level name (`Replies.perPage`). When the
 declaration has more than one hole, `--hole ?name` picks one. The

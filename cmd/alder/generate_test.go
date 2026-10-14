@@ -526,3 +526,28 @@ func TestGenerate_Mutate(t *testing.T) {
 		t.Errorf("score %s < 0.90; survivors:\n%s", m[4], survivors)
 	}
 }
+
+// TestGenerate_FillImports: a fill that names a module of the app qualified (`Comment.body`)
+// which the hole's module does not import gets the import, said on standard output and in
+// --json's "imports"; a standard library module's name (`Text.trim`) needs none.
+func TestGenerate_FillImports(t *testing.T) {
+	dir := genApp(t, "fixture")
+	if code, _, errs := alderIn(t, dir, "", "new", "msg", "Home", "Purge"); code != 0 {
+		t.Fatalf("alder new msg: %s", errs)
+	}
+	fill := "{\n  let n <- Db.from Comment |> Db.where (Comment.body.contains (Text.trim \"x\")) |> Db.count\n  Task.succeed (if n > 0 then Rerender else Rerender)\n}"
+	code, out, errs := alderIn(t, dir, fill, "fill", "Home.update.Purge", "-", "--dry-run", "--json")
+	if code != 0 || !strings.Contains(out, `"imports":["Comment"]`) || !strings.Contains(out, `+import Comment\n`) {
+		t.Errorf("fill --dry-run --json: exit %d\n%s%s", code, out, errs)
+	}
+	code, out, errs = alderIn(t, dir, fill, "fill", "Home.update.Purge", "-")
+	if code != 0 || !strings.HasSuffix(out, "added import Comment to app/Home.alder\n") || !strings.Contains(out, "+import Comment\n") {
+		t.Fatalf("fill: exit %d\n%s%s", code, out, errs)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Home.alder")); strings.Count(string(b), "import Comment\n") != 1 || strings.Contains(string(b), "import Text\n") {
+		t.Errorf("Home's imports:\n%s", b)
+	}
+	if code, out, _ := alderIn(t, dir, "", "check"); code != 0 || out != "" {
+		t.Errorf("check after the fill: exit %d\n%s", code, out)
+	}
+}

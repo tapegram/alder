@@ -1,6 +1,7 @@
 package generate
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -69,7 +70,7 @@ func TestLoad_Fixture(t *testing.T) {
 // fake's entry as its arm.
 func TestHoleIndex(t *testing.T) {
 	dir := t.TempDir()
-	if err := copyApp(fixture, dir); err != nil {
+	if err := copyApp(fixture, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	home := filepath.Join(dir, "app", "Home.alder")
@@ -88,5 +89,43 @@ func TestHoleIndex(t *testing.T) {
 	want := []string{`Home.update.Submit ?done : Task Nav`, `Home."a hole" ?verdict : Bool`, `Home.Home.stamp ?stamp : Task Text`}
 	if !slices.Equal(got, want) {
 		t.Errorf("holes:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// TestApply_ChangedSinceCopy: a file of the app that changes after Apply copied it (another
+// command, an editor) is not written over: the command is refused and writes nothing.
+func TestApply_ChangedSinceCopy(t *testing.T) {
+	dir := t.TempDir()
+	if err := copyApp(fixture, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(dir, "app", "Home.alder")
+	b, _ := os.ReadFile(home)
+	edit := []Edit{{Path: "app/Home.alder", Body: string(b) + "\n-- an edit\n"}, {Path: "app/Note.alder", Create: true, Body: "module Note\n\nnote : Int\nnote = 1\n"}}
+	defer func() { beforeWrite = nil }()
+	for _, c := range []struct {
+		name   string
+		change func()
+	}{
+		{"an edited file", func() { os.WriteFile(home, append(b, "\n-- the author's\n"...), 0o644) }},
+		{"a created file", func() { os.WriteFile(filepath.Join(dir, "app", "Note.alder"), []byte("module Note\n"), 0o644) }},
+	} {
+		os.WriteFile(home, b, 0o644)
+		os.Remove(filepath.Join(dir, "app", "Note.alder"))
+		beforeWrite = c.change
+		_, err := Apply(dir, edit, Options{})
+		var r *Refusal
+		if !errors.As(err, &r) || !strings.Contains(r.Msg, "changed since the command read the app: nothing was written") {
+			t.Errorf("%s: %v", c.name, err)
+		}
+		if now, _ := os.ReadFile(home); strings.Contains(string(now), "-- an edit") {
+			t.Errorf("%s: Home was written", c.name)
+		}
+	}
+	beforeWrite = nil
+	os.WriteFile(home, b, 0o644)
+	os.Remove(filepath.Join(dir, "app", "Note.alder"))
+	if _, err := Apply(dir, edit, Options{}); err != nil {
+		t.Errorf("unchanged: %v", err)
 	}
 }

@@ -90,7 +90,8 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 	}
 	defer os.RemoveAll(tmp)
 	copyDir := filepath.Join(tmp, "app")
-	if err := copyApp(appDir, copyDir); err != nil {
+	copied := map[string][]byte{} // the app's files as they were copied, to write over only those
+	if err := copyApp(appDir, copyDir, copied); err != nil {
 		return nil, err
 	}
 	for _, e := range edits {
@@ -202,6 +203,18 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 	if o.DryRun {
 		return res, nil
 	}
+	if beforeWrite != nil {
+		beforeWrite()
+	}
+	// the app's files are still the ones copied (another command, or an editor, may have written
+	// one since): else nothing is written, rather than the copy's text over a change it never saw
+	for _, f := range res.Files {
+		now, err := os.ReadFile(filepath.Join(appDir, filepath.FromSlash(f.Path)))
+		was, ok := copied[f.Path]
+		if ok != (err == nil) || ok && !bytes.Equal(now, was) {
+			return res, &Refusal{Msg: "`" + f.Path + "` changed since the command read the app: nothing was written; run it again"}
+		}
+	}
 	for _, f := range res.Files {
 		b, err := os.ReadFile(filepath.Join(copyDir, filepath.FromSlash(f.Path)))
 		if err != nil {
@@ -214,6 +227,9 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 	res.Written = true
 	return res, nil
 }
+
+// beforeWrite, when set (by a test), runs after the copy checked and before Apply writes.
+var beforeWrite func()
 
 // skipDir reports whether the directory rel (relative to the app) is left out of a copy: the
 // build output and version control.
@@ -231,8 +247,9 @@ func skipFile(name string) bool {
 }
 
 // copyApp copies the app at src into dst, all but build/, .git and databases (symbolic links
-// are left out).
-func copyApp(src, dst string) error {
+// are left out), and, when copied is not nil, keeps each file's bytes there by its
+// slash-separated path.
+func copyApp(src, dst string, copied map[string][]byte) error {
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -250,6 +267,9 @@ func copyApp(src, dst string) error {
 		b, err := os.ReadFile(path)
 		if err != nil {
 			return err
+		}
+		if copied != nil {
+			copied[filepath.ToSlash(rel)] = b
 		}
 		return os.WriteFile(filepath.Join(dst, rel), b, 0o644)
 	})
@@ -306,7 +326,7 @@ func Probe(appDir string, edits []Edit) (*Program, error) {
 	}
 	defer os.RemoveAll(tmp)
 	copyDir := filepath.Join(tmp, "app")
-	if err := copyApp(appDir, copyDir); err != nil {
+	if err := copyApp(appDir, copyDir, nil); err != nil {
 		return nil, err
 	}
 	for _, e := range edits {
