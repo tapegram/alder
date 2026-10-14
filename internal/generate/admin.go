@@ -2035,14 +2035,16 @@ update msg model session = match msg {
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
 	fmt.Fprintf(&b, "  %s\n    <h1>Delete this %s?</h1>\n\n    <al-card>\n%s\n      <dl>\n%s\n      </dl>\n", open, at.noun, regionAt("      ", "row", []string{labelRow}), regionAt("        ", "counts", counts))
 	button := `{if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}`
-	if len(children) > 0 {
-		button = `{if children model > 0 then <p>` + childrenText + `</p>
-          else if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p>
-          else <al-button variant="destructive" type="submit">Delete</al-button>}`
-	}
-	if own {
-		button = `{if model.own then <p>` + ownText + `</p>
-          else ` + strings.TrimPrefix(button, "{")
+	if len(children) > 0 || own { // one line per reason
+		var arms []string
+		if own {
+			arms = append(arms, "model.own then <p>"+ownText+"</p>")
+		}
+		if len(children) > 0 {
+			arms = append(arms, "children model > 0 then <p>"+childrenText+"</p>")
+		}
+		arms = append(arms, "blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p>")
+		button = "{if " + strings.Join(arms, "\n          else if ") + "\n          else <al-button variant=\"destructive\" type=\"submit\">Delete</al-button>}"
 	}
 	fmt.Fprintf(&b, `      <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>

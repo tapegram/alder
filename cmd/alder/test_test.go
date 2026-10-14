@@ -80,7 +80,9 @@ func TestTest_Todos(t *testing.T) {
 		`ok   Admin.Index "the dashboard counts the todos and lists the newest five"`,
 		`ok   Admin.Todo.Index "a Member gets no page, even one made Admin since logging in"`,
 		`ok   Admin.Todo.Index "a demoted Admin is refused at once"`,
-		"86 passed, 0 failed\n",
+		`ok   Admin.Todo.Index "filtering by done lists the rows with that value"`,
+		`ok   Admin.User.Delete "an Admin cannot delete their own account"`,
+		"92 passed, 0 failed\n",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
@@ -95,7 +97,7 @@ func TestTest_Failing(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	for _, want := range []string{"FAIL Todo \"wrong\"\n  left:  0\n  right: 1\n", "86 passed, 1 failed\n"} {
+	for _, want := range []string{"FAIL Todo \"wrong\"\n  left:  0\n  right: 1\n", "92 passed, 1 failed\n"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
 		}
@@ -110,7 +112,7 @@ func TestTest_JSON(t *testing.T) {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
-	if len(lines) != 86 {
+	if len(lines) != 92 {
 		t.Fatalf("want one line per test, got %d:\n%s", len(lines), stdout)
 	}
 	for _, l := range lines {
@@ -130,7 +132,7 @@ func TestTest_JSON(t *testing.T) {
 	if toggle < 0 || !strings.Contains(lines[toggle], `"trace":["Db.insert User","Db.insert Todo","Test.login","Test.run","Db.updateMine Todo","Db.get Todo"]`) {
 		t.Errorf("the effect test's line lacks its trace (line %d):\n%s", toggle, stdout)
 	}
-	if stderr != "86 passed, 0 failed\n" {
+	if stderr != "92 passed, 0 failed\n" {
 		t.Errorf("stderr %q, want the summary", stderr)
 	}
 }

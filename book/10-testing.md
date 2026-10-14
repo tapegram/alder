@@ -1887,8 +1887,8 @@ added four mutants to the app's own code: two survived the twenty
 tests, the `update field dropped` of `role` in logout's and login's
 `Session.put`, and two more tests kill them, `App "Logout makes the role
 Member"` and `Auth.Login "logging in copies the role from the user's
-row"`. The admin brought 98 mutants and 64 tests of its own, which kill
-every one. The whole run now ends `134 mutants: 134 killed, 0 survived
+row"`. The admin brought 118 mutants and 70 tests of its own, which kill
+every one. The whole run now ends `154 mutants: 154 killed, 0 survived
 (score 1.00)`.
 
 ### What is never a mutant
@@ -1930,12 +1930,12 @@ are reported apart, in `--json`'s last object (below):
 
 The to-do app has 3 suppressed (the `scope dropped` of `Todos.Show`'s
 `Db.updateMine` and `Db.deleteMine` of `model.todo.id`, and `User.role`'s
-default, which no row of the app's code leaves out) and 23 skipped (in
+default, which no row of the app's code leaves out) and 25 skipped (in
 its own code, 4 arm swaps of `msg` and `found` matches whose arms use
-what they bind, and the `scope dropped` of `Db.insertMine`; 18 in its
+what they bind, and the `scope dropped` of `Db.insertMine`; 20 in its
 generated admin); the blog 5 (`User.role`'s
-default, and `Write.Edit`'s four writes of `model.post.id`) and 31 (3 in
-its own pages, 28 in its generated admin).
+default, and `Write.Edit`'s four writes of `model.post.id`) and 33 (3 in
+its own pages, 30 in its generated admin).
 
 ### Survivors that are not gaps
 
@@ -2052,13 +2052,13 @@ ok   Todo "Active keeps only open todos"
 ok   Todo "each filter has its label"
 ok   Todo "a user with todos cannot be deleted"
 4 passed, 0 failed
-134 mutants: 7 killed, 127 survived  (score 0.05)
+154 mutants: 7 killed, 147 survived  (score 0.05)
 survived:
 …
 ```
 
-(127 survivor lines follow: the four `scope dropped` of "The operators"
-among them, and all 98 of the generated admin's, which only its own
+(147 survivor lines follow: the four `scope dropped` of "The operators"
+among them, and all 118 of the generated admin's, which only its own
 tests kill.) This is useful while writing the tests of
 one module, but the score that counts is the whole suite's.
 
@@ -2078,7 +2078,7 @@ mutant. If the plain run itself runs out of time, the message says
 `(--mutate's default 10s; raise it with -timeout)`. A `-run` that
 selects no test ends with `no test matches -run: nothing can kill a
 mutant`. Mutants run one after another, each with a fresh database
-per test; the to-do app's 134 take a few seconds once the build is made,
+per test; the to-do app's 154 take a few seconds once the build is made,
 because each mutant stops at the first test that fails.
 
 `--json` prints the per-test objects as usual, then one object listing
@@ -2086,17 +2086,17 @@ every mutant, then one with the totals. A mutant's object has its `id`,
 `module`, `file`, `decl`, `line`, `col` (the column), `kind`, `before`,
 `after`, whether it was `killed`, `by` which test (the first that
 failed), and a `note` (`"crashed"`, `"timed out"`, or empty). From the
-to-do app's run, two of the 134:
+to-do app's run, two of the 154:
 
 ```text
-{"id":118,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"load","line":18,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
+{"id":138,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"load","line":18,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
 {"id":3,"module":"Todo","file":"app/Todo.alder","decl":"Todo","line":16,"col":3,"kind":"cascade ↔ restrict","before":"owner @ref User @restrict","after":"owner @ref User @cascade","killed":true,"by":"Todo \"a user with todos cannot be deleted\"","note":"","tables":"ensure"}
 ```
 
 and the last line:
 
 ```text
-{"score":1,"killed":134,"survived":0,"suppressed":3,"skipped":23}
+{"score":1,"killed":154,"survived":0,"suppressed":3,"skipped":25}
 ```
 
 `score` is exact here (1 when every mutant was killed). `"tables":
@@ -2123,7 +2123,8 @@ for its new tests, its mutants kept their ids (then 25 to 33), since
 the app later adopted the rules of chapter 6, the edits to `Todos.Index`
 renumbered everything after them again: `Todos.Show`'s mutants became
 25 to 32. M12's role and generated admin come before it in import
-order, so they are now 127 to 134. Ids
+order, so they are now 147 to 154 (127 to 134 before M13's admin gained
+its filters and its guard). Ids
 and lines are for reading one report; to compare runs, compare what
 survived.
 

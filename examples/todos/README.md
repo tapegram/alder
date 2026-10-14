@@ -11,13 +11,13 @@ Member) or `admin@b.c` (an Admin: `/admin`). The accounts are the development st
 
 ## Mutation score
 
-`alder test --mutate examples/todos` (book 10, "Mutation testing"): 134 mutants, 86 tests, 134
+`alder test --mutate examples/todos` (book 10, "Mutation testing"): 154 mutants, 92 tests, 154
 killed, 0 survived (score 1.00). `TestExample_TodosMutation` fails if the score drops below
-1.00 or the number of mutants is not 134.
+1.00 or the number of mutants is not 154.
 
 - The app's own code: 36 mutants, all killed by its 22 tests (score 1.00).
-- The generated admin (`app/Admin/`, "Replaying the admin" below): 98 mutants, all killed by
-  its 64 generated tests, kept as `alder new admin` wrote them.
+- The generated admin (`app/Admin/`, "Replaying the admin" below): 118 mutants, all killed by
+  its 70 generated tests, kept as `alder new admin` wrote them.
 
 The history of the app's own code:
 
@@ -57,7 +57,7 @@ The nine tests that closed the gaps, each named for what it kills:
 No mutant survives. The run also refuses 3 mutants as provably equivalent (the `scope dropped`
 of `Todos.Show`'s `Db.updateMine` and `Db.deleteMine` of `model.todo.id`, which its `load` read
 with `Db.getMine`, and `User.role`'s default, which no row of the app's code leaves out) and
-skips 23 that do not apply (5 in the app's own code, 18 in the admin); neither count is part of
+skips 25 that do not apply (5 in the app's own code, 20 in the admin); neither count is part of
 the score.
 
 ## Replaying the admin
@@ -93,6 +93,9 @@ The steps, from the app before the admin:
    ```
 
 4. The development login (`adapters/auth/password.go`) gains `admin@b.c`, an Admin.
+
+An Admin cannot delete their own account or change their own role there, and each list filters
+by its `Bool` and union columns (`/admin/todo?done=yes`, `/admin/user?role=Admin`; book 15).
 
 To check that the committed admin is still what the generator writes, in a copy of the app:
 `rm -r app/Admin && alder new admin`, then `git diff --stat` shows nothing. After a change to a

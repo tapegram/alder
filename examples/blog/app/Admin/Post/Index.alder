@@ -8,12 +8,21 @@ import Post
 import User
 -- @admin end
 
-page "/admin/post" { q: Text = "", sort: Text = "created", dir: Text = "desc", page: Int = 1 } requires user, role Admin
+-- @admin begin params
+page "/admin/post" {
+  q: Text = "",
+  published: Text = "",
+  sort: Text = "created",
+  dir: Text = "desc",
+  page: Int = 1,
+} requires user, role Admin
+-- @admin end
 
 type Model = {
   rows: List Post,
   labels: Labels,
   q: Text,
+  filters: Filters,
   sort: Text,
   dir: Text,
   page: Int,
@@ -28,6 +37,52 @@ perPage = 25
 -- search is the rows whose text contains q (every row for "").
 search : Text -> Condition Post
 search q = Db.or [Post.slug.contains q, Post.title.contains q, Post.body.contains q]
+-- @admin end
+
+-- A Filter is one of the list's selects: the column it filters, the option chosen ("" for any),
+-- and each option's value in the address, its label, and the rows it selects.
+type Filter = {
+  name: Text,
+  label: Text,
+  value: Text,
+  options: List { value: Text, label: Text, rows: Condition Post },
+}
+
+-- @admin begin filters
+-- Filters are the option each filter has chosen in the address ("" for any): a select for each
+-- Bool and union column.
+type Filters = { published: Text }
+
+-- chosen is the filters' options in params.
+chosen : Params -> Filters
+chosen params = { published: params.published }
+
+-- filters are the list's filters, each with the option f has chosen.
+filters : Filters -> List Filter
+filters f = [
+  { name: "published", label: "Published", value: f.published, options: [
+    { value: "yes", label: "yes", rows: Post.published.eq True },
+    { value: "no", label: "no", rows: Post.published.eq False },
+  ] },
+]
+
+-- filtered is the rows that the option each filter has chosen selects (every row for "", or for
+-- a value that is no option's).
+filtered : List Filter -> Condition Post
+filtered fs = Db.and (List.map (\f -> match List.find (\o -> o.value == f.value) f.options {
+  Just o -> o.rows,
+  Nothing -> Db.and [],
+}) fs)
+
+-- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.
+listAt : Model -> Text -> Text -> Int -> Page
+listAt model sort dir n = Admin.Post.Index {
+  q: model.q,
+  published: model.filters.published,
+  sort: sort,
+  dir: dir,
+  page: n,
+}
 -- @admin end
 
 -- @admin begin sorts
@@ -51,20 +106,26 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
   Nothing -> Post.created.desc,
 }
 
--- load reads how many rows match the search, and one page of them (the last, for a page past it),
--- in the order asked for. The search text is cut to 200 characters (Text.slice): a text over
--- 10,000 bytes would fail the query (chapter 8, "Search").
+-- toggle is the direction a column's header sorts by: the other way round when the list is
+-- sorted by that column ascending.
+toggle : Model -> Text -> Text
+toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else "asc"
+
+-- load reads how many rows match the search and the filters, and one page of them (the last, for
+-- a page past it), in the order asked for. The search text is cut to 200 characters (Text.slice):
+-- a text over 10,000 bytes would fail the query (chapter 8, "Search").
 load : Params -> Session -> Query Model
 load params session = {
   let admin <- Admin.Layout.isAdmin session.user
   if admin then {
     let q = Text.slice 0 200 params.q
-    let count <- Db.from Post |> Db.where (search q) |> Db.count
+    let f = chosen params
+    let count <- Db.from Post |> Db.where (Db.and [search q, filtered (filters f)]) |> Db.count
     let pages = Int.max 1 ((count + perPage - 1) / perPage)
     let page = Int.clamp { min: 1, max: pages } params.page
     let rows <-
       Db.from Post
-        |> Db.where (search q)
+        |> Db.where (Db.and [search q, filtered (filters f)])
         |> Db.orderBy (order params.sort params.dir)
         |> Db.limit perPage
         |> Db.offset ((page - 1) * perPage)
@@ -74,6 +135,7 @@ load params session = {
       rows: rows,
       labels: labels,
       q: q,
+      filters: f,
       sort: params.sort,
       dir: params.dir,
       page: page,
@@ -110,8 +172,18 @@ view model session =
     <al-stack direction="row" gap="sm">
       <form method="get" action="/admin/post">
         <input type="search" name="q" value={model.q} aria-label="Search" />
+        {for f in filters model.filters ->
+          <al-select label={f.label}>
+            <label>{f.label}
+              <select name={f.name}>
+                <option value="" selected={f.value == ""}>any</option>
+                {for o in f.options -> <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
+              </select>
+            </label>
+          </al-select>}
         <input type="hidden" name="sort" value={model.sort} />
         <input type="hidden" name="dir" value={model.dir} />
+        <al-button type="submit" variant="secondary">Search</al-button>
       </form>
       <al-button href={Admin.Post.New {}}>New post</al-button>
     </al-stack>
@@ -123,48 +195,12 @@ view model session =
         <thead>
           <tr>
             -- @admin begin headers
-            <th>
-              <a href={Admin.Post.Index {
-                q: model.q,
-                sort: "slug",
-                dir: if model.sort == "slug" && model.dir == "asc" then "desc" else "asc",
-              }}>Slug</a>
-            </th>
-            <th>
-              <a href={Admin.Post.Index {
-                q: model.q,
-                sort: "title",
-                dir: if model.sort == "title" && model.dir == "asc" then "desc" else "asc",
-              }}>Title</a>
-            </th>
-            <th>
-              <a href={Admin.Post.Index {
-                q: model.q,
-                sort: "body",
-                dir: if model.sort == "body" && model.dir == "asc" then "desc" else "asc",
-              }}>Body</a>
-            </th>
-            <th>
-              <a href={Admin.Post.Index {
-                q: model.q,
-                sort: "published",
-                dir: if model.sort == "published" && model.dir == "asc" then "desc" else "asc",
-              }}>Published</a>
-            </th>
-            <th>
-              <a href={Admin.Post.Index {
-                q: model.q,
-                sort: "author",
-                dir: if model.sort == "author" && model.dir == "asc" then "desc" else "asc",
-              }}>Author</a>
-            </th>
-            <th>
-              <a href={Admin.Post.Index {
-                q: model.q,
-                sort: "created",
-                dir: if model.sort == "created" && model.dir == "asc" then "desc" else "asc",
-              }}>Created</a>
-            </th>
+            <th><a href={listAt model "slug" (toggle model "slug") 1}>Slug</a></th>
+            <th><a href={listAt model "title" (toggle model "title") 1}>Title</a></th>
+            <th><a href={listAt model "body" (toggle model "body") 1}>Body</a></th>
+            <th><a href={listAt model "published" (toggle model "published") 1}>Published</a></th>
+            <th><a href={listAt model "author" (toggle model "author") 1}>Author</a></th>
+            <th><a href={listAt model "created" (toggle model "created") 1}>Created</a></th>
             -- @admin end
           </tr>
         </thead>
@@ -185,9 +221,9 @@ view model session =
     </al-table>
 
     <al-pagination role="navigation" aria-label="Pages">
-      {if model.page > 1 then <a slot="prev" href={Admin.Post.Index { q: model.q, sort: model.sort, dir: model.dir, page: model.page - 1 }} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
+      {if model.page > 1 then <a slot="prev" href={listAt model model.sort model.dir (model.page - 1)} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
       <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
-      {if model.page < model.pages then <a slot="next" href={Admin.Post.Index { q: model.q, sort: model.sort, dir: model.dir, page: model.page + 1 }} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
+      {if model.page < model.pages then <a slot="next" href={listAt model model.sort model.dir (model.page + 1)} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
   </Admin.Layout.Page>
 
@@ -254,9 +290,11 @@ test "sorting by slug goes both ways" = {
   Task.succeed ({
     up: List.map (\row -> row.id) up.model.rows,
     down: List.map (\row -> row.id) down.model.rows,
+    toggles: [toggle up.model "slug", toggle down.model "slug", toggle up.model "title"],
   } == {
     up: [post2, post1],
     down: [post1, post2],
+    toggles: ["desc", "asc", "asc"],
   })
 }
 
@@ -287,6 +325,43 @@ test "searching finds the rows that contain the text" = {
   } == {
     rows: [post2],
     count: Just "1 row",
+  })
+}
+
+test "filtering by published lists the rows with that value" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post {
+    slug: Post.Slug "slug-1",
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    published: True,
+    author: me,
+  }
+  let post2 <- Db.insert Post {
+    slug: Post.Slug "slug-2",
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    published: False,
+    author: me,
+  }
+  let yes <- Test.get (Admin.Post.Index { published: "yes" })
+  let no <- Test.get (Admin.Post.Index { published: "no" })
+  Task.succeed ({
+    yes: List.map (\id -> List.member id (List.map (\row -> row.id) yes.model.rows)) [post1, post2],
+    no: List.map (\id -> List.member id (List.map (\row -> row.id) no.model.rows)) [post1, post2],
+    count: yes.model.count == List.length yes.model.rows,
+    chosen: Test.texts "select[name=published] option[selected]" yes.doc,
+  } == {
+    yes: [True, False],
+    no: [False, True],
+    count: True,
+    chosen: ["yes"],
   })
 }
 

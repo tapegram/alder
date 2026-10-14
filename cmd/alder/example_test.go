@@ -166,7 +166,7 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Posts.Show "commenting through the form"`,
 		`ok   Auth.Login "an unknown email is rejected"`,
 		`ok   Auth.Login "logging in through the form"`,
-		// the generated admin (`alder new admin`, book 15), a few of its 82 tests
+		// the generated admin (`alder new admin`, book 15), a few of its 103 tests
 		`ok   Admin.Index "the dashboard counts the posts and lists the newest five"`,
 		`ok   Admin.Index "a Reader gets no page, even one made Admin since logging in"`,
 		`ok   Admin.Index "a demoted Admin is refused at once"`,
@@ -174,7 +174,11 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Admin.Post.New "an author not offered is refused"`,
 		`ok   Admin.Post.Delete "the page counts the rows that go with it"`,
 		`ok   Admin.User.Delete "a user that posts refer to is not deleted"`,
-		"139 passed, 0 failed\n",
+		`ok   Admin.Post.Index "filtering by published lists the rows with that value"`,
+		`ok   Admin.User.Index "filtering by role lists the rows with that value"`,
+		`ok   Admin.User.Edit "an Admin cannot change their own role"`,
+		`ok   Admin.User.Edit "an Admin demotes another Admin"`,
+		"145 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("alder test examples/blog lacks %q:\n%s", want, out)
@@ -184,14 +188,14 @@ func TestExample_Blog(t *testing.T) {
 }
 
 // The mutation scores examples/todos/README.md and examples/blog/README.md record (`alder test
-// --mutate`, rounded down to two decimals: the blog's is 211 / 214 = 0.986) and their numbers of
+// --mutate`, rounded down to two decimals: the blog's is 235 / 238 = 0.987) and their numbers of
 // mutants: a change to an example that lets a mutant survive which its tests used to kill, or
 // that changes the mutants made of it, fails TestExample_*.
 const (
 	todosMutationScore = 1.00
 	blogMutationScore  = 0.98
-	todosMutants       = 134
-	blogMutants        = 214
+	todosMutants       = 154
+	blogMutants        = 238
 )
 
 // mutationAtLeast runs `alder test --mutate --json dir` and fails t when the score is below min
