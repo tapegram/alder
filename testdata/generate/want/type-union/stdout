@@ -1,0 +1,12 @@
+edited app/Entry.alder
+--- a/app/Entry.alder
++++ b/app/Entry.alder
+@@ -2,6 +2,8 @@
+ 
+ type EntryId = brand Text
+ 
++type Mood = Happy | Sad
++
+ table Entry {
+   id: EntryId @id,
+   name: Text.NonEmpty,

@@ -8,7 +8,7 @@ import (
 	"alder/internal/generate"
 )
 
-const fillUsage = "usage: alder fill <Module>.<decl>[.<arm>] - [--hole ?name] [--dir app] [--json] [--dry-run]  |  alder fill --list [--dir app] [--json]"
+const fillUsage = "usage: alder fill <Module>.<decl>[.<arm>] - [--hole ?name] [--dir app] [--json] [--dry-run]  |  alder fill --decl <Module>.<decl> - [--dir app] [--json] [--dry-run]  |  alder fill --list [--dir app] [--json]"
 
 // runFillTo is `alder fill`: with --list, every typed hole of the app (`Module decl ?name :
 // Type`, one per line, or {"holes": […]} with --json); otherwise the expression on standard
@@ -16,7 +16,7 @@ const fillUsage = "usage: alder fill <Module>.<decl>[.<arm>] - [--hole ?name] [-
 // written only if the app then checks (generate.Fill, generate.Apply). Exit 0, 1 for a refusal
 // (nothing written), 2 for usage errors.
 func runFillTo(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	g, err := parseGenArgs(args, []string{"hole"}, nil, []string{"list"})
+	g, err := parseGenArgs(args, []string{"hole"}, nil, []string{"list", "decl"})
 	if err != nil {
 		return genUsage(stderr, fillUsage, err)
 	}
@@ -36,7 +36,17 @@ func runFillTo(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	imports, file := []string{}, ""
 	code := runGeneratorWith("alder fill", g, generate.Options{}, nil, func(p *generate.Program) ([]generate.Edit, error) {
-		edits, _, added, err := generate.Fill(p, g.pos[0], g.flag("hole"), string(src))
+		var edits []generate.Edit
+		var added []string
+		var err error
+		if g.has("decl") {
+			if g.flag("hole") != "" {
+				return nil, generate.Refusef("--decl replaces a whole declaration: it takes no --hole")
+			}
+			edits, added, err = generate.FillDecl(p, g.pos[0], string(src))
+		} else {
+			edits, _, added, err = generate.Fill(p, g.pos[0], g.flag("hole"), string(src))
+		}
 		if err == nil {
 			imports, file = append(imports, added...), edits[0].Path
 		}

@@ -192,6 +192,18 @@ var genCases = []genCase{
 
 	// M13: the commands of the agent's loop
 	{name: "auth", base: "scaffold", args: []string{"new", "auth"}, test: true},
+	{name: "type-union", base: "scaffold", args: []string{"new", "type", "Entry", "Mood = Happy | Sad"}, test: true},
+	{name: "type-brand", base: "scaffold", args: []string{"new", "type", "Entry", `Code = brand Text where Text.matches "^[a-z]+$"`}, test: true},
+	{name: "type-record", base: "scaffold", args: []string{"new", "type", "Home", "Row = { entry: Entry, mood: Text }"}, test: true},
+	{name: "type-module", base: "scaffold", args: []string{"new", "type", "User", "Role = Member | Admin"}, test: true},
+	{name: "decl", base: "scaffold", args: []string{"new", "decl", "Home", "perPage", "Int"}, test: true,
+		fills: [][2]string{{"Home.perPage", "20"}}},
+	{name: "test", base: "scaffold", args: []string{"new", "test", "Home", "the guestbook starts empty"}, test: true,
+		fills: [][2]string{{`Home."the guestbook starts empty"`, "{\n  let n <- Db.from Entry |> Db.count\n  Task.succeed (n == 0)\n}"}}},
+	{name: "page-blank", base: "scaffold", args: []string{"new", "page", "Notes", "/notes", "--blank"}, test: true,
+		fills: [][2]string{{"Notes.load", "Query.succeed { }"}, {"Notes.view", "<al-page><h1>Notes</h1></al-page>"}}},
+	{name: "fixture-page-blank-show", base: "fixture", args: []string{"new", "page", "Posts.Edit", "/posts/edit", "--show", "Post", "--blank", "--requires", "user"}, test: true,
+		fills: [][2]string{{"Posts.Edit.load", "Query.succeed { }"}, {"Posts.Edit.view", "<al-page><h1>Edit</h1></al-page>"}}},
 }
 
 // TestGenerate runs every case of genCases.
@@ -350,6 +362,18 @@ func TestGenerate_Refusals(t *testing.T) {
 		// M13
 		{"fixture", []string{"new", "auth"}, "", "alder new auth: the session already has a `user` field: the app has a login (`login = Auth.Login`)"},
 		{"scaffold", []string{"new", "auth", "--role", "Role"}, "", "alder new auth: `--role Role`: module `User` has no union `Role` of constructors without payloads: `alder new type User \"Role = Member | Admin\"` makes one"},
+		{"scaffold", []string{"new", "type", "Entry", "Entry = A | B"}, "", "alder new type: `Entry` already declares `Entry`: choose another name"},
+		{"scaffold", []string{"new", "type", "Entry", "Mood ="}, "", "alder new type: `type Mood =` is not a type declaration: "},
+		{"scaffold", []string{"new", "type", "entry", "Mood = A"}, "", "alder new type: `entry` is not a module name"},
+		{"scaffold", []string{"new", "decl", "Home", "load", "Int"}, "", "alder new decl: `Home` already declares `load`: choose another name, or `alder fill --decl Home.load` to replace its body"},
+		{"scaffold", []string{"new", "decl", "Nope", "x", "Int"}, "", "alder new decl: there is no module `Nope`"},
+		{"scaffold", []string{"new", "decl", "Home", "x", "Int ->"}, "", "alder new decl: `Int ->` is not a type: "},
+		{"scaffold", []string{"new", "test", "Home", "signing adds an entry"}, "", "alder new test: `Home` already has a test \"signing adds an entry\": choose another name"},
+		{"scaffold", []string{"new", "page", "Notes", "/notes", "--blank", "--list", "Entry"}, "", "alder new page: --blank takes no --list or --from"},
+		{"scaffold", []string{"fill", "--decl", "Home.update.Submit", "-"}, "Task.succeed Rerender", "alder fill: `Home.update.Submit` names an arm: --decl replaces a whole declaration, `Home.update`"},
+		{"scaffold", []string{"fill", "--decl", "Home.nope", "-"}, "1", "alder fill: `Home` has no declaration `nope` with a body (a value, a type or a test)"},
+		{"scaffold", []string{"fill", "--decl", "Home.load", "-"}, "Query.succeed { entries: [] },\n}\n", "alder fill: `alder fill --decl` takes one expression; found more after it"},
+		{"scaffold", []string{"fill", "--decl", "Home.Model", "-"}, "{ entries: List Entry } | x", "alder fill: `alder fill --decl` takes one type for `type Model`"},
 	} {
 		dir := genApp(t, c.base)
 		before := appFiles(t, dir)
@@ -557,6 +581,54 @@ func TestGenerate_FillImports(t *testing.T) {
 	}
 	if code, out, _ := alderIn(t, dir, "", "check"); code != 0 || out != "" {
 		t.Errorf("check after the fill: exit %d\n%s", code, out)
+	}
+}
+
+// TestGenerate_FillDecl: `alder fill --decl` replaces a whole body, a value's, a type's or a
+// test's, and writes only what checks. Review Focus 5: an `update` that drops an arm the view's
+// form posts is refused by the checker, and nothing is written.
+func TestGenerate_FillDecl(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	before := appFiles(t, dir)
+	dropped := "match msg {\n}"
+	code, out, errs := alderIn(t, dir, dropped, "fill", "--decl", "Home.update", "-")
+	if code != 1 || errs != "alder fill: the result does not check (the errors above): nothing was written\n" || !strings.Contains(out, "error[") {
+		t.Errorf("an update without the Submit arm: exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
+	}
+	if len(changedFiles(before, appFiles(t, dir))) != 0 {
+		t.Errorf("a refused --decl wrote files")
+	}
+	// Model and load, one at a time: a Model that load does not build is refused
+	if code, _, _ := alderIn(t, dir, "{ entries: List Entry, count: Int }", "fill", "--decl", "Home.Model", "-"); code != 1 {
+		t.Errorf("a Model that load does not build: exit %d", code)
+	}
+	if code, out, errs := alderIn(t, dir, "{ entries: List Entry }", "fill", "--decl", "Home.Model", "-"); code != 0 || out != "" {
+		t.Errorf("the same Model: exit %d\n%s%s", code, out, errs)
+	}
+	home, _ := os.ReadFile(filepath.Join(dir, "app", "Home.alder"))
+	_, view, _ := strings.Cut(string(home), "view model session =\n")
+	view, _, _ = strings.Cut(view, "\n\n test")
+	view, _, _ = strings.Cut(view, "</Layout.Page>\n")
+	var lines []string
+	for _, l := range strings.Split(view+"</Layout.Page>", "\n") {
+		lines = append(lines, strings.TrimPrefix(l, "  "))
+	}
+	body := strings.Replace(strings.Join(lines, "\n"), "<h1>Guestbook</h1>", "<h1>The guestbook</h1>", 1)
+	code, out, errs = alderIn(t, dir, body, "fill", "--decl", "Home.view", "-")
+	if code != 0 || !strings.Contains(out, "-    <h1>Guestbook</h1>\n+    <h1>The guestbook</h1>\n") || strings.Count(out, "\n+") != 2 {
+		t.Fatalf("view: exit %d\n%s%s", code, out, errs)
+	}
+	test := "{\n  let page <- Test.get (Home {})\n  Task.succeed (Test.text \"h1\" page.doc == Just \"The guestbook\")\n}"
+	if code, out, errs := alderIn(t, dir, test, "fill", "--decl", `Home."signing adds an entry"`, "-"); code != 0 || !strings.Contains(out, "+  Task.succeed (Test.text \"h1\" page.doc == Just \"The guestbook\")\n") {
+		t.Fatalf("a test: exit %d\n%s%s", code, out, errs)
+	}
+	if code, out, errs := alderIn(t, dir, "", "test"); code != 0 || !strings.HasSuffix(out, "2 passed, 0 failed\n") {
+		t.Errorf("alder test: exit %d\n%s%s", code, out, errs)
+	}
+	src, _ := os.ReadFile(filepath.Join(dir, "app", "Home.alder"))
+	if !strings.Contains(string(src), "view model session =\n  <Layout.Page title=\"Guestbook\">\n    <h1>The guestbook</h1>\n\n    <al-card>\n") ||
+		!strings.Contains(string(src), "  </Layout.Page>\n\ntest \"signing adds an entry\" = {\n  let page <- Test.get (Home {})\n") {
+		t.Errorf("Home:\n%s", src)
 	}
 }
 

@@ -295,6 +295,9 @@ var newGenerators = map[string]func(args []string, stdout, stderr io.Writer) int
 	"capability": runNewCapabilityTo,
 	"admin":      runNewAdminTo,
 	"auth":       runNewAuthTo,
+	"type":       runNewTypeTo,
+	"decl":       runNewDeclTo,
+	"test":       runNewTestTo,
 }
 
 // genUsage prints a generator's usage line and returns 2.
@@ -320,15 +323,15 @@ func parseFields(g genArgs, args []string, table bool, cmd string, stdout, stder
 	return fields, true
 }
 
-const newPageUsage = "usage: alder new page <Module> <path> [--list T | --show T | --from T …] [--requires user] [--role R] [--dir app] [--json] [--dry-run]"
+const newPageUsage = "usage: alder new page <Module> <path> [--list T | --show T | --from T …] [--blank] [--requires user] [--role R] [--dir app] [--json] [--dry-run]"
 
 // runNewPageTo is `alder new page`.
 func runNewPageTo(args []string, stdout, stderr io.Writer) int {
-	g, err := parseGenArgs(args, []string{"list", "show", "requires", "role"}, []string{"from"}, nil)
+	g, err := parseGenArgs(args, []string{"list", "show", "requires", "role"}, []string{"from"}, []string{"blank"})
 	if err != nil || len(g.pos) != 2 {
 		return genUsage(stderr, newPageUsage, err)
 	}
-	o := generate.PageOptions{Module: g.pos[0], Path: g.pos[1], List: g.flag("list"), Show: g.flag("show"), From: g.flags["from"], Requires: g.flag("requires"), Role: g.flag("role")}
+	o := generate.PageOptions{Module: g.pos[0], Path: g.pos[1], List: g.flag("list"), Show: g.flag("show"), From: g.flags["from"], Requires: g.flag("requires"), Role: g.flag("role"), Blank: g.has("blank")}
 	return runGenerator("alder new page", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) { return generate.NewPage(p, o) }, stdout, stderr)
 }
 
@@ -404,6 +407,45 @@ func runNewCapabilityTo(args []string, stdout, stderr io.Writer) int {
 	}
 	return runGenerator("alder new capability", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
 		return generate.NewCapability(p, g.pos[0], g.pos[1], g.pos[2])
+	}, stdout, stderr)
+}
+
+const newTypeUsage = "usage: alder new type <Module> \"<Name> = A | B …\" | \"<Name> = brand <Base> [where …]\" | \"<Name> = { … }\" [--dir app] [--json] [--dry-run]"
+
+// runNewTypeTo is `alder new type`.
+func runNewTypeTo(args []string, stdout, stderr io.Writer) int {
+	g, err := parseGenArgs(args, nil, nil, nil)
+	if err != nil || len(g.pos) != 2 {
+		return genUsage(stderr, newTypeUsage, err)
+	}
+	return runGenerator("alder new type", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
+		return generate.NewType(p, g.pos[0], g.pos[1])
+	}, stdout, stderr)
+}
+
+const newDeclUsage = "usage: alder new decl <Module> <name> \"<Type>\" [--dir app] [--json] [--dry-run]"
+
+// runNewDeclTo is `alder new decl`.
+func runNewDeclTo(args []string, stdout, stderr io.Writer) int {
+	g, err := parseGenArgs(args, nil, nil, nil)
+	if err != nil || len(g.pos) != 3 {
+		return genUsage(stderr, newDeclUsage, err)
+	}
+	return runGenerator("alder new decl", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
+		return generate.NewDecl(p, g.pos[0], g.pos[1], g.pos[2])
+	}, stdout, stderr)
+}
+
+const newTestUsage = "usage: alder new test <Module> \"<test name>\" [--dir app] [--json] [--dry-run]"
+
+// runNewTestTo is `alder new test`.
+func runNewTestTo(args []string, stdout, stderr io.Writer) int {
+	g, err := parseGenArgs(args, nil, nil, nil)
+	if err != nil || len(g.pos) != 2 {
+		return genUsage(stderr, newTestUsage, err)
+	}
+	return runGenerator("alder new test", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
+		return generate.NewTest(p, g.pos[0], g.pos[1])
 	}, stdout, stderr)
 }
 

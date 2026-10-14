@@ -1,0 +1,16 @@
+edited app/Home.alder
+--- a/app/Home.alder
++++ b/app/Home.alder
+@@ -47,6 +47,9 @@
+     </ul>
+   </Layout.Page>
+ 
++perPage : Int
++perPage = ?perPage
++
+ test "signing adds an entry" = {
+   let _ <- Test.get (Home {})
+   let signed <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
+app/Home.alder:51:11: warning[W0002]: hole ?perPage has type Int
+  perPage = ?perPage
+            ^^^^^^^^

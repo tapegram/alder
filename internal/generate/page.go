@@ -82,6 +82,10 @@ type PageOptions struct {
 	From     []string // --from T …
 	Requires string   // --requires user
 	Role     string   // --role R
+	// Blank: `Model` is `{ }` and `load` and `view` are the typed holes `?load` and `?view`,
+	// for `alder fill` (or `alder fill --decl`, which also replaces `Model`); with --show T the
+	// page keeps --show's path and parameter (`/{id}`, the row's id), and nothing else of it.
+	Blank bool
 }
 
 // NewPage generates `alder new page`: the module's file, with one browser test (two for
@@ -116,6 +120,9 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		if set {
 			kinds++
 		}
+	}
+	if o.Blank && (o.List != "" || len(o.From) > 0) {
+		return nil, Refusef("--blank takes no --list or --from: a blank page's `load` and `view` are holes (with --show T it has the row's `/{id}` parameter)")
 	}
 	if kinds > 1 {
 		return nil, Refusef("choose one of --list, --show and --from: a page generated with --list shows one table's rows, --show one row, --from several tables")
@@ -166,6 +173,20 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	tmpl := "page.tmpl"
 	var pageOf func(tb *testBuilder) string // the page value a test opens
 	switch {
+	case o.Blank:
+		tmpl = "page_blank.tmpl"
+		delete(imports.set, "Layout") // the view is a hole: whatever fills it imports what it uses
+		pageOf = func(*testBuilder) string { return pageLit(o.Module, nil) }
+		if o.Show != "" {
+			t, err := table(o.Show)
+			if err != nil {
+				return nil, err
+			}
+			d.Path = strings.TrimSuffix(o.Path, "/") + "/{id}"
+			importTypes(imports, t.IDType)
+			d.Params = "{ id: " + types.StringIn(t.IDType, o.Module) + " }"
+			pageOf = func(tb *testBuilder) string { return pageLit(o.Module, []string{"id: " + tb.insert(t, true)}) }
+		}
 	case o.List != "":
 		t, err := table(o.List)
 		if err != nil {

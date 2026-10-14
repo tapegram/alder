@@ -1,0 +1,14 @@
+edited app/Home.alder
+--- a/app/Home.alder
++++ b/app/Home.alder
+@@ -61,3 +61,7 @@
+   let page <- Test.get (Home {})
+   Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
+ }
++
++test "the guestbook starts empty" = {
++  ?test
++}
+app/Home.alder:66:3: warning[W0002]: hole ?test has type Task Bool
+    ?test
+    ^^^^^

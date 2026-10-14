@@ -1,0 +1,12 @@
+edited app/Home.alder
+--- a/app/Home.alder
++++ b/app/Home.alder
+@@ -7,6 +7,8 @@
+ 
+ type Model = { entries: List Entry }
+ 
++type Row = { entry: Entry, mood: Text }
++
+ load : Params -> Session -> Query Model
+ load params session = {
+   let entries <- Db.from Entry |> Db.orderBy Entry.created.desc |> Db.all

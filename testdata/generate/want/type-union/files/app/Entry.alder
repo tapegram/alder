@@ -1,0 +1,12 @@
+module Entry
+
+type EntryId = brand Text
+
+type Mood = Happy | Sad
+
+table Entry {
+  id: EntryId @id,
+  name: Text.NonEmpty,
+  message: Text.NonEmpty,
+  created: Time @created,
+}

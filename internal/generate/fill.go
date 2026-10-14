@@ -64,6 +64,14 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 		return nil, nil, nil, Refusef("internal error: the hole ?%s is not where the checker says", h.Name)
 	}
 	before, after := l[:sp.Start.Col-1], l[sp.End.Col-1:]
+	if inner, ok := soleInBlock(lines, sp.Start.Line, h.Name, expr); ok {
+		// the hole is a block's whole body (`alder new test`'s `{ ?test }`) and expr a block:
+		// expr's statements become that block's, rather than a block in a block
+		e := newSrcEdit(m.Source)
+		e.replaceLine(sp.Start.Line, indent(inner, indentOf(l)))
+		addImports(e, m.Syntax, fillImports(p, m, expr, &imports))
+		return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
+	}
 	if needsParens(before, after, expr) {
 		expr = "(" + expr + ")"
 	}
@@ -76,6 +84,13 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 	}
 	e := newSrcEdit(m.Source)
 	e.replaceLine(sp.Start.Line, before+strings.Join(exprLines, "\n")+after)
+	addImports(e, m.Syntax, fillImports(p, m, expr, &imports))
+	return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
+}
+
+// fillImports adds to *imports the modules of the app expr names (qualifiers) that module m
+// does not import yet, and returns them.
+func fillImports(p *Program, m *Module, expr string, imports *[]string) []string {
 	have := map[string]bool{m.Name: true}
 	for _, im := range m.Syntax.Imports {
 		have[im.Module] = true
@@ -83,17 +98,52 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 	for _, q := range qualifiers(p, expr) {
 		if !have[q] {
 			have[q] = true
-			imports = append(imports, q)
+			*imports = append(*imports, q)
 		}
 	}
-	addImports(e, m.Syntax, imports)
-	return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
+	return *imports
+}
+
+// soleInBlock reports whether the hole ?name on line n (1-based) of lines is alone on its
+// line, between a line that opens a block (`… {`) and one that closes it (`}`), and expr is
+// one block: then it returns the block's statements, dedented, to put in the hole's place.
+func soleInBlock(lines []string, n int, name, expr string) (string, bool) {
+	if n < 2 || n >= len(lines) || strings.TrimSpace(lines[n-1]) != "?"+name ||
+		!strings.HasSuffix(strings.TrimRight(lines[n-2], " "), "{") || !strings.HasPrefix(strings.TrimSpace(lines[n]), "}") {
+		return "", false
+	}
+	if !strings.HasPrefix(expr, "{") || closing(expr, 0) != len(expr)-1 {
+		return "", false
+	}
+	body := strings.Split(strings.Trim(expr[1:len(expr)-1], "\n"), "\n")
+	if len(body) == 0 || strings.TrimSpace(strings.Join(body, "")) == "" || len(body) == 1 && !strings.Contains(expr, "\n") {
+		return "", false // `{ x }` on one line: put as it is
+	}
+	common := -1
+	for _, l := range body {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		if k := len(indentOf(l)); common < 0 || k < common {
+			common = k
+		}
+	}
+	for i, l := range body {
+		if strings.TrimSpace(l) == "" {
+			body[i] = ""
+		} else {
+			body[i] = l[common:]
+		}
+	}
+	return strings.Join(body, "\n"), true
 }
 
 // qualifiers are the modules of the app (not the standard library's) that expr names a value,
 // type or constructor of, qualified (`Member.x`, `Admin.Layout.isAdmin`): for each dotted name
 // outside strings and comments, the longest prefix of its capitalised segments that is a
-// module of the app, followed by one more segment. In first-use order.
+// module of the app, followed by one more segment, but App and the pages, which are named
+// without an import; and a table's (or type's) module named bare, as its record type is
+// (`Db.from Team`). In first-use order.
 func qualifiers(p *Program, expr string) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -115,10 +165,15 @@ func qualifiers(p *Program, expr string) []string {
 				j++
 			}
 			segs := strings.Split(strings.TrimRight(expr[i:j], "."), ".")
+			if len(segs) == 1 && p.namesOwnType(segs[0]) && !seen[segs[0]] { // a table's record type: `Db.from Team`
+				seen[segs[0]] = true
+				out = append(out, segs[0])
+			}
 			for k := len(segs) - 1; k >= 1; k-- {
 				name := strings.Join(segs[:k], ".")
 				if p.Modules[name] != nil && !p.Std[name] {
-					if !seen[name] {
+					// App and the pages are named without an import (`App.Logout`, `Teams.Show.Remove`)
+					if !seen[name] && name != "App" && p.PageNamed(name) == nil {
 						seen[name] = true
 						out = append(out, name)
 					}
@@ -133,6 +188,29 @@ func qualifiers(p *Program, expr string) []string {
 		}
 	}
 	return out
+}
+
+// namesOwnType reports whether name is a module of the app (not the standard library's) that
+// declares a table or type of its own name (`Team`, whose record type is `Team`): written bare,
+// that type needs the module imported.
+func (p *Program) namesOwnType(name string) bool {
+	m := p.Modules[name]
+	if m == nil || p.Std[name] {
+		return false
+	}
+	for _, d := range m.Syntax.Decls {
+		switch d := d.(type) {
+		case *syntax.TableDecl:
+			if d.Name == name {
+				return true
+			}
+		case *syntax.TypeDecl:
+			if d.Name == name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func isNameByte(b byte) bool {

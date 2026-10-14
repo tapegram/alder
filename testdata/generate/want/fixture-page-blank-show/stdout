@@ -1,0 +1,7 @@
+wrote app/Posts/Edit.alder
+app/Posts/Edit.alder:11:23: warning[W0002]: hole ?load has type Query Posts.Edit.Model
+  load params session = ?load
+                        ^^^^^
+app/Posts/Edit.alder:14:22: warning[W0002]: hole ?view has type Html Posts.Edit.Msg
+  view model session = ?view
+                       ^^^^^
