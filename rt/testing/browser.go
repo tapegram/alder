@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"alder/rt"
-	"alder/rt/datastar"
 	"alder/rt/eff"
 	"alder/rt/html"
 	"alder/rt/web"
@@ -719,7 +718,7 @@ func (b *Browser) document(u string, w *httptest.ResponseRecorder) (Answer, erro
 // Datastar script tag the router injected are left out, so it is the page as the view renders it.
 func (b *Browser) hold(u, page string) error {
 	page = strings.TrimPrefix(page, "<!doctype html>\n")
-	page = strings.Replace(page, html.Render(datastar.ScriptTag()), "", 1)
+	page = web.StripHeadTags(page)
 	doc, err := html.Parse(page)
 	if err != nil {
 		return fmt.Errorf("the page at %s does not parse: %w", u, err)
@@ -758,13 +757,33 @@ func (b *Browser) post(target string, form url.Values) (Answer, error) {
 	if err != nil {
 		return Answer{}, err
 	}
+	pushed := ""
 	for _, ev := range events {
 		if loc, ok := navigation(ev); ok {
 			return b.navigate(loc, true)
 		}
+		if loc, ok := pushOf(ev); ok {
+			pushed = loc
+			continue
+		}
 		if err := b.patch(ev); err != nil {
 			return Answer{}, err
 		}
+	}
+	if pushed != "" {
+		// a redirect the router followed itself: the target's body, title and URL, as if the
+		// browser had loaded it (the error, if it failed, is logged for the GET of it)
+		b.url = pushed
+		if p, err := url.Parse(pushed); err == nil {
+			b.reqHead = http.MethodGet + " " + p.Path + ": "
+		}
+		switch w.Header().Get(web.StatusHeader) {
+		case "404":
+			return Answer{Tag: PageMissing}, nil
+		case "500":
+			return Answer{Tag: RequestFailed, Text: b.failText()}, nil
+		}
+		return Answer{Tag: Redirected, Page: pageOf(pushed)}, nil
 	}
 	switch w.Header().Get(web.StatusHeader) {
 	case "404":
@@ -858,13 +877,42 @@ func navigation(ev sseEvent) (string, bool) {
 	return u, true
 }
 
-// patch applies a datastar-patch-elements event to the held document: the router only ever
-// patches the <body> (outer: replace it; inner: replace its children; append: add to them).
+// pushOf is the URL of a history step (datastar.Navigate in mode Push or Replace) the router
+// ends a followed redirect's answer with: the script begins `(function(){var u=<JSON URL>;`.
+func pushOf(ev sseEvent) (string, bool) {
+	if ev.typ != "datastar-patch-elements" || ev.field("mode") != "append" {
+		return "", false
+	}
+	els := ev.field("elements")
+	_, rest, ok := strings.Cut(els, "(function(){var u=")
+	if !ok || !(strings.Contains(rest, "history.pushState(") || strings.Contains(rest, "history.replaceState(")) {
+		return "", false
+	}
+	var u string
+	if json.NewDecoder(strings.NewReader(rest)).Decode(&u) != nil {
+		return "", false
+	}
+	return u, true
+}
+
+// patch applies a datastar-patch-elements event to the held document: the router patches the
+// <body> (outer: replace it; inner: replace its children; append: add to them) and, after a
+// followed redirect, the <title> (selector `head > title`: replaced, when the page has one).
 func (b *Browser) patch(ev sseEvent) error {
 	if ev.typ != "datastar-patch-elements" {
 		return nil
 	}
 	sel, mode := ev.field("selector"), ev.field("mode")
+	if sel == "head > title" {
+		t, err := html.Parse(ev.field("elements"))
+		if err != nil {
+			return fmt.Errorf("the title patch does not parse: %w", err)
+		}
+		if doc, ok := html.ReplaceElement(b.doc, "title", t); ok {
+			b.doc = doc
+		}
+		return nil
+	}
 	if sel != "body" {
 		return fmt.Errorf("a patch of %q: the browser only patches the body", sel)
 	}

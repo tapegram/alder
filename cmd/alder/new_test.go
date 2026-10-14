@@ -229,7 +229,7 @@ func TestNew_InsideModule(t *testing.T) {
 
 // TestNew_OutOfTree: the scaffold made by the built binary, with PATH holding only it and Go,
 // checks, tests (two tests), kills every mutant (score 1.00), builds and serves `/` (with the
-// design system: /static/al/al.css linked and served no-cache with an ETag, the button a native one), in both placements:
+// design system: /static/al/al.css linked and served with the design-system cache header and an ETag, the button a native one), in both placements:
 // outside any Go module and inside one (RF3).
 func TestNew_OutOfTree(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
@@ -347,7 +347,7 @@ func TestNew_OutOfTree(t *testing.T) {
 			}
 			css, _ := io.ReadAll(res.Body)
 			res.Body.Close()
-			if res.StatusCode != http.StatusOK || res.Header.Get("Cache-Control") != "no-cache" || res.Header.Get("ETag") == "" || !strings.Contains(string(css), "al-button") {
+			if res.StatusCode != http.StatusOK || res.Header.Get("Cache-Control") != "public, max-age=300, stale-while-revalidate=86400" || res.Header.Get("ETag") == "" || !strings.Contains(string(css), "al-button") {
 				t.Errorf("GET /static/al/al.css = %d %q %q (%d bytes)", res.StatusCode, res.Header.Get("Cache-Control"), res.Header.Get("ETag"), len(css))
 			}
 			if code := r.stop(t, os.Interrupt); code != 0 {

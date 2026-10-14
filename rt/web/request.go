@@ -57,9 +57,10 @@ func PageResponse(doc html.Node, st *html.FormState, session any, patch bool) Re
 	return Response{Status: http.StatusOK, Node: doc, State: st, Session: session, Patch: patch}
 }
 
-// RedirectResponse is a 303 See Other to location; for a Datastar request, a 200 SSE event that
-// navigates the browser there (datastar.Navigate). A non-nil session that differs from the
-// request's is stored either way.
+// RedirectResponse is a 303 See Other to location; for a Datastar request, a 200 SSE answer:
+// the page at location served by the router and morphed in, with a history push, when it is a
+// page of this app, else an event that navigates the browser there (datastar.Navigate). A
+// non-nil session that differs from the request's is stored either way.
 func RedirectResponse(location string, session any) Response {
 	return Response{Status: http.StatusSeeOther, Location: location, Session: session}
 }

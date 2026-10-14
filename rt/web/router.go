@@ -115,7 +115,7 @@ type segment struct {
 
 // NewRouter returns the app's http.Handler. For each request it: recovers panics (→ 500 via
 // ErrorDoc); serves the Datastar script at datastar.ScriptPath (versioned, immutable),
-// Options.StaticDir under /static/, and the design system at /static/al/ (no-cache, ETag); matches method and pattern, the most specific pattern first (a literal segment
+// Options.StaticDir under /static/, and the design system at /static/al/ (DesignSystemCache, ETag); matches method and pattern, the most specific pattern first (a literal segment
 // before a parameter, left to right; equally specific ones in declaration order), a trailing
 // slash tolerated (anything unmatched, including a GET to a POST-only path, is a 404 rendered
 // with NotFoundDoc); reads a POST body
@@ -126,9 +126,13 @@ type segment struct {
 //
 // Under Datastar (header Datastar-Request: true) a 404 or 500 is answered like a re-rendered
 // page: status 200 and an SSE patch of the NotFound/Error document's <body>, because the
-// Datastar client ignores other answers; and a Redirect is a 200 SSE event that navigates the
-// browser to its Location (datastar.Navigate), because the client's fetch would follow a 303
-// itself and leave the address bar and history at the old URL.
+// Datastar client ignores other answers. A GET under Datastar is a boosted navigation (a link
+// of the page, datastar.BoostTag, or a back/forward): the page's <body> patched in (morphed),
+// its <title>, and a history step to the URL (push, or replace for a back/forward). A Redirect
+// to a page of this app is followed by the router itself (follow): the answer is the target's
+// morph and push; one to another site is a 200 SSE event that navigates the browser there
+// (datastar.Navigate), because the client's fetch would follow a 303 itself and leave the
+// address bar and history at the old URL.
 //
 // The router's only mutable state is a once-only warning: it is safe for concurrent requests.
 func NewRouter(routes []Route, opts Options) http.Handler {
@@ -237,6 +241,7 @@ func pathSegments(r *http.Request) ([]string, bool) {
 
 func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	w := &tracker{ResponseWriter: rw}
+	st := hop{origin: r}
 	defer func() {
 		if v := recover(); v != nil {
 			if v == http.ErrAbortHandler {
@@ -248,7 +253,7 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 				rt.log("error", fmt.Sprintf("%s %s: %v (after the response started)\n%s", r.Method, r.URL.Path, err, debug.Stack()))
 				return
 			}
-			rt.fail(w, r, html.None(), err, debug.Stack())
+			rt.fail(w, r, st, html.None(), err, debug.Stack())
 		}
 	}()
 
@@ -261,7 +266,37 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		rt.serveStatic(w, r)
 		return
 	}
+	if get && datastar.IsDatastar(r) {
+		// a boosted link or a back/forward: answered with a morph and a history step
+		dropSignals(r.URL)
+		st.gets, st.url, st.mode = 1, r.URL.RequestURI(), datastar.Push
+		if r.Header.Get(datastar.HistoryHeader) == "replace" {
+			st.mode = datastar.Replace
+		}
+	}
+	rt.serve(w, r, st)
+}
 
+// hop is how a request is being served: origin is the request the client sent (the log line
+// of a redirect loop names it); for a Datastar GET — a boosted link, a back/forward, or the
+// target of a redirect the router follows (follow) — url is the URL the answer records in the
+// history with mode (datastar.Push or Replace), and gets counts the GETs of the chain so far,
+// this one included. url is "" for any other request (a POST, a plain GET).
+type hop struct {
+	origin *http.Request
+	url    string
+	mode   datastar.History
+	gets   int
+	// session, when has is set, is the session the request runs with instead of the cookie's:
+	// the one the redirect being followed stored (in this same answer's Set-Cookie), with its
+	// encoding.
+	has     bool
+	session any
+	enc     []byte
+}
+
+// serve routes r (not the Datastar script, not static/) and writes the handler's answer.
+func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 	method := r.Method
 	if method == http.MethodHead {
 		method = http.MethodGet
@@ -280,7 +315,7 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if hit == nil {
-		rt.notFound(w, r, html.None())
+		rt.notFound(w, r, st, html.None())
 		return
 	}
 
@@ -301,7 +336,11 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		}
 		rq.Form = form
 	}
-	rq.Session, rq.sessionEnc = rt.decodeSession(r)
+	if st.has {
+		rq.Session, rq.sessionEnc = st.session, st.enc
+	} else {
+		rq.Session, rq.sessionEnc = rt.decodeSession(r)
+	}
 	if rt.opts.EnvFor != nil {
 		rq.Env = rt.opts.EnvFor(r.Context(), rq.Session)
 		rq.Env.Session = rq.Session
@@ -319,7 +358,7 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	if rt.opts.Served != nil {
 		rt.opts.Served(rq)
 	}
-	rt.write(w, r, rq, resp)
+	rt.write(w, r, st, rq, resp)
 }
 
 // readForm reads a POST body: url-encoded forms are parsed, any other body except multipart
@@ -453,23 +492,28 @@ func (rt *router) setSession(w http.ResponseWriter, r *http.Request, rq *Request
 	return nil
 }
 
-func (rt *router) write(w http.ResponseWriter, r *http.Request, rq *Request, resp Response) {
+func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
 	switch resp.Status {
 	case http.StatusOK, http.StatusSeeOther:
 		if err := rt.setSession(w, r, rq, resp.Session); err != nil {
-			rt.fail(w, r, html.None(), err, nil)
+			rt.fail(w, r, st, html.None(), err, nil)
 			return
 		}
 		if resp.Status == http.StatusSeeOther {
 			if !rtpkg.SafeURL(resp.Location) {
 				// defense in depth: Url.external already turns such a URL into "#"
-				rt.fail(w, r, html.None(), fmt.Errorf("%w: refusing to navigate to %s", eff.ErrInternal, rtpkg.URLScheme(resp.Location)), nil)
+				rt.fail(w, r, st, html.None(), fmt.Errorf("%w: refusing to navigate to %s", eff.ErrInternal, rtpkg.URLScheme(resp.Location)), nil)
+				return
+			}
+			if rq.Datastar && followable(resp.Location) {
+				// a page of this app: serve it here and morph it in (follow)
+				rt.follow(w, r, st, rq, resp)
 				return
 			}
 			if rq.Datastar {
-				// the client's fetch would follow a 303 itself and patch the new page into the
-				// old URL: navigate the browser instead
-				if err := datastar.Navigate(w, resp.Location); err != nil {
+				// another site: the client's fetch would follow a 303 itself and patch the new
+				// page into the old URL; navigate the browser instead
+				if err := datastar.Navigate(w, resp.Location, datastar.Assign); err != nil {
 					rt.log("error", fmt.Sprintf("%s %s: writing the navigation: %v", r.Method, r.URL.Path, err))
 				}
 				return
@@ -479,6 +523,10 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, rq *Request, res
 			return
 		}
 		page := html.RenderWith(resp.Node, resp.State)
+		if st.url != "" {
+			rt.morph(w, r, st, http.StatusOK, page)
+			return
+		}
 		if resp.Patch && rq.Datastar {
 			if err := datastar.PatchBody(w, rt.dev(bodyOf(page))); err != nil {
 				rt.log("error", fmt.Sprintf("%s %s: writing the patch: %v", r.Method, r.URL.Path, err))
@@ -493,13 +541,128 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, rq *Request, res
 			rt.log("error", fmt.Sprintf("%s %s: %v", r.Method, r.URL.Path, err))
 		}
 		if resp.Status == http.StatusNotFound {
-			rt.notFound(w, r, resp.Node)
+			rt.notFound(w, r, st, resp.Node)
 		} else {
-			rt.fail(w, r, resp.Node, resp.Err, nil)
+			rt.fail(w, r, st, resp.Node, resp.Err, nil)
 		}
 	default:
-		rt.fail(w, r, html.None(), fmt.Errorf("handler returned a response with status %d", resp.Status), nil)
+		rt.fail(w, r, st, html.None(), fmt.Errorf("handler returned a response with status %d", resp.Status), nil)
 	}
+}
+
+// redirectLimit is how many redirects in a row follow serves before it gives up: a GET of the
+// chain answering a redirect when redirectLimit GETs are already behind it is a 500, as a test's
+// browser (rt/testing) counts them.
+const redirectLimit = 10
+
+// follow answers a Datastar request whose handler redirected to resp.Location, a page of this
+// app, with that page itself: it serves a Datastar GET of the Location in-process, with the
+// session the redirect left (stored by this answer's cookie), and writes its answer — the morph
+// of its body, its title and a history push of the Location (Replace when the request was a
+// back/forward's) — or follows its own redirect in turn. The browser makes one request instead
+// of two, and the page changes without a load (no flash, no stylesheet reloaded). A chain of
+// more than redirectLimit redirects is a 500 logged for the request the client sent.
+func (rt *router) follow(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
+	if st.gets > redirectLimit {
+		rt.fail(w, st.origin, hop{}, html.None(), fmt.Errorf("more than %d redirects in a row (the last to %s)", redirectLimit, resp.Location), nil)
+		return
+	}
+	u, err := r.URL.Parse(resp.Location)
+	if err != nil {
+		rt.fail(w, r, st, html.None(), err, nil)
+		return
+	}
+	next := hop{origin: st.origin, url: resp.Location, mode: st.mode, gets: st.gets + 1, has: true, session: rq.Session, enc: rq.sessionEnc}
+	if st.url == "" {
+		next.mode = datastar.Push
+	}
+	if resp.Session != nil {
+		next.session, next.enc = resp.Session, nil
+		if rt.opts.Session != nil {
+			next.enc, _ = rt.opts.Session.Encode(resp.Session)
+		}
+	}
+	r2 := r.Clone(r.Context())
+	r2.Method, r2.URL, r2.RequestURI = http.MethodGet, u, u.RequestURI()
+	r2.Body, r2.ContentLength, r2.Form, r2.PostForm = http.NoBody, 0, nil, nil
+	r2.Header.Del("Content-Type")
+	r2.Header.Del("Content-Length")
+	rt.serve(w, r2, next)
+}
+
+// followable reports whether a redirect to loc is to a page of this app the router can serve
+// itself (follow): an absolute path ("/…", not "//…"), not the Datastar script nor a file
+// under /static/. Anything else — another site, "#" (an unsafe URL Url.external neutralised) —
+// is navigated to by the browser.
+func followable(loc string) bool {
+	if !strings.HasPrefix(loc, "/") || strings.HasPrefix(loc, "//") || strings.HasPrefix(loc, "/\\") {
+		return false
+	}
+	p, _, _ := strings.Cut(loc, "?")
+	p, _, _ = strings.Cut(p, "#")
+	return p != datastar.ScriptPath && !strings.HasPrefix(p, staticPrefix)
+}
+
+// dropSignals removes the `datastar` query parameter Datastar adds to every GET (its signals, as
+// JSON; the boost sends none) from u, leaving the other parameters as they were, in their order.
+func dropSignals(u *url.URL) {
+	if u.RawQuery == "" {
+		return
+	}
+	var keep []string
+	for _, kv := range strings.Split(u.RawQuery, "&") {
+		k, _, _ := strings.Cut(kv, "=")
+		if k, err := url.QueryUnescape(k); err == nil && k == "datastar" {
+			continue
+		}
+		keep = append(keep, kv)
+	}
+	u.RawQuery = strings.Join(keep, "&")
+}
+
+// morph answers a boosted navigation (st.url set) with page: Alder-Status when status is not
+// 200, then the events — the patch of the page's <body> (the morph), of its <title> (empty when
+// it has none, so the old page's title does not stay), and the history step to st.url
+// (datastar.Navigate in st.mode). Without st.url (a POST) it is the body patch alone, as a
+// 404/500 answered to a message always was.
+func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status int, page string) {
+	if status != http.StatusOK {
+		w.Header().Set(StatusHeader, strconv.Itoa(status))
+	}
+	err := datastar.PatchBody(w, rt.dev(bodyOf(page)))
+	if err == nil && st.url != "" {
+		t, _ := titleOf(page) // a page without a <title> empties the old one
+		err = datastar.PatchTitle(w, t)
+		if err == nil {
+			err = datastar.Navigate(w, st.url, st.mode)
+		}
+	}
+	if err != nil {
+		rt.log("error", fmt.Sprintf("%s %s: writing the patch: %v", r.Method, r.URL.Path, err))
+	}
+}
+
+// titleOf is the content of the page's first <title> element before its <body>, as rendered
+// (escaped); ok is false for a page without one.
+func titleOf(page string) (string, bool) {
+	head := page
+	if i := startTag(page, "body"); i >= 0 {
+		head = page[:i]
+	}
+	i := startTag(head, "title")
+	if i < 0 {
+		return "", false
+	}
+	j := strings.IndexByte(head[i:], '>')
+	if j < 0 {
+		return "", false
+	}
+	rest := head[i+j+1:]
+	k := strings.Index(rest, "</title>")
+	if k < 0 {
+		return "", false
+	}
+	return rest[:k], true
 }
 
 // document writes "<!doctype html>\n" + page, with the Datastar script tag injected, as HTML.
@@ -511,7 +674,7 @@ func (rt *router) document(w http.ResponseWriter, status int, page string) {
 
 // notFound writes doc (or, when it renders empty, Options.NotFoundDoc) with status 404, or as
 // a body patch for a Datastar request.
-func (rt *router) notFound(w http.ResponseWriter, r *http.Request, doc html.Node) {
+func (rt *router) notFound(w http.ResponseWriter, r *http.Request, st hop, doc html.Node) {
 	page := html.Render(doc)
 	if page == "" && rt.opts.NotFoundDoc != nil {
 		page = html.Render(rt.opts.NotFoundDoc())
@@ -519,13 +682,13 @@ func (rt *router) notFound(w http.ResponseWriter, r *http.Request, doc html.Node
 	if page == "" {
 		page = "<p>404 page not found</p>"
 	}
-	rt.failure(w, r, http.StatusNotFound, page)
+	rt.failure(w, r, st, http.StatusNotFound, page)
 }
 
 // fail logs err (with stack, when given) and writes doc (or, when it renders empty,
 // Options.ErrorDoc(err)) with status 500, or as a body patch for a Datastar request. In dev
 // the error text is added as an HTML comment at the end of the <body>.
-func (rt *router) fail(w http.ResponseWriter, r *http.Request, doc html.Node, err error, stack []byte) {
+func (rt *router) fail(w http.ResponseWriter, r *http.Request, st hop, doc html.Node, err error, stack []byte) {
 	msg := fmt.Sprintf("%s %s: %v", r.Method, r.URL.Path, err)
 	if stack != nil {
 		msg += "\n" + string(stack)
@@ -541,19 +704,17 @@ func (rt *router) fail(w http.ResponseWriter, r *http.Request, doc html.Node, er
 	if rt.opts.Dev {
 		page = endOfBody(page, "<!-- error: "+commentSafe(fmt.Sprint(err))+" -->")
 	}
-	rt.failure(w, r, http.StatusInternalServerError, page)
+	rt.failure(w, r, st, http.StatusInternalServerError, page)
 }
 
 // failure writes a 404/500 page: a full document with that status, or, for a Datastar
 // request, a 200 SSE patch of its body (the Datastar client ignores non-2xx answers) whose
 // StatusHeader names the status, so a client that is not a browser (an Alder test's) can tell
-// it from a re-rendered page.
-func (rt *router) failure(w http.ResponseWriter, r *http.Request, status int, page string) {
+// it from a re-rendered page; for a boosted navigation (st.url) also its title and the history
+// step (morph): the address bar shows the missing page's URL, as after a page load.
+func (rt *router) failure(w http.ResponseWriter, r *http.Request, st hop, status int, page string) {
 	if datastar.IsDatastar(r) {
-		w.Header().Set(StatusHeader, strconv.Itoa(status))
-		if err := datastar.PatchBody(w, rt.dev(bodyOf(page))); err != nil {
-			rt.log("error", fmt.Sprintf("%s %s: writing the patch: %v", r.Method, r.URL.Path, err))
-		}
+		rt.morph(w, r, st, status, page)
 		return
 	}
 	rt.document(w, status, page)
@@ -579,23 +740,55 @@ func commentSafe(s string) string {
 	return s
 }
 
-// withScript inserts the Datastar script tag right after the first <head> start tag; without
-// one, right after the <html> start tag; without that, just before the last </body>; else at
-// the start of the page.
+// HeadTags is what the router inserts into every page it serves whole (withScript), in two
+// parts. The first goes right after the <head> start tag: <meta name="color-scheme"
+// content="light dark">, so the browser paints the page's first frame (and the canvas behind a
+// navigation) in the OS's scheme rather than white before the stylesheet arrives, then the
+// Datastar script tag. The second, the boost (datastar.BoostTag: links of this site become
+// Datastar GETs answered with a morph), goes just before </head>: it is about a kilobyte, and
+// placed first it would push a layout's <meta charset> past the first 1024 bytes, where a
+// browser looks for it.
+func HeadTags() (first, boost string) {
+	return colorScheme + html.Render(datastar.ScriptTag()), html.Render(datastar.BoostTag())
+}
+
+// StripHeadTags is page without what withScript inserted: an Alder test's browser holds the page
+// as the view renders it.
+func StripHeadTags(page string) string {
+	first, boost := HeadTags()
+	return strings.Replace(strings.Replace(page, first, "", 1), boost, "", 1)
+}
+
+// colorScheme is the color-scheme meta HeadTags begins with.
+var colorScheme = html.Render(html.El("meta", []html.Attr{html.A("name", "color-scheme"), html.A("content", "light dark")}))
+
+// withScript inserts HeadTags: the first part right after the first <head> start tag and the
+// boost just before the </head> that follows it (right after the first part when there is
+// none). A page without <head> gets both together where the browser's parser still puts them
+// in the (implied) head, so the boost is never inside the <body> a patch replaces: right after
+// the <html> start tag; without that, just before the <body> start tag; else at the start of
+// the page.
 func withScript(page string) string {
-	tag := html.Render(datastar.ScriptTag())
-	for _, name := range []string{"head", "html"} {
-		if i := startTag(page, name); i >= 0 {
-			if j := strings.IndexByte(page[i:], '>'); j >= 0 {
-				k := i + j + 1
-				return page[:k] + tag + page[k:]
+	first, boost := HeadTags()
+	if i := startTag(page, "head"); i >= 0 {
+		if j := strings.IndexByte(page[i:], '>'); j >= 0 {
+			k := i + j + 1
+			if e := strings.Index(page[k:], "</head>"); e >= 0 {
+				return page[:k] + first + page[k:k+e] + boost + page[k+e:]
 			}
+			return page[:k] + first + boost + page[k:]
 		}
 	}
-	if i := strings.LastIndex(page, "</body>"); i >= 0 {
-		return page[:i] + tag + page[i:]
+	if i := startTag(page, "html"); i >= 0 {
+		if j := strings.IndexByte(page[i:], '>'); j >= 0 {
+			k := i + j + 1
+			return page[:k] + first + boost + page[k:]
+		}
 	}
-	return tag + page
+	if i := startTag(page, "body"); i >= 0 {
+		return page[:i] + first + boost + page[i:]
+	}
+	return first + boost + page
 }
 
 // reloadTags is what withReload inserts for the build generation gen: the element `alder run`
@@ -674,7 +867,7 @@ func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {
 	}
 	if data, etag, ok := al.File(strings.TrimPrefix(r.URL.Path, designSystemPrefix)); ok && strings.HasPrefix(r.URL.Path, designSystemPrefix) {
 		h := w.Header()
-		h.Set("Cache-Control", "no-cache")
+		h.Set("Cache-Control", DesignSystemCache)
 		h.Set("ETag", etag)
 		http.ServeContent(w, r, r.URL.Path, time.Time{}, bytes.NewReader(data)) // 304 on If-None-Match
 		return
@@ -684,11 +877,18 @@ func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {
 
 // designSystemPrefix is where every build writes the `alder-ui` assets (buildkit
 // WriteDesignSystem). Its two files (al.Names) are served from the runtime's embedded copy,
-// the same bytes, with `Cache-Control: no-cache` and a strong ETag hashed from them once:
-// the URL stays /static/al/al.css across compiler upgrades, so a browser must revalidate (a
-// 304 when nothing changed) rather than keep a stale stylesheet for a year. Any other file
-// there is the app's and is served like the rest of static/.
+// the same bytes, with DesignSystemCache and a strong ETag hashed from them once. Any other
+// file there is the app's and is served like the rest of static/.
 const designSystemPrefix = staticPrefix + "al/"
+
+// DesignSystemCache is the Cache-Control of /static/al/'s files. The URL carries no version —
+// it stays /static/al/al.css across compiler upgrades — so the stylesheet cannot be immutable;
+// but revalidating it on every page load (no-cache) makes a load wait for a round trip before
+// it can paint, the white flash between pages. So: fresh for five minutes (a load paints from
+// the cache at once), then served stale for up to a day while the browser revalidates in the
+// background (a 304 by the ETag when nothing changed). The trade: for up to five minutes after
+// an upgrade a browser may show the previous release's stylesheet.
+const DesignSystemCache = "public, max-age=300, stale-while-revalidate=86400"
 
 // filesOnly is a FileSystem in which directories do not exist: no listings, no index pages.
 type filesOnly struct{ fs http.FileSystem }

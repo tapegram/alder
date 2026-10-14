@@ -780,7 +780,8 @@ POST (generated message URL)
   5. load                         → Model
   6. update                       → Task, run by the runtime
   7. Rerender: load → view → patch (without JavaScript: 303 to the page)
-     Redirect: 303 (under Datastar: an event that navigates)
+     Redirect: 303 (under Datastar: the target page, morphed in, and a
+     history push; to another site, an event that navigates)
      Reject: load → view with the text on the form → patch
      Task failure: App.error → HTML, status 500 (404 for Query.notFound
      and Task.notFound)
@@ -869,11 +870,20 @@ request it does these things, in order:
 6. The route's handler runs, and its answer is written.
 
 A Go panic anywhere in the request becomes a 500 page rendered with
-`App.error`. The router also puts the Datastar script tag,
-`<script type="module" src="/_alder/datastar-v1.0.0.js"></script>`, right after
-the `<head>` of every page it writes (on a page without `<head>`, right
-after `<html>`; without that, before `</body>`), so your layout stays plain
-Alder.
+`App.error`. The router also adds three tags to the `<head>` of every
+page it writes, so your layout stays plain Alder. Right after `<head>`:
+`<meta name="color-scheme" content="light dark" />`, which tells the
+browser the page has a light and a dark theme, so even its first frame,
+painted before the stylesheet arrives, is dark in dark mode; and the
+Datastar script tag,
+`<script type="module" src="/_alder/datastar-v1.0.0.js"></script>`. Just
+before `</head>`: the *boost*, a `<meta name="alder-boost">` whose
+attributes make the links of the page work without reloading it ("Links
+and navigation", below). The boost is about a kilobyte, so it goes last:
+a `<meta charset>` at the top of your `<head>` stays within the first
+1024 bytes of the page, where the browser looks for it. On a page without
+`<head>`, all three go where the browser still reads them as the head:
+right after `<html>`, or else before `<body>`.
 
 ### One handler per message
 
@@ -1047,25 +1057,55 @@ is sent that way too, because Datastar ignores answers that are not 2xx.
 A `Redirect` (and a `requires` that sends the user to the login page) is
 not a 303 under Datastar. Datastar posts with `fetch`, which would follow a
 303 by itself: the new page would be morphed into the old one while the
-address bar and the history stayed at the old URL. So the answer is a
-200 event that appends a script to the `<body>`; the script removes itself
-and tells the browser to go to the new URL (`datastar.Navigate`, what the
-official Datastar SDKs do). Logging in from `/login` answers
+address bar and the history stayed at the old URL. So when the target is
+a page of this app (a path starting with `/`), the router fetches it
+itself, in the same request: it serves a `GET` of the target, with the
+session the message just stored, and answers with that page the way it
+answers a link ("Links and navigation", below): the target's `<body>`
+morphed in, its `<title>`, and a script that records the new URL in the
+browser's history. Logging out of the blog answers (bodies shortened)
+
+```
+event: datastar-patch-elements
+data: selector body
+data: mode outer
+data: elements <body>…the login page's body…</body>
+
+event: datastar-patch-elements
+data: selector head > title
+data: mode outer
+data: elements <title>Log in</title>
+
+event: datastar-patch-elements
+data: selector body
+data: mode append
+data: elements <script data-effect="el.remove()">(function(){var u="/login";…history.pushState(null,"",u);…})()</script>
+
+```
+
+with the session cookie in its headers, as a 303 would carry it. The
+browser makes one request instead of two, and nothing reloads.
+
+A `Redirect` to another site (an `Url.external` URL) cannot be fetched
+that way, so its answer is a 200 event that appends a script to the
+`<body>`; the script removes itself and tells the browser to go to the
+URL (`datastar.Navigate` with `window.location.assign`, what the official
+Datastar SDKs do):
 
 ```
 event: datastar-patch-elements
 data: selector body
 data: mode append
-data: elements <script data-effect="el.remove()">window.location.assign("/")</script>
+data: elements <script data-effect="el.remove()">window.location.assign("https://example.com/")</script>
 
 ```
 
-The URL is a JSON string, so `<`, `>` and `&` in it are escaped and it can
-never end the script. Without Datastar, `Redirect` is a plain 303. Either
-way the target must be a path of this site or an `http:`/`https:` URL:
-`Url.external` turns anything else (a `javascript:` URL from user input,
-say) into `#` (chapter 9), and the router answers a redirect to such a URL
-with a 500 rather than send it.
+The URL is a JSON string in both scripts, so `<`, `>` and `&` in it are
+escaped and it can never end the script. Without Datastar, `Redirect` is
+a plain 303. Either way the target must be a path of this site or an
+`http:`/`https:` URL: `Url.external` turns anything else (a `javascript:`
+URL from user input, say) into `#` (chapter 9), and the router answers a
+redirect to such a URL with a 500 rather than send it.
 
 Every line of an event's elements is a `data: elements` line, and an event
 ends at a blank line. A carriage return in your data could end a line
@@ -1123,8 +1163,8 @@ and the browser loads the list again.
 
 The handler for an App message runs `App.update` with the session and
 answers with a redirect (`update__App` in `build/todos/routes__alder.go`),
-which the router sends as a 303, or under Datastar as the navigation event
-above:
+which the router sends as a 303, or under Datastar as the target page
+morphed in, as above:
 
 ```go
 	if nav.Tag == rt.NavRedirect {
@@ -1138,9 +1178,77 @@ never leads to another site. Clicking "Log out" on `/?filter=Active`
 answers a cookie whose `User` is `Nothing` and a redirect to `/login`.
 With the theme switch of "App-level messages" (its `update` answers
 `Rerender`), clicking "Dark mode" there answers a cookie whose `Theme` is
-`"Dark"` and, under Datastar, an event that runs
-`window.location.assign("/?filter=Active")` (without it,
+`"Dark"` and, under Datastar, the list page rendered in the dark theme
+with a history push of `/?filter=Active` (without it,
 `303 /?filter=Active`).
+
+### Links and navigation
+
+A link in an Alder page is a plain `<a href>`, and without JavaScript a
+click on it loads the page it names, as on any site. With Datastar, a
+click on a link to a page of this app does not load anything. The boost
+in the page's `<head>` catches the click, cancels the browser's own
+navigation and asks for the page with Datastar instead, as
+`GET /posts/42` with the header `Datastar-Request: true`. The router
+answers that request with three events, in this order:
+
+1. the page's `<body>`, which Datastar morphs into the current one, so
+   what is the same on both pages (the header, the layout) is not
+   touched;
+2. the page's `<title>`, so the tab shows the new page's name;
+3. a small script that adds the URL to the browser's history
+   (`history.pushState`), scrolls to the top, and moves the keyboard
+   focus to the new `<body>`, so a screen reader starts reading the new
+   page.
+
+The `<head>` is never replaced, so the stylesheet is not loaded again and
+the page does not go blank in between: no white flash between two dark
+pages. Back and Forward work as usual. The boost listens for them too
+(the browser's `popstate` event): it asks for the page of the URL the
+browser went back or forward to, and the answer replaces the history
+entry instead of adding one, and scrolls to where you were on that page.
+(The boost keeps each entry's scroll position in the entry's history
+state as you scroll, so both directions find it.)
+
+While a boosted page is on its way, the old page stays as it is: nothing
+says a click is pending, and if the server is down Datastar retries the
+request quietly instead of showing an error. A loading indicator is for
+a later version (M7b).
+
+The answer to a link whose page fails is the same three events with the
+`App.notFound` or `App.error` page as the body, and the status in the
+header `Alder-Status` (`404` or `500`): the address bar shows the URL you
+asked for, as after a page load. A link to a page whose `requires` sends
+the visitor to the login page ends on the login page, and its URL is the
+one recorded.
+
+The boost leaves these clicks to the browser:
+
+- a link to another site, or to a URL that is not `http:` or `https:`
+  (`mailto:`, `tel:`);
+- a link to a `#fragment` of the page you are on (a jump within the
+  page); a fragment of another page is boosted like any link, and the
+  browser then scrolls to it;
+- a link with a `target` (`target="_blank"` opens a new tab) or a
+  `download` attribute;
+- a click with Ctrl, Cmd, Shift or Alt held (open in a new tab or
+  window), or with a button other than the main one;
+- a click that something else on the page already handled (an event
+  handler that called `preventDefault`);
+- a link with the attribute `data-alder-reload`.
+
+The last one is the way out. Give a link the attribute
+`data-alder-reload` when it must load its page for real, such as a link
+to a page that needs a fresh `<head>`. A `data-*` attribute takes a
+`Text` (chapter 5), and the boost only looks at whether the attribute is
+there, so any value will do:
+
+```alder fragment
+<a href={Export {}} data-alder-reload="true">Download everything</a>
+```
+
+A form that submits with `GET` (a search box, say) is not a link, and is
+not boosted: it loads its page as usual.
 
 ### Failure pages
 

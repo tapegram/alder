@@ -216,6 +216,9 @@ func fixtureRoutes() []web.Route {
 		{Method: "POST", Pattern: "/_m/App/Logout", Handle: func(rq *web.Request) web.Response {
 			return web.RedirectResponse("/login", session{})
 		}},
+		{Method: "POST", Pattern: "/_m/Index/To", Handle: func(rq *web.Request) web.Response {
+			return web.RedirectResponse(rq.Query.Get("to"), nil)
+		}},
 	}
 }
 
@@ -760,4 +763,36 @@ func TestBrowser_TransactionErrorFailsTheStep(t *testing.T) {
 	if len(env.Trace) != 1 {
 		t.Fatalf("a request was served: %v", env.Trace)
 	}
+}
+
+// TestBrowser_FollowedRedirect (M13): a message's redirect to a page of this app is followed
+// by the router (its morph, title and history push), and the browser answers as when it
+// fetched the target itself: Redirected with the target held and its URL (title included),
+// PageMissing, RequestFailed with the GET's error, and the redirect loop's text.
+func TestBrowser_FollowedRedirect(t *testing.T) {
+	browse(t, func(b *Browser, e *eff.Env) {
+		b.Login(session{User: "ann"})
+		mustOf(t)(b.Get("/"))
+		to := func(u string) Answer {
+			t.Helper()
+			ans, err := b.post("/_m/Index/To?to="+url.QueryEscape(u), url.Values{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return ans
+		}
+		b.Login(session{})
+		if ans := to("/"); ans.Tag != Redirected || ans.Page.Path != "/login" || b.URL() != "/login" || text(t, b.Doc(), "title") != "Log in" {
+			t.Errorf("to / signed out: %+v %s %s", ans, b.URL(), html.Render(b.Doc()))
+		}
+		if ans := to("/gone"); ans.Tag != PageMissing || b.URL() != "/nope" {
+			t.Errorf("to /gone: %+v %s", ans, b.URL())
+		}
+		if ans := to("/broken"); ans.Tag != RequestFailed || ans.Text != "kaput" || b.URL() != "/broken" {
+			t.Errorf("to /broken: %+v %s", ans, b.URL())
+		}
+		if ans := to("/loop"); ans.Tag != RequestFailed || ans.Text != "more than 10 redirects in a row (the last to /loop)" {
+			t.Errorf("to /loop: %+v", ans)
+		}
+	})
 }
