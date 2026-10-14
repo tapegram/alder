@@ -2,7 +2,7 @@ module Profile
 
 page "/profile" { } requires user
 
-type Model = { }
+type Model = { name: Text.NonEmpty, email: Text.Email, total: Int, done: Int }
 
 load : Params -> Session -> Query Model
 load params session = ?load

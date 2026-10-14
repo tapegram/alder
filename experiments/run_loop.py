@@ -1165,6 +1165,9 @@ def render_transcript(n: int, steps, records, refusal, verdict: str) -> str:
             msg = f"The harness refused {where}: {refusal['reason']}. Nothing after it was run."
         else:
             msg = f"The harness refused your answer: {refusal['reason']}. No command was run."
+        k = stopped_command(records, refusal)
+        msg += (f"\n\nYour script stopped at command {k}; the app is as the commands before it left it; continue."
+                if refusal.get("line") else "\n\nThe app is as it was; continue.")
         out += ["", msg]
     out += ["", verdict.rstrip("\n")]
     return "\n".join(out) + "\n"
@@ -1203,13 +1206,25 @@ def cli_prompt(task: str, page: str, base_files=None, transcripts=()) -> str:
     return out
 
 
+def stopped_command(records, refusal):
+    """The number (1-based, in the script's order) of the command a round's script stopped at: the
+    one that failed, or the one refused before it ran; 0 when the answer had no script; None when
+    nothing stopped it."""
+    if refusal is None:
+        return None
+    if not refusal.get("line"):
+        return 0
+    return len(records) if refusal["kind"] in ("exit1", "exit2", "timeout", "crash") else len(records) + 1
+
+
 def cli_round_record(script, tag, steps, records, refusal) -> dict:
     """A --cli round's `cli` record: commands parsed and run, the refusal, stdin lines, the largest
     here-document (lines), the `--decl` uses."""
     ran = {r["line"] for r in records}
     bodies = [len(st["stdin"].splitlines()) for st in steps if st["stdin"] is not None and st["line"] in ran]
     return {"fence": tag, "commands": len(steps), "executed": len(records),
-            "refused": refusal, "stdin_lines": sum(bodies), "max_body": max(bodies, default=0),
+            "refused": refusal, "complete": refusal is None, "stopped_at": stopped_command(records, refusal),
+            "stdin_lines": sum(bodies), "max_body": max(bodies, default=0),
             "decl_uses": sum(1 for st in steps if st["line"] in ran and "--decl" in st["args"])}
 
 
@@ -1221,7 +1236,12 @@ def cli_summary(rounds, app_name: str, names=None) -> dict:
     kinds = {}
     for it in items:
         kinds[it["kind"]] = kinds.get(it["kind"], 0) + 1
+    last = rounds[-1].get("cli") if rounds else None
+    stopped = None
+    if last and last["refused"]:
+        stopped = {"round": rounds[-1]["n"], "command": last["stopped_at"], "line": last["refused"]["line"], "kind": last["refused"]["kind"]}
     return {"app_name": app_name, "rounds": len(rounds),
+            "complete": bool(last) and last["refused"] is None, "stopped_at": stopped,
             "commands": sum(c["commands"] for c in recs), "executed": sum(c["executed"] for c in recs),
             "refused": {"count": len(items), "kinds": kinds, "items": items},
             "stdin_lines": sum(c["stdin_lines"] for c in recs), "max_body": max((c["max_body"] for c in recs), default=0),

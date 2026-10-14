@@ -116,6 +116,21 @@ class ExecuteTests(unittest.TestCase):
         self.assertEqual((exit_code, [d for d in diags if d["severity"] == "error"]), (0, []))
         self.assertIn("holds", (self.app / "app" / "Booking.alder").read_text())
 
+    def test_a_cut_short_round_never_passes(self):
+        """A script that stops early fails its round even when the partial app checks and its tests
+        pass; the next round continues it (the full pipeline: needs go)."""
+        exp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, exp, True)
+        model = rl.FakeModel(["```alder-cli\nalder check\nalder new table Room name:Text.NonEmpty --no-timestamps\nalder new tabel X\n```\n",
+                              "```alder-cli\nalder check\n```\n"])
+        s = rl.run_one(exp, model, "fake", "t9-rooms", "TASK", "SYSTEM", self.alder, retries=1, build=True, test=True,
+                       mutate=True, cli=True, cli_page="PAGE")
+        self.assertEqual([r.get("tests", {}).get("failed") for r in s["rounds"]], [0, 0])   # both apps pass their tests
+        self.assertNotIn("mutation", s["rounds"][0])
+        self.assertEqual(s["rounds"][0]["cli"]["stopped_at"], 3)
+        self.assertIn("Your script stopped at command 3", model.prompts[1])
+        self.assertEqual((s["outcome"], s["cli"]["complete"], s["cli"]["stopped_at"]), ("pass", True, None))
+
     def test_stops_at_the_first_failure(self):
         steps, _ = rl.parse_script("alder new table Room name:Text.NonEmpty\nalder new table Room name:Text\nalder check\n")
         records, refusal, stop = rl.execute_script(self.alder, steps, self.app)
@@ -161,6 +176,11 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(s["refused"]["items"][0], {"round": 0, "kind": "exit1", "line": 6, "text": "alder fill A.y - <<'EOF'",
                                                     "reason": "alder fill: `A.y` names no declaration"})
         self.assertTrue(s["names"]["ok"])
+        self.assertEqual((rounds[0]["cli"]["complete"], rounds[0]["cli"]["stopped_at"]), (False, 3))
+        self.assertEqual((rounds[1]["cli"]["stopped_at"], s["complete"]), (0, False))
+        self.assertEqual(s["stopped_at"], {"round": 1, "command": 0, "line": 0, "kind": "parse"})
+        done = rl.cli_summary(rounds + [{"n": 2, "cli": rl.cli_round_record("", "sh", [], [], None)}], "x")
+        self.assertEqual((done["complete"], done["stopped_at"]), (True, None))
 
     def test_transcript(self):
         steps, records, refusal, _ = self.canned()
@@ -168,6 +188,7 @@ class SummaryTests(unittest.TestCase):
         self.assertIn("$ alder fill --decl A.x - <<'EOF'\n1\n+ 1\nEOF\n[exit 0]", t)
         self.assertIn("alder fill: `A.y` names no declaration\n[exit 1]", t)
         self.assertIn("The harness stopped at line 6 of your script: `alder fill A.y - <<'EOF'`: it exited 1. The commands after it were not run.", t)
+        self.assertIn("Your script stopped at command 3; the app is as the commands before it left it; continue.", t)
         self.assertNotIn("alder check", t)
         self.assertTrue(t.rstrip().endswith("VERDICT"))
         p = rl.cli_prompt("TASK", "PAGE", None, [t])
@@ -247,6 +268,8 @@ class RunOneTests(unittest.TestCase):
         self.assertTrue(model.prompts[1].endswith(t0 + "\n" + rl.CLI_CONTINUE + "\n"))
         t1 = (run / "round1" / "transcript.md").read_text()
         self.assertIn("you may not write files", t1)
+        self.assertIn("Your script stopped at command 7; the app is as the commands before it left it; continue.", t0)
+        self.assertEqual((c["complete"], c["stopped_at"]["command"]), (False, 0))
         summary = json.loads((run / "summary.json").read_text())
         self.assertEqual(summary["cli"]["refused"]["count"], 2)
 

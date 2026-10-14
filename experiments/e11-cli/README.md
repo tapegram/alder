@@ -113,17 +113,18 @@ experiments/e11-cli/baseline experiments/e9-feedback/baseline` (the files cells)
 
 ## Smoke cell
 
-`smoke/runs/claude-haiku/t2-newpage-s1/` (a directory of its own, so the matrix's `s1` cell and
-`report_loop.py experiments/e11-cli` never see it), `logs/smoke-t2-newpage-claude-haiku.log`: one
-Haiku cell on T2 with `--cli --retries 1 --base examples/todos --condition cli --sample s1`, run
-before the matrix to check the harness and the format page (on the harness of `b0750da`, this
-binary: sha256 `355f1649…a7db5e4`). It is not part of the matrix.
+`smoke/runs/claude-haiku/t2-newpage-s1/` (an experiment directory of its own, so the matrix's `s1`
+cell and `report_loop.py experiments/e11-cli` never see it): one Haiku cell on T2 with
+`--cli --retries 1 --base examples/todos --condition cli --sample s1`, run to check the harness and
+the format page. It is not part of the matrix.
 
-Result: pass in round 1 (2 rounds). Round 0's script had 12 commands; the second, `alder fill
-Profile.load` with a lambda over the already-bound `params session`, did not check (exit 1), so 2
-ran. Round 1 sent 5 commands (`--hole ?load`, `--hole ?view`, one test), all ran; the app checked,
-built, its 94 tests passed, mutants 158/159. 17 commands parsed, 7 run, 1 refused (`exit1`), 37
-stdin lines, largest body 10, one `--decl`. The model wrote commands, not files, in both rounds: the
-format page needed no change. But round 1's script dropped round 0's unrun rename form, the
-empty-name test and the Index link, and passed anyway: the own tests are the only gate and T2 has
-no hidden tests, so a `cli` pass can be a partial task (for `findings.md`'s hand classification).
+- First run (`logs/smoke-t2-newpage-claude-haiku.log`, harness `b0750da`; its run directory was
+  replaced by the second): pass in round 1. Round 0's script stopped at its 2nd command (a `fill`
+  that did not check); round 1's 5 commands all ran, and it passed although it had dropped round 0's
+  unrun rename form, empty-name test and Index link. The model wrote commands, not files.
+- Second run (`logs/smoke-t2-newpage-claude-haiku-2.log`, after the ruling that a script that stops
+  early is not finished, `cli.complete`/`cli.stopped_at`, and the page's line saying so): fail.
+  Round 0: 18 commands, stopped at command 3 (`alder fill --decl Profile.load`, exit 1); round 1
+  continued from there (10 commands), stopped at command 4 (`alder fill --decl Profile.view`, exit 1);
+  the budget ended: `complete: false`, `stopped_at: {round 1, command 4, line 26, exit1}`, scored on
+  round 1's app (build refused: holes). 7 of 28 commands ran, 2 refused.

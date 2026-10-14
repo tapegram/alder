@@ -1,0 +1,7 @@
+app/Profile.alder:34:21: warning[W0002]: hole ?submitRename has type Task Nav
+    SubmitRename p -> ?submitRename,
+                      ^^^^^^^^^^^^^
+app/Profile.alder:61:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
+alder build: the program has 2 typed hole(s); fill them before building

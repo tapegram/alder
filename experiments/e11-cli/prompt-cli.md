@@ -26,6 +26,8 @@ script. Text outside the block is ignored; a second script block is refused.
   `alder build` and `alder test` on the app. If every command ran and those pass, you are done.
   Otherwise your next prompt carries that transcript, and you send the next script, continuing from
   the app as the commands left it (do not repeat the commands that succeeded).
+- A script that stops early is not finished, even if the app as it stands passes: you will be
+  asked to continue it.
 
 Example: the first ten commands of another app (its tables, a declaration and its test):
 
