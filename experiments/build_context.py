@@ -193,17 +193,22 @@ not exist. Follow it exactly.
 # chapters themselves (11, 15) are for a human reader and are not in the reference.
 COMMANDS = """
 ====================  COMMANDS  ====================
-alder new <app>   the guestbook: App, Layout, table Entry, page Home (a form, the entries), its
-tests, migration 0001; no login, user or role.
-The generators check a copy, writing only if it checks; none overwrites. All take --dir D,
---dry-run, --json. A hole stops `alder test`: fill it.
-alder new page <Module> <path> [--list T | --show T | --from T …] [--requires user] [--role R]
+alder new <app>   the guestbook: App, Layout, table Entry, page Home at /, its tests. --bare: App
+(empty session) and Layout only; start a task there. Typical: tables, `new auth`, pages, fills.
+The generators check a copy, writing only if it checks (edit table/session: written with the
+breakage listed; --strict refuses); none overwrites. All take --dir D, --dry-run, --json, --help.
+A hole stops `alder test`. Pass stdin with <<'EOF' (echo eats the `\\f` of `\\from`).
 alder new table <Name> <field>:<Type>[=default][@ref=T][@cascade|@restrict|@setNull][@owner][@unique] …
-alder new form <Page> <Name> <field>:<Type> … [--into T]
-alder new msg <Page> <Name> [<field>:<Type> …]
+  adds created/updated (Time @created/@updated) unless --no-timestamps (then `created:Time@created`)
+alder new page <Module> <path> [--list T | --show T [--by <unique col>] | --from T …] [--requires user] [--role R]
+  a {x} in the path needs --param x:Type (load is then ?load)
+alder new form <Page> <Name> <field>:<Type> … [--into T] [--msg M]   (msg M, default Submit<Name>)
+alder new msg <Page> <Name> [<field>:<Type> …] [--id id]
+  form and msg refuse while view is ?view: fill view first
 alder new capability <Module> <entry> "<Type>"
 alder new auth [--users User] [--role R] [--to Page]   the login (Auth.Login, Password with a real
-  PBKDF2 adapter, App's session user/role, login, Logout); creates User if absent; R must exist
+  PBKDF2 adapter, App's session user/role, login, Logout); creates User (passwordHash: Text.Secret)
+  if absent, else uses yours; R must exist; no / page and no --to: ?afterLogin, fill it later
 alder new type <Module> "Status = A | B" | "Slug = brand Text where …" | "Row = { … }"
 alder new decl <Module> <name> "<Type>"   (name = ?name; fill a function with a lambda)
 alder new test <Module> "<name>"   (its block is ?test : Task Bool; fill it with a block)
@@ -212,14 +217,16 @@ alder new msg … --in-for <binder> [--when <Bool expr>]   the button in that `f
   class = the msg's name, fields from the binder (u.id) or holes; its test clicks a hole:
   insert rows the loop shows the signed-in user, fill the hole with one
 alder edit page <Page> add-param <name>:<Type>[=default]
+alder edit session add-field <name>:<Type>=<default>
+alder remove page <Page> | remove table <T>   refused while used; a table's migration drops data
 alder fill --decl <Module>.<decl> -   replaces a whole body (value, test, type's right side):
   for Model (no hole) and bodies that do not fit; prefer a hole when there is one
 alder edit table <T> add-field <f> | rename-field <old> <new> | drop-field <f> [--strict]
   add-field without a default (=Nothing for a Maybe) breaks every insert of T (tests too), which
   no command fixes: give a default, or drop-field it
-alder fill <address> - [--hole ?name]   (the expression on stdin); fill --list. Addresses:
-  Module.decl, Module.update.Msg, Module."test name", Module.Fake.entry; an app module the
-  expression names (Member.x) is imported
+alder fill <address> - [--hole ?name]   fills a hole only (an arm without one: --decl update);
+  fill --list. Addresses: Module.decl, Module.update.Msg, Module."test name", Module.Fake.entry;
+  an app module the expression names (Member.x) is imported
 alder new admin [--module Admin] [--path /admin]   (needs a session role with Admin)
 alder regen admin [--module Admin] [--path /admin] [--all]
 

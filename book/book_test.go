@@ -38,7 +38,14 @@ var (
 	// ScaffoldExample), and newOutput what it printed.
 	scaffoldApp string
 	newOutput   string
+	// bareApp is the app `alder new notes --bare` wrote (the state BareExample of chapter 15's
+	// transcripts).
+	bareApp string
 )
+
+// BareExample is the state name of chapter 15's transcripts on a bare app (`alder new notes
+// --bare`): like ScaffoldExample, the built binary's output, not a directory under examples/.
+const BareExample = "notes"
 
 // ScaffoldExample is the example name under which chapter 2 quotes the scaffold `alder new`
 // writes (```alder part=guestbook/Home, ```css file=guestbook/static/app.css): it is not a
@@ -51,6 +58,9 @@ const ScaffoldExample = "guestbook"
 func exampleApp(ex string) string {
 	if ex == ScaffoldExample {
 		return scaffoldApp
+	}
+	if ex == BareExample {
+		return bareApp
 	}
 	if ex == DefaultExample {
 		return todosApp
@@ -98,6 +108,13 @@ func alder(t *testing.T) string {
 			return
 		}
 		scaffoldApp, newOutput = filepath.Join(work, ScaffoldExample), string(out)
+		cmd = exec.Command(alderBin, "new", BareExample, "--bare")
+		cmd.Dir = work
+		if out, err := cmd.CombinedOutput(); err != nil {
+			buildErr = fmt.Errorf("alder new %s --bare: %v\n%s", BareExample, err, out)
+			return
+		}
+		bareApp = filepath.Join(work, BareExample)
 		filepath.WalkDir(filepath.Join(todosApp, "app"), func(p string, d fs.DirEntry, err error) error {
 			if err == nil && !d.IsDir() && strings.HasSuffix(p, ".alder") {
 				rel, _ := filepath.Rel(filepath.Join(todosApp, "app"), p)
@@ -1221,7 +1238,7 @@ func runCommands(t *testing.T, bin, chapter, display string) ([]string, int) {
 		if !ok {
 			src := exampleApp(b.State)
 			if fi, err := os.Stat(filepath.Join(src, "app")); err != nil || !fi.IsDir() {
-				msgs = append(msgs, fmt.Sprintf("%s:%d: %s is not an app: a state is guestbook (the scaffold) or an example under examples/", display, b.Line, b.State))
+				msgs = append(msgs, fmt.Sprintf("%s:%d: %s is not an app: a state is guestbook (the scaffold), notes (a bare app) or an example under examples/", display, b.Line, b.State))
 				continue
 			}
 			dir = filepath.Join(t.TempDir(), b.State)

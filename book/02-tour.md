@@ -12,7 +12,10 @@ pieces fit.
 A visitor signs the guestbook with a name and a message, and the page
 lists every entry, newest first. `alder new guestbook` writes these files
 (the book's verifier runs `alder new` and compares each file with this
-chapter, so what you read here is exactly what you get):
+chapter, so what you read here is exactly what you get; `alder new
+<name> --bare` writes the same app without the guestbook's page, table
+and README, for an app built from nothing with the generators of
+chapter 15):
 
 ```
 guestbook/

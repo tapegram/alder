@@ -87,11 +87,14 @@ and writes the app's own only when it finds one.
 
 ```
 alder new <name>     write a new app, the guestbook, into the directory <name>
+                     (--bare: App, Layout and static/ only, no page or table)
 alder new <kind> …   generate a page, table, form, msg, capability, auth, type, decl or test
 alder new admin      generate an admin of every table, under app/Admin/
 alder regen admin    rewrite the admin's owned regions after the tables change
 alder edit table …   add, rename or drop a table's field, with its migration
 alder edit page …    add a parameter to a page
+alder edit session … add a field to the session
+alder remove …       remove a page, or a table with its migration
 alder fill <decl> -  fill a typed hole with the expression on standard input
 alder check          type-check everything; milliseconds; no output on success
 alder build          check, generate Go, go build → ./build/myapp/myapp
@@ -106,6 +109,11 @@ alder dump <path>    print a file's tokens, AST, or an app's IR
 alder explain <id>   explain a diagnostic code
 alder version        print alder's version and the Go it was built with
 ```
+
+Every command takes `--help` (or `-h`): `alder <command> --help` prints
+its usage line and exits 0, and `alder new <kind> --help` the
+generator's (`alder new page --help`); `alder help <command>` does the
+same.
 
 ### `alder new`
 
@@ -216,13 +224,19 @@ holes (W0002) with their types among them.
 | `alder edit table <T> drop-field <field>` | the field removed, and its migration |
 | `alder fill <Module>.<decl>[.<arm>] -` | the declaration's hole (`--hole ?name` when it has several) replaced by the expression on standard input; `Module."test name"` names a test, `Module.update.Msg` an arm, `Module.Fake.entry` a fake's entry. A module of the app the expression names qualified (`Member.x`) that the file does not import is imported: `added import Member to app/…` (`--json`: `"imports"`). `alder fill --list` lists every hole: `Home update.Clear ?clear : Task Nav` |
 | `alder fill --decl <Module>.<decl> -` | the declaration's whole body (a value's, a test's block, a `type`'s right-hand side) replaced by the one expression, or type, on standard input; its signature stays. Refused when the result does not check (an `update` that drops an arm the view sends). For what has no hole: a `Model`, a generated body or test that does not fit |
-| `alder new auth [--users User] [--role R] [--to Page]` | the login: `app/Auth/Login.alder` (`capability Password { verify, hash }`, its fake, `page "/login"`, the form `Credentials`, the arm that puts the user, and the role, in the session or rejects the form, a Log out button for a signed-in user, three tests); `App` edited at fixed places (the session's `user` and `role` after its fields, `login = Auth.Login`, `msg Logout` and its arm, a test of it); the user table when it does not exist (`email @unique`, `name`, `passwordHash: Text.Secret`, the role, `created`) and its migration; and the adapter `adapters/auth/login_password.go` (PBKDF2-SHA256, 600,000 iterations, a 16-byte salt, a constant-time compare; stored as `pbkdf2-sha256$<iterations>$<salt>$<hash>`) with its Go tests. `R` must be a union of the user module (`alder new type`). Refused when the session has a `user` or an `Auth` module exists. A login goes to the page at `/`, or `--to`'s |
+| `alder new auth [--users User] [--role R] [--to Page]` | the login: `app/Auth/Login.alder` (`capability Password { verify, hash }`, its fake, `page "/login"`, the form `Credentials`, the arm that puts the user, and the role, in the session or rejects the form, a Log out button for a signed-in user, three tests); `App` edited at fixed places (the session's `user` and `role` after its fields, `login = Auth.Login`, `msg Logout` and its arm, a test of it); the user table when it does not exist (`email @unique`, `name`, `passwordHash: Text.Secret`, the role, `created`) and its migration; and the adapter `adapters/auth/login_password.go` (PBKDF2-SHA256, 600,000 iterations, a 16-byte salt, a constant-time compare; stored as `pbkdf2-sha256$<iterations>$<salt>$<hash>`) with its Go tests. `R` must be a union of the user module (`alder new type`). Refused when the session has a `user` or an `Auth` module exists. A login goes to `--to`'s page, else the page at `/`, else the hole `?afterLogin` (filled once the page exists) |
 | `alder new type <Module> "<Name> = …"` | a union (`Status = Pending \| Done`), a brand (`Code = brand Text where …`) or a record (`Row = { … }`), after the module's type declarations; the module is created when it does not exist |
 | `alder new decl <Module> <name> "<Type>"` | `name : Type` and `name = ?name`, before the module's tests; a function's body is filled with a lambda |
 | `alder new test <Module> "<name>"` | `test "<name>" = { ?test }`, the hole a `Task Bool`; a block filled into it becomes the test's block |
 | `alder new page … --blank` | the page with `Model = { }` and the holes `?load` and `?view` (with `--show T`, its `/{id}` and `id` parameter), and its rules' tests; fill `Model` with `--decl`, then `load`, then `view` |
 | `alder new msg … --in-for <binder> [--when <expr>]` | the button at the end of the body element of the view's `{for <binder> in …}`, its class the message's name (`class="remove"`), its fields from the binder (`user: m.user`; a table's id from a row of that table, `u.id`) or holes; `--when` shows it only when the expression holds |
 | `alder edit page <Page> add-param <name>:<Type>[=default]` | the parameter, at the end of the page's parameter record (a query parameter unless the path names it) |
+| `alder new <name> --bare` | the scaffold without the guestbook: `App` (an empty session, the error and not-found pages), `Layout`, `static/app.css`, `adapters/README.md`, `.gitignore`; no page, table or migration |
+| `alder new table … --no-timestamps` | the table without the `created`/`updated` pair; a field may then be `@created` or `@updated` itself (`created:Time@created`) |
+| `alder new page <Module> /a/{x} --param x:Type …` | a page with path parameters, one `--param` for each `{x}`, its `load` the hole `?load`; `--show T --by <column>`: the row read by a `@unique` column, at `<path>/{<column>}` |
+| `alder new form … --msg <Msg>`, `alder new msg … --id <id>` | the form's message named `<Msg>` (not `Submit<Name>`); the button's `id`. Both refuse while the page's `view` is a hole: fill it first |
+| `alder edit session add-field <name>:<Type>=<default>` | the field, at the end of `App`'s session; the default is required; session records written on one line elsewhere get the field with its default; written despite other breakage (`--strict` refuses) |
+| `alder remove page <Page>`, `alder remove table <T>` | the page's file; the table's declaration, id type and its module's tests (or the whole module), and the migration that drops it (`DROPS DATA`). Refused while anything else names it, the errors saying where |
 | `alder new admin [--module Admin] [--path /admin]` | refused unless the session has a `user` and a `role` whose type has an `Admin` constructor (the sentence says what to add; `alder new auth --role` makes them); never edits `App` or the login. The admin, under `app/Admin/`, every file headed by two comment lines naming the command (and no version, so every build of `alder` writes the same files): a dashboard (`/admin`: a card per table, its count and newest five rows), a layout with a nav of the tables, and per table `T` a list (`/admin/t`: search, a filter per `Bool` and union column, sort by any column, 25 to a page), a page per row, a new and an edit form (`<al-select options>` of the referenced table's rows for a reference) and a delete page (what goes with the row; refused while a `@restrict` reference holds it); on the user table, the signed-in Admin cannot delete their own row or change their own role. Every page `requires user, role Admin` and has browser tests; the parts that follow the schema are owned regions, between `-- @admin begin <name>` and `-- @admin end`. It needs a session whose `role` has an `Admin` constructor |
 | `alder regen admin [--all]` | the admin's owned regions, regenerated from the app as it is now (a field added, a table added): only the lines between the markers change, so a heading, a column or a test the author added outside them stays as it is. A file the author deleted is not written again unless `--all`; a table added since (one the nav does not link to) gets its pages. Errors in the admin's own files do not stop it, since a field renamed or dropped breaks them inside the regions it rewrites; errors elsewhere do, and what it writes must check. A second run says `nothing to do: the admin is up to date`; with `--json`, `"skipped"` lists the pages not written again and `"upToDate"` says there was nothing to do. A marker without its pair is refused, naming the file and the region |
 
@@ -303,8 +317,16 @@ part of `dir` once it is made absolute (so `alder build .` inside
    asking, then for up to a day more while it asks again in the
    background, and the server answers `304 Not Modified` until a new
    compiler ships new files. So for up to five minutes after you deploy a
-   new compiler, a browser may show the previous stylesheet; in exchange a
-   page load never waits on the network to paint. Datastar's script,
+   new compiler, a browser may show the previous stylesheet, and after
+   them one load more: the first load past the five minutes paints with
+   the old copy while the new one is fetched for the next. In exchange a
+   page load never waits on the network to paint. A tab left open across
+   a deploy keeps its old `<head>` (boosted links never replace it) until
+   its next boosted click: every page carries `<meta name="alder-build">`,
+   the SHA-256 of the server's binary (16 hex digits), the boost sends it
+   with each link's `GET` as the header `Alder-Build`, and a server of
+   another build answers with a real navigation, so the tab loads the
+   page once, with the new build's `<head>`. Datastar's script,
    whose address carries its version, is the one file cached for good;
    the app's own files get no cache header.
 4. Write `build/<app>/cmd/main.go`, the program's `main`, which imports
@@ -1007,7 +1029,7 @@ says what to expect:
 | `alder eval=<value>` | `alder eval examples/todos -` prints exactly `<value>` (the rest of the fence line) |
 | `alder error=<CODE> "<text>"` | compiling (or, for expressions, evaluating) the block reports diagnostic `<CODE>` in the block itself, its message containing `<text>` (optional) |
 | `alder part=<Module>` | one piece of a module shown piece by piece (the tour's `Todos.Index`): a chapter's `part=` blocks of one module, consecutive among its `part=` blocks, are joined in order and checked as that module, replacing the example's; when the example has that module, the joined pieces must also equal its file, blank lines aside |
-| ```` ```text command=<state> ```` | a transcript (chapter 15): the first line is `$ alder …`, run in the state's app (`guestbook`, a copy of the scaffold, or an example's name, a copy of `examples/<name>`), which the chapter's commands change in order; a line ending in `<<'EOF'` takes the lines up to `EOF` as standard input; the rest of the block must be what the command prints, standard output then standard error, a line `…` standing for any lines (`TestBook_Commands`) |
+| ```` ```text command=<state> ```` | a transcript (chapter 15): the first line is `$ alder …`, run in the state's app (`guestbook`, a copy of the scaffold, `notes`, a copy of a bare app (`alder new notes --bare`), or an example's name, a copy of `examples/<name>`), which the chapter's commands change in order; a line ending in `<<'EOF'` takes the lines up to `EOF` as standard input; the rest of the block must be what the command prints, standard output then standard error, a line `…` standing for any lines (`TestBook_Commands`) |
 | `alder written=<state>/<path>` (any language) | the file at `<path>` in the state's app as the commands before it left it, byte for byte |
 | `alder part=<example>/<Module>` | the same for a module of another example app, `examples/<example>` (chapter 14's `part=blog/Posts.Index`): the joined pieces are checked as that module in a copy of that example, and must equal its file, blank lines aside. `part=<Module>` alone means `part=todos/<Module>`; every other block is checked against `examples/todos` |
 | `alder fragment` | not checked: a deliberate excerpt, such as one arm of an `update`; listed by `go test -v ./book` |
@@ -1036,12 +1058,17 @@ Playwright (a browser-automation library for Node.js) with the script
 - a boosted click loads no document and changes the URL and the title;
 - Back and Forward restore the scroll position each page was left at;
 - the login form's `Redirect` is morphed in, with the session cookie;
-- a link to a missing page morphs the 404 page in.
+- a link to a missing page morphs the 404 page in;
+- a slow post (held back by the script for a second and a half) then a
+  click on a link ends on the link's page, not the post's answer;
+- a link to a file under `/static/` is a plain document load.
 
 It takes a few seconds. It needs `node` on the `PATH` and Playwright with
 its Chromium. Playwright is looked for in `$ALDER_PLAYWRIGHT_DIR`, else
-`~/.cache/alder-playwright`, and installed there with `npm` when it is
-missing. The browser itself is installed once with
+`~/.cache/alder-playwright`; when it is
+missing, set `ALDER_BROWSER_INSTALL=1` to have the test install it there
+with `npm` (a download from the npm registry, so never without asking).
+The browser itself is installed once with
 `NODE_PATH=~/.cache/alder-playwright/node_modules npx playwright install chromium`.
 Without either, the test is skipped and says which is missing.
 

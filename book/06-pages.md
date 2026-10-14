@@ -1212,12 +1212,25 @@ pages. Back and Forward work as usual. The boost listens for them too
 browser went back or forward to, and the answer replaces the history
 entry instead of adding one, and scrolls to where you were on that page.
 (The boost keeps each entry's scroll position in the entry's history
-state as you scroll, so both directions find it.)
+state as you scroll, so both directions find it.) Back and Forward fetch
+the page again rather than restoring it from a cache: what you typed
+into a form on that page is gone, and the page shows the data as it is
+now.
 
 While a boosted page is on its way, the old page stays as it is: nothing
 says a click is pending, and if the server is down Datastar retries the
 request quietly instead of showing an error. A loading indicator is for
 a later version (M7b).
+
+Only the newest navigation's answer is applied. The boosted GETs and
+every message a page posts (a form's submit, a `click`) share one
+`AbortController`, `window._alderAC`: each starts by aborting the
+request still in flight. So a slow post followed by a click on a link
+ends on the link's page, never on the post's late answer. The post
+itself may still have run on the server (aborting stops the browser
+waiting, not the server), and a form whose post was aborted keeps what
+was typed into it, with nothing to say it was not sent (also M7b's:
+inert forms while a post is pending).
 
 The answer to a link whose page fails is the same three events with the
 `App.notFound` or `App.error` page as the body, and the status in the
@@ -1239,7 +1252,11 @@ The boost leaves these clicks to the browser:
   window), or with a button other than the main one;
 - a click that something else on the page already handled (an event
   handler that called `preventDefault`);
-- a link with the attribute `data-alder-reload`.
+- a link with the attribute `data-alder-reload`;
+- a link to a file under `/static/` or `/_alder/` (a stylesheet, a
+  script, a PDF): a document of its own, not a page to morph in. The
+  router answers a Datastar `GET` of such a path (from an older page's
+  boost) with a real navigation to it, too.
 
 The last one is the way out. Give a link the attribute
 `data-alder-reload` when it must load its page for real, such as a link

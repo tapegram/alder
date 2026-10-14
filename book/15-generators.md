@@ -2137,7 +2137,9 @@ else {
 and three generated tests say it: "an Admin cannot change their own
 role" (the answer is the `Reject`, the row as it was), "an Admin saves
 their own account, the role unchanged", and "an Admin demotes another
-Admin". `requires user` makes `session.user` the user's id, not a
+Admin". The guard is per request and per row: two Admins who demote
+each other at the same moment both succeed, and an app whose only two
+Admins do that has none left (give one the role back in the database). `requires user` makes `session.user` the user's id, not a
 `Maybe` (chapter 6), so it compares with the row's id directly.
 
 The post's delete page counts the other way: `Comment.post` is
@@ -2288,8 +2290,9 @@ $ alder new auth --role Role
 (on an app without a user table: the table it creates then has
 `role: Role = Member`). That is what `alder new admin` asks for.
 
-The login page is the blog's (chapter 14), with one difference. Its
-`Password` capability has two entries, and its adapter is real:
+The login page is shaped like the blog's (chapter 14); what differs is
+its `Password` capability, which has two entries, and whose adapter is
+real:
 
 ```alder fragment
 capability Password {
@@ -2340,36 +2343,53 @@ first different byte, and its timing would tell an attacker how much of
 a guess was right. An unknown email is `Nothing` too, after a
 derivation all the same, so that the answer's timing does not say which
 emails have accounts. A stored text that is not of this form is an
-error, never a login; an empty one is a user without a password, who
-cannot log in. The core of it:
+error, never a login, and is answered as slowly as a real one (the
+dummy derivation runs first); an empty one is a user without a password,
+who cannot log in. The core of it:
 
 ```go
 // Check reports whether password is the one stored was derived from, comparing in constant
 // time with the iteration count stored names. A stored text that is not
 // `pbkdf2-sha256$<iterations>$<salt>$<hash>` is an error.
 func Check(stored, pw string) (bool, error) {
+	p, err := parse(stored)
+	if err != nil {
+		return false, err
+	}
+	got, err := pbkdf2.Key(sha256.New, pw, p.salt, p.iter, len(p.want))
+	if err != nil {
+		return false, err
+	}
+	return subtle.ConstantTimeCompare(got, p.want) == 1, nil
+}
+
+// parsed is a stored text's parts.
+type parsed struct {
+	iter       int
+	salt, want []byte
+}
+
+// parse splits a stored text `pbkdf2-sha256$<iterations>$<salt>$<hash>` into its parts; any
+// other text is an error.
+func parse(stored string) (parsed, error) {
 	parts := strings.Split(stored, "$")
 	if len(parts) != 4 || parts[0] != scheme {
-		return false, errors.New("auth: the stored password hash is not pbkdf2-sha256$<iterations>$<salt>$<hash>")
+		return parsed{}, errors.New("auth: the stored password hash is not pbkdf2-sha256$<iterations>$<salt>$<hash>")
 	}
 	iter, err := strconv.Atoi(parts[1])
 	if err != nil || iter < 1 || iter > maxIterations {
-		return false, fmt.Errorf("auth: the stored password hash has a bad iteration count %q", parts[1])
+		return parsed{}, fmt.Errorf("auth: the stored password hash has a bad iteration count %q", parts[1])
 	}
 	enc := base64.RawStdEncoding
 	salt, err := enc.DecodeString(parts[2])
 	if err != nil || len(salt) == 0 {
-		return false, errors.New("auth: the stored password hash has a bad salt")
+		return parsed{}, errors.New("auth: the stored password hash has a bad salt")
 	}
 	want, err := enc.DecodeString(parts[3])
 	if err != nil || len(want) < 16 {
-		return false, errors.New("auth: the stored password hash has a bad hash (under 16 bytes)")
+		return parsed{}, errors.New("auth: the stored password hash has a bad hash (under 16 bytes)")
 	}
-	got, err := pbkdf2.Key(sha256.New, pw, salt, iter, len(want))
-	if err != nil {
-		return false, err
-	}
-	return subtle.ConstantTimeCompare(got, want) == 1, nil
+	return parsed{iter, salt, want}, nil
 }
 ```
 
@@ -2380,10 +2400,14 @@ the store in the running task's context, in the task's transaction.
 When a login verifies against a hash made with fewer iterations than
 the adapter's count now, it stores a new hash, made with the current
 count, in the same transaction: raising `iterations` upgrades every
-user at their next login. Its tests, `login_password_test.go`, run with
+user at their next login. When storing it fails (a locked database, say)
+the login still succeeds with the old hash, which the next login
+upgrades; the failure is logged at `warn` through the request's log (the
+standard logger when there is none), with the user's id and never the
+password. Its tests, `login_password_test.go`, run with
 `go test ./adapters/...` in the built app (chapter 7): a round trip, a
 wrong password, an unknown email (which derives against the dummy hash
-all the same), the upgrade of an old hash, another iteration count, a
+all the same), the upgrade of an old hash and a failed one, another iteration count, a
 changed key and ten malformed texts.
 
 The slowness is the point, and it has a cost: each attempt takes about
@@ -2618,6 +2642,259 @@ edited app/Stats.alder
 
 Without a default, every `Stats {}` in the app would lack it, and the
 command is refused by the check.
+
+## From nothing, with a task's names: `--bare` and the commands that keep them
+
+A task often fixes its names: the tables and their exact columns, the
+session, the pages and their messages (E9's tasks do). The commands so
+far add things of their own: the guestbook, a `created`/`updated` pair
+on every table, a message named `SubmitNewNote`. These keep the task's
+names instead.
+
+`alder new notes --bare` writes an app without the guestbook: `App`
+(its session empty, the error and not-found pages), `Layout`, the
+stylesheet and `adapters/`; no page, no table, no migration. The
+transcripts below run in such an app. A table with exactly the columns
+a task names: `--no-timestamps` leaves out the `created`/`updated`
+pair, and a field may then be `@created` itself:
+
+```text command=notes
+$ alder new table User email:Text.Email@unique name:Text.NonEmpty passwordHash:Text created:Time@created --no-timestamps
+wrote app/User.alder
+wrote migrations/0001_initial.sql
+  create table User
+wrote migrations/schema.json
+```
+
+The login comes before the pages, because a page that `requires user`
+needs it. With no page at `/` and no `--to`, where a login goes is the
+typed hole `?afterLogin`, in `Submit`'s arm and in its test:
+
+```text command=notes
+$ alder new auth
+wrote adapters/auth/login_password.go
+wrote adapters/auth/login_password_test.go
+edited app/App.alder
+wrote app/Auth/Login.alder
+…
+```
+
+Now the page at `/` (no guestbook has it), and the hole filled with
+it. An arm's address fills that arm's hole:
+
+```text command=notes
+$ alder new page Notes.Index / --blank --requires user
+wrote app/Notes/Index.alder
+…
+```
+
+```text command=notes
+$ alder fill Auth.Login.update.Submit - <<'EOF'
+Notes.Index {}
+EOF
+edited app/Auth/Login.alder
+…
+```
+
+```text command=notes
+$ alder fill 'Auth.Login."logging in through the form"' - <<'EOF'
+Notes.Index {}
+EOF
+edited app/Auth/Login.alder
+…
+```
+
+A form goes in the page's `view`, so a `view` that is still a hole is
+refused (fill it first); and `--msg` names the message that posts the
+form, as a task does (`msg Add form NewNote`):
+
+```text command=notes
+$ alder new form Notes.Index NewNote title:Text.NonEmpty --msg Add
+alder new form: `Notes.Index`'s `view` is a hole: fill `view` first (`alder fill Notes.Index.view -`), then add the form
+```
+
+```text command=notes
+$ alder fill Notes.Index.load - <<'EOF'
+Query.succeed { }
+EOF
+edited app/Notes/Index.alder
+…
+```
+
+```text command=notes
+$ alder fill Notes.Index.view - <<'EOF'
+<Layout.Page title="Notes">
+  <h1>Notes</h1>
+</Layout.Page>
+EOF
+edited app/Notes/Index.alder
+…
+```
+
+```text command=notes
+$ alder new form Notes.Index NewNote title:Text.NonEmpty --msg Add
+edited app/Notes/Index.alder
+…
++msg Add form NewNote
+…
+```
+
+`--msg` works the same on any form. `alder new msg … --id <id>` gives
+the message's button an `id` (`<al-button id="cancel" …>`), as a task's
+selectors may need.
+
+**Path parameters.** A path with a `{name}` segment takes `--param
+name:Type` for each; the page's parameter record is written from them
+in the path's order, and its `load` is the hole `?load`, since what the
+parameters name is the page's logic. `--show T --by <column>` reads the
+row by a `@unique` column of `T` rather than by its id, the path's last
+segment:
+
+```text command=notes
+$ alder new type Note "Slug = brand Text"
+wrote app/Note.alder
+```
+
+```text command=notes
+$ alder new table Note slug:Slug@unique title:Text.NonEmpty owner:User.UserId@ref=User created:Time@created --no-timestamps
+edited app/Note.alder
+…
+```
+
+```text command=notes
+$ alder new page Notes.Show /notes --show Note --by slug --requires user
+wrote app/Notes/Show.alder
+```
+
+```alder written=notes/app/Notes/Show.alder
+module Notes.Show
+
+import Layout
+import Note
+import User
+
+page "/notes/{slug}" { slug: Note.Slug } requires user
+
+type Model = { row: Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.from Note |> Db.where (Note.slug.eq params.slug) |> Db.first
+  match found {
+    Just row -> Query.succeed { row: row },
+    Nothing -> Query.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Note">
+    <h1>Note</h1>
+
+    <al-card>
+      <dl>
+        <dt>Id</dt>
+        <dd>{model.row.id}</dd>
+        <dt>Slug</dt>
+        <dd>{model.row.slug}</dd>
+        <dt>Title</dt>
+        <dd>{model.row.title}</dd>
+        <dt>Owner</dt>
+        <dd>{model.row.owner}</dd>
+        <dt>Created</dt>
+        <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
+      </dl>
+    </al-card>
+  </Layout.Page>
+
+test "the page shows the row" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Db.insert Note { slug: Note.Slug "slug-1", title: Text.NonEmpty "title-1", owner: me }
+  let r <- Test.open (Notes.Show { slug: Note.Slug "slug-1" })
+  Task.succeed ({ answer: r.answer, slug: List.member "slug-1" (Test.texts "dd" r.doc) } == { answer: Shown, slug: True })
+}
+
+test "a missing row is not found" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Notes.Show { slug: Note.Slug "slug-999" })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a visitor is sent to log in" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let note1 <- Db.insert Note { slug: Note.Slug "slug-1", title: Text.NonEmpty "title-1", owner: me }
+  let r <- Test.open (Notes.Show { slug: Note.Slug "slug-1" })
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+```
+
+```text command=notes
+$ alder new page Tags.Show /tags/{name} --param name:Text --requires user
+wrote app/Tags/Show.alder
+…
+```
+
+**The session.** `alder edit session add-field` adds a field at the end
+of `App`'s `session`. A default is required: a new visitor's session,
+and every cookie stored before the field existed, take it. A session
+record written on one line elsewhere (a test's `update X model { user:
+me }`) gets the field with its default too:
+
+```text command=notes
+$ alder edit session add-field 'theme:Text="light"'
+edited app/App.alder
+--- a/app/App.alder
++++ b/app/App.alder
+@@ -3,7 +3,7 @@
+ import Layout
+ import User
+ 
+-session { user: Maybe User.UserId }
++session { user: Maybe User.UserId, theme: Text = "light" }
+ 
+ login = Auth.Login
+ 
+@@ -33,6 +33,6 @@
+ -- Every Log out button is on a page that requires a user, so a browser test cannot tell this
+ -- Redirect from a Rerender (book 10, "The logout redirect"): the test calls update itself.
+ test "Logout clears the user and goes to log in" = {
+-  let r <- Test.run (update Logout { user: Just (User.UserId "me") })
++  let r <- Test.run (update Logout { user: Just (User.UserId "me"), theme: "light" })
+   Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] })
+ }
+```
+
+A literal written over several lines is left, and shows in the check
+after the edit, which is written all the same (as `alder edit table`'s
+are; `--strict` refuses instead).
+
+**Removing.** `alder remove page <Module>` removes the page's file;
+`alder remove table <T>` removes the table's declaration, its id type
+and its module's tests (the whole file, when the module holds nothing
+else), and writes the migration that drops the table, marked `DROPS
+DATA`. Each is refused while something else names what it removes:
+the errors of the app without it say where.
+
+```text command=notes
+$ alder remove page Tags.Show
+removed app/Tags/Show.alder
+```
+
+```text command=notes
+$ alder remove table Note
+…
+alder remove table: table `Note` is still used (the errors above): remove those uses first; nothing was removed
+```
+
+A table the generated admin shows is used by the admin's pages: remove
+those (`alder remove page Admin.Note.Index` and the others), then
+`alder regen admin`, which does not bring back a page of a table that
+is gone.
+
+Every command takes `--help`, which prints its usage line (`alder new
+page --help`).
 
 ## An app from the command line
 
@@ -3184,7 +3461,9 @@ wrote after the `tests` region. The regions are named (`imports`,
 `params`, `filters`, `nav`, `cards`, `search`, `sorts`, `labels`,
 `headers`, `cells`, `fields`, `model`, `load`, `form`, `inputs`,
 `insert`, `update`, `blockers`, `remove`, `row`, `counts`, `tests`), so
-a region is matched by its name, not by its place.
+a region is matched by its name, not by its place. `params` holds a list
+page's whole `page` line, its path, query parameters and `requires`
+included: a change made there by hand goes at the next `regen`.
 
 Here the blog's comments gain a flag:
 

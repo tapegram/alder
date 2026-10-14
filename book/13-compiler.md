@@ -3903,8 +3903,29 @@ mode, a white frame. The five minutes of `max-age` let a load paint from
 the cache at once; after them, `stale-while-revalidate` lets the browser
 use its copy for up to a day while it revalidates in the background.
 The price is that for up to five minutes after an upgrade a browser may
-show the old stylesheet. The Datastar script can be immutable because its
+show the old stylesheet, and one load more after them: that load paints
+with the stale copy while the revalidation fetches the new one. The Datastar script can be immutable because its
 address, `datastar.ScriptPath`, carries `datastar.Version`.
+
+The `<head>` a boosted navigation never patches has the same problem at
+a larger scale: a tab open across a deploy would keep the old build's
+stylesheet link, Datastar script and boost for as long as it is open.
+`web.HeadTags` therefore begins with `web.BuildMeta()`,
+`<meta name="alder-build" content="…">`, whose content is `web.BuildID()`:
+the first 16 hex digits of the SHA-256 of the running executable, read
+once (`sync.OnceValue`; when the executable cannot be read, a value made
+from the start time). The boost's `data-init` copies it to
+`window._alderBuild`, and its click and popstate `@get`s send it as the
+header `Alder-Build` (`datastar.BuildHeader`). `ServeHTTP` compares it
+with its own before routing: a Datastar `GET` of another build is
+answered by `reload`, `datastar.Navigate(w, url, datastar.Assign)`, so
+the browser loads the URL as a document and gets the new `<head>`, once
+(a load of the URL the tab already shows replaces its history entry).
+Two processes of one binary (a restart, a second replica) agree; a
+request without the header (a hand-made one) is not checked. The same
+`reload` answers a Datastar `GET` under `/static/` or `/_alder/`, files
+that are no page to morph in (the boost leaves such links alone; an
+older boost did not).
 
 It refreshes rather than adds. It first walks `dst/rt/` and deletes every
 file the embedded copy does not have (and the directories that leaves
