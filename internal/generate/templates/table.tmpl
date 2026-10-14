@@ -9,7 +9,9 @@ table [[.Name]] {
 [[- range .Fields]]
   [[.]],
 [[- end]]
+[[- if .Timestamps]]
   created: Time @created,
   updated: Time @updated,
+[[- end]]
 }
 [[template "tests" .]]

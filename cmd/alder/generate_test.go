@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -42,7 +43,7 @@ func genApp(t *testing.T, base string) string {
 	return dir
 }
 
-// alderIn runs the alder command args (new, edit, fill, regen, check or test) on the app in dir, with
+// alderIn runs the alder command args (new, edit, fill, regen, remove, check or test) on the app in dir, with
 // stdin as standard input.
 func alderIn(t *testing.T, dir, stdin string, args ...string) (int, string, string) {
 	t.Helper()
@@ -58,6 +59,8 @@ func alderIn(t *testing.T, dir, stdin string, args ...string) (int, string, stri
 		code = runFillTo(withDir, strings.NewReader(stdin), &out, &errb)
 	case "regen":
 		code = runRegenTo(withDir, &out, &errb)
+	case "remove":
+		code = runRemoveTo(withDir, &out, &errb)
 	case "check":
 		code = runCheckTo([]string{dir}, &out, &errb)
 	case "test":
@@ -136,7 +139,10 @@ func golden(t *testing.T, name, stdout string, files map[string]string) {
 	if stdout != string(want) {
 		t.Errorf("stdout:\n%s\nwant (%s/stdout):\n%s", stdout, dir, want)
 	}
-	wantFiles := appFiles(t, filepath.Join(dir, "files"))
+	wantFiles := map[string]string{} // none: a refusal, or a command that only removes
+	if _, err := os.Stat(filepath.Join(dir, "files")); err == nil {
+		wantFiles = appFiles(t, filepath.Join(dir, "files"))
+	}
 	if got, w := slices.Sorted(maps.Keys(files)), slices.Sorted(maps.Keys(wantFiles)); !slices.Equal(got, w) {
 		t.Errorf("files written: %v, want %v", got, w)
 	}
@@ -207,6 +213,18 @@ var genCases = []genCase{
 	{name: "msg-in-for", base: "scaffold", args: []string{"new", "msg", "Home", "Hide", "id:Entry.EntryId", "--in-for", "e", "--when", "List.length model.entries > 0"}, test: true,
 		fills: [][2]string{{"Home.update.Hide", "Task.succeed Rerender"}, {`Home."pressing Hide" --hole ?hideId`, "entry1"}, {`Home."pressing Hide"`, "{ answer: r.answer, found: Maybe.map (\\x -> x.id) after } == { answer: Rerendered, found: Just entry1 }"}}},
 	{name: "edit-page-param", base: "scaffold", args: []string{"edit", "page", "Home", "add-param", `q:Text=""`}, test: true},
+
+	// M13 final: the commands E11 lacked
+	{name: "table-no-timestamps", base: "scaffold", args: []string{"new", "table", "Tag", "name:Text.NonEmpty", "created:Time@created", "--no-timestamps"}, test: true},
+	{name: "page-param", base: "scaffold", args: []string{"new", "page", "Tags.Show", "/tags/{name}", "--param", "name:Text"}, test: true,
+		fills: [][2]string{{"Tags.Show.load", "Query.succeed { }"}}},
+	{name: "fixture-page-show-by", base: "fixture", args: []string{"new", "page", "Tags.Show", "/tags", "--show", "Tag", "--by", "name"}, test: true},
+	{name: "form-msg", base: "scaffold", args: []string{"new", "form", "Home", "Quick", "name:Text.NonEmpty", "message:Text.NonEmpty", "--msg", "Sign2"}, test: true},
+	{name: "msg-id", base: "scaffold", args: []string{"new", "msg", "Home", "Clear", "--id", "clear"}, test: true,
+		fills: [][2]string{{"Home.update.Clear", "Task.succeed Rerender"}, {`Home."pressing Clear"`, "{ answer: r.answer, button: Test.has \"#clear\" after.doc } == { answer: Rerendered, button: True }"}}},
+	{name: "fixture-edit-session", base: "fixture", args: []string{"edit", "session", "add-field", `theme:Text="light"`}, test: true},
+	{name: "remove-page", base: "scaffold", args: []string{"remove", "page", "Home"}},
+	{name: "fixture-remove-table", base: "fixture", args: []string{"remove", "table", "Comment"}, test: true},
 }
 
 // TestGenerate runs every case of genCases.
@@ -330,7 +348,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "page", "Home", "/home"}, "", "alder new page: module `Home` exists (`app/Home.alder`): a generator never overwrites a file; choose another module name"},
 		{"scaffold", []string{"new", "page", "about", "/about"}, "", "alder new page: `about` is not a module name: write capitalised names joined by dots, such as `Posts.Index`"},
 		{"scaffold", []string{"new", "page", "About", "about"}, "", "alder new page: `about` is not a path: a page's path starts with `/`, such as `/posts`"},
-		{"scaffold", []string{"new", "page", "About", "/about/{id}"}, "", "alder new page: `/about/{id}` has a parameter: give the path without it (`--show T` adds `/{id}`), or write the page's `page` line yourself"},
+		{"scaffold", []string{"new", "page", "About", "/about/{id}"}, "", "alder new page: `/about/{id}` has a parameter: name its type with `--param <name>:<Type>` (`/posts/{slug} --param slug:Post.Slug`), or give the path without it (`--show T` adds `/{id}`)"},
 		{"scaffold", []string{"new", "page", "X", "//evil.com"}, "", "alder new page: `//evil.com` is not a page path: it has an empty segment; a path is `/` followed by segments of letters, digits, `.`, `_`, `~`, `-` or `{param}`"},
 		{"scaffold", []string{"new", "page", "X", "/a b"}, "", "alder new page: `/a b` is not a page path: it has a space; a path is `/` followed by segments of letters, digits, `.`, `_`, `~`, `-` or `{param}`"},
 		{"scaffold", []string{"new", "page", "X", "/a?b=1"}, "", "alder new page: `/a?b=1` is not a page path: it has a query (`?`)"},
@@ -344,7 +362,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "table", "Entry", "x:Int"}, "", "alder new table: module `Entry` exists (`app/Entry.alder`) and declares a table: a generator never overwrites a file; choose another table name"},
 		{"scaffold", []string{"new", "table", "Tag", "id:Int"}, "", "alder new table: field `id`: the generator writes the id, `id: TagId @id`; leave it out"},
 		{"scaffold", []string{"new", "table", "Tag", "name"}, "", "alder new table: `name` is not a field: write `name:Type`, such as `title:Text.NonEmpty`"},
-		{"scaffold", []string{"new", "form", "Home", "Sign", "name:Text"}, "", "alder new form: `Home` already declares `Sign`: choose another form name"},
+		{"scaffold", []string{"new", "form", "Home", "Sign", "name:Text"}, "", "alder new form: `Home` already declares `Sign`: choose another name"},
 		{"scaffold", []string{"new", "form", "Home", "Entry", "name:Text"}, "", "alder new form: `Entry` names a table of this app: a form named like it hides the table's row type in `Home`; choose another form name, such as `EntryForm`"},
 		{"scaffold", []string{"new", "table", "Tag", "n:Int=1 -- evil"}, "", "alder new table: field `n`: the default `1 -- evil` holds `--`, which begins a comment in Alder source: write the value without it"},
 		{"scaffold", []string{"new", "form", "Entry", "Sign", "name:Text"}, "", "alder new form: `Entry` is not a page (it has no `page` declaration): `alder new page Entry /path` makes one"},
@@ -386,6 +404,24 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"fill", "--decl", "Home.nope", "-"}, "1", "alder fill: `Home` has no declaration `nope` with a body (a value, a type or a test)"},
 		{"scaffold", []string{"fill", "--decl", "Home.load", "-"}, "Query.succeed { entries: [] },\n}\n", "alder fill: `alder fill --decl` takes one expression; found more after it"},
 		{"scaffold", []string{"fill", "--decl", "Home.Model", "-"}, "{ entries: List Entry } | x", "alder fill: `alder fill --decl` takes one type for `type Model`"},
+		// M13 final
+		{"scaffold", []string{"new", "page", "Tags.Show", "/tags/{name}", "--param", "slug:Text"}, "", "alder new page: `/tags/{name}` has the parameter `{name}` but no `--param name:<Type>`"},
+		{"scaffold", []string{"new", "page", "Tags.Show", "/tags/{name}", "--param", "name:Text", "--param", "x:Int"}, "", "alder new page: --param x: `/tags/{name}` has no `{x}` segment"},
+		{"scaffold", []string{"new", "page", "Entries.Show", "/entries", "--show", "Entry", "--by", "name"}, "", "alder new page: `--by name`: `name` is not a `@unique` column of `Entry`"},
+		{"scaffold", []string{"new", "page", "Entries.Show", "/entries", "--by", "name"}, "", "alder new page: --by names the column --show T reads its row by: give --show T too"},
+		{"scaffold", []string{"new", "form", "Home", "Quick", "name:Text", "--msg", "Submit"}, "", "alder new form: `Home` already declares `Submit`: choose another name"},
+		{"scaffold", []string{"new", "msg", "Home", "Clear", "--id", "1x"}, "", "alder new msg: `--id 1x` is not an id"},
+		{"scaffold", []string{"new", "table", "Tag", "created:Time@created"}, "", "alder new table: field `created`: the generator writes `created: Time @created` and `updated: Time @updated`; leave them out, or give --no-timestamps"},
+		{"scaffold", []string{"edit", "session", "add-field", "theme:Text"}, "", "alder edit session: session field `theme` needs a default"},
+		{"fixture", []string{"edit", "session", "add-field", "role:Text=\"x\""}, "", "alder edit session: the session already has a field `role`"},
+		{"scaffold", []string{"remove", "table", "Entry"}, "", "alder remove table: table `Entry` is still used (the errors above): remove those uses first; nothing was removed"},
+		{"scaffold", []string{"remove", "page", "Entry"}, "", "alder remove page: `Entry` is not a page"},
+		{"scaffold", []string{"remove", "table", "Home"}, "", "alder remove table: `Home` is not a table of this app"},
+		{"fixture", []string{"remove", "page", "Auth.Login"}, "", "alder remove page: `Auth.Login` is still used (the errors above)"},
+		{"scaffold", []string{"fill", "--decl", "Home.Model", "-"}, "{ entries: List Entry, params: Params }", "alder fill: the result does not check (the errors above): nothing was written"}, // I6: a diagnostic, not a crash
+		{"scaffold", []string{"fill", "--decl", "Home.load", "-"}, "\x0crom params session -> Query.succeed { entries: [] }", "alder fill: standard input has the control character U+000C at line 1, column 1: a shell's `echo`"},
+		{"scaffold", []string{"fill", "Home.update.Submit", "-"}, "rom to -> rom", "alder fill: `alder fill` takes one expression; found more after it: `->` at line 1, column 8 of standard input (a lambda starts with `\\`: `\\a b -> …`)"},
+		{"scaffold", []string{"fill", "Home.update.Submit", "-"}, "Task.succeed Rerender", "alder fill: `Home.update.Submit` has no typed hole: a fill replaces a hole, and this arm has none; to rewrite it, give `alder fill --decl Home.update -` the whole `match msg { … }`"},
 	} {
 		dir := genApp(t, c.base)
 		before := appFiles(t, dir)
@@ -663,7 +699,7 @@ func TestGenerate_AuthAdapter(t *testing.T) {
 			t.Errorf("%s: missing or different on two runs", f)
 		}
 	}
-	if !strings.Contains(a["adapters/auth/login_password.go"], "iterations = 600000") || !strings.Contains(a["adapters/auth/login_password.go"], "subtle.ConstantTimeCompare(got, want)") {
+	if !strings.Contains(a["adapters/auth/login_password.go"], "iterations = 600000") || !strings.Contains(a["adapters/auth/login_password.go"], "subtle.ConstantTimeCompare(got, p.want)") {
 		t.Errorf("the adapter:\n%s", a["adapters/auth/login_password.go"])
 	}
 	t.Chdir(filepath.Dir(dir))
@@ -674,7 +710,7 @@ func TestGenerate_AuthAdapter(t *testing.T) {
 	if err != nil || !strings.Contains(string(testOut), "ok  \tapp/adapters/auth") {
 		t.Fatalf("go test ./adapters/...: %v\n%s", err, testOut)
 	}
-	for _, name := range []string{"TestHash_RoundTrip", "TestVerify", "TestVerify_UnknownEmailDerives", "TestVerify_Rehash", "TestCheck_StoredIterations", "TestCheck_WholeKey", "TestCheck_Malformed"} {
+	for _, name := range []string{"TestHash_RoundTrip", "TestVerify", "TestVerify_UnknownEmailDerives", "TestVerify_Rehash", "TestVerify_RehashFails", "TestCheck_StoredIterations", "TestCheck_WholeKey", "TestCheck_Malformed"} {
 		if !strings.Contains(string(testOut), "--- PASS: "+name) {
 			t.Errorf("%s did not pass:\n%s", name, testOut)
 		}
@@ -701,5 +737,47 @@ func TestGenerate_TableInTypeModule(t *testing.T) {
 	}
 	if code, out, errs := alderIn(t, dir, "", "test"); code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") {
 		t.Errorf("alder test: exit %d\n%s%s", code, out, errs)
+	}
+}
+
+// TestGenerate_ViewHole (I7): a form or a button needs a view to go in: on a page whose `view`
+// is still the hole ?view, `alder new form` and `alder new msg` refuse, saying to fill it first.
+func TestGenerate_ViewHole(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	if code, out, errs := alderIn(t, dir, "", "new", "page", "Notes", "/notes", "--blank"); code != 0 {
+		t.Fatalf("new page: exit %d\n%s%s", code, out, errs)
+	}
+	for _, args := range [][]string{
+		{"new", "form", "Notes", "Quick", "title:Text"},
+		{"new", "msg", "Notes", "Clear"},
+	} {
+		code, _, errs := alderIn(t, dir, "", args...)
+		if code != 1 || !strings.Contains(errs, "`Notes`'s `view` is a hole: fill `view` first (`alder fill Notes.view -`)") {
+			t.Errorf("alder %s: exit %d, %s", strings.Join(args, " "), code, errs)
+		}
+	}
+}
+
+// TestHelp (m12): `alder <command> --help` prints the command's usage on standard output, a
+// generator's for `alder new <generator> --help`.
+func TestHelp(t *testing.T) {
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"new", "page", "--help"}, newPageUsage},
+		{[]string{"fill", "-h"}, fillUsage},
+		{[]string{"edit", "--help"}, editUsage},
+		{[]string{"remove", "--help"}, removeUsage},
+		{[]string{"help", "test"}, testUsage},
+		{[]string{"new", "--help"}, newUsage},
+	} {
+		var b bytes.Buffer
+		if !helpTo(c.args, &b) || b.String() != c.want+"\n" {
+			t.Errorf("%v: %q", c.args, b.String())
+		}
+	}
+	if helpTo([]string{"new", "page", "X", "/x"}, io.Discard) {
+		t.Error("no --help: helpTo answered")
 	}
 }

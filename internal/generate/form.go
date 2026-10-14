@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"alder/internal/syntax"
 	"alder/internal/types"
 )
 
@@ -32,14 +33,16 @@ type FormOptions struct {
 	Name   string
 	Fields []FieldSpec
 	Into   string // --into T: the table the arm inserts into
+	Msg    string // --msg M: the message that posts the form ("Submit<Name>" by default)
 }
 
 // NewForm generates `alder new form`: in the page module, `form <Name>`, `msg Submit<Name> form
-// <Name>`, an `update` arm (an insert into the table the fields match by name and type, or
+// <Name>` (or --msg's name), an `update` arm (an insert into the table the fields match by name and type, or
 // --into's; else the typed hole `?submit<Name>` : Task Nav), the form in `view` (inside its last
 // `al-card`, or in a card of its own at the end of the root element), and two browser tests: a
 // valid submission (its answer, and the row inserted), and an empty required field
-// (FormRejected, nothing inserted).
+// (FormRejected, nothing inserted). A page whose `view` is still the hole ?view is refused: fill
+// it first.
 func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 	pg, m, err := pageModule(p, o.Page)
 	if err != nil {
@@ -52,10 +55,22 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 		return nil, Refusef("`%s` names a table of this app: a form named like it hides the table's row type in `%s`; choose another form name, such as `%sForm`", o.Name, o.Page, o.Name)
 	}
 	msg := "Submit" + o.Name
+	if o.Msg != "" {
+		if !IsUpperIdent(o.Msg) {
+			return nil, Refusef("`--msg %s` is not a message name: a message is named by a capitalised identifier, such as `Create`", o.Msg)
+		}
+		if o.Msg == o.Name {
+			return nil, Refusef("`--msg %s` names the form itself: the form and its message need two names", o.Msg)
+		}
+		msg = o.Msg
+	}
 	for _, n := range []string{o.Name, msg} {
 		if declared(m.Syntax, n) {
-			return nil, Refusef("`%s` already declares `%s`: choose another form name", o.Page, n)
+			return nil, Refusef("`%s` already declares `%s`: choose another name", o.Page, n)
 		}
+	}
+	if viewIsHole(m.Syntax) {
+		return nil, Refusef("`%s`'s `view` is a hole: fill `view` first (`alder fill %s.view -`), then add the form", o.Page, o.Page)
 	}
 	if len(o.Fields) == 0 {
 		return nil, Refusef("a form needs at least one field: `alder new form %s %s title:Text.NonEmpty`", o.Page, o.Name)
@@ -284,6 +299,16 @@ func input(name string, t types.Type) string {
 		tag = "al-textarea"
 	}
 	return fmt.Sprintf("<%s field=%s label=%s />", tag, quote(name), quote(Humanize(name)))
+}
+
+// viewIsHole reports whether module m's `view` is a typed hole (`view model session = ?view`).
+func viewIsHole(m *syntax.Module) bool {
+	v := valueDecl(m, "view")
+	if v == nil {
+		return false
+	}
+	_, ok := v.Body.(*syntax.HoleExpr)
+	return ok
 }
 
 // addDecls inserts decls (a page's new `form`/`msg` declarations) and arm (a new arm of its

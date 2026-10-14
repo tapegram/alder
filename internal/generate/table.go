@@ -17,13 +17,27 @@ type TableData struct {
 	Imports []string
 	Fields  []string
 	Tests   []TestData // one per reference with a delete rule (`@cascade`, `@restrict`)
+	// Timestamps: the template writes `created: Time @created` and `updated: Time @updated`
+	// (the default; --no-timestamps leaves them out, and a field may then be @created itself).
+	Timestamps bool
+}
+
+// TableOptions are `alder new table`'s options.
+type TableOptions struct {
+	NoTimestamps bool // --no-timestamps: no `created`/`updated` pair
 }
 
 // NewTable generates `alder new table`: app/<Name>.alder with the table, its id brand, the
-// fields given and `created`/`updated`, and a test of each reference's delete rule. The migration is the caller's (Options.Migrate). It
+// fields given and `created`/`updated` (NewTableWith: without them), and a test of each reference's delete rule. The migration is the caller's (Options.Migrate). It
 // refuses a name that is not a table name or whose module exists, a field given twice, and the
 // fields the generator writes itself.
 func NewTable(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
+	return NewTableWith(p, name, fields, TableOptions{})
+}
+
+// NewTableWith is NewTable with options: with NoTimestamps the table has no `created` and
+// `updated` columns, unless the fields given declare them (`created:Time@created`).
+func NewTableWith(p *Program, name string, fields []FieldSpec, o TableOptions) ([]Edit, error) {
 	if !IsUpperIdent(name) {
 		return nil, Refusef("`%s` is not a table name: a table is named by one capitalised identifier, such as `Tag`, and declared in the module of that name", name)
 	}
@@ -41,14 +55,14 @@ func NewTable(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
 		}
 	}
 	imports := newImports(name, p.Std)
-	d := TableData{Name: name}
+	d := TableData{Name: name, Timestamps: !o.NoTimestamps}
 	seen := map[string]bool{}
 	for _, f := range fields {
 		switch {
 		case f.Name == "id" || f.Has("id"):
 			return nil, Refusef("field `%s`: the generator writes the id, `id: %sId @id`; leave it out", f.Name, name)
-		case f.Name == "created" || f.Name == "updated" || f.Has("created") || f.Has("updated"):
-			return nil, Refusef("field `%s`: the generator writes `created: Time @created` and `updated: Time @updated`; leave them out", f.Name)
+		case !o.NoTimestamps && (f.Name == "created" || f.Name == "updated" || f.Has("created") || f.Has("updated")):
+			return nil, Refusef("field `%s`: the generator writes `created: Time @created` and `updated: Time @updated`; leave them out, or give --no-timestamps to write your own", f.Name)
 		case seen[f.Name]:
 			return nil, Refusef("field `%s` is given twice", f.Name)
 		}

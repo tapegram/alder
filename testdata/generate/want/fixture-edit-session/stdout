@@ -1,0 +1,20 @@
+edited app/App.alder
+--- a/app/App.alder
++++ b/app/App.alder
+@@ -5,7 +5,7 @@
+ 
+ -- The fixture of the generators' tests (cmd/alder/generate_test.go): a session with a user and
+ -- a role, copied from the user's row when they log in (Auth.Login).
+-session { user: Maybe User.UserId, role: User.Role = Reader }
++session { user: Maybe User.UserId, role: User.Role = Reader, theme: Text = "light" }
+ 
+ login = Auth.Login
+ 
+@@ -35,6 +35,6 @@
+ -- From a page that `requires user` a Rerender ends at the login page too; only a test of
+ -- `update` itself tells Redirect from Rerender.
+ test "Logout goes to log in" = {
+-  let r <- Test.run (update Logout { user: Just (User.UserId "me"), role: Admin })
++  let r <- Test.run (update Logout { user: Just (User.UserId "me"), role: Admin, theme: "light" })
+   Task.succeed (r.value == Ok (Redirect (Auth.Login {})))
+ }

@@ -3,5 +3,5 @@ msg [[.Name]][[if .Fields]] { [[range $i, $f := .Fields]][[if $i]], [[end]][[$f]
 [[- end]]
 
 [[- define "msg_button" -]]
-[[if .When]]{if [[.When]] then [[end]]<al-button[[if .Class]] class="[[.Class]]"[[end]] click={[[.Click]]}>[[.Label]]</al-button>[[if .When]] else Html.none}[[end]]
+[[if .When]]{if [[.When]] then [[end]]<al-button[[if .ID]] id="[[.ID]]"[[end]][[if .Class]] class="[[.Class]]"[[end]] click={[[.Click]]}>[[.Label]]</al-button>[[if .When]] else Html.none}[[end]]
 [[- end]]

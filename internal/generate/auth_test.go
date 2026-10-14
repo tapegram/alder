@@ -165,7 +165,7 @@ update msg session = match msg {
 }
 
 // TestNewAuth_Refusals: a second login, an Auth module, a role that is not a union of the user
-// module, a user table without a password column, no page to go to.
+// module, a user table without a password column, a --to that is not a page.
 func TestNewAuth_Refusals(t *testing.T) {
 	refused := func(dir string, o AuthOptions, want string) {
 		t.Helper()
@@ -183,7 +183,32 @@ func TestNewAuth_Refusals(t *testing.T) {
 	refused(scaffoldApp(t, map[string]string{"app/User.alder": "module User\n\ntype UserId = brand Text\n\ntable User {\n  id: UserId @id,\n  email: Text.Email,\n}\n"}),
 		AuthOptions{}, "`User` needs the columns `email: Text.Email` and `passwordHash")
 	refused(scaffoldApp(t, nil), AuthOptions{To: "Nope"}, "`--to Nope` is not a page")
+}
+
+// An app with no page at `/` and no --to (a bare app: its pages come after the login, since
+// they `requires user`): the login goes to the typed hole ?afterLogin, filled once the page
+// exists, and the result checks.
+func TestNewAuth_NoHomePage(t *testing.T) {
 	dir := scaffoldApp(t, nil)
 	os.Remove(filepath.Join(dir, "app", "Home.alder"))
-	refused(dir, AuthOptions{}, "no page at `/`")
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edits, _, err := NewAuth(p, AuthOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range edits {
+		if e.Path == "app/Auth/Login.alder" && (!strings.Contains(e.Body, "Task.succeed (Redirect (?afterLogin))") || !strings.Contains(e.Body, "answer: Redirected (?afterLogin)")) {
+			t.Errorf("Auth.Login:\n%s", e.Body)
+		}
+	}
+	res, err := Apply(dir, edits, Options{})
+	if err != nil {
+		t.Fatalf("Apply: %v\n%s", err, res.RenderText(true))
+	}
+	if len(res.Holes) != 2 {
+		t.Errorf("holes %+v, want ?afterLogin twice", res.Holes)
+	}
 }

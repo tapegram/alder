@@ -16,13 +16,15 @@ import (
 
 // Edit is one change a generator makes to the app: a file it creates (Create, with its Body), a
 // file it rewrites (Body, the whole new text), or the owned regions of a file it regenerates
-// (Replace: each region's new body, by name; ReplaceRegions applies them). Path is relative to
-// the app and slash-separated ("app/Posts/Index.alder").
+// (Replace: each region's new body, by name; ReplaceRegions applies them), or a file it removes
+// (Delete: `alder remove`). Path is relative to the app and slash-separated
+// ("app/Posts/Index.alder").
 type Edit struct {
 	Path    string
 	Create  bool
 	Body    string
 	Replace []Region
+	Delete  bool
 }
 
 // Region is the new body of one owned region of a file (Task 2's `-- @admin begin <name>` …
@@ -61,7 +63,7 @@ type Result struct {
 	Written     bool // the files were written into the app
 }
 
-// FileChange is one file Apply writes: Action is "created" or "edited".
+// FileChange is one file Apply writes: Action is "created", "edited" or "removed".
 type FileChange struct {
 	Path   string `json:"path"`
 	Action string `json:"action"`
@@ -98,6 +100,13 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 		p := filepath.Join(copyDir, filepath.FromSlash(e.Path))
 		_, statErr := os.Stat(filepath.Join(appDir, filepath.FromSlash(e.Path)))
 		switch {
+		case e.Delete:
+			if statErr != nil {
+				return nil, Refusef("`%s` does not exist", e.Path)
+			}
+			if err := os.Remove(p); err != nil {
+				return nil, err
+			}
 		case e.Create:
 			if statErr == nil {
 				return nil, Refusef("`%s` exists: a generator never overwrites a file; choose another name, or remove the file first", e.Path)
@@ -186,6 +195,12 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	for _, e := range edits {
+		if e.Delete {
+			res.Files = append(res.Files, FileChange{e.Path, "removed"})
+			changed[e.Path] = true
+		}
+	}
 	slices.SortFunc(res.Files, func(a, b FileChange) int { return strings.Compare(a.Path, b.Path) })
 	for _, d := range bag.Items {
 		if d.Severity == "error" || changed[d.Span.File] {
@@ -216,6 +231,13 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 		}
 	}
 	for _, f := range res.Files {
+		if f.Action == "removed" {
+			if err := os.Remove(filepath.Join(appDir, filepath.FromSlash(f.Path))); err != nil {
+				return nil, err
+			}
+			removeEmptyDirs(appDir, filepath.Dir(filepath.FromSlash(f.Path)))
+			continue
+		}
 		b, err := os.ReadFile(filepath.Join(copyDir, filepath.FromSlash(f.Path)))
 		if err != nil {
 			return nil, err
@@ -226,6 +248,17 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 	}
 	res.Written = true
 	return res, nil
+}
+
+// removeEmptyDirs removes dir (relative to appDir) and its parents up to app/'s level while
+// they are empty: the directory a removed page module leaves (app/Posts/ after Posts.Index).
+func removeEmptyDirs(appDir, dir string) {
+	for dir != "." && dir != "app" && dir != "" {
+		if os.Remove(filepath.Join(appDir, dir)) != nil { // not empty
+			return
+		}
+		dir = filepath.Dir(dir)
+	}
 }
 
 // beforeWrite, when set (by a test), runs after the copy checked and before Apply writes.
@@ -298,8 +331,11 @@ func (r *Result) RenderText(refused bool) string {
 	}
 	for _, f := range r.Files {
 		verb := map[bool]string{true: "wrote", false: "would write"}[r.Written]
-		if f.Action == "edited" {
+		switch f.Action {
+		case "edited":
 			verb = map[bool]string{true: "edited", false: "would edit"}[r.Written]
+		case "removed":
+			verb = map[bool]string{true: "removed", false: "would remove"}[r.Written]
 		}
 		fmt.Fprintf(&b, "%s %s\n", verb, f.Path)
 		if strings.HasPrefix(f.Path, "migrations/") && strings.HasSuffix(f.Path, ".sql") {
@@ -330,6 +366,12 @@ func Probe(appDir string, edits []Edit) (*Program, error) {
 		return nil, err
 	}
 	for _, e := range edits {
+		if e.Delete {
+			if err := os.Remove(filepath.Join(copyDir, filepath.FromSlash(e.Path))); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if err := writeFile(filepath.Join(copyDir, filepath.FromSlash(e.Path)), e.Body); err != nil {
 			return nil, err
 		}

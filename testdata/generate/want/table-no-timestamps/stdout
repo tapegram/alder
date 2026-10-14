@@ -1,0 +1,4 @@
+wrote app/Tag.alder
+wrote migrations/0002_create_tag.sql
+  create table Tag
+edited migrations/schema.json

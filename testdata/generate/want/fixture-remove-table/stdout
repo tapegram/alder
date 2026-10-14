@@ -1,0 +1,5 @@
+removed app/Comment.alder
+wrote migrations/0002_drop_comment.sql
+  drop table Comment
+!! DROPS DATA: table Comment
+edited migrations/schema.json

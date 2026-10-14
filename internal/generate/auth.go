@@ -14,7 +14,7 @@ import (
 type AuthOptions struct {
 	Users string // --users T: the user table ("User" by default), created when it does not exist
 	Role  string // --role R: the union of the user module the session's `role` has, "" for none
-	To    string // --to P: the page a login goes to (default: the page at `/`)
+	To    string // --to P: the page a login goes to (default: the page at `/`; without one, the hole ?afterLogin)
 }
 
 // AuthData is the data of auth_login.tmpl and the adapter's templates.
@@ -46,7 +46,9 @@ const hashColumn = "passwordHash"
 // edits of App (the session's `user` and `role` fields, `login = Auth.Login`, `msg Logout` and
 // its arm, a test of it), the user table when it does not exist (with its migration, the
 // caller's Options.Migrate), and the Go adapter adapters/auth/login_password.go (PBKDF2-SHA256)
-// with its tests. It refuses an app whose session has a `user`, that has an Auth module or a
+// with its tests. The login goes to --to's page, else the page at `/`, else (an app with no
+// page yet: `alder new <app> --bare`, whose pages come after the login they require) the typed
+// hole ?afterLogin, in Submit's arm and in its test, filled once the page exists. It refuses an app whose session has a `user`, that has an Auth module or a
 // `login`, a user table without `email` and `passwordHash`, and a role that is not a union of
 // the user module (`alder new type` makes one) or that the table has no column of.
 func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
@@ -90,11 +92,8 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 				home = pg
 			}
 		}
-		if home == nil {
-			return nil, false, Refusef("the app has no page at `/` for a login to go to: name one with `--to <Page>`")
-		}
 	}
-	if hasRequiredParams(home) {
+	if home != nil && hasRequiredParams(home) {
 		return nil, false, Refusef("`%s` has parameters: a login goes to a page without, name one with `--to <Page>`", home.Module)
 	}
 
@@ -188,7 +187,10 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 	imports.add(users.Module)
 	d := AuthData{Dir: gen.AdapterPkg(module), Func: gen.AdapterFunc(module, "Password"), Table: users.Name,
 		TableName: fmt.Sprintf("%q", users.Module+"."+users.Name), HashColumn: hashColumn, HashColumnQ: fmt.Sprintf("%q", hashColumn),
-		IDType: types.StringIn(users.IDType, module), Role: role != nil, RoleColumn: roleColumn, Home: pageLit(home.Module, nil), Iterations: 600000}
+		IDType: types.StringIn(users.IDType, module), Role: role != nil, RoleColumn: roleColumn, Home: "?afterLogin", Iterations: 600000}
+	if home != nil {
+		d.Home = pageLit(home.Module, nil)
+	}
 	if role != nil {
 		d.RoleDefault = ctors[0]
 	}
@@ -203,7 +205,7 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 	}
 	d.Tests = append(d.Tests, TestData{Name: quote("an unknown email is rejected"), Lines: tb.lines,
 		Comment: []string{"Logging in through the form, with the fake: an unknown email is rejected with the form's",
-			"message, and a known one puts the user" + role1 + " in the session and goes to " + d.Home + "."},
+			"message, and a known one puts the user" + role1 + " in the session and goes to " + goesTo(d.Home) + "."},
 		Result: "{ answer: r.answer, user: r.session.user } == { answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }"})
 	tb = newTestBuilder(probe, module, imports)
 	tb.let("let _ <- Test.fake Password")
@@ -371,6 +373,15 @@ func editApp(p *Program, app *Module, users *Table, idType, roleField string, ct
 		Result: "{ value: r.value, trace: r.trace } == { value: Ok (Redirect (Auth.Login {})), trace: [\"Session.put\"] }"}))
 	addImports(e, app.Syntax, imports.list())
 	return Edit{Path: app.File, Body: e.result()}, nil
+}
+
+// goesTo says where a login goes in a test's comment: the page, or, for the hole ?afterLogin
+// (an app with no page yet), the page that hole will name.
+func goesTo(home string) string {
+	if strings.HasPrefix(home, "?") {
+		return "the page " + home + " names (fill it, here and in Submit's arm, once the page exists)"
+	}
+	return home
 }
 
 func hasField(s *Session, name string) bool {

@@ -3,6 +3,7 @@ package generate
 import (
 	"embed"
 	"fmt"
+	"regexp"
 	"strings"
 	"text/template"
 
@@ -45,6 +46,12 @@ type PageData struct {
 	Mine   bool      // --show reads with Db.getMine
 	Cols   []ColData // the columns shown
 	Lists  []FromList
+	// LoadHole: `load` is the typed hole ?load (a page with path parameters, whose load reads
+	// what they name: the author's)
+	LoadHole bool
+	// By is --show's --by column: the row is read by it (`Db.where (T.slug.eq params.slug)`)
+	// rather than by its id
+	By string
 }
 
 // ColData is one column a page shows: its label and the markup of its cell, for `row` (a list)
@@ -86,12 +93,25 @@ type PageOptions struct {
 	// for `alder fill` (or `alder fill --decl`, which also replaces `Model`); with --show T the
 	// page keeps --show's path and parameter (`/{id}`, the row's id), and nothing else of it.
 	Blank bool
+	// Params are --param's `name:Type`, one per `{name}` segment of Path (`/posts/{slug}
+	// --param slug:Post.Slug`): the page's parameter record, in the path's order; `load` is
+	// then the hole ?load (with --blank, as always).
+	Params []string
+	// By is --show T --by <column>: the row is looked up by that `@unique` column of T, whose
+	// value the path's last segment `{<column>}` carries, instead of by its id.
+	By string
 }
 
+// pathParam matches a `{name}` segment of a page path.
+var pathParam = regexp.MustCompile(`\{([^/{}]*)\}`)
+
 // NewPage generates `alder new page`: the module's file, with one browser test (two for
-// --show). It refuses an existing module, a path with parameters, a table that is not one of
-// the app's, and a role the session does not have; a path another page has is the checker's
-// E0016, surfaced by Apply.
+// --show). A path with parameters takes a --param for each (`/tags/{name} --param name:Text`),
+// and its `load` is the hole ?load; --show T --by <column> reads the row by a `@unique`
+// column, the path's last segment. It refuses an existing module, a path parameter without its
+// --param (and a --param without its segment), a table that is not one of the app's, a --by
+// column that is not unique, and a role the session does not have; a path another page has is
+// the checker's E0016, surfaced by Apply.
 func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	if !IsModuleName(o.Module) {
 		return nil, Refusef("`%s` is not a module name: write capitalised names joined by dots, such as `Posts.Index`", o.Module)
@@ -103,14 +123,62 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	if !strings.HasPrefix(o.Path, "/") {
 		return nil, Refusef("`%s` is not a path: a page's path starts with `/`, such as `/posts`", o.Path)
 	}
+	if o.By != "" && o.Show == "" {
+		return nil, Refusef("--by names the column --show T reads its row by: give --show T too")
+	}
 	if o.Show != "" {
-		o.Path = strings.TrimSuffix(o.Path, "/{id}") // `--show T` adds it; given, it is the same page
+		last := "/{id}"
+		if o.By != "" {
+			last = "/{" + o.By + "}"
+		}
+		o.Path = strings.TrimSuffix(o.Path, last) // `--show T` adds it; given, it is the same page
 		if o.Path == "" {
 			o.Path = "/"
 		}
 	}
-	if strings.ContainsAny(o.Path, "{}:") {
-		return nil, Refusef("`%s` has a parameter: give the path without it (`--show T` adds `/{id}`), or write the page's `page` line yourself", o.Path)
+	var params []FieldSpec
+	if len(o.Params) > 0 {
+		if o.Show != "" || o.List != "" || len(o.From) > 0 {
+			return nil, Refusef("--param goes with a page of its own or a --blank one: a --list, --show or --from page has its parameters made for it")
+		}
+		names := map[string]bool{}
+		for _, a := range o.Params {
+			f, err := ParseField(a, false)
+			if err != nil {
+				return nil, Refusef("--param %v", err)
+			}
+			if f.Default != "" {
+				return nil, Refusef("--param %s: a path parameter has no default (it is always in the URL); a query parameter with one is `alder edit page %s add-param %s`", a, o.Module, a)
+			}
+			if names[f.Name] {
+				return nil, Refusef("--param %s is given twice", f.Name)
+			}
+			names[f.Name] = true
+			params = append(params, f)
+		}
+		var inPath []string
+		for _, m := range pathParam.FindAllStringSubmatch(o.Path, -1) {
+			inPath = append(inPath, m[1])
+			if !names[m[1]] {
+				return nil, Refusef("`%s` has the parameter `{%s}` but no `--param %s:<Type>`", o.Path, m[1], m[1])
+			}
+			delete(names, m[1])
+		}
+		for n := range names {
+			return nil, Refusef("--param %s: `%s` has no `{%s}` segment (a query parameter is `alder edit page %s add-param`)", n, o.Path, n, o.Module)
+		}
+		// the record in the path's order
+		ordered := make([]FieldSpec, 0, len(params))
+		for _, n := range inPath {
+			for _, f := range params {
+				if f.Name == n {
+					ordered = append(ordered, f)
+				}
+			}
+		}
+		params = ordered
+	} else if strings.ContainsAny(o.Path, "{}:") {
+		return nil, Refusef("`%s` has a parameter: name its type with `--param <name>:<Type>` (`/posts/{slug} --param slug:Post.Slug`), or give the path without it (`--show T` adds `/{id}`)", o.Path)
 	}
 	if why := check.PagePathProblem(o.Path); why != "" {
 		return nil, Refusef("`%s` is not a page path: it %s; %s", o.Path, why, check.PagePathRule)
@@ -161,6 +229,32 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		}
 	}
 	d.Open, d.Close = rootTags(p, d.Title, imports)
+	var paramPage *Page // the page with --param's parameters, checked: their types
+	if len(params) > 0 {
+		var fs []string
+		for _, f := range params {
+			fs = append(fs, f.Source())
+			typeImports(imports, f.Type, p)
+		}
+		d.Params = "{ " + strings.Join(fs, ", ") + " }"
+		d.LoadHole = true
+		src := "module " + o.Module + "\n\n"
+		for _, i := range imports.list() {
+			src += "import " + i + "\n"
+		}
+		src += "\npage \"" + o.Path + "\" " + d.Params + "\n\ntype Model = { }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { }\n\n" +
+			"view : Model -> Session -> Html Msg\nview model session = <p></p>\n"
+		probe, err := Probe(p.Dir, []Edit{{Path: file, Create: true, Body: src}})
+		if err != nil {
+			return nil, err
+		}
+		if r := probe.errorsIn(file); r != nil {
+			return nil, r
+		}
+		if paramPage = probe.PageNamed(o.Module); paramPage == nil {
+			return nil, Refusef("internal error: the page %s was not checked", o.Module)
+		}
+	}
 	// newTest starts a test's builder, signed in as the page requires
 	newTest := func() *testBuilder {
 		tb := newTestBuilder(p, o.Module, imports)
@@ -177,6 +271,9 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		tmpl = "page_blank.tmpl"
 		delete(imports.set, "Layout") // the view is a hole: whatever fills it imports what it uses
 		pageOf = func(*testBuilder) string { return pageLit(o.Module, nil) }
+		if paramPage != nil {
+			pageOf = func(tb *testBuilder) string { return tb.pageValue(paramPage) }
+		}
 		if o.Show != "" {
 			t, err := table(o.Show)
 			if err != nil {
@@ -186,6 +283,19 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 			importTypes(imports, t.IDType)
 			d.Params = "{ id: " + types.StringIn(t.IDType, o.Module) + " }"
 			pageOf = func(tb *testBuilder) string { return pageLit(o.Module, []string{"id: " + tb.insert(t, true)}) }
+			if o.By != "" {
+				by := t.Column(o.By)
+				if by == nil || !by.Unique || by.Maybe || by.ID {
+					return nil, Refusef("`--by %s`: `%s` is not a `@unique` column of `%s` (a row is looked up by one; its unique columns: %s)", o.By, o.By, t.Name, uniqueColumns(t))
+				}
+				importTypes(imports, by.Type)
+				d.Path = strings.TrimSuffix(o.Path, "/") + "/{" + o.By + "}"
+				d.Params = "{ " + o.By + ": " + by.TypeIn(o.Module) + " }"
+				pageOf = func(tb *testBuilder) string {
+					tb.insert(t, true)
+					return pageLit(o.Module, []string{o.By + ": " + tb.sample(by.Type, by.Name, tb.counts[t.Module])})
+				}
+			}
 		}
 	case o.List != "":
 		t, err := table(o.List)
@@ -250,11 +360,26 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		for _, c := range t.Columns {
 			d.Cols = append(d.Cols, ColData{Humanize(c.Name), cell(c, "model.row."+c.Name, imports)})
 		}
-		pageOf = func(tb *testBuilder) string { return pageLit(o.Module, []string{"id: " + tb.insert(t, true)}) }
+		// the page value of the row a test inserted last: by its id, or by its --by column
+		param := func(tb *testBuilder, row string) string { return "id: " + row }
+		var by *Column
+		if o.By != "" {
+			if by = t.Column(o.By); by == nil || !by.Unique || by.Maybe || by.ID {
+				return nil, Refusef("`--by %s`: `%s` is not a `@unique` column of `%s` (a row is looked up by one; its unique columns: %s)", o.By, o.By, t.Name, uniqueColumns(t))
+			}
+			importTypes(imports, by.Type)
+			d.By, d.Select = o.By, selectOf(t, o.Module, o.Requires != "")
+			d.Path = strings.TrimSuffix(o.Path, "/") + "/{" + o.By + "}"
+			d.Params = "{ " + o.By + ": " + by.TypeIn(o.Module) + " }"
+			param = func(tb *testBuilder, row string) string {
+				return o.By + ": " + tb.sample(by.Type, by.Name, tb.counts[t.Module])
+			}
+		}
+		pageOf = func(tb *testBuilder) string { return pageLit(o.Module, []string{param(tb, tb.insert(t, true))}) }
 
 		tb := newTest()
-		row := tb.insert(t, true)
-		tb.let("let r <- Test.open (%s)", pageLit(o.Module, []string{"id: " + row}))
+		row := tb.insert(t, by == nil) // looked up by its --by column, the row needs no name
+		tb.let("let r <- Test.open (%s)", pageLit(o.Module, []string{param(tb, row)}))
 		label := t.Label()
 		result := fmt.Sprintf("{ answer: r.answer, fields: Test.count \"dd\" r.doc } == { answer: Shown, fields: %d }", len(t.Columns))
 		if !label.ID {
@@ -264,14 +389,17 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		d.Tests = append(d.Tests, TestData{Name: quote("the page shows the row"), Lines: tb.lines, Result: result})
 
 		tb = newTest()
-		missing := tb.brandCtor(t.IDType.(*types.Brand)) + " " + quote("missing")
-		tb.let("let r <- Test.open (%s)", pageLit(o.Module, []string{"id: " + missing}))
+		missing := "id: " + tb.brandCtor(t.IDType.(*types.Brand)) + " " + quote("missing")
+		if by != nil {
+			missing = o.By + ": " + tb.sample(by.Type, by.Name, 999)
+		}
+		tb.let("let r <- Test.open (%s)", pageLit(o.Module, []string{missing}))
 		d.Tests = append(d.Tests, TestData{Name: quote("a missing row is not found"), Lines: tb.lines, Result: "r.answer == PageMissing"})
 
 		if d.Mine { // read with Db.getMine: another user's row is not found either
 			tb = newTest()
 			theirs := tb.insertRow(t, "", map[string]string{t.Owner: tb.otherUser()}, false)
-			tb.let("let r <- Test.open (%s)", pageLit(o.Module, []string{"id: " + theirs}))
+			tb.let("let r <- Test.open (%s)", pageLit(o.Module, []string{param(tb, theirs)}))
 			d.Tests = append(d.Tests, TestData{Name: quote("another user's row is not found"), Lines: tb.lines, Result: "r.answer == PageMissing"})
 		}
 	case len(o.From) > 0:
@@ -312,8 +440,11 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 			Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
 	default:
 		pageOf = func(*testBuilder) string { return pageLit(o.Module, nil) }
+		if paramPage != nil {
+			pageOf = func(tb *testBuilder) string { return tb.pageValue(paramPage) }
+		}
 		tb := newTest()
-		tb.let("let r <- Test.open (%s)", pageLit(o.Module, nil))
+		tb.let("let r <- Test.open (%s)", pageOf(tb))
 		d.Tests = append(d.Tests, TestData{Name: quote("the page is shown"), Lines: tb.lines, Result: "{ answer: r.answer, heading: " + heading})
 	}
 
@@ -333,6 +464,20 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	}
 	d.Imports = imports.list()
 	return []Edit{{Path: file, Create: true, Body: render(tmpl, d)}}, nil
+}
+
+// uniqueColumns lists t's `@unique` columns for a message, "none" when it has none.
+func uniqueColumns(t *Table) string {
+	var out []string
+	for _, c := range t.Columns {
+		if c.Unique && !c.ID {
+			out = append(out, c.Name)
+		}
+	}
+	if len(out) == 0 {
+		return "none"
+	}
+	return strings.Join(out, ", ")
 }
 
 // otherRole is a constructor of the session's role other than role, "" when there is none.

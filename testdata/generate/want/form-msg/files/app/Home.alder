@@ -1,0 +1,94 @@
+module Home
+
+import Entry
+import Layout
+
+page "/" { }
+
+type Model = { entries: List Entry }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let entries <- Db.from Entry |> Db.orderBy Entry.created.desc |> Db.all
+  Query.succeed { entries: entries }
+}
+
+form Sign = {
+  name: Text.NonEmpty,
+  message: Text.NonEmpty,
+}
+
+msg Submit form Sign
+
+form Quick = {
+  name: Text.NonEmpty,
+  message: Text.NonEmpty,
+}
+
+msg Sign2 form Quick
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
+    Task.succeed (Redirect (Home {}))
+  },
+  Sign2 p -> {
+    let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
+    Task.succeed (Redirect (Home {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Guestbook">
+    <h1>Guestbook</h1>
+
+    <al-card>
+      <h2 slot="header">Sign the guestbook</h2>
+      <form submit={Submit}>
+        <al-input field="name" label="Your name" />
+        <al-input field="message" label="Message" />
+        <al-button type="submit">Sign</al-button>
+      </form>
+      <form submit={Sign2}>
+        <al-input field="name" label="Name" />
+        <al-textarea field="message" label="Message" />
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-button type="submit">Quick</al-button>
+      </form>
+    </al-card>
+
+    <ul id="entries">
+      {for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}
+    </ul>
+  </Layout.Page>
+
+test "signing adds an entry" = {
+  let _ <- Test.get (Home {})
+  let signed <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
+  let page <- Test.get (Home {})
+  Task.succeed ({ answer: signed.answer, entries: Test.count "#entries li" page.doc } == { answer: Redirected (Home {}), entries: 1 })
+}
+
+test "entries are listed newest first" = {
+  let _ <- Test.get (Home {})
+  let _ <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "First" }
+  let _ <- Test.submit Sign { name: Text.NonEmpty "Grace", message: Text.NonEmpty "Second" }
+  let page <- Test.get (Home {})
+  Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
+}
+
+test "submitting Quick adds a row" = {
+  let _ <- Test.get (Home {})
+  let r <- Test.submit Quick { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
+  let rows <- Db.from Entry |> Db.all
+  Task.succeed ({ answer: r.answer, rows: List.map (\row -> { name: row.name, message: row.message }) rows } == { answer: Redirected (Home {}), rows: [{ name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }] })
+}
+
+test "Quick refuses an empty name" = {
+  let _ <- Test.get (Home {})
+  let r <- Test.submitRaw Quick [{ name: "name", value: "" }, { name: "message", value: "x" }]
+  let rows <- Db.from Entry |> Db.count
+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: FormRejected [{ field: "name", message: "must not be empty" }], rows: 0 })
+}

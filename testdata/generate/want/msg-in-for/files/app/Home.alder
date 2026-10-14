@@ -67,6 +67,8 @@ test "entries are listed newest first" = {
 
 -- The button is in the view's `{for e in model.entries …}`: insert rows so that the
 -- signed-in user sees the row this clicks, and fill ?hideId with that row's values.
+-- The button is shown only when `List.length model.entries > 0`: insert the rows that make it hold
+-- on the page this test opens, or the click finds no button.
 -- Fill ?expected with what pressing Hide must do, so that a test fails when the arm
 -- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
 -- changed (`after`, the row read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.

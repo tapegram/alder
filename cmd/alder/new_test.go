@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
@@ -354,5 +355,52 @@ func TestNew_OutOfTree(t *testing.T) {
 				t.Fatalf("after SIGINT: exit %d; stderr:\n%s", code, r.stderr.String())
 			}
 		})
+	}
+}
+
+// TestNew_Bare: `alder new <name> --bare` writes the scaffold without the guestbook (App,
+// Layout, the stylesheet, adapters/, .gitignore: no page, no table, no migration), and the
+// sequence a task like T5 takes from it — the tables, the login, then its page at `/`, which
+// requires the user — reaches `page "/"` without a second page there (E0016), and checks and
+// passes its tests once the holes are filled.
+func TestNew_Bare(t *testing.T) {
+	needGoTool(t)
+	dir := filepath.Join(outsideModule(t), "notes")
+	if code, out, errs := runNew(t, dir, "--bare"); code != 0 || !strings.Contains(out, "created "+dir+"/\n") {
+		t.Fatalf("alder new --bare: exit %d\n%s%s", code, out, errs)
+	}
+	got := slices.Sorted(maps.Keys(appFiles(t, dir)))
+	if want := []string{".gitignore", "adapters/README.md", "app/App.alder", "app/Layout.alder", "static/app.css"}; !slices.Equal(got, want) {
+		t.Errorf("files %v, want %v", got, want)
+	}
+	if code, _, errs := runNew(t, dir, "--bare"); code != 1 || !strings.Contains(errs, "exists and is not empty") {
+		t.Errorf("again: exit %d, %s", code, errs)
+	}
+	for _, st := range []struct {
+		stdin string
+		args  []string
+	}{
+		{"", []string{"new", "table", "User", "email:Text.Email@unique", "name:Text.NonEmpty", "passwordHash:Text", "created:Time@created", "--no-timestamps"}},
+		{"", []string{"new", "table", "Note", "title:Text.NonEmpty", "body:Text", "owner:User.UserId@ref=User", "created:Time@created", "--no-timestamps"}},
+		{"", []string{"new", "auth"}},
+		{"", []string{"new", "page", "Notes.Index", "/", "--blank", "--requires", "user"}},
+		{"Notes.Index {}", []string{"fill", "Auth.Login.update.Submit", "-"}},
+		{"Notes.Index {}", []string{"fill", `Auth.Login."logging in through the form"`, "-"}},
+		{"Query.succeed { }", []string{"fill", "Notes.Index.load", "-"}},
+		{`<Layout.Page title="Notes"><h1>Notes</h1></Layout.Page>`, []string{"fill", "Notes.Index.view", "-"}},
+	} {
+		if code, out, errs := alderIn(t, dir, st.stdin, st.args...); code != 0 {
+			t.Fatalf("alder %s: exit %d\n%s%s", strings.Join(st.args, " "), code, out, errs)
+		}
+	}
+	if code, out, errs := alderIn(t, dir, "", "check"); code != 0 || out != "" {
+		t.Fatalf("alder check: exit %d\n%s%s", code, out, errs)
+	}
+	if code, out, errs := alderIn(t, dir, "", "test"); code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") {
+		t.Fatalf("alder test: exit %d\n%s%s", code, out, errs)
+	}
+	app, _ := os.ReadFile(filepath.Join(dir, "app", "App.alder"))
+	if !strings.Contains(string(app), "session { user: Maybe User.UserId }\n\nlogin = Auth.Login\n\nmsg Logout\n") {
+		t.Errorf("App:\n%s", app)
 	}
 }

@@ -17,6 +17,7 @@ type MsgData struct {
 	Click  string
 	Label  string
 	Class  string // the button's class, "" for none (a button in a loop has its message's name)
+	ID     string // the button's id (--id), "" for none
 	When   string // the condition the button is shown on, "" for always
 }
 
@@ -24,6 +25,7 @@ type MsgData struct {
 type MsgOptions struct {
 	InFor string // --in-for: the binder of the view's loop the button goes in
 	When  string // --when: the Bool expression the button is shown on
+	ID    string // --id: the button's id attribute
 }
 
 // NewMsg generates `alder new msg`: `msg <Name> { … }` in the page module, an `update` arm
@@ -52,7 +54,13 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]
 		return nil, Refusef("`%s` already declares `%s`: choose another message name", page, name)
 	}
 	imports := newImports(page, p.Std)
-	d := MsgData{Name: name, Click: name, Label: Humanize(name)}
+	d := MsgData{Name: name, Click: name, Label: Humanize(name), ID: o.ID}
+	if o.ID != "" && !validID(o.ID) {
+		return nil, Refusef("`--id %s` is not an id: use letters, digits, `-` and `_`, starting with a letter", o.ID)
+	}
+	if viewIsHole(m.Syntax) {
+		return nil, Refusef("`%s`'s `view` is a hole: fill `view` first (`alder fill %s.view -`), then add the message's button", page, page)
+	}
 	var loop *syntax.HtmlFor
 	if o.InFor != "" {
 		n := 0
@@ -154,6 +162,10 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]
 			"`{ answer: r.answer, … } == { answer: Rerendered, … }`."
 	}
 	lines := append(tb.lines, "let _ <- Test.get ("+pv+")", "let r <- Test.click "+click, reread)
+	if d.When != "" { // what makes the condition hold is the page's logic: the author's to set up
+		loopNote = append(loopNote, "The button is shown only when `"+d.When+"`: insert the rows that make it hold",
+			"on the page this test opens, or the click finds no button.")
+	}
 	comment := append(loopNote, []string{
 		"Fill ?expected with what pressing " + name + " must do, so that a test fails when the arm",
 		"does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it",
@@ -165,4 +177,16 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]
 	}
 	addImports(e, m.Syntax, imports.list())
 	return []Edit{{Path: m.File, Body: e.result()}}, nil
+}
+
+// validID reports whether s can be an element's id written by a generator: a letter, then
+// letters, digits, `-` and `_`.
+func validID(s string) bool {
+	for i, r := range s {
+		ok := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || i > 0 && (r >= '0' && r <= '9' || r == '-' || r == '_')
+		if !ok {
+			return false
+		}
+	}
+	return s != ""
 }

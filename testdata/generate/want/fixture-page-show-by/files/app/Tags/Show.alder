@@ -1,0 +1,51 @@
+module Tags.Show
+
+import Layout
+import Post
+import Tag
+import User
+
+page "/tags/{name}" { name: Text.NonEmpty }
+
+type Model = { row: Tag }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.from Tag |> Db.where (Tag.name.eq params.name) |> Db.first
+  match found {
+    Just row -> Query.succeed { row: row },
+    Nothing -> Query.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Tag">
+    <h1>Tag</h1>
+
+    <al-card>
+      <dl>
+        <dt>Id</dt>
+        <dd>{model.row.id}</dd>
+        <dt>Name</dt>
+        <dd>{model.row.name}</dd>
+        <dt>Post</dt>
+        <dd>{model.row.post}</dd>
+        <dt>Created</dt>
+        <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
+      </dl>
+    </al-card>
+  </Layout.Page>
+
+test "the page shows the row" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let _ <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post1 }
+  let r <- Test.open (Tags.Show { name: Text.NonEmpty "name-1" })
+  Task.succeed ({ answer: r.answer, name: List.member "name-1" (Test.texts "dd" r.doc) } == { answer: Shown, name: True })
+}
+
+test "a missing row is not found" = {
+  let r <- Test.open (Tags.Show { name: Text.NonEmpty "name-999" })
+  Task.succeed (r.answer == PageMissing)
+}

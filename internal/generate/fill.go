@@ -16,6 +16,9 @@ import (
 // imported (imports: their names); a standard library module needs no import, and a name that
 // is not a module's is left to the check.
 func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, imports []string, err error) {
+	if err := controlChars(expr); err != nil {
+		return nil, nil, nil, err
+	}
 	expr = strings.TrimRight(expr, " \t\r\n")
 	for strings.HasPrefix(expr, "\n") {
 		expr = expr[1:]
@@ -24,7 +27,11 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 		return nil, nil, nil, Refusef("standard input is empty: write the expression that fills the hole")
 	}
 	if _, ds, more, at := syntax.ParseExpr("stdin", []byte(expr)); more != "" {
-		return nil, nil, nil, Refusef("`alder fill` takes one expression; found more after it: %s at line %d, column %d of standard input", more, at.Line, at.Col)
+		hint := ""
+		if more == "`->`" {
+			hint = " (a lambda starts with `\\`: `\\a b -> …`)"
+		}
+		return nil, nil, nil, Refusef("`alder fill` takes one expression; found more after it: %s at line %d, column %d of standard input%s", more, at.Line, at.Col, hint)
 	} else if len(ds) > 0 {
 		return nil, nil, nil, Refusef("`alder fill` takes one expression; standard input does not parse as one: %s (line %d, column %d)", ds[0].Message, ds[0].Span.Start.Line, ds[0].Span.Start.Col)
 	}
@@ -43,6 +50,8 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 		}
 	}
 	switch {
+	case len(in) == 0 && arm != "":
+		return nil, nil, nil, Refusef("`%s` has no typed hole: a fill replaces a hole, and this arm has none; to rewrite it, give `alder fill --decl %s.update -` the whole `match msg { … }` (`alder fill --list` lists the app's holes)", address, mod)
 	case len(in) == 0:
 		return nil, nil, nil, Refusef("`%s` has no typed hole (`alder fill --list` lists the app's holes)", address)
 	case len(named) == 0:
@@ -69,7 +78,7 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 		// expr's statements become that block's, rather than a block in a block
 		e := newSrcEdit(m.Source)
 		e.replaceLine(sp.Start.Line, indent(inner, indentOf(l)))
-		dropGuidance(e, m.Syntax, h.Decl, h.Name == "expected", len(in) == 1)
+		dropGuidance(e, m.Syntax, h.Decl, h.Name == "expected", onlyExpectedLeft(in, h))
 		addImports(e, m.Syntax, fillImports(p, m, expr, &imports))
 		return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
 	}
@@ -85,7 +94,7 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 	}
 	e := newSrcEdit(m.Source)
 	e.replaceLine(sp.Start.Line, before+strings.Join(exprLines, "\n")+after)
-	dropGuidance(e, m.Syntax, h.Decl, h.Name == "expected", len(in) == 1)
+	dropGuidance(e, m.Syntax, h.Decl, h.Name == "expected", onlyExpectedLeft(in, h))
 	addImports(e, m.Syntax, fillImports(p, m, expr, &imports))
 	return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
 }
@@ -377,9 +386,21 @@ func topLevelOperator(expr string) bool {
 	return false
 }
 
+// onlyExpectedLeft reports whether, once h is filled, the holes of its declaration (in) left are
+// at most ?expected: the loop note, which names the clicked row's holes, is then done with.
+func onlyExpectedLeft(in []Hole, h *Hole) bool {
+	for i := range in {
+		if in[i].Span != h.Span && in[i].Name != "expected" {
+			return false
+		}
+	}
+	return true
+}
+
 // dropGuidance removes the comments `alder new msg` writes above a test it generates, once
 // they are done with: the paragraph saying what to fill ?expected with (expected: that hole
-// was filled), and the note on the rows of a loop (all: the test has no hole left). decl is
+// was filled), and the note on the rows of a loop (all: the test has no hole left but
+// ?expected, so the clicked row's holes the note names are filled). decl is
 // the test's name in quotes; any other declaration is left alone.
 func dropGuidance(e *srcEdit, m *syntax.Module, decl string, expected, all bool) {
 	for _, d := range m.Decls {
@@ -404,4 +425,23 @@ func dropGuidance(e *srcEdit, m *syntax.Module, decl string, expected, all bool)
 			}
 		}
 	}
+}
+
+// controlChars refuses standard input holding a control character other than a tab or a line
+// end: what a shell's `echo` makes of the backslash escapes in a lambda (`echo '\from to -> …'`
+// writes a form feed and `rom`; `\a` a bell, `\b` a backspace, `\v` a vertical tab). The
+// expression lost its backslash: a here-document (`<<'EOF'`) or `printf '%s\n'` keeps it.
+func controlChars(src string) error {
+	line, col := 1, 0
+	for _, r := range src {
+		col++
+		switch {
+		case r == '\n':
+			line, col = line+1, 0
+		case r == '\t' || r == '\r':
+		case r < 0x20 || r == 0x7f:
+			return Refusef("standard input has the control character U+%04X at line %d, column %d: a shell's `echo` turns `\\f`, `\\a`, `\\b` and `\\v` into control characters (so `\\from` became a form feed and `rom`); pass the expression in a here-document (`<<'EOF'`) or with `printf '%%s\\n'`", r, line, col)
+		}
+	}
+	return nil
 }

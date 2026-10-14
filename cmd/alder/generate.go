@@ -323,23 +323,23 @@ func parseFields(g genArgs, args []string, table bool, cmd string, stdout, stder
 	return fields, true
 }
 
-const newPageUsage = "usage: alder new page <Module> <path> [--list T | --show T | --from T …] [--blank] [--requires user] [--role R] [--dir app] [--json] [--dry-run]"
+const newPageUsage = "usage: alder new page <Module> <path> [--list T | --show T [--by <unique column>] | --from T …] [--blank] [--param <name>:<Type> …] [--requires user] [--role R] [--dir app] [--json] [--dry-run]"
 
 // runNewPageTo is `alder new page`.
 func runNewPageTo(args []string, stdout, stderr io.Writer) int {
-	g, err := parseGenArgs(args, []string{"list", "show", "requires", "role"}, []string{"from"}, []string{"blank"})
+	g, err := parseGenArgs(args, []string{"list", "show", "requires", "role", "param", "by"}, []string{"from"}, []string{"blank"})
 	if err != nil || len(g.pos) != 2 {
 		return genUsage(stderr, newPageUsage, err)
 	}
-	o := generate.PageOptions{Module: g.pos[0], Path: g.pos[1], List: g.flag("list"), Show: g.flag("show"), From: g.flags["from"], Requires: g.flag("requires"), Role: g.flag("role"), Blank: g.has("blank")}
+	o := generate.PageOptions{Module: g.pos[0], Path: g.pos[1], List: g.flag("list"), Show: g.flag("show"), From: g.flags["from"], Requires: g.flag("requires"), Role: g.flag("role"), Blank: g.has("blank"), Params: g.flags["param"], By: g.flag("by")}
 	return runGenerator("alder new page", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) { return generate.NewPage(p, o) }, stdout, stderr)
 }
 
-const newTableUsage = "usage: alder new table <Name> <field>:<Type>[=default][@attr[=arg]…] … [--dir app] [--json] [--dry-run]"
+const newTableUsage = "usage: alder new table <Name> <field>:<Type>[=default][@attr[=arg]…] … [--no-timestamps] [--dir app] [--json] [--dry-run]"
 
 // runNewTableTo is `alder new table`.
 func runNewTableTo(args []string, stdout, stderr io.Writer) int {
-	g, err := parseGenArgs(args, nil, nil, nil)
+	g, err := parseGenArgs(args, nil, nil, []string{"no-timestamps"})
 	if err != nil || len(g.pos) < 1 {
 		return genUsage(stderr, newTableUsage, err)
 	}
@@ -348,7 +348,7 @@ func runNewTableTo(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return runGenerator("alder new table", g, generate.Options{Migrate: migrateCopy}, func(p *generate.Program) ([]generate.Edit, error) {
-		return generate.NewTable(p, g.pos[0], fields)
+		return generate.NewTableWith(p, g.pos[0], fields, generate.TableOptions{NoTimestamps: g.has("no-timestamps")})
 	}, stdout, stderr)
 }
 
@@ -364,11 +364,11 @@ func runNewAdminTo(args []string, stdout, stderr io.Writer) int {
 	return runGenerator("alder new admin", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) { return generate.NewAdmin(p, o) }, stdout, stderr)
 }
 
-const newFormUsage = "usage: alder new form <Page module> <Name> <field>:<Type>[=default] … [--into T] [--dir app] [--json] [--dry-run]"
+const newFormUsage = "usage: alder new form <Page module> <Name> <field>:<Type>[=default] … [--into T] [--msg <Msg>] [--dir app] [--json] [--dry-run]"
 
 // runNewFormTo is `alder new form`.
 func runNewFormTo(args []string, stdout, stderr io.Writer) int {
-	g, err := parseGenArgs(args, []string{"into"}, nil, nil)
+	g, err := parseGenArgs(args, []string{"into", "msg"}, nil, nil)
 	if err != nil || len(g.pos) < 2 {
 		return genUsage(stderr, newFormUsage, err)
 	}
@@ -376,15 +376,15 @@ func runNewFormTo(args []string, stdout, stderr io.Writer) int {
 	if !ok {
 		return 1
 	}
-	o := generate.FormOptions{Page: g.pos[0], Name: g.pos[1], Fields: fields, Into: g.flag("into")}
+	o := generate.FormOptions{Page: g.pos[0], Name: g.pos[1], Fields: fields, Into: g.flag("into"), Msg: g.flag("msg")}
 	return runGenerator("alder new form", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) { return generate.NewForm(p, o) }, stdout, stderr)
 }
 
-const newMsgUsage = "usage: alder new msg <Page module> <Name> [<field>:<Type> …] [--in-for <binder>] [--when <Bool expression>] [--dir app] [--json] [--dry-run]"
+const newMsgUsage = "usage: alder new msg <Page module> <Name> [<field>:<Type> …] [--in-for <binder>] [--when <Bool expression>] [--id <id>] [--dir app] [--json] [--dry-run]"
 
 // runNewMsgTo is `alder new msg`.
 func runNewMsgTo(args []string, stdout, stderr io.Writer) int {
-	g, err := parseGenArgs(args, []string{"in-for", "when"}, nil, nil)
+	g, err := parseGenArgs(args, []string{"in-for", "when", "id"}, nil, nil)
 	if err != nil || len(g.pos) < 2 {
 		return genUsage(stderr, newMsgUsage, err)
 	}
@@ -393,7 +393,7 @@ func runNewMsgTo(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return runGenerator("alder new msg", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
-		return generate.NewMsg(p, g.pos[0], g.pos[1], fields, generate.MsgOptions{InFor: g.flag("in-for"), When: g.flag("when")})
+		return generate.NewMsg(p, g.pos[0], g.pos[1], fields, generate.MsgOptions{InFor: g.flag("in-for"), When: g.flag("when"), ID: g.flag("id")})
 	}, stdout, stderr)
 }
 

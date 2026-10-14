@@ -4,7 +4,13 @@ type Model = { row: [[.T]] }
 
 load : Params -> Session -> Query Model
 load params session = {
-[[- if .Mine]]
+[[- if .By]]
+  let found <- [[.Select]] |> Db.where ([[.T]].[[.By]].eq params.[[.By]]) |> Db.first
+  match found {
+    Just row -> Query.succeed { row: row },
+    Nothing -> Query.notFound,
+  }
+[[- else if .Mine]]
   let row <- Db.getMine [[.T]] params.id
   Query.succeed { row: row }
 [[- else]]

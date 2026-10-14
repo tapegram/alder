@@ -1,0 +1,50 @@
+edited app/Home.alder
+--- a/app/Home.alder
++++ b/app/Home.alder
+@@ -20,12 +20,15 @@
+ 
+ msg Submit form Sign
+ 
++msg Clear
++
+ update : Msg -> Model -> Session -> Task Nav
+ update msg model session = match msg {
+   Submit p -> {
+     let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
+     Task.succeed (Redirect (Home {}))
+   },
++  Clear p -> ?clear,
+ }
+ 
+ view : Model -> Session -> Html Msg
+@@ -45,6 +48,8 @@
+     <ul id="entries">
+       {for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}
+     </ul>
++
++    <al-button id="clear" click={Clear}>Clear</al-button>
+   </Layout.Page>
+ 
+ test "signing adds an entry" = {
+@@ -61,3 +66,15 @@
+   let page <- Test.get (Home {})
+   Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
+ }
++
++-- Fill ?expected with what pressing Clear must do, so that a test fails when the arm
++-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
++-- changed (`after`: the page opened again, `after.answer` Shown, or PageMissing when the arm
++-- deleted the page's row, and `after.doc` its HTML), as
++-- `{ answer: r.answer, … } == { answer: Rerendered, … }`.
++test "pressing Clear" = {
++  let _ <- Test.get (Home {})
++  let r <- Test.click Clear
++  let after <- Test.open (Home {})
++  Task.succeed ?expected
++}
+app/Home.alder:31:14: warning[W0002]: hole ?clear has type Task Nav
+    Clear p -> ?clear,
+               ^^^^^^
+app/Home.alder:79:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^

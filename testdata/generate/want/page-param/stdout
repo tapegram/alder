@@ -1,0 +1,4 @@
+wrote app/Tags/Show.alder
+app/Tags/Show.alder:10:23: warning[W0002]: hole ?load has type Query Tags.Show.Model
+  load params session = ?load
+                        ^^^^^

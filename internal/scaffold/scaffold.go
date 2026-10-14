@@ -65,6 +65,23 @@ func fill(p, name string) []byte {
 	return []byte(strings.ReplaceAll(string(b), "{{name}}", name))
 }
 
+// BareFiles are Files without the guestbook: the `App` module (an empty session, the error
+// and not-found pages), the `Layout`, the stylesheet, the .gitignore, the adapters/ README (and
+// the go.mod when withGoMod is set) — no page, no table, no tests, no README of the guestbook.
+// `alder new <name> --bare` writes them, for an app whose every page and table the generators
+// make.
+func BareFiles(name string, withGoMod bool) []File {
+	var out []File
+	for _, f := range Files(name, withGoMod) {
+		switch f.Path {
+		case "app/Home.alder", "app/Entry.alder", "README.md":
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
 var nameRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
 
 // ValidName reports whether name can name an app: letters, digits and `-`, starting with a

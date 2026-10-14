@@ -1,0 +1,110 @@
+{
+  "format": "1",
+  "tables": [
+    {
+      "name": "Post.Post",
+      "id": "id",
+      "created": "created",
+      "updated": "updated",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "title",
+          "type": "Text"
+        },
+        {
+          "name": "body",
+          "type": "Text"
+        },
+        {
+          "name": "status",
+          "type": "Enum",
+          "enum": [
+            "Draft",
+            "Published"
+          ],
+          "default": "'Draft'"
+        },
+        {
+          "name": "featured",
+          "type": "Bool",
+          "default": "0"
+        },
+        {
+          "name": "author",
+          "type": "Text",
+          "ref": "User.User"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        },
+        {
+          "name": "updated",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "Tag.Tag",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "name",
+          "type": "Text",
+          "unique": true
+        },
+        {
+          "name": "post",
+          "type": "Text",
+          "ref": "Post.Post"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "User.User",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "email",
+          "type": "Text",
+          "unique": true
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        },
+        {
+          "name": "role",
+          "type": "Enum",
+          "enum": [
+            "Reader",
+            "Admin"
+          ],
+          "default": "'Reader'"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    }
+  ]
+}

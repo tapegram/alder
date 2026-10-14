@@ -16,6 +16,9 @@ import (
 // refused. A module of the app src names is imported, as Fill does. It is the escape from "holes
 // only" (chapter 15): still one declaration at a time, still typed and checked.
 func FillDecl(p *Program, address, src string) (edits []Edit, imports []string, err error) {
+	if err := controlChars(src); err != nil {
+		return nil, nil, err
+	}
 	src = strings.TrimRight(src, " \t\r\n")
 	for strings.HasPrefix(src, "\n") {
 		src = src[1:]

@@ -1,0 +1,9 @@
+module Tag
+
+type TagId = brand Text
+
+table Tag {
+  id: TagId @id,
+  name: Text.NonEmpty,
+  created: Time @created,
+}

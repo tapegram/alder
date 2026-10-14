@@ -14,12 +14,14 @@ import (
 )
 
 // newUsage is the usage line of `alder new`.
-const newUsage = "usage: alder new <name>  (or a path ending in the name: alder new apps/<name>), or alder new page|table|form|msg|capability|admin … (a generator)"
+const newUsage = "usage: alder new <name> [--bare]  (or a path ending in the name: alder new apps/<name>), or alder new page|table|form|msg|capability|admin|auth|type|decl|test … (a generator)"
 
 // runNewTo is `alder new <dir>`: it writes the scaffold (internal/scaffold, the book's
 // guestbook) into dir, whose last element is the app's name, then runs the migration generator
 // on it (runMigrateTo, so migrations/ is exactly what `alder migrate` writes), and prints the
-// files and the five commands to try. The name must be letters, digits and `-`, starting with a
+// files and the five commands to try. With --bare the app is the scaffold without the
+// guestbook (scaffold.BareFiles: App, Layout, the stylesheet, adapters/; no page, no table, no
+// migration), for an app built with the generators from nothing. The name must be letters, digits and `-`, starting with a
 // letter; dir must not exist or be empty. When dir is inside another Go module (a go.mod above
 // it), the app gets a go.mod of its own that keeps it out of that module, as the examples have.
 // Exit 0 on success; 1 for a refused name or directory; 2 for usage errors and files that
@@ -36,6 +38,16 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 			return run(args[1:], stdout, stderr)
 		}
 	}
+	bare := false
+	var rest []string
+	for _, a := range args {
+		if a == "--bare" || a == "-bare" {
+			bare = true
+			continue
+		}
+		rest = append(rest, a)
+	}
+	args = rest
 	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
 		fmt.Fprintln(stderr, newUsage)
 		return 2
@@ -83,7 +95,11 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 		return 2
 	}
 	var written []string
-	for _, f := range scaffold.Files(name, parent != "") {
+	files := scaffold.Files(name, parent != "")
+	if bare {
+		files = scaffold.BareFiles(name, parent != "")
+	}
+	for _, f := range files {
 		p := filepath.Join(dir, filepath.FromSlash(f.Path))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return fail(err)
@@ -97,7 +113,9 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 	if c := runMigrateTo([]string{dir}, &mout, &mout); c != 0 {
 		return fail(fmt.Errorf("the migration generator failed on the scaffold:\n%s", mout.String()))
 	}
-	written = append(written, "migrations/0001_initial.sql", "migrations/schema.json")
+	if !bare { // a bare app has no table: nothing to migrate yet
+		written = append(written, "migrations/0001_initial.sql", "migrations/schema.json")
+	}
 
 	fmt.Fprintf(stdout, "created %s/\n", dir)
 	slices.Sort(written)
@@ -106,6 +124,14 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	if parent != "" {
 		fmt.Fprintf(stdout, "go.mod keeps the app out of the Go module of %s\n", parent)
+	}
+	if bare {
+		fmt.Fprintf(stdout, "\nnext:\n  cd %s\n", dir)
+		fmt.Fprintln(stdout, "  alder new table …      # the app's tables (chapter 15)")
+		fmt.Fprintln(stdout, "  alder new page …       # its pages")
+		fmt.Fprintln(stdout, "  alder new auth         # a login")
+		fmt.Fprintln(stdout, "  alder check            # type-check the app")
+		return 0
 	}
 	fmt.Fprintf(stdout, "\nnext:\n  cd %s\n", dir)
 	fmt.Fprintln(stdout, "  alder check            # type-check the app")
