@@ -125,9 +125,26 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]
 					}
 				}
 			}
+			if loop != nil { // which row the loop shows is the page's logic: the author's to say
+				v = "?" + LowerFirst(name) + UpperFirst(f.Name)
+			}
 			args = append(args, f.Name+": "+v)
 		}
 		click = "(" + name + " { " + strings.Join(args, ", ") + " })"
+	}
+	var loopNote []string
+	if loop != nil {
+		var holes []string
+		for _, f := range fields {
+			holes = append(holes, "?"+LowerFirst(name)+UpperFirst(f.Name))
+		}
+		loopNote = []string{
+			"The button is in the view's `{for " + o.InFor + " in " + sliceSpan(m.Syntax.Lines, loop.List.GetSpan()) + " …}`: insert rows so that the",
+			"signed-in user sees the row this clicks, and fill " + strings.Join(holes, ", ") + " with that row's values.",
+		}
+		if len(holes) == 0 {
+			loopNote[1] = "signed-in user sees a row to click."
+		}
 	}
 	changed := "changed (`after`, the row read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`."
 	if reread == "" { // the page opened again, whatever its answer: an arm may delete the page's row
@@ -137,10 +154,11 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]
 			"`{ answer: r.answer, … } == { answer: Rerendered, … }`."
 	}
 	lines := append(tb.lines, "let _ <- Test.get ("+pv+")", "let r <- Test.click "+click, reread)
-	comment := append([]string{
+	comment := append(loopNote, []string{
 		"Fill ?expected with what pressing " + name + " must do, so that a test fails when the arm",
 		"does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it",
-	}, strings.Split(changed, "\n")...)
+	}...)
+	comment = append(comment, strings.Split(changed, "\n")...)
 	test := TestData{Name: quote("pressing " + name), Lines: lines, Result: "?expected", Comment: comment}
 	if err := addTests(e, m, []TestData{test}); err != nil {
 		return nil, err

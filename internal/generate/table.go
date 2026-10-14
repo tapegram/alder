@@ -27,8 +27,18 @@ func NewTable(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
 	if !IsUpperIdent(name) {
 		return nil, Refusef("`%s` is not a table name: a table is named by one capitalised identifier, such as `Tag`, and declared in the module of that name", name)
 	}
-	if m := p.Modules[name]; m != nil {
-		return nil, Refusef("module `%s` exists (`%s`): a generator never overwrites a file; choose another table name", name, m.File)
+	m := p.Modules[name]
+	if m != nil { // a module of types only (`alder new type User "Role = …"`) takes its table
+		for _, d := range m.Syntax.Decls {
+			if _, ok := d.(*syntax.TableDecl); ok {
+				return nil, Refusef("module `%s` exists (`%s`) and declares a table: a generator never overwrites a file; choose another table name", name, m.File)
+			}
+		}
+		for _, n := range []string{name, name + "Id"} {
+			if declared(m.Syntax, n) {
+				return nil, Refusef("module `%s` already declares `%s`: the table needs the name", name, n)
+			}
+		}
 	}
 	imports := newImports(name, p.Std)
 	d := TableData{Name: name}
@@ -53,20 +63,32 @@ func NewTable(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
 	}
 	d.Imports = imports.list()
 	file := FileOf(name)
+	edit := func() Edit {
+		body := render("table.tmpl", d)
+		if m == nil {
+			return Edit{Path: file, Create: true, Body: body}
+		}
+		// in the module: what follows the template's `module` and imports, after its declarations
+		_, rest, _ := strings.Cut(body, "type "+name+"Id = brand Text")
+		e := newSrcEdit(m.Source)
+		e.appendText("\ntype " + name + "Id = brand Text" + strings.TrimRight(rest, "\n"))
+		addImports(e, m.Syntax, d.Imports)
+		return Edit{Path: m.File, Body: e.result()}
+	}
 
 	// the tests of its delete rules, from the checked table
-	probe, err := Probe(p.Dir, []Edit{{Path: file, Create: true, Body: render("table.tmpl", d)}})
+	probe, err := Probe(p.Dir, []Edit{edit()})
 	if err != nil {
 		return nil, err
 	}
-	if r := probe.errorsIn(file); r != nil {
+	if r := probe.errorsIn(edit().Path); r != nil {
 		return nil, r
 	}
 	if t := probe.TableNamed(name); t != nil {
 		d.Tests = deleteRuleTests(probe, t, imports)
 	}
 	d.Imports = imports.list()
-	return []Edit{{Path: file, Create: true, Body: render("table.tmpl", d)}}, nil
+	return []Edit{edit()}, nil
 }
 
 // deleteRuleTests are the tests of t's references' delete rules (chapter 8): with `@cascade`,

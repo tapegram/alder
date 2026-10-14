@@ -15,8 +15,8 @@ hand. `alder new page`, `alder new table`, `alder new form`, `alder new
 msg`, `alder new capability`, `alder new type`, `alder new decl` and
 `alder new test` each write one piece, and `alder new auth` the login.
 `alder edit table` changes a table and writes its migration, `alder edit
-page` a page's parameters. `alder fill` fills a gap the others leave. `alder new admin` writes all of the pieces for every table
-at once: a complete admin, with a list, a page, a form and a delete page
+page` a page's parameters. `alder fill` fills a gap the others leave.
+`alder new admin` writes all of the pieces for every table at once: a complete admin, with a list, a page, a form and a delete page
 per table, and `alder regen admin` keeps that admin up to date as the
 tables change.
 
@@ -26,8 +26,8 @@ is an agent (an AI model) building an app from the command line. For an
 agent the commands are the interface: it asks for a page or a table by
 name and type, and gets back code that already checks and already has
 tests. The only free text it writes is one typed expression at a time,
-through `alder fill`. The last section, "AI only in small, typed,
-checked gaps", explains why.
+a body, through `alder fill`. The last section, "AI only in typed,
+checked bodies", explains why.
 
 Everything a generator writes is ordinary Alder. There is no hidden
 framework: you can open each file, read it, and change it, and the
@@ -579,7 +579,8 @@ declaration has more than one hole, `--hole ?name` picks one. The
 expression may contain holes of its own, which `fill` lists, to be
 filled next.
 
-The test's verdict:
+The test's verdict (the comment that said what to put there goes with
+the hole):
 
 ```text command=guestbook
 $ alder fill 'Replies.Show."pressing Delete"' - <<'EOF'
@@ -588,7 +589,18 @@ EOF
 edited app/Replies/Show.alder
 --- a/app/Replies/Show.alder
 +++ b/app/Replies/Show.alder
-@@ -75,5 +75,5 @@
+@@ -64,16 +64,11 @@
+   Task.succeed (r.answer == PageMissing)
+ }
+ 
+--- Fill ?expected with what pressing Delete must do, so that a test fails when the arm
+--- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
+--- changed (`after`: the page opened again, `after.answer` Shown, or PageMissing when the arm
+--- deleted the page's row, and `after.doc` its HTML), as
+--- `{ answer: r.answer, … } == { answer: Rerendered, … }`.
+ test "pressing Delete" = {
+   let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
+   let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
    let _ <- Test.get (Replies.Show { id: reply1 })
    let r <- Test.click Delete
    let after <- Test.open (Replies.Show { id: reply1 })
@@ -2174,8 +2186,8 @@ func Check(stored, pw string) (bool, error) {
 		return false, errors.New("auth: the stored password hash has a bad salt")
 	}
 	want, err := enc.DecodeString(parts[3])
-	if err != nil || len(want) == 0 {
-		return false, errors.New("auth: the stored password hash has a bad hash")
+	if err != nil || len(want) < 16 {
+		return false, errors.New("auth: the stored password hash has a bad hash (under 16 bytes)")
 	}
 	got, err := pbkdf2.Key(sha256.New, pw, salt, iter, len(want))
 	if err != nil {
@@ -2185,12 +2197,24 @@ func Check(stored, pw string) (bool, error) {
 }
 ```
 
-`Verify` finds the row the way the blog's development stub does
-(chapter 14): it reads the `User` table through the store in the
-running task's context, in the task's transaction. Its tests,
-`login_password_test.go`, run with `go test ./adapters/...` in the
-built app (chapter 7): a round trip, a wrong password, an unknown email,
-another iteration count, a changed key and nine malformed texts.
+A stored key shorter than 16 bytes is malformed too: a truncated hash
+would make guessing cheap. `Verify` finds the row the way the blog's
+development stub does (chapter 14): it reads the `User` table through
+the store in the running task's context, in the task's transaction.
+When a login verifies against a hash made with fewer iterations than
+the adapter's count now, it stores a new hash, made with the current
+count, in the same transaction: raising `iterations` upgrades every
+user at their next login. Its tests, `login_password_test.go`, run with
+`go test ./adapters/...` in the built app (chapter 7): a round trip, a
+wrong password, an unknown email (which derives against the dummy hash
+all the same), the upgrade of an old hash, another iteration count, a
+changed key and ten malformed texts.
+
+The slowness is the point, and it has a cost: each attempt takes about
+60 ms of CPU, so a server that lets anyone post `/login` as fast as they
+like lets them use its CPU too. Put a rate limit in front of `/login`
+(per address and per email) in the proxy or load balancer the app runs
+behind.
 
 ## Types, values and tests: `alder new type`, `decl`, `test`
 
@@ -2362,7 +2386,9 @@ form a test submits. The checker refuses the first (the view still
 sends the message: a `match` must be exhaustive), and the tests catch
 the second. Use it for what has no hole: a `Model`, a body a template
 wrote that does not fit, a generated test whose setup does not fit the
-page's rules.
+page's rules. A test rewritten whole is checked for its types only, not
+for what it asserts, and `fill --decl` says so, naming `alder test
+--mutate` as the check that it still tests something.
 
 ## Buttons in a list, and page parameters
 
@@ -2386,7 +2412,14 @@ edited app/Home.alder
 
 A button in a loop has its message's name as its class (`hide`), so a
 test can count the rows' buttons (`Test.count "#entries .hide"
-page.doc`). Its arm and test verdict are holes, as for any message.
+page.doc`). Its arm and test verdict are holes, as for any message, and
+so is the row the test clicks (`Hide { id: ?hideId }`): which rows the
+loop shows is the page's logic (a team's members, but not its owner;
+the invites to the user's email that wait), which the generator cannot
+know. A comment above the test names the loop's list (`model.entries`)
+and says what to do: insert rows so that the signed-in user sees the
+row it clicks, and fill the hole with that row's values. `fill` drops
+the generator's comments once their holes are filled.
 
 `alder edit page <Page> add-param <name>:<Type>[=default]` adds a
 parameter to a page: a query parameter, such as a search box's `q`:
@@ -2688,7 +2721,10 @@ EOF
 `/invites`. `Row` is a record type, so `new type` declares it. The
 binder `r` of the invites' loop is a `Row`, which has no `id`, so
 `--in-for r` leaves the hole `?acceptId`, filled with `r.invite.id`
-(the second fill names no hole: one is left):
+(the second fill names no hole: one is left). In the generated test,
+which row to click is a hole too (`?acceptId` again, in the test), since
+which rows the loop shows is the page's logic: the test inserted an
+invite to the signed-in user's email, `invite1`:
 
 ```text
 # /invites: the invites to the user's email that wait for an answer, to accept or decline
@@ -2734,7 +2770,7 @@ alder fill --decl Invites.Index.view - <<'EOF'
 EOF
 alder new msg Invites.Index Accept id:Invite.InviteId --in-for r
 alder new msg Invites.Index Decline id:Invite.InviteId --in-for r
-alder fill Invites.Index.view - --hole ?acceptId <<'EOF'
+alder fill Invites.Index.view - --hole '?acceptId' <<'EOF'
 r.invite.id
 EOF
 alder fill Invites.Index.view - <<'EOF'
@@ -2765,8 +2801,14 @@ alder fill Invites.Index.update.Decline - <<'EOF'
   Task.succeed (Redirect (Invites.Index {}))
 }
 EOF
+alder fill 'Invites.Index."pressing Accept"' - --hole '?acceptId' <<'EOF'
+invite1
+EOF
 alder fill 'Invites.Index."pressing Accept"' - <<'EOF'
 { answer: r.answer, status: Maybe.map (\i -> i.status) after } == { answer: Redirected (Teams.Show { id: team1 }), status: Just Accepted }
+EOF
+alder fill 'Invites.Index."pressing Decline"' - --hole '?declineId' <<'EOF'
+invite1
 EOF
 alder fill 'Invites.Index."pressing Decline"' - <<'EOF'
 { answer: r.answer, status: Maybe.map (\i -> i.status) after } == { answer: Redirected (Invites.Index {}), status: Just Declined }
@@ -2883,7 +2925,7 @@ app/Replies.alder:97:54: error[E0003]: record `Reply.Insert Reply` is missing fi
 app/Replies/Show.alder:57:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
     let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Replies/Show.alder:74:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
+app/Replies/Show.alder:69:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
     let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/Reply.alder:19:28: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
@@ -3053,27 +3095,41 @@ the tables, which you mostly leave as it is, and touch here and there.
 Regions make the boundary between the generator's lines and yours
 visible in the file itself, and `regen` respects it.
 
-## AI only in small, typed, checked gaps
+## AI only in typed, checked bodies
 
-Look again at what the generators leave to their user. A page, a
-table, a form, a message, the admin: each is written whole, from a name
-and a few types, by code that does the same thing every time. The only
-places left open are holes, each with a type the checker computed:
-`?hide : Task Nav`, `?expected : Bool`. And the only way to fill one
-from the command line is `alder fill`, which takes one expression,
-checks the whole app with it, and writes nothing if it does not check.
+Look again at what the commands leave to their user. Every declaration
+is a command's: a module, a table and its migration, a type, a page and
+its path and rules, a form, a message, a value's name and signature, a
+test's name. So is every structure that ties them together: the
+`update`'s arms, the forms in the view, the session, the login, the
+imports. What is left open is bodies. A hole is the smallest:
+`?hide : Task Nav`, `?expected : Bool`, a type the checker computed.
+`--blank` and `fill --decl` hand over larger ones, a whole `load`, a
+whole view, a whole test. Each is still **one expression** (or one
+type), read from standard input, checked with the whole app, and written
+only if it checks.
 
-That is the design for an agent. A language model is good at writing a
-small expression that does one stated thing, and bad at keeping a large
-structure consistent over many edits. So the structure (the module, the
-types, the routes, the forms, the rules, the tests) comes from the
-generators, deterministic and tested, and the model fills the gaps,
-each small, each with a type that says what is wanted, each checked
-before it is kept. A wrong fill costs one refusal with the checker's
-message, not a broken app. The experiment E11, "CLI-only development",
-measures this: an agent builds apps with these commands and `alder
-fill` alone, reading their `--json` output, and never edits a file
-directly.
+The drill above shows the proportions. Of the 733 lines of the teams
+app's `app/` (643 without the guestbook it started as), 246 came from
+standard input, 128 of them in tests; the largest body is 18 lines (a
+test's block), and no body holds a declaration: none can, since a body
+is an expression. The other lines, every declaration and every
+connection between them, the commands wrote.
+
+That is the design for an agent. A language model is good at writing an
+expression that does one stated thing, and bad at keeping a large
+structure consistent over many edits. So the structure comes from the
+generators, deterministic and tested, and the model writes bodies, each
+with a type that says what is wanted. The consequence: a **structural**
+error (a page without its route, an arm without its message, a form the
+view does not post, a table without its migration, an import missing)
+cannot be made, because no command writes one and the agent writes
+nothing else; a **logic** error (a wrong condition, a wrong row) is
+the checker's, the tests' and `alder test --mutate`'s to catch. A wrong
+body costs one refusal with the checker's message, not a broken app.
+The experiment E11, "CLI-only development", measures this: an agent
+builds apps with these commands alone, reading their `--json` output,
+and never edits a file directly.
 
 The same commands are what another tool would wrap. Olifant, a generator
 engine, can drive Alder through a thin pack of its own: each Olifant

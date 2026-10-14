@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"alder/internal/generate"
 )
@@ -64,6 +65,10 @@ func runFillTo(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		for _, m := range imports {
 			fmt.Fprintf(stdout, "%s import %s to %s\n", verb, m, file)
+		}
+		if g.has("decl") && strings.Contains(g.pos[0], `."`) {
+			// the checker checks a test's types, not what it asserts
+			fmt.Fprintln(stdout, "rewriting a test: `alder test --mutate` is the check that it still tests something")
 		}
 	}
 	return code

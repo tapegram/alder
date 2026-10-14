@@ -205,7 +205,7 @@ var genCases = []genCase{
 	{name: "fixture-page-blank-show", base: "fixture", args: []string{"new", "page", "Posts.Edit", "/posts/edit", "--show", "Post", "--blank", "--requires", "user"}, test: true,
 		fills: [][2]string{{"Posts.Edit.load", "Query.succeed { }"}, {"Posts.Edit.view", "<al-page><h1>Edit</h1></al-page>"}}},
 	{name: "msg-in-for", base: "scaffold", args: []string{"new", "msg", "Home", "Hide", "id:Entry.EntryId", "--in-for", "e", "--when", "List.length model.entries > 0"}, test: true,
-		fills: [][2]string{{"Home.update.Hide", "Task.succeed Rerender"}, {`Home."pressing Hide"`, "{ answer: r.answer, found: Maybe.map (\\x -> x.id) after } == { answer: Rerendered, found: Just entry1 }"}}},
+		fills: [][2]string{{"Home.update.Hide", "Task.succeed Rerender"}, {`Home."pressing Hide" --hole ?hideId`, "entry1"}, {`Home."pressing Hide"`, "{ answer: r.answer, found: Maybe.map (\\x -> x.id) after } == { answer: Rerendered, found: Just entry1 }"}}},
 	{name: "edit-page-param", base: "scaffold", args: []string{"edit", "page", "Home", "add-param", `q:Text=""`}, test: true},
 }
 
@@ -232,7 +232,11 @@ func TestGenerate(t *testing.T) {
 				return
 			}
 			for _, f := range c.fills {
-				if code, out, errs := alderIn(t, dir, f[1], "fill", f[0], "-"); code != 0 {
+				args := []string{"fill", f[0], "-"}
+				if addr, hole, ok := strings.Cut(f[0], " --hole "); ok { // `Module."test" --hole ?x`
+					args = []string{"fill", addr, "-", "--hole", hole}
+				}
+				if code, out, errs := alderIn(t, dir, f[1], args...); code != 0 {
 					t.Fatalf("alder fill %s: exit %d\n%s%s", f[0], code, out, errs)
 				}
 			}
@@ -337,7 +341,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "page", "About", "/about", "--requires", "user"}, "", "alder new page: `--requires user` needs a session with a `user` field (`session { user: Maybe User.UserId }` in `App`): this app's session has none"},
 		{"fixture", []string{"new", "page", "About", "/about", "--requires", "admin"}, "", "alder new page: `--requires admin`: a generated page can require `user`, the session's signed-in user"},
 		{"fixture", []string{"new", "page", "About", "/about", "--role", "Editor"}, "", "alder new page: `--role Editor`: `Editor` is not a constructor of the session's `role` type `User.Role` (Reader, Admin)"},
-		{"scaffold", []string{"new", "table", "Entry", "x:Int"}, "", "alder new table: module `Entry` exists (`app/Entry.alder`): a generator never overwrites a file; choose another table name"},
+		{"scaffold", []string{"new", "table", "Entry", "x:Int"}, "", "alder new table: module `Entry` exists (`app/Entry.alder`) and declares a table: a generator never overwrites a file; choose another table name"},
 		{"scaffold", []string{"new", "table", "Tag", "id:Int"}, "", "alder new table: field `id`: the generator writes the id, `id: TagId @id`; leave it out"},
 		{"scaffold", []string{"new", "table", "Tag", "name"}, "", "alder new table: `name` is not a field: write `name:Type`, such as `title:Text.NonEmpty`"},
 		{"scaffold", []string{"new", "form", "Home", "Sign", "name:Text"}, "", "alder new form: `Home` already declares `Sign`: choose another form name"},
@@ -367,6 +371,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "auth", "--role", "Role"}, "", "alder new auth: `--role Role`: module `User` has no union `Role` of constructors without payloads: `alder new type User \"Role = Member | Admin\"` makes one"},
 		{"scaffold", []string{"new", "type", "Entry", "Entry = A | B"}, "", "alder new type: `Entry` already declares `Entry`: choose another name"},
 		{"scaffold", []string{"new", "type", "Entry", "Mood ="}, "", "alder new type: `type Mood =` is not a type declaration: "},
+		{"scaffold", []string{"new", "type", "Entry", "Slug = Text where Text.matches \"^[a-z]+$\""}, "", "alder new type: `type Slug = Text where Text.matches \"^[a-z]+$\"` is not a type declaration: a brand is written `Slug = brand Text where …` (chapter 4), or `Slug = brand Text` without a check"},
 		{"scaffold", []string{"new", "type", "entry", "Mood = A"}, "", "alder new type: `entry` is not a module name"},
 		{"scaffold", []string{"new", "decl", "Home", "load", "Int"}, "", "alder new decl: `Home` already declares `load`: choose another name, or `alder fill --decl Home.load` to replace its body"},
 		{"scaffold", []string{"new", "decl", "Nope", "x", "Int"}, "", "alder new decl: there is no module `Nope`"},
@@ -626,7 +631,8 @@ func TestGenerate_FillDecl(t *testing.T) {
 		t.Fatalf("view: exit %d\n%s%s", code, out, errs)
 	}
 	test := "{\n  let page <- Test.get (Home {})\n  Task.succeed (Test.text \"h1\" page.doc == Just \"The guestbook\")\n}"
-	if code, out, errs := alderIn(t, dir, test, "fill", "--decl", `Home."signing adds an entry"`, "-"); code != 0 || !strings.Contains(out, "+  Task.succeed (Test.text \"h1\" page.doc == Just \"The guestbook\")\n") {
+	if code, out, errs := alderIn(t, dir, test, "fill", "--decl", `Home."signing adds an entry"`, "-"); code != 0 || !strings.Contains(out, "+  Task.succeed (Test.text \"h1\" page.doc == Just \"The guestbook\")\n") ||
+		!strings.HasSuffix(out, "rewriting a test: `alder test --mutate` is the check that it still tests something\n") {
 		t.Fatalf("a test: exit %d\n%s%s", code, out, errs)
 	}
 	if code, out, errs := alderIn(t, dir, "", "test"); code != 0 || !strings.HasSuffix(out, "2 passed, 0 failed\n") {
@@ -668,9 +674,32 @@ func TestGenerate_AuthAdapter(t *testing.T) {
 	if err != nil || !strings.Contains(string(testOut), "ok  \tapp/adapters/auth") {
 		t.Fatalf("go test ./adapters/...: %v\n%s", err, testOut)
 	}
-	for _, name := range []string{"TestHash_RoundTrip", "TestVerify", "TestCheck_StoredIterations", "TestCheck_WholeKey", "TestCheck_Malformed"} {
+	for _, name := range []string{"TestHash_RoundTrip", "TestVerify", "TestVerify_UnknownEmailDerives", "TestVerify_Rehash", "TestCheck_StoredIterations", "TestCheck_WholeKey", "TestCheck_Malformed"} {
 		if !strings.Contains(string(testOut), "--- PASS: "+name) {
 			t.Errorf("%s did not pass:\n%s", name, testOut)
 		}
+	}
+}
+
+// TestGenerate_TableInTypeModule: `alder new table User` after `alder new type User "Role =
+// …"` adds the table to the module the type made, which then uses the type; `alder new auth
+// --role` takes that table as it is.
+func TestGenerate_TableInTypeModule(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	for _, args := range [][]string{
+		{"new", "type", "User", "Role = Member | Admin"},
+		{"new", "table", "User", "email:Text.Email@unique", "name:Text.NonEmpty", "passwordHash:Text", "role:Role=Member"},
+		{"new", "auth", "--role", "Role"},
+	} {
+		if code, out, errs := alderIn(t, dir, "", args...); code != 0 {
+			t.Fatalf("alder %s: exit %d\n%s%s", strings.Join(args, " "), code, out, errs)
+		}
+	}
+	src, _ := os.ReadFile(filepath.Join(dir, "app", "User.alder"))
+	if !strings.HasPrefix(string(src), "module User\n\ntype Role = Member | Admin\n\ntype UserId = brand Text\n\ntable User {\n") {
+		t.Errorf("User:\n%s", src)
+	}
+	if code, out, errs := alderIn(t, dir, "", "test"); code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") {
+		t.Errorf("alder test: exit %d\n%s%s", code, out, errs)
 	}
 }

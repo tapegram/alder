@@ -6,6 +6,9 @@ import (
 	"testing"
 )
 
+// noRehash fails a test that rehashes when it should not.
+func noRehash(string) error { return errors.New("rehashed") }
+
 // rows is a lookup over a fixed set of rows: email → id and stored hash.
 func rows(m map[string][2]string) func(string) (string, string, bool, error) {
 	return func(email string) (string, string, bool, error) {
@@ -42,17 +45,58 @@ func TestVerify(t *testing.T) {
 		t.Fatal(err)
 	}
 	lk := rows(map[string][2]string{"me@example.com": {"u1", h}, "nopass@example.com": {"u2", ""}})
-	if got, err := verify("me@example.com", "secret", lk); err != nil || !got.Ok || got.Val != "u1" {
+	if got, err := verify("me@example.com", "secret", lk, func(string) error { return nil }); err != nil || !got.Ok || got.Val != "u1" {
 		t.Errorf("right password: %+v, %v", got, err)
 	}
 	for _, c := range [][2]string{{"me@example.com", "Secret"}, {"nobody@example.com", "secret"}, {"nopass@example.com", ""}} {
-		if got, err := verify(c[0], c[1], lk); err != nil || got.Ok {
+		if got, err := verify(c[0], c[1], lk, noRehash); err != nil || got.Ok {
 			t.Errorf("%s / %q: %+v, %v; want Nothing", c[0], c[1], got, err)
 		}
 	}
 	boom := errors.New("boom")
-	if _, err := verify("me@example.com", "secret", func(string) (string, string, bool, error) { return "", "", false, boom }); err != boom {
+	if _, err := verify("me@example.com", "secret", func(string) (string, string, bool, error) { return "", "", false, boom }, noRehash); err != boom {
 		t.Errorf("the lookup's error: %v", err)
+	}
+}
+
+// An unknown email, and a row without a password, still derive a key (against the dummy
+// hash), so the answer takes as long as a wrong password's.
+func TestVerify_UnknownEmailDerives(t *testing.T) {
+	var checked []string
+	check = func(stored, pw string) (bool, error) { checked = append(checked, stored); return Check(stored, pw) }
+	defer func() { check = Check }()
+	lk := rows(map[string][2]string{"nopass@example.com": {"u2", ""}})
+	for _, email := range []string{"nobody@example.com", "nopass@example.com"} {
+		checked = nil
+		if got, err := verify(email, "pw", lk, noRehash); got.Ok || err != nil {
+			t.Errorf("%s: %+v, %v", email, got, err)
+		}
+		if len(checked) != 1 || checked[0] != dummy {
+			t.Errorf("%s: derived against %q, want the dummy hash once", email, checked)
+		}
+	}
+}
+
+// A login whose hash has fewer iterations than iterations stores a new hash, made now, that
+// verifies; one with the current count is left as it is.
+func TestVerify_Rehash(t *testing.T) {
+	old, _ := hashWith("pw", []byte("saltsaltsaltsalt"), 1000)
+	var stored []string
+	rehash := func(s string) error { stored = append(stored, s); return nil }
+	if got, err := verify("me@example.com", "pw", rows(map[string][2]string{"me@example.com": {"u1", old}}), rehash); err != nil || !got.Ok {
+		t.Fatalf("verify: %+v, %v", got, err)
+	}
+	if len(stored) != 1 || !strings.HasPrefix(stored[0], "pbkdf2-sha256$600000$") {
+		t.Fatalf("rehashed %q", stored)
+	}
+	if ok, err := Check(stored[0], "pw"); !ok || err != nil {
+		t.Errorf("the new hash: %v, %v", ok, err)
+	}
+	if got, err := verify("me@example.com", "pw", rows(map[string][2]string{"me@example.com": {"u1", stored[0]}}), noRehash); err != nil || !got.Ok {
+		t.Errorf("a current hash: %+v, %v", got, err)
+	}
+	if got, err := verify("me@example.com", "wrong", rows(map[string][2]string{"me@example.com": {"u1", old}}), noRehash); err != nil || got.Ok {
+		t.Errorf("a wrong password: %+v, %v", got, err)
 	}
 }
 
@@ -91,13 +135,14 @@ func TestCheck_WholeKey(t *testing.T) {
 func TestCheck_Malformed(t *testing.T) {
 	for _, s := range []string{"x", "pbkdf2-sha256$600000$abc", "md5$1$YWJj$YWJj", "pbkdf2-sha256$zero$YWJj$YWJj",
 		"pbkdf2-sha256$0$YWJj$YWJj", "pbkdf2-sha256$99999999999$YWJj$YWJj", "pbkdf2-sha256$10$!!$YWJj", "pbkdf2-sha256$10$YWJj$",
-		"pbkdf2-sha256$10$$YWJj"} {
+		"pbkdf2-sha256$10$$YWJj",
+		"pbkdf2-sha256$10$c2FsdHNhbHRzYWx0c2FsdA$c2hvcnQ"} {
 		ok, err := Check(s, "pw")
 		if ok || err == nil {
 			t.Errorf("Check(%q): %v, %v; want an error", s, ok, err)
 		}
 		lk := rows(map[string][2]string{"me@example.com": {"u1", s}})
-		if got, err := verify("me@example.com", "pw", lk); got.Ok || err == nil {
+		if got, err := verify("me@example.com", "pw", lk, noRehash); got.Ok || err == nil {
 			t.Errorf("verify with %q: %+v, %v; want an error", s, got, err)
 		}
 	}

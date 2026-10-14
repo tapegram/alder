@@ -264,7 +264,7 @@ alder fill --decl Invites.Index.view - <<'EOF'
 EOF
 alder new msg Invites.Index Accept id:Invite.InviteId --in-for r
 alder new msg Invites.Index Decline id:Invite.InviteId --in-for r
-alder fill Invites.Index.view - --hole ?acceptId <<'EOF'
+alder fill Invites.Index.view - --hole '?acceptId' <<'EOF'
 r.invite.id
 EOF
 alder fill Invites.Index.view - <<'EOF'
@@ -295,8 +295,14 @@ alder fill Invites.Index.update.Decline - <<'EOF'
   Task.succeed (Redirect (Invites.Index {}))
 }
 EOF
+alder fill 'Invites.Index."pressing Accept"' - --hole '?acceptId' <<'EOF'
+invite1
+EOF
 alder fill 'Invites.Index."pressing Accept"' - <<'EOF'
 { answer: r.answer, status: Maybe.map (\i -> i.status) after } == { answer: Redirected (Teams.Show { id: team1 }), status: Just Accepted }
+EOF
+alder fill 'Invites.Index."pressing Decline"' - --hole '?declineId' <<'EOF'
+invite1
 EOF
 alder fill 'Invites.Index."pressing Decline"' - <<'EOF'
 { answer: r.answer, status: Maybe.map (\i -> i.status) after } == { answer: Redirected (Invites.Index {}), status: Just Declined }

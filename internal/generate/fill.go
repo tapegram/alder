@@ -69,6 +69,7 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 		// expr's statements become that block's, rather than a block in a block
 		e := newSrcEdit(m.Source)
 		e.replaceLine(sp.Start.Line, indent(inner, indentOf(l)))
+		dropGuidance(e, m.Syntax, h.Decl, h.Name == "expected", len(in) == 1)
 		addImports(e, m.Syntax, fillImports(p, m, expr, &imports))
 		return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
 	}
@@ -84,6 +85,7 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 	}
 	e := newSrcEdit(m.Source)
 	e.replaceLine(sp.Start.Line, before+strings.Join(exprLines, "\n")+after)
+	dropGuidance(e, m.Syntax, h.Decl, h.Name == "expected", len(in) == 1)
 	addImports(e, m.Syntax, fillImports(p, m, expr, &imports))
 	return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
 }
@@ -373,4 +375,33 @@ func topLevelOperator(expr string) bool {
 		}
 	}
 	return false
+}
+
+// dropGuidance removes the comments `alder new msg` writes above a test it generates, once
+// they are done with: the paragraph saying what to fill ?expected with (expected: that hole
+// was filled), and the note on the rows of a loop (all: the test has no hole left). decl is
+// the test's name in quotes; any other declaration is left alone.
+func dropGuidance(e *srcEdit, m *syntax.Module, decl string, expected, all bool) {
+	for _, d := range m.Decls {
+		t, ok := d.(*syntax.TestDecl)
+		if !ok || quote(t.Name) != decl {
+			continue
+		}
+		testLine := t.Span.Start.Line
+		start := declStart(e, t)
+		for n := start; n < testLine; n++ {
+			l := e.line(n)
+			switch {
+			case expected && strings.HasPrefix(l, "-- Fill ?expected with "):
+				for k := n; k < testLine; k++ {
+					e.deleteLine(k)
+				}
+				return
+			case all && strings.HasPrefix(l, "-- The button is in the view's `{for ") && n+1 < testLine:
+				e.deleteLine(n)
+				e.deleteLine(n + 1)
+				n++
+			}
+		}
+	}
 }

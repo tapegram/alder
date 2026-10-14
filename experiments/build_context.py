@@ -204,12 +204,13 @@ alder new msg <Page> <Name> [<field>:<Type> …]
 alder new capability <Module> <entry> "<Type>"
 alder new auth [--users User] [--role R] [--to Page]   the login (Auth.Login, Password with a real
   PBKDF2 adapter, App's session user/role, login, Logout); creates User if absent; R must exist
-alder new type <Module> "Status = A | B" | "Id = brand Text" | "Row = { … }"
+alder new type <Module> "Status = A | B" | "Slug = brand Text where …" | "Row = { … }"
 alder new decl <Module> <name> "<Type>"   (name = ?name; fill a function with a lambda)
 alder new test <Module> "<name>"   (its block is ?test : Task Bool; fill it with a block)
 alder new page … --blank   Model = { }, load and view holes; with --show T keeps /{id}
 alder new msg … --in-for <binder> [--when <Bool expr>]   the button in that `for`'s element,
-  class = the msg's name, fields from the binder (u.id) or holes
+  class = the msg's name, fields from the binder (u.id) or holes; its test clicks a hole:
+  insert rows the loop shows the signed-in user, fill the hole with one
 alder edit page <Page> add-param <name>:<Type>[=default]
 alder fill --decl <Module>.<decl> -   replaces a whole body (value, test, type's right side):
   for Model (no hole) and bodies that do not fit; prefer a hole when there is one

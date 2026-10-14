@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"alder/rt"
 	"alder/rt/db"
@@ -45,9 +46,19 @@ const (
 // Verify is the id of the [[.Table]] row whose email is args.Email when args.Password is its
 // password, and Nothing for an unknown email, a wrong password or a row with no password (an
 // empty [[.HashColumn]]). A stored text that is not a hash this adapter made is an error, never
-// a login.
+// a login. A hash made with fewer iterations than iterations is replaced, on a login that
+// verifies, by one made now.
 func (password) Verify(ctx context.Context, args app.Args__Auth__Login__Password__Verify) (rt.Maybe[string], error) {
-	return verify(args.Email, args.Password, func(email string) (string, string, bool, error) { return lookup(ctx, email) })
+	var r *row
+	look := func(email string) (string, string, bool, error) {
+		var err error
+		r, err = lookup(ctx, email)
+		if err != nil || r == nil {
+			return "", "", false, err
+		}
+		return r.id, r.stored, true, nil
+	}
+	return verify(args.Email, args.Password, look, func(stored string) error { return r.rehash(ctx, stored) })
 }
 
 // Hash is the text to store in [[.HashColumn]] for the password args.Value: a new random salt
@@ -56,23 +67,45 @@ func (password) Hash(ctx context.Context, args app.Args__Auth__Login__Password__
 	return Hash(args.Value)
 }
 
-// verify is Verify with the row's lookup a function: the id and the stored hash of the row
-// with that email, and whether there is one.
-func verify(email, pw string, lookup func(email string) (id, stored string, found bool, err error)) (rt.Maybe[string], error) {
+// check is Check; a test replaces it to see which hashes verify derives.
+var check = Check
+
+// verify is Verify with the row's lookup a function (the id and the stored hash of the row
+// with that email, and whether there is one) and the store's update of the hash another.
+func verify(email, pw string, lookup func(email string) (id, stored string, found bool, err error), rehash func(stored string) error) (rt.Maybe[string], error) {
 	id, stored, found, err := lookup(email)
 	if err != nil {
 		return rt.Nothing[string](), err
 	}
 	if !found || stored == "" {
 		// derive anyway, so that the answer's timing does not tell which emails have accounts
-		Check(dummy, pw)
+		check(dummy, pw)
 		return rt.Nothing[string](), nil
 	}
-	ok, err := Check(stored, pw)
+	ok, err := check(stored, pw)
 	if err != nil || !ok {
 		return rt.Nothing[string](), err
 	}
+	if storedIterations(stored) < iterations { // made before the count was raised: upgrade it
+		h, err := Hash(pw)
+		if err == nil {
+			err = rehash(h)
+		}
+		if err != nil {
+			return rt.Nothing[string](), err
+		}
+	}
 	return rt.Just(id), nil
+}
+
+// storedIterations is the iteration count a well-formed stored text names.
+func storedIterations(stored string) int {
+	parts := strings.Split(stored, "$")
+	if len(parts) != 4 {
+		return 0
+	}
+	n, _ := strconv.Atoi(parts[1])
+	return n
 }
 
 // dummy is a well-formed hash no password is checked against for real.
@@ -115,8 +148,8 @@ func Check(stored, pw string) (bool, error) {
 		return false, errors.New("[[.Package]]: the stored password hash has a bad salt")
 	}
 	want, err := enc.DecodeString(parts[3])
-	if err != nil || len(want) == 0 {
-		return false, errors.New("[[.Package]]: the stored password hash has a bad hash")
+	if err != nil || len(want) < 16 {
+		return false, errors.New("[[.Package]]: the stored password hash has a bad hash (under 16 bytes)")
 	}
 	got, err := pbkdf2.Key(sha256.New, pw, salt, iter, len(want))
 	if err != nil {
@@ -125,12 +158,21 @@ func Check(stored, pw string) (bool, error) {
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }
 
+// row is a [[.Table]] row as the store holds it: its id, its stored hash, and every column's
+// value, to write it back with a new hash.
+type row struct {
+	id, stored string
+	users      db.TableDesc
+	vals       []any
+	hashAt     int
+}
+
 // lookup reads the [[.Table]] row whose email is email, in the running Task's transaction
-// (db.StoreFrom, db.TxFrom): its id and its [[.HashColumn]].
-func lookup(ctx context.Context, email string) (id, stored string, found bool, err error) {
+// (db.StoreFrom, db.TxFrom); nil when there is none.
+func lookup(ctx context.Context, email string) (*row, error) {
 	st, tx := db.StoreFrom(ctx), db.TxFrom(ctx)
 	if st == nil {
-		return "", "", false, errors.New("[[.Package]]: the context carries no store")
+		return nil, errors.New("[[.Package]]: the context carries no store")
 	}
 	var users db.TableDesc
 	for _, t := range app.Tables {
@@ -139,24 +181,36 @@ func lookup(ctx context.Context, email string) (id, stored string, found bool, e
 		}
 	}
 	if users.Name == "" {
-		return "", "", false, errors.New("[[.Package]]: the app has no table " + [[.TableName]])
+		return nil, errors.New("[[.Package]]: the app has no table " + [[.TableName]])
 	}
 	table := &db.Table[struct{}]{Name: users.Name, Columns: users.Columns}
 	rows, err := st.Query(ctx, tx, users.Name, users.Columns, db.Where(db.CEq("email", email), db.From(table)).SQL())
 	if err != nil || len(rows) == 0 {
-		return "", "", false, err
+		return nil, err
 	}
+	r := &row{users: users, vals: rows[0], hashAt: -1}
 	for i, c := range users.Columns {
 		switch c.Name {
 		case users.ID:
-			id, err = db.DecodeText(rows[0][i])
+			r.id, err = db.DecodeText(rows[0][i])
 		case [[.HashColumnQ]]:
-			stored, err = db.DecodeText(rows[0][i])
+			r.stored, err = db.DecodeText(rows[0][i])
+			r.hashAt = i
 		}
 		if err != nil {
-			return "", "", false, err
+			return nil, err
 		}
 	}
-	return id, stored, true, nil
+	if r.hashAt < 0 {
+		return nil, errors.New("[[.Package]]: the table " + [[.TableName]] + " has no column " + [[.HashColumnQ]])
+	}
+	return r, nil
+}
+
+// rehash stores a new hash in r's row, in the running Task's transaction.
+func (r *row) rehash(ctx context.Context, stored string) error {
+	vals := append([]any(nil), r.vals...)
+	vals[r.hashAt] = stored
+	return db.StoreFrom(ctx).Update(ctx, db.TxFrom(ctx), r.users.Name, r.users.Columns, r.users.ID, r.users.Updated, r.id, vals, time.Now())
 }
 [[- end]]

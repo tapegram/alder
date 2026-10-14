@@ -26,24 +26,29 @@ edited app/Home.alder
      </ul>
    </Layout.Page>
  
-@@ -61,3 +64,14 @@
+@@ -61,3 +64,16 @@
    let page <- Test.get (Home {})
    Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
  }
 +
++-- The button is in the view's `{for e in model.entries …}`: insert rows so that the
++-- signed-in user sees the row this clicks, and fill ?hideId with that row's values.
 +-- Fill ?expected with what pressing Hide must do, so that a test fails when the arm
 +-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
 +-- changed (`after`, the row read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.
 +test "pressing Hide" = {
 +  let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
 +  let _ <- Test.get (Home {})
-+  let r <- Test.click (Hide { id: entry1 })
++  let r <- Test.click (Hide { id: ?hideId })
 +  let after <- Db.get Entry entry1
 +  Task.succeed ?expected
 +}
 app/Home.alder:31:13: warning[W0002]: hole ?hide has type Task Nav
     Hide p -> ?hide,
               ^^^^^
-app/Home.alder:76:16: warning[W0002]: hole ?expected has type Bool
+app/Home.alder:76:35: warning[W0002]: hole ?hideId has type Entry.EntryId
+    let r <- Test.click (Hide { id: ?hideId })
+                                    ^^^^^^^
+app/Home.alder:78:16: warning[W0002]: hole ?expected has type Bool
     Task.succeed ?expected
                  ^^^^^^^^^

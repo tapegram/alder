@@ -65,6 +65,13 @@ func parseTypeDecl(decl string) (*syntax.TypeDecl, error) {
 	if strings.Contains(decl, "--") {
 		return nil, Refusef("`%s` holds `--`, which begins a comment in Alder source: write the type without it", decl)
 	}
+	if name, rhs, ok := strings.Cut(decl, " = "); ok {
+		for _, base := range []string{"Text", "Int", "Float", "Bool"} {
+			if strings.HasPrefix(rhs, base+" where ") || rhs == base {
+				return nil, Refusef("`type %s` is not a type declaration: a brand is written `%s = brand %s where …` (chapter 4), or `%s = brand %s` without a check", decl, strings.TrimSpace(name), base, strings.TrimSpace(name), base)
+			}
+		}
+	}
 	m, ds := syntax.ParseFile("X.alder", []byte("module X\n\ntype "+decl+"\n"))
 	for _, d := range ds {
 		if d.Severity == "error" {
