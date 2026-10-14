@@ -12,9 +12,10 @@ behind the app (chapter 7). And there are **rules**: `requires user`,
 
 This chapter is about writing those pieces with commands instead of by
 hand. `alder new page`, `alder new table`, `alder new form`, `alder new
-msg` and `alder new capability` each write one piece. `alder edit table`
-changes a table and writes its migration. `alder fill` fills a gap the
-others leave. `alder new admin` writes all of the pieces for every table
+msg`, `alder new capability`, `alder new type`, `alder new decl` and
+`alder new test` each write one piece, and `alder new auth` the login.
+`alder edit table` changes a table and writes its migration, `alder edit
+page` a page's parameters. `alder fill` fills a gap the others leave. `alder new admin` writes all of the pieces for every table
 at once: a complete admin, with a list, a page, a form and a delete page
 per table, and `alder regen admin` keeps that admin up to date as the
 tables change.
@@ -686,7 +687,9 @@ alder new admin: `alder new admin` needs a session with a `role` whose type has 
 
 The sentence says what to add, and the generator does not add it for
 you: it never edits `App` or the login. Who is an admin is a decision
-about your app's users, not a detail to generate. To meet it:
+about your app's users, not a detail to generate. To meet it (on an app
+without a login, `alder new type User "Role = Member | Admin"` and
+`alder new auth --role Role` do all three: "Logging in", below):
 
 1. Give the user table a role: `type Role = Member | Admin` (any
    constructors, one of them `Admin`) and a column `role: Role =
@@ -1999,6 +2002,842 @@ referenced table for a select, which is fine for the tables an admin
 usually manages, and offers no bulk actions and no permissions finer
 than one role.
 
+## Logging in: `alder new auth`
+
+The admin needs a user and a role, and so does any page that `requires
+user`. `alder new auth` writes the login: a user table (unless the app
+has one), the login page, the edits of `App` that make it the app's
+login, and the Go adapter that checks passwords. On the guestbook:
+
+```text command=guestbook
+$ alder new auth
+wrote adapters/auth/login_password.go
+wrote adapters/auth/login_password_test.go
+edited app/App.alder
+wrote app/Auth/Login.alder
+wrote app/User.alder
+wrote migrations/0003_create_user.sql
+  create table User
+edited migrations/schema.json
+--- a/app/App.alder
++++ b/app/App.alder
+@@ -1,9 +1,22 @@
+ module App
+ 
+ import Layout
++import User
+ 
+-session { }
++session { user: Maybe User.UserId }
+ 
++login = Auth.Login
++
++msg Logout
++
++update : Msg -> Session -> Task Nav
++update msg session = match msg {
++  Logout p -> {
++    let _ <- Session.put (\s -> { s | user: Nothing })
++    Task.succeed (Redirect (Auth.Login {}))
++  },
++}
++
+ error : Error -> Html Never
+ error err =
+   <Layout.Page title="Error">
+@@ -16,3 +29,10 @@
+   <Layout.Page title="Not found">
+     <h1>Not found</h1>
+   </Layout.Page>
++
++-- Every Log out button is on a page that requires a user, so a browser test cannot tell this
++-- Redirect from a Rerender (book 10, "The logout redirect"): the test calls update itself.
++test "Logout clears the user and goes to log in" = {
++  let r <- Test.run (update Logout { user: Just (User.UserId "me") })
++  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] })
++}
+```
+
+`App` is edited in four fixed places, and nothing else in it moves: the
+session gains `user` after the fields it has; `login = Auth.Login`
+follows the session; `msg Logout` and its arm go into `App`'s `update`
+(a new arm before its closing brace, or, as here, a new `update` after
+`login`); and a test of Logout goes at the end. The user module is
+imported in its sorted place. The command is refused when the session
+already has a `user`, when a module `Auth` or `Auth.…` exists, and when
+`App` has a `login`.
+
+The table it created:
+
+```alder written=guestbook/app/User.alder
+module User
+
+type UserId = brand Text
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text.Secret,
+  created: Time @created,
+}
+```
+
+`passwordHash` is a `Text.Secret`: the admin never shows it, and a
+form never echoes it (chapter 9). `--users T` names another table; when
+`T` exists, it must have `email: Text.Email` and a `passwordHash` of
+`Text` or `Text.Secret`, and it is used as it is. `--role R` also puts
+a role in the session, copied from the user's row at login and set back
+to the first constructor at logout. The role is a decision about the
+app's users, so the command does not invent one: `R` must be a union of
+the user module, and the command that makes one comes first.
+
+```text
+$ alder new type User "Role = Member | Admin"
+$ alder new auth --role Role
+```
+
+(on an app without a user table: the table it creates then has
+`role: Role = Member`). That is what `alder new admin` asks for.
+
+The login page is the blog's (chapter 14), with one difference. Its
+`Password` capability has two entries, and its adapter is real:
+
+```alder fragment
+capability Password {
+  verify : { email: Text.Email, password: Text } -> Task (Maybe User.UserId),
+  hash : Text -> Task Text,
+}
+```
+
+`verify` answers the user whose email and password these are, or
+`Nothing`. `hash` turns a password into the text to store in
+`passwordHash`: a registration page, or a "change your password" page,
+calls it. In tests, the fake stands in for both (any user with a row
+logs in, whatever the password; `hash` returns its input), and the
+generated tests log in through the form, reject an unknown email, and
+log out from the login page, which shows a Log out button to a signed-in
+user. Where to put the other Log out buttons is the app's own decision,
+so the command adds none. In a page's `view`:
+
+```alder fragment
+<al-button variant="outline" click={App.Logout}>Log out</al-button>
+```
+
+A login goes to the page at `/`; `--to <Page>` names another.
+
+### The password adapter
+
+The adapter, `adapters/auth/login_password.go`, is plain Go, using only
+the standard library. A password is never stored. What is stored is the
+result of a **key derivation function**: a slow, one-way function of
+the password and a random **salt**. PBKDF2 with SHA-256 (Go's
+`crypto/pbkdf2`) runs HMAC-SHA-256 600,000 times; the count makes each
+guess of an attacker who has stolen the table cost as much as a login,
+and the salt, 16 random bytes per password, makes two users with the
+same password have different hashes, so one guess cannot be tried
+against every row at once. The stored text says how it was made:
+
+```text
+pbkdf2-sha256$600000$<salt>$<hash>
+```
+
+with the salt and the 32-byte hash in unpadded base64. To check a
+password, the adapter reads the row by email, splits the stored text,
+derives the key again with the stored salt and the **stored** count (so
+hashes made before a change of the count keep working), and compares
+the two keys with `crypto/subtle.ConstantTimeCompare`, which takes the
+same time wherever they differ: an ordinary comparison stops at the
+first different byte, and its timing would tell an attacker how much of
+a guess was right. An unknown email is `Nothing` too, after a
+derivation all the same, so that the answer's timing does not say which
+emails have accounts. A stored text that is not of this form is an
+error, never a login; an empty one is a user without a password, who
+cannot log in. The core of it:
+
+```go
+// Check reports whether password is the one stored was derived from, comparing in constant
+// time with the iteration count stored names. A stored text that is not
+// `pbkdf2-sha256$<iterations>$<salt>$<hash>` is an error.
+func Check(stored, pw string) (bool, error) {
+	parts := strings.Split(stored, "$")
+	if len(parts) != 4 || parts[0] != scheme {
+		return false, errors.New("auth: the stored password hash is not pbkdf2-sha256$<iterations>$<salt>$<hash>")
+	}
+	iter, err := strconv.Atoi(parts[1])
+	if err != nil || iter < 1 || iter > maxIterations {
+		return false, fmt.Errorf("auth: the stored password hash has a bad iteration count %q", parts[1])
+	}
+	enc := base64.RawStdEncoding
+	salt, err := enc.DecodeString(parts[2])
+	if err != nil || len(salt) == 0 {
+		return false, errors.New("auth: the stored password hash has a bad salt")
+	}
+	want, err := enc.DecodeString(parts[3])
+	if err != nil || len(want) == 0 {
+		return false, errors.New("auth: the stored password hash has a bad hash")
+	}
+	got, err := pbkdf2.Key(sha256.New, pw, salt, iter, len(want))
+	if err != nil {
+		return false, err
+	}
+	return subtle.ConstantTimeCompare(got, want) == 1, nil
+}
+```
+
+`Verify` finds the row the way the blog's development stub does
+(chapter 14): it reads the `User` table through the store in the
+running task's context, in the task's transaction. Its tests,
+`login_password_test.go`, run with `go test ./adapters/...` in the
+built app (chapter 7): a round trip, a wrong password, an unknown email,
+another iteration count, a changed key and nine malformed texts.
+
+## Types, values and tests: `alder new type`, `decl`, `test`
+
+Three commands add one declaration each to a module that exists. A type,
+written as chapter 4 writes it after `type`: a union, a brand, or a
+record:
+
+```text command=guestbook
+$ alder new type Entry "Mood = Calm | Glad"
+edited app/Entry.alder
+--- a/app/Entry.alder
++++ b/app/Entry.alder
+@@ -2,6 +2,8 @@
+ 
+ type EntryId = brand Text
+ 
++type Mood = Calm | Glad
++
+ table Entry {
+   id: EntryId @id,
+   name: Text.NonEmpty,
+```
+
+It goes after the module's last type declaration (a module that does
+not exist is created, as `User` was for `Role` above). A value, with its
+signature and a hole for its body:
+
+```text command=guestbook
+$ alder new decl Home perPage Int
+edited app/Home.alder
+…
++perPage : Int
++perPage = ?perPage
+…
+app/Home.alder:51:11: warning[W0002]: hole ?perPage has type Int
+  perPage = ?perPage
+            ^^^^^^^^
+```
+
+A function is a value of a function type, and its body a lambda
+(`alder new decl Member row "Team.TeamId -> User.UserId -> Query (Maybe
+Member)"`, then `\team user -> …`). And a test, whose whole body is the
+hole `?test : Task Bool`:
+
+```text command=guestbook
+$ alder new test Home "a page has twenty entries"
+edited app/Home.alder
+…
++test "a page has twenty entries" = {
++  ?test
++}
+…
+```
+
+Filled with a block, the block's lines become the test's:
+
+```text command=guestbook
+$ alder fill Home.perPage - <<'EOF'
+20
+EOF
+edited app/Home.alder
+…
+```
+
+```text command=guestbook
+$ alder fill 'Home."a page has twenty entries"' - <<'EOF'
+{
+  let n = perPage
+  Task.succeed (n == 20)
+}
+EOF
+edited app/Home.alder
+…
++  let n = perPage
++  Task.succeed (n == 20)
+…
+```
+
+Each refuses a name the module has.
+
+## Blank pages and whole bodies: `--blank` and `fill --decl`
+
+`alder new page … --blank` writes a page whose `Model` is `{ }` and
+whose `load` and `view` are holes, for an author who knows what the page
+shows but no template fits it (with `--show T`, the page keeps
+`/{id}` and its `id` parameter, and nothing else of `--show`):
+
+```text command=guestbook
+$ alder new page Stats /stats --blank
+wrote app/Stats.alder
+app/Stats.alder:8:23: warning[W0002]: hole ?load has type Query Stats.Model
+  load params session = ?load
+                        ^^^^^
+app/Stats.alder:11:22: warning[W0002]: hole ?view has type Html Stats.Msg
+  view model session = ?view
+                       ^^^^^
+```
+
+`Model` is a type, and a type cannot be a hole. So the one command that
+replaces more than a hole is `alder fill --decl <Module>.<decl> -`: it
+replaces the **whole body** of one declaration (a value's body, a test's
+block, or a type's right-hand side) with what standard input holds, one
+expression or one type, keeping the declaration's name and signature.
+As with every fill, the copy must check:
+
+```text command=guestbook
+$ alder fill --decl Stats.Model - <<'EOF'
+{ entries: Int }
+EOF
+edited app/Stats.alder
+--- a/app/Stats.alder
++++ b/app/Stats.alder
+@@ -2,7 +2,7 @@
+ 
+ page "/stats" { }
+ 
+-type Model = { }
++type Model = { entries: Int }
+ 
+ load : Params -> Session -> Query Model
+ load params session = ?load
+…
+```
+
+That checked because `load` and `view` are holes, whose types follow
+`Model`. On a page whose `load` builds the old `Model`, the same change
+is refused, with the error in `load`: one declaration at a time, each
+step checked, is the order **Model, then load, then view**. The holes:
+
+```text command=guestbook
+$ alder fill Stats.load - <<'EOF'
+{
+  let n <- Db.from Entry |> Db.count
+  Query.succeed { entries: n }
+}
+EOF
+edited app/Stats.alder
+…
+added import Entry to app/Stats.alder
+```
+
+```text command=guestbook
+$ alder fill --decl Stats.view - <<'EOF'
+<Layout.Page title="Stats">
+  <h1>Stats</h1>
+  <p id="entries">{Text.fromInt model.entries} entries</p>
+</Layout.Page>
+EOF
+edited app/Stats.alder
+…
++view model session =
++  <Layout.Page title="Stats">
++    <h1>Stats</h1>
++    <p id="entries">{Text.fromInt model.entries} entries</p>
++  </Layout.Page>
+…
+added import Layout to app/Stats.alder
+```
+
+`Entry` was imported because the expression names the table's record
+type, and `Layout` because it names `Layout.Page`. Markup is put on the
+line after `view model session =`, two spaces in, as views are written.
+
+When to prefer a hole: whenever there is one. A hole's type is the
+checker's statement of what is missing, and a fill cannot disturb the
+code around it. `--decl` rewrites a whole body, so it can drop what a
+hole fill cannot: an `update` that loses an arm, a view that loses the
+form a test submits. The checker refuses the first (the view still
+sends the message: a `match` must be exhaustive), and the tests catch
+the second. Use it for what has no hole: a `Model`, a body a template
+wrote that does not fit, a generated test whose setup does not fit the
+page's rules.
+
+## Buttons in a list, and page parameters
+
+`alder new msg` puts its button at the end of the view. A button that
+acts on one row of a list belongs in the list, inside the `for` that
+shows the row: `--in-for <binder>` puts it at the end of the loop body's
+element, and fills the message's fields from the binder where it can (a
+field of the binder with the same name and type, `user: m.user`; for a
+field of a table's id type, the binder's id when the binder is a row of
+that table, `id: e.id`), with holes for the rest. `--when <expression>`
+shows it only when the expression holds:
+
+```text command=guestbook
+$ alder new msg Home Hide id:Entry.EntryId --in-for e --when "List.length model.entries > 1"
+edited app/Home.alder
+…
+-      {for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}
++      {for e in model.entries -> <li><b>{e.name}</b>: {e.message}{if List.length model.entries > 1 then <al-button class="hide" click={Hide { id: e.id }}>Hide</al-button> else Html.none}</li>}
+…
+```
+
+A button in a loop has its message's name as its class (`hide`), so a
+test can count the rows' buttons (`Test.count "#entries .hide"
+page.doc`). Its arm and test verdict are holes, as for any message.
+
+`alder edit page <Page> add-param <name>:<Type>[=default]` adds a
+parameter to a page: a query parameter, such as a search box's `q`:
+
+```text command=guestbook
+$ alder edit page Stats add-param "q:Text=\"\""
+edited app/Stats.alder
+--- a/app/Stats.alder
++++ b/app/Stats.alder
+@@ -3,7 +3,7 @@
+ import Entry
+ import Layout
+ 
+-page "/stats" { }
++page "/stats" { q: Text = "" }
+ 
+ type Model = { entries: Int }
+ 
+```
+
+Without a default, every `Stats {}` in the app would lack it, and the
+command is refused by the check.
+
+## An app from the command line
+
+The commands above are enough to build an app without opening a file.
+The proof is a drill: the teams app of the experiment E9 (task T10:
+users own teams, invite people by email, and an invited user accepts or
+declines; only the owner and the members see a team, and only the owner
+changes it), built from `alder new teams` with `alder new`, `alder
+edit` and `alder fill` alone. The script below is the whole of it, every
+command and every expression filled. `cmd/alder/drill_test.go` replays
+it from `testdata/drill/t10-teams/script.txt` (and checks that the
+blocks of this section are that file): the app's own 27 tests pass;
+the 8 hidden acceptance tests E9 kept from its models pass, added as the
+E9 harness adds them; and `alder test --mutate` kills all 49 of its
+mutants. The guestbook the app started as is still there, at `/`.
+
+The users first. The table is created with `passwordHash: Text`
+rather than letting `new auth` create it (as `Text.Secret`), because
+E9's tests insert users with `passwordHash: ""`; `new auth` uses a
+table that exists as it is:
+
+```text
+# the users, and logging in
+alder new table User email:Text.Email@unique name:Text.NonEmpty passwordHash:Text
+alder new auth --users User
+```
+
+The tables. `Invite.status` needs its union first, and the union needs
+its module, which `new table` creates; so the table comes first and the
+column is added after the type, with a default, as a migration of its
+own:
+
+```text
+# the tables
+alder new table Team name:Text.NonEmpty owner:User.UserId@ref=User
+alder new table Member team:Team.TeamId@ref=Team user:User.UserId@ref=User
+alder new table Invite team:Team.TeamId@ref=Team email:Text.Email
+alder new type Invite "Status = Pending | Accepted | Declined"
+alder edit table Invite add-field status:Status=Pending
+```
+
+One helper, `Member.row`, and its test. A function is declared with its
+type and filled with a lambda; a test is filled with its whole block:
+
+```text
+# a user's Member row in a team
+alder new decl Member row "Team.TeamId -> User.UserId -> Query (Maybe Member)"
+alder fill Member.row - <<'EOF'
+\team user -> Db.from Member |> Db.where (Member.team.eq team) |> Db.where (Member.user.eq user) |> Db.first
+EOF
+alder new test Member "row is the row of the user in that team"
+alder fill 'Member."row is the row of the user in that team"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: ann }
+  let _ <- Db.insert Member { team: blue, user: bob }
+  let _ <- Db.insert Member { team: red, user: ann }
+  let want <- Db.insert Member { team: red, user: bob }
+  let found <- row red bob
+  Task.succeed (Maybe.map (\m -> m.id) found == Just want)
+}
+EOF
+```
+
+The pages, blank, all three at once: `/teams` links to `/teams/{id}`
+and `/invites`, and a view cannot name a page that does not exist yet:
+
+```text
+# the three pages, blank: their Model, load and view are filled below
+alder new page Teams.Index /teams --blank --requires user
+alder new page Teams.Show /teams --show Team --blank --requires user
+alder new page Invites.Index /invites --blank --requires user
+```
+
+`/teams`. `Model` first, by `--decl` (a type has no hole), then `load`
+by its hole, then the view by `--decl` (to put the markup on its own
+lines). The form `new form` adds fits no table (a `Team` needs an
+`owner` the form does not have), so its arm is a hole, filled with the
+insert; its generated test cannot know the new team's id, so it is
+rewritten with `--decl`:
+
+```text
+# /teams: the teams a user owns or is a member of, by name, and a form for a new one
+alder fill --decl Teams.Index.Model - <<'EOF'
+{ teams: List Team }
+EOF
+alder fill Teams.Index.load - <<'EOF'
+{
+  let memberships <- Db.from Member |> Db.where (Member.user.eq session.user) |> Db.all
+  let teams <-
+    Db.from Team
+      |> Db.where (Db.or [Team.owner.eq session.user, Team.id.in (List.map (\m -> m.team) memberships)])
+      |> Db.orderBy Team.name.asc
+      |> Db.all
+  Query.succeed { teams: teams }
+}
+EOF
+alder fill --decl Teams.Index.view - <<'EOF'
+<Layout.Page title="Teams">
+  <h1>Your teams</h1>
+  <ul id="teams">
+    {for team in model.teams ->
+      <li><a class="name" href={Teams.Show { id: team.id }}>{team.name}</a></li>}
+  </ul>
+  <a href={Invites.Index {}}>Invites</a>
+  <al-button variant="outline" click={App.Logout}>Log out</al-button>
+</Layout.Page>
+EOF
+alder new form Teams.Index NewTeam name:Text.NonEmpty
+alder fill Teams.Index.update.SubmitNewTeam - <<'EOF'
+{
+  let id <- Db.insert Team { name: p.form.name, owner: session.user }
+  Task.succeed (Redirect (Teams.Show { id: id }))
+}
+EOF
+alder fill --decl 'Teams.Index."submitting NewTeam"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Teams.Index {})
+  let r <- Test.submit NewTeam { name: Text.NonEmpty "Red" }
+  let teams <- Db.from Team |> Db.where (Team.owner.eq ann) |> Db.all
+  let ids = List.map (\t -> t.id) teams
+  Task.succeed ({ answer: r.answer, teams: List.length ids } == { answer: Redirected (Teams.Show { id: Maybe.withDefault (Team.TeamId "") (List.head ids) }), teams: 1 })
+}
+EOF
+alder new test Teams.Index "the list: teams owned and joined, by name"
+alder fill 'Teams.Index."the list: teams owned and joined, by name"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let cid <- Db.insert User { email: Text.Email "cid@example.com", name: Text.NonEmpty "Cid", passwordHash: "" }
+  let _ <- Db.insert Team { name: Text.NonEmpty "Amber", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: bob }
+  let green <- Db.insert Team { name: Text.NonEmpty "Green", owner: cid }
+  let _ <- Db.insert Team { name: Text.NonEmpty "Zinc", owner: cid }
+  let _ <- Db.insert Member { team: green, user: bob }
+  let _ <- Db.insert Member { team: blue, user: ann }
+  let _ <- Test.login { user: Just ann }
+  let page <- Test.get (Teams.Index {})
+  Task.succeed (Test.texts "#teams .name" page.doc == ["Amber", "Blue"])
+}
+EOF
+```
+
+`/teams/{id}`. The Remove button goes into the members' loop with
+`--in-for u`, its `user` filled from the binder (`u.id`) and shown only
+to the owner (`--when model.isOwner`). Each arm checks `model.isOwner`
+itself: a member may hold the owner's page, and post its Remove. The
+generated test of Remove presses it for the signed-in owner, who has no
+button, so it is rewritten as the reference app's test:
+
+```text
+# /teams/{id}: the owner and the members, for them only; the owner removes members and invites
+alder fill --decl Teams.Show.Model - <<'EOF'
+{ team: Team, owner: Maybe User, others: List User, isOwner: Bool }
+EOF
+alder fill Teams.Show.load - <<'EOF'
+{
+  let found <- Db.get Team params.id
+  match found {
+    Just team -> {
+      let rows <- Db.from Member |> Db.where (Member.team.eq team.id) |> Db.all
+      let ids = List.map (\m -> m.user) rows
+      if team.owner == session.user || List.member session.user ids then {
+        let owner <- Db.get User team.owner
+        let others <- Db.from User |> Db.where (User.id.in ids) |> Db.orderBy User.name.asc |> Db.all
+        Query.succeed { team: team, owner: owner, others: others, isOwner: team.owner == session.user }
+      } else Query.notFound
+    },
+    Nothing -> Query.notFound,
+  }
+}
+EOF
+alder fill --decl Teams.Show.view - <<'EOF'
+<Layout.Page title={model.team.name}>
+  <h1 id="name">{model.team.name}</h1>
+  <ul id="members">
+    {match model.owner {
+      Just o -> <li><span class="name">{o.name}</span> (owner)</li>,
+      Nothing -> Html.none,
+    }}
+    {for u in model.others ->
+      <li>
+        <span class="name">{u.name}</span>
+      </li>}
+  </ul>
+  <a href={Teams.Index {}}>All teams</a>
+</Layout.Page>
+EOF
+alder new msg Teams.Show Remove user:User.UserId --in-for u --when model.isOwner
+alder new form Teams.Show NewInvite email:Text.Email
+alder fill Teams.Show.update.Remove - <<'EOF'
+if not model.isOwner then Task.notFound
+else if p.user == model.team.owner then Task.fail "The owner cannot leave the team."
+else {
+  let found <- Member.row model.team.id p.user
+  match found {
+    Just m -> {
+      let _ <- Db.delete Member m.id
+      Task.succeed (Redirect (Teams.Show { id: model.team.id }))
+    },
+    Nothing -> Task.notFound,
+  }
+}
+EOF
+alder fill Teams.Show.update.SubmitNewInvite - <<'EOF'
+if not model.isOwner then Task.notFound
+else {
+  let _ <- Db.insert Invite { team: model.team.id, email: p.form.email }
+  Task.succeed (Redirect (Teams.Show { id: model.team.id }))
+}
+EOF
+alder fill 'Teams.Show."submitting NewInvite"' - <<'EOF'
+Redirected (Teams.Show { id: team1 })
+EOF
+alder fill --decl 'Teams.Show."pressing Remove"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let cid <- Db.insert User { email: Text.Email "cid@example.com", name: Text.NonEmpty "Cid", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let _ <- Db.insert Member { team: red, user: cid }
+  let _ <- Db.insert Member { team: red, user: bob }
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Teams.Show { id: red })
+  let r <- Test.click (Remove { user: bob })
+  let invited <- Test.submit NewInvite { email: Text.Email "new@example.com" }
+  let invites <- Db.from Invite |> Db.all
+  Task.succeed ({ removed: r.answer, names: Test.texts "#members .name" r.doc, invited: invited.answer, invites: List.map (\i -> { team: i.team, email: i.email, status: i.status }) invites } == { removed: Redirected (Teams.Show { id: red }), names: ["Ann", "Cid"], invited: Redirected (Teams.Show { id: red }), invites: [{ team: red, email: Text.Email "new@example.com", status: Pending }] })
+}
+EOF
+alder new test Teams.Show "the page: owner and members only, the owner first, the others by name"
+alder fill 'Teams.Show."the page: owner and members only, the owner first, the others by name"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Zoe", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let cid <- Db.insert User { email: Text.Email "cid@example.com", name: Text.NonEmpty "Cid", passwordHash: "" }
+  let dan <- Db.insert User { email: Text.Email "dan@example.com", name: Text.NonEmpty "Dan", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: ann }
+  let _ <- Db.insert Member { team: red, user: cid }
+  let _ <- Db.insert Member { team: red, user: bob }
+  let _ <- Db.insert Member { team: blue, user: dan }
+  let _ <- Test.login { user: Just ann }
+  let owner <- Test.get (Teams.Show { id: red })
+  let _ <- Test.login { user: Just cid }
+  let member <- Test.get (Teams.Show { id: red })
+  let _ <- Test.login { user: Just dan }
+  let stranger <- Test.open (Teams.Show { id: red })
+  Task.succeed ({ names: Test.texts "#members .name" owner.doc, buttons: Test.count ".remove" owner.doc, memberButtons: Test.count ".remove" member.doc, stranger: stranger.answer } == { names: ["Zoe", "Bob", "Cid"], buttons: 2, memberButtons: 0, stranger: PageMissing })
+}
+EOF
+alder new test Teams.Show "only the owner changes the team, and the owner cannot leave"
+alder fill 'Teams.Show."only the owner changes the team, and the owner cannot leave"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let cid <- Db.insert User { email: Text.Email "cid@example.com", name: Text.NonEmpty "Cid", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let _ <- Db.insert Member { team: red, user: bob }
+  let _ <- Db.insert Member { team: red, user: cid }
+  let asBob <- load { id: red } { user: bob }
+  let byMember <- Test.run (update (Remove { user: cid }) asBob { user: bob })
+  let inviteByMember <- Test.run (update (SubmitNewInvite { form: { email: Text.Email "x@example.com" } }) asBob { user: bob })
+  let asAnn <- load { id: red } { user: ann }
+  let self <- Test.run (update (Remove { user: ann }) asAnn { user: ann })
+  let members <- Db.from Member |> Db.count
+  let invites <- Db.from Invite |> Db.count
+  Task.succeed ({ byMember: byMember.value, inviteByMember: inviteByMember.value, self: self.value, members: members, invites: invites } == { byMember: Err "not found", inviteByMember: Err "not found", self: Err "The owner cannot leave the team.", members: 2, invites: 0 })
+}
+EOF
+```
+
+`/invites`. `Row` is a record type, so `new type` declares it. The
+binder `r` of the invites' loop is a `Row`, which has no `id`, so
+`--in-for r` leaves the hole `?acceptId`, filled with `r.invite.id`
+(the second fill names no hole: one is left):
+
+```text
+# /invites: the invites to the user's email that wait for an answer, to accept or decline
+alder new type Invites.Index "Row = { invite: Invite, team: Text }"
+alder fill --decl Invites.Index.Model - <<'EOF'
+{ rows: List Row }
+EOF
+alder new decl Invites.Index waiting "User.UserId -> Query (List Invite)"
+alder fill Invites.Index.waiting - <<'EOF'
+\user -> {
+  let me <- Db.get User user
+  match me {
+    Just u -> Db.from Invite |> Db.where (Invite.email.eq u.email) |> Db.where (Invite.status.eq Pending) |> Db.all,
+    Nothing -> Query.succeed [],
+  }
+}
+EOF
+alder new decl Invites.Index row "Invite -> Query Row"
+alder fill Invites.Index.row - <<'EOF'
+\invite -> {
+  let team <- Db.get Team invite.team
+  Query.succeed { invite: invite, team: Maybe.withDefault "" (Maybe.map (\t -> t.name) team) }
+}
+EOF
+alder fill Invites.Index.load - <<'EOF'
+{
+  let invites <- waiting session.user
+  let rows <- Query.all (List.map row invites)
+  Query.succeed { rows: rows }
+}
+EOF
+alder fill --decl Invites.Index.view - <<'EOF'
+<Layout.Page title="Invites">
+  <h1>Invites</h1>
+  <ul id="invites">
+    {for r in model.rows ->
+      <li>
+        <span class="team">{r.team}</span>
+      </li>}
+  </ul>
+  <a href={Teams.Index {}}>Teams</a>
+</Layout.Page>
+EOF
+alder new msg Invites.Index Accept id:Invite.InviteId --in-for r
+alder new msg Invites.Index Decline id:Invite.InviteId --in-for r
+alder fill Invites.Index.view - --hole ?acceptId <<'EOF'
+r.invite.id
+EOF
+alder fill Invites.Index.view - <<'EOF'
+r.invite.id
+EOF
+alder new decl Invites.Index mine "Invite.InviteId -> User.UserId -> Task Invite"
+alder fill Invites.Index.mine - <<'EOF'
+\id user -> {
+  let invites <- waiting user
+  match List.find (\i -> i.id == id) invites {
+    Just invite -> Task.succeed invite,
+    Nothing -> Task.notFound,
+  }
+}
+EOF
+alder fill Invites.Index.update.Accept - <<'EOF'
+{
+  let invite <- mine p.id session.user
+  let _ <- Db.update Invite invite.id (\i -> { i | status: Accepted })
+  let _ <- Db.insert Member { team: invite.team, user: session.user }
+  Task.succeed (Redirect (Teams.Show { id: invite.team }))
+}
+EOF
+alder fill Invites.Index.update.Decline - <<'EOF'
+{
+  let invite <- mine p.id session.user
+  let _ <- Db.update Invite invite.id (\i -> { i | status: Declined })
+  Task.succeed (Redirect (Invites.Index {}))
+}
+EOF
+alder fill 'Invites.Index."pressing Accept"' - <<'EOF'
+{ answer: r.answer, status: Maybe.map (\i -> i.status) after } == { answer: Redirected (Teams.Show { id: team1 }), status: Just Accepted }
+EOF
+alder fill 'Invites.Index."pressing Decline"' - <<'EOF'
+{ answer: r.answer, status: Maybe.map (\i -> i.status) after } == { answer: Redirected (Invites.Index {}), status: Just Declined }
+EOF
+alder new test Invites.Index "only the waiting invites to the user are listed"
+alder fill 'Invites.Index."only the waiting invites to the user are listed"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: ann }
+  let green <- Db.insert Team { name: Text.NonEmpty "Green", owner: ann }
+  let _ <- Db.insert Invite { team: red, email: Text.Email "bob@example.com" }
+  let _ <- Db.insert Invite { team: blue, email: Text.Email "bob@example.com", status: Declined }
+  let _ <- Db.insert Invite { team: green, email: Text.Email "cid@example.com" }
+  let _ <- Test.login { user: Just bob }
+  let page <- Test.get (Invites.Index {})
+  Task.succeed (Test.texts "#invites .team" page.doc == ["Red"])
+}
+EOF
+alder new test Invites.Index "accepting makes a member, declining does not"
+alder fill 'Invites.Index."accepting makes a member, declining does not"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: ann }
+  let toBlue <- Db.insert Invite { team: blue, email: Text.Email "bob@example.com" }
+  let toRed <- Db.insert Invite { team: red, email: Text.Email "bob@example.com" }
+  let _ <- Test.login { user: Just bob }
+  let _ <- Test.get (Invites.Index {})
+  let accepted <- Test.click (Accept { id: toRed })
+  let _ <- Test.get (Invites.Index {})
+  let declined <- Test.click (Decline { id: toBlue })
+  let invites <- Db.from Invite |> Db.orderBy Invite.status.asc |> Db.all
+  let members <- Db.from Member |> Db.all
+  Task.succeed ({ accepted: accepted.answer, declined: declined.answer, statuses: List.map (\i -> i.status) invites, members: List.map (\m -> { team: m.team, user: m.user }) members } == { accepted: Redirected (Teams.Show { id: red }), declined: Redirected (Invites.Index {}), statuses: [Accepted, Declined], members: [{ team: red, user: bob }] })
+}
+EOF
+alder new test Invites.Index "an invite not to the user, or not waiting, cannot be answered"
+alder fill 'Invites.Index."an invite not to the user, or not waiting, cannot be answered"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let theirs <- Db.insert Invite { team: red, email: Text.Email "cid@example.com" }
+  let done <- Db.insert Invite { team: red, email: Text.Email "bob@example.com", status: Declined }
+  let model <- load {} { user: bob }
+  let a <- Test.run (update (Accept { id: theirs }) model { user: bob })
+  let b <- Test.run (update (Accept { id: done }) model { user: bob })
+  let members <- Db.from Member |> Db.count
+  Task.succeed ({ a: a.value, b: b.value, members: members } == { a: Err "not found", b: Err "not found", members: 0 })
+}
+EOF
+```
+
+And the app's own tests:
+
+```text
+# the app's own tests
+alder check
+alder test
+```
+
+The drill needed three things beyond M12's commands, each added to them
+as a finding: `new auth` (no app with users could be built), `--blank`
+with `fill --decl` (no `Model` could change), and `new type`, `new
+decl`, `new test` with `--in-for` (a helper, a test, a row's button had
+no command). It needed `--when` too: the hidden tests count the Remove
+buttons a member sees, which must be none.
+
 ## Changing a table: `alder edit table`
 
 `alder edit table T` makes one change to a table and writes its
@@ -2016,7 +2855,7 @@ the to-do list for whoever made the change. A note on each reply:
 ```text command=guestbook
 $ alder edit table Reply add-field "note:Maybe Text"
 edited app/Reply.alder
-wrote migrations/0003_add_note.sql
+wrote migrations/0004_add_note.sql
   add column Reply.note
 edited migrations/schema.json
 --- a/app/Reply.alder

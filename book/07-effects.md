@@ -198,6 +198,13 @@ fake Markdown {
 Chapter 10 ("Faking a capability") teaches fakes: how a test installs
 one, the tables a fake may keep, and what the trace shows.
 
+Two commands write a capability for you (chapter 15): `alder new
+capability <Module> <entry> "<Type>"` writes the declaration, a fake
+whose entry is a hole, and an adapter whose methods return "not
+implemented" until you write them; `alder new auth` writes a login's
+`Password` capability with a real adapter, PBKDF2 password hashing in
+Go's standard library.
+
 ## How effects run
 
 This section describes the runtime in `rt/eff`, the Go package the

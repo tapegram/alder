@@ -1,0 +1,357 @@
+# The E11 drill (book 15, "An app from the command line"): the E9 teams app (T10), built from
+# `alder new teams` with commands only. One command a line; a `fill` reads the lines after it
+# up to EOF. cmd/alder/drill_test.go replays it, then runs the app's tests, the E9 hidden
+# tests, and `alder test --mutate`.
+
+# the users, and logging in
+alder new table User email:Text.Email@unique name:Text.NonEmpty passwordHash:Text
+alder new auth --users User
+
+# the tables
+alder new table Team name:Text.NonEmpty owner:User.UserId@ref=User
+alder new table Member team:Team.TeamId@ref=Team user:User.UserId@ref=User
+alder new table Invite team:Team.TeamId@ref=Team email:Text.Email
+alder new type Invite "Status = Pending | Accepted | Declined"
+alder edit table Invite add-field status:Status=Pending
+
+# a user's Member row in a team
+alder new decl Member row "Team.TeamId -> User.UserId -> Query (Maybe Member)"
+alder fill Member.row - <<'EOF'
+\team user -> Db.from Member |> Db.where (Member.team.eq team) |> Db.where (Member.user.eq user) |> Db.first
+EOF
+alder new test Member "row is the row of the user in that team"
+alder fill 'Member."row is the row of the user in that team"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: ann }
+  let _ <- Db.insert Member { team: blue, user: bob }
+  let _ <- Db.insert Member { team: red, user: ann }
+  let want <- Db.insert Member { team: red, user: bob }
+  let found <- row red bob
+  Task.succeed (Maybe.map (\m -> m.id) found == Just want)
+}
+EOF
+
+# the three pages, blank: their Model, load and view are filled below
+alder new page Teams.Index /teams --blank --requires user
+alder new page Teams.Show /teams --show Team --blank --requires user
+alder new page Invites.Index /invites --blank --requires user
+
+# /teams: the teams a user owns or is a member of, by name, and a form for a new one
+alder fill --decl Teams.Index.Model - <<'EOF'
+{ teams: List Team }
+EOF
+alder fill Teams.Index.load - <<'EOF'
+{
+  let memberships <- Db.from Member |> Db.where (Member.user.eq session.user) |> Db.all
+  let teams <-
+    Db.from Team
+      |> Db.where (Db.or [Team.owner.eq session.user, Team.id.in (List.map (\m -> m.team) memberships)])
+      |> Db.orderBy Team.name.asc
+      |> Db.all
+  Query.succeed { teams: teams }
+}
+EOF
+alder fill --decl Teams.Index.view - <<'EOF'
+<Layout.Page title="Teams">
+  <h1>Your teams</h1>
+  <ul id="teams">
+    {for team in model.teams ->
+      <li><a class="name" href={Teams.Show { id: team.id }}>{team.name}</a></li>}
+  </ul>
+  <a href={Invites.Index {}}>Invites</a>
+  <al-button variant="outline" click={App.Logout}>Log out</al-button>
+</Layout.Page>
+EOF
+alder new form Teams.Index NewTeam name:Text.NonEmpty
+alder fill Teams.Index.update.SubmitNewTeam - <<'EOF'
+{
+  let id <- Db.insert Team { name: p.form.name, owner: session.user }
+  Task.succeed (Redirect (Teams.Show { id: id }))
+}
+EOF
+alder fill --decl 'Teams.Index."submitting NewTeam"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Teams.Index {})
+  let r <- Test.submit NewTeam { name: Text.NonEmpty "Red" }
+  let teams <- Db.from Team |> Db.where (Team.owner.eq ann) |> Db.all
+  let ids = List.map (\t -> t.id) teams
+  Task.succeed ({ answer: r.answer, teams: List.length ids } == { answer: Redirected (Teams.Show { id: Maybe.withDefault (Team.TeamId "") (List.head ids) }), teams: 1 })
+}
+EOF
+alder new test Teams.Index "the list: teams owned and joined, by name"
+alder fill 'Teams.Index."the list: teams owned and joined, by name"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let cid <- Db.insert User { email: Text.Email "cid@example.com", name: Text.NonEmpty "Cid", passwordHash: "" }
+  let _ <- Db.insert Team { name: Text.NonEmpty "Amber", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: bob }
+  let green <- Db.insert Team { name: Text.NonEmpty "Green", owner: cid }
+  let _ <- Db.insert Team { name: Text.NonEmpty "Zinc", owner: cid }
+  let _ <- Db.insert Member { team: green, user: bob }
+  let _ <- Db.insert Member { team: blue, user: ann }
+  let _ <- Test.login { user: Just ann }
+  let page <- Test.get (Teams.Index {})
+  Task.succeed (Test.texts "#teams .name" page.doc == ["Amber", "Blue"])
+}
+EOF
+
+# /teams/{id}: the owner and the members, for them only; the owner removes members and invites
+alder fill --decl Teams.Show.Model - <<'EOF'
+{ team: Team, owner: Maybe User, others: List User, isOwner: Bool }
+EOF
+alder fill Teams.Show.load - <<'EOF'
+{
+  let found <- Db.get Team params.id
+  match found {
+    Just team -> {
+      let rows <- Db.from Member |> Db.where (Member.team.eq team.id) |> Db.all
+      let ids = List.map (\m -> m.user) rows
+      if team.owner == session.user || List.member session.user ids then {
+        let owner <- Db.get User team.owner
+        let others <- Db.from User |> Db.where (User.id.in ids) |> Db.orderBy User.name.asc |> Db.all
+        Query.succeed { team: team, owner: owner, others: others, isOwner: team.owner == session.user }
+      } else Query.notFound
+    },
+    Nothing -> Query.notFound,
+  }
+}
+EOF
+alder fill --decl Teams.Show.view - <<'EOF'
+<Layout.Page title={model.team.name}>
+  <h1 id="name">{model.team.name}</h1>
+  <ul id="members">
+    {match model.owner {
+      Just o -> <li><span class="name">{o.name}</span> (owner)</li>,
+      Nothing -> Html.none,
+    }}
+    {for u in model.others ->
+      <li>
+        <span class="name">{u.name}</span>
+      </li>}
+  </ul>
+  <a href={Teams.Index {}}>All teams</a>
+</Layout.Page>
+EOF
+alder new msg Teams.Show Remove user:User.UserId --in-for u --when model.isOwner
+alder new form Teams.Show NewInvite email:Text.Email
+alder fill Teams.Show.update.Remove - <<'EOF'
+if not model.isOwner then Task.notFound
+else if p.user == model.team.owner then Task.fail "The owner cannot leave the team."
+else {
+  let found <- Member.row model.team.id p.user
+  match found {
+    Just m -> {
+      let _ <- Db.delete Member m.id
+      Task.succeed (Redirect (Teams.Show { id: model.team.id }))
+    },
+    Nothing -> Task.notFound,
+  }
+}
+EOF
+alder fill Teams.Show.update.SubmitNewInvite - <<'EOF'
+if not model.isOwner then Task.notFound
+else {
+  let _ <- Db.insert Invite { team: model.team.id, email: p.form.email }
+  Task.succeed (Redirect (Teams.Show { id: model.team.id }))
+}
+EOF
+alder fill 'Teams.Show."submitting NewInvite"' - <<'EOF'
+Redirected (Teams.Show { id: team1 })
+EOF
+alder fill --decl 'Teams.Show."pressing Remove"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let cid <- Db.insert User { email: Text.Email "cid@example.com", name: Text.NonEmpty "Cid", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let _ <- Db.insert Member { team: red, user: cid }
+  let _ <- Db.insert Member { team: red, user: bob }
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Teams.Show { id: red })
+  let r <- Test.click (Remove { user: bob })
+  let invited <- Test.submit NewInvite { email: Text.Email "new@example.com" }
+  let invites <- Db.from Invite |> Db.all
+  Task.succeed ({ removed: r.answer, names: Test.texts "#members .name" r.doc, invited: invited.answer, invites: List.map (\i -> { team: i.team, email: i.email, status: i.status }) invites } == { removed: Redirected (Teams.Show { id: red }), names: ["Ann", "Cid"], invited: Redirected (Teams.Show { id: red }), invites: [{ team: red, email: Text.Email "new@example.com", status: Pending }] })
+}
+EOF
+alder new test Teams.Show "the page: owner and members only, the owner first, the others by name"
+alder fill 'Teams.Show."the page: owner and members only, the owner first, the others by name"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Zoe", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let cid <- Db.insert User { email: Text.Email "cid@example.com", name: Text.NonEmpty "Cid", passwordHash: "" }
+  let dan <- Db.insert User { email: Text.Email "dan@example.com", name: Text.NonEmpty "Dan", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: ann }
+  let _ <- Db.insert Member { team: red, user: cid }
+  let _ <- Db.insert Member { team: red, user: bob }
+  let _ <- Db.insert Member { team: blue, user: dan }
+  let _ <- Test.login { user: Just ann }
+  let owner <- Test.get (Teams.Show { id: red })
+  let _ <- Test.login { user: Just cid }
+  let member <- Test.get (Teams.Show { id: red })
+  let _ <- Test.login { user: Just dan }
+  let stranger <- Test.open (Teams.Show { id: red })
+  Task.succeed ({ names: Test.texts "#members .name" owner.doc, buttons: Test.count ".remove" owner.doc, memberButtons: Test.count ".remove" member.doc, stranger: stranger.answer } == { names: ["Zoe", "Bob", "Cid"], buttons: 2, memberButtons: 0, stranger: PageMissing })
+}
+EOF
+alder new test Teams.Show "only the owner changes the team, and the owner cannot leave"
+alder fill 'Teams.Show."only the owner changes the team, and the owner cannot leave"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let cid <- Db.insert User { email: Text.Email "cid@example.com", name: Text.NonEmpty "Cid", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let _ <- Db.insert Member { team: red, user: bob }
+  let _ <- Db.insert Member { team: red, user: cid }
+  let asBob <- load { id: red } { user: bob }
+  let byMember <- Test.run (update (Remove { user: cid }) asBob { user: bob })
+  let inviteByMember <- Test.run (update (SubmitNewInvite { form: { email: Text.Email "x@example.com" } }) asBob { user: bob })
+  let asAnn <- load { id: red } { user: ann }
+  let self <- Test.run (update (Remove { user: ann }) asAnn { user: ann })
+  let members <- Db.from Member |> Db.count
+  let invites <- Db.from Invite |> Db.count
+  Task.succeed ({ byMember: byMember.value, inviteByMember: inviteByMember.value, self: self.value, members: members, invites: invites } == { byMember: Err "not found", inviteByMember: Err "not found", self: Err "The owner cannot leave the team.", members: 2, invites: 0 })
+}
+EOF
+
+# /invites: the invites to the user's email that wait for an answer, to accept or decline
+alder new type Invites.Index "Row = { invite: Invite, team: Text }"
+alder fill --decl Invites.Index.Model - <<'EOF'
+{ rows: List Row }
+EOF
+alder new decl Invites.Index waiting "User.UserId -> Query (List Invite)"
+alder fill Invites.Index.waiting - <<'EOF'
+\user -> {
+  let me <- Db.get User user
+  match me {
+    Just u -> Db.from Invite |> Db.where (Invite.email.eq u.email) |> Db.where (Invite.status.eq Pending) |> Db.all,
+    Nothing -> Query.succeed [],
+  }
+}
+EOF
+alder new decl Invites.Index row "Invite -> Query Row"
+alder fill Invites.Index.row - <<'EOF'
+\invite -> {
+  let team <- Db.get Team invite.team
+  Query.succeed { invite: invite, team: Maybe.withDefault "" (Maybe.map (\t -> t.name) team) }
+}
+EOF
+alder fill Invites.Index.load - <<'EOF'
+{
+  let invites <- waiting session.user
+  let rows <- Query.all (List.map row invites)
+  Query.succeed { rows: rows }
+}
+EOF
+alder fill --decl Invites.Index.view - <<'EOF'
+<Layout.Page title="Invites">
+  <h1>Invites</h1>
+  <ul id="invites">
+    {for r in model.rows ->
+      <li>
+        <span class="team">{r.team}</span>
+      </li>}
+  </ul>
+  <a href={Teams.Index {}}>Teams</a>
+</Layout.Page>
+EOF
+alder new msg Invites.Index Accept id:Invite.InviteId --in-for r
+alder new msg Invites.Index Decline id:Invite.InviteId --in-for r
+alder fill Invites.Index.view - --hole ?acceptId <<'EOF'
+r.invite.id
+EOF
+alder fill Invites.Index.view - <<'EOF'
+r.invite.id
+EOF
+alder new decl Invites.Index mine "Invite.InviteId -> User.UserId -> Task Invite"
+alder fill Invites.Index.mine - <<'EOF'
+\id user -> {
+  let invites <- waiting user
+  match List.find (\i -> i.id == id) invites {
+    Just invite -> Task.succeed invite,
+    Nothing -> Task.notFound,
+  }
+}
+EOF
+alder fill Invites.Index.update.Accept - <<'EOF'
+{
+  let invite <- mine p.id session.user
+  let _ <- Db.update Invite invite.id (\i -> { i | status: Accepted })
+  let _ <- Db.insert Member { team: invite.team, user: session.user }
+  Task.succeed (Redirect (Teams.Show { id: invite.team }))
+}
+EOF
+alder fill Invites.Index.update.Decline - <<'EOF'
+{
+  let invite <- mine p.id session.user
+  let _ <- Db.update Invite invite.id (\i -> { i | status: Declined })
+  Task.succeed (Redirect (Invites.Index {}))
+}
+EOF
+alder fill 'Invites.Index."pressing Accept"' - <<'EOF'
+{ answer: r.answer, status: Maybe.map (\i -> i.status) after } == { answer: Redirected (Teams.Show { id: team1 }), status: Just Accepted }
+EOF
+alder fill 'Invites.Index."pressing Decline"' - <<'EOF'
+{ answer: r.answer, status: Maybe.map (\i -> i.status) after } == { answer: Redirected (Invites.Index {}), status: Just Declined }
+EOF
+alder new test Invites.Index "only the waiting invites to the user are listed"
+alder fill 'Invites.Index."only the waiting invites to the user are listed"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: ann }
+  let green <- Db.insert Team { name: Text.NonEmpty "Green", owner: ann }
+  let _ <- Db.insert Invite { team: red, email: Text.Email "bob@example.com" }
+  let _ <- Db.insert Invite { team: blue, email: Text.Email "bob@example.com", status: Declined }
+  let _ <- Db.insert Invite { team: green, email: Text.Email "cid@example.com" }
+  let _ <- Test.login { user: Just bob }
+  let page <- Test.get (Invites.Index {})
+  Task.succeed (Test.texts "#invites .team" page.doc == ["Red"])
+}
+EOF
+alder new test Invites.Index "accepting makes a member, declining does not"
+alder fill 'Invites.Index."accepting makes a member, declining does not"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: ann }
+  let toBlue <- Db.insert Invite { team: blue, email: Text.Email "bob@example.com" }
+  let toRed <- Db.insert Invite { team: red, email: Text.Email "bob@example.com" }
+  let _ <- Test.login { user: Just bob }
+  let _ <- Test.get (Invites.Index {})
+  let accepted <- Test.click (Accept { id: toRed })
+  let _ <- Test.get (Invites.Index {})
+  let declined <- Test.click (Decline { id: toBlue })
+  let invites <- Db.from Invite |> Db.orderBy Invite.status.asc |> Db.all
+  let members <- Db.from Member |> Db.all
+  Task.succeed ({ accepted: accepted.answer, declined: declined.answer, statuses: List.map (\i -> i.status) invites, members: List.map (\m -> { team: m.team, user: m.user }) members } == { accepted: Redirected (Teams.Show { id: red }), declined: Redirected (Invites.Index {}), statuses: [Accepted, Declined], members: [{ team: red, user: bob }] })
+}
+EOF
+alder new test Invites.Index "an invite not to the user, or not waiting, cannot be answered"
+alder fill 'Invites.Index."an invite not to the user, or not waiting, cannot be answered"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let theirs <- Db.insert Invite { team: red, email: Text.Email "cid@example.com" }
+  let done <- Db.insert Invite { team: red, email: Text.Email "bob@example.com", status: Declined }
+  let model <- load {} { user: bob }
+  let a <- Test.run (update (Accept { id: theirs }) model { user: bob })
+  let b <- Test.run (update (Accept { id: done }) model { user: bob })
+  let members <- Db.from Member |> Db.count
+  Task.succeed ({ a: a.value, b: b.value, members: members } == { a: Err "not found", b: Err "not found", members: 0 })
+}
+EOF
+
+# the app's own tests
+alder check
+alder test
