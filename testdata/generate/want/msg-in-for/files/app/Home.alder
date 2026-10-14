@@ -1,0 +1,77 @@
+module Home
+
+import Entry
+import Layout
+
+page "/" { }
+
+type Model = { entries: List Entry }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let entries <- Db.from Entry |> Db.orderBy Entry.created.desc |> Db.all
+  Query.succeed { entries: entries }
+}
+
+form Sign = {
+  name: Text.NonEmpty,
+  message: Text.NonEmpty,
+}
+
+msg Submit form Sign
+
+msg Hide { id: Entry.EntryId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
+    Task.succeed (Redirect (Home {}))
+  },
+  Hide p -> ?hide,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Guestbook">
+    <h1>Guestbook</h1>
+
+    <al-card>
+      <h2 slot="header">Sign the guestbook</h2>
+      <form submit={Submit}>
+        <al-input field="name" label="Your name" />
+        <al-input field="message" label="Message" />
+        <al-button type="submit">Sign</al-button>
+      </form>
+    </al-card>
+
+    <ul id="entries">
+      {for e in model.entries -> <li><b>{e.name}</b>: {e.message}{if List.length model.entries > 0 then <al-button class="hide" click={Hide { id: e.id }}>Hide</al-button> else Html.none}</li>}
+    </ul>
+  </Layout.Page>
+
+test "signing adds an entry" = {
+  let _ <- Test.get (Home {})
+  let signed <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
+  let page <- Test.get (Home {})
+  Task.succeed ({ answer: signed.answer, entries: Test.count "#entries li" page.doc } == { answer: Redirected (Home {}), entries: 1 })
+}
+
+test "entries are listed newest first" = {
+  let _ <- Test.get (Home {})
+  let _ <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "First" }
+  let _ <- Test.submit Sign { name: Text.NonEmpty "Grace", message: Text.NonEmpty "Second" }
+  let page <- Test.get (Home {})
+  Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
+}
+
+-- Fill ?expected with what pressing Hide must do, so that a test fails when the arm
+-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
+-- changed (`after`, the row read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.
+test "pressing Hide" = {
+  let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
+  let _ <- Test.get (Home {})
+  let r <- Test.click (Hide { id: entry1 })
+  let after <- Db.get Entry entry1
+  Task.succeed ?expected
+}

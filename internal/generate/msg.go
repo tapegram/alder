@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"alder/internal/syntax"
 	"alder/internal/types"
 )
 
@@ -15,6 +16,14 @@ type MsgData struct {
 	Fields []string
 	Click  string
 	Label  string
+	Class  string // the button's class, "" for none (a button in a loop has its message's name)
+	When   string // the condition the button is shown on, "" for always
+}
+
+// MsgOptions are `alder new msg`'s placement options.
+type MsgOptions struct {
+	InFor string // --in-for: the binder of the view's loop the button goes in
+	When  string // --when: the Bool expression the button is shown on
 }
 
 // NewMsg generates `alder new msg`: `msg <Name> { … }` in the page module, an `update` arm
@@ -24,7 +33,14 @@ type MsgData struct {
 // again the row the arm may change (or opens the page again, whatever its answer: the arm may
 // delete the page's own row), and ends in the hole `?expected` : Bool, with
 // a comment saying what to assert, so that the filled arm's mutants are killable.
-func NewMsg(p *Program, page, name string, fields []FieldSpec) ([]Edit, error) {
+//
+// With o.InFor (`--in-for <binder>`) the button goes at the end of the body element of the
+// view's `{for <binder> in …}` instead, with the class of the message's name (`class="remove"`,
+// so a test can count the rows' buttons), and each parameter's value is taken from the binder
+// where it can be (binderValue: `user: m.user`, `user: u.id`), a hole otherwise. With o.When
+// (`--when <Bool expression>`) the button is shown only when the expression holds: `{if <expr>
+// then <al-button …> else Html.none}`.
+func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]Edit, error) {
 	pg, m, err := pageModule(p, page)
 	if err != nil {
 		return nil, err
@@ -37,6 +53,22 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec) ([]Edit, error) {
 	}
 	imports := newImports(page, p.Std)
 	d := MsgData{Name: name, Click: name, Label: Humanize(name)}
+	var loop *syntax.HtmlFor
+	if o.InFor != "" {
+		n := 0
+		if loop, n = findFor(m.Syntax, o.InFor); loop == nil {
+			return nil, Refusef("`%s`'s `view` has no `{for %s in …}`: name the loop variable of one of its loops", page, o.InFor)
+		} else if n > 1 {
+			return nil, Refusef("`%s`'s `view` has %d loops `{for %s in …}`: rename one, so that --in-for names one loop", page, n, o.InFor)
+		}
+		d.Class = kebab(name)
+	}
+	if w := strings.TrimSpace(o.When); w != "" {
+		if _, ds, more, _ := syntax.ParseExpr("--when", []byte(w)); more != "" || len(ds) > 0 || strings.Contains(w, "\n") {
+			return nil, Refusef("`--when %s` is not one expression", w)
+		}
+		d.When = w
+	}
 	var holes []string
 	seen := map[string]bool{}
 	for _, f := range fields {
@@ -46,7 +78,14 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec) ([]Edit, error) {
 		seen[f.Name] = true
 		d.Fields = append(d.Fields, f.Source())
 		typeImports(imports, f.Type, p)
-		holes = append(holes, f.Name+": ?"+LowerFirst(name)+UpperFirst(f.Name))
+		v := ""
+		if loop != nil {
+			v = binderValue(p, o.InFor, p.Res.Binds[loop], f.Name, f.Type, page)
+		}
+		if v == "" {
+			v = "?" + LowerFirst(name) + UpperFirst(f.Name)
+		}
+		holes = append(holes, f.Name+": "+v)
 	}
 	if len(holes) > 0 {
 		d.Click = name + " { " + strings.Join(holes, ", ") + " }"
@@ -56,7 +95,11 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec) ([]Edit, error) {
 	if err := addDecls(e, m, page, snippet("msg_decl", d), arm); err != nil {
 		return nil, err
 	}
-	if err := addToView(e, m, page, snippet("msg_button", d), ""); err != nil {
+	if loop != nil {
+		if !addToFor(e, loop, snippet("msg_button", d)) {
+			return nil, Refusef("the body of `%s`'s `{for %s in …}` is not one element with a closing tag: add the button yourself", page, o.InFor)
+		}
+	} else if err := addToView(e, m, page, snippet("msg_button", d), ""); err != nil {
 		return nil, err
 	}
 	// the test presses the button, then reads again what the arm may change: the row a

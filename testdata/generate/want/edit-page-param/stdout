@@ -1,0 +1,12 @@
+edited app/Home.alder
+--- a/app/Home.alder
++++ b/app/Home.alder
+@@ -3,7 +3,7 @@
+ import Entry
+ import Layout
+ 
+-page "/" { }
++page "/" { q: Text = "" }
+ 
+ type Model = { entries: List Entry }
+ 

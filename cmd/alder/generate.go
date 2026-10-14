@@ -380,11 +380,11 @@ func runNewFormTo(args []string, stdout, stderr io.Writer) int {
 	return runGenerator("alder new form", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) { return generate.NewForm(p, o) }, stdout, stderr)
 }
 
-const newMsgUsage = "usage: alder new msg <Page module> <Name> [<field>:<Type> …] [--dir app] [--json] [--dry-run]"
+const newMsgUsage = "usage: alder new msg <Page module> <Name> [<field>:<Type> …] [--in-for <binder>] [--when <Bool expression>] [--dir app] [--json] [--dry-run]"
 
 // runNewMsgTo is `alder new msg`.
 func runNewMsgTo(args []string, stdout, stderr io.Writer) int {
-	g, err := parseGenArgs(args, nil, nil, nil)
+	g, err := parseGenArgs(args, []string{"in-for", "when"}, nil, nil)
 	if err != nil || len(g.pos) < 2 {
 		return genUsage(stderr, newMsgUsage, err)
 	}
@@ -393,7 +393,7 @@ func runNewMsgTo(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return runGenerator("alder new msg", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
-		return generate.NewMsg(p, g.pos[0], g.pos[1], fields)
+		return generate.NewMsg(p, g.pos[0], g.pos[1], fields, generate.MsgOptions{InFor: g.flag("in-for"), When: g.flag("when")})
 	}, stdout, stderr)
 }
 

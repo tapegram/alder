@@ -1,0 +1,49 @@
+edited app/Home.alder
+--- a/app/Home.alder
++++ b/app/Home.alder
+@@ -20,12 +20,15 @@
+ 
+ msg Submit form Sign
+ 
++msg Hide { id: Entry.EntryId }
++
+ update : Msg -> Model -> Session -> Task Nav
+ update msg model session = match msg {
+   Submit p -> {
+     let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
+     Task.succeed (Redirect (Home {}))
+   },
++  Hide p -> ?hide,
+ }
+ 
+ view : Model -> Session -> Html Msg
+@@ -43,7 +46,7 @@
+     </al-card>
+ 
+     <ul id="entries">
+-      {for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}
++      {for e in model.entries -> <li><b>{e.name}</b>: {e.message}{if List.length model.entries > 0 then <al-button class="hide" click={Hide { id: e.id }}>Hide</al-button> else Html.none}</li>}
+     </ul>
+   </Layout.Page>
+ 
+@@ -61,3 +64,14 @@
+   let page <- Test.get (Home {})
+   Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
+ }
++
++-- Fill ?expected with what pressing Hide must do, so that a test fails when the arm
++-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
++-- changed (`after`, the row read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.
++test "pressing Hide" = {
++  let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
++  let _ <- Test.get (Home {})
++  let r <- Test.click (Hide { id: entry1 })
++  let after <- Db.get Entry entry1
++  Task.succeed ?expected
++}
+app/Home.alder:31:13: warning[W0002]: hole ?hide has type Task Nav
+    Hide p -> ?hide,
+              ^^^^^
+app/Home.alder:76:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^

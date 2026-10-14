@@ -204,6 +204,9 @@ var genCases = []genCase{
 		fills: [][2]string{{"Notes.load", "Query.succeed { }"}, {"Notes.view", "<al-page><h1>Notes</h1></al-page>"}}},
 	{name: "fixture-page-blank-show", base: "fixture", args: []string{"new", "page", "Posts.Edit", "/posts/edit", "--show", "Post", "--blank", "--requires", "user"}, test: true,
 		fills: [][2]string{{"Posts.Edit.load", "Query.succeed { }"}, {"Posts.Edit.view", "<al-page><h1>Edit</h1></al-page>"}}},
+	{name: "msg-in-for", base: "scaffold", args: []string{"new", "msg", "Home", "Hide", "id:Entry.EntryId", "--in-for", "e", "--when", "List.length model.entries > 0"}, test: true,
+		fills: [][2]string{{"Home.update.Hide", "Task.succeed Rerender"}, {`Home."pressing Hide"`, "{ answer: r.answer, found: Maybe.map (\\x -> x.id) after } == { answer: Rerendered, found: Just entry1 }"}}},
+	{name: "edit-page-param", base: "scaffold", args: []string{"edit", "page", "Home", "add-param", `q:Text=""`}, test: true},
 }
 
 // TestGenerate runs every case of genCases.
@@ -370,6 +373,10 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "decl", "Home", "x", "Int ->"}, "", "alder new decl: `Int ->` is not a type: "},
 		{"scaffold", []string{"new", "test", "Home", "signing adds an entry"}, "", "alder new test: `Home` already has a test \"signing adds an entry\": choose another name"},
 		{"scaffold", []string{"new", "page", "Notes", "/notes", "--blank", "--list", "Entry"}, "", "alder new page: --blank takes no --list or --from"},
+		{"scaffold", []string{"new", "msg", "Home", "Hide", "--in-for", "x"}, "", "alder new msg: `Home`'s `view` has no `{for x in …}`: name the loop variable of one of its loops"},
+		{"scaffold", []string{"new", "msg", "Home", "Hide", "--when", "a b c,"}, "", "alder new msg: `--when a b c,` is not one expression"},
+		{"scaffold", []string{"edit", "page", "Entry", "add-param", "q:Text"}, "", "alder edit page: `Entry` is not a page (it has no `page` declaration)"},
+		{"scaffold", []string{"edit", "page", "Home", "add-param", "q:Text"}, "", "alder edit page: the result does not check (the errors above): nothing was written"},
 		{"scaffold", []string{"fill", "--decl", "Home.update.Submit", "-"}, "Task.succeed Rerender", "alder fill: `Home.update.Submit` names an arm: --decl replaces a whole declaration, `Home.update`"},
 		{"scaffold", []string{"fill", "--decl", "Home.nope", "-"}, "1", "alder fill: `Home` has no declaration `nope` with a body (a value, a type or a test)"},
 		{"scaffold", []string{"fill", "--decl", "Home.load", "-"}, "Query.succeed { entries: [] },\n}\n", "alder fill: `alder fill --decl` takes one expression; found more after it"},
