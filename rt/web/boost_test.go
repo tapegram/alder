@@ -329,3 +329,14 @@ func TestBoost_ClickHandlerExclusions(t *testing.T) {
 		t.Error("HeadTags lacks the boost")
 	}
 }
+
+// The flash (M13): every page served whole begins its <head> with the color-scheme meta, before
+// the Datastar script, so the first frame is painted in the OS's scheme.
+func TestBoost_ColorSchemeMeta(t *testing.T) {
+	h := NewRouter(one("GET", "/", func(rq *Request) Response { return PageResponse(doc("Home"), nil, nil, false) }), testOpts(nil))
+	body := serve(h, httptest.NewRequest("GET", "/", nil)).Body.String()
+	want := "<!doctype html>\n<html><head>" + `<meta name="color-scheme" content="light dark" />` + html.Render(datastar.ScriptTag()) + html.Render(datastar.BoostTag()) + "<title>Home</title>"
+	if !strings.HasPrefix(body, want) {
+		t.Fatalf("head %q", body)
+	}
+}

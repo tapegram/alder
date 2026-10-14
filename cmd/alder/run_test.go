@@ -321,14 +321,15 @@ func dsDo(t *testing.T, req *http.Request) (*http.Response, string) {
 	return res, string(b)
 }
 
-// Boosted navigation through the dev server (M13): a page carries the boost in its <head>; a
+// Boosted navigation through the dev server (M13): a page's <head> begins with the color-scheme
+// meta, then the Datastar script and the boost; a
 // Datastar GET of a page (a boosted link, with Datastar's ?datastar= signals) is answered with
 // its body patch (overlay target and subscriber kept), its title and a history push; one whose
 // `requires` redirects pushes the login page; a message that redirects is answered with the
 // target's morph under Datastar, and with the 303 without it.
 func TestRun_BoostedNavigation(t *testing.T) {
 	r := startRun(t)
-	if page := get(t, r.base+"/login"); !strings.Contains(page, `<meta name="alder-boost" content="links" data-init=`) ||
+	if page := get(t, r.base+"/login"); !strings.Contains(page, `<head><meta name="color-scheme" content="light dark" /><script type="module" src="/_alder/datastar-v1.0.0.js"></script><meta name="alder-boost" content="links" data-init=`) ||
 		!strings.Contains(page, `data-on:click__window="if (evt.defaultPrevented`) {
 		t.Fatalf("GET /login lacks the boost:\n%s", page)
 	}
@@ -388,7 +389,7 @@ func TestRun_EditReloads(t *testing.T) {
 }
 
 // The child serves the build's static directory: the app's static/ and the design system's
-// assets (/static/al/al.css, no-cache with an ETag). Saving a static file copies it again and reloads,
+// assets (/static/al/al.css, fresh for five minutes then stale-while-revalidate, with an ETag). Saving a static file copies it again and reloads,
 // without a rebuild (the generation is unchanged).
 func TestRun_ServesStaticAndDesignSystem(t *testing.T) {
 	r := startRun(t)
@@ -399,7 +400,7 @@ func TestRun_ServesStaticAndDesignSystem(t *testing.T) {
 	}
 	b, _ := io.ReadAll(res.Body)
 	res.Body.Close()
-	if res.StatusCode != 200 || res.Header.Get("Cache-Control") != "no-cache" || res.Header.Get("ETag") == "" || !strings.Contains(string(b), "alder-ui") {
+	if res.StatusCode != 200 || res.Header.Get("Cache-Control") != "public, max-age=300, stale-while-revalidate=86400" || res.Header.Get("ETag") == "" || !strings.Contains(string(b), "alder-ui v0.1.3") {
 		t.Fatalf("GET /static/al/al.css = %d %q %.60q", res.StatusCode, res.Header.Get("Cache-Control"), b)
 	}
 	get(t, r.base+"/static/al/custom-elements.json")

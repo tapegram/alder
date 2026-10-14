@@ -115,7 +115,7 @@ type segment struct {
 
 // NewRouter returns the app's http.Handler. For each request it: recovers panics (→ 500 via
 // ErrorDoc); serves the Datastar script at datastar.ScriptPath (versioned, immutable),
-// Options.StaticDir under /static/, and the design system at /static/al/ (no-cache, ETag); matches method and pattern, the most specific pattern first (a literal segment
+// Options.StaticDir under /static/, and the design system at /static/al/ (DesignSystemCache, ETag); matches method and pattern, the most specific pattern first (a literal segment
 // before a parameter, left to right; equally specific ones in declaration order), a trailing
 // slash tolerated (anything unmatched, including a GET to a POST-only path, is a 404 rendered
 // with NotFoundDoc); reads a POST body
@@ -740,13 +740,18 @@ func commentSafe(s string) string {
 	return s
 }
 
-// HeadTags is what the router inserts into every page it serves whole (withScript): the
-// Datastar script tag and the boost (datastar.BoostTag: links of this site become Datastar GETs
-// answered with a morph). An Alder test's browser takes it out again, so the page it holds is
-// the page as the view renders it.
+// HeadTags is what the router inserts into every page it serves whole (withScript):
+// <meta name="color-scheme" content="light dark"> first, so the browser paints the page's
+// first frame (and the canvas behind a navigation) in the OS's scheme rather than white before
+// the stylesheet arrives; then the Datastar script tag and the boost (datastar.BoostTag: links
+// of this site become Datastar GETs answered with a morph). An Alder test's browser takes it
+// out again, so the page it holds is the page as the view renders it.
 func HeadTags() string {
-	return html.Render(datastar.ScriptTag()) + html.Render(datastar.BoostTag())
+	return colorScheme + html.Render(datastar.ScriptTag()) + html.Render(datastar.BoostTag())
 }
+
+// colorScheme is the color-scheme meta HeadTags begins with.
+var colorScheme = html.Render(html.El("meta", []html.Attr{html.A("name", "color-scheme"), html.A("content", "light dark")}))
 
 // withScript inserts HeadTags right after the first <head> start tag; without one, right after
 // the <html> start tag; without that, just before the last </body>; else at the start of the
@@ -843,7 +848,7 @@ func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {
 	}
 	if data, etag, ok := al.File(strings.TrimPrefix(r.URL.Path, designSystemPrefix)); ok && strings.HasPrefix(r.URL.Path, designSystemPrefix) {
 		h := w.Header()
-		h.Set("Cache-Control", "no-cache")
+		h.Set("Cache-Control", DesignSystemCache)
 		h.Set("ETag", etag)
 		http.ServeContent(w, r, r.URL.Path, time.Time{}, bytes.NewReader(data)) // 304 on If-None-Match
 		return
@@ -853,11 +858,18 @@ func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {
 
 // designSystemPrefix is where every build writes the `alder-ui` assets (buildkit
 // WriteDesignSystem). Its two files (al.Names) are served from the runtime's embedded copy,
-// the same bytes, with `Cache-Control: no-cache` and a strong ETag hashed from them once:
-// the URL stays /static/al/al.css across compiler upgrades, so a browser must revalidate (a
-// 304 when nothing changed) rather than keep a stale stylesheet for a year. Any other file
-// there is the app's and is served like the rest of static/.
+// the same bytes, with DesignSystemCache and a strong ETag hashed from them once. Any other
+// file there is the app's and is served like the rest of static/.
 const designSystemPrefix = staticPrefix + "al/"
+
+// DesignSystemCache is the Cache-Control of /static/al/'s files. The URL carries no version —
+// it stays /static/al/al.css across compiler upgrades — so the stylesheet cannot be immutable;
+// but revalidating it on every page load (no-cache) makes a load wait for a round trip before
+// it can paint, the white flash between pages. So: fresh for five minutes (a load paints from
+// the cache at once), then served stale for up to a day while the browser revalidates in the
+// background (a 304 by the ETag when nothing changed). The trade: for up to five minutes after
+// an upgrade a browser may show the previous release's stylesheet.
+const DesignSystemCache = "public, max-age=300, stale-while-revalidate=86400"
 
 // filesOnly is a FileSystem in which directories do not exist: no listings, no index pages.
 type filesOnly struct{ fs http.FileSystem }

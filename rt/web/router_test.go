@@ -191,8 +191,9 @@ func TestRouter_StaticAndScript(t *testing.T) {
 		t.Fatalf("nested static: %d", w.Code)
 	}
 	// The design system's assets (static/al/, written by every build) keep their URL across
-	// compiler upgrades: served from the runtime's embedded copy with no-cache and a strong
-	// ETag, so the browser revalidates and gets a 304 while nothing changed. An app's own file
+	// compiler upgrades: served from the runtime's embedded copy, fresh for five minutes and
+	// then stale-while-revalidate (M13), with a strong ETag, so a revalidation gets a 304 while
+	// nothing changed. An app's own file
 	// under static/al/ is served like any static file (not immutable); a missing one is a 404.
 	if err := os.MkdirAll(filepath.Join(dir, "al"), 0o755); err != nil {
 		t.Fatal(err)
@@ -203,7 +204,7 @@ func TestRouter_StaticAndScript(t *testing.T) {
 	css, etag, _ := al.File("al.css")
 	for _, name := range al.Names {
 		w = serve(h, httptest.NewRequest("GET", "/static/al/"+name, nil))
-		if w.Code != 200 || w.Header().Get("Cache-Control") != "no-cache" || !strings.HasPrefix(w.Header().Get("ETag"), `"`) {
+		if w.Code != 200 || w.Header().Get("Cache-Control") != "public, max-age=300, stale-while-revalidate=86400" || !strings.HasPrefix(w.Header().Get("ETag"), `"`) {
 			t.Fatalf("%s: %d %q %q", name, w.Code, w.Header().Get("Cache-Control"), w.Header().Get("ETag"))
 		}
 	}

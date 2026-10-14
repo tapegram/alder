@@ -1,4 +1,4 @@
-/*! alder-ui v0.1.2 | Apache-2.0 | https://github.com/tapegram/alder-ui
+/*! alder-ui v0.1.3 | Apache-2.0 | https://github.com/tapegram/alder-ui
  * Built by scripts/build.py from tokens.css and components/; do not edit. */
 
 @layer al {
@@ -190,6 +190,14 @@
   --al-ring-offset: 2px;
   --al-disabled-opacity: 0.5;
   --al-duration: 150ms;
+}
+
+/* Cross-document view transitions: a same-origin page load cross-fades from
+ * the old page to the new one instead of painting a blank (white) frame in
+ * between, which in the dark theme is a flash. Browsers without view
+ * transitions ignore the rule. */
+@view-transition {
+  navigation: auto;
 }
 
 /* Base: the page takes the theme's colours and type. */

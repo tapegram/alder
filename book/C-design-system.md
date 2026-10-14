@@ -34,7 +34,7 @@ box", explains why):
   styles that box by its tag name and attributes. Every element works
   with JavaScript off.
 
-The version Alder ships is **v0.1.2**: the compiler embeds a copy of
+The version Alder ships is **v0.1.3**: the compiler embeds a copy of
 the library's stylesheet and manifest at that tag (`rt/al/VERSION`;
 "Where it lives", below).
 
