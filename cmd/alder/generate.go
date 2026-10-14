@@ -294,6 +294,7 @@ var newGenerators = map[string]func(args []string, stdout, stderr io.Writer) int
 	"msg":        runNewMsgTo,
 	"capability": runNewCapabilityTo,
 	"admin":      runNewAdminTo,
+	"auth":       runNewAuthTo,
 }
 
 // genUsage prints a generator's usage line and returns 2.
@@ -403,5 +404,28 @@ func runNewCapabilityTo(args []string, stdout, stderr io.Writer) int {
 	}
 	return runGenerator("alder new capability", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
 		return generate.NewCapability(p, g.pos[0], g.pos[1], g.pos[2])
+	}, stdout, stderr)
+}
+
+const newAuthUsage = "usage: alder new auth [--users User] [--role Role] [--to Page] [--dir app] [--json] [--dry-run]"
+
+// runNewAuthTo is `alder new auth`: a login with a real password adapter (generate.NewAuth);
+// the user table's migration when it creates the table.
+func runNewAuthTo(args []string, stdout, stderr io.Writer) int {
+	g, err := parseGenArgs(args, []string{"users", "role", "to"}, nil, nil)
+	if err != nil || len(g.pos) != 0 {
+		return genUsage(stderr, newAuthUsage, err)
+	}
+	created := false
+	o := generate.Options{Migrate: func(dir string) ([]string, error) {
+		if !created {
+			return nil, nil
+		}
+		return migrateCopy(dir)
+	}}
+	return runGenerator("alder new auth", g, o, func(p *generate.Program) ([]generate.Edit, error) {
+		edits, c, err := generate.NewAuth(p, generate.AuthOptions{Users: g.flag("users"), Role: g.flag("role"), To: g.flag("to")})
+		created = c
+		return edits, err
 	}, stdout, stderr)
 }

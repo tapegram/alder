@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"alder/internal/buildkit"
 )
 
 var updateGenerate = flag.Bool("update", false, "rewrite the generators' golden files (testdata/generate/want)")
@@ -187,6 +189,9 @@ var genCases = []genCase{
 	{name: "fixture-edit-rename", base: "fixture", args: []string{"edit", "table", "Post", "rename-field", "body", "text"}, breaks: true},
 	{name: "fixture-edit-drop", base: "fixture", args: []string{"edit", "table", "Tag", "drop-field", "created"}, test: true},
 	{name: "fixture-admin", base: "fixture", args: []string{"new", "admin"}, test: true},
+
+	// M13: the commands of the agent's loop
+	{name: "auth", base: "scaffold", args: []string{"new", "auth"}, test: true},
 }
 
 // TestGenerate runs every case of genCases.
@@ -342,6 +347,9 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"edit", "table", "Entry", "add-field", "n:Int=1, evil: Text"}, "", "alder edit table: field `n`: the default `1, evil: Text` is not one expression"},
 		{"scaffold", []string{"new", "table", "Thing", "x:Nope.Type"}, "", "alder new table: the result does not check (the errors above): nothing was written"},
 		{"scaffold", []string{"new", "page", "About", "/about", "--role", "Admin"}, "", "alder new page: `--role Admin` needs a session with a `user` field and a `role` field whose type is a union (`session { user: Maybe User.UserId, role: User.Role = Reader }` in `App`): this app's session has no `user` field"},
+		// M13
+		{"fixture", []string{"new", "auth"}, "", "alder new auth: the session already has a `user` field: the app has a login (`login = Auth.Login`)"},
+		{"scaffold", []string{"new", "auth", "--role", "Role"}, "", "alder new auth: `--role Role`: module `User` has no union `Role` of constructors without payloads: `alder new type User \"Role = Member | Admin\"` makes one"},
 	} {
 		dir := genApp(t, c.base)
 		before := appFiles(t, dir)
@@ -549,5 +557,41 @@ func TestGenerate_FillImports(t *testing.T) {
 	}
 	if code, out, _ := alderIn(t, dir, "", "check"); code != 0 || out != "" {
 		t.Errorf("check after the fill: exit %d\n%s", code, out)
+	}
+}
+
+// TestGenerate_AuthAdapter: the adapter `alder new auth` writes builds with the app, passes its
+// own Go tests (Review Focus 3: a wrong password, an unknown email, another iteration count, a
+// malformed stored text), and the command is deterministic: on two apps it writes the same
+// files.
+func TestGenerate_AuthAdapter(t *testing.T) {
+	needGoTool(t)
+	dir := genApp(t, "scaffold")
+	_, out, _ := alderIn(t, dir, "", "new", "auth")
+	other := genApp(t, "scaffold")
+	if _, again, _ := alderIn(t, other, "", "new", "auth"); again != out {
+		t.Errorf("a second app printed:\n%s\nthe first:\n%s", again, out)
+	}
+	a, b := appFiles(t, dir), appFiles(t, other)
+	for _, f := range []string{"app/App.alder", "app/Auth/Login.alder", "app/User.alder", "adapters/auth/login_password.go", "adapters/auth/login_password_test.go", "migrations/0002_create_user.sql"} {
+		if a[f] == "" || a[f] != b[f] {
+			t.Errorf("%s: missing or different on two runs", f)
+		}
+	}
+	if !strings.Contains(a["adapters/auth/login_password.go"], "iterations = 600000") || !strings.Contains(a["adapters/auth/login_password.go"], "subtle.ConstantTimeCompare(got, want)") {
+		t.Errorf("the adapter:\n%s", a["adapters/auth/login_password.go"])
+	}
+	t.Chdir(filepath.Dir(dir))
+	if code, stdout, stderr := runBuild(t, filepath.Base(dir)); code != 0 {
+		t.Fatalf("alder build: exit %d\n%s%s", code, stdout, stderr)
+	}
+	testOut, err := buildkit.GoCmd(filepath.Join("build", filepath.Base(dir)), "test", "-count=1", "-v", "./adapters/...")
+	if err != nil || !strings.Contains(string(testOut), "ok  \tapp/adapters/auth") {
+		t.Fatalf("go test ./adapters/...: %v\n%s", err, testOut)
+	}
+	for _, name := range []string{"TestHash_RoundTrip", "TestVerify", "TestCheck_StoredIterations", "TestCheck_WholeKey", "TestCheck_Malformed"} {
+		if !strings.Contains(string(testOut), "--- PASS: "+name) {
+			t.Errorf("%s did not pass:\n%s", name, testOut)
+		}
 	}
 }

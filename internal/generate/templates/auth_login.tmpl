@@ -1,0 +1,81 @@
+module Auth.Login
+
+[[range .Imports]]import [[.]]
+[[end]]
+-- Password checking is outside the language: a capability implemented in Go, by
+-- adapters/[[.Dir]]/ (`func [[.Func]]`, PBKDF2-SHA256), which `alder new auth` wrote (book 15).
+-- `hash` is the text to store in a [[.Table]]'s `[[.HashColumn]]`: a registration or a password
+-- change calls it.
+capability Password {
+  verify : { email: Text.Email, password: Text } -> Task (Maybe [[.IDType]]),
+  hash : Text -> Task Text,
+}
+
+-- In a test, `Test.fake Password` puts this in the adapter's place: it accepts any user who has
+-- a row, whatever the password, so a test can log in through the form below (book 10).
+fake Password {
+  verify args = {
+    let found <- Db.from [[.Table]] |> Db.where ([[.Table]].email.eq args.email) |> Db.first
+    Task.succeed (Maybe.map (\u -> u.id) found)
+  }
+
+  hash text = Task.succeed text
+}
+
+page "/login" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+form Credentials = {
+  email: Text.Email,
+  password: Text.Secret,
+}
+
+msg Submit form Credentials
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let found <- Password.verify { email: p.form.email, password: p.form.password }
+    match found {
+[[- if .Role]]
+      -- The session keeps the user and their role as the row has it now: a role changed later
+      -- applies when they next log in.
+      Just id -> {
+        let row <- Db.get [[.Table]] id
+        let role = Maybe.withDefault [[.RoleDefault]] (Maybe.map (\u -> u.[[.RoleColumn]]) row)
+        let _ <- Session.put (\s -> { s | user: Just id, role: role })
+        Task.succeed (Redirect ([[.Home]]))
+      },
+[[- else]]
+      Just id -> {
+        let _ <- Session.put (\s -> { s | user: Just id })
+        Task.succeed (Redirect ([[.Home]]))
+      },
+[[- end]]
+      Nothing -> Task.succeed (Reject "Email or password is incorrect."),
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  [[.Open]]
+    <h1>Log in</h1>
+    <al-card>
+      <form submit={Submit}>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-input field="email" label="Email" />
+        <al-input field="password" label="Password" />
+        <al-button type="submit">Log in</al-button>
+      </form>
+    </al-card>
+    {match session.user {
+      Just _ -> <al-button variant="outline" click={App.Logout}>Log out</al-button>,
+      Nothing -> Html.none,
+    }}
+  [[.Close]]
+[[template "tests" .]]
