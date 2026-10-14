@@ -2,6 +2,7 @@ package generate
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"alder/internal/types"
@@ -46,6 +47,9 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 	}
 	if !IsUpperIdent(o.Name) {
 		return nil, Refusef("`%s` is not a form name: a form is named by a capitalised identifier, such as `Contact`", o.Name)
+	}
+	if slices.ContainsFunc(p.Tables, func(t *Table) bool { return t.Name == o.Name }) {
+		return nil, Refusef("`%s` names a table of this app: a form named like it hides the table's row type in `%s`; choose another form name, such as `%sForm`", o.Name, o.Page, o.Name)
 	}
 	msg := "Submit" + o.Name
 	for _, n := range []string{o.Name, msg} {

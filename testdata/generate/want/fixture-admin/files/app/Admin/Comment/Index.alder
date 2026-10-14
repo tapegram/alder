@@ -55,28 +55,31 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
 -- 10,000 bytes would fail the query (chapter 8, "Search").
 load : Params -> Session -> Query Model
 load params session = {
-  let q = Text.slice 0 200 params.q
-  let count <- Db.from Comment |> Db.where (search q) |> Db.count
-  let pages = Int.max 1 ((count + perPage - 1) / perPage)
-  let page = Int.clamp { min: 1, max: pages } params.page
-  let rows <-
-    Db.from Comment
-      |> Db.where (search q)
-      |> Db.orderBy (order params.sort params.dir)
-      |> Db.limit perPage
-      |> Db.offset ((page - 1) * perPage)
-      |> Db.all
-  let labels <- labelsOf rows
-  Query.succeed {
-    rows: rows,
-    labels: labels,
-    q: q,
-    sort: params.sort,
-    dir: params.dir,
-    page: page,
-    pages: pages,
-    count: count,
-  }
+  let admin <- Admin.Layout.isAdmin session.user
+  if admin then {
+    let q = Text.slice 0 200 params.q
+    let count <- Db.from Comment |> Db.where (search q) |> Db.count
+    let pages = Int.max 1 ((count + perPage - 1) / perPage)
+    let page = Int.clamp { min: 1, max: pages } params.page
+    let rows <-
+      Db.from Comment
+        |> Db.where (search q)
+        |> Db.orderBy (order params.sort params.dir)
+        |> Db.limit perPage
+        |> Db.offset ((page - 1) * perPage)
+        |> Db.all
+    let labels <- labelsOf rows
+    Query.succeed {
+      rows: rows,
+      labels: labels,
+      q: q,
+      sort: params.sort,
+      dir: params.dir,
+      page: page,
+      pages: pages,
+      count: count,
+    }
+  } else Query.notFound
 }
 
 -- @admin begin labels
@@ -181,7 +184,11 @@ view model session =
 
 -- @admin begin tests
 test "the list shows every row, newest first, and the labels of the rows they refer to" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let comment1 <- Db.insert Comment { post: post1, author: me, body: Text.NonEmpty "body-1" }
@@ -208,7 +215,11 @@ test "the list shows every row, newest first, and the labels of the rows they re
 }
 
 test "sorting by body goes both ways" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let comment1 <- Db.insert Comment { post: post1, author: me, body: Text.NonEmpty "body-2" }
@@ -225,7 +236,11 @@ test "sorting by body goes both ways" = {
 }
 
 test "searching finds the rows that contain the text" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let comment1 <- Db.insert Comment { post: post1, author: me, body: Text.NonEmpty "body-1" }
@@ -241,7 +256,11 @@ test "searching finds the rows that contain the text" = {
 }
 
 test "a search text of 20,000 characters is cut to 200" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Admin }
   let long = Text.join "" (List.map (\n -> "z") (List.range 1 20000))
   let page <- Test.get (Admin.Comment.Index { q: long })
@@ -255,7 +274,11 @@ test "a search text of 20,000 characters is cut to 200" = {
 }
 
 test "the list has 25 rows a page, and a page past the last is the last" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let _ <- Task.all (List.map (\n -> Db.insert Comment {
@@ -286,9 +309,24 @@ test "a visitor is sent to log in" = {
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
-test "a Reader gets no page" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+test "a Reader gets no page, even one made Admin since logging in" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.open (Admin.Comment.Index {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a demoted Admin is refused at once" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Reader,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
   let r <- Test.open (Admin.Comment.Index {})
   Task.succeed (r.answer == PageMissing)
 }

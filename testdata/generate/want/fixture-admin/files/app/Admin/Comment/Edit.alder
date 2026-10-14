@@ -21,15 +21,18 @@ type Model = {
 
 load : Params -> Session -> Query Model
 load params session = {
-  -- @admin begin load
-  let found <- Db.get Comment params.id
-  let posts <- Db.from Post |> Db.orderBy Post.title.asc |> Db.all
-  let authors <- Db.from User |> Db.orderBy User.email.asc |> Db.all
-  match found {
-    Just row -> Query.succeed { row: row, posts: posts, authors: authors },
-    Nothing -> Query.notFound,
-  }
-  -- @admin end
+  let admin <- Admin.Layout.isAdmin session.user
+  if admin then {
+    -- @admin begin load
+    let found <- Db.get Comment params.id
+    let posts <- Db.from Post |> Db.orderBy Post.title.asc |> Db.all
+    let authors <- Db.from User |> Db.orderBy User.email.asc |> Db.all
+    match found {
+      Just row -> Query.succeed { row: row, posts: posts, authors: authors },
+      Nothing -> Query.notFound,
+    }
+    -- @admin end
+  } else Query.notFound
 }
 
 -- @admin begin form
@@ -77,7 +80,11 @@ view model session =
 
 -- @admin begin tests
 test "saving changes every field" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let comment1 <- Db.insert Comment { post: post1, author: me, body: Text.NonEmpty "body-1" }
@@ -103,7 +110,11 @@ test "saving changes every field" = {
 }
 
 test "a post not offered is refused" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let comment1 <- Db.insert Comment { post: post1, author: me, body: Text.NonEmpty "body-1" }
@@ -130,7 +141,11 @@ test "a post not offered is refused" = {
 }
 
 test "an author not offered is refused" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let comment1 <- Db.insert Comment { post: post1, author: me, body: Text.NonEmpty "body-1" }
@@ -157,7 +172,11 @@ test "an author not offered is refused" = {
 }
 
 test "a missing row is not found" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Admin }
   let r <- Test.open (Admin.Comment.Edit { id: Comment.CommentId "missing" })
   Task.succeed (r.answer == PageMissing)
@@ -171,9 +190,26 @@ test "a visitor is sent to log in" = {
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
-test "a Reader gets no page" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+test "a Reader gets no page, even one made Admin since logging in" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Reader }
+  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let comment1 <- Db.insert Comment { post: post1, author: me, body: Text.NonEmpty "body-1" }
+  let r <- Test.open (Admin.Comment.Edit { id: comment1 })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a demoted Admin is refused at once" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Reader,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let comment1 <- Db.insert Comment { post: post1, author: me, body: Text.NonEmpty "body-1" }
   let r <- Test.open (Admin.Comment.Edit { id: comment1 })

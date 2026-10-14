@@ -20,11 +20,14 @@ type Model = {
 
 load : Params -> Session -> Query Model
 load params session = {
-  -- @admin begin load
-  let posts <- Db.from Post |> Db.orderBy Post.title.asc |> Db.all
-  let authors <- Db.from User |> Db.orderBy User.email.asc |> Db.all
-  Query.succeed { posts: posts, authors: authors }
-  -- @admin end
+  let admin <- Admin.Layout.isAdmin session.user
+  if admin then {
+    -- @admin begin load
+    let posts <- Db.from Post |> Db.orderBy Post.title.asc |> Db.all
+    let authors <- Db.from User |> Db.orderBy User.email.asc |> Db.all
+    Query.succeed { posts: posts, authors: authors }
+    -- @admin end
+  } else Query.notFound
 }
 
 -- @admin begin form
@@ -67,7 +70,11 @@ view model session =
 
 -- @admin begin tests
 test "creating a comment adds it, with the values submitted" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
@@ -92,7 +99,11 @@ test "creating a comment adds it, with the values submitted" = {
 }
 
 test "a post not offered is refused" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
@@ -118,7 +129,11 @@ test "a post not offered is refused" = {
 }
 
 test "an author not offered is refused" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
@@ -148,9 +163,24 @@ test "a visitor is sent to log in" = {
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
-test "a Reader gets no page" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+test "a Reader gets no page, even one made Admin since logging in" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.open (Admin.Comment.New {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a demoted Admin is refused at once" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Reader,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
   let r <- Test.open (Admin.Comment.New {})
   Task.succeed (r.answer == PageMissing)
 }

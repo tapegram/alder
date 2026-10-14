@@ -22,6 +22,7 @@ type testBuilder struct {
 	me      string              // the signed-in user's id, "" before login
 	other   string              // another user's id, "" until otherUser
 	today   bool                // `let today <- Date.today` was written
+	meRole  string              // the role the signed-in user's row is inserted with ("" for its default)
 	taken   map[string]bool     // variable names in use
 }
 
@@ -59,7 +60,11 @@ func (b *testBuilder) user() string {
 	s := b.p.Session
 	if s != nil && s.UserTable != "" {
 		if t := b.p.TableNamed(s.UserTable); t != nil {
-			b.me = b.insertRow(t, "me", nil, true)
+			var over map[string]string
+			if rc := b.p.RoleColumn(); rc != nil && b.meRole != "" { // the row says the role the login gives
+				over = map[string]string{rc.Name: b.meRole}
+			}
+			b.me = b.insertRow(t, "me", over, true)
 			return b.me
 		}
 	}
@@ -84,8 +89,12 @@ func (b *testBuilder) otherUser() string {
 	return b.other
 }
 
-// login signs the user in (Test.login), with role when it is not "".
+// login signs the user in (Test.login), with role when it is not "". A user row inserted for it
+// has that role too (the row a page may read again), unless meRole names another.
 func (b *testBuilder) login(role string) {
+	if b.me == "" && b.meRole == "" {
+		b.meRole = role
+	}
 	me := b.user()
 	if role != "" {
 		b.typeRef(b.p.Session.Role.Type)

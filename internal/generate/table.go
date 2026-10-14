@@ -1,6 +1,7 @@
 package generate
 
 import (
+	"fmt"
 	"strings"
 
 	"alder/internal/diag"
@@ -71,11 +72,13 @@ func NewTable(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
 // deleteRuleTests are the tests of t's references' delete rules (chapter 8): with `@cascade`,
 // deleting the row referred to deletes t's row; with `@restrict` (the default), the delete
 // fails and the row stays. Each refers to a row of its own (target), so nothing else holds it.
+// A reference of t to itself (a tree, `Maybe`: a first row has no parent) is tested on a parent
+// and its child.
 func deleteRuleTests(p *Program, t *Table, imports *importSet) []TestData {
 	var tests []TestData
 	for _, c := range t.Columns {
 		r := p.TableNamed(c.Ref)
-		if r == nil || r == t || (c.OnDelete != "cascade" && c.OnDelete != "restrict") {
+		if r == nil || r == t && !c.Maybe || (c.OnDelete != "cascade" && c.OnDelete != "restrict") {
 			continue
 		}
 		tb := newTestBuilder(p, t.Module, imports)
@@ -94,7 +97,7 @@ func deleteRuleTests(p *Program, t *Table, imports *importSet) []TestData {
 		tb.let("let r <- Test.run (Db.delete %s %s)", r.Name, target)
 		tb.let("let left <- Db.from %s |> Db.count", t.Name)
 		tests = append(tests, TestData{Name: quote("a " + t.Name + " keeps its " + c.Name + " from being deleted"), Lines: tb.lines,
-			Result: "{ deleted: Result.toMaybe r.value, left: left } == { deleted: Nothing, left: 1 }"})
+			Result: fmt.Sprintf("{ deleted: Result.toMaybe r.value, left: left } == { deleted: Nothing, left: %d }", tb.counts[t.Module])})
 	}
 	return tests
 }

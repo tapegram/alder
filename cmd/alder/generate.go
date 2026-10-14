@@ -13,7 +13,6 @@ import (
 	"alder/internal/generate"
 	"alder/internal/ir"
 	"alder/internal/migrate"
-	"alder/internal/version"
 )
 
 // The generators: `alder new page|table|form|msg|capability`, `alder edit table` and `alder
@@ -349,17 +348,13 @@ func runNewTableTo(args []string, stdout, stderr io.Writer) int {
 
 const newAdminUsage = "usage: alder new admin [--module Admin] [--path /admin] [--dir app] [--json] [--dry-run]"
 
-// adminVersion is the alder version written in the admin's files' headers: `alder version`'s
-// (tests fix it, so the goldens do not follow the build).
-var adminVersion = version.String
-
 // runNewAdminTo is `alder new admin`: the admin of every table (generate.NewAdmin).
 func runNewAdminTo(args []string, stdout, stderr io.Writer) int {
 	g, err := parseGenArgs(args, []string{"module", "path"}, nil, nil)
 	if err != nil || len(g.pos) != 0 {
 		return genUsage(stderr, newAdminUsage, err)
 	}
-	o := generate.AdminOptions{Module: g.flag("module"), Path: g.flag("path"), Version: adminVersion()}
+	o := generate.AdminOptions{Module: g.flag("module"), Path: g.flag("path")}
 	return runGenerator("alder new admin", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) { return generate.NewAdmin(p, o) }, stdout, stderr)
 }
 

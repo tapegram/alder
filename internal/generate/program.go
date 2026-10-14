@@ -381,15 +381,48 @@ func (t *Table) Column(name string) *Column {
 	return nil
 }
 
+// RoleColumn is the user table's column holding the session's role (`role: Role = Reader` in
+// `User`, of the session role's type), nil when the session has no role or user table, or the
+// table no such column: the role a login copies, which a page can read again (chapter 6,
+// "Rules").
+func (p *Program) RoleColumn() *Column {
+	s := p.Session
+	if s == nil || s.Role == nil || s.UserTable == "" {
+		return nil
+	}
+	t := p.TableNamed(s.UserTable)
+	if t == nil {
+		return nil
+	}
+	for _, c := range t.Columns {
+		if !c.Maybe && types.String(c.Type) == types.String(s.Role.Type) {
+			return c
+		}
+	}
+	return nil
+}
+
 // Label is the column a row is named by: its first Text column that is not an id or a
-// reference, else its id.
+// reference, nor a secret (Secret), else its id.
 func (t *Table) Label() *Column {
 	for _, c := range t.Columns {
-		if c.Kind == KindText && !c.Maybe && !c.ID && c.Ref == "" {
+		if c.Kind == KindText && !c.Maybe && !c.ID && c.Ref == "" && !c.Secret() {
 			return c
 		}
 	}
 	return t.Column(t.IDField)
+}
+
+// Secret reports whether column c holds a secret the admin never shows or edits: its type is
+// `Text.Secret` (or a Maybe of it), or its name, in any case, begins with `password`, ends in
+// `hash`, or holds `token` or `secret` (`passwordHash`, `apiToken`, `clientSecret`).
+func (c *Column) Secret() bool {
+	t, _ := unMaybe(c.Type)
+	if b, ok := t.(*types.Brand); ok && b.Module == "Text" && b.Name == "Secret" {
+		return true
+	}
+	n := strings.ToLower(c.Name)
+	return strings.HasPrefix(n, "password") || strings.HasSuffix(n, "hash") || strings.Contains(n, "token") || strings.Contains(n, "secret")
 }
 
 // OrderColumn is the column a list is ordered by, newest first: the `@created` one, else the id.

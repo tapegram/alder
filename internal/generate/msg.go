@@ -21,7 +21,8 @@ type MsgData struct {
 // whose body is the typed hole `?<name>` : Task Nav, an `al-button` sending it at the end of
 // the view's root element (its parameters' values are holes `?<name><Field>`), and a browser
 // test that presses it (a parameter that is a table's id names a row the test inserts), reads
-// again the row (or the page) the arm may change, and ends in the hole `?expected` : Bool, with
+// again the row the arm may change (or opens the page again, whatever its answer: the arm may
+// delete the page's own row), and ends in the hole `?expected` : Bool, with
 // a comment saying what to assert, so that the filled arm's mutants are killable.
 func NewMsg(p *Program, page, name string, fields []FieldSpec) ([]Edit, error) {
 	pg, m, err := pageModule(p, page)
@@ -85,16 +86,19 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec) ([]Edit, error) {
 		}
 		click = "(" + name + " { " + strings.Join(args, ", ") + " })"
 	}
-	if reread == "" {
-		reread = "let after <- Test.get (" + pv + ")"
+	changed := "changed (`after`, the row read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`."
+	if reread == "" { // the page opened again, whatever its answer: an arm may delete the page's row
+		reread = "let after <- Test.open (" + pv + ")"
+		changed = "changed (`after`: the page opened again, `after.answer` Shown, or PageMissing when the arm\n" +
+			"deleted the page's row, and `after.doc` its HTML), as\n" +
+			"`{ answer: r.answer, … } == { answer: Rerendered, … }`."
 	}
 	lines := append(tb.lines, "let _ <- Test.get ("+pv+")", "let r <- Test.click "+click, reread)
-	test := TestData{Name: quote("pressing " + name), Lines: lines, Result: "?expected",
-		Comment: []string{
-			"Fill ?expected with what pressing " + name + " must do, so that a test fails when the arm",
-			"does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it",
-			"changed (`after`, read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.",
-		}}
+	comment := append([]string{
+		"Fill ?expected with what pressing " + name + " must do, so that a test fails when the arm",
+		"does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it",
+	}, strings.Split(changed, "\n")...)
+	test := TestData{Name: quote("pressing " + name), Lines: lines, Result: "?expected", Comment: comment}
 	if err := addTests(e, m, []TestData{test}); err != nil {
 		return nil, err
 	}

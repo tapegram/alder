@@ -410,11 +410,11 @@ the row with `Db.get` and answers `Query.notFound` when there is none,
 and its tests check both: the page shows the row's fields, and a missing
 id is `PageMissing`.
 
-Now a button that hides the reply. `alder new msg` adds a message to a
+Now a button that deletes the reply. `alder new msg` adds a message to a
 page, and a button that sends it:
 
 ```text command=guestbook
-$ alder new msg Replies.Show Hide
+$ alder new msg Replies.Show Delete
 edited app/Replies/Show.alder
 --- a/app/Replies/Show.alder
 +++ b/app/Replies/Show.alder
@@ -422,11 +422,11 @@ edited app/Replies/Show.alder
    }
  }
  
-+msg Hide
++msg Delete
 +
 +update : Msg -> Model -> Session -> Task Nav
 +update msg model session = match msg {
-+  Hide p -> ?hide,
++  Delete p -> ?delete,
 +}
 +
  view : Model -> Session -> Html Msg
@@ -437,54 +437,60 @@ edited app/Replies/Show.alder
        </dl>
      </al-card>
 +
-+    <al-button click={Hide}>Hide</al-button>
++    <al-button click={Delete}>Delete</al-button>
    </Layout.Page>
  
  test "the page shows the row" = {
-@@ -51,3 +60,15 @@
+@@ -51,3 +60,17 @@
    let r <- Test.open (Replies.Show { id: Reply.ReplyId "missing" })
    Task.succeed (r.answer == PageMissing)
  }
 +
-+-- Fill ?expected with what pressing Hide must do, so that a test fails when the arm
++-- Fill ?expected with what pressing Delete must do, so that a test fails when the arm
 +-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
-+-- changed (`after`, read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.
-+test "pressing Hide" = {
++-- changed (`after`: the page opened again, `after.answer` Shown, or PageMissing when the arm
++-- deleted the page's row, and `after.doc` its HTML), as
++-- `{ answer: r.answer, … } == { answer: Rerendered, … }`.
++test "pressing Delete" = {
 +  let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
 +  let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
 +  let _ <- Test.get (Replies.Show { id: reply1 })
-+  let r <- Test.click Hide
-+  let after <- Test.get (Replies.Show { id: reply1 })
++  let r <- Test.click Delete
++  let after <- Test.open (Replies.Show { id: reply1 })
 +  Task.succeed ?expected
 +}
-app/Replies/Show.alder:24:13: warning[W0002]: hole ?hide has type Task Nav
-    Hide p -> ?hide,
-              ^^^^^
-app/Replies/Show.alder:73:16: warning[W0002]: hole ?expected has type Bool
+app/Replies/Show.alder:24:15: warning[W0002]: hole ?delete has type Task Nav
+    Delete p -> ?delete,
+                ^^^^^^^
+app/Replies/Show.alder:75:16: warning[W0002]: hole ?expected has type Bool
     Task.succeed ?expected
                  ^^^^^^^^^
 ```
 
 This time the generator does not know what the message should do, so
-it does not guess. The arm is the hole `?hide`, of type `Task Nav`: an
+it does not guess. The arm is the hole `?delete`, of type `Task Nav`: an
 `update` arm is a task that ends with what the browser does next
 (chapter 7). The test is written in full, except for its verdict: the
 hole `?expected`, of type `Bool`. Its comment says what to put there.
+After the click the test opens the page again with `Test.open`, which,
+unlike `Test.get`, does not fail when the page is gone: a message may
+delete the very row its page shows, as this one will, and then
+`after.answer` is `PageMissing`.
 
 ## Holes, and filling them: `alder fill`
 
 A **hole** is a name with a `?` in front, written where an expression
 goes (chapter 11, "Holes"). The checker infers the type the expression must have
-and reports it as the warning W0002: `hole ?hide has type Task Nav`. A
+and reports it as the warning W0002: `hole ?delete has type Task Nav`. A
 hole is not an error, so the app checks, and the generator wrote it.
 But it cannot run:
 
 ```text command=guestbook
 $ alder test
-app/Replies/Show.alder:24:13: warning[W0002]: hole ?hide has type Task Nav
-    Hide p -> ?hide,
-              ^^^^^
-app/Replies/Show.alder:73:16: warning[W0002]: hole ?expected has type Bool
+app/Replies/Show.alder:24:15: warning[W0002]: hole ?delete has type Task Nav
+    Delete p -> ?delete,
+                ^^^^^^^
+app/Replies/Show.alder:75:16: warning[W0002]: hole ?expected has type Bool
     Task.succeed ?expected
                  ^^^^^^^^^
 alder test: no tests ran (fill the hole)
@@ -502,23 +508,23 @@ quotes) and the type it must have:
 
 ```text command=guestbook
 $ alder fill --list
-Replies.Show update.Hide ?hide : Task Nav
-Replies.Show "pressing Hide" ?expected : Bool
+Replies.Show update.Delete ?delete : Task Nav
+Replies.Show "pressing Delete" ?expected : Bool
 ```
 
 `alder fill <address> -` reads one expression from standard input and
 puts it where the hole is, then checks the copy, and writes only if it
-checks. Here the arm only updates the row and forgets to say what the
+checks. Here the arm only deletes the row and forgets to say what the
 browser does next, so its type is `Task Unit`, not `Task Nav`:
 
 ```text command=guestbook
-$ alder fill Replies.Show.update.Hide - <<'EOF'
-Db.update Reply model.row.id (\r -> { r | hidden: True })
+$ alder fill Replies.Show.update.Delete - <<'EOF'
+Db.delete Reply model.row.id
 EOF
-app/Replies/Show.alder:24:13: error[E0003]: expected Task Nav, got Task Unit
-    Hide p -> Db.update Reply model.row.id (\r -> { r | hidden: True }),
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Replies/Show.alder:73:16: warning[W0002]: hole ?expected has type Bool
+app/Replies/Show.alder:24:15: error[E0003]: expected Task Nav, got Task Unit
+    Delete p -> Db.delete Reply model.row.id,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/Replies/Show.alder:75:16: warning[W0002]: hole ?expected has type Bool
     Task.succeed ?expected
                  ^^^^^^^^^
 alder fill: the result does not check (the errors above): nothing was written
@@ -529,10 +535,10 @@ the other hole is still listed among the warnings. The right
 expression is a block, which is one expression too:
 
 ```text command=guestbook
-$ alder fill Replies.Show.update.Hide - <<'EOF'
+$ alder fill Replies.Show.update.Delete - <<'EOF'
 {
-  let _ <- Db.update Reply model.row.id (\r -> { r | hidden: True })
-  Task.succeed Rerender
+  let _ <- Db.delete Reply model.row.id
+  Task.succeed (Redirect (Replies {}))
 }
 EOF
 edited app/Replies/Show.alder
@@ -542,15 +548,15 @@ edited app/Replies/Show.alder
  
  update : Msg -> Model -> Session -> Task Nav
  update msg model session = match msg {
--  Hide p -> ?hide,
-+  Hide p -> {
-+    let _ <- Db.update Reply model.row.id (\r -> { r | hidden: True })
-+    Task.succeed Rerender
+-  Delete p -> ?delete,
++  Delete p -> {
++    let _ <- Db.delete Reply model.row.id
++    Task.succeed (Redirect (Replies {}))
 +  },
  }
  
  view : Model -> Session -> Html Msg
-app/Replies/Show.alder:76:16: warning[W0002]: hole ?expected has type Bool
+app/Replies/Show.alder:78:16: warning[W0002]: hole ?expected has type Bool
     Task.succeed ?expected
                  ^^^^^^^^^
 ```
@@ -558,9 +564,9 @@ app/Replies/Show.alder:76:16: warning[W0002]: hole ?expected has type Bool
 `fill` indents the expression to fit where it goes. It writes only the
 expression: when it needs a module the page does not import, the
 checker says `module X is not imported` with a `fix: import X` line,
-and the import is yours to add. An address names one declaration: an
-arm (`Replies.Show.update.Hide`), a test (`Replies.Show."pressing
-Hide"`) or any other top-level name (`Replies.perPage`). When the
+and the import is yours to add. An address names one declaration: an arm
+(`Replies.Show.update.Delete`), a test (`Replies.Show."pressing
+Delete"`) or any other top-level name (`Replies.perPage`). When the
 declaration has more than one hole, `--hole ?name` picks one. The
 expression may contain holes of its own, which `fill` lists, to be
 filled next.
@@ -568,18 +574,18 @@ filled next.
 The test's verdict:
 
 ```text command=guestbook
-$ alder fill 'Replies.Show."pressing Hide"' - <<'EOF'
-{ answer: r.answer, hidden: after.model.row.hidden } == { answer: Rerendered, hidden: True }
+$ alder fill 'Replies.Show."pressing Delete"' - <<'EOF'
+{ answer: r.answer, after: after.answer } == { answer: Redirected (Replies {}), after: PageMissing }
 EOF
 edited app/Replies/Show.alder
 --- a/app/Replies/Show.alder
 +++ b/app/Replies/Show.alder
-@@ -73,5 +73,5 @@
+@@ -75,5 +75,5 @@
    let _ <- Test.get (Replies.Show { id: reply1 })
-   let r <- Test.click Hide
-   let after <- Test.get (Replies.Show { id: reply1 })
+   let r <- Test.click Delete
+   let after <- Test.open (Replies.Show { id: reply1 })
 -  Task.succeed ?expected
-+  Task.succeed ({ answer: r.answer, hidden: after.model.row.hidden } == { answer: Rerendered, hidden: True })
++  Task.succeed ({ answer: r.answer, after: after.answer } == { answer: Redirected (Replies {}), after: PageMissing })
  }
 ```
 
@@ -597,7 +603,7 @@ ok   Replies "submitting NewReply adds a row"
 ok   Replies "NewReply refuses an empty message"
 ok   Replies.Show "the page shows the row"
 ok   Replies.Show "a missing row is not found"
-ok   Replies.Show "pressing Hide"
+ok   Replies.Show "pressing Delete"
 11 passed, 0 failed
 ```
 
@@ -668,7 +674,7 @@ has neither:
 
 ```text command=guestbook
 $ alder new admin
-alder new admin: `alder new admin` needs a session with a `role` whose type has an `Admin` constructor: add `role: User.Role = Reader` to `session` in `App` and `Admin` to `User.Role`, and set it at login (chapter 6)
+alder new admin: `alder new admin` needs a session with a `role` whose type has an `Admin` constructor: this app's session has no `user`; add a user table, a login that sets `user`, and a `role` (chapter 6, "Rules" and "Roles")
 ```
 
 The sentence says what to add, and the generator does not add it for
@@ -1906,7 +1912,7 @@ app/Replies.alder:97:54: error[E0003]: record `Reply.Insert Reply` is missing fi
 app/Replies/Show.alder:57:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
     let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Replies/Show.alder:72:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
+app/Replies/Show.alder:74:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
     let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/Reply.alder:19:28: error[E0003]: record `Reply.Insert Reply` is missing field(s): note

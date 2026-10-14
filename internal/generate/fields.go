@@ -78,6 +78,9 @@ func ParseField(arg string, table bool) (FieldSpec, error) {
 		if f.Default == "" {
 			return f, fmt.Errorf("field `%s` has an empty default: write `%s:%s=value` or leave out the `=`", name, name, f.Type)
 		}
+		if strings.Contains(f.Default, "--") {
+			return f, fmt.Errorf("field `%s`: the default `%s` holds `--`, which begins a comment in Alder source: write the value without it", name, f.Default)
+		}
 		if _, ds, more, _ := syntax.ParseExpr("default", []byte(f.Default)); len(ds) > 0 || more != "" || strings.Contains(f.Default, "\n") {
 			return f, fmt.Errorf("field `%s`: the default `%s` is not one expression", name, f.Default)
 		}

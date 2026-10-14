@@ -91,7 +91,7 @@ test "logging out signs the user out" = {
 
 -- Fill ?expected with what pressing Feature must do, so that a test fails when the arm
 -- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
--- changed (`after`, read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.
+-- changed (`after`, the row read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.
 test "pressing Feature" = {
   let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
   let _ <- Test.login { user: Just me }

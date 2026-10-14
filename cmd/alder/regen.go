@@ -26,7 +26,7 @@ func runRegenTo(args []string, stdout, stderr io.Writer) int {
 	if err != nil || len(g.pos) != 0 {
 		return genUsage(stderr, regenUsage, err)
 	}
-	o := generate.AdminOptions{Module: g.flag("module"), Path: g.flag("path"), Version: adminVersion()}
+	o := generate.AdminOptions{Module: g.flag("module"), Path: g.flag("path")}
 	skipped := []string{}
 	nothing := false
 	under := generate.AdminDir(o.Module)

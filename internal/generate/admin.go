@@ -25,21 +25,36 @@ import (
 
 // AdminOptions are the options of `alder new admin` and `alder regen admin`.
 type AdminOptions struct {
-	Module  string // the admin's module prefix: "Admin"
-	Path    string // its path: "/admin"
-	Version string // the alder version written in each file's header when it is a release ("v…")
+	Module string // the admin's module prefix: "Admin"
+	Path   string // its path: "/admin"
 }
 
-// AdminNeeds is the refusal of `alder new admin` (and `regen`) in an app whose session has no
-// role with an `Admin` constructor.
-const AdminNeeds = "`alder new admin` needs a session with a `role` whose type has an `Admin` constructor: add `role: User.Role = Reader` to `session` in `App` and `Admin` to `User.Role`, and set it at login (chapter 6)"
+// AdminNeeds begins the refusal of `alder new admin` (and `regen`) in an app whose session has
+// no role with an `Admin` constructor; adminNeeds adds what to do, naming the app's user table.
+const AdminNeeds = "`alder new admin` needs a session with a `role` whose type has an `Admin` constructor"
+
+// adminNeeds is the refusal for session s: AdminNeeds, then what this app lacks and what to
+// add: a user first (the guestbook), a role (named after the user table, when there is one),
+// or the constructor.
+func adminNeeds(s *Session) string {
+	switch {
+	case s == nil || s.User == nil:
+		return AdminNeeds + ": this app's session has no `user`; add a user table, a login that sets `user`, and a `role` (chapter 6, \"Rules\" and \"Roles\")"
+	case s.Role != nil:
+		return AdminNeeds + ": add `Admin` to the session's role type `" + types.String(s.Role.Type) + "`, and set the role at login (chapter 6)"
+	case s.UserTable != "":
+		u := s.UserTable
+		return AdminNeeds + ": add `type Role = Reader | Admin` and a column `role: Role = Reader` to `" + u + "`, `role: " + u + ".Role = Reader` to `session` in `App`, and set it at login (chapter 6)"
+	}
+	return AdminNeeds + ": add a union with an `Admin` constructor and `role: Role = Reader` of it to `session` in `App`, and set it at login (chapter 6)"
+}
 
 // adminCheck refuses an app without the admin's role, and options that are not a module name
 // and a path; it returns the options with their defaults.
 func adminCheck(p *Program, o AdminOptions) (AdminOptions, error) {
 	s := p.Session
 	if s == nil || s.User == nil || s.Role == nil || !slices.Contains(s.Role.Ctors, "Admin") {
-		return o, Refusef("%s", AdminNeeds)
+		return o, Refusef("%s", adminNeeds(s))
 	}
 	if o.Module == "" {
 		o.Module = "Admin"
@@ -62,6 +77,13 @@ func adminCheck(p *Program, o AdminOptions) (AdminOptions, error) {
 	}
 	if len(p.Tables) == 0 {
 		return o, Refusef("this app has no tables: the admin has nothing to show (`alder new table` makes one)")
+	}
+	for _, t := range p.Tables {
+		for _, c := range t.Columns {
+			if _, ok := secretValue(c); c.Secret() && c.Required() && c.Kind != KindTime && !ok {
+				return o, Refusef("`%s.%s` is a secret, which the admin never shows or writes, and an insert must name it: give it a default (`= …`) or make it `Maybe`", t.Name, c.Name)
+			}
+		}
 	}
 	return o, nil
 }
@@ -174,7 +196,7 @@ func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []s
 
 // AdminFiles is every file of the admin, by path, and the paths in the order they are written.
 func AdminFiles(p *Program, o AdminOptions) (map[string]string, []string) {
-	g := &adminGen{p: p, o: o, files: map[string]string{}}
+	g := &adminGen{p: p, o: o, files: map[string]string{}, role: p.RoleColumn()}
 	for _, t := range p.Tables {
 		g.tables = append(g.tables, g.table(t))
 	}
@@ -193,6 +215,7 @@ func AdminFiles(p *Program, o AdminOptions) (map[string]string, []string) {
 type adminGen struct {
 	p      *Program
 	o      AdminOptions
+	role   *Column // the user table's role column, which every page's load reads again; nil for none
 	tables []*adminTable
 	files  map[string]string
 	order  []string
@@ -210,6 +233,7 @@ type adminTable struct {
 	editable []*Column   // the columns its forms edit
 	refs     []*Column   // the editable columns that refer to a table: a select of its rows
 	nowCols  []*Column   // Time columns an insert must name, which no form edits: the time of the insert
+	secrets  []*Column   // secret columns an insert must name, which the admin never shows or edits
 	referrer []*referrer // the columns of other tables (or its own) that refer to it
 }
 
@@ -231,6 +255,10 @@ func (g *adminGen) table(t *Table) *adminTable {
 		case c.Kind == KindTime:
 			if c.Required() && !c.Maybe {
 				at.nowCols = append(at.nowCols, c)
+			}
+		case c.Secret(): // never shown or edited: an insert writes it empty (secretValue)
+			if c.Required() {
+				at.secrets = append(at.secrets, c)
 			}
 		case c.Kind == KindOther:
 		default:
@@ -274,6 +302,40 @@ type node struct {
 	field  string // the Delete page's model field counting its rows: "flagsOfComments"
 	parent *node
 	kids   []*node // for a @cascade: the @cascade and @restrict references down from it that lead to a @restrict
+	// stop marks a @cascade from a table to itself (a tree: a row's children) whose deletes can
+	// reach a @restrict (restrictReach): its rows are counted, not followed, since a query cannot
+	// follow a tree to its depth. At the top (the row's own children) the page deletes only a row
+	// without them ("Delete its children first."); further down, they keep the row like a
+	// @restrict reference.
+	stop bool
+}
+
+// selfStop reports whether a reference col from table t is a @cascade to t itself whose
+// deletes can reach a @restrict: a node to stop at (node.stop). Only a table can refer to
+// itself: a cycle through two tables would be an import cycle (E0006), as a `@ref` names a table
+// its module imports.
+func (g *adminGen) selfStop(t *Table, col *Column) bool {
+	return col.OnDelete == "cascade" && g.p.TableNamed(col.Ref) == t && g.restrictReach(t)
+}
+
+// restrictReach reports whether deleting a row of t can meet a @restrict reference: one to t, or
+// to a table whose rows a @cascade from t deletes, at any depth.
+func (g *adminGen) restrictReach(t *Table) bool {
+	seen := map[*Table]bool{t: true}
+	for queue := []*Table{t}; len(queue) > 0; queue = queue[1:] {
+		for _, r := range g.referrersOf(queue[0]) {
+			switch r.col.OnDelete {
+			case "restrict":
+				return true
+			case "cascade":
+				if !seen[r.t] {
+					seen[r.t] = true
+					queue = append(queue, r.t)
+				}
+			}
+		}
+	}
+	return false
 }
 
 // closure is the tree of the references to table at: each of at.referrer, and below each
@@ -285,8 +347,10 @@ type node struct {
 func (g *adminGen) closure(at *adminTable) []*node {
 	var nodes []*node
 	for _, r := range at.referrer {
-		n := &node{t: r.t, col: r.col, field: r.field}
-		g.expand(n, map[*Column]bool{r.col: true})
+		n := &node{t: r.t, col: r.col, field: r.field, stop: g.selfStop(r.t, r.col)}
+		if !n.stop {
+			g.expand(n, map[*Column]bool{r.col: true})
+		}
 		nodes = append(nodes, n)
 	}
 	return nodes
@@ -301,11 +365,13 @@ func (g *adminGen) expand(n *node, path map[*Column]bool) {
 		if path[c.col] || (c.col.OnDelete != "cascade" && c.col.OnDelete != "restrict") || (c.col.OnDelete == "restrict" && c.t == n.t) {
 			continue
 		}
-		k := &node{t: c.t, col: c.col, field: c.field + "Of" + UpperFirst(n.field), parent: n}
-		path[c.col] = true
-		g.expand(k, path)
-		delete(path, c.col)
-		if c.col.OnDelete == "restrict" || len(k.kids) > 0 {
+		k := &node{t: c.t, col: c.col, field: c.field + "Of" + UpperFirst(n.field), parent: n, stop: c.t == n.t && g.selfStop(c.t, c.col)}
+		if !k.stop {
+			path[c.col] = true
+			g.expand(k, path)
+			delete(path, c.col)
+		}
+		if c.col.OnDelete == "restrict" || len(k.kids) > 0 || k.stop {
 			n.kids = append(n.kids, k)
 		}
 	}
@@ -317,6 +383,31 @@ func walk(nodes []*node) []*node {
 	for _, n := range nodes {
 		out = append(out, n)
 		out = append(out, walk(n.kids)...)
+	}
+	return out
+}
+
+// secretValue is the value the admin's insert gives secret column c, which an insert must name
+// and no form edits: Nothing, or the empty text (a hash or token that matches nothing, for the
+// app to set); false for another type (adminCheck refuses it).
+func secretValue(c *Column) (string, bool) {
+	if c.Maybe {
+		return "Nothing", true
+	}
+	if con, ok := c.Type.(*types.Con); ok && con.Name == "Text" {
+		return `""`, true
+	}
+	return "", false
+}
+
+// shown are the columns of t the admin shows: all but its secrets (Column.Secret), and but the
+// id unless id is set.
+func shown(t *Table, id bool) []*Column {
+	var out []*Column
+	for _, c := range t.Columns {
+		if !c.Secret() && (id || !c.ID) {
+			out = append(out, c)
+		}
 	}
 	return out
 }
@@ -336,12 +427,9 @@ func eqID(t *Table, c *Column, expr string) string {
 // file adds a generated file: the header, the module line, the imports region, then body.
 func (g *adminGen) file(module string, imports *importSet, body string) {
 	var b strings.Builder
-	// the version only for a release: a checkout's (`devel+<commit>`) would change every header
-	ver := ""
-	if strings.HasPrefix(g.o.Version, "v") {
-		ver = " (alder " + g.o.Version + ")"
-	}
-	fmt.Fprintf(&b, "-- generated by `alder new admin`%s; regions between\n", ver)
+	// no version: the same app gives the same files from every build, so an admin committed
+	// with one build is replayed byte for byte by another
+	b.WriteString("-- generated by `alder new admin`; regions between\n")
 	b.WriteString("-- `-- @admin begin <name>` / `-- @admin end` are rewritten by `alder regen admin`\n")
 	fmt.Fprintf(&b, "module %s\n\n", module)
 	b.WriteString(regionAt("", "imports", strings.Split(strings.TrimSuffix(imports.lines(), "\n"), "\n")) + "\n\n")
@@ -361,6 +449,16 @@ func regionAt(ind, name string, lines []string) string {
 	}
 	b.WriteString(ind + RegionEnd)
 	return b.String()
+}
+
+// load is a page's `load`, with body its statements (indented two spaces), run only for a user
+// the layout's isAdmin lets in (its region `access`: when the user table holds the role, a user
+// whose row says Admin now); any other gets a 404. The session's role is the one read at login,
+// which lasts until logout or the cookie's 30 days (chapter 6, "Rules"); load runs before every
+// message too.
+func (g *adminGen) load(body string) string {
+	return "load : Params -> Session -> Query Model\nload params session = {\n  let admin <- " + g.o.Module +
+		".Layout.isAdmin session.user\n  if admin then {\n" + indent(body, "  ") + "\n  } else Query.notFound\n}\n\n"
 }
 
 // requires is the `page` line's clause of every admin page.
@@ -402,6 +500,29 @@ func (g *adminGen) layout() {
 		b.WriteString(indent(navBlock, "        ") + "\n")
 		b.WriteString("        <main>{props.children}</main>\n      </al-page>\n    </body>\n  </html>\n")
 	}
+	// isAdmin: every page's load asks it
+	id, _ := unMaybe(g.p.Session.User.Type)
+	importTypes(imports, id)
+	access := []string{
+		"-- isAdmin is whether the signed-in user may use the admin, which every page's load asks (it runs",
+		"-- before every message too). The session's role is the one read at login, and lasts until",
+		"-- logout or the cookie's 30 days (chapter 6, \"Rules\"): the user table holds the role, so it is",
+		"-- read again, and a user demoted or deleted since gets a 404 at once.",
+		"isAdmin : " + types.StringIn(id, mod) + " -> Query Bool",
+	}
+	if g.role != nil {
+		ut := g.p.TableNamed(g.p.Session.UserTable)
+		imports.add(ut.Module)
+		access = append(access, "isAdmin id = {",
+			"  let me <- Db.get "+ut.Name+" id",
+			"  Query.succeed (Maybe.map (\\u -> u."+g.role.Name+") me == Just Admin)",
+			"}")
+	} else {
+		access[2] = "-- logout or the cookie's 30 days (chapter 6, \"Rules\"): the user table has no role column to"
+		access[3] = "-- read again, so the role on each page's line is the whole check."
+		access = append(access, "isAdmin id = Query.succeed True")
+	}
+	b.WriteString("\n" + regionAt("", "access", access) + "\n")
 	g.file(mod, imports, b.String())
 }
 
@@ -433,8 +554,7 @@ func (g *adminGen) dashboard() {
 	b.WriteString("type Card = { key: Text, title: Text, href: Page, count: Int, rows: List { label: Text, href: Page } }\n\n")
 	b.WriteString("type Model = { cards: List Card }\n\n")
 	b.WriteString("-- recent is how many of a table's newest rows its card lists.\nrecent : Int\nrecent = 5\n\n")
-	b.WriteString("load : Params -> Session -> Query Model\nload params session = {\n")
-	b.WriteString(regionAt("  ", "cards", wrapAll(body)) + "\n}\n\n")
+	b.WriteString(g.load(regionAt("  ", "cards", wrapAll(body))))
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
 	fmt.Fprintf(&b, "  %s\n    <h1>Admin</h1>\n\n", open)
 	b.WriteString(`    <al-stack gap="md">
@@ -478,16 +598,17 @@ func (g *adminGen) dashboard() {
 		name := "the dashboard counts the " + Plural(at.noun) + " and lists the newest five"
 		tests = append(tests, TestData{Name: quote(name), Lines: tb.lines, Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
 	}
-	// a role is read at login (chapter 6): the cookie, not the user's row, opens the admin
-	tb := g.tb(mod, imports, false)
-	tb.login("Admin")
-	tb.let("let r <- Test.open (%s {})", mod)
-	tests = append(tests, TestData{Name: quote("an Admin's role is the one the cookie got at login"), Lines: tb.lines, Result: "r.answer == Shown",
-		Comment: []string{
-			"`requires user, role Admin` reads the role in the session cookie, the one it got at login",
-			"(chapter 6, \"Roles\"), not the user's row: an Admin demoted since keeps the admin until they",
-			"log out. A page that must turn them away at once re-reads the row in its `load`.",
-		}})
+	if g.role == nil { // a role is read at login (chapter 6): the cookie, not a row, opens the admin
+		tb := g.tb(mod, imports, false)
+		tb.login("Admin")
+		tb.let("let r <- Test.open (%s {})", mod)
+		tests = append(tests, TestData{Name: quote("an Admin's role is the one the cookie got at login"), Lines: tb.lines, Result: "r.answer == Shown",
+			Comment: []string{
+				"`requires user, role Admin` reads the role in the session cookie, the one it got at login",
+				"(chapter 6, \"Roles\"): with no role column in the user table to read again, an Admin",
+				"demoted since keeps the admin until they log out, or for the cookie's 30 days.",
+			}})
+	}
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string { return mod + " {}" })...)
 	b.WriteString(testsText(tests))
 	g.file(mod, imports, b.String())
@@ -520,10 +641,23 @@ func (g *adminGen) gateTests(mod string, imports *importSet, pageOf func(tb *tes
 			continue
 		}
 		tb := g.tb(mod, imports, false)
+		name := article(role) + " gets no page"
+		if g.role != nil { // the row says Admin, the cookie does not: the page line's role refuses
+			tb.meRole = "Admin"
+			name += ", even one made Admin since logging in"
+		}
 		tb.login(role)
 		page := pageOf(tb)
 		tb.let("let r <- Test.open (%s)", page)
-		tests = append(tests, TestData{Name: quote(article(role) + " gets no page"), Lines: tb.lines, Result: "r.answer == PageMissing"})
+		tests = append(tests, TestData{Name: quote(name), Lines: tb.lines, Result: "r.answer == PageMissing"})
+		if g.role != nil { // the cookie says Admin, the row no longer does
+			tb := g.tb(mod, imports, false)
+			tb.meRole = role
+			tb.login("Admin")
+			page := pageOf(tb)
+			tb.let("let r <- Test.open (%s)", page)
+			tests = append(tests, TestData{Name: quote("a demoted Admin is refused at once"), Lines: tb.lines, Result: "r.answer == PageMissing"})
+		}
 		break
 	}
 	return tests
@@ -572,7 +706,7 @@ func labelFunc(c *Column) string { return c.Name + "Label" }
 func (g *adminGen) labelled(at *adminTable) []*Column {
 	var out []*Column
 	for _, c := range at.t.Columns {
-		if rt := g.p.TableNamed(c.Ref); c.Ref != "" && rt != nil && !rt.Label().ID {
+		if rt := g.p.TableNamed(c.Ref); c.Ref != "" && rt != nil && !rt.Label().ID && !c.Secret() {
 			out = append(out, c)
 		}
 	}
@@ -621,12 +755,36 @@ func (g *adminGen) labels(at *adminTable, mod string, imports *importSet) []stri
 // labelChecks are a test's comparisons that the page loaded the labels of the rows its
 // references name, and only those, and names a row by its label (left and right sides'
 // fields), with the rows they need: for each labelled column to another table, one more row of
-// that table, which nothing shown refers to. model is the page's model expression.
-func (g *adminGen) labelChecks(tb *testBuilder, at *adminTable, model string) [2][]string {
+// that table, which nothing shown refers to. model is the page's model expression. A reference
+// of the table to itself (a tree) is checked when parents gives the parent the caller inserted
+// for the rows shown (selfParents): its variable and label.
+//
+// selfParents inserts, for each labelled reference of at's table to itself (a `Maybe`, a tree),
+// a parent row, and returns the overrides that make a row its child, with labelChecks' parents.
+func (g *adminGen) selfParents(tb *testBuilder, at *adminTable) (map[string]string, map[*Column][2]string) {
+	over, parents := map[string]string{}, map[*Column][2]string{}
+	for _, c := range g.labelled(at) {
+		if g.p.TableNamed(c.Ref) == at.t && c.Maybe {
+			p := tb.insertRow(at.t, "parent", nil, false)
+			parents[c] = [2]string{p, rawText(at.label, tb.counts[at.t.Module])}
+			over[c.Name] = "Just " + p
+		}
+	}
+	return over, parents
+}
+func (g *adminGen) labelChecks(tb *testBuilder, at *adminTable, model string, parents map[*Column][2]string) [2][]string {
 	var out [2][]string
 	for _, c := range g.labelled(at) {
 		rt := g.p.TableNamed(c.Ref)
-		if rt == at.t || len(tb.rows[rt.Module]) == 0 && !c.Maybe {
+		if rt == at.t { // a tree: the parent the caller gave the rows shown, its label
+			if p, ok := parents[c]; ok {
+				out[0] = append(out[0], fmt.Sprintf("%s: List.length %s.labels.%s", optionsField(c), model, optionsField(c)),
+					fmt.Sprintf("%s: %s %s.labels %s", labelFunc(c), labelFunc(c), model, p[0]))
+				out[1] = append(out[1], optionsField(c)+": 1", labelFunc(c)+": "+quote(p[1]))
+			}
+			continue
+		}
+		if len(tb.rows[rt.Module]) == 0 && !c.Maybe {
 			continue
 		}
 		first, firstID := "", ""
@@ -663,7 +821,7 @@ func (g *adminGen) index(at *adminTable) {
 	// search: every Text column but ids and references
 	var searchCols []*Column
 	for _, c := range t.Columns {
-		if c.Kind == KindText && !c.Maybe && !c.ID && c.Ref == "" {
+		if c.Kind == KindText && !c.Maybe && !c.ID && c.Ref == "" && !c.Secret() {
 			searchCols = append(searchCols, c)
 		}
 	}
@@ -680,13 +838,8 @@ func (g *adminGen) index(at *adminTable) {
 		search[0] = "-- search is every row: the table has no text to search."
 		search[2] = "search q = Db.and []"
 	}
-	// sort: every column but the id
-	var cols []*Column
-	for _, c := range t.Columns {
-		if !c.ID {
-			cols = append(cols, c)
-		}
-	}
+	// sort: every column but the id and the secrets
+	cols := shown(t, false)
 	sorts := []string{
 		"-- sorts are the columns the list sorts by, by name.",
 		"sorts : List { name: Text, asc: Order " + t.Name + ", desc: Order " + t.Name + " }",
@@ -734,9 +887,8 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
 -- load reads how many rows match the search, and one page of them (the last, for a page past it),
 -- in the order asked for. The search text is cut to 200 characters (Text.slice): a text over
 -- 10,000 bytes would fail the query (chapter 8, "Search").
-load : Params -> Session -> Query Model
-load params session = {
-  let q = Text.slice 0 200 params.q
+`, t.Name, t.Name, order)
+	b.WriteString(g.load(fmt.Sprintf(`  let q = Text.slice 0 200 params.q
   let count <- Db.from %s |> Db.where (search q) |> Db.count
   let pages = Int.max 1 ((count + perPage - 1) / perPage)
   let page = Int.clamp { min: 1, max: pages } params.page
@@ -757,10 +909,7 @@ load params session = {
     page: page,
     pages: pages,
     count: count,
-  }
-}
-
-`, t.Name, t.Name, order, t.Name, t.Name)
+  }`, t.Name, t.Name)))
 	b.WriteString(regionAt("", "labels", wrapAll(g.labels(at, mod, imports))) + "\n\n")
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n", open, at.title)
@@ -805,8 +954,9 @@ load params session = {
 
 	tb := g.tb(mod, imports, true)
 	tb.insert(t, true)
-	tb.insert(t, true)
-	checks := g.labelChecks(tb, at, "page.model")
+	over, parents := g.selfParents(tb, at)
+	tb.insertRow(t, "", over, true)
+	checks := g.labelChecks(tb, at, "page.model", parents)
 	tb.let("let page <- Test.get (%s {})", mod)
 	lhs, rhs := []string{"rows: " + ids("page")}, []string{"rows: [" + strings.Join(tb.visible(t, false), ", ") + "]"}
 	name := "the list shows every row, newest first"
@@ -880,7 +1030,7 @@ load params session = {
 func sortColumn(t *Table) *Column {
 	for _, kinds := range [][]Kind{{KindText}, {KindInt, KindFloat, KindDate}} {
 		for _, c := range t.Columns {
-			if !c.ID && c.Ref == "" && !c.Maybe && slices.Contains(kinds, c.Kind) && !c.Created && !c.Updated {
+			if !c.ID && c.Ref == "" && !c.Maybe && slices.Contains(kinds, c.Kind) && !c.Created && !c.Updated && !c.Secret() {
 				return c
 			}
 		}
@@ -911,25 +1061,20 @@ func (g *adminGen) show(at *adminTable) {
 	title := UpperFirst(at.noun)
 	open, close := g.layoutOpen(title, imports)
 	var fields []string
-	for _, c := range t.Columns {
+	for _, c := range shown(t, true) {
 		fields = append(fields, "<dt>"+Humanize(c.Name)+"</dt>", "<dd>"+g.adminCell(c, "model.row", imports)+"</dd>")
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "page %s { id: %s }%s\n\n", pathLit(at.path+"/{id}"), types.StringIn(t.IDType, mod), adminRequires)
 	fmt.Fprintf(&b, "type Model = { row: %s, labels: Labels }\n\n", t.Name)
-	fmt.Fprintf(&b, `load : Params -> Session -> Query Model
-load params session = {
-  let found <- Db.get %s params.id
+	b.WriteString(g.load(fmt.Sprintf(`  let found <- Db.get %s params.id
   match found {
     Just row -> {
       let labels <- labelsOf [row]
       Query.succeed { row: row, labels: labels }
     },
     Nothing -> Query.notFound,
-  }
-}
-
-`, t.Name)
+  }`, t.Name)))
 	b.WriteString(regionAt("", "labels", wrapAll(g.labels(at, mod, imports))) + "\n\n")
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n      <dl>\n%s\n      </dl>\n", open, title, regionAt("        ", "fields", fields))
@@ -944,11 +1089,12 @@ load params session = {
 
 	var tests []TestData
 	tb := g.tb(mod, imports, true)
-	row := tb.insertRow(t, "", nil, false)
+	over, parents := g.selfParents(tb, at)
+	row := tb.insertRow(t, "", over, false)
 	k := tb.counts[t.Module]
-	checks := g.labelChecks(tb, at, "page.model")
+	checks := g.labelChecks(tb, at, "page.model", parents)
 	tb.let("let r <- Test.open (%s)", pageLit(mod, []string{"id: " + row}))
-	lhs, rhs := []string{"answer: r.answer", "fields: Test.count \"dd\" r.doc"}, []string{"answer: Shown", fmt.Sprintf("fields: %d", len(t.Columns))}
+	lhs, rhs := []string{"answer: r.answer", "fields: Test.count \"dd\" r.doc"}, []string{"answer: Shown", fmt.Sprintf("fields: %d", len(shown(t, true)))}
 	if !at.label.ID {
 		lhs[1], rhs[1] = fmt.Sprintf("%s: List.member %s (Test.texts \"dd\" r.doc)", at.label.Name, quote(rawText(at.label, k))), at.label.Name+": True"
 	}
@@ -1054,6 +1200,17 @@ func (g *adminGen) newPage(at *adminTable) {
 	for _, c := range at.nowCols {
 		inits = append(inits, c.Name+": now")
 	}
+	for _, c := range at.secrets {
+		v, _ := secretValue(c)
+		inits = append(inits, c.Name+": "+v)
+	}
+	if len(at.secrets) > 0 {
+		var names []string
+		for _, c := range at.secrets {
+			names = append(names, c.Name)
+		}
+		insert = append(insert, "-- the admin never shows or writes a secret ("+strings.Join(names, ", ")+"): a row starts without one")
+	}
 	insert = append(insert, g.unique(at, "", []string{
 		fmt.Sprintf("let id <- Db.insert %s { %s }", t.Name, strings.Join(inits, ", ")),
 		fmt.Sprintf("Task.succeed (Redirect (%s { id: id }))", at.page("Show")),
@@ -1062,7 +1219,7 @@ func (g *adminGen) newPage(at *adminTable) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "page %s { }%s\n\n", quote(at.path+"/new"), adminRequires)
 	b.WriteString("type Model = {\n" + regionAt("  ", "model", model) + "\n}\n\n")
-	b.WriteString("load : Params -> Session -> Query Model\nload params session = {\n" + regionAt("  ", "load", wrapAll(loads)) + "\n}\n\n")
+	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
 	b.WriteString(regionAt("", "form", form) + "\n\n")
 	fmt.Fprintf(&b, "msg Create form %s\n\n", at.formName())
 	b.WriteString("update : Msg -> Model -> Session -> Task Nav\nupdate msg model session = match msg {\n  Create p -> {\n")
@@ -1087,6 +1244,11 @@ func (g *adminGen) newPage(at *adminTable) {
 		got = append(got, c.Name+": row."+c.Name)
 		want = append(want, c.Name+": "+v)
 	}
+	for _, c := range at.secrets { // written empty
+		v, _ := secretValue(c)
+		got = append(got, c.Name+": row."+c.Name)
+		want = append(want, c.Name+": "+v)
+	}
 	tb.let("let page <- Test.get (%s {})", mod)
 	tb.let("let r <- Test.submit %s { %s }", at.formName(), strings.Join(values, ", "))
 	sel := "Db.from " + t.Name
@@ -1102,7 +1264,7 @@ func (g *adminGen) newPage(at *adminTable) {
 		"rows: List.map (\\row -> { " + strings.Join(got, ", ") + " }) rows"}
 	rhs := []string{"answers: [r.answer]", "rows: [{ " + strings.Join(want, ", ") + " }]"}
 	lhs, rhs = append(lhs, optLines[0]...), append(rhs, optLines[1]...)
-	if len(at.editable) == 0 {
+	if len(at.editable)+len(at.secrets) == 0 {
 		lhs, rhs = lhs[:1], rhs[:1]
 	}
 	tests = append(tests, TestData{Name: quote("creating " + article(at.noun) + " adds it, with the values submitted"), Lines: tb.lines,
@@ -1359,7 +1521,7 @@ func (g *adminGen) edit(at *adminTable) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "page %s { id: %s }%s\n\n", pathLit(at.path+"/{id}/edit"), types.StringIn(t.IDType, mod), adminRequires)
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + regionAt("  ", "model", model) + "\n}\n\n")
-	b.WriteString("load : Params -> Session -> Query Model\nload params session = {\n" + regionAt("  ", "load", wrapAll(loads)) + "\n}\n\n")
+	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
 	b.WriteString(regionAt("", "form", form) + "\n\n")
 	fmt.Fprintf(&b, "msg Save form %s\n\n", at.formName())
 	b.WriteString("update : Msg -> Model -> Session -> Task Nav\nupdate msg model session = match msg {\n  Save p -> {\n")
@@ -1456,7 +1618,7 @@ func (g *adminGen) delete(at *adminTable) {
 	title := "Delete " + at.noun
 	open, close := g.layoutOpen(UpperFirst(title), imports)
 
-	var model, loads, counts, blockers []string
+	var model, loads, counts, blockers, children []string
 	fields := []string{"row: row"}
 	var chains []*node // the @restrict references down a @cascade, each counted
 	nodes := g.closure(at)
@@ -1480,20 +1642,28 @@ func (g *adminGen) delete(at *adminTable) {
 			fields = append(fields, n.field+": List.length "+n.field+"Rows")
 		}
 		var what string
-		if n.parent == nil {
+		switch {
+		case n.stop && n.parent == nil:
+			what = UpperFirst(pluralOf(n.t)) + " under it, to delete first"
+		case n.stop:
+			what = UpperFirst(pluralOf(n.t)) + " under those " + pluralOf(n.parent.t) + ", to delete first"
+		case n.parent == nil:
 			what = fmt.Sprintf(map[string]string{
 				"cascade":  "%s deleted with it",
 				"setNull":  "%s that lose their " + strings.ToLower(Humanize(n.col.Name)),
 				"restrict": "%s that keep it from being deleted",
 			}[n.col.OnDelete], UpperFirst(pluralOf(n.t)))
-		} else {
+		default:
 			what = UpperFirst(pluralOf(n.t)) + " of those " + pluralOf(n.parent.t) + map[string]string{
 				"cascade":  " deleted with it",
 				"restrict": " that keep it from being deleted",
 			}[n.col.OnDelete]
 		}
 		counts = append(counts, "<dt>"+what+"</dt>", fmt.Sprintf("<dd id=%s>{Text.fromInt model.%s}</dd>", quote(n.field), n.field))
-		if n.col.OnDelete == "restrict" {
+		switch {
+		case n.stop && n.parent == nil:
+			children = append(children, "model."+n.field)
+		case n.col.OnDelete == "restrict" || n.stop:
 			blockers = append(blockers, "model."+n.field)
 			if n.parent != nil {
 				chains = append(chains, n)
@@ -1511,25 +1681,41 @@ func (g *adminGen) delete(at *adminTable) {
 	if len(blockers) > 0 {
 		block[3] = "blockers model = " + strings.Join(blockers, " + ")
 	}
+	if len(children) > 0 {
+		block = append(block, "",
+			"-- children counts the rows under this one, which refer to it with a `@cascade` to its own",
+			"-- table: deleting it would delete them, theirs, and so on to any depth, past what the counts",
+			"-- above can follow, to a row a `@restrict` reference may keep. So only a row without them is",
+			"-- deleted.",
+			"children : Model -> Int",
+			"children model = "+strings.Join(children, " + "))
+	}
 	labelRow := "<p>{" + textOf(at.label, "model.row."+at.label.Name) + "}</p>"
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "page %s { id: %s }%s\n\n", pathLit(at.path+"/{id}/delete"), types.StringIn(t.IDType, mod), adminRequires)
 	b.WriteString("-- The row, and how many rows of each table refer to it.\n")
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + regionAt("  ", "model", model) + "\n}\n\n")
-	b.WriteString("load : Params -> Session -> Query Model\nload params session = {\n" + regionAt("  ", "load", wrapAll(loads)) + "\n}\n\n")
+	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
 	b.WriteString(regionAt("", "blockers", block) + "\n\n")
 	b.WriteString("-- Delete takes no input: the form is the button, and the place a refusal is shown.\nform Confirm = { }\n\nmsg Remove form Confirm\n\n")
 	remove := []string{
 		"let _ <- Db.delete " + t.Name + " model.row." + t.IDField,
 		"Task.succeed (Redirect (" + at.page("Index") + " {}))",
 	}
-	if len(blockers) > 0 { // refused while rows refer to it: the database would refuse with an error
-		remove = append([]string{
-			"if blockers model > 0 then",
-			"  Task.succeed (Reject " + quote(rejectText(at)) + ")",
-			"else {",
-		}, append(indentAll(remove, "  "), "}")...)
+	if len(blockers) > 0 || len(children) > 0 { // refused while rows refer to it: the database would refuse with an error
+		var guard []string
+		if len(children) > 0 {
+			guard = append(guard, "if children model > 0 then", "  Task.succeed (Reject "+quote(childrenText)+")")
+		}
+		if len(blockers) > 0 {
+			lead := "if"
+			if len(guard) > 0 {
+				lead = "else if"
+			}
+			guard = append(guard, lead+" blockers model > 0 then", "  Task.succeed (Reject "+quote(rejectText(at))+")")
+		}
+		remove = append(append(guard, "else {"), append(indentAll(remove, "  "), "}")...)
 	}
 	b.WriteString(`-- Remove deletes the row, unless rows refer to it that keep it (load counted them, as it does
 -- before every message): the database would refuse the delete with an error, and the page says
@@ -1544,9 +1730,15 @@ update msg model session = match msg {
 `)
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
 	fmt.Fprintf(&b, "  %s\n    <h1>Delete this %s?</h1>\n\n    <al-card>\n%s\n      <dl>\n%s\n      </dl>\n", open, at.noun, regionAt("      ", "row", []string{labelRow}), regionAt("        ", "counts", counts))
+	button := `{if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}`
+	if len(children) > 0 {
+		button = `{if children model > 0 then <p>` + childrenText + `</p>
+          else if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p>
+          else <al-button variant="destructive" type="submit">Delete</al-button>}`
+	}
 	fmt.Fprintf(&b, `      <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        {if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}
+        `+button+`
       </form>
     </al-card>
     <a href={%s { id: model.row.%s }}>Back</a>
@@ -1651,6 +1843,42 @@ update msg model session = match msg {
 			Result: fmt.Sprintf("{ %sbuttons: Test.count \"#delete button\" page.doc, answer: r.answer, kept: Maybe.map (\\row -> row.%s) kept } == { %sbuttons: 0, answer: FormRejected [{ field: \"\", message: %s }], kept: Just %s }",
 				lhs, t.IDField, rhs, quote(rejectText(at)), target)})
 	}
+	// a row with children is refused, and so is a childless one a @restrict reference keeps: a
+	// chain of three rows, the third held by a row of the first table that restricts it
+	for _, n := range nodes {
+		if !n.stop {
+			continue
+		}
+		tb = g.tb(mod, imports, true)
+		top := tb.insertRow(t, "", nil, true)
+		mid := tb.insertRow(t, "", map[string]string{n.col.Name: maybeJust(n.col, top)}, false)
+		leaf := tb.insertRow(t, "", map[string]string{n.col.Name: maybeJust(n.col, mid)}, false)
+		var hold *node
+		for _, r := range nodes {
+			if r.col.OnDelete == "restrict" && hold == nil {
+				hold = r
+			}
+		}
+		if hold != nil {
+			tb.insertRow(hold.t, "_", map[string]string{hold.col.Name: maybeJust(hold.col, leaf)}, false)
+		}
+		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"id: " + top}))
+		tb.let("let r <- Test.submit Confirm { }")
+		lhs := "says: Test.texts \"#delete p\" page.doc, buttons: Test.count \"#delete button\" page.doc, answer: r.answer"
+		rhs := fmt.Sprintf("says: [%s], buttons: 0, answer: FormRejected [{ field: \"\", message: %s }]", quote(childrenText), quote(childrenText))
+		name := "deleting " + article(at.noun) + " with children is refused"
+		if hold != nil {
+			tb.let("let _ <- Test.get (%s)", pageLit(mod, []string{"id: " + leaf}))
+			tb.let("let leaf <- Test.submit Confirm { }")
+			lhs += ", leaf: leaf.answer"
+			rhs += fmt.Sprintf(", leaf: FormRejected [{ field: \"\", message: %s }]", quote(rejectText(at)))
+			name += ", and a childless one " + Plural(strings.ToLower(Humanize(hold.t.Name))) + " refer to"
+		}
+		tb.let("let rows <- Db.from %s |> Db.count", t.Name)
+		tests = append(tests, TestData{Name: quote(name), Lines: tb.lines,
+			Result: fmt.Sprintf("{ %s, rows: rows } == { %s, rows: %d }", lhs, rhs, tb.counts[t.Module])})
+		break
+	}
 	tests = append(tests, g.missingTest(at, mod, imports))
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
 		return pageLit(mod, []string{"id: " + tb.insertRow(t, "", nil, false)})
@@ -1658,6 +1886,9 @@ update msg model session = match msg {
 	b.WriteString(testsText(tests))
 	g.file(mod, imports, b.String())
 }
+
+// childrenText is the Delete page's refusal of a row with children (node.stop).
+const childrenText = "Delete its children first."
 
 // indentAll is lines, each with prefix.
 func indentAll(lines []string, prefix string) []string {
