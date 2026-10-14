@@ -1,0 +1,132 @@
+```alder-cli
+# the page: /profile, for a signed-in user, with no parameters
+alder new page Profile /profile --blank --requires user
+
+# the load: the user's row and their todo counts (Db.mine acts for the signed-in user)
+alder fill Profile.load - <<'EOF'
+\params session -> {
+  let found <- Db.get User session.user
+  let total <- Db.mine Todo |> Db.count
+  let done <- Db.mine Todo |> Db.where (Todo.done.eq True) |> Db.count
+  match found {
+    Just u -> Query.succeed { user: u, total: total, done: done },
+    Nothing -> Query.notFound,
+  }
+}
+EOF
+
+# the model
+alder fill --decl Profile.Model - <<'EOF'
+{ user: User, total: Int, done: Int }
+EOF
+
+# a minimal view first: the form refuses while view is a hole
+alder fill Profile.view - <<'EOF'
+\model session -> <Layout.Page title="Profile"><h1>Profile</h1></Layout.Page>
+EOF
+
+# the rename form, with its message SaveName
+alder new form Profile NewName name:Text.NonEmpty --msg SaveName
+
+# the full view: details, counts, the rename form, logout (App.Logout), back link
+alder fill --decl Profile.view - <<'EOF'
+\model session ->
+  <Layout.Page title="Profile">
+    <h1>Profile</h1>
+    <dl>
+      <dt>Name</dt>
+      <dd>{model.user.name}</dd>
+      <dt>Email</dt>
+      <dd>{model.user.email}</dd>
+      <dt>Todos</dt>
+      <dd>{Text.fromInt model.total}</dd>
+      <dt>Done</dt>
+      <dd>{Text.fromInt model.done}</dd>
+    </dl>
+    <al-card>
+      <form submit={SaveName}>
+        <Errors form />
+        <al-input field="name" label="Name" value={model.user.name} />
+        <al-button type="submit">Save</al-button>
+      </form>
+    </al-card>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+    <a href={Todos.Index {}}>Back to todos</a>
+  </Layout.Page>
+EOF
+
+# the rename: Db.update, since User has no @owner column; the id is the signed-in user's row
+alder fill --decl Profile.update - <<'EOF'
+\msg model session -> match msg {
+  SaveName p -> {
+    let _ <- Db.update User model.user.id (\u -> { u | name: p.form.name })
+    Task.succeed (Redirect (Profile {}))
+  },
+}
+EOF
+
+# test: load counts only the signed-in user's todos
+alder new test Profile "counts only the signed in user todos"
+alder fill 'Profile."counts only the signed in user todos"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Eggs", done: True, due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Bread", done: True, due: Nothing, owner: other }
+  let _ <- Test.login { user: Just me }
+  let model <- load { } { user: me, role: Member }
+  Task.succeed ({ total: model.total, done: model.done } == { total: 2, done: 1 })
+}
+EOF
+
+# test: renaming to an empty name is refused, and the name is kept
+alder new test Profile "a blank name is refused"
+alder fill 'Profile."a blank name is refused"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Profile { })
+  let r <- Test.submitRaw NewName [{ name: "name", value: "" }]
+  let after <- Db.get User me
+  let refused = match r.answer {
+    FormRejected errs -> True,
+    _ -> False,
+  }
+  Task.succeed ({ refused: refused, name: Maybe.map (\u -> u.name) after } == { refused: True, name: Just (Text.NonEmpty "Me") })
+}
+EOF
+
+# the link from the to-do list to the profile page
+alder fill --decl Todos.Index.view - <<'EOF'
+\model session ->
+  <Layout.Page title="Todos">
+    <h1>Todos</h1>
+
+    <al-card>
+      <form submit={Submit}>
+        <al-input field="title" label="What needs doing?" />
+        <al-input field="due" label="Due" />
+        <al-button type="submit">Add</al-button>
+      </form>
+    </al-card>
+
+    <nav>
+      {for f in [All, Active, Completed] ->
+        <a href={Todos.Index { filter: f }} aria-current={if model.filter == f then Just "page" else Nothing}>
+          {Todo.filterLabel f}
+        </a>}
+    </nav>
+
+    <ul id="todos">
+      {for todo in model.todos -> <Item todo={todo} />}
+    </ul>
+
+    <p id="summary">{Text.fromInt (Todo.countOpen model.todos)} open</p>
+
+    <p><a href={Profile {}}>Your profile</a></p>
+
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+EOF
+```

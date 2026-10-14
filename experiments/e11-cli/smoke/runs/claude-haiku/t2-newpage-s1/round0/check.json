@@ -1,0 +1,2 @@
+{"code": "W0002", "severity": "warning", "file": "app/Profile.alder", "line": 8, "col": 23, "endLine": 8, "endCol": 28, "message": "hole ?load has type Query Profile.Model"}
+{"code": "W0002", "severity": "warning", "file": "app/Profile.alder", "line": 11, "col": 22, "endLine": 11, "endCol": 27, "message": "hole ?view has type Html Profile.Msg"}

@@ -1,0 +1,44 @@
+# the page's model: the user's row and the counts of their todos
+alder fill --decl Profile.Model - <<'EOF'
+{ user: User, total: Int, done: Int }
+EOF
+
+# load: the signed-in user's row, and how many of their todos there are, done or not
+alder fill Profile.load - --hole ?load <<'EOF'
+{
+  let found <- Db.get User session.user
+  let total <- Db.mine Todo |> Db.count
+  let done <- Db.mine Todo |> Db.where (Todo.done.eq True) |> Db.count
+  match found {
+    Just u -> Query.succeed { user: u, total: total, done: done },
+    Nothing -> Query.notFound,
+  }
+}
+EOF
+
+# view: name, email, counts, a link to the to-do list, and the app's Logout
+alder fill Profile.view - --hole ?view <<'EOF'
+<Layout.Page title="Profile">
+  <h1>Profile</h1>
+  <p id="name">{model.user.name}</p>
+  <p id="email">{model.user.email}</p>
+  <p id="todos">{Text.fromInt model.total} todos, {Text.fromInt model.done} done</p>
+  <a href={Todos.Index {}}>Todos</a>
+  <al-button variant="outline" click={App.Logout}>Log out</al-button>
+</Layout.Page>
+EOF
+
+# test: load counts only the signed-in user's todos
+alder new test Profile "load counts only my todos"
+alder fill 'Profile."load counts only my todos"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Bread", due: Nothing, owner: me, done: True }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Eggs", due: Nothing, owner: other, done: True }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Profile {})
+  Task.succeed ({ total: page.model.total, done: page.model.done } == { total: 2, done: 1 })
+}
+EOF
