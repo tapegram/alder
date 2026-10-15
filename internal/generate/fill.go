@@ -3,6 +3,7 @@ package generate
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"alder/internal/syntax"
 )
@@ -160,6 +161,9 @@ func qualifiers(p *Program, expr string) []string {
 	seen := map[string]bool{}
 	for i := 0; i < len(expr); i++ {
 		switch ch := expr[i]; {
+		case ch >= utf8.RuneSelf: // a multi-byte character is no part of a name: step over all of it
+			_, size := utf8.DecodeRuneInString(expr[i:])
+			i += size - 1
 		case ch == '"':
 			if j := closing(expr, i); j > 0 {
 				i = j
@@ -170,7 +174,7 @@ func qualifiers(p *Program, expr string) []string {
 			for i < len(expr) && expr[i] != '\n' {
 				i++
 			}
-		case unicode.IsUpper(rune(ch)) && (i == 0 || !isNameByte(expr[i-1])):
+		case 'A' <= ch && ch <= 'Z' && (i == 0 || !isNameByte(expr[i-1])):
 			j := i
 			for j < len(expr) && (isNameByte(expr[j]) || expr[j] == '.') {
 				j++
