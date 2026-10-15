@@ -17,14 +17,14 @@ edited app/App.alder
 +-- Fill ?expected with what ToggleTheme must do, as `{ value: r.value, trace: r.trace } ==
 +-- { value: Ok Rerender, trace: ["Session.put"] }`: its answer and the effects it ran.
 +test "pressing ToggleTheme" = {
-+  let r <- Test.run (update (ToggleTheme { dark: ?toggleThemeDark }) {  })
++  let r <- Test.run (update (ToggleTheme { dark: ?toggleThemeDark }) {})
 +  Task.succeed ?expected
 +}
 app/App.alder:24:20: warning[W0002]: hole ?toggleTheme has type Task Nav
     ToggleTheme p -> ?toggleTheme,
                      ^^^^^^^^^^^^
 app/App.alder:31:50: warning[W0002]: hole ?toggleThemeDark has type Bool
-    let r <- Test.run (update (ToggleTheme { dark: ?toggleThemeDark }) {  })
+    let r <- Test.run (update (ToggleTheme { dark: ?toggleThemeDark }) {})
                                                    ^^^^^^^^^^^^^^^^
 app/App.alder:32:16: warning[W0002]: hole ?expected has type Bool
     Task.succeed ?expected

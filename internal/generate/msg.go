@@ -91,6 +91,9 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]
 		}
 		seen[f.Name] = true
 		d.Fields = append(d.Fields, f.Source())
+		if err := bareType(p, page, f.Type); err != nil {
+			return nil, err
+		}
 		typeImports(imports, f.Type, p)
 		v := ""
 		if loop != nil {

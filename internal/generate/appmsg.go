@@ -31,6 +31,9 @@ func newAppMsg(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
 		}
 		seen[f.Name] = true
 		decl = append(decl, f.Source())
+		if err := bareType(p, "App", f.Type); err != nil {
+			return nil, err
+		}
 		typeImports(imports, f.Type, p)
 		args = append(args, f.Name+": ?"+LowerFirst(name)+UpperFirst(f.Name))
 	}
@@ -73,7 +76,7 @@ func newAppMsg(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
 	if len(args) > 0 {
 		msgValue = "(" + name + " { " + strings.Join(args, ", ") + " })"
 	}
-	lines := append(tb.lines, "let r <- Test.run (update "+msgValue+" { "+strings.Join(sess, ", ")+" })")
+	lines := append(tb.lines, "let r <- Test.run (update "+msgValue+" "+record(sess)+")")
 	test := TestData{Name: quote("pressing " + name), Lines: lines, Result: "?expected",
 		Comment: []string{"A message of App is sent from any page (`click={App." + name + "}`), so the test calls update itself.",
 			"Fill ?expected with what " + name + " must do, as `{ value: r.value, trace: r.trace } ==",
@@ -83,4 +86,12 @@ func newAppMsg(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
 	}
 	addImports(e, app.Syntax, imports.list())
 	return []Edit{{Path: app.File, Body: e.result()}}, nil
+}
+
+// record is a record literal of fields: `{ a: 1 }`, or `{}` for none.
+func record(fields []string) string {
+	if len(fields) == 0 {
+		return "{}"
+	}
+	return "{ " + strings.Join(fields, ", ") + " }"
 }
