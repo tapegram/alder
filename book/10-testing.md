@@ -1562,6 +1562,12 @@ And when the test compiles (E0003 unless named):
   browser with JavaScript off, a plain form post answered by a
   redirect, is not tested either (section 12).
 
+A step's result also has `notices`, the list of toast texts the answer showed
+(`Notice.with "Saved" Rerender` gives `["Saved"]`), empty when there were none:
+
+    { answer: r.answer, notices: r.notices } == { answer: Rerendered, notices: ["Saved"] }
+
+
 ## 10. How the browser works
 
 Section 9 can be used without this one. This section explains what

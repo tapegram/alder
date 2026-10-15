@@ -1356,12 +1356,12 @@ Content-Type: text/html; charset=utf-8
 and has the Done button with its message URL:
 
 ```html
-<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="window._alderAC?.abort();@post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()})"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
+<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()}))"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
 ```
 
 The `&#39;` and `&amp;` are the escaping of section 8's first part: the
 attribute holds
-`window._alderAC?.abort();@post('/_m/Todos.Index/Toggle?id=…&_p.filter=Active', {contentType: 'form', requestCancellation: window._alderAC = new AbortController()})`:
+`window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post('/_m/Todos.Index/Toggle?id=…&_p.filter=Active', {contentType: 'form', requestCancellation: window._alderAC = new AbortController()}))`:
 the abort and the shared AbortController make the newest navigation the only
 one whose answer is applied (chapter 6, "Links and navigation").
 
@@ -4055,6 +4055,23 @@ the REPL, M5b migrations, M5c fakes, M5e the browser, M9 mutation
 testing and M10 the embedded runtime (above). See the design spec,
 [`docs/superpowers/specs/2026-10-09-m4-test-repl-design.md`](../docs/superpowers/specs/2026-10-09-m4-test-repl-design.md),
 "Milestones".
+
+### The dev trace, the panel and `/_dev`
+
+In developer mode the router gives each request's `eff.Env` a `Recorder`
+(`rt/eff`): `Run` adds a step (name, milliseconds, and "adapter" or "fake" for a
+capability's call) around every `Call`, and `rt/db` wraps its querier so each
+statement is added with its arguments, time and rows touched. A nil recorder
+costs nothing. After the answer the router renders the panel from it
+(`rt/web/devpanel.go`): inlined before `</body>` on a full document; on a
+Datastar answer the body patch carries an empty `<al-devpanel id="_alder_panel"
+data-ignore-morph>` (kept by the morph, with its open tab) and the panel's
+contents follow as one more `datastar-patch-elements` event, selector
+`#_alder_panel`, mode inner. `/_dev` is a route the router answers itself when
+`ALDER_DEV=1`. A `Noticed` answer is unwrapped by the generated route
+(`Nav.Unnotice`), the text kept on the request, and the toast patched after the
+body.
+
 
 ## 9. Reading generated code
 

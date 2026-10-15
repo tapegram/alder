@@ -1242,6 +1242,31 @@ default: before the first tag, create the repository secret
 locally into `dist/` and publishes nothing; a snapshot is not at a tag, so
 its `alder version` prints `devel+<commit>`.
 
+## Developer mode
+
+`alder run` serves the app in developer mode (`ALDER_DEV=1`). Every page then
+carries a panel, `<al-devpanel>`, a one-line bar along the bottom: the
+request's method and path, how it was answered, the time and the number of SQL
+statements. A tab opens it. The panel is rendered after the page's body, in an
+element the body's morph leaves alone, and filled by its own patch on every
+answer, so it survives every navigation. Its tabs:
+
+- Request: the path, the form fields, the parameters, the decoded session and a
+  `curl` line.
+- Trace: the effect steps the request ran, in order, with their time; a
+  capability call says whether an adapter or a fake answered it. It is the
+  list `alder test` prints for a test.
+- SQL: each statement with its arguments and time. A statement that ran more
+  than once is flagged as a duplicate: the same select run per row is the
+  mark of a missing join or a query inside a loop.
+- Answer: rerender, redirect, not found, or an error with its text.
+- Patches: the events the answer sent (body, toast, panel).
+
+`/_dev` is the map of the running app: its routes, and the capabilities wired.
+`ALDER_DEV_PANEL=0` turns the panel off. None of this exists in a production
+binary: no panel, no trace is recorded, and `/_dev` is a 404.
+
+
 ## Diagnostics
 
 Every diagnostic has a stable code, a location, a one-line message, and,

@@ -832,6 +832,26 @@ notFound =
 - `error` and `notFound` render failure pages.
 - `msg` and `update` declare app-level messages (above). They are optional.
 
+## Notices and in-flight state
+
+A message can answer with a toast. `Notice.with "Saved" Rerender` is the
+`Rerender` it wraps, plus a notice: after the page's body is patched in, the
+runtime appends `<al-toast variant="info" timeout="5000">Saved</al-toast>` to
+the page's `<al-toasts>` region as an event of its own, so a later morph does
+not show it again. Put `<al-toasts>` in the layout, outside anything a
+message re-renders; a page without one gets a region the runtime adds to the
+body of the answer. Without JavaScript the toast is not shown (the region is
+hidden), so a notice is a courtesy, never the only way a user learns of an
+outcome. A browser test reads the toasts of a step as `r.notices`.
+
+While a message is pending, the form (or the form around a `click` button)
+that sent it is `inert` and `aria-busy="true"`, and a two-pixel bar runs along
+the top of the page; both go when the answer arrives. A boosted link shows the
+bar too, and Back during a pending GET still ends on the page Back returned
+to. The bar is a rule the runtime puts in the head (`html[data-alder-pending]`),
+not part of the design library.
+
+
 ## How a request runs
 
 You can write a whole app without reading this section. It explains what
@@ -922,7 +942,7 @@ page's parameters to every message URL it writes. This is the Done button
 of `GET /?filter=Active`, as the running app sends it:
 
 ```html
-<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="window._alderAC?.abort();@post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()})"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
+<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()}))"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
 ```
 
 (A `click` button is wrapped in a form of its own so that it works without
