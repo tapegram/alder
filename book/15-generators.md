@@ -3371,6 +3371,72 @@ only by the generators that create them (a fill imports what its
 expression names); a table or page is renamed by `remove` and a new
 command, not in place. Everything else an app has, these commands write.
 
+## Four gaps: a message in `App`, a prop, a form on a message, a login's page
+
+E11 (below) found four things the commands could not do. `alder new msg
+App <Name> [fields]` declares a message in `App`, for a button that is on
+every page (`click={App.ToggleTheme}`): the constructor, an arm of
+`App.update` whose body is the hole `?toggleTheme` (the `update` is
+created when `App` has none, as `new auth` does for `Logout`), and a test
+that calls `update` itself, ending in the hole `?expected`:
+
+```text command=guestbook
+$ alder new msg App ToggleTheme dark:Bool
+edited app/App.alder
+--- a/app/App.alder
++++ b/app/App.alder
+@@ -9,12 +9,15 @@
+ 
+ msg Logout
+ 
++msg ToggleTheme { dark: Bool }
++
+ update : Msg -> Session -> Task Nav
+ update msg session = match msg {
+   Logout p -> {
+…
++  ToggleTheme p -> ?toggleTheme,
+ }
+…
+```
+
+`alder edit decl Layout.Page add-prop <name>:<Type>=<default>` adds a
+property to a component's props record. The default is required (it is
+what keeps every `<Layout.Page …>` checking) and a name the record has is
+refused:
+
+```text command=guestbook
+$ alder edit decl Layout.Page add-prop "dark:Bool=False"
+edited app/Layout.alder
+--- a/app/Layout.alder
++++ b/app/Layout.alder
+@@ -1,6 +1,6 @@
+ module Layout
+ 
+-Page : { title: Text, children: List (Html a) } -> Html a
++Page : { title: Text, children: List (Html a), dark: Bool = False } -> Html a
+ Page props =
+   <html>
+     <head>
+```
+
+A form posted by a message that has parameters is two commands:
+`alder new msg Home Feature id:Entry.EntryId`, then `alder new form Home
+Reason why:Text.NonEmpty --msg Feature`. The message exists without a
+form, so the second command rewrites it as `msg Feature { id: … } form
+Reason`, puts the form in the view with the message's parameters as holes,
+and replaces the message's own button and its test (`Test.click` cannot
+post a form) with a test of `Test.submit (Feature { id: … }) { why: … }`.
+A comment above the form says that the arm reads the fields as `p.form`.
+A message that has a form already is refused.
+
+Last, `alder new auth` in an app with no page yet leaves the hole
+`?afterLogin`, in `Submit`'s redirect and in the login's test. Once the
+page exists, `alder edit auth --to <Page>` fills both, and refuses when
+there is no such hole. `alder fill` takes the lambda `\params session ->
+…` for a declaration that binds `params` and `session` already as a
+mistake and says so: send the body without it.
+
 ## Changing a table: `alder edit table`
 
 `alder edit table T` makes one change to a table and writes its
