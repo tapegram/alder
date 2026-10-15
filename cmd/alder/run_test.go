@@ -336,7 +336,7 @@ func dsDo(t *testing.T, req *http.Request) (*http.Response, string) {
 func TestRun_BoostedNavigation(t *testing.T) {
 	r := startRun(t)
 	if page := get(t, r.base+"/login"); !strings.Contains(page, `<head><meta name="color-scheme" content="light dark" /><meta name="alder-build" content="`) ||
-		!regexp.MustCompile(`<meta name="alder-build" content="[0-9a-f]{16}" /><script type="module" src="/_alder/datastar-v1.0.0.js"></script>`).MatchString(page) ||
+		!regexp.MustCompile(`<meta name="alder-build" content="[0-9a-f]{16}" /><style>[^<]*</style><script type="module" src="/_alder/datastar-v1.0.0.js"></script>`).MatchString(page) ||
 		!regexp.MustCompile(`<meta name="alder-boost" content="links" data-init="[^"]*"[^>]*/></head>`).MatchString(page) ||
 		!strings.Contains(page, `data-on:click__window="if (evt.defaultPrevented`) {
 		t.Fatalf("GET /login lacks the boost:\n%s", page)

@@ -231,7 +231,7 @@ func BoostTag() string {
 }
 
 // boostEscaper escapes a double-quoted attribute value: &, " and <.
-var boostEscaper = strings.NewReplacer("&", "&amp;", `"`, "&quot;", "<", "&lt;")
+var boostEscaper = strings.NewReplacer("&", "&amp;", `"`, "&quot;", "<", "&lt;", ">", "&gt;")
 
 // patch writes one `datastar-patch-elements` event (PatchEvent) patching elements at selector
 // in mode.
