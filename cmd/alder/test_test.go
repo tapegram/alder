@@ -748,7 +748,7 @@ func TestTest_HoleAndJSONError(t *testing.T) {
 	needGoTool(t)
 	dir := tempTodos(t, "Todo.alder", "\ntest \"h\" = ?todo == 1\n")
 	code, _, stderr := runTest(t, dir)
-	if code != 1 || !strings.Contains(stderr, "W0002") || !strings.HasSuffix(stderr, "alder test: no tests ran (fill the hole)\n") {
+	if code != 1 || !strings.Contains(stderr, "W0002") || !strings.Contains(stderr, "alder test: no tests ran (fill the hole): ?todo : ") {
 		t.Errorf("hole: exit %d stderr %q", code, stderr)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "adapters", "bad.go"), []byte("package adapters\n\nfunc broken() int { return \"x\" }\n"), 0o644); err != nil {

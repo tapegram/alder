@@ -381,7 +381,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"edit", "table", "Entry", "rename-field", "name", "message"}, "", "alder edit table: `Entry` already has a field `message`"},
 		{"scaffold", []string{"edit", "table", "Nope", "drop-field", "x"}, "", "alder edit table: `Nope` is not a table of this app (its tables: Entry)"},
 		{"fixture", []string{"edit", "table", "Post", "add-field", "views:Int"}, "", "alder edit table: the migration generator refuses the change: Post.views: a new non-null column needs a default (`= 0`) so existing rows can be filled"},
-		{"scaffold", []string{"fill", "Home.update", "-"}, "Task.succeed Rerender", "alder fill: `Home.update` has no typed hole (`alder fill --list` lists the app's holes)"},
+		{"scaffold", []string{"fill", "Home.update", "-"}, "Task.succeed Rerender", "alder fill: `Home.update` has no typed hole; to rewrite it whole, `alder fill --decl Home.update -` (`alder fill --list` lists the app's holes)"},
 		{"scaffold", []string{"fill", "Nope.update", "-"}, "x", "alder fill: `Nope.update` names no module of this app: write `Module.decl`, such as `Home.update`"},
 		{"scaffold", []string{"fill", "Home.update", "-"}, "\n", "alder fill: standard input is empty: write the expression that fills the hole"},
 		{"scaffold", []string{"fill", "Home.update", "-"}, "Task.succeed Rerender,\n}\n\nevil : Int\nevil = 1\n", "alder fill: `alder fill` takes one expression; found more after it: `,` at line 1, column 22 of standard input"},
@@ -849,5 +849,50 @@ func TestGenerate_E11Commands(t *testing.T) {
 		if code != 1 || !strings.Contains(errs, c.want) {
 			t.Errorf("%v: exit %d: %s (want %q)", c.args, code, errs, c.want)
 		}
+	}
+}
+
+// TestGenerate_E11Messages: the refusals that name the fix (E11 §7): a lambda over bound
+// parameters, a hole-less test or Model, a test's block in a Bool hole, a bare app type, and `alder test`
+// with holes left; an unquoted test address is accepted.
+func TestGenerate_E11Messages(t *testing.T) {
+	needGoTool(t)
+	dir := genApp(t, "fixture")
+	run := func(stdin string, args ...string) (int, string) {
+		code, out, errs := alderIn(t, dir, stdin, args...)
+		return code, out + errs
+	}
+	if code, o := run("", "new", "page", "Notes", "/notes", "--blank"); code != 0 {
+		t.Fatalf("new page: %s", o)
+	}
+	for _, args := range [][]string{{"fill", "Notes.load", "-"}, {"fill", "--decl", "Notes.load", "-"}} {
+		code, o := run("\\params session -> Query.succeed { }", args...)
+		if code != 1 || !strings.Contains(o, "the parameters `params session` are bound already: send the body without `\\params session ->`") {
+			t.Errorf("%v: exit %d: %s", args, code, o)
+		}
+	}
+	if code, o := run("Query.succeed { }", "fill", "Notes.load", "-"); code != 0 {
+		t.Fatalf("fill load: %s", o)
+	}
+	if code, o := run("", "new", "test", "Notes", "a b c"); code != 0 {
+		t.Fatalf("new test: %s", o)
+	}
+	if code, o := run("Task.succeed True", "fill", "Notes.a b c", "-"); code != 0 {
+		t.Errorf("an unquoted test address: exit %d: %s", code, o)
+	}
+	if code, o := run("True", "fill", `Notes."the page is shown"`, "-"); code != 1 || !strings.Contains(o, `alder fill --decl 'Notes."the page is shown"' -`) {
+		t.Errorf("a test without a hole: exit %d: %s", code, o)
+	}
+	if code, o := run("", "new", "msg", "Home", "Clear"); code != 0 {
+		t.Fatalf("new msg: %s", o)
+	}
+	if code, o := run("{\n  Task.succeed True\n}", "fill", `Home."pressing Clear"`, "-"); code != 1 || !strings.Contains(o, "to replace the whole test, use `alder fill --decl") {
+		t.Errorf("a block in ?expected: exit %d: %s", code, o)
+	}
+	if code, o := run("", "new", "msg", "Home", "Pick", "role:Role"); code != 1 || !strings.Contains(o, "write `User.Role`") {
+		t.Errorf("a bare app type: exit %d: %s", code, o)
+	}
+	if code, o := run("", "test"); code != 1 || !strings.Contains(o, "fill the hole): ") || !strings.Contains(o, "?expected : Bool") {
+		t.Errorf("alder test with holes: exit %d: %s", code, o)
 	}
 }

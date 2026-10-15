@@ -18,8 +18,9 @@ script. Text outside the block is ignored; a second script block is refused.
 - The commands run in order, in the app's directory: the harness created it with
   `alder new <app> --bare` (or it is the app shown after this page, when there is one). Do not pass
   a directory and do not run `alder new <app>`.
-- `--json` is allowed on any command that has it; you see its output. `alder check`, `alder test`
-  and `alder eval` may be run mid-script. `alder run` (a server) is not allowed. At most 80 commands
+- `--json` is allowed on any command that has it; you see its output. `alder check`
+  and `alder eval` may be run mid-script; so may `alder test`, but it refuses while a hole is left, so run
+  it last, after the fills. `alder run` (a server) is not allowed. At most 80 commands
   a round.
 - The harness stops at the first command that fails (exits non-zero) and shows you everything:
   every command it ran, its output, and the failure in full. Then it runs `alder check`,

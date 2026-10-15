@@ -60,10 +60,14 @@ func FillDecl(p *Program, address, src string) (edits []Edit, imports []string, 
 		if _, err := parseTypeDecl(decl + " = " + src); err != nil {
 			return nil, nil, Refusef("`alder fill --decl` takes one type for `type %s`: standard input is not one: %v", decl, err)
 		}
-	} else if _, ds, more, at := syntax.ParseExpr("stdin", []byte(src)); more != "" {
+	} else if parsed, ds, more, at := syntax.ParseExpr("stdin", []byte(src)); more != "" {
 		return nil, nil, Refusef("`alder fill --decl` takes one expression; found more after it: %s at line %d, column %d of standard input", more, at.Line, at.Col)
 	} else if len(ds) > 0 {
 		return nil, nil, Refusef("`alder fill --decl` takes one expression; standard input does not parse as one: %s (line %d, column %d)", ds[0].Message, ds[0].Span.Start.Line, ds[0].Span.Start.Col)
+	} else if v := valueDecl(m.Syntax, decl); v != nil {
+		if err := boundLambda(parsed, v); err != nil {
+			return nil, nil, err
+		}
 	}
 	lines := strings.Split(strings.TrimSuffix(m.Source, "\n"), "\n")
 	if span.End.Line > len(lines) {

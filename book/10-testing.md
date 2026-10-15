@@ -195,7 +195,7 @@ test that hangs is not mistaken for a quiet one.
 If the app does not compile, no test runs: `alder test` prints the
 diagnostics as `alder check` does and exits 1. A typed hole (`?todo`,
 chapter 11) compiles to nothing that can run either: its warning W0002 is
-followed by `alder test: no tests ran (fill the hole)`, exit 1. Here the app has gained a
+followed by `alder test: no tests ran (fill the hole)` and the holes with their types, exit 1. Here the app has gained a
 module `Probe` that uses `Test.trace` outside a test (section 5) and
 declares `test "one" = { Task.succeed 1 }`, a block whose verdict is not
 a `Bool`:

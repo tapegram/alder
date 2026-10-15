@@ -206,7 +206,7 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	if testDiags(dir, b.Diags, !b.Runnable(), jsonOut, stdout, stderr) {
 		if !hasError(b.Diags) { // stopped by a typed hole: its W0002 says where
-			fmt.Fprintln(stderr, "alder test: no tests ran (fill the hole)")
+			fmt.Fprintln(stderr, "alder test: no tests ran (fill the hole)"+holesLeft(b.Diags))
 		}
 		return 1
 	}
@@ -550,4 +550,20 @@ func testDiags(dir string, ds []diag.Diagnostic, stopped, jsonOut bool, stdout, 
 		fmt.Fprint(w, diag.RenderText(d, lines))
 	}
 	return failed
+}
+
+// holesLeft lists the typed holes (W0002) among ds, `: ?a : T, ?b : U`, or "": a test run stops
+// at a hole, so the refusal says which ones (a harness's transcript then shows "holes left").
+func holesLeft(ds []diag.Diagnostic) string {
+	var holes []string
+	for _, d := range ds {
+		if d.Code == "W0002" {
+			name, typ, _ := strings.Cut(strings.TrimPrefix(d.Message, "hole "), " has type ")
+			holes = append(holes, name+" : "+typ)
+		}
+	}
+	if len(holes) == 0 {
+		return ""
+	}
+	return ": " + strings.Join(holes, ", ")
 }

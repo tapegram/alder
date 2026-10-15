@@ -140,6 +140,40 @@ func deleteRuleTests(p *Program, t *Table, imports *importSet) []TestData {
 
 // typeImports imports the modules a type written as text names (`Post.PostId` → Post; `Maybe
 // User.Role` → User); the standard library's (`Text.NonEmpty`) need no import.
+// bareType refuses a generator argument that writes an app type without its module (`theme:Theme`
+// where `Theme` declares the type `Theme`), as the checker would, but naming the fix: when
+// exactly one other module of the app declares a type of that name, the refusal says
+// "write `Theme.Theme`". A name the home module declares itself is its own.
+func bareType(p *Program, home, typ string) error {
+	for _, w := range strings.FieldsFunc(typ, func(r rune) bool {
+		return !(r == '.' || r == '_' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z')
+	}) {
+		if strings.Contains(w, ".") || !IsUpperIdent(w) {
+			continue
+		}
+		var in []string
+		for _, m := range p.Modules {
+			if p.Std[m.Name] || m.Syntax == nil {
+				continue
+			}
+			for _, d := range m.Syntax.Decls {
+				if td, ok := d.(*syntax.TypeDecl); ok && td.Name == w {
+					if m.Name == home {
+						in = nil
+						goto next
+					}
+					in = append(in, m.Name)
+				}
+			}
+		}
+		if len(in) == 1 {
+			return Refusef("`%s` is a type of module `%s`: write `%s.%s` in `%s`", w, in[0], in[0], w, typ)
+		}
+	next:
+	}
+	return nil
+}
+
 func typeImports(s *importSet, typ string, p *Program) {
 	for _, w := range strings.FieldsFunc(typ, func(r rune) bool { return r == ' ' || r == '(' || r == ')' }) {
 		if i := strings.LastIndex(w, "."); i > 0 {

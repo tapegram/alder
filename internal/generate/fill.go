@@ -27,7 +27,8 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 	if strings.TrimSpace(expr) == "" {
 		return nil, nil, nil, Refusef("standard input is empty: write the expression that fills the hole")
 	}
-	if _, ds, more, at := syntax.ParseExpr("stdin", []byte(expr)); more != "" {
+	parsed, ds, more, at := syntax.ParseExpr("stdin", []byte(expr))
+	if more != "" {
 		hint := ""
 		if more == "`->`" {
 			hint = " (a lambda starts with `\\`: `\\a b -> …`)"
@@ -54,7 +55,7 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 	case len(in) == 0 && arm != "":
 		return nil, nil, nil, Refusef("`%s` has no typed hole: a fill replaces a hole, and this arm has none; to rewrite it, give `alder fill --decl %s.update -` the whole `match msg { … }` (`alder fill --list` lists the app's holes)", address, mod)
 	case len(in) == 0:
-		return nil, nil, nil, Refusef("`%s` has no typed hole (`alder fill --list` lists the app's holes)", address)
+		return nil, nil, nil, Refusef("`%s` has no typed hole; to rewrite it whole, `alder fill --decl %s -` (`alder fill --list` lists the app's holes)", address, shellAddress(address))
 	case len(named) == 0:
 		return nil, nil, nil, Refusef("`%s` has no hole `?%s` (it has %s)", address, hole, holeNames(in))
 	case len(named) > 1 && hole == "":
@@ -64,6 +65,9 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 	}
 	h = &named[0]
 	m := p.Modules[h.Module]
+	if err := fillShape(m, h, parsed, hole); err != nil {
+		return nil, nil, nil, err
+	}
 	lines := strings.Split(strings.TrimSuffix(m.Source, "\n"), "\n")
 	sp := h.Span
 	if sp.Start.Line != sp.End.Line || sp.Start.Line > len(lines) {
@@ -259,6 +263,9 @@ func parseAddress(p *Program, address string) (mod, decl, arm string, err error)
 				return "", "", "", Refusef("`%s` is not a declaration: write `Module.decl`, `Module.update.Msg` or `Module.\"test name\"`", address)
 			}
 			decl = rest[0]
+			if len(rest) == 1 && strings.Contains(decl, " ") { // `Mod."test name"` unquoted by the shell
+				decl = `"` + decl + `"`
+			}
 			if len(rest) == 2 {
 				arm = rest[1]
 			}
@@ -448,4 +455,51 @@ func controlChars(src string) error {
 		}
 	}
 	return nil
+}
+
+// shellAddress is address as a shell argument: single-quoted when it holds a test's name.
+func shellAddress(address string) string {
+	if strings.ContainsAny(address, " \"") {
+		return "'" + address + "'"
+	}
+	return address
+}
+
+// fillShape refuses what a hole cannot take for a reason `alder fill` can name: a lambda over
+// the parameters the declaration binds already (when the hole is its whole body), and a block of
+// a test (a `Task Bool`) in a hole that is not a Task, such as a generated test's `?expected`.
+func fillShape(m *Module, h *Hole, expr syntax.Expr, hole string) error {
+	if v := valueDecl(m.Syntax, h.Decl); v != nil && h.Arm == "" {
+		if _, whole := v.Body.(*syntax.HoleExpr); whole {
+			if err := boundLambda(expr, v); err != nil {
+				return err
+			}
+		}
+	}
+	if _, isBlock := expr.(*syntax.Block); isBlock && strings.HasPrefix(h.Decl, `"`) && !strings.HasPrefix(h.Type, "Task ") {
+		return Refusef("the hole ?%s is a `%s`, not a test's whole block: send the expression for it, or, to replace the whole test, use `alder fill --decl %s -`", h.Name, h.Type, shellAddress(h.Module+"."+h.Decl))
+	}
+	return nil
+}
+
+// boundLambda refuses expr when it is a lambda over parameters that value declaration v binds
+// already (`load params session = …` filled with `\params session -> …`).
+func boundLambda(expr syntax.Expr, v *syntax.ValueDecl) error {
+	l, ok := expr.(*syntax.Lambda)
+	if !ok || len(l.Params) == 0 {
+		return nil
+	}
+	bound := map[string]bool{}
+	for _, b := range v.Params {
+		bound[b.Name] = true
+	}
+	var names []string
+	for _, a := range l.Params {
+		if !bound[a.Name] {
+			return nil
+		}
+		names = append(names, a.Name)
+	}
+	list := strings.Join(names, " ")
+	return Refusef("the parameters `%s` are bound already: send the body without `\\%s ->`", list, list)
 }

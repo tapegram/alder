@@ -101,6 +101,9 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 	}
 	imports := newImports(o.Page, p.Std)
 	for _, f := range o.Fields {
+		if err := bareType(p, o.Page, f.Type); err != nil {
+			return nil, err
+		}
 		typeImports(imports, f.Type, p)
 	}
 
@@ -397,7 +400,7 @@ func addDecls(e *srcEdit, m *Module, page, decls, arm string) error {
 func addToView(e *srcEdit, m *Module, page, markup, label string) error {
 	spot, ok := findViewSpot(e, m.Syntax, label == "")
 	if !ok {
-		return Refusef("`%s`'s `view` is not one element over several lines: add the markup yourself", page)
+		return Refusef("`%s`'s `view` is not one element over several lines (write it as `<Layout.Page …>` … `</Layout.Page>` on several lines, with `alder fill --decl %s.view -`), or add the markup yourself", page, page)
 	}
 	switch {
 	case label == "": // a button, after a blank line, as the root's sections are

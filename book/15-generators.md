@@ -499,7 +499,7 @@ app/Replies/Show.alder:24:15: warning[W0002]: hole ?delete has type Task Nav
 app/Replies/Show.alder:75:16: warning[W0002]: hole ?expected has type Bool
     Task.succeed ?expected
                  ^^^^^^^^^
-alder test: no tests ran (fill the hole)
+alder test: no tests ran (fill the hole): ?delete : Task Nav, ?expected : Bool
 ```
 
 A test program with a hole in it would have nothing to run where the
