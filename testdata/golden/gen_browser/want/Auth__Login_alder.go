@@ -138,6 +138,7 @@ func test__Auth__Login__1() eff.Task[bool] {
 		Answer  rtesting.Answer
 		Session App__Session
 		Doc     rtesting.Doc
+		Notices []string
 	}, error) {
 		var _p2 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
 		_u3 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p2.Filter.Tag], "All")}})
@@ -148,6 +149,7 @@ func test__Auth__Login__1() eff.Task[bool] {
 				Answer  rtesting.Answer
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}
 			return _z7, _err6
 		}
@@ -155,11 +157,13 @@ func test__Auth__Login__1() eff.Task[bool] {
 			Answer  rtesting.Answer
 			Session App__Session
 			Doc     rtesting.Doc
-		}{Answer: _r5.Answer, Session: rtesting.SessionOf[App__Session](_r5.Session), Doc: rtesting.DocOf(_r5.Doc)}, nil
+			Notices []string
+		}{Answer: _r5.Answer, Session: rtesting.SessionOf[App__Session](_r5.Session), Doc: rtesting.DocOf(_r5.Doc), Notices: _r5.Notices}, nil
 	}), func(r struct {
 		Answer  rtesting.Answer
 		Session App__Session
 		Doc     rtesting.Doc
+		Notices []string
 	}) eff.Task[bool] {
 		return eff.Pure(rtesting.Eq(struct {
 			Answer rtesting.Answer
@@ -189,6 +193,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 				Model   Auth__Login__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}, error) {
 				_u5 := rt.PageURL(rt.Page{Path: "/login"})
 				_b6 := rtesting.BrowserOf(_e3)
@@ -198,6 +203,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 						Model   Auth__Login__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z9, _err8
 				}
@@ -207,6 +213,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 						Model   Auth__Login__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z11, _err8
 				}
@@ -214,16 +221,19 @@ func test__Auth__Login__2() eff.Task[bool] {
 					Model   Auth__Login__Model
 					Session App__Session
 					Doc     rtesting.Doc
-				}{Model: _m10, Session: rtesting.SessionOf[App__Session](_r7.Session), Doc: rtesting.DocOf(_r7.Doc)}, nil
+					Notices []string
+				}{Model: _m10, Session: rtesting.SessionOf[App__Session](_r7.Session), Doc: rtesting.DocOf(_r7.Doc), Notices: _r7.Notices}, nil
 			}), func(_ struct {
 				Model   Auth__Login__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.submit Credentials", true, func(_e12 *eff.Env) (struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}, error) {
 					_r13, _err14 := rtesting.BrowserOf(_e12).SubmitForm("/_m/Auth.Login/Submit", "Credentials", encode__Auth__Login__Credentials(Auth__Login__Credentials{Email: "me@example.com", Password: "nope"}))
 					if _err14 != nil {
@@ -231,6 +241,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z15, _err14
 					}
@@ -238,16 +249,19 @@ func test__Auth__Login__2() eff.Task[bool] {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
-					}{Answer: _r13.Answer, Session: rtesting.SessionOf[App__Session](_r13.Session), Doc: rtesting.DocOf(_r13.Doc)}, nil
+						Notices []string
+					}{Answer: _r13.Answer, Session: rtesting.SessionOf[App__Session](_r13.Session), Doc: rtesting.DocOf(_r13.Doc), Notices: _r13.Notices}, nil
 				}), func(wrong struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}) eff.Task[bool] {
 					return eff.Bind(eff.Call("Test.submit Credentials", true, func(_e16 *eff.Env) (struct {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}, error) {
 						_r17, _err18 := rtesting.BrowserOf(_e16).SubmitForm("/_m/Auth.Login/Submit", "Credentials", encode__Auth__Login__Credentials(Auth__Login__Credentials{Email: "me@example.com", Password: "secret"}))
 						if _err18 != nil {
@@ -255,6 +269,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 								Answer  rtesting.Answer
 								Session App__Session
 								Doc     rtesting.Doc
+								Notices []string
 							}
 							return _z19, _err18
 						}
@@ -262,11 +277,13 @@ func test__Auth__Login__2() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
-						}{Answer: _r17.Answer, Session: rtesting.SessionOf[App__Session](_r17.Session), Doc: rtesting.DocOf(_r17.Doc)}, nil
+							Notices []string
+						}{Answer: _r17.Answer, Session: rtesting.SessionOf[App__Session](_r17.Session), Doc: rtesting.DocOf(_r17.Doc), Notices: _r17.Notices}, nil
 					}), func(right struct {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}) eff.Task[bool] {
 						return eff.Pure(rtesting.Eq(struct {
 							Wrong     rtesting.Answer
@@ -310,6 +327,7 @@ func test__Auth__Login__3() eff.Task[bool] {
 				Answer  rtesting.Answer
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}, error) {
 				var _p5 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
 				_u6 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p5.Filter.Tag], "All")}})
@@ -320,6 +338,7 @@ func test__Auth__Login__3() eff.Task[bool] {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z10, _err9
 				}
@@ -327,16 +346,19 @@ func test__Auth__Login__3() eff.Task[bool] {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
-				}{Answer: _r8.Answer, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc)}, nil
+					Notices []string
+				}{Answer: _r8.Answer, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc), Notices: _r8.Notices}, nil
 			}), func(shown struct {
 				Answer  rtesting.Answer
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.click App.Logout", true, func(_e11 *eff.Env) (struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}, error) {
 					_r12, _err13 := rtesting.BrowserOf(_e11).ClickMsg(rt.MsgURL("App", "Logout"), rtesting.MsgName("App.Logout", nil))
 					if _err13 != nil {
@@ -344,6 +366,7 @@ func test__Auth__Login__3() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z14, _err13
 					}
@@ -351,11 +374,13 @@ func test__Auth__Login__3() eff.Task[bool] {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
-					}{Answer: _r12.Answer, Session: rtesting.SessionOf[App__Session](_r12.Session), Doc: rtesting.DocOf(_r12.Doc)}, nil
+						Notices []string
+					}{Answer: _r12.Answer, Session: rtesting.SessionOf[App__Session](_r12.Session), Doc: rtesting.DocOf(_r12.Doc), Notices: _r12.Notices}, nil
 				}), func(out struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}) eff.Task[bool] {
 					return eff.Pure(rtesting.Eq(struct {
 						Shown rtesting.Answer

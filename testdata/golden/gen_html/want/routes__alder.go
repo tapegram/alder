@@ -169,6 +169,7 @@ func update__M(rq *web.Request, params M__Params, msg M__Msg, st *html.FormState
 	if err != nil {
 		return route__fail(err)
 	}
+	nav, rq.Notice = nav.Unnotice()
 	switch {
 	case nav.Tag == rt.NavRedirect:
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
@@ -317,6 +318,7 @@ func update__App(rq *web.Request, msg App__Msg) web.Response {
 	if err != nil {
 		return route__fail(err)
 	}
+	nav, rq.Notice = nav.Unnotice()
 	if nav.Tag == rt.NavRedirect {
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
 	}

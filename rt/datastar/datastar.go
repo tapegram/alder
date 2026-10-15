@@ -277,3 +277,8 @@ const PanelID = "_alder_panel"
 func PatchPanel(w http.ResponseWriter, inner string) error {
 	return patch(w, "#"+PanelID, "inner", inner)
 }
+
+// PatchToast appends toast (an <al-toast>) to the page's <al-toasts> region.
+func PatchToast(w http.ResponseWriter, toast string) error {
+	return patch(w, "al-toasts", "append", toast)
+}

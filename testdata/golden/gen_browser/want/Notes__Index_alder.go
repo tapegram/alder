@@ -261,6 +261,7 @@ func test__Notes__Index__1() eff.Task[bool] {
 				Model   Notes__Index__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}, error) {
 				var _p5 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
 				_u6 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p5.Filter.Tag], "All")}})
@@ -271,6 +272,7 @@ func test__Notes__Index__1() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z10, _err9
 				}
@@ -280,6 +282,7 @@ func test__Notes__Index__1() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z12, _err9
 				}
@@ -287,16 +290,19 @@ func test__Notes__Index__1() eff.Task[bool] {
 					Model   Notes__Index__Model
 					Session App__Session
 					Doc     rtesting.Doc
-				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc)}, nil
+					Notices []string
+				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc), Notices: _r8.Notices}, nil
 			}), func(page struct {
 				Model   Notes__Index__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.submit NewNote", true, func(_e13 *eff.Env) (struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}, error) {
 					_r14, _err15 := rtesting.BrowserOf(_e13).SubmitForm("/_m/Notes.Index/Submit", "NewNote", encode__Notes__Index__NewNote(Notes__Index__NewNote{Title: "Milk", Due: rt.Nothing[rt.Date](), Urgent: false, Priority: 1, Weight: 1.5, Kind: Note__Kind__Plain__, Remark: "", Contact: rt.Nothing[string]()}))
 					if _err15 != nil {
@@ -304,6 +310,7 @@ func test__Notes__Index__1() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z16, _err15
 					}
@@ -311,11 +318,13 @@ func test__Notes__Index__1() eff.Task[bool] {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
-					}{Answer: _r14.Answer, Session: rtesting.SessionOf[App__Session](_r14.Session), Doc: rtesting.DocOf(_r14.Doc)}, nil
+						Notices []string
+					}{Answer: _r14.Answer, Session: rtesting.SessionOf[App__Session](_r14.Session), Doc: rtesting.DocOf(_r14.Doc), Notices: _r14.Notices}, nil
 				}), func(after struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}) eff.Task[bool] {
 					return eff.Pure(rtesting.Eq(struct {
 						Before  []Note__Note
@@ -355,6 +364,7 @@ func test__Notes__Index__2() eff.Task[bool] {
 					Model   Notes__Index__Model
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}, error) {
 					var _p6 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__Open__}
 					_u7 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p6.Filter.Tag], "All")}})
@@ -365,6 +375,7 @@ func test__Notes__Index__2() eff.Task[bool] {
 							Model   Notes__Index__Model
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z11, _err10
 					}
@@ -374,6 +385,7 @@ func test__Notes__Index__2() eff.Task[bool] {
 							Model   Notes__Index__Model
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z13, _err10
 					}
@@ -381,16 +393,19 @@ func test__Notes__Index__2() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
-					}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc)}, nil
+						Notices []string
+					}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc), Notices: _r9.Notices}, nil
 				}), func(page struct {
 					Model   Notes__Index__Model
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}) eff.Task[bool] {
 					return eff.Bind(eff.Call("Test.click Notes.Index.Toggle", true, func(_e14 *eff.Env) (struct {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}, error) {
 						_m15 := Notes__Index__ToggleParams{Id: id}
 						_r16, _err17 := rtesting.BrowserOf(_e14).ClickMsg(rt.MsgRef{Module: "Notes.Index", Msg: "Toggle", Params: []rt.KV{{Key: "id", Value: _m15.Id}}}.URL(nil), rtesting.MsgName("Notes.Index.Toggle", _m15))
@@ -399,6 +414,7 @@ func test__Notes__Index__2() eff.Task[bool] {
 								Answer  rtesting.Answer
 								Session App__Session
 								Doc     rtesting.Doc
+								Notices []string
 							}
 							return _z18, _err17
 						}
@@ -406,11 +422,13 @@ func test__Notes__Index__2() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
-						}{Answer: _r16.Answer, Session: rtesting.SessionOf[App__Session](_r16.Session), Doc: rtesting.DocOf(_r16.Doc)}, nil
+							Notices []string
+						}{Answer: _r16.Answer, Session: rtesting.SessionOf[App__Session](_r16.Session), Doc: rtesting.DocOf(_r16.Doc), Notices: _r16.Notices}, nil
 					}), func(r struct {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}) eff.Task[bool] {
 						return eff.Pure(rtesting.Eq(struct {
 							Filter Note__Filter
@@ -448,6 +466,7 @@ func test__Notes__Index__3() eff.Task[bool] {
 				Model   Notes__Index__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}, error) {
 				var _p5 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
 				_u6 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p5.Filter.Tag], "All")}})
@@ -458,6 +477,7 @@ func test__Notes__Index__3() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z10, _err9
 				}
@@ -467,6 +487,7 @@ func test__Notes__Index__3() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z12, _err9
 				}
@@ -474,16 +495,19 @@ func test__Notes__Index__3() eff.Task[bool] {
 					Model   Notes__Index__Model
 					Session App__Session
 					Doc     rtesting.Doc
-				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc)}, nil
+					Notices []string
+				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc), Notices: _r8.Notices}, nil
 			}), func(_ struct {
 				Model   Notes__Index__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.submitRaw NewNote", true, func(_e13 *eff.Env) (struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}, error) {
 					_f14, _err15 := rtesting.RawFields("NewNote", []string{"title", "due", "urgent", "priority", "weight", "kind", "remark", "contact"}, []struct {
 						Name  string
@@ -500,6 +524,7 @@ func test__Notes__Index__3() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z16, _err15
 					}
@@ -509,6 +534,7 @@ func test__Notes__Index__3() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z19, _err18
 					}
@@ -516,11 +542,13 @@ func test__Notes__Index__3() eff.Task[bool] {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
-					}{Answer: _r17.Answer, Session: rtesting.SessionOf[App__Session](_r17.Session), Doc: rtesting.DocOf(_r17.Doc)}, nil
+						Notices []string
+					}{Answer: _r17.Answer, Session: rtesting.SessionOf[App__Session](_r17.Session), Doc: rtesting.DocOf(_r17.Doc), Notices: _r17.Notices}, nil
 				}), func(r struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}) eff.Task[bool] {
 					return eff.Bind(eff.Call("Db.count Note", false, func(_e20 *eff.Env) (int64, error) {
 						return db.CountRows(_e20.Ctx, _e20.Store.(db.Store), db.TxOf(_e20), db.From(table__Note__Note))
@@ -570,6 +598,7 @@ func test__Notes__Index__4() eff.Task[bool] {
 					Model   Notes__Index__Model
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}, error) {
 					var _p6 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
 					_u7 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p6.Filter.Tag], "All")}})
@@ -580,6 +609,7 @@ func test__Notes__Index__4() eff.Task[bool] {
 							Model   Notes__Index__Model
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z11, _err10
 					}
@@ -589,6 +619,7 @@ func test__Notes__Index__4() eff.Task[bool] {
 							Model   Notes__Index__Model
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z13, _err10
 					}
@@ -596,11 +627,13 @@ func test__Notes__Index__4() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
-					}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc)}, nil
+						Notices []string
+					}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc), Notices: _r9.Notices}, nil
 				}), func(page struct {
 					Model   Notes__Index__Model
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}) eff.Task[int64] {
 					return eff.Pure(rtesting.DocCountSel(selector__5, page.Doc))
 				}))
@@ -650,6 +683,7 @@ func test__Notes__Index__5() eff.Task[bool] {
 					Model   Notes__Index__Model
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}, error) {
 					var _p6 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
 					_u7 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p6.Filter.Tag], "All")}})
@@ -660,6 +694,7 @@ func test__Notes__Index__5() eff.Task[bool] {
 							Model   Notes__Index__Model
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z11, _err10
 					}
@@ -669,6 +704,7 @@ func test__Notes__Index__5() eff.Task[bool] {
 							Model   Notes__Index__Model
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z13, _err10
 					}
@@ -676,16 +712,19 @@ func test__Notes__Index__5() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
-					}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc)}, nil
+						Notices []string
+					}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc), Notices: _r9.Notices}, nil
 				}), func(_ struct {
 					Model   Notes__Index__Model
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}) eff.Task[bool] {
 					return eff.Bind(eff.Call("Test.click Notes.Index.Boom", true, func(_e14 *eff.Env) (struct {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}, error) {
 						_r15, _err16 := rtesting.BrowserOf(_e14).ClickMsg(rt.MsgURL("Notes.Index", "Boom"), rtesting.MsgName("Notes.Index.Boom", nil))
 						if _err16 != nil {
@@ -693,6 +732,7 @@ func test__Notes__Index__5() eff.Task[bool] {
 								Answer  rtesting.Answer
 								Session App__Session
 								Doc     rtesting.Doc
+								Notices []string
 							}
 							return _z17, _err16
 						}
@@ -700,11 +740,13 @@ func test__Notes__Index__5() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
-						}{Answer: _r15.Answer, Session: rtesting.SessionOf[App__Session](_r15.Session), Doc: rtesting.DocOf(_r15.Doc)}, nil
+							Notices []string
+						}{Answer: _r15.Answer, Session: rtesting.SessionOf[App__Session](_r15.Session), Doc: rtesting.DocOf(_r15.Doc), Notices: _r15.Notices}, nil
 					}), func(r struct {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}) eff.Task[bool] {
 						return eff.Bind(eff.Call("Db.count Note", false, func(_e18 *eff.Env) (int64, error) {
 							return db.CountRows(_e18.Ctx, _e18.Store.(db.Store), db.TxOf(_e18), db.Where(db.CEq("done", db.EncodeBool(false)), db.From(table__Note__Note)))
@@ -753,6 +795,7 @@ func test__Notes__Index__6() eff.Task[bool] {
 					Model   Notes__Index__Model
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}, error) {
 					var _p6 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__Open__}
 					_u7 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p6.Filter.Tag], "All")}})
@@ -763,6 +806,7 @@ func test__Notes__Index__6() eff.Task[bool] {
 							Model   Notes__Index__Model
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z11, _err10
 					}
@@ -772,6 +816,7 @@ func test__Notes__Index__6() eff.Task[bool] {
 							Model   Notes__Index__Model
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z13, _err10
 					}
@@ -779,11 +824,13 @@ func test__Notes__Index__6() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
-					}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc)}, nil
+						Notices []string
+					}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc), Notices: _r9.Notices}, nil
 				}), func(page struct {
 					Model   Notes__Index__Model
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}) eff.Task[bool] {
 					sel := "nav a"
 					bad := "nav >"
@@ -825,6 +872,7 @@ func test__Notes__Index__7() eff.Task[bool] {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}, error) {
 					var _p6 Notes__Show__Params = Notes__Show__Params{Id: id}
 					_u7 := rt.PageURL(rt.Page{Path: rt.Concat("/notes/", rt.PathSegment(_p6.Id))})
@@ -835,6 +883,7 @@ func test__Notes__Index__7() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z11, _err10
 					}
@@ -842,11 +891,13 @@ func test__Notes__Index__7() eff.Task[bool] {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
-					}{Answer: _r9.Answer, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc)}, nil
+						Notices []string
+					}{Answer: _r9.Answer, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc), Notices: _r9.Notices}, nil
 				}), func(r struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}) eff.Task[bool] {
 					return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.PageMissing}))
 				})
@@ -871,6 +922,7 @@ func test__Notes__Index__8() eff.Task[bool] {
 				Model   Notes__Index__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}, error) {
 				var _p5 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
 				_u6 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p5.Filter.Tag], "All")}})
@@ -881,6 +933,7 @@ func test__Notes__Index__8() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z10, _err9
 				}
@@ -890,6 +943,7 @@ func test__Notes__Index__8() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z12, _err9
 				}
@@ -897,11 +951,13 @@ func test__Notes__Index__8() eff.Task[bool] {
 					Model   Notes__Index__Model
 					Session App__Session
 					Doc     rtesting.Doc
-				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc)}, nil
+					Notices []string
+				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc), Notices: _r8.Notices}, nil
 			}), func(page struct {
 				Model   Notes__Index__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.trace", false, func(_e13 *eff.Env) ([]string, error) {
 					return rtesting.Trace(_e13), nil
@@ -943,6 +999,7 @@ func test__Notes__Index__9() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}, error) {
 						var _p7 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
 						_u8 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p7.Filter.Tag], "All")}})
@@ -953,6 +1010,7 @@ func test__Notes__Index__9() eff.Task[bool] {
 								Model   Notes__Index__Model
 								Session App__Session
 								Doc     rtesting.Doc
+								Notices []string
 							}
 							return _z12, _err11
 						}
@@ -962,6 +1020,7 @@ func test__Notes__Index__9() eff.Task[bool] {
 								Model   Notes__Index__Model
 								Session App__Session
 								Doc     rtesting.Doc
+								Notices []string
 							}
 							return _z14, _err11
 						}
@@ -969,16 +1028,19 @@ func test__Notes__Index__9() eff.Task[bool] {
 							Model   Notes__Index__Model
 							Session App__Session
 							Doc     rtesting.Doc
-						}{Model: _m13, Session: rtesting.SessionOf[App__Session](_r10.Session), Doc: rtesting.DocOf(_r10.Doc)}, nil
+							Notices []string
+						}{Model: _m13, Session: rtesting.SessionOf[App__Session](_r10.Session), Doc: rtesting.DocOf(_r10.Doc), Notices: _r10.Notices}, nil
 					}), func(_ struct {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}) eff.Task[bool] {
 						return eff.Bind(eff.Call("Test.submit Title", true, func(_e15 *eff.Env) (struct {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}, error) {
 							_m18 := Notes__Index__RenameParams{Id: b}
 							_r16, _err17 := rtesting.BrowserOf(_e15).SubmitMsg(rt.MsgRef{Module: "Notes.Index", Msg: "Rename", Params: []rt.KV{{Key: "id", Value: _m18.Id}}}.URL(nil), "Title", rtesting.MsgName("Notes.Index.Rename", struct{ Id string }{Id: _m18.Id}), encode__Notes__Index__Title(Notes__Index__Title{Title: "B2"}))
@@ -987,6 +1049,7 @@ func test__Notes__Index__9() eff.Task[bool] {
 									Answer  rtesting.Answer
 									Session App__Session
 									Doc     rtesting.Doc
+									Notices []string
 								}
 								return _z19, _err17
 							}
@@ -994,11 +1057,13 @@ func test__Notes__Index__9() eff.Task[bool] {
 								Answer  rtesting.Answer
 								Session App__Session
 								Doc     rtesting.Doc
-							}{Answer: _r16.Answer, Session: rtesting.SessionOf[App__Session](_r16.Session), Doc: rtesting.DocOf(_r16.Doc)}, nil
+								Notices []string
+							}{Answer: _r16.Answer, Session: rtesting.SessionOf[App__Session](_r16.Session), Doc: rtesting.DocOf(_r16.Doc), Notices: _r16.Notices}, nil
 						}), func(r struct {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}) eff.Task[bool] {
 							return eff.Bind(eff.Call("Db.get Note", false, func(_e20 *eff.Env) (rt.Maybe[Note__Note], error) {
 								return db.GetRow(_e20.Ctx, _e20.Store.(db.Store), db.TxOf(_e20), table__Note__Note, a)
@@ -1045,6 +1110,7 @@ func test__Notes__Index__10() eff.Task[bool] {
 				Model   Notes__Index__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}, error) {
 				var _p5 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
 				_u6 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p5.Filter.Tag], "All")}})
@@ -1055,6 +1121,7 @@ func test__Notes__Index__10() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z10, _err9
 				}
@@ -1064,6 +1131,7 @@ func test__Notes__Index__10() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z12, _err9
 				}
@@ -1071,16 +1139,19 @@ func test__Notes__Index__10() eff.Task[bool] {
 					Model   Notes__Index__Model
 					Session App__Session
 					Doc     rtesting.Doc
-				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc)}, nil
+					Notices []string
+				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc), Notices: _r8.Notices}, nil
 			}), func(_ struct {
 				Model   Notes__Index__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.submit Feedback", true, func(_e13 *eff.Env) (struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}, error) {
 					_r14, _err15 := rtesting.BrowserOf(_e13).SubmitForm("/_m/App/Send", "Feedback", encode__App__Feedback(App__Feedback{Text: "nice"}))
 					if _err15 != nil {
@@ -1088,6 +1159,7 @@ func test__Notes__Index__10() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z16, _err15
 					}
@@ -1095,11 +1167,13 @@ func test__Notes__Index__10() eff.Task[bool] {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
-					}{Answer: _r14.Answer, Session: rtesting.SessionOf[App__Session](_r14.Session), Doc: rtesting.DocOf(_r14.Doc)}, nil
+						Notices []string
+					}{Answer: _r14.Answer, Session: rtesting.SessionOf[App__Session](_r14.Session), Doc: rtesting.DocOf(_r14.Doc), Notices: _r14.Notices}, nil
 				}), func(r struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}) eff.Task[bool] {
 					return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}}))
 				})
@@ -1124,6 +1198,7 @@ func test__Notes__Index__11() eff.Task[bool] {
 				Model   Notes__Index__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}, error) {
 				var _p5 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
 				_u6 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p5.Filter.Tag], "All")}})
@@ -1134,6 +1209,7 @@ func test__Notes__Index__11() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z10, _err9
 				}
@@ -1143,6 +1219,7 @@ func test__Notes__Index__11() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z12, _err9
 				}
@@ -1150,16 +1227,19 @@ func test__Notes__Index__11() eff.Task[bool] {
 					Model   Notes__Index__Model
 					Session App__Session
 					Doc     rtesting.Doc
-				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc)}, nil
+					Notices []string
+				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc), Notices: _r8.Notices}, nil
 			}), func(_ struct {
 				Model   Notes__Index__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.click Notes.Index.Visit", true, func(_e13 *eff.Env) (struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}, error) {
 					_r14, _err15 := rtesting.BrowserOf(_e13).ClickMsg(rt.MsgURL("Notes.Index", "Visit"), rtesting.MsgName("Notes.Index.Visit", nil))
 					if _err15 != nil {
@@ -1167,6 +1247,7 @@ func test__Notes__Index__11() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z16, _err15
 					}
@@ -1174,16 +1255,19 @@ func test__Notes__Index__11() eff.Task[bool] {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
-					}{Answer: _r14.Answer, Session: rtesting.SessionOf[App__Session](_r14.Session), Doc: rtesting.DocOf(_r14.Doc)}, nil
+						Notices []string
+					}{Answer: _r14.Answer, Session: rtesting.SessionOf[App__Session](_r14.Session), Doc: rtesting.DocOf(_r14.Doc), Notices: _r14.Notices}, nil
 				}), func(once struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}) eff.Task[bool] {
 					return eff.Bind(eff.Call("Test.click Notes.Index.Visit", true, func(_e17 *eff.Env) (struct {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}, error) {
 						_r18, _err19 := rtesting.BrowserOf(_e17).ClickMsg(rt.MsgURL("Notes.Index", "Visit"), rtesting.MsgName("Notes.Index.Visit", nil))
 						if _err19 != nil {
@@ -1191,6 +1275,7 @@ func test__Notes__Index__11() eff.Task[bool] {
 								Answer  rtesting.Answer
 								Session App__Session
 								Doc     rtesting.Doc
+								Notices []string
 							}
 							return _z20, _err19
 						}
@@ -1198,11 +1283,13 @@ func test__Notes__Index__11() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
-						}{Answer: _r18.Answer, Session: rtesting.SessionOf[App__Session](_r18.Session), Doc: rtesting.DocOf(_r18.Doc)}, nil
+							Notices []string
+						}{Answer: _r18.Answer, Session: rtesting.SessionOf[App__Session](_r18.Session), Doc: rtesting.DocOf(_r18.Doc), Notices: _r18.Notices}, nil
 					}), func(twice struct {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}) eff.Task[bool] {
 						return eff.Pure(rtesting.Eq(struct {
 							Answer rtesting.Answer
@@ -1238,6 +1325,7 @@ func test__Notes__Index__12() eff.Task[bool] {
 				Model   Notes__Index__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}, error) {
 				var _p5 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
 				_u6 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p5.Filter.Tag], "All")}})
@@ -1248,6 +1336,7 @@ func test__Notes__Index__12() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z10, _err9
 				}
@@ -1257,6 +1346,7 @@ func test__Notes__Index__12() eff.Task[bool] {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z12, _err9
 				}
@@ -1264,11 +1354,13 @@ func test__Notes__Index__12() eff.Task[bool] {
 					Model   Notes__Index__Model
 					Session App__Session
 					Doc     rtesting.Doc
-				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc)}, nil
+					Notices []string
+				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc), Notices: _r8.Notices}, nil
 			}), func(_ struct {
 				Model   Notes__Index__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.run", true, func(_e13 *eff.Env) (struct {
 					Value rt.Result[string, rt.Maybe[string]]
@@ -1278,6 +1370,7 @@ func test__Notes__Index__12() eff.Task[bool] {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}, error) {
 						_r15, _err16 := rtesting.BrowserOf(_e14).SubmitForm("/_m/Notes.Index/Submit", "NewNote", encode__Notes__Index__NewNote(Notes__Index__NewNote{Title: "Milk", Due: rt.Nothing[rt.Date](), Urgent: false, Priority: 1, Weight: 1.5, Kind: Note__Kind__Plain__, Remark: "", Contact: rt.Nothing[string]()}))
 						if _err16 != nil {
@@ -1285,6 +1378,7 @@ func test__Notes__Index__12() eff.Task[bool] {
 								Answer  rtesting.Answer
 								Session App__Session
 								Doc     rtesting.Doc
+								Notices []string
 							}
 							return _z17, _err16
 						}
@@ -1292,11 +1386,13 @@ func test__Notes__Index__12() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
-						}{Answer: _r15.Answer, Session: rtesting.SessionOf[App__Session](_r15.Session), Doc: rtesting.DocOf(_r15.Doc)}, nil
+							Notices []string
+						}{Answer: _r15.Answer, Session: rtesting.SessionOf[App__Session](_r15.Session), Doc: rtesting.DocOf(_r15.Doc), Notices: _r15.Notices}, nil
 					}), func(added struct {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}) eff.Task[rt.Maybe[string]] {
 						return eff.Bind(eff.Fail[any]("stop"), func(_ any) eff.Task[rt.Maybe[string]] {
 							return eff.Pure(rtesting.DocTextSel(selector__2, added.Doc))
@@ -1330,6 +1426,7 @@ func test__Notes__Index__12() eff.Task[bool] {
 							Model   Notes__Index__Model
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}, error) {
 							var _p27 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
 							_u28 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p27.Filter.Tag], "All")}})
@@ -1340,6 +1437,7 @@ func test__Notes__Index__12() eff.Task[bool] {
 									Model   Notes__Index__Model
 									Session App__Session
 									Doc     rtesting.Doc
+									Notices []string
 								}
 								return _z32, _err31
 							}
@@ -1349,6 +1447,7 @@ func test__Notes__Index__12() eff.Task[bool] {
 									Model   Notes__Index__Model
 									Session App__Session
 									Doc     rtesting.Doc
+									Notices []string
 								}
 								return _z34, _err31
 							}
@@ -1356,11 +1455,13 @@ func test__Notes__Index__12() eff.Task[bool] {
 								Model   Notes__Index__Model
 								Session App__Session
 								Doc     rtesting.Doc
-							}{Model: _m33, Session: rtesting.SessionOf[App__Session](_r30.Session), Doc: rtesting.DocOf(_r30.Doc)}, nil
+								Notices []string
+							}{Model: _m33, Session: rtesting.SessionOf[App__Session](_r30.Session), Doc: rtesting.DocOf(_r30.Doc), Notices: _r30.Notices}, nil
 						}), func(page struct {
 							Model   Notes__Index__Model
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}) eff.Task[bool] {
 							return eff.Pure(rtesting.Eq(struct {
 								Value rt.Result[string, rt.Maybe[string]]

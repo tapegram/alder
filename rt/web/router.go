@@ -93,6 +93,7 @@ type tracker struct {
 	answer  string
 	detail  string
 	patches []string
+	notice  string // a Noticed answer's toast text, patched in after the body
 }
 
 func (t *tracker) WriteHeader(code int) {
@@ -541,6 +542,9 @@ func (rt *router) setSession(w http.ResponseWriter, r *http.Request, rq *Request
 
 func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
 	if tw, ok := w.(*tracker); ok {
+		if rq.Notice != "" {
+			tw.notice = rq.Notice
+		}
 		switch {
 		case resp.Status == http.StatusSeeOther:
 			tw.answer = "redirect " + resp.Location
@@ -589,10 +593,10 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 			return
 		}
 		if resp.Patch && rq.Datastar {
-			if err := datastar.PatchBody(w, rt.shellBody(rt.dev(bodyOf(page)))); err != nil {
+			if err := datastar.PatchBody(w, rt.shellBody(w, rt.dev(bodyOf(page)))); err != nil {
 				rt.log("error", fmt.Sprintf("%s %s: writing the patch: %v", r.Method, r.URL.Path, err))
 			}
-			rt.notify(w, rq)
+			rt.notify(w)
 			rt.patchPanel(w, http.StatusOK)
 			return
 		}
@@ -698,7 +702,7 @@ func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status i
 	if status != http.StatusOK {
 		w.Header().Set(StatusHeader, strconv.Itoa(status))
 	}
-	err := datastar.PatchBody(w, rt.shellBody(rt.dev(bodyOf(page))))
+	err := datastar.PatchBody(w, rt.shellBody(w, rt.dev(bodyOf(page))))
 	if tw, ok := w.(*tracker); ok {
 		tw.patches = append(tw.patches, "body")
 	}
@@ -712,6 +716,7 @@ func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status i
 	if err != nil {
 		rt.log("error", fmt.Sprintf("%s %s: writing the patch: %v", r.Method, r.URL.Path, err))
 	}
+	rt.notify(w)
 	rt.patchPanel(w, status)
 }
 

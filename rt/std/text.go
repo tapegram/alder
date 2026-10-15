@@ -112,3 +112,6 @@ func UrlExternal(u string) rt.Page {
 	}
 	return rt.Page{Path: u}
 }
+
+// NavNoticed is `Nav.noticed text nav`: nav's answer with a toast showing text.
+func NavNoticed(t string, n rt.Nav) rt.Nav { return rt.Noticed(t, n) }

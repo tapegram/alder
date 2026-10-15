@@ -159,6 +159,7 @@ func update__Index(rq *web.Request, params Index__Params, msg Index__Msg, st *ht
 	if err != nil {
 		return route__fail(err)
 	}
+	nav, rq.Notice = nav.Unnotice()
 	switch {
 	case nav.Tag == rt.NavRedirect:
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)

@@ -52,6 +52,7 @@ func (mc *modCtx) testTypeUse(name string, span diag.Span) {
 func (mc *modCtx) stepResult(first string, t types.Type) types.Type {
 	rec := &types.Record{Anonymous: true, Fields: []types.Field{
 		{Name: first, Type: t}, {Name: "session", Type: mc.c.appSession()}, {Name: "doc", Type: mc.c.types["Prelude.Doc"]},
+		{Name: "notices", Type: &types.App{Con: "List", Args: []types.Type{types.Text}}},
 	}}
 	return &types.App{Con: "Task", Args: []types.Type{rec}}
 }

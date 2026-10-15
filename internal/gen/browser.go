@@ -40,7 +40,7 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 	t := x.Type()
 	r := GoType(effResult(t))
 	result := func(c *scope, first, value, res string) string {
-		return "return " + r + "{" + first + ": " + value + ", Session: rtesting.SessionOf[" + f.sessionGo(t) + "](" + res + ".Session), Doc: rtesting.DocOf(" + res + ".Doc)}, nil\n"
+		return "return " + r + "{" + first + ": " + value + ", Session: rtesting.SessionOf[" + f.sessionGo(t) + "](" + res + ".Session), Doc: rtesting.DocOf(" + res + ".Doc), Notices: " + res + ".Notices}, nil\n"
 	}
 	fail := func(c *scope, err string) string {
 		z := f.temp(c, "_z")

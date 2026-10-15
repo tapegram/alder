@@ -129,8 +129,12 @@ func (rt *router) inlinePanel(w http.ResponseWriter, page string, status int) st
 	return endOfBody(page, `<al-devpanel id="`+datastar.PanelID+`" data-ignore-morph>`+rt.panelInner(tw, status)+`</al-devpanel>`)
 }
 
-// shellBody adds the panel's element to a body patch.
-func (rt *router) shellBody(body string) string {
+// shellBody adds to a body patch the panel's element (dev) and, when a Noticed answer has a toast
+// and the page has no <al-toasts> region of its own, the implicit region (kept across morphs).
+func (rt *router) shellBody(w http.ResponseWriter, body string) string {
+	if tw, ok := w.(*tracker); ok && tw.notice != "" && !strings.Contains(body, "<al-toasts") {
+		body = endOfBody(body, `<al-toasts data-ignore-morph></al-toasts>`)
+	}
 	if !rt.panelOn() {
 		return body
 	}
@@ -148,8 +152,20 @@ func (rt *router) patchPanel(w http.ResponseWriter, status int) {
 	}
 }
 
-// notify is where a Noticed answer's toast is patched (see notices.go); the panel comes after it.
-func (rt *router) notify(w http.ResponseWriter, rq *Request) {}
+// notify patches the toast of a Noticed answer into the page's <al-toasts> region, as its own
+// event after the body's, so a later morph does not show it again.
+func (rt *router) notify(w http.ResponseWriter) {
+	tw, ok := w.(*tracker)
+	if !ok || tw.notice == "" {
+		return
+	}
+	toast := `<al-toast variant="info" timeout="5000">` + esc(tw.notice) + `</al-toast>`
+	tw.patches = append(tw.patches, "toast")
+	tw.notice = ""
+	if err := datastar.PatchToast(w, toast); err != nil {
+		rt.log("error", "writing the toast patch: "+err.Error())
+	}
+}
 
 // devOn is true for the dev server only (Options.Dev and ALDER_DEV=1): the /_dev map is served
 // then and never from a production binary.

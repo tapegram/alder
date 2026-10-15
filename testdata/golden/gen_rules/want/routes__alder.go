@@ -213,6 +213,7 @@ func update__Notes(rq *web.Request, params Notes__Params, msg Notes__Msg, st *ht
 	if err != nil {
 		return route__fail(err)
 	}
+	nav, rq.Notice = nav.Unnotice()
 	switch {
 	case nav.Tag == rt.NavRedirect:
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)

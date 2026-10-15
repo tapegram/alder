@@ -40,7 +40,7 @@ update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Save p -> {
     let _ <- Db.updateMine Post model.post.id (\post -> { post | title: p.form.title, body: p.form.body })
-    Task.succeed Rerender
+    Task.succeed (Notice.with "Saved" Rerender)
   },
   Publish p -> {
     let _ <- Db.updateMine Post model.post.id (\post -> { post | published: True })
@@ -162,5 +162,5 @@ test "saving changes the title and the body" = {
   let _ <- Test.login { user: Just author, role: Author }
   let _ <- Test.get (Write.Edit { id: id })
   let r <- Test.submit EditPost { title: Text.NonEmpty "Hello again", body: "More." }
-  Task.succeed ({ answer: r.answer, heading: Test.text "h1" r.doc, body: Test.text "textarea[name=body]" r.doc, status: Test.text "al-badge" r.doc } == { answer: Rerendered, heading: Just "Hello again", body: Just "More.", status: Just "Draft" })
+  Task.succeed ({ answer: r.answer, heading: Test.text "h1" r.doc, body: Test.text "textarea[name=body]" r.doc, status: Test.text "al-badge" r.doc, notices: r.notices } == { answer: Rerendered, heading: Just "Hello again", body: Just "More.", status: Just "Draft", notices: ["Saved"] })
 }

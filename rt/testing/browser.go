@@ -69,6 +69,8 @@ type Result struct {
 	Answer  Answer
 	Session any
 	Doc     html.Node
+	// Notices are the toasts the step's answer showed (a Noticed answer), in order.
+	Notices []string
 	// Model is the model the page held was rendered from when the last request the step made
 	// was a page's GET (web.Request.Model; Test.get's typed model), nil otherwise.
 	Model any
@@ -103,10 +105,11 @@ type Browser struct {
 	key     []byte
 	login   string
 
-	cookie string    // the session cookie's value, "" for none
-	url    string    // the URL of the page held, "" before the first
-	doc    html.Node // the page held (without the router's doctype and script tag)
-	hasDoc bool
+	cookie  string    // the session cookie's value, "" for none
+	url     string    // the URL of the page held, "" before the first
+	doc     html.Node // the page held (without the router's doctype and script tag)
+	hasDoc  bool
+	notices []string // the toasts of the step's requests (Result.Notices)
 
 	model   any         // the model the last request's page GET rendered (web.Request.Model), nil for none
 	reqEnvs []*eff.Env  // the Envs of the request being served
@@ -610,13 +613,14 @@ func postURL(action string) string {
 
 // result is ans with the session the cookie now carries and the document held.
 func (b *Browser) result(ans Answer) Result {
-	return Result{Answer: ans, Session: b.Session(), Doc: b.doc, Model: b.model}
+	return Result{Answer: ans, Session: b.Session(), Doc: b.doc, Model: b.model, Notices: b.notices}
 }
 
 // serve sends one request through the router: with the cookie, the held page as Referer (an App
 // message redirects back to it), and for a Datastar request its header; it then keeps the cookie
 // the answer sets and appends the effects the request ran to the test's trace.
 func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httptest.ResponseRecorder, error) {
+	b.notices = nil
 	cur, err := b.within()
 	if err != nil {
 		return nil, err
@@ -913,12 +917,23 @@ func (b *Browser) patch(ev sseEvent) error {
 		}
 		return nil
 	}
-	if sel != "body" {
-		return fmt.Errorf("a patch of %q: the browser only patches the body", sel)
-	}
 	els, err := html.Parse(ev.field("elements"))
 	if err != nil {
 		return fmt.Errorf("the patch does not parse: %w", err)
+	}
+	if sel == "#_alder_panel" {
+		return nil // the dev panel is not part of the page a test sees
+	}
+	if sel == "al-toasts" && mode == "append" {
+		b.notices = append(b.notices, strings.TrimSpace(html.TextContent(els)))
+		return nil
+	}
+	if sel != "body" {
+		return fmt.Errorf("a patch of %q: the browser only patches the body", sel)
+	}
+	if sel == "al-toasts" && mode == "append" {
+		b.notices = append(b.notices, strings.TrimSpace(html.TextContent(els)))
+		return nil
 	}
 	doc := b.doc
 	if !b.hasDoc {

@@ -89,6 +89,8 @@ func show(v reflect.Value) (string, bool) {
 			return "Redirect " + pageURL(v.FieldByName("Page")), true
 		case NavReject:
 			return "Reject " + quote(v.FieldByName("Text").String()), true
+		case NavNoticed:
+			return "Noticed " + quote(v.FieldByName("Text").String()) + " " + Show(v.FieldByName("Next").Elem().Interface()), true
 		}
 	}
 	if v.Kind() == reflect.Struct && v.CanInterface() {

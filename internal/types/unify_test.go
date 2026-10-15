@@ -89,7 +89,7 @@ func TestLoadStd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, m := range []string{"Prelude", "List", "Maybe", "Result", "Text", "Int", "Float", "Bool", "Dict", "Date", "Time", "Html", "Url", "Query", "Task", "Db", "Session", "Log", "Random", "Http"} {
+	for _, m := range []string{"Prelude", "List", "Maybe", "Result", "Text", "Int", "Float", "Bool", "Dict", "Date", "Time", "Html", "Url", "Notice", "Query", "Task", "Db", "Session", "Log", "Random", "Http"} {
 		if std[m] == nil {
 			t.Errorf("missing stdlib module %s", m)
 		}

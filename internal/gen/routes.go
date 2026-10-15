@@ -181,6 +181,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	if err != nil {
 		return route__fail(err)
 	}
+	nav, rq.Notice = nav.Unnotice()
 	switch {
 	case nav.Tag == rt.NavRedirect:
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
@@ -558,6 +559,7 @@ func (g *gen) appRoutes(b *strings.Builder, p *ir.Program) {
 	if err != nil {
 		return route__fail(err)
 	}
+	nav, rq.Notice = nav.Unnotice()
 	if nav.Tag == rt.NavRedirect {
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
 	}

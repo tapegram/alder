@@ -1,0 +1,3 @@
+module Notice
+
+with : Text -> Nav -> Nav

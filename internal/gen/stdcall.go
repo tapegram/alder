@@ -118,6 +118,8 @@ var StdCalls = map[string]string{
 	"Time.toDate": "std.TimeToDate",
 	"Time.format": "std.TimeFormat",
 	"Time.ago":    "std.TimeAgo",
+	// Notice
+	"Notice.with": "std.NavNoticed",
 	// Url
 	"Url.external": "std.UrlExternal",
 	// effects

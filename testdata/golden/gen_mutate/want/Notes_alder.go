@@ -115,6 +115,7 @@ func test__Notes__1() eff.Task[bool] {
 		Answer  rtesting.Answer
 		Session App__Session
 		Doc     rtesting.Doc
+		Notices []string
 	}, error) {
 		_u3 := rt.PageURL(rt.Page{Path: "/notes"})
 		_b4 := rtesting.BrowserOf(_e1)
@@ -124,6 +125,7 @@ func test__Notes__1() eff.Task[bool] {
 				Answer  rtesting.Answer
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}
 			return _z7, _err6
 		}
@@ -131,11 +133,13 @@ func test__Notes__1() eff.Task[bool] {
 			Answer  rtesting.Answer
 			Session App__Session
 			Doc     rtesting.Doc
-		}{Answer: _r5.Answer, Session: rtesting.SessionOf[App__Session](_r5.Session), Doc: rtesting.DocOf(_r5.Doc)}, nil
+			Notices []string
+		}{Answer: _r5.Answer, Session: rtesting.SessionOf[App__Session](_r5.Session), Doc: rtesting.DocOf(_r5.Doc), Notices: _r5.Notices}, nil
 	}), func(r struct {
 		Answer  rtesting.Answer
 		Session App__Session
 		Doc     rtesting.Doc
+		Notices []string
 	}) eff.Task[bool] {
 		return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}))
 	})
@@ -178,6 +182,7 @@ func test__Notes__2() eff.Task[bool] {
 							Model   Notes__Model
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}, error) {
 							_u9 := rt.PageURL(rt.Page{Path: "/notes"})
 							_b10 := rtesting.BrowserOf(_e7)
@@ -187,6 +192,7 @@ func test__Notes__2() eff.Task[bool] {
 									Model   Notes__Model
 									Session App__Session
 									Doc     rtesting.Doc
+									Notices []string
 								}
 								return _z13, _err12
 							}
@@ -196,6 +202,7 @@ func test__Notes__2() eff.Task[bool] {
 									Model   Notes__Model
 									Session App__Session
 									Doc     rtesting.Doc
+									Notices []string
 								}
 								return _z15, _err12
 							}
@@ -203,11 +210,13 @@ func test__Notes__2() eff.Task[bool] {
 								Model   Notes__Model
 								Session App__Session
 								Doc     rtesting.Doc
-							}{Model: _m14, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc)}, nil
+								Notices []string
+							}{Model: _m14, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices}, nil
 						}), func(page struct {
 							Model   Notes__Model
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}) eff.Task[bool] {
 							return eff.Pure(rtesting.Eq(std.ListMap(func(n Note__Note) string {
 								return n.Title
@@ -236,6 +245,7 @@ func test__Notes__3() eff.Task[bool] {
 				Model   Notes__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}, error) {
 				_u6 := rt.PageURL(rt.Page{Path: "/notes"})
 				_b7 := rtesting.BrowserOf(_e4)
@@ -245,6 +255,7 @@ func test__Notes__3() eff.Task[bool] {
 						Model   Notes__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z10, _err9
 				}
@@ -254,6 +265,7 @@ func test__Notes__3() eff.Task[bool] {
 						Model   Notes__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z12, _err9
 				}
@@ -261,16 +273,19 @@ func test__Notes__3() eff.Task[bool] {
 					Model   Notes__Model
 					Session App__Session
 					Doc     rtesting.Doc
-				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc)}, nil
+					Notices []string
+				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc), Notices: _r8.Notices}, nil
 			}), func(_ struct {
 				Model   Notes__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.submit NewNote", true, func(_e13 *eff.Env) (struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}, error) {
 					_r14, _err15 := rtesting.BrowserOf(_e13).SubmitForm("/_m/Notes/Add", "NewNote", encode__Notes__NewNote(Notes__NewNote{Title: "Milk"}))
 					if _err15 != nil {
@@ -278,6 +293,7 @@ func test__Notes__3() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z16, _err15
 					}
@@ -285,16 +301,19 @@ func test__Notes__3() eff.Task[bool] {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
-					}{Answer: _r14.Answer, Session: rtesting.SessionOf[App__Session](_r14.Session), Doc: rtesting.DocOf(_r14.Doc)}, nil
+						Notices []string
+					}{Answer: _r14.Answer, Session: rtesting.SessionOf[App__Session](_r14.Session), Doc: rtesting.DocOf(_r14.Doc), Notices: _r14.Notices}, nil
 				}), func(_ struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}) eff.Task[bool] {
 					return eff.Bind(eff.Call("Test.get Notes", true, func(_e17 *eff.Env) (struct {
 						Model   Notes__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}, error) {
 						_u19 := rt.PageURL(rt.Page{Path: "/notes"})
 						_b20 := rtesting.BrowserOf(_e17)
@@ -304,6 +323,7 @@ func test__Notes__3() eff.Task[bool] {
 								Model   Notes__Model
 								Session App__Session
 								Doc     rtesting.Doc
+								Notices []string
 							}
 							return _z23, _err22
 						}
@@ -313,6 +333,7 @@ func test__Notes__3() eff.Task[bool] {
 								Model   Notes__Model
 								Session App__Session
 								Doc     rtesting.Doc
+								Notices []string
 							}
 							return _z25, _err22
 						}
@@ -320,11 +341,13 @@ func test__Notes__3() eff.Task[bool] {
 							Model   Notes__Model
 							Session App__Session
 							Doc     rtesting.Doc
-						}{Model: _m24, Session: rtesting.SessionOf[App__Session](_r21.Session), Doc: rtesting.DocOf(_r21.Doc)}, nil
+							Notices []string
+						}{Model: _m24, Session: rtesting.SessionOf[App__Session](_r21.Session), Doc: rtesting.DocOf(_r21.Doc), Notices: _r21.Notices}, nil
 					}), func(page struct {
 						Model   Notes__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}) eff.Task[bool] {
 						return eff.Pure(rtesting.Eq(std.ListMap(func(n Note__Note) string {
 							return n.Title
@@ -352,6 +375,7 @@ func test__Notes__4() eff.Task[bool] {
 				Model   Notes__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}, error) {
 				_u6 := rt.PageURL(rt.Page{Path: "/notes"})
 				_b7 := rtesting.BrowserOf(_e4)
@@ -361,6 +385,7 @@ func test__Notes__4() eff.Task[bool] {
 						Model   Notes__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z10, _err9
 				}
@@ -370,6 +395,7 @@ func test__Notes__4() eff.Task[bool] {
 						Model   Notes__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z12, _err9
 				}
@@ -377,16 +403,19 @@ func test__Notes__4() eff.Task[bool] {
 					Model   Notes__Model
 					Session App__Session
 					Doc     rtesting.Doc
-				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc)}, nil
+					Notices []string
+				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc), Notices: _r8.Notices}, nil
 			}), func(_ struct {
 				Model   Notes__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.submit NewNote", true, func(_e13 *eff.Env) (struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}, error) {
 					_r14, _err15 := rtesting.BrowserOf(_e13).SubmitForm("/_m/Notes/Add", "NewNote", encode__Notes__NewNote(Notes__NewNote{Title: "Milk"}))
 					if _err15 != nil {
@@ -394,6 +423,7 @@ func test__Notes__4() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z16, _err15
 					}
@@ -401,11 +431,13 @@ func test__Notes__4() eff.Task[bool] {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
-					}{Answer: _r14.Answer, Session: rtesting.SessionOf[App__Session](_r14.Session), Doc: rtesting.DocOf(_r14.Doc)}, nil
+						Notices []string
+					}{Answer: _r14.Answer, Session: rtesting.SessionOf[App__Session](_r14.Session), Doc: rtesting.DocOf(_r14.Doc), Notices: _r14.Notices}, nil
 				}), func(added struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}) eff.Task[bool] {
 					return eff.Pure(rtesting.Eq(added.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/notes"}}))
 				})
@@ -430,6 +462,7 @@ func test__Notes__5() eff.Task[bool] {
 				Model   Notes__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}, error) {
 				_u6 := rt.PageURL(rt.Page{Path: "/notes"})
 				_b7 := rtesting.BrowserOf(_e4)
@@ -439,6 +472,7 @@ func test__Notes__5() eff.Task[bool] {
 						Model   Notes__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z10, _err9
 				}
@@ -448,6 +482,7 @@ func test__Notes__5() eff.Task[bool] {
 						Model   Notes__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}
 					return _z12, _err9
 				}
@@ -455,16 +490,19 @@ func test__Notes__5() eff.Task[bool] {
 					Model   Notes__Model
 					Session App__Session
 					Doc     rtesting.Doc
-				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc)}, nil
+					Notices []string
+				}{Model: _m11, Session: rtesting.SessionOf[App__Session](_r8.Session), Doc: rtesting.DocOf(_r8.Doc), Notices: _r8.Notices}, nil
 			}), func(_ struct {
 				Model   Notes__Model
 				Session App__Session
 				Doc     rtesting.Doc
+				Notices []string
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.submit NewNote", true, func(_e13 *eff.Env) (struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}, error) {
 					_r14, _err15 := rtesting.BrowserOf(_e13).SubmitForm("/_m/Notes/Add", "NewNote", encode__Notes__NewNote(Notes__NewNote{Title: "Milk"}))
 					if _err15 != nil {
@@ -472,6 +510,7 @@ func test__Notes__5() eff.Task[bool] {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
+							Notices []string
 						}
 						return _z16, _err15
 					}
@@ -479,16 +518,19 @@ func test__Notes__5() eff.Task[bool] {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
-					}{Answer: _r14.Answer, Session: rtesting.SessionOf[App__Session](_r14.Session), Doc: rtesting.DocOf(_r14.Doc)}, nil
+						Notices []string
+					}{Answer: _r14.Answer, Session: rtesting.SessionOf[App__Session](_r14.Session), Doc: rtesting.DocOf(_r14.Doc), Notices: _r14.Notices}, nil
 				}), func(_ struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
+					Notices []string
 				}) eff.Task[bool] {
 					return eff.Bind(eff.Call("Test.get Notes", true, func(_e17 *eff.Env) (struct {
 						Model   Notes__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}, error) {
 						_u19 := rt.PageURL(rt.Page{Path: "/notes"})
 						_b20 := rtesting.BrowserOf(_e17)
@@ -498,6 +540,7 @@ func test__Notes__5() eff.Task[bool] {
 								Model   Notes__Model
 								Session App__Session
 								Doc     rtesting.Doc
+								Notices []string
 							}
 							return _z23, _err22
 						}
@@ -507,6 +550,7 @@ func test__Notes__5() eff.Task[bool] {
 								Model   Notes__Model
 								Session App__Session
 								Doc     rtesting.Doc
+								Notices []string
 							}
 							return _z25, _err22
 						}
@@ -514,11 +558,13 @@ func test__Notes__5() eff.Task[bool] {
 							Model   Notes__Model
 							Session App__Session
 							Doc     rtesting.Doc
-						}{Model: _m24, Session: rtesting.SessionOf[App__Session](_r21.Session), Doc: rtesting.DocOf(_r21.Doc)}, nil
+							Notices []string
+						}{Model: _m24, Session: rtesting.SessionOf[App__Session](_r21.Session), Doc: rtesting.DocOf(_r21.Doc), Notices: _r21.Notices}, nil
 					}), func(page struct {
 						Model   Notes__Model
 						Session App__Session
 						Doc     rtesting.Doc
+						Notices []string
 					}) eff.Task[bool] {
 						return eff.Pure(rtesting.Eq(std.ListMap(func(n Note__Note) bool {
 							return n.Pinned
