@@ -938,7 +938,7 @@ func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {
 }
 
 // designSystemPrefix is where every build writes the `alder-ui` assets (buildkit
-// WriteDesignSystem). Its two files (al.Names) are served from the runtime's embedded copy,
+// WriteDesignSystem). Its files (al.Names) are served from the runtime's embedded copy,
 // the same bytes, with DesignSystemCache and a strong ETag hashed from them once. Any other
 // file there is the app's and is served like the rest of static/.
 const designSystemPrefix = staticPrefix + "al/"

@@ -34,8 +34,8 @@ box", explains why):
   styles that box by its tag name and attributes. Every element works
   with JavaScript off.
 
-The version Alder ships is **v0.1.3**: the compiler embeds a copy of
-the library's stylesheet and manifest at that tag (`rt/al/VERSION`;
+The version Alder ships is **v0.2.0**: the compiler embeds a copy of
+the library's stylesheet, scripts (`al.js`) and manifest at that tag (`rt/al/VERSION`;
 "Where it lives", below).
 
 ## Linking it
@@ -665,6 +665,108 @@ Slots: default.
   <al-card><p>At most 40rem wide, centred.</p></al-card>
 </al-page>
 ```
+
+### The interactive tier (v0.2.0, minimal; the full chapter is M7b's Task 3)
+
+### `al-dialog`
+
+A modal dialog around a native `<dialog>`, opened by `commandfor` / `command="show-modal"`.
+
+| Attribute | Type | Default | Meaning |
+|---|---|---|---|
+| `heading` | `string` | — | the dialog's heading, rendered as the header slot's `<h2>` |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | the width |
+| `dismissible` | `boolean` | `false` | makes room for a close button |
+
+Slots: `header`, default, `actions`.
+
+### `al-popover`
+
+A floating panel anchored to its invoker.
+
+| Attribute | Type | Default | Meaning |
+|---|---|---|---|
+| `placement` | `"top" \| "bottom" \| "left" \| "right"` | `"bottom"` | the side of the anchor |
+| `offset` | `"sm" \| "md" \| "lg"` | `"sm"` | the gap to the anchor |
+| `anchor` | `string` | — | the id of the anchor, when it is not the invoker |
+
+Slots: default.
+
+### `al-menu`
+
+A popover of links or buttons.
+
+No attributes.
+
+Slots: default.
+
+### `al-tabs`
+
+Tabs backed by a radio group.
+
+No attributes.
+
+Slots: default.
+
+### `al-tab`
+
+One tab: a label with a radio, then its panel.
+
+| Attribute | Type | Default | Meaning |
+|---|---|---|---|
+| `name` | `string` | — | the radio group's name |
+| `selected` | `boolean` | `false` | the tab the server picked |
+
+Slots: default.
+
+### `al-panel`
+
+A tab's content.
+
+No attributes.
+
+Slots: default.
+
+### `al-toast`
+
+A transient message.
+
+| Attribute | Type | Default | Meaning |
+|---|---|---|---|
+| `variant` | `"info" \| "success" \| "warning" \| "destructive"` | `"info"` | the kind, which sets the colours |
+| `timeout` | `number` | `5000` | milliseconds before it closes; 0 keeps it |
+
+Slots: default.
+
+### `al-toasts`
+
+The corner region toasts appear in.
+
+| Attribute | Type | Default | Meaning |
+|---|---|---|---|
+| `position` | `"top-left" \| "top-right" \| "bottom-left" \| "bottom-right"` | `"bottom-right"` | the viewport corner |
+
+Slots: default.
+
+### `al-tooltip`
+
+A text hint shown on hover and focus.
+
+| Attribute | Type | Default | Meaning |
+|---|---|---|---|
+| `for` | `string` | — | the id of the element it describes |
+
+Slots: default.
+
+### `al-devpanel`
+
+The developer bar: a collapsed bar and an expanded tabbed panel.
+
+| Attribute | Type | Default | Meaning |
+|---|---|---|---|
+| `open` | `boolean` | `false` | shows the sections above the bar |
+
+Slots: default.
 
 ## From another stack
 

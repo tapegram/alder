@@ -26,6 +26,17 @@ func TestBuiltin_FirstTier(t *testing.T) {
 		"al-pagination": {"page pages", "prev - next"},
 		"al-stack":      {"gap direction", "-"},
 		"al-page":       {"width", "-"},
+		// The interactive tier (v0.2.0).
+		"al-dialog":   {"heading size dismissible!", "header - actions"},
+		"al-popover":  {"placement offset anchor", "-"},
+		"al-menu":     {"", "-"},
+		"al-tabs":     {"", "-"},
+		"al-tab":      {"name selected!", "-"},
+		"al-panel":    {"", "-"},
+		"al-toast":    {"variant timeout", "-"},
+		"al-toasts":   {"position", "-"},
+		"al-tooltip":  {"for", "-"},
+		"al-devpanel": {"open!", "-"},
 	}
 	m := Builtin()
 	if len(m.Elements) != len(want) {

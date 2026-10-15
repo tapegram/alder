@@ -1,4 +1,4 @@
-/*! alder-ui v0.1.3 | Apache-2.0 | https://github.com/tapegram/alder-ui
+/*! alder-ui v0.2.0 | Apache-2.0 | https://github.com/tapegram/alder-ui
  * Built by scripts/build.py from tokens.css and components/; do not edit. */
 
 @layer al {
@@ -1144,6 +1144,489 @@ al-page[width="normal"] {
 
 al-page[width="wide"] {
   max-width: var(--al-width-wide);
+}
+
+/* ---- components/al-dialog.css ---- */
+
+/*
+ * al-dialog: wraps a native <dialog>. Open it with a button that carries
+ * commandfor="<dialog id>" command="show-modal" (invoker commands; al-shim.js
+ * polyfills them). The focus trap, the inert page, Escape and returning
+ * focus are the platform's. Without JavaScript or invoker commands, link to
+ * href="#<dialog id>": :target shows the dialog (not modal), href="#" hides it.
+ * heading is rendered by the framework as the header slot's <h2>. The close
+ * button of a dismissible dialog is a <form method="dialog"> with a button,
+ * the first child of the <dialog>; closedby="any" adds backdrop clicks.
+ */
+
+al-dialog {
+  display: contents;
+}
+
+al-dialog > dialog {
+  position: fixed;
+  inline-size: calc(var(--al-width-narrow) * 0.75);
+  max-inline-size: calc(100dvw - var(--al-space-8));
+  max-block-size: calc(100dvh - var(--al-space-8));
+  margin: auto;
+  padding: 0;
+  border: var(--al-border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--al-shadow-sm);
+  font-family: var(--al-font-sans);
+  font-size: var(--al-text-sm);
+  line-height: var(--al-leading);
+}
+
+al-dialog > dialog::backdrop {
+  color: var(--foreground);
+  background: color-mix(in srgb, currentColor 50%, transparent);
+}
+
+/* No JavaScript: the dialog the URL fragment names is shown. */
+al-dialog > dialog:target:not([open]) {
+  display: block;
+}
+
+al-dialog[size="sm"] > dialog {
+  inline-size: calc(var(--al-width-narrow) / 2);
+}
+
+al-dialog[size="lg"] > dialog {
+  inline-size: var(--al-width-narrow);
+}
+
+al-dialog [slot="header"] {
+  margin: 0;
+  padding: var(--al-space-4) var(--al-space-6) 0;
+  font-size: var(--al-text-lg);
+  font-weight: var(--al-weight-semibold);
+  line-height: var(--al-leading-tight);
+}
+
+al-dialog > dialog > :not([slot]):not(form) {
+  padding: var(--al-space-4) var(--al-space-6);
+}
+
+al-dialog [slot="actions"] {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--al-space-2);
+  padding: 0 var(--al-space-6) var(--al-space-4);
+}
+
+al-dialog[dismissible] [slot="header"] {
+  padding-inline-end: var(--al-space-10);
+}
+
+al-dialog[dismissible] > dialog > form[method="dialog"] {
+  position: absolute;
+  top: var(--al-space-3);
+  inset-inline-end: var(--al-space-3);
+  margin: 0;
+}
+
+al-dialog[dismissible] > dialog > form[method="dialog"] > button {
+  margin: 0;
+  padding: var(--al-space-1) var(--al-space-2);
+  border: 0;
+  border-radius: var(--al-radius-sm);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: var(--al-text-base);
+  line-height: var(--al-leading-tight);
+  cursor: pointer;
+}
+
+al-dialog[dismissible] > dialog > form[method="dialog"] > button:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+al-dialog[dismissible] > dialog > form[method="dialog"] > button:focus-visible {
+  outline: var(--al-ring-width) solid var(--ring);
+  outline-offset: var(--al-ring-offset);
+}
+
+/* ---- components/al-popover.css ---- */
+
+/*
+ * al-popover: a popover element anchored to its invoker. Write the
+ * popover attribute yourself and open it with a button carrying
+ * popovertarget="<id>" or commandfor="<id>" command="toggle-popover"; both
+ * work with no JavaScript. Position: CSS anchor positioning (the invoker is
+ * the implicit anchor, or name another element with the HTML anchor="<id>"
+ * attribute); position-try flips it to the other side when it would overflow.
+ * placement and offset choose the side and the gap.
+ */
+
+al-popover {
+  position: fixed;
+  inset: auto;
+  position-area: block-end;
+  position-try-fallbacks: flip-block, flip-inline;
+  margin: var(--al-space-1);
+  padding: var(--al-space-3);
+  border: var(--al-border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--al-shadow-sm);
+  font-family: var(--al-font-sans);
+  font-size: var(--al-text-sm);
+  line-height: var(--al-leading);
+  max-inline-size: calc(100dvw - var(--al-space-8));
+}
+
+al-popover[placement="top"] {
+  position-area: block-start;
+}
+
+al-popover[placement="left"] {
+  position-area: inline-start;
+}
+
+al-popover[placement="right"] {
+  position-area: inline-end;
+}
+
+al-popover[offset="sm"] {
+  margin: var(--al-space-1);
+}
+
+al-popover[offset="md"] {
+  margin: var(--al-space-3);
+}
+
+al-popover[offset="lg"] {
+  margin: var(--al-space-6);
+}
+
+al-popover > :first-child {
+  margin-top: 0;
+}
+
+al-popover > :last-child {
+  margin-bottom: 0;
+}
+
+/* ---- components/al-menu.css ---- */
+
+/*
+ * al-menu: a popover holding a list of items, each a link or a button. The
+ * optional al-menu.js adds role="menu" / "menuitem", roving arrow keys,
+ * Home/End, and closes the menu on select. Open it with a button carrying
+ * commandfor="<id>" command="toggle-popover" (or popovertarget). Without the
+ * script it is a popover of links, which still works.
+ */
+
+al-menu {
+  position: fixed;
+  inset: auto;
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: flip-block, flip-inline;
+  display: none;
+  min-inline-size: calc(var(--al-width-narrow) / 4);
+  margin: var(--al-space-1);
+  padding: var(--al-space-1);
+  border: var(--al-border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--al-shadow-sm);
+  font-family: var(--al-font-sans);
+  font-size: var(--al-text-sm);
+  line-height: var(--al-leading);
+}
+
+al-menu:popover-open {
+  display: flex;
+  flex-direction: column;
+}
+
+al-menu > a,
+al-menu > button {
+  display: block;
+  margin: 0;
+  padding: var(--al-space-1-5) var(--al-space-3);
+  border: 0;
+  border-radius: var(--al-radius-sm);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: var(--al-leading);
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+al-menu > a:hover,
+al-menu > button:hover,
+al-menu > a:focus-visible,
+al-menu > button:focus-visible {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+al-menu > a:focus-visible,
+al-menu > button:focus-visible {
+  outline: var(--al-ring-width) solid var(--ring);
+  outline-offset: calc(var(--al-ring-width) * -1);
+}
+
+al-menu > [aria-disabled="true"],
+al-menu > button:disabled {
+  opacity: var(--al-disabled-opacity);
+  pointer-events: none;
+}
+
+/* ---- components/al-tabs.css ---- */
+
+/*
+ * al-tabs: tabs backed by a radio group, so selection works with no
+ * JavaScript. Each al-tab holds a <label> wrapping a radio input (all with the
+ * same name; one `checked`) and its al-panel. The labels sit in a row, the
+ * checked tab's panel shows beneath. The optional al-tabs.js adds Home/End,
+ * the selected attribute, and the al-select event.
+ */
+
+al-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  border-bottom: var(--al-border-width) solid var(--border);
+  font-family: var(--al-font-sans);
+  font-size: var(--al-text-sm);
+  line-height: var(--al-leading);
+}
+
+al-tabs > al-tab {
+  display: contents;
+}
+
+al-tabs > al-tab > label {
+  order: 1;
+  position: relative;
+  padding: var(--al-space-2) var(--al-space-4);
+  border-bottom: var(--al-ring-width) solid transparent;
+  color: var(--muted-foreground);
+  font-weight: var(--al-weight-medium);
+  cursor: pointer;
+}
+
+al-tabs > al-tab > label > input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+al-tabs > al-tab > label:hover {
+  color: var(--foreground);
+}
+
+al-tabs > al-tab > label:has(> input:checked) {
+  border-bottom-color: var(--primary);
+  color: var(--foreground);
+}
+
+al-tabs > al-tab > label:has(> input:focus-visible) {
+  outline: var(--al-ring-width) solid var(--ring);
+  outline-offset: calc(var(--al-ring-width) * -1);
+}
+
+al-tabs > al-tab > al-panel {
+  display: none;
+  order: 2;
+  flex-basis: 100%;
+  padding: var(--al-space-4) 0;
+  color: var(--foreground);
+}
+
+al-tabs > al-tab:has(> label > input:checked) > al-panel {
+  display: block;
+}
+
+/* ---- components/al-toast.css ---- */
+
+/*
+ * al-toast: a transient message. Toasts live in an <al-toasts popover="manual">
+ * region, which sits in the top layer at a corner (position). al-toast.js
+ * shows the region when a toast connects, closes the toast after timeout ms
+ * (0 keeps it) and gives it role="status". Without JavaScript the region
+ * stays hidden: render the message as an al-alert in the page instead.
+ */
+
+al-toast {
+  display: block;
+  inline-size: calc(var(--al-width-narrow) / 2);
+  max-inline-size: calc(100dvw - var(--al-space-8));
+  padding: var(--al-space-3) var(--al-space-4);
+  border: var(--al-border-width) solid var(--al-info-border);
+  border-radius: var(--radius);
+  background: var(--al-info-soft);
+  color: var(--al-info-soft-foreground);
+  box-shadow: var(--al-shadow-sm);
+  font-family: var(--al-font-sans);
+  font-size: var(--al-text-sm);
+  line-height: var(--al-leading);
+}
+
+al-toast[variant="success"] {
+  border-color: var(--al-success-border);
+  background: var(--al-success-soft);
+  color: var(--al-success-soft-foreground);
+}
+
+al-toast[variant="warning"] {
+  border-color: var(--al-warning-border);
+  background: var(--al-warning-soft);
+  color: var(--al-warning-soft-foreground);
+}
+
+al-toast[variant="destructive"] {
+  border-color: var(--al-destructive-border);
+  background: var(--al-destructive-soft);
+  color: var(--al-destructive-soft-foreground);
+}
+
+al-toasts {
+  position: fixed;
+  inset: auto;
+  inset-block-end: var(--al-space-4);
+  inset-inline-end: var(--al-space-4);
+  display: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+al-toasts:popover-open {
+  display: flex;
+  flex-direction: column;
+  gap: var(--al-space-2);
+}
+
+al-toasts[position="top-left"] {
+  inset-block: var(--al-space-4) auto;
+  inset-inline: var(--al-space-4) auto;
+}
+
+al-toasts[position="top-right"] {
+  inset-block: var(--al-space-4) auto;
+}
+
+al-toasts[position="bottom-left"] {
+  inset-inline: var(--al-space-4) auto;
+}
+
+/* ---- components/al-tooltip.css ---- */
+
+/*
+ * al-tooltip: a short text hint for the element whose id is in `for`.
+ * popover="hint" where the browser has it (a manual popover otherwise);
+ * al-tooltip.js shows it on hover and focus, anchors it to the trigger and
+ * wires aria-describedby. Without the script it stays hidden: put the same
+ * text in a title attribute on the trigger.
+ */
+
+al-tooltip {
+  position: fixed;
+  inset: auto;
+  position-area: block-end;
+  position-try-fallbacks: flip-block, flip-inline;
+  margin: var(--al-space-1);
+  padding: var(--al-space-1) var(--al-space-2);
+  border: 0;
+  border-radius: var(--al-radius-sm);
+  background: var(--foreground);
+  color: var(--background);
+  font-family: var(--al-font-sans);
+  font-size: var(--al-text-xs);
+  line-height: var(--al-leading-tight);
+  max-inline-size: calc(var(--al-width-narrow) / 2);
+  pointer-events: none;
+}
+
+/* ---- components/al-devpanel.css ---- */
+
+/*
+ * al-devpanel: the developer bar. Collapsed it is a one-line bar along the
+ * bottom of the page (sticky); with `open` the section whose tab is selected
+ * shows above it. The content is server-rendered markup: a <nav> of tab
+ * <button>s (aria-controls="<section id>") and the <section>s. al-tabs.js
+ * switches sections and toggles `open`; without it, every section shows
+ * when open. Monospace for SQL and other code.
+ */
+
+al-devpanel {
+  display: block;
+  position: sticky;
+  inset-block-end: 0;
+  border-top: var(--al-border-width) solid var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
+  font-family: var(--al-font-mono);
+  font-size: var(--al-text-xs);
+  line-height: var(--al-leading);
+}
+
+al-devpanel > nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--al-space-1);
+  padding: var(--al-space-1) var(--al-space-2);
+}
+
+al-devpanel > nav > button {
+  margin: 0;
+  padding: var(--al-space-1) var(--al-space-2);
+  border: 0;
+  border-radius: var(--al-radius-sm);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+al-devpanel > nav > button:hover,
+al-devpanel > nav > button[aria-selected="true"] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+al-devpanel > nav > button:focus-visible {
+  outline: var(--al-ring-width) solid var(--ring);
+  outline-offset: var(--al-ring-offset);
+}
+
+al-devpanel > section {
+  display: none;
+  max-block-size: 50dvh;
+  padding: var(--al-space-2) var(--al-space-4);
+  border-top: var(--al-border-width) solid var(--border);
+  overflow: auto;
+}
+
+al-devpanel[open] > section:not([hidden]) {
+  display: block;
+}
+
+al-devpanel pre,
+al-devpanel code {
+  font-family: var(--al-font-mono);
+  white-space: pre-wrap;
+}
+
+al-devpanel pre {
+  margin: var(--al-space-2) 0;
 }
 
 }

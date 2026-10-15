@@ -1,5 +1,5 @@
 // Package al is the vendored `alder-ui` design system (scripts/vendor-al.sh) as the runtime
-// serves it: rt/web answers /static/al/al.css and /static/al/custom-elements.json from these
+// serves it: rt/web answers /static/al/al.css, /static/al/al.js and /static/al/custom-elements.json from these
 // embedded bytes, with a strong ETag computed from them (ETag), so a browser revalidates and a
 // compiler upgrade's new stylesheet is seen at once.
 package al
@@ -11,11 +11,11 @@ import (
 	"sync"
 )
 
-//go:embed al.css custom-elements.json
+//go:embed al.css al.js custom-elements.json
 var files embed.FS
 
 // Names are the served files, by name under /static/al/.
-var Names = []string{"al.css", "custom-elements.json"}
+var Names = []string{"al.css", "al.js", "custom-elements.json"}
 
 type entry struct {
 	data []byte

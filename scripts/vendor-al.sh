@@ -1,7 +1,7 @@
 #!/bin/sh
 # vendor-al.sh <tag>: copy the alder-ui design system at <tag> into rt/al/.
 #
-# A plain copy at a tag: al.css (the bundle) and custom-elements.json (the
+# A plain copy at a tag: al.css and al.js (the bundles) and custom-elements.json (the
 # manifest the checker reads), with the tag written to rt/al/VERSION. Nothing
 # fetches at build time; the copy is committed and embedded by rt/embed.go.
 # Uses `gh repo clone` when gh is installed (the repository may be private),
@@ -33,6 +33,7 @@ fi
 
 mkdir -p "$dest"
 cp "$tmp/alder-ui/al.css" "$dest/al.css"
+cp "$tmp/alder-ui/al.js" "$dest/al.js"
 cp "$tmp/alder-ui/custom-elements.json" "$dest/custom-elements.json"
 printf '%s\n' "$tag" >"$dest/VERSION"
 echo "vendored alder-ui $tag into rt/al/"

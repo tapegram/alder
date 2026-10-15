@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "version": "v0.1.3",
+  "version": "v0.2.0",
   "modules": [
     {
       "kind": "javascript-module",
@@ -499,6 +499,367 @@
           ]
         }
       ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-dialog.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlDialog",
+          "tagName": "al-dialog",
+          "customElement": true,
+          "description": "A modal dialog: wraps a native `<dialog>` (focus trap, inert page, Escape and return focus come from the platform). Open it with `<button commandfor=\"id\" command=\"show-modal\">` (al-shim.js polyfills invoker commands on older browsers). With no JavaScript, link to `#id`: the dialog is shown, not modal, and `#` hides it.",
+          "attributes": [
+            {
+              "name": "heading",
+              "type": {
+                "text": "string"
+              },
+              "description": "The dialog's heading. The framework renders it as the `header` slot's `<h2>`; the attribute itself draws nothing."
+            },
+            {
+              "name": "size",
+              "type": {
+                "text": "\"sm\" | \"md\" | \"lg\""
+              },
+              "description": "The dialog's width.",
+              "default": "\"md\""
+            },
+            {
+              "name": "dismissible",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Makes room for a close button: a `<form method=\"dialog\">` holding a `<button>` as the first child of the `<dialog>`.",
+              "default": "false"
+            }
+          ],
+          "slots": [
+            {
+              "name": "header",
+              "description": "The dialog's heading."
+            },
+            {
+              "name": "",
+              "description": "The dialog's content."
+            },
+            {
+              "name": "actions",
+              "description": "The buttons along the bottom, right-aligned."
+            }
+          ],
+          "events": [
+            {
+              "name": "al-close",
+              "description": "Fired (bubbles) on the al-dialog when its dialog closes, however it closed."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-popover.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlPopover",
+          "tagName": "al-popover",
+          "customElement": true,
+          "description": "A small floating panel anchored to the button that opens it. Write `popover` on it and open it with `popovertarget=\"id\"` or `commandfor=\"id\" command=\"toggle-popover\"` on a button; this works with no JavaScript. Placement uses CSS anchor positioning, flipping to the other side when it would overflow.",
+          "attributes": [
+            {
+              "name": "placement",
+              "type": {
+                "text": "\"top\" | \"bottom\" | \"left\" | \"right\""
+              },
+              "description": "Which side of the anchor the popover opens on.",
+              "default": "\"bottom\""
+            },
+            {
+              "name": "offset",
+              "type": {
+                "text": "\"sm\" | \"md\" | \"lg\""
+              },
+              "description": "The gap between the anchor and the popover.",
+              "default": "\"sm\""
+            },
+            {
+              "name": "anchor",
+              "type": {
+                "text": "string"
+              },
+              "description": "The id of the element to anchor to, when it is not the invoker (the platform's `anchor` attribute)."
+            }
+          ],
+          "slots": [
+            {
+              "name": "",
+              "description": "The popover's content."
+            }
+          ],
+          "events": [
+            {
+              "name": "al-close",
+              "description": "Fired (bubbles) on the al-popover when it closes."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-menu.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlMenu",
+          "tagName": "al-menu",
+          "customElement": true,
+          "description": "A menu: a popover of links or buttons. Open it with `<button commandfor=\"id\" command=\"toggle-popover\">`. Without JavaScript it is a popover of links (which still navigate); `al-menu.js` adds the `menu` / `menuitem` roles, roving arrow keys, Home/End, and closes on select.",
+          "attributes": [],
+          "slots": [
+            {
+              "name": "",
+              "description": "The items: `<a>` or `<button>` children."
+            }
+          ],
+          "events": [
+            {
+              "name": "al-select",
+              "description": "Fired (bubbles) on the al-menu when an item is chosen; `detail.item` is the item."
+            },
+            {
+              "name": "al-close",
+              "description": "Fired (bubbles) on the al-menu when it closes."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-tabs.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlTabs",
+          "tagName": "al-tabs",
+          "customElement": true,
+          "description": "Tabs backed by a radio group: selection and arrow keys work with no JavaScript. Children are `<al-tab>`s; each holds a `<label>` wrapping a radio input (same `name`, one `checked`) and its `<al-panel>`. `al-tabs.js` adds Home/End, `selected`, and the `al-select` event.",
+          "attributes": [],
+          "slots": [
+            {
+              "name": "",
+              "description": "The `<al-tab>` children."
+            }
+          ],
+          "events": [
+            {
+              "name": "al-select",
+              "description": "Fired (bubbles) on the al-tabs when a tab is chosen; `detail.tab` is the al-tab."
+            }
+          ]
+        },
+        {
+          "kind": "class",
+          "name": "AlTab",
+          "tagName": "al-tab",
+          "customElement": true,
+          "description": "One tab: a `<label>` wrapping a radio input, then its `<al-panel>`.",
+          "attributes": [
+            {
+              "name": "name",
+              "type": {
+                "text": "string"
+              },
+              "description": "The radio group's name. al-tabs.js copies it onto a radio that has none."
+            },
+            {
+              "name": "selected",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "The tab the server picked; al-tabs.js checks its radio. (Without the script, write `checked` on the radio.)",
+              "default": "false"
+            }
+          ],
+          "slots": [
+            {
+              "name": "",
+              "description": "The label, then the panel."
+            }
+          ]
+        },
+        {
+          "kind": "class",
+          "name": "AlPanel",
+          "tagName": "al-panel",
+          "customElement": true,
+          "description": "A tab's content, shown when its tab is selected.",
+          "attributes": [],
+          "slots": [
+            {
+              "name": "",
+              "description": "The panel's content."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-toast.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlToast",
+          "tagName": "al-toast",
+          "customElement": true,
+          "description": "A transient message in an `<al-toasts popover=\"manual\">` region. `al-toast.js` shows the region when a toast connects, gives the toast `role=\"status\"`, and closes it after `timeout` ms. Without JavaScript the region stays hidden; render the message as an `al-alert` in the page.",
+          "attributes": [
+            {
+              "name": "variant",
+              "type": {
+                "text": "\"info\" | \"success\" | \"warning\" | \"destructive\""
+              },
+              "description": "The toast's look, like al-alert's.",
+              "default": "\"info\""
+            },
+            {
+              "name": "timeout",
+              "type": {
+                "text": "number"
+              },
+              "description": "Milliseconds before the toast closes; `0` keeps it until closed.",
+              "default": "5000"
+            }
+          ],
+          "slots": [
+            {
+              "name": "",
+              "description": "The message."
+            }
+          ]
+        },
+        {
+          "kind": "class",
+          "name": "AlToasts",
+          "tagName": "al-toasts",
+          "customElement": true,
+          "description": "The region toasts appear in: a `popover=\"manual\"` element in the top layer at a corner of the viewport. Put it outside any morphed region.",
+          "attributes": [
+            {
+              "name": "position",
+              "type": {
+                "text": "\"top-left\" | \"top-right\" | \"bottom-left\" | \"bottom-right\""
+              },
+              "description": "The corner of the viewport.",
+              "default": "\"bottom-right\""
+            }
+          ],
+          "slots": [
+            {
+              "name": "",
+              "description": "The `<al-toast>`s."
+            }
+          ],
+          "events": [
+            {
+              "name": "al-close",
+              "description": "Fired (bubbles) on the region when a toast closes; `detail.toast` is the toast."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-tooltip.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlTooltip",
+          "tagName": "al-tooltip",
+          "customElement": true,
+          "description": "A short text hint for the element whose id is in `for`. `al-tooltip.js` makes it a `popover=\"hint\"` (a manual popover where `hint` is unknown), anchors it, sets `aria-describedby` on the trigger and shows it on hover and focus. Without JavaScript it stays hidden: also put the text in the trigger's `title`.",
+          "attributes": [
+            {
+              "name": "for",
+              "type": {
+                "text": "string"
+              },
+              "description": "The id of the element the tooltip describes."
+            }
+          ],
+          "slots": [
+            {
+              "name": "",
+              "description": "The tooltip text (text only)."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-devpanel.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "AlDevpanel",
+          "tagName": "al-devpanel",
+          "customElement": true,
+          "description": "The developer bar: a one-line bar sticky along the bottom of the page; with `open`, the selected section shows above it. Content is server-rendered markup: a `<nav>` of tab `<button>`s (`aria-controls` naming a section's id) and `<section>`s. `al-tabs.js` switches sections and toggles `open`; without it every section shows when open. SQL and code are monospace.",
+          "attributes": [
+            {
+              "name": "open",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Shows the sections above the bar.",
+              "default": "false"
+            }
+          ],
+          "slots": [
+            {
+              "name": "",
+              "description": "A `<nav>` of tab buttons, then the `<section>`s."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-shim.js",
+      "declarations": []
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-alert.js",
+      "declarations": []
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-menu.js",
+      "declarations": []
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-tabs.js",
+      "declarations": []
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-toast.js",
+      "declarations": []
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-tooltip.js",
+      "declarations": []
     }
   ]
 }

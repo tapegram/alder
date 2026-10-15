@@ -16,7 +16,7 @@ import "embed"
 // rt does not embed anything.
 //
 //go:embed core.go nav.go show.go tether.go
-//go:embed al/al.go al/al.css al/custom-elements.json al/VERSION
+//go:embed al/al.go al/al.css al/al.js al/custom-elements.json al/VERSION
 //go:embed datastar/datastar.go datastar/datastar.js datastar/VERSION
 //go:embed db/encode.go db/migrate.go db/sqlite.go db/store.go db/table.go
 //go:embed eff/eff.go eff/run.go

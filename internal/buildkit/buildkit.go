@@ -144,7 +144,7 @@ func CopyStatic(src, dst string) error {
 // DesignSystemFiles are the `alder-ui` assets (rt/al/, vendored by scripts/vendor-al.sh) every
 // build writes under static/al/: the stylesheet a page links as /static/al/al.css, and the
 // Custom Elements Manifest the checker reads (served too, for other tools).
-var DesignSystemFiles = []string{"al.css", "custom-elements.json"}
+var DesignSystemFiles = []string{"al.css", "al.js", "custom-elements.json"}
 
 // WriteDesignSystem writes DesignSystemFiles into staticDir/al/ from the embedded runtime. The
 // directory is the compiler's: a file of the app's own static/al/ with one of these names is
