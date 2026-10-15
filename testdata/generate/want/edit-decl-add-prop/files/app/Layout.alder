@@ -7,6 +7,7 @@ Page props =
       <meta charset="utf-8" />
       <title>{props.title}</title>
       <link rel="stylesheet" href={Url.external "/static/al/al.css"} />
+      <script type="module" src="/static/al/al.js"></script>
       <link rel="stylesheet" href={Url.external "/static/app.css"} />
     </head>
     <body>

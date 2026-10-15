@@ -16,6 +16,7 @@
       (elem link
         (attr rel text "stylesheet")
         (attr href href (call (std Url.external) "/static/al/al.css")))
+      (elem script (attr type text "module") (attr src text "/static/al/al.js"))
       (elem link
         (attr rel text "stylesheet")
         (attr href href (call (std Url.external) "/static/app.css"))))
@@ -82,7 +83,7 @@
       (bind task _
         (test-get Todos.Index
           (record Todos.Index.Params (filter (ctor Todo.Filter.All))))
-        (bind task out : { answer: Answer, session: Session, doc: Doc }
+        (bind task out : { answer: Answer, session: Session, doc: Doc, notices: List Text }
           (test-click App.Logout)
           (pure task
             (test-eq
@@ -162,7 +163,7 @@
     (test-fake Auth.Login.Password)
     (bind task _
       (test-get Auth.Login (record Params))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
         (test-submit Auth.Login.Credentials Submit
           (record Credentials (email "nobody@example.com") (password "secret")))
         (pure task
@@ -192,7 +193,7 @@
           (role (ctor User.Role.Member))))
       (bind task _
         (test-get Auth.Login (record Params))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
           (test-submit Auth.Login.Credentials Submit
             (record Credentials (email "me@example.com") (password "secret")))
           (pure task
@@ -223,7 +224,7 @@
           (role (ctor User.Role.Admin))))
       (bind task _
         (test-get Auth.Login (record Params))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
           (test-submit Auth.Login.Credentials Submit
             (record Credentials (email "admin@example.com") (password "secret")))
           (pure task
@@ -238,7 +239,7 @@
         (name "Me")
         (passwordHash "")
         (role (ctor User.Role.Member))))
-    (bind task visitor : { answer: Answer, session: App.Session, doc: Doc }
+    (bind task visitor : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
       (test-open Todos.Index
         (record Todos.Index.Params (filter (ctor Todo.Filter.All))))
       (bind task _
@@ -249,7 +250,7 @@
         (bind task _
           (test-get Todos.Index
             (record Todos.Index.Params (filter (ctor Todo.Filter.All))))
-          (bind task out : { answer: Answer, session: App.Session, doc: Doc }
+          (bind task out : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-click App.Logout)
             (pure task
               (test-eq
@@ -572,7 +573,7 @@
               (record App.Session
                 (user (ctor Prelude.Maybe.Just (record (value "someone-else"))))
                 (role (ctor User.Role.Member))))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
               (test-click Todos.Index.Toggle
                 (record ToggleParams (id (var id))))
               (bind task after : Maybe Todo
@@ -615,7 +616,7 @@
               (record App.Session
                 (user (ctor Prelude.Maybe.Just (record (value "someone-else"))))
                 (role (ctor User.Role.Member))))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
               (test-click Todos.Index.Delete
                 (record DeleteParams (id (var id))))
               (bind task after : Maybe Todo
@@ -646,10 +647,10 @@
           (role (ctor User.Role.Member))))
       (bind task _
         (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
-        (bind task added : { answer: Answer, session: App.Session, doc: Doc }
+        (bind task added : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
           (test-submit Todos.Index.NewTodo Submit
             (record NewTodo (title "Milk") (due (ctor Prelude.Maybe.Nothing))))
-          (bind task page : { model: Model, session: App.Session, doc: Doc }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
             (test-get Todos.Index
               (record Params (filter (ctor Todo.Filter.All))))
             (pure task
@@ -693,7 +694,7 @@
             (role (ctor User.Role.Member))))
         (bind task _
           (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-click Todos.Index.Toggle (record ToggleParams (id (var id))))
             (pure task
               (test-eq
@@ -726,9 +727,9 @@
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value "someone-else"))))
             (role (ctor User.Role.Member))))
-        (bind task page : { model: Model, session: App.Session, doc: Doc }
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
           (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
-          (bind task show : { answer: Answer, session: App.Session, doc: Doc }
+          (bind task show : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-open Todos.Show (record Todos.Show.Params (id (var id))))
             (pure task
               (test-eq
@@ -804,7 +805,7 @@
             (record App.Session
               (user (ctor Prelude.Maybe.Just (record (value (var me)))))
               (role (ctor User.Role.Member))))
-          (bind task page : { model: Model, session: App.Session, doc: Doc }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
             (test-get Todos.Index
               (record Params (filter (ctor Todo.Filter.All))))
             (pure task
@@ -945,7 +946,7 @@
           (done False)
           (due (ctor Prelude.Maybe.Nothing))
           (owner (var me))))
-      (bind task visitor : { answer: Answer, session: App.Session, doc: Doc }
+      (bind task visitor : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
         (test-open Todos.Show (record Params (id (var id))))
         (pure task
           (test-eq
@@ -974,7 +975,7 @@
             (role (ctor User.Role.Member))))
         (bind task _
           (test-get Todos.Show (record Params (id (var id))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-submit Todos.Show.EditTodo Save
               (record EditTodo
                 (title "Bread")
@@ -1025,7 +1026,7 @@
             (role (ctor User.Role.Member))))
         (bind task _
           (test-get Todos.Show (record Params (id (var id))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-click Todos.Show.Delete)
             (bind task after : Maybe Todo
               (db-get Todo.Todo (var id))

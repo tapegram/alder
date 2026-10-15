@@ -39,7 +39,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor User.Role.Author))))
-      (bind task page : { model: Model, session: App.Session, doc: Doc }
+      (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
         (test-get Admin.Index (record Params))
         (pure task
           (test-eq
@@ -53,12 +53,12 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor User.Role.Reader))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
         (test-open Admin.Index (record Params))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
 (test "a visitor is sent to log in from the admin page" task
-  (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
     (test-open Admin.Index (record Params))
     (pure task
       (test-eq
@@ -77,9 +77,9 @@
         (db-update User.User
           (var me)
           (lambda (u : User) (update (var u) (role (ctor User.Role.Reader)))))
-        (bind task index : { answer: Answer, session: App.Session, doc: Doc }
+        (bind task index : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
           (test-open Admin.Index (record Params))
-          (bind task users : { answer: Answer, session: App.Session, doc: Doc }
+          (bind task users : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-open Admin.Users (record Admin.Users.Params))
             (pure task
               (test-eq
@@ -115,7 +115,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
         (test-open Admin.Users (record Params))
         (pure task (test-eq (field answer (var r)) (ctor Prelude.Answer.Shown)))))))
 (test "a promoted reader needs to log in again" task
@@ -126,12 +126,12 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor User.Role.Reader))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
         (test-open Admin.Users (record Params))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
 (test "a visitor is sent to log in from the users page" task
-  (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
     (test-open Admin.Users (record Params))
     (pure task
       (test-eq
@@ -356,11 +356,11 @@
                   (record App.Session
                     (user (ctor Prelude.Maybe.Just (record (value (var me)))))
                     (role (ctor User.Role.Reader))))
-                (bind task page : { model: Model, session: App.Session, doc: Doc }
+                (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
                   (test-get Todos.Index (record Params))
                   (pure task (test-eq (field open (field model (var page))) 2)))))))))))
 (test "a visitor is sent to log in" task
-  (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
     (test-open Todos.Index (record Params))
     (pure task
       (test-eq
@@ -405,7 +405,7 @@
             (role (ctor User.Role.Reader))))
         (bind task _
           (test-get Todos.Index (record Params))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-click Todos.Index.Toggle (record ToggleParams (id (var id))))
             (bind task after : Maybe Todo
               (db-get Todo.Todo (var id))
@@ -433,7 +433,7 @@
             (role (ctor User.Role.Reader))))
         (bind task _
           (test-get Todos.Index (record Params))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-click Todos.Index.Rename (record RenameParams (id (var id))))
             (bind task after : Maybe Todo
               (db-get Todo.Todo (var id))
@@ -458,7 +458,7 @@
             (role (ctor User.Role.Reader))))
         (bind task _
           (test-get Todos.Index (record Params))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-click Todos.Index.Remove (record RemoveParams (id (var id))))
             (bind task after : Maybe Todo
               (db-get Todo.Todo (var id))
@@ -483,7 +483,7 @@
             (role (ctor User.Role.Reader))))
         (bind task _
           (test-get Todos.Index (record Params))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-click Todos.Index.Duplicate
               (record DuplicateParams (id (var id))))
             (bind task after : Maybe Todo
@@ -525,7 +525,7 @@
                 (record App.Session
                   (user (ctor Prelude.Maybe.Just (record (value (var bob)))))
                   (role (ctor User.Role.Reader))))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
                 (test-click Todos.Index.Toggle
                   (record ToggleParams (id (var id))))
                 (bind task after : Maybe Todo
@@ -561,7 +561,7 @@
                 (record App.Session
                   (user (ctor Prelude.Maybe.Just (record (value (var bob)))))
                   (role (ctor User.Role.Reader))))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
                 (test-click Todos.Index.Rename
                   (record RenameParams (id (var id))))
                 (bind task after : Maybe Todo
@@ -594,7 +594,7 @@
                 (record App.Session
                   (user (ctor Prelude.Maybe.Just (record (value (var bob)))))
                   (role (ctor User.Role.Reader))))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
                 (test-click Todos.Index.Remove
                   (record RemoveParams (id (var id))))
                 (bind task after : Maybe Todo
@@ -627,7 +627,7 @@
                 (record App.Session
                   (user (ctor Prelude.Maybe.Just (record (value (var bob)))))
                   (role (ctor User.Role.Reader))))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
                 (test-click Todos.Index.Duplicate
                   (record DuplicateParams (id (var id))))
                 (bind task after : Maybe Todo
@@ -738,7 +738,7 @@
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value (var me)))))
             (role (ctor User.Role.Reader))))
-        (bind task page : { model: Model, session: App.Session, doc: Doc }
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
           (test-get Todos.Show (record Params (id (var id))))
           (pure task
             (test-eq (field title (field todo (field model (var page)))) "Milk")))))))
@@ -755,7 +755,7 @@
             (record App.Session
               (user (ctor Prelude.Maybe.Just (record (value (var bob)))))
               (role (ctor User.Role.Reader))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-open Todos.Show (record Params (id (var id))))
             (pure task
               (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))))
@@ -765,7 +765,7 @@
     (bind task id : Text
       (db-insert Todo.Todo
         (record (title "Milk") (done False) (owner (var me))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
         (test-open Todos.Show (record Params (id (var id))))
         (pure task
           (test-eq

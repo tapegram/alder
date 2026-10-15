@@ -73,7 +73,7 @@
         (input Errors Credentials field=password)
         (elem button (htext "Log in"))))))
 (test "a page that requires a user redirects to the login page" task
-  (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
     (test-open Notes.Index
       (record Notes.Index.Params (filter (ctor Note.Filter.All))))
     (pure task
@@ -95,10 +95,10 @@
       (db-insert User.User (record (email "me@example.com") (name "Me")))
       (bind task _
         (test-get Auth.Login (record Params))
-        (bind task wrong : { answer: Answer, session: App.Session, doc: Doc }
+        (bind task wrong : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
           (test-submit Auth.Login.Credentials Submit
             (record Credentials (email "me@example.com") (password "nope")))
-          (bind task right : { answer: Answer, session: App.Session, doc: Doc }
+          (bind task right : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-submit Auth.Login.Credentials Submit
               (record Credentials (email "me@example.com") (password "secret")))
             (pure task
@@ -135,10 +135,10 @@
       (test-login
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
-      (bind task shown : { answer: Answer, session: App.Session, doc: Doc }
+      (bind task shown : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
         (test-open Notes.Index
           (record Notes.Index.Params (filter (ctor Note.Filter.All))))
-        (bind task out : { answer: Answer, session: App.Session, doc: Doc }
+        (bind task out : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
           (test-click App.Logout)
           (pure task
             (test-eq
@@ -352,9 +352,9 @@
       (test-login
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
-      (bind task page : { model: Model, session: App.Session, doc: Doc }
+      (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
         (test-get Notes.Index (record Params (filter (ctor Note.Filter.All))))
-        (bind task after : { answer: Answer, session: App.Session, doc: Doc }
+        (bind task after : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
           (test-submit Notes.Index.NewNote Submit
             (record NewNote
               (title "Milk")
@@ -398,10 +398,10 @@
         (test-login
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
-        (bind task page : { model: Model, session: App.Session, doc: Doc }
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
           (test-get Notes.Index
             (record Params (filter (ctor Note.Filter.Open))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-click Notes.Index.Toggle (record ToggleParams (id (var id))))
             (pure task
               (test-eq
@@ -426,7 +426,7 @@
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
       (bind task _
         (test-get Notes.Index (record Params (filter (ctor Note.Filter.All))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
           (test-submit-raw Notes.Index.NewNote Submit
             (list
               (record (name "title") (value ""))
@@ -466,7 +466,7 @@
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
       (bind task r : { value: Result Text Int, trace: List Text }
         (test-run
-          (bind task page : { model: Model, session: App.Session, doc: Doc }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
             (test-get Notes.Index
               (record Params (filter (ctor Note.Filter.All))))
             (pure task (call (std Test.count) "li" (field doc (var page))))))
@@ -486,7 +486,7 @@
             (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
         (bind task _
           (test-get Notes.Index (record Params (filter (ctor Note.Filter.All))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-click Notes.Index.Boom)
             (bind task rows : Int
               (db-select Note.Note
@@ -518,7 +518,7 @@
         (test-login
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
-        (bind task page : { model: Model, session: App.Session, doc: Doc }
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
           (test-get Notes.Index
             (record Params (filter (ctor Note.Filter.Open))))
           (let sel : Text
@@ -561,7 +561,7 @@
         (test-login
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value "stranger"))))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
           (test-open Notes.Show (record Notes.Show.Params (id (var id))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -572,7 +572,7 @@
       (test-login
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
-      (bind task page : { model: Model, session: App.Session, doc: Doc }
+      (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
         (test-get Notes.Index (record Params (filter (ctor Note.Filter.All))))
         (bind task trace : List Text
           (test-trace)
@@ -617,7 +617,7 @@
           (bind task _
             (test-get Notes.Index
               (record Params (filter (ctor Note.Filter.All))))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
               (test-submit Notes.Index.Title Rename
                 (params (record RenameParams (id (var b))))
                 (record Title (title "B2")))
@@ -650,7 +650,7 @@
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))))
       (bind task _
         (test-get Notes.Index (record Params (filter (ctor Note.Filter.All))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
           (test-submit App.Feedback Send (record App.Feedback (text "nice")))
           (pure task
             (test-eq
