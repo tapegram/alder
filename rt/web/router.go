@@ -283,6 +283,10 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if get && r.URL.Path == "/_dev" && rt.devOn() {
+		rt.devMap(w, r)
+		return
+	}
 	if get && r.URL.Path == datastar.ScriptPath {
 		rt.script.ServeHTTP(w, r)
 		return

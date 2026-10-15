@@ -40,3 +40,18 @@ func TestDevPanel(t *testing.T) {
 		}
 	}
 }
+
+func TestDevMap(t *testing.T) {
+	route := one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil, false) })
+	for _, dev := range []bool{true, false} {
+		t.Setenv("ALDER_DEV", "1")
+		h := NewRouter(route, testOpts(func(o *Options) { o.Dev = dev }))
+		w := serve(h, httptest.NewRequest("GET", "/_dev", nil))
+		if dev && (w.Code != 200 || !strings.Contains(w.Body.String(), `href="/x"`)) {
+			t.Fatalf("dev: %d %q", w.Code, w.Body.String())
+		}
+		if !dev && w.Code != 404 {
+			t.Fatalf("prod: %d", w.Code)
+		}
+	}
+}

@@ -150,3 +150,48 @@ func (rt *router) patchPanel(w http.ResponseWriter, status int) {
 
 // notify is where a Noticed answer's toast is patched (see notices.go); the panel comes after it.
 func (rt *router) notify(w http.ResponseWriter, rq *Request) {}
+
+// devOn is true for the dev server only (Options.Dev and ALDER_DEV=1): the /_dev map is served
+// then and never from a production binary.
+func (rt *router) devOn() bool { return rt.opts.Dev && os.Getenv("ALDER_DEV") == "1" }
+
+// devMap serves /_dev: the running app's routes, capabilities (adapter or fake wired) and build.
+func (rt *router) devMap(w http.ResponseWriter, r *http.Request) {
+	var b strings.Builder
+	b.WriteString(`<!doctype html><html><head><meta charset="utf-8"><title>Alder dev map</title></head><body><h1>Alder dev map</h1>`)
+	fmt.Fprintf(&b, `<p>build <code>%s</code></p><h2>Routes</h2><ul>`, esc(BuildID()))
+	for _, rtn := range rt.routes {
+		pat := ""
+		for _, s := range rtn.segs {
+			if s.param != "" {
+				pat += "/{" + s.param + "}"
+			} else {
+				pat += "/" + s.lit
+			}
+		}
+		if pat == "" {
+			pat = "/"
+		}
+		if rtn.method == http.MethodGet && !strings.Contains(pat, "{") {
+			fmt.Fprintf(&b, `<li>GET <a href="%s">%s</a></li>`, esc(pat), esc(pat))
+		} else {
+			fmt.Fprintf(&b, `<li>%s <code>%s</code></li>`, esc(rtn.method), esc(pat))
+		}
+	}
+	b.WriteString(`</ul><h2>Capabilities</h2><ul>`)
+	caps := make([]string, 0, len(rt.opts.Caps))
+	for k := range rt.opts.Caps {
+		caps = append(caps, k)
+	}
+	sort.Strings(caps)
+	for _, k := range caps {
+		kind := "adapter"
+		if strings.Contains(strings.ToLower(fmt.Sprintf("%T", rt.opts.Caps[k])), "fake") {
+			kind = "fake"
+		}
+		fmt.Fprintf(&b, `<li><code>%s</code>: %s</li>`, esc(k), kind)
+	}
+	b.WriteString(`</ul></body></html>`)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write([]byte(b.String()))
+}
