@@ -268,3 +268,12 @@ func lines(s string) []string {
 	s = strings.ReplaceAll(s, "\r", "\n")
 	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 }
+
+// PanelID is the id of the dev panel's element: rendered into the body with data-ignore-morph (so
+// a body morph keeps it, open tab and all) and filled by its own patch.
+const PanelID = "_alder_panel"
+
+// PatchPanel writes one event replacing the inside of the dev panel element (#PanelID) with inner.
+func PatchPanel(w http.ResponseWriter, inner string) error {
+	return patch(w, "#"+PanelID, "inner", inner)
+}

@@ -196,7 +196,7 @@ func TestResponse_ErrorHidesTextInProd(t *testing.T) {
 			}
 			if dev {
 				// The comment goes at the end of the <body>, for pages and patches alike.
-				if !strings.Contains(body, "<p>Something went wrong</p><!-- error: db is - - down --></body>") {
+				if !strings.Contains(body, "<p>Something went wrong</p><!-- error: db is - - down -->") {
 					t.Fatalf("ds=%v dev body %q", ds, body)
 				}
 			} else if strings.Contains(body, "db is") || strings.Contains(body, "<!--") {

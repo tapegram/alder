@@ -85,6 +85,14 @@ const sessionMaxAge = 30 * 24 * 60 * 60
 type tracker struct {
 	http.ResponseWriter
 	started bool
+
+	// dev panel: the request, what it ran, how it was answered
+	r       *http.Request
+	rq      *Request
+	start   time.Time
+	answer  string
+	detail  string
+	patches []string
 }
 
 func (t *tracker) WriteHeader(code int) {
@@ -243,7 +251,7 @@ func pathSegments(r *http.Request) ([]string, bool) {
 }
 
 func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	w := &tracker{ResponseWriter: rw}
+	w := &tracker{ResponseWriter: rw, r: r, start: time.Now()}
 	st := hop{origin: r}
 	defer func() {
 		if v := recover(); v != nil {
@@ -385,6 +393,10 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 			Session: rq.Session,
 		}
 	}
+	if tw, ok := w.(*tracker); ok && rt.panelOn() {
+		rq.Env.Rec = &eff.Recorder{}
+		tw.rq = rq
+	}
 	resp := hit.handle(rq)
 	if rt.opts.Served != nil {
 		rt.opts.Served(rq)
@@ -524,6 +536,20 @@ func (rt *router) setSession(w http.ResponseWriter, r *http.Request, rq *Request
 }
 
 func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
+	if tw, ok := w.(*tracker); ok {
+		switch {
+		case resp.Status == http.StatusSeeOther:
+			tw.answer = "redirect " + resp.Location
+		case resp.Status == http.StatusOK && st.url == "" && !resp.Patch:
+			tw.answer = "page"
+		case resp.Status == http.StatusOK:
+			tw.answer = "rerender"
+		case resp.Status == http.StatusNotFound:
+			tw.answer = "not found"
+		default:
+			tw.answer = "error"
+		}
+	}
 	switch resp.Status {
 	case http.StatusOK, http.StatusSeeOther:
 		if err := rt.setSession(w, r, rq, resp.Session); err != nil {
@@ -559,9 +585,11 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 			return
 		}
 		if resp.Patch && rq.Datastar {
-			if err := datastar.PatchBody(w, rt.dev(bodyOf(page))); err != nil {
+			if err := datastar.PatchBody(w, rt.shellBody(rt.dev(bodyOf(page)))); err != nil {
 				rt.log("error", fmt.Sprintf("%s %s: writing the patch: %v", r.Method, r.URL.Path, err))
 			}
+			rt.notify(w, rq)
+			rt.patchPanel(w, http.StatusOK)
 			return
 		}
 		rt.document(w, http.StatusOK, page)
@@ -666,7 +694,10 @@ func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status i
 	if status != http.StatusOK {
 		w.Header().Set(StatusHeader, strconv.Itoa(status))
 	}
-	err := datastar.PatchBody(w, rt.dev(bodyOf(page)))
+	err := datastar.PatchBody(w, rt.shellBody(rt.dev(bodyOf(page))))
+	if tw, ok := w.(*tracker); ok {
+		tw.patches = append(tw.patches, "body")
+	}
 	if err == nil && st.url != "" {
 		t, _ := titleOf(page) // a page without a <title> empties the old one
 		err = datastar.PatchTitle(w, t)
@@ -677,6 +708,7 @@ func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status i
 	if err != nil {
 		rt.log("error", fmt.Sprintf("%s %s: writing the patch: %v", r.Method, r.URL.Path, err))
 	}
+	rt.patchPanel(w, status)
 }
 
 // titleOf is the content of the page's first <title> element before its <body>, as rendered
@@ -706,12 +738,15 @@ func titleOf(page string) (string, bool) {
 func (rt *router) document(w http.ResponseWriter, status int, page string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_, _ = w.Write([]byte("<!doctype html>\n" + withScript(rt.dev(page))))
+	_, _ = w.Write([]byte("<!doctype html>\n" + withScript(rt.inlinePanel(w, rt.dev(page), status))))
 }
 
 // notFound writes doc (or, when it renders empty, Options.NotFoundDoc) with status 404, or as
 // a body patch for a Datastar request.
 func (rt *router) notFound(w http.ResponseWriter, r *http.Request, st hop, doc html.Node) {
+	if tw, ok := w.(*tracker); ok {
+		tw.answer = "not found"
+	}
 	page := html.Render(doc)
 	if page == "" && rt.opts.NotFoundDoc != nil {
 		page = html.Render(rt.opts.NotFoundDoc())
@@ -731,6 +766,9 @@ func (rt *router) fail(w http.ResponseWriter, r *http.Request, st hop, doc html.
 		msg += "\n" + string(stack)
 	}
 	rt.log("error", msg)
+	if tw, ok := w.(*tracker); ok {
+		tw.answer, tw.detail = "error", fmt.Sprintf("%v\n%s", err, stack)
+	}
 	page := html.Render(doc)
 	if page == "" && rt.opts.ErrorDoc != nil {
 		page = html.Render(rt.opts.ErrorDoc(err))
