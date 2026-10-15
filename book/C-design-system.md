@@ -34,7 +34,7 @@ box", explains why):
   styles that box by its tag name and attributes. Every element works
   with JavaScript off.
 
-The version Alder ships is **v0.2.0**: the compiler embeds a copy of
+The version Alder ships is **v0.2.1**: the compiler embeds a copy of
 the library's stylesheet, scripts (`al.js`) and manifest at that tag (`rt/al/VERSION`;
 "Where it lives", below).
 
@@ -666,7 +666,7 @@ Slots: default.
 </al-page>
 ```
 
-### The interactive tier (v0.2.0, minimal; the full chapter is M7b's Task 3)
+### The interactive tier (v0.2.1, minimal; the full chapter is M7b's Task 3)
 
 ### `al-dialog`
 

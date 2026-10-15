@@ -1,4 +1,4 @@
-/*! alder-ui v0.2.0 | Apache-2.0 | https://github.com/tapegram/alder-ui
+/*! alder-ui v0.2.1 | Apache-2.0 | https://github.com/tapegram/alder-ui
  * Built by scripts/build.py from tokens.css and components/; do not edit. */
 
 @layer al {
@@ -1535,6 +1535,10 @@ al-toasts[position="bottom-left"] {
  * wires aria-describedby. Without the script it stays hidden: put the same
  * text in a title attribute on the trigger.
  */
+
+al-tooltip:not(:popover-open) {
+  display: none;
+}
 
 al-tooltip {
   position: fixed;
