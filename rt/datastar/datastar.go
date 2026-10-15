@@ -169,7 +169,7 @@ const BoostClick = `if (evt.defaultPrevented || evt.button !== 0 || evt.metaKey 
 	` history.scrollRestoration = 'manual';` +
 	` history.replaceState({alderY: scrollY}, '');` +
 	` ` + abortNavigation +
-	` @get(u.pathname + u.search, {payload: {}, headers: {'` + BuildHeader + `': window._alderBuild}, ` + html.Navigation + `})`
+	` ` + html.BusyNull + `@get(u.pathname + u.search, {payload: {}, headers: {'` + BuildHeader + `': window._alderBuild}, ` + html.Navigation + `})` + `)`
 
 // abortNavigation aborts the navigating request in flight (html.Navigation).
 const abortNavigation = `window._alderAC?.abort();`
@@ -195,13 +195,18 @@ const BoostScroll = `history.replaceState(Object.assign({}, history.state, {alde
 // as BoostClick.
 const BoostPopstate = `if (location.pathname + location.search !== window._alderAt) {` +
 	abortNavigation +
-	` @get(location.pathname + location.search, {payload: {}, headers: {'` + HistoryHeader + `': 'replace', '` + BuildHeader + `': window._alderBuild}, ` + html.Navigation + `})}`
+	` ` + html.BusyNull + `@get(location.pathname + location.search, {payload: {}, headers: {'` + HistoryHeader + `': 'replace', '` + BuildHeader + `': window._alderBuild}, ` + html.Navigation + `})` + `)` + `}`
 
 // BoostInit is the expression of the boost's data-init attribute: the page loaded is the one
 // shown, and its build is the one its <meta name="alder-build"> names ("" without one: no
 // check).
 const BoostInit = `window._alderAt = location.pathname + location.search;` +
-	` window._alderBuild = document.querySelector('meta[name=alder-build]')?.content || ''`
+	` window._alderBuild = document.querySelector('meta[name=alder-build]')?.content || '';` +
+	` window._alderN = 0;` +
+	` window._alderBusy = (el, p) => { const f = el && el.closest ? el.closest('form') || el : null, h = document.documentElement;` +
+	` if (f) { f.inert = true; f.setAttribute('aria-busy', 'true') } window._alderN++; h.setAttribute('data-alder-pending', '');` +
+	` const done = () => { if (f) { f.inert = false; f.removeAttribute('aria-busy') } if (--window._alderN <= 0) h.removeAttribute('data-alder-pending') };` +
+	` Promise.resolve(p).then(done, done); return p }`
 
 // BoostTag is the element in a page's <head> that boosts its links, rendered: a <meta
 // name="alder-boost"> whose Datastar attributes listen on window, so the listeners survive

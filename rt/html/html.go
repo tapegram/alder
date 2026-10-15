@@ -371,13 +371,13 @@ func FormTo(m rt.MsgRef, attrs []Attr, children ...Node) Node {
 // SubmitPost is the Datastar action of a form's data-on:submit: post the form's fields
 // url-encoded to action, on the page's one navigation signal (Navigation).
 func SubmitPost(action string) string {
-	return abortNavigation + "@post('" + action + "', {contentType: 'form', " + Navigation + "})"
+	return abortNavigation + busy("el", "@post('"+action+"', {contentType: 'form', "+Navigation+"})")
 }
 
 // ClickPost is the Datastar action of a click that posts a message (a data-on:click, a submit
 // button's formaction): post to url, on the page's one navigation signal (Navigation).
 func ClickPost(url string) string {
-	return abortNavigation + "@post('" + url + "', {" + Navigation + "})"
+	return abortNavigation + busy("el", "@post('"+url+"', {"+Navigation+"})")
 }
 
 // Navigation is the request option every navigating Datastar request of a page shares — a
@@ -390,3 +390,14 @@ const Navigation = "requestCancellation: window._alderAC = new AbortController()
 
 // abortNavigation, run before a navigating request, aborts the one in flight (Navigation).
 const abortNavigation = "window._alderAC?.abort();"
+
+// BusyNull opens the wrapper of a request that only marks the page pending (a boosted GET):
+// BusyNull + request + ")". The wrapper is window._alderBusy (datastar.BoostInit) marking the
+// element's form inert and aria-busy while the request is in flight and the page pending (a 2px
+// bar); without the helper the request runs unwrapped.
+const BusyNull = "(window._alderBusy||((e,p)=>p))(null, "
+
+// busy wraps request, a message's post, in the wrapper of el (the element the handler runs on).
+func busy(el, req string) string {
+	return "(window._alderBusy||((e,p)=>p))(" + el + ", " + req + ")"
+}

@@ -55,3 +55,25 @@ func TestDevMap(t *testing.T) {
 		}
 	}
 }
+
+func TestNoticedToast(t *testing.T) {
+	h := NewRouter(one("POST", "/_m/A/B", func(rq *Request) Response {
+		rq.Notice = "Saved <ok>"
+		return PageResponse(doc("hi"), nil, nil, true)
+	}), testOpts(nil))
+	req := httptest.NewRequest("POST", "/_m/A/B", nil)
+	req.Header.Set("Datastar-Request", "true")
+	body := serve(h, req).Body.String()
+	for _, s := range []string{
+		"data: selector al-toasts\ndata: mode append\ndata: elements <al-toast variant=\"info\" timeout=\"5000\">Saved &lt;ok&gt;</al-toast>",
+		"<al-toasts data-ignore-morph></al-toasts></body>",
+	} {
+		if !strings.Contains(body, s) {
+			t.Errorf("missing %q in %q", s, body)
+		}
+	}
+	// the toast comes after the body patch, so a morph does not show it again
+	if strings.Index(body, "selector body") > strings.Index(body, "selector al-toasts") {
+		t.Errorf("order: %q", body)
+	}
+}

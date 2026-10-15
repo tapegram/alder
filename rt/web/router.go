@@ -833,8 +833,13 @@ func commentSafe(s string) string {
 // placed first it would push a layout's <meta charset> past the first 1024 bytes, where a
 // browser looks for it.
 func HeadTags() (first, boost string) {
-	return colorScheme + BuildMeta() + html.Render(datastar.ScriptTag()), datastar.BoostTag()
+	return colorScheme + BuildMeta() + pendingStyle + html.Render(datastar.ScriptTag()), datastar.BoostTag()
 }
+
+// pendingStyle is the in-flight look the runtime injects (not the library's): a 2px bar along the
+// top of the page while a request is pending (html[data-alder-pending], set by the boost's
+// window._alderBusy) and a dimmed form that is busy (aria-busy, inert).
+const pendingStyle = `<style>html[data-alder-pending]::before{content:"";position:fixed;top:0;left:0;width:100%;height:2px;z-index:2147483647;background:var(--al-primary,currentColor);transform-origin:left;animation:alder-pending 1s ease-in-out infinite}@keyframes alder-pending{from{transform:scaleX(0)}to{transform:scaleX(1)}}form[aria-busy=true]{opacity:.6}</style>`
 
 // BuildMeta is the <meta name="alder-build" content="…"> HeadTags carries: the build of the
 // binary serving the page (BuildID), which the boost sends back with each boosted GET

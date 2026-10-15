@@ -314,7 +314,7 @@ func TestBoost_ClickHandlerExclusions(t *testing.T) {
 		"if (u.hash && u.pathname === location.pathname && u.search === location.search) return;", // a jump on this page
 		"window._alderHash = u.hash;", // another page's fragment, added back by the push
 		"if (u.pathname.startsWith('/static/') || u.pathname.startsWith('/_alder/')) return;", // a file
-		"evt.preventDefault(); window._alderHash = u.hash; history.scrollRestoration = 'manual'; history.replaceState({alderY: scrollY}, ''); window._alderAC?.abort(); @get(u.pathname + u.search, {payload: {}, headers: {'Alder-Build': window._alderBuild}, requestCancellation: window._alderAC = new AbortController()})",
+		"evt.preventDefault(); window._alderHash = u.hash; history.scrollRestoration = 'manual'; history.replaceState({alderY: scrollY}, ''); window._alderAC?.abort(); (window._alderBusy||((e,p)=>p))(null, @get(u.pathname + u.search, {payload: {}, headers: {'Alder-Build': window._alderBuild}, requestCancellation: window._alderAC = new AbortController()}))",
 	} {
 		if !strings.Contains(datastar.BoostClick, part) {
 			t.Errorf("BoostClick lacks %q", part)
@@ -324,7 +324,7 @@ func TestBoost_ClickHandlerExclusions(t *testing.T) {
 	if strings.Index(datastar.BoostClick, "evt.preventDefault()") < strings.LastIndex(datastar.BoostClick, "return;") {
 		t.Error("BoostClick prevents the default before its last exclusion")
 	}
-	if want := "if (location.pathname + location.search !== window._alderAt) {window._alderAC?.abort(); @get(location.pathname + location.search, {payload: {}, headers: {'Alder-History': 'replace', 'Alder-Build': window._alderBuild}, requestCancellation: window._alderAC = new AbortController()})}"; datastar.BoostPopstate != want {
+	if want := "if (location.pathname + location.search !== window._alderAt) {window._alderAC?.abort(); (window._alderBusy||((e,p)=>p))(null, @get(location.pathname + location.search, {payload: {}, headers: {'Alder-History': 'replace', 'Alder-Build': window._alderBuild}, requestCancellation: window._alderAC = new AbortController()}))}"; datastar.BoostPopstate != want {
 		t.Errorf("BoostPopstate = %q", datastar.BoostPopstate)
 	}
 	// Datastar rewrites $name as a signal: the expressions must not use one.
@@ -360,7 +360,7 @@ func TestBoost_ClickHandlerExclusions(t *testing.T) {
 func TestBoost_ColorSchemeMeta(t *testing.T) {
 	h := NewRouter(one("GET", "/", func(rq *Request) Response { return PageResponse(doc("Home"), nil, nil, false) }), testOpts(nil))
 	body := serve(h, httptest.NewRequest("GET", "/", nil)).Body.String()
-	want := "<!doctype html>\n<html><head>" + `<meta name="color-scheme" content="light dark" />` + `<meta name="alder-build" content="` + BuildID() + `" />` + html.Render(datastar.ScriptTag()) + "<title>Home</title>" + datastar.BoostTag() + "</head>"
+	want := "<!doctype html>\n<html><head>" + `<meta name="color-scheme" content="light dark" />` + `<meta name="alder-build" content="` + BuildID() + `" />` + pendingStyle + html.Render(datastar.ScriptTag()) + "<title>Home</title>" + datastar.BoostTag() + "</head>"
 	if !strings.HasPrefix(body, want) {
 		t.Fatalf("head %q", body)
 	}

@@ -74,6 +74,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     check('login: redirect morphed in, signed in', s.path === '/' && s.title === 'Blog' && cookies.includes('alder_session') && out, { s, cookies, out });
     check('login: no document load', docs.length === 0 && s.marker, docs);
 
+    // the dev panel: survives the morph, has its tabs, one trace
+    const panel = await page.evaluate(() => {
+      const p = document.querySelector('al-devpanel');
+      return p && { tabs: [...p.querySelectorAll('nav button')].map((b) => b.textContent), bar: (p.querySelector('nav') || {}).textContent, trace: (document.querySelector('#_alder_tab_trace') || {}).textContent };
+    });
+    check('panel: present after a morph, with its tabs', panel && ['Request', 'Trace', 'SQL', 'Answer', 'Patches'].every((t) => panel.tabs.includes(t)), panel);
+    check('panel: the bar names the request', panel && /POST|GET/.test(panel.bar), panel);
+    await page.click('al-devpanel nav button:has-text("Trace")');
+    const opened = await page.evaluate(() => { const p = document.querySelector('al-devpanel'); const o = p.hasAttribute('open'); p.removeAttribute('open'); return o; });
+    check('panel: a tab opens it', opened, opened);
+    check('panel: one trace', panel && /Db\.|Session\./.test(panel.trace), panel);
+
     // a link to a missing page: the 404 page morphed in, the URL recorded
     await link('/posts/no-such-post');
     await page.click('#go');
@@ -82,6 +94,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     s = await state();
     check('404: morphed in', s.path === '/posts/no-such-post' && s.title === 'Not found' && s.h1 === 'Not found', s);
     check('404: no document load', docs.length === 0 && s.marker, docs);
+    check('404: the panel answers not found', await page.evaluate(() => /not found/.test((document.querySelector('al-devpanel') || {}).textContent || '')));
+    const r500 = await page.request.get(BASE + '/_dev');
+    check('/_dev: the app map', r500.status() === 200 && (await r500.text()).includes('Routes'), r500.status());
 
     // a slow post, then a boosted click before its answer: the click's page stays — the two
     // share one AbortController (window._alderAC), so the post's late answer is never applied
@@ -96,6 +111,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     });
     await page.click('text=Log out');
     await sleep(150);
+    const busy = await page.evaluate(() => ({
+      form: !!document.querySelector('form[aria-busy=true][inert]'),
+      bar: document.documentElement.hasAttribute('data-alder-pending'),
+    }));
+    check('in flight: the form is inert and aria-busy, the pending bar shows', busy.form && busy.bar, busy);
     await link('/posts/no-such-post');
     await page.click('#go');
     await sleep(2500);
@@ -103,6 +123,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     check('a slow post then a click: the click wins', s.path === '/posts/no-such-post' && s.title === 'Not found', s);
     check('a slow post then a click: no document load', docs.length === 0 && s.marker, docs);
     await page.unroute('**/_m/**');
+
+    // Back during a pending boosted GET: the slow page never lands over the one Back returned to
+    await link('/');
+    await page.click('#go');
+    await at('/');
+    await sleep(300);
+    await page.route('**/login*', async (route) => {
+      const resp = await route.fetch();
+      await sleep(1500);
+      await route.fulfill({ response: resp }).catch(() => {});
+    });
+    await link('/login');
+    await page.click('#go');
+    await sleep(200);
+    const pend = await page.evaluate(() => document.documentElement.hasAttribute('data-alder-pending'));
+    await page.goBack();
+    await sleep(2500);
+    s = await state();
+    check('Back during a pending GET: pending bar, then the earlier page', pend && s.path !== '/login', { pend, s, docs });
+    await page.unroute('**/login*');
 
     // a link to a file under /static/ is left to the browser: a document load, not a morph
     await link('/static/x.pdf');

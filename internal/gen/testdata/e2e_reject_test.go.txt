@@ -149,7 +149,7 @@ func TestE2E_RejectKeepsWrites(t *testing.T) {
 	// Datastar posts on click (preventing the form's submission). Without JavaScript the browser
 	// posts the form's fields there; App.Reset has no form and ignores them: a 303 back to the
 	// page, the session reset
-	has(body, `<button type="submit" formaction="/_m/App/Reset" formmethod="post" formnovalidate data-on:click__prevent="window._alderAC?.abort();@post(&#39;/_m/App/Reset&#39;, {requestCancellation: window._alderAC = new AbortController()})">Reset</button></form>`)
+	has(body, `<button type="submit" formaction="/_m/App/Reset" formmethod="post" formnovalidate data-on:click__prevent="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Reset&#39;, {requestCancellation: window._alderAC = new AbortController()}))">Reset</button></form>`)
 	fm := regexp.MustCompile(`formaction="([^"]*)"`).FindStringSubmatch(body)
 	if fm == nil {
 		t.Fatalf("no formaction:\n%s", body)
