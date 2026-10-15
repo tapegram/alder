@@ -25,3 +25,8 @@ findings about the texts: T4 has no Names block, while E8's hidden T4 tests (whi
 `files` cells 5 / 8); and T6's `msg AddLine { product } form NewLine` cannot be built with the E11 commands (no
 command attaches a form to a message with parameters), so a `cli` run must leave the Names (Haiku T6: own tests
 pass, hidden 0 / 9).
+
+Since the E11 fix batch, T4 carries E8's Names block (`App.SwitchTheme`, `Notes.Show.EditNote`, …, copied from
+`e8-hidden/tasks/with/t4-appmsg.md`; its Password sentence stays the canonical one), so its hidden tests measure names
+the text gives; E11's T4 results used the text without it. The drills' names check (`cmd/alder/drill_test.go`
+`checkNames`) now also compares each form's fields and each message's parameters.

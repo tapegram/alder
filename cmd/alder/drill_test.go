@@ -10,7 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"alder/internal/diag"
 	"alder/internal/generate"
+	"alder/internal/syntax"
 	"alder/internal/types"
 )
 
@@ -33,13 +35,17 @@ type drill struct {
 
 // drillNames are the names a task's Names block fixes: the tables and their columns
 // (`name: Type`, the type as written in the table's module), exactly; the session's fields,
-// exactly; the pages (module → path), exactly; each page's messages and forms, exactly.
+// exactly; the pages (module → path), exactly; each page's messages and forms, exactly, with each form's fields and each message's parameters.
 type drillNames struct {
 	tables  map[string][]string
 	session []string
 	pages   map[string]string
 	msgs    map[string][]string
 	forms   map[string][]string
+	// formFields are each form's fields ("Teams.Index.NewTeam" → `name: Text.NonEmpty`), msgParams each
+	// message's parameters ("Teams.Show.SendInvite" → `team: Team.TeamId`; none → no entry), exactly.
+	formFields map[string][]string
+	msgParams  map[string][]string
 }
 
 var drills = []drill{
@@ -54,6 +60,9 @@ var drills = []drill{
 		pages:   map[string]string{"Teams.Index": "/teams", "Teams.Show": "/teams/{id}", "Invites.Index": "/invites", "Auth.Login": "/login"},
 		msgs:    map[string][]string{"Teams.Index": {"Create"}, "Teams.Show": {"Remove", "SendInvite"}, "Invites.Index": {"Accept", "Decline"}, "Auth.Login": {"Submit"}},
 		forms:   map[string][]string{"Teams.Index": {"NewTeam"}, "Teams.Show": {"NewInvite"}, "Auth.Login": {"Credentials"}},
+		formFields: map[string][]string{"Teams.Index.NewTeam": {"name: Text.NonEmpty"}, "Teams.Show.NewInvite": {"email: Text.Email"},
+			"Auth.Login.Credentials": {"email: Text.Email", "password: Text.Secret"}},
+		msgParams: map[string][]string{"Invites.Index.Accept": {"id: Invite.InviteId"}, "Invites.Index.Decline": {"id: Invite.InviteId"}, "Teams.Show.Remove": {"user: User.UserId"}},
 	}},
 	{task: "t9-bookings", app: "bookings", names: drillNames{
 		tables: map[string][]string{
@@ -61,10 +70,12 @@ var drills = []drill{
 			"Room":    {"id: RoomId", "name: Text.NonEmpty"},
 			"Booking": {"id: BookingId", "room: Room.RoomId", "owner: User.UserId", "from: Date", "to: Date"},
 		},
-		session: []string{"user: Maybe User.UserId"},
-		pages:   map[string]string{"Rooms.Index": "/rooms", "Rooms.Show": "/rooms/{id}", "Bookings.Index": "/bookings", "Bookings.Show": "/bookings/{id}", "Auth.Login": "/login"},
-		msgs:    map[string][]string{"Rooms.Show": {"Book"}, "Bookings.Show": {"Cancel"}, "Auth.Login": {"Submit"}},
-		forms:   map[string][]string{"Rooms.Show": {"NewBooking"}, "Auth.Login": {"Credentials"}},
+		session:    []string{"user: Maybe User.UserId"},
+		pages:      map[string]string{"Rooms.Index": "/rooms", "Rooms.Show": "/rooms/{id}", "Bookings.Index": "/bookings", "Bookings.Show": "/bookings/{id}", "Auth.Login": "/login"},
+		msgs:       map[string][]string{"Rooms.Show": {"Book"}, "Bookings.Show": {"Cancel"}, "Auth.Login": {"Submit"}},
+		forms:      map[string][]string{"Rooms.Show": {"NewBooking"}, "Auth.Login": {"Credentials"}},
+		formFields: map[string][]string{"Rooms.Show.NewBooking": {"from: Date", "to: Date"}, "Auth.Login.Credentials": {"email: Text.Email", "password: Text.Secret"}},
+		msgParams:  map[string][]string{},
 	}},
 }
 
@@ -101,14 +112,42 @@ func checkNames(t *testing.T, dir string, want drillNames) {
 			forms[pg.Module] = pg.Forms
 		}
 	}
+	formFields, msgParams := map[string][]string{}, map[string][]string{}
+	for _, pg := range p.Pages {
+		m := p.Modules[pg.Module]
+		for _, d := range m.Syntax.Decls {
+			switch d := d.(type) {
+			case *syntax.FormDecl:
+				for _, f := range d.Fields {
+					formFields[pg.Module+"."+d.Name] = append(formFields[pg.Module+"."+d.Name], f.Name+": "+drillSpan(m.Syntax.Lines, f.Type.GetSpan()))
+				}
+			case *syntax.MsgDecl:
+				if d.Params != nil {
+					for _, f := range d.Params.Fields {
+						msgParams[pg.Module+"."+d.Name] = append(msgParams[pg.Module+"."+d.Name], f.Name+": "+drillSpan(m.Syntax.Lines, f.Type.GetSpan()))
+					}
+				}
+			}
+		}
+	}
 	for _, c := range []struct {
 		what      string
 		got, want any
-	}{{"pages", pages, want.pages}, {"messages", msgs, want.msgs}, {"forms", forms, want.forms}} {
+	}{{"pages", pages, want.pages}, {"messages", msgs, want.msgs}, {"forms", forms, want.forms},
+		{"form fields", formFields, want.formFields}, {"message parameters", msgParams, want.msgParams}} {
 		if !reflect.DeepEqual(c.got, c.want) {
 			t.Errorf("%s: %v, want %v", c.what, c.got, c.want)
 		}
 	}
+}
+
+// drillSpan is the source text of a one-line span.
+func drillSpan(lines []string, sp diag.Span) string {
+	if sp.Start.Line != sp.End.Line || sp.Start.Line > len(lines) {
+		return "?"
+	}
+	l := lines[sp.Start.Line-1]
+	return l[min(sp.Start.Col-1, len(l)):min(sp.End.Col-1, len(l))]
 }
 
 // drillStep is one command of a drill script: its arguments after `alder` and its standard
