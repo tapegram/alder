@@ -323,3 +323,30 @@ func equal(a, b []string) bool {
 	}
 	return true
 }
+
+func TestRecorderStepsAndSQL(t *testing.T) {
+	st, err := db.OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Ensure(context.Background(), []db.TableDesc{tb.Desc()}, true); err != nil {
+		t.Fatal(err)
+	}
+	env := &eff.Env{Store: st, Rec: &eff.Recorder{}, Caps: map[string]any{"M.Mail": fakeMail{}}}
+	_, err = eff.Run(env, eff.KTask, eff.Bind(insert("a"), func(string) eff.Task[int64] { return count() }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Rec.Steps) != 2 || env.Rec.Steps[0].Name != "Db.insert T" {
+		t.Fatalf("steps = %+v", env.Rec.Steps)
+	}
+	if len(env.Rec.SQL) < 2 || env.Rec.SQL[0].Rows != 1 {
+		t.Fatalf("sql = %+v", env.Rec.SQL)
+	}
+	if k := eff.CapKind(env, "Mail.send"); k != "fake" {
+		t.Fatalf("capKind = %q", k)
+	}
+}
+
+type fakeMail struct{}

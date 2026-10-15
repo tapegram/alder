@@ -124,7 +124,7 @@ type querier interface {
 // on is tx's *sql.Tx, or the database itself when tx is nil.
 func (s *SQLite) on(tx Tx) (querier, error) {
 	if tx == nil {
-		return s.db, nil
+		return recQ{s.db}, nil
 	}
 	if err := txErr(tx); err != nil {
 		return nil, err
@@ -133,7 +133,7 @@ func (s *SQLite) on(tx Tx) (querier, error) {
 	if !ok {
 		return nil, fmt.Errorf("db: transaction %T does not belong to the SQLite store", tx)
 	}
-	return t.tx, nil
+	return recQ{t.tx}, nil
 }
 
 func (s *SQLite) desc(table string) (TableDesc, error) {
@@ -768,4 +768,54 @@ func changedTables(tables []TableDesc, stmts []string, oldSchema string) []strin
 		out = append(out, "(unknown)")
 	}
 	return out
+}
+
+// recQ wraps a querier: when the running effect has a dev Recorder (eff.Env.Rec) each statement is
+// recorded with its arguments and duration; otherwise it is a plain pass-through.
+type recQ struct{ q querier }
+
+func rec(ctx context.Context) *eff.Recorder {
+	if e := eff.EnvFrom(ctx); e != nil {
+		return e.Rec
+	}
+	return nil
+}
+
+func (r recQ) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	rc := rec(ctx)
+	if rc == nil {
+		return r.q.ExecContext(ctx, query, args...)
+	}
+	t0 := time.Now()
+	res, err := r.q.ExecContext(ctx, query, args...)
+	n := int64(-1)
+	if err == nil {
+		if a, e := res.RowsAffected(); e == nil {
+			n = a
+		}
+	}
+	rc.AddSQL(eff.SQLRec{Stmt: query, Args: args, Ms: eff.Ms(time.Since(t0)), Rows: n})
+	return res, err
+}
+
+func (r recQ) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	rc := rec(ctx)
+	if rc == nil {
+		return r.q.QueryContext(ctx, query, args...)
+	}
+	t0 := time.Now()
+	rows, err := r.q.QueryContext(ctx, query, args...)
+	rc.AddSQL(eff.SQLRec{Stmt: query, Args: args, Ms: eff.Ms(time.Since(t0)), Rows: -1})
+	return rows, err
+}
+
+func (r recQ) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	rc := rec(ctx)
+	if rc == nil {
+		return r.q.QueryRowContext(ctx, query, args...)
+	}
+	t0 := time.Now()
+	row := r.q.QueryRowContext(ctx, query, args...)
+	rc.AddSQL(eff.SQLRec{Stmt: query, Args: args, Ms: eff.Ms(time.Since(t0)), Rows: -1})
+	return row
 }

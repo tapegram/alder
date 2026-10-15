@@ -11,7 +11,10 @@ package eff
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -168,6 +171,7 @@ type Env struct {
 	Log        func(level, msg string) // level is "info", "warn" or "effect"; nil: no log
 	Trace      []string                // every Call name in order (dev log / tests)
 	Kind       Kind                    // the kind of the effect Run is running (set by Run, restored when it returns)
+	Rec        *Recorder               // dev mode: per-request trace with timings (nil: none, no cost)
 	Within     *Within                 // nil: a Task begins its own transaction on Store; else it runs inside Within.Tx (Run)
 
 	beginTx func() (Tx, error) // set by Run for a Task with a Store: begins Tx
@@ -301,4 +305,56 @@ func (e *Env) Note(name string) {
 		return
 	}
 	e.Trace = append(e.Trace, name)
+}
+
+// Recorder is the dev-mode per-request trace: every Call with its duration and, for a capability,
+// whether an adapter or a fake answered; every SQL statement the store ran. A nil Env.Rec records
+// nothing. It is filled by Run and by rt/db; the dev panel renders it.
+type Recorder struct {
+	mu    sync.Mutex
+	Steps []StepRec
+	SQL   []SQLRec
+}
+
+// StepRec is one recorded Call: Name, how long it took, and Cap ("adapter", "fake" or "") for a
+// capability call.
+type StepRec struct {
+	Name string
+	Ms   float64
+	Cap  string
+}
+
+// SQLRec is one statement with its arguments, duration and the rows it touched (-1: not counted).
+type SQLRec struct {
+	Stmt string
+	Args []any
+	Ms   float64
+	Rows int64
+}
+
+// AddStep records a step.
+func (r *Recorder) AddStep(s StepRec) { r.mu.Lock(); r.Steps = append(r.Steps, s); r.mu.Unlock() }
+
+// AddSQL records a statement.
+func (r *Recorder) AddSQL(s SQLRec) { r.mu.Lock(); r.SQL = append(r.SQL, s); r.mu.Unlock() }
+
+// Ms is a duration in milliseconds.
+func Ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
+
+// CapKind is "adapter" or "fake" for a capability step named "Cap.op" (the implementation's type
+// name decides: the generated fakes are named Fake…), "" for any other step.
+func CapKind(env *Env, name string) string {
+	c, _, ok := strings.Cut(name, ".")
+	if !ok {
+		return ""
+	}
+	for k, impl := range env.Caps {
+		if k == c || strings.HasSuffix(k, "."+c) {
+			if strings.Contains(strings.ToLower(fmt.Sprintf("%T", impl)), "fake") {
+				return "fake"
+			}
+			return "adapter"
+		}
+	}
+	return ""
 }

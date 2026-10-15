@@ -208,7 +208,14 @@ func interpret(env *Env, kind Kind, n node) (any, error) {
 				env.Log("effect", x.name)
 			}
 			env.Trace = append(env.Trace, x.name)
+			var t0 time.Time
+			if env.Rec != nil {
+				t0 = time.Now()
+			}
 			v, err := x.fn(env)
+			if env.Rec != nil {
+				env.Rec.AddStep(StepRec{Name: x.name, Ms: Ms(time.Since(t0)), Cap: CapKind(env, x.name)})
+			}
 			if err != nil {
 				return nil, err
 			}
