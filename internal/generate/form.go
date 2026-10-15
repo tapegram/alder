@@ -64,7 +64,22 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 		}
 		msg = o.Msg
 	}
+	// --msg M naming a message that exists without a form: the form is attached to it
+	var attach *syntax.MsgDecl
+	if o.Msg != "" {
+		for _, dc := range m.Syntax.Decls {
+			if md, ok := dc.(*syntax.MsgDecl); ok && md.Name == o.Msg {
+				attach = md
+			}
+		}
+	}
+	if attach != nil && attach.Form != "" {
+		attach = nil // a message has one form: the check below refuses it
+	}
 	for _, n := range []string{o.Name, msg} {
+		if n == msg && attach != nil {
+			continue
+		}
 		if declared(m.Syntax, n) {
 			return nil, Refusef("`%s` already declares `%s`: choose another name", o.Page, n)
 		}
@@ -113,7 +128,9 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 	// the table the arm inserts into
 	var into *Table
 	requiresUser := pg.Requires != ""
-	if o.Into != "" {
+	if attach != nil {
+		into = nil // the message's arm exists already
+	} else if o.Into != "" {
 		if into = p.TableNamed(o.Into); into == nil {
 			return nil, Refusef("`--into %s`: `%s` is not a table of this app (its tables: %s)", o.Into, o.Into, tableNames(p))
 		}
@@ -149,7 +166,38 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 	} else {
 		arm = fmt.Sprintf("%s p -> ?%s,", msg, LowerFirst(msg))
 	}
-	if err := addDecls(e, m, o.Page, snippet("form_decls", d), arm); err != nil {
+	if attach != nil {
+		ml := e.line(attach.Span.Start.Line)
+		if attach.Span.Start.Line != attach.Span.End.Line || strings.Contains(ml, "--") {
+			return nil, Refusef("`msg %s` is not on one line without a comment: add ` form %s` to it yourself", msg, o.Name)
+		}
+		e.replaceLine(attach.Span.Start.Line, strings.TrimRight(ml, " ")+" form "+o.Name)
+		e.insertBefore(attach.Span.Start.Line, "-- "+msg+"'s arm reads the posted fields as p.form (p.form : "+o.Name+", such as p.form."+o.Fields[0].Name+")\n"+snippet("form_decl", d)+"\n")
+		// the message's own button and its "pressing" test (Test.click cannot post a form) give way to the form
+		for n := 1; n <= len(m.Syntax.Lines); n++ {
+			if t := strings.TrimSpace(m.Syntax.Lines[n-1]); strings.HasPrefix(t, "<al-button") && strings.HasSuffix(t, "</al-button>") && strings.Contains(t, "click={"+msg+" ") {
+				e.deleteLine(n)
+			}
+		}
+		for _, dc := range m.Syntax.Decls {
+			if t, ok := dc.(*syntax.TestDecl); ok && t.Name == "pressing "+msg {
+				first := declStart(e, t)
+				if first > 1 && strings.TrimSpace(e.line(first-1)) == "" {
+					first--
+				}
+				for n := first; n <= t.Span.End.Line; n++ {
+					e.deleteLine(n)
+				}
+			}
+		}
+		if attach.Params != nil {
+			var holes []string
+			for _, f := range attach.Params.Fields {
+				holes = append(holes, f.Name+": ?"+LowerFirst(msg)+UpperFirst(f.Name))
+			}
+			d.Msg = msg + " { " + strings.Join(holes, ", ") + " }"
+		}
+	} else if err := addDecls(e, m, o.Page, snippet("form_decls", d), arm); err != nil {
 		return nil, err
 	}
 	markup := snippet("form_markup", d)
@@ -172,7 +220,15 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 	for _, f := range rec.Fields {
 		values = append(values, f.Name+": "+tb.sample(f.Type, f.Name, 1))
 	}
-	valid := append(append([]string{}, tb.lines...), "let _ <- Test.get ("+page+")", fmt.Sprintf("let r <- Test.submit %s { %s }", o.Name, strings.Join(values, ", ")))
+	submitted := o.Name
+	if attach != nil && attach.Params != nil {
+		var holes []string
+		for _, f := range attach.Params.Fields {
+			holes = append(holes, f.Name+": ?"+LowerFirst(msg)+UpperFirst(f.Name))
+		}
+		submitted = "(" + msg + " { " + strings.Join(holes, ", ") + " })"
+	}
+	valid := append(append([]string{}, tb.lines...), "let _ <- Test.get ("+page+")", fmt.Sprintf("let r <- Test.submit %s { %s }", submitted, strings.Join(values, ", ")))
 	tests := []TestData{}
 	switch {
 	case into != nil && rowsBefore == 0:
@@ -205,6 +261,9 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 	}
 	// an empty required field
 	for _, f := range rec.Fields {
+		if attach != nil {
+			break
+		}
 		msgText := emptyMessage(f.Type)
 		if msgText == "" {
 			continue

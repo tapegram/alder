@@ -1,0 +1,31 @@
+edited app/App.alder
+--- a/app/App.alder
++++ b/app/App.alder
+@@ -16,3 +16,18 @@
+   <Layout.Page title="Not found">
+     <h1>Not found</h1>
+   </Layout.Page>
++
++msg ToggleTheme { dark: Bool }
++
++update : Msg -> Session -> Task Nav
++update msg session = match msg {
++  ToggleTheme p -> ?toggleTheme,
++}
++
++-- A message of App is sent from any page (`click={App.ToggleTheme}`), so the test calls update itself.
++-- Fill ?expected with what ToggleTheme must do, as `{ value: r.value, trace: r.trace } ==
++-- { value: Ok Rerender, trace: ["Session.put"] }`: its answer and the effects it ran.
++test "pressing ToggleTheme" = {
++  let r <- Test.run (update (ToggleTheme { dark: ?toggleThemeDark }) {  })
++  Task.succeed ?expected
++}
+app/App.alder:24:20: warning[W0002]: hole ?toggleTheme has type Task Nav
+    ToggleTheme p -> ?toggleTheme,
+                     ^^^^^^^^^^^^
+app/App.alder:31:50: warning[W0002]: hole ?toggleThemeDark has type Bool
+    let r <- Test.run (update (ToggleTheme { dark: ?toggleThemeDark }) {  })
+                                                   ^^^^^^^^^^^^^^^^
+app/App.alder:32:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^

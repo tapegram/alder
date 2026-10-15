@@ -220,6 +220,11 @@ var genCases = []genCase{
 		fills: [][2]string{{"Tags.Show.load", "Query.succeed { }"}}},
 	{name: "fixture-page-show-by", base: "fixture", args: []string{"new", "page", "Tags.Show", "/tags", "--show", "Tag", "--by", "name"}, test: true},
 	{name: "form-msg", base: "scaffold", args: []string{"new", "form", "Home", "Quick", "name:Text.NonEmpty", "message:Text.NonEmpty", "--msg", "Sign2"}, test: true},
+	// E11 fixes: the four commands
+	{name: "app-msg", base: "scaffold", args: []string{"new", "msg", "App", "ToggleTheme", "dark:Bool"}, test: true,
+		fills: [][2]string{{"App.update.ToggleTheme", "Task.succeed Rerender"}, {`App."pressing ToggleTheme" --hole ?toggleThemeDark`, "True"}, {`App."pressing ToggleTheme"`, "{ value: r.value, trace: r.trace } == { value: Ok Rerender, trace: [] }"}}},
+	{name: "fixture-app-msg-hole", base: "fixture", args: []string{"new", "msg", "App", "Ping"}},
+	{name: "edit-decl-add-prop", base: "scaffold", args: []string{"edit", "decl", "Layout.Page", "add-prop", "dark:Bool=False"}, test: true},
 	{name: "msg-id", base: "scaffold", args: []string{"new", "msg", "Home", "Clear", "--id", "clear"}, test: true,
 		fills: [][2]string{{"Home.update.Clear", "Task.succeed Rerender"}, {`Home."pressing Clear"`, "{ answer: r.answer, button: Test.has \"#clear\" after.doc } == { answer: Rerendered, button: True }"}}},
 	{name: "fixture-edit-session", base: "fixture", args: []string{"edit", "session", "add-field", `theme:Text="light"`}, test: true},
@@ -784,5 +789,65 @@ func TestHelp(t *testing.T) {
 	}
 	if helpTo([]string{"new", "page", "X", "/x"}, io.Discard) {
 		t.Error("no --help: helpTo answered")
+	}
+}
+
+// TestGenerate_E11Commands: `new form --msg` on a message declared without a form, and `edit
+// auth --to` (their goldens), and the refusals of the four commands.
+func TestGenerate_E11Commands(t *testing.T) {
+	needGoTool(t)
+	t.Run("form-on-msg", func(t *testing.T) {
+		dir := genApp(t, "fixture")
+		if code, _, errs := alderIn(t, dir, "", "new", "msg", "Home", "Feature", "id:Post.PostId"); code != 0 {
+			t.Fatalf("new msg: %s", errs)
+		}
+		before := appFiles(t, dir)
+		code, out, errs := alderIn(t, dir, "", "new", "form", "Home", "Reason", "why:Text.NonEmpty", "--msg", "Feature")
+		if code != 0 {
+			t.Fatalf("new form --msg: exit %d\n%s%s", code, out, errs)
+		}
+		golden(t, "form-on-msg", out, changedFiles(before, appFiles(t, dir)))
+		if code, _, errs := alderIn(t, dir, "", "new", "form", "Home", "Other", "why:Text", "--msg", "Feature"); code != 1 || !strings.Contains(errs, "`Home` already declares `Feature`") {
+			t.Errorf("a second form on the message: exit %d: %s", code, errs)
+		}
+	})
+	t.Run("edit-auth", func(t *testing.T) {
+		dir := genApp(t, "fixture")
+		if code, _, errs := alderIn(t, dir, "", "edit", "auth", "--to", "Home"); code != 1 || !strings.Contains(errs, "no hole ?afterLogin") {
+			t.Errorf("without the hole: exit %d: %s", code, errs)
+		}
+		bare := filepath.Join(t.TempDir(), "app")
+		var o, e bytes.Buffer
+		if code := runNewTo([]string{bare, "--bare"}, &o, &e); code != 0 {
+			t.Fatalf("new --bare: %s", e.String())
+		}
+		for _, args := range [][]string{{"new", "auth"}, {"new", "page", "Notes", "/notes", "--blank", "--requires", "user"}} {
+			if code, _, errs := alderIn(t, bare, "", args...); code != 0 {
+				t.Fatalf("%v: %s", args, errs)
+			}
+		}
+		before := appFiles(t, bare)
+		code, out, errs := alderIn(t, bare, "", "edit", "auth", "--to", "Notes")
+		if code != 0 {
+			t.Fatalf("edit auth: exit %d\n%s%s", code, out, errs)
+		}
+		golden(t, "edit-auth", out, changedFiles(before, appFiles(t, bare)))
+		if code, _, errs := alderIn(t, bare, "", "edit", "auth", "--to", "Notes"); code != 1 || !strings.Contains(errs, "no hole ?afterLogin") {
+			t.Errorf("a second time: exit %d: %s", code, errs)
+		}
+	})
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"edit", "decl", "Layout.Page", "add-prop", "dark:Bool"}, "needs a default"},
+		{[]string{"edit", "decl", "Layout.Page", "add-prop", "title:Text=\"x\""}, "already has a property `title`"},
+		{[]string{"new", "msg", "App", "Logout"}, "`App` already declares `Logout`"},
+	} {
+		dir := genApp(t, "fixture")
+		code, _, errs := alderIn(t, dir, "", c.args...)
+		if code != 1 || !strings.Contains(errs, c.want) {
+			t.Errorf("%v: exit %d: %s (want %q)", c.args, code, errs, c.want)
+		}
 	}
 }

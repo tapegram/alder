@@ -1,0 +1,11 @@
+edited app/Layout.alder
+--- a/app/Layout.alder
++++ b/app/Layout.alder
+@@ -1,6 +1,6 @@
+ module Layout
+ 
+-Page : { title: Text, children: List (Html a) } -> Html a
++Page : { title: Text, children: List (Html a), dark: Bool = False } -> Html a
+ Page props =
+   <html>
+     <head>

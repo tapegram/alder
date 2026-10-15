@@ -7,7 +7,7 @@ import (
 	"alder/internal/generate"
 )
 
-const editUsage = "usage: alder edit table <T> add-field <field>:<Type>[=default][@attr…] | rename-field <old> <new> | drop-field <field>  [--strict] [--dir app] [--json] [--dry-run]\n       alder edit page <Page module> add-param <name>:<Type>[=default] [--dir app] [--json] [--dry-run]\n       alder edit session add-field <name>:<Type>=<default> [--strict] [--dir app] [--json] [--dry-run]"
+const editUsage = "usage: alder edit table <T> add-field <field>:<Type>[=default][@attr…] | rename-field <old> <new> | drop-field <field>  [--strict] [--dir app] [--json] [--dry-run]\n       alder edit page <Page module> add-param <name>:<Type>[=default] [--dir app] [--json] [--dry-run]\n       alder edit decl <Module>.<Name> add-prop <name>:<Type>=<default> [--dir app] [--json] [--dry-run]\n       alder edit auth --to <Page> [--dir app] [--json] [--dry-run]\n       alder edit session add-field <name>:<Type>=<default> [--strict] [--dir app] [--json] [--dry-run]"
 
 // runEditTo is `alder edit page` (generate.EditPage), `alder edit session`
 // (generate.EditSession) and `alder edit table`: the table's declaration edited (generate.EditTable), its
@@ -16,10 +16,20 @@ const editUsage = "usage: alder edit table <T> add-field <field>:<Type>[=default
 // as the copy's diagnostics, and the edit is still written: the diagnostics are the to-do list.
 // With --strict a change that breaks anything is refused instead, and nothing is written.
 func runEditTo(args []string, stdout, stderr io.Writer) int {
-	g, err := parseGenArgs(args, nil, nil, []string{"strict"})
+	g, err := parseGenArgs(args, []string{"to"}, nil, []string{"strict"})
 	if err == nil && len(g.pos) == 4 && g.pos[0] == "page" && !g.has("strict") {
 		return runGenerator("alder edit page", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
 			return generate.EditPage(p, g.pos[1], g.pos[2], g.pos[3:])
+		}, stdout, stderr)
+	}
+	if err == nil && len(g.pos) == 4 && g.pos[0] == "decl" && !g.has("strict") {
+		return runGenerator("alder edit decl", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
+			return generate.EditDecl(p, g.pos[1], g.pos[2], g.pos[3:])
+		}, stdout, stderr)
+	}
+	if err == nil && len(g.pos) == 1 && g.pos[0] == "auth" {
+		return runGenerator("alder edit auth", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
+			return generate.EditAuth(p, g.flag("to"))
 		}, stdout, stderr)
 	}
 	if err == nil && len(g.pos) == 3 && g.pos[0] == "session" {

@@ -1,0 +1,30 @@
+edited app/Auth/Login.alder
+--- a/app/Auth/Login.alder
++++ b/app/Auth/Login.alder
+@@ -44,7 +44,7 @@
+     match found {
+       Just id -> {
+         let _ <- Session.put (\s -> { s | user: Just id })
+-        Task.succeed (Redirect (?afterLogin))
++        Task.succeed (Redirect (Notes {}))
+       },
+       Nothing -> Task.succeed (Reject "Email or password is incorrect."),
+     }
+@@ -70,7 +70,7 @@
+   </Layout.Page>
+ 
+ -- Logging in through the form, with the fake: an unknown email is rejected with the form's
+--- message, and a known one puts the user in the session and goes to the page ?afterLogin names (fill it, here and in Submit's arm, once the page exists).
++-- message, and a known one puts the user in the session and goes to Notes {}.
+ test "an unknown email is rejected" = {
+   let _ <- Test.fake Password
+   let _ <- Test.get (Auth.Login {})
+@@ -83,7 +83,7 @@
+   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "name-1", passwordHash: Text.Secret "passwordhash-1" }
+   let _ <- Test.get (Auth.Login {})
+   let r <- Test.submit Credentials { email: Text.Email "me@example.com", password: Text.Secret "secret" }
+-  Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })
++  Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (Notes {}), user: Just me })
+ }
+ 
+ test "a signed-in user logs out here" = {

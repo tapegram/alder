@@ -43,6 +43,12 @@ type MsgOptions struct {
 // (`--when <Bool expression>`) the button is shown only when the expression holds: `{if <expr>
 // then <al-button …> else Html.none}`.
 func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]Edit, error) {
+	if page == "App" {
+		if o.InFor != "" || o.When != "" || o.ID != "" {
+			return nil, Refusef("`alder new msg App` adds a message without a button: --in-for, --when and --id belong to a page")
+		}
+		return newAppMsg(p, name, fields)
+	}
 	pg, m, err := pageModule(p, page)
 	if err != nil {
 		return nil, err

@@ -1,0 +1,33 @@
+module App
+
+import Layout
+
+session { }
+
+error : Error -> Html Never
+error err =
+  <Layout.Page title="Error">
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html Never
+notFound =
+  <Layout.Page title="Not found">
+    <h1>Not found</h1>
+  </Layout.Page>
+
+msg ToggleTheme { dark: Bool }
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  ToggleTheme p -> ?toggleTheme,
+}
+
+-- A message of App is sent from any page (`click={App.ToggleTheme}`), so the test calls update itself.
+-- Fill ?expected with what ToggleTheme must do, as `{ value: r.value, trace: r.trace } ==
+-- { value: Ok Rerender, trace: ["Session.put"] }`: its answer and the effects it ran.
+test "pressing ToggleTheme" = {
+  let r <- Test.run (update (ToggleTheme { dark: ?toggleThemeDark }) {  })
+  Task.succeed ?expected
+}

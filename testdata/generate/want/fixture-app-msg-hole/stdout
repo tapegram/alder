@@ -1,0 +1,37 @@
+edited app/App.alder
+--- a/app/App.alder
++++ b/app/App.alder
+@@ -11,12 +11,15 @@
+ 
+ msg Logout
+ 
++msg Ping
++
+ update : Msg -> Session -> Task Nav
+ update msg session = match msg {
+   Logout p -> {
+     let _ <- Session.put (\s -> { s | user: Nothing, role: Reader })
+     Task.succeed (Redirect (Auth.Login {}))
+   },
++  Ping p -> ?ping,
+ }
+ 
+ error : Error -> Html Never
+@@ -38,3 +41,11 @@
+   let r <- Test.run (update Logout { user: Just (User.UserId "me"), role: Admin })
+   Task.succeed (r.value == Ok (Redirect (Auth.Login {})))
+ }
++
++-- A message of App is sent from any page (`click={App.Ping}`), so the test calls update itself.
++-- Fill ?expected with what Ping must do, as `{ value: r.value, trace: r.trace } ==
++-- { value: Ok Rerender, trace: ["Session.put"] }`: its answer and the effects it ran.
++test "pressing Ping" = {
++  let r <- Test.run (update Ping { user: Nothing, role: Reader })
++  Task.succeed ?expected
++}
+app/App.alder:22:13: warning[W0002]: hole ?ping has type Task Nav
+    Ping p -> ?ping,
+              ^^^^^
+app/App.alder:50:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^

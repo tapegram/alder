@@ -1,0 +1,107 @@
+module Home
+
+import Layout
+import Post
+import User
+
+page "/" { } requires user
+
+type Model = { posts: List Post }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <- Db.mine Post |> Db.orderBy Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form Write = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Submit form Write
+
+-- Feature's arm reads the posted fields as p.form (p.form : Reason, such as p.form.why)
+form Reason = {
+  why: Text.NonEmpty,
+}
+
+msg Feature { id: Post.PostId } form Reason
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
+    Task.succeed (Redirect (Home {}))
+  },
+  Feature p -> ?feature,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Your posts">
+    <h1>Your posts</h1>
+
+    <ul id="posts">
+      {for post in model.posts -> <li>{post.title}</li>}
+    </ul>
+
+    <al-card>
+      <h2 slot="header">Write a post</h2>
+      <form submit={Submit}>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-input field="title" label="Title" />
+        <al-textarea field="body" label="Body" />
+        <al-button type="submit">Write</al-button>
+      </form>
+      <form submit={Feature { id: ?featureId }}>
+        <al-input field="why" label="Why" />
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-button type="submit">Reason</al-button>
+      </form>
+    </al-card>
+
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+
+  </Layout.Page>
+
+test "writing a post lists it, a draft" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Home {})
+  let r <- Test.submit Write { title: Text.NonEmpty "Hello", body: "" }
+  let posts <- Db.from Post |> Db.all
+  Task.succeed ({ answer: r.answer, listed: Test.texts "#posts li" r.doc, posts: List.map (\p -> { status: p.status, featured: p.featured, author: p.author }) posts } == { answer: Redirected (Home {}), listed: ["Hello"], posts: [{ status: Draft, featured: False, author: me }] })
+}
+
+test "only my posts are listed, newest first" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other" }
+  let _ <- Db.insert Post { title: Text.NonEmpty "First", body: "", author: me }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Theirs", body: "", author: other }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Second", body: "", author: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Home {})
+  Task.succeed (Test.texts "#posts li" page.doc == ["Second", "First"])
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Home {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "logging out signs the user out" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", role: Admin }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let _ <- Test.get (Home {})
+  let out <- Test.click App.Logout
+  Task.succeed ({ answer: out.answer, user: out.session.user, role: out.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, role: Reader })
+}
+
+test "submitting Reason" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Home {})
+  let r <- Test.submit (Feature { id: ?featureId }) { why: Text.NonEmpty "why-1" }
+  Task.succeed (r.answer == ?expected)
+}
