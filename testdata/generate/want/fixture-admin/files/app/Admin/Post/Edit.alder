@@ -8,12 +8,13 @@ import Post
 import User
 -- @admin end
 
-page "/admin/post/{id}/edit" { id: Post.PostId } requires user, role Admin
+page "/admin/post/{id}/edit" { id: Post.PostId, findAuthor: Text = "" } requires user, role Admin
 
 type Model = {
   row: Post,
   -- @admin begin model
   authors: List User,
+  authorsTotal: Int,
   -- @admin end
 }
 
@@ -23,9 +24,16 @@ load params session = {
   if admin then {
     -- @admin begin load
     let found <- Db.get Post params.id
-    let authors <- Db.from User |> Db.orderBy User.email.asc |> Db.all
     match found {
-      Just row -> Query.succeed { row: row, authors: authors },
+      Just row -> {
+        let findAuthor = Text.slice 0 200 params.findAuthor
+        let authorsTotal <- Db.from User |> Db.count
+        let authors <- Db.from User |> Db.orderBy User.email.asc |> Db.where (if authorsTotal > 200 then Db.or [
+          User.email.contains findAuthor,
+          User.id.eq row.author,
+        ] else Db.and []) |> Db.limit (if authorsTotal > 200 then 50 else 200) |> Db.all
+        Query.succeed { row: row, authors: authors, authorsTotal: authorsTotal }
+      },
       Nothing -> Query.notFound,
     }
     -- @admin end
@@ -42,10 +50,20 @@ form PostForm = {
 }
 -- @admin end
 
+-- @admin begin search
+form FindAuthor = { q: Text }
+
+msg SearchAuthor form FindAuthor
+
+-- @admin end
+
 msg Save form PostForm
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
+  -- @admin begin finds
+  SearchAuthor p -> Task.succeed (Redirect (Admin.Post.Edit { id: model.row.id, findAuthor: p.form.q })),
+  -- @admin end
   Save p -> {
     -- @admin begin update
     let _ <- Db.update Post model.row.id (\row -> { row |
@@ -66,6 +84,9 @@ view model session =
     <h1>Edit post</h1>
 
     <al-card>
+      -- @admin begin finder
+      {if model.authorsTotal > 200 then <form submit={SearchAuthor}><al-input field="q" label="Find author" /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}
+      -- @admin end
       <form submit={Save}>
         -- @admin begin inputs
         <al-input field="title" label="Title" value={model.row.title} />
@@ -153,6 +174,58 @@ test "an author not offered is refused" = {
   } == {
     answer: FormRejected [{ field: "author", message: "must be one of the options" }],
     author: Just me,
+  })
+}
+
+test "a list of 200 users is offered whole" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
+  let _ <- Task.all (List.map (\n -> Db.insert User {
+    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+  }) (List.range 3 200))
+  let page <- Test.get (Admin.Post.Edit { id: post1 })
+  Task.succeed (List.length page.model.authors == 200)
+}
+
+test "a long list of users offers 50, and the search narrows it" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
+  let _ <- Task.all (List.map (\n -> Db.insert User {
+    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+  }) (List.range 3 203))
+  let all <- Test.get (Admin.Post.Edit { id: post1 })
+  let found <- Test.get (Admin.Post.Edit { id: post1, findAuthor: "email-203@example.com" })
+  let r <- Test.submit FindAuthor { q: "zz" }
+  Task.succeed ({
+    shown: List.length all.model.authors,
+    total: all.model.authorsTotal,
+    found: Test.count "select[name=author] option" found.doc <= 3,
+    answer: r.answer,
+  } == {
+    shown: 50,
+    total: 203,
+    found: True,
+    answer: Redirected (Admin.Post.Edit { id: post1, findAuthor: "zz" }),
   })
 }
 

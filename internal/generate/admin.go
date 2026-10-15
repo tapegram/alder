@@ -1352,6 +1352,53 @@ func (at *adminTable) formName() string { return at.t.Name + "Form" }
 // optionsField is the model field holding the rows a reference column's select offers.
 func optionsField(c *Column) string { return Plural(c.Name) }
 
+// totalField is the model field counting the rows of the table a reference refers to, and
+// findParam the page parameter narrowing a long list of them (the search's text).
+func totalField(c *Column) string { return optionsField(c) + "Total" }
+func findParam(c *Column) string  { return "find" + UpperFirst(c.Name) }
+
+// finds reports whether the select of reference c can be a search: the label of the table it
+// refers to is text the database can search.
+func (g *adminGen) finds(c *Column) bool {
+	rt := g.p.TableNamed(c.Ref)
+	l := rt.Label()
+	return !l.ID && l.Kind == KindText && !l.Maybe && !l.Secret()
+}
+
+// findParams are the page parameters that narrow at's long selects.
+func (g *adminGen) findParams(at *adminTable) []string {
+	var out []string
+	for _, c := range at.refs {
+		if g.finds(c) {
+			out = append(out, findParam(c)+": Text = \"\"")
+		}
+	}
+	return out
+}
+
+// finders are the Search messages of at's page: the declarations (region `search`), the forms
+// above the page's form that show while a list is long, and the update's arms (region `finds`).
+// A search answers with the page again at the text (the narrowed list must survive the load that
+// runs before every message, so the text is a parameter of the page).
+func (g *adminGen) finders(at *adminTable, page string, edit bool) (decls, view, arms []string) {
+	for _, c := range at.refs {
+		if !g.finds(c) {
+			continue
+		}
+		name := "Search" + UpperFirst(c.Name)
+		form := "Find" + UpperFirst(c.Name)
+		decls = append(decls, "form "+form+" = { q: Text }", "", "msg "+name+" form "+form, "")
+		view = append(view, fmt.Sprintf(`{if model.%s > 200 then <form submit={%s}><al-input field="q" label=%s /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}`,
+			totalField(c), name, quote("Find "+strings.ToLower(Humanize(c.Name)))))
+		args := findParam(c) + ": p.form.q"
+		if edit {
+			args = "id: model.row." + at.t.IDField + ", " + args
+		}
+		arms = append(arms, name+" p -> Task.succeed (Redirect ("+page+" { "+args+" })),")
+	}
+	return
+}
+
 // formParts are the regions a New or Edit page shares: the model's option fields, their loads,
 // the form's declaration, its inputs (edit: with the row's values).
 func (g *adminGen) formParts(at *adminTable, mod string, imports *importSet, edit bool) (model, loads, form, inputs []string) {
@@ -1363,7 +1410,27 @@ func (g *adminGen) formParts(at *adminTable, mod string, imports *importSet, edi
 		if l := rt.Label(); !l.ID {
 			sel += " |> Db.orderBy " + rt.Name + "." + l.Name + ".asc"
 		}
-		loads = append(loads, fmt.Sprintf("let %s <- %s |> Db.all", optionsField(c), sel))
+		if !g.finds(c) {
+			loads = append(loads, fmt.Sprintf("let %s <- %s |> Db.all", optionsField(c), sel))
+			continue
+		}
+		// a long table is not offered whole: past 200 rows the select holds 50, those whose label
+		// contains the search (and, on Edit, the row's own); the rows a submitted value is checked
+		// against are the ones rendered
+		model = append(model, totalField(c)+": Int,")
+		q, n := findParam(c), optionsField(c)
+		where := rt.Name + "." + rt.Label().Name + ".contains " + q
+		if edit {
+			cur := rt.Name + "." + rt.IDField + ".eq row." + c.Name
+			if c.Maybe {
+				cur = rt.Name + "." + rt.IDField + ".in (List.filterMap (\\i -> i) [row." + c.Name + "])"
+			}
+			where = "Db.or [" + where + ", " + cur + "]"
+		}
+		loads = append(loads,
+			fmt.Sprintf("let %s = Text.slice 0 200 params.%s", q, q),
+			fmt.Sprintf("let %s <- Db.from %s |> Db.count", totalField(c), rt.Name),
+			fmt.Sprintf("let %s <- %s |> Db.where (if %s > 200 then %s else Db.and []) |> Db.limit (if %s > 200 then 50 else 200) |> Db.all", n, sel, totalField(c), where, totalField(c)))
 	}
 	form = append(form, "form "+at.formName()+" = {")
 	for _, c := range at.editable {
@@ -1411,6 +1478,9 @@ func (g *adminGen) newPage(at *adminTable) {
 	var fields []string
 	for _, c := range at.refs {
 		fields = append(fields, optionsField(c)+": "+optionsField(c))
+		if g.finds(c) {
+			fields = append(fields, totalField(c)+": "+totalField(c))
+		}
 	}
 	loads = append(loads, "Query.succeed { "+strings.Join(fields, ", ")+" }")
 	if len(fields) == 0 {
@@ -1444,15 +1514,21 @@ func (g *adminGen) newPage(at *adminTable) {
 	})...)
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "page %s { }%s\n\n", quote(at.path+"/new"), adminRequires)
+	pageParams := "{ }"
+	if fp := g.findParams(at); len(fp) > 0 {
+		pageParams = "{ " + strings.Join(fp, ", ") + " }"
+	}
+	decls, finder, arms := g.finders(at, at.page("New"), false)
+	fmt.Fprintf(&b, "page %s %s%s\n\n", quote(at.path+"/new"), pageParams, adminRequires)
 	b.WriteString("type Model = {\n" + regionAt("  ", "model", model) + "\n}\n\n")
 	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
 	b.WriteString(regionAt("", "form", form) + "\n\n")
+	b.WriteString(regionAt("", "search", decls) + "\n\n")
 	fmt.Fprintf(&b, "msg Create form %s\n\n", at.formName())
-	b.WriteString("update : Msg -> Model -> Session -> Task Nav\nupdate msg model session = match msg {\n  Create p -> {\n")
+	b.WriteString("update : Msg -> Model -> Session -> Task Nav\nupdate msg model session = match msg {\n" + regionAt("  ", "finds", arms) + "\n  Create p -> {\n")
 	b.WriteString(regionAt("    ", "insert", wrapAll(insert)) + "\n  },\n}\n\n")
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
-	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n      <form submit={Create}>\n%s\n", open, UpperFirst(title), regionAt("        ", "inputs", inputs))
+	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n%s\n      <form submit={Create}>\n%s\n", open, UpperFirst(title), regionAt("      ", "finder", finder), regionAt("        ", "inputs", inputs))
 	b.WriteString("        <al-alert variant=\"destructive\"><Errors form /></al-alert>\n        <al-button type=\"submit\">Create</al-button>\n      </form>\n    </al-card>\n")
 	fmt.Fprintf(&b, "  %s\n", close)
 
@@ -1498,6 +1574,7 @@ func (g *adminGen) newPage(at *adminTable) {
 		Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
 	tests = append(tests, g.uniqueTests(at, mod, imports, false)...)
 	tests = append(tests, g.notOffered(at, mod, imports, false)...)
+	tests = append(tests, g.findTests(at, mod, imports, false)...)
 	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return mod + " {}" })...)
 	b.WriteString(testsText(tests))
 	g.file(mod, imports, b.String())
@@ -1733,9 +1810,13 @@ func (g *adminGen) edit(at *adminTable) {
 	fields := []string{"row: row"}
 	for _, c := range at.refs {
 		fields = append(fields, optionsField(c)+": "+optionsField(c))
+		if g.finds(c) {
+			fields = append(fields, totalField(c)+": "+totalField(c))
+		}
 	}
-	loads = append([]string{"let found <- Db.get " + t.Name + " params.id"}, loads...)
-	loads = append(loads, "match found {", "  Just row -> Query.succeed { "+strings.Join(fields, ", ")+" },", "  Nothing -> Query.notFound,", "}")
+	// the options are read with the row in hand: the select of a long table keeps its value
+	loads = append([]string{"let found <- Db.get " + t.Name + " params.id", "match found {", "  Just row -> {"},
+		append(indentAll(loads, "    "), "    Query.succeed { "+strings.Join(fields, ", ")+" }", "  },", "  Nothing -> Query.notFound,", "}")...)
 	var sets []string
 	for _, c := range at.editable {
 		sets = append(sets, c.Name+": p.form."+c.Name)
@@ -1746,12 +1827,15 @@ func (g *adminGen) edit(at *adminTable) {
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "page %s { id: %s }%s\n\n", pathLit(at.path+"/{id}/edit"), types.StringIn(t.IDType, mod), adminRequires)
+	decls, finder, arms := g.finders(at, at.page("Edit"), true)
+	editParams := append([]string{"id: " + types.StringIn(t.IDType, mod)}, g.findParams(at)...)
+	fmt.Fprintf(&b, "page %s { %s }%s\n\n", pathLit(at.path+"/{id}/edit"), strings.Join(editParams, ", "), adminRequires)
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + regionAt("  ", "model", model) + "\n}\n\n")
 	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
 	b.WriteString(regionAt("", "form", form) + "\n\n")
+	b.WriteString(regionAt("", "search", decls) + "\n\n")
 	fmt.Fprintf(&b, "msg Save form %s\n\n", at.formName())
-	b.WriteString("update : Msg -> Model -> Session -> Task Nav\nupdate msg model session = match msg {\n  Save p -> {\n")
+	b.WriteString("update : Msg -> Model -> Session -> Task Nav\nupdate msg model session = match msg {\n" + regionAt("  ", "finds", arms) + "\n  Save p -> {\n")
 	save := g.unique(at, "model.row."+t.IDField, []string{upd, fmt.Sprintf("Task.succeed (Redirect (%s { id: model.row.%s }))", at.page("Show"), t.IDField)})
 	role := g.ownRole(at)
 	if role != nil { // the signed-in user's own role is not changed: an Admin would lock themselves out
@@ -1763,7 +1847,7 @@ func (g *adminGen) edit(at *adminTable) {
 	}
 	b.WriteString(regionAt("    ", "update", wrapAll(save)) + "\n  },\n}\n\n")
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
-	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n      <form submit={Save}>\n%s\n", open, UpperFirst(title), regionAt("        ", "inputs", inputs))
+	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n%s\n      <form submit={Save}>\n%s\n", open, UpperFirst(title), regionAt("      ", "finder", finder), regionAt("        ", "inputs", inputs))
 	b.WriteString("        <al-alert variant=\"destructive\"><Errors form /></al-alert>\n        <al-button type=\"submit\">Save</al-button>\n      </form>\n    </al-card>\n")
 	fmt.Fprintf(&b, "    <a href={%s { id: model.row.%s }}>Back</a>\n", at.page("Show"), t.IDField)
 	fmt.Fprintf(&b, "  %s\n", close)
@@ -1797,6 +1881,7 @@ func (g *adminGen) edit(at *adminTable) {
 		tests = append(tests, g.ownRoleTests(at, mod, imports, role)...)
 	}
 	tests = append(tests, g.notOffered(at, mod, imports, true)...)
+	tests = append(tests, g.findTests(at, mod, imports, true)...)
 	tests = append(tests, g.missingTest(at, mod, imports))
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
 		return pageLit(mod, []string{"id: " + tb.insertRow(t, "", nil, false)})

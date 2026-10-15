@@ -101,19 +101,23 @@ test "deleting the chosen rows leaves the ones other rows refer to" = {
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let _ <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post1 }
   let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
+  let post3 <- Db.insert Post { title: Text.NonEmpty "title-3", body: "body-3", author: me }
   let _ <- Test.get (Admin.Post.Bulk { ids: [post1, post2] })
   let r <- Test.submit Confirm { }
   let gone <- Db.get Post post2
+  let left <- Db.get Post post3
   let kept <- Db.get Post post1
   let page <- Test.get (Admin.Post.Bulk { ids: [post1, post2] })
   Task.succeed ({
     answer: r.answer,
     gone: Maybe.map (\row -> row.id) gone,
+    left: Maybe.map (\row -> row.id) left,
     kept: Maybe.map (\row -> row.id) kept,
     listed: Test.count "#selected li small" page.doc,
   } == {
     answer: Redirected (Admin.Post.Index {}),
     gone: Nothing,
+    left: Just post3,
     kept: Just post1,
     listed: 1,
   })

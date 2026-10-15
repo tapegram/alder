@@ -32,10 +32,15 @@ form UserForm = {
 }
 -- @admin end
 
+-- @admin begin search
+-- @admin end
+
 msg Create form UserForm
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
+  -- @admin begin finds
+  -- @admin end
   Create p -> {
     -- @admin begin insert
     let emailTaken <- Db.from User |> Db.where (User.email.eq p.form.email) |> Db.count
@@ -55,6 +60,8 @@ view model session =
     <h1>New user</h1>
 
     <al-card>
+      -- @admin begin finder
+      -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
         <al-input field="email" label="Email" />

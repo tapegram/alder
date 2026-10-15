@@ -75,15 +75,19 @@ test "deleting the chosen rows" = {
   let _ <- Test.login { user: Just me, role: Admin }
   let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
   let comment1 <- Db.insert Comment { post: post1, author: me, body: Text.NonEmpty "body-1" }
+  let comment2 <- Db.insert Comment { post: post1, author: me, body: Text.NonEmpty "body-2" }
   let _ <- Test.get (Admin.Comment.Bulk { ids: [comment1] })
   let r <- Test.submit Confirm { }
   let gone <- Db.get Comment comment1
+  let left <- Db.get Comment comment2
   Task.succeed ({
     answer: r.answer,
     gone: Maybe.map (\row -> row.id) gone,
+    left: Maybe.map (\row -> row.id) left,
   } == {
     answer: Redirected (Admin.Comment.Index {}),
     gone: Nothing,
+    left: Just comment2,
   })
 }
 

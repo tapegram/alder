@@ -22,7 +22,9 @@ load params session = {
     -- @admin begin load
     let found <- Db.get User params.id
     match found {
-      Just row -> Query.succeed { row: row },
+      Just row -> {
+        Query.succeed { row: row }
+      },
       Nothing -> Query.notFound,
     }
     -- @admin end
@@ -37,10 +39,15 @@ form UserForm = {
 }
 -- @admin end
 
+-- @admin begin search
+-- @admin end
+
 msg Save form UserForm
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
+  -- @admin begin finds
+  -- @admin end
   Save p -> {
     -- @admin begin update
     if session.user == model.row.id && p.form.role != model.row.role then
@@ -71,6 +78,8 @@ view model session =
     <h1>Edit user</h1>
 
     <al-card>
+      -- @admin begin finder
+      -- @admin end
       <form submit={Save}>
         -- @admin begin inputs
         <al-input field="email" label="Email" value={model.row.email} />

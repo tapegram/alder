@@ -140,9 +140,10 @@ func (g *adminGen) bulk(at *adminTable) {
 			tb.insertRow(h.t, "_", map[string]string{h.col.Name: maybeJust(h.col, keep)}, false)
 		}
 		free := tb.insertRow(t, "", nil, keep == "")
+		unchosen := tb.insertRow(t, "", nil, false)
 		sel := []string{free}
-		lhs := "answer: r.answer, gone: Maybe.map (\\row -> row." + id + ") gone"
-		rhs := "answer: Redirected (" + at.page("Index") + " {}), gone: Nothing"
+		lhs := "answer: r.answer, gone: Maybe.map (\\row -> row." + id + ") gone, left: Maybe.map (\\row -> row." + id + ") left"
+		rhs := "answer: Redirected (" + at.page("Index") + " {}), gone: Nothing, left: Just " + unchosen
 		name := "deleting the chosen rows"
 		if keep != "" {
 			sel = []string{keep, free}
@@ -151,6 +152,7 @@ func (g *adminGen) bulk(at *adminTable) {
 		tb.let("let _ <- Test.get (%s)", pageLit(mod, []string{ids(sel...)}))
 		tb.let("let r <- Test.submit Confirm { }")
 		tb.let("let gone <- Db.get %s %s", t.Name, free)
+		tb.let("let left <- Db.get %s %s", t.Name, unchosen)
 		if keep != "" {
 			tb.let("let kept <- Db.get %s %s", t.Name, keep)
 			tb.let("let page <- Test.get (%s)", pageLit(mod, []string{ids(sel...)}))
@@ -206,4 +208,83 @@ func bulkForms(at *adminTable) string {
       </form>
     </al-stack>
 `, quote(at.path+"/bulk"), quote(at.path+"/bulk"), textOf(at.idColumn(), "row."+at.t.IDField))
+}
+
+// findTests are the New (or Edit) page's tests of a long table behind a reference: at exactly
+// 200 rows its select holds them all, past that it holds 50 and the search narrows them (Edit
+// keeps the row's own value too), the search message answers the page at the text, and a value
+// outside the rendered options (a crafted request) is refused with the field error.
+func (g *adminGen) findTests(at *adminTable, mod string, imports *importSet, edit bool) []TestData {
+	var tests []TestData
+	for _, c := range at.refs {
+		if !g.finds(c) {
+			continue
+		}
+		rt := g.p.TableNamed(c.Ref)
+		sel := "select[name=" + c.Name + "] option"
+		start := func() (*testBuilder, func(extra ...string) string, string) {
+			tb := g.tb(mod, imports, true)
+			target := ""
+			if edit {
+				target = tb.insertRow(at.t, "", nil, false)
+			}
+			g.optionRows(tb, at)
+			return tb, func(extra ...string) string {
+				if edit {
+					extra = append([]string{"id: " + target}, extra...)
+				}
+				return pageLit(mod, extra)
+			}, target
+		}
+		// exactly 200 rows are all offered
+		tb, at200, _ := start()
+		tb.bulkInsert(rt, 200-tb.counts[rt.Module], "")
+		tb.let("let page <- Test.get (%s)", at200())
+		tests = append(tests, TestData{Name: quote("a list of 200 " + pluralOf(rt) + " is offered whole"), Lines: tb.lines,
+			Result: fmt.Sprintf("List.length page.model.%s == 200", optionsField(c))})
+
+		tb, pageAt, target := start()
+		tb.bulkInsert(rt, 201, "")
+		last := rawText(rt.Label(), tb.counts[rt.Module])
+		tb.let("let all <- Test.get (%s)", pageAt())
+		tb.let("let found <- Test.get (%s)", pageAt(findParam(c)+": "+quote(last)))
+		tb.let("let r <- Test.submit Find%s { q: \"zz\" }", UpperFirst(c.Name))
+		redirect := pageLit(mod, []string{findParam(c) + ": \"zz\""})
+		if edit {
+			redirect = pageLit(mod, []string{"id: " + target, findParam(c) + ": \"zz\""})
+		}
+		found := fmt.Sprintf("Test.count %s found.doc <= 3", quote(sel))
+		if !edit {
+			want := "[" + quote(last) + "]"
+			if c.Maybe {
+				want = "[\"\", " + quote(last) + "]"
+			}
+			found = fmt.Sprintf("Test.texts %s found.doc == %s", quote(sel), want)
+		}
+		tests = append(tests, TestData{Name: quote("a long list of " + pluralOf(rt) + " offers 50, and the search narrows it"), Lines: tb.lines,
+			Result: fmt.Sprintf("{ shown: List.length all.model.%s, total: all.model.%s, found: %s, answer: r.answer } == { shown: 50, total: %d, found: True, answer: Redirected (%s) }",
+				optionsField(c), totalField(c), found, tb.counts[rt.Module], redirect)})
+		if c.Maybe || edit {
+			continue
+		}
+		tb.let("let pick = Maybe.withDefault \"\" (Test.attr \"value\" %s found.doc)", quote(sel))
+		tb.let("let page <- Test.get (%s)", pageAt())
+		var raw []string
+		for _, d := range at.editable {
+			v := quote(rawSample(d.Type))
+			switch {
+			case d == c:
+				v = "pick"
+			case d.Ref != "" && g.p.TableNamed(d.Ref) != nil && !d.Maybe:
+				v = d.Name + "Id"
+				tb.let("let %s = Maybe.withDefault \"\" (Test.attr \"value\" \"select[name=%s] option\" page.doc)", v, d.Name)
+			}
+			raw = append(raw, fmt.Sprintf("{ name: %s, value: %s }", quote(d.Name), v))
+		}
+		tb.let("let sent <- Test.submitRaw %s [%s]", at.formName(), strings.Join(raw, ", "))
+		tb.let("let rows <- Db.from %s |> Db.count", at.t.Name)
+		tests = append(tests, TestData{Name: quote(article(strings.ToLower(Humanize(c.Name))) + " outside the narrowed list is refused"), Lines: tb.lines,
+			Result: fmt.Sprintf("{ answer: sent.answer, rows: rows } == { answer: FormRejected [{ field: %s, message: \"must be one of the options\" }], rows: %d }", quote(c.Name), tb.counts[at.t.Module])})
+	}
+	return tests
 }

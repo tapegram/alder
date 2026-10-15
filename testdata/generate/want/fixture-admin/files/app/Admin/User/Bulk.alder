@@ -89,19 +89,26 @@ test "deleting the chosen rows leaves the ones other rows refer to" = {
     email: Text.Email "email-3@example.com",
     name: Text.NonEmpty "name-3",
   }
+  let user4 <- Db.insert User {
+    email: Text.Email "email-4@example.com",
+    name: Text.NonEmpty "name-4",
+  }
   let _ <- Test.get (Admin.User.Bulk { ids: [user2, user3] })
   let r <- Test.submit Confirm { }
   let gone <- Db.get User user3
+  let left <- Db.get User user4
   let kept <- Db.get User user2
   let page <- Test.get (Admin.User.Bulk { ids: [user2, user3] })
   Task.succeed ({
     answer: r.answer,
     gone: Maybe.map (\row -> row.id) gone,
+    left: Maybe.map (\row -> row.id) left,
     kept: Maybe.map (\row -> row.id) kept,
     listed: Test.count "#selected li small" page.doc,
   } == {
     answer: Redirected (Admin.User.Index {}),
     gone: Nothing,
+    left: Just user4,
     kept: Just user2,
     listed: 1,
   })
