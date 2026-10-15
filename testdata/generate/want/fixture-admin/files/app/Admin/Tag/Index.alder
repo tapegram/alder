@@ -178,6 +178,7 @@ view model session =
         <thead>
           <tr>
             -- @admin begin headers
+            <th><span class="sr-only">Choose</span></th>
             <th><a href={listAt model "name" (toggle model "name") 1}>Name</a></th>
             <th><a href={listAt model "post" (toggle model "post") 1}>Post</a></th>
             <th><a href={listAt model "created" (toggle model "created") 1}>Created</a></th>
@@ -188,6 +189,7 @@ view model session =
           {for row in model.rows ->
             <tr>
               -- @admin begin cells
+              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label="Choose this row" /></td>
               <td><a href={Admin.Tag.Show { id: row.id }}>{row.name}</a></td>
               <td><a href={Admin.Post.Show { id: row.post }}>{postLabel model.labels row.post}</a></td>
               <td>{Time.format "Jan 2, 2006" row.created}</td>
@@ -196,6 +198,16 @@ view model session =
         </tbody>
       </table>
     </al-table>
+
+    <al-stack direction="row" gap="sm">
+      <form id="bulk" method="get" action="/admin/tag/bulk">
+        <al-button type="submit" variant="secondary">Act on the chosen rows</al-button>
+      </form>
+      <form id="bulk-page" method="get" action="/admin/tag/bulk">
+        {for row in model.rows -> <input type="hidden" name="ids" value={row.id} />}
+        <al-button type="submit" variant="secondary">Act on all rows on this page</al-button>
+      </form>
+    </al-stack>
 
     <al-pagination role="navigation" aria-label="Pages">
       {if model.page > 1 then <a slot="prev" href={listAt model model.sort model.dir (model.page - 1)} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}

@@ -68,7 +68,7 @@ func TestAdmin_Refusals(t *testing.T) {
 		{genApp(t, "scaffold"), []string{"new", "admin"}, "alder new admin: " + generate.AdminNeeds + ": this app's session has no `user`; add a user table, a login that sets `user`, and a `role` (chapter 6, \"Rules\" and \"Roles\")"},
 		{withAdmin, []string{"new", "admin"}, "alder new admin: `app/Admin/` exists: `alder regen admin` updates the admin in it; to generate another, choose another `--module`"},
 		{genApp(t, "fixture"), []string{"regen", "admin"}, "alder regen admin: there is no admin in `app/Admin/`: `alder new admin` generates one (name another with --module)"},
-		{broken, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Post/Index.alder`: region `cells` has no end marker (region `tests` begins at line 238, inside it)"},
+		{broken, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Post/Index.alder`: region `cells` has no end marker (region `tests` begins at line 250, inside it)"},
 		{older, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Tag/Index.alder` has no region `filters`, which its list now needs (it was generated before the filters): delete it and run `alder regen admin --all` to write it again, then carry over your changes"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--module", "admin"}, "alder new admin: `--module admin` is not a module name: write capitalised names joined by dots, such as `Admin`"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--path", "/admin/{id}"}, "alder new admin: `--path /admin/{id}` is not a path without parameters, such as `/admin`"},
@@ -115,7 +115,7 @@ func TestAdmin_DryRunJSON(t *testing.T) {
 	dir := genApp(t, "fixture")
 	before := appFiles(t, dir)
 	code, out, _ := alderIn(t, dir, "", "new", "admin", "--dry-run")
-	if code != 0 || !strings.HasPrefix(out, "would write app/Admin/Comment/Delete.alder\n") || !strings.Contains(out, "--- /dev/null\n+++ b/app/Admin/Index.alder\n") || !strings.HasSuffix(out, "dry run: nothing written\n") {
+	if code != 0 || !strings.HasPrefix(out, "would write app/Admin/Comment/Bulk.alder\n") || !strings.Contains(out, "--- /dev/null\n+++ b/app/Admin/Index.alder\n") || !strings.HasSuffix(out, "dry run: nothing written\n") {
 		t.Errorf("--dry-run: exit %d\n%.2000s", code, out)
 	}
 	if ch := changedFiles(before, appFiles(t, dir)); len(ch) != 0 {
@@ -126,7 +126,7 @@ func TestAdmin_DryRunJSON(t *testing.T) {
 		Files   []struct{ Path, Action string }
 		Written bool
 	}
-	if err := json.Unmarshal([]byte(out), &got); err != nil || code != 0 || strings.Count(out, "\n") != 1 || len(got.Files) != 22 || !got.Written || got.Files[0].Path != "app/Admin/Comment/Delete.alder" || got.Files[0].Action != "created" {
+	if err := json.Unmarshal([]byte(out), &got); err != nil || code != 0 || strings.Count(out, "\n") != 1 || len(got.Files) != 26 || !got.Written || got.Files[0].Path != "app/Admin/Comment/Bulk.alder" || got.Files[0].Action != "created" {
 		t.Errorf("--json: exit %d, %v\n%.500s", code, err, out)
 	}
 	other := genApp(t, "fixture")

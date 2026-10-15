@@ -141,7 +141,7 @@ func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []s
 	}
 	tableOf := map[string]string{} // a table page's path: the expression of its list page
 	for _, t := range p.Tables {
-		for _, kind := range []string{"Index", "Show", "New", "Edit", "Delete"} {
+		for _, kind := range []string{"Index", "Show", "New", "Edit", "Delete", "Bulk"} {
 			tableOf[FileOf(o.Module+"."+t.Module+"."+kind)] = o.Module + "." + t.Module + ".Index {}"
 		}
 	}
@@ -204,6 +204,9 @@ func AdminFiles(p *Program, o AdminOptions) (map[string]string, []string) {
 	for _, t := range p.Tables {
 		g.tables = append(g.tables, g.table(t))
 	}
+	for _, at := range g.tables {
+		g.bulkInfo(at)
+	}
 	g.layout()
 	g.dashboard()
 	for _, at := range g.tables {
@@ -212,6 +215,7 @@ func AdminFiles(p *Program, o AdminOptions) (map[string]string, []string) {
 		g.newPage(at)
 		g.edit(at)
 		g.delete(at)
+		g.bulk(at)
 	}
 	return g.files, g.order
 }
@@ -227,18 +231,21 @@ type adminGen struct {
 
 // adminTable is a table as the admin shows it.
 type adminTable struct {
-	t        *Table
-	mod      string // the module prefix of its pages: "Admin.Post"
-	path     string // "/admin/post"
-	plural   string // "posts": its rows in a model, an element's id
-	title    string // "Posts"
-	noun     string // "post"
-	label    *Column
-	editable []*Column   // the columns its forms edit
-	refs     []*Column   // the editable columns that refer to a table: a select of its rows
-	nowCols  []*Column   // Time columns an insert must name, which no form edits: the time of the insert
-	secrets  []*Column   // secret columns an insert must name, which the admin never shows or edits
-	referrer []*referrer // the columns of other tables (or its own) that refer to it
+	t         *Table
+	mod       string // the module prefix of its pages: "Admin.Post"
+	path      string // "/admin/post"
+	plural    string // "posts": its rows in a model, an element's id
+	title     string // "Posts"
+	noun      string // "post"
+	label     *Column
+	editable  []*Column   // the columns its forms edit
+	refs      []*Column   // the editable columns that refer to a table: a select of its rows
+	nowCols   []*Column   // Time columns an insert must name, which no form edits: the time of the insert
+	secrets   []*Column   // secret columns an insert must name, which the admin never shows or edits
+	referrer  []*referrer // the columns of other tables (or its own) that refer to it
+	bulkDel   bool        // the bulk page offers a delete
+	bulkHolds []*node     // the @restrict references that keep a row from a bulk delete
+	bulkSet   []*Column   // the columns the bulk page sets
 }
 
 // referrer is a column that refers to a table: what deleting a row of that table does to the
@@ -868,6 +875,10 @@ func (g *adminGen) index(at *adminTable) {
 		cells = append(cells, "<td>"+cellText+"</td>")
 	}
 
+	if at.hasBulk() { // a checkbox a row, in the bulk form (below the table)
+		headers = append([]string{`<th><span class="sr-only">Choose</span></th>`}, headers...)
+		cells = append([]string{fmt.Sprintf(`<td><input type="checkbox" name="ids" form="bulk" value={%s} aria-label="Choose this row" /></td>`, textOf(at.idColumn(), "row."+t.IDField))}, cells...)
+	}
 	filterCols := filterColumns(t)
 	params := []string{"q: Text = \"\""}
 	for _, c := range filterCols {
@@ -976,13 +987,13 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
         </tbody>
       </table>
     </al-table>
-
+%s
     <al-pagination role="navigation" aria-label="Pages">
       {if model.page > 1 then <a slot="prev" href={listAt model model.sort model.dir (model.page - 1)} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
       <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
       {if model.page < model.pages then <a slot="next" href={listAt model model.sort model.dir (model.page + 1)} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
-`, quote(at.path), at.page("New"), at.noun, regionAt("            ", "headers", headers), regionAt("              ", "cells", cells))
+`, quote(at.path), at.page("New"), at.noun, regionAt("            ", "headers", headers), regionAt("              ", "cells", cells), bulkForms(at))
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	// the tests
