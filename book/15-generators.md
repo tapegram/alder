@@ -1290,6 +1290,7 @@ view model session =
         <thead>
           <tr>
             -- @admin begin headers
+            <th><span class="sr-only">Choose</span></th>
             <th><a href={listAt model "slug" (toggle model "slug") 1}>Slug</a></th>
             <th><a href={listAt model "title" (toggle model "title") 1}>Title</a></th>
             <th><a href={listAt model "body" (toggle model "body") 1}>Body</a></th>
@@ -1303,6 +1304,7 @@ view model session =
           {for row in model.rows ->
             <tr>
               -- @admin begin cells
+              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label="Choose this row" /></td>
               <td><a href={Admin.Post.Show { id: row.id }}>{row.slug}</a></td>
               <td>{row.title}</td>
               <td>{row.body}</td>
@@ -1314,6 +1316,16 @@ view model session =
         </tbody>
       </table>
     </al-table>
+
+    <al-stack direction="row" gap="sm">
+      <form id="bulk" method="get" action="/admin/post/bulk">
+        <al-button type="submit" variant="secondary">Act on the chosen rows</al-button>
+      </form>
+      <form id="bulk-page" method="get" action="/admin/post/bulk">
+        {for row in model.rows -> <input type="hidden" name="ids" value={row.id} />}
+        <al-button type="submit" variant="secondary">Act on all rows on this page</al-button>
+      </form>
+    </al-stack>
 
     <al-pagination role="navigation" aria-label="Pages">
       {if model.page > 1 then <a slot="prev" href={listAt model model.sort model.dir (model.page - 1)} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
@@ -1580,11 +1592,12 @@ import Post
 import User
 -- @admin end
 
-page "/admin/post/new" { } requires user, role Admin
+page "/admin/post/new" { findAuthor: Text = "" } requires user, role Admin
 
 type Model = {
   -- @admin begin model
   authors: List User,
+  authorsTotal: Int,
   -- @admin end
 }
 
@@ -1593,8 +1606,10 @@ load params session = {
   let admin <- Admin.Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
-    let authors <- Db.from User |> Db.orderBy User.email.asc |> Db.all
-    Query.succeed { authors: authors }
+    let findAuthor = Text.slice 0 200 params.findAuthor
+    let authorsTotal <- Db.from User |> Db.count
+    let authors <- Db.from User |> Db.orderBy User.email.asc |> Db.where (if authorsTotal > 200 then User.email.contains findAuthor else Db.and []) |> Db.limit (if authorsTotal > 200 then 50 else 200) |> Db.all
+    Query.succeed { authors: authors, authorsTotal: authorsTotal }
     -- @admin end
   } else Query.notFound
 }
@@ -1609,10 +1624,20 @@ form PostForm = {
 }
 -- @admin end
 
+-- @admin begin search
+form FindAuthor = { q: Text }
+
+msg SearchAuthor form FindAuthor
+
+-- @admin end
+
 msg Create form PostForm
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
+  -- @admin begin finds
+  SearchAuthor p -> Task.succeed (Redirect (Admin.Post.New { findAuthor: p.form.q })),
+  -- @admin end
   Create p -> {
     -- @admin begin insert
     let slugTaken <- Db.from Post |> Db.where (Post.slug.eq p.form.slug) |> Db.count
@@ -1647,6 +1672,9 @@ view model session =
     <h1>New post</h1>
 
     <al-card>
+      -- @admin begin finder
+      {if model.authorsTotal > 200 then <form submit={SearchAuthor}><al-input field="q" label="Find author" /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}
+      -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
         <al-input field="slug" label="Slug" />
@@ -1792,6 +1820,102 @@ test "an author not offered is refused" = {
   let rows <- Db.from Post |> Db.count
   Task.succeed ({
     answer: r.answer,
+    rows: rows,
+  } == {
+    answer: FormRejected [{ field: "author", message: "must be one of the options" }],
+    rows: 0,
+  })
+}
+
+test "a list of 200 users is offered whole" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Task.all (List.map (\n -> Db.insert User {
+    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+    passwordHash: "passwordhash-" ++ Text.fromInt n,
+  }) (List.range 3 200))
+  let page <- Test.get (Admin.Post.New {})
+  Task.succeed (List.length page.model.authors == 200)
+}
+
+test "a long list of users offers 50, and the search narrows it" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Task.all (List.map (\n -> Db.insert User {
+    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+    passwordHash: "passwordhash-" ++ Text.fromInt n,
+  }) (List.range 3 203))
+  let all <- Test.get (Admin.Post.New {})
+  let found <- Test.get (Admin.Post.New { findAuthor: "email-203@example.com" })
+  let r <- Test.submit FindAuthor { q: "zz" }
+  Task.succeed ({
+    shown: List.length all.model.authors,
+    total: all.model.authorsTotal,
+    found: Test.texts "select[name=author] option" found.doc == ["email-203@example.com"],
+    answer: r.answer,
+  } == {
+    shown: 50,
+    total: 203,
+    found: True,
+    answer: Redirected (Admin.Post.New { findAuthor: "zz" }),
+  })
+}
+
+test "an author outside the narrowed list is refused" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Task.all (List.map (\n -> Db.insert User {
+    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+    passwordHash: "passwordhash-" ++ Text.fromInt n,
+  }) (List.range 3 203))
+  let all <- Test.get (Admin.Post.New {})
+  let found <- Test.get (Admin.Post.New { findAuthor: "email-203@example.com" })
+  let r <- Test.submit FindAuthor { q: "zz" }
+  let pick = Maybe.withDefault "" (Test.attr "value" "select[name=author] option" found.doc)
+  let page <- Test.get (Admin.Post.New {})
+  let sent <- Test.submitRaw PostForm [
+    { name: "slug", value: "x" },
+    { name: "title", value: "x" },
+    { name: "body", value: "x" },
+    { name: "published", value: "True" },
+    { name: "author", value: pick },
+  ]
+  let rows <- Db.from Post |> Db.count
+  Task.succeed ({
+    answer: sent.answer,
     rows: rows,
   } == {
     answer: FormRejected [{ field: "author", message: "must be one of the options" }],
@@ -3562,6 +3686,7 @@ admin catches up:
 
 ```text command=blog
 $ alder regen admin
+edited app/Admin/Comment/Bulk.alder
 edited app/Admin/Comment/Edit.alder
 edited app/Admin/Comment/Index.alder
 edited app/Admin/Comment/New.alder
@@ -3631,7 +3756,7 @@ edited app/Admin/Comment/Show.alder
  ]
  -- @admin end
  
-@@ -183,6 +199,7 @@
+@@ -184,6 +200,7 @@
              <th><a href={listAt model "author" (toggle model "author") 1}>Author</a></th>
              <th><a href={listAt model "body" (toggle model "body") 1}>Body</a></th>
              <th><a href={listAt model "created" (toggle model "created") 1}>Created</a></th>
@@ -3639,7 +3764,7 @@ edited app/Admin/Comment/Show.alder
              -- @admin end
            </tr>
          </thead>
-@@ -194,6 +211,7 @@
+@@ -196,6 +213,7 @@
                <td><a href={Admin.Comment.Show { id: row.id }}>{row.author}</a></td>
                <td>{row.body}</td>
                <td>{Time.format "Jan 2, 2006" row.created}</td>

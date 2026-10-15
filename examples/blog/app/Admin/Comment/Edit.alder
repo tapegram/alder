@@ -9,12 +9,13 @@ import Post
 import User
 -- @admin end
 
-page "/admin/comment/{id}/edit" { id: Comment.CommentId } requires user, role Admin
+page "/admin/comment/{id}/edit" { id: Comment.CommentId, findPost: Text = "" } requires user, role Admin
 
 type Model = {
   row: Comment,
   -- @admin begin model
   posts: List Post,
+  postsTotal: Int,
   -- @admin end
 }
 
@@ -24,9 +25,16 @@ load params session = {
   if admin then {
     -- @admin begin load
     let found <- Db.get Comment params.id
-    let posts <- Db.from Post |> Db.orderBy Post.slug.asc |> Db.all
     match found {
-      Just row -> Query.succeed { row: row, posts: posts },
+      Just row -> {
+        let findPost = Text.slice 0 200 params.findPost
+        let postsTotal <- Db.from Post |> Db.count
+        let posts <- Db.from Post |> Db.orderBy Post.slug.asc |> Db.where (if postsTotal > 200 then Db.or [
+          Post.slug.contains findPost,
+          Post.id.eq row.post,
+        ] else Db.and []) |> Db.limit (if postsTotal > 200 then 50 else 200) |> Db.all
+        Query.succeed { row: row, posts: posts, postsTotal: postsTotal }
+      },
       Nothing -> Query.notFound,
     }
     -- @admin end
@@ -41,10 +49,20 @@ form CommentForm = {
 }
 -- @admin end
 
+-- @admin begin search
+form FindPost = { q: Text }
+
+msg SearchPost form FindPost
+
+-- @admin end
+
 msg Save form CommentForm
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
+  -- @admin begin finds
+  SearchPost p -> Task.succeed (Redirect (Admin.Comment.Edit { id: model.row.id, findPost: p.form.q })),
+  -- @admin end
   Save p -> {
     -- @admin begin update
     let _ <- Db.update Comment model.row.id (\row -> { row |
@@ -63,6 +81,9 @@ view model session =
     <h1>Edit comment</h1>
 
     <al-card>
+      -- @admin begin finder
+      {if model.postsTotal > 200 then <form submit={SearchPost}><al-input field="q" label="Find post" /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}
+      -- @admin end
       <form submit={Save}>
         -- @admin begin inputs
         <al-select field="post" label="Post" options={List.map (\r -> { value: r.id, label: r.slug }) model.posts} value={model.row.post} />
@@ -158,6 +179,88 @@ test "a post not offered is refused" = {
   } == {
     answer: FormRejected [{ field: "post", message: "must be one of the options" }],
     post: Just post1,
+  })
+}
+
+test "a list of 200 posts is offered whole" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post {
+    slug: Post.Slug "slug-1",
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let comment1 <- Db.insert Comment {
+    post: post1,
+    author: Comment.Name "author-1",
+    body: Comment.Body "body-1",
+  }
+  let post2 <- Db.insert Post {
+    slug: Post.Slug "slug-2",
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
+  let _ <- Task.all (List.map (\n -> Db.insert Post {
+    slug: Post.Slug ("slug-" ++ Text.fromInt n),
+    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+    body: "body-" ++ Text.fromInt n,
+    author: me,
+  }) (List.range 3 200))
+  let page <- Test.get (Admin.Comment.Edit { id: comment1 })
+  Task.succeed (List.length page.model.posts == 200)
+}
+
+test "a long list of posts offers 50, and the search narrows it" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post {
+    slug: Post.Slug "slug-1",
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let comment1 <- Db.insert Comment {
+    post: post1,
+    author: Comment.Name "author-1",
+    body: Comment.Body "body-1",
+  }
+  let post2 <- Db.insert Post {
+    slug: Post.Slug "slug-2",
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
+  let _ <- Task.all (List.map (\n -> Db.insert Post {
+    slug: Post.Slug ("slug-" ++ Text.fromInt n),
+    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+    body: "body-" ++ Text.fromInt n,
+    author: me,
+  }) (List.range 3 203))
+  let all <- Test.get (Admin.Comment.Edit { id: comment1 })
+  let found <- Test.get (Admin.Comment.Edit { id: comment1, findPost: "slug-203" })
+  let r <- Test.submit FindPost { q: "zz" }
+  Task.succeed ({
+    shown: List.length all.model.posts,
+    total: all.model.postsTotal,
+    found: Test.count "select[name=post] option" found.doc <= 3,
+    answer: r.answer,
+  } == {
+    shown: 50,
+    total: 203,
+    found: True,
+    answer: Redirected (Admin.Comment.Edit { id: comment1, findPost: "zz" }),
   })
 }
 

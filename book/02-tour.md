@@ -118,7 +118,7 @@ update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Submit p -> {
     let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
-    Task.succeed (Redirect (Home {}))
+    Task.succeed (Notice.with "Signed" (Redirect (Home {})))
   },
 }
 ```
@@ -219,6 +219,7 @@ Page props =
       <al-page width="narrow">
         <main>{props.children}</main>
       </al-page>
+      <al-toasts></al-toasts>
     </body>
   </html>
 ```

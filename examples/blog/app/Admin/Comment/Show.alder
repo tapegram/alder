@@ -69,9 +69,16 @@ view model session =
       </dl>
       <div slot="actions">
         <al-button href={Admin.Comment.Edit { id: model.row.id }}>Edit</al-button>
-        <al-button variant="destructive" href={Admin.Comment.Delete { id: model.row.id }}>Delete</al-button>
+        <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
       </div>
     </al-card>
+    <al-dialog id="delete-dialog" heading="Delete this comment?" dismissible>
+      <p>The next page shows what refers to it before anything is deleted.</p>
+      <div slot="actions">
+        <al-button variant="destructive" href={Admin.Comment.Delete { id: model.row.id }}>Review and delete</al-button>
+      </div>
+    </al-dialog>
+    <a href={Admin.Comment.Delete { id: model.row.id }}>Delete without the dialog</a>
     <a href={Admin.Comment.Index {}}>All comments</a>
   </Admin.Layout.Page>
 

@@ -70,9 +70,16 @@ view model session =
       </dl>
       <div slot="actions">
         <al-button href={Admin.Todo.Edit { id: model.row.id }}>Edit</al-button>
-        <al-button variant="destructive" href={Admin.Todo.Delete { id: model.row.id }}>Delete</al-button>
+        <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
       </div>
     </al-card>
+    <al-dialog id="delete-dialog" heading="Delete this todo?" dismissible>
+      <p>The next page shows what refers to it before anything is deleted.</p>
+      <div slot="actions">
+        <al-button variant="destructive" href={Admin.Todo.Delete { id: model.row.id }}>Review and delete</al-button>
+      </div>
+    </al-dialog>
+    <a href={Admin.Todo.Delete { id: model.row.id }}>Delete without the dialog</a>
     <a href={Admin.Todo.Index {}}>All todos</a>
   </Admin.Layout.Page>
 

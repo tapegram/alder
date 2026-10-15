@@ -74,17 +74,17 @@ view model session =
       </ul>
       -- @admin begin actions
       <form id="bulk-delete" submit={BulkDelete}>
-              <al-alert variant="destructive"><Errors form /></al-alert>
-              <al-button variant="destructive" type="submit">Delete the rows that can be deleted</al-button>
-            </form>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-button variant="destructive" type="submit">Delete the rows that can be deleted</al-button>
+      </form>
       <form id="set-status" submit={BulkSetStatus}>
-              <al-select field="value" label="Status" />
-              <al-button type="submit">Set status</al-button>
-            </form>
+        <al-select field="value" label="Status" />
+        <al-button type="submit">Set status</al-button>
+      </form>
       <form id="set-featured" submit={BulkSetFeatured}>
-              <al-checkbox field="value" label="Featured" />
-              <al-button type="submit">Set featured</al-button>
-            </form>
+        <al-checkbox field="value" label="Featured" />
+        <al-button type="submit">Set featured</al-button>
+      </form>
       -- @admin end
     </al-card>
     <a href={Admin.Post.Index {}}>Back to the list</a>

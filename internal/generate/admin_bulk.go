@@ -95,10 +95,10 @@ func (g *adminGen) bulk(at *adminTable) {
 			"  let _ <- Task.all (List.map (\\row -> Db.delete "+t.Name+" row."+id+") allowed)",
 			"  Task.succeed (Notice.with (\"Deleted \" ++ Text.fromInt (List.length allowed) ++ \" of \" ++ Text.fromInt (List.length model.rows)) (Redirect ("+at.page("Index")+" {})))",
 			"},")
-		views = append(views, `<form id="bulk-delete" submit={BulkDelete}>
-        <al-alert variant="destructive"><Errors form /></al-alert>
-        <al-button variant="destructive" type="submit">Delete the rows that can be deleted</al-button>
-      </form>`)
+		views = append(views, `<form id="bulk-delete" submit={BulkDelete}>`,
+			`  <al-alert variant="destructive"><Errors form /></al-alert>`,
+			`  <al-button variant="destructive" type="submit">Delete the rows that can be deleted</al-button>`,
+			`</form>`)
 	}
 	for _, c := range at.bulkSet {
 		importTypes(imports, c.Type)
@@ -113,10 +113,10 @@ func (g *adminGen) bulk(at *adminTable) {
 		if c.Kind == KindBool {
 			tag = "al-checkbox"
 		}
-		views = append(views, fmt.Sprintf(`<form id="set-%s" submit={BulkSet%s}>
-        <%s field="value" label=%s />
-        <al-button type="submit">Set %s</al-button>
-      </form>`, c.Name, name, tag, quote(Humanize(c.Name)), strings.ToLower(Humanize(c.Name))))
+		views = append(views, fmt.Sprintf(`<form id="set-%s" submit={BulkSet%s}>`, c.Name, name),
+			fmt.Sprintf(`  <%s field="value" label=%s />`, tag, quote(Humanize(c.Name))),
+			fmt.Sprintf(`  <al-button type="submit">Set %s</al-button>`, strings.ToLower(Humanize(c.Name))),
+			`</form>`)
 	}
 	upd := []string{"-- Each action reads the rows again (load runs before every message) and answers with a notice.",
 		"update : Msg -> Model -> Session -> Task Nav", "update msg model session = match msg {"}

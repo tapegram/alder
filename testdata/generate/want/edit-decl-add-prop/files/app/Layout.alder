@@ -14,5 +14,6 @@ Page props =
       <al-page width="narrow">
         <main>{props.children}</main>
       </al-page>
+      <al-toasts></al-toasts>
     </body>
   </html>

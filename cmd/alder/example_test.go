@@ -178,7 +178,7 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Admin.User.Index "filtering by role lists the rows with that value"`,
 		`ok   Admin.User.Edit "an Admin cannot change their own role"`,
 		`ok   Admin.User.Edit "an Admin demotes another Admin"`,
-		"145 passed, 0 failed\n",
+		"169 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("alder test examples/blog lacks %q:\n%s", want, out)
@@ -188,14 +188,14 @@ func TestExample_Blog(t *testing.T) {
 }
 
 // The mutation scores examples/todos/README.md and examples/blog/README.md record (`alder test
-// --mutate`, rounded down to two decimals: the blog's is 235 / 238 = 0.987) and their numbers of
+// --mutate`, rounded down to two decimals: the blog's is 286 / 294 = 0.973) and their numbers of
 // mutants: a change to an example that lets a mutant survive which its tests used to kill, or
 // that changes the mutants made of it, fails TestExample_*.
 const (
-	todosMutationScore = 1.00
-	blogMutationScore  = 0.98
-	todosMutants       = 154
-	blogMutants        = 238
+	todosMutationScore = 0.98
+	blogMutationScore  = 0.97
+	todosMutants       = 188
+	blogMutants        = 294
 )
 
 // mutationAtLeast runs `alder test --mutate --json dir` and fails t when the score is below min

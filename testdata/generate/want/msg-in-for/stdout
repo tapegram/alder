@@ -11,7 +11,7 @@ edited app/Home.alder
  update msg model session = match msg {
    Submit p -> {
      let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
-     Task.succeed (Redirect (Home {}))
+     Task.succeed (Notice.with "Signed" (Redirect (Home {})))
    },
 +  Hide p -> ?hide,
  }

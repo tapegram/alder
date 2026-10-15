@@ -63,9 +63,9 @@ view model session =
       </ul>
       -- @admin begin actions
       <form id="bulk-delete" submit={BulkDelete}>
-              <al-alert variant="destructive"><Errors form /></al-alert>
-              <al-button variant="destructive" type="submit">Delete the rows that can be deleted</al-button>
-            </form>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-button variant="destructive" type="submit">Delete the rows that can be deleted</al-button>
+      </form>
       -- @admin end
     </al-card>
     <a href={Admin.User.Index {}}>Back to the list</a>

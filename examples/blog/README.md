@@ -12,12 +12,15 @@ To try it: `alder run`, then log in at `/login` with the password `password` as
 
 ## Mutation score
 
-`alder test --mutate examples/blog` (book 10, "Mutation testing"): 238 mutants, 145 tests, 235
-killed, 3 survived (score 0.98). `TestExample_Blog` fails if the score drops below 0.98, the
-exact 0.987 rounded down, or the number of mutants is not 238.
+`alder test --mutate examples/blog` (book 10, "Mutation testing"): 294 mutants, 169 tests, 286
+killed, 8 survived (score 0.97). `TestExample_Blog` fails if the score drops below 0.97, the
+exact 0.973 rounded down, or the number of mutants is not 294.
 
-- The generated admin (`app/Admin/`, "Replaying the admin" below): 175 mutants, all 175 killed
-  by its 103 generated tests, kept as `alder new admin` wrote them.
+- The generated admin (`app/Admin/`, "Replaying the admin" below): 231 mutants, 226 killed
+  by its generated tests, kept as `alder new admin` wrote them. The five survivors are equivalent:
+  `postsTotal > 200` and `authorsTotal > 200` flipped to `>= 200` in the `where` of the Comment
+  and Post forms' lists (a search of "" matches every row), and `Post.author.in params.ids` dropped
+  from the user bulk page's load (`refused` is only asked of the chosen rows).
 - The rest of the blog: 63 mutants, 60 killed, 3 survived, as before the admin (below).
 
 The history of the rest:
@@ -98,6 +101,7 @@ steps, from the blog before the admin:
 
    ```
    $ alder new admin
+   wrote app/Admin/Comment/Bulk.alder
    wrote app/Admin/Comment/Delete.alder
    wrote app/Admin/Comment/Edit.alder
    wrote app/Admin/Comment/Index.alder
@@ -105,11 +109,13 @@ steps, from the blog before the admin:
    wrote app/Admin/Comment/Show.alder
    wrote app/Admin/Index.alder
    wrote app/Admin/Layout.alder
+   wrote app/Admin/Post/Bulk.alder
    wrote app/Admin/Post/Delete.alder
    wrote app/Admin/Post/Edit.alder
    wrote app/Admin/Post/Index.alder
    wrote app/Admin/Post/New.alder
    wrote app/Admin/Post/Show.alder
+   wrote app/Admin/User/Bulk.alder
    wrote app/Admin/User/Delete.alder
    wrote app/Admin/User/Edit.alder
    wrote app/Admin/User/Index.alder

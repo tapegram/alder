@@ -8,11 +8,12 @@ import Todo
 import User
 -- @admin end
 
-page "/admin/todo/new" { } requires user, role Admin
+page "/admin/todo/new" { findOwner: Text = "" } requires user, role Admin
 
 type Model = {
   -- @admin begin model
   owners: List User,
+  ownersTotal: Int,
   -- @admin end
 }
 
@@ -21,8 +22,10 @@ load params session = {
   let admin <- Admin.Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
-    let owners <- Db.from User |> Db.orderBy User.email.asc |> Db.all
-    Query.succeed { owners: owners }
+    let findOwner = Text.slice 0 200 params.findOwner
+    let ownersTotal <- Db.from User |> Db.count
+    let owners <- Db.from User |> Db.orderBy User.email.asc |> Db.where (if ownersTotal > 200 then User.email.contains findOwner else Db.and []) |> Db.limit (if ownersTotal > 200 then 50 else 200) |> Db.all
+    Query.succeed { owners: owners, ownersTotal: ownersTotal }
     -- @admin end
   } else Query.notFound
 }
@@ -36,10 +39,20 @@ form TodoForm = {
 }
 -- @admin end
 
+-- @admin begin search
+form FindOwner = { q: Text }
+
+msg SearchOwner form FindOwner
+
+-- @admin end
+
 msg Create form TodoForm
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
+  -- @admin begin finds
+  SearchOwner p -> Task.succeed (Redirect (Admin.Todo.New { findOwner: p.form.q })),
+  -- @admin end
   Create p -> {
     -- @admin begin insert
     let id <- Db.insert Todo {
@@ -59,6 +72,9 @@ view model session =
     <h1>New todo</h1>
 
     <al-card>
+      -- @admin begin finder
+      {if model.ownersTotal > 200 then <form submit={SearchOwner}><al-input field="q" label="Find owner" /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}
+      -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
         <al-input field="title" label="Title" />
@@ -134,6 +150,101 @@ test "an owner not offered is refused" = {
   let rows <- Db.from Todo |> Db.count
   Task.succeed ({
     answer: r.answer,
+    rows: rows,
+  } == {
+    answer: FormRejected [{ field: "owner", message: "must be one of the options" }],
+    rows: 0,
+  })
+}
+
+test "a list of 200 users is offered whole" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Task.all (List.map (\n -> Db.insert User {
+    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+    passwordHash: "passwordhash-" ++ Text.fromInt n,
+  }) (List.range 3 200))
+  let page <- Test.get (Admin.Todo.New {})
+  Task.succeed (List.length page.model.owners == 200)
+}
+
+test "a long list of users offers 50, and the search narrows it" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Task.all (List.map (\n -> Db.insert User {
+    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+    passwordHash: "passwordhash-" ++ Text.fromInt n,
+  }) (List.range 3 203))
+  let all <- Test.get (Admin.Todo.New {})
+  let found <- Test.get (Admin.Todo.New { findOwner: "email-203@example.com" })
+  let r <- Test.submit FindOwner { q: "zz" }
+  Task.succeed ({
+    shown: List.length all.model.owners,
+    total: all.model.ownersTotal,
+    found: Test.texts "select[name=owner] option" found.doc == ["email-203@example.com"],
+    answer: r.answer,
+  } == {
+    shown: 50,
+    total: 203,
+    found: True,
+    answer: Redirected (Admin.Todo.New { findOwner: "zz" }),
+  })
+}
+
+test "an owner outside the narrowed list is refused" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Task.all (List.map (\n -> Db.insert User {
+    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+    passwordHash: "passwordhash-" ++ Text.fromInt n,
+  }) (List.range 3 203))
+  let all <- Test.get (Admin.Todo.New {})
+  let found <- Test.get (Admin.Todo.New { findOwner: "email-203@example.com" })
+  let r <- Test.submit FindOwner { q: "zz" }
+  let pick = Maybe.withDefault "" (Test.attr "value" "select[name=owner] option" found.doc)
+  let page <- Test.get (Admin.Todo.New {})
+  let sent <- Test.submitRaw TodoForm [
+    { name: "title", value: "x" },
+    { name: "done", value: "True" },
+    { name: "due", value: "" },
+    { name: "owner", value: pick },
+  ]
+  let rows <- Db.from Todo |> Db.count
+  Task.succeed ({
+    answer: sent.answer,
     rows: rows,
   } == {
     answer: FormRejected [{ field: "owner", message: "must be one of the options" }],
