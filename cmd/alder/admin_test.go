@@ -292,7 +292,8 @@ test "the list counts each post's words" = {
 }
 `)
 	// a page the author does without: Tag's Delete page, and the button that went to it
-	replace("app/Admin/Tag/Show.alder", "        <al-button variant=\"destructive\" href={Admin.Tag.Delete { id: model.row.id }}>Delete</al-button>\n", "")
+	replace("app/Admin/Tag/Show.alder", "    <a href={Admin.Tag.Delete { id: model.row.id }}>Delete without the dialog</a>\n", "")
+	replace("app/Admin/Tag/Show.alder", "        <al-button variant=\"destructive\" href={Admin.Tag.Delete { id: model.row.id }}>Review and delete</al-button>\n", "")
 	os.Remove(filepath.Join(dir, "app", "Admin", "Tag", "Delete.alder"))
 	if code, out, errs := alderIn(t, dir, "", "check"); code != 0 || strings.Contains(out, "error") {
 		t.Fatalf("the customised admin does not check: exit %d\n%s%s", code, out, errs)

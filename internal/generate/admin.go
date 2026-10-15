@@ -1289,11 +1289,18 @@ func (g *adminGen) show(at *adminTable) {
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n      <dl>\n%s\n      </dl>\n", open, title, regionAt("        ", "fields", fields))
 	fmt.Fprintf(&b, `      <div slot="actions">
         <al-button href={%s { id: model.row.%s }}>Edit</al-button>
-        <al-button variant="destructive" href={%s { id: model.row.%s }}>Delete</al-button>
+        <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
       </div>
     </al-card>
+    <al-dialog id="delete-dialog" heading="Delete this %s?" dismissible>
+      <p>The next page shows what refers to it before anything is deleted.</p>
+      <div slot="actions">
+        <al-button variant="destructive" href={%s { id: model.row.%s }}>Review and delete</al-button>
+      </div>
+    </al-dialog>
+    <a href={%s { id: model.row.%s }}>Delete without the dialog</a>
     <a href={%s {}}>All %s</a>
-`, at.page("Edit"), t.IDField, at.page("Delete"), t.IDField, at.page("Index"), Plural(at.noun))
+`, at.page("Edit"), t.IDField, at.noun, at.page("Delete"), t.IDField, at.page("Delete"), t.IDField, at.page("Index"), Plural(at.noun))
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	var tests []TestData
