@@ -1317,6 +1317,10 @@ reports each one as warning W0002 with its expected type:
 app/Todos/Index.alder:40:18: warning[W0002]: hole ?count has type Int
 ```
 
+After the diagnostics, `alder check` prints `alder check: 2 typed holes left` on standard
+error, so that a script reads "holes left" rather than "build failed" (the exit code is
+0, as for any warning; `--json` carries each W0002 as an object and no summary).
+
 `alder fill --list` lists every hole with its module, declaration and
 type, and `alder fill` fills one (above, "The generators"). Listing the
 values in scope that could fill a hole is planned.

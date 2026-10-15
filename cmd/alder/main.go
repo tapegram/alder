@@ -158,8 +158,22 @@ func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {
 		}
 		fmt.Fprint(w, diag.RenderText(d, sources[d.Span.File]))
 	}
+	if holes := countHoles(bag.Items); holes > 0 && !jsonOut { // "holes left" is not "build failed"
+		fmt.Fprintf(stderr, "alder check: %d typed %s left\n", holes, map[bool]string{true: "hole", false: "holes"}[holes == 1])
+	}
 	if bag.HasErrors() {
 		return 1
 	}
 	return 0
+}
+
+// countHoles is the number of typed holes (W0002) among ds.
+func countHoles(ds []diag.Diagnostic) int {
+	n := 0
+	for _, d := range ds {
+		if d.Code == "W0002" {
+			n++
+		}
+	}
+	return n
 }

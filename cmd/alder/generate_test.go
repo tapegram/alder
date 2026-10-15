@@ -892,6 +892,9 @@ func TestGenerate_E11Messages(t *testing.T) {
 	if code, o := run("", "new", "msg", "Home", "Pick", "role:Role"); code != 1 || !strings.Contains(o, "write `User.Role`") {
 		t.Errorf("a bare app type: exit %d: %s", code, o)
 	}
+	if code, o := run("", "check"); code != 0 || !strings.Contains(o, "alder check: 3 typed holes left\n") {
+		t.Errorf("alder check with holes: exit %d: %s", code, o)
+	}
 	if code, o := run("", "test"); code != 1 || !strings.Contains(o, "fill the hole): ") || !strings.Contains(o, "?expected : Bool") {
 		t.Errorf("alder test with holes: exit %d: %s", code, o)
 	}
