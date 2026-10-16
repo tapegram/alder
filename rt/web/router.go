@@ -96,6 +96,28 @@ type tracker struct {
 	detail  string
 	patches []string
 	notice  string // a Noticed answer's toast text, patched in after the body
+	// hops are the redirects follow served in this same answer, after the request the client
+	// sent (whose rq and recorder the panel keeps): each one's URL, where its steps and
+	// statements start in the recorder, and how it was answered
+	hops []hopMark
+	// alert is a Noticed answer's text for a request without Datastar (no toast without the
+	// script): rendered as an <al-alert> at the top of the page (document)
+	alert string
+}
+
+type hopMark struct {
+	url, answer string
+	steps, sql  int
+}
+
+// setAnswer records how the request was answered for the panel: the first request's answer is
+// set by it alone; a redirect follow serves records its own on its hop.
+func (t *tracker) setAnswer(a string) {
+	if n := len(t.hops); n > 0 {
+		t.hops[n-1].answer = a
+		return
+	}
+	t.answer = a
 }
 
 func (t *tracker) WriteHeader(code int) {
@@ -400,9 +422,20 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 			Session: rq.Session,
 		}
 	}
-	if tw, ok := w.(*tracker); ok && rt.panelOn() {
-		rq.Env.Rec = &eff.Recorder{}
-		tw.rq = rq
+	if tw, ok := w.(*tracker); ok {
+		if !rq.Datastar && method == http.MethodGet {
+			tw.alert = rt.takeNotice(w, r)
+		}
+		if rt.panelOn() {
+			if tw.rq == nil {
+				rq.Env.Rec = &eff.Recorder{}
+				tw.rq = rq
+			} else { // a redirect follow serves: its steps go on in the first request's trace
+				rec := tw.rq.Env.Rec
+				rq.Env.Rec = rec
+				tw.hops = append(tw.hops, hopMark{url: r.URL.RequestURI(), steps: len(rec.Steps), sql: len(rec.SQL)})
+			}
+		}
 	}
 	resp := hit.handle(rq)
 	if rt.opts.Served != nil {
@@ -544,20 +577,22 @@ func (rt *router) setSession(w http.ResponseWriter, r *http.Request, rq *Request
 
 func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
 	if tw, ok := w.(*tracker); ok {
-		if rq.Notice != "" {
+		if rq.Notice != "" && rq.Datastar {
 			tw.notice = rq.Notice
+		} else if rq.Notice != "" {
+			tw.alert = rq.Notice // a Rerender's page shows it; a Redirect's stores it (below)
 		}
 		switch {
 		case resp.Status == http.StatusSeeOther:
-			tw.answer = "redirect " + resp.Location
-		case resp.Status == http.StatusOK && st.url == "" && !resp.Patch:
-			tw.answer = "page"
+			tw.setAnswer("redirect " + resp.Location)
+		case resp.Status == http.StatusOK && !resp.Patch: // a document, or a boosted GET's morph of one
+			tw.setAnswer("page")
 		case resp.Status == http.StatusOK:
-			tw.answer = "rerender"
+			tw.setAnswer("rerender")
 		case resp.Status == http.StatusNotFound:
-			tw.answer = "not found"
+			tw.setAnswer("not found")
 		default:
-			tw.answer = "error"
+			tw.setAnswer("error")
 		}
 	}
 	switch resp.Status {
@@ -585,6 +620,9 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 				}
 				return
 			}
+			if tw, ok := w.(*tracker); ok && tw.alert != "" {
+				rt.storeNotice(w, r, tw.alert) // the next page shows it (takeNotice)
+			}
 			w.Header().Set("Location", resp.Location)
 			w.WriteHeader(http.StatusSeeOther)
 			return
@@ -597,6 +635,9 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 		if resp.Patch && rq.Datastar {
 			if err := datastar.PatchBody(w, rt.shellBody(w, rt.dev(bodyOf(page)))); err != nil {
 				rt.log("error", fmt.Sprintf("%s %s: writing the patch: %v", r.Method, r.URL.Path, err))
+			}
+			if tw, ok := w.(*tracker); ok {
+				tw.patches = append(tw.patches, "body")
 			}
 			rt.notify(w)
 			rt.patchPanel(w, http.StatusOK)
@@ -714,6 +755,9 @@ func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status i
 		if err == nil {
 			err = datastar.Navigate(w, st.url, st.mode)
 		}
+		if tw, ok := w.(*tracker); ok {
+			tw.patches = append(tw.patches, "title", "history "+st.url)
+		}
 	}
 	if err != nil {
 		rt.log("error", fmt.Sprintf("%s %s: writing the patch: %v", r.Method, r.URL.Path, err))
@@ -747,6 +791,9 @@ func titleOf(page string) (string, bool) {
 
 // document writes "<!doctype html>\n" + page, with the Datastar script tag injected, as HTML.
 func (rt *router) document(w http.ResponseWriter, status int, page string) {
+	if tw, ok := w.(*tracker); ok && tw.alert != "" {
+		page = startOfBody(page, `<al-alert variant="info" role="status">`+esc(tw.alert)+`</al-alert>`)
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	_, _ = w.Write([]byte("<!doctype html>\n" + withScript(rt.inlinePanel(w, rt.dev(page), status))))
@@ -756,7 +803,7 @@ func (rt *router) document(w http.ResponseWriter, status int, page string) {
 // a body patch for a Datastar request.
 func (rt *router) notFound(w http.ResponseWriter, r *http.Request, st hop, doc html.Node) {
 	if tw, ok := w.(*tracker); ok {
-		tw.answer = "not found"
+		tw.setAnswer("not found")
 	}
 	page := html.Render(doc)
 	if page == "" && rt.opts.NotFoundDoc != nil {
@@ -778,7 +825,8 @@ func (rt *router) fail(w http.ResponseWriter, r *http.Request, st hop, doc html.
 	}
 	rt.log("error", msg)
 	if tw, ok := w.(*tracker); ok {
-		tw.answer, tw.detail = "error", fmt.Sprintf("%v\n%s", err, stack)
+		tw.setAnswer("error")
+		tw.detail = fmt.Sprintf("%v\n%s", err, stack)
 	}
 	page := html.Render(doc)
 	if page == "" && rt.opts.ErrorDoc != nil {
@@ -816,6 +864,45 @@ func endOfBody(page, s string) string {
 		return page[:i] + s + page[i:]
 	}
 	return page + s
+}
+
+// startOfBody inserts s just after the <body> start tag of page, or prepends it when there is
+// none.
+func startOfBody(page, s string) string {
+	if i := startTag(page, "body"); i >= 0 {
+		if j := strings.IndexByte(page[i:], '>'); j >= 0 {
+			return page[:i+j+1] + s + page[i+j+1:]
+		}
+	}
+	return s + page
+}
+
+// NoticeCookie carries a Noticed answer's text across the redirect of a request without
+// Datastar (a form posted with the script off), signed with the session key, for one page.
+const NoticeCookie = "alder_notice"
+
+// storeNotice sets NoticeCookie to text for the page the redirect goes to.
+func (rt *router) storeNotice(w http.ResponseWriter, r *http.Request, text string) {
+	http.SetCookie(w, &http.Cookie{
+		Name: NoticeCookie, Value: Sign(rt.key, []byte("notice:"+text)), Path: "/", MaxAge: 60,
+		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+	})
+}
+
+// takeNotice is the text NoticeCookie carries ("" for none, or one not signed by this app),
+// clearing the cookie: the notice is shown once.
+func (rt *router) takeNotice(w http.ResponseWriter, r *http.Request) string {
+	c, err := r.Cookie(NoticeCookie)
+	if err != nil {
+		return ""
+	}
+	http.SetCookie(w, &http.Cookie{Name: NoticeCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+	p, ok := Verify(rt.key, c.Value)
+	text, isNotice := strings.CutPrefix(string(p), "notice:")
+	if !ok || !isNotice {
+		return ""
+	}
+	return text
 }
 
 // commentSafe makes s safe inside an HTML comment: no "--" (which could end it).

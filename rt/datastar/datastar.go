@@ -203,9 +203,11 @@ const BoostPopstate = `if (location.pathname + location.search !== window._alder
 const BoostInit = `window._alderAt = location.pathname + location.search;` +
 	` window._alderBuild = document.querySelector('meta[name=alder-build]')?.content || '';` +
 	` window._alderN = 0;` +
-	` window._alderBusy = (el, p) => { const f = el && el.closest ? el.closest('form') || el : null, h = document.documentElement;` +
+	` window._alderBusy = (el, p) => { const f = el && el.closest ? el.closest('form') || el : null, h = document.documentElement, a = document.activeElement;` +
 	` if (f) { f.inert = true; f.setAttribute('aria-busy', 'true') } window._alderN++; h.setAttribute('data-alder-pending', '');` +
-	` const done = () => { if (f) { f.inert = false; f.removeAttribute('aria-busy') } if (--window._alderN <= 0) h.removeAttribute('data-alder-pending') };` +
+	` const done = () => { if (f) { f.inert = false; f.removeAttribute('aria-busy') } if (--window._alderN <= 0) h.removeAttribute('data-alder-pending');` +
+	` const t = a && (a.isConnected ? a : a.id && document.getElementById(a.id)), d = document.activeElement;` +
+	` if (t && t !== document.body && (!d || d === document.body) && !t.closest('[inert]')) t.focus() };` +
 	` Promise.resolve(p).then(done, done); return p }`
 
 // BoostTag is the element in a page's <head> that boosts its links, rendered: a <meta

@@ -28,18 +28,24 @@ func esc(s string) string { return stdhtml.EscapeString(s) }
 const panelShell = `<al-devpanel id="` + datastar.PanelID + `" data-ignore-morph></al-devpanel>`
 
 // panelScript is the panel's own script, written once into a full document (a morph keeps the
-// panel's shell and this script's work): after each patch of the panel it files the request in
+// panel's shell and this script's work): it keeps the tab last chosen in the shell (data-tab) and
+// shows that section again after each patch of the panel (which renders Request first, the other
+// sections hidden); after each patch it also files the request in
 // sessionStorage (the last 20 of this tab) and lists them in the History tab; a click on one shows
 // its sections; "Copy as curl" copies the request's line. Dev mode only, like the panel.
 const panelScript = `<script>(function(){if(window._alderHist)return;window._alderHist=1;var K="_alder_hist",ids=["request","trace","sql","answer","patches"];
 function load(){try{return JSON.parse(sessionStorage.getItem(K)||"[]")}catch(e){return[]}}
 function save(h){try{sessionStorage.setItem(K,JSON.stringify(h))}catch(e){}}
-function sync(){var p=document.getElementById("_alder_panel"),nav=p&&p.querySelector(":scope>nav"),ol=p&&p.querySelector("ol[data-hist]");if(!nav||!ol||ol.children.length)return;
+function pick(){var p=document.getElementById("_alder_panel"),id=p&&p.getAttribute("data-tab");if(!id)return;
+p.querySelectorAll(":scope>section").forEach(function(s){var h=s.id!==id;if(s.hidden!==h)s.hidden=h});
+p.querySelectorAll(":scope>nav>button").forEach(function(b){var v=String(b.getAttribute("aria-controls")===id);if(b.getAttribute("aria-selected")!==v)b.setAttribute("aria-selected",v)})}
+function sync(){pick();var p=document.getElementById("_alder_panel"),nav=p&&p.querySelector(":scope>nav"),ol=p&&p.querySelector("ol[data-hist]");if(!nav||!ol||ol.children.length)return;
 var h=load(),id=nav.getAttribute("data-rid");if(!h.some(function(e){return e.id===id})){var html="";ids.forEach(function(n){var s=document.getElementById("_alder_tab_"+n);if(s)html+=s.outerHTML.replace(/ id="_alder_tab_/g,' data-past="').replace(/ hidden(="[^"]*")?/g,"")});
 h.push({id:id,bar:nav.querySelector("[data-bar]").textContent+" "+nav.children[1].textContent+" "+nav.children[2].textContent,html:html.slice(0,60000)});h=h.slice(-20);save(h)}
 h.slice().reverse().forEach(function(e){var li=document.createElement("li"),b=document.createElement("button");b.type="button";b.setAttribute("data-id",e.id);b.textContent=e.bar;li.appendChild(b);ol.appendChild(li)})}
 function watch(){var p=document.getElementById("_alder_panel");if(!p)return;new MutationObserver(sync).observe(p,{childList:true,subtree:true,attributes:true,attributeFilter:["data-rid"]});sync()}
 document.addEventListener("click",function(ev){var t=ev.target.closest&&ev.target.closest("button");if(!t)return;
+if(t.matches("#_alder_panel>nav>button[aria-controls]"))t.parentNode.parentNode.setAttribute("data-tab",t.getAttribute("aria-controls"));
 if(t.hasAttribute("data-copy")){var c=t.getAttribute("data-copy"),done=function(){t.textContent="Copied"};
 if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(c).then(done,function(){fb()});else fb();
 function fb(){var a=document.createElement("textarea");a.value=c;document.body.appendChild(a);a.select();try{document.execCommand("copy")}catch(e){}a.remove();done()}}
@@ -60,15 +66,30 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 	if rec != nil {
 		steps, sqls = rec.Steps, rec.SQL
 	}
+	answer := tw.answer
+	for _, h := range tw.hops {
+		answer += ", then " + h.answer
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, `<nav data-rid="%d"><span data-bar>%s %s</span> <span>%s</span> <span>%.1f ms</span> <span>%d SQL</span>`,
-		tw.start.UnixNano(), esc(r.Method), esc(r.URL.Path), esc(tw.answer), ms, len(sqls))
+		tw.start.UnixNano(), esc(r.Method), esc(r.URL.Path), esc(answer), ms, len(sqls))
 	tabs := []string{"Request", "Trace", "SQL", "Answer", "Patches", "History"}
-	for _, t := range tabs {
-		fmt.Fprintf(&b, ` <button type="button" aria-controls="_alder_tab_%s">%s</button>`, strings.ToLower(t), t)
+	for i, t := range tabs {
+		fmt.Fprintf(&b, ` <button type="button" aria-controls="_alder_tab_%s" aria-selected="%t">%s</button>`, strings.ToLower(t), i == 0, t)
 	}
 	b.WriteString(`</nav>`)
+	// the hop markers: "then GET <url>" before the first step and statement of each redirect
+	// follow served
+	marker := func(i int, at func(h hopMark) int) {
+		for _, h := range tw.hops {
+			if at(h) == i {
+				fmt.Fprintf(&b, `<li data-hop>then GET %s</li>`, esc(h.url))
+			}
+		}
+	}
 
+	// only the Request section is shown at first; the others are `hidden` until their tab is
+	// chosen (the panel's script keeps the chosen tab across later answers)
 	b.WriteString(`<section id="_alder_tab_request"><h3>Request</h3><pre>`)
 	fmt.Fprintf(&b, "%s %s\n", esc(r.Method), esc(r.URL.RequestURI()))
 	if tw.rq != nil {
@@ -78,7 +99,7 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			fmt.Fprintf(&b, "form %s = %s\n", esc(k), esc(strings.Join(tw.rq.Form[k], ",")))
+			fmt.Fprintf(&b, "form %s = %s\n", esc(k), esc(strings.Join(masked(k, tw.rq.Form[k]), ",")))
 		}
 		pk := make([]string, 0, len(tw.rq.Params))
 		for k := range tw.rq.Params {
@@ -88,22 +109,24 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 		for _, k := range pk {
 			fmt.Fprintf(&b, "param %s = %s\n", esc(k), esc(tw.rq.Params[k]))
 		}
-		fmt.Fprintf(&b, "session %s\n", esc(fmt.Sprintf("%+v", tw.rq.Session)))
+		fmt.Fprintf(&b, "session %s\n", esc(rt.sessionText(tw.rq.Session)))
 	}
 	curl := curlLine(tw)
 	fmt.Fprintf(&b, "%s</pre><button type=\"button\" data-copy=\"%s\">Copy as curl</button></section>", esc(curl), esc(curl))
 
-	b.WriteString(`<section id="_alder_tab_trace"><h3>Trace</h3><ol>`)
-	for _, s := range steps {
+	b.WriteString(`<section id="_alder_tab_trace" hidden><h3>Trace</h3><ol>`)
+	for i, s := range steps {
+		marker(i, func(h hopMark) int { return h.steps })
 		c := ""
 		if s.Cap != "" {
 			c = " [" + s.Cap + "]"
 		}
 		fmt.Fprintf(&b, `<li><code>%s</code>%s %.2f ms</li>`, esc(s.Name), c, s.Ms)
 	}
+	marker(len(steps), func(h hopMark) int { return h.steps })
 	b.WriteString(`</ol></section>`)
 
-	b.WriteString(`<section id="_alder_tab_sql"><h3>SQL</h3>`)
+	b.WriteString(`<section id="_alder_tab_sql" hidden><h3>SQL</h3>`)
 	count := map[string]int{}
 	var total float64
 	for _, q := range sqls {
@@ -111,7 +134,8 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 		total += q.Ms
 	}
 	fmt.Fprintf(&b, `<p>%d statements, %.2f ms</p><ol>`, len(sqls), total)
-	for _, q := range sqls {
+	for i, q := range sqls {
+		marker(i, func(h hopMark) int { return h.sql })
 		dup := ""
 		if count[q.Stmt] > 1 {
 			dup = fmt.Sprintf(` <strong data-dup>duplicate x%d</strong>`, count[q.Stmt])
@@ -122,15 +146,28 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 		}
 		fmt.Fprintf(&b, `<li><code>%s</code> args %s (%.2f ms%s)%s</li>`, esc(q.Stmt), esc(fmt.Sprint(q.Args)), q.Ms, rows, dup)
 	}
+	marker(len(sqls), func(h hopMark) int { return h.sql })
 	b.WriteString(`</ol></section>`)
 
-	fmt.Fprintf(&b, `<section id="_alder_tab_answer"><h3>Answer</h3><p>%d %s</p>`, status, esc(tw.answer))
+	b.WriteString(`<section id="_alder_tab_answer" hidden><h3>Answer</h3>`)
+	if len(tw.hops) == 0 {
+		fmt.Fprintf(&b, `<p>%d %s</p>`, status, esc(tw.answer))
+	} else {
+		fmt.Fprintf(&b, `<p>%s</p>`, esc(tw.answer))
+		for i, h := range tw.hops {
+			if i == len(tw.hops)-1 {
+				fmt.Fprintf(&b, `<p>then GET %s: %d %s</p>`, esc(h.url), status, esc(h.answer))
+			} else {
+				fmt.Fprintf(&b, `<p>then GET %s: %s</p>`, esc(h.url), esc(h.answer))
+			}
+		}
+	}
 	if tw.detail != "" {
 		fmt.Fprintf(&b, `<pre>%s</pre>`, esc(tw.detail))
 	}
 	b.WriteString(`</section>`)
 
-	b.WriteString(`<section id="_alder_tab_patches"><h3>Patches</h3><ul>`)
+	b.WriteString(`<section id="_alder_tab_patches" hidden><h3>Patches</h3><ul>`)
 	if tw.rq != nil && tw.rq.Datastar || len(tw.patches) > 0 {
 		for _, p := range append(append([]string{}, tw.patches...), "panel") {
 			fmt.Fprintf(&b, `<li>%s</li>`, esc(p))
@@ -139,8 +176,44 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 		b.WriteString(`<li>none (a full document)</li>`)
 	}
 	b.WriteString(`</ul></section>`)
-	b.WriteString(`<section id="_alder_tab_history"><h3>History</h3><p>The last 20 requests of this tab; click one to see its sections.</p><ol data-hist></ol><div data-past></div></section>`)
+	b.WriteString(`<section id="_alder_tab_history" hidden><h3>History</h3><p>The last 20 requests of this tab; click one to see its sections.</p><ol data-hist></ol><div data-past></div></section>`)
 	return b.String()
+}
+
+// masked is the values of form field k as the panel shows them: a field whose name says it holds
+// a password (or a secret, a token) is shown as "••••", so the panel, its History and the curl
+// line never carry one.
+func masked(k string, vs []string) []string {
+	n := strings.ToLower(k)
+	for _, w := range []string{"password", "passwd", "secret", "token"} {
+		if strings.Contains(n, w) {
+			out := make([]string, len(vs))
+			for i := range out {
+				out[i] = "••••"
+			}
+			return out
+		}
+	}
+	return vs
+}
+
+// sessionText is the session as the panel shows it: the record the app's codec stores, as
+// JSON ("none" without a session).
+func (rt *router) sessionText(s any) string {
+	if s == nil || rt.opts.Session == nil {
+		return "none"
+	}
+	b, err := rt.opts.Session.Encode(s)
+	if err != nil {
+		return fmt.Sprintf("%+v", s)
+	}
+	var v any
+	if json.Unmarshal(b, &v) == nil {
+		if pretty, err := json.MarshalIndent(v, "", "  "); err == nil {
+			return string(pretty)
+		}
+	}
+	return string(b)
 }
 
 // shq quotes s for a POSIX shell, in single quotes.
@@ -164,7 +237,7 @@ func curlLine(tw *tracker) string {
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			for _, v := range tw.rq.Form[k] {
+			for _, v := range masked(k, tw.rq.Form[k]) {
 				b.WriteString(" --data-urlencode " + shq(k+"="+v))
 			}
 		}

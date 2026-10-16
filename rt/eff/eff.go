@@ -338,6 +338,19 @@ func (r *Recorder) AddStep(s StepRec) { r.mu.Lock(); r.Steps = append(r.Steps, s
 // AddSQL records a statement.
 func (r *Recorder) AddSQL(s SQLRec) { r.mu.Lock(); r.SQL = append(r.SQL, s); r.mu.Unlock() }
 
+// SetRows records n as the rows read by the last statement stmt whose rows were not counted yet
+// (a read's rows are known only once its caller has read them).
+func (r *Recorder) SetRows(stmt string, n int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.SQL) - 1; i >= 0; i-- {
+		if r.SQL[i].Stmt == stmt && r.SQL[i].Rows < 0 {
+			r.SQL[i].Rows = n
+			return
+		}
+	}
+}
+
 // Ms is a duration in milliseconds.
 func Ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
 

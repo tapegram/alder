@@ -1,6 +1,9 @@
 package web
 
 import (
+	"net/http"
+
+	"alder/rt/eff"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -93,5 +96,98 @@ func TestDevMapContents(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q in %s", want, body)
 		}
+	}
+}
+
+// A message answering a redirect: the panel the followed page carries is the message's (its
+// form fields, password masked, in Request and curl), with the GET's steps and statements after
+// a "then GET …" marker, both answers, every patch, and only the Request section shown.
+func TestDevPanel_Redirect(t *testing.T) {
+	t.Setenv("ALDER_DEV", "1")
+	routes := []Route{
+		{Method: "POST", Pattern: "/_m/A/Save", Handle: func(rq *Request) Response {
+			rq.Env.Rec.AddStep(eff.StepRec{Name: "Db.delete"})
+			rq.Env.Rec.AddSQL(eff.SQLRec{Stmt: "DELETE FROM x", Rows: 2})
+			return RedirectResponse("/list", nil)
+		}},
+		{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response {
+			rq.Env.Rec.AddStep(eff.StepRec{Name: "Db.query"})
+			rq.Env.Rec.AddSQL(eff.SQLRec{Stmt: "SELECT y", Rows: 3})
+			return PageResponse(doc("list"), nil, nil, false)
+		}},
+	}
+	h := NewRouter(routes, testOpts(func(o *Options) { o.Dev = true }))
+	req := httptest.NewRequest("POST", "/_m/A/Save", strings.NewReader("q=ann&password=hunter2"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Datastar-Request", "true")
+	body := serve(h, req).Body.String()
+	panel := body[strings.Index(body, "selector #_alder_panel"):]
+	order := []string{
+		"redirect /list, then page",
+		"form password = ••••", "form q = ann", "session {", "&#34;User&#34;: &#34;&#34;",
+		"--data-urlencode &#39;password=••••&#39; --data-urlencode &#39;q=ann&#39;",
+		`<section id="_alder_tab_trace" hidden>`, "Db.delete", "<li data-hop>then GET /list</li>", "Db.query",
+		"DELETE FROM x", "<li data-hop>then GET /list</li>", "SELECT y", ", 3 rows",
+		"<p>redirect /list</p><p>then GET /list: 200 page</p>",
+		"<li>body</li><li>title</li><li>history /list</li><li>panel</li>",
+	}
+	at := 0
+	for _, s := range order {
+		i := strings.Index(panel[at:], s)
+		if i < 0 {
+			t.Fatalf("missing %q (in order) in %s", s, panel)
+		}
+		at += i + len(s)
+	}
+	if strings.Contains(panel, "hunter2") {
+		t.Errorf("the password is shown: %s", panel)
+	}
+	if !strings.Contains(panel, `<section id="_alder_tab_request"><h3>`) || !strings.Contains(panel, `aria-controls="_alder_tab_request" aria-selected="true"`) {
+		t.Errorf("Request is not the section shown: %s", panel)
+	}
+}
+
+// A Noticed answer to a form posted without Datastar: a redirect carries it in a signed cookie
+// to the next page, which shows it as an <al-alert> once; a Rerender shows it in place.
+func TestNoticedWithoutScript(t *testing.T) {
+	routes := []Route{
+		{Method: "POST", Pattern: "/_m/A/Go", Handle: func(rq *Request) Response {
+			rq.Notice = "Deleted 3 of 4 <rows>"
+			return RedirectResponse("/list", nil)
+		}},
+		{Method: "POST", Pattern: "/_m/A/Stay", Handle: func(rq *Request) Response {
+			rq.Notice = "Saved"
+			return PageResponse(doc("here"), nil, nil, true)
+		}},
+		{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response { return PageResponse(doc("list"), nil, nil, false) }},
+	}
+	h := NewRouter(routes, testOpts(nil))
+	w := serve(h, httptest.NewRequest("POST", "/_m/A/Go", nil))
+	var c *http.Cookie
+	for _, k := range w.Result().Cookies() {
+		if k.Name == NoticeCookie {
+			c = k
+		}
+	}
+	if w.Code != 303 || c == nil {
+		t.Fatalf("%d, cookie %v", w.Code, c)
+	}
+	get := httptest.NewRequest("GET", "/list", nil)
+	get.AddCookie(c)
+	w = serve(h, get)
+	alert := `<body><al-alert variant="info" role="status">Deleted 3 of 4 &lt;rows&gt;</al-alert>`
+	if !strings.Contains(w.Body.String(), alert) {
+		t.Errorf("no alert: %s", w.Body.String())
+	}
+	if !strings.Contains(w.Header().Get("Set-Cookie"), NoticeCookie+"=;") {
+		t.Errorf("the cookie is not cleared: %q", w.Header().Get("Set-Cookie"))
+	}
+	forged := httptest.NewRequest("GET", "/list", nil)
+	forged.AddCookie(&http.Cookie{Name: NoticeCookie, Value: Sign([]byte("another key, another app"), []byte("notice:hi"))})
+	if b := serve(h, forged).Body.String(); strings.Contains(b, "al-alert") {
+		t.Errorf("a forged notice is shown: %s", b)
+	}
+	if b := serve(h, httptest.NewRequest("POST", "/_m/A/Stay", nil)).Body.String(); !strings.Contains(b, `<al-alert variant="info" role="status">Saved</al-alert>`) {
+		t.Errorf("no alert on the re-rendered page: %s", b)
 	}
 }

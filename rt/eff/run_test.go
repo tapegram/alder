@@ -344,6 +344,16 @@ func TestRecorderStepsAndSQL(t *testing.T) {
 	if len(env.Rec.SQL) < 2 || env.Rec.SQL[0].Rows != 1 {
 		t.Fatalf("sql = %+v", env.Rec.SQL)
 	}
+	for _, q := range env.Rec.SQL { // a read's rows are counted too
+		if q.Rows < 0 {
+			t.Errorf("rows not counted: %+v", q)
+		}
+	}
+	rec := &eff.Recorder{SQL: []eff.SQLRec{{Stmt: "S", Rows: -1}, {Stmt: "S", Rows: -1}}}
+	rec.SetRows("S", 4)
+	if rec.SQL[0].Rows != -1 || rec.SQL[1].Rows != 4 {
+		t.Errorf("SetRows: %+v", rec.SQL)
+	}
 	if k := eff.CapKind(env, "Mail.send"); k != "fake" {
 		t.Fatalf("capKind = %q", k)
 	}

@@ -210,12 +210,14 @@ func (s *SQLite) Query(ctx context.Context, tx Tx, table string, cols []Column, 
 		return nil, err
 	}
 	rest, args := tail(sel)
-	rows, err := q.QueryContext(ctx, "SELECT "+colList(cols)+" FROM "+quote(SQLName(table))+rest, args...)
+	stmt := "SELECT " + colList(cols) + " FROM " + quote(SQLName(table)) + rest
+	rows, err := q.QueryContext(ctx, stmt, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out [][]any
+	defer func() { rowsRead(ctx, stmt, len(out)) }()
 	for rows.Next() {
 		vals := make([]any, len(cols))
 		ptrs := make([]any, len(cols))
@@ -239,7 +241,11 @@ func (s *SQLite) Count(ctx context.Context, tx Tx, table string, sel SQL) (int64
 	sel.Order = ""
 	rest, args := tail(sel)
 	var n int64
-	err = q.QueryRowContext(ctx, "SELECT COUNT(*) FROM (SELECT 1 FROM "+quote(SQLName(table))+rest+")", args...).Scan(&n)
+	stmt := "SELECT COUNT(*) FROM (SELECT 1 FROM " + quote(SQLName(table)) + rest + ")"
+	err = q.QueryRowContext(ctx, stmt, args...).Scan(&n)
+	if err == nil {
+		rowsRead(ctx, stmt, 1)
+	}
 	return n, err
 }
 
@@ -378,9 +384,14 @@ func (s *SQLite) restrictReferrer(ctx context.Context, q querier, table, id stri
 	s.mu.RUnlock()
 	for _, r := range refs {
 		var one int
-		if q.QueryRowContext(ctx, "SELECT 1 FROM "+quote(SQLName(r.table))+" WHERE "+quote(r.col)+" = ? LIMIT 1", id).Scan(&one) == nil {
-			return shortName(r.table) + " (`" + shortName(r.table) + "." + r.col + "`)"
+		stmt := "SELECT 1 FROM " + quote(SQLName(r.table)) + " WHERE " + quote(r.col) + " = ? LIMIT 1"
+		err := q.QueryRowContext(ctx, stmt, id).Scan(&one)
+		if err != nil {
+			rowsRead(ctx, stmt, 0)
+			continue
 		}
+		rowsRead(ctx, stmt, 1)
+		return shortName(r.table) + " (`" + shortName(r.table) + "." + r.col + "`)"
 	}
 	return ""
 }
@@ -768,6 +779,14 @@ func changedTables(tables []TableDesc, stmts []string, oldSchema string) []strin
 		out = append(out, "(unknown)")
 	}
 	return out
+}
+
+// rowsRead records n as the rows statement stmt read, when the running effect has a dev
+// Recorder (recQ records a read before its rows are read).
+func rowsRead(ctx context.Context, stmt string, n int) {
+	if rc := rec(ctx); rc != nil {
+		rc.SetRows(stmt, int64(n))
+	}
 }
 
 // recQ wraps a querier: when the running effect has a dev Recorder (eff.Env.Rec) each statement is
