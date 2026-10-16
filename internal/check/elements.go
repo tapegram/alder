@@ -299,6 +299,13 @@ func (mc *modCtx) checkSlots(x *syntax.Element, el *elements.Element) {
 // JavaScript and could not be reached from the keyboard. Without those attributes it is
 // presentational, or styles the `<button>` or `<a>` the author wrote inside it.
 //
+// An `<al-dialog>` gets the native `<dialog>` it wraps (the library's CSS and the invoker
+// commands act on that element), carrying the element's `id`, the header the `heading` names
+// and, when `dismissible`, a close button.
+//
+// An `<al-toasts>` without `popover` gets `popover="manual"`, the top-layer region the toast
+// script shows.
+//
 // An `<al-alert>` without `role` gets the live-region role its variant implies: "status" for
 // info (the default) and success, "alert" for warning and destructive. A computed variant gets
 // none: the author writes `role` then.
@@ -312,6 +319,12 @@ func rendered(x *syntax.Element) string {
 			if hasHTMLAttr(x, n) {
 				return "button"
 			}
+		}
+	case "al-dialog":
+		return "dialog"
+	case "al-toasts":
+		if !hasHTMLAttr(x, "popover") {
+			return "popover"
 		}
 	case "al-alert":
 		if hasHTMLAttr(x, "role") {

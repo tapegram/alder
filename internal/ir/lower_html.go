@@ -81,6 +81,8 @@ func (l *lowerer) element(x *syntax.Element) Expr {
 // completeBuiltin adds what the renderer writes for built-in element el (check.Result.Rendered):
 //
 //	"status", "alert"  the role on an `<al-alert>`: role="status" or role="alert"
+//	"popover"          popover="manual" on an `<al-toasts>`
+//	"dialog"           <al-dialog heading=… dismissible><dialog id=…>[close form][<h2 slot=header>]children</dialog></al-dialog>
 //	"button"           <al-button …><button type="…" data-on:click=… disabled>children</button></al-button>
 //	"a"                <al-button …><a href=…>children</a></al-button>
 //
@@ -94,6 +96,14 @@ func completeBuiltin(el *Elem, r string) {
 	switch r {
 	case "status", "alert":
 		el.Attrs = append(el.Attrs, HAttr{Name: "role", Kind: AttrText, Value: text(r)})
+		return
+	}
+	switch r {
+	case "dialog":
+		completeDialog(el, text)
+		return
+	case "popover":
+		el.Attrs = append(el.Attrs, HAttr{Name: "popover", Kind: AttrText, Value: text("manual")})
 		return
 	}
 	var outer, inner []HAttr
@@ -137,6 +147,60 @@ func completeBuiltin(el *Elem, r string) {
 	default:
 		el.Children = []Expr{&HIf{Typed: el.Typed, Cond: disabled.Value, Then: off, Else: link}}
 	}
+}
+
+// completeDialog wraps the children of an `<al-dialog>` in the native `<dialog>` the library's
+// stylesheet and the invoker commands (`commandfor`, `command="show-modal"`) act on: the
+// element's `id` moves to it, a `heading` becomes the header slot's `<h2>` (unless a child
+// already has `slot="header"`), and a `dismissible` dialog gets a `<form method="dialog">` with
+// a close button first, and closes on a click on the backdrop (`closedby="any"`).
+func completeDialog(el *Elem, text func(string) Expr) {
+	var outer, dlg []HAttr
+	var heading Expr
+	dismissible := false
+	for _, a := range el.Attrs {
+		switch a.Name {
+		case "id":
+			dlg = append(dlg, a)
+		case "heading":
+			heading = a.Value
+			outer = append(outer, a)
+		case "dismissible":
+			dismissible = true
+			outer = append(outer, a)
+		default:
+			outer = append(outer, a)
+		}
+	}
+	hasHeader := false
+	for _, c := range el.Children {
+		if e, ok := c.(*Elem); ok {
+			for _, a := range e.Attrs {
+				if l, ok := a.Value.(*Lit); a.Name == "slot" && ok && l.Text == "header" {
+					hasHeader = true
+				}
+			}
+		}
+	}
+	// a morph of the page keeps the dialog open: the browser sets `open`, the server never does,
+	// and Datastar leaves an attribute named here alone
+	dlg = append(dlg, HAttr{Name: "data-preserve-attr", Kind: AttrText, Value: text("open")})
+	var kids []Expr
+	if dismissible {
+		dlg = append(dlg, HAttr{Name: "closedby", Kind: AttrText, Value: text("any")})
+		btn := &Elem{Typed: el.Typed, Tag: "button", Attrs: []HAttr{
+			{Name: "type", Kind: AttrText, Value: text("submit")},
+			{Name: "aria-label", Kind: AttrText, Value: text("Close")},
+		}, Children: []Expr{&HText{Typed: el.Typed, Text: "\u00d7"}}}
+		kids = append(kids, &Elem{Typed: el.Typed, Tag: "form", Attrs: []HAttr{{Name: "method", Kind: AttrText, Value: text("dialog")}}, Children: []Expr{btn}})
+	}
+	if heading != nil && !hasHeader {
+		kids = append(kids, &Elem{Typed: el.Typed, Tag: "h2", Attrs: []HAttr{{Name: "slot", Kind: AttrText, Value: text("header")}},
+			Children: []Expr{&HExpr{Typed: el.Typed, Expr: heading, Kind: HExprText}}})
+	}
+	kids = append(kids, el.Children...)
+	el.Attrs = outer
+	el.Children = []Expr{&Elem{Typed: el.Typed, Tag: "dialog", Attrs: dlg, Children: kids}}
 }
 
 func (l *lowerer) children(cs []syntax.Expr) []Expr {

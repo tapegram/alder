@@ -466,7 +466,14 @@ its no-JavaScript form must wrap the whole `<al-button>`, not the
 longer match. An `<al-alert>` without `role` whose `variant` is written
 as a literal is recorded as `"status"` or `"alert"`, and the IR stage
 adds that `role`, so a screen reader announces the message when it
-appears. Each rule is checked only for the built-in entry: an app that
+appears. Two more elements are completed the same way (`"dialog"` and
+`"popover"` in `Result.Rendered`, `completeDialog` in the IR's
+`lower_html.go`): an `<al-dialog>` gets the native `<dialog>` the
+library's CSS and the invoker commands act on (its `id` moves to it, the
+`heading` becomes an `<h2 slot="header">`, a `dismissible` one gets a close
+form, and `data-preserve-attr="open"` tells Datastar's morph to keep the
+`open` the browser wrote), and an `<al-toasts>` without `popover` gets
+`popover="manual"`. Each rule is checked only for the built-in entry: an app that
 redefines `al-button` in its own manifest gets its element as written.
 
 The checker's output is a `check.Result` (`internal/check/result.go`). It

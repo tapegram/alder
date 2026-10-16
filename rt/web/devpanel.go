@@ -38,7 +38,7 @@ function sync(){var p=document.getElementById("_alder_panel"),nav=p&&p.querySele
 var h=load(),id=nav.getAttribute("data-rid");if(!h.some(function(e){return e.id===id})){var html="";ids.forEach(function(n){var s=document.getElementById("_alder_tab_"+n);if(s)html+=s.outerHTML.replace(/ id="_alder_tab_/g,' data-past="').replace(/ hidden(="[^"]*")?/g,"")});
 h.push({id:id,bar:nav.querySelector("[data-bar]").textContent+" "+nav.children[1].textContent+" "+nav.children[2].textContent,html:html.slice(0,60000)});h=h.slice(-20);save(h)}
 h.slice().reverse().forEach(function(e){var li=document.createElement("li"),b=document.createElement("button");b.type="button";b.setAttribute("data-id",e.id);b.textContent=e.bar;li.appendChild(b);ol.appendChild(li)})}
-function watch(){var p=document.getElementById("_alder_panel");if(!p)return;new MutationObserver(sync).observe(p,{childList:true});sync()}
+function watch(){var p=document.getElementById("_alder_panel");if(!p)return;new MutationObserver(sync).observe(p,{childList:true,subtree:true,attributes:true,attributeFilter:["data-rid"]});sync()}
 document.addEventListener("click",function(ev){var t=ev.target.closest&&ev.target.closest("button");if(!t)return;
 if(t.hasAttribute("data-copy")){var c=t.getAttribute("data-copy"),done=function(){t.textContent="Copied"};
 if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(c).then(done,function(){fb()});else fb();
@@ -185,7 +185,7 @@ func (rt *router) inlinePanel(w http.ResponseWriter, page string, status int) st
 // and the page has no <al-toasts> region of its own, the implicit region (kept across morphs).
 func (rt *router) shellBody(w http.ResponseWriter, body string) string {
 	if tw, ok := w.(*tracker); ok && tw.notice != "" && !strings.Contains(body, "<al-toasts") {
-		body = endOfBody(body, `<al-toasts data-ignore-morph></al-toasts>`)
+		body = endOfBody(body, `<al-toasts popover="manual" data-ignore-morph></al-toasts>`)
 	}
 	if !rt.panelOn() {
 		return body

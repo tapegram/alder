@@ -67,7 +67,7 @@ func TestNoticedToast(t *testing.T) {
 	body := serve(h, req).Body.String()
 	for _, s := range []string{
 		"data: selector al-toasts\ndata: mode append\ndata: elements <al-toast variant=\"info\" timeout=\"5000\">Saved &lt;ok&gt;</al-toast>",
-		"<al-toasts data-ignore-morph></al-toasts></body>",
+		"<al-toasts popover=\"manual\" data-ignore-morph></al-toasts></body>",
 	} {
 		if !strings.Contains(body, s) {
 			t.Errorf("missing %q in %q", s, body)

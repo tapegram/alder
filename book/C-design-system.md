@@ -773,11 +773,27 @@ dialog closes, however it closed.
 </al-dialog>
 ```
 
-Datastar's morph keeps a dialog open. The morph rewrites only the
-attributes the server's markup gives, and the server never writes `open`
-(the browser does, when the dialog is shown), so a body update while the
-dialog is on screen leaves it open with focus inside it, as long as the
-element keeps its `id`. The one limit is that a *message* a dialog
+You write the element and its content; Alder's renderer writes the
+native `<dialog>` the library's stylesheet and the invoker commands act
+on. The element's `id` moves to the `<dialog>` (so `commandfor="delete-dialog"`
+finds it), a `heading` becomes the header slot's `<h2>` (unless a child
+already has `slot="header"`), and a `dismissible` dialog gets a close
+button in a `<form method="dialog">` first and closes on a click on the
+backdrop (`closedby="any"`):
+
+```alder eval=<al-dialog heading="Sure?" dismissible><dialog id="sure" data-preserve-attr="open" closedby="any"><form method="dialog"><button type="submit" aria-label="Close">×</button></form><h2 slot="header">Sure?</h2><p>This cannot be undone.</p><div slot="actions"><al-button>Cancel</al-button></div></dialog></al-dialog>
+<al-dialog id="sure" heading="Sure?" dismissible>
+  <p>This cannot be undone.</p>
+  <div slot="actions"><al-button>Cancel</al-button></div>
+</al-dialog>
+```
+
+Datastar's morph keeps a dialog open. The morph would remove the `open`
+attribute the browser wrote when the dialog was shown (the server never
+writes it), so the renderer also writes `data-preserve-attr="open"` on the
+`<dialog>`, which tells Datastar to leave that attribute alone. A body
+update while the dialog is on screen then leaves it open and modal with
+focus inside it, as long as the element keeps its `id`. The one limit is that a *message* a dialog
 button posts cannot be answered into a different page: messages belong to
 the page that declares them (chapter 6), so the admin's confirm button is
 a link to the confirmation page (chapter 15).
@@ -942,9 +958,14 @@ own.
 ### `al-toasts`
 
 The region toasts appear in: a `popover="manual"` element in the top
-layer at a corner of the viewport. Put it outside any region a message
-re-renders (Alder adds one to the body update itself, marked
-`data-ignore-morph`, when the page has none).
+layer at a corner of the viewport. Alder's renderer adds
+`popover="manual"` when you leave it out, as below. Put the region
+outside any part a message re-renders (Alder adds one to the body update
+itself, marked `data-ignore-morph`, when the page has none).
+
+```alder eval=<al-toasts position="top-right" popover="manual"></al-toasts>
+<al-toasts position="top-right"></al-toasts>
+```
 
 | Attribute | Type | Default | Meaning |
 |---|---|---|---|
