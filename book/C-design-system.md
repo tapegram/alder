@@ -777,14 +777,31 @@ You write the element and its content; Alder's renderer writes the
 native `<dialog>` the library's stylesheet and the invoker commands act
 on. The element's `id` moves to the `<dialog>` (so `commandfor="delete-dialog"`
 finds it), a `heading` becomes the header slot's `<h2>` (unless a child
-already has `slot="header"`), and a `dismissible` dialog gets a close
-button in a `<form method="dialog">` first and closes on a click on the
-backdrop (`closedby="any"`):
+already has `slot="header"`) and names the dialog for a screen reader
+(`aria-labelledby` points at the `<h2>`, whose `id` is the dialog's plus
+`-heading`), and a `dismissible` dialog gets a close button, labelled
+"Close" and the heading, in a `<form method="dialog">` first, and closes
+on a click on the backdrop (`closedby="any"`). `dismissible={False}`
+adds neither:
 
-```alder eval=<al-dialog heading="Sure?" dismissible><dialog id="sure" data-preserve-attr="open" closedby="any"><form method="dialog"><button type="submit" aria-label="Close">×</button></form><h2 slot="header">Sure?</h2><p>This cannot be undone.</p><div slot="actions"><al-button>Cancel</al-button></div></dialog></al-dialog>
+```alder eval=<al-dialog heading="Sure?" dismissible><dialog id="sure" aria-labelledby="sure-heading" data-preserve-attr="open" closedby="any"><form method="dialog"><button type="submit" aria-label="Close Sure?">×</button></form><h2 slot="header" id="sure-heading">Sure?</h2><p>This cannot be undone.</p><div slot="actions"><al-button>Cancel</al-button></div></dialog></al-dialog>
 <al-dialog id="sure" heading="Sure?" dismissible>
   <p>This cannot be undone.</p>
   <div slot="actions"><al-button>Cancel</al-button></div>
+</al-dialog>
+```
+
+Either form works: if you write the native `<dialog>` yourself, as the
+`<al-dialog>`'s direct child (as you would from another stack), the
+renderer leaves the element exactly as written and adds nothing, and the
+`slot`s inside your `<dialog>` are the `<al-dialog>`'s:
+
+```alder eval=<al-dialog size="sm"><dialog id="own" closedby="any" aria-labelledby="own-title"><h2 slot="header" id="own-title">Your own</h2><p>Written by hand.</p></dialog></al-dialog>
+<al-dialog size="sm">
+  <dialog id="own" closedby="any" aria-labelledby="own-title">
+    <h2 slot="header" id="own-title">Your own</h2>
+    <p>Written by hand.</p>
+  </dialog>
 </al-dialog>
 ```
 

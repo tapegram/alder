@@ -105,7 +105,9 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 	if !htmlTags[x.Tag] {
 		c.errorf(diag.UnknownName, x.Span, "unknown element `<%s>`", x.Tag)
 	}
-	mc.misplacedSlots(x)
+	if !c.slotted[x] {
+		mc.misplacedSlots(x)
+	}
 	if (x.Tag == "input" || x.Tag == "textarea" || x.Tag == "select") && mc.form != nil {
 		c.errorf("E0304", x.Span, "plain `<%s>` inside `<form submit>`; use `<%s field=\"…\">`", x.Tag, map[string]string{"input": "Input", "textarea": "Textarea", "select": "Select"}[x.Tag])
 	}
@@ -273,7 +275,7 @@ func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effe
 		return
 	}
 	if a.Value == nil {
-		if !boolAttrs[a.Name] {
+		if !boolAttrs[a.Name] && a.Name != "popover" { // a bare `popover` is `popover="auto"`
 			c.errorf(diag.TypeMismatch, a.Span, "attribute `%s` needs a value", a.Name)
 		}
 		return

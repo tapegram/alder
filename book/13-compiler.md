@@ -409,12 +409,16 @@ decodes only the part the checker uses: each declaration's `tagName`,
 its attributes' names and `type.text` (`boolean` marks a boolean
 attribute), and its slots' names. `customElement` then looks the tag up
 (E0028 when it is missing), checks each attribute against the entry or
-the short escape list of global attributes (`elements.Escaped`; `submit`
+the short escape list of global attributes, the popover and invoker ones
+included (`elements.Escaped`; `submit`
 is refused outright), a literal value against the entry's list of
 quoted values when its type is one (`Attr.Values`), and each child's
 `slot="…"` against the entry's slots. A plain element's children are
 looked at too (`misplacedSlots` in `html.go`): a `slot` there names no
-slot of anything, so it is E0028.
+slot of anything, so it is E0028. The one exception is a `<dialog>` the
+author writes directly inside an `<al-dialog>`: its children's slots are
+the `<al-dialog>`'s, checked against its entry (`Checker.slotted` marks
+it), and the renderer then adds nothing to that dialog.
 
 Four of the built-in elements are more than markup. `al-input`,
 `al-textarea`, `al-select` and `al-checkbox` inside a `<form submit>` are
@@ -470,9 +474,12 @@ appears. Two more elements are completed the same way (`"dialog"` and
 `"popover"` in `Result.Rendered`, `completeDialog` in the IR's
 `lower_html.go`): an `<al-dialog>` gets the native `<dialog>` the
 library's CSS and the invoker commands act on (its `id` moves to it, the
-`heading` becomes an `<h2 slot="header">`, a `dismissible` one gets a close
-form, and `data-preserve-attr="open"` tells Datastar's morph to keep the
-`open` the browser wrote), and an `<al-toasts>` without `popover` gets
+`heading` becomes an `<h2 slot="header">` the dialog's `aria-labelledby`
+names, a `dismissible` one gets a close form (none for a literal
+`dismissible={False}`, an `if` around it for a computed one), and
+`data-preserve-attr="open"` tells Datastar's morph to keep the `open` the
+browser wrote; one whose direct child is the author's own `<dialog>` gets
+nothing), and an `<al-toasts>` without `popover` gets
 `popover="manual"`. Each rule is checked only for the built-in entry: an app that
 redefines `al-button` in its own manifest gets its element as written.
 

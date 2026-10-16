@@ -37,7 +37,10 @@ type Checker struct {
 	// the app's file does not parse, so elements only it could declare are not reported again
 	elements       *elements.Manifest
 	appElementsBad bool
-	defaults       []pendingDefault // field defaults, checked after value signatures // duplicate declarations (E0009), skipped after declareTypeNames
+	// slotted are the `<dialog>`s an author wrote directly in an `<al-dialog>`: their children's
+	// slots are the `<al-dialog>`'s (customElement checks them), not misplaced (misplacedSlots)
+	slotted  map[*syntax.Element]bool
+	defaults []pendingDefault // field defaults, checked after value signatures // duplicate declarations (E0009), skipped after declareTypeNames
 
 	// typesDefined is set once every record has its fields (after pass 2); early are the generic
 	// record instances made before, refreshed then.

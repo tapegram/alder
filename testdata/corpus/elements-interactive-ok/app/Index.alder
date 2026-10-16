@@ -1,0 +1,36 @@
+module Index
+
+page "/" { }
+
+type Model = { open: Bool }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { open: False }
+
+msg Close
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Close p -> Task.succeed Rerender,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <main>
+    <al-button variant="outline"><button type="button" commandfor="more" command="toggle-popover">More</button></al-button>
+    <al-menu id="more" popover>
+      <a href={Index {}}>Home</a>
+      <button type="button" click={Close}>Close</button>
+    </al-menu>
+    <al-button><button type="button" popovertarget="who" popovertargetaction="show">Who?</button></al-button>
+    <al-popover id="who" popover="auto" placement="top" offset="md">Only you.</al-popover>
+    <al-toasts popover="manual" position="top-left"></al-toasts>
+    <al-tabs>
+      <al-tab name="v" selected><label><input type="radio" name="v" checked /> One</label><al-panel>1</al-panel></al-tab>
+      <al-tab name="v"><label><input type="radio" name="v" /> Two</label><al-panel>2</al-panel></al-tab>
+    </al-tabs>
+    <al-button><button type="button" id="tip" title="A hint">?</button></al-button>
+    <al-tooltip for="tip">A hint</al-tooltip>
+    <al-dialog id="d" heading="Sure?" dismissible={model.open}><p>Yes.</p></al-dialog>
+    <al-dialog size="lg"><dialog id="own" closedby="any"><h2 slot="header">Own</h2><div slot="actions"><button type="button" commandfor="own" command="close">Close</button></div></dialog></al-dialog>
+  </main>

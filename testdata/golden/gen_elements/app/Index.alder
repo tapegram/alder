@@ -66,5 +66,22 @@ view model session =
         <a slot="next" href={Index {}}>Next</a>
       </al-pagination>
       <al-input label={model.label}><input name="q" /></al-input>
+      <al-button variant="outline"><button type="button" commandfor="sure" command="show-modal">Delete</button></al-button>
+      <al-dialog id="sure" heading="Delete it?" dismissible>
+        <p>This cannot be undone.</p>
+        <div slot="actions"><al-button click={Clear}>Delete</al-button></div>
+      </al-dialog>
+      <al-dialog heading="Kept" dismissible={False}><p>No close button.</p></al-dialog>
+      <al-dialog id="maybe" heading="Maybe" dismissible={model.saving}><p>A close button while saving.</p></al-dialog>
+      <al-dialog size="sm"><dialog id="own" closedby="any"><h2 slot="header">Own</h2><p>The author's dialog.</p></dialog></al-dialog>
+      <al-button variant="outline"><button type="button" popovertarget="who" popovertargetaction="toggle">Who?</button></al-button>
+      <al-popover id="who" popover placement="bottom">Only people with the link.</al-popover>
+      <al-menu id="more" popover><a href={Index {}}>Home</a><button type="button" click={Clear}>Clear</button></al-menu>
+      <al-toasts popover="manual" position="top-right"></al-toasts>
+      <al-tabs>
+        <al-tab name="view" selected><label><input type="radio" name="view" checked /> Details</label><al-panel>Fields</al-panel></al-tab>
+        <al-tab name="view"><label><input type="radio" name="view" /> Comments</label><al-panel>Comments</al-panel></al-tab>
+      </al-tabs>
+      <al-tooltip for="save-help">Saves a draft</al-tooltip>
     </al-stack>
   </al-page>

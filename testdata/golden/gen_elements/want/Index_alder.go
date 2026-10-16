@@ -161,5 +161,59 @@ func Index__view(model Index__Model, session App__Session) html.Node {
 			html.El("a", []html.Attr{html.A("slot", "next"), html.A("href", rt.PageURL(rt.Page{Path: "/"}))}, html.Text("Next")),
 		),
 		html.El("al-input", []html.Attr{html.M("label", model.Label)}, html.El("input", []html.Attr{html.A("name", "q")})),
+		html.El("al-button", []html.Attr{html.A("variant", "outline")}, html.El("button", []html.Attr{html.A("type", "button"), html.A("commandfor", "sure"), html.A("command", "show-modal")}, html.Text("Delete"))),
+		html.El("al-dialog", []html.Attr{html.A("heading", "Delete it?"), html.B("dismissible", true)}, html.El("dialog", []html.Attr{html.A("id", "sure"), html.A("aria-labelledby", "sure-heading"), html.A("data-preserve-attr", "open"), html.A("closedby", "any")},
+			html.El("form", []html.Attr{html.A("method", "dialog")}, html.El("button", []html.Attr{html.A("type", "submit"), html.A("aria-label", "Close Delete it?")}, html.Text("×"))),
+			html.El("h2", []html.Attr{html.A("slot", "header"), html.A("id", "sure-heading")}, html.Text("Delete it?")),
+			html.El("p", nil, html.Text("This cannot be undone.")),
+			html.El("div", []html.Attr{html.A("slot", "actions")}, html.El("al-button", nil, html.El("button", []html.Attr{html.A("type", "button"), html.MsgAttr("data-on:click", rt.MsgRef{Module: "Index", Msg: "Clear"})}, html.Text("Delete")))),
+		)),
+		html.El("al-dialog", []html.Attr{html.A("heading", "Kept"), html.B("dismissible", false)}, html.El("dialog", []html.Attr{html.A("aria-label", "Kept"), html.A("data-preserve-attr", "open")},
+			html.El("h2", []html.Attr{html.A("slot", "header")}, html.Text("Kept")),
+			html.El("p", nil, html.Text("No close button.")),
+		)),
+		html.El("al-dialog", []html.Attr{html.A("heading", "Maybe"), html.B("dismissible", model.Saving)}, html.El("dialog", []html.Attr{html.A("id", "maybe"), html.A("aria-labelledby", "maybe-heading"), html.A("data-preserve-attr", "open"), html.A("closedby", func() string {
+			if model.Saving {
+				return "any"
+			}
+			return "closerequest"
+		}())},
+			func() html.Node {
+				if model.Saving {
+					return html.El("form", []html.Attr{html.A("method", "dialog")}, html.El("button", []html.Attr{html.A("type", "submit"), html.A("aria-label", "Close Maybe")}, html.Text("×")))
+				}
+				return std.HtmlNone()
+			}(),
+			html.El("h2", []html.Attr{html.A("slot", "header"), html.A("id", "maybe-heading")}, html.Text("Maybe")),
+			html.El("p", nil, html.Text("A close button while saving.")),
+		)),
+		html.El("al-dialog", []html.Attr{html.A("size", "sm")}, html.El("dialog", []html.Attr{html.A("id", "own"), html.A("closedby", "any")},
+			html.El("h2", []html.Attr{html.A("slot", "header")}, html.Text("Own")),
+			html.El("p", nil, html.Text("The author's dialog.")),
+		)),
+		html.El("al-button", []html.Attr{html.A("variant", "outline")}, html.El("button", []html.Attr{html.A("type", "button"), html.A("popovertarget", "who"), html.A("popovertargetaction", "toggle")}, html.Text("Who?"))),
+		html.El("al-popover", []html.Attr{html.A("id", "who"), html.B("popover", true), html.A("placement", "bottom")}, html.Text("Only people with the link.")),
+		html.El("al-menu", []html.Attr{html.A("id", "more"), html.B("popover", true)},
+			html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Page{Path: "/"}))}, html.Text("Home")),
+			html.El("button", []html.Attr{html.A("type", "button"), html.MsgAttr("data-on:click", rt.MsgRef{Module: "Index", Msg: "Clear"})}, html.Text("Clear")),
+		),
+		html.El("al-toasts", []html.Attr{html.A("popover", "manual"), html.A("position", "top-right")}),
+		html.El("al-tabs", nil,
+			html.El("al-tab", []html.Attr{html.A("name", "view"), html.B("selected", true)},
+				html.El("label", nil,
+					html.El("input", []html.Attr{html.A("type", "radio"), html.A("name", "view"), html.B("checked", true)}),
+					html.Text(" Details"),
+				),
+				html.El("al-panel", nil, html.Text("Fields")),
+			),
+			html.El("al-tab", []html.Attr{html.A("name", "view")},
+				html.El("label", nil,
+					html.El("input", []html.Attr{html.A("type", "radio"), html.A("name", "view")}),
+					html.Text(" Comments"),
+				),
+				html.El("al-panel", nil, html.Text("Comments")),
+			),
+		),
+		html.El("al-tooltip", []html.Attr{html.A("for", "save-help")}, html.Text("Saves a draft")),
 	))
 }

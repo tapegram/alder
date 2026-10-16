@@ -58,6 +58,17 @@ func (mc *modCtx) customElement(x *syntax.Element, m types.Type, env *env, eff e
 		mc.customAttr(x, el, a, m, env, eff)
 	}
 	mc.checkSlots(x, el)
+	if x.Tag == "al-dialog" && el.Builtin {
+		for _, ch := range x.Children {
+			if d, ok := ch.(*syntax.Element); ok && d.Tag == "dialog" { // the author's own `<dialog>`
+				if c.slotted == nil {
+					c.slotted = map[*syntax.Element]bool{}
+				}
+				c.slotted[d] = true
+				mc.checkSlots(&syntax.Element{Tag: x.Tag, Children: d.Children}, el)
+			}
+		}
+	}
 	for _, ch := range x.Children {
 		mc.htmlNode(ch, m, env, eff)
 	}
@@ -301,7 +312,8 @@ func (mc *modCtx) checkSlots(x *syntax.Element, el *elements.Element) {
 //
 // An `<al-dialog>` gets the native `<dialog>` it wraps (the library's CSS and the invoker
 // commands act on that element), carrying the element's `id`, the header the `heading` names
-// and, when `dismissible`, a close button.
+// and, when `dismissible`, a close button. One whose direct child is a `<dialog>` the author
+// wrote gets nothing: the author's markup is complete as it is.
 //
 // An `<al-toasts>` without `popover` gets `popover="manual"`, the top-layer region the toast
 // script shows.
@@ -321,6 +333,11 @@ func rendered(x *syntax.Element) string {
 			}
 		}
 	case "al-dialog":
+		for _, ch := range x.Children { // the author wrote the native `<dialog>`: theirs wins
+			if e, ok := ch.(*syntax.Element); ok && e.Tag == "dialog" {
+				return ""
+			}
+		}
 		return "dialog"
 	case "al-toasts":
 		if !hasHTMLAttr(x, "popover") {

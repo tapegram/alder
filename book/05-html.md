@@ -443,8 +443,12 @@ the ones it does, in the manifest's order:
 
 A few attributes are accepted on every custom element without being
 declared: the global ones, `id`, `class`, `style`, `slot`, `hidden`,
-`title`, `lang`, `dir`, `tabindex`, `role`, `data-*` and `aria-*`, and
-Alder's own `click` and `href`, which mean what they mean anywhere (a
+`title`, `lang`, `dir`, `tabindex`, `role`, `data-*` and `aria-*`; the
+popover and invoker attributes `popover`, `popovertarget`,
+`popovertargetaction`, `commandfor`, `command` and `closedby`, which HTML
+also allows on any element (so `<al-menu id="more" popover>` is written
+as Appendix C shows it; a bare `popover` is the platform's `popover="auto"`);
+and Alder's own `click` and `href`, which mean what they mean anywhere (a
 message, a page). `submit` is not among them: a custom element is not a
 form, so nothing would ever submit it.
 

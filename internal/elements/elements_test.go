@@ -159,12 +159,12 @@ func TestMerge_AppWins(t *testing.T) {
 }
 
 func TestEscaped(t *testing.T) {
-	for _, n := range []string{"id", "class", "style", "slot", "hidden", "title", "lang", "dir", "tabindex", "role", "data-x", "aria-label", "click", "href"} {
+	for _, n := range []string{"id", "class", "style", "slot", "hidden", "title", "lang", "dir", "tabindex", "role", "data-x", "aria-label", "click", "href", "popover", "popovertarget", "popovertargetaction", "commandfor", "command", "closedby"} {
 		if !Escaped(n) {
 			t.Errorf("%s not escaped", n)
 		}
 	}
-	for _, n := range []string{"name", "value", "field", "label", "type", "disabled", "onclick", "data", "aria", "src", "submit"} {
+	for _, n := range []string{"name", "value", "field", "label", "type", "disabled", "onclick", "data", "aria", "src", "submit", "anchor", "popovers"} {
 		if Escaped(n) {
 			t.Errorf("%s escaped", n)
 		}
