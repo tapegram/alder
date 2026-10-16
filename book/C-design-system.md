@@ -28,8 +28,9 @@ box", explains why):
   Change a token and every element follows. The colour tokens use the
   names of shadcn/ui, a widely copied component library, so a theme
   written for it mostly carries over.
-- **CSS only.** This first tier is a stylesheet and nothing else: the
-  elements are not defined in JavaScript at all. A browser shows an
+- **CSS first.** The first tier is a stylesheet and nothing else: the
+  elements are not defined in JavaScript at all; the interactive tier adds
+  small optional scripts, and uses the platform where it can. A browser shows an
   element it has no definition for as a plain box, and the stylesheet
   styles that box by its tag name and attributes. Every element works
   with JavaScript off.
@@ -204,7 +205,7 @@ browser that button shows its own border inside the element's.
 
 ## The elements
 
-There are twelve. Each section below gives the element's attributes as
+There are twelve in the first tier and ten in the interactive tier ("The interactive tier", below). Each section below gives the element's attributes as
 the manifest declares them (the book's tests compare every table with
 the manifest the compiler embeds, so they cannot drift apart), its
 slots, and an example: the Alder you write, with the HTML it renders as
@@ -666,62 +667,243 @@ Slots: default.
 </al-page>
 ```
 
-### The interactive tier (v0.2.1, minimal; the full chapter is M7b's Task 3)
+## The interactive tier
+
+The twelve elements above are a stylesheet. The ten below (`al-dialog`,
+`al-popover`, `al-menu`, `al-tabs`, `al-tab`, `al-panel`, `al-toast`,
+`al-toasts`, `al-tooltip`, `al-devpanel`) are what v0.2 added, and they
+behave: they open, close, move focus and time out. The rule that shaped
+them is that **the platform does the work wherever it can**. A modal
+dialog is the browser's `<dialog>`, which already traps focus, makes the
+page behind it inert, closes on Escape and gives focus back to the button
+that opened it. A popover is the browser's Popover API, positioned with
+CSS anchor positioning. A group of tabs is a group of radio buttons. A
+script (`al.js`, below) is added only where the platform has nothing: a
+toast's timer, the arrow keys of a menu, a polyfill for older browsers.
+
+Like the first tier they are light DOM, use only tokens, and are plain
+elements in the page, so Datastar's morph sees every part of them.
+
+### Invoker commands
+
+Most of these elements are opened by a button, and the button names what
+to open and what to do with two attributes on any `<button>`:
+
+```html
+<button type="button" commandfor="help" command="show-modal">Help</button>
+<al-dialog id="help" heading="Help">…</al-dialog>
+```
+
+`commandfor` is the `id` of the element to act on and `command` is the
+action: `show-modal` (open a dialog as a modal), `close` (close it),
+`toggle-popover`, `show-popover` or `hide-popover` (for a popover). These
+are the platform's *invoker commands*; there is no `click` handler and no
+script of yours. In an Alder view write the `<button>` inside an
+`<al-button>` (the button gets the element's look, as in `al-button`
+above); `commandfor` and `command` are plain attributes of the `<button>`.
+A button that only toggles a popover can also use the older pair,
+`popovertarget="id"`, which every browser with popovers understands.
+
+### Without JavaScript, and in older browsers
+
+Each element says below what it does with no script, but the rule is
+short. Dialog, popover, menu and tabs work natively. A tooltip is hidden,
+so put the same text in the trigger's `title`. A toast falls back to an
+`<al-alert>` rendered in the page. The rest of this section is the browser
+line.
+
+The full set needs invoker commands, `popover="hint"` and CSS anchor
+positioning: Chromium 135 and later (Chrome, Edge), Safari 26, Firefox
+140. `al.js` includes a shim (`al-shim.js`, 26 lines) that adds invoker
+commands to a browser without them (so `commandfor` / `command` open and
+close a dialog or popover on older versions), and it makes a tooltip a
+manual popover where `hint` is unknown. It does **not** add anchor
+positioning: without it a popover, menu or tooltip shows at the browser's
+default position (still visible, still usable, just not beside its
+button), and a popover that would leave the screen is not flipped. The
+elements' `al-close` and `al-select` events (below) come from the same
+script.
+
+### The script
+
+`al.js` is one file of small `type="module"` scripts (each under 60
+lines, no framework): the shim, the menu's keys, the tabs' keys and the
+developer bar's tab switch, the toast timer and the tooltip. Link it once
+in the layout, next to the stylesheet:
+
+```html
+<script type="module" src="/static/al/al.js"></script>
+```
+
+Alder writes it into the build next to `al.css` and serves it at
+`/static/al/al.js`, with the same `ETag` and cache rules. It is optional:
+every section below says what is lost without it. `alder new`'s layout
+and both example apps link it. Write the `src` as a plain string, as
+above; `Url.external` is for the `href` of a link, and a `<script src>` is
+typed `Text`.
 
 ### `al-dialog`
 
-A modal dialog around a native `<dialog>`, opened by `commandfor` / `command="show-modal"`.
+A modal dialog around a native `<dialog>`: the browser traps focus, makes
+the rest of the page inert, closes it on Escape, and returns focus to the
+button that opened it. Open it with a button whose `commandfor` is the
+dialog's `id` and whose `command` is `show-modal`; close it with a
+`<button commandfor="id" command="close">` in the `actions` slot, with
+the close button `dismissible` adds, with Escape, or by a click on the
+backdrop.
 
 | Attribute | Type | Default | Meaning |
 |---|---|---|---|
-| `heading` | `string` | — | the dialog's heading, rendered as the header slot's `<h2>` |
+| `heading` | `string` | — | the dialog's heading, rendered as the header slot's `<h2>`; the attribute itself draws nothing |
 | `size` | `"sm" \| "md" \| "lg"` | `"md"` | the width |
-| `dismissible` | `boolean` | `false` | makes room for a close button |
+| `dismissible` | `boolean` | `false` | makes room for a close button: a `<form method="dialog">` holding a `<button>` as the first child of the `<dialog>` |
 
 Slots: `header`, default, `actions`.
 
+Event: `al-close`, fired (it bubbles) on the `<al-dialog>` when its
+dialog closes, however it closed.
+
+```html
+<al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
+<al-dialog id="delete-dialog" heading="Delete this comment?" dismissible>
+  <p>The next page shows what refers to it before anything is deleted.</p>
+  <div slot="actions">
+    <al-button variant="destructive" href="/admin/comment/3/delete">Review and delete</al-button>
+  </div>
+</al-dialog>
+```
+
+Datastar's morph keeps a dialog open. The morph rewrites only the
+attributes the server's markup gives, and the server never writes `open`
+(the browser does, when the dialog is shown), so a body update while the
+dialog is on screen leaves it open with focus inside it, as long as the
+element keeps its `id`. The one limit is that a *message* a dialog
+button posts cannot be answered into a different page: messages belong to
+the page that declares them (chapter 6), so the admin's confirm button is
+a link to the confirmation page (chapter 15).
+
+Without JavaScript the dialog is not open, and the button that would
+open it does nothing, so give the user another way: a link to
+`href="#delete-dialog"` shows it (not as a modal: the dialog is shown by
+`:target`, and `#` hides it), and the admin also keeps a plain link to
+the confirmation page beside the button.
+
 ### `al-popover`
 
-A floating panel anchored to its invoker.
+A small floating panel anchored to the button that opens it. Write
+`popover` on it and open it with `popovertarget="id"` or `commandfor="id"
+command="toggle-popover"` on a button. The panel is placed with CSS
+anchor positioning and flips to the opposite side when it would leave the
+screen.
 
 | Attribute | Type | Default | Meaning |
 |---|---|---|---|
-| `placement` | `"top" \| "bottom" \| "left" \| "right"` | `"bottom"` | the side of the anchor |
-| `offset` | `"sm" \| "md" \| "lg"` | `"sm"` | the gap to the anchor |
-| `anchor` | `string` | — | the id of the anchor, when it is not the invoker |
+| `placement` | `"top" \| "bottom" \| "left" \| "right"` | `"bottom"` | the side of the anchor the panel opens on |
+| `offset` | `"sm" \| "md" \| "lg"` | `"sm"` | the gap between the anchor and the panel, a space token |
+| `anchor` | `string` | — | the id of the element to anchor to, when it is not the invoker (the platform's own `anchor` attribute) |
 
 Slots: default.
+
+Event: `al-close`, fired on the `<al-popover>` when it closes.
+
+```html
+<al-button variant="outline"><button type="button" commandfor="who" command="toggle-popover">Who can see this?</button></al-button>
+<al-popover id="who" popover placement="bottom">Only people with the link.</al-popover>
+```
+
+It needs no script: the popover opens, closes on Escape or a click
+outside, and light-dismisses, with JavaScript off. In a browser without
+anchor positioning it appears at the default position.
 
 ### `al-menu`
 
-A popover of links or buttons.
+A popover of links or buttons. Open it with `<button commandfor="id"
+command="toggle-popover">` and give the `<al-menu>` the `popover`
+attribute and the same `id`.
 
 No attributes.
 
 Slots: default.
+
+The items are `<a>` or `<button>` children.
+
+Event: `al-select`, fired on the `<al-menu>` when an item is chosen
+(`detail.item` is the item), and `al-close`.
+
+```html
+<al-button variant="outline"><button type="button" commandfor="more" command="toggle-popover">More</button></al-button>
+<al-menu id="more" popover>
+  <a href="/posts/new">New post</a>
+  <a href="/posts/drafts">Drafts</a>
+  <button type="button">Sign out</button>
+</al-menu>
+```
+
+With the script the menu gets `role="menu"` and `role="menuitem"` on the
+items, the arrow keys move between them, Home and End go to the first and
+last, the first item takes focus on open, and choosing one closes the
+menu. Without it the menu is a popover of links, which still navigate.
 
 ### `al-tabs`
 
-Tabs backed by a radio group.
+Tabs backed by a radio group, so selecting a tab and the arrow keys work
+with no script. Its children are `<al-tab>`s.
 
 No attributes.
 
 Slots: default.
 
+Event: `al-select`, fired on the `<al-tabs>` when a tab is chosen
+(`detail.tab` is the `<al-tab>`).
+
+```html
+<al-tabs>
+  <al-tab name="view" selected>
+    <label><input type="radio" name="view" checked> Details</label>
+    <al-panel>The post's fields.</al-panel>
+  </al-tab>
+  <al-tab name="view">
+    <label><input type="radio" name="view"> Comments</label>
+    <al-panel>Its comments.</al-panel>
+  </al-tab>
+</al-tabs>
+```
+
+Each tab holds a `<label>` that wraps a radio input and then its panel,
+and the radios of one group share a `name`. This nesting (the panel inside
+its tab, rather than beside it with a `for`) is what lets a stylesheet show
+the panel of the checked radio with `:has()`, with no script.
+
+Selecting a tab shows its panel and hides the others, and the arrow
+keys move between the radios. `al-tabs.js` adds Home and End, picks the
+tab whose `<al-tab>` has `selected` (the server's choice), copies the
+tab's `name` onto a radio without one, and fires `al-select`. Without
+the script, mark the open tab with `checked` on its radio.
+
+**The ARIA state as it is.** The script gives each panel `role="tabpanel"`
+but nothing gives the labels `role="tab"` or the group `role="tablist"`;
+the interaction is a radio group, which a screen reader announces as one,
+and that is what is exposed today. A full tabs pattern (with
+`aria-selected` and `aria-controls`) is not there yet, and the manifest
+does not promise it. If your tabs must follow it, render the buttons and
+the roles yourself.
+
 ### `al-tab`
 
-One tab: a label with a radio, then its panel.
+One tab: a `<label>` wrapping a radio input, then its `<al-panel>`.
 
 | Attribute | Type | Default | Meaning |
 |---|---|---|---|
-| `name` | `string` | — | the radio group's name |
-| `selected` | `boolean` | `false` | the tab the server picked |
+| `name` | `string` | — | the radio group's name; `al-tabs.js` copies it onto a radio that has none |
+| `selected` | `boolean` | `false` | the tab the server picked; the script checks its radio (without the script, write `checked` on the radio) |
 
 Slots: default.
 
+The label comes first, then the panel.
+
 ### `al-panel`
 
-A tab's content.
+A tab's content, shown when its tab is selected.
 
 No attributes.
 
@@ -729,18 +911,40 @@ Slots: default.
 
 ### `al-toast`
 
-A transient message.
+A transient message, shown in an `<al-toasts>` region. The script shows the
+region when a toast connects, gives the toast `role="status"` (so a
+screen reader announces it) and closes it after `timeout` milliseconds.
 
 | Attribute | Type | Default | Meaning |
 |---|---|---|---|
-| `variant` | `"info" \| "success" \| "warning" \| "destructive"` | `"info"` | the kind, which sets the colours |
-| `timeout` | `number` | `5000` | milliseconds before it closes; 0 keeps it |
+| `variant` | `"info" \| "success" \| "warning" \| "destructive"` | `"info"` | the kind, which sets the colours, as in `al-alert` |
+| `timeout` | `number` | `5000` | milliseconds before it closes; `0` keeps it until it is closed |
 
-Slots: default.
+Slots: default (the message).
+
+```html
+<al-toasts popover="manual" position="bottom-right">
+  <al-toast variant="success" timeout="5000">Saved</al-toast>
+</al-toasts>
+```
+
+You rarely write one. A message that answers `Notice.with "Saved"
+Rerender` (chapter 6, "Notices and in-flight") makes Alder's runtime
+patch an `<al-toast variant="info" timeout="5000">` into the page's
+`<al-toasts>`, after the body update, so the toast survives the morph; the
+scaffold's guestbook does this for "Signed".
+
+Without JavaScript the region stays hidden, so a toast is never seen. A
+message whose notice must be read with the script off should also put an
+`<al-alert>` in the page; the `Notice` answer has no such fallback of its
+own.
 
 ### `al-toasts`
 
-The corner region toasts appear in.
+The region toasts appear in: a `popover="manual"` element in the top
+layer at a corner of the viewport. Put it outside any region a message
+re-renders (Alder adds one to the body update itself, marked
+`data-ignore-morph`, when the page has none).
 
 | Attribute | Type | Default | Meaning |
 |---|---|---|---|
@@ -748,25 +952,52 @@ The corner region toasts appear in.
 
 Slots: default.
 
+Event: `al-close`, fired on the region when a toast closes
+(`detail.toast` is the toast).
+
 ### `al-tooltip`
 
-A text hint shown on hover and focus.
+A short text hint for the element whose id is in `for`. With the script
+it is a `popover="hint"` (a manual popover where `hint` is unknown),
+anchored to the trigger, shown on hover and on keyboard focus, hidden by
+Escape, and wired to the trigger with `aria-describedby`.
 
 | Attribute | Type | Default | Meaning |
 |---|---|---|---|
-| `for` | `string` | — | the id of the element it describes |
+| `for` | `string` | — | the id of the element the tooltip describes |
 
 Slots: default.
 
+```html
+<al-button variant="ghost"><button type="button" id="save-help" title="Saves a draft">?</button></al-button>
+<al-tooltip for="save-help">Saves a draft</al-tooltip>
+```
+
+Without JavaScript the tooltip is hidden (it is shown only while it is a
+popover that is open), which is why the example repeats the text in the
+trigger's `title`: that is the version a visitor with the script off gets.
+
 ### `al-devpanel`
 
-The developer bar: a collapsed bar and an expanded tabbed panel.
+The developer bar: a one-line bar sticky along the bottom of the page,
+and with `open` the selected section above it. It is the element
+Alder's developer mode renders (chapter 11, "Developer mode"), and it is
+in the library so any stack can reuse it. Its content is server-rendered:
+a `<nav>` of tab `<button>`s, each with `aria-controls` naming a
+`<section>`'s id, then the sections. SQL and code are set in monospace.
 
 | Attribute | Type | Default | Meaning |
 |---|---|---|---|
 | `open` | `boolean` | `false` | shows the sections above the bar |
 
 Slots: default.
+
+The content is a `<nav>`, then the `<section>`s.
+
+`al-tabs.js` switches the sections when a tab button is clicked and
+toggles `open` (clicking the selected tab again closes the panel). Without
+the script every section is shown while `open` is set. Alder emits the
+panel only under `ALDER_DEV=1`, never in a production build.
 
 ## From another stack
 
