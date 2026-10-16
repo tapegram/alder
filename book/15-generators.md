@@ -741,8 +741,9 @@ wrote app/Admin/User/Show.alder
 
 `examples/blog/app/Admin/` holds exactly these files, as the command
 wrote them; nobody has edited them, and the blog's README says how to
-check that by running it again. Its 103 tests pass, and they kill all of
-the admin's 175 mutants (chapter 10). For each table `T`, with `t` its
+check that by running it again. Its tests pass, and they kill 226 of
+the admin's 231 mutants, the five survivors being equivalent (chapter 10;
+the blog's README lists them). For each table `T`, with `t` its
 name in lower case:
 
 | Module | Path | What it is |
@@ -754,6 +755,7 @@ name in lower case:
 | `Admin.T.New` | `/admin/t/new` | the form that creates a row |
 | `Admin.T.Edit` | `/admin/t/{id}/edit` | the form that changes a row |
 | `Admin.T.Delete` | `/admin/t/{id}/delete` | what goes with the row, and the button, or why there is none |
+| `Admin.T.Bulk` | `/admin/t/bulk?ids=…` | the rows chosen on the list, and what to do with them all at once (only for a table with an action; "Bulk actions", below) |
 
 `--module` and `--path` put the admin elsewhere (`--module Back.Office
 --path /back`). An admin that exists is not written again: `alder new
@@ -1958,6 +1960,65 @@ test "a demoted Admin is refused at once" = {
 arm an update instead of an insert, and its `@unique` check counting
 the other rows only.
 
+### A long table behind a reference
+
+The select of `Admin.Post.New` holds one `<option>` per user. That is fine
+for a few hundred rows and not for a hundred thousand: the page would
+load them all, and the browser would draw them all. So the admin counts
+the referenced table in `load` (`authorsTotal`) and takes the
+**long-reference pattern** when the count is more than 200:
+
+- The select holds only 50 rows, narrowed by what the admin typed: the
+  rows whose label **contains** the search text (`User.email.contains
+  findAuthor`, the same case-insensitive match as the list's search,
+  chapter 8). At 200 rows or fewer it holds every row, as before, and
+  the search form is not drawn.
+- The text is a page parameter of the form (`findAuthor`, in the
+  `page` line), so `load` reads it again before every message. That is
+  what lets the narrowing survive: `load` runs first, the select's
+  options are computed from the text, and the select's membership rule
+  (above) is checked against the options just rendered. The admin
+  cannot pick, or be tricked into posting, a user the select did not
+  offer.
+- A small form of its own, `FindAuthor { q: Text }`, with the message
+  `SearchAuthor`, sends the text. Its arm answers `Redirect (Admin.Post.New
+  { findAuthor: p.form.q })`, not `Rerender`: a rerender would show the
+  select narrowed by the *old* text, since the options come from `load`,
+  which ran before the message. The redirect loads the page again with the
+  new text in the address, and `load` narrows by it. (On the Edit page
+  the select also keeps the row's own value, so a search that does not
+  match it does not lose it.) The regions are `search` (the form and the
+  message), `finds` (its arm) and `finder` (where the form is drawn).
+
+There is no `al-autocomplete` element: the library has none (Appendix C),
+so the control stays an `al-select` and a search form beside it, which
+works with no JavaScript. The generated tests check the edge: with
+exactly 200 rows the select holds them all; with 201 it holds 50 and the
+search narrows them; a crafted post of an id outside the rendered options
+is refused with "must be one of the options".
+
+### The Delete button: a dialog, and the page behind it
+
+A row's own page (`Admin.T.Show`) has a Delete button. It opens an
+`al-dialog` (Appendix C): "Delete this comment?", a note that the next page
+shows what refers to the row, and a button. The button is a **link to the
+confirmation page**, `Admin.T.Delete`, not a button that posts `Remove`
+from the dialog. Messages are page-local (chapter 6): `Remove` is declared
+by the delete page and can be answered only from it, so a dialog on the
+Show page cannot send it. Making the dialog post it would mean declaring
+`Remove` on the Show page too, and the delete page's counting of the
+`@cascade` and `@restrict` references (below) is exactly what the person
+should see before pressing anything, so the dialog leads there. The
+dialog's job is the small pause and the explanation; the page is the
+confirmation.
+
+With no JavaScript, or in a browser too old for invoker commands, the
+button does nothing, so the Show page also carries a plain link, "Delete
+without the dialog", to the same page. The dialog itself is the
+platform's: Escape and the close button dismiss it, focus stays inside it
+while it is open and returns to the button, and it stays open if a
+Datastar update re-renders the page behind it.
+
 ### The delete page
 
 Deleting a row is where a database's rules show (chapter 8, "Writing").
@@ -2293,6 +2354,42 @@ the other, an import cycle (E0006). Without a `@restrict` in reach the
 database cascades the whole tree, and the page deletes as usual. Neither
 example has a tree.
 
+### Bulk actions
+
+The list has a checkbox in the first column of every row. The checkboxes
+belong to a form of the page (`form="bulk"`), so a row's checkbox is
+submitted with it wherever it sits in the table. Two buttons below the
+table take the choice to the table's bulk page: "Act on the chosen rows"
+and, for no-script use, "Act on all rows on this page" (a second form of
+hidden ids). Both are `GET` forms to `Admin.T.Bulk`, whose page parameter
+is a list of the table's ids, so the chosen rows are in the address. The bulk page
+lists the rows and offers the table's actions:
+
+- **Delete** the chosen rows, with the same care as the single delete
+  page. A row that a `@restrict` reference holds is **refused**: it is
+  listed with "(kept: other rows refer to it)" and left, and the rest
+  are deleted. On the user table, the admin's own row is refused too. The
+  answer is `Notice.with "Deleted 2 of 3"` on a redirect to the list, so
+  the person sees a toast (chapter 6, "Notices and in-flight"). As with
+  every message, `load` runs first and reads the rows again, so what is
+  deleted is what the database holds now, not what the list showed.
+- **Set** a `Bool` column, or a column of a union with no payloads: one
+  form per such column (`BulkSetPublished`, `BulkSetDone`), which updates
+  every chosen row and answers `Notice.with "Updated 3"`.
+
+A table with neither a delete nor a set action gets no bulk page. The **delete is not generated for a table**
+whose deletion can meet a `@restrict` below a `@cascade`, or in a tree of
+the table's own (the cases the single delete page counts level by level or
+refuses by children, above). The refusal of a row is decided by one query
+over the chosen ids, which follows only the references that point at the
+chosen rows directly; a reference that blocks the delete further down
+would not be seen for many rows at once, and the delete would fail in the
+database as an error page. Such a table keeps its single delete page and
+any set action. The bulk modules have the regions `bulk` (the form types
+and messages) and `actions` (the forms in the view), so `alder regen
+admin` rewrites them as the columns change, and their generated tests
+include a row that is refused.
+
 ### What the admin does not do
 
 It reads and writes every row with the unscoped operations (`Db.from`,
@@ -2312,9 +2409,10 @@ insert that must name one writes it empty (`""`, or `Nothing` for a
 sets one; a secret of another type that an insert must name is refused,
 with a sentence asking for a default or a `Maybe`. The blog's
 `User.passwordHash` is such a column. It loads every row of a
-referenced table for a select, which is fine for the tables an admin
-usually manages, and offers no bulk actions and no permissions finer
-than one role.
+referenced table for a select up to 200 rows, and narrows by a search
+beyond that ("A long table behind a reference"); it has no
+autocomplete element, no bulk action across pages, and no permissions
+finer than one role.
 
 ## Logging in: `alder new auth`
 

@@ -305,6 +305,24 @@ cannot compute from the model. Put the list in the model and the select
 in the page's `view`. The check ignores the view's `if`s: a select in a
 branch not drawn still offers its options to a crafted post.
 
+**A list too long to render.** A select that offers every row of a large
+table is slow to draw and hard to use, and there is no `al-autocomplete`
+element in the library to type into. The pattern the admin uses (chapter
+15, "A long table behind a reference") needs nothing new, because the
+options are computed from the model and the membership rule is checked
+against the options just rendered. Keep the narrowing text as a page
+parameter (`page "/posts/new" { findAuthor: Text = "" }`), so `load` reads
+it before every message; have `load` fetch at most 50 rows whose label
+contains it (`Db.where (User.email.contains p.findAuthor)`, `Db.limit
+50`); and add a small second form with its own message, `form Find = { q:
+Text }`, whose arm answers `Redirect` to the same page with `findAuthor`
+set. It must be a `Redirect`, not a `Rerender`: `load` ran before the
+message, with the old text, and only a fresh request narrows by the new.
+The select then holds the narrowed rows, and a posted value outside them
+(typed by hand, or left over from an earlier search) is "must be one of the
+options" like any other. The pattern has no script and works with
+JavaScript off.
+
 A `<form submit={M}>` where `M` has no `form` type is allowed; it contains
 no bound inputs, only a button.
 
