@@ -21,7 +21,10 @@ import (
 // URL and the title; Back and Forward restore the scroll position; the login form's redirect
 // is morphed in with the session cookie; a link to a missing page morphs the 404 page in; a
 // slow post followed by a click ends on the click's page; a link to a file under /static/ is a
-// plain navigation.
+// plain navigation. M7b adds the admin's delete dialog across a body morph, a 404 and a 500 with
+// the dev panel (History, Copy as curl), a bulk delete's toast and its timeout, and the search of a
+// long reference table; the 500 renames a table in the dev database (its path is the script's
+// second argument).
 //
 // It needs node and Playwright with its Chromium. Playwright is looked for in
 // $ALDER_PLAYWRIGHT_DIR, else $HOME/.cache/alder-playwright; when it is missing the test is
@@ -77,7 +80,7 @@ func TestBrowser_BoostedNavigation(t *testing.T) {
 
 	start := time.Now()
 	r := startRunApp(t, "blog")
-	cmd := exec.Command(node, script, r.base)
+	cmd := exec.Command(node, script, r.base, filepath.Join(filepath.Dir(r.dir), "build", "blog", "dev.db"))
 	cmd.Env = env
 	var stderr strings.Builder
 	cmd.Stderr = &stderr

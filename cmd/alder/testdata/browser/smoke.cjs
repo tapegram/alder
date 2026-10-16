@@ -5,6 +5,7 @@
 const { chromium } = require('playwright');
 
 const BASE = process.argv[2];
+const DB = process.argv[3]; // the dev database file, to break a table in the 500 check
 const checks = [];
 const check = (name, ok, got) => checks.push({ name, ok: !!ok, got: JSON.stringify(got) });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -149,6 +150,162 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.click('#go');
     await page.waitForURL('**/static/x.pdf', { timeout: 5000 }).catch(() => {});
     check('a link to a file: a plain navigation', docs.some((d) => d === 'GET ' + BASE + '/static/x.pdf'), docs);
+
+    // ---- the admin (M7b): the delete dialog across a morph, bulk toast, history, search, a 500 ----
+    const ctx2 = await browser.newContext({ viewport: { width: 900, height: 700 } });
+    const p2 = await ctx2.newPage();
+    let docs2 = [];
+    p2.on('request', (r) => { if (r.resourceType() === 'document') docs2.push(r.method() + ' ' + r.url()); });
+    const at2 = (path) => p2.waitForFunction((x) => location.pathname === x, path, { timeout: 5000 }).catch(() => {});
+    const link2 = (href) => p2.evaluate((h) => {
+      const old = document.getElementById('go'); if (old) old.remove();
+      const a = document.createElement('a'); a.id = 'go'; a.href = h; a.textContent = 'go'; document.body.prepend(a);
+    }, href);
+    // follow a link as a boosted click (a script click: a modal dialog makes the page inert to the mouse)
+    const follow = async (href) => { await link2(href); await p2.evaluate(() => document.getElementById('go').click()); };
+    await p2.goto(BASE + '/login');
+    await p2.fill('input[name=email]', 'admin@example.com');
+    await p2.fill('input[name=password]', 'password');
+    await p2.click('button[type=submit]');
+    await at2('/');
+    await sleep(300);
+    // 205 more users (a long reference table: more than 200 rows), one post
+    for (let i = 0; i < 205; i++) {
+      await p2.request.post(BASE + '/_m/Admin.User.New/Create', { form: { email: `u${i}@example.com`, name: `user ${i}`, role: 'Reader' } });
+    }
+    const newPage = await (await p2.request.get(BASE + '/admin/post/new')).text();
+    const me = /<option value="([^"]+)">admin@example\.com/.exec(newPage)[1];
+    await p2.request.post(BASE + '/_m/Admin.Post.New/Create', { form: { slug: 'hello', title: 'Hello', body: 'b', published: 'True', author: me } });
+    await p2.goto(BASE + '/admin/post');
+    const showHref = await p2.evaluate(() => [...document.querySelectorAll('a')].map((a) => a.getAttribute('href')).find((h) => /^\/admin\/post\/[^/]+$/.test(h) && !/new|bulk/.test(h)));
+    await p2.goto(BASE + showHref);
+    await p2.evaluate(() => { window.__m = 1; });
+    docs2 = [];
+
+    // the delete dialog opens as a modal, focus inside
+    const dlg = () => p2.evaluate(() => {
+      const d = document.querySelector('dialog');
+      return d && { open: d.open, modal: d.matches(':modal'), inside: d.contains(document.activeElement), marker: window.__m === 1 };
+    });
+    await p2.click('button[command=show-modal]');
+    await sleep(200);
+    let d = await dlg();
+    check('dialog: the Delete button opens a modal with focus inside', d && d.open && d.modal && d.inside, d);
+
+    // RF1: a body morph while it is open leaves it open, modal, with focus inside
+    await follow(showHref);
+    await p2.waitForFunction(() => !document.getElementById('go'), null, { timeout: 5000 }).catch(() => {});
+    await sleep(300);
+    d = await dlg();
+    check('dialog: a body morph leaves it open and modal, focus inside, no document load', d && d.open && d.modal && d.inside && d.marker && docs2.length === 0, { d, docs2 });
+
+    // Escape closes it and gives focus back to the button
+    await p2.keyboard.press('Escape');
+    await sleep(200);
+    const closed = await p2.evaluate(() => ({ open: document.querySelector('dialog').open, focus: document.activeElement.getAttribute('command') }));
+    check('dialog: Escape closes it, focus returns to the button', !closed.open && closed.focus === 'show-modal', closed);
+
+    // its confirm is a link to the confirmation page
+    await p2.click('button[command=show-modal]');
+    await sleep(150);
+    await p2.click('dialog a:has-text("Review and delete")');
+    await at2(showHref + '/delete');
+    await sleep(300);
+    const s2 = await p2.evaluate(() => ({ path: location.pathname, h1: (document.querySelector('h1') || {}).textContent, marker: window.__m === 1 }));
+    check('dialog: the confirm leads to the confirmation page', s2.path === showHref + '/delete' && /Delete/.test(s2.h1) && s2.marker && docs2.length === 0, { s2, docs2 });
+
+    // a 404 with the panel, then the panel's History and Copy as curl
+    await follow('/posts/no-such-post');
+    await at2('/posts/no-such-post');
+    await sleep(400);
+    const nf = await p2.evaluate(() => {
+      const p = document.querySelector('al-devpanel');
+      return p && { tabs: [...p.querySelectorAll(':scope > nav > button')].map((b) => b.textContent), text: p.textContent, sections: p.querySelectorAll(':scope > section').length };
+    });
+    check('404 with the panel: the answer is not found, History among the tabs', nf && /not found/.test(nf.text) && nf.tabs.includes('History'), nf);
+    await p2.click('al-devpanel > nav > button:has-text("History")');
+    await sleep(100);
+    const hist = await p2.evaluate(() => {
+      const items = [...document.querySelectorAll('#_alder_tab_history ol[data-hist] button')].map((b) => b.textContent);
+      return { items, open: document.querySelector('al-devpanel').hasAttribute('open') };
+    });
+    check('history: the requests of this tab are listed, newest first, at most 20', hist.open && hist.items.length >= 3 && hist.items.length <= 20 && /\/posts\/no-such-post/.test(hist.items[0]), hist);
+    await p2.click('#_alder_tab_history ol[data-hist] li:nth-child(3) button');
+    const past = await p2.evaluate(() => (document.querySelector('#_alder_tab_history [data-past]') || {}).textContent || '');
+    check('history: a click reopens a past request\'s sections', /Request/.test(past) && /Trace/.test(past) && /Patches/.test(past), past.slice(0, 200));
+    await p2.click('al-devpanel > nav > button:has-text("Request")');
+    const curlText = await p2.evaluate(() => (document.querySelector('#_alder_tab_request button[data-copy]') || {}).getAttribute('data-copy'));
+    check('copy as curl: the line has the URL and the cookie placeholder', /^curl -X GET 'http:\/\/[^']*\/posts\/no-such-post'/.test(curlText || '') && /alder_session=<your session cookie>/.test(curlText), curlText);
+    await p2.click('#_alder_tab_request button[data-copy]');
+    await sleep(100);
+    check('copy as curl: the button answers Copied', (await p2.evaluate(() => document.querySelector('#_alder_tab_request button[data-copy]').textContent)) === 'Copied');
+    await p2.evaluate(() => document.querySelector('al-devpanel').removeAttribute('open'));
+    await p2.reload();
+    await sleep(300);
+    const afterReload = await p2.evaluate(() => document.querySelectorAll('#_alder_tab_history ol[data-hist] button').length);
+    check('history: it survives a full page load (sessionStorage)', afterReload >= 4, afterReload);
+
+    // a toast from Notice.with: bulk delete of one chosen user, its notice on the list
+    await p2.goto(BASE + '/admin/user?q=u17%40example.com');
+    await p2.evaluate(() => { window.__m = 1; });
+    await p2.check('input[name=ids]');
+    await p2.click('button:has-text("Act on the chosen rows")');
+    await p2.waitForFunction(() => location.pathname === '/admin/user/bulk', null, { timeout: 5000 }).catch(() => {});
+    await sleep(300);
+    await p2.click('button:has-text("Delete the rows that can be deleted")');
+    await p2.waitForFunction(() => location.pathname === '/admin/user', null, { timeout: 5000 }).catch(() => {});
+    await p2.waitForSelector('al-toast', { timeout: 5000 }).catch(() => {});
+    const toast = await p2.evaluate(() => {
+      const t = document.querySelector('al-toast'), r = document.querySelector('al-toasts');
+      return t && { text: t.textContent, shown: r.matches(':popover-open'), role: t.getAttribute('role') };
+    });
+    check('toast: Notice.with shows an al-toast in the open region', toast && /Deleted 1 of 1/.test(toast.text) && toast.shown && toast.role === 'status', toast);
+    await p2.waitForFunction(() => !document.querySelector('al-toast'), null, { timeout: 8000 }).catch(() => {});
+    check('toast: it times out', await p2.evaluate(() => !document.querySelector('al-toast')));
+
+    // search: a long reference table (more than 200 rows) shows a search and 50 options
+    await p2.goto(BASE + '/admin/post/new');
+    const long = await p2.evaluate(() => ({ options: document.querySelectorAll('select[name=author] option').length, form: !!document.querySelector('form[action$="/SearchAuthor"]') }));
+    check('search: more than 200 rows give 50 options and a search form', long.options === 50 && long.form, long);
+    await p2.fill('form[action$="/SearchAuthor"] input[name=q]', 'u99@example.com');
+    await p2.click('form[action$="/SearchAuthor"] button');
+    await p2.waitForFunction(() => document.querySelectorAll('select[name=author] option').length === 1, null, { timeout: 5000 }).catch(() => {});
+    const found = await p2.evaluate(() => ({ options: [...document.querySelectorAll('select[name=author] option')].map((o) => o.textContent), url: location.search }));
+    check('search: it narrows the select (a Redirect, so the narrowing survives)', found.options.length === 1 && found.options[0] === 'u99@example.com' && /findAuthor/.test(found.url), found);
+    // a crafted post of that user, with no search text: not among the 50 offered, so refused
+    const u99 = await p2.evaluate(() => document.querySelector('select[name=author] option').value);
+    const crafted = await p2.request.post(BASE + '/_m/Admin.Post.New/Create', { form: { slug: 'x', title: 'x', body: 'x', published: 'True', author: u99 } });
+    check('search: an id outside the rendered options is refused', /must be one of the options/.test(await crafted.text()), crafted.status());
+
+    // RF2: a 500 with the panel: break a table in the dev database, follow a link to its list
+    if (DB) {
+      const sql = (q) => {
+        try { const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(DB); db.exec(q); db.close(); return true; } catch (e) {
+          try { require('child_process').execFileSync('sqlite3', [DB, q]); return true; } catch (e2) { return false; }
+        }
+      };
+      await p2.goto(BASE + '/admin');
+      await p2.evaluate(() => { window.__m = 1; });
+      docs2 = [];
+      const broke = sql('ALTER TABLE Comment__Comment RENAME TO Comment__Hidden');
+      await follow('/admin/comment');
+      await at2('/admin/comment');
+      await sleep(700);
+      const e500 = await p2.evaluate(() => {
+        const p = document.querySelector('al-devpanel');
+        return p && { text: p.textContent, marker: window.__m === 1 };
+      });
+      check('500 with the panel: morphed in, the panel shows an error answer with its text', broke && e500 && e500.marker && /error/.test(e500.text) && /no such table|Comment/.test(e500.text) && docs2.length === 0, { broke, e500: e500 && e500.text.slice(0, 160), docs2 });
+      await p2.click('al-devpanel > nav > button:has-text("Answer")');
+      check('500 with the panel: its tabs still work', await p2.evaluate(() => document.querySelector('al-devpanel').hasAttribute('open')));
+      sql('ALTER TABLE Comment__Hidden RENAME TO Comment__Comment');
+      await p2.evaluate(() => document.querySelector('al-devpanel').removeAttribute('open'));
+      await follow('/admin/comment');
+      await sleep(600);
+      check('500 with the panel: the next request is served again', await p2.evaluate(() => /Comments/.test(document.title + (document.querySelector('h1') || {}).textContent)));
+    } else {
+      check('500 with the panel: skipped (no database path)', true);
+    }
   } finally {
     await browser.close();
   }

@@ -1065,7 +1065,19 @@ Playwright (a browser-automation library for Node.js) with the script
 - a link to a missing page morphs the 404 page in;
 - a slow post (held back by the script for a second and a half) then a
   click on a link ends on the link's page, not the post's answer;
-- a link to a file under `/static/` is a plain document load.
+- a link to a file under `/static/` is a plain document load;
+- in the admin, with the panel on: the Delete button opens a modal `al-dialog`
+  with focus inside it, a body morph leaves it open and modal, Escape closes it
+  and gives focus back, and its confirm leads to the confirmation page;
+- a 404 and a 500 (the dev database's table renamed under the running app)
+  are morphed in with the panel answering not found and error, its tabs working;
+- the panel's History lists the tab's requests (newest first, at most 20, kept
+  across a page load), a click reopens one, and Copy as curl copies the line;
+- a bulk delete's `Notice.with` shows a toast in the open region and it times
+  out;
+- on 205 users, the admin's new-post form offers 50 authors and a search form;
+  the search narrows the select, and a crafted post of an id outside it is
+  refused.
 
 It takes a few seconds. It needs `node` on the `PATH` and Playwright with
 its Chromium. Playwright is looked for in `$ALDER_PLAYWRIGHT_DIR`, else
