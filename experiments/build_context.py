@@ -369,7 +369,12 @@ def element_table(book):
            "`/static/al/al.css` in the layout (every build serves it). An `<al-button>` with `click`,\n"
            "`type` or `href` renders a real `<button>`/`<a>` inside, so its children are text and inline\n"
            "markup only (no control, `Html` value or component) and it takes `href` or `click`, not both\n"
-           "(E0028); `<al-alert>` gets `role`.\n\n"]
+           "(E0028); `<al-alert>` gets `role`. Link `/static/al/al.js` (`<script type=\"module\" src=\"...\">`,\n"
+           "a plain string) for the interactive elements. A button opens a dialog or popover with\n"
+           "`commandfor=\"id\" command=\"show-modal|close|toggle-popover\"` (no `click`); without\n"
+           "JavaScript dialog, popover, menu and tabs work natively, a tooltip is hidden (repeat its\n"
+           "text in `title`), a toast is not seen (use `al-alert`). Toasts come from `Notice.with\n"
+           "\"text\" nav`.\n\n"]
     for tag, attrs, slots in rows:
         out.append(f"- `{tag}` {', '.join(attrs) or '(none)'}{slots}\n")
     return "".join(out) + "\n"

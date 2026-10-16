@@ -337,13 +337,14 @@ class BuildContextTests(unittest.TestCase):
         # M11's final review cut the reference to at most 44k tokens (len/4, with the example):
         # the rules' facts stay, their repeated quotes and transcripts go. M7a raised the budget
         # to 46k for the design system's element table (Appendix C, one line per element); M12's final
-        # review cut it to 45k, with at least 1k to spare.
+        # review cut it to 45k, with at least 1k to spare. M7b raised it to 46k for the interactive
+        # elements' lines, the invoker commands and the long-reference pattern.
         bc.HUMAN_SECTIONS, bc.KEEP_SUBSECTIONS = self.saved, self.saved_keep
         bc.DROP_SUBSECTIONS, bc.TRIMS = self.saved_drop, self.saved_trims
         code, out, _ = self.run_main("--reference", "--chapters", ",".join(bc.DEFAULT_CHAPTERS), "--book", str(bc.BOOK),
                                      "--example", str(bc.EXAMPLE))
         self.assertEqual(code, 0)
-        self.assertLessEqual(len(out) // 4, 45000, "the reference is at most 45k tokens (len/4)")
+        self.assertLessEqual(len(out) // 4, 46000, "the reference is at most 46k tokens (len/4)")
         # M12's final review: the scaffold, the fill addresses and the add-field warning are in;
         # hand-written migration SQL and the theme switch are out
         for added in ("alder new <app>   the guestbook", "Module.Fake.entry", "add-field without a default"):
@@ -358,7 +359,8 @@ class BuildContextTests(unittest.TestCase):
                      "`slot` on\na child of a plain element", "takes `href` or `click`, not both",
                      "`al-checkbox` `<Input>`\non a `Bool`", "`/static/al/al.css`",
                      "- `al-button` variant=primary*|secondary|outline|ghost|destructive, size=sm|md*|lg, disabled!, type=button*|submit / default\n",
-                     "- `al-card` (none) / header, default, footer, actions\n", "- `al-input` label, placeholder, disabled!, invalid!, help\n"):
+                     "- `al-card` (none) / header, default, footer, actions\n", "- `al-dialog` heading, size=sm|md*|lg, dismissible! / header, default, actions\n",
+                     "command=\"show-modal|close|toggle-popover\"", "A list too long to render", "Notice.with", "- `al-input` label, placeholder, disabled!, invalid!, help\n"):
             self.assertIn(kept, out)
         for gone in ("$ alder test examples/todos -run 'without a login'", "module Public",
                      "Db.mine       : Table t -> Select t", "The to-do list's page uses four of them\n(`examples", "\n### When the app starts\n",
