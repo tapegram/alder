@@ -41,8 +41,10 @@ type Options struct {
 	StaticDir   string                  // served under /static/; "" → none
 	ErrorDoc    func(err error) html.Node
 	NotFoundDoc func() html.Node
-	Login       string // App.login page path, copied to Request.Login
-	Reload      string // under `alder run`, the build generation (ALDER_RELOAD); non-empty: every page carries the dev server's overlay and reload subscriber (withReload)
+	Login       string   // App.login page path, copied to Request.Login
+	DevMap      string   // the generator's JSON map of the app (pages, tables, session), shown by /_dev under ALDER_DEV=1 only
+	Migrations  []string // the migrations the database has (names), shown by /_dev
+	Reload      string   // under `alder run`, the build generation (ALDER_RELOAD); non-empty: every page carries the dev server's overlay and reload subscriber (withReload)
 	// EnvFor, when set, makes each request's Env instead of the router: it is called with the
 	// request's context and its decoded session, and the router then sets the Env's Session to
 	// that session. An Alder test's browser (rt/testing) supplies one sharing the test's Store,

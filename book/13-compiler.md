@@ -4067,8 +4067,21 @@ costs nothing. After the answer the router renders the panel from it
 Datastar answer the body patch carries an empty `<al-devpanel id="_alder_panel"
 data-ignore-morph>` (kept by the morph, with its open tab) and the panel's
 contents follow as one more `datastar-patch-elements` event, selector
-`#_alder_panel`, mode inner. `/_dev` is a route the router answers itself when
-`ALDER_DEV=1`. A `Noticed` answer is unwrapped by the generated route
+`#_alder_panel`, mode inner. The panel's script (`panelScript`, a constant of
+`rt/web/devpanel.go`) is written once, after the panel of a full document, and a
+morph leaves it running: a `MutationObserver` on the panel files each request
+(its `data-rid`, bar line and sections) in `sessionStorage`, the last 20 of the
+tab, and lists them in the History tab; "Copy as curl" copies the line the
+server built (`curlLine`, with a `<your session cookie>` placeholder). `/_dev`
+is a route the router answers itself when `ALDER_DEV=1`. Its page is one
+`html/template` over two things: `Options.DevMap`, a compact JSON the
+generator wrote into `Web()` (`internal/gen/devmap.go`: the pages with their
+path, `requires`, roles, parameters and messages, the tables with columns and
+attributes, the capability names, the session's fields), and what only the
+running server knows (the build id, the migrations the database has, how each
+capability is wired, the routes). A production binary never serves either:
+`/_dev` is a 404 and no page carries the panel or its script (a test builds
+an example, runs it without `ALDER_DEV` and checks both). A `Noticed` answer is unwrapped by the generated route
 (`Nav.Unnotice`), the text kept on the request, and the toast patched after the
 body.
 

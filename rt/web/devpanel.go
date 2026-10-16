@@ -1,8 +1,11 @@
 package web
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	stdhtml "html"
+	"html/template"
 	"net/http"
 	"os"
 	"sort"
@@ -24,6 +27,25 @@ func esc(s string) string { return stdhtml.EscapeString(s) }
 // the existing one, with its open state and selected tab.
 const panelShell = `<al-devpanel id="` + datastar.PanelID + `" data-ignore-morph></al-devpanel>`
 
+// panelScript is the panel's own script, written once into a full document (a morph keeps the
+// panel's shell and this script's work): after each patch of the panel it files the request in
+// sessionStorage (the last 20 of this tab) and lists them in the History tab; a click on one shows
+// its sections; "Copy as curl" copies the request's line. Dev mode only, like the panel.
+const panelScript = `<script>(function(){if(window._alderHist)return;window._alderHist=1;var K="_alder_hist",ids=["request","trace","sql","answer","patches"];
+function load(){try{return JSON.parse(sessionStorage.getItem(K)||"[]")}catch(e){return[]}}
+function save(h){try{sessionStorage.setItem(K,JSON.stringify(h))}catch(e){}}
+function sync(){var p=document.getElementById("_alder_panel"),nav=p&&p.querySelector(":scope>nav"),ol=p&&p.querySelector("ol[data-hist]");if(!nav||!ol||ol.children.length)return;
+var h=load(),id=nav.getAttribute("data-rid");if(!h.some(function(e){return e.id===id})){var html="";ids.forEach(function(n){var s=document.getElementById("_alder_tab_"+n);if(s)html+=s.outerHTML.replace(/ id="_alder_tab_/g,' data-past="').replace(/ hidden(="[^"]*")?/g,"")});
+h.push({id:id,bar:nav.querySelector("[data-bar]").textContent+" "+nav.children[1].textContent+" "+nav.children[2].textContent,html:html.slice(0,60000)});h=h.slice(-20);save(h)}
+h.slice().reverse().forEach(function(e){var li=document.createElement("li"),b=document.createElement("button");b.type="button";b.setAttribute("data-id",e.id);b.textContent=e.bar;li.appendChild(b);ol.appendChild(li)})}
+function watch(){var p=document.getElementById("_alder_panel");if(!p)return;new MutationObserver(sync).observe(p,{childList:true});sync()}
+document.addEventListener("click",function(ev){var t=ev.target.closest&&ev.target.closest("button");if(!t)return;
+if(t.hasAttribute("data-copy")){var c=t.getAttribute("data-copy"),done=function(){t.textContent="Copied"};
+if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(c).then(done,function(){fb()});else fb();
+function fb(){var a=document.createElement("textarea");a.value=c;document.body.appendChild(a);a.select();try{document.execCommand("copy")}catch(e){}a.remove();done()}}
+else if(t.hasAttribute("data-id")){var past=t.closest("section").querySelector("[data-past]"),e=load().filter(function(x){return x.id===t.getAttribute("data-id")})[0];past.innerHTML=e?e.html:""}});
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",watch);else watch()})()</script>`
+
 // panelInner is the panel's content for the request tw tracks: the bar summary, a nav of tab
 // buttons and the sections (Request, Trace, SQL, Answer, Patches).
 func (rt *router) panelInner(tw *tracker, status int) string {
@@ -39,9 +61,9 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 		steps, sqls = rec.Steps, rec.SQL
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, `<nav><span data-bar>%s %s</span> <span>%s</span> <span>%.1f ms</span> <span>%d SQL</span>`,
-		esc(r.Method), esc(r.URL.Path), esc(tw.answer), ms, len(sqls))
-	tabs := []string{"Request", "Trace", "SQL", "Answer", "Patches"}
+	fmt.Fprintf(&b, `<nav data-rid="%d"><span data-bar>%s %s</span> <span>%s</span> <span>%.1f ms</span> <span>%d SQL</span>`,
+		tw.start.UnixNano(), esc(r.Method), esc(r.URL.Path), esc(tw.answer), ms, len(sqls))
+	tabs := []string{"Request", "Trace", "SQL", "Answer", "Patches", "History"}
 	for _, t := range tabs {
 		fmt.Fprintf(&b, ` <button type="button" aria-controls="_alder_tab_%s">%s</button>`, strings.ToLower(t), t)
 	}
@@ -68,8 +90,8 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 		}
 		fmt.Fprintf(&b, "session %s\n", esc(fmt.Sprintf("%+v", tw.rq.Session)))
 	}
-	fmt.Fprintf(&b, "curl -X %s 'http://%s%s'", esc(r.Method), esc(r.Host), esc(r.URL.RequestURI()))
-	b.WriteString(`</pre></section>`)
+	curl := curlLine(tw)
+	fmt.Fprintf(&b, "%s</pre><button type=\"button\" data-copy=\"%s\">Copy as curl</button></section>", esc(curl), esc(curl))
 
 	b.WriteString(`<section id="_alder_tab_trace"><h3>Trace</h3><ol>`)
 	for _, s := range steps {
@@ -117,6 +139,36 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 		b.WriteString(`<li>none (a full document)</li>`)
 	}
 	b.WriteString(`</ul></section>`)
+	b.WriteString(`<section id="_alder_tab_history"><h3>History</h3><p>The last 20 requests of this tab; click one to see its sections.</p><ol data-hist></ol><div data-past></div></section>`)
+	return b.String()
+}
+
+// shq quotes s for a POSIX shell, in single quotes.
+func shq(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
+// curlLine is the request as a curl command: the method, the URL, the session cookie as a
+// placeholder (the real one is a secret of the browser), the Datastar header of a partial
+// update and the form fields.
+func curlLine(tw *tracker) string {
+	r := tw.r
+	var b strings.Builder
+	b.WriteString("curl -X " + r.Method + " " + shq("http://"+r.Host+r.URL.RequestURI()))
+	b.WriteString(" -H " + shq("Cookie: "+CookieName+"=<your session cookie>"))
+	if tw.rq != nil && tw.rq.Datastar {
+		b.WriteString(" -H " + shq("Datastar-Request: true"))
+	}
+	if tw.rq != nil {
+		keys := make([]string, 0, len(tw.rq.Form))
+		for k := range tw.rq.Form {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			for _, v := range tw.rq.Form[k] {
+				b.WriteString(" --data-urlencode " + shq(k+"="+v))
+			}
+		}
+	}
 	return b.String()
 }
 
@@ -126,7 +178,7 @@ func (rt *router) inlinePanel(w http.ResponseWriter, page string, status int) st
 	if !ok || !rt.panelOn() {
 		return page
 	}
-	return endOfBody(page, `<al-devpanel id="`+datastar.PanelID+`" data-ignore-morph>`+rt.panelInner(tw, status)+`</al-devpanel>`)
+	return endOfBody(page, `<al-devpanel id="`+datastar.PanelID+`" data-ignore-morph>`+rt.panelInner(tw, status)+`</al-devpanel>`+panelScript)
 }
 
 // shellBody adds to a body patch the panel's element (dev) and, when a Noticed answer has a toast
@@ -171,11 +223,76 @@ func (rt *router) notify(w http.ResponseWriter) {
 // then and never from a production binary.
 func (rt *router) devOn() bool { return rt.opts.Dev && os.Getenv("ALDER_DEV") == "1" }
 
-// devMap serves /_dev: the running app's routes, capabilities (adapter or fake wired) and build.
+// devPage is /_dev's template: the generator's map (Options.DevMap) with what only the runtime
+// knows, the build, the routes, how each capability is wired and the migrations the database has.
+var devPage = template.Must(template.New("dev").Parse(`<!doctype html><html><head><meta charset="utf-8"><title>Alder dev map</title></head><body>
+<h1>Alder dev map</h1>
+<p>build <code>{{.Build}}</code></p>
+<h2>Pages</h2>
+{{range .Map.Pages}}<h3>{{if .Link}}<a href="{{.Path}}">{{.Path}}</a>{{else}}<code>{{.Path}}</code>{{end}} <small>{{.Module}}</small></h3>
+<ul>{{if .Requires}}<li>requires {{.Requires}}{{if .Roles}}, role {{range $i, $r := .Roles}}{{if $i}} | {{end}}{{$r}}{{end}}{{end}}</li>{{end}}
+{{range .Params}}<li>param <code>{{.}}</code></li>{{end}}{{range .Msgs}}<li>message <code>{{.}}</code></li>{{end}}</ul>
+{{end}}{{if .Map.AppMsgs}}<h3>App messages</h3><ul>{{range .Map.AppMsgs}}<li><code>{{.}}</code></li>{{end}}</ul>{{end}}
+<h2>Tables</h2>
+{{range .Map.Tables}}<h3>{{.Name}}</h3><ul>{{range .Columns}}<li><code>{{.}}</code></li>{{end}}
+{{if .ID}}<li>id: {{.ID}}</li>{{end}}{{if .Created}}<li>created: {{.Created}}</li>{{end}}{{if .Updated}}<li>updated: {{.Updated}}</li>{{end}}{{if .Owner}}<li>owner: {{.Owner}}</li>{{end}}
+{{range .Unique}}<li>unique: {{.}}</li>{{end}}{{range $f, $t := .Refs}}<li>ref {{$f}} to {{$t}}</li>{{end}}{{range $f, $a := .OnDelete}}<li>on delete {{$f}}: {{$a}}</li>{{end}}</ul>
+{{end}}
+<h2>Capabilities</h2>
+<ul>{{range .Caps}}<li><code>{{.Name}}</code>: {{.Kind}}</li>{{end}}</ul>
+<h2>Session</h2>
+<ul>{{range .Map.Session}}<li><code>{{.}}</code></li>{{end}}</ul>
+<h2>Migrations applied</h2>
+<ul>{{range .Migrations}}<li><code>{{.}}</code></li>{{else}}<li>none</li>{{end}}</ul>
+<h2>Routes</h2>
+<ul>{{range .Routes}}<li>{{if .Link}}{{.Method}} <a href="{{.Pat}}">{{.Pat}}</a>{{else}}{{.Method}} <code>{{.Pat}}</code>{{end}}</li>{{end}}</ul>
+</body></html>`))
+
+type devMapData struct {
+	Pages   []devMapPage  `json:"pages"`
+	Tables  []devMapTable `json:"tables"`
+	Session []string      `json:"session"`
+	AppMsgs []string      `json:"appMsgs"`
+}
+
+type devMapPage struct {
+	Module, Path, Requires string
+	Roles, Params, Msgs    []string
+	Link                   bool `json:"-"`
+}
+
+type devMapTable struct {
+	Name                        string
+	Columns                     []string
+	ID, Created, Updated, Owner string
+	Unique                      []string
+	Refs, OnDelete              map[string]string
+}
+
+type devCap struct{ Name, Kind string }
+type devRoute struct {
+	Method, Pat string
+	Link        bool
+}
+
+// devMap serves /_dev: the running app's pages, messages, tables, capabilities (adapter or fake
+// wired), session shape, migrations applied, routes and build id.
 func (rt *router) devMap(w http.ResponseWriter, r *http.Request) {
-	var b strings.Builder
-	b.WriteString(`<!doctype html><html><head><meta charset="utf-8"><title>Alder dev map</title></head><body><h1>Alder dev map</h1>`)
-	fmt.Fprintf(&b, `<p>build <code>%s</code></p><h2>Routes</h2><ul>`, esc(BuildID()))
+	data := struct {
+		Build      string
+		Map        devMapData
+		Caps       []devCap
+		Migrations []string
+		Routes     []devRoute
+	}{Build: BuildID(), Migrations: rt.opts.Migrations}
+	if rt.opts.DevMap != "" {
+		if err := json.Unmarshal([]byte(rt.opts.DevMap), &data.Map); err != nil {
+			rt.log("error", "reading the dev map: "+err.Error())
+		}
+	}
+	for i := range data.Map.Pages {
+		data.Map.Pages[i].Link = !strings.Contains(data.Map.Pages[i].Path, "{")
+	}
 	for _, rtn := range rt.routes {
 		pat := ""
 		for _, s := range rtn.segs {
@@ -188,13 +305,8 @@ func (rt *router) devMap(w http.ResponseWriter, r *http.Request) {
 		if pat == "" {
 			pat = "/"
 		}
-		if rtn.method == http.MethodGet && !strings.Contains(pat, "{") {
-			fmt.Fprintf(&b, `<li>GET <a href="%s">%s</a></li>`, esc(pat), esc(pat))
-		} else {
-			fmt.Fprintf(&b, `<li>%s <code>%s</code></li>`, esc(rtn.method), esc(pat))
-		}
+		data.Routes = append(data.Routes, devRoute{Method: rtn.method, Pat: pat, Link: rtn.method == http.MethodGet && !strings.Contains(pat, "{")})
 	}
-	b.WriteString(`</ul><h2>Capabilities</h2><ul>`)
 	caps := make([]string, 0, len(rt.opts.Caps))
 	for k := range rt.opts.Caps {
 		caps = append(caps, k)
@@ -205,9 +317,13 @@ func (rt *router) devMap(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(strings.ToLower(fmt.Sprintf("%T", rt.opts.Caps[k])), "fake") {
 			kind = "fake"
 		}
-		fmt.Fprintf(&b, `<li><code>%s</code>: %s</li>`, esc(k), kind)
+		data.Caps = append(data.Caps, devCap{k, kind})
 	}
-	b.WriteString(`</ul></body></html>`)
+	var b bytes.Buffer
+	if err := devPage.Execute(&b, data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(b.String()))
+	_, _ = w.Write(b.Bytes())
 }

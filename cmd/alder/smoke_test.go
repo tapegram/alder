@@ -68,6 +68,16 @@ func TestBuild_BinarySmoke(t *testing.T) {
 			t.Fatalf("GET /login lacks %q:\n%s", f, body)
 		}
 	}
+	// developer mode: the panel is in the page, with History and the curl button, and /_dev is the
+	// generator's map of the app
+	for _, f := range []string{`<al-devpanel id="_alder_panel"`, `_alder_tab_history`, `data-copy="curl -X GET`} {
+		if !strings.Contains(body, f) {
+			t.Fatalf("GET /login in dev mode lacks %q", f)
+		}
+	}
+	if res, dev := get("/_dev"); res.StatusCode != http.StatusOK || !strings.Contains(dev, "Auth.Login") || !strings.Contains(dev, "Todo") || !strings.Contains(dev, "Migrations applied") {
+		t.Fatalf("GET /_dev in dev mode = %d:\n%s", res.StatusCode, dev)
+	}
 	// a visitor's page view leaves the session as it was: no cookie (M11 final I1)
 	if sc := res.Header.Get("Set-Cookie"); sc != "" {
 		t.Fatalf("GET /login Set-Cookie %q, want none", sc)
@@ -104,6 +114,19 @@ func TestBuild_BinarySmoke(t *testing.T) {
 	}
 	if res, _ := get("/static/app.css"); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("GET /static/app.css with ALDER_STATIC = %d, want 404", res.StatusCode)
+	}
+	// a production build has no developer mode: /_dev is a 404 and no page carries the panel,
+	// its script or its History
+	if res, _ := get("/_dev"); res.StatusCode != http.StatusNotFound {
+		t.Fatalf("GET /_dev in production = %d, want 404", res.StatusCode)
+	}
+	for _, path := range []string{"/login", "/nowhere"} {
+		_, page := get(path)
+		for _, f := range []string{"al-devpanel", "_alder_panel", "_alder_hist", "_alder_tab_"} {
+			if strings.Contains(page, f) {
+				t.Fatalf("GET %s in production has %q:\n%s", path, f, page)
+			}
+		}
 	}
 	if code := app.stop(t, syscall.SIGTERM); code != 0 {
 		t.Fatalf("after SIGTERM: exit %d; stderr:\n%s", code, app.stderr.String())

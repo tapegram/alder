@@ -153,6 +153,9 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	}
 	w := Web()
 	w.Store, w.Caps, w.Log, w.Dev, w.Secret, w.StaticDir, w.Reload = store, reg, o.Log, o.Dev, o.Secret, o.StaticDir, o.Reload
+	for _, m := range Migrations {
+		w.Migrations = append(w.Migrations, m.Name)
+	}
 	return web.NewRouter(Routes, w), nil
 }
 
@@ -166,6 +169,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: App__notFound,
 		Login:       "/login",
+		DevMap:      "{\"pages\":[{\"module\":\"Login\",\"path\":\"/login\"},{\"module\":\"Notes\",\"path\":\"/notes\",\"requires\":\"user\",\"msgs\":[\"Add\"]}],\"tables\":[{\"name\":\"User.User\",\"columns\":[\"id: Text\",\"name: Text\"],\"id\":\"id\"},{\"name\":\"Note.Note\",\"columns\":[\"id: Text\",\"title: Text\",\"pinned: Bool\",\"owner: Text\"],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"},\"onDelete\":{\"owner\":\"cascade\"}}],\"caps\":[],\"session\":[\"user: Maybe Text\"]}",
 	}
 }
 

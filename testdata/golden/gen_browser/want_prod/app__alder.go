@@ -112,6 +112,9 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	}
 	w := Web()
 	w.Store, w.Caps, w.Log, w.Dev, w.Secret, w.StaticDir, w.Reload = store, reg, o.Log, o.Dev, o.Secret, o.StaticDir, o.Reload
+	for _, m := range Migrations {
+		w.Migrations = append(w.Migrations, m.Name)
+	}
 	return web.NewRouter(Routes, w), nil
 }
 
@@ -125,6 +128,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/login",
+		DevMap:      "{\"pages\":[{\"module\":\"Auth.Login\",\"path\":\"/login\",\"msgs\":[\"Submit\"]},{\"module\":\"Notes.Index\",\"path\":\"/\",\"requires\":\"user\",\"params\":[\"filter: Note.Filter\"],\"msgs\":[\"Submit\",\"Toggle\",\"Boom\",\"Rename\",\"SavePrefs\",\"Visit\"]},{\"module\":\"Notes.Show\",\"path\":\"/notes/{id}\",\"requires\":\"user\",\"params\":[\"id: Text\"]}],\"tables\":[{\"name\":\"User.User\",\"columns\":[\"id: Text\",\"email: Text\",\"name: Text\"],\"id\":\"id\",\"unique\":[\"email\"]},{\"name\":\"Note.Note\",\"columns\":[\"id: Text\",\"title: Text\",\"done: Bool\",\"owner: Text\"],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"}}],\"caps\":[\"Auth.Login.Password\"],\"session\":[\"user: Maybe Text\",\"visits: Int\"],\"appMsgs\":[\"Logout\",\"Send\"]}",
 	}
 }
 

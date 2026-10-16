@@ -1252,7 +1252,10 @@ element the body's morph leaves alone, and filled by its own patch on every
 answer, so it survives every navigation. Its tabs:
 
 - Request: the path, the form fields, the parameters, the decoded session and a
-  `curl` line.
+  `curl` line, with a "Copy as curl" button that puts it on the clipboard. The
+  line carries a placeholder for the session cookie (`<your session cookie>`;
+  the real one is the browser's secret), the `Datastar-Request` header of a
+  partial update and the form fields as `--data-urlencode`.
 - Trace: the effect steps the request ran, in order, with their time; a
   capability call says whether an adapter or a fake answered it. It is the
   list `alder test` prints for a test.
@@ -1261,9 +1264,18 @@ answer, so it survives every navigation. Its tabs:
   mark of a missing join or a query inside a loop.
 - Answer: rerender, redirect, not found, or an error with its text.
 - Patches: the events the answer sent (body, toast, panel).
+- History: the last 20 requests of this browser tab, newest first. The panel
+  keeps them in the browser (`sessionStorage`, so a full page load keeps them
+  too and another tab has its own); click one to read its Request, Trace, SQL,
+  Answer and Patches as they were.
 
-`/_dev` is the map of the running app: its routes, and the capabilities wired.
-`ALDER_DEV_PANEL=0` turns the panel off. None of this exists in a production
+`/_dev` is the map of the running app, built from what the compiler knows and
+what the server knows: the pages (path, `requires`, roles, parameters, and the
+messages each declares, with links to those that need no parameter), the
+tables (columns, the id, `@created`/`@updated`, unique columns, references and
+what deleting does to them, the owner), the capabilities and whether an
+adapter or a fake is wired, the session's fields, the migrations the database
+has, the routes and the build id. `ALDER_DEV_PANEL=0` turns the panel off. None of this exists in a production
 binary: no panel, no trace is recorded, and `/_dev` is a 404.
 
 

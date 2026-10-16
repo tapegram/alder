@@ -15,9 +15,10 @@ func TestDevPanel(t *testing.T) {
 		not          []string
 	}{
 		{dev: true, want: []string{"<al-devpanel", "aria-controls=\"_alder_tab_trace\"", "_alder_tab_sql"}},
+		{dev: true, want: []string{"aria-controls=\"_alder_tab_history\"", "data-copy=\"curl -X GET &#39;http://", "Cookie: alder_session=&lt;your session cookie&gt;", "data-rid=", "sessionStorage"}},
 		{dev: true, ds: true, want: []string{"data: selector #_alder_panel", "data: mode inner", "data-ignore-morph"}},
 		{dev: true, off: true, not: []string{"al-devpanel"}},
-		{dev: false, not: []string{"al-devpanel", "_alder_tab"}},
+		{dev: false, not: []string{"al-devpanel", "_alder_tab", "sessionStorage", "_alder_hist"}},
 	} {
 		if tc.off {
 			t.Setenv("ALDER_DEV_PANEL", "0")
@@ -75,5 +76,22 @@ func TestNoticedToast(t *testing.T) {
 	// the toast comes after the body patch, so a morph does not show it again
 	if strings.Index(body, "selector body") > strings.Index(body, "selector al-toasts") {
 		t.Errorf("order: %q", body)
+	}
+}
+
+func TestDevMapContents(t *testing.T) {
+	t.Setenv("ALDER_DEV", "1")
+	route := one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil, false) })
+	h := NewRouter(route, testOpts(func(o *Options) {
+		o.Dev = true
+		o.Migrations = []string{"0001_init"}
+		o.DevMap = `{"pages":[{"Module":"Posts.Show","Path":"/posts/{slug}","Requires":"user","Roles":["Admin"],"Params":["slug: Post.Slug"],"Msgs":["Remove"]}],` +
+			`"tables":[{"Name":"Post.Post","Columns":["title: Text"],"Unique":["slug"]}],"session":["user: Maybe User.UserId"]}`
+	}))
+	body := serve(h, httptest.NewRequest("GET", "/_dev", nil)).Body.String()
+	for _, want := range []string{"Posts.Show", "requires user, role Admin", "slug: Post.Slug", "message <code>Remove", "title: Text", "unique: slug", "user: Maybe User.UserId", "0001_init", "build <code>"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in %s", want, body)
+		}
 	}
 }
