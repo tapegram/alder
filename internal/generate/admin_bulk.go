@@ -8,12 +8,13 @@ import (
 )
 
 // bulkInfo decides what the bulk page of at offers: a delete, unless a delete of a row can meet a
-// @restrict below a @cascade (or a tree of the table's own: the closure's deeper nodes), which a
-// query over many rows does not follow; and a set for each Bool or union column its form edits.
+// @restrict below a @cascade, or a tree of the table's own (a stop node), which the page's query
+// of the rows' direct referrers does not follow (a @cascade below a @cascade is the database's
+// to follow, and is no reason); and a set for each Bool or union column its form edits.
 func (g *adminGen) bulkInfo(at *adminTable) {
 	at.bulkDel = true
 	for _, n := range walk(g.closure(at)) {
-		if n.parent != nil || n.stop {
+		if n.stop || (n.parent != nil && n.col.OnDelete == "restrict") {
 			at.bulkDel = false
 		}
 		if n.parent == nil && !n.stop && n.col.OnDelete == "restrict" {
@@ -54,14 +55,14 @@ func (g *adminGen) bulk(at *adminTable) {
 	id := t.IDField
 	own := g.isUserTable(at)
 
-	loads := []string{fmt.Sprintf("let rows <- Db.from %s |> Db.where (%s.%s.in params.ids) |> Db.all", t.Name, t.Name, id)}
+	loads := []string{"let ids = List.take maxRows params.ids", fmt.Sprintf("let rows <- Db.from %s |> Db.where (%s.%s.in ids) |> Db.all", t.Name, t.Name, id)}
 	var held []string
 	if at.bulkDel {
 		for i, n := range at.bulkHolds {
 			imports.add(n.t.Module)
-			ids, pick := "params.ids", "List.map (\\r -> r."+n.col.Name+") "
+			ids, pick := "ids", "List.map (\\r -> r."+n.col.Name+") "
 			if n.col.Maybe {
-				ids, pick = "List.map (\\id -> Just id) params.ids", "List.filterMap (\\r -> r."+n.col.Name+") "
+				ids, pick = "List.map (\\id -> Just id) ids", "List.filterMap (\\r -> r."+n.col.Name+") "
 			}
 			v := fmt.Sprintf("held%d", i+1)
 			loads = append(loads, fmt.Sprintf("let %s <- Db.from %s |> Db.where (%s.%s.in (%s)) |> Db.all", v, n.t.Name, n.t.Name, n.col.Name, ids))
@@ -72,15 +73,20 @@ func (g *adminGen) bulk(at *adminTable) {
 	if len(held) > 0 {
 		heldExpr = "List.concat [" + strings.Join(held, ", ") + "]"
 	}
-	loads = append(loads, "Query.succeed { rows: rows, held: "+heldExpr+" }")
+	loads = append(loads, "Query.succeed { rows: rows, held: "+heldExpr+", chosen: List.length params.ids }")
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "page %s { ids: List %s }%s\n\n", pathLit(at.path+"/bulk"), idT, adminRequires)
-	fmt.Fprintf(&b, "-- The rows chosen on the list, and the ids of those that other rows keep from being deleted.\ntype Model = { rows: List %s, held: List %s }\n\n", t.Name, idT)
+	fmt.Fprintf(&b, "-- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep\n-- from being deleted, and how many ids the page was given.\ntype Model = { rows: List %s, held: List %s, chosen: Int }\n\n", t.Name, idT)
+	fmt.Fprintf(&b, "-- maxRows is how many rows one action takes: a page of the list. More are refused.\nmaxRows : Int\nmaxRows = %d\n\n", bulkMax)
 	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
 	cond := "List.member row." + id + " model.held"
 	if own {
 		cond += " || " + g.isMe("row."+id)
+	}
+	kept := `{if refused model session row then <small> (kept: other rows refer to it)</small> else <span></span>}`
+	if own {
+		kept = `{if ` + g.isMe("row."+id) + ` then <small> (kept: your own account)</small> else if refused model session row then <small> (kept: other rows refer to it)</small> else <span></span>}`
 	}
 	b.WriteString("-- refused says whether a row is kept from being deleted: rows refer to it with a `@restrict`" + map[bool]string{true: ",\n-- or it is the signed-in user's own.", false: "."}[own] + "\nrefused : Model -> Session -> " + t.Name + " -> Bool\nrefused model session row = " + cond + "\n\n")
 
@@ -114,19 +120,22 @@ func (g *adminGen) bulk(at *adminTable) {
 			tag = "al-checkbox"
 		}
 		views = append(views, fmt.Sprintf(`<form id="set-%s" submit={BulkSet%s}>`, c.Name, name),
+			`  <al-alert variant="destructive"><Errors form /></al-alert>`,
 			fmt.Sprintf(`  <%s field="value" label=%s />`, tag, quote(Humanize(c.Name))),
 			fmt.Sprintf(`  <al-button type="submit">Set %s</al-button>`, strings.ToLower(Humanize(c.Name))),
 			`</form>`)
 	}
-	upd := []string{"-- Each action reads the rows again (load runs before every message) and answers with a notice.",
-		"update : Msg -> Model -> Session -> Task Nav", "update msg model session = match msg {"}
-	upd = append(append(upd, indentAll(arms, "  ")...), "}")
+	upd := []string{"-- Each action reads the rows again (load runs before every message) and answers with a notice;",
+		"-- none takes more than maxRows rows.",
+		"update : Msg -> Model -> Session -> Task Nav", "update msg model session =",
+		"  if model.chosen > maxRows then", "    Task.succeed (Reject (" + bulkTooMany + "))", "  else match msg {"}
+	upd = append(append(upd, indentAll(arms, "    ")...), "  }")
 	b.WriteString(regionAt("", "bulk", append(forms, upd...)) + "\n\n")
 
 	label := textOf(at.label, "row."+at.label.Name)
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
-	fmt.Fprintf(&b, "  %s\n    <h1>{Text.fromInt (List.length model.rows)} selected</h1>\n\n    <al-card>\n      <ul id=\"selected\">\n        {for row in model.rows ->\n          <li>{%s}{if refused model session row then <small> (kept: other rows refer to it)</small> else <span></span>}</li>}\n      </ul>\n%s\n    </al-card>\n    <a href={%s {}}>Back to the list</a>\n",
-		open, label, regionAt("      ", "actions", views), at.page("Index"))
+	fmt.Fprintf(&b, "  %s\n    <h1>{Text.fromInt (List.length model.rows)} selected</h1>\n\n    <al-card>\n      {if model.chosen > maxRows then <al-alert id=\"too-many\" variant=\"warning\">{%s}</al-alert> else <span></span>}\n      <ul id=\"selected\">\n        {for row in model.rows ->\n          <li>{%s}%s</li>}\n      </ul>\n%s\n    </al-card>\n    <a href={%s {}}>Back to the list</a>\n",
+		open, bulkTooMany, label, kept, regionAt("      ", "actions", views), at.page("Index"))
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	var tests []TestData
@@ -163,11 +172,11 @@ func (g *adminGen) bulk(at *adminTable) {
 		if own {
 			tb = g.tb(mod, imports, true)
 			me := tb.user()
-			tb.let("let _ <- Test.get (%s)", pageLit(mod, []string{ids(me)}))
+			tb.let("let page <- Test.get (%s)", pageLit(mod, []string{ids(me)}))
 			tb.let("let r <- Test.submit Confirm { }")
 			tb.let("let kept <- Db.get %s %s", t.Name, me)
 			tests = append(tests, TestData{Name: quote("an Admin's own row is not deleted with the chosen rows"), Lines: tb.lines,
-				Result: fmt.Sprintf("Maybe.map (\\row -> row.%s) kept == Just %s", id, me)})
+				Result: fmt.Sprintf("{ kept: Maybe.map (\\row -> row.%s) kept, says: Test.texts \"#selected small\" page.doc } == { kept: Just %s, says: [\"(kept: your own account)\"] }", id, me)})
 		}
 	}
 	for i, c := range at.bulkSet {
@@ -184,12 +193,49 @@ func (g *adminGen) bulk(at *adminTable) {
 				c.Name, v, c.Name, v, at.page("Index"))})
 		_ = i
 	}
+	// at most maxRows ids: maxRows are taken, one more is refused (the others are ids of no row)
+	for _, n := range []int{bulkMax, bulkMax + 1} {
+		tb := g.tb(mod, imports, true)
+		one := tb.insertRow(t, "", nil, false)
+		crafted := fmt.Sprintf("List.map (\\n -> %s (\"none-\" ++ Text.fromInt n)) (List.range 1 %d)", tb.brandCtor(t.IDType.(*types.Brand)), n-1)
+		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"ids: [" + one + "] ++ " + crafted}))
+		var lhs, rhs string
+		if at.bulkDel {
+			tb.let("let r <- Test.submit Confirm { }")
+			tb.let("let after <- Db.get %s %s", t.Name, one)
+			lhs, rhs = "kept: Maybe.map (\\row -> row."+id+") after", "kept: Nothing"
+			if n > bulkMax {
+				rhs = "kept: Just " + one
+			}
+		} else {
+			c := at.bulkSet[0]
+			v := g.changedValue(tb, at, c, 1)
+			tb.let("let r <- Test.submit Set%s { value: %s }", UpperFirst(c.Name), v)
+			tb.let("let after <- Db.get %s %s", t.Name, one)
+			lhs, rhs = fmt.Sprintf("set: Maybe.map (\\row -> row.%s == %s) after", c.Name, v), "set: Just True"
+			if n > bulkMax {
+				rhs = "set: Just False"
+			}
+		}
+		answer, warned, name := "Redirected ("+at.page("Index")+" {})", "0", fmt.Sprintf("%d chosen ids are taken", n)
+		if n > bulkMax {
+			answer, warned, name = "FormRejected [{ field: \"\", message: \"Choose at most "+fmt.Sprint(bulkMax)+" rows at a time.\" }]", "1", fmt.Sprintf("%d chosen ids are refused", n)
+		}
+		tests = append(tests, TestData{Name: quote(name), Lines: tb.lines,
+			Result: fmt.Sprintf("{ answer: r.answer, %s, warned: Test.count \"#too-many\" page.doc } == { answer: %s, %s, warned: %s }", lhs, answer, rhs, warned)})
+	}
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
 		return pageLit(mod, []string{ids(tb.insertRow(t, "", nil, false))})
 	})...)
 	b.WriteString(testsText(tests))
 	g.file(mod, imports, b.String())
 }
+
+// bulkMax is the most rows a bulk action takes (maxRows): a page of the list (perPage).
+const bulkMax = 25
+
+// bulkTooMany is the bulk page's refusal of more than maxRows ids, an Alder expression.
+const bulkTooMany = `"Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."`
 
 // bulkForms are the list's two ways to the bulk page: the rows chosen (the checkboxes name this
 // form), and every row on the page (a form of its own, no script needed).
@@ -212,7 +258,7 @@ func bulkForms(at *adminTable) string {
 
 // findTests are the New (or Edit) page's tests of a long table behind a reference: at exactly
 // 200 rows its select holds them all, past that it holds 50 and the search narrows them (Edit
-// keeps the row's own value too), the search message answers the page at the text, and a value
+// keeps the row's own value too: ownFirstTest), the search message answers the page at the text, and a value
 // outside the rendered options (a crafted request) is refused with the field error.
 func (g *adminGen) findTests(at *adminTable, mod string, imports *importSet, edit bool) []TestData {
 	var tests []TestData
@@ -226,7 +272,11 @@ func (g *adminGen) findTests(at *adminTable, mod string, imports *importSet, edi
 			tb := g.tb(mod, imports, true)
 			target := ""
 			if edit {
-				target = tb.insertRow(at.t, "", nil, false)
+				var over map[string]string
+				if c.Maybe { // the row refers to a row of the long table, as a required reference does
+					over = map[string]string{c.Name: "Just " + tb.insertRow(rt, "", nil, true)}
+				}
+				target = tb.insertRow(at.t, "", over, false)
 			}
 			g.optionRows(tb, at)
 			return tb, func(extra ...string) string {
@@ -261,9 +311,16 @@ func (g *adminGen) findTests(at *adminTable, mod string, imports *importSet, edi
 			}
 			found = fmt.Sprintf("Test.texts %s found.doc == %s", quote(sel), want)
 		}
+		shown := 50
+		if edit { // the row's own value, then 50
+			shown = 51
+		}
 		tests = append(tests, TestData{Name: quote("a long list of " + pluralOf(rt) + " offers 50, and the search narrows it"), Lines: tb.lines,
-			Result: fmt.Sprintf("{ shown: List.length all.model.%s, total: all.model.%s, found: %s, answer: r.answer } == { shown: 50, total: %d, found: True, answer: Redirected (%s) }",
-				optionsField(c), totalField(c), found, tb.counts[rt.Module], redirect)})
+			Result: fmt.Sprintf("{ shown: List.length all.model.%s, total: all.model.%s, found: %s, answer: r.answer } == { shown: %d, total: %d, found: True, answer: Redirected (%s) }",
+				optionsField(c), totalField(c), found, shown, tb.counts[rt.Module], redirect)})
+		if edit {
+			tests = append(tests, g.ownFirstTest(at, mod, imports, c))
+		}
 		if c.Maybe || edit {
 			continue
 		}
@@ -287,4 +344,27 @@ func (g *adminGen) findTests(at *adminTable, mod string, imports *importSet, edi
 			Result: fmt.Sprintf("{ answer: sent.answer, rows: rows } == { answer: FormRejected [{ field: %s, message: \"must be one of the options\" }], rows: %d }", quote(c.Name), tb.counts[at.t.Module])})
 	}
 	return tests
+}
+
+// ownFirstTest is the Edit page's test of a long table behind reference c whose row's own value
+// sorts after the 50 the select holds (its label is "zz-…", every other row's matches the empty
+// search): the select offers it first and once, and saving the row as it is keeps it.
+func (g *adminGen) ownFirstTest(at *adminTable, mod string, imports *importSet, c *Column) TestData {
+	rt := g.p.TableNamed(c.Ref)
+	tb := g.tb(mod, imports, true)
+	l := rt.Label()
+	last := tb.insertRow(rt, "", map[string]string{l.Name: tb.sample(l.Type, "zz", 1)}, false)
+	target := tb.insertRow(at.t, "", map[string]string{c.Name: maybeJust(c, last)}, false)
+	tb.bulkInsert(rt, 201, "")
+	var same []string
+	for _, d := range at.editable {
+		same = append(same, d.Name+": page.model.row."+d.Name)
+	}
+	tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"id: " + target}))
+	tb.let("let r <- Test.submit %s { %s }", at.formName(), strings.Join(same, ", "))
+	tb.let("let after <- Db.get %s %s", at.t.Name, target)
+	n := optionsField(c)
+	return TestData{Name: quote("the row's own " + strings.ToLower(Humanize(c.Name)) + " is offered first when it sorts past the 50"), Lines: tb.lines,
+		Result: fmt.Sprintf("{ answer: r.answer, kept: Maybe.map (\\row -> row.%s) after, first: Maybe.map (\\o -> o.%s) (List.head page.model.%s), once: List.length (List.filter (\\o -> o.%s == %s) page.model.%s), shown: List.length page.model.%s } == { answer: Redirected (%s { id: %s }), kept: Just %s, first: Just %s, once: 1, shown: 51 }",
+			c.Name, rt.IDField, n, rt.IDField, last, n, n, at.page("Show"), target, paren(maybeJust(c, last)), last)}
 }

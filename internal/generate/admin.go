@@ -709,6 +709,14 @@ func (g *adminGen) adminCell(c *Column, row string, imports *importSet) string {
 	return cell(c, row+"."+c.Name, imports)
 }
 
+// paren is expr in parentheses when it is more than a name.
+func paren(expr string) string {
+	if strings.ContainsAny(expr, " (") {
+		return "(" + expr + ")"
+	}
+	return expr
+}
+
 // labelFunc is the function naming the row reference column c refers to: "authorLabel".
 func labelFunc(c *Column) string { return c.Name + "Label" }
 
@@ -877,7 +885,7 @@ func (g *adminGen) index(at *adminTable) {
 
 	if at.hasBulk() { // a checkbox a row, in the bulk form (below the table)
 		headers = append([]string{`<th><span class="sr-only">Choose</span></th>`}, headers...)
-		cells = append([]string{fmt.Sprintf(`<td><input type="checkbox" name="ids" form="bulk" value={%s} aria-label="Choose this row" /></td>`, textOf(at.idColumn(), "row."+t.IDField))}, cells...)
+		cells = append([]string{fmt.Sprintf(`<td><input type="checkbox" name="ids" form="bulk" value={%s} aria-label={"Choose " ++ %s} /></td>`, textOf(at.idColumn(), "row."+t.IDField), paren(textOf(at.label, "row."+at.label.Name)))}, cells...)
 	}
 	filterCols := filterColumns(t)
 	params := []string{"q: Text = \"\""}
@@ -889,7 +897,7 @@ func (g *adminGen) index(at *adminTable) {
 	var b strings.Builder
 	b.WriteString(regionAt("", "params", wrapAll([]string{fmt.Sprintf("page %s { %s }%s", quote(at.path), strings.Join(params, ", "), adminRequires)})) + "\n\n")
 	fmt.Fprintf(&b, "type Model = {\n  rows: List %s,\n  labels: Labels,\n  q: Text,\n  filters: Filters,\n  sort: Text,\n  dir: Text,\n  page: Int,\n  pages: Int,\n  count: Int,\n}\n\n", t.Name)
-	b.WriteString("perPage : Int\nperPage = 25\n\n")
+	b.WriteString(fmt.Sprintf("perPage : Int\nperPage = %d\n\n", bulkMax))
 	b.WriteString(regionAt("", "search", search) + "\n\n")
 	fmt.Fprintf(&b, `-- A Filter is one of the list's selects: the column it filters, the option chosen ("" for any),
 -- and each option's value in the address, its label, and the rows it selects.
@@ -1284,34 +1292,53 @@ func (g *adminGen) show(at *adminTable) {
 	for _, c := range shown(t, true) {
 		fields = append(fields, "<dt>"+Humanize(c.Name)+"</dt>", "<dd>"+g.adminCell(c, "model.row", imports)+"</dd>")
 	}
+	// the delete dialog: the Delete page's counts and its Remove, declared here too (a message
+	// belongs to the page that declares it); the Delete page stays, for the details and for a
+	// browser that cannot open the dialog
+	pl := g.deletePlan(at, imports)
+	loads := append([]string{"let found <- Db.get " + t.Name + " params.id"}, pl.loads...)
+	loads = append(loads, "match found {", "  Just row -> {", "    let labels <- labelsOf [row]",
+		"    Query.succeed { "+strings.Join(append([]string{"row: row", "labels: labels"}, pl.fields...), ", ")+" }",
+		"  },", "  Nothing -> Query.notFound,", "}")
 	var b strings.Builder
 	fmt.Fprintf(&b, "page %s { id: %s }%s\n\n", pathLit(at.path+"/{id}"), types.StringIn(t.IDType, mod), adminRequires)
-	fmt.Fprintf(&b, "type Model = { row: %s, labels: Labels }\n\n", t.Name)
-	b.WriteString(g.load(fmt.Sprintf(`  let found <- Db.get %s params.id
-  match found {
-    Just row -> {
-      let labels <- labelsOf [row]
-      Query.succeed { row: row, labels: labels }
-    },
-    Nothing -> Query.notFound,
-  }`, t.Name)))
+	b.WriteString("-- The row, the labels of the rows it refers to, and (for the delete dialog) how many rows of\n-- each table refer to it.\n")
+	b.WriteString("type Model = {\n  row: " + t.Name + ",\n  labels: Labels,\n" + regionAt("  ", "model", pl.model) + "\n}\n\n")
+	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
 	b.WriteString(regionAt("", "labels", wrapAll(g.labels(at, mod, imports))) + "\n\n")
+	b.WriteString(regionAt("", "blockers", pl.block) + "\n\n")
+	b.WriteString("-- The delete dialog's form: no input, the button and the place a refusal is shown.\nform Confirm = { }\n\nmsg Remove form Confirm\n\n")
+	b.WriteString(`-- Remove deletes the row, unless rows refer to it that keep it (load counted them, as it does
+-- before every message), as the Delete page does.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Remove p -> {
+` + regionAt("    ", "remove", wrapAll(pl.remove)) + `
+  },
+}
+
+`)
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
-	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n      <dl>\n%s\n      </dl>\n", open, title, regionAt("        ", "fields", fields))
+	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n      <dl id=\"fields\">\n%s\n      </dl>\n", open, title, regionAt("        ", "fields", fields))
 	fmt.Fprintf(&b, `      <div slot="actions">
         <al-button href={%s { id: model.row.%s }}>Edit</al-button>
         <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
       </div>
     </al-card>
     <al-dialog id="delete-dialog" heading="Delete this %s?" dismissible>
-      <p>The next page shows what refers to it before anything is deleted.</p>
+      <dl>
+%s
+      </dl>
+      <form id="delete" submit={Remove}>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        `+pl.button+`
+      </form>
       <div slot="actions">
-        <al-button variant="destructive" href={%s { id: model.row.%s }}>Review and delete</al-button>
+        <a href={%s { id: model.row.%s }}>See the details</a>
       </div>
     </al-dialog>
-    <a href={%s { id: model.row.%s }}>Delete without the dialog</a>
     <a href={%s {}}>All %s</a>
-`, at.page("Edit"), t.IDField, at.noun, at.page("Delete"), t.IDField, at.page("Delete"), t.IDField, at.page("Index"), Plural(at.noun))
+`, at.page("Edit"), t.IDField, at.noun, regionAt("        ", "counts", pl.counts), at.page("Delete"), t.IDField, at.page("Index"), Plural(at.noun))
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	var tests []TestData
@@ -1321,15 +1348,16 @@ func (g *adminGen) show(at *adminTable) {
 	k := tb.counts[t.Module]
 	checks := g.labelChecks(tb, at, "page.model", parents)
 	tb.let("let r <- Test.open (%s)", pageLit(mod, []string{"id: " + row}))
-	lhs, rhs := []string{"answer: r.answer", "fields: Test.count \"dd\" r.doc"}, []string{"answer: Shown", fmt.Sprintf("fields: %d", len(shown(t, true)))}
+	lhs, rhs := []string{"answer: r.answer", "fields: Test.count \"#fields dd\" r.doc"}, []string{"answer: Shown", fmt.Sprintf("fields: %d", len(shown(t, true)))}
 	if !at.label.ID {
-		lhs[1], rhs[1] = fmt.Sprintf("%s: List.member %s (Test.texts \"dd\" r.doc)", at.label.Name, quote(rawText(at.label, k))), at.label.Name+": True"
+		lhs[1], rhs[1] = fmt.Sprintf("%s: List.member %s (Test.texts \"#fields dd\" r.doc)", at.label.Name, quote(rawText(at.label, k))), at.label.Name+": True"
 	}
 	if len(checks[0]) > 0 { // the model, for the labels it loaded
 		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"id: " + row}))
 	}
 	lhs, rhs = append(lhs, checks[0]...), append(rhs, checks[1]...)
 	tests = append(tests, TestData{Name: quote("the page shows the row"), Lines: tb.lines, Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
+	tests = append(tests, g.deleteTests(at, mod, imports, pl)...)
 	tests = append(tests, g.missingTest(at, mod, imports))
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
 		return pageLit(mod, []string{"id: " + tb.insertRow(t, "", nil, false)})
@@ -1390,7 +1418,7 @@ func (g *adminGen) finders(at *adminTable, page string, edit bool) (decls, view,
 		decls = append(decls, "form "+form+" = { q: Text }", "", "msg "+name+" form "+form, "")
 		view = append(view, fmt.Sprintf(`{if model.%s > 200 then <form submit={%s}><al-input field="q" label=%s /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}`,
 			totalField(c), name, quote("Find "+strings.ToLower(Humanize(c.Name)))))
-		args := findParam(c) + ": p.form.q"
+		args := findParam(c) + ": Text.slice 0 200 p.form.q"
 		if edit {
 			args = "id: model.row." + at.t.IDField + ", " + args
 		}
@@ -1415,22 +1443,32 @@ func (g *adminGen) formParts(at *adminTable, mod string, imports *importSet, edi
 			continue
 		}
 		// a long table is not offered whole: past 200 rows the select holds 50, those whose label
-		// contains the search (and, on Edit, the row's own); the rows a submitted value is checked
-		// against are the ones rendered
+		// contains the search; on Edit the row's own value comes first, read by itself (it may sort
+		// past the 50, and a select without it would save another), and the search leaves it out;
+		// the rows a submitted value is checked against are the ones rendered
 		model = append(model, totalField(c)+": Int,")
 		q, n := findParam(c), optionsField(c)
 		where := rt.Name + "." + rt.Label().Name + ".contains " + q
-		if edit {
-			cur := rt.Name + "." + rt.IDField + ".eq row." + c.Name
-			if c.Maybe {
-				cur = rt.Name + "." + rt.IDField + ".in (List.filterMap (\\i -> i) [row." + c.Name + "])"
-			}
-			where = "Db.or [" + where + ", " + cur + "]"
+		if !edit {
+			loads = append(loads,
+				fmt.Sprintf("let %s = Text.slice 0 200 params.%s", q, q),
+				fmt.Sprintf("let %s <- Db.from %s |> Db.count", totalField(c), rt.Name),
+				fmt.Sprintf("let %s <- %s |> Db.where (if %s > 200 then %s else Db.and []) |> Db.limit (if %s > 200 then 50 else 200) |> Db.all", n, sel, totalField(c), where, totalField(c)))
+			continue
 		}
+		cur := rt.Name + "." + rt.IDField + ".eq row." + c.Name
+		other := rt.Name + "." + rt.IDField + ".ne row." + c.Name
+		if c.Maybe {
+			cur = rt.Name + "." + rt.IDField + ".in (List.filterMap (\\i -> i) [row." + c.Name + "])"
+			other = "Db.not (" + cur + ")"
+		}
+		own, found := n+"Own", n+"Found"
 		loads = append(loads,
 			fmt.Sprintf("let %s = Text.slice 0 200 params.%s", q, q),
 			fmt.Sprintf("let %s <- Db.from %s |> Db.count", totalField(c), rt.Name),
-			fmt.Sprintf("let %s <- %s |> Db.where (if %s > 200 then %s else Db.and []) |> Db.limit (if %s > 200 then 50 else 200) |> Db.all", n, sel, totalField(c), where, totalField(c)))
+			fmt.Sprintf("let %s <- if %s > 200 then Db.from %s |> Db.where (%s) |> Db.all else Query.succeed []", own, totalField(c), rt.Name, cur),
+			fmt.Sprintf("let %s <- %s |> Db.where (if %s > 200 then Db.and [%s, %s] else Db.and []) |> Db.limit (if %s > 200 then 50 else 200) |> Db.all", found, sel, totalField(c), where, other, totalField(c)),
+			fmt.Sprintf("let %s = %s ++ %s", n, own, found))
 	}
 	form = append(form, "form "+at.formName()+" = {")
 	for _, c := range at.editable {
@@ -2006,17 +2044,23 @@ func (g *adminGen) changedValue(tb *testBuilder, at *adminTable, c *Column, n in
 	return g.submitValue(tb, at, c, n)
 }
 
-func (g *adminGen) delete(at *adminTable) {
-	t := at.t
-	mod := at.page("Delete")
-	imports := newImports(mod, g.p.Std)
-	imports.add(t.Module)
-	importTypes(imports, t.IDType)
-	title := "Delete " + at.noun
-	open, close := g.layoutOpen(UpperFirst(title), imports)
+// delPlan is what deleting a row of at involves, which the Delete page and the Show page's
+// dialog both show and do: the model's counts of the rows that refer to it (and, for the user
+// table, whether it is the signed-in user's own), the loads that count them, the functions that
+// sum the rows keeping it (region `blockers`), the Remove arm (region `remove`), the counts'
+// markup and the button (or the reasons there is none).
+type delPlan struct {
+	model, loads, fields, counts, block, remove []string
+	button                                      string
+	nodes, chains                               []*node
+	blockers, children                          []string
+	own                                         bool
+}
 
+func (g *adminGen) deletePlan(at *adminTable, imports *importSet) *delPlan {
+	t := at.t
 	var model, loads, counts, blockers, children []string
-	fields := []string{"row: row"}
+	var fields []string
 	var chains []*node // the @restrict references down a @cascade, each counted
 	nodes := g.closure(at)
 	for _, n := range walk(nodes) {
@@ -2070,10 +2114,8 @@ func (g *adminGen) delete(at *adminTable) {
 	own := g.isUserTable(at)
 	if own { // the signed-in user's own row is not deleted
 		model = append([]string{"own: Bool,"}, model...)
-		fields = append([]string{fields[0], "own: " + g.isMe("row."+t.IDField)}, fields[1:]...)
+		fields = append([]string{"own: " + g.isMe("row."+t.IDField)}, fields...)
 	}
-	loads = append([]string{"let found <- Db.get " + t.Name + " params.id"}, loads...)
-	loads = append(loads, "match found {", "  Just row -> Query.succeed { "+strings.Join(fields, ", ")+" },", "  Nothing -> Query.notFound,", "}")
 	block := []string{
 		"-- blockers counts the rows that keep this one from being deleted, which the database would",
 		"-- refuse the delete for: the `@restrict` references to it, or to a row deleted with it.",
@@ -2092,15 +2134,6 @@ func (g *adminGen) delete(at *adminTable) {
 			"children : Model -> Int",
 			"children model = "+strings.Join(children, " + "))
 	}
-	labelRow := "<p>{" + textOf(at.label, "model.row."+at.label.Name) + "}</p>"
-
-	var b strings.Builder
-	fmt.Fprintf(&b, "page %s { id: %s }%s\n\n", pathLit(at.path+"/{id}/delete"), types.StringIn(t.IDType, mod), adminRequires)
-	b.WriteString("-- The row, and how many rows of each table refer to it.\n")
-	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + regionAt("  ", "model", model) + "\n}\n\n")
-	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
-	b.WriteString(regionAt("", "blockers", block) + "\n\n")
-	b.WriteString("-- Delete takes no input: the form is the button, and the place a refusal is shown.\nform Confirm = { }\n\nmsg Remove form Confirm\n\n")
 	remove := []string{
 		"let _ <- Db.delete " + t.Name + " model.row." + t.IDField,
 		"Task.succeed (Redirect (" + at.page("Index") + " {}))",
@@ -2124,19 +2157,6 @@ func (g *adminGen) delete(at *adminTable) {
 		}
 		remove = append(append(guard, "else {"), append(indentAll(remove, "  "), "}")...)
 	}
-	b.WriteString(`-- Remove deletes the row, unless rows refer to it that keep it (load counted them, as it does
--- before every message): the database would refuse the delete with an error, and the page says
--- why instead.
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Remove p -> {
-` + regionAt("    ", "remove", wrapAll(remove)) + `
-  },
-}
-
-`)
-	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
-	fmt.Fprintf(&b, "  %s\n    <h1>Delete this %s?</h1>\n\n    <al-card>\n%s\n      <dl>\n%s\n      </dl>\n", open, at.noun, regionAt("      ", "row", []string{labelRow}), regionAt("        ", "counts", counts))
 	button := `{if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}`
 	if len(children) > 0 || own { // one line per reason
 		var arms []string
@@ -2149,16 +2169,69 @@ update msg model session = match msg {
 		arms = append(arms, "blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p>")
 		button = "{if " + strings.Join(arms, "\n          else if ") + "\n          else <al-button variant=\"destructive\" type=\"submit\">Delete</al-button>}"
 	}
+	return &delPlan{model: model, loads: loads, fields: fields, counts: counts, block: block, remove: remove,
+		button: button, nodes: nodes, chains: chains, blockers: blockers, children: children, own: own}
+}
+
+func (g *adminGen) delete(at *adminTable) {
+	t := at.t
+	mod := at.page("Delete")
+	imports := newImports(mod, g.p.Std)
+	imports.add(t.Module)
+	importTypes(imports, t.IDType)
+	title := "Delete " + at.noun
+	open, close := g.layoutOpen(UpperFirst(title), imports)
+
+	pl := g.deletePlan(at, imports)
+	loads := append([]string{"let found <- Db.get " + t.Name + " params.id"}, pl.loads...)
+	loads = append(loads, "match found {", "  Just row -> Query.succeed { "+strings.Join(append([]string{"row: row"}, pl.fields...), ", ")+" },", "  Nothing -> Query.notFound,", "}")
+	labelRow := "<p>{" + textOf(at.label, "model.row."+at.label.Name) + "}</p>"
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "page %s { id: %s }%s\n\n", pathLit(at.path+"/{id}/delete"), types.StringIn(t.IDType, mod), adminRequires)
+	b.WriteString("-- The row, and how many rows of each table refer to it.\n")
+	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + regionAt("  ", "model", pl.model) + "\n}\n\n")
+	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
+	b.WriteString(regionAt("", "blockers", pl.block) + "\n\n")
+	b.WriteString("-- Delete takes no input: the form is the button, and the place a refusal is shown.\nform Confirm = { }\n\nmsg Remove form Confirm\n\n")
+	b.WriteString(`-- Remove deletes the row, unless rows refer to it that keep it (load counted them, as it does
+-- before every message): the database would refuse the delete with an error, and the page says
+-- why instead.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Remove p -> {
+` + regionAt("    ", "remove", wrapAll(pl.remove)) + `
+  },
+}
+
+`)
+	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
+	fmt.Fprintf(&b, "  %s\n    <h1>Delete this %s?</h1>\n\n    <al-card>\n%s\n      <dl>\n%s\n      </dl>\n", open, at.noun, regionAt("      ", "row", []string{labelRow}), regionAt("        ", "counts", pl.counts))
 	fmt.Fprintf(&b, `      <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        `+button+`
+        `+pl.button+`
       </form>
     </al-card>
     <a href={%s { id: model.row.%s }}>Back</a>
 `, at.page("Show"), t.IDField)
 	fmt.Fprintf(&b, "  %s\n", close)
 
-	// the tests
+	tests := g.deleteTests(at, mod, imports, pl)
+	tests = append(tests, g.missingTest(at, mod, imports))
+	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
+		return pageLit(mod, []string{"id: " + tb.insertRow(t, "", nil, false)})
+	})...)
+	b.WriteString(testsText(tests))
+	g.file(mod, imports, b.String())
+}
+
+// deleteTests are the tests of the Remove message of page mod (the Delete page, or the Show
+// page's dialog): a row nothing refers to is deleted, the rows that go with it are counted, each
+// @restrict reference (and one down a @cascade) refuses, a row with children is refused, and the
+// signed-in user's own row is.
+func (g *adminGen) deleteTests(at *adminTable, mod string, imports *importSet, pl *delPlan) []TestData {
+	t := at.t
+	nodes, chains, own := pl.nodes, pl.chains, pl.own
 	var tests []TestData
 	// a row nothing refers to is deleted; another row, with rows of every table referring to
 	// it, is not
@@ -2302,12 +2375,7 @@ update msg model session = match msg {
 			Result: fmt.Sprintf("{ says: Test.texts \"#delete p\" page.doc, buttons: Test.count \"#delete button\" page.doc, answer: r.answer, kept: Maybe.map (\\row -> row.%s) kept } == { says: [%s], buttons: 0, answer: FormRejected [{ field: \"\", message: %s }], kept: Just %s }",
 				t.IDField, quote(ownText), quote(ownText), me)})
 	}
-	tests = append(tests, g.missingTest(at, mod, imports))
-	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
-		return pageLit(mod, []string{"id: " + tb.insertRow(t, "", nil, false)})
-	})...)
-	b.WriteString(testsText(tests))
-	g.file(mod, imports, b.String())
+	return tests
 }
 
 // ownText and roleText are the user table's refusals of the signed-in user's own row: its delete,

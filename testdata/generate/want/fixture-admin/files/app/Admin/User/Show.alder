@@ -4,25 +4,47 @@ module Admin.User.Show
 
 -- @admin begin imports
 import Admin.Layout
+import Comment
+import Post
 import User
 -- @admin end
 
 page "/admin/user/{id}" { id: User.UserId } requires user, role Admin
 
-type Model = { row: User, labels: Labels }
+-- The row, the labels of the rows it refers to, and (for the delete dialog) how many rows of
+-- each table refer to it.
+type Model = {
+  row: User,
+  labels: Labels,
+  -- @admin begin model
+  own: Bool,
+  comments: Int,
+  posts: Int,
+  -- @admin end
+}
 
 load : Params -> Session -> Query Model
 load params session = {
   let admin <- Admin.Layout.isAdmin session.user
   if admin then {
+    -- @admin begin load
     let found <- Db.get User params.id
+    let comments <- Db.from Comment |> Db.where (Comment.author.eq params.id) |> Db.count
+    let posts <- Db.from Post |> Db.where (Post.author.eq params.id) |> Db.count
     match found {
       Just row -> {
         let labels <- labelsOf [row]
-        Query.succeed { row: row, labels: labels }
+        Query.succeed {
+          row: row,
+          labels: labels,
+          own: session.user == row.id,
+          comments: comments,
+          posts: posts,
+        }
       },
       Nothing -> Query.notFound,
     }
+    -- @admin end
   } else Query.notFound
 }
 
@@ -34,13 +56,43 @@ labelsOf : List User -> Query Labels
 labelsOf rows = Query.succeed { }
 -- @admin end
 
+-- @admin begin blockers
+-- blockers counts the rows that keep this one from being deleted, which the database would
+-- refuse the delete for: the `@restrict` references to it, or to a row deleted with it.
+blockers : Model -> Int
+blockers model = model.comments + model.posts
+-- @admin end
+
+-- The delete dialog's form: no input, the button and the place a refusal is shown.
+form Confirm = { }
+
+msg Remove form Confirm
+
+-- Remove deletes the row, unless rows refer to it that keep it (load counted them, as it does
+-- before every message), as the Delete page does.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Remove p -> {
+    -- @admin begin remove
+    if model.own then
+      Task.succeed (Reject "You cannot delete your own account.")
+    else if blockers model > 0 then
+      Task.succeed (Reject "This user cannot be deleted while other rows refer to it.")
+    else {
+      let _ <- Db.delete User model.row.id
+      Task.succeed (Redirect (Admin.User.Index {}))
+    }
+    -- @admin end
+  },
+}
+
 view : Model -> Session -> Html Msg
 view model session =
   <Admin.Layout.Page title="User">
     <h1>User</h1>
 
     <al-card>
-      <dl>
+      <dl id="fields">
         -- @admin begin fields
         <dt>Id</dt>
         <dd>{model.row.id}</dd>
@@ -60,12 +112,24 @@ view model session =
       </div>
     </al-card>
     <al-dialog id="delete-dialog" heading="Delete this user?" dismissible>
-      <p>The next page shows what refers to it before anything is deleted.</p>
+      <dl>
+        -- @admin begin counts
+        <dt>Comments that keep it from being deleted</dt>
+        <dd id="comments">{Text.fromInt model.comments}</dd>
+        <dt>Posts that keep it from being deleted</dt>
+        <dd id="posts">{Text.fromInt model.posts}</dd>
+        -- @admin end
+      </dl>
+      <form id="delete" submit={Remove}>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        {if model.own then <p>You cannot delete your own account.</p>
+          else if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p>
+          else <al-button variant="destructive" type="submit">Delete</al-button>}
+      </form>
       <div slot="actions">
-        <al-button variant="destructive" href={Admin.User.Delete { id: model.row.id }}>Review and delete</al-button>
+        <a href={Admin.User.Delete { id: model.row.id }}>See the details</a>
       </div>
     </al-dialog>
-    <a href={Admin.User.Delete { id: model.row.id }}>Delete without the dialog</a>
     <a href={Admin.User.Index {}}>All users</a>
   </Admin.Layout.Page>
 
@@ -84,10 +148,123 @@ test "the page shows the row" = {
   let r <- Test.open (Admin.User.Show { id: user2 })
   Task.succeed ({
     answer: r.answer,
-    email: List.member "email-2@example.com" (Test.texts "dd" r.doc),
+    email: List.member "email-2@example.com" (Test.texts "#fields dd" r.doc),
   } == {
     answer: Shown,
     email: True,
+  })
+}
+
+test "deleting a user nothing refers to" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
+  let user3 <- Db.insert User {
+    email: Text.Email "email-3@example.com",
+    name: Text.NonEmpty "name-3",
+  }
+  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let _ <- Db.insert Comment { post: post1, author: user3, body: Text.NonEmpty "body-1" }
+  let _ <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: user3 }
+  let _ <- Test.get (Admin.User.Show { id: user2 })
+  let r <- Test.submit Confirm { }
+  let gone <- Db.get User user2
+  let kept <- Db.get User user3
+  Task.succeed ({
+    answer: r.answer,
+    gone: Maybe.map (\row -> row.id) gone,
+    kept: Maybe.map (\row -> row.id) kept,
+  } == {
+    answer: Redirected (Admin.User.Index {}),
+    gone: Nothing,
+    kept: Just user3,
+  })
+}
+
+test "a user that comments refer to is not deleted" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
+  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let _ <- Db.insert Comment { post: post1, author: user2, body: Text.NonEmpty "body-1" }
+  let page <- Test.get (Admin.User.Show { id: user2 })
+  let r <- Test.submit Confirm { }
+  let kept <- Db.get User user2
+  Task.succeed ({
+    count: Test.text "#comments" page.doc,
+    buttons: Test.count "#delete button" page.doc,
+    answer: r.answer,
+    kept: Maybe.map (\row -> row.id) kept,
+  } == {
+    count: Just "1",
+    buttons: 0,
+    answer: FormRejected [{ field: "", message: "This user cannot be deleted while other rows refer to it." }],
+    kept: Just user2,
+  })
+}
+
+test "a user that posts refer to is not deleted" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
+  let _ <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: user2 }
+  let page <- Test.get (Admin.User.Show { id: user2 })
+  let r <- Test.submit Confirm { }
+  let kept <- Db.get User user2
+  Task.succeed ({
+    count: Test.text "#posts" page.doc,
+    buttons: Test.count "#delete button" page.doc,
+    answer: r.answer,
+    kept: Maybe.map (\row -> row.id) kept,
+  } == {
+    count: Just "1",
+    buttons: 0,
+    answer: FormRejected [{ field: "", message: "This user cannot be deleted while other rows refer to it." }],
+    kept: Just user2,
+  })
+}
+
+test "an Admin cannot delete their own account" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let page <- Test.get (Admin.User.Show { id: me })
+  let r <- Test.submit Confirm { }
+  let kept <- Db.get User me
+  Task.succeed ({
+    says: Test.texts "#delete p" page.doc,
+    buttons: Test.count "#delete button" page.doc,
+    answer: r.answer,
+    kept: Maybe.map (\row -> row.id) kept,
+  } == {
+    says: ["You cannot delete your own account."],
+    buttons: 0,
+    answer: FormRejected [{ field: "", message: "You cannot delete your own account." }],
+    kept: Just me,
   })
 }
 

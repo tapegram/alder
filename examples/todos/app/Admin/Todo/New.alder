@@ -51,7 +51,7 @@ msg Create form TodoForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchOwner p -> Task.succeed (Redirect (Admin.Todo.New { findOwner: p.form.q })),
+  SearchOwner p -> Task.succeed (Redirect (Admin.Todo.New { findOwner: Text.slice 0 200 p.form.q })),
   -- @admin end
   Create p -> {
     -- @admin begin insert

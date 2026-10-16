@@ -28,10 +28,12 @@ load params session = {
       Just row -> {
         let findOwner = Text.slice 0 200 params.findOwner
         let ownersTotal <- Db.from User |> Db.count
-        let owners <- Db.from User |> Db.orderBy User.email.asc |> Db.where (if ownersTotal > 200 then Db.or [
+        let ownersOwn <- if ownersTotal > 200 then Db.from User |> Db.where (User.id.eq row.owner) |> Db.all else Query.succeed []
+        let ownersFound <- Db.from User |> Db.orderBy User.email.asc |> Db.where (if ownersTotal > 200 then Db.and [
           User.email.contains findOwner,
-          User.id.eq row.owner,
+          User.id.ne row.owner,
         ] else Db.and []) |> Db.limit (if ownersTotal > 200 then 50 else 200) |> Db.all
+        let owners = ownersOwn ++ ownersFound
         Query.succeed { row: row, owners: owners, ownersTotal: ownersTotal }
       },
       Nothing -> Query.notFound,
@@ -61,7 +63,7 @@ msg Save form TodoForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchOwner p -> Task.succeed (Redirect (Admin.Todo.Edit { id: model.row.id, findOwner: p.form.q })),
+  SearchOwner p -> Task.succeed (Redirect (Admin.Todo.Edit { id: model.row.id, findOwner: Text.slice 0 200 p.form.q })),
   -- @admin end
   Save p -> {
     -- @admin begin update
@@ -221,10 +223,52 @@ test "a long list of users offers 50, and the search narrows it" = {
     found: Test.count "select[name=owner] option" found.doc <= 3,
     answer: r.answer,
   } == {
-    shown: 50,
+    shown: 51,
     total: 203,
     found: True,
     answer: Redirected (Admin.Todo.Edit { id: todo1, findOwner: "zz" }),
+  })
+}
+
+test "the row's own owner is offered first when it sorts past the 50" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "zz-1@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: user2 }
+  let _ <- Task.all (List.map (\n -> Db.insert User {
+    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+    passwordHash: "passwordhash-" ++ Text.fromInt n,
+  }) (List.range 3 203))
+  let page <- Test.get (Admin.Todo.Edit { id: todo1 })
+  let r <- Test.submit TodoForm {
+    title: page.model.row.title,
+    done: page.model.row.done,
+    due: page.model.row.due,
+    owner: page.model.row.owner,
+  }
+  let after <- Db.get Todo todo1
+  Task.succeed ({
+    answer: r.answer,
+    kept: Maybe.map (\row -> row.owner) after,
+    first: Maybe.map (\o -> o.id) (List.head page.model.owners),
+    once: List.length (List.filter (\o -> o.id == user2) page.model.owners),
+    shown: List.length page.model.owners,
+  } == {
+    answer: Redirected (Admin.Todo.Show { id: todo1 }),
+    kept: Just user2,
+    first: Just user2,
+    once: 1,
+    shown: 51,
   })
 }
 

@@ -11,16 +11,18 @@ Member) or `admin@b.c` (an Admin: `/admin`). The accounts are the development st
 
 ## Mutation score
 
-`alder test --mutate examples/todos` (book 10, "Mutation testing"): 188 mutants, 107 tests, 185
-killed, 3 survived (score 0.98). `TestExample_TodosMutation` fails if the score drops below
-0.98 or the number of mutants is not 188.
+`alder test --mutate examples/todos` (book 10, "Mutation testing"): 208 mutants, 116 tests, 206
+killed, 2 survived (score 0.99). `TestExample_TodosMutation` fails if the score drops below
+0.99 or the number of mutants is not 208.
 
 - The app's own code: 36 mutants, all killed by its 22 tests (score 1.00).
-- The generated admin (`app/Admin/`, "Replaying the admin" below): 152 mutants, 149 killed by
-  its generated tests, kept as `alder new admin` wrote them. The three survivors are equivalent:
-  `ownersTotal > 200` flipped to `>= 200` in the `where` of the Todo form's owner list (New and
-  Edit), where a search of "" matches every row anyway, and `Todo.owner.in params.ids` dropped from
-  the user bulk page's load, whose `refused` is only asked of the chosen rows.
+- The generated admin (`app/Admin/`, "Replaying the admin" below): 172 mutants, 170 killed by
+  its generated tests, kept as `alder new admin` wrote them. The two survivors are equivalent:
+  `ownersTotal > 200` flipped to `>= 200` in the `where` of the New page's owner list, where a
+  search of "" matches every row anyway, and `Todo.owner.in ids` dropped from the user bulk
+  page's load, whose `refused` is only asked of the chosen rows. (The Edit page's list no longer
+  has the first: its row's own owner is read by itself and comes first, and the search leaves it
+  out, so the generated test of exactly 200 users tells `>` from `>=`.)
 
 The history of the app's own code:
 

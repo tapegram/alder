@@ -31,16 +31,20 @@ load params session = {
       Just row -> {
         let findPost = Text.slice 0 200 params.findPost
         let postsTotal <- Db.from Post |> Db.count
-        let posts <- Db.from Post |> Db.orderBy Post.title.asc |> Db.where (if postsTotal > 200 then Db.or [
+        let postsOwn <- if postsTotal > 200 then Db.from Post |> Db.where (Post.id.eq row.post) |> Db.all else Query.succeed []
+        let postsFound <- Db.from Post |> Db.orderBy Post.title.asc |> Db.where (if postsTotal > 200 then Db.and [
           Post.title.contains findPost,
-          Post.id.eq row.post,
+          Post.id.ne row.post,
         ] else Db.and []) |> Db.limit (if postsTotal > 200 then 50 else 200) |> Db.all
+        let posts = postsOwn ++ postsFound
         let findAuthor = Text.slice 0 200 params.findAuthor
         let authorsTotal <- Db.from User |> Db.count
-        let authors <- Db.from User |> Db.orderBy User.email.asc |> Db.where (if authorsTotal > 200 then Db.or [
+        let authorsOwn <- if authorsTotal > 200 then Db.from User |> Db.where (User.id.eq row.author) |> Db.all else Query.succeed []
+        let authorsFound <- Db.from User |> Db.orderBy User.email.asc |> Db.where (if authorsTotal > 200 then Db.and [
           User.email.contains findAuthor,
-          User.id.eq row.author,
+          User.id.ne row.author,
         ] else Db.and []) |> Db.limit (if authorsTotal > 200 then 50 else 200) |> Db.all
+        let authors = authorsOwn ++ authorsFound
         Query.succeed {
           row: row,
           posts: posts,
@@ -79,8 +83,8 @@ msg Save form CommentForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchPost p -> Task.succeed (Redirect (Admin.Comment.Edit { id: model.row.id, findPost: p.form.q })),
-  SearchAuthor p -> Task.succeed (Redirect (Admin.Comment.Edit { id: model.row.id, findAuthor: p.form.q })),
+  SearchPost p -> Task.succeed (Redirect (Admin.Comment.Edit { id: model.row.id, findPost: Text.slice 0 200 p.form.q })),
+  SearchAuthor p -> Task.succeed (Redirect (Admin.Comment.Edit { id: model.row.id, findAuthor: Text.slice 0 200 p.form.q })),
   -- @admin end
   Save p -> {
     -- @admin begin update
@@ -261,10 +265,46 @@ test "a long list of posts offers 50, and the search narrows it" = {
     found: Test.count "select[name=post] option" found.doc <= 3,
     answer: r.answer,
   } == {
-    shown: 50,
+    shown: 51,
     total: 203,
     found: True,
     answer: Redirected (Admin.Comment.Edit { id: comment1, findPost: "zz" }),
+  })
+}
+
+test "the row's own post is offered first when it sorts past the 50" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post { title: Text.NonEmpty "zz-1", body: "body-1", author: me }
+  let comment1 <- Db.insert Comment { post: post1, author: me, body: Text.NonEmpty "body-1" }
+  let _ <- Task.all (List.map (\n -> Db.insert Post {
+    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+    body: "body-" ++ Text.fromInt n,
+    author: me,
+  }) (List.range 2 202))
+  let page <- Test.get (Admin.Comment.Edit { id: comment1 })
+  let r <- Test.submit CommentForm {
+    post: page.model.row.post,
+    author: page.model.row.author,
+    body: page.model.row.body,
+  }
+  let after <- Db.get Comment comment1
+  Task.succeed ({
+    answer: r.answer,
+    kept: Maybe.map (\row -> row.post) after,
+    first: Maybe.map (\o -> o.id) (List.head page.model.posts),
+    once: List.length (List.filter (\o -> o.id == post1) page.model.posts),
+    shown: List.length page.model.posts,
+  } == {
+    answer: Redirected (Admin.Comment.Show { id: comment1 }),
+    kept: Just post1,
+    first: Just post1,
+    once: 1,
+    shown: 51,
   })
 }
 
@@ -317,10 +357,46 @@ test "a long list of users offers 50, and the search narrows it" = {
     found: Test.count "select[name=author] option" found.doc <= 3,
     answer: r.answer,
   } == {
-    shown: 50,
+    shown: 51,
     total: 203,
     found: True,
     answer: Redirected (Admin.Comment.Edit { id: comment1, findAuthor: "zz" }),
+  })
+}
+
+test "the row's own author is offered first when it sorts past the 50" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User { email: Text.Email "zz-1@example.com", name: Text.NonEmpty "name-2" }
+  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let comment1 <- Db.insert Comment { post: post1, author: user2, body: Text.NonEmpty "body-1" }
+  let _ <- Task.all (List.map (\n -> Db.insert User {
+    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+  }) (List.range 3 203))
+  let page <- Test.get (Admin.Comment.Edit { id: comment1 })
+  let r <- Test.submit CommentForm {
+    post: page.model.row.post,
+    author: page.model.row.author,
+    body: page.model.row.body,
+  }
+  let after <- Db.get Comment comment1
+  Task.succeed ({
+    answer: r.answer,
+    kept: Maybe.map (\row -> row.author) after,
+    first: Maybe.map (\o -> o.id) (List.head page.model.authors),
+    once: List.length (List.filter (\o -> o.id == user2) page.model.authors),
+    shown: List.length page.model.authors,
+  } == {
+    answer: Redirected (Admin.Comment.Show { id: comment1 }),
+    kept: Just user2,
+    first: Just user2,
+    once: 1,
+    shown: 51,
   })
 }
 

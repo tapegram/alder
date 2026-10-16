@@ -207,7 +207,7 @@ view model session =
           {for row in model.rows ->
             <tr>
               -- @admin begin cells
-              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label="Choose this row" /></td>
+              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label={"Choose " ++ row.title} /></td>
               <td><a href={Admin.Todo.Show { id: row.id }}>{row.title}</a></td>
               <td>{if row.done then <al-badge>Yes</al-badge> else <al-badge variant="secondary">No</al-badge>}</td>
               <td>{match row.due { Just v -> Date.format "Jan 2, 2006" v, Nothing -> "" }}</td>

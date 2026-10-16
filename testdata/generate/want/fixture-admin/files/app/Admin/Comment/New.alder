@@ -60,8 +60,8 @@ msg Create form CommentForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchPost p -> Task.succeed (Redirect (Admin.Comment.New { findPost: p.form.q })),
-  SearchAuthor p -> Task.succeed (Redirect (Admin.Comment.New { findAuthor: p.form.q })),
+  SearchPost p -> Task.succeed (Redirect (Admin.Comment.New { findPost: Text.slice 0 200 p.form.q })),
+  SearchAuthor p -> Task.succeed (Redirect (Admin.Comment.New { findAuthor: Text.slice 0 200 p.form.q })),
   -- @admin end
   Create p -> {
     -- @admin begin insert

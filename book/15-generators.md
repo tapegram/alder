@@ -1306,7 +1306,7 @@ view model session =
           {for row in model.rows ->
             <tr>
               -- @admin begin cells
-              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label="Choose this row" /></td>
+              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label={"Choose " ++ row.slug} /></td>
               <td><a href={Admin.Post.Show { id: row.id }}>{row.slug}</a></td>
               <td>{row.title}</td>
               <td>{row.body}</td>
@@ -1638,7 +1638,7 @@ msg Create form PostForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchAuthor p -> Task.succeed (Redirect (Admin.Post.New { findAuthor: p.form.q })),
+  SearchAuthor p -> Task.succeed (Redirect (Admin.Post.New { findAuthor: Text.slice 0 200 p.form.q })),
   -- @admin end
   Create p -> {
     -- @admin begin insert
@@ -1982,42 +1982,59 @@ the referenced table in `load` (`authorsTotal`) and takes the
   offer.
 - A small form of its own, `FindAuthor { q: Text }`, with the message
   `SearchAuthor`, sends the text. Its arm answers `Redirect (Admin.Post.New
-  { findAuthor: p.form.q })`, not `Rerender`: a rerender would show the
-  select narrowed by the *old* text, since the options come from `load`,
-  which ran before the message. The redirect loads the page again with the
-  new text in the address, and `load` narrows by it. (On the Edit page
-  the select also keeps the row's own value, so a search that does not
-  match it does not lose it.) The regions are `search` (the form and the
-  message), `finds` (its arm) and `finder` (where the form is drawn).
+  { findAuthor: Text.slice 0 200 p.form.q })`, not `Rerender`: a rerender
+  would show the select narrowed by the *old* text, since the options come
+  from `load`, which ran before the message. The redirect loads the page
+  again with the new text in the address (cut to 200 characters, as
+  `load` cuts it), and `load` narrows by it. The regions are `search` (the
+  form and the message), `finds` (its arm) and `finder` (where the form is
+  drawn).
+- On the Edit page the select also keeps the row's own value, whatever the
+  search and wherever it sorts. `load` reads that row by itself
+  (`authorsOwn`, `User.id.eq row.author`) and puts it **first**, then the
+  50 the search finds, which leave it out (`User.id.ne row.author`), so it
+  is neither lost past the 50 nor offered twice. Without this, a post
+  whose author sorts after the first 50 would render a select without its
+  value, the browser would show the first option as chosen, and saving
+  the form unchanged would quietly give the post another author.
 
 There is no `al-autocomplete` element: the library has none (Appendix C),
 so the control stays an `al-select` and a search form beside it, which
 works with no JavaScript. The generated tests check the edge: with
-exactly 200 rows the select holds them all; with 201 it holds 50 and the
-search narrows them; a crafted post of an id outside the rendered options
-is refused with "must be one of the options".
+exactly 200 rows the select holds them all; with 201 it holds 50 (51 on
+the Edit page, the row's own first) and the search narrows them; on the
+Edit page, a row whose own user sorts after every other is offered first
+and once, and saving the form unchanged keeps it; a crafted post of an id
+outside the rendered options is refused with "must be one of the
+options".
 
 ### The Delete button: a dialog, and the page behind it
 
 A row's own page (`Admin.T.Show`) has a Delete button. It opens an
-`al-dialog` (Appendix C): "Delete this comment?", a note that the next page
-shows what refers to the row, and a button. The button is a **link to the
-confirmation page**, `Admin.T.Delete`, not a button that posts `Remove`
-from the dialog. Messages are page-local (chapter 6): `Remove` is declared
-by the delete page and can be answered only from it, so a dialog on the
-Show page cannot send it. Making the dialog post it would mean declaring
-`Remove` on the Show page too, and the delete page's counting of the
-`@cascade` and `@restrict` references (below) is exactly what the person
-should see before pressing anything, so the dialog leads there. The
-dialog's job is the small pause and the explanation; the page is the
-confirmation.
+`al-dialog` (Appendix C), "Delete this comment?", which shows what the
+delete page shows before anything is deleted: how many rows go with the
+row (its `@cascade` references), how many lose a reference (`@setNull`)
+and how many keep it from being deleted (`@restrict`), then the button,
+or the reason there is none. The button posts `Remove`, and it is the
+Show page's own `Remove`: messages are page-local (chapter 6), so the
+Show page declares the same `Confirm` form and `Remove` message as the
+delete page, with the same `load` counts and the same refusals (a row
+other rows keep, a row with children, the signed-in Admin's own account),
+in the same regions (`model`, `load`, `blockers`, `remove`, `counts`). A
+refusal is shown in the dialog, which stays open across the update.
 
-With no JavaScript, or in a browser too old for invoker commands, the
-button does nothing, so the Show page also carries a plain link, "Delete
-without the dialog", to the same page. The dialog itself is the
+The dialog ends with a link, "See the details", to the delete page,
+`Admin.T.Delete`, which stays: it is the same confirmation as a page of
+its own, with the row's label, and an app may link to it from anywhere.
+The button that opens the dialog is the library's documented shape, a
+`<button commandfor="delete-dialog" command="show-modal">`. Invoker
+commands are the browser's own, so it opens the dialog with no
+JavaScript at all in Chromium 135 and later, Safari 26 and Firefox 140;
+in an older browser `al.js`'s shim adds them. The dialog itself is the
 platform's: Escape and the close button dismiss it, focus stays inside it
 while it is open and returns to the button, and it stays open if a
-Datastar update re-renders the page behind it.
+Datastar update re-renders the page behind it. The generated Show page's
+tests are the delete page's tests, run against the dialog's `Remove`.
 
 ### The delete page
 
@@ -2363,12 +2380,14 @@ table take the choice to the table's bulk page: "Act on the chosen rows"
 and, for no-script use, "Act on all rows on this page" (a second form of
 hidden ids). Both are `GET` forms to `Admin.T.Bulk`, whose page parameter
 is a list of the table's ids, so the chosen rows are in the address. The bulk page
-lists the rows and offers the table's actions:
+lists the rows and offers the table's actions. (Each checkbox is labelled
+with its row, "Choose hello-world", for a screen reader.)
 
 - **Delete** the chosen rows, with the same care as the single delete
   page. A row that a `@restrict` reference holds is **refused**: it is
   listed with "(kept: other rows refer to it)" and left, and the rest
-  are deleted. On the user table, the admin's own row is refused too. The
+  are deleted. On the user table, the admin's own row is refused too,
+  listed with "(kept: your own account)". The
   answer is `Notice.with "Deleted 2 of 3"` on a redirect to the list, so
   the person sees a toast (chapter 6, "Notices and in-flight"). As with
   every message, `load` runs first and reads the rows again, so what is
@@ -2377,10 +2396,17 @@ lists the rows and offers the table's actions:
   form per such column (`BulkSetPublished`, `BulkSetDone`), which updates
   every chosen row and answers `Notice.with "Updated 3"`.
 
+An action takes at most one page of the list, 25 rows (`maxRows`, the
+list's `perPage`): the page reads the first 25 ids it is given, says so
+when it was given more, and every action then answers `Reject "Choose at
+most 25 rows at a time."`. The checkboxes and "all rows on this page"
+never send more; a longer address is made by hand.
+
 A table with neither a delete nor a set action gets no bulk page. The **delete is not generated for a table**
 whose deletion can meet a `@restrict` below a `@cascade`, or in a tree of
 the table's own (the cases the single delete page counts level by level or
-refuses by children, above). The refusal of a row is decided by one query
+refuses by children, above). A `@cascade` below a `@cascade` is no reason
+by itself: the database deletes those rows too. The refusal of a row is decided by one query
 over the chosen ids, which follows only the references that point at the
 chosen rows directly; a reference that blocks the delete further down
 would not be seen for many rows at once, and the delete would fail in the
@@ -3873,7 +3899,7 @@ edited app/Admin/Comment/Show.alder
 …
 --- a/app/Admin/Comment/Show.alder
 +++ b/app/Admin/Comment/Show.alder
-@@ -65,6 +65,8 @@
+@@ -98,6 +98,8 @@
          <dd>{model.row.body}</dd>
          <dt>Created</dt>
          <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>

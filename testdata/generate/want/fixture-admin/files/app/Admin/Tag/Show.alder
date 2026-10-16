@@ -11,12 +11,20 @@ import User
 
 page "/admin/tag/{id}" { id: Tag.TagId } requires user, role Admin
 
-type Model = { row: Tag, labels: Labels }
+-- The row, the labels of the rows it refers to, and (for the delete dialog) how many rows of
+-- each table refer to it.
+type Model = {
+  row: Tag,
+  labels: Labels,
+  -- @admin begin model
+  -- @admin end
+}
 
 load : Params -> Session -> Query Model
 load params session = {
   let admin <- Admin.Layout.isAdmin session.user
   if admin then {
+    -- @admin begin load
     let found <- Db.get Tag params.id
     match found {
       Just row -> {
@@ -25,6 +33,7 @@ load params session = {
       },
       Nothing -> Query.notFound,
     }
+    -- @admin end
   } else Query.notFound
 }
 
@@ -47,13 +56,37 @@ postLabel labels id = match List.find (\r -> r.id == id) labels.posts {
 }
 -- @admin end
 
+-- @admin begin blockers
+-- blockers counts the rows that keep this one from being deleted, which the database would
+-- refuse the delete for: the `@restrict` references to it, or to a row deleted with it.
+blockers : Model -> Int
+blockers model = 0
+-- @admin end
+
+-- The delete dialog's form: no input, the button and the place a refusal is shown.
+form Confirm = { }
+
+msg Remove form Confirm
+
+-- Remove deletes the row, unless rows refer to it that keep it (load counted them, as it does
+-- before every message), as the Delete page does.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Remove p -> {
+    -- @admin begin remove
+    let _ <- Db.delete Tag model.row.id
+    Task.succeed (Redirect (Admin.Tag.Index {}))
+    -- @admin end
+  },
+}
+
 view : Model -> Session -> Html Msg
 view model session =
   <Admin.Layout.Page title="Tag">
     <h1>Tag</h1>
 
     <al-card>
-      <dl>
+      <dl id="fields">
         -- @admin begin fields
         <dt>Id</dt>
         <dd>{model.row.id}</dd>
@@ -71,12 +104,18 @@ view model session =
       </div>
     </al-card>
     <al-dialog id="delete-dialog" heading="Delete this tag?" dismissible>
-      <p>The next page shows what refers to it before anything is deleted.</p>
+      <dl>
+        -- @admin begin counts
+        -- @admin end
+      </dl>
+      <form id="delete" submit={Remove}>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        {if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}
+      </form>
       <div slot="actions">
-        <al-button variant="destructive" href={Admin.Tag.Delete { id: model.row.id }}>Review and delete</al-button>
+        <a href={Admin.Tag.Delete { id: model.row.id }}>See the details</a>
       </div>
     </al-dialog>
-    <a href={Admin.Tag.Delete { id: model.row.id }}>Delete without the dialog</a>
     <a href={Admin.Tag.Index {}}>All tags</a>
   </Admin.Layout.Page>
 
@@ -95,7 +134,7 @@ test "the page shows the row" = {
   let page <- Test.get (Admin.Tag.Show { id: tag1 })
   Task.succeed ({
     answer: r.answer,
-    name: List.member "name-1" (Test.texts "dd" r.doc),
+    name: List.member "name-1" (Test.texts "#fields dd" r.doc),
     posts: List.length page.model.labels.posts,
     postLabel: postLabel page.model.labels post1,
   } == {
@@ -103,6 +142,27 @@ test "the page shows the row" = {
     name: True,
     posts: 1,
     postLabel: "title-1",
+  })
+}
+
+test "deleting a tag nothing refers to" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let tag1 <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post1 }
+  let _ <- Test.get (Admin.Tag.Show { id: tag1 })
+  let r <- Test.submit Confirm { }
+  let gone <- Db.get Tag tag1
+  Task.succeed ({
+    answer: r.answer,
+    gone: Maybe.map (\row -> row.id) gone,
+  } == {
+    answer: Redirected (Admin.Tag.Index {}),
+    gone: Nothing,
   })
 }
 

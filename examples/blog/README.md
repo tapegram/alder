@@ -12,15 +12,17 @@ To try it: `alder run`, then log in at `/login` with the password `password` as
 
 ## Mutation score
 
-`alder test --mutate examples/blog` (book 10, "Mutation testing"): 294 mutants, 169 tests, 286
-killed, 8 survived (score 0.97). `TestExample_Blog` fails if the score drops below 0.97, the
-exact 0.973 rounded down, or the number of mutants is not 294.
+`alder test --mutate examples/blog` (book 10, "Mutation testing"): 323 mutants, 183 tests, 317
+killed, 6 survived (score 0.98). `TestExample_Blog` fails if the score drops below 0.98, the
+exact 0.981 rounded down, or the number of mutants is not 323.
 
-- The generated admin (`app/Admin/`, "Replaying the admin" below): 231 mutants, 226 killed
-  by its generated tests, kept as `alder new admin` wrote them. The five survivors are equivalent:
+- The generated admin (`app/Admin/`, "Replaying the admin" below): 260 mutants, 257 killed
+  by its generated tests, kept as `alder new admin` wrote them. The three survivors are equivalent:
   `postsTotal > 200` and `authorsTotal > 200` flipped to `>= 200` in the `where` of the Comment
-  and Post forms' lists (a search of "" matches every row), and `Post.author.in params.ids` dropped
-  from the user bulk page's load (`refused` is only asked of the chosen rows).
+  and Post New pages' lists (a search of "" matches every row), and `Post.author.in ids` dropped
+  from the user bulk page's load (`refused` is only asked of the chosen rows). The Edit pages'
+  lists have no such survivor: the row's own value is read by itself and comes first, the search
+  leaves it out, and the generated test of exactly 200 rows tells `>` from `>=`.
 - The rest of the blog: 63 mutants, 60 killed, 3 survived, as before the admin (below).
 
 The history of the rest:

@@ -50,7 +50,7 @@ msg Create form TagForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchPost p -> Task.succeed (Redirect (Admin.Tag.New { findPost: p.form.q })),
+  SearchPost p -> Task.succeed (Redirect (Admin.Tag.New { findPost: Text.slice 0 200 p.form.q })),
   -- @admin end
   Create p -> {
     -- @admin begin insert

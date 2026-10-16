@@ -10,12 +10,20 @@ import User
 
 page "/admin/todo/{id}" { id: Todo.TodoId } requires user, role Admin
 
-type Model = { row: Todo, labels: Labels }
+-- The row, the labels of the rows it refers to, and (for the delete dialog) how many rows of
+-- each table refer to it.
+type Model = {
+  row: Todo,
+  labels: Labels,
+  -- @admin begin model
+  -- @admin end
+}
 
 load : Params -> Session -> Query Model
 load params session = {
   let admin <- Admin.Layout.isAdmin session.user
   if admin then {
+    -- @admin begin load
     let found <- Db.get Todo params.id
     match found {
       Just row -> {
@@ -24,6 +32,7 @@ load params session = {
       },
       Nothing -> Query.notFound,
     }
+    -- @admin end
   } else Query.notFound
 }
 
@@ -46,13 +55,37 @@ ownerLabel labels id = match List.find (\r -> r.id == id) labels.owners {
 }
 -- @admin end
 
+-- @admin begin blockers
+-- blockers counts the rows that keep this one from being deleted, which the database would
+-- refuse the delete for: the `@restrict` references to it, or to a row deleted with it.
+blockers : Model -> Int
+blockers model = 0
+-- @admin end
+
+-- The delete dialog's form: no input, the button and the place a refusal is shown.
+form Confirm = { }
+
+msg Remove form Confirm
+
+-- Remove deletes the row, unless rows refer to it that keep it (load counted them, as it does
+-- before every message), as the Delete page does.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Remove p -> {
+    -- @admin begin remove
+    let _ <- Db.delete Todo model.row.id
+    Task.succeed (Redirect (Admin.Todo.Index {}))
+    -- @admin end
+  },
+}
+
 view : Model -> Session -> Html Msg
 view model session =
   <Admin.Layout.Page title="Todo">
     <h1>Todo</h1>
 
     <al-card>
-      <dl>
+      <dl id="fields">
         -- @admin begin fields
         <dt>Id</dt>
         <dd>{model.row.id}</dd>
@@ -74,12 +107,18 @@ view model session =
       </div>
     </al-card>
     <al-dialog id="delete-dialog" heading="Delete this todo?" dismissible>
-      <p>The next page shows what refers to it before anything is deleted.</p>
+      <dl>
+        -- @admin begin counts
+        -- @admin end
+      </dl>
+      <form id="delete" submit={Remove}>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        {if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}
+      </form>
       <div slot="actions">
-        <al-button variant="destructive" href={Admin.Todo.Delete { id: model.row.id }}>Review and delete</al-button>
+        <a href={Admin.Todo.Delete { id: model.row.id }}>See the details</a>
       </div>
     </al-dialog>
-    <a href={Admin.Todo.Delete { id: model.row.id }}>Delete without the dialog</a>
     <a href={Admin.Todo.Index {}}>All todos</a>
   </Admin.Layout.Page>
 
@@ -102,7 +141,7 @@ test "the page shows the row" = {
   let page <- Test.get (Admin.Todo.Show { id: todo1 })
   Task.succeed ({
     answer: r.answer,
-    title: List.member "title-1" (Test.texts "dd" r.doc),
+    title: List.member "title-1" (Test.texts "#fields dd" r.doc),
     owners: List.length page.model.labels.owners,
     ownerLabel: ownerLabel page.model.labels me,
   } == {
@@ -110,6 +149,27 @@ test "the page shows the row" = {
     title: True,
     owners: 1,
     ownerLabel: "email-1@example.com",
+  })
+}
+
+test "deleting a todo nothing refers to" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: me }
+  let _ <- Test.get (Admin.Todo.Show { id: todo1 })
+  let r <- Test.submit Confirm { }
+  let gone <- Db.get Todo todo1
+  Task.succeed ({
+    answer: r.answer,
+    gone: Maybe.map (\row -> row.id) gone,
+  } == {
+    answer: Redirected (Admin.Todo.Index {}),
+    gone: Nothing,
   })
 }
 

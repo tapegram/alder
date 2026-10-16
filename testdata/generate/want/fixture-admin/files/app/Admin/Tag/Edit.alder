@@ -29,10 +29,12 @@ load params session = {
       Just row -> {
         let findPost = Text.slice 0 200 params.findPost
         let postsTotal <- Db.from Post |> Db.count
-        let posts <- Db.from Post |> Db.orderBy Post.title.asc |> Db.where (if postsTotal > 200 then Db.or [
+        let postsOwn <- if postsTotal > 200 then Db.from Post |> Db.where (Post.id.eq row.post) |> Db.all else Query.succeed []
+        let postsFound <- Db.from Post |> Db.orderBy Post.title.asc |> Db.where (if postsTotal > 200 then Db.and [
           Post.title.contains findPost,
-          Post.id.eq row.post,
+          Post.id.ne row.post,
         ] else Db.and []) |> Db.limit (if postsTotal > 200 then 50 else 200) |> Db.all
+        let posts = postsOwn ++ postsFound
         Query.succeed { row: row, posts: posts, postsTotal: postsTotal }
       },
       Nothing -> Query.notFound,
@@ -60,7 +62,7 @@ msg Save form TagForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchPost p -> Task.succeed (Redirect (Admin.Tag.Edit { id: model.row.id, findPost: p.form.q })),
+  SearchPost p -> Task.succeed (Redirect (Admin.Tag.Edit { id: model.row.id, findPost: Text.slice 0 200 p.form.q })),
   -- @admin end
   Save p -> {
     -- @admin begin update
@@ -213,10 +215,42 @@ test "a long list of posts offers 50, and the search narrows it" = {
     found: Test.count "select[name=post] option" found.doc <= 3,
     answer: r.answer,
   } == {
-    shown: 50,
+    shown: 51,
     total: 203,
     found: True,
     answer: Redirected (Admin.Tag.Edit { id: tag1, findPost: "zz" }),
+  })
+}
+
+test "the row's own post is offered first when it sorts past the 50" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post { title: Text.NonEmpty "zz-1", body: "body-1", author: me }
+  let tag1 <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post1 }
+  let _ <- Task.all (List.map (\n -> Db.insert Post {
+    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+    body: "body-" ++ Text.fromInt n,
+    author: me,
+  }) (List.range 2 202))
+  let page <- Test.get (Admin.Tag.Edit { id: tag1 })
+  let r <- Test.submit TagForm { name: page.model.row.name, post: page.model.row.post }
+  let after <- Db.get Tag tag1
+  Task.succeed ({
+    answer: r.answer,
+    kept: Maybe.map (\row -> row.post) after,
+    first: Maybe.map (\o -> o.id) (List.head page.model.posts),
+    once: List.length (List.filter (\o -> o.id == post1) page.model.posts),
+    shown: List.length page.model.posts,
+  } == {
+    answer: Redirected (Admin.Tag.Show { id: tag1 }),
+    kept: Just post1,
+    first: Just post1,
+    once: 1,
+    shown: 51,
   })
 }
 

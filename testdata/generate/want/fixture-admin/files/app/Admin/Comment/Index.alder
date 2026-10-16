@@ -199,7 +199,7 @@ view model session =
           {for row in model.rows ->
             <tr>
               -- @admin begin cells
-              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label="Choose this row" /></td>
+              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label={"Choose " ++ row.body} /></td>
               <td><a href={Admin.Post.Show { id: row.post }}>{postLabel model.labels row.post}</a></td>
               <td><a href={Admin.User.Show { id: row.author }}>{authorLabel model.labels row.author}</a></td>
               <td><a href={Admin.Comment.Show { id: row.id }}>{row.body}</a></td>

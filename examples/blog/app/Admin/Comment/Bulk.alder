@@ -11,16 +11,22 @@ import User
 
 page "/admin/comment/bulk" { ids: List Comment.CommentId } requires user, role Admin
 
--- The rows chosen on the list, and the ids of those that other rows keep from being deleted.
-type Model = { rows: List Comment, held: List Comment.CommentId }
+-- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep
+-- from being deleted, and how many ids the page was given.
+type Model = { rows: List Comment, held: List Comment.CommentId, chosen: Int }
+
+-- maxRows is how many rows one action takes: a page of the list. More are refused.
+maxRows : Int
+maxRows = 25
 
 load : Params -> Session -> Query Model
 load params session = {
   let admin <- Admin.Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
-    let rows <- Db.from Comment |> Db.where (Comment.id.in params.ids) |> Db.all
-    Query.succeed { rows: rows, held: [] }
+    let ids = List.take maxRows params.ids
+    let rows <- Db.from Comment |> Db.where (Comment.id.in ids) |> Db.all
+    Query.succeed { rows: rows, held: [], chosen: List.length params.ids }
     -- @admin end
   } else Query.notFound
 }
@@ -34,15 +40,19 @@ form Confirm = { }
 
 msg BulkDelete form Confirm
 
--- Each action reads the rows again (load runs before every message) and answers with a notice.
+-- Each action reads the rows again (load runs before every message) and answers with a notice;
+-- none takes more than maxRows rows.
 update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  BulkDelete p -> {
-    let allowed = List.filter (\row -> refused model session row == False) model.rows
-    let _ <- Task.all (List.map (\row -> Db.delete Comment row.id) allowed)
-    Task.succeed (Notice.with ("Deleted " ++ Text.fromInt (List.length allowed) ++ " of " ++ Text.fromInt (List.length model.rows)) (Redirect (Admin.Comment.Index {})))
-  },
-}
+update msg model session =
+  if model.chosen > maxRows then
+    Task.succeed (Reject ("Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."))
+  else match msg {
+    BulkDelete p -> {
+      let allowed = List.filter (\row -> refused model session row == False) model.rows
+      let _ <- Task.all (List.map (\row -> Db.delete Comment row.id) allowed)
+      Task.succeed (Notice.with ("Deleted " ++ Text.fromInt (List.length allowed) ++ " of " ++ Text.fromInt (List.length model.rows)) (Redirect (Admin.Comment.Index {})))
+    },
+  }
 -- @admin end
 
 view : Model -> Session -> Html Msg
@@ -51,6 +61,7 @@ view model session =
     <h1>{Text.fromInt (List.length model.rows)} selected</h1>
 
     <al-card>
+      {if model.chosen > maxRows then <al-alert id="too-many" variant="warning">{"Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."}</al-alert> else <span></span>}
       <ul id="selected">
         {for row in model.rows ->
           <li>{row.author}{if refused model session row then <small> (kept: other rows refer to it)</small> else <span></span>}</li>}
@@ -102,6 +113,72 @@ test "deleting the chosen rows" = {
     answer: Redirected (Admin.Comment.Index {}),
     gone: Nothing,
     left: Just comment2,
+  })
+}
+
+test "25 chosen ids are taken" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post {
+    slug: Post.Slug "slug-1",
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let comment1 <- Db.insert Comment {
+    post: post1,
+    author: Comment.Name "author-1",
+    body: Comment.Body "body-1",
+  }
+  let page <- Test.get (Admin.Comment.Bulk { ids: [comment1] ++ List.map (\n -> Comment.CommentId ("none-" ++ Text.fromInt n)) (List.range 1 24) })
+  let r <- Test.submit Confirm { }
+  let after <- Db.get Comment comment1
+  Task.succeed ({
+    answer: r.answer,
+    kept: Maybe.map (\row -> row.id) after,
+    warned: Test.count "#too-many" page.doc,
+  } == {
+    answer: Redirected (Admin.Comment.Index {}),
+    kept: Nothing,
+    warned: 0,
+  })
+}
+
+test "26 chosen ids are refused" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post {
+    slug: Post.Slug "slug-1",
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let comment1 <- Db.insert Comment {
+    post: post1,
+    author: Comment.Name "author-1",
+    body: Comment.Body "body-1",
+  }
+  let page <- Test.get (Admin.Comment.Bulk { ids: [comment1] ++ List.map (\n -> Comment.CommentId ("none-" ++ Text.fromInt n)) (List.range 1 25) })
+  let r <- Test.submit Confirm { }
+  let after <- Db.get Comment comment1
+  Task.succeed ({
+    answer: r.answer,
+    kept: Maybe.map (\row -> row.id) after,
+    warned: Test.count "#too-many" page.doc,
+  } == {
+    answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
+    kept: Just comment1,
+    warned: 1,
   })
 }
 

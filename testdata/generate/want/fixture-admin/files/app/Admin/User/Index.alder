@@ -193,7 +193,7 @@ view model session =
           {for row in model.rows ->
             <tr>
               -- @admin begin cells
-              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label="Choose this row" /></td>
+              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label={"Choose " ++ row.email} /></td>
               <td><a href={Admin.User.Show { id: row.id }}>{row.email}</a></td>
               <td>{row.name}</td>
               <td><al-badge>{match row.role { Reader -> "Reader", Admin -> "Admin" }}</al-badge></td>

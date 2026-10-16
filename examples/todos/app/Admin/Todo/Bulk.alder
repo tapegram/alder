@@ -10,16 +10,22 @@ import User
 
 page "/admin/todo/bulk" { ids: List Todo.TodoId } requires user, role Admin
 
--- The rows chosen on the list, and the ids of those that other rows keep from being deleted.
-type Model = { rows: List Todo, held: List Todo.TodoId }
+-- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep
+-- from being deleted, and how many ids the page was given.
+type Model = { rows: List Todo, held: List Todo.TodoId, chosen: Int }
+
+-- maxRows is how many rows one action takes: a page of the list. More are refused.
+maxRows : Int
+maxRows = 25
 
 load : Params -> Session -> Query Model
 load params session = {
   let admin <- Admin.Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
-    let rows <- Db.from Todo |> Db.where (Todo.id.in params.ids) |> Db.all
-    Query.succeed { rows: rows, held: [] }
+    let ids = List.take maxRows params.ids
+    let rows <- Db.from Todo |> Db.where (Todo.id.in ids) |> Db.all
+    Query.succeed { rows: rows, held: [], chosen: List.length params.ids }
     -- @admin end
   } else Query.notFound
 }
@@ -37,19 +43,23 @@ form SetDone = { value: Bool }
 
 msg BulkSetDone form SetDone
 
--- Each action reads the rows again (load runs before every message) and answers with a notice.
+-- Each action reads the rows again (load runs before every message) and answers with a notice;
+-- none takes more than maxRows rows.
 update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  BulkDelete p -> {
-    let allowed = List.filter (\row -> refused model session row == False) model.rows
-    let _ <- Task.all (List.map (\row -> Db.delete Todo row.id) allowed)
-    Task.succeed (Notice.with ("Deleted " ++ Text.fromInt (List.length allowed) ++ " of " ++ Text.fromInt (List.length model.rows)) (Redirect (Admin.Todo.Index {})))
-  },
-  BulkSetDone p -> {
-    let _ <- Task.all (List.map (\row -> Db.update Todo row.id (\r -> { r | done: p.form.value })) model.rows)
-    Task.succeed (Notice.with ("Updated " ++ Text.fromInt (List.length model.rows)) (Redirect (Admin.Todo.Index {})))
-  },
-}
+update msg model session =
+  if model.chosen > maxRows then
+    Task.succeed (Reject ("Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."))
+  else match msg {
+    BulkDelete p -> {
+      let allowed = List.filter (\row -> refused model session row == False) model.rows
+      let _ <- Task.all (List.map (\row -> Db.delete Todo row.id) allowed)
+      Task.succeed (Notice.with ("Deleted " ++ Text.fromInt (List.length allowed) ++ " of " ++ Text.fromInt (List.length model.rows)) (Redirect (Admin.Todo.Index {})))
+    },
+    BulkSetDone p -> {
+      let _ <- Task.all (List.map (\row -> Db.update Todo row.id (\r -> { r | done: p.form.value })) model.rows)
+      Task.succeed (Notice.with ("Updated " ++ Text.fromInt (List.length model.rows)) (Redirect (Admin.Todo.Index {})))
+    },
+  }
 -- @admin end
 
 view : Model -> Session -> Html Msg
@@ -58,6 +68,7 @@ view model session =
     <h1>{Text.fromInt (List.length model.rows)} selected</h1>
 
     <al-card>
+      {if model.chosen > maxRows then <al-alert id="too-many" variant="warning">{"Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."}</al-alert> else <span></span>}
       <ul id="selected">
         {for row in model.rows ->
           <li>{row.title}{if refused model session row then <small> (kept: other rows refer to it)</small> else <span></span>}</li>}
@@ -68,6 +79,7 @@ view model session =
         <al-button variant="destructive" type="submit">Delete the rows that can be deleted</al-button>
       </form>
       <form id="set-done" submit={BulkSetDone}>
+        <al-alert variant="destructive"><Errors form /></al-alert>
         <al-checkbox field="value" label="Done" />
         <al-button type="submit">Set done</al-button>
       </form>
@@ -124,6 +136,52 @@ test "setting done changes the chosen rows only" = {
     answer: Redirected (Admin.Todo.Index {}),
     one: Just True,
     other: Just False,
+  })
+}
+
+test "25 chosen ids are taken" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: me }
+  let page <- Test.get (Admin.Todo.Bulk { ids: [todo1] ++ List.map (\n -> Todo.TodoId ("none-" ++ Text.fromInt n)) (List.range 1 24) })
+  let r <- Test.submit Confirm { }
+  let after <- Db.get Todo todo1
+  Task.succeed ({
+    answer: r.answer,
+    kept: Maybe.map (\row -> row.id) after,
+    warned: Test.count "#too-many" page.doc,
+  } == {
+    answer: Redirected (Admin.Todo.Index {}),
+    kept: Nothing,
+    warned: 0,
+  })
+}
+
+test "26 chosen ids are refused" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: me }
+  let page <- Test.get (Admin.Todo.Bulk { ids: [todo1] ++ List.map (\n -> Todo.TodoId ("none-" ++ Text.fromInt n)) (List.range 1 25) })
+  let r <- Test.submit Confirm { }
+  let after <- Db.get Todo todo1
+  Task.succeed ({
+    answer: r.answer,
+    kept: Maybe.map (\row -> row.id) after,
+    warned: Test.count "#too-many" page.doc,
+  } == {
+    answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
+    kept: Just todo1,
+    warned: 1,
   })
 }
 

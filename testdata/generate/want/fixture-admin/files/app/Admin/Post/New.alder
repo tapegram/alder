@@ -52,7 +52,7 @@ msg Create form PostForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchAuthor p -> Task.succeed (Redirect (Admin.Post.New { findAuthor: p.form.q })),
+  SearchAuthor p -> Task.succeed (Redirect (Admin.Post.New { findAuthor: Text.slice 0 200 p.form.q })),
   -- @admin end
   Create p -> {
     -- @admin begin insert

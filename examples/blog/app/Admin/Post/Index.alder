@@ -209,7 +209,7 @@ view model session =
           {for row in model.rows ->
             <tr>
               -- @admin begin cells
-              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label="Choose this row" /></td>
+              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label={"Choose " ++ row.slug} /></td>
               <td><a href={Admin.Post.Show { id: row.id }}>{row.slug}</a></td>
               <td>{row.title}</td>
               <td>{row.body}</td>
