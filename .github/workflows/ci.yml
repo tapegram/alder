@@ -227,15 +227,10 @@ jobs:
   # (cmd/alder/deploy_systemd_test.go) reaches the runner over ssh as root@127.0.0.1 and Caddy
   # at https://localhost: two deploys under an availability monitor, Caddy restarted, a killed
   # build restarted by systemd, a rollback with --restore-backup.
-  # Non-blocking for now (continue-on-error: written in the M14 final fix wave without a runner
-  # to try it on); a failure still shows: the last step writes a ::warning:: annotation and a job
-  # summary line.
-  # TODO(2026-10-17, M14): drop `continue-on-error: true` after the first green run on main.
   deploy-systemd:
     needs: warm
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -266,8 +261,3 @@ jobs:
           ALDER_DEPLOY_SYSTEMD: "1"
           ALDER_SSH_CONFIG: ${{ runner.temp }}/ssh_config
         run: go test ./cmd/alder -run '^TestDeploySystemd_' -count=1 -timeout 15m -v
-      - name: report a failure (the job is non-blocking)
-        if: failure()
-        run: |
-          echo "::warning title=deploy-systemd::deploy-systemd failed (non-blocking until its first green run)"
-          echo "deploy-systemd failed (non-blocking until its first green run)" >> "$GITHUB_STEP_SUMMARY"
