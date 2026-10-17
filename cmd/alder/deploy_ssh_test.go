@@ -3,11 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"

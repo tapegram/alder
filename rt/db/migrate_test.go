@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -508,7 +509,7 @@ func TestReadMigrations(t *testing.T) {
 		{Name: "0001_initial", From: "000000000000", To: "111111111111", SQL: "CREATE TABLE \"A\" (\"id\" TEXT NOT NULL PRIMARY KEY) STRICT;\nINSERT INTO \"A\" VALUES ('-- not a comment;');"},
 		{Name: "0002_add_summary", From: "111111111111", To: "222222222222", SQL: `ALTER TABLE "Post__Post" ADD COLUMN "summary" TEXT;`},
 	}
-	if !slices.Equal(got, want) {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %q", got)
 	}
 	if st := got[0].statements(); len(st) != 2 || st[1] != `INSERT INTO "A" VALUES ('-- not a comment;')` {
@@ -542,13 +543,17 @@ func TestParseMigration(t *testing.T) {
 		}
 	}
 	m, err := ParseMigration("0002_x", "-- alder migration 0002_x\n-- from aaaaaaaaaaaa\n-- to bbbbbbbbbbbb\n-- step: x\n\nSELECT 1;\n")
-	if err != nil || m != (Migration{Name: "0002_x", From: "aaaaaaaaaaaa", To: "bbbbbbbbbbbb", SQL: "SELECT 1;"}) {
+	if err != nil || !reflect.DeepEqual(m, Migration{Name: "0002_x", From: "aaaaaaaaaaaa", To: "bbbbbbbbbbbb", SQL: "SELECT 1;"}) {
 		t.Fatalf("%+v %v", m, err)
 	}
 	// a byte-order mark, and comment lines among the statements (a hand-added statement's note)
 	m, err = ParseMigration("0002_x", "\ufeff-- alder migration 0002_x\r\n-- from aaaaaaaaaaaa\r\n-- to bbbbbbbbbbbb\r\n\r\n-- keep the drafts: make them public first\r\nUPDATE \"T\" SET \"x\" = 1;\r\n  -- indented note\r\nSELECT 1;\r\n-- trailing note\r\n")
-	if err != nil || m != (Migration{Name: "0002_x", From: "aaaaaaaaaaaa", To: "bbbbbbbbbbbb", SQL: "UPDATE \"T\" SET \"x\" = 1;\nSELECT 1;"}) {
+	if err != nil || !reflect.DeepEqual(m, Migration{Name: "0002_x", From: "aaaaaaaaaaaa", To: "bbbbbbbbbbbb", SQL: "UPDATE \"T\" SET \"x\" = 1;\nSELECT 1;"}) {
 		t.Fatalf("BOM and comments: %+v %v", m, err)
+	}
+	m, err = ParseMigration("0002_x", "-- alder migration 0002_x\n-- from aaaaaaaaaaaa\n-- to bbbbbbbbbbbb\n-- step: drop column Post.summary\n-- DROPS DATA: column Post.summary\n\nSELECT 1;\n")
+	if err != nil || len(m.DropsData) != 1 || m.DropsData[0] != "column Post.summary" {
+		t.Fatalf("DROPS DATA: %+v %v", m, err)
 	}
 }
 
@@ -801,5 +806,35 @@ func TestLockedErr(t *testing.T) {
 	}
 	if plain := errors.New("x"); lockedErr(plain) != plain {
 		t.Fatal("another error was rewritten")
+	}
+}
+
+// A pending migration that drops data is refused on a database that had migrations applied,
+// with nothing changed, unless ALDER_ALLOW_DATA_LOSS=1 (or dev mode); a fresh database applies
+// it (there is nothing to lose).
+func TestMigrate_DropsDataRefused(t *testing.T) {
+	ctx := context.Background()
+	ms := migrations(t)
+	ms[2].DropsData = []string{"Post.summary: rebuilt"}
+	tables := []TableDesc{postV3, commentT}
+	fresh := openMem(t)
+	if applied, err := fresh.Migrate(ctx, tables, ms, false); err != nil || len(applied) != 3 {
+		t.Fatalf("fresh: %v %v", applied, err)
+	}
+	s := openMem(t)
+	if _, err := s.Migrate(ctx, []TableDesc{postV2, commentT}, ms[:2], false); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(EnvAllowDataLoss, "")
+	_, err := s.Migrate(ctx, tables, ms, false)
+	if !errors.Is(err, ErrDropsData) || !strings.Contains(err.Error(), "DROPS DATA 0003_add_views: Post.summary: rebuilt; to apply it, take a backup and run with ALDER_ALLOW_DATA_LOSS=1") {
+		t.Fatalf("err = %v", err)
+	}
+	if got := recordedNames(t, s); !slices.Equal(got, []string{"0001_initial", "0002_add_summary"}) {
+		t.Errorf("recorded after the refusal: %v", got)
+	}
+	t.Setenv(EnvAllowDataLoss, "1")
+	if applied, err := s.Migrate(ctx, tables, ms, false); err != nil || !slices.Equal(applied, []string{"0003_add_views"}) {
+		t.Fatalf("allowed: %v %v", applied, err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path"
 	"slices"
 	"strings"
@@ -21,8 +22,20 @@ import (
 // migrate`): Name is the file's name without ".sql" ("0003_add_comment"), From and To the
 // header's `-- from` and `-- to` schema hashes (their first 12 hex digits: the schema the file
 // expects and the one it leaves), SQL its statements (the header removed), one per line, each
-// ending in `;`.
-type Migration struct{ Name, From, To, SQL string }
+// ending in `;`. DropsData are the header's `-- DROPS DATA:` lines (what applying the file
+// loses), without the prefix.
+type Migration struct {
+	Name, From, To, SQL string
+	DropsData           []string
+}
+
+// EnvAllowDataLoss lets MigrateLog apply a migration that drops data to a database that holds
+// data: `alder deploy --allow-data-loss` sets it for the one run that applies it (chapter 16).
+const EnvAllowDataLoss = "ALDER_ALLOW_DATA_LOSS"
+
+// ErrDropsData is MigrateLog's refusal of a migration that drops data, without
+// EnvAllowDataLoss=1, outside dev mode, on a database that already had migrations applied.
+var ErrDropsData = errors.New("a migration drops data")
 
 // HashLen is how many hex digits of a schema hash a migration file's header records.
 const HashLen = 12
@@ -45,6 +58,8 @@ func ParseMigration(name, text string) (Migration, error) {
 			m.From = strings.TrimSpace(strings.TrimPrefix(l, "-- from "))
 		case strings.HasPrefix(l, "-- to "):
 			m.To = strings.TrimSpace(strings.TrimPrefix(l, "-- to "))
+		case strings.HasPrefix(l, "-- DROPS DATA: "):
+			m.DropsData = append(m.DropsData, strings.TrimSpace(strings.TrimPrefix(l, "-- DROPS DATA: ")))
 		}
 		i++
 	}
@@ -285,6 +300,10 @@ func (s *SQLite) MigrateLog(ctx context.Context, tables []TableDesc, ms []Migrat
 		logf("recreated the database (dev mode): " + r.recreated)
 		return nil, nil
 	}
+	if err := dropsData(r, ms, dev); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
 	if len(r.pending) > 0 { // the read phase (and an adoption) commit; each file has its own transaction
 		if err := tx.Commit(); err != nil {
 			tx.Rollback()
@@ -324,6 +343,26 @@ func (s *SQLite) MigrateLog(ctx context.Context, tables []TableDesc, ms []Migrat
 		return nil, nil
 	}
 	return applied, nil
+}
+
+// dropsData refuses pending migrations that drop data (ErrDropsData) unless dev mode,
+// EnvAllowDataLoss=1, or a database that had no migration applied (every file pending, none
+// adopted: there is no data to lose).
+func dropsData(r prepared, ms []Migration, dev bool) error {
+	if dev || os.Getenv(EnvAllowDataLoss) == "1" || len(r.pending) == len(ms) && r.adopted == "" {
+		return nil
+	}
+	var lines []string
+	for _, m := range r.pending {
+		for _, d := range m.DropsData {
+			lines = append(lines, m.Name+": "+d)
+		}
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	return fmt.Errorf("db: %w, and nothing was applied: DROPS DATA %s; to apply it, take a backup and run with %s=1 (`alder deploy --allow-data-loss` does)",
+		ErrDropsData, strings.Join(lines, "; DROPS DATA "), EnvAllowDataLoss)
 }
 
 // prepared is what MigrateLog's read phase (prepare) found: the migrations to apply, the one a

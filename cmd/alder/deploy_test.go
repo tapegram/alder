@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -33,6 +35,7 @@ set -eu
   echo "args: $*"
   echo "ALDER_REQUIRES=${ALDER_REQUIRES-unset}"
   echo "cwd: $(pwd)"
+  echo "ALDER_ALLOW_DATA_LOSS=${ALDER_ALLOW_DATA_LOSS-unset}"
 } > "$1.recorded"
 `
 
@@ -155,7 +158,7 @@ func TestDeploy_ScriptScaffold(t *testing.T) {
 	abs, _ := filepath.Abs(art)
 	appRoot, _ := filepath.Abs(dir)
 	abs, appRoot = evalSymlinks(abs), evalSymlinks(appRoot)
-	want := "args: " + abs + " local\nALDER_REQUIRES=SMTP_URL,STRIPE_KEY\ncwd: " + appRoot + "\n"
+	want := "args: " + abs + " local\nALDER_REQUIRES=SMTP_URL,STRIPE_KEY,ALDER_SECRET\ncwd: " + appRoot + "\nALDER_ALLOW_DATA_LOSS=unset\n"
 	if got := strings.ReplaceAll(string(recorded), "/private/var/", "/var/"); got != strings.ReplaceAll(want, "/private/var/", "/var/") {
 		t.Errorf("the script recorded\n%s\nwant\n%s", recorded, want)
 	}
@@ -322,5 +325,54 @@ func TestDeploy_Usage(t *testing.T) {
 	}
 	if code, _, errs := runDeploy(t, "local", "bare"); code != 2 || !strings.Contains(errs, "App has no `deploy` declaration") {
 		t.Errorf("no declaration: exit %d %s", code, errs)
+	}
+}
+
+// C2: a migration that drops data is refused where it is applied. A Script deploy lists it
+// ("if not applied yet") and hands the script ALDER_ALLOW_DATA_LOSS=1 only with
+// --allow-data-loss; the binary's --migrate-only refuses it on a database that has data unless
+// that variable is set.
+func TestDeploy_ScriptDropsData(t *testing.T) {
+	dir := deployScaffold(t, `deploy { local: Script "./scripts/record.sh" }`, nil)
+	t.Setenv("ALDER_ALLOW_DATA_LOSS", "1") // the command's own environment must not leak it to the script
+	migrateDemo(t, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
+	code, out, errs := runDeploy(t, "local", dir)
+	if code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, out, errs)
+	}
+	before := filepath.Join(artifacts(t)[0], "app")
+	migrateDemo(t, "  mood: Maybe Text = Nothing,\n", "", "drop_mood")
+	code, out, errs = runDeploy(t, "local", dir)
+	if code != 0 || !strings.Contains(out, "    DROPS DATA (if not applied yet): column Entry.mood\n") {
+		t.Fatalf("exit %d\n%s%s", code, out, errs)
+	}
+	id := regexp.MustCompile(`deployed ([0-9a-f]{16})`).FindStringSubmatch(out)[1]
+	art := filepath.Join("build", "demo", "deploy", id)
+	if rec, _ := os.ReadFile(art + ".recorded"); !strings.Contains(string(rec), "ALDER_ALLOW_DATA_LOSS=unset") {
+		t.Errorf("without --allow-data-loss the script got: %s", rec)
+	}
+	if code, out, errs = runDeploy(t, "local", dir, "--allow-data-loss"); code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, out, errs)
+	}
+	if rec, _ := os.ReadFile(art + ".recorded"); !strings.Contains(string(rec), "ALDER_ALLOW_DATA_LOSS=1") {
+		t.Errorf("with --allow-data-loss the script got: %s", rec)
+	}
+	// the binaries themselves: a database at 0002 (with data), then the new build's --migrate-only
+	db := filepath.Join(t.TempDir(), "app.db")
+	migrateOnly := func(exe string, extra ...string) (string, error) {
+		cmd := exec.Command(exe, "--migrate-only")
+		cmd.Env = append(os.Environ(), "ALDER_DB="+db, "ALDER_SECRET="+strings.Repeat("s", 32), "ALDER_ALLOW_DATA_LOSS=")
+		cmd.Env = append(cmd.Env, extra...)
+		b, err := cmd.CombinedOutput()
+		return string(b), err
+	}
+	if out, err := migrateOnly(before); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	if out, err := migrateOnly(filepath.Join(art, "app")); err == nil || !strings.Contains(out, "a migration drops data, and nothing was applied: DROPS DATA 0003_drop_mood: column Entry.mood") {
+		t.Errorf("the binary applied a migration that drops data: %v %s", err, out)
+	}
+	if out, err := migrateOnly(filepath.Join(art, "app"), "ALDER_ALLOW_DATA_LOSS=1"); err != nil || !strings.Contains(out, "migrated 0003_drop_mood") {
+		t.Errorf("with ALDER_ALLOW_DATA_LOSS=1: %v %s", err, out)
 	}
 }

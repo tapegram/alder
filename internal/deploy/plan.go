@@ -74,8 +74,13 @@ func (p Plan) Lines() []string {
 		for _, s := range m.Steps {
 			out = append(out, "  "+s)
 		}
-		if p.Known && !p.FirstDeploy {
-			for _, d := range m.DropsData {
+		for _, d := range m.DropsData {
+			switch {
+			case p.FirstDeploy:
+				out = append(out, "  DROPS DATA: "+d+" (nothing to lose yet: the database is new)")
+			case !p.Known:
+				out = append(out, "  DROPS DATA (if not applied yet): "+d)
+			default:
 				out = append(out, "  DROPS DATA: "+d)
 			}
 		}

@@ -73,6 +73,12 @@ type Schema struct {
 	Migrations []string // the migration names ("0002_add_mood"), in order
 }
 
+// DataLossAllower is a Target told whether this deploy may apply a migration that drops data
+// (--allow-data-loss): its Migrate then runs the binary with ALDER_ALLOW_DATA_LOSS=1, which the
+// runtime otherwise refuses such a migration without (rt/db.ErrDropsData). The engine calls it
+// before Migrate.
+type DataLossAllower interface{ AllowDataLoss(bool) }
+
 // Platform is the GOOS and GOARCH the target runs.
 type Platform struct{ OS, Arch string }
 

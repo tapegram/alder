@@ -195,8 +195,9 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 		return res, nil
 	}
 	if t == nil {
+		s.AllowDataLoss = o.AllowDataLoss
 		fmt.Fprintf(w, "script %s %s %s\n", s.Path, relative(dir), o.Env)
-		if err := s.Run(ctx, dir, o.Env, o.Decl.Requires); err != nil {
+		if err := s.Run(ctx, dir, o.Env, append(slices.Clone(o.Decl.Requires), SecretName)); err != nil {
 			return res, err
 		}
 		res.Deployed = true
@@ -234,6 +235,9 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 			line(w, "backup", "ok", "no database yet")
 		}
 		rec.Backup = backup
+		if a, ok := t.(DataLossAllower); ok {
+			a.AllowDataLoss(o.AllowDataLoss)
+		}
 		out, err := t.Migrate(ctx, id)
 		if err != nil {
 			line(w, "migrate", "FAIL", "")

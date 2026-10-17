@@ -65,7 +65,12 @@ type Ssh struct {
 	plat Platform
 	sup  string // "system", "user" (systemd) or "process"
 	conn bool
+
+	allowDataLoss bool // this run's --allow-data-loss (DataLossAllower)
 }
+
+// AllowDataLoss is DataLossAllower: Migrate passes ALDER_ALLOW_DATA_LOSS=1 to the binary.
+func (s *Ssh) AllowDataLoss(allow bool) { s.allowDataLoss = allow }
 
 // NewSsh is environment env's Ssh target t of app, with the declaration's proxy and backup.
 func NewSsh(app, env string, t ir.Target, d *ir.Deploy) *Ssh {
@@ -498,11 +503,16 @@ echo "backup=builds/$id/backup.db"
 	return keyValues(out)["backup"], nil
 }
 
-// Migrate runs the new build's --migrate-only, and on success records its snapshot as
-// db/schema.json.
+// Migrate runs the new build's --migrate-only (with ALDER_ALLOW_DATA_LOSS=1 only when this run
+// has --allow-data-loss: the binary refuses a migration that drops data otherwise), and on
+// success records its snapshot as db/schema.json and its migrations as db/migrations.
 func (s *Ssh) Migrate(ctx context.Context, id string) (string, error) {
+	allow := ""
+	if s.allowDataLoss {
+		allow = "ALDER_ALLOW_DATA_LOSS=1 "
+	}
 	out, err := s.run(ctx, `id=`+q(id)+`
-"$R/builds/$id/run" --migrate-only 2>&1 || exit 3
+`+allow+`"$R/builds/$id/run" --migrate-only 2>&1 || exit 3
 if [ -f "$R/builds/$id/migrations/schema.json" ]; then
   cp "$R/builds/$id/migrations/schema.json" "$R/db/schema.json.new" && mv "$R/db/schema.json.new" "$R/db/schema.json"
   ls "$R/builds/$id/migrations" | sed -n 's/\.sql$//p' > "$R/db/migrations.new" && mv "$R/db/migrations.new" "$R/db/migrations"

@@ -215,7 +215,7 @@ func TestDeploy_FirstDeployDropsNothing(t *testing.T) {
 	if _, err := Deploy(context.Background(), options(t, dir, &out), GateResult{Check: "ok"}, f, nil); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "first deploy: the database is created by every migration\n  0001_initial\n") || strings.Contains(out.String(), "DROPS DATA") {
+	if !strings.Contains(out.String(), "first deploy: the database is created by every migration\n  0001_initial\n") || !strings.Contains(out.String(), "    DROPS DATA: column Post.summary (nothing to lose yet: the database is new)\n") {
 		t.Errorf("plan:\n%s", out.String())
 	}
 	if !strings.Contains(out.String(), "  backup   ok  no database yet\n") {
