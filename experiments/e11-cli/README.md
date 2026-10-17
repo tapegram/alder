@@ -95,10 +95,10 @@ are void.
   (mean 3.6 Opus, 4.4 Haiku+Sonnet); Opus `files` 8 / 8 in 1–3. Hidden: Haiku+Sonnet 69 / 94 (run 1: 60; `files` 88),
   Opus 47 / 47 (`files` 47 / 47). Mutation, cells passing in both conditions: `cli` 0.74 against `files` 0.57
   (Haiku+Sonnet, 9 cells), 0.80 against 0.78 (Opus, 7).
-- **The fixes:** "command missing" 6 → 0 of 82 refusals: `new msg App` and `new form --msg` on a message with parameters
+- **The fixes:** "command missing" 6 of 55 → 0 of 66 refusals (outside T2): `new msg App` and `new form --msg` on a message with parameters
   were used 3 times each (every T4 and T6 cell) and never refused; `edit decl … add-prop` and `edit auth --to` were used 0 times
-  (never named to the models; the `Layout` prop was refused again in 3 cells). Lambda over bound parameters 13 → 11 (+1
-  Opus), `fill` on a non-hole 8 → 5 (+1), a name before it exists 8 → 8 (+2): not reduced, without the reference lines.
+  (never named to the models; the `Layout` prop was refused again in 3 cells). Lambda over bound parameters 11 → 11 (+1
+  Opus), `fill` on a non-hole 7 → 5 (+1), a name before it exists 8 → 8 (+2): not reduced, without the reference lines.
   T6: Sonnet and Opus pass (hidden 9 / 9), Haiku one round short. T4: Opus 8 / 8; Sonnet's harness pass has hidden 0 / 8
   (no `Notes.Show`); Haiku never built. Rounds ending with holes: 76 % (Haiku+Sonnet; run 1: 63 %), the holes line
   printed in 7 `alder check` runs. `--json` 4 uses, `--dry-run` 0.

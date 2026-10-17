@@ -61,7 +61,8 @@ Every number below comes from a cell's `summary.json`, its `round<N>/commands.js
 | Hidden tests passed (T4–T10: 94 tests; Opus 47) | **88 / 94** | **60 / 94** | **69 / 94** (Haiku 30 / 47, Sonnet 39 / 47) | **47 / 47** | **47 / 47** |
 | Cells passing every hidden test | 10 / 12 | 8 / 12 | 9 / 12 | 6 / 6 | 6 / 6 |
 | Mutation score, cells passing in both conditions | 0.67 (12 cells) | 0.80 (the same 12) | `cli` **0.74**, `files` 0.57 (9 cells) | 0.78 (7 cells) | 0.80 (the same 7) |
-| Commands written / run | — | 1,779 / 640 (36 %) | 1,791 / 677 (38 %) | — | 578 / 346 (60 %) |
+| Commands written / run, outside T2 | — | 1,698 / 606 (36 %) | 1,690 / 665 (39 %) | — | 497 / 334 (67 %) |
+| Commands written / run, incl. T2 | — | 1,779 / 640 (36 %) | 1,791 / 677 (38 %) | — | 578 / 346 (60 %) |
 | Refusals (each ends its round) | — | 64 | 63 (53 outside T2) | — | 19 (13 outside T2) |
 
 - **Haiku and Sonnet moved in opposite directions; the net is a wash.** Haiku 7 / 8 → **2 / 8** (outside T2: 6 / 7 →
@@ -75,8 +76,8 @@ Every number below comes from a cell's `summary.json`, its `round<N>/commands.js
 - **Opus passes every valid task** (7 / 7, all 47 hidden tests, names ok in all six cells that have a Names
   check) in 2–6 rounds, where its own `files` cells took 1–3. The mutation score is equal or a little higher
   (0.80 against 0.78), as in run 1.
-- **`--json` was used 4 times, `--dry-run` never** (0 of 2,369 commands written). §4.5.
-- **No tool hang.** The slowest of the 1,023 commands run was `alder test`, 4.03 s (*Opus t9 r1*). But none of the
+- **`--json` was used 4 times, `--dry-run` never** (0 of 2,187 commands written outside T2). §4.5.
+- **No tool hang.** The slowest of the 999 commands run outside T2 (1,023 with T2) was `alder test`, 4.03 s (*Opus t9 r1*). But none of the
   111 round scripts contained a non-ASCII character, so the `qualifiers` fix for run 1's hang was not exercised
   (§4.7).
 
@@ -181,30 +182,30 @@ quoting, **U** unqualified type, **T** `alder test` with a hole left, **B** body
 | Commands written / run | 867 / 326 → 1,084 / 360 | 831 / 280 → 606 / 305 | 1,698 / 606 → 1,690 / 665 |
 | Rounds that ended with `alder build` refusing for holes | 19 / 34 → **33 / 39** | 26 / 37 → 20 / 31 | 45 / 71 (63 %) → **53 / 70 (76 %)** |
 
-**The refusals by pattern** (Haiku+Sonnet, outside T2; Opus beside):
+**The refusals by pattern**, like for like outside T2 (run 1's column drops its 9 T2 refusals: lambda 2, non-hole 1, block-into-`?expected` 2, one-line view 1, body 2, test-with-hole 1; Opus beside):
 
 | Pattern | Run 1 (H+S) | Run 2 Haiku | Run 2 Sonnet | Run 2 H+S | Run 2 Opus |
 |---|---|---|---|---|---|
-| L lambda over bound parameters | 13 | 5 | 6 | **11** | 1 |
-| N `fill` on a non-hole (test, arm, `Model`) | 8 | 3 | 2 | **5** | 1 |
+| L lambda over bound parameters | 11 | 5 | 6 | **11** | 1 |
+| N `fill` on a non-hole (test, arm, `Model`) | 7 | 3 | 2 | **5** | 1 |
 | O order (name before it exists; `--requires user` before `new auth`) | 8 | 6 | 2 | **8** | 2 |
 | M command missing (App message ×2, Layout prop ×2, form on a message ×2) | 6 | 0 | 0 | **0** | 0 |
 | G `new decl Layout <Upper>` (the Layout prop, command now exists) | (in M and X) | 1 | 1 | 2 | 1 |
-| Q a block into a test's `?expected` | 3 | 2 | 0 | 2 | 0 |
+| Q a block into a test's `?expected` | 1 | 2 | 0 | 2 | 0 |
 | A test address unquoted / quoted wrongly | 3 | 1 | 0 | 1 | 0 |
-| V `new form`/`new msg` on a one-line view or a hole `view` (run 1 also `--param` with `--show` ×2) | 5 | 1 | 3 | 4 | 2 |
+| V `new form`/`new msg` on a one-line view or a hole `view` (run 1 also `--param` with `--show` ×2) | 4 | 1 | 3 | 4 | 2 |
 | D `Model` of a generated page (`--list`, `--show`) | 2 | 5 | 0 | **5** | 0 |
 | U unqualified type in a generator argument | 2 | 1 | 0 | 1 | 0 |
-| T `alder test` with a hole left | 2 | 1 | 2 | 3 | 2 |
+| T `alder test` with a hole left | 1 | 1 | 2 | 3 | 2 |
 | X other (a name taken, a module as an address, a page still used) | 3 | 2 | 1 | 3 | 0 |
-| B body (a body or a test that fails) | 8 | 6 | 2 | 8 | 3 |
+| B body (a body or a test that fails) | 6 | 6 | 2 | 8 | 3 |
 | H tool hang | 1 | 0 | 0 | 0 | 0 |
 | F format (two blocks) | 0 | 0 | 0 | 0 | 1 |
 | **Total outside T2** | 55 | 34 | 19 | 53 | 13 |
 | E the T2 base | — | 5 | 5 | 10 | 6 |
-| **Total** | 64 | 39 | 24 | 63 | 19 |
+| **Total incl. T2** | 64 | 39 | 24 | 63 | 19 |
 
-(Run 1's 64 includes 9 T2 refusals, spread over the other rows; its T2 had no base defect.)
+(Run 1's 64 includes 9 T2 refusals, removed from the column above; its T2 had no base defect. Run 1's V is one-line view 2 and `--param` with `--show` 2.)
 
 ## 4. Did the fixes work?
 
@@ -212,15 +213,15 @@ quoting, **U** unqualified type, **T** `alder test` with a hole left, **B** body
 
 | Pattern | Run 1 | Run 2 | Reading |
 |---|---|---|---|
-| Lambda over parameters the declaration binds | 13 refusals, 13 cells of 16 | **11** (Haiku 5, Sonnet 6) in 11 of 14 valid cells, **+1 Opus** (*Opus t7 r1*) | Not reduced. |
-| `fill` on a non-hole | 8 | **5** (Haiku 3 tests, Sonnet 2 arms), +1 Opus (an arm) | Down 3. |
+| Lambda over parameters the declaration binds | 11 refusals in 11 of 14 valid cells | **11** (Haiku 5, Sonnet 6) in 11 of 14 valid cells, **+1 Opus** (*Opus t7 r1*) | Not reduced. |
+| `fill` on a non-hole | 7 | **5** (Haiku 3 tests, Sonnet 2 arms), +1 Opus (an arm) | Down 2. |
 | A name before the command that makes it | 8 | **8** (Haiku 6, Sonnet 2), +2 Opus | Unchanged. |
 | "Command missing" | 6 | **0** | Gone, with a caveat for the `Layout` prop. |
 
 - **Lambda.** All 12 refusals now read "the parameters `params session` are bound already: send the body without
   `\params session ->`" (e.g. *Sonnet t10 r0*, *Haiku t3 r3*), and none repeated in its cell: in the next script every
   fill of the declaration was a body, not a lambda (12 of 12; *Haiku t4 r4* moved to filling the arm
-  `App.update.SwitchTheme`). Run 1's 13 also occurred once per cell, so the message's speed-up cannot be told from
+  `App.update.SwitchTheme`). Run 1's 11 outside T2 also occurred once per cell, so the message's speed-up cannot be told from
   these data; what can be told is that *the first hit* is as frequent as before (11 of the 14 valid Haiku+Sonnet cells in
   both runs, T2 aside). That is expected: the reference line that would prevent the first hit was not in the prompt (header, 2).
 - **Non-hole.** The three test cases now say "to rewrite it whole, `alder fill --decl '…' -`" (*Haiku t10 r4*, *t4
@@ -235,12 +236,12 @@ quoting, **U** unqualified type, **T** `alder test` with a hole left, **B** body
 
 Other run-1 patterns: **address quoting** 3 → 1 (the three unquoted addresses of *Sonnet t5 r3, t6 r5, t7 r2*
 are gone; *Haiku t7 r1* has an apostrophe in a double-quoted address that the script parser refused);
-**a block into `?expected`** 3 → 2 (*Haiku t6 r5*, *t9 r2*; the message now says "the hole ?expected is a `Bool`,
+**a block into `?expected`** 1 → 2 (*Haiku t6 r5*, *t9 r2*; the message now says "the hole ?expected is a `Bool`,
 not a test's whole block … to replace the whole test, use `alder fill --decl '…' -`", and *Haiku t9 r3* did);
 **`--param` with `--show`** 2 → 0; **an unqualified type** 2 → 1 (*Haiku t4 r0*, `theme:Theme=Light` to `edit session
-add-field`, which the bare-type fix of `new msg` did not cover); **`new form` on a one-line view** 3 → 3 in
+add-field`, which the bare-type fix of `new msg` did not cover); **`new form` on a one-line view** 2 → 3 in
 Haiku+Sonnet (*Sonnet t10 r2, t4 r4, t6 r2*), +2 Opus; **`Model` of a `--list` page** 2 → **5** (§6);
-**`alder test` with a hole** 2 → 3, +2 Opus (§6).
+**`alder test` with a hole** 1 → 3, +2 Opus (§6).
 
 ### 4.2 The commands
 
@@ -281,8 +282,9 @@ In four the script ended there (*Opus t3 r0, t4 r4, t6 r1; Sonnet t10 r3*): the 
 the next prompt. In three an `alder test` followed in the same script and was
 refused for the holes (*Opus t10 r0, t9 r0; Sonnet t9 r0*): a script cannot branch on the line.
 
-It did not change how many rounds ended with holes: **53 of 70 (76 %)** Haiku+Sonnet rounds outside T2 ended with `alder
-build` refusing, against 45 of 71 (63 %) in run 1 (Haiku 56 % → 85 %, Sonnet 70 % → 65 %); Opus 13 of 25 (52 %). The
+Only 7 rounds printed the line, so these data cannot show an effect either way. Rounds ending with holes: **53 of 70 (76 %)**
+Haiku+Sonnet rounds outside T2 ended with `alder build` refusing, against 45 of 71 (63 %) in run 1 (Haiku 56 % → 85 %, Sonnet
+70 % → 65 %; opposite moves, too weak to read); Opus 13 of 25 (52 %). The
 rounds that ran every command and still left holes: 7 (run 1: 5), plus the 5 whose last command, `alder test`, was
 refused for them (§6). The holes left are mostly the generators' own: in three Haiku builds with holes left, `?expected` of a generated test
 is 5 of 6 (*Haiku t6 r4*, the sixth is `?addLineProduct`), 5 of 5 (*t10 r3*) and 3 of 3 (*t3 r5*).
@@ -296,7 +298,7 @@ only uses that steered anything are the probe rounds of the T2 cells.
 
 ### 4.6 The names check
 
-Extended to compare form fields and message parameters, it flagged nothing new in the 21 cells with a Names block:
+Extended to compare form fields and message parameters, it flagged nothing new in the 18 cells with a Names block (T4, T5, T6, T7, T9, T10 × 3 models):
 its 9 mismatches (Haiku T4: 5, Sonnet T4: 4) are all "missing", none a field or a parameter. It agrees with the hidden
 tests in all 16 cells that have both (15 `ok` cells passed every hidden test; the one `differ` cell, *Sonnet t4*, is
 0 / 8). The extension itself was not exercised: *Haiku t6*, the cell it was written for, never built, so it is "ok" with
@@ -546,7 +548,7 @@ the seven valid tasks); Sonnet is as good on every cell but one (T4: its harness
 with the same kinds of refusals, which one sample cannot separate from the 6-round budget's edge.
 
 **H3, the command set is the ceiling: stronger than in run 1, and still not the whole story.** Every one of the 82
-refusals is classifiable (66 + 16 for T2's base); **"command missing" is 0 of 82** (run 1: 6 of 64): the `App`
+refusals is classifiable (66 + 16 for T2's base); **"command missing" is 0 of 66** outside T2 (run 1: 6 of 55): the `App`
 message and the form on a message with parameters were used at first reach, 3 times each, and never refused; only
 the `Layout` prop was met by the old refusal (3 cells), because its new command has a name the models never saw.
 What remains is the first script's quality: 66 of 95 rounds outside T2 ended in a refusal (Haiku 87 %, Sonnet 61 %,
@@ -575,7 +577,7 @@ the `fill` hang (not exercised, §4.7).
 ## 10. Threats to validity
 
 - **One sample per cell, three models.** A difference of one round or one hidden test between two cells is noise. Haiku's
-  fall (7 / 8 → 2 / 8) and Sonnet's rise (5 / 8 → 7 / 8) are on a 6-round budget: three Haiku cells went from 4 rounds to
+  fall (7 / 8 → 2 / 8, **unattributed**: no pattern the fixes touch explains it) and Sonnet's rise (5 / 8 → 7 / 8) are on a 6-round budget: three Haiku cells went from 4 rounds to
   never passing, a pass in the sixth round (T6) became a fail in the sixth. They are not evidence that the fixes help or hurt
   either model.
 - **The system prompt is run 1's** (header, 2). Run 2 does not test the reference lines of the fix batch (the lambda
@@ -591,7 +593,7 @@ the `fill` hang (not exercised, §4.7).
   new commands) reach a file-mode cell only through `alder check`'s text.
 - **T4's text differs between the runs.** Run 2's T4 has the Names block; the comparison of T4 across runs is not like
   for like (and the `files` T4 hidden 5 / 8 of run 1 does not carry over: Opus `files` T4 is 8 / 8).
-- **T2 is void** (§5): 3 of 24 cells, 18 of 113 rounds. The headline gives both counts.
+- **T2 is void** (§5): 3 of 24 cells, 18 of 113 rounds. The headline gives both counts for passes and rounds, and labels the command counts.
 - **The same T10 worked example** (the first ten commands of the T10 drill in `prompt-cli.md`) is in every `cli` prompt, as
   in run 1; T10 was not the easiest task (Haiku 6 rounds, never passing; Sonnet 6; Opus 3).
 - **The harness's pass is the model's own tests.** *Sonnet t4* passes with a missing page (§2). The stop rule is strict

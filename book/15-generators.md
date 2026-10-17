@@ -4020,7 +4020,7 @@ A second run (`experiments/e11-cli/findings-run2.md`: the same models and Opus, 
 refusals that name the fix) found the missing commands working and most rounds still ending in a refusal. The two commands
 the models had already tried by name were used the first time a script reached them and never refused: `alder new msg
 App` in all three T4 cells, `alder new form … --msg` on a message with parameters in all three T6 cells, so the
-refusals for "command missing" went from 6 of 64 to 0 of 82. The other two (`edit decl … add-prop`, `edit auth --to`) were
+refusals for "command missing" went from 6 of 55 to 0 of 66 (T2 aside). The other two (`edit decl … add-prop`, `edit auth --to`) were
 used by nobody: the system prompt had not been regenerated, so the models never read their names. Haiku passed 2
 tasks of 8, Sonnet 7 (one of them with the hidden tests at 0 of 8) and Opus 7, with all 47 of its hidden tests, in 2 to 6
 rounds where its file-writing runs took 1 to 3. The lambda refusal, now with a message that names the fix, still
