@@ -19,7 +19,7 @@ alder edit session add-field org:Org.OrgId via Membership --choose Orgs.Index
 # the org's projects and to-dos: partitioned by org, in a database per org
 alder new table Project name:Text.NonEmpty org:Org.OrgId@ref=Org@partition=org --no-timestamps
 alder new table Todo title:Text.NonEmpty done:Bool=False project:Project.ProjectId@ref=Project@cascade org:Org.OrgId@ref=Org@partition=org --no-timestamps
-alder new silo org Project Todo
+alder new silo org Project Todo --empty
 
 # the re-read idiom: whether the user is a member of the org now
 alder new decl Membership isMember "User.UserId -> Org.OrgId -> Query Bool"

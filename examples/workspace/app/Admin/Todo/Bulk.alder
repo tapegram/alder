@@ -10,7 +10,7 @@ import Todo
 import User
 -- @admin end
 
-page "/admin/org/{org}/todo/bulk" { org: Org.OrgId, ids: List Todo.TodoId } requires user, role Admin, silo org
+page "/admin/orgs/{org}/todo/bulk" { org: Org.OrgId, ids: List Todo.TodoId } requires user, role Admin, silo org
 
 -- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep
 -- from being deleted, and how many ids the page was given.

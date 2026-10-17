@@ -970,7 +970,7 @@ org. Its pages take the org from their own parameter instead, and the
 role check is what guards them:
 
 ```alder fragment
-page "/admin/org/{org}/project" { org: Org.OrgId, … } requires user, role Admin, silo org
+page "/admin/orgs/{org}/project" { org: Org.OrgId, … } requires user, role Admin, silo org
 ```
 
 Inside, `session.org` is the parameter's `Org.OrgId`, and the page reads

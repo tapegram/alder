@@ -10,7 +10,7 @@ import Project
 import User
 -- @admin end
 
-page "/admin/org/{org}/issue/{id}" { org: Org.OrgId, id: Issue.IssueId } requires user, role Admin, silo org
+page "/admin/orgs/{org}/issue/{id}" { org: Org.OrgId, id: Issue.IssueId } requires user, role Admin, silo org
 
 -- The row, the labels of the rows it refers to, and (for the delete dialog) how many rows of
 -- each table refer to it.

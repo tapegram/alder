@@ -1,0 +1,14 @@
+module Membership
+
+import User
+import Org
+
+type MembershipId = brand Text
+
+-- partitioned by org, but the session's `org` is `via` it: Session.put checks it in the shared
+-- database, before a silo is chosen, so it cannot live in `silo org`
+table Membership {
+  id: MembershipId @id,
+  user: User.UserId @ref User @cascade,
+  org: Org.OrgId @ref Org @cascade @partition org,
+}

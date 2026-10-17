@@ -194,7 +194,7 @@ func TestAdmin_Mutate(t *testing.T) {
 
 // TestAdmin_Silo (Review Focus 5 of M15): the admin of fixture-silo. The siloed tables (Project,
 // Issue) have no link in the nav and no card on the dashboard but the picker's (`/admin/orgs`,
-// every org, each opening its dashboard); their pages are at `/admin/org/{org}/…`, declared
+// every org, each opening its dashboard); their pages are at `/admin/orgs/{org}/…`, declared
 // `requires user, role Admin, silo org` with `org` the page's first parameter, and never show or
 // edit the partition column (the page's parameter is the org); a shared table that is
 // partitioned by org (Activity) keeps the ordinary pages. The generated tests pass, among them
@@ -225,8 +225,8 @@ func TestAdmin_Silo(t *testing.T) {
 		"app/Admin/Index.alder":          {`key: "silo-org",`, "href: Admin.Orgs.Show { org: row.id } }) orgs,"},
 		"app/Admin/Orgs/Index.alder":     {`page "/admin/orgs" { } requires user, role Admin`, "<a href={Admin.Orgs.Show { org: row.id }}>{row.name}</a>"},
 		"app/Admin/Orgs/Show.alder":      {`page "/admin/orgs/{org}" { org: Org.OrgId } requires user, role Admin, silo org`, "href: Admin.Project.Index { org: params.org },"},
-		"app/Admin/Project/Index.alder":  {`page "/admin/org/{org}/project" {`, "  org: Org.OrgId,\n  q: Text = \"\",", "} requires user, role Admin, silo org", `action={"/admin/org/" ++ session.org ++ "/project"}`, "listAt model sort dir n = Admin.Project.Index {\n  org: model.org,", "<a href={Admin.Project.Show { org: session.org, id: row.id }}>"},
-		"app/Admin/Project/New.alder":    {`page "/admin/org/{org}/project/new" { org: Org.OrgId } requires user, role Admin, silo org`, "org: session.org }\n", "Task.succeed (Redirect (Admin.Project.Show { org: session.org, id: id }))"},
+		"app/Admin/Project/Index.alder":  {`page "/admin/orgs/{org}/project" {`, "  org: Org.OrgId,\n  q: Text = \"\",", "} requires user, role Admin, silo org", `action={"/admin/orgs/" ++ session.org ++ "/project"}`, "listAt model sort dir n = Admin.Project.Index {\n  org: model.org,", "<a href={Admin.Project.Show { org: session.org, id: row.id }}>"},
+		"app/Admin/Project/New.alder":    {`page "/admin/orgs/{org}/project/new" { org: Org.OrgId } requires user, role Admin, silo org`, "org: session.org }\n", "Task.succeed (Redirect (Admin.Project.Show { org: session.org, id: id }))"},
 		"app/Admin/Issue/Show.alder":     {"<a href={Admin.Project.Show { org: session.org, id: model.row.project }}>", "<a href={Admin.User.Show { id: v }}>"},
 		"app/Admin/Activity/Index.alder": {`page "/admin/activity" {`},
 	} {

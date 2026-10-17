@@ -10,7 +10,7 @@ import Todo
 import User
 -- @admin end
 
-page "/admin/org/{org}/project/{id}/delete" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
+page "/admin/orgs/{org}/project/{id}/delete" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
 
 -- The row, and how many rows of each table refer to it.
 type Model = {

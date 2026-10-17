@@ -2434,11 +2434,11 @@ admin is committed as it wrote it) gives each silo three things instead.
   count and newest rows, read from that org's database when the page is
   opened, never for every org at once.
 - **The tables' pages**, the usual six per table, at
-  `/admin/org/{org}/project…`. Each is declared with the admin form of
+  `/admin/orgs/{org}/project…`. Each is declared with the admin form of
   chapter 6:
 
   ```alder fragment
-  page "/admin/org/{org}/project/{id}" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
+  page "/admin/orgs/{org}/project/{id}" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
   ```
 
   `org` is the page's first parameter, and the role check, not `via`,

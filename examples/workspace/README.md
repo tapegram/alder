@@ -53,7 +53,7 @@ shared database is `build/workspace/dev.db` and each org's a file of its own und
   once"`, `Members.Index "removing a member logs it, and a removed member loses access at
   once"`).
 - **The admin of a silo.** `/admin/orgs` lists every org; each opens its dashboard
-  (`/admin/orgs/{org}`) and the pages of its projects and to-dos (`/admin/org/{org}/project…`),
+  (`/admin/orgs/{org}`) and the pages of its projects and to-dos (`/admin/orgs/{org}/project…`),
   declared `requires user, role Admin, silo org`: the org comes from the page's parameter and the
   role check guards it, so an Admin need not be a member (`Admin.Project.Index "an Admin who is
   no member of the org lists its projects, and only its"`, `Admin.Project.Bulk "a bulk action
@@ -91,7 +91,7 @@ git diff --stat        # nothing
 
 `alder new admin` prints the files it writes: the pages of each shared table (Activity,
 Membership, Org, User) under `app/Admin/<Table>/`, the siloed tables' (Project, Todo) the same
-way at `/admin/org/{org}/…`, the picker and the dashboard of one org (`app/Admin/Orgs/Index.alder`
+way at `/admin/orgs/{org}/…`, the picker and the dashboard of one org (`app/Admin/Orgs/Index.alder`
 and `Show.alder`), the dashboard (`app/Admin/Index.alder`) and the layout. After a change to a
 table, `alder regen admin` rewrites only the admin's owned regions (book 15).
 

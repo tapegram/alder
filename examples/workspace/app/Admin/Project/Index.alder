@@ -10,7 +10,7 @@ import User
 -- @admin end
 
 -- @admin begin params
-page "/admin/org/{org}/project" {
+page "/admin/orgs/{org}/project" {
   org: Org.OrgId,
   q: Text = "",
   sort: Text = "created",
@@ -150,7 +150,7 @@ view model session =
     <h1>Projects</h1>
 
     <al-stack direction="row" gap="sm">
-      <form method="get" action={"/admin/org/" ++ session.org ++ "/project"}>
+      <form method="get" action={"/admin/orgs/" ++ session.org ++ "/project"}>
         <input type="search" name="q" value={model.q} aria-label="Search" />
         {for f in filters model.filters ->
           <al-select label={f.label}>
@@ -195,10 +195,10 @@ view model session =
     </al-table>
 
     <al-stack direction="row" gap="sm">
-      <form id="bulk" method="get" action={"/admin/org/" ++ session.org ++ "/project/bulk"}>
+      <form id="bulk" method="get" action={"/admin/orgs/" ++ session.org ++ "/project/bulk"}>
         <al-button type="submit" variant="secondary">Act on the chosen rows</al-button>
       </form>
-      <form id="bulk-page" method="get" action={"/admin/org/" ++ session.org ++ "/project/bulk"}>
+      <form id="bulk-page" method="get" action={"/admin/orgs/" ++ session.org ++ "/project/bulk"}>
         {for row in model.rows -> <input type="hidden" name="ids" value={row.id} />}
         <al-button type="submit" variant="secondary">Act on all rows on this page</al-button>
       </form>

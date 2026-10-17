@@ -10,7 +10,7 @@ import Todo
 import User
 -- @admin end
 
-page "/admin/org/{org}/todo/new" { org: Org.OrgId, findProject: Text = "" } requires user, role Admin, silo org
+page "/admin/orgs/{org}/todo/new" { org: Org.OrgId, findProject: Text = "" } requires user, role Admin, silo org
 
 type Model = {
   -- @admin begin model

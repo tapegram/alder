@@ -5,6 +5,7 @@
 package check
 
 import (
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -170,6 +171,10 @@ func (c *Checker) checkPartitionDecls() {
 			case c.tables[tk].PartKey != sd.Key:
 				c.errorf(diag.SiloDecl, at, "`%s` is in `silo %s` but is not partitioned by `%s`", name, sd.Key, sd.Key)
 				continue
+			case viaField(c.via, tk) != "":
+				f := viaField(c.via, tk)
+				c.errorf(diag.SiloDecl, at, "`%s` cannot be in `silo %s`: it is the membership table of the session's `%s` (`via %s`), which Session.put checks in the shared database before any silo is chosen; keep it shared", name, sd.Key, f, name)
+				continue
 			}
 			listed[tk] = true
 			c.siloOf[tk] = sd.Key
@@ -195,6 +200,16 @@ func (c *Checker) checkPartitionDecls() {
 	if len(c.silos) == 0 {
 		c.silos, c.siloOf = nil, nil
 	}
+}
+
+// viaField is the session field whose `via` table is tk ("" for none).
+func viaField(via map[string]string, tk string) string {
+	for _, f := range slices.Sorted(maps.Keys(via)) {
+		if via[f] == tk {
+			return f
+		}
+	}
+	return ""
 }
 
 func tableModule(k string) string {

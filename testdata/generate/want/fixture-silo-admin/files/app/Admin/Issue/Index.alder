@@ -11,7 +11,7 @@ import User
 -- @admin end
 
 -- @admin begin params
-page "/admin/org/{org}/issue" {
+page "/admin/orgs/{org}/issue" {
   org: Org.OrgId,
   q: Text = "",
   status: Text = "",
@@ -183,7 +183,7 @@ view model session =
     <h1>Issues</h1>
 
     <al-stack direction="row" gap="sm">
-      <form method="get" action={"/admin/org/" ++ session.org ++ "/issue"}>
+      <form method="get" action={"/admin/orgs/" ++ session.org ++ "/issue"}>
         <input type="search" name="q" value={model.q} aria-label="Search" />
         {for f in filters model.filters ->
           <al-select label={f.label}>
@@ -234,10 +234,10 @@ view model session =
     </al-table>
 
     <al-stack direction="row" gap="sm">
-      <form id="bulk" method="get" action={"/admin/org/" ++ session.org ++ "/issue/bulk"}>
+      <form id="bulk" method="get" action={"/admin/orgs/" ++ session.org ++ "/issue/bulk"}>
         <al-button type="submit" variant="secondary">Act on the chosen rows</al-button>
       </form>
-      <form id="bulk-page" method="get" action={"/admin/org/" ++ session.org ++ "/issue/bulk"}>
+      <form id="bulk-page" method="get" action={"/admin/orgs/" ++ session.org ++ "/issue/bulk"}>
         {for row in model.rows -> <input type="hidden" name="ids" value={row.id} />}
         <al-button type="submit" variant="secondary">Act on all rows on this page</al-button>
       </form>

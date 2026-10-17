@@ -10,7 +10,7 @@ import Project
 import User
 -- @admin end
 
-page "/admin/org/{org}/issue/{id}/edit" { org: Org.OrgId, id: Issue.IssueId, findProject: Text = "", findAssignee: Text = "" } requires user, role Admin, silo org
+page "/admin/orgs/{org}/issue/{id}/edit" { org: Org.OrgId, id: Issue.IssueId, findProject: Text = "", findAssignee: Text = "" } requires user, role Admin, silo org
 
 type Model = {
   row: Issue,

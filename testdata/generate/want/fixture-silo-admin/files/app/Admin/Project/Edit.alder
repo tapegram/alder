@@ -9,7 +9,7 @@ import Project
 import User
 -- @admin end
 
-page "/admin/org/{org}/project/{id}/edit" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
+page "/admin/orgs/{org}/project/{id}/edit" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
 
 type Model = {
   row: Project,

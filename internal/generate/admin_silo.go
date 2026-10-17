@@ -14,7 +14,7 @@ import (
 // instead (`Admin.Orgs.Index`, `/admin/orgs`: the key's table, a link per row) and a dashboard
 // per value (`Admin.Orgs.Show`, `/admin/orgs/{org}`: each siloed table's count and newest rows,
 // read when it is opened, not for every org at once); the siloed tables' pages are the usual
-// ones, at `/admin/org/{org}/project…`, declared `requires user, role Admin, silo org` with the
+// ones, under the dashboard at `/admin/orgs/{org}/project…`, declared `requires user, role Admin, silo org` with the
 // key in the page's parameter `org`. The role check guards them, not `via`: an Admin need not be
 // a member of the org (chapter 6, "Partitions"). Every page of one org reads and writes that
 // org's database only, so a bulk action stays inside one silo. A table partitioned by a key but
@@ -53,7 +53,7 @@ func (g *adminGen) silos() {
 				continue
 			}
 			at.silo = s
-			at.path = g.o.Path + "/" + k + "/{" + k + "}/" + strings.ToLower(at.t.Name)
+			at.path = s.path + "/{" + k + "}/" + strings.ToLower(at.t.Name) // under the dashboard: /admin/orgs/{org}/project
 			s.tables = append(s.tables, at)
 			for _, kind := range []string{"Index", "Show", "New", "Edit", "Delete", "Bulk"} {
 				s.mods[at.page(kind)] = true
