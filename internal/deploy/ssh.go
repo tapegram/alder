@@ -67,6 +67,8 @@ type Ssh struct {
 	conn bool
 
 	allowDataLoss bool // this run's --allow-data-loss (DataLossAllower)
+	unitDone      bool // the unit was installed in this run
+	caddyDone     bool // Caddy answered in this run
 }
 
 // AllowDataLoss is DataLossAllower: Migrate passes ALDER_ALLOW_DATA_LOSS=1 to the binary.
@@ -168,10 +170,12 @@ func (s *Ssh) stream(ctx context.Context, script string, stdout, stderr io.Write
 	return nil
 }
 
-// prelude defines, for every script: R (the root), U (the unit), SUP (the supervisor), and
-// alive ID (whether build ID's process runs).
+// prelude sets, for every script, umask 077 (what the deploy writes is the deploy user's
+// alone) and defines R (the root), U (the unit), SUP (the supervisor), alive ID (whether build
+// ID's process runs), stopnow ID and cancel_later ID.
 func (s *Ssh) prelude() string {
-	return `R=` + q(s.Root) + `
+	return `umask 077
+R=` + q(s.Root) + `
 U=` + q(s.unit()) + `
 SUP=` + q(s.sup) + `
 SCTL="systemctl"; [ "$SUP" = user ] && SCTL="systemctl --user"
@@ -258,12 +262,16 @@ func keyValues(out string) map[string]string {
 func (s *Ssh) Requires(ctx context.Context, names []string) ([]string, error) {
 	var b strings.Builder
 	b.WriteString(`[ -f "$R/env" ] && echo "mode=$(ls -l "$R/env" | cut -c1-10)"` + "\n")
+	b.WriteString(`grep -Eq '^(export[[:space:]]+)?ALDER_DEV=' "$R/env" 2>/dev/null && echo devmode=yes` + "\n")
 	for _, n := range names {
 		fmt.Fprintf(&b, "grep -Eq %s \"$R/env\" 2>/dev/null || echo missing=%s\n", q(`^(export[[:space:]]+)?`+n+`=([^[:space:]"']|"[^"]|'[^'])`), q(n))
 	}
 	out, err := s.run(ctx, b.String())
 	if err != nil {
 		return nil, err
+	}
+	if keyValues(out)["devmode"] == "yes" {
+		return nil, refuse("", "the environment file %s:%s/env sets ALDER_DEV: development mode (the public cookie key, errors shown to visitors) never runs at a target; remove the line and deploy again", s.Dest, s.Root)
 	}
 	var missing []string
 	for _, l := range strings.Split(out, "\n") {
@@ -396,7 +404,7 @@ func (s *Ssh) Upload(ctx context.Context, dir, id string) error {
 		return err
 	}
 	part := s.Root + "/builds/" + id + ".part"
-	cmd := exec.CommandContext(ctx, "ssh", append(s.sshArgs(), "rm -rf "+q(part)+" && mkdir -p "+q(part)+" && tar -xf - -C "+q(part))...)
+	cmd := exec.CommandContext(ctx, "ssh", append(s.sshArgs(), "umask 077 && rm -rf "+q(part)+" && mkdir -p "+q(part)+" && tar -xf - -C "+q(part))...)
 	cmd.Stdin = &tarball
 	var errb bytes.Buffer
 	cmd.Stderr = &errb
@@ -409,7 +417,7 @@ func (s *Ssh) Upload(ctx context.Context, dir, id string) error {
 	}
 	_, err := s.run(ctx, `set -e
 id=`+q(id)+`
-mkdir -p "$R/db"; chmod 700 "$R/db"
+mkdir -p "$R/db"; chmod 700 "$R/db"; chmod 750 "$R/builds"
 if [ -d "$R/builds/$id" ]; then
   if alive "$id"; then echo "build $id is running" >&2; exit 1; fi
   # an earlier upload of the same build: its record and pre-migration copy stay
@@ -419,7 +427,7 @@ fi
 mv "$R/builds/$id.part" "$R/builds/$id"
 cat > "$R/builds/$id/run" <<'ALDER_RUN_EOF'
 `+s.runScript(id)+`ALDER_RUN_EOF
-chmod 755 "$R/builds/$id/run" "$R/builds/$id/app"
+chmod 700 "$R/builds/$id/run" "$R/builds/$id/app"
 echo 127.0.0.1:0 > "$R/builds/$id/addr"
 `)
 	return err
@@ -439,6 +447,7 @@ func (s *Ssh) runScript(id string) string {
 # variables come from ` + s.Root + `/env, which the operator writes; nothing here is a secret.
 set -e
 if [ -f ` + q(s.Root+"/env") + ` ]; then set -a; . ` + q(s.Root+"/env") + `; set +a; fi
+unset ALDER_DEV  # development mode never runs at a target
 export ALDER_DB=` + q(s.Root+"/db/app.db") + `
 export ALDER_STATIC=` + q(b+"/static") + `
 export ALDER_ADDR="$(cat ` + q(b+"/addr") + ` 2>/dev/null || echo 127.0.0.1:0)"
@@ -539,8 +548,10 @@ func (s *Ssh) start(ctx context.Context, id, addr string) (int, error) {
 echo $! > "$B/pid"
 `
 	if s.sup != "process" {
-		if err := s.installUnit(ctx); err != nil {
-			return 0, err
+		if !s.unitDone {
+			if err := s.installUnit(ctx); err != nil {
+				return 0, err
+			}
 		}
 		launch = `$SCTL reset-failed "$U@$id.service" >/dev/null 2>&1
 $SCTL start "$U@$id.service" || { echo exited; tail -n 40 "$B/log"; exit 0; }
@@ -595,20 +606,29 @@ func (s *Ssh) installUnit(ctx context.Context) error {
 	} else {
 		dir = q(dir)
 	}
+	sandbox := ""
+	if s.sup == "system" {
+		sandbox = "User=" + s.user + "\nProtectSystem=full\nPrivateTmp=yes\nNoNewPrivileges=yes\n"
+	}
+	// systemd's own quoting: ExecStart's path in double quotes (backslash and quote escaped); a
+	// literal % doubled everywhere (the specifier %i is the build)
+	raw := strings.ReplaceAll(s.Root, "%", "%%")
+	quoted := `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(raw) + `/builds/%i/run"`
 	unit := `[Unit]
 Description=alder ` + s.App + ` ` + s.Env + ` (build %i)
 After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=` + s.Root + `/builds/%i
-ExecStart=` + s.Root + `/builds/%i/run
-StandardOutput=append:` + s.Root + `/builds/%i/log
-StandardError=append:` + s.Root + `/builds/%i/log
+WorkingDirectory=` + raw + `/builds/%i
+ExecStart=` + quoted + `
+StandardOutput=append:` + raw + `/builds/%i/log
+StandardError=append:` + raw + `/builds/%i/log
+UnsetEnvironment=ALDER_DEV
 Restart=on-failure
 RestartSec=2
 TimeoutStopSec=40
-
+` + sandbox + `
 [Install]
 WantedBy=` + wanted + `
 `
@@ -622,6 +642,9 @@ if [ "$SUP" = user ] && [ "$(loginctl show-user "$(id -un)" -p Linger 2>/dev/nul
   loginctl enable-linger "$(id -un)" 2>/dev/null || echo nolinger
 fi
 `)
+	if err == nil {
+		s.unitDone = true
+	}
 	if strings.Contains(out, "nolinger") {
 		fmt.Fprintf(s.Warn, "warning: user %s has no lingering systemd session: the app stops when the user logs out and does not start at boot; run `sudo loginctl enable-linger %s`\n", s.user, s.user)
 	}
@@ -714,6 +737,19 @@ echo "$id" > "$R/current.new" && mv "$R/current.new" "$R/current"
 // when absent (refusing other systems with a sentence), then sets the route through the admin
 // API (localhost:2019), the route's @id naming the app and environment.
 func (s *Ssh) caddy(ctx context.Context, port int) error {
+	if err := s.ensureCaddy(ctx); err != nil {
+		return err
+	}
+	_, err := s.run(ctx, caddyRoute(s.unit(), s.Domain, port))
+	return err
+}
+
+// ensureCaddy installs Caddy when absent (Debian and Ubuntu; other systems refused with a
+// sentence) and waits for its admin API.
+func (s *Ssh) ensureCaddy(ctx context.Context) error {
+	if s.caddyDone {
+		return nil
+	}
 	out, err := s.run(ctx, caddyEnsure)
 	if err != nil {
 		return err
@@ -727,8 +763,23 @@ func (s *Ssh) caddy(ctx context.Context, port int) error {
 	case strings.Contains(out, "noadmin"):
 		return refuse("", "Caddy on %s does not answer on its admin API (127.0.0.1:2019): start it (`systemctl start caddy`) and deploy again", s.Dest)
 	}
-	_, err = s.run(ctx, caddyRoute(s.unit(), s.Domain, port))
-	return err
+	s.caddyDone = true
+	return nil
+}
+
+// Preflight is Preflighter: before anything is uploaded, the systemd unit is installed (and
+// lingering checked) and Caddy installed and answering, so a box that cannot run the build
+// refuses with nothing changed in builds/.
+func (s *Ssh) Preflight(ctx context.Context) error {
+	if s.sup != "process" && !s.unitDone {
+		if err := s.installUnit(ctx); err != nil {
+			return err
+		}
+	}
+	if s.Proxy != "None" {
+		return s.ensureCaddy(ctx)
+	}
+	return nil
 }
 
 // caddyEnsure installs Caddy when absent (Debian and Ubuntu) and waits for its admin API.
@@ -739,11 +790,11 @@ if ! command -v caddy >/dev/null 2>&1; then
     *" debian "*|*" ubuntu "*) ;;
     *) echo "unsupported=${ID:-an unknown system}"; exit 0;;
   esac
-  { $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update -q && $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -q caddy; } >&2 || { echo aptfailed; exit 0; }
+  ( umask 022; $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update -q && $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -q caddy ) >&2 || { echo aptfailed; exit 0; }
   if [ -d /run/systemd/system ]; then
     # keep the routes alder deploy sets through the admin API when Caddy restarts
     $SUDO mkdir -p /etc/systemd/system/caddy.service.d
-    printf '[Service]\nExecStart=\nExecStart=/usr/bin/caddy run --environ --resume --config /etc/caddy/Caddyfile\n' | $SUDO tee /etc/systemd/system/caddy.service.d/alder.conf >/dev/null
+    printf '[Service]\nExecStart=\nExecStart=/usr/bin/caddy run --environ --resume --config /etc/caddy/Caddyfile\n' | ( umask 022; $SUDO tee /etc/systemd/system/caddy.service.d/alder.conf >/dev/null )
     $SUDO systemctl daemon-reload && $SUDO systemctl restart caddy
   fi
   echo installed=yes
@@ -784,6 +835,107 @@ func CaddyRoute(id, domain string, port int) string {
 	}
 	b, _ := json.Marshal(r)
 	return string(b)
+}
+
+// Lock is Locker: one deploy, rollback or restore at a time per environment. A long-lived ssh
+// session holds the lock (flock on <path>/deploy.lock where flock exists, else the directory
+// <path>/deploy.lock.d with who/when/pid, taken over when that pid no longer runs) until the
+// returned unlock closes it; a session that dies releases it. A held lock is a refusal naming
+// its holder.
+func (s *Ssh) Lock(ctx context.Context) (func(), error) {
+	who := "local " + os.Getenv("USER")
+	script := `umask 077
+R=` + q(s.Root) + `
+L="$R/deploy.lock"
+mkdir -p "$R" || exit 1
+info="held by $(id -un)@$(hostname 2>/dev/null || uname -n) (` + strings.ReplaceAll(who, "'", "") + `) since $(date -u +%Y-%m-%dT%H:%M:%SZ), pid $$"
+if command -v flock >/dev/null 2>&1; then
+  exec 9>>"$L"
+  flock -n 9 || { echo "busy $(cat "$L.info" 2>/dev/null)"; exit 0; }
+  echo "$info" > "$L.info"
+  echo locked
+  cat > /dev/null
+  rm -f "$L.info"
+  exit 0
+fi
+D="$L.d"
+if ! mkdir "$D" 2>/dev/null; then
+  op=$(sed -n 's/.*, pid \([0-9][0-9]*\)$/\1/p' "$D/info" 2>/dev/null)
+  if [ -n "$op" ] && kill -0 "$op" 2>/dev/null; then echo "busy $(cat "$D/info")"; exit 0; fi
+  rm -rf "$D"
+  mkdir "$D" 2>/dev/null || { echo "busy (another run is taking the lock)"; exit 0; }
+fi
+echo "$info" > "$D/info"
+echo locked
+cat > /dev/null
+rm -rf "$D"
+`
+	cmd := exec.Command("ssh", append(s.sshArgs(), "sh -c "+q(script))...)
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	outPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	var errb bytes.Buffer
+	cmd.Stderr = &errb
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("running ssh: %w", err)
+	}
+	line := make(chan string, 1)
+	go func() {
+		b := make([]byte, 0, 256)
+		one := make([]byte, 1)
+		for {
+			n, err := outPipe.Read(one)
+			if n == 1 && one[0] != '\n' {
+				b = append(b, one[0])
+				continue
+			}
+			if n == 1 || err != nil {
+				line <- string(b)
+				io.Copy(io.Discard, outPipe)
+				return
+			}
+		}
+	}()
+	var first string
+	select {
+	case first = <-line:
+	case <-ctx.Done():
+		cmd.Process.Kill()
+		cmd.Wait()
+		return nil, ctx.Err()
+	case <-time.After(60 * time.Second):
+		cmd.Process.Kill()
+		cmd.Wait()
+		return nil, fmt.Errorf("taking the deploy lock at %s timed out", s.Dest)
+	}
+	if first != "locked" {
+		in.Close()
+		werr := cmd.Wait()
+		if holder, ok := strings.CutPrefix(first, "busy "); ok || strings.HasPrefix(first, "busy") {
+			return nil, refuse("", "another deploy, rollback or restore of %s is running (the lock at %s/deploy.lock is %s): wait for it to finish", s.Env, s.Root, strings.TrimSpace(holder))
+		}
+		code := -1
+		if ee, ok := werr.(*exec.ExitError); ok {
+			code = ee.ExitCode()
+		}
+		return nil, &RemoteError{Dest: s.Dest, Code: code, Stderr: errb.String()}
+	}
+	return func() {
+		in.Close()
+		done := make(chan struct{})
+		go func() { cmd.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			cmd.Process.Kill()
+			<-done
+		}
+	}, nil
 }
 
 // ErrNotRunning is Stop's answer for a build that was not running (nothing was scheduled).

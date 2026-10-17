@@ -680,6 +680,36 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 		t.Errorf("the delayed stop fired although the build is current again: %v", err)
 	}
 	box.sh(t, fmt.Sprintf("echo %s > %q/current", id2, box.root))
+
+	// I3: a second run refuses while the lock is held, and goes ahead once it is released
+	unlock, err := s.Lock(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, out, errs = runDeploy(t, "production", dir)
+	if code != 1 || !strings.Contains(errs, "alder deploy: refused: another deploy, rollback or restore of production is running (the lock at "+box.root+"/deploy.lock is held by ") {
+		t.Errorf("deploy under the lock: %d\n%s%s", code, out, errs)
+	}
+	var so, se bytes.Buffer
+	if code := runRollbackTo([]string{"production", "--dir", dir}, &so, &se); code != 1 || !strings.Contains(se.String(), "another deploy, rollback or restore") {
+		t.Errorf("rollback under the lock: %d %s", code, se.String())
+	}
+	unlock()
+	again, err := s.Lock(ctx)
+	if err != nil {
+		t.Fatalf("the lock was not released: %v", err)
+	}
+	again()
+	// I8: an environment file that turns on development mode is refused
+	box.sh(t, fmt.Sprintf("echo ALDER_DEV=1 >> %q/env", box.root))
+	if code, out, errs = runDeploy(t, "production", dir); code != 1 || !strings.Contains(errs, "sets ALDER_DEV: development mode") {
+		t.Errorf("ALDER_DEV: %d\n%s%s", code, out, errs)
+	}
+	box.sh(t, fmt.Sprintf("sed -i.bak '/ALDER_DEV/d' %q/env", box.root))
+	// I5: what the deploy writes is the deploy user's
+	if modes := box.sh(t, fmt.Sprintf("cd %q && ls -ld builds | cut -c1-10; ls -l builds/%s/run builds/%s/backup.db | cut -c1-10", box.root, id2, id2)); modes != "drwxr-x---\n-rw-------\n-rwx------\n" {
+		t.Errorf("modes:\n%s", modes)
+	}
 	if err := s.Stop(ctx, id1, 0); err != nil {
 		t.Fatal(err)
 	}

@@ -384,3 +384,41 @@ func TestMakePlan(t *testing.T) {
 		t.Errorf("%+v %v", p, err)
 	}
 }
+
+// preflightTarget is a fake target whose Preflight fails and whose Lock records itself.
+type preflightTarget struct {
+	fakeTarget
+	preflight error
+}
+
+func (p *preflightTarget) Preflight(context.Context) error { p.call("preflight"); return p.preflight }
+func (p *preflightTarget) Lock(context.Context) (func(), error) {
+	p.call("lock")
+	return func() { p.call("unlock") }, nil
+}
+
+// I3, I4: the run holds the target's lock from after Connect to the end, and Preflight runs
+// before anything is uploaded (its refusal leaves builds/ untouched).
+func TestDeploy_LockAndPreflight(t *testing.T) {
+	dir, live := appWithDrop(t)
+	var out bytes.Buffer
+	f := &preflightTarget{fakeTarget: fakeTarget{live: live}, preflight: refuse("", "Caddy is not installed")}
+	o := options(t, dir, &out)
+	o.AllowDataLoss = true
+	_, err := Deploy(context.Background(), o, GateResult{Check: "ok"}, f, nil)
+	if err == nil || !strings.Contains(err.Error(), "Caddy is not installed") {
+		t.Fatalf("err = %v", err)
+	}
+	if got := strings.Join(f.calls, "|"); got != "connect|lock|requires SMTP_URL,ALDER_SECRET|schema|preflight|unlock" {
+		t.Errorf("calls %s", got)
+	}
+	// a dry run takes no lock
+	f = &preflightTarget{fakeTarget: fakeTarget{live: live}}
+	o.DryRun = true
+	if _, err := Deploy(context.Background(), o, GateResult{Check: "ok"}, f, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(f.calls, "|"); got != "connect|requires SMTP_URL,ALDER_SECRET|schema" {
+		t.Errorf("dry run calls %s", got)
+	}
+}

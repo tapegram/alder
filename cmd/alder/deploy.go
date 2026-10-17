@@ -701,6 +701,16 @@ func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 		return fail(2, "%v", err)
 	}
 	defer t.Close()
+	if _, err := t.Connect(ctx); err != nil {
+		return fail(1, "%v", err)
+	}
+	if l, ok := t.(deploy.Locker); ok {
+		unlock, err := l.Lock(ctx)
+		if err != nil {
+			return fail(1, "%v", err)
+		}
+		defer unlock()
+	}
 	if err := t.Restore(ctx, file); err != nil {
 		return fail(1, "%v", err)
 	}

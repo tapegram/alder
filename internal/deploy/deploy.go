@@ -94,6 +94,13 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 		if plat, err = t.Connect(ctx); err != nil {
 			return res, err
 		}
+		if l, ok := t.(Locker); ok && !o.DryRun {
+			unlock, err := l.Lock(ctx)
+			if err != nil {
+				return res, err
+			}
+			defer unlock()
+		}
 		if current, err = t.Current(ctx); err != nil {
 			return res, err
 		}
@@ -219,6 +226,11 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 		fmt.Fprintf(w, "build %s is current but not running: starting it again\n", id)
 	}
 
+	if p, ok := t.(Preflighter); ok {
+		if err := p.Preflight(ctx); err != nil {
+			return res, err
+		}
+	}
 	fmt.Fprintln(w, "ship")
 	if !restart {
 		if err := t.Upload(ctx, dir, id); err != nil {
@@ -379,6 +391,13 @@ func Rollback(ctx context.Context, t Target, o RollbackOptions) (string, error) 
 	if _, err := t.Connect(ctx); err != nil {
 		return "", err
 	}
+	if l, ok := t.(Locker); ok {
+		unlock, err := l.Lock(ctx)
+		if err != nil {
+			return "", err
+		}
+		defer unlock()
+	}
 	current, err := t.Current(ctx)
 	if err != nil {
 		return "", err
@@ -459,6 +478,11 @@ func Rollback(ctx context.Context, t Target, o RollbackOptions) (string, error) 
 		line(w, "schema", "MISMATCH", "--allow-schema-mismatch: "+why)
 	} else {
 		line(w, "schema", "ok", "the live schema is the build's")
+	}
+	if p, ok := t.(Preflighter); ok {
+		if err := p.Preflight(ctx); err != nil {
+			return "", err
+		}
 	}
 	port, err := t.Start(ctx, to)
 	if err != nil {

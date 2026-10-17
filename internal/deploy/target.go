@@ -79,6 +79,19 @@ type Schema struct {
 // before Migrate.
 type DataLossAllower interface{ AllowDataLoss(bool) }
 
+// Locker is a Target that serializes the runs that change it (deploy, rollback, restore): Lock
+// refuses (a *Refusal naming the holder) while another run holds it; unlock releases it.
+type Locker interface {
+	Lock(ctx context.Context) (unlock func(), err error)
+}
+
+// Preflighter is a Target that prepares what it needs to run a build (a service manager's
+// unit, a proxy) before anything is uploaded, so a box that cannot run it refuses with
+// nothing changed.
+type Preflighter interface {
+	Preflight(ctx context.Context) error
+}
+
 // Platform is the GOOS and GOARCH the target runs.
 type Platform struct{ OS, Arch string }
 
