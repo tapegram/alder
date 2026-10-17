@@ -2,7 +2,9 @@
 # deploy_docker_test.go): Debian with sshd, curl and tar, a user `deploy` whose key the test
 # copies in after the container starts, and /srv owned by it. No systemd runs in a container,
 # so the target runs each build as a background process with a pid file; no Caddy either: the
-# tests declare `proxy: None`.
+# tests declare `proxy: None`, or run the fake Caddy (testdata/deploy/fakecaddy, copied in by
+# deploy_caddy_test.go, its public port 18443 published). CI's deploy-systemd job runs systemd
+# and a real Caddy on the runner itself.
 FROM debian:bookworm-slim
 RUN apt-get update \
  && apt-get install -y --no-install-recommends openssh-server curl ca-certificates \

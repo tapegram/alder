@@ -326,6 +326,42 @@ automatically. A wildcard domain (`*.preview.example.com`) needs a
 certificate by DNS challenge, which `alder deploy` does not set up:
 give Caddy a DNS provider, or use one name per preview.
 
+### Caddy
+
+With `proxy: Caddy` the target talks to Caddy only through its admin
+API (`http://127.0.0.1:2019`; `ALDER_DEPLOY_CADDY_ADMIN` names another
+address): one route per environment, in a server named `alder` that
+listens on `:443`, its upstream changed at each switch. A Caddy whose
+admin API already answers is used as it is; one that is missing is
+installed. Three things follow, and they matter most for a box that
+already ran Caddy before alder came:
+
+- **The routes live in Caddy's running configuration**, not in a
+  Caddyfile. When alder installs Caddy it adds a systemd drop-in
+  (`/etc/systemd/system/caddy.service.d/alder.conf`) that starts Caddy
+  with `--resume`, so a restart reloads the last configuration, routes
+  included. A Caddy alder did not install has no such drop-in: restarted
+  from its Caddyfile, it forgets alder's routes and the app is
+  unreachable until the next deploy or rollback sets the route again.
+  Add `--resume` to that Caddy's command line yourself, or deploy again
+  after each restart.
+- **A server of your own on `:443`** (a Caddyfile site with a domain is
+  one) conflicts with the `alder` server: the switch fails, with Caddy's
+  error, and the previous build keeps serving. Give the app its own box,
+  or use `proxy: None` behind your proxy.
+- **The admin API answers every user of the box**: anyone who can run
+  `curl` there can change Caddy's routes. That is Caddy's default; on a
+  box shared with people you do not trust, put the admin API on a Unix
+  socket only root can open (Caddy's `admin` option) and run the deploy
+  as root.
+
+alder's own tests drive the Caddy path against a fake Caddy (the admin
+calls the target makes, and a proxy to the last route's upstream) with
+an availability monitor that asks the public address which build
+answers ten times a second; CI's `deploy-systemd` job runs the real
+thing, systemd units and a Caddy the target installs, on a GitHub
+runner.
+
 ## What the gate refuses, and why
 
 The gate is fixed: the declaration can raise the floor or add checks,
