@@ -1306,8 +1306,12 @@ remembers the tab chosen last, so the next answer opens on it again. Its tabs:
 - SQL: each statement with its arguments, time and the rows it wrote or read.
   A statement that ran more than once is flagged as a duplicate: the same
   select run per row is the mark of a missing join or a query inside a loop.
-  One statement that a single step ran once per id, each time with other
-  arguments (a bulk action), is labelled `x3 (bulk)` instead.
+  One statement run once per id under a single `Task.all` (a bulk action,
+  each delete its own step), each time with other arguments, is labelled
+  `x3 (bulk)` instead; a select per row outside a `Task.all` is still the
+  flagged kind. Statements are counted per answer: the session's user
+  selected by a message and again by the page it redirects to is not a
+  duplicate.
 - Answer: page, rerender, redirect, not found, or an error with its text.
 - Patches: the events the answer sent (body, title, history, toast, panel).
 - History: the last 20 requests of this browser tab, newest first. The panel
