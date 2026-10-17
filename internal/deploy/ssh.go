@@ -647,7 +647,14 @@ func (s *Ssh) Backup(ctx context.Context, id string) (string, error) {
 		if err != nil || !have {
 			return "", err
 		}
-		at := s.DB.Now().UTC().Truncate(time.Second).Format(time.RFC3339)
+		// the point in time is the next whole second (Turso's restore takes seconds), and nothing
+		// is migrated before it has passed: every write before the backup is at or before it,
+		// every change the migrations make after it
+		next := s.DB.Now().UTC().Truncate(time.Second).Add(time.Second)
+		if d := time.Until(next); d > 0 && d <= time.Second {
+			time.Sleep(d + 50*time.Millisecond)
+		}
+		at := next.Format(time.RFC3339)
 		_, err = s.run(ctx, `id=`+q(id)+`
 printf '%s %s\n' `+q(at)+` `+q(s.DB.SharedName())+` > "$R/builds/$id/backup.pitr"
 cat "$R/current" > "$R/builds/$id/backup.of" 2>/dev/null

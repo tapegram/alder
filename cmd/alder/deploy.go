@@ -25,6 +25,7 @@ import (
 	"alder/internal/ir"
 	"alder/internal/version"
 	"alder/rt/backup"
+	"alder/rt/db"
 )
 
 // The usage lines of the deploy commands (chapter 16).
@@ -33,7 +34,7 @@ const (
 	statusUsage   = "usage: alder status <env> [dir] [--host name]"
 	rollbackUsage = "usage: alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup [--yes]]"
 	logsUsage     = "usage: alder logs <env> [dir] [--host name] [-f]"
-	restoreUsage  = "usage: alder restore <env> [--from url] [--to time] [--out file.db] [--dir dir] [--yes]"
+	restoreUsage  = "usage: alder restore <env> [--silo key:id] [--from url] [--to time] [--out file.db] [--dir dir] [--yes]"
 )
 
 // Two knobs for tests and impatient operators, read from the environment: how long the previous
@@ -672,7 +673,7 @@ func runLogsTo(args []string, stdout, stderr io.Writer) int {
 // backup or the target fails, 2 for usage errors.
 func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 	var pos []string
-	dir, from, toText, out, yes := ".", "", "", "", false
+	dir, from, toText, out, yes, silo := ".", "", "", "", false, ""
 	flag := func(i *int, name string) (string, bool) {
 		a := args[*i]
 		if a == name && *i+1 < len(args) {
@@ -693,6 +694,8 @@ func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 			toText = v
 		} else if v, ok := flag(&i, "--out"); ok {
 			out = v
+		} else if v, ok := flag(&i, "--silo"); ok {
+			silo = v
 		} else if args[i] == "--yes" {
 			yes = true
 		} else if strings.HasPrefix(args[i], "-") {
@@ -729,6 +732,20 @@ func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 	if !ok {
 		return fail(2, "App's `deploy` has no environment `%s` (it declares %s)", pos[0], strings.Join(envNames(r.decl), ", "))
 	}
+	var siloKey, siloValue string
+	if silo != "" {
+		var ok bool
+		siloKey, siloValue, ok = strings.Cut(silo, ":")
+		if !ok || !slices.Contains(r.silos, siloKey) || siloValue == "" {
+			return fail(2, "bad --silo %q: write <key>:<id> with one of the app's silo keys (%s)", silo, strings.Join(r.silos, ", "))
+		}
+		if tgt.Kind != "ssh" && out == "" {
+			return fail(2, "--silo restores a silo at an Ssh environment; write it to a file with --out")
+		}
+	}
+	if tgt.Kind == "ssh" && tgt.Database != nil {
+		return restoreTurso(r, pos[0], tgt, dir, siloKey, siloValue, from, toText, to, out, yes, stdout, stderr)
+	}
 	if from == "" {
 		if r.decl.Backup == nil {
 			return fail(2, "the declaration has no `backup` location: pass --from s3://bucket/prefix (or a directory)")
@@ -751,11 +768,20 @@ func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 	file := filepath.Join(tmpDir, "app.db")
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	res, err := backup.Restore(ctx, from, to, file)
+	var res backup.Restored
+	if silo != "" {
+		res, err = backup.RestoreSilo(ctx, from, siloKey, strings.TrimSuffix(db.SiloFileName(siloValue), ".db"), to, file)
+	} else {
+		res, err = backup.Restore(ctx, from, to, file)
+	}
 	if err != nil {
 		return fail(1, "%v", err)
 	}
-	fmt.Fprintf(stdout, "restored generation %s: its snapshot and %d WAL segments, as of %s\n", res.Generation, res.Segments, res.At.UTC().Format(time.RFC3339))
+	what := ""
+	if silo != "" {
+		what = "silo " + siloKey + "/" + siloValue + "'s "
+	}
+	fmt.Fprintf(stdout, "restored %sgeneration %s: its snapshot and %d WAL segments, as of %s\n", what, res.Generation, res.Segments, res.At.UTC().Format(time.RFC3339))
 	if out != "" {
 		b, err := os.ReadFile(file)
 		if err == nil {
@@ -774,6 +800,9 @@ func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 	defer t.Close()
 	if !yes {
 		question := fmt.Sprintf("replace the database at %s with this copy (the current one is kept beside it)? type yes: ", t.Describe())
+		if silo != "" {
+			question = fmt.Sprintf("replace silo %s/%s's database at %s with this copy (the current one is kept beside it; every build restarts)? type yes: ", siloKey, siloValue, t.Describe())
+		}
 		if !confirm(question, stdout) {
 			return fail(2, "not confirmed: nothing was replaced (pass --yes to confirm without a terminal)")
 		}
@@ -788,11 +817,74 @@ func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 		}
 		defer unlock()
 	}
+	if silo != "" {
+		s, ok := t.(*deploy.Ssh)
+		if !ok {
+			return fail(2, "--silo restores a silo at an Ssh environment")
+		}
+		kept, err := s.RestoreSilo(ctx, siloKey, siloValue, file, to, stdout)
+		if err != nil {
+			return fail(1, "%v", err)
+		}
+		fmt.Fprintf(stdout, "replaced silo %s/%s's database at %s (the previous one is kept as %s)\n", siloKey, siloValue, t.Describe(), kept)
+		return 0
+	}
 	kept, err := t.Restore(ctx, file)
 	if err != nil {
 		return fail(1, "%v", err)
 	}
 	fmt.Fprintf(stdout, "replaced the database at %s (the previous one is kept beside it as %s)\n", t.Describe(), kept)
+	return 0
+}
+
+// restoreTurso is `alder restore <env> [--silo key:id] --to <time>` for an environment whose
+// database is on Turso: Turso's point-in-time recovery, not a stream. The shared database is
+// copied as it was then and becomes the app's (the replaced one kept at Turso); a silo's
+// database is put back in place (Turso.RestoreChild). --from and --out do not apply.
+func restoreTurso(r *deployRunner, env string, tgt ir.Target, dir, siloKey, siloValue, from, toText string, to time.Time, out string, yes bool, stdout, stderr io.Writer) int {
+	fail := func(code int, format string, a ...any) int {
+		fmt.Fprintf(stderr, "alder restore: "+format+"\n", a...)
+		return code
+	}
+	switch {
+	case from != "" || out != "":
+		return fail(2, "environment %s's database is on Turso: it is restored to a point in time with --to, not from a stream (--from) or into a file (--out)", env)
+	case toText == "":
+		return fail(2, "environment %s's database is on Turso: give the point in time to restore with --to (UTC, such as 2026-10-17T10:00:00Z)", env)
+	}
+	t, _, err := targetFor(r, env, tgt, dir, stdout, stderr)
+	if err != nil {
+		return fail(2, "%v", err)
+	}
+	defer t.Close()
+	s := t.(*deploy.Ssh)
+	what := "the database " + s.DB.Describe()
+	if siloKey != "" {
+		what = "silo " + siloKey + "/" + siloValue + "'s database"
+	}
+	if !yes && !confirm(fmt.Sprintf("put %s back as it was at %s (the current one is kept at Turso; every build restarts)? type yes: ", what, to.UTC().Format(time.RFC3339)), stdout) {
+		return fail(2, "not confirmed: nothing was replaced (pass --yes to confirm without a terminal)")
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if _, err := s.Connect(ctx); err != nil {
+		return fail(1, "%v", err)
+	}
+	unlock, err := s.Lock(ctx)
+	if err != nil {
+		return fail(1, "%v", err)
+	}
+	defer unlock()
+	var kept string
+	if siloKey != "" {
+		kept, err = s.RestoreSilo(ctx, siloKey, siloValue, "", to, stdout)
+	} else {
+		kept, err = s.RestorePointInTime(ctx, to, stdout)
+	}
+	if err != nil {
+		return fail(1, "%v", err)
+	}
+	fmt.Fprintf(stdout, "put %s back as it was at %s (the previous one is kept: %s)\n", what, to.UTC().Format(time.RFC3339), kept)
 	return 0
 }
 

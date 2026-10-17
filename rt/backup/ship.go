@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -144,18 +145,30 @@ func NewShipper(path string, bucket Bucket, log func(level, msg string)) (*Shipp
 // Start opens the location loc and ships the database at path every interval until the
 // returned stop is called (which ships once more and closes). A database that does not exist
 // yet is waited for, and so is the shipper of another process (the build being replaced).
+//
+// The silos beside the database (an app with `silo` declarations: <dir>/silos/<key>/<value>.db)
+// are shipped too, each by a shipper of its own (silos.go). A database on Turso (libsql://…)
+// is not a file: its backup is Turso's point-in-time recovery, and Start ships nothing.
 func Start(path, loc string, interval time.Duration, log func(level, msg string)) (stop func(), err error) {
+	if log == nil {
+		log = func(string, string) {}
+	}
+	if strings.HasPrefix(path, "libsql://") {
+		log("info", "backup: the database is on Turso, whose point-in-time recovery is its backup: "+EnvURL+" is not used")
+		return func() {}, nil
+	}
 	b, err := OpenBucket(loc)
 	if err != nil {
 		return nil, err
 	}
-	if log == nil {
-		log = func(string, string) {}
-	}
 	if interval <= 0 {
 		interval = DefaultInterval
 	}
-	stopc, done := make(chan struct{}), make(chan struct{})
+	stopc, done, silosDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(silosDone)
+		shipSilos(filepath.Dir(path), b, interval, log, stopc)
+	}()
 	go func() {
 		defer close(done)
 		var s *Shipper
@@ -195,7 +208,7 @@ func Start(path, loc string, interval time.Duration, log func(level, msg string)
 	}()
 	var once sync.Once
 	return func() {
-		once.Do(func() { close(stopc); <-done })
+		once.Do(func() { close(stopc); <-done; <-silosDone })
 	}, nil
 }
 

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"alder/internal/ir"
+	"alder/rt/db"
 )
 
 // DefaultKeep is how many builds a target keeps when the declaration says nothing.
@@ -798,7 +799,66 @@ func Status(ctx context.Context, t Target, w io.Writer) error {
 	default:
 		fmt.Fprintf(w, "backup   %s (%s)\n", info.LastBackup.UTC().Format(time.RFC3339), info.BackupFrom)
 	}
+	if ss, ok := t.(SiloStatuser); ok && current != "" {
+		lines, err := ss.SiloStatus(ctx)
+		if err != nil {
+			fmt.Fprintf(w, "silos    unknown: %v\n", firstLine(err.Error()))
+		} else {
+			SiloTable(w, lines)
+		}
+	}
 	return nil
+}
+
+// SiloStatuser is a Target that can list the states of the app's silos (the current build's
+// --silo-status): `alder status` prints them as a table.
+type SiloStatuser interface {
+	SiloStatus(ctx context.Context) ([]db.SiloStatus, error)
+}
+
+// SiloTable writes the silos' states: per key, how many are ok, migrating, pending (data
+// loss), ahead, failed and orphaned, then each one that is not ok with why (20 at most).
+func SiloTable(w io.Writer, lines []db.SiloStatus) {
+	if lines == nil {
+		return
+	}
+	if len(lines) == 0 {
+		fmt.Fprintln(w, "silos    none yet")
+		return
+	}
+	var keys []string
+	count := map[string]map[db.SiloState]int{}
+	for _, l := range lines {
+		if count[l.Key] == nil {
+			count[l.Key] = map[db.SiloState]int{}
+			keys = append(keys, l.Key)
+		}
+		count[l.Key][l.State]++
+	}
+	for i, k := range keys {
+		c := count[k]
+		row := fmt.Sprintf("%s: %d ok, %d migrating, %d pending (data loss), %d ahead, %d failed", k, c[db.SiloOK], c[db.SiloMigrating], c[db.SiloDataLoss], c[db.SiloAhead], c[db.SiloFailed])
+		if n := c[db.SiloOrphaned]; n > 0 {
+			row += fmt.Sprintf(", %d orphaned (`alder silos prune`)", n)
+		}
+		head := "silos    "
+		if i > 0 {
+			head = "         "
+		}
+		fmt.Fprintln(w, head+row)
+	}
+	shown := 0
+	for _, l := range lines {
+		if l.State == db.SiloOK {
+			continue
+		}
+		if shown == 20 {
+			fmt.Fprintln(w, "           … and more: the build's --silo-status lists every one")
+			break
+		}
+		shown++
+		fmt.Fprintf(w, "           %s/%s  %s: %s\n", l.Key, l.ID, l.State, l.Detail)
+	}
 }
 
 func buildNote(b Build) string {

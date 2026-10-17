@@ -3,7 +3,6 @@ package db
 import (
 	"bytes"
 	"context"
-	"encoding/base32"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,9 +37,9 @@ import (
 // Every request carries `Authorization: Bearer $TURSO_API_TOKEN`.
 //
 // Names. The shared database is the declaration's app ("blog"); a silo key's schema database is
-// "<app>-<key>-schema"; a silo's database is "<app>-<key>-<value>", its value written in
-// lowercase base32 without padding: Turso's names are lowercase letters, digits and dashes, and
-// an id's text (base64url) has capitals and `_`, so the encoding keeps two ids apart.
+// "<app>-<key>-schema"; a silo's database is "<app>-<key>-<value>", its value written as its
+// silo file is named (SiloFileName: lowercase base32hex, no padding): Turso's names are
+// lowercase letters, digits and dashes, and an id's text (base64url) has capitals and `_`.
 
 // The runtime's Turso settings, read from the environment (the Ssh target's run script sets them
 // for a `database: Turso "org" { … }` environment; TURSO_API_TOKEN is the operator's, in the
@@ -386,14 +385,14 @@ func TursoName(name string) error {
 	return nil
 }
 
-var siloValueEnc = base32.StdEncoding.WithPadding(base32.NoPadding)
-
 // SchemaName is the schema database of silo key: "<app>-<key>-schema".
 func SchemaName(app, key string) string { return app + "-" + strings.ToLower(key) + "-schema" }
 
-// ChildName is the database of silo key's value: "<app>-<key>-<value in lowercase base32>".
+// ChildName is the database of silo key's value: "<app>-<key>-<the value as its silo file is
+// named, without .db>" (SiloFileName: lowercase base32hex, so two ids that differ in case are
+// two databases).
 func ChildName(app, key, value string) string {
-	return app + "-" + strings.ToLower(key) + "-" + strings.ToLower(siloValueEnc.EncodeToString([]byte(value)))
+	return app + "-" + strings.ToLower(key) + "-" + strings.TrimSuffix(SiloFileName(value), ".db")
 }
 
 // ChildValue is the silo value database name holds (ok false for a name that is not one of
@@ -403,11 +402,7 @@ func ChildValue(app, key, name string) (string, bool) {
 	if !ok || enc == "schema" {
 		return "", false
 	}
-	b, err := siloValueEnc.DecodeString(strings.ToUpper(enc))
-	if err != nil || len(b) == 0 {
-		return "", false
-	}
-	return string(b), true
+	return SiloValue(enc + ".db")
 }
 
 // openRemote is ALDER_DB=libsql://host as a Store: its token is ALDER_DB_TOKEN, or minted

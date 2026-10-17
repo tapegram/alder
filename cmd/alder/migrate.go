@@ -48,6 +48,9 @@ func runMigrateTo(args []string, stdout, stderr io.Writer) (code int) {
 			code = 2
 		}
 	}()
+	if len(args) >= 2 && args[0] == "silos" && !strings.HasPrefix(args[1], "-") {
+		return runMigrateSilosTo(args[1:], stdout, stderr) // `alder migrate silos <env>`
+	}
 	dir, name, dry, haveDir := ".", "", false, false
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {

@@ -88,6 +88,8 @@ func main() {
 		os.Exit(runLogsTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "restore":
 		os.Exit(runRestoreTo(os.Args[2:], os.Stdout, os.Stderr))
+	case "silos":
+		os.Exit(runSilosTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "ci":
 		os.Exit(runCiTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "version":
@@ -112,7 +114,7 @@ func main() {
 func usage() { usageTo(os.Stderr) }
 
 func usageTo(w io.Writer) {
-	fmt.Fprintln(w, "usage: alder new <name> | alder new page|table|form|msg|capability|admin … | alder edit table|page|session … | alder remove page|table … | alder fill <Module>.<decl> - | alder regen admin | alder check [dir] [--json] | alder build [--emit] [dir] | alder run [dir] | alder dump [--tokens|--ast|--ir] <file.alder | dir> | alder eval [dir] [--run] [--json] [--module Name] <expr | -> | alder test [dir] [-run re] [-timeout d] [--json] [--mutate [--min R]] | alder repl [dir] [--module Name] | alder migrate [dir] [--name slug] [--dry-run] | alder deploy <env> [dir] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json] | alder status|logs <env> | alder rollback <env> [<id>] | alder restore <env> [--from url] [--to time] [--out file] | alder ci init [dir] | alder explain <code> | alder version")
+	fmt.Fprintln(w, "usage: alder new <name> | alder new page|table|form|msg|capability|admin … | alder edit table|page|session … | alder remove page|table … | alder fill <Module>.<decl> - | alder regen admin | alder check [dir] [--json] | alder build [--emit] [dir] | alder run [dir] | alder dump [--tokens|--ast|--ir] <file.alder | dir> | alder eval [dir] [--run] [--json] [--module Name] <expr | -> | alder test [dir] [-run re] [-timeout d] [--json] [--mutate [--min R]] | alder repl [dir] [--module Name] | alder migrate [dir] [--name slug] [--dry-run] | alder migrate silos <env> [--allow-data-loss] | alder deploy <env> [dir] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json] | alder status|logs <env> | alder rollback <env> [<id>] | alder restore <env> [--silo key:id] [--from url] [--to time] [--out file] | alder silos prune <env> [--yes] | alder ci init [dir] | alder explain <code> | alder version")
 }
 
 func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {

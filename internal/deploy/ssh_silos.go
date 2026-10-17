@@ -274,7 +274,7 @@ func (s *Ssh) RestoreSilo(ctx context.Context, key, value, file string, at time.
 			return kept, err
 		}
 	} else {
-		rel := "db/silos/" + key + "/" + value + ".db"
+		rel := "db/silos/" + key + "/" + db.SiloFileName(value)
 		fh, err := os.Open(file)
 		if err != nil {
 			return "", err
