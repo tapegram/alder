@@ -176,7 +176,28 @@ alive() {
   [ -n "$p" ] && kill -0 "$p" 2>/dev/null || return 1
   if [ -r "/proc/$p/cmdline" ]; then tr '\0' ' ' < "/proc/$p/cmdline" | grep -q "builds/$1/"; fi
 }
+` + s.stopNow() + `
+# cancel_later ID: a pending stop-later of build ID (a drain in progress) no longer fires
+cancel_later() {
+  if [ -f "$R/builds/$1/stop-later.pid" ]; then kill "$(cat "$R/builds/$1/stop-later.pid")" 2>/dev/null; rm -f "$R/builds/$1/stop-later.pid"; fi
+}
 `
+}
+
+// stopNow is the shell function stopnow ID: SIGTERM (the app lets its requests finish, 5 s at
+// most), then SIGKILL after 40 s; with systemd, the unit is stopped and disabled.
+func (s *Ssh) stopNow() string {
+	if s.sup != "process" && s.sup != "" {
+		return `stopnow() { $SCTL disable "$U@$1.service" >/dev/null 2>&1; $SCTL stop "$U@$1.service" >/dev/null 2>&1; return 0; }`
+	}
+	return `stopnow() {
+  sp=$(cat "$R/builds/$1/pid" 2>/dev/null) || return 0
+  alive "$1" || { rm -f "$R/builds/$1/pid"; return 0; }
+  kill -TERM "$sp" 2>/dev/null
+  si=0; while alive "$1" && [ $si -lt 200 ]; do sleep 0.2; si=$((si + 1)); done
+  alive "$1" && kill -KILL "$sp" 2>/dev/null
+  rm -f "$R/builds/$1/pid"; return 0
+}`
 }
 
 // Connect checks the connection and reads the user, the platform and the supervisor.
@@ -314,7 +335,7 @@ cur=$(cat "$R/current" 2>/dev/null)
 for d in */; do
   d=${d%/}; [ -d "$d" ] || continue
   run=no; alive "$d" && run=yes
-  echo "@@build $d $(date -r "$d" +%s 2>/dev/null || echo 0) $run"
+  echo "@@build $d $(date -r "$d" +%s 2>/dev/null || echo 0) $run $(cat "$d/backup.of" 2>/dev/null)"
   cat "$d/deployed.json" 2>/dev/null
 done
 exit 0
@@ -327,11 +348,14 @@ exit 0
 	for _, chunk := range strings.Split(out, "@@build ")[1:] {
 		head, body, _ := strings.Cut(chunk, "\n")
 		f := strings.Fields(head)
-		if len(f) != 3 || !idRe.MatchString(f[0]) {
+		if len(f) < 3 || !idRe.MatchString(f[0]) {
 			continue
 		}
 		secs, _ := strconv.ParseInt(f[1], 10, 64)
 		b := Build{ID: f[0], Modified: time.Unix(secs, 0), Running: f[2] == "yes", Current: f[0] == cur}
+		if len(f) > 3 && idRe.MatchString(f[3]) {
+			b.BackupOf = f[3]
+		}
 		if strings.TrimSpace(body) != "" {
 			var r Record
 			if json.Unmarshal([]byte(body), &r) == nil {
@@ -383,6 +407,8 @@ id=`+q(id)+`
 mkdir -p "$R/db"; chmod 700 "$R/db"
 if [ -d "$R/builds/$id" ]; then
   if alive "$id"; then echo "build $id is running" >&2; exit 1; fi
+  # an earlier upload of the same build: its record and pre-migration copy stay
+  for f in deployed.json backup.db backup.of log; do [ -f "$R/builds/$id/$f" ] && mv "$R/builds/$id/$f" "$R/builds/$id.part/$f"; done
   rm -rf "$R/builds/$id"
 fi
 mv "$R/builds/$id.part" "$R/builds/$id"
@@ -461,7 +487,10 @@ func tarDir(w io.Writer, dir string) error {
 func (s *Ssh) Backup(ctx context.Context, id string) (string, error) {
 	out, err := s.run(ctx, `id=`+q(id)+`
 [ -f "$R/db/app.db" ] || exit 0
-"$R/builds/$id/run" --backup-to "$R/builds/$id/backup.db" >&2 && echo "backup=builds/$id/backup.db"
+"$R/builds/$id/run" --backup-to "$R/builds/$id/backup.db" >&2 || exit 1
+chmod 600 "$R/builds/$id/backup.db"
+cat "$R/current" > "$R/builds/$id/backup.of" 2>/dev/null
+echo "backup=builds/$id/backup.db"
 `)
 	if err != nil {
 		return "", err
@@ -509,6 +538,15 @@ $SCTL start "$U@$id.service" || { echo exited; tail -n 40 "$B/log"; exit 0; }
 	}
 	out, err := s.run(ctx, `id=`+q(id)+`
 B="$R/builds/$id"
+cancel_later "$id"
+if alive "$id"; then
+  # still running (a rollback inside the drain window): keep it when it listens where wanted
+  a=$(cat "$B/addr" 2>/dev/null); p=${a##*:}
+  case "$p" in ''|0|*[!0-9]*) ;; *)
+    if [ `+q(addr)+` = 127.0.0.1:0 ] || [ `+q(addr)+` = "$a" ]; then echo "port=$p"; exit 0; fi;;
+  esac
+  stopnow "$id"
+fi
 echo `+q(addr)+` > "$B/addr"
 touch "$B/log"
 off=$(wc -c < "$B/log" | tr -d ' ')
@@ -738,45 +776,45 @@ func CaddyRoute(id, domain string, port int) string {
 	return string(b)
 }
 
-// Stop stops build id: after drain in the background (builds/<id>/stop-later; the command
-// does not wait), or now.
+// ErrNotRunning is Stop's answer for a build that was not running (nothing was scheduled).
+var ErrNotRunning = errors.New("not running")
+
+// Stop stops build id: after drain in the background (builds/<id>/stop-later, its pid in
+// stop-later.pid; the command does not wait), or now. The delayed stop does nothing when the
+// build is current again by then (a rollback inside the drain window), and Start cancels it.
+// A build that is not running is ErrNotRunning (with `proxy: None`, Switch stopped it already).
 func (s *Ssh) Stop(ctx context.Context, id string, drain time.Duration) error {
 	if drain <= 0 {
 		return s.stop(ctx, id)
 	}
-	later := "#!/bin/sh\n" + s.prelude() + "id=" + q(id) + "\nB=\"$R/builds/$id\"\nsleep " + strconv.Itoa(int(drain/time.Second)) + "\n" + s.stopBody()
-	_, err := s.run(ctx, `id=`+q(id)+`
+	later := "#!/bin/sh\n" + s.prelude() + "id=" + q(id) + "\nsleep " + strconv.Itoa(int(drain/time.Second)) + `
+[ "$(cat "$R/current" 2>/dev/null)" = "$id" ] && { rm -f "$R/builds/$id/stop-later.pid"; exit 0; }
+stopnow "$id"
+rm -f "$R/builds/$id/stop-later.pid"
+`
+	out, err := s.run(ctx, `id=`+q(id)+`
 B="$R/builds/$id"
+alive "$id" || { echo notrunning; exit 0; }
+cancel_later "$id"
 cat > "$B/stop-later" <<'ALDER_STOP_EOF'
 `+later+`ALDER_STOP_EOF
-chmod 755 "$B/stop-later"
+chmod 700 "$B/stop-later"
 (trap '' HUP; exec "$B/stop-later") >/dev/null 2>&1 < /dev/null &
+echo $! > "$B/stop-later.pid"
 `)
+	if err == nil && strings.TrimSpace(out) == "notrunning" {
+		return ErrNotRunning
+	}
 	return err
 }
 
-// stop stops build id now.
+// stop stops build id now (and cancels a pending stop-later of it).
 func (s *Ssh) stop(ctx context.Context, id string) error {
 	_, err := s.run(ctx, `id=`+q(id)+`
-B="$R/builds/$id"
-`+s.stopBody())
+cancel_later "$id"
+stopnow "$id"
+`)
 	return err
-}
-
-// stopBody stops build $id ($B its directory): SIGTERM (the app lets its requests finish, 5 s
-// at most), then SIGKILL after 40 s; with systemd, the unit is stopped and disabled.
-func (s *Ssh) stopBody() string {
-	if s.sup != "process" {
-		return `$SCTL disable "$U@$id.service" >/dev/null 2>&1; $SCTL stop "$U@$id.service" >/dev/null 2>&1; exit 0` + "\n"
-	}
-	return `p=$(cat "$B/pid" 2>/dev/null) || exit 0
-alive "$id" || { rm -f "$B/pid"; exit 0; }
-kill -TERM "$p" 2>/dev/null
-i=0; while alive "$id" && [ $i -lt 200 ]; do sleep 0.2; i=$((i + 1)); done
-alive "$id" && kill -KILL "$p" 2>/dev/null
-rm -f "$B/pid"
-exit 0
-`
 }
 
 // Record writes builds/<id>/deployed.json.
@@ -787,28 +825,82 @@ func (s *Ssh) Record(ctx context.Context, id string, rec []byte) error {
 	return err
 }
 
-// Prune removes the builds beyond the keep newest, except those in protect and those running.
+// Prune removes builds beyond keep: failed ones (never switched to) first, oldest first, then
+// deployed ones, oldest first. It never removes one in protect, one running, the current one,
+// the newest deployed one that is not current (the rollback target), or one whose pre-migration
+// copy (backup.db, of the build named in backup.of) a kept build needs for
+// `rollback --restore-backup`.
 func (s *Ssh) Prune(ctx context.Context, keep int, protect []string) ([]string, error) {
 	builds, err := s.Builds(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var gone []string
-	for i, b := range builds {
-		if i < keep || b.Running || b.Current || contains(protect, b.ID) {
-			continue
-		}
-		gone = append(gone, b.ID)
+	return s.removeBuilds(ctx, PrunePlan(builds, keep, protect))
+}
+
+// PrunePlan is the ids Prune removes from builds (newest first).
+func PrunePlan(builds []Build, keep int, protect []string) []string {
+	excess := len(builds) - keep
+	if excess <= 0 {
+		return nil
 	}
-	if len(gone) == 0 {
+	fixed := map[string]bool{}
+	for _, id := range protect {
+		fixed[id] = true
+	}
+	lastGood := false
+	for _, b := range builds {
+		if b.Running || b.Current {
+			fixed[b.ID] = true
+		}
+		if !lastGood && b.Record != nil && !b.Current {
+			fixed[b.ID], lastGood = true, true
+		}
+	}
+	var order []Build // the candidates: failed oldest first, then deployed oldest first
+	for _, failed := range []bool{true, false} {
+		for i := len(builds) - 1; i >= 0; i-- {
+			if b := builds[i]; !fixed[b.ID] && (b.Record == nil) == failed {
+				order = append(order, b)
+			}
+		}
+	}
+	gone := map[string]bool{}
+	for _, b := range order {
+		if len(gone) == excess {
+			break
+		}
+		gone[b.ID] = true
+	}
+	// a removed build's backup.db is the way back to the build it names: keep it while that one is kept
+	for _, b := range builds {
+		if gone[b.ID] && b.BackupOf != "" {
+			for _, k := range builds {
+				if k.ID == b.BackupOf && !gone[k.ID] {
+					delete(gone, b.ID)
+				}
+			}
+		}
+	}
+	var ids []string
+	for _, b := range order {
+		if gone[b.ID] {
+			ids = append(ids, b.ID)
+		}
+	}
+	return ids
+}
+
+func (s *Ssh) removeBuilds(ctx context.Context, ids []string) ([]string, error) {
+	if len(ids) == 0 {
 		return nil, nil
 	}
 	var sc strings.Builder
-	for _, id := range gone {
-		sc.WriteString(`rm -rf "$R/builds/"` + q(id) + "\n")
+	for _, id := range ids {
+		sc.WriteString(`cancel_later ` + q(id) + `; rm -rf "$R/builds/"` + q(id) + "\n")
 	}
-	_, err = s.run(ctx, sc.String())
-	return gone, err
+	_, err := s.run(ctx, sc.String())
+	return ids, err
 }
 
 func contains(xs []string, x string) bool {

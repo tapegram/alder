@@ -13,6 +13,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -202,33 +203,45 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 		fmt.Fprintf(w, "deployed %s to %s\n", id, o.Env)
 		return res, nil
 	}
+	// the current build again: nothing to ship when it runs; started again when it does not
+	restart := false
 	if id == current {
-		fmt.Fprintf(w, "build %s already serves %s: nothing to ship\n", id, o.Env)
-		return res, nil
+		for _, b := range builds {
+			if b.ID == id && !b.Running {
+				restart = true
+			}
+		}
+		if !restart {
+			fmt.Fprintf(w, "build %s already serves %s: nothing to ship\n", id, o.Env)
+			return res, nil
+		}
+		fmt.Fprintf(w, "build %s is current but not running: starting it again\n", id)
 	}
 
 	fmt.Fprintln(w, "ship")
-	if err := t.Upload(ctx, dir, id); err != nil {
-		return res, err
+	if !restart {
+		if err := t.Upload(ctx, dir, id); err != nil {
+			return res, err
+		}
+		line(w, "upload", "ok", "builds/"+id+"/")
+		backup, err := t.Backup(ctx, id)
+		if err != nil {
+			return res, fmt.Errorf("the backup before migrating: %w", err)
+		}
+		if backup != "" {
+			line(w, "backup", "ok", backup)
+		} else {
+			line(w, "backup", "ok", "no database yet")
+		}
+		rec.Backup = backup
+		out, err := t.Migrate(ctx, id)
+		if err != nil {
+			line(w, "migrate", "FAIL", "")
+			return res, refuse(lastLines(out, 20), "build %s's migrations did not apply: nothing was switched; %s", id, serving(current))
+		}
+		rec.Applied = appliedFrom(out)
+		line(w, "migrate", "ok", appliedNote(rec.Applied))
 	}
-	line(w, "upload", "ok", "builds/"+id+"/")
-	backup, err := t.Backup(ctx, id)
-	if err != nil {
-		return res, fmt.Errorf("the backup before migrating: %w", err)
-	}
-	if backup != "" {
-		line(w, "backup", "ok", backup)
-	} else {
-		line(w, "backup", "ok", "no database yet")
-	}
-	rec.Backup = backup
-	out, err := t.Migrate(ctx, id)
-	if err != nil {
-		line(w, "migrate", "FAIL", "")
-		return res, refuse(lastLines(out, 20), "build %s's migrations did not apply: nothing was switched; %s", id, serving(current))
-	}
-	rec.Applied = appliedFrom(out)
-	line(w, "migrate", "ok", appliedNote(rec.Applied))
 	port, err := t.Start(ctx, id)
 	if err != nil {
 		line(w, "start", "FAIL", "")
@@ -247,6 +260,11 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 		return res, fmt.Errorf("switching to build %s: %w", id, err)
 	}
 	line(w, "switch", "ok", fmt.Sprintf("current → %s (port %d)", id, port))
+	if restart {
+		res.Deployed = true
+		fmt.Fprintf(w, "started %s again on %s\n", id, o.Env)
+		return res, nil
+	}
 	now := o.Now().UTC().Truncate(time.Second)
 	rec.When, rec.Previous, rec.Port = &now, current, port
 	rec.By = "local " + o.User
@@ -258,13 +276,7 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 	}
 	res.Record, res.Deployed = rec, true
 	if current != "" {
-		if err := t.Stop(ctx, current, o.Drain); err != nil {
-			fmt.Fprintf(w, "warning: stopping build %s: %v\n", current, err)
-		} else if o.Drain > 0 {
-			line(w, "stop", "ok", fmt.Sprintf("build %s stops after %s", current, o.Drain))
-		} else {
-			line(w, "stop", "ok", "build "+current)
-		}
+		stopPrevious(ctx, t, current, o.Drain, w)
 	}
 	keep := o.Decl.Keep
 	if keep <= 0 {
@@ -278,6 +290,20 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 	}
 	fmt.Fprintf(w, "deployed %s to %s\n", id, o.Env)
 	return res, nil
+}
+
+// stopPrevious stops the build that served before a switch, after drain, and says so.
+func stopPrevious(ctx context.Context, t Target, id string, drain time.Duration, w io.Writer) {
+	switch err := t.Stop(ctx, id, drain); {
+	case errors.Is(err, ErrNotRunning):
+		line(w, "stop", "ok", "build "+id+" already stopped")
+	case err != nil:
+		fmt.Fprintf(w, "warning: stopping build %s: %v\n", id, err)
+	case drain > 0:
+		line(w, "stop", "ok", fmt.Sprintf("build %s stops after %s (unless it is current again by then)", id, drain))
+	default:
+		line(w, "stop", "ok", "build "+id)
+	}
 }
 
 // startRefusal is the refusal of a build that did not start or did not pass its health check:
@@ -448,9 +474,7 @@ func Rollback(ctx context.Context, t Target, o RollbackOptions) (string, error) 
 	}
 	line(w, "switch", "ok", fmt.Sprintf("current → %s (port %d)", to, port))
 	if current != "" {
-		if err := t.Stop(ctx, current, o.Drain); err != nil {
-			fmt.Fprintf(w, "warning: stopping build %s: %v\n", current, err)
-		}
+		stopPrevious(ctx, t, current, o.Drain, w)
 	}
 	fmt.Fprintf(w, "rolled back to %s\n", to)
 	return to, nil

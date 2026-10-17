@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -18,6 +20,7 @@ import (
 	"time"
 
 	"alder/internal/deploy"
+	"alder/internal/ir"
 
 	_ "modernc.org/sqlite"
 )
@@ -627,5 +630,60 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 	}
 	if kept := box.sh(t, "ls "+box.root+"/db"); !strings.Contains(kept, "app.db.before-restore-") {
 		t.Errorf("the previous database is not kept: %s", kept)
+	}
+}
+
+// C1: a rollback inside the drain window. The previous build's delayed stop does nothing once
+// that build is current again, and starting it again (what the rollback does) reuses the
+// running process and cancels the delayed stop.
+func TestDeploySsh_DrainRollback(t *testing.T) {
+	box := startBox(t)
+	dir := sshScaffold(t, box)
+	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %q/env", strings.Repeat("s", 32), box.root))
+	code, out, errs := runDeploy(t, "production", dir)
+	if code != 0 {
+		t.Fatalf("deploy: %d\n%s%s", code, out, errs)
+	}
+	id1 := deployedID(t, out)
+	appendTo(t, "demo/app/Home.alder", "\nversion : Int\nversion = 2\n")
+	if code, out, errs = runDeploy(t, "production", dir); code != 0 {
+		t.Fatalf("second deploy: %d\n%s%s", code, out, errs)
+	}
+	id2 := deployedID(t, out)
+	ctx := context.Background()
+	s := deploy.NewSsh("demo", "production", ir.Target{Kind: "ssh", Host: box.host, Path: box.root, Domain: "localhost"}, &ir.Deploy{Proxy: "None"})
+	if _, err := s.Connect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	port, err := s.Start(ctx, id1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// started again inside the window: the same process, the delayed stop cancelled
+	if err := s.Stop(ctx, id1, 2*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if again, err := s.Start(ctx, id1); err != nil || again != port {
+		t.Fatalf("start inside the drain window: port %d (was %d) %v", again, port, err)
+	}
+	time.Sleep(3 * time.Second)
+	if err := s.Health(ctx, id1, port, 3*time.Second); err != nil {
+		t.Errorf("the delayed stop fired after the build was started again: %v", err)
+	}
+	// current again when the delay ends: the delayed stop does nothing
+	if err := s.Stop(ctx, id1, 2*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	box.sh(t, fmt.Sprintf("echo %s > %q/current", id1, box.root))
+	time.Sleep(3 * time.Second)
+	if err := s.Health(ctx, id1, port, 3*time.Second); err != nil {
+		t.Errorf("the delayed stop fired although the build is current again: %v", err)
+	}
+	box.sh(t, fmt.Sprintf("echo %s > %q/current", id2, box.root))
+	if err := s.Stop(ctx, id1, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Stop(ctx, id1, 2*time.Second); !errors.Is(err, deploy.ErrNotRunning) {
+		t.Errorf("stopping a stopped build: %v", err)
 	}
 }

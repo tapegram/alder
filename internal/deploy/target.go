@@ -85,6 +85,7 @@ type Build struct {
 	Current  bool
 	Running  bool
 	Modified time.Time // when its directory was written
+	BackupOf string    // the build its backup.db was taken under ("" for none): the data `rollback --restore-backup` to that build puts back
 }
 
 // Info is the target's database and backup state.
