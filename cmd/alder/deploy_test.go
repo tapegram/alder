@@ -302,6 +302,20 @@ func TestDeploy_Usage(t *testing.T) {
 			t.Errorf("exit %d %s", code, e.String())
 		}
 	}
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"local", "--dir", dir}, "the declaration has no `backup` location: pass --from"},
+		{[]string{"local", "--dir", dir, "--from", "/tmp/b"}, "is not available for a Script target: environment local is deployed by its script, which keeps its own state; write the database to a file with --out"},
+		{[]string{"local", "--dir", dir, "--from", "/tmp/b", "--to", "yesterday"}, `bad --to "yesterday": write a UTC time such as 2026-10-17T10:00:00Z`},
+		{[]string{"local", "x", "--dir", dir}, "usage: alder restore"},
+	} {
+		var o, e bytes.Buffer
+		if code := runRestoreTo(c.args, &o, &e); code != 2 || !strings.Contains(e.String(), c.want) {
+			t.Errorf("restore %v: exit %d %s", c.args, code, e.String())
+		}
+	}
 	inTemp(t)
 	if code, _, errs := runNew(t, "bare"); code != 0 {
 		t.Fatal(errs)

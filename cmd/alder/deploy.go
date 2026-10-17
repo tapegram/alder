@@ -22,6 +22,7 @@ import (
 	"alder/internal/diag"
 	"alder/internal/ir"
 	"alder/internal/version"
+	"alder/rt/backup"
 )
 
 // The usage lines of the deploy commands (chapter 16).
@@ -492,4 +493,131 @@ func runLogsTo(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// runRestoreTo is `alder restore <env> [--from url] [--to time] [--out file.db] [--dir dir]`:
+// it rebuilds the database environment env's backup location held at a time (rt/backup.Restore:
+// the newest snapshot at or before it, then the WAL segments up to it) and puts it in place at
+// the target (Target.Restore: the current build stopped, the old database kept beside it as
+// app.db.before-restore-<time>, the build started again and health checked), or with --out
+// writes it to a local file instead. --from defaults to the declaration's `backup`; --to (UTC:
+// 2026-10-17T10:00:00Z, 2026-10-17T10:00 or 2026-10-17 10:00:00) to the latest. The bucket's
+// credentials come from this machine's environment (AWS_ACCESS_KEY_ID, …). Exit 0, 1 when the
+// backup or the target fails, 2 for usage errors.
+func runRestoreTo(args []string, stdout, stderr io.Writer) int {
+	var pos []string
+	dir, from, toText, out := ".", "", "", ""
+	flag := func(i *int, name string) (string, bool) {
+		a := args[*i]
+		if a == name && *i+1 < len(args) {
+			*i++
+			return args[*i], true
+		}
+		if v, ok := strings.CutPrefix(a, name+"="); ok {
+			return v, true
+		}
+		return "", false
+	}
+	for i := 0; i < len(args); i++ {
+		if v, ok := flag(&i, "--dir"); ok {
+			dir = v
+		} else if v, ok := flag(&i, "--from"); ok {
+			from = v
+		} else if v, ok := flag(&i, "--to"); ok {
+			toText = v
+		} else if v, ok := flag(&i, "--out"); ok {
+			out = v
+		} else if strings.HasPrefix(args[i], "-") {
+			fmt.Fprintln(stderr, restoreUsage)
+			return 2
+		} else {
+			pos = append(pos, args[i])
+		}
+	}
+	if len(pos) != 1 {
+		fmt.Fprintln(stderr, restoreUsage)
+		return 2
+	}
+	fail := func(code int, format string, a ...any) int {
+		fmt.Fprintf(stderr, "alder restore: "+format+"\n", a...)
+		return code
+	}
+	var to time.Time
+	if toText != "" {
+		var err error
+		if to, err = parseRestoreTime(toText); err != nil {
+			return fail(2, "%v", err)
+		}
+	}
+	r := &deployRunner{dir: dir}
+	r.Check()
+	if r.loadErr != "" {
+		return fail(2, "%s", r.loadErr)
+	}
+	if r.decl == nil {
+		return fail(2, "App has no `deploy` declaration (or it does not check: run `alder check`)")
+	}
+	tgt, ok := r.decl.Envs[pos[0]]
+	if !ok {
+		return fail(2, "App's `deploy` has no environment `%s` (it declares %s)", pos[0], strings.Join(envNames(r.decl), ", "))
+	}
+	if from == "" {
+		if r.decl.Backup == nil {
+			return fail(2, "the declaration has no `backup` location: pass --from s3://bucket/prefix (or a directory)")
+		}
+		from = r.decl.Backup.URL
+	}
+	if out == "" && tgt.Kind == "script" {
+		return fail(2, "%v; write the database to a file with --out", deploy.ScriptUnavailable("restore", pos[0]))
+	}
+	if out != "" {
+		if _, err := os.Stat(out); err == nil {
+			return fail(2, "%s exists: restore into a new file", out)
+		}
+	}
+	tmpDir, err := os.MkdirTemp("", "alder-restore-")
+	if err != nil {
+		return fail(2, "%v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+	file := filepath.Join(tmpDir, "app.db")
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	res, err := backup.Restore(ctx, from, to, file)
+	if err != nil {
+		return fail(1, "%v", err)
+	}
+	fmt.Fprintf(stdout, "restored generation %s: its snapshot and %d WAL segments, as of %s\n", res.Generation, res.Segments, res.At.UTC().Format(time.RFC3339))
+	if out != "" {
+		b, err := os.ReadFile(file)
+		if err == nil {
+			err = os.WriteFile(out, b, 0o600)
+		}
+		if err != nil {
+			return fail(1, "%v", err)
+		}
+		fmt.Fprintf(stdout, "wrote %s\n", out)
+		return 0
+	}
+	t, _, err := targetFor(r.app, pos[0], tgt, r.decl, dir, stdout, stderr)
+	if err != nil {
+		return fail(2, "%v", err)
+	}
+	defer t.Close()
+	if err := t.Restore(ctx, file); err != nil {
+		return fail(1, "%v", err)
+	}
+	fmt.Fprintf(stdout, "replaced the database at %s (the previous one is kept beside it as app.db.before-restore-<time>)\n", t.Describe())
+	return 0
+}
+
+// parseRestoreTime reads --to: RFC 3339, or a UTC time written 2026-10-17T10:00[:05] or
+// 2026-10-17 10:00[:05].
+func parseRestoreTime(s string) (time.Time, error) {
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02 15:04:05", "2006-01-02 15:04"} {
+		if t, err := time.ParseInLocation(layout, s, time.UTC); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("bad --to %q: write a UTC time such as 2026-10-17T10:00:00Z", s)
 }

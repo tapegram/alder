@@ -521,3 +521,104 @@ func (clock) Now(context.Context) (int64, error) { return 0, nil }
 		t.Error("the planted value is in the commands' output")
 	}
 }
+
+// The backup shipper at the box and `alder restore`: the operator's environment file names a
+// directory as ALDER_BACKUP_URL (the declaration's `backup` takes S3 only); entries posted to
+// the app are streamed there; `alder restore --out` rebuilds them locally from a copy of that
+// directory; `alder restore` from that copy puts the database back at the box (entries posted
+// since are gone, the previous file kept beside it) and the build serves it again.
+func TestDeploySsh_BackupRestore(t *testing.T) {
+	box := startBox(t)
+	dir := sshScaffold(t, box)
+	bucket := box.root + "/bucket"
+	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\nALDER_BACKUP_URL=%s\\nALDER_BACKUP_INTERVAL=1s\\n' > %s/env", strings.Repeat("s", 32), bucket, box.root))
+	code, out, errs := runDeploy(t, "production", dir)
+	if code != 0 {
+		t.Fatalf("deploy: exit %d\n%s\n%s", code, out, errs)
+	}
+	id := deployedID(t, out)
+	post := func(name string) {
+		t.Helper()
+		box.sh(t, fmt.Sprintf("curl -s -o /dev/null -X POST -H 'Origin: http://127.0.0.1:%d' -d 'name=%s&message=hello' http://127.0.0.1:%d/_m/Home/Submit", box.port, name, box.port))
+	}
+	entries := func() int {
+		t.Helper()
+		page := box.sh(t, fmt.Sprintf("curl -sL http://127.0.0.1:%d/", box.port))
+		return strings.Count(page, "<li><b>")
+	}
+	for _, n := range []string{"Ada", "Grace", "Edsger"} {
+		post(n)
+	}
+	if n := entries(); n != 3 {
+		t.Fatalf("the app lists %d entries", n)
+	}
+	// wait for a shipment after the posts (the shipper's status file names its last upload)
+	// (more than an interval after the posts: a sync that took the lock before them also ends after them)
+	posted := time.Now().Add(1100 * time.Millisecond)
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		var st struct {
+			Last time.Time `json:"last"`
+		}
+		json.Unmarshal([]byte(box.sh(t, "cat "+box.root+"/db/app.db-backup.json 2>/dev/null || true")), &st)
+		if st.Last.After(posted) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("nothing shipped: %s\n%s", box.sh(t, "find "+bucket+" -type f || true"), box.sh(t, "cat "+box.root+"/builds/"+id+"/log"))
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	var so, se bytes.Buffer
+	if code := runStatusTo([]string{"production", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "(streamed to file://"+bucket+")") {
+		t.Errorf("status: %d\n%s%s", code, so.String(), se.String())
+	}
+	// a copy of the bucket here
+	local := t.TempDir()
+	tarball, err := exec.Command("ssh", "-F", box.config, box.host, "tar -C "+box.root+" -cf - bucket").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	untar := exec.Command("tar", "-xf", "-", "-C", local)
+	untar.Stdin = bytes.NewReader(tarball)
+	if out, err := untar.CombinedOutput(); err != nil {
+		t.Fatalf("tar: %v %s", err, out)
+	}
+	copyDir := filepath.Join(local, "bucket")
+	restored := filepath.Join(t.TempDir(), "restored.db")
+	so.Reset()
+	se.Reset()
+	if code := runRestoreTo([]string{"production", "--dir", dir, "--from", copyDir, "--out", restored}, &so, &se); code != 0 || !strings.Contains(so.String(), "wrote "+restored) {
+		t.Fatalf("restore --out: %d\n%s%s", code, so.String(), se.String())
+	}
+	conn, err := sql.Open("sqlite", restored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := conn.QueryRow(`SELECT count(*) FROM "Entry__Entry"`).Scan(&n); err != nil || n != 3 {
+		t.Errorf("the restored file has %d entries (%v)", n, err)
+	}
+	conn.Close()
+
+	// two more entries, then the copy (three) put back at the box
+	post("Barbara")
+	post("Ken")
+	if n := entries(); n != 5 {
+		t.Fatalf("the app lists %d entries", n)
+	}
+	so.Reset()
+	se.Reset()
+	if code := runRestoreTo([]string{"production", "--dir", dir, "--from", copyDir}, &so, &se); code != 0 || !strings.Contains(so.String(), "replaced the database at Ssh alder-test-box:"+box.root) {
+		t.Fatalf("restore: %d\n%s%s", code, so.String(), se.String())
+	}
+	if n := entries(); n != 3 {
+		t.Errorf("after the restore the app lists %d entries, want 3", n)
+	}
+	if got := box.serving(t); got != id {
+		t.Errorf("after the restore the box serves %q, want %s", got, id)
+	}
+	if kept := box.sh(t, "ls "+box.root+"/db"); !strings.Contains(kept, "app.db.before-restore-") {
+		t.Errorf("the previous database is not kept: %s", kept)
+	}
+}

@@ -25,6 +25,7 @@ var commandUsages = map[string]string{
 	"status":   statusUsage,
 	"rollback": rollbackUsage,
 	"logs":     logsUsage,
+	"restore":  restoreUsage,
 	"version":  "usage: alder version",
 	"explain":  "usage: alder explain <code>  (such as E0016)",
 }

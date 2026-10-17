@@ -521,7 +521,9 @@ func Main(name string, withCaps bool) []byte {
 // target, chapter 16): --migrate-only applies the pending migrations to ALDER_DB (each
 // "migrated <name>" printed) and exits, 0 or 1 with the refusal, before the new build is
 // started; --backup-to FILE writes a consistent copy of ALDER_DB to FILE (VACUUM INTO) while
-// another process may be serving it.
+// another process may be serving it. ALDER_BACKUP_URL (s3://bucket/prefix, or a local
+// directory) streams the database there while it serves (rt/backup: a snapshot, then WAL
+// segments every ALDER_BACKUP_INTERVAL, default 10s; once more at shutdown).
 package main
 
 import (
@@ -571,6 +573,14 @@ func main() {
 		fmt.Fprintln(os.Stderr, "alder:", err)
 		os.Exit(1)
 	}
+	stopBackup := func() {}
+	if loc := os.Getenv(backup.EnvURL); loc != "" {
+		stopBackup, err = backup.Start(dbPath, loc, backup.IntervalFromEnv(), func(level, msg string) { log.Printf("%s: %s", level, msg) })
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "alder:", err)
+			os.Exit(1)
+		}
+	}
 	ln, err := net.Listen("tcp", env("ALDER_ADDR", ":8080"))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "alder:", err)
@@ -601,6 +611,7 @@ func main() {
 	if err := srv.Shutdown(grace); err != nil {
 		fmt.Fprintln(os.Stderr, "alder: shutting down:", err)
 	}
+	stopBackup() // ships what the last requests wrote
 }
 
 // maintain runs the maintenance task args name (see the package comment) on the database at

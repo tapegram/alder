@@ -182,6 +182,13 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 	if o.Decl.Backup == nil && t != nil {
 		fmt.Fprintln(w, "warning: no `backup` in the declaration: only the pre-migration copies (builds/<id>/backup.db) exist")
 	}
+	if o.Decl.Backup != nil && strings.HasPrefix(o.Decl.Backup.URL, "s3://") {
+		for _, n := range []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"} {
+			if !slices.Contains(o.Decl.Requires, n) {
+				fmt.Fprintf(w, "warning: `backup` streams to %s with the bucket's credentials: name %s in `requires` so the deploy checks the target sets it\n", o.Decl.Backup.URL, n)
+			}
+		}
+	}
 	if o.DryRun {
 		fmt.Fprintln(w, "dry run: nothing was shipped")
 		return res, nil

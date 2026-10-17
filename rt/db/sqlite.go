@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -20,7 +21,8 @@ import (
 // SQLite is the Store backed by an SQLite database (modernc.org/sqlite, no
 // cgo). Every connection runs with foreign_keys=ON and busy_timeout=5000;
 // a file database also uses journal_mode=WAL, synchronous=NORMAL and
-// BEGIN IMMEDIATE transactions.
+// BEGIN IMMEDIATE transactions, and, when ALDER_BACKUP_URL is set,
+// wal_autocheckpoint=0: the backup shipper checkpoints instead.
 type SQLite struct {
 	db *sql.DB
 
@@ -39,6 +41,10 @@ func OpenSQLite(path string) (*SQLite, error) {
 	dsn := path + "?" + common
 	if path != ":memory:" {
 		dsn += "&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_txlock=immediate"
+		if os.Getenv("ALDER_BACKUP_URL") != "" {
+			// the backup shipper (rt/backup) checkpoints, right after copying the WAL's frames
+			dsn += "&_pragma=wal_autocheckpoint(0)"
+		}
 	}
 	d, err := sql.Open("sqlite", dsn)
 	if err != nil {
