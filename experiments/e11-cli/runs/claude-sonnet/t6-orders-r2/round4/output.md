@@ -1,0 +1,205 @@
+```alder-cli
+# Orders.Index: create an order
+alder fill Orders.Index.update.Create - <<'EOF'
+{
+  let id <- Db.insert Order { owner: session.user }
+  Task.succeed (Redirect (Orders.Show { id: id }))
+}
+EOF
+alder fill 'Orders.Index."pressing Create"' --hole ?expected - <<'EOF'
+Test.count "#orders li" after.doc == 1
+EOF
+
+# Orders.Show: updates
+alder fill Orders.Show.update.AddLine - <<'EOF'
+if model.order.status != Open then Task.succeed (Reject "This order is not open.")
+else if not (List.any (\q -> q.id == p.product) model.products) then Task.succeed (Reject "This product is not available.")
+else {
+  let _ <- Db.insert Line { order: model.order.id, product: p.product, quantity: p.form.quantity }
+  Task.succeed (Redirect (Orders.Show { id: model.order.id }))
+}
+EOF
+alder fill Orders.Show.update.Pay - <<'EOF'
+if model.order.status == Open then {
+  let _ <- Db.update Order model.order.id (\o -> { o | status: Paid })
+  Task.succeed (Redirect (Orders.Show { id: model.order.id }))
+} else Task.succeed (Reject "This order is not open.")
+EOF
+alder fill Orders.Show.update.Cancel - <<'EOF'
+if model.order.status == Open then {
+  let _ <- Db.update Order model.order.id (\o -> { o | status: Cancelled })
+  Task.succeed (Redirect (Orders.Show { id: model.order.id }))
+} else Task.succeed (Reject "This order is not open.")
+EOF
+alder fill --decl Orders.Show.view - <<'EOF'
+<Layout.Page title="Order">
+  <h1>Order</h1>
+  <p id="status">{Order.statusText model.order.status}</p>
+  <p id="total">{Text.fromInt model.total}</p>
+  <ul id="lines">
+    {for l in model.lines ->
+      <li>
+        <span class="name">{l.name}</span>
+        <span class="quantity">{Text.fromInt l.quantity}</span>
+        <span class="subtotal">{Text.fromInt l.subtotal}</span>
+      </li>}
+  </ul>
+  {if model.order.status == Open then
+    <div>
+      {for p in model.products ->
+        <form submit={AddLine { product: p.id }}>
+          <h3>{p.name}</h3>
+          <Errors form />
+          <al-input field="quantity" label="Quantity" />
+          <al-button type="submit">Add line</al-button>
+        </form>}
+      <al-button click={Pay}>Pay</al-button>
+      <al-button click={Cancel}>Cancel</al-button>
+    </div>
+  else Html.none}
+  <a href={Orders.Index {}}>Back</a>
+</Layout.Page>
+EOF
+alder fill --decl 'Orders.Show."submitting NewLine"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "line@example.com", name: Text.NonEmpty "Line", passwordHash: "" }
+  let o <- Db.insert Order { owner: me }
+  let p1 <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 250 }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: o })
+  let r <- Test.submit (AddLine { product: p1 }) { quantity: Int.Positive 2 }
+  let n <- Db.from Line |> Db.count
+  Task.succeed ({ answer: r.answer, n: n } == { answer: Redirected (Orders.Show { id: o }), n: 1 })
+}
+EOF
+alder fill --decl 'Orders.Show."pressing Pay"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "pay@example.com", name: Text.NonEmpty "Pay", passwordHash: "" }
+  let o <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: o })
+  let r <- Test.click Pay
+  Task.succeed ({ answer: r.answer, status: Test.text "#status" r.doc } == { answer: Redirected (Orders.Show { id: o }), status: Just "Paid" })
+}
+EOF
+alder fill --decl 'Orders.Show."pressing Cancel"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "cancel@example.com", name: Text.NonEmpty "Cancel", passwordHash: "" }
+  let o <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: o })
+  let r <- Test.click Cancel
+  Task.succeed ({ answer: r.answer, status: Test.text "#status" r.doc } == { answer: Redirected (Orders.Show { id: o }), status: Just "Cancelled" })
+}
+EOF
+
+# Orders.Show: tests
+alder new test Orders.Show "an open order's total over two lines"
+alder fill 'Orders.Show."an open order'"'"'s total over two lines"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let o <- Db.insert Order { owner: me }
+  let p1 <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 250 }
+  let p2 <- Db.insert Product { name: Text.NonEmpty "Ink", price: Int.NonNegative 100 }
+  let _ <- Db.insert Line { order: o, product: p1, quantity: Int.Positive 2 }
+  let _ <- Db.insert Line { order: o, product: p2, quantity: Int.Positive 3 }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Orders.Show { id: o })
+  Task.succeed ({ total: Test.text "#total" page.doc, status: Test.text "#status" page.doc } == { total: Just "800", status: Just "Open" })
+}
+EOF
+alder new test Orders.Show "adding a line to a paid order is refused"
+alder fill 'Orders.Show."adding a line to a paid order is refused"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "b@example.com", name: Text.NonEmpty "B", passwordHash: "" }
+  let o <- Db.insert Order { owner: me }
+  let p1 <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 250 }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Show { id: o })
+  let _ <- Db.update Order o (\x -> { x | status: Paid })
+  let _ <- Test.submit (AddLine { product: p1 }) { quantity: Int.Positive 1 }
+  let n <- Db.from Line |> Db.count
+  Task.succeed (n == 0)
+}
+EOF
+alder new test Orders.Show "a Staff user opening another user's order is not found"
+alder fill 'Orders.Show."a Staff user opening another user'"'"'s order is not found"' - <<'EOF'
+{
+  let a <- Db.insert User { email: Text.Email "c@example.com", name: Text.NonEmpty "C", passwordHash: "" }
+  let b <- Db.insert User { email: Text.Email "d@example.com", name: Text.NonEmpty "D", passwordHash: "" }
+  let o <- Db.insert Order { owner: a }
+  let _ <- Test.login { user: Just b }
+  let r <- Test.open (Orders.Show { id: o })
+  Task.succeed (r.answer == PageMissing)
+}
+EOF
+alder new test Orders.Show "a Manager opening another user's order sees it"
+alder fill 'Orders.Show."a Manager opening another user'"'"'s order sees it"' - <<'EOF'
+{
+  let a <- Db.insert User { email: Text.Email "e@example.com", name: Text.NonEmpty "E", passwordHash: "" }
+  let b <- Db.insert User { email: Text.Email "f@example.com", name: Text.NonEmpty "F", passwordHash: "", role: Manager }
+  let o <- Db.insert Order { owner: a }
+  let _ <- Test.login { user: Just b }
+  let r <- Test.open (Orders.Show { id: o })
+  Task.succeed (r.answer == Shown)
+}
+EOF
+
+# Products
+alder new page Products.Index /products --blank --requires user
+alder fill --decl Products.Index.Model - <<'EOF'
+{ products: List Product }
+EOF
+alder fill Products.Index.load - <<'EOF'
+{
+  let mgr <- User.isManager session.user
+  if mgr then {
+    let prods <- Db.from Product |> Db.all
+    Query.succeed { products: prods }
+  } else Query.notFound
+}
+EOF
+alder fill --decl Products.Index.view - <<'EOF'
+<Layout.Page title="Products">
+  <h1>Products</h1>
+</Layout.Page>
+EOF
+alder new form Products.Index NewProduct name:Text.NonEmpty price:Int.NonNegative --msg Add
+alder new msg Products.Index Toggle id:Product.ProductId
+alder fill Products.Index.update.Add - <<'EOF'
+{
+  let _ <- Db.insert Product { name: p.form.name, price: p.form.price }
+  Task.succeed (Redirect (Products.Index {}))
+}
+EOF
+alder fill Products.Index.update.Toggle - <<'EOF'
+{
+  let _ <- Db.update Product p.id (\x -> { x | active: not x.active })
+  Task.succeed (Redirect (Products.Index {}))
+}
+EOF
+alder fill --decl Products.Index.view - <<'EOF'
+<Layout.Page title="Products">
+  <h1>Products</h1>
+  <ul id="products">
+    {for p in model.products ->
+      <li>
+        <span class="name">{p.name}</span>
+        <span class="price">{Text.fromInt p.price}</span>
+        <span class="active">{if p.active then "active" else "inactive"}</span>
+        <al-button size="sm" click={Toggle { id: p.id }}>Toggle</al-button>
+      </li>}
+  </ul>
+  <al-card>
+    <form submit={Add}>
+      <Errors form />
+      <al-input field="name" label="Name" />
+      <al-input field="price" label="Price (cents)" />
+      <al-button type="submit">Add</al-button>
+    </form>
+  </al-card>
+  <a href={Orders.Index {}}>Orders</a>
+</Layout.Page>
+EOF
+alder fill --list
+```

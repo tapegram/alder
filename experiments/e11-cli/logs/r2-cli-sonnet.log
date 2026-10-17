@@ -1,0 +1,8 @@
+claude-sonnet t2-newpage-r2: fail (4 → 4 → 4 → 4 → 4 → 4 errors; 8/54 commands, 5 refused)
+claude-sonnet t3-newapp-r2: pass (0 (build FAILED) → 0 (build FAILED) → 0 (build ok) (tests 12/14) → 0 (build ok) (tests 14/14) errors; mutants 19/23; 38/63 commands, 3 refused)
+claude-sonnet t4-appmsg-r2: pass (0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build ok) (tests 9/9) errors; hidden 0/8; mutants 11/14; 25/98 commands, 4 refused, names differ)
+claude-sonnet t5-ownership-r2: pass (0 (build FAILED) → 0 (build FAILED) → 0 (build ok) (tests 13/13) errors; hidden 8/8; mutants 14/20; 30/35 commands, 1 refused, names ok)
+claude-sonnet t6-orders-r2: pass (0 (build ok) (tests 3/3) → 0 (build FAILED) → 0 (build ok) (tests 8/8) → 0 (build FAILED) → 0 (build FAILED) → 0 (build ok) (tests 22/22) errors; hidden 9/9; mutants 41/51; 69/168 commands, 4 refused, names ok)
+claude-sonnet t7-drafts-r2: pass (0 (build ok) (tests 25/25) → 0 (build FAILED) → 0 (build ok) (tests 29/29) errors; hidden 7/7; mutants 35/53; 27/49 commands, 2 refused, names ok)
+claude-sonnet t9-bookings-r2: pass (0 (build FAILED) → 0 (build FAILED) → 0 (build ok) (tests 20/20) errors; hidden 7/7; mutants 31/41; 54/54 commands, 1 refused, names ok)
+claude-sonnet t10-teams-r2: pass (0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build FAILED) → 0 (build ok) (tests 21/21) errors; hidden 8/8; mutants 50/66; 62/139 commands, 4 refused, names ok)

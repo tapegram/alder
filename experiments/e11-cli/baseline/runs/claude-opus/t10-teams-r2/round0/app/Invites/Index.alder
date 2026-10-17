@@ -1,0 +1,137 @@
+module Invites.Index
+
+import Invite
+import Team
+import Member
+import User
+import Layout
+
+page "/invites" { } requires user
+
+type Row = { id: Invite.InviteId, team: Text }
+
+type Model = { invites: List Row }
+
+toRow : List Team -> Invite -> Maybe Row
+toRow teams invite = match List.find (\t -> t.id == invite.team) teams {
+  Just t -> Just { id: invite.id, team: t.name },
+  Nothing -> Nothing,
+}
+
+-- The invites waiting for the user: those to the user's email that are still Pending.
+load : Params -> Session -> Query Model
+load params session = {
+  let me <- Db.get User session.user
+  match me {
+    Nothing -> Query.notFound,
+    Just u -> {
+      let invites <- Db.from Invite
+        |> Db.where (Invite.email.eq u.email)
+        |> Db.where (Invite.status.eq Pending)
+        |> Db.all
+      let teams <- Db.from Team |> Db.where (Team.id.in (List.map (\i -> i.team) invites)) |> Db.all
+      Query.succeed { invites: List.filterMap (toRow teams) invites }
+    },
+  }
+}
+
+msg Accept { id: Invite.InviteId }
+msg Decline { id: Invite.InviteId }
+
+-- An invite can be answered only by the user it is to, and only while it is Pending: else 404.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Accept p -> {
+    let found <- Db.get Invite p.id
+    let me <- Db.get User session.user
+    match found {
+      Nothing -> Task.notFound,
+      Just invite -> {
+        let mine = Maybe.map (\u -> u.email) me == Just invite.email
+        if mine && invite.status == Pending then {
+          let team <- Db.get Team invite.team
+          let existing <- Db.from Member
+            |> Db.where (Member.team.eq invite.team)
+            |> Db.where (Member.user.eq session.user)
+            |> Db.count
+          let already = existing > 0 || Maybe.map (\t -> t.owner) team == Just session.user
+          let _ <- Db.update Invite invite.id (\i -> { i | status: Accepted })
+          let _ <- if already then Task.succeed () else Task.map (\x -> ()) (Db.insert Member { team: invite.team, user: session.user })
+          Task.succeed (Redirect (Teams.Show { id: invite.team }))
+        } else Task.notFound
+      },
+    }
+  },
+  Decline p -> {
+    let found <- Db.get Invite p.id
+    let me <- Db.get User session.user
+    match found {
+      Nothing -> Task.notFound,
+      Just invite -> {
+        let mine = Maybe.map (\u -> u.email) me == Just invite.email
+        if mine && invite.status == Pending then {
+          let _ <- Db.update Invite invite.id (\i -> { i | status: Declined })
+          Task.succeed (Redirect (Invites.Index {}))
+        } else Task.notFound
+      },
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Invites">
+    <h1>Invites</h1>
+    <ul id="invites">
+      {for row in model.invites ->
+        <li>
+          <span class="team">{row.team}</span>
+          <button class="accept" click={Accept { id: row.id }}>Accept</button>
+          <button class="decline" click={Decline { id: row.id }}>Decline</button>
+        </li>}
+    </ul>
+    <p><a href={Teams.Index {}}>Teams</a></p>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "accepting an invite makes the team visible" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let t <- Db.insert Team { name: Text.NonEmpty "Core", owner: owner }
+  let inv <- Db.insert Invite { team: t, email: Text.Email "me@example.com" }
+  let _ <- Test.login { user: Just me }
+  let before <- Test.get (Invites.Index {})
+  let r <- Test.click (Accept { id: inv })
+  let teams <- Test.get (Teams.Index {})
+  let after <- Test.get (Invites.Index {})
+  Task.succeed ({ before: Test.texts "#invites .team" before.doc, answer: r.answer, teams: Test.texts "#teams .name" teams.doc, after: Test.count "#invites li" after.doc } == { before: ["Core"], answer: Redirected (Teams.Show { id: t }), teams: ["Core"], after: 0 })
+}
+
+test "declining an invite does not" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let t <- Db.insert Team { name: Text.NonEmpty "Core", owner: owner }
+  let inv <- Db.insert Invite { team: t, email: Text.Email "me@example.com" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Invites.Index {})
+  let r <- Test.click (Decline { id: inv })
+  let teams <- Test.get (Teams.Index {})
+  let show <- Test.open (Teams.Show { id: t })
+  let again <- Test.run (update (Accept { id: inv }) { invites: [] } { user: me })
+  Task.succeed ({ answer: r.answer, list: Test.count "#invites li" r.doc, teams: Test.count "#teams li" teams.doc, show: show.answer, again: again.value } == { answer: Redirected (Invites.Index {}), list: 0, teams: 0, show: PageMissing, again: Err "not found" })
+}
+
+test "an invite to someone else cannot be answered" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let t <- Db.insert Team { name: Text.NonEmpty "Core", owner: owner }
+  let inv <- Db.insert Invite { team: t, email: Text.Email "me@example.com" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Invites.Index {})
+  let _ <- Test.login { user: Just other }
+  let r <- Test.click (Accept { id: inv })
+  let members <- Db.from Member |> Db.count
+  let found <- Db.get Invite inv
+  Task.succeed ({ answer: r.answer, members: members, status: Maybe.map (\i -> i.status) found } == { answer: PageMissing, members: 0, status: Just Pending })
+}

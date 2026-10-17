@@ -1,0 +1,781 @@
+{
+ "model": "claude-sonnet",
+ "task": "t3-newapp",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "condition": "cli",
+  "sample": "r2",
+  "cli": true
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 6,
+   "codes": {},
+   "rejected": [],
+   "seconds": 79.0,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 32,
+    "executed": 9,
+    "refused": {
+     "kind": "exit1",
+     "line": 16,
+     "text": "alder fill Posts.Index.load - <<'EOF'",
+     "reason": "alder fill: the parameters `params session` are bound already: send the body without `\\params session ->`"
+    },
+    "complete": false,
+    "stopped_at": 9,
+    "stdin_lines": 5,
+    "max_body": 4,
+    "decl_uses": 1
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Admin/Index.alder:8:23: warning[W0002]: hole ?load has type Query Admin.Index.Model\n  load params session = ?load\n                        ^^^^^\napp/Admin/Index.alder:11:22: warning[W0002]: hole ?view has type Html Admin.Index.Msg\n  view model session = ?view\n                       ^^^^^\napp/Posts/Index.alder:10:23: warning[W0002]: hole ?load has type Query Posts.Index.Model\n  load params session = ?load\n                        ^^^^^\napp/Posts/Index.alder:13:22: warning[W0002]: hole ?view has type Html Posts.Index.Msg\n  view model session = ?view\n                       ^^^^^\napp/Posts/Show.alder:10:23: warning[W0002]: hole ?load has type Query Posts.Show.Model\n  load params session = ?load\n                        ^^^^^\napp/Posts/Show.alder:13:22: warning[W0002]: hole ?view has type Html Posts.Show.Msg\n  view model session = ?view\n                       ^^^^^\nalder build: the program has 6 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 1,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 3,
+   "codes": {},
+   "rejected": [],
+   "seconds": 40.0,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 23,
+    "executed": 21,
+    "refused": {
+     "kind": "exit1",
+     "line": 130,
+     "text": "alder fill Admin.Index.update.Create - <<'EOF'",
+     "reason": "alder fill: `Admin.Index.update.Create` has no typed hole: a fill replaces a hole, and this arm has none; to rewrite it, give `alder fill --decl Admin.Index.update -` the whole `match msg { \u2026 }` (`alder fill --list` lists the app's holes)"
+    },
+    "complete": false,
+    "stopped_at": 21,
+    "stdin_lines": 94,
+    "max_body": 17,
+    "decl_uses": 4
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Admin/Index.alder:34:15: warning[W0002]: hole ?toggle has type Task Nav\n    Toggle p -> ?toggle,\n                ^^^^^^^\napp/Admin/Index.alder:88:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\napp/Posts/Show.alder:64:29: warning[W0002]: hole ?expected has type Answer\n    Task.succeed (r.answer == ?expected)\n                              ^^^^^^^^^\nalder build: the program has 3 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 2,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 9.5,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 5,
+    "executed": 5,
+    "refused": {
+     "kind": "exit1",
+     "line": 28,
+     "text": "alder test",
+     "reason": "ok   Admin.Index \"a visitor is sent to log in\""
+    },
+    "complete": false,
+    "stopped_at": 5,
+    "stdin_lines": 20,
+    "max_body": 9,
+    "decl_uses": 2
+   },
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 12,
+    "failed": 2,
+    "results": [
+     {
+      "module": "Admin.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Admin.Index"
+      ],
+      "ms": 6.867
+     },
+     {
+      "module": "Admin.Index",
+      "name": "submitting NewPost adds a row",
+      "ok": true,
+      "left": "{ answer: Redirected /admin, rows: [{ title: \"title-1\", slug: \"slug-1\", body: \"body-1\", published: True }] }",
+      "right": "{ answer: Redirected /admin, rows: [{ title: \"title-1\", slug: \"slug-1\", body: \"body-1\", published: True }] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.Index",
+       "Db.all Post",
+       "Test.submit NewPost",
+       "Db.all Post",
+       "Db.insert Post",
+       "Db.all Post",
+       "Db.all Post"
+      ],
+      "ms": 0.721
+     },
+     {
+      "module": "Admin.Index",
+      "name": "NewPost refuses an empty title",
+      "ok": false,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"title must not be empty\" }], rows: 0 }",
+      "right": "{ answer: FormRejected [{ field: \"title\", message: \"must not be empty\" }], rows: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.Index",
+       "Db.all Post",
+       "Test.submitRaw NewPost",
+       "Db.all Post",
+       "Db.count Post"
+      ],
+      "ms": 1.025
+     },
+     {
+      "module": "Admin.Index",
+      "name": "pressing Toggle",
+      "ok": true,
+      "left": "{ answer: Rerendered, published: Just True }",
+      "right": "{ answer: Rerendered, published: Just True }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Post",
+       "Test.get Admin.Index",
+       "Db.all Post",
+       "Test.click Admin.Index.Toggle",
+       "Db.all Post",
+       "Db.update Post",
+       "Db.all Post",
+       "Db.get Post"
+      ],
+      "ms": 0.758
+     },
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 0.55
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 0.608
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /, user: Just \"tT34T46cIWhBAjfaLPB_\" }",
+      "right": "{ answer: Redirected /, user: Just \"tT34T46cIWhBAjfaLPB_\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Session.put",
+       "Db.all Post"
+      ],
+      "ms": 0.531
+     },
+     {
+      "module": "Auth.Login",
+      "name": "a signed-in user logs out here",
+      "ok": true,
+      "left": "{ answer: Redirected /login, user: Nothing }",
+      "right": "{ answer: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Auth.Login",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.499
+     },
+     {
+      "module": "Comment",
+      "name": "deleting its post deletes a Comment",
+      "ok": true,
+      "left": "0",
+      "right": "0",
+      "trace": [
+       "Db.insert Post",
+       "Db.insert Comment",
+       "Db.delete Post",
+       "Db.count Comment"
+      ],
+      "ms": 0.459
+     },
+     {
+      "module": "Posts.Index",
+      "name": "the front page lists only published posts, newest first",
+      "ok": true,
+      "left": "[\"Second\", \"First\"]",
+      "right": "[\"Second\", \"First\"]",
+      "trace": [
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Test.get Posts.Index",
+       "Db.all Post"
+      ],
+      "ms": 0.445
+     },
+     {
+      "module": "Posts.Show",
+      "name": "submitting NewComment",
+      "ok": true,
+      "left": "{ answer: Rerendered, n: 1 }",
+      "right": "{ answer: Rerendered, n: 1 }",
+      "trace": [
+       "Db.insert Post",
+       "Test.get Posts.Show",
+       "Db.first Post",
+       "Db.all Comment",
+       "Test.submit NewComment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.insert Comment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.count Comment"
+      ],
+      "ms": 0.552
+     },
+     {
+      "module": "Posts.Show",
+      "name": "NewComment refuses an empty author",
+      "ok": false,
+      "error": "GET /posts/slug-1: not found",
+      "trace": [
+       "Test.get Posts.Show",
+       "Db.first Post"
+      ],
+      "ms": 0.406
+     },
+     {
+      "module": "Posts.Show",
+      "name": "an unpublished post is not found for a reader",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert Post",
+       "Test.open Posts.Show",
+       "Db.first Post"
+      ],
+      "ms": 0.822
+     },
+     {
+      "module": "Posts.Show",
+      "name": "a comment with an empty author is refused",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"author\", message: \"must not be empty\" }], n: 0 }",
+      "right": "{ answer: FormRejected [{ field: \"author\", message: \"must not be empty\" }], n: 0 }",
+      "trace": [
+       "Db.insert Post",
+       "Test.get Posts.Show",
+       "Db.first Post",
+       "Db.all Comment",
+       "Test.submitRaw NewComment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.count Comment"
+      ],
+      "ms": 0.633
+     }
+    ],
+    "exit": 1
+   },
+   "test_output": "ok   Admin.Index \"a visitor is sent to log in\"\nok   Admin.Index \"submitting NewPost adds a row\"\nFAIL Admin.Index \"NewPost refuses an empty title\"\n  left:  { answer: FormRejected [{ field: \"\", message: \"title must not be empty\" }], rows: 0 }\n  right: { answer: FormRejected [{ field: \"title\", message: \"must not be empty\" }], rows: 0 }\n  trace: [\"Db.insert User\", \"Test.login\", \"Test.get Admin.Index\", \"Db.all Post\", \"Test.submitRaw NewPost\", \"Db.all Post\", \"Db.count Post\"]\nok   Admin.Index \"pressing Toggle\"\nok   App \"Logout clears the user and goes to log in\"\nok   Auth.Login \"an unknown email is rejected\"\nok   Auth.Login \"logging in through the form\"\nok   Auth.Login \"a signed-in user logs out here\"\nok   Comment \"deleting its post deletes a Comment\"\nok   Posts.Index \"the front page lists only published posts, newest first\"\nok   Posts.Show \"submitting NewComment\"\nFAIL Posts.Show \"NewComment refuses an empty author\"\n  error: GET /posts/slug-1: not found\n  trace: [\"Test.get Posts.Show\", \"Db.first Post\"]\nok   Posts.Show \"an unpublished post is not found for a reader\"\nok   Posts.Show \"a comment with an empty author is refused\"\n12 passed, 2 failed\n"
+  },
+  {
+   "n": 3,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 6.0,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 3,
+    "executed": 3,
+    "refused": null,
+    "complete": true,
+    "stopped_at": null,
+    "stdin_lines": 14,
+    "max_body": 8,
+    "decl_uses": 2
+   },
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 14,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Admin.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Admin.Index"
+      ],
+      "ms": 6.834
+     },
+     {
+      "module": "Admin.Index",
+      "name": "submitting NewPost adds a row",
+      "ok": true,
+      "left": "{ answer: Redirected /admin, rows: [{ title: \"title-1\", slug: \"slug-1\", body: \"body-1\", published: True }] }",
+      "right": "{ answer: Redirected /admin, rows: [{ title: \"title-1\", slug: \"slug-1\", body: \"body-1\", published: True }] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.Index",
+       "Db.all Post",
+       "Test.submit NewPost",
+       "Db.all Post",
+       "Db.insert Post",
+       "Db.all Post",
+       "Db.all Post"
+      ],
+      "ms": 1.109
+     },
+     {
+      "module": "Admin.Index",
+      "name": "NewPost refuses an empty title",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"title must not be empty\" }], rows: 0 }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"title must not be empty\" }], rows: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.Index",
+       "Db.all Post",
+       "Test.submitRaw NewPost",
+       "Db.all Post",
+       "Db.count Post"
+      ],
+      "ms": 0.825
+     },
+     {
+      "module": "Admin.Index",
+      "name": "pressing Toggle",
+      "ok": true,
+      "left": "{ answer: Rerendered, published: Just True }",
+      "right": "{ answer: Rerendered, published: Just True }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Post",
+       "Test.get Admin.Index",
+       "Db.all Post",
+       "Test.click Admin.Index.Toggle",
+       "Db.all Post",
+       "Db.update Post",
+       "Db.all Post",
+       "Db.get Post"
+      ],
+      "ms": 1.49
+     },
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 0.525
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 0.507
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /, user: Just \"TZd9iXj_B6OHwa4b2Uw6\" }",
+      "right": "{ answer: Redirected /, user: Just \"TZd9iXj_B6OHwa4b2Uw6\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Session.put",
+       "Db.all Post"
+      ],
+      "ms": 0.478
+     },
+     {
+      "module": "Auth.Login",
+      "name": "a signed-in user logs out here",
+      "ok": true,
+      "left": "{ answer: Redirected /login, user: Nothing }",
+      "right": "{ answer: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Auth.Login",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.785
+     },
+     {
+      "module": "Comment",
+      "name": "deleting its post deletes a Comment",
+      "ok": true,
+      "left": "0",
+      "right": "0",
+      "trace": [
+       "Db.insert Post",
+       "Db.insert Comment",
+       "Db.delete Post",
+       "Db.count Comment"
+      ],
+      "ms": 0.431
+     },
+     {
+      "module": "Posts.Index",
+      "name": "the front page lists only published posts, newest first",
+      "ok": true,
+      "left": "[\"Second\", \"First\"]",
+      "right": "[\"Second\", \"First\"]",
+      "trace": [
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Test.get Posts.Index",
+       "Db.all Post"
+      ],
+      "ms": 0.459
+     },
+     {
+      "module": "Posts.Show",
+      "name": "submitting NewComment",
+      "ok": true,
+      "left": "{ answer: Rerendered, n: 1 }",
+      "right": "{ answer: Rerendered, n: 1 }",
+      "trace": [
+       "Db.insert Post",
+       "Test.get Posts.Show",
+       "Db.first Post",
+       "Db.all Comment",
+       "Test.submit NewComment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.insert Comment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.count Comment"
+      ],
+      "ms": 0.563
+     },
+     {
+      "module": "Posts.Show",
+      "name": "NewComment refuses an empty author",
+      "ok": true,
+      "left": "FormRejected [{ field: \"author\", message: \"must not be empty\" }]",
+      "right": "FormRejected [{ field: \"author\", message: \"must not be empty\" }]",
+      "trace": [
+       "Db.insert Post",
+       "Test.get Posts.Show",
+       "Db.first Post",
+       "Db.all Comment",
+       "Test.submitRaw NewComment",
+       "Db.first Post",
+       "Db.all Comment"
+      ],
+      "ms": 0.473
+     },
+     {
+      "module": "Posts.Show",
+      "name": "an unpublished post is not found for a reader",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert Post",
+       "Test.open Posts.Show",
+       "Db.first Post"
+      ],
+      "ms": 0.389
+     },
+     {
+      "module": "Posts.Show",
+      "name": "a comment with an empty author is refused",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"author\", message: \"must not be empty\" }], n: 0 }",
+      "right": "{ answer: FormRejected [{ field: \"author\", message: \"must not be empty\" }], n: 0 }",
+      "trace": [
+       "Db.insert Post",
+       "Test.get Posts.Show",
+       "Db.first Post",
+       "Db.all Comment",
+       "Test.submitRaw NewComment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.count Comment"
+      ],
+      "ms": 1.195
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.8260869565217391,
+    "killed": 19,
+    "survived": 4,
+    "suppressed": 1,
+    "skipped": 4,
+    "survivors": [
+     {
+      "module": "Admin.Index",
+      "file": "app/Admin/Index.alder",
+      "decl": "load",
+      "line": 13,
+      "col": 32,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Post.created.desc",
+      "after": "Db.orderBy Post.created.asc"
+     },
+     {
+      "module": "Posts.Show",
+      "file": "app/Posts/Show.alder",
+      "decl": "load",
+      "line": 13,
+      "col": 32,
+      "kind": "where dropped",
+      "before": "Db.where (Post.slug.eq params.slug)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Posts.Show",
+      "file": "app/Posts/Show.alder",
+      "decl": "load",
+      "line": 19,
+      "col": 44,
+      "kind": "where dropped",
+      "before": "Db.where (Comment.post.eq post.id)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Posts.Show",
+      "file": "app/Posts/Show.alder",
+      "decl": "load",
+      "line": 19,
+      "col": 82,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Comment.created.asc",
+      "after": "Db.orderBy Comment.created.desc"
+     }
+    ]
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "sonnet",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "cli": {
+  "app_name": "newapp",
+  "rounds": 4,
+  "complete": true,
+  "stopped_at": null,
+  "commands": 63,
+  "executed": 38,
+  "refused": {
+   "count": 3,
+   "kinds": {
+    "exit1": 3
+   },
+   "items": [
+    {
+     "round": 0,
+     "kind": "exit1",
+     "line": 16,
+     "text": "alder fill Posts.Index.load - <<'EOF'",
+     "reason": "alder fill: the parameters `params session` are bound already: send the body without `\\params session ->`"
+    },
+    {
+     "round": 1,
+     "kind": "exit1",
+     "line": 130,
+     "text": "alder fill Admin.Index.update.Create - <<'EOF'",
+     "reason": "alder fill: `Admin.Index.update.Create` has no typed hole: a fill replaces a hole, and this arm has none; to rewrite it, give `alder fill --decl Admin.Index.update -` the whole `match msg { \u2026 }` (`alder fill --list` lists the app's holes)"
+    },
+    {
+     "round": 2,
+     "kind": "exit1",
+     "line": 28,
+     "text": "alder test",
+     "reason": "ok   Admin.Index \"a visitor is sent to log in\""
+    }
+   ]
+  },
+  "stdin_lines": 133,
+  "max_body": 17,
+  "decl_uses": 9,
+  "names": null,
+  "setup": {
+   "argv": [
+    "alder",
+    "new",
+    "newapp",
+    "--bare"
+   ],
+   "exit": 0,
+   "stdout": "created newapp/\n  .gitignore\n  adapters/README.md\n  app/App.alder\n  app/Layout.alder\n  go.mod\n  static/app.css\ngo.mod keeps the app out of the Go module of /Users/tavishpegram/projects/alder/experiments/go.mod\n\nnext:\n  cd newapp\n  alder new table \u2026      # the app's tables (chapter 15)\n  alder new page \u2026       # its pages\n  alder new auth         # a login\n  alder check            # type-check the app\n",
+   "stderr": ""
+  }
+ },
+ "mutation": {
+  "score": 0.8260869565217391,
+  "killed": 19,
+  "survived": 4,
+  "suppressed": 1,
+  "skipped": 4,
+  "survivors": [
+   {
+    "module": "Admin.Index",
+    "file": "app/Admin/Index.alder",
+    "decl": "load",
+    "line": 13,
+    "col": 32,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Post.created.desc",
+    "after": "Db.orderBy Post.created.asc"
+   },
+   {
+    "module": "Posts.Show",
+    "file": "app/Posts/Show.alder",
+    "decl": "load",
+    "line": 13,
+    "col": 32,
+    "kind": "where dropped",
+    "before": "Db.where (Post.slug.eq params.slug)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Posts.Show",
+    "file": "app/Posts/Show.alder",
+    "decl": "load",
+    "line": 19,
+    "col": 44,
+    "kind": "where dropped",
+    "before": "Db.where (Comment.post.eq post.id)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Posts.Show",
+    "file": "app/Posts/Show.alder",
+    "decl": "load",
+    "line": 19,
+    "col": 82,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Comment.created.asc",
+    "after": "Db.orderBy Comment.created.desc"
+   }
+  ]
+ }
+}

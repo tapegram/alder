@@ -1,0 +1,41 @@
+```alder-cli
+# the owner's delete, as the generated test expects
+alder fill 'Notes.Index."pressing Delete"' --hole ?expected - <<'EOF'
+{ answer: r.answer, gone: after == Nothing } == { answer: Redirected (Notes.Index {}), gone: True }
+EOF
+
+# deleting a missing id is not found
+alder new test Notes.Index "deleting a missing note is not found"
+alder fill 'Notes.Index."deleting a missing note is not found"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.run (update (Delete { id: Note.NoteId "missing" }) { notes: [] } { user: me })
+  Task.succeed (r.value == Err "not found")
+}
+EOF
+
+# another user's note is 404 on its page
+alder new test Notes.Show "another user's note is not found"
+alder fill 'Notes.Show."another user'"'"'s note is not found"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Theirs", body: "b", owner: other }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Notes.Show { id: id })
+  Task.succeed (r.answer == PageMissing)
+}
+EOF
+
+# where a login goes
+alder fill --list
+alder fill Auth.Login.update.Submit --hole ?afterLogin - <<'EOF'
+Notes.Index {}
+EOF
+alder fill --list
+alder fill 'Auth.Login."logging in through the form"' --hole ?afterLogin - <<'EOF'
+Notes.Index {}
+EOF
+alder test
+```

@@ -1,0 +1,595 @@
+{
+ "model": "claude-opus",
+ "task": "t4-appmsg",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "hidden": "experiments/e8-hidden/hidden",
+  "condition": "files",
+  "sample": "r2"
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 8,
+   "exit": 1,
+   "errors": 1,
+   "warnings": 0,
+   "codes": {
+    "E0002": 1
+   },
+   "rejected": [],
+   "seconds": 66.8,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "opus"
+  },
+  {
+   "n": 1,
+   "files": 8,
+   "exit": 1,
+   "errors": 1,
+   "warnings": 0,
+   "codes": {
+    "E0003": 1
+   },
+   "rejected": [],
+   "seconds": 39.4,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "opus"
+  },
+  {
+   "n": 2,
+   "files": 8,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 40.2,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "opus",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 15,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Theme",
+      "name": "flip turns Light to Dark and back",
+      "ok": true,
+      "left": "[Dark, Light]",
+      "right": "[Dark, Light]",
+      "trace": [],
+      "ms": 0.126
+     },
+     {
+      "module": "Theme",
+      "name": "the button names the other theme",
+      "ok": true,
+      "left": "[\"Switch to dark\", \"Switch to light\"]",
+      "right": "[\"Switch to dark\", \"Switch to light\"]",
+      "trace": [],
+      "ms": 0.003
+     },
+     {
+      "module": "App",
+      "name": "SwitchTheme flips the theme and rerenders",
+      "ok": true,
+      "left": "{ value: Ok Rerender, trace: [\"Session.put\"] }",
+      "right": "{ value: Ok Rerender, trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 1.635
+     },
+     {
+      "module": "App",
+      "name": "the theme flips through the page",
+      "ok": true,
+      "left": "{ before: Just \"Switch to dark\", beforeDark: False, theme: Dark, darkLabel: Just \"Switch to light\", darkBody: True, back: Light, lightLabel: Just \"Switch to dark\", lightBody: False }",
+      "right": "{ before: Just \"Switch to dark\", beforeDark: False, theme: Dark, darkLabel: Just \"Switch to light\", darkBody: True, back: Light, lightLabel: Just \"Switch to dark\", lightBody: False }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note",
+       "Test.click App.SwitchTheme",
+       "Session.put",
+       "Db.mine Note",
+       "Db.all Note",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note",
+       "Test.click App.SwitchTheme",
+       "Session.put",
+       "Db.mine Note",
+       "Db.all Note",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note"
+      ],
+      "ms": 6.117
+     },
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ out: Redirected /login, user: Nothing }",
+      "right": "{ out: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.57
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 0.381
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /, user: Just \"pWTEw52vn2vqRJsUuBLZ\", title: Just \"Notes\" }",
+      "right": "{ answer: Redirected /, user: Just \"pWTEw52vn2vqRJsUuBLZ\", title: Just \"Notes\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Session.put",
+       "Db.mine Note",
+       "Db.all Note"
+      ],
+      "ms": 0.328
+     },
+     {
+      "module": "Auth.Login",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Notes.Index"
+      ],
+      "ms": 0.2
+     },
+     {
+      "module": "Notes.Index",
+      "name": "adding a note through the page",
+      "ok": true,
+      "left": "{ answer: Redirected /, titles: [\"Groceries\"] }",
+      "right": "{ answer: Redirected /, titles: [\"Groceries\"] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note",
+       "Test.submit NewNote",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.insertMine Note",
+       "Db.mine Note",
+       "Db.all Note",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note"
+      ],
+      "ms": 0.422
+     },
+     {
+      "module": "Notes.Index",
+      "name": "the newest note is listed first",
+      "ok": true,
+      "left": "[\"Second\", \"First\"]",
+      "right": "[\"Second\", \"First\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note"
+      ],
+      "ms": 0.298
+     },
+     {
+      "module": "Notes.Index",
+      "name": "another user's notes are not listed",
+      "ok": true,
+      "left": "0",
+      "right": "0",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note"
+      ],
+      "ms": 0.229
+     },
+     {
+      "module": "Notes.Show",
+      "name": "a user cannot see another user's note",
+      "ok": true,
+      "left": "{ answer: PageMissing, loaded: Err \"not found\" }",
+      "right": "{ answer: PageMissing, loaded: Err \"not found\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.login",
+       "Test.open Notes.Show",
+       "Db.getMine Note",
+       "Test.run",
+       "Db.getMine Note"
+      ],
+      "ms": 0.234
+     },
+     {
+      "module": "Notes.Show",
+      "name": "the owner sees the note",
+      "ok": true,
+      "left": "{ title: Just \"Mine\", body: Just \"hello\" }",
+      "right": "{ title: Just \"Mine\", body: Just \"hello\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.login",
+       "Test.get Notes.Show",
+       "Db.getMine Note"
+      ],
+      "ms": 0.227
+     },
+     {
+      "module": "Notes.Show",
+      "name": "saving changes the title and the body",
+      "ok": true,
+      "left": "{ answer: Redirected /notes/fh_oMTg9_dYsvpKT2i7i, title: Just \"New\", body: Just \"new\" }",
+      "right": "{ answer: Redirected /notes/fh_oMTg9_dYsvpKT2i7i, title: Just \"New\", body: Just \"new\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.login",
+       "Test.get Notes.Show",
+       "Db.getMine Note",
+       "Test.submit EditNote",
+       "Db.getMine Note",
+       "Db.updateMine Note",
+       "Db.getMine Note",
+       "Db.get Note"
+      ],
+      "ms": 0.305
+     },
+     {
+      "module": "Notes.Show",
+      "name": "deleting from the note's page",
+      "ok": true,
+      "left": "{ answer: Redirected /, note: Nothing }",
+      "right": "{ answer: Redirected /, note: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.login",
+       "Test.get Notes.Show",
+       "Db.getMine Note",
+       "Test.click Notes.Show.Delete",
+       "Db.getMine Note",
+       "Db.deleteMine Note",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.get Note"
+      ],
+      "ms": 0.279
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.8695652173913043,
+    "killed": 20,
+    "survived": 3,
+    "suppressed": 2,
+    "skipped": 3,
+    "survivors": [
+     {
+      "module": "App",
+      "file": "app/App.alder",
+      "decl": "update",
+      "line": 22,
+      "col": 19,
+      "kind": "redirect \u2192 rerender",
+      "before": "Redirect (Auth.Login {})",
+      "after": "Rerender"
+     },
+     {
+      "module": "Note",
+      "file": "app/Note.alder",
+      "decl": "Note",
+      "line": 11,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "owner @ref User @restrict",
+      "after": "owner @ref User @cascade"
+     },
+     {
+      "module": "Notes.Show",
+      "file": "app/Notes/Show.alder",
+      "decl": "requires",
+      "line": 8,
+      "col": 40,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = User.UserId \"mutant\")"
+     }
+    ]
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "opus",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "mutation": {
+  "score": 0.8695652173913043,
+  "killed": 20,
+  "survived": 3,
+  "suppressed": 2,
+  "skipped": 3,
+  "survivors": [
+   {
+    "module": "App",
+    "file": "app/App.alder",
+    "decl": "update",
+    "line": 22,
+    "col": 19,
+    "kind": "redirect \u2192 rerender",
+    "before": "Redirect (Auth.Login {})",
+    "after": "Rerender"
+   },
+   {
+    "module": "Note",
+    "file": "app/Note.alder",
+    "decl": "Note",
+    "line": 11,
+    "col": 3,
+    "kind": "cascade \u2194 restrict",
+    "before": "owner @ref User @restrict",
+    "after": "owner @ref User @cascade"
+   },
+   {
+    "module": "Notes.Show",
+    "file": "app/Notes/Show.alder",
+    "decl": "requires",
+    "line": 8,
+    "col": 40,
+    "kind": "requires dropped",
+    "before": "requires user",
+    "after": "served without user (user = User.UserId \"mutant\")"
+   }
+  ]
+ },
+ "hidden": {
+  "passed": 8,
+  "failed": 0,
+  "results": [
+   {
+    "module": "Hidden",
+    "name": "the theme starts light and the list's button switches it to dark",
+    "ok": true,
+    "left": "{ dark: False, label: Just \"Switch to dark\", after: True, afterLabel: Just \"Switch to light\", session: Dark }",
+    "right": "{ dark: False, label: Just \"Switch to dark\", after: True, afterLabel: Just \"Switch to light\", session: Dark }",
+    "trace": [
+     "Db.insert User",
+     "Test.login",
+     "Test.open Notes.Index",
+     "Db.mine Note",
+     "Db.all Note",
+     "Test.click App.SwitchTheme",
+     "Session.put",
+     "Db.mine Note",
+     "Db.all Note"
+    ],
+    "ms": 7.556
+   },
+   {
+    "module": "Hidden",
+    "name": "the theme stays in the session from page to page",
+    "ok": true,
+    "left": "{ show: True, list: True, session: Dark }",
+    "right": "{ show: True, list: True, session: Dark }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.get Notes.Index",
+     "Db.mine Note",
+     "Db.all Note",
+     "Test.click App.SwitchTheme",
+     "Session.put",
+     "Db.mine Note",
+     "Db.all Note",
+     "Test.open Notes.Show",
+     "Db.getMine Note",
+     "Test.open Notes.Index",
+     "Db.mine Note",
+     "Db.all Note"
+    ],
+    "ms": 1.015
+   },
+   {
+    "module": "Hidden",
+    "name": "a note's page switches the theme there and back",
+    "ok": true,
+    "left": "{ once: True, twice: False, title: Just \"Milk\", label: Just \"Switch to dark\" }",
+    "right": "{ once: True, twice: False, title: Just \"Milk\", label: Just \"Switch to dark\" }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.get Notes.Show",
+     "Db.getMine Note",
+     "Test.click App.SwitchTheme",
+     "Session.put",
+     "Db.getMine Note",
+     "Test.click App.SwitchTheme",
+     "Session.put",
+     "Db.getMine Note"
+    ],
+    "ms": 0.477
+   },
+   {
+    "module": "Hidden",
+    "name": "a visitor switches the theme on the login page",
+    "ok": true,
+    "left": "{ dark: True, session: Dark, user: Nothing }",
+    "right": "{ dark: True, session: Dark, user: Nothing }",
+    "trace": [
+     "Test.get Auth.Login",
+     "Test.click App.SwitchTheme",
+     "Session.put"
+    ],
+    "ms": 0.262
+   },
+   {
+    "module": "Hidden",
+    "name": "logging out from the list",
+    "ok": true,
+    "left": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "right": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "trace": [
+     "Db.insert User",
+     "Test.login",
+     "Test.get Notes.Index",
+     "Db.mine Note",
+     "Db.all Note",
+     "Test.click App.Logout",
+     "Session.put",
+     "Test.open Notes.Index"
+    ],
+    "ms": 0.431
+   },
+   {
+    "module": "Hidden",
+    "name": "logging out from a note's page",
+    "ok": true,
+    "left": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "right": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.get Notes.Show",
+     "Db.getMine Note",
+     "Test.click App.Logout",
+     "Session.put",
+     "Test.open Notes.Show"
+    ],
+    "ms": 0.388
+   },
+   {
+    "module": "Hidden",
+    "name": "another user's note is missing",
+    "ok": true,
+    "left": "{ answer: PageMissing, items: 0 }",
+    "right": "{ answer: PageMissing, items: 0 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.open Notes.Show",
+     "Db.getMine Note",
+     "Test.open Notes.Index",
+     "Db.mine Note",
+     "Db.all Note"
+    ],
+    "ms": 0.295
+   },
+   {
+    "module": "Hidden",
+    "name": "a note is added on the list and edited on its page",
+    "ok": true,
+    "left": "{ added: Redirected /, titles: [\"Milk\"], saved: Redirected /notes/9ut_cvQU1iqtMGUJ33uS, title: Just \"Oat milk\", body: Just \"One litre.\" }",
+    "right": "{ added: Redirected /, titles: [\"Milk\"], saved: Redirected /notes/9ut_cvQU1iqtMGUJ33uS, title: Just \"Oat milk\", body: Just \"One litre.\" }",
+    "trace": [
+     "Db.insert User",
+     "Test.login",
+     "Test.get Notes.Index",
+     "Db.mine Note",
+     "Db.all Note",
+     "Test.submit NewNote",
+     "Db.mine Note",
+     "Db.all Note",
+     "Db.insertMine Note",
+     "Db.mine Note",
+     "Db.all Note",
+     "Db.first Note",
+     "Test.get Notes.Show",
+     "Db.getMine Note",
+     "Test.submit EditNote",
+     "Db.getMine Note",
+     "Db.updateMine Note",
+     "Db.getMine Note"
+    ],
+    "ms": 0.672
+   }
+  ],
+  "exit": 0
+ },
+ "hidden_pass": "8/8"
+}

@@ -1,0 +1,61 @@
+module App
+
+import User
+import Theme
+import Layout
+
+session { user: Maybe User.UserId, theme: Theme.Theme = Light }
+
+login = Auth.Login
+
+msg SwitchTheme
+msg Logout
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  SwitchTheme p -> {
+    let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
+    Task.succeed Rerender
+  },
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing })
+    Task.succeed (Redirect (Auth.Login {}))
+  },
+}
+
+error : Error -> Html Never
+error err =
+  <Layout.Page title="Error" theme={Light}>
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html Never
+notFound =
+  <Layout.Page title="Not found" theme={Light}>
+    <h1>Not found</h1>
+  </Layout.Page>
+
+test "SwitchTheme flips the theme and rerenders" = {
+  let r <- Test.run (update SwitchTheme { user: Nothing, theme: Light })
+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok Rerender, trace: ["Session.put"] })
+}
+
+test "the theme flips through the page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let before <- Test.get (Notes.Index {})
+  let dark <- Test.click SwitchTheme
+  let darkPage <- Test.get (Notes.Index {})
+  let _ <- Test.click SwitchTheme
+  let lightPage <- Test.get (Notes.Index {})
+  Task.succeed ({ before: Test.text "#theme" before.doc, beforeDark: Test.has "body.dark" before.doc, theme: dark.session.theme, darkLabel: Test.text "#theme" darkPage.doc, darkBody: Test.has "body.dark" darkPage.doc, back: lightPage.session.theme, lightLabel: Test.text "#theme" lightPage.doc, lightBody: Test.has "body.dark" lightPage.doc } == { before: Just "Switch to dark", beforeDark: False, theme: Dark, darkLabel: Just "Switch to light", darkBody: True, back: Light, lightLabel: Just "Switch to dark", lightBody: False })
+}
+
+test "Logout clears the user and goes to log in" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index {})
+  let out <- Test.click Logout
+  Task.succeed ({ out: out.answer, user: out.session.user } == { out: Redirected (Auth.Login {}), user: Nothing })
+}

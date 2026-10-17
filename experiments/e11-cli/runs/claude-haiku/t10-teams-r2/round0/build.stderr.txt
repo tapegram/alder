@@ -1,0 +1,25 @@
+app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page
+          Task.succeed (Redirect (?afterLogin))
+                                  ^^^^^^^^^^^
+app/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page
+    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })
+                                                                                      ^^^^^^^^^^^
+app/Invites/Index.alder:8:23: warning[W0002]: hole ?load has type Query Invites.Index.Model
+  load params session = ?load
+                        ^^^^^
+app/Invites/Index.alder:11:22: warning[W0002]: hole ?view has type Html Invites.Index.Msg
+  view model session = ?view
+                       ^^^^^
+app/Teams/Index.alder:8:23: warning[W0002]: hole ?load has type Query Teams.Index.Model
+  load params session = ?load
+                        ^^^^^
+app/Teams/Index.alder:11:22: warning[W0002]: hole ?view has type Html Teams.Index.Msg
+  view model session = ?view
+                       ^^^^^
+app/Teams/Show.alder:11:23: warning[W0002]: hole ?load has type Query Teams.Show.Model
+  load params session = ?load
+                        ^^^^^
+app/Teams/Show.alder:14:22: warning[W0002]: hole ?view has type Html Teams.Show.Msg
+  view model session = ?view
+                       ^^^^^
+alder build: the program has 8 typed hole(s); fill them before building

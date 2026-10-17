@@ -1,0 +1,59 @@
+module Orders.Show
+
+import Layout
+import Order
+import User
+
+page "/orders/{id}" { id: Order.OrderId } requires user
+
+type Model = { row: Order }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Order params.id
+  match found {
+    Just row -> Query.succeed { row: row },
+    Nothing -> Query.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Order">
+    <h1>Order</h1>
+
+    <al-card>
+      <dl>
+        <dt>Id</dt>
+        <dd>{model.row.id}</dd>
+        <dt>Owner</dt>
+        <dd>{model.row.owner}</dd>
+        <dt>Status</dt>
+        <dd><al-badge>{match model.row.status { Open -> "Open", Paid -> "Paid", Cancelled -> "Cancelled" }}</al-badge></dd>
+        <dt>Created</dt>
+        <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
+      </dl>
+    </al-card>
+  </Layout.Page>
+
+test "the page shows the row" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let order1 <- Db.insert Order { owner: me }
+  let r <- Test.open (Orders.Show { id: order1 })
+  Task.succeed ({ answer: r.answer, fields: Test.count "dd" r.doc } == { answer: Shown, fields: 4 })
+}
+
+test "a missing row is not found" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Orders.Show { id: Order.OrderId "missing" })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a visitor is sent to log in" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let order1 <- Db.insert Order { owner: me }
+  let r <- Test.open (Orders.Show { id: order1 })
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

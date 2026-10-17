@@ -1,0 +1,21 @@
+module Notes.Index
+
+import Note
+
+page "/" { } requires user
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let _ <- Db.mine Note |> Db.orderBy Note.created.desc |> Db.all
+  Query.succeed { }
+}
+
+view : Model -> Session -> Html Msg
+view model session = ?view
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Notes.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

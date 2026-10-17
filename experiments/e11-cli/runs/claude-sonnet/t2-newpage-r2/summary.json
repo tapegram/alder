@@ -1,0 +1,286 @@
+{
+ "model": "claude-sonnet",
+ "task": "t2-newpage",
+ "retries": 5,
+ "base": "examples/todos",
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "condition": "cli",
+  "sample": "r2",
+  "cli": true
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 21,
+   "exit": 1,
+   "errors": 4,
+   "warnings": 0,
+   "codes": {
+    "E0201": 2,
+    "E0028": 2
+   },
+   "rejected": [],
+   "seconds": 32.3,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 14,
+    "executed": 1,
+    "refused": {
+     "kind": "exit1",
+     "line": 1,
+     "text": "alder new page Profile /profile --blank --requires user",
+     "reason": "alder new page: the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked"
+    },
+    "complete": false,
+    "stopped_at": 1,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   }
+  },
+  {
+   "n": 1,
+   "files": 21,
+   "exit": 1,
+   "errors": 4,
+   "warnings": 0,
+   "codes": {
+    "E0201": 2,
+    "E0028": 2
+   },
+   "rejected": [],
+   "seconds": 36.4,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 18,
+    "executed": 1,
+    "refused": {
+     "kind": "exit1",
+     "line": 2,
+     "text": "alder fill --decl Admin.Todo.Bulk.update - <<'EOF'",
+     "reason": "alder fill: the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked"
+    },
+    "complete": false,
+    "stopped_at": 1,
+    "stdin_lines": 11,
+    "max_body": 11,
+    "decl_uses": 1
+   }
+  },
+  {
+   "n": 2,
+   "files": 21,
+   "exit": 1,
+   "errors": 4,
+   "warnings": 0,
+   "codes": {
+    "E0201": 2,
+    "E0028": 2
+   },
+   "rejected": [],
+   "seconds": 27.9,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 14,
+    "executed": 1,
+    "refused": {
+     "kind": "exit1",
+     "line": 1,
+     "text": "alder regen admin --all",
+     "reason": "alder regen admin: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 1,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   }
+  },
+  {
+   "n": 3,
+   "files": 21,
+   "exit": 1,
+   "errors": 4,
+   "warnings": 0,
+   "codes": {
+    "E0201": 2,
+    "E0028": 2
+   },
+   "rejected": [],
+   "seconds": 13.7,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 4,
+    "executed": 1,
+    "refused": {
+     "kind": "exit1",
+     "line": 2,
+     "text": "alder remove page Admin.Todo.Bulk",
+     "reason": "alder remove page: the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked"
+    },
+    "complete": false,
+    "stopped_at": 1,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   }
+  },
+  {
+   "n": 4,
+   "files": 21,
+   "exit": 1,
+   "errors": 4,
+   "warnings": 0,
+   "codes": {
+    "E0201": 2,
+    "E0028": 2
+   },
+   "rejected": [],
+   "seconds": 16.2,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 1,
+    "executed": 1,
+    "refused": {
+     "kind": "exit1",
+     "line": 1,
+     "text": "alder check --json",
+     "reason": "{\"code\":\"E0201\",\"severity\":\"error\",\"file\":\"app/Admin/Todo/Bulk.alder\",\"line\":46,\"col\":19,\"endLine\":46,\"endCol\":30,\"message\":\"module `Notice` is not imported\",\"fix\":{\"line\":9,\"col\":1,\"endLine\":9,\"endCol\":1,\"replace\":\"import Notice\\n\"}}"
+    },
+    "complete": false,
+    "stopped_at": 1,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   }
+  },
+  {
+   "n": 5,
+   "files": 21,
+   "exit": 1,
+   "errors": 4,
+   "warnings": 0,
+   "codes": {
+    "E0201": 2,
+    "E0028": 2
+   },
+   "rejected": [],
+   "seconds": 9.0,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 3,
+    "executed": 3,
+    "refused": null,
+    "complete": true,
+    "stopped_at": null,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   }
+  }
+ ],
+ "final_pass": false,
+ "outcome": "fail",
+ "base_commit": "9be59afd314f86d2f914a87a011860ed55ed13b8",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "sonnet",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "cli": {
+  "app_name": "newpage",
+  "rounds": 6,
+  "complete": true,
+  "stopped_at": null,
+  "commands": 54,
+  "executed": 8,
+  "refused": {
+   "count": 5,
+   "kinds": {
+    "exit1": 5
+   },
+   "items": [
+    {
+     "round": 0,
+     "kind": "exit1",
+     "line": 1,
+     "text": "alder new page Profile /profile --blank --requires user",
+     "reason": "alder new page: the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked"
+    },
+    {
+     "round": 1,
+     "kind": "exit1",
+     "line": 2,
+     "text": "alder fill --decl Admin.Todo.Bulk.update - <<'EOF'",
+     "reason": "alder fill: the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked"
+    },
+    {
+     "round": 2,
+     "kind": "exit1",
+     "line": 1,
+     "text": "alder regen admin --all",
+     "reason": "alder regen admin: the result does not check (the errors above): nothing was written"
+    },
+    {
+     "round": 3,
+     "kind": "exit1",
+     "line": 2,
+     "text": "alder remove page Admin.Todo.Bulk",
+     "reason": "alder remove page: the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked"
+    },
+    {
+     "round": 4,
+     "kind": "exit1",
+     "line": 1,
+     "text": "alder check --json",
+     "reason": "{\"code\":\"E0201\",\"severity\":\"error\",\"file\":\"app/Admin/Todo/Bulk.alder\",\"line\":46,\"col\":19,\"endLine\":46,\"endCol\":30,\"message\":\"module `Notice` is not imported\",\"fix\":{\"line\":9,\"col\":1,\"endLine\":9,\"endCol\":1,\"replace\":\"import Notice\\n\"}}"
+    }
+   ]
+  },
+  "stdin_lines": 11,
+  "max_body": 11,
+  "decl_uses": 1,
+  "names": null
+ }
+}

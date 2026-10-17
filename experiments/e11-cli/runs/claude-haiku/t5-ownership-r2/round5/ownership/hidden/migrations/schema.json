@@ -1,0 +1,61 @@
+{
+  "format": "1",
+  "tables": [
+    {
+      "name": "Note.Note",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "title",
+          "type": "Text"
+        },
+        {
+          "name": "body",
+          "type": "Text"
+        },
+        {
+          "name": "owner",
+          "type": "Text",
+          "ref": "User.User"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "User.User",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "email",
+          "type": "Text",
+          "unique": true
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        },
+        {
+          "name": "passwordHash",
+          "type": "Text"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    }
+  ]
+}

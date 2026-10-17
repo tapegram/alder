@@ -1,0 +1,57 @@
+module Bookings.Index
+
+import Room
+import Booking
+import User
+import Layout
+
+page "/bookings" { } requires user
+
+type Model = { bookings: List Booking, rooms: List Room }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let bookings <-
+    Db.from Booking
+      |> Db.where (Booking.owner.eq session.user)
+      |> Db.orderBy Booking.from.asc
+      |> Db.all
+  let rooms <- Db.from Room |> Db.all
+  Query.succeed { bookings: bookings, rooms: rooms }
+}
+
+roomName : List Room -> Room.RoomId -> Html Msg
+roomName rooms id = match List.find (\r -> r.id == id) rooms {
+  Just r -> Html.text r.name,
+  Nothing -> Html.none,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="My bookings">
+    <h1>My bookings</h1>
+    <ul id="mine">
+      {for b in model.bookings ->
+        <li>
+          <a class="room" href={Bookings.Show { id: b.id }}>{roomName model.rooms b.room}</a>
+          {" "}
+          <span class="from">{Date.toText b.from}</span>
+        </li>}
+    </ul>
+    <p><a href={Rooms.Index {}}>All rooms</a></p>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "only my bookings are listed, by date" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let red <- Db.insert Room { name: Text.NonEmpty "Red" }
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 5 today, to: Date.addDays 6 today }
+  let _ <- Db.insert Booking { room: red, owner: me, from: Date.addDays 2 today, to: Date.addDays 3 today }
+  let _ <- Db.insert Booking { room: red, owner: other, from: Date.addDays 8 today, to: Date.addDays 9 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Index {})
+  Task.succeed ({ rooms: Test.texts "#mine .room" page.doc, froms: Test.texts "#mine .from" page.doc } == { rooms: ["Red", "Blue"], froms: [Date.toText (Date.addDays 2 today), Date.toText (Date.addDays 5 today)] })
+}

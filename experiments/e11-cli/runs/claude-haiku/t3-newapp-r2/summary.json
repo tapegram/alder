@@ -1,0 +1,325 @@
+{
+ "model": "claude-haiku",
+ "task": "t3-newapp",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "condition": "cli",
+  "sample": "r2",
+  "cli": true
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 7,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 4,
+   "codes": {},
+   "rejected": [],
+   "seconds": 159.0,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 41,
+    "executed": 7,
+    "refused": {
+     "kind": "exit1",
+     "line": 10,
+     "text": "alder new page Admin /admin --blank --requires user",
+     "reason": "alder new page: `--requires user` needs a session with a `user` field (`session { user: Maybe User.UserId }` in `App`): this app's session has none"
+    },
+    "complete": false,
+    "stopped_at": 7,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Home.alder:8:23: warning[W0002]: hole ?load has type Query Home.Model\n  load params session = ?load\n                        ^^^^^\napp/Home.alder:11:22: warning[W0002]: hole ?view has type Html Home.Msg\n  view model session = ?view\n                       ^^^^^\napp/Posts/Show.alder:10:23: warning[W0002]: hole ?load has type Query Posts.Show.Model\n  load params session = ?load\n                        ^^^^^\napp/Posts/Show.alder:13:22: warning[W0002]: hole ?view has type Html Posts.Show.Msg\n  view model session = ?view\n                       ^^^^^\nalder build: the program has 4 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 1,
+   "files": 8,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 4,
+   "codes": {},
+   "rejected": [],
+   "seconds": 112.7,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 27,
+    "executed": 2,
+    "refused": {
+     "kind": "exit1",
+     "line": 5,
+     "text": "alder remove page Home",
+     "reason": "alder remove page: `Home` is still used (the errors above): remove those uses first; nothing was removed"
+    },
+    "complete": false,
+    "stopped_at": 2,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Home.alder:8:23: warning[W0002]: hole ?load has type Query Home.Model\n  load params session = ?load\n                        ^^^^^\napp/Home.alder:11:22: warning[W0002]: hole ?view has type Html Home.Msg\n  view model session = ?view\n                       ^^^^^\napp/Posts/Show.alder:10:23: warning[W0002]: hole ?load has type Query Posts.Show.Model\n  load params session = ?load\n                        ^^^^^\napp/Posts/Show.alder:13:22: warning[W0002]: hole ?view has type Html Posts.Show.Msg\n  view model session = ?view\n                       ^^^^^\nalder build: the program has 4 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 2,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 4,
+   "codes": {},
+   "rejected": [],
+   "seconds": 133.6,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 29,
+    "executed": 2,
+    "refused": {
+     "kind": "exit1",
+     "line": 3,
+     "text": "alder fill --decl Admin.Model - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 2,
+    "stdin_lines": 1,
+    "max_body": 1,
+    "decl_uses": 1
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Home.alder:8:23: warning[W0002]: hole ?load has type Query Home.Model\n  load params session = ?load\n                        ^^^^^\napp/Home.alder:11:22: warning[W0002]: hole ?view has type Html Home.Msg\n  view model session = ?view\n                       ^^^^^\napp/Posts/Show.alder:10:23: warning[W0002]: hole ?load has type Query Posts.Show.Model\n  load params session = ?load\n                        ^^^^^\napp/Posts/Show.alder:13:22: warning[W0002]: hole ?view has type Html Posts.Show.Msg\n  view model session = ?view\n                       ^^^^^\nalder build: the program has 4 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 3,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 4,
+   "codes": {},
+   "rejected": [],
+   "seconds": 194.7,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 25,
+    "executed": 1,
+    "refused": {
+     "kind": "exit1",
+     "line": 2,
+     "text": "alder fill --decl Auth.Login.update - <<'EOF'",
+     "reason": "alder fill: the parameters `msg model session` are bound already: send the body without `\\msg model session ->`"
+    },
+    "complete": false,
+    "stopped_at": 1,
+    "stdin_lines": 12,
+    "max_body": 12,
+    "decl_uses": 1
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Home.alder:8:23: warning[W0002]: hole ?load has type Query Home.Model\n  load params session = ?load\n                        ^^^^^\napp/Home.alder:11:22: warning[W0002]: hole ?view has type Html Home.Msg\n  view model session = ?view\n                       ^^^^^\napp/Posts/Show.alder:10:23: warning[W0002]: hole ?load has type Query Posts.Show.Model\n  load params session = ?load\n                        ^^^^^\napp/Posts/Show.alder:13:22: warning[W0002]: hole ?view has type Html Posts.Show.Msg\n  view model session = ?view\n                       ^^^^^\nalder build: the program has 4 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 4,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 4,
+   "codes": {},
+   "rejected": [],
+   "seconds": 102.1,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 30,
+    "executed": 19,
+    "refused": {
+     "kind": "exit1",
+     "line": 124,
+     "text": "alder fill Posts.Show.load - --hole ?load <<'EOF'",
+     "reason": "alder fill: `alder fill` takes one expression; standard input does not parse as one: expected `}`, got `,`; the last expression of a block is its result and takes no `,` (line 13, column 28)"
+    },
+    "complete": false,
+    "stopped_at": 19,
+    "stdin_lines": 102,
+    "max_body": 22,
+    "decl_uses": 6
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Admin.alder:80:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\napp/Admin.alder:88:29: warning[W0002]: hole ?expected has type Answer\n    Task.succeed (r.answer == ?expected)\n                              ^^^^^^^^^\napp/Posts/Show.alder:11:23: warning[W0002]: hole ?load has type Query Posts.Show.Model\n  load params session = ?load\n                        ^^^^^\napp/Posts/Show.alder:14:22: warning[W0002]: hole ?view has type Html Posts.Show.Msg\n  view model session = ?view\n                       ^^^^^\nalder build: the program has 4 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 5,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 3,
+   "codes": {},
+   "rejected": [],
+   "seconds": 78.0,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 12,
+    "executed": 5,
+    "refused": {
+     "kind": "exit1",
+     "line": 41,
+     "text": "alder fill --decl Posts.Show.view - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 5,
+    "stdin_lines": 46,
+    "max_body": 18,
+    "decl_uses": 2
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Admin.alder:80:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\napp/Admin.alder:88:29: warning[W0002]: hole ?expected has type Answer\n    Task.succeed (r.answer == ?expected)\n                              ^^^^^^^^^\napp/Posts/Show.alder:65:29: warning[W0002]: hole ?expected has type Answer\n    Task.succeed (r.answer == ?expected)\n                              ^^^^^^^^^\nalder build: the program has 3 typed hole(s); fill them before building\n"
+   }
+  }
+ ],
+ "final_pass": false,
+ "outcome": "fail",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "haiku",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "cli": {
+  "app_name": "newapp",
+  "rounds": 6,
+  "complete": false,
+  "stopped_at": {
+   "round": 5,
+   "command": 5,
+   "line": 41,
+   "kind": "exit1"
+  },
+  "commands": 164,
+  "executed": 36,
+  "refused": {
+   "count": 6,
+   "kinds": {
+    "exit1": 6
+   },
+   "items": [
+    {
+     "round": 0,
+     "kind": "exit1",
+     "line": 10,
+     "text": "alder new page Admin /admin --blank --requires user",
+     "reason": "alder new page: `--requires user` needs a session with a `user` field (`session { user: Maybe User.UserId }` in `App`): this app's session has none"
+    },
+    {
+     "round": 1,
+     "kind": "exit1",
+     "line": 5,
+     "text": "alder remove page Home",
+     "reason": "alder remove page: `Home` is still used (the errors above): remove those uses first; nothing was removed"
+    },
+    {
+     "round": 2,
+     "kind": "exit1",
+     "line": 3,
+     "text": "alder fill --decl Admin.Model - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    {
+     "round": 3,
+     "kind": "exit1",
+     "line": 2,
+     "text": "alder fill --decl Auth.Login.update - <<'EOF'",
+     "reason": "alder fill: the parameters `msg model session` are bound already: send the body without `\\msg model session ->`"
+    },
+    {
+     "round": 4,
+     "kind": "exit1",
+     "line": 124,
+     "text": "alder fill Posts.Show.load - --hole ?load <<'EOF'",
+     "reason": "alder fill: `alder fill` takes one expression; standard input does not parse as one: expected `}`, got `,`; the last expression of a block is its result and takes no `,` (line 13, column 28)"
+    },
+    {
+     "round": 5,
+     "kind": "exit1",
+     "line": 41,
+     "text": "alder fill --decl Posts.Show.view - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    }
+   ]
+  },
+  "stdin_lines": 161,
+  "max_body": 22,
+  "decl_uses": 10,
+  "names": null,
+  "setup": {
+   "argv": [
+    "alder",
+    "new",
+    "newapp",
+    "--bare"
+   ],
+   "exit": 0,
+   "stdout": "created newapp/\n  .gitignore\n  adapters/README.md\n  app/App.alder\n  app/Layout.alder\n  go.mod\n  static/app.css\ngo.mod keeps the app out of the Go module of /Users/tavishpegram/projects/alder/experiments/go.mod\n\nnext:\n  cd newapp\n  alder new table \u2026      # the app's tables (chapter 15)\n  alder new page \u2026       # its pages\n  alder new auth         # a login\n  alder check            # type-check the app\n",
+   "stderr": ""
+  }
+ }
+}

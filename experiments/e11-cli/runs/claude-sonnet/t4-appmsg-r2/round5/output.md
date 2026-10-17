@@ -1,0 +1,15 @@
+```alder-cli
+alder fill Auth.Login.update.Submit - --hole ?afterLogin <<'EOF'
+Notes.Index {}
+EOF
+alder fill 'Auth.Login."logging in through the form"' - --hole ?afterLogin <<'EOF'
+Notes.Index {}
+EOF
+alder fill --decl Notes.Index.view - <<'EOF'
+<Layout.Page title="Notes">
+  <h1>Notes</h1>
+</Layout.Page>
+EOF
+alder new form Notes.Index NewNote title:Text.NonEmpty body:Text --msg Add
+alder fill --list
+```

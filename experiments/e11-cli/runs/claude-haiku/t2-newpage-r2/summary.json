@@ -1,0 +1,292 @@
+{
+ "model": "claude-haiku",
+ "task": "t2-newpage",
+ "retries": 5,
+ "base": "examples/todos",
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "condition": "cli",
+  "sample": "r2",
+  "cli": true
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 21,
+   "exit": 1,
+   "errors": 4,
+   "warnings": 0,
+   "codes": {
+    "E0201": 2,
+    "E0028": 2
+   },
+   "rejected": [],
+   "seconds": 112.9,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 13,
+    "executed": 1,
+    "refused": {
+     "kind": "exit1",
+     "line": 2,
+     "text": "alder new page Profile /profile --requires user --blank",
+     "reason": "alder new page: the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked"
+    },
+    "complete": false,
+    "stopped_at": 1,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   }
+  },
+  {
+   "n": 1,
+   "files": 21,
+   "exit": 1,
+   "errors": 4,
+   "warnings": 0,
+   "codes": {
+    "E0201": 2,
+    "E0028": 2
+   },
+   "rejected": [],
+   "seconds": 10.6,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 3,
+    "executed": 1,
+    "refused": {
+     "kind": "exit1",
+     "line": 2,
+     "text": "alder regen admin --all",
+     "reason": "alder regen admin: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 1,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   }
+  },
+  {
+   "n": 2,
+   "files": 21,
+   "exit": 1,
+   "errors": 4,
+   "warnings": 0,
+   "codes": {
+    "E0201": 2,
+    "E0028": 2
+   },
+   "rejected": [],
+   "seconds": 89.1,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 17,
+    "executed": 1,
+    "refused": {
+     "kind": "exit1",
+     "line": 3,
+     "text": "alder fill --decl Admin.Todo.Bulk.update - <<'EOF'",
+     "reason": "alder fill: the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked"
+    },
+    "complete": false,
+    "stopped_at": 1,
+    "stdin_lines": 11,
+    "max_body": 11,
+    "decl_uses": 1
+   }
+  },
+  {
+   "n": 3,
+   "files": 21,
+   "exit": 1,
+   "errors": 4,
+   "warnings": 0,
+   "codes": {
+    "E0201": 2,
+    "E0028": 2
+   },
+   "rejected": [],
+   "seconds": 23.0,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 14,
+    "executed": 1,
+    "refused": {
+     "kind": "exit1",
+     "line": 3,
+     "text": "alder remove page Admin.Todo.Bulk",
+     "reason": "alder remove page: the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked"
+    },
+    "complete": false,
+    "stopped_at": 1,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   }
+  },
+  {
+   "n": 4,
+   "files": 21,
+   "exit": 1,
+   "errors": 4,
+   "warnings": 0,
+   "codes": {
+    "E0201": 2,
+    "E0028": 2
+   },
+   "rejected": [],
+   "seconds": 25.9,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 0,
+    "executed": 0,
+    "refused": null,
+    "complete": true,
+    "stopped_at": null,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   }
+  },
+  {
+   "n": 5,
+   "files": 21,
+   "exit": 1,
+   "errors": 4,
+   "warnings": 0,
+   "codes": {
+    "E0201": 2,
+    "E0028": 2
+   },
+   "rejected": [],
+   "seconds": 19.1,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": null,
+    "commands": 0,
+    "executed": 0,
+    "refused": {
+     "kind": "parse",
+     "line": 0,
+     "text": "",
+     "reason": "your answer has no ```alder-cli block"
+    },
+    "complete": false,
+    "stopped_at": 0,
+    "stdin_lines": 0,
+    "max_body": 0,
+    "decl_uses": 0
+   }
+  }
+ ],
+ "final_pass": false,
+ "outcome": "fail",
+ "base_commit": "dae8b46d82d6a1edb293cbdcc2e8cd3dd1347ba3",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "haiku",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "cli": {
+  "app_name": "newpage",
+  "rounds": 6,
+  "complete": false,
+  "stopped_at": {
+   "round": 5,
+   "command": 0,
+   "line": 0,
+   "kind": "parse"
+  },
+  "commands": 47,
+  "executed": 4,
+  "refused": {
+   "count": 5,
+   "kinds": {
+    "exit1": 4,
+    "parse": 1
+   },
+   "items": [
+    {
+     "round": 0,
+     "kind": "exit1",
+     "line": 2,
+     "text": "alder new page Profile /profile --requires user --blank",
+     "reason": "alder new page: the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked"
+    },
+    {
+     "round": 1,
+     "kind": "exit1",
+     "line": 2,
+     "text": "alder regen admin --all",
+     "reason": "alder regen admin: the result does not check (the errors above): nothing was written"
+    },
+    {
+     "round": 2,
+     "kind": "exit1",
+     "line": 3,
+     "text": "alder fill --decl Admin.Todo.Bulk.update - <<'EOF'",
+     "reason": "alder fill: the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked"
+    },
+    {
+     "round": 3,
+     "kind": "exit1",
+     "line": 3,
+     "text": "alder remove page Admin.Todo.Bulk",
+     "reason": "alder remove page: the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked"
+    },
+    {
+     "round": 5,
+     "kind": "parse",
+     "line": 0,
+     "text": "",
+     "reason": "your answer has no ```alder-cli block"
+    }
+   ]
+  },
+  "stdin_lines": 11,
+  "max_body": 11,
+  "decl_uses": 1,
+  "names": null
+ }
+}

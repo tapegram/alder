@@ -1,0 +1,49 @@
+module Rooms.Index
+
+import Booking
+import Layout
+import Room
+import User
+
+page "/rooms" { } requires user
+
+type Model = { rooms: List Booking.RoomFree }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let rooms <- Booking.roomsFree
+  Query.succeed { rooms: rooms }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <Layout.Page title="Rooms">
+  <h1>Rooms</h1>
+  <ul id="rooms">
+    {for r in model.rooms ->
+      <li>
+        <a class="name" href={Rooms.Show { id: r.room.id }}>{r.room.name}</a>
+        {" "}
+        <span class="free">{Date.toText r.free}</span>
+      </li>}
+  </ul>
+  <a href={Bookings.Index {}}>My bookings</a>
+  <button click={App.Logout}>Log out</button>
+</Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Rooms.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "the next free date skips back-to-back bookings" = {
+  let me <- Db.insert User.User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let oak <- Db.insert Room.Room { name: Text.NonEmpty "Oak" }
+  let _ <- Db.insert Room.Room { name: Text.NonEmpty "Elm" }
+  let today <- Date.today
+  let _ <- Db.insert Booking.Booking { room: oak, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Db.insert Booking.Booking { room: oak, owner: me, from: Date.addDays 2 today, to: Date.addDays 5 today }
+  let _ <- Db.insert Booking.Booking { room: oak, owner: me, from: Date.addDays 6 today, to: Date.addDays 7 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Rooms.Index {})
+  Task.succeed ({ names: Test.texts "#rooms .name" page.doc, free: Test.texts "#rooms .free" page.doc } == { names: ["Elm", "Oak"], free: [Date.toText today, Date.toText (Date.addDays 5 today)] })
+}

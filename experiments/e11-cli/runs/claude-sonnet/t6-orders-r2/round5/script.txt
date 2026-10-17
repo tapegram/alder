@@ -1,0 +1,72 @@
+alder fill Products.Index.update.Toggle - <<'EOF'
+{
+  let _ <- Db.update Product p.id (\x -> { x | active: not x.active })
+  Task.succeed (Redirect (Products.Index {}))
+}
+EOF
+alder fill --decl Products.Index.view - <<'EOF'
+<Layout.Page title="Products">
+  <h1>Products</h1>
+  <al-card>
+    <h2 slot="header">New product</h2>
+    <form submit={Add}>
+      <al-input field="name" label="Name" />
+      <al-input field="price" label="Price" />
+      <al-alert variant="destructive"><Errors form /></al-alert>
+      <al-button type="submit">New product</al-button>
+    </form>
+  </al-card>
+  <ul id="products">
+    {for p in model.products ->
+      <li>
+        <span class="name">{p.name}</span>
+        <span class="price">{Text.fromInt p.price}</span>
+        <span class="active">{if p.active then "Active" else "Inactive"}</span>
+        <al-button variant="secondary" size="sm" click={Toggle { id: p.id }}>Toggle</al-button>
+      </li>}
+  </ul>
+  <a href={Orders.Index {}}>Orders</a>
+</Layout.Page>
+EOF
+alder fill --decl 'Products.Index."submitting NewProduct adds a row"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "m1@example.com", name: Text.NonEmpty "M", passwordHash: "", role: Manager }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Products.Index {})
+  let r <- Test.submit NewProduct { name: Text.NonEmpty "Pen", price: Int.NonNegative 250 }
+  let rows <- Db.from Product |> Db.all
+  Task.succeed ({ answer: r.answer, rows: List.map (\row -> { name: row.name, price: row.price, active: row.active }) rows } == { answer: Redirected (Products.Index {}), rows: [{ name: Text.NonEmpty "Pen", price: Int.NonNegative 250, active: True }] })
+}
+EOF
+alder fill --decl 'Products.Index."NewProduct refuses an empty name"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "m2@example.com", name: Text.NonEmpty "M", passwordHash: "", role: Manager }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Products.Index {})
+  let r <- Test.submitRaw NewProduct [{ name: "name", value: "" }, { name: "price", value: "1" }]
+  let rows <- Db.from Product |> Db.count
+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: FormRejected [{ field: "name", message: "must not be empty" }], rows: 0 })
+}
+EOF
+alder fill --decl 'Products.Index."pressing Toggle"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "m3@example.com", name: Text.NonEmpty "M", passwordHash: "", role: Manager }
+  let p <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 250 }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Products.Index {})
+  let r <- Test.click (Toggle { id: p })
+  let after <- Db.get Product p
+  Task.succeed ({ answer: r.answer, active: Maybe.map (\x -> x.active) after } == { answer: Redirected (Products.Index {}), active: Just False })
+}
+EOF
+alder new test Products.Index "a Staff user gets 404 on products"
+alder fill 'Products.Index."a Staff user gets 404 on products"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "s1@example.com", name: Text.NonEmpty "S", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Products.Index {})
+  Task.succeed (r.answer == PageMissing)
+}
+EOF
+alder check
+alder test

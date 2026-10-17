@@ -1,0 +1,36 @@
+module Layout
+
+Page : { title: Text, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+      <link rel="stylesheet" href={Url.external "/static/al/al.css"} />
+      <link rel="stylesheet" href={Url.external "/static/app.css"} />
+    </head>
+    <body>
+      <al-page width="narrow">
+        <main>{props.children}</main>
+      </al-page>
+    </body>
+  </html>
+
+shell : { title: Text, dark: Bool, children: List (Html a) } -> Html a
+shell = \props -> <html>
+  <head>
+    <meta charset="utf-8" />
+    <title>{props.title}</title>
+    <link rel="stylesheet" href={Url.external "/static/al/al.css"} />
+    <link rel="stylesheet" href={Url.external "/static/app.css"} />
+  </head>
+  <body class={if props.dark then Just "dark" else Nothing}>
+    <al-page width="narrow">
+      <nav>
+        <al-button id="theme" variant="outline" size="sm" click={App.SwitchTheme}>{if props.dark then "Switch to light" else "Switch to dark"}</al-button>
+        <al-button id="logout" variant="ghost" size="sm" click={App.Logout}>Log out</al-button>
+      </nav>
+      <main>{props.children}</main>
+    </al-page>
+  </body>
+</html>

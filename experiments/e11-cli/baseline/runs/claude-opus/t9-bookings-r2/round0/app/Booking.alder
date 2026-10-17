@@ -1,0 +1,37 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+-- A booking holds its room from `from` up to, but not including, `to`.
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- Whether the booking holds the room on that day.
+holds : Date -> Booking -> Bool
+holds day booking = booking.from <= day && day < booking.to
+
+-- The first day, `day` or later, that none of the bookings holds. A booking that holds `day`
+-- ends after it, so each step moves forward and the search ends.
+nextFree : Date -> List Booking -> Date
+nextFree day bookings = match List.find (holds day) bookings {
+  Just b -> nextFree b.to bookings,
+  Nothing -> day,
+}
+
+test "back-to-back bookings move the next free date to the last one's end" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let _ <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Db.insert Booking { room: room, owner: me, from: Date.addDays 2 today, to: Date.addDays 4 today }
+  let bookings <- Db.from Booking |> Db.all
+  Task.succeed (Date.toText (nextFree today bookings) == Date.toText (Date.addDays 4 today))
+}

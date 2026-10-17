@@ -1,0 +1,13 @@
+```alder-cli
+# the page shows the note's title and body: replace the test body that failed
+alder fill 'Notes.Show."the page shows the row"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", body: "x", owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Notes.Show { id: id })
+  Task.succeed ({ title: Test.text "#title" page.doc, body: Test.text "#body" page.doc } == { title: Just "Milk", body: Just "x" })
+}
+EOF
+alder test
+```

@@ -1,0 +1,7 @@
+{"code": "W0002", "severity": "warning", "file": "app/Auth/Login.alder", "line": 47, "col": 33, "endLine": 47, "endCol": 44, "message": "hole ?afterLogin has type Page"}
+{"code": "W0002", "severity": "warning", "file": "app/Auth/Login.alder", "line": 86, "col": 85, "endLine": 86, "endCol": 96, "message": "hole ?afterLogin has type Page"}
+{"code": "W0002", "severity": "warning", "file": "app/Notes/Index.alder", "line": 28, "col": 12, "endLine": 28, "endCol": 16, "message": "hole ?add has type Task Nav"}
+{"code": "W0002", "severity": "warning", "file": "app/Notes/Index.alder", "line": 29, "col": 15, "endLine": 29, "endCol": 22, "message": "hole ?delete has type Task Nav"}
+{"code": "W0002", "severity": "warning", "file": "app/Notes/Index.alder", "line": 46, "col": 34, "endLine": 46, "endCol": 43, "message": "hole ?deleteId has type Note.NoteId"}
+{"code": "W0002", "severity": "warning", "file": "app/Notes/Index.alder", "line": 59, "col": 29, "endLine": 59, "endCol": 38, "message": "hole ?expected has type Answer"}
+{"code": "W0002", "severity": "warning", "file": "app/Notes/Index.alder", "line": 80, "col": 16, "endLine": 80, "endCol": 25, "message": "hole ?expected has type Bool"}

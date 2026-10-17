@@ -1,0 +1,3 @@
+{"code": "W0002", "severity": "warning", "file": "app/Admin/Index.alder", "line": 34, "col": 15, "endLine": 34, "endCol": 22, "message": "hole ?toggle has type Task Nav"}
+{"code": "W0002", "severity": "warning", "file": "app/Admin/Index.alder", "line": 88, "col": 16, "endLine": 88, "endCol": 25, "message": "hole ?expected has type Bool"}
+{"code": "W0002", "severity": "warning", "file": "app/Posts/Show.alder", "line": 64, "col": 29, "endLine": 64, "endCol": 38, "message": "hole ?expected has type Answer"}

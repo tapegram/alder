@@ -1,0 +1,19 @@
+app/Admin/Index.alder:8:23: warning[W0002]: hole ?load has type Query Admin.Index.Model
+  load params session = ?load
+                        ^^^^^
+app/Admin/Index.alder:11:22: warning[W0002]: hole ?view has type Html Admin.Index.Msg
+  view model session = ?view
+                       ^^^^^
+app/Posts/Index.alder:10:23: warning[W0002]: hole ?load has type Query Posts.Index.Model
+  load params session = ?load
+                        ^^^^^
+app/Posts/Index.alder:13:22: warning[W0002]: hole ?view has type Html Posts.Index.Msg
+  view model session = ?view
+                       ^^^^^
+app/Posts/Show.alder:10:23: warning[W0002]: hole ?load has type Query Posts.Show.Model
+  load params session = ?load
+                        ^^^^^
+app/Posts/Show.alder:13:22: warning[W0002]: hole ?view has type Html Posts.Show.Msg
+  view model session = ?view
+                       ^^^^^
+alder build: the program has 6 typed hole(s); fill them before building

@@ -1,0 +1,21 @@
+module Bookings.Index
+
+import Booking
+
+page "/bookings" { } requires user
+
+type Model = { rows: List Booking.MyBooking }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let rows <- Booking.myBookings session.user
+  Query.succeed { rows: rows }
+}
+
+view : Model -> Session -> Html Msg
+view model session = ?view
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Bookings.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

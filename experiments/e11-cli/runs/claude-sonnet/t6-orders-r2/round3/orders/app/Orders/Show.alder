@@ -1,0 +1,111 @@
+module Orders.Show
+
+import Layout
+import Line
+import Order
+import Product
+import User
+
+page "/orders/{id}" { id: Order.OrderId } requires user
+
+type Model = { order: Order, lines: List { name: Text, quantity: Int, subtotal: Int }, products: List Product, total: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Order params.id
+  match found {
+    Nothing -> Query.notFound,
+    Just o -> {
+      let mgr <- User.isManager session.user
+      if o.owner == session.user || mgr then {
+        let lines <- Db.from Line |> Db.where (Line.order.eq o.id) |> Db.all
+        let prods <- Db.from Product |> Db.all
+        let total <- Line.total o.id
+        Query.succeed { order: o, lines: List.map (\l -> { name: Maybe.withDefault "" (Maybe.map (\p -> Text.trim p.name) (List.find (\p -> p.id == l.product) prods)), quantity: l.quantity, subtotal: Line.priceOf prods l }) lines, products: List.filter (\p -> p.active) prods, total: total }
+      } else Query.notFound
+    },
+  }
+}
+
+-- AddLine's arm reads the posted fields as p.form (p.form : NewLine, such as p.form.quantity)
+form NewLine = {
+  quantity: Int.Positive,
+}
+
+msg AddLine { product: Product.ProductId } form NewLine
+
+msg Pay
+
+msg Cancel
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddLine p -> ?addLine,
+  Pay p -> ?pay,
+  Cancel p -> ?cancel,
+}
+
+view : Model -> Session -> Html Msg
+view model session = <Layout.Page title="Order">
+  <h1>Order</h1>
+
+
+  <al-card>
+    <h2 slot="header">New line</h2>
+    <form submit={AddLine { product: ?addLineProduct }}>
+      <al-input field="quantity" label="Quantity" />
+      <al-alert variant="destructive"><Errors form /></al-alert>
+      <al-button type="submit">New line</al-button>
+    </form>
+  </al-card>
+
+  <al-button click={Pay}>Pay</al-button>
+
+  <al-button click={Cancel}>Cancel</al-button>
+</Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let order1 <- Db.insert Order { owner: me }
+  let r <- Test.open (Orders.Show { id: order1 })
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "submitting NewLine" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let order1 <- Db.insert Order { owner: me }
+  let _ <- Test.get (Orders.Show { id: order1 })
+  let r <- Test.submit (AddLine { product: ?addLineProduct }) { quantity: Int.Positive 1 }
+  Task.succeed (r.answer == ?expected)
+}
+
+-- Fill ?expected with what pressing Pay must do, so that a test fails when the arm
+-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
+-- changed (`after`: the page opened again, `after.answer` Shown, or PageMissing when the arm
+-- deleted the page's row, and `after.doc` its HTML), as
+-- `{ answer: r.answer, … } == { answer: Rerendered, … }`.
+test "pressing Pay" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let order1 <- Db.insert Order { owner: me }
+  let _ <- Test.get (Orders.Show { id: order1 })
+  let r <- Test.click Pay
+  let after <- Test.open (Orders.Show { id: order1 })
+  Task.succeed ?expected
+}
+
+-- Fill ?expected with what pressing Cancel must do, so that a test fails when the arm
+-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
+-- changed (`after`: the page opened again, `after.answer` Shown, or PageMissing when the arm
+-- deleted the page's row, and `after.doc` its HTML), as
+-- `{ answer: r.answer, … } == { answer: Rerendered, … }`.
+test "pressing Cancel" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let order1 <- Db.insert Order { owner: me }
+  let _ <- Test.get (Orders.Show { id: order1 })
+  let r <- Test.click Cancel
+  let after <- Test.open (Orders.Show { id: order1 })
+  Task.succeed ?expected
+}

@@ -1,0 +1,135 @@
+module Profile
+
+import Todo
+import Layout
+import User
+
+page "/profile" { } requires user
+
+type Model = {
+  user: User,
+  total: Int,
+  done: Int,
+}
+
+-- The user's row is read again on every request: the session holds only the id. The counts use
+-- the scoped `Db.mine Todo`, so they are only the signed-in user's todos (book 06, "Rules").
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get User session.user
+  let total <- Db.mine Todo |> Db.count
+  let done <- Db.mine Todo |> Db.where (Todo.done.eq True) |> Db.count
+  match found {
+    Just u -> Query.succeed { user: u, total: total, done: done },
+    Nothing -> Query.notFound,
+  }
+}
+
+form Rename = {
+  name: Text.NonEmpty,
+}
+
+msg Save form Rename
+
+-- `User` has no `@owner` column, so the write is unscoped; the row is the one `load` read for the
+-- session's own user, so it can only ever be the signed-in user's.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> {
+    let _ <- Db.update User model.user.id (\u -> { u | name: p.form.name })
+    Task.succeed (Redirect (Profile {}))
+  },
+}
+
+-- Logging out is the app-level message `App.Logout` (declared in App, not on the login page):
+-- any page may send it, so the button posts it rather than declaring a second Logout here.
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Profile">
+    <h1>Profile</h1>
+
+    <al-card>
+      <dl>
+        <dt>Name</dt>
+        <dd id="name">{model.user.name}</dd>
+        <dt>Email</dt>
+        <dd id="email">{model.user.email}</dd>
+        <dt>Todos</dt>
+        <dd id="total">{Text.fromInt model.total}</dd>
+        <dt>Done</dt>
+        <dd id="done">{Text.fromInt model.done}</dd>
+      </dl>
+    </al-card>
+
+    <al-card>
+      <form submit={Save}>
+        <al-input field="name" label="Name" value={model.user.name} />
+        <al-button type="submit">Save</al-button>
+      </form>
+    </al-card>
+
+    <p><a href={Todos.Index {}}>Back to the todos</a></p>
+
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "load counts only the user's todos" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", done: True, due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Bread", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Eggs", done: True, due: Nothing, owner: other }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Jam", due: Nothing, owner: other }
+  let _ <- Test.login { user: Just me }
+  let m <- load {} { user: me, role: Member }
+  Task.succeed ({ name: m.user.name, total: m.total, done: m.done } == { name: Text.NonEmpty "Me", total: 2, done: 1 })
+}
+
+test "the page shows the name, the email and the counts" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", done: True, due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Profile {})
+  Task.succeed ({
+    name: Test.text "#name" page.doc,
+    email: Test.text "#email" page.doc,
+    total: Test.text "#total" page.doc,
+    done: Test.text "#done" page.doc,
+  } == {
+    name: Just "Me",
+    email: Just "me@example.com",
+    total: Just "1",
+    done: Just "1",
+  })
+}
+
+test "renaming changes the name" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Profile {})
+  let r <- Test.submit Rename { name: Text.NonEmpty "New Me" }
+  let after <- Db.get User me
+  Task.succeed ({ answer: r.answer, name: Maybe.map (\u -> u.name) after } == { answer: Redirected (Profile {}), name: Just (Text.NonEmpty "New Me") })
+}
+
+test "renaming to an empty name is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Profile {})
+  let r <- Test.submitRaw Rename [{ name: "name", value: "" }]
+  let after <- Db.get User me
+  Task.succeed ({ answer: r.answer, name: Maybe.map (\u -> u.name) after } == { answer: FormRejected [{ field: "name", message: "must not be empty" }], name: Just (Text.NonEmpty "Me") })
+}
+
+test "a visitor is sent to log in from the profile" = {
+  let r <- Test.open (Profile {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "logging out from the profile" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Profile {})
+  let out <- Test.click App.Logout
+  Task.succeed ({ answer: out.answer, user: out.session.user } == { answer: Redirected (Auth.Login {}), user: Nothing })
+}

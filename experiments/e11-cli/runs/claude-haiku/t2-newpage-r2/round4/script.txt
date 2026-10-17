@@ -1,0 +1,2 @@
+# Blocked: the app does not check (see the explanation above), so every command here would be refused.
+# Nothing is run. Fix the admin scaffold first, then send the profile script.

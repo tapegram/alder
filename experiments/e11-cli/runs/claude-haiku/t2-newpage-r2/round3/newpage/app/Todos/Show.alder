@@ -1,0 +1,85 @@
+module Todos.Show
+
+import Todo
+import Layout
+import User
+
+page "/todos/{id}" { id: Todo.TodoId } requires user
+
+type Model = { todo: Todo }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todo <- Db.getMine Todo params.id
+  Query.succeed { todo: todo }
+}
+
+form EditTodo = {
+  title: Text.NonEmpty,
+  due: Maybe Date,
+}
+
+-- `Db.getMine` finds the todo only when it is the session's user's: anyone else's, like a missing
+-- one, is a 404. The messages carry no id: the page's parameter names the todo, and every message
+-- runs after this `load`, so `update` acts on `model.todo`. It still writes the scoped forms: they
+-- cost nothing, and say what the page means (book 06, "Rules").
+msg Save form EditTodo
+msg Delete
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> {
+    let _ <- Db.updateMine Todo model.todo.id (\t -> { t | title: p.form.title, due: p.form.due })
+    Task.succeed (Redirect (Todos.Index {}))
+  },
+  Delete p -> {
+    let _ <- Db.deleteMine Todo model.todo.id
+    Task.succeed (Redirect (Todos.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.todo.title}>
+    <h1>{model.todo.title}</h1>
+    <al-card>
+      <form submit={Save}>
+        <al-input field="title" label="Title" value={model.todo.title} />
+        <al-input field="due" label="Due" value={model.todo.due} />
+        <al-button type="submit">Save</al-button>
+      </form>
+      <div slot="actions">
+        <al-button variant="ghost" href={Todos.Index {}}>Back</al-button>
+        <al-button variant="destructive" click={Delete}>Delete</al-button>
+      </div>
+    </al-card>
+  </Layout.Page>
+
+-- The page through the browser: a visitor is sent to log in; the owner saves the form and
+-- deletes the todo with the buttons the page renders.
+test "a visitor is sent to log in from a todo" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let visitor <- Test.open (Todos.Show { id: id })
+  Task.succeed (visitor.answer == Redirected (Auth.Login {}))
+}
+
+test "saving changes the title and the due date" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Show { id: id })
+  let r <- Test.submit EditTodo { title: Text.NonEmpty "Bread", due: Date.fromText "2026-10-12" }
+  let after <- Db.get Todo id
+  Task.succeed ({ answer: r.answer, title: Maybe.map (\t -> t.title) after, due: Maybe.andThen (\t -> t.due) after } == { answer: Redirected (Todos.Index {}), title: Just (Text.NonEmpty "Bread"), due: Date.fromText "2026-10-12" })
+}
+
+test "deleting from the todo's page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Show { id: id })
+  let r <- Test.click Delete
+  let after <- Db.get Todo id
+  Task.succeed ({ answer: r.answer, todo: Maybe.map (\t -> t.title) after } == { answer: Redirected (Todos.Index {}), todo: Nothing })
+}

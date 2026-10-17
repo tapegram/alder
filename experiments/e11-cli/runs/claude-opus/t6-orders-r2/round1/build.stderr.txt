@@ -1,0 +1,19 @@
+app/Orders/Index.alder:63:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Orders/Show.alder:100:44: warning[W0002]: hole ?addLineProduct has type Product.ProductId
+    let r <- Test.submit (AddLine { product: ?addLineProduct }) { quantity: Int.Positive 1 }
+                                             ^^^^^^^^^^^^^^^
+app/Orders/Show.alder:101:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
+app/Orders/Show.alder:116:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Orders/Show.alder:131:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Products/Index.alder:95:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+alder build: the program has 6 typed hole(s); fill them before building

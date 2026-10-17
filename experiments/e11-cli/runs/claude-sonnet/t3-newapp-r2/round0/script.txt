@@ -1,0 +1,184 @@
+# the post type, tables
+alder new type Post 'Slug = brand Text where Text.matches "^[a-z0-9-]+$"'
+alder new table Post title:Text.NonEmpty slug:Slug@unique body:Text published:Bool=False
+alder new table Comment post:Post.PostId@ref=Post@cascade author:Text.NonEmpty body:Text.NonEmpty
+
+# public pages
+alder new page Posts.Index / --blank
+alder new auth --to Posts.Index
+alder new page Posts.Show '/posts/{slug}' --blank --param slug:Post.Slug
+alder new page Admin.Index /admin --blank --requires user
+
+# Posts.Index
+alder fill --decl Posts.Index.Model - <<'EOF'
+{ posts: List Post }
+EOF
+alder fill Posts.Index.load - <<'EOF'
+\params session -> {
+  let posts <- Db.from Post |> Db.where (Post.published.eq True) |> Db.orderBy Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+EOF
+alder fill Posts.Index.view - <<'EOF'
+\model session ->
+  <Layout.Page title="Blog">
+    <h1>Blog</h1>
+    <ul id="posts">
+      {for post in model.posts -> <li><a href={Posts.Show { slug: post.slug }}>{post.title}</a></li>}
+    </ul>
+    <p><a href={Admin.Index {}}>Admin</a></p>
+  </Layout.Page>
+EOF
+
+# Posts.Show
+alder fill --decl Posts.Show.Model - <<'EOF'
+{ post: Post, comments: List Comment }
+EOF
+alder fill Posts.Show.load - <<'EOF'
+\params session -> {
+  let found <- Db.from Post |> Db.where (Post.slug.eq params.slug) |> Db.first
+  match found {
+    Nothing -> Query.notFound,
+    Just post -> if post.published || session.user != Nothing then {
+      let comments <- Db.from Comment |> Db.where (Comment.post.eq post.id) |> Db.orderBy Comment.created.asc |> Db.all
+      Query.succeed { post: post, comments: comments }
+    } else Query.notFound,
+  }
+}
+EOF
+alder fill Posts.Show.view - <<'EOF'
+\model session ->
+  <Layout.Page title={model.post.title}>
+    <h1>{model.post.title}</h1>
+  </Layout.Page>
+EOF
+alder new form Posts.Show NewComment author:Text.NonEmpty body:Text.NonEmpty --msg AddComment
+alder fill Posts.Show.update.AddComment - <<'EOF'
+{
+  let _ <- Db.insert Comment { post: model.post.id, author: p.form.author, body: p.form.body }
+  Task.succeed Rerender
+}
+EOF
+alder fill --decl Posts.Show.view - <<'EOF'
+\model session ->
+  <Layout.Page title={model.post.title}>
+    <h1>{model.post.title}</h1>
+    <article>{model.post.body}</article>
+    <h2>Comments</h2>
+    <ul id="comments">
+      {for c in model.comments -> <li><strong>{c.author}</strong>: {c.body}</li>}
+    </ul>
+    <form submit={AddComment}>
+      <Errors form />
+      <Input field="author" label="Name" />
+      <Errors field="author" />
+      <Textarea field="body" label="Comment" />
+      <Errors field="body" />
+      <button>Add comment</button>
+    </form>
+    <p><a href={Posts.Index {}}>Back</a></p>
+  </Layout.Page>
+EOF
+
+# Admin.Index
+alder fill --decl Admin.Index.Model - <<'EOF'
+{ posts: List Post }
+EOF
+alder fill Admin.Index.load - <<'EOF'
+\params session -> {
+  let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+EOF
+alder fill Admin.Index.view - <<'EOF'
+\model session ->
+  <Layout.Page title="Admin">
+    <h1>Admin</h1>
+  </Layout.Page>
+EOF
+alder new form Admin.Index NewPost title:Text.NonEmpty slug:Post.Slug body:Text published:Bool --msg CreatePost
+alder new msg Admin.Index TogglePublished id:Post.PostId
+alder fill Admin.Index.update.CreatePost - <<'EOF'
+{
+  let taken <- Db.from Post |> Db.where (Post.slug.eq p.form.slug) |> Db.count
+  if taken > 0 then Task.succeed (Reject "That slug is already used.") else {
+    let _ <- Db.insert Post { title: p.form.title, slug: p.form.slug, body: p.form.body, published: p.form.published }
+    Task.succeed Rerender
+  }
+}
+EOF
+alder fill Admin.Index.update.TogglePublished - <<'EOF'
+{
+  let _ <- Db.update Post p.id (\x -> { x | published: not x.published })
+  Task.succeed Rerender
+}
+EOF
+alder fill --decl Admin.Index.view - <<'EOF'
+\model session ->
+  <Layout.Page title="Admin">
+    <h1>Admin</h1>
+    <p><a href={Posts.Index {}}>View blog</a></p>
+    <button click={App.Logout}>Log out</button>
+    <h2>New post</h2>
+    <form submit={CreatePost}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Input field="slug" label="Slug" />
+      <Errors field="slug" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <Input field="published" label="Published" />
+      <Errors field="published" />
+      <button>Create</button>
+    </form>
+    <h2>Posts</h2>
+    <ul id="posts">
+      {for post in model.posts ->
+        <li>
+          <a href={Posts.Show { slug: post.slug }}>{post.title}</a>
+          <span>{if post.published then "Published" else "Draft"}</span>
+          <button click={TogglePublished { id: post.id }}>Toggle published</button>
+        </li>}
+    </ul>
+  </Layout.Page>
+EOF
+
+# tests
+alder new test Posts.Index "lists only published posts, newest first"
+alder fill 'Posts.Index."lists only published posts, newest first"' - <<'EOF'
+{
+  let _ <- Db.insert Post { title: Text.NonEmpty "First", slug: Post.Slug "first", body: "a", published: True }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Hidden", slug: Post.Slug "hidden", body: "b", published: False }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Second", slug: Post.Slug "second", body: "c", published: True }
+  let page <- Test.get (Posts.Index {})
+  Task.succeed (Test.texts "#posts a" page.doc == ["Second", "First"])
+}
+EOF
+alder new test Posts.Show "an unpublished post is not found for a reader"
+alder fill 'Posts.Show."an unpublished post is not found for a reader"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: Text.Secret "x" }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Draft", slug: Post.Slug "draft", body: "x", published: False }
+  let reader <- Test.open (Posts.Show { slug: Post.Slug "draft" })
+  let _ <- Test.login { user: Just me }
+  let author <- Test.open (Posts.Show { slug: Post.Slug "draft" })
+  Task.succeed ({ reader: reader.answer, author: author.answer } == { reader: PageMissing, author: Shown })
+}
+EOF
+alder new test Posts.Show "a comment with an empty author is refused"
+alder fill 'Posts.Show."a comment with an empty author is refused"' - <<'EOF'
+{
+  let _ <- Db.insert Post { title: Text.NonEmpty "Hi", slug: Post.Slug "hi", body: "Hello", published: True }
+  let _ <- Test.get (Posts.Show { slug: Post.Slug "hi" })
+  let r <- Test.submitRaw NewComment [{ name: "author", value: "" }, { name: "body", value: "Nice" }]
+  let n <- Db.from Comment |> Db.count
+  let rejected = match r.answer {
+    FormRejected errs -> True,
+    _ -> False,
+  }
+  Task.succeed ({ rejected: rejected, n: n } == { rejected: True, n: 0 })
+}
+EOF
+alder fill --list
+alder test

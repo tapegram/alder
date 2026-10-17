@@ -1,0 +1,72 @@
+module Posts.Show
+
+import Comment
+import Layout
+import Post
+
+page "/posts/{slug}" { slug: Post.Slug }
+
+type Model = { post: Post, comments: List Comment }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.from Post |> Db.where (Post.slug.eq params.slug) |> Db.first
+  match found {
+    Nothing -> Query.notFound,
+    Just post -> if post.published || session.user == Just post.author then {
+      let comments <-
+        Db.from Comment
+          |> Db.where (Comment.post.eq post.id)
+          |> Db.orderBy Comment.created.asc
+          |> Db.all
+      Query.succeed { post: post, comments: comments }
+    } else Query.notFound,
+  }
+}
+
+form NewComment = {
+  author: Text.NonEmpty,
+  body: Text.NonEmpty,
+}
+
+msg AddComment form NewComment
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  AddComment p -> {
+    let _ <- Db.insert Comment { post: model.post.id, author: p.form.author, body: p.form.body }
+    Task.succeed (Redirect (Posts.Show { slug: model.post.slug }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <Layout.Page title={model.post.title}>
+  <h1>{model.post.title}</h1>
+  <p>{model.post.body}</p>
+  <h2>Comments</h2>
+  <ul>
+    {for c in model.comments -> <li><strong>{c.author}</strong> {c.body}</li>}
+  </ul>
+
+  <al-card>
+    <h2 slot="header">New comment</h2>
+    <form submit={AddComment}>
+      <al-input field="author" label="Author" />
+      <al-textarea field="body" label="Body" />
+      <al-alert variant="destructive"><Errors form /></al-alert>
+      <al-button type="submit">New comment</al-button>
+    </form>
+  </al-card>
+</Layout.Page>
+
+test "submitting NewComment" = {
+  let _ <- Test.get (Posts.Show { slug: Post.Slug "slug-1" })
+  let r <- Test.submit NewComment { author: Text.NonEmpty "author-1", body: Text.NonEmpty "body-1" }
+  Task.succeed (r.answer == ?expected)
+}
+
+test "NewComment refuses an empty author" = {
+  let _ <- Test.get (Posts.Show { slug: Post.Slug "slug-1" })
+  let r <- Test.submitRaw NewComment [{ name: "author", value: "" }, { name: "body", value: "x" }]
+  Task.succeed (r.answer == FormRejected [{ field: "author", message: "must not be empty" }])
+}

@@ -1,0 +1,9 @@
+module Room
+
+type RoomId = brand Text
+
+-- Rooms are added outside the app: no page inserts one.
+table Room {
+  id: RoomId @id,
+  name: Text.NonEmpty,
+}

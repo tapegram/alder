@@ -1,0 +1,4 @@
+{"code": "W0002", "severity": "warning", "file": "app/Auth/Login.alder", "line": 47, "col": 33, "endLine": 47, "endCol": 44, "message": "hole ?afterLogin has type Page"}
+{"code": "W0002", "severity": "warning", "file": "app/Auth/Login.alder", "line": 86, "col": 85, "endLine": 86, "endCol": 96, "message": "hole ?afterLogin has type Page"}
+{"code": "W0002", "severity": "warning", "file": "app/Notes/Index.alder", "line": 10, "col": 23, "endLine": 10, "endCol": 28, "message": "hole ?load has type Query Notes.Index.Model"}
+{"code": "W0002", "severity": "warning", "file": "app/Notes/Index.alder", "line": 13, "col": 22, "endLine": 13, "endCol": 27, "message": "hole ?view has type Html Notes.Index.Msg"}

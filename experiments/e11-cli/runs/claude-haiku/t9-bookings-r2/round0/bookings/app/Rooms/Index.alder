@@ -1,0 +1,22 @@
+module Rooms.Index
+
+import Booking
+
+page "/rooms" { } requires user
+
+type Model = { rows: List Booking.FreeRoom }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let today <- Date.today
+  let rows <- Booking.allFree today
+  Query.succeed { rows: rows }
+}
+
+view : Model -> Session -> Html Msg
+view model session = ?view
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Rooms.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

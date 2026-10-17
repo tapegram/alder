@@ -1,0 +1,116 @@
+module Rooms.Show
+
+import Room
+import Booking
+import User
+import Layout
+
+page "/rooms/{id}" { id: Room.RoomId } requires user
+
+type Model = { room: Room, bookings: List Booking }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Room params.id
+  let bookings <-
+    Db.from Booking
+      |> Db.where (Booking.room.eq params.id)
+      |> Db.orderBy Booking.from.asc
+      |> Db.all
+  match found {
+    Just room -> Query.succeed { room: room, bookings: bookings },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewBooking = {
+  from: Date,
+  to: Date,
+}
+
+msg Book form NewBooking
+
+-- Two bookings of one room overlap when each starts before the other ends. Everything is
+-- decided before the insert, so a refused booking stores nothing.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Book p -> {
+    let start = p.form.from
+    let end = p.form.to
+    let clash <-
+      Db.from Booking
+        |> Db.where (Booking.room.eq model.room.id)
+        |> Db.where (Booking.from.lt end)
+        |> Db.where (Booking.to.gt start)
+        |> Db.first
+    if end <= start then Task.succeed (Reject "The end date must be after the start date.") else match clash {
+      Just other -> Task.succeed (Reject "The room is already booked for some of those dates."),
+      Nothing -> {
+        let _ <- Db.insert Booking { room: model.room.id, owner: session.user, from: start, to: end }
+        Task.succeed (Redirect (Rooms.Show { id: model.room.id }))
+      },
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.room.name}>
+    <h1 id="name">{model.room.name}</h1>
+    <ul id="bookings">
+      {for b in model.bookings ->
+        <li>
+          <span class="from">{Date.toText b.from}</span>
+          {" "}
+          <span class="to">{Date.toText b.to}</span>
+        </li>}
+    </ul>
+    <al-card>
+      <form submit={Book}>
+        <Errors form />
+        <al-input field="from" label="From" />
+        <al-input field="to" label="To" />
+        <al-button type="submit">Book</al-button>
+      </form>
+    </al-card>
+    <p><a href={Rooms.Index {}}>All rooms</a></p>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "an overlapping booking is refused, one starting on the other's end is stored" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let _ <- Db.insert Booking { room: room, owner: me, from: Date.addDays 10 today, to: Date.addDays 12 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let overlap <- Test.submit NewBooking { from: Date.addDays 11 today, to: Date.addDays 13 today }
+  let afterOverlap <- Db.from Booking |> Db.count
+  let adjacent <- Test.submit NewBooking { from: Date.addDays 12 today, to: Date.addDays 14 today }
+  let afterAdjacent <- Db.from Booking |> Db.count
+  Task.succeed ({ overlap: overlap.answer, n1: afterOverlap, adjacent: adjacent.answer, n2: afterAdjacent } == { overlap: FormRejected [{ field: "", message: "The room is already booked for some of those dates." }], n1: 1, adjacent: Redirected (Rooms.Show { id: room }), n2: 2 })
+}
+
+test "a booking whose end is not after its start is refused" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let r <- Test.submit NewBooking { from: Date.addDays 5 today, to: Date.addDays 5 today }
+  let n <- Db.from Booking |> Db.count
+  Task.succeed ({ answer: r.answer, n: n } == { answer: FormRejected [{ field: "", message: "The end date must be after the start date." }], n: 0 })
+}
+
+test "bookings of different rooms never conflict" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let red <- Db.insert Room { name: Text.NonEmpty "Red" }
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 10 today, to: Date.addDays 12 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: red })
+  let r <- Test.submit NewBooking { from: Date.addDays 10 today, to: Date.addDays 12 today }
+  let page <- Test.get (Rooms.Show { id: red })
+  Task.succeed ({ answer: r.answer, froms: Test.texts "#bookings .from" page.doc } == { answer: Redirected (Rooms.Show { id: red }), froms: [Date.toText (Date.addDays 10 today)] })
+}

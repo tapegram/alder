@@ -1,0 +1,10 @@
+app/Invites/Index.alder:28:12: warning[W0002]: hole ?viewBody has type Invites.Index.Model -> Invites.Index.Session -> Html Invites.Index.Msg
+  viewBody = ?viewBody
+             ^^^^^^^^^
+app/Teams/Index.alder:22:12: warning[W0002]: hole ?viewBody has type Teams.Index.Model -> Teams.Index.Session -> Html Teams.Index.Msg
+  viewBody = ?viewBody
+             ^^^^^^^^^
+app/Teams/Show.alder:34:12: warning[W0002]: hole ?viewBody has type Teams.Show.Model -> Teams.Show.Session -> Html Teams.Show.Msg
+  viewBody = ?viewBody
+             ^^^^^^^^^
+alder build: the program has 3 typed hole(s); fill them before building

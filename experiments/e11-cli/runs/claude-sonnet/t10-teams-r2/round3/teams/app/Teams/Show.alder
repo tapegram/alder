@@ -1,0 +1,116 @@
+module Teams.Show
+
+import Invite
+import Layout
+import Member
+import Team
+import User
+
+page "/teams/{id}" { id: Team.TeamId } requires user
+
+type Model = { team: Team, owner: User, members: List User, isOwner: Bool }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Team params.id
+  match found {
+    Nothing -> Query.notFound,
+    Just team -> {
+      let rows <- Db.from Member |> Db.where (Member.team.eq team.id) |> Db.all
+      let ownerRow <- Db.get User team.owner
+      let users <- Db.from User |> Db.where (User.id.in (List.map (\m -> m.user) rows)) |> Db.all
+      let isMember = List.any (\m -> m.user == session.user) rows
+      if team.owner != session.user && not isMember then Query.notFound else
+        match ownerRow {
+          Nothing -> Query.notFound,
+          Just o -> Query.succeed { team: team, owner: o, members: List.sortByText (\u -> u.name) users, isOwner: team.owner == session.user },
+        }
+    },
+  }
+}
+
+form NewInvite = {
+  email: Text.Email,
+}
+
+msg SendInvite form NewInvite
+
+msg Remove { user: User.UserId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  SendInvite p -> if model.team.owner != session.user then Task.notFound else {
+    let _ <- Db.insert Invite { team: model.team.id, email: p.form.email }
+    Task.succeed (Redirect (Teams.Show { id: model.team.id }))
+  },
+  Remove p -> if model.team.owner != session.user || p.user == model.team.owner then Task.notFound else {
+    let rows <- Db.from Member |> Db.where (Member.team.eq model.team.id) |> Db.where (Member.user.eq p.user) |> Db.all
+    let _ <- Task.all (List.map (\m -> Db.delete Member m.id) rows)
+    Task.succeed (Redirect (Teams.Show { id: model.team.id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.team.name}>
+    <h1 id="name">{model.team.name}</h1>
+    {viewBody model session}
+  </Layout.Page>
+
+viewBody : Model -> Session -> Html Msg
+viewBody = \model session ->
+  <div>
+    <ul id="members">
+      <li><span class="name">{model.owner.name}</span></li>
+      {for u in model.members ->
+        <li>
+          <span class="name">{u.name}</span>
+          {if model.isOwner then <al-button class="remove" click={Remove { user: u.id }}>Remove</al-button> else Html.none}
+        </li>}
+    </ul>
+    {if model.isOwner then
+      <form submit={SendInvite}>
+        <Errors form />
+        <al-input field="email" label="Invite by email" />
+        <al-button type="submit">Invite</al-button>
+      </form>
+    else Html.none}
+  </div>
+
+test "a visitor is sent to log in" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let team1 <- Db.insert Team { name: Text.NonEmpty "name-1", owner: me }
+  let r <- Test.open (Teams.Show { id: team1 })
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "submitting NewInvite" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let team1 <- Db.insert Team { name: Text.NonEmpty "name-1", owner: me }
+  let _ <- Test.get (Teams.Show { id: team1 })
+  let r <- Test.submit NewInvite { email: Text.Email "email-1@example.com" }
+  Task.succeed (r.answer == ?expected)
+}
+
+test "NewInvite refuses an empty email" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let team1 <- Db.insert Team { name: Text.NonEmpty "name-1", owner: me }
+  let _ <- Test.get (Teams.Show { id: team1 })
+  let r <- Test.submitRaw NewInvite [{ name: "email", value: "" }]
+  Task.succeed (r.answer == FormRejected [{ field: "email", message: "must be an email address" }])
+}
+
+-- Fill ?expected with what pressing Remove must do, so that a test fails when the arm
+-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
+-- changed (`after`, the row read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.
+test "pressing Remove" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let team1 <- Db.insert Team { name: Text.NonEmpty "name-1", owner: me }
+  let _ <- Test.get (Teams.Show { id: team1 })
+  let r <- Test.click (Remove { user: me })
+  let after <- Db.get User me
+  Task.succeed ?expected
+}

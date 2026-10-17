@@ -1,0 +1,830 @@
+{
+ "model": "claude-opus",
+ "task": "t4-appmsg",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "hidden": "experiments/e8-hidden/hidden",
+  "condition": "cli",
+  "sample": "r2",
+  "cli": true
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 5,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 2,
+   "codes": {},
+   "rejected": [],
+   "seconds": 112.3,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "opus",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 41,
+    "executed": 13,
+    "refused": {
+     "kind": "exit1",
+     "line": 39,
+     "text": "alder new decl Layout Themed \"{ title: Text, theme: Theme.Theme, children: List (Html a) } -> Html a\"",
+     "reason": "alder new decl: `Themed` is not a value name: a value is named by a lower-case identifier, such as `waiting`"
+    },
+    "complete": false,
+    "stopped_at": 13,
+    "stdin_lines": 17,
+    "max_body": 5,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\nalder build: the program has 2 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 1,
+   "files": 7,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 3,
+   "codes": {},
+   "rejected": [],
+   "seconds": 83.2,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "opus",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 32,
+    "executed": 12,
+    "refused": {
+     "kind": "exit1",
+     "line": 51,
+     "text": "alder new form Notes.Index NewNote title:Text.NonEmpty body:Text --msg Add",
+     "reason": "alder new form: `Notes.Index`'s `view` is not one element over several lines (write it as `<Layout.Page \u2026>` \u2026 `</Layout.Page>` on several lines, with `alder fill --decl Notes.Index.view -`), or add the markup yourself"
+    },
+    "complete": false,
+    "stopped_at": 12,
+    "stdin_lines": 24,
+    "max_body": 13,
+    "decl_uses": 1
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/App.alder:52:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\napp/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\nalder build: the program has 3 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 2,
+   "files": 7,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 4,
+   "codes": {},
+   "rejected": [],
+   "seconds": 57.7,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "opus",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 16,
+    "executed": 3,
+    "refused": {
+     "kind": "exit1",
+     "line": 8,
+     "text": "alder fill Notes.Index.update.Add - <<'EOF'",
+     "reason": "alder fill: `Notes.Index.update.Add` has no typed hole: a fill replaces a hole, and this arm has none; to rewrite it, give `alder fill --decl Notes.Index.update -` the whole `match msg { \u2026 }` (`alder fill --list` lists the app's holes)"
+    },
+    "complete": false,
+    "stopped_at": 3,
+    "stdin_lines": 7,
+    "max_body": 4,
+    "decl_uses": 1
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/App.alder:52:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\napp/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\napp/Notes/Index.alder:5:1: warning[W0001]: import `Theme` is unused\n  import Theme\n  ^^^^^^^^^^^^\nalder build: the program has 3 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 3,
+   "files": 7,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 3,
+   "codes": {},
+   "rejected": [],
+   "seconds": 57.7,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "opus",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 20,
+    "executed": 2,
+    "refused": {
+     "kind": "exit1",
+     "line": 7,
+     "text": "alder fill --decl Notes.Index.view - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 2,
+    "stdin_lines": 17,
+    "max_body": 16,
+    "decl_uses": 1
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\napp/Notes/Index.alder:5:1: warning[W0001]: import `Theme` is unused\n  import Theme\n  ^^^^^^^^^^^^\nalder build: the program has 2 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 4,
+   "files": 8,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 2,
+   "codes": {},
+   "rejected": [],
+   "seconds": 29.6,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "opus",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 15,
+    "executed": 15,
+    "refused": null,
+    "complete": true,
+    "stopped_at": null,
+    "stdin_lines": 71,
+    "max_body": 16,
+    "decl_uses": 6
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:85:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\napp/Notes/Show.alder:96:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\nalder build: the program has 2 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 5,
+   "files": 8,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 17.1,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "opus",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 5,
+    "executed": 5,
+    "refused": null,
+    "complete": true,
+    "stopped_at": null,
+    "stdin_lines": 12,
+    "max_body": 10,
+    "decl_uses": 1
+   },
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 15,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Theme",
+      "name": "flip swaps the theme",
+      "ok": true,
+      "left": "{ flipped: [Dark, Light], labels: [\"Switch to dark\", \"Switch to light\"] }",
+      "right": "{ flipped: [Dark, Light], labels: [\"Switch to dark\", \"Switch to light\"] }",
+      "trace": [],
+      "ms": 0.352
+     },
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 0.305
+     },
+     {
+      "module": "App",
+      "name": "pressing SwitchTheme",
+      "ok": true,
+      "left": "{ value: Ok Rerender, trace: [\"Session.put\"] }",
+      "right": "{ value: Ok Rerender, trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 0.273
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 6.561
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /, user: Just \"iCrdh2vLkEMuDo1qCSuu\" }",
+      "right": "{ answer: Redirected /, user: Just \"iCrdh2vLkEMuDo1qCSuu\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Session.put",
+       "Db.mine Note",
+       "Db.all Note"
+      ],
+      "ms": 0.872
+     },
+     {
+      "module": "Auth.Login",
+      "name": "a signed-in user logs out here",
+      "ok": true,
+      "left": "{ answer: Redirected /login, user: Nothing }",
+      "right": "{ answer: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Auth.Login",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.681
+     },
+     {
+      "module": "Note",
+      "name": "a Note keeps its owner from being deleted",
+      "ok": true,
+      "left": "{ deleted: Nothing, left: 1 }",
+      "right": "{ deleted: Nothing, left: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.run",
+       "Db.delete User",
+       "Db.count Note"
+      ],
+      "ms": 0.39
+     },
+     {
+      "module": "Notes.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Notes.Index"
+      ],
+      "ms": 0.338
+     },
+     {
+      "module": "Notes.Index",
+      "name": "submitting NewNote adds a row",
+      "ok": true,
+      "left": "{ answer: Redirected /, rows: [{ title: \"title-1\", body: \"body-1\" }] }",
+      "right": "{ answer: Redirected /, rows: [{ title: \"title-1\", body: \"body-1\" }] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note",
+       "Test.submit NewNote",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.insertMine Note",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.all Note"
+      ],
+      "ms": 0.42
+     },
+     {
+      "module": "Notes.Index",
+      "name": "NewNote refuses an empty title",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"title\", message: \"must not be empty\" }], rows: 0 }",
+      "right": "{ answer: FormRejected [{ field: \"title\", message: \"must not be empty\" }], rows: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.mine Note",
+       "Db.all Note",
+       "Test.submitRaw NewNote",
+       "Db.mine Note",
+       "Db.all Note",
+       "Db.count Note"
+      ],
+      "ms": 0.376
+     },
+     {
+      "module": "Notes.Show",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.open Notes.Show"
+      ],
+      "ms": 0.297
+     },
+     {
+      "module": "Notes.Show",
+      "name": "submitting EditNote adds a row",
+      "ok": true,
+      "left": "{ answer: Redirected /notes/7bSs-c8QYKeucBBwxJ9K, rows: 1, note: Just { title: \"title-2\", body: \"body-2\" } }",
+      "right": "{ answer: Redirected /notes/7bSs-c8QYKeucBBwxJ9K, rows: 1, note: Just { title: \"title-2\", body: \"body-2\" } }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Note",
+       "Test.get Notes.Show",
+       "Db.getMine Note",
+       "Test.submit EditNote",
+       "Db.getMine Note",
+       "Db.updateMine Note",
+       "Db.getMine Note",
+       "Db.get Note",
+       "Db.count Note"
+      ],
+      "ms": 0.427
+     },
+     {
+      "module": "Notes.Show",
+      "name": "EditNote refuses an empty title",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"title\", message: \"must not be empty\" }], rows: 1 }",
+      "right": "{ answer: FormRejected [{ field: \"title\", message: \"must not be empty\" }], rows: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Note",
+       "Test.get Notes.Show",
+       "Db.getMine Note",
+       "Test.submitRaw EditNote",
+       "Db.getMine Note",
+       "Db.count Note"
+      ],
+      "ms": 0.394
+     },
+     {
+      "module": "Notes.Show",
+      "name": "pressing Delete",
+      "ok": true,
+      "left": "{ answer: Redirected /, after: PageMissing }",
+      "right": "{ answer: Redirected /, after: PageMissing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Note",
+       "Test.get Notes.Show",
+       "Db.getMine Note",
+       "Test.click Notes.Show.Delete",
+       "Db.getMine Note",
+       "Db.deleteMine Note",
+       "Db.mine Note",
+       "Db.all Note",
+       "Test.open Notes.Show",
+       "Db.getMine Note"
+      ],
+      "ms": 0.691
+     },
+     {
+      "module": "Notes.Show",
+      "name": "another user's note is not found",
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.login",
+       "Test.open Notes.Show",
+       "Db.getMine Note"
+      ],
+      "ms": 0.433
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.84,
+    "killed": 21,
+    "survived": 4,
+    "suppressed": 2,
+    "skipped": 3,
+    "survivors": [
+     {
+      "module": "Theme",
+      "file": "app/Theme.alder",
+      "decl": "bodyClass",
+      "line": 18,
+      "col": 19,
+      "kind": "arm swapped",
+      "before": "match t { Light -> Nothing, Dark -> Just \"dark\" }",
+      "after": "the Light and Dark bodies swapped"
+     },
+     {
+      "module": "Theme",
+      "file": "app/Theme.alder",
+      "decl": "isDark",
+      "line": 24,
+      "col": 16,
+      "kind": "operator flipped",
+      "before": "t == Dark",
+      "after": "t != Dark"
+     },
+     {
+      "module": "Notes.Index",
+      "file": "app/Notes/Index.alder",
+      "decl": "load",
+      "line": 14,
+      "col": 32,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Note.created.desc",
+      "after": "Db.orderBy Note.created.asc"
+     },
+     {
+      "module": "Notes.Index",
+      "file": "app/Notes/Index.alder",
+      "decl": "load",
+      "line": 14,
+      "col": 16,
+      "kind": "scope dropped",
+      "before": "Db.mine Note",
+      "after": "Db.from Note"
+     }
+    ]
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "opus",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "cli": {
+  "app_name": "appmsg",
+  "rounds": 6,
+  "complete": true,
+  "stopped_at": null,
+  "commands": 129,
+  "executed": 50,
+  "refused": {
+   "count": 4,
+   "kinds": {
+    "exit1": 4
+   },
+   "items": [
+    {
+     "round": 0,
+     "kind": "exit1",
+     "line": 39,
+     "text": "alder new decl Layout Themed \"{ title: Text, theme: Theme.Theme, children: List (Html a) } -> Html a\"",
+     "reason": "alder new decl: `Themed` is not a value name: a value is named by a lower-case identifier, such as `waiting`"
+    },
+    {
+     "round": 1,
+     "kind": "exit1",
+     "line": 51,
+     "text": "alder new form Notes.Index NewNote title:Text.NonEmpty body:Text --msg Add",
+     "reason": "alder new form: `Notes.Index`'s `view` is not one element over several lines (write it as `<Layout.Page \u2026>` \u2026 `</Layout.Page>` on several lines, with `alder fill --decl Notes.Index.view -`), or add the markup yourself"
+    },
+    {
+     "round": 2,
+     "kind": "exit1",
+     "line": 8,
+     "text": "alder fill Notes.Index.update.Add - <<'EOF'",
+     "reason": "alder fill: `Notes.Index.update.Add` has no typed hole: a fill replaces a hole, and this arm has none; to rewrite it, give `alder fill --decl Notes.Index.update -` the whole `match msg { \u2026 }` (`alder fill --list` lists the app's holes)"
+    },
+    {
+     "round": 3,
+     "kind": "exit1",
+     "line": 7,
+     "text": "alder fill --decl Notes.Index.view - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    }
+   ]
+  },
+  "stdin_lines": 148,
+  "max_body": 16,
+  "decl_uses": 10,
+  "names": {
+   "ok": true,
+   "matches": [
+    "table Note",
+    "table User",
+    "session",
+    "page Auth.Login /login",
+    "page Notes.Index /",
+    "page Notes.Show /notes/{id}",
+    "msg App.Logout",
+    "msg App.SwitchTheme",
+    "msg Auth.Login.Submit",
+    "msg Notes.Index.Add",
+    "msg Notes.Show.Delete",
+    "msg Notes.Show.Save",
+    "form Auth.Login.Credentials",
+    "form Notes.Index.NewNote",
+    "form Notes.Show.EditNote"
+   ],
+   "mismatches": []
+  },
+  "setup": {
+   "argv": [
+    "alder",
+    "new",
+    "appmsg",
+    "--bare"
+   ],
+   "exit": 0,
+   "stdout": "created appmsg/\n  .gitignore\n  adapters/README.md\n  app/App.alder\n  app/Layout.alder\n  go.mod\n  static/app.css\ngo.mod keeps the app out of the Go module of /Users/tavishpegram/projects/alder/experiments/go.mod\n\nnext:\n  cd appmsg\n  alder new table \u2026      # the app's tables (chapter 15)\n  alder new page \u2026       # its pages\n  alder new auth         # a login\n  alder check            # type-check the app\n",
+   "stderr": ""
+  }
+ },
+ "mutation": {
+  "score": 0.84,
+  "killed": 21,
+  "survived": 4,
+  "suppressed": 2,
+  "skipped": 3,
+  "survivors": [
+   {
+    "module": "Theme",
+    "file": "app/Theme.alder",
+    "decl": "bodyClass",
+    "line": 18,
+    "col": 19,
+    "kind": "arm swapped",
+    "before": "match t { Light -> Nothing, Dark -> Just \"dark\" }",
+    "after": "the Light and Dark bodies swapped"
+   },
+   {
+    "module": "Theme",
+    "file": "app/Theme.alder",
+    "decl": "isDark",
+    "line": 24,
+    "col": 16,
+    "kind": "operator flipped",
+    "before": "t == Dark",
+    "after": "t != Dark"
+   },
+   {
+    "module": "Notes.Index",
+    "file": "app/Notes/Index.alder",
+    "decl": "load",
+    "line": 14,
+    "col": 32,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Note.created.desc",
+    "after": "Db.orderBy Note.created.asc"
+   },
+   {
+    "module": "Notes.Index",
+    "file": "app/Notes/Index.alder",
+    "decl": "load",
+    "line": 14,
+    "col": 16,
+    "kind": "scope dropped",
+    "before": "Db.mine Note",
+    "after": "Db.from Note"
+   }
+  ]
+ },
+ "hidden": {
+  "passed": 8,
+  "failed": 0,
+  "results": [
+   {
+    "module": "Hidden",
+    "name": "the theme starts light and the list's button switches it to dark",
+    "ok": true,
+    "left": "{ dark: False, label: Just \"Switch to dark\", after: True, afterLabel: Just \"Switch to light\", session: Dark }",
+    "right": "{ dark: False, label: Just \"Switch to dark\", after: True, afterLabel: Just \"Switch to light\", session: Dark }",
+    "trace": [
+     "Db.insert User",
+     "Test.login",
+     "Test.open Notes.Index",
+     "Db.mine Note",
+     "Db.all Note",
+     "Test.click App.SwitchTheme",
+     "Session.put",
+     "Db.mine Note",
+     "Db.all Note"
+    ],
+    "ms": 6.624
+   },
+   {
+    "module": "Hidden",
+    "name": "the theme stays in the session from page to page",
+    "ok": true,
+    "left": "{ show: True, list: True, session: Dark }",
+    "right": "{ show: True, list: True, session: Dark }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.get Notes.Index",
+     "Db.mine Note",
+     "Db.all Note",
+     "Test.click App.SwitchTheme",
+     "Session.put",
+     "Db.mine Note",
+     "Db.all Note",
+     "Test.open Notes.Show",
+     "Db.getMine Note",
+     "Test.open Notes.Index",
+     "Db.mine Note",
+     "Db.all Note"
+    ],
+    "ms": 0.669
+   },
+   {
+    "module": "Hidden",
+    "name": "a note's page switches the theme there and back",
+    "ok": true,
+    "left": "{ once: True, twice: False, title: Just \"Milk\", label: Just \"Switch to dark\" }",
+    "right": "{ once: True, twice: False, title: Just \"Milk\", label: Just \"Switch to dark\" }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.get Notes.Show",
+     "Db.getMine Note",
+     "Test.click App.SwitchTheme",
+     "Session.put",
+     "Db.getMine Note",
+     "Test.click App.SwitchTheme",
+     "Session.put",
+     "Db.getMine Note"
+    ],
+    "ms": 1.046
+   },
+   {
+    "module": "Hidden",
+    "name": "a visitor switches the theme on the login page",
+    "ok": true,
+    "left": "{ dark: True, session: Dark, user: Nothing }",
+    "right": "{ dark: True, session: Dark, user: Nothing }",
+    "trace": [
+     "Test.get Auth.Login",
+     "Test.click App.SwitchTheme",
+     "Session.put"
+    ],
+    "ms": 0.477
+   },
+   {
+    "module": "Hidden",
+    "name": "logging out from the list",
+    "ok": true,
+    "left": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "right": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "trace": [
+     "Db.insert User",
+     "Test.login",
+     "Test.get Notes.Index",
+     "Db.mine Note",
+     "Db.all Note",
+     "Test.click App.Logout",
+     "Session.put",
+     "Test.open Notes.Index"
+    ],
+    "ms": 0.425
+   },
+   {
+    "module": "Hidden",
+    "name": "logging out from a note's page",
+    "ok": true,
+    "left": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "right": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.get Notes.Show",
+     "Db.getMine Note",
+     "Test.click App.Logout",
+     "Session.put",
+     "Test.open Notes.Show"
+    ],
+    "ms": 0.421
+   },
+   {
+    "module": "Hidden",
+    "name": "another user's note is missing",
+    "ok": true,
+    "left": "{ answer: PageMissing, items: 0 }",
+    "right": "{ answer: PageMissing, items: 0 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.open Notes.Show",
+     "Db.getMine Note",
+     "Test.open Notes.Index",
+     "Db.mine Note",
+     "Db.all Note"
+    ],
+    "ms": 0.351
+   },
+   {
+    "module": "Hidden",
+    "name": "a note is added on the list and edited on its page",
+    "ok": true,
+    "left": "{ added: Redirected /, titles: [\"Milk\"], saved: Redirected /notes/FopTEnWo0ClM8TfbmQaI, title: Just \"Oat milk\", body: Just \"One litre.\" }",
+    "right": "{ added: Redirected /, titles: [\"Milk\"], saved: Redirected /notes/FopTEnWo0ClM8TfbmQaI, title: Just \"Oat milk\", body: Just \"One litre.\" }",
+    "trace": [
+     "Db.insert User",
+     "Test.login",
+     "Test.get Notes.Index",
+     "Db.mine Note",
+     "Db.all Note",
+     "Test.submit NewNote",
+     "Db.mine Note",
+     "Db.all Note",
+     "Db.insertMine Note",
+     "Db.mine Note",
+     "Db.all Note",
+     "Db.first Note",
+     "Test.get Notes.Show",
+     "Db.getMine Note",
+     "Test.submit EditNote",
+     "Db.getMine Note",
+     "Db.updateMine Note",
+     "Db.getMine Note"
+    ],
+    "ms": 0.644
+   }
+  ],
+  "exit": 0
+ },
+ "hidden_pass": "8/8"
+}

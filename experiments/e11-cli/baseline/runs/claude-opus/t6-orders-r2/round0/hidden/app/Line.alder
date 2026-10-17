@@ -1,0 +1,46 @@
+module Line
+
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+priceOf : List Product -> Product.ProductId -> Int
+priceOf products id = {
+  let found = List.find (\p -> p.id == id) products
+  match found {
+    Just p -> p.price,
+    Nothing -> 0,
+  }
+}
+
+nameOf : List Product -> Product.ProductId -> Text
+nameOf products id = {
+  let found = List.find (\p -> p.id == id) products
+  match found {
+    Just p -> p.name,
+    Nothing -> "",
+  }
+}
+
+lineTotal : List Product -> Line -> Int
+lineTotal products l = l.quantity * priceOf products l.product
+
+orderTotal : List Product -> List Line -> Int
+orderTotal products lines = List.sum (List.map (lineTotal products) lines)
+
+test "a total is the sum of quantity times price" =
+  orderTotal [
+    { id: Product.ProductId "a", name: Text.NonEmpty "Tea", price: Int.NonNegative 250, active: True },
+    { id: Product.ProductId "b", name: Text.NonEmpty "Cake", price: Int.NonNegative 100, active: True },
+  ] [
+    { id: LineId "l1", order: Order.OrderId "o", product: Product.ProductId "a", quantity: Int.Positive 2 },
+    { id: LineId "l2", order: Order.OrderId "o", product: Product.ProductId "b", quantity: Int.Positive 3 },
+  ] == 800

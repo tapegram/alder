@@ -1,0 +1,15 @@
+module Post
+
+type Slug = brand Text where Text.matches "^[a-z0-9-]+$"
+
+type PostId = brand Text
+
+table Post {
+  id: PostId @id,
+  title: Text.NonEmpty,
+  slug: Slug @unique,
+  body: Text,
+  published: Bool = False,
+  created: Time @created,
+  updated: Time @updated,
+}

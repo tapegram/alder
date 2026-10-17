@@ -1,0 +1,93 @@
+module Notes.Show
+
+import Note
+import Layout
+import User
+import Theme
+
+page "/notes/{id}" { id: Note.NoteId } requires user
+
+type Model = { note: Note }
+
+-- `Db.getMine` finds the note only when it is the signed-in user's: another user's note, like a
+-- missing one, is `Query.notFound`, a 404.
+load : Params -> Session -> Query Model
+load params session = {
+  let note <- Db.getMine Note params.id
+  Query.succeed { note: note }
+}
+
+form EditNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Save form EditNote
+msg Delete
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> {
+    let _ <- Db.updateMine Note model.note.id (\n -> { n | title: p.form.title, body: p.form.body })
+    Task.succeed (Redirect (Notes.Show { id: model.note.id }))
+  },
+  Delete p -> {
+    let _ <- Db.deleteMine Note model.note.id
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.note.title} theme={session.theme}>
+    <h1 id="title">{model.note.title}</h1>
+    <p id="body">{model.note.body}</p>
+    <form submit={Save}>
+      <Errors form />
+      <Input field="title" label="Title" value={model.note.title} />
+      <Errors field="title" />
+      <Textarea field="body" label="Body" value={model.note.body} />
+      <Errors field="body" />
+      <button>Save</button>
+    </form>
+    <button click={Delete}>Delete</button>
+    <a href={Notes.Index {}}>Back</a>
+  </Layout.Page>
+
+test "a user cannot see another user's note" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Secret", body: "mine", owner: me }
+  let _ <- Test.login { user: Just other }
+  let r <- Test.open (Notes.Show { id: id })
+  let loaded <- Test.run (load { id: id } { user: other, theme: Light })
+  Task.succeed ({ answer: r.answer, loaded: Result.toMaybe loaded.value == Nothing } == { answer: PageMissing, loaded: True })
+}
+
+test "the owner sees the note" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "hello", owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Notes.Show { id: id })
+  Task.succeed ({ title: Test.text "#title" page.doc, body: Test.text "#body" page.doc } == { title: Just "Mine", body: Just "hello" })
+}
+
+test "saving changes the title and the body" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Old", body: "old", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Show { id: id })
+  let r <- Test.submit EditNote { title: Text.NonEmpty "New", body: "new" }
+  let after <- Db.get Note id
+  Task.succeed ({ answer: r.answer, title: Maybe.map (\n -> n.title) after, body: Maybe.map (\n -> n.body) after } == { answer: Redirected (Notes.Show { id: id }), title: Just (Text.NonEmpty "New"), body: Just "new" })
+}
+
+test "deleting from the note's page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Gone", body: "", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Show { id: id })
+  let r <- Test.click Delete
+  let after <- Db.get Note id
+  Task.succeed ({ answer: r.answer, note: Maybe.map (\n -> n.title) after } == { answer: Redirected (Notes.Index {}), note: Nothing })
+}

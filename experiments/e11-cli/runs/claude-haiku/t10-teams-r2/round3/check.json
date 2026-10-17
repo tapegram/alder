@@ -1,0 +1,5 @@
+{"code": "W0002", "severity": "warning", "file": "app/Invites/Index.alder", "line": 64, "col": 16, "endLine": 64, "endCol": 25, "message": "hole ?expected has type Bool"}
+{"code": "W0002", "severity": "warning", "file": "app/Invites/Index.alder", "line": 78, "col": 16, "endLine": 78, "endCol": 25, "message": "hole ?expected has type Bool"}
+{"code": "W0002", "severity": "warning", "file": "app/Teams/Index.alder", "line": 85, "col": 29, "endLine": 85, "endCol": 38, "message": "hole ?expected has type Answer"}
+{"code": "W0002", "severity": "warning", "file": "app/Teams/Show.alder", "line": 75, "col": 29, "endLine": 75, "endCol": 38, "message": "hole ?expected has type Answer"}
+{"code": "W0002", "severity": "warning", "file": "app/Teams/Show.alder", "line": 97, "col": 16, "endLine": 97, "endCol": 25, "message": "hole ?expected has type Bool"}

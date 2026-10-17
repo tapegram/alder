@@ -1,0 +1,101 @@
+module Invites.Index
+
+import Invite
+import Layout
+import Team
+import User
+
+page "/invites" { } requires user
+
+type Model = { rows: List Invite.Waiting }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let rows <- Invite.waitingFor session.user
+  Query.succeed { rows: rows }
+}
+
+msg Accept { id: Invite.InviteId }
+
+msg Decline { id: Invite.InviteId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Accept p -> {
+    let team <- Invite.accept session.user p.id
+    Task.succeed (Redirect (Teams.Show { id: team }))
+  },
+  Decline p -> {
+    let _ <- Invite.decline session.user p.id
+    Task.succeed (Redirect (Invites.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Invites">
+    <h1>Invites</h1>
+    <ul id="invites">
+      {for inv in model.rows ->
+        <li>
+          <span class="team">{inv.team}</span>
+          <al-button click={Accept { id: inv.id }}>Accept</al-button>
+          <al-button variant="ghost" click={Decline { id: inv.id }}>Decline</al-button>
+        </li>}
+    </ul>
+  </Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Invites.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "pressing Accept" = {
+  let owner <- User.add (Text.Email "owner@example.com") (Text.NonEmpty "Owner")
+  let ann <- User.add (Text.Email "ann@example.com") (Text.NonEmpty "Ann")
+  let team <- Team.make owner (Text.NonEmpty "Red")
+  let invite <- Invite.send team (Text.Email "ann@example.com")
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Invites.Index {})
+  let r <- Test.click (Accept { id: invite })
+  let after <- Db.get Invite invite
+  Task.succeed ({ answer: r.answer, status: Maybe.map (\i -> i.status) after } == { answer: Redirected (Teams.Show { id: team }), status: Just Accepted })
+}
+
+test "pressing Decline" = {
+  let owner <- User.add (Text.Email "owner@example.com") (Text.NonEmpty "Owner")
+  let ann <- User.add (Text.Email "ann@example.com") (Text.NonEmpty "Ann")
+  let team <- Team.make owner (Text.NonEmpty "Red")
+  let invite <- Invite.send team (Text.Email "ann@example.com")
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Invites.Index {})
+  let r <- Test.click (Decline { id: invite })
+  let after <- Db.get Invite invite
+  Task.succeed ({ answer: r.answer, status: Maybe.map (\i -> i.status) after } == { answer: Redirected (Invites.Index {}), status: Just Declined })
+}
+
+test "accepting an invite shows the team" = {
+  let owner <- User.add (Text.Email "owner@example.com") (Text.NonEmpty "Owner")
+  let ann <- User.add (Text.Email "ann@example.com") (Text.NonEmpty "Ann")
+  let team <- Team.make owner (Text.NonEmpty "Red")
+  let invite <- Invite.send team (Text.Email "ann@example.com")
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Invites.Index {})
+  let r <- Test.click (Accept { id: invite })
+  let teams <- Test.get (Teams.Index {})
+  let shown <- Test.get (Teams.Show { id: team })
+  Task.succeed ({ answer: r.answer, listed: Test.texts "#teams .name" teams.doc, name: Test.text "#name" shown.doc } == { answer: Redirected (Teams.Show { id: team }), listed: ["Red"], name: Just "Red" })
+}
+
+test "declining an invite keeps the team closed" = {
+  let owner <- User.add (Text.Email "owner@example.com") (Text.NonEmpty "Owner")
+  let ann <- User.add (Text.Email "ann@example.com") (Text.NonEmpty "Ann")
+  let team <- Team.make owner (Text.NonEmpty "Red")
+  let invite <- Invite.send team (Text.Email "ann@example.com")
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Invites.Index {})
+  let r <- Test.click (Decline { id: invite })
+  let teams <- Test.get (Teams.Index {})
+  let shown <- Test.open (Teams.Show { id: team })
+  Task.succeed ({ answer: r.answer, listed: Test.texts "#teams .name" teams.doc, shown: shown.answer } == { answer: Redirected (Invites.Index {}), listed: [], shown: PageMissing })
+}

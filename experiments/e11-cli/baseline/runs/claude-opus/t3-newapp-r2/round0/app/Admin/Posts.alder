@@ -1,0 +1,121 @@
+module Admin.Posts
+
+import Post
+import User
+import Layout
+
+page "/admin" { } requires user
+
+type Model = { posts: List Post }
+
+-- On a personal blog every post is the signed-in author's: `Db.mine Post` lists them all,
+-- published or not, and the writes below act only on the author's own rows.
+load : Params -> Session -> Query Model
+load params session = {
+  let posts <-
+    Db.mine Post
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Post.Slug,
+  body: Text.NonEmpty,
+  published: Bool,
+}
+
+msg Create form NewPost
+msg TogglePublished { id: Post.PostId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let taken <- Db.from Post |> Db.where (Post.slug.eq p.form.slug) |> Db.count
+    if taken > 0
+      then Task.succeed (Reject "That slug is already taken.")
+      else {
+        let _ <- Db.insertMine Post { slug: p.form.slug, title: p.form.title, body: p.form.body, published: p.form.published }
+        Task.succeed (Redirect (Admin.Posts {}))
+      }
+  },
+  TogglePublished p -> {
+    let _ <- Db.updateMine Post p.id (\t -> { t | published: not t.published })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Posts">
+    <h1>Posts</h1>
+
+    <ul id="posts">
+      {for post in model.posts ->
+        <li class={if post.published then "published" else "draft"}>
+          <a href={Posts.Show { slug: post.slug }}>{post.title}</a>
+          <al-badge variant="outline">{if post.published then "Published" else "Draft"}</al-badge>
+          <al-button variant="secondary" size="sm" click={TogglePublished { id: post.id }}>{if post.published then "Unpublish" else "Publish"}</al-button>
+        </li>}
+    </ul>
+
+    <h2>New post</h2>
+    <al-card>
+      <form submit={Create}>
+        <Errors form />
+        <al-input field="title" label="Title" />
+        <al-input field="slug" label="Slug" />
+        <al-textarea field="body" label="Body" />
+        <al-checkbox field="published" label="Published" />
+        <al-button type="submit">Create</al-button>
+      </form>
+    </al-card>
+
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "a visitor is sent to log in from the admin" = {
+  let visitor <- Test.open (Admin.Posts {})
+  Task.succeed (visitor.answer == Redirected (Auth.Login {}))
+}
+
+test "creating a post through the admin" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Admin.Posts {})
+  let r <- Test.submit NewPost { title: Text.NonEmpty "Hello", slug: Post.Slug "hello", body: Text.NonEmpty "Hi there", published: False }
+  let page <- Test.get (Admin.Posts {})
+  Task.succeed ({ answer: r.answer, titles: Test.texts "#posts a" page.doc, drafts: Test.count "li.draft" page.doc } == { answer: Redirected (Admin.Posts {}), titles: ["Hello"], drafts: 1 })
+}
+
+test "a taken slug is rejected" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "Hi", published: True, author: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Admin.Posts {})
+  let r <- Test.submit NewPost { title: Text.NonEmpty "Again", slug: Post.Slug "hello", body: Text.NonEmpty "Hi", published: False }
+  let n <- Db.from Post |> Db.count
+  Task.succeed ({ answer: r.answer, posts: n } == { answer: FormRejected [{ field: "", message: "That slug is already taken." }], posts: 1 })
+}
+
+test "toggling published through the admin" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "Hi", published: False, author: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Admin.Posts {})
+  let r <- Test.click (TogglePublished { id: id })
+  let after <- Db.get Post id
+  Task.succeed ({ answer: r.answer, published: Maybe.map (\t -> t.published) after } == { answer: Rerendered, published: Just True })
+}
+
+test "toggling another author's post is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Post { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "Hi", published: False, author: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Admin.Posts {})
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let r <- Test.click (TogglePublished { id: id })
+  let after <- Db.get Post id
+  Task.succeed ({ answer: r.answer, published: Maybe.map (\t -> t.published) after } == { answer: PageMissing, published: Just False })
+}

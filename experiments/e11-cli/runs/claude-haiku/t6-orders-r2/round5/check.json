@@ -1,0 +1,6 @@
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Index.alder", "line": 66, "col": 16, "endLine": 66, "endCol": 25, "message": "hole ?expected has type Bool"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Show.alder", "line": 95, "col": 44, "endLine": 95, "endCol": 59, "message": "hole ?addLineProduct has type Product.ProductId"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Show.alder", "line": 96, "col": 29, "endLine": 96, "endCol": 38, "message": "hole ?expected has type Answer"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Show.alder", "line": 111, "col": 16, "endLine": 111, "endCol": 25, "message": "hole ?expected has type Bool"}
+{"code": "W0002", "severity": "warning", "file": "app/Orders/Show.alder", "line": 126, "col": 16, "endLine": 126, "endCol": 25, "message": "hole ?expected has type Bool"}
+{"code": "W0002", "severity": "warning", "file": "app/Products/Index.alder", "line": 97, "col": 16, "endLine": 97, "endCol": 25, "message": "hole ?expected has type Bool"}

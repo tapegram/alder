@@ -1,0 +1,100 @@
+{
+  "format": "1",
+  "tables": [
+    {
+      "name": "Comment.Comment",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "post",
+          "type": "Text",
+          "ref": "Post.Post",
+          "onDelete": "cascade"
+        },
+        {
+          "name": "author",
+          "type": "Text"
+        },
+        {
+          "name": "body",
+          "type": "Text"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "Post.Post",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "title",
+          "type": "Text"
+        },
+        {
+          "name": "slug",
+          "type": "Text",
+          "unique": true
+        },
+        {
+          "name": "body",
+          "type": "Text"
+        },
+        {
+          "name": "published",
+          "type": "Bool",
+          "default": "0"
+        },
+        {
+          "name": "author",
+          "type": "Text",
+          "ref": "User.User"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "User.User",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "email",
+          "type": "Text",
+          "unique": true
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        },
+        {
+          "name": "passwordHash",
+          "type": "Text"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    }
+  ]
+}

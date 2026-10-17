@@ -1,0 +1,31 @@
+app/Orders/Index.alder:23:15: warning[W0002]: hole ?create has type Task Nav
+    Create p -> ?create,
+                ^^^^^^^
+app/Orders/Index.alder:59:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Orders/Show.alder:43:16: warning[W0002]: hole ?addLine has type Task Nav
+    AddLine p -> ?addLine,
+                 ^^^^^^^^
+app/Orders/Show.alder:44:12: warning[W0002]: hole ?pay has type Task Nav
+    Pay p -> ?pay,
+             ^^^^
+app/Orders/Show.alder:45:15: warning[W0002]: hole ?cancel has type Task Nav
+    Cancel p -> ?cancel,
+                ^^^^^^^
+app/Orders/Show.alder:55:38: warning[W0002]: hole ?addLineProduct has type Product.ProductId
+      <form submit={AddLine { product: ?addLineProduct }}>
+                                       ^^^^^^^^^^^^^^^
+app/Orders/Show.alder:79:44: warning[W0002]: hole ?addLineProduct has type Product.ProductId
+    let r <- Test.submit (AddLine { product: ?addLineProduct }) { quantity: Int.Positive 1 }
+                                             ^^^^^^^^^^^^^^^
+app/Orders/Show.alder:80:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
+app/Orders/Show.alder:95:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Orders/Show.alder:110:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+alder build: the program has 10 typed hole(s); fill them before building

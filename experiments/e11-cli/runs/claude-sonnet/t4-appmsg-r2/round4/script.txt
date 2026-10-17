@@ -1,0 +1,30 @@
+# Notes.Index: load, then a placeholder view so the form and msg can be added
+alder fill --decl Notes.Index.load - <<'EOF'
+{
+  let notes <- Db.mine Note |> Db.orderBy Note.created.desc |> Db.all
+  Query.succeed { notes: notes }
+}
+EOF
+alder fill --decl Notes.Index.view - <<'EOF'
+Layout.shell { title: "Notes", theme: session.theme, children: [<h1>Notes</h1>] }
+EOF
+alder new form Notes.Index NewNote title:Text.NonEmpty body:Text --msg Add
+alder fill --list
+
+# Notes.Show
+alder new page Notes.Show "/notes/{id}" --param id:Note.NoteId --requires user --blank
+alder fill --decl Notes.Show.Model - <<'EOF'
+{ note: Note }
+EOF
+alder fill --decl Notes.Show.load - <<'EOF'
+{
+  let note <- Db.getMine Note params.id
+  Query.succeed { note: note }
+}
+EOF
+alder fill --decl Notes.Show.view - <<'EOF'
+Layout.shell { title: "Note", theme: session.theme, children: [<h1 id="title">{model.note.title}</h1>] }
+EOF
+alder new form Notes.Show EditNote title:Text.NonEmpty body:Text --msg Save
+alder new msg Notes.Show Delete
+alder fill --list

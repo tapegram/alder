@@ -1,0 +1,61 @@
+module Notes.Show
+
+import Layout
+import Note
+import User
+
+page "/notes/{id}" { id: Note.NoteId } requires user
+
+type Model = { row: Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Note params.id
+  match found {
+    Just row -> Query.succeed { row: row },
+    Nothing -> Query.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Note">
+    <h1>Note</h1>
+
+    <al-card>
+      <dl>
+        <dt>Id</dt>
+        <dd>{model.row.id}</dd>
+        <dt>Title</dt>
+        <dd>{model.row.title}</dd>
+        <dt>Body</dt>
+        <dd>{model.row.body}</dd>
+        <dt>Owner</dt>
+        <dd>{model.row.owner}</dd>
+        <dt>Created</dt>
+        <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
+      </dl>
+    </al-card>
+  </Layout.Page>
+
+test "the page shows the row" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let note1 <- Db.insert Note { title: Text.NonEmpty "title-1", body: "body-1", owner: me }
+  let r <- Test.open (Notes.Show { id: note1 })
+  Task.succeed ({ answer: r.answer, title: List.member "title-1" (Test.texts "dd" r.doc) } == { answer: Shown, title: True })
+}
+
+test "a missing row is not found" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Notes.Show { id: Note.NoteId "missing" })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a visitor is sent to log in" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let note1 <- Db.insert Note { title: Text.NonEmpty "title-1", body: "body-1", owner: me }
+  let r <- Test.open (Notes.Show { id: note1 })
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

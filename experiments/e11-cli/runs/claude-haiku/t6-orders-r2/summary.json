@@ -1,0 +1,343 @@
+{
+ "model": "claude-haiku",
+ "task": "t6-orders",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "hidden": "experiments/e9-feedback/hidden",
+  "condition": "cli",
+  "sample": "r2",
+  "cli": true
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 7,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 3,
+   "codes": {},
+   "rejected": [],
+   "seconds": 192.3,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 56,
+    "executed": 15,
+    "refused": {
+     "kind": "exit1",
+     "line": 43,
+     "text": "alder fill 'Line.\"an order total sums its lines\"' - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 15,
+    "stdin_lines": 24,
+    "max_body": 10,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\napp/Line.alder:50:3: warning[W0002]: hole ?test has type Task Bool\n    ?test\n    ^^^^^\nalder build: the program has 3 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 1,
+   "files": 7,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 2,
+   "codes": {},
+   "rejected": [],
+   "seconds": 236.9,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 52,
+    "executed": 2,
+    "refused": {
+     "kind": "exit1",
+     "line": 16,
+     "text": "alder fill Auth.Login.update.Submit - --hole ?afterLogin <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 2,
+    "stdin_lines": 11,
+    "max_body": 10,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\nalder build: the program has 2 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 2,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 2,
+   "codes": {},
+   "rejected": [],
+   "seconds": 255.0,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 47,
+    "executed": 16,
+    "refused": {
+     "kind": "exit1",
+     "line": 49,
+     "text": "alder fill --decl Orders.Index.Model - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    "complete": false,
+    "stopped_at": 16,
+    "stdin_lines": 22,
+    "max_body": 5,
+    "decl_uses": 1
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\nalder build: the program has 2 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 3,
+   "files": 8,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 4,
+   "codes": {},
+   "rejected": [],
+   "seconds": 226.6,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 38,
+    "executed": 4,
+    "refused": {
+     "kind": "exit1",
+     "line": 5,
+     "text": "alder fill --decl Orders.Index.view - <<'EOF'",
+     "reason": "alder fill: the parameters `model session` are bound already: send the body without `\\model session ->`"
+    },
+    "complete": false,
+    "stopped_at": 4,
+    "stdin_lines": 1,
+    "max_body": 1,
+    "decl_uses": 1
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\napp/Orders/Index.alder:8:23: warning[W0002]: hole ?load has type Query Orders.Index.Model\n  load params session = ?load\n                        ^^^^^\napp/Orders/Index.alder:11:22: warning[W0002]: hole ?view has type Html Orders.Index.Msg\n  view model session = ?view\n                       ^^^^^\nalder build: the program has 4 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 4,
+   "files": 10,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 6,
+   "codes": {},
+   "rejected": [],
+   "seconds": 190.2,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 34,
+    "executed": 34,
+    "refused": null,
+    "complete": true,
+    "stopped_at": null,
+    "stdin_lines": 165,
+    "max_body": 20,
+    "decl_uses": 9
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Orders/Index.alder:66:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\napp/Orders/Show.alder:95:44: warning[W0002]: hole ?addLineProduct has type Product.ProductId\n    let r <- Test.submit (AddLine { product: ?addLineProduct }) { quantity: Int.Positive 1 }\n                                             ^^^^^^^^^^^^^^^\napp/Orders/Show.alder:96:29: warning[W0002]: hole ?expected has type Answer\n    Task.succeed (r.answer == ?expected)\n                              ^^^^^^^^^\napp/Orders/Show.alder:111:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\napp/Orders/Show.alder:126:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\napp/Products/Index.alder:97:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\nalder build: the program has 6 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 5,
+   "files": 10,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 6,
+   "codes": {},
+   "rejected": [],
+   "seconds": 60.4,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "haiku",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 8,
+    "executed": 1,
+    "refused": {
+     "kind": "exit1",
+     "line": 2,
+     "text": "alder fill 'Orders.Index.\"pressing Create\"' - <<'EOF'",
+     "reason": "alder fill: the hole ?expected is a `Bool`, not a test's whole block: send the expression for it, or, to replace the whole test, use `alder fill --decl 'Orders.Index.\"pressing Create\"' -`"
+    },
+    "complete": false,
+    "stopped_at": 1,
+    "stdin_lines": 8,
+    "max_body": 8,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Orders/Index.alder:66:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\napp/Orders/Show.alder:95:44: warning[W0002]: hole ?addLineProduct has type Product.ProductId\n    let r <- Test.submit (AddLine { product: ?addLineProduct }) { quantity: Int.Positive 1 }\n                                             ^^^^^^^^^^^^^^^\napp/Orders/Show.alder:96:29: warning[W0002]: hole ?expected has type Answer\n    Task.succeed (r.answer == ?expected)\n                              ^^^^^^^^^\napp/Orders/Show.alder:111:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\napp/Orders/Show.alder:126:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\napp/Products/Index.alder:97:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\nalder build: the program has 6 typed hole(s); fill them before building\n"
+   }
+  }
+ ],
+ "final_pass": false,
+ "outcome": "fail",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "haiku",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "cli": {
+  "app_name": "orders",
+  "rounds": 6,
+  "complete": false,
+  "stopped_at": {
+   "round": 5,
+   "command": 1,
+   "line": 2,
+   "kind": "exit1"
+  },
+  "commands": 235,
+  "executed": 72,
+  "refused": {
+   "count": 5,
+   "kinds": {
+    "exit1": 5
+   },
+   "items": [
+    {
+     "round": 0,
+     "kind": "exit1",
+     "line": 43,
+     "text": "alder fill 'Line.\"an order total sums its lines\"' - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    {
+     "round": 1,
+     "kind": "exit1",
+     "line": 16,
+     "text": "alder fill Auth.Login.update.Submit - --hole ?afterLogin <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    {
+     "round": 2,
+     "kind": "exit1",
+     "line": 49,
+     "text": "alder fill --decl Orders.Index.Model - <<'EOF'",
+     "reason": "alder fill: the result does not check (the errors above): nothing was written"
+    },
+    {
+     "round": 3,
+     "kind": "exit1",
+     "line": 5,
+     "text": "alder fill --decl Orders.Index.view - <<'EOF'",
+     "reason": "alder fill: the parameters `model session` are bound already: send the body without `\\model session ->`"
+    },
+    {
+     "round": 5,
+     "kind": "exit1",
+     "line": 2,
+     "text": "alder fill 'Orders.Index.\"pressing Create\"' - <<'EOF'",
+     "reason": "alder fill: the hole ?expected is a `Bool`, not a test's whole block: send the expression for it, or, to replace the whole test, use `alder fill --decl 'Orders.Index.\"pressing Create\"' -`"
+    }
+   ]
+  },
+  "stdin_lines": 231,
+  "max_body": 20,
+  "decl_uses": 11,
+  "names": {
+   "ok": true,
+   "matches": [
+    "table Line",
+    "table Order",
+    "table Product",
+    "table User",
+    "session",
+    "page Auth.Login /login",
+    "page Orders.Index /",
+    "page Orders.Show /orders/{id}",
+    "page Products.Index /products",
+    "msg App.Logout",
+    "msg Auth.Login.Submit",
+    "msg Orders.Index.Create",
+    "msg Orders.Show.AddLine",
+    "msg Orders.Show.Cancel",
+    "msg Orders.Show.Pay",
+    "msg Products.Index.Add",
+    "msg Products.Index.Toggle",
+    "form Auth.Login.Credentials",
+    "form Orders.Show.NewLine",
+    "form Products.Index.NewProduct"
+   ],
+   "mismatches": []
+  },
+  "setup": {
+   "argv": [
+    "alder",
+    "new",
+    "orders",
+    "--bare"
+   ],
+   "exit": 0,
+   "stdout": "created orders/\n  .gitignore\n  adapters/README.md\n  app/App.alder\n  app/Layout.alder\n  go.mod\n  static/app.css\ngo.mod keeps the app out of the Go module of /Users/tavishpegram/projects/alder/experiments/go.mod\n\nnext:\n  cd orders\n  alder new table \u2026      # the app's tables (chapter 15)\n  alder new page \u2026       # its pages\n  alder new auth         # a login\n  alder check            # type-check the app\n",
+   "stderr": ""
+  }
+ },
+ "hidden": {
+  "skipped": "the final round did not build"
+ },
+ "hidden_pass": null
+}

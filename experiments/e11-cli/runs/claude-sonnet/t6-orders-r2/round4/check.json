@@ -1,0 +1,3 @@
+{"code": "W0002", "severity": "warning", "file": "app/Products/Index.alder", "line": 35, "col": 15, "endLine": 35, "endCol": 22, "message": "hole ?toggle has type Task Nav"}
+{"code": "W0002", "severity": "warning", "file": "app/Products/Index.alder", "line": 53, "col": 36, "endLine": 53, "endCol": 45, "message": "hole ?toggleId has type Product.ProductId"}
+{"code": "W0002", "severity": "warning", "file": "app/Products/Index.alder", "line": 89, "col": 16, "endLine": 89, "endCol": 25, "message": "hole ?expected has type Bool"}

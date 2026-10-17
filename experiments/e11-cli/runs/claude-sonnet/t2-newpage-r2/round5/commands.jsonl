@@ -1,0 +1,3 @@
+{"argv": ["alder", "check", "--help"], "stdin_lines": [], "exit": 0, "seconds": 0.01, "stdout": "usage: alder check [dir] [--json]\n", "stderr": "", "line": 1}
+{"argv": ["alder", "fill", "--help"], "stdin_lines": [], "exit": 0, "seconds": 0.01, "stdout": "usage: alder fill <Module>.<decl>[.<arm>] - [--hole ?name] [--dir app] [--json] [--dry-run]  |  alder fill --decl <Module>.<decl> - [--dir app] [--json] [--dry-run]  |  alder fill --list [--dir app] [--json]\n", "stderr": "", "line": 2}
+{"argv": ["alder", "remove", "--help"], "stdin_lines": [], "exit": 0, "seconds": 0.01, "stdout": "usage: alder remove page <Page module> | alder remove table <T>  [--dir app] [--json] [--dry-run]\n", "stderr": "", "line": 3}

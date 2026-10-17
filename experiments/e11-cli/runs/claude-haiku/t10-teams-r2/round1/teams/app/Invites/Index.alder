@@ -1,0 +1,80 @@
+module Invites.Index
+
+import Layout
+import Team
+import User
+
+page "/invites" { page: Int = 1 } requires user
+
+type Model = { rows: List Team, page: Int, pages: Int }
+
+perPage : Int
+perPage = 20
+
+-- lastPage bounds `page`, so `(page - 1) * perPage` cannot overflow.
+lastPage : Int
+lastPage = 1000000
+
+-- load reads one page of the rows, newest first, and how many pages there are.
+load : Params -> Session -> Query Model
+load params session = {
+  let page = Int.clamp { min: 1, max: lastPage } params.page
+  let rows <-
+    Db.from Team
+      |> Db.orderBy Team.id.desc
+      |> Db.limit perPage
+      |> Db.offset ((page - 1) * perPage)
+      |> Db.all
+  let count <- Db.from Team |> Db.count
+  Query.succeed { rows: rows, page: page, pages: Int.max 1 ((count + perPage - 1) / perPage) }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Invites">
+    <h1>Invites</h1>
+
+    <al-table>
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Owner</th></tr>
+        </thead>
+        <tbody>
+          {for row in model.rows ->
+            <tr>
+              <td>{row.name}</td>
+              <td>{row.owner}</td>
+            </tr>}
+        </tbody>
+      </table>
+    </al-table>
+
+    <al-pagination role="navigation" aria-label="Pages">
+      {if model.page > 1 then <a slot="prev" href={Invites.Index { page: model.page - 1 }} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
+      <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
+      {if model.page < model.pages then <a slot="next" href={Invites.Index { page: model.page + 1 }} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
+    </al-pagination>
+  </Layout.Page>
+
+test "the list shows the rows, newest first" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let team1 <- Db.insert Team { name: Text.NonEmpty "name-1", owner: me }
+  let team2 <- Db.insert Team { name: Text.NonEmpty "name-2", owner: me }
+  let page <- Test.get (Invites.Index {})
+  Task.succeed (List.length page.model.rows == 2)
+}
+
+test "the list has 20 rows a page" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Task.all (List.map (\n -> Db.insert Team { name: Text.NonEmpty ("name-" ++ Text.fromInt n), owner: me }) (List.range 1 21))
+  let first <- Test.get (Invites.Index {})
+  let second <- Test.get (Invites.Index { page: 2 })
+  Task.succeed ({ first: List.length first.model.rows, second: List.length second.model.rows, pages: Test.texts "al-pagination span" first.doc } == { first: 20, second: 1, pages: ["Previous", "Page 1 of 2"] })
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Invites.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

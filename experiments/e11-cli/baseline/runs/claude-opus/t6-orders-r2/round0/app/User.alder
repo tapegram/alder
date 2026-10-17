@@ -1,0 +1,23 @@
+module User
+
+type UserId = brand Text
+
+-- Staff keep their own orders. A Manager can also open anyone's order and manage the products.
+-- The session holds only the user. Each page that needs the role reads it from the user's row,
+-- so a change of role applies at once.
+type Role = Staff | Manager
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  role: Role = Staff,
+  created: Time @created,
+}
+
+isManager : UserId -> Query Bool
+isManager id = {
+  let me <- Db.get User id
+  Query.succeed (Maybe.map (\u -> u.role) me == Just Manager)
+}

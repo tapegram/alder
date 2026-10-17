@@ -1,0 +1,19 @@
+module Team
+
+import User
+
+type TeamId = brand Text
+
+table Team {
+  id: TeamId @id,
+  name: Text.NonEmpty,
+  owner: User.UserId @ref User,
+}
+
+test "a Team keeps its owner from being deleted" = {
+  let target <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Db.insert Team { name: Text.NonEmpty "name-1", owner: target }
+  let r <- Test.run (Db.delete User target)
+  let left <- Db.from Team |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, left: left } == { deleted: Nothing, left: 1 })
+}

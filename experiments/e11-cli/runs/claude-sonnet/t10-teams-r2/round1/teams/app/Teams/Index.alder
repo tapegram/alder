@@ -1,0 +1,18 @@
+module Teams.Index
+
+import Team
+
+page "/teams" { } requires user
+
+type Model = { teams: List Team }
+
+load : Params -> Session -> Query Model
+load params session = ?load
+
+view : Model -> Session -> Html Msg
+view model session = ?view
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Teams.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

@@ -1,0 +1,53 @@
+module Rooms.Index
+
+import Room
+import Booking
+import User
+import Layout
+
+page "/rooms" { } requires user
+
+type Row = { room: Room, free: Date }
+
+type Model = { rooms: List Row }
+
+row : Date -> List Booking -> Room -> Row
+row today bookings room = {
+  let own = List.filter (\b -> b.room == room.id) bookings
+  { room: room, free: Booking.nextFree today own }
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  let today <- Date.today
+  let rooms <- Db.from Room |> Db.orderBy Room.name.asc |> Db.all
+  let bookings <- Db.from Booking |> Db.where (Booking.to.gt today) |> Db.all
+  Query.succeed { rooms: List.map (row today bookings) rooms }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Rooms">
+    <h1>Rooms</h1>
+    <ul id="rooms">
+      {for r in model.rooms ->
+        <li>
+          <a class="name" href={Rooms.Show { id: r.room.id }}>{r.room.name}</a>
+          <span class="free">{Date.toText r.free}</span>
+        </li>}
+    </ul>
+    <p><a href={Bookings.Index {}}>My bookings</a></p>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "the next free date follows back-to-back bookings" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let _ <- Db.insert Room { name: Text.NonEmpty "Amber" }
+  let _ <- Db.insert Booking { room: blue, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 2 today, to: Date.addDays 4 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Rooms.Index {})
+  Task.succeed ({ names: Test.texts "#rooms .name" page.doc, free: Test.texts "#rooms .free" page.doc } == { names: ["Amber", "Blue"], free: [Date.toText today, Date.toText (Date.addDays 4 today)] })
+}

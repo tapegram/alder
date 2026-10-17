@@ -1,0 +1,3 @@
+{"code": "W0002", "severity": "warning", "file": "app/Invites/Index.alder", "line": 28, "col": 12, "endLine": 28, "endCol": 21, "message": "hole ?viewBody has type Invites.Index.Model -> Invites.Index.Session -> Html Invites.Index.Msg"}
+{"code": "W0002", "severity": "warning", "file": "app/Teams/Index.alder", "line": 22, "col": 12, "endLine": 22, "endCol": 21, "message": "hole ?viewBody has type Teams.Index.Model -> Teams.Index.Session -> Html Teams.Index.Msg"}
+{"code": "W0002", "severity": "warning", "file": "app/Teams/Show.alder", "line": 34, "col": 12, "endLine": 34, "endCol": 21, "message": "hole ?viewBody has type Teams.Show.Model -> Teams.Show.Session -> Html Teams.Show.Msg"}

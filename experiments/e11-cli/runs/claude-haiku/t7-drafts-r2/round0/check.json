@@ -1,0 +1,1 @@
+{"code": "W0002", "severity": "warning", "file": "app/Admin.alder", "line": 160, "col": 16, "endLine": 160, "endCol": 25, "message": "hole ?expected has type Bool"}

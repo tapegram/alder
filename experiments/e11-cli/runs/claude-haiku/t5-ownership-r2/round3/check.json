@@ -1,0 +1,2 @@
+{"code": "W0002", "severity": "warning", "file": "app/Notes/Index.alder", "line": 83, "col": 29, "endLine": 83, "endCol": 38, "message": "hole ?expected has type Answer"}
+{"code": "W0002", "severity": "warning", "file": "app/Notes/Index.alder", "line": 104, "col": 16, "endLine": 104, "endCol": 25, "message": "hole ?expected has type Bool"}

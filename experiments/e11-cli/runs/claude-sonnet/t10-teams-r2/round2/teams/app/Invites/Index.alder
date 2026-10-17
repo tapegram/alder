@@ -1,0 +1,33 @@
+module Invites.Index
+
+import Invite
+import Team
+import User
+
+page "/invites" { } requires user
+
+type Model = { items: List { id: Invite.InviteId, team: Text } }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let me <- Db.get User session.user
+  match me {
+    Nothing -> Query.succeed { items: [] },
+    Just u -> {
+      let invs <- Db.from Invite |> Db.where (Invite.email.eq u.email) |> Db.where (Invite.status.eq Pending) |> Db.all
+      let teams <- Db.from Team |> Db.where (Team.id.in (List.map (\i -> i.team) invs)) |> Db.all
+      Query.succeed { items: List.filterMap (\i -> Maybe.map (\t -> { id: i.id, team: t.name }) (List.find (\t -> t.id == i.team) teams)) invs }
+    },
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session = viewBody model session
+
+viewBody : Model -> Session -> Html Msg
+viewBody = ?viewBody
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Invites.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

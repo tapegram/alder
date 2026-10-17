@@ -1,0 +1,152 @@
+```alder-cli
+# the login test that still has a hole: the page it redirects to
+alder fill 'Auth.Login."logging in through the form"' - --hole ?afterLogin <<'EOF'
+Rooms.Index {}
+EOF
+
+# the two Rooms.Show tests that were not written yet: a booking that is stored, and a blank date
+alder fill --decl 'Rooms.Show."submitting NewBooking"' - <<'EOF'
+{
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let room1 <- Db.insert Room { name: Text.NonEmpty "name-1" }
+  let _ <- Test.get (Rooms.Show { id: room1 })
+  let r <- Test.submit NewBooking { from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let n <- Db.from Booking |> Db.count
+  Task.succeed ({ answer: r.answer, bookings: n } == { answer: Redirected (Rooms.Show { id: room1 }), bookings: 1 })
+}
+EOF
+
+alder fill --decl 'Rooms.Show."NewBooking refuses an empty from"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let room1 <- Db.insert Room { name: Text.NonEmpty "name-1" }
+  let _ <- Test.get (Rooms.Show { id: room1 })
+  let r <- Test.submitRaw NewBooking [{ name: "from", value: "" }, { name: "to", value: "2026-01-01" }]
+  let refused = match r.answer {
+    FormRejected errs -> List.length errs == 1,
+    _ -> False,
+  }
+  let n <- Db.from Booking |> Db.count
+  Task.succeed ({ refused: refused, bookings: n } == { refused: True, bookings: 0 })
+}
+EOF
+
+# the booking page: one booking, its room, and Cancel while it can be cancelled
+alder new page Bookings.Show '/bookings/{id}' --param id:Booking.BookingId --requires user --blank
+alder fill --decl Bookings.Show.Model - <<'EOF'
+{ booking: Booking, room: Room, cancellable: Bool }
+EOF
+alder fill Bookings.Show.load - --hole ?load <<'EOF'
+{
+  let p <- Booking.bookingPage params.id session.user
+  Query.succeed { booking: p.booking, room: p.room, cancellable: p.cancellable }
+}
+EOF
+alder new msg Bookings.Show Cancel
+alder fill --decl Bookings.Show.update - <<'EOF'
+match msg {
+  Cancel p -> {
+    let today <- Date.today
+    if Booking.cancellable model.booking today then {
+      let _ <- Db.delete Booking model.booking.id
+      Task.succeed (Redirect (Bookings.Index {}))
+    } else Task.fail "a booking can be cancelled only before its first day"
+  },
+}
+EOF
+alder fill --decl Bookings.Show.view - <<'EOF'
+<Layout.Page title={model.room.name}>
+  <h1 id="room">{model.room.name}</h1>
+  <p><span id="from">{Date.toText model.booking.from}</span> to <span id="to">{Date.toText model.booking.to}</span></p>
+  {if model.cancellable then <al-button id="cancel" variant="destructive" click={Cancel}>Cancel</al-button> else Html.none}
+  <al-button variant="outline" href={Rooms.Show { id: model.booking.room }}>Room</al-button>
+</Layout.Page>
+EOF
+
+# the bookings list, now that its link target exists
+alder fill Bookings.Index.view - --hole ?view <<'EOF'
+<Layout.Page title="Bookings">
+  <h1>Bookings</h1>
+  <ul id="mine">
+    {for b in model.rows -> <li><a href={Bookings.Show { id: b.booking.id }}><span class="room">{b.room.name}</span></a> <span class="from">{Date.toText b.booking.from}</span></li>}
+  </ul>
+</Layout.Page>
+EOF
+
+# tests of the booking page
+alder new test Bookings.Show "the owner cancels a booking before its first day"
+alder fill 'Bookings.Show."the owner cancels a booking before its first day"' - <<'EOF'
+{
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let id <- Db.insert Booking { room: room, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Show { id: id })
+  let r <- Test.click Cancel
+  let left <- Db.get Booking id
+  Task.succeed ({ button: Test.has "#cancel" page.doc, answer: r.answer, left: Maybe.map (\b -> b.id) left } == { button: True, answer: Redirected (Bookings.Index {}), left: Nothing })
+}
+EOF
+
+alder new test Bookings.Show "a booking from today cannot be cancelled"
+alder fill 'Bookings.Show."a booking from today cannot be cancelled"' - <<'EOF'
+{
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let id <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 1 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Show { id: id })
+  let r <- Test.run (update Cancel page.model { user: me })
+  let left <- Db.get Booking id
+  Task.succeed ({ button: Test.has "#cancel" page.doc, refused: Maybe.isJust (Result.toMaybe r.value) == False, left: Maybe.map (\b -> b.id) left } == { button: False, refused: True, left: Just id })
+}
+EOF
+
+alder new test Bookings.Show "a booking of another user is not found"
+alder fill 'Bookings.Show."a booking of another user is not found"' - <<'EOF'
+{
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let id <- Db.insert Booking { room: room, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let _ <- Test.login { user: Just other }
+  let r <- Test.open (Bookings.Show { id: id })
+  Task.succeed (r.answer == PageMissing)
+}
+EOF
+
+# tests of the booking rules
+alder new test Booking "an overlapping booking is refused and not stored"
+alder fill 'Booking."an overlapping booking is refused and not stored"' - <<'EOF'
+{
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let first <- book room me (Date.addDays 1 today) (Date.addDays 4 today)
+  let second <- book room me (Date.addDays 2 today) (Date.addDays 3 today)
+  let n <- Db.from Booking |> Db.count
+  Task.succeed ({ first: first, second: second, n: n } == { first: True, second: False, n: 1 })
+}
+EOF
+
+alder new test Booking "a booking that starts on the last day of another is stored"
+alder fill 'Booking."a booking that starts on the last day of another is stored"' - <<'EOF'
+{
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let first <- book room me (Date.addDays 1 today) (Date.addDays 3 today)
+  let second <- book room me (Date.addDays 3 today) (Date.addDays 5 today)
+  let n <- Db.from Booking |> Db.count
+  Task.succeed ({ first: first, second: second, n: n } == { first: True, second: True, n: 2 })
+}
+EOF
+
+alder test
+```

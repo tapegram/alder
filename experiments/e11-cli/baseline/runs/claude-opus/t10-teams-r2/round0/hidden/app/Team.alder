@@ -1,0 +1,12 @@
+module Team
+
+import User
+
+type TeamId = brand Text
+
+-- The owner is the user who created the team. Other members have a `Member` row; the owner has none.
+table Team {
+  id: TeamId @id,
+  name: Text.NonEmpty,
+  owner: User.UserId @ref User,
+}

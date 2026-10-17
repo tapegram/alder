@@ -1,0 +1,4 @@
+{"code": "W0002", "severity": "warning", "file": "app/Home.alder", "line": 8, "col": 23, "endLine": 8, "endCol": 28, "message": "hole ?load has type Query Home.Model"}
+{"code": "W0002", "severity": "warning", "file": "app/Home.alder", "line": 11, "col": 22, "endLine": 11, "endCol": 27, "message": "hole ?view has type Html Home.Msg"}
+{"code": "W0002", "severity": "warning", "file": "app/Posts/Show.alder", "line": 10, "col": 23, "endLine": 10, "endCol": 28, "message": "hole ?load has type Query Posts.Show.Model"}
+{"code": "W0002", "severity": "warning", "file": "app/Posts/Show.alder", "line": 13, "col": 22, "endLine": 13, "endCol": 27, "message": "hole ?view has type Html Posts.Show.Msg"}

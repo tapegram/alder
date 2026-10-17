@@ -1,0 +1,110 @@
+```alder-cli
+# login target
+alder fill Auth.Login.update.Submit --hole ?afterLogin - <<'EOF'
+Notes.Index {}
+EOF
+alder fill 'Auth.Login."logging in through the form"' --hole ?afterLogin - <<'EOF'
+Notes.Index {}
+EOF
+
+# the note's page
+alder new page Notes.Show '/notes/{id}' --blank --param id:Note.NoteId --requires user
+alder fill --decl Notes.Show.Model - <<'EOF'
+{ note: Note }
+EOF
+alder fill Notes.Show.load - <<'EOF'
+{
+  let found <- Db.from Note |> Db.where (Note.id.eq params.id) |> Db.where (Note.owner.eq session.user) |> Db.first
+  match found {
+    Just n -> Query.succeed { note: n },
+    Nothing -> Query.notFound,
+  }
+}
+EOF
+alder fill Notes.Show.view - <<'EOF'
+<Layout.Page title={model.note.title}>
+  <h1 id="title">{model.note.title}</h1>
+  <p id="body">{model.note.body}</p>
+  <a href={Notes.Index {}}>Back</a>
+</Layout.Page>
+EOF
+
+# the index
+alder fill --decl Notes.Index.view - <<'EOF'
+<Layout.Page title="Notes">
+  <h1>Notes</h1>
+  <al-card>
+    <form submit={Add}>
+      <al-input field="title" label="Title" />
+      <al-textarea field="body" label="Body" />
+      <Errors form />
+      <al-button type="submit">New note</al-button>
+    </form>
+  </al-card>
+  <ul id="notes">
+    {for n in model.notes ->
+      <li>
+        <a class="title" href={Notes.Show { id: n.id }}>{n.title}</a>
+        <al-button click={Delete { id: n.id }}>Delete</al-button>
+      </li>}
+  </ul>
+</Layout.Page>
+EOF
+alder fill Notes.Index.update.Add --hole ?add - <<'EOF'
+{
+  let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+  Task.succeed (Redirect (Notes.Index {}))
+}
+EOF
+alder fill Notes.Index.update.Delete --hole ?delete - <<'EOF'
+{
+  let found <- Db.from Note |> Db.where (Note.id.eq p.id) |> Db.where (Note.owner.eq session.user) |> Db.first
+  match found {
+    Just n -> {
+      let _ <- Db.delete Note p.id
+      Task.succeed (Redirect (Notes.Index {}))
+    },
+    Nothing -> Task.notFound,
+  }
+}
+EOF
+alder fill 'Notes.Index."submitting NewNote"' --hole ?expected - <<'EOF'
+Redirected (Notes.Index {})
+EOF
+alder fill 'Notes.Index."pressing Delete"' --hole ?expected - <<'EOF'
+{ answer: r.answer, gone: Maybe.map (\n -> n.title) after } == { answer: Redirected (Notes.Index {}), gone: Nothing }
+EOF
+
+# more tests
+alder new test Notes.Index "deleting another user's note is not found"
+alder fill 'Notes.Index."deleting another user'"'"'s note is not found"' - <<'EOF'
+{
+  let a <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let b <- Db.insert User { email: Text.Email "b@example.com", name: Text.NonEmpty "B", passwordHash: "" }
+  let n <- Db.insert Note { title: Text.NonEmpty "T", body: "B", owner: a }
+  let r <- Test.run (update (Delete { id: n }) { notes: [] } { user: b })
+  let after <- Db.get Note n
+  Task.succeed ({ value: r.value, kept: Maybe.isJust after } == { value: Err "not found", kept: True })
+}
+EOF
+alder new test Notes.Index "deleting a missing note is not found"
+alder fill 'Notes.Index."deleting a missing note is not found"' - <<'EOF'
+{
+  let a <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let r <- Test.run (update (Delete { id: Note.NoteId "missing" }) { notes: [] } { user: a })
+  Task.succeed (r.value == Err "not found")
+}
+EOF
+alder new test Notes.Index "the owner can delete a note"
+alder fill 'Notes.Index."the owner can delete a note"' - <<'EOF'
+{
+  let a <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let n <- Db.insert Note { title: Text.NonEmpty "T", body: "B", owner: a }
+  let r <- Test.run (update (Delete { id: n }) { notes: [] } { user: a })
+  let after <- Db.get Note n
+  Task.succeed ({ value: r.value, kept: Maybe.isJust after } == { value: Ok (Redirect (Notes.Index {})), kept: False })
+}
+EOF
+alder check
+alder test
+```

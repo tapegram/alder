@@ -1,0 +1,13 @@
+app/Admin.alder:80:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Admin.alder:88:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
+app/Posts/Show.alder:11:23: warning[W0002]: hole ?load has type Query Posts.Show.Model
+  load params session = ?load
+                        ^^^^^
+app/Posts/Show.alder:14:22: warning[W0002]: hole ?view has type Html Posts.Show.Msg
+  view model session = ?view
+                       ^^^^^
+alder build: the program has 4 typed hole(s); fill them before building

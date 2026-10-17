@@ -1,0 +1,2 @@
+{"code": "W0002", "severity": "warning", "file": "app/Bookings/Index.alder", "line": 16, "col": 22, "endLine": 16, "endCol": 27, "message": "hole ?view has type Html Bookings.Index.Msg"}
+{"code": "W0002", "severity": "warning", "file": "app/Bookings/Show.alder", "line": 18, "col": 22, "endLine": 18, "endCol": 27, "message": "hole ?view has type Html Bookings.Show.Msg"}

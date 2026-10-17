@@ -1,0 +1,124 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+type RoomFree = { room: Room, free: Date }
+
+type RoomPage = { room: Room, bookings: List Booking }
+
+type Line = { booking: Booking, room: Room }
+
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+nextFree : Date -> List Booking -> Date
+nextFree = \day bookings -> match List.find (\b -> b.from <= day && day < b.to) bookings {
+  Just b -> nextFree b.to bookings,
+  Nothing -> day,
+}
+
+freeOf : Date -> List Booking -> Room -> RoomFree
+freeOf = \today bookings r -> {
+  let f : RoomFree = { room: r, free: nextFree today (List.filter (\b -> b.room == r.id) bookings) }
+  f
+}
+
+roomsFree : Query (List RoomFree)
+roomsFree = {
+  let today <- Date.today
+  let rooms <- Db.from Room |> Db.orderBy Room.name.asc |> Db.all
+  let bookings <- Db.from Booking |> Db.all
+  Query.succeed (List.map (freeOf today bookings) rooms)
+}
+
+roomPage : Room.RoomId -> Query RoomPage
+roomPage = \id -> {
+  let found <- Db.get Room id
+  match found {
+    Just room -> {
+      let bookings <- Db.from Booking |> Db.where (Booking.room.eq id) |> Db.orderBy Booking.from.asc |> Db.all
+      let p : RoomPage = { room: room, bookings: bookings }
+      Query.succeed p
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+book : Room.RoomId -> User.UserId -> Date -> Date -> Task (Maybe Text)
+book = \room user start end -> {
+  let clashes <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.where (Booking.from.lt end) |> Db.where (Booking.to.gt start) |> Db.count
+  if end <= start then Task.succeed (Just "The booking must end after it starts.")
+  else if clashes > 0 then Task.succeed (Just "The room is already booked for those dates.")
+  else {
+    let _ <- Db.insert Booking { room: room, owner: user, from: start, to: end }
+    Task.succeed Nothing
+  }
+}
+
+lineOf : List Room -> Booking -> Maybe Line
+lineOf = \rooms b -> match List.find (\r -> r.id == b.room) rooms {
+  Just r -> {
+    let l : Line = { booking: b, room: r }
+    Just l
+  },
+  Nothing -> Nothing,
+}
+
+ofUser : User.UserId -> Query (List Line)
+ofUser = \user -> {
+  let bookings <- Db.from Booking |> Db.where (Booking.owner.eq user) |> Db.orderBy Booking.from.asc |> Db.all
+  let rooms <- Db.from Room |> Db.all
+  Query.succeed (List.filterMap (lineOf rooms) bookings)
+}
+
+line : User.UserId -> BookingId -> Query Line
+line = \user id -> {
+  let found <- Db.from Booking |> Db.where (Booking.id.eq id) |> Db.where (Booking.owner.eq user) |> Db.first
+  match found {
+    Just b -> {
+      let room <- Db.get Room b.room
+      match room {
+        Just r -> {
+          let l : Line = { booking: b, room: r }
+          Query.succeed l
+        },
+        Nothing -> Query.notFound,
+      }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+canCancel : Date -> Booking -> Bool
+canCancel = \today b -> today < b.from
+
+cancel : BookingId -> Task Unit
+cancel = \id -> Db.delete Booking id
+
+test "a Booking keeps its room from being deleted" = {
+  let today <- Date.today
+  let target <- Db.insert Room { name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Db.insert Booking { room: target, owner: me, from: today, to: today }
+  let r <- Test.run (Db.delete Room target)
+  let left <- Db.from Booking |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, left: left } == { deleted: Nothing, left: 1 })
+}
+
+test "a Booking keeps its owner from being deleted" = {
+  let today <- Date.today
+  let target <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let room1 <- Db.insert Room { name: Text.NonEmpty "name-1" }
+  let _ <- Db.insert Booking { room: room1, owner: target, from: today, to: today }
+  let r <- Test.run (Db.delete User target)
+  let left <- Db.from Booking |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, left: left } == { deleted: Nothing, left: 1 })
+}

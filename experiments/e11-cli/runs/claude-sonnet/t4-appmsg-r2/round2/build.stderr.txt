@@ -1,0 +1,16 @@
+app/App.alder:21:20: warning[W0002]: hole ?switchTheme has type Task Nav
+    SwitchTheme p -> ?switchTheme,
+                     ^^^^^^^^^^^^
+app/App.alder:49:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page
+          Task.succeed (Redirect (?afterLogin))
+                                  ^^^^^^^^^^^
+app/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page
+    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })
+                                                                                      ^^^^^^^^^^^
+app/Layout.alder:22:9: warning[W0002]: hole ?shell has type { title: Text, theme: Theme, children: List (Html a) } -> Html a
+  shell = ?shell
+          ^^^^^^
+alder build: the program has 5 typed hole(s); fill them before building

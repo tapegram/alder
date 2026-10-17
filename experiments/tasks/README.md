@@ -30,3 +30,5 @@ Since the E11 fix batch, T4 carries E8's Names block (`App.SwitchTheme`, `Notes.
 `e8-hidden/tasks/with/t4-appmsg.md`; its Password sentence stays the canonical one), so its hidden tests measure names
 the text gives; E11's T4 results used the text without it. The drills' names check (`cmd/alder/drill_test.go`
 `checkNames`) now also compares each form's fields and each message's parameters.
+
+E11 run 2 (`e11-cli/findings-run2.md`) ran these texts with T4's Names block (Haiku, Sonnet, Opus, `cli`; Opus `files`); its T2 cells are void, because `examples/todos` did not pass `alder check` under the run's binary.

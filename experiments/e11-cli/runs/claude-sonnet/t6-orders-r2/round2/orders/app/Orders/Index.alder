@@ -1,0 +1,23 @@
+module Orders.Index
+
+import Line
+import Order
+
+page "/" { } requires user
+
+type Model = { orders: List { id: Order.OrderId, status: Order.Status, total: Int } }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let orders <- Db.from Order |> Db.where (Order.owner.eq session.user) |> Db.orderBy Order.created.desc |> Db.all
+  let rows <- Query.all (List.map (\o -> Query.map (\t -> { id: o.id, status: o.status, total: t }) (Line.total o.id)) orders)
+  Query.succeed { orders: rows }
+}
+
+view : Model -> Session -> Html Msg
+view model session = Html.none
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Orders.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

@@ -1,0 +1,1 @@
+{"code": "W0002", "severity": "warning", "file": "app/Teams/Show.alder", "line": 147, "col": 3, "endLine": 147, "endCol": 8, "message": "hole ?test has type Task Bool"}

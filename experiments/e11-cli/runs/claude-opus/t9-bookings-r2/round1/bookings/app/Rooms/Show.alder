@@ -1,0 +1,99 @@
+module Rooms.Show
+
+import Booking
+import Layout
+import Room
+import User
+
+page "/rooms/{id}" { id: Room.RoomId } requires user
+
+type Model = { data: Booking.RoomPage }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let data <- Booking.roomPage params.id
+  Query.succeed { data: data }
+}
+
+form NewBooking = {
+  from: Date,
+  to: Date,
+}
+
+msg Book form NewBooking
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Book p -> {
+    let refused <- Booking.book model.data.room.id session.user p.form.from p.form.to
+    match refused {
+      Just why -> Task.succeed (Reject why),
+      Nothing -> Task.succeed (Redirect (Rooms.Show { id: model.data.room.id })),
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.data.room.name}>
+    <h1 id="name">{model.data.room.name}</h1>
+    <ul id="bookings">
+      {for b in model.data.bookings ->
+        <li>
+          <span class="from">{Date.toText b.from}</span>
+          {" to "}
+          <span class="to">{Date.toText b.to}</span>
+        </li>}
+    </ul>
+    <form submit={Book}>
+      <Errors form />
+      <Input field="from" label="From" />
+      <Errors field="from" />
+      <Input field="to" label="To" />
+      <Errors field="to" />
+      <button>Book</button>
+    </form>
+    <a href={Rooms.Index {}}>All rooms</a>
+  </Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let room1 <- Db.insert Room { name: Text.NonEmpty "name-1" }
+  let r <- Test.open (Rooms.Show { id: room1 })
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "submitting NewBooking" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let room1 <- Db.insert Room { name: Text.NonEmpty "name-1" }
+  let _ <- Test.get (Rooms.Show { id: room1 })
+  let r <- Test.submit NewBooking { from: today, to: today }
+  Task.succeed (r.answer == FormRejected [{ field: "", message: "The booking must end after it starts." }])
+}
+
+test "NewBooking refuses an empty from" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let room1 <- Db.insert Room { name: Text.NonEmpty "name-1" }
+  let _ <- Test.get (Rooms.Show { id: room1 })
+  let r <- Test.submitRaw NewBooking [{ name: "from", value: "" }, { name: "to", value: "2026-01-01" }]
+  Task.succeed (r.answer == FormRejected [{ field: "from", message: "is required" }])
+}
+
+test "an overlapping booking is refused, a back-to-back one is stored" = {
+  let me <- Db.insert User.User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let oak <- Db.insert Room.Room { name: Text.NonEmpty "Oak" }
+  let elm <- Db.insert Room.Room { name: Text.NonEmpty "Elm" }
+  let today <- Date.today
+  let start = Date.addDays 10 today
+  let _ <- Db.insert Booking.Booking { room: oak, owner: me, from: start, to: Date.addDays 2 start }
+  let _ <- Db.insert Booking.Booking { room: elm, owner: me, from: Date.addDays 2 start, to: Date.addDays 4 start }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: oak })
+  let clash <- Test.submit NewBooking { from: Date.addDays 1 start, to: Date.addDays 3 start }
+  let next <- Test.submit NewBooking { from: Date.addDays 2 start, to: Date.addDays 4 start }
+  let backwards <- Test.submit NewBooking { from: Date.addDays 20 start, to: Date.addDays 20 start }
+  let after <- Booking.roomPage oak
+  Task.succeed ({ clash: clash.answer, next: next.answer, backwards: backwards.answer, froms: List.map (\b -> Date.toText b.from) after.bookings } == { clash: FormRejected [{ field: "", message: "The room is already booked for those dates." }], next: Redirected (Rooms.Show { id: oak }), backwards: FormRejected [{ field: "", message: "The booking must end after it starts." }], froms: [Date.toText start, Date.toText (Date.addDays 2 start)] })
+}

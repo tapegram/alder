@@ -1,0 +1,76 @@
+{
+  "format": "1",
+  "tables": [
+    {
+      "name": "Todo.Todo",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "title",
+          "type": "Text"
+        },
+        {
+          "name": "done",
+          "type": "Bool",
+          "default": "0"
+        },
+        {
+          "name": "due",
+          "type": "Date",
+          "nullable": true
+        },
+        {
+          "name": "owner",
+          "type": "Text",
+          "ref": "User.User"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "User.User",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "email",
+          "type": "Text",
+          "unique": true
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        },
+        {
+          "name": "passwordHash",
+          "type": "Text"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        },
+        {
+          "name": "role",
+          "type": "Enum",
+          "enum": [
+            "Member",
+            "Admin"
+          ],
+          "default": "'Member'"
+        }
+      ]
+    }
+  ]
+}

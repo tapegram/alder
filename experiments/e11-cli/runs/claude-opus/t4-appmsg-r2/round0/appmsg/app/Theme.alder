@@ -1,0 +1,27 @@
+module Theme
+
+type Theme = Light | Dark
+
+flip : Theme -> Theme
+flip = \t -> match t {
+  Light -> Dark,
+  Dark -> Light,
+}
+
+buttonLabel : Theme -> Text
+buttonLabel = \t -> match t {
+  Light -> "Switch to dark",
+  Dark -> "Switch to light",
+}
+
+bodyClass : Theme -> Maybe Text
+bodyClass = \t -> match t {
+  Light -> Nothing,
+  Dark -> Just "dark",
+}
+
+test "flip swaps the theme" = {
+  let flipped = List.map flip [Light, Dark]
+  let labels = List.map buttonLabel [Light, Dark]
+  Task.succeed ({ flipped: flipped, labels: labels } == { flipped: [Dark, Light], labels: ["Switch to dark", "Switch to light"] })
+}

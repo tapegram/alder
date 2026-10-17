@@ -1,0 +1,138 @@
+module Booking
+
+import Room
+import User
+
+type BookingId = brand Text
+
+type RoomPage = { room: Room, bookings: List Booking }
+
+type FreeRoom = { room: Room, free: Date }
+
+type MyBooking = { booking: Booking, room: Room }
+
+type BookingPage = { booking: Booking, room: Room, cancellable: Bool }
+
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+overlaps : Date -> Date -> Date -> Date -> Bool
+overlaps = \aFrom aTo bFrom bTo -> aFrom < bTo && bFrom < aTo
+
+stepFree : Booking -> Date -> Date
+stepFree = \b cur -> if b.to <= cur then cur else if b.from <= cur then b.to else cur
+
+nextFree : Room.RoomId -> Date -> Query Date
+nextFree = \room today -> {
+  let bs <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.orderBy Booking.from.asc |> Db.all
+  Query.succeed (List.foldl stepFree today bs)
+}
+
+freeRow : Date -> Room -> Query FreeRoom
+freeRow = \today r -> {
+  let free <- nextFree r.id today
+  Query.succeed { room: r, free: free }
+}
+
+allFree : Date -> Query (List FreeRoom)
+allFree = \today -> {
+  let rooms <- Db.from Room |> Db.orderBy Room.name.asc |> Db.all
+  Query.all (List.map (freeRow today) rooms)
+}
+
+conflicts : Room.RoomId -> Date -> Date -> Query Bool
+conflicts = \room start stop -> {
+  let bs <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.all
+  Query.succeed (List.any (\b -> overlaps start stop b.from b.to) bs)
+}
+
+book : Room.RoomId -> User.UserId -> Date -> Date -> Task Bool
+book = \room user start stop -> {
+  let clash <- conflicts room start stop
+  if stop > start && not clash then {
+    let _ <- Db.insert Booking { room: room, owner: user, from: start, to: stop }
+    Task.succeed True
+  } else Task.succeed False
+}
+
+cancellable : Booking -> Date -> Bool
+cancellable = \b today -> today < b.from
+
+listed : Booking -> Query MyBooking
+listed = \b -> {
+  let found <- Db.get Room b.room
+  match found {
+    Just r -> Query.succeed { booking: b, room: r },
+    Nothing -> Query.notFound,
+  }
+}
+
+myBookings : User.UserId -> Query (List MyBooking)
+myBookings = \user -> {
+  let bs <- Db.from Booking |> Db.where (Booking.owner.eq user) |> Db.orderBy Booking.from.asc |> Db.all
+  Query.all (List.map listed bs)
+}
+
+roomPage : Room.RoomId -> Query RoomPage
+roomPage = \room -> {
+  let found <- Db.get Room room
+  match found {
+    Just r -> {
+      let bs <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.orderBy Booking.from.asc |> Db.all
+      Query.succeed { room: r, bookings: bs }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+bookingPage : BookingId -> User.UserId -> Query BookingPage
+bookingPage = \bid user -> {
+  let found <- Db.get Booking bid
+  match found {
+    Just b -> {
+      let room <- Db.get Room b.room
+      let today <- Date.today
+      match room {
+        Just r -> if b.owner == user then Query.succeed { booking: b, room: r, cancellable: cancellable b today } else Query.notFound,
+        Nothing -> Query.notFound,
+      }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+test "a Booking keeps its room from being deleted" = {
+  let today <- Date.today
+  let target <- Db.insert Room { name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Db.insert Booking { room: target, owner: me, from: today, to: today }
+  let r <- Test.run (Db.delete Room target)
+  let left <- Db.from Booking |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, left: left } == { deleted: Nothing, left: 1 })
+}
+
+test "a Booking keeps its owner from being deleted" = {
+  let today <- Date.today
+  let target <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let room1 <- Db.insert Room { name: Text.NonEmpty "name-1" }
+  let _ <- Db.insert Booking { room: room1, owner: target, from: today, to: today }
+  let r <- Test.run (Db.delete User target)
+  let left <- Db.from Booking |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, left: left } == { deleted: Nothing, left: 1 })
+}
+
+test "the next free date skips back-to-back bookings" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: room, owner: me, from: Date.addDays 1 today, to: Date.addDays 3 today }
+  let _ <- Db.insert Booking { room: room, owner: me, from: Date.addDays 3 today, to: Date.addDays 5 today }
+  let first <- nextFree room today
+  let second <- nextFree room (Date.addDays 1 today)
+  Task.succeed ({ first: first, second: second } == { first: today, second: Date.addDays 5 today })
+}

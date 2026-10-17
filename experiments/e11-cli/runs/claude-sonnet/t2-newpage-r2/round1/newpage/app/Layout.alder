@@ -1,0 +1,18 @@
+module Layout
+
+Page : { title: Text, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+      <link rel="stylesheet" href={Url.external "/static/al/al.css"} />
+      <script type="module" src="/static/al/al.js"></script>
+      <link rel="stylesheet" href={Url.external "/static/app.css"} />
+    </head>
+    <body>
+      <al-page width="narrow">
+        <main>{props.children}</main>
+      </al-page>
+    </body>
+  </html>

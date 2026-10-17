@@ -1,0 +1,377 @@
+```alder-cli
+# users and login
+alder new table User email:Text.Email@unique name:Text.NonEmpty passwordHash:Text created:Time@created --no-timestamps
+alder new auth --users User
+
+# rooms and bookings
+alder new table Room name:Text.NonEmpty --no-timestamps
+alder new table Booking room:Room.RoomId@ref=Room owner:User.UserId@ref=User from:Date to:Date --no-timestamps
+alder new type Booking "RoomPage = { room: Room, bookings: List Booking }"
+alder new type Booking "FreeRoom = { room: Room, free: Date }"
+alder new type Booking "MyBooking = { booking: Booking, room: Room }"
+alder new type Booking "BookingPage = { booking: Booking, room: Room, cancellable: Bool }"
+
+# Booking functions
+alder new decl Booking overlaps "Date -> Date -> Date -> Date -> Bool"
+alder fill Booking.overlaps - <<'EOF'
+\aFrom aTo bFrom bTo -> aFrom < bTo && bFrom < aTo
+EOF
+
+alder new decl Booking stepFree "Booking -> Date -> Date"
+alder fill Booking.stepFree - <<'EOF'
+\b cur -> if b.to <= cur then cur else if b.from <= cur then b.to else cur
+EOF
+
+alder new decl Booking nextFree "Room.RoomId -> Date -> Query Date"
+alder fill Booking.nextFree - <<'EOF'
+\room today -> {
+  let bs <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.orderBy Booking.from.asc |> Db.all
+  Query.succeed (List.foldl stepFree today bs)
+}
+EOF
+
+alder new decl Booking freeRow "Date -> Room -> Query FreeRoom"
+alder fill Booking.freeRow - <<'EOF'
+\today r -> {
+  let free <- nextFree r.id today
+  Query.succeed { room: r, free: free }
+}
+EOF
+
+alder new decl Booking allFree "Date -> Query (List FreeRoom)"
+alder fill Booking.allFree - <<'EOF'
+\today -> {
+  let rooms <- Db.from Room |> Db.orderBy Room.name.asc |> Db.all
+  Query.all (List.map (freeRow today) rooms)
+}
+EOF
+
+alder new decl Booking conflicts "Room.RoomId -> Date -> Date -> Query Bool"
+alder fill Booking.conflicts - <<'EOF'
+\room start stop -> {
+  let bs <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.all
+  Query.succeed (List.any (\b -> overlaps start stop b.from b.to) bs)
+}
+EOF
+
+alder new decl Booking book "Room.RoomId -> User.UserId -> Date -> Date -> Task Bool"
+alder fill Booking.book - <<'EOF'
+\room user start stop -> {
+  let clash <- conflicts room start stop
+  if stop > start && not clash then {
+    let _ <- Db.insert Booking { room: room, owner: user, from: start, to: stop }
+    Task.succeed True
+  } else Task.succeed False
+}
+EOF
+
+alder new decl Booking cancellable "Booking -> Date -> Bool"
+alder fill Booking.cancellable - <<'EOF'
+\b today -> today < b.from
+EOF
+
+alder new decl Booking listed "Booking -> Query MyBooking"
+alder fill Booking.listed - <<'EOF'
+\b -> {
+  let found <- Db.get Room b.room
+  match found {
+    Just r -> Query.succeed { booking: b, room: r },
+    Nothing -> Query.notFound,
+  }
+}
+EOF
+
+alder new decl Booking myBookings "User.UserId -> Query (List MyBooking)"
+alder fill Booking.myBookings - <<'EOF'
+\user -> {
+  let bs <- Db.from Booking |> Db.where (Booking.owner.eq user) |> Db.orderBy Booking.from.asc |> Db.all
+  Query.all (List.map listed bs)
+}
+EOF
+
+alder new decl Booking roomPage "Room.RoomId -> Query RoomPage"
+alder fill Booking.roomPage - <<'EOF'
+\room -> {
+  let found <- Db.get Room room
+  match found {
+    Just r -> {
+      let bs <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.orderBy Booking.from.asc |> Db.all
+      Query.succeed { room: r, bookings: bs }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+EOF
+
+alder new decl Booking bookingPage "BookingId -> User.UserId -> Query BookingPage"
+alder fill Booking.bookingPage - <<'EOF'
+\bid user -> {
+  let found <- Db.get Booking bid
+  match found {
+    Just b -> {
+      let room <- Db.get Room b.room
+      let today <- Date.today
+      match room {
+        Just r -> if b.owner == user then Query.succeed { booking: b, room: r, cancellable: cancellable b today } else Query.notFound,
+        Nothing -> Query.notFound,
+      }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+EOF
+
+# the Booking test: back-to-back bookings and the next free date
+alder new test Booking "the next free date skips back-to-back bookings"
+alder fill 'Booking."the next free date skips back-to-back bookings"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: room, owner: me, from: Date.addDays 1 today, to: Date.addDays 3 today }
+  let _ <- Db.insert Booking { room: room, owner: me, from: Date.addDays 3 today, to: Date.addDays 5 today }
+  let first <- nextFree room today
+  let second <- nextFree room (Date.addDays 1 today)
+  Task.succeed ({ first: first, second: second } == { first: today, second: Date.addDays 5 today })
+}
+EOF
+
+# the layout
+alder fill --decl Layout.Page - <<'EOF'
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>{props.title}</title>
+    <link rel="stylesheet" href={Url.external "/static/al/al.css"} />
+  </head>
+  <body>
+    <al-page width="narrow">
+      <main>{props.children}</main>
+    </al-page>
+  </body>
+</html>
+EOF
+
+# Rooms.Index: the rooms with their next free date
+alder new page Rooms.Index '/rooms' --requires user --blank
+alder fill --decl Rooms.Index.Model - <<'EOF'
+{ rows: List Booking.FreeRoom }
+EOF
+alder fill Rooms.Index.load - --hole ?load <<'EOF'
+{
+  let today <- Date.today
+  let rows <- Booking.allFree today
+  Query.succeed { rows: rows }
+}
+EOF
+alder fill Rooms.Index.view - --hole ?view <<'EOF'
+<Layout.Page title="Rooms">
+  <h1>Rooms</h1>
+  <ul id="rooms">
+    {for r in model.rows -> <li><a class="name" href={Rooms.Show { id: r.room.id }}>{r.room.name}</a> <span class="free">{Date.toText r.free}</span></li>}
+  </ul>
+  <al-button variant="outline" click={App.Logout}>Log out</al-button>
+</Layout.Page>
+EOF
+
+# Rooms.Show: a room, its bookings, and the form to book it
+alder new page Rooms.Show '/rooms/{id}' --param id:Room.RoomId --requires user --blank
+alder fill --decl Rooms.Show.Model - <<'EOF'
+{ shown: Booking.RoomPage }
+EOF
+alder fill Rooms.Show.load - --hole ?load <<'EOF'
+{
+  let shown <- Booking.roomPage params.id
+  Query.succeed { shown: shown }
+}
+EOF
+alder fill Rooms.Show.view - --hole ?view <<'EOF'
+<p>placeholder</p>
+EOF
+alder new form Rooms.Show NewBooking from:Date to:Date --msg Book
+alder fill --decl Rooms.Show.update - <<'EOF'
+match msg {
+  Book p -> {
+    let stored <- Booking.book model.shown.room.id session.user p.form.from p.form.to
+    if stored then Task.succeed (Redirect (Rooms.Show { id: model.shown.room.id })) else Task.succeed (Reject "The room is not free for those dates, or the end is not after the start.")
+  },
+}
+EOF
+alder fill --decl Rooms.Show.view - <<'EOF'
+<Layout.Page title={model.shown.room.name}>
+  <h1 id="name">{model.shown.room.name}</h1>
+  <ul id="bookings">
+    {for b in model.shown.bookings -> <li><span class="from">{Date.toText b.from}</span> to <span class="to">{Date.toText b.to}</span></li>}
+  </ul>
+  <al-card>
+    <form submit={Book}>
+      <Errors form />
+      <al-input field="from" label="From" />
+      <al-input field="to" label="To" />
+      <al-button type="submit">Book</al-button>
+    </form>
+  </al-card>
+  <al-button variant="outline" click={App.Logout}>Log out</al-button>
+</Layout.Page>
+EOF
+
+# Bookings.Index: the user's bookings
+alder new page Bookings.Index '/bookings' --requires user --blank
+alder fill --decl Bookings.Index.Model - <<'EOF'
+{ rows: List Booking.MyBooking }
+EOF
+alder fill Bookings.Index.load - --hole ?load <<'EOF'
+{
+  let rows <- Booking.myBookings (session.user)
+  Query.succeed { rows: rows }
+}
+EOF
+alder fill Bookings.Index.view - --hole ?view <<'EOF'
+<Layout.Page title="Bookings">
+  <h1>Your bookings</h1>
+  <ul id="mine">
+    {for r in model.rows -> <li><a href={Bookings.Show { id: r.booking.id }}><span class="room">{r.room.name}</span> <span class="from">{Date.toText r.booking.from}</span></a></li>}
+  </ul>
+  <al-button variant="outline" click={App.Logout}>Log out</al-button>
+</Layout.Page>
+EOF
+
+# Bookings.Show: one booking, cancellable only before its from date
+alder new page Bookings.Show '/bookings/{id}' --param id:Booking.BookingId --requires user --blank
+alder fill --decl Bookings.Show.Model - <<'EOF'
+{ shown: Booking.BookingPage }
+EOF
+alder fill Bookings.Show.load - --hole ?load <<'EOF'
+{
+  let shown <- Booking.bookingPage params.id (session.user)
+  Query.succeed { shown: shown }
+}
+EOF
+alder fill Bookings.Show.view - --hole ?view <<'EOF'
+<p>placeholder</p>
+EOF
+alder new msg Bookings.Show Cancel
+alder fill --decl Bookings.Show.update - <<'EOF'
+match msg {
+  Cancel -> {
+    let today <- Date.today
+    if Booking.cancellable model.shown.booking today then {
+      let _ <- Db.delete Booking model.shown.booking.id
+      Task.succeed (Redirect (Bookings.Index {}))
+    } else Task.succeed Rerender,
+  },
+}
+EOF
+alder fill --decl Bookings.Show.view - <<'EOF'
+<Layout.Page title="Booking">
+  <h1 id="room">{model.shown.room.name}</h1>
+  <p>From <span id="from">{Date.toText model.shown.booking.from}</span> until <span id="to">{Date.toText model.shown.booking.to}</span></p>
+  {if model.shown.cancellable then <al-button id="cancel" variant="destructive" click={Cancel}>Cancel booking</al-button> else Html.none}
+  <p><a href={Bookings.Index {}}>Your bookings</a></p>
+  <al-button variant="outline" click={App.Logout}>Log out</al-button>
+</Layout.Page>
+EOF
+
+# Auth.Login: after a login, go to the room list
+alder fill --decl Auth.Login.update - <<'EOF'
+match msg {
+  Submit p -> {
+    let found <- Password.verify { email: p.form.email, password: p.form.password }
+    match found {
+      Just id -> {
+        let _ <- Session.put (\s -> { s | user: Just id })
+        Task.succeed (Redirect (Rooms.Index {}))
+      },
+      Nothing -> Task.succeed (Reject "Email or password is incorrect."),
+    }
+  },
+}
+EOF
+
+# tests of Rooms.Show: overlap refused, back-to-back stored
+alder new test Rooms.Show "an overlapping booking is refused and not stored"
+alder fill 'Rooms.Show."an overlapping booking is refused and not stored"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: room, owner: me, from: Date.addDays 1 today, to: Date.addDays 4 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let r <- Test.submit NewBooking { from: Date.addDays 3 today, to: Date.addDays 6 today }
+  let n <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.count
+  let people <- Db.from User |> Db.where (User.email.eq (Text.Email "me@example.com")) |> Db.count
+  let named <- Db.from Room |> Db.where (Room.name.eq (Text.NonEmpty "Oak")) |> Db.count
+  Task.succeed ({ answer: r.answer, count: n, people: people, named: named } == { answer: FormRejected [{ field: "", message: "The room is not free for those dates, or the end is not after the start." }], count: 1, people: 1, named: 1 })
+}
+EOF
+
+alder new test Rooms.Show "a booking that starts on the other's to date is stored"
+alder fill 'Rooms.Show."a booking that starts on the other'"'"'s to date is stored"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: room, owner: me, from: Date.addDays 1 today, to: Date.addDays 4 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Rooms.Show { id: room })
+  let r <- Test.submit NewBooking { from: Date.addDays 4 today, to: Date.addDays 6 today }
+  let n <- Db.from Booking |> Db.where (Booking.room.eq room) |> Db.count
+  let people <- Db.from User |> Db.where (User.email.eq (Text.Email "me@example.com")) |> Db.count
+  let named <- Db.from Room |> Db.where (Room.name.eq (Text.NonEmpty "Oak")) |> Db.count
+  Task.succeed ({ answer: r.answer, count: n, people: people, named: named } == { answer: Redirected (Rooms.Show { id: room }), count: 2, people: 1, named: 1 })
+}
+EOF
+
+# tests of Bookings.Show: owner cancels before from, not after, stranger gets 404
+alder new test Bookings.Show "the owner cancels a booking before its from date"
+alder fill 'Bookings.Show."the owner cancels a booking before its from date"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let b <- Db.insert Booking { room: room, owner: me, from: Date.addDays 5 today, to: Date.addDays 6 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Show { id: b })
+  let r <- Test.click Cancel
+  let left <- Db.get Booking b
+  let people <- Db.from User |> Db.where (User.email.eq (Text.Email "me@example.com")) |> Db.count
+  let named <- Db.from Room |> Db.where (Room.name.eq (Text.NonEmpty "Oak")) |> Db.count
+  Task.succeed ({ button: Test.has "#cancel" page.doc, answer: r.answer, gone: left == Nothing, people: people, named: named } == { button: True, answer: Redirected (Bookings.Index {}), gone: True, people: 1, named: 1 })
+}
+EOF
+
+alder new test Bookings.Show "a booking that starts today cannot be cancelled"
+alder fill 'Bookings.Show."a booking that starts today cannot be cancelled"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let b <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 1 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Show { id: b })
+  let r <- Test.run (update Cancel (page.model) { user: me })
+  let left <- Db.get Booking b
+  let people <- Db.from User |> Db.where (User.email.eq (Text.Email "me@example.com")) |> Db.count
+  let named <- Db.from Room |> Db.where (Room.name.eq (Text.NonEmpty "Oak")) |> Db.count
+  Task.succeed ({ button: Test.has "#cancel" page.doc, value: r.value, kept: left != Nothing, people: people, named: named } == { button: False, value: Ok Rerender, kept: True, people: 1, named: 1 })
+}
+EOF
+
+alder new test Bookings.Show "another user's booking is not found"
+alder fill 'Bookings.Show."another user'"'"'s booking is not found"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let b <- Db.insert Booking { room: room, owner: me, from: Date.addDays 5 today, to: Date.addDays 6 today }
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let page <- Test.open (Bookings.Show { id: b })
+  let people <- Db.from User |> Db.where (User.email.eq (Text.Email "me@example.com")) |> Db.count
+  let named <- Db.from Room |> Db.where (Room.name.eq (Text.NonEmpty "Oak")) |> Db.count
+  Task.succeed ({ answer: page.answer, people: people, named: named } == { answer: PageMissing, people: 1, named: 1 })
+}
+EOF
+
+alder test
+```

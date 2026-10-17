@@ -2,6 +2,7 @@ experiments/**/runs/*/raw/
 .DS_Store
 /alder
 experiments/*/alder
+experiments/*/alder-r[0-9]*
 __pycache__/
 build/
 /dist/

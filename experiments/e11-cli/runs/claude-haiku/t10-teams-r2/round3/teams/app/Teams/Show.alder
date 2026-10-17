@@ -1,0 +1,145 @@
+module Teams.Show
+
+import Invite
+import Layout
+import Member
+import Team
+import User
+
+page "/teams/{id}" { id: Team.TeamId } requires user
+
+type Model = { team: Team.TeamId, roster: Member.Roster, viewer: User.UserId }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Member.roster params.id session.user
+  match found {
+    Just r -> Query.succeed { team: params.id, roster: r, viewer: session.user },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewInvite = {
+  email: Text.Email,
+}
+
+msg SendInvite form NewInvite
+
+msg Remove { user: User.UserId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Remove p -> {
+    let ok = session.user == model.roster.owner && p.user != model.roster.owner
+    let _ <- if ok then Member.removeMember model.team p.user else Task.notFound
+    Task.succeed (Redirect (Teams.Show { id: model.team }))
+  },
+  SendInvite p -> {
+    let ok = session.user == model.roster.owner
+    let _ <- if ok then Invite.send model.team p.form.email else Task.notFound
+    Task.succeed (Redirect (Teams.Show { id: model.team }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title={model.roster.name}>
+    <h1 id="name">{model.roster.name}</h1>
+    <ul id="members">
+      {for p in model.roster.people ->
+        <li>
+          <span class="name">{p.name}</span>
+          {if model.roster.owner == model.viewer && p.user != model.roster.owner then <button class="remove" click={Remove { user: p.user }}>Remove</button> else Html.none}
+        </li>}
+    </ul>
+    {if model.roster.owner == model.viewer then <form submit={SendInvite}>
+        <al-input field="email" label="Invite by email" />
+        <al-button type="submit">Invite</al-button>
+      </form> else Html.none}
+    <a href={Teams.Index {}}>Back to teams</a>
+  </Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let team1 <- Db.insert Team { name: Text.NonEmpty "name-1", owner: me }
+  let r <- Test.open (Teams.Show { id: team1 })
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "submitting NewInvite" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let team1 <- Db.insert Team { name: Text.NonEmpty "name-1", owner: me }
+  let _ <- Test.get (Teams.Show { id: team1 })
+  let r <- Test.submit NewInvite { email: Text.Email "email-1@example.com" }
+  Task.succeed (r.answer == ?expected)
+}
+
+test "NewInvite refuses an empty email" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let team1 <- Db.insert Team { name: Text.NonEmpty "name-1", owner: me }
+  let _ <- Test.get (Teams.Show { id: team1 })
+  let r <- Test.submitRaw NewInvite [{ name: "email", value: "" }]
+  Task.succeed (r.answer == FormRejected [{ field: "email", message: "must be an email address" }])
+}
+
+-- Fill ?expected with what pressing Remove must do, so that a test fails when the arm
+-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
+-- changed (`after`, the row read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.
+test "pressing Remove" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let team1 <- Db.insert Team { name: Text.NonEmpty "name-1", owner: me }
+  let _ <- Test.get (Teams.Show { id: team1 })
+  let r <- Test.click (Remove { user: me })
+  let after <- Db.get User me
+  Task.succeed ?expected
+}
+
+test "a stranger gets a 404 for the team" = {
+  let owner <- User.add (Text.Email "owner@example.com") (Text.NonEmpty "Owner")
+  let stranger <- User.add (Text.Email "stranger@example.com") (Text.NonEmpty "Stranger")
+  let team <- Team.make owner (Text.NonEmpty "Red")
+  let _ <- Test.login { user: Just stranger }
+  let r <- Test.open (Teams.Show { id: team })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a member cannot remove another member" = {
+  let owner <- User.add (Text.Email "owner@example.com") (Text.NonEmpty "Owner")
+  let ann <- User.add (Text.Email "ann@example.com") (Text.NonEmpty "Ann")
+  let bob <- User.add (Text.Email "bob@example.com") (Text.NonEmpty "Bob")
+  let team <- Team.make owner (Text.NonEmpty "Red")
+  let _ <- Member.add team ann
+  let _ <- Member.add team bob
+  let _ <- Test.login { user: Just ann }
+  let page <- Test.get (Teams.Show { id: team })
+  let r <- Test.run (update (Remove { user: bob }) page.model { user: ann })
+  let found <- Member.roster team owner
+  Task.succeed ({ value: r.value, people: Maybe.map (\x -> List.length x.people) found } == { value: Err "not found", people: Just 3 })
+}
+
+test "the owner removes a member" = {
+  let owner <- User.add (Text.Email "owner@example.com") (Text.NonEmpty "Owner")
+  let ann <- User.add (Text.Email "ann@example.com") (Text.NonEmpty "Ann")
+  let team <- Team.make owner (Text.NonEmpty "Red")
+  let _ <- Member.add team ann
+  let _ <- Test.login { user: Just owner }
+  let _ <- Test.get (Teams.Show { id: team })
+  let r <- Test.click (Remove { user: ann })
+  let found <- Member.roster team owner
+  Task.succeed ({ answer: r.answer, people: Maybe.map (\x -> List.length x.people) found } == { answer: Redirected (Teams.Show { id: team }), people: Just 1 })
+}
+
+test "the owner cannot remove themselves" = {
+  let owner <- User.add (Text.Email "owner@example.com") (Text.NonEmpty "Owner")
+  let ann <- User.add (Text.Email "ann@example.com") (Text.NonEmpty "Ann")
+  let team <- Team.make owner (Text.NonEmpty "Red")
+  let _ <- Member.add team ann
+  let _ <- Test.login { user: Just owner }
+  let page <- Test.get (Teams.Show { id: team })
+  let r <- Test.run (update (Remove { user: owner }) page.model { user: owner })
+  let found <- Member.roster team owner
+  Task.succeed ({ value: r.value, people: Maybe.map (\x -> List.length x.people) found } == { value: Err "not found", people: Just 2 })
+}

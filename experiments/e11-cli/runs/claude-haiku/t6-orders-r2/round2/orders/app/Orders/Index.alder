@@ -1,0 +1,83 @@
+module Orders.Index
+
+import Layout
+import Order
+import User
+
+page "/" { page: Int = 1 } requires user
+
+type Model = { rows: List Order, page: Int, pages: Int }
+
+type Row = { order: Order, total: Int }
+
+perPage : Int
+perPage = 20
+
+-- lastPage bounds `page`, so `(page - 1) * perPage` cannot overflow.
+lastPage : Int
+lastPage = 1000000
+
+-- load reads one page of the rows, newest first, and how many pages there are.
+load : Params -> Session -> Query Model
+load params session = {
+  let page = Int.clamp { min: 1, max: lastPage } params.page
+  let rows <-
+    Db.from Order
+      |> Db.orderBy Order.created.desc
+      |> Db.limit perPage
+      |> Db.offset ((page - 1) * perPage)
+      |> Db.all
+  let count <- Db.from Order |> Db.count
+  Query.succeed { rows: rows, page: page, pages: Int.max 1 ((count + perPage - 1) / perPage) }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Orders">
+    <h1>Orders</h1>
+
+    <al-table>
+      <table>
+        <thead>
+          <tr><th>Owner</th><th>Status</th><th>Created</th></tr>
+        </thead>
+        <tbody>
+          {for row in model.rows ->
+            <tr>
+              <td>{row.owner}</td>
+              <td><al-badge>{match row.status { Open -> "Open", Paid -> "Paid", Cancelled -> "Cancelled" }}</al-badge></td>
+              <td>{Time.format "Jan 2, 2006" row.created}</td>
+            </tr>}
+        </tbody>
+      </table>
+    </al-table>
+
+    <al-pagination role="navigation" aria-label="Pages">
+      {if model.page > 1 then <a slot="prev" href={Orders.Index { page: model.page - 1 }} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
+      <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
+      {if model.page < model.pages then <a slot="next" href={Orders.Index { page: model.page + 1 }} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
+    </al-pagination>
+  </Layout.Page>
+
+test "the list shows the rows, newest first" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let order1 <- Db.insert Order { owner: me }
+  let order2 <- Db.insert Order { owner: me }
+  let page <- Test.get (Orders.Index {})
+  Task.succeed (List.map (\row -> row.id) page.model.rows == [order2, order1])
+}
+
+test "the list has 20 rows a page" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Task.all (List.map (\n -> Db.insert Order { owner: me }) (List.range 1 21))
+  let first <- Test.get (Orders.Index {})
+  let second <- Test.get (Orders.Index { page: 2 })
+  Task.succeed ({ first: List.length first.model.rows, second: List.length second.model.rows, pages: Test.texts "al-pagination span" first.doc } == { first: 20, second: 1, pages: ["Previous", "Page 1 of 2"] })
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Orders.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

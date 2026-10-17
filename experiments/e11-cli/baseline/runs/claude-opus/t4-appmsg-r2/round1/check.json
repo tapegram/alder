@@ -1,0 +1,1 @@
+{"code": "E0003", "severity": "error", "file": "app/Notes/Show.alder", "line": 63, "col": 27, "endLine": 63, "endCol": 72, "message": "expected Task _, got Query Notes.Show.Model; a Query runs inside a test's block: `let x <- q`; `Test.run` takes a Task"}

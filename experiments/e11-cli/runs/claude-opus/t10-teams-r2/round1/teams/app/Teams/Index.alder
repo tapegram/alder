@@ -1,0 +1,72 @@
+module Teams.Index
+
+import Layout
+import Member
+import Team
+import User
+
+page "/teams" { } requires user
+
+type Model = { teams: List Team }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let memberships <- Db.from Member |> Db.where (Member.user.eq session.user) |> Db.all
+  let teams <- Db.from Team |> Db.where (Db.or [Team.owner.eq session.user, Team.id.in (List.map (\m -> m.team) memberships)]) |> Db.orderBy Team.name.asc |> Db.all
+  Query.succeed { teams: teams }
+}
+
+form NewTeam = {
+  name: Text.NonEmpty,
+}
+
+msg Create form NewTeam
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insert Team { name: p.form.name, owner: session.user }
+    Task.succeed (Redirect (Teams.Show { id: id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Teams">
+    <h1>Teams</h1>
+    <ul id="teams">
+      {for t in model.teams ->
+        <li><a class="name" href={Teams.Show { id: t.id }}>{t.name}</a></li>}
+    </ul>
+    <form submit={Create}>
+      <Errors form />
+      <Input field="name" label="New team" />
+      <button>Create</button>
+    </form>
+    <nav>
+      <a href={Invites.Index {}}>Invites</a>
+      <button click={App.Logout}>Log out</button>
+    </nav>
+  </Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Teams.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "submitting NewTeam" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Teams.Index {})
+  let r <- Test.submit NewTeam { name: Text.NonEmpty "Red" }
+  let made <- Db.from Team |> Db.first
+  Task.succeed ({ answer: Just r.answer, owner: Maybe.map (\t -> t.owner) made } == { answer: Maybe.map (\t -> Redirected (Teams.Show { id: t.id })) made, owner: Just me })
+}
+
+test "NewTeam refuses an empty name" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Teams.Index {})
+  let r <- Test.submitRaw NewTeam [{ name: "name", value: "" }]
+  Task.succeed (r.answer == FormRejected [{ field: "name", message: "must not be empty" }])
+}

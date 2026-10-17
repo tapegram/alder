@@ -1,0 +1,205 @@
+# users and login
+alder new table User email:Text.Email@unique name:Text.NonEmpty passwordHash:Text created:Time@created --no-timestamps
+alder new auth --users User
+
+# the theme
+alder new type Theme "Theme = Light | Dark"
+alder new decl Theme flip "Theme -> Theme"
+alder fill Theme.flip - <<'EOF'
+\t -> match t {
+  Light -> Dark,
+  Dark -> Light,
+}
+EOF
+alder new decl Theme buttonLabel "Theme -> Text"
+alder fill Theme.buttonLabel - <<'EOF'
+\t -> match t {
+  Light -> "Switch to dark",
+  Dark -> "Switch to light",
+}
+EOF
+alder new decl Theme bodyClass "Theme -> Maybe Text"
+alder fill Theme.bodyClass - <<'EOF'
+\t -> match t {
+  Light -> Nothing,
+  Dark -> Just "dark",
+}
+EOF
+alder new test Theme "flip swaps the theme"
+alder fill 'Theme."flip swaps the theme"' - <<'EOF'
+{
+  let flipped = List.map flip [Light, Dark]
+  let labels = List.map buttonLabel [Light, Dark]
+  Task.succeed ({ flipped: flipped, labels: labels } == { flipped: [Dark, Light], labels: ["Switch to dark", "Switch to light"] })
+}
+EOF
+alder edit session add-field theme:Theme.Theme=Light
+
+# the layout with the theme and logout buttons
+alder new decl Layout Themed "{ title: Text, theme: Theme.Theme, children: List (Html a) } -> Html a"
+alder fill Layout.Themed - <<'EOF'
+\props ->
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+      <link rel="stylesheet" href={Url.external "/static/al/al.css"} />
+    </head>
+    <body class={Theme.bodyClass props.theme}>
+      <header>
+        <button id="theme" click={App.SwitchTheme}>{Theme.buttonLabel props.theme}</button>
+        <button id="logout" click={App.Logout}>Log out</button>
+      </header>
+      <main>{props.children}</main>
+    </body>
+  </html>
+EOF
+
+# the theme switch
+alder new msg App SwitchTheme
+alder fill App.update.SwitchTheme - <<'EOF'
+{
+  let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
+  Task.succeed Rerender
+}
+EOF
+
+# notes
+alder new table Note title:Text.NonEmpty body:Text owner:User.UserId@ref=User@owner created:Time@created --no-timestamps
+
+# the list
+alder new page Notes.Index / --requires user --blank
+alder fill --decl Notes.Index.Model - <<'EOF'
+{ notes: List Note }
+EOF
+alder fill Notes.Index.load - <<'EOF'
+{
+  let notes <- Db.mine Note |> Db.orderBy Note.created.desc |> Db.all
+  Query.succeed { notes: notes }
+}
+EOF
+alder fill Notes.Index.view - <<'EOF'
+<p>Notes</p>
+EOF
+alder new form Notes.Index NewNote title:Text.NonEmpty body:Text --msg Add
+alder fill --decl Notes.Index.update - <<'EOF'
+match msg {
+  Add p -> {
+    let _ <- Db.insertMine Note { title: p.form.title, body: p.form.body }
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+}
+EOF
+alder fill --decl Notes.Index.view - <<'EOF'
+<Layout.Themed title="Notes" theme={session.theme}>
+  <h1>Notes</h1>
+  <form submit={Add}>
+    <Errors form />
+    <Input field="title" label="Title" />
+    <Textarea field="body" label="Body" />
+    <button>Add</button>
+  </form>
+  <ul id="notes">
+    {for note in model.notes ->
+      <li><a class="title" href={Notes.Show { id: note.id }}>{note.title}</a></li>}
+  </ul>
+</Layout.Themed>
+EOF
+
+# one note
+alder new page Notes.Show '/notes/{id}' --param id:Note.NoteId --requires user --blank
+alder fill --decl Notes.Show.Model - <<'EOF'
+{ note: Note }
+EOF
+alder fill Notes.Show.load - <<'EOF'
+{
+  let note <- Db.getMine Note params.id
+  Query.succeed { note: note }
+}
+EOF
+alder fill Notes.Show.view - <<'EOF'
+<p>Note</p>
+EOF
+alder new form Notes.Show EditNote title:Text.NonEmpty body:Text --msg Save
+alder new msg Notes.Show Delete
+alder fill --decl Notes.Show.update - <<'EOF'
+match msg {
+  Save p -> {
+    let _ <- Db.updateMine Note model.note.id (\n -> { n | title: p.form.title, body: p.form.body })
+    Task.succeed (Redirect (Notes.Show { id: model.note.id }))
+  },
+  Delete p -> {
+    let _ <- Db.deleteMine Note model.note.id
+    Task.succeed (Redirect (Notes.Index {}))
+  },
+}
+EOF
+alder fill --decl Notes.Show.view - <<'EOF'
+<Layout.Themed title={model.note.title} theme={session.theme}>
+  <h1 id="title">{model.note.title}</h1>
+  <div id="body">{model.note.body}</div>
+  <form submit={Save}>
+    <Errors form />
+    <Input field="title" label="Title" value={model.note.title} />
+    <Textarea field="body" label="Body" value={model.note.body} />
+    <button>Save</button>
+  </form>
+  <button id="delete" click={Delete}>Delete</button>
+</Layout.Themed>
+EOF
+
+# login page
+alder fill --decl Auth.Login.update - <<'EOF'
+match msg {
+  Submit p -> {
+    let found <- Password.verify { email: p.form.email, password: p.form.password }
+    match found {
+      Just id -> {
+        let _ <- Session.put (\s -> { s | user: Just id })
+        Task.succeed (Redirect (Notes.Index {}))
+      },
+      Nothing -> Task.succeed (Reject "Email or password is incorrect."),
+    }
+  },
+}
+EOF
+alder fill --decl Auth.Login.view - <<'EOF'
+<Layout.Themed title="Log in" theme={session.theme}>
+  <h1>Log in</h1>
+  <form submit={Submit}>
+    <Errors form />
+    <Input field="email" label="Email" />
+    <Input field="password" label="Password" />
+    <button>Log in</button>
+  </form>
+</Layout.Themed>
+EOF
+
+# tests
+alder new test Notes.Show "another user's note is not found"
+alder fill 'Notes.Show."another user'"'"'s note is not found"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Secret", body: "shh", owner: me }
+  let _ <- Test.login { user: Just other }
+  let r <- Test.open (Notes.Show { id: id })
+  let _ <- Test.login { user: Just me }
+  let mine <- Test.get (Notes.Show { id: id })
+  Task.succeed ({ stranger: r.answer, title: Test.text "#title" mine.doc } == { stranger: PageMissing, title: Just "Secret" })
+}
+EOF
+alder new test App "the theme flips"
+alder fill 'App."the theme flips"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let start <- Test.get (Notes.Index {})
+  let dark <- Test.click App.SwitchTheme
+  let light <- Test.click App.SwitchTheme
+  Task.succeed ({ before: Test.text "#theme" start.doc, theme: dark.session.theme, label: Test.text "#theme" dark.doc, cls: Test.attr "class" "body" dark.doc, back: light.session.theme, backLabel: Test.text "#theme" light.doc } == { before: Just "Switch to dark", theme: Dark, label: Just "Switch to light", cls: Just "dark", back: Light, backLabel: Just "Switch to dark" })
+}
+EOF
+alder fill --list
+alder check
+alder test

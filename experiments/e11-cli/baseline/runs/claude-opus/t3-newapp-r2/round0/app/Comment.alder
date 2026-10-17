@@ -1,0 +1,14 @@
+module Comment
+
+import Post
+
+type CommentId = brand Text
+
+-- A post's comments go when the post goes.
+table Comment {
+  id: CommentId @id,
+  post: Post.PostId @ref Post @cascade,
+  author: Text.NonEmpty,
+  body: Text.NonEmpty,
+  created: Time @created,
+}

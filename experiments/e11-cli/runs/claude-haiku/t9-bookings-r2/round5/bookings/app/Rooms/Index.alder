@@ -1,0 +1,29 @@
+module Rooms.Index
+
+import Booking
+import Layout
+
+page "/rooms" { } requires user
+
+type Model = { rows: List Booking.FreeRoom }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let today <- Date.today
+  let rows <- Booking.allFree today
+  Query.succeed { rows: rows }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <Layout.Page title="Rooms">
+  <h1>Rooms</h1>
+  <ul id="rooms">
+    {for r in model.rows -> <li><a class="name" href={Rooms.Show { id: r.room.id }}>{r.room.name}</a> <span class="free">{Date.toText r.free}</span></li>}
+  </ul>
+  <al-button variant="outline" click={App.Logout}>Log out</al-button>
+</Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Rooms.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

@@ -1,0 +1,684 @@
+{
+ "model": "claude-sonnet",
+ "task": "t5-ownership",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "hidden": "experiments/e9-feedback/hidden",
+  "condition": "cli",
+  "sample": "r2",
+  "cli": true
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 6,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 4,
+   "codes": {},
+   "rejected": [],
+   "seconds": 22.9,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 11,
+    "executed": 6,
+    "refused": {
+     "kind": "exit1",
+     "line": 8,
+     "text": "alder fill Notes.Index.load - <<'EOF'",
+     "reason": "alder fill: the parameters `params session` are bound already: send the body without `\\params session ->`"
+    },
+    "complete": false,
+    "stopped_at": 6,
+    "stdin_lines": 5,
+    "max_body": 4,
+    "decl_uses": 1
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\napp/Notes/Index.alder:10:23: warning[W0002]: hole ?load has type Query Notes.Index.Model\n  load params session = ?load\n                        ^^^^^\napp/Notes/Index.alder:13:22: warning[W0002]: hole ?view has type Html Notes.Index.Msg\n  view model session = ?view\n                       ^^^^^\nalder build: the program has 4 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 1,
+   "files": 6,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 7,
+   "codes": {},
+   "rejected": [],
+   "seconds": 13.9,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 5,
+    "executed": 5,
+    "refused": null,
+    "complete": true,
+    "stopped_at": null,
+    "stdin_lines": 7,
+    "max_body": 4,
+    "decl_uses": 0
+   },
+   "build": {
+    "ok": false,
+    "exit": 1,
+    "stderr": "app/Auth/Login.alder:47:33: warning[W0002]: hole ?afterLogin has type Page\n          Task.succeed (Redirect (?afterLogin))\n                                  ^^^^^^^^^^^\napp/Auth/Login.alder:86:85: warning[W0002]: hole ?afterLogin has type Page\n    Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: Redirected (?afterLogin), user: Just me })\n                                                                                      ^^^^^^^^^^^\napp/Notes/Index.alder:28:12: warning[W0002]: hole ?add has type Task Nav\n    Add p -> ?add,\n             ^^^^\napp/Notes/Index.alder:29:15: warning[W0002]: hole ?delete has type Task Nav\n    Delete p -> ?delete,\n                ^^^^^^^\napp/Notes/Index.alder:46:34: warning[W0002]: hole ?deleteId has type Note.NoteId\n    <al-button click={Delete { id: ?deleteId }}>Delete</al-button>\n                                   ^^^^^^^^^\napp/Notes/Index.alder:59:29: warning[W0002]: hole ?expected has type Answer\n    Task.succeed (r.answer == ?expected)\n                              ^^^^^^^^^\napp/Notes/Index.alder:80:16: warning[W0002]: hole ?expected has type Bool\n    Task.succeed ?expected\n                 ^^^^^^^^^\nalder build: the program has 7 typed hole(s); fill them before building\n"
+   }
+  },
+  {
+   "n": 2,
+   "files": 7,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 26.2,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "sonnet",
+   "cli": {
+    "fence": "alder-cli",
+    "commands": 19,
+    "executed": 19,
+    "refused": null,
+    "complete": true,
+    "stopped_at": null,
+    "stdin_lines": 69,
+    "max_body": 18,
+    "decl_uses": 2
+   },
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 13,
+    "failed": 0,
+    "results": [
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /login), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 0.363
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 6.655
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /, user: Just \"_abf7O20JSmcIu1QowxS\" }",
+      "right": "{ answer: Redirected /, user: Just \"_abf7O20JSmcIu1QowxS\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Session.put",
+       "Db.all Note"
+      ],
+      "ms": 0.674
+     },
+     {
+      "module": "Auth.Login",
+      "name": "a signed-in user logs out here",
+      "ok": true,
+      "left": "{ answer: Redirected /login, user: Nothing }",
+      "right": "{ answer: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Auth.Login",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 0.942
+     },
+     {
+      "module": "Note",
+      "name": "a Note keeps its owner from being deleted",
+      "ok": true,
+      "left": "{ deleted: Nothing, left: 1 }",
+      "right": "{ deleted: Nothing, left: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.run",
+       "Db.delete User",
+       "Db.count Note"
+      ],
+      "ms": 0.381
+     },
+     {
+      "module": "Notes.Index",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Notes.Index"
+      ],
+      "ms": 0.329
+     },
+     {
+      "module": "Notes.Index",
+      "name": "submitting NewNote",
+      "ok": true,
+      "left": "Redirected /",
+      "right": "Redirected /",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.all Note",
+       "Test.submit NewNote",
+       "Db.all Note",
+       "Db.insert Note",
+       "Db.all Note"
+      ],
+      "ms": 0.449
+     },
+     {
+      "module": "Notes.Index",
+      "name": "NewNote refuses an empty title",
+      "ok": true,
+      "left": "FormRejected [{ field: \"title\", message: \"must not be empty\" }]",
+      "right": "FormRejected [{ field: \"title\", message: \"must not be empty\" }]",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Notes.Index",
+       "Db.all Note",
+       "Test.submitRaw NewNote",
+       "Db.all Note"
+      ],
+      "ms": 0.542
+     },
+     {
+      "module": "Notes.Index",
+      "name": "pressing Delete",
+      "ok": true,
+      "left": "{ answer: Redirected /, gone: Nothing }",
+      "right": "{ answer: Redirected /, gone: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Db.insert Note",
+       "Test.get Notes.Index",
+       "Db.all Note",
+       "Test.click Notes.Index.Delete",
+       "Db.all Note",
+       "Db.first Note",
+       "Db.delete Note",
+       "Db.all Note",
+       "Db.get Note"
+      ],
+      "ms": 0.502
+     },
+     {
+      "module": "Notes.Index",
+      "name": "deleting another user's note is not found",
+      "ok": true,
+      "left": "{ value: Err \"not found\", kept: True }",
+      "right": "{ value: Err \"not found\", kept: True }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.run",
+       "Db.first Note",
+       "Db.get Note"
+      ],
+      "ms": 0.355
+     },
+     {
+      "module": "Notes.Index",
+      "name": "deleting a missing note is not found",
+      "ok": true,
+      "left": "Err \"not found\"",
+      "right": "Err \"not found\"",
+      "trace": [
+       "Db.insert User",
+       "Test.run",
+       "Db.first Note"
+      ],
+      "ms": 0.298
+     },
+     {
+      "module": "Notes.Index",
+      "name": "the owner can delete a note",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /), kept: False }",
+      "right": "{ value: Ok (Redirect /), kept: False }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.run",
+       "Db.first Note",
+       "Db.delete Note",
+       "Db.get Note"
+      ],
+      "ms": 0.305
+     },
+     {
+      "module": "Notes.Show",
+      "name": "a visitor is sent to log in",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.open Notes.Show"
+      ],
+      "ms": 0.307
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.7,
+    "killed": 14,
+    "survived": 6,
+    "suppressed": 0,
+    "skipped": 4,
+    "survivors": [
+     {
+      "module": "Notes.Index",
+      "file": "app/Notes/Index.alder",
+      "decl": "load",
+      "line": 13,
+      "col": 32,
+      "kind": "where dropped",
+      "before": "Db.where (Note.owner.eq session.user)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Notes.Index",
+      "file": "app/Notes/Index.alder",
+      "decl": "load",
+      "line": 13,
+      "col": 73,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Note.created.desc",
+      "after": "Db.orderBy Note.created.asc"
+     },
+     {
+      "module": "Notes.Index",
+      "file": "app/Notes/Index.alder",
+      "decl": "update",
+      "line": 29,
+      "col": 5,
+      "kind": "write replaced",
+      "before": "let _ <- Db.insert Note {\u2026}",
+      "after": "let _ <- Task.succeed (Note.NoteId \"mutant\")"
+     },
+     {
+      "module": "Notes.Index",
+      "file": "app/Notes/Index.alder",
+      "decl": "update",
+      "line": 33,
+      "col": 34,
+      "kind": "where dropped",
+      "before": "Db.where (Note.id.eq p.id)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Notes.Show",
+      "file": "app/Notes/Show.alder",
+      "decl": "load",
+      "line": 13,
+      "col": 32,
+      "kind": "where dropped",
+      "before": "Db.where (Note.id.eq params.id)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Notes.Show",
+      "file": "app/Notes/Show.alder",
+      "decl": "load",
+      "line": 13,
+      "col": 67,
+      "kind": "where dropped",
+      "before": "Db.where (Note.owner.eq session.user)",
+      "after": "the condition dropped"
+     }
+    ]
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "sonnet",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "cli": {
+  "app_name": "ownership",
+  "rounds": 3,
+  "complete": true,
+  "stopped_at": null,
+  "commands": 35,
+  "executed": 30,
+  "refused": {
+   "count": 1,
+   "kinds": {
+    "exit1": 1
+   },
+   "items": [
+    {
+     "round": 0,
+     "kind": "exit1",
+     "line": 8,
+     "text": "alder fill Notes.Index.load - <<'EOF'",
+     "reason": "alder fill: the parameters `params session` are bound already: send the body without `\\params session ->`"
+    }
+   ]
+  },
+  "stdin_lines": 81,
+  "max_body": 18,
+  "decl_uses": 3,
+  "names": {
+   "ok": true,
+   "matches": [
+    "table Note",
+    "table User",
+    "session",
+    "page Auth.Login /login",
+    "page Notes.Index /",
+    "page Notes.Show /notes/{id}",
+    "msg App.Logout",
+    "msg Auth.Login.Submit",
+    "msg Notes.Index.Add",
+    "msg Notes.Index.Delete",
+    "form Auth.Login.Credentials",
+    "form Notes.Index.NewNote"
+   ],
+   "mismatches": []
+  },
+  "setup": {
+   "argv": [
+    "alder",
+    "new",
+    "ownership",
+    "--bare"
+   ],
+   "exit": 0,
+   "stdout": "created ownership/\n  .gitignore\n  adapters/README.md\n  app/App.alder\n  app/Layout.alder\n  go.mod\n  static/app.css\ngo.mod keeps the app out of the Go module of /Users/tavishpegram/projects/alder/experiments/go.mod\n\nnext:\n  cd ownership\n  alder new table \u2026      # the app's tables (chapter 15)\n  alder new page \u2026       # its pages\n  alder new auth         # a login\n  alder check            # type-check the app\n",
+   "stderr": ""
+  }
+ },
+ "mutation": {
+  "score": 0.7,
+  "killed": 14,
+  "survived": 6,
+  "suppressed": 0,
+  "skipped": 4,
+  "survivors": [
+   {
+    "module": "Notes.Index",
+    "file": "app/Notes/Index.alder",
+    "decl": "load",
+    "line": 13,
+    "col": 32,
+    "kind": "where dropped",
+    "before": "Db.where (Note.owner.eq session.user)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Notes.Index",
+    "file": "app/Notes/Index.alder",
+    "decl": "load",
+    "line": 13,
+    "col": 73,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Note.created.desc",
+    "after": "Db.orderBy Note.created.asc"
+   },
+   {
+    "module": "Notes.Index",
+    "file": "app/Notes/Index.alder",
+    "decl": "update",
+    "line": 29,
+    "col": 5,
+    "kind": "write replaced",
+    "before": "let _ <- Db.insert Note {\u2026}",
+    "after": "let _ <- Task.succeed (Note.NoteId \"mutant\")"
+   },
+   {
+    "module": "Notes.Index",
+    "file": "app/Notes/Index.alder",
+    "decl": "update",
+    "line": 33,
+    "col": 34,
+    "kind": "where dropped",
+    "before": "Db.where (Note.id.eq p.id)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Notes.Show",
+    "file": "app/Notes/Show.alder",
+    "decl": "load",
+    "line": 13,
+    "col": 32,
+    "kind": "where dropped",
+    "before": "Db.where (Note.id.eq params.id)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Notes.Show",
+    "file": "app/Notes/Show.alder",
+    "decl": "load",
+    "line": 13,
+    "col": 67,
+    "kind": "where dropped",
+    "before": "Db.where (Note.owner.eq session.user)",
+    "after": "the condition dropped"
+   }
+  ]
+ },
+ "hidden": {
+  "passed": 8,
+  "failed": 0,
+  "results": [
+   {
+    "module": "Hidden",
+    "name": "a visitor is sent to log in",
+    "ok": true,
+    "left": "Redirected /login",
+    "right": "Redirected /login",
+    "trace": [
+     "Test.open Notes.Index"
+    ],
+    "ms": 7.266
+   },
+   {
+    "module": "Hidden",
+    "name": "the list shows only the logged-in user's notes",
+    "ok": true,
+    "left": "{ answer: Shown, items: 1, titles: [\"Mine\"] }",
+    "right": "{ answer: Shown, items: 1, titles: [\"Mine\"] }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Note",
+     "Db.insert Note",
+     "Test.login",
+     "Test.open Notes.Index",
+     "Db.all Note"
+    ],
+    "ms": 0.71
+   },
+   {
+    "module": "Hidden",
+    "name": "a note added through the form is the user's",
+    "ok": true,
+    "left": "{ answer: Redirected /, titles: [\"Milk\"], mine: 1, theirs: 0 }",
+    "right": "{ answer: Redirected /, titles: [\"Milk\"], mine: 1, theirs: 0 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Test.login",
+     "Test.get Notes.Index",
+     "Db.all Note",
+     "Test.submit NewNote",
+     "Db.all Note",
+     "Db.insert Note",
+     "Db.all Note",
+     "Db.count Note",
+     "Test.login",
+     "Test.open Notes.Index",
+     "Db.all Note"
+    ],
+    "ms": 1.101
+   },
+   {
+    "module": "Hidden",
+    "name": "the owner opens their note",
+    "ok": true,
+    "left": "{ answer: Shown, title: Just \"Milk\", body: Just \"Two litres.\" }",
+    "right": "{ answer: Shown, title: Just \"Milk\", body: Just \"Two litres.\" }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.open Notes.Show",
+     "Db.first Note"
+    ],
+    "ms": 0.531
+   },
+   {
+    "module": "Hidden",
+    "name": "another user's note is missing on its page",
+    "ok": true,
+    "left": "PageMissing",
+    "right": "PageMissing",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.open Notes.Show",
+     "Db.first Note"
+    ],
+    "ms": 0.384
+   },
+   {
+    "module": "Hidden",
+    "name": "the owner deletes a note from the list",
+    "ok": true,
+    "left": "{ answer: Redirected /, titles: [\"Keep\"], left: 1 }",
+    "right": "{ answer: Redirected /, titles: [\"Keep\"], left: 1 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Note",
+     "Db.insert Note",
+     "Test.login",
+     "Test.get Notes.Index",
+     "Db.all Note",
+     "Test.click Notes.Index.Delete",
+     "Db.all Note",
+     "Db.first Note",
+     "Db.delete Note",
+     "Db.all Note",
+     "Db.count Note"
+    ],
+    "ms": 0.495
+   },
+   {
+    "module": "Hidden",
+    "name": "a stranger's Delete, posted from a page the owner held, is missing",
+    "ok": true,
+    "left": "{ answer: PageMissing, left: 1 }",
+    "right": "{ answer: PageMissing, left: 1 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.get Notes.Index",
+     "Db.all Note",
+     "Test.login",
+     "Test.click Notes.Index.Delete",
+     "Db.all Note",
+     "Db.first Note",
+     "Db.count Note"
+    ],
+    "ms": 0.432
+   },
+   {
+    "module": "Hidden",
+    "name": "a Delete of a note deleted meanwhile is missing",
+    "ok": true,
+    "left": "PageMissing",
+    "right": "PageMissing",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.get Notes.Index",
+     "Db.all Note",
+     "Db.delete Note",
+     "Test.click Notes.Index.Delete",
+     "Db.all Note",
+     "Db.first Note"
+    ],
+    "ms": 0.386
+   }
+  ],
+  "exit": 0
+ },
+ "hidden_pass": "8/8"
+}

@@ -1,0 +1,8 @@
+claude-opus t2-newpage-r2: pass (4 → 0 (build ok) (tests 114/114) errors; mutants 192/195)
+claude-opus t3-newapp-r2: pass (0 (build ok) (tests 14/14) errors; mutants 23/31)
+claude-opus t4-appmsg-r2: pass (1 → 1 → 0 (build ok) (tests 15/15) errors; hidden 8/8; mutants 20/23)
+claude-opus t5-ownership-r2: pass (0 (build ok) (tests 16/16) errors; hidden 8/8; mutants 17/18)
+claude-opus t6-orders-r2: pass (0 (build ok) (tests 17/17) errors; hidden 9/9; mutants 39/55)
+claude-opus t7-drafts-r2: pass (0 (build ok) (tests 29/29) errors; hidden 7/7; mutants 39/59)
+claude-opus t9-bookings-r2: pass (0 (build ok) (tests 13/13) errors; hidden 7/7; mutants 31/39)
+claude-opus t10-teams-r2: pass (0 (build ok) (tests 13/13) errors; hidden 8/8; mutants 45/63)

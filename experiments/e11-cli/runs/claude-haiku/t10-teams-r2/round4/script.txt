@@ -1,0 +1,114 @@
+# Teams.Index: the list is ordered by name, from the team table
+alder fill 'Teams.Index."the list shows the rows, newest first"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Team.make me (Text.NonEmpty "Second")
+  let _ <- Team.make me (Text.NonEmpty "First")
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Teams.Index {})
+  Task.succeed (Test.texts "#teams .name" page.doc == ["First", "Second"])
+}
+EOF
+
+# Teams.Index: creating a team redirects to it and the list shows it
+alder fill 'Teams.Index."submitting NewTeam"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Teams.Index {})
+  let r <- Test.submit NewTeam { name: Text.NonEmpty "Red" }
+  let page <- Test.get (Teams.Index {})
+  let answered = match r.answer {
+    Redirected p -> True,
+    _ -> False,
+  }
+  Task.succeed ({ answered: answered, listed: Test.texts "#teams .name" page.doc } == { answered: True, listed: ["Red"] })
+}
+EOF
+
+# Teams.Index: an empty name is refused with the form's errors
+alder fill 'Teams.Index."NewTeam refuses an empty name"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Teams.Index {})
+  let r <- Test.submitRaw NewTeam [{ name: "name", value: "" }]
+  Task.succeed (match r.answer { FormRejected errs -> True, _ -> False })
+}
+EOF
+
+# Teams.Show: the owner's invite is stored, and the page redirects to the team
+alder fill 'Teams.Show."submitting NewInvite"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let team1 <- Db.insert Team { name: Text.NonEmpty "name-1", owner: me }
+  let _ <- Test.get (Teams.Show { id: team1 })
+  let r <- Test.submit NewInvite { email: Text.Email "email-1@example.com" }
+  let sent <- Db.from Invite |> Db.where (Invite.email.eq (Text.Email "email-1@example.com")) |> Db.count
+  let answered = match r.answer {
+    Redirected p -> True,
+    _ -> False,
+  }
+  Task.succeed ({ answered: answered, sent: sent } == { answered: True, sent: 1 })
+}
+EOF
+
+# Teams.Show: an empty invite email is refused
+alder fill 'Teams.Show."NewInvite refuses an empty email"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let team1 <- Db.insert Team { name: Text.NonEmpty "name-1", owner: me }
+  let _ <- Test.get (Teams.Show { id: team1 })
+  let r <- Test.submitRaw NewInvite [{ name: "email", value: "" }]
+  Task.succeed (match r.answer { FormRejected errs -> True, _ -> False })
+}
+EOF
+
+# Teams.Show: a member gets no Remove button, the owner gets one per member
+alder fill 'Teams.Show."pressing Remove"' - <<'EOF'
+{
+  let owner <- User.add (Text.Email "owner@example.com") (Text.NonEmpty "Owner")
+  let ann <- User.add (Text.Email "ann@example.com") (Text.NonEmpty "Ann")
+  let team <- Team.make owner (Text.NonEmpty "Red")
+  let _ <- Member.add team ann
+  let _ <- Test.login { user: Just owner }
+  let page <- Test.get (Teams.Show { id: team })
+  Task.succeed (Test.count "button.remove" page.doc == 1)
+}
+EOF
+
+# Invites.Index: accepting makes the team the user's and sends them to it
+alder fill 'Invites.Index."pressing Accept"' - <<'EOF'
+{
+  let owner <- User.add (Text.Email "owner@example.com") (Text.NonEmpty "Owner")
+  let ann <- User.add (Text.Email "ann@example.com") (Text.NonEmpty "Ann")
+  let team <- Team.make owner (Text.NonEmpty "Red")
+  let invite <- Invite.send team (Text.Email "ann@example.com")
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Invites.Index {})
+  let r <- Test.click (Accept { id: invite })
+  let after <- Db.get Invite invite
+  let status = Maybe.map (\i -> i.status) after
+  Task.succeed ({ answer: r.answer, status: status } == { answer: Redirected (Teams.Show { id: team }), status: Just Accepted })
+}
+EOF
+
+# Invites.Index: declining leaves the invite out of the list and the team closed
+alder fill 'Invites.Index."pressing Decline"' - <<'EOF'
+{
+  let owner <- User.add (Text.Email "owner@example.com") (Text.NonEmpty "Owner")
+  let ann <- User.add (Text.Email "ann@example.com") (Text.NonEmpty "Ann")
+  let team <- Team.make owner (Text.NonEmpty "Red")
+  let invite <- Invite.send team (Text.Email "ann@example.com")
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Invites.Index {})
+  let r <- Test.click (Decline { id: invite })
+  let after <- Db.get Invite invite
+  let status = Maybe.map (\i -> i.status) after
+  Task.succeed ({ answer: r.answer, status: status } == { answer: Redirected (Invites.Index {}), status: Just Declined })
+}
+EOF
+
+alder test

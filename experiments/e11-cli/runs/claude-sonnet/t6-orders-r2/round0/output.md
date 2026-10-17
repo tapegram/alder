@@ -1,0 +1,279 @@
+```alder-cli
+# users, roles, products, orders, lines
+alder new type User "Role = Staff | Manager"
+alder new table User email:Text.Email@unique name:Text.NonEmpty passwordHash:Text role:Role=Staff created:Time@created --no-timestamps
+alder new table Product name:Text.NonEmpty price:Int.NonNegative active:Bool=True --no-timestamps
+alder new type Order "Status = Open | Paid | Cancelled"
+alder new table Order owner:User.UserId@ref=User status:Status=Open created:Time@created --no-timestamps
+alder new table Line order:Order.OrderId@ref=Order@cascade product:Product.ProductId@ref=Product quantity:Int.Positive --no-timestamps
+
+# helpers
+alder new decl Order statusText "Status -> Text"
+alder fill Order.statusText - <<'EOF'
+\s -> match s {
+  Open -> "Open",
+  Paid -> "Paid",
+  Cancelled -> "Cancelled",
+}
+EOF
+alder new decl User isManager "UserId -> Query Bool"
+alder fill User.isManager - <<'EOF'
+\id -> {
+  let me <- Db.get User id
+  Query.succeed (Maybe.map (\u -> u.role) me == Just Manager)
+}
+EOF
+alder new decl Line priceOf "List Product -> Line -> Int"
+alder fill Line.priceOf - <<'EOF'
+\prods l -> Maybe.withDefault 0 (Maybe.map (\p -> l.quantity * p.price) (List.find (\p -> p.id == l.product) prods))
+EOF
+alder new decl Line total "Order.OrderId -> Query Int"
+alder fill Line.total - <<'EOF'
+\id -> {
+  let lines <- Db.from Line |> Db.where (Line.order.eq id) |> Db.all
+  let prods <- Db.from Product |> Db.all
+  Query.succeed (List.sum (List.map (priceOf prods) lines))
+}
+EOF
+
+# Orders.Index
+alder new page Orders.Index '/' --blank --requires user
+alder fill --decl Orders.Index.Model - <<'EOF'
+{ orders: List { order: Order, total: Int } }
+EOF
+alder fill Orders.Index.load - <<'EOF'
+\params session -> {
+  let orders <- Db.from Order |> Db.where (Order.owner.eq session.user) |> Db.orderBy Order.created.desc |> Db.all
+  let rows <- Query.all (List.map (\o -> Query.map (\t -> { order: o, total: t }) (Line.total o.id)) orders)
+  Query.succeed { orders: rows }
+}
+EOF
+alder fill Orders.Index.view - <<'EOF'
+\model session -> <p>placeholder</p>
+EOF
+alder new msg Orders.Index Create
+alder fill Orders.Index.view - <<'EOF'
+\model session ->
+  <Layout.Page title="Orders">
+    <h1>Orders</h1>
+    <button click={Create}>New order</button>
+    <ul id="orders">
+      {for r in model.orders ->
+        <li>
+          <a href={Orders.Show { id: r.order.id }}>View order</a>
+          <span class="status">{Order.statusText r.order.status}</span>
+          <span class="total">{Text.fromInt r.total}</span>
+        </li>}
+    </ul>
+    <a href={Products.Index {}}>Products</a>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+EOF
+alder fill Orders.Index.update.Create - <<'EOF'
+{
+  let id <- Db.insert Order { owner: session.user }
+  Task.succeed (Redirect (Orders.Show { id: id }))
+}
+EOF
+
+# Orders.Show
+alder new page Orders.Show '/orders/{id}' --blank --param id:Order.OrderId --requires user
+alder fill --decl Orders.Show.Model - <<'EOF'
+{ order: Order, rows: List { name: Text, quantity: Int, subtotal: Int }, total: Int, products: List Product }
+EOF
+alder fill Orders.Show.load - <<'EOF'
+\params session -> {
+  let found <- Db.get Order params.id
+  let mgr <- User.isManager session.user
+  match found {
+    Nothing -> Query.notFound,
+    Just o -> if o.owner == session.user || mgr then {
+      let lines <- Db.from Line |> Db.where (Line.order.eq o.id) |> Db.all
+      let prods <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+      let total <- Line.total o.id
+      Query.succeed {
+        order: o,
+        rows: List.map (\l -> { name: Maybe.withDefault "" (Maybe.map (\p -> Text.trim p.name) (List.find (\p -> p.id == l.product) prods)), quantity: l.quantity * 1, subtotal: Line.priceOf prods l }) lines,
+        total: total,
+        products: List.filter (\p -> p.active) prods,
+      }
+    } else Query.notFound,
+  }
+}
+EOF
+alder fill Orders.Show.view - <<'EOF'
+\model session -> <p>placeholder</p>
+EOF
+alder new msg Orders.Show Pay
+alder new msg Orders.Show Cancel
+alder new msg Orders.Show AddLine product:Product.ProductId
+alder new form Orders.Show NewLine quantity:Int.Positive --msg AddLine
+alder fill Orders.Show.view - <<'EOF'
+\model session ->
+  <Layout.Page title="Order">
+    <h1>Order</h1>
+    <p>Status: <span id="status">{Order.statusText model.order.status}</span></p>
+    <ul id="lines">
+      {for r in model.rows ->
+        <li>{r.name} x {Text.fromInt r.quantity}: {Text.fromInt r.subtotal}</li>}
+    </ul>
+    <p>Total: <span id="total">{Text.fromInt model.total}</span></p>
+    {if model.order.status == Open then
+      <div>
+        {for p in model.products ->
+          <form submit={AddLine { product: p.id }}>
+            <Errors form />
+            <Input field="quantity" label="Quantity" />
+            <button>Add {p.name}</button>
+          </form>}
+        <button click={Pay}>Mark paid</button>
+        <button click={Cancel}>Mark cancelled</button>
+      </div>
+    else Html.none}
+    <a href={Orders.Index {}}>Back to orders</a>
+  </Layout.Page>
+EOF
+alder fill Orders.Show.update.AddLine - <<'EOF'
+if model.order.status != Open then Task.succeed (Reject "Only an open order can be changed.") else {
+  let prod <- Db.get Product p.product
+  match prod {
+    Just pr -> if pr.active then {
+      let _ <- Db.insert Line { order: model.order.id, product: p.product, quantity: p.form.quantity }
+      Task.succeed (Redirect (Orders.Show { id: model.order.id }))
+    } else Task.succeed (Reject "That product is not available."),
+    Nothing -> Task.succeed (Reject "That product is not available."),
+  }
+}
+EOF
+alder fill Orders.Show.update.Pay - <<'EOF'
+if model.order.status != Open then Task.succeed (Reject "Only an open order can be changed.") else {
+  let _ <- Db.update Order model.order.id (\o -> { o | status: Paid })
+  Task.succeed (Redirect (Orders.Show { id: model.order.id }))
+}
+EOF
+alder fill Orders.Show.update.Cancel - <<'EOF'
+if model.order.status != Open then Task.succeed (Reject "Only an open order can be changed.") else {
+  let _ <- Db.update Order model.order.id (\o -> { o | status: Cancelled })
+  Task.succeed (Redirect (Orders.Show { id: model.order.id }))
+}
+EOF
+
+# Products.Index
+alder new page Products.Index /products --blank --requires user
+alder fill --decl Products.Index.Model - <<'EOF'
+{ products: List Product }
+EOF
+alder fill Products.Index.load - <<'EOF'
+\params session -> {
+  let mgr <- User.isManager session.user
+  if mgr then {
+    let ps <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+    Query.succeed { products: ps }
+  } else Query.notFound
+}
+EOF
+alder fill Products.Index.view - <<'EOF'
+\model session -> <p>placeholder</p>
+EOF
+alder new form Products.Index NewProduct name:Text.NonEmpty price:Int.NonNegative --msg Add
+alder new msg Products.Index Toggle id:Product.ProductId
+alder fill Products.Index.view - <<'EOF'
+\model session ->
+  <Layout.Page title="Products">
+    <h1>Products</h1>
+    <ul id="products">
+      {for p in model.products ->
+        <li>
+          <span class="name">{p.name}</span>
+          <span class="price">{Text.fromInt p.price}</span>
+          <span class="active">{if p.active then "active" else "inactive"}</span>
+          <button click={Toggle { id: p.id }}>{if p.active then "Deactivate" else "Activate"}</button>
+        </li>}
+    </ul>
+    <form submit={Add}>
+      <Errors form />
+      <Input field="name" label="Name" />
+      <Input field="price" label="Price (cents)" />
+      <button>Add product</button>
+    </form>
+    <a href={Orders.Index {}}>Orders</a>
+  </Layout.Page>
+EOF
+alder fill Products.Index.update.Add - <<'EOF'
+{
+  let _ <- Db.insert Product { name: p.form.name, price: p.form.price }
+  Task.succeed (Redirect (Products.Index {}))
+}
+EOF
+alder fill Products.Index.update.Toggle - <<'EOF'
+{
+  let _ <- Db.update Product p.id (\x -> { x | active: not x.active })
+  Task.succeed (Redirect (Products.Index {}))
+}
+EOF
+
+# login and logout
+alder new auth --users User --to Orders.Index
+
+# tests
+alder new test Orders.Show "open order total over two lines"
+alder fill 'Orders.Show."open order total over two lines"' - <<'EOF'
+{
+  let u <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let o <- Db.insert Order { owner: u }
+  let p1 <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let p2 <- Db.insert Product { name: Text.NonEmpty "Ink", price: Int.NonNegative 400 }
+  let _ <- Db.insert Line { order: o, product: p1, quantity: Int.Positive 2 }
+  let _ <- Db.insert Line { order: o, product: p2, quantity: Int.Positive 1 }
+  let t <- Line.total o
+  Task.succeed (t == 700)
+}
+EOF
+alder new test Orders.Show "adding a line to a paid order is refused"
+alder fill 'Orders.Show."adding a line to a paid order is refused"' - <<'EOF'
+{
+  let u <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let o <- Db.insert Order { owner: u, status: Paid }
+  let p <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let _ <- Test.login { user: Just u }
+  let page <- Test.get (Orders.Show { id: o })
+  let r <- Test.run (update (AddLine { product: p, form: { quantity: Int.Positive 1 } }) page.model { user: u })
+  let n <- Db.from Line |> Db.count
+  Task.succeed ({ value: r.value, lines: n } == { value: Ok (Reject "Only an open order can be changed."), lines: 0 })
+}
+EOF
+alder new test Orders.Show "staff opening another user order is not found"
+alder fill 'Orders.Show."staff opening another user order is not found"' - <<'EOF'
+{
+  let u <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let s <- Db.insert User { email: Text.Email "s@example.com", name: Text.NonEmpty "S", passwordHash: "" }
+  let o <- Db.insert Order { owner: u }
+  let _ <- Test.login { user: Just s }
+  let r <- Test.open (Orders.Show { id: o })
+  Task.succeed (r.answer == PageMissing)
+}
+EOF
+alder new test Orders.Show "manager opening another user order is found"
+alder fill 'Orders.Show."manager opening another user order is found"' - <<'EOF'
+{
+  let u <- Db.insert User { email: Text.Email "a@example.com", name: Text.NonEmpty "A", passwordHash: "" }
+  let m <- Db.insert User { email: Text.Email "m@example.com", name: Text.NonEmpty "M", passwordHash: "", role: Manager }
+  let o <- Db.insert Order { owner: u }
+  let _ <- Test.login { user: Just m }
+  let r <- Test.open (Orders.Show { id: o })
+  Task.succeed (r.answer == Shown)
+}
+EOF
+alder new test Products.Index "staff gets 404 and manager sees products"
+alder fill 'Products.Index."staff gets 404 and manager sees products"' - <<'EOF'
+{
+  let s <- Db.insert User { email: Text.Email "s@example.com", name: Text.NonEmpty "S", passwordHash: "" }
+  let m <- Db.insert User { email: Text.Email "m@example.com", name: Text.NonEmpty "M", passwordHash: "", role: Manager }
+  let _ <- Test.login { user: Just s }
+  let r <- Test.open (Products.Index {})
+  let _ <- Test.login { user: Just m }
+  let q <- Test.open (Products.Index {})
+  Task.succeed ({ staff: r.answer, manager: q.answer } == { staff: PageMissing, manager: Shown })
+}
+EOF
+```

@@ -1,0 +1,16 @@
+# the admin came with errors (Notice not imported, <al-dialog> unknown, Model fields missing), and
+# every generator refuses an app that does not check: remove the broken admin pages, leaves first
+alder remove page Admin.Todo.Bulk
+alder remove page Admin.User.Bulk
+alder remove page Admin.Todo.Delete
+alder remove page Admin.User.Delete
+alder remove page Admin.Todo.New
+alder remove page Admin.User.New
+alder remove page Admin.Todo.Edit
+alder remove page Admin.User.Edit
+alder remove page Admin.Todo.Show
+alder remove page Admin.User.Show
+alder remove page Admin.Todo.Index
+alder remove page Admin.User.Index
+alder remove page Admin.Index
+alder check

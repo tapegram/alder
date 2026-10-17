@@ -1,0 +1,7 @@
+alder fill --help
+alder regen admin --help
+alder new admin --help
+alder remove --help
+alder edit --help
+alder new page --help
+alder fill --list

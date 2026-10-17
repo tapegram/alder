@@ -1,0 +1,22 @@
+module Notes.Index
+
+import Layout
+import Note
+
+page "/" { } requires user
+
+type Model = { notes: List Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <- Db.mine Note |> Db.orderBy Note.created.desc |> Db.all
+  Query.succeed { notes: notes }
+}
+
+view : Model -> Session -> Html Msg
+view model session = Layout.shell { title: "Notes", theme: session.theme, children: [<h1>Notes</h1>] }
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Notes.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

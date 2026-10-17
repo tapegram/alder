@@ -1,0 +1,499 @@
+{
+ "model": "claude-opus",
+ "task": "t3-newapp",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "condition": "files",
+  "sample": "r2"
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 89.3,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.296 (Claude Code)",
+   "model": "opus",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 14,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Admin.Posts",
+      "name": "a visitor is sent to log in from the admin",
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Admin.Posts"
+      ],
+      "ms": 8.325
+     },
+     {
+      "module": "Admin.Posts",
+      "name": "creating a post through the admin",
+      "ok": true,
+      "left": "{ answer: Redirected /admin, titles: [\"Hello\"], drafts: 1 }",
+      "right": "{ answer: Redirected /admin, titles: [\"Hello\"], drafts: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.Posts",
+       "Db.mine Post",
+       "Db.all Post",
+       "Test.submit NewPost",
+       "Db.mine Post",
+       "Db.all Post",
+       "Db.count Post",
+       "Db.insertMine Post",
+       "Db.mine Post",
+       "Db.all Post",
+       "Test.get Admin.Posts",
+       "Db.mine Post",
+       "Db.all Post"
+      ],
+      "ms": 0.664
+     },
+     {
+      "module": "Admin.Posts",
+      "name": "a taken slug is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"That slug is already taken.\" }], posts: 1 }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"That slug is already taken.\" }], posts: 1 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.login",
+       "Test.get Admin.Posts",
+       "Db.mine Post",
+       "Db.all Post",
+       "Test.submit NewPost",
+       "Db.mine Post",
+       "Db.all Post",
+       "Db.count Post",
+       "Db.mine Post",
+       "Db.all Post",
+       "Db.count Post"
+      ],
+      "ms": 0.752
+     },
+     {
+      "module": "Admin.Posts",
+      "name": "toggling published through the admin",
+      "ok": true,
+      "left": "{ answer: Rerendered, published: Just True }",
+      "right": "{ answer: Rerendered, published: Just True }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.login",
+       "Test.get Admin.Posts",
+       "Db.mine Post",
+       "Db.all Post",
+       "Test.click Admin.Posts.TogglePublished",
+       "Db.mine Post",
+       "Db.all Post",
+       "Db.updateMine Post",
+       "Db.mine Post",
+       "Db.all Post",
+       "Db.get Post"
+      ],
+      "ms": 0.611
+     },
+     {
+      "module": "Admin.Posts",
+      "name": "toggling another author's post is not found",
+      "ok": true,
+      "left": "{ answer: PageMissing, published: Just False }",
+      "right": "{ answer: PageMissing, published: Just False }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.login",
+       "Test.get Admin.Posts",
+       "Db.mine Post",
+       "Db.all Post",
+       "Test.login",
+       "Test.click Admin.Posts.TogglePublished",
+       "Db.mine Post",
+       "Db.all Post",
+       "Db.updateMine Post",
+       "Db.get Post"
+      ],
+      "ms": 0.411
+     },
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes home",
+      "ok": true,
+      "left": "{ value: Ok (Redirect /), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Redirect /), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 0.241
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 0.297
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "ok": true,
+      "left": "{ answer: Redirected /admin, user: Just \"zOqOuFjuXvbT33ogKlXu\" }",
+      "right": "{ answer: Redirected /admin, user: Just \"zOqOuFjuXvbT33ogKlXu\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Session.put",
+       "Db.mine Post",
+       "Db.all Post"
+      ],
+      "ms": 0.317
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging out from the admin",
+      "ok": true,
+      "left": "{ out: Redirected /, user: Nothing }",
+      "right": "{ out: Redirected /, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Admin.Posts",
+       "Db.mine Post",
+       "Db.all Post",
+       "Test.click App.Logout",
+       "Session.put",
+       "Db.all Post"
+      ],
+      "ms": 0.499
+     },
+     {
+      "module": "Home",
+      "name": "the front page lists only published posts, newest first",
+      "ok": true,
+      "left": "[\"Second\", \"First\"]",
+      "right": "[\"Second\", \"First\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Test.get Home",
+       "Db.all Post"
+      ],
+      "ms": 0.336
+     },
+     {
+      "module": "Posts.Show",
+      "name": "an unpublished post is not found for a reader",
+      "ok": true,
+      "left": "{ visitor: PageMissing, other: PageMissing }",
+      "right": "{ visitor: PageMissing, other: PageMissing }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.open Posts.Show",
+       "Db.first Post",
+       "Db.all Comment",
+       "Test.login",
+       "Test.open Posts.Show",
+       "Db.first Post",
+       "Db.all Comment"
+      ],
+      "ms": 0.327
+     },
+     {
+      "module": "Posts.Show",
+      "name": "the author sees their unpublished post",
+      "ok": true,
+      "left": "{ answer: Shown, title: Just \"Draft\" }",
+      "right": "{ answer: Shown, title: Just \"Draft\" }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.login",
+       "Test.open Posts.Show",
+       "Db.first Post",
+       "Db.all Comment"
+      ],
+      "ms": 0.301
+     },
+     {
+      "module": "Posts.Show",
+      "name": "a comment with an empty author is refused",
+      "ok": true,
+      "left": "{ refused: True, comments: 0 }",
+      "right": "{ refused: True, comments: 0 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.get Posts.Show",
+       "Db.first Post",
+       "Db.all Comment",
+       "Test.submitRaw NewComment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.count Comment"
+      ],
+      "ms": 0.574
+     },
+     {
+      "module": "Posts.Show",
+      "name": "a comment is added through the page",
+      "ok": true,
+      "left": "{ answer: Redirected /posts/hello, authors: [\"Ann\"] }",
+      "right": "{ answer: Redirected /posts/hello, authors: [\"Ann\"] }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.get Posts.Show",
+       "Db.first Post",
+       "Db.all Comment",
+       "Test.submit NewComment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.insert Comment",
+       "Db.first Post",
+       "Db.all Comment"
+      ],
+      "ms": 0.786
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.7419354838709677,
+    "killed": 23,
+    "survived": 8,
+    "suppressed": 1,
+    "skipped": 5,
+    "survivors": [
+     {
+      "module": "Post",
+      "file": "app/Post.alder",
+      "decl": "Post",
+      "line": 17,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "author @ref User @restrict",
+      "after": "author @ref User @cascade"
+     },
+     {
+      "module": "Admin.Posts",
+      "file": "app/Admin/Posts.alder",
+      "decl": "load",
+      "line": 17,
+      "col": 10,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Post.created.desc",
+      "after": "Db.orderBy Post.created.asc"
+     },
+     {
+      "module": "Admin.Posts",
+      "file": "app/Admin/Posts.alder",
+      "decl": "load",
+      "line": 16,
+      "col": 5,
+      "kind": "scope dropped",
+      "before": "Db.mine Post",
+      "after": "Db.from Post"
+     },
+     {
+      "module": "Admin.Posts",
+      "file": "app/Admin/Posts.alder",
+      "decl": "update",
+      "line": 35,
+      "col": 34,
+      "kind": "where dropped",
+      "before": "Db.where (Post.slug.eq p.form.slug)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Comment",
+      "file": "app/Comment.alder",
+      "decl": "Comment",
+      "line": 10,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "post @ref Post @cascade",
+      "after": "post @ref Post @restrict"
+     },
+     {
+      "module": "Posts.Show",
+      "file": "app/Posts/Show.alder",
+      "decl": "load",
+      "line": 16,
+      "col": 32,
+      "kind": "where dropped",
+      "before": "Db.where (Post.slug.eq params.slug)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Posts.Show",
+      "file": "app/Posts/Show.alder",
+      "decl": "load",
+      "line": 22,
+      "col": 14,
+      "kind": "where dropped",
+      "before": "Db.where (Comment.post.eq post.id)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Posts.Show",
+      "file": "app/Posts/Show.alder",
+      "decl": "load",
+      "line": 23,
+      "col": 14,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Comment.created.asc",
+      "after": "Db.orderBy Comment.created.desc"
+     }
+    ]
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "opus",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "mutation": {
+  "score": 0.7419354838709677,
+  "killed": 23,
+  "survived": 8,
+  "suppressed": 1,
+  "skipped": 5,
+  "survivors": [
+   {
+    "module": "Post",
+    "file": "app/Post.alder",
+    "decl": "Post",
+    "line": 17,
+    "col": 3,
+    "kind": "cascade \u2194 restrict",
+    "before": "author @ref User @restrict",
+    "after": "author @ref User @cascade"
+   },
+   {
+    "module": "Admin.Posts",
+    "file": "app/Admin/Posts.alder",
+    "decl": "load",
+    "line": 17,
+    "col": 10,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Post.created.desc",
+    "after": "Db.orderBy Post.created.asc"
+   },
+   {
+    "module": "Admin.Posts",
+    "file": "app/Admin/Posts.alder",
+    "decl": "load",
+    "line": 16,
+    "col": 5,
+    "kind": "scope dropped",
+    "before": "Db.mine Post",
+    "after": "Db.from Post"
+   },
+   {
+    "module": "Admin.Posts",
+    "file": "app/Admin/Posts.alder",
+    "decl": "update",
+    "line": 35,
+    "col": 34,
+    "kind": "where dropped",
+    "before": "Db.where (Post.slug.eq p.form.slug)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Comment",
+    "file": "app/Comment.alder",
+    "decl": "Comment",
+    "line": 10,
+    "col": 3,
+    "kind": "cascade \u2194 restrict",
+    "before": "post @ref Post @cascade",
+    "after": "post @ref Post @restrict"
+   },
+   {
+    "module": "Posts.Show",
+    "file": "app/Posts/Show.alder",
+    "decl": "load",
+    "line": 16,
+    "col": 32,
+    "kind": "where dropped",
+    "before": "Db.where (Post.slug.eq params.slug)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Posts.Show",
+    "file": "app/Posts/Show.alder",
+    "decl": "load",
+    "line": 22,
+    "col": 14,
+    "kind": "where dropped",
+    "before": "Db.where (Comment.post.eq post.id)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Posts.Show",
+    "file": "app/Posts/Show.alder",
+    "decl": "load",
+    "line": 23,
+    "col": 14,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Comment.created.asc",
+    "after": "Db.orderBy Comment.created.desc"
+   }
+  ]
+ }
+}

@@ -1,0 +1,106 @@
+module Bookings.Show
+
+import Booking
+import Layout
+import Room
+import User
+
+page "/bookings/{id}" { id: Booking.BookingId } requires user
+
+type Model = { id: Booking.BookingId, room: Text.NonEmpty, from: Date, to: Date, today: Date }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Booking params.id
+  let today <- Date.today
+  match found {
+    Just b -> {
+      let room <- Db.from Room |> Db.where (Room.id.eq b.room) |> Db.first
+      match room {
+        Just r -> if b.owner == session.user then Query.succeed { id: b.id, room: r.name, from: b.from, to: b.to, today: today } else Query.notFound,
+        Nothing -> Query.notFound,
+      }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+msg Cancel
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Cancel p -> {
+    let today <- Date.today
+    if Booking.canCancel today model.from then {
+      let _ <- Db.delete Booking model.id
+      Task.succeed (Redirect (Bookings.Index {}))
+    } else Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Booking">
+    <h1>Booking</h1>
+    <p id="room">{model.room}</p>
+    <p id="from">{Date.toText model.from}</p>
+    <p id="to">{Date.toText model.to}</p>
+    {if Booking.canCancel model.today model.from then <button id="cancel" click={Cancel}>Cancel</button> else Html.none}
+    <p><a href={Bookings.Index {}}>My bookings</a></p>
+  </Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let today <- Date.today
+  let room1 <- Db.insert Room { name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let booking1 <- Db.insert Booking { room: room1, owner: me, from: today, to: today }
+  let r <- Test.open (Bookings.Show { id: booking1 })
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "pressing Cancel" = {
+  let today <- Date.today
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let room1 <- Db.insert Room { name: Text.NonEmpty "name-1" }
+  let booking1 <- Db.insert Booking { room: room1, owner: me, from: Date.addDays 3 today, to: Date.addDays 5 today }
+  let _ <- Test.get (Bookings.Show { id: booking1 })
+  let r <- Test.click Cancel
+  let after <- Test.open (Bookings.Show { id: booking1 })
+  Task.succeed ({ answer: r.answer, after: after.answer } == { answer: Redirected (Bookings.Index {}), after: PageMissing })
+}
+
+test "the owner cancels a booking before its from date" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let known <- Db.from User |> Db.where (User.email.eq (Text.Email "me@example.com")) |> Db.count
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let id <- Db.insert Booking { room: room, owner: me, from: Date.addDays 2 today, to: Date.addDays 4 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Show { id: id })
+  let r <- Test.click Cancel
+  let after <- Db.get Booking id
+  Task.succeed ({ known: known, button: Test.has "#cancel" page.doc, answer: r.answer, still: Maybe.isJust after } == { known: 1, button: True, answer: Redirected (Bookings.Index {}), still: False })
+}
+
+test "a booking whose from date is today cannot be cancelled" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let id <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Bookings.Show { id: id })
+  let r <- Test.run (update Cancel page.model { user: me })
+  let after <- Db.get Booking id
+  Task.succeed ({ button: Test.has "#cancel" page.doc, value: r.value, still: Maybe.isJust after } == { button: False, value: Ok Rerender, still: True })
+}
+
+test "a stranger gets a 404" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let today <- Date.today
+  let id <- Db.insert Booking { room: room, owner: me, from: Date.addDays 2 today, to: Date.addDays 4 today }
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let r <- Test.open (Bookings.Show { id: id })
+  Task.succeed (r.answer == PageMissing)
+}

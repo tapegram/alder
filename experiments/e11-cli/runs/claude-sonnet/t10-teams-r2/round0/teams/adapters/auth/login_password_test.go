@@ -1,0 +1,171 @@
+package auth
+
+import (
+	"errors"
+	"strings"
+	"testing"
+)
+
+// noRehash fails a test that rehashes when it should not.
+func noRehash(string) error { return errors.New("rehashed") }
+
+// rows is a lookup over a fixed set of rows: email → id and stored hash.
+func rows(m map[string][2]string) func(string) (string, string, bool, error) {
+	return func(email string) (string, string, bool, error) {
+		r, ok := m[email]
+		return r[0], r[1], ok, nil
+	}
+}
+
+// A hash verifies its password and no other; two hashes of one password differ (the salt).
+func TestHash_RoundTrip(t *testing.T) {
+	h, err := Hash("correct horse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(h, "pbkdf2-sha256$600000$") || strings.Count(h, "$") != 3 {
+		t.Errorf("stored text %q", h)
+	}
+	if ok, err := Check(h, "correct horse"); !ok || err != nil {
+		t.Errorf("the right password: %v, %v", ok, err)
+	}
+	if ok, err := Check(h, "correct horsf"); ok || err != nil {
+		t.Errorf("a wrong password: %v, %v", ok, err)
+	}
+	if h2, _ := Hash("correct horse"); h2 == h {
+		t.Error("two hashes of one password are equal: no salt")
+	}
+}
+
+// Verify: the row's id for its password; Nothing for a wrong password, an unknown email and a
+// row without a password; the lookup's error as it is.
+func TestVerify(t *testing.T) {
+	h, err := hashWith("secret", []byte("0123456789abcdef"), 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lk := rows(map[string][2]string{"me@example.com": {"u1", h}, "nopass@example.com": {"u2", ""}})
+	if got, err := verify("me@example.com", "secret", lk, func(string) error { return nil }, nil); err != nil || !got.Ok || got.Val != "u1" {
+		t.Errorf("right password: %+v, %v", got, err)
+	}
+	for _, c := range [][2]string{{"me@example.com", "Secret"}, {"nobody@example.com", "secret"}, {"nopass@example.com", ""}} {
+		if got, err := verify(c[0], c[1], lk, noRehash, nil); err != nil || got.Ok {
+			t.Errorf("%s / %q: %+v, %v; want Nothing", c[0], c[1], got, err)
+		}
+	}
+	boom := errors.New("boom")
+	if _, err := verify("me@example.com", "secret", func(string) (string, string, bool, error) { return "", "", false, boom }, noRehash, nil); err != boom {
+		t.Errorf("the lookup's error: %v", err)
+	}
+}
+
+// An unknown email, and a row without a password, still derive a key (against the dummy
+// hash), so the answer takes as long as a wrong password's.
+func TestVerify_UnknownEmailDerives(t *testing.T) {
+	var checked []string
+	check = func(stored, pw string) (bool, error) { checked = append(checked, stored); return Check(stored, pw) }
+	defer func() { check = Check }()
+	lk := rows(map[string][2]string{"nopass@example.com": {"u2", ""}})
+	for _, email := range []string{"nobody@example.com", "nopass@example.com"} {
+		checked = nil
+		if got, err := verify(email, "pw", lk, noRehash, nil); got.Ok || err != nil {
+			t.Errorf("%s: %+v, %v", email, got, err)
+		}
+		if len(checked) != 1 || checked[0] != dummy {
+			t.Errorf("%s: derived against %q, want the dummy hash once", email, checked)
+		}
+	}
+}
+
+// A login whose hash has fewer iterations than iterations stores a new hash, made now, that
+// verifies; one with the current count is left as it is.
+func TestVerify_Rehash(t *testing.T) {
+	old, _ := hashWith("pw", []byte("saltsaltsaltsalt"), 1000)
+	var stored []string
+	rehash := func(s string) error { stored = append(stored, s); return nil }
+	if got, err := verify("me@example.com", "pw", rows(map[string][2]string{"me@example.com": {"u1", old}}), rehash, nil); err != nil || !got.Ok {
+		t.Fatalf("verify: %+v, %v", got, err)
+	}
+	if len(stored) != 1 || !strings.HasPrefix(stored[0], "pbkdf2-sha256$600000$") {
+		t.Fatalf("rehashed %q", stored)
+	}
+	if ok, err := Check(stored[0], "pw"); !ok || err != nil {
+		t.Errorf("the new hash: %v, %v", ok, err)
+	}
+	if got, err := verify("me@example.com", "pw", rows(map[string][2]string{"me@example.com": {"u1", stored[0]}}), noRehash, nil); err != nil || !got.Ok {
+		t.Errorf("a current hash: %+v, %v", got, err)
+	}
+	if got, err := verify("me@example.com", "wrong", rows(map[string][2]string{"me@example.com": {"u1", old}}), noRehash, nil); err != nil || got.Ok {
+		t.Errorf("a wrong password: %+v, %v", got, err)
+	}
+}
+
+// A login whose hash needs the upgrade still succeeds when storing the new hash fails: the old
+// hash stays, the failure is logged once, and the log line does not carry the password.
+func TestVerify_RehashFails(t *testing.T) {
+	old, _ := hashWith("pa55word", []byte("saltsaltsaltsalt"), 1000)
+	var logged []string
+	got, err := verify("me@example.com", "pa55word", rows(map[string][2]string{"me@example.com": {"u1", old}}),
+		func(string) error { return errors.New("database is locked") }, func(m string) { logged = append(logged, m) })
+	if err != nil || !got.Ok || got.Val != "u1" {
+		t.Fatalf("verify: %+v, %v; want Just u1", got, err)
+	}
+	if len(logged) != 1 || !strings.Contains(logged[0], "database is locked") || strings.Contains(logged[0], "pa55word") {
+		t.Errorf("logged %q", logged)
+	}
+}
+
+// A stored hash made with another iteration count verifies with that count.
+func TestCheck_StoredIterations(t *testing.T) {
+	h, err := hashWith("pw", []byte("saltsaltsaltsalt"), 1234)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(h, "pbkdf2-sha256$1234$") {
+		t.Fatalf("stored text %q", h)
+	}
+	if ok, err := Check(h, "pw"); !ok || err != nil {
+		t.Errorf("1234 iterations: %v, %v", ok, err)
+	}
+	// the same salt and hash under another count is another hash
+	if ok, err := Check(strings.Replace(h, "$1234$", "$1235$", 1), "pw"); ok || err != nil {
+		t.Errorf("1235 iterations: %v, %v; want false", ok, err)
+	}
+}
+
+// The compare is of the whole derived key: a hash that differs in its last byte does not match.
+func TestCheck_WholeKey(t *testing.T) {
+	h, _ := hashWith("pw", []byte("saltsaltsaltsalt"), 1000)
+	last := h[len(h)-1]
+	other := byte('A')
+	if last == 'A' {
+		other = 'B'
+	}
+	if ok, err := Check(h[:len(h)-1]+string(other), "pw"); ok || err != nil {
+		t.Errorf("a changed key: %v, %v", ok, err)
+	}
+}
+
+// A stored text that is not a hash is an error, never a login and never a panic.
+func TestCheck_Malformed(t *testing.T) {
+	for _, s := range []string{"x", "pbkdf2-sha256$600000$abc", "md5$1$YWJj$YWJj", "pbkdf2-sha256$zero$YWJj$YWJj",
+		"pbkdf2-sha256$0$YWJj$YWJj", "pbkdf2-sha256$99999999999$YWJj$YWJj", "pbkdf2-sha256$10$!!$YWJj", "pbkdf2-sha256$10$YWJj$",
+		"pbkdf2-sha256$10$$YWJj",
+		"pbkdf2-sha256$10$c2FsdHNhbHRzYWx0c2FsdA$c2hvcnQ"} {
+		ok, err := Check(s, "pw")
+		if ok || err == nil {
+			t.Errorf("Check(%q): %v, %v; want an error", s, ok, err)
+		}
+		lk := rows(map[string][2]string{"me@example.com": {"u1", s}})
+		var checked []string
+		check = func(stored, pw string) (bool, error) { checked = append(checked, stored); return Check(stored, pw) }
+		if got, err := verify("me@example.com", "pw", lk, noRehash, nil); got.Ok || err == nil {
+			t.Errorf("verify with %q: %+v, %v; want an error", s, got, err)
+		}
+		check = Check
+		// derived against the dummy all the same, so a malformed row answers as slowly as a real one
+		if len(checked) != 1 || checked[0] != dummy {
+			t.Errorf("verify with %q derived against %q, want the dummy once", s, checked)
+		}
+	}
+}

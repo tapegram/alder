@@ -1,0 +1,51 @@
+module Rooms.Index
+
+import Booking
+import Layout
+import Room
+import User
+
+page "/rooms" { } requires user
+
+type Model = { rows: List { id: Room.RoomId, name: Text.NonEmpty, free: Date } }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let rooms <- Db.from Room |> Db.orderBy Room.name.asc |> Db.all
+  let bookings <- Db.from Booking |> Db.all
+  let today <- Date.today
+  Query.succeed { rows: List.map (\r -> { id: r.id, name: r.name, free: Booking.nextFree today r.id bookings }) rooms }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <Layout.Page title="Rooms">
+  <h1>Rooms</h1>
+  <ul id="rooms">
+    {for row in model.rows ->
+      <li>
+        <a class="name" href={Rooms.Show { id: row.id }}>{row.name}</a>
+        <span class="free">{Date.toText row.free}</span>
+      </li>}
+  </ul>
+  <p><a href={Bookings.Index {}}>My bookings</a></p>
+  <button click={App.Logout}>Log out</button>
+</Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Rooms.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "the next free date of a room with back-to-back bookings" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let known <- Db.from User |> Db.where (User.email.eq (Text.Email "me@example.com")) |> Db.count
+  let busy <- Db.insert Room { name: Text.NonEmpty "Busy" }
+  let _ <- Db.insert Room { name: Text.NonEmpty "Empty" }
+  let today <- Date.today
+  let _ <- Db.insert Booking { room: busy, owner: me, from: today, to: Date.addDays 2 today }
+  let _ <- Db.insert Booking { room: busy, owner: me, from: Date.addDays 2 today, to: Date.addDays 5 today }
+  let _ <- Db.insert Booking { room: busy, owner: me, from: Date.addDays 7 today, to: Date.addDays 8 today }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Rooms.Index {})
+  Task.succeed ({ known: known, names: Test.texts "#rooms .name" page.doc, free: Test.texts "#rooms .free" page.doc } == { known: 1, names: ["Busy", "Empty"], free: [Date.toText (Date.addDays 5 today), Date.toText today] })
+}

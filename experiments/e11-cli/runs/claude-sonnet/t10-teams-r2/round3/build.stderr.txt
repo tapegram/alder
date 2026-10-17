@@ -1,0 +1,22 @@
+app/Invites/Index.alder:78:36: warning[W0002]: hole ?acceptId has type Invite.InviteId
+      <al-button click={Accept { id: ?acceptId }}>Accept</al-button>
+                                     ^^^^^^^^^
+app/Invites/Index.alder:80:37: warning[W0002]: hole ?declineId has type Invite.InviteId
+      <al-button click={Decline { id: ?declineId }}>Decline</al-button>
+                                      ^^^^^^^^^^
+app/Invites/Index.alder:110:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Invites/Index.alder:124:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+app/Teams/Index.alder:66:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
+app/Teams/Show.alder:93:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
+app/Teams/Show.alder:115:16: warning[W0002]: hole ?expected has type Bool
+    Task.succeed ?expected
+                 ^^^^^^^^^
+alder build: the program has 7 typed hole(s); fill them before building

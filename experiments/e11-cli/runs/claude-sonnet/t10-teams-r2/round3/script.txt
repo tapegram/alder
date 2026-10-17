@@ -1,0 +1,134 @@
+# Teams.Index: the view is one element, then the form
+alder fill --decl Teams.Index.view - <<'EOF'
+<Layout.Page title="Teams">
+  <h1>Teams</h1>
+  {viewBody model session}
+</Layout.Page>
+EOF
+alder new form Teams.Index NewTeam name:Text.NonEmpty --msg Create
+alder fill Teams.Index.viewBody - <<'EOF'
+\model session ->
+  <ul id="teams">
+    {for t in model.teams -> <li><a class="name" href={Teams.Show { id: t.id }}>{t.name}</a></li>}
+  </ul>
+EOF
+alder fill Teams.Index.update.Create - <<'EOF'
+{
+  let id <- Db.insert Team { name: p.form.name, owner: session.user }
+  Task.succeed (Redirect (Teams.Show { id: id }))
+}
+EOF
+
+# Teams.Show
+alder fill --decl Teams.Show.view - <<'EOF'
+<Layout.Page title={model.team.name}>
+  <h1 id="name">{model.team.name}</h1>
+  {viewBody model session}
+</Layout.Page>
+EOF
+alder new form Teams.Show NewInvite email:Text.Email --msg SendInvite
+alder new msg Teams.Show Remove user:User.UserId
+alder fill Teams.Show.viewBody - <<'EOF'
+\model session ->
+  <div>
+    <ul id="members">
+      <li><span class="name">{model.owner.name}</span></li>
+      {for u in model.members ->
+        <li>
+          <span class="name">{u.name}</span>
+          {if model.isOwner then <al-button class="remove" click={Remove { user: u.id }}>Remove</al-button> else Html.none}
+        </li>}
+    </ul>
+    {if model.isOwner then
+      <form submit={SendInvite}>
+        <Errors form />
+        <al-input field="email" label="Invite by email" />
+        <al-button type="submit">Invite</al-button>
+      </form>
+    else Html.none}
+  </div>
+EOF
+alder fill --decl Teams.Show.view - <<'EOF'
+<Layout.Page title={model.team.name}>
+  <h1 id="name">{model.team.name}</h1>
+  {viewBody model session}
+</Layout.Page>
+EOF
+alder fill Teams.Show.update.SendInvite - <<'EOF'
+if model.team.owner != session.user then Task.notFound else {
+  let _ <- Db.insert Invite { team: model.team.id, email: p.form.email }
+  Task.succeed (Redirect (Teams.Show { id: model.team.id }))
+}
+EOF
+alder fill Teams.Show.update.Remove - <<'EOF'
+if model.team.owner != session.user || p.user == model.team.owner then Task.notFound else {
+  let rows <- Db.from Member |> Db.where (Member.team.eq model.team.id) |> Db.where (Member.user.eq p.user) |> Db.all
+  let _ <- Task.all (List.map (\m -> Db.delete Member m.id) rows)
+  Task.succeed (Redirect (Teams.Show { id: model.team.id }))
+}
+EOF
+
+# Invites.Index
+alder fill --decl Invites.Index.view - <<'EOF'
+<Layout.Page title="Invites">
+  <h1>Invites</h1>
+  {viewBody model session}
+</Layout.Page>
+EOF
+alder new msg Invites.Index Accept id:Invite.InviteId
+alder new msg Invites.Index Decline id:Invite.InviteId
+alder fill Invites.Index.viewBody - <<'EOF'
+\model session ->
+  <ul id="invites">
+    {for i in model.items ->
+      <li>
+        <span class="team">{i.team}</span>
+        <al-button click={Accept { id: i.id }}>Accept</al-button>
+        <al-button variant="outline" click={Decline { id: i.id }}>Decline</al-button>
+      </li>}
+  </ul>
+EOF
+alder fill Invites.Index.update.Accept - <<'EOF'
+{
+  let me <- Db.get User session.user
+  match me {
+    Nothing -> Task.notFound,
+    Just u -> {
+      let found <- Db.get Invite p.id
+      match found {
+        Nothing -> Task.notFound,
+        Just i ->
+          if i.email != u.email || i.status != Pending then Task.notFound else {
+            let existing <- Db.from Member |> Db.where (Member.team.eq i.team) |> Db.where (Member.user.eq session.user) |> Db.count
+            let t <- Db.get Team i.team
+            let isOwner = Maybe.map (\x -> x.owner == session.user) t == Just True
+            let _ <- Db.update Invite i.id (\x -> { x | status: Accepted })
+            let _ <- if existing == 0 && not isOwner then Task.map (\x -> ()) (Db.insert Member { team: i.team, user: session.user }) else Task.succeed ()
+            Task.succeed (Redirect (Teams.Show { id: i.team }))
+          },
+      }
+    },
+  }
+}
+EOF
+alder fill Invites.Index.update.Decline - <<'EOF'
+{
+  let me <- Db.get User session.user
+  match me {
+    Nothing -> Task.notFound,
+    Just u -> {
+      let found <- Db.get Invite p.id
+      match found {
+        Nothing -> Task.notFound,
+        Just i ->
+          if i.email != u.email || i.status != Pending then Task.notFound else {
+            let _ <- Db.update Invite i.id (\x -> { x | status: Declined })
+            Task.succeed (Redirect (Invites.Index {}))
+          },
+      }
+    },
+  }
+}
+EOF
+alder fill --list
+alder check

@@ -39,7 +39,7 @@ command set's, and how does it compare with the file-emitting baseline on the sa
   run, all eight tasks were run fresh here in file mode with the same system prompt and budget, one
   sample each (`baseline/runs/`). E9's cells are compared in `findings.md` §3.
 - **Models**: as designed, `claude:haiku`, `claude:sonnet`, `claude:opus`; as run, Haiku and Sonnet
-  only (Opus dropped for budget), recorded as `claude-haiku`, `claude-sonnet` as in E9, through the
+  only in run 1 (Opus dropped for budget; run 2 adds it), recorded as `claude-haiku`, `claude-sonnet` as in E9, through the
   `claude` CLI with the harness's isolation flags; one sample (`s1`): 16 `cli` cells + 16 baseline
   cells.
 - **Hidden tests**: E9's for T5, T6, T7, T9, T10; E8's for T4; none for T2 and T3.
@@ -79,6 +79,35 @@ sample, `cli` and `files`, 32 cells; Opus dropped for budget.
   on any 2-byte UTF-8 character after a non-name byte: `qualifiers` in `internal/generate/fill.go`
   reads one byte as a rune; a compiler bug for the next fix batch), 0 misread. `--json` and `--dry-run` were never used.
 
+### Run 2 (2026-10-16, sample `r2`, `findings-run2.md`)
+
+After the fix batch (`git log --oneline 1cf3747..edbb667`: `new msg App`, `edit decl … add-prop`, `new form --msg` on an
+existing message, `edit auth --to`, refusals that name the fix, `alder check`'s "N typed holes left", the extended names
+check, T4's Names block). Haiku, Sonnet and **Opus** × the eight tasks, `cli`: 24 cells under `runs/<model>/<task>-r2/`; Opus's
+`files` cells: 8 under `baseline/runs/claude-opus/<task>-r2/` (Haiku's and Sonnet's `files` cells are run 1's `s1`).
+Binary `alder-r2` (git-ignored; `devel+4c0e289`, sha256 `424b8de5…0ea23`, in full in `findings-run2.md`).
+Runner `run-matrix-r2.sh`. **Two defects of the setup:** the system prompt `prompt-reference.md` is run 1's byte for byte (never
+regenerated after the batch's reference changes, 1,102 bytes), so the models were not told the new commands or
+the lambda line; and T2's base (`examples/todos`) fails `alder check` under the binary (4 errors), so all three T2 cells
+are void.
+
+- **Pass (own tests):** Haiku 2 / 8 (run 1: 7 / 8), Sonnet 7 / 8 (5 / 8), Opus 7 / 8 (T2 void; 7 / 7 valid), in 2–6 rounds
+  (mean 3.6 Opus, 4.4 Haiku+Sonnet); Opus `files` 8 / 8 in 1–3. Hidden: Haiku+Sonnet 69 / 94 (run 1: 60; `files` 88),
+  Opus 47 / 47 (`files` 47 / 47). Mutation, cells passing in both conditions: `cli` 0.74 against `files` 0.57
+  (Haiku+Sonnet, 9 cells), 0.80 against 0.78 (Opus, 7).
+- **The fixes:** "command missing" 6 → 0 of 82 refusals: `new msg App` and `new form --msg` on a message with parameters
+  were used 3 times each (every T4 and T6 cell) and never refused; `edit decl … add-prop` and `edit auth --to` were used 0 times
+  (never named to the models; the `Layout` prop was refused again in 3 cells). Lambda over bound parameters 13 → 11 (+1
+  Opus), `fill` on a non-hole 8 → 5 (+1), a name before it exists 8 → 8 (+2): not reduced, without the reference lines.
+  T6: Sonnet and Opus pass (hidden 9 / 9), Haiku one round short. T4: Opus 8 / 8; Sonnet's harness pass has hidden 0 / 8
+  (no `Notes.Show`); Haiku never built. Rounds ending with holes: 76 % (Haiku+Sonnet; run 1: 63 %), the holes line
+  printed in 7 `alder check` runs. `--json` 4 uses, `--dry-run` 0.
+- **Opus:** 67 % of the commands it wrote ran (Sonnet 50 %, Haiku 33 %); refusals in 52 % of its rounds (61 %, 87 %); no
+  `Model`-of-a-generated-page, quoting or block-into-hole misuses; its three body refusals are failing tests.
+- **New stall patterns:** the T2 base (16 refusals, nothing repairs an app that fails `alder check`); `alder test` last with the
+  generators' holes left (5 rounds); generated tests that disagree with the model's view or `load` (4 cells); `Model` of a generated
+  page (5, all Haiku).
+
 To regenerate the tables: `python3 experiments/report_loop.py experiments/e11-cli` and `python3
 experiments/report_loop.py experiments/e11-cli/baseline` (E9's for comparison: `python3
 experiments/report_loop.py experiments/e9-feedback/baseline`).
@@ -92,8 +121,10 @@ experiments/report_loop.py experiments/e9-feedback/baseline`).
 | `tasks` → `../tasks` | the canonical task texts |
 | `runs/<model>/<task>-s1/` | the `cli` cells: `round<N>/{output.md,script.txt,commands.jsonl,transcript.md,check.json,<app>/}`, `summary.json` |
 | `baseline/runs/<model>/<task>-s1/` | the file cells (all eight tasks, run fresh) |
-| `run-matrix.sh` | the runner the matrix used (`cli` or `files`; `MODELS` overrides the model list) |
-| `findings.md` | the results, the stall table, H1–H3, the command-set gaps |
+| `run-matrix.sh`, `run-matrix-r2.sh` | the runners of run 1 and run 2 (`cli` or `files`; `MODELS` overrides the model list) |
+| `findings.md` | run 1: the results, the stall table, H1–H3, the command-set gaps |
+| `findings-run2.md` | run 2 (after the fix batch, with Opus): the fixes' effect, the stall table, H1–H3, the gaps for run 3 |
+| `runs/<model>/<task>-r2/`, `baseline/runs/claude-opus/<task>-r2/` | run 2's cells (`alder-r2`, git-ignored, is its binary) |
 | `logs/` | one log per invocation |
 | `smoke/runs/` | the smoke cell (below) |
 | `alder` | the binary (git-ignored), built at `87c7b42`, sha256 `2e10458a…098a6d` (in full in `findings.md`) |

@@ -4016,6 +4016,18 @@ a message in `App`, a prop on `Layout.Page`, a form posted by a message
 with its own parameters. The models never used `--json`: in a script,
 the output arrives a round late.
 
+A second run (`experiments/e11-cli/findings-run2.md`: the same models and Opus, after the four gaps above and the
+refusals that name the fix) found the missing commands working and most rounds still ending in a refusal. The two commands
+the models had already tried by name were used the first time a script reached them and never refused: `alder new msg
+App` in all three T4 cells, `alder new form … --msg` on a message with parameters in all three T6 cells, so the
+refusals for "command missing" went from 6 of 64 to 0 of 82. The other two (`edit decl … add-prop`, `edit auth --to`) were
+used by nobody: the system prompt had not been regenerated, so the models never read their names. Haiku passed 2
+tasks of 8, Sonnet 7 (one of them with the hidden tests at 0 of 8) and Opus 7, with all 47 of its hidden tests, in 2 to 6
+rounds where its file-writing runs took 1 to 3. The lambda refusal, now with a message that names the fix, still
+occurred 12 times, and five rounds ended on an `alder test` refused for a hole the generators leave (`?expected`,
+`?afterLogin`). The three T2 cells are void: the example app given as the base did not pass `alder check` under the run's
+binary, and no command repairs an app that does not check.
+
 The same commands are what another tool would wrap. Olifant, a generator
 engine, can drive Alder through a thin pack of its own: each Olifant
 command calls the matching `alder new`, `alder edit table`, `alder fill`

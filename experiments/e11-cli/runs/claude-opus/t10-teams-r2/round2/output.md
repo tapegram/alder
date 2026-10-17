@@ -1,0 +1,25 @@
+```alder-cli
+alder fill --decl 'Teams.Index."NewTeam refuses an empty name"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Teams.Index {})
+  let r <- Test.submitRaw NewTeam [{ name: "name", value: "" }]
+  let n <- Db.from Team |> Db.count
+  Task.succeed ({ answer: r.answer, teams: n } == { answer: FormRejected [{ field: "", message: "name must not be empty" }], teams: 0 })
+}
+EOF
+alder fill --decl 'Teams.Show."NewInvite refuses an empty email"' - <<'EOF'
+{
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let _ <- Test.login { user: Just me }
+  let team1 <- Db.insert Team { name: Text.NonEmpty "name-1", owner: me }
+  let _ <- Test.get (Teams.Show { id: team1 })
+  let r <- Test.submitRaw NewInvite [{ name: "email", value: "" }]
+  let n <- Db.from Invite |> Db.count
+  Task.succeed ({ answer: r.answer, invites: n } == { answer: FormRejected [{ field: "", message: "email must be an email address" }], invites: 0 })
+}
+EOF
+alder check
+alder test
+```

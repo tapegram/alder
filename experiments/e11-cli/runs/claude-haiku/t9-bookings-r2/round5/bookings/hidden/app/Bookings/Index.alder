@@ -1,0 +1,27 @@
+module Bookings.Index
+
+import Booking
+import Layout
+
+page "/bookings" { } requires user
+
+type Model = { rows: List Booking.MyBooking }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let rows <- Booking.myBookings session.user
+  Query.succeed { rows: rows }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <Layout.Page title="Bookings">
+  <h1>Bookings</h1>
+  <ul id="mine">
+    {for b in model.rows -> <li><a href={Bookings.Show { id: b.booking.id }}><span class="room">{b.room.name}</span></a> <span class="from">{Date.toText b.booking.from}</span></li>}
+  </ul>
+</Layout.Page>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Bookings.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

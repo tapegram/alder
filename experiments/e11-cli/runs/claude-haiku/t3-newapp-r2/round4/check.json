@@ -1,0 +1,4 @@
+{"code": "W0002", "severity": "warning", "file": "app/Admin.alder", "line": 80, "col": 16, "endLine": 80, "endCol": 25, "message": "hole ?expected has type Bool"}
+{"code": "W0002", "severity": "warning", "file": "app/Admin.alder", "line": 88, "col": 29, "endLine": 88, "endCol": 38, "message": "hole ?expected has type Answer"}
+{"code": "W0002", "severity": "warning", "file": "app/Posts/Show.alder", "line": 11, "col": 23, "endLine": 11, "endCol": 28, "message": "hole ?load has type Query Posts.Show.Model"}
+{"code": "W0002", "severity": "warning", "file": "app/Posts/Show.alder", "line": 14, "col": 22, "endLine": 14, "endCol": 27, "message": "hole ?view has type Html Posts.Show.Msg"}
