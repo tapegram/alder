@@ -53,11 +53,18 @@ func TaskNotFound[T any]() eff.Task[T] { return eff.NotFound[T]() }
 // TaskFail is Task.fail.
 func TaskFail[T any](msg string) eff.Task[T] { return eff.Fail[T](msg) }
 
-// SessionPut is Session.put: it replaces Env.Session (of the app's Session type S) with f of it.
+// SessionPut is Session.put: it replaces Env.Session (of the app's Session type S) with f of it,
+// once Env.CheckSession (an app with a `via` field: the membership) accepts the change.
 // It is a write: it never runs inside a Query.
 func SessionPut[S any](f func(S) S) eff.Task[struct{}] {
 	return eff.Call("Session.put", true, func(e *eff.Env) (struct{}, error) {
-		e.Session = f(e.Session.(S))
+		next := f(e.Session.(S))
+		if e.CheckSession != nil {
+			if err := e.CheckSession(e, e.Session, next); err != nil {
+				return struct{}{}, err
+			}
+		}
+		e.Session = next
 		e.SessionPut = true
 		return struct{}{}, nil
 	})
