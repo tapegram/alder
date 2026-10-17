@@ -1,4 +1,4 @@
-/*! alder-ui v0.3.0 | Apache-2.0 | https://github.com/tapegram/alder-ui
+/*! alder-ui v0.3.1 | Apache-2.0 | https://github.com/tapegram/alder-ui
  * Built by scripts/build.py from tokens.css and components/; do not edit. */
 
 @layer al {
@@ -1397,8 +1397,10 @@ al-menu > button:disabled {
  * al-tabs: tabs backed by a radio group, so selection works with no
  * JavaScript. Each al-tab holds a <label> wrapping a radio input (all with the
  * same name; one `checked`) and its al-panel. The labels sit in a row, the
- * checked tab's panel shows beneath. The optional al-tabs.js adds Home/End,
- * the selected attribute, and the al-select event.
+ * checked tab's panel shows beneath. The optional al-tabs.js builds a
+ * <div role="tablist"> of <button role="tab"> from the labels (which it hides),
+ * styled below like the labels, and adds the arrow keys, Home/End, the selected
+ * attribute, and the al-select event.
  */
 
 al-tabs {
@@ -1455,6 +1457,49 @@ al-tabs > al-tab > al-panel {
 
 al-tabs > al-tab:has(> label > input:checked) > al-panel {
   display: block;
+}
+
+/* With the script: the tab strip it builds (the labels are hidden). */
+al-tabs:has(> [role="tablist"]) {
+  border-bottom: 0;
+}
+
+al-tabs > [role="tablist"] {
+  display: flex;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  align-items: flex-end;
+  order: 1;
+  border-bottom: var(--al-border-width) solid var(--border);
+}
+
+al-tabs > [role="tablist"] > [role="tab"] {
+  margin: 0;
+  padding: var(--al-space-2) var(--al-space-4);
+  border: 0;
+  border-bottom: var(--al-ring-width) solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: var(--al-weight-medium);
+  line-height: inherit;
+  cursor: pointer;
+}
+
+al-tabs > [role="tablist"] > [role="tab"]:hover {
+  color: var(--foreground);
+}
+
+al-tabs > [role="tablist"] > [role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--primary);
+  color: var(--foreground);
+}
+
+al-tabs > [role="tablist"] > [role="tab"]:focus-visible {
+  outline: var(--al-ring-width) solid var(--ring);
+  outline-offset: calc(var(--al-ring-width) * -1);
 }
 
 /* ---- components/al-toast.css ---- */

@@ -35,7 +35,7 @@ box", explains why):
   styles that box by its tag name and attributes. Every element works
   with JavaScript off.
 
-The version Alder ships is **v0.3.0**: the compiler embeds a copy of
+The version Alder ships is **v0.3.1**: the compiler embeds a copy of
 the library's stylesheet, scripts (`al.js`) and manifest at that tag (`rt/al/VERSION`;
 "Where it lives", below).
 
@@ -802,12 +802,17 @@ method="dialog">` first, then `<h2 slot="header" id="…-heading">`, the
 `<dialog>`'s `aria-labelledby` naming that id), and the library's checker
 keeps its demo in step with the renderer's shape.
 
+A note for a hand-written close button: an Alder template does not decode
+HTML entities, so `&times;` in text renders as those six characters. Write
+the character itself (`×`), as the renderer does.
+
 Either form works: if you write the native `<dialog>` yourself, as the
 `<al-dialog>`'s direct child (as you would from another stack), the
-renderer leaves the element exactly as written and adds nothing, and the
-`slot`s inside your `<dialog>` are the `<al-dialog>`'s:
+renderer leaves the element as written and adds only the
+`data-preserve-attr="open"` below (the first line of the output shows it), and
+the `slot`s inside your `<dialog>` are the `<al-dialog>`'s:
 
-```alder eval=<al-dialog size="sm"><dialog id="own" closedby="any" aria-labelledby="own-title"><h2 slot="header" id="own-title">Your own</h2><p>Written by hand.</p></dialog></al-dialog>
+```alder eval=<al-dialog size="sm"><dialog id="own" closedby="any" aria-labelledby="own-title" data-preserve-attr="open"><h2 slot="header" id="own-title">Your own</h2><p>Written by hand.</p></dialog></al-dialog>
 <al-dialog size="sm">
   <dialog id="own" closedby="any" aria-labelledby="own-title">
     <h2 slot="header" id="own-title">Your own</h2>
@@ -939,14 +944,19 @@ tab whose `<al-tab>` has `selected` (the server's choice), copies the
 tab's `name` onto a radio without one, and fires `al-select`. Without
 the script, mark the open tab with `checked` on its radio.
 
-**The ARIA pattern.** `al-tabs.js` makes it the tabs pattern a screen
-reader announces as tabs: `role="tablist"` on the `<al-tabs>`, `role="tab"`
-on each tab's radio (which keeps the focus, and is named by its label) with
-`aria-selected` following the choice, `aria-controls` naming its panel and a
-roving `tabindex` (0 on the selected tab, -1 on the others), and
-`role="tabpanel"` with an `id` and `aria-labelledby` naming the tab on each
-panel (ids it generates where you wrote none). Without the script the
-radio group is what is exposed, and it works.
+**The ARIA pattern.** With no script the radio group is what is exposed,
+and it works. `al-tabs.js` builds the real pattern from the same markup:
+a `<div role="tablist">` of `<button role="tab">` made from the labels' text
+and inserted before the panels, with `aria-selected` following the choice,
+`aria-controls` naming the panel and a roving `tabindex` (0 on the selected
+tab, -1 on the others); the radio labels get `hidden`, so they leave the
+accessibility tree and the tab order, but the radios stay and still drive
+the CSS that shows the panel; each panel gets `role="tabpanel"`, an `id`
+(generated where you wrote none) and `aria-labelledby` naming its tab.
+A click, the arrow keys, Home and End check the hidden radio, so
+`al-select` fires as before. A screen reader announces it as a tab list
+whose tabs are `Details` and `Comments`, the selected one marked, followed
+by the open tabpanel.
 
 ### `al-tab`
 

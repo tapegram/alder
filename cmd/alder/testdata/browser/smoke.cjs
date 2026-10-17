@@ -177,15 +177,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     check('popover (Alder page): popovertarget opens it, Escape closes it', pop && popShut, { pop, popShut });
     const shown = () => page.evaluate(() => [...document.querySelectorAll('al-panel')].map((p) => p.checkVisibility()));
     const before = await shown();
-    await page.click('al-tab label:has-text("Comments")');
+    await page.click('al-tabs button[role=tab]:has-text("Comments")');
     await sleep(100);
     const after = await shown();
     check('tabs (Alder page): the first panel shows, choosing a tab shows its panel only', before[0] && !before[1] && !after[0] && after[1], { before, after });
     const aria = await page.evaluate(() => {
-      const list = document.querySelector('al-tabs'), tabs = [...list.querySelectorAll('[role=tab]')], panels = [...list.querySelectorAll('[role=tabpanel]')];
-      return { list: list.getAttribute('role'), sel: tabs.map((t) => t.getAttribute('aria-selected')), idx: tabs.map((t) => t.tabIndex), linked: tabs.every((t, i) => panels[i] && t.getAttribute('aria-controls') === panels[i].id && panels[i].getAttribute('aria-labelledby') === t.id && t.id) };
+      const root = document.querySelector('al-tabs'), list = root.querySelector(':scope > [role=tablist]'), tabs = [...list.querySelectorAll(':scope > button[role=tab]')], panels = [...root.querySelectorAll('[role=tabpanel]')];
+      return { list: list.getAttribute('role'), outside: root.querySelectorAll('input[role], label:not([hidden])').length, panelsInList: list.querySelectorAll('[role=tabpanel]').length, sel: tabs.map((t) => t.getAttribute('aria-selected')), idx: tabs.map((t) => t.tabIndex), linked: tabs.every((t, i) => panels[i] && t.getAttribute('aria-controls') === panels[i].id && panels[i].getAttribute('aria-labelledby') === t.id && t.id) };
     });
-    check('tabs (Alder page): tablist, tab with aria-selected following the choice, tabpanel linked by id', aria.list === 'tablist' && aria.sel.join() === 'false,true' && aria.idx.join() === '-1,0' && aria.linked, aria);
+    check('tabs (Alder page): tablist, tab with aria-selected following the choice, tabpanel linked by id', aria.list === 'tablist' && aria.outside === 0 && aria.panelsInList === 0 && aria.sel.join() === 'false,true' && aria.idx.join() === '-1,0' && aria.linked, aria);
     await page.focus('#save-help');
     await sleep(150);
     const tip = await page.evaluate(() => {

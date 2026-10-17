@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "version": "v0.3.0",
+  "version": "v0.3.1",
   "modules": [
     {
       "kind": "javascript-module",
@@ -647,7 +647,7 @@
           "name": "AlTabs",
           "tagName": "al-tabs",
           "customElement": true,
-          "description": "Tabs backed by a radio group: selection and arrow keys work with no JavaScript. Children are `<al-tab>`s; each holds a `<label>` wrapping a radio input (same `name`, one `checked`) and its `<al-panel>`. `al-tabs.js` adds the tabs ARIA pattern (`role=tablist`, `role=tab` with `aria-selected`/`aria-controls` and a roving `tabindex` on each radio, `role=tabpanel` with `id`/`aria-labelledby` on each panel), Home/End, `selected`, and the `al-select` event.",
+          "description": "Tabs backed by a radio group: selection and arrow keys work with no JavaScript. Children are `<al-tab>`s; each holds a `<label>` wrapping a radio input (same `name`, one `checked`) and its `<al-panel>`. `al-tabs.js` builds the tabs ARIA pattern: a `<div role=\"tablist\">` of `<button role=\"tab\">` (with `aria-selected`, `aria-controls` and a roving `tabindex`) made from the labels' text and placed before the panels, the radio labels hidden, each panel given `role=\"tabpanel\"`, an `id` and `aria-labelledby`; it also adds arrow keys, Home/End, `selected`, and the `al-select` event.",
           "attributes": [],
           "slots": [
             {
