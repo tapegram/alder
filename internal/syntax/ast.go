@@ -137,6 +137,35 @@ type SessionDecl struct {
 	Node
 	Fields []*Field
 }
+
+// DeployDecl is `deploy { name: value, … }` in App (chapter 16): data the `alder deploy`
+// command reads. A field is an environment (its value a target: `Ssh "host" { … }`, `Fly
+// "region" { … }`, `Script "path"`) or one of floor, checks, requires, backup, keep, proxy.
+type DeployDecl struct {
+	Node
+	Fields []*DeployField
+}
+
+// DeployField is `name: value` of a deploy declaration or of a target's record.
+type DeployField struct {
+	Span     diag.Span
+	Name     string
+	NameSpan diag.Span
+	Value    *DeployValue
+}
+
+// DeployValue is a value of a deploy declaration: a string, a number, a list, or a constructor
+// with an optional string argument and an optional record (`Ssh "h" { domain: "d" }`).
+type DeployValue struct {
+	Span diag.Span
+	Kind string // "string", "int", "float", "list", "ctor"
+	Str  string // a string's text; a number's source text
+	List []*DeployValue
+	Ctor string
+	Arg  *DeployValue   // a ctor's string argument, or nil
+	Rec  []*DeployField // a ctor's record, or nil
+}
+
 type LoginDecl struct {
 	Node
 	Page string

@@ -1,0 +1,20 @@
+module App
+
+error : Error -> Html Never
+error err = <h1>Something went wrong</h1>
+
+notFound : Html Never
+notFound = <h1>Not found</h1>
+
+deploy {
+  production: Ssh "deploy@box.example.com" { domain: "blog.example.com", path: "/srv/blog", user: "deploy", port: 2222 },
+  staging:    Fly "ord" { app: "blog-staging" },
+  preview:    Ssh "deploy@box.example.com" { domain: "*.preview.example.com", path: "/srv/blog-preview" },
+  local:      Script "./scripts/deploy-local.sh",
+  floor:      0.95,
+  checks:     ["./scripts/lint-content", "go vet ./..."],
+  requires:   ["SMTP_URL", "STRIPE_KEY"],
+  backup:     S3 "s3://blog-backups/production",
+  keep:       5,
+  proxy:      None,
+}

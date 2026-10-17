@@ -32,7 +32,36 @@ type Program struct {
 	Fakes     []*Fake  // the `fake` declarations, in module order; test builds only use them
 	Brands    []*Brand // the app's brands, in module order then declaration order
 	Login     string   // the path of the page App's `login` names; "" when App has none
+	Deploy    *Deploy  // App's `deploy` declaration (chapter 16); nil when App has none. Data only: nothing in the generated program reads it
 }
+
+// Deploy is App's `deploy { … }`: where the app ships and what the gate demands (chapter 16).
+// Envs are the fields whose value is a target, by name. Floor is the minimum mutation score
+// (0..1), meaningful only when FloorSet (the default is the score of the last successful deploy).
+// Checks are commands run from the app root; Requires the environment-variable names the target
+// must provide; Backup the S3 location of the database's backup (nil: none); Keep how many builds
+// to keep (0: the default); Proxy "Caddy" (the default) or "None".
+type Deploy struct {
+	Envs     map[string]Target
+	Floor    float64
+	FloorSet bool
+	Checks   []string
+	Requires []string
+	Backup   *Backup
+	Keep     int
+	Proxy    string
+}
+
+// Target is one environment's destination. Kind is "ssh" (Host, Domain, Path, User, Port),
+// "fly" (Region, App) or "script" (ScriptPath). Port is the decimal text of the SSH port, ""
+// for the default (22); User "" takes the user in Host (`user@host`) or ssh's own default.
+type Target struct {
+	Kind                                                    string
+	Host, Domain, Path, User, Port, Region, App, ScriptPath string
+}
+
+// Backup is `backup: S3 "s3://…"`: Kind is "s3", URL the location.
+type Backup struct{ Kind, URL string }
 
 // Brand is a brand type (`type Slug = brand Text where …`). Types in the IR are brand-erased;
 // a brand survives where the runtime must check it: Brands lists the app's, and a record field

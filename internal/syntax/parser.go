@@ -362,6 +362,14 @@ func (p *Parser) parseDecl() Decl {
 		pop()
 		d.Span = p.spanFrom(start)
 		return d
+	case p.at(LIdent) && p.tok.Text == "deploy" && p.peekIs(LBrace): // contextual: `deploy` stays a name elsewhere
+		p.advance()
+		p.advance()
+		pop := p.in("the deploy declaration")
+		d := &DeployDecl{Fields: p.parseDeployFields()}
+		pop()
+		d.Span = p.spanFrom(start)
+		return d
 	case p.atKeyword("login") && !(p.sigMode && p.peekIsColon()): // stdlib Test's `login : …` is a value
 		p.advance()
 		p.expect(Equal, "`=`")
@@ -836,4 +844,121 @@ func (p *Parser) parseRecordType() *RecordType {
 	rt := &RecordType{Fields: p.parseFieldList(RBrace, false)}
 	rt.Span = p.spanFrom(start)
 	return rt
+}
+
+// parseDeployFields parses `name: value` fields up to and including the closing `}` (after the
+// opening one): separated by commas or newlines, a trailing comma allowed. A field name may be
+// a keyword (`requires`).
+func (p *Parser) parseDeployFields() []*DeployField {
+	var fields []*DeployField
+	for {
+		p.skipNL()
+		if p.at(RBrace) {
+			p.advance()
+			return fields
+		}
+		if p.at(EOF) {
+			p.errorAt(p.tok, "unterminated deploy declaration")
+			return fields
+		}
+		if !p.at(LIdent) && !p.at(Keyword) {
+			p.errorAt(p.tok, "expected a field name, got "+describe(p.tok))
+			p.skipToDecl()
+			return fields
+		}
+		nt := p.advance()
+		f := &DeployField{Name: nt.Text, NameSpan: p.spanTok(nt)}
+		p.expect(Colon, "`:`")
+		p.skipNL()
+		f.Value = p.parseDeployValue()
+		f.Span = p.spanFrom(nt)
+		fields = append(fields, f)
+		if f.Value == nil {
+			p.skipToDecl()
+			return fields
+		}
+		p.skipNL()
+		if p.at(Comma) {
+			p.advance()
+			continue
+		}
+		if !p.at(RBrace) {
+			p.errorAt(p.tok, "expected `,` or closing brace")
+			p.skipToDecl()
+			return fields
+		}
+	}
+}
+
+// parseDeployValue parses a string, a number, `[value, …]`, or `Ctor ["text"] [{ fields }]`.
+func (p *Parser) parseDeployValue() *DeployValue {
+	start := p.tok
+	switch {
+	case p.at(String):
+		return &DeployValue{Kind: "string", Str: p.parseStringText(), Span: p.spanFrom(start)}
+	case p.at(Int), p.at(Float):
+		kind := "int"
+		if p.at(Float) {
+			kind = "float"
+		}
+		t := p.advance()
+		return &DeployValue{Kind: kind, Str: t.Text, Span: p.spanFrom(start)}
+	case p.at(Minus):
+		p.advance()
+		if !p.at(Int) && !p.at(Float) {
+			p.errorAt(p.tok, "expected a number after `-`, got "+describe(p.tok))
+			return nil
+		}
+		kind := "int"
+		if p.at(Float) {
+			kind = "float"
+		}
+		t := p.advance()
+		return &DeployValue{Kind: kind, Str: "-" + t.Text, Span: p.spanFrom(start)}
+	case p.at(LBracket):
+		p.advance()
+		v := &DeployValue{Kind: "list"}
+		for {
+			p.skipNL()
+			if p.at(RBracket) {
+				p.advance()
+				break
+			}
+			if p.at(EOF) {
+				p.errorAt(p.tok, "unterminated list")
+				return nil
+			}
+			e := p.parseDeployValue()
+			if e == nil {
+				return nil
+			}
+			v.List = append(v.List, e)
+			p.skipNL()
+			if p.at(Comma) {
+				p.advance()
+			} else if !p.at(RBracket) {
+				p.errorAt(p.tok, "expected `,` or `]`")
+				return nil
+			}
+		}
+		v.Span = p.spanFrom(start)
+		return v
+	case p.at(UIdent):
+		v := &DeployValue{Kind: "ctor", Ctor: p.advance().Text}
+		if p.at(String) {
+			a := p.tok
+			v.Arg = &DeployValue{Kind: "string", Str: p.parseStringText(), Span: p.spanFrom(a)}
+		}
+		if p.at(LBrace) {
+			p.advance()
+			v.Rec = p.parseDeployFields()
+			if v.Rec == nil {
+				v.Rec = []*DeployField{}
+			}
+		}
+		v.Span = p.spanFrom(start)
+		return v
+	}
+	p.errorAt(p.tok, "expected a string, a number, a list or a constructor, got "+describe(p.tok))
+	return nil
 }

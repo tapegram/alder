@@ -2,6 +2,7 @@ package ir
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -32,7 +33,9 @@ import (
 // (order o)… [(limit n)] [(offset n)] select|all|first|count), (db-run all|first|count sel),
 // (db-insert M.T row), (db-update M.T id fn), (db-delete M.T id), (col M.T field),
 // (cond kind [col] [value] subs…) with (cond and|or (value e)) for a list that is no literal,
-// (ord col asc|desc).
+// (ord col asc|desc). After the session, App's deploy declaration, when it has one:
+// (deploy (env NAME ssh|fly|script (host "h")…)… (floor f)? (checks "c"…)? (requires "N"…)?
+// (backup s3 "url")? (keep n)? (proxy Caddy|None)).
 func Dump(p *Program) string {
 	var sb strings.Builder
 	form := func(x *sx) {
@@ -102,6 +105,9 @@ func Dump(p *Program) string {
 	if p.Session != nil {
 		form(atoms("session", p.Session.Module+"."+p.Session.Name))
 	}
+	if p.Deploy != nil {
+		form(deployForm(p.Deploy))
+	}
 	for _, c := range p.Caps {
 		d := &dumper{home: c.Module}
 		x := list(2, atom("capability"), atom(c.Module+"."+c.Name))
@@ -123,6 +129,51 @@ func Dump(p *Program) string {
 		form(list(2, atom("fake"), atom(f.Capability.Module+"."+f.Capability.Name), tables, entries))
 	}
 	return sb.String()
+}
+
+// deployForm is (deploy (env NAME KIND (k "v")…)… (floor 0.95)? (checks "c"…)? (requires "N"…)?
+// (backup s3 "url")? (keep n)? (proxy P)?): environments by name, then the other fields.
+func deployForm(dp *Deploy) *sx {
+	x := list(1, atom("deploy"))
+	names := make([]string, 0, len(dp.Envs))
+	for n := range dp.Envs {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		t := dp.Envs[n]
+		e := list(3, atom("env"), atom(n), atom(t.Kind))
+		for _, kv := range [][2]string{{"host", t.Host}, {"domain", t.Domain}, {"path", t.Path}, {"user", t.User}, {"port", t.Port},
+			{"region", t.Region}, {"app", t.App}, {"script", t.ScriptPath}} {
+			if kv[1] != "" {
+				e.items = append(e.items, list(1, atom(kv[0]), atom(strconv.Quote(kv[1]))))
+			}
+		}
+		x.items = append(x.items, e)
+	}
+	if dp.FloorSet {
+		x.items = append(x.items, atoms("floor", strconv.FormatFloat(dp.Floor, 'g', -1, 64)))
+	}
+	strs := func(head string, ss []string) {
+		if len(ss) == 0 {
+			return
+		}
+		l := list(1, atom(head))
+		for _, s := range ss {
+			l.items = append(l.items, atom(strconv.Quote(s)))
+		}
+		x.items = append(x.items, l)
+	}
+	strs("checks", dp.Checks)
+	strs("requires", dp.Requires)
+	if dp.Backup != nil {
+		x.items = append(x.items, list(2, atom("backup"), atom(dp.Backup.Kind), atom(strconv.Quote(dp.Backup.URL))))
+	}
+	if dp.Keep != 0 {
+		x.items = append(x.items, atoms("keep", strconv.Itoa(dp.Keep)))
+	}
+	x.items = append(x.items, atoms("proxy", dp.Proxy))
+	return x
 }
 
 // table is a table's form: (table M.T (id f) (created f)? (updated f)? (unique f…)? (owner f)?

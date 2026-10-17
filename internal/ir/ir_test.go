@@ -754,3 +754,32 @@ func TestIR_Rules(t *testing.T) {
 		t.Errorf("scoped nodes: %v", seen)
 	}
 }
+
+// TestIR_Deploy (M14): the corpus app deploy-ok lowers its `deploy` declaration to Program.Deploy:
+// one Target per environment, the gate's fields beside them. Its dump is in testdata/golden/ir_deploy.ir.
+func TestIR_Deploy(t *testing.T) {
+	p := lowerDir(t, "../../testdata/corpus/deploy-ok")
+	compareGolden(t, "../../testdata/golden/ir_deploy.ir", Dump(p))
+	d := p.Deploy
+	if d == nil {
+		t.Fatal("no Deploy")
+	}
+	want := map[string]Target{
+		"production": {Kind: "ssh", Host: "deploy@box.example.com", Domain: "blog.example.com", Path: "/srv/blog", User: "deploy", Port: "2222"},
+		"staging":    {Kind: "fly", Region: "ord", App: "blog-staging"},
+		"preview":    {Kind: "ssh", Host: "deploy@box.example.com", Domain: "*.preview.example.com", Path: "/srv/blog-preview"},
+		"local":      {Kind: "script", ScriptPath: "./scripts/deploy-local.sh"},
+	}
+	if len(d.Envs) != len(want) {
+		t.Errorf("envs: %v", d.Envs)
+	}
+	for n, w := range want {
+		if d.Envs[n] != w {
+			t.Errorf("env %s: %+v, want %+v", n, d.Envs[n], w)
+		}
+	}
+	if !d.FloorSet || d.Floor != 0.95 || d.Keep != 5 || d.Proxy != "None" || d.Backup == nil || d.Backup.URL != "s3://blog-backups/production" ||
+		strings.Join(d.Requires, ",") != "SMTP_URL,STRIPE_KEY" || len(d.Checks) != 2 {
+		t.Errorf("deploy: %+v", d)
+	}
+}

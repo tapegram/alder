@@ -573,6 +573,10 @@ func (l *lowerer) declareTypes() {
 				if name == "App" {
 					l.out.Session = addRecord("Session", l.res.Session, d.Fields)
 				}
+			case *syntax.DeployDecl:
+				if name == "App" && l.out.Deploy == nil {
+					l.out.Deploy = lowerDeploy(d)
+				}
 			}
 		}
 		if name == "App" {

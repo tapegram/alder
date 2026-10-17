@@ -124,6 +124,13 @@ func dump(sb *strings.Builder, n any) {
 		sb.WriteString("(session")
 		dumpList(sb, x.Fields)
 		sb.WriteByte(')')
+	case *DeployDecl:
+		sb.WriteString("(deploy")
+		for _, f := range x.Fields {
+			sb.WriteByte(' ')
+			dumpDeployField(sb, f)
+		}
+		sb.WriteByte(')')
 	case *LoginDecl:
 		fmt.Fprintf(sb, "(login %s)", x.Page)
 	case *TestDecl:
@@ -359,4 +366,44 @@ func qual(m, n string) string {
 		return n
 	}
 	return m + "." + n
+}
+
+func dumpDeployField(sb *strings.Builder, f *DeployField) {
+	fmt.Fprintf(sb, "(%s ", f.Name)
+	dumpDeployValue(sb, f.Value)
+	sb.WriteByte(')')
+}
+
+func dumpDeployValue(sb *strings.Builder, v *DeployValue) {
+	switch v.Kind {
+	case "string":
+		fmt.Fprintf(sb, "%q", v.Str)
+	case "list":
+		sb.WriteByte('[')
+		for i, e := range v.List {
+			if i > 0 {
+				sb.WriteByte(' ')
+			}
+			dumpDeployValue(sb, e)
+		}
+		sb.WriteByte(']')
+	case "ctor":
+		sb.WriteString(v.Ctor)
+		if v.Arg != nil {
+			sb.WriteByte(' ')
+			dumpDeployValue(sb, v.Arg)
+		}
+		if v.Rec != nil {
+			sb.WriteString(" {")
+			for i, f := range v.Rec {
+				if i > 0 {
+					sb.WriteByte(' ')
+				}
+				dumpDeployField(sb, f)
+			}
+			sb.WriteByte('}')
+		}
+	default:
+		sb.WriteString(v.Str)
+	}
 }
