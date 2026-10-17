@@ -329,17 +329,16 @@ a page module whose page `requires user`. Chapter 6, "Rules", explains
 them in full, and chapter 13 shows their SQL: each puts `"owner" = ?` in
 its statement.
 
-### Partitions and silos
+### Partitions
 
-A table may be partitioned by any session key, not only the user
-(`@partition org`; chapter 6, "Partitions"), and `App` may store the
-tables of one key in a database per key value: `silo org { Project,
-Issue }`, each listed table `@partition org`. A table outside every silo
-is in the shared store, and may not `@ref` a siloed one (E0033). One
-`Task` writes to one store, the shared one or one silo: an `update` arm
-that writes both is E0031, wherever the write hides (a helper, a
-`Task.all`); reads may mix. `App` may also declare `maintenance : Html
-Never`, the page a silo whose database cannot be served answers.
+A table may be partitioned by any session key, not only the user: `org:
+Org.OrgId @ref Org @partition org` keeps a table's rows to the session's
+org as `@owner` keeps them to its user (chapter 6, "Partitions"), with the
+generic scoped operations `Db.scoped`, `Db.getScoped`, `Db.updateScoped`,
+`Db.deleteScoped` and `Db.insertScoped` (chapter 9). By itself a
+partition is a predicate: the rows of every org are in one table of one
+database, and each scoped statement carries `"org" = ?`. The next
+section gives an org a database of its own.
 
 ## How tables are stored
 
@@ -801,6 +800,159 @@ migration of every table, which this `alder migrate` cannot write yet
 (`alder migrate --format` is planned); build with the compiler that wrote
 migrations/ until then`` (E0019).
 
+
+## Silos
+
+A partition keeps one org's rows from another's pages; a **silo** keeps
+them in another file. `App` lists the tables that live in a database per
+value of a key (`examples/workspace/app/App.alder`):
+
+```alder fragment
+silo org { Project, Todo }
+```
+
+Each org then has a database of its own holding its projects and its
+to-dos, and nothing else. Everything else (the users, the orgs, the
+memberships, here also the `Activity` log, which is partitioned by `org`
+but in no silo) is in the **shared** database, the one an app without
+silos has. Why an app wants that: one org's rows cannot appear in
+another's answer by any query, a mistake included, since they are not in
+the file the request reads; an org can be backed up, restored, exported
+or deleted as one file; and one big org does not slow the others' small
+ones.
+
+### The rules
+
+- Every table in `silo org` is partitioned by `org` (E0033: "`Note` is
+  in `silo org` but is not partitioned by `org`"). A table is in at most
+  one silo ("`Board` is in `silo org` and `silo team`: a table lives in
+  one store"), and a key has one `silo` declaration.
+- A siloed table may `@ref` a shared one (a to-do's assignee, a
+  `User`), and another table of its silo (`Todo.project`). A shared table
+  may not `@ref` a siloed one, since its row would point into one of many
+  files: "`AuditLog.project` refers to `Project`, which lives in `silo
+  org`: a shared table cannot point into a silo"; nor may one silo's
+  table point into another's.
+- Reading or writing a siloed table needs the key narrowed: the scoped
+  operations, and the unscoped ones too (`Db.from Project` reads one
+  org's file, so it needs to know which): "`Db.delete Project` (`Project`
+  lives in `silo org`) needs a page that `requires org`: `App` is not a
+  page". There is no query over every org's rows; the admin goes through
+  the orgs one at a time (chapter 15).
+- `Db.update` cannot move a row to another org: "Db.update Project: a row
+  cannot move to another org (delete it and insert it there)". A row is
+  inserted into the org its `org` column names, which in a request must
+  be the request's ("Db.insert Project: the row's org is not this
+  request's").
+
+### One store per `Task`
+
+A `Task` runs in one transaction, and a transaction is one database's.
+So **a `Task` writes to one store**: the shared database, or one silo.
+The checker works out what each arm of every `update` writes (the tables
+of its `Db.insert`, `Db.update` and `Db.delete` calls and their scoped
+forms, followed into every helper it uses, in any module, and into
+`Task.all`), and refuses an arm whose writes fall in two stores (E0031):
+
+```text
+`Create` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message.
+```
+
+Reads may mix: an arm, or a `load`, may read the shared database and a
+silo, as the workspace's projects page reads its org's name (shared)
+beside its projects (the org's file). A `Session.put` writes the cookie,
+not a store, and a capability is outside both, so neither counts. The
+workspace keeps its `Activity` log in the shared database for this
+reason: a line of activity is written with the membership it is about
+(shared), never with a project. A write that must follow another in a
+different store is sent from its own message; a transaction across
+databases (an outbox) is a later milestone's.
+
+### Where the files live
+
+The shared database is the file `ALDER_DB` names, as always. Each silo
+is a file next to it:
+
+```text
+<dir of ALDER_DB>/app.db                     the shared database
+<dir of ALDER_DB>/silos/org/<name>.db        one org's database
+```
+
+`<name>` is the org's id written in base32hex, lowercase, without
+padding (RFC 4648): the id `A` is `84.db`, the id `a` is `c4.db`. The
+id's own text is never the name, since ids are case-sensitive and a file
+system may not be. Only an id can name a silo (letters, digits, `-` and
+`_`, at most 64 characters, the alphabet of the ids Alder makes): any
+other value of `org` is not found, and makes no file. Under `alder run`
+the shared database is `build/<app>/dev.db`, so the silos are under
+`build/<app>/silos/`; at a server they are under `<path>/db/silos/`
+(chapter 16); with `ALDER_DB=:memory:` every silo is in memory too.
+
+A silo's file is made the first time a request needs it, and only for an
+org whose row exists in the shared database: a request for an org that
+was never made is not found and leaves no file. The file holds the
+silo's tables and nothing else. A reference to another table of the
+silo is a real foreign key (a project's `@cascade` deletes its to-dos in
+that file); a reference to a shared table (`org`, an assignee) is an
+indexed column without one, since the row it names is in another file.
+So **deleting an org does not delete its silo**: the file stays,
+unreachable, an **orphan**; `alder silos prune <env>` lists and removes
+orphans (chapter 11). The shared database has the siloed tables too,
+created by the same migrations, and they stay empty.
+
+### The open-time check
+
+Each silo's file records the schema it is at: a table
+`_alder_schema` with one row, the fingerprint of the tables (as
+`_alder_meta` does for the shared database) and the name of the last
+migration applied. A deploy migrates the shared database at start-up
+("When the app starts", above), but not the thousands of silos: each is
+checked when the running app first opens it, and the answer is cached
+for the process. Three outcomes, besides a new file, which is created at
+the app's schema:
+
+1. **Equal**: the row is the app's. The silo is served.
+2. **Behind**: the row names an earlier migration of this app. The
+   migrations after it are applied to the file then and there (only
+   their statements on the silo's tables), checked as at start-up, and
+   the silo is served, unless one of them **drops data** (its file has a
+   `DROPS DATA` line). That silo is then not migrated on its own: it
+   answers the maintenance page until `alder migrate silos <env>
+   --allow-data-loss` applies it on purpose (chapter 16).
+3. **Ahead**: the row names a migration after this app's last, written
+   by a newer build (an older build was rolled back to). It is never
+   touched: the silo answers the maintenance page, and `alder status`
+   names the restore (`alder restore <env> --silo org:<id> --to <time>`).
+
+A silo that is not served answers **only its org's requests** with the
+app's `maintenance` page and status 503; every other org is served as
+usual. `App` may declare the page (`maintenance : Html Never`, like
+`notFound`); without one, a plain page says "Down for maintenance": this
+part of the app is being updated. The app checks such a silo again a minute later, so a silo
+fixed by `alder migrate silos` is served without a restart. `alder
+status <env>` lists each key's silos by state (chapter 11).
+
+In tests, each org a test touches has its own database in memory, made
+on first use, so a test with two orgs has two (chapter 10).
+
+### Moving a table into a silo
+
+A silo is declared before its tables hold data. A table that the
+migrations already create in the shared database has its rows there;
+listing it in a `silo` later would not move them (each org's file starts
+without the table's rows, and the shared rows are never read again), and
+a silo made before the change would lack the table. So `alder migrate`
+refuses a table that moves into a silo, out of one, or between two:
+
+```text
+alder migrate: table Activity moves into `silo org`, but the migrations create it in the shared database, and a migration does not move its rows into a database per org (book 8, "Silos"): in an app that holds no data yet, `alder new silo org Activity` declares it and says what it leaves behind; otherwise keep Activity shared
+```
+
+`migrations/schema.json` records each table's silo for that comparison
+(`"silo": "org"`). `alder new silo` (chapter 15) is the deliberate way:
+it writes the declaration, marks the tables in `schema.json`, and says
+what stays behind; it is for an app that has not been deployed yet,
+which is when a silo should be declared.
 
 ## Beyond CRUD
 

@@ -63,6 +63,25 @@ role Admin`. When the tables change, `alder regen admin` rewrites only the admin
 regions and keeps what you changed around them. Both examples carry one, committed exactly as
 the command wrote it, and its tests kill all of its mutants. The book's chapter 15 tours it.
 
+## Orgs, and a database per org
+
+The rule "this row is the user's" is a declaration (`@owner`), and so is "this row is the
+org's, and the user works in an org they belong to":
+
+```alder
+session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership }
+choose org = Orgs.Index
+silo org { Project, Todo }
+
+table Project { id: ProjectId @id, name: Text.NonEmpty, org: Org.OrgId @ref Org @partition org }
+```
+
+A page that `requires user, org` reads with `Db.scoped Project`, which never sees another org's
+rows; `via Membership` makes the runtime refuse an org the user is not a member of; and `silo
+org` gives each org its own database, checked and migrated when the running app first opens
+it. A `Task` writes to one database, which the compiler checks. `examples/workspace` is the
+whole app, with its admin; the book's chapters 6 and 8 explain it.
+
 ## Shipping it
 
 Where an app ships is a declaration in `App`, checked like the rest of the code (a secret
@@ -95,8 +114,8 @@ while the app runs. The book's chapter 16 has the whole story.
 
 - [The Alder book](book/README.md): the language, its tools, how the compiler works and why
   it is designed this way. Chapter 2 walks through the guestbook file by file.
-- [`examples/`](examples/): two complete apps, a to-do list and a blog, each with a generated
-  admin at `/admin`.
+- [`examples/`](examples/): three complete apps, a to-do list, a blog and a workspace of orgs
+  with a database per org, each with a generated admin at `/admin`.
 - [`experiments/`](experiments/): the prompts, outputs and scores of running models against
   the language.
 

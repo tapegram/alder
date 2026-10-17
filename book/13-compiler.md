@@ -1693,17 +1693,22 @@ one of its constructors.
 
 **The IR.** Five nodes of their own, not flags on `DbGet` or `DbUpdate`,
 so that every later stage has to say what it does with them:
-`DbMine{Table}`, a `Select` value; `DbGetMine{Table, ID}`;
-`DbUpdateMine{Table, ID, Fn}`; `DbDeleteMine{Table, ID}`;
-`DbInsertMine{Table, Row}`. A pipeline that starts from `Db.mine` is an
-ordinary `DbSelect` whose `Base` is the `DbMine`. The to-do list's
-`load` (`alder dump --ir examples/todos`, as in `testdata/golden/ir_todos.ir`):
+`DbScoped{Table}`, a `Select` value; `DbGetScoped{Table, ID}`;
+`DbUpdateScoped{Table, ID, Fn}`; `DbDeleteScoped{Table, ID}`;
+`DbInsertScoped{Table, Row}`. Each also carries `Op`, the operation as
+written (`Db.mine`, `Db.scoped`), which traces and reports use, and
+`Key`, the session field it scopes by: `user` for the `mine` family and
+for any table whose `@partition` is `user` (M15 generalised M11's
+`DbMine` nodes into these: "Partitions", below). A pipeline that starts
+from `Db.mine` is an ordinary `DbSelect` whose `Base` is the
+`DbScoped`. The to-do list's `load` (`alder dump --ir examples/todos`,
+as in `testdata/golden/ir_todos.ir`):
 
 ```
 (value Todos.Index.load : Params -> Session -> Query Model (params session)
   (bind query todos : List Todo
     (db-select Todo.Todo
-      (base (db-mine Todo.Todo))
+      (base (db-scoped Db.mine user Todo.Todo))
       (order (ord (col Todo.Todo created) desc))
       all)
 ```
@@ -1712,7 +1717,7 @@ and its `Toggle` arm:
 
 ```
         (bind task _
-          (db-update-mine Todo.Todo
+          (db-update-scoped Db.updateMine user Todo.Todo
             (field id (var p))
             (lambda (t : Todo)
               (update (var t)
@@ -1720,8 +1725,8 @@ and its `Toggle` arm:
           (pure task (ctor Prelude.Nav.Rerender)))))
 ```
 
-The table records its owner, `(owner owner)`, and a page its roles,
-`(roles Author)`. Nothing else in the IR changes.
+The table records its partition, `(partition user owner)`, and a page
+its roles, `(roles Author)`. Nothing else in the IR changes.
 
 **The Go.** The table's descriptor (`Todo_alder.go`) gets two fields:
 
@@ -1893,6 +1898,118 @@ before any query runs: the check costs no database read. Every handler
 of the page, its `GET` and each message's `POST`, goes through
 `page__Write` first, so a message is checked the same way. The page's
 `Session` carries `Role` beside the narrowed `User`.
+
+### Partitions and silos
+
+M15 generalised the rules of the last part (chapter 6, "Partitions";
+chapter 8, "Silos"). This part follows `examples/workspace` through the
+same stages: a key in the session, a table partitioned by it, a silo,
+and the runtime that keeps a database per org.
+
+**The checker.** `internal/check/partitions.go` reads `@partition k`
+(and `@owner` as `@partition user`) into the table's `PartKey` and
+`PartCol`, once the session is known (E0032); `via`, `choose` and `silo`
+declarations into `Result.Via`, `Choose` and `Silos` (E0032, E0033). A
+scoped operation is checked as in M11, with the key in place of `user`:
+legal where the module's page `requires` the table's key (or is the
+admin form `silo k`), in a test, and, through a helper, wherever the
+helper's own use is legal (E0026). An unscoped operation on a siloed
+table is held to the same rule. After every body is checked, the
+**write-set analysis** (`internal/check/writeset.go`) collects, for each
+top-level value, the tables its `Db.insert`, `Db.update`, `Db.delete`
+and their scoped forms write, closes that over every value it refers to
+(a fixed point, so a helper of a helper counts), splits each `update`
+into its `match` arms, and gives each arm the store its writes fall in:
+the shared one, or `silo org`. An arm with two stores is E0031. It
+over-approximates (a helper counts if it is referred to, called or not)
+and never under-approximates. The answer is `Result.Arms`, which the IR
+keeps as `Page.Arms` (`(arms (Create silo org) (Remove silo org))` in
+`alder dump --ir`).
+
+**The Go.** The table's descriptor names its partition and its silo
+(`build/workspace/Project_alder.go`):
+
+```go
+	Owner: "org",
+	User: func(s any) (string, bool) {
+		a, ok := s.(App__Session)
+		return a.Org.Val, ok && a.Org.Ok
+	},
+	Key:  "org",
+	Silo: "org",
+```
+
+`Owner` and `User` are M11's fields, now the partition column and the
+key's value in a session; the scoped helpers (`db.Scoped`,
+`InsertScopedRow`, `DeleteScopedRow`, …) are the M11 helpers under
+general names, and emit the same SQL with `"org" = ?`. A page that
+`requires user, org` gets two checks in its route function: no `org`
+is a redirect to `choose org`'s path, and then `db.Narrow(rq.Env, "org",
+app.Org.Val)` records the request's org for the runtime. A message's
+handler binds its `Task` to the arm's store before it runs it:
+
+```go
+func store__Projects__Index(msg Projects__Index__Msg) string {
+	switch msg.Tag {
+	case is__Projects__Index__Msg__Create:
+		return "org"
+	case is__Projects__Index__Msg__Remove:
+		return "org"
+	}
+	return ""
+}
+```
+
+and `db.Enter(rq.Env, store__Projects__Index(msg))` opens that org's
+database and makes it the store `eff.Run` begins the transaction on.
+`via` is one function, the router's session check (`session__via` in
+`app__alder.go`), called whenever a `Session.put` changes the session:
+a user set to `Nothing` clears the `org`; an `org` that changed to `Just
+v` needs a `Membership` row for the user and `v`, read with `db.Member`
+inside the running `Task`'s transaction, or the step fails with
+"Session.put org: no Membership for this user and org".
+
+**A store per silo.** `rt/db/stores.go`'s `Stores` holds the shared
+database and the silos opened so far, by key and value. Every database
+step of `rt/db` asks `route` which store it runs on: a table with no
+`Silo` runs on the shared one; a siloed table on the silo of the row's
+own `org` (an insert), else of the request's narrowed key (`Env.Keys`),
+else of the session. When that is the store the `Task` was bound to,
+the step runs in its transaction. A read of the other store runs on a
+read-only connection outside the transaction (SQLite's `query_only`,
+and a Go wrapper that refuses a write), which is how a `load` reads an
+org's name and its projects in one go. A write to another store cannot
+happen in a program that checked; if gen ever emitted one, `route`
+refuses it as an internal error rather than write outside the `Task`.
+
+**Opening a silo.** The first request for an org opens its file
+(`openSilo`): the id must be an id, the org's row must exist in the
+shared database (one read), and then the open-time check of chapter 8
+runs in one `BEGIN IMMEDIATE` on the file: create it at the build's
+schema; serve it when its `_alder_schema` row is the build's; apply the
+pending migrations (each statement whose target is a silo table, with
+references out of the silo removed) when it is behind, unless one drops
+data; refuse it when it is ahead. The outcome is cached per process. A
+silo not served is a `*MaintenanceError`, which the route answers with
+the maintenance page (503), and is checked again after a minute; one
+unused for ten minutes is closed. Only requests for the same org wait
+while it opens: the registry's lock guards the map, not the check.
+
+**The drain.** A deploy starts the new build while the old one drains
+its requests (chapter 16). The new build may migrate a silo the old one
+has open. So once the old process is told to stop, it opens no new silo
+(a request for one answers the maintenance page) and, before each
+write to a silo it has open, reads that file's `_alder_schema` row again
+inside the write's transaction: if another build migrated it, the write
+is refused and the silo answers the maintenance page for the rest of
+the drain. A process that is not draining never re-checks, which is why
+a deploy always signals the old process before it starts the new.
+
+**Tests.** `db.NewTestStores` gives each test a `:memory:` database per
+org it touches, made on first use, each with its transaction open for
+the whole test, and the test's savepoints (`Test.run`, each browser
+request) span all of them. A test's bound `Task` gets production's
+write checks, so a test cannot pass where production would fail.
 
 ### The dev server
 
@@ -4181,7 +4298,16 @@ migrations is refused, `db.ErrDropsData`, unless
 migration runs, whatever drove it) and exits; `--backup-to FILE` writes a consistent copy with
 `VACUUM INTO` while another process serves the same file. Both run
 without constructing a single adapter, so a migration can run on a box
-where the mail server is down.
+where the mail server is down. An app with a `silo` (chapter 8) has four
+more, which the silo commands run at the target (chapter 16):
+`--silo-status` prints one JSON line per silo file
+(`{"key":"org","id":"…","state":"ok|migrating|pending-data-loss|ahead|failed|orphaned","detail":"…"}`)
+and changes nothing; `--migrate-silos [--allow-data-loss]` opens and
+checks every silo file now, printing `org/<id>: ok`, `org/<id>: migrated
+0002_x` or the state and why, and exits 1 when any is not served;
+`--verify-silos N` tries the pending migrations on the N largest silos in
+transactions it rolls back (a deploy's preflight); `--prune-silos …`
+removes the orphaned silos it is given, each checked again first.
 
 **The backup shipper.** `rt/backup` is a small Litestream. SQLite in
 WAL mode appends every committed change to `app.db-wal` as **frames**

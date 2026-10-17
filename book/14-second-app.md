@@ -870,3 +870,271 @@ The blog's tables come from `examples/blog/migrations/` (chapter 8,
 "Migrations"): `0001_initial.sql` creates them, and `alder run` and
 `alder test` apply it. After a change to a `table`, run `alder migrate`;
 until then `alder check` reports E0019.
+
+## A third app: orgs, and a database per org
+
+`examples/workspace` is the example of chapter 6's "Partitions" and
+chapter 8's "Silos": users work in **orgs**, each org's projects and
+to-dos are its own, and each org's live in a database of the org's own.
+Its modules, besides the forty of the admin `alder new admin`
+wrote (chapter 15, "The admin of a silo"):
+
+| Module | What it is |
+|---|---|
+| `App` | The session with a key, `org … via Membership`; `choose org`; `silo org { Project, Todo }`; `maintenance` |
+| `User`, `Org`, `Membership` | Shared tables: the users, the orgs, and who is a member of which; `Membership.isMember`, the re-read idiom |
+| `Project`, `Todo` | The siloed tables, partitioned by `org` |
+| `Activity` | The org's log: partitioned by `org`, but shared |
+| `Auth.Login`, `Layout` | As in the blog; the login also puts the user's first org in the session |
+| `Orgs.Index` | `/orgs`: the user's orgs, to open one, and a form for a new one (`choose org`'s page) |
+| `Projects.Index`, `Projects.Show` | `/projects`, `/projects/{id}`: the org's projects and their to-dos |
+| `Members.Index` | `/members`: the org's members, adding and removing them, and its activity |
+
+### The session and the silo: `App`
+
+`App` declares the key, the page that picks it, and the silo, each with
+a comment saying what it does:
+
+```alder part=workspace/App
+module App
+
+import Layout
+import Org
+import User
+
+-- The session (book 06, "Partitions"): the signed-in user, the org they work in, and their role
+-- as their row had it at login. `org` is a key: `via Membership` means a `Session.put` of it to
+-- an org the user has no Membership row for fails, inside the Task's transaction. A page that
+-- `requires user, org` sees it narrowed; one without it is sent to `choose org`'s page.
+session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Member }
+```
+
+`org` is a session field like `role`, a `Maybe` of the `Org` table's
+id. `via Membership` is its rule: a `Session.put` that sets it needs a
+`Membership` row for the user and that org, checked when it runs
+(chapter 6, "Partitions").
+
+```alder part=workspace/App
+login = Auth.Login
+
+-- where a page that `requires org` sends a session without one: the user's orgs, to pick one
+choose org = Orgs.Index
+
+-- Projects and their to-dos live in a database per org (book 08, "Silos"): one org's rows are
+-- not in another's file at all. User, Org, Membership and Activity are shared; Activity is
+-- partitioned by org there, a predicate (`Db.scoped`), not a file of its own.
+silo org { Project, Todo }
+```
+
+`choose org` is where a page that `requires user, org` sends a session
+without one. `silo org` puts the two tables in a database per org; the
+four others are shared.
+
+```alder part=workspace/App
+msg Logout
+msg Leave
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  -- logging out clears the user; a `via` key goes with it (the runtime clears `org`)
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing, role: Member })
+    Task.succeed (Redirect (Auth.Login {}))
+  },
+  -- back to the list of orgs, to pick another
+  Leave p -> {
+    let _ <- Session.put (\s -> { s | org: Nothing })
+    Task.succeed (Redirect (Orgs.Index {}))
+  },
+}
+```
+
+`Logout` sets only the user and the role: a session without a user
+cannot keep an org, and the runtime clears it. `Leave` clears the org
+alone, back to the list.
+
+```alder part=workspace/App
+error : Error -> Html Never
+error err =
+  <Layout.Page title="Error">
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html Never
+notFound =
+  <Layout.Page title="Not found">
+    <h1>Not found</h1>
+  </Layout.Page>
+```
+
+```alder part=workspace/App
+-- What a request answers when its org's database cannot be served (behind by a migration that
+-- drops data, or ahead of this build: book 08, "Silos"): a 503, for that org only.
+maintenance : Html Never
+maintenance =
+  <Layout.Page title="Down for maintenance">
+    <h1>Down for maintenance</h1>
+    <p>This workspace is being upgraded. Please try again in a few minutes.</p>
+  </Layout.Page>
+```
+
+`maintenance` is the page an org's request gets while that org's
+database cannot be served: behind by a migration that drops data, which
+waits for an operator, or written by a newer build (chapter 8, "The
+open-time check"). Every other org is served meanwhile.
+
+```alder part=workspace/App
+-- Both answers end where a browser would be sent anyway (the login page, `choose org`'s page),
+-- so only a test of `update` itself tells a Redirect from a Rerender (book 10).
+test "Logout and Leave say where to go" = {
+  let me : Session = { user: Just (User.UserId "me"), org: Nothing, role: Member }
+  let out <- Test.run (update Logout me)
+  let leave <- Test.run (update Leave me)
+  Task.succeed ({ out: out.value, leave: leave.value } == { out: Ok (Redirect (Auth.Login {})), leave: Ok (Redirect (Orgs.Index {})) })
+}
+```
+
+### A table in the silo: `Project`
+
+```alder part=workspace/Project
+module Project
+
+import Org
+
+type ProjectId = brand Text
+
+-- Partitioned by `org` and in App's `silo org`: a database per org. Pages read it with
+-- `Db.scoped Project` (the session's org), and a row of another org is not there to find.
+table Project {
+  id: ProjectId @id,
+  name: Text.NonEmpty,
+  org: Org.OrgId @ref Org @partition org,
+  created: Time @created,
+}
+```
+
+`@partition org` says which column holds the org; `silo org` in `App`
+puts the table in the org's database. `Todo` is the same, with
+`project: Project.ProjectId @ref Project @cascade`, a reference inside
+one database, so deleting a project deletes its to-dos there. A shared
+table may not refer to either (E0033).
+
+### Choosing an org: `Orgs.Index`
+
+`/orgs` requires the user but not the org: it is where a user without
+one is sent. Its two messages are the two ways an org gets into a
+session:
+
+```alder fragment
+Open p -> {
+  let _ <- Session.put (\s -> { s | org: Just p.org })
+  Task.succeed (Redirect (Projects.Index {}))
+},
+Create p -> {
+  let org <- Db.insert Org { name: p.form.name }
+  let _ <- Db.insert Membership { user: session.user, org: org }
+  let _ <- Db.insert Activity { text: "The org was created.", org: org }
+  let _ <- Session.put (\s -> { s | org: Just org })
+  Task.succeed (Redirect (Projects.Index {}))
+},
+```
+
+`Open` trusts nothing about the org it is given: the `via` check does
+the work, and a test sends the `Open` of an org the user is no member of
+by calling `update` itself (the page offers no such button):
+
+```alder fragment
+test "a non-member's switch is refused" = {
+  …
+  let _ <- Test.login { user: Just s.ann, org: Just s.acme }
+  let r <- Test.run (update (Open { org: s.globex }) { orgs: [] } { user: s.ann, org: Nothing, role: Member })
+  let page <- Test.get (Orgs.Index {})
+  Task.succeed ({ value: r.value, org: page.session.org } == { value: Err "Session.put org: no Membership for this user and org", org: Just s.acme })
+}
+```
+
+This test is the one that kills the mutant `membership dropped`
+(chapter 10). `Create` writes an org, its first membership and a line of
+activity: three shared tables, one store, one `Task` (E0031 would
+refuse a `Task` that also wrote a project). Its `Session.put` passes the
+check because the membership was inserted earlier in the same
+transaction.
+
+### An org's page: `Projects.Index`
+
+`/projects` `requires user, org`, so inside it `session.org` is an
+`Org.OrgId`. Its `load` does three things:
+
+```alder fragment
+load params session = {
+  let member <- Membership.isMember session.user session.org
+  if member then {
+    let org <- Db.get Org session.org
+    let projects <- Db.scoped Project |> Db.orderBy Project.name.asc |> Db.all
+    Query.succeed { org: Maybe.withDefault "" (Maybe.map (\o -> o.name) org), projects: projects }
+  } else Query.notFound
+}
+```
+
+- `Membership.isMember` reads the membership again (the re-read idiom):
+  a member removed since the org was put in their cookie gets a 404 at
+  once, here and on every message of the page.
+- `Db.get Org session.org` reads the shared database: the org's name.
+- `Db.scoped Project` reads the org's own database. Both in one `load`:
+  a read of the other store goes through a read-only connection, so the
+  rule "one store per `Task`" does not limit reads (chapter 8).
+
+Its messages write the org's database only, with `Db.insertScoped`
+(which fills `org` in) and `Db.deleteScoped` (which finds nothing of
+another org). `Projects.Show` reads one project with `Db.getScoped`: a
+project of another org is a 404, the test "another org's project is not
+found".
+
+### The shared log: `Members.Index`
+
+The org's log is partitioned by `org` and shared: every org's lines are
+in one table of the shared database, and `Db.scoped Activity` reads the
+session's org's (`WHERE "org" = ?`). It is written beside the
+membership it is about, in one `Task`:
+
+```alder fragment
+Remove p -> {
+  let rows <- Db.from Membership |> Db.where (Membership.org.eq session.org) |> Db.where (Membership.user.eq p.user) |> Db.all
+  let _ <- Task.all (List.map (\m -> Db.delete Membership m.id) rows)
+  let _ <- Db.insertScoped Activity { text: "A member left." }
+  Task.succeed Rerender
+},
+```
+
+Had the log been in the silo, this `Task` would write two stores; had
+the projects page logged its new projects here, the same. Where a
+table lives follows from what writes it.
+
+### Its tests and its score
+
+The app's own 34 tests cover what the rules promise, with two orgs:
+`Projects.Index "a member sees the org's name and only its projects, by
+name"`, `"a project is created in the org's database, and another org
+does not see it"`, `Orgs.Index "a non-member's switch is refused"`, `"a
+membership deleted earlier in the same Task counts as gone"`, and the
+re-read tests "a member removed from the org loses access at once". The
+generated admin brings 273 more. `alder test --mutate examples/workspace`
+scores 0.979 (511 of 522 mutants killed); the 11 survivors are in the
+generated admin, and `examples/workspace/README.md` says why each is
+not a gap.
+
+### Run it
+
+```text
+$ alder run examples/workspace
+```
+
+In dev mode the stub of `Password` accepts `ann@example.com` and
+`bob@example.com` (Members) and `admin@example.com` (an Admin), all with
+the password `password`. Log in as Ann, make an org on `/orgs`, add Bob
+on `/members` by his email, and log in as Bob: he sees Ann's org's
+projects, and none of another org's. Each org's database is a file under
+`build/workspace/silos/org/`; the shared one is `build/workspace/dev.db`.
+As the Admin, `/admin/orgs` lists every org, and each opens that org's
+pages, a member or not.

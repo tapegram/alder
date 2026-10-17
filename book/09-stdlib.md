@@ -283,6 +283,12 @@ the session's `k` is narrowed, in a page module whose page `requires k`
 | `Db.deleteScoped` | `Table t -> Id t -> Task Unit` | deletes the row in the partition; not found otherwise |
 | `Db.insertScoped` | `Table t -> Insert t -> Task (Id t)` | inserts a row in the session's partition; the row is a record literal in the call, without the partition column |
 
+Run without the key (a test whose session has no `org`), each fails with
+the operation and table as written: "Db.insertScoped Project: the session
+has no org". On a table in a `silo` (chapter 8, "Silos") they read and
+write the org's own database, and so do `Db.from`, `Db.get`,
+`Db.update`, `Db.delete` and `Db.insert` on it, which need the key too.
+
 `Query.notFound` and `Task.notFound` (both
 `: Query a` / `: Task a`, no arguments) stop the effect and answer 404 with
 `App.notFound`; a `Task` that ends in `Task.notFound` is rolled back like
@@ -306,6 +312,14 @@ Only a `test` may use these (chapter 10); anywhere else each is E0003
   never an expression. It has no type of its own to pass around, so
   `Test.fake` cannot be applied to a variable, piped into, or left
   without its argument.
+- `Test.member : u -> k -> Task Unit` (M15) inserts a row of the session
+  key's `via` table that makes user `u` a member of `k`
+  (`Test.member ann acme`): the user and key columns set, a `Maybe`
+  column `Nothing`, a column with a default its default. A `via` table
+  with another required column is E0003 ("`Test.member` fills only the
+  user and the org of a `Membership`: `Membership.since` has no default;
+  insert the row with `Db.insert Membership { … }`"), and so is an app
+  without a `via` field (chapter 10, "Two orgs").
 
 ### Browser steps and queries
 
@@ -323,6 +337,9 @@ Test.submitRaw : Form -> List { name: Text, value: Text } -> Task { answer: Answ
 Test.click     : Msg -> Task { answer: Answer, session: Session, doc: Doc }
 ```
 
+- `Test.login s` sets the browser's session cookie, through the rules a
+  served request follows: a `via` key (`org: Just acme`) needs its
+  membership row first (`Test.member`), as `Session.put` would.
 - `Test.get p` and `Test.open p` take a page value written in place
   (`Todos.Index {}`, `Todos.Show { id: id }`); `model` is the `Model`
   of `p`'s page, which must be a record. `Test.get` fails the test

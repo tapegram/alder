@@ -417,10 +417,11 @@ nine tests close 14 of 32: chapter 10.)
 **A curated set of operators, not every possible edit.** Generic
 mutation tools change any operator or constant anywhere, and produce
 thousands of mutants, many of them programs that do not compile, crash
-at once, or mean nothing in particular. Alder's twenty operators are
+at once, or mean nothing in particular. Alder's twenty-one operators are
 each a bug that a server-rendered app can have and a user would notice:
 a `requires` missing, an ownership check dropped, a role or an
-ownership rule dropped (`role dropped`, `scope dropped`, M11), a write that does
+ownership rule dropped (`role dropped`, `scope dropped`, M11), a
+membership check dropped (`membership dropped`, M15), a write that does
 nothing, a filter or an order wrong, a redirect that is a re-render, a
 delete rule changed. Each works on the typed IR and makes a well-typed
 mutant by construction, so all of them compile into one test build.
@@ -518,6 +519,69 @@ between, which is why the examples write the scoped form there too: it
 costs nothing, and the mutation tool counts it as the same program
 (chapter 10). Choosing a tenant (one
 database per customer) is a separate, later layer.
+
+### Partitions by any key, and a database per key where declared **(decided M15; tested: the corpus, `silo-ok`, the workspace, the deploy targets)**
+
+M11 declared one rule, "this row is the user's". Apps with orgs, teams or
+workspaces have the same rule one level up, "this row is the org's, and
+the user works in one org they belong to", and wrote it by hand, as they
+wrote ownership before M11. M15 makes it a declaration too (chapter 6,
+"Partitions"; chapter 8, "Silos"). Four choices shaped it.
+
+**Why a declaration, generalising `@owner`.** Everything said above for
+`@owner` holds for an org: a hand-written `Db.where (Project.org.eq
+session.org)` can be left out, and E5 and E6 showed agents leaving such
+checks out. So `@partition k` names the column and the key, the scoped
+operations keep to it, and they compile only where the key is narrowed
+(`requires user, org`). `@owner` became `@partition user` with no change
+to any program: the M11 corpus, goldens, examples and scores are
+byte-identical (a test compares the IR dumps). Membership is declared
+the same way (`via Membership`), not written into every page that sets
+the org: the runtime checks it inside the `Task` that sets the key, so
+a crafted request cannot put a stranger's org in a session, and the
+mutation operator `membership dropped` asks every app for the one test
+that shows it. It is checked when set, not on every request, like a
+role: a check on every request would cost a query on every page of every
+app, and the pages that must notice a removal at once have the re-read
+idiom, in one line of `load`.
+
+**Why logical by default, physical where declared.** A partition is a
+predicate in one database until `App` says otherwise; `silo org { … }`
+moves those tables into a database per org. Not every table belongs in a
+silo: an org's name, the users and the memberships are read across orgs,
+and data every org shares (a catalogue, the posts of a public blog) has
+no org at all. A declaration per key keeps the choice in one line of
+`App`, visible and checked (E0033 refuses a shared table that points into
+a silo).
+
+**Why one store per `Task`, and not a transaction across stores.** A
+`Task` is one transaction (chapter 7), and a transaction is one
+database's. A `Task` that wrote a project (an org's file) and an audit
+line (the shared file) would need a two-phase commit across SQLite
+files, or across Turso databases, which neither offers: one of the two
+could commit and the other fail, and the app would hold half a change.
+Alder refuses that program instead (E0031), at compile time, wherever
+the second write hides (a helper in another module, a `Task.all`), and
+says how to write it: in the silo, or from its own message. Reads may
+mix, because a read on another database's read-only connection cannot
+leave anything half done. An outbox (a write in one store that another
+picks up later) comes with background jobs; an explicit
+`Task.separately` is held in reserve.
+
+**Why check each database when it is opened.** A deploy migrates the
+shared database before it serves, as M14 does. Migrating thousands of
+silos before serving would make a deploy as slow as its largest
+customer count, and one broken file would stop every org. So each silo
+records its schema and is checked the first time the new build opens
+it: equal, served; behind, migrated there, unless the migration drops
+data, which waits for `alder migrate silos --allow-data-loss`; ahead,
+refused. A silo that cannot be served answers a maintenance page for its
+own org only, and `alder status` lists it. The cost is that a silo's
+first request after a deploy pays for its migration, and that the old
+build, still draining, must re-check a silo's schema before each write
+(chapter 13). On Turso each silo is a standalone database migrated the
+same way, since Turso's schema databases, which would have propagated a
+migration to every child, are deprecated (chapter 16).
 
 ### The runtime is embedded, not fetched **(decided M10; tested: the out-of-tree build)**
 

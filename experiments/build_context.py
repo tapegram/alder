@@ -128,17 +128,81 @@ TRIMS = {
             "the same program as the unscoped one there).\n\n"),
            ("**Generated pages say the same.**", "**A role is read at login.**",
             ""),
+           ("### Partitions\n\n`@owner` says", "## The request lifecycle",
+            "### Partitions\n\n`@partition k` generalises `@owner` (which is `@partition user`) to any session\n"
+            "key, here `org` (`examples/workspace`):\n\n```alder fragment\n"
+            "session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Member }\n"
+            "choose org = Orgs.Index\n"
+            "table Project { id: ProjectId @id, name: Text.NonEmpty, org: Org.OrgId @ref Org @partition org }\n```\n\n"
+            "- The column is one `@ref` of the key's type without `Maybe`, and the session has the key\n"
+            "  (E0032).\n"
+            "- The generic scoped operations `Db.scoped T`, `Db.getScoped T id`, `Db.updateScoped T id f`\n"
+            "  (never changes `org`), `Db.deleteScoped T id` and `Db.insertScoped T { … }` (a literal\n"
+            "  without `org`) keep to the session's org; another org's row is not found. `Db.mine` on an\n"
+            "  org table is E0025 (\"… write `Db.scoped Project`\").\n"
+            "- They need a page that `requires user, org` (E0026); a `via` key comes after `user`\n"
+            "  (E0027). There `session.org : Org.OrgId`. A visitor is sent to log in, a user without an\n"
+            "  org to `choose org`'s page (required for a `via` key, E0032; that page must not require\n"
+            "  the key); a key with no `choose` answers 404.\n"
+            "- `via Membership`: a `Session.put` of `org` to `Just v` fails the `Task` (\"Session.put org:\n"
+            "  no Membership for this user and org\") unless a `Membership` row of the session's user\n"
+            "  and `v` exists then, inside the `Task`'s transaction (a row inserted earlier in the `Task`\n"
+            "  counts; one deleted counts as gone). `Nothing` is always allowed, and a session that loses\n"
+            "  its user loses its org. The membership table has exactly one `@ref` to the user table and\n"
+            "  one to the key's (E0032); one `via` field per session. Picking an org:\n\n"
+            "```alder fragment\nOpen p -> {\n  let _ <- Session.put (\\s -> { s | org: Just p.org })\n"
+            "  Task.succeed (Redirect (Projects.Index {}))\n},\n```\n\n"
+            "  A crafted `Open` of an org the user is no member of is refused; a test calls `update`\n"
+            "  directly to send it.\n"
+            "- The cookie keeps `org`; it is not checked again per request. A page that must notice a\n"
+            "  removed member at once re-reads the membership in `load` (the re-read idiom):\n\n"
+            "```alder fragment\nisMember : User.UserId -> Org.OrgId -> Query Bool\nisMember user org = {\n"
+            "  let n <- Db.from Membership |> Db.where (Membership.user.eq user) |> Db.where (Membership.org.eq org) |> Db.count\n"
+            "  Query.succeed (n > 0)\n}\n```\n\n"
+            "  `load` begins `let member <- Membership.isMember session.user session.org` and answers\n"
+            "  `Query.notFound` when it is `False`.\n"
+            "- The admin form `requires user, role Admin, silo org` takes `org` from the page's\n"
+            "  parameter `{ org: Org.OrgId, … }`, guarded by the role, not `via` (E0033).\n"
+            "- Not in a fake or `App` (E0026); an org's name stays unscoped (`Db.get Org session.org`).\n"
+            "- With `silo org { Project, Todo }` (chapter 8, \"Silos\") each org's rows are in its own\n"
+            "  database, and a `Task` writes to one store (E0031).\n\n"),
            ("The to-do list's page uses four of them\n", "Why `update` needs them as much as `load` does",
             "The to-do list's page uses four of them, and `Todos.Show` reads its todo with the fifth\n"
             "(`examples/todos/app/Todos/Index.alder` and `Todos/Show.alder`, in the example app below).\n\n")],
-    "08": [("A table with an `@owner` column (above) also has five **scoped**\n", "## How tables are stored",
+    "08": [("## Silos\n\nA partition keeps", "### One store per `Task`",
+            "## Silos\n\n`silo org { Project, Todo }` in `App` keeps those tables in a database per org; the\n"
+            "rest are in the shared database. Each listed table is `@partition org`; a table is in one silo;\n"
+            "a shared table may not `@ref` a siloed one, a siloed one may `@ref` a shared one or one of its\n"
+            "silo (E0033). Every `Db` operation on a siloed table needs the key narrowed (E0026); there is\n"
+            "no query over every org. `Db.update` cannot move a row to another org.\n\n"),
+           ("### One store per `Task`\n", "## Beyond CRUD",
+            "### One store per `Task`\n\nA `Task` is one transaction, so it writes to one store, the shared one or\n"
+            "one silo; an `update` arm whose writes (followed into helpers, any module, and `Task.all`)\n"
+            "fall in two is E0031: \"`Create` writes `Project` (silo `org`) and `AuditLog` (shared): a\n"
+            "Task writes to one store. Write `AuditLog` inside the silo, or send it from its own\n"
+            "message.\" Reads may mix (one `load` reads an org's name and its projects); `Session.put`\n"
+            "and capabilities do not count.\n\n"),
+           ("A table with an `@owner` column (above) also has five **scoped**\n", "## How tables are stored",
             "A table with an `@owner` column (above) also has five **scoped**\noperations, `Db.mine`, "
             "`Db.getMine`, `Db.updateMine`, `Db.deleteMine` and\n`Db.insertMine`, for the pages of a signed-in "
             "user: chapter 6, \"Rules\",\nexplains them, and chapter 9 lists their types.\n\n")],
-    "10": [("Without a signed-in user a scoped step fails, and says why.", "**Where an effect test runs.**",
+    "09": [("- `Test.member : u -> k -> Task Unit` (M15)", "\n### Browser steps and queries",
+            "- `Test.member ann acme : Task Unit` inserts the `via` table's row making the user a member\n"
+            "  of the key (other columns `Nothing` or their default; E0003 if one is required).\n"),
+           ("\nRun without the key (a test whose session has no `org`)", "`Query.notFound` and `Task.notFound`",
+            "\nWithout the key they fail (\"Db.insertScoped Project: the session has no org\"). On a siloed\n"
+            "table (chapter 8, \"Silos\") every `Db` operation needs the key.\n\n")],
+    "10": [("**The partition mutants.**", "### The rules' mutants in a report",
+            "`membership dropped` dies only to a test that tries an org the user is no member of.\n\n"),
+           ("Without a signed-in user a scoped step fails, and says why.", "**Where an effect test runs.**",
             "Without a signed-in user a scoped step fails, saying so (`Err\n\"Db.updateMine Todo: no signed-in user\"`); "
             "it never answers as if the user\nhad no rows. A test may use the scoped operations itself too, after\n"
-            "`Test.login`.\n\n"),
+            "`Test.login`.\n\nWith a key (chapter 6, \"Partitions\"), `Test.login { user: Just ann, org: Just acme }`\n"
+            "needs the membership first, as `Session.put` does: `Test.member ann acme` inserts it. Each org a\n"
+            "test touches has its own in-memory database (a silo); insert another org's siloed rows before\n"
+            "`Test.login`, as production refuses them in a request of this org. A crafted switch is a direct\n"
+            "call: `Test.run (update (Open { org: globex }) model session)` is `Err \"Session.put org: no\n"
+            "Membership for this user and org\"`, which kills the mutant `membership dropped`.\n\n"),
            ("**Where an effect test runs.** Every effect test gets a world of its own:", "A pure test (section 1) touches none of this",
             "**Where an effect test runs.** Each effect test gets a fresh, empty\nin-memory SQLite database with the "
             "app's tables; its block runs as one\n`Task`, in one transaction, and sees its own writes. `Time.now` and "
@@ -199,9 +263,12 @@ alder new <app>   the guestbook: App, Layout, table Entry, page Home at /, its t
 The generators check a copy, writing only if it checks (edit table/session: written with the
 breakage listed; --strict refuses); none overwrites. All take --dir D, --dry-run, --json, --help.
 A hole stops `alder test` (it refuses while one is left): run it last, after the fills. Pass stdin with <<'EOF' (echo eats the `\\f` of `\\from`).
-alder new table <Name> <field>:<Type>[=default][@ref=T][@cascade|@restrict|@setNull][@owner][@unique] …
-  adds created/updated (Time @created/@updated) unless --no-timestamps (then `created:Time@created`)
-alder new page <Module> <path> [--list T | --show T [--by <unique col>] | --from T …] [--requires user] [--role R]
+alder new table <Name> <field>:<Type>[=default][@ref=T][@cascade|@restrict|@setNull][@owner][@partition=k][@unique] … [--silo]
+  adds created/updated (Time @created/@updated) unless --no-timestamps (then `created:Time@created`);
+  `org:Org.OrgId@ref=Org@partition=org`; --silo puts it in App's `silo org` (a table referring to a siloed one must)
+alder new silo <key> <T> …   App's `silo key { T, … }`; each T must be @partition key
+alder new page <Module> <path> [--list T | --show T [--by <unique col>] | --from T …] [--requires user|org] [--role R]
+  --requires org writes `requires user, org`; --list/--show read an org-partitioned T with Db.scoped/getScoped
   a {x} in the path needs --param x:Type (load is then ?load); --show, --list and --from make their own
   parameters: --param only with --blank or a plain page. A --list page's Model and load go together:
   replace both (fill --decl), or start --blank
@@ -228,6 +295,8 @@ alder new msg … --in-for <binder> [--when <Bool expr>]   the button in that `f
   insert rows the loop shows the signed-in user, fill the hole with one
 alder edit page <Page> add-param <name>:<Type>[=default]
 alder edit session add-field <name>:<Type>=<default>
+alder edit session add-field org:Org.OrgId via Membership [--choose <Page>]   a key: `org: Maybe Org.OrgId via
+  Membership` (+ `choose org = Page`); the Membership table and the page must exist first
 alder remove page <Page> | remove table <T>   refused while used; a table's migration drops data
 alder fill --decl <Module>.<decl> -   replaces a whole body (value, test, type's right side):
   for Model (no hole) and bodies that do not fit; prefer a hole when there is one. The parameters
@@ -245,8 +314,9 @@ App may declare where it ships (book 16), once: `deploy { production: Ssh "u@hos
   requires: ["SMTP_URL"], backup: S3 "s3://b/p", keep: 5, proxy: None }`; names only, never a secret (E0030)
 alder deploy <env> [--dry-run] [--host h] [--allow-data-loss] [--unsafe-skip-tests]   the gate (check, build,
   test, --mutate >= floor, checks) then plan and ship; alder status|logs <env>; alder rollback <env> [id]
-  [--restore-backup --yes]; alder restore <env> [--to t] [--out f] [--yes]; alder ci init (Fly: experimental,
-  refuses a deploy with a pending migration)
+  [--restore-backup --yes]; alder restore <env> [--silo org:<id>] [--to t] [--out f] [--yes]; alder ci init
+  (Fly: experimental, refuses a deploy with a pending migration); with silos: alder migrate silos <env>
+  [--allow-data-loss], alder silos prune <env> [--yes]
 
 """
 

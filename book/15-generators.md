@@ -2416,6 +2416,71 @@ and messages) and `actions` (the forms in the view), so `alder regen
 admin` rewrites them as the columns change, and their generated tests
 include a row that is refused.
 
+### The admin of a silo
+
+An app with `silo org { Project, Todo }` (chapter 8, "Silos") has a
+database per org, so the admin has no page of every org's projects: no
+query could read them. `alder new admin` (`examples/workspace`, whose
+admin is committed as it wrote it) gives each silo three things instead.
+
+- **A picker**, `Admin.Orgs.Index` at `/admin/orgs`: every row of the
+  key's table, by its label, each a link to that org's dashboard. The
+  layout's nav links to it ("Projects and todos, by org") where it would
+  link to the siloed tables' lists, and the dashboard has a card for it
+  (the newest orgs, each opening its dashboard) where their cards would
+  be.
+- **The dashboard of one org**, `Admin.Orgs.Show` at
+  `/admin/orgs/{org}`: the org's name, and a card per siloed table, its
+  count and newest rows, read from that org's database when the page is
+  opened, never for every org at once.
+- **The tables' pages**, the usual six per table, at
+  `/admin/org/{org}/project…`. Each is declared with the admin form of
+  chapter 6:
+
+  ```alder fragment
+  page "/admin/org/{org}/project/{id}" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
+  ```
+
+  `org` is the page's first parameter, and the role check, not `via`,
+  guards it: an Admin manages an org's rows without being a member.
+  Inside, `session.org` is that parameter, so every read and write goes
+  to the org's database; every link to a page of the silo carries it
+  (`Admin.Project.Show { org: session.org, id: row.id }`), as do the
+  list's search and bulk forms, whose `action` is built around it. The
+  partition column is the page's parameter, so no list, row page or
+  form shows or edits it: a new row takes `org: session.org`.
+
+A shared table's admin is as before, and a table partitioned by a key
+but in no silo (the workspace's `Activity`) keeps the ordinary pages,
+unscoped like every admin page. A shared table's delete page does not
+count rows in a silo (they are in other databases, and a delete there
+is not this delete's): deleting an org leaves its silo an orphan, which
+`alder silos prune` removes (chapter 11).
+
+Its generated tests are the usual ones, and four more. Most of a siloed
+page's tests sign the Admin in as a member of the test's org, so that
+the test's own reads (`Db.get Project target` after a delete) reach that
+org's database; the four that matter for the rule sign in without an
+org and use the pages alone:
+
+- `Admin.Project.Index "an Admin who is no member of the org lists its
+  projects, and only its"`: two orgs, a project in each; the list of one
+  org shows its project only.
+- `Admin.Project.Bulk "a bulk action stays inside one org"`: the bulk
+  page of one org, given both projects' ids, takes only its own, and a
+  delete leaves the other org's project where it was.
+- `Admin.Orgs.Index "the picker lists every org, by name, each opening
+  its dashboard"`, and `Admin.Orgs.Show "the org's dashboard counts its
+  projects, not another org's, and lists the newest five"`.
+
+A Member is refused every page of it (a 404), as on any admin page.
+`alder regen admin` treats a siloed table as new when the org's
+dashboard does not link to its list. On the fixture of the generators'
+tests with a silo (`testdata/generate/fixture-silo`) its tests kill 489
+of the 502 mutants (0.97), the survivors being the shared admin's known
+ones (chapter 10's equivalent `> 200`) and a list whose every column is
+a reference, which has nothing to sort by.
+
 ### What the admin does not do
 
 It reads and writes every row with the unscoped operations (`Db.from`,
@@ -3618,6 +3683,100 @@ path changed after the page exists) and a module's imports are written
 only by the generators that create them (a fill imports what its
 expression names); a table or page is renamed by `remove` and a new
 command, not in place. Everything else an app has, these commands write.
+
+## Orgs and a database per org: `@partition`, `alder new silo`, `--requires org`, `via`
+
+M15's declarations (chapter 6, "Partitions"; chapter 8, "Silos") have
+commands of their own, so an app with orgs is built like any other.
+`testdata/drill/t11-workspace/script.txt` is the proof: the task T11
+(`experiments/tasks/t11-workspace.md`: orgs, members, and each org's
+projects and to-dos in a database of its own), built from `alder new ws
+--bare` in 52 commands; `TestDrill` replays it, checks the task's names
+(and its `silo`, `via` and `choose`), runs its 26 tests (37 of 37
+mutants killed) and the task's 9 hidden tests. Its declarations, in
+order:
+
+```text
+alder new table Org name:Text.NonEmpty --no-timestamps
+alder new table Membership user:User.UserId@ref=User org:Org.OrgId@ref=Org --no-timestamps
+alder new page Orgs.Index /orgs --blank --requires user
+alder edit session add-field org:Org.OrgId via Membership --choose Orgs.Index
+alder new table Project name:Text.NonEmpty org:Org.OrgId@ref=Org@partition=org --no-timestamps
+alder new table Todo title:Text.NonEmpty done:Bool=False project:Project.ProjectId@ref=Project@cascade org:Org.OrgId@ref=Org@partition=org --no-timestamps
+alder new silo org Project Todo
+alder new page Projects.Index /projects --blank --requires org
+alder new page Projects.Show /projects --show Project --blank --requires org
+```
+
+**`alder edit session add-field org:Org.OrgId via Membership`** writes
+the key, `org: Maybe Org.OrgId via Membership` (the `Maybe` is added:
+a session starts without an org, and a key takes no default), and with
+`--choose Orgs.Index` the line `choose org = Orgs.Index` after the
+session. Session records written on one line elsewhere get `org:
+Nothing`. The page it names must exist first, hence `Orgs.Index` before
+it; the `Membership` table too, with one `@ref` to the user table and
+one to `Org`. A second `via` field is refused ("the session's `org` is
+`via Membership` already: one `via` field per session (for now)").
+
+**`@partition=org`** in a field of `alder new table` writes `@partition
+org`. The table's delete-rule tests sign in a member of an org, so they
+run wherever the rows end up (a silo included):
+
+```alder fragment
+test "deleting its project deletes a Note" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let _ <- Test.member me org
+  let _ <- Test.login { user: Just me, org: Just org }
+  let target <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
+  let _ <- Db.insert Note { text: Text.NonEmpty "text-1", project: target, org: org }
+  let _ <- Db.delete Project target
+  let left <- Db.from Note |> Db.count
+  Task.succeed (left == 0)
+}
+```
+
+and the key's own column gets no delete-rule test (in a silo, an org's
+row is in another database). `--silo` puts the new table in its key's
+silo at once; a table that refers to a siloed one must be created that
+way, since a shared table cannot point into a silo (E0033).
+
+**`alder new silo org Project Todo`** writes `silo org { Project, Todo
+}` in `App` after the session (or adds the tables to the declaration
+there is). A table that is not partitioned by the key is refused, the
+sentence naming the fix: "`Membership` is not partitioned by `org`: mark
+its column `org` `@partition org` (`org: Org.OrgId @ref Org @partition
+org`), then run this again". The tables here have migrations already (each
+`alder new table` wrote one), so the command marks them in
+`migrations/schema.json` and prints what that means:
+
+```text
+!! Project and Todo: migrations/ create them in the shared database; a database that already holds rows of them keeps them there, unread, and silos made before have no such table: declare a silo before the app holds data (book 8, "Silos")
+```
+
+In a new app nothing holds rows yet, so the note is only a warning; in
+a deployed one it is the reason `alder migrate` refuses the same change
+made by hand (chapter 8, "Moving a table into a silo").
+
+**`alder new page … --requires org`** writes `requires user, org` (a
+`via` key needs the user first), and its list, row and `--from` pages
+read a table partitioned by the key with `Db.scoped` and `Db.getScoped`:
+
+```alder fragment
+page "/projects" { page: Int = 1 } requires user, org
+…
+  let rows <-
+    Db.scoped Project
+      |> Db.orderBy Project.created.desc
+```
+
+Its tests sign in a member of an org; the list's test inserts a row of
+another org first and expects it left out ("the list shows this org's
+rows, newest first"); and a session without an org is sent to `choose
+org`'s page ("without an org the page sends you to choose one"). A form
+whose fields fit such a table inserts with `Db.insertScoped` (the
+partition column is the page's), and the tests of `alder new form` and
+`alder new msg` on the page sign in with the key the same way.
 
 ## Four gaps: a message in `App`, a prop, a form on a message, a login's page
 

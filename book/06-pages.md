@@ -762,19 +762,244 @@ built to fit:
 
 ### Partitions
 
-`@owner` is one case of a general rule (M15): `@partition k` marks the
-`@ref` column holding the value of any session field `k`
-(`org: Org.OrgId @ref Org @partition org`; `@owner` is `@partition
-user`), and the generic scoped operations (`Db.scoped`, `Db.getScoped`,
-`Db.updateScoped`, `Db.deleteScoped`, `Db.insertScoped`; chapter 9) keep
-to the session's partition where the page `requires k` (`requires user,
-org`). A key declared `via` a membership table (`session { …, org: Maybe
-Org.OrgId via Membership }`) can only be set to a value the user is a
-member of, needs `user` before it in `requires`, and has a `choose org =
-Page` in `App`, where a request without it is sent. The admin form
-`requires user, role Admin, silo org` takes the key from the page's
-parameter. Chapter 8 adds `silo`, a database per key value; the full
-treatment follows with the `workspace` example.
+`@owner` says that a row belongs to one user. Many apps have a second
+kind of owner: a row belongs to an **org** (a team, a workspace, a
+company), every member of the org may see it, and a user works in one
+org at a time. The rule is the same shape as ownership, with another
+session field in place of `user`, so Alder declares it the same way.
+This section follows `examples/workspace` (chapter 14), whose orgs have
+projects, and whose users belong to orgs through a `Membership` table.
+
+**A key in the session.** The org a user works in is a session field, a
+**key**, beside the user (`examples/workspace/app/App.alder`):
+
+```alder fragment
+session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Member }
+```
+
+It is a `Maybe` of a table's id, like `user`: a new session has no org
+yet. `via Membership` is the rule for setting it, below.
+
+**`@partition org`.** A table says which of its columns holds the key
+(`examples/workspace/app/Project.alder`):
+
+```alder fragment
+table Project {
+  id: ProjectId @id,
+  name: Text.NonEmpty,
+  org: Org.OrgId @ref Org @partition org,
+  created: Time @created,
+}
+```
+
+`@partition k` marks one `@ref` column whose type is the session field
+`k` without its `Maybe`: `org: Maybe Org.OrgId` in the session means
+`Org.OrgId` here. `@owner` is exactly `@partition user`, kept as the
+short way to write it. The rules, E0032 when broken: the session has a
+field `k` of type `Maybe` of the column's type ("`@partition org` needs
+a session field `org` of type `Maybe Org.OrgId`"); the column is a
+`@ref` ("`@partition org` must mark a `@ref` column; `name` is `Text`
+without `@ref`"); and a table has one partition column ("a table has
+one partition column: `Board` marks `org` and `owner`"). Like `@owner`,
+it changes nothing in the database by itself: chapter 8's `silo` is
+what gives each org a database of its own.
+
+**The scoped operations, for any key.** A partitioned table has five
+generic scoped operations, which do for its key what the `mine` family
+does for the user (chapter 9 has their types):
+
+| Operation | What it does |
+|---|---|
+| `Db.scoped Project` | the rows of the session's org: a `Select`, like `Db.from Project` |
+| `Db.getScoped Project id` | the row with that id when it is the org's; otherwise not found |
+| `Db.updateScoped Project id f` | changes the row when it is the org's (never its `org`); otherwise not found |
+| `Db.deleteScoped Project id` | deletes the row when it is the org's; otherwise not found |
+| `Db.insertScoped Project { … }` | inserts a row whose `org` is the session's; the row is a record literal without `org` |
+
+The `mine` family is these five on a table partitioned by `user`, and
+the same code: `Db.mine Todo` and `Db.scoped Todo` are one operation.
+On a table partitioned by another key `Db.mine` is refused, naming the
+fix (E0025): "`Project` is partitioned by `org`, not by the session's
+`user`: `Db.mine` is for `@owner` tables; write `Db.scoped Project`".
+What a stranger gets is what it is for `@owner`: a row of another org is
+answered as a row that does not exist, not found, so there is no arm to
+write for it and nothing to give away.
+
+**`requires user, org`.** A scoped operation on `Project` needs a
+session whose `org` is set, so it is allowed only in a page module whose
+page `requires org` (E0026 otherwise: "`Db.scoped Project` needs a page
+that `requires org`: `Public` does not"). The workspace's projects page
+(`examples/workspace/app/Projects/Index.alder`):
+
+```alder fragment
+page "/projects" { } requires user, org
+```
+
+A request is answered in this order:
+
+1. No `user`: the visitor is sent to log in, as always.
+2. No `org`: the user is sent to the page `App` names with `choose org =
+   …`, below (a key without one answers a 404: there is nothing to pick).
+3. Otherwise the page runs, and inside it `session.org` is an
+   `Org.OrgId`, not a `Maybe`: the page is **narrowed** to it, as
+   `requires user` narrows `session.user`.
+
+A key with `via` must come after `user` (E0027: "`org` needs `user`
+first: `org` is `via Membership`, a membership of the signed-in user;
+write `requires user, org`"): a membership is a user's, so a session with
+an org but no user cannot happen. The page can then read and write its
+org's rows with the scoped operations, as `Projects.Index` does:
+
+```alder fragment
+update msg model session = match msg {
+  Create p -> {
+    let id <- Db.insertScoped Project { name: p.form.name }
+    Task.succeed (Redirect (Projects.Show { id: id }))
+  },
+  Remove p -> {
+    let _ <- Db.deleteScoped Project p.id
+    Task.succeed Rerender
+  },
+}
+```
+
+`Remove { id }` carries an id in its URL, which anyone signed in can
+post with another org's project's id; `Db.deleteScoped` looks for it in
+the session's org only, finds nothing, and the `Task` fails with not
+found (the workspace's test "another org's project cannot be removed").
+
+**`via`: who may set the key.** The session's `org` is set as any field
+is, with `Session.put`. `via Membership` adds one rule: a `Session.put`
+that sets `org` to `Just v` fails, the whole `Task` with it, unless the
+`Membership` table has a row whose user is the session's user and whose
+org is `v`. The workspace's org picker (`examples/workspace/app/Orgs/Index.alder`)
+sets it from a button:
+
+```alder fragment
+Open p -> {
+  let _ <- Session.put (\s -> { s | org: Just p.org })
+  Task.succeed (Redirect (Projects.Index {}))
+},
+```
+
+The page shows a button only for the user's own orgs, but `Open { org }`
+is a URL like any other, and a crafted one can name any org. The check
+does not trust the page: for an org the user is no member of, the
+`Session.put` fails with "Session.put org: no Membership for this user
+and org", the `Task` is rolled back, and the session keeps the org it
+had (`Orgs.Index "a non-member's switch is refused"`). The details:
+
+- The check runs **inside the `Task`'s transaction**, when the
+  `Session.put` runs. A `Membership` row inserted earlier in the same
+  `Task` counts, which is how creating an org, adding its creator as a
+  member and opening it is one `Task` (`Orgs.Index`'s `Create`); a row
+  deleted earlier in the same `Task` counts as gone.
+- Setting it to `Nothing` is always allowed: leaving an org needs no
+  membership. Logging out (a `Session.put` whose `user` becomes
+  `Nothing`) clears every `via` key with it.
+- The `via` table must have exactly one `@ref` to the user table and one
+  to the key's table (E0032: "`via Seat`: `Seat` needs exactly one `@ref
+  User` column and one `@ref Org` column; it has 0 and 1"); the session
+  must have a `user` ("`org` is `via Membership`, which needs a session
+  field `user`: a membership is a user's"); and, for now, a session has
+  one `via` field ("`other` is `via Membership`: one `via` field per
+  session (for now)").
+- A key without `via` (a `region` chosen from a fixed list, say) is set
+  freely; the pages that use it still `requires region`.
+
+**`choose`: where a session without the key goes.** `App` names the page
+that picks the key (`examples/workspace/app/App.alder`):
+
+```alder fragment
+choose org = Orgs.Index
+```
+
+A page that `requires user, org` sends a session without an org there.
+It is required as soon as a page requires a `via` key (E0032: "`org` is
+`via Membership` and `Projects` `requires org`: `App` needs `choose org =
+Page`, the page a request without `org` is sent to (it picks one)"), and
+the page it names must not require the key itself, or a request would
+be sent back to it for ever ("`choose org = Picker`: `Picker` `requires
+org` itself, so a request without `org` would be sent back to it"). The
+user is chosen by `login`, never by `choose` ("`choose user`: the
+signed-in user is chosen by `login`; `choose` names the page for another
+key"). The workspace's login puts the first org the user joined in the
+session as it signs them in, through the same rule (one `Db.first` and
+one `Session.put`); a user in no org gets none, and the projects page
+sends them to `Orgs.Index` to make one.
+
+**The re-read idiom, for a membership.** Like a role, the key is checked
+when it is put, and the cookie keeps it: it is **not** checked again on
+every request. A member removed from the org keeps the org in their
+cookie until they log out, pick another, or the cookie's 30 days end. A
+page that must notice a removal at once reads the membership again in
+its `load`, the re-read idiom of "Roles" above, with a helper in
+`Membership` (`examples/workspace/app/Membership.alder`):
+
+```alder fragment
+isMember : User.UserId -> Org.OrgId -> Query Bool
+isMember user org = {
+  let n <- Db.from Membership |> Db.where (Membership.user.eq user) |> Db.where (Membership.org.eq org) |> Db.count
+  Query.succeed (n > 0)
+}
+```
+
+and, in each of the workspace's org pages,
+
+```alder fragment
+load params session = {
+  let member <- Membership.isMember session.user session.org
+  if member then {
+    let org <- Db.get Org session.org
+    let projects <- Db.scoped Project |> Db.orderBy Project.name.asc |> Db.all
+    Query.succeed { org: Maybe.withDefault "" (Maybe.map (\o -> o.name) org), projects: projects }
+  } else Query.notFound
+}
+```
+
+Every message of a page runs its `load` first, so a removed member's
+messages are refused too: the tests "a member removed from the org loses
+access at once". It costs one query a request, on the shared database;
+an app that can wait for the next login leaves it out. It is the
+recommended way for pages whose data matter, and the generated admin's
+pages, which check the Admin's role the same way, use it.
+
+**The admin form: `requires user, role Admin, silo org`.** An admin
+manages every org's rows, a member or not, so `via` cannot give it the
+org. Its pages take the org from their own parameter instead, and the
+role check is what guards them:
+
+```alder fragment
+page "/admin/org/{org}/project" { org: Org.OrgId, … } requires user, role Admin, silo org
+```
+
+Inside, `session.org` is the parameter's `Org.OrgId`, and the page reads
+and writes that org's rows as a member's page would. The rules (E0033):
+the clause needs the role ("`silo org` needs a role check: the page takes
+`org` from its parameter, which only the role check guards; write
+`requires user, role Admin, silo org`"), and the parameter, of the key's
+type ("`silo org` takes `org` from the page's parameter: add `org:
+Org.OrgId` to the page's parameters"). `alder new admin` writes these
+pages for the tables of a silo (chapter 15).
+
+**Where the rules are kept.** Only where the key is narrowed: in a page
+module whose page `requires` it (or the admin form) and its helpers, and
+in tests, which run with the test's session. A fake has no session
+("`Db.scoped Project` cannot be used in a fake: a fake has no session"),
+and neither does `App` ("`Db.deleteScoped Project` needs a page that
+`requires org`: `App` is not a page"). A helper of a page that requires
+the key, used where the key is not narrowed, is refused at the use, as
+for `@owner` ("`Projects.Index.recent` uses `Db.scoped Project`, which
+needs a page that `requires org`: `Public` does not"). Rows that are
+anyone's (an org's name, a user's) stay unscoped: the workspace reads
+`Db.get Org session.org` beside its scoped projects.
+
+**One org's database.** With `silo org { Project, Todo }` in `App`
+(chapter 8, "Silos") each org's projects and to-dos are in a database of
+the org's own, and the scoped operations read and write that file: a
+row of another org is not merely filtered out but absent. A `Task`
+then writes to one database, the shared one or one org's (E0031); the
+pages above are written that way already.
 
 ## The request lifecycle
 

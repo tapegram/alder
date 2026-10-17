@@ -307,8 +307,9 @@ class BuildContextTests(unittest.TestCase):
             self.assertNotIn(gone, out)
         self.assertIn("32 mutants: 32 killed, 0 survived  (score 1.00)", out)   # the run after: its score line only
         section = out[out.index("\n## 11. Mutation testing\n"):].split("====================  EXAMPLE")[0].rstrip("\n")
-        # 6.5k until M11, whose two operators (`role dropped`, `scope dropped`) are two more rows
-        self.assertLessEqual(len(section), 6600, "the reference keeps at most 6.6k characters of chapter 10's section 11")
+        # 6.5k until M11, whose two operators (`role dropped`, `scope dropped`) are two more rows; M15's
+        # `membership dropped` is one more, with a sentence on the partition mutants
+        self.assertLessEqual(len(section), 6900, "the reference keeps at most 6.9k characters of chapter 10's section 11")
 
     def test_real_reference_keeps_browser_steps(self):
         # agents write browser tests: chapter 10's "Testing through the browser" (the step table,
@@ -338,13 +339,24 @@ class BuildContextTests(unittest.TestCase):
         # the rules' facts stay, their repeated quotes and transcripts go. M7a raised the budget
         # to 46k for the design system's element table (Appendix C, one line per element); M12's final
         # review cut it to 45k, with at least 1k to spare. M7b raised it to 46k for the interactive
-        # elements' lines, the invoker commands and the long-reference pattern.
+        # elements' lines, the invoker commands and the long-reference pattern. M15 raised it to 48k for
+        # the partitions (`@partition`, `via`, `choose`, `requires user, org`, the re-read of a
+        # membership), the silos and the one-store rule, `Test.member`, and the commands.
         bc.HUMAN_SECTIONS, bc.KEEP_SUBSECTIONS = self.saved, self.saved_keep
         bc.DROP_SUBSECTIONS, bc.TRIMS = self.saved_drop, self.saved_trims
         code, out, _ = self.run_main("--reference", "--chapters", ",".join(bc.DEFAULT_CHAPTERS), "--book", str(bc.BOOK),
                                      "--example", str(bc.EXAMPLE))
         self.assertEqual(code, 0)
-        self.assertLessEqual(len(out) // 4, 47000, "the reference is at most 47k tokens (len/4)")
+        self.assertLessEqual(len(out) // 4, 48000, "the reference is at most 48k tokens (len/4)")
+        # M15: the partition rules, `via`, `silo`, the one-store rule and the commands are in; the
+        # silo files, the open-time check and moving a table into a silo (the inside) are not
+        for added in ("`@partition k` generalises `@owner`", "Session.put org:\n  no Membership for this user and org",
+                      "silo org { Project, Todo }", "a `Task` writes to one store", "E0031", "isMember user org = {",
+                      "`requires user, role Admin, silo org`", "`Test.member ann acme`", "alder new silo <key> <T>",
+                      "via Membership [--choose <Page>]", "@partition=org", "alder migrate silos <env>", "membership dropped"):
+            self.assertIn(added, out)
+        for cut in ("### The open-time check", "### Where the files live", "### Moving a table into a silo", "### Two orgs"):
+            self.assertNotIn(cut, out)
         # M12's final review: the scaffold, the fill addresses and the add-field warning are in;
         # hand-written migration SQL and the theme switch are out
         for added in ("alder new <app>   the guestbook", "Module.Fake.entry", "add-field without a default"):

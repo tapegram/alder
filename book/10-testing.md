@@ -372,6 +372,59 @@ notes `Db.mine Todo` just before the count's own name. The other four
 are steps, named as written: `Db.getMine Todo`, `Db.updateMine Todo`,
 `Db.deleteMine Todo`, `Db.insertMine Todo`.
 
+### Two orgs
+
+A partition by another key (chapter 6, "Partitions") is tested the same
+way, with the key in the session. `Test.login` takes it as a served
+request's cookie would hold it, and a key `via Membership` must pass the
+same check a `Session.put` does: the user must have a membership row for
+it first. `Test.member user org` inserts that row (the user and key
+columns set, the others `Nothing` or their default; chapter 9). A test
+of the workspace's projects page (`examples/workspace/app/Projects/Index.alder`)
+with two orgs, Ann a member of Acme, Bob of Globex, and Cy of both:
+
+```alder fragment
+test "a project is created in the org's database, and another org does not see it" = {
+  …
+  let _ <- Test.login { user: Just s.cy, org: Just s.acme }
+  let _ <- Test.get (Projects.Index {})
+  let r <- Test.submit NewProject { name: Text.NonEmpty "Zephyr" }
+  let inAcme <- Db.scoped Project |> Db.where (Project.name.eq (Text.NonEmpty "Zephyr")) |> Db.all
+  let acme <- Test.get (Projects.Index {})
+  let _ <- Test.login { user: Just s.cy, org: Just s.globex }
+  let globex <- Test.get (Projects.Index {})
+  let inGlobex <- Db.scoped Project |> Db.where (Project.name.eq (Text.NonEmpty "Zephyr")) |> Db.count
+  Task.succeed ({ answer: List.map (\p -> Redirected (Projects.Show { id: p.id })) inAcme, acme: Test.texts "#projects .name" acme.doc, globex: Test.texts "#projects .name" globex.doc, inGlobex: inGlobex } == { answer: [r.answer], acme: ["Rocket", "Zephyr"], globex: ["Widget"], inGlobex: 0 })
+}
+```
+
+The test's own `Db.scoped Project` reads the org of the test's session,
+like the page's. Things to know:
+
+- **A database per org.** With `silo org` (chapter 8, "Silos") each org a
+  test touches has its own database in memory, made when the test first
+  reads or writes it, and thrown away with the test. A row inserted with
+  `Db.insert Project { …, org: acme }` goes to Acme's, whatever the
+  session says. The test's savepoints (`Test.run`, each browser request)
+  cover every one of them, so a failed `Test.run` undoes its writes in
+  each.
+- **Setup before the login.** A test whose session has an org may not
+  insert a siloed row of another org ("Db.insert Project: the row's org
+  is not this request's"): production refuses the same write. Insert the
+  rows of both orgs first, then `Test.login`; or log in with `org:
+  Nothing`, as the generated admin's tests do, whose pages take the org
+  from their parameter.
+- **A switch refused.** A request crafted by hand is a direct `update`
+  call (the page offers no such button): `Test.run (update (Open { org:
+  globex }) { orgs: [] } { user: ann, org: Nothing, role: Member })`
+  gives `Err "Session.put org: no Membership for this user and org"`
+  (`Orgs.Index "a non-member's switch is refused"`). `Test.login` itself
+  is refused the same way for an org the user is no member of.
+- **The re-read.** Deleting the membership in the test body, then
+  `Test.open`ing the page, shows the re-read idiom at work: the cookie
+  still has the org, and the page answers `PageMissing` (`Projects.Index
+  "a member removed from the org loses access at once"`).
+
 **Where an effect test runs.** Every effect test gets a world of its own:
 
 - **A fresh database.** An empty SQLite database in memory, with the
@@ -1735,14 +1788,15 @@ before `→` after, shortened with `…` (an arm swap names its arms).
 
 ### The operators
 
-Each mutant comes from one of twenty **operators**, named by what it
+Each mutant comes from one of twenty-one **operators**, named by what it
 breaks, in five classes; every mutant is well-typed:
 
 | Class | Operator | What it changes |
 |---|---|---|
 | authorization | `requires dropped` | A page's `requires user` no longer redirects a visitor, who is served as `User.UserId "mutant"` (for a field that is a brand over `Text`) |
 | authorization | `role dropped` | `requires user, role R` becomes `requires user` |
-| authorization | `scope dropped` | `Db.mine T` becomes `Db.from T`; the other scoped operations act on anyone's row |
+| authorization | `scope dropped` | `Db.mine T` becomes `Db.from T`; the other scoped operations act on anyone's row; likewise `Db.scoped` and its family (not on a siloed table) |
+| authorization | `membership dropped` | A key's `via M` check removed: a `Session.put` of any org succeeds |
 | authorization | `guard dropped` | An `if` or `match` with one arm ending in `Task.notFound`, `Query.notFound` or `Task.fail` becomes its other arm: the check is gone |
 | data | `where dropped` | One `Db.where` of a query removed |
 | data | `orderBy reversed` | A `Db.orderBy`'s `asc` and `desc` swapped |
@@ -1760,6 +1814,23 @@ breaks, in five classes; every mutant is well-typed:
 | logic | `not dropped` | `not e` becomes `e` |
 | schema | `default changed` | A table field's default: `False`↔`True`, a number → one more, `""`→`"x"`, a union's constructor → the next one |
 | schema | `cascade ↔ restrict` | A reference's delete rule, `@cascade`↔`@restrict` |
+
+**The partition mutants.** `scope dropped` is made for every key: in
+the workspace, `Db.scoped Activity` → `Db.from Activity` is killed by
+`Members.Index "the members, by name, and the activity of this org
+only"`, whose page would show both orgs' lines. On a table in a `silo`
+the run does not make it: the org's database holds that org's rows only,
+so `Db.from Project` reads the same rows as `Db.scoped Project` (the
+report's equivalence line says "the silo's database holds this org's
+rows only"). The one mutant of a `via` field reads
+
+```text
+  App                      session:11      membership dropped     Session.put org → Session.put org without the Membership check
+```
+
+and is killed only by a test that tries a key the user is no member of:
+`Orgs.Index "a non-member's switch is refused"` in the workspace. An app
+whose tests never try is told so by its score.
 
 ### The rules' mutants in a report
 
