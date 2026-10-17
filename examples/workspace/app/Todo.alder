@@ -1,0 +1,17 @@
+module Todo
+
+import Org
+import Project
+
+type TodoId = brand Text
+
+-- A project's to-do, in the same silo: its `@ref Project` is a reference inside one database,
+-- so `@cascade` deletes a project's to-dos with it.
+table Todo {
+  id: TodoId @id,
+  title: Text.NonEmpty,
+  done: Bool = False,
+  project: Project.ProjectId @ref Project @cascade,
+  org: Org.OrgId @ref Org @partition org,
+  created: Time @created,
+}

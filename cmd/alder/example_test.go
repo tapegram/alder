@@ -192,10 +192,12 @@ func TestExample_Blog(t *testing.T) {
 // mutants: a change to an example that lets a mutant survive which its tests used to kill, or
 // that changes the mutants made of it, fails TestExample_*.
 const (
-	todosMutationScore = 0.99
-	blogMutationScore  = 0.98
-	todosMutants       = 208
-	blogMutants        = 323
+	todosMutationScore     = 0.99
+	blogMutationScore      = 0.98
+	workspaceMutationScore = 0.97
+	todosMutants           = 208
+	blogMutants            = 323
+	workspaceMutants       = 522
 )
 
 // mutationAtLeast runs `alder test --mutate --json dir` and fails t when the score is below min
@@ -298,4 +300,108 @@ view model session =
 	if code != 0 || out != "" || errs != "" {
 		t.Fatalf("alder check of the blog's skeleton alone: exit %d\nout: %s\nerr: %s", code, out, errs)
 	}
+}
+
+// workspaceAbs is examples/workspace, made absolute before any test changes directory.
+var workspaceAbs, workspaceAbsErr = filepath.Abs("../../examples/workspace")
+
+// TestExample_Workspace (M15): the third example — orgs, memberships (`org … via Membership`,
+// `choose org`), projects and to-dos in `silo org`, an Activity log partitioned by org in the
+// shared database, and the admin of the silo — checks clean, builds, serves its login page, its
+// adapter passes its Go tests, and the app passes its tests (chapter 14 quotes them by name):
+// two orgs, a non-member's switch refused, a member seeing only their org's projects, a read of
+// each store in one load, the re-read idiom, and the admin's picker. Its committed admin is
+// exactly what `alder new admin` writes (README, "Replaying the admin"), and it keeps the
+// mutation score its README records.
+func TestExample_Workspace(t *testing.T) {
+	needGoTool(t)
+	if workspaceAbsErr != nil {
+		t.Fatal(workspaceAbsErr)
+	}
+	code, out, errs := run(t, workspaceAbs)
+	if code != 0 || out != "" || errs != "" {
+		t.Fatalf("alder check examples/workspace: exit %d\nout: %s\nerr: %s", code, out, errs)
+	}
+	// the admin replays byte for byte
+	replay := filepath.Join(t.TempDir(), "workspace")
+	copyDir(t, workspaceAbs, replay)
+	os.RemoveAll(filepath.Join(replay, "build"))
+	os.RemoveAll(filepath.Join(replay, "app", "Admin"))
+	if code, out, errs := alderIn(t, replay, "", "new", "admin"); code != 0 {
+		t.Fatalf("alder new admin in a copy: exit %d\n%s%s", code, out, errs)
+	}
+	committed, replayed := appFiles(t, workspaceAbs), appFiles(t, replay)
+	for p, s := range replayed {
+		if strings.HasPrefix(p, "app/Admin/") && committed[p] != s {
+			t.Errorf("%s: the committed admin is not what `alder new admin` writes", p)
+		}
+	}
+	for p := range committed {
+		if _, ok := replayed[p]; strings.HasPrefix(p, "app/Admin/") && !ok {
+			t.Errorf("%s: committed, but `alder new admin` does not write it", p)
+		}
+	}
+
+	inTemp(t)
+	copyDir(t, workspaceAbs, "workspace")
+	code, out, errs = runBuild(t, "workspace")
+	if code != 0 || out != "wrote build/workspace/workspace\n" {
+		t.Fatalf("alder build examples/workspace: exit %d\nout: %s\nerr: %s", code, out, errs)
+	}
+	prodHasNoTests(t, "workspace")
+	tmp, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := startAppNamed(t, tmp, "workspace", "ALDER_DEV=1", "ALDER_SECRET=")
+	res, err := (&http.Client{Timeout: 10 * time.Second}).Get("http://" + app.addr + "/login")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(body), "<h1>Log in</h1>") {
+		t.Fatalf("GET /login of the workspace = %d:\n%s", res.StatusCode, body)
+	}
+	if code := app.stop(t, os.Interrupt); code != 0 {
+		t.Fatalf("the workspace after SIGINT: exit %d; stderr:\n%s", code, app.stderr.String())
+	}
+	gotest := exec.Command("go", "test", "-count=1", "./adapters/...")
+	gotest.Dir = filepath.Join("build", "workspace")
+	b, err := gotest.CombinedOutput()
+	if err != nil || !strings.Contains(string(b), "ok  \tapp/adapters/auth\t") {
+		t.Fatalf("go test ./adapters/... in build/workspace: %v\n%s", err, b)
+	}
+	code, out, errs = runTest(t, "workspace")
+	if code != 0 {
+		t.Fatalf("alder test examples/workspace: exit %d\nout: %s\nerr: %s", code, out, errs)
+	}
+	for _, want := range []string{
+		`ok   Orgs.Index "a member opens one of their orgs"`,
+		`ok   Orgs.Index "a non-member's switch is refused"`,
+		`ok   Orgs.Index "a membership deleted earlier in the same Task counts as gone"`,
+		`ok   Orgs.Index "creating an org makes the user its member, logs it, and opens it"`,
+		`ok   Projects.Index "a member sees the org's name and only its projects, by name"`,
+		`ok   Projects.Index "a project is created in the org's database, and another org does not see it"`,
+		`ok   Projects.Index "another org's project cannot be removed"`,
+		`ok   Projects.Index "a member removed from the org loses access at once"`,
+		`ok   Projects.Index "without an org the page sends you to choose one"`,
+		`ok   Projects.Show "another org's project is not found"`,
+		`ok   Projects.Show "deleting a project deletes its to-dos, in the org's database"`,
+		`ok   Members.Index "the members, by name, and the activity of this org only"`,
+		`ok   Members.Index "removing a member logs it, and a removed member loses access at once"`,
+		`ok   Auth.Login "logging in opens the org the user joined first, with their role"`,
+		// the generated admin (`alder new admin`, book 15): the picker and the pages of one org
+		`ok   Admin.Orgs.Index "the picker lists every org, by name, each opening its dashboard"`,
+		`ok   Admin.Orgs.Show "the org's dashboard counts its projects, not another org's, and lists the newest five"`,
+		`ok   Admin.Project.Index "an Admin who is no member of the org lists its projects, and only its"`,
+		`ok   Admin.Project.Index "a Member gets no page, even one made Admin since logging in"`,
+		`ok   Admin.Project.Bulk "a bulk action stays inside one org"`,
+		"307 passed, 0 failed\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("alder test examples/workspace lacks %q:\n%s", want, out)
+		}
+	}
+	mutationAtLeast(t, "workspace", workspaceMutationScore, workspaceMutants)
 }

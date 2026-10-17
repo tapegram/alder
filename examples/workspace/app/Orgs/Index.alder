@@ -1,0 +1,169 @@
+module Orgs.Index
+
+import Activity
+import Layout
+import Membership
+import Org
+import User
+
+-- `choose org`'s page: it requires the user, not the org (a page that required the org would
+-- send a session without one back here). It lists the user's orgs, each a button that puts it in
+-- the session, and makes a new one.
+page "/orgs" { } requires user
+
+type Model = { orgs: List Org }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let mine <- Db.from Membership |> Db.where (Membership.user.eq session.user) |> Db.all
+  let orgs <- Db.from Org |> Db.where (Org.id.in (List.map (\m -> m.org) mine)) |> Db.orderBy Org.name.asc |> Db.all
+  Query.succeed { orgs: orgs }
+}
+
+form NewOrg = {
+  name: Text.NonEmpty,
+}
+
+msg Open { org: Org.OrgId }
+msg Create form NewOrg
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  -- `via Membership`: the runtime refuses an org the user is not a member of, whatever the
+  -- request says (a crafted one included)
+  Open p -> {
+    let _ <- Session.put (\s -> { s | org: Just p.org })
+    Task.succeed (Redirect (Projects.Index {}))
+  },
+  -- the org, its first member, and its first line of activity: all in the shared database, so
+  -- one Task; the Session.put sees the Membership inserted before it in the same transaction
+  Create p -> {
+    let org <- Db.insert Org { name: p.form.name }
+    let _ <- Db.insert Membership { user: session.user, org: org }
+    let _ <- Db.insert Activity { text: "The org was created.", org: org }
+    let _ <- Session.put (\s -> { s | org: Just org })
+    Task.succeed (Redirect (Projects.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Your orgs">
+    <h1>Your orgs</h1>
+    <ul id="orgs">
+      {for o in model.orgs ->
+        <li>
+          <span class="name">{o.name}</span>
+          <al-button variant="outline" click={Open { org: o.id }}>Open</al-button>
+        </li>}
+    </ul>
+    <al-card>
+      <h2 slot="header">A new org</h2>
+      <form submit={Create}>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-input field="name" label="Name" />
+        <al-button type="submit">Create</al-button>
+      </form>
+    </al-card>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+
+test "the page lists only the user's orgs, by name" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member ann acme
+  let _ <- Test.member bob globex
+  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
+  let zeta <- Db.insert Org { name: Text.NonEmpty "Zeta" }
+  let _ <- Test.member s.ann zeta
+  let _ <- Test.login { user: Just s.ann, org: Nothing }
+  let page <- Test.get (Orgs.Index {})
+  Task.succeed (Test.texts "#orgs .name" page.doc == ["Acme", "Zeta"])
+}
+
+test "a member opens one of their orgs" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member ann acme
+  let _ <- Test.member bob globex
+  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
+  let _ <- Test.login { user: Just s.ann, org: Nothing }
+  let _ <- Test.get (Orgs.Index {})
+  let r <- Test.click (Open { org: s.acme })
+  Task.succeed ({ answer: r.answer, org: r.session.org } == { answer: Redirected (Projects.Index {}), org: Just s.acme })
+}
+
+-- A request crafted by hand: the page offers Ann no Globex button, so the test runs `update`
+-- itself. `via Membership` refuses the Session.put: the Task fails, and the session keeps Acme.
+test "a non-member's switch is refused" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member ann acme
+  let _ <- Test.member bob globex
+  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
+  let _ <- Test.login { user: Just s.ann, org: Just s.acme }
+  let r <- Test.run (update (Open { org: s.globex }) { orgs: [] } { user: s.ann, org: Nothing, role: Member })
+  let page <- Test.get (Orgs.Index {})
+  Task.succeed ({ value: r.value, org: page.session.org } == { value: Err "Session.put org: no Membership for this user and org", org: Just s.acme })
+}
+
+test "a membership deleted earlier in the same Task counts as gone" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member ann acme
+  let _ <- Test.member bob globex
+  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
+  let m <- Db.insert Membership { user: s.bob, org: s.acme }
+  let _ <- Test.login { user: Just s.bob, org: Nothing }
+  let r <- Test.run {
+    let _ <- Db.delete Membership m
+    Session.put (\x -> { x | org: Just s.acme })
+  }
+  Task.succeed (r.value == Err "Session.put org: no Membership for this user and org")
+}
+
+test "creating an org makes the user its member, logs it, and opens it" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member ann acme
+  let _ <- Test.member bob globex
+  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
+  let _ <- Test.login { user: Just s.bob, org: Nothing }
+  let _ <- Test.get (Orgs.Index {})
+  let r <- Test.submit NewOrg { name: Text.NonEmpty "Initech" }
+  let made <- Db.from Org |> Db.where (Org.name.eq (Text.NonEmpty "Initech")) |> Db.all
+  let ids = List.map (\o -> o.id) made
+  let members <- Db.from Membership |> Db.where (Membership.org.in ids) |> Db.all
+  let logged <- Db.from Activity |> Db.where (Activity.org.in ids) |> Db.count
+  Task.succeed ({ answer: r.answer, org: r.session.org == List.head ids, members: List.map (\m -> m.user) members, logged: logged } == { answer: Redirected (Projects.Index {}), org: True, members: [s.bob], logged: 1 })
+}
+
+test "logging out clears the user and the org" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member ann acme
+  let _ <- Test.member bob globex
+  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
+  let _ <- Test.login { user: Just s.ann, org: Just s.acme, role: Admin }
+  let _ <- Test.get (Orgs.Index {})
+  let r <- Test.click App.Logout
+  Task.succeed ({ answer: r.answer, user: r.session.user, org: r.session.org, role: r.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, org: Nothing, role: Member })
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Orgs.Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

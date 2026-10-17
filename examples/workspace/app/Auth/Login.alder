@@ -1,0 +1,97 @@
+module Auth.Login
+
+import Layout
+import Membership
+import Org
+import User
+
+-- Password checking is outside the language: a capability implemented in Go.
+capability Password {
+  verify : { email: Text.Email, password: Text } -> Task (Maybe User.UserId),
+}
+
+-- In a test, `Test.fake Password` puts this in the adapter's place: it accepts any user who has
+-- a row, whatever the password (book 10).
+fake Password {
+  verify args = {
+    let found <- Db.from User |> Db.where (User.email.eq args.email) |> Db.first
+    Task.succeed (Maybe.map (\u -> u.id) found)
+  }
+}
+
+page "/login" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+form Credentials = {
+  email: Text.Email,
+  password: Text.Secret,
+}
+
+msg Submit form Credentials
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let found <- Password.verify { email: p.form.email, password: p.form.password }
+    match found {
+      -- The session keeps the user, their role as the row has it now, and the org they joined
+      -- first: the Session.put of `org` passes `via Membership`'s check, since the row is there.
+      -- A user in no org has none, and the projects page sends them to choose (or make) one.
+      Just id -> {
+        let me <- Db.get User id
+        let first <- Db.from Membership |> Db.where (Membership.user.eq id) |> Db.orderBy Membership.created.asc |> Db.first
+        let role = Maybe.withDefault Member (Maybe.map (\u -> u.role) me)
+        let _ <- Session.put (\s -> { s | user: Just id, org: Maybe.map (\m -> m.org) first, role: role })
+        Task.succeed (Redirect (Projects.Index {}))
+      },
+      Nothing -> Task.succeed (Reject "Email or password is incorrect."),
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Log in">
+    <h1>Log in</h1>
+    <al-card>
+      <form submit={Submit}>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-input field="email" label="Email" />
+        <al-input field="password" label="Password" />
+        <al-button type="submit">Log in</al-button>
+      </form>
+    </al-card>
+  </Layout.Page>
+
+test "an unknown email is rejected" = {
+  let _ <- Test.fake Password
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.submit Credentials { email: Text.Email "nobody@example.com", password: Text.Secret "secret" }
+  Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: FormRejected [{ field: "", message: "Email or password is incorrect." }], user: Nothing })
+}
+
+test "logging in opens the org the user joined first, with their role" = {
+  let _ <- Test.fake Password
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "", role: Admin }
+  let acme <- Db.insert Org.Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org.Org { name: Text.NonEmpty "Globex" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let _ <- Db.insert Membership { user: bob, org: acme }
+  let _ <- Db.insert Membership { user: ann, org: globex }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.submit Credentials { email: Text.Email "ann@example.com", password: Text.Secret "secret" }
+  Task.succeed ({ answer: r.answer, user: r.session.user, org: r.session.org, role: r.session.role } == { answer: Redirected (Projects.Index {}), user: Just ann, org: Just globex, role: Admin })
+}
+
+test "a user in no org logs in without one" = {
+  let _ <- Test.fake Password
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.submit Credentials { email: Text.Email "bob@example.com", password: Text.Secret "secret" }
+  Task.succeed ({ user: r.session.user, org: r.session.org, role: r.session.role } == { user: Just bob, org: Nothing, role: Member })
+}

@@ -1,0 +1,174 @@
+{
+  "format": "1",
+  "tables": [
+    {
+      "name": "Activity.Activity",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "text",
+          "type": "Text"
+        },
+        {
+          "name": "org",
+          "type": "Text",
+          "ref": "Org.Org",
+          "onDelete": "cascade"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "Membership.Membership",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "user",
+          "type": "Text",
+          "ref": "User.User",
+          "onDelete": "cascade"
+        },
+        {
+          "name": "org",
+          "type": "Text",
+          "ref": "Org.Org",
+          "onDelete": "cascade"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "Org.Org",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "Project.Project",
+      "id": "id",
+      "created": "created",
+      "silo": "org",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        },
+        {
+          "name": "org",
+          "type": "Text",
+          "ref": "Org.Org"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "Todo.Todo",
+      "id": "id",
+      "created": "created",
+      "silo": "org",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "title",
+          "type": "Text"
+        },
+        {
+          "name": "done",
+          "type": "Bool",
+          "default": "0"
+        },
+        {
+          "name": "project",
+          "type": "Text",
+          "ref": "Project.Project",
+          "onDelete": "cascade"
+        },
+        {
+          "name": "org",
+          "type": "Text",
+          "ref": "Org.Org"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "User.User",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "email",
+          "type": "Text",
+          "unique": true
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        },
+        {
+          "name": "passwordHash",
+          "type": "Text"
+        },
+        {
+          "name": "role",
+          "type": "Enum",
+          "enum": [
+            "Member",
+            "Admin"
+          ],
+          "default": "'Member'"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    }
+  ]
+}
