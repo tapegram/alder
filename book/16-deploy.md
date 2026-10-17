@@ -1001,9 +1001,10 @@ on close is planned.
 **Experimental.** The `Fly` target has run only against a fake of Fly's
 API in alder's own tests; it has never run against Fly itself. Every Fly
 deploy says so (`warning: the Fly target is experimental: it has never
-run against the real Fly API`), and until it is finished (milestone
-M15) it **refuses any deploy that would apply a migration to an
-existing database**:
+run against the real Fly API`), and until it is finished it **refuses
+any deploy that would apply a migration to an existing database** (for
+data that outgrows one box, the production answer is the `Turso`
+database of an `Ssh` environment, below):
 
 ```text
 alder deploy: refused: Fly target: migrations are not supported yet; deploy a build with no pending migrations, or use Ssh (pending: 0002_add_mood; nothing was shipped)
@@ -1150,12 +1151,191 @@ before the first user arrives:
 | A rebuild takes the lock | A migration that rebuilds a table copies it under the write lock; `--dry-run` shows it so you can choose when. |
 | Zero downtime on one box | Two processes can open the file: the new build migrates and starts while the old one drains, which is how the `Ssh` target switches behind Caddy without dropping requests (`proxy: None` has a moment without a listener; Fly a pause of seconds). |
 
-When the app outgrows one box (writes from several regions, or more
-than one server's worth of load), the answer is a database built for
-it: SQLite's protocol over the network, with replicas. Turso is the
-target planned for that (milestone M15, partitions and silos); until
-then, one box and a streamed backup is the honest shape of an Alder app
-in production.
+When the app outgrows one box's disk (many tenants, each with a
+database of its own, or more data than one machine should hold), the
+answer is a database built for it: SQLite's own engine run as a
+service, reached over the network. That is the `Turso` database below.
+
+## Silos at a box
+
+An app with `silo org { Project }` (chapter 8) keeps each org's projects
+in a database of its own. At an `Ssh` box with the ordinary file
+database, each silo is a file next to the shared one:
+
+```text
+<path>/db/app.db                      the shared database
+<path>/db/silos/org/<name>.db         one org's silo
+```
+
+`<name>` is the org's id written in a file-safe alphabet (lowercase
+base32hex): ids are case-sensitive, and some file systems are not, so
+the id's own text is never the file name. A silo file is created the
+first time a request needs it, and checked every time a process opens
+it: the `_alder_schema` row inside it says which build last migrated it
+(chapter 13 explains the check). Four commands look after the silos of
+a deployed app, each running the current build's executable at the box
+(the same executable that serves, with a maintenance flag):
+
+| Command | What it does |
+|---|---|
+| `alder status <env>` | adds the silo table: per key, how many silos are `ok`, `migrating`, `pending (data loss)`, `ahead`, `failed` and `orphaned`, then each one that is not `ok` with the reason (the build's `--silo-status`) |
+| `alder migrate silos <env> [--allow-data-loss]` | migrates every silo file now (`--migrate-silos`); a silo behind by a migration that drops data needs `--allow-data-loss`, exactly as the shared database does at deploy |
+| `alder silos prune <env> [--yes]` | lists the orphaned silos (their org's row was deleted, so nothing can reach them), asks, and removes their files (`--prune-silos`, which checks each again first) |
+| `alder restore <env> --silo org:<id> --to <time>` | rebuilds that one silo from its own backup stream and puts it in place; the file it replaces is kept beside it (`….before-restore-<time>`), and the build is restarted so no process keeps what it read |
+
+A typical session after a deploy whose migration dropped a column of a
+siloed table:
+
+```text
+$ alder status production
+…
+silos    org: 41 ok, 0 migrating, 2 pending (data loss), 0 ahead, 0 failed
+           org/xK3…  pending-data-loss: a pending migration DROPS DATA (0002_drop_note: column Project.note): take a backup and run `alder migrate silos <env> --allow-data-loss`
+           org/9pQ…  pending-data-loss: …
+$ alder migrate silos production --allow-data-loss
+org/xK3…: migrated 0002_drop_note
+org/9pQ…: migrated 0002_drop_note
+```
+
+The two orgs saw the app's maintenance page in between; every other
+org was served. The running app notices a silo that became servable on
+its next request after its recheck interval; `alder status` (a new
+process) sees it at once.
+
+With `backup:` (or `ALDER_BACKUP_URL` in the environment file) the
+runtime streams every silo file as it streams the shared database, each
+under its own prefix of the bucket (`silos/org/<name>/…`), so one silo
+can be restored without touching the others. Each stream is a shipper
+with a lock file and two connections, so there is a limit: **200 silo
+files**. Past it, the runtime ships none of the silos (the log says so,
+once) and `alder deploy` refuses with a sentence pointing here. Two
+hundred tenants in files on one disk is where the `Turso` database
+starts to pay for itself.
+
+## The Turso database
+
+[Turso](https://turso.tech) runs SQLite's engine (libSQL) as a
+service: each database lives there, is reached over HTTPS, and is
+backed up continuously with *point-in-time recovery*: you can ask for a
+copy of any database as it was at any second of the last days. Turso
+also has *schema databases*: a database that holds only a schema, whose
+*child* databases all share that schema. Change the schema database and
+Turso passes the change on to every child. That is exactly a silo key:
+one schema, a database per org.
+
+An environment keeps its box (the executable still runs there, behind
+Caddy) and moves its data:
+
+```alder fragment
+deploy {
+  production: Ssh "deploy@box.example.com" {
+    domain: "app.example.com",
+    path: "/srv/app",
+    database: Turso "acme" { group: "default", app: "workspace", sample: 5 },
+  },
+}
+```
+
+`Turso "acme"` is the organization; `group` the Turso group the
+databases are created in (default `"default"`); `app` the name the
+databases get; `sample` how many of the largest silos a deploy tries
+its migrations on first (default 5). The names Turso ends up holding:
+
+| Database | What it is |
+|---|---|
+| `workspace` | the shared database (`ALDER_DB=libsql://…` for the app) |
+| `workspace-org-schema` | the schema database of `silo org`: the tables, no rows |
+| `workspace-org-<id>` | one org's silo, a child of the schema database, its id written as the silo file's name is |
+
+The token: create one with `turso auth api-tokens mint alder` and put
+it in two places. On the machine that deploys, as `TURSO_API_TOKEN` in
+the environment (the deploy creates databases and runs migrations from
+there). At the box, as `TURSO_API_TOKEN=…` in the environment file (the
+running app creates each org's database the first time that org is
+used, and asks Turso for a token per database, which it keeps in
+memory). `alder deploy` checks both before anything changes.
+
+### What a deploy does with it
+
+The gate, the artifact and the plan are as for any `Ssh` environment.
+Then, before anything is uploaded, the preflight checks the token here,
+that the group exists, that every database name fits Turso's rules (at
+most 64 characters: keep `app` short), and creates the shared database
+if this is the first deploy, writing its address to
+`<path>/db/turso.env` at the box (the build's run script reads it).
+After the upload:
+
+1. **The backup is a point in time.** Nothing is copied: the deploy
+   records the next whole second in `builds/<id>/backup.pitr` and waits
+   for it to pass, so every write before the deploy is at or before that
+   time and every change the migrations make is after it.
+2. **The plan is tried on the largest silos.** The deploy runs the new
+   build's executable *on this machine* (built for it when the box is
+   another platform) with `--verify-silos 5`: it asks Turso for each
+   child's size, takes the five largest, and on each one begins a
+   transaction, checks the child's tables are the schema database's
+   (a child left behind by an earlier change, or changed by hand,
+   fails here), runs the pending migrations' statements, checks
+   foreign keys and the resulting tables, and rolls everything back. One
+   failure refuses the deploy, naming the child, and nothing has been
+   migrated: the shared database is as it was, the old build serves.
+3. **The shared database is migrated** with `--migrate-only`, from
+   here, over HTTPS: the same migrations, the same DROPS DATA rule, as
+   for a file.
+4. **Each schema database is migrated** (`--migrate-silos
+   --schema-only`), and Turso passes the change to the children.
+5. Start, health check, switch, as always.
+
+A child that has not received the change yet (Turso passes it on in the
+background) is a *straggler*: the new build finds its tables are not its
+own yet, answers that org's maintenance page, and `alder status` lists
+it as `migrating`. When the change arrives the child is served again;
+nothing needs to be run. The first time a build opens a child whose
+tables are its own, it writes the child's `_alder_schema` row.
+
+One kind of migration cannot work this way, and is refused before
+anything is migrated: one that copies or changes *rows* of a siloed
+table (a table rebuild, a backfill). The schema database has no rows,
+and Turso passes on schema changes only, so the children's rows would
+not follow. Write such a change as one Turso can pass on (add a
+nullable column at the end, add or drop a table or an index), or keep
+that table out of the silo.
+
+### Restoring, rolling back, locking
+
+| Command | On a Turso database |
+|---|---|
+| `alder restore <env> --to <time>` | asks Turso for a copy of the shared database as it was at that time, makes it the app's (`db/turso.env` names it), and restarts the build on it; the replaced database stays at Turso |
+| `alder restore <env> --silo org:<id> --to <time>` | puts one org's database back as it was: Turso cannot restore a database in place, so the deploy copies it at that time, keeps a copy of it as it is now, and creates the org's database again from the first copy |
+| `alder rollback <env> <id> --restore-backup` | the same copy of the shared database, at the time the next deploy recorded in `backup.pitr` |
+| `alder silos prune <env>` | deletes the orphaned orgs' databases at Turso |
+
+`--from` and `--out` do not apply: there is no stream and no file. A
+rollback puts back the shared database only; the silos stay at the
+newer schema, so an older build answers their maintenance page
+(`ahead`) until you deploy forward again.
+
+Two deploys of the same environment cannot overlap: besides the box's
+lock, the deploy holds a row of the shared database (`_alder_lock`,
+with its holder and an expiry two hours later, so a killed run does not
+block the next one forever).
+
+### What alder speaks to Turso
+
+No Turso library: the runtime and the deploy use Go's `net/http`, and
+exactly these requests. Of the platform API (`api.turso.tech`): read a
+group; list a schema database's children; read, create (plain, schema,
+child, or seeded from another database at a time) and delete a
+database; read a database's storage size; mint a database's token. Of
+the database protocol (Hrana over HTTP, `POST /v2/pipeline`): `execute`
+with positional arguments and `close`, on a stream carried from request
+to request by its *baton*; a transaction is `BEGIN IMMEDIATE` …
+`COMMIT` on one stream, so the Task's own code runs between its
+statements as it does on a file. alder's tests run all of it against a
+fake Turso (`internal/tursofake`); `go test -tags turso ./rt/db` with
+`TURSO_API_TOKEN` and `ALDER_TURSO_ORG` set runs the same calls against
+the real service, creating and deleting databases named
+`alder-t-<random>`.
 
 ## The knobs
 
@@ -1173,6 +1353,10 @@ and for unusual setups:
 | `ALDER_BACKUP_INTERVAL` | how often the runtime ships the database (default `10s`) |
 | `ALDER_ALLOW_DATA_LOSS` | read by the app's executable, never set by you: `1` lets `--migrate-only` apply a DROPS DATA migration; `alder deploy` sets it for one run with `--allow-data-loss` |
 | `FLY_API_TOKEN`, `FLY_ORG` | the Fly target's token, and the organization a new Fly app is created in |
+| `TURSO_API_TOKEN` | here and at the box: the Turso platform API's token (a `database: Turso` environment) |
+| `ALDER_TURSO_API` | the platform API's address (default `https://api.turso.tech`; alder's tests point it at the fake, whose databases are then reached over plain HTTP) |
+| `ALDER_TURSO_ORG`, `ALDER_TURSO_GROUP`, `ALDER_TURSO_APP`, `ALDER_TURSO_DB` | read by the app's executable, set by the run script from the declaration and `db/turso.env`: where its databases are |
+| `ALDER_DB_TOKEN` | read by the app's executable: a token for `ALDER_DB=libsql://…` itself, instead of one minted with `TURSO_API_TOKEN` (an app run by hand against a Turso database) |
 
 And for alder's own tests of the targets: `ALDER_DEPLOY_LOCAL=1` runs
 the `Ssh` tests against a private `sshd` on this machine;
@@ -1184,9 +1368,12 @@ has them (CI's `deploy-systemd` job).
 ## What is not there yet
 
 The `Fly` target is experimental: it refuses migrating deploys and has
-no lock and no `--restore-backup` until milestone M15. A preview is not
+no lock and no `--restore-backup`. A preview is not
 removed when its pull request closes. Wildcard certificates need a DNS
 challenge alder does not configure. A build run as a plain process
 (no systemd) is not restarted when it crashes. Only GitHub Actions has
-a workflow. And an app runs on one box, by design, until the Turso
-target exists.
+a workflow. A Turso database's silos take schema changes only (a
+migration that copies rows of a siloed table is refused), its rollback
+puts back the shared database but not the silos, and the run against
+the real service is manual (`-tags turso`). The file database's silos
+stream at most 200 files.
