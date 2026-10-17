@@ -109,7 +109,10 @@ func pageBuild(client *http.Client, u string) string {
 }
 
 // monitor asks a public address which build answers, every 100 ms, until the test ends: the
-// availability record of a deploy, a rollback or a restore.
+// availability record of a deploy, a rollback or a restore. client is the HTTP client it asks
+// with (nil: a plain one with a 2 s timeout); an https address with a certificate this process
+// does not trust (Caddy's local CA for localhost) needs one that skips verification, or every
+// sample is DOWN.
 type monitor struct {
 	mu      sync.Mutex
 	samples []sample
@@ -120,11 +123,13 @@ type sample struct {
 	build string
 }
 
-func startMonitor(t *testing.T, u string) *monitor {
+func startMonitor(t *testing.T, u string, client *http.Client) *monitor {
 	m := &monitor{}
 	stop := make(chan struct{})
 	done := make(chan struct{})
-	client := &http.Client{Timeout: 2 * time.Second}
+	if client == nil {
+		client = &http.Client{Timeout: 2 * time.Second}
+	}
 	go func() {
 		defer close(done)
 		for {
@@ -154,6 +159,17 @@ func (m *monitor) since(t0 time.Time) []string {
 		}
 	}
 	return out
+}
+
+// dropped is how many samples from t0 on named neither build a nor build b (DOWN, mostly).
+func (m *monitor) dropped(t0 time.Time, a, b string) int {
+	n := 0
+	for _, s := range m.since(t0) {
+		if s != a && s != b {
+			n++
+		}
+	}
+	return n
 }
 
 // summary is the monitor's record from t0 on, runs collapsed: "a×12 DOWN×3 b×40".
@@ -333,7 +349,7 @@ func TestDeploySsh_CaddyDrainRestore(t *testing.T) {
 	}
 
 	// C1: inside the window, onto the draining build, with its copy
-	mon := startMonitor(t, public)
+	mon := startMonitor(t, public, nil)
 	so.Reset()
 	se.Reset()
 	if code := runRollbackTo([]string{"production", id1, "--dir", dir, "--restore-backup", "--yes"}, &so, &se); code != 0 {

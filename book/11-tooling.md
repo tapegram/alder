@@ -1146,8 +1146,9 @@ go test ./... -count=1 -timeout 30m
 The `-timeout 30m` matters: `cmd/alder`'s tests build and run whole apps,
 mutation runs included, and on a loaded machine the package takes longer
 than `go test`'s default limit of ten minutes, which then fails it with a
-panic that looks like a hang. CI passes the same flag to each of its
-shards (`.github/workflows/ci.yml`, `.github/shard.sh`). `-short` skips the
+panic that looks like a hang. CI passes a like flag to each of its
+shards (`.github/workflows/ci.yml`, `.github/shard.sh`; 40 minutes there,
+for the shard that holds the admin's longest mutation run). `-short` skips the
 slowest suites (the admin's mutation runs, the out-of-tree builds, the drill), for a
 quick pass while working; the gate runs them.
 
