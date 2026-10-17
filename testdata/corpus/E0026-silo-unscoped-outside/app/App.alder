@@ -3,6 +3,7 @@ module App
 import User
 import Org
 import Project
+import Wiper
 
 session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Reader }
 
@@ -11,12 +12,30 @@ login = Login
 choose org = Orgs
 silo org { Project }
 
+-- App has no `org` in scope (it is no page), so no arm of its update can write a silo, however
+-- the write is spelled: unbound App Tasks only ever write the shared store
 msg Wipe { id: Project.ProjectId }
+msg Bound { id: Project.ProjectId }
+msg Helped { id: Project.ProjectId }
+msg Scoped { id: Project.ProjectId }
 
 update : Msg -> Session -> Task Nav
 update msg session = match msg {
   Wipe p -> {
     let _ <- Db.delete Project p.id
+    Task.succeed Rerender
+  },
+  Bound p -> {
+    let del = Db.delete
+    let _ <- del Project p.id
+    Task.succeed Rerender
+  },
+  Helped p -> {
+    let _ <- Wiper.wipe p.id
+    Task.succeed Rerender
+  },
+  Scoped p -> {
+    let _ <- Db.deleteScoped Project p.id
     Task.succeed Rerender
   },
 }

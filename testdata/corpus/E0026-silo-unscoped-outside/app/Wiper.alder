@@ -1,0 +1,6 @@
+module Wiper
+
+import Project
+
+wipe : Project.ProjectId -> Task Unit
+wipe id = Db.delete Project id
