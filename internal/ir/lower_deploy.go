@@ -36,6 +36,10 @@ func lowerDeploy(d *syntax.DeployDecl) *Deploy {
 			if v.Kind == "ctor" {
 				dp.Proxy = v.Ctor
 			}
+		case "image":
+			if v.Kind == "string" {
+				dp.Image = v.Str
+			}
 		default:
 			if t, ok := lowerTarget(v); ok {
 				dp.Envs[f.Name] = t
@@ -69,6 +73,8 @@ func lowerTarget(v *syntax.DeployValue) (Target, bool) {
 		t = Target{Kind: "ssh", Host: arg}
 	case "Fly":
 		t = Target{Kind: "fly", Region: arg}
+	case "Render":
+		t = Target{Kind: "render", Region: arg}
 	case "Script":
 		t = Target{Kind: "script", ScriptPath: arg}
 	default:
@@ -90,6 +96,14 @@ func lowerTarget(v *syntax.DeployValue) (Target, bool) {
 			t.Port = s
 		case "app":
 			t.App = s
+		case "service":
+			t.Service = s
+		case "plan":
+			t.Plan = s
+		case "instances":
+			if n, err := strconv.Atoi(s); err == nil && f.Value.Kind == "int" {
+				t.Instances = n
+			}
 		case "database":
 			t.Database = lowerDatabase(f.Value)
 		}

@@ -12,6 +12,17 @@ deploy {
   preview:    Ssh "deploy@box.example.com" { domain: "*.preview.example.com", path: "/srv/blog-preview" },
   long:       Fly "ord" { app: "a-very-long-hyphenated-application-name-for-staging" },
   local:      Script "./scripts/deploy-local.sh",
+  cloud: Render "oregon" {
+    service:   "blog",
+    database:  Turso "my-org" { app: "blog" },
+    instances: 2,
+    plan:      "starter",
+  },
+  cloudpreview: Render "oregon" {
+    service:  "blog-preview",
+    database: Turso "my-org" { app: "blog-preview" },
+  },
+  image:      "ghcr.io/tavish/blog",
   floor:      0.95,
   checks:     ["./scripts/lint-content", "go vet ./...", "scripts/checks/verify/content/links/internal"],
   requires:   ["SMTP_URL", "STRIPE_KEY"],

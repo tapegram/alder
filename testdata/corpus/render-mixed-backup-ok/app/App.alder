@@ -1,0 +1,13 @@
+module App
+
+error : Error -> Html Never
+error err = <h1>Something went wrong</h1>
+
+notFound : Html Never
+notFound = <h1>Not found</h1>
+
+deploy {
+  production: Render "oregon" { service: "blog", database: Turso "acme" { app: "blog" } },
+  staging: Ssh "deploy@box" { domain: "blog.example.com", path: "/srv/blog" },
+  backup: S3 "s3://b/p",
+}

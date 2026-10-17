@@ -1,0 +1,1 @@
+app/App.alder:10:15 E0030 a Render service keeps nothing between deploys: give it `database: Turso "org" { app }`

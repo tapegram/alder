@@ -1,0 +1,1 @@
+app/App.alder:10:56 E0030 `plan` is Render's plan name, such as "starter", or a compute spec such as "1c-2g": lowercase letters, digits, `-` and `_`

@@ -776,16 +776,20 @@ func TestIR_Deploy(t *testing.T) {
 		"preview":    {Kind: "ssh", Host: "deploy@box.example.com", Domain: "*.preview.example.com", Path: "/srv/blog-preview"},
 		"long":       {Kind: "fly", Region: "ord", App: "a-very-long-hyphenated-application-name-for-staging"},
 		"local":      {Kind: "script", ScriptPath: "./scripts/deploy-local.sh"},
+		"cloud": {Kind: "render", Region: "oregon", Service: "blog", Plan: "starter", Instances: 2,
+			Database: &Database{Kind: "turso", Org: "my-org", Group: "default", App: "blog"}},
+		"cloudpreview": {Kind: "render", Region: "oregon", Service: "blog-preview",
+			Database: &Database{Kind: "turso", Org: "my-org", Group: "default", App: "blog-preview"}},
 	}
 	if len(d.Envs) != len(want) {
 		t.Errorf("envs: %v", d.Envs)
 	}
 	for n, w := range want {
-		if d.Envs[n] != w {
+		if !reflect.DeepEqual(d.Envs[n], w) {
 			t.Errorf("env %s: %+v, want %+v", n, d.Envs[n], w)
 		}
 	}
-	if !d.FloorSet || d.Floor != 0.95 || d.Keep != 5 || d.Proxy != "None" || d.Backup == nil || d.Backup.URL != "s3://blog-backups/production" ||
+	if !d.FloorSet || d.Floor != 0.95 || d.Keep != 5 || d.Image != "ghcr.io/tavish/blog" || d.Proxy != "None" || d.Backup == nil || d.Backup.URL != "s3://blog-backups/production" ||
 		strings.Join(d.Requires, ",") != "SMTP_URL,STRIPE_KEY" || len(d.Checks) != 3 {
 		t.Errorf("deploy: %+v", d)
 	}

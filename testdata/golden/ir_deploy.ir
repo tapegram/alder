@@ -6,6 +6,16 @@
 (value App.notFound : Html Never () (elem h1 (htext "Not found")))
 (session App.Session)
 (deploy
+  (env cloud render
+    (region "oregon")
+    (service "blog")
+    (plan "starter")
+    (instances 2)
+    (database turso "my-org" (group "default") (app "blog")))
+  (env cloudpreview render
+    (region "oregon")
+    (service "blog-preview")
+    (database turso "my-org" (group "default") (app "blog-preview")))
   (env local script (script "./scripts/deploy-local.sh"))
   (env long fly
     (region "ord")
@@ -21,6 +31,7 @@
     (user "deploy")
     (port "2222"))
   (env staging fly (region "ord") (app "blog-staging"))
+  (image "ghcr.io/tavish/blog")
   (floor 0.95)
   (checks
     "./scripts/lint-content"

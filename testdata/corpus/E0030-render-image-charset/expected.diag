@@ -1,0 +1,1 @@
+app/App.alder:11:10 E0030 `image` is a registry host and 2 or 3 path parts, such as "ghcr.io/<owner>/<app>": lowercase letters, digits, `.`, `-`, `_`

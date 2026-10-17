@@ -1,0 +1,1 @@
+app/App.alder:11:10 E0030 the registry of `image` is one Render can pull from: `ghcr.io`, `docker.io`, `registry.gitlab.com`, `*.pkg.dev` or `*.amazonaws.com`

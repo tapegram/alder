@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"alder/internal/diag"
+	"alder/internal/registry"
 	"alder/internal/syntax"
 )
 
@@ -42,6 +43,7 @@ func (mc *modCtx) checkDeploy(decls []*syntax.DeployDecl) {
 		}
 		mc.deployField(f)
 	}
+	mc.deployBackupRender(d)
 	named := map[string]bool{}
 	if requires != nil && requires.Value != nil && requires.Value.Kind == "list" {
 		for _, e := range requires.Value.List {
@@ -60,7 +62,7 @@ func (mc *modCtx) checkDeploy(decls []*syntax.DeployDecl) {
 	}
 }
 
-var deployKnownField = map[string]bool{"floor": true, "checks": true, "requires": true, "backup": true, "keep": true, "proxy": true}
+var deployKnownField = map[string]bool{"floor": true, "checks": true, "requires": true, "backup": true, "keep": true, "proxy": true, "image": true}
 
 func (mc *modCtx) deployField(f *syntax.DeployField) {
 	c := mc.c
@@ -111,6 +113,8 @@ func (mc *modCtx) deployField(f *syntax.DeployField) {
 		case v.Rec != nil:
 			bad("`S3` takes only its location")
 		}
+	case "image":
+		mc.deployImage(v)
 	case "proxy":
 		if v.Kind != "ctor" || (v.Ctor != "Caddy" && v.Ctor != "None") || v.Arg != nil || v.Rec != nil {
 			bad("`proxy` is `Caddy` or `None`")
@@ -134,12 +138,12 @@ func envName(s string) bool {
 }
 
 // deployTarget checks the environment f: its value is `Ssh "host" { domain, path, user?, port? }`,
-// `Fly "region" { app }` or `Script "path"`.
+// `Fly "region" { app }`, `Render "region" { service, database, instances?, plan? }` or `Script "path"`.
 func (mc *modCtx) deployTarget(f *syntax.DeployField) {
 	c := mc.c
 	v := f.Value
 	if v.Kind != "ctor" {
-		c.errorf(diag.DeployDecl, v.Span, "`%s` is not a deploy setting: an environment's value is a target, `Ssh \"user@host\" { … }`, `Fly \"region\" { … }` or `Script \"./path\"`", f.Name)
+		c.errorf(diag.DeployDecl, v.Span, "`%s` is not a deploy setting: an environment's value is a target, `Ssh \"user@host\" { … }`, `Fly \"region\" { … }`, `Render \"region\" { … }` or `Script \"./path\"`", f.Name)
 		return
 	}
 	var arg, argWhat string
@@ -152,11 +156,14 @@ func (mc *modCtx) deployTarget(f *syntax.DeployField) {
 	case "Fly":
 		arg, argWhat, required = "region", "the region as text, such as \"ord\"", []string{"app"}
 		fields = map[string]string{"app": "text"}
+	case "Render":
+		arg, argWhat, required = "region", "the region as text, such as \"oregon\"", []string{"service"}
+		fields = map[string]string{"service": "text", "plan": "text", "instances": "instances", "database": "database"}
 	case "Script":
 		arg, argWhat = "path", "the script's path as text, such as \"./scripts/deploy.sh\""
 		fields = map[string]string{}
 	default:
-		c.errorf(diag.DeployDecl, v.Span, "unknown deploy target `%s` in environment `%s`: a target is `Ssh`, `Fly` or `Script`", v.Ctor, f.Name)
+		c.errorf(diag.DeployDecl, v.Span, "unknown deploy target `%s` in environment `%s`: a target is `Ssh`, `Fly`, `Render` or `Script`", v.Ctor, f.Name)
 		return
 	}
 	if v.Arg == nil || strings.TrimSpace(v.Arg.Str) == "" {
@@ -184,6 +191,10 @@ func (mc *modCtx) deployTarget(f *syntax.DeployField) {
 		switch {
 		case kind == "database":
 			mc.deployDatabase(f.Name, rf.Value)
+		case kind == "instances":
+			if n, err := strconv.Atoi(rf.Value.Str); rf.Value.Kind != "int" || err != nil || n < 1 {
+				c.errorf(diag.DeployDecl, rf.Value.Span, "`instances` is how many instances Render runs: a whole number of at least 1")
+			}
 		case kind == "port":
 			if n, err := strconv.Atoi(rf.Value.Str); rf.Value.Kind != "int" || err != nil || n < 1 || n > 65535 {
 				c.errorf(diag.DeployDecl, rf.Value.Span, "`port` is a whole number from 1 to 65535")
@@ -211,6 +222,89 @@ func (mc *modCtx) deployTarget(f *syntax.DeployField) {
 	}
 	if v.Ctor == "Fly" {
 		c.flyCharacters(v)
+	}
+	if v.Ctor == "Render" {
+		c.renderCharacters(v)
+		if !have["database"] {
+			c.errorf(diag.DeployDecl, v.Span, "a Render service keeps nothing between deploys: give it `database: Turso \"org\" { app }`")
+		}
+	}
+}
+
+// renderRegions are Render's regions.
+var renderRegions = []string{"oregon", "ohio", "virginia", "frankfurt", "singapore"}
+
+// renderPlanChars is the character set of a Render plan: `starter`, `standard`, `pro`, or a
+// compute spec such as `1c-2g`.
+var renderPlanChars = regexp.MustCompile(`^[a-z0-9_-]+$`)
+
+// renderCharacters reports a Render target's region or plan outside what Render takes (E0030).
+func (c *Checker) renderCharacters(v *syntax.DeployValue) {
+	if a := v.Arg; a != nil && strings.TrimSpace(a.Str) != "" && !looksSecret(a.Str) && !slices.Contains(renderRegions, a.Str) {
+		c.errorf(diag.DeployDecl, a.Span, "the region of `Render` is one of Render's: `oregon`, `ohio`, `virginia`, `frankfurt` or `singapore`")
+	}
+	for _, rf := range v.Rec {
+		if rf.Name == "plan" && rf.Value != nil && rf.Value.Kind == "string" && strings.TrimSpace(rf.Value.Str) != "" && !looksSecret(rf.Value.Str) && !renderPlanChars.MatchString(rf.Value.Str) {
+			c.errorf(diag.DeployDecl, rf.Value.Span, "`plan` is Render's plan name, such as \"starter\", or a compute spec such as \"1c-2g\": lowercase letters, digits, `-` and `_`")
+		}
+	}
+}
+
+// imageChars is the character set of a registry path (the host and the repository).
+var imageChars = regexp.MustCompile(`^[a-z0-9._/-]+$`)
+
+// deployImage checks the deploy-level `image: "ghcr.io/<owner>/<app>"`: the registry path every
+// Render environment's image is pushed to, tagged with the build id. An absent `image` is not the
+// checker's to judge (the command reads the git remote).
+func (mc *modCtx) deployImage(v *syntax.DeployValue) {
+	c := mc.c
+	bad := func(format string, args ...any) { c.errorf(diag.DeployDecl, v.Span, format, args...) }
+	if v.Kind != "string" {
+		bad("`image` is text: the registry path, such as \"ghcr.io/<owner>/<app>\"")
+		return
+	}
+	s := v.Str
+	switch {
+	case strings.TrimSpace(s) == "":
+		bad("`image` is empty: name the registry path, `image: \"ghcr.io/<owner>/<app>\"`")
+	case looksSecret(s): // reported once, by deploySecrets
+	case strings.Contains(s, "@"):
+		bad("`image` carries a credential: it is the registry path, without a tag: the build id is the tag (the registry login is set in the environment, not in `App`)")
+	case strings.Contains(s, ":"):
+		bad("`image` is the registry path, without a tag: the build id is the tag")
+	case !imageChars.MatchString(s) || strings.Contains(s, "//") || strings.Contains(s, "..") || strings.HasPrefix(s, "/") || strings.HasSuffix(s, "/"):
+		bad("`image` is a registry host and 2 or 3 path parts, such as \"ghcr.io/<owner>/<app>\": lowercase letters, digits, `.`, `-`, `_`")
+	default:
+		parts := strings.Split(s, "/")
+		if n := len(parts) - 1; n < 2 || n > 3 {
+			bad("`image` is a registry host and 2 or 3 path parts, such as \"ghcr.io/<owner>/<app>\"")
+		} else if _, ok := registry.Kind(parts[0]); !ok {
+			bad("the registry of `image` is one Render can pull from: `ghcr.io`, `docker.io`, `registry.gitlab.com`, `*.pkg.dev` or `*.amazonaws.com`")
+		}
+	}
+}
+
+// deployBackupRender refuses `backup` when every environment is a Render one: Turso's
+// point-in-time recovery is a Render environment's backup.
+func (mc *modCtx) deployBackupRender(d *syntax.DeployDecl) {
+	var backup *syntax.DeployField
+	render, other := 0, 0
+	for _, f := range d.Fields {
+		switch {
+		case f.Name == "backup":
+			if backup == nil {
+				backup = f
+			}
+		case f.Value != nil && f.Value.Kind == "ctor" && !deployKnownField[f.Name]:
+			if f.Value.Ctor == "Render" {
+				render++
+			} else {
+				other++
+			}
+		}
+	}
+	if backup != nil && backup.Value != nil && render > 0 && other == 0 {
+		mc.c.errorf(diag.DeployDecl, backup.Value.Span, "Turso's point-in-time recovery is a Render environment's backup: `backup` applies to Ssh and Fly")
 	}
 }
 

@@ -40,7 +40,7 @@ import (
 // form (silo k), and, in a program with silos, its arms (arms (Msg shared|silo k)…). After the
 // session: (via f M.T)…, (silo k M.T…)…, (choose k M.Page)…, (app-arms …) in a program with
 // silos. Then App's deploy declaration, when it has one:
-// (deploy (env NAME ssh|fly|script (host "h")…)… (floor f)? (checks "c"…)? (requires "N"…)?
+// (deploy (env NAME ssh|fly|render|script (host "h")…)… (image "path")? (floor f)? (checks "c"…)? (requires "N"…)?
 // (backup s3 "url")? (keep n)? (proxy Caddy|None)).
 func Dump(p *Program) string {
 	var sb strings.Builder
@@ -172,12 +172,25 @@ func deployForm(dp *Deploy) *sx {
 		t := dp.Envs[n]
 		e := list(3, atom("env"), atom(n), atom(t.Kind))
 		for _, kv := range [][2]string{{"host", t.Host}, {"domain", t.Domain}, {"path", t.Path}, {"user", t.User}, {"port", t.Port},
-			{"region", t.Region}, {"app", t.App}, {"script", t.ScriptPath}} {
+			{"region", t.Region}, {"app", t.App}, {"service", t.Service}, {"plan", t.Plan}, {"script", t.ScriptPath}} {
 			if kv[1] != "" {
 				e.items = append(e.items, list(1, atom(kv[0]), atom(strconv.Quote(kv[1]))))
 			}
 		}
+		if t.Instances != 0 {
+			e.items = append(e.items, atoms("instances", strconv.Itoa(t.Instances)))
+		}
+		if d := t.Database; d != nil {
+			db := list(1, atom("database"), atom(d.Kind), atom(strconv.Quote(d.Org)), list(1, atom("group"), atom(strconv.Quote(d.Group))), list(1, atom("app"), atom(strconv.Quote(d.App))))
+			if d.Sample != 0 {
+				db.items = append(db.items, atoms("sample", strconv.Itoa(d.Sample)))
+			}
+			e.items = append(e.items, db)
+		}
 		x.items = append(x.items, e)
+	}
+	if dp.Image != "" {
+		x.items = append(x.items, list(1, atom("image"), atom(strconv.Quote(dp.Image))))
 	}
 	if dp.FloorSet {
 		x.items = append(x.items, atoms("floor", strconv.FormatFloat(dp.Floor, 'g', -1, 64)))

@@ -1,0 +1,1 @@
+app/App.alder:11:10 E0030 `image` carries a credential: it is the registry path, without a tag: the build id is the tag (the registry login is set in the environment, not in `App`)

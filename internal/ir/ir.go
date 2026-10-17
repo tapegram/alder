@@ -87,7 +87,8 @@ type Partition struct{ Key, Column string }
 // (0..1), meaningful only when FloorSet (the default is the score of the last successful deploy).
 // Checks are commands run from the app root; Requires the environment-variable names the target
 // must provide; Backup the S3 location of the database's backup (nil: none); Keep how many builds
-// to keep (0: the default); Proxy "Caddy" (the default) or "None".
+// to keep (0: the default); Proxy "Caddy" (the default) or "None"; Image the registry path
+// Render environments push to ("" when not written: the command defaults it from the git remote).
 type Deploy struct {
 	Envs     map[string]Target
 	Floor    float64
@@ -97,15 +98,20 @@ type Deploy struct {
 	Backup   *Backup
 	Keep     int
 	Proxy    string
+	Image    string
 }
 
 // Target is one environment's destination. Kind is "ssh" (Host, Domain, Path, User, Port),
-// "fly" (Region, App) or "script" (ScriptPath). Port is the decimal text of the SSH port, ""
+// "fly" (Region, App), "render" (Region, Service, Plan, Instances) or "script" (ScriptPath). Port is the decimal text of the SSH port, ""
 // for the default (22); User "" takes the user in Host (`user@host`) or ssh's own default.
 type Target struct {
 	Kind                                                    string
 	Host, Domain, Path, User, Port, Region, App, ScriptPath string
-	// Database is an Ssh environment's `database: Turso "org" { … }` (M15): the app's data on
+	// Service and Plan are a Render environment's service name and plan ("" when unset: Render's
+	// default); Instances its numInstances (0 when unset: means 1).
+	Service, Plan string
+	Instances     int
+	// Database is an Ssh or Render environment's `database: Turso "org" { … }` (M15): the app's data on
 	// Turso instead of a file on the box; nil for the file.
 	Database *Database
 }
