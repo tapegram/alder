@@ -141,7 +141,8 @@ func NewBrowser(env *eff.Env, routes []web.Route, opts web.Options) *Browser {
 	}
 	opts.Store, opts.Caps, opts.Now, opts.Dev, opts.Reload = env.Store, env.Caps, cookieNow, false, ""
 	opts.EnvFor = func(ctx context.Context, session any) *eff.Env {
-		e := &eff.Env{Ctx: ctx, Store: b.env.Store, Caps: b.env.Caps, Now: b.env.Now, Log: b.env.Log, Session: session, Within: b.cur}
+		e := &eff.Env{Ctx: ctx, Store: b.env.Store, Caps: b.env.Caps, Now: b.env.Now, Log: b.env.Log, Session: session, Within: b.cur,
+			Stores: b.env.Stores, CheckSession: b.env.CheckSession}
 		b.reqEnvs = append(b.reqEnvs, e)
 		return e
 	}
@@ -714,9 +715,15 @@ func (b *Browser) document(u string, w *httptest.ResponseRecorder) (Answer, erro
 		return Answer{Tag: PageMissing}, nil
 	case w.Code == http.StatusInternalServerError:
 		return Answer{Tag: RequestFailed, Text: b.failText()}, nil
+	case w.Code == http.StatusServiceUnavailable:
+		return Answer{Tag: RequestFailed, Text: maintenanceText}, nil
 	}
 	return Answer{Tag: RequestFailed, Text: fmt.Sprintf("%d %s", w.Code, strings.TrimSpace(body))}, nil
 }
+
+// maintenanceText is RequestFailed's text for a request on a silo that is not served (503: the
+// app's maintenance page is held).
+const maintenanceText = "503 maintenance"
 
 // hold makes page (a document the router served for u) the held one: its doctype and the
 // Datastar script tag the router injected are left out, so it is the page as the view renders it.
@@ -786,6 +793,8 @@ func (b *Browser) post(target string, form url.Values) (Answer, error) {
 			return Answer{Tag: PageMissing}, nil
 		case "500":
 			return Answer{Tag: RequestFailed, Text: b.failText()}, nil
+		case "503":
+			return Answer{Tag: RequestFailed, Text: maintenanceText}, nil
 		}
 		return Answer{Tag: Redirected, Page: pageOf(pushed)}, nil
 	}
@@ -794,6 +803,8 @@ func (b *Browser) post(target string, form url.Values) (Answer, error) {
 		return Answer{Tag: PageMissing}, nil
 	case "500":
 		return Answer{Tag: RequestFailed, Text: b.failText()}, nil
+	case "503":
+		return Answer{Tag: RequestFailed, Text: maintenanceText}, nil
 	}
 	if errs := pageErrors(b.doc); len(errs) > 0 {
 		return Answer{Tag: FormRejected, Errors: errs}, nil

@@ -2,7 +2,9 @@
 // calls Main with the table of test cases the app's generated code emits.
 //
 // Each case runs on its own: a fresh private in-memory SQLite database with the app's tables
-// and then the test-only tables of its fakes (so no case sees another's rows), a clock that
+// and then the test-only tables of its fakes (so no case sees another's rows) — for an app with
+// silos also one per silo value the case touches (db.NewTestStores), each with its own
+// transaction for the whole case, which Test.run's savepoints span (db.TestStore) — a clock that
 // starts at 2026-01-01T00:00:00Z and ticks one second each time it is read (Ticking), its own
 // copy of the capabilities it was given (so Test.fake, which replaces one in the running
 // test's Env.Caps, never reaches the next case) and the session it was given. A pure test is a func() bool; a task test is an eff.Task[bool]
@@ -355,7 +357,16 @@ func runCase(c Case, o Options) (r CaseResult) {
 			r.Error = err.Error()
 			return r
 		}
-		env := &eff.Env{Ctx: ctx, Store: store, Caps: caps, Session: o.Session, Now: Ticking(now)}
+		env := &eff.Env{Ctx: ctx, Store: store, Caps: caps, Session: o.Session, Now: Ticking(now), CheckSession: o.Web.SessionCheck}
+		if len(o.Web.Silos) > 0 { // a store per silo value the test touches, each in memory
+			stores, err := db.NewTestStores(store, db.StoresConfig{Silos: o.Web.Silos, Tables: o.Tables, Migrations: o.Migrations, Dev: true})
+			if err != nil {
+				r.Error = err.Error()
+				return r
+			}
+			defer stores.Close()
+			env.Store, env.Stores = db.TestStore{SQLite: store, Stores: stores}, stores
+		}
 		if o.Routes != nil {
 			env.Ctx = withBrowser(env, o.Routes, o.Web)
 		}

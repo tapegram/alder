@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"alder/rt"
+	"alder/rt/eff"
 	"alder/rt/html"
 	"alder/rt/web"
 )
@@ -312,3 +313,21 @@ func RawFields(form string, declared []string, fields []struct {
 // FormatFloat is a Float field as an input submits it: digits that parse back to the same
 // value.
 func FormatFloat(f float64) string { return strconv.FormatFloat(f, 'g', -1, 64) }
+
+// Member is Test.member: a step ("Test.member") inserting, with insert (generated: the row of
+// the `via` field's membership table), the membership of user in key.
+func Member(insert func(e *eff.Env, user, key string) error, user, key string) eff.Task[struct{}] {
+	return eff.Call("Test.member", true, func(e *eff.Env) (struct{}, error) {
+		return struct{}{}, insert(e, user, key)
+	})
+}
+
+// CheckSession is Test.login's check of the session it signs in with, next (an app whose
+// session has a `via` field: the membership, as Session.put checks it): Env.CheckSession of the
+// test's session and next, nil when the app has none.
+func CheckSession(e *eff.Env, next any) error {
+	if e.CheckSession == nil {
+		return nil
+	}
+	return e.CheckSession(e, e.Session, next)
+}

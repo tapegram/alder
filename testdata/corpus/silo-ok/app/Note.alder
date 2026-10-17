@@ -1,0 +1,12 @@
+module Note
+
+import User
+
+type NoteId = brand Text
+
+-- `@owner` is `@partition user`: shared, scoped by the signed-in user.
+table Note {
+  id: NoteId @id,
+  text: Text,
+  owner: User.UserId @ref User @owner,
+}

@@ -1,0 +1,59 @@
+module Admin.Projects
+
+import Org
+import Project
+import User
+
+-- The admin form: the org comes from the page's parameter and the role check gates the page
+-- (an Admin need not be a member); the page reads and writes that org's database.
+page "/admin/orgs/{org}/projects" { org: Org.OrgId } requires user, role Admin, silo org
+
+type Model = { projects: List Project }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let projects <- Db.from Project |> Db.all
+  Query.succeed { projects: projects }
+}
+
+msg Remove { id: Project.ProjectId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Remove p -> {
+    let _ <- Db.delete Project p.id
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html><body>
+    <ul>{for p in model.projects -> <li><span>{p.name}</span><button click={Remove { id: p.id }}>remove</button></li>}</ul>
+  </body></html>
+
+test "an Admin who is no member manages an org's projects" = {
+  let admin <- Db.insert User { name: "Admin" }
+  let b <- Db.insert Org { name: "B" }
+  let _ <- Db.insert Project { name: "theirs", org: b }
+  let _ <- Test.login { user: Just admin, org: Nothing, role: Admin }
+  let page <- Test.get (Admin.Projects { org: b })
+  let ids <- Task.succeed (List.map (\p -> p.id) page.model.projects)
+  let _ <- Task.all (List.map (\id -> Test.click (Remove { id: id })) ids)
+  let after <- Test.get (Admin.Projects { org: b })
+  Task.succeed ({ before: List.map (\p -> p.name) page.model.projects, after: List.length after.model.projects } == { before: ["theirs"], after: 0 })
+}
+
+test "a Reader gets no admin page" = {
+  let me <- Db.insert User { name: "Me" }
+  let b <- Db.insert Org { name: "B" }
+  let _ <- Test.login { user: Just me, org: Nothing }
+  let r <- Test.open (Admin.Projects { org: b })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a visitor is sent to log in" = {
+  let b <- Db.insert Org { name: "B" }
+  let r <- Test.open (Admin.Projects { org: b })
+  Task.succeed (r.answer == Redirected (Login {}))
+}

@@ -7,5 +7,4 @@ type Role = Reader | Admin
 table User {
   id: UserId @id,
   name: Text,
-  role: Role = Reader,
 }

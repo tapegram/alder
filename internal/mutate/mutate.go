@@ -48,6 +48,7 @@ const (
 	CascadeRestrict    = "cascade ↔ restrict"
 	ScopeDropped       = "scope dropped"
 	RoleDropped        = "role dropped"
+	MembershipDropped  = "membership dropped"
 )
 
 // Mutant is one mutation point. Module and Decl name where it is (Decl is the value's name,
@@ -78,6 +79,11 @@ const (
 //   - default changed: Node is the table field's Default expression (the one node every record
 //     literal that omits the field shares) and Replacement the changed literal; Table is a clone
 //     of the table whose field Field has that Default (and DefaultLit).
+//   - membership dropped (M15): Node is nil; Field is a session field with `via`, whose
+//     membership check Session.put (and Test.login) skip under the mutant (gen's session__via).
+//     A scoped node on a table in a `silo` has no scope dropped: equivalent, the silo's database
+//     holding the key value's rows only; nor has a @ref out of a silo cascade ↔ restrict (the
+//     silo's database holds no REFERENCES into another store).
 //   - cascade ↔ restrict: Node is nil; Table is a clone of the table whose OnDelete rule for
 //     @ref field Field is the other one. Gen renders the mutant's table descriptor from it.
 type Mutant struct {
@@ -148,6 +154,7 @@ func Collect(p *ir.Program) ([]Mutant, []Suppressed) {
 			c.walk(v.Body)
 		}
 	}
+	c.memberships()
 	for i := range c.out {
 		c.out[i].ID = i + 1
 		c.out[i].File = "app/" + strings.ReplaceAll(c.out[i].Module, ".", "/") + ".alder"
@@ -198,6 +205,12 @@ func (c *collector) requires(pg *ir.Page) {
 	c.decl = "requires"
 	line := pg.RequiresPos.Line
 	req := pg.Requires[0]
+	for _, k := range pg.Requires[1:] {
+		if req == "user" && c.p.Via[k] != nil {
+			c.suppress(RequiresDropped, line, "the page also requires "+k+", which is `via`: no session has it without a user")
+			return
+		}
+	}
 	var field *ir.FieldT
 	if c.p.Session != nil {
 		for i := range c.p.Session.Fields {
@@ -219,6 +232,23 @@ func (c *collector) requires(pg *ir.Page) {
 		After:  "served without " + req + " (" + req + " = " + placeholder + ")",
 		Page:   pg, Field: req,
 		Replacement: &ir.Lit{Typed: ir.Typed{Ty: types.Text}, Kind: ir.LitText, Text: "mutant"}})
+}
+
+// memberships drops each `via` field's membership check (M15): under the mutant Session.put
+// (and Test.login) of the field to any value passes.
+func (c *collector) memberships() {
+	if c.p.Session == nil {
+		return
+	}
+	for _, f := range c.p.Session.Fields {
+		mt := c.p.Via[f.Name]
+		if mt == nil {
+			continue
+		}
+		c.module, c.decl = "App", "session"
+		c.out = append(c.out, Mutant{Module: "App", Decl: "session", Kind: MembershipDropped, Line: f.Pos.Line, Col: f.Pos.Col,
+			Before: "Session.put " + f.Name, After: "Session.put " + f.Name + " without the " + mt.Name + " check", Field: f.Name})
+	}
 }
 
 // roles drops a page's `role R | …`: the page serves any signed-in user.
@@ -315,6 +345,10 @@ func (c *collector) defaultChanged(t *ir.Table, i int) {
 
 func (c *collector) cascade(t *ir.Table, f ir.FieldT, ref string) {
 	line := f.Pos.Line
+	if k := c.siloOf(t); k != "" && c.siloOf(c.tableNamed(ref)) != k {
+		c.suppress(CascadeRestrict, line, "a silo's database has no REFERENCES out of silo "+k)
+		return
+	}
 	rule := t.OnDelete[f.Name]
 	other := ""
 	switch rule {
@@ -761,8 +795,15 @@ func (c *collector) write(x *ir.EffBind) {
 		line(c.module, x.Effect, wrapped("let "+name+" <- ", "")), "let "+name+" <- Task.succeed "+shown)
 }
 
-// scope drops the owner predicate of a scoped Db node (see Mutant).
+// scope drops the owner predicate of a scoped Db node (see Mutant). On a table in a `silo` it
+// is equivalent: the silo's database holds the rows of the request's key value only.
 func (c *collector) scope(e ir.Expr) {
+	if tb, at := scopedTable(e); tb != nil {
+		if k := c.siloOf(tb); k != "" {
+			c.suppress(ScopeDropped, at.Line, "the silo's database holds this "+k+"'s rows only")
+			return
+		}
+	}
 	switch x := e.(type) {
 	case *ir.DbScoped:
 		r := &ir.DbSelect{Typed: x.Typed, Pos: x.Pos, Table: x.Table}
@@ -791,6 +832,48 @@ func (c *collector) scope(e ir.Expr) {
 	case *ir.DbInsertScoped:
 		c.skip(ScopeDropped, x.Pos.Line, "the owner comes from the session either way")
 	}
+}
+
+// siloOf is the `silo` key of table tb, "" for a shared one (or nil).
+func (c *collector) siloOf(tb *ir.Table) string {
+	if tb == nil {
+		return ""
+	}
+	for k, ts := range c.p.Silos {
+		for _, t := range ts {
+			if t.Module == tb.Module && t.Name == tb.Name {
+				return k
+			}
+		}
+	}
+	return ""
+}
+
+// tableNamed is the table "Module.Name", or nil.
+func (c *collector) tableNamed(name string) *ir.Table {
+	for _, t := range c.p.Tables {
+		if t.Module+"."+t.Name == name {
+			return t
+		}
+	}
+	return nil
+}
+
+// scopedTable is the table and position of a scoped Db node.
+func scopedTable(e ir.Expr) (*ir.Table, ir.Pos) {
+	switch x := e.(type) {
+	case *ir.DbScoped:
+		return x.Table, x.Pos
+	case *ir.DbGetScoped:
+		return x.Table, x.Pos
+	case *ir.DbUpdateScoped:
+		return x.Table, x.Pos
+	case *ir.DbDeleteScoped:
+		return x.Table, x.Pos
+	case *ir.DbInsertScoped:
+		return x.Table, x.Pos
+	}
+	return nil, ir.Pos{}
 }
 
 // fetchedMine reports whether id, the id of a scoped write to tb in a page's update, is
