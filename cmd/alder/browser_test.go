@@ -21,10 +21,14 @@ import (
 // URL and the title; Back and Forward restore the scroll position; the login form's redirect
 // is morphed in with the session cookie; a link to a missing page morphs the 404 page in; a
 // slow post followed by a click ends on the click's page; a link to a file under /static/ is a
-// plain navigation. M7b adds the admin's delete dialog across a body morph, a 404 and a 500 with
-// the dev panel (History, Copy as curl), a bulk delete's toast and its timeout, and the search of a
-// long reference table; the 500 renames a table in the dev database (its path is the script's
-// second argument).
+// plain navigation. M7b adds the admin's delete dialog across a body morph (its counts, its own
+// Remove, its link to the Delete page), a 404 and a 500 with the dev panel (History, Copy as
+// curl), a bulk delete's toast and its timeout, the panel after the delete's redirect, the search
+// of a long reference table, the Edit page of a row whose reference sorts past the 50 offered, the
+// focus after a refused message, and the interactive elements (menu, popover, tabs, tooltip, an
+// author-written dialog) on an Alder page, testdata/browser/Smoke.alder, added to the copy of the
+// blog it serves; the 500 renames a table in the dev database (its path is the script's second
+// argument).
 //
 // It needs node and Playwright with its Chromium. Playwright is looked for in
 // $ALDER_PLAYWRIGHT_DIR, else $HOME/.cache/alder-playwright; when it is missing the test is
@@ -78,8 +82,12 @@ func TestBrowser_BoostedNavigation(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	smokePage, err := os.ReadFile(filepath.Join("testdata", "browser", "Smoke.alder"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	start := time.Now()
-	r := startRunApp(t, "blog")
+	r := startRunAppWith(t, "blog", map[string]string{"app/Smoke.alder": string(smokePage)})
 	cmd := exec.Command(node, script, r.base, filepath.Join(filepath.Dir(r.dir), "build", "blog", "dev.db"))
 	cmd.Env = env
 	var stderr strings.Builder

@@ -71,6 +71,13 @@ func startRun(t *testing.T) *devRun {
 // startRunApp is startRun of examples/<app>.
 func startRunApp(t *testing.T, app string) *devRun {
 	t.Helper()
+	return startRunAppWith(t, app, nil)
+}
+
+// startRunAppWith is startRunApp with files (path in the app → content) added to the copy
+// before it is served.
+func startRunAppWith(t *testing.T, app string, files map[string]string) *devRun {
+	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go is not on PATH")
 	}
@@ -80,6 +87,11 @@ func startRunApp(t *testing.T, app string) *devRun {
 	}
 	tmp := t.TempDir()
 	copyDir(t, src, filepath.Join(tmp, app))
+	for rel, content := range files {
+		if err := os.WriteFile(filepath.Join(tmp, app, filepath.FromSlash(rel)), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	t.Chdir(tmp)
 	t.Setenv("ALDER_ADDR", "127.0.0.1:0")
 	r := &devRun{dir: filepath.Join(tmp, app), out: &syncBuffer{}, errs: &syncBuffer{},

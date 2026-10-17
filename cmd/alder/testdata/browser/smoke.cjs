@@ -151,6 +151,52 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.waitForURL('**/static/x.pdf', { timeout: 5000 }).catch(() => {});
     check('a link to a file: a plain navigation', docs.some((d) => d === 'GET ' + BASE + '/static/x.pdf'), docs);
 
+    // ---- the interactive elements written in an Alder page (/smoke: testdata/browser/Smoke.alder,
+    // added to the copy of the blog served here), as Appendix C writes them ----
+    await page.goto(BASE + '/smoke');
+    await page.waitForFunction(() => customElements.get('al-menu') && customElements.get('al-tooltip'), null, { timeout: 5000 }).catch(() => {});
+    await page.click('#more-button');
+    await sleep(150);
+    const menu = await page.evaluate(() => {
+      const m = document.getElementById('more');
+      return { open: m.matches(':popover-open'), role: m.getAttribute('role'), items: m.querySelectorAll('[role=menuitem]').length, focus: document.activeElement.textContent };
+    });
+    check('menu (Alder page): <al-menu id popover> opens from its button, with roles and focus on the first item', menu.open && menu.role === 'menu' && menu.items === 2 && menu.focus === 'Home', menu);
+    await page.keyboard.press('ArrowDown');
+    const next = await page.evaluate(() => document.activeElement.textContent);
+    await page.keyboard.press('Escape');
+    await sleep(100);
+    const menuShut = await page.evaluate(() => !document.getElementById('more').matches(':popover-open'));
+    check('menu (Alder page): the arrow keys move between items, Escape closes it', next === 'Second' && menuShut, { next, menuShut });
+    await page.click('#who-button');
+    await sleep(100);
+    const pop = await page.evaluate(() => document.getElementById('who').matches(':popover-open'));
+    await page.keyboard.press('Escape');
+    await sleep(100);
+    const popShut = await page.evaluate(() => !document.getElementById('who').matches(':popover-open'));
+    check('popover (Alder page): popovertarget opens it, Escape closes it', pop && popShut, { pop, popShut });
+    const shown = () => page.evaluate(() => [...document.querySelectorAll('al-panel')].map((p) => p.checkVisibility()));
+    const before = await shown();
+    await page.click('al-tab label:has-text("Comments")');
+    await sleep(100);
+    const after = await shown();
+    check('tabs (Alder page): the first panel shows, choosing a tab shows its panel only', before[0] && !before[1] && !after[0] && after[1], { before, after });
+    await page.focus('#save-help');
+    await sleep(150);
+    const tip = await page.evaluate(() => {
+      const t = document.querySelector('al-tooltip');
+      return { open: t.matches(':popover-open'), described: document.getElementById('save-help').getAttribute('aria-describedby') === t.id };
+    });
+    check('tooltip (Alder page): focus on its trigger shows it, aria-describedby names it', tip.open && tip.described, tip);
+    await page.click('#own-button');
+    await sleep(150);
+    const own = await page.evaluate(() => {
+      const d = document.getElementById('own');
+      return { open: d.open, modal: d.matches(':modal'), dialogs: document.querySelector('al-dialog').querySelectorAll('dialog').length };
+    });
+    check('dialog (Alder page): an author-written <dialog> inside <al-dialog> is one dialog, and opens as a modal', own.open && own.modal && own.dialogs === 1, own);
+    await page.keyboard.press('Escape');
+
     // ---- the admin (M7b): the delete dialog across a morph, bulk toast, history, search, a 500 ----
     const ctx2 = await browser.newContext({ viewport: { width: 900, height: 700 } });
     const p2 = await ctx2.newPage();
@@ -205,14 +251,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const closed = await p2.evaluate(() => ({ open: document.querySelector('dialog').open, focus: document.activeElement.getAttribute('command') }));
     check('dialog: Escape closes it, focus returns to the button', !closed.open && closed.focus === 'show-modal', closed);
 
-    // its confirm is a link to the confirmation page
+    // it shows the counts the confirmation page shows, a Delete button, and a link to that page
     await p2.click('button[command=show-modal]');
     await sleep(150);
-    await p2.click('dialog a:has-text("Review and delete")');
+    const inDlg = await p2.evaluate(() => {
+      const d = document.querySelector('dialog');
+      return { counts: [...d.querySelectorAll('dl dt')].map((t) => t.textContent), button: !!d.querySelector('form#delete button[type=submit]'), named: d.getAttribute('aria-labelledby') };
+    });
+    check('dialog: it shows the counts, the Delete button, and is named by its heading', inDlg.counts.length > 0 && inDlg.button && inDlg.named === 'delete-dialog-heading', inDlg);
+    await p2.click('dialog a:has-text("See the details")');
     await at2(showHref + '/delete');
     await sleep(300);
     const s2 = await p2.evaluate(() => ({ path: location.pathname, h1: (document.querySelector('h1') || {}).textContent, marker: window.__m === 1 }));
-    check('dialog: the confirm leads to the confirmation page', s2.path === showHref + '/delete' && /Delete/.test(s2.h1) && s2.marker && docs2.length === 0, { s2, docs2 });
+    check('dialog: "See the details" leads to the confirmation page', s2.path === showHref + '/delete' && /Delete/.test(s2.h1) && s2.marker && docs2.length === 0, { s2, docs2 });
 
     // a 404 with the panel, then the panel's History and Copy as curl
     await follow('/posts/no-such-post');
@@ -252,6 +303,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await p2.click('button:has-text("Act on the chosen rows")');
     await p2.waitForFunction(() => location.pathname === '/admin/user/bulk', null, { timeout: 5000 }).catch(() => {});
     await sleep(300);
+    // choose the panel's SQL tab, and close the panel: the tab stays chosen across the answer
+    await p2.click('al-devpanel > nav > button:has-text("SQL")');
+    await p2.evaluate(() => document.querySelector('al-devpanel').removeAttribute('open'));
     await p2.click('button:has-text("Delete the rows that can be deleted")');
     await p2.waitForFunction(() => location.pathname === '/admin/user', null, { timeout: 5000 }).catch(() => {});
     await p2.waitForSelector('al-toast', { timeout: 5000 }).catch(() => {});
@@ -260,6 +314,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       return t && { text: t.textContent, shown: r.matches(':popover-open'), role: t.getAttribute('role') };
     });
     check('toast: Notice.with shows an al-toast in the open region', toast && /Deleted 1 of 1/.test(toast.text) && toast.shown && toast.role === 'status', toast);
+    const hop = await p2.evaluate(() => {
+      const p = document.querySelector('al-devpanel'), sql = document.getElementById('_alder_tab_sql').textContent;
+      return {
+        bar: p.querySelector(':scope > nav').textContent, request: document.getElementById('_alder_tab_request').textContent.slice(0, 60),
+        del: sql.indexOf('DELETE'), then: sql.indexOf('then GET /admin/user'),
+        shown: [...p.querySelectorAll(':scope > section')].filter((x) => !x.hidden).map((x) => x.id),
+      };
+    });
+    check('panel after a redirect: the message\'s request, its DELETEs, then "then GET …" and the list\'s reads', /POST/.test(hop.request) && /redirect \/admin\/user, then page/.test(hop.bar) && hop.del >= 0 && hop.then > hop.del, hop);
+    check('panel after an answer: one section shown, the tab chosen before', hop.shown.length === 1 && hop.shown[0] === '_alder_tab_sql', hop.shown);
     await p2.waitForFunction(() => !document.querySelector('al-toast'), null, { timeout: 8000 }).catch(() => {});
     check('toast: it times out', await p2.evaluate(() => !document.querySelector('al-toast')));
 
@@ -276,6 +340,55 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const u99 = await p2.evaluate(() => document.querySelector('select[name=author] option').value);
     const crafted = await p2.request.post(BASE + '/_m/Admin.Post.New/Create', { form: { slug: 'x', title: 'x', body: 'x', published: 'True', author: u99 } });
     check('search: an id outside the rendered options is refused', /must be one of the options/.test(await crafted.text()), crafted.status());
+
+    // the Edit page of a post whose author sorts after the 50 offered: offered first, kept on save
+    await p2.request.post(BASE + '/_m/Admin.User.New/Create', { form: { email: 'zz-last@example.com', name: 'last', role: 'Reader' } });
+    await p2.goto(BASE + '/admin/user?q=zz-last');
+    const zz = await p2.evaluate(() => { const c = document.querySelector('input[name=ids]'); return c && c.value; });
+    // the New page offers that user only once the search finds it: post to the form's own action
+    const newLate = await (await p2.request.get(BASE + '/admin/post/new?findAuthor=zz-last')).text();
+    const createAt = /<form[^>]*action="([^"]*\/Create[^"]*)"/.exec(newLate)[1].replace(/&amp;/g, '&');
+    await p2.request.post(BASE + createAt, { form: { slug: 'late', title: 'Late', body: 'b', published: 'True', author: zz } });
+    await p2.goto(BASE + '/admin/post?q=late');
+    const lateHref = await p2.evaluate(() => [...document.querySelectorAll('a')].map((a) => a.getAttribute('href')).find((h) => /^\/admin\/post\/[^/]+$/.test(h) && !/new|bulk/.test(h)));
+    await p2.goto(BASE + lateHref + '/edit');
+    const sel = await p2.evaluate(() => {
+      const s = document.querySelector('select[name=author]');
+      return { value: s.value, first: s.options[0].textContent, count: s.options.length };
+    });
+    check('edit past the 50 options: the row\'s own author is offered first and chosen', sel.value === zz && sel.first === 'zz-last@example.com' && sel.count === 51, sel);
+    await p2.click('form[action*="/Save"] button[type=submit]');
+    await at2(lateHref);
+    await sleep(300);
+    const kept = await p2.evaluate(() => [...document.querySelectorAll('#fields dd')].map((d) => d.textContent));
+    check('edit past the 50 options: saving the form unchanged keeps the author', kept.includes('zz-last@example.com'), kept);
+
+    // a refused message keeps the focus on the field (the form was inert while it was in flight):
+    // the unique email of another user, which only the server can refuse
+    await p2.goto(BASE + '/admin/user?q=zz-last');
+    const zzEdit = (await p2.evaluate(() => [...document.querySelectorAll('a')].map((a) => a.getAttribute('href')).find((h) => /^\/admin\/user\/[^/]+$/.test(h) && !/new|bulk/.test(h)))) + '/edit';
+    await p2.goto(BASE + zzEdit);
+    await p2.route('**/_m/**', async (route) => { const resp = await route.fetch(); await sleep(400); await route.fulfill({ response: resp }).catch(() => {}); });
+    await p2.fill('input[name=email]', 'admin@example.com');
+    await p2.focus('input[name=email]');
+    await p2.keyboard.press('Enter');
+    await sleep(150);
+    const during = await p2.evaluate(() => ({ inert: !!document.querySelector('form[inert]'), focus: document.activeElement && document.activeElement.tagName }));
+    await p2.waitForFunction(() => !document.querySelector('form[inert]') && /with this email exists/.test(document.body.textContent), null, { timeout: 5000 }).catch(() => {});
+    await sleep(200);
+    const foc = await p2.evaluate(() => ({ name: document.activeElement && document.activeElement.getAttribute('name'), refused: /with this email exists/.test(document.body.textContent) }));
+    await p2.unroute('**/_m/**');
+    check('in flight: after a refused message the focus is back on the field', during.inert && foc.refused && foc.name === 'email', { during, foc });
+
+    // the dialog's own Remove: it deletes the row from the Show page
+    await p2.goto(BASE + lateHref);
+    await p2.click('button[command=show-modal]');
+    await sleep(150);
+    await p2.click('dialog form#delete button[type=submit]');
+    await at2('/admin/post');
+    await sleep(300);
+    const gone = await p2.request.get(BASE + lateHref);
+    check('dialog: its Delete posts the Show page\'s Remove, and the row is gone', (await p2.evaluate(() => location.pathname)) === '/admin/post' && gone.status() === 404, gone.status());
 
     // RF2: a 500 with the panel: break a table in the dev database, follow a link to its list
     if (DB) {
