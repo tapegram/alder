@@ -423,7 +423,7 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 		}
 	}
 	if tw, ok := w.(*tracker); ok {
-		if !rq.Datastar && method == http.MethodGet {
+		if !rq.Datastar && r.Method == http.MethodGet { // a page GET only: not a HEAD, which shows nothing
 			tw.alert = rt.takeNotice(w, r)
 		}
 		if rt.panelOn() {

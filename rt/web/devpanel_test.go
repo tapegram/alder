@@ -191,3 +191,72 @@ func TestNoticedWithoutScript(t *testing.T) {
 		t.Errorf("no alert on the re-rendered page: %s", b)
 	}
 }
+
+// A statement run per id by one step (a bulk operation) is labelled, not flagged as a
+// duplicate; the same statement with the same arguments, or across steps, still is.
+func TestDevPanel_BulkNotDuplicate(t *testing.T) {
+	t.Setenv("ALDER_DEV", "1")
+	routes := one("GET", "/x", func(rq *Request) Response {
+		rec := rq.Env.Rec
+		for _, id := range []int{1, 2, 3} { // one step, other arguments
+			rec.AddSQL(eff.SQLRec{Stmt: "DELETE FROM p WHERE id = ?", Args: []any{id}, Rows: 1})
+		}
+		rec.AddStep(eff.StepRec{Name: "Db.deleteMany"})
+		for range 2 { // another statement, the same arguments
+			rec.AddSQL(eff.SQLRec{Stmt: "SELECT a", Args: []any{1}, Rows: 1})
+		}
+		rec.AddStep(eff.StepRec{Name: "Db.q"})
+		return PageResponse(doc("hi"), nil, nil, false)
+	})
+	h := NewRouter(routes, testOpts(func(o *Options) { o.Dev = true }))
+	b := serve(h, httptest.NewRequest("GET", "/x", nil)).Body.String()
+	if !strings.Contains(b, "x3 (bulk)") || strings.Contains(b, "duplicate x3") {
+		t.Errorf("the bulk statement is flagged: %s", b)
+	}
+	if !strings.Contains(b, "duplicate x2") {
+		t.Errorf("a repeated query is not flagged: %s", b)
+	}
+}
+
+// The notice cookie is consumed by a page GET only: not by a 404 (a favicon), a /_alder/ or
+// /static/ path, or a HEAD.
+func TestNoticeOnlyForPageGET(t *testing.T) {
+	routes := []Route{
+		{Method: "POST", Pattern: "/_m/A/Go", Handle: func(rq *Request) Response {
+			rq.Notice = "hello"
+			return RedirectResponse("/list", nil)
+		}},
+		{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response { return PageResponse(doc("list"), nil, nil, false) }},
+	}
+	h := NewRouter(routes, testOpts(nil))
+	var nc *http.Cookie
+	for _, k := range serve(h, httptest.NewRequest("POST", "/_m/A/Go", nil)).Result().Cookies() {
+		if k.Name == NoticeCookie {
+			nc = k
+		}
+	}
+	if nc == nil {
+		t.Fatal("no notice cookie")
+	}
+	cookie := func(path, method string, ds bool) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, nil)
+		r.AddCookie(nc)
+		if ds {
+			r.Header.Set("Datastar-Request", "true")
+		}
+		return serve(h, r)
+	}
+	for _, c := range []struct {
+		path, method string
+		ds           bool
+	}{{"/favicon.ico", "GET", false}, {"/_alder/datastar.js", "GET", false}, {"/static/app.css", "GET", false}, {"/static/app.css", "GET", true}, {"/list", "HEAD", false}} {
+		w := cookie(c.path, c.method, c.ds)
+		if strings.Contains(w.Header().Get("Set-Cookie"), NoticeCookie+"=;") {
+			t.Errorf("%s %s cleared the notice", c.method, c.path)
+		}
+	}
+	w := cookie("/list", "GET", false)
+	if !strings.Contains(w.Body.String(), "hello") || !strings.Contains(w.Header().Get("Set-Cookie"), NoticeCookie+"=;") {
+		t.Errorf("the page GET did not show and clear the notice: %s", w.Body.String())
+	}
+}

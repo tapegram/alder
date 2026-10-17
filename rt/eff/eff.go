@@ -330,13 +330,21 @@ type SQLRec struct {
 	Args []any
 	Ms   float64
 	Rows int64
+	// Step is the index of the effect step that ran the statement (the steps recorded before
+	// it), set by AddSQL: statements of one step ran from one bulk operation.
+	Step int
 }
 
 // AddStep records a step.
 func (r *Recorder) AddStep(s StepRec) { r.mu.Lock(); r.Steps = append(r.Steps, s); r.mu.Unlock() }
 
 // AddSQL records a statement.
-func (r *Recorder) AddSQL(s SQLRec) { r.mu.Lock(); r.SQL = append(r.SQL, s); r.mu.Unlock() }
+func (r *Recorder) AddSQL(s SQLRec) {
+	r.mu.Lock()
+	s.Step = len(r.Steps) // a step is recorded when it finishes, so the running one has this index
+	r.SQL = append(r.SQL, s)
+	r.mu.Unlock()
+}
 
 // SetRows records n as the rows read by the last statement stmt whose rows were not counted yet
 // (a read's rows are known only once its caller has read them).

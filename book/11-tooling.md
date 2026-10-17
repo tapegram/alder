@@ -1306,6 +1306,8 @@ remembers the tab chosen last, so the next answer opens on it again. Its tabs:
 - SQL: each statement with its arguments, time and the rows it wrote or read.
   A statement that ran more than once is flagged as a duplicate: the same
   select run per row is the mark of a missing join or a query inside a loop.
+  One statement that a single step ran once per id, each time with other
+  arguments (a bulk action), is labelled `x3 (bulk)` instead.
 - Answer: page, rerender, redirect, not found, or an error with its text.
 - Patches: the events the answer sent (body, title, history, toast, panel).
 - History: the last 20 requests of this browser tab, newest first. The panel
