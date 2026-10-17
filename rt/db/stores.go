@@ -687,14 +687,16 @@ func (s *Stores) inspect(ctx context.Context, q querier, ss *siloSchema, allowDa
 		}
 		return plan{state: SiloFailed, detail: fmt.Sprintf("its schema (%.12s) is not the app's (%.12s) and the app has no migrations: run `alder migrate`", hash, s.hash)}, nil
 	}
-	at := -1
-	for i, m := range ms {
-		if m.Name == mig || mig == "" && siloHash(m.To, s.cfg.Silos) == hash { // "": made before the app had migrations (M4)
-			at = i
+	at, ahead := migrationAt(mig, ms)
+	if mig == "" { // made before the app had migrations (M4): placed by its hash
+		for i, m := range ms {
+			if siloHash(m.To, s.cfg.Silos) == hash {
+				at = i
+			}
 		}
 	}
 	switch {
-	case mig != "" && at < 0 && mig > ms[len(ms)-1].Name:
+	case ahead:
 		return plan{state: SiloAhead, detail: fmt.Sprintf("a newer build migrated it (to %s, which this build does not have): deploy that build again, or restore the silo from a backup taken before it (`alder restore <env> --silo %s:<id> --to <time>`)", mig, ss.key)}, nil
 	case at < 0:
 		return plan{state: SiloFailed, detail: fmt.Sprintf("it was migrated to %q, which is not among this build's migrations: restore the file from version control", mig)}, nil

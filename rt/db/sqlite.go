@@ -99,6 +99,12 @@ func openSQLite(path string, reader bool) (*SQLite, error) {
 // Close closes the database.
 func (s *SQLite) Close() error { return s.db.Close() }
 
+// Ping runs SELECT 1 on the database: nil when it answers (the /_alder/health route of rt/web).
+func (s *SQLite) Ping(ctx context.Context) error {
+	var n int
+	return s.db.QueryRowContext(ctx, "SELECT 1").Scan(&n)
+}
+
 type sqliteTx struct{ tx *sql.Tx }
 
 func (t *sqliteTx) Commit() error   { return t.tx.Commit() }

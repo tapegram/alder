@@ -100,6 +100,7 @@ type Options struct {
 	StaticDir string                  // the directory served under /static/; "" for none
 	Reload    string                  // under alder run, the build generation; non-empty: pages subscribe to the dev server's reloads and error overlay
 	Log       func(level, msg string) // nil: no log
+	Build     string                  // the build's id (ALDER_BUILD, set by alder deploy), answered by /_alder/health
 }
 
 // Serve is the app's HTTP handler. It checks that o.Secret is at least 16 bytes outside dev
@@ -109,6 +110,13 @@ type Options struct {
 // logging each one as it commits, an adoption and a dev recreate; db.Ensure for an app
 // without), and routes Routes (web.NewRouter) with Web's options: the session codec,
 // App.error, App.notFound and the page App.login names.
+//
+// A database on Turso (o.DB libsql://…, outside dev mode) is not migrated: several instances
+// start at once, and alder deploy migrates it before the build starts. Serve compares it with
+// this build instead (db.CheckShared, which writes nothing): behind (or without tables) is the
+// error "the database is behind this build: run `alder deploy`"; ahead (a newer build migrated
+// it) serves the maintenance page on every route, and /_alder/health answers 503 "ahead:
+// <detail>" (web.Options.SharedMaintenance); equal serves.
 func Serve(caps Caps, o Options) (http.Handler, error) {
 	if err := web.CheckSecret(o.Secret, o.Dev); err != nil {
 		return nil, err
@@ -131,7 +139,27 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(Migrations) > 0 {
+	var shared error // the shared database is ahead of this build: maintenance
+	if db.IsRemote(path) && !o.Dev {
+		state, detail, err := db.CheckShared(context.Background(), store, Tables, Migrations)
+		if err != nil {
+			store.Close()
+			return nil, err
+		}
+		switch state {
+		case db.SharedBehind, db.SharedFresh:
+			if o.Log != nil {
+				o.Log("error", "the database: "+detail)
+			}
+			store.Close()
+			return nil, errors.New("the database is behind this build: run `alder deploy`")
+		case db.SharedAhead:
+			shared = errors.New("ahead: " + detail)
+			if o.Log != nil {
+				o.Log("warn", "the database is ahead of this build, every page answers the maintenance page: "+detail)
+			}
+		}
+	} else if len(Migrations) > 0 {
 		logf := func(msg string) {
 			if o.Log != nil {
 				o.Log("info", msg)
@@ -147,6 +175,7 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	}
 	w := Web()
 	w.Store, w.Caps, w.Log, w.Dev, w.Secret, w.StaticDir, w.Reload = store, reg, o.Log, o.Dev, o.Secret, o.StaticDir, o.Reload
+	w.Build, w.SharedMaintenance = o.Build, shared
 	for _, m := range Migrations {
 		w.Migrations = append(w.Migrations, m.Name)
 	}

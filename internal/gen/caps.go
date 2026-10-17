@@ -407,6 +407,7 @@ type Options struct {
 	StaticDir string                  // the directory served under /static/; "" for none
 	Reload    string                  // under alder run, the build generation; non-empty: pages subscribe to the dev server's reloads and error overlay
 	Log       func(level, msg string) // nil: no log
+	Build     string                  // the build's id (ALDER_BUILD, set by alder deploy), answered by /_alder/health
 }
 
 // Serve is the app's HTTP handler. It checks that o.Secret is at least 16 bytes outside dev
@@ -416,6 +417,13 @@ type Options struct {
 // logging each one as it commits, an adoption and a dev recreate; db.Ensure for an app
 // without), and routes Routes (web.NewRouter) with Web's options: the session codec,
 // App.error, App.notFound and the page App.login names.
+//
+// A database on Turso (o.DB libsql://…, outside dev mode) is not migrated: several instances
+// start at once, and alder deploy migrates it before the build starts. Serve compares it with
+// this build instead (db.CheckShared, which writes nothing): behind (or without tables) is the
+// error "the database is behind this build: run ` + "`alder deploy`" + `"; ahead (a newer build migrated
+// it) serves the maintenance page on every route, and /_alder/health answers 503 "ahead:
+// <detail>" (web.Options.SharedMaintenance); equal serves.
 func Serve(caps Caps, o Options) (http.Handler, error) {
 	if err := web.CheckSecret(o.Secret, o.Dev); err != nil {
 		return nil, err
@@ -438,7 +446,27 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(Migrations) > 0 {
+	var shared error // the shared database is ahead of this build: maintenance
+	if db.IsRemote(path) && !o.Dev {
+		state, detail, err := db.CheckShared(context.Background(), store, Tables, Migrations)
+		if err != nil {
+			store.Close()
+			return nil, err
+		}
+		switch state {
+		case db.SharedBehind, db.SharedFresh:
+			if o.Log != nil {
+				o.Log("error", "the database: "+detail)
+			}
+			store.Close()
+			return nil, errors.New("the database is behind this build: run ` + "`alder deploy`" + `")
+		case db.SharedAhead:
+			shared = errors.New("ahead: " + detail)
+			if o.Log != nil {
+				o.Log("warn", "the database is ahead of this build, every page answers the maintenance page: "+detail)
+			}
+		}
+	} else if len(Migrations) > 0 {
 		logf := func(msg string) {
 			if o.Log != nil {
 				o.Log("info", msg)
@@ -454,6 +482,7 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	}
 SILOSTORES	w := Web()
 	w.Store, w.Caps, w.Log, w.Dev, w.Secret, w.StaticDir, w.Reload = store, reg, o.Log, o.Dev, o.Secret, o.StaticDir, o.Reload
+	w.Build, w.SharedMaintenance = o.Build, shared
 SILOWEB
 	for _, m := range Migrations {
 		w.Migrations = append(w.Migrations, m.Name)
@@ -680,7 +709,10 @@ func Main(name string, withCaps, withSilos bool) []byte {
 // from ALDER_STATIC, by default the static directory next to the executable. SIGINT or SIGTERM
 // shuts the server down gracefully: requests in flight get 5 s to finish. ALDER_EXIT_ON_STDIN_EOF=1
 // (set by alder run) makes the app stop the same way when its standard input reaches EOF, so it
-// never outlives the dev server.
+// never outlives the dev server. GET /_alder/health answers {"build":"<ALDER_BUILD>","db":"ok"}
+// (200) when the database answers, else 503 with the error. With ALDER_DB=libsql://… (a database
+// on Turso) the app does not migrate on start: it exits 1 when the database is behind this
+// build (alder deploy migrates it) and serves the maintenance page when a newer build migrated it.
 //
 // Two arguments run a maintenance task instead of serving (alder deploy runs them at the
 // target, chapter 16): --migrate-only applies the pending migrations to ALDER_DB (each
@@ -728,6 +760,7 @@ func main() {
 		Secret:    []byte(os.Getenv("ALDER_SECRET")),
 		StaticDir: static,
 		Reload:    os.Getenv("ALDER_RELOAD"),
+		Build:     os.Getenv("ALDER_BUILD"),
 		Log: func(level, msg string) {
 			if level != "effect" || dev { // every effect step is logged in development mode only
 				log.Printf("%s: %s", level, msg)

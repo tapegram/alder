@@ -447,29 +447,8 @@ func (s *SQLite) prepare(ctx context.Context, tx *sql.Tx, sc appSchema, tables [
 	if err != nil {
 		return r, err
 	}
-	known := map[string]bool{}
-	for _, m := range ms {
-		known[m.Name] = true
-	}
-	done := map[string]bool{}
-	for _, name := range recorded {
-		if !known[name] {
-			if len(ms) == 0 || name > ms[len(ms)-1].Name {
-				newest := recorded[len(recorded)-1]
-				return r, fmt.Errorf("migration %s is recorded as applied but its file is missing; this executable predates the database (it has had %s): deploy a build that includes it, or restore a backup taken before it", name, newest)
-			}
-			return r, fmt.Errorf("migration %s is recorded as applied but its file is missing: restore it from version control", name)
-		}
-		done[name] = true
-	}
-	for _, m := range ms {
-		if done[m.Name] {
-			continue
-		}
-		if len(recorded) > 0 && m.Name < recorded[len(recorded)-1] {
-			return r, fmt.Errorf("migration %s is not applied but %s, which comes after it, is: migrations apply in order; delete the file and run `alder migrate` again (only if it has not run against a database you keep)", m.Name, recorded[len(recorded)-1])
-		}
-		r.pending = append(r.pending, m)
+	if r.pending, err = pendingAfter(recorded, ms); err != nil {
+		return r, err
 	}
 
 	live, liveHash, err := liveSchema(ctx, tx)
@@ -502,6 +481,166 @@ func (s *SQLite) prepare(ctx context.Context, tx *sql.Tx, sc appSchema, tables [
 		return r, drift
 	}
 	return r, nil
+}
+
+// pendingAfter is the migrations of ms that recorded (the names _alder_migrations holds,
+// sorted) lacks, in order. It refuses a recorded name without its file (one after every file of
+// ms: this executable predates the database, migrationAt's ahead) and a file not applied that
+// comes before one that is.
+func pendingAfter(recorded []string, ms []Migration) ([]Migration, error) {
+	known := map[string]bool{}
+	for _, m := range ms {
+		known[m.Name] = true
+	}
+	done := map[string]bool{}
+	for _, name := range recorded {
+		if !known[name] {
+			if _, ahead := migrationAt(name, ms); ahead || len(ms) == 0 {
+				newest := recorded[len(recorded)-1]
+				return nil, fmt.Errorf("migration %s is recorded as applied but its file is missing; this executable predates the database (it has had %s): deploy a build that includes it, or restore a backup taken before it", name, newest)
+			}
+			return nil, fmt.Errorf("migration %s is recorded as applied but its file is missing: restore it from version control", name)
+		}
+		done[name] = true
+	}
+	var pending []Migration
+	for _, m := range ms {
+		if done[m.Name] {
+			continue
+		}
+		if len(recorded) > 0 && m.Name < recorded[len(recorded)-1] {
+			return nil, fmt.Errorf("migration %s is not applied but %s, which comes after it, is: migrations apply in order; delete the file and run `alder migrate` again (only if it has not run against a database you keep)", m.Name, recorded[len(recorded)-1])
+		}
+		pending = append(pending, m)
+	}
+	return pending, nil
+}
+
+// migrationAt places a database's last migration, name, among this build's ms: at is its
+// index (-1 when ms has no file of that name), and ahead reports a name after every file of ms
+// (a newer build migrated the database). The shared database (pendingAfter, CheckShared) and a
+// silo's (Stores.inspect) are placed alike.
+func migrationAt(name string, ms []Migration) (at int, ahead bool) {
+	at = -1
+	for i, m := range ms {
+		if m.Name == name {
+			at = i
+		}
+	}
+	return at, name != "" && at < 0 && len(ms) > 0 && name > ms[len(ms)-1].Name
+}
+
+// SharedState is how the shared database stands against this build (CheckShared).
+type SharedState string
+
+const (
+	SharedOK     SharedState = "ok"     // its tables are this build's: serve
+	SharedBehind SharedState = "behind" // this build has migrations it has not had: `alder deploy` runs them
+	SharedAhead  SharedState = "ahead"  // a newer build migrated it: serve the maintenance page
+	SharedFresh  SharedState = "fresh"  // no tables at all: no deploy has migrated it yet
+)
+
+// CheckShared compares the shared database s with this build (its tables and migrations ms)
+// without changing it: it reads what MigrateLog would (_alder_migrations, _alder_meta, the live
+// tables) and writes nothing, takes no write lock, creates no table. A binary serving a database
+// on Turso calls it instead of migrating on start (several instances would race; `alder deploy`
+// migrates from the deploying machine before the new build starts).
+//
+// The detail says what was found: the pending migrations of SharedBehind, the newer migration
+// of SharedAhead. On SharedOK it registers tables with s, as MigrateLog does, so that s serves
+// them. A database that is in none of the four states is an error, with the text
+// MigrateLog's refusal would have: a recorded migration whose file is missing (and that is not
+// newer than every file), a file not applied before one that is, another storage format, tables
+// changed outside migrations since the last one, or tables that are not the app's although
+// nothing is pending.
+func CheckShared(ctx context.Context, s *SQLite, tables []TableDesc, ms []Migration) (SharedState, string, error) {
+	sc, err := schemaOf(tables)
+	if err != nil {
+		return "", "", err
+	}
+	q := s.db
+	hasMeta, err := tableExists(ctx, q, "_alder_meta")
+	if err != nil {
+		return "", "", err
+	}
+	hasLog, err := tableExists(ctx, q, migrationsTable)
+	if err != nil {
+		return "", "", err
+	}
+	existing, err := appTables(ctx, q)
+	if err != nil {
+		return "", "", err
+	}
+	if !hasMeta && !hasLog && len(existing) == 0 {
+		return SharedFresh, "the database has no tables", nil
+	}
+	if hasMeta && len(existing) > 0 {
+		if old, err := metaValue(ctx, q, "format"); err != nil {
+			return "", "", err
+		} else if old != Format {
+			return "", "", formatErr(old)
+		}
+	}
+	var recorded []string
+	if hasLog {
+		if recorded, err = appliedMigrations(ctx, q); err != nil {
+			return "", "", err
+		}
+	}
+	live, liveHash, err := liveSchema(ctx, q)
+	if err != nil {
+		return "", "", err
+	}
+	if len(recorded) == 0 {
+		switch {
+		case len(ms) > 0:
+			return SharedBehind, "no migration is recorded: a deploy runs " + strings.Join(names(ms), ", "), nil
+		case liveHash != sc.hash:
+			return SharedBehind, "its tables are not this build's", nil
+		}
+		s.register(tables)
+		return SharedOK, "", nil
+	}
+	newest := recorded[len(recorded)-1]
+	if _, ahead := migrationAt(newest, ms); ahead || len(ms) == 0 {
+		return SharedAhead, fmt.Sprintf("a newer build migrated it (to %s, which this build does not have)", newest), nil
+	}
+	pending, err := pendingAfter(recorded, ms)
+	if err != nil {
+		return "", "", err
+	}
+	if !hasMeta {
+		return "", "", fmt.Errorf("db: %w: _alder_migrations records %s but _alder_meta is missing: restore a backup", ErrDrift, newest)
+	}
+	recHash, err := metaValue(ctx, q, "schema_hash")
+	if err != nil {
+		return "", "", err
+	}
+	if liveHash != recHash {
+		recSchema, err := metaValue(ctx, q, "schema")
+		if err != nil {
+			return "", "", err
+		}
+		return "", "", fmt.Errorf("db: %w: the database was changed outside migrations since %s (changed tables: %s): restore a backup",
+			ErrDrift, newest, strings.Join(schemaDiff(recSchema, live), ", "))
+	}
+	if len(pending) > 0 {
+		return SharedBehind, "pending: " + strings.Join(names(pending), ", "), nil
+	}
+	if liveHash != sc.hash {
+		return "", "", fmt.Errorf("db: %w: the database is at %s, this build's last migration, but its tables are not the app's: the app's tables changed without `alder migrate`", ErrDrift, newest)
+	}
+	s.register(tables)
+	return SharedOK, "", nil
+}
+
+// names are the migrations' names.
+func names(ms []Migration) []string {
+	out := make([]string, len(ms))
+	for i, m := range ms {
+		out[i] = m.Name
+	}
+	return out
 }
 
 // finish is MigrateLog's last step, inside tx: the tables must be the app's (else, in dev

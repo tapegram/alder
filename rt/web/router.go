@@ -67,6 +67,12 @@ type Options struct {
 	// MaintenanceDoc is the document of a request on a silo that is not served (App.maintenance;
 	// nil: a default page), answered with status 503 (MaintenanceResponse).
 	MaintenanceDoc func() html.Node
+	// Build is the build's id (ALDER_BUILD, set by the deploy), answered by /_alder/health.
+	Build string
+	// SharedMaintenance, when set, is why the shared database cannot be served by this build
+	// (Serve: on Turso, a newer build migrated it, "ahead: <detail>"): every route answers the
+	// maintenance page (MaintenanceDoc) with 503, and /_alder/health 503 with its text.
+	SharedMaintenance error
 }
 
 // maxBody is the largest POST body the router reads.
@@ -306,6 +312,10 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}()
 
 	get := r.Method == http.MethodGet || r.Method == http.MethodHead
+	if get && r.URL.Path == HealthPath {
+		rt.health(rw, r)
+		return
+	}
 	if get && datastar.IsDatastar(r) && (strings.HasPrefix(r.URL.Path, staticPrefix) || strings.HasPrefix(r.URL.Path, alderPrefix)) {
 		// a file, not a page: a boost of an older runtime (or a hand-made Datastar GET) asked
 		// for it to morph in; the browser loads it itself instead
@@ -332,6 +342,10 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		rt.serveStatic(w, r)
 		return
 	}
+	if rt.opts.SharedMaintenance != nil {
+		rt.maintenance(w, r, st, rt.opts.SharedMaintenance)
+		return
+	}
 	if get && datastar.IsDatastar(r) {
 		// a boosted link or a back/forward: answered with a morph and a history step
 		dropSignals(r.URL)
@@ -345,6 +359,42 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 
 // alderPrefix is the runtime's own files' path (the Datastar script, datastar.ScriptPath).
 const alderPrefix = "/_alder/"
+
+// HealthPath is the health check every app answers (GET or HEAD), whatever its routes.
+const HealthPath = alderPrefix + "health"
+
+// healthTimeout bounds the health check's SELECT 1: a database that does not answer in time is
+// down (503), not a check left hanging.
+const healthTimeout = 5 * time.Second
+
+// health answers HealthPath: 200 {"build":"<Options.Build>","db":"ok"} when the store answers
+// SELECT 1 (within healthTimeout), else 503 with the error's text as "db" — also when
+// Options.SharedMaintenance is set (its text). A platform's health check (Render's) sends it: a
+// build that cannot reach its database, or that a newer build's migrations left behind, is never
+// switched to. It is answered before anything else the router does: no session is read or set,
+// no CSRF check, no log line, no dev panel; never cached.
+func (rt *router) health(w http.ResponseWriter, r *http.Request) {
+	status, state := http.StatusOK, "ok"
+	if err := rt.opts.SharedMaintenance; err != nil {
+		status, state = http.StatusServiceUnavailable, err.Error()
+	} else if p, ok := rt.opts.Store.(interface{ Ping(context.Context) error }); ok {
+		ctx, cancel := context.WithTimeout(r.Context(), healthTimeout)
+		defer cancel()
+		if err := p.Ping(ctx); err != nil {
+			status, state = http.StatusServiceUnavailable, err.Error()
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	if r.Method == http.MethodHead {
+		return
+	}
+	_ = json.NewEncoder(w).Encode(struct {
+		Build string `json:"build"`
+		DB    string `json:"db"`
+	}{rt.opts.Build, state})
+}
 
 // reload answers a Datastar GET with a real navigation to its URL (datastar.Assign): the
 // browser loads it as a document (a file under /static/ or /_alder/; a page asked for by a tab
