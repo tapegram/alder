@@ -18,7 +18,9 @@ import (
 
 // The E11 drills (book 15, "An app from the command line"): testdata/drill/<task>/script.txt
 // builds an E9 app from `alder new <app> --bare` with `alder new`, `alder edit` and `alder
-// fill` only, no file edited by hand — T10 (teams) and T9 (bookings), each with its task's
+// fill` only, no file edited by hand — T10 (teams), T9 (bookings) and, since M15, T11 (orgs
+// with a database per org: `alder new silo`, `@partition=org`, `--requires org`, `alder edit
+// session add-field … via …`; its hidden tests are e9-feedback/hidden/t11-workspace), each with its task's
 // exact names, tables and fields (experiments/tasks/, the Names block). TestDrill replays both;
 // each app has the task's names (drillNames), its own tests pass, the E9 hidden tests pass once
 // added to the app as the E9 harness adds them (experiments/e9-feedback/verify.sh:
@@ -46,6 +48,11 @@ type drillNames struct {
 	// message's parameters ("Teams.Show.SendInvite" → `team: Team.TeamId`; none → no entry), exactly.
 	formFields map[string][]string
 	msgParams  map[string][]string
+	// M15: App's `silo k { … }` (each key's table modules), each `via` field's membership table
+	// and each `choose k = Page`; nil for none.
+	silos  map[string][]string
+	via    map[string]string
+	choose map[string]string
 }
 
 var drills = []drill{
@@ -76,6 +83,25 @@ var drills = []drill{
 		forms:      map[string][]string{"Rooms.Show": {"NewBooking"}, "Auth.Login": {"Credentials"}},
 		formFields: map[string][]string{"Rooms.Show.NewBooking": {"from: Date", "to: Date"}, "Auth.Login.Credentials": {"email: Text.Email", "password: Text.Secret"}},
 		msgParams:  map[string][]string{},
+	}},
+	{task: "t11-workspace", app: "ws", names: drillNames{
+		tables: map[string][]string{
+			"User":       {"id: UserId", "email: Text.Email", "name: Text.NonEmpty", "passwordHash: Text", "created: Time"},
+			"Org":        {"id: OrgId", "name: Text.NonEmpty"},
+			"Membership": {"id: MembershipId", "user: User.UserId", "org: Org.OrgId"},
+			"Project":    {"id: ProjectId", "name: Text.NonEmpty", "org: Org.OrgId"},
+			"Todo":       {"id: TodoId", "title: Text.NonEmpty", "done: Bool", "project: Project.ProjectId", "org: Org.OrgId"},
+		},
+		session: []string{"user: Maybe User.UserId", "org: Maybe Org.OrgId"},
+		pages:   map[string]string{"Orgs.Index": "/orgs", "Projects.Index": "/projects", "Projects.Show": "/projects/{id}", "Auth.Login": "/login"},
+		msgs:    map[string][]string{"Orgs.Index": {"Open", "Create"}, "Projects.Index": {"Create"}, "Projects.Show": {"Toggle", "Add"}, "Auth.Login": {"Submit"}},
+		forms:   map[string][]string{"Orgs.Index": {"NewOrg"}, "Projects.Index": {"NewProject"}, "Projects.Show": {"NewTodo"}, "Auth.Login": {"Credentials"}},
+		formFields: map[string][]string{"Orgs.Index.NewOrg": {"name: Text.NonEmpty"}, "Projects.Index.NewProject": {"name: Text.NonEmpty"},
+			"Projects.Show.NewTodo": {"title: Text.NonEmpty"}, "Auth.Login.Credentials": {"email: Text.Email", "password: Text.Secret"}},
+		msgParams: map[string][]string{"Orgs.Index.Open": {"org: Org.OrgId"}, "Projects.Show.Toggle": {"id: Todo.TodoId"}},
+		silos:     map[string][]string{"org": {"Project", "Todo"}},
+		via:       map[string]string{"org": "Membership"},
+		choose:    map[string]string{"org": "Orgs.Index"},
 	}},
 }
 
@@ -135,6 +161,17 @@ func checkNames(t *testing.T, dir string, want drillNames) {
 		got, want any
 	}{{"pages", pages, want.pages}, {"messages", msgs, want.msgs}, {"forms", forms, want.forms},
 		{"form fields", formFields, want.formFields}, {"message parameters", msgParams, want.msgParams}} {
+		if !reflect.DeepEqual(c.got, c.want) {
+			t.Errorf("%s: %v, want %v", c.what, c.got, c.want)
+		}
+	}
+	for _, c := range []struct {
+		what      string
+		got, want any
+	}{{"silos", p.Silos, want.silos}, {"via", p.Via, want.via}, {"choose", p.Choose, want.choose}} {
+		if reflect.ValueOf(c.want).Len() == 0 && reflect.ValueOf(c.got).Len() == 0 {
+			continue
+		}
 		if !reflect.DeepEqual(c.got, c.want) {
 			t.Errorf("%s: %v, want %v", c.what, c.got, c.want)
 		}

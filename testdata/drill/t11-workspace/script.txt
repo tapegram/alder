@@ -1,0 +1,322 @@
+# The M15 drill (book 15, "An app from the command line"): the T11 workspace app, orgs and
+# members with a database per org, with the task's exact names, tables and fields, built from
+# `alder new ws --bare` with commands only. One command a line; a `fill` reads the lines after
+# it up to EOF. cmd/alder/drill_test.go replays it, then checks the names, and runs the app's
+# tests, the hidden tests, and `alder test --mutate`.
+
+# the users, and logging in
+alder new table User email:Text.Email@unique name:Text.NonEmpty passwordHash:Text created:Time@created --no-timestamps
+alder new auth --users User
+
+# the orgs and their members
+alder new table Org name:Text.NonEmpty --no-timestamps
+alder new table Membership user:User.UserId@ref=User org:Org.OrgId@ref=Org --no-timestamps
+
+# the page that picks an org, then the session's key: `org` via Membership, chosen there
+alder new page Orgs.Index /orgs --blank --requires user
+alder edit session add-field org:Org.OrgId via Membership --choose Orgs.Index
+
+# the org's projects and to-dos: partitioned by org, in a database per org
+alder new table Project name:Text.NonEmpty org:Org.OrgId@ref=Org@partition=org --no-timestamps
+alder new table Todo title:Text.NonEmpty done:Bool=False project:Project.ProjectId@ref=Project@cascade org:Org.OrgId@ref=Org@partition=org --no-timestamps
+alder new silo org Project Todo
+
+# the re-read idiom: whether the user is a member of the org now
+alder new decl Membership isMember "User.UserId -> Org.OrgId -> Query Bool"
+alder fill Membership.isMember - <<'EOF'
+\user org -> {
+  let n <- Db.from Membership |> Db.where (Membership.user.eq user) |> Db.where (Membership.org.eq org) |> Db.count
+  Query.succeed (n > 0)
+}
+EOF
+
+alder new test Membership "isMember is whether that user has a row for that org"
+alder fill 'Membership."isMember is whether that user has a row for that org"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Db.insert Membership { user: bob, org: globex }
+  let a <- isMember ann acme
+  let b <- isMember ann globex
+  let c <- isMember bob acme
+  Task.succeed ([a, b, c] == [True, False, False])
+}
+EOF
+
+# the two project pages, blank: their Model, load and view are filled below
+alder new page Projects.Index /projects --blank --requires org
+alder new page Projects.Show /projects --show Project --blank --requires org
+
+# where a login goes (`alder new auth` left the hole ?afterLogin)
+alder fill Auth.Login.update.Submit - <<'EOF'
+Orgs.Index {}
+EOF
+alder fill 'Auth.Login."logging in through the form"' - <<'EOF'
+Orgs.Index {}
+EOF
+
+# /orgs: the user's orgs, by name, each with an Open button, and a form for a new one
+alder fill --decl Orgs.Index.Model - <<'EOF'
+{ orgs: List Org }
+EOF
+alder fill Orgs.Index.load - <<'EOF'
+{
+  let mine <- Db.from Membership |> Db.where (Membership.user.eq session.user) |> Db.all
+  let orgs <- Db.from Org |> Db.where (Org.id.in (List.map (\m -> m.org) mine)) |> Db.orderBy Org.name.asc |> Db.all
+  Query.succeed { orgs: orgs }
+}
+EOF
+alder fill --decl Orgs.Index.view - <<'EOF'
+<Layout.Page title="Orgs">
+  <h1>Your orgs</h1>
+  <ul id="orgs">
+    {for o in model.orgs ->
+      <li>
+        <span class="name">{o.name}</span>
+      </li>}
+  </ul>
+  <al-button variant="outline" click={App.Logout}>Log out</al-button>
+</Layout.Page>
+EOF
+alder new msg Orgs.Index Open org:Org.OrgId --in-for o
+alder fill --decl 'Orgs.Index."pressing Open"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let zeta <- Db.insert Org { name: Text.NonEmpty "Zeta" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let _ <- Test.member ann zeta
+  let _ <- Test.member ann acme
+  let _ <- Test.member bob globex
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let page <- Test.get (Orgs.Index {})
+  let r <- Test.click (Open { org: zeta })
+  Task.succeed ({ orgs: Test.texts "#orgs .name" page.doc, answer: r.answer, org: r.session.org } == { orgs: ["Acme", "Zeta"], answer: Redirected (Projects.Index {}), org: Just zeta })
+}
+EOF
+alder new test Orgs.Index "a user cannot open an org they are not a member of"
+alder fill 'Orgs.Index."a user cannot open an org they are not a member of"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let r <- Test.run (update (Open { org: globex }) { orgs: [] } { user: ann, org: Nothing })
+  Task.succeed (r.value == Err "Session.put org: no Membership for this user and org")
+}
+EOF
+alder new form Orgs.Index NewOrg name:Text.NonEmpty --msg Create
+# the form fits Org, so its arm inserts one; its first member, and opening it, are the rest
+alder fill --decl Orgs.Index.update - <<'EOF'
+match msg {
+  Open p -> {
+    let _ <- Session.put (\s -> { s | org: Just p.org })
+    Task.succeed (Redirect (Projects.Index {}))
+  },
+  Create p -> {
+    let org <- Db.insert Org { name: p.form.name }
+    let _ <- Db.insert Membership { user: session.user, org: org }
+    let _ <- Session.put (\s -> { s | org: Just org })
+    Task.succeed (Redirect (Projects.Index {}))
+  },
+}
+EOF
+alder fill --decl 'Orgs.Index."submitting NewOrg adds a row"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let _ <- Test.get (Orgs.Index {})
+  let r <- Test.submit NewOrg { name: Text.NonEmpty "Initech" }
+  let made <- Db.from Org |> Db.all
+  let ids = List.map (\o -> o.id) made
+  let members <- Db.from Membership |> Db.all
+  Task.succeed ({ answer: r.answer, org: r.session.org == List.head ids, members: List.map (\m -> { user: m.user, org: Just m.org }) members } == { answer: Redirected (Projects.Index {}), org: True, members: [{ user: ann, org: List.head ids }] })
+}
+EOF
+
+# /projects: the org's name and its projects, by name, for a member only, and a form for a new one
+alder fill --decl Projects.Index.Model - <<'EOF'
+{ org: Text, projects: List Project }
+EOF
+alder fill Projects.Index.load - <<'EOF'
+{
+  let member <- Membership.isMember session.user session.org
+  if member then {
+    let org <- Db.get Org session.org
+    let projects <- Db.scoped Project |> Db.orderBy Project.name.asc |> Db.all
+    Query.succeed { org: Maybe.withDefault "" (Maybe.map (\o -> o.name) org), projects: projects }
+  } else Query.notFound
+}
+EOF
+alder fill --decl Projects.Index.view - <<'EOF'
+<Layout.Page title={model.org}>
+  <h1 id="org">{model.org}</h1>
+  <ul id="projects">
+    {for p in model.projects ->
+      <li><a class="name" href={Projects.Show { id: p.id }}>{p.name}</a></li>}
+  </ul>
+  <a href={Orgs.Index {}}>Orgs</a>
+</Layout.Page>
+EOF
+alder new form Projects.Index NewProject name:Text.NonEmpty --msg Create
+# the form fits Project (`Db.insertScoped` fills its org), and the new project's page is next
+alder fill --decl Projects.Index.update - <<'EOF'
+match msg {
+  Create p -> {
+    let id <- Db.insertScoped Project { name: p.form.name }
+    Task.succeed (Redirect (Projects.Show { id: id }))
+  },
+}
+EOF
+alder fill --decl 'Projects.Index."submitting NewProject adds a row"' - <<'EOF'
+{
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member bob acme
+  let _ <- Test.member bob globex
+  let _ <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
+  let _ <- Test.login { user: Just bob, org: Just acme }
+  let _ <- Test.get (Projects.Index {})
+  let r <- Test.submit NewProject { name: Text.NonEmpty "Zephyr" }
+  let made <- Db.scoped Project |> Db.all
+  let mine <- Test.get (Projects.Index {})
+  let _ <- Test.login { user: Just bob, org: Just globex }
+  let theirs <- Test.get (Projects.Index {})
+  Task.succeed ({ answers: List.map (\x -> Redirected (Projects.Show { id: x.id })) made, org: Test.text "#org" mine.doc, acme: Test.texts "#projects .name" mine.doc, globex: Test.texts "#projects .name" theirs.doc } == { answers: [r.answer], org: Just "Acme", acme: ["Zephyr"], globex: ["Widget"] })
+}
+EOF
+alder new test Projects.Index "a member sees only the projects of their org, by name"
+alder fill 'Projects.Index."a member sees only the projects of their org, by name"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member ann acme
+  let _ <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Apollo", org: acme }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let page <- Test.get (Projects.Index {})
+  Task.succeed (Test.texts "#projects .name" page.doc == ["Apollo", "Rocket"])
+}
+EOF
+alder new test Projects.Index "a member removed from the org loses access at once"
+alder fill 'Projects.Index."a member removed from the org loses access at once"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let row <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let before <- Test.open (Projects.Index {})
+  let _ <- Db.delete Membership row
+  let after <- Test.open (Projects.Index {})
+  Task.succeed ({ before: before.answer, after: after.answer } == { before: Shown, after: PageMissing })
+}
+EOF
+
+# /projects/{id}: one project of the org, its to-dos by title, Toggle and a form for a new one
+alder fill --decl Projects.Show.Model - <<'EOF'
+{ project: Project, todos: List Todo }
+EOF
+alder fill Projects.Show.load - <<'EOF'
+{
+  let member <- Membership.isMember session.user session.org
+  if member then {
+    let project <- Db.getScoped Project params.id
+    let todos <- Db.scoped Todo |> Db.where (Todo.project.eq project.id) |> Db.orderBy Todo.title.asc |> Db.all
+    Query.succeed { project: project, todos: todos }
+  } else Query.notFound
+}
+EOF
+alder fill --decl Projects.Show.view - <<'EOF'
+<Layout.Page title={model.project.name}>
+  <h1 id="name">{model.project.name}</h1>
+  <ul id="todos">
+    {for t in model.todos ->
+      <li class={if t.done then "done" else "open"}>
+        <span class="title">{t.title}</span>
+      </li>}
+  </ul>
+  <a href={Projects.Index {}}>All projects</a>
+</Layout.Page>
+EOF
+alder new msg Projects.Show Toggle id:Todo.TodoId --in-for t
+alder fill Projects.Show.update.Toggle - <<'EOF'
+{
+  let _ <- Db.updateScoped Todo p.id (\x -> { x | done: not x.done })
+  Task.succeed (Redirect (Projects.Show { id: model.project.id }))
+}
+EOF
+alder fill --decl 'Projects.Show."pressing Toggle"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Test.member ann acme
+  let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let fuel <- Db.insert Todo { title: Text.NonEmpty "Fuel", project: rocket, org: acme }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Countdown", project: rocket, org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let page <- Test.get (Projects.Show { id: rocket })
+  let done <- Test.click (Toggle { id: fuel })
+  let afterDone <- Test.get (Projects.Show { id: rocket })
+  let open <- Test.click (Toggle { id: fuel })
+  let afterOpen <- Test.get (Projects.Show { id: rocket })
+  Task.succeed ({ titles: Test.texts "#todos .title" page.doc, done: done.answer, doneTitles: Test.texts "#todos li.done .title" afterDone.doc, open: open.answer, openDone: Test.count "#todos li.done" afterOpen.doc } == { titles: ["Countdown", "Fuel"], done: Redirected (Projects.Show { id: rocket }), doneTitles: ["Fuel"], open: Redirected (Projects.Show { id: rocket }), openDone: 0 })
+}
+EOF
+alder new form Projects.Show NewTodo title:Text.NonEmpty --msg Add
+alder fill Projects.Show.update.Add - <<'EOF'
+{
+  let _ <- Db.insertScoped Todo { title: p.form.title, project: model.project.id }
+  Task.succeed (Redirect (Projects.Show { id: model.project.id }))
+}
+EOF
+alder fill --decl 'Projects.Show."submitting NewTodo"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Test.member ann acme
+  let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let apollo <- Db.insert Project { name: Text.NonEmpty "Apollo", org: acme }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Elsewhere", project: apollo, org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let _ <- Test.get (Projects.Show { id: rocket })
+  let r <- Test.submit NewTodo { title: Text.NonEmpty "Fuel" }
+  let page <- Test.get (Projects.Show { id: rocket })
+  Task.succeed ({ answer: r.answer, name: Test.text "#name" page.doc, titles: Test.texts "#todos .title" page.doc } == { answer: Redirected (Projects.Show { id: rocket }), name: Just "Rocket", titles: ["Fuel"] })
+}
+EOF
+alder new test Projects.Show "a project of another org is not found"
+alder fill 'Projects.Show."a project of another org is not found"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member ann acme
+  let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let r <- Test.open (Projects.Show { id: widget })
+  Task.succeed (r.answer == PageMissing)
+}
+EOF
+alder new test Projects.Show "a member removed from the org loses access at once"
+alder fill 'Projects.Show."a member removed from the org loses access at once"' - <<'EOF'
+{
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let row <- Db.insert Membership { user: ann, org: acme }
+  let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let _ <- Db.delete Membership row
+  let r <- Test.open (Projects.Show { id: rocket })
+  Task.succeed (r.answer == PageMissing)
+}
+EOF
+
+# the app's own tests
+alder check
+alder test

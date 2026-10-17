@@ -1,0 +1,142 @@
+module Hidden
+
+-- Hidden acceptance tests for T11 (orgs, members and a database per org; M15). They use only
+-- the names the task's Names block fixes; the model never sees them. Two orgs, Acme and Globex:
+-- Ann is a member of Acme, Bob of both.
+
+import User
+import Org
+import Membership
+import Project
+import Todo
+
+test "a member sees the org's name and only its projects, by name" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Db.insert Membership { user: bob, org: acme }
+  let _ <- Db.insert Membership { user: bob, org: globex }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Apollo", org: acme }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let a <- Test.get (Projects.Index {})
+  let _ <- Test.login { user: Just bob, org: Just globex }
+  let b <- Test.get (Projects.Index {})
+  Task.succeed ({ org: Test.text "#org" a.doc, projects: Test.texts "#projects .name" a.doc, globex: Test.text "#org" b.doc, theirs: Test.texts "#projects .name" b.doc } == { org: Just "Acme", projects: ["Apollo", "Rocket"], globex: Just "Globex", theirs: ["Widget"] })
+}
+
+test "the orgs page lists the user's orgs, and Open puts one in the session" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let zeta <- Db.insert Org { name: Text.NonEmpty "Zeta" }
+  let _ <- Db.insert Membership { user: bob, org: zeta }
+  let _ <- Db.insert Membership { user: bob, org: acme }
+  let _ <- Db.insert Membership { user: ann, org: globex }
+  let _ <- Test.login { user: Just bob, org: Nothing }
+  let page <- Test.get (Orgs.Index {})
+  let r <- Test.click (Orgs.Index.Open { org: zeta })
+  Task.succeed ({ orgs: Test.texts "#orgs .name" page.doc, answer: r.answer, org: r.session.org } == { orgs: ["Acme", "Zeta"], answer: Redirected (Projects.Index {}), org: Just zeta })
+}
+
+-- A stale page: Bob's /orgs (with an Open button for Globex) is held, the cookie is swapped to
+-- Ann's, who is no member of Globex, and her browser posts that Open. The session must not take
+-- Globex: the server refuses it, whatever it answers.
+test "a user cannot open an org they are not a member of, even from a stale page" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Db.insert Membership { user: bob, org: globex }
+  let _ <- Test.login { user: Just bob, org: Nothing }
+  let _ <- Test.get (Orgs.Index {})
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let r <- Test.click (Orgs.Index.Open { org: globex })
+  Task.succeed ({ org: r.session.org, redirected: r.answer == Redirected (Projects.Index {}) } == { org: Nothing, redirected: False })
+}
+
+test "creating an org makes its creator a member and opens it" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let _ <- Test.get (Orgs.Index {})
+  let r <- Test.submit Orgs.Index.NewOrg { name: Text.NonEmpty "Initech" }
+  let made <- Db.from Org |> Db.where (Org.name.eq (Text.NonEmpty "Initech")) |> Db.all
+  let ids = List.map (\o -> o.id) made
+  let members <- Db.from Membership |> Db.where (Membership.org.in ids) |> Db.all
+  let page <- Test.get (Projects.Index {})
+  Task.succeed ({ answer: r.answer, made: List.length ids, org: r.session.org == List.head ids, members: List.map (\m -> m.user) members, name: Test.text "#org" page.doc } == { answer: Redirected (Projects.Index {}), made: 1, org: True, members: [ann], name: Just "Initech" })
+}
+
+test "a project is created in the session's org, and another org does not see it" = {
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Membership { user: bob, org: acme }
+  let _ <- Db.insert Membership { user: bob, org: globex }
+  let _ <- Test.login { user: Just bob, org: Just acme }
+  let _ <- Test.get (Projects.Index {})
+  let r <- Test.submit Projects.Index.NewProject { name: Text.NonEmpty "Zephyr" }
+  let mine <- Test.get (Projects.Index {})
+  let _ <- Test.login { user: Just bob, org: Just globex }
+  let theirs <- Test.get (Projects.Index {})
+  let redirected = match r.answer {
+    Redirected _ -> True,
+    _ -> False,
+  }
+  Task.succeed ({ redirected: redirected, acme: Test.texts "#projects .name" mine.doc, globex: Test.texts "#projects .name" theirs.doc } == { redirected: True, acme: ["Zephyr"], globex: [] })
+}
+
+test "a project of another org is not found" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let mine <- Test.open (Projects.Show { id: rocket })
+  let theirs <- Test.open (Projects.Show { id: widget })
+  Task.succeed ({ mine: mine.answer, name: Test.text "#name" mine.doc, theirs: theirs.answer } == { mine: Shown, name: Just "Rocket", theirs: PageMissing })
+}
+
+test "to-dos are added, by title, and toggled done and open again" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let fuel <- Db.insert Todo { title: Text.NonEmpty "Fuel", project: rocket, org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let _ <- Test.get (Projects.Show { id: rocket })
+  let added <- Test.submit Projects.Show.NewTodo { title: Text.NonEmpty "Countdown" }
+  let page <- Test.get (Projects.Show { id: rocket })
+  let done <- Test.click (Projects.Show.Toggle { id: fuel })
+  let afterDone <- Test.get (Projects.Show { id: rocket })
+  let open <- Test.click (Projects.Show.Toggle { id: fuel })
+  let afterOpen <- Test.get (Projects.Show { id: rocket })
+  Task.succeed ({ added: added.answer, titles: Test.texts "#todos .title" page.doc, done: done.answer, doneTitles: Test.texts "#todos li.done .title" afterDone.doc, open: open.answer, openDone: Test.count "#todos li.done" afterOpen.doc } == { added: Redirected (Projects.Show { id: rocket }), titles: ["Countdown", "Fuel"], done: Redirected (Projects.Show { id: rocket }), doneTitles: ["Fuel"], open: Redirected (Projects.Show { id: rocket }), openDone: 0 })
+}
+
+test "a user without an org is sent to choose one" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let r <- Test.open (Projects.Index {})
+  Task.succeed (r.answer == Redirected (Orgs.Index {}))
+}
+
+test "a member removed from the org loses access at once" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let row <- Db.insert Membership { user: ann, org: acme }
+  let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let before <- Test.open (Projects.Index {})
+  let _ <- Db.delete Membership row
+  let list <- Test.open (Projects.Index {})
+  let one <- Test.open (Projects.Show { id: rocket })
+  Task.succeed ({ before: before.answer, list: list.answer, one: one.answer } == { before: Shown, list: PageMissing, one: PageMissing })
+}

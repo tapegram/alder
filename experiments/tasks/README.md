@@ -32,3 +32,15 @@ the text gives; E11's T4 results used the text without it. The drills' names che
 `checkNames`) now also compares each form's fields and each message's parameters.
 
 E11 run 2 (`e11-cli/findings-run2.md`) ran these texts with T4's Names block (Haiku, Sonnet, Opus, `cli`; Opus `files`); its T2 cells are void, because `examples/todos` did not pass `alder check` under the run's binary.
+
+Since M15 (book 06, "Partitions"; book 08, "Silos") there is an eleventh text, T11 (`t11-workspace.md`): orgs whose
+members work in one at a time (`session { …, org: Maybe Org.OrgId via Membership }`, `choose org = Orgs.Index`), and
+whose projects and to-dos live in a database per org (`silo org { Project, Todo }`). Its Names block names the
+declarations (`via`, `choose`, `silo`, `@partition org`, `requires user, org`) but not the scoped operations or the
+re-read idiom, which the text asks for in words. Its hidden tests are `e9-feedback/hidden/t11-workspace/Hidden.alder`
+(9 tests: two orgs, a non-member's Open refused from a stale page, a member removed losing access at once, a project
+of another org not found), which `cmd/alder/drill_test.go` adds to the drill's app as the E9 harness adds its own;
+the E9 run had no T11, so `e9-feedback/verify.sh` does not list it. The recorded drill
+`testdata/drill/t11-workspace/script.txt` builds it from `alder new ws --bare` with the generators only (`alder new
+silo`, `@partition=org`, `--requires org`, `alder edit session add-field org:Org.OrgId via Membership --choose
+Orgs.Index`); its own tests score 37 / 37 and the hidden tests pass.
