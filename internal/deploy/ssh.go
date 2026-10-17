@@ -317,6 +317,7 @@ for d in */; do
   echo "@@build $d $(date -r "$d" +%s 2>/dev/null || echo 0) $run"
   cat "$d/deployed.json" 2>/dev/null
 done
+exit 0
 `)
 	if err != nil {
 		return nil, err
@@ -493,7 +494,9 @@ func (s *Ssh) Start(ctx context.Context, id string) (int, error) {
 // start starts build id listening on addr and waits (15 s at most) for its "listening on" line;
 // a build that exits first is an error with its log.
 func (s *Ssh) start(ctx context.Context, id, addr string) (int, error) {
-	launch := `nohup "$B/run" >> "$B/log" 2>&1 < /dev/null &
+	// detached: no terminal, output to the log, SIGHUP ignored (kept across exec; not nohup,
+	// which macOS refuses outside a console session)
+	launch := `(trap '' HUP; exec "$B/run") >> "$B/log" 2>&1 < /dev/null &
 echo $! > "$B/pid"
 `
 	if s.sup != "process" {
@@ -607,28 +610,28 @@ tail -n 40 "$R/builds/$id/log"
 	return fmt.Errorf("build %s did not answer GET / with its build id within %ds; its log (builds/%s/log):\n%s", id, secs, id, strings.TrimRight(rest, "\n"))
 }
 
-// Switch routes the traffic to build id on port and makes it current: with Caddy, the
-// route's upstream; with `proxy: None`, the previous build is stopped and id restarted on the
-// public port (a moment without a listener), and when that fails the previous build is
-// started again.
-func (s *Ssh) Switch(ctx context.Context, id string, port int) error {
+// Switch routes the traffic to build id on port, makes it current and returns the port it
+// serves on: with Caddy, port (the route's upstream changes); with `proxy: None`, the public
+// port, after the previous build is stopped and id restarted on it (a moment without a
+// listener; when that fails the previous build is started again).
+func (s *Ssh) Switch(ctx context.Context, id string, port int) (int, error) {
 	prev, err := s.Current(ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if s.Proxy == "None" {
 		out, err := s.run(ctx, `p=$(cat "$R/port" 2>/dev/null | tr -d ' \n'); [ -n "$p" ] || { p=`+strconv.Itoa(DefaultPublicPort)+`; echo "$p" > "$R/port"; }; echo "$p"`)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		public := strings.TrimSpace(out)
 		if prev != "" && prev != id {
 			if err := s.stop(ctx, prev); err != nil {
-				return err
+				return 0, err
 			}
 		}
 		if err := s.stop(ctx, id); err != nil {
-			return err
+			return 0, err
 		}
 		p, err := s.start(ctx, id, ":"+public)
 		if err == nil {
@@ -638,15 +641,15 @@ func (s *Ssh) Switch(ctx context.Context, id string, port int) error {
 			s.stop(ctx, id)
 			if prev != "" && prev != id {
 				if _, perr := s.start(ctx, prev, ":"+public); perr != nil {
-					return fmt.Errorf("%v; and build %s did not start again: %v", err, prev, perr)
+					return 0, fmt.Errorf("%v; and build %s did not start again: %v", err, prev, perr)
 				}
-				return fmt.Errorf("%v; build %s was started again on port %s", err, prev, public)
+				return 0, fmt.Errorf("%v; build %s was started again on port %s", err, prev, public)
 			}
-			return err
+			return 0, err
 		}
 		port = p
 	} else if err := s.caddy(ctx, port); err != nil {
-		return err
+		return 0, err
 	}
 	enable := ""
 	if s.sup != "process" {
@@ -656,7 +659,7 @@ func (s *Ssh) Switch(ctx context.Context, id string, port int) error {
 echo `+strconv.Itoa(port)+` > "$R/port.new" && mv "$R/port.new" "$R/port"
 echo "$id" > "$R/current.new" && mv "$R/current.new" "$R/current"
 `+enable)
-	return err
+	return port, err
 }
 
 // caddy makes Caddy route the domain to 127.0.0.1:port: it installs Caddy on Debian or Ubuntu
@@ -747,7 +750,7 @@ B="$R/builds/$id"
 cat > "$B/stop-later" <<'ALDER_STOP_EOF'
 `+later+`ALDER_STOP_EOF
 chmod 755 "$B/stop-later"
-nohup "$B/stop-later" >/dev/null 2>&1 < /dev/null &
+(trap '' HUP; exec "$B/stop-later") >/dev/null 2>&1 < /dev/null &
 `)
 	return err
 }

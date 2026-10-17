@@ -73,9 +73,9 @@ func (f *fakeTarget) Health(_ context.Context, id string, port int, _ time.Durat
 	f.call("health")
 	return f.health
 }
-func (f *fakeTarget) Switch(_ context.Context, id string, port int) error {
+func (f *fakeTarget) Switch(_ context.Context, id string, port int) (int, error) {
 	f.call("switch " + id)
-	return nil
+	return port, nil
 }
 func (f *fakeTarget) Stop(_ context.Context, id string, d time.Duration) error {
 	f.call(fmt.Sprintf("stop %s %s", id, d))

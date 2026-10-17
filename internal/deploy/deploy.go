@@ -241,7 +241,7 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 		return res, startRefusal(id, current, err)
 	}
 	line(w, "health", "ok", "build "+id+" answers GET /")
-	if err := t.Switch(ctx, id, port); err != nil {
+	if port, err = t.Switch(ctx, id, port); err != nil {
 		line(w, "switch", "FAIL", "")
 		t.Stop(ctx, id, 0)
 		return res, fmt.Errorf("switching to build %s: %w", id, err)
@@ -442,7 +442,7 @@ func Rollback(ctx context.Context, t Target, o RollbackOptions) (string, error) 
 		return "", startRefusal(to, current, err)
 	}
 	line(w, "health", "ok", "build "+to+" answers GET /")
-	if err := t.Switch(ctx, to, port); err != nil {
+	if port, err = t.Switch(ctx, to, port); err != nil {
 		t.Stop(ctx, to, 0)
 		return "", fmt.Errorf("switching to build %s: %w", to, err)
 	}

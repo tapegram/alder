@@ -46,8 +46,9 @@ type Target interface {
 	// Health waits (at most timeout) until build id answers GET / on port with its build id in
 	// the page's alder-build meta; the error carries the build's log.
 	Health(ctx context.Context, id string, port int, timeout time.Duration) error
-	// Switch sends the traffic to build id on port and makes it current.
-	Switch(ctx context.Context, id string, port int) error
+	// Switch sends the traffic to build id on port and makes it current, returning the port it
+	// now serves on (another than port when the target restarts it on a public one).
+	Switch(ctx context.Context, id string, port int) (int, error)
 	// Stop stops build id after drain (in-flight requests finish; 0: now).
 	Stop(ctx context.Context, id string, drain time.Duration) error
 	// Record writes build id's deployed.json.

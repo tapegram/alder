@@ -356,7 +356,7 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 	}
 	id1 := deployedID(t, out)
 	for _, want := range []string{"  requires ok  SMTP_URL, ALDER_SECRET\n", "first deploy: the database is created by every migration", "  upload   ok  builds/" + id1 + "/\n",
-		"  backup   ok  no database yet\n", "  migrate  ok  applied 0001_initial\n", "  health   ok  build " + id1 + " answers GET /\n", "  switch   ok  current → " + id1} {
+		"  backup   ok  no database yet\n", "  migrate  ok  applied 0001_initial\n", "  health   ok  build " + id1 + " answers GET /\n", fmt.Sprintf("  switch   ok  current → %s (port %d)\n", id1, box.port)} {
 		if !strings.Contains(out, want) {
 			t.Errorf("first deploy: output lacks %q:\n%s", want, out)
 		}
@@ -503,6 +503,13 @@ func (clock) Now(context.Context) (int64, error) { return 0, nil }
 	}
 	if m := regexp.MustCompile(`builds/([0-9a-f]{16})/ is kept`).FindStringSubmatch(out); m == nil || !strings.Contains(box.sh(t, "ls "+box.root+"/builds"), m[1]) {
 		t.Errorf("RF2: the failed build's directory is not kept")
+	}
+
+	// status lists the failed build (it has no deployed.json)
+	so.Reset()
+	se.Reset()
+	if code := runStatusTo([]string{"production", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "never switched to (failed or interrupted; kept for inspection)") || !strings.Contains(so.String(), "current  "+id3+"\n") {
+		t.Errorf("status after RF2: %d\n%s%s", code, so.String(), se.String())
 	}
 
 	// logs
