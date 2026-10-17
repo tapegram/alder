@@ -177,7 +177,8 @@ jobs:
   # The Ssh target of `alder deploy` against a real sshd: cmd/alder's TestDeploySsh_* under
   # -tags deploy start a container from cmd/alder/testdata/deploy/Dockerfile (Debian, sshd, curl,
   # a user `deploy`) and deploy the scaffold to it over ssh (deploy_ssh_test.go). Without Docker
-  # they skip, saying so; the default suite runs the same tests against a loopback box.
+  # the job fails (ALDER_DEPLOY_REQUIRE_DOCKER) unless the pull request is labelled no-docker;
+  # the default suite runs the same tests against a loopback box.
   deploy:
     needs: warm
     runs-on: ubuntu-latest
@@ -196,9 +197,19 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-
+      # Docker is part of this job: without it the job fails, unless the pull request carries the
+      # label no-docker (then the tests skip, saying so)
       - name: Docker
-        run: docker info --format 'Docker {{.ServerVersion}}' || echo "::notice::Docker does not answer on this runner; the deploy tests skip"
+        env:
+          SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'no-docker') }}
+        run: |
+          if docker info --format 'Docker {{.ServerVersion}}'; then exit 0; fi
+          if [ "$SKIP" = true ]; then echo "::notice::no Docker, and the no-docker label: the deploy tests skip"; exit 0; fi
+          echo "::error::Docker does not answer on this runner: the Ssh target's tests cannot run (label the pull request no-docker to skip them)"
+          exit 1
       - name: go vet -tags deploy
         run: go vet -tags deploy ./cmd/alder
       - name: go test -tags deploy (the Ssh target against a Docker sshd)
+        env:
+          ALDER_DEPLOY_REQUIRE_DOCKER: ${{ !contains(github.event.pull_request.labels.*.name, 'no-docker') && '1' || '' }}
         run: go test -tags deploy ./cmd/alder -run '^TestDeploySsh_' -count=1 -timeout 20m -v

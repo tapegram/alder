@@ -66,9 +66,10 @@ type Ssh struct {
 	sup  string // "system", "user" (systemd) or "process"
 	conn bool
 
-	allowDataLoss bool // this run's --allow-data-loss (DataLossAllower)
-	unitDone      bool // the unit was installed in this run
-	caddyDone     bool // Caddy answered in this run
+	allowDataLoss bool   // this run's --allow-data-loss (DataLossAllower)
+	ctl           string // the shared connection's control socket ("" for none)
+	unitDone      bool   // the unit was installed in this run
+	caddyDone     bool   // Caddy answered in this run
 }
 
 // AllowDataLoss is DataLossAllower: Migrate passes ALDER_ALLOW_DATA_LOSS=1 to the binary.
@@ -100,7 +101,46 @@ func (s *Ssh) Describe() string { return "Ssh " + s.Dest + ":" + s.Root }
 func (s *Ssh) Identity() string { return s.user + "@" + s.host }
 
 // Close does nothing: every command is its own ssh.
-func (s *Ssh) Close() error { return nil }
+func (s *Ssh) Close() error {
+	if s.ctl == "" {
+		return nil
+	}
+	exec.Command("ssh", append(s.baseArgs(), "-o", "ControlPath="+s.ctl, "-O", "exit", "--", s.Dest)...).Run()
+	os.RemoveAll(filepath.Dir(s.ctl))
+	s.ctl = ""
+	return nil
+}
+
+// master starts one ssh connection for the run (ControlMaster; ControlPersist bounds it if this
+// process dies) that every later ssh shares. Without it (it did not start), each ssh connects
+// on its own.
+func (s *Ssh) master(ctx context.Context) {
+	dir, err := os.MkdirTemp(shortTemp(), "alder-ssh-")
+	if err != nil {
+		return
+	}
+	ctl := filepath.Join(dir, "c")
+	args := append(s.baseArgs(), "-o", "ControlMaster=yes", "-o", "ControlPersist=10m", "-o", "ControlPath="+ctl, "-N", "-f", "--", s.Dest)
+	cmd := exec.CommandContext(ctx, "ssh", args...) // no pipes: the background master holds none of ours
+	if err := cmd.Run(); err != nil {
+		os.RemoveAll(dir)
+		return
+	}
+	if _, err := os.Stat(ctl); err != nil { // not a real ssh (the tests' loopback): no socket
+		os.RemoveAll(dir)
+		return
+	}
+	s.ctl = ctl
+}
+
+// shortTemp is a directory for the control socket: /tmp when it exists (a socket's path has a
+// short limit, and macOS's TMPDIR is long).
+func shortTemp() string {
+	if fi, err := os.Stat("/tmp"); err == nil && fi.IsDir() {
+		return "/tmp"
+	}
+	return os.TempDir()
+}
 
 // unit is the systemd template unit's name, without ".service".
 func (s *Ssh) unit() string { return "alder-" + unitName(s.App) + "-" + unitName(s.Env) }
@@ -112,8 +152,19 @@ func unitName(s string) string { return unitUnsafe.ReplaceAllString(s, "-") }
 // q quotes s for the remote POSIX shell.
 func q(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
-// sshArgs are the arguments of every ssh before the remote command.
+// sshArgs are the arguments of every ssh before the remote command: the options, the run's
+// shared connection when there is one, and `--` before the destination (a destination is never
+// read as an option).
 func (s *Ssh) sshArgs() []string {
+	args := s.baseArgs()
+	if s.ctl != "" {
+		args = append(args, "-o", "ControlMaster=no", "-o", "ControlPath="+s.ctl)
+	}
+	return append(args, "--", s.Dest)
+}
+
+// baseArgs are the options every ssh of the target takes.
+func (s *Ssh) baseArgs() []string {
 	args := []string{"-o", "BatchMode=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4"}
 	if cfg := os.Getenv(EnvSSHConfig); cfg != "" {
 		args = append(args, "-F", cfg)
@@ -121,7 +172,7 @@ func (s *Ssh) sshArgs() []string {
 	if s.Port != "" {
 		args = append(args, "-p", s.Port)
 	}
-	return append(args, s.Dest)
+	return args
 }
 
 // RemoteError is a remote command that failed: ssh's exit 255 is the connection; any other code is the script's.
@@ -213,6 +264,9 @@ func (s *Ssh) stopNow() string {
 func (s *Ssh) Connect(ctx context.Context) (Platform, error) {
 	if s.conn {
 		return s.plat, nil
+	}
+	if s.ctl == "" {
+		s.master(ctx)
 	}
 	out, err := s.run(ctx, `echo "user=$(id -un)"
 echo "host=$(hostname 2>/dev/null || uname -n)"
@@ -1176,18 +1230,34 @@ exit 0
 	return in, nil
 }
 
-// Logs tails the current build's log.
+// Logs writes the current build's last 100 log lines; with follow it goes on writing what is
+// appended, and when another build becomes current (a deploy, a rollback) that build's log.
 func (s *Ssh) Logs(ctx context.Context, follow bool, w io.Writer) error {
 	if _, err := s.Connect(ctx); err != nil {
 		return err
 	}
-	f := ""
-	if follow {
-		f = " -f"
+	script := `c=$(cat "$R/current" 2>/dev/null) || { echo "not deployed yet" >&2; exit 1; }
+exec tail -n 100 "$R/builds/$c/log"
+`
+	if follow { // across switches: when current changes, the new build's log from its start
+		script = `c=$(cat "$R/current" 2>/dev/null) || { echo "not deployed yet" >&2; exit 1; }
+tail -n 100 "$R/builds/$c/log"
+off=$(wc -c < "$R/builds/$c/log" | tr -d ' ')
+while kill -0 "$PPID" 2>/dev/null; do  # the session's sshd gone: stop
+  n=$(cat "$R/current" 2>/dev/null)
+  if [ -n "$n" ] && [ "$n" != "$c" ]; then c=$n; off=0; echo "--- alder logs: build $c is current"; fi
+  size=$(wc -c < "$R/builds/$c/log" 2>/dev/null | tr -d ' ')
+  if [ -n "$size" ] && [ "$size" -gt "$off" ]; then tail -c +$((off + 1)) "$R/builds/$c/log" | head -c $((size - off)); off=$size; fi
+  sleep 1
+done
+`
 	}
-	return s.stream(ctx, `c=$(cat "$R/current" 2>/dev/null) || { echo "not deployed yet" >&2; exit 1; }
-exec tail -n 100`+f+` "$R/builds/$c/log"
-`, w, io.Discard)
+	// its own connection, not the run's shared one: when it closes, the session's sshd exits
+	// and the loop above, which watches it, stops
+	ctl := s.ctl
+	s.ctl = ""
+	defer func() { s.ctl = ctl }()
+	return s.stream(ctx, script, w, io.Discard)
 }
 
 // Restore uploads the local database file db as db/app.db: the current build is stopped, the

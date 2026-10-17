@@ -44,6 +44,9 @@ import (
 // dockerBox is set by deploy_docker_test.go under -tags deploy.
 var dockerBox bool
 
+// qr is the box's root quoted for its shell (the loopback box's has a space and a quote in it).
+func (b *sshBox) qr() string { return fmt.Sprintf("%q", b.root) }
+
 // sshBox is a running box: ssh reaches it as host with the ssh_config config; root is a
 // directory there for the target's <path>; port is the public port its `proxy: None` app
 // listens on.
@@ -60,6 +63,16 @@ func (b *sshBox) sh(t *testing.T, cmd string) string {
 		t.Fatalf("ssh %s: %v\n%s", cmd, err, out)
 	}
 	return string(out)
+}
+
+// write writes content to the file rel under the box's root (through ssh's standard input).
+func (b *sshBox) write(t *testing.T, rel, content string) {
+	t.Helper()
+	cmd := exec.Command("ssh", "-F", b.config, b.host, fmt.Sprintf("umask 077; cat > %s/%s", b.qr(), rel))
+	cmd.Stdin = strings.NewReader(content)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("writing %s: %v %s", rel, err, out)
+	}
 }
 
 // serving is the build id in the page the box's public port serves ("" when nothing answers).
@@ -91,7 +104,7 @@ func startBox(t *testing.T) *sshBox {
 const loopbackSSH = `#!/bin/sh
 while [ $# -gt 0 ]; do
   case "$1" in
-    -o|-F|-p|-i|-l) shift 2;;
+    -o|-F|-p|-i|-l|-O) shift 2;;
     -*) shift;;
     *) break;;
   esac
@@ -116,7 +129,7 @@ func loopbackBox(t *testing.T) *sshBox {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	cfg := filepath.Join(bin, "ssh_config")
 	writeFile(t, cfg, "# the loopback box reads no configuration\n")
-	root := filepath.Join(evalSymlinks(t.TempDir()), "box")
+	root := filepath.Join(evalSymlinks(t.TempDir()), "box q'x") // every path the target writes is quoted
 	killBuilds(t, root)
 	return &sshBox{config: cfg, host: "alder-test-box", root: root, port: freePort(t)}
 }
@@ -221,6 +234,7 @@ PidFile %s
 	var logs bytes.Buffer
 	cmd := exec.Command(sshd, "-D", "-e", "-f", filepath.Join(dir, "sshd_config"))
 	cmd.Stdout, cmd.Stderr = &logs, &logs
+	cmd.WaitDelay = 3 * time.Second // a session child may hold the output a moment longer
 	if err := cmd.Start(); err != nil {
 		t.Skipf("starting sshd: %v", err)
 	}
@@ -235,6 +249,9 @@ PidFile %s
 func containerBox(t *testing.T) *sshBox {
 	t.Helper()
 	if out, err := exec.Command("docker", "info").CombinedOutput(); err != nil {
+		if os.Getenv("ALDER_DEPLOY_REQUIRE_DOCKER") == "1" { // CI's deploy job: Docker must be there
+			t.Fatalf("-tags deploy with ALDER_DEPLOY_REQUIRE_DOCKER=1: Docker does not answer (%v): %s", err, lastLine(string(out)))
+		}
 		t.Skipf("-tags deploy: Docker does not answer (%v), so the Ssh target's tests skip: %s", err, lastLine(string(out)))
 	}
 	const image = "alder-deploy-test-box"
@@ -288,7 +305,7 @@ func sshScaffold(t *testing.T, box *sshBox) string {
 	t.Setenv(envDrain, "0")
 	t.Setenv(envHealthTimeout, "20s")
 	t.Setenv(deploy.EnvSupervisor, "process")
-	box.sh(t, fmt.Sprintf("mkdir -p %s && echo %d > %s/port", box.root, box.port, box.root))
+	box.sh(t, fmt.Sprintf("mkdir -p %s && echo %d > %s/port", box.qr(), box.port, box.qr()))
 	return dir
 }
 
@@ -342,15 +359,15 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 	}
 
 	// RF4: SMTP_URL is not in the environment file: refused, nothing uploaded
-	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\n' > %s/env && chmod 600 %s/env", strings.Repeat("s", 32), box.root, box.root))
+	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\n' > %s/env && chmod 600 %s/env", strings.Repeat("s", 32), box.qr(), box.qr()))
 	code, out := deployRun("production")
 	if code != 1 || !strings.Contains(out, "alder deploy: refused: the environment at Ssh alder-test-box:"+box.root+" does not set SMTP_URL: add it to its environment file") {
 		t.Fatalf("RF4: exit %d\n%s", code, out)
 	}
-	if ls := box.sh(t, "ls "+box.root); strings.Contains(ls, "builds") {
+	if ls := box.sh(t, "ls "+box.qr()); strings.Contains(ls, "builds") {
 		t.Errorf("RF4: a build was uploaded before the refusal: %s", ls)
 	}
-	box.sh(t, fmt.Sprintf("printf 'SMTP_URL=smtp://u:%s@mail\\n' >> %s/env", planted, box.root))
+	box.sh(t, fmt.Sprintf("printf 'SMTP_URL=smtp://u:%s@mail\\n' >> %s/env", planted, box.qr()))
 
 	// the first deploy
 	code, out = deployRun("production")
@@ -423,7 +440,7 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 
 	// RF1: dropping mood drops data: refused by --dry-run and by deploy, nothing uploaded
 	migrateDemo(t, "  mood: Maybe Text = Nothing,\n", "", "drop_mood")
-	before := box.sh(t, "ls "+box.root+"/builds")
+	before := box.sh(t, "ls "+box.qr()+"/builds")
 	for _, args := range [][]string{{"production", "--dry-run"}, {"production"}} {
 		code, out = deployRun(args...)
 		if code != 1 || !strings.Contains(out, "alder deploy: refused: the migration drops data\n  DROPS DATA: 0003_drop_mood: column Entry.mood\nrun again with --allow-data-loss") ||
@@ -431,7 +448,7 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 			t.Errorf("RF1 %v: exit %d\n%s", args, code, out)
 		}
 	}
-	if after := box.sh(t, "ls "+box.root+"/builds"); after != before {
+	if after := box.sh(t, "ls "+box.qr()+"/builds"); after != before {
 		t.Errorf("RF1: the refused deploys changed builds/: %q → %q", before, after)
 	}
 	code, out = deployRun("production", "--allow-data-loss")
@@ -441,7 +458,7 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 	id3 := deployedID(t, out)
 	// the copy was taken before the migration: it still has the column
 	backupFile := filepath.Join(t.TempDir(), "backup.db")
-	writeFile(t, backupFile, box.sh(t, "cat "+box.root+"/builds/"+id3+"/backup.db"))
+	writeFile(t, backupFile, box.sh(t, "cat "+box.qr()+"/builds/"+id3+"/backup.db"))
 	conn, err := sql.Open("sqlite", backupFile)
 	if err != nil {
 		t.Fatal(err)
@@ -453,13 +470,13 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 		t.Errorf("RF1: builds/%s/backup.db was not taken before the migration (its tables: %s)", id3, ddl)
 	}
 	var rec deploy.Record
-	if err := json.Unmarshal([]byte(box.sh(t, "cat "+box.root+"/builds/"+id3+"/deployed.json")), &rec); err != nil || !rec.AllowDataLoss || rec.Backup != "builds/"+id3+"/backup.db" ||
+	if err := json.Unmarshal([]byte(box.sh(t, "cat "+box.qr()+"/builds/"+id3+"/deployed.json")), &rec); err != nil || !rec.AllowDataLoss || rec.Backup != "builds/"+id3+"/backup.db" ||
 		strings.Join(rec.Applied, ",") != "0003_drop_mood" || rec.Previous != id2 {
 		t.Errorf("RF1: deployed.json: %+v %v", rec, err)
 	}
 
 	// keep 3: id1b, the oldest by its deploy (id1's record was rewritten by the rollback), was pruned
-	if !strings.Contains(out, "  prune    ok  removed "+id1b+" (keep 3)\n") || strings.Contains(box.sh(t, "ls "+box.root+"/builds"), id1b) {
+	if !strings.Contains(out, "  prune    ok  removed "+id1b+" (keep 3)\n") || strings.Contains(box.sh(t, "ls "+box.qr()+"/builds"), id1b) {
 		t.Errorf("prune:\n%s", out)
 	}
 	// RF3 again: id1's schema is the live one again, but the database has had 0002 and 0003
@@ -501,10 +518,10 @@ func (clock) Now(context.Context) (int64, error) { return 0, nil }
 	if got := box.serving(t); got != id3 {
 		t.Errorf("RF2: the box serves %q, want %s", got, id3)
 	}
-	if cur := strings.TrimSpace(box.sh(t, "cat "+box.root+"/current")); cur != id3 {
+	if cur := strings.TrimSpace(box.sh(t, "cat "+box.qr()+"/current")); cur != id3 {
 		t.Errorf("RF2: current is %s", cur)
 	}
-	if m := regexp.MustCompile(`builds/([0-9a-f]{16})/ is kept`).FindStringSubmatch(out); m == nil || !strings.Contains(box.sh(t, "ls "+box.root+"/builds"), m[1]) {
+	if m := regexp.MustCompile(`builds/([0-9a-f]{16})/ is kept`).FindStringSubmatch(out); m == nil || !strings.Contains(box.sh(t, "ls "+box.qr()+"/builds"), m[1]) {
 		t.Errorf("RF2: the failed build's directory is not kept")
 	}
 
@@ -524,7 +541,7 @@ func (clock) Now(context.Context) (int64, error) { return 0, nil }
 	all.WriteString(so.String())
 
 	// no planted value under builds/ nor in any output
-	if hits := box.sh(t, "grep -rl "+planted+" "+box.root+"/builds || true"); strings.TrimSpace(hits) != "" {
+	if hits := box.sh(t, "grep -rl "+planted+" "+box.qr()+"/builds || true"); strings.TrimSpace(hits) != "" {
 		t.Errorf("the planted value is in %s", hits)
 	}
 	if strings.Contains(all.String(), planted) {
@@ -541,7 +558,7 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 	box := startBox(t)
 	dir := sshScaffold(t, box)
 	bucket := box.root + "/bucket"
-	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\nALDER_BACKUP_URL=%s\\nALDER_BACKUP_INTERVAL=1s\\n' > %s/env", strings.Repeat("s", 32), bucket, box.root))
+	box.write(t, "env", fmt.Sprintf("ALDER_SECRET=%s\nSMTP_URL=smtp://mail\nALDER_BACKUP_URL=%q\nALDER_BACKUP_INTERVAL=1s\n", strings.Repeat("s", 32), bucket))
 	code, out, errs := runDeploy(t, "production", dir)
 	if code != 0 {
 		t.Fatalf("deploy: exit %d\n%s\n%s", code, out, errs)
@@ -570,12 +587,12 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 		var st struct {
 			Last time.Time `json:"last"`
 		}
-		json.Unmarshal([]byte(box.sh(t, "cat "+box.root+"/db/app.db-backup.json 2>/dev/null || true")), &st)
+		json.Unmarshal([]byte(box.sh(t, "cat "+box.qr()+"/db/app.db-backup.json 2>/dev/null || true")), &st)
 		if st.Last.After(posted) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("nothing shipped: %s\n%s", box.sh(t, "find "+bucket+" -type f || true"), box.sh(t, "cat "+box.root+"/builds/"+id+"/log"))
+			t.Fatalf("nothing shipped: %s\n%s", box.sh(t, "find "+fmt.Sprintf("%q", bucket)+" -type f || true"), box.sh(t, "cat "+box.qr()+"/builds/"+id+"/log"))
 		}
 		time.Sleep(300 * time.Millisecond)
 	}
@@ -585,7 +602,7 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 	}
 	// a copy of the bucket here
 	local := t.TempDir()
-	tarball, err := exec.Command("ssh", "-F", box.config, box.host, "tar -C "+box.root+" -cf - bucket").Output()
+	tarball, err := exec.Command("ssh", "-F", box.config, box.host, "tar -C "+box.qr()+" -cf - bucket").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -611,6 +628,12 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 	}
 	conn.Close()
 
+	// without --yes and without a terminal: refused, nothing replaced
+	so.Reset()
+	se.Reset()
+	if code := runRestoreTo([]string{"production", "--dir", dir, "--from", copyDir}, &so, &se); code != 2 || !strings.Contains(se.String(), "not confirmed: nothing was replaced") {
+		t.Errorf("restore without --yes: %d %s", code, se.String())
+	}
 	// two more entries, then the copy (three) put back at the box
 	post("Barbara")
 	post("Ken")
@@ -619,7 +642,7 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 	}
 	so.Reset()
 	se.Reset()
-	if code := runRestoreTo([]string{"production", "--dir", dir, "--from", copyDir}, &so, &se); code != 0 || !strings.Contains(so.String(), "replaced the database at Ssh alder-test-box:"+box.root) {
+	if code := runRestoreTo([]string{"production", "--dir", dir, "--from", copyDir, "--yes"}, &so, &se); code != 0 || !strings.Contains(so.String(), "replaced the database at Ssh alder-test-box:"+box.root) {
 		t.Fatalf("restore: %d\n%s%s", code, so.String(), se.String())
 	}
 	if n := entries(); n != 3 {
@@ -628,7 +651,7 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 	if got := box.serving(t); got != id {
 		t.Errorf("after the restore the box serves %q, want %s", got, id)
 	}
-	if kept := box.sh(t, "ls "+box.root+"/db"); !strings.Contains(kept, "app.db.before-restore-") {
+	if kept := box.sh(t, "ls "+box.qr()+"/db"); !strings.Contains(kept, "app.db.before-restore-") {
 		t.Errorf("the previous database is not kept: %s", kept)
 	}
 }
@@ -639,7 +662,7 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 func TestDeploySsh_DrainRollback(t *testing.T) {
 	box := startBox(t)
 	dir := sshScaffold(t, box)
-	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %q/env", strings.Repeat("s", 32), box.root))
+	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %s/env", strings.Repeat("s", 32), box.qr()))
 	code, out, errs := runDeploy(t, "production", dir)
 	if code != 0 {
 		t.Fatalf("deploy: %d\n%s%s", code, out, errs)
@@ -655,6 +678,7 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 	if _, err := s.Connect(ctx); err != nil {
 		t.Fatal(err)
 	}
+	defer s.Close() // the shared connection
 	port, err := s.Start(ctx, id1)
 	if err != nil {
 		t.Fatal(err)
@@ -674,12 +698,27 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 	if err := s.Stop(ctx, id1, 2*time.Second); err != nil {
 		t.Fatal(err)
 	}
-	box.sh(t, fmt.Sprintf("echo %s > %q/current", id1, box.root))
+	box.sh(t, fmt.Sprintf("echo %s > %s/current", id1, box.qr()))
 	time.Sleep(3 * time.Second)
 	if err := s.Health(ctx, id1, port, 3*time.Second); err != nil {
 		t.Errorf("the delayed stop fired although the build is current again: %v", err)
 	}
-	box.sh(t, fmt.Sprintf("echo %s > %q/current", id2, box.root))
+	box.sh(t, fmt.Sprintf("echo %s > %s/current", id2, box.qr()))
+
+	// logs -f follows the build that becomes current
+	var logs syncBuffer
+	lctx, lcancel := context.WithCancel(ctx)
+	ldone := make(chan struct{})
+	go func() { s.Logs(lctx, true, &logs); close(ldone) }()
+	time.Sleep(1500 * time.Millisecond)
+	box.sh(t, fmt.Sprintf("echo %s > %s/current", id1, box.qr()))
+	time.Sleep(2500 * time.Millisecond)
+	lcancel()
+	<-ldone
+	box.sh(t, fmt.Sprintf("echo %s > %s/current", id2, box.qr()))
+	if !strings.Contains(logs.String(), "--- alder logs: build "+id1+" is current\n") {
+		t.Errorf("logs -f did not follow the switch:\n%s", logs.String())
+	}
 
 	// I3: a second run refuses while the lock is held, and goes ahead once it is released
 	unlock, err := s.Lock(ctx)
@@ -701,13 +740,13 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 	}
 	again()
 	// I8: an environment file that turns on development mode is refused
-	box.sh(t, fmt.Sprintf("echo ALDER_DEV=1 >> %q/env", box.root))
+	box.sh(t, fmt.Sprintf("echo ALDER_DEV=1 >> %s/env", box.qr()))
 	if code, out, errs = runDeploy(t, "production", dir); code != 1 || !strings.Contains(errs, "sets ALDER_DEV: development mode") {
 		t.Errorf("ALDER_DEV: %d\n%s%s", code, out, errs)
 	}
-	box.sh(t, fmt.Sprintf("sed -i.bak '/ALDER_DEV/d' %q/env", box.root))
+	box.sh(t, fmt.Sprintf("sed -i.bak '/ALDER_DEV/d' %s/env", box.qr()))
 	// I5: what the deploy writes is the deploy user's
-	if modes := box.sh(t, fmt.Sprintf("cd %q && ls -ld builds | cut -c1-10; ls -l builds/%s/run builds/%s/backup.db | cut -c1-10", box.root, id2, id2)); modes != "drwxr-x---\n-rw-------\n-rwx------\n" {
+	if modes := box.sh(t, fmt.Sprintf("cd %s && ls -ld builds | cut -c1-10; ls -l builds/%s/run builds/%s/backup.db | cut -c1-10", box.qr(), id2, id2)); modes != "drwxr-x---\n-rw-------\n-rwx------\n" {
 		t.Errorf("modes:\n%s", modes)
 	}
 	if err := s.Stop(ctx, id1, 0); err != nil {
@@ -725,7 +764,7 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 func TestDeploySsh_RestoreBackup(t *testing.T) {
 	box := startBox(t)
 	dir := sshScaffold(t, box)
-	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %q/env", strings.Repeat("s", 32), box.root))
+	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %s/env", strings.Repeat("s", 32), box.qr()))
 	post := func(name string) {
 		t.Helper()
 		box.sh(t, fmt.Sprintf("curl -s -o /dev/null -X POST -H 'Origin: http://127.0.0.1:%d' -d 'name=%s&message=hello' http://127.0.0.1:%d/_m/Home/Submit", box.port, name, box.port))
@@ -779,11 +818,11 @@ func TestDeploySsh_RestoreBackup(t *testing.T) {
 	if got, serving := names(), box.serving(t); got != "Ada" || serving != id1 {
 		t.Errorf("after rolling back to %s: entries %q, serving %s", id1, got, serving)
 	}
-	if kept := box.sh(t, fmt.Sprintf("ls %q/db", box.root)); strings.Count(kept, "app.db.before-rollback-") < 2 {
+	if kept := box.sh(t, fmt.Sprintf("ls %s/db", box.qr())); strings.Count(kept, "app.db.before-rollback-") < 2 {
 		t.Errorf("the replaced databases are not kept: %s", kept)
 	}
 	var rec deploy.Record
-	if err := json.Unmarshal([]byte(box.sh(t, fmt.Sprintf("cat %q/builds/%s/deployed.json", box.root, id1))), &rec); err != nil || !rec.RolledBack || rec.Previous != id2 || !strings.HasSuffix(rec.RestoredFrom, "/backup.db") {
+	if err := json.Unmarshal([]byte(box.sh(t, fmt.Sprintf("cat %s/builds/%s/deployed.json", box.qr(), id1))), &rec); err != nil || !rec.RolledBack || rec.Previous != id2 || !strings.HasSuffix(rec.RestoredFrom, "/backup.db") {
 		t.Errorf("deployed.json after the rollback: %+v %v", rec, err)
 	}
 }

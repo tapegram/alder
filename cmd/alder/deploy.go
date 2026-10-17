@@ -31,7 +31,7 @@ const (
 	statusUsage   = "usage: alder status <env> [dir] [--host name]"
 	rollbackUsage = "usage: alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup]"
 	logsUsage     = "usage: alder logs <env> [dir] [--host name] [-f]"
-	restoreUsage  = "usage: alder restore <env> [--from url] [--to time] [--out file.db] [--dir dir]"
+	restoreUsage  = "usage: alder restore <env> [--from url] [--to time] [--out file.db] [--dir dir] [--yes]"
 )
 
 // Two knobs for tests and impatient operators, read from the environment: how long the previous
@@ -605,7 +605,7 @@ func runLogsTo(args []string, stdout, stderr io.Writer) int {
 // backup or the target fails, 2 for usage errors.
 func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 	var pos []string
-	dir, from, toText, out := ".", "", "", ""
+	dir, from, toText, out, yes := ".", "", "", "", false
 	flag := func(i *int, name string) (string, bool) {
 		a := args[*i]
 		if a == name && *i+1 < len(args) {
@@ -626,6 +626,8 @@ func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 			toText = v
 		} else if v, ok := flag(&i, "--out"); ok {
 			out = v
+		} else if args[i] == "--yes" {
+			yes = true
 		} else if strings.HasPrefix(args[i], "-") {
 			fmt.Fprintln(stderr, restoreUsage)
 			return 2
@@ -703,6 +705,12 @@ func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 		return fail(2, "%v", err)
 	}
 	defer t.Close()
+	if !yes {
+		question := fmt.Sprintf("replace the database at %s with this copy (the current one is kept beside it)? type yes: ", t.Describe())
+		if !confirm(question, stdout) {
+			return fail(2, "not confirmed: nothing was replaced (pass --yes to confirm without a terminal)")
+		}
+	}
 	if _, err := t.Connect(ctx); err != nil {
 		return fail(1, "%v", err)
 	}
@@ -729,4 +737,16 @@ func parseRestoreTime(s string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("bad --to %q: write a UTC time such as 2026-10-17T10:00:00Z", s)
+}
+
+// confirm asks question on stdout and reads the answer from the terminal: true for "yes". Without
+// a terminal on standard input it is false.
+func confirm(question string, stdout io.Writer) bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	fmt.Fprint(stdout, question)
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	return strings.TrimSpace(line) == "yes"
 }
