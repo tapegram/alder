@@ -1,0 +1,33 @@
+module Membership
+
+import User
+import Org
+import Note
+import Label
+
+type MembershipId = brand Text
+
+-- The `via` table of the session's `org`: one `@ref` to the user table, one to the key's.
+table Membership {
+  id: MembershipId @id,
+  user: User.UserId @ref User @cascade,
+  org: Org.OrgId @ref Org @cascade,
+}
+
+test "deleting a user or an org deletes their memberships, not their notes or labels" = {
+  let me <- Db.insert User { name: "Me" }
+  let them <- Db.insert User { name: "Them" }
+  let a <- Db.insert Org { name: "A" }
+  let b <- Db.insert Org { name: "B" }
+  let _ <- Db.insert Membership { user: me, org: a }
+  let _ <- Db.insert Membership { user: them, org: b }
+  let _ <- Db.insert Membership { user: me, org: b }
+  let _ <- Db.insert Note.Note { text: "n", owner: them }
+  let _ <- Db.insert Label.Label { name: "l", org: b }
+  let a1 <- Test.run (Db.delete Org a)
+  let me1 <- Test.run (Db.delete User me)
+  let them1 <- Test.run (Db.delete User them)
+  let b1 <- Test.run (Db.delete Org b)
+  let left <- Db.from Membership |> Db.count
+  Task.succeed ({ me: me1.value, them: them1.value == Ok (), a: a1.value, b: b1.value == Ok (), left: left } == { me: Ok (), them: False, a: Ok (), b: False, left: 1 })
+}

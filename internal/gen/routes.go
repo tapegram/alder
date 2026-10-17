@@ -88,7 +88,24 @@ func (g *gen) routesSource(p *ir.Program) string {
 	if g.tests {
 		g.encoders(&b, p) // browser.go
 	}
-	b.WriteString(`// route__fail answers a load or update that did not succeed: 404 (App.notFound) for
+	if len(p.Silos) > 0 {
+		b.WriteString(`// route__fail answers a load or update that did not succeed: 404 (App.notFound) for
+// Query.notFound and Task.notFound, 503 (App.maintenance) for a silo that is not served, else
+// 500 (App.error).
+func route__fail(err error) web.Response {
+	if errors.Is(err, eff.ErrNotFound) {
+		return web.NotFoundResponse(html.None())
+	}
+	var m *db.MaintenanceError
+	if errors.As(err, &m) {
+		return web.MaintenanceResponse(err)
+	}
+	return web.ErrorResponse(html.None(), err)
+}
+
+`)
+	} else {
+		b.WriteString(`// route__fail answers a load or update that did not succeed: 404 (App.notFound) for
 // Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
 	if errors.Is(err, eff.ErrNotFound) {
@@ -98,6 +115,7 @@ func route__fail(err error) web.Response {
 }
 
 `)
+	}
 	if usesForms {
 		b.WriteString(`// route__values are the submitted fields of a form as its re-render shows them: the first value
 // of each field, without the Text.Secret fields named in secrets.
@@ -171,6 +189,10 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	}
 	keep := func(k string) string { return ", " + k }
 	g.paramsKVs(b, pg)
+	enter := ""
+	if hasUpdate {
+		enter = g.enter(b, p, pg)
+	}
 	if hasUpdate {
 		b.WriteString(comment(fmt.Sprintf("%s runs page %s's update for msg and answers its Nav (book 06): load, update (a Task, whose session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on a form (st, the state of the form that sent the message; nil for a message without one) load and view again with t on the form (patched into the page under Datastar); for Rerender (and a Reject without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh does not post again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound or Task.notFound.", updateFunc(m), m)))
 		fmt.Fprintf(b, `func %[1]s(rq *web.Request, params %[2]s, msg %[3]s, st *html.FormState) web.Response {
@@ -178,7 +200,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	if stop != nil {
 		return *stop
 	}
-%[11]s	nav, err := eff.Run(rq.Env, eff.KTask, %[6]s(msg, model, session))
+%[11]s%[12]s	nav, err := eff.Run(rq.Env, eff.KTask, %[6]s(msg, model, session))
 	if err != nil {
 		return route__fail(err)
 	}
@@ -201,7 +223,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	return web.PageResponse(%[8]s(model, session), st, rq.Env.Session, true)
 }
 
-`, updateFunc(m), GoName(m, "Params"), GoName(m, "Msg"), pageFunc(m), keep("nil"), GoName(m, "update"), keep("rq.Env.Session"), GoName(m, "view"), paramsFunc(m), strconv.Quote(pg.Path), checks)
+`, updateFunc(m), GoName(m, "Params"), GoName(m, "Msg"), pageFunc(m), keep("nil"), GoName(m, "update"), keep("rq.Env.Session"), GoName(m, "view"), paramsFunc(m), strconv.Quote(pg.Path), checks, enter)
 	}
 
 	// the GET route
@@ -485,6 +507,9 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 		if slices.Contains(pg.Requires, f.Name) {
 			v += ".Val"
 		}
+		if f.Name == pg.Silo { // the admin form: the key is the page's parameter
+			v = "params." + Field(f.Name)
+		}
 		fs = append(fs, Field(f.Name)+": "+v)
 	}
 	roles := ""
@@ -497,12 +522,28 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	app := rq.Env.Session.(%[5]s)
 `, pageFunc(m), GoName(m, "Params"), model, session, app)
 	g.requiresPlaceholder(b, pg, "app") // a mutate build's requires dropped (mutation.go)
-	for _, req := range pg.Requires {   // M15 Task 2: a key other than user goes to its `choose` page
-		fmt.Fprintf(b, `	if !app.%[1]s.Ok {
+	for _, req := range pg.Requires {   // M15: a key other than user goes to its `choose` page (none: 404)
+		switch ch := p.Choose[req]; {
+		case req == "user":
+			fmt.Fprintf(b, `	if !app.%[1]s.Ok {
 		r := web.RedirectResponse(rq.Login, keep)
 		return model, %[2]s{}, &r
 	}
 `, Field(req), session)
+		case ch != nil:
+			fmt.Fprintf(b, `	if !app.%[1]s.Ok {
+		r := web.RedirectResponse(%[3]s, keep)
+		return model, %[2]s{}, &r
+	}
+`, Field(req), session, strconv.Quote(ch.Path))
+		default:
+			fmt.Fprintf(b, `	if !app.%[1]s.Ok {
+		r := web.NotFoundResponse(html.None())
+		r.Session = keep
+		return model, %[2]s{}, &r
+	}
+`, Field(req), session)
+		}
 	}
 	if pg.Roles != nil {
 		fmt.Fprintf(b, `	if %s {
@@ -512,6 +553,7 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	}
 `, g.roleRefused(p, pg, "app"), session)
 	}
+	g.narrow(b, p, pg)
 	fmt.Fprintf(b, `	session := %[4]s{%[7]s}
 	model, err := eff.RunQuery(rq.Env, %[8]s(params, session))
 	if err != nil {
@@ -523,6 +565,67 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 }
 
 `, pageFunc(m), GoName(m, "Params"), model, session, app, Field(firstRequired(pg)), strings.Join(fs, ", "), GoName(m, "load"))
+}
+
+// enter writes, for an app with silos, the function naming the store of each arm of page pg's
+// update (store__M: its silo key, "" for the shared store; the checker's Arm.Store) and
+// returns the statement binding the Task to it (db.Enter) before update__M runs it: a silo not
+// served answers the maintenance page. "" without silos.
+func (g *gen) enter(b *strings.Builder, p *ir.Program, pg *ir.Page) string {
+	if len(p.Silos) == 0 {
+		return ""
+	}
+	m := pg.Module
+	def := ""
+	var cases []string
+	for _, a := range pg.Arms {
+		if a.Msg == "" {
+			def = a.Store.Silo
+			continue
+		}
+		if a.Store.Silo != "" {
+			cases = append(cases, fmt.Sprintf("case %s:\nreturn %s\n", tagConst(m, "Msg", a.Msg), strconv.Quote(a.Store.Silo)))
+		}
+	}
+	fn := "store__" + strings.ReplaceAll(m, ".", "__")
+	b.WriteString(comment(fmt.Sprintf("%s is the store the Task of page %s's update for msg writes to (the checker's one-store rule): the silo key, \"\" for the shared store.", fn, m)))
+	param := "msg"
+	if len(cases) == 0 {
+		param = "_"
+	}
+	fmt.Fprintf(b, "func %s(%s %s) string {\n", fn, param, GoName(m, "Msg"))
+	if len(cases) > 0 {
+		b.WriteString("switch msg.Tag {\n" + strings.Join(cases, "") + "}\n")
+	}
+	fmt.Fprintf(b, "return %s\n}\n\n", strconv.Quote(def))
+	return fmt.Sprintf("\tif err := db.Enter(rq.Env, %s(msg)); err != nil {\n\t\treturn route__fail(err)\n\t}\n", fn)
+}
+
+// narrow writes, for an app with partitions other than the user's, page pg's db.Narrow of each
+// such key it requires (the session's value) and of its admin form's `silo k` (the parameter's):
+// the scoped operations and the silo routing read Env.Keys before the session.
+func (g *gen) narrow(b *strings.Builder, p *ir.Program, pg *ir.Page) {
+	for _, req := range pg.Requires {
+		if req != "user" && g.partitionKey(req) {
+			fmt.Fprintf(b, "\tdb.Narrow(rq.Env, %s, app.%s.Val)\n", strconv.Quote(req), Field(req))
+		}
+	}
+	if pg.Silo != "" {
+		fmt.Fprintf(b, "\tdb.Narrow(rq.Env, %s, params.%s)\n", strconv.Quote(pg.Silo), Field(pg.Silo))
+	}
+}
+
+// partitionKey reports whether session field k partitions a table or keys a silo.
+func (g *gen) partitionKey(k string) bool {
+	if _, ok := g.prog.Silos[k]; ok {
+		return true
+	}
+	for _, tb := range g.prog.Tables {
+		if tb.Partition != nil && tb.Partition.Key == k {
+			return true
+		}
+	}
+	return false
 }
 
 // roleRefused is the Go condition under which page pg's `requires user, role R | …` refuses

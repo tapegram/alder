@@ -88,6 +88,9 @@ func (f *fn) effect(e ir.Expr, s *scope) string {
 	case *ir.TableRef:
 		return tableName(x.Table.Module, x.Table.Name)
 	case *ir.DbScoped:
+		if x.Op != "Db.mine" {
+			return "db.Scoped(" + tableName(x.Table.Module, x.Table.Name) + ")"
+		}
 		return "db.Mine(" + tableName(x.Table.Module, x.Table.Name) + ")"
 	}
 	c, isTask := f.effNode(e, s)
@@ -218,7 +221,7 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 	case *ir.DbGetScoped:
 		tb := x.Table
 		return f.dbCall(x.Op+" "+tb.Name, false, x.Ty, s, func(env string, c *scope) string {
-			return "db.GetMineRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " + f.code(x.ID, c) + ")"
+			return "db." + scopedFn(x.Op, "GetMineRow") + "(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " + f.code(x.ID, c) + ")"
 		}), true
 	case *ir.DbInsertScoped:
 		tb := x.Table
@@ -229,19 +232,19 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 			} else {
 				row = f.code(x.Row, c)
 			}
-			return "db.InsertMineRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " +
+			return "db." + scopedFn(x.Op, "InsertMineRow") + "(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " +
 				insertMineVals(tb.Module, tb.Name) + "(" + row + "), " + env + ".Now())"
 		}), true
 	case *ir.DbUpdateScoped:
 		tb := x.Table
 		return f.dbCall(x.Op+" "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
-			return "struct{}{}, db.UpdateMineRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " +
+			return "struct{}{}, db." + scopedFn(x.Op, "UpdateMineRow") + "(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " +
 				f.code(x.ID, c) + ", " + f.code(x.Fn, c) + ", " + env + ".Now())"
 		}), true
 	case *ir.DbDeleteScoped:
 		tb := x.Table
 		return f.dbCall(x.Op+" "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
-			return "struct{}{}, db.DeleteMineRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " + f.code(x.ID, c) + ")"
+			return "struct{}{}, db." + scopedFn(x.Op, "DeleteMineRow") + "(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " + f.code(x.ID, c) + ")"
 		}), true
 	case *ir.CapCall:
 		cp := x.Cap
@@ -283,6 +286,15 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 		return f.browserStep(x, s), true // browser.go
 	}
 	panic(fmt.Sprintf("gen: %T is not an effect node", e))
+}
+
+// scopedFn is the rt/db function of a scoped operation written op: mine (M11's
+// GetMineRow, …) for the mine family, the generic one (GetScopedRow, …) for Db.getScoped & co.
+func scopedFn(op, mine string) string {
+	if strings.HasSuffix(op, "Mine") {
+		return mine
+	}
+	return strings.Replace(mine, "Mine", "Scoped", 1)
 }
 
 // testNode panics — Emit's internal error — when test node x reaches the emitter in a
@@ -575,7 +587,7 @@ func (g *gen) tableDecl(w *strings.Builder, tb *ir.Table) {
 		r = "_"
 	}
 	fmt.Fprintf(w, "func %s(%s %s) []any {\nreturn []any{%s}\n}\n\n", insertVals(tb.Module, tb.Name), r, ins, strings.Join(vals, ", "))
-	if tb.Owner() != "" {
+	if tb.Partition != nil {
 		g.insertMineDecl(w, tb, field)
 	}
 
@@ -614,6 +626,11 @@ func (g *gen) tableDecl(w *strings.Builder, tb *ir.Table) {
 	fmt.Fprintf(w, "SetID: func(r %s, id string) %s {\nr.%s = id\nreturn r\n},\n", rec, rec, id)
 	if tb.Owner() != "" {
 		fmt.Fprintf(w, "Owner: %s,\nUser: %s,\n", strconv.Quote(tb.Owner()), g.sessionUser())
+	} else if pt := tb.Partition; pt != nil { // M15: `@partition k`
+		fmt.Fprintf(w, "Owner: %s,\nUser: %s,\nKey: %s,\n", strconv.Quote(pt.Column), g.sessionKey(pt.Key), strconv.Quote(pt.Key))
+	}
+	if k := g.siloOf[tb.Module+"."+tb.Name]; k != "" {
+		fmt.Fprintf(w, "Silo: %s,\n", strconv.Quote(k))
 	}
 	w.WriteString("}\n\n")
 }
@@ -626,7 +643,7 @@ func (g *gen) insertMineDecl(w *strings.Builder, tb *ir.Table, field func(string
 	var fs []string
 	inserted := map[string]bool{}
 	for _, n := range tb.InsertFields {
-		if n != tb.Owner() {
+		if n != tb.Partition.Column {
 			fs = append(fs, Field(n)+" "+GoType(field(n).Type))
 			inserted[n] = true
 		}
@@ -655,19 +672,23 @@ func (g *gen) insertMineDecl(w *strings.Builder, tb *ir.Table, field func(string
 // sessionUser is the descriptor's User function of a table with an `@owner` column: the
 // signed-in user of App's session value s (the running effect's Env.Session), false when s is
 // no App session or its `user` is Nothing.
-func (g *gen) sessionUser() string {
+func (g *gen) sessionUser() string { return g.sessionKey("user") }
+
+// sessionKey is the descriptor's User function of a table partitioned by session field key: its
+// value in App's session value s, false when s is no App session or the field is Nothing.
+func (g *gen) sessionKey(key string) string {
 	if g.session == nil {
 		return "func(any) (string, bool) { return \"\", false }"
 	}
 	app := GoName(g.session.Module, g.session.Name)
 	for _, fd := range g.session.Fields {
-		if fd.Name != "user" {
+		if fd.Name != key {
 			continue
 		}
 		if maybeArg(fd.Type) != nil {
-			return "func(s any) (string, bool) {\na, ok := s.(" + app + ")\nreturn a.User.Val, ok && a.User.Ok\n}"
+			return "func(s any) (string, bool) {\na, ok := s.(" + app + ")\nreturn a." + Field(key) + ".Val, ok && a." + Field(key) + ".Ok\n}"
 		}
-		return "func(s any) (string, bool) {\na, ok := s.(" + app + ")\nreturn a.User, ok\n}"
+		return "func(s any) (string, bool) {\na, ok := s.(" + app + ")\nreturn a." + Field(key) + ", ok\n}"
 	}
 	return "func(any) (string, bool) { return \"\", false }"
 }

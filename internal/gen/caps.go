@@ -230,6 +230,10 @@ func (g *gen) appSource(p *ir.Program, migrations bool, version string) string {
 			"var " + migrationsVar + " []db.Migration\n\n")
 	}
 
+	if len(p.Silos) > 0 {
+		g.silosVar(&b, p)
+	}
+
 	// Caps
 	b.WriteString("// Caps are the app's capability implementations, one field per capability, named by its\n" +
 		"// module and name: the generated caps package's Caps function builds them from the adapters,\n" +
@@ -261,7 +265,9 @@ func (g *gen) appSource(p *ir.Program, migrations bool, version string) string {
 	}
 	unionsInit(&b, p)
 	if p.Session != nil {
-		g.serve(&b, p)
+		var sb strings.Builder
+		g.serve(&sb, p)
+		b.WriteString(g.serveSilos(p, sb.String()))
 	} else if g.tests {
 		b.WriteString("// Routes are the app's routes: none, as the app has no App module (alder test's browser serves them).\n" +
 			"var Routes = []web.Route{}\n\n" +
@@ -446,8 +452,9 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 		store.Close()
 		return nil, err
 	}
-	w := Web()
+SILOSTORES	w := Web()
 	w.Store, w.Caps, w.Log, w.Dev, w.Secret, w.StaticDir, w.Reload = store, reg, o.Log, o.Dev, o.Secret, o.StaticDir, o.Reload
+SILOWEB
 	for _, m := range Migrations {
 		w.Migrations = append(w.Migrations, m.Name)
 	}
@@ -465,10 +472,147 @@ func Web() web.Options {
 		NotFoundDoc: ` + notFound + `,
 		Login:       ` + strconv.Quote(login) + `,
 		DevMap:      ` + strconv.Quote(devMapJSON(p)) + `,
-	}
+WEBEXTRA	}
 }
 
-` + g.sessionCodec(p.Session))
+` + g.sessionCodec(p.Session) + g.sessionVia(p))
+}
+
+// silosVar writes Silos, the app's `silo` declarations (keys sorted, tables as written).
+func (g *gen) silosVar(b *strings.Builder, p *ir.Program) {
+	var items []string
+	for _, k := range slices.Sorted(maps.Keys(p.Silos)) {
+		var ts []string
+		for _, tb := range p.Silos[k] {
+			ts = append(ts, strconv.Quote(tb.Module+"."+tb.Name))
+		}
+		items = append(items, "{Key: "+strconv.Quote(k)+", Tables: []string{"+strings.Join(ts, ", ")+"}}")
+	}
+	b.WriteString("// Silos are the app's `silo` declarations: each key's tables live in one database per value of\n" +
+		"// the session's key (rt/db: silos/<key>/<value>.db next to the shared database).\n" +
+		"var Silos = []db.Silo{" + strings.Join(items, ", ") + "}\n\n")
+}
+
+// serveSilos fills serve's placeholders: for an app with silos, Serve opens its stores
+// (db.OpenStores, the silos next to o.DB) and Web names them; App.maintenance, when declared,
+// and the membership check of a session with `via` (session__via) go into Web. Without any,
+// the source is the M11 one.
+func (g *gen) serveSilos(p *ir.Program, src string) string {
+	stores, web, extra := "", "", ""
+	if len(p.Silos) > 0 {
+		stores = `	var stores *db.Stores
+	if len(Silos) > 0 {
+		dir := ""
+		if path != ":memory:" {
+			dir = filepath.Dir(path)
+		}
+		stores, err = db.OpenStores(store, path, db.StoresConfig{Dir: dir, Silos: Silos, Tables: Tables, Migrations: Migrations, Dev: o.Dev, Log: o.Log})
+		if err != nil {
+			store.Close()
+			return nil, err
+		}
+	}
+`
+		web = "\tw.Stores = stores\n"
+		extra += "\t\tSilos: Silos,\n"
+	}
+	if v := g.values["App.maintenance"]; v != nil {
+		doc := "func() html.Node { return App__maintenance }"
+		if g.thunks[v] {
+			doc = "App__maintenance"
+		}
+		extra += "\t\tMaintenanceDoc: " + doc + ",\n"
+	}
+	if len(p.Via) > 0 {
+		extra += "\t\tSessionCheck: session__via,\n"
+	}
+	src = strings.Replace(src, "SILOSTORES", stores, 1)
+	src = strings.Replace(src, "SILOWEB\n", web, 1)
+	return strings.Replace(src, "WEBEXTRA", extra, 1)
+}
+
+// sessionVia is, for a session with `via` fields, session__via: Session.put's (and
+// Test.login's) check (web.Options.SessionCheck → eff.Env.CheckSession) that a `via` field set
+// to Just v — changed, or with another user — names a row of its membership table for the
+// session's user, read inside the running Task's transaction on the shared store (db.Member);
+// else the step fails "Session.put org: no Membership for this user and org". Nothing is always
+// allowed. In a mutate build each field's `membership dropped` mutant skips its check.
+func (g *gen) sessionVia(p *ir.Program) string {
+	if len(p.Via) == 0 {
+		return ""
+	}
+	app := GoName(p.Session.Module, p.Session.Name)
+	var b strings.Builder
+	b.WriteString(`
+// session__via is Session.put's membership check (web.Options.SessionCheck): a ` + "`via`" + ` field of
+// the session set to Just v, for a user, needs a row (user, v) of its membership table.
+func session__via(e *eff.Env, o, n any) error {
+	a, b := o.(` + app + `), n.(` + app + `)
+`)
+	for _, k := range slices.Sorted(maps.Keys(p.Via)) {
+		mt := p.Via[k]
+		ucol, kcol := g.memberCols(p, mt, k)
+		fk, fu := Field(k), Field("user")
+		msg := strconv.Quote("Session.put " + k + ": no " + mt.Name + " for this user and " + k)
+		check := fmt.Sprintf(`if !b.%[2]s.Ok {
+			return &eff.ErrFail{Msg: %[3]s}
+		}
+		ok, err := db.Member(e.Ctx, e.Store.(db.Store), db.TxOf(e), %[4]s, %[5]s, b.%[2]s.Val, %[6]s, b.%[1]s.Val)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return &eff.ErrFail{Msg: %[3]s}
+		}
+`, fk, fu, msg, tableName(mt.Module, mt.Name), strconv.Quote(ucol), strconv.Quote(kcol))
+		if id := g.membershipDropped(k); id != 0 {
+			check = fmt.Sprintf("if Mutant != %d {\n%s}\n", id, check)
+		}
+		fmt.Fprintf(&b, "\tif b.%[1]s.Ok && (!a.%[1]s.Ok || a.%[1]s.Val != b.%[1]s.Val || a.%[2]s != b.%[2]s) {\n%[3]s\t}\n", fk, fu, check)
+	}
+	b.WriteString("\treturn nil\n}\n")
+	return b.String()
+}
+
+// memberCols are membership table mt's column referring to the user's table and the one
+// referring to the table of session field k's id (the checker made sure there is one of each).
+func (g *gen) memberCols(p *ir.Program, mt *ir.Table, k string) (ucol, kcol string) {
+	ut, kt := g.tableOfSessionKey(p, "user"), g.tableOfSessionKey(p, k)
+	for _, fd := range mt.Record.Fields {
+		switch ref := mt.Refs[fd.Name]; {
+		case ref != "" && ref == ut:
+			ucol = fd.Name
+		case ref != "" && ref == kt:
+			kcol = fd.Name
+		}
+	}
+	if ucol == "" || kcol == "" {
+		panic(fmt.Sprintf("gen: membership table %s has no @ref to the tables of session fields user and %s", mt.Name, k))
+	}
+	return ucol, kcol
+}
+
+// tableOfSessionKey is the table ("Module.Name", as ir.Table.Refs names it) whose @id brand is
+// session field k's (the brand of its Just).
+func (g *gen) tableOfSessionKey(p *ir.Program, k string) string {
+	for _, fd := range p.Session.Fields {
+		if fd.Name == k && fd.Brand != nil {
+			return g.tableOfBrand(p, fd.Brand)
+		}
+	}
+	return ""
+}
+
+// tableOfBrand is the table ("Module.Name") whose @id field has brand b, "" for none.
+func (g *gen) tableOfBrand(p *ir.Program, b *ir.Brand) string {
+	for _, tb := range p.Tables {
+		for _, fd := range tb.Record.Fields {
+			if fd.Name == tb.IDField && fd.Brand != nil && fd.Brand.Module == b.Module && fd.Brand.Name == b.Name {
+				return tb.Module + "." + tb.Name
+			}
+		}
+	}
+	return ""
 }
 
 // sessionDefault is App's Session record with every field at its default (a field without one
@@ -498,7 +642,14 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 // input) makes the same shutdown happen when standard input reaches EOF, so the app never
 // outlives the dev server; the variable is cleared once read, so a process the app starts does
 // not inherit it. Without it standard input is not read.
-func Main(name string, withCaps bool) []byte {
+//
+// withSilos (an app with `silo` declarations) adds two maintenance tasks over the silo
+// databases under ALDER_DB's directory (silos/<key>/<value>.db, rt/db): --migrate-silos
+// [--allow-data-loss] opens and migrates each one (a line each; exit 1 when one is not served:
+// `alder migrate silos` runs it), and --silo-status prints one JSON line per silo
+// ({"key","id","state","detail"}: ok, migrating, pending-data-loss, ahead or failed) without
+// changing any (`alder status` runs it).
+func Main(name string, withCaps, withSilos bool) []byte {
 	imports := "\t\"app\"\n"
 	caps := "app.Caps{}"
 	if withCaps {
@@ -647,7 +798,7 @@ func maintain(args []string, path string, dev bool) int {
 		}
 		return 0
 	}
-	fmt.Fprintln(os.Stderr, "usage: "+filepath.Base(os.Args[0])+" [--migrate-only | --backup-to FILE]  (no argument: serve)")
+SILOCASES	fmt.Fprintln(os.Stderr, "usage: "+filepath.Base(os.Args[0])+" [--migrate-only | --backup-to FILE"+SILOUSAGE+"]  (no argument: serve)")
 	return 2
 }
 
@@ -659,12 +810,43 @@ func env(name, def string) string {
 	return def
 }
 `
+	cases, usage := "", ""
+	if withSilos {
+		cases = siloCases
+		usage = `+" | --migrate-silos [--allow-data-loss] | --silo-status"`
+	}
+	src = strings.Replace(strings.Replace(src, "SILOCASES", cases, 1), "+SILOUSAGE", usage, 1)
 	out, err := format.Source([]byte(src))
 	if err != nil {
 		panic(fmt.Sprintf("gen: cmd/main.go: %v\n%s", err, src))
 	}
 	return out
 }
+
+// siloCases are the maintenance tasks of an app with silos (Main): the silo databases are
+// those under ALDER_DB's directory.
+const siloCases = `	silos := db.StoresConfig{Dir: filepath.Dir(path), Silos: app.Silos, Tables: app.Tables, Migrations: app.Migrations, Dev: dev}
+	switch {
+	case len(args) >= 1 && args[0] == "--migrate-silos" && (len(args) == 1 || len(args) == 2 && args[1] == "--allow-data-loss"):
+		silos.AllowDataLoss = len(args) == 2
+		bad, err := db.MigrateSilos(ctx, silos, os.Stdout)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "alder:", err)
+			return 1
+		}
+		if bad > 0 {
+			fmt.Fprintf(os.Stderr, "alder: %d silo(s) not migrated\n", bad)
+			return 1
+		}
+		return 0
+	case len(args) == 1 && args[0] == "--silo-status":
+		if err := db.StatusSilos(ctx, silos, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "alder:", err)
+			return 1
+		}
+		return 0
+	}
+`
 
 // sessionCodec is the session cookie's codec: App's session as a JSON object of its fields
 // (by Go field name), a payload-less union stored by constructor name (a Maybe of one: the name

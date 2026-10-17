@@ -41,7 +41,7 @@ type Request struct {
 }
 
 // Response is what a handler returns; build it with the constructors below. Status decides its
-// kind: 200 Page, 303 Redirect, 404 NotFound, 500 Error.
+// kind: 200 Page, 303 Redirect, 404 NotFound, 500 Error, 503 Maintenance.
 type Response struct {
 	Status   int
 	Node     html.Node       // the document for Page/NotFound/Error
@@ -71,6 +71,12 @@ func RedirectResponse(location string, session any) Response {
 // Session (a Task that succeeded before the page failed to re-load).
 func NotFoundResponse(doc html.Node) Response {
 	return Response{Status: http.StatusNotFound, Node: doc}
+}
+
+// MaintenanceResponse is the answer of a request on a silo that is not served (err, a
+// *db.MaintenanceError): Options.MaintenanceDoc with status 503 and Alder-Status: 503.
+func MaintenanceResponse(err error) Response {
+	return Response{Status: http.StatusServiceUnavailable, Err: err}
 }
 
 // ErrorResponse renders doc (App.error) with status 500; a zero doc means Options.ErrorDoc(err).

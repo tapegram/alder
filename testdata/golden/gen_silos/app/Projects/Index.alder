@@ -1,0 +1,171 @@
+module Projects.Index
+
+import Org
+import Project
+import Label
+import User
+import Membership
+
+page "/projects" { } requires user, org
+
+type Model = { org: Text, projects: List Project, labels: Int }
+
+-- writes Project only: one silo
+seed : Text -> Task Unit
+seed name = {
+  let _ <- Db.insertScoped Project { name: name }
+  Task.succeed ()
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  -- a cross-store read: Org is shared
+  let org <- Db.get Org session.org
+  let projects <- Db.scoped Project |> Db.orderBy Project.name.asc |> Db.all
+  let labels <- Db.scoped Label |> Db.count
+  Query.succeed { org: Maybe.withDefault "" (Maybe.map (\o -> o.name) org), projects: projects, labels: labels }
+}
+
+form NewProject = {
+  name: Text,
+}
+
+msg Add form NewProject
+msg Rename { id: Project.ProjectId }
+msg Remove { id: Project.ProjectId }
+msg Seed
+msg Tag
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  -- reads the shared store (Org) outside the transaction, writes the silo
+  Add p -> {
+    let org <- Db.get Org session.org
+    let _ <- Db.insertScoped Project { name: Maybe.withDefault "" (Maybe.map (\o -> o.name ++ ": ") org) ++ p.form.name }
+    Task.succeed Rerender
+  },
+  Rename p -> {
+    let _ <- Db.updateScoped Project p.id (\x -> { x | name: "renamed" })
+    Task.succeed Rerender
+  },
+  Remove p -> {
+    let _ <- p.id |> Db.deleteScoped Project
+    Task.succeed Rerender
+  },
+  -- a Task.all within one silo
+  Seed _ -> {
+    let _ <- Task.all (List.map seed ["x", "y"])
+    Task.succeed Rerender
+  },
+  -- a shared write (Label is partitioned but in no silo)
+  Tag _ -> {
+    let _ <- Db.insertScoped Label { name: "new" }
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html><body>
+    <h1>{model.org}</h1>
+    <p id="labels">{Text.fromInt model.labels}</p>
+    <form submit={Add}>
+      <Input field="name" label="Name" />
+      <Errors form />
+      <button>Add</button>
+    </form>
+    <ul>
+      {for p in model.projects ->
+        <li>
+          <span>{p.name}</span>
+          <button click={Rename { id: p.id }}>rename</button>
+          <button click={Remove { id: p.id }}>remove</button>
+        </li>}
+    </ul>
+    <button click={Seed}>seed</button>
+    <button click={Tag}>tag</button>
+  </body></html>
+
+-- two orgs: me is a member of A, them of B; B's project is in B's database
+setup : Task { me: User.UserId, them: User.UserId, a: Org.OrgId, b: Org.OrgId }
+setup = {
+  let me <- Db.insert User { name: "Me" }
+  let them <- Db.insert User { name: "Them" }
+  let a <- Db.insert Org { name: "A" }
+  let b <- Db.insert Org { name: "B" }
+  let _ <- Db.insert Membership { user: me, org: a }
+  let _ <- Db.insert Membership { user: them, org: b }
+  let _ <- Db.insert Project { name: "theirs", org: b }
+  Task.succeed { me: me, them: them, a: a, b: b }
+}
+
+names : List Project -> List Text
+names ps = List.map (\p -> p.name) ps
+
+test "a member sees only their org's projects" = {
+  let s <- setup
+  let _ <- Test.login { user: Just s.me, org: Just s.a }
+  let _ <- Test.get (Projects.Index {})
+  let _ <- Test.submit NewProject { name: "mine" }
+  let page <- Test.get (Projects.Index {})
+  Task.succeed ({ names: names page.model.projects, h1: Test.text "h1" page.doc } == { names: ["A: mine"], h1: Just "A" })
+}
+
+test "rename and remove act on the org's own projects" = {
+  let s <- setup
+  let _ <- Test.login { user: Just s.me, org: Just s.a }
+  let _ <- Test.get (Projects.Index {})
+  let _ <- Test.submit NewProject { name: "p" }
+  let page <- Test.get (Projects.Index {})
+  let ids <- Task.succeed (List.map (\p -> p.id) page.model.projects)
+  let renamed <- Task.all (List.map (\id -> Test.click (Rename { id: id })) ids)
+  let after <- Test.get (Projects.Index {})
+  let _ <- Task.all (List.map (\id -> Test.click (Remove { id: id })) ids)
+  let gone <- Test.get (Projects.Index {})
+  Task.succeed ({ renamed: names after.model.projects, gone: names gone.model.projects } == { renamed: ["renamed"], gone: [] })
+}
+
+test "another org's project is not found" = {
+  let s <- setup
+  let _ <- Test.login { user: Just s.them, org: Just s.b }
+  let theirs <- Test.get (Projects.Index {})
+  let _ <- Test.login { user: Just s.me, org: Just s.a }
+  let model : Model = { org: "A", projects: [], labels: 0 }
+  let me : Session = { user: s.me, org: s.a, role: Reader }
+  let ids <- Task.succeed (List.map (\p -> p.id) theirs.model.projects)
+  let removed <- Task.all (List.map (\id -> Test.run (update (Remove { id: id }) model me)) ids)
+  let renamed <- Task.all (List.map (\id -> Test.run (update (Rename { id: id }) model me)) ids)
+  let _ <- Test.login { user: Just s.them, org: Just s.b }
+  let still <- Test.get (Projects.Index {})
+  Task.succeed ({ removed: List.map (\x -> x.value) removed, renamed: List.map (\x -> x.value) renamed, still: names still.model.projects } == { removed: [Err "not found"], renamed: [Err "not found"], still: ["theirs"] })
+}
+
+test "seeding is one Task in one silo" = {
+  let s <- setup
+  let _ <- Test.login { user: Just s.me, org: Just s.a }
+  let _ <- Test.get (Projects.Index {})
+  let _ <- Test.click Seed
+  let page <- Test.get (Projects.Index {})
+  Task.succeed (names page.model.projects == ["x", "y"])
+}
+
+test "labels are scoped by org in the shared store" = {
+  let s <- setup
+  let _ <- Db.insert Label { name: "theirs", org: s.b }
+  let _ <- Test.login { user: Just s.me, org: Just s.a }
+  let _ <- Test.get (Projects.Index {})
+  let r <- Test.click Tag
+  Task.succeed (Test.text "#labels" r.doc == Just "1")
+}
+
+test "without an org the page sends you to pick one" = {
+  let s <- setup
+  let _ <- Test.login { user: Just s.me, org: Nothing }
+  let r <- Test.open (Projects.Index {})
+  Task.succeed (r.answer == Redirected (Orgs {}))
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Projects.Index {})
+  Task.succeed (r.answer == Redirected (Login {}))
+}

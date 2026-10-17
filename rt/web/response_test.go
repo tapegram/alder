@@ -295,3 +295,25 @@ func TestResponse_RedirectRefusesScriptURL(t *testing.T) {
 		t.Fatalf("logs %q", logs)
 	}
 }
+
+// A request on a silo that is not served: 503 with Alder-Status: 503, App.maintenance (or the
+// default page), a Datastar request patched as for a 404/500.
+func TestResponse_Maintenance(t *testing.T) {
+	route := one("GET", "/", func(rq *Request) Response { return MaintenanceResponse(errors.New("silo org/x: ahead: …")) })
+	w := serve(NewRouter(route, testOpts(nil)), httptest.NewRequest("GET", "/", nil))
+	if w.Code != 503 || w.Header().Get(StatusHeader) != "503" || !strings.Contains(w.Body.String(), "Down for maintenance") {
+		t.Fatalf("default: %d %q %s", w.Code, w.Header().Get(StatusHeader), w.Body.String())
+	}
+	doc := html.El("html", nil, html.El("body", nil, html.Text("back soon")))
+	h := NewRouter(route, testOpts(func(o *Options) { o.MaintenanceDoc = func() html.Node { return doc } }))
+	w = serve(h, httptest.NewRequest("GET", "/", nil))
+	if w.Code != 503 || !strings.Contains(w.Body.String(), "back soon") {
+		t.Fatalf("App.maintenance: %d %s", w.Code, w.Body.String())
+	}
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Datastar-Request", "true")
+	w = serve(h, r)
+	if w.Code != 200 || w.Header().Get(StatusHeader) != "503" || !strings.Contains(w.Body.String(), "back soon") {
+		t.Fatalf("Datastar: %d %q %s", w.Code, w.Header().Get(StatusHeader), w.Body.String())
+	}
+}

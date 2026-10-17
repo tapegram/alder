@@ -211,6 +211,9 @@ type gen struct {
 	selectorOrder []string
 	// mutation is the mutate build's state (Options.Mutate; nil otherwise): mutation.go
 	mutation *mutation
+	// siloOf is the `silo` key of each siloed table, by "Module.Name" (M15)
+	siloOf map[string]string
+	prog   *ir.Program
 }
 
 // indexFakes records p's fakes for module and app emission. In a test build the unions their
@@ -233,7 +236,12 @@ func newGen(p *ir.Program) *gen {
 	g := &gen{values: map[string]*ir.Value{}, thunks: map[*ir.Value]bool{}, tparams: map[*ir.Value][]string{},
 		pages: map[string]*ir.Page{}, session: p.Session, boxed: boxedFields(p), payloads: map[string]*ir.RecordType{},
 		tables: map[string][]*ir.Table{}, caps: map[string][]*ir.Capability{}, brands: map[string][]*ir.Brand{}, enums: storedEnums(p),
-		selectors: map[string]string{}}
+		selectors: map[string]string{}, siloOf: map[string]string{}, prog: p}
+	for k, ts := range p.Silos {
+		for _, tb := range ts {
+			g.siloOf[tb.Module+"."+tb.Name] = k
+		}
+	}
 	for _, b := range p.Brands {
 		g.brands[b.Module] = append(g.brands[b.Module], b)
 	}
@@ -461,6 +469,7 @@ var packages = map[string]string{
 	"eff": "alder/rt/eff", "db": "alder/rt/db", "context": "context", "fmt": "fmt",
 	"web": "alder/rt/web", "url": "net/url", "http": "net/http", "json": "encoding/json", "errors": "errors",
 	"strings": "strings", "reflect": "reflect", "rtesting": "alder/rt/testing", "embed": "embed",
+	"filepath": "path/filepath",
 }
 
 // importNames are the packages whose name is not their path's last element, by path: they are
@@ -606,7 +615,7 @@ func widenFunc(w *strings.Builder, pg *ir.Page, app *ir.RecordType, boxed boxedS
 	var fs []string
 	for _, f := range app.Fields {
 		v := "s." + Field(f.Name) // a page's narrowed Session never reaches itself: no field is boxed
-		if slices.Contains(pg.Requires, f.Name) {
+		if slices.Contains(pg.Requires, f.Name) || f.Name == pg.Silo {
 			v = "rt.Just(" + v + ")"
 		}
 		if boxed.has(app.Module, app.Name, f.Name) {

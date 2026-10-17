@@ -2,6 +2,8 @@ package gen
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -35,6 +37,44 @@ import (
 // its rtesting function with the selector parsed once, a package variable selector__N
 // (app__alder.go); any other selector is parsed when the query runs.
 
+// member is Test.member u k (M15): a row of the membership table of the session's `via` field
+// (an app with one; the checker's types are erased here), with its user column u and its key column k, every other
+// column NULL (a membership table with more required columns is filled by the test itself).
+//
+//	rtesting.Member(func(_e *eff.Env, _u, _k string) error {
+//		_, err := db.InsertRow(…, table__Membership__Membership, []any{nil, _u, _k}, _e.Now())
+//		return err
+//	}, u, k)
+func (f *fn) member(x *ir.Call, s *scope) string {
+	g := f.g
+	var mt *ir.Table
+	var key string
+	for _, k := range slices.Sorted(maps.Keys(g.prog.Via)) {
+		if mt == nil {
+			mt, key = g.prog.Via[k], k
+		} else { // ids are Text once checked: several `via` fields cannot be told apart here
+			panic("gen: Test.member in an app whose session has several `via` fields")
+		}
+	}
+	if mt == nil {
+		panic("gen: Test.member: the session has no `via` field")
+	}
+	ucol, kcol := g.memberCols(g.prog, mt, key)
+	var vals []string
+	for _, fd := range mt.Record.Fields {
+		switch fd.Name {
+		case ucol:
+			vals = append(vals, "_u")
+		case kcol:
+			vals = append(vals, "_k")
+		default:
+			vals = append(vals, "nil")
+		}
+	}
+	return "rtesting.Member(func(_e *eff.Env, _u, _k string) error {\n_, err := db.InsertRow(" + dbArgs("_e") + ", " + tableName(mt.Module, mt.Name) +
+		", []any{" + strings.Join(vals, ", ") + "}, _e.Now())\nreturn err\n}, " + f.code(x.Args[0], s) + ", " + f.code(x.Args[1], s) + ")"
+}
+
 // browserStep is step x (a Test* browser node of effect type x.Type()).
 func (f *fn) browserStep(x ir.Expr, s *scope) string {
 	t := x.Type()
@@ -50,8 +90,17 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 	case *ir.TestLogin:
 		return f.callStmts("Test.login", true, t, s, func(env string, c *scope) string {
 			err := f.temp(c, "_err")
+			check := ""
+			if len(f.g.prog.Via) > 0 { // M15: a `via` field must name a membership (session__via)
+				sess := f.temp(c, "_s")
+				check = sess + " := " + f.code(x.Session, c) + "\n" +
+					"if " + err + " := rtesting.CheckSession(" + env + ", " + sess + "); " + err + " != nil {\nreturn struct{}{}, " + err + "\n}\n" +
+					env + ".Session = " + sess + "\n"
+			} else {
+				check = env + ".Session = " + f.code(x.Session, c) + "\n"
+			}
 			// the session is the test's own first (a failed step restores it: eff.Run)
-			return env + ".Session = " + f.code(x.Session, c) + "\n" +
+			return check +
 				"if " + err + " := rtesting.BrowserOf(" + env + ").Login(" + env + ".Session); " + err + " != nil {\nreturn struct{}{}, " + err + "\n}\nreturn struct{}{}, nil\n"
 		})
 	case *ir.TestGet:

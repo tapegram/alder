@@ -24,6 +24,7 @@ import (
 	rtpkg "alder/rt"
 	"alder/rt/al"
 	"alder/rt/datastar"
+	"alder/rt/db"
 	"alder/rt/eff"
 	"alder/rt/html"
 )
@@ -55,6 +56,17 @@ type Options struct {
 	// answer is written: an Alder test's browser reads the model a page's GET rendered
 	// (Request.Model) from it. nil in production.
 	Served func(rq *Request)
+	// Silos are the app's `silo` declarations (generated Web: an Alder test makes its stores
+	// from them, db.NewTestStores) and Stores its stores (Serve: db.OpenStores), put in every
+	// request's Env (eff.Env.Stores); nil for an app without silos.
+	Silos  []db.Silo
+	Stores *db.Stores
+	// SessionCheck is every request's eff.Env.CheckSession: an app whose session has a `via`
+	// field checks the membership of a Session.put (generated Web); nil otherwise.
+	SessionCheck func(e *eff.Env, old, new any) error
+	// MaintenanceDoc is the document of a request on a silo that is not served (App.maintenance;
+	// nil: a default page), answered with status 503 (MaintenanceResponse).
+	MaintenanceDoc func() html.Node
 }
 
 // maxBody is the largest POST body the router reads.
@@ -421,6 +433,10 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 			Log:     rt.log,
 			Session: rq.Session,
 		}
+		if rt.opts.Stores != nil {
+			rq.Env.Stores = rt.opts.Stores
+		}
+		rq.Env.CheckSession = rt.opts.SessionCheck
 	}
 	if tw, ok := w.(*tracker); ok {
 		if !rq.Datastar && r.Method == http.MethodGet { // a page GET only: not a HEAD, which shows nothing
@@ -644,6 +660,8 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 			return
 		}
 		rt.document(w, http.StatusOK, page)
+	case http.StatusServiceUnavailable:
+		rt.maintenance(w, r, st, resp.Err)
 	case http.StatusNotFound, http.StatusInternalServerError:
 		// a non-nil session here is one a successful Task left before a later step failed
 		// (the re-load after update): it is stored all the same
@@ -814,6 +832,28 @@ func (rt *router) notFound(w http.ResponseWriter, r *http.Request, st hop, doc h
 	}
 	rt.failure(w, r, st, http.StatusNotFound, page)
 }
+
+// maintenance writes Options.MaintenanceDoc (or a default page) with status 503 and the header
+// Alder-Status: 503 (on every answer, not only a Datastar one), or as a body patch for a
+// Datastar request: a request on a silo that is not served (err says which and why; logged).
+func (rt *router) maintenance(w http.ResponseWriter, r *http.Request, st hop, err error) {
+	rt.log("warn", fmt.Sprintf("%s %s: maintenance: %v", r.Method, r.URL.Path, err))
+	if tw, ok := w.(*tracker); ok {
+		tw.setAnswer("maintenance")
+	}
+	page := ""
+	if rt.opts.MaintenanceDoc != nil {
+		page = html.Render(rt.opts.MaintenanceDoc())
+	}
+	if page == "" {
+		page = DefaultMaintenance
+	}
+	w.Header().Set(StatusHeader, "503")
+	rt.failure(w, r, st, http.StatusServiceUnavailable, page)
+}
+
+// DefaultMaintenance is the maintenance page of an app without App.maintenance.
+const DefaultMaintenance = "<html><head><title>Down for maintenance</title></head><body><h1>Down for maintenance</h1><p>This part of the app is being updated. Please try again in a few minutes.</p></body></html>"
 
 // fail logs err (with stack, when given) and writes doc (or, when it renders empty,
 // Options.ErrorDoc(err)) with status 500, or as a body patch for a Datastar request. In dev

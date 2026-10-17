@@ -1,0 +1,95 @@
+module Orgs
+
+import Membership
+import Org
+import User
+
+-- `choose org`'s page: it requires the user, not the org, and sets the org.
+page "/orgs" { } requires user
+
+type Model = { mine: List Membership }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let mine <- Db.from Membership |> Db.where (Membership.user.eq session.user) |> Db.all
+  Query.succeed { mine: mine }
+}
+
+msg Pick { org: Org.OrgId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  -- `via Membership`: the runtime refuses an org the user is not a member of
+  Pick p -> {
+    let _ <- Session.put (\s -> { s | org: Just p.org })
+    Task.succeed (Redirect (Projects.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html><body>
+    <ul>{for m in model.mine -> <li><button click={Pick { org: m.org }}>{"pick"}</button></li>}</ul>
+    <button click={App.Leave}>leave</button>
+  </body></html>
+
+test "a member picks an org" = {
+  let me <- Db.insert User { name: "Me" }
+  let a <- Db.insert Org { name: "A" }
+  let _ <- Test.member me a
+  let _ <- Test.login { user: Just me, org: Nothing }
+  let _ <- Test.get (Orgs {})
+  let r <- Test.click (Pick { org: a })
+  Task.succeed (r.answer == Redirected (Projects.Index {}) && r.session.org == Just a)
+}
+
+test "a non-member's switch is refused" = {
+  let me <- Db.insert User { name: "Me" }
+  let a <- Db.insert Org { name: "A" }
+  let b <- Db.insert Org { name: "B" }
+  let _ <- Test.member me a
+  let _ <- Test.login { user: Just me, org: Just a }
+  -- a crafted request: the page offers no such button, the update is run as it would be
+  let r <- Test.run (update (Pick { org: b }) { mine: [] } { user: me, org: Just a, role: Reader })
+  let put <- Test.run (Session.put (\s -> { s | org: Just b }))
+  Task.succeed ({ r: r.value, put: put.value } == { r: Err "Session.put org: no Membership for this user and org", put: Err "Session.put org: no Membership for this user and org" })
+}
+
+test "a membership deleted earlier in the same Task counts as gone" = {
+  let me <- Db.insert User { name: "Me" }
+  let a <- Db.insert Org { name: "A" }
+  let m <- Db.insert Membership { user: me, org: a }
+  let _ <- Test.login { user: Just me, org: Nothing }
+  let r <- Test.run {
+    let _ <- Db.delete Membership m
+    Session.put (\s -> { s | org: Just a })
+  }
+  Task.succeed (r.value == Err "Session.put org: no Membership for this user and org")
+}
+
+test "leaving the org clears it" = {
+  let me <- Db.insert User { name: "Me" }
+  let a <- Db.insert Org { name: "A" }
+  let _ <- Test.member me a
+  let _ <- Test.login { user: Just me, org: Just a }
+  let _ <- Test.get (Orgs {})
+  let r <- Test.click App.Leave
+  Task.succeed (r.answer == Redirected (Orgs {}) && r.session.org == Nothing)
+}
+
+test "the picker lists the user's own memberships" = {
+  let me <- Db.insert User { name: "Me" }
+  let them <- Db.insert User { name: "Them" }
+  let a <- Db.insert Org { name: "A" }
+  let b <- Db.insert Org { name: "B" }
+  let _ <- Test.member me a
+  let _ <- Test.member them b
+  let _ <- Test.login { user: Just me, org: Nothing }
+  let page <- Test.get (Orgs {})
+  Task.succeed (List.map (\m -> m.org) page.model.mine == [a])
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Orgs {})
+  Task.succeed (r.answer == Redirected (Login {}))
+}

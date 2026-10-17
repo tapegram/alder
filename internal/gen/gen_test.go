@@ -251,7 +251,7 @@ var testBuildGoldens = map[string]bool{"gen_fakes": true, "gen_browser": true}
 
 // mutateBuildGoldens are the gen goldens whose want/ is a mutate build (Options.Mutate, a test
 // build) and whose want_prod/ is the production build of the same app.
-var mutateBuildGoldens = map[string]bool{"gen_mutate": true, "gen_rules": true}
+var mutateBuildGoldens = map[string]bool{"gen_mutate": true, "gen_rules": true, "gen_silos": true}
 
 func TestGenGolden(t *testing.T) {
 	dirs, _ := filepath.Glob("../../testdata/golden/gen_*")

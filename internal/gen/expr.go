@@ -383,6 +383,9 @@ func (f *fn) call(x *ir.Call, s *scope) (string, int) {
 	if q, ok := f.querySel(x.Fn, x.Args, s); ok && n == len(x.Args) { // browser.go
 		return q, precAtom
 	}
+	if v, ok := x.Fn.(*ir.Var); ok && v.Kind == ir.VarStd && v.Module == "Test" && v.Name == "member" && len(x.Args) == 2 {
+		return f.member(x, s), precAtom // browser.go
+	}
 	var args []string
 	for i, a := range x.Args[:n] {
 		args = append(args, f.argument(x.Fn, i, a, s))

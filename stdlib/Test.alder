@@ -9,6 +9,9 @@ fake : Capability -> Task Unit
 -- message the way a browser does, through the app's real routes, inside the test's transaction.
 -- special form: the argument is App's session record
 login : Session -> Task Unit
+-- the membership a session field's `via` table records: a row of it for the user and the key's
+-- id (`Test.member me org`), so a Test.login or Session.put with that key passes the check
+member : u -> k -> Task Unit
 -- special form: the argument is a page value (`Todos.Index { filter: All }`); `model` is that
 -- page's `Model`, which must be a record; the test fails unless the page is shown
 get : Page -> Task { model: model, session: Session, doc: Doc }

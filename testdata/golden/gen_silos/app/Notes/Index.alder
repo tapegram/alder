@@ -1,0 +1,56 @@
+module Notes.Index
+
+import Note
+import User
+
+-- the user key: `@owner` and Db.mine, as in M11
+page "/notes" { } requires user
+
+type Model = { notes: List Note }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <- Db.mine Note |> Db.all
+  Query.succeed { notes: notes }
+}
+
+msg Add
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add _ -> {
+    let _ <- Db.insertMine Note { text: "a" }
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html><body>
+    <ul>{for n in model.notes -> <li>{n.text}</li>}</ul>
+    <button click={Add}>add</button>
+    <button click={App.Leave}>leave the org</button>
+  </body></html>
+
+test "each user sees their own notes" = {
+  let me <- Db.insert User { name: "Me" }
+  let them <- Db.insert User { name: "Them" }
+  let _ <- Db.insert Note { text: "theirs", owner: them }
+  let _ <- Test.login { user: Just me, org: Nothing }
+  let _ <- Test.get (Notes.Index {})
+  let r <- Test.click Add
+  Task.succeed (Test.texts "li" r.doc == ["a"])
+}
+
+test "leaving the org from any page goes to the org picker" = {
+  let me <- Db.insert User { name: "Me" }
+  let _ <- Test.login { user: Just me, org: Nothing }
+  let _ <- Test.get (Notes.Index {})
+  let r <- Test.click App.Leave
+  Task.succeed (r.answer == Redirected (Orgs {}))
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Notes.Index {})
+  Task.succeed (r.answer == Redirected (Login {}))
+}

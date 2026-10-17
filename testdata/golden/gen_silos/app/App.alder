@@ -1,0 +1,34 @@
+module App
+
+import User
+import Org
+
+-- A silo per org: Project lives in one database per org. Membership, Org, Label and Note are
+-- shared (Label is partitioned by org, Note by the user: a predicate in the shared store).
+session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Reader }
+
+login = Login
+
+choose org = Orgs
+
+silo org { Project }
+
+msg Leave
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Leave _ -> {
+    let _ <- Session.put (\s -> { s | org: Nothing })
+    Task.succeed (Redirect (Orgs {}))
+  },
+}
+
+error : Error -> Html Never
+error err = <html><body><h1>error</h1></body></html>
+
+notFound : Html Never
+notFound = <html><body><h1>not found</h1></body></html>
+
+-- what a request on an org whose database cannot be served answers (503)
+maintenance : Html Never
+maintenance = <html><body><h1>down for maintenance</h1></body></html>
