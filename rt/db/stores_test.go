@@ -878,6 +878,33 @@ func TestStores_MoveIntoSiloIsBehind(t *testing.T) {
 	}
 }
 
+// A silo whose row has the app's hash but names an older migration (a later one changed none
+// of its tables) is ok, and its row is brought to the build's last migration.
+func TestStores_HashMatchRenamesRow(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	s := openApp(t, dir, 1)
+	if _, err := s.silo(ctx, "org", "A"); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	cfg := siloConfig(t, dir, 1)
+	cfg.Migrations = append(cfg.Migrations, Migration{Name: "0002_names", From: cfg.Migrations[0].To, To: cfg.Migrations[0].To, SQL: `UPDATE "Org__Org" SET "name" = "name";`})
+	s2, err := newStores(nil, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, _ := SiloPath(dir, "org", "A")
+	f, _ := OpenSQLite(p)
+	defer f.Close()
+	if st, _, err := s2.check(ctx, f, s2.silos["org"], false, true); err != nil || st != SiloOK {
+		t.Fatalf("%s %v", st, err)
+	}
+	if _, m, _, _ := schemaRow(ctx, f.db); m != "0002_names" {
+		t.Fatalf("row %q", m)
+	}
+}
+
 // M4: a silo made before the app had migrations (its row names none) whose schema is where a
 // migration leads is behind from there, not failed.
 func TestStores_AdoptsMigrationless(t *testing.T) {

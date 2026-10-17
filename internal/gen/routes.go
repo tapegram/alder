@@ -201,10 +201,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 		return *stop
 	}
 %[11]s%[12]s	nav, err := eff.Run(rq.Env, eff.KTask, %[6]s(msg, model, session))
-	if err != nil {
-		return route__fail(err)
-	}
-	nav, rq.Notice = nav.Unnotice()
+%[13]s	nav, rq.Notice = nav.Unnotice()
 	switch {
 	case nav.Tag == rt.NavRedirect:
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
@@ -223,7 +220,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	return web.PageResponse(%[8]s(model, session), st, rq.Env.Session, true)
 }
 
-`, updateFunc(m), GoName(m, "Params"), GoName(m, "Msg"), pageFunc(m), keep("nil"), GoName(m, "update"), keep("rq.Env.Session"), GoName(m, "view"), paramsFunc(m), strconv.Quote(pg.Path), checks, enter)
+`, updateFunc(m), GoName(m, "Params"), GoName(m, "Msg"), pageFunc(m), keep("nil"), GoName(m, "update"), keep("rq.Env.Session"), GoName(m, "view"), paramsFunc(m), strconv.Quote(pg.Path), checks, enter, updateFailure(p))
 	}
 
 	// the GET route
@@ -565,6 +562,27 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 }
 
 `, pageFunc(m), GoName(m, "Params"), model, session, app, Field(firstRequired(pg)), strings.Join(fs, ", "), GoName(m, "load"))
+}
+
+// updateFailure is the update route's answer to a failed Task: route__fail, and for an app with
+// `via` fields a Session.put the membership check refused (eff.ErrFail.NotMember: a crafted
+// switch to an org the user is no member of) is Reject "You are not a member of that
+// workspace." on the form that sent the message, else 404 — not a 500.
+func updateFailure(p *ir.Program) string {
+	if len(p.Via) == 0 {
+		return "\tif err != nil {\n\t\treturn route__fail(err)\n\t}\n"
+	}
+	return `	if err != nil {
+		var nm *eff.ErrFail
+		switch {
+		case !errors.As(err, &nm) || !nm.NotMember:
+			return route__fail(err)
+		case st == nil:
+			return web.NotFoundResponse(html.None())
+		}
+		nav = rt.Reject("You are not a member of that workspace.")
+	}
+`
 }
 
 // enter writes, for an app with silos, the function naming the store of each arm of page pg's

@@ -199,12 +199,13 @@ func TestSilos_Binary(t *testing.T) {
 	if n := sqlCount(t, filepath.Join(silos, db.SiloFileName("A")), `SELECT COUNT(*) FROM "Project__Project" WHERE "name" IN ('x', 'y')`); n != 2 {
 		t.Fatalf("A's file holds %d seeded projects", n)
 	}
-	// a crafted switch to an org me is no member of: refused, the session unchanged
-	if res, _ := do("POST", "/_m/Orgs/Pick?org=B", me, nil); res.StatusCode != http.StatusInternalServerError || res.Header.Get("Set-Cookie") != "" {
+	// a crafted switch to an org me is no member of: refused, the session unchanged — not found
+	// from a message without a form, the form's error from one with
+	if res, _ := do("POST", "/_m/Orgs/Pick?org=B", me, nil); res.StatusCode != http.StatusNotFound || res.Header.Get("Set-Cookie") != "" {
 		t.Fatalf("crafted switch: %d %q", res.StatusCode, res.Header.Get("Set-Cookie"))
 	}
-	if !strings.Contains(app.stderr.String(), "Session.put org: no Membership for this user and org") {
-		t.Fatalf("log:\n%s", app.stderr.String())
+	if res, body := do("POST", "/_m/Orgs/Switch", me, url.Values{"org": {"B"}}); res.StatusCode != 200 || res.Header.Get("Set-Cookie") != "" || !strings.Contains(body, "You are not a member of that workspace.") {
+		t.Fatalf("switch from the form: %d %q\n%s", res.StatusCode, res.Header.Get("Set-Cookie"), body)
 	}
 	// the stragglers: maintenance for those two orgs only; the one behind was migrated on open
 	for org, status := range map[string]int{"loss": 503, "ahead": 503, "behind": 200, "A": 200} {

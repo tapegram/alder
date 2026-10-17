@@ -14,25 +14,39 @@ type Orgs__Model struct {
 	Mine []Membership__Membership
 }
 
+type Orgs__SwitchOrg struct {
+	Org string
+}
+
 type Orgs__Params struct{}
 
 type Orgs__PickParams struct {
 	Org string
 }
 
+type Orgs__SwitchParams struct {
+	Form Orgs__SwitchOrg
+}
+
 type Orgs__Msg struct {
-	Tag  tag__Orgs__Msg
-	Pick *Orgs__PickParams
+	Tag    tag__Orgs__Msg
+	Pick   *Orgs__PickParams
+	Switch *Orgs__SwitchParams
 }
 
 type tag__Orgs__Msg uint8
 
 const (
-	is__Orgs__Msg__Pick tag__Orgs__Msg = 0
+	is__Orgs__Msg__Pick   tag__Orgs__Msg = 0
+	is__Orgs__Msg__Switch tag__Orgs__Msg = 1
 )
 
 func Orgs__Msg__Pick__(v Orgs__PickParams) Orgs__Msg {
 	return Orgs__Msg{Tag: is__Orgs__Msg__Pick, Pick: &v}
+}
+
+func Orgs__Msg__Switch__(v Orgs__SwitchParams) Orgs__Msg {
+	return Orgs__Msg{Tag: is__Orgs__Msg__Switch, Switch: &v}
 }
 
 type Orgs__Session struct {
@@ -62,6 +76,13 @@ func Orgs__update(msg Orgs__Msg, model Orgs__Model, session Orgs__Session) eff.T
 		}), func(_ struct{}) eff.Task[rt.Nav] {
 			return eff.Pure(rt.Redirect(rt.Page{Path: "/projects"}))
 		})
+	case is__Orgs__Msg__Switch:
+		p := *msg.Switch
+		return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
+			return App__Session{User: s.User, Org: rt.Just[string](p.Form.Org), Role: s.Role}
+		}), func(_ struct{}) eff.Task[rt.Nav] {
+			return eff.Pure(rt.Redirect(rt.Page{Path: "/projects"}))
+		})
 	}
 	panic("unreachable")
 }
@@ -71,6 +92,11 @@ func Orgs__view(model Orgs__Model, session Orgs__Session) html.Node {
 		html.El("ul", nil, html.Nodes(std.ListMap(func(m Membership__Membership) html.Node {
 			return html.El("li", nil, html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Orgs", Msg: "Pick", Params: []rt.KV{{Key: "org", Value: m.Org}}})}, html.Text("pick")))
 		}, model.Mine)...)),
+		html.FormTo(rt.MsgRef{Module: "Orgs", Msg: "Switch"}, nil,
+			html.Input(html.Control{Kind: "input", Form: "Orgs.SwitchOrg", Name: "org", Type: "text", Label: "Org"}),
+			html.Input(html.Control{Kind: "errors", Form: "Orgs.SwitchOrg"}),
+			html.El("button", nil, html.Text("switch")),
+		),
 		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "App", Msg: "Leave"})}, html.Text("leave")),
 	))
 }

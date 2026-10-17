@@ -54,7 +54,8 @@ func (s *Stores) openChild(ctx context.Context, d *siloDB, ss *siloSchema, value
 }
 
 // child is the Store of silo key's value on Turso (reader: a read-only one). With create, a
-// child that does not exist is created under the key's schema database.
+// child that does not exist is created (a database of its own, ChildName); one another process
+// created meanwhile ("already exists") is opened.
 func (s *Stores) child(ctx context.Context, key, value string, create, reader bool) (*SQLite, error) {
 	name := ChildName(s.app, key, value)
 	if err := TursoName(name); err != nil {
@@ -68,10 +69,13 @@ func (s *Stores) child(ctx context.Context, key, value string, create, reader bo
 		if !create {
 			return nil, fmt.Errorf("db: Turso has no database %s", name)
 		}
-		if _, err := s.remote.Create(ctx, CreateOptions{Name: name}); err != nil {
+		switch _, err := s.remote.Create(ctx, CreateOptions{Name: name}); {
+		case IsTursoExists(err): // another process (an instance, a deploy) created it first
+		case err != nil:
 			return nil, fmt.Errorf("db: creating silo %s/%s's database %s: %w", key, value, name, err)
+		default:
+			s.logf("info", fmt.Sprintf("silo %s/%s: created its database %s", key, value, name))
 		}
-		s.logf("info", fmt.Sprintf("silo %s/%s: created its database %s", key, value, name))
 	}
 	return s.remote.Open(ctx, name, reader)
 }
@@ -91,8 +95,8 @@ type siloEntry struct {
 	key, value, path, name string
 }
 
-// entries are the silo databases of every key: the files under Dir, or Turso's children of
-// each key's schema database.
+// entries are the silo databases of every key: the files under Dir, or the databases at
+// Turso named as a key's children (ChildName: <app>-<key>-<name>).
 func (s *Stores) entries(ctx context.Context) ([]siloEntry, error) {
 	var out []siloEntry
 	if s.remote == nil {

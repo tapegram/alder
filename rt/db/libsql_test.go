@@ -421,3 +421,22 @@ func TestTurso_Lock(t *testing.T) {
 		t.Fatalf("app tables %v", tables)
 	}
 }
+
+// A silo's database that another process created first ("already exists") is not an error:
+// child opens it.
+func TestTurso_CreateExists(t *testing.T) {
+	f := tursofake.New(t, "acme")
+	tursoEnv(t, f)
+	tc := NewTurso(TursoConfigFromEnv())
+	name := ChildName("blog", "org", "x")
+	if err := f.Create(name, "default"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := tc.Create(context.Background(), CreateOptions{Name: name})
+	if !IsTursoExists(err) {
+		t.Fatalf("a second create: %v", err)
+	}
+	if IsTursoExists(&TursoError{Status: 500, Message: "boom"}) || IsTursoExists(nil) {
+		t.Fatal("not an exists")
+	}
+}

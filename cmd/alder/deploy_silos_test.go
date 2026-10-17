@@ -164,7 +164,7 @@ func TestDeploySsh_Silos(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "replaced silo org/A's database at Ssh alder-test-box:"+box.root+" (the previous one is kept as db/silos/org/"+db.SiloFileName("A")+".before-restore-") {
 		t.Fatalf("restore --silo: %d\n%s", code, out)
 	}
-	if _, body := c.projects("A"); !strings.Contains(body, "a1") || strings.Contains(body, "a2") {
+	if _, body := c.projects("A"); !strings.Contains(body, ">Org A: a1<") || strings.Contains(body, ">Org A: a2<") {
 		t.Fatalf("A after the restore:\n%s", body)
 	}
 	if _, body := c.projects("B"); !strings.Contains(body, "b1") || !strings.Contains(body, "b2") {
@@ -384,7 +384,7 @@ func TestDeployTurso_Lifecycle(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "put silo org/A's database back as it was at "+before.Format(time.RFC3339)) {
 		t.Fatalf("restore --silo: %d\n%s", code, out)
 	}
-	if _, body := c.projects("A"); !strings.Contains(body, "a2") || strings.Contains(body, "a3") {
+	if _, body := c.projects("A"); !strings.Contains(body, ">Org A: a2<") || strings.Contains(body, ">Org A: a3<") {
 		t.Fatalf("A after the restore:\n%s", body)
 	}
 	if code, out := runCmd(t, runRestoreTo, "production", "--dir", dir, "--from", "s3://x/y", "--to", before.Format(time.RFC3339)); code != 2 || !strings.Contains(out, "is on Turso: it is restored to a point in time with --to") {

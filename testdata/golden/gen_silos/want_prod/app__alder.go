@@ -50,7 +50,7 @@ func init() {
 	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{"Leave"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Login__Msg(0)), []string{})
 	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Index__Msg(0)), []string{"Add"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Orgs__Msg(0)), []string{"Pick"})
+	rt.RegisterUnion(reflect.TypeOf(tag__Orgs__Msg(0)), []string{"Pick", "Switch"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Projects__Index__Msg(0)), []string{"Add", "Rename", "Remove", "Seed", "Tag"})
 }
 
@@ -142,7 +142,7 @@ func Web() web.Options {
 		ErrorDoc:       App__error,
 		NotFoundDoc:    func() html.Node { return App__notFound },
 		Login:          "/login",
-		DevMap:         "{\"pages\":[{\"module\":\"Admin.Projects\",\"path\":\"/admin/orgs/{org}/projects\",\"requires\":\"user\",\"roles\":[\"Admin\"],\"params\":[\"org: Text\"],\"msgs\":[\"Remove\"]},{\"module\":\"Login\",\"path\":\"/login\"},{\"module\":\"Notes.Index\",\"path\":\"/notes\",\"requires\":\"user\",\"msgs\":[\"Add\"]},{\"module\":\"Orgs\",\"path\":\"/orgs\",\"requires\":\"user\",\"msgs\":[\"Pick\"]},{\"module\":\"Projects.Index\",\"path\":\"/projects\",\"requires\":\"user, org\",\"msgs\":[\"Add\",\"Rename\",\"Remove\",\"Seed\",\"Tag\"]}],\"tables\":[{\"name\":\"Org.Org\",\"columns\":[\"id: Text\",\"name: Text\"],\"id\":\"id\"},{\"name\":\"Project.Project\",\"columns\":[\"id: Text\",\"name: Text\",\"org: Text\"],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\"}},{\"name\":\"User.User\",\"columns\":[\"id: Text\",\"name: Text\"],\"id\":\"id\"},{\"name\":\"Label.Label\",\"columns\":[\"id: Text\",\"name: Text\",\"org: Text\"],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\"}},{\"name\":\"Note.Note\",\"columns\":[\"id: Text\",\"text: Text\",\"owner: Text\"],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"},\"owner\":\"owner\"},{\"name\":\"Membership.Membership\",\"columns\":[\"id: Text\",\"user: Text\",\"org: Text\"],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\",\"user\":\"User.User\"},\"onDelete\":{\"org\":\"cascade\",\"user\":\"cascade\"}}],\"caps\":[],\"session\":[\"user: Maybe Text\",\"org: Maybe Text\",\"role: User.Role\"],\"appMsgs\":[\"Leave\"]}",
+		DevMap:         "{\"pages\":[{\"module\":\"Admin.Projects\",\"path\":\"/admin/orgs/{org}/projects\",\"requires\":\"user\",\"roles\":[\"Admin\"],\"params\":[\"org: Text\"],\"msgs\":[\"Remove\"]},{\"module\":\"Login\",\"path\":\"/login\"},{\"module\":\"Notes.Index\",\"path\":\"/notes\",\"requires\":\"user\",\"msgs\":[\"Add\"]},{\"module\":\"Orgs\",\"path\":\"/orgs\",\"requires\":\"user\",\"msgs\":[\"Pick\",\"Switch\"]},{\"module\":\"Projects.Index\",\"path\":\"/projects\",\"requires\":\"user, org\",\"msgs\":[\"Add\",\"Rename\",\"Remove\",\"Seed\",\"Tag\"]}],\"tables\":[{\"name\":\"Org.Org\",\"columns\":[\"id: Text\",\"name: Text\"],\"id\":\"id\"},{\"name\":\"Project.Project\",\"columns\":[\"id: Text\",\"name: Text\",\"org: Text\"],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\"}},{\"name\":\"User.User\",\"columns\":[\"id: Text\",\"name: Text\"],\"id\":\"id\"},{\"name\":\"Label.Label\",\"columns\":[\"id: Text\",\"name: Text\",\"org: Text\"],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\"}},{\"name\":\"Note.Note\",\"columns\":[\"id: Text\",\"text: Text\",\"owner: Text\"],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"},\"owner\":\"owner\"},{\"name\":\"Membership.Membership\",\"columns\":[\"id: Text\",\"user: Text\",\"org: Text\"],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\",\"user\":\"User.User\"},\"onDelete\":{\"org\":\"cascade\",\"user\":\"cascade\"}}],\"caps\":[],\"session\":[\"user: Maybe Text\",\"org: Maybe Text\",\"role: User.Role\"],\"appMsgs\":[\"Leave\"]}",
 		Silos:          Silos,
 		MaintenanceDoc: func() html.Node { return App__maintenance },
 		SessionCheck:   session__via,
@@ -231,7 +231,7 @@ func session__via(e *eff.Env, o, n any) (any, error) {
 			return nil, err
 		}
 		if !ok {
-			return nil, &eff.ErrFail{Msg: "Session.put org: no Membership for this user and org"}
+			return nil, &eff.ErrFail{Msg: "Session.put org: no Membership for this user and org", NotMember: true}
 		}
 	}
 	return b, nil

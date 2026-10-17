@@ -281,7 +281,13 @@ type Tx interface {
 
 // ErrFail is the error of an effect that failed with a message: Task.fail,
 // a @unique violation or a capability failure.
-type ErrFail struct{ Msg string }
+type ErrFail struct {
+	Msg string
+	// NotMember: a `via` field's membership check refused the Session.put (M15). A message's
+	// route answers it as Reject "You are not a member of that workspace." on a form, and 404
+	// otherwise, not 500; Test.run sees the failure as any other.
+	NotMember bool
+}
 
 func (e *ErrFail) Error() string { return e.Msg }
 

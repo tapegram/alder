@@ -16,7 +16,12 @@ load params session = {
   Query.succeed { mine: mine }
 }
 
+form SwitchOrg = {
+  org: Org.OrgId,
+}
+
 msg Pick { org: Org.OrgId }
+msg Switch form SwitchOrg
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
@@ -25,12 +30,22 @@ update msg model session = match msg {
     let _ <- Session.put (\s -> { s | org: Just p.org })
     Task.succeed (Redirect (Projects.Index {}))
   },
+  -- the same from a form: a non-member's switch is the form's error (the route's Reject)
+  Switch p -> {
+    let _ <- Session.put (\s -> { s | org: Just p.form.org })
+    Task.succeed (Redirect (Projects.Index {}))
+  },
 }
 
 view : Model -> Session -> Html Msg
 view model session =
   <html><body>
     <ul>{for m in model.mine -> <li><button click={Pick { org: m.org }}>{"pick"}</button></li>}</ul>
+    <form submit={Switch}>
+      <Input field="org" label="Org" />
+      <Errors form />
+      <button>switch</button>
+    </form>
     <button click={App.Leave}>leave</button>
   </body></html>
 
@@ -54,6 +69,18 @@ test "a non-member's switch is refused" = {
   let r <- Test.run (update (Pick { org: b }) { mine: [] } { user: me, org: Just a, role: Reader })
   let put <- Test.run (Session.put (\s -> { s | org: Just b }))
   Task.succeed ({ r: r.value, put: put.value } == { r: Err "Session.put org: no Membership for this user and org", put: Err "Session.put org: no Membership for this user and org" })
+}
+
+test "a non-member's switch from the form is the form's error" = {
+  let me <- Db.insert User { name: "Me" }
+  let a <- Db.insert Org { name: "A" }
+  let b <- Db.insert Org { name: "B" }
+  let _ <- Test.member me a
+  let _ <- Test.login { user: Just me, org: Just a }
+  let _ <- Test.get (Orgs {})
+  let r <- Test.submit SwitchOrg { org: b }
+  let ok <- Test.submit SwitchOrg { org: a }
+  Task.succeed ({ answer: r.answer, org: r.session.org, ok: ok.answer } == { answer: FormRejected [{ field: "", message: "You are not a member of that workspace." }], org: Just a, ok: Redirected (Projects.Index {}) })
 }
 
 test "a membership deleted earlier in the same Task counts as gone" = {

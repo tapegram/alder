@@ -15,25 +15,39 @@ type Orgs__Model struct {
 	Mine []Membership__Membership
 }
 
+type Orgs__SwitchOrg struct {
+	Org string
+}
+
 type Orgs__Params struct{}
 
 type Orgs__PickParams struct {
 	Org string
 }
 
+type Orgs__SwitchParams struct {
+	Form Orgs__SwitchOrg
+}
+
 type Orgs__Msg struct {
-	Tag  tag__Orgs__Msg
-	Pick *Orgs__PickParams
+	Tag    tag__Orgs__Msg
+	Pick   *Orgs__PickParams
+	Switch *Orgs__SwitchParams
 }
 
 type tag__Orgs__Msg uint8
 
 const (
-	is__Orgs__Msg__Pick tag__Orgs__Msg = 0
+	is__Orgs__Msg__Pick   tag__Orgs__Msg = 0
+	is__Orgs__Msg__Switch tag__Orgs__Msg = 1
 )
 
 func Orgs__Msg__Pick__(v Orgs__PickParams) Orgs__Msg {
 	return Orgs__Msg{Tag: is__Orgs__Msg__Pick, Pick: &v}
+}
+
+func Orgs__Msg__Switch__(v Orgs__SwitchParams) Orgs__Msg {
+	return Orgs__Msg{Tag: is__Orgs__Msg__Switch, Switch: &v}
 }
 
 type Orgs__Session struct {
@@ -83,6 +97,25 @@ func Orgs__update(msg Orgs__Msg, model Orgs__Model, session Orgs__Session) eff.T
 				return rt.Redirect(rt.Page{Path: "/projects"})
 			}())
 		})
+	case is__Orgs__Msg__Switch:
+		p := *msg.Switch
+		return eff.Bind(func() eff.Task[struct{}] {
+			switch Mutant {
+			case 17:
+				return eff.Pure(struct{}{})
+			}
+			return std.SessionPut(func(s App__Session) App__Session {
+				return App__Session{User: s.User, Org: rt.Just[string](p.Form.Org), Role: s.Role}
+			})
+		}(), func(_ struct{}) eff.Task[rt.Nav] {
+			return eff.Pure(func() rt.Nav {
+				switch Mutant {
+				case 18:
+					return rt.Rerender()
+				}
+				return rt.Redirect(rt.Page{Path: "/projects"})
+			}())
+		})
 	}
 	panic("unreachable")
 }
@@ -92,6 +125,11 @@ func Orgs__view(model Orgs__Model, session Orgs__Session) html.Node {
 		html.El("ul", nil, html.Nodes(std.ListMap(func(m Membership__Membership) html.Node {
 			return html.El("li", nil, html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Orgs", Msg: "Pick", Params: []rt.KV{{Key: "org", Value: m.Org}}})}, html.Text("pick")))
 		}, model.Mine)...)),
+		html.FormTo(rt.MsgRef{Module: "Orgs", Msg: "Switch"}, nil,
+			html.Input(html.Control{Kind: "input", Form: "Orgs.SwitchOrg", Name: "org", Type: "text", Label: "Org"}),
+			html.Input(html.Control{Kind: "errors", Form: "Orgs.SwitchOrg"}),
+			html.El("button", nil, html.Text("switch")),
+		),
 		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "App", Msg: "Leave"})}, html.Text("leave")),
 	))
 }
@@ -296,8 +334,156 @@ func test__Orgs__2() eff.Task[bool] {
 	})
 }
 
-// test__Orgs__3 is test "a membership deleted earlier in the same Task counts as gone" of module Orgs.
+// test__Orgs__3 is test "a non-member's switch from the form is the form's error" of module Orgs.
 func test__Orgs__3() eff.Task[bool] {
+	return eff.Bind(eff.Call("Db.insert User", true, func(_e1 *eff.Env) (string, error) {
+		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Name: "Me"}), _e1.Now())
+	}), func(me string) eff.Task[bool] {
+		return eff.Bind(eff.Call("Db.insert Org", true, func(_e2 *eff.Env) (string, error) {
+			return db.InsertRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Org__Org, insertvals__Org__Org(insert__Org__Org{Name: "A"}), _e2.Now())
+		}), func(a string) eff.Task[bool] {
+			return eff.Bind(eff.Call("Db.insert Org", true, func(_e3 *eff.Env) (string, error) {
+				return db.InsertRow(_e3.Ctx, _e3.Store.(db.Store), db.TxOf(_e3), table__Org__Org, insertvals__Org__Org(insert__Org__Org{Name: "B"}), _e3.Now())
+			}), func(b string) eff.Task[bool] {
+				return eff.Bind(rtesting.Member(func(_e *eff.Env, _u, _k string) error {
+					_, err := db.InsertRow(_e.Ctx, _e.Store.(db.Store), db.TxOf(_e), table__Membership__Membership, []any{nil, _u, _k}, _e.Now())
+					return err
+				}, me, a), func(_ struct{}) eff.Task[bool] {
+					return eff.Bind(eff.Call("Test.login", true, func(_e4 *eff.Env) (struct{}, error) {
+						_s6 := App__Session{User: rt.Just[string](me), Org: rt.Just[string](a), Role: User__Role__Reader__}
+						_ck7, _err5 := rtesting.CheckSession(_e4, _s6)
+						if _err5 != nil {
+							return struct{}{}, _err5
+						}
+						_e4.Session = _ck7
+						if _err5 := rtesting.BrowserOf(_e4).Login(_e4.Session); _err5 != nil {
+							return struct{}{}, _err5
+						}
+						return struct{}{}, nil
+					}), func(_ struct{}) eff.Task[bool] {
+						return eff.Bind(eff.Call("Test.get Orgs", true, func(_e8 *eff.Env) (struct {
+							Model   Orgs__Model
+							Session App__Session
+							Doc     rtesting.Doc
+							Notices []string
+						}, error) {
+							_u10 := rt.PageURL(rt.Page{Path: "/orgs"})
+							_b11 := rtesting.BrowserOf(_e8)
+							_r12, _err13 := _b11.GetPage(_u10, "user")
+							if _err13 != nil {
+								var _z14 struct {
+									Model   Orgs__Model
+									Session App__Session
+									Doc     rtesting.Doc
+									Notices []string
+								}
+								return _z14, _err13
+							}
+							_m15, _err13 := rtesting.ModelOf[Orgs__Model](_u10, _r12)
+							if _err13 != nil {
+								var _z16 struct {
+									Model   Orgs__Model
+									Session App__Session
+									Doc     rtesting.Doc
+									Notices []string
+								}
+								return _z16, _err13
+							}
+							return struct {
+								Model   Orgs__Model
+								Session App__Session
+								Doc     rtesting.Doc
+								Notices []string
+							}{Model: _m15, Session: rtesting.SessionOf[App__Session](_r12.Session), Doc: rtesting.DocOf(_r12.Doc), Notices: _r12.Notices}, nil
+						}), func(_ struct {
+							Model   Orgs__Model
+							Session App__Session
+							Doc     rtesting.Doc
+							Notices []string
+						}) eff.Task[bool] {
+							return eff.Bind(eff.Call("Test.submit SwitchOrg", true, func(_e17 *eff.Env) (struct {
+								Answer  rtesting.Answer
+								Session App__Session
+								Doc     rtesting.Doc
+								Notices []string
+							}, error) {
+								_r18, _err19 := rtesting.BrowserOf(_e17).SubmitForm("/_m/Orgs/Switch", "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: b}))
+								if _err19 != nil {
+									var _z20 struct {
+										Answer  rtesting.Answer
+										Session App__Session
+										Doc     rtesting.Doc
+										Notices []string
+									}
+									return _z20, _err19
+								}
+								return struct {
+									Answer  rtesting.Answer
+									Session App__Session
+									Doc     rtesting.Doc
+									Notices []string
+								}{Answer: _r18.Answer, Session: rtesting.SessionOf[App__Session](_r18.Session), Doc: rtesting.DocOf(_r18.Doc), Notices: _r18.Notices}, nil
+							}), func(r struct {
+								Answer  rtesting.Answer
+								Session App__Session
+								Doc     rtesting.Doc
+								Notices []string
+							}) eff.Task[bool] {
+								return eff.Bind(eff.Call("Test.submit SwitchOrg", true, func(_e21 *eff.Env) (struct {
+									Answer  rtesting.Answer
+									Session App__Session
+									Doc     rtesting.Doc
+									Notices []string
+								}, error) {
+									_r22, _err23 := rtesting.BrowserOf(_e21).SubmitForm("/_m/Orgs/Switch", "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: a}))
+									if _err23 != nil {
+										var _z24 struct {
+											Answer  rtesting.Answer
+											Session App__Session
+											Doc     rtesting.Doc
+											Notices []string
+										}
+										return _z24, _err23
+									}
+									return struct {
+										Answer  rtesting.Answer
+										Session App__Session
+										Doc     rtesting.Doc
+										Notices []string
+									}{Answer: _r22.Answer, Session: rtesting.SessionOf[App__Session](_r22.Session), Doc: rtesting.DocOf(_r22.Doc), Notices: _r22.Notices}, nil
+								}), func(ok struct {
+									Answer  rtesting.Answer
+									Session App__Session
+									Doc     rtesting.Doc
+									Notices []string
+								}) eff.Task[bool] {
+									return eff.Pure(rtesting.Eq(struct {
+										Answer rtesting.Answer
+										Org    rt.Maybe[string]
+										Ok     rtesting.Answer
+									}{Answer: r.Answer, Org: r.Session.Org, Ok: ok.Answer}, struct {
+										Answer rtesting.Answer
+										Org    rt.Maybe[string]
+										Ok     rtesting.Answer
+									}{Answer: rtesting.FormRejectedAnswer([]struct {
+										Field   string
+										Message string
+									}{struct {
+										Field   string
+										Message string
+									}{Field: "", Message: "You are not a member of that workspace."}}), Org: rt.Just[string](a), Ok: rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/projects"}}}))
+								})
+							})
+						})
+					})
+				})
+			})
+		})
+	})
+}
+
+// test__Orgs__4 is test "a membership deleted earlier in the same Task counts as gone" of module Orgs.
+func test__Orgs__4() eff.Task[bool] {
 	return eff.Bind(eff.Call("Db.insert User", true, func(_e1 *eff.Env) (string, error) {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
@@ -359,8 +545,8 @@ func test__Orgs__3() eff.Task[bool] {
 	})
 }
 
-// test__Orgs__4 is test "leaving the org clears it" of module Orgs.
-func test__Orgs__4() eff.Task[bool] {
+// test__Orgs__5 is test "leaving the org clears it" of module Orgs.
+func test__Orgs__5() eff.Task[bool] {
 	return eff.Bind(eff.Call("Db.insert User", true, func(_e1 *eff.Env) (string, error) {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
@@ -460,8 +646,8 @@ func test__Orgs__4() eff.Task[bool] {
 	})
 }
 
-// test__Orgs__5 is test "the picker lists the user's own memberships" of module Orgs.
-func test__Orgs__5() eff.Task[bool] {
+// test__Orgs__6 is test "the picker lists the user's own memberships" of module Orgs.
+func test__Orgs__6() eff.Task[bool] {
 	return eff.Bind(eff.Call("Db.insert User", true, func(_e1 *eff.Env) (string, error) {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {
@@ -547,8 +733,8 @@ func test__Orgs__5() eff.Task[bool] {
 	})
 }
 
-// test__Orgs__6 is test "a visitor is sent to log in" of module Orgs.
-func test__Orgs__6() eff.Task[bool] {
+// test__Orgs__7 is test "a visitor is sent to log in" of module Orgs.
+func test__Orgs__7() eff.Task[bool] {
 	return eff.Bind(eff.Call("Test.open Orgs", true, func(_e1 *eff.Env) (struct {
 		Answer  rtesting.Answer
 		Session App__Session
@@ -583,8 +769,8 @@ func test__Orgs__6() eff.Task[bool] {
 	})
 }
 
-// test__Orgs__7 is test "logging out clears the org" of module Orgs.
-func test__Orgs__7() eff.Task[bool] {
+// test__Orgs__8 is test "logging out clears the org" of module Orgs.
+func test__Orgs__8() eff.Task[bool] {
 	return eff.Bind(eff.Call("Db.insert User", true, func(_e1 *eff.Env) (string, error) {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Name: "Me"}), _e1.Now())
 	}), func(me string) eff.Task[bool] {

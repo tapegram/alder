@@ -165,6 +165,27 @@ func options(t *testing.T, dir string, out io.Writer) Options {
 	}
 }
 
+// A deploy that drops data in an app with silos says that --allow-data-loss covers the shared
+// database, and how the silos it leaves in maintenance are migrated; one without silos does not.
+func TestDeploy_DataLossSiloHint(t *testing.T) {
+	dir, live := appWithDrop(t)
+	var out bytes.Buffer
+	Deploy(context.Background(), options(t, dir, &out), GateResult{Check: "ok"}, &fakeTarget{live: live, current: "1111111111111111"}, nil)
+	if strings.Contains(out.String(), "hint: the app has silos") {
+		t.Fatalf("a hint without silos:\n%s", out.String())
+	}
+	_, s2 := schemas()
+	s2.Tables[0].Silo = "org"
+	if err := migrate.WriteSnapshot(filepath.Join(dir, "migrations", "schema.json"), s2); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	Deploy(context.Background(), options(t, dir, &out), GateResult{Check: "ok"}, &fakeTarget{live: live, current: "1111111111111111"}, nil)
+	if !strings.Contains(out.String(), "hint: the app has silos: --allow-data-loss covers the shared database; a silo whose tables a pending migration drops data of waits in maintenance when it is opened, until `alder migrate silos production --allow-data-loss`") {
+		t.Fatalf("no hint:\n%s", out.String())
+	}
+}
+
 // RF1: a migration that drops data is refused without --allow-data-loss, with the DROPS DATA
 // line, before anything is uploaded; with the flag the backup comes before the migration, and
 // the record says so.

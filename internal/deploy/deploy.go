@@ -12,6 +12,7 @@
 package deploy
 
 import (
+	"alder/internal/migrate"
 	"context"
 	"errors"
 	"fmt"
@@ -183,6 +184,9 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 		}
 		res.Record = rec
 		return res, refuse("", "%s (pending: %s; nothing was shipped)", mr.RefusesMigrations(), strings.Join(names, ", "))
+	}
+	if drops := plan.DropsData(); len(drops) > 0 && hasSilos(dir) {
+		fmt.Fprintf(w, "hint: the app has silos: --allow-data-loss covers the shared database; a silo whose tables a pending migration drops data of waits in maintenance when it is opened, until `alder migrate silos %s --allow-data-loss` (take a backup first; `alder status %s` lists them)\n", o.Env, o.Env)
 	}
 	if drops := plan.DropsData(); len(drops) > 0 && !o.AllowDataLoss {
 		var b strings.Builder
@@ -905,4 +909,14 @@ func size(n int64) string {
 		return fmt.Sprintf("%.1f kB", float64(n)/(1<<10))
 	}
 	return fmt.Sprintf("%d bytes", n)
+}
+
+// hasSilos reports whether the build at dir declares a silo: a table of its migrations'
+// snapshot marked with one.
+func hasSilos(dir string) bool {
+	snap, err := migrate.ReadSnapshot(filepath.Join(dir, "migrations", "schema.json"))
+	if err != nil {
+		return false
+	}
+	return slices.ContainsFunc(snap.Tables, func(t migrate.Table) bool { return t.Silo != "" })
 }

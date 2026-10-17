@@ -540,7 +540,8 @@ func (g *gen) serveSilos(p *ir.Program, src string) string {
 // Test.login's) check (web.Options.SessionCheck → eff.Env.CheckSession) that a `via` field set
 // to Just v — changed, or with another user — names a row of its membership table for the
 // session's user, read inside the running Task's transaction on the shared store (db.Member);
-// else the step fails "Session.put org: no Membership for this user and org". Nothing is always
+// else the step fails "Session.put org: no Membership for this user and org" (an eff.ErrFail
+// marked NotMember: a message's route answers it with Reject or 404). Nothing is always
 // allowed, and a session without a user has every `via` field cleared (logging out clears the
 // org: it returns the session to store). In a mutate build each field's `membership dropped`
 // mutant skips its check.
@@ -573,7 +574,7 @@ func session__via(e *eff.Env, o, n any) (any, error) {
 			return nil, err
 		}
 		if !ok {
-			return nil, &eff.ErrFail{Msg: %[3]s}
+			return nil, &eff.ErrFail{Msg: %[3]s, NotMember: true}
 		}
 `, fk, fu, msg, tableName(mt.Module, mt.Name), strconv.Quote(ucol), strconv.Quote(kcol))
 		if id := g.membershipDropped(k); id != 0 {

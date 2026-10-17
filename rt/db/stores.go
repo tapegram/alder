@@ -428,6 +428,7 @@ func (s *Stores) silo(ctx context.Context, key, value string) (*siloDB, error) {
 		s.open[id] = d
 		opener = true
 	}
+	d.used.Store(now.UnixNano()) // under the lock: a sweep never closes a silo found here
 	s.mu.Unlock()
 	if opener {
 		o := s.openSilo(ctx, ss, value, s.cfg.AllowDataLoss)
@@ -440,7 +441,6 @@ func (s *Stores) silo(ctx context.Context, key, value string) (*siloDB, error) {
 			return nil, ctx.Err()
 		}
 	}
-	d.used.Store(now.UnixNano())
 	if d.state != SiloOK {
 		return nil, &MaintenanceError{Key: key, Value: value, State: d.state, Detail: d.detail}
 	}
@@ -656,6 +656,7 @@ type plan struct {
 	fresh   bool
 	pending []Migration
 	drops   []string
+	rename  bool // ok, but the row names an older migration than this build's last
 }
 
 // inspect reads silo ss's database (q) and plans it against this binary, writing nothing.
@@ -675,7 +676,9 @@ func (s *Stores) inspect(ctx context.Context, q querier, ss *siloSchema, allowDa
 		return plan{state: SiloFailed, detail: "the database has tables but no _alder_schema row: it was not made by this app's runtime; restore it from a backup"}, nil
 	}
 	if hash == s.hash {
-		return plan{state: SiloOK}, nil
+		// the row names the migration that made it so; a later one that changed none of the
+		// tables leaves it so, and the row is brought to this build's last (check)
+		return plan{state: SiloOK, rename: s.last != "" && mig != s.last}, nil
 	}
 	ms := s.cfg.Migrations
 	if len(ms) == 0 {
@@ -754,8 +757,9 @@ func (s *Stores) check(ctx context.Context, st *SQLite, ss *siloSchema, allowDat
 		return "", "", err
 	}
 	switch {
-	case p.state == SiloOK:
+	case p.state == SiloOK && !p.rename:
 		return SiloOK, "", nil
+	case p.state == SiloOK: // the tables are this build's: only the row's migration changes
 	case p.state != SiloMigrating:
 		return p.state, p.detail, nil
 	case p.fresh:
@@ -1173,9 +1177,8 @@ type SiloStatus struct {
 
 // StatusSilos writes one JSON line (SiloStatus) per silo database — each file under cfg.Dir,
 // or on Turso each child database — inspecting each without changing it: ok, migrating
-// (behind; it migrates when next opened, or on Turso: the schema database's change has not
-// reached it yet), pending-data-loss, ahead, failed, or orphaned (its key row is gone from the
-// shared database, cfg.Shared).
+// (behind: it migrates when next opened, or by `alder migrate silos`), pending-data-loss,
+// ahead, failed, or orphaned (its key row is gone from the shared database, cfg.Shared).
 func StatusSilos(ctx context.Context, cfg StoresConfig, out io.Writer) error {
 	s, err := newStores(nil, cfg)
 	if err != nil {

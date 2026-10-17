@@ -128,6 +128,13 @@ func IsTursoNotFound(err error) bool {
 	return errors.As(err, &te) && te.Status == http.StatusNotFound
 }
 
+// IsTursoExists reports whether err is the API's refusal to create a database that exists
+// (409, "already exists"): another process created it first.
+func IsTursoExists(err error) bool {
+	var te *TursoError
+	return errors.As(err, &te) && (te.Status == http.StatusConflict || strings.Contains(te.Message, "already exists"))
+}
+
 // call sends method path (under the organization) with body (nil for none) and decodes the
 // answer into out (nil: ignored).
 func (t *Turso) call(ctx context.Context, method, path string, body, out any) error {

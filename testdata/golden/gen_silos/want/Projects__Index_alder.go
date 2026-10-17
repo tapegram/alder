@@ -81,7 +81,7 @@ func widen__Projects__Index__Session(s Projects__Index__Session) App__Session {
 func Projects__Index__seed(name string) eff.Task[struct{}] {
 	return eff.Bind(func() eff.Task[string] {
 		switch Mutant {
-		case 17:
+		case 19:
 			return eff.Pure("mutant")
 		}
 		return eff.Call("Db.insertScoped Project", true, func(_e1 *eff.Env) (string, error) {
@@ -100,7 +100,7 @@ func Projects__Index__load(params Projects__Index__Params, session Projects__Ind
 			_h2 := db.Scoped(table__Project__Project)
 			_ = _h2
 			switch Mutant {
-			case 18:
+			case 20:
 				return eff.Call("Db.all Project", false, func(_e3 *eff.Env) ([]Project__Project, error) {
 					return db.All(_e3.Ctx, _e3.Store.(db.Store), db.TxOf(_e3), db.OrderBy(db.Desc("name"), _h2))
 				})
@@ -112,7 +112,7 @@ func Projects__Index__load(params Projects__Index__Params, session Projects__Ind
 			return eff.Bind(eff.Call("Db.count Label", false, func(_e5 *eff.Env) (int64, error) {
 				return db.CountRows(_e5.Ctx, _e5.Store.(db.Store), db.TxOf(_e5), func() db.Select[Label__Label] {
 					switch Mutant {
-					case 19:
+					case 21:
 						return db.From(table__Label__Label)
 					}
 					return db.Scoped(table__Label__Label)
@@ -139,7 +139,7 @@ _arms1:
 			}), func(org rt.Maybe[Org__Org]) eff.Task[rt.Nav] {
 				return eff.Bind(func() eff.Task[string] {
 					switch Mutant {
-					case 21:
+					case 23:
 						return eff.Pure("mutant")
 					}
 					return eff.Call("Db.insertScoped Project", true, func(_e3 *eff.Env) (string, error) {
@@ -155,7 +155,7 @@ _arms1:
 			p := *msg.Rename
 			return eff.Bind(func() eff.Task[struct{}] {
 				switch Mutant {
-				case 22:
+				case 24:
 					return eff.Pure(struct{}{})
 				}
 				return eff.Call("Db.updateScoped Project", true, func(_e4 *eff.Env) (struct{}, error) {
@@ -170,7 +170,7 @@ _arms1:
 			p := *msg.Remove
 			return eff.Bind(func() eff.Task[struct{}] {
 				switch Mutant {
-				case 23:
+				case 25:
 					return eff.Pure(struct{}{})
 				}
 				return eff.Call("Db.deleteScoped Project", true, func(_e5 *eff.Env) (struct{}, error) {
@@ -188,7 +188,7 @@ _arms1:
 		}
 	}
 	switch Mutant {
-	case 20:
+	case 22:
 		switch _arm1 {
 		case 4:
 			_arm1 = 5
@@ -200,7 +200,7 @@ _arms1:
 	case 4:
 		return eff.Bind(func() eff.Task[string] {
 			switch Mutant {
-			case 24:
+			case 26:
 				return eff.Pure("mutant")
 			}
 			return eff.Call("Db.insertScoped Label", true, func(_e6 *eff.Env) (string, error) {
@@ -246,7 +246,7 @@ func Projects__Index__setup() eff.Task[struct {
 }] {
 	return eff.Bind(func() eff.Task[string] {
 		switch Mutant {
-		case 25:
+		case 27:
 			return eff.Pure("mutant")
 		}
 		return eff.Call("Db.insert User", true, func(_e1 *eff.Env) (string, error) {
@@ -260,7 +260,7 @@ func Projects__Index__setup() eff.Task[struct {
 	}] {
 		return eff.Bind(func() eff.Task[string] {
 			switch Mutant {
-			case 26:
+			case 28:
 				return eff.Pure("mutant")
 			}
 			return eff.Call("Db.insert User", true, func(_e2 *eff.Env) (string, error) {
@@ -274,7 +274,7 @@ func Projects__Index__setup() eff.Task[struct {
 		}] {
 			return eff.Bind(func() eff.Task[string] {
 				switch Mutant {
-				case 27:
+				case 29:
 					return eff.Pure("mutant")
 				}
 				return eff.Call("Db.insert Org", true, func(_e3 *eff.Env) (string, error) {
@@ -288,7 +288,7 @@ func Projects__Index__setup() eff.Task[struct {
 			}] {
 				return eff.Bind(func() eff.Task[string] {
 					switch Mutant {
-					case 28:
+					case 30:
 						return eff.Pure("mutant")
 					}
 					return eff.Call("Db.insert Org", true, func(_e4 *eff.Env) (string, error) {
@@ -302,7 +302,7 @@ func Projects__Index__setup() eff.Task[struct {
 				}] {
 					return eff.Bind(func() eff.Task[string] {
 						switch Mutant {
-						case 29:
+						case 31:
 							return eff.Pure("mutant")
 						}
 						return eff.Call("Db.insert Membership", true, func(_e5 *eff.Env) (string, error) {
@@ -316,7 +316,7 @@ func Projects__Index__setup() eff.Task[struct {
 					}] {
 						return eff.Bind(func() eff.Task[string] {
 							switch Mutant {
-							case 30:
+							case 32:
 								return eff.Pure("mutant")
 							}
 							return eff.Call("Db.insert Membership", true, func(_e6 *eff.Env) (string, error) {
@@ -330,7 +330,7 @@ func Projects__Index__setup() eff.Task[struct {
 						}] {
 							return eff.Bind(func() eff.Task[string] {
 								switch Mutant {
-								case 31:
+								case 33:
 									return eff.Pure("mutant")
 								}
 								return eff.Call("Db.insert Project", true, func(_e7 *eff.Env) (string, error) {

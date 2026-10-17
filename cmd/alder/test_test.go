@@ -593,7 +593,8 @@ func TestTest_Silos(t *testing.T) {
 	for _, want := range []string{
 		"ok   Projects.Index \"labels are scoped by org in the shared store\"\n",
 		"ok   Projects.Index \"Test.run of Tag writes the shared store, of Seed the org's\"\n",
-		"22 passed, 0 failed\n",
+		"ok   Orgs \"a non-member's switch from the form is the form's error\"\n",
+		"23 passed, 0 failed\n",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("missing %q in\n%s\nstderr: %s", want, stdout, stderr)

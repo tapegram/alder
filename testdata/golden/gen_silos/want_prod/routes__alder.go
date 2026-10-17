@@ -23,6 +23,7 @@ var Routes = []web.Route{
 	Route__Admin__Projects__Remove(),
 	Route__Notes__Index__Add(),
 	Route__Orgs__Pick(),
+	Route__Orgs__Switch(),
 	Route__Projects__Index__Add(),
 	Route__Projects__Index__Rename(),
 	Route__Projects__Index__Remove(),
@@ -120,7 +121,14 @@ func update__Admin__Projects(rq *web.Request, params Admin__Projects__Params, ms
 	}
 	nav, err := eff.Run(rq.Env, eff.KTask, Admin__Projects__update(msg, model, session))
 	if err != nil {
-		return route__fail(err)
+		var nm *eff.ErrFail
+		switch {
+		case !errors.As(err, &nm) || !nm.NotMember:
+			return route__fail(err)
+		case st == nil:
+			return web.NotFoundResponse(html.None())
+		}
+		nav = rt.Reject("You are not a member of that workspace.")
 	}
 	nav, rq.Notice = nav.Unnotice()
 	switch {
@@ -278,7 +286,14 @@ func update__Notes__Index(rq *web.Request, params Notes__Index__Params, msg Note
 	}
 	nav, err := eff.Run(rq.Env, eff.KTask, Notes__Index__update(msg, model, session))
 	if err != nil {
-		return route__fail(err)
+		var nm *eff.ErrFail
+		switch {
+		case !errors.As(err, &nm) || !nm.NotMember:
+			return route__fail(err)
+		case st == nil:
+			return web.NotFoundResponse(html.None())
+		}
+		nav = rt.Reject("You are not a member of that workspace.")
 	}
 	nav, rq.Notice = nav.Unnotice()
 	switch {
@@ -347,6 +362,17 @@ func decode__Orgs__PickParams(q url.Values) (r Orgs__PickParams, errs []web.Fiel
 	return r, errs
 }
 
+// decode__Orgs__SwitchOrg decodes form SwitchOrg from a request body v. Its errors are shown on the
+// re-rendered form.
+func decode__Orgs__SwitchOrg(v url.Values) (r Orgs__SwitchOrg, errs []web.FieldError) {
+	if s, ok := web.Text(v, "org", false); !ok {
+		errs = append(errs, web.Missing("org"))
+	} else {
+		r.Org = s
+	}
+	return r, errs
+}
+
 // page__Orgs runs page Orgs for rq up to its model: `requires user` (a 303 to App.login, storing
 // keep, when the session's user is Nothing), then load (with params and the narrowed session). It
 // returns the model and the session view and update take, or the response that ends the request,
@@ -397,7 +423,14 @@ func update__Orgs(rq *web.Request, params Orgs__Params, msg Orgs__Msg, st *html.
 	}
 	nav, err := eff.Run(rq.Env, eff.KTask, Orgs__update(msg, model, session))
 	if err != nil {
-		return route__fail(err)
+		var nm *eff.ErrFail
+		switch {
+		case !errors.As(err, &nm) || !nm.NotMember:
+			return route__fail(err)
+		case st == nil:
+			return web.NotFoundResponse(html.None())
+		}
+		nav = rt.Reject("You are not a member of that workspace.")
 	}
 	nav, rq.Notice = nav.Unnotice()
 	switch {
@@ -450,6 +483,32 @@ func Route__Orgs__Pick() web.Route {
 			return web.NotFoundResponse(html.None())
 		}
 		return update__Orgs(rq, params, Orgs__Msg__Pick__(p), nil)
+	}}
+}
+
+// Route__Orgs__Switch serves message Switch of page Orgs, POST /_m/Orgs/Switch (book 06): decode
+// the page's parameters (the message URL's _p. keys, which the rendered page put there): 404 when
+// they do not decode; decode form SwitchOrg from the body: when it does not, re-render the page
+// with the submitted values (no Text.Secret field) and the errors, without calling update; then
+// update__Orgs.
+func Route__Orgs__Switch() web.Route {
+	return web.Route{Method: "POST", Pattern: "/_m/Orgs/Switch", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Orgs__Params(rt.PageParams(rq.Query))
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		p := Orgs__SwitchParams{}
+		values := route__values(rq.Form)
+		form, errs := decode__Orgs__SwitchOrg(rq.Form)
+		if errs != nil {
+			model, session, stop := page__Orgs(rq, params, nil)
+			if stop != nil {
+				return *stop
+			}
+			return web.PageResponse(Orgs__view(model, session), &html.FormState{Form: "Orgs.SwitchOrg", Msg: rt.MsgKey("/_m/Orgs/Switch", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Orgs(params)}, nil, true)
+		}
+		p.Form = form
+		return update__Orgs(rq, params, Orgs__Msg__Switch__(p), &html.FormState{Form: "Orgs.SwitchOrg", Msg: rt.MsgKey("/_m/Orgs/Switch", rq.Query), Values: values})
 	}}
 }
 
@@ -554,7 +613,14 @@ func update__Projects__Index(rq *web.Request, params Projects__Index__Params, ms
 	}
 	nav, err := eff.Run(rq.Env, eff.KTask, Projects__Index__update(msg, model, session))
 	if err != nil {
-		return route__fail(err)
+		var nm *eff.ErrFail
+		switch {
+		case !errors.As(err, &nm) || !nm.NotMember:
+			return route__fail(err)
+		case st == nil:
+			return web.NotFoundResponse(html.None())
+		}
+		nav = rt.Reject("You are not a member of that workspace.")
 	}
 	nav, rq.Notice = nav.Unnotice()
 	switch {
