@@ -595,6 +595,9 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 		t.Fatalf("deploy: exit %d\n%s\n%s", code, out, errs)
 	}
 	id := deployedID(t, out)
+	if strings.Contains(out, "warning: no `backup` in the declaration") {
+		t.Errorf("the environment file streams the backup, but the deploy warns there is none:\n%s", out)
+	}
 	post := func(name string) {
 		t.Helper()
 		box.sh(t, fmt.Sprintf("curl -s -o /dev/null -X POST -H 'Origin: http://127.0.0.1:%d' -d 'name=%s&message=hello' http://127.0.0.1:%d/_m/Home/Submit", box.port, name, box.port))

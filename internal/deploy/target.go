@@ -115,4 +115,16 @@ type Info struct {
 	HaveDB     bool
 	LastBackup time.Time // the newest of the shipper's last upload and the last pre-migration copy
 	BackupFrom string    // "streamed to s3://…", "builds/<id>/backup.db"
+	// StreamTo is where the app is told to stream its database (the declaration's `backup`, or
+	// the environment file's ALDER_BACKUP_URL), "" when nowhere; Shipped is the shipper's last
+	// upload (zero: never).
+	StreamTo string
+	Shipped  time.Time
+}
+
+// StreamChecker is a Target that can tell whether its environment turns the streamed backup on
+// by itself (an ALDER_BACKUP_URL line in the environment file), so a deploy without `backup`
+// in the declaration does not warn that only the pre-migration copies exist.
+type StreamChecker interface {
+	StreamsBackup(ctx context.Context) (bool, error)
 }

@@ -1224,6 +1224,16 @@ func contains(xs []string, x string) bool {
 	return false
 }
 
+// streamEnv prints streamenv=yes when the environment file sets ALDER_BACKUP_URL (only grep's
+// answer crosses the connection, never the value).
+const streamEnv = `grep -Eq '^(export[[:space:]]+)?ALDER_BACKUP_URL=[^[:space:]]' "$R/env" 2>/dev/null && echo streamenv=yes`
+
+// StreamsBackup is StreamChecker: whether the environment file sets ALDER_BACKUP_URL.
+func (s *Ssh) StreamsBackup(ctx context.Context) (bool, error) {
+	out, err := s.run(ctx, streamEnv+"\nexit 0\n")
+	return strings.Contains(out, "streamenv=yes"), err
+}
+
 // Info reads the database's size, the shipper's last upload (db/app.db-backup.json, which the
 // runtime writes) and the newest pre-migration copy.
 func (s *Ssh) Info(ctx context.Context) (Info, error) {
@@ -1233,12 +1243,16 @@ func (s *Ssh) Info(ctx context.Context) (Info, error) {
 fi
 [ -f "$R/db/app.db-backup.json" ] && echo "shipped=$(tr -d '\n' < "$R/db/app.db-backup.json")"
 for f in "$R"/builds/*/backup.db; do [ -f "$f" ] && echo "copy=$(date -r "$f" +%s) builds/$(basename "$(dirname "$f")")/backup.db"; done
+`+streamEnv+`
 exit 0
 `)
 	if err != nil {
 		return Info{}, err
 	}
-	var in Info
+	in := Info{StreamTo: s.BackupURL}
+	if s.BackupURL == "" && strings.Contains(out, "streamenv=yes") {
+		in.StreamTo = "the environment file's ALDER_BACKUP_URL"
+	}
 	for _, l := range strings.Split(out, "\n") {
 		k, v, _ := strings.Cut(l, "=")
 		switch k {
@@ -1250,8 +1264,11 @@ exit 0
 				Last time.Time `json:"last"`
 				URL  string    `json:"url"`
 			}
-			if json.Unmarshal([]byte(v), &st) == nil && st.Last.After(in.LastBackup) {
-				in.LastBackup, in.BackupFrom = st.Last, "streamed to "+st.URL
+			if json.Unmarshal([]byte(v), &st) == nil {
+				in.Shipped = st.Last
+				if st.Last.After(in.LastBackup) {
+					in.LastBackup, in.BackupFrom = st.Last, "streamed to "+st.URL
+				}
 			}
 		case "copy":
 			secs, path, _ := strings.Cut(v, " ")

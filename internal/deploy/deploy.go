@@ -189,7 +189,13 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 	}
 	res.Record = rec
 	if o.Decl.Backup == nil && t != nil {
-		fmt.Fprintln(w, "warning: no `backup` in the declaration: only the pre-migration copies (builds/<id>/backup.db) exist")
+		streams := false
+		if sc, ok := t.(StreamChecker); ok {
+			streams, _ = sc.StreamsBackup(ctx)
+		}
+		if !streams {
+			fmt.Fprintln(w, "warning: no `backup` in the declaration: only the pre-migration copies (builds/<id>/backup.db) exist")
+		}
 	}
 	if o.Decl.Backup != nil && strings.HasPrefix(o.Decl.Backup.URL, "s3://") {
 		for _, n := range []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"} {
@@ -752,9 +758,15 @@ func Status(ctx context.Context, t Target, w io.Writer) error {
 	} else {
 		fmt.Fprintln(w, "database none yet")
 	}
-	if info.LastBackup.IsZero() {
+	switch {
+	case info.StreamTo != "" && info.Shipped.IsZero():
+		fmt.Fprintf(w, "backup   never shipped to %s: the app ships within ALDER_BACKUP_INTERVAL (10s) of starting, and its log says why not (`alder logs`)\n", info.StreamTo)
+		if !info.LastBackup.IsZero() {
+			fmt.Fprintf(w, "         the newest pre-migration copy: %s (%s)\n", info.LastBackup.UTC().Format(time.RFC3339), info.BackupFrom)
+		}
+	case info.LastBackup.IsZero():
 		fmt.Fprintln(w, "backup   none yet")
-	} else {
+	default:
 		fmt.Fprintf(w, "backup   %s (%s)\n", info.LastBackup.UTC().Format(time.RFC3339), info.BackupFrom)
 	}
 	return nil

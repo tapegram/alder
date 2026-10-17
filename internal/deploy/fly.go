@@ -971,7 +971,7 @@ exit 0
 	if err != nil {
 		return Info{}, err
 	}
-	var in Info
+	in := Info{StreamTo: f.BackupURL}
 	for _, l := range strings.Split(out, "\n") {
 		k, v, _ := strings.Cut(l, "=")
 		switch k {
@@ -983,8 +983,11 @@ exit 0
 				Last time.Time `json:"last"`
 				URL  string    `json:"url"`
 			}
-			if json.Unmarshal([]byte(v), &st) == nil && st.Last.After(in.LastBackup) {
-				in.LastBackup, in.BackupFrom = st.Last, "streamed to "+st.URL
+			if json.Unmarshal([]byte(v), &st) == nil {
+				in.Shipped = st.Last
+				if st.Last.After(in.LastBackup) {
+					in.LastBackup, in.BackupFrom = st.Last, "streamed to "+st.URL
+				}
 			}
 		case "copy":
 			secs, path, _ := strings.Cut(v, " ")

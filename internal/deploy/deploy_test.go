@@ -524,3 +524,33 @@ func TestDeploy_DropsDataFailedRestores(t *testing.T) {
 		t.Errorf("no dropped data: %v %v", err, f.calls)
 	}
 }
+
+// infoTarget is a fake target with a database and backup state.
+type infoTarget struct {
+	fakeTarget
+	info Info
+}
+
+func (i *infoTarget) Info(context.Context) (Info, error) { return i.info, nil }
+
+// I1: status says when the streamed backup has never shipped, with the newest copy beside it.
+func TestStatus_NeverShipped(t *testing.T) {
+	copyAt := time.Date(2026, 10, 17, 10, 0, 0, 0, time.UTC)
+	for _, c := range []struct {
+		info Info
+		want string
+	}{
+		{Info{StreamTo: "s3://b/demo", LastBackup: copyAt, BackupFrom: "builds/1111111111111111/backup.db"},
+			"backup   never shipped to s3://b/demo: the app ships within ALDER_BACKUP_INTERVAL (10s) of starting, and its log says why not (`alder logs`)\n         the newest pre-migration copy: 2026-10-17T10:00:00Z (builds/1111111111111111/backup.db)\n"},
+		{Info{StreamTo: "s3://b/demo", Shipped: copyAt, LastBackup: copyAt, BackupFrom: "streamed to s3://b/demo"}, "backup   2026-10-17T10:00:00Z (streamed to s3://b/demo)\n"},
+		{Info{}, "backup   none yet\n"},
+	} {
+		var out bytes.Buffer
+		if err := Status(context.Background(), &infoTarget{info: c.info}, &out); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasSuffix(out.String(), c.want) {
+			t.Errorf("status:\n%s\nwant the end\n%s", out.String(), c.want)
+		}
+	}
+}

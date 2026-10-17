@@ -271,3 +271,66 @@ func TestSnapshot(t *testing.T) {
 		t.Errorf("a missing database: %v", err)
 	}
 }
+
+// A database larger than the queue's cap is shipped (the Task 2 final review): the
+// generation's snapshot does not count against the cap, which bounds the WAL segments waiting
+// while uploads fail. Scaled: a ~1 MB database against a 100 kB cap, as a 300 MB database is to
+// the default 256 MB. Past the cap, WAL segments still drop the queue (a new generation, whole).
+func TestShip_SnapshotLargerThanQueueCap(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "app.db")
+	d := appDB(t, path)
+	insert(t, d, 0, 4000) // ~1 MB
+	c := &clock{time.Date(2026, 10, 17, 10, 0, 0, 0, time.UTC)}
+	down, puts := false, 0
+	inner := dirBucket{filepath.Join(dir, "bucket")}
+	s := newShipper(t, path, failBucket{inner, &down, &puts}, c)
+	s.maxQueue = 100 << 10
+	for i := 0; i < 3; i++ {
+		c.t = c.t.Add(10 * time.Second)
+		insert(t, d, 4000+i, 4001+i)
+		if err := s.Sync(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if snaps := snapshots(t, inner); len(snaps) != 1 {
+		t.Fatalf("snapshots in the bucket: %v (a database larger than the cap was never shipped)", snaps)
+	}
+	if _, err := RestoreFrom(ctx, inner, time.Time{}, filepath.Join(dir, "r.db")); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(t, filepath.Join(dir, "r.db")); got != 4003 {
+		t.Errorf("restored %d notes, want 4003", got)
+	}
+	// the bucket fails: a large snapshot of a new generation stays queued, WAL past the cap drops it
+	down = true
+	gen := s.gen
+	s.fresh = true
+	c.t = c.t.Add(10 * time.Second)
+	s.Sync(ctx)
+	if s.gen == gen || s.walBytes > s.maxQueue || s.queued < 500<<10 {
+		t.Fatalf("a new generation's snapshot should wait in the queue: gen %s, wal %d, queued %d", s.gen, s.walBytes, s.queued)
+	}
+	for i := 0; i < 20 && s.queued > 0; i++ {
+		c.t = c.t.Add(10 * time.Minute)
+		insert(t, d, 5000+i*200, 5200+i*200) // ~50 kB of WAL a tick
+		s.Sync(ctx)
+	}
+	if s.queued != 0 || !s.fresh {
+		t.Errorf("WAL past the cap did not drop the queue: queued %d, fresh %v", s.queued, s.fresh)
+	}
+	down = false
+	c.t = c.t.Add(10 * time.Minute)
+	if err := s.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RestoreFrom(ctx, inner, time.Time{}, filepath.Join(dir, "r2.db")); err != nil {
+		t.Fatal(err)
+	}
+	var want int
+	d.QueryRow(`SELECT count(*) FROM "Note"`).Scan(&want)
+	if got := count(t, filepath.Join(dir, "r2.db")); got != want {
+		t.Errorf("restored %d notes after the bucket came back, want %d", got, want)
+	}
+}
