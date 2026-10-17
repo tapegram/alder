@@ -1031,8 +1031,12 @@ const restoreChunk = 48 << 10
 // Restore sends the local database file db to the volume as db/app.db.restore (in base64
 // pieces through exec) and restarts the machine: the start script moves the old database aside
 // (app.db.before-restore-<time>) and puts the restored one in place before serving; the build
-// is then health checked.
-func (f *Fly) Restore(ctx context.Context, db string) error {
+// is then health checked. The kept name's time is the machine's restart's.
+func (f *Fly) Restore(ctx context.Context, db string) (string, error) {
+	return "db/app.db.before-restore-<time>", f.restore(ctx, db)
+}
+
+func (f *Fly) restore(ctx context.Context, db string) error {
 	if _, err := f.Connect(ctx); err != nil {
 		return err
 	}
@@ -1063,7 +1067,7 @@ func (f *Fly) Restore(ctx context.Context, db string) error {
 	if strings.TrimSpace(out) != strconv.Itoa(len(b)) {
 		return fmt.Errorf("the database arrived with %s bytes of %d: nothing was replaced", strings.TrimSpace(out), len(b))
 	}
-	if _, err := f.exec(ctx, `mv "$R/db/app.db.part" "$R/db/app.db.restore"`); err != nil {
+	if _, err := f.exec(ctx, `chmod 600 "$R/db/app.db.part" && mv "$R/db/app.db.part" "$R/db/app.db.restore"`); err != nil {
 		return err
 	}
 	id := f.machine.build()

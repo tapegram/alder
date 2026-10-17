@@ -97,10 +97,10 @@ func (f *fakeTarget) Prune(context.Context, int, []string) ([]string, error) {
 	f.call("prune")
 	return nil, nil
 }
-func (f *fakeTarget) Info(context.Context) (Info, error)          { return Info{}, nil }
-func (f *fakeTarget) Logs(context.Context, bool, io.Writer) error { return nil }
-func (f *fakeTarget) Restore(context.Context, string) error       { return nil }
-func (f *fakeTarget) Close() error                                { return nil }
+func (f *fakeTarget) Info(context.Context) (Info, error)              { return Info{}, nil }
+func (f *fakeTarget) Logs(context.Context, bool, io.Writer) error     { return nil }
+func (f *fakeTarget) Restore(context.Context, string) (string, error) { return "", nil }
+func (f *fakeTarget) Close() error                                    { return nil }
 func (f *fakeTarget) shipped() bool {
 	for _, c := range f.calls {
 		if c == "upload" {
@@ -423,32 +423,51 @@ func TestDeploy_LockAndPreflight(t *testing.T) {
 	}
 }
 
-// restoringTarget is a fake target that can put back a pre-migration copy.
-type restoringTarget struct{ fakeTarget }
+// restoringTarget is a fake target that can put back a pre-migration copy; failNew makes every
+// build but the current one fail its health check.
+type restoringTarget struct {
+	fakeTarget
+	failNew bool
+}
 
-func (r *restoringTarget) RestoreBackup(_ context.Context, to string, _ []Build) (string, time.Time, func(context.Context) error, error) {
-	r.call("restore-backup " + to)
-	return "builds/2222222222222222/backup.db", time.Unix(0, 0), func(context.Context) error { r.call("undo"); return nil }, nil
+func (r *restoringTarget) RestoreBackup(_ context.Context, to, src string) (Restored, error) {
+	r.call("restore-backup " + to + " from " + src)
+	return Restored{From: "builds/" + src + "/backup.db", Taken: time.Unix(0, 0), Kept: "db/app.db.before-rollback-T",
+		Undo: func(context.Context) error { r.call("undo"); return nil }}, nil
+}
+
+func (r *restoringTarget) Health(ctx context.Context, id string, port int, d time.Duration) error {
+	if r.failNew && id != r.current {
+		r.call("health")
+		return errors.New("build " + id + " exited before answering")
+	}
+	return r.fakeTarget.Health(ctx, id, port, d)
 }
 
 // I1: --restore-backup skips the schema check, puts the copy back, starts and switches; a
-// build that fails on it brings the kept database and the previous build back.
+// build that fails on it brings the kept database and the previous build back. I5: it asks
+// first (a no is ErrNotConfirmed, nothing changed).
 func TestRollback_RestoreBackup(t *testing.T) {
 	now := time.Now()
 	mk := func(health error) *restoringTarget {
-		return &restoringTarget{fakeTarget{live: []byte(`{"tables":[]}`), current: "2222222222222222", health: health,
+		return &restoringTarget{fakeTarget: fakeTarget{live: []byte(`{"tables":[]}`), current: "2222222222222222", health: health,
 			builds: []Build{{ID: "2222222222222222", Record: &Record{Previous: "1111111111111111", When: &now}, BackupOf: "1111111111111111"},
 				{ID: "1111111111111111", Record: &Record{When: &now}}}}}
 	}
 	var out bytes.Buffer
 	f := mk(nil)
-	if to, err := Rollback(context.Background(), f, RollbackOptions{Out: &out, Drain: -1, RestoreBackup: true}); err != nil || to != "1111111111111111" {
+	asked := ""
+	o := RollbackOptions{Out: &out, Drain: -1, RestoreBackup: true, Confirm: func(q string) bool { asked = q; return true }}
+	if to, err := Rollback(context.Background(), f, o); err != nil || to != "1111111111111111" {
 		t.Fatalf("%s %v", to, err)
 	}
-	if got := strings.Join(f.calls, "|"); got != "connect|restore-backup 1111111111111111|start 1111111111111111|health|switch 1111111111111111|record" {
+	if got := strings.Join(f.calls, "|"); got != "connect|restore-backup 1111111111111111 from 2222222222222222|start 1111111111111111|health|switch 1111111111111111|record" {
 		t.Errorf("calls %s", got)
 	}
-	if !strings.Contains(out.String(), "warning: --restore-backup: the database is now builds/2222222222222222/backup.db") || !f.records["1111111111111111"].RolledBack {
+	if !strings.Contains(asked, "put back builds/2222222222222222/backup.db, the database as it was when build 1111111111111111 was replaced, and lose every write since") {
+		t.Errorf("asked %q", asked)
+	}
+	if !strings.Contains(out.String(), "warning: --restore-backup: the database is now builds/2222222222222222/backup.db") || !strings.Contains(out.String(), "kept as db/app.db.before-rollback-T") || !f.records["1111111111111111"].RolledBack {
 		t.Errorf("output:\n%s\nrecord %+v", out.String(), f.records)
 	}
 	f = mk(errors.New("no answer"))
@@ -456,7 +475,52 @@ func TestRollback_RestoreBackup(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "the previous database is back and build 2222222222222222 serves again") {
 		t.Fatalf("err = %v", err)
 	}
-	if got := strings.Join(f.calls, "|"); got != "connect|restore-backup 1111111111111111|start 1111111111111111|health|stop 1111111111111111 0s|undo|start 2222222222222222|switch 2222222222222222" {
+	if got := strings.Join(f.calls, "|"); got != "connect|restore-backup 1111111111111111 from 2222222222222222|start 1111111111111111|health|stop 1111111111111111 0s|undo|start 2222222222222222|switch 2222222222222222" {
 		t.Errorf("calls %s", got)
+	}
+	// not confirmed: nothing restored
+	f = mk(nil)
+	_, err = Rollback(context.Background(), f, RollbackOptions{Out: &out, Drain: -1, RestoreBackup: true, Confirm: func(string) bool { return false }})
+	if !errors.Is(err, ErrNotConfirmed) || strings.Contains(strings.Join(f.calls, "|"), "restore-backup") {
+		t.Errorf("not confirmed: %v %v", err, f.calls)
+	}
+	// I5: the plain rollback's schema refusal names --restore-backup when a copy exists
+	f = mk(nil)
+	f.live = []byte(`{"tables":[{"name":"Post.Post","id":"id","columns":[{"name":"id","type":"text"}]}]}`)
+	f.schemas = map[string][]byte{"1111111111111111": []byte(`{"tables":[]}`)}
+	_, err = Rollback(context.Background(), f, RollbackOptions{Out: &out, Drain: -1, Env: "production"})
+	if err == nil || !strings.Contains(err.Error(), "or `alder rollback production 1111111111111111 --restore-backup` puts back the copy of the data taken when that build was replaced (builds/2222222222222222/backup.db), losing every write since") {
+		t.Errorf("the schema refusal: %v", err)
+	}
+}
+
+// I8: a deploy whose migrations dropped data (--allow-data-loss) and whose build then fails its
+// health check puts this run's pre-migration copy back at once and starts the previous build
+// on it; the refusal says so and names the kept database.
+func TestDeploy_DropsDataFailedRestores(t *testing.T) {
+	dir, live := appWithDrop(t)
+	var out bytes.Buffer
+	f := &restoringTarget{fakeTarget: fakeTarget{live: live, current: "1111111111111111"}, failNew: true}
+	o := options(t, dir, &out)
+	o.AllowDataLoss = true
+	res, err := Deploy(context.Background(), o, GateResult{Check: "ok"}, f, nil)
+	id := res.Record.Build
+	if err == nil || !strings.Contains(err.Error(), "refused: build "+id+" did not pass its health check after its migrations dropped data (0002_drop_summary): the database copied before them (builds/"+id+"/backup.db) was put back automatically and build 1111111111111111 serves again on it; the migrated database is kept as db/app.db.before-rollback-T") {
+		t.Fatalf("err = %v\n%s", err, out.String())
+	}
+	want := "start " + id + "|health|stop " + id + " 0s|restore-backup 1111111111111111 from " + id + "|start 1111111111111111|health|switch 1111111111111111"
+	if got := strings.Join(f.calls, "|"); !strings.HasSuffix(got, want) {
+		t.Errorf("calls %s", got)
+	}
+	// without dropped data: the refusal names the command, nothing is restored
+	dir2, live2 := appWithDrop(t)
+	os.Remove(filepath.Join(dir2, "migrations", "0002_drop_summary.sql"))
+	s1, _ := schemas()
+	migrate.WriteSnapshot(filepath.Join(dir2, "migrations", "schema.json"), s1)
+	_ = live2
+	f = &restoringTarget{fakeTarget: fakeTarget{live: []byte(`{"tables":[]}`), current: "1111111111111111"}, failNew: true}
+	res, err = Deploy(context.Background(), options(t, dir2, &out), GateResult{Check: "ok"}, f, nil)
+	if err == nil || !strings.Contains(err.Error(), "To go back: `alder rollback production 1111111111111111 --restore-backup`") || strings.Contains(strings.Join(f.calls, "|"), "restore-backup") {
+		t.Errorf("no dropped data: %v %v", err, f.calls)
 	}
 }

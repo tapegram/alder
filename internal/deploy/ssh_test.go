@@ -65,7 +65,7 @@ func TestCaddyRoute(t *testing.T) {
 	if string(b) != `[{"host":["blog.example.com"]}]` || string(h) != `[{"handler":"reverse_proxy","upstreams":[{"dial":"127.0.0.1:41233"}]}]` {
 		t.Errorf("match %s handle %s", b, h)
 	}
-	sc := caddyRoute("alder-blog-production", "blog.example.com", 41233)
+	sc := caddyRoute(DefaultCaddyAdmin, "alder-blog-production", "blog.example.com", 41233)
 	for _, want := range []string{`put PATCH "$ROUTE" "/id/$ID"`, `/config/apps/http/servers/alder/routes`, `"listen":[":443"]`, "/load"} {
 		if !strings.Contains(sc, want) {
 			t.Errorf("the route script lacks %q", want)
@@ -82,7 +82,7 @@ func TestScriptsParse(t *testing.T) {
 		s := NewSsh("blog", "production", ir.Target{Host: "deploy@box", Path: "/srv/blog"}, &ir.Deploy{})
 		s.sup = sup
 		for name, sc := range map[string]string{
-			"prelude": s.prelude(), "stop": s.prelude() + "stopnow x\ncancel_later x\n", "ensure": caddyEnsure, "run": s.runScript("0123456789abcdef"),
+			"prelude": s.prelude(), "stop": s.prelude() + "stopnow x\ncancel_later x\n", "ensure": caddyEnsure(DefaultCaddyAdmin), "run": s.runScript("0123456789abcdef"),
 		} {
 			if out, err := exec.Command("sh", "-n", "-c", sc).CombinedOutput(); err != nil {
 				t.Errorf("%s/%s: %v %s", sup, name, err, out)

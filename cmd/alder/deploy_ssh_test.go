@@ -49,10 +49,13 @@ func (b *sshBox) qr() string { return fmt.Sprintf("%q", b.root) }
 
 // sshBox is a running box: ssh reaches it as host with the ssh_config config; root is a
 // directory there for the target's <path>; port is the public port its `proxy: None` app
-// listens on.
+// listens on. A container box also names its container and the port of this machine its
+// port 18443 (the fake Caddy's public listener: deploy_caddy_test.go) is published on.
 type sshBox struct {
 	config, host, root string
 	port               int
+	container          string
+	caddyPort          int
 }
 
 // sh runs the shell command cmd at the box and returns its output.
@@ -73,6 +76,23 @@ func (b *sshBox) write(t *testing.T, rel, content string) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("writing %s: %v %s", rel, err, out)
 	}
+}
+
+// post posts an entry to the scaffold's form at the box's public port (curl at the box).
+func (b *sshBox) post(t *testing.T, name string) {
+	t.Helper()
+	b.sh(t, fmt.Sprintf("curl -s -o /dev/null -X POST -H 'Origin: http://127.0.0.1:%d' -d 'name=%s&message=hello' http://127.0.0.1:%d/_m/Home/Submit", b.port, name, b.port))
+}
+
+// names is the entries the page at the box's public port lists, newest first.
+func (b *sshBox) names(t *testing.T) string {
+	t.Helper()
+	page := b.sh(t, fmt.Sprintf("curl -sL http://127.0.0.1:%d/", b.port))
+	var got []string
+	for _, m := range regexp.MustCompile(`<li><b>([^<]*)</b>`).FindAllStringSubmatch(page, -1) {
+		got = append(got, m[1])
+	}
+	return strings.Join(got, ",")
 }
 
 // serving is the build id in the page the box's public port serves ("" when nothing answers).
@@ -258,7 +278,7 @@ func containerBox(t *testing.T) *sshBox {
 	if out, err := exec.Command("docker", "build", "-q", "-t", image, "testdata/deploy").CombinedOutput(); err != nil {
 		t.Fatalf("docker build: %v\n%s", err, out)
 	}
-	out, err := exec.Command("docker", "run", "-d", "--rm", "-p", "127.0.0.1::22", image).Output()
+	out, err := exec.Command("docker", "run", "-d", "--rm", "-p", "127.0.0.1::22", "-p", "127.0.0.1::18443", image).Output()
 	if err != nil {
 		t.Fatalf("docker run: %v", err)
 	}
@@ -268,10 +288,21 @@ func containerBox(t *testing.T) *sshBox {
 	if err != nil {
 		t.Fatalf("docker port: %v", err)
 	}
-	var port int
-	if _, err := fmt.Sscanf(strings.Fields(string(out))[0][strings.LastIndex(strings.Fields(string(out))[0], ":")+1:], "%d", &port); err != nil {
-		t.Fatalf("docker port printed %q", out)
+	hostPort := func(out []byte) int {
+		var port int
+		if f := strings.Fields(string(out)); len(f) == 0 {
+			t.Fatalf("docker port printed %q", out)
+		} else if _, err := fmt.Sscanf(f[0][strings.LastIndex(f[0], ":")+1:], "%d", &port); err != nil {
+			t.Fatalf("docker port printed %q", out)
+		}
+		return port
 	}
+	port := hostPort(out)
+	out, err = exec.Command("docker", "port", id, "18443").Output()
+	if err != nil {
+		t.Fatalf("docker port: %v", err)
+	}
+	caddyPort := hostPort(out)
 	dir := t.TempDir()
 	key := clientKey(t, dir, "client_key")
 	pub, _ := os.ReadFile(key + ".pub")
@@ -282,7 +313,7 @@ func containerBox(t *testing.T) *sshBox {
 	}
 	cfg := writeSSHConfig(t, dir, port, "deploy", key)
 	waitSSH(t, cfg, func() string { out, _ := exec.Command("docker", "logs", id).CombinedOutput(); return string(out) })
-	return &sshBox{config: cfg, host: "alder-test-box", root: "/srv/alder-test", port: 18080}
+	return &sshBox{config: cfg, host: "alder-test-box", root: "/srv/alder-test", port: 18080, container: id, caddyPort: caddyPort}
 }
 
 func lastLine(s string) string {
@@ -803,7 +834,7 @@ func TestDeploySsh_RestoreBackup(t *testing.T) {
 		t.Fatalf("I2: %d\n%s%s", code, out, errs)
 	}
 	var so, se bytes.Buffer
-	if code := runRollbackTo([]string{"production", id2, "--dir", dir, "--restore-backup"}, &so, &se); code != 0 || !strings.Contains(so.String(), "warning: --restore-backup: the database is now builds/"+m[1]+"/backup.db") {
+	if code := runRollbackTo([]string{"production", id2, "--dir", dir, "--restore-backup", "--yes"}, &so, &se); code != 0 || !strings.Contains(so.String(), "warning: --restore-backup: the database is now builds/"+m[1]+"/backup.db") {
 		t.Fatalf("rollback %s --restore-backup: %d\n%s%s", id2, code, so.String(), se.String())
 	}
 	if got, serving := names(), box.serving(t); got != "Grace,Ada" || serving != id2 {
@@ -812,7 +843,7 @@ func TestDeploySsh_RestoreBackup(t *testing.T) {
 	// across the migration to the first build: its data from before the migration
 	so.Reset()
 	se.Reset()
-	if code := runRollbackTo([]string{"production", id1, "--dir", dir, "--restore-backup"}, &so, &se); code != 0 {
+	if code := runRollbackTo([]string{"production", id1, "--dir", dir, "--restore-backup", "--yes"}, &so, &se); code != 0 {
 		t.Fatalf("rollback %s --restore-backup: %d\n%s%s", id1, code, so.String(), se.String())
 	}
 	if got, serving := names(), box.serving(t); got != "Ada" || serving != id1 {
@@ -824,5 +855,52 @@ func TestDeploySsh_RestoreBackup(t *testing.T) {
 	var rec deploy.Record
 	if err := json.Unmarshal([]byte(box.sh(t, fmt.Sprintf("cat %s/builds/%s/deployed.json", box.qr(), id1))), &rec); err != nil || !rec.RolledBack || rec.Previous != id2 || !strings.HasSuffix(rec.RestoredFrom, "/backup.db") {
 		t.Errorf("deployed.json after the rollback: %+v %v", rec, err)
+	}
+}
+
+// I8: a deploy whose migration drops data (--allow-data-loss) and whose build then fails its
+// health check: the previous build is already running on a database its tables no longer
+// match, so the deploy puts this run's pre-migration copy back at once and starts the previous
+// build on it. The site serves the old build, with the dropped column back, and takes writes.
+func TestDeploySsh_DropsDataAutoRestore(t *testing.T) {
+	box := startBox(t)
+	dir := sshScaffold(t, box)
+	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %s/env", strings.Repeat("s", 32), box.qr()))
+	code, out, errs := runDeploy(t, "production", dir)
+	if code != 0 {
+		t.Fatalf("deploy: %d\n%s%s", code, out, errs)
+	}
+	box.post(t, "Ada")
+	migrateDemo(t, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
+	if code, out, errs = runDeploy(t, "production", dir); code != 0 {
+		t.Fatalf("second deploy: %d\n%s%s", code, out, errs)
+	}
+	id2 := deployedID(t, out)
+	box.post(t, "Grace")
+	// drop the column, and a build that exits at start
+	migrateDemo(t, "  mood: Maybe Text = Nothing,\n", "", "drop_mood")
+	writeFile(t, "demo/app/Clock.alder", "module Clock\n\ncapability Clock {\n  now : Task Int,\n}\n")
+	writeFile(t, "demo/adapters/clock/clock.go", "package clock\n\nimport (\n\t\"context\"\n\t\"os\"\n\n\t\"app\"\n)\n\nfunc Clock() app.Cap__Clock__Clock {\n\tif os.Getenv(\"ALDER_DB\") != \"\" {\n\t\tos.Exit(1)\n\t}\n\treturn clock{}\n}\n\ntype clock struct{}\n\nfunc (clock) Now(context.Context) (int64, error) { return 0, nil }\n")
+	code, out, errs = runDeploy(t, "production", dir, "--allow-data-loss", "--unsafe-skip-tests")
+	m := regexp.MustCompile(`builds/([0-9a-f]{16})/ is kept for inspection`).FindStringSubmatch(errs)
+	if code != 1 || m == nil || !strings.Contains(errs, "did not pass its health check after its migrations dropped data (0003_drop_mood): the database copied before them (builds/"+m[1]+"/backup.db) was put back automatically and build "+id2+" serves again on it; the migrated database is kept as db/app.db.before-rollback-") {
+		t.Fatalf("I8: %d\n%s%s", code, out, errs)
+	}
+	if !strings.Contains(out, "  restore  ok  builds/"+m[1]+"/backup.db (the database it replaced is kept as db/app.db.before-rollback-") || !strings.Contains(out, "  switch   ok  current → "+id2) {
+		t.Errorf("I8 output:\n%s", out)
+	}
+	if got := box.serving(t); got != id2 {
+		t.Errorf("after the automatic restore the box serves %q, want %s", got, id2)
+	}
+	box.post(t, "Ken")
+	if got := box.names(t); got != "Ken,Grace,Ada" {
+		t.Errorf("after the automatic restore: %q", got)
+	}
+	if got := dbNames(t, box); got != "Ada,Grace,Ken" {
+		t.Errorf("app.db holds %q", got)
+	}
+	ddl := box.sh(t, fmt.Sprintf("cat %s/db/schema.json", box.qr()))
+	if !strings.Contains(ddl, `"mood"`) {
+		t.Errorf("db/schema.json is not build %s's again:\n%s", id2, ddl)
 	}
 }

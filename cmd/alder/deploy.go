@@ -29,7 +29,7 @@ import (
 const (
 	deployUsage   = "usage: alder deploy <env> [dir] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json]"
 	statusUsage   = "usage: alder status <env> [dir] [--host name]"
-	rollbackUsage = "usage: alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup]"
+	rollbackUsage = "usage: alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup [--yes]]"
 	logsUsage     = "usage: alder logs <env> [dir] [--host name] [-f]"
 	restoreUsage  = "usage: alder restore <env> [--from url] [--to time] [--out file.db] [--dir dir] [--yes]"
 )
@@ -494,12 +494,15 @@ func runStatusTo(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// runRollbackTo is `alder rollback <env> [<build id>] [--dir dir] [--allow-schema-mismatch]`:
-// makes an earlier build current (deploy.Rollback; by default the build that served before).
-// Exit 0, 1 for a refusal or an unreachable target, 2 for usage errors and a Script environment.
+// runRollbackTo is `alder rollback <env> [<build id>] [--dir dir] [--allow-schema-mismatch |
+// --restore-backup [--yes]]`: makes an earlier build current (deploy.Rollback; by default the
+// build that served before). --restore-backup also puts back the copy of the database taken
+// when that build was replaced, after asking on the terminal (--yes answers without one).
+// Exit 0, 1 for a refusal or an unreachable target, 2 for usage errors, a Script environment
+// and a restore not confirmed.
 func runRollbackTo(args []string, stdout, stderr io.Writer) int {
 	var pos []string
-	dir, o, host := ".", deploy.RollbackOptions{Out: stdout}, ""
+	dir, o, host, yes := ".", deploy.RollbackOptions{Out: stdout}, "", false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if h, ok := hostFlag(args, &i); ok {
@@ -511,6 +514,8 @@ func runRollbackTo(args []string, stdout, stderr io.Writer) int {
 			o.AllowSchemaMismatch = true
 		case a == "--restore-backup":
 			o.RestoreBackup = true
+		case a == "--yes":
+			yes = true
 		case a == "--dir" && i+1 < len(args):
 			i++
 			dir = args[i]
@@ -530,6 +535,14 @@ func runRollbackTo(args []string, stdout, stderr io.Writer) int {
 	if len(pos) == 2 {
 		o.To = pos[1]
 	}
+	if o.RestoreBackup && o.AllowSchemaMismatch {
+		fmt.Fprintln(stderr, rollbackUsage)
+		return 2
+	}
+	o.Env = pos[0]
+	if !yes {
+		o.Confirm = func(q string) bool { return confirm(q, stdout) }
+	}
 	t, _, err := envTarget("rollback", pos[0], dir, host)
 	if err != nil {
 		fmt.Fprintf(stderr, "alder rollback: %v\n", err)
@@ -545,6 +558,9 @@ func runRollbackTo(args []string, stdout, stderr io.Writer) int {
 	defer stop()
 	if _, err := deploy.Rollback(ctx, t, o); err != nil {
 		fmt.Fprintf(stderr, "alder rollback: %v\n", err)
+		if errors.Is(err, deploy.ErrNotConfirmed) {
+			return 2
+		}
 		return 1
 	}
 	return 0
@@ -721,10 +737,11 @@ func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 		}
 		defer unlock()
 	}
-	if err := t.Restore(ctx, file); err != nil {
+	kept, err := t.Restore(ctx, file)
+	if err != nil {
 		return fail(1, "%v", err)
 	}
-	fmt.Fprintf(stdout, "replaced the database at %s (the previous one is kept beside it as app.db.before-restore-<time>)\n", t.Describe())
+	fmt.Fprintf(stdout, "replaced the database at %s (the previous one is kept beside it as %s)\n", t.Describe(), kept)
 	return 0
 }
 
@@ -740,10 +757,14 @@ func parseRestoreTime(s string) (time.Time, error) {
 }
 
 // confirm asks question on stdout and reads the answer from the terminal: true for "yes". Without
-// a terminal on standard input it is false.
+// a terminal on standard input it is false (a pipe, a file, and /dev/null, which is a character
+// device but no terminal).
 func confirm(question string, stdout io.Writer) bool {
 	fi, err := os.Stdin.Stat()
 	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	if null, err := os.Stat(os.DevNull); err == nil && os.SameFile(fi, null) {
 		return false
 	}
 	fmt.Fprint(stdout, question)

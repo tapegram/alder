@@ -416,7 +416,7 @@ func TestFly_DeployLifecycle(t *testing.T) {
 	// restore: the start script puts the file in place, the old one beside it
 	local := filepath.Join(t.TempDir(), "restored.db")
 	os.WriteFile(local, bytes.Repeat([]byte("r"), restoreChunk*2+10), 0o600)
-	if err := ff.target(env).Restore(ctx, local); err != nil {
+	if _, err := ff.target(env).Restore(ctx, local); err != nil {
 		t.Fatal(err)
 	}
 	if got := readFile(t, filepath.Join(ff.data, "db", "app.db")); len(got) != restoreChunk*2+10 {

@@ -29,6 +29,13 @@ const EnvSSHConfig = "ALDER_SSH_CONFIG"
 // pid file) even where systemd is present. Without it, systemd is used when it runs on the host.
 const EnvSupervisor = "ALDER_DEPLOY_SUPERVISOR"
 
+// EnvCaddyAdmin is the address of Caddy's admin API at the box (default DefaultCaddyAdmin):
+// for a Caddy that listens elsewhere, and for the tests' fake Caddy.
+const EnvCaddyAdmin = "ALDER_DEPLOY_CADDY_ADMIN"
+
+// DefaultCaddyAdmin is where Caddy's admin API listens unless configured otherwise.
+const DefaultCaddyAdmin = "127.0.0.1:2019"
+
 // DefaultPublicPort is the port the app listens on with `proxy: None` when <path>/port does not
 // say another.
 const DefaultPublicPort = 8080
@@ -59,6 +66,9 @@ type Ssh struct {
 	Proxy     string // "Caddy" or "None"
 	BackupURL string
 	Warn      io.Writer // warnings (the environment file's mode, linger)
+	// CaddyAdmin is the host:port of Caddy's admin API at the box (EnvCaddyAdmin, else
+	// DefaultCaddyAdmin).
+	CaddyAdmin string
 
 	user string // the remote user, from Connect
 	host string
@@ -84,7 +94,10 @@ func NewSsh(app, env string, t ir.Target, d *ir.Deploy) *Ssh {
 		}
 		dest = t.User + "@" + dest
 	}
-	s := &Ssh{App: app, Env: env, Dest: dest, Port: t.Port, Root: strings.TrimRight(t.Path, "/"), Domain: t.Domain, Proxy: d.Proxy, Warn: io.Discard}
+	s := &Ssh{App: app, Env: env, Dest: dest, Port: t.Port, Root: strings.TrimRight(t.Path, "/"), Domain: t.Domain, Proxy: d.Proxy, Warn: io.Discard, CaddyAdmin: DefaultCaddyAdmin}
+	if a := os.Getenv(EnvCaddyAdmin); a != "" {
+		s.CaddyAdmin = a
+	}
 	if s.Proxy == "" {
 		s.Proxy = "Caddy"
 	}
@@ -794,7 +807,7 @@ func (s *Ssh) caddy(ctx context.Context, port int) error {
 	if err := s.ensureCaddy(ctx); err != nil {
 		return err
 	}
-	_, err := s.run(ctx, caddyRoute(s.unit(), s.Domain, port))
+	_, err := s.run(ctx, caddyRoute(s.admin(), s.unit(), s.Domain, port))
 	return err
 }
 
@@ -804,7 +817,7 @@ func (s *Ssh) ensureCaddy(ctx context.Context) error {
 	if s.caddyDone {
 		return nil
 	}
-	out, err := s.run(ctx, caddyEnsure)
+	out, err := s.run(ctx, caddyEnsure(s.admin()))
 	if err != nil {
 		return err
 	}
@@ -815,7 +828,7 @@ func (s *Ssh) ensureCaddy(ctx context.Context) error {
 	case strings.Contains(out, "aptfailed"):
 		return refuse("", "installing Caddy with apt on %s failed: install it by hand (https://caddyserver.com/docs/install; apt needs root or passwordless sudo), or write `proxy: None`", s.Dest)
 	case strings.Contains(out, "noadmin"):
-		return refuse("", "Caddy on %s does not answer on its admin API (127.0.0.1:2019): start it (`systemctl start caddy`) and deploy again", s.Dest)
+		return refuse("", "Caddy on %s does not answer on its admin API (%s): start it (`systemctl start caddy`) and deploy again", s.Dest, s.admin())
 	}
 	s.caddyDone = true
 	return nil
@@ -836,8 +849,26 @@ func (s *Ssh) Preflight(ctx context.Context) error {
 	return nil
 }
 
-// caddyEnsure installs Caddy when absent (Debian and Ubuntu) and waits for its admin API.
-const caddyEnsure = `SUDO=""; [ "$(id -u)" = 0 ] || SUDO="sudo -n"
+// admin is the admin API's host:port.
+func (s *Ssh) admin() string {
+	if s.CaddyAdmin == "" {
+		return DefaultCaddyAdmin
+	}
+	return s.CaddyAdmin
+}
+
+// caddyEnsure is the script that installs Caddy when absent (Debian and Ubuntu) and waits for
+// its admin API at admin. A Caddy whose admin API already answers is used as it is.
+//
+// Three things about a Caddy alder did not install (chapter 16, "Caddy"): the routes alder
+// sets through the admin API live in Caddy's running configuration, so a Caddy restarted from
+// its Caddyfile without --resume (the drop-in below is written only when alder installs
+// Caddy) forgets them until the next deploy; a server of its own on :443 conflicts with the
+// server "alder" at the first switch; and the admin API answers every local user of the box.
+func caddyEnsure(admin string) string {
+	return `A=` + q("http://"+admin) + `
+if curl -s -o /dev/null "$A/config/"; then echo ready=yes; exit 0; fi
+SUDO=""; [ "$(id -u)" = 0 ] || SUDO="sudo -n"
 if ! command -v caddy >/dev/null 2>&1; then
   ID=""; ID_LIKE=""; [ -r /etc/os-release ] && . /etc/os-release
   case " $ID $ID_LIKE " in
@@ -854,19 +885,20 @@ if ! command -v caddy >/dev/null 2>&1; then
   echo installed=yes
 fi
 i=0
-until curl -s -o /dev/null http://127.0.0.1:2019/config/; do
+until curl -s -o /dev/null "$A/config/"; do
   i=$((i + 1)); [ $i -gt 20 ] && { echo noadmin; exit 0; }; sleep 0.5
 done
 echo ready=yes
 `
+}
 
 // caddyRoute is the script that sets the route id (host domain → 127.0.0.1:port) in Caddy's
 // configuration: replaced when it exists, else added to the server "alder" (listening on :443,
 // so Caddy gets the domain's certificate), creating what is missing above it.
-func caddyRoute(id, domain string, port int) string {
+func caddyRoute(admin, id, domain string, port int) string {
 	route := CaddyRoute(id, domain, port)
 	server := `{"listen":[":443"],"routes":[` + route + `]}`
-	return `A=http://127.0.0.1:2019
+	return `A=` + q("http://"+admin) + `
 ID=` + q(id) + `
 ROUTE=` + q(route) + `
 SERVER=` + q(server) + `
@@ -992,30 +1024,15 @@ rm -rf "$D"
 	}, nil
 }
 
-// RestoreBackup is BackupRestorer: the newest build whose backup.of names to has the copy of
-// the database taken while to served (before that build's migrations). The current build is
-// stopped; db/app.db (with -wal, -shm), db/schema.json and db/migrations are kept as
-// *.before-rollback-<time>; the copy goes in place with to's schema.json and migration names.
-// undo puts the kept files back.
-func (s *Ssh) RestoreBackup(ctx context.Context, to string, builds []Build) (string, time.Time, func(context.Context) error, error) {
-	src := ""
-	for _, b := range builds { // newest first
-		if b.BackupOf == to {
-			src = b.ID
-			break
-		}
-	}
-	if src == "" {
-		return "", time.Time{}, nil, refuse("", "no build at %s holds a copy of the database taken while build %s served (builds/<id>/backup.db with backup.of %s): --restore-backup cannot put one back", s.Describe(), to, to)
-	}
-	cur, err := s.Current(ctx)
-	if err != nil {
-		return "", time.Time{}, nil, err
-	}
-	if cur != "" {
-		if err := s.stop(ctx, cur); err != nil {
-			return "", time.Time{}, nil, err
-		}
+// RestoreBackup is BackupRestorer: builds/<src>/backup.db, the copy of the database taken
+// while build to served (before src's migrations), goes in place. Every running build is
+// stopped first (stopAll: a build draining after a switch would otherwise keep the replaced
+// file open and go on serving it); db/app.db (with -wal, -shm), db/schema.json and
+// db/migrations are kept as *.before-rollback-<time>; the copy goes in place (mode 600) with
+// to's schema.json and migration names. Undo stops every build and puts the kept files back.
+func (s *Ssh) RestoreBackup(ctx context.Context, to, src string) (Restored, error) {
+	if err := s.stopAll(ctx); err != nil {
+		return Restored{}, err
 	}
 	out, err := s.run(ctx, `set -e
 to=`+q(to)+`; src=`+q(src)+`
@@ -1033,12 +1050,15 @@ echo "ts=$ts"
 echo "taken=$(date -r "$R/builds/$src/backup.db" +%s 2>/dev/null || echo 0)"
 `)
 	if err != nil {
-		return "", time.Time{}, nil, err
+		return Restored{}, err
 	}
 	kv := keyValues(out)
 	ts := kv["ts"]
 	secs, _ := strconv.ParseInt(kv["taken"], 10, 64)
 	undo := func(ctx context.Context) error {
+		if err := s.stopAll(ctx); err != nil {
+			return err
+		}
 		_, err := s.run(ctx, `set -e
 ts=`+q(ts)+`
 cd "$R/db"
@@ -1048,7 +1068,21 @@ for f in schema.json migrations; do if [ -f "$f.before-rollback-$ts" ]; then mv 
 `)
 		return err
 	}
-	return "builds/" + src + "/backup.db", time.Unix(secs, 0), undo, nil
+	return Restored{From: "builds/" + src + "/backup.db", Taken: time.Unix(secs, 0), Kept: "db/app.db.before-rollback-" + ts, Undo: undo}, nil
+}
+
+// stopAll stops every build that runs, now, and cancels every delayed stop: before the
+// database file is replaced, no process may hold the old one open.
+func (s *Ssh) stopAll(ctx context.Context) error {
+	_, err := s.run(ctx, `for d in "$R"/builds/*/; do
+  [ -d "$d" ] || continue
+  id=$(basename "$d")
+  cancel_later "$id"
+  if alive "$id"; then stopnow "$id"; fi
+done
+exit 0
+`)
+	return err
 }
 
 // ErrNotRunning is Stop's answer for a build that was not running (nothing was scheduled).
@@ -1260,56 +1294,79 @@ done
 	return s.stream(ctx, script, w, io.Discard)
 }
 
-// Restore uploads the local database file db as db/app.db: the current build is stopped, the
-// old database files are kept beside it (app.db.before-restore-<time>, with its -wal and -shm),
-// and the build is started again on its port and health checked.
-func (s *Ssh) Restore(ctx context.Context, db string) error {
+// Restore uploads the local database file db as db/app.db (mode 600): every running build is
+// stopped (stopAll), the old database files are kept beside it (app.db.before-restore-<time>,
+// with its -wal and -shm, and the schema records), and the current build is started again on
+// the restored file, health checked, and routed (Switch: Caddy's upstream, or with `proxy:
+// None` the public port). A build that refuses the restored file is stopped, the file is kept
+// as app.db.refused-<time>, and the replaced database and the build come back.
+func (s *Ssh) Restore(ctx context.Context, db string) (string, error) {
 	if _, err := s.Connect(ctx); err != nil {
-		return err
+		return "", err
 	}
 	f, err := os.Open(db)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer f.Close()
 	dst := s.Root + "/db/app.db.restore"
-	cmd := exec.CommandContext(ctx, "ssh", append(s.sshArgs(), "mkdir -p "+q(s.Root+"/db")+" && cat > "+q(dst))...)
+	cmd := exec.CommandContext(ctx, "ssh", append(s.sshArgs(), "umask 077 && mkdir -p "+q(s.Root+"/db")+" && cat > "+q(dst+".part")+" && chmod 600 "+q(dst+".part")+" && mv "+q(dst+".part")+" "+q(dst))...)
 	cmd.Stdin = f
 	var errb bytes.Buffer
 	cmd.Stderr = &errb
 	if err := cmd.Run(); err != nil {
-		return &RemoteError{Dest: s.Dest, Code: -1, Stderr: errb.String()}
+		return "", &RemoteError{Dest: s.Dest, Code: -1, Stderr: errb.String()}
 	}
 	cur, err := s.Current(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
-	var addr string
-	if cur != "" {
-		out, err := s.run(ctx, `cat "$R/builds/"`+q(cur)+`/addr`)
-		if err != nil {
-			return err
-		}
-		addr = strings.TrimSpace(out)
-		if err := s.stop(ctx, cur); err != nil {
-			return err
-		}
+	if err := s.stopAll(ctx); err != nil {
+		return "", err
 	}
-	if _, err := s.run(ctx, `set -e
+	out, err := s.run(ctx, `set -e
 cd "$R/db"
 ts=$(date -u +%Y%m%dT%H%M%SZ)
-for x in "" -wal -shm; do [ -f "app.db$x" ] && mv "app.db$x" "app.db.before-restore-$ts$x"; done
+for x in "" -wal -shm; do if [ -f "app.db$x" ]; then mv "app.db$x" "app.db.before-restore-$ts$x"; fi; done
+for f in schema.json migrations; do if [ -f "$f" ]; then mv "$f" "$f.before-restore-$ts"; fi; done
+chmod 600 app.db.restore
 mv app.db.restore app.db
-rm -f schema.json migrations
-`); err != nil {
-		return err
-	}
-	if cur == "" {
-		return nil
-	}
-	port, err := s.start(ctx, cur, addr)
+echo "ts=$ts"
+`)
 	if err != nil {
+		return "", err
+	}
+	ts := keyValues(out)["ts"]
+	kept := "db/app.db.before-restore-" + ts
+	if cur == "" {
+		return kept, nil
+	}
+	serve := func() error {
+		port, err := s.Start(ctx, cur)
+		if err == nil {
+			err = s.Health(ctx, cur, port, DefaultHealthTimeout)
+		}
+		if err == nil {
+			_, err = s.Switch(ctx, cur, port)
+		}
 		return err
 	}
-	return s.Health(ctx, cur, port, DefaultHealthTimeout)
+	if err := serve(); err != nil {
+		s.stopAll(ctx)
+		_, uerr := s.run(ctx, `set -e
+ts=`+q(ts)+`
+cd "$R/db"
+for x in "" -wal -shm; do if [ -f "app.db$x" ]; then mv "app.db$x" "app.db.refused-$ts$x"; fi; done
+for x in "" -wal -shm; do if [ -f "app.db.before-restore-$ts$x" ]; then mv "app.db.before-restore-$ts$x" "app.db$x"; fi; done
+for f in schema.json migrations; do if [ -f "$f.before-restore-$ts" ]; then mv "$f.before-restore-$ts" "$f"; fi; done
+`)
+		if uerr != nil {
+			return kept, refuse(err.Error(), "build %s did not pass its health check on the restored database, and putting the replaced one back failed (%v): the replaced database is %s; put it back as db/app.db by hand and run `alder deploy`", cur, uerr, kept)
+		}
+		if serr := serve(); serr != nil {
+			return kept, refuse(err.Error(), "build %s did not pass its health check on the restored database: the restored file is kept as db/app.db.refused-%s and the database it replaced (%s) is back in place as db/app.db, but build %s did not start again on it (%v): run `alder deploy`", cur, ts, kept, cur, serr)
+		}
+		return kept, refuse(err.Error(), "build %s did not pass its health check on the restored database: the restored file is kept as db/app.db.refused-%s, and the database it replaced (%s) is back in place as db/app.db; build %s serves again", cur, ts, kept, cur)
+	}
+	return kept, nil
 }

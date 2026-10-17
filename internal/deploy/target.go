@@ -59,9 +59,11 @@ type Target interface {
 	Info(ctx context.Context) (Info, error)
 	// Logs writes the current build's log to w (the last lines; with follow, until ctx ends).
 	Logs(ctx context.Context, follow bool, w io.Writer) error
-	// Restore replaces the target's database with the local file db, stopping and restarting
-	// the current build around it.
-	Restore(ctx context.Context, db string) error
+	// Restore replaces the target's database with the local file db, stopping every running
+	// build first (none may keep the replaced file open) and starting the current build again on
+	// it, health checked and routed; a build that refuses the restored file brings the replaced
+	// one back. It returns where the replaced database is kept.
+	Restore(ctx context.Context, db string) (kept string, err error)
 	// Close releases the connection.
 	Close() error
 }
