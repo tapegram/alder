@@ -82,22 +82,53 @@ type Field struct {
 	Type    Type
 	Default Expr // nil if none
 	Attrs   []*Attr
+	// Via is the membership table of a session field `org: Maybe Org.OrgId via Membership`
+	// (M15), "" for none; ViaSpan is the `via T` clause. Only a session field takes it.
+	Via     string
+	ViaSpan diag.Span
 }
 type Attr struct {
 	Node
-	Name string // id | ref | created | updated | unique | cascade | restrict | setNull | renamed | owner
-	Arg  string // table name for ref; the old name for renamed (`@renamed "heading"` → heading)
+	Name string // id | ref | created | updated | unique | cascade | restrict | setNull | renamed | owner | partition
+	Arg  string // table name for ref; the old name for renamed (`@renamed "heading"` → heading); the session field for partition
 }
 type PageDecl struct {
 	Node
-	Path         string
-	Params       *RecordType
-	Requires     string
-	RequiresSpan diag.Span // the `requires field` clause; zero when absent
+	Path   string
+	Params *RecordType
+	// Requires are the session fields of `requires user, org` (["user", "org"]), nil for none.
+	// RequiresSpan is the `requires field` clause of the first; FieldSpans has each field's
+	// name (FieldSpans[0] is RequiresSpan), parallel to Requires.
+	Requires     []string
+	RequiresSpan diag.Span
+	FieldSpans   []diag.Span
 	// Roles are the constructors of `requires user, role R | S` (["R", "S"]), nil for none;
-	// RolesSpan is the `role R | S` clause. `requires role R` (no field) leaves Requires "".
+	// RolesSpan is the `role R | S` clause. `requires role R` (no field) leaves Requires nil.
 	Roles     []string
 	RolesSpan diag.Span
+	// Silo is the key of the admin form `requires user, role Admin, silo org` (M15): the page
+	// reads `session.org` from its parameter `org`, "" for none; SiloSpan is the clause.
+	Silo     string
+	SiloSpan diag.Span
+}
+
+// SiloDecl is `silo org { Project, Task }` in App (M15): the tables stored in one database per
+// value of the session field Key. Tables are the names as written, TableSpans their places.
+type SiloDecl struct {
+	Node
+	Key        string
+	KeySpan    diag.Span
+	Tables     []string
+	TableSpans []diag.Span
+}
+
+// ChooseDecl is `choose org = Orgs.Index` in App (M15): the page a request is sent to when a
+// page `requires org` and the session has none.
+type ChooseDecl struct {
+	Node
+	Key     string
+	KeySpan diag.Span
+	Page    string
 }
 type MsgDecl struct {
 	Node

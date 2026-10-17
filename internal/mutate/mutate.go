@@ -125,7 +125,7 @@ func Collect(p *ir.Program) ([]Mutant, []Suppressed) {
 	}
 	for _, m := range p.Modules {
 		c.module = m.Name
-		if pg := pages[m.Name]; pg != nil && pg.Requires != "" {
+		if pg := pages[m.Name]; pg != nil && len(pg.Requires) > 0 {
 			c.requires(pg)
 			if pg.Roles != nil {
 				c.roles(pg)
@@ -193,13 +193,15 @@ func wrapped(prefix, suffix string) func(string) string {
 
 // ---- requires and the schema
 
+// requires drops the first field of a page's `requires` (M15: Task 2 covers the others).
 func (c *collector) requires(pg *ir.Page) {
 	c.decl = "requires"
 	line := pg.RequiresPos.Line
+	req := pg.Requires[0]
 	var field *ir.FieldT
 	if c.p.Session != nil {
 		for i := range c.p.Session.Fields {
-			if c.p.Session.Fields[i].Name == pg.Requires {
+			if c.p.Session.Fields[i].Name == req {
 				field = &c.p.Session.Fields[i]
 			}
 		}
@@ -213,9 +215,9 @@ func (c *collector) requires(pg *ir.Page) {
 		placeholder = field.Brand.Module + "." + placeholder
 	}
 	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RequiresDropped, Line: line, Col: pg.RequiresPos.Col,
-		Before: "requires " + pg.Requires,
-		After:  "served without " + pg.Requires + " (" + pg.Requires + " = " + placeholder + ")",
-		Page:   pg, Field: pg.Requires,
+		Before: "requires " + req,
+		After:  "served without " + req + " (" + req + " = " + placeholder + ")",
+		Page:   pg, Field: req,
 		Replacement: &ir.Lit{Typed: ir.Typed{Ty: types.Text}, Kind: ir.LitText, Text: "mutant"}})
 }
 
@@ -223,8 +225,8 @@ func (c *collector) requires(pg *ir.Page) {
 func (c *collector) roles(pg *ir.Page) {
 	c.decl = "requires"
 	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RoleDropped, Line: pg.RolesPos.Line, Col: pg.RolesPos.Col,
-		Before: "requires " + pg.Requires + ", role " + strings.Join(pg.Roles, " | "),
-		After:  "requires " + pg.Requires, Page: pg})
+		Before: "requires " + strings.Join(pg.Requires, ", ") + ", role " + strings.Join(pg.Roles, " | "),
+		After:  "requires " + strings.Join(pg.Requires, ", "), Page: pg})
 }
 
 func (c *collector) table(t *ir.Table) {
@@ -453,7 +455,7 @@ func (c *collector) walk(e ir.Expr) {
 		c.updateFields(x)
 	case *ir.Ctor:
 		c.nav(x)
-	case *ir.DbMine, *ir.DbGetMine, *ir.DbUpdateMine, *ir.DbDeleteMine, *ir.DbInsertMine:
+	case *ir.DbScoped, *ir.DbGetScoped, *ir.DbUpdateScoped, *ir.DbDeleteScoped, *ir.DbInsertScoped:
 		c.scope(e)
 	}
 	for _, k := range ir.Children(e) {
@@ -718,11 +720,11 @@ func (c *collector) write(x *ir.EffBind) {
 		tb = w.Table
 	case *ir.DbDelete:
 		tb = w.Table
-	case *ir.DbInsertMine:
+	case *ir.DbInsertScoped:
 		tb = w.Table
-	case *ir.DbUpdateMine:
+	case *ir.DbUpdateScoped:
 		tb = w.Table
-	case *ir.DbDeleteMine:
+	case *ir.DbDeleteScoped:
 		tb = w.Table
 	default:
 		return
@@ -734,7 +736,7 @@ func (c *collector) write(x *ir.EffBind) {
 	var value *ir.Lit
 	shown := "()"
 	_, isInsert := x.Effect.(*ir.DbInsert)
-	_, isInsertMine := x.Effect.(*ir.DbInsertMine)
+	_, isInsertMine := x.Effect.(*ir.DbInsertScoped)
 	if isInsert || isInsertMine {
 		if !isText(result) {
 			c.skip(WriteReplaced, x.Pos.Line, "the table's id is not Text")
@@ -762,15 +764,15 @@ func (c *collector) write(x *ir.EffBind) {
 // scope drops the owner predicate of a scoped Db node (see Mutant).
 func (c *collector) scope(e ir.Expr) {
 	switch x := e.(type) {
-	case *ir.DbMine:
+	case *ir.DbScoped:
 		r := &ir.DbSelect{Typed: x.Typed, Pos: x.Pos, Table: x.Table}
 		c.add(ScopeDropped, x.Pos, x, r, c.show(x), "Db.from "+x.Table.Name)
-	case *ir.DbGetMine:
+	case *ir.DbGetScoped:
 		get, body := gotOrNotFound(x.Table, x.ID, x.Ty, func(row ir.Expr) ir.Expr {
 			return &ir.EffPure{Typed: ir.Typed{Ty: x.Ty}, Kind: ir.EffQuery, Value: row}
 		})
 		c.add(ScopeDropped, x.Pos, x, body, c.show(x), line(c.module, get, wrapped("", ", not found when missing")))
-	case *ir.DbUpdateMine:
+	case *ir.DbUpdateScoped:
 		if c.fetchedMine(x.Table, x.ID) {
 			c.suppress(ScopeDropped, x.Pos.Line, "load fetched it with getMine")
 			return
@@ -778,7 +780,7 @@ func (c *collector) scope(e ir.Expr) {
 		w := &ir.DbUpdate{Typed: x.Typed, Pos: x.Pos, Table: x.Table, ID: x.ID, Fn: x.Fn}
 		_, body := gotOrNotFound(x.Table, x.ID, x.Ty, func(ir.Expr) ir.Expr { return w })
 		c.add(ScopeDropped, x.Pos, x, body, c.show(x), line(c.module, w, wrapped("", ", not found when missing")))
-	case *ir.DbDeleteMine:
+	case *ir.DbDeleteScoped:
 		if c.fetchedMine(x.Table, x.ID) {
 			c.suppress(ScopeDropped, x.Pos.Line, "load fetched it with getMine")
 			return
@@ -786,7 +788,7 @@ func (c *collector) scope(e ir.Expr) {
 		w := &ir.DbDelete{Typed: x.Typed, Pos: x.Pos, Table: x.Table, ID: x.ID}
 		_, body := gotOrNotFound(x.Table, x.ID, x.Ty, func(ir.Expr) ir.Expr { return w })
 		c.add(ScopeDropped, x.Pos, x, body, c.show(x), line(c.module, w, wrapped("", ", not found when missing")))
-	case *ir.DbInsertMine:
+	case *ir.DbInsertScoped:
 		c.skip(ScopeDropped, x.Pos.Line, "the owner comes from the session either way")
 	}
 }
@@ -830,7 +832,7 @@ func loadedMine(pg *ir.Page) map[string]*ir.Table {
 		}
 		switch x := e.(type) {
 		case *ir.EffBind:
-			if g, ok := x.Effect.(*ir.DbGetMine); ok && x.Param != nil {
+			if g, ok := x.Effect.(*ir.DbGetScoped); ok && x.Param != nil {
 				mine[x.Param.Name] = g.Table
 			}
 		case *ir.Record:

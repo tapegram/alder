@@ -4,6 +4,7 @@ package check
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"alder/internal/diag"
@@ -87,11 +88,11 @@ func (c *Checker) checkOwner(m *syntax.Module, d *syntax.TableDecl) {
 	if first == nil {
 		return
 	}
-	info.Owner = first.Name
-	info.InsertMine = &types.Record{Module: info.Module, Name: "InsertMine " + info.Name}
+	info.Owner, info.PartKey, info.PartCol = first.Name, "user", first.Name
+	info.InsertScoped = &types.Record{Module: info.Module, Name: "InsertScoped " + info.Name}
 	for _, f := range info.Insert.Fields {
 		if f.Name != first.Name {
-			info.InsertMine.Fields = append(info.InsertMine.Fields, f)
+			info.InsertScoped.Fields = append(info.InsertScoped.Fields, f)
 		}
 	}
 }
@@ -101,7 +102,7 @@ func (c *Checker) checkOwner(m *syntax.Module, d *syntax.TableDecl) {
 // the union that App's session field `role` has.
 func (mc *modCtx) checkRoles(pd *syntax.PageDecl, info *pageInfo) {
 	c := mc.c
-	if pd.Requires != "user" {
+	if len(pd.Requires) == 0 || pd.Requires[0] != "user" {
 		c.errorf(diag.RoleClause, pd.RolesSpan, "`role` needs `user` first")
 		return
 	}
@@ -175,7 +176,7 @@ func (mc *modCtx) inferScoped(x *syntax.Var) types.Type {
 	t := c.u.Instantiate(sig)
 	if fn, ok := t.(*types.Fun); ok && x.Ref.Name == "insertMine" && len(fn.Params) == 2 {
 		if app, ok := fn.Params[1].(*types.App); ok && app.Con == "Insert" {
-			t = &types.Fun{Params: []types.Type{fn.Params[0], &types.App{Con: "InsertMine", Args: app.Args}}, Result: fn.Result}
+			t = &types.Fun{Params: []types.Type{fn.Params[0], &types.App{Con: "InsertScoped", Args: app.Args}}, Result: fn.Result}
 		}
 	}
 	c.scopedUses = append(c.scopedUses, scopedUse{x, t})
@@ -209,7 +210,7 @@ func (mc *modCtx) scopedRefusal(subject string) string {
 		return subject + " cannot be used in a fake: a fake has no session"
 	case mc.inTest:
 		return ""
-	case mc.page != nil && mc.page.Requires == "user":
+	case mc.page != nil && slices.Contains(mc.page.Requires, "user"):
 		return ""
 	case mc.page != nil:
 		return subject + " needs a page that `requires user`: `" + mc.m.Name + "` does not"
@@ -364,7 +365,7 @@ func (c *Checker) insertRecordTable(rec *types.Record) (info *types.TableInfo, m
 	if rec.Anonymous {
 		return nil, false
 	}
-	if name, ok := strings.CutPrefix(rec.Name, "InsertMine "); ok {
+	if name, ok := strings.CutPrefix(rec.Name, "InsertScoped "); ok {
 		return c.tables[c.key(rec.Module, name)], true
 	}
 	if name, ok := strings.CutPrefix(rec.Name, "Insert "); ok {

@@ -2,6 +2,8 @@
 package check
 
 import (
+	"slices"
+
 	"alder/internal/diag"
 	"alder/internal/elements"
 	"alder/internal/names"
@@ -249,13 +251,13 @@ func (c *Checker) ctx(m *syntax.Module) *modCtx {
 	return mc
 }
 
-// narrow returns the session of `requires f` page module page: a record of its own,
-// <page>.Session, with App's session fields but f's `Maybe a` replaced by `a`. It is a distinct
-// nominal type that widens implicitly to App.Session (see widen) and never narrows back.
-func narrow(s *types.Record, f, page string) *types.Record {
+// narrow returns the session of `requires f, g` page module page: a record of its own,
+// <page>.Session, with App's session fields but each of fs's `Maybe a` replaced by `a`. It is a
+// distinct nominal type that widens implicitly to App.Session (see widen) and never narrows back.
+func narrow(s *types.Record, fs []string, page string) *types.Record {
 	out := &types.Record{Module: page, Name: "Session"}
 	for _, fl := range s.Fields {
-		if fl.Name == f {
+		if slices.Contains(fs, fl.Name) {
 			if un, ok := fl.Type.(*types.Union); ok && un.Name == "Maybe" && len(un.Args) == 1 {
 				fl = types.Field{Name: fl.Name, Type: un.Args[0], HasDefault: fl.HasDefault}
 			}

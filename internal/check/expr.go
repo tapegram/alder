@@ -568,7 +568,8 @@ func (mc *modCtx) checkExpr(e syntax.Expr, expected types.Type, env *env, eff ef
 	if err := c.u.Check(got, expected); err != nil {
 		if g, ex := c.u.Apply(got), c.u.Apply(expected); appSession(g) && c.narrowedSession(ex) {
 			r := ex.(*types.Record)
-			c.errorf(diag.TypeMismatch, e.GetSpan(), "expected this page's `Session`, got `App.Session`: the page `requires %s`, so its session has `%s` for certain, and App's session may not; a page's session widens to App's, never the other way", c.pages[r.Module].Requires, c.pages[r.Module].Requires)
+			req := c.pages[r.Module].Requires
+			c.errorf(diag.TypeMismatch, e.GetSpan(), "expected this page's `Session`, got `App.Session`: the page `requires %s`, so its session has `%s` for certain, and App's session may not; a page's session widens to App's, never the other way", strings.Join(req, ", "), strings.Join(req, "` and `"))
 			return
 		}
 		d := mc.mismatch(e.GetSpan(), got, expected)

@@ -86,11 +86,9 @@ func TestIRGolden(t *testing.T) {
 	}
 }
 
-// TestIR_Todos lowers the real example app: it must not panic (a missing recorded type is a
-// checker bug), and its dump is reviewed by hand in testdata/golden/ir_todos.ir. The admin
-// `alder new admin` generated in it (app/Admin/, book 15) is left out: it is the generator's
-// output, tested by its own goldens, and its pages have no update of their own.
-func TestIR_Todos(t *testing.T) {
+// todosWithoutAdmin copies examples/todos without its generated admin (app/Admin/) and build/
+// into a temporary directory and returns it.
+func todosWithoutAdmin(t *testing.T) string {
 	dir := t.TempDir()
 	src := "../../examples/todos"
 	err := filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
@@ -113,7 +111,15 @@ func TestIR_Todos(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := lowerDir(t, dir)
+	return dir
+}
+
+// TestIR_Todos lowers the real example app: it must not panic (a missing recorded type is a
+// checker bug), and its dump is reviewed by hand in testdata/golden/ir_todos.ir. The admin
+// `alder new admin` generated in it (app/Admin/, book 15) is left out: it is the generator's
+// output, tested by its own goldens, and its pages have no update of their own.
+func TestIR_Todos(t *testing.T) {
+	p := lowerDir(t, todosWithoutAdmin(t))
 	got := Dump(p)
 	compareGolden(t, "../../testdata/golden/ir_todos.ir", got)
 	for _, want := range []string{"(value Todos.Index.view ", "(component Todos.Index.Item ", "(component Layout.Page ",
@@ -603,16 +609,16 @@ func TestPositions(t *testing.T) {
 			}
 			got["where-step"] = append(got["where-step"], x.WherePos...)
 			got["order-step"] = append(got["order-step"], x.OrderPos...)
-		case *DbMine:
+		case *DbScoped:
 			got["mine"] = append(got["mine"], x.Pos)
-		case *DbGetMine:
+		case *DbGetScoped:
 			got["get-mine"] = append(got["get-mine"], x.Pos)
-		case *DbInsertMine:
+		case *DbInsertScoped:
 			got["insert-mine"] = append(got["insert-mine"], x.Pos)
-		case *DbUpdateMine:
+		case *DbUpdateScoped:
 			got["update-mine"] = append(got["update-mine"], x.Pos)
 			visit(x.Fn.(*Lambda).Body)
-		case *DbDeleteMine:
+		case *DbDeleteScoped:
 			got["delete-mine"] = append(got["delete-mine"], x.Pos)
 		case *DbInsert:
 			got["insert"] = append(got["insert"], x.Pos)
@@ -667,7 +673,7 @@ func TestPositions(t *testing.T) {
 	if lit, ok := done.Default.(*Lit); !ok || lit.Pos != (Pos{14, 16}) || done.Pos != (Pos{14, 3}) {
 		t.Fatalf("Todo.done: default %#v, field pos %v", done.Default, done.Pos)
 	}
-	ins := value(index, "update").Body.(*Match).Cases[0].Body.(*Let).Body.(*EffBind).Effect.(*DbInsertMine)
+	ins := value(index, "update").Body.(*Match).Cases[0].Body.(*Let).Body.(*EffBind).Effect.(*DbInsertScoped)
 	for _, f := range ins.Row.(*Record).Fields {
 		if f.Name == "done" && f.Value != done.Default {
 			t.Fatalf("the insert row's done is %#v, not the table's default node", f.Value)
@@ -702,14 +708,14 @@ func TestIR_Rules(t *testing.T) {
 	compareGolden(t, "../../testdata/golden/ir_rules.ir", Dump(p))
 	for _, tb := range p.Tables {
 		want := map[string]string{"Todo": "owner", "User": ""}[tb.Name]
-		if tb.Owner != want {
-			t.Errorf("table %s: Owner %q, want %q", tb.Name, tb.Owner, want)
+		if tb.Owner() != want {
+			t.Errorf("table %s: Owner %q, want %q", tb.Name, tb.Owner(), want)
 		}
 	}
 	roles := map[string]string{}
 	for _, pg := range p.Pages {
 		roles[pg.Module] = strings.Join(pg.Roles, "|")
-		if len(pg.Roles) > 0 && (pg.Requires != "user" || pg.RolesPos.Line == 0) {
+		if len(pg.Roles) > 0 && (strings.Join(pg.Requires, ",") != "user" || pg.RolesPos.Line == 0) {
 			t.Errorf("page %s: requires %q, roles at %+v", pg.Module, pg.Requires, pg.RolesPos)
 		}
 	}
@@ -720,15 +726,15 @@ func TestIR_Rules(t *testing.T) {
 	var walk func(e Expr)
 	walk = func(e Expr) {
 		switch x := e.(type) {
-		case *DbMine:
+		case *DbScoped:
 			seen["mine"]++
-		case *DbGetMine:
+		case *DbGetScoped:
 			seen["getMine"]++
-		case *DbUpdateMine:
+		case *DbUpdateScoped:
 			seen["updateMine"]++
-		case *DbDeleteMine:
+		case *DbDeleteScoped:
 			seen["deleteMine"]++
-		case *DbInsertMine:
+		case *DbInsertScoped:
 			seen["insertMine"]++
 			rec := x.Row.(*Record)
 			var names []string

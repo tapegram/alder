@@ -832,8 +832,8 @@ func TestOwnerLeavesSchema(t *testing.T) {
 		}
 		p := programIR(t, dir)
 		for _, tb := range p.Tables {
-			if tb.Name == "Todo" && (tb.Owner != "") != strings.Contains(attrs, "@owner") {
-				t.Fatalf("%q: Owner %q", attrs, tb.Owner)
+			if tb.Name == "Todo" && (tb.Owner() != "") != strings.Contains(attrs, "@owner") {
+				t.Fatalf("%q: Owner %q", attrs, tb.Owner())
 			}
 		}
 		s := FromProgram(p)

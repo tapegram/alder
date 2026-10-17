@@ -324,8 +324,8 @@ func (g *gen) requiresPlaceholder(b *strings.Builder, pg *ir.Page, app string) {
 	}
 	for _, m := range g.mutation.requires[pg] {
 		f := &fn{g: g}
-		fmt.Fprintf(b, "\tif !%s.%s.Ok && Mutant == %d {\n\t\t%s.%s = rt.Just(%s)\n\t}\n", app, Field(pg.Requires), m.ID,
-			app, Field(pg.Requires), f.code(m.Replacement, newScope()))
+		fmt.Fprintf(b, "\tif !%s.%s.Ok && Mutant == %d {\n\t\t%s.%s = rt.Just(%s)\n\t}\n", app, Field(firstRequired(pg)), m.ID,
+			app, Field(firstRequired(pg)), f.code(m.Replacement, newScope()))
 	}
 }
 

@@ -374,7 +374,7 @@ func TestParse_RulesSurface(t *testing.T) {
 	}
 	m, _ := ParseFile("m.alder", []byte("module M\n\npage \"/a\" { } requires user, role Author | Admin\n"))
 	pd := m.Decls[0].(*PageDecl)
-	if pd.Requires != "user" || strings.Join(pd.Roles, ",") != "Author,Admin" {
+	if strings.Join(pd.Requires, ",") != "user" || strings.Join(pd.Roles, ",") != "Author,Admin" {
 		t.Fatalf("page: requires %q roles %v", pd.Requires, pd.Roles)
 	}
 	if r, s := pd.RequiresSpan, pd.RolesSpan; r.Start.Col != 15 || r.End.Col != 28 || s.Start.Col != 30 || s.End.Col != 49 {
@@ -386,6 +386,50 @@ func TestParse_RulesSurface(t *testing.T) {
 		{"requires role Admin, user", "`user` goes first: write `requires user, role R` with unqualified constructors"},
 		{"requires user, role User.Admin", "write `requires user, role R` with unqualified constructors"},
 		{"requires user, role Author | User.Admin", "write `requires user, role R` with unqualified constructors"},
+	} {
+		_, diags := ParseFile("m.alder", []byte("module M\n\npage \"/a\" { } "+c.src+"\n\ntype Model = { }\n"))
+		if len(diags) != 1 || !strings.Contains(diags[0].Message, c.want) {
+			t.Errorf("%s: diags %v, want one with %q", c.src, diags, c.want)
+		}
+	}
+}
+
+// TestParse_PartitionsSurface (M15): `@partition k`, a session field's `via T`, App's `silo k
+// { … }` and `choose k = Page`, and a page's `requires user, org` and the admin form `requires
+// user, role Admin, silo org`; `silo` and `choose` stay ordinary names elsewhere.
+func TestParse_PartitionsSurface(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{"table Project {\n  org: Org.OrgId @ref Org @partition org,\n}", "(field org Org.OrgId @ref Org @partition org)"},
+		{"session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership }", "(field org (Maybe Org.OrgId) via Membership)"},
+		{"session { org: Maybe Org.OrgId via Membership = Nothing }", "(field org (Maybe Org.OrgId) via Membership = (ctor Nothing))"},
+		{"silo org { Project, Task }", "(silo org Project Task)"},
+		{"silo org {\n  Project,\n  Task,\n}", "(silo org Project Task)"},
+		{"choose org = Orgs.Index", "(choose org Orgs.Index)"},
+		{`page "/a" { } requires user, org`, "(page \"/a\" {} requires user, org)"},
+		{`page "/a" { } requires user, org, role Admin`, "(page \"/a\" {} requires user, org role Admin)"},
+		{`page "/a" { org: Org.OrgId } requires user, role Admin, silo org`, "requires user role Admin silo org)"},
+		{"page \"/a\" { } requires user, silo\ntype Model = { }", "(page \"/a\" {} requires user, silo)"},
+		{"silo : Int\nsilo = 1", "(val silo : Int"},
+		{"choose : Int -> Int\nchoose x = x", "(val choose : (fn Int -> Int) x"},
+	} {
+		m, diags := ParseFile("m.alder", []byte("module M\n\n"+c.src+"\n"))
+		if len(diags) > 0 {
+			t.Errorf("%q: %v", c.src, diags)
+			continue
+		}
+		if got := Dump(m); !strings.Contains(got, c.want) {
+			t.Errorf("%q: dump %s lacks %s", c.src, got, c.want)
+		}
+	}
+	m, _ := ParseFile("m.alder", []byte("module M\n\npage \"/a\" { org: Org.OrgId } requires user, team, role Admin, silo org\n"))
+	pd := m.Decls[0].(*PageDecl)
+	if strings.Join(pd.Requires, ",") != "user,team" || pd.Silo != "org" || len(pd.FieldSpans) != 2 || pd.FieldSpans[1].Start.Col != 45 || pd.SiloSpan.Start.Col != 63 {
+		t.Fatalf("page: %+v", pd)
+	}
+	for _, c := range []struct{ src, want string }{
+		{"requires user, role Admin, org", "only `silo k` may follow the `role` clause"},
+		{"requires user, 3", "expected `role R` after `requires user,` (or another session field, or `silo k`)"},
+		{"requires user, org role Admin", "expected `,` between `requires user, org` and `role`"},
 	} {
 		_, diags := ParseFile("m.alder", []byte("module M\n\npage \"/a\" { } "+c.src+"\n\ntype Model = { }\n"))
 		if len(diags) != 1 || !strings.Contains(diags[0].Message, c.want) {

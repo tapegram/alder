@@ -416,7 +416,7 @@ func (g *gen) module(m *ir.Module) ([]byte, error) {
 			g.checkDecl(&body, b)
 		}
 	}
-	if pg := g.pages[m.Name]; pg != nil && pg.Requires != "" && pg.Session != g.session {
+	if pg := g.pages[m.Name]; pg != nil && len(pg.Requires) > 0 && pg.Session != g.session {
 		widenFunc(&body, pg, g.session, g.boxed)
 	}
 	for _, v := range m.Values {
@@ -606,7 +606,7 @@ func widenFunc(w *strings.Builder, pg *ir.Page, app *ir.RecordType, boxed boxedS
 	var fs []string
 	for _, f := range app.Fields {
 		v := "s." + Field(f.Name) // a page's narrowed Session never reaches itself: no field is boxed
-		if f.Name == pg.Requires {
+		if slices.Contains(pg.Requires, f.Name) {
 			v = "rt.Just(" + v + ")"
 		}
 		if boxed.has(app.Module, app.Name, f.Name) {

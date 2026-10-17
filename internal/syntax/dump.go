@@ -77,11 +77,14 @@ func dump(sb *strings.Builder, n any) {
 	case *PageDecl:
 		fmt.Fprintf(sb, "(page %q ", x.Path)
 		dump(sb, x.Params)
-		if x.Requires != "" {
-			sb.WriteString(" requires " + x.Requires)
+		if len(x.Requires) > 0 {
+			sb.WriteString(" requires " + strings.Join(x.Requires, ", "))
 		}
 		if len(x.Roles) > 0 {
 			sb.WriteString(" role " + strings.Join(x.Roles, " | "))
+		}
+		if x.Silo != "" {
+			sb.WriteString(" silo " + x.Silo)
 		}
 		sb.WriteByte(')')
 	case *MsgDecl:
@@ -133,6 +136,14 @@ func dump(sb *strings.Builder, n any) {
 		sb.WriteByte(')')
 	case *LoginDecl:
 		fmt.Fprintf(sb, "(login %s)", x.Page)
+	case *SiloDecl:
+		fmt.Fprintf(sb, "(silo %s", x.Key)
+		for _, t := range x.Tables {
+			sb.WriteString(" " + t)
+		}
+		sb.WriteByte(')')
+	case *ChooseDecl:
+		fmt.Fprintf(sb, "(choose %s %s)", x.Key, x.Page)
 	case *TestDecl:
 		fmt.Fprintf(sb, "(test %q ", x.Name)
 		dump(sb, x.Body)
@@ -140,6 +151,9 @@ func dump(sb *strings.Builder, n any) {
 	case *Field:
 		fmt.Fprintf(sb, "(field %s ", x.Name)
 		dump(sb, x.Type)
+		if x.Via != "" {
+			sb.WriteString(" via " + x.Via)
+		}
 		if x.Default != nil {
 			sb.WriteString(" = ")
 			dump(sb, x.Default)

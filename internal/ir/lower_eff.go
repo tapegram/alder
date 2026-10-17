@@ -304,16 +304,21 @@ func (l *lowerer) build(h *effHead, args []Expr, t types.Type) Expr {
 		return &DbUpdate{Typed: Typed{t}, Pos: h.pos, Table: table(0), ID: args[1], Fn: args[2]}
 	case "Db.delete":
 		return &DbDelete{Typed: Typed{t}, Pos: h.pos, Table: table(0), ID: args[1]}
-	case "Db.mine":
-		return &DbMine{Typed: Typed{t}, Pos: h.pos, Table: table(0)}
-	case "Db.getMine":
-		return &DbGetMine{Typed: Typed{t}, Pos: h.pos, Table: table(0), ID: args[1]}
-	case "Db.updateMine":
-		return &DbUpdateMine{Typed: Typed{t}, Pos: h.pos, Table: table(0), ID: args[1], Fn: args[2]}
-	case "Db.deleteMine":
-		return &DbDeleteMine{Typed: Typed{t}, Pos: h.pos, Table: table(0), ID: args[1]}
-	case "Db.insertMine":
-		return &DbInsertMine{Typed: Typed{t}, Pos: h.pos, Table: table(0), Row: args[1]}
+	case "Db.mine", "Db.scoped":
+		tb := table(0)
+		return &DbScoped{Typed: Typed{t}, Pos: h.pos, Op: h.name, Key: partKey(tb), Table: tb}
+	case "Db.getMine", "Db.getScoped":
+		tb := table(0)
+		return &DbGetScoped{Typed: Typed{t}, Pos: h.pos, Op: h.name, Key: partKey(tb), Table: tb, ID: args[1]}
+	case "Db.updateMine", "Db.updateScoped":
+		tb := table(0)
+		return &DbUpdateScoped{Typed: Typed{t}, Pos: h.pos, Op: h.name, Key: partKey(tb), Table: tb, ID: args[1], Fn: args[2]}
+	case "Db.deleteMine", "Db.deleteScoped":
+		tb := table(0)
+		return &DbDeleteScoped{Typed: Typed{t}, Pos: h.pos, Op: h.name, Key: partKey(tb), Table: tb, ID: args[1]}
+	case "Db.insertMine", "Db.insertScoped":
+		tb := table(0)
+		return &DbInsertScoped{Typed: Typed{t}, Pos: h.pos, Op: h.name, Key: partKey(tb), Table: tb, Row: args[1]}
 	}
 	panic(fmt.Sprintf("ir: stdlib function %s at %s has no lowering", h.name, h.at))
 }
@@ -372,4 +377,13 @@ func (l *lowerer) column(x *syntax.Var) *ColumnRef {
 		panic(fmt.Sprintf("ir: unknown table %s.%s at %s", x.Ref.Module, x.Module, pos(x.Span)))
 	}
 	return &ColumnRef{Typed: Typed{l.typeOf(x)}, Table: tb, Field: x.Name}
+}
+
+// partKey is the partition key of table tb, the key of a scoped operation on it (the checker
+// accepts a scoped operation only on a partitioned table).
+func partKey(tb *Table) string {
+	if tb.Partition == nil {
+		panic(fmt.Sprintf("ir: a scoped operation on %s.%s, which has no partition", tb.Module, tb.Name))
+	}
+	return tb.Partition.Key
 }

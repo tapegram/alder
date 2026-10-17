@@ -33,7 +33,13 @@ import (
 // (order o)… [(limit n)] [(offset n)] select|all|first|count), (db-run all|first|count sel),
 // (db-insert M.T row), (db-update M.T id fn), (db-delete M.T id), (col M.T field),
 // (cond kind [col] [value] subs…) with (cond and|or (value e)) for a list that is no literal,
-// (ord col asc|desc). After the session, App's deploy declaration, when it has one:
+// (ord col asc|desc); the scoped operations (M15) (db-scoped Op key M.T), (db-get-scoped Op key
+// M.T id), (db-update-scoped Op key M.T id fn), (db-delete-scoped Op key M.T id),
+// (db-insert-scoped Op key M.T row), Op the function as written (Db.mine, Db.scoped, …). A
+// table's partition is (partition key column); a page's `requires` (requires f…), its admin
+// form (silo k), and, in a program with silos, its arms (arms (Msg shared|silo k)…). After the
+// session: (via f M.T)…, (silo k M.T…)…, (choose k M.Page)…, (app-arms …) in a program with
+// silos. Then App's deploy declaration, when it has one:
 // (deploy (env NAME ssh|fly|script (host "h")…)… (floor f)? (checks "c"…)? (requires "N"…)?
 // (backup s3 "url")? (keep n)? (proxy Caddy|None)).
 func Dump(p *Program) string {
@@ -71,11 +77,14 @@ func Dump(p *Program) string {
 	for _, pg := range p.Pages {
 		d := &dumper{home: pg.Module}
 		x := list(3, atom("page"), atom(pg.Module), atom(strconv.Quote(pg.Path)), atoms("params", d.rt(pg.Params)))
-		if pg.Requires != "" {
-			x.items = append(x.items, atoms("requires", pg.Requires))
+		if len(pg.Requires) > 0 {
+			x.items = append(x.items, atoms(append([]string{"requires"}, pg.Requires...)...))
 		}
 		if len(pg.Roles) > 0 {
 			x.items = append(x.items, atoms(append([]string{"roles"}, pg.Roles...)...))
+		}
+		if pg.Silo != "" {
+			x.items = append(x.items, atoms("silo", pg.Silo))
 		}
 		if pg.Session != nil && pg.Session != p.Session {
 			x.items = append(x.items, atoms("session", d.rt(pg.Session)))
@@ -94,6 +103,9 @@ func Dump(p *Program) string {
 				x.items = append(x.items, atoms(v.kind, v.v.Module+"."+v.v.Name))
 			}
 		}
+		if p.Silos != nil && len(pg.Arms) > 0 {
+			x.items = append(x.items, armsForm("arms", pg.Arms))
+		}
 		form(x)
 	}
 	for _, m := range p.AppMsgs {
@@ -104,6 +116,22 @@ func Dump(p *Program) string {
 	}
 	if p.Session != nil {
 		form(atoms("session", p.Session.Module+"."+p.Session.Name))
+	}
+	for _, k := range sortedKeys(p.Via) {
+		form(atoms("via", k, tableName(p.Via[k])))
+	}
+	for _, k := range sortedKeys(p.Silos) {
+		ss := []string{"silo", k}
+		for _, t := range p.Silos[k] {
+			ss = append(ss, tableName(t))
+		}
+		form(atoms(ss...))
+	}
+	for _, k := range sortedKeys(p.Choose) {
+		form(atoms("choose", k, p.Choose[k].Module))
+	}
+	if p.Silos != nil && len(p.AppArms) > 0 {
+		form(armsForm("app-arms", p.AppArms))
 	}
 	if p.Deploy != nil {
 		form(deployForm(p.Deploy))
@@ -176,7 +204,34 @@ func deployForm(dp *Deploy) *sx {
 	return x
 }
 
-// table is a table's form: (table M.T (id f) (created f)? (updated f)? (unique f…)? (owner f)?
+// sortedKeys are m's keys in order.
+func sortedKeys[V any](m map[string]V) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
+}
+
+// armsForm is (head (Msg store)…) with store `shared` or `silo k`, `_` for Msg "".
+func armsForm(head string, arms []*Arm) *sx {
+	x := list(1, atom(head))
+	for _, a := range arms {
+		m := a.Msg
+		if m == "" {
+			m = "_"
+		}
+		item := []string{m, "shared"}
+		if a.Store.Silo != "" {
+			item = []string{m, "silo", a.Store.Silo}
+		}
+		x.items = append(x.items, atoms(item...))
+	}
+	return x
+}
+
+// table is a table's form: (table M.T (id f) (created f)? (updated f)? (unique f…)? (partition k f)?
 // (ref f M.T rule?)… (insert f…)).
 func table(t *Table) *sx {
 	items := []*sx{atom("table"), atom(t.Module + "." + t.Name), atoms("id", t.IDField)}
@@ -189,8 +244,8 @@ func table(t *Table) *sx {
 	if len(t.Unique) > 0 {
 		items = append(items, atoms(append([]string{"unique"}, t.Unique...)...))
 	}
-	if t.Owner != "" {
-		items = append(items, atoms("owner", t.Owner))
+	if t.Partition != nil {
+		items = append(items, atoms("partition", t.Partition.Key, t.Partition.Column))
 	}
 	for _, f := range t.Record.Fields {
 		if r := t.Refs[f.Name]; r != "" {
@@ -578,16 +633,16 @@ func (d *dumper) expr(e Expr) *sx {
 		return list(2, atom("db-update"), atom(tableName(x.Table)), d.expr(x.ID), d.expr(x.Fn))
 	case *DbDelete:
 		return list(2, atom("db-delete"), atom(tableName(x.Table)), d.expr(x.ID))
-	case *DbMine:
-		return atoms("db-mine", tableName(x.Table))
-	case *DbGetMine:
-		return list(2, atom("db-get-mine"), atom(tableName(x.Table)), d.expr(x.ID))
-	case *DbUpdateMine:
-		return list(2, atom("db-update-mine"), atom(tableName(x.Table)), d.expr(x.ID), d.expr(x.Fn))
-	case *DbDeleteMine:
-		return list(2, atom("db-delete-mine"), atom(tableName(x.Table)), d.expr(x.ID))
-	case *DbInsertMine:
-		return list(2, atom("db-insert-mine"), atom(tableName(x.Table)), d.expr(x.Row))
+	case *DbScoped:
+		return atoms("db-scoped", x.Op, x.Key, tableName(x.Table))
+	case *DbGetScoped:
+		return list(4, atom("db-get-scoped"), atom(x.Op), atom(x.Key), atom(tableName(x.Table)), d.expr(x.ID))
+	case *DbUpdateScoped:
+		return list(4, atom("db-update-scoped"), atom(x.Op), atom(x.Key), atom(tableName(x.Table)), d.expr(x.ID), d.expr(x.Fn))
+	case *DbDeleteScoped:
+		return list(4, atom("db-delete-scoped"), atom(x.Op), atom(x.Key), atom(tableName(x.Table)), d.expr(x.ID))
+	case *DbInsertScoped:
+		return list(4, atom("db-insert-scoped"), atom(x.Op), atom(x.Key), atom(tableName(x.Table)), d.expr(x.Row))
 	case *ColumnRef:
 		return atoms("col", tableName(x.Table), x.Field)
 	case *TableRef:

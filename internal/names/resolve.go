@@ -290,6 +290,10 @@ func (r *resolver) module() {
 			if !r.p.IsPageModule(d.Page) {
 				r.bag.Error(diag.UnknownName, d.Span, "unknown page `%s`", d.Page)
 			}
+		case *syntax.ChooseDecl:
+			if !r.p.IsPageModule(d.Page) {
+				r.bag.Error(diag.UnknownName, d.Span, "unknown page `%s`", d.Page)
+			}
 		case *syntax.TestDecl:
 			r.inTest = true
 			r.expr(d.Body, &Scope{names: map[string]bool{}})

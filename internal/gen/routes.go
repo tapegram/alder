@@ -2,6 +2,7 @@ package gen
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -205,7 +206,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 
 	// the GET route
 	steps := "decode the parameters (404 when they do not), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
-	if pg.Requires != "" {
+	if len(pg.Requires) > 0 {
 		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
 	}
 	if pg.Roles != nil {
@@ -462,7 +463,7 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	m := pg.Module
 	model, session := GoName(m, "Model"), GoName(pg.Session.Module, pg.Session.Name)
 	app := GoName(p.Session.Module, p.Session.Name)
-	if pg.Requires == "" {
+	if len(pg.Requires) == 0 {
 		b.WriteString(comment(fmt.Sprintf("%s runs page %s for rq up to its model: load (with params and the session of rq.Env). It returns the model and the session view and update take, or the response that ends the request, which stores keep (the session a successful update left, or nil).", pageFunc(m), m)))
 		fmt.Fprintf(b, `func %s(rq *web.Request, params %s, keep any) (%s, %s, *web.Response) {
 	session := rq.Env.Session.(%s)
@@ -481,7 +482,7 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	var fs []string
 	for _, f := range p.Session.Fields {
 		v := "app." + Field(f.Name)
-		if f.Name == pg.Requires {
+		if slices.Contains(pg.Requires, f.Name) {
 			v += ".Val"
 		}
 		fs = append(fs, Field(f.Name)+": "+v)
@@ -490,17 +491,19 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	if pg.Roles != nil {
 		roles = fmt.Sprintf(", then `role %s` (404, App.notFound, as for a missing row, when the session's role is not one of them: a cookie check, read when the user logged in)", strings.Join(pg.Roles, " | "))
 	}
-	b.WriteString(comment(fmt.Sprintf("%s runs page %s for rq up to its model: `requires %s` (a 303 to App.login, storing keep, when the session's %s is Nothing)%s, then load (with params and the narrowed session). It returns the model and the session view and update take, or the response that ends the request, which stores keep (the session a successful update left, or nil).", pageFunc(m), m, pg.Requires, pg.Requires, roles)))
+	b.WriteString(comment(fmt.Sprintf("%s runs page %s for rq up to its model: `requires %s` (a 303 to App.login, storing keep, when the session's %s is Nothing)%s, then load (with params and the narrowed session). It returns the model and the session view and update take, or the response that ends the request, which stores keep (the session a successful update left, or nil).", pageFunc(m), m, strings.Join(pg.Requires, ", "), strings.Join(pg.Requires, " or "), roles)))
 	fmt.Fprintf(b, `func %[1]s(rq *web.Request, params %[2]s, keep any) (%[3]s, %[4]s, *web.Response) {
 	var model %[3]s
 	app := rq.Env.Session.(%[5]s)
 `, pageFunc(m), GoName(m, "Params"), model, session, app)
 	g.requiresPlaceholder(b, pg, "app") // a mutate build's requires dropped (mutation.go)
-	fmt.Fprintf(b, `	if !app.%[1]s.Ok {
+	for _, req := range pg.Requires {   // M15 Task 2: a key other than user goes to its `choose` page
+		fmt.Fprintf(b, `	if !app.%[1]s.Ok {
 		r := web.RedirectResponse(rq.Login, keep)
 		return model, %[2]s{}, &r
 	}
-`, Field(pg.Requires), session)
+`, Field(req), session)
+	}
 	if pg.Roles != nil {
 		fmt.Fprintf(b, `	if %s {
 		r := web.NotFoundResponse(html.None())
@@ -519,7 +522,7 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	return model, session, nil
 }
 
-`, pageFunc(m), GoName(m, "Params"), model, session, app, Field(pg.Requires), strings.Join(fs, ", "), GoName(m, "load"))
+`, pageFunc(m), GoName(m, "Params"), model, session, app, Field(firstRequired(pg)), strings.Join(fs, ", "), GoName(m, "load"))
 }
 
 // roleRefused is the Go condition under which page pg's `requires user, role R | …` refuses
@@ -850,4 +853,12 @@ func listArg(t types.Type) types.Type {
 		return app.Args[0]
 	}
 	return nil
+}
+
+// firstRequired is the first session field page pg requires, "" for none.
+func firstRequired(pg *ir.Page) string {
+	if len(pg.Requires) == 0 {
+		return ""
+	}
+	return pg.Requires[0]
 }

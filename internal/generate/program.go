@@ -285,7 +285,10 @@ func (p *Program) table(m *Module, d *syntax.TableDecl) *Table {
 
 // page reads page module m.
 func (p *Program) page(m *Module, d *syntax.PageDecl) *Page {
-	pg := &Page{Module: m.Name, File: m.File, Path: d.Path, Requires: d.Requires, Roles: d.Roles, Decl: d}
+	pg := &Page{Module: m.Name, File: m.File, Path: d.Path, Roles: d.Roles, Decl: d}
+	if len(d.Requires) > 0 { // the generators know `requires user` (M15's other keys: Task 4)
+		pg.Requires = d.Requires[0]
+	}
 	if info := p.Res.Pages[m.Name]; info != nil && info.Params != nil {
 		for i, f := range info.Params.Fields {
 			par := &Param{Name: f.Name, Type: f.Type, HasDefault: f.HasDefault}

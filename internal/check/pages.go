@@ -106,7 +106,7 @@ func (mc *modCtx) checkApp() {
 		if c.prog.Failed[name] {
 			continue
 		}
-		if p.Requires != "" {
+		if len(p.Requires) > 0 {
 			anyRequires = true
 		}
 	}

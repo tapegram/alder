@@ -821,23 +821,28 @@ func (mc *modCtx) definePage() {
 			c.errorf(diag.InvalidDecl, pd.Span, "path segment `{%s}` has no matching parameter", s)
 		}
 	}
-	if pd.Requires != "" {
+	if len(pd.Requires) > 0 {
 		info.Requires = pd.Requires
-		found := false
-		for _, f := range c.session.Fields {
-			if f.Name == pd.Requires {
-				found = true
-				if _, ok := maybeOf(f.Type); !ok {
-					c.errorf(diag.InvalidDecl, pd.Span, "`requires %s`: session field `%s` must be a `Maybe`", pd.Requires, pd.Requires)
+		for i, req := range pd.Requires {
+			found := false
+			for _, f := range c.session.Fields {
+				if f.Name == req {
+					found = true
+					if _, ok := maybeOf(f.Type); !ok {
+						c.errorf(diag.InvalidDecl, pd.Span, "`requires %s`: session field `%s` must be a `Maybe`", req, req)
+					}
 				}
 			}
-		}
-		if !found {
-			sp := pd.RequiresSpan
-			if sp.File == "" {
-				sp = pd.Span
+			if !found {
+				sp := pd.RequiresSpan
+				if i > 0 && i < len(pd.FieldSpans) {
+					sp = pd.FieldSpans[i]
+				}
+				if sp.File == "" {
+					sp = pd.Span
+				}
+				c.errorf(diag.InvalidDecl, sp, "`requires %s`: the session has no field `%s`", req, req)
 			}
-			c.errorf(diag.InvalidDecl, sp, "`requires %s`: the session has no field `%s`", pd.Requires, pd.Requires)
 		}
 		info.Session = narrow(c.session, pd.Requires, mc.m.Name)
 		mc.session = info.Session

@@ -33,7 +33,54 @@ type Program struct {
 	Brands    []*Brand // the app's brands, in module order then declaration order
 	Login     string   // the path of the page App's `login` names; "" when App has none
 	Deploy    *Deploy  // App's `deploy` declaration (chapter 16); nil when App has none. Data only: nothing in the generated program reads it
+	// AppArms are the arms of App's `update` with the store each one's Task writes (M15); nil
+	// when App declares no update.
+	AppArms []*Arm
+	// Partitions and silos (M15, book 06 "Partitions", 08). Via maps each session field
+	// declared `via T` to its membership table T (one `@ref` to the user table, one to the
+	// key's table). Silos maps each `silo k { … }` key to its tables, in the order written;
+	// a table in no silo is in the shared store. Choose maps each `choose k = Page` key to that
+	// page. Each is nil when the app declares none.
+	Via    map[string]*Table
+	Silos  map[string][]*Table
+	Choose map[string]*Page
 }
+
+// Store is where a Task writes (M15): the shared store (StoreShared, Silo "") or the store of
+// one silo key's value (StoreSilo(k)), chosen at run time by the session's k.
+type Store struct{ Silo string }
+
+// StoreShared is the shared store (the app's database).
+var StoreShared = Store{}
+
+// StoreSilo is the store of silo key k: one database per value of the session's k.
+func StoreSilo(k string) Store { return Store{Silo: k} }
+
+// String is "shared" or "silo k".
+func (s Store) String() string {
+	if s.Silo == "" {
+		return "shared"
+	}
+	return "silo " + s.Silo
+}
+
+// Arm is one arm of an `update` (a page's or App's) and the store its Task writes, from the
+// checker's one-store-per-Task analysis (E0031): every table the arm writes (insert, update,
+// delete, scoped or not, through helpers too) is in Store. An arm that writes nothing is
+// StoreShared. Msg is the message constructor the arm matches; "" for an arm that matches every
+// other message (`_ ->`, a variable), and for an update whose body is not a `match` on its
+// message (one Arm for all). Several arms of one constructor are one Arm. Pos is the arm's
+// pattern (the update's body for Msg "").
+type Arm struct {
+	Msg   string
+	Store Store
+	Pos   Pos
+}
+
+// Partition is a table's partition (M15): the session field Key whose value the table's
+// `@ref` column Column holds in every row (`org: Org.OrgId @ref Org @partition org`; `@owner`
+// is Key "user").
+type Partition struct{ Key, Column string }
 
 // Deploy is App's `deploy { … }`: where the app ships and what the gate demands (chapter 16).
 // Envs are the fields whose value is a target, by name. Floor is the minimum mutation score
@@ -197,10 +244,20 @@ type Table struct {
 	OnDelete         map[string]string
 	InsertFields     []string // the fields `Db.insert` takes: all but @id, @created, @updated
 	RenamedFrom      string   // the table's old name from `table Post @renamed "Article"`, "" for none
-	// Owner is the `@owner` column (a `@ref` of the session's user type, never Maybe), "" for
-	// none; it is in InsertFields (Db.insert takes it), and Db.insertMine's row is InsertFields
-	// without it. It changes nothing in the stored schema (migrate ignores it).
-	Owner string
+	// Partition is the table's `@partition k` column (`@owner` is `@partition user`), nil for
+	// none: a `@ref` whose type is the session field k's without its Maybe (never Maybe itself).
+	// The column is in InsertFields (Db.insert takes it), and the scoped insert's row is
+	// InsertFields without it. It changes nothing in the stored schema (migrate ignores it).
+	Partition *Partition
+}
+
+// Owner is the column of a table partitioned by the session's `user` (M11's `@owner`), "" for
+// any other table.
+func (t *Table) Owner() string {
+	if t.Partition != nil && t.Partition.Key == "user" {
+		return t.Partition.Column
+	}
+	return ""
 }
 
 // Form is a `form` declaration; Record is also in its module's Types.
@@ -221,13 +278,21 @@ type Form struct {
 type Page struct {
 	Module, Path string
 	Params       *RecordType
-	Requires     string // session field the page requires, "" for none
-	RequiresPos  Pos    // the `requires f` clause; zero when Requires is ""
+	Requires     []string // session fields the page requires (`requires user, org`), nil for none
+	RequiresPos  Pos      // the `requires f` clause; zero when Requires is nil
+	// Silo is the key of the admin form `requires user, role Admin, silo k` (M15), "" for none:
+	// the page's session field k is its parameter k (narrowed in Session, like a required
+	// field), not the cookie's, and no `via` check applies (the role check gates the page).
+	// SiloPos is the clause.
+	Silo    string
+	SiloPos Pos
+	// Arms are the page update's arms with their stores (see Arm), nil without an update.
+	Arms []*Arm
 	// Roles are the constructors of `requires user, role R | S` (["R", "S"]), nil for none:
 	// constructors of the union of App's session field `role` (never Maybe; the page session's
 	// `role` is that union as App's is). The route answers 404 when the session's role is none
 	// of them, after the `requires user` redirect and before load. RolesPos is the `role R…`
-	// clause; zero when Roles is nil. Requires is "user" whenever Roles is set.
+	// clause; zero when Roles is nil. Requires starts with "user" whenever Roles is set.
 	Roles        []string
 	RolesPos     Pos
 	Session      *RecordType
@@ -274,7 +339,7 @@ type Fake struct {
 
 // Pos is a source position (1-based line and column) of the expression a node was lowered from.
 // The node kinds a mutant can target carry one (If, Match, Op, Lit, Update, Ctor, Call, EffBind,
-// DbSelect, DbInsert, DbUpdate, DbDelete, the scoped Db*Mine nodes, Cond, Ord); it is the zero Pos for a node Lower made
+// DbSelect, DbInsert, DbUpdate, DbDelete, the scoped Db*Scoped nodes, Cond, Ord); it is the zero Pos for a node Lower made
 // up (a default filled into a literal keeps its declaration's). Dump never prints it.
 type Pos struct{ Line, Col int }
 
@@ -757,57 +822,72 @@ type DbDelete struct {
 	ID    Expr
 }
 
-// ---- Scoped operations (M11): the Db.*Mine functions of a table with an `@owner` column
-// (Table.Owner). The checker accepts them only in a page module whose page `requires user`
-// (load, update, view and helper values), so the session's `user` is there, narrowed to the
-// user id: each is the unscoped operation with the predicate `Owner = session.user`. A row
-// that is not the session user's answers as a missing one (not found), never an error.
+// ---- Scoped operations (M11, generalised in M15): the scoped Db functions of a table with a
+// partition (Table.Partition, Key the session field it is partitioned by). The checker accepts
+// them only where the session's Key is narrowed: in a page module whose page `requires` Key
+// (load, update, view and helper values), or the admin form's `silo Key`, and in tests. Each is
+// the unscoped operation with the predicate `Column = session.Key`. A row of another partition
+// answers as a missing one (not found), never an error. Key is the table's partition key; Op is
+// the function as written, for traces and messages: "Db.scoped" (any key) or M11's "Db.mine"
+// (the family legal only on a table partitioned by `user`), and likewise for the others.
 
-// DbMine is `Db.mine Table`: a Select t value (Db.from Table filtered on the owner). It is
-// never run itself: Db.where/orderBy/limit/offset over it make a DbSelect whose Base is the
-// DbMine, and Db.all/first/count over it (or over such a DbSelect) make a DbSelect or DbRun
-// as for any Select value.
-type DbMine struct {
+// DbScoped is `Db.scoped Table` (or `Db.mine Table`): a Select t value (Db.from Table filtered
+// on the partition). It is never run itself: Db.where/orderBy/limit/offset over it make a
+// DbSelect whose Base is the DbScoped, and Db.all/first/count over it (or over such a DbSelect)
+// make a DbSelect or DbRun as for any Select value.
+type DbScoped struct {
 	Typed
 	Pos   Pos
+	Op    string
+	Key   string
 	Table *Table
 }
 
-// DbGetMine is `Db.getMine Table ID`: a Query t, the row when it exists and is the session
-// user's, else Query.notFound (the page answers 404, as for a missing row).
-type DbGetMine struct {
+// DbGetScoped is `Db.getScoped Table ID` (`Db.getMine`): a Query t, the row when it exists and
+// is in the session's partition, else Query.notFound (the page answers 404, as for a missing
+// row).
+type DbGetScoped struct {
 	Typed
 	Pos   Pos
+	Op    string
+	Key   string
 	Table *Table
 	ID    Expr
 }
 
-// DbUpdateMine is `Db.updateMine Table ID Fn`, a Task Unit; Fn has type t -> t. A predicated read
-// then a predicated write (`id = ? AND owner = ?` in both), in the Task's transaction: no row
-// found or changed is Task.notFound.
-type DbUpdateMine struct {
+// DbUpdateScoped is `Db.updateScoped Table ID Fn` (`Db.updateMine`), a Task Unit; Fn has type
+// t -> t. A predicated read then a predicated write (`id = ? AND col = ?` in both), in the
+// Task's transaction: no row found or changed is Task.notFound. It never writes the partition
+// column.
+type DbUpdateScoped struct {
 	Typed
 	Pos   Pos
+	Op    string
+	Key   string
 	Table *Table
 	ID    Expr
 	Fn    Expr
 }
 
-// DbDeleteMine is `Db.deleteMine Table ID`, a Task Unit: one DELETE with `id = ? AND owner = ?`;
-// no row deleted is Task.notFound.
-type DbDeleteMine struct {
+// DbDeleteScoped is `Db.deleteScoped Table ID` (`Db.deleteMine`), a Task Unit: one DELETE with
+// `id = ? AND col = ?`; no row deleted is Task.notFound.
+type DbDeleteScoped struct {
 	Typed
 	Pos   Pos
+	Op    string
+	Key   string
 	Table *Table
 	ID    Expr
 }
 
-// DbInsertMine is `Db.insertMine Table Row`, a Task of the new row's id. Row is a record of the
-// table's InsertFields without Owner (an anonymous record type, defaults filled, as DbInsert's);
-// the Owner column is the session's user.
-type DbInsertMine struct {
+// DbInsertScoped is `Db.insertScoped Table Row` (`Db.insertMine`), a Task of the new row's id.
+// Row is a record of the table's InsertFields without the partition column (an anonymous record
+// type, defaults filled, as DbInsert's); the column is the session's Key.
+type DbInsertScoped struct {
 	Typed
 	Pos   Pos
+	Op    string
+	Key   string
 	Table *Table
 	Row   Expr
 }

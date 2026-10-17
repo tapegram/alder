@@ -85,7 +85,7 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 				w.WriteString(result(c, "Answer", res+".Answer", res))
 				return w.String()
 			}
-			fmt.Fprintf(&w, "%s, %s := %s.GetPage(%s, %s)\n%s", res, err, b, u, strconv.Quote(x.Page.Requires), fail(c, err))
+			fmt.Fprintf(&w, "%s, %s := %s.GetPage(%s, %s)\n%s", res, err, b, u, strconv.Quote(firstRequired(x.Page)), fail(c, err))
 			m := f.temp(c, "_m")
 			fmt.Fprintf(&w, "%s, %s := rtesting.ModelOf[%s](%s, %s)\n%s", m, err, GoName(x.Page.Module, "Model"), u, res, fail(c, err))
 			w.WriteString(result(c, "Model", m, res))

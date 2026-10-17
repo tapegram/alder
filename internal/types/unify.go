@@ -12,10 +12,14 @@ type TableInfo struct {
 	IDType       Type
 	Insert       *Record
 	Columns      map[string]Type // field → field type
-	// Owner is the `@owner` column ("" when none); InsertMine, for a table with one, is the
-	// record `Db.insertMine` takes: Insert's fields without Owner (named "InsertMine T").
-	Owner      string
-	InsertMine *Record
+	// PartKey and PartCol are the table's partition (M15): the session field `@partition k`
+	// names and its column ("" when none; `@owner` is PartKey "user"). Owner is PartCol when
+	// PartKey is "user" (M11's `@owner` column), "" otherwise. InsertScoped, for a partitioned
+	// table, is the record the scoped insert (`Db.insertScoped`, `Db.insertMine`) takes:
+	// Insert's fields without PartCol (named "InsertScoped T").
+	PartKey, PartCol string
+	Owner            string
+	InsertScoped     *Record
 }
 
 type Unifier struct {
@@ -57,8 +61,8 @@ func (u *Unifier) prune(t Type) Type {
 	}
 }
 
-// Apply substitutes bound variables and normalizes Id/Insert/InsertMine over known tables.
-// `InsertMine t` is the checker's type of `Db.insertMine`'s row (never written in source).
+// Apply substitutes bound variables and normalizes Id/Insert/InsertScoped over known tables.
+// `InsertScoped t` is the checker's type of the scoped insert's row (never written in source).
 func (u *Unifier) Apply(t Type) Type {
 	t = u.prune(t)
 	switch t := t.(type) {
@@ -67,16 +71,16 @@ func (u *Unifier) Apply(t Type) Type {
 		for i, a := range t.Args {
 			args[i] = u.Apply(a)
 		}
-		if (t.Con == "Id" || t.Con == "Insert" || t.Con == "InsertMine") && len(args) == 1 {
+		if (t.Con == "Id" || t.Con == "Insert" || t.Con == "InsertScoped") && len(args) == 1 {
 			if r, ok := args[0].(*Record); ok {
 				if info := u.Table(r); info != nil {
 					switch {
 					case t.Con == "Id":
 						return info.IDType
-					case t.Con == "InsertMine" && info.InsertMine != nil:
-						return info.InsertMine
+					case t.Con == "InsertScoped" && info.InsertScoped != nil:
+						return info.InsertScoped
 					}
-					return info.Insert // `InsertMine t` of a table without `@owner`: E0025 says so
+					return info.Insert // `InsertScoped t` of a table without a partition: E0025 says so
 				}
 			}
 		}

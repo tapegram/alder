@@ -1,0 +1,824 @@
+(module User)
+(union User.Role (Reader) (Author) (Admin))
+(record User.User (id Text) (name Text) (role Role = (ctor User.Role.Reader)))
+(value User.roleName : Role -> Text (role)
+  (match union (var role)
+    (case Reader "reader")
+    (case Author "author")
+    (case Admin "admin")))
+(test "every role has its name" pure
+  (test-eq
+    (call (std List.map)
+      (global User.roleName)
+      (list
+        (ctor User.Role.Reader)
+        (ctor User.Role.Author)
+        (ctor User.Role.Admin)))
+    (list "reader" "author" "admin")))
+(module Admin.Index)
+(record Admin.Index.Model)
+(record Admin.Index.Params)
+(union Admin.Index.Msg)
+(record Admin.Index.Session (user Text) (role User.Role))
+(value Admin.Index.load : Params -> Session -> Query Model (params session)
+  (pure query (record Model)))
+(value Admin.Index.roleOf : Session -> User.Role (session)
+  (field role (var session)))
+(value Admin.Index.view : Model -> Session -> Html Msg (model session)
+  (elem html
+    (elem body
+      (elem p (attr id text "role")
+        (hexpr text
+          (call (global User.roleName)
+            (call (global Admin.Index.roleOf) (var session))))))))
+(test "an author is served" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Author))))
+    (bind task _
+      (test-login
+        (record App.Session
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+          (role (ctor User.Role.Author))))
+      (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+        (test-get Admin.Index (record Params))
+        (pure task
+          (test-eq
+            (call (std Test.text) "#role" (field doc (var page)))
+            (ctor Prelude.Maybe.Just (record (value "author")))))))))
+(test "a reader on an author page is not found" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task _
+      (test-login
+        (record App.Session
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+          (role (ctor User.Role.Reader))))
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (test-open Admin.Index (record Params))
+        (pure task
+          (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
+(test "a visitor is sent to log in from the admin page" task
+  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+    (test-open Admin.Index (record Params))
+    (pure task
+      (test-eq
+        (field answer (var r))
+        (ctor Prelude.Answer.Redirected
+          (record (value (page-ref Login (record Login.Params)))))))))
+(test "a demoted admin still passes the cookie check" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Admin))))
+    (bind task _
+      (test-login
+        (record App.Session
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+          (role (ctor User.Role.Admin))))
+      (bind task _
+        (db-update User.User
+          (var me)
+          (lambda (u : User) (update (var u) (role (ctor User.Role.Reader)))))
+        (bind task index : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (test-open Admin.Index (record Params))
+          (bind task users : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (test-open Admin.Users (record Admin.Users.Params))
+            (pure task
+              (test-eq
+                (record
+                  (index (field answer (var index)))
+                  (users (field answer (var users))))
+                (record
+                  (index (ctor Prelude.Answer.Shown))
+                  (users (ctor Prelude.Answer.PageMissing)))))))))))
+(module Admin.Users)
+(record Admin.Users.Model)
+(record Admin.Users.Params)
+(union Admin.Users.Msg)
+(record Admin.Users.Session (user Text) (role User.Role))
+(value Admin.Users.load : Params -> Session -> Query Model (params session)
+  (bind query me : Maybe User
+    (db-get User.User (field user (var session)))
+    (match union (var me)
+      (case Just (bind _m1 value : User)
+        (let u : User
+          (var _m1)
+          (if (== : User.Role (field role (var u)) (ctor User.Role.Admin))
+            (pure query (record Model))
+            (not-found))))
+      (case Nothing (not-found)))))
+(value Admin.Users.view : Model -> Session -> Html Msg (model session)
+  (elem html (elem body (elem h1 (htext "users")))))
+(test "an admin is served" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Admin))))
+    (bind task _
+      (test-login
+        (record App.Session
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+          (role (ctor User.Role.Admin))))
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (test-open Admin.Users (record Params))
+        (pure task (test-eq (field answer (var r)) (ctor Prelude.Answer.Shown)))))))
+(test "a promoted reader needs to log in again" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Admin))))
+    (bind task _
+      (test-login
+        (record App.Session
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+          (role (ctor User.Role.Reader))))
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (test-open Admin.Users (record Params))
+        (pure task
+          (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
+(test "a visitor is sent to log in from the users page" task
+  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+    (test-open Admin.Users (record Params))
+    (pure task
+      (test-eq
+        (field answer (var r))
+        (ctor Prelude.Answer.Redirected
+          (record (value (page-ref Login (record Login.Params)))))))))
+(module App)
+(record App.Session
+  (user Maybe Text)
+  (role User.Role = (ctor User.Role.Reader)))
+(union App.Msg)
+(value App.error : Error -> Html Never (err)
+  (elem html (elem body (elem h1 (htext "error")))))
+(value App.notFound : Html Never ()
+  (elem html (elem body (elem h1 (htext "not found")))))
+(module Login)
+(record Login.Model)
+(record Login.Params)
+(union Login.Msg)
+(value Login.load : Params -> App.Session -> Query Model (params session)
+  (pure query (record Model)))
+(value Login.view : Model -> App.Session -> Html Msg (model session)
+  (elem html (elem body (elem h1 (htext "log in")))))
+(module Todo)
+(record Todo.Todo
+  (id Text)
+  (title Text)
+  (done Bool = False)
+  (owner Text)
+  (created Time))
+(test "deleting a user deletes their todos" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task _
+      (db-insert Todo.Todo (record (title "a") (done False) (owner (var me))))
+      (bind task _
+        (db-delete User.User (var me))
+        (bind task n : Int
+          (db-select Todo.Todo count)
+          (pure task (test-eq (var n) 0)))))))
+(module Todos.Index)
+(record Todos.Index.Model (todos List Todo) (open Int))
+(record Todos.Index.NewTodo (title Text))
+(record Todos.Index.Params)
+(record Todos.Index.AddParams (form NewTodo))
+(record Todos.Index.ToggleParams (id Text))
+(record Todos.Index.RenameParams (id Text))
+(record Todos.Index.RemoveParams (id Text))
+(record Todos.Index.DuplicateParams (id Text))
+(union Todos.Index.Msg
+  (Add AddParams)
+  (Toggle ToggleParams)
+  (Rename RenameParams)
+  (Remove RemoveParams)
+  (Duplicate DuplicateParams))
+(record Todos.Index.Session (user Text) (role User.Role))
+(value Todos.Index.recent : Select Todo ()
+  (db-select Todo.Todo
+    (base (db-mine Todo.Todo))
+    (order (ord (col Todo.Todo created) desc))
+    (limit 2)
+    select))
+(value Todos.Index.load : Params -> Session -> Query Model (params session)
+  (bind query todos : List Todo
+    (db-run all (global Todos.Index.recent))
+    (bind query open : Int
+      (db-select Todo.Todo
+        (base (db-mine Todo.Todo))
+        (where (cond eq (col Todo.Todo done) False))
+        count)
+      (pure query (record Model (todos (var todos)) (open (var open)))))))
+(value Todos.Index.update : Msg -> Model -> Session -> Task Nav (msg model session)
+  (match union (var msg)
+    (case Add (bind _m1 : AddParams)
+      (let p : AddParams
+        (var _m1)
+        (bind task _
+          (db-insert-mine Todo.Todo
+            (record (title (field title (field form (var p)))) (done False)))
+          (pure task (ctor Prelude.Nav.Rerender)))))
+    (case Toggle (bind _m2 : ToggleParams)
+      (let p : ToggleParams
+        (var _m2)
+        (bind task _
+          (db-update-mine Todo.Todo
+            (field id (var p))
+            (lambda (t : Todo)
+              (update (var t)
+                (done (call (std Prelude.not) (field done (var t)))))))
+          (pure task (ctor Prelude.Nav.Rerender)))))
+    (case Rename (bind _m3 : RenameParams)
+      (let p : RenameParams
+        (var _m3)
+        (bind task t : Todo
+          (db-get-mine Todo.Todo (field id (var p)))
+          (bind task _
+            (db-update Todo.Todo
+              (field id (var t))
+              (lambda (x : Todo) (update (var x) (title "renamed"))))
+            (pure task (ctor Prelude.Nav.Rerender))))))
+    (case Remove (bind _m4 : RemoveParams)
+      (let p : RemoveParams
+        (var _m4)
+        (bind task _
+          (db-delete-mine Todo.Todo (field id (var p)))
+          (pure task (ctor Prelude.Nav.Rerender)))))
+    (case Duplicate (bind _m5 : DuplicateParams)
+      (let p : DuplicateParams
+        (var _m5)
+        (bind task _
+          (db-insert-mine Todo.Todo (record (title "copy") (done False)))
+          (bind task _
+            (db-update-mine Todo.Todo
+              (field id (var p))
+              (lambda (t : Todo) (update (var t) (done True))))
+            (pure task (ctor Prelude.Nav.Rerender))))))))
+(value Todos.Index.view : Model -> Session -> Html Msg (model session)
+  (elem html
+    (elem body
+      (form-el Todos.Index.Add
+        (attr submit submit (ctor Todos.Index.Msg.Add (record AddParams)))
+        (input Input NewTodo field=title label="Title")
+        (input Errors NewTodo form)
+        (elem button (htext "Add")))
+      (elem p (attr id text "open")
+        (hexpr text (call (std Text.fromInt) (field open (var model)))))
+      (elem ul
+        (hfor t : Todo
+          (field todos (var model))
+          (elem li
+            (elem span (hexpr text (field title (var t))))
+            (elem button
+              (attr click click
+                (ctor Todos.Index.Msg.Toggle
+                  (record ToggleParams (id (field id (var t))))))
+              (htext "toggle"))
+            (elem button
+              (attr click click
+                (ctor Todos.Index.Msg.Rename
+                  (record RenameParams (id (field id (var t))))))
+              (htext "rename"))
+            (elem button
+              (attr click click
+                (ctor Todos.Index.Msg.Remove
+                  (record RemoveParams (id (field id (var t))))))
+              (htext "remove"))
+            (elem button
+              (attr click click
+                (ctor Todos.Index.Msg.Duplicate
+                  (record DuplicateParams (id (field id (var t))))))
+              (htext "duplicate"))))))))
+(value Todos.Index.titleOf : Maybe Todo -> Text (found)
+  (match union (var found)
+    (case Just (bind _m1 value : Todo)
+      (let t : Todo (var _m1) (field title (var t))))
+    (case Nothing "(gone)")))
+(test "recent lists my two newest todos" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task bob : Text
+      (db-insert User.User (record (name "Bob") (role (ctor User.Role.Reader))))
+      (bind task _
+        (db-insert Todo.Todo (record (title "a") (done False) (owner (var me))))
+        (bind task _
+          (db-insert Todo.Todo
+            (record (title "b") (done False) (owner (var me))))
+          (bind task _
+            (db-insert Todo.Todo
+              (record (title "c") (done False) (owner (var me))))
+            (bind task _
+              (db-insert Todo.Todo
+                (record (title "bob's") (done False) (owner (var bob))))
+              (bind task _
+                (test-login
+                  (record App.Session
+                    (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+                    (role (ctor User.Role.Reader))))
+                (bind task r : { value: Result Text (List Text), trace: List Text }
+                  (test-run
+                    (bind task ts : List Todo
+                      (db-run all (global Todos.Index.recent))
+                      (pure task
+                        (call (std List.map)
+                          (lambda (t : Todo) (field title (var t)))
+                          (var ts)))))
+                  (pure task
+                    (test-eq
+                      (field value (var r))
+                      (ctor Prelude.Result.Ok (record (value (list "c" "b")))))))))))))))
+(test "a scoped helper needs a signed-in user" task
+  (bind task r : { value: Result Text Int, trace: List Text }
+    (test-run
+      (bind task ts : List Todo
+        (db-run all (global Todos.Index.recent))
+        (pure task (call (std List.length) (var ts)))))
+    (pure task
+      (test-eq
+        (record (value (field value (var r))) (trace (field trace (var r))))
+        (record
+          (value
+            (ctor Prelude.Result.Err
+              (record (value "Db.mine Todo: no signed-in user"))))
+          (trace (list "Db.mine Todo" "Db.all Todo")))))))
+(test "the open count is of my open todos" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task bob : Text
+      (db-insert User.User (record (name "Bob") (role (ctor User.Role.Reader))))
+      (bind task _
+        (db-insert Todo.Todo (record (title "a") (done False) (owner (var me))))
+        (bind task _
+          (db-insert Todo.Todo
+            (record (title "b") (done False) (owner (var me))))
+          (bind task _
+            (db-insert Todo.Todo
+              (record (title "c") (done True) (owner (var me))))
+            (bind task _
+              (db-insert Todo.Todo
+                (record (title "d") (done False) (owner (var bob))))
+              (bind task _
+                (test-login
+                  (record App.Session
+                    (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+                    (role (ctor User.Role.Reader))))
+                (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+                  (test-get Todos.Index (record Params))
+                  (pure task (test-eq (field open (field model (var page))) 2)))))))))))
+(test "a visitor is sent to log in" task
+  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+    (test-open Todos.Index (record Params))
+    (pure task
+      (test-eq
+        (field answer (var r))
+        (ctor Prelude.Answer.Redirected
+          (record (value (page-ref Login (record Login.Params)))))))))
+(test "adding a todo stores an open todo of mine" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task _
+      (test-login
+        (record App.Session
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+          (role (ctor User.Role.Reader))))
+      (bind task _
+        (test-get Todos.Index (record Params))
+        (bind task _
+          (test-submit Todos.Index.NewTodo Add (record NewTodo (title "Milk")))
+          (bind task mine : List Todo
+            (db-select Todo.Todo
+              (where (cond eq (col Todo.Todo owner) (var me)))
+              all)
+            (pure task
+              (test-eq
+                (call (std List.map)
+                  (lambda (t : Todo)
+                    (record
+                      (title (field title (var t)))
+                      (done (field done (var t)))))
+                  (var mine))
+                (list (record (title "Milk") (done False)))))))))))
+(test "toggling my todo" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task id : Text
+      (db-insert Todo.Todo
+        (record (title "Milk") (done False) (owner (var me))))
+      (bind task _
+        (test-login
+          (record App.Session
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+            (role (ctor User.Role.Reader))))
+        (bind task _
+          (test-get Todos.Index (record Params))
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (test-click Todos.Index.Toggle (record ToggleParams (id (var id))))
+            (bind task after : Maybe Todo
+              (db-get Todo.Todo (var id))
+              (pure task
+                (test-eq
+                  (record
+                    (answer (field answer (var r)))
+                    (done
+                      (call (std Maybe.map)
+                        (lambda (t : Todo) (field done (var t)))
+                        (var after))))
+                  (record
+                    (answer (ctor Prelude.Answer.Rerendered))
+                    (done (ctor Prelude.Maybe.Just (record (value True))))))))))))))
+(test "renaming my todo" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task id : Text
+      (db-insert Todo.Todo
+        (record (title "Milk") (done False) (owner (var me))))
+      (bind task _
+        (test-login
+          (record App.Session
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+            (role (ctor User.Role.Reader))))
+        (bind task _
+          (test-get Todos.Index (record Params))
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (test-click Todos.Index.Rename (record RenameParams (id (var id))))
+            (bind task after : Maybe Todo
+              (db-get Todo.Todo (var id))
+              (pure task
+                (test-eq
+                  (record
+                    (answer (field answer (var r)))
+                    (title (call (global Todos.Index.titleOf) (var after))))
+                  (record
+                    (answer (ctor Prelude.Answer.Rerendered))
+                    (title "renamed")))))))))))
+(test "removing my todo" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task id : Text
+      (db-insert Todo.Todo
+        (record (title "Milk") (done False) (owner (var me))))
+      (bind task _
+        (test-login
+          (record App.Session
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+            (role (ctor User.Role.Reader))))
+        (bind task _
+          (test-get Todos.Index (record Params))
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (test-click Todos.Index.Remove (record RemoveParams (id (var id))))
+            (bind task after : Maybe Todo
+              (db-get Todo.Todo (var id))
+              (pure task
+                (test-eq
+                  (record
+                    (answer (field answer (var r)))
+                    (title (call (global Todos.Index.titleOf) (var after))))
+                  (record
+                    (answer (ctor Prelude.Answer.Rerendered))
+                    (title "(gone)")))))))))))
+(test "duplicating my todo" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task id : Text
+      (db-insert Todo.Todo
+        (record (title "Milk") (done False) (owner (var me))))
+      (bind task _
+        (test-login
+          (record App.Session
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+            (role (ctor User.Role.Reader))))
+        (bind task _
+          (test-get Todos.Index (record Params))
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (test-click Todos.Index.Duplicate
+              (record DuplicateParams (id (var id))))
+            (bind task after : Maybe Todo
+              (db-get Todo.Todo (var id))
+              (bind task n : Int
+                (db-select Todo.Todo
+                  (where (cond eq (col Todo.Todo owner) (var me)))
+                  count)
+                (pure task
+                  (test-eq
+                    (record
+                      (answer (field answer (var r)))
+                      (done
+                        (call (std Maybe.map)
+                          (lambda (t : Todo) (field done (var t)))
+                          (var after)))
+                      (n (var n)))
+                    (record
+                      (answer (ctor Prelude.Answer.Rerendered))
+                      (done (ctor Prelude.Maybe.Just (record (value True))))
+                      (n 2))))))))))))
+(test "a stranger's toggle on a stale page is not found" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task bob : Text
+      (db-insert User.User (record (name "Bob") (role (ctor User.Role.Reader))))
+      (bind task id : Text
+        (db-insert Todo.Todo
+          (record (title "Milk") (done False) (owner (var me))))
+        (bind task _
+          (test-login
+            (record App.Session
+              (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+              (role (ctor User.Role.Reader))))
+          (bind task _
+            (test-get Todos.Index (record Params))
+            (bind task _
+              (test-login
+                (record App.Session
+                  (user (ctor Prelude.Maybe.Just (record (value (var bob)))))
+                  (role (ctor User.Role.Reader))))
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+                (test-click Todos.Index.Toggle
+                  (record ToggleParams (id (var id))))
+                (bind task after : Maybe Todo
+                  (db-get Todo.Todo (var id))
+                  (pure task
+                    (test-eq
+                      (record
+                        (answer (field answer (var r)))
+                        (done
+                          (call (std Maybe.map)
+                            (lambda (t : Todo) (field done (var t)))
+                            (var after))))
+                      (record
+                        (answer (ctor Prelude.Answer.PageMissing))
+                        (done (ctor Prelude.Maybe.Just (record (value False))))))))))))))))
+(test "a stranger's rename on a stale page is not found" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task bob : Text
+      (db-insert User.User (record (name "Bob") (role (ctor User.Role.Reader))))
+      (bind task id : Text
+        (db-insert Todo.Todo
+          (record (title "Milk") (done False) (owner (var me))))
+        (bind task _
+          (test-login
+            (record App.Session
+              (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+              (role (ctor User.Role.Reader))))
+          (bind task _
+            (test-get Todos.Index (record Params))
+            (bind task _
+              (test-login
+                (record App.Session
+                  (user (ctor Prelude.Maybe.Just (record (value (var bob)))))
+                  (role (ctor User.Role.Reader))))
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+                (test-click Todos.Index.Rename
+                  (record RenameParams (id (var id))))
+                (bind task after : Maybe Todo
+                  (db-get Todo.Todo (var id))
+                  (pure task
+                    (test-eq
+                      (record
+                        (answer (field answer (var r)))
+                        (title (call (global Todos.Index.titleOf) (var after))))
+                      (record
+                        (answer (ctor Prelude.Answer.PageMissing))
+                        (title "Milk")))))))))))))
+(test "a stranger's remove on a stale page is not found" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task bob : Text
+      (db-insert User.User (record (name "Bob") (role (ctor User.Role.Reader))))
+      (bind task id : Text
+        (db-insert Todo.Todo
+          (record (title "Milk") (done False) (owner (var me))))
+        (bind task _
+          (test-login
+            (record App.Session
+              (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+              (role (ctor User.Role.Reader))))
+          (bind task _
+            (test-get Todos.Index (record Params))
+            (bind task _
+              (test-login
+                (record App.Session
+                  (user (ctor Prelude.Maybe.Just (record (value (var bob)))))
+                  (role (ctor User.Role.Reader))))
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+                (test-click Todos.Index.Remove
+                  (record RemoveParams (id (var id))))
+                (bind task after : Maybe Todo
+                  (db-get Todo.Todo (var id))
+                  (pure task
+                    (test-eq
+                      (record
+                        (answer (field answer (var r)))
+                        (title (call (global Todos.Index.titleOf) (var after))))
+                      (record
+                        (answer (ctor Prelude.Answer.PageMissing))
+                        (title "Milk")))))))))))))
+(test "a stranger's duplicate on a stale page is not found and undone" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task bob : Text
+      (db-insert User.User (record (name "Bob") (role (ctor User.Role.Reader))))
+      (bind task id : Text
+        (db-insert Todo.Todo
+          (record (title "Milk") (done False) (owner (var me))))
+        (bind task _
+          (test-login
+            (record App.Session
+              (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+              (role (ctor User.Role.Reader))))
+          (bind task _
+            (test-get Todos.Index (record Params))
+            (bind task _
+              (test-login
+                (record App.Session
+                  (user (ctor Prelude.Maybe.Just (record (value (var bob)))))
+                  (role (ctor User.Role.Reader))))
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+                (test-click Todos.Index.Duplicate
+                  (record DuplicateParams (id (var id))))
+                (bind task after : Maybe Todo
+                  (db-get Todo.Todo (var id))
+                  (bind task n : Int
+                    (db-select Todo.Todo count)
+                    (pure task
+                      (test-eq
+                        (record
+                          (answer (field answer (var r)))
+                          (done
+                            (call (std Maybe.map)
+                              (lambda (t : Todo) (field done (var t)))
+                              (var after)))
+                          (n (var n)))
+                        (record
+                          (answer (ctor Prelude.Answer.PageMissing))
+                          (done
+                            (ctor Prelude.Maybe.Just (record (value False))))
+                          (n 1))))))))))))))
+(test "a scoped update of another's row fails the whole task" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task bob : Text
+      (db-insert User.User (record (name "Bob") (role (ctor User.Role.Reader))))
+      (bind task id : Text
+        (db-insert Todo.Todo
+          (record (title "Milk") (done False) (owner (var me))))
+        (bind task _
+          (test-login
+            (record App.Session
+              (user (ctor Prelude.Maybe.Just (record (value (var bob)))))
+              (role (ctor User.Role.Reader))))
+          (bind task r : { value: Result Text Nav, trace: List Text }
+            (test-run
+              (call (global Todos.Index.update)
+                (ctor Todos.Index.Msg.Duplicate
+                  (record DuplicateParams (id (var id))))
+                (record Model (todos (list)) (open 0))
+                (record Session (user (var bob)) (role (ctor User.Role.Reader)))))
+            (bind task n : Int
+              (db-select Todo.Todo count)
+              (pure task
+                (test-eq
+                  (record
+                    (value (field value (var r)))
+                    (trace (field trace (var r)))
+                    (n (var n)))
+                  (record
+                    (value
+                      (ctor Prelude.Result.Err (record (value "not found"))))
+                    (trace (list "Db.insertMine Todo" "Db.updateMine Todo"))
+                    (n 1)))))))))))
+(test "updateMine never gives a todo away" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task bob : Text
+      (db-insert User.User (record (name "Bob") (role (ctor User.Role.Reader))))
+      (bind task id : Text
+        (db-insert Todo.Todo
+          (record (title "Milk") (done False) (owner (var me))))
+        (bind task _
+          (test-login
+            (record App.Session
+              (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+              (role (ctor User.Role.Reader))))
+          (bind task r : { value: Result Text Unit, trace: List Text }
+            (test-run
+              (db-update-mine Todo.Todo
+                (var id)
+                (lambda (t : Todo)
+                  (update (var t) (title "given") (owner (var bob))))))
+            (bind task after : Maybe Todo
+              (db-get Todo.Todo (var id))
+              (pure task
+                (test-eq
+                  (record
+                    (value (field value (var r)))
+                    (owner
+                      (call (std Maybe.map)
+                        (lambda (t : Todo) (field owner (var t)))
+                        (var after)))
+                    (title (call (global Todos.Index.titleOf) (var after))))
+                  (record
+                    (value (ctor Prelude.Result.Ok (record (value ()))))
+                    (owner (ctor Prelude.Maybe.Just (record (value (var me)))))
+                    (title "given")))))))))))
+(module Todos.Show)
+(record Todos.Show.Model (todo Todo))
+(record Todos.Show.Params (id Text))
+(union Todos.Show.Msg)
+(record Todos.Show.Session (user Text) (role User.Role))
+(value Todos.Show.load : Params -> Session -> Query Model (params session)
+  (bind query todo : Todo
+    (db-get-mine Todo.Todo (field id (var params)))
+    (pure query (record Model (todo (var todo))))))
+(value Todos.Show.view : Model -> Session -> Html Msg (model session)
+  (elem html
+    (elem body (elem h1 (hexpr text (field title (field todo (var model))))))))
+(test "the owner sees their todo" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task id : Text
+      (db-insert Todo.Todo
+        (record (title "Milk") (done False) (owner (var me))))
+      (bind task _
+        (test-login
+          (record App.Session
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+            (role (ctor User.Role.Reader))))
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (test-get Todos.Show (record Params (id (var id))))
+          (pure task
+            (test-eq (field title (field todo (field model (var page)))) "Milk")))))))
+(test "a stranger's open of my todo is not found" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task bob : Text
+      (db-insert User.User (record (name "Bob") (role (ctor User.Role.Reader))))
+      (bind task id : Text
+        (db-insert Todo.Todo
+          (record (title "Milk") (done False) (owner (var me))))
+        (bind task _
+          (test-login
+            (record App.Session
+              (user (ctor Prelude.Maybe.Just (record (value (var bob)))))
+              (role (ctor User.Role.Reader))))
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (test-open Todos.Show (record Params (id (var id))))
+            (pure task
+              (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))))
+(test "a visitor is sent to log in from a todo" task
+  (bind task me : Text
+    (db-insert User.User (record (name "Me") (role (ctor User.Role.Reader))))
+    (bind task id : Text
+      (db-insert Todo.Todo
+        (record (title "Milk") (done False) (owner (var me))))
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (test-open Todos.Show (record Params (id (var id))))
+        (pure task
+          (test-eq
+            (field answer (var r))
+            (ctor Prelude.Answer.Redirected
+              (record (value (page-ref Login (record Login.Params)))))))))))
+(table User.User (id id) (insert name role))
+(table Todo.Todo
+  (id id)
+  (created created)
+  (owner owner)
+  (ref owner User.User cascade)
+  (insert title done owner))
+(form Todos.Index.NewTodo)
+(page Admin.Index "/admin"
+  (params Params)
+  (requires user)
+  (roles Author Admin)
+  (session Session)
+  (model Model)
+  (view Admin.Index.view)
+  (load Admin.Index.load))
+(page Admin.Users "/admin/users"
+  (params Params)
+  (requires user)
+  (roles Admin)
+  (session Session)
+  (model Model)
+  (view Admin.Users.view)
+  (load Admin.Users.load))
+(page Login "/login"
+  (params Params)
+  (model Model)
+  (view Login.view)
+  (load Login.load))
+(page Todos.Index "/"
+  (params Params)
+  (requires user)
+  (session Session)
+  (model Model)
+  (msg Add (params AddParams) (form NewTodo))
+  (msg Toggle (params ToggleParams))
+  (msg Rename (params RenameParams))
+  (msg Remove (params RemoveParams))
+  (msg Duplicate (params DuplicateParams))
+  (view Todos.Index.view)
+  (load Todos.Index.load)
+  (update Todos.Index.update))
+(page Todos.Show "/todos/{id}"
+  (params Params)
+  (requires user)
+  (session Session)
+  (model Model)
+  (view Todos.Show.view)
+  (load Todos.Show.load))
+(session App.Session)

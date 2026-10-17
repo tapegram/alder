@@ -327,7 +327,7 @@ func TestCollect_ScopedNodes(t *testing.T) {
 			var walk func(e ir.Expr)
 			walk = func(e ir.Expr) {
 				switch e.(type) {
-				case *ir.DbMine, *ir.DbGetMine, *ir.DbUpdateMine, *ir.DbDeleteMine, *ir.DbInsertMine:
+				case *ir.DbScoped, *ir.DbGetScoped, *ir.DbUpdateScoped, *ir.DbDeleteScoped, *ir.DbInsertScoped:
 					shown = append(shown, line(m.Name, e, id))
 				}
 				for _, k := range ir.Children(e) {

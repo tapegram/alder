@@ -34,9 +34,9 @@ import (
 //	                   leaves nil; Db.update and Db.delete produce struct{}{}
 //	DbSelect (a value) db.Offset(n, db.Limit(n, db.OrderBy(o, db.Where(c, db.From(table)))))
 //	                   built on Base when set
-//	DbMine             db.Mine(table): a Select whose owner predicate db.All/First/CountRows add
+//	DbScoped             db.Mine(table): a Select whose owner predicate db.All/First/CountRows add
 //	                   from the running effect's session (the trace notes "Db.mine Todo")
-//	DbGetMine, …       eff.Call("Db.getMine Todo", false, func(_e) { return db.GetMineRow(…, id) }),
+//	DbGetScoped, …       eff.Call("Db.getMine Todo", false, func(_e) { return db.GetMineRow(…, id) }),
 //	                   Db.updateMine/deleteMine/insertMine likewise (db.UpdateMineRow,
 //	                   DeleteMineRow, InsertMineRow with insertminevals__M__T(row)): write true;
 //	                   the user is the session of _e (the descriptor's User), a row that is not
@@ -87,7 +87,7 @@ func (f *fn) effect(e ir.Expr, s *scope) string {
 		return strconv.Quote(x.Field)
 	case *ir.TableRef:
 		return tableName(x.Table.Module, x.Table.Name)
-	case *ir.DbMine:
+	case *ir.DbScoped:
 		return "db.Mine(" + tableName(x.Table.Module, x.Table.Name) + ")"
 	}
 	c, isTask := f.effNode(e, s)
@@ -116,7 +116,7 @@ func isEffNode(e ir.Expr) bool {
 	switch x := e.(type) {
 	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.CapCall,
 		*ir.DbGet, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete, *ir.TestRun, *ir.TestTrace, *ir.TestFake,
-		*ir.DbGetMine, *ir.DbUpdateMine, *ir.DbDeleteMine, *ir.DbInsertMine, *ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick:
+		*ir.DbGetScoped, *ir.DbUpdateScoped, *ir.DbDeleteScoped, *ir.DbInsertScoped, *ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick:
 		return true
 	case *ir.DbSelect:
 		return x.Terminal != ir.SelNone
@@ -215,14 +215,14 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 		return f.dbCall("Db.delete "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
 			return "struct{}{}, db.DeleteRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " + f.code(x.ID, c) + ")"
 		}), true
-	case *ir.DbGetMine:
+	case *ir.DbGetScoped:
 		tb := x.Table
-		return f.dbCall("Db.getMine "+tb.Name, false, x.Ty, s, func(env string, c *scope) string {
+		return f.dbCall(x.Op+" "+tb.Name, false, x.Ty, s, func(env string, c *scope) string {
 			return "db.GetMineRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " + f.code(x.ID, c) + ")"
 		}), true
-	case *ir.DbInsertMine:
+	case *ir.DbInsertScoped:
 		tb := x.Table
-		return f.dbCall("Db.insertMine "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
+		return f.dbCall(x.Op+" "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
 			row := ""
 			if r, ok := x.Row.(*ir.Record); ok { // always a literal (the checker): name its type by the alias
 				row = f.record(r, insertMineName(tb.Module, tb.Name), c)
@@ -232,15 +232,15 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 			return "db.InsertMineRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " +
 				insertMineVals(tb.Module, tb.Name) + "(" + row + "), " + env + ".Now())"
 		}), true
-	case *ir.DbUpdateMine:
+	case *ir.DbUpdateScoped:
 		tb := x.Table
-		return f.dbCall("Db.updateMine "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
+		return f.dbCall(x.Op+" "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
 			return "struct{}{}, db.UpdateMineRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " +
 				f.code(x.ID, c) + ", " + f.code(x.Fn, c) + ", " + env + ".Now())"
 		}), true
-	case *ir.DbDeleteMine:
+	case *ir.DbDeleteScoped:
 		tb := x.Table
-		return f.dbCall("Db.deleteMine "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
+		return f.dbCall(x.Op+" "+tb.Name, true, x.Ty, s, func(env string, c *scope) string {
 			return "struct{}{}, db.DeleteMineRow(" + dbArgs(env) + ", " + tableName(tb.Module, tb.Name) + ", " + f.code(x.ID, c) + ")"
 		}), true
 	case *ir.CapCall:
@@ -575,7 +575,7 @@ func (g *gen) tableDecl(w *strings.Builder, tb *ir.Table) {
 		r = "_"
 	}
 	fmt.Fprintf(w, "func %s(%s %s) []any {\nreturn []any{%s}\n}\n\n", insertVals(tb.Module, tb.Name), r, ins, strings.Join(vals, ", "))
-	if tb.Owner != "" {
+	if tb.Owner() != "" {
 		g.insertMineDecl(w, tb, field)
 	}
 
@@ -612,8 +612,8 @@ func (g *gen) tableDecl(w *strings.Builder, tb *ir.Table) {
 	id := Field(tb.IDField)
 	fmt.Fprintf(w, "ReadID: func(r %s) string { return r.%s },\n", rec, id)
 	fmt.Fprintf(w, "SetID: func(r %s, id string) %s {\nr.%s = id\nreturn r\n},\n", rec, rec, id)
-	if tb.Owner != "" {
-		fmt.Fprintf(w, "Owner: %s,\nUser: %s,\n", strconv.Quote(tb.Owner), g.sessionUser())
+	if tb.Owner() != "" {
+		fmt.Fprintf(w, "Owner: %s,\nUser: %s,\n", strconv.Quote(tb.Owner()), g.sessionUser())
 	}
 	w.WriteString("}\n\n")
 }
@@ -626,7 +626,7 @@ func (g *gen) insertMineDecl(w *strings.Builder, tb *ir.Table, field func(string
 	var fs []string
 	inserted := map[string]bool{}
 	for _, n := range tb.InsertFields {
-		if n != tb.Owner {
+		if n != tb.Owner() {
 			fs = append(fs, Field(n)+" "+GoType(field(n).Type))
 			inserted[n] = true
 		}

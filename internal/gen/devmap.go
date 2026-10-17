@@ -3,6 +3,7 @@ package gen
 import (
 	"encoding/json"
 	"sort"
+	"strings"
 
 	"alder/internal/ir"
 	"alder/internal/types"
@@ -57,7 +58,7 @@ func devFields(r *ir.RecordType) []string {
 func devMapJSON(p *ir.Program) string {
 	m := devMap{Pages: []devPage{}, Tables: []devTable{}, Caps: []string{}, Session: devFields(p.Session)}
 	for _, pg := range p.Pages {
-		d := devPage{Module: pg.Module, Path: pg.Path, Requires: pg.Requires, Roles: pg.Roles, Params: devFields(pg.Params)}
+		d := devPage{Module: pg.Module, Path: pg.Path, Requires: strings.Join(pg.Requires, ", "), Roles: pg.Roles, Params: devFields(pg.Params)}
 		for _, msg := range pg.Msgs {
 			d.Msgs = append(d.Msgs, msg.Name)
 		}
@@ -66,7 +67,7 @@ func devMapJSON(p *ir.Program) string {
 	for _, tb := range p.Tables {
 		m.Tables = append(m.Tables, devTable{
 			Name: tb.Module + "." + tb.Name, Columns: devFields(tb.Record), ID: tb.IDField,
-			Created: tb.Created, Updated: tb.Updated, Unique: tb.Unique, Refs: tb.Refs, OnDelete: tb.OnDelete, Owner: tb.Owner,
+			Created: tb.Created, Updated: tb.Updated, Unique: tb.Unique, Refs: tb.Refs, OnDelete: tb.OnDelete, Owner: tb.Owner(),
 		})
 	}
 	for _, c := range p.Caps {

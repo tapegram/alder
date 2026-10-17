@@ -20,6 +20,9 @@ type Parser struct {
 	prevEnd diag.Pos
 	// ctx names what is being parsed, innermost last; errorAt prefixes messages with it.
 	ctx []string
+	// session is set inside App's `session { … }`: a field's type stops at `via`, which names
+	// the field's membership table (`org: Maybe Org.OrgId via Membership`).
+	session bool
 }
 
 func newParser(file string, src []byte, sigMode bool, trace *[]Token) *Parser {
@@ -290,29 +293,7 @@ func (p *Parser) parseDecl() Decl {
 		d.Params = p.parseRecordType()
 		pop()
 		if p.atKeyword("requires") {
-			rt := p.advance()
-			if !p.atRole() {
-				d.Requires = p.expect(LIdent, "session field").Text
-				d.RequiresSpan = p.spanFrom(rt)
-				switch {
-				case p.at(Comma):
-					p.advance()
-					if !p.atRole() {
-						p.errorAt(p.tok, "expected `role R` after `requires "+d.Requires+",`, got "+describe(p.tok))
-					}
-				case p.atRole():
-					p.errorAt(p.tok, "expected `,` between `requires "+d.Requires+"` and `role`: write `requires "+d.Requires+", role R`")
-				}
-			}
-			if p.atRole() {
-				d.Roles, d.RolesSpan = p.parseRoles()
-				if p.at(Comma) && d.Requires == "" { // `requires role Admin, user`
-					p.errorAt(p.tok, "`user` goes first: write `requires user, role R` with unqualified constructors")
-					for !p.at(NL) && !p.at(EOF) {
-						p.advance()
-					}
-				}
-			}
+			p.parseRequires(d)
 		}
 		d.Span = p.spanFrom(start)
 		return d
@@ -358,8 +339,20 @@ func (p *Parser) parseDecl() Decl {
 		d := &SessionDecl{}
 		p.expect(LBrace, "`{`")
 		pop := p.in("the session")
+		p.session = true
 		d.Fields = p.parseFieldList(RBrace, false)
+		p.session = false
 		pop()
+		d.Span = p.spanFrom(start)
+		return d
+	case p.at(LIdent) && p.tok.Text == "silo" && p.peekSeq(LIdent, LBrace): // contextual, like `deploy`
+		return p.parseSiloDecl()
+	case p.at(LIdent) && p.tok.Text == "choose" && p.peekSeq(LIdent, Equal, UIdent): // contextual
+		p.advance()
+		kt := p.advance()
+		d := &ChooseDecl{Key: kt.Text, KeySpan: p.spanTok(kt)}
+		p.advance() // =
+		d.Page = p.parseModName()
 		d.Span = p.spanFrom(start)
 		return d
 	case p.at(LIdent) && p.tok.Text == "deploy" && p.peekIs(LBrace): // contextual: `deploy` stays a name elsewhere
@@ -647,6 +640,139 @@ func (p *Parser) parseTypeDecl() Decl {
 	return d
 }
 
+// parseRequires parses a page's `requires` clause at `requires`: session fields (`requires
+// user, org`), then an optional `role R | S`, then an optional `silo k` (the admin form,
+// `requires user, role Admin, silo org`).
+func (p *Parser) parseRequires(d *PageDecl) {
+	rt := p.advance()
+	for !p.atRole() && !p.atSilo() {
+		ft := p.tok
+		name := p.expect(LIdent, "session field").Text
+		if len(d.Requires) == 0 {
+			d.RequiresSpan = p.spanFrom(rt)
+			d.FieldSpans = append(d.FieldSpans, d.RequiresSpan)
+		} else {
+			d.FieldSpans = append(d.FieldSpans, p.spanFrom(ft))
+		}
+		d.Requires = append(d.Requires, name)
+		fields := strings.Join(d.Requires, ", ")
+		if p.at(Comma) {
+			p.advance()
+			if p.atRole() || p.atSilo() || p.at(LIdent) {
+				continue
+			}
+			p.errorAt(p.tok, "expected `role R` after `requires "+fields+",` (or another session field, or `silo k`), got "+describe(p.tok))
+		} else if p.atRole() {
+			p.errorAt(p.tok, "expected `,` between `requires "+fields+"` and `role`: write `requires "+fields+", role R`")
+		}
+		break
+	}
+	if p.atRole() {
+		d.Roles, d.RolesSpan = p.parseRoles()
+		if p.at(Comma) {
+			switch {
+			case p.peekSeq(LIdent, LIdent) && p.peekText("silo"):
+				p.advance()
+			case len(d.Requires) == 0: // `requires role Admin, user`
+				p.errorAt(p.tok, "`user` goes first: write `requires user, role R` with unqualified constructors")
+				p.skipLine()
+				return
+			default:
+				p.errorAt(p.tok, "only `silo k` may follow the `role` clause: session fields go before it (`requires user, org, role R`)")
+				p.skipLine()
+				return
+			}
+		}
+	}
+	if p.atSilo() {
+		st := p.advance()
+		d.Silo = p.advance().Text
+		d.SiloSpan = p.spanFrom(st)
+	}
+}
+
+// skipLine skips to the end of the line.
+func (p *Parser) skipLine() {
+	for !p.at(NL) && !p.at(EOF) {
+		p.advance()
+	}
+}
+
+// atSilo reports whether the parser is at the `silo k` clause of a page's `requires`: the name
+// `silo` followed by a name (`requires silo` alone names a session field `silo`).
+func (p *Parser) atSilo() bool {
+	return p.at(LIdent) && p.tok.Text == "silo" && p.peekIs(LIdent)
+}
+
+// peekSeq reports whether the tokens after the current one are of kinds ks, in order.
+func (p *Parser) peekSeq(ks ...Kind) bool {
+	st, tok := p.mark()
+	defer p.restore(st, tok)
+	for _, k := range ks {
+		p.advance()
+		if !p.at(k) {
+			return false
+		}
+	}
+	return true
+}
+
+// peekText reports whether the token after the current one has text s.
+func (p *Parser) peekText(s string) bool {
+	st, tok := p.mark()
+	defer p.restore(st, tok)
+	p.advance()
+	return p.tok.Text == s
+}
+
+// parseSiloDecl parses `silo k { T, U }` at `silo`.
+func (p *Parser) parseSiloDecl() *SiloDecl {
+	start := p.advance()
+	kt := p.advance()
+	d := &SiloDecl{Key: kt.Text, KeySpan: p.spanTok(kt)}
+	p.advance() // {
+	pop := p.in("`silo " + d.Key + "`")
+	defer pop()
+	for {
+		p.skipNL()
+		if p.at(RBrace) {
+			p.advance()
+			break
+		}
+		if !p.at(UIdent) {
+			p.errorAt(p.tok, "expected a table name, got "+describe(p.tok))
+			for !p.at(RBrace) && !p.at(EOF) {
+				p.advance()
+			}
+			if p.at(RBrace) {
+				p.advance()
+			}
+			break
+		}
+		t := p.advance()
+		d.Tables = append(d.Tables, t.Text)
+		d.TableSpans = append(d.TableSpans, p.spanTok(t))
+		p.skipNL()
+		if p.at(Comma) {
+			p.advance()
+			continue
+		}
+		p.skipNL()
+		if !p.at(RBrace) {
+			p.errorAt(p.tok, "expected `,` or `}`, got "+describe(p.tok))
+			for !p.at(RBrace) && !p.at(EOF) {
+				p.advance()
+			}
+			if p.at(RBrace) {
+				p.advance()
+			}
+			break
+		}
+	}
+	d.Span = p.spanFrom(start)
+	return d
+}
+
 // atRole reports whether the parser is at the `role R` clause of a page's `requires`: the name
 // `role` followed by a constructor (`requires role` alone names a session field `role`).
 func (p *Parser) atRole() bool {
@@ -681,6 +807,8 @@ func (p *Parser) parseAttr() *Attr {
 	switch a.Name {
 	case "ref":
 		a.Arg = p.expect(UIdent, "table name").Text
+	case "partition":
+		a.Arg = p.expect(LIdent, "the session field `@partition` names (`@partition org`)").Text
 	case "renamed":
 		if !p.at(String) {
 			p.errorAt(p.tok, "expected the old name as a string (`@renamed \"old\"`), got "+describe(p.tok))
@@ -717,6 +845,11 @@ func (p *Parser) parseFieldList(closing Kind, attrs bool) []*Field {
 		f := &Field{Name: ft.Text}
 		p.expect(Colon, "`:`")
 		f.Type = p.parseType()
+		if p.session && p.at(LIdent) && p.tok.Text == "via" {
+			vt := p.advance()
+			f.Via = p.expect(UIdent, "the membership table after `via`").Text
+			f.ViaSpan = p.spanFrom(vt)
+		}
 		if p.at(Equal) {
 			p.advance()
 			f.Default = p.parseExpr()
@@ -768,7 +901,7 @@ func (p *Parser) parseType() Type {
 	start := p.tok
 	first := p.parseAType()
 	var args []Type
-	for p.at(UIdent) || p.at(LIdent) || p.at(LBrace) || p.at(LParen) {
+	for p.at(UIdent) || p.at(LIdent) && !(p.session && p.tok.Text == "via") || p.at(LBrace) || p.at(LParen) {
 		args = append(args, p.parseAType())
 	}
 	var head Type = first
