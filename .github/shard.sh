@@ -5,19 +5,24 @@
 #   .github/shard.sh N check [pkg]   assert the N shards' -run patterns together select every
 #                                    test exactly once (go test -list with each shard's pattern)
 #
-# A test's shard is cksum(name) mod N: stable, so a test stays put until it is renamed, and a
-# renamed or new test lands in some shard without anyone editing this file.
+# Shards are balanced by weight: .github/shard-weights lists the slow tests with their seconds
+# (measured; `go test -v` prints them), every other test weighs 1. The tests, heaviest first
+# (ties by name), each go to the lightest shard so far (ties: the lowest k). Deterministic, and a
+# new or renamed test lands in some shard without anyone editing a file; a new slow test is worth
+# a line in shard-weights.
 set -euo pipefail
 n=$1 k=$2 pkg=${3:-./cmd/alder}
 
 list() { go test "$pkg" -list "$1" | grep -E '^(Test|Example|Fuzz)' || true; }
 
 all=$(list '.*')
+weights="$(dirname "$0")/shard-weights"
+assign=$(echo "$all" | awk -v n="$n" -v wf="$weights" '
+  BEGIN { while ((getline line < wf) > 0) { if (line ~ /^[0-9]/) { split(line, f, " "); w[f[2]] = f[1] } } }
+  NF { print (($1 in w) ? w[$1] : 1), $1 }' | sort -k1,1nr -k2,2 | awk -v n="$n" '
+  { k = 0; for (i = 1; i < n; i++) if (load[i] < load[k]) k = i; load[k] += $1; print k, $2 }')
 shard() { # the names in shard $1
-  local name
-  for name in $all; do
-    if [ $(( $(printf %s "$name" | cksum | cut -d' ' -f1) % n )) -eq "$1" ]; then echo "$name"; fi
-  done
+  echo "$assign" | awk -v k="$1" '$1 == k { print $2 }'
 }
 pattern() { echo "^($(shard "$1" | paste -sd'|' -))\$"; }
 
@@ -37,4 +42,5 @@ fi
 p=$(pattern "$k")
 if [ "$p" = '^()$' ]; then echo "shard $k of $n of $pkg is empty"; exit 0; fi
 echo "shard $k of $n of $pkg: $(shard "$k" | wc -l | tr -d ' ') tests"
+shard "$k" | paste -sd' ' -
 exec go test "$pkg" -count=1 -timeout 30m -run "$p"
