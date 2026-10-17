@@ -1030,9 +1030,9 @@ Chapter 16 is the full account; here are the usage lines and exit codes.
 ```text
 alder deploy <env> [dir] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json]
 alder status <env> [dir] [--host name]
-alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch]
+alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup [--yes]]
 alder logs <env> [dir] [--host name] [-f]
-alder restore <env> [--from url] [--to time] [--out file.db] [--dir dir]
+alder restore <env> [--from url] [--to time] [--out file.db] [--dir dir] [--yes]
 alder ci init [dir] [--github] [--force]
 ```
 
@@ -1046,8 +1046,9 @@ progress on standard error and the deploy record on standard output;
 pull request's preview). Exit 0 when deployed (or the dry run passed);
 1 for a refusal (the gate, a `requires` name the target does not set, a
 migration that drops data without `--allow-data-loss`, a failed health
-check), an unreachable target or a script that exits non-zero; 2 for a
-usage error, a missing declaration or environment.
+check, another run holding the environment's lock), an unreachable
+target or a script that exits non-zero; 2 for a usage error, a missing
+declaration or environment.
 
 The `Fly` target is **experimental** (it has never run against Fly
 itself) and refuses a deploy that would apply a migration to an
@@ -1055,9 +1056,13 @@ existing database: "Fly target: migrations are not supported yet;
 deploy a build with no pending migrations, or use Ssh".
 
 `alder status`, `rollback` and `logs` read the state at the target (exit
-2 for a `Script` environment, which keeps its own). `alder restore`
-rebuilds the database from the bucket at a time and puts it in place, or
-with `--out` writes it to a file. `alder ci init` writes the GitHub
+2 for a `Script` environment, which keeps its own). `alder rollback
+--restore-backup` also puts back the copy of the database taken when
+that build was replaced, losing every write since; it asks on the
+terminal, `--yes` answers without one, and an unconfirmed run changes
+nothing (exit 2). `alder restore` rebuilds the database from the bucket
+at a time and puts it in place (asking the same way), or with `--out`
+writes it to a file. `alder ci init` writes the GitHub
 Actions workflow; it refuses to replace one without `--force`, and runs
 `actionlint` on it when that is installed (exit 1 when it finds a
 problem).
@@ -1431,7 +1436,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0027 | a role clause the session cannot answer (`requires user, role R`): "`role` needs `user` first", "this session has no `role` field", "this session's `role` field is `Text`, not a union: write `role: Role = …` with `type Role = Reader \| Author`", "this session's `role` field is `Maybe User.Role`: the role must be a union, not `Maybe`", "`Editor` is not a constructor of this session's `role` type `User.Role` (Reader, Author, Admin)", "`role` names `Admin` twice" | — |
 | E0028 | a custom element (a tag with a hyphen) the manifests do not vouch for (chapter 5, "Custom elements"): "unknown element `<wa-button>`: declare custom elements in `elements/custom-elements.json` (chapter 5)"; an attribute neither declared nor on the escape list: "`<al-button>` has no attribute `tone`; it has `variant`, `size`, `disabled`, `type`" ("it declares none" for an element without attributes); a quoted value on a boolean attribute: "`<al-button>` attribute `disabled` is boolean: write `disabled` or `disabled={expr}`"; a `slot` its parent does not declare: "`<al-card>` has no slot `aside`; it has `header`, `footer`, `actions`" ("it has only the default slot", "it declares no slots"); a manifest file that does not parse, at the file: "`elements/custom-elements.json`: no `modules`" or the JSON reader's reason | — |
 | E0029 | a `page "…"` path the router cannot serve (chapter 6): "page path `//evil.com` has an empty segment; a path is `/` followed by segments of letters, digits, `.`, `_`, `~`, `-` or `{param}`"; likewise "has a space", "has a query (`?`)", "has a fragment (`#`)", "has the character `\`", "has the segment `..`, which a browser resolves away", "has the segment `a{id}`, which is neither a name nor a whole `{param}`". A trailing `/` is allowed. `alder new page` and `alder new admin --path` refuse the same paths | — |
-| E0030 | a `deploy` declaration `alder deploy` cannot use (chapter 16): "unknown deploy target `Heroku` in environment `production`: a target is `Ssh`, `Fly` or `Script`", "environment `production` (Ssh) has no `domain`" (likewise `path`, and `app` for `Fly`), "a `requires` name is empty", "`floor` is 1.5, outside 0..1: it is a mutation score", "environment `production` is declared twice in `deploy`", "`deploy` is declared once", "`deploy` is only allowed in `App`"; and the file carries no secret: "a secret belongs in the environment, not in `App`: name it in `requires`" for a text with a password in a URL (`scheme://user:pass@host`), beginning `sk_`, `ghp_`, `AKIA`, `xoxb-`, `xoxp-` or `-----BEGIN`, or of 32 or more base64 or hex characters without a space (a path is never taken for one) | — |
+| E0030 | a `deploy` declaration `alder deploy` cannot use (chapter 16): "unknown deploy target `Heroku` in environment `production`: a target is `Ssh`, `Fly` or `Script`", "environment `production` (Ssh) has no `domain`" (likewise `path`, and `app` for `Fly`), "a `requires` name is empty", "`floor` is 1.5, outside 0..1: it is a mutation score", "environment `production` is declared twice in `deploy`", "`deploy` is declared once", "`deploy` is only allowed in `App`"; a target's text outside its character set (an `Ssh` host, user or domain with another character or beginning with `-`, a `path` with a control character, `"`, `\`, `$`, `` ` ``, `%` or `..`, a `Fly` region that is not a three-letter code, an `app` that is not lowercase letters, digits and `-`); and the file carries no secret: "a secret belongs in the environment, not in `App`: name it in `requires`" for a text with a password in a URL (`scheme://user:pass@host`), beginning `sk_`, `ghp_`, `AKIA`, `xoxb-`, `xoxp-` or `-----BEGIN`, or of 32 or more base64 or hex characters without a space (a path is never taken for one) | — |
 | E0101 | `Db.get T x` where `x` is not `Id T` | `Db.from T \|> Db.where (T.<col>.eq x) \|> Db.first` when a column of `x`'s type exists |
 | E0102 | field access on a `Maybe` | `match` skeleton |
 | E0201 | name from a module that isn't imported | `import M` |

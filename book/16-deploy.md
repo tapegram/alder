@@ -83,6 +83,16 @@ environment without `app`, an empty `requires` name, a `floor` outside
 0..1, an environment declared twice, a second `deploy`, or a `deploy`
 outside `App`. Chapter 11's table of codes has each message.
 
+The texts of a target reach `ssh`'s command line, shell scripts, a
+systemd unit and Fly's API, so each is held to the characters it can
+be: an `Ssh` host is letters, digits, `.`, `-`, `_`, `@` (and `:`, `[`,
+`]` for an address), a `user` letters, digits, `.`, `-`, `_`, a
+`domain` letters, digits, `.` and `-` (optionally starting `*.`), none
+of them beginning with `-`; a `path` is absolute, with no control
+character, `"`, `\`, `$`, `` ` ``, `%` or `..`; a `Fly` region is Fly's
+three-letter code and an `app` lowercase letters, digits and `-`. A
+`--host` given on the command line is held to the domain's set.
+
 It also refuses a secret. The file goes into version control, so it must
 never hold one:
 
@@ -134,7 +144,9 @@ anything at the target changes:
    the live database's schema; make the **plan**: which of the build's
    migrations the live database has not had. If one drops data and
    `--allow-data-loss` was not given, refuse. `--dry-run` stops here.
-4. **Ship.** Upload the artifact; copy the database into the build's
+4. **Ship.** Take the environment's lock (one deploy, rollback or
+   restore at a time); prepare what the build needs (the systemd unit,
+   Caddy); upload the artifact; copy the database into the build's
    directory (`backup.db`); apply the migrations (`app --migrate-only`);
    start the new build on a free port; check its health; switch the
    traffic; stop the old build after its requests finish; prune old
@@ -224,13 +236,13 @@ column `mood` to `Entry`:
 
 ```text
 $ alder deploy production                                    (recorded)
-alder deploy production → Ssh box:/…/srbox
+alder deploy production → Ssh alder-test-box:/…/box
 gate
   check    ok
   build    ok
   test     ok  2 passed
   mutate   ok  score 1.00 ≥ floor 1.00 (last deploy; 3 mutants, 0 survived)
-artifact build/sr/deploy/9395679f30b6bf05 (darwin/arm64)
+artifact build/demo/deploy/46ea832c79966e56 (darwin/arm64)
 target
   requires ok  SMTP_URL, ALDER_SECRET
 plan
@@ -239,14 +251,14 @@ plan
     rebuild table Entry: Entry: column order changed (ALTER TABLE only appends); Entry.mood added
 warning: no `backup` in the declaration: only the pre-migration copies (builds/<id>/backup.db) exist
 ship
-  upload   ok  builds/9395679f30b6bf05/
-  backup   ok  builds/9395679f30b6bf05/backup.db
+  upload   ok  builds/46ea832c79966e56/
+  backup   ok  builds/46ea832c79966e56/backup.db
   migrate  ok  applied 0002_add_mood
-  start    ok  port 50665
-  health   ok  build 9395679f30b6bf05 answers GET /
-  switch   ok  current → 9395679f30b6bf05 (port 18977)
-  stop     ok  build ac9e346ab3edd8c8 stops after 3s
-deployed 9395679f30b6bf05 to production
+  start    ok  port 54466
+  health   ok  build 46ea832c79966e56 answers GET /
+  switch   ok  current → 46ea832c79966e56 (port 54450)
+  stop     ok  build 339250fe1b936905 already stopped
+deployed 46ea832c79966e56 to production
 ```
 
 What happened, in order:
@@ -272,14 +284,18 @@ What happened, in order:
   stopped the deploy with nothing switched.
 - `start`: the new build was started on a free port beside the old one.
 - `health`: `curl` at the box asked the new build for `/` until its page
-  carried `9395679f30b6bf05`.
+  carried `46ea832c79966e56`.
 - `switch`: with `proxy: None` the app itself listens on the public port
   (`<path>/port`), so the old build was stopped and the new one started
   again on that port: a moment without a listener. With Caddy (the
   default), the switch is one call to Caddy's admin API that changes the
   route's upstream port, and no request is dropped.
-- `stop`: the old build gets its drain time (30 seconds by default; 3
-  seconds in this session) to finish its requests, then a SIGTERM.
+- `stop`: with `proxy: None` the switch has already stopped the old
+  build, so there is nothing left to do. Behind Caddy the old build is
+  still running at this point, and gets its drain time (30 seconds by
+  default, `ALDER_DEPLOY_DRAIN`) to finish its requests, then a SIGTERM:
+  the line reads `stop ok build … stops after 30s (unless it is current
+  again by then)`, because a rollback inside that window keeps it.
 
 The state of the environment lives at the box, under `path`:
 
@@ -294,9 +310,35 @@ The state of the environment lives at the box, under `path`:
 <path>/db/app.db      the database, with db/schema.json and db/migrations (the last migration's)
 ```
 
+Everything the deploy writes there is the deploy user's alone: every
+script runs under `umask 077`, `builds/` is mode 750, each `run` and
+`app` 700, each `backup.db` and the database 600. An environment file
+that sets `ALDER_DEV` is refused (development mode, with its public
+cookie key and errors shown to visitors, never runs at a target), and
+`run` unsets it anyway.
+
 Nothing about a deploy is kept on your laptop or in the repository. Two
 people (or a laptop and CI) deploying the same app see the same state,
 because they ask the same box.
+
+**One run at a time.** `deploy`, `rollback` and `restore` each take the
+environment's lock first, and a second run is refused while one holds
+it:
+
+```text
+alder deploy: refused: another deploy, rollback or restore of production is running (the lock at /srv/blog/deploy.lock is held by deploy@box (local ada) since 2026-10-17T07:24:34Z, pid 25904): wait for it to finish
+```
+
+The lock is held by an `ssh` session that lives as long as the run: a
+`flock` on `<path>/deploy.lock`, or, where `flock` is missing, a
+directory `<path>/deploy.lock.d` naming its holder. A run that dies
+releases it with its session; a directory left by a killed run is
+taken over by the next one, which says so (`warning: took over a stale
+deploy lock …`). One case needs a hand: a session that hangs without
+dying (a laptop that went to sleep mid-deploy) holds the lock until the
+box's `sshd` notices, which can take a while. When you are sure no run
+is going on, remove it: `ssh deploy@box.example.com rm -rf
+/srv/blog/deploy.lock /srv/blog/deploy.lock.d`.
 
 Before the first deploy, write the environment file by hand, one
 `NAME=value` per line, as a shell would read it (the `run` wrapper
@@ -315,10 +357,19 @@ How a build runs at the box: when systemd runs there, each build is an
 instance of a template unit, `alder-<app>-<env>@<id>.service` (a
 template, so the old and the new build can run side by side during the
 switch); as `root` it is a system unit, otherwise a user unit with
-lingering enabled so it survives your logout. Without systemd (a
-container, a Mac) the build is a background process with a pid file.
-Either way its output goes to `builds/<id>/log`, which `alder logs`
-reads, so no journal permissions are needed. With `proxy: Caddy`, Caddy
+lingering enabled so it survives your logout; systemd restarts a build
+that crashes (`Restart=on-failure`), and the switch enables the current
+build's unit so it starts again at boot. Without systemd (a container,
+a Mac, or `ALDER_DEPLOY_SUPERVISOR=process`) the build is a background
+process with a pid file, and **nothing restarts it**: a build that
+crashes, or a box that reboots, stays down until the next deploy or
+rollback (`alder deploy` of the current build starts it again). Either
+way its output goes to `builds/<id>/log`, which `alder logs` reads, so
+no journal permissions are needed. The log grows while the build runs;
+when a build starts with more than 10 MB of it, it is trimmed to its
+last megabyte (a line says so). A build that runs for months with a
+chatty adapter wants `logrotate` with `copytruncate` on
+`<path>/builds/*/log`. With `proxy: Caddy`, Caddy
 is installed with `apt` on Debian and Ubuntu when it is missing (any
 other system is refused with a sentence: install Caddy yourself or use
 `proxy: None`), and the route for `domain` gets its certificate
@@ -377,6 +428,7 @@ and exits 1:
 | checks | a command exits non-zero | ``refused: the check `./scripts/lint-content` exited 1``, with its last 20 lines |
 | requires | a name is not set at the target | `refused: the environment at Ssh … does not set SMTP_URL: add it to its environment file …; nothing was uploaded` |
 | plan | a migration drops data | the DROPS DATA lines (next section) |
+| plan (Fly) | any pending migration on an existing database | "Fly target: migrations are not supported yet; …" ("The Fly target") |
 | health | the new build exits, or never answers with its id | its log; nothing was switched |
 
 Why each one: a typed hole is an unfinished program; the tests are the
@@ -436,6 +488,18 @@ steps is the guarantee: the database is copied into
 exists only on the command line: a file that could say "always allow
 data loss" would make the rule decorative.
 
+The rule is also enforced where the migration is applied, not only in
+the plan. The app's executable itself, at `--migrate-only` and when it
+starts, refuses a pending migration whose header says DROPS DATA on a
+database that already had migrations, unless the environment variable
+`ALDER_ALLOW_DATA_LOSS=1` is set (development mode aside). `alder
+deploy` sets that variable for the one `--migrate-only` it runs, and
+only with `--allow-data-loss`. So a `Script` target, whose plan cannot
+see the live schema and lists every migration ("DROPS DATA (if not
+applied yet)"), is covered too: the script's environment carries
+`ALDER_ALLOW_DATA_LOSS=1` only when the command line said so, and its
+`app --migrate-only` refuses otherwise.
+
 A first deploy (a target with no database yet) drops nothing, whatever
 its migrations say: every migration creates.
 
@@ -450,13 +514,14 @@ you can choose a quiet moment.
 
 ```text
 alder status <env> [dir] [--host name]
-alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch]
+alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup [--yes]]
 alder logs <env> [dir] [--host name] [-f]
 ```
 
 `alder status` reads the state at the target: the current build, the
 last five builds with their records, the database's size, the last
-backup. Recorded, after the deploy above:
+backup. Recorded, after a deploy like the one above (another session,
+so other ids):
 
 ```text
 $ alder status production                                    (recorded)
@@ -472,7 +537,10 @@ backup   2026-10-17T05:18:45Z (builds/9395679f30b6bf05/backup.db)
 "By" is the SSH user at the box and the local `USER`: both, because a
 CI runner and a laptop may log in as the same deploy user. A build with
 no `deployed.json` is listed as "never switched to (failed or
-interrupted; kept for inspection)".
+interrupted; kept for inspection)". When the app is told to stream its
+backup but nothing has arrived yet, the last line says so instead:
+`backup   never shipped to s3://blog-backups/production: …` (the app's
+log says why, usually the bucket's credentials).
 
 `alder rollback` makes an earlier build current again: by default the
 one that served before the current build, or the id you give (a prefix
@@ -485,11 +553,14 @@ That last point is the catch. A rollback never changes data, so a build
 can only come back if the live database is the one it expects: its own
 schema snapshot, and no migration it does not have. After a deploy that
 migrated, rolling back past the migration is refused, naming the
-tables:
+tables, and the command that would cross it (recorded against the box,
+after a deploy that added `mood`):
 
 ```text
+$ alder rollback production                                  (recorded)
+rollback 46ea832c79966e56 → 339250fe1b936905
   schema   FAIL  the live database is newer than the build
-alder rollback: refused: the live database's schema 9c29f6e97d0b is not build ac9e346ab3edd8c8's 2e82b15d5f85 (changed tables: Entry): that build would refuse to start on it, and rolling back never changes the data. Deploy a build with the schema you want, or pass --allow-schema-mismatch to try anyway
+alder rollback: refused: the live database's schema 9c29f6e97d0b is not build 339250fe1b936905's 2e82b15d5f85 (changed tables: Entry.Entry): that build would refuse to start on it, and rolling back never changes the data. Deploy a build with the schema you want, or pass --allow-schema-mismatch to try anyway; or `alder rollback production 339250fe1b936905 --restore-backup` puts back the copy of the data taken when that build was replaced (builds/46ea832c79966e56/backup.db), losing every write since
 ```
 
 The refusal also catches the case the hashes cannot: a migration that
@@ -502,18 +573,94 @@ missing", chapter 8).
 the old build's own start-up check normally refuses the newer database,
 so the health check fails, nothing is switched, and the refusal says so.
 It is there for the rare change the runtime accepts (a new table the old
-build never reads), not as a way back across a migration. The way back
-across a migration is forward: deploy a build whose migrations take the
-schema where you want it, or restore a backup.
+build never reads), not as a way back across a migration.
 
-One more caveat, about a deploy that fails after its migrations ran.
+### Back across a migration: `--restore-backup`
+
+The usual way back across a migration is forward: deploy a build whose
+migrations take the schema where you want it. When that is not
+possible, `--restore-backup` goes back with the **data**: it puts back
+the copy of the database taken just before the build was replaced (the
+`backup.db` of the deploy that replaced it, whose `backup.of` names the
+build), and every write since is lost. That is a data-loss operation, so
+it asks first, on the terminal; `--yes` answers without one (a script,
+CI), and without either it changes nothing:
+
+```text
+$ alder rollback production --restore-backup < /dev/null      (recorded)
+rollback 46ea832c79966e56 → 339250fe1b936905
+alder rollback: not confirmed: nothing was changed (pass --yes to confirm without a terminal)
+$ alder rollback production --restore-backup --yes           (recorded)
+rollback 46ea832c79966e56 → 339250fe1b936905
+warning: --restore-backup: the database is now builds/46ea832c79966e56/backup.db (taken 2026-10-17T08:34:02Z); every write since is gone from it (the database it replaces is kept as db/app.db.before-rollback-20261017T083403Z)
+  restore  ok  builds/46ea832c79966e56/backup.db
+  start    ok  port 54362
+  health   ok  build 339250fe1b936905 answers GET /
+  switch   ok  current → 339250fe1b936905 (port 54336)
+rolled back to 339250fe1b936905 with the data of 2026-10-17T08:34:02Z
+```
+
+In order: **every** running build is stopped first (the current one,
+and a previous one still draining after a switch, its delayed stop
+cancelled: no process may keep the replaced file open and go on serving
+it); the database (with its `-wal` and `-shm`, `schema.json` and the
+migration list) is kept as `db/app.db.before-rollback-<time>`; the copy
+goes in place, mode 600, with the target build's schema records; the
+build is started fresh on it, health checked and switched to. If it
+fails its health check on the copy, everything is undone: the kept
+database goes back and the build that served before starts again. The
+rollback is recorded in the build's `deployed.json` (`rolledBack`,
+`restoredFrom`). `--restore-backup` works onto the current build too:
+that is the way back from a deploy that failed after its migrations.
+
+### A deploy that fails after its migrations
+
 The migrations apply before the new build's health check (they must:
 the new build cannot start on the old schema). If the health check then
 fails, the previous build is still serving, now on the migrated
 database. For an additive migration (a new table, a new column with a
-default) the previous build does not notice. For anything else, the
-database copy taken just before, `builds/<id>/backup.db`, is the way
-back: `alder restore` puts a database file in place (below).
+default) the previous build does not notice; for anything else it
+would refuse to start again on that database, and the refusal says how
+to go back (the new build's id shortened here):
+
+```text
+alder deploy: refused: build 3c7f… did not pass its health check: it was stopped and builds/3c7f…/ is kept for inspection; nothing was switched; build 46ea832c79966e56 still serves, but the database was migrated (0003_add_tag) and that build would refuse to start again on it. To go back: `alder rollback production 46ea832c79966e56 --restore-backup` (puts builds/3c7f…/backup.db, taken before the migration, in place)
+```
+
+When the migrations **dropped data** (the plan had DROPS DATA and the
+command line said `--allow-data-loss`), waiting is worse: the build
+still serving is already failing its writes to the table it no longer
+matches. So the deploy does not ask. It puts this run's copy back at
+once and starts the previous build on it (recorded):
+
+```text
+$ alder deploy production --allow-data-loss --unsafe-skip-tests (recorded)
+…
+plan
+  live schema 9c29f6e97d0b → build schema 2e82b15d5f85
+  0003_drop_mood
+    drop column Entry.mood
+    DROPS DATA: column Entry.mood
+…
+ship
+  upload   ok  builds/db5fc6ca2c62c076/
+  backup   ok  builds/db5fc6ca2c62c076/backup.db
+  migrate  ok  applied 0003_drop_mood
+  start    FAIL
+the migrations dropped data and build db5fc6ca2c62c076 failed: putting builds/db5fc6ca2c62c076/backup.db (taken before them) back, and build 46ea832c79966e56 on it
+  restore  ok  builds/db5fc6ca2c62c076/backup.db (the database it replaced is kept as db/app.db.before-rollback-20261017T083409Z)
+  start    ok  port 54378
+  health   ok  build 46ea832c79966e56 answers GET /
+  switch   ok  current → 46ea832c79966e56 (port 54336)
+alder deploy: refused: build db5fc6ca2c62c076 did not pass its health check after its migrations dropped data (0003_drop_mood): the database copied before them (builds/db5fc6ca2c62c076/backup.db) was put back automatically and build 46ea832c79966e56 serves again on it; the migrated database is kept as db/app.db.before-rollback-20261017T083409Z (a write made between the migration and now is only there); builds/db5fc6ca2c62c076/ is kept for inspection
+build db5fc6ca2c62c076 exited at start; its log (builds/db5fc6ca2c62c076/log):
+--- alder deploy: start 2026-10-17T08:34:08Z on 127.0.0.1:0
+boom: the clock adapter cannot reach its time server
+```
+
+The dropped column is back, the previous build serves and takes writes;
+the few seconds between the migration and the restore are in the kept
+file, if anything was written then.
 
 `alder logs` prints the last 100 lines of the current build's log, and
 `-f` follows it until you press Ctrl-C.
@@ -551,36 +698,71 @@ s3://blog-backups/production/
 
 A **generation** is a snapshot and the unbroken run of segments after
 it. To keep the log unbroken, the runtime turns off SQLite's automatic
-checkpoint while it ships, and checkpoints itself right after each
-upload. Anything that breaks the chain (a restart it cannot continue
-from, a failed upload, another process checkpointing the file) starts a
-new generation with a fresh snapshot.
+checkpoint while it ships, and checkpoints itself right after copying
+each segment. Anything that breaks the chain (a restart it cannot
+continue from, another process checkpointing the file) starts a new
+generation with a fresh snapshot. One build ships at a time (a lock
+beside the database: during a switch the new build's shipper waits for
+the old one's to finish).
+
+When the bucket fails, the copied segments wait on the box's disk and
+are retried in order, the waits doubling up to five minutes; the WAL
+stays small meanwhile, because the checkpoints go on. Past 256 MB of
+waiting segments they are dropped, and a new generation begins when the
+bucket answers again. The snapshot never counts toward that limit: a
+database larger than it is shipped like any other.
+
+Three edges are worth knowing. The snapshot is a plain copy of the
+database file, which is safe because only the shipper checkpoints; a
+process that checkpoints the file meanwhile (an `sqlite3` you opened on
+the box, with its default automatic checkpoint) can tear that copy, and
+the restore's integrity check then refuses it: the next generation is
+whole again. A segment still waiting when a build stops is not
+uploaded: its frames are in the database file by then, and the next
+build's first snapshot holds them, so no data is missing from the
+bucket, only those points in time. And `status` says `never shipped`
+while nothing has arrived.
 
 The bucket's credentials are environment variables like any other
 secret (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and
 `AWS_ENDPOINT_URL` for an S3-compatible service other than AWS), so
 they belong in `requires`; `alder deploy` warns when they are missing
-from it. Without a `backup`, every deploy warns once that only the
-pre-migration copies exist. The declaration takes only `S3` locations;
-for a directory (a mounted disk), set `ALDER_BACKUP_URL=/mnt/backups/blog`
-in the box's environment file instead.
+from it. Without a `backup` (in the declaration or the environment
+file), every deploy warns once that only the pre-migration copies
+exist. The declaration takes only `S3` locations; for a directory (a
+mounted disk), set `ALDER_BACKUP_URL=/mnt/backups/blog` in the box's
+environment file instead (the deploy then does not warn).
 
 `alder restore` rebuilds a database from the bucket:
 
 ```text
-alder restore <env> [--from url] [--to time] [--out file.db] [--dir dir]
+alder restore <env> [--from url] [--to time] [--out file.db] [--dir dir] [--yes]
 ```
 
 It downloads the newest snapshot at or before `--to` (a UTC time such as
 `2026-10-17T10:00:00Z`; default: the latest), applies the segments up to
-that time through SQLite itself, and checks the result's page count
-against the last commit. With `--out` it writes the file locally and
-stops there. Without it, it puts the database in place at the target:
-the current build is stopped, the old database is kept beside it as
-`app.db.before-restore-<time>`, and the build is started again and
-health-checked. `--from` defaults to the declaration's `backup`; the
-credentials come from your own environment, because the restore runs on
-your machine.
+that time through SQLite itself, checks the result's page count
+against the last commit, and refuses a file that fails SQLite's
+`PRAGMA integrity_check`. With `--out` it writes the file locally (mode
+600) and stops there. Without it, it puts the database in place at the
+target, after asking on the terminal (`--yes` answers without one;
+without either nothing is replaced). At the target, every running build
+is stopped (as for `--restore-backup`, a draining one included), the
+old database is kept beside it as `app.db.before-restore-<time>`, the
+file goes in place with mode 600, and the current build is started
+again, health checked, and routed (Caddy's upstream moves to its new
+port). The command names the kept file:
+
+```text
+replaced the database at Ssh deploy@box.example.com:/srv/blog (the previous one is kept beside it as db/app.db.before-restore-20261017T101800Z)
+```
+
+If the build refuses the restored file (a database from a newer build,
+say), the restore is undone: the file is kept as
+`db/app.db.refused-<time>`, the replaced database goes back, and the
+build serves again; the refusal names both files. `--from` defaults to
+the declaration's `backup`; the credentials come from your own
+environment, because the restore runs on your machine.
 
 `alder status` shows the newest of the last shipment and the last
 pre-migration copy: `backup 2026-10-17T10:15:30Z (streamed to
@@ -918,8 +1100,10 @@ a platform with its own CLI, a Kubernetes cluster, a box behind a
 bastion. The gate and the artifact are the same as for any target;
 then the script runs from the app's root with two arguments, the
 artifact directory (absolute) and the environment's name, and the
-`requires` names, comma-separated, in `ALDER_REQUIRES` (and the host in
-`ALDER_HOST` when `--host` was given). Its exit code is the deploy's
+`requires` names, comma-separated, in `ALDER_REQUIRES` (`ALDER_SECRET`
+included; the host in `ALDER_HOST` when `--host` was given;
+`ALDER_ALLOW_DATA_LOSS=1` only with `--allow-data-loss`, never
+otherwise, even when your shell had it set). Its exit code is the deploy's
 result. The examples' script is the smallest possible one:
 
 ```text
@@ -955,7 +1139,7 @@ before the first user arrives:
 | One box | The database is a file on one machine's disk; there is no second server to fail over to. A busier app grows by a bigger machine, not more of them. |
 | The disk is the risk | Lose the disk and you lose the data since the last backup. The pre-migration copies live on the same disk; the streamed backup (`backup:`) is what survives it, within ten seconds. |
 | A rebuild takes the lock | A migration that rebuilds a table copies it under the write lock; `--dry-run` shows it so you can choose when. |
-| Zero downtime on one box | Two processes can open the file: the new build migrates and starts while the old one drains, which is how the `Ssh` target switches without dropping requests. |
+| Zero downtime on one box | Two processes can open the file: the new build migrates and starts while the old one drains, which is how the `Ssh` target switches behind Caddy without dropping requests (`proxy: None` has a moment without a listener; Fly a pause of seconds). |
 
 When the app outgrows one box (writes from several regions, or more
 than one server's worth of load), the answer is a database built for
@@ -975,14 +1159,25 @@ and for unusual setups:
 | `ALDER_DEPLOY_DRAIN` | how long the old build drains after the switch (default `30s`; `0` stops it at once) |
 | `ALDER_DEPLOY_HEALTH_TIMEOUT` | how long a new build has to pass its health check (default `60s`) |
 | `ALDER_DEPLOY_SUPERVISOR` | `process` runs builds as background processes even where systemd runs |
+| `ALDER_DEPLOY_CADDY_ADMIN` | the `host:port` of Caddy's admin API at the box (default `127.0.0.1:2019`) |
+| `ALDER_BACKUP_URL` | at the box (the environment file): stream the database to a directory or bucket without a `backup` in the declaration |
 | `ALDER_BACKUP_INTERVAL` | how often the runtime ships the database (default `10s`) |
+| `ALDER_ALLOW_DATA_LOSS` | read by the app's executable, never set by you: `1` lets `--migrate-only` apply a DROPS DATA migration; `alder deploy` sets it for one run with `--allow-data-loss` |
 | `FLY_API_TOKEN`, `FLY_ORG` | the Fly target's token, and the organization a new Fly app is created in |
+
+And for alder's own tests of the targets: `ALDER_DEPLOY_LOCAL=1` runs
+the `Ssh` tests against a private `sshd` on this machine;
+`ALDER_DEPLOY_REQUIRE_DOCKER=1` makes `-tags deploy` fail instead of
+skipping when Docker does not answer (CI's `deploy` job);
+`ALDER_DEPLOY_SYSTEMD=1` runs the systemd and Caddy test on a box that
+has them (CI's `deploy-systemd` job).
 
 ## What is not there yet
 
-There is no lock: two deploys to one environment at the same moment
-can interleave (the CI workflow's `concurrency` groups avoid it there).
-A preview is not removed when its pull request closes. Wildcard
-certificates need a DNS challenge alder does not configure. Only GitHub
-Actions has a workflow. And an app runs on one box, by design, until
-the Turso target exists.
+The `Fly` target is experimental: it refuses migrating deploys and has
+no lock and no `--restore-backup` until milestone M15. A preview is not
+removed when its pull request closes. Wildcard certificates need a DNS
+challenge alder does not configure. A build run as a plain process
+(no systemd) is not restarted when it crashes. Only GitHub Actions has
+a workflow. And an app runs on one box, by design, until the Turso
+target exists.

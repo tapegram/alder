@@ -4112,6 +4112,19 @@ before the health check, the previous build left serving on any
 failure) hold for every target because they live in one function. The
 engine's tests drive it with a fake target that records its calls.
 
+What a target can do beyond the core is a small optional interface the
+engine asks for with a type assertion: `Locker` (the environment's
+lock, taken by deploy, rollback and restore), `Preflighter` (the unit
+and Caddy prepared before anything is uploaded), `DataLossAllower` (the
+run's `--allow-data-loss`), `BackupRestorer` (put a pre-migration copy
+back: `rollback --restore-backup`, and the automatic restore after a
+failed deploy whose migrations dropped data), `Rerouter` (check that
+the traffic reaches the build already serving), `StreamChecker` (the
+environment file streams the backup) and `MigrationRefuser` (the Fly
+target, which refuses a migrating deploy for now). A target without one
+gets the plain behaviour, and the refusals name only the commands that
+target has.
+
 The `Ssh` target (`ssh.go`) runs every step as a small POSIX shell
 script sent over the system's `ssh` to `sh -s` on standard input, after
 a prelude defining the root directory and a function `alive` that says
@@ -4125,7 +4138,14 @@ wrapper holds names and paths, never a value, and `Requires` checks the
 environment file with `grep -Eq` so that only an exit status crosses the
 connection. Caddy is driven through its admin API on `localhost:2019`
 with `curl`: one route per environment, its `@id` the unit's name, its
-upstream port changed by a `PATCH` on switch. The `Fly` target (`fly.go`)
+upstream port changed by a `PATCH` on switch. The lock is one more
+`ssh` session, kept open for the run: its script takes `flock` on
+`<path>/deploy.lock` (or creates `deploy.lock.d`) and then reads its
+standard input until alder closes it, so the lock lives exactly as long
+as the run's connection. Replacing the database (`RestoreBackup`,
+`Restore`) first stops every build that runs, cancelling the delayed
+stop of one still draining: a process that kept the old file open would
+go on serving it, renamed aside. The `Fly` target (`fly.go`)
 does the same steps through Fly's Machines API with `net/http`, running
 its shell scripts in the machine through the API's `exec`, and `flyctl`
 for the image build, the public addresses and the secrets. The `Script`
@@ -4146,7 +4166,10 @@ would pass against the old build.
 7) takes two arguments besides serving: `--migrate-only` checks
 `ALDER_SECRET`, opens the database, applies the pending migrations
 (printing `migrated <name>` for each, which the engine reads into the
-record) and exits; `--backup-to FILE` writes a consistent copy with
+record; a pending migration marked DROPS DATA on a database that had
+migrations is refused, `db.ErrDropsData`, unless
+`ALDER_ALLOW_DATA_LOSS=1`, so the data-loss rule holds where the
+migration runs, whatever drove it) and exits; `--backup-to FILE` writes a consistent copy with
 `VACUUM INTO` while another process serves the same file. Both run
 without constructing a single adapter, so a migration can run on a box
 where the mail server is down.
@@ -4162,7 +4185,17 @@ writers wait for a moment, readers do not), copies the frames committed
 since its last offset (it reads the WAL's header and walks frames to
 the last one whose commit field is set), runs a `PASSIVE` checkpoint,
 releases the lock, and uploads the copied frames as one segment. A new
-generation starts with a snapshot (`snapshot.go`: `VACUUM INTO`). The
+generation starts with a snapshot: the database file copied outside the
+write lock but inside a read transaction (only the shipper checkpoints,
+and it does not until the copy is done, so the file cannot change under
+it). The pre-migration copy a deploy takes is the other kind
+(`snapshot.go`: `VACUUM INTO`, while another process serves). One
+shipper runs per database (`flock` on `<db>-backup.lock`: the new
+build's waits for the old build's to exit). Uploads that fail stay
+queued on disk and are retried in order with a doubling wait; the queue
+is capped at 256 MB of WAL segments (the generation's snapshot is not
+counted, or a database larger than the cap would never ship), and past
+it the queue is dropped for a fresh generation. The
 upload is a plain HTTP `PUT` signed with AWS's Signature Version 4,
 written out in `s3.go` (about 250 lines) instead of pulling in an SDK.
 Restoring (`restore.go`) downloads the newest snapshot before the

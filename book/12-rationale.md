@@ -717,7 +717,7 @@ behaviour in a browser is left to a smoke suite with a real browser
 (M7b). A page whose script expects a fresh `window` on every page will
 see the old one: write `data-alder-reload` on the links to it.
 
-### Deploying is a declaration with a fixed gate, and its state lives at the target **(decided M14; tested: the Script and Ssh targets end to end, the Fly target against a fake API, both examples)**
+### Deploying is a declaration with a fixed gate, and its state lives at the target **(decided M14; tested: the Script and Ssh targets end to end, Caddy against a fake and (CI) a real one, the Fly target against a fake API only: experimental; both examples)**
 
 Every other part of an Alder app is checked by the compiler, and the
 last step, getting it onto a server, was a shell script and a page of
@@ -771,11 +771,18 @@ backup, not a reconstruction of state from somewhere else.
 (chapter 16, "SQLite in production"). On Fly that means a new build
 replaces the old one in place, with a pause of seconds, instead of
 starting beside it: the guarantee there is that a failing build is
-replaced by the previous image again, not that nothing ever stops. A
+replaced by the previous image again, not that nothing ever stops, and
+until that replacement can also put the pre-migration copy back, a Fly
+deploy that would migrate an existing database is refused. A plain
 rollback never touches data, so it cannot cross a migration; the way
-back across one is forward, or a restore. And the CI workflow runs the
-whole gate once more in each deploy job: slower than trusting an
-earlier job, but a deploy that trusts nothing is the point.
+back across one is forward, or `--restore-backup`, which is named and
+confirmed as the data-loss operation it is. The one place alder puts
+data back without asking is the case where waiting loses more: a
+deploy whose migrations dropped data and whose build then failed, where
+the build still serving is already failing its writes. And the CI
+workflow runs the whole gate once more in each deploy job: slower than
+trusting an earlier job, but a deploy that trusts nothing is the
+point.
 
 ## Experiments
 
