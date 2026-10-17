@@ -760,6 +760,22 @@ built to fit:
   scoped form, as the examples do, it has none.) Chapter 13 shows the
   SQL.
 
+### Partitions
+
+`@owner` is one case of a general rule (M15): `@partition k` marks the
+`@ref` column holding the value of any session field `k`
+(`org: Org.OrgId @ref Org @partition org`; `@owner` is `@partition
+user`), and the generic scoped operations (`Db.scoped`, `Db.getScoped`,
+`Db.updateScoped`, `Db.deleteScoped`, `Db.insertScoped`; chapter 9) keep
+to the session's partition where the page `requires k` (`requires user,
+org`). A key declared `via` a membership table (`session { …, org: Maybe
+Org.OrgId via Membership }`) can only be set to a value the user is a
+member of, needs `user` before it in `requires`, and has a `choose org =
+Page` in `App`, where a request without it is sent. The admin form
+`requires user, role Admin, silo org` takes the key from the page's
+parameter. Chapter 8 adds `silo`, a database per key value; the full
+treatment follows with the `workspace` example.
+
 ## The request lifecycle
 
 ```

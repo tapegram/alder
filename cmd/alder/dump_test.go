@@ -36,6 +36,30 @@ func TestDump_IR(t *testing.T) {
 	}
 }
 
+// TestDump_Partitions (M15): `alder dump --ir` of the corpus app partitions-ok prints its
+// golden (partitions, via, silo, choose, the admin form, the arms' stores), and the AST dump of
+// its App shows the declarations as written.
+func TestDump_Partitions(t *testing.T) {
+	code, out, errs := runDump("--ir", "../../testdata/corpus/partitions-ok")
+	want, err := os.ReadFile("../../testdata/golden/ir_partitions.ir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code != 0 || out != string(want) {
+		t.Fatalf("code %d\nerr %s\nout %s", code, errs, out)
+	}
+	code, out, errs = runDump("../../testdata/corpus/partitions-ok/app/App.alder")
+	for _, w := range []string{"(field org (Maybe Org.OrgId) via Membership)", "(choose org Orgs.Index)", "(silo org Project Issue)", "(val maintenance : (Html Never)"} {
+		if code != 0 || !strings.Contains(out, w) {
+			t.Errorf("AST dump lacks %s: code %d err %s\n%s", w, code, errs, out)
+		}
+	}
+	_, out, _ = runDump("../../testdata/corpus/partitions-ok/app/Admin/Projects.alder")
+	if !strings.Contains(out, "requires user role Admin silo org)") {
+		t.Errorf("AST dump of the admin form:\n%s", out)
+	}
+}
+
 func TestDump_Tokens(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "V.alder")

@@ -329,6 +329,18 @@ a page module whose page `requires user`. Chapter 6, "Rules", explains
 them in full, and chapter 13 shows their SQL: each puts `"owner" = ?` in
 its statement.
 
+### Partitions and silos
+
+A table may be partitioned by any session key, not only the user
+(`@partition org`; chapter 6, "Partitions"), and `App` may store the
+tables of one key in a database per key value: `silo org { Project,
+Issue }`, each listed table `@partition org`. A table outside every silo
+is in the shared store, and may not `@ref` a siloed one (E0033). One
+`Task` writes to one store, the shared one or one silo: an `update` arm
+that writes both is E0031, wherever the write hides (a helper, a
+`Task.all`); reads may mix. `App` may also declare `maintenance : Html
+Never`, the page a silo whose database cannot be served answers.
+
 ## How tables are stored
 
 The database is SQLite (`rt/db/sqlite.go`). Each `table` is one SQL

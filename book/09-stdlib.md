@@ -269,6 +269,20 @@ signed-in user`" (the operation and table as written):
 | `Db.deleteMine` | `Table t -> Id t -> Task Unit` | deletes the user's row; not found otherwise |
 | `Db.insertMine` | `Table t -> Insert t -> Task (Id t)` | inserts a row owned by the user; the row is a record literal in the call, without the owner column |
 
+The same operations for any partition key (M15): a table with a
+`@partition k` column (`@owner` is `@partition user`), used only where
+the session's `k` is narrowed, in a page module whose page `requires k`
+(chapter 6, "Partitions"). The `mine` family above is these with the key
+`user`, written for tables partitioned by `user`:
+
+| Function | Type | |
+|---|---|---|
+| `Db.scoped` | `Table t -> Select t` | the rows of the session's partition; a `Select` like `Db.from t` |
+| `Db.getScoped` | `Table t -> Id t -> Query t` | the row in the session's partition; not found when it is missing or in another |
+| `Db.updateScoped` | `Table t -> Id t -> (t -> t) -> Task Unit` | changes the row in the partition; not found otherwise; never changes the partition column |
+| `Db.deleteScoped` | `Table t -> Id t -> Task Unit` | deletes the row in the partition; not found otherwise |
+| `Db.insertScoped` | `Table t -> Insert t -> Task (Id t)` | inserts a row in the session's partition; the row is a record literal in the call, without the partition column |
+
 `Query.notFound` and `Task.notFound` (both
 `: Query a` / `: Task a`, no arguments) stop the effect and answer 404 with
 `App.notFound`; a `Task` that ends in `Task.notFound` is rolled back like
