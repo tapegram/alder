@@ -1,0 +1,1 @@
+app/App.alder:10:42 E0030 `domain` is a host name such as "blog.example.com" (or "*.preview.example.com"): letters, digits, `.` and `-`

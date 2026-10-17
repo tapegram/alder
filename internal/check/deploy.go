@@ -2,6 +2,7 @@ package check
 
 import (
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -199,6 +200,45 @@ func (mc *modCtx) deployTarget(f *syntax.DeployField) {
 		for _, rf := range v.Rec {
 			if rf.Name == "path" && rf.Value != nil && rf.Value.Kind == "string" && !strings.HasPrefix(rf.Value.Str, "/") {
 				c.errorf(diag.DeployDecl, rf.Value.Span, "`path` is an absolute directory on the host, such as \"/srv/blog\"")
+			}
+		}
+	}
+	if v.Ctor == "Ssh" {
+		c.sshCharacters(v)
+	}
+}
+
+// The character sets of an Ssh target's texts: they reach ssh's command line, shell scripts,
+// a systemd unit and Caddy's configuration, so each is held to what it can be.
+var (
+	sshHostChars   = regexp.MustCompile(`^[A-Za-z0-9._@:\[\]-]+$`)
+	sshUserChars   = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	sshDomainChars = regexp.MustCompile(`^(\*\.)?[A-Za-z0-9.-]+$`)
+)
+
+// sshCharacters reports an Ssh target's host, user, domain or path outside its character set
+// (E0030): a host, user or domain beginning with `-` would read as an option.
+func (c *Checker) sshCharacters(v *syntax.DeployValue) {
+	if a := v.Arg; a != nil && strings.TrimSpace(a.Str) != "" && !looksSecret(a.Str) && (!sshHostChars.MatchString(a.Str) || strings.HasPrefix(a.Str, "-")) {
+		c.errorf(diag.DeployDecl, a.Span, "the host of `Ssh` is a host name or `user@host`, such as \"deploy@box.example.com\": letters, digits, `.`, `-`, `_`, `@` (and `:`, `[`, `]` for an address), not beginning with `-`")
+	}
+	for _, rf := range v.Rec {
+		if rf.Value == nil || rf.Value.Kind != "string" || strings.TrimSpace(rf.Value.Str) == "" || looksSecret(rf.Value.Str) {
+			continue // a secret is reported as one (deploySecrets)
+		}
+		str := rf.Value.Str
+		switch rf.Name {
+		case "user":
+			if !sshUserChars.MatchString(str) || strings.HasPrefix(str, "-") {
+				c.errorf(diag.DeployDecl, rf.Value.Span, "`user` is a user name: letters, digits, `.`, `-`, `_`, not beginning with `-`")
+			}
+		case "domain":
+			if !sshDomainChars.MatchString(str) || strings.HasPrefix(str, "-") {
+				c.errorf(diag.DeployDecl, rf.Value.Span, "`domain` is a host name such as \"blog.example.com\" (or \"*.preview.example.com\"): letters, digits, `.` and `-`")
+			}
+		case "path":
+			if strings.ContainsAny(str, "\"\\$`%") || strings.IndexFunc(str, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+				c.errorf(diag.DeployDecl, rf.Value.Span, "`path` may not contain a control character, `\"`, `\\`, `$`, `` ` `` or `%%`: it is written into shell scripts and a systemd unit")
 			}
 		}
 	}
