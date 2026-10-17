@@ -1,0 +1,21 @@
+module Checks
+
+import User
+import Org
+import Membership
+import Project
+
+-- Not a page: a test has a session (Test.login), so every key is narrowed in it, the
+-- generic scoped operations and the unscoped ones on a siloed table included.
+test "the scoped and unscoped operations on a siloed table in a test" = {
+  let me <- Db.insert User { name: "Me" }
+  let o <- Db.insert Org { name: "Acme" }
+  let _ <- Db.insert Membership { user: me, org: o }
+  let _ <- Test.login { user: Just me, org: Just o }
+  let id <- Db.insert Project { name: "a", org: o }
+  let _ <- Db.insertScoped Project { name: "b" }
+  let mine <- Db.scoped Project |> Db.count
+  let all <- Db.from Project |> Db.count
+  let one <- Db.getScoped Project id
+  Task.succeed (mine == 2 && all == 2 && one.name == "a")
+}

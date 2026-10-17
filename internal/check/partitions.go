@@ -350,6 +350,7 @@ func (mc *modCtx) checkRequiresM15(pd *syntax.PageDecl, info *pageInfo) []string
 		}
 		if seen[req] {
 			c.errorf(diag.InvalidDecl, at, "`requires` names `%s` twice", req)
+			continue
 		}
 		seen[req] = true
 		if via := c.sessionVia(req); via != "" && req != "user" && !slices.Contains(pd.Requires[:i], "user") {

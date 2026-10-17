@@ -59,8 +59,8 @@ func (mc *modCtx) checkBodies() {
 			} else {
 				mc.check(d.Body, types.Bool, newEnv(), effect{})
 			}
+			mc.reportHoles() // still in the test: its scoped checks run here, where every key is narrowed
 			mc.inTest, mc.testBody, mc.testName = false, nil, ""
-			mc.reportHoles()
 		case *syntax.TypeDecl:
 			if d.Brand != nil && d.Brand.Check != nil {
 				mc.holes = nil
