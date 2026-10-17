@@ -45,13 +45,17 @@ type Status struct {
 	Generation string    `json:"generation"`
 }
 
-// Shipper streams a database to a Bucket: Litestream's design, a small subset. Every interval
-// it takes the write lock (BEGIN IMMEDIATE: writers wait, readers do not), copies the WAL frames
-// committed since the last upload, runs a PASSIVE checkpoint, releases the lock and uploads the
-// frames as a segment. Only the shipper checkpoints (the app's connections run with
-// wal_autocheckpoint(0) while it is on), and only right after copying, so a WAL that restarts
-// has had every frame shipped; a restart it did not cause, or a failed upload, begins a new
-// generation with a snapshot.
+// Shipper streams a database to a Bucket: Litestream's design, a small subset. One shipper per
+// database (an exclusive lock on <db>-backup.lock: the new build's waits for the old build's to
+// exit). Every interval it takes the write lock (BEGIN IMMEDIATE: writers wait, readers do not)
+// only to copy the WAL frames committed since the last tick and run a PASSIVE checkpoint, then
+// releases it and uploads the frames as a segment. Only the shipper checkpoints (the app's
+// connections run with wal_autocheckpoint(0) while it is on), and only right after copying, so
+// a WAL that restarts has had every frame copied; a restart it did not cause begins a new
+// generation, whose snapshot is the database file copied outside the write lock (the file
+// does not change until the shipper's next checkpoint). Uploads that fail are queued on disk
+// and retried in order with exponential backoff; only a queue past its cap begins a new
+// generation.
 type Shipper struct {
 	path   string
 	bucket Bucket
@@ -59,58 +63,116 @@ type Shipper struct {
 	now    func() time.Time
 
 	db       *sql.DB
+	lock     *os.File
 	gen      string
 	seq      int
 	salt     [2]uint32 // the WAL whose frames are being shipped
 	haveWAL  bool
-	offset   int64 // bytes of that WAL shipped
-	restarts bool  // the last checkpoint backfilled everything shipped: the next WAL continues the generation
+	offset   int64 // bytes of that WAL copied
+	restarts bool  // the last checkpoint backfilled everything copied: the next WAL continues the generation
 	fresh    bool  // a new generation is due
+
+	queue    []pending // copied, not uploaded yet, in order
+	queued   int64
+	failures int
+	nextTry  time.Time
+	maxQueue int64
+	interval time.Duration
 
 	mu   sync.Mutex
 	stop chan struct{}
 	done chan struct{}
 }
 
-// NewShipper is the shipper of the database at path to bucket (log may be nil).
+// pending is a file waiting in the upload queue.
+type pending struct {
+	key, path string
+	at        time.Time
+	size      int64
+}
+
+// ErrShipperRunning is NewShipper's error while another shipper (another process, or another
+// Shipper in this one) holds the database's backup lock.
+var ErrShipperRunning = errors.New("another backup shipper runs for this database")
+
+// DefaultMaxQueue caps the bytes waiting for upload while the bucket fails; past it the queue is
+// dropped and a new generation begins when uploads work again.
+const DefaultMaxQueue = 256 << 20
+
+// maxBackoff bounds the wait between failed upload attempts.
+const maxBackoff = 5 * time.Minute
+
+// NewShipper is the shipper of the database at path to bucket (log may be nil). It takes the
+// database's backup lock, or returns ErrShipperRunning.
 func NewShipper(path string, bucket Bucket, log func(level, msg string)) (*Shipper, error) {
 	if log == nil {
 		log = func(string, string) {}
 	}
-	d, err := open(path)
+	lf, err := os.OpenFile(path+"-backup.lock", os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}
+	if err := tryLock(lf); err != nil {
+		lf.Close()
+		return nil, ErrShipperRunning
+	}
+	d, err := open(path)
+	if err != nil {
+		unlockFile(lf)
+		lf.Close()
+		return nil, err
+	}
 	d.SetMaxOpenConns(2) // one holds the write lock while the other checkpoints
-	return &Shipper{path: path, bucket: bucket, log: log, now: time.Now, db: d, fresh: true}, nil
+	return &Shipper{path: path, bucket: bucket, log: log, now: time.Now, db: d, lock: lf, fresh: true, maxQueue: DefaultMaxQueue, interval: DefaultInterval}, nil
 }
 
 // Start opens the location loc and ships the database at path every interval until the
 // returned stop is called (which ships once more and closes). A database that does not exist
-// yet is waited for.
+// yet is waited for, and so is the shipper of another process (the build being replaced).
 func Start(path, loc string, interval time.Duration, log func(level, msg string)) (stop func(), err error) {
 	b, err := OpenBucket(loc)
 	if err != nil {
 		return nil, err
 	}
-	s, err := NewShipper(path, b, log)
-	if err != nil {
-		return nil, err
+	if log == nil {
+		log = func(string, string) {}
 	}
 	if interval <= 0 {
 		interval = DefaultInterval
 	}
-	s.stop, s.done = make(chan struct{}), make(chan struct{})
+	stopc, done := make(chan struct{}), make(chan struct{})
 	go func() {
-		defer close(s.done)
+		defer close(done)
+		var s *Shipper
+		for waited := false; s == nil; {
+			var err error
+			s, err = NewShipper(path, b, log)
+			if errors.Is(err, ErrShipperRunning) {
+				if !waited {
+					log("info", "backup: waiting for the shipper of the build being replaced to exit")
+					waited = true
+				}
+			} else if err != nil {
+				log("error", "backup: "+err.Error())
+			}
+			if s == nil {
+				select {
+				case <-stopc:
+					return
+				case <-time.After(time.Second):
+				}
+			}
+		}
+		s.interval = interval
 		t := time.NewTicker(interval)
 		defer t.Stop()
 		for {
 			s.tick()
 			select {
-			case <-s.stop:
+			case <-stopc:
+				s.nextTry = time.Time{} // the last chance: try the queue now
 				s.tick()
-				s.db.Close()
+				s.Close()
 				return
 			case <-t.C:
 			}
@@ -118,7 +180,7 @@ func Start(path, loc string, interval time.Duration, log func(level, msg string)
 	}()
 	var once sync.Once
 	return func() {
-		once.Do(func() { close(s.stop); <-s.done })
+		once.Do(func() { close(stopc); <-done })
 	}, nil
 }
 
@@ -169,9 +231,9 @@ func committedEnd(wal []byte, h walHeader, offset int64) int64 {
 	return end
 }
 
-// Sync ships what was committed since the last call: under the write lock it copies the new WAL
-// frames (and, for a new generation, the database file), checkpoints, releases the lock, and
-// uploads.
+// Sync copies what was committed since the last call (under the write lock: the WAL frames and
+// a checkpoint), then, for a new generation, the database file (outside the lock), queues them
+// and uploads the queue unless a failed upload's backoff is running.
 func (s *Shipper) Sync(ctx context.Context) (err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -199,11 +261,11 @@ func (s *Shipper) Sync(ctx context.Context) (err error) {
 	h, haveWAL := readWALHeader(wal)
 	if haveWAL && s.haveWAL && h.salt != s.salt {
 		// the WAL restarted: a continuation only right after a checkpoint of ours backfilled
-		// everything shipped (salt-1 is the old one plus one: exactly one restart)
+		// everything copied (salt-1 is the old one plus one: exactly one restart)
 		if !s.restarts || h.salt[0] != s.salt[0]+1 {
 			s.fresh = true
 		}
-		// frames of the old WAL past what was shipped, still in the file beyond the new WAL's:
+		// frames of the old WAL past what was copied, still in the file beyond the new WAL's:
 		// someone else checkpointed them (a process without ALDER_BACKUP_URL)
 		frame := int64(24 + h.pageSize)
 		if newEnd := committedEnd(wal, h, 32); !s.fresh && newEnd <= s.offset && s.offset+frame <= int64(len(wal)) {
@@ -214,30 +276,7 @@ func (s *Shipper) Sync(ctx context.Context) (err error) {
 		}
 		s.offset = 32
 	}
-	if haveWAL && !s.haveWAL {
-		s.offset = 32
-	}
-	var snapshot string
-	if s.fresh {
-		f, err := os.CreateTemp(filepath.Dir(s.path), filepath.Base(s.path)+".snapshot-*")
-		if err != nil {
-			return err
-		}
-		snapshot = f.Name()
-		defer os.Remove(snapshot)
-		db, err := os.Open(s.path)
-		if err != nil {
-			f.Close()
-			return err
-		}
-		_, err = f.ReadFrom(db)
-		db.Close()
-		if cerr := f.Close(); err == nil {
-			err = cerr
-		}
-		if err != nil {
-			return err
-		}
+	if haveWAL && !s.haveWAL || s.fresh {
 		s.offset = 32
 	}
 	var segment []byte
@@ -256,62 +295,152 @@ func (s *Shipper) Sync(ctx context.Context) (err error) {
 		}
 	}
 	unlock()
-
-	now := s.now().UTC()
-	if s.fresh {
-		var r [2]byte
-		rand.Read(r[:])
-		gen := now.Format(genTime) + "-" + hex.EncodeToString(r[:])
-		if err := s.bucket.Put(ctx, "generations/"+gen+"/snapshot.db", snapshot); err != nil {
-			return err // still fresh: the next Sync tries again
-		}
-		s.gen, s.seq, s.fresh = gen, 0, false
-		s.log("info", "backup: generation "+gen+" (snapshot) at "+s.bucket.String())
-	}
-	if segment != nil {
-		if err := s.put(ctx, now, segment); err != nil {
-			s.fresh = true // the frames were checkpointed: only a new snapshot bridges the gap
-			return err
-		}
-	}
 	s.haveWAL, s.salt, s.offset = haveWAL, h.salt, end
 	s.restarts = haveWAL && busy == 0 && logFrames == done && int64(32+logFrames*int(24+h.pageSize)) == end
-	return s.writeStatus(now)
+
+	now := s.now().UTC()
+	backingOff := now.Before(s.nextTry)
+	switch {
+	case s.fresh && backingOff:
+		// the frames are in the database file now: the generation's snapshot, when uploads
+		// work again, has them
+	case s.fresh:
+		if err := s.begin(ctx, now, segment); err != nil {
+			return err
+		}
+	case segment != nil:
+		key := fmt.Sprintf("generations/%s/wal/%08d-%013d.wal", s.gen, s.seq, now.UnixMilli())
+		if err := s.enqueue(key, now, segment, ""); err != nil {
+			return err
+		}
+		s.seq++
+	}
+	if s.queued > s.maxQueue {
+		s.log("error", fmt.Sprintf("backup: %d bytes wait for %s; dropping them: a new generation begins when uploads work again", s.queued, s.bucket))
+		s.dropQueue()
+		s.fresh = true
+		return nil
+	}
+	if backingOff {
+		return nil
+	}
+	return s.flush(ctx, now)
 }
 
-// put uploads segment as the generation's next.
-func (s *Shipper) put(ctx context.Context, now time.Time, segment []byte) error {
-	f, err := os.CreateTemp(filepath.Dir(s.path), filepath.Base(s.path)+".segment-*")
+// begin starts a new generation: the database file, copied now (outside the write lock, inside a
+// read transaction: only the shipper's next checkpoint could change it), and segment as its
+// first WAL segment, queued.
+func (s *Shipper) begin(ctx context.Context, now time.Time, segment []byte) error {
+	s.dropQueue() // a generation that did not finish uploading: its uploaded part still restores
+	reader, err := s.db.Conn(ctx)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(f.Name())
-	_, err = f.Write(segment)
+	defer reader.Close()
+	if _, err := reader.ExecContext(ctx, "BEGIN"); err == nil {
+		var n int
+		reader.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master").Scan(&n)
+		defer reader.ExecContext(context.Background(), "ROLLBACK")
+	}
+	var r [2]byte
+	rand.Read(r[:])
+	gen := now.Format(genTime) + "-" + hex.EncodeToString(r[:])
+	if err := s.enqueue("generations/"+gen+"/snapshot.db", now, nil, s.path); err != nil {
+		return err
+	}
+	s.gen, s.seq, s.fresh = gen, 0, false
+	if segment != nil {
+		key := fmt.Sprintf("generations/%s/wal/%08d-%013d.wal", s.gen, s.seq, now.UnixMilli())
+		if err := s.enqueue(key, now, segment, ""); err != nil {
+			return err
+		}
+		s.seq++
+	}
+	s.log("info", "backup: generation "+gen+" at "+s.bucket.String())
+	return nil
+}
+
+// enqueue writes body (or a copy of the file at from) to a queue file uploaded as key.
+func (s *Shipper) enqueue(key string, at time.Time, body []byte, from string) error {
+	f, err := os.CreateTemp(filepath.Dir(s.path), filepath.Base(s.path)+".backup-queue-*")
+	if err != nil {
+		return err
+	}
+	if from != "" {
+		var src *os.File
+		if src, err = os.Open(from); err == nil {
+			_, err = f.ReadFrom(src)
+			src.Close()
+		}
+	} else {
+		_, err = f.Write(body)
+	}
+	fi, serr := f.Stat()
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
+	if err == nil {
+		err = serr
+	}
 	if err != nil {
+		os.Remove(f.Name())
 		return err
 	}
-	key := fmt.Sprintf("generations/%s/wal/%08d-%013d.wal", s.gen, s.seq, now.UnixMilli())
-	if err := s.bucket.Put(ctx, key, f.Name()); err != nil {
-		return err
-	}
-	s.seq++
+	s.queue = append(s.queue, pending{key: key, path: f.Name(), at: at, size: fi.Size()})
+	s.queued += fi.Size()
 	return nil
+}
+
+// flush uploads the queue in order; a failure leaves the rest queued and backs off
+// (interval × 2^failures, at most maxBackoff).
+func (s *Shipper) flush(ctx context.Context, now time.Time) error {
+	for len(s.queue) > 0 {
+		p := s.queue[0]
+		if err := s.bucket.Put(ctx, p.key, p.path); err != nil {
+			s.failures++
+			wait := s.interval << min(s.failures, 10)
+			if wait <= 0 || wait > maxBackoff {
+				wait = maxBackoff
+			}
+			s.nextTry = now.Add(wait)
+			return fmt.Errorf("%w (%d bytes queued; next try in %s)", err, s.queued, wait)
+		}
+		os.Remove(p.path)
+		s.queued -= p.size
+		s.queue = s.queue[1:]
+	}
+	s.failures, s.nextTry = 0, time.Time{}
+	return s.writeStatus(now)
+}
+
+func (s *Shipper) dropQueue() {
+	for _, p := range s.queue {
+		os.Remove(p.path)
+	}
+	s.queue, s.queued = nil, 0
 }
 
 func (s *Shipper) writeStatus(now time.Time) error {
 	b, _ := json.Marshal(Status{Last: now, URL: s.bucket.String(), Generation: s.gen})
 	tmp := s.path + "-backup.json.tmp"
-	if err := os.WriteFile(tmp, append(b, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, s.path+"-backup.json")
 }
 
-// Close closes the shipper's connections.
-func (s *Shipper) Close() error { return s.db.Close() }
+// Close closes the shipper's connections, drops what is still queued and releases the
+// database's backup lock.
+func (s *Shipper) Close() error {
+	s.dropQueue()
+	err := s.db.Close()
+	if s.lock != nil {
+		unlockFile(s.lock)
+		s.lock.Close()
+		s.lock = nil
+	}
+	return err
+}
 
 // IntervalFromEnv is EnvInterval's duration, or DefaultInterval.
 func IntervalFromEnv() time.Duration {

@@ -51,10 +51,47 @@ func RestoreFrom(ctx context.Context, b Bucket, to time.Time, dst string) (Resto
 			}
 		}
 	}
+	// the segments of each generation, in order
+	type seg struct {
+		key string
+		seq int
+		at  time.Time
+	}
+	segsOf := map[string][]seg{}
+	for _, k := range keys {
+		parts := strings.Split(k, "/")
+		if len(parts) != 4 || parts[2] != "wal" || !strings.HasSuffix(parts[3], ".wal") {
+			continue
+		}
+		seqText, msText, _ := strings.Cut(strings.TrimSuffix(parts[3], ".wal"), "-")
+		seq, err1 := strconv.Atoi(seqText)
+		ms, err2 := strconv.ParseInt(msText, 10, 64)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		segsOf[parts[1]] = append(segsOf[parts[1]], seg{k, seq, time.UnixMilli(ms)})
+	}
+	// each generation's last point at or before to: its snapshot, then its contiguous segments;
+	// the generation whose point is latest wins (not the newest snapshot: a generation begun
+	// earlier may have shipped later than one begun after it)
 	var best string
-	for g, t := range gens {
-		if (to.IsZero() || !t.After(to)) && (best == "" || t.After(gens[best]) || t.Equal(gens[best]) && g > best) {
-			best = g
+	var bestAt time.Time
+	var segs []seg
+	for g, start := range gens {
+		if !to.IsZero() && start.After(to) {
+			continue
+		}
+		ss := segsOf[g]
+		sort.Slice(ss, func(i, j int) bool { return ss[i].seq < ss[j].seq })
+		at, n := start, 0
+		for i, sg := range ss {
+			if sg.seq != i || !to.IsZero() && sg.at.After(to) {
+				break
+			}
+			at, n = sg.at, i+1
+		}
+		if best == "" || at.After(bestAt) || at.Equal(bestAt) && g > best {
+			best, bestAt, segs = g, at, ss[:n]
 		}
 	}
 	if best == "" {
@@ -68,26 +105,6 @@ func RestoreFrom(ctx context.Context, b Bucket, to time.Time, dst string) (Resto
 	if err := b.Get(ctx, "generations/"+best+"/snapshot.db", dst); err != nil {
 		return r, err
 	}
-	type seg struct {
-		key string
-		seq int
-		at  time.Time
-	}
-	var segs []seg
-	for _, k := range keys {
-		rest, ok := strings.CutPrefix(k, "generations/"+best+"/wal/")
-		if !ok || !strings.HasSuffix(rest, ".wal") {
-			continue
-		}
-		seqText, msText, _ := strings.Cut(strings.TrimSuffix(rest, ".wal"), "-")
-		seq, err1 := strconv.Atoi(seqText)
-		ms, err2 := strconv.ParseInt(msText, 10, 64)
-		if err1 != nil || err2 != nil {
-			continue
-		}
-		segs = append(segs, seg{k, seq, time.UnixMilli(ms)})
-	}
-	sort.Slice(segs, func(i, j int) bool { return segs[i].seq < segs[j].seq })
 	// apply the segments in order, one WAL (a run of segments with the same salts) at a time
 	var wal []byte
 	var salt [2]uint32
@@ -101,10 +118,7 @@ func RestoreFrom(ctx context.Context, b Bucket, to time.Time, dst string) (Resto
 	}
 	tmp := dst + ".segment"
 	defer os.Remove(tmp)
-	for i, s := range segs {
-		if s.seq != i || !to.IsZero() && s.at.After(to) {
-			break // a missing segment, or one after the time: what follows depends on it
-		}
+	for _, s := range segs {
 		if err := b.Get(ctx, s.key, tmp); err != nil {
 			return r, err
 		}
@@ -131,7 +145,37 @@ func RestoreFrom(ctx context.Context, b Bucket, to time.Time, dst string) (Resto
 	if err := flush(); err != nil {
 		return r, err
 	}
+	if err := integrity(ctx, dst); err != nil {
+		os.Remove(dst)
+		return r, err
+	}
 	return r, nil
+}
+
+// integrity runs PRAGMA integrity_check on the restored file: anything but "ok" is refused.
+func integrity(ctx context.Context, path string) error {
+	d, err := open(path)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	rows, err := d.QueryContext(ctx, "PRAGMA integrity_check")
+	if err != nil {
+		return fmt.Errorf("backup: checking the restored database: %w", err)
+	}
+	defer rows.Close()
+	var problems []string
+	for rows.Next() {
+		var line string
+		rows.Scan(&line)
+		if line != "ok" {
+			problems = append(problems, line)
+		}
+	}
+	if len(problems) > 0 {
+		return fmt.Errorf("backup: the restored database fails its integrity check (%s): nothing was written", strings.Join(problems[:min(len(problems), 3)], "; "))
+	}
+	return rows.Err()
 }
 
 // genStart is the time a generation's name begins with.
