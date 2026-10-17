@@ -38,8 +38,8 @@ import (
 // (app__alder.go); any other selector is parsed when the query runs.
 
 // member is Test.member u k (M15): a row of the membership table of the session's `via` field
-// (an app with one; the checker's types are erased here), with its user column u and its key column k, every other
-// column NULL (a membership table with more required columns is filled by the test itself).
+// (E0032 allows one), with its user column u and its key column k, every other
+// column its default, or NULL (the checker refuses a membership table with another required column).
 //
 //	rtesting.Member(func(_e *eff.Env, _u, _k string) error {
 //		_, err := db.InsertRow(…, table__Membership__Membership, []any{nil, _u, _k}, _e.Now())
@@ -49,11 +49,9 @@ func (f *fn) member(x *ir.Call, s *scope) string {
 	g := f.g
 	var mt *ir.Table
 	var key string
-	for _, k := range slices.Sorted(maps.Keys(g.prog.Via)) {
+	for _, k := range slices.Sorted(maps.Keys(g.prog.Via)) { // one (E0032 refuses a second)
 		if mt == nil {
 			mt, key = g.prog.Via[k], k
-		} else { // ids are Text once checked: several `via` fields cannot be told apart here
-			panic("gen: Test.member in an app whose session has several `via` fields")
 		}
 	}
 	if mt == nil {
@@ -67,8 +65,12 @@ func (f *fn) member(x *ir.Call, s *scope) string {
 			vals = append(vals, "_u")
 		case kcol:
 			vals = append(vals, "_k")
-		default:
-			vals = append(vals, "nil")
+		default: // the checker made sure it is a Maybe, has a default, or is filled by the store
+			if fd.Default != nil {
+				vals = append(vals, encode(fd.Type, f.typedExpr(fd.Default, s)))
+			} else {
+				vals = append(vals, "nil")
+			}
 		}
 	}
 	return "rtesting.Member(func(_e *eff.Env, _u, _k string) error {\n_, err := db.InsertRow(" + dbArgs("_e") + ", " + tableName(mt.Module, mt.Name) +

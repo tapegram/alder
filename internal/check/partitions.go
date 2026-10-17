@@ -263,6 +263,10 @@ func (c *Checker) checkVia() {
 			c.errorf(diag.PartitionDecl, at, "`via %s`: `%s` needs exactly one `@ref %s` column and one `@ref %s` column; it has %d and %d", f.Via, f.Via, un, kn, nUser, nKey)
 			continue
 		}
+		if len(c.via) > 0 {
+			c.errorf(diag.PartitionDecl, at, "`%s` is `via %s`: one `via` field per session (for now)", f.Name, f.Via)
+			continue
+		}
 		if c.via == nil {
 			c.via = map[string]string{}
 		}
@@ -398,5 +402,51 @@ func (c *Checker) m15Placement(d syntax.Decl) {
 		c.errorf(diag.InvalidDecl, d.Span, "`silo` is only allowed in `App`")
 	case *syntax.ChooseDecl:
 		c.errorf(diag.InvalidDecl, d.Span, "`choose` is only allowed in `App`")
+	}
+}
+
+// memberCheck refuses `Test.member` (at span) in an app whose session has no `via` field, or
+// whose membership table has a column Test.member cannot fill: it sets the user and the key
+// columns, leaves a Maybe column Nothing and a column with a default its default, and fills
+// nothing else.
+func (c *Checker) memberCheck(at diag.Span) {
+	if len(c.via) == 0 {
+		c.errorf(diag.TypeMismatch, at, "`Test.member` needs a session field with `via`: it inserts a row of its membership table")
+		return
+	}
+	var key, mk string
+	for k, t := range c.via {
+		key, mk = k, t
+	}
+	refs := map[string]bool{}
+	for _, r := range c.appTableRefs() {
+		if r.table == mk {
+			refs[r.field] = true
+		}
+	}
+	for _, name := range c.prog.Order {
+		m := c.prog.Modules[name]
+		for _, d := range c.live(m) {
+			td, ok := d.(*syntax.TableDecl)
+			if !ok || c.key(m.Name, td.Name) != mk {
+				continue
+			}
+			for _, f := range td.Fields {
+				filled := refs[f.Name] || f.Default != nil
+				if tn, ok := f.Type.(*syntax.TypeName); ok && tn.Name == "Maybe" {
+					filled = true
+				}
+				for _, a := range f.Attrs {
+					switch a.Name {
+					case "id", "created", "updated":
+						filled = true
+					}
+				}
+				if !filled {
+					c.errorf(diag.TypeMismatch, at, "`Test.member` fills only the user and the %s of a `%s`: `%s.%s` has no default; insert the row with `Db.insert %s { … }`", key, td.Name, td.Name, f.Name, td.Name)
+					return
+				}
+			}
+		}
 	}
 }

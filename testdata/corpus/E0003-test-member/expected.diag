@@ -1,0 +1,1 @@
+app/Membership.alder:21:12 E0003 `Test.member` fills only the user and the org of a `Membership`: `Membership.since` has no default; insert the row with `Db.insert Membership { … }`

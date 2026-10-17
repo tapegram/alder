@@ -839,6 +839,9 @@ func route[T any](ctx context.Context, st Store, tx Tx, t *Table[T], op string, 
 	}
 	name := op + " " + shortName(t.Name)
 	if t.Silo == "" {
+		if reg.test && write && e.Bound && e.SiloKey != "" { // a test fails where production does
+			return nil, nil, fmt.Errorf("db: %w: %s writes the shared store in a Task on silo %s (one store per Task)", eff.ErrInternal, name, e.SiloKey)
+		}
 		if reg.test || e.SiloKey == "" {
 			return st, tx, nil
 		}
@@ -855,6 +858,11 @@ func route[T any](ctx context.Context, st Store, tx Tx, t *Table[T], op string, 
 		return nil, nil, err
 	}
 	if reg.test {
+		if write {
+			if err := testWrite(e, t, name, v); err != nil {
+				return nil, nil, err
+			}
+		}
 		return reg.testSilo(ctx, t.Silo, v)
 	}
 	if e.SiloKey == t.Silo && e.SiloValue == v {
@@ -879,6 +887,30 @@ func route[T any](ctx context.Context, st Store, tx Tx, t *Table[T], op string, 
 		return d.store, nil, nil
 	}
 	return readOnly{d.reader, errReaderWrite}, nil, nil
+}
+
+// testWrite is, in a test, the check production makes of a write of value v of t's silo key
+// (I3): from a request's Task (bound by Enter) the one-store rule and the row's own value; from
+// the test's body, a row whose value is not the session's (when it has one) is refused as a
+// request would refuse it ("the row's org is not this request's").
+func testWrite[T any](e *eff.Env, t *Table[T], name, v string) error {
+	if e.Bound {
+		switch {
+		case e.SiloKey != t.Silo:
+			return fmt.Errorf("db: %w: %s writes silo %s in a Task on the %s store (one store per Task)", eff.ErrInternal, name, t.Silo, storeName(e))
+		case e.SiloValue != v:
+			return &eff.ErrFail{Msg: name + ": the row's " + t.Silo + " is not this request's"}
+		}
+		return nil
+	}
+	cur, ok := e.Keys[t.Silo]
+	if !ok && t.User != nil {
+		cur, ok = t.User(e.Session)
+	}
+	if ok && cur != v {
+		return &eff.ErrFail{Msg: name + ": the row's " + t.Silo + " is not this request's"}
+	}
+	return nil
 }
 
 func storeName(e *eff.Env) string {
@@ -918,7 +950,11 @@ func siloValue[T any](e *eff.Env, t *Table[T], name string, vals []any) (string,
 // changes nothing.
 func Enter(e *eff.Env, key string) error {
 	reg, _ := e.Stores.(*Stores)
-	if reg == nil || key == "" {
+	if reg == nil {
+		return nil
+	}
+	e.Bound = true
+	if key == "" {
 		return nil
 	}
 	v, ok := e.Keys[key]
@@ -929,7 +965,8 @@ func Enter(e *eff.Env, key string) error {
 	if err != nil {
 		return err
 	}
-	if reg.test {
+	if reg.test { // the test's stores stay (TestStore); the binding is checked on each write
+		e.SiloKey, e.SiloValue = key, v
 		return nil
 	}
 	e.Store, e.SiloKey, e.SiloValue = d.store, key, v

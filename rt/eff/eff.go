@@ -186,6 +186,9 @@ type Env struct {
 	Stores             any
 	Keys               map[string]string
 	SiloKey, SiloValue string
+	// Bound is set by db.Enter: the running Task is a request's, bound to the store of its arm
+	// (SiloKey "": the shared one). A test's own body is not bound.
+	Bound bool
 	// CheckSession, when set, is called by Session.put (and Test.login) with the session before
 	// and after: an app whose session has a `via` field checks the membership (a non-nil error
 	// fails the step, *ErrFail for a refusal).

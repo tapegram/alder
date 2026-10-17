@@ -690,3 +690,55 @@ func TestUpdateRow_KeyColumnRefused(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+// I3: a test fails where production does: from the test's body, a row of another org than the
+// session's; from a request's Task (Enter), a row of another org, or a write of the other store.
+func TestStores_TestModeWriteChecks(t *testing.T) {
+	ctx := context.Background()
+	shared, _ := OpenSQLite(":memory:")
+	defer shared.Close()
+	cfg := siloConfig(t, "", 1)
+	if err := shared.Ensure(ctx, cfg.Tables, true); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := NewTestStores(shared, cfg)
+	defer s.Close()
+	env := &eff.Env{Ctx: ctx, Store: TestStore{shared, s}, Stores: s, Session: orgSession{}, Now: func() time.Time { return clock }}
+	ins := func(e *eff.Env, t2 *Table[proj], vals []any) error {
+		_, err := InsertRow(e.Ctx, e.Store.(Store), TxOf(e), t2, vals, clock)
+		return err
+	}
+	_, err := eff.Run(env, eff.KTask, eff.Call("test", true, func(e *eff.Env) (struct{}, error) {
+		if err := ins(e, projT, []any{nil, "b", "B"}); err != nil { // no org in the session: setup
+			return struct{}{}, err
+		}
+		e.Session = orgSession{"A"}
+		var f *eff.ErrFail
+		if err := ins(e, projT, []any{nil, "b2", "B"}); !errors.As(err, &f) || f.Msg != "Db.insert Project: the row's org is not this request's" {
+			return struct{}{}, errors.Join(errors.New("body"), err)
+		}
+		// a request's Task on A, and one on the shared store, inside the test's transaction
+		req := func(key string, f func(*eff.Env) error) error {
+			r := &eff.Env{Ctx: context.Background(), Store: e.Store, Stores: s, Session: orgSession{"A"}, Within: &eff.Within{Tx: e.Tx}}
+			Narrow(r, "org", "A")
+			if err := Enter(r, key); err != nil {
+				return err
+			}
+			_, err := eff.Run(r, eff.KTask, eff.Call("req", true, func(r *eff.Env) (struct{}, error) { return struct{}{}, f(r) }))
+			return err
+		}
+		if err := req("org", func(r *eff.Env) error { return ins(r, projT, []any{nil, "b3", "B"}) }); !errors.As(err, &f) {
+			return struct{}{}, errors.Join(errors.New("bound"), err)
+		}
+		if err := req("org", func(r *eff.Env) error { return ins(r, orgT, []any{nil, "o"}) }); !errors.Is(err, eff.ErrInternal) {
+			return struct{}{}, errors.Join(errors.New("shared from silo"), err)
+		}
+		if err := req("", func(r *eff.Env) error { return ins(r, projT, []any{nil, "a", "A"}) }); !errors.Is(err, eff.ErrInternal) {
+			return struct{}{}, errors.Join(errors.New("silo from shared"), err)
+		}
+		return struct{}{}, req("org", func(r *eff.Env) error { return ins(r, projT, []any{nil, "a", "A"}) })
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+}

@@ -951,6 +951,9 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			c.errorf(diag.TypeMismatch, x.Span, "`Test.%s` is only available inside a `test`", x.Ref.Name)
 			return types.Err
 		}
+		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Test" && x.Ref.Name == "member" {
+			c.memberCheck(x.Span)
+		}
 		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Test" && x.Ref.Name == "fake" { // applied, inferApp takes it
 			c.errorf(diag.TypeMismatch, x.Span, "`Test.fake` wants a capability name, got an expression")
 			return types.Err

@@ -1,0 +1,23 @@
+module Membership
+
+import User
+import Org
+
+type MembershipId = brand Text
+
+table Membership {
+  id: MembershipId @id,
+  user: User.UserId @ref User @cascade,
+  org: Org.OrgId @ref Org @cascade,
+  note: Maybe Text,
+  level: Int = 1,
+  since: Text,
+}
+
+-- Test.member fills user, org, note (Nothing) and level (its default); `since` it cannot
+test "member" = {
+  let me <- Db.insert User.User { name: "Me" }
+  let a <- Db.insert Org.Org { name: "A" }
+  let _ <- Test.member me a
+  Task.succeed True
+}

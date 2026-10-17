@@ -1,0 +1,19 @@
+module App
+
+import User
+import Org
+
+-- one `via` field per session (for now): `other` is refused
+session {
+  user: Maybe User.UserId,
+  org: Maybe Org.OrgId via Membership,
+  other: Maybe Org.OrgId via Membership,
+}
+
+login = Login
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>not found</p>
