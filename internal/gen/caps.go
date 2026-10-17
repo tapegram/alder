@@ -483,13 +483,18 @@ func (g *gen) silosVar(b *strings.Builder, p *ir.Program) {
 	var items []string
 	for _, k := range slices.Sorted(maps.Keys(p.Silos)) {
 		var ts []string
+		ref := ""
 		for _, tb := range p.Silos[k] {
 			ts = append(ts, strconv.Quote(tb.Module+"."+tb.Name))
+			if tb.Partition != nil && ref == "" {
+				ref = tb.Refs[tb.Partition.Column]
+			}
 		}
-		items = append(items, "{Key: "+strconv.Quote(k)+", Tables: []string{"+strings.Join(ts, ", ")+"}}")
+		items = append(items, "{Key: "+strconv.Quote(k)+", Tables: []string{"+strings.Join(ts, ", ")+"}, Ref: "+strconv.Quote(ref)+"}")
 	}
 	b.WriteString("// Silos are the app's `silo` declarations: each key's tables live in one database per value of\n" +
-		"// the session's key (rt/db: silos/<key>/<value>.db next to the shared database).\n" +
+		"// the session's key (rt/db: silos/<key>/<value>.db next to the shared database, or child\n" +
+		"// databases on Turso); Ref is the table the key's values are ids of.\n" +
 		"var Silos = []db.Silo{" + strings.Join(items, ", ") + "}\n\n")
 }
 
@@ -504,9 +509,9 @@ func (g *gen) serveSilos(p *ir.Program, src string) string {
 	if len(Silos) > 0 {
 		dir := ""
 		if path != ":memory:" {
-			dir = filepath.Dir(path)
+			dir = db.SiloDir(path)
 		}
-		stores, err = db.OpenStores(store, path, db.StoresConfig{Dir: dir, Silos: Silos, Tables: Tables, Migrations: Migrations, Dev: o.Dev, Log: o.Log})
+		stores, err = db.OpenStores(store, path, db.StoresConfig{Dir: dir, Shared: path, Silos: Silos, Tables: Tables, Migrations: Migrations, Dev: o.Dev, Log: o.Log})
 		if err != nil {
 			store.Close()
 			return nil, err
@@ -643,12 +648,16 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 // outlives the dev server; the variable is cleared once read, so a process the app starts does
 // not inherit it. Without it standard input is not read.
 //
-// withSilos (an app with `silo` declarations) adds two maintenance tasks over the silo
-// databases under ALDER_DB's directory (silos/<key>/<value>.db, rt/db): --migrate-silos
-// [--allow-data-loss] opens and migrates each one (a line each; exit 1 when one is not served:
-// `alder migrate silos` runs it), and --silo-status prints one JSON line per silo
-// ({"key","id","state","detail"}: ok, migrating, pending-data-loss, ahead or failed) without
-// changing any (`alder status` runs it).
+// withSilos (an app with `silo` declarations) adds maintenance tasks over the silo databases
+// (rt/db: silos/<key>/<value>.db under ALDER_DB's directory, or with ALDER_DB=libsql://… the
+// child databases on Turso): --migrate-silos [--allow-data-loss] [--schema-only] opens and
+// migrates each one (a line each; exit 1 when one is not served: `alder migrate silos` runs it;
+// on Turso it migrates each key's schema database first, and --schema-only stops there: alder
+// deploy runs that), --silo-status prints one JSON line per silo ({"key","id","state","detail"}:
+// ok, migrating, pending-data-loss, ahead, failed or orphaned) without changing any (`alder
+// status` runs it), --verify-silos N tries the pending migrations on the N largest silos of each
+// key and rolls them back (alder deploy runs it on Turso before migrating), and --prune-silos
+// key:id… removes the databases of those silos that are orphaned (`alder silos prune`).
 func Main(name string, withCaps, withSilos bool) []byte {
 	imports := "\t\"app\"\n"
 	caps := "app.Caps{}"
@@ -757,7 +766,7 @@ func main() {
 	case <-ctx.Done():
 	}
 	stop()
-	grace, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+DRAIN	grace, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(grace); err != nil {
 		fmt.Fprintln(os.Stderr, "alder: shutting down:", err)
@@ -813,8 +822,17 @@ func env(name, def string) string {
 	cases, usage := "", ""
 	if withSilos {
 		cases = siloCases
-		usage = `+" | --migrate-silos [--allow-data-loss] | --silo-status"`
+		usage = `+" | --migrate-silos [--allow-data-loss] [--schema-only] | --silo-status | --verify-silos N | --prune-silos key:id…"`
+		src = strings.Replace(src, `	"path/filepath"
+`, `	"path/filepath"
+	"strconv"
+`, 1) + siloFlagsFunc
 	}
+	drain := ""
+	if withSilos { // M3: the old process opens no silo while it drains, and re-checks before a write
+		drain = "\tdb.Drain()\n"
+	}
+	src = strings.Replace(src, "DRAIN", drain, 1)
 	src = strings.Replace(strings.Replace(src, "SILOCASES", cases, 1), "+SILOUSAGE", usage, 1)
 	out, err := format.Source([]byte(src))
 	if err != nil {
@@ -825,10 +843,9 @@ func env(name, def string) string {
 
 // siloCases are the maintenance tasks of an app with silos (Main): the silo databases are
 // those under ALDER_DB's directory.
-const siloCases = `	silos := db.StoresConfig{Dir: filepath.Dir(path), Silos: app.Silos, Tables: app.Tables, Migrations: app.Migrations, Dev: dev}
+const siloCases = `	silos := db.StoresConfig{Dir: db.SiloDir(path), Shared: path, Silos: app.Silos, Tables: app.Tables, Migrations: app.Migrations, Dev: dev}
 	switch {
-	case len(args) >= 1 && args[0] == "--migrate-silos" && (len(args) == 1 || len(args) == 2 && args[1] == "--allow-data-loss"):
-		silos.AllowDataLoss = len(args) == 2
+	case len(args) >= 1 && args[0] == "--migrate-silos" && siloFlags(args[1:], &silos):
 		bad, err := db.MigrateSilos(ctx, silos, os.Stdout)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "alder:", err)
@@ -845,7 +862,52 @@ const siloCases = `	silos := db.StoresConfig{Dir: filepath.Dir(path), Silos: app
 			return 1
 		}
 		return 0
+	case len(args) == 2 && args[0] == "--verify-silos":
+		n, err := strconv.Atoi(args[1])
+		if err != nil || n < 1 {
+			break
+		}
+		bad, err := db.VerifySilos(ctx, silos, n, os.Stdout)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "alder:", err)
+			return 1
+		}
+		if bad > 0 {
+			fmt.Fprintf(os.Stderr, "alder: the migrations fail on %d sampled silo(s)\n", bad)
+			return 1
+		}
+		return 0
+	case len(args) >= 2 && args[0] == "--prune-silos":
+		kept, err := db.PruneSilos(ctx, silos, args[1:], os.Stdout)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "alder:", err)
+			return 1
+		}
+		if kept > 0 {
+			fmt.Fprintf(os.Stderr, "alder: %d silo(s) kept\n", kept)
+			return 1
+		}
+		return 0
 	}
+`
+
+// siloFlags is the source of siloFlags in an app with silos' cmd/main.go: --migrate-silos's
+// flags (--allow-data-loss, --schema-only), false for any other.
+const siloFlagsFunc = `
+// siloFlags reads --migrate-silos's flags into c: false for one it does not know.
+func siloFlags(args []string, c *db.StoresConfig) bool {
+	for _, a := range args {
+		switch a {
+		case "--allow-data-loss":
+			c.AllowDataLoss = true
+		case "--schema-only":
+			c.SchemaOnly = true
+		default:
+			return false
+		}
+	}
+	return true
+}
 `
 
 // sessionCodec is the session cookie's codec: App's session as a JSON object of its fields

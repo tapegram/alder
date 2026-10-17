@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"path/filepath"
 	"reflect"
 	"strings"
 )
@@ -29,8 +28,9 @@ var Capabilities = []string{}
 var Migrations []db.Migration
 
 // Silos are the app's `silo` declarations: each key's tables live in one database per value of
-// the session's key (rt/db: silos/<key>/<value>.db next to the shared database).
-var Silos = []db.Silo{{Key: "org", Tables: []string{"Project.Project"}}}
+// the session's key (rt/db: silos/<key>/<value>.db next to the shared database, or child
+// databases on Turso); Ref is the table the key's values are ids of.
+var Silos = []db.Silo{{Key: "org", Tables: []string{"Project.Project"}, Ref: "Org.Org"}}
 
 // Caps are the app's capability implementations, one field per capability, named by its
 // module and name: the generated caps package's Caps function builds them from the adapters,
@@ -115,9 +115,9 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	if len(Silos) > 0 {
 		dir := ""
 		if path != ":memory:" {
-			dir = filepath.Dir(path)
+			dir = db.SiloDir(path)
 		}
-		stores, err = db.OpenStores(store, path, db.StoresConfig{Dir: dir, Silos: Silos, Tables: Tables, Migrations: Migrations, Dev: o.Dev, Log: o.Log})
+		stores, err = db.OpenStores(store, path, db.StoresConfig{Dir: dir, Shared: path, Silos: Silos, Tables: Tables, Migrations: Migrations, Dev: o.Dev, Log: o.Log})
 		if err != nil {
 			store.Close()
 			return nil, err

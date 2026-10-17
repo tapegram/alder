@@ -28,11 +28,18 @@ type SQLite struct {
 
 	mu     sync.RWMutex
 	tables map[string]TableDesc // by Alder name; filled by Ensure
+
+	remote bool // a database on Turso (libsql.go), not a file
 }
+
+// Remote reports whether the store is a database on Turso (ALDER_DB=libsql://…, or a silo's
+// child database) rather than an SQLite file.
+func (s *SQLite) Remote() bool { return s.remote }
 
 // OpenSQLite opens (creating if needed) the database at path. ":memory:"
 // is a private in-memory database; it is held on a single connection so
-// every query sees it.
+// every query sees it. A path libsql://<host> is a database on Turso, reached
+// over its HTTP protocol (libsql.go; its token from the environment: turso.go).
 func OpenSQLite(path string) (*SQLite, error) { return openSQLite(path, false) }
 
 // OpenSQLiteReader opens the file database at path read-only (PRAGMA query_only: every write
@@ -46,6 +53,9 @@ func OpenSQLiteReader(path string) (*SQLite, error) {
 }
 
 func openSQLite(path string, reader bool) (*SQLite, error) {
+	if IsRemote(path) {
+		return openRemote(path, reader)
+	}
 	if path == "" || strings.Contains(path, "?") {
 		return nil, fmt.Errorf("db: invalid SQLite path %q", path)
 	}
@@ -754,7 +764,7 @@ func formatNumber() int {
 
 // appTables lists every table except SQLite's own, _alder_meta and _alder_migrations.
 func appTables(ctx context.Context, q querier) ([]string, error) {
-	rows, err := q.QueryContext(ctx, `SELECT "name" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" NOT IN ('_alder_meta', '_alder_migrations', '_alder_schema') ORDER BY "name"`)
+	rows, err := q.QueryContext(ctx, `SELECT "name" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" NOT IN ('_alder_meta', '_alder_migrations', '_alder_schema', '_alder_lock') ORDER BY "name"`)
 	if err != nil {
 		return nil, err
 	}

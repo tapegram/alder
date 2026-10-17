@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"alder/rt/eff"
@@ -54,6 +55,9 @@ import (
 type Silo struct {
 	Key    string
 	Tables []string
+	// Ref is the table the key's values are ids of (the siloed tables' partition column's
+	// @ref, module-qualified: "Org.Org"): a silo whose row there is gone is orphaned.
+	Ref string
 }
 
 // SiloState is a silo database's state, as `alder status` lists it (the binary's --silo-status).
@@ -65,6 +69,9 @@ const (
 	SiloDataLoss  SiloState = "pending-data-loss" // behind by a migration that drops data: maintenance
 	SiloAhead     SiloState = "ahead"             // migrated by a newer build: maintenance
 	SiloFailed    SiloState = "failed"            // cannot be opened, or a migration failed: maintenance
+	// SiloOrphaned is a silo whose key row (its Org) is gone: nothing reaches it any more, and
+	// `alder silos prune <env>` (the binary's --prune-silos) removes its database.
+	SiloOrphaned SiloState = "orphaned"
 )
 
 // MaintenanceError is the error of a step on a silo that is not served: a route answers the
@@ -81,17 +88,27 @@ func (e *MaintenanceError) Error() string {
 
 // StoresConfig configures the stores of an app with silos.
 type StoresConfig struct {
-	// Dir is the directory of the silos (Dir/silos/<key>/<value>.db): the shared database's.
-	// "" keeps every silo in memory (a shared store in memory; tests).
-	Dir        string
+	// Dir is the directory of the silos (Dir/silos/<key>/<value>.db): the shared database's
+	// (SiloDir). "" keeps every silo in memory (a shared store in memory; tests). A libsql://
+	// URL (the shared database on Turso) puts every silo in a child database on Turso
+	// (stores_turso.go), reached with the runtime's Turso settings (TursoConfigFromEnv).
+	Dir string
+	// Shared is the shared database (ALDER_DB), which --silo-status reads to find the orphaned
+	// silos ("": not looked for).
+	Shared     string
 	Silos      []Silo
 	Tables     []TableDesc // every table of the app (Tables)
 	Migrations []Migration // the app's migrations (none: an app made by Ensure)
 	Dev        bool        // a silo whose schema changed without migrations is recreated
+	// IdleClose is how long an open silo goes unused before it is closed (0: idleClose).
+	IdleClose time.Duration
 	// AllowDataLoss applies a pending migration that drops data on open (--migrate-silos
 	// --allow-data-loss); without it such a silo is not served.
 	AllowDataLoss bool
-	Log           func(level, msg string) // nil: no log
+	// SchemaOnly (silos on Turso): MigrateSilos migrates the schema databases only, leaving the
+	// children to take the change from them (alder deploy, from the deploying machine).
+	SchemaOnly bool
+	Log        func(level, msg string) // nil: no log
 }
 
 // Stores is the shared store and the silos of an app with `silo` declarations. Generated code
@@ -105,10 +122,18 @@ type Stores struct {
 	hash   string                 // the app's schema hash
 	last   string                 // the app's last migration, "" for none
 	test   bool                   // NewTestStores
+	remote *Turso                 // silos on Turso (Dir is a libsql:// URL)
+	app    string                 // the app's name on Turso (the databases' prefix)
 
-	mu   sync.Mutex
-	open map[string]*siloDB // by "key/value"
-	sps  []string           // test: the savepoints open on the test's transactions, outermost first
+	// mu guards open (and sps) only: a silo is opened and checked outside it, under its own
+	// entry's ready channel, so a slow migration of one silo never holds up another (I1).
+	mu    sync.Mutex
+	open  map[string]*siloDB // by "key/value"
+	swept time.Time          // the last eviction sweep (sweep)
+	// draining is set by Drain (a graceful shutdown): no silo is opened any more, and every
+	// write to an open one re-checks its schema row first (M3).
+	draining atomic.Bool
+	sps      []string // test: the savepoints open on the test's transactions, outermost first
 }
 
 // siloSchema is a silo's tables as its databases hold them.
@@ -132,11 +157,19 @@ type siloDB struct {
 	detail     string
 	checked    time.Time
 	tx         Tx // test: its transaction, begun on first use
+	// ready is closed once the silo is opened and checked: until then the fields above are the
+	// opener's alone, and every other request for the silo waits on it (only it).
+	ready chan struct{}
+	used  atomic.Int64 // unix nanoseconds of its last use, for the idle eviction
 }
 
 // recheck is how long a silo found not servable stays so before a request opens it again (an
 // `alder migrate silos` run meanwhile makes it servable).
-const recheck = 5 * time.Second
+const recheck = 60 * time.Second
+
+// idleClose is how long an open silo goes unused before it is closed (its connections freed),
+// unless StoresConfig.IdleClose says otherwise; it is opened (and checked) again on next use.
+const idleClose = 10 * time.Minute
 
 // OpenStores is the stores of an app with silos over the shared store shared (opened, migrated)
 // at sharedPath. Silos are opened on first use.
@@ -155,6 +188,9 @@ func OpenStores(shared *SQLite, sharedPath string, cfg StoresConfig) (*Stores, e
 	} else {
 		s.cfg.Dir = ""
 	}
+	liveMu.Lock()
+	live = append(live, s)
+	liveMu.Unlock()
 	return s, nil
 }
 
@@ -177,6 +213,13 @@ func newStores(shared *SQLite, cfg StoresConfig) (*Stores, error) {
 		return nil, err
 	}
 	s := &Stores{shared: shared, cfg: cfg, silos: map[string]*siloSchema{}, hash: sc.hash, open: map[string]*siloDB{}}
+	if IsRemote(cfg.Dir) {
+		tc := TursoConfigFromEnv()
+		if tc.Org == "" || tc.App == "" || tc.Token == "" {
+			return nil, fmt.Errorf("db: the silos are on Turso (ALDER_DB is %s), which needs %s, %s and %s", cfg.Dir, EnvTursoOrg, EnvTursoApp, EnvTursoToken)
+		}
+		s.remote, s.app = NewTurso(tc), tc.App
+	}
 	if n := len(cfg.Migrations); n > 0 {
 		s.last = cfg.Migrations[n-1].Name
 	}
@@ -241,10 +284,24 @@ func (s *Stores) Close() error {
 		}
 	}
 	s.open = map[string]*siloDB{}
+	liveMu.Lock()
+	if i := slices.Index(live, s); i >= 0 {
+		live = slices.Delete(live, i, i+1)
+	}
+	liveMu.Unlock()
 	if s.reader != nil {
 		errs = append(errs, s.reader.Close())
 	}
 	return errors.Join(errs...)
+}
+
+// SiloDir is StoresConfig.Dir for the shared database at path: its directory, or for a
+// database on Turso (libsql://…) the URL itself (the silos are its child databases).
+func SiloDir(path string) string {
+	if IsRemote(path) {
+		return path
+	}
+	return filepath.Dir(path)
 }
 
 // SiloPath is the file of silo key's value under dir: dir/silos/<key>/<value>.db. The value is
@@ -273,7 +330,10 @@ func safeName(v string) error {
 }
 
 // silo is the opened silo key/value: checked when first opened (openSilo), its state cached.
-// A silo not served is a *MaintenanceError (checked again after recheck).
+// A silo not served is a *MaintenanceError (checked again after recheck). The map lock is held
+// only to find or add the entry: the opening and checking (a migration, perhaps) happen outside
+// it, and a request for another silo — or for an open one — never waits for them; a request
+// for the same silo waits on its entry's ready channel.
 func (s *Stores) silo(ctx context.Context, key, value string) (*siloDB, error) {
 	ss := s.silos[key]
 	if ss == nil {
@@ -282,23 +342,116 @@ func (s *Stores) silo(ctx context.Context, key, value string) (*siloDB, error) {
 	if err := safeName(value); err != nil {
 		return nil, &eff.ErrFail{Msg: fmt.Sprintf("silo %s: the value %q is not an id (%v)", key, value, err)}
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	id := key + "/" + value
+	now := time.Now()
+	s.mu.Lock()
+	s.sweep(now)
 	d := s.open[id]
-	if d != nil && d.state != SiloOK && time.Since(d.checked) > recheck {
-		d.close()
-		delete(s.open, id)
+	if d != nil && isReady(d) && d.state != SiloOK && now.Sub(d.checked) > recheck {
+		delete(s.open, id) // a failed silo holds no connection (openSilo's fail closed it)
 		d = nil
 	}
+	opener := false
 	if d == nil {
-		d = s.openSilo(ctx, ss, value, s.cfg.AllowDataLoss)
+		if s.draining.Load() {
+			s.mu.Unlock()
+			return nil, &MaintenanceError{Key: key, Value: value, State: SiloFailed, Detail: "the process is shutting down (a deploy's drain): it opens no silo"}
+		}
+		d = &siloDB{key: key, value: value, ready: make(chan struct{})}
 		s.open[id] = d
+		opener = true
 	}
+	s.mu.Unlock()
+	if opener {
+		o := s.openSilo(ctx, ss, value, s.cfg.AllowDataLoss)
+		d.store, d.reader, d.state, d.detail, d.checked = o.store, o.reader, o.state, o.detail, o.checked
+		close(d.ready)
+	} else {
+		select {
+		case <-d.ready:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	d.used.Store(now.UnixNano())
 	if d.state != SiloOK {
 		return nil, &MaintenanceError{Key: key, Value: value, State: d.state, Detail: d.detail}
 	}
 	return d, nil
+}
+
+// isReady reports whether d is opened and checked.
+func isReady(d *siloDB) bool {
+	select {
+	case <-d.ready:
+		return true
+	default:
+		return false
+	}
+}
+
+// sweep (under s.mu, at most once a minute) closes the silos unused for IdleClose (M2): not a
+// test's, whose transaction stays open. A Task holding one runs far shorter than that.
+func (s *Stores) sweep(now time.Time) {
+	if s.test || now.Sub(s.swept) < time.Minute {
+		return
+	}
+	s.swept = now
+	idle := s.cfg.IdleClose
+	if idle <= 0 {
+		idle = idleClose
+	}
+	for id, d := range s.open {
+		if isReady(d) && d.state == SiloOK && d.tx == nil && now.Sub(time.Unix(0, d.used.Load())) > idle {
+			d.close()
+			delete(s.open, id)
+		}
+	}
+}
+
+// Drain starts a graceful shutdown of every Stores of the process (the generated main calls it
+// on SIGINT/SIGTERM, before the requests in flight are let finish): no silo is opened any
+// more, and a write to an open one first re-checks its schema row (route), so an old process
+// draining while a new build migrates a silo never writes into the migrated database.
+func Drain() {
+	liveMu.Lock()
+	defer liveMu.Unlock()
+	for _, s := range live {
+		s.draining.Store(true)
+	}
+}
+
+// openHook, set by a test, runs as a silo starts opening (a slow migration).
+var openHook func(key, value string)
+
+var (
+	liveMu sync.Mutex
+	live   []*Stores // every Stores OpenStores made, for Drain
+)
+
+// recheckWrite is the write-time re-check of a draining process (M3): the silo's schema row,
+// read inside the Task's transaction, must still be this binary's; otherwise another build
+// migrated it meanwhile and the silo answers the maintenance page from now on.
+func (s *Stores) recheckWrite(ctx context.Context, st Store, tx Tx, key, value string) error {
+	sq, ok := st.(*SQLite)
+	if !ok || !s.draining.Load() {
+		return nil
+	}
+	q, err := sq.on(tx)
+	if err != nil {
+		return err
+	}
+	hash, _, _, err := schemaRow(ctx, q)
+	if err != nil || hash == s.hash {
+		return err
+	}
+	detail := "another build migrated it while this process drains: the new build serves it"
+	s.mu.Lock()
+	if d := s.open[key+"/"+value]; d != nil && isReady(d) {
+		d.state, d.detail, d.checked = SiloAhead, detail, time.Now()
+	}
+	s.mu.Unlock()
+	return &MaintenanceError{Key: key, Value: value, State: SiloAhead, Detail: detail}
 }
 
 func (d *siloDB) close() {
@@ -312,12 +465,18 @@ func (d *siloDB) close() {
 
 // openSilo opens silo ss's value and checks it (see the package comment's silo section).
 func (s *Stores) openSilo(ctx context.Context, ss *siloSchema, value string, allowDataLoss bool) *siloDB {
+	if openHook != nil {
+		openHook(ss.key, value)
+	}
 	d := &siloDB{key: ss.key, value: value, checked: time.Now()}
 	fail := func(state SiloState, detail string) *siloDB {
 		d.close()
 		d.store, d.reader, d.state, d.detail = nil, nil, state, detail
 		s.logf("warn", fmt.Sprintf("silo %s/%s: %s: %s", ss.key, value, state, detail))
 		return d
+	}
+	if s.remote != nil {
+		return s.openChild(ctx, d, ss, value, fail)
 	}
 	path := ":memory:"
 	if s.cfg.Dir != "" {
@@ -627,6 +786,11 @@ func route[T any](ctx context.Context, st Store, tx Tx, t *Table[T], op string, 
 		return reg.testSilo(ctx, t.Silo, v)
 	}
 	if e.SiloKey == t.Silo && e.SiloValue == v {
+		if write {
+			if err := reg.recheckWrite(ctx, st, tx, t.Silo, v); err != nil {
+				return nil, nil, err
+			}
+		}
 		return st, tx, nil
 	}
 	if write {
@@ -851,29 +1015,40 @@ type SiloStatus struct {
 	Detail string    `json:"detail,omitempty"`
 }
 
-// StatusSilos writes one JSON line (SiloStatus) per silo file under cfg.Dir, inspecting each
-// without changing it: ok, migrating (behind; it migrates when next opened), pending-data-loss,
-// ahead or failed.
+// StatusSilos writes one JSON line (SiloStatus) per silo database — each file under cfg.Dir,
+// or on Turso each child database — inspecting each without changing it: ok, migrating
+// (behind; it migrates when next opened, or on Turso: the schema database's change has not
+// reached it yet), pending-data-loss, ahead, failed, or orphaned (its key row is gone from the
+// shared database, cfg.Shared).
 func StatusSilos(ctx context.Context, cfg StoresConfig, out io.Writer) error {
 	s, err := newStores(nil, cfg)
 	if err != nil {
 		return err
 	}
-	files, err := SiloFiles(cfg.Dir, cfg.Silos)
+	es, err := s.entries(ctx)
 	if err != nil {
 		return err
 	}
+	orphaned, done, err := s.orphans(ctx)
+	if err != nil {
+		return err
+	}
+	defer done()
 	enc := json.NewEncoder(out)
 	enc.SetEscapeHTML(false)
-	for _, f := range files {
-		line := SiloStatus{Key: f.Key, ID: f.Value}
-		st, err := OpenSQLiteReader(f.Path)
-		if err == nil {
-			line.State, line.Detail, err = s.check(ctx, st, s.silos[f.Key], false, false)
-			st.Close()
-		}
-		if err != nil {
-			line.State, line.Detail = SiloFailed, err.Error()
+	for _, e := range es {
+		line := SiloStatus{Key: e.key, ID: e.value}
+		if orphaned != nil && orphaned(e.key, e.value) {
+			line.State, line.Detail = SiloOrphaned, orphanDetail(s, e.key)
+		} else {
+			st, err := s.openEntry(ctx, e, true)
+			if err == nil {
+				line.State, line.Detail, err = s.state(ctx, st, e, false, false)
+				st.Close()
+			}
+			if err != nil {
+				line.State, line.Detail = SiloFailed, err.Error()
+			}
 		}
 		if err := enc.Encode(line); err != nil {
 			return err
@@ -885,36 +1060,35 @@ func StatusSilos(ctx context.Context, cfg StoresConfig, out io.Writer) error {
 // MigrateSilos opens and checks every silo file under cfg.Dir (cfg.AllowDataLoss: also
 // applying a migration that drops data), writing one line each: "org/<id>: ok", "org/<id>:
 // migrated 0003_x", or "org/<id>: pending-data-loss: …". It returns how many are not served.
+// On Turso it migrates each key's schema database ("org (schema database …): migrated …") and
+// then, unless cfg.SchemaOnly, checks each child (migrateRemote).
 func MigrateSilos(ctx context.Context, cfg StoresConfig, out io.Writer) (int, error) {
 	s, err := newStores(nil, cfg)
 	if err != nil {
 		return 0, err
 	}
-	files, err := SiloFiles(cfg.Dir, cfg.Silos)
+	if s.remote != nil {
+		return s.migrateRemote(ctx, out)
+	}
+	es, err := s.entries(ctx)
 	if err != nil {
 		return 0, err
 	}
 	bad := 0
-	for _, f := range files {
+	for _, e := range es {
 		state, detail := SiloFailed, ""
-		st, err := OpenSQLite(f.Path)
+		st, err := s.openEntry(ctx, e, false)
 		if err == nil {
-			state, detail, err = s.check(ctx, st, s.silos[f.Key], cfg.AllowDataLoss, true)
+			state, detail, err = s.state(ctx, st, e, cfg.AllowDataLoss, true)
 			st.Close()
 		}
 		if err != nil {
 			state, detail = SiloFailed, err.Error()
 		}
-		line := f.Key + "/" + f.Value + ": " + string(state)
-		if state == SiloOK && detail != "" {
-			line = f.Key + "/" + f.Value + ": " + detail
-		} else if detail != "" {
-			line += ": " + detail
-		}
 		if state != SiloOK {
 			bad++
 		}
-		fmt.Fprintln(out, line)
+		fmt.Fprintln(out, stateLine(e.key+"/"+e.value, state, detail))
 	}
 	return bad, nil
 }
