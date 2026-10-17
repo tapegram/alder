@@ -335,7 +335,7 @@ func rendered(x *syntax.Element) string {
 	case "al-dialog":
 		for _, ch := range x.Children { // the author wrote the native `<dialog>`: theirs wins
 			if e, ok := ch.(*syntax.Element); ok && e.Tag == "dialog" {
-				return ""
+				return "own-dialog" // only the morph guard (data-preserve-attr) is added
 			}
 		}
 		return "dialog"

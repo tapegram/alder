@@ -102,6 +102,19 @@ func completeBuiltin(el *Elem, r string) {
 	case "dialog":
 		completeDialog(el, text)
 		return
+	case "own-dialog": // the author's `<dialog>` is theirs, but a morph must not close it
+		for _, c := range el.Children {
+			if d, ok := c.(*Elem); ok && d.Tag == "dialog" {
+				has := false
+				for _, a := range d.Attrs {
+					has = has || a.Name == "data-preserve-attr"
+				}
+				if !has {
+					d.Attrs = append(d.Attrs, HAttr{Name: "data-preserve-attr", Kind: AttrText, Value: text("open")})
+				}
+			}
+		}
+		return
 	case "popover":
 		el.Attrs = append(el.Attrs, HAttr{Name: "popover", Kind: AttrText, Value: text("manual")})
 		return

@@ -187,7 +187,7 @@ func Index__view(model Index__Model, session App__Session) html.Node {
 			html.El("h2", []html.Attr{html.A("slot", "header"), html.A("id", "maybe-heading")}, html.Text("Maybe")),
 			html.El("p", nil, html.Text("A close button while saving.")),
 		)),
-		html.El("al-dialog", []html.Attr{html.A("size", "sm")}, html.El("dialog", []html.Attr{html.A("id", "own"), html.A("closedby", "any")},
+		html.El("al-dialog", []html.Attr{html.A("size", "sm")}, html.El("dialog", []html.Attr{html.A("id", "own"), html.A("closedby", "any"), html.A("data-preserve-attr", "open")},
 			html.El("h2", []html.Attr{html.A("slot", "header")}, html.Text("Own")),
 			html.El("p", nil, html.Text("The author's dialog.")),
 		)),
