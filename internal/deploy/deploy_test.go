@@ -334,7 +334,7 @@ func TestRollback_SchemaMismatch(t *testing.T) {
 	if err != nil || to != "1111111111111111" {
 		t.Fatalf("to %s err %v", to, err)
 	}
-	want := "connect|schema|start 1111111111111111|health|switch 1111111111111111|stop 2222222222222222 0s"
+	want := "connect|schema|start 1111111111111111|health|switch 1111111111111111|record|stop 2222222222222222 0s"
 	if strings.Join(f.calls, "|") != want {
 		t.Errorf("calls %v", f.calls)
 	}
@@ -420,5 +420,43 @@ func TestDeploy_LockAndPreflight(t *testing.T) {
 	}
 	if got := strings.Join(f.calls, "|"); got != "connect|requires SMTP_URL,ALDER_SECRET|schema" {
 		t.Errorf("dry run calls %s", got)
+	}
+}
+
+// restoringTarget is a fake target that can put back a pre-migration copy.
+type restoringTarget struct{ fakeTarget }
+
+func (r *restoringTarget) RestoreBackup(_ context.Context, to string, _ []Build) (string, time.Time, func(context.Context) error, error) {
+	r.call("restore-backup " + to)
+	return "builds/2222222222222222/backup.db", time.Unix(0, 0), func(context.Context) error { r.call("undo"); return nil }, nil
+}
+
+// I1: --restore-backup skips the schema check, puts the copy back, starts and switches; a
+// build that fails on it brings the kept database and the previous build back.
+func TestRollback_RestoreBackup(t *testing.T) {
+	now := time.Now()
+	mk := func(health error) *restoringTarget {
+		return &restoringTarget{fakeTarget{live: []byte(`{"tables":[]}`), current: "2222222222222222", health: health,
+			builds: []Build{{ID: "2222222222222222", Record: &Record{Previous: "1111111111111111", When: &now}, BackupOf: "1111111111111111"},
+				{ID: "1111111111111111", Record: &Record{When: &now}}}}}
+	}
+	var out bytes.Buffer
+	f := mk(nil)
+	if to, err := Rollback(context.Background(), f, RollbackOptions{Out: &out, Drain: -1, RestoreBackup: true}); err != nil || to != "1111111111111111" {
+		t.Fatalf("%s %v", to, err)
+	}
+	if got := strings.Join(f.calls, "|"); got != "connect|restore-backup 1111111111111111|start 1111111111111111|health|switch 1111111111111111|record" {
+		t.Errorf("calls %s", got)
+	}
+	if !strings.Contains(out.String(), "warning: --restore-backup: the database is now builds/2222222222222222/backup.db") || !f.records["1111111111111111"].RolledBack {
+		t.Errorf("output:\n%s\nrecord %+v", out.String(), f.records)
+	}
+	f = mk(errors.New("no answer"))
+	_, err := Rollback(context.Background(), f, RollbackOptions{Out: &out, Drain: -1, RestoreBackup: true})
+	if err == nil || !strings.Contains(err.Error(), "the previous database is back and build 2222222222222222 serves again") {
+		t.Fatalf("err = %v", err)
+	}
+	if got := strings.Join(f.calls, "|"); got != "connect|restore-backup 1111111111111111|start 1111111111111111|health|stop 1111111111111111 0s|undo|start 2222222222222222|switch 2222222222222222" {
+		t.Errorf("calls %s", got)
 	}
 }

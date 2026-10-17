@@ -36,6 +36,11 @@ type Record struct {
 	Applied  []string   `json:"applied,omitempty"`
 	Previous string     `json:"previous,omitempty"` // the build that served before
 	Port     int        `json:"port,omitempty"`
+
+	// RolledBack: the record was rewritten by `alder rollback` (When, By, Previous are the
+	// rollback's); RestoredFrom is the pre-migration copy --restore-backup put back.
+	RolledBack   bool   `json:"rollback,omitempty"`
+	RestoredFrom string `json:"restoredFrom,omitempty"`
 }
 
 // JSON is the record as written to a file: indented, ending in a newline.

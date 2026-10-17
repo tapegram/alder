@@ -458,15 +458,15 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 		t.Errorf("RF1: deployed.json: %+v %v", rec, err)
 	}
 
-	// keep 3: the oldest build, id1, was pruned
-	if !strings.Contains(out, "  prune    ok  removed "+id1+" (keep 3)\n") || strings.Contains(box.sh(t, "ls "+box.root+"/builds"), id1) {
+	// keep 3: id1b, the oldest by its deploy (id1's record was rewritten by the rollback), was pruned
+	if !strings.Contains(out, "  prune    ok  removed "+id1b+" (keep 3)\n") || strings.Contains(box.sh(t, "ls "+box.root+"/builds"), id1b) {
 		t.Errorf("prune:\n%s", out)
 	}
-	// RF3 again: id1b's schema is the live one again, but the database has had 0002 and 0003
+	// RF3 again: id1's schema is the live one again, but the database has had 0002 and 0003
 	so.Reset()
 	se.Reset()
-	if code := runRollbackTo([]string{"production", id1b, "--dir", dir}, &so, &se); code != 1 || !strings.Contains(se.String(), "the live database has migrations build "+id1b+" does not have (0002_add_mood, 0003_drop_mood)") {
-		t.Errorf("rollback to %s: exit %d\n%s\n%s", id1b, code, so.String(), se.String())
+	if code := runRollbackTo([]string{"production", id1, "--dir", dir}, &so, &se); code != 1 || !strings.Contains(se.String(), "the live database has migrations build "+id1+" does not have (0002_add_mood, 0003_drop_mood)") {
+		t.Errorf("rollback to %s: exit %d\n%s\n%s", id1, code, so.String(), se.String())
 	}
 
 	// RF2: a build whose adapter exits at start
@@ -715,5 +715,75 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 	}
 	if err := s.Stop(ctx, id1, 2*time.Second); !errors.Is(err, deploy.ErrNotRunning) {
 		t.Errorf("stopping a stopped build: %v", err)
+	}
+}
+
+// I1, I2: a deploy whose migration applied but whose build fails its health check names the
+// pre-migration copy and the command that puts it back; `rollback --restore-backup` puts it back
+// (the serving build restarts on it), and across an earlier migration it brings back the first
+// build with its data from before that migration.
+func TestDeploySsh_RestoreBackup(t *testing.T) {
+	box := startBox(t)
+	dir := sshScaffold(t, box)
+	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %q/env", strings.Repeat("s", 32), box.root))
+	post := func(name string) {
+		t.Helper()
+		box.sh(t, fmt.Sprintf("curl -s -o /dev/null -X POST -H 'Origin: http://127.0.0.1:%d' -d 'name=%s&message=hello' http://127.0.0.1:%d/_m/Home/Submit", box.port, name, box.port))
+	}
+	names := func() string {
+		t.Helper()
+		page := box.sh(t, fmt.Sprintf("curl -sL http://127.0.0.1:%d/", box.port))
+		var got []string
+		for _, m := range regexp.MustCompile(`<li><b>([^<]*)</b>`).FindAllStringSubmatch(page, -1) {
+			got = append(got, m[1])
+		}
+		return strings.Join(got, ",")
+	}
+	code, out, errs := runDeploy(t, "production", dir)
+	if code != 0 {
+		t.Fatalf("deploy: %d\n%s%s", code, out, errs)
+	}
+	id1 := deployedID(t, out)
+	post("Ada")
+	migrateDemo(t, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
+	if code, out, errs = runDeploy(t, "production", dir); code != 0 {
+		t.Fatalf("second deploy: %d\n%s%s", code, out, errs)
+	}
+	id2 := deployedID(t, out)
+	post("Grace")
+	if got := names(); got != "Grace,Ada" {
+		t.Fatalf("entries %q", got)
+	}
+	// a migration, then a build that exits at start
+	migrateDemo(t, "  mood: Maybe Text = Nothing,\n", "  mood: Maybe Text = Nothing,\n  tag: Maybe Text = Nothing,\n", "add_tag")
+	writeFile(t, "demo/app/Clock.alder", "module Clock\n\ncapability Clock {\n  now : Task Int,\n}\n")
+	writeFile(t, "demo/adapters/clock/clock.go", "package clock\n\nimport (\n\t\"context\"\n\t\"os\"\n\n\t\"app\"\n)\n\nfunc Clock() app.Cap__Clock__Clock {\n\tif os.Getenv(\"ALDER_DB\") != \"\" {\n\t\tos.Exit(1)\n\t}\n\treturn clock{}\n}\n\ntype clock struct{}\n\nfunc (clock) Now(context.Context) (int64, error) { return 0, nil }\n")
+	code, out, errs = runDeploy(t, "production", dir, "--unsafe-skip-tests")
+	m := regexp.MustCompile(`builds/([0-9a-f]{16})/ is kept`).FindStringSubmatch(errs)
+	if code != 1 || m == nil || !strings.Contains(errs, "build "+id2+" still serves, but the database was migrated (0003_add_tag) and that build would refuse to start again on it. To go back: `alder rollback production "+id2+" --restore-backup` (puts builds/"+m[1]+"/backup.db, taken before the migration, in place)") {
+		t.Fatalf("I2: %d\n%s%s", code, out, errs)
+	}
+	var so, se bytes.Buffer
+	if code := runRollbackTo([]string{"production", id2, "--dir", dir, "--restore-backup"}, &so, &se); code != 0 || !strings.Contains(so.String(), "warning: --restore-backup: the database is now builds/"+m[1]+"/backup.db") {
+		t.Fatalf("rollback %s --restore-backup: %d\n%s%s", id2, code, so.String(), se.String())
+	}
+	if got, serving := names(), box.serving(t); got != "Grace,Ada" || serving != id2 {
+		t.Errorf("after restoring %s's copy: entries %q, serving %s", id2, got, serving)
+	}
+	// across the migration to the first build: its data from before the migration
+	so.Reset()
+	se.Reset()
+	if code := runRollbackTo([]string{"production", id1, "--dir", dir, "--restore-backup"}, &so, &se); code != 0 {
+		t.Fatalf("rollback %s --restore-backup: %d\n%s%s", id1, code, so.String(), se.String())
+	}
+	if got, serving := names(), box.serving(t); got != "Ada" || serving != id1 {
+		t.Errorf("after rolling back to %s: entries %q, serving %s", id1, got, serving)
+	}
+	if kept := box.sh(t, fmt.Sprintf("ls %q/db", box.root)); strings.Count(kept, "app.db.before-rollback-") < 2 {
+		t.Errorf("the replaced databases are not kept: %s", kept)
+	}
+	var rec deploy.Record
+	if err := json.Unmarshal([]byte(box.sh(t, fmt.Sprintf("cat %q/builds/%s/deployed.json", box.root, id1))), &rec); err != nil || !rec.RolledBack || rec.Previous != id2 || !strings.HasSuffix(rec.RestoredFrom, "/backup.db") {
+		t.Errorf("deployed.json after the rollback: %+v %v", rec, err)
 	}
 }

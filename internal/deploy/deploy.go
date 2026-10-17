@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -261,13 +262,13 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 	port, err := t.Start(ctx, id)
 	if err != nil {
 		line(w, "start", "FAIL", "")
-		return res, startRefusal(id, current, err)
+		return res, startRefusalMigrated(id, current, o.Env, rec.Applied, err)
 	}
 	line(w, "start", "ok", fmt.Sprintf("port %d", port))
 	if err := t.Health(ctx, id, port, o.HealthTimeout); err != nil {
 		line(w, "health", "FAIL", "")
 		t.Stop(ctx, id, 0)
-		return res, startRefusal(id, current, err)
+		return res, startRefusalMigrated(id, current, o.Env, rec.Applied, err)
 	}
 	line(w, "health", "ok", "build "+id+" answers GET /")
 	if port, err = t.Switch(ctx, id, port); err != nil {
@@ -325,6 +326,17 @@ func stopPrevious(ctx context.Context, t Target, id string, drain time.Duration,
 // startRefusal is the refusal of a build that did not start or did not pass its health check:
 // the target's error carries the build's log.
 func startRefusal(id, current string, err error) error {
+	return startRefusalMigrated(id, current, "", nil, err)
+}
+
+// startRefusalMigrated is startRefusal after this deploy applied migrations: the serving build
+// keeps running, but would refuse to start again on the migrated database; the refusal names
+// the copy taken before them and the command that puts it back.
+func startRefusalMigrated(id, current, env string, applied []string, err error) error {
+	if len(applied) > 0 && current != "" {
+		return refuse(err.Error(), "build %s did not pass its health check: it was stopped and builds/%s/ is kept for inspection; nothing was switched; build %s still serves, but the database was migrated (%s) and that build would refuse to start again on it. To go back: `alder rollback %s %s --restore-backup` (puts builds/%s/backup.db, taken before the migration, in place)",
+			id, id, current, strings.Join(applied, ", "), env, current, id)
+	}
 	return refuse(err.Error(), "build %s did not pass its health check: it was stopped and builds/%s/ is kept for inspection; nothing was switched; %s", id, id, serving(current))
 }
 
@@ -368,9 +380,12 @@ func relative(path string) string {
 type RollbackOptions struct {
 	To                  string // "" for the build that served before the current one
 	AllowSchemaMismatch bool
-	Drain               time.Duration
-	HealthTimeout       time.Duration
-	Out                 io.Writer
+	// RestoreBackup puts back the database as it was when the build was replaced (the
+	// pre-migration copy the next deploy took: BackupRestorer), losing every write since.
+	RestoreBackup bool
+	Drain         time.Duration
+	HealthTimeout time.Duration
+	Out           io.Writer
 }
 
 // Rollback makes an earlier build current again: it starts it beside the current one, health
@@ -446,10 +461,13 @@ func Rollback(ctx context.Context, t Target, o RollbackOptions) (string, error) 
 	if target.Record == nil {
 		return "", refuse("", "build %s never finished deploying (it has no deployed.json): deploy it instead", to)
 	}
-	if to == current {
+	if to == current && !o.RestoreBackup {
 		return "", refuse("", "build %s is already current", to)
 	}
 	fmt.Fprintf(w, "rollback %s → %s\n", current, to)
+	if o.RestoreBackup {
+		return rollbackWithBackup(ctx, t, o, builds, current, *target)
+	}
 	live, err := t.Schema(ctx)
 	if err != nil {
 		return "", err
@@ -501,11 +519,91 @@ func Rollback(ctx context.Context, t Target, o RollbackOptions) (string, error) 
 		return "", fmt.Errorf("switching to build %s: %w", to, err)
 	}
 	line(w, "switch", "ok", fmt.Sprintf("current → %s (port %d)", to, port))
+	recordRollback(ctx, t, *target, current, port, "", w)
 	if current != "" {
 		stopPrevious(ctx, t, current, o.Drain, w)
 	}
 	fmt.Fprintf(w, "rolled back to %s\n", to)
 	return to, nil
+}
+
+// recordRollback rewrites the deployed.json of build b, now current again: when, by whom, the
+// build it replaced, and the copy of the data that was put back (if any).
+func recordRollback(ctx context.Context, t Target, b Build, previous string, port int, restored string, w io.Writer) {
+	rec := *b.Record
+	now := time.Now().UTC().Truncate(time.Second)
+	rec.When, rec.Previous, rec.Port, rec.RolledBack, rec.RestoredFrom = &now, previous, port, true, restored
+	rec.By = "local " + os.Getenv("USER")
+	if who, ok := t.(identity); ok {
+		rec.By = who.Identity() + " (" + rec.By + ")"
+	}
+	if err := t.Record(ctx, b.ID, rec.JSON()); err != nil {
+		fmt.Fprintf(w, "warning: recording the rollback: %v\n", err)
+	}
+}
+
+// BackupRestorer is a Target that can put back the pre-migration copy taken under a build
+// (`alder rollback --restore-backup`): RestoreBackup stops the current build, keeps the current
+// database beside the copy's place, puts the copy in place with build to's schema records, and
+// returns where the copy came from, when it was taken, and an undo that puts the kept database
+// back.
+type BackupRestorer interface {
+	RestoreBackup(ctx context.Context, to string, builds []Build) (from string, taken time.Time, undo func(context.Context) error, err error)
+}
+
+// rollbackWithBackup is Rollback with RestoreBackup: the database goes back to the copy taken
+// when build to was replaced, then to is started, checked and switched to; when it fails, the
+// kept database and the current build come back.
+func rollbackWithBackup(ctx context.Context, t Target, o RollbackOptions, builds []Build, current string, to Build) (string, error) {
+	w := o.Out
+	br, ok := t.(BackupRestorer)
+	if !ok {
+		return "", refuse("", "--restore-backup is not available for %s", t.Describe())
+	}
+	if p, ok := t.(Preflighter); ok {
+		if err := p.Preflight(ctx); err != nil {
+			return "", err
+		}
+	}
+	from, taken, undo, err := br.RestoreBackup(ctx, to.ID, builds)
+	if err != nil {
+		return "", err
+	}
+	fmt.Fprintf(w, "warning: --restore-backup: the database is now %s (taken %s); every write since is gone from it (the database it replaces is kept as db/app.db.before-rollback-<time>)\n",
+		from, taken.UTC().Format(time.RFC3339))
+	line(w, "restore", "ok", from)
+	back := func(cause error) error {
+		t.Stop(ctx, to.ID, 0)
+		if uerr := undo(ctx); uerr != nil {
+			return fmt.Errorf("%v; and putting the previous database back failed: %v", cause, uerr)
+		}
+		if current != "" {
+			if p, err := t.Start(ctx, current); err == nil {
+				if _, err := t.Switch(ctx, current, p); err == nil {
+					return refuse(cause.Error(), "build %s did not pass its health check on the restored copy: the previous database is back and build %s serves again", to.ID, current)
+				}
+			}
+			return refuse(cause.Error(), "build %s did not pass its health check on the restored copy: the previous database is back, but build %s did not start again: run `alder deploy`", to.ID, current)
+		}
+		return refuse(cause.Error(), "build %s did not pass its health check on the restored copy: the previous database is back", to.ID)
+	}
+	port, err := t.Start(ctx, to.ID)
+	if err == nil {
+		line(w, "start", "ok", fmt.Sprintf("port %d", port))
+		err = t.Health(ctx, to.ID, port, o.HealthTimeout)
+	}
+	if err != nil {
+		line(w, "health", "FAIL", "")
+		return "", back(err)
+	}
+	line(w, "health", "ok", "build "+to.ID+" answers GET /")
+	if port, err = t.Switch(ctx, to.ID, port); err != nil {
+		return "", back(fmt.Errorf("switching to build %s: %w", to.ID, err))
+	}
+	line(w, "switch", "ok", fmt.Sprintf("current → %s (port %d)", to.ID, port))
+	recordRollback(ctx, t, to, current, port, from, w)
+	fmt.Fprintf(w, "rolled back to %s with the data of %s\n", to.ID, taken.UTC().Format(time.RFC3339))
+	return to.ID, nil
 }
 
 func orNone(s string) string {

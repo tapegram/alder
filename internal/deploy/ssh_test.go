@@ -122,4 +122,9 @@ func TestPrunePlan(t *testing.T) {
 	if got := strings.Join(PrunePlan(builds, 1, nil), ","); got != "k" {
 		t.Errorf("backup chain: %s", got)
 	}
+	// x holds the only copy taken under the kept y: it stays; an older copy under y does not
+	builds = []Build{b("c", ok, true, "y"), b("y", ok, false, "z"), b("x", ok, false, "w"), b("old", ok, false, "y"), b("w", ok, false, "")}
+	if got := strings.Join(PrunePlan(builds, 2, nil), ","); got != "w,old,x" {
+		t.Errorf("copies: %s", got)
+	}
 }

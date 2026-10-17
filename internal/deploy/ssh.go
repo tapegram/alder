@@ -938,6 +938,65 @@ rm -rf "$D"
 	}, nil
 }
 
+// RestoreBackup is BackupRestorer: the newest build whose backup.of names to has the copy of
+// the database taken while to served (before that build's migrations). The current build is
+// stopped; db/app.db (with -wal, -shm), db/schema.json and db/migrations are kept as
+// *.before-rollback-<time>; the copy goes in place with to's schema.json and migration names.
+// undo puts the kept files back.
+func (s *Ssh) RestoreBackup(ctx context.Context, to string, builds []Build) (string, time.Time, func(context.Context) error, error) {
+	src := ""
+	for _, b := range builds { // newest first
+		if b.BackupOf == to {
+			src = b.ID
+			break
+		}
+	}
+	if src == "" {
+		return "", time.Time{}, nil, refuse("", "no build at %s holds a copy of the database taken while build %s served (builds/<id>/backup.db with backup.of %s): --restore-backup cannot put one back", s.Describe(), to, to)
+	}
+	cur, err := s.Current(ctx)
+	if err != nil {
+		return "", time.Time{}, nil, err
+	}
+	if cur != "" {
+		if err := s.stop(ctx, cur); err != nil {
+			return "", time.Time{}, nil, err
+		}
+	}
+	out, err := s.run(ctx, `set -e
+to=`+q(to)+`; src=`+q(src)+`
+[ -f "$R/builds/$src/backup.db" ] || { echo "builds/$src/backup.db is missing" >&2; exit 1; }
+cd "$R/db"
+ts=$(date -u +%Y%m%dT%H%M%SZ)
+for x in "" -wal -shm; do if [ -f "app.db$x" ]; then mv "app.db$x" "app.db.before-rollback-$ts$x"; fi; done
+for f in schema.json migrations; do if [ -f "$f" ]; then cp "$f" "$f.before-rollback-$ts"; fi; done
+cp "$R/builds/$src/backup.db" app.db.new && chmod 600 app.db.new && mv app.db.new app.db
+if [ -f "$R/builds/$to/migrations/schema.json" ]; then
+  cp "$R/builds/$to/migrations/schema.json" schema.json
+  ls "$R/builds/$to/migrations" | sed -n 's/\.sql$//p' > migrations
+else rm -f schema.json migrations; fi
+echo "ts=$ts"
+echo "taken=$(date -r "$R/builds/$src/backup.db" +%s 2>/dev/null || echo 0)"
+`)
+	if err != nil {
+		return "", time.Time{}, nil, err
+	}
+	kv := keyValues(out)
+	ts := kv["ts"]
+	secs, _ := strconv.ParseInt(kv["taken"], 10, 64)
+	undo := func(ctx context.Context) error {
+		_, err := s.run(ctx, `set -e
+ts=`+q(ts)+`
+cd "$R/db"
+rm -f app.db app.db-wal app.db-shm
+for x in "" -wal -shm; do if [ -f "app.db.before-rollback-$ts$x" ]; then mv "app.db.before-rollback-$ts$x" "app.db$x"; fi; done
+for f in schema.json migrations; do if [ -f "$f.before-rollback-$ts" ]; then mv "$f.before-rollback-$ts" "$f"; fi; done
+`)
+		return err
+	}
+	return "builds/" + src + "/backup.db", time.Unix(secs, 0), undo, nil
+}
+
 // ErrNotRunning is Stop's answer for a build that was not running (nothing was scheduled).
 var ErrNotRunning = errors.New("not running")
 
@@ -989,9 +1048,9 @@ func (s *Ssh) Record(ctx context.Context, id string, rec []byte) error {
 
 // Prune removes builds beyond keep: failed ones (never switched to) first, oldest first, then
 // deployed ones, oldest first. It never removes one in protect, one running, the current one,
-// the newest deployed one that is not current (the rollback target), or one whose pre-migration
-// copy (backup.db, of the build named in backup.of) a kept build needs for
-// `rollback --restore-backup`.
+// the newest deployed one that is not current (the rollback target), or one holding the newest
+// pre-migration copy (backup.db, backup.of naming the build it was taken under) of a kept build,
+// which `rollback --restore-backup` to that build needs.
 func (s *Ssh) Prune(ctx context.Context, keep int, protect []string) ([]string, error) {
 	builds, err := s.Builds(ctx)
 	if err != nil {
@@ -1034,13 +1093,16 @@ func PrunePlan(builds []Build, keep int, protect []string) []string {
 		}
 		gone[b.ID] = true
 	}
-	// a removed build's backup.db is the way back to the build it names: keep it while that one is kept
-	for _, b := range builds {
-		if gone[b.ID] && b.BackupOf != "" {
-			for _, k := range builds {
-				if k.ID == b.BackupOf && !gone[k.ID] {
-					delete(gone, b.ID)
-				}
+	// the newest copy taken under a kept build (backup.db, backup.of naming it) is the way back
+	// to that build's data: its directory stays
+	for _, k := range builds {
+		if gone[k.ID] {
+			continue
+		}
+		for _, b := range builds { // newest first: the first that names k holds k's newest copy
+			if b.BackupOf == k.ID {
+				delete(gone, b.ID)
+				break
 			}
 		}
 	}

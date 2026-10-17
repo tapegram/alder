@@ -29,7 +29,7 @@ import (
 const (
 	deployUsage   = "usage: alder deploy <env> [dir] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json]"
 	statusUsage   = "usage: alder status <env> [dir] [--host name]"
-	rollbackUsage = "usage: alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch]"
+	rollbackUsage = "usage: alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup]"
 	logsUsage     = "usage: alder logs <env> [dir] [--host name] [-f]"
 	restoreUsage  = "usage: alder restore <env> [--from url] [--to time] [--out file.db] [--dir dir]"
 )
@@ -509,6 +509,8 @@ func runRollbackTo(args []string, stdout, stderr io.Writer) int {
 		switch {
 		case a == "--allow-schema-mismatch":
 			o.AllowSchemaMismatch = true
+		case a == "--restore-backup":
+			o.RestoreBackup = true
 		case a == "--dir" && i+1 < len(args):
 			i++
 			dir = args[i]
