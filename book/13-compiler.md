@@ -4062,6 +4062,122 @@ would draw; a field error is answered like a decoder's error. This is
 why `options` may use only the view's parameters: a name bound by a
 `for` or a `let` of the view would not exist outside the view.
 
+### Deploying: the pipeline, the health check, the backup shipper
+
+`alder deploy` (chapter 16) is not part of the compiler's pipeline from
+source to Go; it is a program that drives the compiler's other commands
+and then talks to a server. Its code is in `internal/deploy/`, with the
+command itself in `cmd/alder/deploy.go`.
+
+**The gate reuses the commands.** `deploy.Runner` is an interface with
+four methods, `Check`, `Build`, `Test` and `Mutate`; the command
+implements it (`deployRunner`) by calling the same functions `alder
+check`, `alder build` and `alder test` run, capturing what each prints.
+`alder test --mutate --json` prints the score as one JSON object, which
+the runner reads. The check step also hands back the lowered program,
+whose `ir.Deploy` is the declaration (section 6): the environments, the
+floor, the checks, the `requires` names. `deploy.GateCheck` and
+`deploy.GateRest` (`gate.go`) run the steps in order, print one line per
+step, and return a `*deploy.Refusal` (its text, and the step's output as
+detail) for the first that fails.
+
+**The artifact and the build id.** `MakeArtifact` (`artifact.go`)
+builds the executable into a temporary directory with `go build` and
+`GOOS`/`GOARCH` set to the target's platform (with `CGO_ENABLED=0`: the
+SQLite driver, modernc.org/sqlite, is Go, so any platform can build for
+any other), hashes it with SHA-256, and renames the directory to the
+first 16 hex digits. The runtime computes the same number for itself
+(`web.BuildID`: it hashes `os.Executable()` once, the first time it is
+asked) and writes it into every page's `<meta name="alder-build">`, as
+"The runtime travels with the compiler" above describes. Nothing records the id anywhere in between: the
+same bytes give the same id on both sides.
+
+**The plan.** Each migration file starts with a header naming the
+schema hash it starts from and the one it leads to (`-- from`, `-- to`;
+section "Migrations"). `MakePlan` (`plan.go`) hashes the live database's
+`schema.json`, which the target hands back, finds the build's file whose
+`-- to` is that hash, and lists the files after it as pending, with
+their `-- step:` lines and the `DROPS DATA` lines `alder migrate` wrote
+into the header. A live hash no file leads to is a refusal: the server
+runs a newer schema than this build knows.
+
+**The engine and the targets.** `deploy.Deploy` (`deploy.go`) is the
+sequence of chapter 16, written once: it calls a `deploy.Target`
+(`target.go`) step by step, `Connect`, `Requires`, `Schema`, `Upload`,
+`Backup`, `Migrate`, `Start`, `Health`, `Switch`, `Record`, `Stop`,
+`Prune`, and decides by itself what to refuse and what to print. A
+target knows how to do each step at its kind of place and nothing about
+the order, so the rules (no upload before the plan is accepted, no switch
+before the health check, the previous build left serving on any
+failure) hold for every target because they live in one function. The
+engine's tests drive it with a fake target that records its calls.
+
+The `Ssh` target (`ssh.go`) runs every step as a small POSIX shell
+script sent over the system's `ssh` to `sh -s` on standard input, after
+a prelude defining the root directory and a function `alive` that says
+whether a build's process runs. There is no agent on the server and no
+library: `ssh`, `sh`, `tar` and `curl` are the whole protocol. The
+upload is a tar stream Go writes (`archive/tar`) into a `.part`
+directory, renamed when complete. Each build gets a generated `run`
+wrapper that sources the operator's environment file and sets
+`ALDER_DB`, `ALDER_STATIC`, `ALDER_ADDR` and `ALDER_BACKUP_URL`; the
+wrapper holds names and paths, never a value, and `Requires` checks the
+environment file with `grep -Eq` so that only an exit status crosses the
+connection. Caddy is driven through its admin API on `localhost:2019`
+with `curl`: one route per environment, its `@id` the unit's name, its
+upstream port changed by a `PATCH` on switch. The `Fly` target (`fly.go`)
+does the same steps through Fly's Machines API with `net/http`, running
+its shell scripts in the machine through the API's `exec`, and `flyctl`
+for the image build, the public addresses and the secrets. The `Script`
+target (`script.go`) is not a `Target` at all: after the artifact, the
+engine runs it and is done.
+
+**The health check by build id.** `Health` asks the new build for `/`,
+following redirects (a page that `requires user` answers `/` with the
+login page, which is a page of the same build), until the HTML contains
+`name="alder-build" content="<id>"`, or the build's process has exited,
+or the timeout passes. On the `Ssh` target that is `curl` in a loop at
+the box, against the new build's own port; on Fly it is Go's HTTP client
+against the public address, which is the only way in. The id is the
+point: a check that only asked "does something answer on port 443?"
+would pass against the old build.
+
+**The binary's maintenance arguments.** The generated `main` (section
+7) takes two arguments besides serving: `--migrate-only` checks
+`ALDER_SECRET`, opens the database, applies the pending migrations
+(printing `migrated <name>` for each, which the engine reads into the
+record) and exits; `--backup-to FILE` writes a consistent copy with
+`VACUUM INTO` while another process serves the same file. Both run
+without constructing a single adapter, so a migration can run on a box
+where the mail server is down.
+
+**The backup shipper.** `rt/backup` is a small Litestream. SQLite in
+WAL mode appends every committed change to `app.db-wal` as **frames**
+(a page of the database and a header), and only a **checkpoint** copies
+them back into `app.db`. With `ALDER_BACKUP_URL` set, the runtime opens
+its connections with `wal_autocheckpoint(0)`, so nothing checkpoints
+behind the shipper's back, and starts a goroutine (`Shipper`) that
+wakes every ten seconds: it takes the write lock (`BEGIN IMMEDIATE`:
+writers wait for a moment, readers do not), copies the frames committed
+since its last offset (it reads the WAL's header and walks frames to
+the last one whose commit field is set), runs a `PASSIVE` checkpoint,
+releases the lock, and uploads the copied frames as one segment. A new
+generation starts with a snapshot (`snapshot.go`: `VACUUM INTO`). The
+upload is a plain HTTP `PUT` signed with AWS's Signature Version 4,
+written out in `s3.go` (about 250 lines) instead of pulling in an SDK.
+Restoring (`restore.go`) downloads the newest snapshot before the
+asked-for time, writes each run of segments next to it as an
+`-wal` file and lets SQLite itself apply them (`PRAGMA
+wal_checkpoint(TRUNCATE)`), then checks the page count against the last
+commit frame: SQLite is the only program that ever interprets the WAL.
+
+**The workflow.** `alder ci init` (`cmd/alder/ci.go`) is a string
+builder over the declaration: which of `production` and `preview` exist,
+their kinds (an `Ssh` environment needs an SSH key in CI, a `Fly` one a
+token and its values), the floor. Its output is compared with golden
+files in `cmd/alder/testdata/ci/`, and chapter 16 quotes one of them,
+checked by `go test ./book`.
+
 ### What is still to come
 
 M4a added `alder eval` and the book verifier, M4b `alder test`, M4c

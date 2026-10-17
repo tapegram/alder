@@ -717,6 +717,66 @@ behaviour in a browser is left to a smoke suite with a real browser
 (M7b). A page whose script expects a fresh `window` on every page will
 see the old one: write `data-alder-reload` on the links to it.
 
+### Deploying is a declaration with a fixed gate, and its state lives at the target **(decided M14; tested: the Script and Ssh targets end to end, the Fly target against a fake API, both examples)**
+
+Every other part of an Alder app is checked by the compiler, and the
+last step, getting it onto a server, was a shell script and a page of
+notes. M14 makes that step part of the language (chapter 16): a
+`deploy` declaration in `App` and one command, `alder deploy <env>`.
+Three decisions shape it.
+
+**A declaration, not a script or a YAML file.** The places an app ships
+to, the floor its tests must reach, the commands that must pass and the
+secrets the server must hold are facts about the app, like its tables.
+Written as a declaration in `App`, they are parsed and checked with the
+rest of it: an unknown target, a missing `domain`, a `floor` of 1.5, and
+above all a secret pasted into the file are compile errors (E0030), and
+an adapter that reads an environment variable `requires` does not name
+is a warning (W0006). An agent changing the app sees the declaration in
+the same files, in the same language, with the same error messages. The
+alternative, a CI file per provider, is a second language with no
+checker, which is exactly what Alder exists to remove. The targets
+(`Ssh`, `Fly`, later `Turso` and a hosted Alder target) are built into
+the compiler behind one interface, so each one gets the same gate, plan,
+health check and record; `Script "./deploy.sh"` is the hatch for
+everything else, and gets the gate and the artifact too.
+
+**A fixed gate.** Every deploy runs `alder check`, `alder build`,
+`alder test` and `alder test --mutate` against the floor, in that order,
+and the declaration can only add to it (a higher floor, more `checks`).
+The two ways around a rule exist only on the command line:
+`--unsafe-skip-tests` and `--allow-data-loss`, each named for what it
+does and each recorded in the build's `deployed.json`. If the file could
+turn a step off, the step would be off the first time it was
+inconvenient, and nobody reading the deploy's output would know. The
+mutation score matters most here: without a declared `floor` the bar is
+the score of the build serving now, so a deploy can never make the tests
+quietly weaker than they were (chapter 10 explains why the score, not
+line coverage, measures that).
+
+**State at the target; the unit is the build id.** Each environment
+keeps its own state where it runs: the builds, the database, the
+environment file, the pointer to the current build, each build's record.
+There is no state file in the repository and none on the laptop, so a
+laptop and a CI runner deploying the same app agree by construction,
+and `alder status` is the truth because it asks the box. The unit of
+everything is the build id, the hash of the executable, which the
+running app also prints in every page: the health check asks the new
+build for a page until it names the id, so it cannot be fooled by the
+old build answering on the same machine; `status`, `rollback` and the
+records all speak in ids. A lost box is a restore from the streamed
+backup, not a reconstruction of state from somewhere else.
+
+**What it costs.** One box per environment, because SQLite is one file
+(chapter 16, "SQLite in production"). On Fly that means a new build
+replaces the old one in place, with a pause of seconds, instead of
+starting beside it: the guarantee there is that a failing build is
+replaced by the previous image again, not that nothing ever stops. A
+rollback never touches data, so it cannot cross a migration; the way
+back across one is forward, or a restore. And the CI workflow runs the
+whole gate once more in each deploy job: slower than trusting an
+earlier job, but a deploy that trusts nothing is the point.
+
 ## Experiments
 
 Each experiment has a directory under `experiments/` with its prompt,

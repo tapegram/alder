@@ -63,6 +63,34 @@ role Admin`. When the tables change, `alder regen admin` rewrites only the admin
 regions and keeps what you changed around them. Both examples carry one, committed exactly as
 the command wrote it, and its tests kill all of its mutants. The book's chapter 15 tours it.
 
+## Shipping it
+
+Where an app ships is a declaration in `App`, checked like the rest of the code (a secret
+pasted into it is a compile error), and one command ships it:
+
+```alder
+deploy {
+  production: Ssh "deploy@box.example.com" { domain: "blog.example.com", path: "/srv/blog" },
+  preview:    Ssh "deploy@box.example.com" { domain: "*.preview.example.com", path: "/srv/blog-preview" },
+  requires:   ["SMTP_URL"],
+  backup:     S3 "s3://blog-backups/production",
+}
+```
+
+```
+alder deploy production    # check, build, test, mutation score ≥ the floor; plan the migrations;
+                           # upload, back up, migrate, start beside the old build, health-check
+                           # by build id, switch; a failure leaves the old build serving
+alder status production    # the current build, the last five, the database, the last backup
+alder rollback production  # the previous build again (never across a migration)
+alder ci init              # .github/workflows/alder.yml: the same commands on every PR and push
+```
+
+A migration that drops data needs `--allow-data-loss` on the command line; the gate can be
+skipped only with `--unsafe-skip-tests`, which the record keeps. Targets: a Linux box over SSH
+(with Caddy and automatic TLS), Fly.io, or a script of your own. The database streams to S3
+while the app runs. The book's chapter 16 has the whole story.
+
 ## More
 
 - [The Alder book](book/README.md): the language, its tools, how the compiler works and why

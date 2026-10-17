@@ -9,6 +9,27 @@ To try it: `alder run`, then log in at `/login` with the password `password` as 
 Member) or `admin@b.c` (an Admin: `/admin`). The accounts are the development stub's
 (`adapters/auth/password.go`), which accepts them only under `alder run`.
 
+## Deploying
+
+`App` declares one environment, `local`, a `Script` target (book 16, "The Script hatch"):
+
+```
+alder deploy local
+```
+
+runs the whole gate (check, build, the tests, the mutation score), writes the artifact
+`build/todos/deploy/<build id>/` (the executable, `static/`, `migrations/`,
+`alder-deploy.json`) and runs `scripts/deploy-local.sh` with it. The script only records what
+it was given, in `build/todos/deploy/<build id>.deploy-local.txt`, so the example deploys with
+nothing installed; `go test ./book` runs this deploy for chapter 16.
+
+To put it on a server, add an environment to the declaration in `app/App.alder`, such as
+`production: Ssh "deploy@box.example.com" { domain: "todos.example.com", path: "/srv/todos" }`,
+write `ALDER_SECRET=…` (16 bytes or more) into `/srv/todos/env` on the box, and run `alder
+deploy production`; `alder ci init` writes the GitHub workflow that does it on every push to
+`main`. The example's login is the development stub, which refuses every password outside
+`alder run`: a real deployment needs a real `Password` adapter (book 7).
+
 ## Mutation score
 
 `alder test --mutate examples/todos` (book 10, "Mutation testing"): 208 mutants, 116 tests, 206

@@ -230,7 +230,7 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 	for _, n := range valueNames {
 		what := "named in App's `requires`; " + strings.Join(valueEnvs[n], " and ") + " read" + map[bool]string{true: "s", false: ""}[len(valueEnvs[n]) == 1] + " it here"
 		if n == deploy.SecretName {
-			what = "the session key (32 bytes or more) of " + strings.Join(valueEnvs[n], " and ")
+			what = "the session key (16 bytes or more) of " + strings.Join(valueEnvs[n], " and ")
 		}
 		add(n, what)
 	}

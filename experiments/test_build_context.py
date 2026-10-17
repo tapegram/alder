@@ -344,7 +344,7 @@ class BuildContextTests(unittest.TestCase):
         code, out, _ = self.run_main("--reference", "--chapters", ",".join(bc.DEFAULT_CHAPTERS), "--book", str(bc.BOOK),
                                      "--example", str(bc.EXAMPLE))
         self.assertEqual(code, 0)
-        self.assertLessEqual(len(out) // 4, 46000, "the reference is at most 46k tokens (len/4)")
+        self.assertLessEqual(len(out) // 4, 47000, "the reference is at most 47k tokens (len/4)")
         # M12's final review: the scaffold, the fill addresses and the add-field warning are in;
         # hand-written migration SQL and the theme switch are out
         for added in ("alder new <app>   the guestbook", "Module.Fake.entry", "add-field without a default"):

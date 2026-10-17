@@ -1279,7 +1279,8 @@ func runCommands(t *testing.T, bin, chapter, display string) ([]string, int) {
 	return msgs, len(blocks)
 }
 
-// copyApp copies the app at src to dst, leaving out build/ and the SQLite files.
+// copyApp copies the app at src to dst, leaving out build/ and the SQLite files; an executable
+// file stays executable.
 func copyApp(src, dst string) error {
 	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -1299,7 +1300,11 @@ func copyApp(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(filepath.Join(dst, rel), b, 0o644)
+		mode := os.FileMode(0o644)
+		if info, err := d.Info(); err == nil && info.Mode()&0o111 != 0 {
+			mode = 0o755 // a script (scripts/deploy-local.sh) stays executable
+		}
+		return os.WriteFile(filepath.Join(dst, rel), b, mode)
 	})
 }
 
@@ -1411,6 +1416,11 @@ func TestBook_CommandParts(t *testing.T) {
 		{"…\nz\n", "x\ny\nz\n", true},
 		{"", "", true},
 		{"", "x\n", false},
+		{"artifact build/todos/deploy/… (…)\n", "artifact build/todos/deploy/d2bd2ae9c535b108 (darwin/arm64)\n", true},
+		{"deployed … to local\n", "deployed d2bd to local\n", true},
+		{"deployed … to local\n", "deployed d2bd to production\n", false},
+		{"a…b…c\n", "abc\n", true},
+		{"a…bc…c\n", "abc\n", false},
 	} {
 		if MatchOutput(c.want, c.got) != c.ok {
 			t.Errorf("MatchOutput(%q, %q) = %v", c.want, c.got, !c.ok)

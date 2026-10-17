@@ -483,7 +483,8 @@ func ExtractCommands(path string) ([]CommandBlock, error) {
 }
 
 // MatchOutput reports whether got is what a command block says it prints, want: the same lines,
-// where a line of want that is `…` alone matches any number of lines of got (none included).
+// where a line of want that is `…` alone matches any number of lines of got (none included), and
+// a `…` inside a line matches any text within that line (a build id, a platform: chapter 16).
 func MatchOutput(want, got string) bool {
 	return matchLines(strings.Split(want, "\n"), strings.Split(got, "\n"))
 }
@@ -500,5 +501,26 @@ func matchLines(want, got []string) bool {
 		}
 		return false
 	}
-	return len(got) > 0 && got[0] == want[0] && matchLines(want[1:], got[1:])
+	return len(got) > 0 && matchLine(want[0], got[0]) && matchLines(want[1:], got[1:])
+}
+
+// matchLine reports whether the line got is want, each `…` in want standing for any text.
+func matchLine(want, got string) bool {
+	parts := strings.Split(want, "…")
+	if len(parts) == 1 {
+		return want == got
+	}
+	if !strings.HasPrefix(got, parts[0]) {
+		return false
+	}
+	got = got[len(parts[0]):]
+	last := parts[len(parts)-1]
+	for _, p := range parts[1 : len(parts)-1] {
+		i := strings.Index(got, p)
+		if i < 0 {
+			return false
+		}
+		got = got[i+len(p):]
+	}
+	return len(got) >= len(last) && strings.HasSuffix(got, last)
 }

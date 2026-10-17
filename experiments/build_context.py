@@ -240,6 +240,11 @@ alder fill <address> - [--hole ?name]   fills a hole only (an arm without one: -
   an app module the expression names (Member.x) is imported
 alder new admin [--module Admin] [--path /admin]   (needs a session role with Admin)
 alder regen admin [--module Admin] [--path /admin] [--all]
+App may declare where it ships (book 16), once: `deploy { production: Ssh "u@host" { domain: "d",
+  path: "/srv/x" }, staging: Fly "ord" { app: "a" }, local: Script "./s.sh", floor: 0.9, checks: ["cmd"],
+  requires: ["SMTP_URL"], backup: S3 "s3://b/p", keep: 5, proxy: None }`; names only, never a secret (E0030)
+alder deploy <env> [--dry-run] [--host h] [--allow-data-loss] [--unsafe-skip-tests]   the gate (check, build,
+  test, --mutate >= floor, checks) then plan and ship; alder status|logs|rollback|restore <env>; alder ci init
 
 """
 

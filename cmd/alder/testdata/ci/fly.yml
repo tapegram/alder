@@ -8,7 +8,7 @@
 # Repository secrets (Settings > Secrets and variables > Actions):
 #   FLY_API_TOKEN  a token that deploys the Fly apps blog and blog-preview: fly tokens create org
 #   SMTP_URL       named in App's `requires`; production and preview read it here
-#   ALDER_SECRET   the session key (32 bytes or more) of production and preview
+#   ALDER_SECRET   the session key (16 bytes or more) of production and preview
 #
 # Every pull request deploys to the one Fly app blog-preview: the last push wins.
 # A preview stays up after its pull request is closed: remove it by hand for now.

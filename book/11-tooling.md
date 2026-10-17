@@ -104,6 +104,12 @@ alder repl           a session: let, evaluate, :type, :run, :run!, :html, :reloa
 alder test           run every `test`, each against a fresh database: ok/FAIL
                      (--mutate: and once per mutant: the mutation score)
 alder migrate        write the next migration after a change to the tables
+alder deploy <env>   gate, build, plan and ship to an environment of App's `deploy`
+alder status <env>   the environment's current build, its last builds, its database
+alder rollback <env> make an earlier build current again
+alder logs <env>     the current build's log (-f: follow it)
+alder restore <env>  rebuild the database from the streamed backup
+alder ci init        write .github/workflows/alder.yml from the declaration
 alder fmt            rewrite every file in canonical format
 alder dump <path>    print a file's tokens, AST, or an app's IR
 alder explain <id>   explain a diagnostic code
@@ -1017,6 +1023,40 @@ number, rather than plan a migration on top of them.
 It never changes an existing migration file. Exit 2 for a usage error
 or a file that cannot be read or written.
 
+### `alder deploy` and the commands around it
+
+Chapter 16 is the full account; here are the usage lines and exit codes.
+
+```text
+alder deploy <env> [dir] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json]
+alder status <env> [dir] [--host name]
+alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch]
+alder logs <env> [dir] [--host name] [-f]
+alder restore <env> [--from url] [--to time] [--out file.db] [--dir dir]
+alder ci init [dir] [--github] [--force]
+```
+
+`alder deploy` reads App's `deploy` declaration in `dir` (default `.`),
+runs the gate (`check`, `build`, `test`, `test --mutate` against the
+floor, the declared `checks`), writes the artifact
+`build/<app>/deploy/<build id>/`, and ships it to the environment's
+target. `--dry-run` stops after the migration plan; `--json` prints the
+progress on standard error and the deploy record on standard output;
+`--host` serves another host than the declared `domain` for one run (a
+pull request's preview). Exit 0 when deployed (or the dry run passed);
+1 for a refusal (the gate, a `requires` name the target does not set, a
+migration that drops data without `--allow-data-loss`, a failed health
+check), an unreachable target or a script that exits non-zero; 2 for a
+usage error, a missing declaration or environment.
+
+`alder status`, `rollback` and `logs` read the state at the target (exit
+2 for a `Script` environment, which keeps its own). `alder restore`
+rebuilds the database from the bucket at a time and puts it in place, or
+with `--out` writes it to a file. `alder ci init` writes the GitHub
+Actions workflow; it refuses to replace one without `--force`, and runs
+`actionlint` on it when that is installed (exit 1 when it finds a
+problem).
+
 ### The book is verified
 
 Every fenced `alder` block in this book that is not marked `fragment` is
@@ -1033,10 +1073,11 @@ says what to expect:
 | `alder eval=<value>` | `alder eval examples/todos -` prints exactly `<value>` (the rest of the fence line) |
 | `alder error=<CODE> "<text>"` | compiling (or, for expressions, evaluating) the block reports diagnostic `<CODE>` in the block itself, its message containing `<text>` (optional) |
 | `alder part=<Module>` | one piece of a module shown piece by piece (the tour's `Todos.Index`): a chapter's `part=` blocks of one module, consecutive among its `part=` blocks, are joined in order and checked as that module, replacing the example's; when the example has that module, the joined pieces must also equal its file, blank lines aside |
-| ```` ```text command=<state> ```` | a transcript (chapter 15): the first line is `$ alder …`, run in the state's app (`guestbook`, a copy of the scaffold, `notes`, a copy of a bare app (`alder new notes --bare`), or an example's name, a copy of `examples/<name>`), which the chapter's commands change in order; a line ending in `<<'EOF'` takes the lines up to `EOF` as standard input; the rest of the block must be what the command prints, standard output then standard error, a line `…` standing for any lines (`TestBook_Commands`) |
+| ```` ```text command=<state> ```` | a transcript (chapter 15): the first line is `$ alder …`, run in the state's app (`guestbook`, a copy of the scaffold, `notes`, a copy of a bare app (`alder new notes --bare`), or an example's name, a copy of `examples/<name>`), which the chapter's commands change in order; a line ending in `<<'EOF'` takes the lines up to `EOF` as standard input; the rest of the block must be what the command prints, standard output then standard error, a line `…` standing for any lines and a `…` inside a line for any text within it, such as a build id (`TestBook_Commands`) |
 | `alder written=<state>/<path>` (any language) | the file at `<path>` in the state's app as the commands before it left it, byte for byte |
 | `alder part=<example>/<Module>` | the same for a module of another example app, `examples/<example>` (chapter 14's `part=blog/Posts.Index`): the joined pieces are checked as that module in a copy of that example, and must equal its file, blank lines aside. `part=<Module>` alone means `part=todos/<Module>`; every other block is checked against `examples/todos` |
-| `alder fragment` | not checked: a deliberate excerpt, such as one arm of an `update`; listed by `go test -v ./book` |
+| `alder fragment` | not checked: a deliberate excerpt, such as one arm of an `update`; listed by `go test -v ./book`. Chapter 16's `deploy { … }` fragments are the exception: each is appended to the scaffold's `App` and must check (`TestBook_DeployDeclaration`) |
+| ```` ```yaml golden=<path> ```` | the block is, byte for byte, the file at `<path>` (chapter 16 quotes the workflow `alder ci init` writes from its golden file: `TestBook_CIGolden`) |
 
 A failure names the block's line, `book/03-syntax.md:120: E0003 …`, so a
 change to the language that leaves the book behind fails the build like
