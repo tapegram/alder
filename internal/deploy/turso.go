@@ -25,14 +25,14 @@ import (
 //   - the shared database is named after `app` (or, after a point-in-time restore, the copy
 //     that replaced it: <path>/db/turso.env on the box names the current one, and the build's
 //     run script reads ALDER_DB=libsql://<its host> and ALDER_TURSO_DB from it);
-//   - each silo key has a schema database, <app>-<key>-schema, and each silo a child of it,
-//     <app>-<key>-<value> (rt/db), created by the running app on first use;
+//   - each silo is a database of its own, <app>-<key>-<value> (rt/db), created by the running
+//     app on first use and migrated as a silo file is: on open, or all at once by `alder
+//     migrate silos` (Turso's schema databases are not used: deprecated for new organizations);
 //   - the migrations run from the deploying machine, over HTTP, with the build's executable for
-//     this machine (Local): first --verify-silos <sample> (the plan tried on the largest
-//     children and rolled back: a failure refuses the deploy, naming the child, before anything
-//     is migrated), then --migrate-only (the shared database, the DROPS DATA rule as for a
-//     file), then --migrate-silos --schema-only (each schema database; Turso passes the change
-//     on to the children);
+//     this machine (Local): first --verify-silos <sample> (the plan tried on the largest silo
+//     databases and rolled back: a failure refuses the deploy, naming the database, before
+//     anything is migrated), then --migrate-only (the shared database, the DROPS DATA rule as
+//     for a file);
 //   - the backup is Turso's point-in-time recovery: before migrating, the deploy records the
 //     time in builds/<id>/backup.pitr, and `rollback --restore-backup` creates a copy of the
 //     shared database as it was then and makes it the app's (the replaced one is kept);
@@ -139,7 +139,7 @@ func (t *Turso) Preflight(ctx context.Context) (string, error) {
 	}
 	names := []string{t.shared, t.App + "-r0000000000"}
 	for _, k := range t.Silos {
-		names = append(names, db.SchemaName(t.App, k), db.ChildName(t.App, k, strings.Repeat("x", 20)))
+		names = append(names, db.ChildName(t.App, k, strings.Repeat("x", 20)))
 	}
 	for _, n := range names {
 		if err := db.TursoName(n); err != nil {
@@ -284,17 +284,6 @@ func (t *Turso) Migrate(ctx context.Context, id string, allowDataLoss bool) (str
 	if err != nil {
 		return all.String(), errors.New("--migrate-only refused")
 	}
-	if len(t.Silos) > 0 {
-		args := []string{"--migrate-silos", "--schema-only"}
-		if allowDataLoss {
-			args = append(args, "--allow-data-loss")
-		}
-		out, err := run(args...)
-		all.WriteString(prefixLines("silos: ", strings.ReplaceAll(out, ": migrated ", ": applied ")))
-		if err != nil {
-			return all.String(), errors.New("--migrate-silos refused")
-		}
-	}
 	return all.String(), nil
 }
 
@@ -326,8 +315,8 @@ func (t *Turso) CopyAt(ctx context.Context, name string, at time.Time) (db.Turso
 
 // RestoreChild puts silo key/value's database back as it was at time at: Turso cannot restore
 // a database in place, so a copy at that time is made (seeded), the database as it is now is
-// copied too (kept, returned), and the silo's database is created again under its schema
-// database from the first copy, which is then deleted.
+// copied too (kept, returned), and the silo's database is deleted and created again from the
+// first copy, which is then deleted.
 func (t *Turso) RestoreChild(ctx context.Context, key, value string, at time.Time, w io.Writer) (kept string, err error) {
 	name := db.ChildName(t.App, key, value)
 	if _, ok, err := t.api().Database(ctx, name); err != nil {
@@ -351,9 +340,9 @@ func (t *Turso) RestoreChild(ctx context.Context, key, value string, at time.Tim
 		t.api().Delete(ctx, restored)
 		return keptName, err
 	}
-	if _, err := t.api().Create(ctx, db.CreateOptions{Name: name, Group: t.Group, Schema: db.SchemaName(t.App, key), Seed: &db.TursoSeed{Name: restored}}); err != nil {
+	if _, err := t.api().Create(ctx, db.CreateOptions{Name: name, Group: t.Group, Seed: &db.TursoSeed{Name: restored}}); err != nil {
 		// put the database as it was a moment ago back
-		if _, uerr := t.api().Create(ctx, db.CreateOptions{Name: name, Group: t.Group, Schema: db.SchemaName(t.App, key), Seed: &db.TursoSeed{Name: keptName}}); uerr != nil {
+		if _, uerr := t.api().Create(ctx, db.CreateOptions{Name: name, Group: t.Group, Seed: &db.TursoSeed{Name: keptName}}); uerr != nil {
 			return keptName, fmt.Errorf("creating %s from the copy failed (%v), and so did putting it back from %s (%v): create it by hand from %s", name, err, keptName, uerr, keptName)
 		}
 		return keptName, fmt.Errorf("creating %s from the copy failed: %v; it was put back as it was", name, err)

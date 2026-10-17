@@ -17,8 +17,9 @@ import (
 //	TURSO_API_TOKEN=… ALDER_TURSO_ORG=<org> [ALDER_TURSO_GROUP=default] go test -tags turso ./rt/db -run TestTursoReal -v
 //
 // it creates databases named alder-t-<random>-…, checks what the fake stands in for — the
-// platform calls, the protocol (CRUD, a transaction, a savepoint, the refusals' texts), a
-// schema database passing a change to its child, the usage call, a copy at a point in time —
+// platform calls, the protocol (CRUD, a transaction, a savepoint, the refusals' texts), a silo's
+// database created and listed, DDL inside a transaction, the usage call, a copy at a point in
+// time —
 // and deletes them at the end. Every call it makes is one alder makes.
 func TestTursoReal(t *testing.T) {
 	cfg := TursoConfigFromEnv()
@@ -102,53 +103,29 @@ func TestTursoReal(t *testing.T) {
 		t.Fatalf("usage: %d %v", n, err)
 	}
 
-	// a schema database and a child; a change of the schema database reaches the child
-	schema := SchemaName(app, "org")
-	create(CreateOptions{Name: schema, IsSchema: true})
-	sdb, err := api.Open(ctx, schema, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sdb.Close()
-	if err := ExecRaw(ctx, sdb, `CREATE TABLE "P" ("id" TEXT NOT NULL PRIMARY KEY, "x" TEXT) STRICT`); err != nil {
-		t.Fatalf("DDL on the schema database: %v", err)
-	}
+	// a silo's database: created plainly, listed by its name's prefix, and migrated the way the
+	// runtime does (DDL inside a transaction: the open-time check, the deploy's dry run)
 	child := ChildName(app, "org", NewID())
-	create(CreateOptions{Name: child, Schema: schema})
+	create(CreateOptions{Name: child})
 	cdb, err := api.Open(ctx, child, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer cdb.Close()
-	if err := ExecRaw(ctx, cdb, `INSERT INTO "P" ("id", "x") VALUES ('1', 'one')`); err != nil {
-		t.Fatalf("the child lacks the schema database's table: %v", err)
-	}
-	if err := ExecRaw(ctx, sdb, `ALTER TABLE "P" ADD COLUMN "y" TEXT`); err != nil {
+	if err := ExecRaw(ctx, cdb, `CREATE TABLE "P" ("id" TEXT NOT NULL PRIMARY KEY, "x" TEXT) STRICT`); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(2 * time.Minute)
-	for ExecRaw(ctx, cdb, `UPDATE "P" SET "y" = 'why'`) != nil {
-		if time.Now().After(deadline) {
-			t.Fatal("the schema database's ALTER did not reach the child within 2 minutes")
-		}
-		time.Sleep(2 * time.Second)
-	}
-	// what the runtime's open-time check needs of a child: DML on _alder_schema made by the
-	// schema database, and whether DDL in a child is refused (the deploy's dry run runs the
-	// pending statements on the largest children inside a transaction it rolls back)
-	if err := ExecRaw(ctx, sdb, createSchemaTable); err != nil {
+	ctxTx, err := cdb.db.BeginTx(ctx, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(5 * time.Second)
-	if err := ExecRaw(ctx, cdb, `INSERT INTO "_alder_schema" ("key", "hash", "migration", "at") VALUES ('schema', 'h', 'm', 'now')`); err != nil {
-		t.Logf("NOTE: writing the child's _alder_schema row failed: %v", err)
+	if _, err := ctxTx.ExecContext(ctx, `ALTER TABLE "P" ADD COLUMN "y" TEXT`); err != nil {
+		t.Fatalf("DDL inside a transaction: %v", err)
 	}
-	if err := ExecRaw(ctx, cdb, `BEGIN`); err == nil {
-		err = ExecRaw(ctx, cdb, `ALTER TABLE "P" ADD COLUMN "z" TEXT`)
-		t.Logf("NOTE: DDL inside a transaction on a child: %v", err)
-		ExecRaw(ctx, cdb, `ROLLBACK`)
+	if err := ctxTx.Rollback(); err != nil {
+		t.Fatal(err)
 	}
-	if kids, err := api.Children(ctx, schema); err != nil || len(kids) != 1 || kids[0].Name != child {
+	if kids, err := api.Children(ctx, app, "org"); err != nil || len(kids) != 1 || kids[0].Name != child {
 		t.Fatalf("children: %v %v", kids, err)
 	}
 

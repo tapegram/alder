@@ -24,7 +24,7 @@ import (
 
 // The deploys of an app with silos (M15): testdata/corpus/silo-ok (Project in `silo org`) with
 // a home page, at an Ssh box — its silos files under <path>/db/silos/ (TestDeploySsh_Silos), or
-// child databases at Turso, the fake one (TestDeployTurso_Lifecycle).
+// databases of their own at Turso, the fake one (TestDeployTurso_Lifecycle).
 
 // siloDeployApp copies silo-ok as "siloapp" (the working directory its parent), adds a home page
 // and Project's `note` (dropped by a later migration in TestDeploySsh_Silos), writes migration
@@ -133,7 +133,7 @@ func TestDeploySsh_Silos(t *testing.T) {
   keep: 3,
 }`, box.host, box.root))
 	bucket := filepath.Join(box.root, "bucket")
-	box.write(t, "env", fmt.Sprintf("ALDER_SECRET=%s\nALDER_BACKUP_URL=%q\nALDER_BACKUP_INTERVAL=1s\n", siloSecret, "file://"+bucket))
+	box.write(t, "env", fmt.Sprintf("ALDER_SECRET=%s\nALDER_BACKUP_URL=%q\nALDER_BACKUP_INTERVAL=1s\nALDER_SILO_RECHECK=300ms\n", siloSecret, "file://"+bucket))
 	code, out, errs := runDeploy(t, "production", dir, "--unsafe-skip-tests")
 	if code != 0 {
 		t.Fatalf("deploy: %d\n%s%s", code, out, errs)
@@ -208,8 +208,11 @@ func TestDeploySsh_Silos(t *testing.T) {
 	if code, out := runCmd(t, runMigrateTo, "silos", "production", dir, "--allow-data-loss"); code != 0 || !strings.Contains(out, "org/A: migrated 0002_") {
 		t.Fatalf("migrate silos --allow-data-loss: %d\n%s", code, out)
 	}
-	// the running app opens A again on a request after its recheck interval; a new process
-	// (the build's --silo-status) finds it served now
+	// the running app opens A again after its recheck interval (shortened for the test)
+	time.Sleep(400 * time.Millisecond)
+	if code, body := c.projects("A"); code != 200 || !strings.Contains(body, "a1") {
+		t.Fatalf("A after migrate silos: %d\n%s", code, body)
+	}
 	if st := statusOf(t, dir); !strings.Contains(st, "silos    org: 1 ok, 0 migrating") {
 		t.Fatalf("status after:\n%s", st)
 	}
@@ -268,14 +271,14 @@ func TestDeploySsh_SiloBound(t *testing.T) {
 }
 
 // The Turso database of an Ssh environment, against the fake Turso: the first deploy creates
-// the shared database (migrated from here) and the silo key's schema database; the app creates
-// each org's child database on first use; `alder status` shows the database and the silo
-// table; RF4: a deploy whose plan fails on one of the sampled children is refused naming it,
-// with nothing migrated (the shared database still at 0001, the build before still serving);
-// then the deploy passes, a straggler child shows `migrating` (maintenance) until Turso passes
-// it the change, then `ok`; `alder restore --silo` puts one child back as it was (Turso's
+// the shared database (migrated from here); the app creates each org's database on first use;
+// `alder status` shows the database and the silo table; RF4: a deploy whose plan fails on one of
+// the sampled silo databases is refused naming it, with nothing migrated (the shared database
+// still at 0001, the build before still serving); then the deploy passes, both silos are
+// `migrating` (behind), one is migrated by its next request, the other by `alder migrate
+// silos`; `alder restore --silo` puts one silo's database back as it was (Turso's
 // point-in-time copy); `rollback --restore-backup` makes a copy of the shared database as it
-// was before the migration the app's; an orphaned child is pruned.
+// was before the migration the app's; an orphaned silo's database is pruned.
 func TestDeployTurso_Lifecycle(t *testing.T) {
 	box := startBox(t)
 	f := tursofake.New(t, "acme")
@@ -297,7 +300,7 @@ func TestDeployTurso_Lifecycle(t *testing.T) {
 			t.Errorf("first deploy lacks %q:\n%s", want, out)
 		}
 	}
-	if names := strings.Join(f.Names(), " "); names != "siloapp siloapp-org-schema" {
+	if names := strings.Join(f.Names(), " "); names != "siloapp" {
 		t.Fatalf("databases after the first deploy: %s", names)
 	}
 	if env := box.sh(t, "cat "+box.qr()+"/db/turso.env"); !strings.Contains(env, "ALDER_DB=libsql://127.0.0.1:") || !strings.Contains(env, "ALDER_TURSO_DB=siloapp\n") {
@@ -316,15 +319,14 @@ func TestDeployTurso_Lifecycle(t *testing.T) {
 	var n int
 	f.DB(childA).QueryRow(`SELECT COUNT(*) FROM "Project__Project"`).Scan(&n)
 	if n != 2 {
-		t.Fatalf("A's child holds %d projects", n)
+		t.Fatalf("A's database holds %d projects", n)
 	}
 	st := statusOf(t, dir)
 	if !strings.Contains(st, "silos    org: 2 ok, 0 migrating, 0 pending (data loss), 0 ahead, 0 failed\n") || !strings.Contains(st, "continuous: Turso's point-in-time recovery of Turso acme/siloapp") {
 		t.Fatalf("status:\n%s", st)
 	}
 
-	// v2 adds Project.due (a nullable column at the end: ALTER TABLE ADD COLUMN, which the
-	// schema database passes on). RF4: B was changed by hand, and the plan fails on it
+	// v2 adds Project.due. RF4: B's database was changed by hand, and the plan fails on it
 	editApp(t, dir, "Project.alder", "  org: Org.OrgId @ref Org @partition org,\n", "  org: Org.OrgId @ref Org @partition org,\n  due: Maybe Text = Nothing,\n")
 	if code, out, errs := runMigrate(t, dir); code != 0 {
 		t.Fatalf("migrate 0002: %d\n%s%s", code, out, errs)
@@ -332,7 +334,7 @@ func TestDeployTurso_Lifecycle(t *testing.T) {
 	f.Exec(childB, `CREATE TABLE "Stray" ("x" TEXT)`)
 	code, out, errs = runDeploy(t, "production", dir, "--unsafe-skip-tests")
 	if code != 1 || !strings.Contains(errs, "refused: the migrations fail on 1 of the largest silo databases they were tried on (each in a transaction, rolled back): nothing was migrated or switched, and the shared database is as it was") ||
-		!strings.Contains(errs, "org/B (database "+childB+"): FAIL: its tables") {
+		!strings.Contains(errs, "org/B (database "+childB+"): FAIL: after the migrations its tables") {
 		t.Fatalf("RF4: %d\n%s%s", code, out, errs)
 	}
 	if got := box.serving(t); got != id1 {
@@ -346,28 +348,31 @@ func TestDeployTurso_Lifecycle(t *testing.T) {
 		t.Fatalf("A after RF4: %d\n%s", code, body)
 	}
 
-	// the deploy passes; B is a straggler (Turso has not passed it the change yet)
+	// the deploy passes; both silos are behind: A is migrated by its next request (on open),
+	// B by `alder migrate silos`
 	f.Exec(childB, `DROP TABLE "Stray"`)
-	f.Hold(childB)
 	code, out, errs = runDeploy(t, "production", dir, "--unsafe-skip-tests")
 	if code != 0 || !strings.Contains(out, "  migrate  ok  applied 0002_") {
 		t.Fatalf("deploy v2: %d\n%s%s", code, out, errs)
 	}
 	id2 := deployedID(t, out)
+	if st := statusOf(t, dir); !strings.Contains(st, "org: 0 ok, 2 migrating, 0 pending (data loss), 0 ahead, 0 failed") {
+		t.Fatalf("status after the switch:\n%s", st)
+	}
 	if code, body := c.projects("A"); code != 200 || !strings.Contains(body, "a1") {
 		t.Fatalf("A on v2: %d\n%s", code, body)
 	}
-	if code, body := c.projects("B"); code != 503 || !strings.Contains(body, "down for maintenance") {
-		t.Fatalf("B, a straggler, on v2: %d\n%s", code, body)
+	if st := statusOf(t, dir); !strings.Contains(st, "org: 1 ok, 1 migrating") || !strings.Contains(st, "org/B  migrating") {
+		t.Fatalf("status with B behind:\n%s", st)
 	}
-	if st := statusOf(t, dir); !strings.Contains(st, "org: 1 ok, 1 migrating, 0 pending (data loss), 0 ahead, 0 failed") || !strings.Contains(st, "org/B  migrating: its tables") {
-		t.Fatalf("status with a straggler:\n%s", st)
-	}
-	if err := f.Release(childB); err != nil {
-		t.Fatal(err)
+	if code, out := runCmd(t, runMigrateTo, "silos", "production", dir); code != 0 || !strings.Contains(out, "org/B: migrated 0002_") || !strings.Contains(out, "org/A: ok") {
+		t.Fatalf("migrate silos: %d\n%s", code, out)
 	}
 	if st := statusOf(t, dir); !strings.Contains(st, "org: 2 ok, 0 migrating") {
-		t.Fatalf("status after the straggler took the change:\n%s", st)
+		t.Fatalf("status after migrate silos:\n%s", st)
+	}
+	if code, body := c.projects("B"); code != 200 || !strings.Contains(body, "b1") {
+		t.Fatalf("B on v2: %d\n%s", code, body)
 	}
 
 	// restore A as it was before a3 (Turso's point in time)
@@ -393,7 +398,7 @@ func TestDeployTurso_Lifecycle(t *testing.T) {
 		t.Fatalf("prune: %d\n%s", code, out)
 	}
 	if strings.Contains(strings.Join(f.Names(), " "), childB) {
-		t.Fatal("B's child database is still at Turso")
+		t.Fatal("B's database is still at Turso")
 	}
 
 	// rollback --restore-backup: the shared database as it was before 0002 (Turso's point in

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -27,7 +28,7 @@ func tursoEnv(t *testing.T, f *tursofake.Server) string {
 	t.Setenv(EnvTursoToken, f.APIToken)
 	t.Setenv(EnvTursoDB, "blog")
 	t.Setenv(EnvDBToken, "")
-	if err := f.Create("blog", "default", "", false); err != nil {
+	if err := f.Create("blog", "default"); err != nil {
 		t.Fatal(err)
 	}
 	d, ok, err := NewTurso(TursoConfigFromEnv()).Database(context.Background(), "blog")
@@ -160,7 +161,7 @@ func TestTurso_TokenRefreshAndExpiredStream(t *testing.T) {
 	if err := api.Delete(ctx, "blog"); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.Create("blog", "default", "", false); err != nil {
+	if err := f.Create("blog", "default"); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Ensure(ctx, []TableDesc{orgDesc}, false); err != nil {
@@ -169,26 +170,17 @@ func TestTurso_TokenRefreshAndExpiredStream(t *testing.T) {
 }
 
 // openTursoApp is openApp on the fake: the shared database migrated to version v, the silos
-// children of blog-org-schema (migrated as alder deploy does: MigrateSilos with SchemaOnly).
-func openTursoApp(t *testing.T, f *tursofake.Server, path string, v int) (*Stores, StoresConfig) {
+// databases of their own at Turso.
+func openTursoApp(t *testing.T, path string, v int) (*Stores, StoresConfig) {
 	t.Helper()
-	cfg := siloConfig(t, SiloDir(path), v)
-	cfg.Silos[0].Ref = "Org.Org"
-	cfg.Shared = path
+	cfg := tursoConfig(t, path, v)
 	shared, err := OpenSQLite(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { shared.Close() })
-	ctx := context.Background()
-	if _, err := shared.Migrate(ctx, cfg.Tables, cfg.Migrations, false); err != nil {
+	if _, err := shared.Migrate(context.Background(), cfg.Tables, cfg.Migrations, false); err != nil {
 		t.Fatal(err)
-	}
-	var out bytes.Buffer
-	so := cfg
-	so.SchemaOnly, so.AllowDataLoss = true, true
-	if bad, err := MigrateSilos(ctx, so, &out); err != nil || bad != 0 {
-		t.Fatalf("schema database: %d %v\n%s", bad, err, out.String())
 	}
 	s, err := OpenStores(shared, path, cfg)
 	if err != nil {
@@ -196,6 +188,12 @@ func openTursoApp(t *testing.T, f *tursofake.Server, path string, v int) (*Store
 	}
 	t.Cleanup(func() { s.Close() })
 	return s, cfg
+}
+
+func tursoConfig(t *testing.T, path string, v int) StoresConfig {
+	cfg := siloConfig(t, SiloDir(path), v)
+	cfg.Silos[0].Ref, cfg.Shared = "Org.Org", path
+	return cfg
 }
 
 func statusLines(t *testing.T, cfg StoresConfig) map[string]SiloStatus {
@@ -218,28 +216,30 @@ func statusLines(t *testing.T, cfg StoresConfig) map[string]SiloStatus {
 	return got
 }
 
-// Silos on Turso: a child database per org, created by the runtime on first use under the
-// schema database (blog-org-schema), with the schema database's tables and the _alder_schema
-// row; each org sees its own rows; a migration of the schema database reaches the children,
-// a held child (a straggler) is `migrating` (maintenance) until its change arrives, then ok;
-// an orphaned child is listed and pruned; the plan is verified on the largest children.
+// Silos on Turso: a database of its own per org, created by the runtime through the API on
+// first use (plain: no schema database) and made at the build's schema, with its _alder_schema
+// row; each org sees its own rows. A later build finds the databases behind: it migrates one
+// on open (a migration that drops no data), or lists it `migrating` until something opens it
+// or `alder migrate silos` (MigrateSilos) migrates every one through the API's list; a
+// migration that drops data is `pending-data-loss` (maintenance) until --allow-data-loss. The
+// plan is verified on the largest databases (by the API's usage, the first by name when it
+// gives none), a database changed by hand failing by name; ahead, orphaned and pruned.
 func TestTurso_Silos(t *testing.T) {
 	f := tursofake.New(t, "acme")
 	path := tursoEnv(t, f)
-	s, cfg := openTursoApp(t, f, path, 1)
+	s, cfg := openTursoApp(t, path, 1)
 	ctx := context.Background()
-	for _, org := range []string{"A", "B"} {
+	for _, org := range []string{"A", "B", "C"} {
 		if _, err := s.shared.Insert(ctx, nil, "Org.Org", orgDesc.Columns, "id", "", "", []any{nil, org}, clock); err != nil {
 			t.Fatal(err)
 		}
 	}
-	// ids are what the rows got; insert projects under each org's id by name
 	ids := map[string]string{}
 	rows, _ := s.shared.Query(ctx, nil, "Org.Org", orgDesc.Columns, SQL{})
 	for _, r := range rows {
 		ids[r[1].(string)] = r[0].(string)
 	}
-	insert := func(org, name string) {
+	insert := func(s *Stores, org, name string) {
 		t.Helper()
 		env := siloEnv(s, ids[org])
 		Narrow(env, "org", ids[org])
@@ -253,69 +253,66 @@ func TestTurso_Silos(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	insert("A", "pa")
-	insert("A", "pa2")
-	insert("B", "pb")
-	childA, childB := ChildName("blog", "org", ids["A"]), ChildName("blog", "org", ids["B"])
-	if v, ok := ChildValue("blog", "org", childA); !ok || v != ids["A"] {
-		t.Fatalf("ChildValue(%s) = %q %v", childA, v, ok)
+	insert(s, "A", "pa")
+	insert(s, "A", "pa2")
+	insert(s, "B", "pb")
+	insert(s, "C", "pc")
+	child := map[string]string{}
+	for _, o := range []string{"A", "B", "C"} {
+		child[o] = ChildName("blog", "org", ids[o])
 	}
-	names := strings.Join(f.Names(), " ")
-	if !strings.Contains(names, "blog-org-schema") || !strings.Contains(names, childA) || !strings.Contains(names, childB) {
+	if v, ok := ChildValue("blog", "org", child["A"]); !ok || v != ids["A"] {
+		t.Fatalf("ChildValue(%s) = %q %v", child["A"], v, ok)
+	}
+	if names := strings.Join(f.Names(), " "); strings.Contains(names, "schema") || !strings.Contains(names, child["A"]) || !strings.Contains(names, child["B"]) {
 		t.Fatalf("databases: %s", names)
 	}
 	var n int
-	f.DB(childA).QueryRow(`SELECT COUNT(*) FROM "Project__Project"`).Scan(&n)
+	f.DB(child["A"]).QueryRow(`SELECT COUNT(*) FROM "Project__Project"`).Scan(&n)
 	if n != 2 {
-		t.Fatalf("A's child holds %d", n)
+		t.Fatalf("A's database holds %d", n)
 	}
-	f.DB(childB).QueryRow(`SELECT COUNT(*) FROM "Project__Project" WHERE "name" LIKE 'pa%'`).Scan(&n)
+	f.DB(child["B"]).QueryRow(`SELECT COUNT(*) FROM "Project__Project" WHERE "name" LIKE 'pa%'`).Scan(&n)
 	if n != 0 {
-		t.Fatalf("B's child holds A's rows")
-	}
-	f.DB("blog-org-schema").QueryRow(`SELECT COUNT(*) FROM "Project__Project"`).Scan(&n)
-	if n != 0 {
-		t.Fatalf("the schema database holds rows")
+		t.Fatalf("B's database holds A's rows")
 	}
 	var hash, mig string
-	if err := f.DB(childA).QueryRow(`SELECT "hash", "migration" FROM "_alder_schema"`).Scan(&hash, &mig); err != nil || hash != s.hash || mig != "0001_initial" {
+	if err := f.DB(child["A"]).QueryRow(`SELECT "hash", "migration" FROM "_alder_schema"`).Scan(&hash, &mig); err != nil || hash != s.hash || mig != "0001_initial" {
 		t.Fatalf("A's _alder_schema: %q %q %v", hash, mig, err)
 	}
-	if st := statusLines(t, cfg); st[ids["A"]].State != SiloOK || st[ids["B"]].State != SiloOK || len(st) != 2 {
+	if st := statusLines(t, cfg); len(st) != 3 || st[ids["A"]].State != SiloOK {
 		t.Fatalf("status: %v", st)
 	}
 
-	// version 2 (adds a nullable column): verified on the largest children first, then the
-	// schema database migrated; B is a straggler
-	cfg2 := siloConfig(t, SiloDir(path), 2)
-	cfg2.Silos[0].Ref, cfg2.Shared = "Org.Org", path
+	// version 2 (adds a column): verified on the largest first (A); a database changed by
+	// hand fails, named; nothing is migrated by verifying
+	cfg2 := tursoConfig(t, path, 2)
 	var out bytes.Buffer
-	if bad, err := VerifySilos(ctx, cfg2, 1, &out); err != nil || bad != 0 || !strings.Contains(out.String(), "org/"+ids["A"]+" (database "+childA+"): ok") || strings.Contains(out.String(), ids["B"]) {
+	if bad, err := VerifySilos(ctx, cfg2, 1, &out); err != nil || bad != 0 || !strings.Contains(out.String(), "org/"+ids["A"]+" (database "+child["A"]+"): ok") || strings.Count(out.String(), "\n") != 1 {
 		t.Fatalf("verify (sample 1: the largest, A): %d %v\n%s", bad, err, out.String())
 	}
-	// a child changed by hand fails the plan, named; nothing is migrated by verifying
-	if err := f.Exec(childB, `CREATE TABLE "Stray" ("x" TEXT)`); err != nil {
-		t.Fatal(err)
+	f.Exec(child["B"], `CREATE TABLE "Stray" ("x" TEXT)`)
+	out.Reset()
+	if bad, err := VerifySilos(ctx, cfg2, 5, &out); err != nil || bad != 1 || !strings.Contains(out.String(), "org/"+ids["B"]+" (database "+child["B"]+"): FAIL: after the migrations its tables") {
+		t.Fatalf("verify with a changed database: %d %v\n%s", bad, err, out.String())
+	}
+	f.Exec(child["B"], `DROP TABLE "Stray"`)
+	// without usage sizes: the first by name
+	for _, c := range child {
+		f.NoSize(c)
 	}
 	out.Reset()
-	if bad, err := VerifySilos(ctx, cfg2, 5, &out); err != nil || bad != 1 || !strings.Contains(out.String(), "org/"+ids["B"]+" (database "+childB+"): FAIL: its tables") {
-		t.Fatalf("verify with a changed child: %d %v\n%s", bad, err, out.String())
+	if bad, err := VerifySilos(ctx, cfg2, 1, &out); err != nil || bad != 0 || strings.Count(out.String(), "\n") != 1 {
+		t.Fatalf("verify without sizes: %d %v\n%s", bad, err, out.String())
 	}
-	f.Exec(childB, `DROP TABLE "Stray"`)
-	f.Hold(childB)
+
+	// v2 serves: every silo is behind (migrating) until opened; A migrates on open
 	sharedV2, _ := OpenSQLite(path)
 	defer sharedV2.Close()
 	if _, err := sharedV2.Migrate(ctx, cfg2.Tables, cfg2.Migrations, false); err != nil {
 		t.Fatal(err)
 	}
-	out.Reset()
-	so := cfg2
-	so.SchemaOnly = true
-	if bad, err := MigrateSilos(ctx, so, &out); err != nil || bad != 0 || strings.TrimSpace(out.String()) != "org (schema database blog-org-schema): migrated 0002_note" {
-		t.Fatalf("migrate the schema database: %d %v\n%s", bad, err, out.String())
-	}
-	st := statusLines(t, cfg2)
-	if st[ids["A"]].State != SiloOK || st[ids["B"]].State != SiloMigrating {
+	if st := statusLines(t, cfg2); st[ids["A"]].State != SiloMigrating || st[ids["B"]].State != SiloMigrating {
 		t.Fatalf("after the switch: %v", st)
 	}
 	s2, err := OpenStores(sharedV2, path, cfg2)
@@ -326,59 +323,72 @@ func TestTurso_Silos(t *testing.T) {
 	if _, err := s2.silo(ctx, "org", ids["A"]); err != nil {
 		t.Fatalf("A on v2: %v", err)
 	}
-	var me *MaintenanceError
-	if _, err := s2.silo(ctx, "org", ids["B"]); !errors.As(err, &me) || me.State != SiloMigrating {
-		t.Fatalf("B, a straggler, on v2: %v", err)
+	if st := statusLines(t, cfg2); st[ids["A"]].State != SiloOK || st[ids["B"]].State != SiloMigrating {
+		t.Fatalf("after A's open: %v", st)
 	}
-	if err := f.Release(childB); err != nil {
-		t.Fatal(err)
-	}
-	if st := statusLines(t, cfg2); st[ids["B"]].State != SiloOK {
-		t.Fatalf("B after its change arrived: %v", st)
-	}
+	// alder migrate silos: every remaining one, through the API's list
 	out.Reset()
-	if bad, err := MigrateSilos(ctx, cfg2, &out); err != nil || bad != 0 || !strings.Contains(out.String(), "org/"+ids["B"]+": took this build's schema from the schema database") {
+	if bad, err := MigrateSilos(ctx, cfg2, &out); err != nil || bad != 0 || !strings.Contains(out.String(), "org/"+ids["B"]+": migrated 0002_note") || !strings.Contains(out.String(), "org/"+ids["A"]+": ok") {
 		t.Fatalf("migrate silos: %d %v\n%s", bad, err, out.String())
 	}
 
+	// v3 drops a column: pending-data-loss (maintenance) until --allow-data-loss
+	cfg3 := tursoConfig(t, path, 3)
+	cfg3.Migrations = append(siloMigrations(t, 2), Migration{Name: "0003_drop_name", SQL: `ALTER TABLE "Project__Project" DROP COLUMN "name";`, DropsData: []string{"column Project.name"}})
+	cfg3.Tables = []TableDesc{orgDesc, projDesc(append([]Column{{Name: "id", Type: CText}}, projCols2[2:]...))}
+	sc3, err := schemaOf(cfg3.Tables)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg3.Migrations[2].From, cfg3.Migrations[2].To = cfg3.Migrations[1].To, short(sc3.hash)
+	sharedV3, _ := OpenSQLite(path)
+	defer sharedV3.Close()
+	os.Setenv(EnvAllowDataLoss, "1")
+	_, err = sharedV3.Migrate(ctx, cfg3.Tables, cfg3.Migrations, false)
+	os.Unsetenv(EnvAllowDataLoss)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s3, err := OpenStores(sharedV3, path, cfg3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s3.Close()
+	var me *MaintenanceError
+	if _, err := s3.silo(ctx, "org", ids["C"]); !errors.As(err, &me) || me.State != SiloDataLoss {
+		t.Fatalf("C on v3: %v", err)
+	}
+	out.Reset()
+	if bad, err := MigrateSilos(ctx, cfg3, &out); err != nil || bad != 3 {
+		t.Fatalf("migrate silos without --allow-data-loss: %d %v\n%s", bad, err, out.String())
+	}
+	cfg3.AllowDataLoss = true
+	out.Reset()
+	if bad, err := MigrateSilos(ctx, cfg3, &out); err != nil || bad != 0 || !strings.Contains(out.String(), "org/"+ids["C"]+": migrated 0003_drop_name") {
+		t.Fatalf("migrate silos --allow-data-loss: %d %v\n%s", bad, err, out.String())
+	}
+	cfg3.AllowDataLoss = false
+
 	// ahead: a newer build's row
-	f.Exec(childA, `UPDATE "_alder_schema" SET "hash" = 'f00d', "migration" = '9999_future'`)
-	if st := statusLines(t, cfg2); st[ids["A"]].State != SiloAhead || !strings.Contains(st[ids["A"]].Detail, "alder restore <env> --silo org:<id> --to <time>") {
+	f.Exec(child["A"], `UPDATE "_alder_schema" SET "hash" = 'f00d', "migration" = '9999_future'`)
+	if st := statusLines(t, cfg3); st[ids["A"]].State != SiloAhead || !strings.Contains(st[ids["A"]].Detail, "alder restore <env> --silo org:<id> --to <time>") {
 		t.Fatalf("ahead: %v", st)
 	}
 
 	// an orphan: B's Org row deleted; listed, then pruned (A is kept: not an orphan)
-	if _, err := sharedV2.DeleteWhere(ctx, nil, "Org.Org", "id", ids["B"], "", nil); err != nil {
+	if _, err := sharedV3.DeleteWhere(ctx, nil, "Org.Org", "id", ids["B"], "", nil); err != nil {
 		t.Fatal(err)
 	}
-	if st := statusLines(t, cfg2); st[ids["B"]].State != SiloOrphaned || !strings.Contains(st[ids["B"]].Detail, "no Org row has this id any more") {
+	if st := statusLines(t, cfg3); st[ids["B"]].State != SiloOrphaned || !strings.Contains(st[ids["B"]].Detail, "no Org row has this id any more") {
 		t.Fatalf("orphan: %v", st)
 	}
 	out.Reset()
-	kept, err := PruneSilos(ctx, cfg2, []string{"org:" + ids["B"], "org:" + ids["A"]}, &out)
+	kept, err := PruneSilos(ctx, cfg3, []string{"org:" + ids["B"], "org:" + ids["A"]}, &out)
 	if err != nil || kept != 1 || !strings.Contains(out.String(), "org/"+ids["B"]+": removed") || !strings.Contains(out.String(), "org/"+ids["A"]+": kept: its key row exists") {
 		t.Fatalf("prune: %d %v\n%s", kept, err, out.String())
 	}
-	if strings.Contains(strings.Join(f.Names(), " "), childB) {
-		t.Fatal("B's child database was not deleted")
-	}
-}
-
-// A migration that rebuilds a siloed table (or copies rows) cannot reach the children through
-// the schema database: refused before anything is migrated.
-func TestTurso_RebuildRefused(t *testing.T) {
-	f := tursofake.New(t, "acme")
-	path := tursoEnv(t, f)
-	_, cfg := openTursoApp(t, f, path, 1)
-	cfg.Migrations = append(cfg.Migrations, Migration{Name: "0002_rebuild", SQL: `CREATE TABLE "Project__Project__alder__new" ("id" TEXT NOT NULL PRIMARY KEY) STRICT;
-INSERT INTO "Project__Project__alder__new" ("id") SELECT "id" FROM "Project__Project";
-DROP TABLE "Project__Project";
-ALTER TABLE "Project__Project__alder__new" RENAME TO "Project__Project";`})
-	cfg.Tables = []TableDesc{orgDesc, projDesc([]Column{{Name: "id", Type: CText}})}
-	var out bytes.Buffer
-	bad, err := VerifySilos(context.Background(), cfg, 5, &out)
-	if err != nil || bad != 1 || !strings.Contains(out.String(), "org: FAIL: migration 0002_rebuild copies or changes rows of a table in silo org") {
-		t.Fatalf("%d %v\n%s", bad, err, out.String())
+	if strings.Contains(strings.Join(f.Names(), " "), child["B"]) {
+		t.Fatal("B's database was not deleted")
 	}
 }
 

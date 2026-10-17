@@ -96,7 +96,7 @@ func TestTurso_DeployLock(t *testing.T) {
 }
 
 // Point-in-time: a copy of the database as it was at a time; a silo's database restored in
-// place (copied at the time, the current one kept, created again under its schema database).
+// place (copied at the time, the current one kept, created again from the copy).
 func TestTurso_PointInTime(t *testing.T) {
 	f := tursofake.New(t, "acme")
 	ctx := context.Background()
@@ -104,11 +104,8 @@ func TestTurso_PointInTime(t *testing.T) {
 	f.SetNow(func() time.Time { return clock })
 	tt := fakeTurso(t, f, "org")
 	tt.Now = func() time.Time { return clock }
-	if err := f.Create("blog-org-schema", "default", "", true); err != nil {
-		t.Fatal(err)
-	}
 	child := db.ChildName("blog", "org", "Org1")
-	if err := f.Create(child, "default", "blog-org-schema", false); err != nil {
+	if err := f.Create(child, "default"); err != nil {
 		t.Fatal(err)
 	}
 	f.Exec(child, `CREATE TABLE "P" ("x" TEXT)`)
@@ -133,8 +130,8 @@ func TestTurso_PointInTime(t *testing.T) {
 	if strings.Contains(names, "-r") {
 		t.Fatalf("the restore's copy was not deleted: %s", names)
 	}
-	// the child is still a child of the schema database
-	kids, err := tt.api().Children(ctx, "blog-org-schema")
+	// it is still listed as the silo's database
+	kids, err := tt.api().Children(ctx, "blog", "org")
 	if err != nil || len(kids) != 1 || kids[0].Name != child {
 		t.Fatalf("children %v %v", kids, err)
 	}

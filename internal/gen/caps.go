@@ -493,8 +493,8 @@ func (g *gen) silosVar(b *strings.Builder, p *ir.Program) {
 		items = append(items, "{Key: "+strconv.Quote(k)+", Tables: []string{"+strings.Join(ts, ", ")+"}, Ref: "+strconv.Quote(ref)+"}")
 	}
 	b.WriteString("// Silos are the app's `silo` declarations: each key's tables live in one database per value of\n" +
-		"// the session's key (rt/db: silos/<key>/<value>.db next to the shared database, or child\n" +
-		"// databases on Turso); Ref is the table the key's values are ids of.\n" +
+		"// the session's key (rt/db: a file under silos/<key>/ next to the shared database, or a\n" +
+		"// database of its own on Turso); Ref is the table the key's values are ids of.\n" +
 		"var Silos = []db.Silo{" + strings.Join(items, ", ") + "}\n\n")
 }
 
@@ -656,10 +656,8 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 //
 // withSilos (an app with `silo` declarations) adds maintenance tasks over the silo databases
 // (rt/db: silos/<key>/<value>.db under ALDER_DB's directory, or with ALDER_DB=libsql://… the
-// child databases on Turso): --migrate-silos [--allow-data-loss] [--schema-only] opens and
-// migrates each one (a line each; exit 1 when one is not served: `alder migrate silos` runs it;
-// on Turso it migrates each key's schema database first, and --schema-only stops there: alder
-// deploy runs that), --silo-status prints one JSON line per silo ({"key","id","state","detail"}:
+// databases of their own on Turso): --migrate-silos [--allow-data-loss] opens and migrates each
+// one (a line each; exit 1 when one is not served: `alder migrate silos` runs it), --silo-status prints one JSON line per silo ({"key","id","state","detail"}:
 // ok, migrating, pending-data-loss, ahead, failed or orphaned) without changing any (`alder
 // status` runs it), --verify-silos N tries the pending migrations on the N largest silos of each
 // key and rolls them back (alder deploy runs it on Turso before migrating), and --prune-silos
@@ -828,7 +826,7 @@ func env(name, def string) string {
 	cases, usage := "", ""
 	if withSilos {
 		cases = siloCases
-		usage = `+" | --migrate-silos [--allow-data-loss] [--schema-only] | --silo-status | --verify-silos N | --prune-silos key:id…"`
+		usage = `+" | --migrate-silos [--allow-data-loss] | --silo-status | --verify-silos N | --prune-silos key:id…"`
 		src = strings.Replace(src, `	"path/filepath"
 `, `	"path/filepath"
 	"strconv"
@@ -898,7 +896,7 @@ const siloCases = `	silos := db.StoresConfig{Dir: db.SiloDir(path), Shared: path
 `
 
 // siloFlags is the source of siloFlags in an app with silos' cmd/main.go: --migrate-silos's
-// flags (--allow-data-loss, --schema-only), false for any other.
+// flags (--allow-data-loss), false for any other.
 const siloFlagsFunc = `
 // siloFlags reads --migrate-silos's flags into c: false for one it does not know.
 func siloFlags(args []string, c *db.StoresConfig) bool {
@@ -906,8 +904,6 @@ func siloFlags(args []string, c *db.StoresConfig) bool {
 		switch a {
 		case "--allow-data-loss":
 			c.AllowDataLoss = true
-		case "--schema-only":
-			c.SchemaOnly = true
 		default:
 			return false
 		}

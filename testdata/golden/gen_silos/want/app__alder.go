@@ -28,8 +28,8 @@ var Capabilities = []string{}
 var Migrations []db.Migration
 
 // Silos are the app's `silo` declarations: each key's tables live in one database per value of
-// the session's key (rt/db: silos/<key>/<value>.db next to the shared database, or child
-// databases on Turso); Ref is the table the key's values are ids of.
+// the session's key (rt/db: a file under silos/<key>/ next to the shared database, or a
+// database of its own on Turso); Ref is the table the key's values are ids of.
 var Silos = []db.Silo{{Key: "org", Tables: []string{"Project.Project"}, Ref: "Org.Org"}}
 
 // Caps are the app's capability implementations, one field per capability, named by its

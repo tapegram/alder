@@ -3,13 +3,13 @@
 // streams carried by batons), served by net/http/httptest, each database an SQLite file in a
 // temporary directory.
 //
-// It models what alder relies on: groups; databases, schema databases and their children; a
-// schema database passing its committed schema changes (CREATE, ALTER, DROP) on to its
-// children, at once or — for a child marked held, a straggler — when the test releases it;
-// a new child taking its schema database's schema; auth tokens per database (a deleted and
-// recreated database's old tokens are refused with 401); storage sizes; point-in-time copies
-// (a snapshot after every committed write, a seed with a timestamp copies the last one at or
-// before it); deletion. It is not Turso: no replicas, no limits, no other request types.
+// It models what alder relies on: groups; databases (each standalone: a new one is empty, and
+// nothing changes its schema but the statements sent to it); auth tokens per database (a
+// deleted and recreated database's old tokens are refused with 401); storage sizes (a
+// database can be made to report none, as an API without the field); point-in-time copies (a
+// snapshot after every committed write, a seed with a timestamp copies the last one at or
+// before it); deletion; streams that expire. It is not Turso: no replicas, no limits, no
+// schema databases, no other request types.
 package tursofake
 
 import (
@@ -48,22 +48,19 @@ type Server struct {
 	groups  map[string]bool
 	dbs     map[string]*database
 	gen     int
-	held    map[string]bool // children whose schema changes wait (stragglers)
+	noSize  map[string]bool // databases whose usage has no storage_bytes
 	calls   []string
 	failAPI map[string]int // "METHOD /path-suffix" → the status to answer once
 }
 
 type database struct {
-	name, group, schema string
-	isSchema            bool
-	path                string
-	db                  *sql.DB
-	gen                 int
-	tokens              map[string]bool
-	streams             map[string]*stream
-	snaps               []snapshot
-	ddl                 []string // a schema database's committed schema changes, in order
-	pending             []string // a held child's changes not applied yet
+	name, group string
+	path        string
+	db          *sql.DB
+	gen         int
+	tokens      map[string]bool
+	streams     map[string]*stream
+	snaps       []snapshot
 }
 
 type snapshot struct {
@@ -75,14 +72,13 @@ type stream struct {
 	mu   sync.Mutex
 	conn *sql.Conn
 	inTx bool
-	ddl  []string // a schema database's changes inside the open transaction
 }
 
 // New starts a fake for org with group "default"; it is closed when the test ends.
 func New(t testing.TB, org string) *Server {
 	t.Helper()
 	s := &Server{Org: org, APIToken: "api-" + random(8), dir: t.TempDir(), now: time.Now,
-		groups: map[string]bool{"default": true}, dbs: map[string]*database{}, held: map[string]bool{}, failAPI: map[string]int{}}
+		groups: map[string]bool{"default": true}, dbs: map[string]*database{}, noSize: map[string]bool{}, failAPI: map[string]int{}}
 	s.srv = httptest.NewServer(http.HandlerFunc(s.serve))
 	s.URL = s.srv.URL
 	t.Cleanup(s.Close)
@@ -113,27 +109,11 @@ func (s *Server) AddGroup(name string) {
 	s.mu.Unlock()
 }
 
-// Hold makes child name a straggler: its schema database's changes wait until Release.
-func (s *Server) Hold(name string) {
+// NoSize makes database name's usage answer without storage_bytes.
+func (s *Server) NoSize(name string) {
 	s.mu.Lock()
-	s.held[name] = true
+	s.noSize[name] = true
 	s.mu.Unlock()
-}
-
-// Release applies the changes child name was held from, and stops holding it.
-func (s *Server) Release(name string) error {
-	s.mu.Lock()
-	delete(s.held, name)
-	d := s.dbs[name]
-	var pending []string
-	if d != nil {
-		pending, d.pending = d.pending, nil
-	}
-	s.mu.Unlock()
-	if d == nil {
-		return fmt.Errorf("no database %s", name)
-	}
-	return applyDDL(d.db, pending)
 }
 
 // ExpireStreams drops every open stream (an idle stream expires at Turso): the next request on
@@ -197,8 +177,8 @@ func (s *Server) Exec(name, stmt string, args ...any) error {
 }
 
 // Create creates a database as the API would (for a test's setup).
-func (s *Server) Create(name, group, schema string, isSchema bool) error {
-	if _, st := s.create(name, group, schema, isSchema, nil); st != nil {
+func (s *Server) Create(name, group string) error {
+	if _, st := s.create(name, group, nil); st != nil {
 		return fmt.Errorf("%d %s", st.code, st.msg)
 	}
 	return nil
@@ -277,11 +257,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, map[string]any{"group": map[string]any{"name": parts[1]}})
 	case len(parts) == 1 && parts[0] == "databases" && r.Method == http.MethodGet:
-		parent := r.URL.Query().Get("schema")
+		group := r.URL.Query().Get("group")
 		s.mu.Lock()
 		var list []map[string]any
 		for _, d := range s.dbs {
-			if parent == "" || d.schema == parent {
+			if group == "" || d.group == group {
 				list = append(list, s.describe(d))
 			}
 		}
@@ -290,11 +270,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"databases": list})
 	case len(parts) == 1 && parts[0] == "databases" && r.Method == http.MethodPost:
 		var body struct {
-			Name     string `json:"name"`
-			Group    string `json:"group"`
-			IsSchema bool   `json:"is_schema"`
-			Schema   string `json:"schema"`
-			Seed     *struct {
+			Name  string `json:"name"`
+			Group string `json:"group"`
+			Seed  *struct {
 				Type      string `json:"type"`
 				Name      string `json:"name"`
 				Timestamp string `json:"timestamp"`
@@ -320,7 +298,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				seed.at = t
 			}
 		}
-		d, status := s.create(body.Name, body.Group, body.Schema, body.IsSchema, seed)
+		d, status := s.create(body.Name, body.Group, seed)
 		if status != nil {
 			apiError(w, status.code, status.msg)
 			return
@@ -370,7 +348,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				n += fi.Size()
 			}
 		}
-		writeJSON(w, map[string]any{"database": map[string]any{"uuid": d.name, "usage": map[string]any{"rows_read": 0, "rows_written": 0, "storage_bytes": n}}})
+		usage := map[string]any{"rows_read": 0, "rows_written": 0, "storage_bytes": n}
+		s.mu.Lock()
+		if s.noSize[d.name] {
+			delete(usage, "storage_bytes")
+		}
+		s.mu.Unlock()
+		writeJSON(w, map[string]any{"database": map[string]any{"uuid": d.name, "usage": usage}})
 	case len(parts) == 4 && parts[0] == "databases" && parts[2] == "auth" && parts[3] == "tokens" && r.Method == http.MethodPost:
 		s.mu.Lock()
 		d := s.dbs[parts[1]]
@@ -400,9 +384,8 @@ type apiStatus struct {
 	msg  string
 }
 
-// create makes database name: a schema database, a child of schema (its schema database's
-// changes applied), or a copy of a seed.
-func (s *Server) create(name, group, schema string, isSchema bool, seed *seedSpec) (*database, *apiStatus) {
+// create makes database name: empty, or a copy of a seed.
+func (s *Server) create(name, group string, seed *seedSpec) (*database, *apiStatus) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if name == "" {
@@ -417,14 +400,8 @@ func (s *Server) create(name, group, schema string, isSchema bool, seed *seedSpe
 	if !s.groups[group] {
 		return nil, &apiStatus{http.StatusNotFound, "group " + group + " not found"}
 	}
-	var parent *database
-	if schema != "" {
-		if parent = s.dbs[schema]; parent == nil || !parent.isSchema {
-			return nil, &apiStatus{http.StatusBadRequest, "schema database " + schema + " not found"}
-		}
-	}
 	s.gen++
-	d := &database{name: name, group: group, schema: schema, isSchema: isSchema, gen: s.gen, tokens: map[string]bool{}, streams: map[string]*stream{},
+	d := &database{name: name, group: group, gen: s.gen, tokens: map[string]bool{}, streams: map[string]*stream{},
 		path: filepath.Join(s.dir, name+"-"+strconv.Itoa(s.gen)+".db")}
 	if seed != nil {
 		src := s.dbs[seed.name]
@@ -459,12 +436,6 @@ func (s *Server) create(name, group, schema string, isSchema bool, seed *seedSpe
 		return nil, &apiStatus{http.StatusInternalServerError, err.Error()}
 	}
 	d.db = db
-	if parent != nil && seed == nil {
-		if err := applyDDL(db, parent.ddl); err != nil {
-			db.Close()
-			return nil, &apiStatus{http.StatusInternalServerError, err.Error()}
-		}
-	}
 	s.dbs[name] = d
 	s.snapshotLocked(d)
 	return d, nil
@@ -472,7 +443,7 @@ func (s *Server) create(name, group, schema string, isSchema bool, seed *seedSpe
 
 func (s *Server) describe(d *database) map[string]any {
 	host := strings.TrimPrefix(s.URL, "http://") + "/db/" + d.name
-	return map[string]any{"Name": d.name, "DbId": "id-" + d.name + "-" + strconv.Itoa(d.gen), "Hostname": host, "group": d.group, "schema": d.schema, "is_schema": d.isSchema}
+	return map[string]any{"Name": d.name, "DbId": "id-" + d.name + "-" + strconv.Itoa(d.gen), "Hostname": host, "group": d.group}
 }
 
 func vacuumInto(db *sql.DB, path string) error {
@@ -486,27 +457,6 @@ func (s *Server) snapshotLocked(d *database) {
 	if err := vacuumInto(d.db, p); err == nil {
 		d.snaps = append(d.snaps, snapshot{at: s.now(), path: p})
 	}
-}
-
-func applyDDL(db *sql.DB, stmts []string) error {
-	if len(stmts) == 0 {
-		return nil
-	}
-	ctx := context.Background()
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
-		return err
-	}
-	for _, st := range stmts {
-		if _, err := conn.ExecContext(ctx, st); err != nil {
-			return fmt.Errorf("propagating %q: %v", st, err)
-		}
-	}
-	return nil
 }
 
 func apiError(w http.ResponseWriter, status int, msg string) {
@@ -645,8 +595,7 @@ func verb(q string) string {
 	return strings.ToUpper(f[0])
 }
 
-// execute runs q on stream st of database d: a schema database's schema changes are passed on
-// to its children when they commit.
+// execute runs q on stream st of database d; a commit is a point in time.
 func (s *Server) execute(d *database, st *stream, q string, args []any) (map[string]any, error) {
 	ctx := context.Background()
 	v := verb(q)
@@ -696,47 +645,25 @@ func (s *Server) execute(d *database, st *stream, q string, args []any) (map[str
 	id, _ := r.LastInsertId()
 	res["affected_row_count"] = n
 	res["last_insert_rowid"] = strconv.FormatInt(id, 10)
-	schemaChange := v == "CREATE" || v == "ALTER" || v == "DROP"
 	switch {
 	case v == "BEGIN":
-		st.inTx, st.ddl = true, nil
+		st.inTx = true
 	case v == "COMMIT" || v == "END":
 		st.inTx = false
-		s.committed(d, st.ddl)
-		st.ddl = nil
+		s.committed(d)
 	case v == "ROLLBACK":
-		st.inTx, st.ddl = false, nil
-	case schemaChange && d.isSchema && st.inTx:
-		st.ddl = append(st.ddl, q)
+		st.inTx = false
 	case !st.inTx:
-		var ddl []string
-		if schemaChange && d.isSchema {
-			ddl = []string{q}
-		}
-		s.committed(d, ddl)
+		s.committed(d)
 	}
 	return res, nil
 }
 
-// committed records a commit on d: a point in time, and a schema database's changes passed on.
-func (s *Server) committed(d *database, ddl []string) {
+// committed records a commit on d: a point in time.
+func (s *Server) committed(d *database) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.snapshotLocked(d)
-	if !d.isSchema || len(ddl) == 0 {
-		return
-	}
-	d.ddl = append(d.ddl, ddl...)
-	for _, c := range s.dbs {
-		if c.schema != d.name {
-			continue
-		}
-		if s.held[c.name] {
-			c.pending = append(c.pending, ddl...)
-			continue
-		}
-		applyDDL(c.db, ddl)
-	}
 }
 
 func decode(raw json.RawMessage) (any, error) {

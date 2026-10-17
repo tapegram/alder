@@ -106,10 +106,7 @@ type StoresConfig struct {
 	// AllowDataLoss applies a pending migration that drops data on open (--migrate-silos
 	// --allow-data-loss); without it such a silo is not served.
 	AllowDataLoss bool
-	// SchemaOnly (silos on Turso): MigrateSilos migrates the schema databases only, leaving the
-	// children to take the change from them (alder deploy, from the deploying machine).
-	SchemaOnly bool
-	Log        func(level, msg string) // nil: no log
+	Log           func(level, msg string) // nil: no log
 }
 
 // Stores is the shared store and the silos of an app with `silo` declarations. Generated code
@@ -167,6 +164,18 @@ type siloDB struct {
 // recheck is how long a silo found not servable stays so before a request opens it again (an
 // `alder migrate silos` run meanwhile makes it servable).
 const recheck = 60 * time.Second
+
+// EnvSiloRecheck shortens recheck, for alder's own tests (a duration such as "200ms"): a silo
+// found not servable is opened again that much later. Production never sets it.
+const EnvSiloRecheck = "ALDER_SILO_RECHECK"
+
+// recheckAfter is recheck, or EnvSiloRecheck's duration when it is set.
+func recheckAfter() time.Duration {
+	if d, err := time.ParseDuration(os.Getenv(EnvSiloRecheck)); err == nil && d > 0 {
+		return d
+	}
+	return recheck
+}
 
 // idleClose is how long an open silo goes unused before it is closed (its connections freed),
 // unless StoresConfig.IdleClose says otherwise; it is opened (and checked) again on next use.
@@ -386,7 +395,7 @@ func (s *Stores) silo(ctx context.Context, key, value string) (*siloDB, error) {
 		s.mu.Lock()
 		d = s.open[id]
 	}
-	if d != nil && isReady(d) && d.state != SiloOK && now.Sub(d.checked) > recheck {
+	if d != nil && isReady(d) && d.state != SiloOK && now.Sub(d.checked) > recheckAfter() {
 		delete(s.open, id) // a failed silo holds no connection (openSilo's fail closed it)
 		d = nil
 	}
@@ -1171,15 +1180,11 @@ func StatusSilos(ctx context.Context, cfg StoresConfig, out io.Writer) error {
 // MigrateSilos opens and checks every silo file under cfg.Dir (cfg.AllowDataLoss: also
 // applying a migration that drops data), writing one line each: "org/<id>: ok", "org/<id>:
 // migrated 0003_x", or "org/<id>: pending-data-loss: …". It returns how many are not served.
-// On Turso it migrates each key's schema database ("org (schema database …): migrated …") and
-// then, unless cfg.SchemaOnly, checks each child (migrateRemote).
+// On Turso the silos are the databases the platform API lists for each key (ChildName).
 func MigrateSilos(ctx context.Context, cfg StoresConfig, out io.Writer) (int, error) {
 	s, err := newStores(nil, cfg)
 	if err != nil {
 		return 0, err
-	}
-	if s.remote != nil {
-		return s.migrateRemote(ctx, out)
 	}
 	es, err := s.entries(ctx)
 	if err != nil {

@@ -17,27 +17,25 @@ import (
 )
 
 // Turso's platform API (api.turso.tech), over net/http: what an app deployed with a `Turso`
-// database (chapter 16) needs at run time — its silos' child databases, created on first use,
-// and an auth token per database — and what `alder deploy` needs from the deploying machine.
+// database (chapter 16) needs at run time — its silos' databases, created on first use, and
+// an auth token per database — and what `alder deploy` needs from the deploying machine.
 //
 // The calls, all of them (paths under /v1/organizations/{org}):
 //
 //	GET    /groups/{group}                          the group exists (deploy's preflight)
-//	GET    /databases?schema={parent}               the children of a schema database
+//	GET    /databases?group={group}                 the silos' databases (by their names' prefix)
 //	GET    /databases/{name}                        one database (its Hostname); 404: none
-//	POST   /databases                               create: {"name", "group"} and one of
-//	                                                {"is_schema": true} (a schema database),
-//	                                                {"schema": "<parent>"} (its child), {"seed":
+//	POST   /databases                               create: {"name", "group"}, and for a copy
+//	                                                at a point in time (a restore) {"seed":
 //	                                                {"type": "database", "name", "timestamp"}}
-//	                                                (a copy at a point in time: the restore)
 //	DELETE /databases/{name}                        `alder silos prune`, a restore's swap
 //	GET    /databases/{name}/usage                  storage_bytes: the deploy samples the largest
 //	POST   /databases/{name}/auth/tokens?authorization=full-access   {"jwt"}: a database's token
 //
 // Every request carries `Authorization: Bearer $TURSO_API_TOKEN`.
 //
-// Names. The shared database is the declaration's app ("blog"); a silo key's schema database is
-// "<app>-<key>-schema"; a silo's database is "<app>-<key>-<value>", its value written as its
+// Names. The shared database is the declaration's app ("blog"); a silo's database is
+// "<app>-<key>-<value>", its value written as its
 // silo file is named (SiloFileName: lowercase base32hex, no padding): Turso's names are
 // lowercase letters, digits and dashes, and an id's text (base64url) has capitals and `_`.
 
@@ -95,8 +93,6 @@ type TursoDB struct {
 	ID       string `json:"DbId"`
 	Hostname string `json:"Hostname"`
 	Group    string `json:"group"`
-	Schema   string `json:"schema"`
-	IsSchema bool   `json:"is_schema"`
 }
 
 // NewTurso is a client for cfg.
@@ -211,17 +207,23 @@ func (t *Turso) Database(ctx context.Context, name string) (TursoDB, bool, error
 	return out.Database, true, nil
 }
 
-// Children are the databases whose schema database is parent, sorted by name.
-func (t *Turso) Children(ctx context.Context, parent string) ([]TursoDB, error) {
+// Children are the databases of silo key of app (their names begin "<app>-<key>-" and decode
+// to an id: ChildValue), sorted by name. The list is the organization's databases (the group's,
+// when the client has one), filtered here.
+func (t *Turso) Children(ctx context.Context, app, key string) ([]TursoDB, error) {
+	path := "/databases"
+	if t.cfg.Group != "" {
+		path += "?group=" + url.QueryEscape(t.cfg.Group)
+	}
 	var out struct {
 		Databases []TursoDB `json:"databases"`
 	}
-	if err := t.call(ctx, http.MethodGet, "/databases?schema="+url.QueryEscape(parent), nil, &out); err != nil {
+	if err := t.call(ctx, http.MethodGet, path, nil, &out); err != nil {
 		return nil, err
 	}
 	var kids []TursoDB
 	for _, d := range out.Databases {
-		if d.Schema == parent && !d.IsSchema { // the filter again: a server that ignores it lists every database
+		if _, ok := ChildValue(app, key, d.Name); ok {
 			kids = append(kids, d)
 			t.remember(d)
 		}
@@ -248,8 +250,6 @@ type TursoSeed struct {
 // CreateOptions describe a new database.
 type CreateOptions struct {
 	Name, Group string
-	IsSchema    bool       // a schema database
-	Schema      string     // the schema database of a child
 	Seed        *TursoSeed // a copy of another database (point-in-time restore)
 }
 
@@ -261,12 +261,6 @@ func (t *Turso) Create(ctx context.Context, o CreateOptions) (TursoDB, error) {
 	body := map[string]any{"name": o.Name, "group": o.Group}
 	if o.Group == "" {
 		body["group"] = t.cfg.Group
-	}
-	if o.IsSchema {
-		body["is_schema"] = true
-	}
-	if o.Schema != "" {
-		body["schema"] = o.Schema
 	}
 	if o.Seed != nil {
 		seed := map[string]any{"type": "database", "name": o.Seed.Name}
@@ -285,7 +279,6 @@ func (t *Turso) Create(ctx context.Context, o CreateOptions) (TursoDB, error) {
 	if d.Name == "" {
 		d.Name = o.Name
 	}
-	d.Schema, d.IsSchema = o.Schema, o.IsSchema
 	t.remember(d)
 	return d, nil
 }
@@ -385,9 +378,6 @@ func TursoName(name string) error {
 	return nil
 }
 
-// SchemaName is the schema database of silo key: "<app>-<key>-schema".
-func SchemaName(app, key string) string { return app + "-" + strings.ToLower(key) + "-schema" }
-
 // ChildName is the database of silo key's value: "<app>-<key>-<the value as its silo file is
 // named, without .db>" (SiloFileName: lowercase base32hex, so two ids that differ in case are
 // two databases).
@@ -399,7 +389,7 @@ func ChildName(app, key, value string) string {
 // key's children).
 func ChildValue(app, key, name string) (string, bool) {
 	enc, ok := strings.CutPrefix(name, app+"-"+strings.ToLower(key)+"-")
-	if !ok || enc == "schema" {
+	if !ok {
 		return "", false
 	}
 	return SiloValue(enc + ".db")

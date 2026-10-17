@@ -86,10 +86,9 @@ func siloArgs(args []string, flags ...string) (env, dir, host string, set map[st
 }
 
 // runMigrateSilosTo is `alder migrate silos <env> [dir] [--allow-data-loss]`: the current
-// build's --migrate-silos at the target, under the deploy lock. With a file database every silo
-// file is migrated (a silo behind by a migration that drops data needs --allow-data-loss);
-// on Turso each schema database is brought to the build's schema and every child that has
-// taken the change gets its row (a child still waiting for Turso stays `migrating`). Exit 0
+// build's --migrate-silos at the target, under the deploy lock: every silo database (the files,
+// or on Turso the databases the API lists) is migrated now rather than on its next open; one
+// behind by a migration that drops data needs --allow-data-loss. Exit 0
 // when every silo is served afterwards, 1 when one is not or the target fails, 2 for usage.
 func runMigrateSilosTo(args []string, stdout, stderr io.Writer) int {
 	env, dir, host, set, ok := siloArgs(args, "--allow-data-loss")
