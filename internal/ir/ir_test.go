@@ -768,6 +768,7 @@ func TestIR_Deploy(t *testing.T) {
 		"production": {Kind: "ssh", Host: "deploy@box.example.com", Domain: "blog.example.com", Path: "/srv/blog", User: "deploy", Port: "2222"},
 		"staging":    {Kind: "fly", Region: "ord", App: "blog-staging"},
 		"preview":    {Kind: "ssh", Host: "deploy@box.example.com", Domain: "*.preview.example.com", Path: "/srv/blog-preview"},
+		"long":       {Kind: "fly", Region: "ord", App: "a-very-long-hyphenated-application-name-for-staging"},
 		"local":      {Kind: "script", ScriptPath: "./scripts/deploy-local.sh"},
 	}
 	if len(d.Envs) != len(want) {
@@ -779,7 +780,7 @@ func TestIR_Deploy(t *testing.T) {
 		}
 	}
 	if !d.FloorSet || d.Floor != 0.95 || d.Keep != 5 || d.Proxy != "None" || d.Backup == nil || d.Backup.URL != "s3://blog-backups/production" ||
-		strings.Join(d.Requires, ",") != "SMTP_URL,STRIPE_KEY" || len(d.Checks) != 2 {
+		strings.Join(d.Requires, ",") != "SMTP_URL,STRIPE_KEY" || len(d.Checks) != 3 {
 		t.Errorf("deploy: %+v", d)
 	}
 }

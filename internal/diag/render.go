@@ -9,7 +9,7 @@ import (
 func RenderText(d Diagnostic, lines []string) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "%s:%d:%d: %s[%s]: %s\n", d.Span.File, d.Span.Start.Line, d.Span.Start.Col, d.Severity, d.Code, d.Message)
-	if l := d.Span.Start.Line; l >= 1 && l <= len(lines) {
+	if l := d.Span.Start.Line; !d.NoSource && l >= 1 && l <= len(lines) {
 		src := lines[l-1]
 		fmt.Fprintf(&sb, "  %s\n", src)
 		width := 1

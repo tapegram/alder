@@ -1,6 +1,9 @@
 package diag
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestBag_ErrorAndSort(t *testing.T) {
 	var b Bag
@@ -134,5 +137,13 @@ func TestApply(t *testing.T) {
 		*ReplaceSpan(Span{Start: Pos{4, 8}, End: Pos{4, 10}}, "b"),
 	}); err == nil {
 		t.Fatal("overlapping fixes must error")
+	}
+}
+
+func TestRenderTextNoSource(t *testing.T) {
+	d := Diagnostic{Code: "E0030", Severity: "error", Span: Span{File: "f", Start: Pos{1, 3}, End: Pos{1, 9}}, Message: "m", NoSource: true}
+	got := RenderText(d, []string{"  sk_live_secret"})
+	if strings.Contains(got, "sk_live") || strings.Contains(got, "^") {
+		t.Fatalf("source echoed: %q", got)
 	}
 }

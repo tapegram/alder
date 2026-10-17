@@ -83,6 +83,9 @@ type Diagnostic struct {
 	Span     Span
 	Message  string
 	Fix      *Fix
+	// NoSource keeps the text renderer from printing the source line and caret: the line holds
+	// a value the message must not echo (a secret, E0030).
+	NoSource bool
 }
 
 // General codes. Spec codes (E0101..E0602) are declared where they are raised.

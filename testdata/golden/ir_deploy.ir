@@ -7,6 +7,9 @@
 (session App.Session)
 (deploy
   (env local script (script "./scripts/deploy-local.sh"))
+  (env long fly
+    (region "ord")
+    (app "a-very-long-hyphenated-application-name-for-staging"))
   (env preview ssh
     (host "deploy@box.example.com")
     (domain "*.preview.example.com")
@@ -19,7 +22,10 @@
     (port "2222"))
   (env staging fly (region "ord") (app "blog-staging"))
   (floor 0.95)
-  (checks "./scripts/lint-content" "go vet ./...")
+  (checks
+    "./scripts/lint-content"
+    "go vet ./..."
+    "scripts/checks/verify/content/links/internal")
   (requires "SMTP_URL" "STRIPE_KEY")
   (backup s3 "s3://blog-backups/production")
   (keep 5)

@@ -91,12 +91,13 @@ func (mc *modCtx) deployField(f *syntax.DeployField) {
 				continue
 			}
 			switch {
+			case looksSecret(e.Str): // reported once, by deploySecrets, without the value
 			case strings.TrimSpace(e.Str) == "" && f.Name == "requires":
 				c.errorf(diag.DeployDecl, e.Span, "a `requires` name is empty: name an environment variable such as \"SMTP_URL\"")
 			case strings.TrimSpace(e.Str) == "":
 				c.errorf(diag.DeployDecl, e.Span, "a `checks` command is empty")
 			case f.Name == "requires" && !envName(e.Str):
-				c.errorf(diag.DeployDecl, e.Span, "`%s` is not an environment variable name: use letters, digits and `_`, not starting with a digit", e.Str)
+				c.errorf(diag.DeployDecl, e.Span, "a `requires` entry must be an environment variable name (letters, digits, `_`)")
 			}
 		}
 	case "backup":
@@ -211,7 +212,7 @@ func (mc *modCtx) deploySecrets(v *syntax.DeployValue) {
 	switch v.Kind {
 	case "string":
 		if looksSecret(v.Str) {
-			mc.c.errorf(diag.DeployDecl, v.Span, "a secret belongs in the environment, not in `App`: name it in `requires`")
+			mc.c.errorf(diag.DeployDecl, v.Span, "a secret belongs in the environment, not in `App`: name it in `requires`").NoSource = true
 		}
 	case "list":
 		for _, e := range v.List {
@@ -227,7 +228,7 @@ func (mc *modCtx) deploySecrets(v *syntax.DeployValue) {
 
 // looksSecret: a URL with a password (`scheme://user:pass@host`), a text beginning like a known
 // key (`sk_`, `ghp_`, `AKIA`, `xoxb-`, `xoxp-`, `-----BEGIN`), or 32 or more base64 or hex
-// characters without a space. A path (starting `/` or `./`) is never taken for the last kind.
+// characters without a space. A path (starting `/` or `./`, or with a `/` and no `=` or `+`) is never taken for the last kind.
 func looksSecret(s string) bool {
 	if i := strings.Index(s, "://"); i >= 0 {
 		auth := s[i+3:]
@@ -243,7 +244,7 @@ func looksSecret(s string) bool {
 			return true
 		}
 	}
-	if len(s) >= 32 && !strings.HasPrefix(s, "/") && !strings.HasPrefix(s, "./") {
+	if len(s) >= 32 && !strings.HasPrefix(s, "/") && !strings.HasPrefix(s, "./") && !(strings.Contains(s, "/") && !strings.ContainsAny(s, "=+")) {
 		for _, r := range s {
 			if !(r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '+' || r == '/' || r == '=') {
 				return false
