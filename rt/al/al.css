@@ -1,4 +1,4 @@
-/*! alder-ui v0.2.1 | Apache-2.0 | https://github.com/tapegram/alder-ui
+/*! alder-ui v0.3.0 | Apache-2.0 | https://github.com/tapegram/alder-ui
  * Built by scripts/build.py from tokens.css and components/; do not edit. */
 
 @layer al {
@@ -1149,7 +1149,13 @@ al-page[width="wide"] {
 /* ---- components/al-dialog.css ---- */
 
 /*
- * al-dialog: wraps a native <dialog>. Open it with a button that carries
+ * al-dialog: wraps a native <dialog> the author writes (Alder's renderer writes
+ * it for you; other stacks write it by hand). Two shapes are styled: the bare
+ * `al-dialog > dialog` with a header and actions, and the one Alder emits: a
+ * dismissible dialog's first child is `<form method="dialog">` with a close
+ * <button type="submit" aria-label="Close ...">, then `<h2 slot="header"
+ * id="<dialog id>-heading">`, with the dialog's aria-labelledby pointing at that
+ * <h2>. test/check.py keeps demo/dialog.html in step with that shape. Open it with a button that carries
  * commandfor="<dialog id>" command="show-modal" (invoker commands; al-shim.js
  * polyfills them). The focus trap, the inert page, Escape and returning
  * focus are the platform's. Without JavaScript or invoker commands, link to
@@ -1564,8 +1570,8 @@ al-tooltip {
  * al-devpanel: the developer bar. Collapsed it is a one-line bar along the
  * bottom of the page (sticky); with `open` the section whose tab is selected
  * shows above it. The content is server-rendered markup: a <nav> of tab
- * <button>s (aria-controls="<section id>") and the <section>s. al-tabs.js
- * switches sections and toggles `open`; without it, every section shows
+ * <button>s (aria-controls="<section id>") and the <section>s. al-devpanel.js
+ * hides the other sections, re-applies that after DOM patches, and toggles `open`; without it, every section shows
  * when open. Monospace for SQL and other code.
  */
 

@@ -1,4 +1,4 @@
-/*! alder-ui v0.2.1 | Apache-2.0 | built by scripts/build.py from components/*.js; do not edit. */
+/*! alder-ui v0.3.0 | Apache-2.0 | built by scripts/build.py from components/*.js; do not edit. */
 
 // ---- components/al-shim.js ----
 {
@@ -83,20 +83,40 @@ customElements.get("al-menu") || customElements.define("al-menu", class extends 
 // ---- components/al-tabs.js ----
 {
 // Optional enhancement for <al-tabs>. The radio group already gives selection
-// and arrow keys with no script; this adds Home/End, the `selected` attribute
-// (the server's pick), the group name from <al-tab name>, role="tabpanel",
-// and the al-select event (detail.tab). Load with <script type="module">.
+// and arrow keys with no script; this adds the tabs ARIA pattern (role=tablist
+// on <al-tabs>, role=tab on each radio with aria-selected, aria-controls and a
+// roving tabindex, role=tabpanel with id and aria-labelledby on each panel),
+// Home/End, the `selected` attribute, the group name from <al-tab name>, and
+// the al-select event (detail.tab). Load with <script type="module">.
+let seq = 0;
 customElements.get("al-tabs") || customElements.define("al-tabs", class extends HTMLElement {
   radios() {
     return [...this.querySelectorAll(":scope > al-tab > label > input[type=radio]")];
   }
-  connectedCallback() {
-    for (const tab of this.querySelectorAll(":scope > al-tab")) {
-      const radio = tab.querySelector("input[type=radio]");
-      if (radio && !radio.name && tab.getAttribute("name")) radio.name = tab.getAttribute("name");
-      if (radio && tab.hasAttribute("selected")) radio.checked = true;
-      tab.querySelector(":scope > al-panel")?.setAttribute("role", "tabpanel");
+  sync() {
+    for (const r of this.radios()) {
+      r.setAttribute("aria-selected", String(r.checked));
+      r.tabIndex = r.checked ? 0 : -1;
     }
+  }
+  connectedCallback() {
+    const n = ++seq;
+    this.setAttribute("role", "tablist");
+    [...this.querySelectorAll(":scope > al-tab")].forEach((tab, i) => {
+      const radio = tab.querySelector("input[type=radio]"), panel = tab.querySelector(":scope > al-panel");
+      tab.setAttribute("role", "none");
+      if (!radio) return;
+      if (!radio.name && tab.getAttribute("name")) radio.name = tab.getAttribute("name");
+      if (tab.hasAttribute("selected")) radio.checked = true;
+      radio.id ||= `al-tabs-${n}-${i}-tab`;
+      radio.setAttribute("role", "tab");
+      if (!panel) return;
+      panel.id ||= `al-tabs-${n}-${i}-panel`;
+      panel.setAttribute("role", "tabpanel");
+      panel.setAttribute("aria-labelledby", radio.id);
+      radio.setAttribute("aria-controls", panel.id);
+    });
+    this.sync();
     this.addEventListener("keydown", (e) => {
       const rs = this.radios(), to = { Home: 0, End: rs.length - 1 }[e.key];
       if (to === undefined || !rs[to]) return;
@@ -106,27 +126,44 @@ customElements.get("al-tabs") || customElements.define("al-tabs", class extends 
       rs[to].dispatchEvent(new Event("change", { bubbles: true }));
     });
     this.addEventListener("change", (e) => {
+      this.sync();
       const tab = e.target.closest("al-tab");
       if (tab) this.dispatchEvent(new CustomEvent("al-select", { bubbles: true, detail: { tab } }));
     });
   }
 });
+}
 
+// ---- components/al-devpanel.js ----
+{
 // <al-devpanel>: a <nav> of buttons (aria-controls="<section id>") switches its
-// <section>s; a button opens the panel, the selected one closes it again.
+// <section>s; a button opens the panel, the selected one closes it again. The
+// script hides the sections that are not selected and re-applies the selection
+// after any DOM patch (a MutationObserver), so a server that patches the
+// panel's inner content need not render `hidden` or `aria-selected`.
 customElements.get("al-devpanel") || customElements.define("al-devpanel", class extends HTMLElement {
+  buttons() {
+    return [...this.querySelectorAll(":scope > nav > button")];
+  }
+  apply() {
+    const bs = this.buttons(), b = bs.find((x) => x.getAttribute("aria-controls") === this.sel) || bs[0];
+    if (!b) return;
+    this.sel = b.getAttribute("aria-controls");
+    for (const x of bs) if (x.getAttribute("aria-selected") !== String(x === b)) x.setAttribute("aria-selected", String(x === b));
+    for (const s of this.querySelectorAll(":scope > section")) if (s.hidden !== (s.id !== this.sel)) s.hidden = s.id !== this.sel;
+  }
   connectedCallback() {
-    const buttons = [...this.querySelectorAll(":scope > nav > button")];
-    const show = (b) => {
-      for (const x of buttons) x.setAttribute("aria-selected", String(x === b));
-      for (const s of this.querySelectorAll(":scope > section")) s.hidden = s.id !== b.getAttribute("aria-controls");
-    };
-    if (buttons[0]) show(buttons[0]);
+    this.sel = this.buttons().find((x) => x.getAttribute("aria-selected") === "true")?.getAttribute("aria-controls");
+    this.apply();
+    new MutationObserver(() => this.apply()).observe(this, {
+      childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "aria-selected"],
+    });
     this.addEventListener("click", (e) => {
       const b = e.target.closest("nav > button");
-      if (!b || !buttons.includes(b)) return;
+      if (!b || !this.buttons().includes(b)) return;
       const close = this.hasAttribute("open") && b.getAttribute("aria-selected") === "true";
-      show(b);
+      this.sel = b.getAttribute("aria-controls");
+      this.apply();
       this.toggleAttribute("open", !close);
     });
   }

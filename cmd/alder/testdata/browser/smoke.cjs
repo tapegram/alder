@@ -181,6 +181,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await sleep(100);
     const after = await shown();
     check('tabs (Alder page): the first panel shows, choosing a tab shows its panel only', before[0] && !before[1] && !after[0] && after[1], { before, after });
+    const aria = await page.evaluate(() => {
+      const list = document.querySelector('al-tabs'), tabs = [...list.querySelectorAll('[role=tab]')], panels = [...list.querySelectorAll('[role=tabpanel]')];
+      return { list: list.getAttribute('role'), sel: tabs.map((t) => t.getAttribute('aria-selected')), idx: tabs.map((t) => t.tabIndex), linked: tabs.every((t, i) => panels[i] && t.getAttribute('aria-controls') === panels[i].id && panels[i].getAttribute('aria-labelledby') === t.id && t.id) };
+    });
+    check('tabs (Alder page): tablist, tab with aria-selected following the choice, tabpanel linked by id', aria.list === 'tablist' && aria.sel.join() === 'false,true' && aria.idx.join() === '-1,0' && aria.linked, aria);
     await page.focus('#save-help');
     await sleep(150);
     const tip = await page.evaluate(() => {

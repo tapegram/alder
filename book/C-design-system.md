@@ -35,7 +35,7 @@ box", explains why):
   styles that box by its tag name and attributes. Every element works
   with JavaScript off.
 
-The version Alder ships is **v0.2.1**: the compiler embeds a copy of
+The version Alder ships is **v0.3.0**: the compiler embeds a copy of
 the library's stylesheet, scripts (`al.js`) and manifest at that tag (`rt/al/VERSION`;
 "Where it lives", below).
 
@@ -729,8 +729,8 @@ script.
 ### The script
 
 `al.js` is one file of small `type="module"` scripts (each under 60
-lines, no framework): the shim, the menu's keys, the tabs' keys and the
-developer bar's tab switch, the toast timer and the tooltip. Link it once
+lines, no framework): the shim, the menu's keys, the tabs' ARIA and keys and the
+developer bar's tab switch (it re-applies the chosen section after a DOM patch, so a patched panel need not render `hidden`), the toast timer and the tooltip. Link it once
 in the layout, next to the stylesheet:
 
 ```html
@@ -793,6 +793,14 @@ adds neither:
   <div slot="actions"><al-button>Cancel</al-button></div>
 </al-dialog>
 ```
+
+**The contract.** `<al-dialog>` wraps a native `<dialog>` that someone
+writes: in Alder the renderer does, from the element above; in another
+stack the author does, by hand. The library's stylesheet styles both the
+bare `al-dialog > dialog` and the markup shown above (the close `<form
+method="dialog">` first, then `<h2 slot="header" id="…-heading">`, the
+`<dialog>`'s `aria-labelledby` naming that id), and the library's checker
+keeps its demo in step with the renderer's shape.
 
 Either form works: if you write the native `<dialog>` yourself, as the
 `<al-dialog>`'s direct child (as you would from another stack), the
@@ -931,13 +939,14 @@ tab whose `<al-tab>` has `selected` (the server's choice), copies the
 tab's `name` onto a radio without one, and fires `al-select`. Without
 the script, mark the open tab with `checked` on its radio.
 
-**The ARIA state as it is.** The script gives each panel `role="tabpanel"`
-but nothing gives the labels `role="tab"` or the group `role="tablist"`;
-the interaction is a radio group, which a screen reader announces as one,
-and that is what is exposed today. A full tabs pattern (with
-`aria-selected` and `aria-controls`) is not there yet, and the manifest
-does not promise it. If your tabs must follow it, render the buttons and
-the roles yourself.
+**The ARIA pattern.** `al-tabs.js` makes it the tabs pattern a screen
+reader announces as tabs: `role="tablist"` on the `<al-tabs>`, `role="tab"`
+on each tab's radio (which keeps the focus, and is named by its label) with
+`aria-selected` following the choice, `aria-controls` naming its panel and a
+roving `tabindex` (0 on the selected tab, -1 on the others), and
+`role="tabpanel"` with an `id` and `aria-labelledby` naming the tab on each
+panel (ids it generates where you wrote none). Without the script the
+radio group is what is exposed, and it works.
 
 ### `al-tab`
 

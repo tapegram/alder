@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "version": "v0.2.1",
+  "version": "v0.3.0",
   "modules": [
     {
       "kind": "javascript-module",
@@ -509,7 +509,7 @@
           "name": "AlDialog",
           "tagName": "al-dialog",
           "customElement": true,
-          "description": "A modal dialog: wraps a native `<dialog>` (focus trap, inert page, Escape and return focus come from the platform). Open it with `<button commandfor=\"id\" command=\"show-modal\">` (al-shim.js polyfills invoker commands on older browsers). With no JavaScript, link to `#id`: the dialog is shown, not modal, and `#` hides it.",
+          "description": "A modal dialog: wraps a native `<dialog>` that the author writes (Alder's renderer writes it for you, including the heading and the close button; other stacks write the `<dialog>` themselves, and the stylesheet styles both the bare `<dialog>` and the markup Alder emits). The platform supplies the focus trap, the inert page, Escape and return focus. Open it with `<button commandfor=\"id\" command=\"show-modal\">` (al-shim.js polyfills invoker commands on older browsers). With no JavaScript, link to `#id`: the dialog is shown, not modal, and `#` hides it.",
           "attributes": [
             {
               "name": "heading",
@@ -647,7 +647,7 @@
           "name": "AlTabs",
           "tagName": "al-tabs",
           "customElement": true,
-          "description": "Tabs backed by a radio group: selection and arrow keys work with no JavaScript. Children are `<al-tab>`s; each holds a `<label>` wrapping a radio input (same `name`, one `checked`) and its `<al-panel>`. `al-tabs.js` adds Home/End, `selected`, and the `al-select` event.",
+          "description": "Tabs backed by a radio group: selection and arrow keys work with no JavaScript. Children are `<al-tab>`s; each holds a `<label>` wrapping a radio input (same `name`, one `checked`) and its `<al-panel>`. `al-tabs.js` adds the tabs ARIA pattern (`role=tablist`, `role=tab` with `aria-selected`/`aria-controls` and a roving `tabindex` on each radio, `role=tabpanel` with `id`/`aria-labelledby` on each panel), Home/End, `selected`, and the `al-select` event.",
           "attributes": [],
           "slots": [
             {
@@ -811,7 +811,7 @@
           "name": "AlDevpanel",
           "tagName": "al-devpanel",
           "customElement": true,
-          "description": "The developer bar: a one-line bar sticky along the bottom of the page; with `open`, the selected section shows above it. Content is server-rendered markup: a `<nav>` of tab `<button>`s (`aria-controls` naming a section's id) and `<section>`s. `al-tabs.js` switches sections and toggles `open`; without it every section shows when open. SQL and code are monospace.",
+          "description": "The developer bar: a one-line bar sticky along the bottom of the page; with `open`, the selected section shows above it. Content is server-rendered markup: a `<nav>` of tab `<button>`s (`aria-controls` naming a section's id) and `<section>`s. `al-devpanel.js` hides the sections that are not selected, re-applies the selection after any DOM patch (a MutationObserver) so a server patching the panel's inner content need not render `hidden`, and toggles `open`; without it every section shows when open. SQL and code are monospace.",
           "attributes": [
             {
               "name": "open",
@@ -849,6 +849,11 @@
     {
       "kind": "javascript-module",
       "path": "components/al-tabs.js",
+      "declarations": []
+    },
+    {
+      "kind": "javascript-module",
+      "path": "components/al-devpanel.js",
       "declarations": []
     },
     {
