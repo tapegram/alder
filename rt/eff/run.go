@@ -220,6 +220,15 @@ func interpret(env *Env, kind Kind, n node) (any, error) {
 				return nil, err
 			}
 			n = pure{v}
+		case mark:
+			if env.Rec != nil {
+				if x.on {
+					env.Rec.BeginGroup()
+				} else {
+					env.Rec.EndGroup()
+				}
+			}
+			n = pure{nil}
 		case fail:
 			return nil, &ErrFail{Msg: x.msg}
 		case notFound:

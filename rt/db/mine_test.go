@@ -362,3 +362,34 @@ func TestMine_UpdateKeepsTheOwner(t *testing.T) {
 		t.Fatalf("after an owner-changing fn: %+v", r.Val)
 	}
 }
+
+// A bulk delete is Task.all of one Db.delete per id: each is its own step, but the statements
+// share a Recorder group (the dev panel labels them bulk); one outside a Task.all has none.
+func TestRecorderGroupsTaskAll(t *testing.T) {
+	s := openItems(t)
+	ids := []string{put(t, s, "a1", "ann"), put(t, s, "a2", "ann"), put(t, s, "a3", "ann"), put(t, s, "a4", "ann")}
+	env := itemEnv(s, "ann")
+	env.Rec = &eff.Recorder{}
+	del := func(id string) eff.Task[struct{}] {
+		return call("Db.delete Item", true, func(e *eff.Env) (struct{}, error) {
+			return struct{}{}, DeleteRow(e.Ctx, e.Store.(Store), TxOf(e), itemTable, id)
+		})
+	}
+	var tasks []eff.Task[struct{}]
+	for _, id := range ids[:3] {
+		tasks = append(tasks, del(id))
+	}
+	if _, err := eff.Run(env, eff.KTask, eff.All(tasks)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eff.Run(env, eff.KTask, del(ids[3])); err != nil {
+		t.Fatal(err)
+	}
+	sql := env.Rec.SQL
+	if len(sql) != 4 || len(env.Rec.Steps) != 4 {
+		t.Fatalf("%d statements, %d steps", len(sql), len(env.Rec.Steps))
+	}
+	if sql[0].Group == 0 || sql[1].Group != sql[0].Group || sql[2].Group != sql[0].Group || sql[3].Group != 0 {
+		t.Errorf("groups: %d %d %d %d", sql[0].Group, sql[1].Group, sql[2].Group, sql[3].Group)
+	}
+}

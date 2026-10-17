@@ -65,11 +65,15 @@ type fail struct{ msg string }
 
 type notFound struct{}
 
+// mark begins (on) or ends a Task.all, for the recorder.
+type mark struct{ on bool }
+
 func (pure) isNode()     {}
 func (bind) isNode()     {}
 func (call) isNode()     {}
 func (fail) isNode()     {}
 func (notFound) isNode() {}
+func (mark) isNode()     {}
 
 // as unwraps a value carried through the untyped tree. A nil interface
 // comes back as T's zero value, so Pure[error](nil) and the like work.
@@ -117,13 +121,13 @@ func All[A any](es []Task[A]) Task[[]A] {
 	var from func(i int, out []A) node
 	from = func(i int, out []A) node {
 		if i == len(es) {
-			return pure{out}
+			return bind{mark{false}, func(any) node { return pure{out} }}
 		}
 		return bind{es[i].node, func(v any) node { return from(i+1, append(out, as[A](v))) }}
 	}
 	// The result slice is made when the effect runs, not when it is built,
 	// so running the same tree twice never shares a slice.
-	return Task[[]A]{bind{pure{nil}, func(any) node { return from(0, make([]A, 0, len(es))) }}}
+	return Task[[]A]{bind{mark{true}, func(any) node { return from(0, make([]A, 0, len(es))) }}}
 }
 
 // Fail is an effect that fails with msg (Task.fail, a @unique violation, a
@@ -314,6 +318,32 @@ type Recorder struct {
 	mu    sync.Mutex
 	Steps []StepRec
 	SQL   []SQLRec
+
+	group, depth, groups int // the Task.all being run (0: none), its nesting, groups begun
+}
+
+// BeginGroup marks the start of a Task.all: statements recorded until the matching EndGroup
+// share one group (an inner Task.all joins the outer's).
+func (r *Recorder) BeginGroup() {
+	r.mu.Lock()
+	if r.depth == 0 {
+		r.groups++
+		r.group = r.groups
+	}
+	r.depth++
+	r.mu.Unlock()
+}
+
+// EndGroup ends the innermost Task.all.
+func (r *Recorder) EndGroup() {
+	r.mu.Lock()
+	if r.depth > 0 {
+		r.depth--
+	}
+	if r.depth == 0 {
+		r.group = 0
+	}
+	r.mu.Unlock()
 }
 
 // StepRec is one recorded Call: Name, how long it took, and Cap ("adapter", "fake" or "") for a
@@ -330,9 +360,9 @@ type SQLRec struct {
 	Args []any
 	Ms   float64
 	Rows int64
-	// Step is the index of the effect step that ran the statement (the steps recorded before
-	// it), set by AddSQL: statements of one step ran from one bulk operation.
-	Step int
+	// Group is nonzero for a statement issued under one Task.all (a bulk operation, such as
+	// `Task.all (List.map (\row -> Db.delete …) rows)`); statements of one Task.all share it.
+	Group int
 }
 
 // AddStep records a step.
@@ -341,7 +371,7 @@ func (r *Recorder) AddStep(s StepRec) { r.mu.Lock(); r.Steps = append(r.Steps, s
 // AddSQL records a statement.
 func (r *Recorder) AddSQL(s SQLRec) {
 	r.mu.Lock()
-	s.Step = len(r.Steps) // a step is recorded when it finishes, so the running one has this index
+	s.Group = r.group
 	r.SQL = append(r.SQL, s)
 	r.mu.Unlock()
 }

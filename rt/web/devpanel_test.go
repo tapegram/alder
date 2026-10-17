@@ -192,29 +192,59 @@ func TestNoticedWithoutScript(t *testing.T) {
 	}
 }
 
-// A statement run per id by one step (a bulk operation) is labelled, not flagged as a
-// duplicate; the same statement with the same arguments, or across steps, still is.
+// A statement run per id by one Task.all (each in its own step, as the admin's bulk delete
+// does) is labelled bulk, not flagged as a duplicate; a repeated query outside a group, or with
+// the same arguments, still is, and the session's user selected by both a POST and its
+// redirect follow is not one.
 func TestDevPanel_BulkNotDuplicate(t *testing.T) {
 	t.Setenv("ALDER_DEV", "1")
-	routes := one("GET", "/x", func(rq *Request) Response {
-		rec := rq.Env.Rec
-		for _, id := range []int{1, 2, 3} { // one step, other arguments
-			rec.AddSQL(eff.SQLRec{Stmt: "DELETE FROM p WHERE id = ?", Args: []any{id}, Rows: 1})
-		}
-		rec.AddStep(eff.StepRec{Name: "Db.deleteMany"})
-		for range 2 { // another statement, the same arguments
-			rec.AddSQL(eff.SQLRec{Stmt: "SELECT a", Args: []any{1}, Rows: 1})
-		}
-		rec.AddStep(eff.StepRec{Name: "Db.q"})
-		return PageResponse(doc("hi"), nil, nil, false)
-	})
+	stmt := func(name, q string, arg any) eff.Task[int] {
+		return eff.Call(name, false, func(e *eff.Env) (int, error) {
+			e.Rec.AddSQL(eff.SQLRec{Stmt: q, Args: []any{arg}, Rows: 1})
+			return 0, nil
+		})
+	}
+	routes := []Route{
+		{Method: "POST", Pattern: "/_m/A/Bulk", Handle: func(rq *Request) Response {
+			var ds, same []eff.Task[int]
+			for _, id := range []int{1, 2, 3} {
+				ds = append(ds, stmt("Db.delete", "DELETE FROM p WHERE id = ?", id))
+			}
+			for range 2 {
+				same = append(same, stmt("Db.get", "SELECT same", 1))
+			}
+			for _, t := range []eff.Task[[]int]{eff.All(ds), eff.All(same)} {
+				if _, err := eff.Run(rq.Env, eff.KTask, t); err != nil {
+					panic(err)
+				}
+			}
+			for _, id := range []int{7, 8} { // distinct arguments, but not under a Task.all: N+1
+				if _, err := eff.Run(rq.Env, eff.KTask, stmt("Db.get", "SELECT n1", id)); err != nil {
+					panic(err)
+				}
+			}
+			rq.Env.Rec.AddSQL(eff.SQLRec{Stmt: "SELECT user", Args: []any{"u"}, Rows: 1})
+			return RedirectResponse("/list", nil)
+		}},
+		{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response {
+			rq.Env.Rec.AddSQL(eff.SQLRec{Stmt: "SELECT user", Args: []any{"u"}, Rows: 1})
+			return PageResponse(doc("list"), nil, nil, false)
+		}},
+	}
 	h := NewRouter(routes, testOpts(func(o *Options) { o.Dev = true }))
-	b := serve(h, httptest.NewRequest("GET", "/x", nil)).Body.String()
-	if !strings.Contains(b, "x3 (bulk)") || strings.Contains(b, "duplicate x3") {
+	req := httptest.NewRequest("POST", "/_m/A/Bulk", nil)
+	req.Header.Set("Datastar-Request", "true")
+	b := serve(h, req).Body.String()
+	for _, want := range []string{"x3 (bulk)", "duplicate x2", "duplicate x2"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %q in %s", want, b)
+		}
+	}
+	if strings.Contains(b, "duplicate x3") {
 		t.Errorf("the bulk statement is flagged: %s", b)
 	}
-	if !strings.Contains(b, "duplicate x2") {
-		t.Errorf("a repeated query is not flagged: %s", b)
+	if strings.Count(b, "data-dup") != 4 { // two lines each: SELECT same (same args), SELECT n1 (not grouped)
+		t.Errorf("%d duplicate flags, want 4 (the session select of both hops is not one): %s", strings.Count(b, "data-dup"), b)
 	}
 }
 

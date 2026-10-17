@@ -127,32 +127,47 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 	b.WriteString(`</ol></section>`)
 
 	b.WriteString(`<section id="_alder_tab_sql" hidden><h3>SQL</h3>`)
-	count := map[string]int{}
-	steps1 := map[string]map[int]bool{} // the steps a statement ran in
-	args1 := map[string]map[string]bool{}
-	var total float64
-	for _, q := range sqls {
-		count[q.Stmt]++
-		total += q.Ms
-		if steps1[q.Stmt] == nil {
-			steps1[q.Stmt], args1[q.Stmt] = map[int]bool{}, map[string]bool{}
+	// a statement is counted per answer (the POST, then each redirect follow: the session's
+	// user is selected by each); one run per id by a single Task.all, each time with other
+	// arguments, is a bulk operation, not a repeated query: it is labelled, not flagged
+	seg := func(i int) int { // which answer statement i belongs to
+		n := 0
+		for _, h := range tw.hops {
+			if h.sql <= i {
+				n++
+			}
 		}
-		steps1[q.Stmt][q.Step] = true
-		args1[q.Stmt][fmt.Sprint(q.Args)] = true
+		return n
 	}
-	// one statement run per id by a single step, each time with other arguments, is a bulk
-	// operation, not a repeated query: it is labelled, not flagged
-	bulk := func(stmt string) bool {
-		return count[stmt] > 1 && len(steps1[stmt]) == 1 && len(args1[stmt]) == count[stmt]
+	type key struct {
+		seg  int
+		stmt string
+	}
+	count := map[key]int{}
+	groups := map[key]map[int]bool{}
+	args1 := map[key]map[string]bool{}
+	var total float64
+	for i, q := range sqls {
+		k := key{seg(i), q.Stmt}
+		count[k]++
+		total += q.Ms
+		if groups[k] == nil {
+			groups[k], args1[k] = map[int]bool{}, map[string]bool{}
+		}
+		groups[k][q.Group] = true
+		args1[k][fmt.Sprint(q.Args)] = true
+	}
+	bulk := func(k key) bool {
+		return count[k] > 1 && len(groups[k]) == 1 && !groups[k][0] && len(args1[k]) == count[k]
 	}
 	fmt.Fprintf(&b, `<p>%d statements, %.2f ms</p><ol>`, len(sqls), total)
 	for i, q := range sqls {
 		marker(i, func(h hopMark) int { return h.sql })
-		dup := ""
-		if bulk(q.Stmt) {
-			dup = fmt.Sprintf(` <span data-bulk>x%d (bulk)</span>`, count[q.Stmt])
-		} else if count[q.Stmt] > 1 {
-			dup = fmt.Sprintf(` <strong data-dup>duplicate x%d</strong>`, count[q.Stmt])
+		dup, k := "", key{seg(i), q.Stmt}
+		if bulk(k) {
+			dup = fmt.Sprintf(` <span data-bulk>x%d (bulk)</span>`, count[k])
+		} else if count[k] > 1 {
+			dup = fmt.Sprintf(` <strong data-dup>duplicate x%d</strong>`, count[k])
 		}
 		rows := ""
 		if q.Rows >= 0 {
