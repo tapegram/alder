@@ -140,8 +140,14 @@ func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []s
 		nav, navOK, _ = Regions.Body(string(b), "nav")
 	}
 	tableOf := map[string]string{} // a table page's path: the expression of its list page
+	siloOf := map[string]string{}  // a siloed table page's path: its silo's dashboard
 	for _, t := range p.Tables {
 		for _, kind := range []string{"Index", "Show", "New", "Edit", "Delete", "Bulk"} {
+			if t.Silo != "" { // new when the dashboard of one value does not link to its list
+				siloOf[FileOf(o.Module+"."+t.Module+"."+kind)] = FileOf(o.Module + "." + UpperFirst(Plural(t.Silo)) + ".Show")
+				tableOf[FileOf(o.Module+"."+t.Module+"."+kind)] = o.Module + "." + t.Module + ".Index {"
+				continue
+			}
 			tableOf[FileOf(o.Module+"."+t.Module+"."+kind)] = o.Module + "." + t.Module + ".Index {}"
 		}
 	}
@@ -154,7 +160,10 @@ func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []s
 		if !exists(path) {
 			newTable := false
 			if list, ok := tableOf[path]; ok { // a table's page: new when the nav has no link to the table
-				if navOK {
+				if dash, ok := siloOf[path]; ok {
+					b, err := os.ReadFile(filepath.Join(p.Dir, filepath.FromSlash(dash)))
+					newTable = err != nil || !strings.Contains(string(b), list)
+				} else if navOK {
 					newTable = !strings.Contains(nav, "{"+list+"}")
 				} else { // no nav to read (the layout deleted): new when none of its pages exists
 					entries, _ := os.ReadDir(filepath.Join(p.Dir, filepath.Dir(filepath.FromSlash(path))))
@@ -207,8 +216,13 @@ func AdminFiles(p *Program, o AdminOptions) (map[string]string, []string) {
 	for _, at := range g.tables {
 		g.bulkInfo(at)
 	}
+	g.silos()
 	g.layout()
 	g.dashboard()
+	for _, s := range g.silo {
+		g.picker(s)
+		g.siloDashboard(s)
+	}
 	for _, at := range g.tables {
 		g.index(at)
 		g.show(at)
@@ -225,6 +239,7 @@ type adminGen struct {
 	o      AdminOptions
 	role   *Column // the user table's role column, which every page's load reads again; nil for none
 	tables []*adminTable
+	silo   []*adminSilo // the app's silos (admin_silo.go)
 	files  map[string]string
 	order  []string
 }
@@ -246,6 +261,7 @@ type adminTable struct {
 	bulkDel   bool        // the bulk page offers a delete
 	bulkHolds []*node     // the @restrict references that keep a row from a bulk delete
 	bulkSet   []*Column   // the columns the bulk page sets
+	silo      *adminSilo  // the silo it lives in, nil for a table of the shared store
 }
 
 // referrer is a column that refers to a table: what deleting a row of that table does to the
@@ -263,6 +279,7 @@ func (g *adminGen) table(t *Table) *adminTable {
 	for _, c := range t.Columns {
 		switch {
 		case c.ID || c.Created || c.Updated:
+		case t.Silo != "" && c.Name == t.PartCol: // the page's parameter, never a form's
 		case c.Kind == KindTime:
 			if c.Required() && !c.Maybe {
 				at.nowCols = append(at.nowCols, c)
@@ -289,6 +306,9 @@ func (g *adminGen) referrersOf(t *Table) []*referrer {
 	count := map[string]int{}
 	var refs []*referrer
 	for _, other := range g.p.Tables {
+		if other.Silo != "" && other.Silo != t.Silo { // another database: a delete there is not this one's
+			continue
+		}
 		for _, c := range other.Columns {
 			if c.Ref == t.Name && g.p.TableNamed(c.Ref) == t {
 				refs = append(refs, &referrer{t: other, col: c})
@@ -300,6 +320,9 @@ func (g *adminGen) referrersOf(t *Table) []*referrer {
 		r.field = Plural(LowerFirst(r.t.Name))
 		if count[r.t.Module] > 1 {
 			r.field += UpperFirst(r.col.Name)
+		}
+		if r.field == "labels" || r.field == "rows" || r.field == "owns" { // a field of the page's own
+			r.field += "Of" + t.Name
 		}
 	}
 	return refs
@@ -416,7 +439,7 @@ func secretValue(c *Column) (string, bool) {
 func shown(t *Table, id bool) []*Column {
 	var out []*Column
 	for _, c := range t.Columns {
-		if !c.Secret() && (id || !c.ID) {
+		if !c.Secret() && (id || !c.ID) && !(t.Silo != "" && c.Name == t.PartCol) {
 			out = append(out, c)
 		}
 	}
@@ -444,7 +467,7 @@ func (g *adminGen) file(module string, imports *importSet, body string) {
 	b.WriteString("-- `-- @admin begin <name>` / `-- @admin end` are rewritten by `alder regen admin`\n")
 	fmt.Fprintf(&b, "module %s\n\n", module)
 	b.WriteString(regionAt("", "imports", strings.Split(strings.TrimSuffix(imports.lines(), "\n"), "\n")) + "\n\n")
-	b.WriteString(body)
+	b.WriteString(g.siloCode(module, body))
 	path := FileOf(module)
 	g.files[path] = Tidy(b.String())
 	g.order = append(g.order, path)
@@ -491,7 +514,12 @@ func (g *adminGen) layout() {
 	imports := newImports(mod, g.p.Std)
 	var nav []string
 	for _, at := range g.tables {
-		nav = append(nav, fmt.Sprintf("<a href={%s {}}>%s</a>", at.page("Index"), at.title))
+		if at.silo == nil {
+			nav = append(nav, fmt.Sprintf("<a href={%s {}}>%s</a>", at.page("Index"), at.title))
+		}
+	}
+	for _, s := range g.silo { // a database per value: the picker, then a value's pages
+		nav = append(nav, fmt.Sprintf("<a href={%s {}}>%s, by %s</a>", s.picker, s.title, s.key))
 	}
 	var b strings.Builder
 	b.WriteString("-- The admin's frame: the app's layout around a nav of every table's list.\n")
@@ -543,6 +571,9 @@ func (g *adminGen) dashboard() {
 	open, close := g.layoutOpen("Dashboard", imports)
 	var loads, cards []string
 	for _, at := range g.tables {
+		if at.silo != nil { // counted for one value at a time: the silo's card
+			continue
+		}
 		t := at.t
 		imports.add(t.Module)
 		sel := "Db.from " + t.Name
@@ -554,6 +585,11 @@ func (g *adminGen) dashboard() {
 			fmt.Sprintf("let %sCount <- Db.from %s |> Db.count", LowerFirst(t.Name), t.Name))
 		cards = append(cards, fmt.Sprintf("  { key: %s, title: %s, href: %s {}, count: %sCount, rows: List.map (\\row -> { label: row.%s, href: %s { id: row.%s } }) %s },",
 			quote(at.plural), quote(at.title), at.page("Index"), LowerFirst(t.Name), at.label.Name, at.page("Show"), t.IDField, at.plural))
+	}
+	for _, s := range g.silo { // the key's newest rows (its own card's), each opening its dashboard
+		kat := g.adminOf(s.kt)
+		cards = append(cards, fmt.Sprintf("  { key: %s, title: %s, href: %s {}, count: %sCount, rows: List.map (\\row -> { label: %s, href: %s { %s: row.%s } }) %s },",
+			quote("silo-"+s.key), quote(s.title+", by "+s.key), s.picker, LowerFirst(s.kt.Name), textOf(kat.label, "row."+kat.label.Name), s.dash, s.key, s.kt.IDField, kat.plural))
 	}
 	body := append(loads, "Query.succeed { cards: [")
 	body = append(body, cards...)
@@ -582,32 +618,27 @@ func (g *adminGen) dashboard() {
 
 	// the tests
 	var tests []TestData
-	for _, at := range g.tables {
+	card := func(at *adminTable, key, name string, show func(row string) string) {
 		t := at.t
 		tb := g.tb(mod, imports, true)
 		before := tb.counts[t.Module]
 		tb.bulkInsert(t, recentRows+1, "")
 		total := len(tb.visible(t, false)) + tb.bulk[t.Module]
 		tb.let("let page <- Test.get (%s {})", mod)
-		lhs := []string{fmt.Sprintf("count: Test.text \"#%s al-badge\" page.doc", at.plural)}
-		rhs := []string{fmt.Sprintf("count: Just %s", quote(fmt.Sprint(total)))}
-		if !at.label.ID && t.Created != "" {
-			var labels []string
-			for n := before + recentRows + 1; n > before+1; n-- {
-				labels = append(labels, quote(rawText(at.label, n)))
-			}
-			lhs = append(lhs, fmt.Sprintf("rows: Test.texts \"#%s li\" page.doc", at.plural))
-			rhs = append(rhs, "rows: ["+strings.Join(labels, ", ")+"]")
-		} else if t.Created != "" { // the label is the id: the newest rows, by the pages they link to
-			tb.let("let newest <- Db.from %s |> Db.orderBy %s.%s.desc |> Db.limit %d |> Db.all", t.Name, t.Name, t.Created, recentRows)
-			lhs = append(lhs, fmt.Sprintf("rows: List.map (\\card -> List.map (\\row -> row.href) card.rows) (List.filter (\\card -> card.key == %s) page.model.cards)", quote(at.plural)))
-			rhs = append(rhs, fmt.Sprintf("rows: [List.map (\\row -> %s { id: row.%s }) newest]", at.page("Show"), t.IDField))
-		} else {
-			lhs = append(lhs, fmt.Sprintf("rows: Test.count \"#%s li\" page.doc", at.plural))
-			rhs = append(rhs, fmt.Sprintf("rows: %d", recentRows))
-		}
-		name := "the dashboard counts the " + Plural(at.noun) + " and lists the newest five"
+		lhs, rhs := g.cardChecks(tb, at, key, before, total, show)
 		tests = append(tests, TestData{Name: quote(name), Lines: tb.lines, Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
+	}
+	for _, at := range g.tables {
+		if at.silo == nil {
+			card(at, at.plural, "the dashboard counts the "+Plural(at.noun)+" and lists the newest five", func(row string) string {
+				return at.page("Show") + " { id: " + row + " }"
+			})
+		}
+	}
+	for _, s := range g.silo {
+		card(g.adminOf(s.kt), "silo-"+s.key, "the dashboard lists the newest "+Plural(s.key)+", each opening its "+strings.ToLower(s.title), func(row string) string {
+			return s.dash + " { " + s.key + ": " + row + " }"
+		})
 	}
 	if g.role == nil { // a role is read at login (chapter 6): the cookie, not a row, opens the admin
 		tb := g.tb(mod, imports, false)
@@ -621,8 +652,18 @@ func (g *adminGen) dashboard() {
 			}})
 	}
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string { return mod + " {}" })...)
-	b.WriteString(testsText(tests))
+	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
+}
+
+// adminOf is table t as the admin shows it.
+func (g *adminGen) adminOf(t *Table) *adminTable {
+	for _, at := range g.tables {
+		if at.t == t {
+			return at
+		}
+	}
+	return nil
 }
 
 // recentRows is the dashboard's `recent`.
@@ -630,6 +671,14 @@ const recentRows = 5
 
 // tb starts a test's builder in module mod, signed in as an Admin when admin is set.
 func (g *adminGen) tb(mod string, imports *importSet, admin bool) *testBuilder {
+	if s := g.siloOf(mod); s != nil { // a siloed table's page: the Admin a member, for the test's own reads
+		return g.tbIn(mod, imports, admin, s, true)
+	}
+	for _, s := range g.silo {
+		if mod == s.dash { // the dashboard of one value: an Admin who is no member
+			return g.tbIn(mod, imports, admin, s, false)
+		}
+	}
 	tb := newTestBuilder(g.p, mod, imports)
 	if admin {
 		tb.login("Admin")
@@ -725,7 +774,7 @@ func labelFunc(c *Column) string { return c.Name + "Label" }
 func (g *adminGen) labelled(at *adminTable) []*Column {
 	var out []*Column
 	for _, c := range at.t.Columns {
-		if rt := g.p.TableNamed(c.Ref); c.Ref != "" && rt != nil && !rt.Label().ID && !c.Secret() {
+		if rt := g.p.TableNamed(c.Ref); c.Ref != "" && rt != nil && !rt.Label().ID && !c.Secret() && !(at.t.Silo != "" && c.Name == at.t.PartCol) {
 			out = append(out, c)
 		}
 	}
@@ -895,8 +944,13 @@ func (g *adminGen) index(at *adminTable) {
 	params = append(params, "sort: Text = "+quote(order), "dir: Text = \"desc\"", "page: Int = 1")
 
 	var b strings.Builder
-	b.WriteString(regionAt("", "params", wrapAll([]string{fmt.Sprintf("page %s { %s }%s", quote(at.path), strings.Join(params, ", "), adminRequires)})) + "\n\n")
-	fmt.Fprintf(&b, "type Model = {\n  rows: List %s,\n  labels: Labels,\n  q: Text,\n  filters: Filters,\n  sort: Text,\n  dir: Text,\n  page: Int,\n  pages: Int,\n  count: Int,\n}\n\n", t.Name)
+	b.WriteString(regionAt("", "params", wrapAll([]string{fmt.Sprintf("page %s { %s }%s", pathLit(at.path), strings.Join(at.params(mod, imports, params), ", "), at.requires())})) + "\n\n")
+	keyField, keyInit := "", ""
+	if at.silo != nil { // the key, for the links listAt makes (it has the model, not the session)
+		keyField = "  " + at.silo.key + ": " + at.silo.keyType(mod, imports) + ",\n"
+		keyInit = "\n    " + at.silo.key + ": session." + at.silo.key + ","
+	}
+	fmt.Fprintf(&b, "type Model = {\n%s  rows: List %s,\n  labels: Labels,\n  q: Text,\n  filters: Filters,\n  sort: Text,\n  dir: Text,\n  page: Int,\n  pages: Int,\n  count: Int,\n}\n\n", keyField, t.Name)
 	b.WriteString(fmt.Sprintf("perPage : Int\nperPage = %d\n\n", bulkMax))
 	b.WriteString(regionAt("", "search", search) + "\n\n")
 	fmt.Fprintf(&b, `-- A Filter is one of the list's selects: the column it filters, the option chosen ("" for any),
@@ -945,7 +999,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
       |> Db.offset ((page - 1) * perPage)
       |> Db.all
   let labels <- labelsOf rows
-  Query.succeed {
+  Query.succeed {%s
     rows: rows,
     labels: labels,
     q: q,
@@ -955,7 +1009,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
     page: page,
     pages: pages,
     count: count,
-  }`, t.Name, t.Name)))
+  }`, t.Name, t.Name, keyInit)))
 	b.WriteString(regionAt("", "labels", wrapAll(g.labels(at, mod, imports))) + "\n\n")
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n", open, at.title)
@@ -1001,7 +1055,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
       <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
       {if model.page < model.pages then <a slot="next" href={listAt model model.sort model.dir (model.page + 1)} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
-`, quote(at.path), at.page("New"), at.noun, regionAt("            ", "headers", headers), regionAt("              ", "cells", cells), bulkForms(at))
+`, at.action(""), at.page("New"), at.noun, regionAt("            ", "headers", headers), regionAt("              ", "cells", cells), bulkForms(at))
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	// the tests
@@ -1091,8 +1145,11 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 		Result: fmt.Sprintf("{ first: List.length first.model.rows, second: List.length second.model.rows, past: { page: past.model.page, rows: List.length past.model.rows }, count: Test.text \"#count\" first.doc, pages: Test.texts \"al-pagination span\" first.doc } == { first: 25, second: %d, past: { page: %d, rows: %d }, count: Just \"%d rows\", pages: [\"Previous\", \"Page 1 of %d\"] }",
 			total-25, (total+24)/25, total-25, total, (total+24)/25)})
 
+	if at.silo != nil {
+		tests = append(tests, g.siloListTest(at, mod, imports))
+	}
 	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return mod + " {}" })...)
-	b.WriteString(testsText(tests))
+	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
 }
 
@@ -1194,6 +1251,9 @@ func (g *adminGen) filters(at *adminTable, mod string, cols []*Column, imports *
 			"}) fs)")
 	}
 	keep = append([]string{"q: model.q"}, append(keep, "sort: sort", "dir: dir", "page: n")...)
+	if at.silo != nil {
+		keep = append([]string{at.silo.key + ": model." + at.silo.key}, keep...)
+	}
 	out = append(out, "",
 		"-- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.",
 		"listAt : Model -> Text -> Text -> Int -> Page",
@@ -1301,7 +1361,7 @@ func (g *adminGen) show(at *adminTable) {
 		"    Query.succeed { "+strings.Join(append([]string{"row: row", "labels: labels"}, pl.fields...), ", ")+" }",
 		"  },", "  Nothing -> Query.notFound,", "}")
 	var b strings.Builder
-	fmt.Fprintf(&b, "page %s { id: %s }%s\n\n", pathLit(at.path+"/{id}"), types.StringIn(t.IDType, mod), adminRequires)
+	fmt.Fprintf(&b, "page %s { %s }%s\n\n", pathLit(at.path+"/{id}"), strings.Join(at.params(mod, imports, []string{"id: " + types.StringIn(t.IDType, mod)}), ", "), at.requires())
 	b.WriteString("-- The row, the labels of the rows it refers to, and (for the delete dialog) how many rows of\n-- each table refer to it.\n")
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n  labels: Labels,\n" + regionAt("  ", "model", pl.model) + "\n}\n\n")
 	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
@@ -1362,7 +1422,7 @@ update msg model session = match msg {
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
 		return pageLit(mod, []string{"id: " + tb.insertRow(t, "", nil, false)})
 	})...)
-	b.WriteString(testsText(tests))
+	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
 }
 
@@ -1535,6 +1595,9 @@ func (g *adminGen) newPage(at *adminTable) {
 	for _, c := range at.nowCols {
 		inits = append(inits, c.Name+": now")
 	}
+	if at.silo != nil { // the page's key: the database the row goes in
+		inits = append(inits, t.PartCol+": session."+at.silo.key)
+	}
 	for _, c := range at.secrets {
 		v, _ := secretValue(c)
 		inits = append(inits, c.Name+": "+v)
@@ -1553,11 +1616,11 @@ func (g *adminGen) newPage(at *adminTable) {
 
 	var b strings.Builder
 	pageParams := "{ }"
-	if fp := g.findParams(at); len(fp) > 0 {
+	if fp := at.params(mod, imports, g.findParams(at)); len(fp) > 0 {
 		pageParams = "{ " + strings.Join(fp, ", ") + " }"
 	}
 	decls, finder, arms := g.finders(at, at.page("New"), false)
-	fmt.Fprintf(&b, "page %s %s%s\n\n", quote(at.path+"/new"), pageParams, adminRequires)
+	fmt.Fprintf(&b, "page %s %s%s\n\n", pathLit(at.path+"/new"), pageParams, at.requires())
 	b.WriteString("type Model = {\n" + regionAt("  ", "model", model) + "\n}\n\n")
 	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
 	b.WriteString(regionAt("", "form", form) + "\n\n")
@@ -1614,7 +1677,7 @@ func (g *adminGen) newPage(at *adminTable) {
 	tests = append(tests, g.notOffered(at, mod, imports, false)...)
 	tests = append(tests, g.findTests(at, mod, imports, false)...)
 	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return mod + " {}" })...)
-	b.WriteString(testsText(tests))
+	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
 }
 
@@ -1866,8 +1929,8 @@ func (g *adminGen) edit(at *adminTable) {
 
 	var b strings.Builder
 	decls, finder, arms := g.finders(at, at.page("Edit"), true)
-	editParams := append([]string{"id: " + types.StringIn(t.IDType, mod)}, g.findParams(at)...)
-	fmt.Fprintf(&b, "page %s { %s }%s\n\n", pathLit(at.path+"/{id}/edit"), strings.Join(editParams, ", "), adminRequires)
+	editParams := at.params(mod, imports, append([]string{"id: " + types.StringIn(t.IDType, mod)}, g.findParams(at)...))
+	fmt.Fprintf(&b, "page %s { %s }%s\n\n", pathLit(at.path+"/{id}/edit"), strings.Join(editParams, ", "), at.requires())
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + regionAt("  ", "model", model) + "\n}\n\n")
 	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
 	b.WriteString(regionAt("", "form", form) + "\n\n")
@@ -1924,7 +1987,7 @@ func (g *adminGen) edit(at *adminTable) {
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
 		return pageLit(mod, []string{"id: " + tb.insertRow(t, "", nil, false)})
 	})...)
-	b.WriteString(testsText(tests))
+	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
 }
 
@@ -2188,7 +2251,7 @@ func (g *adminGen) delete(at *adminTable) {
 	labelRow := "<p>{" + textOf(at.label, "model.row."+at.label.Name) + "}</p>"
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "page %s { id: %s }%s\n\n", pathLit(at.path+"/{id}/delete"), types.StringIn(t.IDType, mod), adminRequires)
+	fmt.Fprintf(&b, "page %s { %s }%s\n\n", pathLit(at.path+"/{id}/delete"), strings.Join(at.params(mod, imports, []string{"id: " + types.StringIn(t.IDType, mod)}), ", "), at.requires())
 	b.WriteString("-- The row, and how many rows of each table refer to it.\n")
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + regionAt("  ", "model", pl.model) + "\n}\n\n")
 	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
@@ -2221,7 +2284,7 @@ update msg model session = match msg {
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
 		return pageLit(mod, []string{"id: " + tb.insertRow(t, "", nil, false)})
 	})...)
-	b.WriteString(testsText(tests))
+	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
 }
 

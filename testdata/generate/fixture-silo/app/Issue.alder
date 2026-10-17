@@ -1,0 +1,32 @@
+module Issue
+
+import Org
+import Project
+import User
+
+type IssueId = brand Text
+
+type Status = Open | Closed
+
+-- In `silo org` with its project; its assignee is a shared user.
+table Issue {
+  id: IssueId @id,
+  title: Text.NonEmpty,
+  project: Project.ProjectId @ref Project @cascade,
+  org: Org.OrgId @ref Org @partition org,
+  status: Status = Open,
+  assignee: Maybe User.UserId @ref User,
+  created: Time @created,
+}
+
+test "deleting a project deletes its issues, in the org's database" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let a <- Db.insert Org { name: Text.NonEmpty "A" }
+  let _ <- Test.member me a
+  let _ <- Test.login { user: Just me, org: Just a }
+  let p <- Db.insert Project.Project { name: Text.NonEmpty "P", org: a }
+  let _ <- Db.insert Issue { title: Text.NonEmpty "I", project: p, org: a, assignee: Nothing }
+  let _ <- Db.delete Project.Project p
+  let left <- Db.from Issue |> Db.count
+  Task.succeed (left == 0)
+}

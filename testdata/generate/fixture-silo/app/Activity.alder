@@ -1,0 +1,21 @@
+module Activity
+
+import Org
+
+type ActivityId = brand Text
+
+-- Partitioned by org in the shared database: a predicate, not a silo.
+table Activity {
+  id: ActivityId @id,
+  text: Text.NonEmpty,
+  org: Org.OrgId @ref Org @cascade @partition org,
+  created: Time @created,
+}
+
+test "deleting an org deletes its activity" = {
+  let a <- Db.insert Org { name: Text.NonEmpty "A" }
+  let _ <- Db.insert Activity { text: Text.NonEmpty "made", org: a }
+  let _ <- Db.delete Org a
+  let left <- Db.from Activity |> Db.count
+  Task.succeed (left == 0)
+}

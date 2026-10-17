@@ -24,10 +24,45 @@ type testBuilder struct {
 	today   bool                // `let today <- Date.today` was written
 	meRole  string              // the role the signed-in user's row is inserted with ("" for its default)
 	taken   map[string]bool     // variable names in use
+	silo    *siloCtx            // a test of an admin page in a silo: its key's row; nil otherwise
 }
 
-// rowRef is a named row a test inserted, and its owner's variable ("" for a table without
-// `@owner`).
+// siloCtx is a test of a page in `silo key`: the row of the key's table every row of the test
+// lives under (v, inserted first), and whether the signed-in Admin is a member of it (logged in
+// with the key set, so the test's own reads go to that silo) or not (the key unset: only the
+// pages, which take it from their parameter, read the silo).
+type siloCtx struct {
+	key    string
+	table  *Table
+	member bool
+	admin  bool // the key is set for an Admin only (the admin's pages; another role's tests are 404s)
+	v      string
+}
+
+// keyedFor makes the builder's login set the key page pg requires besides `user` (an `org`):
+// a row of the key's table, the signed-in user a member of it when the key is `via` a table.
+func (b *testBuilder) keyedFor(pg *Page) *testBuilder {
+	for _, k := range pg.Keys {
+		if k == "user" {
+			continue
+		}
+		if kt := b.p.KeyTable(k); kt != nil {
+			b.silo = &siloCtx{key: k, table: kt, member: true}
+		}
+	}
+	return b
+}
+
+// keyRow is the variable holding the silo's key row, inserted the first time.
+func (b *testBuilder) keyRow() string {
+	if b.silo.v == "" {
+		b.silo.v = b.insertRow(b.silo.table, b.silo.key, nil, true)
+	}
+	return b.silo.v
+}
+
+// rowRef is a named row a test inserted, and its owner's variable (its partition column's:
+// the user of an `@owner`, the org of an `@partition org`; "" for a table without one).
 type rowRef struct{ v, owner string }
 
 func newTestBuilder(p *Program, home string, imports *importSet) *testBuilder {
@@ -96,12 +131,26 @@ func (b *testBuilder) login(role string) {
 		b.meRole = role
 	}
 	me := b.user()
+	fields := []string{"user: Just " + me}
+	for _, f := range b.p.Session.Fields { // a `Maybe` without a default (an `org`) is written: Nothing
+		if _, isMaybe := unMaybe(f.Type); !isMaybe || f.HasDefault || f.Name == "user" || f.Name == "role" {
+			continue
+		}
+		if b.silo != nil && b.silo.member && f.Name == b.silo.key && (role == "Admin" || !b.silo.admin) {
+			k := b.keyRow()
+			if b.p.Via[f.Name] != "" { // `via`: the session's org must be one of the user's
+				b.let("let _ <- Test.member %s %s", me, k)
+			}
+			fields = append(fields, f.Name+": Just "+k)
+			continue
+		}
+		fields = append(fields, f.Name+": Nothing")
+	}
 	if role != "" {
 		b.typeRef(b.p.Session.Role.Type)
-		b.let("let _ <- Test.login { user: Just %s, role: %s }", me, role)
-		return
+		fields = append(fields, "role: "+role)
 	}
-	b.let("let _ <- Test.login { user: Just %s }", me)
+	b.let("let _ <- Test.login { %s }", strings.Join(fields, ", "))
 }
 
 // insert inserts a row of t with sample values, after the rows it refers to, and returns the
@@ -131,7 +180,7 @@ func (b *testBuilder) insertRow(t *Table, v string, over map[string]string, memo
 		if !ok {
 			val = b.columnValue(t, c, n)
 		}
-		if c.Owner {
+		if c.Owner || c.Name == t.PartCol && t.PartCol != "" {
 			owner = val
 		}
 		fields = append(fields, c.Name+": "+val)
@@ -185,8 +234,12 @@ func (b *testBuilder) bulkInsert(t *Table, k int, owner string) {
 func (b *testBuilder) visible(t *Table, mine bool) []string {
 	var out []string
 	rows := b.rows[t.Module]
+	want := b.me
+	if t.PartKey != "" && t.PartKey != "user" && b.silo != nil { // Db.scoped: the key's rows
+		want = b.silo.v
+	}
 	for i := len(rows) - 1; i >= 0; i-- {
-		if !mine || rows[i].owner == b.me {
+		if !mine || rows[i].owner == want {
 			out = append(out, rows[i].v)
 		}
 	}

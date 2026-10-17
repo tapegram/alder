@@ -1,0 +1,28 @@
+module Membership
+
+import Org
+import User
+
+-- The `via` table of the session's `org`.
+table Membership {
+  id: MembershipId @id,
+  user: User.UserId @ref User @cascade,
+  org: Org.OrgId @ref Org @cascade,
+  created: Time @created,
+}
+
+type MembershipId = brand Text
+
+test "deleting a user or an org deletes their memberships" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let them <- Db.insert User { email: Text.Email "them@example.com", name: Text.NonEmpty "Them" }
+  let a <- Db.insert Org { name: Text.NonEmpty "A" }
+  let b <- Db.insert Org { name: Text.NonEmpty "B" }
+  let _ <- Db.insert Membership { user: me, org: b }
+  let _ <- Db.insert Membership { user: them, org: a }
+  let _ <- Db.insert Membership { user: them, org: b }
+  let _ <- Db.delete User me
+  let _ <- Db.delete Org a
+  let left <- Db.from Membership |> Db.count
+  Task.succeed (left == 1)
+}

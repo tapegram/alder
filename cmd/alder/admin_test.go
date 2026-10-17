@@ -152,28 +152,129 @@ func TestAdmin_DryRunJSON(t *testing.T) {
 
 // TestAdmin_Mutate: the admin's tests kill its mutants. The fixture with `alder new admin`
 // scores at least 0.95 under `alder test --mutate`; a failure lists the survivors.
+//
+// fixture-silo (M15) is an app whose org key has `via Membership`, with Project and Issue in
+// `silo org` and Activity partitioned by org in the shared database: its admin has the picker,
+// the dashboard of one org and the siloed tables' pages under `silo org`. Its survivors (0.97,
+// 13 of 502) are justified: the five `> 200` flipped to `>= 200` in the New pages' searches (a
+// search of "" matches every row, as in the blog), Membership's list, whose columns are all
+// references and its `created`, so no column has a sample order to sort by (the sort test is
+// left out: `order` and `toggle` survive) and its search and filters are `Db.and []` (the two
+// `where dropped`, equivalent), and the fixture's Logout `Redirect` → `Rerender` (its one page
+// requires a user: a rerender ends at the login page too).
 func TestAdmin_Mutate(t *testing.T) {
 	needGoTool(t)
 	if testing.Short() {
 		t.Skip("runs every mutant of the fixture's admin")
 	}
-	dir := genApp(t, "fixture")
-	if code, out, errs := alderIn(t, dir, "", "new", "admin"); code != 0 {
+	for _, base := range []string{"fixture", "fixture-silo"} {
+		t.Run(base, func(t *testing.T) {
+			t.Parallel()
+			dir := genApp(t, base)
+			if code, out, errs := alderIn(t, dir, "", "new", "admin"); code != 0 {
+				t.Fatalf("alder new admin: exit %d\n%s%s", code, out, errs)
+			}
+			var out, errb bytes.Buffer
+			code := runTestTo([]string{dir, "--mutate"}, &out, &errb)
+			m := scoreRe.FindStringSubmatch(out.String())
+			if code != 0 || m == nil {
+				t.Fatalf("alder test --mutate: exit %d\n%s%s", code, out.String(), errb.String())
+			}
+			t.Logf("the %s with its admin: %s", base, m[0])
+			if _, survivors, ok := strings.Cut(out.String(), "survived:\n"); ok {
+				t.Logf("survivors:\n%s", survivors)
+			}
+			if m[4] < "0.95" {
+				_, survivors, _ := strings.Cut(out.String(), "survived:\n")
+				t.Errorf("score %s < 0.95; survivors:\n%s", m[4], survivors)
+			}
+		})
+	}
+}
+
+// TestAdmin_Silo (Review Focus 5 of M15): the admin of fixture-silo. The siloed tables (Project,
+// Issue) have no link in the nav and no card on the dashboard but the picker's (`/admin/orgs`,
+// every org, each opening its dashboard); their pages are at `/admin/org/{org}/…`, declared
+// `requires user, role Admin, silo org` with `org` the page's first parameter, and never show or
+// edit the partition column (the page's parameter is the org); a shared table that is
+// partitioned by org (Activity) keeps the ordinary pages. The generated tests pass, among them
+// an Admin who is no member of the org reading its rows (the picker, the org's dashboard, the
+// list), a Reader's 404, and a bulk action that stays in its org. A regen right after has
+// nothing to do, and a siloed table's page deleted is not written again (it is not new).
+func TestAdmin_Silo(t *testing.T) {
+	needGoTool(t)
+	dir := genApp(t, "fixture-silo")
+	code, out, errs := alderIn(t, dir, "", "new", "admin")
+	if code != 0 {
 		t.Fatalf("alder new admin: exit %d\n%s%s", code, out, errs)
 	}
-	var out, errb bytes.Buffer
-	code := runTestTo([]string{dir, "--mutate"}, &out, &errb)
-	m := scoreRe.FindStringSubmatch(out.String())
-	if code != 0 || m == nil {
-		t.Fatalf("alder test --mutate: exit %d\n%s%s", code, out.String(), errb.String())
+	for _, w := range []string{"wrote app/Admin/Orgs/Index.alder\n", "wrote app/Admin/Orgs/Show.alder\n", "wrote app/Admin/Project/Bulk.alder\n", "wrote app/Admin/Activity/Index.alder\n"} {
+		if !strings.Contains(out, w) {
+			t.Errorf("alder new admin did not print %q:\n%s", w, out)
+		}
 	}
-	t.Logf("the fixture with its admin: %s", m[0])
-	if _, survivors, ok := strings.Cut(out.String(), "survived:\n"); ok {
-		t.Logf("survivors:\n%s", survivors)
+	file := func(rel string) string {
+		b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
 	}
-	if m[4] < "0.95" {
-		_, survivors, _ := strings.Cut(out.String(), "survived:\n")
-		t.Errorf("score %s < 0.95; survivors:\n%s", m[4], survivors)
+	for rel, wants := range map[string][]string{
+		"app/Admin/Layout.alder":         {"<a href={Admin.Activity.Index {}}>Activities</a>", "<a href={Admin.Orgs.Index {}}>Issues and projects, by org</a>"},
+		"app/Admin/Index.alder":          {`key: "silo-org",`, "href: Admin.Orgs.Show { org: row.id } }) orgs,"},
+		"app/Admin/Orgs/Index.alder":     {`page "/admin/orgs" { } requires user, role Admin`, "<a href={Admin.Orgs.Show { org: row.id }}>{row.name}</a>"},
+		"app/Admin/Orgs/Show.alder":      {`page "/admin/orgs/{org}" { org: Org.OrgId } requires user, role Admin, silo org`, "href: Admin.Project.Index { org: params.org },"},
+		"app/Admin/Project/Index.alder":  {`page "/admin/org/{org}/project" {`, "  org: Org.OrgId,\n  q: Text = \"\",", "} requires user, role Admin, silo org", `action={"/admin/org/" ++ session.org ++ "/project"}`, "listAt model sort dir n = Admin.Project.Index {\n  org: model.org,", "<a href={Admin.Project.Show { org: session.org, id: row.id }}>"},
+		"app/Admin/Project/New.alder":    {`page "/admin/org/{org}/project/new" { org: Org.OrgId } requires user, role Admin, silo org`, "org: session.org }\n", "Task.succeed (Redirect (Admin.Project.Show { org: session.org, id: id }))"},
+		"app/Admin/Issue/Show.alder":     {"<a href={Admin.Project.Show { org: session.org, id: model.row.project }}>", "<a href={Admin.User.Show { id: v }}>"},
+		"app/Admin/Activity/Index.alder": {`page "/admin/activity" {`},
+	} {
+		s := file(rel)
+		for _, w := range wants {
+			if !strings.Contains(s, w) {
+				t.Errorf("%s lacks %q:\n%s", rel, w, s)
+			}
+		}
+	}
+	// the partition column is the page's parameter: no form, list or show page has it
+	for _, page := range []string{"Index", "Show", "New", "Edit"} {
+		code, _, _ := strings.Cut(file("app/Admin/Project/"+page+".alder"), "-- @admin begin tests")
+		if strings.Contains(code, "row.org") || strings.Contains(code, "p.form.org") {
+			t.Errorf("Admin.Project.%s shows or edits the partition column:\n%s", page, code)
+		}
+	}
+	if s := file("app/Admin/Layout.alder"); strings.Contains(s, "Admin.Project.Index") {
+		t.Errorf("the nav links to a siloed table's list without an org:\n%s", s)
+	}
+	if s := file("app/Admin/Org/Delete.alder"); strings.Contains(s, "Db.from Project") {
+		t.Errorf("an org's Delete page counts rows in its silo, another database:\n%s", s)
+	}
+	code, out, errs = alderIn(t, dir, "", "test")
+	if code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") {
+		t.Fatalf("alder test: exit %d\n%s%s", code, out, errs)
+	}
+	for _, name := range []string{
+		`Admin.Orgs.Index "the picker lists every org, by name, each opening its dashboard"`,
+		`Admin.Orgs.Index "a Member gets no page, even one made Admin since logging in"`,
+		`Admin.Orgs.Show "the org's dashboard counts its projects, not another org's, and lists the newest five"`,
+		`Admin.Orgs.Show "a missing org is not found"`,
+		`Admin.Project.Index "an Admin who is no member of the org lists its projects, and only its"`,
+		`Admin.Project.Index "a Member gets no page, even one made Admin since logging in"`,
+		`Admin.Project.Bulk "a bulk action stays inside one org"`,
+		`Admin.Issue.Delete "deleting an issue nothing refers to"`,
+		`Admin.Index "the dashboard lists the newest orgs, each opening its issues and projects"`,
+	} {
+		if !strings.Contains(out, "ok   "+name+"\n") {
+			t.Errorf("alder test did not pass %s:\n%s", name, out)
+		}
+	}
+	if code, out, _ := alderIn(t, dir, "", "regen", "admin"); code != 0 || out != "nothing to do: the admin is up to date\n" {
+		t.Errorf("regen after new: exit %d\n%s", code, out)
+	}
+	os.Remove(filepath.Join(dir, "app", "Admin", "Issue", "Bulk.alder")) // nothing links to it by a page value
+	if code, out, errs := alderIn(t, dir, "", "regen", "admin"); code != 0 || !strings.Contains(out, "not recreated app/Admin/Issue/Bulk.alder") {
+		t.Errorf("regen with a siloed table's pages deleted: exit %d\n%s%s", code, out, errs)
 	}
 }
 

@@ -34,6 +34,11 @@ type Program struct {
 	// wrap their view in it, else in a bare `<al-page>`.
 	Layout bool
 	Std    map[string]bool // the standard library's module names (Text, Db, …)
+	// Silos are App's `silo k { T, … }` (M15): each key's table modules, as written; Via each
+	// `via` session field's membership table module; Choose each `choose k = Page`'s page.
+	Silos  map[string][]string
+	Via    map[string]string
+	Choose map[string]string
 
 	Prog  *names.Program
 	Res   *check.Result
@@ -58,9 +63,13 @@ type Table struct {
 	IDType  types.Type // the id's brand (Post.PostId)
 	Columns []*Column  // in declaration order, the id included
 	Owner   string     // the `@owner` column, "" for none
-	Created string     // the `@created` column, "" for none
-	Updated string     // the `@updated` column, "" for none
-	Decl    *syntax.TableDecl
+	// PartKey and PartCol are the table's partition (M15): the session field its `@partition k`
+	// (or `@owner`, "user") names and the column; "" for none. Silo is the key of the `silo`
+	// that lists it, "" for a table in the shared store.
+	PartKey, PartCol, Silo string
+	Created                string // the `@created` column, "" for none
+	Updated                string // the `@updated` column, "" for none
+	Decl                   *syntax.TableDecl
 }
 
 // Column is one field of a table.
@@ -113,11 +122,15 @@ type Page struct {
 	File     string
 	Path     string
 	Params   []*Param
-	Requires string   // "user", or "" for none
-	Roles    []string // `role R | S`, nil for none
-	Msgs     []string // the page's messages, in declaration order
-	Forms    []string // the page's forms, in declaration order
-	Decl     *syntax.PageDecl
+	Requires string // "user", or "" for none
+	// Keys are every field of the page's `requires` (["user", "org"]); Silo the key of the admin
+	// form `requires user, role R, silo k`, "" for none (M15).
+	Keys  []string
+	Silo  string
+	Roles []string // `role R | S`, nil for none
+	Msgs  []string // the page's messages, in declaration order
+	Forms []string // the page's forms, in declaration order
+	Decl  *syntax.PageDecl
 }
 
 // Param is one page parameter.
@@ -226,6 +239,19 @@ func newProgram(dir string, prog *names.Program, res *check.Result, diags []diag
 		}
 	}
 	p.Session = p.session()
+	p.Silos, p.Via, p.Choose = map[string][]string{}, map[string]string{}, map[string]string{}
+	for k, ts := range res.Silos {
+		for _, tk := range ts {
+			mod, _, _ := strings.Cut(tk, ".")
+			p.Silos[k] = append(p.Silos[k], mod)
+		}
+	}
+	for k, tk := range res.Via {
+		p.Via[k], _, _ = strings.Cut(tk, ".")
+	}
+	for k, pg := range res.Choose {
+		p.Choose[k] = pg
+	}
 	if app := p.Modules["App"]; app != nil {
 		for _, d := range app.Syntax.Decls {
 			if ld, ok := d.(*syntax.LoginDecl); ok {
@@ -242,7 +268,13 @@ func (p *Program) table(m *Module, d *syntax.TableDecl) *Table {
 	if info == nil || info.Record == nil {
 		return nil
 	}
-	t := &Table{Module: m.Name, Name: d.Name, File: m.File, IDField: info.IDField, IDType: info.IDType, Owner: info.Owner, Decl: d}
+	t := &Table{Module: m.Name, Name: d.Name, File: m.File, IDField: info.IDField, IDType: info.IDType, Owner: info.Owner, Decl: d,
+		PartKey: info.PartKey, PartCol: info.PartCol}
+	for k, ts := range p.Res.Silos {
+		if slices.Contains(ts, m.Name+"."+d.Name) {
+			t.Silo = k
+		}
+	}
 	for i, f := range d.Fields {
 		if i >= len(info.Record.Fields) {
 			break
@@ -289,6 +321,7 @@ func (p *Program) page(m *Module, d *syntax.PageDecl) *Page {
 	if len(d.Requires) > 0 { // the generators know `requires user` (M15's other keys: Task 4)
 		pg.Requires = d.Requires[0]
 	}
+	pg.Keys, pg.Silo = d.Requires, d.Silo
 	if info := p.Res.Pages[m.Name]; info != nil && info.Params != nil {
 		for i, f := range info.Params.Fields {
 			par := &Param{Name: f.Name, Type: f.Type, HasDefault: f.HasDefault}
@@ -516,3 +549,36 @@ func (r *Refusal) Error() string { return r.Msg }
 
 // Refusef is a Refusal without diagnostics.
 func Refusef(format string, args ...any) *Refusal { return &Refusal{Msg: fmt.Sprintf(format, args...)} }
+
+// KeyTable is the table whose id session field key holds (`org: Maybe Org.OrgId` → Org), nil
+// when there is none.
+func (p *Program) KeyTable(key string) *Table {
+	if p.Session == nil {
+		return nil
+	}
+	for _, f := range p.Session.Fields {
+		if f.Name != key {
+			continue
+		}
+		elem, _ := unMaybe(f.Type)
+		for _, t := range p.Tables {
+			if types.String(elem) == types.String(t.IDType) {
+				return t
+			}
+		}
+	}
+	return nil
+}
+
+// SessionField is the session's field name, nil for none.
+func (p *Program) SessionField(name string) *SessionField {
+	if p.Session == nil {
+		return nil
+	}
+	for _, f := range p.Session.Fields {
+		if f.Name == name {
+			return f
+		}
+	}
+	return nil
+}

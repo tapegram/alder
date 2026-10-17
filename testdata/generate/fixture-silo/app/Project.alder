@@ -1,0 +1,14 @@
+module Project
+
+import Org
+
+type ProjectId = brand Text
+
+-- In `silo org`: a database per org.
+table Project {
+  id: ProjectId @id,
+  name: Text.NonEmpty,
+  archived: Bool = False,
+  org: Org.OrgId @ref Org @partition org,
+  created: Time @created,
+}

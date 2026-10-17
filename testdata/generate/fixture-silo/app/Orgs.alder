@@ -1,0 +1,60 @@
+module Orgs
+
+import Layout
+import Membership
+import Org
+import User
+
+-- `choose org`'s page: the signed-in user's orgs, each a button that sets the session's org.
+page "/orgs" { } requires user
+
+type Model = { mine: List Membership }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let mine <- Db.from Membership |> Db.where (Membership.user.eq session.user) |> Db.all
+  Query.succeed { mine: mine }
+}
+
+msg Pick { org: Org.OrgId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Pick p -> {
+    let _ <- Session.put (\s -> { s | org: Just p.org })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Orgs">
+    <ul>{for m in model.mine -> <li><button click={Pick { org: m.org }}>pick</button></li>}</ul>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "a member picks one of their orgs" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let them <- Db.insert User { email: Text.Email "them@example.com", name: Text.NonEmpty "Them" }
+  let a <- Db.insert Org { name: Text.NonEmpty "A" }
+  let b <- Db.insert Org { name: Text.NonEmpty "B" }
+  let _ <- Test.member me a
+  let _ <- Test.member them b
+  let _ <- Test.login { user: Just me, org: Nothing }
+  let page <- Test.get (Orgs {})
+  let r <- Test.click (Pick { org: a })
+  Task.succeed ({ mine: List.map (\m -> m.org) page.model.mine, org: r.session.org } == { mine: [a], org: Just a })
+}
+
+test "a non-member's switch is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let b <- Db.insert Org { name: Text.NonEmpty "B" }
+  let _ <- Test.login { user: Just me, org: Nothing }
+  let r <- Test.run (update (Pick { org: b }) { mine: [] } { user: me, org: Nothing, role: Member })
+  Task.succeed (r.value == Err "Session.put org: no Membership for this user and org")
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Orgs {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}

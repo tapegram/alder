@@ -1,0 +1,60 @@
+module Auth.Login
+
+import Layout
+import User
+
+-- The fixture signs a user in by email alone: its tests are about pages, not passwords.
+page "/login" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+form Credentials = {
+  email: Text.Email,
+}
+
+msg Submit form Credentials
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let found <- Db.from User |> Db.where (User.email.eq p.form.email) |> Db.first
+    match found {
+      Just u -> {
+        let _ <- Session.put (\s -> { s | user: Just u.id, role: u.role })
+        Task.succeed (Redirect (Orgs {}))
+      },
+      Nothing -> Task.succeed (Reject "No user has that email."),
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Log in">
+    <h1>Log in</h1>
+
+    <al-card>
+      <form submit={Submit}>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-input field="email" label="Email" />
+        <al-button type="submit">Log in</al-button>
+      </form>
+    </al-card>
+  </Layout.Page>
+
+test "logging in signs in the user with that email, and their role" = {
+  let _ <- Db.insert User { email: Text.Email "member@example.com", name: Text.NonEmpty "Member" }
+  let admin <- Db.insert User { email: Text.Email "admin@example.com", name: Text.NonEmpty "Admin", role: Admin }
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.submit Credentials { email: Text.Email "admin@example.com" }
+  Task.succeed ({ answer: r.answer, user: r.session.user, role: r.session.role } == { answer: Redirected (Orgs {}), user: Just admin, role: Admin })
+}
+
+test "an unknown email is refused" = {
+  let _ <- Test.get (Auth.Login {})
+  let r <- Test.submit Credentials { email: Text.Email "nobody@example.com" }
+  Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: FormRejected [{ field: "", message: "No user has that email." }], user: Nothing })
+}

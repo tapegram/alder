@@ -76,7 +76,7 @@ func (g *adminGen) bulk(at *adminTable) {
 	loads = append(loads, "Query.succeed { rows: rows, held: "+heldExpr+", chosen: List.length params.ids }")
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "page %s { ids: List %s }%s\n\n", pathLit(at.path+"/bulk"), idT, adminRequires)
+	fmt.Fprintf(&b, "page %s { %s }%s\n\n", pathLit(at.path+"/bulk"), strings.Join(at.params(mod, imports, []string{"ids: List " + idT}), ", "), at.requires())
 	fmt.Fprintf(&b, "-- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep\n-- from being deleted, and how many ids the page was given.\ntype Model = { rows: List %s, held: List %s, chosen: Int }\n\n", t.Name, idT)
 	fmt.Fprintf(&b, "-- maxRows is how many rows one action takes: a page of the list. More are refused.\nmaxRows : Int\nmaxRows = %d\n\n", bulkMax)
 	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
@@ -224,10 +224,13 @@ func (g *adminGen) bulk(at *adminTable) {
 		tests = append(tests, TestData{Name: quote(name), Lines: tb.lines,
 			Result: fmt.Sprintf("{ answer: r.answer, %s, warned: Test.count \"#too-many\" page.doc } == { answer: %s, %s, warned: %s }", lhs, answer, rhs, warned)})
 	}
+	if at.silo != nil {
+		tests = append(tests, g.siloBulkTest(at, mod, imports))
+	}
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
 		return pageLit(mod, []string{ids(tb.insertRow(t, "", nil, false))})
 	})...)
-	b.WriteString(testsText(tests))
+	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
 }
 
@@ -253,7 +256,7 @@ func bulkForms(at *adminTable) string {
         <al-button type="submit" variant="secondary">Act on all rows on this page</al-button>
       </form>
     </al-stack>
-`, quote(at.path+"/bulk"), quote(at.path+"/bulk"), textOf(at.idColumn(), "row."+at.t.IDField))
+`, at.action("/bulk"), at.action("/bulk"), textOf(at.idColumn(), "row."+at.t.IDField))
 }
 
 // findTests are the New (or Edit) page's tests of a long table behind a reference: at exactly

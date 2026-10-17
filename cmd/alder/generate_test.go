@@ -37,6 +37,8 @@ func genApp(t *testing.T, base string) string {
 		}
 	case "fixture":
 		copyDir(t, "../../testdata/generate/fixture", dir)
+	case "fixture-silo": // M15: an org key with `via`, a silo of two tables, a partitioned shared table
+		copyDir(t, "../../testdata/generate/fixture-silo", dir)
 	default:
 		t.Fatalf("no base app %q", base)
 	}
@@ -195,6 +197,7 @@ var genCases = []genCase{
 	{name: "fixture-edit-rename", base: "fixture", args: []string{"edit", "table", "Post", "rename-field", "body", "text"}, breaks: true},
 	{name: "fixture-edit-drop", base: "fixture", args: []string{"edit", "table", "Tag", "drop-field", "created"}, test: true},
 	{name: "fixture-admin", base: "fixture", args: []string{"new", "admin"}, test: true},
+	{name: "fixture-silo-admin", base: "fixture-silo", args: []string{"new", "admin"}, test: true},
 
 	// M13: the commands of the agent's loop
 	{name: "auth", base: "scaffold", args: []string{"new", "auth"}, test: true},
