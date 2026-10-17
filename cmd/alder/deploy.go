@@ -27,10 +27,10 @@ import (
 
 // The usage lines of the deploy commands (chapter 16).
 const (
-	deployUsage   = "usage: alder deploy <env> [dir] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json]"
-	statusUsage   = "usage: alder status <env> [dir]"
-	rollbackUsage = "usage: alder rollback <env> [<build id>] [--dir dir] [--allow-schema-mismatch]"
-	logsUsage     = "usage: alder logs <env> [dir] [-f]"
+	deployUsage   = "usage: alder deploy <env> [dir] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json]"
+	statusUsage   = "usage: alder status <env> [dir] [--host name]"
+	rollbackUsage = "usage: alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch]"
+	logsUsage     = "usage: alder logs <env> [dir] [--host name] [-f]"
 	restoreUsage  = "usage: alder restore <env> [--from url] [--to time] [--out file.db] [--dir dir]"
 )
 
@@ -71,8 +71,15 @@ func runDeployTo(args []string, stdout, stderr io.Writer) (code int) {
 	}()
 	var pos []string
 	o := deploy.Options{}
-	for _, a := range args {
+	host := ""
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		switch {
+		case a == "--host" && i+1 < len(args):
+			i++
+			host = args[i]
+		case strings.HasPrefix(a, "--host="):
+			host = strings.TrimPrefix(a, "--host=")
 		case a == "--allow-data-loss":
 			o.AllowDataLoss = true
 		case a == "--unsafe-skip-tests":
@@ -121,8 +128,17 @@ func runDeployTo(args []string, stdout, stderr io.Writer) (code int) {
 			return fail(2, fmt.Sprintf("App's `deploy` has no environment `%s` (it declares %s)", env, strings.Join(envNames(r.decl), ", ")))
 		}
 	}
+	if host != "" && r.decl != nil {
+		var err error
+		if tgt, err = withHost(env, tgt, host); err != nil {
+			return fail(2, err.Error())
+		}
+	}
 	if r.decl != nil {
 		fmt.Fprintf(progress, "alder deploy %s → %s\n", env, describeTarget(tgt))
+		if host != "" {
+			fmt.Fprintf(progress, "host %s (--host)\n", host)
+		}
 	} else {
 		fmt.Fprintf(progress, "alder deploy %s\n", env)
 	}
@@ -131,9 +147,21 @@ func runDeployTo(args []string, stdout, stderr io.Writer) (code int) {
 	if err != nil {
 		return deployFailed(err, fail)
 	}
-	t, script, err := targetFor(r.app, env, tgt, r.decl, dir, progress, stderr)
+	t, script, err := targetFor(r.app, targetEnv(env, host), tgt, r.decl, dir, progress, stderr)
 	if err != nil {
 		return fail(2, err.Error())
+	}
+	if script != nil && host != "" {
+		// the script reads the host the run is for from ALDER_HOST
+		prev, had := os.LookupEnv("ALDER_HOST")
+		os.Setenv("ALDER_HOST", host)
+		defer func() {
+			if had {
+				os.Setenv("ALDER_HOST", prev)
+			} else {
+				os.Unsetenv("ALDER_HOST")
+			}
+		}()
 	}
 	if t != nil {
 		defer t.Close()
@@ -215,6 +243,50 @@ func targetFor(app, env string, t ir.Target, d *ir.Deploy, dir string, stdout, s
 		return f, nil, nil
 	}
 	return nil, nil, fmt.Errorf("the %s target is not available in this alder yet", t.Kind)
+}
+
+// withHost is environment env's target t serving host instead of its declared domain (`alder
+// deploy preview --host 42.preview.example.com`, which `alder ci init`'s workflow runs for a
+// pull request). A host of a wildcard domain must match it. An Ssh target keeps each host's
+// state apart: under <path>/<host>, as environment <env>-<host> (its own systemd unit and Caddy
+// route), so one pull request's deploy never replaces another's. A Script target gets the host
+// in ALDER_HOST. A Fly environment's host is its app's (<app>.fly.dev): --host is refused.
+func withHost(env string, t ir.Target, host string) (ir.Target, error) {
+	if host == "" || strings.ContainsAny(host, "/ *:") || strings.HasPrefix(host, ".") {
+		return t, fmt.Errorf("bad --host %q: give a host name such as 42.preview.example.com", host)
+	}
+	switch t.Kind {
+	case "fly":
+		return t, fmt.Errorf("--host does not apply to environment %s: a Fly environment is served at its app's address (%s.fly.dev)", env, t.App)
+	case "ssh":
+		if suffix, ok := strings.CutPrefix(t.Domain, "*"); ok {
+			label, rest, _ := strings.Cut(host, ".")
+			if label == "" || "."+rest != suffix {
+				return t, fmt.Errorf("--host %s does not match environment %s's domain %s", host, env, t.Domain)
+			}
+		}
+		t.Domain = host
+		t.Path = strings.TrimRight(t.Path, "/") + "/" + host
+	}
+	return t, nil
+}
+
+// hostFlag reads `--host name` or `--host=name` at args[*i], advancing *i past its value.
+func hostFlag(args []string, i *int) (string, bool) {
+	a := args[*i]
+	if a == "--host" && *i+1 < len(args) {
+		*i++
+		return args[*i], true
+	}
+	return strings.CutPrefix(a, "--host=")
+}
+
+// targetEnv is the environment's name at the target: with --host, <env>-<host> (withHost).
+func targetEnv(env, host string) string {
+	if host == "" {
+		return env
+	}
+	return env + "-" + host
 }
 
 // deployRunner runs the gate's steps with the code of `alder check`, `alder build` and `alder
@@ -357,7 +429,7 @@ func durationEnv(name string, def time.Duration) time.Duration {
 
 // envTarget loads dir's `deploy` declaration and environment env's target for status,
 // rollback, logs and restore: a Script target has no state to read.
-func envTarget(cmd, env, dir string) (deploy.Target, *ir.Deploy, error) {
+func envTarget(cmd, env, dir, host string) (deploy.Target, *ir.Deploy, error) {
 	r := &deployRunner{dir: dir}
 	r.Check()
 	if r.loadErr != "" {
@@ -373,7 +445,13 @@ func envTarget(cmd, env, dir string) (deploy.Target, *ir.Deploy, error) {
 	if t.Kind == "script" {
 		return nil, nil, deploy.ScriptUnavailable(cmd, env)
 	}
-	tg, _, err := targetFor(r.app, env, t, r.decl, dir, io.Discard, io.Discard)
+	if host != "" {
+		var err error
+		if t, err = withHost(env, t, host); err != nil {
+			return nil, nil, err
+		}
+	}
+	tg, _, err := targetFor(r.app, targetEnv(env, host), t, r.decl, dir, io.Discard, io.Discard)
 	return tg, r.decl, err
 }
 
@@ -382,7 +460,13 @@ func envTarget(cmd, env, dir string) (deploy.Target, *ir.Deploy, error) {
 // cannot be reached, 2 for usage errors and a Script environment.
 func runStatusTo(args []string, stdout, stderr io.Writer) int {
 	var pos []string
-	for _, a := range args {
+	host := ""
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if h, ok := hostFlag(args, &i); ok {
+			host = h
+			continue
+		}
 		if strings.HasPrefix(a, "-") {
 			fmt.Fprintln(stderr, statusUsage)
 			return 2
@@ -397,7 +481,7 @@ func runStatusTo(args []string, stdout, stderr io.Writer) int {
 	if len(pos) == 2 {
 		dir = pos[1]
 	}
-	t, _, err := envTarget("status", pos[0], dir)
+	t, _, err := envTarget("status", pos[0], dir, host)
 	if err != nil {
 		fmt.Fprintf(stderr, "alder status: %v\n", err)
 		return 2
@@ -415,9 +499,13 @@ func runStatusTo(args []string, stdout, stderr io.Writer) int {
 // Exit 0, 1 for a refusal or an unreachable target, 2 for usage errors and a Script environment.
 func runRollbackTo(args []string, stdout, stderr io.Writer) int {
 	var pos []string
-	dir, o := ".", deploy.RollbackOptions{Out: stdout}
+	dir, o, host := ".", deploy.RollbackOptions{Out: stdout}, ""
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if h, ok := hostFlag(args, &i); ok {
+			host = h
+			continue
+		}
 		switch {
 		case a == "--allow-schema-mismatch":
 			o.AllowSchemaMismatch = true
@@ -440,7 +528,7 @@ func runRollbackTo(args []string, stdout, stderr io.Writer) int {
 	if len(pos) == 2 {
 		o.To = pos[1]
 	}
-	t, _, err := envTarget("rollback", pos[0], dir)
+	t, _, err := envTarget("rollback", pos[0], dir, host)
 	if err != nil {
 		fmt.Fprintf(stderr, "alder rollback: %v\n", err)
 		return 2
@@ -464,8 +552,13 @@ func runRollbackTo(args []string, stdout, stderr io.Writer) int {
 // -f followed until interrupted.
 func runLogsTo(args []string, stdout, stderr io.Writer) int {
 	var pos []string
-	follow := false
-	for _, a := range args {
+	follow, host := false, ""
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if h, ok := hostFlag(args, &i); ok {
+			host = h
+			continue
+		}
 		switch {
 		case a == "-f" || a == "--follow":
 			follow = true
@@ -484,7 +577,7 @@ func runLogsTo(args []string, stdout, stderr io.Writer) int {
 	if len(pos) == 2 {
 		dir = pos[1]
 	}
-	t, _, err := envTarget("logs", pos[0], dir)
+	t, _, err := envTarget("logs", pos[0], dir, host)
 	if err != nil {
 		fmt.Fprintf(stderr, "alder logs: %v\n", err)
 		return 2

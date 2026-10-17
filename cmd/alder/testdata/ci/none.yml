@@ -1,0 +1,39 @@
+# Written by `alder ci init` (book chapter 16). The pipeline is alder's own commands: what
+# runs here runs the same from a laptop.
+#
+#   pull request   alder check; alder test --mutate
+#   push to main   alder check; alder test --mutate
+#
+# Repository secrets: none.
+#
+# No `floor` is declared: `alder deploy` holds the score to the last deploy's.
+name: alder
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  ALDER_VERSION: v0.1.0
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+      - name: Install alder
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$ALDER_VERSION" --repo tapegram/alder --pattern 'alder_*_linux_amd64.tar.gz' --output "$RUNNER_TEMP/alder.tar.gz"
+          tar -xzf "$RUNNER_TEMP/alder.tar.gz" -C "$RUNNER_TEMP" alder
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - run: alder check
+      - run: alder test --mutate
