@@ -148,7 +148,7 @@ func (mc *modCtx) deployTarget(f *syntax.DeployField) {
 	switch v.Ctor {
 	case "Ssh":
 		arg, argWhat, required = "host", "the host as text, such as \"deploy@box.example.com\"", []string{"domain", "path"}
-		fields = map[string]string{"domain": "text", "path": "text", "user": "text", "port": "port"}
+		fields = map[string]string{"domain": "text", "path": "text", "user": "text", "port": "port", "database": "database"}
 	case "Fly":
 		arg, argWhat, required = "region", "the region as text, such as \"ord\"", []string{"app"}
 		fields = map[string]string{"app": "text"}
@@ -182,6 +182,8 @@ func (mc *modCtx) deployTarget(f *syntax.DeployField) {
 			continue
 		}
 		switch {
+		case kind == "database":
+			mc.deployDatabase(f.Name, rf.Value)
 		case kind == "port":
 			if n, err := strconv.Atoi(rf.Value.Str); rf.Value.Kind != "int" || err != nil || n < 1 || n > 65535 {
 				c.errorf(diag.DeployDecl, rf.Value.Span, "`port` is a whole number from 1 to 65535")
@@ -209,6 +211,56 @@ func (mc *modCtx) deployTarget(f *syntax.DeployField) {
 	}
 	if v.Ctor == "Fly" {
 		c.flyCharacters(v)
+	}
+}
+
+// tursoNameChars is the character set of a Turso organization, group or app name.
+var tursoNameChars = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+
+// deployDatabase checks environment env's `database: Turso "org" { group?, app, sample? }`:
+// the app's data on Turso (chapter 16).
+func (mc *modCtx) deployDatabase(env string, v *syntax.DeployValue) {
+	c := mc.c
+	if v.Kind != "ctor" || v.Ctor != "Turso" {
+		c.errorf(diag.DeployDecl, v.Span, "`database` is `Turso \"org\" { app: \"…\" }`: the app's data on Turso instead of a file on the box")
+		return
+	}
+	if v.Arg == nil || strings.TrimSpace(v.Arg.Str) == "" {
+		c.errorf(diag.DeployDecl, v.Span, "`Turso` needs its organization as text, such as `Turso \"acme\" { app: \"blog\" }`")
+	} else if !looksSecret(v.Arg.Str) && !tursoNameChars.MatchString(v.Arg.Str) {
+		c.errorf(diag.DeployDecl, v.Arg.Span, "the organization of `Turso` is a Turso organization name: lowercase letters, digits and `-`")
+	}
+	have := map[string]bool{}
+	for _, rf := range v.Rec {
+		if have[rf.Name] {
+			c.errorf(diag.DeployDecl, rf.NameSpan, "field `%s` is given twice in environment `%s`'s `database`", rf.Name, env)
+			continue
+		}
+		have[rf.Name] = true
+		if rf.Value == nil {
+			continue
+		}
+		switch rf.Name {
+		case "group", "app":
+			switch {
+			case rf.Value.Kind != "string":
+				c.errorf(diag.DeployDecl, rf.Value.Span, "`%s` is text", rf.Name)
+			case looksSecret(rf.Value.Str): // reported once, by deploySecrets
+			case !tursoNameChars.MatchString(rf.Value.Str):
+				c.errorf(diag.DeployDecl, rf.Value.Span, "`%s` is a Turso name: lowercase letters, digits and `-`, not at either end", rf.Name)
+			case rf.Name == "app" && len(rf.Value.Str) > 24:
+				c.errorf(diag.DeployDecl, rf.Value.Span, "`app` is at most 24 characters: Turso's database names are at most 64, and a silo's is `<app>-<key>-<the id in 32 characters>`")
+			}
+		case "sample":
+			if n, err := strconv.Atoi(rf.Value.Str); rf.Value.Kind != "int" || err != nil || n < 1 {
+				c.errorf(diag.DeployDecl, rf.Value.Span, "`sample` is how many of the largest silo databases a deploy tries the migrations on first: a whole number of at least 1")
+			}
+		default:
+			c.errorf(diag.DeployDecl, rf.NameSpan, "`Turso` has no field `%s` (it has `app`, `group` and `sample`)", rf.Name)
+		}
+	}
+	if v.Rec == nil || !have["app"] {
+		c.errorf(diag.DeployDecl, v.Span, "environment `%s`'s `database` has no `app`: write `Turso \"org\" { app: \"…\" }` (the app's name on Turso)", env)
 	}
 }
 

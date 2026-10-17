@@ -1,0 +1,3 @@
+app/App.alder:10:97 E0030 the organization of `Turso` is a Turso organization name: lowercase letters, digits and `-`
+app/App.alder:10:132 E0030 `sample` is how many of the largest silo databases a deploy tries the migrations on first: a whole number of at least 1
+app/App.alder:10:135 E0030 `Turso` has no field `region` (it has `app`, `group` and `sample`)

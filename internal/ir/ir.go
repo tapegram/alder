@@ -105,6 +105,19 @@ type Deploy struct {
 type Target struct {
 	Kind                                                    string
 	Host, Domain, Path, User, Port, Region, App, ScriptPath string
+	// Database is an Ssh environment's `database: Turso "org" { … }` (M15): the app's data on
+	// Turso instead of a file on the box; nil for the file.
+	Database *Database
+}
+
+// Database is `database: Turso "org" { group?, app, sample? }`: the organization, the group the
+// databases are created in ("default" when not given), the app's name on Turso (the shared
+// database's name and the prefix of its silos' databases), and how many of the largest silo
+// databases a deploy tries its migrations on first (Sample; 0: the default, 5).
+type Database struct {
+	Kind            string // "turso"
+	Org, Group, App string
+	Sample          int
 }
 
 // Backup is `backup: S3 "s3://…"`: Kind is "s3", URL the location.

@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"syscall"
@@ -148,7 +149,7 @@ func runDeployTo(args []string, stdout, stderr io.Writer) (code int) {
 	if err != nil {
 		return deployFailed(err, fail)
 	}
-	t, script, err := targetFor(r.app, targetEnv(env, host), tgt, r.decl, dir, progress, stderr)
+	t, script, err := targetFor(r, targetEnv(env, host), tgt, dir, progress, stderr)
 	if err != nil {
 		return fail(2, err.Error())
 	}
@@ -216,6 +217,9 @@ func envNames(d *ir.Deploy) []string {
 func describeTarget(t ir.Target) string {
 	switch t.Kind {
 	case "ssh":
+		if db := t.Database; db != nil {
+			return fmt.Sprintf("Ssh %s:%s, database Turso %s/%s", t.Host, t.Path, db.Org, db.App)
+		}
 		return fmt.Sprintf("Ssh %s:%s", t.Host, t.Path)
 	case "fly":
 		return fmt.Sprintf("Fly %s (app %s)", t.Region, t.App)
@@ -225,8 +229,11 @@ func describeTarget(t ir.Target) string {
 	return t.Kind
 }
 
-// targetFor is environment env's target: a deploy.Target for Ssh and Fly, or the Script.
-func targetFor(app, env string, t ir.Target, d *ir.Deploy, dir string, stdout, stderr io.Writer) (deploy.Target, *deploy.Script, error) {
+// targetFor is environment env's target of the app r checked: a deploy.Target for Ssh and Fly,
+// or the Script. An Ssh environment knows the app's silo keys, and with `database: Turso` it
+// runs the migrations here with the build's executable for this machine (localBinary).
+func targetFor(r *deployRunner, env string, t ir.Target, dir string, stdout, stderr io.Writer) (deploy.Target, *deploy.Script, error) {
+	app, d := r.app, r.decl
 	switch t.Kind {
 	case "script":
 		abs, err := filepath.Abs(dir)
@@ -237,6 +244,11 @@ func targetFor(app, env string, t ir.Target, d *ir.Deploy, dir string, stdout, s
 	case "ssh":
 		s := deploy.NewSsh(app, env, t, d)
 		s.Warn = stdout
+		s.Silos = r.silos
+		if s.DB != nil {
+			s.DB.Silos = r.silos
+			s.DB.Local = func(ctx context.Context, id string) (string, error) { return localBinary(app, id) }
+		}
 		return s, nil, nil
 	case "fly":
 		f := deploy.NewFly(app, env, t, d)
@@ -299,6 +311,7 @@ type deployRunner struct {
 	dir     string
 	app     string
 	decl    *ir.Deploy
+	silos   []string // the app's silo keys, sorted
 	loadErr string
 	checked bool
 	errs    int
@@ -343,6 +356,10 @@ func (r *deployRunner) Check() (int, int, int, string) {
 	if res != nil {
 		if p, err := ir.LowerTables(prog, res); err == nil {
 			r.decl = p.Deploy
+			for k := range p.Silos {
+				r.silos = append(r.silos, k)
+			}
+			slices.Sort(r.silos)
 		}
 	}
 	return r.errs, r.warns, r.holes, r.out
@@ -409,6 +426,36 @@ func buildFor(built, app string, p deploy.Platform, path string) error {
 	return nil
 }
 
+// localBinary is build id's executable for this machine: the artifact's own when the target
+// runs this platform, else one built beside it (build/<app>/deploy/<id>.local/app) from the
+// generated module `alder build` wrote. A deploy to a `database: Turso` environment runs the
+// migrations with it, here.
+func localBinary(app, id string) (string, error) {
+	built := filepath.Join("build", app)
+	artifact := filepath.Join(built, "deploy", id)
+	var desc struct {
+		Platform string `json:"platform"`
+	}
+	if b, err := os.ReadFile(filepath.Join(artifact, "alder-deploy.json")); err == nil {
+		json.Unmarshal(b, &desc)
+	}
+	here := deploy.Platform{OS: runtime.GOOS, Arch: runtime.GOARCH}
+	if desc.Platform == here.String() {
+		return filepath.Abs(filepath.Join(artifact, "app"))
+	}
+	path := filepath.Join(built, "deploy", id+".local", "app")
+	if _, err := os.Stat(path); err == nil {
+		return filepath.Abs(path)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", err
+	}
+	if err := buildFor(built, app, here, path); err != nil {
+		return "", err
+	}
+	return filepath.Abs(path)
+}
+
 // gitCommit is the app's commit ("<sha>" or "<sha>+dirty"), or "" outside a repository.
 func gitCommit(dir string) string {
 	out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
@@ -455,7 +502,7 @@ func envTarget(cmd, env, dir, host string) (deploy.Target, *ir.Deploy, error) {
 			return nil, nil, err
 		}
 	}
-	tg, _, err := targetFor(r.app, targetEnv(env, host), t, r.decl, dir, io.Discard, io.Discard)
+	tg, _, err := targetFor(r, targetEnv(env, host), t, dir, io.Discard, io.Discard)
 	return tg, r.decl, err
 }
 
@@ -720,7 +767,7 @@ func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "wrote %s\n", out)
 		return 0
 	}
-	t, _, err := targetFor(r.app, pos[0], tgt, r.decl, dir, stdout, stderr)
+	t, _, err := targetFor(r, pos[0], tgt, dir, stdout, stderr)
 	if err != nil {
 		return fail(2, "%v", err)
 	}

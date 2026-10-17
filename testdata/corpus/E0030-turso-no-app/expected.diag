@@ -1,0 +1,1 @@
+app/App.alder:10:91 E0030 environment `production`'s `database` has no `app`: write `Turso "org" { app: "…" }` (the app's name on Turso)

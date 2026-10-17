@@ -69,12 +69,19 @@ type Ssh struct {
 	// CaddyAdmin is the host:port of Caddy's admin API at the box (EnvCaddyAdmin, else
 	// DefaultCaddyAdmin).
 	CaddyAdmin string
+	// DB is the environment's `database: Turso "org" { … }` (turso.go), nil for the file
+	// <path>/db/app.db.
+	DB *Turso
+	// Silos are the app's silo keys: with a file database, its silos are files under
+	// <path>/db/silos/<key>/ (shipped one by one with `backup`, MaxSiloFiles at most).
+	Silos []string
 
-	user string // the remote user, from Connect
-	host string
-	plat Platform
-	sup  string // "system", "user" (systemd) or "process"
-	conn bool
+	user   string // the remote user, from Connect
+	host   string
+	plat   Platform
+	sup    string // "system", "user" (systemd) or "process"
+	conn   bool
+	dbRead bool // DB's shared database name was read from <path>/db/turso.env
 
 	allowDataLoss bool   // this run's --allow-data-loss (DataLossAllower)
 	ctl           string // the shared connection's control socket ("" for none)
@@ -104,7 +111,31 @@ func NewSsh(app, env string, t ir.Target, d *ir.Deploy) *Ssh {
 	if d.Backup != nil {
 		s.BackupURL = d.Backup.URL
 	}
+	if t.Database != nil {
+		s.DB = NewTurso(t.Database)
+		s.BackupURL = "" // Turso's point-in-time recovery, not the stream
+	}
 	return s
+}
+
+// MaxSiloFiles is how many silo files the backup shipper streams (one shipper, a lock and two
+// connections each): with more, a deploy that declares `backup` is refused and Turso is the
+// answer (chapter 16).
+const MaxSiloFiles = 200
+
+// tursoInit reads, once, the name of the shared database on Turso from <path>/db/turso.env
+// (a point-in-time restore replaces it there).
+func (s *Ssh) tursoInit(ctx context.Context) error {
+	if s.DB == nil || s.dbRead {
+		return nil
+	}
+	out, err := s.run(ctx, `cat "$R/db/turso.env" 2>/dev/null; exit 0`)
+	if err != nil {
+		return err
+	}
+	s.DB.setShared(keyValues(out)["ALDER_TURSO_DB"])
+	s.dbRead = true
+	return nil
 }
 
 // Describe is "Ssh deploy@box:/srv/blog".
@@ -349,6 +380,9 @@ func keyValues(out string) map[string]string {
 // Requires checks <path>/env for each name: a line NAME=… with a non-empty value. No value is
 // read back: grep's exit status is all that crosses the connection.
 func (s *Ssh) Requires(ctx context.Context, names []string) ([]string, error) {
+	if s.DB != nil && !contains(names, "TURSO_API_TOKEN") {
+		names = append(slicesClone(names), "TURSO_API_TOKEN") // the app creates its silos' databases with it
+	}
 	var b strings.Builder
 	b.WriteString(`[ -f "$R/env" ] && echo "mode=$(ls -l "$R/env" | cut -c1-10)"` + "\n")
 	b.WriteString(`grep -Eq '^(export[[:space:]]+)?ALDER_DEV=' "$R/env" 2>/dev/null && echo devmode=yes` + "\n")
@@ -378,7 +412,21 @@ func (s *Ssh) Requires(ctx context.Context, names []string) ([]string, error) {
 // build that migrated the database), or the current build's own when the database predates
 // them; Have false without a database.
 func (s *Ssh) Schema(ctx context.Context) (Schema, error) {
-	out, err := s.run(ctx, `[ -f "$R/db/app.db" ] || { echo none; exit 0; }
+	have := `[ -f "$R/db/app.db" ] || { echo none; exit 0; }`
+	if s.DB != nil { // the database is at Turso: it has the app's tables, or there is none yet
+		if err := s.tursoInit(ctx); err != nil {
+			return Schema{}, err
+		}
+		ok, err := s.DB.HaveTables(ctx)
+		if err != nil {
+			return Schema{}, err
+		}
+		if !ok {
+			return Schema{}, nil
+		}
+		have = ""
+	}
+	out, err := s.run(ctx, have+`
 c=$(cat "$R/current" 2>/dev/null)
 echo db
 if [ -f "$R/db/migrations" ]; then cat "$R/db/migrations"; else ls "$R/builds/$c/migrations" 2>/dev/null | sed -n 's/\.sql$//p'; fi
@@ -532,14 +580,19 @@ func (s *Ssh) runScript(id string) string {
 	if s.BackupURL != "" {
 		backup = "export ALDER_BACKUP_URL=" + q(s.BackupURL) + "\n"
 	}
+	database := `export ALDER_DB=` + q(s.Root+"/db/app.db") + "\n"
+	if s.DB != nil {
+		// the shared database on Turso: db/turso.env names it (ALDER_DB=libsql://…, ALDER_TURSO_DB)
+		database = `set -a; . ` + q(s.Root+"/db/turso.env") + `; set +a
+export ALDER_TURSO_ORG=` + q(s.DB.Org) + ` ALDER_TURSO_GROUP=` + q(s.DB.Group) + ` ALDER_TURSO_APP=` + q(s.DB.App) + "\nunset ALDER_BACKUP_URL\n"
+	}
 	return `#!/bin/sh
 # Written by alder deploy: runs build ` + id + ` of ` + s.App + ` (environment ` + s.Env + `). The
 # variables come from ` + s.Root + `/env, which the operator writes; nothing here is a secret.
 set -e
 if [ -f ` + q(s.Root+"/env") + ` ]; then set -a; . ` + q(s.Root+"/env") + `; set +a; fi
 unset ALDER_DEV  # development mode never runs at a target
-export ALDER_DB=` + q(s.Root+"/db/app.db") + `
-export ALDER_STATIC=` + q(b+"/static") + `
+` + database + `export ALDER_STATIC=` + q(b+"/static") + `
 export ALDER_ADDR="$(cat ` + q(b+"/addr") + ` 2>/dev/null || echo 127.0.0.1:0)"
 ` + backup + `exec ` + q(b+"/app") + ` "$@"
 `
@@ -589,6 +642,19 @@ func tarDir(w io.Writer, dir string) error {
 // Backup copies the database into builds/<id>/backup.db with the new build's binary (VACUUM
 // INTO, beside the serving build), before any migration.
 func (s *Ssh) Backup(ctx context.Context, id string) (string, error) {
+	if s.DB != nil {
+		have, err := s.DB.HaveTables(ctx)
+		if err != nil || !have {
+			return "", err
+		}
+		at := s.DB.Now().UTC().Truncate(time.Second).Format(time.RFC3339)
+		_, err = s.run(ctx, `id=`+q(id)+`
+printf '%s %s\n' `+q(at)+` `+q(s.DB.SharedName())+` > "$R/builds/$id/backup.pitr"
+cat "$R/current" > "$R/builds/$id/backup.of" 2>/dev/null
+exit 0
+`)
+		return "Turso point in time " + at + " of " + s.DB.SharedName(), err
+	}
 	out, err := s.run(ctx, `id=`+q(id)+`
 [ -f "$R/db/app.db" ] || exit 0
 "$R/builds/$id/run" --backup-to "$R/builds/$id/backup.db" >&2 || exit 1
@@ -606,6 +672,19 @@ echo "backup=builds/$id/backup.db"
 // has --allow-data-loss: the binary refuses a migration that drops data otherwise), and on
 // success records its snapshot as db/schema.json and its migrations as db/migrations.
 func (s *Ssh) Migrate(ctx context.Context, id string) (string, error) {
+	if s.DB != nil {
+		out, err := s.DB.Migrate(ctx, id, s.allowDataLoss)
+		if err != nil {
+			return out, err
+		}
+		_, err = s.run(ctx, `id=`+q(id)+`
+if [ -f "$R/builds/$id/migrations/schema.json" ]; then
+  cp "$R/builds/$id/migrations/schema.json" "$R/db/schema.json.new" && mv "$R/db/schema.json.new" "$R/db/schema.json"
+  ls "$R/builds/$id/migrations" | sed -n 's/\.sql$//p' > "$R/db/migrations.new" && mv "$R/db/migrations.new" "$R/db/migrations"
+fi
+`)
+		return out, err
+	}
 	allow := ""
 	if s.allowDataLoss {
 		allow = "ALDER_ALLOW_DATA_LOSS=1 "
@@ -889,6 +968,37 @@ func (s *Ssh) ensureCaddy(ctx context.Context) error {
 // lingering checked) and Caddy installed and answering, so a box that cannot run the build
 // refuses with nothing changed in builds/.
 func (s *Ssh) Preflight(ctx context.Context) error {
+	if s.DB != nil {
+		if err := s.tursoInit(ctx); err != nil {
+			return err
+		}
+		host, err := s.DB.Preflight(ctx)
+		if err != nil {
+			return err
+		}
+		env := TursoEnv(s.DB.SharedName(), host)
+		if _, err := s.run(ctx, `mkdir -p "$R/db" && chmod 700 "$R/db"
+if [ "$(cat "$R/db/turso.env" 2>/dev/null)" != `+q(strings.TrimRight(env, "\n"))+` ]; then
+  printf '%s' `+q(env)+` > "$R/db/turso.env.new" && mv "$R/db/turso.env.new" "$R/db/turso.env"
+fi
+`); err != nil {
+			return err
+		}
+	} else if len(s.Silos) > 0 {
+		streams := s.BackupURL != ""
+		if !streams {
+			streams, _ = s.StreamsBackup(ctx)
+		}
+		if streams {
+			out, err := s.run(ctx, `ls "$R"/db/silos/*/*.db 2>/dev/null | wc -l`)
+			if err != nil {
+				return err
+			}
+			if n, _ := strconv.Atoi(strings.TrimSpace(out)); n > MaxSiloFiles {
+				return refuse("", "%s:%s/db/silos holds %d silo files, more than the %d the backup shipper streams one by one: with this many silos the data belongs on Turso (`database: Turso \"org\" { app: \"…\" }` in the environment, chapter 16), or remove `backup` and back the files up yourself", s.Dest, s.Root, n, MaxSiloFiles)
+			}
+		}
+	}
 	if s.sup != "process" && !s.unitDone {
 		if err := s.installUnit(ctx); err != nil {
 			return err
@@ -980,6 +1090,24 @@ func CaddyRoute(id, domain string, port int) string {
 // returned unlock closes it; a session that dies releases it. A held lock is a refusal naming
 // its holder.
 func (s *Ssh) Lock(ctx context.Context) (func(), error) {
+	unlock, err := s.lockBox(ctx)
+	if err != nil || s.DB == nil {
+		return unlock, err
+	}
+	if err := s.tursoInit(ctx); err != nil {
+		unlock()
+		return nil, err
+	}
+	unlockDB, err := s.DB.Lock(ctx, "local "+os.Getenv("USER")+" at "+s.Dest)
+	if err != nil {
+		unlock()
+		return nil, err
+	}
+	return func() { unlockDB(); unlock() }, nil
+}
+
+// lockBox is Lock's lock at the box.
+func (s *Ssh) lockBox(ctx context.Context) (func(), error) {
 	who := "local " + os.Getenv("USER")
 	script := `umask 077
 R=` + q(s.Root) + `
@@ -1092,6 +1220,9 @@ rm -rf "$D"
 // db/migrations are kept as *.before-rollback-<time>; the copy goes in place (mode 600) with
 // to's schema.json and migration names. Undo stops every build and puts the kept files back.
 func (s *Ssh) RestoreBackup(ctx context.Context, to, src string) (Restored, error) {
+	if s.DB != nil {
+		return s.restorePITR(ctx, to, src)
+	}
 	if err := s.stopAll(ctx); err != nil {
 		return Restored{}, err
 	}
@@ -1276,6 +1407,8 @@ func (s *Ssh) removeBuilds(ctx context.Context, ids []string) ([]string, error) 
 	return ids, err
 }
 
+func slicesClone(xs []string) []string { return append([]string(nil), xs...) }
+
 func contains(xs []string, x string) bool {
 	for _, y := range xs {
 		if y == x {
@@ -1291,6 +1424,9 @@ const streamEnv = `grep -Eq '^(export[[:space:]]+)?ALDER_BACKUP_URL=[^[:space:]]
 
 // StreamsBackup is StreamChecker: whether the environment file sets ALDER_BACKUP_URL.
 func (s *Ssh) StreamsBackup(ctx context.Context) (bool, error) {
+	if s.DB != nil {
+		return true, nil // Turso's point-in-time recovery
+	}
 	out, err := s.run(ctx, streamEnv+"\nexit 0\n")
 	return strings.Contains(out, "streamenv=yes"), err
 }
@@ -1298,6 +1434,20 @@ func (s *Ssh) StreamsBackup(ctx context.Context) (bool, error) {
 // Info reads the database's size, the shipper's last upload (db/app.db-backup.json, which the
 // runtime writes) and the newest pre-migration copy.
 func (s *Ssh) Info(ctx context.Context) (Info, error) {
+	if s.DB != nil {
+		if err := s.tursoInit(ctx); err != nil {
+			return Info{}, err
+		}
+		n, have, err := s.DB.StorageBytes(ctx)
+		if err != nil {
+			return Info{}, err
+		}
+		in := Info{HaveDB: have, DBBytes: n}
+		if have {
+			in.LastBackup, in.BackupFrom = time.Now(), "continuous: Turso's point-in-time recovery of "+s.DB.Describe()+" (database "+s.DB.SharedName()+"; `alder restore <env> --to <time>`)"
+		}
+		return in, nil
+	}
 	out, err := s.run(ctx, `if [ -f "$R/db/app.db" ]; then
   n=$(wc -c < "$R/db/app.db" | tr -d ' '); w=0; [ -f "$R/db/app.db-wal" ] && w=$(wc -c < "$R/db/app.db-wal" | tr -d ' ')
   echo "db=$((n + w))"
@@ -1381,6 +1531,9 @@ done
 func (s *Ssh) Restore(ctx context.Context, db string) (string, error) {
 	if _, err := s.Connect(ctx); err != nil {
 		return "", err
+	}
+	if s.DB != nil {
+		return "", refuse("", "the database of %s is at Turso: it is restored to a point in time (`alder restore <env> --to <time>`), not from a file", s.Describe())
 	}
 	f, err := os.Open(db)
 	if err != nil {

@@ -432,3 +432,10 @@ func openRemote(path string, reader bool) (*SQLite, error) {
 	}
 	return &SQLite{db: openHrana(t.URL(host), tok, t.http, reader), tables: map[string]TableDesc{}, remote: true}, nil
 }
+
+// ExecRaw runs one statement on st outside the Store's operations (alder's deploy tools and
+// their tests).
+func ExecRaw(ctx context.Context, st *SQLite, stmt string, args ...any) error {
+	_, err := st.db.ExecContext(ctx, stmt, args...)
+	return err
+}

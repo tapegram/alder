@@ -279,6 +279,10 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 		out, err := t.Migrate(ctx, id)
 		if err != nil {
 			line(w, "migrate", "FAIL", "")
+			var r *Refusal
+			if errors.As(err, &r) { // the target's own refusal (a Turso deploy's sampled silo)
+				return res, r
+			}
 			return res, refuse(lastLines(out, 20), "build %s's migrations did not apply: nothing was switched; %s", id, serving(current))
 		}
 		rec.Applied = appliedFrom(out)

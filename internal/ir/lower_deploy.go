@@ -90,7 +90,33 @@ func lowerTarget(v *syntax.DeployValue) (Target, bool) {
 			t.Port = s
 		case "app":
 			t.App = s
+		case "database":
+			t.Database = lowerDatabase(f.Value)
 		}
 	}
 	return t, true
+}
+
+// lowerDatabase is `Turso "org" { group?, app, sample? }`, nil for anything else.
+func lowerDatabase(v *syntax.DeployValue) *Database {
+	if v.Kind != "ctor" || v.Ctor != "Turso" || v.Arg == nil {
+		return nil
+	}
+	d := &Database{Kind: "turso", Org: v.Arg.Str, Group: "default"}
+	for _, f := range v.Rec {
+		if f.Value == nil {
+			continue
+		}
+		switch f.Name {
+		case "group":
+			d.Group = f.Value.Str
+		case "app":
+			d.App = f.Value.Str
+		case "sample":
+			if n, err := strconv.Atoi(f.Value.Str); err == nil && f.Value.Kind == "int" {
+				d.Sample = n
+			}
+		}
+	}
+	return d
 }
