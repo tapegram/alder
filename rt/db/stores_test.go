@@ -743,6 +743,60 @@ func TestStores_TestModeWriteChecks(t *testing.T) {
 	}
 }
 
+// C1: Test.run's Task (eff.Env.Pending, set by rtesting.Inner) is bound by its first write, so a
+// write of a second store fails as a request's does; one bound to an arm's silo beforehand
+// (rtesting.InnerOn) refuses the shared store from its first write.
+func TestStores_TestRunBindsOnFirstWrite(t *testing.T) {
+	ctx := context.Background()
+	shared, _ := OpenSQLite(":memory:")
+	defer shared.Close()
+	cfg := siloConfig(t, "", 1)
+	if err := shared.Ensure(ctx, cfg.Tables, true); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := NewTestStores(shared, cfg)
+	defer s.Close()
+	ins := func(e *eff.Env, t2 *Table[proj], vals []any) error {
+		_, err := InsertRow(e.Ctx, e.Store.(Store), TxOf(e), t2, vals, clock)
+		return err
+	}
+	run := func(key string, steps ...func(*eff.Env) error) error {
+		env := &eff.Env{Ctx: ctx, Store: TestStore{shared, s}, Stores: s, Session: orgSession{"A"}, Now: func() time.Time { return clock }, Pending: true, SiloKey: key}
+		_, err := eff.Run(env, eff.KTask, eff.Call("Test.run", true, func(e *eff.Env) (struct{}, error) {
+			for _, f := range steps {
+				if err := f(e); err != nil {
+					return struct{}{}, err
+				}
+			}
+			return struct{}{}, nil
+		}))
+		return err
+	}
+	org := func(e *eff.Env) error { return ins(e, orgT, []any{nil, "o"}) }
+	project := func(e *eff.Env) error { return ins(e, projT, []any{nil, "p", "A"}) }
+	if err := run("", org, project); !errors.Is(err, eff.ErrInternal) || !strings.Contains(err.Error(), "writes silo org in a Task on the shared store") {
+		t.Fatalf("shared then silo: %v", err)
+	}
+	if err := run("", project, org); !errors.Is(err, eff.ErrInternal) || !strings.Contains(err.Error(), "writes the shared store in a Task on silo org") {
+		t.Fatalf("silo then shared: %v", err)
+	}
+	if err := run("org", org); !errors.Is(err, eff.ErrInternal) {
+		t.Fatalf("shared on an arm of silo org: %v", err)
+	}
+	var f *eff.ErrFail
+	if err := run("", func(e *eff.Env) error { return ins(e, projT, []any{nil, "b", "B"}) }); !errors.As(err, &f) {
+		t.Fatalf("another org's row: %v", err)
+	}
+	for _, steps := range [][]func(*eff.Env) error{{org, org}, {project, project}} {
+		if err := run("", steps...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := run("org", project); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // M4: a silo made before the app had migrations (its row names none) whose schema is where a
 // migration leads is behind from there, not failed.
 func TestStores_AdoptsMigrationless(t *testing.T) {

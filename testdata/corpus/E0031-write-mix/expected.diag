@@ -1,5 +1,8 @@
-app/Projects.alder:30:3 E0031 `Create` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message.
-app/Projects.alder:36:3 E0031 `Helped` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message.
-app/Projects.alder:42:3 E0031 `Many` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message.
-app/Projects.alder:48:3 E0031 `Silos` writes `Project` (silo `org`) and `Board` (silo `team`): a Task writes to one store. Send one of the writes from its own message.
-app/Projects.alder:61:3 E0031 the `_` arm writes `Board` (silo `team`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message.
+app/Projects.alder:33:3 E0031 `Create` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message.
+app/Projects.alder:39:3 E0031 `Helped` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message.
+app/Projects.alder:45:3 E0031 `Many` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message.
+app/Projects.alder:51:3 E0031 `Silos` writes `Project` (silo `org`) and `Board` (silo `team`): a Task writes to one store. Send one of the writes from its own message.
+app/Projects.alder:65:3 E0031 `Bound` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message.
+app/Projects.alder:72:3 E0031 `Lambda` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message.
+app/Projects.alder:78:3 E0031 `Mapped` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message.
+app/Projects.alder:84:3 E0031 the `_` arm writes `Board` (silo `team`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message.

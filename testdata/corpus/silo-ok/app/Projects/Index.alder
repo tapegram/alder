@@ -52,14 +52,15 @@ update msg model session = match msg {
     let _ <- p.id |> Db.deleteScoped Project
     Task.succeed Rerender
   },
-  -- a Task.all within one silo
-  Seed _ -> {
-    let _ <- Task.all (List.map seed ["x", "y"])
-    Task.succeed Rerender
-  },
-  -- a shared write (Label is partitioned but in no silo)
+  -- a shared write (Label is partitioned but in no silo): an explicit
+  -- shared arm beside the `_` silo arm has a case of its own in store__Projects__Index
   Tag _ -> {
     let _ <- Db.insertScoped Label { name: "new" }
+    Task.succeed Rerender
+  },
+  -- a Task.all within one silo, for Seed: the `_` arm, on the silo
+  _ -> {
+    let _ <- Task.all (List.map seed ["x", "y"])
     Task.succeed Rerender
   },
 }
@@ -156,6 +157,19 @@ test "labels are scoped by org in the shared store" = {
   let _ <- Test.get (Projects.Index {})
   let r <- Test.click Tag
   Task.succeed (Test.text "#labels" r.doc == Just "1")
+}
+
+-- Test.run of an update runs on the store of the message's arm, as the request does: Tag's
+-- (shared) beside the `_` arm's (the org's)
+test "Test.run of Tag writes the shared store, of Seed the org's" = {
+  let s <- setup
+  let _ <- Test.login { user: Just s.me, org: Just s.a }
+  let model : Model = { org: "A", projects: [], labels: 0 }
+  let me : Session = { user: s.me, org: s.a, role: Reader }
+  let tagged <- Test.run (update Tag model me)
+  let seeded <- Test.run (update Seed model me)
+  let page <- Test.get (Projects.Index {})
+  Task.succeed ({ tag: tagged.value, seed: seeded.value, labels: page.model.labels, projects: names page.model.projects } == { tag: Ok Rerender, seed: Ok Rerender, labels: 1, projects: ["x", "y"] })
 }
 
 test "without an org the page sends you to pick one" = {

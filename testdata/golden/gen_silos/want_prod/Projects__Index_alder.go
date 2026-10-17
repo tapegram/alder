@@ -134,18 +134,17 @@ func Projects__Index__update(msg Projects__Index__Msg, model Projects__Index__Mo
 		}), func(_ struct{}) eff.Task[rt.Nav] {
 			return eff.Pure(rt.Rerender())
 		})
-	case is__Projects__Index__Msg__Seed:
-		return eff.Bind(eff.All(std.ListMap(Projects__Index__seed, []string{"x", "y"})), func(_ []struct{}) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Rerender())
-		})
 	case is__Projects__Index__Msg__Tag:
 		return eff.Bind(eff.Call("Db.insertScoped Label", true, func(_e5 *eff.Env) (string, error) {
 			return db.InsertScopedRow(_e5.Ctx, _e5.Store.(db.Store), db.TxOf(_e5), table__Label__Label, insertminevals__Label__Label(insertmine__Label__Label{Name: "new"}), _e5.Now())
 		}), func(_ string) eff.Task[rt.Nav] {
 			return eff.Pure(rt.Rerender())
 		})
+	default:
+		return eff.Bind(eff.All(std.ListMap(Projects__Index__seed, []string{"x", "y"})), func(_ []struct{}) eff.Task[rt.Nav] {
+			return eff.Pure(rt.Rerender())
+		})
 	}
-	panic("unreachable")
 }
 
 func Projects__Index__view(model Projects__Index__Model, session Projects__Index__Session) html.Node {

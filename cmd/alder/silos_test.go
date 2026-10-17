@@ -185,6 +185,20 @@ func TestSilos_Binary(t *testing.T) {
 	if n := sqlCount(t, appDB, `SELECT COUNT(*) FROM "Project__Project"`); n != 0 {
 		t.Fatalf("the shared file holds %d projects", n)
 	}
+	// Tag, an explicit arm writing the shared store beside the `_` arm on the org's silo, runs on
+	// the shared store (C2: it does not inherit the `_` arm's); Seed (the `_` arm) on the org's
+	if res, body := do("POST", "/_m/Projects.Index/Tag", me, nil); res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("tag: %d\n%s", res.StatusCode, body)
+	}
+	if n := sqlCount(t, appDB, `SELECT COUNT(*) FROM "Label__Label" WHERE "org" = 'A'`); n != 1 {
+		t.Fatalf("the shared file holds %d of A's labels", n)
+	}
+	if res, body := do("POST", "/_m/Projects.Index/Seed", me, nil); res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("seed: %d\n%s", res.StatusCode, body)
+	}
+	if n := sqlCount(t, filepath.Join(silos, db.SiloFileName("A")), `SELECT COUNT(*) FROM "Project__Project" WHERE "name" IN ('x', 'y')`); n != 2 {
+		t.Fatalf("A's file holds %d seeded projects", n)
+	}
 	// a crafted switch to an org me is no member of: refused, the session unchanged
 	if res, _ := do("POST", "/_m/Orgs/Pick?org=B", me, nil); res.StatusCode != http.StatusInternalServerError || res.Header.Get("Set-Cookie") != "" {
 		t.Fatalf("crafted switch: %d %q", res.StatusCode, res.Header.Get("Set-Cookie"))

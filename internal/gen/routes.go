@@ -568,7 +568,8 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 }
 
 // enter writes, for an app with silos, the function naming the store of each arm of page pg's
-// update (store__M: its silo key, "" for the shared store; the checker's Arm.Store) and
+// update (store__M: its silo key, "" for the shared store; the checker's Arm.Store: a case for
+// each arm whose store is not the `_` arm's, the default) and
 // returns the statement binding the Task to it (db.Enter) before update__M runs it: a silo not
 // served answers the maintenance page. "" without silos.
 func (g *gen) enter(b *strings.Builder, p *ir.Program, pg *ir.Page) string {
@@ -576,14 +577,17 @@ func (g *gen) enter(b *strings.Builder, p *ir.Program, pg *ir.Page) string {
 		return ""
 	}
 	m := pg.Module
-	def := ""
-	var cases []string
+	def := "" // the store of the `_` arm (the others), shared when there is none
 	for _, a := range pg.Arms {
 		if a.Msg == "" {
 			def = a.Store.Silo
-			continue
 		}
-		if a.Store.Silo != "" {
+	}
+	var cases []string
+	for _, a := range pg.Arms {
+		// every arm whose store is not the default's, the shared one included: an explicit
+		// shared arm beside a `_` silo arm must not inherit the silo
+		if a.Msg != "" && a.Store.Silo != def {
 			cases = append(cases, fmt.Sprintf("case %s:\nreturn %s\n", tagConst(m, "Msg", a.Msg), strconv.Quote(a.Store.Silo)))
 		}
 	}

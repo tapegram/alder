@@ -2,13 +2,17 @@
 // shared store or to one silo, never both and never two silos, since one transaction runs on one
 // database. Reads may mix (a read of the other store runs outside the transaction).
 //
-// The analysis is syntactic, over the checked program, after every body is checked:
+// The analysis runs over the checked program, after every body is checked (it reads the
+// instantiated types of the Db references, so it is by type, not by spelling):
 //
 //  1. Every top-level value of every module (and every entry of a `fake`) gets its direct
-//     writes — the tables of the Db writes written in its body, `Db.insert`, `Db.update`,
-//     `Db.delete` and the scoped ones (`Db.insertMine`, `Db.updateScoped`, …), each applied to
-//     its table (a table is always written in place: E0003 refuses `Table t`) — and the
-//     top-level values it refers to, in any module.
+//     writes — the tables of the references in its body to a Db write function, `Db.insert`,
+//     `Db.update`, `Db.delete` and the scoped ones (`Db.insertMine`, `Db.updateScoped`, …),
+//     whether applied in place or not (`let ins = Db.insert`, a lambda's parameter applied to
+//     `Db.insert`): each reference's table is read from its instantiated type (bodyFacts) — a
+//     Db function always has a concrete table where it is used (E0003 refuses `Table t`), and a
+//     `let` is not generalized, so one reference writes one table — and the top-level values
+//     it refers to, in any module.
 //  2. A value's writes are its direct writes and, transitively, those of every value it refers
 //     to (a fixed point, so recursion and cycles are fine). A reference counts whether or not
 //     the value is called, and a whole body counts, lambdas and `Task.all`/`List.map`
@@ -23,6 +27,14 @@
 //  4. A fake's entry is checked the same way (as one arm).
 //
 // Session.put and capability calls are not writes to either store (the cookie; the adapter).
+//
+// What it proves: an `update` arm (and a fake's entry) that the checker accepts names no Db
+// write function of a table of another store anywhere it can reach through its body and the
+// top-level values it refers to. It does not see a `test`'s Tasks (Test.run of a Task built in a
+// test is not an arm) nor code outside Alder (an adapter); there the runtime is the backstop: a
+// request's Task is bound to its arm's store (db.Enter) and Test.run's to the first store it
+// writes, and a write of another store fails the Task (an internal error: 500 in production, a
+// failed test under `alder test`).
 package check
 
 import (
@@ -54,27 +66,25 @@ type valueFacts struct {
 	refs   map[string]bool
 }
 
-// bodyFacts walks e for its direct writes and references.
-func bodyFacts(e syntax.Expr) valueFacts {
+// bodyFacts walks e for its direct writes and references. A write is found by type, not by
+// spelling: every reference to a Db write function (applied or not — `let ins = Db.insert`, a
+// lambda that applies its parameter to `Db.insert`, `List.map (Db.deleteScoped Project)`) counts,
+// with its table read from the reference's instantiated type (its `Table t` parameter), as
+// checkScopedTables reads it. Lets are not generalized, so the reference's type is the one table
+// it is used with; a reference whose table is not known is checkDbTables' E0003.
+func (c *Checker) bodyFacts(e syntax.Expr) valueFacts {
 	f := valueFacts{writes: map[string]bool{}, refs: map[string]bool{}}
 	walkExpr(e, func(x syntax.Expr) {
-		switch x := x.(type) {
-		case *syntax.App:
-			v, ok := x.Fn.(*syntax.Var)
-			if !ok || v.Ref.Kind != syntax.RefStd || v.Ref.Module != "Db" || !dbWrites[v.Ref.Name] || len(x.Args) == 0 {
-				return
-			}
-			if ct, ok := x.Args[0].(*syntax.CtorRef); ok {
-				switch {
-				case ct.Ref.Kind == syntax.RefTable:
-					f.writes[ct.Ref.Module+"."+ct.Ref.Name] = true
-				case ct.Table.Kind == syntax.RefTable:
-					f.writes[ct.Table.Module+"."+ct.Table.Name] = true
-				}
-			}
-		case *syntax.Var:
-			if x.Ref.Kind == syntax.RefValue {
-				f.refs[x.Ref.Module+"."+x.Ref.Name] = true
+		v, ok := x.(*syntax.Var)
+		if !ok {
+			return
+		}
+		switch {
+		case v.Ref.Kind == syntax.RefValue:
+			f.refs[v.Ref.Module+"."+v.Ref.Name] = true
+		case v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Db" && dbWrites[v.Ref.Name]:
+			if rec := tableArg(c, c.res.Types[v]); rec != nil {
+				f.writes[c.key(rec.Module, rec.Name)] = true
 			}
 		}
 	})
@@ -95,7 +105,7 @@ func (c *Checker) checkWriteSets() {
 			switch d := d.(type) {
 			case *syntax.ValueDecl:
 				if d.Body != nil {
-					direct[c.key(name, d.Name)] = bodyFacts(d.Body)
+					direct[c.key(name, d.Name)] = c.bodyFacts(d.Body)
 				}
 			case *syntax.FakeDecl:
 				if c.fakes[d.Ref.Name] != d {
@@ -131,7 +141,7 @@ func (c *Checker) checkWriteSets() {
 		}
 	}
 	writesOf := func(e syntax.Expr) map[string]bool {
-		f := bodyFacts(e)
+		f := c.bodyFacts(e)
 		out := f.writes
 		for r := range f.refs {
 			for t := range all[r] {

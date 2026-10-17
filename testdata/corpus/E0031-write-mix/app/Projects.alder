@@ -22,6 +22,9 @@ msg Helped
 msg Many
 msg Silos
 msg Reads
+msg Bound
+msg Lambda
+msg Mapped
 msg Other
 
 update : Msg -> Model -> Session -> Task Nav
@@ -55,6 +58,26 @@ update msg model session = match msg {
     let _ <- Db.from AuditLog |> Db.all
     let _ <- Db.scoped Board |> Db.all
     let _ <- Db.get Org session.org
+    let _ <- Db.insertScoped Project { name: "p" }
+    Task.succeed Rerender
+  },
+  -- a Db write that is not applied in place is found by its type: bound by a let,
+  Bound _ -> {
+    let ins = Db.insert
+    let _ <- ins AuditLog { text: "created p" }
+    let _ <- Db.insertScoped Project { name: "p" }
+    Task.succeed Rerender
+  },
+  -- passed to a lambda that applies it,
+  Lambda _ -> {
+    let _ <- (\f -> f AuditLog { text: "created p" }) Db.insert
+    let _ <- Db.insertScoped Project { name: "p" }
+    Task.succeed Rerender
+  },
+  -- or partially applied and mapped
+  Mapped _ -> {
+    let logs <- Db.from AuditLog |> Db.all
+    let _ <- Task.all (List.map (Db.delete AuditLog) (List.map (\l -> l.id) logs))
     let _ <- Db.insertScoped Project { name: "p" }
     Task.succeed Rerender
   },

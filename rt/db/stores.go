@@ -848,7 +848,10 @@ func route[T any](ctx context.Context, st Store, tx Tx, t *Table[T], op string, 
 	}
 	name := op + " " + shortName(t.Name)
 	if t.Silo == "" {
-		if reg.test && write && e.Bound && e.SiloKey != "" { // a test fails where production does
+		if reg.test && write && e.Pending && e.SiloKey == "" { // Test.run's first write binds it
+			e.Pending, e.Bound = false, true
+		}
+		if reg.test && write && (e.Bound || e.Pending) && e.SiloKey != "" { // a test fails where production does
 			return nil, nil, fmt.Errorf("db: %w: %s writes the shared store in a Task on silo %s (one store per Task)", eff.ErrInternal, name, e.SiloKey)
 		}
 		if reg.test || e.SiloKey == "" {
@@ -901,9 +904,20 @@ func route[T any](ctx context.Context, st Store, tx Tx, t *Table[T], op string, 
 // testWrite is, in a test, the check production makes of a write of value v of t's silo key
 // (I3): from a request's Task (bound by Enter) the one-store rule and the row's own value; from
 // the test's body, a row whose value is not the session's (when it has one) is refused as a
-// request would refuse it ("the row's org is not this request's").
+// request would refuse it ("the row's org is not this request's"). Test.run's Task (Pending) is
+// bound by its first write (route binds it on a write of the shared store), then checked as a
+// request's is.
 func testWrite[T any](e *eff.Env, t *Table[T], name, v string) error {
-	if e.Bound {
+	if e.Pending && (e.SiloKey == "" || e.SiloKey == t.Silo) {
+		// Test.run's first write binds it to this silo's value v, once v passes the check a
+		// test's body makes (below): the request's value, else the session's
+		if err := testWrite(&eff.Env{Keys: e.Keys, Session: e.Session}, t, name, v); err != nil {
+			return err
+		}
+		e.Pending, e.Bound, e.SiloKey, e.SiloValue = false, true, t.Silo, v
+		return nil
+	}
+	if e.Bound || e.Pending { // Pending here: bound to silo SiloKey, written another
 		switch {
 		case e.SiloKey != t.Silo:
 			return fmt.Errorf("db: %w: %s writes silo %s in a Task on the %s store (one store per Task)", eff.ErrInternal, name, t.Silo, storeName(e))

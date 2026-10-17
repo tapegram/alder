@@ -189,6 +189,11 @@ type Env struct {
 	// Bound is set by db.Enter: the running Task is a request's, bound to the store of its arm
 	// (SiloKey "": the shared one). A test's own body is not bound.
 	Bound bool
+	// Pending is set in a test by rtesting.Inner for Test.run's Task, which no request binds:
+	// its first write binds it (db's routing sets Bound, SiloKey and SiloValue) to the store
+	// written — to silo SiloKey's when SiloKey is set (the arm of a page's update, whose value
+	// the first write names) — so a write to a second store fails as it fails in production.
+	Pending bool
 	// CheckSession, when set, is called by Session.put (and Test.login) with the session before
 	// and after: an app whose session has a `via` field checks the membership (a non-nil error
 	// fails the step, *ErrFail for a refusal).

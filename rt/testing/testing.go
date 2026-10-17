@@ -60,7 +60,28 @@ import (
 // still rolled back, so the store is consistent, and the error is returned for the enclosing
 // Run to fail the test with. A panic in t is not recovered: it unwinds through the enclosing
 // Run, which rolls back the whole transaction.
+//
+// t is one Task, as a request's is, so it writes to one store (book 08, "One store per Task"):
+// in an app with silos its first write binds it to that store, and a write to a second fails as
+// it fails in production (db's routing, eff.Env.Pending). InnerOn binds it beforehand.
 func Inner[T any](env *eff.Env, t eff.Task[T]) (v T, msg string, ok bool, trace []string, err error) {
+	return inner(env, "", false, t)
+}
+
+// InnerOn is Inner for Test.run of a page's update: t is bound to the store of the arm msg takes
+// (key, the generated store__M(msg): a silo key, "" for the shared store), as the request's
+// db.Enter binds it, so a Test.run fails where the request would.
+func InnerOn[T any](env *eff.Env, key string, t eff.Task[T]) (v T, msg string, ok bool, trace []string, err error) {
+	return inner(env, key, true, t)
+}
+
+func inner[T any](env *eff.Env, key string, arm bool, t eff.Task[T]) (v T, msg string, ok bool, trace []string, err error) {
+	if env.Stores != nil {
+		bound, pending, sk, sv := env.Bound, env.Pending, env.SiloKey, env.SiloValue
+		defer func() { env.Bound, env.Pending, env.SiloKey, env.SiloValue = bound, pending, sk, sv }()
+		env.SiloKey, env.SiloValue = key, ""
+		env.Bound, env.Pending = arm && key == "", !(arm && key == "")
+	}
 	session := env.Session
 	start := len(env.Trace) // the Test.run step itself is already on the trace
 	tx, err := env.Transaction()

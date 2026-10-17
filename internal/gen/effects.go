@@ -311,14 +311,49 @@ func (f *fn) testRun(x *ir.TestRun, s *scope) string {
 	r := GoType(effResult(x.Ty))
 	a := GoType(effResult(x.Task.Type()))
 	return f.callStmts("Test.run", true, x.Ty, s, func(env string, c *scope) string {
-		task := f.task(x.Task, c)
+		pre, inner := "", "rtesting.Inner("+env+", "
+		task := ""
+		if call, m := f.pageUpdate(x.Task); call != nil {
+			// a page's update: bound to its arm's store, as the request's db.Enter binds it
+			key, g := f.tempVar(c, "_m")
+			pre = g + " := " + f.code(call.Args[0], c) + "\n"
+			args := append([]ir.Expr{&ir.Var{Typed: ir.Typed{Ty: call.Args[0].Type()}, Kind: ir.VarLocal, Name: key}}, call.Args[1:]...)
+			task = f.task(&ir.Call{Typed: call.Typed, Pos: call.Pos, Fn: call.Fn, Args: args}, c)
+			inner = "rtesting.InnerOn(" + env + ", store__" + strings.ReplaceAll(m, ".", "__") + "(" + g + "), "
+		} else {
+			task = f.task(x.Task, c)
+		}
 		v, msg, ok, tr, err, out, zero := f.temp(c, "_v"), f.temp(c, "_msg"), f.temp(c, "_ok"), f.temp(c, "_tr"), f.temp(c, "_err"), f.temp(c, "_r"), f.temp(c, "_z")
-		return v + ", " + msg + ", " + ok + ", " + tr + ", " + err + " := rtesting.Inner(" + env + ", " + task + ")\n" +
+		return pre + v + ", " + msg + ", " + ok + ", " + tr + ", " + err + " := " + inner + task + ")\n" +
 			"if " + err + " != nil {\nvar " + zero + " " + r + "\nreturn " + zero + ", " + err + "\n}\n" +
 			out + " := " + r + "{Trace: " + tr + "}\n" +
 			"if " + ok + " {\n" + out + ".Value = rt.Ok[string, " + a + "](" + v + ")\n} else {\n" + out + ".Value = rt.Err[string, " + a + "](" + msg + ")\n}\n" +
 			"return " + out + ", nil\n"
 	})
+}
+
+// pageUpdate is, in an app with silos, e as a call of a page's update with its message (the
+// first argument) and the page's module; nil otherwise. Test.run binds such a Task to the store
+// of the message's arm (store__M, routes.go), as the request does.
+func (f *fn) pageUpdate(e ir.Expr) (*ir.Call, string) {
+	if len(f.g.prog.Silos) == 0 {
+		return nil, ""
+	}
+	call, ok := e.(*ir.Call)
+	if !ok || len(call.Args) == 0 {
+		return nil, ""
+	}
+	v, ok := call.Fn.(*ir.Var)
+	if !ok || v.Kind != ir.VarGlobal || v.Name != "update" {
+		return nil, ""
+	}
+	if pg := f.g.pages[v.Module]; pg == nil || pg.Update == nil {
+		return nil, ""
+	}
+	if _, isMutant := f.hoisted(e); isMutant || f.mutantsOf(e) != nil {
+		return nil, ""
+	}
+	return call, v.Module
 }
 
 // bind is eff.Bind(effect, continuation): the continuation returns its body as a Task.

@@ -229,52 +229,53 @@ func test__Orgs__2() eff.Task[bool] {
 							Value rt.Result[string, rt.Nav]
 							Trace []string
 						}, error) {
-							_v9, _msg10, _ok11, _tr12, _err13 := rtesting.Inner(_e8, Orgs__update(Orgs__Msg__Pick__(Orgs__PickParams{Org: b}), Orgs__Model{Mine: []Membership__Membership{}}, Orgs__Session{User: me, Org: rt.Just[string](a), Role: User__Role__Reader__}))
-							if _err13 != nil {
-								var _z15 struct {
+							_m9 := Orgs__Msg__Pick__(Orgs__PickParams{Org: b})
+							_v10, _msg11, _ok12, _tr13, _err14 := rtesting.InnerOn(_e8, store__Orgs(_m9), Orgs__update(_m9, Orgs__Model{Mine: []Membership__Membership{}}, Orgs__Session{User: me, Org: rt.Just[string](a), Role: User__Role__Reader__}))
+							if _err14 != nil {
+								var _z16 struct {
 									Value rt.Result[string, rt.Nav]
 									Trace []string
 								}
-								return _z15, _err13
+								return _z16, _err14
 							}
-							_r14 := struct {
+							_r15 := struct {
 								Value rt.Result[string, rt.Nav]
 								Trace []string
-							}{Trace: _tr12}
-							if _ok11 {
-								_r14.Value = rt.Ok[string, rt.Nav](_v9)
+							}{Trace: _tr13}
+							if _ok12 {
+								_r15.Value = rt.Ok[string, rt.Nav](_v10)
 							} else {
-								_r14.Value = rt.Err[string, rt.Nav](_msg10)
+								_r15.Value = rt.Err[string, rt.Nav](_msg11)
 							}
-							return _r14, nil
+							return _r15, nil
 						}), func(r struct {
 							Value rt.Result[string, rt.Nav]
 							Trace []string
 						}) eff.Task[bool] {
-							return eff.Bind(eff.Call("Test.run", true, func(_e16 *eff.Env) (struct {
+							return eff.Bind(eff.Call("Test.run", true, func(_e17 *eff.Env) (struct {
 								Value rt.Result[string, struct{}]
 								Trace []string
 							}, error) {
-								_v17, _msg18, _ok19, _tr20, _err21 := rtesting.Inner(_e16, std.SessionPut(func(s App__Session) App__Session {
+								_v18, _msg19, _ok20, _tr21, _err22 := rtesting.Inner(_e17, std.SessionPut(func(s App__Session) App__Session {
 									return App__Session{User: s.User, Org: rt.Just[string](b), Role: s.Role}
 								}))
-								if _err21 != nil {
-									var _z23 struct {
+								if _err22 != nil {
+									var _z24 struct {
 										Value rt.Result[string, struct{}]
 										Trace []string
 									}
-									return _z23, _err21
+									return _z24, _err22
 								}
-								_r22 := struct {
+								_r23 := struct {
 									Value rt.Result[string, struct{}]
 									Trace []string
-								}{Trace: _tr20}
-								if _ok19 {
-									_r22.Value = rt.Ok[string, struct{}](_v17)
+								}{Trace: _tr21}
+								if _ok20 {
+									_r23.Value = rt.Ok[string, struct{}](_v18)
 								} else {
-									_r22.Value = rt.Err[string, struct{}](_msg18)
+									_r23.Value = rt.Err[string, struct{}](_msg19)
 								}
-								return _r22, nil
+								return _r23, nil
 							}), func(put struct {
 								Value rt.Result[string, struct{}]
 								Trace []string

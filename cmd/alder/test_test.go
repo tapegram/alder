@@ -577,6 +577,48 @@ func TestTest_Rules(t *testing.T) {
 	}
 }
 
+// TestTest_Silos runs testdata/corpus/silo-ok's tests — Test.run of a page's update runs on the
+// store of the message's arm (Tag's shared one beside the `_` arm's silo), as the request does —
+// and then a Test.run whose Task writes two stores, which fails as the request would (C1: the
+// one-store rule holds for a test's own Tasks, not only for the checker's arms).
+func TestTest_Silos(t *testing.T) {
+	needGoTool(t)
+	src, err := filepath.Abs("../../testdata/corpus/silo-ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inTemp(t)
+	copyDir(t, src, "silo-ok")
+	code, stdout, stderr := runTest(t, "silo-ok")
+	for _, want := range []string{
+		"ok   Projects.Index \"labels are scoped by org in the shared store\"\n",
+		"ok   Projects.Index \"Test.run of Tag writes the shared store, of Seed the org's\"\n",
+		"22 passed, 0 failed\n",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("missing %q in\n%s\nstderr: %s", want, stdout, stderr)
+		}
+	}
+	if code != 0 {
+		t.Fatalf("exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	index := filepath.Join("silo-ok", "app", "Projects", "Index.alder")
+	b, err := os.ReadFile(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	two := "\ntest \"two stores in one Test.run\" = {\n  let s <- setup\n  let _ <- Test.login { user: Just s.me, org: Just s.a }\n" +
+		"  let r <- Test.run {\n    let _ <- Db.insert Label { name: \"l\", org: s.a }\n    Db.insert Project { name: \"p\", org: s.a }\n  }\n  Task.succeed True\n}\n"
+	if err := os.WriteFile(index, append(b, two...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, _ = runTest(t, "silo-ok", "-run", "two stores")
+	want := "FAIL Projects.Index \"two stores in one Test.run\"\n  error: db: internal error: Db.insert Project writes silo org in a Task on the shared store (one store per Task)\n"
+	if code != 1 || !strings.HasPrefix(stdout, want) || !strings.HasSuffix(stdout, "0 passed, 1 failed\n") {
+		t.Fatalf("exit %d\n%s\nwant:\n%s", code, stdout, want)
+	}
+}
+
 func TestTest_Usage(t *testing.T) {
 	inTemp(t)
 	for _, args := range [][]string{

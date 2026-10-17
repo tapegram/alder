@@ -179,14 +179,13 @@ _arms1:
 			}(), func(_ struct{}) eff.Task[rt.Nav] {
 				return eff.Pure(rt.Rerender())
 			})
-		case is__Projects__Index__Msg__Seed:
+		case is__Projects__Index__Msg__Tag:
 			_arm1 = 4
 			break _arms1
-		case is__Projects__Index__Msg__Tag:
+		default:
 			_arm1 = 5
 			break _arms1
 		}
-		panic("unreachable")
 	}
 	switch Mutant {
 	case 20:
@@ -199,10 +198,6 @@ _arms1:
 	}
 	switch _arm1 {
 	case 4:
-		return eff.Bind(eff.All(std.ListMap(Projects__Index__seed, []string{"x", "y"})), func(_ []struct{}) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Rerender())
-		})
-	case 5:
 		return eff.Bind(func() eff.Task[string] {
 			switch Mutant {
 			case 24:
@@ -212,6 +207,10 @@ _arms1:
 				return db.InsertScopedRow(_e6.Ctx, _e6.Store.(db.Store), db.TxOf(_e6), table__Label__Label, insertminevals__Label__Label(insertmine__Label__Label{Name: "new"}), _e6.Now())
 			})
 		}(), func(_ string) eff.Task[rt.Nav] {
+			return eff.Pure(rt.Rerender())
+		})
+	case 5:
+		return eff.Bind(eff.All(std.ListMap(Projects__Index__seed, []string{"x", "y"})), func(_ []struct{}) eff.Task[rt.Nav] {
 			return eff.Pure(rt.Rerender())
 		})
 	}
@@ -893,24 +892,25 @@ func test__Projects__Index__3() eff.Task[bool] {
 								Value rt.Result[string, rt.Nav]
 								Trace []string
 							}, error) {
-								_v19, _msg20, _ok21, _tr22, _err23 := rtesting.Inner(_e18, Projects__Index__update(Projects__Index__Msg__Remove__(Projects__Index__RemoveParams{Id: id}), model, me))
-								if _err23 != nil {
-									var _z25 struct {
+								_m19 := Projects__Index__Msg__Remove__(Projects__Index__RemoveParams{Id: id})
+								_v20, _msg21, _ok22, _tr23, _err24 := rtesting.InnerOn(_e18, store__Projects__Index(_m19), Projects__Index__update(_m19, model, me))
+								if _err24 != nil {
+									var _z26 struct {
 										Value rt.Result[string, rt.Nav]
 										Trace []string
 									}
-									return _z25, _err23
+									return _z26, _err24
 								}
-								_r24 := struct {
+								_r25 := struct {
 									Value rt.Result[string, rt.Nav]
 									Trace []string
-								}{Trace: _tr22}
-								if _ok21 {
-									_r24.Value = rt.Ok[string, rt.Nav](_v19)
+								}{Trace: _tr23}
+								if _ok22 {
+									_r25.Value = rt.Ok[string, rt.Nav](_v20)
 								} else {
-									_r24.Value = rt.Err[string, rt.Nav](_msg20)
+									_r25.Value = rt.Err[string, rt.Nav](_msg21)
 								}
-								return _r24, nil
+								return _r25, nil
 							})
 						}, ids)), func(removed []struct {
 							Value rt.Result[string, rt.Nav]
@@ -920,79 +920,80 @@ func test__Projects__Index__3() eff.Task[bool] {
 								Value rt.Result[string, rt.Nav]
 								Trace []string
 							}] {
-								return eff.Call("Test.run", true, func(_e26 *eff.Env) (struct {
+								return eff.Call("Test.run", true, func(_e27 *eff.Env) (struct {
 									Value rt.Result[string, rt.Nav]
 									Trace []string
 								}, error) {
-									_v27, _msg28, _ok29, _tr30, _err31 := rtesting.Inner(_e26, Projects__Index__update(Projects__Index__Msg__Rename__(Projects__Index__RenameParams{Id: id}), model, me))
-									if _err31 != nil {
-										var _z33 struct {
+									_m28 := Projects__Index__Msg__Rename__(Projects__Index__RenameParams{Id: id})
+									_v29, _msg30, _ok31, _tr32, _err33 := rtesting.InnerOn(_e27, store__Projects__Index(_m28), Projects__Index__update(_m28, model, me))
+									if _err33 != nil {
+										var _z35 struct {
 											Value rt.Result[string, rt.Nav]
 											Trace []string
 										}
-										return _z33, _err31
+										return _z35, _err33
 									}
-									_r32 := struct {
+									_r34 := struct {
 										Value rt.Result[string, rt.Nav]
 										Trace []string
-									}{Trace: _tr30}
-									if _ok29 {
-										_r32.Value = rt.Ok[string, rt.Nav](_v27)
+									}{Trace: _tr32}
+									if _ok31 {
+										_r34.Value = rt.Ok[string, rt.Nav](_v29)
 									} else {
-										_r32.Value = rt.Err[string, rt.Nav](_msg28)
+										_r34.Value = rt.Err[string, rt.Nav](_msg30)
 									}
-									return _r32, nil
+									return _r34, nil
 								})
 							}, ids)), func(renamed []struct {
 								Value rt.Result[string, rt.Nav]
 								Trace []string
 							}) eff.Task[bool] {
-								return eff.Bind(eff.Call("Test.login", true, func(_e34 *eff.Env) (struct{}, error) {
-									_s36 := App__Session{User: rt.Just[string](s.Them), Org: rt.Just[string](s.B), Role: User__Role__Reader__}
-									_ck37, _err35 := rtesting.CheckSession(_e34, _s36)
-									if _err35 != nil {
-										return struct{}{}, _err35
+								return eff.Bind(eff.Call("Test.login", true, func(_e36 *eff.Env) (struct{}, error) {
+									_s38 := App__Session{User: rt.Just[string](s.Them), Org: rt.Just[string](s.B), Role: User__Role__Reader__}
+									_ck39, _err37 := rtesting.CheckSession(_e36, _s38)
+									if _err37 != nil {
+										return struct{}{}, _err37
 									}
-									_e34.Session = _ck37
-									if _err35 := rtesting.BrowserOf(_e34).Login(_e34.Session); _err35 != nil {
-										return struct{}{}, _err35
+									_e36.Session = _ck39
+									if _err37 := rtesting.BrowserOf(_e36).Login(_e36.Session); _err37 != nil {
+										return struct{}{}, _err37
 									}
 									return struct{}{}, nil
 								}), func(_ struct{}) eff.Task[bool] {
-									return eff.Bind(eff.Call("Test.get Projects.Index", true, func(_e38 *eff.Env) (struct {
+									return eff.Bind(eff.Call("Test.get Projects.Index", true, func(_e40 *eff.Env) (struct {
 										Model   Projects__Index__Model
 										Session App__Session
 										Doc     rtesting.Doc
 										Notices []string
 									}, error) {
-										_u40 := rt.PageURL(rt.Page{Path: "/projects"})
-										_b41 := rtesting.BrowserOf(_e38)
-										_r42, _err43 := _b41.GetPage(_u40, "user")
-										if _err43 != nil {
-											var _z44 struct {
-												Model   Projects__Index__Model
-												Session App__Session
-												Doc     rtesting.Doc
-												Notices []string
-											}
-											return _z44, _err43
-										}
-										_m45, _err43 := rtesting.ModelOf[Projects__Index__Model](_u40, _r42)
-										if _err43 != nil {
+										_u42 := rt.PageURL(rt.Page{Path: "/projects"})
+										_b43 := rtesting.BrowserOf(_e40)
+										_r44, _err45 := _b43.GetPage(_u42, "user")
+										if _err45 != nil {
 											var _z46 struct {
 												Model   Projects__Index__Model
 												Session App__Session
 												Doc     rtesting.Doc
 												Notices []string
 											}
-											return _z46, _err43
+											return _z46, _err45
+										}
+										_m47, _err45 := rtesting.ModelOf[Projects__Index__Model](_u42, _r44)
+										if _err45 != nil {
+											var _z48 struct {
+												Model   Projects__Index__Model
+												Session App__Session
+												Doc     rtesting.Doc
+												Notices []string
+											}
+											return _z48, _err45
 										}
 										return struct {
 											Model   Projects__Index__Model
 											Session App__Session
 											Doc     rtesting.Doc
 											Notices []string
-										}{Model: _m45, Session: rtesting.SessionOf[App__Session](_r42.Session), Doc: rtesting.DocOf(_r42.Doc), Notices: _r42.Notices}, nil
+										}{Model: _m47, Session: rtesting.SessionOf[App__Session](_r44.Session), Doc: rtesting.DocOf(_r44.Doc), Notices: _r44.Notices}, nil
 									}), func(still struct {
 										Model   Projects__Index__Model
 										Session App__Session
@@ -1264,8 +1265,142 @@ func test__Projects__Index__5() eff.Task[bool] {
 	})
 }
 
-// test__Projects__Index__6 is test "without an org the page sends you to pick one" of module Projects.Index.
+// test__Projects__Index__6 is test "Test.run of Tag writes the shared store, of Seed the org's" of module Projects.Index.
 func test__Projects__Index__6() eff.Task[bool] {
+	return eff.Bind(Projects__Index__setup(), func(s struct {
+		Me   string
+		Them string
+		A    string
+		B    string
+	}) eff.Task[bool] {
+		return eff.Bind(eff.Call("Test.login", true, func(_e1 *eff.Env) (struct{}, error) {
+			_s3 := App__Session{User: rt.Just[string](s.Me), Org: rt.Just[string](s.A), Role: User__Role__Reader__}
+			_ck4, _err2 := rtesting.CheckSession(_e1, _s3)
+			if _err2 != nil {
+				return struct{}{}, _err2
+			}
+			_e1.Session = _ck4
+			if _err2 := rtesting.BrowserOf(_e1).Login(_e1.Session); _err2 != nil {
+				return struct{}{}, _err2
+			}
+			return struct{}{}, nil
+		}), func(_ struct{}) eff.Task[bool] {
+			model := Projects__Index__Model{Org: "A", Projects: []Project__Project{}, Labels: 0}
+			me := Projects__Index__Session{User: s.Me, Org: s.A, Role: User__Role__Reader__}
+			return eff.Bind(eff.Call("Test.run", true, func(_e5 *eff.Env) (struct {
+				Value rt.Result[string, rt.Nav]
+				Trace []string
+			}, error) {
+				_m6 := Projects__Index__Msg__Tag__
+				_v7, _msg8, _ok9, _tr10, _err11 := rtesting.InnerOn(_e5, store__Projects__Index(_m6), Projects__Index__update(_m6, model, me))
+				if _err11 != nil {
+					var _z13 struct {
+						Value rt.Result[string, rt.Nav]
+						Trace []string
+					}
+					return _z13, _err11
+				}
+				_r12 := struct {
+					Value rt.Result[string, rt.Nav]
+					Trace []string
+				}{Trace: _tr10}
+				if _ok9 {
+					_r12.Value = rt.Ok[string, rt.Nav](_v7)
+				} else {
+					_r12.Value = rt.Err[string, rt.Nav](_msg8)
+				}
+				return _r12, nil
+			}), func(tagged struct {
+				Value rt.Result[string, rt.Nav]
+				Trace []string
+			}) eff.Task[bool] {
+				return eff.Bind(eff.Call("Test.run", true, func(_e14 *eff.Env) (struct {
+					Value rt.Result[string, rt.Nav]
+					Trace []string
+				}, error) {
+					_m15 := Projects__Index__Msg__Seed__
+					_v16, _msg17, _ok18, _tr19, _err20 := rtesting.InnerOn(_e14, store__Projects__Index(_m15), Projects__Index__update(_m15, model, me))
+					if _err20 != nil {
+						var _z22 struct {
+							Value rt.Result[string, rt.Nav]
+							Trace []string
+						}
+						return _z22, _err20
+					}
+					_r21 := struct {
+						Value rt.Result[string, rt.Nav]
+						Trace []string
+					}{Trace: _tr19}
+					if _ok18 {
+						_r21.Value = rt.Ok[string, rt.Nav](_v16)
+					} else {
+						_r21.Value = rt.Err[string, rt.Nav](_msg17)
+					}
+					return _r21, nil
+				}), func(seeded struct {
+					Value rt.Result[string, rt.Nav]
+					Trace []string
+				}) eff.Task[bool] {
+					return eff.Bind(eff.Call("Test.get Projects.Index", true, func(_e23 *eff.Env) (struct {
+						Model   Projects__Index__Model
+						Session App__Session
+						Doc     rtesting.Doc
+						Notices []string
+					}, error) {
+						_u25 := rt.PageURL(rt.Page{Path: "/projects"})
+						_b26 := rtesting.BrowserOf(_e23)
+						_r27, _err28 := _b26.GetPage(_u25, "user")
+						if _err28 != nil {
+							var _z29 struct {
+								Model   Projects__Index__Model
+								Session App__Session
+								Doc     rtesting.Doc
+								Notices []string
+							}
+							return _z29, _err28
+						}
+						_m30, _err28 := rtesting.ModelOf[Projects__Index__Model](_u25, _r27)
+						if _err28 != nil {
+							var _z31 struct {
+								Model   Projects__Index__Model
+								Session App__Session
+								Doc     rtesting.Doc
+								Notices []string
+							}
+							return _z31, _err28
+						}
+						return struct {
+							Model   Projects__Index__Model
+							Session App__Session
+							Doc     rtesting.Doc
+							Notices []string
+						}{Model: _m30, Session: rtesting.SessionOf[App__Session](_r27.Session), Doc: rtesting.DocOf(_r27.Doc), Notices: _r27.Notices}, nil
+					}), func(page struct {
+						Model   Projects__Index__Model
+						Session App__Session
+						Doc     rtesting.Doc
+						Notices []string
+					}) eff.Task[bool] {
+						return eff.Pure(rtesting.Eq(struct {
+							Tag      rt.Result[string, rt.Nav]
+							Seed     rt.Result[string, rt.Nav]
+							Labels   int64
+							Projects []string
+						}{Tag: tagged.Value, Seed: seeded.Value, Labels: page.Model.Labels, Projects: Projects__Index__names(page.Model.Projects)}, struct {
+							Tag      rt.Result[string, rt.Nav]
+							Seed     rt.Result[string, rt.Nav]
+							Labels   int64
+							Projects []string
+						}{Tag: rt.Ok[string, rt.Nav](rt.Rerender()), Seed: rt.Ok[string, rt.Nav](rt.Rerender()), Labels: 1, Projects: []string{"x", "y"}}))
+					})
+				})
+			})
+		})
+	})
+}
+
+// test__Projects__Index__7 is test "without an org the page sends you to pick one" of module Projects.Index.
+func test__Projects__Index__7() eff.Task[bool] {
 	return eff.Bind(Projects__Index__setup(), func(s struct {
 		Me   string
 		Them string
@@ -1320,8 +1455,8 @@ func test__Projects__Index__6() eff.Task[bool] {
 	})
 }
 
-// test__Projects__Index__7 is test "a visitor is sent to log in" of module Projects.Index.
-func test__Projects__Index__7() eff.Task[bool] {
+// test__Projects__Index__8 is test "a visitor is sent to log in" of module Projects.Index.
+func test__Projects__Index__8() eff.Task[bool] {
 	return eff.Bind(eff.Call("Test.open Projects.Index", true, func(_e1 *eff.Env) (struct {
 		Answer  rtesting.Answer
 		Session App__Session

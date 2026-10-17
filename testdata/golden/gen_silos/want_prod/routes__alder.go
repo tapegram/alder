@@ -531,16 +531,10 @@ func params__Projects__Index(_ Projects__Index__Params) []rt.KV {
 // (the checker's one-store rule): the silo key, "" for the shared store.
 func store__Projects__Index(msg Projects__Index__Msg) string {
 	switch msg.Tag {
-	case is__Projects__Index__Msg__Add:
-		return "org"
-	case is__Projects__Index__Msg__Rename:
-		return "org"
-	case is__Projects__Index__Msg__Remove:
-		return "org"
-	case is__Projects__Index__Msg__Seed:
-		return "org"
+	case is__Projects__Index__Msg__Tag:
+		return ""
 	}
-	return ""
+	return "org"
 }
 
 // update__Projects__Index runs page Projects.Index's update for msg and answers its Nav (book 06):
