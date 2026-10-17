@@ -3,6 +3,7 @@ package check
 import (
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -206,6 +207,28 @@ func (mc *modCtx) deployTarget(f *syntax.DeployField) {
 	if v.Ctor == "Ssh" {
 		c.sshCharacters(v)
 	}
+	if v.Ctor == "Fly" {
+		c.flyCharacters(v)
+	}
+}
+
+// The character sets of a Fly target's texts: a region is Fly's three-letter code, an app name
+// lowercase letters, digits and `-` (they reach Fly's API paths and flyctl's command line).
+var (
+	flyRegionChars = regexp.MustCompile(`^[a-z]{3}$`)
+	flyAppChars    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+)
+
+// flyCharacters reports a Fly target's region or app outside its character set (E0030).
+func (c *Checker) flyCharacters(v *syntax.DeployValue) {
+	if a := v.Arg; a != nil && strings.TrimSpace(a.Str) != "" && !looksSecret(a.Str) && !flyRegionChars.MatchString(a.Str) {
+		c.errorf(diag.DeployDecl, a.Span, "the region of `Fly` is Fly's three-letter code, such as \"ord\" (`fly platform regions` lists them)")
+	}
+	for _, rf := range v.Rec {
+		if rf.Name == "app" && rf.Value != nil && rf.Value.Kind == "string" && strings.TrimSpace(rf.Value.Str) != "" && !looksSecret(rf.Value.Str) && !flyAppChars.MatchString(rf.Value.Str) {
+			c.errorf(diag.DeployDecl, rf.Value.Span, "`app` is a Fly app name: lowercase letters, digits and `-`, not beginning with `-`")
+		}
+	}
 }
 
 // The character sets of an Ssh target's texts: they reach ssh's command line, shell scripts,
@@ -239,6 +262,8 @@ func (c *Checker) sshCharacters(v *syntax.DeployValue) {
 		case "path":
 			if strings.ContainsAny(str, "\"\\$`%") || strings.IndexFunc(str, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
 				c.errorf(diag.DeployDecl, rf.Value.Span, "`path` may not contain a control character, `\"`, `\\`, `$`, `` ` `` or `%%`: it is written into shell scripts and a systemd unit")
+			} else if slices.Contains(strings.Split(str, "/"), "..") {
+				c.errorf(diag.DeployDecl, rf.Value.Span, "`path` may not contain `..`: write the directory itself, such as \"/srv/blog\"")
 			}
 		}
 	}

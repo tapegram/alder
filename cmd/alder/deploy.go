@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"syscall"
@@ -252,8 +253,8 @@ func targetFor(app, env string, t ir.Target, d *ir.Deploy, dir string, stdout, s
 // route), so one pull request's deploy never replaces another's. A Script target gets the host
 // in ALDER_HOST. A Fly environment's host is its app's (<app>.fly.dev): --host is refused.
 func withHost(env string, t ir.Target, host string) (ir.Target, error) {
-	if host == "" || strings.ContainsAny(host, "/ *:") || strings.HasPrefix(host, ".") {
-		return t, fmt.Errorf("bad --host %q: give a host name such as 42.preview.example.com", host)
+	if !hostChars.MatchString(host) || strings.HasPrefix(host, "-") || strings.HasPrefix(host, ".") {
+		return t, fmt.Errorf("bad --host %q: give a host name such as 42.preview.example.com (letters, digits, `.` and `-`, as a declared domain)", host)
 	}
 	switch t.Kind {
 	case "fly":
@@ -270,6 +271,9 @@ func withHost(env string, t ir.Target, host string) (ir.Target, error) {
 	}
 	return t, nil
 }
+
+// hostChars is --host's character set: E0030's for a declared domain, without the wildcard.
+var hostChars = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 
 // hostFlag reads `--host name` or `--host=name` at args[*i], advancing *i past its value.
 func hostFlag(args []string, i *int) (string, bool) {

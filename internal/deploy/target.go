@@ -81,6 +81,13 @@ type Schema struct {
 // before Migrate.
 type DataLossAllower interface{ AllowDataLoss(bool) }
 
+// Rerouter is a Target that can check that the traffic reaches a build already running as the
+// current one (a deploy of the build that serves): Reroute health checks it and sets its route
+// again, returning its port. A failure makes the deploy start the build again.
+type Rerouter interface {
+	Reroute(ctx context.Context, id string) (int, error)
+}
+
 // MigrationRefuser is a Target that cannot yet apply a migration to a database that has data
 // (the Fly target: a build that fails after its migrations would leave the app down). A deploy
 // whose plan has pending migrations against a live database is refused with the target's

@@ -128,6 +128,7 @@ func (s *Ssh) Close() error {
 // process dies) that every later ssh shares. Without it (it did not start), each ssh connects
 // on its own.
 func (s *Ssh) master(ctx context.Context) {
+	sweepControl()
 	dir, err := os.MkdirTemp(shortTemp(), "alder-ssh-")
 	if err != nil {
 		return
@@ -144,6 +145,18 @@ func (s *Ssh) master(ctx context.Context) {
 		return
 	}
 	s.ctl = ctl
+}
+
+// sweepControl removes the control directories of earlier runs that were killed before Close
+// (SIGKILL: SIGINT and SIGTERM end a run through Close): those older than the masters'
+// ControlPersist, whose master has exited by then.
+func sweepControl() {
+	dirs, _ := filepath.Glob(filepath.Join(shortTemp(), "alder-ssh-*"))
+	for _, d := range dirs {
+		if fi, err := os.Stat(d); err == nil && fi.IsDir() && time.Since(fi.ModTime()) > 15*time.Minute {
+			os.RemoveAll(d)
+		}
+	}
 }
 
 // shortTemp is a directory for the control socket: /tmp when it exists (a socket's path has a
@@ -484,9 +497,10 @@ func (s *Ssh) Upload(ctx context.Context, dir, id string) error {
 	}
 	_, err := s.run(ctx, `set -e
 id=`+q(id)+`
+ALDER_ENV=`+q(s.Env)+`
 mkdir -p "$R/db"; chmod 700 "$R/db"; chmod 750 "$R/builds"
 if [ -d "$R/builds/$id" ]; then
-  if alive "$id"; then echo "build $id is running" >&2; exit 1; fi
+  if alive "$id"; then echo "build $id is already at the target and running (it served before the current build and is still draining, or another run started it): nothing was uploaded; wait for it to stop (ALDER_DEPLOY_DRAIN, 30s by default) and deploy again, or make it current with: alder rollback $ALDER_ENV $id" >&2; exit 1; fi
   # an earlier upload of the same build: its record and pre-migration copy stay
   for f in deployed.json backup.db backup.of log; do [ -f "$R/builds/$id/$f" ] && mv "$R/builds/$id/$f" "$R/builds/$id.part/$f"; done
   rm -rf "$R/builds/$id"
@@ -637,6 +651,10 @@ if alive "$id"; then
 fi
 echo `+q(addr)+` > "$B/addr"
 touch "$B/log"
+# the log is trimmed to its last MB when the build starts with more than 10 MB of it
+if [ "$(wc -c < "$B/log" | tr -d ' ')" -gt 10485760 ]; then
+  { echo "--- alder deploy: the log passed 10 MB: trimmed to its last MB"; tail -c 1048576 "$B/log"; } > "$B/log.new" && mv "$B/log.new" "$B/log"
+fi
 off=$(wc -c < "$B/log" | tr -d ' ')
 echo "--- alder deploy: start $(date -u +%Y-%m-%dT%H:%M:%SZ) on `+addr+`" >> "$B/log"
 `+launch+`i=0
@@ -663,6 +681,30 @@ echo timeout; tail -c +$((off + 1)) "$B/log" | tail -n 40
 	}
 	s.stop(ctx, id)
 	return 0, fmt.Errorf("build %s did not start listening within 15s; its log (builds/%s/log):\n%s", id, id, strings.TrimRight(rest, "\n"))
+}
+
+// Reroute is Rerouter: the current build id, already running, is health checked on its port
+// and the route to it set again (Caddy's upstream; with `proxy: None` the build listens on the
+// public port itself), so "already serves" means the traffic reaches it.
+func (s *Ssh) Reroute(ctx context.Context, id string) (int, error) {
+	out, err := s.run(ctx, `cat "$R/builds/"`+q(id)+`/addr 2>/dev/null; exit 0`)
+	if err != nil {
+		return 0, err
+	}
+	a := strings.TrimSpace(out)
+	port, err := strconv.Atoi(a[strings.LastIndex(a, ":")+1:])
+	if err != nil || port == 0 {
+		return 0, fmt.Errorf("build %s has no port recorded (builds/%s/addr is %q)", id, id, a)
+	}
+	if err := s.Health(ctx, id, port, 15*time.Second); err != nil {
+		return 0, err
+	}
+	if s.Proxy != "None" {
+		if err := s.caddy(ctx, port); err != nil {
+			return 0, err
+		}
+	}
+	return port, nil
 }
 
 // installUnit writes the systemd template unit when it differs, and reloads systemd.
@@ -948,8 +990,14 @@ D="$L.d"
 if ! mkdir "$D" 2>/dev/null; then
   op=$(sed -n 's/.*, pid \([0-9][0-9]*\)$/\1/p' "$D/info" 2>/dev/null)
   if [ -n "$op" ] && kill -0 "$op" 2>/dev/null; then echo "busy $(cat "$D/info")"; exit 0; fi
+  stale=$(cat "$D/info" 2>/dev/null)
   rm -rf "$D"
   mkdir "$D" 2>/dev/null || { echo "busy (another run is taking the lock)"; exit 0; }
+  echo "$info" > "$D/info"
+  echo "locked stale ${stale:-(no holder recorded)}"
+  cat > /dev/null
+  rm -rf "$D"
+  exit 0
 fi
 echo "$info" > "$D/info"
 echo locked
@@ -998,6 +1046,10 @@ rm -rf "$D"
 		cmd.Process.Kill()
 		cmd.Wait()
 		return nil, fmt.Errorf("taking the deploy lock at %s timed out", s.Dest)
+	}
+	if stale, ok := strings.CutPrefix(first, "locked stale "); ok {
+		fmt.Fprintf(s.Warn, "warning: took over a stale deploy lock at %s/deploy.lock.d (%s, whose process no longer runs: a run that was killed)\n", s.Root, stale)
+		first = "locked"
 	}
 	if first != "locked" {
 		in.Close()

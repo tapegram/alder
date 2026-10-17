@@ -235,10 +235,21 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 			}
 		}
 		if !restart {
-			fmt.Fprintf(w, "build %s already serves %s: nothing to ship\n", id, o.Env)
-			return res, nil
+			rr, ok := t.(Rerouter)
+			if !ok {
+				fmt.Fprintf(w, "build %s already serves %s: nothing to ship\n", id, o.Env)
+				return res, nil
+			}
+			port, err := rr.Reroute(ctx, id)
+			if err == nil {
+				fmt.Fprintf(w, "build %s already serves %s (port %d; health and route checked): nothing to ship\n", id, o.Env, port)
+				return res, nil
+			}
+			fmt.Fprintf(w, "build %s is current and running, but the traffic does not reach it (%v): starting it again\n", id, firstLine(err.Error()))
+			restart = true
+		} else {
+			fmt.Fprintf(w, "build %s is current but not running: starting it again\n", id)
 		}
-		fmt.Fprintf(w, "build %s is current but not running: starting it again\n", id)
 	}
 
 	if p, ok := t.(Preflighter); ok {
@@ -408,6 +419,12 @@ func restoreAfterDrop(ctx context.Context, t Target, br BackupRestorer, o Option
 	}
 	return refuse(cause.Error(), "build %s did not pass its health check after its migrations dropped data (%s): the database copied before them (%s) was put back automatically and build %s serves again on it; the migrated database is kept as %s (a write made between the migration and now is only there); builds/%s/ is kept for inspection",
 		id, strings.Join(applied, ", "), r.From, current, r.Kept, id)
+}
+
+// firstLine is s up to its first newline.
+func firstLine(s string) string {
+	l, _, _ := strings.Cut(s, "\n")
+	return l
 }
 
 func serving(current string) string {

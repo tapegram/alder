@@ -67,7 +67,7 @@ jobs:
           gh release download "$ALDER_VERSION" --repo tapegram/alder --pattern 'alder_*_linux_amd64.tar.gz' --output "$RUNNER_TEMP/alder.tar.gz"
           tar -xzf "$RUNNER_TEMP/alder.tar.gz" -C "$RUNNER_TEMP" alder
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
       - name: alder deploy preview
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -102,7 +102,7 @@ jobs:
           gh release download "$ALDER_VERSION" --repo tapegram/alder --pattern 'alder_*_linux_amd64.tar.gz' --output "$RUNNER_TEMP/alder.tar.gz"
           tar -xzf "$RUNNER_TEMP/alder.tar.gz" -C "$RUNNER_TEMP" alder
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
       - name: alder deploy production
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

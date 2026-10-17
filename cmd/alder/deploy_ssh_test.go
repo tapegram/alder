@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -773,6 +774,21 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 		t.Fatalf("the lock was not released: %v", err)
 	}
 	again()
+	// a lock left by a killed run (the directory form, where flock is missing): taken over, and said
+	if strings.TrimSpace(box.sh(t, "command -v flock || true")) == "" {
+		box.sh(t, fmt.Sprintf("mkdir %s/deploy.lock.d && echo 'held by x@y (local z) since 2026-10-17T00:00:00Z, pid 999999' > %s/deploy.lock.d/info", box.qr(), box.qr()))
+		var warn bytes.Buffer
+		s.Warn = &warn
+		u, err := s.Lock(ctx)
+		if err != nil {
+			t.Fatalf("a stale lock: %v", err)
+		}
+		u()
+		s.Warn = io.Discard
+		if !strings.Contains(warn.String(), "warning: took over a stale deploy lock at "+box.root+"/deploy.lock.d (held by x@y (local z) since 2026-10-17T00:00:00Z, pid 999999, whose process no longer runs") {
+			t.Errorf("the takeover was not reported: %q", warn.String())
+		}
+	}
 	// I8: an environment file that turns on development mode is refused
 	box.sh(t, fmt.Sprintf("echo ALDER_DEV=1 >> %s/env", box.qr()))
 	if code, out, errs = runDeploy(t, "production", dir); code != 1 || !strings.Contains(errs, "sets ALDER_DEV: development mode") {

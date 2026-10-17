@@ -290,6 +290,18 @@ func TestDeploySsh_CaddyDrainRestore(t *testing.T) {
 	if got := pageBuild(http.DefaultClient, public); got != id1 {
 		t.Fatalf("through Caddy: %s, want %s\n%s", got, id1, out)
 	}
+	// the same build again, with Caddy's route pointing elsewhere: "already serves" checks the
+	// route reaches the build, and sets it again
+	box.sh(t, `curl -s -o /dev/null -X PATCH -H 'Content-Type: application/json' -d '{"dial":"127.0.0.1:1"}' http://`+os.Getenv(deploy.EnvCaddyAdmin)+`/id/alder-demo-production`)
+	if got := pageBuild(http.DefaultClient, public); got != "DOWN" {
+		t.Fatalf("the broken route still reaches %s", got)
+	}
+	if code, out, errs = runDeploy(t, "production", dir); code != 0 || !regexp.MustCompile(`build `+id1+` already serves production \(port \d+; health and route checked\): nothing to ship`).MatchString(out) {
+		t.Fatalf("deploying the build that serves: %d\n%s%s", code, out, errs)
+	}
+	if got := pageBuild(http.DefaultClient, public); got != id1 {
+		t.Fatalf("after the redeploy Caddy reaches %s, want %s", got, id1)
+	}
 	postVia(t, public, "Ada")
 	migrateDemo(t, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
 	t.Setenv(envDrain, "40s") // id1 keeps running, draining, past the rollback below

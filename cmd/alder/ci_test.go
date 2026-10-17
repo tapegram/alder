@@ -196,10 +196,25 @@ func TestDeploy_Host(t *testing.T) {
 		{ssh, "42.other.example.com", "--host 42.other.example.com does not match environment preview's domain *.preview.example.com"},
 		{ssh, "a.b.preview.example.com", "does not match"},
 		{ssh, "../x", "bad --host"},
+		{ir.Target{Kind: "ssh", Host: "deploy@box", Domain: "preview.example.com", Path: "/srv/p"}, "x$(id).preview.example.com", "bad --host"},
+		{ir.Target{Kind: "ssh", Host: "deploy@box", Domain: "preview.example.com", Path: "/srv/p"}, "-o.example.com", "bad --host"},
+		{ir.Target{Kind: "ssh", Host: "deploy@box", Domain: "preview.example.com", Path: "/srv/p"}, "a_b.example.com", "bad --host"},
 		{ir.Target{Kind: "fly", Region: "ord", App: "blog-preview"}, "42.preview.example.com", "a Fly environment is served at its app's address (blog-preview.fly.dev)"},
 	} {
 		if _, err := withHost("preview", c.t, c.host); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("withHost(%q): %v, want %q", c.host, err, c.want)
 		}
+	}
+}
+
+// ci init says what a preview domain that is not a wildcard does.
+func TestCi_NonWildcardPreview(t *testing.T) {
+	d := &ir.Deploy{Envs: map[string]ir.Target{"preview": {Kind: "ssh", Host: "deploy@box.example.com", Domain: "preview.example.com", Path: "/srv/p"}}}
+	wf := ciWorkflow(d, "v0.1.0", "1.27")
+	if !strings.Contains(strings.Join(wf.Notes, "\n"), "the preview domain preview.example.com is not a wildcard: each pull request is served at <number>.preview.example.com") {
+		t.Errorf("notes: %q", wf.Notes)
+	}
+	if !strings.Contains(wf.YAML, "# The preview domain preview.example.com is not a wildcard") {
+		t.Errorf("the file does not say so:\n%s", wf.YAML)
 	}
 }

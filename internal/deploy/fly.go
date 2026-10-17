@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -319,7 +320,7 @@ func (f *Fly) Connect(ctx context.Context) (Platform, error) {
 			return Platform{}, err
 		}
 	}
-	if err := f.call(ctx, "GET", "/apps/"+f.FlyApp, nil, nil); err != nil {
+	if err := f.call(ctx, "GET", "/apps/"+url.PathEscape(f.FlyApp), nil, nil); err != nil {
 		if !notFound(err) {
 			return Platform{}, err
 		}
@@ -337,7 +338,7 @@ func (f *Fly) Connect(ctx context.Context) (Platform, error) {
 // environment).
 func (f *Fly) findMachine(ctx context.Context) error {
 	var ms []flyMachine
-	if err := f.call(ctx, "GET", "/apps/"+f.FlyApp+"/machines", nil, &ms); err != nil {
+	if err := f.call(ctx, "GET", "/apps/"+url.PathEscape(f.FlyApp)+"/machines", nil, &ms); err != nil {
 		return err
 	}
 	f.machine = nil
@@ -356,7 +357,7 @@ func (f *Fly) refresh(ctx context.Context) error {
 		return nil
 	}
 	var m flyMachine
-	if err := f.call(ctx, "GET", "/apps/"+f.FlyApp+"/machines/"+f.machine.ID, nil, &m); err != nil {
+	if err := f.call(ctx, "GET", "/apps/"+url.PathEscape(f.FlyApp)+"/machines/"+url.PathEscape(f.machine.ID), nil, &m); err != nil {
 		return err
 	}
 	f.machine = &m
@@ -415,7 +416,7 @@ func (f *Fly) exec(ctx context.Context, script string) (string, error) {
 	}
 	var r execResult
 	body := map[string]any{"command": []string{"sh", "-c", "R=" + q(f.Data) + "\n" + script}, "timeout": 60}
-	if err := f.call(ctx, "POST", "/apps/"+f.FlyApp+"/machines/"+f.machine.ID+"/exec", body, &r); err != nil {
+	if err := f.call(ctx, "POST", "/apps/"+url.PathEscape(f.FlyApp)+"/machines/"+url.PathEscape(f.machine.ID)+"/exec", body, &r); err != nil {
 		return "", err
 	}
 	if r.ExitCode != 0 {
@@ -437,7 +438,7 @@ func (f *Fly) running(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 	if f.machine.State == "stopped" || f.machine.State == "suspended" {
-		if err := f.call(ctx, "POST", "/apps/"+f.FlyApp+"/machines/"+f.machine.ID+"/start", nil, nil); err != nil {
+		if err := f.call(ctx, "POST", "/apps/"+url.PathEscape(f.FlyApp)+"/machines/"+url.PathEscape(f.machine.ID)+"/start", nil, nil); err != nil {
 			return false, err
 		}
 	}
@@ -728,7 +729,7 @@ func (f *Fly) config(id, volume string) flyConfig {
 // volume is the environment's volume, created in the region when there is none.
 func (f *Fly) volume(ctx context.Context) (string, error) {
 	var vols []flyVol
-	if err := f.call(ctx, "GET", "/apps/"+f.FlyApp+"/volumes", nil, &vols); err != nil {
+	if err := f.call(ctx, "GET", "/apps/"+url.PathEscape(f.FlyApp)+"/volumes", nil, &vols); err != nil {
 		return "", err
 	}
 	for _, v := range vols {
@@ -737,7 +738,7 @@ func (f *Fly) volume(ctx context.Context) (string, error) {
 		}
 	}
 	var v flyVol
-	if err := f.call(ctx, "POST", "/apps/"+f.FlyApp+"/volumes", map[string]any{"name": flyVolume, "region": f.Region, "size_gb": 1, "encrypted": true}, &v); err != nil {
+	if err := f.call(ctx, "POST", "/apps/"+url.PathEscape(f.FlyApp)+"/volumes", map[string]any{"name": flyVolume, "region": f.Region, "size_gb": 1, "encrypted": true}, &v); err != nil {
 		return "", err
 	}
 	return v.ID, nil
@@ -827,7 +828,7 @@ func (f *Fly) put(ctx context.Context, id string) error {
 			}
 		}
 		var m flyMachine
-		if err := f.call(ctx, "POST", "/apps/"+f.FlyApp+"/machines/"+f.machine.ID, map[string]any{"config": f.config(id, vol)}, &m); err != nil {
+		if err := f.call(ctx, "POST", "/apps/"+url.PathEscape(f.FlyApp)+"/machines/"+url.PathEscape(f.machine.ID), map[string]any{"config": f.config(id, vol)}, &m); err != nil {
 			return err
 		}
 		f.machine = &m
@@ -839,7 +840,7 @@ func (f *Fly) put(ctx context.Context, id string) error {
 	}
 	var m flyMachine
 	body := map[string]any{"name": unitName(f.App + "-" + f.Env), "region": f.Region, "config": f.config(id, vol)}
-	if err := f.call(ctx, "POST", "/apps/"+f.FlyApp+"/machines", body, &m); err != nil {
+	if err := f.call(ctx, "POST", "/apps/"+url.PathEscape(f.FlyApp)+"/machines", body, &m); err != nil {
 		return err
 	}
 	f.machine = &m
@@ -940,7 +941,7 @@ func (f *Fly) Stop(ctx context.Context, id string, drain time.Duration) error {
 	if cur = strings.TrimSpace(cur); cur != "" && cur != id {
 		return f.revert(ctx, cur)
 	}
-	return f.call(ctx, "POST", "/apps/"+f.FlyApp+"/machines/"+f.machine.ID+"/stop", nil, nil)
+	return f.call(ctx, "POST", "/apps/"+url.PathEscape(f.FlyApp)+"/machines/"+url.PathEscape(f.machine.ID)+"/stop", nil, nil)
 }
 
 // Record writes /data/builds/<id>/deployed.json.
@@ -1088,7 +1089,7 @@ func (f *Fly) restore(ctx context.Context, db string) error {
 		return err
 	}
 	id := f.machine.build()
-	if err := f.call(ctx, "POST", "/apps/"+f.FlyApp+"/machines/"+f.machine.ID+"/restart", nil, nil); err != nil {
+	if err := f.call(ctx, "POST", "/apps/"+url.PathEscape(f.FlyApp)+"/machines/"+url.PathEscape(f.machine.ID)+"/restart", nil, nil); err != nil {
 		return err
 	}
 	end := time.Now().Add(2 * time.Minute)

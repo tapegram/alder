@@ -260,6 +260,9 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 	if preview == nil && production == nil {
 		wf.Notes = append(wf.Notes, "no `production` or `preview` environment in App's `deploy`: the workflow deploys nothing")
 	}
+	if preview != nil && preview.t.Kind == "ssh" && !strings.HasPrefix(preview.t.Domain, "*.") {
+		wf.Notes = append(wf.Notes, fmt.Sprintf("the preview domain %s is not a wildcard: each pull request is served at <number>.%s, which needs a DNS record for each name (declare \"*.%s\")", preview.t.Domain, preview.t.Domain, preview.t.Domain))
+	}
 	if len(wf.Secrets) == 0 {
 		w("# Repository secrets: none.\n")
 	} else {
@@ -282,6 +285,10 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 		switch preview.t.Kind {
 		case "fly":
 			para("Every pull request deploys to the one Fly app " + preview.t.App + ": the last push wins. ")
+		case "ssh":
+			if !strings.HasPrefix(preview.t.Domain, "*.") {
+				para("The preview domain " + preview.t.Domain + " is not a wildcard: each pull request is served at <number>." + preview.t.Domain + ", which needs a DNS record (and a certificate) for each such name; declare \"*." + preview.t.Domain + "\" to say so.")
+			}
 		}
 		para("A preview stays up after its pull request is closed: remove it by hand for now.")
 	}
@@ -320,7 +327,7 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 			w("          chmod 600 ~/.ssh/id_ed25519\n")
 			w("          printf '%%s\\n' \"$SSH_KNOWN_HOSTS\" >> ~/.ssh/known_hosts\n")
 		case "fly":
-			w("      - uses: superfly/flyctl-actions/setup-flyctl@master\n")
+			w("      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6\n")
 		}
 	}
 	deployStep := func(c *ciDeploy) {
